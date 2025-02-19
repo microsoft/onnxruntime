@@ -39,6 +39,7 @@
     HINTS ${TENSORRT_ROOT}
     PATH_SUFFIXES include)
 
+
   file(READ ${TENSORRT_INCLUDE_DIR}/NvInferVersion.h NVINFER_VER_CONTENT)
   string(REGEX MATCH "define NV_TENSORRT_MAJOR * +([0-9]+)" NV_TENSORRT_MAJOR "${NVINFER_VER_CONTENT}")
   string(REGEX REPLACE "define NV_TENSORRT_MAJOR * +([0-9]+)" "\\1" NV_TENSORRT_MAJOR "${NV_TENSORRT_MAJOR}")
@@ -56,32 +57,16 @@
     MESSAGE(STATUS "Can't find NV_TENSORRT_MAJOR macro")
   endif()
 
-  # Check TRT version >= requirement
-  function(check_trt_version req_major req_minor req_patch out_var)
-    set(version_ok FALSE)
-    if(NV_TENSORRT_MAJOR_INT GREATER ${req_major})
-      set(version_ok TRUE)
-    elseif(NV_TENSORRT_MAJOR_INT EQUAL ${req_major})
-      if(NV_TENSORRT_MINOR_INT GREATER ${req_minor})
-        set(version_ok TRUE)
-      elseif(NV_TENSORRT_MINOR_INT EQUAL ${req_minor})
-        if(NV_TENSORRT_PATCH_INT GREATER_EQUAL ${req_patch})
-          set(version_ok TRUE)
-        endif()
-      endif()
-    endif()
-    set(${out_var} ${version_ok} PARENT_SCOPE)
-    if(version_ok)
-      message(STATUS "TensorRT ${NV_TENSORRT_MAJOR_INT}.${NV_TENSORRT_MINOR_INT}.${NV_TENSORRT_PATCH_INT} >= ${req_major}.${req_minor}.${req_patch}.")
-    else()
-      message(STATUS "TensorRT ${NV_TENSORRT_MAJOR_INT}.${NV_TENSORRT_MINOR_INT}.${NV_TENSORRT_PATCH_INT} < ${req_major}.${req_minor}.${req_patch}.")
+  # Check TRT version >= 10.0.1.6
+  if ((NV_TENSORRT_MAJOR_INT GREATER 10) OR
+      (NV_TENSORRT_MAJOR_INT EQUAL 10 AND NV_TENSORRT_MINOR_INT GREATER 0) OR
+      (NV_TENSORRT_MAJOR_INT EQUAL 10 AND NV_TENSORRT_PATCH_INT GREATER 0))
+    set(TRT_GREATER_OR_EQUAL_TRT_10_GA ON)
   endif()
-  endfunction()
- 
+
   # TensorRT 10 GA onwards, the TensorRT libraries will have major version appended to the end on Windows,
   # for example, nvinfer_10.dll, nvinfer_plugin_10.dll, nvonnxparser_10.dll ...
-  check_trt_version(10 0 1 TRT_VERSION_OK_10_0_1)
-  if (WIN32 AND TRT_VERSION_OK_10_0_1)
+  if (WIN32 AND TRT_GREATER_OR_EQUAL_TRT_10_GA)
     set(NVINFER_LIB "nvinfer_${NV_TENSORRT_MAJOR}")
     set(NVINFER_PLUGIN_LIB "nvinfer_plugin_${NV_TENSORRT_MAJOR}")
     set(PARSER_LIB "nvonnxparser_${NV_TENSORRT_MAJOR}")
@@ -131,7 +116,7 @@
     set(TENSORRT_LIBRARY ${TENSORRT_LIBRARY_INFER} ${TENSORRT_LIBRARY_INFER_PLUGIN} ${TENSORRT_LIBRARY_NVONNXPARSER})
     MESSAGE(STATUS "Find TensorRT libs at ${TENSORRT_LIBRARY}")
   else()
-    if (TRT_VERSION_OK_10_0_1)
+    if (TRT_GREATER_OR_EQUAL_TRT_10_GA)
       set(ONNX_USE_LITE_PROTO ON)
     endif()
     onnxruntime_fetchcontent_declare(
