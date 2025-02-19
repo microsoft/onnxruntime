@@ -95,9 +95,10 @@ class WebGpuContext final {
 
       if (is_profiling_ && query_type_ == TimestampQueryType::AtPasses) {
         wgpu::PassTimestampWrites timestampWrites = {
-            .querySet = query_set_,
-            .beginningOfPassWriteIndex = num_pending_dispatches_ * 2,
-            .endOfPassWriteIndex = num_pending_dispatches_ * 2 + 1};
+            nullptr,
+            query_set_,
+            num_pending_dispatches_ * 2,
+            num_pending_dispatches_ * 2 + 1};
         compute_pass_desc.timestampWrites = &timestampWrites;
       }
 
