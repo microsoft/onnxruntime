@@ -3101,7 +3101,9 @@ void HGemm_PackedB_Kernel_Impl(
             }
             CountN -= 4, C += 4;
             accu0_low = accu0_high;
-            accu1_low = accu1_high;
+            if constexpr (CountM == 2) {
+                accu1_low = accu1_high;
+            }
         }
 
         if (CountN) {
