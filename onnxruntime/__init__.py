@@ -94,7 +94,7 @@ def _get_package_version(package_name: str):
     return package_version
 
 
-def _get_package_root(package_name, directory_name=None):
+def _get_package_root(package_name: str, directory_name: str | None = None):
     from importlib.metadata import PackageNotFoundError, distribution
 
     root_directory_name = directory_name or package_name
@@ -152,7 +152,6 @@ def _get_nvidia_dll_paths(is_windows: bool, cuda: bool = True, cudnn: bool = Tru
             ("nvidia", "cudnn", "lib", "libcudnn.so.9"),
         ]
 
-    # Try load DLLs from site packages.
     return (cuda_dll_paths if cuda else []) + (cudnn_dll_paths if cudnn else [])
 
 
@@ -173,11 +172,11 @@ def print_debug_info():
     for dist in distributions():
         package = dist.metadata["Name"]
         if package == "onnxruntime" or package.startswith(("onnxruntime-", "ort-")):
+            # Exclude packages whose root directory name is not onnxruntime.
             location = _get_package_root(package, "onnxruntime")
-            if location:
-                if package not in ort_packages:
-                    ort_packages.append(package)
-                    print(f"{package}=={dist.version} at {location}")
+            if location and (package not in ort_packages):
+                ort_packages.append(package)
+                print(f"{package}=={dist.version} at {location}")
 
     if len(ort_packages) > 1:
         print(
@@ -315,6 +314,7 @@ def preload_dlls(cuda: bool = True, cudnn: bool = True, msvc: bool = True, direc
         print("Skip loading CUDA and cuDNN DLLs since torch is imported.")
         return
 
+    # Try load DLLs from nvidia site packages.
     dll_paths = _get_nvidia_dll_paths(is_windows, cuda, cudnn)
     loaded_dlls = []
     for relative_path in dll_paths:
