@@ -220,6 +220,91 @@ Status ComputeAttentionProbs(onnxruntime::webgpu::ComputeContext& context, int o
   return context.RunProgram(program);
 }
 
+Status InPlaceSoftmaxProgram::GenerateShaderCode(ShaderHelper& shader) const {
+  if (seqlen_k_) {
+    shader.AddInput("seqlen_k", ShaderUsage::UseUniform);
+  }
+  shader.AddOutput("x", ShaderUsage::UseUniform | ShaderUsage::UseValueTypeAlias | ShaderUsage::UseElementTypeAlias);
+  shader.AdditionalImplementation() << "var<workgroup> thread_max: array<f32, " << work_group_size_ << ">;\n"
+                                    << "var<workgroup> thread_sum: array<f32, " << work_group_size_ << ">;\n"
+                                    << "alias f32_val_t = " << (components_ == 4 ? "vec4<f32>" : (components_ == 2 ? "vec2<f32>" : "f32")) << ";\n";
+  shader.MainFunctionBody() << "let batch_idx = workgroup_id.z / uniforms.num_heads;\n"
+                            << "let sequence_length = uniforms.sequence_length;\n"
+                            << "var total_sequence_length = uniforms.total_sequence_length_comp * " << components_ << ";\n";
+  std::ostringstream oss;
+  InitVarStub(oss, seqlen_k_);
+  shader.MainFunctionBody() << oss.str()
+                            << "let local_offset = local_idx * uniforms.elements_per_thread;\n"
+                            << "let offset = (global_idx / " << work_group_size_ << ") * uniforms.total_sequence_length_comp + local_offset;\n"
+                            << "let seq_causal_length = " << (seqlen_k_ ? "past_sequence_length + workgroup_id.y + 1" : "uniforms.total_sequence_length_comp") << ";\n"
+                            << "var thread_max_vector = f32_val_t(-3.402823e+38f);\n"
+                            << "for (var i: u32 = 0; i < uniforms.elements_per_thread && i + local_offset < seq_causal_length; i++) {\n"
+                            << "  thread_max_vector = max(f32_val_t(x[offset + i]), thread_max_vector);\n"
+                            << "}\n"
+                            << "thread_max[local_idx] = " << (components_ == 4 ? "max(max(thread_max_vector.x, thread_max_vector.y), max(thread_max_vector.z, thread_max_vector.w))" : (components_ == 2 ? "max(thread_max_vector.x, thread_max_vector.y)" : "thread_max_vector")) << ";\n"
+                            << "workgroupBarrier();\n"
+                            << "var max_value =  f32(-3.402823e+38f);\n"
+                            << "for (var i = 0u; i < " << work_group_size_ << "; i++) {\n"
+                            << "  max_value = max(thread_max[i], max_value);\n"
+                            << "}\n"
+                            << "var sum_vector = f32_val_t(0);\n"
+                            << "for (var i: u32 = 0; i < uniforms.elements_per_thread && i + local_offset < seq_causal_length; i++) {\n"
+                            << "  sum_vector += exp(f32_val_t(x[offset + i]) - max_value);\n"
+                            << "}\n"
+                            << "thread_sum[local_idx] = " << (components_ == 4 ? "sum_vector.x + sum_vector.y + sum_vector.z + sum_vector.w" : (components_ == 2 ? "sum_vector.x + sum_vector.y" : "sum_vector")) << ";\n"
+                            << "workgroupBarrier();\n"
+                            << "var sum: f32 = 0;\n"
+                            << "for (var i = 0u; i < " << work_group_size_ << "; i++) {\n"
+                            << "  sum += thread_sum[i]\n;"
+                            << "}\n"
+                            << "if (sum == 0) {\n"
+                            << "  for (var i: u32 = 0; i < uniforms.elements_per_thread && i + local_offset < seq_causal_length; i++) {\n"
+                            << "    x[offset + i] = x_value_t(x_element_t(1.0)/x_element_t(seq_causal_length));\n"
+                            << "  }\n"
+                            << "} else {\n"
+                            << "  for (var i: u32 = 0; i < uniforms.elements_per_thread && i + local_offset < seq_causal_length; i++) {\n"
+                            << "    var f32input = f32_val_t(x[offset + i]);\n"
+                            << "    x[offset + i] = x_value_t(exp(f32input - max_value) / sum);\n"
+                            << "  }\n"
+                            << "}\n";
+  if (seqlen_k_) {
+    shader.MainFunctionBody() << "for (var total_seq_id: u32 = seq_causal_length; total_seq_id + local_offset < uniforms.total_sequence_length_comp; total_seq_id++) {\n"
+                              << "   x[offset + total_seq_id] = x_value_t(x_element_t(0));\n"
+                              << "}\n";
+  }
+
+  return Status::OK();
+}
+
+Status ComputeInPlaceSoftmax(onnxruntime::webgpu::ComputeContext& context, Tensor* probs, int32_t batch_size, int32_t num_heads, int32_t past_sequence_length, int32_t sequence_length, int32_t total_sequence_length,
+                             const Tensor* seqlen_k, bool is_first_prompt) {
+  const int components = seqlen_k != nullptr ? 1 : (total_sequence_length % 4 == 0 ? 4 : (total_sequence_length % 2 == 0 ? 2 : 1));
+  int work_group_size = 64;
+  const int total_sequence_length_comp = (total_sequence_length + components - 1) / components;
+  if (total_sequence_length_comp < work_group_size) {
+    work_group_size = 32;
+  }
+  const int elementsPerThread = (total_sequence_length_comp + work_group_size - 1) / work_group_size;
+
+  InPlaceSoftmaxProgram program{"InPlaceSoftmax", work_group_size, components, seqlen_k};
+  if (seqlen_k != nullptr) {
+    program.AddInput({seqlen_k, ProgramTensorMetadataDependency::TypeAndRank});
+  }
+  program.AddOutputs({{probs, ProgramTensorMetadataDependency::TypeAndRank, components}})
+      .CacheHint(work_group_size)
+      .SetDispatchGroupSize(1, sequence_length, batch_size * num_heads)
+      .SetWorkgroupSize(work_group_size)
+      .AddUniformVariables({{static_cast<uint32_t>(batch_size)},
+                            {static_cast<uint32_t>(num_heads)},
+                            {static_cast<uint32_t>(past_sequence_length)},
+                            {static_cast<uint32_t>(sequence_length)},
+                            {static_cast<uint32_t>(total_sequence_length_comp)},
+                            {static_cast<uint32_t>(elementsPerThread)},
+                            {static_cast<uint32_t>(is_first_prompt ? 1 : 0)}});
+
+  return context.RunProgram(program);
+}
+
 Status VxAttentionScoreProgram::GenerateShaderCode(ShaderHelper& shader) const {
   shader.AddInput("probs", ShaderUsage::UseUniform | ShaderUsage::UseValueTypeAlias | ShaderUsage::UseElementTypeAlias);
   shader.AddInput("v", ShaderUsage::UseUniform | ShaderUsage::UseValueTypeAlias);
@@ -255,13 +340,11 @@ Status VxAttentionScoreProgram::GenerateShaderCode(ShaderHelper& shader) const {
   }
 
   shader.MainFunctionBody() << "var value = output_value_t(0);\n"
-                            << "let seq_causal_length = " << (seqlen_k_ ? "past_sequence_length + m + 1" : "total_sequence_length") << ";\n"
-                            << "for (var w: u32 = 0u; w < total_sequence_length; w += TILE_SIZE) {\n"
-                               "  tileQ[local_id.y][local_id.x] = probs_value_t(0);"
-                            << "  if (m < uniforms.M && w + local_id.x < seq_causal_length) {\n"
+                            << "for (var w: u32 = 0u; w < uniforms.K; w += TILE_SIZE) {\n"
+                            << "  if (m < uniforms.M && w + local_id.x < uniforms.K) {\n"
                             << "    tileQ[local_id.y][local_id.x] = probs[offsetA + w + local_id.x];\n"
                             << "  }\n"
-                            << "  if (n < uniforms.N && w + local_id.y < total_sequence_length) {\n"
+                            << "  if (n < uniforms.N && w + local_id.y < uniforms.K) {\n"
                             << "    var idx = TILE_SIZE * local_id.y + local_id.x;\n";
 
   if ((feed_past_value_ && has_present_value_) || (past_present_share_buffer_ && !is_first_prompt_)) {
@@ -288,18 +371,16 @@ Status VxAttentionScoreProgram::GenerateShaderCode(ShaderHelper& shader) const {
   }
 
   shader.MainFunctionBody() << "  }\n"
-                            << "  workgroupBarrier();\n";
-  // Compute SoftMax as per Flash Attention technique.
-  // Similar with flash_attention.cc
-  shader.MainFunctionBody() << "  var local_max = min_value;\n"
-                               "  for (var i = 0u; i < TILE_SIZE && w + i < seq_causal_length; i++) {\n"
+                            << "  workgroupBarrier();\n"
+                               "  var local_max = min_value;\n"
+                               "  for (var i = 0u; i < TILE_SIZE && w + i < uniforms.K; i++) {\n"
                                "    local_max = max(local_max, f32(tileQ[local_id.y][i]));\n"
                                "  }\n"
-                               "  let new_max = max(previous_max, local_max);\n"
+                            << "  let new_max = max(previous_max, local_max);\n"
                                "  tileQ[local_id.y][local_id.x] = probs_value_t(exp(f32(tileQ[local_id.y][local_id.x]) - new_max));\n"
                                "  workgroupBarrier();\n"
                                "  var sum = f32(0);\n"
-                               "  for (var i = 0u; i < TILE_SIZE && w + i < seq_causal_length; i++) {\n"
+                               "  for (var i = 0u; i < TILE_SIZE && w + i < uniforms.K; i++) {\n"
                                "    sum += f32(tileQ[local_id.y][i]);\n"
                                "  }\n"
                                "  let dleft = previous_denom * exp(previous_max-new_max);\n"
@@ -308,11 +389,10 @@ Status VxAttentionScoreProgram::GenerateShaderCode(ShaderHelper& shader) const {
                                "  tileQ[local_id.y][local_id.x] = probs_value_t(f32(tileQ[local_id.y][local_id.x]) / d);\n"
                                "  workgroupBarrier();\n"
                                "  previous_max = new_max;\n"
-                               "  previous_denom = d;\n";
-
-  shader.MainFunctionBody() << "  let o_ratio = dleft / d;\n "
+                               "  previous_denom = d;\n"
+                               "  let o_ratio = dleft / d;\n"
                                "  var sub_value = output_value_t(0);\n"
-                            << "  for (var k: u32 = 0u; k < TILE_SIZE && w+k < seq_causal_length; k++) {\n"
+                            << "  for (var k: u32 = 0u; k < TILE_SIZE && w+k < total_sequence_length; k++) {\n"
                             << "    sub_value += tileQ[local_id.y][k] * tileK[TILE_SIZE * k + local_id.x];\n"
                             << "  }\n"
                                "  value = value * probs_value_t(o_ratio) + sub_value;\n"
@@ -392,6 +472,10 @@ Status ApplyAttention(const Tensor* Q, const Tensor* K, const Tensor* V, const T
   Tensor probs = context.CreateGPUTensor(Q->DataType(), probs_shape);
   ORT_RETURN_IF_ERROR(ComputeAttentionProbs(context, output_count, Q, K, past_key, attention_bias, &probs, present_key,
                                             parameters, past_sequence_length, total_sequence_length, seqlen_k));
+
+//  ORT_RETURN_IF_ERROR(ComputeInPlaceSoftmax(context, &probs,
+ //                                           parameters.batch_size_, parameters.num_heads_, parameters.past_sequence_length_, parameters.sequence_length_, total_sequence_length, seqlen_k, parameters.is_first_prompt_));
+
   ORT_RETURN_IF_ERROR(ComputeVxAttentionScore(context, output_count, &probs, V, past_value, output, present_value,
                                               parameters, past_sequence_length, total_sequence_length, seqlen_k));
 
