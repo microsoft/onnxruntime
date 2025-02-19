@@ -62,6 +62,9 @@ rust/**/Cargo.lock
 rust/onnxruntime/synset.txt
 
 # Python
+bin/
+lib/
+pyvenv.cfg
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

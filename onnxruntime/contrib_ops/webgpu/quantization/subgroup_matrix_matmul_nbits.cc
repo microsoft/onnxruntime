@@ -28,37 +28,33 @@ Status SubgroupMatrixMatMulNBitsProgram::GenerateShaderCode(ShaderHelper& shader
         var<workgroup> tile_B: array<compute_precision, tile_cols * tile_k>;       // 64 x 32 - RxC
         var<workgroup> scratch: array<array<array<compute_precision, 64>, 4>, 4>;  // 64 * 4 * 4
 
-        fn loadSHMA(tile_base: u32, k_idx: u32, row: u32, c_idx:u32) {
-            let a_global = tile_base + row;
-            if (a_global >= uniforms.M) {
-                return;
-            }
-            // Each call loads 8 columns, starting at col.
-            var col = c_idx * 8;
-            // 128 threads need to load 32 x 32. 4 threads per row or 8 col per thread.
-            for (var col_offset:u32 = 0; col_offset < 8; col_offset++)
+        fn loadSHMA(tile_base: u32, k_idx: u32, row: u32, col:u32) {
+            // Each call loads 4 rows, at col.
+            // 128 threads need to load 32 x 32. Organized as 32 threads load a row, 4 rows at a time.
+            var out_row = row;
+            let row_limit = min(tile_base + tile_rows, uniforms.M);
+            for (var a_global:u32 = tile_base + out_row; a_global < row_limit; a_global = tile_base + out_row)
             {
-                tile_A[row * tile_k + col + col_offset] = compute_precision(input_a[a_global*uniforms.K + k_idx + col + col_offset]);
+                tile_A[out_row * tile_k + col] = compute_precision(input_a[a_global*uniforms.K + k_idx + col]);
+                out_row+=4;
             }
         }
 
         fn loadSHMB(tile_base: u32, k_idx: u32, row: u32, c_idx: u32) {
-            let b_global = tile_base + row;
-            if (b_global >= uniforms.N) {
-                return;
-            }
-            // Each call loads 16 columns, starting at col.
-            var col = c_idx * 16;
-            // 128 threads need to load 64 x 32. 2 threads per row or 16 col per thread.
-            // Stored in column major fashion.
-            let b_idx = u32((b_global*uniforms.K + k_idx + col)/8);
-            let scale   = compute_precision(scales_b[(b_global*uniforms.K + k_idx + col)/quantization_block_size]);
-            for (var step:u32 = 0; step < 2; step++)
+            // Each call loads 8 columns, starting at col and then loads another rows.
+            // 128 threads need to load 64 x 32. Organized as 4 threads load a row, 32 rows at a time.
+            // B is stored in column major fashion.
+            var col = c_idx * 8;
+            let out_row_limit = min(tile_base + tile_cols, uniforms.N);
+            var out_row = row;
+            for (var b_global:u32 = tile_base + out_row; b_global < out_row_limit; b_global = tile_base + out_row)
             {
-                var b_value = input_b[b_idx+step];
+                let b_idx = u32((b_global*uniforms.K + k_idx + col)/8);
+                let scale   = compute_precision(scales_b[(b_global*uniforms.K + k_idx + col)/quantization_block_size]);
+                var b_value = input_b[b_idx];
                 var b_value_lower = (vec4<compute_precision>(unpack4xU8(b_value & 0x0F0F0F0Fu)) - vec4<compute_precision>(8)) * scale;
                 var b_value_upper = (vec4<compute_precision>(unpack4xU8((b_value >> 4) & 0x0F0F0F0Fu)) - vec4<compute_precision>(8)) * scale;
-                let tile_b_base = row * tile_k + col + step * 8;
+                let tile_b_base = out_row * tile_k + col;
                 tile_B[tile_b_base]     = b_value_lower[0];
                 tile_B[tile_b_base + 1] = b_value_upper[0];
                 tile_B[tile_b_base + 2] = b_value_lower[1];
@@ -67,6 +63,7 @@ Status SubgroupMatrixMatMulNBitsProgram::GenerateShaderCode(ShaderHelper& shader
                 tile_B[tile_b_base + 5] = b_value_upper[2];
                 tile_B[tile_b_base + 6] = b_value_lower[3];
                 tile_B[tile_b_base + 7] = b_value_upper[3];
+                out_row += 32;
             }
         }
 
@@ -106,8 +103,9 @@ Status SubgroupMatrixMatMulNBitsProgram::GenerateShaderCode(ShaderHelper& shader
         var matC13: subgroup_matrix_result<compute_precision, 8, 8>;
         for (var kidx: u32 = 0; kidx < uniforms.K; kidx += tile_k) {
             // Load Phase
-            loadSHMA(a_global_base, kidx, local_idx/4, local_idx%4);
-            loadSHMB(b_global_base, kidx, local_idx/2, local_idx%2);
+            loadSHMA(a_global_base, kidx, local_idx/tile_k, local_idx%tile_k);
+            // tile_k in B's vectorization is 4. Since each U32 holds 8 weights.
+            loadSHMB(b_global_base, kidx, local_idx/4, local_idx%4);
             workgroupBarrier();
 
             for (var step: u32 = 0; step < tile_k; step+=8)
