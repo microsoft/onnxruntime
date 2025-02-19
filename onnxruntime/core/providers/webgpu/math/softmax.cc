@@ -1,6 +1,8 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include <string>
+
 #include "core/common/inlined_containers.h"
 #include "core/providers/common.h"
 #include "core/providers/webgpu/math/softmax.h"
