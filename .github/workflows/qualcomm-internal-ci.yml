@@ -9,7 +9,7 @@ on:
       - main
 
 jobs:
-  Windows-CUDA-12:
+  Windows-Build-Test-All:
     runs-on: ["self-hosted", "Windows", "X64"]
     steps:
       - uses: actions/checkout@v4
