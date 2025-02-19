@@ -75,7 +75,7 @@ stages:
         displayName: 'Build and Test'
         inputs:
           scriptPath: '$(Build.SourcesDirectory)\tools\ci_build\build.py'
-          arguments: --config Debug --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --parallel --cmake_generator "Visual Studio 17 2022" --disable_memleak_checker --enable_address_sanitizer
+          arguments: --config Debug --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --parallel --use_vcpkg --cmake_generator "Visual Studio 17 2022" --disable_memleak_checker --enable_address_sanitizer
           workingDirectory: '$(Build.BinariesDirectory)'
 
 
@@ -145,7 +145,7 @@ stages:
       parameters:
         BuildConfig: 'RelWithDebInfo'
         buildArch: x64
-        additionalBuildFlags: --build_wheel --use_vitisai
+        additionalBuildFlags: --build_wheel --use_vitisai --use_vcpkg
         msbuildPlatform: x64
         isX86: false
         job_name_suffix: x64_release

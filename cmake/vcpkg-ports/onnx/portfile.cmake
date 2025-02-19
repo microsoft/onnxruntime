@@ -8,45 +8,43 @@ vcpkg_from_github(
     PATCHES
         fix-cmakelists.patch
         fix-dependency-protobuf.patch
-	other.patch
+        binskim.patch
 )
 
 string(COMPARE EQUAL "${VCPKG_CRT_LINKAGE}" "static" USE_STATIC_RUNTIME)
 
+# ONNX_CUSTOM_PROTOC_EXECUTABLE
+find_program(PROTOC NAMES protoc PATHS "${CURRENT_HOST_INSTALLED_DIR}/tools/protobuf" REQUIRED NO_DEFAULT_PATH NO_CMAKE_PATH)
+
 # ONNX_USE_PROTOBUF_SHARED_LIBS: find the library and check its file extension
 find_library(PROTOBUF_LIBPATH NAMES protobuf PATHS "${CURRENT_INSTALLED_DIR}/bin" "${CURRENT_INSTALLED_DIR}/lib" REQUIRED)
 get_filename_component(PROTOBUF_LIBNAME "${PROTOBUF_LIBPATH}" NAME)
+if(PROTOBUF_LIBNAME MATCHES "${CMAKE_SHARED_LIBRARY_SUFFIX}")
+    set(USE_PROTOBUF_SHARED ON)
+else()
+    set(USE_PROTOBUF_SHARED OFF)
+endif()
 
-set(USE_PROTOBUF_SHARED OFF)
-
-
-
-# Like protoc, python is required for codegen.
 vcpkg_find_acquire_program(PYTHON3)
-
-# PATH for .bat scripts so it can find 'python'
-get_filename_component(PYTHON_DIR "${PYTHON3}" PATH)
-vcpkg_add_to_path(PREPEND "${PYTHON_DIR}")
 
 vcpkg_cmake_configure(
     SOURCE_PATH "${SOURCE_PATH}"
     OPTIONS
         ${FEATURE_OPTIONS}
-        -DPython3_EXECUTABLE=${PYTHON3}
+        "-DPython3_EXECUTABLE:FILEPATH=${PYTHON3}"
+        "-DONNX_CUSTOM_PROTOC_EXECUTABLE:FILEPATH=${PROTOC}"
+        "-DProtobuf_PROTOC_EXECUTABLE:FILEPATH=${PROTOC}"
         -DONNX_ML=ON
-        -DONNX_GEN_PB_TYPE_STUBS=ON
         -DONNX_USE_PROTOBUF_SHARED_LIBS=${USE_PROTOBUF_SHARED}
         -DONNX_USE_LITE_PROTO=OFF
         -DONNX_USE_MSVC_STATIC_RUNTIME=${USE_STATIC_RUNTIME}
         -DONNX_BUILD_TESTS=OFF
         -DONNX_BUILD_BENCHMARKS=OFF
-        -DONNX_DISABLE_STATIC_REGISTRATION=ON
     MAYBE_UNUSED_VARIABLES
         ONNX_USE_MSVC_STATIC_RUNTIME
 )
-
 vcpkg_cmake_install()
-vcpkg_cmake_config_fixup(CONFIG_PATH lib/cmake/ONNX)
+vcpkg_cmake_config_fixup(CONFIG_PATH lib/cmake/ONNX PACKAGE_NAME ONNX)
 
 vcpkg_install_copyright(FILE_LIST "${SOURCE_PATH}/LICENSE")
 
