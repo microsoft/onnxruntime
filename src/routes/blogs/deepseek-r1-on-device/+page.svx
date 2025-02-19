@@ -9,35 +9,25 @@ image: 'https://iili.io/2yV40bV.png'
 imageSquare: 'https://iili.io/2yV40bV.png'
 url: 'https://onnxruntime.ai/blogs/deepseek-r1-on-device'
 ---
+Are you a developer looking to harness the power of your users' local compute for AI inferencing on PCs with NPUs, GPUs, and CPUs? Look no further!  
 
-Are you a developer looking to harness the power of your users' local compute for AI inferencing on PCs with NPUs, GPUs, and CPUs? Look no further! Expanding on the recent capability to run the models on new [Copilot+PCs on NPUs](https://blogs.windows.com/windowsdeveloper/2025/01/29/running-distilled-deepseek-r1-models-locally-on-copilot-pcs-powered-by-windows-copilot-runtime/), you now efficiently run these models on CPU and GPU devices as well. These models are available on Azure AI Foundry model catalog and [Hugging Face](https://huggingface.co/onnxruntime/DeepSeek-R1-Distill-ONNX).
+Building on the recent ability to run models on [Copilot+PCs on NPUs](https://blogs.windows.com/windowsdeveloper/2025/01/29/running-distilled-deepseek-r1-models-locally-on-copilot-pcs-powered-by-windows-copilot-runtime/), you can now efficiently run these models on CPU and GPU devices as well. You can now download and run the ONNX optimized variants of the models from [Hugging Face](https://huggingface.co/onnxruntime/DeepSeek-R1-Distill-ONNX).  
 
-The DeepSeek ONNX models enables you to run DeepSeek on any GPU or CPU, achieving performance speeds 1.3 to 6.3 times faster than native PyTorch. These optimized models are coming soon via Azure AI Foundry and can be easily accessed via the command line or the [VS Code AI Toolkit](https://code.visualstudio.com/docs/intelligentapps/overview).
+The DeepSeek ONNX models enables you to run DeepSeek on any GPU or CPU, achieving performance speeds 1.3 to 6.3 times faster than native PyTorch. To easily get started with the model, you can use our ONNX Runtime `Generate()` API. See instructions for CPU, GPU (CUDA, DML) [here](https://github.com/microsoft/onnxruntime/blob/gh-pages/docs/genai/tutorials/deepseek-python.md). 
 
-VS Code AI Toolkit and included frameworks like Olive gives you a complete stack that enables you to convert, optimize, quantize and finetune these models. Olive provides ease of optimized and quantized model generation. ONNX Runtime Generative API gives you faster performance.
-
-## Convert, Quantize, and Run your models easily!
-
-Watch the video below and follow along on how you can covert the DeepSeek model to ONNX using Olive, and run it using a chat template on-device using ONNXRuntime Generative API.
-
+## Download and run your models easily! 
 <!-- Video Embed -->
 <div>
 				<iframe
 					class="pb-2 w-full"
                     height="600px"
-					src="https://www.youtube.com/embed/r_fXlTVHP_A"
+					src="https://www.youtube.com/embed/XW-AYw-4oTQ"
 					title="YouTube video player"
 					frameborder="0"
 					allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
 					allowfullscreen
 				/>
 			</div>
-
-The steps of how to acquire and play with the model are also shared [here](https://github.com/microsoft/onnxruntime/blob/gh-pages/docs/genai/tutorials/deepseek-python.md).
-
-## Easily Finetune your models with Olive.
-
-This [notebook](https://github.com/microsoft/Olive/blob/samuel100/deekseek-example/examples/getting_started/olive-deepseek-finetune.ipynb) provides a step-by-step guide to fine-tuning DeepSeek models using the Olive framework. It covers the process of setting up your environment, preparing your data, and leveraging Azure AI Foundry to optimize and deploy your models. The notebook is designed to help you get started quickly and efficiently with DeepSeek and Olive, making your AI development process smoother and more effective.
 
 ## ONNX Model Performance Improvements
 
@@ -55,10 +45,23 @@ ONNX enables you to run your models on-device across CPU, GPU, NPU. With ONNX yo
 _CUDA BUILD SPECS: Onnxruntime-genai-cuda==0.6.0-dev, transformers==4.46.2, onnxruntime-gpu==1.20.1_ <br/>
 _CPU BUILD SPECS: Onnxruntime-genai==0.6.0-dev, transformers==4.46.2, onnxruntime==1.20.01_
 
+## Convert, Quantize, and Run your models easily!
+
+Watch the video below and follow along on how you can covert the DeepSeek model to ONNX using Olive, and run it using a chat template on-device using ONNXRuntime Generative API.
+
+
+
+
+## Easily Finetune your models with Olive.
+
+This [notebook](https://github.com/microsoft/Olive/blob/main/examples/getting_started/olive-deepseek-finetune.ipynb) provides a step-by-step guide to fine-tuning DeepSeek models using the Olive framework. It covers the process of setting up your environment, preparing your data, and leveraging Azure AI Foundry to optimize and deploy your models. The notebook is designed to help you get started quickly and efficiently with DeepSeek and Olive, making your AI development process smoother and more effective.
+
+
 ## Conclusion
 
-Optimizing DeepSeek R1 distilled models with ONNX Runtime can lead to significant performance improvements. By leveraging our AI framework solution with Azure Foundry, AI Toolkit, Olive, and ONNX Runtime you get your end to end solution for model development experience. Stay tuned for more updates and best practices on enhancing AI model performance.
+Optimizing DeepSeek R1 distilled models with ONNX Runtime can lead to significant performance improvements. These optimized models are coming soon via Azure AI Foundry and can be easily accessed via the command line or the [VS Code AI Toolkit](https://code.visualstudio.com/docs/intelligentapps/overview).  
 
+By leveraging our AI framework solution with Azure Foundry, AI Toolkit, Olive, and ONNX Runtime you get your end-to-end solution for model development experience. Stay tuned for more updates and best practices on enhancing AI model performance. 
 <style>
 a {
     text-decoration: underline;
