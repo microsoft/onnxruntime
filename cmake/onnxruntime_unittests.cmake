@@ -1291,7 +1291,7 @@ if (NOT onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
       ${ep_weight_sharing_ctx_gen_src_patterns}
       )
     onnxruntime_add_executable(ep_weight_sharing_ctx_gen ${ep_weight_sharing_ctx_gen_src})
-    target_include_directories(ep_weight_sharing_ctx_gen PRIVATE   ${onnx_test_runner_src_dir} ${ONNXRUNTIME_ROOT}
+    target_include_directories(ep_weight_sharing_ctx_gen PRIVATE   ${ONNXRUNTIME_ROOT}
           ${onnxruntime_graph_header} ${onnxruntime_exec_src_dir}
           ${CMAKE_CURRENT_BINARY_DIR})
     if (WIN32)
