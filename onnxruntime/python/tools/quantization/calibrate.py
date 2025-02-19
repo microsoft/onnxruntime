@@ -496,14 +496,14 @@ class MinMaxCalibrater(CalibraterBase):
         pairs = []
         for i in range(0, len(added_output_names), 2):
             if self.moving_average:
-                min_value_array = np.mean(merged_added_output_dict[added_output_names[i]], axis=0)
-                max_value_array = np.mean(merged_added_output_dict[added_output_names[i + 1]], axis=0)
+                min_value_array = np.nanmean(merged_added_output_dict[added_output_names[i]], axis=0)
+                max_value_array = np.nanmean(merged_added_output_dict[added_output_names[i + 1]], axis=0)
             else:
-                min_value_array = np.min(merged_added_output_dict[added_output_names[i]], axis=0)
-                max_value_array = np.max(merged_added_output_dict[added_output_names[i + 1]], axis=0)
+                min_value_array = np.nanmin(merged_added_output_dict[added_output_names[i]], axis=0)
+                max_value_array = np.nanmax(merged_added_output_dict[added_output_names[i + 1]], axis=0)
 
             if self.symmetric:
-                max_absolute_value = np.max([np.abs(min_value_array), np.abs(max_value_array)], axis=0)
+                max_absolute_value = np.nanmax([np.abs(min_value_array), np.abs(max_value_array)], axis=0)
                 pairs.append((-max_absolute_value, max_absolute_value))
             else:
                 pairs.append((min_value_array, max_value_array))
@@ -834,8 +834,8 @@ class HistogramCollector(CalibrationDataCollector):
                 data_arr_np = data_arr
             data_arr_np = data_arr_np.flatten()
             if data_arr_np.size > 0:
-                min_value = np.min(data_arr_np)
-                max_value = np.max(data_arr_np)
+                min_value = np.nanmin(data_arr_np)
+                max_value = np.nanmax(data_arr_np)
             else:
                 min_value = np.array(0, dtype=data_arr_np.dtype)
                 max_value = np.array(0, dtype=data_arr_np.dtype)
@@ -858,7 +858,7 @@ class HistogramCollector(CalibrationDataCollector):
                 assert hasattr(old_max, "dtype"), f"old_min should be a numpy array but is {type(old_max)}"
                 old_hist = old_histogram[0]
                 old_hist_edges = old_histogram[1]
-                temp_amax = np.max(data_arr_np)
+                temp_amax = np.nanmax(data_arr_np)
                 if temp_amax > old_hist_edges[-1]:
                     # increase the number of bins
                     width = old_hist_edges[1] - old_hist_edges[0]
@@ -882,8 +882,8 @@ class HistogramCollector(CalibrationDataCollector):
             data_arr = data_arr.flatten()  # noqa: PLW2901
 
             if data_arr.size > 0:
-                min_value = np.min(data_arr)
-                max_value = np.max(data_arr)
+                min_value = np.nanmin(data_arr)
+                max_value = np.nanmax(data_arr)
             else:
                 min_value = np.array(0, dtype=data_arr.dtype)
                 max_value = np.array(0, dtype=data_arr.dtype)
