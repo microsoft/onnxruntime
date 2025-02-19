@@ -20,7 +20,6 @@ Abstract:
 
 
 #include "mlas.h"
-#include "mlas_gemm_postprocessor.h"
 
 template <typename T>
 void MLASCALL
@@ -36,10 +35,10 @@ MlasRotaryEmbedOneRow_FallBack(
 template <typename T>
 void MLASCALL
 MlasRotaryEmbedOneRow(
-    const float* input,
-    const float* sin,
-    const float* cos,
+    const T* input,
+    const T* sin,
+    const T* cos,
     size_t dim,
     bool interleaved,
-    float* output
+    T* output
 );
