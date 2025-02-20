@@ -1120,10 +1120,17 @@ class SymbolicShapeInference:
         axis = handle_negative_axis(get_attribute(node, "axis", 0), len(data_shape))
         indices_shape = self._get_shape(node, 1)
         vi = self.known_vi_[node.output[0]]
+        if node.op_type == "Gather":
+            elem_type = self.known_vi_[node.input[0]].type.tensor_type.elem_type
+        elif node.op_type == "GatherBlockQuantized":
+            # scales
+            elem_type = self.known_vi_[node.input[2]].type.tensor_type.elem_type
+        else:
+            raise ValueError(f"Unsupported Gather op_type: {node.op_type}")
         vi.CopyFrom(
             helper.make_tensor_value_info(
                 node.output[0],
-                self.known_vi_[node.input[0]].type.tensor_type.elem_type,
+                elem_type,
                 data_shape[:axis] + indices_shape + data_shape[axis + 1 :],
             )
         )
