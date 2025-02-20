@@ -52,11 +52,6 @@ jobs:
           ls -R /data/qnn_test_data
         displayName: Check QNN test data
 
-      - task: UsePythonVersion@0
-        displayName: Use Python $(pythonVersion)
-        inputs:
-          versionSpec: $(pythonVersion)
-
       - script: sudo apt-get update -y && sudo apt-get install -y coreutils ninja-build
         displayName: Install coreutils and ninja
 

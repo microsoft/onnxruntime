@@ -181,8 +181,8 @@ if (onnxruntime_ENABLE_CPU_FP16_OPS)
   set_source_files_properties(${ORTTRAINING_SOURCE_DIR}/training_ops/cuda/collective/adasum_kernels.cc PROPERTIES COMPILE_FLAGS " -fassociative-math -ffast-math -ftree-vectorize -funsafe-math-optimizations -mf16c -mavx -mfma ")
 endif()
 
-target_include_directories(onnxruntime_providers PRIVATE ${ONNXRUNTIME_ROOT} ${eigen_INCLUDE_DIRS})
-onnxruntime_add_include_to_target(onnxruntime_providers re2::re2)
+target_include_directories(onnxruntime_providers PRIVATE ${ONNXRUNTIME_ROOT})
+onnxruntime_add_include_to_target(onnxruntime_providers re2::re2 Eigen3::Eigen)
 add_dependencies(onnxruntime_providers onnx ${onnxruntime_EXTERNAL_DEPENDENCIES})
 
 if (onnxruntime_ENABLE_TRAINING_OPS)
@@ -229,6 +229,12 @@ if (NOT onnxruntime_MINIMAL_BUILD AND NOT onnxruntime_EXTENDED_MINIMAL_BUILD
   onnxruntime_add_shared_library(onnxruntime_providers_shared ${onnxruntime_providers_shared_cc_srcs} "${ONNXRUNTIME_ROOT}/core/dll/onnxruntime.rc")
   set_target_properties(onnxruntime_providers_shared PROPERTIES FOLDER "ONNXRuntime")
   set_target_properties(onnxruntime_providers_shared PROPERTIES LINKER_LANGUAGE CXX)
+  #ON AIX, to call dlopen on onnxruntime_providers_shared, we need to generate this library as shared object .so file.
+  #Latest cmake behavior is changed and  cmake will remove shared object .so file after generating the shared archive.
+  #To prevent that, making AIX_SHARED_LIBRARY_ARCHIVE as OFF for onnxruntime_providers_shared.
+  if (CMAKE_SYSTEM_NAME MATCHES "AIX")
+    set_target_properties(onnxruntime_providers_shared PROPERTIES AIX_SHARED_LIBRARY_ARCHIVE OFF)
+  endif()
 
   target_compile_definitions(onnxruntime_providers_shared PRIVATE FILE_NAME=\"onnxruntime_providers_shared.dll\")
 
@@ -241,7 +247,7 @@ if (NOT onnxruntime_MINIMAL_BUILD AND NOT onnxruntime_EXTENDED_MINIMAL_BUILD
   if(APPLE)
   set_property(TARGET onnxruntime_providers_shared APPEND_STRING PROPERTY LINK_FLAGS "-Xlinker -exported_symbols_list ${ONNXRUNTIME_ROOT}/core/providers/shared/exported_symbols.lst")
   elseif(UNIX)
-    if(NOT ${CMAKE_SYSTEM_NAME} MATCHES "AIX")
+    if(NOT CMAKE_SYSTEM_NAME MATCHES "AIX")
       target_link_options(onnxruntime_providers_shared PRIVATE
                           "LINKER:--version-script=${ONNXRUNTIME_ROOT}/core/providers/shared/version_script.lds"
                           "LINKER:--gc-sections")

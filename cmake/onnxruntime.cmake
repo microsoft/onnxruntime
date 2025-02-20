@@ -62,7 +62,7 @@ foreach(f ${ONNXRUNTIME_PROVIDER_NAMES})
   list(APPEND SYMBOL_FILES "${ONNXRUNTIME_ROOT}/core/providers/${f}/symbols.txt")
 endforeach()
 
-if(NOT ${CMAKE_SYSTEM_NAME} MATCHES "AIX")
+if(NOT CMAKE_SYSTEM_NAME MATCHES "AIX")
 add_custom_command(OUTPUT ${SYMBOL_FILE} ${CMAKE_CURRENT_BINARY_DIR}/generated_source.c
   COMMAND ${Python_EXECUTABLE} "${REPO_ROOT}/tools/ci_build/gen_def.py"
     --version_file "${ONNXRUNTIME_ROOT}/../VERSION_NUMBER" --src_root "${ONNXRUNTIME_ROOT}"
@@ -118,7 +118,7 @@ elseif(onnxruntime_BUILD_APPLE_FRAMEWORK)
     # Note: The PUBLIC_HEADER and VERSION properties for the 'onnxruntime' target will be set later in this file.
   )
 else()
-  if(${CMAKE_SYSTEM_NAME} MATCHES "AIX")
+  if(CMAKE_SYSTEM_NAME MATCHES "AIX")
     onnxruntime_add_shared_library(onnxruntime ${ONNXRUNTIME_ROOT}/core/session/onnxruntime_c_api.cc)
   else()
     onnxruntime_add_shared_library(onnxruntime ${CMAKE_CURRENT_BINARY_DIR}/generated_source.c )
@@ -132,7 +132,7 @@ else()
   endif()
 endif()
 
-if(${CMAKE_SYSTEM_NAME} MATCHES "AIX")
+if(CMAKE_SYSTEM_NAME MATCHES "AIX")
   add_dependencies(onnxruntime ${onnxruntime_EXTERNAL_DEPENDENCIES})
 else()
   add_dependencies(onnxruntime onnxruntime_generate_def ${onnxruntime_EXTERNAL_DEPENDENCIES})
@@ -145,7 +145,7 @@ target_compile_definitions(onnxruntime PRIVATE FILE_NAME=\"onnxruntime.dll\")
 if(UNIX)
   if (APPLE)
     target_link_options(onnxruntime PRIVATE "LINKER:-dead_strip")
-  elseif(NOT ${CMAKE_SYSTEM_NAME} MATCHES "AIX")
+  elseif(NOT CMAKE_SYSTEM_NAME MATCHES "AIX")
     target_link_options(onnxruntime PRIVATE  "LINKER:--version-script=${SYMBOL_FILE}" "LINKER:--no-undefined" "LINKER:--gc-sections")
   endif()
 else()
@@ -237,7 +237,7 @@ set(onnxruntime_INTERNAL_LIBRARIES
   onnxruntime_flatbuffers
 )
 
-if (${CMAKE_SYSTEM_NAME} MATCHES "AIX")
+if (CMAKE_SYSTEM_NAME MATCHES "AIX")
   list(APPEND onnxruntime_INTERNAL_LIBRARIES  iconv)
 endif()
 
@@ -261,7 +261,7 @@ if(WIN32)
 endif()
 #See: https://cmake.org/cmake/help/latest/prop_tgt/SOVERSION.html
 if(NOT APPLE AND NOT WIN32)
-  if(${CMAKE_SYSTEM_NAME} MATCHES "AIX")
+  if(CMAKE_SYSTEM_NAME MATCHES "AIX")
     set_target_properties(onnxruntime PROPERTIES
       PUBLIC_HEADER "${ONNXRUNTIME_PUBLIC_HEADERS}"
       VERSION ${ORT_VERSION}
