@@ -72,35 +72,39 @@ Status GeneratePositionIDsProgram::GenerateShaderCode(ShaderHelper& sh) const {
   sh.MainFunctionBody() << "  var pos_id: i32 = 0;\n"
                         << "  let batch_idx = global_idx / uniforms.sequence_length;\n"
                         << "  let sequence_idx = i32(global_idx % uniforms.sequence_length);\n"
-                        << "  let seqlen = " << seqlens.GetByOffset("batch_idx") << ";\n"
-                        << "  let total_seqlen = seqlen + 1;\n"
-                        << "  if (uniforms.is_first_prompt > 0) {\n"
-                        << "    if (sequence_idx < total_seqlen) {\n"
-                        << "      pos_id = sequence_idx;\n"
-                        << "    } else {\n"
-                        << "      pos_id = 1;\n"
-                        << "    }\n"
-                        << "    " << output.SetByOffset("global_idx", "pos_id") << "\n"
-                        << "  } else if (uniforms.is_subsequent_prompt > 0) {\n"
-                        << "    let past_seqlen = total_seqlen - i32(uniforms.sequence_length);\n"
-                        << "    if (past_seqlen + sequence_idx < total_seqlen) {\n"
-                        << "      pos_id = past_seqlen + sequence_idx;\n"
-                        << "    } else {\n"
-                        << "      pos_id = 1;\n"
-                        << "    }\n"
-                        << "    " << output.SetByOffset("global_idx", "pos_id") << "\n"
-                        << "  } else if (global_idx < uniforms.batch_size) {\n"
-                        << "    " << output.SetByOffset("global_idx", "seqlen") << "\n"
-                        << "  }\n";
+                        << "  let seqlen = " << seqlens.GetByOffset("batch_idx") << ";\n";
+  if (is_first_prompt_) {
+    sh.MainFunctionBody() << "  let total_seqlen = seqlen + 1;\n"
+                          << "  if (sequence_idx < total_seqlen) {\n"
+                          << "    pos_id = sequence_idx;\n"
+                          << "  } else {\n"
+                          << "    pos_id = 1;\n"
+                          << "  }\n"
+                          << "  " << output.SetByOffset("global_idx", "pos_id") << "\n";
+  } else if (is_subsequent_prompt_) {
+    sh.MainFunctionBody() << "  let total_seqlen = seqlen + 1;\n"
+                          << "  let past_seqlen = total_seqlen - i32(uniforms.sequence_length);\n"
+                          << "  if (past_seqlen + sequence_idx < total_seqlen) {\n"
+                          << "    pos_id = past_seqlen + sequence_idx;\n"
+                          << "  } else {\n"
+                          << "    pos_id = 1;\n"
+                          << "  }\n"
+                          << "  " << output.SetByOffset("global_idx", "pos_id") << "\n";
+  } else {
+    sh.MainFunctionBody() << "  if (global_idx < uniforms.batch_size) {\n"
+                          << "    " << output.SetByOffset("global_idx", "seqlen") << "\n"
+                          << "  }\n";
+  }
   return Status::OK();
 }
 
 Status GeneratePositionIDs(onnxruntime::webgpu::ComputeContext& context, const WebgpuAttentionParameters& params, const Tensor* seqlens, Tensor* output_tensor) {
-  GeneratePositionIDsProgram program;
+  GeneratePositionIDsProgram program(params.is_first_prompt_, params.is_subsequent_prompt_);
   auto output_size = params.batch_size_ * params.sequence_length_;
-  program.AddInput({seqlens, ProgramTensorMetadataDependency::Rank})
+  program.CacheHint(params.is_first_prompt_, params.is_subsequent_prompt_)
+      .AddInput({seqlens, ProgramTensorMetadataDependency::Rank})
       .AddOutput({output_tensor, ProgramTensorMetadataDependency::Rank})
-      .AddUniformVariables({{static_cast<uint32_t>(params.batch_size_)}, {static_cast<uint32_t>(params.sequence_length_)}, {static_cast<uint32_t>(params.is_first_prompt_ ? 1 : 0)}, {static_cast<uint32_t>(params.is_subsequent_prompt_ ? 1 : 0)}})
+      .AddUniformVariables({{static_cast<uint32_t>(params.batch_size_)}, {static_cast<uint32_t>(params.sequence_length_)}})
       .SetDispatchGroupSize((output_size + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE);
   return context.RunProgram(program);
 }
