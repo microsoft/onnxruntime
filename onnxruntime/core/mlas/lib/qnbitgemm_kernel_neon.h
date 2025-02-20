@@ -112,7 +112,7 @@ bool
 UseTiled_CompInt8(
     size_t K,
     size_t BlkLen,
-    bool has_zp
+    bool HasZp
 );
 
 void
@@ -164,7 +164,7 @@ SQ4BitGemmKernel_CompInt8(
 );
 
 bool
-UseKleidiAI(size_t K, size_t BlkLen, bool has_zp);
+UseKleidiAI(size_t K, size_t BlkLen, bool HasZp);
 
 //
 // General helpers.

@@ -131,9 +131,9 @@ QuantizeBlock(
 }  // namespace
 
 bool
-UseTiled_CompInt8(size_t K, size_t BlkLen, bool has_zp)
+UseTiled_CompInt8(size_t K, size_t BlkLen, bool HasZp)
 {
-    return UseKleidiAI(K, BlkLen, has_zp);
+    return UseKleidiAI(K, BlkLen, HasZp);
 }
 
 void
