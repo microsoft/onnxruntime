@@ -32,8 +32,13 @@ namespace test {
 IExecutionProvider* TestCPUExecutionProvider();
 
 template <typename T>
+inline void CopyVectorToTensor(gsl::span<const T> value, Tensor& tensor) {
+  gsl::copy(value, tensor.MutableDataAsSpan<T>());
+}
+
+template <class T>
 inline void CopyVectorToTensor(const std::vector<T>& value, Tensor& tensor) {
-  gsl::copy(gsl::make_span(value), tensor.MutableDataAsSpan<T>());
+  gsl::copy(AsSpan(value), tensor.MutableDataAsSpan<T>());
 }
 
 // vector<bool> is specialized so we need to handle it separately
@@ -45,8 +50,20 @@ inline void CopyVectorToTensor<bool>(const std::vector<bool>& value, Tensor& ten
   }
 }
 
+template <class T>
+void CreateMLValue(AllocatorPtr alloc, gsl::span<const int64_t> dims, const std::vector<T>& value,
+                   OrtValue* p_mlvalue) {
+  TensorShape shape(dims);
+  auto element_type = DataTypeImpl::GetType<T>();
+  Tensor::InitOrtValue(element_type, shape, std::move(alloc), *p_mlvalue);
+  if (!value.empty()) {
+    Tensor& tensor = *p_mlvalue->GetMutable<Tensor>();
+    CopyVectorToTensor(value, tensor);
+  }
+}
+
 template <typename T>
-void CreateMLValue(AllocatorPtr alloc, const std::vector<int64_t>& dims, const std::vector<T>& value,
+void CreateMLValue(AllocatorPtr alloc, gsl::span<const int64_t> dims, gsl::span<const T> value,
                    OrtValue* p_mlvalue) {
   TensorShape shape(dims);
   auto element_type = DataTypeImpl::GetType<T>();
@@ -56,6 +73,24 @@ void CreateMLValue(AllocatorPtr alloc, const std::vector<int64_t>& dims, const s
     Tensor& tensor = *p_mlvalue->GetMutable<Tensor>();
     CopyVectorToTensor(value, tensor);
   }
+}
+
+template <class T>
+void CreateMLValue(AllocatorPtr alloc, std::initializer_list<int64_t> dims, gsl::span<const T> value,
+                   OrtValue* p_mlvalue) {
+  CreateMLValue<T>(alloc, AsSpan(dims), value, p_mlvalue);
+}
+
+template <class T>
+void CreateMLValue(AllocatorPtr alloc, gsl::span<const int64_t> dims, std::initializer_list<T> value,
+                   OrtValue* p_mlvalue) {
+  CreateMLValue<T>(alloc, dims, AsSpan(value), p_mlvalue);
+}
+
+template <class T>
+void CreateMLValue(AllocatorPtr alloc, std::initializer_list<int64_t> dims, std::initializer_list<T> value,
+                   OrtValue* p_mlvalue) {
+  CreateMLValue<T>(alloc, AsSpan(dims), AsSpan(value), p_mlvalue);
 }
 
 // Lifetime of data_buffer should be managed by the caller.
@@ -68,7 +103,7 @@ void CreateMLValue(gsl::span<const int64_t> dims, T* data_buffer, const OrtMemor
 }
 
 template <typename T>
-void AllocateMLValue(AllocatorPtr alloc, const std::vector<int64_t>& dims, OrtValue* p_mlvalue) {
+void AllocateMLValue(AllocatorPtr alloc, gsl::span<const int64_t> dims, OrtValue* p_mlvalue) {
   TensorShape shape(dims);
   auto element_type = DataTypeImpl::GetType<T>();
   Tensor::InitOrtValue(element_type, shape, std::move(alloc), *p_mlvalue);

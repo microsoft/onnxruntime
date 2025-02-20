@@ -247,7 +247,8 @@ class TensorrtExecutionProvider : public IExecutionProvider {
 
   std::vector<std::unique_ptr<ComputeCapability>>
   GetCapability(const GraphViewer& graph,
-                const IKernelLookup& /*kernel_lookup*/) const override;
+                const IKernelLookup& /*kernel_lookup*/,
+                IResourceAccountant* /* resource_accountant */) const override;
 
   int GetDeviceId() const { return device_id_; }
 

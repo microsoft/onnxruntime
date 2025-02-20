@@ -375,6 +375,24 @@ class SessionState {
   /// <returns>true of false
   bool GetSaveModeForPrepacks(bool saving_model, bool saving_ort_format);
 
+#if !defined(ORT_MINIMAL_BUILD)
+
+  void SetNodeStatsRecorder(NodeStatsRecorder* node_stats_recorder) {
+    node_stats_recorder_ = node_stats_recorder;
+  }
+
+  /**
+   * Returns a pointer to the NodeStatsRecorder object if it was enabled for the session.
+   * The object pointer is only present at the root SessionState object
+   */
+  NodeStatsRecorder* GetNodeStatsRecorder() const {
+    if (parent_ != nullptr) {
+      return parent_->GetNodeStatsRecorder();
+    }
+    return node_stats_recorder_;
+  }
+#endif
+
  private:
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(SessionState);
 
@@ -500,6 +518,10 @@ class SessionState {
 
 #if !defined(ORT_MINIMAL_BUILD) && defined(ORT_MEMORY_PROFILE)
   MemoryProfiler* memory_profiler_;
+#endif
+
+#if !defined(ORT_MINIMAL_BUILD)
+  NodeStatsRecorder* node_stats_recorder_ = nullptr;
 #endif
 
   // switch for enable memory pattern optimization or not.

@@ -5,6 +5,7 @@
 #include "core/common/inlined_containers.h"
 #include "core/common/parse_string.h"
 #include "core/framework/int4.h"
+#include "core/framework/resource_accountant.h"
 #include "core/providers/shared_library/provider_api.h"
 #include "core/platform/env_var_utils.h"
 #include "core/providers/cuda/cuda_execution_provider.h"
@@ -2658,11 +2659,43 @@ std::unique_ptr<onnxruntime::IDataTransfer> CUDAExecutionProvider::GetDataTransf
 
 std::vector<std::unique_ptr<ComputeCapability>>
 CUDAExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph,
-                                     const IKernelLookup& kernel_lookup) const {
+                                     const IKernelLookup& kernel_lookup,
+                                     IResourceAccountant* resource_accountant) const {
+  std::vector<std::unique_ptr<ComputeCapability>> result;
+  const logging::Logger& logger = *GetLogger();
+
+  // Figure out the memory limit if accountant is available
+  size_t memory_threshold = std::numeric_limits<size_t>::max();
+  SafeInt<size_t> consumed_memory = 0;
+  if (resource_accountant != nullptr) {
+    if (resource_accountant->IsStopIssued()) {
+      LOGS(logger, WARNING) << "CUDA_EP returning due to Stop Set";
+      return result;
+    }
+
+    auto threshold = resource_accountant->GetThreshold();
+    if (!threshold.has_value()) {
+      // info_.gpu_mem_limit is for BFC arena
+      size_t free_memory, total_memory;
+      if (0 != cudaMemGetInfo(&free_memory, &total_memory)) {
+        memory_threshold = info_.gpu_mem_limit;
+      } else {
+        memory_threshold = std::min(free_memory, info_.gpu_mem_limit);
+      }
+    } else {
+      memory_threshold = std::get<0>(threshold.value());
+    }
+
+    consumed_memory = std::get<0>(resource_accountant->GetConsumedAmount());
+  }
+
+  InlinedHashSet<NodeIndex> previously_assigned_nodes;
+  // On repeated calls to this function, we may have most of the nodes already
+  // assigned to a CUDA EP capability. We'll skip accounting for these nodes.
+  previously_assigned_nodes.reserve(graph.NumberOfNodes());
   InlinedVector<NodeIndex> candidates;
   // A subset of the above vector. A subset of the tentative_nodes might be moved to CPU.
   InlinedVector<NodeIndex> tentative_nodes;
-  const logging::Logger& logger = *GetLogger();
   for (auto& node_index : graph.GetNodesInTopologicalOrder()) {
     const auto* p_node = graph.GetNode(node_index);
     if (p_node == nullptr)
@@ -2672,6 +2705,7 @@ CUDAExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph,
     if (!node.GetExecutionProviderType().empty()) {
       if (node.GetExecutionProviderType() == kCudaExecutionProvider) {
         candidates.push_back(node.Index());
+        previously_assigned_nodes.insert(node.Index());
       }
       continue;
     }
@@ -2726,14 +2760,40 @@ CUDAExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph,
   // These are usually shape related computation subgraphs
   // Following logic can be extended for other EPs
   auto cpu_nodes = GetCpuPreferredNodes(graph, kernel_lookup, tentative_nodes, logger);
-  std::vector<std::unique_ptr<ComputeCapability>> result;
   for (auto& node_index : candidates) {
     if (cpu_nodes.count(node_index) > 0)
       continue;
 
-    auto sub_graph = IndexedSubGraph::Create();
-    sub_graph->Nodes().push_back(node_index);
-    result.push_back(ComputeCapability::Create(std::move(sub_graph)));
+    // Previously assigned nodes have been accounted before
+    if (previously_assigned_nodes.count(node_index) > 0 || resource_accountant == nullptr) {
+      auto sub_graph = IndexedSubGraph::Create();
+      sub_graph->Nodes().push_back(node_index);
+      result.push_back(ComputeCapability::Create(std::move(sub_graph)));
+    } else {
+      auto* node = graph.GetNode(node_index);
+      auto resource_count = std::get<0>(resource_accountant->ComputeResourceCount(*node));
+      const auto would_be_consumed = resource_count + consumed_memory;
+      LOGS(logger, INFO) << "CUDA_EP Node: " << node_index << " Memory usage : " << resource_count
+                         << " would be consumed " << static_cast<size_t>(would_be_consumed)
+                         << " threshold: " << memory_threshold;
+      if (would_be_consumed < memory_threshold) {
+        consumed_memory = would_be_consumed;
+        auto sub_graph = IndexedSubGraph::Create();
+        sub_graph->SetAccountant(resource_accountant);
+        sub_graph->Nodes().push_back(node_index);
+        sub_graph->AppendNodeCost(resource_count);
+        result.push_back(ComputeCapability::Create(std::move(sub_graph)));
+      } else {
+        // We break here so we do not have patches of CUDA assigned nodes.
+        auto* node = graph.GetNode(node_index);
+        if (node != nullptr) {
+          LOGS(logger, WARNING) << "CUDA_EP Halting assignment due to capacity threshold at node: "
+                                << node->Name() << " index: " << node_index;
+        }
+        resource_accountant->SetStopAssignment();
+        break;
+      }
+    }
   }
   /*
   std::vector<std::unique_ptr<ComputeCapability>> result;

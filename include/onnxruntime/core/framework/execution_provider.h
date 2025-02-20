@@ -38,6 +38,8 @@ struct OrtRunOptions;
 
 namespace onnxruntime {
 
+class IResourceAccountant;
+
 /**
    Logical device representation.
 */
@@ -130,7 +132,8 @@ class IExecutionProvider {
   */
   virtual std::vector<std::unique_ptr<ComputeCapability>>
   GetCapability(const onnxruntime::GraphViewer& graph_viewer,
-                const IKernelLookup& kernel_lookup) const;
+                const IKernelLookup& kernel_lookup,
+                IResourceAccountant* resource_accountant = nullptr) const;
 
   /**
      Get kernel registry per execution provider type.
