@@ -85,6 +85,11 @@ stages:
           value: '--use_tensorrt --tensorrt_home="$(Agent.TempDirectory)\${{ variables.win_trt_folder }}"'
         ${{ if eq(parameters.use_tensorrt, false) }}:
           value: ''
+      - name: build_wheel_flag
+        ${{ if contains(parameters.EP_BUILD_FLAGS, 'use_cuda') }}:
+          value: '--cuda_version=${{ parameters.CudaVersion }}'
+        ${{ if contains(parameters.EP_BUILD_FLAGS, 'use_dml') }}:
+          value: ''
       steps:
 
           - checkout: self
@@ -141,7 +146,7 @@ stages:
             displayName: 'Build wheel'
             inputs:
               scriptPath: '$(Build.SourcesDirectory)\setup.py'
-              arguments: 'bdist_wheel ${{ parameters.BUILD_PY_PARAMETERS }} $(NightlyBuildOption) --wheel_name_suffix=${{ parameters.EP_NAME }} --cuda_version=${{ parameters.CudaVersion }}'
+              arguments: 'bdist_wheel ${{ parameters.BUILD_PY_PARAMETERS }} $(NightlyBuildOption) --wheel_name_suffix=${{ parameters.EP_NAME }} ${{ variables.build_wheel_flag }}'
               workingDirectory: '$(Build.BinariesDirectory)\${{ parameters.cmake_build_type }}\${{ parameters.cmake_build_type }}'
 
           - task: CopyFiles@2
