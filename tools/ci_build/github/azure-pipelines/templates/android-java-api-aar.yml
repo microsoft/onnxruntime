@@ -63,7 +63,15 @@ jobs:
   timeoutInMinutes: 120
   workspace:
     clean: all
-  pool: ${{parameters.pool_name}}
+  pool:
+    name: ${{ parameters.pool_name }}
+    ${{ if or(contains(parameters.pool_name, 'ubuntu'), contains(parameters.PoolName, 'linux')) }}:
+      os: linux
+    ${{ if contains(parameters.pool_name, 'win')}}:
+      os: windows
+    ${{ if contains(parameters.pool_name, 'mac')}}:
+      os: macOS
+
 
   variables:
     artifacts_directory: $(Build.BinariesDirectory)/.artifacts

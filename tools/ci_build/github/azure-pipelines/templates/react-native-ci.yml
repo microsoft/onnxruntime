@@ -63,7 +63,9 @@ stages:
   jobs:
   - job: ReactNative_CI_iOS
     pool:
-      vmImage: 'macOS-13'
+      name: 'Azure Pipelines'
+      image: 'macOS-13'
+      os: 'macOS'
 
     timeoutInMinutes: 90
 
