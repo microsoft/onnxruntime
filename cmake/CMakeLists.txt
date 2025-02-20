@@ -876,7 +876,6 @@ endif()
 if (onnxruntime_USE_CUDA OR onnxruntime_USE_CUDA_INTERFACE)
     list(APPEND ORT_PROVIDER_FLAGS -DUSE_CUDA=1)
     list(APPEND ORT_PROVIDER_CMAKE_FLAGS -Donnxruntime_USE_CUDA=1)
-    list(APPEND ONNXRUNTIME_PROVIDER_NAMES cuda)
 
     if (onnxruntime_USE_FLASH_ATTENTION)
       message( STATUS "Enable flash attention for CUDA EP")
