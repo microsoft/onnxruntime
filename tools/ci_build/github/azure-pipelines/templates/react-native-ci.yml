@@ -28,6 +28,9 @@ parameters:
   displayName: Use GPG to sign the jars
   type: boolean
 
+- name: is1ES
+  type: boolean
+  default: false
 stages:
 - stage: Build_Android_Packages
   displayName: Build_Android_Packages
