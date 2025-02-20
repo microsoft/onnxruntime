@@ -2,9 +2,9 @@
 
 This tool provides the way to generate Onnx models that wraps QNN context binary warpt with weight sharing enabled. The options to use with the tool are listed below:
 
-`onnxruntime_qnn_ctx_gen [options...] model_path,model_path`
+`ep_weight_sharing_ctx_gen [options...] model_1_path,model_2_path`
 
-./onnxruntime_qnn_ctx_gen -v -i "soc_model|60 htp_graph_finalization_optimization_mode|3" -C "ep.context_enable|1 ep.context_embed_mode|0" /mnt/c/model1.onnx,/mnt/c/model2.onnx
+./ep_weight_sharing_ctx_gen -v -i "soc_model|60 htp_graph_finalization_optimization_mode|3" -C "ep.context_enable|1 ep.context_embed_mode|0" /mnt/c/model1.onnx,/mnt/c/model2.onnx
 
 Options:
        
