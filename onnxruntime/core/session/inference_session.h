@@ -46,6 +46,9 @@ namespace ONNX_NAMESPACE {
 class ModelProto;
 }  // namespace ONNX_NAMESPACE
 
+// OrtModelBuilderApi Model. Used to dynamically construct a model via C API at runtime.
+struct OrtModel;
+
 namespace onnxruntime {  // forward declarations
 class CustomRegistry;
 class Environment;
@@ -319,6 +322,27 @@ class InferenceSession {
    * @return OK if success.
    */
   [[nodiscard]] common::Status Load();
+
+  /**
+   * Load an OrtModel that was dynamically constructed via OrtModelBuilderApi.
+   *
+   * @param graph_api_model OrtModel from OrtModelBuilderApi
+   * @return OK if success.
+   */
+  [[nodiscard]] common::Status Load(const OrtModel& graph_api_model);
+
+  /**
+   * Apply updates from an OrtModel that was created via OrtModelBuilderApi.
+   * This can:
+   *   - add nodes at the start and end of the model
+   *   - add initializers
+   *   - update the graph inputs/outputs
+   *
+   * @param graph_api_model OrtModel from OrtModelBuilderApi
+   * @return OK if success.
+   */
+  [[nodiscard]] common::Status ApplyUpdates(const OrtModel& graph_api_model);
+
 #endif  // !defined(ORT_MINIMAL_BUILD)
 
   /**
@@ -545,6 +569,8 @@ class InferenceSession {
    */
   Status AddPrePackedWeightsContainer(PrepackedWeightsContainer* prepacked_weights_container);
 
+  const Model& GetModel() const;
+
  protected:
 #if !defined(ORT_MINIMAL_BUILD)
 
@@ -601,6 +627,12 @@ class InferenceSession {
   /// convenience pointer to logger. should always be the same as session_state_.Logger();
   const logging::Logger* session_logger_;
 
+  // The list of execution providers.
+  // This MUST be prior to model_ in case there are values in the model that were allocated using an allocator
+  // provided by the EP. If that is the case the allocator's `free` implementation may depend on other parts of the
+  // EP instance.
+  ExecutionProviders execution_providers_;
+
   // The model served by this inference session instance.
   // Currently this has to be a shared ptr because the Model::Load method
   // returns a shared_ptr only. Ideally factory functions should always return
@@ -610,9 +642,6 @@ class InferenceSession {
 
   // The file path of where the model was loaded. e.g. /tmp/test_squeezenet/model.onnx
   PathString model_location_;
-
-  // The list of execution providers.
-  ExecutionProviders execution_providers_;
 
  private:
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(InferenceSession);

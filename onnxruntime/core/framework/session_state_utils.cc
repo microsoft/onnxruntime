@@ -203,13 +203,12 @@ static common::Status DeserializeTensorProto(const Env& env, const std::basic_st
   }
 }
 
-common::Status AllocateTensor(
-    const onnxruntime::MemBuffer* m,
-    std::unique_ptr<onnxruntime::Tensor>& p_tensor,
-    const onnxruntime::DataTypeImpl* const& type,
-    onnxruntime::TensorShape& tensor_shape,
-    bool use_device_allocator_for_initializers,
-    const onnxruntime::AllocatorPtr& alloc) {
+common::Status AllocateTensor(const onnxruntime::MemBuffer* m,
+                              std::unique_ptr<onnxruntime::Tensor>& p_tensor,
+                              const onnxruntime::DataTypeImpl* const& type,
+                              onnxruntime::TensorShape& tensor_shape,
+                              bool use_device_allocator_for_initializers,
+                              const onnxruntime::AllocatorPtr& alloc) {
   if (m != nullptr) {
     p_tensor = std::make_unique<Tensor>(type, tensor_shape, m->GetBuffer(), m->GetAllocInfo());
     if (m->GetLen() < p_tensor->SizeInBytes()) {
@@ -354,6 +353,7 @@ common::Status SaveInitializedTensors(
     }
     ORT_RETURN_IF_ERROR(planner.Trace(entry.first, entry.second));
   }
+
   // 2. allocate weight buffer on different locations
   //  planned_initializers_memory_size_in_byte is not actual physical size.
   //  It's the virtual size computed by planner.
@@ -386,6 +386,9 @@ common::Status SaveInitializedTensors(
     if (user_supplied_initializer_ids.find(entry.first) != user_supplied_initializer_ids.end()) {
       ort_value = *(session_options.initializers_to_share_map.at(name));
       LOGS(logger, INFO) << "Using user supplied initializer with name (" << name << ").";
+
+    } else if (graph.GetOrtValueInitializer(name, ort_value)) {
+      // populated OrtValue from the Graph instance
     } else {
       const ONNX_NAMESPACE::TensorProto& tensor_proto = *(entry.second);
 
