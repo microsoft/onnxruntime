@@ -254,6 +254,7 @@ const generatePositionIdsProgramInfo = (
   const programUniforms: ProgramUniform[] = [
     { type: DataType.uint32, data: outputSize },
     { type: DataType.uint32, data: sequenceLength },
+    { type: DataType.uint32, data: batchSize },
   ];
   const getShaderSource = (shaderHelper: ShaderHelper) => {
     const seqLensInputHelper = inputVariable('seq_lens', seqLens.dataType, seqLens.dims);
@@ -263,6 +264,7 @@ const generatePositionIdsProgramInfo = (
     const uniforms: UniformsArrayType = [
       { name: 'output_size', type: 'u32' },
       { name: 'sequence_length', type: 'u32' },
+      { name: 'batch_size', type: 'u32' },
     ];
 
     return `
@@ -274,18 +276,27 @@ const generatePositionIdsProgramInfo = (
     let is_first_prompt = !is_subsequent_prompt && uniforms.sequence_length == total_sequence_length;
     let batch_idx = global_idx / uniforms.sequence_length;
     let sequence_idx = i32(global_idx % uniforms.sequence_length);
-    var pos_id: u32 = 0u;
-    if (is_first_prompt == false) {
-      let total_seqlen = ${seqLensInputHelper.getByOffset('batch_idx')} + 1;
+    var pos_id: i32 = 0;
+    let seqlen = ${seqLensInputHelper.getByOffset("batch_idx")};
+    let total_seqlen = seqlen + 1;
+    if (is_first_prompt) {
+      if (sequence_idx < total_seqlen) {
+        pos_id = sequence_idx;
+      } else {
+        pos_id = 1;
+      }
+      ${positionIdsHelper.setByOffset("global_idx", "pos_id")}
+    } else if (is_subsequent_prompt) {
       let past_seqlen = total_seqlen - i32(uniforms.sequence_length);
       if (past_seqlen + sequence_idx < total_seqlen) {
-        // sign extend value and convert to vec2<u32>
-        pos_id = u32(past_seqlen + sequence_idx);
+        pos_id = past_seqlen + sequence_idx;
       } else {
-        pos_id = 1u;
+        pos_id = 1;
       }
-    }
-    ${positionIdsHelper.setByOffset('global_idx', 'pos_id')}
+      ${positionIdsHelper.setByOffset("global_idx", "pos_id")}
+    } else if (global_idx < uniforms.batch_size) {
+      ${positionIdsHelper.setByOffset("global_idx", "seqlen")}
+    };
   }
   `;
   };
