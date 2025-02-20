@@ -27,8 +27,8 @@ namespace rope_avx2 {
 void
 RopeKernel_Avx2(
     const float* input,
-    const float* sin,
-    const float* cos,
+    const float* sin_data,
+    const float* cos_data,
     size_t dim,
     bool interleaved,
     float* output

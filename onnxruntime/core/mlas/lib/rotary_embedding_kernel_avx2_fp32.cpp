@@ -29,8 +29,8 @@ template <bool interleaved>
 void
 RopeKernel_Avx2_Impl(
     const float* input,
-    const float* sin,
-    const float* cos,
+    const float* sin_data,
+    const float* cos_data,
     size_t dim,
     float* output
 );
@@ -39,8 +39,8 @@ template <>
 void
 RopeKernel_Avx2_Impl<false>(
     const float* input,
-    const float* sin,
-    const float* cos,
+    const float* sin_data,
+    const float* cos_data,
     size_t dim,
     float* output
 ) {
@@ -49,8 +49,8 @@ RopeKernel_Avx2_Impl<false>(
     for (; i + 7 < half_dim; i += 8, j += 8) {
         float32x8_t real = _mm256_loadu_ps(input + i);
         float32x8_t imag = _mm256_loadu_ps(input + j);
-        float32x8_t sin_val = _mm256_loadu_ps(sin + i);
-        float32x8_t cos_val = _mm256_loadu_ps(cos + i);
+        float32x8_t sin_val = _mm256_loadu_ps(sin_data + i);
+        float32x8_t cos_val = _mm256_loadu_ps(cos_data + i);
         //Compute Real and Imaginary output values
         float32x8_t real_out = _mm256_fmsub_ps(real, cos_val, _mm256_mul_ps(imag, sin_val));
         float32x8_t imag_out = _mm256_fmadd_ps(real, sin_val, _mm256_mul_ps(imag, cos_val));
@@ -60,13 +60,13 @@ RopeKernel_Avx2_Impl<false>(
     }
     if (half_dim - i != 0) {
         size_t rem = half_dim - i;
-        static const int32_t mask_buffer[16] = {-1, -1, -1, -1, -1, -1, -1, -1, 0, 0, 0, 0, 0, 0, 0, 0};
+        static constexpr int32_t mask_buffer[16] = {-1, -1, -1, -1, -1, -1, -1, -1, 0, 0, 0, 0, 0, 0, 0, 0};
         const __m256i mask = _mm256_loadu_si256((const __m256i*)(mask_buffer + 8 - rem));
         //Use a mask to load the remaining input values
         float32x8_t real = _mm256_maskload_ps(input + i, mask);
         float32x8_t imag = _mm256_maskload_ps(input + j, mask);
-        float32x8_t sin_val = _mm256_maskload_ps(sin + i, mask);
-        float32x8_t cos_val = _mm256_maskload_ps(cos + i, mask);
+        float32x8_t sin_val = _mm256_maskload_ps(sin_data + i, mask);
+        float32x8_t cos_val = _mm256_maskload_ps(cos_data + i, mask);
         //Compute Real and Imaginary output values
         float32x8_t real_out = _mm256_fmsub_ps(real, cos_val, _mm256_mul_ps(imag, sin_val));
         float32x8_t imag_out = _mm256_fmadd_ps(real, sin_val, _mm256_mul_ps(imag, cos_val));
@@ -80,8 +80,8 @@ template <>
 void
 RopeKernel_Avx2_Impl<true>(
     const float* input,
-    const float* sin,
-    const float* cos,
+    const float* sin_data,
+    const float* cos_data,
     size_t dim,
     float* output
 ) {
@@ -95,8 +95,8 @@ RopeKernel_Avx2_Impl<true>(
         __m256i in_mask_vec = _mm256_set_epi32(7, 6, 3, 2, 5, 4, 1, 0);
         float32x8_t real = _mm256_permutevar8x32_ps(real_s, in_mask_vec);
         float32x8_t imag = _mm256_permutevar8x32_ps(imag_s, in_mask_vec);
-        float32x8_t sin_val = _mm256_loadu_ps(sin + i / 2);
-        float32x8_t cos_val = _mm256_loadu_ps(cos + i / 2);
+        float32x8_t sin_val = _mm256_loadu_ps(sin_data + i / 2);
+        float32x8_t cos_val = _mm256_loadu_ps(cos_data + i / 2);
         //Compute Real and Imaginary output values
         float32x8_t real_out = _mm256_fmsub_ps(real, cos_val, _mm256_mul_ps(imag, sin_val));
         float32x8_t imag_out = _mm256_fmadd_ps(real, sin_val, _mm256_mul_ps(imag, cos_val));
@@ -111,7 +111,7 @@ RopeKernel_Avx2_Impl<true>(
     }
     if (dim - i != 0) {
         size_t rem = dim - i;
-        static const int32_t mask_buffer[16] = {-1, -1, -1, -1, -1, -1, -1, -1, 0, 0, 0, 0, 0, 0, 0, 0};
+        static constexpr int32_t mask_buffer[16] = {-1, -1, -1, -1, -1, -1, -1, -1, 0, 0, 0, 0, 0, 0, 0, 0};
         const __m256i mask0 = _mm256_loadu_si256((const __m256i*)(mask_buffer + 8 - (rem>8?8:rem)));
         const __m256i mask1 = _mm256_loadu_si256((const __m256i*)(mask_buffer + 8 - (rem>8?(rem-8):0)));
         float32x8_t x0 = _mm256_maskload_ps(input + i, mask0);   //Load the first set of data using mask
@@ -122,8 +122,8 @@ RopeKernel_Avx2_Impl<true>(
         __m256i in_mask_vec = _mm256_set_epi32(7, 6, 3, 2, 5, 4, 1, 0);
         float32x8_t real = _mm256_permutevar8x32_ps(real_s, in_mask_vec);
         float32x8_t imag = _mm256_permutevar8x32_ps(imag_s, in_mask_vec);
-        float32x8_t sin_val = _mm256_loadu_ps(sin + i / 2);
-        float32x8_t cos_val = _mm256_loadu_ps(cos + i / 2);
+        float32x8_t sin_val = _mm256_loadu_ps(sin_data+ i / 2);
+        float32x8_t cos_val = _mm256_loadu_ps(cos_data + i / 2);
         //Compute Real and Imaginary output values
         float32x8_t real_out = _mm256_fmsub_ps(real, cos_val, _mm256_mul_ps(imag, sin_val));
         float32x8_t imag_out = _mm256_fmadd_ps(real, sin_val, _mm256_mul_ps(imag, cos_val));
@@ -143,8 +143,8 @@ RopeKernel_Avx2_Impl<true>(
 void
 RopeKernel_Avx2(
     const float* input,
-    const float* sin,
-    const float* cos,
+    const float* sin_data,
+    const float* cos_data,
     size_t dim,
     bool interleaved,
     float* output
@@ -152,8 +152,8 @@ RopeKernel_Avx2(
     // real part and imaginary part must be paired
     assert(dim % 2 == 0);
     const auto* input_impl = reinterpret_cast<const float*>(input);
-    const auto* sin_impl = reinterpret_cast<const float*>(sin);
-    const auto* cos_impl = reinterpret_cast<const float*>(cos);
+    const auto* sin_impl = reinterpret_cast<const float*>(sin_data);
+    const auto* cos_impl = reinterpret_cast<const float*>(cos_data);
     auto* output_impl = reinterpret_cast<float*>(output);
 
     if (interleaved) {

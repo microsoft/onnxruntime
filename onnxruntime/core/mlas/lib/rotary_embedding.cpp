@@ -58,8 +58,8 @@ void
 MLASCALL
 MlasRotaryEmbedOneRow<float>(
     const float* input,
-    const float* sin,
-    const float* cos,
+    const float* sin_data,
+    const float* cos_data,
     size_t dim,
     bool interleaved,
     float* output
@@ -67,11 +67,11 @@ MlasRotaryEmbedOneRow<float>(
     const auto* dispatch = GetMlasPlatform().RopeDispatch;
 
     if (dispatch == nullptr || dispatch->SRope == nullptr) {
-        MlasRotaryEmbedOneRow_FallBack<float>(input, sin, cos, dim, interleaved, output);
+        MlasRotaryEmbedOneRow_FallBack<float>(input, sin_data, cos_data, dim, interleaved, output);
         return;
     }
 
-    dispatch->SRope(input, sin, cos, dim, interleaved, output);
+    dispatch->SRope(input, sin_data, cos_data, dim, interleaved, output);
 }
 
 template <>
@@ -79,8 +79,8 @@ void
 MLASCALL
 MlasRotaryEmbedOneRow<MLAS_FP16>(
     const MLAS_FP16* input,
-    const MLAS_FP16* sin,
-    const MLAS_FP16* cos,
+    const MLAS_FP16* sin_data,
+    const MLAS_FP16* cos_data,
     size_t dim,
     bool interleaved,
     MLAS_FP16* output
@@ -88,11 +88,11 @@ MlasRotaryEmbedOneRow<MLAS_FP16>(
     const auto* dispatch = GetMlasPlatform().RopeDispatch;
 
     if (dispatch == nullptr || dispatch->HRope == nullptr) {
-        MlasRotaryEmbedOneRow_FallBack<MLAS_FP16>(input, sin, cos, dim, interleaved, output);
+        MlasRotaryEmbedOneRow_FallBack<MLAS_FP16>(input, sin_data, cos_data, dim, interleaved, output);
         return;
     }
 
-    dispatch->HRope(input, sin, cos, dim, interleaved, output);
+    dispatch->HRope(input, sin_data, cos_data, dim, interleaved, output);
 }
 
 template

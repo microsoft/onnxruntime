@@ -25,8 +25,8 @@ class MlasRoPETest : public MlasTestBase {
   void Test(size_t rotary_emb_dim, bool interleaved) {
     std::vector<float> input(rotary_emb_dim);
     size_t table_len = interleaved ? rotary_emb_dim / 2 : rotary_emb_dim;
-    std::vector<float> sin(table_len);
-    std::vector<float> cos(table_len);
+    std::vector<float> sin_data(table_len);
+    std::vector<float> cos_data(table_len);
     std::vector<float> output_ref(rotary_emb_dim), output_impl(rotary_emb_dim);
 
     for (size_t i = 0; i < rotary_emb_dim; ++i) {
@@ -34,13 +34,13 @@ class MlasRoPETest : public MlasTestBase {
     }
     for (size_t i = 0; i < table_len; ++i) {
       float theta = (float)i / 1000 * Pi;
-      sin[i] = std::sin(theta);
-      cos[i] = std::cos(theta);
+      sin_data[i] = std::sin(theta);
+      cos_data[i] = std::cos(theta);
     }
 
     // Call the function
-    MlasRotaryEmbedOneRow_FallBack<float>(&input[0], &sin[0], &cos[0], rotary_emb_dim, interleaved, &output_ref[0]);
-    MlasRotaryEmbedOneRow<float>(&input[0], &sin[0], &cos[0], rotary_emb_dim, interleaved, &output_impl[0]);
+    MlasRotaryEmbedOneRow_FallBack<float>(&input[0], &sin_data[0], &cos_data[0], rotary_emb_dim, interleaved, &output_ref[0]);
+    MlasRotaryEmbedOneRow<float>(&input[0], &sin_data[0], &cos_data[0], rotary_emb_dim, interleaved, &output_impl[0]);
 
     for (size_t i = 0; i < rotary_emb_dim; i++) {
       ASSERT_TRUE(CloseEnough(output_impl[i], output_ref[i]))
