@@ -57,7 +57,7 @@ stages:
       CCACHE_DIR: $(Pipeline.Workspace)/ccache
     workspace:
       clean: all
-    pool: onnxruntime-Ubuntu2204-AMD-CPU
+    pool: onnxruntime-Ubuntu2404-AMD-CPU
     steps:
 
     - checkout: self
