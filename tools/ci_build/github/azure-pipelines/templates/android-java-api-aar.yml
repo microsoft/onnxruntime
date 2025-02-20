@@ -146,7 +146,7 @@ jobs:
         targetPath: '$(artifacts_directory)'
         artifactName: '${{parameters.artifactName}}'
   - ${{ if eq(parameters.is1ES, true) }}:
-    - task: 1ES.PublishPipelineArtifacts@1
+    - task: 1ES.PublishPipelineArtifact@1
       inputs:
         targetPath: '$(artifacts_directory)'
         artifactName: '${{parameters.artifactName}}'
