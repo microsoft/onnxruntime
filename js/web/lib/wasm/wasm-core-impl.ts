@@ -863,12 +863,18 @@ export const run = async (
             }
           } else if (preferredLocation === 'ml-tensor' && size > 0) {
             const ensureTensor = wasm.jsepEnsureTensor;
-            if (!ensureTensor) {
+            const isInt64Supported = wasm.jsepIsInt64Supported;
+            if (!ensureTensor || !isInt64Supported) {
               throw new Error('preferredLocation "ml-tensor" is not supported without using WebNN.');
             }
             const tensorSize = calculateTensorSizeInBytes(dataType, size);
             if (tensorSize === undefined || !isMLTensorSupportedType(type)) {
               throw new Error(`Unsupported data type: ${type}`);
+            }
+            if (type === 'int64' && !isInt64Supported(sessionId)) {
+              throw new Error(
+                `preferredLocation "ml-tensor" for int64 output is not supported by current WebNN Context.`,
+              );
             }
 
             // If the graph has been partitioned, the output tensor may have not been created. For this reason, we use
