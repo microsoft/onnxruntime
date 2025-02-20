@@ -92,7 +92,7 @@ MlasIsQNBitGemmAvailable(
         }
         case SQNBitGemmVariant_BitWidth4_CompInt8: { // SQ4BitGemmKernel_BlkSum_CompInt8
             return
-              (Dispatch->SQ4BitGemm_CompInt8 != nullptr && Dispatch->QuantizeA_CompInt8 != nullptr) ||
+              (Dispatch->SQ4BitGemmKernel_Packed_CompInt8 != nullptr && Dispatch->QuantizeA_Packed_CompInt8 != nullptr) ||
               (Dispatch->SQ4BitGemmKernel_CompInt8 != nullptr && Dispatch->QuantizeARow_CompInt8 != nullptr) ||
               (Dispatch->SQ4BitGemmKernel_BlkSum_CompInt8 != nullptr && Dispatch->QuantizeARowComputeBlkSum_CompInt8 != nullptr);
         }
@@ -302,8 +302,8 @@ MlasQNBitGemmScalesPacked(
 ) {
 #ifdef MLAS_TARGET_ARM64
     if (BlkBitWidth == 4 && ComputeType == SQNBIT_CompInt8) {
-      const auto UseTiled = GetMlasPlatform().QNBitGemmDispatch->UseTiled_CompInt8;
-      return UseTiled && UseTiled(K, BlkLen, HasZpInput);
+      const auto UsePacked = GetMlasPlatform().QNBitGemmDispatch->UsePacked_CompInt8;
+      return UsePacked && UsePacked(K, BlkLen, HasZpInput);
     }
 #else
     MLAS_UNREFERENCED_PARAMETER(K);
@@ -548,9 +548,9 @@ SQ4BitGemm_CompInt8(
     const size_t RangeCountN
 )
 {
-    const auto UseTiled = GetMlasPlatform().QNBitGemmDispatch->UseTiled_CompInt8;
-    const auto SQ4BitGemm = GetMlasPlatform().QNBitGemmDispatch->SQ4BitGemm_CompInt8;
-    if (UseTiled && SQ4BitGemm && UseTiled(K, BlkLen, DataParams->QuantBZeroPoint)) {
+    const auto UsePacked = GetMlasPlatform().QNBitGemmDispatch->UsePacked_CompInt8;
+    const auto SQ4BitGemm = GetMlasPlatform().QNBitGemmDispatch->SQ4BitGemmKernel_Packed_CompInt8;
+    if (UsePacked && SQ4BitGemm && UsePacked(K, BlkLen, DataParams->QuantBZeroPoint)) {
         const std::byte* QuantA = static_cast<const std::byte*>(PerGemmWorkspace);
         SQ4BitGemm(BlkLen, QuantA, DataParams->PackedQuantBData,
             DataParams->C, RangeStartM, RangeCountM, RangeStartN, RangeCountN, K,
@@ -705,8 +705,8 @@ InitializeWorkspace_CompInt8<float>(
 {
     MLAS_UNREFERENCED_PARAMETER(N);
 
-    const auto UseTiled = GetMlasPlatform().QNBitGemmDispatch->UseTiled_CompInt8;
-    const auto QuantizeA = GetMlasPlatform().QNBitGemmDispatch->QuantizeA_CompInt8;
+    const auto UsePacked = GetMlasPlatform().QNBitGemmDispatch->UsePacked_CompInt8;
+    const auto QuantizeA_Packed = GetMlasPlatform().QNBitGemmDispatch->QuantizeA_Packed_CompInt8;
     const auto QuantizeARow = GetMlasPlatform().QNBitGemmDispatch->QuantizeARow_CompInt8;
     const auto QuantizeARow2 = GetMlasPlatform().QNBitGemmDispatch->QuantizeARowComputeBlkSum_CompInt8;
 
@@ -714,13 +714,13 @@ InitializeWorkspace_CompInt8<float>(
     const size_t QuantAStride = BlockCountK * Q8BlkSize(BlkLen);
 
     // TODO: try parallel on BatchN * M threads because BatchN is usually 1.
-    if (UseTiled && QuantizeA && UseTiled(K, BlkLen, DataParams->QuantBZeroPoint)) {
+    if (UsePacked && QuantizeA_Packed && UsePacked(K, BlkLen, DataParams->QuantBZeroPoint)) {
         MlasTrySimpleParallel(ThreadPool, BatchN, [&](ptrdiff_t gemm_idx) {
             const auto& data = DataParams[gemm_idx];
 
             const float* ARowPtr = data.A;
             std::byte* QuantARowPtr = static_cast<std::byte*>(Workspace) + gemm_idx * PerGemmWorkspaceStride;
-            QuantizeA(BlkLen, ARowPtr, M, K, QuantARowPtr);
+            QuantizeA_Packed(BlkLen, ARowPtr, M, K, QuantARowPtr);
         });
     } else if (QuantizeARow) {
         MlasTrySimpleParallel(ThreadPool, BatchN, [&](ptrdiff_t gemm_idx) {

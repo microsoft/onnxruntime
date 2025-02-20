@@ -109,14 +109,14 @@ HQ4BitGemmKernel_CompFp16(
 // SQNBIT_CompInt8 declarations
 
 bool
-UseTiled_CompInt8(
+UsePacked_CompInt8(
     size_t K,
     size_t BlkLen,
     bool HasZp
 );
 
 void
-QuantizeA_CompInt8(
+QuantizeA_Packed_CompInt8(
     size_t BlkLen,
     const float* A,
     size_t CountM,
@@ -133,7 +133,7 @@ QuantizeARow_CompInt8(
 );
 
 void
-SQ4BitGemm_CompInt8(
+SQ4BitGemmKernel_Packed_CompInt8(
     size_t BlkLen,
     const std::byte* QuantA,
     const std::byte* PackedQuantBData,

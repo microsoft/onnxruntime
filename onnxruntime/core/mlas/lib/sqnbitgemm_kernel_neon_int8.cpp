@@ -131,13 +131,13 @@ QuantizeBlock(
 }  // namespace
 
 bool
-UseTiled_CompInt8(size_t K, size_t BlkLen, bool HasZp)
+UsePacked_CompInt8(size_t K, size_t BlkLen, bool HasZp)
 {
     return UseKleidiAI(K, BlkLen, HasZp);
 }
 
 void
-QuantizeA_CompInt8(
+QuantizeA_Packed_CompInt8(
     size_t,
     const float* A,
     size_t CountM,
@@ -1439,7 +1439,7 @@ SQ4BitGemmKernel_CompInt8(
 }
 
 void
-SQ4BitGemm_CompInt8(
+SQ4BitGemmKernel_Packed_CompInt8(
     size_t BlkLen,
     const std::byte* QuantA,
     const std::byte* PackedQuantBData,
