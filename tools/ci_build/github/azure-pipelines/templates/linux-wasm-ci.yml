@@ -48,6 +48,7 @@ jobs:
 - job: build_WASM
   pool:
     name: ${{ parameters.PoolName }}
+    os: linux
   variables:
     buildArch: x64
     CommonBuildArgs: '--parallel --use_vcpkg --config ${{ parameters.BuildConfig }} --skip_submodule_sync --build_wasm --enable_wasm_simd --enable_wasm_threads ${{ parameters.ExtraBuildArgs }}'
