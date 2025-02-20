@@ -359,8 +359,9 @@ struct ProviderHostImpl : ProviderHost {
   // IExecutionProvider (direct)
   std::vector<std::unique_ptr<ComputeCapability>> IExecutionProvider__GetCapability(
       const IExecutionProvider* p, const onnxruntime::GraphViewer& graph_viewer,
-      const IExecutionProvider::IKernelLookup& kernel_lookup) override {
-    return p->IExecutionProvider::GetCapability(graph_viewer, kernel_lookup);
+      const IExecutionProvider::IKernelLookup& kernel_lookup,
+      IResourceAccountant* resource_accountant) override {
+    return p->IExecutionProvider::GetCapability(graph_viewer, kernel_lookup, resource_accountant);
   }
 
   common::Status IExecutionProvider__Compile(IExecutionProvider* p, const std::vector<IExecutionProvider::FusedNodeAndGraph>& fused_nodes_and_graphs, std::vector<NodeComputeInfo>& node_compute_funcs) override {
@@ -832,6 +833,9 @@ struct ProviderHostImpl : ProviderHost {
   std::unique_ptr<IndexedSubGraph> IndexedSubGraph__construct() override { return std::make_unique<IndexedSubGraph>(); }
   void IndexedSubGraph__operator_delete(IndexedSubGraph* p) override { delete p; }
 
+  const std::vector<onnxruntime::NodeIndex>& IndexedSubGraph__Nodes(const IndexedSubGraph* p) override {
+    return p->nodes;
+  }
   std::vector<onnxruntime::NodeIndex>& IndexedSubGraph__Nodes(IndexedSubGraph* p) override { return p->nodes; }
 
   void IndexedSubGraph__SetMetaDef(IndexedSubGraph* p, std::unique_ptr<IndexedSubGraph_MetaDef>&& meta_def_) override { p->SetMetaDef(std::move(meta_def_)); }
@@ -839,6 +843,12 @@ struct ProviderHostImpl : ProviderHost {
 
   void IndexedSubGraph__SetSchemaSource(IndexedSubGraph* p, IndexedSubGraph_SourceOfSchema schema_source) override { p->schema_source = schema_source; }
   IndexedSubGraph_SourceOfSchema IndexedSubGraph__GetSchemaSource(const IndexedSubGraph* p) override { return p->schema_source; }
+  void IndexedSubGraph__SetAccountant(IndexedSubGraph* p, IResourceAccountant* resource_accountant) override {
+    p->SetAccountant(resource_accountant);
+  }
+  void IndexedSubGraph__AppendNodeCost(IndexedSubGraph* p, const ResourceCount& resource_count) override {
+    p->AppendNodeCost(resource_count);
+  }
 
   // KernelDef (wrapped)
   void KernelDef__operator_delete(KernelDef* p) override { delete p; }
