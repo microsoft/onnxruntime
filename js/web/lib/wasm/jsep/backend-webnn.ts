@@ -12,7 +12,7 @@ import { DataType } from '../wasm-common';
 import { getInstance } from '../wasm-factory';
 
 import { createView } from './tensor-view';
-import { TensorId, createTensorManager } from './webnn/tensor-manager';
+import { TensorId, createTensorManager, convertInt64ToInt32 } from './webnn/tensor-manager';
 import { configureLogger, LOG_DEBUG } from './log';
 
 /*
@@ -288,6 +288,7 @@ export class WebNNBackend {
     builder: MLGraphBuilder,
     desc: MLOperandDescriptor,
     mountedFiles: Map<string, Uint8Array> | undefined,
+    shouldConvertInt64ToInt32: boolean = false,
   ): MLOperand {
     // If available, "Module.MountedFiles" is a Map for all preloaded files.
     if (!mountedFiles) {
@@ -324,7 +325,13 @@ export class WebNNBackend {
         bufferView = new Uint32Array(buffer);
         break;
       case 'int64':
-        bufferView = new BigInt64Array(buffer);
+        if (shouldConvertInt64ToInt32) {
+          // Int64 is not supported by current context, use int32 instead.
+          bufferView = convertInt64ToInt32(new Uint8Array(buffer), false);
+          desc.dataType = 'int32';
+        } else {
+          bufferView = new BigInt64Array(buffer);
+        }
         break;
       case 'uint64':
         bufferView = new BigUint64Array(buffer);
@@ -341,7 +348,13 @@ export class WebNNBackend {
         throw new Error(`Unsupported data type: ${desc.dataType} in creating WebNN Constant from external data.`);
     }
 
-    LOG_DEBUG('verbose', () => `[WebNN] registerMLConstant {dataType: ${desc.dataType}, shape: ${desc.shape}}}`);
+    LOG_DEBUG(
+      'verbose',
+      () =>
+        `[WebNN] registerMLConstant {dataType: ${desc.dataType}, shape: ${desc.shape}}} ${
+          shouldConvertInt64ToInt32 ? '(Note: it was int64 data type and registered to int32 as workaround)' : ''
+        }`,
+    );
 
     return builder.constant(desc, bufferView);
   }
@@ -356,6 +369,11 @@ export class WebNNBackend {
       return false;
     }
     return inputNames.includes(inputName);
+  }
+
+  public isInt64Supported(sessionId: number): boolean {
+    const context = this.mlContextBySessionId.get(sessionId);
+    return !!context?.opSupportLimits()['input']['dataTypes'].includes('int64');
   }
 
   public flush(): void {

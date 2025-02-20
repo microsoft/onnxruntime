@@ -144,9 +144,19 @@ bool IsSupportedDataType(const int32_t onnx_data_type, const emscripten::val& we
   const std::string_view webnn_data_type = it->second;
 
   // Check if WebNN supports the data type.
-  emscripten::val is_supported =
-      webnn_supported_data_types.call<emscripten::val>("includes", emscripten::val(std::string(webnn_data_type)));
-  return is_supported.as<bool>();
+  bool is_supported = webnn_supported_data_types.call<emscripten::val>("includes",
+                                                                       emscripten::val(std::string(webnn_data_type)))
+                          .as<bool>();
+
+  if (webnn_data_type == "int64" &&
+      !is_supported &&
+      webnn_supported_data_types.call<emscripten::val>("includes", emscripten::val("int32")).as<bool>()) {
+    // Current context doesn't support int64, but int32 is supported.
+    // We can use int32 as a workaround.
+    is_supported = true;
+  }
+
+  return is_supported;
 }
 
 // Check if the input or output data type of ONNX node is supported by the WebNN operator.

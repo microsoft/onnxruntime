@@ -34,6 +34,9 @@ ModelBuilder::ModelBuilder(const GraphViewer& graph_viewer, const logging::Logge
   if (!wnn_builder_.as<bool>()) {
     ORT_THROW("Failed to create WebNN builder.");
   }
+  if (wnn_limits["input"]["dataTypes"].call<emscripten::val>("includes", emscripten::val("int64")).as<bool>()) {
+    is_int64_supported_ = true;
+  }
 }
 
 Status ModelBuilder::Initialize() {
@@ -125,6 +128,10 @@ Status ModelBuilder::RegisterInitializers() {
       emscripten::val view = emscripten::val::undefined();
       std::byte* tensor_ptr = nullptr;
 
+      // A flag to indicate if we should convert int64 to int32.
+      const bool should_convert_int64_to_int32 = !is_int64_supported_ &&
+                                                 data_type == ONNX_NAMESPACE::TensorProto_DataType_INT64;
+
       if (utils::HasExternalData(tensor)) {
         // Create WebNN Constant from external data.
         std::basic_string<ORTCHAR_T> external_file_path;
@@ -138,7 +145,8 @@ Status ModelBuilder::RegisterInitializers() {
                                          static_cast<int32_t>(data_offset),
                                          static_cast<int32_t>(tensor_byte_size),
                                          wnn_builder_,
-                                         desc);
+                                         desc,
+                                         should_convert_int64_to_int32);
       } else {
         if (tensor.has_raw_data()) {
           tensor_ptr = reinterpret_cast<std::byte*>(const_cast<char*>(tensor.raw_data().c_str()));
@@ -195,6 +203,25 @@ Status ModelBuilder::RegisterInitializers() {
             break;
         }
 
+        // If int64 is not supported, convert int64 to int32.
+        std::vector<int32_t> int32_data(num_elements);
+        if (should_convert_int64_to_int32) {
+          try {
+            std::transform(reinterpret_cast<int64_t*>(tensor_ptr),
+                           reinterpret_cast<int64_t*>(tensor_ptr) + static_cast<int64_t>(num_elements),
+                           int32_data.begin(),
+                           [](int64_t val) -> int32_t {
+                             return gsl::narrow<int32_t>(val);
+                           });
+            LOGS(logger_, VERBOSE) << "Initializer '" << name << "' is converted from int64 to int32.";
+          } catch (const std::exception& e) {
+            return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, e.what());
+          }
+          view = emscripten::val{emscripten::typed_memory_view(num_elements, int32_data.data())};
+
+          desc.set("dataType", emscripten::val("int32"));
+        }
+
         // Wasm memory grow will cause all array buffers reallocation, which will be treated as detached
         // buffers in JS side. Simply create a copy to fix it.
         view = view.call<emscripten::val>("slice");
@@ -204,7 +231,7 @@ Status ModelBuilder::RegisterInitializers() {
       // TODO: support other type.
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                              "The initializer of graph has unsupported type, name: ",
-                             tensor.name(), " type: ", data_type);
+                             name, " type: ", data_type);
     }
     wnn_operands_.insert(std::make_pair(name, operand));
   }
@@ -260,6 +287,10 @@ Status ModelBuilder::RegisterModelInputOutput(const NodeArg& node_arg, bool is_i
   }
 
   if (is_input) {
+    if (data_type == ONNX_NAMESPACE::TensorProto_DataType_INT64 && !is_int64_supported_) {
+      // Int64 is not supported by current context, use int32 instead.
+      desc.set("dataType", emscripten::val("int32"));
+    }
     wnn_operands_.insert(std::make_pair(name, wnn_builder_.call<emscripten::val>("input", name, desc)));
     emscripten::val::module_property("jsepRegisterGraphInput")(name);
     input_names_.push_back(name);
