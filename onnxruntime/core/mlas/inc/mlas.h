@@ -1464,8 +1464,8 @@ void
 MLASCALL
 MlasRotaryEmbedOneRow(
     const T* input,
-    const T* sin,
-    const T* cos,
+    const T* sin_data,
+    const T* cos_data,
     size_t dim,
     bool interleaved,
     T* output
