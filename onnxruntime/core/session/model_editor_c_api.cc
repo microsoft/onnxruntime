@@ -8,18 +8,19 @@
 #include "core/framework/onnxruntime_typeinfo.h"
 #include "core/framework/tensor_type_and_shape.h"
 #include "core/graph/constants.h"
-#include "core/graph/model_builder_api_types.h"
+#include "core/graph/model.h"
+#include "core/graph/model_editor_api_types.h"
 #include "core/graph/onnx_protobuf.h"
 #include "core/session/abi_session_options_impl.h"
 #include "core/session/inference_session.h"
-#include "core/session/model_builder_api.h"
+#include "core/session/model_editor_api.h"
 #include "core/session/ort_apis.h"
 #include "core/session/ort_env.h"
 #include "core/session/utils.h"
 
 using namespace onnxruntime;
 
-ORT_API_STATUS_IMPL(OrtModelBuilderAPI::CreateValueInfo, _In_ const char* name, _In_ const OrtTypeInfo* type_info,
+ORT_API_STATUS_IMPL(OrtModelEditorAPI::CreateValueInfo, _In_ const char* name, _In_ const OrtTypeInfo* type_info,
                     _Outptr_ OrtValueInfo** value_info) {
   API_IMPL_BEGIN
   if (name == nullptr || *name == '\0') {
@@ -48,28 +49,7 @@ ORT_API_STATUS_IMPL(OrtModelBuilderAPI::CreateValueInfo, _In_ const char* name, 
   API_IMPL_END
 }
 
-ORT_API_STATUS_IMPL(OrtModelBuilderAPI::GetValueInfoName, _In_ const OrtValueInfo* value_info,
-                    _Out_ const char** name) {
-  API_IMPL_BEGIN
-  *name = value_info->name.c_str();
-  return nullptr;
-  API_IMPL_END
-}
-ORT_API_STATUS_IMPL(OrtModelBuilderAPI::GetValueInfoTypeInfo, _In_ const OrtValueInfo* value_info,
-                    _Outptr_ const OrtTypeInfo** type_info) {
-  API_IMPL_BEGIN
-
-  *type_info = value_info->type_info.get();
-
-  return nullptr;
-  API_IMPL_END
-}
-
-ORT_API(void, OrtModelBuilderAPI::ReleaseValueInfo, _Frees_ptr_opt_ OrtValueInfo* value_info) {
-  delete value_info;
-}
-
-ORT_API_STATUS_IMPL(OrtModelBuilderAPI::CreateNode, const char* operator_name, const char* domain_name,
+ORT_API_STATUS_IMPL(OrtModelEditorAPI::CreateNode, const char* operator_name, const char* domain_name,
                     _In_ const char* node_name,
                     _In_reads_(input_names_len) const char* const* input_names, size_t input_names_len,
                     _In_reads_(output_names_len) const char* const* output_names, size_t output_names_len,
@@ -106,11 +86,7 @@ ORT_API_STATUS_IMPL(OrtModelBuilderAPI::CreateNode, const char* operator_name, c
   API_IMPL_END
 }
 
-ORT_API(void, OrtModelBuilderAPI::ReleaseNode, _Frees_ptr_opt_ OrtNode* node) {
-  delete node;
-}
-
-ORT_API_STATUS_IMPL(OrtModelBuilderAPI::CreateGraph, _Outptr_ OrtGraph** graph) {
+ORT_API_STATUS_IMPL(OrtModelEditorAPI::CreateGraph, _Outptr_ OrtGraph** graph) {
   API_IMPL_BEGIN
   auto g = std::make_unique<OrtGraph>();
 
@@ -126,7 +102,7 @@ ORT_API_STATUS_IMPL(OrtModelBuilderAPI::CreateGraph, _Outptr_ OrtGraph** graph) 
   API_IMPL_END
 }
 
-ORT_API_STATUS_IMPL(OrtModelBuilderAPI::SetGraphInputs, _In_ OrtGraph* graph,
+ORT_API_STATUS_IMPL(OrtModelEditorAPI::SetGraphInputs, _In_ OrtGraph* graph,
                     _In_reads_(inputs_len) _In_ OrtValueInfo** inputs, _In_ size_t inputs_len) {
   API_IMPL_BEGIN
   for (size_t i = 0; i < inputs_len; ++i) {
@@ -142,7 +118,7 @@ ORT_API_STATUS_IMPL(OrtModelBuilderAPI::SetGraphInputs, _In_ OrtGraph* graph,
   API_IMPL_END
 }
 
-ORT_API_STATUS_IMPL(OrtModelBuilderAPI::SetGraphOutputs, _In_ OrtGraph* graph,
+ORT_API_STATUS_IMPL(OrtModelEditorAPI::SetGraphOutputs, _In_ OrtGraph* graph,
                     _In_reads_(outputs_len) _In_ OrtValueInfo** outputs, _In_ size_t outputs_len) {
   API_IMPL_BEGIN
   for (size_t i = 0; i < outputs_len; ++i) {
@@ -158,7 +134,7 @@ ORT_API_STATUS_IMPL(OrtModelBuilderAPI::SetGraphOutputs, _In_ OrtGraph* graph,
   API_IMPL_END
 }
 
-ORT_API_STATUS_IMPL(OrtModelBuilderAPI::AddInitializerToGraph, _In_ OrtGraph* graph, _In_ const char* name,
+ORT_API_STATUS_IMPL(OrtModelEditorAPI::AddInitializerToGraph, _In_ OrtGraph* graph, _In_ const char* name,
                     _Inout_ OrtValue* tensor, bool data_is_external) {
   API_IMPL_BEGIN
   if (!tensor->IsTensor()) {
@@ -194,18 +170,14 @@ ORT_API_STATUS_IMPL(OrtModelBuilderAPI::AddInitializerToGraph, _In_ OrtGraph* gr
   API_IMPL_END
 }
 
-ORT_API_STATUS_IMPL(OrtModelBuilderAPI::AddNodeToGraph, _In_ OrtGraph* graph, _Inout_ OrtNode* node) {
+ORT_API_STATUS_IMPL(OrtModelEditorAPI::AddNodeToGraph, _In_ OrtGraph* graph, _Inout_ OrtNode* node) {
   API_IMPL_BEGIN
   graph->nodes.push_back(std::unique_ptr<OrtNode>(node));  // take ownership
   return nullptr;
   API_IMPL_END
 }
 
-ORT_API(void, OrtModelBuilderAPI::ReleaseGraph, _Frees_ptr_opt_ OrtGraph* graph) {
-  delete graph;
-}
-
-ORT_API_STATUS_IMPL(OrtModelBuilderAPI::CreateModel,
+ORT_API_STATUS_IMPL(OrtModelEditorAPI::CreateModel,
                     _In_reads_(opset_entries_len) const char* const* domain_names,
                     _In_reads_(opset_entries_len) const int* opset_versions,
                     size_t opset_entries_len,
@@ -221,7 +193,7 @@ ORT_API_STATUS_IMPL(OrtModelBuilderAPI::CreateModel,
   API_IMPL_END
 }
 
-ORT_API_STATUS_IMPL(OrtModelBuilderAPI::AddGraphToModel, _In_ OrtModel* model, _Inout_ OrtGraph* graph) {
+ORT_API_STATUS_IMPL(OrtModelEditorAPI::AddGraphToModel, _In_ OrtModel* model, _Inout_ OrtGraph* graph) {
   API_IMPL_BEGIN
 
   if (graph == nullptr) {
@@ -233,11 +205,7 @@ ORT_API_STATUS_IMPL(OrtModelBuilderAPI::AddGraphToModel, _In_ OrtModel* model, _
   API_IMPL_END
 }
 
-ORT_API(void, OrtModelBuilderAPI::ReleaseModel, _Frees_ptr_opt_ OrtModel* model) {
-  delete model;
-}
-
-ORT_API_STATUS_IMPL(OrtModelBuilderAPI::CreateSessionFromModel, _In_ const OrtEnv* env, _In_ const OrtModel* model,
+ORT_API_STATUS_IMPL(OrtModelEditorAPI::CreateSessionFromModel, _In_ const OrtEnv* env, _In_ const OrtModel* model,
                     _In_ const OrtSessionOptions* options, _Outptr_ OrtSession** out) {
   API_IMPL_BEGIN
 
@@ -267,7 +235,7 @@ ORT_API_STATUS_IMPL(OrtModelBuilderAPI::CreateSessionFromModel, _In_ const OrtEn
   API_IMPL_END
 }
 
-ORT_API_STATUS_IMPL(OrtModelBuilderAPI::CreateModelBuilderSession,
+ORT_API_STATUS_IMPL(OrtModelEditorAPI::CreateModelEditorSession,
                     _In_ const OrtEnv* env, _In_ const ORTCHAR_T* model_path, _In_ const OrtSessionOptions* options,
                     _Outptr_ OrtSession** out) {
   API_IMPL_BEGIN
@@ -289,7 +257,7 @@ ORT_API_STATUS_IMPL(OrtModelBuilderAPI::CreateModelBuilderSession,
   API_IMPL_END
 }
 
-ORT_API_STATUS_IMPL(OrtModelBuilderAPI::CreateModelBuilderSessionFromArray, _In_ const OrtEnv* env,
+ORT_API_STATUS_IMPL(OrtModelEditorAPI::CreateModelEditorSessionFromArray, _In_ const OrtEnv* env,
                     _In_ const void* model_data, size_t model_data_length,
                     _In_ const OrtSessionOptions* options,
                     _Outptr_ OrtSession** out) {
@@ -312,7 +280,21 @@ ORT_API_STATUS_IMPL(OrtModelBuilderAPI::CreateModelBuilderSessionFromArray, _In_
   API_IMPL_END
 }
 
-ORT_API_STATUS_IMPL(OrtModelBuilderAPI::ApplyModelToModelBuilderSession,
+ORT_API_STATUS_IMPL(OrtModelEditorAPI::SessionGetOpsetForDomain, _In_ const OrtSession* ort_session,
+                    _In_ const char* domain, _Out_ int* opset) {
+  const auto& session = *reinterpret_cast<const ::onnxruntime::InferenceSession*>(ort_session);
+  const auto& domain_opset_map = session.GetModel().MainGraph().DomainToVersionMap();
+
+  auto it = domain_opset_map.find(domain);
+  if (it == domain_opset_map.cend()) {
+    return OrtApis::CreateStatus(ORT_FAIL, "Domain not used by model.");
+  }
+
+  *opset = it->second;
+  return nullptr;
+}
+
+ORT_API_STATUS_IMPL(OrtModelEditorAPI::ApplyModelToModelEditorSession,
                     _In_ OrtSession* session, _In_ OrtModel* model) {
   API_IMPL_BEGIN
   auto sess = reinterpret_cast<onnxruntime::InferenceSession*>(session);
@@ -321,7 +303,7 @@ ORT_API_STATUS_IMPL(OrtModelBuilderAPI::ApplyModelToModelBuilderSession,
   API_IMPL_END
 }
 
-ORT_API_STATUS_IMPL(OrtModelBuilderAPI::FinalizeModelBuilderSession, _In_ OrtSession* session,
+ORT_API_STATUS_IMPL(OrtModelEditorAPI::FinalizeModelEditorSession, _In_ OrtSession* session,
                     _In_ const OrtSessionOptions* options,
                     _Inout_ OrtPrepackedWeightsContainer* prepacked_weights_container) {
   API_IMPL_BEGIN
@@ -331,41 +313,42 @@ ORT_API_STATUS_IMPL(OrtModelBuilderAPI::FinalizeModelBuilderSession, _In_ OrtSes
   API_IMPL_END
 }
 
-static constexpr OrtModelBuilderApi ort_graph_api = {
+static constexpr OrtModelEditorApi ort_model_editor_api = {
     // NOTE: The C# bindings depend on the API order within this struct so all additions must be at the end,
     // and no functions can be removed (the implementation needs to change to return an error).
-    &OrtModelBuilderAPI::CreateValueInfo,
-    &OrtModelBuilderAPI::GetValueInfoName,
-    &OrtModelBuilderAPI::GetValueInfoTypeInfo,
-    &OrtModelBuilderAPI::ReleaseValueInfo,
 
-    &OrtModelBuilderAPI::CreateNode,
-    &OrtModelBuilderAPI::ReleaseNode,
+    &OrtModelEditorAPI::CreateTensorTypeInfo,
+    &OrtModelEditorAPI::CreateSparseTensorTypeInfo,
+    &OrtModelEditorAPI::CreateMapTypeInfo,
+    &OrtModelEditorAPI::CreateSequenceTypeInfo,
+    &OrtModelEditorAPI::CreateOptionalTypeInfo,
 
-    &OrtModelBuilderAPI::CreateGraph,
-    &OrtModelBuilderAPI::SetGraphInputs,
-    &OrtModelBuilderAPI::SetGraphOutputs,
-    &OrtModelBuilderAPI::AddInitializerToGraph,
-    &OrtModelBuilderAPI::AddNodeToGraph,
-    &OrtModelBuilderAPI::ReleaseGraph,
+    &OrtModelEditorAPI::CreateValueInfo,
 
-    &OrtModelBuilderAPI::CreateModel,
-    &OrtModelBuilderAPI::AddGraphToModel,
-    &OrtModelBuilderAPI::ReleaseModel,
+    &OrtModelEditorAPI::CreateNode,
 
-    &OrtModelBuilderAPI::CreateSessionFromModel,
+    &OrtModelEditorAPI::CreateGraph,
+    &OrtModelEditorAPI::SetGraphInputs,
+    &OrtModelEditorAPI::SetGraphOutputs,
+    &OrtModelEditorAPI::AddInitializerToGraph,
+    &OrtModelEditorAPI::AddNodeToGraph,
 
-    &OrtModelBuilderAPI::CreateModelBuilderSession,
-    &OrtModelBuilderAPI::CreateModelBuilderSessionFromArray,
-    &OrtModelBuilderAPI::ApplyModelToModelBuilderSession,
-    &OrtModelBuilderAPI::FinalizeModelBuilderSession,
+    &OrtModelEditorAPI::CreateModel,
+    &OrtModelEditorAPI::AddGraphToModel,
+
+    &OrtModelEditorAPI::CreateSessionFromModel,
+
+    &OrtModelEditorAPI::CreateModelEditorSession,
+    &OrtModelEditorAPI::CreateModelEditorSessionFromArray,
+    &OrtModelEditorAPI::SessionGetOpsetForDomain,
+    &OrtModelEditorAPI::ApplyModelToModelEditorSession,
+    &OrtModelEditorAPI::FinalizeModelEditorSession,
 };
 
 // checks that we don't violate the rule that the functions must remain in the slots they were originally assigned
-static_assert(offsetof(OrtModelBuilderApi, FinalizeModelBuilderSession) / sizeof(void*) == 19,
+static_assert(offsetof(OrtModelEditorApi, FinalizeModelEditorSession) / sizeof(void*) == 19,
               "Size of version 21 API cannot change");  // initial version in ORT 1.21
 
-ORT_API(const OrtModelBuilderApi*, OrtModelBuilderAPI::GetModelBuilderApi) {
-  // No constraints on the API version yet.
-  return &ort_graph_api;
+ORT_API(const OrtModelEditorApi*, OrtModelEditorAPI::GetModelEditorApi) {
+  return &ort_model_editor_api;
 }

@@ -24,8 +24,6 @@ struct OrtNode {
 
   // OrtOpAttr is 1:1 with ONNX_NAMESPACE::AttributeProto currently.
   // https://github.com/microsoft/onnxruntime/blob/bd5a759d0cdbed6e7f611c990d4eb5457a9ecf60/onnxruntime/core/session/standalone_op_invoker.cc#L318
-  // Might be better if it had a wrapper struct so we have more flexibility.
-  // AFAIK (TBC) that's an implementation detail so we should be able to change it.
   std::vector<ONNX_NAMESPACE::AttributeProto> attributes;
   std::vector<std::string> input_names;
   std::vector<std::string> output_names;

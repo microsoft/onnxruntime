@@ -305,6 +305,10 @@ ORT_RUNTIME_CLASS(OpAttr);
 ORT_RUNTIME_CLASS(Logger);
 ORT_RUNTIME_CLASS(ShapeInferContext);
 ORT_RUNTIME_CLASS(LoraAdapter);
+ORT_RUNTIME_CLASS(ValueInfo);
+ORT_RUNTIME_CLASS(Node);
+ORT_RUNTIME_CLASS(Graph);
+ORT_RUNTIME_CLASS(Model);
 
 #ifdef _WIN32
 typedef _Return_type_success_(return == 0) OrtStatus* OrtStatusPtr;
@@ -665,8 +669,8 @@ typedef struct OrtApi OrtApi;
 struct OrtTrainingApi;
 typedef struct OrtTrainingApi OrtTrainingApi;
 
-struct OrtModelBuilderApi;
-typedef struct OrtModelBuilderApi OrtModelBuilderApi;
+struct OrtModelEditorApi;
+typedef struct OrtModelEditorApi OrtModelEditorApi;
 
 /** \brief The helper interface to get the right version of OrtApi
  *
@@ -4795,20 +4799,55 @@ struct OrtApi {
   ORT_API2_STATUS(SetEpDynamicOptions, _Inout_ OrtSession* sess, _In_reads_(kv_len) const char* const* keys,
                   _In_reads_(kv_len) const char* const* values, _In_ size_t kv_len);
 
-  /** \brief Get the Model Builder API instance
+  /** \brief Release an OrtValueInfo instance if it was not added to an OrtGraph.
+   * \since Version 1.21.
+   */
+  ORT_CLASS_RELEASE(ValueInfo);
+
+  /** \brief Release an OrtNode if it was not added to an OrtGraph.
+   * \since Version 1.21.
+   */
+  ORT_CLASS_RELEASE(Node);
+
+  /** \brief Release an OrtGraph.
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   * \since Version 1.21.
+   */
+  ORT_CLASS_RELEASE(Graph);
+
+  /** \brief Release an OrtModel.
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   * \since Version 1.21.
+   */
+  ORT_CLASS_RELEASE(Model);
+
+  /** \brief Get the value name from an OrtValueInfo instance.
+   * \param[in] value_info The OrtValueInfo instance.
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   * \since Version 1.21.
+   */
+  ORT_API2_STATUS(GetValueInfoName, _In_ const OrtValueInfo* value_info, _Out_ const char** name);
+
+  /** \brief Get the type information from an OrtValueInfo instance.
+   * \param[in] value_info The OrtValueInfo instance.
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   * \since Version 1.21.
+   */
+  ORT_API2_STATUS(GetValueInfoTypeInfo, _In_ const OrtValueInfo* value_info, _Outptr_ const OrtTypeInfo** type_info);
+
+  /** \brief Get the Model Editor API instance
    *
-   * Get the Model Builder API instance to create a new model or augment an existing model.
+   * Get the Model Editor API instance to create a new model or augment an existing model.
    *
-   * \return Model Builder API struct
+   * \return Model Editor API struct
    *
    * \since Version 1.21.
    */
-  const OrtModelBuilderApi*(ORT_API_CALL* GetModelBuilderApi)();
+  const OrtModelEditorApi*(ORT_API_CALL* GetModelEditorApi)();
 
   /** \brief Create an OrtValue for a Tensor that uses pre-existing memory.
    *
-   * Create an OrtValue for a Tensor that uses pre-existing memory. ORT will take ownership of the memory and free it
-   * using the provided deleter when no longer in use.
+   * ORT will take ownership of the memory and free it using the provided deleter when no longer in use.
    *
    * \param[in] deleter OrtAllocator instance that will be used to free the memory.
    *                    Only the OrtAllocator:Info and OrtAllocator::Release functions are required.
@@ -4828,100 +4867,6 @@ struct OrtApi {
                   _In_ const int64_t* shape, size_t shape_len,
                   ONNXTensorElementDataType type,
                   _Outptr_ OrtValue** out);
-
-  /** \brief Query the session for the opset version of a domain.
-   *
-   * When using the Model Builder API to augment a model, any new nodes must conform to the opset version of the
-   * original model.
-   *
-   * \param[in] session OrtSession to query
-   * \param[in] domain Domain to query. The ONNX domain is an empty string.
-   * \param[out] opset The opset version of the domain.
-   *
-   * \snippet{doc} snippets.dox OrtStatus Return Value. Returns an error if the domain is not used in the model.
-   *
-   * \since Version 1.21.
-   */
-  ORT_API2_STATUS(SessionGetOpsetForDomain, _In_ const OrtSession* session, _In_ const char* domain, _Out_ int* opset);
-
-  /** \brief Create an OrtTypeInfo instance for a Tensor.
-   *
-   * Create an OrtTypeInfo instance for a Tensor to use as graph inputs/outputs with the Model Builder API.
-   *
-   * User can release `tensor_info` after creating the OrtTypeInfo.
-   *
-   * \param[in] tensor_info Tensor type and shape information.
-   * \param[out] TypeInfo instance for the tensor.
-   *
-   * \snippet{doc} snippets.dox OrtStatus Return Value
-   *
-   * \since Version 1.21.
-   */
-  ORT_API2_STATUS(CreateTensorTypeInfo, _In_ const OrtTensorTypeAndShapeInfo* tensor_info,
-                  _Out_ OrtTypeInfo** type_info);
-
-  /** \brief Create an OrtTypeInfo instance for a SparseTensor.
-   *
-   * Create an OrtTypeInfo instance for a SparseTensor to use as graph inputs/outputs with the Model Builder API.
-   *
-   * User can release `tensor_info` after creating the OrtTypeInfo.
-   *
-   * \param[in] tensor_info SparseTensor type and shape information.
-   * \param[out] TypeInfo instance for the tensor.
-   *
-   * \snippet{doc} snippets.dox OrtStatus Return Value
-   *
-   * \since Version 1.21.
-   */
-  ORT_API2_STATUS(CreateSparseTensorTypeInfo, _In_ const OrtTensorTypeAndShapeInfo* tensor_info,
-                  _Out_ OrtTypeInfo** type_info);
-
-  /** \brief Create an OrtTypeInfo instance for a Map.
-   *
-   * Create an OrtTypeInfo instance for a Map to use as graph inputs/outputs with the Model Builder API.
-   *
-   * User can release `map_value_type` after creating the OrtTypeInfo.
-   *
-   * \param[in] map_key_type Key type for the map.
-   * \param[in] map_value_type Value type for the map.
-   * \param[out] TypeInfo instance for the map.
-   *
-   * \snippet{doc} snippets.dox OrtStatus Return Value
-   *
-   * \since Version 1.21.
-   */
-  ORT_API2_STATUS(CreateMapTypeInfo, ONNXTensorElementDataType map_key_type, _In_ const OrtTypeInfo* map_value_type,
-                  _Out_ OrtTypeInfo** type_info);
-
-  /** \brief Create an OrtTypeInfo instance for a Sequence.
-   *
-   * Create an OrtTypeInfo instance for a Sequence to use as graph inputs/outputs with the Model Builder API.
-   *
-   * User can release `sequence_type` after creating the OrtTypeInfo.
-   *
-   * \param[in] sequence_type Sequence type and shape information.
-   * \param[out] TypeInfo instance for the sequence.
-   *
-   * \snippet{doc} snippets.dox OrtStatus Return Value
-   *
-   * \since Version 1.21.
-   */
-  ORT_API2_STATUS(CreateSequenceTypeInfo, _In_ const OrtTypeInfo* sequence_type, _Out_ OrtTypeInfo** type_info);
-
-  /** \brief Create an OrtTypeInfo instance for an Optional.
-   *
-   * Create an OrtTypeInfo instance for an Optional to use as graph inputs/outputs with the Model Builder API.
-   *
-   * User can release `contained_type` after creating the OrtTypeInfo.
-   *
-   * \param[in] tensor_info Tensor type and shape information.
-   * \param[out] TypeInfo instance for the tensor.
-   *
-   * \snippet{doc} snippets.dox OrtStatus Return Value
-   *
-   * \since Version 1.21.
-   */
-  ORT_API2_STATUS(CreateOptionalTypeInfo, _In_ const OrtTypeInfo* contained_type, _Out_ OrtTypeInfo** type_info);
 };
 
 /*
@@ -5037,21 +4982,96 @@ struct OrtCustomOp {
 };
 
 /**
- * ORT Model Builder API
+ * ORT Model Editor API
  */
-ORT_RUNTIME_CLASS(Model);
-ORT_RUNTIME_CLASS(Graph);
-ORT_RUNTIME_CLASS(Node);
-ORT_RUNTIME_CLASS(ValueInfo);
 
 /**
- * \brief The OrtModelBuilderApi struct provides functions to create or augment an ONNX model.
+ * \brief The OrtModelEditorApi struct provides functions to create or edit an ONNX model.
  *
- * See onnxruntime/test/shared_lib/test_model_builder_api.cc for example usage.
+ * See onnxruntime/test/shared_lib/test_model_editor_api.cc for example usage.
  *
  * \since Version 1.21.
  */
-struct OrtModelBuilderApi {
+struct OrtModelEditorApi {
+  /** \brief Create an OrtTypeInfo instance for a Tensor.
+   *
+   * Create an OrtTypeInfo instance for a Tensor to use as graph inputs/outputs with the Model Editor API.
+   *
+   * User can release `tensor_info` after creating the OrtTypeInfo.
+   *
+   * \param[in] tensor_info Tensor type and shape information.
+   * \param[out] TypeInfo instance for the tensor.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.21.
+   */
+  ORT_API2_STATUS(CreateTensorTypeInfo, _In_ const OrtTensorTypeAndShapeInfo* tensor_info,
+                  _Outptr_ OrtTypeInfo** type_info);
+
+  /** \brief Create an OrtTypeInfo instance for a SparseTensor.
+   *
+   * Create an OrtTypeInfo instance for a SparseTensor to use as graph inputs/outputs with the Model Editor API.
+   *
+   * User can release `tensor_info` after creating the OrtTypeInfo.
+   *
+   * \param[in] tensor_info SparseTensor type and shape information.
+   * \param[out] TypeInfo instance for the tensor.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.21.
+   */
+  ORT_API2_STATUS(CreateSparseTensorTypeInfo, _In_ const OrtTensorTypeAndShapeInfo* tensor_info,
+                  _Outptr_ OrtTypeInfo** type_info);
+
+  /** \brief Create an OrtTypeInfo instance for a Map.
+   *
+   * Create an OrtTypeInfo instance for a Map to use as graph inputs/outputs with the Model Editor API.
+   *
+   * User can release `map_value_type` after creating the OrtTypeInfo.
+   *
+   * \param[in] map_key_type Key type for the map.
+   * \param[in] map_value_type Value type for the map.
+   * \param[out] TypeInfo instance for the map.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.21.
+   */
+  ORT_API2_STATUS(CreateMapTypeInfo, ONNXTensorElementDataType map_key_type, _In_ const OrtTypeInfo* map_value_type,
+                  _Outptr_ OrtTypeInfo** type_info);
+
+  /** \brief Create an OrtTypeInfo instance for a Sequence.
+   *
+   * Create an OrtTypeInfo instance for a Sequence to use as graph inputs/outputs with the Model Editor API.
+   *
+   * User can release `sequence_type` after creating the OrtTypeInfo.
+   *
+   * \param[in] sequence_type Sequence type and shape information.
+   * \param[out] TypeInfo instance for the sequence.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.21.
+   */
+  ORT_API2_STATUS(CreateSequenceTypeInfo, _In_ const OrtTypeInfo* sequence_type, _Outptr_ OrtTypeInfo** type_info);
+
+  /** \brief Create an OrtTypeInfo instance for an Optional.
+   *
+   * Create an OrtTypeInfo instance for an Optional to use as graph inputs/outputs with the Model Editor API.
+   *
+   * User can release `contained_type` after creating the OrtTypeInfo.
+   *
+   * \param[in] tensor_info Tensor type and shape information.
+   * \param[out] TypeInfo instance for the tensor.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.21.
+   */
+  ORT_API2_STATUS(CreateOptionalTypeInfo, _In_ const OrtTypeInfo* contained_type, _Outptr_ OrtTypeInfo** type_info);
+
   /** \brief Create an OrtValueInfo for use as an OrtGraph input or output.
    *
    * \param[in] name The name of the input or output.
@@ -5063,31 +5083,6 @@ struct OrtModelBuilderApi {
    */
   ORT_API2_STATUS(CreateValueInfo, _In_ const char* name, _In_ const OrtTypeInfo* type_info,
                   _Outptr_ OrtValueInfo** value_info);
-
-  /** \brief Get the name from an OrtValueInfo instance.
-   *
-   * \param[in] value_info The OrtValueInfo instance.
-   *
-   * \snippet{doc} snippets.dox OrtStatus Return Value
-   *
-   * \since Version 1.21.
-   */
-  ORT_API2_STATUS(GetValueInfoName, _In_ const OrtValueInfo* value_info, _Out_ const char** name);
-
-  /** \brief Get the type information from an OrtValueInfo instance.
-   *
-   * \param[in] value_info The OrtValueInfo instance.
-   *
-   * \snippet{doc} snippets.dox OrtStatus Return Value
-   *
-   * \since Version 1.21.
-   */
-  ORT_API2_STATUS(GetValueInfoTypeInfo, _In_ const OrtValueInfo* value_info, _Outptr_ const OrtTypeInfo** type_info);
-
-  /** \brief Release an OrtValueInfo instance if it was not added to an OrtGraph.
-   * \since Version 1.21.
-   */
-  ORT_CLASS_RELEASE(ValueInfo);
 
   /** \brief Create an OrtNode to add to an OrtGraph.
    *
@@ -5115,11 +5110,6 @@ struct OrtModelBuilderApi {
                   _In_reads_(output_names_len) const char* const* output_names, size_t output_names_len,
                   _In_reads_(attribs_len) _In_opt_ OrtOpAttr** attributes, _In_ size_t attribs_len,
                   _Outptr_ OrtNode** node);
-
-  /** \brief Release an OrtNode if it was not added to an OrtGraph.
-   * \since Version 1.21.
-   */
-  ORT_CLASS_RELEASE(Node);
 
   /** \brief Create an OrtGraph
    * \snippet{doc} snippets.dox OrtStatus Return Value
@@ -5161,7 +5151,6 @@ struct OrtModelBuilderApi {
 
   /** \brief Add an initializer to the OrtGraph
    *
-   * Add the initializer to the graph.
    * ORT will take ownership of the OrtValue and you should NOT call ReleaseOrtValue.
    *
    * Two options:
@@ -5214,12 +5203,6 @@ struct OrtModelBuilderApi {
    */
   ORT_API2_STATUS(AddNodeToGraph, _In_ OrtGraph* graph, _In_ OrtNode* node);
 
-  /** \brief Release an OrtGraph if it was not added to an OrtModel.
-   * \snippet{doc} snippets.dox OrtStatus Return Value
-   * \since Version 1.21.
-   */
-  ORT_CLASS_RELEASE(Graph);
-
   /** \brief Create an OrtModel.
    *
    * Create an OrtModel.
@@ -5258,23 +5241,14 @@ struct OrtModelBuilderApi {
    */
   ORT_API2_STATUS(AddGraphToModel, _In_ OrtModel* model, _Inout_ OrtGraph* graph);
 
-  /** \brief Release an OrtModel.
-   *
-   * Release the OrtModel.
-   * This should be called after the model is added to a session using CreateSessionFromModel or ApplyModelToSession.
-   *
-   * \snippet{doc} snippets.dox OrtStatus Return Value
-   *
-   * \since Version 1.21.
-   */
-  ORT_CLASS_RELEASE(Model);
-
   /** \brief Create an OrtSession using the OrtModel.
    *
    * Create an inference session using the OrtModel instance.
    * The OrtModel should have been populated with an OrtGraph containing nodes and initializers, and SetGraphInputs
    * and SetGraphOutputs must have been called.
    * This will validate the model, run optimizers, and prepare the session for inferencing.
+   *
+   * ReleaseOrtModel must be called to free the OrtModel after session creation.
    *
    * \param[in] env The OrtEnv instance.
    * \param[in] model The OrtModel instance.
@@ -5300,13 +5274,13 @@ struct OrtModelBuilderApi {
    * by the new nodes. The list of graph inputs/outputs should be for the overall model and not just the new nodes.
    *
    * Add the new information from the OrtModel to the original model using ApplyModelToSession, and prepare the
-   * session for inferencing by calling FinalizeModelBuilderSession.
+   * session for inferencing by calling FinalizeModelEditorSession.
    *
    * \snippet{doc} snippets.dox OrtStatus Return Value
    *
    * \since Version 1.21.
    */
-  ORT_API2_STATUS(CreateModelBuilderSession, _In_ const OrtEnv* env, _In_ const ORTCHAR_T* model_path,
+  ORT_API2_STATUS(CreateModelEditorSession, _In_ const OrtEnv* env, _In_ const ORTCHAR_T* model_path,
                   _In_ const OrtSessionOptions* options,
                   _Outptr_ OrtSession** out);
 
@@ -5322,7 +5296,7 @@ struct OrtModelBuilderApi {
    * by the new nodes. The list of graph inputs/outputs should be for the overall model and not just the new nodes.
    *
    * Add the new information from the OrtModel to the original model using ApplyModelToSession, and prepare the
-   * session for inferencing by calling FinalizeModelBuilderSession.
+   * session for inferencing by calling FinalizeModelEditorSession.
    *
    * \param{in} env The OrtEnv instance.
    * \param{in} model_data The model data for the existing model to augment.
@@ -5333,36 +5307,53 @@ struct OrtModelBuilderApi {
    *
    * \since Version 1.21.
    */
-  ORT_API2_STATUS(CreateModelBuilderSessionFromArray, _In_ const OrtEnv* env,
+  ORT_API2_STATUS(CreateModelEditorSessionFromArray, _In_ const OrtEnv* env,
                   _In_ const void* model_data, size_t model_data_length,
                   _In_ const OrtSessionOptions* options,
                   _Outptr_ OrtSession** out);
 
+  /** \brief Query the session for the opset version of a domain.
+   *
+   * When using the Model Editor API to augment a model, any new nodes must conform to the opset version of the
+   * original model.
+   *
+   * \param[in] session OrtSession to query
+   * \param[in] domain Domain to query. The ONNX domain is an empty string.
+   * \param[out] opset The opset version of the domain.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value. Returns an error if the domain is not used in the model.
+   *
+   * \since Version 1.21.
+   */
+  ORT_API2_STATUS(SessionGetOpsetForDomain, _In_ const OrtSession* session, _In_ const char* domain, _Out_ int* opset);
+
   /** \brief Apply the changes from the model to the session.
    *
-   * Apply the changes from the model to a session that was created using CreateModelBuilderSession[FromArray].
+   * Apply the changes from the model to a session that was created using CreateModelEditorSession[FromArray].
    * All changes will be validated.
-   * Call FinalizeModelBuilderSession to prepare the session for inferencing.
+   * Call FinalizeModelEditorSession to prepare the session for inferencing.
    *
    * Existing input/outputs will only be updated if the OrtGraph inputs/outputs are set in the OrtModel.
    *   i.e. you don't need to call SetGraphInputs/SetGraphOutputs if they are unchanged.
+   *
+   * ReleaseOrtModel must be called to free the OrtModel after it is successfully applied to the session.
    *
    * \snippet{doc} snippets.dox OrtStatus Return Value
    *
    * \since Version 1.21.
    */
-  ORT_API2_STATUS(ApplyModelToModelBuilderSession, _In_ OrtSession* session, _In_ OrtModel* model);
+  ORT_API2_STATUS(ApplyModelToModelEditorSession, _In_ OrtSession* session, _In_ OrtModel* model);
 
-  /** \brief Finalize the Model Builder session.
+  /** \brief Finalize the Model Editor session.
    *
-   * Finalize the Model Builder session.
+   * Finalize the Model Editor session.
    * This will run optimizers and prepare the session for inferencing.
    *
    * \snippet{doc} snippets.dox OrtStatus Return Value
    *
    * \since Version 1.21.
    */
-  ORT_API2_STATUS(FinalizeModelBuilderSession, _In_ OrtSession* session, _In_ const OrtSessionOptions* options,
+  ORT_API2_STATUS(FinalizeModelEditorSession, _In_ OrtSession* session, _In_ const OrtSessionOptions* options,
                   _Inout_ OrtPrepackedWeightsContainer* prepacked_weights_container);
 };
 

@@ -28,7 +28,7 @@
 #include "core/framework/utils.h"
 #include "core/graph/constants.h"
 #include "core/graph/graph.h"
-#include "core/graph/model.h"
+#include "core/graph/model_editor_api_types.h"
 #include "core/providers/get_execution_providers.h"
 #include "core/session/abi_session_options_impl.h"
 #include "core/session/allocator_adapters.h"
@@ -37,7 +37,7 @@
 #include "core/session/inference_session_utils.h"
 #include "core/session/IOBinding.h"
 #include "core/session/lora_adapters.h"
-#include "core/session/model_builder_api.h"
+#include "core/session/model_editor_api.h"
 #include "core/session/onnxruntime_c_api.h"
 #include "core/session/ort_apis.h"
 #include "core/session/ort_env.h"
@@ -1322,20 +1322,6 @@ ORT_API_STATUS_IMPL(OrtApis::SessionGetOverridableInitializerCount, _In_ const O
   return GetNodeDefListCountHelper(sess, get_overridable_initializers_fn, out);
 }
 
-ORT_API_STATUS_IMPL(OrtApis::SessionGetOpsetForDomain, _In_ const OrtSession* ort_session, _In_ const char* domain,
-                    _Out_ int* opset) {
-  const auto& session = *reinterpret_cast<const ::onnxruntime::InferenceSession*>(ort_session);
-  const auto& domain_opset_map = session.GetModel().MainGraph().DomainToVersionMap();
-
-  auto it = domain_opset_map.find(domain);
-  if (it == domain_opset_map.cend()) {
-    return OrtApis::CreateStatus(ORT_FAIL, "Domain not used by model.");
-  }
-
-  *opset = it->second;
-  return nullptr;
-}
-
 static ORT_STATUS_PTR GetNodeDefTypeInfoHelper(const OrtSession* sess, GetDefListFn get_fn, size_t index,
                                                _Outptr_ struct OrtTypeInfo** out) {
   API_IMPL_BEGIN
@@ -2369,6 +2355,39 @@ ORT_API_STATUS_IMPL(OrtApis::SessionOptionsSetCustomJoinThreadFn, _Inout_ OrtSes
   API_IMPL_END
 }
 
+ORT_API(void, OrtApis::ReleaseValueInfo, _Frees_ptr_opt_ OrtValueInfo* value_info) {
+  delete value_info;
+}
+
+ORT_API(void, OrtApis::ReleaseNode, _Frees_ptr_opt_ OrtNode* node) {
+  delete node;
+}
+
+ORT_API(void, OrtApis::ReleaseGraph, _Frees_ptr_opt_ OrtGraph* graph) {
+  delete graph;
+}
+
+ORT_API(void, OrtApis::ReleaseModel, _Frees_ptr_opt_ OrtModel* model) {
+  delete model;
+}
+
+ORT_API_STATUS_IMPL(OrtApis::GetValueInfoName, _In_ const OrtValueInfo* value_info,
+                    _Out_ const char** name) {
+  API_IMPL_BEGIN
+  *name = value_info->name.c_str();
+  return nullptr;
+  API_IMPL_END
+}
+ORT_API_STATUS_IMPL(OrtApis::GetValueInfoTypeInfo, _In_ const OrtValueInfo* value_info,
+                    _Outptr_ const OrtTypeInfo** type_info) {
+  API_IMPL_BEGIN
+
+  *type_info = value_info->type_info.get();
+
+  return nullptr;
+  API_IMPL_END
+}
+
 ORT_API(const OrtTrainingApi*, OrtApis::GetTrainingApi, uint32_t version) {
 #ifdef ENABLE_TRAINING_APIS
   if (version >= 13 && version <= ORT_API_VERSION)
@@ -2384,11 +2403,11 @@ ORT_API(const OrtTrainingApi*, OrtApis::GetTrainingApi, uint32_t version) {
 #endif
 }
 
-ORT_API(const OrtModelBuilderApi*, OrtApis::GetModelBuilderApi) {
+ORT_API(const OrtModelEditorApi*, OrtApis::GetModelEditorApi) {
 #if !defined(ORT_MINIMAL_BUILD)
-  return OrtModelBuilderAPI::GetModelBuilderApi();
+  return OrtModelEditorAPI::GetModelEditorApi();
 #else
-  fprintf(stderr, "The Model Builder API is not supported in a minimal build.\n");
+  fprintf(stderr, "The Model Editor API is not supported in a minimal build.\n");
   return nullptr;
 #endif
 }
@@ -2780,17 +2799,17 @@ static constexpr OrtApi ort_api_1_to_21 = {
     &OrtApis::SetEpDynamicOptions,
     // End of Version 20 - DO NOT MODIFY ABOVE (see above text for more information)
 
-    &OrtApis::GetModelBuilderApi,
+    &OrtApis::ReleaseValueInfo,
+    &OrtApis::ReleaseNode,
+    &OrtApis::ReleaseGraph,
+    &OrtApis::ReleaseModel,
+
+    &OrtApis::GetValueInfoName,
+    &OrtApis::GetValueInfoTypeInfo,
+
+    &OrtApis::GetModelEditorApi,
 
     &OrtApis::CreateTensorWithDataAndDeleterAsOrtValue,
-    &OrtApis::SessionGetOpsetForDomain,
-
-    // APIs to create/edit type info when building/modifying a model using the Model Builder API
-    &OrtApis::CreateTensorTypeInfo,
-    &OrtApis::CreateSparseTensorTypeInfo,
-    &OrtApis::CreateMapTypeInfo,
-    &OrtApis::CreateSequenceTypeInfo,
-    &OrtApis::CreateOptionalTypeInfo,
 };
 
 // OrtApiBase can never change as there is no way to know what version of OrtApiBase is returned by OrtGetApiBase.

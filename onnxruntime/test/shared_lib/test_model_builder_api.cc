@@ -26,7 +26,7 @@ using namespace Ort;
 namespace {
 
 Ort::Session CreateSession(Ort::Env& env,
-                           ModelBuilderAPI::Model& graph_api_model,
+                           Model& graph_api_model,
                            Ort::SessionOptions* session_options_for_test = nullptr) {
   Ort::SessionOptions default_session_options;
   Ort::SessionOptions& session_options = session_options_for_test ? *session_options_for_test
@@ -38,7 +38,7 @@ Ort::Session CreateSession(Ort::Env& env,
   Ort::Session session(env, graph_api_model, session_options);
 
   // Session should not require the model to stay alive so free it now to validate.
-  graph_api_model = ModelBuilderAPI::Model(nullptr);
+  graph_api_model = Model(nullptr);
 
   return session;
 }
@@ -62,7 +62,7 @@ void TestInference(Ort::Session& session,
 }
 
 // Create OrtNode using the C API
-OrtNode* CreateNode(const OrtModelBuilderApi& api,
+OrtNode* CreateNode(const OrtModelEditorApi& api,
                     const char* operator_name, const char* node_name,
                     const gsl::span<const char*> input_names,
                     const gsl::span<const char*> output_names,
@@ -78,7 +78,7 @@ OrtNode* CreateNode(const OrtModelBuilderApi& api,
 }
 
 // convenience func to convert initalizer lists to gsl::span
-OrtNode* CreateNode(const OrtModelBuilderApi& api,
+OrtNode* CreateNode(const OrtModelEditorApi& api,
                     const char* operator_name, const char* node_name,
                     const std::initializer_list<const char*> input_names,
                     const std::initializer_list<const char*> output_names,
@@ -127,18 +127,18 @@ struct TestAllocator : public OrtAllocator {
                                                            OrtMemType::OrtMemTypeDefault);
 };
 
-// Test the ModelBuilderAPI C api
+// Test the ModelEditorAPI C api
 // Uses the ORT C++ api for the rest for simplicity
-TEST(ModelBuilderAPITest, Basic_CApi) {
+TEST(ModelEditorAPITest, Basic_CApi) {
   const auto& api = Ort::GetApi();
-  const auto& model_builder_api = Ort::GetModelBuilderApi();
+  const auto& model_editor_api = Ort::GetModelEditorApi();
 
   TestAllocator deleter;
 
   // return void so we can use ASSERT_* in the lambda
   const auto build_model = [&](bool use_constant_node, OrtModel*& model) -> void {
     OrtGraph* graph = nullptr;
-    Ort::ThrowOnError(model_builder_api.CreateGraph(&graph));
+    Ort::ThrowOnError(model_editor_api.CreateGraph(&graph));
 
     //
     // Create OrtModel with a Gemm. X input is 3x4, Y input is 4x8, Z output is 3x8.
@@ -159,12 +159,12 @@ TEST(ModelBuilderAPITest, Basic_CApi) {
     Ort::ThrowOnError(api.SetDimensions(tensor_type_info, input_dims.data(), input_dims.size()));
 
     OrtTypeInfo* input_type_info = nullptr;
-    Ort::ThrowOnError(api.CreateTensorTypeInfo(tensor_type_info, &input_type_info));
+    Ort::ThrowOnError(model_editor_api.CreateTensorTypeInfo(tensor_type_info, &input_type_info));
     api.ReleaseTensorTypeAndShapeInfo(tensor_type_info);  // input_type_info took a copy
 
     // create ValueInfo and release the type info as CreateValueInfo takes a copy.
     OrtValueInfo* input_value_info = nullptr;
-    Ort::ThrowOnError(model_builder_api.CreateValueInfo("X", input_type_info, &input_value_info));
+    Ort::ThrowOnError(model_editor_api.CreateValueInfo("X", input_type_info, &input_value_info));
     api.ReleaseTypeInfo(input_type_info);  // input_value_info took a copy
     tensor_type_info = nullptr;
 
@@ -176,17 +176,17 @@ TEST(ModelBuilderAPITest, Basic_CApi) {
     Ort::ThrowOnError(api.SetTensorElementType(tensor_type_info, ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT));
     Ort::ThrowOnError(api.SetDimensions(tensor_type_info, output_dims.data(), output_dims.size()));
 
-    Ort::ThrowOnError(api.CreateTensorTypeInfo(tensor_type_info, &output_type_info));
+    Ort::ThrowOnError(model_editor_api.CreateTensorTypeInfo(tensor_type_info, &output_type_info));
     api.ReleaseTensorTypeAndShapeInfo(tensor_type_info);  // input_type_info took a copy
 
     OrtValueInfo* output_value_info = nullptr;
-    Ort::ThrowOnError(model_builder_api.CreateValueInfo("Z", output_type_info, &output_value_info));
+    Ort::ThrowOnError(model_editor_api.CreateValueInfo("Z", output_type_info, &output_value_info));
     api.ReleaseTypeInfo(output_type_info);
 
     std::vector<OrtValueInfo*> graph_inputs = {input_value_info};
     std::vector<OrtValueInfo*> graph_outputs = {output_value_info};
-    Ort::ThrowOnError(model_builder_api.SetGraphInputs(graph, graph_inputs.data(), graph_inputs.size()));
-    Ort::ThrowOnError(model_builder_api.SetGraphOutputs(graph, graph_outputs.data(), graph_outputs.size()));
+    Ort::ThrowOnError(model_editor_api.SetGraphInputs(graph, graph_inputs.data(), graph_inputs.size()));
+    Ort::ThrowOnError(model_editor_api.SetGraphOutputs(graph, graph_outputs.data(), graph_outputs.size()));
     input_value_info = nullptr;  // graph now owns the input/output values
     output_value_info = nullptr;
 
@@ -202,10 +202,10 @@ TEST(ModelBuilderAPITest, Basic_CApi) {
     const std::string gemm_output_name = use_constant_node ? "Z_temp" : "Z";
     std::vector<const char*> node_output_names = {gemm_output_name.c_str()};
     std::vector<OrtOpAttr*> node_attributes{alpha_attr};
-    OrtNode* node = CreateNode(model_builder_api, "Gemm", "Gemm1", node_input_names, node_output_names, node_attributes);
+    OrtNode* node = CreateNode(model_editor_api, "Gemm", "Gemm1", node_input_names, node_output_names, node_attributes);
     alpha_attr = nullptr;  // Node now owns
 
-    Ort::ThrowOnError(model_builder_api.AddNodeToGraph(graph, node));
+    Ort::ThrowOnError(model_editor_api.AddNodeToGraph(graph, node));
     node = nullptr;  // graph now owns node
 
     // Y input
@@ -226,7 +226,7 @@ TEST(ModelBuilderAPITest, Basic_CApi) {
                                                      ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT,
                                                      &y_tensor));
 
-    Ort::ThrowOnError(model_builder_api.AddInitializerToGraph(graph, "Y", y_tensor, /*data is external*/ true));
+    Ort::ThrowOnError(model_editor_api.AddInitializerToGraph(graph, "Y", y_tensor, /*data is external*/ true));
     y_tensor = nullptr;  // graph now owns
 
     if (use_constant_node) {
@@ -236,27 +236,27 @@ TEST(ModelBuilderAPITest, Basic_CApi) {
       OrtOpAttr* min_attr = nullptr;
       float min = 400.0f;
       Ort::ThrowOnError(api.CreateOpAttr("value", &min, sizeof(min), ORT_OP_ATTR_FLOAT, &min_attr));
-      node = CreateNode(model_builder_api, "Constant", "clip_min", {}, {"min"}, {min_attr});
-      Ort::ThrowOnError(model_builder_api.AddNodeToGraph(graph, node));
+      node = CreateNode(model_editor_api, "Constant", "clip_min", {}, {"min"}, {min_attr});
+      Ort::ThrowOnError(model_editor_api.AddNodeToGraph(graph, node));
       node = nullptr;  // graph now owns node
 
       OrtOpAttr* max_attr = nullptr;
       float max = 900.0f;
       Ort::ThrowOnError(api.CreateOpAttr("value", &max, sizeof(max), ORT_OP_ATTR_FLOAT, &max_attr));
-      node = CreateNode(model_builder_api, "Constant", "clip_max", {}, {"max"}, {max_attr});
-      Ort::ThrowOnError(model_builder_api.AddNodeToGraph(graph, node));
+      node = CreateNode(model_editor_api, "Constant", "clip_max", {}, {"max"}, {max_attr});
+      Ort::ThrowOnError(model_editor_api.AddNodeToGraph(graph, node));
       node = nullptr;  // graph now owns node
 
-      node = CreateNode(model_builder_api, "Clip", "Clip1", {gemm_output_name.c_str(), "min", "max"}, {"Z"});
-      Ort::ThrowOnError(model_builder_api.AddNodeToGraph(graph, node));
+      node = CreateNode(model_editor_api, "Clip", "Clip1", {gemm_output_name.c_str(), "min", "max"}, {"Z"});
+      Ort::ThrowOnError(model_editor_api.AddNodeToGraph(graph, node));
       node = nullptr;  // graph now owns node
     }
 
     std::vector<const char*> domain_names = {onnxruntime::kOnnxDomain};
     std::vector<int> opset_versions = {18};
-    Ort::ThrowOnError(model_builder_api.CreateModel(domain_names.data(), opset_versions.data(), domain_names.size(),
-                                                    &model));
-    Ort::ThrowOnError(model_builder_api.AddGraphToModel(model, graph));
+    Ort::ThrowOnError(model_editor_api.CreateModel(domain_names.data(), opset_versions.data(), domain_names.size(),
+                                                   &model));
+    Ort::ThrowOnError(model_editor_api.AddGraphToModel(model, graph));
     graph = nullptr;  // model now owns
   };
 
@@ -275,7 +275,7 @@ TEST(ModelBuilderAPITest, Basic_CApi) {
                     9.0f, 3.0f, 5.0f, 7.0f};
 
     std::vector<int64_t> expected_dims = {3, 8};
-    ModelBuilderAPI::Model cxx_model(model);
+    Model cxx_model(model);
     auto session = CreateSession(*ort_env, cxx_model);
 
     std::vector<float> expected_output;
@@ -301,11 +301,11 @@ TEST(ModelBuilderAPITest, Basic_CApi) {
   run_test(true);  // use Constant node for initializer
 }
 
-TEST(ModelBuilderAPITest, Basic_CxxApi) {
+TEST(ModelEditorAPITest, Basic_CxxApi) {
   // initializers that are used directly by the model. as there's no copy they must remain valid
   std::vector<std::unique_ptr<std::vector<float>>> weights;
 
-  Ort::ModelBuilderAPI::Graph graph;
+  Ort::Graph graph;
 
   //
   // Create OrtModel with a Gemm. X input is 3x4, Y input is 4x8, Z output is 3x8.
@@ -313,8 +313,8 @@ TEST(ModelBuilderAPITest, Basic_CxxApi) {
   // Set the alpha attribute of the Gemm node to 2.0 to test attribute handling.
   //
 
-  std::vector<ModelBuilderAPI::ValueInfo> graph_inputs;
-  std::vector<ModelBuilderAPI::ValueInfo> graph_outputs;
+  std::vector<ValueInfo> graph_inputs;
+  std::vector<ValueInfo> graph_outputs;
 
   // model input. it's {3, 4} but use a symbolic dim to test that works.
   std::vector<int64_t> input_dims({-1, 4});
@@ -345,7 +345,7 @@ TEST(ModelBuilderAPITest, Basic_CxxApi) {
   float alpha_value = 2.0;
   attributes.push_back(OpAttr("alpha", &alpha_value, 1, OrtOpAttrType::ORT_OP_ATTR_FLOAT));
 
-  ModelBuilderAPI::Node node("Gemm", onnxruntime::kOnnxDomain, "Gemm1", {"X", "Y"}, {"Z"}, attributes);
+  Node node("Gemm", onnxruntime::kOnnxDomain, "Gemm1", {"X", "Y"}, {"Z"}, attributes);
 
   graph.AddNode(node);
 
@@ -365,8 +365,8 @@ TEST(ModelBuilderAPITest, Basic_CxxApi) {
   auto y_tensor = Value::CreateTensor(info, y_values.data(), y_values.size(), y_dims.data(), y_dims.size());
   graph.AddInitializer("Y", y_tensor, /*data is external*/ true);
 
-  std::vector<ModelBuilderAPI::Model::DomainOpsetPair> opsets{{onnxruntime::kOnnxDomain, 18}};
-  ModelBuilderAPI::Model model(opsets);
+  std::vector<Model::DomainOpsetPair> opsets{{onnxruntime::kOnnxDomain, 18}};
+  Model model(opsets);
   model.AddGraph(graph);
 
   std::vector<Input<float>> inputs(1);
@@ -386,7 +386,7 @@ TEST(ModelBuilderAPITest, Basic_CxxApi) {
                         592.0f, 640.0f, 688.0f, 736.0f, 784.0f, 832.0f, 880.0f, 928.0f});
 }
 
-TEST(ModelBuilderAPITest, BasicModelEdit_CxxApi) {
+TEST(ModelEditorAPITest, BasicModelEdit_CxxApi) {
   //
   // Load existing model
   // Add Cast to change the model input from float to int64
@@ -399,7 +399,7 @@ TEST(ModelBuilderAPITest, BasicModelEdit_CxxApi) {
   // Set this to save the model if you want to debug.
   // so.SetOptimizedModelFilePath(ORT_TSTR("model_builder_edited.onnx"));
 
-  Session session = Session::CreateModelBuilderSession(*ort_env, TSTR("testdata/mnist.onnx"), so);
+  Session session = Session::CreateModelEditorSession(*ort_env, TSTR("testdata/mnist.onnx"), so);
 
   ASSERT_EQ(session.GetOpset(""), 8);  // ONNX domain is empty string
 
@@ -407,10 +407,10 @@ TEST(ModelBuilderAPITest, BasicModelEdit_CxxApi) {
   // the original graph is unchanged. nodes can be added before/after it. initializers can be added.
   // new nodes must conform to the original domain:opset of the model.
   // additional operator domain:opset pairs can be added.
-  std::vector<ModelBuilderAPI::Model::DomainOpsetPair> opsets;  // no additional opsets required
-  ModelBuilderAPI::Model model(opsets);
+  std::vector<Model::DomainOpsetPair> opsets;  // no additional opsets required
+  Model model(opsets);
 
-  std::vector<ModelBuilderAPI::ValueInfo> graph_inputs = session.GetInputs();
+  std::vector<ValueInfo> graph_inputs = session.GetInputs();
   ASSERT_EQ(graph_inputs.size(), size_t(1));
   ASSERT_EQ(graph_inputs[0].TypeInfo().GetTensorTypeAndShapeInfo().GetElementType(),
             ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT);
@@ -426,25 +426,25 @@ TEST(ModelBuilderAPITest, BasicModelEdit_CxxApi) {
   int64_t to = ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT;
   attributes.push_back(OpAttr("to", &to, 1, OrtOpAttrType::ORT_OP_ATTR_INT));
 
-  ModelBuilderAPI::Node node("Cast", onnxruntime::kOnnxDomain, new_input_name, {"Int64Input"},
-                             // the existing node will now consume the output from the Cast instead of a graph input
-                             {orig_input_name},
-                             attributes);
+  Ort::Node node("Cast", onnxruntime::kOnnxDomain, new_input_name, {"Int64Input"},
+                 // the existing node will now consume the output from the Cast instead of a graph input
+                 {orig_input_name},
+                 attributes);
 
   // we're replacing the only input. the shape is the same but the name and data type change.
   TensorTypeAndShapeInfo input_tensor_info(ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64,
                                            input_shape);
   auto input_type_info = TypeInfo::CreateTensorInfo(input_tensor_info.GetConst());
-  graph_inputs[0] = ModelBuilderAPI::ValueInfo(new_input_name, input_type_info.GetConst());
+  graph_inputs[0] = ValueInfo(new_input_name, input_type_info.GetConst());
 
-  ModelBuilderAPI::Graph graph;  // new info to augment the model with
+  Graph graph;  // new info to augment the model with
 
   graph.AddNode(node);
   graph.SetInputs(graph_inputs);
 
   // the node we added does not require any new opsets.
   model.AddGraph(graph);
-  session.FinalizeModelBuilderSession(model, so);
+  session.FinalizeModelEditorSession(model, so);
 
   std::vector<Input<int64_t>> inputs(1);
   auto& input = inputs[0];
@@ -478,7 +478,7 @@ TEST(ModelBuilderAPITest, BasicModelEdit_CxxApi) {
   }
 }
 
-TEST(ModelBuilderAPITest, InvalidDimension) {
+TEST(ModelEditorAPITest, InvalidDimension) {
   try {
     std::vector<int64_t> input_dims = {-2, 2};
     TensorTypeAndShapeInfo tensor_type_info(ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT,
@@ -491,10 +491,10 @@ TEST(ModelBuilderAPITest, InvalidDimension) {
   }
 }
 
-TEST(ModelBuilderAPITest, CreateInvalidModel_NoOpsets) {
-  Ort::ModelBuilderAPI::Graph graph;
-  std::vector<ModelBuilderAPI::ValueInfo> graph_inputs;
-  std::vector<ModelBuilderAPI::ValueInfo> graph_outputs;
+TEST(ModelEditorAPITest, CreateInvalidModel_NoOpsets) {
+  Ort::Graph graph;
+  std::vector<ValueInfo> graph_inputs;
+  std::vector<ValueInfo> graph_outputs;
 
   std::vector<int64_t> dims({4});
   TensorTypeAndShapeInfo tensor_info(ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT, dims);
@@ -505,12 +505,12 @@ TEST(ModelBuilderAPITest, CreateInvalidModel_NoOpsets) {
   graph.SetInputs(graph_inputs);
   graph.SetOutputs(graph_outputs);
 
-  ModelBuilderAPI::Node node("Add", onnxruntime::kOnnxDomain, "Add1", {"X", "X"}, {"Z"});
+  Ort::Node node("Add", onnxruntime::kOnnxDomain, "Add1", {"X", "X"}, {"Z"});
 
   graph.AddNode(node);
 
-  std::vector<ModelBuilderAPI::Model::DomainOpsetPair> opsets;
-  ModelBuilderAPI::Model model(opsets);
+  std::vector<Model::DomainOpsetPair> opsets;
+  Model model(opsets);
   model.AddGraph(graph);
 
   try {
@@ -521,11 +521,11 @@ TEST(ModelBuilderAPITest, CreateInvalidModel_NoOpsets) {
   }
 }
 
-TEST(ModelBuilderAPITest, CreateInvalidModel_MissingValue) {
-  Ort::ModelBuilderAPI::Graph graph;
+TEST(ModelEditorAPITest, CreateInvalidModel_MissingValue) {
+  Ort::Graph graph;
 
-  std::vector<ModelBuilderAPI::ValueInfo> graph_inputs;
-  std::vector<ModelBuilderAPI::ValueInfo> graph_outputs;
+  std::vector<ValueInfo> graph_inputs;
+  std::vector<ValueInfo> graph_outputs;
 
   std::vector<int64_t> dims({4});
   TensorTypeAndShapeInfo tensor_info(ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT, dims);
@@ -536,11 +536,11 @@ TEST(ModelBuilderAPITest, CreateInvalidModel_MissingValue) {
   graph.SetInputs(graph_inputs);
   graph.SetOutputs(graph_outputs);
 
-  ModelBuilderAPI::Node node("Add", onnxruntime::kOnnxDomain, "Add1", {"X", "missing"}, {"Z"});
+  Ort::Node node("Add", onnxruntime::kOnnxDomain, "Add1", {"X", "missing"}, {"Z"});
   graph.AddNode(node);
 
-  std::vector<ModelBuilderAPI::Model::DomainOpsetPair> opsets{{onnxruntime::kOnnxDomain, 18}};
-  ModelBuilderAPI::Model model(opsets);
+  std::vector<Model::DomainOpsetPair> opsets{{onnxruntime::kOnnxDomain, 18}};
+  Model model(opsets);
   model.AddGraph(graph);
 
   try {
@@ -552,7 +552,7 @@ TEST(ModelBuilderAPITest, CreateInvalidModel_MissingValue) {
   }
 }
 
-TEST(ModelBuilderAPITest, InvalidModelEdit) {
+TEST(ModelEditorAPITest, InvalidModelEdit) {
   // Add a node but make the edit invalid in various ways
   //   - add node but don't update graph inputs
   //   - add node with invalid domain
@@ -562,17 +562,17 @@ TEST(ModelBuilderAPITest, InvalidModelEdit) {
     // Set this to save the model if you want to debug.
     // so.SetOptimizedModelFilePath(ORT_TSTR("model_builder_edited.onnx"));
 
-    Session session = Session::CreateModelBuilderSession(*ort_env, TSTR("testdata/mnist.onnx"), so);
+    Session session = Session::CreateModelEditorSession(*ort_env, TSTR("testdata/mnist.onnx"), so);
 
     ASSERT_EQ(session.GetOpset(""), 8);  // ONNX domain is empty string
 
-    std::vector<ModelBuilderAPI::Model::DomainOpsetPair> opsets;  // no additional opsets required
-    ModelBuilderAPI::Model model(opsets);
-    ModelBuilderAPI::Graph graph;  // new info to augment the model with
+    std::vector<Model::DomainOpsetPair> opsets;  // no additional opsets required
+    Model model(opsets);
+    Graph graph;  // new info to augment the model with
 
     const char* domain = invalid_domain ? "invalid_domain" : onnxruntime::kOnnxDomain;
 
-    std::vector<ModelBuilderAPI::ValueInfo> graph_inputs = session.GetInputs();
+    std::vector<ValueInfo> graph_inputs = session.GetInputs();
     ASSERT_EQ(graph_inputs.size(), size_t(1));
     ASSERT_EQ(graph_inputs[0].TypeInfo().GetTensorTypeAndShapeInfo().GetElementType(),
               ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT);
@@ -584,10 +584,10 @@ TEST(ModelBuilderAPITest, InvalidModelEdit) {
     int64_t to = ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT;
     attributes.push_back(OpAttr("to", &to, 1, OrtOpAttrType::ORT_OP_ATTR_INT));
 
-    ModelBuilderAPI::Node node("Cast", domain, "NewInputNode", {new_input_name},
-                               // the existing node will now consume the output from the Cast instead of a graph input
-                               {graph_inputs[0].Name()},
-                               attributes);
+    Node node("Cast", domain, "NewInputNode", {new_input_name},
+              // the existing node will now consume the output from the Cast instead of a graph input
+              {graph_inputs[0].Name()},
+              attributes);
     graph.AddNode(node);
 
     if (invalid_domain) {
@@ -595,7 +595,7 @@ TEST(ModelBuilderAPITest, InvalidModelEdit) {
       TensorTypeAndShapeInfo input_tensor_info(ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64,
                                                graph_inputs[0].TypeInfo().GetTensorTypeAndShapeInfo().GetShape());
       auto input_type_info = TypeInfo::CreateTensorInfo(input_tensor_info.GetConst());
-      graph_inputs[0] = ModelBuilderAPI::ValueInfo(new_input_name, input_type_info.GetConst());
+      graph_inputs[0] = ValueInfo(new_input_name, input_type_info.GetConst());
       graph.SetInputs(graph_inputs);
     } else {
       // model should be invalid as we didn't connect the new node up to the graph inputs
@@ -605,7 +605,7 @@ TEST(ModelBuilderAPITest, InvalidModelEdit) {
     model.AddGraph(graph);
 
     try {
-      session.FinalizeModelBuilderSession(model, so);
+      session.FinalizeModelEditorSession(model, so);
       FAIL() << "Should have failed to resolve graph due to invalid edits.";
     } catch (const Ort::Exception& e) {
       if (invalid_domain) {
@@ -620,13 +620,15 @@ TEST(ModelBuilderAPITest, InvalidModelEdit) {
   edit_model(true);  // add node with invalid domain
 }
 
-TEST(ModelBuilderAPITest, CreateTypeInfo) {
+TEST(ModelEditorAPITest, CreateTypeInfo) {
   const auto& api = Ort::GetApi();
+  const auto& model_editor_api = Ort::GetModelEditorApi();
+
   TensorTypeAndShapeInfo base_tensor_info(ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT,
                                           {2, 4});
 
   OrtTypeInfo* base_tensor_type_info = nullptr;
-  Ort::ThrowOnError(api.CreateTensorTypeInfo(base_tensor_info, &base_tensor_type_info));
+  Ort::ThrowOnError(model_editor_api.CreateTensorTypeInfo(base_tensor_info, &base_tensor_type_info));
 
   ONNXType onnx_type = ONNX_TYPE_UNKNOWN;
   OrtTypeInfo* sparse_tensor_type_info = nullptr;
@@ -634,7 +636,7 @@ TEST(ModelBuilderAPITest, CreateTypeInfo) {
   ONNXTensorElementDataType onnx_element_type = ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED;
 
   // sparse tensor
-  Ort::ThrowOnError(api.CreateSparseTensorTypeInfo(base_tensor_info, &sparse_tensor_type_info));
+  Ort::ThrowOnError(model_editor_api.CreateSparseTensorTypeInfo(base_tensor_info, &sparse_tensor_type_info));
   Ort::ThrowOnError(api.GetOnnxTypeFromTypeInfo(sparse_tensor_type_info, &onnx_type));
   ASSERT_EQ(onnx_type, ONNXType::ONNX_TYPE_SPARSETENSOR);
   Ort::ThrowOnError(api.CastTypeInfoToTensorInfo(sparse_tensor_type_info, &tensor_info));
@@ -646,7 +648,7 @@ TEST(ModelBuilderAPITest, CreateTypeInfo) {
   const OrtSequenceTypeInfo* sequence_info = nullptr;
   OrtTypeInfo* sequence_element_type_info = nullptr;
 
-  Ort::ThrowOnError(api.CreateSequenceTypeInfo(base_tensor_type_info, &sequence_type_info));
+  Ort::ThrowOnError(model_editor_api.CreateSequenceTypeInfo(base_tensor_type_info, &sequence_type_info));
   Ort::ThrowOnError(api.GetOnnxTypeFromTypeInfo(sequence_type_info, &onnx_type));
   ASSERT_EQ(onnx_type, ONNXType::ONNX_TYPE_SEQUENCE);
   Ort::ThrowOnError(api.CastTypeInfoToSequenceTypeInfo(sequence_type_info, &sequence_info));
@@ -662,8 +664,8 @@ TEST(ModelBuilderAPITest, CreateTypeInfo) {
   const OrtMapTypeInfo* map_info = nullptr;
   ONNXTensorElementDataType map_key_type = ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED;
   OrtTypeInfo* map_value_type_info = nullptr;
-  Ort::ThrowOnError(api.CreateMapTypeInfo(ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64, base_tensor_type_info,
-                                          &map_type_info));
+  Ort::ThrowOnError(model_editor_api.CreateMapTypeInfo(ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64, base_tensor_type_info,
+                                                       &map_type_info));
   Ort::ThrowOnError(api.GetOnnxTypeFromTypeInfo(map_type_info, &onnx_type));
   ASSERT_EQ(onnx_type, ONNXType::ONNX_TYPE_MAP);
   Ort::ThrowOnError(api.CastTypeInfoToMapTypeInfo(map_type_info, &map_info));
@@ -680,7 +682,7 @@ TEST(ModelBuilderAPITest, CreateTypeInfo) {
   OrtTypeInfo* optional_type_info = nullptr;
   const OrtOptionalTypeInfo* optional_info = nullptr;
   OrtTypeInfo* optional_contained_type_info = nullptr;
-  Ort::ThrowOnError(api.CreateOptionalTypeInfo(base_tensor_type_info, &optional_type_info));
+  Ort::ThrowOnError(model_editor_api.CreateOptionalTypeInfo(base_tensor_type_info, &optional_type_info));
   Ort::ThrowOnError(api.GetOnnxTypeFromTypeInfo(optional_type_info, &onnx_type));
   ASSERT_EQ(onnx_type, ONNXType::ONNX_TYPE_OPTIONAL);
   Ort::ThrowOnError(api.CastTypeInfoToOptionalTypeInfo(optional_type_info, &optional_info));

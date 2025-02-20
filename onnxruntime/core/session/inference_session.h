@@ -46,7 +46,7 @@ namespace ONNX_NAMESPACE {
 class ModelProto;
 }  // namespace ONNX_NAMESPACE
 
-// OrtModelBuilderApi Model. Used to dynamically construct a model via C API at runtime.
+// OrtModelEditorApi Model. Used to dynamically construct a model via C API at runtime.
 struct OrtModel;
 
 namespace onnxruntime {  // forward declarations
@@ -324,21 +324,21 @@ class InferenceSession {
   [[nodiscard]] common::Status Load();
 
   /**
-   * Load an OrtModel that was dynamically constructed via OrtModelBuilderApi.
+   * Load an OrtModel that was dynamically constructed via OrtModelEditorApi.
    *
-   * @param graph_api_model OrtModel from OrtModelBuilderApi
+   * @param graph_api_model OrtModel from OrtModelEditorApi
    * @return OK if success.
    */
   [[nodiscard]] common::Status Load(const OrtModel& graph_api_model);
 
   /**
-   * Apply updates from an OrtModel that was created via OrtModelBuilderApi.
+   * Apply updates from an OrtModel that was created via OrtModelEditorApi.
    * This can:
    *   - add nodes at the start and end of the model
    *   - add initializers
    *   - update the graph inputs/outputs
    *
-   * @param graph_api_model OrtModel from OrtModelBuilderApi
+   * @param graph_api_model OrtModel from OrtModelEditorApi
    * @return OK if success.
    */
   [[nodiscard]] common::Status ApplyUpdates(const OrtModel& graph_api_model);

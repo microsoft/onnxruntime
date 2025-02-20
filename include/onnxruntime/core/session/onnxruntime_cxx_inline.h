@@ -1107,35 +1107,35 @@ inline TypeInfo ConstSessionImpl<T>::GetOverridableInitializerTypeInfo(size_t in
 template <typename T>
 inline int ConstSessionImpl<T>::GetOpset(const std::string& domain) const {
   int opset;
-  ThrowOnError(GetApi().SessionGetOpsetForDomain(this->p_, domain.c_str(), &opset));
+  ThrowOnError(GetModelEditorApi().SessionGetOpsetForDomain(this->p_, domain.c_str(), &opset));
   return opset;
 }
 
 template <typename T>
-std::vector<ModelBuilderAPI::ValueInfo> ConstSessionImpl<T>::GetInputs() const {
+std::vector<ValueInfo> ConstSessionImpl<T>::GetInputs() const {
   const std::vector<std::string> input_names = GetInputNames();
 
-  std::vector<ModelBuilderAPI::ValueInfo> inputs;
+  std::vector<ValueInfo> inputs;
   inputs.reserve(input_names.size());
 
   for (size_t i = 0; i < input_names.size(); ++i) {
     auto type_info = GetInputTypeInfo(i);
-    inputs.emplace_back(ModelBuilderAPI::ValueInfo{input_names[i], type_info.GetConst()});
+    inputs.emplace_back(ValueInfo{input_names[i], type_info.GetConst()});
   }
 
   return inputs;
 }
 
 template <typename T>
-std::vector<ModelBuilderAPI::ValueInfo> ConstSessionImpl<T>::GetOutputs() const {
+std::vector<ValueInfo> ConstSessionImpl<T>::GetOutputs() const {
   const std::vector<std::string> output_names = GetOutputNames();
 
-  std::vector<ModelBuilderAPI::ValueInfo> outputs;
+  std::vector<ValueInfo> outputs;
   outputs.reserve(output_names.size());
 
   for (size_t i = 0; i < output_names.size(); ++i) {
     auto type_info = GetOutputTypeInfo(i);
-    outputs.emplace_back(ModelBuilderAPI::ValueInfo{output_names[i], type_info.GetConst()});
+    outputs.emplace_back(ValueInfo{output_names[i], type_info.GetConst()});
   }
 
   return outputs;
@@ -1189,10 +1189,10 @@ inline void SessionImpl<T>::SetEpDynamicOptions(const char* const* keys, const c
 }
 
 template <typename T>
-inline void SessionImpl<T>::FinalizeModelBuilderSession(const ModelBuilderAPI::Model& model, const SessionOptions& options,
-                                                        OrtPrepackedWeightsContainer* prepacked_weights_container) {
-  ThrowOnError(GetModelBuilderApi().ApplyModelToModelBuilderSession(this->p_, model));
-  ThrowOnError(GetModelBuilderApi().FinalizeModelBuilderSession(this->p_, options, prepacked_weights_container));
+inline void SessionImpl<T>::FinalizeModelEditorSession(const Model& model, const SessionOptions& options,
+                                                       OrtPrepackedWeightsContainer* prepacked_weights_container) {
+  ThrowOnError(GetModelEditorApi().ApplyModelToModelEditorSession(this->p_, model));
+  ThrowOnError(GetModelEditorApi().FinalizeModelEditorSession(this->p_, options, prepacked_weights_container));
 }
 
 }  // namespace detail
@@ -1241,29 +1241,29 @@ inline Session::Session(const Env& env, const void* model_data, size_t model_dat
                                                                             prepacked_weights_container, &this->p_));
 }
 
-inline Session::Session(const Env& env, const ModelBuilderAPI::Model& model, const SessionOptions& options) {
-  ThrowOnError(GetModelBuilderApi().CreateSessionFromModel(env, model.GetConst(), options, &this->p_));
+inline Session::Session(const Env& env, const Model& model, const SessionOptions& options) {
+  ThrowOnError(GetModelEditorApi().CreateSessionFromModel(env, model.GetConst(), options, &this->p_));
 }
 
 // static
-inline Session Session::CreateModelBuilderSession(const Env& env, const ORTCHAR_T* model_path,
-                                                  const SessionOptions& options) {
+inline Session Session::CreateModelEditorSession(const Env& env, const ORTCHAR_T* model_path,
+                                                 const SessionOptions& options) {
   OrtSession* session = nullptr;
-  ThrowOnError(GetModelBuilderApi().CreateModelBuilderSession(env, model_path, options, &session));
+  ThrowOnError(GetModelEditorApi().CreateModelEditorSession(env, model_path, options, &session));
   return Session(session);
 }
 
 // static
-inline Session Session::CreateModelBuilderSession(const Env& env, const void* model_data, size_t model_data_length,
-                                                  const SessionOptions& options) {
+inline Session Session::CreateModelEditorSession(const Env& env, const void* model_data, size_t model_data_length,
+                                                 const SessionOptions& options) {
   OrtSession* session = nullptr;
-  ThrowOnError(GetModelBuilderApi().CreateModelBuilderSessionFromArray(env, model_data, model_data_length, options,
-                                                                       &session));
+  ThrowOnError(GetModelEditorApi().CreateModelEditorSessionFromArray(env, model_data, model_data_length, options,
+                                                                     &session));
   return Session(session);
 }
 
-void FinalizeModelBuilderSession(const ModelBuilderAPI::Model& model, const SessionOptions& options,
-                                 OrtPrepackedWeightsContainer* prepacked_weights_container);
+void FinalizeModelEditorSession(const Model& model, const SessionOptions& options,
+                                OrtPrepackedWeightsContainer* prepacked_weights_container);
 
 inline AllocatedStringPtr ModelMetadata::GetProducerNameAllocated(OrtAllocator* allocator) const {
   char* out;
@@ -1351,35 +1351,35 @@ inline TensorTypeAndShapeInfo::TensorTypeAndShapeInfo(ONNXTensorElementDataType 
 // static
 inline TypeInfo TypeInfo::CreateTensorInfo(ConstTensorTypeAndShapeInfo tensor_type_and_shape_info) {
   OrtTypeInfo* output = nullptr;
-  ThrowOnError(GetApi().CreateTensorTypeInfo(tensor_type_and_shape_info, &output));
+  ThrowOnError(GetModelEditorApi().CreateTensorTypeInfo(tensor_type_and_shape_info, &output));
   return TypeInfo{output};
 }
 
 // static
 inline TypeInfo TypeInfo::CreateSparseTensorInfo(ConstTensorTypeAndShapeInfo sparse_tensor_type_and_shape_info) {
   OrtTypeInfo* output = nullptr;
-  ThrowOnError(GetApi().CreateSparseTensorTypeInfo(sparse_tensor_type_and_shape_info, &output));
+  ThrowOnError(GetModelEditorApi().CreateSparseTensorTypeInfo(sparse_tensor_type_and_shape_info, &output));
   return TypeInfo{output};
 }
 
 // static
 inline TypeInfo TypeInfo::CreateSequenceTypeInfo(ConstTypeInfo sequence_type) {
   OrtTypeInfo* output;
-  ThrowOnError(GetApi().CreateSequenceTypeInfo(sequence_type, &output));
+  ThrowOnError(GetModelEditorApi().CreateSequenceTypeInfo(sequence_type, &output));
   return TypeInfo{output};
 }
 
 // static
 inline TypeInfo TypeInfo::CreateMapTypeInfo(ONNXTensorElementDataType key_type, ConstTypeInfo value_type) {
   OrtTypeInfo* output;
-  ThrowOnError(GetApi().CreateMapTypeInfo(key_type, value_type, &output));
+  ThrowOnError(GetModelEditorApi().CreateMapTypeInfo(key_type, value_type, &output));
   return TypeInfo{output};
 }
 
 // static
 inline TypeInfo TypeInfo::CreateOptionalTypeInfo(ConstTypeInfo contained_type) {
   OrtTypeInfo* output;
-  ThrowOnError(GetApi().CreateOptionalTypeInfo(contained_type, &output));
+  ThrowOnError(GetModelEditorApi().CreateOptionalTypeInfo(contained_type, &output));
   return TypeInfo{output};
 }
 
@@ -2359,7 +2359,6 @@ inline const OrtOpAttr* ShapeInferContext::GetAttrHdl(const char* attr_name) con
   return attr_hdl;
 }
 
-namespace ModelBuilderAPI {
 namespace detail {
 inline std::vector<const char*> StringsToCharPtrs(const std::vector<std::string>& strings) {
   std::vector<const char*> ptrs;
@@ -2386,11 +2385,11 @@ inline void Node::Init(const std::string& operator_name, const std::string& oper
   std::transform(attributes.begin(), attributes.end(), std::back_inserter(attributes_ptrs),
                  [](OpAttr& attr) -> OrtOpAttr* { return attr; });
 
-  ThrowOnError(GetModelBuilderApi().CreateNode(operator_name.c_str(), operator_domain.c_str(), node_name.c_str(),
-                                               inputs.data(), inputs.size(),
-                                               outputs.data(), outputs.size(),
-                                               attributes_ptrs.data(), attributes_ptrs.size(),
-                                               &node));
+  ThrowOnError(GetModelEditorApi().CreateNode(operator_name.c_str(), operator_domain.c_str(), node_name.c_str(),
+                                              inputs.data(), inputs.size(),
+                                              outputs.data(), outputs.size(),
+                                              attributes_ptrs.data(), attributes_ptrs.size(),
+                                              &node));
 
   // Node now owns the attributes
   std::for_each(attributes.begin(), attributes.end(), [](OpAttr& attr) { attr.release(); });
@@ -2413,7 +2412,7 @@ inline Node::Node(const std::string& operator_name, const std::string& operator_
 }
 
 inline Graph::Graph() {
-  ThrowOnError(GetModelBuilderApi().CreateGraph(&p_));
+  ThrowOnError(GetModelEditorApi().CreateGraph(&p_));
 }
 
 inline Model::Model(const std::vector<DomainOpsetPair>& opsets) {
@@ -2427,24 +2426,24 @@ inline Model::Model(const std::vector<DomainOpsetPair>& opsets) {
     versions.push_back(pair.second);
   }
 
-  ThrowOnError(GetModelBuilderApi().CreateModel(domains.data(), versions.data(), opsets.size(), &p_));
+  ThrowOnError(GetModelEditorApi().CreateModel(domains.data(), versions.data(), opsets.size(), &p_));
 }
 
 inline ValueInfo::ValueInfo(const std::string& name, const ConstTypeInfo& type_info) {
-  ThrowOnError(GetModelBuilderApi().CreateValueInfo(name.c_str(), type_info, &p_));
+  ThrowOnError(GetModelEditorApi().CreateValueInfo(name.c_str(), type_info, &p_));
 }
 namespace detail {
 template <>
 inline std::string ValueInfoImpl<OrtValueInfo>::Name() const {
   const char* name = nullptr;
-  ThrowOnError(GetModelBuilderApi().GetValueInfoName(this->p_, &name));
+  ThrowOnError(GetApi().GetValueInfoName(this->p_, &name));
   return name;
 }
 
 template <>
 inline ConstTypeInfo ValueInfoImpl<OrtValueInfo>::TypeInfo() const {
   const OrtTypeInfo* type_info = nullptr;
-  ThrowOnError(GetModelBuilderApi().GetValueInfoTypeInfo(this->p_, &type_info));
+  ThrowOnError(GetApi().GetValueInfoTypeInfo(this->p_, &type_info));
   return ConstTypeInfo{type_info};
 }
 
@@ -2455,7 +2454,7 @@ inline void GraphImpl<OrtGraph>::SetInputs(std::vector<ValueInfo>& inputs) {
   std::transform(inputs.begin(), inputs.end(), std::back_inserter(inputs_ptrs),
                  [](ValueInfo& vi) -> OrtValueInfo* { return vi; });
 
-  ThrowOnError(GetModelBuilderApi().SetGraphInputs(p_, inputs_ptrs.data(), inputs_ptrs.size()));
+  ThrowOnError(GetModelEditorApi().SetGraphInputs(p_, inputs_ptrs.data(), inputs_ptrs.size()));
 
   // Graph now owns the inputs
   std::for_each(inputs.begin(), inputs.end(), [](ValueInfo& vi) { vi.release(); });
@@ -2468,7 +2467,7 @@ inline void GraphImpl<OrtGraph>::SetOutputs(std::vector<ValueInfo>& outputs) {
   std::transform(outputs.begin(), outputs.end(), std::back_inserter(outputs_ptrs),
                  [](ValueInfo& vi) -> OrtValueInfo* { return vi; });
 
-  ThrowOnError(GetModelBuilderApi().SetGraphOutputs(p_, outputs_ptrs.data(), outputs_ptrs.size()));
+  ThrowOnError(GetModelEditorApi().SetGraphOutputs(p_, outputs_ptrs.data(), outputs_ptrs.size()));
 
   // Graph now owns the outputs
   std::for_each(outputs.begin(), outputs.end(), [](ValueInfo& vi) { vi.release(); });
@@ -2477,20 +2476,19 @@ inline void GraphImpl<OrtGraph>::SetOutputs(std::vector<ValueInfo>& outputs) {
 template <>
 inline void GraphImpl<OrtGraph>::AddInitializer(const std::string& name, Value& initializer, bool data_is_external) {
   // Graph takes ownership of `initializer`
-  ThrowOnError(GetModelBuilderApi().AddInitializerToGraph(p_, name.c_str(), initializer.release(), data_is_external));
+  ThrowOnError(GetModelEditorApi().AddInitializerToGraph(p_, name.c_str(), initializer.release(), data_is_external));
 }
 
 template <>
 inline void GraphImpl<OrtGraph>::AddNode(Node& node) {
   // Graph takes ownership of `node`
-  ThrowOnError(GetModelBuilderApi().AddNodeToGraph(p_, node.release()));
+  ThrowOnError(GetModelEditorApi().AddNodeToGraph(p_, node.release()));
 }
 
 template <>
 inline void ModelImpl<OrtModel>::AddGraph(Graph& graph) {
   // Model takes ownership of `graph`
-  ThrowOnError(GetModelBuilderApi().AddGraphToModel(p_, graph.release()));
+  ThrowOnError(GetModelEditorApi().AddGraphToModel(p_, graph.release()));
 }
 }  // namespace detail
-}  // namespace ModelBuilderAPI
 }  // namespace Ort

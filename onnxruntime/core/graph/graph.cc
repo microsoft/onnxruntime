@@ -29,7 +29,7 @@
 #include "core/graph/graph_viewer.h"
 #include "core/graph/indexed_sub_graph.h"
 #include "core/graph/model.h"
-#include "core/graph/model_builder_api_types.h"
+#include "core/graph/model_editor_api_types.h"
 #include "core/graph/model_load_utils.h"
 #include "core/graph/model_saving_options.h"
 #include "core/graph/node_attr_utils.h"
@@ -5743,7 +5743,7 @@ ValueInfoProto OrtValueInfoToOnnx(const OrtValueInfo& vi) {
   // the model builder API checks that the OrtValueInfo has a complete and valid OrtTypeInfo instance and that the
   // name is not null/empty.
   ORT_ENFORCE(vi.type_info->type == ONNX_TYPE_TENSOR,
-              "Internal error. Model Builder API should only allow OrtValueInfo for tensor to be created.");
+              "Internal error. Model Editor API should only allow OrtValueInfo for tensor to be created.");
 
   ValueInfoProto value_info_proto;
   value_info_proto.set_name(vi.name);
@@ -5772,7 +5772,7 @@ ValueInfoProto OrtValueInfoToOnnx(const OrtValueInfo& vi) {
 }
 }  // namespace
 
-Status Graph::LoadFromModelBuilderApiModel(const OrtGraph& api_graph, bool updating_existing_graph) {
+Status Graph::LoadFromModelEditorApiModel(const OrtGraph& api_graph, bool updating_existing_graph) {
   ArgNameToTypeMap name_to_type_map;
 
   // NOTE: need to create NodeArgs as we go along
@@ -5905,13 +5905,13 @@ Status Graph::LoadFromModelBuilderApiModel(const OrtGraph& api_graph, bool updat
 }
 
 // static
-Status Graph::LoadFromModelBuilderApiModel(const OrtGraph& api_graph,
-                                           const Model& owning_model,
-                                           const std::unordered_map<std::string, int>& domain_to_version,
-                                           IOnnxRuntimeOpSchemaCollectionPtr schema_registry,
-                                           bool strict_shape_type_inference,
-                                           const logging::Logger& logger,
-                                           std::unique_ptr<Graph>& graph) {
+Status Graph::LoadFromModelEditorApiModel(const OrtGraph& api_graph,
+                                          const Model& owning_model,
+                                          const std::unordered_map<std::string, int>& domain_to_version,
+                                          IOnnxRuntimeOpSchemaCollectionPtr schema_registry,
+                                          bool strict_shape_type_inference,
+                                          const logging::Logger& logger,
+                                          std::unique_ptr<Graph>& graph) {
   graph = std::make_unique<Graph>(owning_model,
                                   domain_to_version,
                                   schema_registry,
@@ -5919,10 +5919,10 @@ Status Graph::LoadFromModelBuilderApiModel(const OrtGraph& api_graph,
                                   logger,
                                   strict_shape_type_inference);
 
-  return graph->LoadFromModelBuilderApiModel(api_graph);
+  return graph->LoadFromModelEditorApiModel(api_graph);
 }
 
-Status Graph::UpdateUsingModelBuilderApiModel(const OrtModel& api_model) {
+Status Graph::UpdateUsingModelEditorApiModel(const OrtModel& api_model) {
   for (auto& entry : api_model.domain_to_version) {
     if (auto it = domain_to_version_.find(entry.first); it != domain_to_version_.end()) {
       if (it->second != entry.second) {
@@ -5936,7 +5936,7 @@ Status Graph::UpdateUsingModelBuilderApiModel(const OrtModel& api_model) {
   }
 
   // this will replace inputs/outputs and add nodes.
-  return LoadFromModelBuilderApiModel(*api_model.graph, /*updating_existing_graph*/ true);
+  return LoadFromModelEditorApiModel(*api_model.graph, /*updating_existing_graph*/ true);
 }
 
 #endif  // !defined(ORT_MINIMAL_BUILD)
