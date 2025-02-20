@@ -1464,7 +1464,7 @@ const char* QnnBackendManager::QnnProfileErrorToString(QnnProfile_Error_t error)
   }
 }
 
-std::string_view QnnBackendManager::QnnErrorHandleToString(Qnn_ErrorHandle_t error) {
+std::string QnnBackendManager::QnnErrorHandleToString(Qnn_ErrorHandle_t error) {
   return utils::GetQnnErrorMessage(qnn_interface_, error);
 }
 

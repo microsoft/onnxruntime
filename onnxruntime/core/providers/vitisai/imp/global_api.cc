@@ -63,6 +63,7 @@ struct OrtVitisAIEpAPI {
   void (*profiler_collect)(
       std::vector<EventInfo>& api_events,
       std::vector<EventInfo>& kernel_events);
+  void (*deinitialize_onnxruntime_vitisai_ep)();
   void Ensure() {
     if (handle_)
       return;
@@ -91,6 +92,7 @@ struct OrtVitisAIEpAPI {
     ORT_THROW_IF_ERROR(env.GetSymbolFromLibrary(handle_, "create_ep_context_nodes", (void**)&create_ep_context_nodes));
     ORT_THROW_IF_ERROR(env.GetSymbolFromLibrary(handle_, "vitisai_ep_on_run_start", (void**)&vitisai_ep_on_run_start));
     ORT_THROW_IF_ERROR(env.GetSymbolFromLibrary(handle_, "vitisai_ep_set_ep_dynamic_options", (void**)&vitisai_ep_set_ep_dynamic_options));
+    std::ignore = env.GetSymbolFromLibrary(handle_, "deinitialize_onnxruntime_vitisai_ep", (void**)&deinitialize_onnxruntime_vitisai_ep);
   }
   void Clear() {
     if (handle_) {
@@ -192,7 +194,7 @@ struct MyCustomOpKernel : OpKernel {
   void* op_kernel_;
 };
 
-void create_kernel_registry(std::vector<OrtCustomOpDomain*> domains) {
+void create_kernel_registry(const std::vector<OrtCustomOpDomain*>& domains) {
   s_kernel_registry_vitisaiep = KernelRegistry::Create();
   for (const auto& domain : domains) {
     for (const auto* op : domain->custom_ops_) {
@@ -245,12 +247,25 @@ void create_kernel_registry(std::vector<OrtCustomOpDomain*> domains) {
     }
   }
 }
+
 void initialize_vitisai_ep() {
   s_library_vitisaiep.Ensure();
   s_domains_vitisaiep.reserve(100);
   s_library_vitisaiep.initialize_onnxruntime_vitisai_ep(create_org_api_hook(), s_domains_vitisaiep);
   vaip::register_xir_ops(s_domains_vitisaiep);
   create_kernel_registry(s_domains_vitisaiep);
+}
+
+void deinitialize_vitisai_ep() {
+  if (s_library_vitisaiep.deinitialize_onnxruntime_vitisai_ep) {
+    s_library_vitisaiep.deinitialize_onnxruntime_vitisai_ep();
+  }
+  vaip::deregister_xir_ops(s_domains_vitisaiep);
+  // kernel registry would be repopulated, no need to delete kernel registry
+  s_domains_vitisaiep.clear();
+
+  s_library_vitisaiep.Clear();
+  s_kernel_registry_vitisaiep.reset();
 }
 
 static void set_version_info(vaip_core::OrtApiForVaip& api) {
@@ -509,9 +524,4 @@ vaip_core::OrtApiForVaip* create_org_api_hook() {
   } else {
     return &the_global_api;
   }
-}
-
-void deinitialize_vitisai_ep() {
-  s_library_vitisaiep.Clear();
-  s_kernel_registry_vitisaiep.reset();
 }
