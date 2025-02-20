@@ -17,8 +17,8 @@ using namespace onnxruntime::webgpu;
 
 class CopyKVCacheProgram final : public Program<CopyKVCacheProgram> {
  public:
-  CopyKVCacheProgram(const std::string& kernel_name, bool is_first_prompt, bool kv_BNSH, bool past_present_share_buffer)
-      : Program{kernel_name}, is_first_prompt_(is_first_prompt), kv_BNSH_(kv_BNSH), past_present_share_buffer_(past_present_share_buffer) {
+  CopyKVCacheProgram(const std::string& kernel_name, bool has_past, bool kv_BNSH, bool past_present_share_buffer)
+      : Program{kernel_name}, has_past_(has_past), kv_BNSH_(kv_BNSH), past_present_share_buffer_(past_present_share_buffer) {
   }
 
   Status GenerateShaderCode(ShaderHelper& sh) const override;
@@ -27,7 +27,7 @@ class CopyKVCacheProgram final : public Program<CopyKVCacheProgram> {
                                           {"past_sequence_length", ProgramUniformVariableDataType::Uint32});
 
  private:
-  bool is_first_prompt_;
+  bool has_past_;
   bool kv_BNSH_;
   bool past_present_share_buffer_;
 };

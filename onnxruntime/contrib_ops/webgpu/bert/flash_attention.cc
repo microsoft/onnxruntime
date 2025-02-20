@@ -37,7 +37,8 @@ Status CopyKVCacheProgram::GenerateShaderCode(ShaderHelper& shader) const {
                                "  let sequence_id = output_indices[2];\n"
                                "  let num_head_id = output_indices[1];\n"
                                "  let batch = output_indices[0];\n";
-  if (!is_first_prompt_) {
+  if (has_past_) {
+    shader.MainFunctionBody() << "let past_sequence_length = uniforms.past_sequence_length;\n";
     if (past_present_share_buffer_) {
       shader.MainFunctionBody() << "if (sequence_id >= past_sequence_length) {\n"
                                 << "  let offset = " << key.IndicesToOffset(kv_BNSH_ ? "key_indices_t(batch, num_head_id, sequence_id - past_sequence_length, head_size_id)" : "key_indices_t(batch, sequence_id - past_sequence_length, num_head_id, head_size_id)") << ";\n"
@@ -47,8 +48,7 @@ Status CopyKVCacheProgram::GenerateShaderCode(ShaderHelper& shader) const {
     } else {
       const auto& past_key = shader.AddInput("past_key", ShaderUsage::UseUniform | ShaderUsage::UseValueTypeAlias | ShaderUsage::UseElementTypeAlias | ShaderUsage::UseIndicesTypeAlias);
       shader.AddInput("past_value", ShaderUsage::UseUniform);
-      shader.MainFunctionBody() << "let past_sequence_length = uniforms.past_sequence_length;\n"
-                                << "if (sequence_id < past_sequence_length) {\n"
+      shader.MainFunctionBody() << "if (sequence_id < past_sequence_length) {\n"
                                 << "  let pastOffset = " << past_key.IndicesToOffset("past_key_indices_t(batch, num_head_id, sequence_id, head_size_id)") << ";\n"
                                 << "  " << present_key.SetByOffset("global_idx", "past_key[pastOffset]") << ";\n"
                                 << "  " << present_value.SetByOffset("global_idx", "past_value[pastOffset]") << ";\n"
@@ -74,7 +74,8 @@ Status CopyKVCache(onnxruntime::webgpu::ComputeContext& context, const WebgpuAtt
   // number of input buffers in the shader, which we run out of (<=8) without this optimization.
   const int components = parameters.head_size_ % 4 == 0 ? 4 : (parameters.head_size_ % 2 == 0 ? 2 : 1);
   int64_t output_vec_size = present_key->Shape().Size() / components;
-  CopyKVCacheProgram program{"CopyKVCache", parameters.is_first_prompt_, parameters.qkv_format_ == Q_K_V_BSNH_BNSH_BNSH, parameters.past_present_share_buffer_};
+  bool has_past = (parameters.past_sequence_length_ > 0);
+  CopyKVCacheProgram program{"CopyKVCache", has_past, parameters.qkv_format_ == Q_K_V_BSNH_BNSH_BNSH, parameters.past_present_share_buffer_};
   if (parameters.qkv_format_ == Q_K_V_BSNH_BNSH_BNSH) {
     program.AddInputs({{K, ProgramTensorMetadataDependency::TypeAndRank, components},
                        {V, ProgramTensorMetadataDependency::TypeAndRank, components}});
@@ -83,7 +84,7 @@ Status CopyKVCache(onnxruntime::webgpu::ComputeContext& context, const WebgpuAtt
     program.AddInputs({{K, ProgramTensorMetadataDependency::TypeAndRank, reshaped_KV_shape, components},
                        {V, ProgramTensorMetadataDependency::TypeAndRank, reshaped_KV_shape, components}});
   }
-  if (!parameters.is_first_prompt_) {
+  if (has_past && !parameters.past_present_share_buffer_) {
     program.AddInputs({{past_key, ProgramTensorMetadataDependency::TypeAndRank, components},
                        {past_value, ProgramTensorMetadataDependency::TypeAndRank, components}});
   }
@@ -91,7 +92,7 @@ Status CopyKVCache(onnxruntime::webgpu::ComputeContext& context, const WebgpuAtt
                       {present_value, ProgramTensorMetadataDependency::Rank, components}});
   program.SetDispatchGroupSize(gsl::narrow<uint32_t>(output_vec_size + 63 / 64))
       .SetWorkgroupSize(64)
-      .CacheHint(parameters.is_first_prompt_, parameters.past_present_share_buffer_)
+      .CacheHint(has_past, parameters.past_present_share_buffer_)
       .AddUniformVariables({{static_cast<uint32_t>(output_vec_size)},
                             {static_cast<uint32_t>(parameters.total_sequence_length_ - parameters.kv_sequence_length_)}});
 
