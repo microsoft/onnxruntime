@@ -179,10 +179,6 @@ Status DepthToSpace::Compute(OpKernelContext* context) const {
 
     Tensor& output = *context->Output(0, {batch, output_height, output_width, output_depth});
 
-    // handle DCR and CRD format
-    auto dim3 = is_dcr_ ? blocksize_ : input_depth / blocksize_ / blocksize_;
-    auto dim5 = is_dcr_ ? input_depth / blocksize_ / blocksize_ : blocksize_;
-
     int64_t virtual_input_depth = input_depth / blocksize_ / blocksize_;
 
     TensorShape virtual_input_shape;
@@ -199,33 +195,13 @@ Status DepthToSpace::Compute(OpKernelContext* context) const {
                                                    input_width, blocksize_,
                                                    virtual_input_depth};
 
-#if 0
-    auto permutation = is_dcr_ ? std::array<Eigen::DenseIndex, IntermediateTensorRank>{{0, 1, 3, 2, 4, 5}}
-                               : std::array<Eigen::DenseIndex, IntermediateTensorRank>{{0, 1, 4, 2, 5, 3}};
-#else
     std::vector<size_t> permutation = is_dcr_ ? std::vector<size_t>{0, 1, 3, 2, 4, 5}
                                               : std::vector<size_t>{0, 1, 4, 2, 5, 3};
-#endif
 
     if (input.IsDataType<uint8_t>()) {
 
-      #if 0
-      SpaceDepthOpCpuImpl<uint8_t>(input, output, permutation,
-                                  onnxruntime::narrow<std::ptrdiff_t>(batch),
-                                  onnxruntime::narrow<std::ptrdiff_t>(input_height),
-                                  onnxruntime::narrow<std::ptrdiff_t>(input_width),
-                                  onnxruntime::narrow<std::ptrdiff_t>(dim3),
-                                  onnxruntime::narrow<std::ptrdiff_t>(blocksize_),
-                                  onnxruntime::narrow<std::ptrdiff_t>(dim5),
-                                  onnxruntime::narrow<std::ptrdiff_t>(input_height),
-                                  onnxruntime::narrow<std::ptrdiff_t>(blocksize_),
-                                  onnxruntime::narrow<std::ptrdiff_t>(input_width),
-                                  onnxruntime::narrow<std::ptrdiff_t>(blocksize_),
-                                  onnxruntime::narrow<std::ptrdiff_t>(input_depth / blocksize_ / blocksize_));
-      #else
       return Transpose::DoTranspose(
         permutation, input, output, &virtual_input_shape, &virtual_output_shape, context->GetOperatorThreadPool());
-      #endif
 
     } else {
       // user will not see this as the kernel doesn't claim support for types other than float and double

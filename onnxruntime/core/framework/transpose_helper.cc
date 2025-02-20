@@ -66,8 +66,6 @@ void TransposeSingleAxisOutwards(gsl::span<const size_t> permutations, const Ten
                                  concurrency::ThreadPool* tp = nullptr) {
   ORT_UNUSED_PARAMETER(permutations);
 
-  //ORT_ENFORCE(input_shape_override == nullptr);
-
   const auto& input_shape = input_shape_override ? *input_shape_override : input.Shape();
   const auto& input_dims = input_shape.GetDims();
   const auto& output_shape = output_shape_override ? *output_shape_override : output.Shape();
@@ -119,18 +117,6 @@ void TransposeSingleAxisOutwards(gsl::span<const size_t> permutations, const Ten
       for (size_t dim = 0; dim < dims; ++dim) {
         dst_strides[permutations[dim]] = contig_dst_strides[dim];
       }
-
-      #if 0
-      for (int i = 0; i < rank; ++i) {
-        std::cout << "dst_strides[" << i << "] = " << dst_strides[i] << std::endl;
-      }
-      for (int i = 0; i < rank; ++i) {
-        std::cout << "input_shape[" << i << "] = " << input_shape[i] << std::endl;
-      }
-      for (int i = 0; i < rank; ++i) {
-        std::cout << "src_strides[" << i << "] = " << src_strides[i] << std::endl;
-      }
-      #endif
 
       ORT_THROW_IF_ERROR(DispatchStridedCopy<element_type_lists::All>(tp,
                                                                       output, 0, dst_strides,
