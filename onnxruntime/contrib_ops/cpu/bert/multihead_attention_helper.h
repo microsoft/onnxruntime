@@ -359,6 +359,11 @@ Status CheckInputs(const T* query,
     ORT_RETURN_IF_ERROR(CheckPast(past_key, past_value, past_seq_len,
                                   batch_size, num_heads, head_size, past_present_share_buffer,
                                   past_sequence_length, max_sequence_length));
+
+    if (past_sequence_length > 1 && sequence_length > 1) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                             "Input 'query' is expected to have sequence_length == 1 when past_sequence_length > 1");
+    }
   } else if (past_key != nullptr || past_value != nullptr) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                            "Input 'past_key' and 'past_value' shall be both present or both absent");
