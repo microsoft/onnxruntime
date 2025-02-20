@@ -206,6 +206,7 @@ Status MatMulNBitsProgram::GenerateShaderCode(ShaderHelper& shader) const {
       shader.MainFunctionBody() << "        word_offset += " << 8 / a.NumComponents() << ";\n";
       shader.MainFunctionBody() << "      }\n";
       shader.MainFunctionBody() << "    }\n";
+      shader.MainFunctionBody() << "    workgroupBarrier();\n";
 
       shader.MainFunctionBody() << "  }\n";
       shader.MainFunctionBody() << "  if (local_idx < " << WorkgroupSizeY() * tile_m_ << ") {\n"
@@ -534,13 +535,21 @@ Status DP4AMatMulQuantizeProgram::GenerateShaderCode(ShaderHelper& shader) const
   shader.AddInput("input_a", ShaderUsage::UseUniform | ShaderUsage::UseIndicesTypeAlias | ShaderUsage::UseValueTypeAlias | ShaderUsage::UseElementTypeAlias);
   shader.AddOutput("output", ShaderUsage::UseUniform);
   shader.AddOutput("scales", ShaderUsage::UseUniform);
-
+  shader.AdditionalImplementation() << R"ADDNL_FN(
+  fn readInput(offset: u32) -> input_a_value_t
+  {
+    if (offset > uniforms.input_size) {
+      return input_a_value_t(0);
+    }
+    return input_a[offset];
+  }
+)ADDNL_FN";
   shader.MainFunctionBody() << R"MAIN_FN(
   var local_a : array<vec4<input_a_element_t>, 32>;
   var max_value:vec4<input_a_element_t> = vec4<input_a_element_t>(0);
   for (var idx:u32=0;idx<32;idx+=1)
   {
-    local_a[idx] = input_a[workgroup_id.x*32 + idx];
+    local_a[idx] = readInput(workgroup_idx*32 + idx);
     max_value = max(max_value, abs(local_a[idx]));
   }
   var scale = max(max_value.x, max_value.y);
@@ -548,10 +557,10 @@ Status DP4AMatMulQuantizeProgram::GenerateShaderCode(ShaderHelper& shader) const
   scale = max(scale, max_value.w);
   for (var idx:u32=0;idx<32;idx+=1)
   {
-    output[workgroup_id.x*32+idx] = pack4x8snorm(vec4<f32>(local_a[idx]/scale));
+    output[workgroup_idx*32+idx] = pack4x8snorm(vec4<f32>(local_a[idx]/scale));
   }
   // 127 is the max value of signed int8 [-127,127] used by pack4x8snorm for 1.0f.
-  scales[workgroup_id.x] = scale/127;
+  scales[workgroup_idx] = scale/127;
 )MAIN_FN";
   return Status::OK();
 }
@@ -827,7 +836,8 @@ Status MatMulNBits::ComputeInternal(onnxruntime::webgpu::ComputeContext& context
     Tensor a_scale = context.CreateGPUTensor(a->DataType(), a_scales_dims);
     quantize_program.AddInputs({{a, ProgramTensorMetadataDependency::TypeAndRank, gsl::narrow<int>(kVec4Components)}})
         .AddOutputs({{&a_quant, ProgramTensorMetadataDependency::Rank, a_quant.Shape(), gsl::narrow<int>(1)},
-                     {&a_scale, ProgramTensorMetadataDependency::Rank, a_scale.Shape(), gsl::narrow<int>(1)}});
+                     {&a_scale, ProgramTensorMetadataDependency::Rank, a_scale.Shape(), gsl::narrow<int>(1)}})
+        .AddUniformVariable({static_cast<uint32_t>(M * K / kVec4Components)});
     ORT_RETURN_IF_ERROR(context.RunProgram(quantize_program));
 
     constexpr uint32_t kTileSize = 64;

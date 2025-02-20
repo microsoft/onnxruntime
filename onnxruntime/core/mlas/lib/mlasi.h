@@ -301,8 +301,8 @@ static_assert(sizeof(MLAS_FP16) == FP16_SIZE);
 // Define the default strides to step through slices of the input matrices.
 //
 
-#define MLAS_HGEMM_STRIDEN                          32
-#define MLAS_HGEMM_STRIDEK                          512
+#define MLAS_HGEMM_STRIDEN                          128
+#define MLAS_HGEMM_STRIDEK                          128
 #define MLAS_SGEMM_STRIDEN                          128
 #define MLAS_SGEMM_STRIDEK                          128
 #define MLAS_SGEMM_PACKED_STRIDEN                   128
@@ -319,7 +319,7 @@ static_assert(sizeof(MLAS_FP16) == FP16_SIZE);
 // the effort at this time.
 //
 
-#define MLAS_HGEMM_STRIDEN_THREAD_ALIGN             16
+#define MLAS_HGEMM_STRIDEN_THREAD_ALIGN             32
 #define MLAS_SGEMM_STRIDEN_THREAD_ALIGN             16
 #define MLAS_DGEMM_STRIDEN_THREAD_ALIGN             8
 #define MLAS_QGEMM_STRIDEN_THREAD_ALIGN             16
@@ -1058,6 +1058,7 @@ extern const MLAS_QNBIT_GEMM_DISPATCH MlasSQNBitGemmDispatchAvx512vnni;
 //
 struct MLAS_ROPE_DISPATCH;
 extern const MLAS_ROPE_DISPATCH MlasRopeDispatchNeon;
+extern const MLAS_ROPE_DISPATCH MlasRopeDispatchAvx2;
 
 //
 // half gemm dispatch structure

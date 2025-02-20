@@ -234,8 +234,8 @@
 
     include(cutlass)
     target_include_directories(${target} PRIVATE ${cutlass_SOURCE_DIR}/include ${cutlass_SOURCE_DIR}/examples ${cutlass_SOURCE_DIR}/tools/util/include)
-
-    target_include_directories(${target} PRIVATE ${ONNXRUNTIME_ROOT} ${CMAKE_CURRENT_BINARY_DIR}  ${eigen_INCLUDE_DIRS} PUBLIC ${CUDAToolkit_INCLUDE_DIRS})
+    target_link_libraries(${target} PRIVATE Eigen3::Eigen)
+    target_include_directories(${target} PRIVATE ${ONNXRUNTIME_ROOT} ${CMAKE_CURRENT_BINARY_DIR} PUBLIC ${CUDAToolkit_INCLUDE_DIRS})
     # ${CMAKE_CURRENT_BINARY_DIR} is so that #include "onnxruntime_config.h" inside tensor_shape.h is found
     set_target_properties(${target} PROPERTIES LINKER_LANGUAGE CUDA)
     set_target_properties(${target} PROPERTIES FOLDER "ONNXRuntime")

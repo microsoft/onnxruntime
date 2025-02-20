@@ -42,7 +42,7 @@ stages:
       parameters:
         BuildConfig: 'Debug'
         buildArch: x64
-        additionalBuildFlags: --build_java --build_nodejs --build_wheel --disable_memleak_checker --msbuild_extra_options IncludeMobileTargets=false --build_nuget --use_vcpkg
+        additionalBuildFlags: --build_java --build_nodejs --build_wheel --disable_memleak_checker --msbuild_extra_options IncludeMobileTargets=false --build_nuget --use_vcpkg --use_vcpkg_ms_internal_asset_cache
         msbuildPlatform: x64
         isX86: false
         job_name_suffix: x64_debug
@@ -75,7 +75,7 @@ stages:
         displayName: 'Build and Test'
         inputs:
           scriptPath: '$(Build.SourcesDirectory)\tools\ci_build\build.py'
-          arguments: --config Debug --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --parallel --cmake_generator "Visual Studio 17 2022" --disable_memleak_checker --enable_address_sanitizer
+          arguments: --config Debug --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --parallel --use_vcpkg --use_vcpkg_ms_internal_asset_cache --cmake_generator "Visual Studio 17 2022" --disable_memleak_checker --enable_address_sanitizer
           workingDirectory: '$(Build.BinariesDirectory)'
 
 
@@ -88,7 +88,7 @@ stages:
         buildArch: x64
         # Compare to our Nuget packaging pipeline, this job has "--build_wheel" but doesn't have "--enable_lto --disable_rtti --use_telemetry  --enable_wcos"
         # Python bindings use typeid so I can't disable RTTI here. If it causes a problem, we will need to split this job to two jobs.
-        additionalBuildFlags: --build_wheel --build_java --build_nodejs --msbuild_extra_options IncludeMobileTargets=false --build_nuget --use_vcpkg
+        additionalBuildFlags: --build_wheel --build_java --build_nodejs --msbuild_extra_options IncludeMobileTargets=false --build_nuget --use_vcpkg --use_vcpkg_ms_internal_asset_cache
         msbuildPlatform: x64
         isX86: false
         job_name_suffix: x64_release
@@ -106,7 +106,7 @@ stages:
       parameters:
         BuildConfig: 'RelWithDebInfo'
         buildArch: x64
-        additionalBuildFlags: --build_wheel --use_dnnl --use_vcpkg
+        additionalBuildFlags: --build_wheel --use_dnnl --use_vcpkg --use_vcpkg_ms_internal_asset_cache
         msbuildPlatform: x64
         isX86: false
         job_name_suffix: x64_release
@@ -126,7 +126,7 @@ stages:
       parameters:
         BuildConfig: 'RelWithDebInfo'
         buildArch: x64
-        additionalBuildFlags: --build_wheel --use_xnnpack --msbuild_extra_options IncludeMobileTargets=false --build_nuget --use_vcpkg
+        additionalBuildFlags: --build_wheel --use_xnnpack --msbuild_extra_options IncludeMobileTargets=false --build_nuget --use_vcpkg --use_vcpkg_ms_internal_asset_cache
         msbuildPlatform: x64
         isX86: false
         job_name_suffix: x64_release
@@ -145,7 +145,7 @@ stages:
       parameters:
         BuildConfig: 'RelWithDebInfo'
         buildArch: x64
-        additionalBuildFlags: --build_wheel --use_vitisai
+        additionalBuildFlags: --build_wheel --use_vitisai --use_vcpkg --use_vcpkg_ms_internal_asset_cache
         msbuildPlatform: x64
         isX86: false
         job_name_suffix: x64_release
@@ -163,7 +163,7 @@ stages:
       parameters:
         BuildConfig: 'RelWithDebInfo'
         buildArch: x64
-        additionalBuildFlags: --use_winml --enable_wcos --disable_rtti --msbuild_extra_options IncludeMobileTargets=false --build_nuget --use_vcpkg
+        additionalBuildFlags: --use_winml --enable_wcos --disable_rtti --msbuild_extra_options IncludeMobileTargets=false --build_nuget --use_vcpkg --use_vcpkg_ms_internal_asset_cache
         msbuildPlatform: x64
         isX86: false
         job_name_suffix: x64_release_winml
@@ -183,7 +183,7 @@ stages:
       parameters:
         BuildConfig: 'RelWithDebInfo'
         buildArch: x64
-        additionalBuildFlags: --enable_generic_interface --use_vcpkg
+        additionalBuildFlags: --enable_generic_interface --use_vcpkg --use_vcpkg_ms_internal_asset_cache
         msbuildPlatform: x64
         isX86: false
         job_name_suffix: x64_release_ep_generic_interface
@@ -203,7 +203,7 @@ stages:
         BuildConfig: 'RelWithDebInfo'
         EnvSetupScript: setup_env_x86.bat
         buildArch: x86
-        additionalBuildFlags: --build_wheel --msbuild_extra_options IncludeMobileTargets=false --build_nuget --use_vcpkg
+        additionalBuildFlags: --build_wheel --msbuild_extra_options IncludeMobileTargets=false --build_nuget --use_vcpkg --use_vcpkg_ms_internal_asset_cache
         msbuildPlatform: Win32
         isX86: true
         job_name_suffix: x86_release
@@ -221,7 +221,7 @@ stages:
       parameters:
         BuildConfig: 'RelWithDebInfo'
         buildArch: x64
-        additionalBuildFlags: --enable_training_apis --msbuild_extra_options IncludeMobileTargets=false --build_nuget --use_vcpkg
+        additionalBuildFlags: --enable_training_apis --msbuild_extra_options IncludeMobileTargets=false --build_nuget --use_vcpkg --use_vcpkg_ms_internal_asset_cache
         msbuildPlatform: x64
         isX86: false
         job_name_suffix: ort_training_apis_x64_release
@@ -248,7 +248,7 @@ stages:
       parameters:
         BuildConfig: 'RelWithDebInfo'
         buildArch: x64
-        additionalBuildFlags: --use_azure --use_lock_free_queue --msbuild_extra_options IncludeMobileTargets=false --build_nuget --use_vcpkg
+        additionalBuildFlags: --use_azure --use_lock_free_queue --msbuild_extra_options IncludeMobileTargets=false --build_nuget --use_vcpkg --use_vcpkg_ms_internal_asset_cache
         msbuildPlatform: x64
         isX86: false
         job_name_suffix: x64_release_azure
