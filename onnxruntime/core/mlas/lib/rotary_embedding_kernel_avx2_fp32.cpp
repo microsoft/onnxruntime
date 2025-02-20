@@ -55,8 +55,8 @@ RopeKernel_Avx2_Impl<false>(
         float32x8_t real_out = _mm256_fmsub_ps(real, cos_val, _mm256_mul_ps(imag, sin_val));
         float32x8_t imag_out = _mm256_fmadd_ps(real, sin_val, _mm256_mul_ps(imag, cos_val));
         //Store back into non interleaved format
-        _mm256_store_ps(output + i, real_out);
-        _mm256_store_ps(output + j, imag_out);
+        _mm256_storeu_ps(output + i, real_out);
+        _mm256_storeu_ps(output + j, imag_out);
     }
     if (half_dim - i != 0) {
         size_t rem = half_dim - i;
@@ -106,8 +106,8 @@ RopeKernel_Avx2_Impl<true>(
         float32x8_t imag_out_s = _mm256_permutevar8x32_ps(imag_out, out_mask_vec);
         float32x8_t y0 = _mm256_unpacklo_ps(real_out_s, imag_out_s);
         float32x8_t y1 = _mm256_unpackhi_ps(real_out_s, imag_out_s);
-        _mm256_store_ps(output + i, y0);
-        _mm256_store_ps(output + i + 8, y1);
+        _mm256_storeu_ps(output + i, y0);
+        _mm256_storeu_ps(output + i + 8, y1);
     }
     if (dim - i != 0) {
         size_t rem = dim - i;
