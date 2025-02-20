@@ -43,8 +43,12 @@ Status ArgMaxMinOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
 
   emscripten::val options = emscripten::val::object();
   options.set("keepDimensions", keep_dims == 1);
-  // TODO(Honry): check whether int64 output data type is supported by WebNN opSupportLimits() API.
-  options.set("outputDataType", "int64");
+  std::string output_data_type = "int64";
+  if (!model_builder.IsInt64Supported()) {
+    // Int64 is not supported by current context, use int32 instead.
+    output_data_type = "int32";
+  }
+  options.set("outputDataType", output_data_type);
   options.set("label", node.Name());
   emscripten::val output = emscripten::val::object();
 

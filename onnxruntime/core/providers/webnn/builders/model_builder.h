@@ -33,6 +33,8 @@ class ModelBuilder {
   const GraphViewer& GetGraphViewer() const { return graph_viewer_; }
   InitializedTensorSet GetInitializerTensors();
 
+  bool IsInt64Supported() const { return is_int64_supported_; }
+
   const emscripten::val& GetBuilder() const { return wnn_builder_; }
   const emscripten::val& GetContext() const { return wnn_context_; }
   const emscripten::val& GetOperand(const std::string& name) const { return wnn_operands_.at(name); }
@@ -71,6 +73,7 @@ class ModelBuilder {
 
   emscripten::val wnn_context_ = emscripten::val::undefined();
   emscripten::val wnn_builder_ = emscripten::val::undefined();
+  bool is_int64_supported_{false};
   DataLayout preferred_layout_;
   WebnnDeviceType wnn_device_type_;
   emscripten::val wnn_limits_ = emscripten::val::undefined();
