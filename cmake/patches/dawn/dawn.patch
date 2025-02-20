@@ -1,3 +1,16 @@
+diff --git a/src/cmake/DawnCompilerPlatformFlags.cmake b/src/cmake/DawnCompilerPlatformFlags.cmake
+index 50638e2456..efa42711e6 100644
+--- a/src/cmake/DawnCompilerPlatformFlags.cmake
++++ b/src/cmake/DawnCompilerPlatformFlags.cmake
+@@ -63,7 +63,3 @@ endif ()
+ if (MSVC AND NOT COMPILER_IS_CLANG_CL)
+   set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /MP")
+ endif ()
+-
+-if (TARGET_MACOS)
+-    set(CMAKE_OSX_DEPLOYMENT_TARGET "11.0" CACHE STRING "Minimum macOS version" FORCE)
+-endif ()
+\ No newline at end of file
 diff --git a/src/emdawnwebgpu/CMakeLists.txt b/src/emdawnwebgpu/CMakeLists.txt
 index 6e8ae37593..633af91eef 100644
 --- a/src/emdawnwebgpu/CMakeLists.txt
@@ -5,7 +18,7 @@ index 6e8ae37593..633af91eef 100644
 @@ -77,9 +77,17 @@ if (${DAWN_ENABLE_EMSCRIPTEN})
                  "${arg_UNPARSED_ARGUMENTS}")
          endif()
- 
+
 +        # since Emscripten 4.0.3, file gen_struct_info.py is moved to outside of directory maint.
 +        if (EXISTS "${DAWN_EMSCRIPTEN_TOOLCHAIN}/tools/gen_struct_info.py")
 +            set(EM_GEN_STRUCT_INFO_SCRIPT "${DAWN_EMSCRIPTEN_TOOLCHAIN}/tools/gen_struct_info.py")

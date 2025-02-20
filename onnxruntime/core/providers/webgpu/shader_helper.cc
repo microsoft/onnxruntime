@@ -352,6 +352,9 @@ Status ShaderHelper::GenerateSourceCode(std::string& code, std::vector<int>& sha
   if (device_.HasFeature(wgpu::FeatureName::Subgroups)) {
     ss << "enable subgroups;\n";
   }
+  if (device_.HasFeature(wgpu::FeatureName::ChromiumExperimentalSubgroupMatrix)) {
+    ss << "enable chromium_experimental_subgroup_matrix;\n";
+  }
 
   //
   // Section constants
