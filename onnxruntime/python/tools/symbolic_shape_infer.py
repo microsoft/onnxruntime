@@ -460,6 +460,7 @@ class SymbolicShapeInference:
             "BiasGelu",
             "EmbedLayerNormalization",
             "FastGelu",
+            "GatherBlockQuantized",
             "Gelu",
             "GemmFastGelu",
             "LayerNormalization",
