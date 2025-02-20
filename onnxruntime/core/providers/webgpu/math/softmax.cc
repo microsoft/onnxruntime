@@ -172,11 +172,11 @@ Status SoftmaxProgram::GenerateShaderCode(ShaderHelper& shader) const {
 Status Softmax::ComputeInternal(ComputeContext& context) const {
   const auto* input_tensor = context.Input(0);
   const TensorShape& input_shape = input_tensor->Shape();
-  int64_t input_rank = input_shape.NumDimensions();
+  size_t input_rank = input_shape.NumDimensions();
   auto* output_tensor = context.Output(0, input_shape);
 
   // normalize axis
-  int64_t axis = HandleNegativeAxis(axis_, input_rank);
+  size_t axis = HandleNegativeAxis(axis_, input_rank);
   bool is_transpose_required = axis < input_rank - 1;
 
   TensorShape transposed_input_shape;
@@ -222,7 +222,7 @@ Status Softmax::ComputeInternal(ComputeContext& context) const {
   program
       .CacheHint(std::to_string(components), std::to_string(workgroup_size))
       .SetWorkgroupSize(workgroup_size)
-      .SetDispatchGroupSize(rows)
+      .SetDispatchGroupSize(static_cast<uint32_t>(rows))
       .AddUniformVariables({{static_cast<int32_t>(packed_cols)}});
 
   ORT_RETURN_IF_ERROR(context.RunProgram(program));
