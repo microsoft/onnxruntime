@@ -30,38 +30,40 @@ Status CopyKVCacheProgram::GenerateShaderCode(ShaderHelper& shader) const {
   shader.AddInput("value", ShaderUsage::UseUniform);
   const auto& present_key = shader.AddOutput("present_key", ShaderUsage::UseUniform);
   const auto& present_value = shader.AddOutput("present_value", ShaderUsage::UseUniform);
+  const auto& valid_present_shape = shader.AddIndices("valid_present_shape");
 
-  shader.MainFunctionBody() << shader.GuardAgainstOutOfBoundsWorkgroupSizes("uniforms.output_size")
-                            << "  let output_indices = " << present_key.OffsetToIndices("global_idx") << ";\n"
+  shader.MainFunctionBody() << shader.GuardAgainstOutOfBoundsWorkgroupSizes("uniforms.valid_present_size")
+                            << "  let output_indices = " << valid_present_shape.OffsetToIndices("global_idx") << ";\n"
                             << "  let head_size_id = output_indices[3];\n"
                                "  let sequence_id = output_indices[2];\n"
                                "  let num_head_id = output_indices[1];\n"
-                               "  let batch = output_indices[0];\n";
+                               "  let batch = output_indices[0];\n"
+                            << "  let present_offset = " << (past_present_share_buffer_ ? present_key.IndicesToOffset("output_indices") : "global_idx") << ";\n";
   if (has_past_) {
     shader.MainFunctionBody() << "let past_sequence_length = uniforms.past_sequence_length;\n";
     if (past_present_share_buffer_) {
       shader.MainFunctionBody() << "if (sequence_id >= past_sequence_length) {\n"
                                 << "  let offset = " << key.IndicesToOffset(kv_BNSH_ ? "key_indices_t(batch, num_head_id, sequence_id - past_sequence_length, head_size_id)" : "key_indices_t(batch, sequence_id - past_sequence_length, num_head_id, head_size_id)") << ";\n"
-                                << "  " << present_key.SetByOffset("global_idx", "key[offset]") << ";\n"
-                                << "  " << present_value.SetByOffset("global_idx", "value[offset]") << ";\n"
+                                << "  " << present_key.SetByOffset("present_offset", "key[offset]") << ";\n"
+                                << "  " << present_value.SetByOffset("present_offset", "value[offset]") << ";\n"
                                 << "}";
     } else {
       const auto& past_key = shader.AddInput("past_key", ShaderUsage::UseUniform | ShaderUsage::UseValueTypeAlias | ShaderUsage::UseElementTypeAlias | ShaderUsage::UseIndicesTypeAlias);
       shader.AddInput("past_value", ShaderUsage::UseUniform);
       shader.MainFunctionBody() << "if (sequence_id < past_sequence_length) {\n"
                                 << "  let pastOffset = " << past_key.IndicesToOffset("past_key_indices_t(batch, num_head_id, sequence_id, head_size_id)") << ";\n"
-                                << "  " << present_key.SetByOffset("global_idx", "past_key[pastOffset]") << ";\n"
-                                << "  " << present_value.SetByOffset("global_idx", "past_value[pastOffset]") << ";\n"
+                                << "  " << present_key.SetByOffset("present_offset", "past_key[pastOffset]") << ";\n"
+                                << "  " << present_value.SetByOffset("present_offset", "past_value[pastOffset]") << ";\n"
                                 << "} else {\n"
                                 << "  let offset = " << key.IndicesToOffset(kv_BNSH_ ? "key_indices_t(batch, num_head_id, sequence_id - past_sequence_length, head_size_id)" : "key_indices_t(batch, sequence_id - past_sequence_length, num_head_id, head_size_id)") << ";\n"
-                                << "  " << present_key.SetByOffset("global_idx", "key[offset]") << ";\n"
-                                << "  " << present_value.SetByOffset("global_idx", "value[offset]") << ";\n"
+                                << "  " << present_key.SetByOffset("present_offset", "key[offset]") << ";\n"
+                                << "  " << present_value.SetByOffset("present_offset", "value[offset]") << ";\n"
                                 << "}";
     }
   } else {
     shader.MainFunctionBody() << "let offset = " << key.IndicesToOffset(kv_BNSH_ ? "key_indices_t(batch, num_head_id, sequence_id, head_size_id)" : "key_indices_t(batch, sequence_id, num_head_id, head_size_id)") << ";\n"
-                              << present_key.SetByOffset("global_idx", "key[offset]") << ";\n"
-                              << present_value.SetByOffset("global_idx", "value[offset]") << ";\n";
+                              << present_key.SetByOffset("present_offset", "key[offset]") << ";\n"
+                              << present_value.SetByOffset("present_offset", "value[offset]") << ";\n";
   }
   return Status::OK();
 }
@@ -73,7 +75,8 @@ Status CopyKVCache(onnxruntime::webgpu::ComputeContext& context, const WebgpuAtt
   // This makes it so that FlashAttention only needs to look at present key and value, and saves
   // number of input buffers in the shader, which we run out of (<=8) without this optimization.
   const int components = parameters.head_size_ % 4 == 0 ? 4 : (parameters.head_size_ % 2 == 0 ? 2 : 1);
-  int64_t output_vec_size = present_key->Shape().Size() / components;
+  TensorShape valid_present_shape{parameters.batch_size_, parameters.num_heads_, parameters.total_sequence_length_, parameters.head_size_ / components};
+  int64_t valid_kv_size = valid_present_shape.Size();
   bool has_past = (parameters.past_sequence_length_ > 0);
   CopyKVCacheProgram program{"CopyKVCache", has_past, parameters.qkv_format_ == Q_K_V_BSNH_BNSH_BNSH, parameters.past_present_share_buffer_};
   if (parameters.qkv_format_ == Q_K_V_BSNH_BNSH_BNSH) {
@@ -89,11 +92,12 @@ Status CopyKVCache(onnxruntime::webgpu::ComputeContext& context, const WebgpuAtt
                        {past_value, ProgramTensorMetadataDependency::TypeAndRank, components}});
   }
   program.AddOutputs({{present_key, ProgramTensorMetadataDependency::Rank, components},
-                      {present_value, ProgramTensorMetadataDependency::Rank, components}});
-  program.SetDispatchGroupSize(gsl::narrow<uint32_t>(output_vec_size + 63 / 64))
+                      {present_value, ProgramTensorMetadataDependency::Rank, components}})
+         .AddIndices(valid_present_shape);
+  program.SetDispatchGroupSize(gsl::narrow<uint32_t>(valid_kv_size + 63 / 64))
       .SetWorkgroupSize(64)
       .CacheHint(has_past, parameters.past_present_share_buffer_)
-      .AddUniformVariables({{static_cast<uint32_t>(output_vec_size)},
+      .AddUniformVariables({{static_cast<uint32_t>(valid_kv_size)},
                             {static_cast<uint32_t>(parameters.total_sequence_length_ - parameters.kv_sequence_length_)}});
 
   return context.RunProgram(program);
