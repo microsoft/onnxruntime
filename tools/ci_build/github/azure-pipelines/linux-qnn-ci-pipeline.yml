@@ -52,11 +52,6 @@ jobs:
           ls -R /data/qnn_test_data
         displayName: Check QNN test data
 
-      - task: UsePythonVersion@0
-        displayName: Use Python $(pythonVersion)
-        inputs:
-          versionSpec: $(pythonVersion)
-
       - script: sudo apt-get update -y && sudo apt-get install -y coreutils ninja-build
         displayName: Install coreutils and ninja
 
@@ -74,7 +69,7 @@ jobs:
             --use_qnn $(QnnLibKind) \
             --qnn_home $(QnnSDKRootDir) \
             --cmake_generator=Ninja \
-            --update --build --parallel --use_vcpkg
+            --update --build --parallel --use_vcpkg --use_vcpkg_ms_internal_asset_cache
         displayName: Build QNN EP
 
       - script: |
@@ -87,7 +82,7 @@ jobs:
             --use_qnn $(QnnLibKind) \
             --qnn_home $(QnnSDKRootDir) \
             --cmake_generator=Ninja \
-            --test --use_vcpkg
+            --test --use_vcpkg --use_vcpkg_ms_internal_asset_cache
         displayName: Run unit tests
 
       - task: CmdLine@2
