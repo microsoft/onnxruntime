@@ -66,7 +66,10 @@ stages:
 - stage: Precheck_and_extract_commit
   jobs:
   - job: Precheck_and_extract_commit
-    pool: ${{ parameters.PoolName }}
+    pool:
+      name: ${{ parameters.PoolName }}
+      ${{ if or(contains(toLower(parameters.pool), 'ubuntu'), contains(toLower(parameters.pool), 'linux')) }}
+        os: linux
     variables:
       runCodesignValidationInjection: false
     timeoutInMinutes: 30
