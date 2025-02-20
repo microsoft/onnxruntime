@@ -151,7 +151,7 @@ jobs:
         fi
       displayName: 'Create Artifacts'
     - ${{ if eq(parameters.is1ES, false) }}:
-      - task: PublishPipelineArtifact@0
+      - task: PublishPipelineArtifact@1
         displayName: 'Publish Pipeline Artifact'
         inputs:
           artifactName: '${{ parameters.BuildConfig }}_wasm'
