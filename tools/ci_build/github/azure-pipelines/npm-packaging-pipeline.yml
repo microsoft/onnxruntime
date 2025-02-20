@@ -9,6 +9,10 @@ parameters:
   - 'custom'
   default: 'nightly (@dev)'
 
+- name: is1ES
+  type: boolean
+  default: true
+
 variables:
   # pipeline should define the following variables
   #   ExtraBuildArgs
@@ -49,6 +53,7 @@ stages:
     RunWebGpuTestsForReleaseBuild: true
     WebGpuPoolName: 'onnxruntime-Win2022-VS2022-webgpu-A10'
     WebCpuPoolName: 'onnxruntime-Win2022-VS2022-webgpu-A10'
+    is1ES: ${{ parameters.is1ES }}
 
 - template: templates/react-native-ci.yml
   parameters:
@@ -85,7 +90,7 @@ stages:
         targetFolder: $(Build.ArtifactStagingDirectory)\node-artifacts
       displayName: 'Copy onnxruntime-node Artifacts'
 
-    - task: PublishPipelineArtifact@0
+    - task: 1ES.PublishPipelineArtifact@1
       inputs:
         artifactName: 'onnxruntime-node'
         targetPath: '$(Build.ArtifactStagingDirectory)\node-artifacts'
@@ -98,7 +103,7 @@ stages:
         targetFolder: $(Build.ArtifactStagingDirectory)\validation-scripts
       displayName: 'Copy validation scripts'
 
-    - task: PublishPipelineArtifact@0
+    - task: 1ES.PublishPipelineArtifact@1
       inputs:
         artifactName: 'validation_scripts'
         targetPath: '$(Build.ArtifactStagingDirectory)\validation-scripts'

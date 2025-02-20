@@ -39,6 +39,11 @@ parameters:
   type: boolean
   default: false
 
+- name: is1ES
+  displayName: 'Is 1ES pipeline'
+  type: boolean
+  default: false
+
 jobs:
 - job: build_WASM
   pool:
@@ -61,15 +66,15 @@ jobs:
     displayName: 'Get commit SHA'
     condition: eq('${{ parameters.CommitOverride }}', 'true')
   - script: |
-     export __commit__=<$(Pipeline.Workspace)/__commit.txt
-     git fetch origin +$__commit__:refs/remotes/origin/$__commit__
-     git checkout --force $__commit__
+      export __commit__=<$(Pipeline.Workspace)/__commit.txt
+      git fetch origin +$__commit__:refs/remotes/origin/$__commit__
+      git checkout --force $__commit__
     workingDirectory: '$(Build.SourcesDirectory)'
     displayName: 'Read commit SHA and checkout'
     condition: eq('${{ parameters.CommitOverride }}', 'true')
   - script: |
-     git submodule sync --recursive
-     git submodule update --init --recursive
+      git submodule sync --recursive
+      git submodule update --init --recursive
     workingDirectory: '$(Build.SourcesDirectory)'
     displayName: 'Checkout submodules'
   - task: UsePythonVersion@0
@@ -79,19 +84,19 @@ jobs:
       architecture: $(buildArch)
 
   - ${{if eq(parameters.WithCache, true)}}:
-      - script: |
-          set -ex
-          cd '$(Build.SourcesDirectory)/cmake/external/emsdk'
-          ./emsdk install 4.0.3 ccache-git-emscripten-64bit
-          ./emsdk activate 4.0.3 ccache-git-emscripten-64bit
-        displayName: 'emsdk install and activate ccache for emscripten'
+    - script: |
+        set -ex
+        cd '$(Build.SourcesDirectory)/cmake/external/emsdk'
+        ./emsdk install 4.0.3 ccache-git-emscripten-64bit
+        ./emsdk activate 4.0.3 ccache-git-emscripten-64bit
+      displayName: 'emsdk install and activate ccache for emscripten'
   - ${{if eq(parameters.WithCache, false)}}:
-      - script: |
-          set -ex
-          cd '$(Build.SourcesDirectory)/cmake/external/emsdk'
-          ./emsdk install 4.0.3
-          ./emsdk activate 4.0.3
-        displayName: 'emsdk install and activate ccache for emscripten'
+    - script: |
+        set -ex
+        cd '$(Build.SourcesDirectory)/cmake/external/emsdk'
+        ./emsdk install 4.0.3
+        ./emsdk activate 4.0.3
+      displayName: 'emsdk install and activate ccache for emscripten'
 
   - template: build-linux-wasm-step.yml
     parameters:
@@ -145,12 +150,18 @@ jobs:
           cp $(Build.BinariesDirectory)/wasm_inferencing_jsep/${{ parameters.BuildConfig }}/ort-wasm-simd-threaded.jsep.mjs $(Build.ArtifactStagingDirectory)
         fi
       displayName: 'Create Artifacts'
-  - ${{ if eq(parameters.SkipPublish, false) }}:
-    - task: PublishPipelineArtifact@0
-      displayName: 'Publish Pipeline Artifact'
-      inputs:
-        artifactName: '${{ parameters.BuildConfig }}_wasm'
-        targetPath: '$(Build.ArtifactStagingDirectory)'
+    - ${{ if eq(parameters.1ES, false) }}:
+      - task: PublishPipelineArtifact@0
+        displayName: 'Publish Pipeline Artifact'
+        inputs:
+          artifactName: '${{ parameters.BuildConfig }}_wasm'
+          targetPath: '$(Build.ArtifactStagingDirectory)'
+    - ${{ if eq(parameters.1ES, true) }}:
+      - task: 1ES.PublishPipelineArtifact@1
+        displayName: 'Publish Pipeline Artifact'
+        inputs:
+          artifactName: '${{ parameters.BuildConfig }}_wasm'
+          targetPath: '$(Build.ArtifactStagingDirectory)'
   - task: PublishTestResults@2
     displayName: 'Publish unit test results'
     inputs:
@@ -159,5 +170,5 @@ jobs:
       testRunTitle: 'Unit Test Run'
     condition: and(succeededOrFailed(), eq('${{ parameters.BuildConfig }}', 'Debug'))
   - template: component-governance-component-detection-steps.yml
-    parameters :
-      condition : 'succeeded'
+    parameters:
+      condition: 'succeeded'
