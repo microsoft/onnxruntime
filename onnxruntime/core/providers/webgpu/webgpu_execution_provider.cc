@@ -759,7 +759,8 @@ std::vector<AllocatorPtr> WebGpuExecutionProvider::CreatePreferredAllocators() {
 
 std::vector<std::unique_ptr<ComputeCapability>> WebGpuExecutionProvider::GetCapability(
     const onnxruntime::GraphViewer& graph,
-    const IKernelLookup& kernel_lookup) const {
+    const IKernelLookup& kernel_lookup,
+    IResourceAccountant* /* resource_accountant */) const {
   InlinedVector<NodeIndex> candidates;
   // `tenative_candidates` is a subset of `candidates`.
   InlinedVector<NodeIndex> tenative_candidates;

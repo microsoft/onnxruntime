@@ -281,7 +281,7 @@ static BackendSupport GetHTPSupport(const onnxruntime::logging::Logger& logger) 
       {{"backend_path", "QnnHtp.dll"}, {"offload_graph_io_quantization", "0"}});
 
   qnn_ep->SetLogger(&logger);
-  auto result = qnn_ep->GetCapability(graph_viewer, kernel_lookup);
+  auto result = qnn_ep->GetCapability(graph_viewer, kernel_lookup, nullptr);
 
   return result.empty() ? BackendSupport::UNSUPPORTED : BackendSupport::SUPPORTED;
 }
@@ -344,7 +344,7 @@ static BackendSupport GetCPUSupport(const onnxruntime::logging::Logger& logger) 
       {{"backend_path", "QnnCpu.dll"}, {"offload_graph_io_quantization", "0"}});
 
   qnn_ep->SetLogger(&logger);
-  auto result = qnn_ep->GetCapability(graph_viewer, kernel_lookup);
+  auto result = qnn_ep->GetCapability(graph_viewer, kernel_lookup, nullptr);
 
   return result.empty() ? BackendSupport::UNSUPPORTED : BackendSupport::SUPPORTED;
 }

@@ -51,7 +51,7 @@ const InlinedVector<const Node*> VitisAIExecutionProvider::GetEpContextNodes() c
   return ep_context_node_ptrs;
 }
 std::vector<std::unique_ptr<ComputeCapability>> VitisAIExecutionProvider::GetCapability(
-    const onnxruntime::GraphViewer& graph_viewer, const IKernelLookup& kernel_lookup) const {
+    const onnxruntime::GraphViewer& graph_viewer, const IKernelLookup& kernel_lookup, IResourceAccountant* /* resource_accountant */) const {
   if (graph_viewer.IsSubgraph()) {
     // VITIS AI EP not support sungraph. Assigned to CPU.
     return {};

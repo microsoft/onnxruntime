@@ -24,7 +24,8 @@ class WebNNExecutionProvider : public IExecutionProvider {
 
   std::vector<std::unique_ptr<ComputeCapability>>
   GetCapability(const onnxruntime::GraphViewer& graph_viewer,
-                const IKernelLookup& /*kernel_registries*/) const override;
+                const IKernelLookup& /*kernel_registries*/,
+                IResourceAccountant* /* resource_accountant */) const override;
 
   DataLayout GetPreferredLayout() const override { return preferred_layout_; }
 

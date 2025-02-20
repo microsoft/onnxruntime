@@ -130,6 +130,11 @@ OrtValue* OpKernelContext::GetOrCreateOutputMLValue(int index) {
   return value;
 }
 
+int OpKernelContext::GetOrtValueIndexForOutput(int output_index) const {
+  int output_arg_index = GetOutputArgIndex(output_index);
+  return execution_frame_->GetNodeIdxToMLValueIdx(output_arg_index);
+}
+
 int OpKernelContext::GetInputArgIndex(int index) const {
   return node_input_start_index_ + index;
 }
