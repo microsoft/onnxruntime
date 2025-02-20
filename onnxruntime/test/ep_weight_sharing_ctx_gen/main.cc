@@ -56,7 +56,6 @@ static void GetLastContextBinaryFileName(const std::basic_string<ORTCHAR_T> last
 static void UpdateEpContextModel(const std::vector<std::basic_string<ORTCHAR_T>>& ep_ctx_files,
                                  const std::string& last_qnn_ctx_binary_file_name,
                                  int64_t max_size) {
-
   for (auto ep_ctx_file : ep_ctx_files) {
     onnx::ModelProto model;
     std::ifstream onnx_file_stream(ep_ctx_file, std::ios_base::binary);
@@ -69,7 +68,7 @@ static void UpdateEpContextModel(const std::vector<std::basic_string<ORTCHAR_T>>
         std::string old_qnn_ctx_binary_file_name;
         int max_size_index = 0;
         int ep_context_index = 0;
-        for (auto i = 0; i<node.attribute_size(); ++i) {
+        for (auto i = 0; i < node.attribute_size(); ++i) {
           auto& attr = node.attribute()[i];
           if (attr.name() == "main_context") {
             is_main_context = attr.i();
