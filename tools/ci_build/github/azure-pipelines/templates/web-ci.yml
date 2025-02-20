@@ -149,6 +149,7 @@ stages:
       BuildJsep: ${{ parameters.BuildJsep }}
       BuildWebGPU: false
       WithCache: ${{ parameters.WithCache }}
+      is1ES: ${{ parameters.is1ES }}
 
 - ${{ if eq(parameters.BuildStaticLib, 'true') }}:
   - stage: Build_wasm_Release_static_library
@@ -164,6 +165,7 @@ stages:
         TimeoutInMinutes: 270
         BuildStaticLib: true
         WithCache: ${{ parameters.WithCache }}
+        is1ES: ${{ parameters.is1ES }}
 
 - stage: Build_web_Release
   dependsOn: Build_wasm_Release
