@@ -50,8 +50,13 @@ jobs:
     matrix:
       SHARED_LIB:
         QnnLibKind: 'shared_lib'
+        qnn_build_args: '--use_qnn'
       STATIC_LIB:
         QnnLibKind: 'static_lib'
+        qnn_build_args: '--use_qnn'
+      SHARED_LIB_GENERIC_INTERFACE:
+        QnnLibKind: 'shared_lib'
+        qnn_build_args: '--use_qnn --use_generic_interface'
   steps:
 
   - script: |
