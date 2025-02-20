@@ -47,7 +47,9 @@ class FlashAttentionProgram final : public Program<FlashAttentionProgram> {
   Status GenerateShaderCode(ShaderHelper& sh) const override;
 
   WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES({"new_sequence_length", ProgramUniformVariableDataType::Uint32},
+                                          {"total_sequence_length", ProgramUniformVariableDataType::Uint32},
                                           {"present_sequence_length", ProgramUniformVariableDataType::Uint32},
+                                          {"is_gqa", ProgramUniformVariableDataType::Uint32},
                                           {"alpha", ProgramUniformVariableDataType::Float32});
 
  private:

@@ -157,7 +157,7 @@ Status FlashAttentionProgram::GenerateShaderCode(ShaderHelper& shader) const {
       for (var idx:u32 = local_idx; idx < qkv_head_size_vec*k_step; idx+=workgroup_size_x)
       {
           let slot = u32(idx/qkv_head_size_vec);
-          let val = select(q_value_t(0), present_key[offset+idx], k_start + slot < uniforms.present_sequence_length);
+          let val = select(q_value_t(0), present_key[offset+idx], k_start + slot < uniforms.total_sequence_length);
           k_tile[slot][idx%qkv_head_size_vec] = val;
       }
   }
@@ -168,7 +168,7 @@ Status FlashAttentionProgram::GenerateShaderCode(ShaderHelper& shader) const {
       for (var idx:u32 = local_idx; idx < qkv_head_size_vec*k_step; idx+=workgroup_size_x)
       {
           let slot = u32(idx/qkv_head_size_vec);
-          let val  = select(q_value_t(0), present_value[offset+idx], v_start + slot < uniforms.present_sequence_length);
+          let val  = select(q_value_t(0), present_value[offset+idx], v_start + slot < uniforms.total_sequence_length);
           v_tile[slot][idx%qkv_head_size_vec] = val;
       }
   }
@@ -188,12 +188,12 @@ Status FlashAttentionProgram::GenerateShaderCode(ShaderHelper& shader) const {
       fn loadAttentionBias(q_idx_global : u32, k_idx_global : u32, head_idx: u32) -> vec4<q_element_t>
       {
           // Stored as float16[batch_size,num_heads,new_seq_length,total_sequence_length]
-          if (q_idx_global >= uniforms.new_sequence_length  || k_idx_global >= uniforms.present_sequence_length) {
+          if (q_idx_global >= uniforms.new_sequence_length  || k_idx_global >= uniforms.total_sequence_length) {
               return vec4<q_element_t>(0);
           }
-          let offset_base = head_idx * uniforms.new_sequence_length * uniforms.present_sequence_length + q_idx_global * uniforms.present_sequence_length;
+          let offset_base = head_idx * uniforms.new_sequence_length * uniforms.total_sequence_length + q_idx_global * uniforms.total_sequence_length;
           let offset = offset_base + k_idx_global;
-          let offset_max = offset_base + uniforms.present_sequence_length;
+          let offset_max = offset_base + uniforms.total_sequence_length;
           let c1 = q_element_t(attention_bias[min(offset, offset_max)]);
           let c2 = q_element_t(attention_bias[min(offset+1, offset_max)]);
           let c3 = q_element_t(attention_bias[min(offset+2, offset_max)]);
@@ -228,7 +228,7 @@ Status FlashAttentionProgram::GenerateShaderCode(ShaderHelper& shader) const {
   var previous_max : q_element_t = min_value;
   var previous_denom : q_element_t = 0;
 
-  for(var k_start = 0u; k_start < uniforms.present_sequence_length; k_start+=capped_sg_size)
+  for(var k_start = 0u; k_start < uniforms.total_sequence_length; k_start+=capped_sg_size)
   {
     workgroupBarrier();
     loadk(k_start, head_idx, local_idx, capped_sg_size);
@@ -289,24 +289,25 @@ Status FlashAttentionProgram::GenerateShaderCode(ShaderHelper& shader) const {
       qk_4 = qk_4 * q_element_t(uniforms.alpha) + loadAttentionBias(q_idx_global, k_start+12, head_idx);
     }
 
+    let seq_causal_length = select(uniforms.total_sequence_length, q_idx_global + 1, uniforms.is_gqa > 0);
     // Neuter qk values where K is out of bounds.
-    qk_1[1] = select(min_value, qk_1[1], k_start+1 < uniforms.present_sequence_length);
-    qk_1[2] = select(min_value, qk_1[2], k_start+2 < uniforms.present_sequence_length);
-    qk_1[3] = select(min_value, qk_1[3], k_start+3 < uniforms.present_sequence_length);
-    qk_2[0] = select(min_value, qk_2[0], k_start+4 < uniforms.present_sequence_length);
-    qk_2[1] = select(min_value, qk_2[1], k_start+5 < uniforms.present_sequence_length);
-    qk_2[2] = select(min_value, qk_2[2], k_start+6 < uniforms.present_sequence_length);
-    qk_2[3] = select(min_value, qk_2[3], k_start+7 < uniforms.present_sequence_length);
+    qk_1[1] = select(min_value, qk_1[1], k_start+1 < seq_causal_length);
+    qk_1[2] = select(min_value, qk_1[2], k_start+2 < seq_causal_length);
+    qk_1[3] = select(min_value, qk_1[3], k_start+3 < seq_causal_length);
+    qk_2[0] = select(min_value, qk_2[0], k_start+4 < seq_causal_length);
+    qk_2[1] = select(min_value, qk_2[1], k_start+5 < seq_causal_length);
+    qk_2[2] = select(min_value, qk_2[2], k_start+6 < seq_causal_length);
+    qk_2[3] = select(min_value, qk_2[3], k_start+7 < seq_causal_length);
     if (sg_size > 8)
     {
-      qk_3[0] = select(min_value, qk_3[0], k_start+8 < uniforms.present_sequence_length);
-      qk_3[1] = select(min_value, qk_3[1], k_start+9 < uniforms.present_sequence_length);
-      qk_3[2] = select(min_value, qk_3[2], k_start+10 < uniforms.present_sequence_length);
-      qk_3[3] = select(min_value, qk_3[3], k_start+11 < uniforms.present_sequence_length);
-      qk_4[0] = select(min_value, qk_4[0], k_start+12 < uniforms.present_sequence_length);
-      qk_4[1] = select(min_value, qk_4[1], k_start+13 < uniforms.present_sequence_length);
-      qk_4[2] = select(min_value, qk_4[2], k_start+14 < uniforms.present_sequence_length);
-      qk_4[3] = select(min_value, qk_4[3], k_start+15 < uniforms.present_sequence_length);
+      qk_3[0] = select(min_value, qk_3[0], k_start+8 < seq_causal_length);
+      qk_3[1] = select(min_value, qk_3[1], k_start+9 < seq_causal_length);
+      qk_3[2] = select(min_value, qk_3[2], k_start+10 < seq_causal_length);
+      qk_3[3] = select(min_value, qk_3[3], k_start+11 < seq_causal_length);
+      qk_4[0] = select(min_value, qk_4[0], k_start+12 < seq_causal_length);
+      qk_4[1] = select(min_value, qk_4[1], k_start+13 < seq_causal_length);
+      qk_4[2] = select(min_value, qk_4[2], k_start+14 < seq_causal_length);
+      qk_4[3] = select(min_value, qk_4[3], k_start+15 < seq_causal_length);
     }
 
     //
@@ -346,8 +347,30 @@ Status FlashAttentionProgram::GenerateShaderCode(ShaderHelper& shader) const {
       qk_3 = q_value_t(exp(vec4<f32>(qk_3) - f32(new_max)));
       qk_4 = q_value_t(exp(vec4<f32>(qk_4) - f32(new_max)));
     }
-    let sum_vec = qk_1 + qk_2 + qk_3 + qk_4;
-    let sum = sum_vec.x + sum_vec.y + sum_vec.z + sum_vec.w;
+   // let sum_vec = qk_1 + qk_2 + qk_3 + qk_4;
+   // let sum = sum_vec.x + sum_vec.y + sum_vec.z + sum_vec.w;
+
+    var sum = qk_1[0];
+    // Neuter qk values where K is out of bounds.
+    sum += select(q_element_t(0), qk_1[1], k_start+1 < seq_causal_length);
+    sum += select(q_element_t(0), qk_1[2], k_start+2 < seq_causal_length);
+    sum += select(q_element_t(0), qk_1[3], k_start+3 < seq_causal_length);
+    sum += select(q_element_t(0), qk_2[0], k_start+4 < seq_causal_length);
+    sum += select(q_element_t(0), qk_2[1], k_start+5 < seq_causal_length);
+    sum += select(q_element_t(0), qk_2[2], k_start+6 < seq_causal_length);
+    sum += select(q_element_t(0), qk_2[3], k_start+7 < seq_causal_length);
+    if (sg_size > 8)
+    {
+      sum += select(q_element_t(0), qk_3[0], k_start+8 < seq_causal_length);
+      sum += select(q_element_t(0), qk_3[1], k_start+9 < seq_causal_length);
+      sum += select(q_element_t(0), qk_3[2], k_start+10 < seq_causal_length);
+      sum += select(q_element_t(0), qk_3[3], k_start+11 < seq_causal_length);
+      sum += select(q_element_t(0), qk_4[0], k_start+12 < seq_causal_length);
+      sum += select(q_element_t(0), qk_4[1], k_start+13 < seq_causal_length);
+      sum += select(q_element_t(0), qk_4[2], k_start+14 < seq_causal_length);
+      sum += select(q_element_t(0), qk_4[3], k_start+15 < seq_causal_length);
+    }
+
     // Compute lhs term of update di prime and the compute di prime.
     let dleft = previous_denom * exp(previous_max-new_max);
     var d = dleft + sum;
@@ -365,7 +388,7 @@ Status FlashAttentionProgram::GenerateShaderCode(ShaderHelper& shader) const {
     if (sg_size > 8) {
       for (var i:u32 = 0; i < qkv_head_size_vec; i++)
       {
-          var val = select(vec4<q_element_t>(0), v_tile[capped_sg_id][i], k_start + capped_sg_id < uniforms.present_sequence_length);
+          var val = select(vec4<q_element_t>(0), v_tile[capped_sg_id][i], k_start + capped_sg_id < uniforms.total_sequence_length);
           var sum = subgroupShuffle(val, 0) * qk_1[0];
           sum += subgroupShuffle(val, 1) * qk_1[1];
           sum += subgroupShuffle(val, 2) * qk_1[2];
@@ -389,7 +412,7 @@ Status FlashAttentionProgram::GenerateShaderCode(ShaderHelper& shader) const {
     {
       for (var i:u32 = 0; i < qkv_head_size_vec; i++)
       {
-          var val = select(vec4<q_element_t>(0), v_tile[capped_sg_id][i], k_start + capped_sg_id < uniforms.present_sequence_length);
+          var val = select(vec4<q_element_t>(0), v_tile[capped_sg_id][i], k_start + capped_sg_id < uniforms.total_sequence_length);
           var sum = subgroupShuffle(val, 0) * qk_1[0];
           sum += subgroupShuffle(val, 1) * qk_1[1];
           sum += subgroupShuffle(val, 2) * qk_1[2];
@@ -421,8 +444,10 @@ Status ApplyFlashAttention(const Tensor* Q, const Tensor* K, const Tensor* V, co
   FlashAttentionProgram program{"FlashAttention", has_attention_bias, parameters.head_size_, parameters.num_heads_};
   program.AddInputs({{Q, ProgramTensorMetadataDependency::TypeAndRank, 4},
                      {present_key, ProgramTensorMetadataDependency::TypeAndRank, 4},
-                     {present_value, ProgramTensorMetadataDependency::TypeAndRank, 4},
-                     {attention_bias, ProgramTensorMetadataDependency::TypeAndRank}});
+                     {present_value, ProgramTensorMetadataDependency::TypeAndRank, 4}});
+  if (has_attention_bias) {
+    program.AddInputs({{attention_bias, ProgramTensorMetadataDependency::TypeAndRank}});
+  }
   program.AddOutputs({{output, ProgramTensorMetadataDependency::TypeAndRank, 4}});
   const float alpha = parameters.scale_ == 0.0f ? 1.f / sqrt(static_cast<float>(parameters.head_size_))
                                                 : parameters.scale_;
@@ -434,6 +459,8 @@ Status ApplyFlashAttention(const Tensor* Q, const Tensor* K, const Tensor* V, co
       .CacheHint(cache_hint)
       .AddUniformVariables({{static_cast<uint32_t>(parameters.sequence_length_)},
                             {static_cast<uint32_t>(parameters.total_sequence_length_)},
+                            {static_cast<uint32_t>(parameters.past_present_share_buffer_ ? parameters.past_sequence_length_ : parameters.total_sequence_length_)},
+                            {static_cast<uint32_t>(parameters.is_gqa_ ? 1 : 0)},
                             {alpha}});
 
   return context.RunProgram(program);
