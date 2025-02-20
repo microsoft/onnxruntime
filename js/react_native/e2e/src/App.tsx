@@ -100,7 +100,7 @@ export default class App extends React.PureComponent<{}, State> {
     }
   };
 
-  render(): JSX.Element {
+  render(): React.JSX.Element {
     const { output, imagePath } = this.state;
 
     return (
