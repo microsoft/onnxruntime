@@ -38,6 +38,8 @@ For ONNX Runtime GPU package, it is required to install [CUDA](https://developer
 * In Windows, the path of CUDA `bin` and cuDNN `bin` directories must be added to the `PATH` environment variable.
 * In Linux, the path of CUDA `lib64` and cuDNN `lib` directories must be added to the `LD_LIBRARY_PATH` environment variable.
 
+For `onnxruntime-gpu` package, it is possible to work with PyTorch without the need for manual installations of CUDA or cuDNN. Refer to [Compatibility with PyTorch](../execution-providers/CUDA-ExecutionProvider.md#compatibility-with-pytorch) for more information.
+
 ## Python Installs
 
 ### Install ONNX Runtime CPU
