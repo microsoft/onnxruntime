@@ -105,6 +105,8 @@ using ModelMetaData = std::unordered_map<std::string, std::string>;
 using IOnnxRuntimeOpSchemaCollectionPtr = std::shared_ptr<IOnnxRuntimeOpSchemaCollection>;
 using IOnnxRuntimeOpSchemaRegistryList = std::list<IOnnxRuntimeOpSchemaCollectionPtr>;
 using InitializedTensorSet = std::unordered_map<std::string, const ONNX_NAMESPACE::TensorProto*>;
+using KeyValueConfig = std::unordered_map<std::string, std::string>;
+using SelectionFunc = std::function<std::vector<std::unique_ptr<ComputeCapability>>(const GraphViewer&, const KeyValueConfig&)>;
 
 struct Node__NodeIterator {
   virtual ~Node__NodeIterator() {}
@@ -150,6 +152,9 @@ struct ConstGraphNodes_Iterator {
 #endif
 struct ProviderHost {
   virtual const OrtApiBase* OrtGetApiBase() = 0;
+
+  virtual Status GetOptimizerByName(const std::string& name,
+                                    SelectionFunc& selection_func) = 0;
 
   virtual void* HeapAllocate(size_t size) = 0;
   virtual void HeapFree(void*) = 0;
@@ -626,6 +631,8 @@ struct ProviderHost {
   virtual std::unique_ptr<ComputeCapability> ComputeCapability__construct(std::unique_ptr<IndexedSubGraph> t_sub_graph) = 0;
   virtual void ComputeCapability__operator_delete(ComputeCapability* p) = 0;
   virtual std::unique_ptr<IndexedSubGraph>& ComputeCapability__SubGraph(ComputeCapability* p) = 0;
+  virtual void ComputeCapability__copy_optimization_func(ComputeCapability* p, ComputeCapability* selection_cc) = 0;
+  virtual void ComputeCapability__add_nodes_to_optimize(ComputeCapability* p, std::unique_ptr<ComputeCapability> optimization_cc) = 0;
 
   // DataTransferManager
   virtual Status DataTransferManager__CopyTensor(const DataTransferManager* p, const Tensor& src, Tensor& dst) = 0;
