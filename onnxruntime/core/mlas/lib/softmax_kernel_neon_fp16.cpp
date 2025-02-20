@@ -20,6 +20,7 @@ Abstract:
 #include "softmax.h"
 #include "softmax_kernel_neon.h"
 
+// TODO(fajin): intra-loop parallelism
 namespace softmax_neon {
 
 template <typename T>
