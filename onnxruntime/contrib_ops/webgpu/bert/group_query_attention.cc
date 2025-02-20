@@ -69,19 +69,29 @@ Status SplitPackedQKV(onnxruntime::webgpu::ComputeContext& context, const Webgpu
 Status GeneratePositionIDsProgram::GenerateShaderCode(ShaderHelper& sh) const {
   const auto& output = sh.AddOutput("output", ShaderUsage::UseUniform);
   const auto& seqlens = sh.AddInput("seqlens", ShaderUsage::UseUniform);
-  sh.MainFunctionBody() << "var pos_id: i32 = 0;\n"
-                        << "if (uniforms.is_first_prompt == 0) {\n"
+  sh.MainFunctionBody() << "  var pos_id: i32 = 0;\n"
                         << "  let batch_idx = global_idx / uniforms.sequence_length;\n"
                         << "  let sequence_idx = i32(global_idx % uniforms.sequence_length);\n"
-                        << "  let total_seqlen = " << seqlens.GetByOffset("batch_idx") << " + 1;\n"
-                        << "  let past_seqlen = total_seqlen - i32(uniforms.sequence_length);\n"
-                        << "  if (past_seqlen + sequence_idx < total_seqlen) {\n"
-                        << "    pos_id = past_seqlen + sequence_idx;\n"
-                        << "  } else {\n"
-                        << "    pos_id = 1;\n"
-                        << "  }\n"
-                        << "}\n";
-  sh.MainFunctionBody() << "  " << output.SetByOffset("global_idx", "pos_id");
+                        << "  let seqlen = " << seqlens.GetByOffset("batch_idx") << ";\n"
+                        << "  let total_seqlen = seqlen + 1;\n"
+                        << "  if (uniforms.is_first_prompt > 0) {\n"
+                        << "    if (sequence_idx < total_seqlen) {\n"
+                        << "      pos_id = sequence_idx;\n"
+                        << "    } else {\n"
+                        << "      pos_id = 1;\n"
+                        << "    }\n"
+                        << "    " << output.SetByOffset("global_idx", "pos_id") << "\n"
+                        << "  } else if (uniforms.is_subsequent_prompt > 0) {\n"
+                        << "    let past_seqlen = total_seqlen - i32(uniforms.sequence_length);\n"
+                        << "    if (past_seqlen + sequence_idx < total_seqlen) {\n"
+                        << "      pos_id = past_seqlen + sequence_idx;\n"
+                        << "    } else {\n"
+                        << "      pos_id = 1;\n"
+                        << "    }\n"
+                        << "    " << output.SetByOffset("global_idx", "pos_id") << "\n"
+                        << "  } else if (global_idx < uniforms.batch_size) {\n"
+                        << "    " << output.SetByOffset("global_idx", "seqlen") << "\n"
+                        << "  }\n";
   return Status::OK();
 }
 
@@ -90,7 +100,7 @@ Status GeneratePositionIDs(onnxruntime::webgpu::ComputeContext& context, const W
   auto output_size = params.batch_size_ * params.sequence_length_;
   program.AddInput({seqlens, ProgramTensorMetadataDependency::Rank})
       .AddOutput({output_tensor, ProgramTensorMetadataDependency::Rank})
-      .AddUniformVariables({{static_cast<uint32_t>(params.sequence_length_)}, {static_cast<uint32_t>(params.is_first_prompt_ ? 1 : 0)}})
+      .AddUniformVariables({{static_cast<uint32_t>(params.batch_size_)}, {static_cast<uint32_t>(params.sequence_length_)}, {static_cast<uint32_t>(params.is_first_prompt_ ? 1 : 0)}, {static_cast<uint32_t>(params.is_subsequent_prompt_ ? 1 : 0)}})
       .SetDispatchGroupSize((output_size + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE);
   return context.RunProgram(program);
 }
@@ -201,21 +211,25 @@ Status GroupQueryAttention::ComputeInternal(onnxruntime::webgpu::ComputeContext&
   TensorShapeVector q_new_dims({parameters.batch_size_, parameters.num_heads_, parameters.sequence_length_, parameters.head_size_});
   TensorShape q_new_shape(q_new_dims);
   Tensor qBNSH = context.CreateGPUTensor(query->DataType(), q_new_shape);
-  ORT_RETURN_IF_ERROR(TransferBSDToBNSH(context, parameters.num_heads_, parameters.sequence_length_, parameters.head_size_, query, nullptr, 0, &qBNSH));
-  TensorShapeVector k_new_dims({parameters.batch_size_, parameters.kv_num_heads_,
-                                parameters.kv_sequence_length_, parameters.head_size_});
-  TensorShape k_new_shape(k_new_dims);
-  Tensor kBNSH = context.CreateGPUTensor(key->DataType(), k_new_shape);
-  ORT_RETURN_IF_ERROR(TransferBSDToBNSH(context, parameters.kv_num_heads_, parameters.kv_sequence_length_,
-                                        parameters.head_size_, key, nullptr, 0, &kBNSH));
-
-  TensorShapeVector v_new_dims({parameters.batch_size_, parameters.kv_num_heads_,
-                                parameters.kv_sequence_length_, parameters.v_head_size_});
-  TensorShape v_new_shape(v_new_dims);
-  Tensor vBNSH = context.CreateGPUTensor(value->DataType(), v_new_shape);
-  ORT_RETURN_IF_ERROR(TransferBSDToBNSH(context, parameters.kv_num_heads_, parameters.kv_sequence_length_,
-                                        parameters.v_head_size_, value, nullptr, 0, &vBNSH));
-  return ApplyAttention(&qBNSH, &kBNSH, &vBNSH, nullptr, past_key, past_value, output, present_key,
+  ORT_RETURN_IF_ERROR(TransferBSDToBNSH(context, parameters.is_packed_qkv_ ? parameters.num_heads_ + 2 * parameters.kv_num_heads_ : parameters.num_heads_, parameters.sequence_length_, parameters.head_size_, query, nullptr, 0, &qBNSH));
+  query = &qBNSH;
+  Tensor kBNSH;
+  Tensor vBNSH;
+  if (nullptr != key) {
+    TensorShapeVector k_new_dims({parameters.batch_size_, parameters.kv_num_heads_, parameters.kv_sequence_length_, parameters.head_size_});
+    TensorShape k_new_shape(k_new_dims);
+    kBNSH = context.CreateGPUTensor(key->DataType(), k_new_shape);
+    ORT_RETURN_IF_ERROR(TransferBSDToBNSH(context, parameters.kv_num_heads_, parameters.kv_sequence_length_, parameters.head_size_, key, nullptr, 0, &kBNSH));
+    key = &kBNSH;
+  }
+  if (nullptr != value) {
+    TensorShapeVector v_new_dims({parameters.batch_size_, parameters.kv_num_heads_, parameters.kv_sequence_length_, parameters.v_head_size_});
+    TensorShape v_new_shape(v_new_dims);
+    vBNSH = context.CreateGPUTensor(value->DataType(), v_new_shape);
+    ORT_RETURN_IF_ERROR(TransferBSDToBNSH(context, parameters.kv_num_heads_, parameters.kv_sequence_length_, parameters.v_head_size_, value, nullptr, 0, &vBNSH));
+    value = &vBNSH;
+  }
+  return ApplyAttention(query, key, value, nullptr, past_key, past_value, output, present_key,
                         present_value, parameters, context, seqlens_k);
 }
 

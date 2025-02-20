@@ -14,15 +14,13 @@ namespace webgpu {
 
 using namespace onnxruntime::webgpu;
 
-Status GeneratePositionIDs(onnxruntime::webgpu::ComputeContext& context, bool is_first_prompt, int batch_size, int sequence_length, int num_heads, int head_size, int rotary_embedding_dim, bool interleaved, int total_seqlen, const Tensor* seqlens, Tensor* output_tensor);
-
 class GeneratePositionIDsProgram final : public Program<GeneratePositionIDsProgram> {
  public:
   GeneratePositionIDsProgram() : Program{"GeneratePositionIDs"} {}
 
   Status GenerateShaderCode(ShaderHelper& sh) const override;
 
-  WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES({"sequence_length", ProgramUniformVariableDataType::Uint32}, {"is_first_prompt", ProgramUniformVariableDataType::Uint32});
+  WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES({"batch_size", ProgramUniformVariableDataType::Uint32}, {"sequence_length", ProgramUniformVariableDataType::Uint32}, {"is_first_prompt", ProgramUniformVariableDataType::Uint32}, {"is_subsequent_prompt", ProgramUniformVariableDataType::Uint32});
 };
 
 class SplitPackedQKVProgram final : public Program<SplitPackedQKVProgram> {
