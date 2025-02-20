@@ -55,6 +55,7 @@ stages:
       PackageName: '${{parameters.PackageName}}'
       ArtifactName: 'onnxruntime-android-full-aar'
       NpmPackagingMode: '${{parameters.NpmPackagingMode}}'
+      is1ES: '${{parameters.is1ES}}'
 
 - stage: ReactNative_CI_iOS
   displayName: ReactNative_CI_iOS

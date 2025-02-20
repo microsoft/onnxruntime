@@ -12,7 +12,9 @@ parameters:
   displayName: 'NPM packages publish configuration'
   type: string
   default: 'dev'
-
+- name: is1ES
+  type: boolean
+  default: false
 jobs:
 - job: ReactNative_CI_Android
   pool: 'onnxruntime-Ubuntu2204-AMD-CPU'
@@ -203,7 +205,7 @@ jobs:
     condition: succeededOrFailed()
     displayName: Publish React Native Detox E2E test logs
 
-  - task: PublishPipelineArtifact@0
+  - task: PublishPipelineArtifact@1
     inputs:
       artifactName: '${{parameters.PackageName}}'
       targetPath: '$(Build.ArtifactStagingDirectory)'
