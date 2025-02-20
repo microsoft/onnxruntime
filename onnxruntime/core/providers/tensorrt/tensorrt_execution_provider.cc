@@ -2656,7 +2656,7 @@ TensorrtExecutionProvider::GetCapability(const GraphViewer& graph,
   }
 
   /**
-   * Enable EP related L2+ graph optimizations with steps:
+   * Enable EP related L2+ graph optimizations:
    *
    *   1. Call provider bridge API to lookup pre-defined optimizer by name and get selection function
    *   2. Run selection function to get selection ComputeCapability
@@ -2669,22 +2669,25 @@ TensorrtExecutionProvider::GetCapability(const GraphViewer& graph,
 
   SelectionFunc selection_func;
   std::vector<std::unique_ptr<ComputeCapability>> selection_cc;
-  std::string optimizer_name = "ConstantFoldingDQ";
-  const std::unordered_map<std::string, std::string> key_value_config;
-  auto status = g_host->GetOptimizerByName(optimizer_name, selection_func);
-  if (status == Status::OK()) {
-    if (selection_func) {
-      selection_cc = selection_func(graph, key_value_config);
-    }
-  } else {
-    LOGS_DEFAULT(WARNING) << "[TensorRT EP] Can't get optimizer " << optimizer_name;
-  }
 
+  // Prepare for ConstantFoldingDQ optimizer
+  // Note: The NodeIndex here is the node index in the graph, not the index in node vector in supported_nodes_vector.
   std::unordered_set<NodeIndex> trt_selection_node_set;     // The qualified dq nodes selected by TRT EP
   std::unordered_map<NodeIndex, NodeIndex> consumer_to_dq;  // consumer node -> dq node
-  // Note: The NodeIndex here is the node index in the graph, not the index in node vector in supported_nodes_vector.
 
-  SelectQualifiedDQNode(graph, trt_selection_node_set, consumer_to_dq);
+  if (dla_enable_) {
+    std::string optimizer_name = "ConstantFoldingDQ";
+    const std::unordered_map<std::string, std::string> key_value_config;
+    auto status = g_host->GetOptimizerByName(optimizer_name, selection_func);
+    if (status == Status::OK()) {
+      if (selection_func) {
+        selection_cc = selection_func(graph, key_value_config);
+        SelectQualifiedDQNode(graph, trt_selection_node_set, consumer_to_dq);
+      }
+    } else {
+      LOGS_DEFAULT(WARNING) << "[TensorRT EP] Can't get optimizer " << optimizer_name;
+    }
+  }
 
   // Create ComputeCapability
   int number_of_trt_nodes = 0, subgraph_index = 0;
