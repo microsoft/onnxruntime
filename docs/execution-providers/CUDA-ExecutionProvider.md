@@ -37,6 +37,8 @@ ONNX Runtime built with cuDNN 8.x is not compatible with cuDNN 9.x, and vice ver
 
 Note: Starting with version 1.19, **CUDA 12.x** becomes the default version when distributing [ONNX Runtime GPU packages](https://pypi.org/project/onnxruntime-gpu/) in PyPI.
 
+To reduce the need for manual installations of CUDA and cuDNN, and ensure seamless integration between ONNX Runtime and PyTorch, the `onnxruntime-gpu` Python package offers API to load CUDA and cuDNN dynamic link libraries (DLLs) appropriately. For more details, refer to the [Compatibility with PyTorch](#compatibility-with-pytorch) and [Preload DLLs](#preload-dlls) sections.
+
 ### CUDA 12.x
 
 | ONNX Runtime  | CUDA   | cuDNN | Notes                                                                |
@@ -75,6 +77,112 @@ For older versions, please reference the readme and build pages on the release b
 ## Build
 
 For build instructions, please see the [BUILD page](../build/eps.md#cuda).
+
+## Compatibility with PyTorch
+
+The `onnxruntime-gpu` package is designed to work seamlessly with [PyTorch](https://pytorch.org/), provided both are built against the same major version of CUDA and cuDNN. When installing PyTorch with CUDA support, the necessary CUDA and cuDNN DLLs are included, eliminating the need for separate installations of the CUDA toolkit or cuDNN.
+
+To ensure ONNX Runtime utilizes the DLLs installed by PyTorch, you can preload these libraries before creating an inference session. This can be achieved by either importing PyTorch or by using the `onnxruntime.preload_dlls()` function.
+
+**Example 1: Importing PyTorch**
+
+```python
+# Import torch will preload necessary DLLs. It need to be done before creating session.
+import torch
+import onnxruntime
+
+# Create an inference session with CUDA execution provider
+session = onnxruntime.InferenceSession("model.onnx", providers=["CUDAExecutionProvider"])
+```
+
+
+**Example 2: Using `preload_dlls` Function**
+
+```python
+import onnxruntime
+
+# Preload necessary DLLs
+onnxruntime.preload_dlls()
+
+# Create an inference session with CUDA execution provider
+session = onnxruntime.InferenceSession("model.onnx", providers=["CUDAExecutionProvider"])
+```
+
+## Preload DLLs
+
+Since version 1.21.0, the `onnxruntime-gpu` package provides the `preload_dlls` function to preload CUDA, cuDNN, and Microsoft Visual C++ (MSVC) runtime DLLs. This function offers flexibility in specifying which libraries to load and from which directories.
+
+**Function Signature:**
+
+```python
+onnxruntime.preload_dlls(cuda=True, cudnn=True, msvc=True, directory=None)
+```
+
+
+**Parameters:**
+
+- `cuda` (bool): Preload CUDA DLLs if set to `True`.
+- `cudnn` (bool): Preload cuDNN DLLs if set to `True`.
+- `msvc` (bool): Preload MSVC runtime DLLs if set to `True`.
+- `directory` (str or None): Directory to load the DLLs from.
+  - `None`: Search in default directories.
+  - `""` (empty string): Search in NVIDIA site packages.
+  - Specific path: Load DLLs from the specified directory.
+
+**Default Search Order:**
+
+When `directory=None`, the function searches for CUDA and cuDNN DLLs in the following order:
+
+1. On Windows, the `lib` directory under the PyTorch installation.
+2. Python site-packages directories for NVIDIA CUDA or cuDNN libraries (e.g., `nvidia_cuda_runtime_cu12`, `nvidia_cudnn_cu12`).
+3. Fallback to the default DLL loading behavior.
+
+By preloading the necessary DLLs using default search order, you can ensure that ONNX Runtime operates seamlessly with PyTorch.
+
+**Installing CUDA and cuDNN via `onnxruntime-gpu`:**
+
+You can install the necessary CUDA and cuDNN runtime DLLs alongside the `onnxruntime-gpu` package using pip:
+
+```bash
+pip install onnxruntime-gpu[cuda,cudnn]
+```
+
+
+**Preloading DLLs from NVIDIA Site Packages:**
+
+To preload CUDA and cuDNN DLLs from NVIDIA site packages and display debug information:
+
+```python
+import onnxruntime
+
+# Preload DLLs from NVIDIA site packages
+onnxruntime.preload_dlls(directory="")
+
+# Print debug information
+onnxruntime.print_debug_info()
+```
+
+
+**Loading DLLs from Specific Directories:**
+
+To load DLLs from a specified location, set the `directory` parameter to an absolute path or a path relative to the ONNX Runtime package root.
+
+**Example: Loading CUDA from System Installation and cuDNN from NVIDIA Site Package**
+
+```python
+import os
+import onnxruntime
+
+# Load CUDA DLLs from system installation
+cuda_path = os.path.join(os.environ["CUDA_PATH"], "bin")
+onnxruntime.preload_dlls(cuda=True, cudnn=False, directory=cuda_path)
+
+# Load cuDNN DLLs from NVIDIA site package
+onnxruntime.preload_dlls(cuda=False, cudnn=True, directory="..\\nvidia\\cudnn\\bin")
+
+# Print debug information
+onnxruntime.print_debug_info()
+```
 
 ## Configuration Options
 
