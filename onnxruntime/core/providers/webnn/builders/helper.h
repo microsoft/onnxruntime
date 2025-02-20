@@ -242,6 +242,7 @@ const std::map<std::string_view, std::string_view> op_map = {
     {"GlobalLpPool", "l2Pool2d"},
     {"Greater", "greater"},
     {"GreaterOrEqual", "greaterOrEqual"},
+    {"GroupQueryAttention", "matmul"},
     {"GRU", "gru"},
     {"HardSigmoid", "hardSigmoid"},
     {"HardSwish", "hardSwish"},
