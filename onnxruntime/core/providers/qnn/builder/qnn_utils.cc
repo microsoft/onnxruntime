@@ -1034,13 +1034,12 @@ Status QuantizeData(gsl::span<const float> data, gsl::span<const uint32_t> shape
   return Status::OK();
 }
 
-std::string_view GetQnnErrorMessage(const QNN_INTERFACE_VER_TYPE& qnn_interface, Qnn_ErrorHandle_t qnn_error_handle) {
-  // From QNN SDK: The memory is statically owned and should not be freed by the caller.
+std::string GetQnnErrorMessage(const QNN_INTERFACE_VER_TYPE& qnn_interface, Qnn_ErrorHandle_t qnn_error_handle) {
   const char* error_msg = nullptr;
   if (qnn_interface.errorGetMessage(qnn_error_handle, &error_msg) == QNN_SUCCESS) {
     return error_msg;
   }
-  return "Unknown error.";
+  return MakeString("Unknown error. QNN error handle: ", qnn_error_handle);
 }
 
 std::string GetVerboseQnnErrorMessage(const QNN_INTERFACE_VER_TYPE& qnn_interface,
@@ -1052,7 +1051,7 @@ std::string GetVerboseQnnErrorMessage(const QNN_INTERFACE_VER_TYPE& qnn_interfac
     });
     return error_msg;
   }
-  return "Unknown error.";
+  return MakeString("Unknown error. QNN error handle: ", qnn_error_handle);
 }
 
 TensorShape GetTensorProtoShape(const ONNX_NAMESPACE::TensorShapeProto& tensor_shape_proto) {
