@@ -296,6 +296,7 @@ Status FlashAttentionProgram::GenerateShaderCode(ShaderHelper& shader) const {
 
     let seq_causal_length = select(uniforms.total_sequence_length, q_idx_global + 1, uniforms.is_gqa > 0);
     // Neuter qk values where K is out of bounds.
+    qk_1[0] = select(min_value, qk_1[0], k_start+0 < seq_causal_length);
     qk_1[1] = select(min_value, qk_1[1], k_start+1 < seq_causal_length);
     qk_1[2] = select(min_value, qk_1[2], k_start+2 < seq_causal_length);
     qk_1[3] = select(min_value, qk_1[3], k_start+3 < seq_causal_length);
@@ -355,8 +356,9 @@ Status FlashAttentionProgram::GenerateShaderCode(ShaderHelper& shader) const {
    // let sum_vec = qk_1 + qk_2 + qk_3 + qk_4;
    // let sum = sum_vec.x + sum_vec.y + sum_vec.z + sum_vec.w;
 
-    var sum = qk_1[0];
+    var sum = q_element_t(0);
     // Neuter qk values where K is out of bounds.
+    sum += select(q_element_t(0), qk_1[0], k_start+0 < seq_causal_length);
     sum += select(q_element_t(0), qk_1[1], k_start+1 < seq_causal_length);
     sum += select(q_element_t(0), qk_1[2], k_start+2 < seq_causal_length);
     sum += select(q_element_t(0), qk_1[3], k_start+3 < seq_causal_length);
