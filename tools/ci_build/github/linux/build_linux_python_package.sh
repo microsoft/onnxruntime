@@ -40,7 +40,7 @@ done
 
 
 
-BUILD_ARGS=("--build_dir" "/build" "--config" "$BUILD_CONFIG" "--update" "--build" "--skip_submodule_sync" "--nvcc_threads 1" "--parallel" "--use_binskim_compliant_compile_flags" "--build_wheel" "--use_vcpkg")
+BUILD_ARGS=("--build_dir" "/build" "--config" "$BUILD_CONFIG" "--update" "--build" "--skip_submodule_sync" "--parallel 64 --nvcc_threads 1" "--use_binskim_compliant_compile_flags" "--build_wheel" "--use_vcpkg")
 
 if [ "$BUILD_CONFIG" != "Debug" ]; then
     BUILD_ARGS+=("--enable_lto")
