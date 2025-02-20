@@ -181,6 +181,9 @@ function(setup_mlas_source_for_windows)
       ${MLAS_SRC_DIR}/dgemm.cpp
       ${mlas_platform_srcs_avx}
       ${mlas_platform_srcs_avx2}
+      ${MLAS_SRC_DIR}/rotary_embedding_kernel_avx2.h
+      ${MLAS_SRC_DIR}/rotary_embedding_kernel_avx2.cpp
+      ${MLAS_SRC_DIR}/rotary_embedding_kernel_avx2_fp32.cpp
       ${MLAS_SRC_DIR}/qgemm_kernel_amx.cpp
       ${MLAS_SRC_DIR}/qgemm_kernel_avx2.cpp
       ${MLAS_SRC_DIR}/qgemm_kernel_sse.cpp
@@ -226,6 +229,7 @@ function(setup_mlas_source_for_windows)
       ${MLAS_SRC_DIR}/amd64/TanhKernelFma3.asm
       ${MLAS_SRC_DIR}/amd64/ErfKernelFma3.asm
     )
+
     if(MSVC_VERSION GREATER_EQUAL 1933)
       target_sources(onnxruntime_mlas PRIVATE
         ${MLAS_SRC_DIR}/amd64/cvtfp16Avx.asm
@@ -594,6 +598,9 @@ else()
           ${MLAS_SRC_DIR}/intrinsics/avx2/qladd_avx2.cpp
           ${MLAS_SRC_DIR}/intrinsics/avx2/qdwconv_avx2.cpp
           ${MLAS_SRC_DIR}/sqnbitgemm_kernel_avx2.cpp
+          ${MLAS_SRC_DIR}/rotary_embedding_kernel_avx2.h
+          ${MLAS_SRC_DIR}/rotary_embedding_kernel_avx2.cpp
+          ${MLAS_SRC_DIR}/rotary_embedding_kernel_avx2_fp32.cpp
         )
         if(CMAKE_CXX_COMPILER_VERSION GREATER_EQUAL 13.1 AND NOT(APPLE))
           set(mlas_platform_srcs_avx2

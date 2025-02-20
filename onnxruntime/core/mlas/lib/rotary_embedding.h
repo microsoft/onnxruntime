@@ -44,3 +44,14 @@ struct MLAS_ROPE_DISPATCH {
 
     HRope_Fn* HRope = nullptr;
 };
+
+template <typename T>
+void MLASCALL
+MlasRotaryEmbedOneRow_FallBack(
+    const T* input_data,
+    const T* sin_data,
+    const T* cos_data,
+    size_t rotary_emb_dim,
+    bool interleaved,
+    T* output_data
+);

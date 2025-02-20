@@ -1344,7 +1344,9 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
               AttributeProto::FLOAT,
               OPTIONAL_VALUE)
         .Attr("interleaved",
-              "Rotate using interleaved pattern. Default value is 0 (False).",
+              "Indicates whether the input has real and imaginary parts interleaved. "
+              "Default value is 0 (False), meaning the first half of the input consists of real values "
+              "and the second half consists of imaginary values.",
               AttributeProto::INT,
               OPTIONAL_VALUE)
         .Attr("rotary_embedding_dim",
