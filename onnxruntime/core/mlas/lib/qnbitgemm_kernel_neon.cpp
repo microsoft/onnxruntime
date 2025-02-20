@@ -52,7 +52,7 @@ Q4BitGemmPackQuantBDataSize(
     MLAS_UNREFERENCED_PARAMETER(ComputeType);  // same size regardless of ComputeType
 
     if (ComputeType == SQNBIT_CompInt8 && UseKleidiAI(K, BlkLen, HasZpInput)) {
-        kai_matmul_clamp_f32_qai8dxp_qsi4c32p_ukernel& ukernel = GetKleidiAIGemmUKernel();
+        const kai_matmul_clamp_f32_qai8dxp_qsi4c32p_ukernel& ukernel = GetKleidiAIGemmUKernel();
         const size_t nr = ukernel.get_nr();
         const size_t kr = ukernel.get_kr();
         const size_t sr = ukernel.get_sr();
@@ -154,7 +154,7 @@ SQ4BitGemmPackQuantBDataAndBlkSum(
     assert(BlkLen >= 16 && BlkLen % 16 == 0);
 
     if (UseKleidiAI(K, BlkLen, HasZpInput)) {
-        kai_matmul_clamp_f32_qai8dxp_qsi4c32p_ukernel& ukernel = GetKleidiAIGemmUKernel();
+        const kai_matmul_clamp_f32_qai8dxp_qsi4c32p_ukernel& ukernel = GetKleidiAIGemmUKernel();
         std::byte* PackedQuantBDataBegin = PackedQuantB.PackedQuantBData;
 
         const size_t nr = ukernel.get_nr();
