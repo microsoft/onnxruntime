@@ -39,6 +39,11 @@ resources:
     endpoint: Microsoft
     name: pypa/manylinux
     ref: 5eda9aded5462201e6310105728d33016e637ea7
+  repositories:
+  - repository: 1esPipelines
+    type: git
+    name: 1ESPipelineTemplates/1ESPipelineTemplates
+    ref: refs/tags/release
 
 stages:
 - template: templates/web-ci.yml
