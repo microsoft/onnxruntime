@@ -43,7 +43,7 @@ stages:
         BuildConfig: 'RelWithDebInfo'
         EnvSetupScript: setup_env.bat
         buildArch: x64
-        additionalBuildFlags: --build_wheel --use_dml --enable_wcos --use_winml --use_vcpkg 
+        additionalBuildFlags: --build_wheel --use_dml --enable_wcos --use_winml --use_vcpkg --use_vcpkg_ms_internal_asset_cache 
         msbuildPlatform: x64
         isX86: false
         job_name_suffix: x64_RelWithDebInfo

@@ -58,7 +58,7 @@ jobs:
           --build_dir build \
           --skip_submodule_sync \
           --cmake_generator=Ninja \
-          --parallel --use_vcpkg --use_binskim_compliant_compile_flags \
+          --parallel --use_vcpkg --use_vcpkg_ms_internal_asset_cache --use_binskim_compliant_compile_flags \
           --build_shared_lib \
           --config Debug \
           --use_cache \

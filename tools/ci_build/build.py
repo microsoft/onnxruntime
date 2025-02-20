@@ -494,6 +494,11 @@ def parse_arguments():
         action="store_true",
         help="Use vcpkg to search dependencies. Requires CMAKE_TOOLCHAIN_FILE for vcpkg.cmake",
     )
+    parser.add_argument(
+        "--use_vcpkg_ms_internal_asset_cache",
+        action="store_true",
+        help="Microsoft internal option",
+    )
 
     # WebAssembly build
     parser.add_argument("--build_wasm", action="store_true", help="Build for WebAssembly")
@@ -1064,26 +1069,20 @@ def generate_vcpkg_install_options(build_dir, args):
         temp_dir = os.environ["AGENT_TEMPDIRECTORY"]
         vcpkg_install_options.append(f"--x-buildtrees-root={temp_dir}")
 
-    SYSTEM_COLLECTIONURI = os.getenv("SYSTEM_COLLECTIONURI")  # noqa: N806
-
     # Config asset cache
-    terrapin_cmd_path = shutil.which("TerrapinRetrievalTool")
-    if terrapin_cmd_path is None:
-        terrapin_cmd_path = "C:\\local\\Terrapin\\TerrapinRetrievalTool.exe"
-        if not os.path.exists(terrapin_cmd_path):
-            terrapin_cmd_path = None
-    if terrapin_cmd_path is not None:
-        vcpkg_install_options.append(
-            "--x-asset-sources=x-script,"
-            + terrapin_cmd_path
-            + " -b https://vcpkg.storage.devpackages.microsoft.io/artifacts/ -a true -u Environment -p {url} -s {sha512} -d {dst}\\;x-block-origin"
-        )
-    else:
-        if (
-            SYSTEM_COLLECTIONURI == "https://dev.azure.com/onnxruntime/"
-            or SYSTEM_COLLECTIONURI == "https://dev.azure.com/aiinfra/"
-            or SYSTEM_COLLECTIONURI == "https://aiinfra.visualstudio.com/"
-        ):
+    if args.use_vcpkg_ms_internal_asset_cache:
+        terrapin_cmd_path = shutil.which("TerrapinRetrievalTool")
+        if terrapin_cmd_path is None:
+            terrapin_cmd_path = "C:\\local\\Terrapin\\TerrapinRetrievalTool.exe"
+            if not os.path.exists(terrapin_cmd_path):
+                terrapin_cmd_path = None
+        if terrapin_cmd_path is not None:
+            vcpkg_install_options.append(
+                "--x-asset-sources=x-script,"
+                + terrapin_cmd_path
+                + " -b https://vcpkg.storage.devpackages.microsoft.io/artifacts/ -a true -u Environment -p {url} -s {sha512} -d {dst}\\;x-block-origin"
+            )
+        else:
             vcpkg_install_options.append(
                 "--x-asset-sources=x-azurl,https://vcpkg.storage.devpackages.microsoft.io/artifacts/\\;x-block-origin"
             )
