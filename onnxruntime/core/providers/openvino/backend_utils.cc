@@ -144,7 +144,7 @@ CreateOVModel(const std::string model,
     std::cout << "CreateNgraphFunc" << std::endl;
   }
   try {
-    auto ov_model = OVCore::ReadModel(model, session_context.onnx_model_path_name.string());
+    auto ov_model = OVCore::Get()->ReadModel(model, session_context.onnx_model_path_name.string());
 
     // Check for Constant Folding
     if ((session_context.device_type != "NPU") && !session_context.is_wholly_supported_graph) {
@@ -412,7 +412,7 @@ void CreateOVTensors(const std::string& device_name,
     // Create OpenVINO Tensor
     if (device_name == "NPU") {
       // Use remote tensors
-      auto npu_context = OVCore::Get().get_default_context("NPU").as<ov::intel_npu::level_zero::ZeroContext>();
+      auto npu_context = OVCore::Get()->core.get_default_context("NPU").as<ov::intel_npu::level_zero::ZeroContext>();
       auto&& remote_tensor = npu_context.create_l0_host_tensor(ov_elementType, value.dimensions, ov::intel_npu::TensorType::INPUT);
 
       // Copy data to remote tensor

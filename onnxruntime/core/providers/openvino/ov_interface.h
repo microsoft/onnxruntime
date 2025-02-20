@@ -37,40 +37,64 @@ typedef ov::intel_gpu::ocl::ClContext* OVRemoteContextPtr;
 typedef ov::RemoteContext OVRemoteContext;
 #endif
 
-struct OVCore {
-  static void Initialize();
-  static void Teardown();
+template <typename T>
+class WeakSingleton {
+ public:
+  static std::shared_ptr<T> Get() {
+    static std::weak_ptr<T> instance;
+    static std::mutex mutex;
+
+    auto ptr = instance.lock();
+    if (!ptr) {
+      std::lock_guard<std::mutex> lock(mutex);
+      // ensure another thread didn't create an instance while this thread was waiting
+      ptr = instance.lock();
+      if (!ptr) {
+        ptr = std::make_shared<T>();
+        instance = ptr;
+      }
+    }
+    return ptr;
+  }
+
+ protected:
+  WeakSingleton() = default;
+  virtual ~WeakSingleton() = default;
+  ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(WeakSingleton);
+};
+
+struct OVCore : WeakSingleton<OVCore> {
+  ov::Core core;
 
   // OV Interface For Reading Model
-  static std::shared_ptr<OVNetwork> ReadModel(const std::string& model_stream, const std::string& model_path);
+  std::shared_ptr<OVNetwork> ReadModel(const std::string& model_stream, const std::string& model_path);
 
   // OV Interface for Compiling OV Model Type
-  static OVExeNetwork CompileModel(std::shared_ptr<const OVNetwork>& ie_cnn_network,
-                                   std::string& hw_target,
-                                   ov::AnyMap& device_config,
-                                   const std::string& name);
+  OVExeNetwork CompileModel(std::shared_ptr<const OVNetwork>& ie_cnn_network,
+                            std::string& hw_target,
+                            ov::AnyMap& device_config,
+                            const std::string& name);
   // OV Interface for Fast Compile
-  static OVExeNetwork CompileModel(const std::string& onnx_model,
-                                   std::string& hw_target,
-                                   ov::AnyMap& device_config,
-                                   const std::string& name);
+  OVExeNetwork CompileModel(const std::string& onnx_model,
+                            std::string& hw_target,
+                            ov::AnyMap& device_config,
+                            const std::string& name);
   // OV Interface for Import model Stream
-  static OVExeNetwork ImportModel(std::istream& model_stream,
-                                  std::string hw_target,
-                                  const ov::AnyMap& device_config,
-                                  std::string name);
+  OVExeNetwork ImportModel(std::istream& model_stream,
+                           std::string hw_target,
+                           const ov::AnyMap& device_config,
+                           std::string name);
 #ifdef IO_BUFFER_ENABLED
-  static OVExeNetwork CompileModel(std::shared_ptr<const OVNetwork>& model,
-                                   OVRemoteContextPtr context,
-                                   std::string name);
-  static OVExeNetwork ImportModel(std::shared_ptr<std::istringstream> model_stream,
-                                  OVRemoteContextPtr context,
-                                  std::string name);
+  OVExeNetwork CompileModel(std::shared_ptr<const OVNetwork>& model,
+                            OVRemoteContextPtr context,
+                            std::string name);
+  OVExeNetwork ImportModel(std::shared_ptr<std::istringstream> model_stream,
+                           OVRemoteContextPtr context,
+                           std::string name);
 #endif
-  static std::vector<std::string> GetAvailableDevices();
-  static void SetCache(const std::string& cache_dir_path);
-  inline static ov::Core& Get();
-  static void SetStreams(const std::string& device_type, int num_streams);
+  std::vector<std::string> GetAvailableDevices();
+  void SetCache(const std::string& cache_dir_path);
+  void SetStreams(const std::string& device_type, int num_streams);
 };
 
 class OVExeNetwork {
