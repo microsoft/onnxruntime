@@ -45,13 +45,6 @@ ONNX enables you to run your models on-device across CPU, GPU, NPU. With ONNX yo
 _CUDA BUILD SPECS: Onnxruntime-genai-cuda==0.6.0-dev, transformers==4.46.2, onnxruntime-gpu==1.20.1_ <br/>
 _CPU BUILD SPECS: Onnxruntime-genai==0.6.0-dev, transformers==4.46.2, onnxruntime==1.20.01_
 
-## Convert, Quantize, and Run your models easily!
-
-Watch the video below and follow along on how you can covert the DeepSeek model to ONNX using Olive, and run it using a chat template on-device using ONNXRuntime Generative API.
-
-
-
-
 ## Easily Finetune your models with Olive.
 
 This [notebook](https://github.com/microsoft/Olive/blob/main/examples/getting_started/olive-deepseek-finetune.ipynb) provides a step-by-step guide to fine-tuning DeepSeek models using the Olive framework. It covers the process of setting up your environment, preparing your data, and leveraging Azure AI Foundry to optimize and deploy your models. The notebook is designed to help you get started quickly and efficiently with DeepSeek and Olive, making your AI development process smoother and more effective.
