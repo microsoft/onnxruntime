@@ -491,7 +491,7 @@ bool ReshapeFusion::FuseContiguousReshapes(Node& reshape, Graph& graph) {
   shape_initializer_proto.set_name(graph.GenerateNodeName(name + "_new_shape"));
   shape_initializer_proto.add_dims(static_cast<int64_t>(shape_value.size()));
   shape_initializer_proto.set_data_type(ONNX_NAMESPACE::TensorProto_DataType_INT64);
-  utils::SetRawDataInTensorProto(shape_initializer_proto,shape_value.data(), shape_value.size() * sizeof(int64_t));
+  utils::SetRawDataInTensorProto(shape_initializer_proto, shape_value.data(), shape_value.size() * sizeof(int64_t));
   NodeArg* shape_arg = &graph_utils::AddInitializer(graph, shape_initializer_proto);
   Node& reshape_node = graph.AddNode(graph.GenerateNodeName(name + "_new_reshape"), "Reshape", "Reshape for " + name,
                                      {contiguous_reshapes[0].get().MutableInputDefs()[0], shape_arg},
