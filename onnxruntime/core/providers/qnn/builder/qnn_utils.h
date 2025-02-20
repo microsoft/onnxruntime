@@ -271,8 +271,8 @@ Status PermuteShape(gsl::span<const T> input_shape, gsl::span<const P> perm, gsl
 }
 
 // Gets error message associated with QNN error handle value.
-std::string_view GetQnnErrorMessage(const QNN_INTERFACE_VER_TYPE& qnn_interface,
-                                    Qnn_ErrorHandle_t qnn_error_handle);
+std::string GetQnnErrorMessage(const QNN_INTERFACE_VER_TYPE& qnn_interface,
+                               Qnn_ErrorHandle_t qnn_error_handle);
 
 // Gets verbose error message associated with QNN error handle value.
 std::string GetVerboseQnnErrorMessage(const QNN_INTERFACE_VER_TYPE& qnn_interface,
