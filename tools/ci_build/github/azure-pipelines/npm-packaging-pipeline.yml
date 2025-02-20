@@ -9,10 +9,6 @@ parameters:
   - 'custom'
   default: 'nightly (@dev)'
 
-- name: is1ES
-  type: boolean
-  default: true
-
 variables:
   # pipeline should define the following variables
   #   ExtraBuildArgs
@@ -67,7 +63,7 @@ extends:
         RunWebGpuTestsForReleaseBuild: true
         WebGpuPoolName: 'onnxruntime-Win2022-VS2022-webgpu-A10'
         WebCpuPoolName: 'onnxruntime-Win2022-VS2022-webgpu-A10'
-        is1ES: ${{ parameters.is1ES }}
+        is1ES: true
 
     - template: templates/react-native-ci.yml
       parameters:
@@ -77,7 +73,7 @@ extends:
         PackageName: 'onnxruntime-react-native'
         InitialStageDependsOn: 'Precheck_and_extract_commit'
         enable_code_sign: false
-        is1ES: ${{ parameters.is1ES }}
+        is1ES: true
 
     - stage: Download_Node_Package_And_Publish_Validation_Script
       dependsOn:

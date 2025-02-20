@@ -185,6 +185,7 @@ stages:
         PoolName: ${{ parameters.PoolName }}
       PackageName: ${{ parameters.PackageName }}
       RunWebGpuTests: ${{ parameters.RunWebGpuTestsForReleaseBuild }}
+      is1ES: ${{ parameters.is1ES }}
 
 # Disable BrowserStack test
 # TODO: fix and re-enable in PostMerge test
