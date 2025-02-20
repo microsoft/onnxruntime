@@ -13,9 +13,10 @@ Are you a developer looking to harness the power of your users' local compute fo
 
 Building on the recent ability to run models on [Copilot+PCs on NPUs](https://blogs.windows.com/windowsdeveloper/2025/01/29/running-distilled-deepseek-r1-models-locally-on-copilot-pcs-powered-by-windows-copilot-runtime/), you can now efficiently run these models on CPU and GPU devices as well. You can now download and run the ONNX optimized variants of the models from [Hugging Face](https://huggingface.co/onnxruntime/DeepSeek-R1-Distill-ONNX).  
 
-The DeepSeek ONNX models enables you to run DeepSeek on any GPU or CPU, achieving performance speeds 1.3 to 6.3 times faster than native PyTorch. To easily get started with the model, you can use our ONNX Runtime `Generate()` API. See instructions for CPU, GPU (CUDA, DML) [here](https://github.com/microsoft/onnxruntime/blob/gh-pages/docs/genai/tutorials/deepseek-python.md). 
+
 
 ## Download and run your models easily! 
+The DeepSeek ONNX models enables you to run DeepSeek on any GPU or CPU, achieving performance speeds 1.3 to 6.3 times faster than native PyTorch. To easily get started with the model, you can use our ONNX Runtime `Generate()` API. 
 <!-- Video Embed -->
 <div>
 				<iframe
@@ -27,8 +28,29 @@ The DeepSeek ONNX models enables you to run DeepSeek on any GPU or CPU, achievin
 					allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
 					allowfullscreen
 				/>
-			</div>
+			</div>			
 
+### Quickstart on CPU
+
+
+Installing onnxruntime-genai, olive, and dependencies for CPU in a virtual environment: 
+	```python
+python -m venv .venv && source .venv/bin/activate
+pip install requests numpy --pre onnxruntime-genai olive-ai
+```
+
+Download the model directly using the huggingface cli: 
+	```python
+huggingface-cli download onnxruntime/DeepSeek-R1-Distill-ONNX --include "deepseek-r1-distill-qwen-1.5B/*" --local-dir ./
+```
+	
+CPU Chat inference. If you pulled the model from huggingface, adjust the model directory (-m) accordingly: 
+	```python
+wget https://raw.githubusercontent.com/microsoft/onnxruntime-genai/refs/heads/main/examples/python/model-chat.py
+python model-chat.py -m deepseek-r1-distill-qwen-1.5B/cpu_and_mobile/cpu-int4-rtn-block-32-acc-level-4 -e cpu
+```
+
+See instructions for GPU (CUDA, DML) [here](https://github.com/microsoft/onnxruntime/blob/gh-pages/docs/genai/tutorials/deepseek-python.md). 
 ## ONNX Model Performance Improvements
 
 ONNX enables you to run your models on-device across CPU, GPU, NPU. With ONNX you can run your models on any machine across all silica Qualcomm, AMD, Intel, Nvidia. See table below for some key benchmarks for Windows GPU and CPU devices.
