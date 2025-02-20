@@ -77,6 +77,7 @@ extends:
         PackageName: 'onnxruntime-react-native'
         InitialStageDependsOn: 'Precheck_and_extract_commit'
         enable_code_sign: false
+        is1ES: ${{ parameters.is1ES }}
 
     - stage: Download_Node_Package_And_Publish_Validation_Script
       dependsOn:
