@@ -277,7 +277,7 @@ const generatePositionIdsProgramInfo = (
     let batch_idx = global_idx / uniforms.sequence_length;
     let sequence_idx = i32(global_idx % uniforms.sequence_length);
     var pos_id: i32 = 0;
-    let seqlen = ${seqLensInputHelper.getByOffset("batch_idx")};
+    let seqlen = ${seqLensInputHelper.getByOffset('batch_idx')};
     let total_seqlen = seqlen + 1;
     if (is_first_prompt) {
       if (sequence_idx < total_seqlen) {
@@ -285,7 +285,7 @@ const generatePositionIdsProgramInfo = (
       } else {
         pos_id = 1;
       }
-      ${positionIdsHelper.setByOffset("global_idx", "pos_id")}
+      ${positionIdsHelper.setByOffset('global_idx', 'pos_id')}
     } else if (is_subsequent_prompt) {
       let past_seqlen = total_seqlen - i32(uniforms.sequence_length);
       if (past_seqlen + sequence_idx < total_seqlen) {
@@ -293,9 +293,9 @@ const generatePositionIdsProgramInfo = (
       } else {
         pos_id = 1;
       }
-      ${positionIdsHelper.setByOffset("global_idx", "pos_id")}
+      ${positionIdsHelper.setByOffset('global_idx', 'pos_id')}
     } else if (global_idx < uniforms.batch_size) {
-      ${positionIdsHelper.setByOffset("global_idx", "seqlen")}
+      ${positionIdsHelper.setByOffset('global_idx', 'seqlen')}
     };
   }
   `;
