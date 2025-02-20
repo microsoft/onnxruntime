@@ -137,7 +137,7 @@ stages:
       skipComponentGovernanceDetection: true
     workspace:
       clean: all
-    pool: Onnxruntime-Linux-A10-24G
+    pool: Onnxruntime-Linux-GPU-A100-WUS3
     steps:
     - checkout: self
       clean: true
@@ -209,7 +209,7 @@ stages:
               cd /onnxruntime_src/java && /onnxruntime_src/java/gradlew cmakeCheck -DcmakeBuildDir=/build/Release -DUSE_CUDA=1; \
               cd /tmp; \
               python3 /onnxruntime_src/tools/ci_build/build.py \
-                --build_dir /build --config Release --test --skip_submodule_sync --build_shared_lib --parallel --use_vcpkg --use_binskim_compliant_compile_flags --build_wheel --enable_onnx_tests \
+                --build_dir /build --config Release --test --skip_submodule_sync --build_shared_lib --parallel --use_vcpkg --use_vcpkg_ms_internal_asset_cache --use_binskim_compliant_compile_flags --build_wheel --enable_onnx_tests \
                 --enable_transformers_tool_test --use_cuda --cuda_version=${{parameters.CudaVersion}} --cuda_home=/usr/local/cuda --cudnn_home=/usr/local/cuda \
                 --enable_pybind --build_java --ctest_path "" ; \
               '

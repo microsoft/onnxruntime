@@ -26,12 +26,12 @@
     "cxxopts",
     "date",
     "dlpack",
+    "eigen3",
     {
       "name": "flatbuffers",
       "host": true,
       "version>=": "23.5.26"
     },
-    "fp16",
     {
       "name": "flatbuffers",
       "version>=": "23.5.26"
@@ -85,6 +85,18 @@
       "description": "Build with XNNPack EP",
       "dependencies": [
         "xnnpack"
+      ]
+    },
+    "coreml-ep": {
+      "description": "Build with CoreML EP",
+      "dependencies": [
+        "fp16"
+      ]
+    },
+    "dml-ep": {
+      "description": "Build with CoreML EP",
+      "dependencies": [
+        "directx-headers"
       ]
     }
   },
