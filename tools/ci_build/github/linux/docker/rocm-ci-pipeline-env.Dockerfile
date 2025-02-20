@@ -17,7 +17,7 @@ RUN apt-get update && \
     printf "deb [arch=amd64] https://repo.radeon.com/rocm/apt/$ROCM_VERSION/ jammy main" | tee /etc/apt/sources.list.d/rocm.list   && \
     printf "deb [arch=amd64] https://repo.radeon.com/amdgpu/$AMDGPU_VERSION/ubuntu jammy main" | tee /etc/apt/sources.list.d/amdgpu.list   && \
     apt-get update && apt-get install -y --no-install-recommends \
-    sudo \
+    sudo git \
     libelf1 \
     kmod \
     file zip unzip \
@@ -97,7 +97,6 @@ RUN pip install packaging \
                 scipy==1.14.1 \
                 numpy==1.26.4
 
-RUN apt install -y git
 ARG BUILD_UID=1000
 ARG BUILD_USER=onnxruntimedev
 RUN adduser --gecos 'onnxruntime Build User' --disabled-password $BUILD_USER --uid $BUILD_UID
