@@ -199,13 +199,15 @@ Status DepthToSpace::Compute(OpKernelContext* context) const {
                                                    input_width, blocksize_,
                                                    virtual_input_depth};
 
+#if 0
+    auto permutation = is_dcr_ ? std::array<Eigen::DenseIndex, IntermediateTensorRank>{{0, 1, 3, 2, 4, 5}}
+                               : std::array<Eigen::DenseIndex, IntermediateTensorRank>{{0, 1, 4, 2, 5, 3}};
+#else
     std::vector<size_t> permutation = is_dcr_ ? std::vector<size_t>{0, 1, 3, 2, 4, 5}
-                                              : std::vector<size_t>{0, 3, 1, 4, 2, 5};
+                                              : std::vector<size_t>{0, 1, 4, 2, 5, 3};
+#endif
 
     if (input.IsDataType<uint8_t>()) {
-
-      return Transpose::DoTranspose(
-        permutation, input, output, &virtual_input_shape, &virtual_output_shape, context->GetOperatorThreadPool());
 
       #if 0
       SpaceDepthOpCpuImpl<uint8_t>(input, output, permutation,
@@ -220,6 +222,9 @@ Status DepthToSpace::Compute(OpKernelContext* context) const {
                                   onnxruntime::narrow<std::ptrdiff_t>(input_width),
                                   onnxruntime::narrow<std::ptrdiff_t>(blocksize_),
                                   onnxruntime::narrow<std::ptrdiff_t>(input_depth / blocksize_ / blocksize_));
+      #else
+      return Transpose::DoTranspose(
+        permutation, input, output, &virtual_input_shape, &virtual_output_shape, context->GetOperatorThreadPool());
       #endif
 
     } else {
