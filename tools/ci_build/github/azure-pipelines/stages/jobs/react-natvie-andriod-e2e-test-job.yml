@@ -197,7 +197,7 @@ jobs:
       contents: onnxruntime-react-native*.tgz
       targetFolder: $(Build.ArtifactStagingDirectory)
     displayName: Create Artifacts onnxruntime-react-native
-  ${{ if eq(parameters.is1ES, true) }}
+  ${{ if eq(parameters.is1ES, true) }}:
   - task: 1ES.PublishPipelineArtifact@1
     inputs:
       artifact: android_e2e_test_logs_$(Build.BuildId)_$(Build.BuildNumber)_$(System.JobAttempt)
