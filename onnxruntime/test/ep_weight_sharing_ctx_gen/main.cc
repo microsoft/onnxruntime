@@ -1,47 +1,19 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-// onnxruntime dependencies
 #include "test_configuration.h"
-#include <core/session/onnxruntime_cxx_api.h>
 #include "command_args_parser.h"
-#include <google/protobuf/stubs/common.h>
 
+// onnxruntime dependencies
+#include "core/session/onnxruntime_cxx_api.h"
 #include "core/session/onnxruntime_session_options_config_keys.h"
-#include "core/session/ort_env.h"
 
-#include "core/graph/model.h"
-#include "core/session/environment.h"
+// onnx dependencies
+#include "onnx/onnx_pb.h"
+#include <fstream>
 
 using namespace onnxruntime;
 using ProviderOptions = std::unordered_map<std::string, std::string>;
-
-std::unique_ptr<Ort::Env> ort_env;
-
-static void CheckStatus(const Status& status) {
-  if (status.Code() != common::StatusCode::OK) {
-    std::string msg = status.ErrorMessage();
-    throw Ort::Exception(std::move(msg), OrtErrorCode::ORT_FAIL);
-  }
-}
-
-static int64_t GetNodeAttr(const Node& node, const std::string& attr_name, int64_t default_val) {
-  const auto& attributes = node.GetAttributes();
-  if (auto entry = attributes.find(attr_name); entry != attributes.end()) {
-    return entry->second.i();
-  }
-
-  return default_val;
-}
-
-static const std::string& GetNodeAttr(const Node& node, const std::string& attr_name, const std::string& default_val) {
-  const auto& attributes = node.GetAttributes();
-  if (auto entry = attributes.find(attr_name); entry != attributes.end()) {
-    return entry->second.s();
-  }
-
-  return default_val;
-}
 
 // from the last context cache Onnx model, find the EPContext node with main_context=1,
 // and get the QNN context binary file name, this context binary contains all graphs from all Onnx models
@@ -50,20 +22,32 @@ static void GetLastContextBinaryFileName(const std::basic_string<ORTCHAR_T> last
                                          std::string& last_ctx_bin_file,
                                          int64_t& max_size) {
   max_size = 0;
-  std::shared_ptr<Model> ctx_model;
-  CheckStatus(Model::Load(ToPathString(last_onnx_ctx_file), ctx_model, nullptr,
-                          (*((OrtEnv*)*ort_env.get())->GetEnvironment().GetLoggingManager()).DefaultLogger()));
-  auto& ctx_graph = ctx_model->MainGraph();
-  for (auto& node : ctx_graph.Nodes()) {
-    if (node.OpType() == "EPContext") {
-      int64_t is_main_context = GetNodeAttr(node, "main_context", static_cast<int64_t>(0));
-      max_size = GetNodeAttr(node, "max_size", static_cast<int64_t>(0));
-      if (1 == is_main_context) {
-        last_ctx_bin_file = GetNodeAttr(node, "ep_cache_context", "");
+
+  onnx::ModelProto model;
+  std::ifstream onnx_file_stream(last_onnx_ctx_file, std::ios_base::binary);
+  model.ParseFromIstream(&onnx_file_stream);
+
+  for (auto& node : model.graph().node()) {
+    if (node.op_type() == "EPContext") {
+      int64_t is_main_context = 0;
+      for (auto& attr : node.attribute()) {
+        if (attr.name() == "main_context") {
+          is_main_context = attr.i();
+        }
+        if (attr.name() == "max_size") {
+          max_size = attr.i();
+        }
+        if (attr.name() == "ep_cache_context") {
+          last_ctx_bin_file = attr.s();
+        }
+      }
+      if (is_main_context) {
         return;
       }
     }
   }
+
+  onnx_file_stream.close();
 }
 
 // Update generated context cache Onnx model to make the main EPContext node point to
@@ -72,31 +56,49 @@ static void GetLastContextBinaryFileName(const std::basic_string<ORTCHAR_T> last
 static void UpdateEpContextModel(const std::vector<std::basic_string<ORTCHAR_T>>& ep_ctx_files,
                                  const std::string& last_qnn_ctx_binary_file_name,
                                  int64_t max_size) {
-  for (auto ep_ctx_file : ep_ctx_files) {
-    std::shared_ptr<Model> ctx_model;
-    auto path_str = ToPathString(ep_ctx_file);
-    CheckStatus(Model::Load(path_str, ctx_model, nullptr,
-                            (*((OrtEnv*)*ort_env.get())->GetEnvironment().GetLoggingManager()).DefaultLogger()));
-    auto& ctx_graph = ctx_model->MainGraph();
-    GraphViewer graph_viewer(ctx_graph);
-    auto path = std::filesystem::path(path_str);
 
-    for (auto& node : ctx_graph.Nodes()) {
-      if (node.OpType() == "EPContext") {
-        int64_t is_main_context = GetNodeAttr(node, "main_context", static_cast<int64_t>(0));
-        if (1 == is_main_context) {
-          std::string old_qnn_ctx_binary_file_name = GetNodeAttr(node, "ep_cache_context", "");
+  for (auto ep_ctx_file : ep_ctx_files) {
+    onnx::ModelProto model;
+    std::ifstream onnx_file_stream(ep_ctx_file, std::ios_base::binary);
+    model.ParseFromIstream(&onnx_file_stream);
+    onnx_file_stream.close();
+
+    for (auto& node : *(model.mutable_graph()->mutable_node())) {
+      if (node.op_type() == "EPContext") {
+        int64_t is_main_context = 0;
+        std::string old_qnn_ctx_binary_file_name;
+        int max_size_index = 0;
+        int ep_context_index = 0;
+        for (auto i = 0; i<node.attribute_size(); ++i) {
+          auto& attr = node.attribute()[i];
+          if (attr.name() == "main_context") {
+            is_main_context = attr.i();
+          }
+          if (attr.name() == "max_size") {
+            max_size = attr.i();
+            max_size_index = i;
+          }
+          if (attr.name() == "ep_cache_context") {
+            old_qnn_ctx_binary_file_name = attr.s();
+            ep_context_index = 0;
+          }
+        }
+        if (is_main_context) {
+          auto path_str = ToPathString(ep_ctx_file);
+          auto path = std::filesystem::path(path_str);
           auto file_path = path.replace_filename(old_qnn_ctx_binary_file_name);
           std::remove(file_path.string().c_str());
-          node.ClearAttribute("ep_cache_context");
-          node.AddAttribute("ep_cache_context", last_qnn_ctx_binary_file_name);
-          node.ClearAttribute("max_size");
-          node.AddAttribute("max_size", max_size);
+
+          node.mutable_attribute(max_size_index)->set_i(max_size);
+          node.mutable_attribute(ep_context_index)->set_s(last_qnn_ctx_binary_file_name);
         }
       }
     }
-    std::remove(ToUTF8String(ep_ctx_file).c_str());
-    CheckStatus(Model::Save(*ctx_model.get(), ToPathString(ep_ctx_file)));
+
+    // re-write the onnx ctx file
+    std::ofstream onnx_file_ostream(ep_ctx_file, std::ios_base::binary);
+    model.SerializeToOstream(&onnx_file_ostream);
+    onnx_file_ostream.close();
   }
 }
 
@@ -113,7 +115,7 @@ int real_main(int argc, char* argv[]) {
 
   OrtLoggingLevel logging_level = test_config.run_config.f_verbose
                                       ? ORT_LOGGING_LEVEL_VERBOSE
-                                      : ORT_LOGGING_LEVEL_WARNING;
+                                      : ORT_LOGGING_LEVEL_ERROR;
   Ort::Env env(logging_level, "ep_weight_sharing");
 
   ORT_TRY {
@@ -162,6 +164,12 @@ int real_main(int argc, char* argv[]) {
 #else
         provider_options["backend_path"] = "libQnnHtp.so";
 #endif
+
+        if (test_config.model_file_paths.size() > 2) {
+          std::cerr << "QNN EP only support 2 models for the weight sharing feature.";
+          return -1;
+        }
+
         // set default QNN EP option to enable weight sharing if not set by user
         const std::string enable_htp_weight_sharing = "enable_htp_weight_sharing";
         if (provider_options.find(enable_htp_weight_sharing) == provider_options.end()) {
@@ -204,14 +212,11 @@ int real_main(int argc, char* argv[]) {
     UpdateEpContextModel(ep_ctx_files, last_qnn_ctx_binary_file_name, max_size);
   }
   ORT_CATCH(const Ort::Exception& e) {
-    fprintf(stderr, "Failed to generate context cache file: %s \n", e.what());
-
-    ort_env.reset();
+    std::cerr << "Failed to generate context cache file: " << e.what();
     return -1;
   }
 
-  ort_env.reset();
-
+  std::cout << "Generation done!";
   return 0;
 }
 
