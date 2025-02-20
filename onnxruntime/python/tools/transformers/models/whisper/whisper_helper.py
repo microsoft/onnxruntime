@@ -115,7 +115,6 @@ class WhisperHelper:
         cache_dir: str,
         device: torch.device,
         merge_encoder_and_decoder_init: bool = True,
-        state_dict_path: str = "",
     ) -> dict[str, torch.nn.Module]:
         """Load model given a pretrained name or path, then build models for ONNX conversion.
 
@@ -139,9 +138,6 @@ class WhisperHelper:
         else:
             model_encoder, model_decoder = model, model
             passed_model = None
-
-        if state_dict_path:
-            model.load_state_dict(torch.load(state_dict_path), strict=False)
 
         decoder = WhisperDecoder(model_decoder, model.config, model_impl=model_impl, model=passed_model)
         decoder.eval().to(device)
