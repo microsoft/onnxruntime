@@ -98,7 +98,7 @@ stages:
           artifactName: '__commit'
           targetPath: '$(Build.ArtifactStagingDirectory)'
     - ${{ if eq(parameters.is1ES, True) }}:
-      - task: 1ES.PublishPipelineArtifact@0
+      - task: 1ES.PublishPipelineArtifact@1
         displayName: 'Publish __commit.txt'
         inputs:
           artifactName: '__commit'
