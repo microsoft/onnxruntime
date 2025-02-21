@@ -33,10 +33,10 @@ The DeepSeek ONNX models enables you to run DeepSeek on any GPU or CPU, achievin
 ### Quickstart on CPU
 
 
-Installing onnxruntime-genai, olive, and dependencies for CPU in a virtual environment: 
+Installing onnxruntime-genai and dependencies for CPU in a virtual environment: 
 	```python
 python -m venv .venv && source .venv/bin/activate
-pip install requests numpy --pre onnxruntime-genai olive-ai
+pip install requests numpy --pre onnxruntime-genai
 ```
 
 Download the model directly using the huggingface cli: 
