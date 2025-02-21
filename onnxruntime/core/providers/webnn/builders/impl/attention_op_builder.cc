@@ -59,35 +59,36 @@ std::vector<int64_t> repeat_sequence(int64_t sequence_length, int64_t kv_num_hea
     GQA inputs: query, key value, past_key, past_value, seqlens_k, total_sequence_length
     Notes: If the datatype of the inputs (qkv and past kv) is float16, we cast them to float32 to ensure data precision.
 
-                 query     key     value
-                   |        |        |
-           q_Reshape   k_Reshape   v_Reshape  (shape=B,S,H,N)
-                   |        |        |
-          q_Transpose  k_Transpose v_Transpose
-           (0,2,1,3)    (0,2,3,1)   (perm=0,2,1,3)
-             \           /           |     past_key
-              \         /            |        |
-present_key<---\----ScatterND <------|--------+
-               |      |              |        |
-               |  opt_k_transpose?   |    seqlens_k
-               \  (0,1,3,2)          |        |
-                \    /               |        +----past_value
-                qk_MatMul            |       /
-                     |    [B=h]      |      /
-                     |   /           |     /
-                  qk_Div         ScatterND -----> present_value
-                      |              |
-                      |              /
-                     Add <----------/---------------finfo_min_mask
+          query             key       value
+            |                |          |
+         Reshape          Reshape     Reshape (B,S,H,N)
+            |      past_key  /          |
+            |         |     /           |
+          q_Transpose |    /            |
+           (0,2,1,3)  |   /             |                    seqlens_k
+             \        |  /              |                     /     |
+              \       | /               |                    /      |
+present_key<---\----ScatterND <---------|-----(scatter_indices*)    |
+               |      |                 |        /                  |
+               |  k_Transpose           |       /                   |
+               \  (0,1,3,2)             |      /                    |
+                \     |                 |     /                     |
+                 \  Expand(G)           |    /                      |
+                  \   |     past_value  |   /                       |
+                qk_MatMul          \    |  /                        |
+                      |            ScatterND-----> present_value    |
+                  qk_Div              /                             |
+                      |              /                              |
+                     Add <----------/--------(attention_bias, one/finfo_min mask*)
                       |            /
-                    Softmax       /
+                    Softmax     Expand(G)
                        \         /
                         \       /
                       qkv_MatMul
                              |
                           Transpose (perm=0,2,1,3)
                              |
-                          Reshape---(shape=B,P,W)
+                          Reshape---(shape=B,S,W)
                              |
                            output
 */
@@ -135,7 +136,7 @@ Status AttentionOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, co
   uint32_t group_size = SafeInt<uint32_t>(num_heads / kv_num_heads);
 
   std::vector<uint32_t> reshape_output_shape = {qkv_batch_size, qkv_sequence_length, qkv_hidden_size};
-  std::vector<uint32_t> scatter_indices_shape = {qkv_batch_size, kv_num_heads, qkv_sequence_length, 3};
+  std::vector<uint32_t> scatter_indices_shape = {qkv_batch_size, qkv_sequence_length, kv_num_heads, 3};
   std::vector<uint32_t> reshape_tensor_shape = {qkv_batch_size, qkv_sequence_length, num_heads, head_size};
   std::vector<uint32_t> group_broadcast_tensor_shape_1 = {qkv_batch_size, kv_num_heads, 1, past_sequence_length,
                                                           head_size};
@@ -176,7 +177,7 @@ Status AttentionOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, co
   emscripten::val desc_left = emscripten::val::object();
   ORT_RETURN_IF_NOT(SetWebnnDataType(desc_left, ONNX_NAMESPACE::TensorProto_DataType_INT64), "Unsupported data type");
   emscripten::val dims_left =
-      emscripten::val::array(std::vector<uint32_t>({qkv_batch_size * kv_num_heads * qkv_sequence_length, 2}));
+      emscripten::val::array(std::vector<uint32_t>({qkv_batch_size * qkv_sequence_length * kv_num_heads, 2}));
   desc_left.set("dimensions", dims_left);
   desc_left.set("shape", dims_left);
   emscripten::val left_buffer = emscripten::val::global("BigInt64Array").new_(emscripten::val::array(left));
@@ -185,7 +186,7 @@ Status AttentionOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, co
   emscripten::val desc_right = emscripten::val::object();
   ORT_RETURN_IF_NOT(SetWebnnDataType(desc_right, ONNX_NAMESPACE::TensorProto_DataType_INT64), "Unsupported data type");
   emscripten::val dims_right =
-      emscripten::val::array(std::vector<uint32_t>({qkv_batch_size * kv_num_heads * qkv_sequence_length, 1}));
+      emscripten::val::array(std::vector<uint32_t>({qkv_batch_size * qkv_sequence_length * kv_num_heads, 1}));
   desc_right.set("dimensions", dims_right);
   desc_right.set("shape", dims_right);
   emscripten::val right_buffer = emscripten::val::global("BigInt64Array").new_(emscripten::val::array(right));
@@ -202,7 +203,7 @@ Status AttentionOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, co
   options.set("label", node.Name() + "/GQA/query/transpose");
   emscripten::val new_query = model_builder.GetBuilder().call<emscripten::val>("transpose", reshaped_query, options);
 
-  std::vector<uint32_t> reshape_kv_shape = {qkv_batch_size, kv_num_heads, qkv_sequence_length, head_size};
+  std::vector<uint32_t> reshape_kv_shape = {qkv_batch_size, qkv_sequence_length, kv_num_heads, head_size};
   common_options.set("label", node.Name() + "/GQA/key/reshape_1");
   emscripten::val key_for_scatter = model_builder.GetBuilder().call<emscripten::val>(
       "reshape", key_input, emscripten::val::array(reshape_kv_shape), common_options);
