@@ -102,6 +102,8 @@ Status CopyKVCache(onnxruntime::webgpu::ComputeContext& context, const WebgpuAtt
       .SetWorkgroupSize(64)
       .CacheHint(has_past, parameters.qkv_format_, parameters.past_present_share_buffer_)
       .AddUniformVariables({{static_cast<uint32_t>(valid_kv_size)},
+                            // Note that when parameters.past_present_share_buffer_ is true, parameters.past_sequence_length_ will become to
+                            // max_sequence_length. To get a valid past_sequence_length, we use total_sequence_length - kv_sequence_length.
                             {static_cast<uint32_t>(parameters.total_sequence_length_ - parameters.kv_sequence_length_)}});
 
   return context.RunProgram(program);
