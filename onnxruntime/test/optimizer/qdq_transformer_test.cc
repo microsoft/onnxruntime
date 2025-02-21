@@ -1536,17 +1536,15 @@ TEST(QDQTransformerTests, DoubleQDQPairsRemover_Bug_RejectDifferentScaleTypes) {
     NodeArg* dq2_output = builder.MakeOutput();
     NodeArg* const_arg = builder.MakeScalarInitializer(MLFloat16(10.0f));
 
-    const double scale = 1.0f;
-    const int64_t zp = 127;
-    const auto scale_fp32_type = ONNX_NAMESPACE::TensorProto_DataType_FLOAT;
-    const auto scale_fp16_type = ONNX_NAMESPACE::TensorProto_DataType_FLOAT16;
-    const auto zp_type = ONNX_NAMESPACE::TensorProto_DataType_UINT8;
+    const float scale_fp32 = 1.0f;
+    const MLFloat16 scale_fp16 = MLFloat16(scale_fp32);
+    const uint8_t zp = 127;
 
-    builder.AddQuantizeLinearNode(input0_arg, scale, scale_fp32_type, zp, zp_type, q1_output);
-    builder.AddDequantizeLinearNode(q1_output, scale, scale_fp16_type, zp, zp_type, dq1_output);
+    builder.AddQuantizeLinearNode<uint8_t, float>(input0_arg, scale_fp32, zp, q1_output);
+    builder.AddDequantizeLinearNode<uint8_t, MLFloat16>(q1_output, scale_fp16, zp, dq1_output);
     builder.AddNode("Mul", {dq1_output, const_arg}, {mul_output});
-    builder.AddQuantizeLinearNode(mul_output, scale, scale_fp16_type, zp, zp_type, q2_output);
-    builder.AddDequantizeLinearNode(q2_output, scale, scale_fp32_type, zp, zp_type, dq2_output);
+    builder.AddQuantizeLinearNode<uint8_t, MLFloat16>(mul_output, scale_fp16, zp, q2_output);
+    builder.AddDequantizeLinearNode<uint8_t, float>(q2_output, scale_fp32, zp, dq2_output);
   };
 
   // Previously, using different scale data types caused an exception in IsQDQPairSupported.
@@ -1554,10 +1552,9 @@ TEST(QDQTransformerTests, DoubleQDQPairsRemover_Bug_RejectDifferentScaleTypes) {
   // graph.
   auto graph_checker = [](InferenceSessionWrapper& session) {
     auto op_to_count = CountOpsInGraph(session.GetGraph());
-    const QDQOpKeys qdq_keys = GetQDQOpKeys(false);
-    EXPECT_EQ(op_to_count[qdq_keys.quantize_linear], 2);
+    EXPECT_EQ(op_to_count["QuantizeLinear"], 2);
     EXPECT_EQ(op_to_count["Mul"], 1);
-    EXPECT_EQ(op_to_count[qdq_keys.dequantize_linear], 2);
+    EXPECT_EQ(op_to_count["DequantizeLinear"], 2);
   };
   TransformerTester(
       build_model_func,

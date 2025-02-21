@@ -304,17 +304,17 @@ class ModelTestBuilder {
     return AddNode("Conv", input_args, {output_arg});
   }
 
-  template <typename T>
-  typename std::enable_if<IsTypeQuantLinearCompatible<T>::value, Node&>::type
+  template <typename ZpType, typename ScaleType = float>
+  typename std::enable_if<IsTypeQuantLinearCompatible<ZpType>::value, Node&>::type
   AddQuantizeLinearNode(NodeArg* input_arg,
-                        float input_scale,
-                        T input_zero_point,
+                        ScaleType input_scale,
+                        ZpType input_zero_point,
                         NodeArg* output_arg,
                         bool use_ms_domain = false) {
     std::vector<NodeArg*> input_args;
     input_args.push_back(input_arg);
-    input_args.push_back(MakeScalarInitializer<float>(input_scale));
-    input_args.push_back(MakeScalarInitializer<T>(input_zero_point));
+    input_args.push_back(MakeScalarInitializer<ScaleType>(input_scale));
+    input_args.push_back(MakeScalarInitializer<ZpType>(input_zero_point));
 
     std::string domain = use_ms_domain ? kMSDomain : "";
     return AddNode("QuantizeLinear", input_args, {output_arg}, domain);
@@ -367,11 +367,9 @@ class ModelTestBuilder {
   /// <summary>
   /// Adds a Q node with a configurable zero-point type.
   /// Takes in an int64_t zero_point value, which is large enough to represent all ONNX zero-point types.
-  /// Takes in a double zero_point value, which is large enough to represent all ONNX scale types.
   /// </summary>
   /// <param name="input_arg">First input to the Q node</param>
   /// <param name="input_scale">Input scale value</param>
-  /// <param name="scale_type">Input scale's type</param>
   /// <param name="input_zero_point">Input zero point value</param>
   /// <param name="zero_point_type">Input zero point's type</param>
   /// <param name="output_arg">Q node's output node arg</param>
@@ -379,23 +377,22 @@ class ModelTestBuilder {
   /// <returns>Reference to the new Q node</returns>
   Node& AddQuantizeLinearNode(NodeArg* input_arg,
                               double input_scale,
-                              ONNX_NAMESPACE::TensorProto_DataType scale_type,
                               int64_t input_zero_point,
                               ONNX_NAMESPACE::TensorProto_DataType zero_point_type,
                               NodeArg* output_arg,
                               bool use_ms_domain = false);
 
-  template <typename T>
-  typename std::enable_if<IsTypeDequantLinearCompatible<T>::value, Node&>::type
+  template <typename ZpType, typename ScaleType = float>
+  typename std::enable_if<IsTypeDequantLinearCompatible<ZpType>::value, Node&>::type
   AddDequantizeLinearNode(NodeArg* input_arg,
-                          float input_scale,
-                          T input_zero_point,
+                          ScaleType input_scale,
+                          ZpType input_zero_point,
                           NodeArg* output_arg,
                           bool use_ms_domain = false) {
     std::vector<NodeArg*> input_args;
     input_args.push_back(input_arg);
-    input_args.push_back(MakeScalarInitializer<float>(input_scale));
-    input_args.push_back(MakeScalarInitializer<T>(input_zero_point));
+    input_args.push_back(MakeScalarInitializer<ScaleType>(input_scale));
+    input_args.push_back(MakeScalarInitializer<ZpType>(input_zero_point));
 
     std::string domain = use_ms_domain ? kMSDomain : "";
     return AddNode("DequantizeLinear", input_args, {output_arg}, domain);
@@ -448,11 +445,9 @@ class ModelTestBuilder {
   /// <summary>
   /// Adds a DQ node with a configurable zero-point and scale data types.
   /// Takes in an int64_t zero_point value, which is large enough to represent all ONNX zero-point types.
-  /// Takes in a double zero_point value, which is large enough to represent all ONNX scale types.
   /// </summary>
   /// <param name="input_arg">First input to the DQ node</param>
   /// <param name="input_scale">Input scale value</param>
-  /// <param name="scale_type">Input scale's type</param>
   /// <param name="input_zero_point">Input zero point value</param>
   /// <param name="zero_point_type">Input zero point's type</param>
   /// <param name="output_arg">DQ node's output node arg</param>
@@ -460,7 +455,6 @@ class ModelTestBuilder {
   /// <returns>Reference to the new DQ node</returns>
   Node& AddDequantizeLinearNode(NodeArg* input_arg,
                                 double input_scale,
-                                ONNX_NAMESPACE::TensorProto_DataType scale_type,
                                 int64_t input_zero_point,
                                 ONNX_NAMESPACE::TensorProto_DataType zero_point_type,
                                 NodeArg* output_arg,
