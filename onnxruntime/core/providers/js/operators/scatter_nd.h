@@ -30,8 +30,7 @@ class ScatterND : public JsKernel {
     } else if (reduction == "max") {
       reduction_ = ScatterNDReduction::Max;
     } else if (reduction == "none") {
-      LOGS_DEFAULT(WARNING) << "ScatterND with reduction=='none' only guarantees "
-                            << "to be correct if indices are not duplicated.";
+      reduction_ = ScatterNDReduction::None;
     } else {
       ORT_THROW("Reduction '", reduction, "' is not supported on webgpu when opset <= 13.");
     }

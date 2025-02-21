@@ -1058,6 +1058,7 @@ extern const MLAS_QNBIT_GEMM_DISPATCH MlasSQNBitGemmDispatchAvx512vnni;
 //
 struct MLAS_ROPE_DISPATCH;
 extern const MLAS_ROPE_DISPATCH MlasRopeDispatchNeon;
+extern const MLAS_ROPE_DISPATCH MlasRopeDispatchAvx2;
 
 //
 // half gemm dispatch structure
