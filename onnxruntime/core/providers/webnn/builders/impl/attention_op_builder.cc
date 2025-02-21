@@ -19,6 +19,9 @@ namespace webnn {
 
 class AttentionOpBuilder : public BaseOpBuilder {
   // Add operator related.
+ public:
+  void AddInitializersToSkip(ModelBuilder& model_builder, const Node& node) const override;
+
  private:
   Status AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node,
                                const logging::Logger& logger) const override ORT_MUST_USE_RESULT;
@@ -30,6 +33,12 @@ class AttentionOpBuilder : public BaseOpBuilder {
   bool HasSupportedInputsImpl(const InitializedTensorSet& /* initializers */, const Node& node,
                               const emscripten::val& wnn_limits, const logging::Logger& logger) const override;
 };
+
+void AttentionOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder, const Node& node) const {
+  const auto input_name = node.InputDefs()[6]->Name();
+  model_builder.AddInitializerToSkip(input_name);
+  model_builder.AddInputToSkip(input_name);
+}
 
 std::vector<int64_t> generate_indices(int64_t batch_size, int64_t kv_num_heads, int64_t sequence_length) {
   std::vector<int64_t> indices;
