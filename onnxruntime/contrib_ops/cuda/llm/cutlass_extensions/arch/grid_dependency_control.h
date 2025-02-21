@@ -41,26 +41,22 @@
 #include "cutlass/gemm/dispatch_policy.hpp"
 
 #ifndef CUTLASS_GDC_ENABLED
-#if (defined(CUTLASS_ENABLE_GDC_FOR_SM90) && __CUDACC_VER_MAJOR__ >= 12 && defined(__CUDA_ARCH__)                      \
-    && __CUDA_ARCH__ >= 900 && defined(__CUDA_ARCH_FEAT_SM90_ALL))
+#if (defined(CUTLASS_ENABLE_GDC_FOR_SM90) && __CUDACC_VER_MAJOR__ >= 12 && defined(__CUDA_ARCH__) && __CUDA_ARCH__ >= 900 && defined(__CUDA_ARCH_FEAT_SM90_ALL))
 #define CUTLASS_GDC_ENABLED
 #endif
 #endif
 
-namespace cutlass
-{
-namespace arch
-{
+namespace cutlass {
+namespace arch {
 
 // Issuing the launch_dependents instruction hints a dependent kernel to launch earlier
 // launch_dependents doesn't impact the functionality but the performance:
 // Launching a dependent kernel too early can compete with current kernels,
 // while launching too late can lead to a long latency.
 CUTLASS_DEVICE
-void launch_dependent_grids()
-{
+void launch_dependent_grids() {
 #if (defined(CUTLASS_GDC_ENABLED))
-    asm volatile("griddepcontrol.launch_dependents;");
+  asm volatile("griddepcontrol.launch_dependents;");
 #endif
 }
 
@@ -68,10 +64,9 @@ void launch_dependent_grids()
 // prior to this istruction. This ensures the correctness of global memory access
 // when launching a dependent kernel earlier.
 CUTLASS_DEVICE
-void wait_on_dependent_grids()
-{
+void wait_on_dependent_grids() {
 #if (defined(CUTLASS_GDC_ENABLED))
-    asm volatile("griddepcontrol.wait;");
+  asm volatile("griddepcontrol.wait;");
 #endif
 }
 
@@ -82,5 +77,5 @@ static constexpr bool IsGdcGloballyEnabled = true;
 static constexpr bool IsGdcGloballyEnabled = false;
 #endif
 
-} // namespace arch
-} // namespace cutlass
+}  // namespace arch
+}  // namespace cutlass

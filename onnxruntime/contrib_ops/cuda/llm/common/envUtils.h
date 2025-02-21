@@ -20,8 +20,7 @@
 #include <optional>
 #include <string>
 
-namespace onnxruntime::llm::common
-{
+namespace onnxruntime::llm::common {
 // Useful when you want to inject some debug code controllable with env var.
 std::optional<int32_t> getIntEnv(char const* name);
 
@@ -88,4 +87,4 @@ size_t getEnvKVCacheSendMaxConcurrenceNum();
 
 size_t getEnvMemSizeForKVCacheTransferBuffer();
 
-} // namespace onnxruntime::llm::common
+}  // namespace onnxruntime::llm::common

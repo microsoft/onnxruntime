@@ -36,23 +36,20 @@
 
 #include <cstddef>
 
-namespace onnxruntime::llm
-{
+namespace onnxruntime::llm {
 
 template <typename Config, typename RunnerPtr, typename GemmIdType, typename GemmIdHashType>
-GemmPluginProfiler<Config, RunnerPtr, GemmIdType, GemmIdHashType>::GemmPluginProfiler()
-{
-    mMNKProfileMap = std::make_shared<MNKProfileMap>();
+GemmPluginProfiler<Config, RunnerPtr, GemmIdType, GemmIdHashType>::GemmPluginProfiler() {
+  mMNKProfileMap = std::make_shared<MNKProfileMap>();
 
-    // set SKIP_GEMM_PLUGIN_PROFILINGS=1 to avoid tactics profilings
-    auto const skipEnv = std::getenv("SKIP_GEMM_PLUGIN_PROFILINGS");
-    mSkip = (skipEnv != NULL && std::stoi(skipEnv));
-    if (mSkip)
-    {
-        TLLM_LOG_DEBUG(
-            "SKIP_GEMM_PLUGIN_PROFILINGS is set. Skipping GEMM plugin profilings. It could result in runtime error "
-            "if default tactic is not defined.");
-    }
+  // set SKIP_GEMM_PLUGIN_PROFILINGS=1 to avoid tactics profilings
+  auto const skipEnv = std::getenv("SKIP_GEMM_PLUGIN_PROFILINGS");
+  mSkip = (skipEnv != NULL && std::stoi(skipEnv));
+  if (mSkip) {
+    TLLM_LOG_DEBUG(
+        "SKIP_GEMM_PLUGIN_PROFILINGS is set. Skipping GEMM plugin profilings. It could result in runtime error "
+        "if default tactic is not defined.");
+  }
 }
 
 /*
@@ -111,268 +108,227 @@ size_t GemmPluginProfiler<Config, RunnerPtr, GemmIdType, GemmIdHashType>::getSer
 */
 
 template <typename Config, typename RunnerPtr, typename GemmIdType, typename GemmIdHashType>
-int GemmPluginProfiler<Config, RunnerPtr, GemmIdType, GemmIdHashType>::getMaxProfileM() const
-{
-    return 8192;
+int GemmPluginProfiler<Config, RunnerPtr, GemmIdType, GemmIdHashType>::getMaxProfileM() const {
+  return 8192;
 }
 
 template <typename Config, typename RunnerPtr, typename GemmIdType, typename GemmIdHashType>
 void GemmPluginProfiler<Config, RunnerPtr, GemmIdType, GemmIdHashType>::initTmpData(
-    int /*m*/, int /*n*/, int /*k*/, char* /*workspace*/, size_t /*size*/, cudaStream_t /*stream*/)
-{
-    /* Do nothing */
+    int /*m*/, int /*n*/, int /*k*/, char* /*workspace*/, size_t /*size*/, cudaStream_t /*stream*/) {
+  /* Do nothing */
 }
 
 template <typename Config, typename RunnerPtr, typename GemmIdType, typename GemmIdHashType>
 void GemmPluginProfiler<Config, RunnerPtr, GemmIdType, GemmIdHashType>::profileTactics(RunnerPtr const& runner,
-    nvinfer1::DataType const& type, GemmDims const& dims, GemmIdType const& gemmId, bool hasCudaKernel)
-{
-    writer_lock lock(mMNKProfileMap->mutex);
+                                                                                       nvinfer1::DataType const& type, GemmDims const& dims, GemmIdType const& gemmId, bool hasCudaKernel) {
+  writer_lock lock(mMNKProfileMap->mutex);
 
-    if (!dims.isInitialized())
-    {
-        return;
-    }
+  if (!dims.isInitialized()) {
+    return;
+  }
 
-    mRunner = runner;
-    mType = type;
+  mRunner = runner;
+  mType = type;
 
-    int const maxM = std::min(nextPowerOfTwo(dims.maxM), getMaxProfileM());
-    computeTmpSize(maxM, dims.n, dims.k);
+  int const maxM = std::min(nextPowerOfTwo(dims.maxM), getMaxProfileM());
+  computeTmpSize(maxM, dims.n, dims.k);
 
-    if (!mMNKProfileMap->existsMProfileMap(gemmId))
-    {
-        // Create map for GEMM ID
-        mMNKProfileMap->createMProfileMap(gemmId);
-    }
+  if (!mMNKProfileMap->existsMProfileMap(gemmId)) {
+    // Create map for GEMM ID
+    mMNKProfileMap->createMProfileMap(gemmId);
+  }
 
-    if (mSkip)
-    {
-        return;
-    }
+  if (mSkip) {
+    return;
+  }
 
-    auto mProfileMap = mMNKProfileMap->getMProfileMap(gemmId);
-    bool isAllocated{false};
+  auto mProfileMap = mMNKProfileMap->getMProfileMap(gemmId);
+  bool isAllocated{false};
 
-    auto profileTactics = [&mProfileMap, &isAllocated, this](int m, int n, int k)
-    {
-        if (mProfileMap->count(m) == 0)
-        {
-            if (!isAllocated)
-            {
-                // Allocate tmp data to run GEMMs
-                allocateTmpData();
-                isAllocated = true;
-            }
-            initTmpData(m, n, k, mWorkspaceTmp, mTmpWorkspaceSizeInBytes, mStream);
-            auto tactics = this->getTactics(m, n, k);
+  auto profileTactics = [&mProfileMap, &isAllocated, this](int m, int n, int k) {
+    if (mProfileMap->count(m) == 0) {
+      if (!isAllocated) {
+        // Allocate tmp data to run GEMMs
+        allocateTmpData();
+        isAllocated = true;
+      }
+      initTmpData(m, n, k, mWorkspaceTmp, mTmpWorkspaceSizeInBytes, mStream);
+      auto tactics = this->getTactics(m, n, k);
 
-            // stop to profile Cuda kernel if m > 16 or CUTLASS kernel performs better for m - 1
-            if constexpr (std::is_same_v<Config, onnxruntime::llm::cutlass_extensions::CutlassGemmConfig>)
-            {
-                // check if the best tactic for m-1 is CUTLASS kernel
-                bool lastTacticEnableCudaKernel = true;
-                if (mProfileMap->count(m - 1) > 0)
-                {
-                    lastTacticEnableCudaKernel = mProfileMap->at(m - 1).value().enableCudaKernel;
-                }
-                if (m > 16 || !lastTacticEnableCudaKernel)
-                {
-                    if (!tactics.empty())
-                    {
-                        tactics.pop_back();
-                    }
-                }
-            }
-            // Profile different tactics for particular m and insert best config to the map
-            mProfileMap->insert({m, this->profileTacticsForProblem(m, n, k, tactics)});
+      // stop to profile Cuda kernel if m > 16 or CUTLASS kernel performs better for m - 1
+      if constexpr (std::is_same_v<Config, onnxruntime::llm::cutlass_extensions::CutlassGemmConfig>) {
+        // check if the best tactic for m-1 is CUTLASS kernel
+        bool lastTacticEnableCudaKernel = true;
+        if (mProfileMap->count(m - 1) > 0) {
+          lastTacticEnableCudaKernel = mProfileMap->at(m - 1).value().enableCudaKernel;
         }
-    };
-
-    common::check_cuda_error(cudaStreamCreate(&mStream));
-
-    int const startMinMRounded = nextPowerOfTwo(dims.minM);
-
-    if (hasCudaKernel)
-    {
-        // Profile tactics for finer granularity of M if CUDA kernel is enabled
-        int minM = dims.minM;
-        for (int m = std::max(1, minM); m < std::min(16, maxM); m += 1)
-        {
-            profileTactics(m, dims.n, dims.k);
+        if (m > 16 || !lastTacticEnableCudaKernel) {
+          if (!tactics.empty()) {
+            tactics.pop_back();
+          }
         }
-
-        for (int m = 16; m < maxM; m *= 2)
-        {
-            profileTactics(m, dims.n, dims.k);
-        }
+      }
+      // Profile different tactics for particular m and insert best config to the map
+      mProfileMap->insert({m, this->profileTacticsForProblem(m, n, k, tactics)});
     }
-    else
-    {
-        // Profile tactics for CUTLASS kernel only
-        for (int m = std::max(1, startMinMRounded); m < maxM; m *= 2)
-        {
-            profileTactics(m, dims.n, dims.k);
-        }
+  };
+
+  common::check_cuda_error(cudaStreamCreate(&mStream));
+
+  int const startMinMRounded = nextPowerOfTwo(dims.minM);
+
+  if (hasCudaKernel) {
+    // Profile tactics for finer granularity of M if CUDA kernel is enabled
+    int minM = dims.minM;
+    for (int m = std::max(1, minM); m < std::min(16, maxM); m += 1) {
+      profileTactics(m, dims.n, dims.k);
     }
 
-    profileTactics(maxM, dims.n, dims.k);
-
-    if (isAllocated)
-    {
-        // Free tmp data
-        freeTmpData();
+    for (int m = 16; m < maxM; m *= 2) {
+      profileTactics(m, dims.n, dims.k);
     }
-    common::check_cuda_error(cudaStreamDestroy(mStream));
+  } else {
+    // Profile tactics for CUTLASS kernel only
+    for (int m = std::max(1, startMinMRounded); m < maxM; m *= 2) {
+      profileTactics(m, dims.n, dims.k);
+    }
+  }
+
+  profileTactics(maxM, dims.n, dims.k);
+
+  if (isAllocated) {
+    // Free tmp data
+    freeTmpData();
+  }
+  common::check_cuda_error(cudaStreamDestroy(mStream));
 }
 
 template <typename Config, typename RunnerPtr, typename GemmIdType, typename GemmIdHashType>
 std::optional<Config> GemmPluginProfiler<Config, RunnerPtr, GemmIdType, GemmIdHashType>::getBestConfig(
-    int m, GemmIdType const& gemmId) const
-{
-    reader_lock lock(mMNKProfileMap->mutex);
+    int m, GemmIdType const& gemmId) const {
+  reader_lock lock(mMNKProfileMap->mutex);
 
-    if (mSkip)
-    {
-        TLLM_LOG_TRACE("Skip is set, no best config is set for this instance");
-        return std::nullopt;
-    }
+  if (mSkip) {
+    TLLM_LOG_TRACE("Skip is set, no best config is set for this instance");
+    return std::nullopt;
+  }
 
-    int const mRounded = std::min(std::max(1, nextPowerOfTwo(m)), getMaxProfileM());
-    fflush(stdout);
+  int const mRounded = std::min(std::max(1, nextPowerOfTwo(m)), getMaxProfileM());
+  fflush(stdout);
 
-    if (mMNKProfileMap->getMProfileMap(gemmId)->count(m) > 0)
-    {
-        return mMNKProfileMap->getMProfileMap(gemmId)->at(m);
-    }
-    else if (mMNKProfileMap->getMProfileMap(gemmId)->count(mRounded) > 0)
-    {
-        return mMNKProfileMap->getMProfileMap(gemmId)->at(mRounded);
-    }
-    else
-    {
-        std::ostringstream msg;
-        msg << "Cannot find best tactic for m=" << m << " and GEMM ID " << gemmId;
-        TLLM_LOG_WARNING(msg.str());
-        return std::nullopt;
-    }
+  if (mMNKProfileMap->getMProfileMap(gemmId)->count(m) > 0) {
+    return mMNKProfileMap->getMProfileMap(gemmId)->at(m);
+  } else if (mMNKProfileMap->getMProfileMap(gemmId)->count(mRounded) > 0) {
+    return mMNKProfileMap->getMProfileMap(gemmId)->at(mRounded);
+  } else {
+    std::ostringstream msg;
+    msg << "Cannot find best tactic for m=" << m << " and GEMM ID " << gemmId;
+    TLLM_LOG_WARNING(msg.str());
+    return std::nullopt;
+  }
 }
 
 template <typename Config, typename RunnerPtr, typename GemmIdType, typename GemmIdHashType>
-void GemmPluginProfiler<Config, RunnerPtr, GemmIdType, GemmIdHashType>::allocateTmpData()
-{
-    TLLM_CHECK_WITH_INFO(mTmpWorkspaceSizeInBytes > 0, "tmpWorkspaceSizeInBytes must be larger than 0");
-    auto const status = cudaMalloc(&mWorkspaceTmp, mTmpWorkspaceSizeInBytes);
-    TLLM_CHECK_WITH_INFO(status == cudaSuccess, "Can't allocate tmp workspace for GEMM tactics profiling.");
+void GemmPluginProfiler<Config, RunnerPtr, GemmIdType, GemmIdHashType>::allocateTmpData() {
+  TLLM_CHECK_WITH_INFO(mTmpWorkspaceSizeInBytes > 0, "tmpWorkspaceSizeInBytes must be larger than 0");
+  auto const status = cudaMalloc(&mWorkspaceTmp, mTmpWorkspaceSizeInBytes);
+  TLLM_CHECK_WITH_INFO(status == cudaSuccess, "Can't allocate tmp workspace for GEMM tactics profiling.");
 }
 
 template <typename Config, typename RunnerPtr, typename GemmIdType, typename GemmIdHashType>
-void GemmPluginProfiler<Config, RunnerPtr, GemmIdType, GemmIdHashType>::freeTmpData()
-{
-    auto const status = cudaFree(mWorkspaceTmp);
-    TLLM_CHECK_WITH_INFO(status == cudaSuccess, "Can't free tmp workspace for GEMM tactics profiling.");
+void GemmPluginProfiler<Config, RunnerPtr, GemmIdType, GemmIdHashType>::freeTmpData() {
+  auto const status = cudaFree(mWorkspaceTmp);
+  TLLM_CHECK_WITH_INFO(status == cudaSuccess, "Can't free tmp workspace for GEMM tactics profiling.");
 }
 
 template <typename Config, typename RunnerPtr, typename GemmIdType, typename GemmIdHashType>
 std::optional<Config> GemmPluginProfiler<Config, RunnerPtr, GemmIdType, GemmIdHashType>::profileTacticsForProblem(
-    int m, int n, int k, std::vector<Config> const& tactics)
-{
-    TLLM_LOG_DEBUG(__PRETTY_FUNCTION__);
+    int m, int n, int k, std::vector<Config> const& tactics) {
+  TLLM_LOG_DEBUG(__PRETTY_FUNCTION__);
 
-    float bestTime = std::numeric_limits<float>::max();
-    Config bestConfig;
-    bool foundOne = false;
+  float bestTime = std::numeric_limits<float>::max();
+  Config bestConfig;
+  bool foundOne = false;
 
-    // Iterate over all tactics for given M, N and K
-    for (size_t ii = 0; ii < tactics.size(); ++ii)
-    {
-        Config const& candidateConfig = tactics[ii];
-        float time = std::numeric_limits<float>::max();
-        try
-        {
-            if (!checkTactic(m, n, k, candidateConfig))
-            {
-                continue;
-            }
-            // Profile particular tactic for given M, N and K
-            time = profileTacticForProblem(m, n, k, candidateConfig);
-            foundOne = true;
-        }
-        catch (std::exception const& e)
-        {
-            std::ostringstream msg;
-            msg << "Cannot profile configuration " << ii;
-            if constexpr (std::is_same_v<Config, onnxruntime::llm::cutlass_extensions::CutlassGemmConfig>)
-            {
-                msg << ": " << candidateConfig.toString();
-            }
-            msg << "\n (for"
-                << " m=" << m << ", n=" << n << ", k=" << k << ")"
-                << ", reason: \"" << e.what() << "\". Skipped";
-            TLLM_LOG_TRACE(msg.str());
-            cudaGetLastError(); // Reset the last cudaError to cudaSuccess.
-            continue;
-        }
-
-        // Choose the fastest tactic
-        if (time < bestTime)
-        {
-            bestConfig = candidateConfig;
-            bestTime = time;
-        }
+  // Iterate over all tactics for given M, N and K
+  for (size_t ii = 0; ii < tactics.size(); ++ii) {
+    Config const& candidateConfig = tactics[ii];
+    float time = std::numeric_limits<float>::max();
+    try {
+      if (!checkTactic(m, n, k, candidateConfig)) {
+        continue;
+      }
+      // Profile particular tactic for given M, N and K
+      time = profileTacticForProblem(m, n, k, candidateConfig);
+      foundOne = true;
+    } catch (std::exception const& e) {
+      std::ostringstream msg;
+      msg << "Cannot profile configuration " << ii;
+      if constexpr (std::is_same_v<Config, onnxruntime::llm::cutlass_extensions::CutlassGemmConfig>) {
+        msg << ": " << candidateConfig.toString();
+      }
+      msg << "\n (for"
+          << " m=" << m << ", n=" << n << ", k=" << k << ")"
+          << ", reason: \"" << e.what() << "\". Skipped";
+      TLLM_LOG_TRACE(msg.str());
+      cudaGetLastError();  // Reset the last cudaError to cudaSuccess.
+      continue;
     }
 
-    if (!foundOne)
-    {
-        std::ostringstream msg;
-        msg << "Have not found any valid GEMM config for shape ("
-            << "m=" << m << ", n=" << n << ", k=" << k << "). Will try to use default or fail at runtime";
-        TLLM_LOG_WARNING(msg.str());
-        return std::nullopt;
+    // Choose the fastest tactic
+    if (time < bestTime) {
+      bestConfig = candidateConfig;
+      bestTime = time;
     }
+  }
 
-    return {bestConfig};
+  if (!foundOne) {
+    std::ostringstream msg;
+    msg << "Have not found any valid GEMM config for shape ("
+        << "m=" << m << ", n=" << n << ", k=" << k << "). Will try to use default or fail at runtime";
+    TLLM_LOG_WARNING(msg.str());
+    return std::nullopt;
+  }
+
+  return {bestConfig};
 }
 
 template <typename Config, typename RunnerPtr, typename GemmIdType, typename GemmIdHashType>
 float GemmPluginProfiler<Config, RunnerPtr, GemmIdType, GemmIdHashType>::profileTacticForProblem(
-    int m, int n, int k, Config const& tactic)
-{
-    constexpr int warmup = 5;
-    constexpr int runs = 10;
+    int m, int n, int k, Config const& tactic) {
+  constexpr int warmup = 5;
+  constexpr int runs = 10;
 
-    cudaStream_t stream = mStream;
+  cudaStream_t stream = mStream;
 
-    // Warmup the execution
-    for (int i = 0; i < warmup; ++i)
-    {
-        runTactic(m, n, k, tactic, mWorkspaceTmp, stream);
-    }
+  // Warmup the execution
+  for (int i = 0; i < warmup; ++i) {
+    runTactic(m, n, k, tactic, mWorkspaceTmp, stream);
+  }
 
-    cudaEvent_t start;
-    cudaEvent_t stop;
-    common::check_cuda_error(cudaEventCreate(&start));
-    common::check_cuda_error(cudaEventCreate(&stop));
-    common::check_cuda_error(cudaStreamSynchronize(stream));
-    common::check_cuda_error(cudaEventRecord(start, stream));
+  cudaEvent_t start;
+  cudaEvent_t stop;
+  common::check_cuda_error(cudaEventCreate(&start));
+  common::check_cuda_error(cudaEventCreate(&stop));
+  common::check_cuda_error(cudaStreamSynchronize(stream));
+  common::check_cuda_error(cudaEventRecord(start, stream));
 
-    // Profile GEMM
-    for (int i = 0; i < runs; ++i)
-    {
-        runTactic(m, n, k, tactic, mWorkspaceTmp, stream);
-    }
+  // Profile GEMM
+  for (int i = 0; i < runs; ++i) {
+    runTactic(m, n, k, tactic, mWorkspaceTmp, stream);
+  }
 
-    common::check_cuda_error(cudaEventRecord(stop, stream));
+  common::check_cuda_error(cudaEventRecord(stop, stream));
 
-    common::check_cuda_error(cudaEventSynchronize(stop));
+  common::check_cuda_error(cudaEventSynchronize(stop));
 
-    float elapsed;
-    common::check_cuda_error(cudaEventElapsedTime(&elapsed, start, stop));
+  float elapsed;
+  common::check_cuda_error(cudaEventElapsedTime(&elapsed, start, stop));
 
-    common::check_cuda_error(cudaEventDestroy(start));
-    common::check_cuda_error(cudaEventDestroy(stop));
+  common::check_cuda_error(cudaEventDestroy(start));
+  common::check_cuda_error(cudaEventDestroy(stop));
 
-    return elapsed / runs;
+  return elapsed / runs;
 }
 
 // template class GemmPluginProfiler<onnxruntime::llm::cutlass_extensions::CutlassGemmConfig,
@@ -384,7 +340,7 @@ float GemmPluginProfiler<Config, RunnerPtr, GemmIdType, GemmIdHashType>::profile
 //     GemmIdCoreHash>;
 
 template class GemmPluginProfiler<cublasLtMatmulHeuristicResult_t,
-    std::shared_ptr<onnxruntime::llm::common::CublasMMWrapper>, GemmIdCublas, GemmIdCublasHash>;
+                                  std::shared_ptr<onnxruntime::llm::common::CublasMMWrapper>, GemmIdCublas, GemmIdCublasHash>;
 
 // // TODO I dont like the dependency on the MOE plugin here, but MOE needs the full context to run profiles
 // template class GemmPluginProfiler<onnxruntime::llm::cutlass_extensions::CutlassGemmConfig, MixtureOfExpertsPlugin*,

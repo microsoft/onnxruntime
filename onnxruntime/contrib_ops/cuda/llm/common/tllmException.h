@@ -21,28 +21,26 @@
 #include <stdexcept>
 #include <string>
 
-#define NEW_TLLM_EXCEPTION(...)                                                                                        \
-    onnxruntime::llm::common::TllmException(__FILE__, __LINE__, onnxruntime::llm::common::fmtstr(__VA_ARGS__))
+#define NEW_TLLM_EXCEPTION(...) \
+  onnxruntime::llm::common::TllmException(__FILE__, __LINE__, onnxruntime::llm::common::fmtstr(__VA_ARGS__))
 
-namespace onnxruntime::llm::common
-{
+namespace onnxruntime::llm::common {
 
-class TllmException : public std::runtime_error
-{
-public:
-    static auto constexpr MAX_FRAMES = 128;
+class TllmException : public std::runtime_error {
+ public:
+  static auto constexpr MAX_FRAMES = 128;
 
-    explicit TllmException(char const* file, std::size_t line, std::string const& msg);
+  explicit TllmException(char const* file, std::size_t line, std::string const& msg);
 
-    ~TllmException() noexcept override;
+  ~TllmException() noexcept override;
 
-    [[nodiscard]] std::string getTrace() const;
+  [[nodiscard]] std::string getTrace() const;
 
-    static std::string demangle(char const* name);
+  static std::string demangle(char const* name);
 
-private:
-    std::array<void*, MAX_FRAMES> mCallstack{};
-    int mNbFrames;
+ private:
+  std::array<void*, MAX_FRAMES> mCallstack{};
+  int mNbFrames;
 };
 
-} // namespace onnxruntime::llm::common
+}  // namespace onnxruntime::llm::common

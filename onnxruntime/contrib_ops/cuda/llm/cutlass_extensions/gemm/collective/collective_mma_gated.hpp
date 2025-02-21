@@ -34,23 +34,21 @@
 
 /////////////////////////////////////////////////////////////////////////////////////////////////
 
-namespace cutlass::gemm::collective
-{
+namespace cutlass::gemm::collective {
 
 /////////////////////////////////////////////////////////////////////////////////////////////////
 
 template <class DispatchPolicy, class TileShape, class ElementA, class StrideA, class ElementB, class StrideB,
-    class TiledMma, class GmemTiledCopyA, class SmemLayoutAtomA, class SmemCopyAtomA, class TransformA,
-    class GmemTiledCopyB, class SmemLayoutAtomB, class SmemCopyAtomB, class TransformB,
-    template <class /* ElementCompute */> class Activation, bool SwapAB = false>
-struct CollectiveMmaGated
-{
-    static_assert(cutlass::detail::dependent_false<ElementA>, "Could not find a mainloop specialization.");
+          class TiledMma, class GmemTiledCopyA, class SmemLayoutAtomA, class SmemCopyAtomA, class TransformA,
+          class GmemTiledCopyB, class SmemLayoutAtomB, class SmemCopyAtomB, class TransformB,
+          template <class /* ElementCompute */> class Activation, bool SwapAB = false>
+struct CollectiveMmaGated {
+  static_assert(cutlass::detail::dependent_false<ElementA>, "Could not find a mainloop specialization.");
 };
 
 /////////////////////////////////////////////////////////////////////////////////////////////////
 
-} // namespace cutlass::gemm::collective
+}  // namespace cutlass::gemm::collective
 
 /////////////////////////////////////////////////////////////////////////////////////////////////
 

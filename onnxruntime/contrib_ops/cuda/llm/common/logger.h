@@ -24,162 +24,142 @@
 #include "contrib_ops/cuda/llm/common/assert.h"
 #include "contrib_ops/cuda/llm/common/stringUtils.h"
 
-namespace onnxruntime::llm::common
-{
+namespace onnxruntime::llm::common {
 
-class Logger
-{
-
+class Logger {
 // On Windows, the file wingdi.h is included which has
 // #define ERROR 0
 // This breaks everywhere ERROR is used in the Level enum
 #ifdef _WIN32
 #undef ERROR
-#endif // _WIN32
+#endif  // _WIN32
 
-public:
-    enum Level
-    {
-        TRACE = 0,
-        DEBUG = 10,
-        INFO = 20,
-        WARNING = 30,
-        ERROR = 40
-    };
+ public:
+  enum Level {
+    TRACE = 0,
+    DEBUG = 10,
+    INFO = 20,
+    WARNING = 30,
+    ERROR = 40
+  };
 
-    static Logger* getLogger();
+  static Logger* getLogger();
 
-    Logger(Logger const&) = delete;
-    void operator=(Logger const&) = delete;
+  Logger(Logger const&) = delete;
+  void operator=(Logger const&) = delete;
 
 #if defined(_MSC_VER)
-    template <typename... Args>
-    void log(Level level, char const* format, Args const&... args);
+  template <typename... Args>
+  void log(Level level, char const* format, Args const&... args);
 
-    template <typename... Args>
-    void log(Level level, int rank, char const* format, Args const&... args);
+  template <typename... Args>
+  void log(Level level, int rank, char const* format, Args const&... args);
 #else
-    template <typename... Args>
-    void log(Level level, char const* format, Args const&... args) __attribute__((format(printf, 3, 0)));
+  template <typename... Args>
+  void log(Level level, char const* format, Args const&... args) __attribute__((format(printf, 3, 0)));
 
-    template <typename... Args>
-    void log(Level level, int rank, char const* format, Args const&... args) __attribute__((format(printf, 4, 0)));
+  template <typename... Args>
+  void log(Level level, int rank, char const* format, Args const&... args) __attribute__((format(printf, 4, 0)));
 #endif
 
-    template <typename... Args>
-    void log(Level level, std::string const& format, Args const&... args)
-    {
-        return log(level, format.c_str(), args...);
-    }
+  template <typename... Args>
+  void log(Level level, std::string const& format, Args const&... args) {
+    return log(level, format.c_str(), args...);
+  }
 
-    template <typename... Args>
-    void log(Level const level, int const rank, std::string const& format, Args const&... args)
-    {
-        return log(level, rank, format.c_str(), args...);
-    }
+  template <typename... Args>
+  void log(Level const level, int const rank, std::string const& format, Args const&... args) {
+    return log(level, rank, format.c_str(), args...);
+  }
 
-    void log(std::exception const& ex, Level level = Level::ERROR);
+  void log(std::exception const& ex, Level level = Level::ERROR);
 
-    Level getLevel() const
-    {
-        return level_;
-    }
+  Level getLevel() const {
+    return level_;
+  }
 
-    void setLevel(Level const level)
-    {
-        level_ = level;
-        log(INFO, "Set logger level to %s", getLevelName(level));
-    }
+  void setLevel(Level const level) {
+    level_ = level;
+    log(INFO, "Set logger level to %s", getLevelName(level));
+  }
 
-    bool isEnabled(Level const level) const
-    {
-        return level_ <= level;
-    }
+  bool isEnabled(Level const level) const {
+    return level_ <= level;
+  }
 
-private:
-    static auto constexpr kPREFIX = "[TensorRT-LLM]";
+ private:
+  static auto constexpr kPREFIX = "[TensorRT-LLM]";
 
 #ifndef NDEBUG
-    Level const DEFAULT_LOG_LEVEL = DEBUG;
+  Level const DEFAULT_LOG_LEVEL = DEBUG;
 #else
-    Level const DEFAULT_LOG_LEVEL = INFO;
+  Level const DEFAULT_LOG_LEVEL = INFO;
 #endif
-    Level level_ = DEFAULT_LOG_LEVEL;
+  Level level_ = DEFAULT_LOG_LEVEL;
 
-    Logger(); // NOLINT(modernize-use-equals-delete)
+  Logger();  // NOLINT(modernize-use-equals-delete)
 
-    static inline char const* getLevelName(Level const level)
-    {
-        switch (level)
-        {
-        case TRACE: return "TRACE";
-        case DEBUG: return "DEBUG";
-        case INFO: return "INFO";
-        case WARNING: return "WARNING";
-        case ERROR: return "ERROR";
-        }
-
-        TLLM_THROW("Unknown log level: %d", level);
+  static inline char const* getLevelName(Level const level) {
+    switch (level) {
+      case TRACE:
+        return "TRACE";
+      case DEBUG:
+        return "DEBUG";
+      case INFO:
+        return "INFO";
+      case WARNING:
+        return "WARNING";
+      case ERROR:
+        return "ERROR";
     }
 
-    static inline std::string getPrefix(Level const level)
-    {
-        return fmtstr("%s[%s] ", kPREFIX, getLevelName(level));
-    }
+    TLLM_THROW("Unknown log level: %d", level);
+  }
 
-    static inline std::string getPrefix(Level const level, int const rank)
-    {
-        return fmtstr("%s[%s][%d] ", kPREFIX, getLevelName(level), rank);
-    }
+  static inline std::string getPrefix(Level const level) {
+    return fmtstr("%s[%s] ", kPREFIX, getLevelName(level));
+  }
+
+  static inline std::string getPrefix(Level const level, int const rank) {
+    return fmtstr("%s[%s][%d] ", kPREFIX, getLevelName(level), rank);
+  }
 };
 
 template <typename... Args>
-void Logger::log(Logger::Level level, char const* format, Args const&... args)
-{
-    if (isEnabled(level))
-    {
-        auto const fmt = getPrefix(level) + format;
-        auto& out = level_ < WARNING ? std::cout : std::cerr;
-        if constexpr (sizeof...(args) > 0)
-        {
-            out << fmtstr(fmt.c_str(), args...);
-        }
-        else
-        {
-            out << fmt;
-        }
-        out << std::endl;
+void Logger::log(Logger::Level level, char const* format, Args const&... args) {
+  if (isEnabled(level)) {
+    auto const fmt = getPrefix(level) + format;
+    auto& out = level_ < WARNING ? std::cout : std::cerr;
+    if constexpr (sizeof...(args) > 0) {
+      out << fmtstr(fmt.c_str(), args...);
+    } else {
+      out << fmt;
     }
+    out << std::endl;
+  }
 }
 
 template <typename... Args>
-void Logger::log(Logger::Level const level, int const rank, char const* format, Args const&... args)
-{
-    if (isEnabled(level))
-    {
-        auto const fmt = getPrefix(level, rank) + format;
-        auto& out = level_ < WARNING ? std::cout : std::cerr;
-        if constexpr (sizeof...(args) > 0)
-        {
-            out << fmtstr(fmt.c_str(), args...);
-        }
-        else
-        {
-            out << fmt;
-        }
-        out << std::endl;
+void Logger::log(Logger::Level const level, int const rank, char const* format, Args const&... args) {
+  if (isEnabled(level)) {
+    auto const fmt = getPrefix(level, rank) + format;
+    auto& out = level_ < WARNING ? std::cout : std::cerr;
+    if constexpr (sizeof...(args) > 0) {
+      out << fmtstr(fmt.c_str(), args...);
+    } else {
+      out << fmt;
     }
+    out << std::endl;
+  }
 }
 
-#define TLLM_LOG(level, ...)                                                                                           \
-    do                                                                                                                 \
-    {                                                                                                                  \
-        auto* const logger = onnxruntime::llm::common::Logger::getLogger();                                                \
-        if (logger->isEnabled(level))                                                                                  \
-        {                                                                                                              \
-            logger->log(level, __VA_ARGS__);                                                                           \
-        }                                                                                                              \
-    } while (0)
+#define TLLM_LOG(level, ...)                                            \
+  do {                                                                  \
+    auto* const logger = onnxruntime::llm::common::Logger::getLogger(); \
+    if (logger->isEnabled(level)) {                                     \
+      logger->log(level, __VA_ARGS__);                                  \
+    }                                                                   \
+  } while (0)
 
 #define TLLM_LOG_TRACE(...) TLLM_LOG(onnxruntime::llm::common::Logger::TRACE, __VA_ARGS__)
 #define TLLM_LOG_DEBUG(...) TLLM_LOG(onnxruntime::llm::common::Logger::DEBUG, __VA_ARGS__)
@@ -187,4 +167,4 @@ void Logger::log(Logger::Level const level, int const rank, char const* format, 
 #define TLLM_LOG_WARNING(...) TLLM_LOG(onnxruntime::llm::common::Logger::WARNING, __VA_ARGS__)
 #define TLLM_LOG_ERROR(...) TLLM_LOG(onnxruntime::llm::common::Logger::ERROR, __VA_ARGS__)
 #define TLLM_LOG_EXCEPTION(ex, ...) onnxruntime::llm::common::Logger::getLogger()->log(ex, ##__VA_ARGS__)
-} // namespace onnxruntime::llm::common
+}  // namespace onnxruntime::llm::common

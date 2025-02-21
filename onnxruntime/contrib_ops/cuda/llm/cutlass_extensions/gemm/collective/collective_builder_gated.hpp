@@ -34,23 +34,21 @@
 #include "cutlass/gemm/collective/collective_builder.hpp"
 #include "cutlass_extensions/gemm/collective/collective_mma_gated.hpp"
 
-namespace cutlass::gemm::collective
-{
+namespace cutlass::gemm::collective {
 
 /////////////////////////////////////////////////////////////////////////////////////////////////
 
 template <class ArchTag, class OpClass, class ElementA, class GmemLayoutA, int AlignmentA, class ElementB,
-    class GmemLayoutB, int AlignmentB, class ElementAccumulator, class TileShape_MNK, class ClusterShape_MNK,
-    class StageCountType, class KernelScheduleType, template <class /* ElementCompute */> class Activation,
-    bool SwapAB = false, class Enable = void>
-struct CollectiveBuilderGated
-{
-    static_assert(sizeof(ElementA) == 0, "Could not build a collective for given parameters.");
+          class GmemLayoutB, int AlignmentB, class ElementAccumulator, class TileShape_MNK, class ClusterShape_MNK,
+          class StageCountType, class KernelScheduleType, template <class /* ElementCompute */> class Activation,
+          bool SwapAB = false, class Enable = void>
+struct CollectiveBuilderGated {
+  static_assert(sizeof(ElementA) == 0, "Could not build a collective for given parameters.");
 };
 
 /////////////////////////////////////////////////////////////////////////////////////////////////
 
-} // namespace cutlass::gemm::collective
+}  // namespace cutlass::gemm::collective
 
 /////////////////////////////////////////////////////////////////////////////////////////////////
 

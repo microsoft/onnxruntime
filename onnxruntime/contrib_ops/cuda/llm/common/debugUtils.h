@@ -17,8 +17,7 @@
 
 #include "contrib_ops/cuda/llm/runtime/bufferManager.h"
 
-namespace onnxruntime::llm::runtime::utils
-{
+namespace onnxruntime::llm::runtime::utils {
 
 template <typename T>
 bool tensorHasInvalid(ITensor const& tensor, BufferManager const& manager, std::string const& infoStr);
@@ -29,4 +28,4 @@ bool tensorHasInvalid(
 int stallStream(
     char const* name, std::optional<cudaStream_t> stream = std::nullopt, std::optional<int> delay = std::nullopt);
 
-} // namespace onnxruntime::llm::runtime::utils
+}  // namespace onnxruntime::llm::runtime::utils

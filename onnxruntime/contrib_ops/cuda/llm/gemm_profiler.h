@@ -16,7 +16,7 @@
  */
 #pragma once
 
-#include "contrib_ops/cuda/llm/common/pluginUtils.h"
+#include "contrib_ops/cuda/llm/common/gemmUtils.h"
 #include "contrib_ops/cuda/llm/common/logger.h"
 
 #include <cuda_runtime.h>
@@ -31,305 +31,259 @@
 #include <unordered_map>
 #include <vector>
 
-namespace onnxruntime::llm
-{
+namespace onnxruntime::llm {
 
-struct GemmDims
-{
-    //using DimType64 = utils::DimType64;
-    using DimType64 = int64_t;
+struct GemmDims {
+  // using DimType64 = utils::DimType64;
+  using DimType64 = int64_t;
 
-    DimType64 minM;
-    DimType64 maxM;
-    DimType64 n;
-    DimType64 k;
+  DimType64 minM;
+  DimType64 maxM;
+  DimType64 n;
+  DimType64 k;
 
-    GemmDims()
-        : minM(-1)
-        , maxM(-1)
-        , n(-1)
-        , k(-1)
-    {
-    }
+  GemmDims()
+      : minM(-1), maxM(-1), n(-1), k(-1) {
+  }
 
-    GemmDims(DimType64 minM_, DimType64 maxM_, DimType64 n_, DimType64 k_)
-        : minM(minM_)
-        , maxM(maxM_)
-        , n(n_)
-        , k(k_)
-    {
-    }
+  GemmDims(DimType64 minM_, DimType64 maxM_, DimType64 n_, DimType64 k_)
+      : minM(minM_), maxM(maxM_), n(n_), k(k_) {
+  }
 
-    [[nodiscard]] bool isInitialized() const
-    {
-        return minM >= 0 && maxM >= 0 && n >= 0 && k >= 0;
-    }
+  [[nodiscard]] bool isInitialized() const {
+    return minM >= 0 && maxM >= 0 && n >= 0 && k >= 0;
+  }
 };
 
 // Unique ID of GEMM
 // In our case GEMM is uniqly identified by N and K
-class GemmIdCore
-{
-public:
-    int n;
-    int k;
-    nvinfer1::DataType dtype;
+class GemmIdCore {
+ public:
+  int n;
+  int k;
+  nvinfer1::DataType dtype;
 
-    GemmIdCore(int n_, int k_, nvinfer1::DataType const& dtype_)
-        : n(n_)
-        , k(k_)
-        , dtype(dtype_)
-    {
-    }
+  GemmIdCore(int n_, int k_, nvinfer1::DataType const& dtype_)
+      : n(n_), k(k_), dtype(dtype_) {
+  }
 
-    GemmIdCore()
-        : n(-1)
-        , k(-1)
-        , dtype(nvinfer1::DataType::kFLOAT) // dtype does not matter here
-    {
-    }
+  GemmIdCore()
+      : n(-1), k(-1), dtype(nvinfer1::DataType::kFLOAT)  // dtype does not matter here
+  {
+  }
 
-    bool operator==(GemmIdCore const& id) const
-    {
-        return isEqual(id);
-    }
+  bool operator==(GemmIdCore const& id) const {
+    return isEqual(id);
+  }
 
-    friend std::ostream& operator<<(std::ostream& out, GemmIdCore const& id)
-    {
-        out << "(N;K)=(" << id.n << ";" << id.k << "),";
-        out << " type=" << static_cast<int>(id.dtype);
-        return out;
-    }
+  friend std::ostream& operator<<(std::ostream& out, GemmIdCore const& id) {
+    out << "(N;K)=(" << id.n << ";" << id.k << "),";
+    out << " type=" << static_cast<int>(id.dtype);
+    return out;
+  }
 
-protected:
-    bool isEqual(GemmIdCore const& id) const
-    {
-        return n == id.n && k == id.k && dtype == id.dtype;
-    }
+ protected:
+  bool isEqual(GemmIdCore const& id) const {
+    return n == id.n && k == id.k && dtype == id.dtype;
+  }
 };
 
 // Hash of GemmId
-struct GemmIdCoreHash
-{
-    std::size_t operator()(GemmIdCore const& id) const
-    {
-        auto h1 = std::hash<int>{}(id.n);
-        auto h2 = std::hash<int>{}(id.k);
-        auto h3 = std::hash<int>{}(static_cast<int>(id.dtype));
-        return h1 ^ h2 ^ h3;
-    }
+struct GemmIdCoreHash {
+  std::size_t operator()(GemmIdCore const& id) const {
+    auto h1 = std::hash<int>{}(id.n);
+    auto h2 = std::hash<int>{}(id.k);
+    auto h3 = std::hash<int>{}(static_cast<int>(id.dtype));
+    return h1 ^ h2 ^ h3;
+  }
 };
 
-class GemmIdCublas : public GemmIdCore
-{
-public:
-    bool transA{};
-    bool transB{};
-    nvinfer1::DataType outputDtype;
+class GemmIdCublas : public GemmIdCore {
+ public:
+  bool transA{};
+  bool transB{};
+  nvinfer1::DataType outputDtype;
 
-    GemmIdCublas(int n_, int k_, nvinfer1::DataType const& dtype_, bool transA_, bool transB_,
-        nvinfer1::DataType const& output_dtype_)
-        : GemmIdCore(n_, k_, dtype_)
-        , transA(transA_)
-        , transB(transB_)
-        , outputDtype(output_dtype_)
-    {
-    }
+  GemmIdCublas(int n_, int k_, nvinfer1::DataType const& dtype_, bool transA_, bool transB_,
+               nvinfer1::DataType const& output_dtype_)
+      : GemmIdCore(n_, k_, dtype_), transA(transA_), transB(transB_), outputDtype(output_dtype_) {
+  }
 
-    GemmIdCublas() {}
+  GemmIdCublas() {}
 
-    bool operator==(GemmIdCublas const& id) const
-    {
-        return isEqual(id) && transA == id.transA && transB == id.transB && outputDtype == id.outputDtype;
-    }
+  bool operator==(GemmIdCublas const& id) const {
+    return isEqual(id) && transA == id.transA && transB == id.transB && outputDtype == id.outputDtype;
+  }
 
-    friend std::ostream& operator<<(std::ostream& out, GemmIdCublas const& id)
-    {
-        out << "(N;K)=(" << id.n << ";" << id.k << "),";
-        out << " type=" << static_cast<int>(id.dtype);
-        out << " transA=" << id.transA;
-        out << " transB=" << id.transB;
-        out << " outputDtype=" << static_cast<int>(id.outputDtype);
-        return out;
-    }
+  friend std::ostream& operator<<(std::ostream& out, GemmIdCublas const& id) {
+    out << "(N;K)=(" << id.n << ";" << id.k << "),";
+    out << " type=" << static_cast<int>(id.dtype);
+    out << " transA=" << id.transA;
+    out << " transB=" << id.transB;
+    out << " outputDtype=" << static_cast<int>(id.outputDtype);
+    return out;
+  }
 };
 
 // Hash of GemmIdCublas
-struct GemmIdCublasHash
-{
-    std::size_t operator()(GemmIdCublas const& id) const
-    {
-        auto h1 = std::hash<int>{}(id.n);
-        auto h2 = std::hash<int>{}(id.k);
-        auto h3 = std::hash<int>{}(static_cast<int>(id.dtype));
-        auto h4 = std::hash<bool>{}(id.transA);
-        auto h5 = std::hash<bool>{}(id.transB);
-        auto h6 = std::hash<bool>{}(static_cast<int>(id.outputDtype));
-        return h1 ^ h2 ^ h3 ^ h4 ^ h5 ^ h6;
-    }
+struct GemmIdCublasHash {
+  std::size_t operator()(GemmIdCublas const& id) const {
+    auto h1 = std::hash<int>{}(id.n);
+    auto h2 = std::hash<int>{}(id.k);
+    auto h3 = std::hash<int>{}(static_cast<int>(id.dtype));
+    auto h4 = std::hash<bool>{}(id.transA);
+    auto h5 = std::hash<bool>{}(id.transB);
+    auto h6 = std::hash<bool>{}(static_cast<int>(id.outputDtype));
+    return h1 ^ h2 ^ h3 ^ h4 ^ h5 ^ h6;
+  }
 };
 
 template <typename Config, typename RunnerPtr, typename GemmIdType, typename GemmIdHashType>
-class GemmPluginProfiler
-{
-public:
-    // Map for single GEMM for different Ms (GEMM dimension) to the best config for particular M
-    using MProfileMap = std::unordered_map<int, std::optional<Config>>;
-    using MProfileMapPtr = std::shared_ptr<MProfileMap>;
+class GemmPluginProfiler {
+ public:
+  // Map for single GEMM for different Ms (GEMM dimension) to the best config for particular M
+  using MProfileMap = std::unordered_map<int, std::optional<Config>>;
+  using MProfileMapPtr = std::shared_ptr<MProfileMap>;
 
-    // requires exclusive ownership to write to *this
-    using reader_lock = std::unique_lock<std::shared_timed_mutex>;
-    // requires shared ownership to read from other
-    using writer_lock = std::shared_lock<std::shared_timed_mutex>;
+  // requires exclusive ownership to write to *this
+  using reader_lock = std::unique_lock<std::shared_timed_mutex>;
+  // requires shared ownership to read from other
+  using writer_lock = std::shared_lock<std::shared_timed_mutex>;
 
-    // Struct of continuing map if GEMMs to the best profiles for different Ms
-    struct MNKProfileMap
-    {
-        // Mutex guarding map
-        std::shared_timed_mutex mutex;
-        // Map from GEMM Id to profile for particular GEMM
-        std::unordered_map<GemmIdType, MProfileMapPtr, GemmIdHashType> profileMap;
+  // Struct of continuing map if GEMMs to the best profiles for different Ms
+  struct MNKProfileMap {
+    // Mutex guarding map
+    std::shared_timed_mutex mutex;
+    // Map from GEMM Id to profile for particular GEMM
+    std::unordered_map<GemmIdType, MProfileMapPtr, GemmIdHashType> profileMap;
 
-        bool existsMProfileMap(GemmIdType const& id)
-        {
-            auto const iter = profileMap.find(id);
-            return iter != profileMap.end();
-        }
-
-        void createMProfileMap(GemmIdType const& id)
-        {
-            profileMap[id] = std::make_shared<MProfileMap>();
-        }
-
-        MProfileMapPtr getMProfileMap(GemmIdType const& id)
-        {
-            auto const iter = profileMap.find(id);
-            if (iter == profileMap.end())
-            {
-                std::ostringstream msg;
-                msg << "Cannot find ID (" << id << ") in the profile map. Abort.";
-                TLLM_THROW(msg.str());
-            }
-            return iter->second;
-        }
-    };
-
-    using MNKProfileMapPtr = std::shared_ptr<MNKProfileMap>;
-
-    GemmPluginProfiler();
-
-    virtual ~GemmPluginProfiler();
-    /*
-    void serialize(char*& buffer, GemmIdType const& gemmId) const;
-
-    void deserialize(char const*& data, GemmDims& dims, GemmIdType const& gemmId);
-    size_t getSerializationSize(GemmIdType const& gemmId) const;
-    */
-   
-    void profileTactics(RunnerPtr const& runner, nvinfer1::DataType const& type, GemmDims const& dims,
-        GemmIdType const& gemmId, bool hasCudaKernel = false);
-
-    void setSelectionTactics(MNKProfileMapPtr const& map)
-    {
-        mMNKProfileMap = map;
+    bool existsMProfileMap(GemmIdType const& id) {
+      auto const iter = profileMap.find(id);
+      return iter != profileMap.end();
     }
 
-    void setTmpWorkspaceSizeInBytes(size_t bytes)
-    {
-        mTmpWorkspaceSizeInBytes = bytes;
+    void createMProfileMap(GemmIdType const& id) {
+      profileMap[id] = std::make_shared<MProfileMap>();
     }
 
-    void setSkip(bool skip)
-    {
-        mSkip = mSkip || skip;
+    MProfileMapPtr getMProfileMap(GemmIdType const& id) {
+      auto const iter = profileMap.find(id);
+      if (iter == profileMap.end()) {
+        std::ostringstream msg;
+        msg << "Cannot find ID (" << id << ") in the profile map. Abort.";
+        TLLM_THROW(msg.str());
+      }
+      return iter->second;
     }
+  };
 
-    std::optional<Config> getBestConfig(int m, GemmIdType const& gemmId) const;
+  using MNKProfileMapPtr = std::shared_ptr<MNKProfileMap>;
 
-    virtual int getMaxProfileM() const;
+  GemmPluginProfiler();
 
-protected:
-    virtual void runTactic(int m, int n, int k, Config const& tactic, char* workspace, cudaStream_t const& stream) = 0;
+  virtual ~GemmPluginProfiler();
+  /*
+  void serialize(char*& buffer, GemmIdType const& gemmId) const;
 
-    virtual void computeTmpSize(size_t maxM, size_t n, size_t k) = 0;
+  void deserialize(char const*& data, GemmDims& dims, GemmIdType const& gemmId);
+  size_t getSerializationSize(GemmIdType const& gemmId) const;
+  */
 
-    virtual bool checkTactic(int m, int n, int k, Config const& tactic) const
-    {
-        return true;
-    }
+  void profileTactics(RunnerPtr const& runner, nvinfer1::DataType const& type, GemmDims const& dims,
+                      GemmIdType const& gemmId, bool hasCudaKernel = false);
 
-    virtual std::vector<Config> getTactics(int m, int n, int k) const = 0;
+  void setSelectionTactics(MNKProfileMapPtr const& map) {
+    mMNKProfileMap = map;
+  }
 
-    virtual void initTmpData(int m, int n, int k, char* workspace, size_t size, cudaStream_t stream);
+  void setTmpWorkspaceSizeInBytes(size_t bytes) {
+    mTmpWorkspaceSizeInBytes = bytes;
+  }
 
-private:
-    void allocateTmpData();
+  void setSkip(bool skip) {
+    mSkip = mSkip || skip;
+  }
 
-    void freeTmpData();
+  std::optional<Config> getBestConfig(int m, GemmIdType const& gemmId) const;
 
-    std::optional<Config> profileTacticsForProblem(int m, int n, int k, std::vector<Config> const& tactics);
+  virtual int getMaxProfileM() const;
 
-    float profileTacticForProblem(int m, int n, int k, Config const& tactic);
+ protected:
+  virtual void runTactic(int m, int n, int k, Config const& tactic, char* workspace, cudaStream_t const& stream) = 0;
 
-    int nextPowerOfTwo(int v) const
-    {
-        --v;
-        v |= v >> 1;
-        v |= v >> 2;
-        v |= v >> 4;
-        v |= v >> 8;
-        v |= v >> 16;
-        return ++v;
-    }
+  virtual void computeTmpSize(size_t maxM, size_t n, size_t k) = 0;
 
-protected:
-    RunnerPtr mRunner{nullptr};
+  virtual bool checkTactic(int m, int n, int k, Config const& tactic) const {
+    return true;
+  }
 
-    nvinfer1::DataType mType{};
+  virtual std::vector<Config> getTactics(int m, int n, int k) const = 0;
 
-private:
-    MNKProfileMapPtr mMNKProfileMap{};
+  virtual void initTmpData(int m, int n, int k, char* workspace, size_t size, cudaStream_t stream);
 
-    size_t mTmpWorkspaceSizeInBytes{0};
+ private:
+  void allocateTmpData();
 
-    char* mWorkspaceTmp{nullptr};
+  void freeTmpData();
 
-    cudaStream_t mStream;
+  std::optional<Config> profileTacticsForProblem(int m, int n, int k, std::vector<Config> const& tactics);
 
-    GemmDims mDims{};
+  float profileTacticForProblem(int m, int n, int k, Config const& tactic);
 
-    bool mSkip{false};
+  int nextPowerOfTwo(int v) const {
+    --v;
+    v |= v >> 1;
+    v |= v >> 2;
+    v |= v >> 4;
+    v |= v >> 8;
+    v |= v >> 16;
+    return ++v;
+  }
+
+ protected:
+  RunnerPtr mRunner{nullptr};
+
+  nvinfer1::DataType mType{};
+
+ private:
+  MNKProfileMapPtr mMNKProfileMap{};
+
+  size_t mTmpWorkspaceSizeInBytes{0};
+
+  char* mWorkspaceTmp{nullptr};
+
+  cudaStream_t mStream;
+
+  GemmDims mDims{};
+
+  bool mSkip{false};
 };
 
 template <typename GemmPluginProfilerType>
-class GemmPluginProfilerManager
-{
-public:
-    using MNKProfileMap = typename GemmPluginProfilerType::MNKProfileMap;
-    using MNKProfileMapPtr = typename GemmPluginProfilerType::MNKProfileMapPtr;
-    using GemmPluginProfilerPtr = std::shared_ptr<GemmPluginProfilerType>;
+class GemmPluginProfilerManager {
+ public:
+  using MNKProfileMap = typename GemmPluginProfilerType::MNKProfileMap;
+  using MNKProfileMapPtr = typename GemmPluginProfilerType::MNKProfileMapPtr;
+  using GemmPluginProfilerPtr = std::shared_ptr<GemmPluginProfilerType>;
 
-    GemmPluginProfilerManager()
-    {
-        mMNKProfileMap = std::make_shared<MNKProfileMap>();
+  GemmPluginProfilerManager() {
+    mMNKProfileMap = std::make_shared<MNKProfileMap>();
+  }
+
+  GemmPluginProfilerPtr createGemmPluginProfiler(bool inference, bool skip = false) {
+    auto profiler = std::make_shared<GemmPluginProfilerType>();
+    profiler->setSkip(skip);
+    // If the profiler is created during the engine build,
+    // mMNKProfileMap is shared between different profilers to minimize the time spent on the profiling
+    // and do not repeat profiling for the GEMMs of the same shape.
+    if (!inference) {
+      profiler->setSelectionTactics(mMNKProfileMap);
     }
+    return profiler;
+  }
 
-    GemmPluginProfilerPtr createGemmPluginProfiler(bool inference, bool skip = false)
-    {
-        auto profiler = std::make_shared<GemmPluginProfilerType>();
-        profiler->setSkip(skip);
-        // If the profiler is created during the engine build,
-        // mMNKProfileMap is shared between different profilers to minimize the time spent on the profiling
-        // and do not repeat profiling for the GEMMs of the same shape.
-        if (!inference)
-        {
-            profiler->setSelectionTactics(mMNKProfileMap);
-        }
-        return profiler;
-    }
-
-private:
-    MNKProfileMapPtr mMNKProfileMap{};
+ private:
+  MNKProfileMapPtr mMNKProfileMap{};
 };
 
 }  // namespace onnxruntime::llm

@@ -21,48 +21,35 @@
 
 #include "contrib_ops/cuda/llm/common/logger.h"
 
-namespace onnxruntime::llm::plugins::utils
-{
+namespace onnxruntime::llm::common::utils {
 using DimType64 = int64_t;
 
-inline DimType64 computeMDimension(bool transA, nvinfer1::Dims const& dims)
-{
-    DimType64 M{1};
-    if (transA)
-    {
-        for (int i = dims.nbDims - 1; i > 0; --i)
-        {
-            M *= dims.d[i];
-        }
+inline DimType64 computeMDimension(bool transA, nvinfer1::Dims const& dims) {
+  DimType64 M{1};
+  if (transA) {
+    for (int i = dims.nbDims - 1; i > 0; --i) {
+      M *= dims.d[i];
     }
-    else
-    {
-        for (int i = 0; i < dims.nbDims - 1; ++i)
-        {
-            M *= dims.d[i];
-        }
+  } else {
+    for (int i = 0; i < dims.nbDims - 1; ++i) {
+      M *= dims.d[i];
     }
-    return M;
+  }
+  return M;
 }
 
-inline DimType64 computeNDimension(bool transB, nvinfer1::Dims const& dims)
-{
-    DimType64 N{1};
-    if (transB)
-    {
-        for (int32_t i = 0; i < dims.nbDims - 1; ++i)
-        {
-            N *= dims.d[i];
-        }
+inline DimType64 computeNDimension(bool transB, nvinfer1::Dims const& dims) {
+  DimType64 N{1};
+  if (transB) {
+    for (int32_t i = 0; i < dims.nbDims - 1; ++i) {
+      N *= dims.d[i];
     }
-    else
-    {
-        for (int32_t i = dims.nbDims - 1; i > 0; --i)
-        {
-            N *= dims.d[i];
-        }
+  } else {
+    for (int32_t i = dims.nbDims - 1; i > 0; --i) {
+      N *= dims.d[i];
     }
-    return N;
+  }
+  return N;
 }
 
 /*
@@ -76,4 +63,4 @@ inline std::int32_t logErrorReturn0(char const* variable)
     ((value > 0x7FFFFFFFLL || value < -0x80000000LL) ? onnxruntime::llm::plugins::utils::logErrorReturn0(#value)           \
                                                      : static_cast<int32_t>(value))
 */
-} // namespace onnxruntime::llm::plugins::utils
+}  // namespace onnxruntime::llm::common::utils

@@ -35,43 +35,29 @@
 #include <cuda_runtime_api.h>
 #include <iostream>
 
-namespace onnxruntime::llm
-{
-namespace kernels
-{
-namespace cuda_core_gemm
-{
+namespace onnxruntime::llm {
+namespace kernels {
+namespace cuda_core_gemm {
 using SizeType32 = onnxruntime::llm::runtime::SizeType32;
 
-struct Params
-{
-    void const* act;
-    void const* weight;
-    float alpha;
-    void* output;
-    SizeType32 m, n, k;
-    onnxruntime::llm::common::QuantMode quantMode;
-    nvinfer1::DataType inputType;
-    nvinfer1::DataType outputType;
+struct Params {
+  void const* act;
+  void const* weight;
+  float alpha;
+  void* output;
+  SizeType32 m, n, k;
+  onnxruntime::llm::common::QuantMode quantMode;
+  nvinfer1::DataType inputType;
+  nvinfer1::DataType outputType;
 
-    Params(void const* _act, void const* _weight, float _alpha, void* _output, SizeType32 _m, SizeType32 _n,
-        SizeType32 _k, onnxruntime::llm::common::QuantMode _quant_mode, nvinfer1::DataType _inputType,
-        nvinfer1::DataType _outputType)
-        : act(_act)
-        , weight(_weight)
-        , alpha(_alpha)
-        , output(_output)
-        , m(_m)
-        , n(_n)
-        , k(_k)
-        , quantMode(_quant_mode)
-        , inputType(_inputType)
-        , outputType(_outputType)
-    {
-    }
+  Params(void const* _act, void const* _weight, float _alpha, void* _output, SizeType32 _m, SizeType32 _n,
+         SizeType32 _k, onnxruntime::llm::common::QuantMode _quant_mode, nvinfer1::DataType _inputType,
+         nvinfer1::DataType _outputType)
+      : act(_act), weight(_weight), alpha(_alpha), output(_output), m(_m), n(_n), k(_k), quantMode(_quant_mode), inputType(_inputType), outputType(_outputType) {
+  }
 };
 
 bool cudaCoreGemmDispatcher(Params const& params, cudaStream_t stream);
-} // namespace cuda_core_gemm
-} // namespace kernels
-} // namespace onnxruntime::llm
+}  // namespace cuda_core_gemm
+}  // namespace kernels
+}  // namespace onnxruntime::llm
