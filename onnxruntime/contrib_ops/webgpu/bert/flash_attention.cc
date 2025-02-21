@@ -75,6 +75,7 @@ Status CopyKVCache(onnxruntime::webgpu::ComputeContext& context, const WebgpuAtt
   // This makes it so that FlashAttention only needs to look at present key and value, and saves
   // number of input buffers in the shader, which we run out of (<=8) without this optimization.
   const int components = parameters.head_size_ % 4 == 0 ? 4 : (parameters.head_size_ % 2 == 0 ? 2 : 1);
+  // parameters.total_sequence_length_ is past_sequence_length + kv_sequence_length.
   TensorShape valid_present_shape{parameters.batch_size_, parameters.num_heads_, parameters.total_sequence_length_, parameters.head_size_ / components};
   int64_t valid_kv_size = valid_present_shape.Size();
   bool has_past = (parameters.past_sequence_length_ > 0);
@@ -83,6 +84,7 @@ Status CopyKVCache(onnxruntime::webgpu::ComputeContext& context, const WebgpuAtt
     program.AddInputs({{K, ProgramTensorMetadataDependency::TypeAndRank, components},
                        {V, ProgramTensorMetadataDependency::TypeAndRank, components}});
   } else {
+    ORT_ENFORCE(parameters.qkv_format_ == Q_K_V_BSNH, "qkv format ", parameters.qkv_format_ ," is not supported yet in CopyKVCache.");
     TensorShape reshaped_KV_shape{parameters.batch_size_, parameters.kv_sequence_length_, parameters.num_heads_, parameters.head_size_ / components};
     program.AddInputs({{K, ProgramTensorMetadataDependency::TypeAndRank, reshaped_KV_shape, components},
                        {V, ProgramTensorMetadataDependency::TypeAndRank, reshaped_KV_shape, components}});
@@ -96,7 +98,7 @@ Status CopyKVCache(onnxruntime::webgpu::ComputeContext& context, const WebgpuAtt
       .AddIndices(valid_present_shape);
   program.SetDispatchGroupSize(gsl::narrow<uint32_t>(valid_kv_size + 63 / 64))
       .SetWorkgroupSize(64)
-      .CacheHint(has_past, parameters.past_present_share_buffer_)
+      .CacheHint(has_past, parameters.qkv_format_, parameters.past_present_share_buffer_)
       .AddUniformVariables({{static_cast<uint32_t>(valid_kv_size)},
                             {static_cast<uint32_t>(parameters.total_sequence_length_ - parameters.kv_sequence_length_)}});
 
@@ -353,30 +355,8 @@ Status FlashAttentionProgram::GenerateShaderCode(ShaderHelper& shader) const {
       qk_3 = q_value_t(exp(vec4<f32>(qk_3) - f32(new_max)));
       qk_4 = q_value_t(exp(vec4<f32>(qk_4) - f32(new_max)));
     }
-   // let sum_vec = qk_1 + qk_2 + qk_3 + qk_4;
-   // let sum = sum_vec.x + sum_vec.y + sum_vec.z + sum_vec.w;
-
-    var sum = q_element_t(0);
-    // Neuter qk values where K is out of bounds.
-    sum += select(q_element_t(0), qk_1[0], k_start+0 < seq_causal_length);
-    sum += select(q_element_t(0), qk_1[1], k_start+1 < seq_causal_length);
-    sum += select(q_element_t(0), qk_1[2], k_start+2 < seq_causal_length);
-    sum += select(q_element_t(0), qk_1[3], k_start+3 < seq_causal_length);
-    sum += select(q_element_t(0), qk_2[0], k_start+4 < seq_causal_length);
-    sum += select(q_element_t(0), qk_2[1], k_start+5 < seq_causal_length);
-    sum += select(q_element_t(0), qk_2[2], k_start+6 < seq_causal_length);
-    sum += select(q_element_t(0), qk_2[3], k_start+7 < seq_causal_length);
-    if (sg_size > 8)
-    {
-      sum += select(q_element_t(0), qk_3[0], k_start+8 < seq_causal_length);
-      sum += select(q_element_t(0), qk_3[1], k_start+9 < seq_causal_length);
-      sum += select(q_element_t(0), qk_3[2], k_start+10 < seq_causal_length);
-      sum += select(q_element_t(0), qk_3[3], k_start+11 < seq_causal_length);
-      sum += select(q_element_t(0), qk_4[0], k_start+12 < seq_causal_length);
-      sum += select(q_element_t(0), qk_4[1], k_start+13 < seq_causal_length);
-      sum += select(q_element_t(0), qk_4[2], k_start+14 < seq_causal_length);
-      sum += select(q_element_t(0), qk_4[3], k_start+15 < seq_causal_length);
-    }
+    let sum_vec = qk_1 + qk_2 + qk_3 + qk_4;
+    let sum = sum_vec.x + sum_vec.y + sum_vec.z + sum_vec.w;
 
     // Compute lhs term of update di prime and the compute di prime.
     let dleft = previous_denom * exp(previous_max-new_max);
@@ -395,7 +375,7 @@ Status FlashAttentionProgram::GenerateShaderCode(ShaderHelper& shader) const {
     if (sg_size > 8) {
       for (var i:u32 = 0; i < qkv_head_size_vec; i++)
       {
-          var val = select(vec4<q_element_t>(0), v_tile[capped_sg_id][i], k_start + capped_sg_id < uniforms.total_sequence_length);
+          var val = select(vec4<q_element_t>(0), v_tile[capped_sg_id][i], k_start + capped_sg_id < seq_causal_length);
           var sum = subgroupShuffle(val, 0) * qk_1[0];
           sum += subgroupShuffle(val, 1) * qk_1[1];
           sum += subgroupShuffle(val, 2) * qk_1[2];
@@ -419,7 +399,7 @@ Status FlashAttentionProgram::GenerateShaderCode(ShaderHelper& shader) const {
     {
       for (var i:u32 = 0; i < qkv_head_size_vec; i++)
       {
-          var val = select(vec4<q_element_t>(0), v_tile[capped_sg_id][i], k_start + capped_sg_id < uniforms.total_sequence_length);
+          var val = select(vec4<q_element_t>(0), v_tile[capped_sg_id][i], k_start + capped_sg_id < seq_causal_length);
           var sum = subgroupShuffle(val, 0) * qk_1[0];
           sum += subgroupShuffle(val, 1) * qk_1[1];
           sum += subgroupShuffle(val, 2) * qk_1[2];
@@ -476,6 +456,7 @@ Status ApplyFlashAttention(const Tensor* Q, const Tensor* K, const Tensor* V, co
 bool CanApplyFlashAttention(const Tensor* bias, const Tensor* present_key, const Tensor* present_value,
                             const WebgpuAttentionParameters& parameters, onnxruntime::webgpu::ComputeContext& context) {
   return parameters.batch_size_ == 1 &&
+         !parameters.is_packed_qkv_
          bias == nullptr &&
          parameters.sequence_length_ > 1 &&
          context.Device().HasFeature(wgpu::FeatureName::Subgroups) &&
