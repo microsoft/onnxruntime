@@ -38,7 +38,9 @@ Add “--cmake_extra_defines FETCHCONTENT_TRY_FIND_PACKAGE_MODE=NEVER” to your
 When declaring a dependency in ONNX Runtime’s CMake files, if FIND_PACKAGE arguments are provided, FetchContent will use CMake’s FindPackage module to find dependencies from system locations. Add --cmake_extra_defines FETCHCONTENT_TRY_FIND_PACKAGE_MODE=NEVER to disable this behavior.
 
 # Use preinstalled packages
-FetchContent is a wrapper around various CMake Dependency Providers. By default, it prefers to use FindPackage. However, there are some caveats:
+FetchContent is a wrapper around various CMake Dependency Providers. By default, it prefers to use FindPackage. This is the default mode when building ONNX Runtime from source.  If you are integrating ONNX Runtime into a package manager(like dnf), you will need to use this approach.
+However, there are some caveats:
+
 1.	ONNX Runtime has local patches for dependencies that will not be applied to your preinstalled libraries. Most patches are not necessary for basic functionality.
 2.	If you have installed a library version different from what ONNX Runtime expects, the build script cannot warn you. This may lead to strange build failures.
 3.	Each library can be built in different ways. For example, ONNX Runtime expects ONNX is built with “-DONNX_DISABLE_STATIC_REGISTRATION=ON”. If you have got a prebuilt ONNX library from somewhere, most likely it was not built in this way. 
