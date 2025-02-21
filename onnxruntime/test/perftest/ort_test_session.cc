@@ -1,6 +1,6 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Copyright (c) 2023 NVIDIA Corporation.
-// SPDX-FileCopyrightText: Copyright 2024-2025 Arm Limited and/or its affiliates <open-source-office@arm.com>
+// SPDX-FileCopyrightText: Copyright 2024 Arm Limited and/or its affiliates <open-source-office@arm.com>
 // Licensed under the MIT License.
 
 #include "ort_test_session.h"
@@ -57,6 +57,16 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
                                                const TestModelInfo& m)
     : rand_engine_(rd()), input_names_(m.GetInputCount()), input_names_str_(m.GetInputCount()), input_length_(m.GetInputCount()) {
   Ort::SessionOptions session_options;
+
+  // Set any extra session configuration entries provided by the user via command-line arguments.
+  // This needs to happen before ep initialization, as some of the entries are used by the ep.
+  // Some session config entries can also be set via dedicated command-line options.
+  // If the user uses multiple command-line options to set the same session config entry,
+  // we'll print a warning. Note that the dedicated command-line options will take precedence.
+  const auto& user_session_configs = performance_test_config.run_config.session_config_entries;
+  for (auto& it : user_session_configs) {
+    session_options.AddConfigEntry(it.first.c_str(), it.second.c_str());
+  }
 
   provider_name_ = performance_test_config.machine_config.provider_type_name;
   std::unordered_map<std::string, std::string> provider_options;
@@ -479,8 +489,6 @@ select from 'TF8', 'TF16', 'UINT8', 'FLOAT', 'ITENSOR'. \n)");
     bool enable_fast_math = false;
     ParseSessionConfigs(ov_string, provider_options, {"enable_fast_math"});
     for (const auto& provider_option : provider_options) {
-      const std::string& key = provider_option.first;
-      const std::string& value = provider_option.second;
       if (key == "enable_fast_math") {
         std::set<std::string> ov_supported_values = {"true", "True", "false", "False"};
         if (ov_supported_values.find(value) != ov_supported_values.end()) {
@@ -563,16 +571,6 @@ select from 'TF8', 'TF16', 'UINT8', 'FLOAT', 'ITENSOR'. \n)");
   else
     session_options.DisableMemPattern();
   session_options.SetExecutionMode(performance_test_config.run_config.execution_mode);
-
-  // Set any extra session configuration entries provided by the user via command-line arguments.
-  //
-  // Some session config entries can also be set via dedicated command-line options.
-  // If the user uses multiple command-line options to set the same session config entry,
-  // we'll print a warning. Note that the dedicated command-line options will take precedence.
-  const auto& user_session_configs = performance_test_config.run_config.session_config_entries;
-  for (auto& it : user_session_configs) {
-    session_options.AddConfigEntry(it.first.c_str(), it.second.c_str());
-  }
 
   auto warn_dup_config_entry = [&user_session_configs](const char* key) -> void {
     if (user_session_configs.find(key) != user_session_configs.end()) {

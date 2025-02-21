@@ -2388,7 +2388,6 @@ ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider_TensorRT_V2, 
 #if !defined(ORT_MINIMAL_BUILD) && defined(USE_TENSORRT)
   auto ep_context_cache_enabled_from_provider_options = tensorrt_options->trt_dump_ep_context_model != 0;
   auto ep_context_cache_enabled_from_sess_options = (options->value).config_options.GetConfigOrDefault(kOrtSessionOptionEpContextEnable, "0") != "0";
-
   // If EP context configs are provided in session options, we need to propagate them to provider options. However,
   // if provider options already have the EP context configs provided, the configs in session options will be ignored
   // since provider options has higher priority than session options.
@@ -2406,6 +2405,7 @@ ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider_TensorRT_V2, 
     std::string context_cache_path = "";
     std::string embed_mode = "";
     if (options) {
+      LOGS_DEFAULT(WARNING) << "Propagating EP context options from session option when EP context provider options are empty";
       context_cache_enabled = (options->value).config_options.GetConfigOrDefault(kOrtSessionOptionEpContextEnable, "0") != "0";
       new_tensorrt_options.trt_dump_ep_context_model = context_cache_enabled;
       LOGS_DEFAULT(VERBOSE) << "Context cache enable: " << context_cache_enabled;
@@ -2419,6 +2419,7 @@ ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider_TensorRT_V2, 
         new_tensorrt_options.trt_ep_context_embed_mode = 1;
       } else if ("0" == embed_mode) {
         new_tensorrt_options.trt_ep_context_embed_mode = 0;
+        new_tensorrt_options.trt_engine_cache_enable = 1;  // Enable engine cache if not embedded mode
       } else {
         LOGS_DEFAULT(VERBOSE) << "Invalid ep.context_embed_mode: " << embed_mode << " only 0 or 1 allowed. Set to 1.";
       }
@@ -2426,6 +2427,9 @@ ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider_TensorRT_V2, 
     }
     factory = onnxruntime::TensorrtProviderFactoryCreator::Create(&new_tensorrt_options);
   } else {
+    if (ep_context_cache_enabled_from_provider_options && ep_context_cache_enabled_from_sess_options) {
+      LOGS_DEFAULT(WARNING) << "Provider options provided EP context configs, the EP Context configs from session options will be ignored";
+    }
     factory = onnxruntime::TensorrtProviderFactoryCreator::Create(tensorrt_options);
   }
 #else

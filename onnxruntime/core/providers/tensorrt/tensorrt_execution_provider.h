@@ -273,6 +273,7 @@ class TensorrtExecutionProvider : public IExecutionProvider {
   bool IsGraphCaptureEnabled() const override;
   bool IsGraphCaptured(int graph_annotation_id) const override;
   Status ReplayGraph(int graph_annotation_id) override;
+  const InlinedVector<const Node*> GetEpContextNodes() const override;
 
   static common::Status RefitEngine(std::string onnx_model_filename,
                                     std::string& onnx_model_folder_path,
@@ -347,7 +348,10 @@ class TensorrtExecutionProvider : public IExecutionProvider {
   std::string ctx_model_path_;
   std::string ep_cache_context_attr_;
   std::string engine_cache_relative_path_to_context_model_dir;
-  std::unique_ptr<ONNX_NAMESPACE::ModelProto> model_proto_ = ONNX_NAMESPACE::ModelProto::Create();
+  // std::unique_ptr<ONNX_NAMESPACE::ModelProto> model_proto_ = ONNX_NAMESPACE::ModelProto::Create();
+  std::vector<std::unique_ptr<Model>> trt_ep_context_models;
+  // bool is_single_node_epcontext_graph = false;
+  bool is_subgraph = false;
 
   std::unordered_set<std::string> control_flow_op_set_ = {"If", "Loop", "Scan"};
   mutable std::unordered_map<std::string, std::unique_ptr<SubGraphContext>> subgraph_context_map_;
