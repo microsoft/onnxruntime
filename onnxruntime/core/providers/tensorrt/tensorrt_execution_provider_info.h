@@ -60,6 +60,7 @@ struct TensorrtExecutionProviderInfo {
   int ep_context_embed_mode{0};
   std::string engine_cache_prefix{""};
   bool engine_hw_compatible{false};
+  std::string op_types_to_exclude{""};
 
   static TensorrtExecutionProviderInfo FromProviderOptions(const ProviderOptions& options);
   static ProviderOptions ToProviderOptions(const TensorrtExecutionProviderInfo& info);
