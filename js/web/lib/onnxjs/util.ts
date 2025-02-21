@@ -1,11 +1,10 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-import { flatbuffers } from 'flatbuffers';
 import Long from 'long';
 
 import { Graph } from './graph';
-import { onnxruntime } from './ort-schema/flatbuffers/ort-generated';
+import * as ortFbs from './ort-schema/flatbuffers/ort-generated';
 import { onnx } from './ort-schema/protobuf/onnx';
 import { Tensor } from './tensor';
 
@@ -413,9 +412,7 @@ export class GemmUtil {
 }
 
 export class ProtoUtil {
-  static tensorDataTypeFromProto(
-    typeProto: onnx.TensorProto.DataType | onnxruntime.experimental.fbs.TensorDataType,
-  ): Tensor.DataType {
+  static tensorDataTypeFromProto(typeProto: onnx.TensorProto.DataType | ortFbs.TensorDataType): Tensor.DataType {
     switch (typeProto) {
       case onnx.TensorProto.DataType.INT8:
         return 'int8';
@@ -494,7 +491,7 @@ export class ProtoUtil {
     };
   }
 
-  static tensorDimsFromORTFormat(tensor: onnxruntime.experimental.fbs.Tensor) {
+  static tensorDimsFromORTFormat(tensor: ortFbs.Tensor) {
     const dims = [];
     for (let i = 0; i < tensor.dimsLength(); i++) {
       dims.push(LongUtil.longToNumber(tensor.dims(i)!));
@@ -502,7 +499,7 @@ export class ProtoUtil {
     return dims;
   }
 
-  static tensorAttributesFromORTFormat(node: onnxruntime.experimental.fbs.Node) {
+  static tensorAttributesFromORTFormat(node: ortFbs.Node) {
     const attributes = [];
     for (let i = 0; i < node.attributesLength(); i++) {
       attributes.push(node.attributes(i)!);
@@ -515,16 +512,16 @@ export class LongUtil {
   // This function is called to get a number from long type of data for attribute, dim, and ir version,
   // which values are signed integers.
   // To make it more generic, add an optional parameter to convert to a unsigned number.
-  static longToNumber(n: Long | flatbuffers.Long | number, unsigned?: boolean) {
+  static longToNumber(n: Long | bigint | number) {
     if (Long.isLong(n)) {
       return n.toNumber();
-    } else if (n instanceof flatbuffers.Long) {
-      return Long.fromValue({ low: n.low, high: n.high, unsigned: unsigned ?? false }).toNumber();
+    } else if (typeof n === 'bigint') {
+      return Number(n);
     }
     return n;
   }
   static isLong(n: unknown) {
-    return Long.isLong(n) || n instanceof flatbuffers.Long;
+    return Long.isLong(n) || typeof n === 'bigint';
   }
 }
 

@@ -43,6 +43,7 @@ onnxruntime_add_static_library(onnxruntime_mlas
   ${MLAS_SRC_DIR}/cast.cpp
   ${MLAS_SRC_DIR}/rotary_embedding.h
   ${MLAS_SRC_DIR}/rotary_embedding.cpp
+  ${MLAS_SRC_DIR}/softmax.h
 )
 
 target_sources(onnxruntime_mlas PRIVATE
@@ -97,6 +98,9 @@ function(setup_mlas_source_for_windows)
         ${MLAS_SRC_DIR}/rotary_embedding_kernel_neon_fp16.cpp
         ${MLAS_SRC_DIR}/hgemm_kernel_neon.cpp
         ${MLAS_SRC_DIR}/halfgemm_kernel_neon_fp16.cpp
+        ${MLAS_SRC_DIR}/softmax_kernel_neon.h
+        ${MLAS_SRC_DIR}/softmax_kernel_neon.cpp
+        ${MLAS_SRC_DIR}/softmax_kernel_neon_fp16.cpp
       )
 
       setup_kleidiai()
@@ -185,6 +189,9 @@ function(setup_mlas_source_for_windows)
       ${MLAS_SRC_DIR}/dgemm.cpp
       ${mlas_platform_srcs_avx}
       ${mlas_platform_srcs_avx2}
+      ${MLAS_SRC_DIR}/rotary_embedding_kernel_avx2.h
+      ${MLAS_SRC_DIR}/rotary_embedding_kernel_avx2.cpp
+      ${MLAS_SRC_DIR}/rotary_embedding_kernel_avx2_fp32.cpp
       ${MLAS_SRC_DIR}/qgemm_kernel_amx.cpp
       ${MLAS_SRC_DIR}/qgemm_kernel_avx2.cpp
       ${MLAS_SRC_DIR}/qgemm_kernel_sse.cpp
@@ -230,6 +237,7 @@ function(setup_mlas_source_for_windows)
       ${MLAS_SRC_DIR}/amd64/TanhKernelFma3.asm
       ${MLAS_SRC_DIR}/amd64/ErfKernelFma3.asm
     )
+
     if(MSVC_VERSION GREATER_EQUAL 1933)
       target_sources(onnxruntime_mlas PRIVATE
         ${MLAS_SRC_DIR}/amd64/cvtfp16Avx.asm
@@ -423,6 +431,8 @@ else()
           ${MLAS_SRC_DIR}/rotary_embedding_kernel_neon.h
           ${MLAS_SRC_DIR}/rotary_embedding_kernel_neon.cpp
           ${MLAS_SRC_DIR}/hgemm_kernel_neon.cpp
+          ${MLAS_SRC_DIR}/softmax_kernel_neon.h
+          ${MLAS_SRC_DIR}/softmax_kernel_neon.cpp
         )
         setup_kleidiai()
         set_source_files_properties(${MLAS_SRC_DIR}/sqnbitgemm_kernel_neon_int8.cpp
@@ -445,6 +455,7 @@ else()
             ${MLAS_SRC_DIR}/hqnbitgemm_kernel_neon_fp16.cpp
             ${MLAS_SRC_DIR}/rotary_embedding_kernel_neon_fp16.cpp
             ${MLAS_SRC_DIR}/halfgemm_kernel_neon_fp16.cpp
+            ${MLAS_SRC_DIR}/softmax_kernel_neon_fp16.cpp
           )
           set_source_files_properties(${MLAS_SRC_DIR}/aarch64/HalfGemmKernelNeon.S PROPERTIES COMPILE_FLAGS " -march=armv8.2-a+fp16 ")
           set_source_files_properties(${MLAS_SRC_DIR}/aarch64/QgemmS8S8KernelSmmla.S PROPERTIES COMPILE_FLAGS " -march=armv8.2-a+i8mm ")
@@ -458,6 +469,7 @@ else()
           set_source_files_properties(${MLAS_SRC_DIR}/hqnbitgemm_kernel_neon_fp16.cpp PROPERTIES COMPILE_FLAGS " -march=armv8.2-a+fp16 ")
           set_source_files_properties(${MLAS_SRC_DIR}/rotary_embedding_kernel_neon_fp16.cpp PROPERTIES COMPILE_FLAGS " -march=armv8.2-a+fp16 ")
           set_source_files_properties(${MLAS_SRC_DIR}/halfgemm_kernel_neon_fp16.cpp PROPERTIES COMPILE_FLAGS " -march=armv8.2-a+fp16 ")
+          set_source_files_properties(${MLAS_SRC_DIR}/softmax_kernel_neon_fp16.cpp PROPERTIES COMPILE_FLAGS " -march=armv8.2-a+fp16 ")
         endif()
 
         if(ONNXRUNTIME_MLAS_MULTI_ARCH)
@@ -633,6 +645,9 @@ else()
           ${MLAS_SRC_DIR}/intrinsics/avx2/qladd_avx2.cpp
           ${MLAS_SRC_DIR}/intrinsics/avx2/qdwconv_avx2.cpp
           ${MLAS_SRC_DIR}/sqnbitgemm_kernel_avx2.cpp
+          ${MLAS_SRC_DIR}/rotary_embedding_kernel_avx2.h
+          ${MLAS_SRC_DIR}/rotary_embedding_kernel_avx2.cpp
+          ${MLAS_SRC_DIR}/rotary_embedding_kernel_avx2_fp32.cpp
         )
         if(CMAKE_CXX_COMPILER_VERSION GREATER_EQUAL 13.1 AND NOT(APPLE))
           set(mlas_platform_srcs_avx2

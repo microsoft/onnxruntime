@@ -18,7 +18,6 @@ constexpr const char* kDawnBackendType = "WebGPU:dawnBackendType";
 
 constexpr const char* kDeviceId = "WebGPU:deviceId";
 constexpr const char* kWebGpuInstance = "WebGPU:webgpuInstance";
-constexpr const char* kWebGpuAdapter = "WebGPU:webgpuAdapter";
 constexpr const char* kWebGpuDevice = "WebGPU:webgpuDevice";
 
 constexpr const char* kStorageBufferCacheMode = "WebGPU:storageBufferCacheMode";
@@ -29,6 +28,7 @@ constexpr const char* kDefaultBufferCacheMode = "WebGPU:defaultBufferCacheMode";
 constexpr const char* kValidationMode = "WebGPU:validationMode";
 
 constexpr const char* kForceCpuNodeNames = "WebGPU:forceCpuNodeNames";
+constexpr const char* kEnablePIXCapture = "WebGPU:enablePIXCapture";
 
 // The following are the possible values for the provider options.
 
@@ -40,6 +40,9 @@ constexpr const char* kPreferredLayout_NHWC = "NHWC";
 
 constexpr const char* kEnableGraphCapture_ON = "1";
 constexpr const char* kEnableGraphCapture_OFF = "0";
+
+constexpr const char* kEnablePIXCapture_ON = "1";
+constexpr const char* kEnablePIXCapture_OFF = "0";
 
 constexpr const char* kBufferCacheMode_Disabled = "disabled";
 constexpr const char* kBufferCacheMode_LazyRelease = "lazyRelease";

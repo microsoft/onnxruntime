@@ -9,8 +9,8 @@
 
 // Public wrappers around internal ort interfaces (currently)
 #include "core/providers/shared_library/provider_host_api.h"
-
 #include "core/common/inlined_containers_fwd.h"
+#include "core/framework/resource_accountant.h"
 #include "core/providers/shared/common.h"
 
 #define PROVIDER_DISALLOW_ALL(TypeName)     \
@@ -178,7 +178,6 @@ struct ProviderHost {
   virtual std::string demangle(const char* name) = 0;
   virtual std::string demangle(const std::string& name) = 0;
 
-#ifdef USE_CUDA
   virtual std::unique_ptr<IAllocator> CreateCUDAAllocator(int16_t device_id, const char* name) = 0;
   virtual std::unique_ptr<IAllocator> CreateCUDAPinnedAllocator(const char* name) = 0;
   virtual std::unique_ptr<IDataTransfer> CreateGPUDataTransfer() = 0;
@@ -190,7 +189,6 @@ struct ProviderHost {
 
   virtual Status CudaCall_false(int retCode, const char* exprString, const char* libName, int successCode, const char* msg, const char* file, const int line) = 0;
   virtual void CudaCall_true(int retCode, const char* exprString, const char* libName, int successCode, const char* msg, const char* file, const int line) = 0;
-#endif
 
 #ifdef USE_MIGRAPHX
   virtual std::unique_ptr<IAllocator> CreateMIGraphXAllocator(int16_t device_id, const char* name) = 0;
@@ -200,7 +198,6 @@ struct ProviderHost {
 #ifdef USE_ROCM
   virtual std::unique_ptr<IAllocator> CreateROCMAllocator(int16_t device_id, const char* name) = 0;
   virtual std::unique_ptr<IAllocator> CreateROCMPinnedAllocator(const char* name) = 0;
-  virtual std::unique_ptr<IDataTransfer> CreateGPUDataTransfer() = 0;
 
   virtual void rocm__Impl_Cast(void* stream, const int64_t* input_data, int32_t* output_data, size_t count) = 0;
   virtual void rocm__Impl_Cast(void* stream, const int32_t* input_data, int64_t* output_data, size_t count) = 0;
@@ -255,7 +252,8 @@ struct ProviderHost {
 
   // IExecutionProvider
   virtual std::vector<std::unique_ptr<ComputeCapability>> IExecutionProvider__GetCapability(const IExecutionProvider* p, const onnxruntime::GraphViewer& graph_viewer,
-                                                                                            const IExecutionProvider::IKernelLookup& kernel_lookup) = 0;
+                                                                                            const IExecutionProvider::IKernelLookup& kernel_lookup,
+                                                                                            IResourceAccountant* resource_accountant) = 0;
 
   virtual common::Status IExecutionProvider__Compile(IExecutionProvider* p, const std::vector<IExecutionProvider::FusedNodeAndGraph>& fused_nodes_and_graphs, std::vector<NodeComputeInfo>& node_compute_funcs) = 0;
 
@@ -607,6 +605,7 @@ struct ProviderHost {
   virtual ONNX_NAMESPACE::StringStringEntryProto* FunctionProto__add_metadata_props(ONNX_NAMESPACE::FunctionProto* p) = 0;
 
   virtual void RegisterSchema(const std::string& domain, const OrtCustomOp* op) = 0;
+  virtual void DeregisterSchema(const std::string& domain, const std::string& op_type, int version) = 0;
   virtual const ONNX_NAMESPACE::OpSchema* GetSchema(const std::string& name, const int maxInclusiveVersion, const std::string& domain) = 0;
   virtual const std::string& OpSchema__inputs__GetName(const ONNX_NAMESPACE::OpSchema* p, const size_t i) = 0;
   virtual const std::string& OpSchema__inputs__GetTypeStr(const ONNX_NAMESPACE::OpSchema* p, const size_t i) = 0;
@@ -662,6 +661,7 @@ struct ProviderHost {
   virtual std::unique_ptr<IndexedSubGraph> IndexedSubGraph__construct() = 0;
   virtual void IndexedSubGraph__operator_delete(IndexedSubGraph* p) = 0;
 
+  virtual const std::vector<onnxruntime::NodeIndex>& IndexedSubGraph__Nodes(const IndexedSubGraph* p) = 0;
   virtual std::vector<onnxruntime::NodeIndex>& IndexedSubGraph__Nodes(IndexedSubGraph* p) = 0;
 
   virtual void IndexedSubGraph__SetMetaDef(IndexedSubGraph* p, std::unique_ptr<IndexedSubGraph_MetaDef>&& meta_def_) = 0;
@@ -669,6 +669,8 @@ struct ProviderHost {
 
   virtual void IndexedSubGraph__SetSchemaSource(IndexedSubGraph* p, IndexedSubGraph_SourceOfSchema schema_source) = 0;
   virtual IndexedSubGraph_SourceOfSchema IndexedSubGraph__GetSchemaSource(const IndexedSubGraph* p) = 0;
+  virtual void IndexedSubGraph__SetAccountant(IndexedSubGraph* p, IResourceAccountant*) = 0;
+  virtual void IndexedSubGraph__AppendNodeCost(IndexedSubGraph* p, const ResourceCount& count) = 0;
 
   // KernelDef
   virtual void KernelDef__operator_delete(KernelDef* p) = 0;
@@ -1256,9 +1258,7 @@ struct ProviderHost {
   virtual training::DistributedRunContext& GetDistributedRunContextInstance() = 0;
 #endif
 
-#if defined(USE_CUDA) || defined(USE_ROCM)
   virtual PhiloxGenerator& PhiloxGenerator__Default() = 0;
-#endif
 
 #ifdef ENABLE_TRAINING_TORCH_INTEROP
   virtual void contrib__PythonOpBase__Init(contrib::PythonOpBase* p, const OpKernelInfo& info) = 0;
