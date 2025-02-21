@@ -8,7 +8,7 @@
 
 using namespace onnxruntime;
 
-template<typename T>
+template <typename T>
 void RunRoPEBenchmark(size_t rotary_emb_dim, bool interleaved, benchmark::State& state) {
   const float Pi = 2 * std::acos(0.0f);
 
