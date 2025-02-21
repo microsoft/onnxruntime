@@ -45,8 +45,8 @@ bool ParseBooleanOption(const ProviderOptions& provider_options, std::string opt
   return false;
 }
 
-std::string ParseDeviceType(const ProviderOptions& provider_options, std::string option_name) {
-  const std::vector<std::string> ov_available_devices = OVCore::GetAvailableDevices();
+std::string ParseDeviceType(std::shared_ptr<OVCore> ov_core, const ProviderOptions& provider_options, std::string option_name) {
+  const std::vector<std::string> ov_available_devices = ov_core->GetAvailableDevices();
 
   std::set<std::string> ov_supported_device_types = {"CPU", "GPU",
                                                      "GPU.0", "GPU.1", "NPU"};
@@ -160,7 +160,7 @@ std::string ParsePrecision(const ProviderOptions& provider_options, std::string&
 void ParseProviderOptions([[maybe_unused]] ProviderInfo& result, [[maybe_unused]] const ProviderOptions& config_options) {}
 
 struct OpenVINOProviderFactory : IExecutionProviderFactory {
-  OpenVINOProviderFactory(ProviderInfo provider_info, SharedContext& shared_context)
+  OpenVINOProviderFactory(ProviderInfo provider_info, std::shared_ptr<SharedContext> shared_context)
       : provider_info_(std::move(provider_info)), shared_context_(shared_context) {}
 
   ~OpenVINOProviderFactory() override {}
@@ -171,12 +171,12 @@ struct OpenVINOProviderFactory : IExecutionProviderFactory {
 
  private:
   ProviderInfo provider_info_;
-  SharedContext& shared_context_;
+  std::shared_ptr<SharedContext> shared_context_;
 };
 
 struct ProviderInfo_OpenVINO_Impl : ProviderInfo_OpenVINO {
   std::vector<std::string> GetAvailableDevices() const override {
-    return OVCore::GetAvailableDevices();
+    return OVCore::Get()->GetAvailableDevices();
   }
 };
 
@@ -194,7 +194,10 @@ struct OpenVINO_Provider : Provider {
 
     std::string bool_flag = "";
 
-    pi.device_type = ParseDeviceType(provider_options, "device_type");
+    // Minor optimization: we'll hold an OVCore reference to ensure we don't create a new core between ParseDeviceType and
+    // (potential) SharedContext creation.
+    auto ov_core = OVCore::Get();
+    pi.device_type = ParseDeviceType(ov_core, provider_options, "device_type");
 
     if (provider_options.contains("device_id")) {
       std::string dev_id = provider_options.at("device_id").data();
@@ -337,20 +340,16 @@ struct OpenVINO_Provider : Provider {
       pi.load_config["NPU"] = std::move(map);
     }
 
-    return std::make_shared<OpenVINOProviderFactory>(pi, shared_context_);
+    return std::make_shared<OpenVINOProviderFactory>(pi, SharedContext::Get());
   }
 
   void Initialize() override {
-    OVCore::Initialize();
   }
 
   void Shutdown() override {
-    backend_utils::DestroyOVTensors(shared_context_.shared_weights.metadata);
-    OVCore::Teardown();
   }
 
  private:
-  SharedContext shared_context_;
   ProviderInfo_OpenVINO_Impl info_;
 };  // OpenVINO_Provider
 

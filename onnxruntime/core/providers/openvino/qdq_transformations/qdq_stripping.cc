@@ -298,7 +298,7 @@ static bool CheckDQRuleSet(const NodeUnit& node_unit,
   const auto& op_type = node_unit.OpType();
 
   // #1 Reverse DQ duplication
-  if (dq_node->Name().find(DuplicateDQ) != std::string::npos) {
+  if (dq_node->Name().find(DuplicateDQ) != std::string::npos && !src_graph.IsConstantInitializer(dq_node->InputDefs().at(0)->Name(), true)) {
     reason = SkipReason::DuplicateDQ;
     return false;
   }
