@@ -45,10 +45,6 @@ static OpBuilderRegistrations CreateOpBuilderRegistrations() {
     CreateTernaryOpBuilder("Where", op_registrations);
   }
 
-  {  // Attention
-    CreateAttentionOpBuilder("GroupQueryAttention", op_registrations);
-  }
-
   {  // Activations
     CreateActivationOpBuilder("Elu", op_registrations);
     CreateActivationOpBuilder("Gelu", op_registrations);
@@ -117,6 +113,10 @@ static OpBuilderRegistrations CreateOpBuilderRegistrations() {
 
   {  // GatherND
     CreateGatherNDOpBuilder("GatherND", op_registrations);
+  }
+
+  {  // GroupQueryAttention
+    CreateGroupQueryAttentionOpBuilder("GroupQueryAttention", op_registrations);
   }
 
   {  // Flatten
