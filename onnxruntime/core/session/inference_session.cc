@@ -1666,6 +1666,17 @@ common::Status InferenceSession::AddPrePackedWeightsContainer(PrepackedWeightsCo
   return Status::OK();
 }
 
+#if !defined(ORT_MINIMAL_BUILD)
+Status onnxruntime::InferenceSession::CreateNodeStatsRecorder(const std::filesystem::path& node_stats_file) {
+  if (node_stats_recorder_.has_value()) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "The session already has an instance of NodeStatsRecorder");
+  }
+  node_stats_recorder_.emplace(node_stats_file);
+  return Status::OK();
+}
+#endif
+
 namespace {
 Status PartitionOrtFormatModel(onnxruntime::Graph& graph,
                                const ExecutionProviders& providers,
@@ -1866,6 +1877,17 @@ common::Status InferenceSession::Initialize() {
         tuning_ctx->RegisterAllocatorsView(&session_state_->GetAllocators());
       }
     }
+
+#if !defined(ORT_MINIMAL_BUILD)
+    const std::string node_stats_file = session_options_.config_options.GetConfigOrDefault(
+        kOrtSessionOptionsCollectNodeMemoryStatsToFile, "");
+
+    if (!node_stats_file.empty()) {
+      ORT_RETURN_IF_ERROR_SESSIONID_(CreateNodeStatsRecorder(node_stats_file));
+    }
+
+    session_state_->SetNodeStatsRecorder(GetNodeStatsRecorder());
+#endif
 
 #if !defined(ORT_MINIMAL_BUILD) && defined(ORT_MEMORY_PROFILE)
     // Don't want to pollute SessionState constructor since memory profile is enabled optionally.
@@ -2796,6 +2818,14 @@ Status InferenceSession::Run(const RunOptions& run_options,
   }
 #ifdef ONNXRUNTIME_ENABLE_INSTRUMENT
   TraceLoggingWriteStop(ortrun_activity, "OrtRun");
+#endif
+
+#if !defined(ORT_MINIMAL_BUILD)
+  if (IsNodeStatsCollectionEnabled() && retval.IsOK()) {
+    // Dump node stats if the run was successful
+    node_stats_recorder_->DumpStats(session_state_->GetGraphViewer().ModelPath());
+    node_stats_recorder_->ResetPerRunNameDeduper();
+  }
 #endif
 
   // As N+1 inference runs (N for memory allocation and 1 for graph capturing)

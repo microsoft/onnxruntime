@@ -505,12 +505,6 @@ QNNExecutionProvider::GetSupportedNodes(const GraphViewer& graph_viewer,
                                         const logging::Logger& logger) const {
   std::unordered_set<const Node*> supported_nodes{};
 
-  std::unordered_set<std::string> initializer_input_lookup;
-  auto graph_initializers = graph_viewer.GetAllInitializedTensors();
-  for (auto graph_ini : graph_initializers) {
-    initializer_input_lookup.emplace(graph_ini.first);
-  }
-
   // Util function that initializes a table that maps a graph input or output name to its index.
   auto init_input_output_index_map = [](std::unordered_map<std::string, size_t>& index_map,
                                         const std::vector<const NodeArg*>& node_args) {
@@ -531,7 +525,6 @@ QNNExecutionProvider::GetSupportedNodes(const GraphViewer& graph_viewer,
                                                 qnn_backend_manager_->GetQnnBackendHandle(),
                                                 model_input_index_map,
                                                 model_output_index_map,
-                                                initializer_input_lookup,
                                                 qnn_backend_manager_->GetQnnBackendType(),
                                                 model_settings_);
 
@@ -661,7 +654,8 @@ static void PartitionCtxModel(const onnxruntime::GraphViewer& graph_viewer,
 
 std::vector<std::unique_ptr<ComputeCapability>>
 QNNExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_viewer,
-                                    const IKernelLookup& /*kernel_lookup*/) const {
+                                    const IKernelLookup& /*kernel_lookup*/,
+                                    IResourceAccountant* /* resource_accountant */) const {
   std::vector<std::unique_ptr<ComputeCapability>> result;
 
   if (graph_viewer.IsSubgraph()) {

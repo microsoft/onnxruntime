@@ -162,7 +162,8 @@ OpenVINOExecutionProvider::~OpenVINOExecutionProvider() {
 
 std::vector<std::unique_ptr<ComputeCapability>>
 OpenVINOExecutionProvider::GetCapability(const GraphViewer& graph_viewer,
-                                         const IKernelLookup& /*kernel_lookup*/) const {
+                                         const IKernelLookup& /*kernel_lookup*/,
+                                         IResourceAccountant* /* resource_accountant */) const {
   std::vector<std::unique_ptr<ComputeCapability>> result;
 
   // Enable CI Logs
