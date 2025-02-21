@@ -61,6 +61,7 @@ int vitisai_ep_set_ep_dynamic_options_c(
 void profiler_collect_c(
     std::vector<EventInfo>& api_events,
     std::vector<EventInfo>& kernel_events);
+void deinitialize_onnxruntime_vitisai_ep_c();
 };
 vaip_core::OrtApiForVaip* create_org_api_hook();
 struct OrtVitisAIEpAPI {
@@ -108,6 +109,7 @@ struct OrtVitisAIEpAPI {
     this->vitisai_ep_set_ep_dynamic_options = vitisai_ep_set_ep_dynamic_options_c;
     this->vaip_get_version = vaip_get_version_c;
     this->profiler_collect = profiler_collect_c;
+    this->deinitialize_onnxruntime_vitisai_ep = deinitialize_onnxruntime_vitisai_ep_c;
 
     auto& env = Provider_GetHost()->Env__Default();
     auto& logger = *Provider_GetHost()->LoggingManager_GetDefaultLogger();
