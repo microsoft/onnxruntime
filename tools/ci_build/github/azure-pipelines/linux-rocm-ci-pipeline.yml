@@ -62,7 +62,7 @@ jobs:
       Dockerfile: tools/ci_build/github/linux/docker/rocm-ci-pipeline-env.Dockerfile
       Context: tools/ci_build/github/linux/docker
       DockerBuildArgs: "--build-arg ROCM_VERSION=$(RocmVersion) --build-arg BUILD_UID=1004"
-      Repository: onnxruntimerocm-cibuild-rocm$(RocmVersion)
+      Repository: onnxruntimerocm-cibuild-rocm$(RocmVersion)new
 
   - task: Cache@2
     inputs:
