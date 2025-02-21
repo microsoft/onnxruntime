@@ -1,13 +1,14 @@
 set(PATCH_CLANG ${PROJECT_SOURCE_DIR}/patches/composable_kernel/Fix_Clang_Build.patch)
 set(PATCH_GFX12X ${PROJECT_SOURCE_DIR}/patches/composable_kernel/Add_gfx12x_support.patch)
+set(PATCH_GFX950 ${PROJECT_SOURCE_DIR}/patches/composable_kernel/Add_gfx950.patch)
 
 include(FetchContent)
 onnxruntime_fetchcontent_declare(composable_kernel
   URL ${DEP_URL_composable_kernel}
   URL_HASH SHA1=${DEP_SHA1_composable_kernel}
   PATCH_COMMAND ${Patch_EXECUTABLE} --binary --ignore-whitespace -p1 < ${PATCH_CLANG} &&
-                ${Patch_EXECUTABLE} --binary --ignore-whitespace -p1 < ${PATCH_GFX12X}
-  EXCLUDE_FROM_ALL
+                ${Patch_EXECUTABLE} --binary --ignore-whitespace -p1 < ${PATCH_GFX12X} &&
+                ${Patch_EXECUTABLE} --binary --ignore-whitespace -p1 < ${PATCH_GFX950}
 )
 
 FetchContent_GetProperties(composable_kernel)
