@@ -2007,7 +2007,8 @@ struct OrtApi {
   /** \brief Get the value type from an ::OrtMapTypeInfo
    *
    * \param[in] map_type_info
-   * \param[out] type_info
+   * \param[out] type_info A copy of the OrtTypeInfo for the map value type.
+   *                       The user must free this value with ReleaseTypeInfo.
    *
    * \snippet{doc} snippets.dox OrtStatus Return Value
    */
@@ -2022,7 +2023,8 @@ struct OrtApi {
    * This is used by WinML to support model reflection APIs.
    *
    * \param[in] sequence_type_info
-   * \param[out] type_info
+   * \param[out] type_info A copy of the OrtTypeInfo for the sequence element type.
+   *                       The user must free this value with ReleaseTypeInfo.
    *
    * \snippet{doc} snippets.dox OrtStatus Return Value
    */
@@ -4305,8 +4307,8 @@ struct OrtApi {
    * specific type that is described by the returned ::OrtTypeInfo.
    *
    * \param[in] optional_type_info
-   * \param[out] out A pointer to the ::OrtTypeInfo for what the optional value could be.
-   * it is owned by OrtOptionalTypeInfo instance.
+   * \param[out] out A copy of ::OrtTypeInfo for what the optional value could be.
+   *                 The user must free this value with ReleaseTypeInfo.
    *
    * \snippet{doc} snippets.dox OrtStatus Return Value
    *
@@ -4993,6 +4995,9 @@ struct OrtCustomOp {
  * \since Version 1.21.
  */
 struct OrtModelEditorApi {
+  // Model building/editing requires a full build. We return nullptr from GetModelEditorApi if this is a minimal
+  // build so it doesn't matter if there are no function pointers in this struct when that happens.
+#if !defined(ORT_MINIMAL_BUILD)
   /** \brief Create an OrtTypeInfo instance for a Tensor.
    *
    * Create an OrtTypeInfo instance for a Tensor to use as graph inputs/outputs with the Model Editor API.
@@ -5355,6 +5360,7 @@ struct OrtModelEditorApi {
    */
   ORT_API2_STATUS(FinalizeModelEditorSession, _In_ OrtSession* session, _In_ const OrtSessionOptions* options,
                   _Inout_ OrtPrepackedWeightsContainer* prepacked_weights_container);
+#endif  // !defined(ORT_MINIMAL_BUILD)
 };
 
 /*

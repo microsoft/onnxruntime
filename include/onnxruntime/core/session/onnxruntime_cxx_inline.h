@@ -1009,6 +1009,7 @@ inline std::vector<std::string> ConstSessionImpl<T>::GetInputNames() const {
     char* name = nullptr;
     ThrowOnError(GetApi().SessionGetInputName(this->p_, i, allocator, &name));
     input_names.push_back(name);
+    allocator.Free(name);
   }
 
   return input_names;
@@ -1026,6 +1027,7 @@ inline std::vector<std::string> ConstSessionImpl<T>::GetOutputNames() const {
     char* name = nullptr;
     ThrowOnError(GetApi().SessionGetOutputName(this->p_, i, allocator, &name));
     output_names.push_back(name);
+    allocator.Free(name);
   }
 
   return output_names;
@@ -1104,12 +1106,14 @@ inline TypeInfo ConstSessionImpl<T>::GetOverridableInitializerTypeInfo(size_t in
   return TypeInfo{out};
 }
 
+#if !defined(ORT_MINIMAL_BUILD)
 template <typename T>
 inline int ConstSessionImpl<T>::GetOpset(const std::string& domain) const {
   int opset;
   ThrowOnError(GetModelEditorApi().SessionGetOpsetForDomain(this->p_, domain.c_str(), &opset));
   return opset;
 }
+#endif  // !defined(ORT_MINIMAL_BUILD)
 
 template <typename T>
 std::vector<ValueInfo> ConstSessionImpl<T>::GetInputs() const {
@@ -1188,12 +1192,14 @@ inline void SessionImpl<T>::SetEpDynamicOptions(const char* const* keys, const c
   ThrowOnError(GetApi().SetEpDynamicOptions(this->p_, keys, values, kv_len));
 }
 
+#if !defined(ORT_MINIMAL_BUILD)
 template <typename T>
 inline void SessionImpl<T>::FinalizeModelEditorSession(const Model& model, const SessionOptions& options,
                                                        OrtPrepackedWeightsContainer* prepacked_weights_container) {
   ThrowOnError(GetModelEditorApi().ApplyModelToModelEditorSession(this->p_, model));
   ThrowOnError(GetModelEditorApi().FinalizeModelEditorSession(this->p_, options, prepacked_weights_container));
 }
+#endif  // #if !defined(ORT_MINIMAL_BUILD)
 
 }  // namespace detail
 
@@ -1241,6 +1247,7 @@ inline Session::Session(const Env& env, const void* model_data, size_t model_dat
                                                                             prepacked_weights_container, &this->p_));
 }
 
+#if !defined(ORT_MINIMAL_BUILD)
 inline Session::Session(const Env& env, const Model& model, const SessionOptions& options) {
   ThrowOnError(GetModelEditorApi().CreateSessionFromModel(env, model.GetConst(), options, &this->p_));
 }
@@ -1264,6 +1271,7 @@ inline Session Session::CreateModelEditorSession(const Env& env, const void* mod
 
 void FinalizeModelEditorSession(const Model& model, const SessionOptions& options,
                                 OrtPrepackedWeightsContainer* prepacked_weights_container);
+#endif  // #if !defined(ORT_MINIMAL_BUILD)
 
 inline AllocatedStringPtr ModelMetadata::GetProducerNameAllocated(OrtAllocator* allocator) const {
   char* out;
@@ -1348,6 +1356,7 @@ inline TensorTypeAndShapeInfo::TensorTypeAndShapeInfo(ONNXTensorElementDataType 
   }
 }
 
+#if !defined(ORT_MINIMAL_BUILD)
 // static
 inline TypeInfo TypeInfo::CreateTensorInfo(ConstTensorTypeAndShapeInfo tensor_type_and_shape_info) {
   OrtTypeInfo* output = nullptr;
@@ -1382,6 +1391,7 @@ inline TypeInfo TypeInfo::CreateOptionalTypeInfo(ConstTypeInfo contained_type) {
   ThrowOnError(GetModelEditorApi().CreateOptionalTypeInfo(contained_type, &output));
   return TypeInfo{output};
 }
+#endif  // #if !defined(ORT_MINIMAL_BUILD)
 
 namespace detail {
 
@@ -2370,6 +2380,7 @@ inline std::vector<const char*> StringsToCharPtrs(const std::vector<std::string>
 }
 }  // namespace detail
 
+#if !defined(ORT_MINIMAL_BUILD)
 // static
 inline void Node::Init(const std::string& operator_name, const std::string& operator_domain,
                        const std::string& node_name,
@@ -2432,6 +2443,8 @@ inline Model::Model(const std::vector<DomainOpsetPair>& opsets) {
 inline ValueInfo::ValueInfo(const std::string& name, const ConstTypeInfo& type_info) {
   ThrowOnError(GetModelEditorApi().CreateValueInfo(name.c_str(), type_info, &p_));
 }
+#endif  // !defined(ORT_MINIMAL_BUILD)
+
 namespace detail {
 template <>
 inline std::string ValueInfoImpl<OrtValueInfo>::Name() const {
@@ -2447,6 +2460,7 @@ inline ConstTypeInfo ValueInfoImpl<OrtValueInfo>::TypeInfo() const {
   return ConstTypeInfo{type_info};
 }
 
+#if !defined(ORT_MINIMAL_BUILD)
 template <>
 inline void GraphImpl<OrtGraph>::SetInputs(std::vector<ValueInfo>& inputs) {
   std::vector<OrtValueInfo*> inputs_ptrs;
@@ -2490,5 +2504,7 @@ inline void ModelImpl<OrtModel>::AddGraph(Graph& graph) {
   // Model takes ownership of `graph`
   ThrowOnError(GetModelEditorApi().AddGraphToModel(p_, graph.release()));
 }
+#endif  // !defined(ORT_MINIMAL_BUILD)
+
 }  // namespace detail
 }  // namespace Ort

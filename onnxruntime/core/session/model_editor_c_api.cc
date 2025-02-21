@@ -1,6 +1,8 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#if !defined(ORT_MINIMAL_BUILD)
+
 #include <variant>
 
 #include "core/framework/error_code_helper.h"
@@ -352,3 +354,5 @@ static_assert(offsetof(OrtModelEditorApi, FinalizeModelEditorSession) / sizeof(v
 ORT_API(const OrtModelEditorApi*, OrtModelEditorAPI::GetModelEditorApi) {
   return &ort_model_editor_api;
 }
+
+#endif  // !defined(ORT_MINIMAL_BUILD)
