@@ -17,7 +17,9 @@ parameters:
   default: false
 jobs:
 - job: ReactNative_CI_Android
-  pool: 'onnxruntime-Ubuntu2204-AMD-CPU'
+  pool:
+    name: onnxruntime-Ubuntu2204-AMD-CPU
+    os: linux
   variables:
     runCodesignValidationInjection: false
     ANDROID_AVD_HOME: $(Agent.TempDirectory)
