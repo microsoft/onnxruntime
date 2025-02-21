@@ -61,6 +61,7 @@ int vitisai_ep_set_ep_dynamic_options_c(
 void profiler_collect_c(
     std::vector<EventInfo>& api_events,
     std::vector<EventInfo>& kernel_events);
+void deinitialize_onnxruntime_vitisai_ep_c();
 };
 vaip_core::OrtApiForVaip* create_org_api_hook();
 struct OrtVitisAIEpAPI {
@@ -70,7 +71,7 @@ struct OrtVitisAIEpAPI {
   std::vector<std::unique_ptr<vaip_core::ExecutionProvider>>* (*compile_onnx_model_vitisai_ep_with_error_handling)(
       const std::string& model_path, const onnxruntime::Graph& graph, const onnxruntime::ProviderOptions& options, void* status, vaip_core::error_report_func func);
   std::vector<std::unique_ptr<vaip_core::ExecutionProvider>>* (*compile_onnx_model_vitisai_ep_v3)(
-      const std::filesystem::path& model_path, const onnxruntime::Graph& graph, const onnxruntime::ProviderOptions& options, void* status, vaip_core::error_report_func func);
+      const std::filesystem::path& model_path, const onnxruntime::Graph& graph, const onnxruntime::ProviderOptions& options, void* status, vaip_core::error_report_func func) = nullptr;
   uint32_t (*vaip_get_version)();
   int (*create_ep_context_nodes)(
       const std::vector<std::unique_ptr<vaip_core::ExecutionProvider>>& eps,
@@ -108,6 +109,7 @@ struct OrtVitisAIEpAPI {
     this->vitisai_ep_set_ep_dynamic_options = vitisai_ep_set_ep_dynamic_options_c;
     this->vaip_get_version = vaip_get_version_c;
     this->profiler_collect = profiler_collect_c;
+    this->deinitialize_onnxruntime_vitisai_ep = deinitialize_onnxruntime_vitisai_ep_c;
 
     auto& env = Provider_GetHost()->Env__Default();
     auto& logger = *Provider_GetHost()->LoggingManager_GetDefaultLogger();
