@@ -199,15 +199,17 @@ GetQDQTestCaseFn BuildDoubleQDQTestCaseWithDuplicateLastDQs(
       }
     }
 
-    builder.AddQuantizeLinearNode(input_arg, scales[0], zero_points[0], zero_point_types[0], node_outputs[0],
-                                  use_contrib_qdq);
-    builder.AddDequantizeLinearNode(node_outputs[0], scales[1], zero_points[1], zero_point_types[1], node_outputs[1],
-                                    use_contrib_qdq);
-    builder.AddQuantizeLinearNode(node_outputs[1], scales[2], zero_points[2], zero_point_types[2], node_outputs[2],
-                                  use_contrib_qdq);
+    ONNX_NAMESPACE::TensorProto_DataType scale_type = ONNX_NAMESPACE::TensorProto_DataType_FLOAT;
+
+    builder.AddQuantizeLinearNode(input_arg, scales[0], scale_type, zero_points[0], zero_point_types[0],
+                                  node_outputs[0], use_contrib_qdq);
+    builder.AddDequantizeLinearNode(node_outputs[0], scales[1], scale_type, zero_points[1], zero_point_types[1],
+                                    node_outputs[1], use_contrib_qdq);
+    builder.AddQuantizeLinearNode(node_outputs[1], scales[2], scale_type, zero_points[2], zero_point_types[2],
+                                  node_outputs[2], use_contrib_qdq);
 
     for (size_t i = 3; i < num_nodes; i++) {
-      builder.AddDequantizeLinearNode(node_outputs[2], scales[i], zero_points[i], zero_point_types[i],
+      builder.AddDequantizeLinearNode(node_outputs[2], scales[i], scale_type, zero_points[i], zero_point_types[i],
                                       node_outputs[i], use_contrib_qdq);
     }
   };

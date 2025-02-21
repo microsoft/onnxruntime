@@ -367,16 +367,19 @@ class ModelTestBuilder {
   /// <summary>
   /// Adds a Q node with a configurable zero-point type.
   /// Takes in an int64_t zero_point value, which is large enough to represent all ONNX zero-point types.
+  /// Takes in a double zero_point value, which is large enough to represent all ONNX scale types.
   /// </summary>
   /// <param name="input_arg">First input to the Q node</param>
   /// <param name="input_scale">Input scale value</param>
+  /// <param name="scale_type">Input scale's type</param>
   /// <param name="input_zero_point">Input zero point value</param>
   /// <param name="zero_point_type">Input zero point's type</param>
   /// <param name="output_arg">Q node's output node arg</param>
   /// <param name="use_ms_domain">True to use the 'com.microsoft' domain</param>
   /// <returns>Reference to the new Q node</returns>
   Node& AddQuantizeLinearNode(NodeArg* input_arg,
-                              float input_scale,
+                              double input_scale,
+                              ONNX_NAMESPACE::TensorProto_DataType scale_type,
                               int64_t input_zero_point,
                               ONNX_NAMESPACE::TensorProto_DataType zero_point_type,
                               NodeArg* output_arg,
@@ -443,18 +446,21 @@ class ModelTestBuilder {
   }
 
   /// <summary>
-  /// Adds a DQ node with a configurable zero-point type.
+  /// Adds a DQ node with a configurable zero-point and scale data types.
   /// Takes in an int64_t zero_point value, which is large enough to represent all ONNX zero-point types.
+  /// Takes in a double zero_point value, which is large enough to represent all ONNX scale types.
   /// </summary>
   /// <param name="input_arg">First input to the DQ node</param>
   /// <param name="input_scale">Input scale value</param>
+  /// <param name="scale_type">Input scale's type</param>
   /// <param name="input_zero_point">Input zero point value</param>
   /// <param name="zero_point_type">Input zero point's type</param>
   /// <param name="output_arg">DQ node's output node arg</param>
   /// <param name="use_ms_domain">True to use the 'com.microsoft' domain</param>
   /// <returns>Reference to the new DQ node</returns>
   Node& AddDequantizeLinearNode(NodeArg* input_arg,
-                                float input_scale,
+                                double input_scale,
+                                ONNX_NAMESPACE::TensorProto_DataType scale_type,
                                 int64_t input_zero_point,
                                 ONNX_NAMESPACE::TensorProto_DataType zero_point_type,
                                 NodeArg* output_arg,

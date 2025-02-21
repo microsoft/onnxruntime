@@ -55,6 +55,23 @@ static InlinedVector<std::byte> GetZeroPointBytes(int64_t zero_point, ONNX_NAMES
   }
 }
 
+static InlinedVector<std::byte> GetScaleBytes(double scale, ONNX_NAMESPACE::TensorProto_DataType type) {
+  switch (type) {
+    case ONNX_NAMESPACE::TensorProto_DataType_FLOAT: {
+      float val = static_cast<float>(scale);
+      auto span = gsl::as_bytes(gsl::make_span(&val, 1));
+      return InlinedVector<std::byte>(span.begin(), span.end());
+    }
+    case ONNX_NAMESPACE::TensorProto_DataType_FLOAT16: {
+      MLFloat16 val(static_cast<float>(scale));
+      auto span = gsl::as_bytes(gsl::make_span(&val, 1));
+      return InlinedVector<std::byte>(span.begin(), span.end());
+    }
+    default:
+      ORT_THROW("Unhandled scale type ", type, ".");
+  }
+}
+
 NodeArg* ModelTestBuilder::MakeInitializer(gsl::span<const int64_t> shape,
                                            ONNX_NAMESPACE::TensorProto_DataType elem_type,
                                            gsl::span<const std::byte> raw_data) {
@@ -74,14 +91,17 @@ NodeArg* ModelTestBuilder::MakeInitializer(gsl::span<const int64_t> shape,
 }
 
 Node& ModelTestBuilder::AddQuantizeLinearNode(NodeArg* input_arg,
-                                              float input_scale,
+                                              double input_scale,
+                                              ONNX_NAMESPACE::TensorProto_DataType scale_type,
                                               int64_t input_zero_point,
                                               ONNX_NAMESPACE::TensorProto_DataType zero_point_type,
                                               NodeArg* output_arg,
                                               bool use_ms_domain) {
   std::vector<NodeArg*> input_args;
   input_args.push_back(input_arg);
-  input_args.push_back(MakeScalarInitializer<float>(input_scale));
+
+  InlinedVector<std::byte> scale_bytes = GetScaleBytes(input_scale, scale_type);
+  input_args.push_back(MakeInitializer({}, scale_type, scale_bytes));
 
   InlinedVector<std::byte> zp_bytes = GetZeroPointBytes(input_zero_point, zero_point_type);
   input_args.push_back(MakeInitializer({}, zero_point_type, zp_bytes));
@@ -91,14 +111,17 @@ Node& ModelTestBuilder::AddQuantizeLinearNode(NodeArg* input_arg,
 }
 
 Node& ModelTestBuilder::AddDequantizeLinearNode(NodeArg* input_arg,
-                                                float input_scale,
+                                                double input_scale,
+                                                ONNX_NAMESPACE::TensorProto_DataType scale_type,
                                                 int64_t input_zero_point,
                                                 ONNX_NAMESPACE::TensorProto_DataType zero_point_type,
                                                 NodeArg* output_arg,
                                                 bool use_ms_domain) {
   std::vector<NodeArg*> input_args;
   input_args.push_back(input_arg);
-  input_args.push_back(MakeScalarInitializer<float>(input_scale));
+
+  InlinedVector<std::byte> scale_bytes = GetScaleBytes(input_scale, scale_type);
+  input_args.push_back(MakeInitializer({}, scale_type, scale_bytes));
 
   InlinedVector<std::byte> zp_bytes = GetZeroPointBytes(input_zero_point, zero_point_type);
   input_args.push_back(MakeInitializer({}, zero_point_type, zp_bytes));
