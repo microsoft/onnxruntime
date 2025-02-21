@@ -1561,7 +1561,10 @@ TEST(QDQTransformerTests, DoubleQDQPairsRemover_Bug_RejectDifferentScaleTypes) {
       graph_checker,
       TransformerLevel::Default,
       TransformerLevel::Level1,
-      21);
+      21,
+      /*per_sample_tolerance*/ 0.0,
+      /*relative_per_sample_tolerance*/ 0.0,
+      std::make_unique<DoubleQDQPairsRemover>());
 }
 
 template <typename QuantType>
