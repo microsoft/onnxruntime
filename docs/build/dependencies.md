@@ -32,6 +32,14 @@ Just add “--use_vcpkg” to your build command.  The build script(build.py) wi
 3.	Set the environment variable VCPKG_INSTALLATION_ROOT to the VCPKG directory, then go back to the ONNX Runtime source folder and run the build script again.
 For more details, see: https://github.com/microsoft/vcpkg-docs/blob/main/vcpkg/get_started/includes/setup-vcpkg.md. If you get blocked on bootstrapping VCPKG, please contact the VCPKG team for support.
 
+### VCPKG ports, triplets and toolchains
+
+A package in VCPKG is called a VCPKG port. The build scripts for a port can be find at http://github.com/microsoft/vcpkg/tree/master/ports . ONNX Runtime also has some custom ports that are hosted at https://github.com/microsoft/onnxruntime/tree/main/cmake/vcpkg-ports. The custom ports have higher priority than the official ports. The files in a port's directory contains configurations that is specific to that port. For example, whether enable CUDA or not.
+
+A triplet is a cmake file that contains configurations that are applied to all ports in the current build. For example, whether enable C++ exception or not. It is only used for building dependencies. It won't affect the build flags of ONNX Runtime's source code. The compiler flags and cmake variables set in tools/ci_build/build.py are for ONNX Runtime only and are not applicable to vcpkg ports. Therefore we need to use custom triplet files to make the settings consistent. 
+
+A toolchain file is for setting up compilers/linkers etc, which is more powerful.  
+
 # Build everything from source
 
 Add “--cmake_extra_defines FETCHCONTENT_TRY_FIND_PACKAGE_MODE=NEVER” to your build command. When VCPKG is not enabled, we use CMake’s FetchContent to manage dependencies. All such dependencies are listed in cmake/deps.txt, allowing you to customize versions and download URLs. This is useful for meeting network isolation requirements or upgrading/downgrading library versions.
