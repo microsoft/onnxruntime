@@ -4,6 +4,7 @@
 #include <string_view>
 
 #include "contrib_ops/webgpu/quantization/matmul_nbits.h"
+#include "contrib_ops/webgpu/quantization/subgroup_matrix_matmul_nbits.h"
 #include "contrib_ops/webgpu/webgpu_contrib_kernels.h"
 #include "core/providers/cpu/math/matmul_helper.h"
 #include "core/providers/webgpu/shader_helper.h"
@@ -815,6 +816,12 @@ Status MatMulNBits::ComputeInternal(onnxruntime::webgpu::ComputeContext& context
   uint32_t components = GetMaxComponents(N);
 
   const bool has_zero_points = zero_points != nullptr;
+  // macOS - Experimental dawn support for subgroup matrix matmul on Metal.
+  if (M >= kMinMForTileOptimization &&
+      CanApplySubgroupMatrixMatMulNBits(context, accuracy_level_, block_size, batch_count, N, K, has_zero_points)) {
+    return ApplySubgroupMatrixMatMulNBits(a, b, scales, M, N, K, context, y);
+  }
+
   const bool has_subgroup = context.Device().HasFeature(wgpu::FeatureName::Subgroups);
   // macOS - Avoid using dp4a on Metal, as it does not appear to have native dp4a support.
   // https://github.com/gpuweb/gpuweb/issues/2677#issuecomment-1713292226
