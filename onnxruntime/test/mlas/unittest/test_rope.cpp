@@ -21,7 +21,7 @@ Abstract:
 
 using namespace onnxruntime;
 
-template<typename T>
+template <typename T>
 class MlasRoPETest : public MlasTestBase {
   const float Pi = 2 * std::acos(0.0f);
 
