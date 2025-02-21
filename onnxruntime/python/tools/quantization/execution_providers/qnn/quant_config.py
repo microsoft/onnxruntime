@@ -123,7 +123,7 @@ def get_qnn_qdq_config(
         calibration_providers: Execution providers to run the session during calibration. Default is None which uses
             [ "CPUExecutionProvider" ].
         op_types_to_quantize: If set to None, all operator types will be quantized except for OP_TYPES_TO_EXCLUDE
-        nodes_to_exclude: List of nodes names to exclude from quantization. The nodes in this list will be excluded from 
+        nodes_to_exclude: List of nodes names to exclude from quantization. The nodes in this list will be excluded from
             quantization when it is not None.
 
     Returns:
