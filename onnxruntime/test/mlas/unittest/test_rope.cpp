@@ -17,30 +17,34 @@ Abstract:
 #include "test_util.h"
 #include "mlas.h"
 #include "core/mlas/lib/rotary_embedding.h"
+#include "core/framework/float16.h"
 
+using namespace onnxruntime;
+
+template<typename T>
 class MlasRoPETest : public MlasTestBase {
   const float Pi = 2 * std::acos(0.0f);
 
  public:
   void Test(size_t rotary_emb_dim, bool interleaved) {
-    std::vector<float> input(rotary_emb_dim);
+    std::vector<T> input(rotary_emb_dim);
     size_t table_len = interleaved ? rotary_emb_dim / 2 : rotary_emb_dim;
-    std::vector<float> sin_data(table_len);
-    std::vector<float> cos_data(table_len);
-    std::vector<float> output_ref(rotary_emb_dim), output_impl(rotary_emb_dim);
+    std::vector<T> sin_data(table_len);
+    std::vector<T> cos_data(table_len);
+    std::vector<T> output_ref(rotary_emb_dim), output_impl(rotary_emb_dim);
 
     for (size_t i = 0; i < rotary_emb_dim; ++i) {
-      input[i] = static_cast<float>(i + 1);
+      input[i] = static_cast<T>(1.f * i + 1);
     }
     for (size_t i = 0; i < table_len; ++i) {
       float theta = (float)i / 1000 * Pi;
-      sin_data[i] = std::sin(theta);
-      cos_data[i] = std::cos(theta);
+      sin_data[i] = (T)std::sin(theta);
+      cos_data[i] = (T)std::cos(theta);
     }
 
     // Call the function
-    MlasRotaryEmbedOneRow_FallBack<float>(&input[0], &sin_data[0], &cos_data[0], rotary_emb_dim, interleaved, &output_ref[0]);
-    MlasRotaryEmbedOneRow<float>(&input[0], &sin_data[0], &cos_data[0], rotary_emb_dim, interleaved, &output_impl[0]);
+    MlasRotaryEmbedOneRow_FallBack<T>(&input[0], &sin_data[0], &cos_data[0], rotary_emb_dim, interleaved, &output_ref[0]);
+    MlasRotaryEmbedOneRow<T>(&input[0], &sin_data[0], &cos_data[0], rotary_emb_dim, interleaved, &output_impl[0]);
 
     for (size_t i = 0; i < rotary_emb_dim; i++) {
       ASSERT_TRUE(CloseEnough(output_impl[i], output_ref[i]))
@@ -55,33 +59,43 @@ class MlasRoPETest : public MlasTestBase {
 //
 // Short Execute() test helper to register each test separately by all parameters.
 //
-class RoPEShortExecuteTest : public MlasTestFixture<MlasRoPETest> {
+template<typename T>
+class RoPEShortExecuteTest : public MlasTestFixture<MlasRoPETest<T>> {
  public:
   explicit RoPEShortExecuteTest(size_t rotary_emb_dim, bool interleaved)
       : rotary_emb_dim_(rotary_emb_dim),
         interleaved_(interleaved) {}
 
   void TestBody() override {
-    MlasTestFixture<MlasRoPETest>::mlas_tester->Test(rotary_emb_dim_, interleaved_);
+    MlasTestFixture<MlasRoPETest<T>>::mlas_tester->Test(rotary_emb_dim_, interleaved_);
   }
 
   static size_t RegisterSingleTest(size_t rotary_emb_dim, bool interleaved) {
     size_t tests_registered = 0;
+
+    std::string test_suite_name{"RoPE_"};
+    if (std::is_same<T, float>::value) {
+      test_suite_name += "fp32";
+    } else if (std::is_same<T, MLFloat16>::value) {
+      test_suite_name += "fp16";
+    } else {
+      test_suite_name += "unknown";
+    }
 
     std::stringstream ss;
     ss << "/rotary_emb_dim" << rotary_emb_dim << "/interleaved" << interleaved;
     auto test_name = ss.str();
 
     testing::RegisterTest(
-        "RoPE",
+        test_suite_name.c_str(),
         test_name.c_str(),
         nullptr,
         test_name.c_str(),
         __FILE__,
         __LINE__,
         // Important to use the fixture type as the return type here.
-        [=]() -> MlasTestFixture<MlasRoPETest>* {
-          return new RoPEShortExecuteTest(rotary_emb_dim, interleaved);
+        [=]() -> MlasTestFixture<MlasRoPETest<T>>* {
+          return new RoPEShortExecuteTest<T>(rotary_emb_dim, interleaved);
         });
 
     tests_registered += 1;
@@ -116,7 +130,7 @@ class RoPEShortExecuteTest : public MlasTestFixture<MlasRoPETest> {
 // only test float RoPE with avx2 where RopeDispatch is assigned at this moment.
 #ifdef MLAS_TARGET_AMD64
 static size_t RoPERegisterAllShortExecuteTests() {
-  return RoPEShortExecuteTest::RegisterShortExecuteTests();
+  return RoPEShortExecuteTest<float>::RegisterShortExecuteTests() + RoPEShortExecuteTest<MLFloat16>::RegisterShortExecuteTests();
 }
 
 static UNUSED_VARIABLE bool added_to_main = AddTestRegister(

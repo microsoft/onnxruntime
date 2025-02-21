@@ -34,4 +34,14 @@ RopeKernel_Avx2(
     float* output
 );
 
+void
+RopeKernel_Avx2_fp16(
+    const MLAS_FP16* input,
+    const MLAS_FP16* sin_data,
+    const MLAS_FP16* cos_data,
+    size_t dim,
+    bool interleaved,
+    MLAS_FP16* output
+);
+
 }  // namespace rope_avx2

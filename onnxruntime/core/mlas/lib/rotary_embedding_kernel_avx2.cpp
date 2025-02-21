@@ -23,5 +23,6 @@ Abstract:
 const MLAS_ROPE_DISPATCH MlasRopeDispatchAvx2 = []() {
     MLAS_ROPE_DISPATCH d;
     d.SRope = rope_avx2::RopeKernel_Avx2;
+    d.HRope = rope_avx2::RopeKernel_Avx2_fp16;
     return d;
 }();
