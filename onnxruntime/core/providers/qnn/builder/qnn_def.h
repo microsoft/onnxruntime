@@ -9,8 +9,7 @@
 #include <memory>
 #include <climits>
 #include <type_traits>
-#include "core/graph/basic_types.h"
-#include "core/common/common.h"
+#include "core/providers/qnn/ort_api.h"
 #include "core/providers/qnn/builder/qnn_quant_params_wrapper.h"
 
 namespace onnxruntime {
@@ -123,6 +122,7 @@ Qnn_DataType_t GetQnnTensorDataType(const Qnn_Tensor_t& qnn_tensor);
 Qnn_TensorMemType_t GetQnnTensorMemType(const Qnn_Tensor_t& qnn_tensor);
 uint32_t GetQnnTensorRank(const Qnn_Tensor_t& qnn_tensor);
 uint32_t* GetQnnTensorDims(const Qnn_Tensor_t& qnn_tensor);
+uint32_t CalcQnnTensorNumElems(const Qnn_Tensor_t& qnn_tensor);
 const Qnn_ClientBuffer_t& GetQnnTensorClientBuf(const Qnn_Tensor_t& qnn_tensor);
 Qnn_MemHandle_t GetQnnTensorMemHandle(const Qnn_Tensor_t& qnn_tensor);
 const Qnn_QuantizeParams_t& GetQnnTensorQParams(const Qnn_Tensor_t& qnn_tensor);

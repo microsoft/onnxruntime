@@ -1,6 +1,8 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include "core/providers/qnn/builder/qnn_model_wrapper.h"
+
 #include <algorithm>
 #include <cstdlib>
 #include <cstring>
@@ -8,10 +10,7 @@
 #include <utility>
 #include <vector>
 
-#include "qnn_model_wrapper.h"
-#include "core/common/safeint.h"
-#include "core/framework/tensorprotoutils.h"
-#include "core/providers/shared/utils/utils.h"
+#include "core/providers/qnn/ort_api.h"
 #include "core/providers/qnn/builder/qnn_utils.h"
 
 namespace onnxruntime {
@@ -268,7 +267,7 @@ bool QnnModelWrapper::CreateQnnNode(const std::string& qnn_node_name,
   }
 }
 
-bool QnnModelWrapper::ComposeQnnGraph() {
+bool QnnModelWrapper::ComposeQnnGraph(bool build_json_qnn_graph) {
   LOGS(logger_, VERBOSE) << "Compose Qnn Graph.";
   // ORT_RETURN_IF(qnn_op_property_list_.empty(), "Empty Qnn op list, no graph to compose.");
   if (qnn_op_property_list_.empty()) {
@@ -306,6 +305,10 @@ bool QnnModelWrapper::ComposeQnnGraph() {
     if (!rt) {
       LOGS(logger_, ERROR) << error_msg;
       return false;
+    }
+
+    if (build_json_qnn_graph) {
+      json_qnn_graph_.AddOp(op_config_wrapper);
     }
   }
 
@@ -461,7 +464,7 @@ Status QnnModelWrapper::IsPerChannelQuantized(const onnxruntime::NodeUnitIODef& 
   ORT_RETURN_IF(iter == graph_initializers.end(), "Unable to find initializer for scale(s): ",
                 scale_name.c_str());
   gsl::not_null<const onnx::TensorProto*> scale_tensor_proto = iter->second;
-  TensorShape scale_shape = onnxruntime::utils::GetTensorShapeFromTensorProto(*scale_tensor_proto);
+  TensorShape scale_shape(qnn::utils::GetInitializerShape<int64_t>(*scale_tensor_proto));
 
   // Check the number of scale values to determine if the tensor is per-channel.
   // This is consistent with CPU EP's Quant/Dequant logic. We can't use the presence of an axis because even a
@@ -503,9 +506,9 @@ Status QnnModelWrapper::GetTensorInfo(const NodeUnitIODef& input, TensorInfo& te
   ORT_RETURN_IF_NOT(GetOnnxShape(input.node_arg, tensor_info.shape), "Cannot get shape");
 
   // Fill in initializer info.
-  tensor_info.is_initializer = IsInitializerInput(name);
+  tensor_info.is_initializer = IsConstantInput(name);
   if (tensor_info.is_initializer) {
-    tensor_info.initializer_tensor = GetInitializerTensors().at(name);
+    tensor_info.initializer_tensor = GetConstantTensor(name);
   }
 
   return Status::OK();
@@ -636,29 +639,13 @@ Status QnnModelWrapper::UnpackInitializerData(const ONNX_NAMESPACE::TensorProto&
 
   // If this is an int4, we need to unpack it because QNN treats int4 as a full int8.
   if (onnx_data_type == ONNX_NAMESPACE::TensorProto_DataType_INT4) {
-    TensorShape shape = onnxruntime::utils::GetTensorShapeFromTensorProto(initializer);
-    const size_t num_elems = shape.Size();
-    std::vector<uint8_t> packed_int4_bytes = std::move(unpacked_tensor);
-    unpacked_tensor = std::vector<uint8_t>(num_elems);
-
-    auto dst = gsl::make_span(reinterpret_cast<int8_t*>(unpacked_tensor.data()), unpacked_tensor.size());
-    auto src = gsl::make_span(reinterpret_cast<const Int4x2*>(packed_int4_bytes.data()), packed_int4_bytes.size());
-    ORT_RETURN_IF_NOT(Int4x2::Unpack(dst, src), "Failed to unpack Tensor<Int4x2> for QNN");
-
-    // NOTE: Masking off top 4 bits to workaround a QNN INT4 accuracy bug.
-    // Docs explicitly state that masking off top 4 bits should not be required.
-    for (size_t i = 0; i < dst.size(); i++) {
-      dst[i] &= 0x0F;  // -3 (0b1111_1101) becomes 13 (0b0000_1101)
-    }
+    TensorShape shape(qnn::utils::GetInitializerShape<int64_t>(initializer));
+    const size_t num_int4_elems = shape.Size();
+    ORT_RETURN_IF_ERROR(qnn::utils::UnpackInt4ToInt8<true>(num_int4_elems, unpacked_tensor));
   } else if (onnx_data_type == ONNX_NAMESPACE::TensorProto_DataType_UINT4) {
-    TensorShape shape = onnxruntime::utils::GetTensorShapeFromTensorProto(initializer);
-    const size_t num_elems = shape.Size();
-    std::vector<uint8_t> packed_int4_bytes = std::move(unpacked_tensor);
-    unpacked_tensor = std::vector<uint8_t>(num_elems);
-
-    auto dst = gsl::make_span(reinterpret_cast<uint8_t*>(unpacked_tensor.data()), unpacked_tensor.size());
-    auto src = gsl::make_span(reinterpret_cast<const UInt4x2*>(packed_int4_bytes.data()), packed_int4_bytes.size());
-    ORT_RETURN_IF_NOT(UInt4x2::Unpack(dst, src), "Failed to unpack Tensor<UInt4x2> for QNN");
+    TensorShape shape(qnn::utils::GetInitializerShape<int64_t>(initializer));
+    const size_t num_uint4_elems = shape.Size();
+    ORT_RETURN_IF_ERROR(qnn::utils::UnpackInt4ToInt8<false>(num_uint4_elems, unpacked_tensor));
   }
 
   return Status::OK();

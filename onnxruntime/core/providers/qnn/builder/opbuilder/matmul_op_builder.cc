@@ -1,13 +1,11 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "core/common/safeint.h"
-#include "core/providers/common.h"
+#include "core/providers/qnn/ort_api.h"
 #include "core/providers/qnn/builder/op_builder_factory.h"
 #include "core/providers/qnn/builder/opbuilder/base_op_builder.h"
 #include "core/providers/qnn/builder/qnn_model_wrapper.h"
 #include "core/providers/qnn/builder/qnn_utils.h"
-#include "core/providers/shared/utils/utils.h"
 
 namespace onnxruntime {
 namespace qnn {
@@ -338,10 +336,10 @@ Status MatMulOpBuilder::ProcessInputsForQnnFullyConnected(QnnModelWrapper& qnn_m
     if (!reshape_input_1) {
       // 2D initializer should be transposed to [n, k].
       std::vector<uint32_t> original_shape_copy = input_info_1.shape;
-      ORT_RETURN_IF_ERROR(TwoDimensionTranspose(qnn_model_wrapper,
-                                                original_shape_copy,  // Will be modified to new shape (unnecessary)
-                                                *input_info_1.initializer_tensor,
-                                                unpacked_tensor));
+      ORT_RETURN_IF_ERROR(utils::TwoDimensionTranspose(qnn_model_wrapper,
+                                                       original_shape_copy,  // Will be modified to new shape (unnecessary)
+                                                       *input_info_1.initializer_tensor,
+                                                       unpacked_tensor));
     } else {
       ORT_RETURN_IF_ERROR(qnn_model_wrapper.UnpackInitializerData(*input_info_1.initializer_tensor, unpacked_tensor));
     }

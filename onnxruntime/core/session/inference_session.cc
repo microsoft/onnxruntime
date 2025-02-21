@@ -922,7 +922,7 @@ common::Status InferenceSession::SaveToOrtFormat(const std::filesystem::path& fi
   ORT_RETURN_IF_ERROR(kernel_type_str_resolver.RegisterGraphNodeOpSchemas(model_->MainGraph()));
   ORT_RETURN_IF_ERROR(standalone::RegisterCustomOpNodeSchemas(kernel_type_str_resolver, model_->MainGraph()));
 
-  for (const auto op_schema : saved_runtime_optimization_produced_node_op_schemas_) {
+  for (const auto& op_schema : saved_runtime_optimization_produced_node_op_schemas_) {
     ORT_RETURN_IF_ERROR(kernel_type_str_resolver.RegisterOpSchema(*op_schema));
   }
 
@@ -1091,7 +1091,14 @@ common::Status InferenceSession::Load(const void* model_data, int model_data_len
 
     const bool strict_shape_type_inference = session_options_.config_options.GetConfigOrDefault(
                                                  kOrtSessionOptionsConfigStrictShapeTypeInference, "0") == "1";
-    return onnxruntime::Model::Load(std::move(model_proto), PathString(), model,
+
+    std::string external_data_folder_path = session_options_.config_options.GetConfigOrDefault(
+        kOrtSessionOptionsModelExternalInitializersFileFolderPath, "");
+    if (!external_data_folder_path.empty() && model_location_.empty()) {
+      model_location_ = ToPathString(external_data_folder_path + "/virtual_model.onnx");
+    }
+
+    return onnxruntime::Model::Load(std::move(model_proto), model_location_, model,
                                     HasLocalSchema() ? &custom_schema_registries_ : nullptr, *session_logger_,
                                     ModelOptions(true, strict_shape_type_inference));
   };
@@ -1121,8 +1128,15 @@ common::Status InferenceSession::LoadOnnxModel(ModelProto model_proto) {
 #endif
     const bool strict_shape_type_inference = session_options_.config_options.GetConfigOrDefault(
                                                  kOrtSessionOptionsConfigStrictShapeTypeInference, "0") == "1";
+
+    std::string external_data_folder_path = session_options_.config_options.GetConfigOrDefault(
+        kOrtSessionOptionsModelExternalInitializersFileFolderPath, "");
+    if (!external_data_folder_path.empty() && model_location_.empty()) {
+      model_location_ = ToPathString(external_data_folder_path + "/virtual_model.onnx");
+    }
+
     // This call will move model_proto to the constructed model instance
-    return onnxruntime::Model::Load(std::move(model_proto), PathString(), model,
+    return onnxruntime::Model::Load(std::move(model_proto), model_location_, model,
                                     HasLocalSchema() ? &custom_schema_registries_ : nullptr, *session_logger_,
                                     ModelOptions(true, strict_shape_type_inference));
   };
@@ -1158,7 +1172,14 @@ common::Status InferenceSession::Load(std::istream& model_istream, bool allow_re
                                                  kOrtSessionOptionsConfigStrictShapeTypeInference, "0") == "1";
     ModelOptions model_opts(allow_released_opsets_only,
                             strict_shape_type_inference);
-    return onnxruntime::Model::Load(std::move(model_proto), PathString(), model,
+
+    std::string external_data_folder_path = session_options_.config_options.GetConfigOrDefault(
+        kOrtSessionOptionsModelExternalInitializersFileFolderPath, "");
+    if (!external_data_folder_path.empty() && model_location_.empty()) {
+      model_location_ = ToPathString(external_data_folder_path + "/virtual_model.onnx");
+    }
+
+    return onnxruntime::Model::Load(std::move(model_proto), model_location_, model,
                                     HasLocalSchema() ? &custom_schema_registries_ : nullptr,
                                     *session_logger_, model_opts);
   };
@@ -1595,6 +1616,17 @@ common::Status InferenceSession::AddPrePackedWeightsContainer(PrepackedWeightsCo
   return Status::OK();
 }
 
+#if !defined(ORT_MINIMAL_BUILD)
+Status onnxruntime::InferenceSession::CreateNodeStatsRecorder(const std::filesystem::path& node_stats_file) {
+  if (node_stats_recorder_.has_value()) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "The session already has an instance of NodeStatsRecorder");
+  }
+  node_stats_recorder_.emplace(node_stats_file);
+  return Status::OK();
+}
+#endif
+
 namespace {
 Status PartitionOrtFormatModel(onnxruntime::Graph& graph,
                                const ExecutionProviders& providers,
@@ -1795,6 +1827,17 @@ common::Status InferenceSession::Initialize() {
         tuning_ctx->RegisterAllocatorsView(&session_state_->GetAllocators());
       }
     }
+
+#if !defined(ORT_MINIMAL_BUILD)
+    const std::string node_stats_file = session_options_.config_options.GetConfigOrDefault(
+        kOrtSessionOptionsCollectNodeMemoryStatsToFile, "");
+
+    if (!node_stats_file.empty()) {
+      ORT_RETURN_IF_ERROR_SESSIONID_(CreateNodeStatsRecorder(node_stats_file));
+    }
+
+    session_state_->SetNodeStatsRecorder(GetNodeStatsRecorder());
+#endif
 
 #if !defined(ORT_MINIMAL_BUILD) && defined(ORT_MEMORY_PROFILE)
     // Don't want to pollute SessionState constructor since memory profile is enabled optionally.
@@ -2729,6 +2772,14 @@ Status InferenceSession::Run(const RunOptions& run_options,
   }
 #ifdef ONNXRUNTIME_ENABLE_INSTRUMENT
   TraceLoggingWriteStop(ortrun_activity, "OrtRun");
+#endif
+
+#if !defined(ORT_MINIMAL_BUILD)
+  if (IsNodeStatsCollectionEnabled() && retval.IsOK()) {
+    // Dump node stats if the run was successful
+    node_stats_recorder_->DumpStats(session_state_->GetGraphViewer().ModelPath());
+    node_stats_recorder_->ResetPerRunNameDeduper();
+  }
 #endif
 
   // As N+1 inference runs (N for memory allocation and 1 for graph capturing)

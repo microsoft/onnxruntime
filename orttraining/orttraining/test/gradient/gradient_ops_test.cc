@@ -3356,6 +3356,53 @@ TEST(GradientCheckerTest, ResizeGrad) {
 
 TEST(GradientCheckerTest, AtanGrad) { UnaryOpGradientTest("Atan"); }
 
+TEST(GradientCheckerTest, GlobalMaxPoolGrad) {
+  float max_error;
+  GradientChecker<float, float, float> gradient_checker;
+  OpDef op_def{"GlobalMaxPool", kOnnxDomain, 11};
+  constexpr float error_tolerance = 1e-3f;
+
+  // globalmaxpool
+  {
+    ASSERT_STATUS_OK(gradient_checker.ComputeGradientError(op_def, {{2, 3, 5, 5}}, {{2, 3, 1, 1}}, &max_error, {},
+                                                           /*check_not_have_gradient*/ true,
+                                                           /*check_not_have_shape_inferencing*/ true));
+    EXPECT_IS_TINIER_THAN(max_error, error_tolerance);
+  }
+
+  // globalmaxpool_precomputed
+  {
+    ASSERT_STATUS_OK(gradient_checker.ComputeGradientError(op_def, {{2, 1, 3, 3}}, {{2, 1, 1, 1}}, &max_error, {},
+                                                           /*check_not_have_gradient*/ true,
+                                                           /*check_not_have_shape_inferencing*/ true));
+    EXPECT_IS_TINIER_THAN(max_error, error_tolerance);
+  }
+}
+
+TEST(GradientCheckerTest, ReduceMaxGrad) {
+  // Attribute axes supports negative values from opset 11.
+  OpDef op_def_11{"ReduceMax", kOnnxDomain, 11};
+
+  RunReductionTests(op_def_11, false, true);
+
+  OpDef op_def_12{"ReduceMax", kOnnxDomain, 12};
+
+  RunReductionTests(op_def_12, false, true);
+
+  OpDef op_def_13{"ReduceMax", kOnnxDomain, 13};
+
+  RunReductionTests(op_def_13, false, true);
+
+  // axes is input from opset 18.
+  OpDef op_def_18{"ReduceMax", kOnnxDomain, 18};
+
+  RunReductionTests(op_def_18, true, true);
+
+  OpDef op_def_20{"ReduceMax", kOnnxDomain, 20};
+
+  RunReductionTests(op_def_20, true, true);
+}
+
 }  // namespace test
 }  // namespace onnxruntime
 

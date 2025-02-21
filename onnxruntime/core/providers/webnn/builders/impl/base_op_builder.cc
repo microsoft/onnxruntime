@@ -58,12 +58,17 @@ bool BaseOpBuilder::HasSupportedInputsImpl(const InitializedTensorSet& initializ
                                            const logging::Logger& logger) const {
   // We only check the type of input 0 by default, specific op builder can override this.
   const auto& input = *node.InputDefs()[0];
-  const auto& op_type = node.OpType();
+  const std::string_view op_type = node.OpType();
   int32_t input_type;
   if (!GetType(input, input_type, logger))
     return false;
+  const std::string_view webnn_op_type = GetWebNNOpType(op_type);
+  if (webnn_op_type.empty())
+    return false;
 
-  return IsDataTypeSupportedByOp(op_type, input_type, wnn_limits, "input", "Input", logger);
+  const std::string_view webnn_input_name = GetWebNNOpFirstInputName(webnn_op_type);
+  return IsDataTypeSupportedByWebNNOp(op_type, webnn_op_type, input_type, wnn_limits,
+                                      webnn_input_name, "input", logger);
 }
 
 bool BaseOpBuilder::HasSupportedOutputs(const Node& node, const emscripten::val& wnn_limits,
@@ -83,7 +88,7 @@ bool BaseOpBuilder::HasSupportedOutputsImpl(const Node& node,
                                             const logging::Logger& logger) const {
   // We only check the type of output 0 by default, specific op builder can override this.
   const auto& output = *node.OutputDefs()[0];
-  const auto& op_type = node.OpType();
+  const std::string_view op_type = node.OpType();
   int32_t output_type;
   if (!GetType(output, output_type, logger))
     return false;
