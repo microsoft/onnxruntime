@@ -74,7 +74,7 @@ NodeArg* ModelTestBuilder::MakeInitializer(gsl::span<const int64_t> shape,
 }
 
 Node& ModelTestBuilder::AddQuantizeLinearNode(NodeArg* input_arg,
-                                              double input_scale,
+                                              float input_scale,
                                               int64_t input_zero_point,
                                               ONNX_NAMESPACE::TensorProto_DataType zero_point_type,
                                               NodeArg* output_arg,
@@ -91,7 +91,7 @@ Node& ModelTestBuilder::AddQuantizeLinearNode(NodeArg* input_arg,
 }
 
 Node& ModelTestBuilder::AddDequantizeLinearNode(NodeArg* input_arg,
-                                                double input_scale,
+                                                float input_scale,
                                                 int64_t input_zero_point,
                                                 ONNX_NAMESPACE::TensorProto_DataType zero_point_type,
                                                 NodeArg* output_arg,

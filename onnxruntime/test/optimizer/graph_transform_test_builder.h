@@ -376,7 +376,7 @@ class ModelTestBuilder {
   /// <param name="use_ms_domain">True to use the 'com.microsoft' domain</param>
   /// <returns>Reference to the new Q node</returns>
   Node& AddQuantizeLinearNode(NodeArg* input_arg,
-                              double input_scale,
+                              float input_scale,
                               int64_t input_zero_point,
                               ONNX_NAMESPACE::TensorProto_DataType zero_point_type,
                               NodeArg* output_arg,
@@ -443,7 +443,7 @@ class ModelTestBuilder {
   }
 
   /// <summary>
-  /// Adds a DQ node with a configurable zero-point and scale data types.
+  /// Adds a DQ node with a configurable zero-point type.
   /// Takes in an int64_t zero_point value, which is large enough to represent all ONNX zero-point types.
   /// </summary>
   /// <param name="input_arg">First input to the DQ node</param>
@@ -454,7 +454,7 @@ class ModelTestBuilder {
   /// <param name="use_ms_domain">True to use the 'com.microsoft' domain</param>
   /// <returns>Reference to the new DQ node</returns>
   Node& AddDequantizeLinearNode(NodeArg* input_arg,
-                                double input_scale,
+                                float input_scale,
                                 int64_t input_zero_point,
                                 ONNX_NAMESPACE::TensorProto_DataType zero_point_type,
                                 NodeArg* output_arg,
