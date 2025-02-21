@@ -53,7 +53,7 @@ Status SplitPackedQKVProgram::GenerateShaderCode(ShaderHelper& sh) const {
 }
 
 Status SplitPackedQKV(onnxruntime::webgpu::ComputeContext& context, const WebgpuAttentionParameters& params, const Tensor* packedQKV, Tensor* query, Tensor* key, Tensor* val) {
-  SplitPackedQKVProgram program(params);
+  SplitPackedQKVProgram program;
   auto input_size = packedQKV->Shape().Size();
   program
       .AddInput({packedQKV, ProgramTensorMetadataDependency::Rank})

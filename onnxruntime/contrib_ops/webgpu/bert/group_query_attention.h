@@ -29,15 +29,12 @@ class GeneratePositionIDsProgram final : public Program<GeneratePositionIDsProgr
 
 class SplitPackedQKVProgram final : public Program<SplitPackedQKVProgram> {
  public:
-  SplitPackedQKVProgram(const WebgpuAttentionParameters& params) : Program{"SplitPackedQKV"}, params_(params) {}
+  SplitPackedQKVProgram() : Program{"SplitPackedQKV"} {}
 
   Status GenerateShaderCode(ShaderHelper& sh) const override;
 
   WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES({"hidden_size", ProgramUniformVariableDataType::Uint32},
                                           {"kv_hidden_size", ProgramUniformVariableDataType::Uint32});
-
- private:
-  const WebgpuAttentionParameters& params_;
 };
 
 class GroupQueryAttention final : public WebGpuKernel {
