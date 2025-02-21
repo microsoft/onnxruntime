@@ -377,13 +377,12 @@ static Node* PlaceNode(Graph& graph, const IndexedSubGraph& capability,
       // at runtime. The original nodes provide a fallback if fewer nodes can be fused at runtime due to device
       // capabilities.
        for (size_t i = 0, limit = capability.nodes.size(); i < limit; ++i) {
-          auto* node = graph.GetNode(capability.nodes[i]);
-          if (node != nullptr) {
-            node->SetExecutionProviderType(provider_type);
-            if (acc_enabled) {
-              capability.AccountForNode(i);
-            }
-          }
+         auto* node = graph.GetNode(capability.nodes[i]);
+         if (node != nullptr) {
+           node->SetExecutionProviderType(provider_type);
+           if (acc_enabled) {
+             capability.AccountForNode(i);
+           }
         }
       }
     }
