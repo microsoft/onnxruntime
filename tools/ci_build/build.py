@@ -1115,7 +1115,8 @@ def generate_build_tree(
     cmake_extra_args,
 ):
     log.info("Generating CMake build tree")
-
+    if not args.use_vcpkg and not args.minimal_build:
+        sys.exit(1)
     cmake_dir = os.path.join(source_dir, "cmake")
     cmake_args = [cmake_path, cmake_dir]
     if not use_dev_mode(args):
