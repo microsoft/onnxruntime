@@ -76,7 +76,9 @@ Status CopyKVCache(onnxruntime::webgpu::ComputeContext& context, const WebgpuAtt
   // number of input buffers in the shader, which we run out of (<=8) without this optimization.
   const int components = parameters.head_size_ % 4 == 0 ? 4 : (parameters.head_size_ % 2 == 0 ? 2 : 1);
   // parameters.total_sequence_length_ is past_sequence_length + kv_sequence_length.
-  TensorShape valid_present_shape{parameters.batch_size_, parameters.num_heads_, parameters.total_sequence_length_, parameters.head_size_ / components};
+  // parameters.kv_num_heads_ may be smaller than parameters.num_heads_ when parameters.is_gqa_ is true.
+  int num_heads = parameters.is_gqa_ ? parameters.kv_num_heads_ : parameters.num_heads_;
+  TensorShape valid_present_shape{parameters.batch_size_, num_heads, parameters.total_sequence_length_, parameters.head_size_ / components};
   int64_t valid_kv_size = valid_present_shape.Size();
   bool has_past = (parameters.past_sequence_length_ > 0);
   CopyKVCacheProgram program{"CopyKVCache", has_past, parameters.qkv_format_ == Q_K_V_BSNH_BNSH_BNSH, parameters.past_present_share_buffer_};
@@ -85,7 +87,7 @@ Status CopyKVCache(onnxruntime::webgpu::ComputeContext& context, const WebgpuAtt
                        {V, ProgramTensorMetadataDependency::TypeAndRank, components}});
   } else {
     ORT_ENFORCE(parameters.qkv_format_ == Q_K_V_BSNH, "qkv format ", parameters.qkv_format_ ," is not supported yet in CopyKVCache.");
-    TensorShape reshaped_KV_shape{parameters.batch_size_, parameters.kv_sequence_length_, parameters.num_heads_, parameters.head_size_ / components};
+    TensorShape reshaped_KV_shape{parameters.batch_size_, parameters.kv_sequence_length_, num_heads, parameters.head_size_ / components};
     program.AddInputs({{K, ProgramTensorMetadataDependency::TypeAndRank, reshaped_KV_shape, components},
                        {V, ProgramTensorMetadataDependency::TypeAndRank, reshaped_KV_shape, components}});
   }
@@ -238,8 +240,8 @@ Status FlashAttentionProgram::GenerateShaderCode(ShaderHelper& shader) const {
   for(var k_start = 0u; k_start < uniforms.total_sequence_length; k_start+=capped_sg_size)
   {
     workgroupBarrier();
-    loadk(k_start, head_idx, local_idx, capped_sg_size);
-    loadv(k_start, head_idx, local_idx, capped_sg_size);
+    loadk(k_start, head_idx / uniforms.n_reps, local_idx, capped_sg_size);
+    loadv(k_start, head_idx / uniforms.n_reps, local_idx, capped_sg_size);
     workgroupBarrier();
 
     // Compute QKt
@@ -448,6 +450,7 @@ Status ApplyFlashAttention(const Tensor* Q, const Tensor* K, const Tensor* V, co
                             {static_cast<uint32_t>(parameters.total_sequence_length_)},
                             {static_cast<uint32_t>(parameters.past_present_share_buffer_ ? parameters.past_sequence_length_ : parameters.total_sequence_length_)},
                             {static_cast<uint32_t>(parameters.is_gqa_ ? 1 : 0)},
+                            {static_cast<uint32_t>(parameters.n_reps)},
                             {alpha}});
 
   return context.RunProgram(program);
@@ -456,7 +459,8 @@ Status ApplyFlashAttention(const Tensor* Q, const Tensor* K, const Tensor* V, co
 bool CanApplyFlashAttention(const Tensor* bias, const Tensor* present_key, const Tensor* present_value,
                             const WebgpuAttentionParameters& parameters, onnxruntime::webgpu::ComputeContext& context) {
   return parameters.batch_size_ == 1 &&
-         !parameters.is_packed_qkv_
+         !parameters.is_packed_qkv_ &&
+         parameters.head_size_ == parameters.v_head_size_ &&
          bias == nullptr &&
          parameters.sequence_length_ > 1 &&
          context.Device().HasFeature(wgpu::FeatureName::Subgroups) &&
