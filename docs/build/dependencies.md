@@ -2,9 +2,9 @@ Dependency Management in ONNX Runtime
 This document provides supplement information to CMake’s [“Using Dependencies Guide”](https://cmake.org/cmake/help/latest/guide/using-dependencies/index.html) and it is more ONNX Runtime specific. 
 Overall, there are three ways to get dependencies for an ONNX Runtime build:
 
-1.	Use VCPKG (Recommended)
-2.	Build everything from source
-3.	Use preinstalled packages (Advanced Users Only)
+1. Use VCPKG (Recommended)
+2. Build everything from source
+3. Use preinstalled packages (Advanced Users Only)
 
 This document will have one section for each above.
 
@@ -23,13 +23,13 @@ apt-get install git curl zip unzip pkgconfig ninja-build
 ## How to build ONNX Runtime with VCPKG
 
 Just add “--use_vcpkg” to your build command.  The build script(build.py) will check out a fresh vcpkg repo into your build directory and bootstrap the vcpkg tool.  If you encounter any errors, you may need to manually get VCPKG using the following steps:
-1.	Install Git and Run “git clone https://github.com/microsoft/vcpkg.git”
-2.	Navigate to the VCPKG directory and run the bootstrap script:
+1. Install Git and Run “git clone https://github.com/microsoft/vcpkg.git”
+2. Navigate to the VCPKG directory and run the bootstrap script:
      - On Windows: bootstrap-vcpkg.bat
      - On other systems: bootstrap-vcpkg.sh
 
     If the script cannot find some prerequisites, install the missing software and try again.
-3.	Set the environment variable VCPKG_INSTALLATION_ROOT to the VCPKG directory, then go back to the ONNX Runtime source folder and run the build script again.
+3. Set the environment variable VCPKG_INSTALLATION_ROOT to the VCPKG directory, then go back to the ONNX Runtime source folder and run the build script again.
 For more details, see: https://github.com/microsoft/vcpkg-docs/blob/main/vcpkg/get_started/includes/setup-vcpkg.md. If you get blocked on bootstrapping VCPKG, please contact the VCPKG team for support.
 
 ### VCPKG ports, triplets and toolchains
@@ -49,6 +49,6 @@ When declaring a dependency in ONNX Runtime’s CMake files, if FIND_PACKAGE arg
 FetchContent is a wrapper around various CMake Dependency Providers. By default, it prefers to use FindPackage. This is the default mode when building ONNX Runtime from source.  If you are integrating ONNX Runtime into a package manager(like dnf), you will need to use this approach.
 However, there are some caveats:
 
-1.	ONNX Runtime has local patches for dependencies that will not be applied to your preinstalled libraries. Most patches are not necessary for basic functionality.
-2.	If you have installed a library version different from what ONNX Runtime expects, the build script cannot warn you. This may lead to strange build failures.
-3.	Each library can be built in different ways. For example, ONNX Runtime expects ONNX is built with “-DONNX_DISABLE_STATIC_REGISTRATION=ON”. If you have got a prebuilt ONNX library from somewhere, most likely it was not built in this way. 
+1. ONNX Runtime has local patches for dependencies that will not be applied to your preinstalled libraries. Most patches are not necessary for basic functionality.
+2. If you have installed a library version different from what ONNX Runtime expects, the build script cannot warn you. This may lead to strange build failures.
+3. Each library can be built in different ways. For example, ONNX Runtime expects ONNX is built with “-DONNX_DISABLE_STATIC_REGISTRATION=ON”. If you have got a prebuilt ONNX library from somewhere, most likely it was not built in this way. 
