@@ -124,6 +124,7 @@ class GQAAttentionBase {
 
       // Compute the attentionScore * Value: out(B, N, S, H_v) = attention_probs(B, N, S, T) x V(B, N, T, H_v)
       const T* v = packed_qkv ? Q + (num_heads_ + kv_num_heads_) * sequence_length * head_size : V;
+      KERNEL_PROFILER_START(event_name_compute_vx_attention_score)
       ComputeVxAttentionScore(output->MutableData<T>(), static_cast<float*>(attention_probs), v,
                               seqlens_k->Data<int32_t>(),
                               batch_size, sequence_length, seqlen_past_kv_cache, seqlen_present_kv_cache, head_size,
