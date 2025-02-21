@@ -260,6 +260,7 @@ Status ModelBuilder::RegisterModelInputOutput(const NodeArg& node_arg, bool is_i
 
   if (is_input) {
     wnn_operands_.insert(std::make_pair(name, wnn_builder_.call<emscripten::val>("input", name, desc)));
+    emscripten::val::module_property("jsepRegisterGraphInput")(name);
     input_names_.push_back(name);
   } else {
     output_names_.push_back(name);

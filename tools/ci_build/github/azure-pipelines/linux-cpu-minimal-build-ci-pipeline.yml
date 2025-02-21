@@ -94,7 +94,7 @@ jobs:
           displayName: 1. Build full onnxruntime and generate ORT format test files
           inputs:
             script: |
-              docker run --rm \
+              docker run -e SYSTEM_COLLECTIONURI --rm \
                 --volume $(Build.SourcesDirectory):/onnxruntime_src \
                 --volume $(Build.BinariesDirectory):/build \
                 --volume $(test_data_directory):/home/onnxruntimedev/.test_data \
@@ -118,7 +118,7 @@ jobs:
       script: |
         # We will try to build minimal ORT with exceptions disabled and training ops enabled
         # Only the building process is verified here, no test will be performed
-        docker run --rm \
+        docker run -e SYSTEM_COLLECTIONURI --rm \
           --volume $(Build.SourcesDirectory):/onnxruntime_src \
           --volume $(Build.BinariesDirectory):/build \
           -e ALLOW_RELEASED_ONNX_OPSET_ONLY=1 \
@@ -141,7 +141,7 @@ jobs:
     displayName: 3a. Build minimal onnxruntime [exceptions ENABLED, type reduction DISABLED, custom ops ENABLED] and run tests
     inputs:
       script: |
-        docker run --rm \
+        docker run -e SYSTEM_COLLECTIONURI --rm \
           --volume $(Build.SourcesDirectory):/onnxruntime_src \
           --volume $(Build.BinariesDirectory):/build \
           --volume $(test_data_directory):/home/onnxruntimedev/.test_data \
@@ -159,7 +159,7 @@ jobs:
     displayName: 3b. Build minimal onnxruntime [exceptions ENABLED, type reduction ENABLED] and run tests
     inputs:
       script: |
-        docker run --rm \
+        docker run -e SYSTEM_COLLECTIONURI --rm \
           --volume $(Build.SourcesDirectory):/onnxruntime_src \
           --volume $(Build.BinariesDirectory):/build \
           --volume $(test_data_directory):/home/onnxruntimedev/.test_data \
@@ -181,7 +181,7 @@ jobs:
           "!globally_allowed_types;bool,float,int8_t,uint8_t" \
           "!no_ops_specified_means_all_ops_are_required" \
           > $(test_data_directory)/globally_allowed_types.config && \
-        docker run --rm \
+        docker run -e SYSTEM_COLLECTIONURI --rm \
           --volume $(Build.SourcesDirectory):/onnxruntime_src \
           --volume $(Build.BinariesDirectory):/build \
           --volume $(test_data_directory):/home/onnxruntimedev/.test_data \
@@ -200,7 +200,7 @@ jobs:
     displayName: 5. Build extended minimal onnxruntime and run tests
     inputs:
       script: |
-        docker run --rm \
+        docker run -e SYSTEM_COLLECTIONURI --rm \
           --volume $(Build.SourcesDirectory):/onnxruntime_src \
           --volume $(Build.BinariesDirectory):/build \
           -e ALLOW_RELEASED_ONNX_OPSET_ONLY=1 \
@@ -220,7 +220,7 @@ jobs:
     displayName: 6a. Regular build with python and all optional features disabled.
     inputs:
       script: |
-        docker run --rm \
+        docker run -e SYSTEM_COLLECTIONURI --rm \
           --volume $(Build.SourcesDirectory):/onnxruntime_src \
           --volume $(Build.BinariesDirectory):/build \
           --volume $(test_data_directory):/home/onnxruntimedev/.test_data \
@@ -247,7 +247,7 @@ jobs:
     displayName: 6b. Minimal build with all optional features disabled.
     inputs:
       script: |
-        docker run --rm \
+        docker run -e SYSTEM_COLLECTIONURI --rm \
           --volume $(Build.SourcesDirectory):/onnxruntime_src \
           --volume $(Build.BinariesDirectory):/build \
           --volume $(test_data_directory):/home/onnxruntimedev/.test_data \
@@ -276,7 +276,7 @@ jobs:
     displayName: 6c. Extended minimal build with all optional features disabled.
     inputs:
       script: |
-        docker run --rm \
+        docker run -e SYSTEM_COLLECTIONURI --rm \
           --volume $(Build.SourcesDirectory):/onnxruntime_src \
           --volume $(Build.BinariesDirectory):/build \
           --volume $(test_data_directory):/home/onnxruntimedev/.test_data \
@@ -306,7 +306,7 @@ jobs:
     inputs:
       script: |
         NDK_HOME=$(realpath $ANDROID_NDK_HOME)
-        docker run --rm \
+        docker run -e SYSTEM_COLLECTIONURI --rm \
           --volume $(Build.SourcesDirectory):/onnxruntime_src \
           --volume $(Build.BinariesDirectory):/build \
           --volume $ANDROID_HOME:/android_home \
