@@ -59,7 +59,7 @@ class MlasRoPETest : public MlasTestBase {
 //
 // Short Execute() test helper to register each test separately by all parameters.
 //
-template<typename T>
+template <typename T>
 class RoPEShortExecuteTest : public MlasTestFixture<MlasRoPETest<T>> {
  public:
   explicit RoPEShortExecuteTest(size_t rotary_emb_dim, bool interleaved)
