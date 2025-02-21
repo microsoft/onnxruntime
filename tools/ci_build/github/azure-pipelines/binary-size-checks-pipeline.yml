@@ -11,3 +11,21 @@ stages:
     BuildConfigFile: "tools/ci_build/github/linux/ort_minimal/build_check_binsize_config/android_minimal_baseline.config"
     BinarySizeThresholdInBytes: 1306224
     DoBuildWithDebugInfo: ${{ parameters.DoBuildWithDebugInfo }}
+
+- template: templates/android-binary-size-check-stage.yml
+  parameters:
+    Name: MinimalWithOps
+    BuildConfigFile: "tools/ci_build/github/linux/ort_minimal/build_check_binsize_config/android_minimal_with_ops.config"
+    DoBuildWithDebugInfo: ${{ parameters.DoBuildWithDebugInfo }}
+
+- template: templates/android-binary-size-check-stage.yml
+  parameters:
+    Name: MinimalAddOp
+    BuildConfigFile: "tools/ci_build/github/linux/ort_minimal/build_check_binsize_config/android_minimal_add_op.config"
+    DoBuildWithDebugInfo: ${{ parameters.DoBuildWithDebugInfo }}
+
+- template: templates/android-binary-size-check-stage.yml
+  parameters:
+    Name: MinimalMatMulNBitsOp
+    BuildConfigFile: "tools/ci_build/github/linux/ort_minimal/build_check_binsize_config/android_minimal_matmulnbits_op.config"
+    DoBuildWithDebugInfo: ${{ parameters.DoBuildWithDebugInfo }}
