@@ -26,6 +26,7 @@ jobs:
     clean: all
   variables:
     runCodesignValidationInjection: false
+    ANDROID_AVD_HOME: $(Agent.TempDirectory)
   timeoutInMinutes: 90
   steps:
   - template: set-version-number-variables-step.yml
