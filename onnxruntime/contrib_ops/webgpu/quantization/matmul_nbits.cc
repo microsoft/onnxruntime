@@ -70,53 +70,52 @@ Status MatMulNBitsProgram::GenerateShaderCode(ShaderHelper& shader) const {
       ORT_ENFORCE(components_b_ == 4, "input b's components must be equal to 4.");
       shader.AdditionalImplementation() << "fn mm_readA(batch : u32, row : u32, col : u32) -> input_a_value_t {\n"
                                            "  if (row < uniforms.input_a_shape[1] && col < uniforms.input_a_shape[2]) {\n"
-                                        << "    return " << a.GetByIndices("input_a_indices_t(batch, row, col)") << ";\n"
-                                        << "  } else {\n"
+                                           "    return " << a.GetByIndices("input_a_indices_t(batch, row, col)") << ";\n"
+                                           "  } else {\n"
                                            "    return input_a_value_t(0);\n"
                                            "  }\n"
                                            "}\n"
-                                        << "var<workgroup> sub_b: array<array<input_b_value_t, " << WorkgroupSizeX() << ">, " << WorkgroupSizeY() << ">;\n"
-                                        << "var<workgroup> sub_scale: array<array<output_value_t, " << WorkgroupSizeX() << ">, " << WorkgroupSizeY() << ">;\n"
-                                        << "var<workgroup> inter_results: array<array<array<output_value_t, " << WorkgroupSizeX() << ">, " << WorkgroupSizeY() << ">," << tile_m_ << ">;\n";
+                                           "\n"
+                                           "var<workgroup> sub_b: array<array<input_b_value_t, " << WorkgroupSizeX() << ">, " << WorkgroupSizeY() << ">;\n"
+                                           "var<workgroup> sub_scale: array<array<output_value_t, " << WorkgroupSizeX() << ">, " << WorkgroupSizeY() << ">;\n"
+                                           "var<workgroup> inter_results: array<array<array<output_value_t, " << WorkgroupSizeX() << ">, " << WorkgroupSizeY() << ">," << tile_m_ << ">;\n"
+                                           "\n";
       shader.MainFunctionBody() << "  let col = workgroup_id.x * " << WorkgroupSizeY() << ";\n"
                                 << "  let row = workgroup_id.y * " << tile_m_ << ";\n"
                                 << "  let batch = workgroup_id.z;\n";
       shader.MainFunctionBody() << "  let n_blocks_per_col = uniforms.input_b_shape[1];\n"
-                                << "  let num_tiles =  (n_blocks_per_col - 1) / " << blocks_per_tile << " + 1;\n"
-                                // Loop over shared dimension.
-                                << "  for (var tile: u32 = 0; tile < num_tiles; tile += 1) {\n"
-                                << "    // load one tile B/scale data into shared memory.\n"
-                                   // Each thread processes one block.
+                                   "  let num_tiles =  (n_blocks_per_col - 1) / " << blocks_per_tile << " + 1;\n"
+                                   "\n"
+                                   "  for (var tile = 0u; tile < num_tiles; tile++) {\n"
+                                   "    // load one tile B/scale data into shared memory.\n"
                                    "    let b_col = col + local_id.y;\n"
-                                << "    let block = tile * " << blocks_per_tile << " + local_id.x;\n"
-                                << "    if (b_col < uniforms.input_b_shape[0] && block < n_blocks_per_col) {\n"
-                                << "      sub_b[local_id.y][local_id.x] = " << b.GetByIndices("input_b_indices_t(b_col, block, 0)") << ";\n"
-                                << "      sub_scale[local_id.y][local_id.x] = " << scales.GetByOffset("b_col * n_blocks_per_col + block") << ";\n"
-                                << "    } else {\n"
+                                   "    let block = tile * " << blocks_per_tile << " + local_id.x;\n"
+                                   "    if (b_col < uniforms.input_b_shape[0] && block < n_blocks_per_col) {\n"
+                                   "      sub_b[local_id.y][local_id.x] = " << b.GetByIndices("input_b_indices_t(b_col, block, 0)") << ";\n"
+                                   "      sub_scale[local_id.y][local_id.x] = " << scales.GetByOffset("b_col * n_blocks_per_col + block") << ";\n"
+                                   "    } else {\n"
                                    "      sub_b[local_id.y][local_id.x] = input_b_value_t(0);\n"
                                    "      sub_scale[local_id.y][local_id.x] = output_value_t(0);\n"
                                    "    }\n"
                                    "    workgroupBarrier();\n"
-                                << "    var in_y = (local_idx % 32) / 4;\n"
-                                   "    var in_x = (local_idx / 32) * 4 + local_idx % 4;\n"
-                                << "    var word_offset = (local_idx % 4) * " << block_size_ / a.NumComponents() << ";\n"
-                                << "    if (sg_size == 8u) {\n"
+                                   "\n"
+                                   "    var in_y = 0u;\n"
+                                   "    var in_x = 0u;\n"
+                                   "    if (sg_size == 8u) {\n"
                                    "      in_y = local_idx % 8;\n"
                                    "      in_x = local_idx / 8;\n"
-                                << "      word_offset = 0u;\n"
                                    "    } else if (sg_size == 16u) {\n"
                                    "      in_y = (local_idx % 16) / 2;\n"
                                    "      in_x = (local_idx / 16) * 2 + local_idx % 2;\n"
-                                << "      word_offset = (local_idx % 2) * " << block_size_ / a.NumComponents() << ";\n"
-                                << "    } else if (sg_size == 32u) {\n"
+                                   "    } else if (sg_size == 32u) {\n"
                                    "      in_y = (local_idx % 32) / 4;\n"
                                    "      in_x = (local_idx / 32) * 4 + local_idx % 4;\n"
-                                << "      word_offset = (local_idx % 4) * " << block_size_ / a.NumComponents() << ";\n"
-                                << "    } else if (sg_size == 64u) {\n"
+                                   "    } else if (sg_size == 64u) {\n"
                                    "      in_y = local_idx / 8;\n"
                                    "      in_x = local_idx % 8;\n"
-                                << "      word_offset = (local_idx % 8) * " << block_size_ / a.NumComponents() << ";\n"
-                                << "    }\n";
+                                   "    }\n";
+
+      shader.MainFunctionBody() << "\n";
       if (has_zero_points_) {
         const auto& zero_points = shader.AddInput("zero_points", ShaderUsage::UseUniform);
         shader.MainFunctionBody() << "    let zero_point_bytes_per_col = (n_blocks_per_col + 1) / 2;\n"
@@ -138,87 +137,129 @@ Status MatMulNBitsProgram::GenerateShaderCode(ShaderHelper& shader) const {
         shader.MainFunctionBody() << "    let a_data" << i << " = mm_readA(batch, row + " << i << ", a_col_start + local_idx);\n";
       }
 
-      shader.MainFunctionBody() << "    if (sg_size == 8u) {\n";
-      shader.MainFunctionBody() << "      for (var i: u32 = 0; i < 4; i++) {\n";
-      shader.MainFunctionBody() << "        let b_value = b_data[i];\n"
+      shader.MainFunctionBody() << "\n"
+                                   "    if (sg_size == 8u) {\n"
+                                   "      for (var i = 0u; i < 4u; i++) {\n"
+                                   "        let b_value = b_data[i];\n"
                                    "        let b_value_lower = unpack4xU8(b_value & 0x0F0F0F0Fu);\n"
                                    "        let b_value_upper = unpack4xU8((b_value >> 4) & 0x0F0F0F0Fu);\n"
                                    "        let b_quantized_values = mat2x4<output_element_t>(output_element_t(b_value_lower[0]), output_element_t(b_value_upper[0]), output_element_t(b_value_lower[1]), output_element_t(b_value_upper[1]), output_element_t(b_value_lower[2]), output_element_t(b_value_upper[2]), output_element_t(b_value_lower[3]), output_element_t(b_value_upper[3]));\n"
                                    "        let b_dequantized_values = (b_quantized_values - mat2x4<output_element_t>(zero_point, zero_point, zero_point, zero_point, zero_point, zero_point, zero_point, zero_point)) * scale;\n";
       for (uint32_t i = 0; i < tile_m_; i++) {
+        shader.MainFunctionBody() << "\n";
         if (i == 0) {
-          shader.MainFunctionBody() << "        var ";
+          shader.MainFunctionBody() << "        var a0 = subgroupShuffle(a_data" << i << ", i * 2);\n";
+          shader.MainFunctionBody() << "        var a1 = subgroupShuffle(a_data" << i << ", i * 2 + 1);\n";
+        } else {
+          shader.MainFunctionBody() << "        a0 = subgroupShuffle(a_data" << i << ", i * 2);\n";
+          shader.MainFunctionBody() << "        a1 = subgroupShuffle(a_data" << i << ", i * 2 + 1);\n";
         }
-        shader.MainFunctionBody() << "        a0 = subgroupShuffle(a_data" << i << ", i * 2);\n";
-        if (i == 0) {
-          shader.MainFunctionBody() << "        var ";
-        }
-        shader.MainFunctionBody() << "        a1 = subgroupShuffle(a_data" << i << ", i * 2 + 1);\n";
         shader.MainFunctionBody() << "        inter_results[" << i << "][in_y][in_x] += dot(a0, b_dequantized_values[0]) + dot(a1, b_dequantized_values[1]);\n";
       }
       shader.MainFunctionBody() << "      }\n";
-      shader.MainFunctionBody() << "    } else if (sg_size == 16u) {\n";
-      shader.MainFunctionBody() << "      for (var i: u32 = 0; i < 4; i++) {\n";
-      shader.MainFunctionBody() << "        let b_value = b_data[i];\n"
-                                   "        let b_value_lower = unpack4xU8(b_value & 0x0F0F0F0Fu);\n"
-                                   "        let b_value_upper = unpack4xU8((b_value >> 4) & 0x0F0F0F0Fu);\n"
-                                   "        let b_quantized_values = mat2x4<output_element_t>(output_element_t(b_value_lower[0]), output_element_t(b_value_upper[0]), output_element_t(b_value_lower[1]), output_element_t(b_value_upper[1]), output_element_t(b_value_lower[2]), output_element_t(b_value_upper[2]), output_element_t(b_value_lower[3]), output_element_t(b_value_upper[3]));\n"
-                                   "        let b_dequantized_values = (b_quantized_values - mat2x4<output_element_t>(zero_point, zero_point, zero_point, zero_point, zero_point, zero_point, zero_point, zero_point)) * scale;\n";
-      for (uint32_t i = 0; i < tile_m_; i++) {
-        if (i == 0) {
-          shader.MainFunctionBody() << "        var ";
-        }
-        shader.MainFunctionBody() << "        a0 = subgroupShuffle(a_data" << i << ", i * 2);\n";
-        if (i == 0) {
-          shader.MainFunctionBody() << "        var ";
-        }
-        shader.MainFunctionBody() << "        a00 = subgroupShuffle(a_data" << i << ", i * 2 + 8);\n";
-        if (i == 0) {
-          shader.MainFunctionBody() << "        var ";
-        }
-        shader.MainFunctionBody() << "        a1 = subgroupShuffle(a_data" << i << ", i * 2 + 1);\n";
-        if (i == 0) {
-          shader.MainFunctionBody() << "        var ";
-        }
-        shader.MainFunctionBody() << "        a11 = subgroupShuffle(a_data" << i << ", i * 2 + 9);\n";
-        shader.MainFunctionBody() << "        inter_results[" << i << "][in_y][in_x] += dot(select(a00, a0, local_idx % 2 == 0), b_dequantized_values[0]) + dot(select(a11, a1, local_idx % 2 == 0), b_dequantized_values[1]);\n";
-      }
-      shader.MainFunctionBody() << "        word_offset += " << 8 / a.NumComponents() << ";\n"
-                                << "      }\n";
-      shader.MainFunctionBody() << "    } else {\n";
-      shader.MainFunctionBody() << "      for (var i: u32 = 0; i < 4; i++) {\n";
-      shader.MainFunctionBody() << "        let b_value = b_data[i];\n"
-                                   "        let b_value_lower = unpack4xU8(b_value & 0x0F0F0F0Fu);\n"
-                                   "        let b_value_upper = unpack4xU8((b_value >> 4) & 0x0F0F0F0Fu);\n"
-                                   "        let b_quantized_values = mat2x4<output_element_t>(output_element_t(b_value_lower[0]), output_element_t(b_value_upper[0]), output_element_t(b_value_lower[1]), output_element_t(b_value_upper[1]), output_element_t(b_value_lower[2]), output_element_t(b_value_upper[2]), output_element_t(b_value_lower[3]), output_element_t(b_value_upper[3]));\n"
-                                   "        let b_dequantized_values = (b_quantized_values - mat2x4<output_element_t>(zero_point, zero_point, zero_point, zero_point, zero_point, zero_point, zero_point, zero_point)) * scale;\n";
-      for (uint32_t i = 0; i < tile_m_; i++) {
-        if (i == 0) {
-          shader.MainFunctionBody() << "        var ";
-        }
-        shader.MainFunctionBody() << "        a0 = subgroupShuffle(a_data" << i << ", word_offset);\n";
-        if (i == 0) {
-          shader.MainFunctionBody() << "        var ";
-        }
-        shader.MainFunctionBody() << "        a1 = subgroupShuffle(a_data" << i << ", word_offset + 1);\n";
-        shader.MainFunctionBody() << "        inter_results[" << i << "][in_y][in_x] += dot(a0, b_dequantized_values[0]) + dot(a1, b_dequantized_values[1]);\n";
-      }
-      shader.MainFunctionBody() << "        word_offset += " << 8 / a.NumComponents() << ";\n";
-      shader.MainFunctionBody() << "      }\n";
-      shader.MainFunctionBody() << "    }\n";
-      shader.MainFunctionBody() << "    workgroupBarrier();\n";
 
-      shader.MainFunctionBody() << "  }\n";
-      shader.MainFunctionBody() << "  if (local_idx < " << WorkgroupSizeY() * tile_m_ << ") {\n"
-                                << "    let inner_row = local_idx / " << WorkgroupSizeY() << ";\n"
-                                << "    let inner_col = local_idx % " << WorkgroupSizeY() << ";\n"
-                                << "    var output_value = output_value_t(0);\n"
-                                << "    for (var b = 0u; b < " << WorkgroupSizeX() << "; b++) {\n"
-                                << "      output_value += inter_results[inner_row][inner_col][b];\n"
+      shader.MainFunctionBody() << "    } else if (sg_size == 16u) {\n"
+                                   "      for (var i = 0u; i < 4u; i++) {\n"
+                                   "        let b_value = b_data[i];\n"
+                                   "        let b_value_lower = unpack4xU8(b_value & 0x0F0F0F0Fu);\n"
+                                   "        let b_value_upper = unpack4xU8((b_value >> 4) & 0x0F0F0F0Fu);\n"
+                                   "        let b_quantized_values = mat2x4<output_element_t>(output_element_t(b_value_lower[0]), output_element_t(b_value_upper[0]), output_element_t(b_value_lower[1]), output_element_t(b_value_upper[1]), output_element_t(b_value_lower[2]), output_element_t(b_value_upper[2]), output_element_t(b_value_lower[3]), output_element_t(b_value_upper[3]));\n"
+                                   "        let b_dequantized_values = (b_quantized_values - mat2x4<output_element_t>(zero_point, zero_point, zero_point, zero_point, zero_point, zero_point, zero_point, zero_point)) * scale;\n";
+      for (uint32_t i = 0; i < tile_m_; i++) {
+        shader.MainFunctionBody() << "\n";
+        if (i == 0) {
+          shader.MainFunctionBody() << "        var a0_0 = subgroupShuffle(a_data" << i << ", i * 2);\n";
+          shader.MainFunctionBody() << "        var a0_1 = subgroupShuffle(a_data" << i << ", i * 2 + 8);\n";
+          shader.MainFunctionBody() << "        var a1_0 = subgroupShuffle(a_data" << i << ", i * 2 + 1);\n";
+          shader.MainFunctionBody() << "        var a1_1 = subgroupShuffle(a_data" << i << ", i * 2 + 9);\n";
+        } else {
+          shader.MainFunctionBody() << "        a0_0 = subgroupShuffle(a_data" << i << ", i * 2);\n";
+          shader.MainFunctionBody() << "        a0_1 = subgroupShuffle(a_data" << i << ", i * 2 + 8);\n";
+          shader.MainFunctionBody() << "        a1_0 = subgroupShuffle(a_data" << i << ", i * 2 + 1);\n";
+          shader.MainFunctionBody() << "        a1_1 = subgroupShuffle(a_data" << i << ", i * 2 + 9);\n";
+        }
+        shader.MainFunctionBody() << "        inter_results[" << i << "][in_y][in_x] += dot(select(a0_1, a0_0, (in_x & 1u) == 0u), b_dequantized_values[0]) + dot(select(a1_1, a1_0, (in_x & 1u) == 0u), b_dequantized_values[1]);\n";
+      }
+      shader.MainFunctionBody() << "      }\n";
+
+      shader.MainFunctionBody() << "    } else if (sg_size == 32u) {\n";
+      shader.MainFunctionBody() << "      for (var i = 0u; i < 4u; i++) {\n";
+      shader.MainFunctionBody() << "        let b_value = b_data[i];\n"
+                                   "        let b_value_lower = unpack4xU8(b_value & 0x0F0F0F0Fu);\n"
+                                   "        let b_value_upper = unpack4xU8((b_value >> 4) & 0x0F0F0F0Fu);\n"
+                                   "        let b_quantized_values = mat2x4<output_element_t>(output_element_t(b_value_lower[0]), output_element_t(b_value_upper[0]), output_element_t(b_value_lower[1]), output_element_t(b_value_upper[1]), output_element_t(b_value_lower[2]), output_element_t(b_value_upper[2]), output_element_t(b_value_lower[3]), output_element_t(b_value_upper[3]));\n"
+                                   "        let b_dequantized_values = (b_quantized_values - mat2x4<output_element_t>(zero_point, zero_point, zero_point, zero_point, zero_point, zero_point, zero_point, zero_point)) * scale;\n"
+                                   "\n"
+                                   "        let b_col_offset = in_x & 3u;\n";
+      for (uint32_t i = 0; i < tile_m_; i++) {
+        shader.MainFunctionBody() << "\n";
+        if (i == 0) {
+          shader.MainFunctionBody() << "        var a0_0 = subgroupShuffle(a_data" << i << ", i * 2);\n";
+          shader.MainFunctionBody() << "        var a0_1 = subgroupShuffle(a_data" << i << ", i * 2 + 8);\n";
+          shader.MainFunctionBody() << "        var a0_2 = subgroupShuffle(a_data" << i << ", i * 2 + 16);\n";
+          shader.MainFunctionBody() << "        var a0_3 = subgroupShuffle(a_data" << i << ", i * 2 + 24);\n";
+          shader.MainFunctionBody() << "        var a1_0 = subgroupShuffle(a_data" << i << ", i * 2 + 1);\n";
+          shader.MainFunctionBody() << "        var a1_1 = subgroupShuffle(a_data" << i << ", i * 2 + 9);\n";
+          shader.MainFunctionBody() << "        var a1_2 = subgroupShuffle(a_data" << i << ", i * 2 + 17);\n";
+          shader.MainFunctionBody() << "        var a1_3 = subgroupShuffle(a_data" << i << ", i * 2 + 25);\n";
+        } else {
+          shader.MainFunctionBody() << "        a0_0 = subgroupShuffle(a_data" << i << ", i * 2);\n";
+          shader.MainFunctionBody() << "        a0_1 = subgroupShuffle(a_data" << i << ", i * 2 + 8);\n";
+          shader.MainFunctionBody() << "        a0_2 = subgroupShuffle(a_data" << i << ", i * 2 + 16);\n";
+          shader.MainFunctionBody() << "        a0_3 = subgroupShuffle(a_data" << i << ", i * 2 + 24);\n";
+          shader.MainFunctionBody() << "        a1_0 = subgroupShuffle(a_data" << i << ", i * 2 + 1);\n";
+          shader.MainFunctionBody() << "        a1_1 = subgroupShuffle(a_data" << i << ", i * 2 + 9);\n";
+          shader.MainFunctionBody() << "        a1_2 = subgroupShuffle(a_data" << i << ", i * 2 + 17);\n";
+          shader.MainFunctionBody() << "        a1_3 = subgroupShuffle(a_data" << i << ", i * 2 + 25);\n";
+        }
+        shader.MainFunctionBody() << "        if (b_col_offset == 0u) {\n"
+                                     "          inter_results[" << i << "][in_y][in_x] += dot(a0_0, b_dequantized_values[0]) + dot(a1_0, b_dequantized_values[1]);\n"
+                                     "        } else if (b_col_offset == 1u) {\n"
+                                     "          inter_results[" << i << "][in_y][in_x] += dot(a0_1, b_dequantized_values[0]) + dot(a1_1, b_dequantized_values[1]);\n"
+                                     "        } else if (b_col_offset == 2u) {\n"
+                                     "          inter_results[" << i << "][in_y][in_x] += dot(a0_2, b_dequantized_values[0]) + dot(a1_2, b_dequantized_values[1]);\n"
+                                     "        } else {\n"
+                                     "          inter_results[" << i << "][in_y][in_x] += dot(a0_3, b_dequantized_values[0]) + dot(a1_3, b_dequantized_values[1]);\n"
+                                     "        }\n";
+      }
+      shader.MainFunctionBody() << "      }\n";
+
+      shader.MainFunctionBody() << "    } else {\n"
+                                   "      var word_offset = (sg_id % (sg_size / 8u)) * " << block_size_ / a.NumComponents() << "u;\n"
+                                   "      for (var i = 0u; i < 4u; i++) {\n"
+                                   "        let b_value = b_data[i];\n"
+                                   "        let b_value_lower = unpack4xU8(b_value & 0x0F0F0F0Fu);\n"
+                                   "        let b_value_upper = unpack4xU8((b_value >> 4) & 0x0F0F0F0Fu);\n"
+                                   "        let b_quantized_values = mat2x4<output_element_t>(output_element_t(b_value_lower[0]), output_element_t(b_value_upper[0]), output_element_t(b_value_lower[1]), output_element_t(b_value_upper[1]), output_element_t(b_value_lower[2]), output_element_t(b_value_upper[2]), output_element_t(b_value_lower[3]), output_element_t(b_value_upper[3]));\n"
+                                   "        let b_dequantized_values = (b_quantized_values - mat2x4<output_element_t>(zero_point, zero_point, zero_point, zero_point, zero_point, zero_point, zero_point, zero_point)) * scale;\n";
+      for (uint32_t i = 0; i < tile_m_; i++) {
+        shader.MainFunctionBody() << "\n";
+        if (i == 0) {
+          shader.MainFunctionBody() << "        var a0 = subgroupShuffle(a_data" << i << ", word_offset);\n";
+          shader.MainFunctionBody() << "        var a1 = subgroupShuffle(a_data" << i << ", word_offset + 1);\n";
+        } else {
+          shader.MainFunctionBody() << "        a0 = subgroupShuffle(a_data" << i << ", word_offset);\n";
+          shader.MainFunctionBody() << "        a1 = subgroupShuffle(a_data" << i << ", word_offset + 1);\n";
+        }
+        shader.MainFunctionBody() << "        inter_results[" << i << "][in_y][in_x] += dot(a0, b_dequantized_values[0]) + dot(a1, b_dequantized_values[1]);\n";
+      }
+      shader.MainFunctionBody() << "        word_offset += " << 8 / a.NumComponents() << "u;\n"
+                                   "      }\n"
+                                   "    }\n"
+                                   "    workgroupBarrier();\n"
+                                   "  }\n";
+
+      shader.MainFunctionBody() << "\n";
+      shader.MainFunctionBody() << "  if (local_idx < " << WorkgroupSizeY() * tile_m_ << "u) {\n"
+                                   "    let inner_row = local_idx / " << WorkgroupSizeY() << ";\n"
+                                   "    let inner_col = local_idx % " << WorkgroupSizeY() << ";\n"
+                                   "    var output_value = output_value_t(0);\n"
+                                   "    for (var b = 0u; b < " << WorkgroupSizeX() << "u; b++) {\n"
+                                   "      output_value += inter_results[inner_row][inner_col][b];\n"
                                    "    }\n"
                                    "    if (row + inner_row < uniforms.output_shape[1] && col + inner_col < uniforms.output_shape[2]) {\n"
-                                << "      " << y.SetByIndices("output_indices_t(batch, row + inner_row, col + inner_col)", "output_value") << ";\n"
-                                << "    }\n"
+                                   "      " << y.SetByIndices("output_indices_t(batch, row + inner_row, col + inner_col)", "output_value") << ";\n"
+                                   "    }\n"
                                    "  }\n";
     } else {
       if (tile_m_ == 1) {
