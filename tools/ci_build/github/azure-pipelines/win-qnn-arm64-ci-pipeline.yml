@@ -33,7 +33,7 @@ parameters:
 - name: QnnSdk
   displayName: QNN SDK version
   type: string
-  default: 2.30.0.250109
+  default: 2.31.0.250130
 
 jobs:
 - job: 'BUILD_QNN_EP'
@@ -50,8 +50,13 @@ jobs:
     matrix:
       SHARED_LIB:
         QnnLibKind: 'shared_lib'
+        qnn_build_args: '--use_qnn'
       STATIC_LIB:
         QnnLibKind: 'static_lib'
+        qnn_build_args: '--use_qnn'
+      SHARED_LIB_GENERIC_INTERFACE:
+        QnnLibKind: 'shared_lib'
+        qnn_build_args: '--use_qnn --use_generic_interface'
   steps:
 
   - script: |
