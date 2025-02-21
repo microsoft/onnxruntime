@@ -76,6 +76,7 @@ struct IndexedSubGraph {
   @returns MetaDef instance if it has been set. nullptr if not. */
   MetaDef* GetMutableMetaDef() {
     return meta_def_.get();
+  }
 
   // Check if the accounting is enabled for the current EP
   bool IsAccountingEnabled() const {
