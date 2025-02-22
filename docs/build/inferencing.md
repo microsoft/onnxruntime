@@ -29,17 +29,16 @@ Basic CPU build
    cd onnxruntime
    ```
 
-* Install [Python 3.x](https://python.org/).
+* Install [Python 3.10+](https://python.org/).
 
-* Install [cmake-3.27](https://cmake.org/download/) or higher.
+* Install [cmake-3.28](https://cmake.org/download/) or higher. 
 
-  On Windows, please run
+  On Windows, we recommend getting the latest version from WinGet. Please run
   ```bat
-    python -m pip install cmake
-    where cmake
+    winget install -e --id Kitware.CMake
   ```
   
-  On Linux, please run
+  On Linux, you may get it from pypi. Please run
   ```bat
     python3 -m pip install cmake
     which cmake
@@ -62,16 +61,13 @@ Open Developer Command Prompt for Visual Studio version you are going to use. Th
 ```
 .\build.bat --config RelWithDebInfo --build_shared_lib --parallel --compile_no_warning_as_error --skip_submodule_sync
 ```
-The default Windows CMake Generator is Visual Studio 2022. 
-For Visual Studio 2019 add `--cmake_generator "Visual Studio 16 2019"`. 
-
-We recommend using Visual Studio 2022.
+The default Windows CMake Generator is Visual Studio 2022.  The other Visual Studio versions are not supported.
 
 If you want to build an ARM64 binary on a Windows ARM64 machine, you can use the same command above. Just be sure that your Visual Studio, CMake and Python are all ARM64 version.
 
-If you want to cross-compile an ARM32 or ARM64 or ARM64EC binary on a Windows x86 machine, you need to add "--arm" or "--arm64" or "--arm64ec" to the build command above. 
+If you want to cross-compile an ARM64 or ARM64EC binary on a Windows x86 machine, you need to add "--arm64" or "--arm64ec" to the build command above. 
 
-When building on x86 Windows without  "--arm" or "--arm64" or "--arm64ec" args, the built binaries will be 64-bit if your python is 64-bit, or 32-bit if your python is 32-bit, 
+Please make sure your python interpreter is a 64-bit Windows application. We no longer support 32-bit build.
 
 #### Linux
 
@@ -164,7 +160,7 @@ To initiate build, run the below command
     
 
 #### Notes
-
+* You may build onnxruntime with VCPKG. The document [/docs/build/dependencies.md](/docs/build/dependencies.md) has more information about it.
 * Please note that these instructions build the debug build, which may have performance tradeoffs. The "--config" parameter has four valid values: Debug, Release, RelWithDebInfo and MinSizeRel. Compared to "Release", "RelWithDebInfo" not only has debug info, it also disables some inlines to make the binary easier to debug. Thus RelWithDebInfo is slower than Release.
 * To build the version from each release (which include Windows, Linux, and Mac variants), see these [.yml files](https://github.com/microsoft/onnxruntime/tree/main/tools/ci_build/github/azure-pipelines/) for reference
 * The build script runs all unit tests by default for native builds and skips tests by default for cross-compiled builds.
