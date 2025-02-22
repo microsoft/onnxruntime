@@ -60,6 +60,7 @@
 #include "core/optimizer/not_where_fusion.h"
 #include "core/optimizer/pad_fusion.h"
 #include "core/optimizer/pre_shape_node_elimination.h"
+#include "core/optimizer/qdq_transformer/qdq_stripping.h"
 #ifdef MLAS_TARGET_AMD64_IX86
 #include "core/optimizer/qdq_transformer/avx2_weight_s8_to_u8.h"
 #endif
@@ -261,6 +262,7 @@ InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
       // run TransposeOptimizer last as it works in a slightly different way by moving Transpose nodes around.
       // shouldn't affect the end result - just easier to debug any issue if it's last.
       transformers.emplace_back(std::make_unique<TransposeOptimizer>(std::move(cpu_allocator)));
+      transformers.emplace_back(std::make_unique<QDQStripping>());
     } break;
 
     case TransformerLevel::Level2: {

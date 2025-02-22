@@ -909,6 +909,15 @@ class Graph {  // NOLINT(clang-analyzer-optin.performance.Padding): preserve exi
     return const_cast<Graph*>(this)->GetNodeArg(name);
   }
 
+  // Removes NodeArg by the provided name
+  void RemoveNodeArg(const std::string& name) {
+    auto it = node_args_.find(name);
+    if (it != node_args_.end()) {
+      value_info_.erase(it->second.get());
+      node_args_.erase(it);
+    }
+  }
+
   // search this and up through any parent_graph_ instance for a NodeArg
   NodeArg* GetNodeArgIncludingParentGraphs(const std::string& node_arg_name);
 
