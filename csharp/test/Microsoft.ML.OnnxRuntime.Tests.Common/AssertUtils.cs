@@ -27,7 +27,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
       }
       catch (Exception ex)
       {
-        Assert.Fail($"{feedbackMessage}\nExpected {typeof(T).Name} but got {ex.GetType().Name}. {feedbackMessage}");
+        Assert.Fail($"{feedbackMessage}\nExpected {typeof(T).Name} but got {ex.GetType().Name}. S");
       }
     }
   }
