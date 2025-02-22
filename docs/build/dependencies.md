@@ -1,7 +1,6 @@
 # Dependency Management in ONNX Runtime
 
-This document provides supplement information to CMake’s [“Using Dependencies Guide”](https://cmake.org/cmake/help/latest/guide/using-dependencies/index.html) and it is more ONNX Runtime specific. 
-Overall, there are three ways to get dependencies for an ONNX Runtime build:
+This document provides additional information to CMake’s [“Using Dependencies Guide”](https://cmake.org/cmake/help/latest/guide/using-dependencies/index.html)  with a focus on ONNX Runtime. There are three main ways to obtain C++ dependencies for an ONNX Runtime build:
 
 1. [Use VCPKG](#vcpkg) (Recommended)
 2. [Build everything from source](#build-everything-from-source)
