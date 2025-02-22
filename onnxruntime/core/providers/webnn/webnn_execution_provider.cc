@@ -293,7 +293,8 @@ class WebNNMemcpy : public OpKernel {
       shape.call<void>("push", SafeInt<uint32_t>(dim).Ref());
     }
 
-    jsepEnsureTensor(reinterpret_cast<intptr_t>(Y->MutableDataRaw()),
+    jsepEnsureTensor(emscripten::val::undefined(),
+                     reinterpret_cast<intptr_t>(Y->MutableDataRaw()),
                      Y->GetElementType(),
                      shape, false)
         .await();
