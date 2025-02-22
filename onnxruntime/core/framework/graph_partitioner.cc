@@ -676,14 +676,15 @@ static Status EpContextFilePathCheck(const std::string& ep_context_path,
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "context_file_path should not point to a folder.");
     }
   } else if (!model_path.empty()) {
-    context_cache_path = model_path.native() + ORT_TSTR("_ctx.onnx");
+    auto pos = model_path.native().find_last_of(ORT_TSTR("."));
+    context_cache_path = model_path.native().substr(0, pos) + ORT_TSTR("_ctx.onnx");
   } else {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Both ep_context_path and model_path are empty.");
   }
 
   if (std::filesystem::exists(context_cache_path)) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to generate EP context model since the file '",
-                           context_cache_path, "' exist already.");
+                           context_cache_path, "' exist already. Please remove the EP context model if you want to re-generate it.");
   }
 
   return Status::OK();
@@ -719,9 +720,14 @@ static Status CreateEpContextModel(const ExecutionProviders& execution_providers
   if (!ep_context_path.empty()) {
     context_cache_path = ep_context_path;
   } else if (!model_path.empty()) {
-    context_cache_path = model_path.native() + ORT_TSTR("_ctx.onnx");
+    auto pos = model_path.native().find_last_of(ORT_TSTR("."));
+    if (pos != std::string::npos) {
+      context_cache_path = model_path.native().substr(0, pos) + ORT_TSTR("_ctx.onnx");
+    } else {
+      context_cache_path = model_path.native() + ORT_TSTR("_ctx.onnx");
+    }
   } else {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Both ep_context_path and model_path are empty");
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Both ep_context_path and model_path are empty.");
   }
 
   Model ep_context_model(graph.Name(), false, graph.GetModel().MetaData(),
