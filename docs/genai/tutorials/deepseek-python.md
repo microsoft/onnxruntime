@@ -54,3 +54,4 @@ python model-chat.py -m deepseek-r1-distill-qwen-1.5B/model -e cpu --chat_templa
 # On-Device GPU Chat inference. Works on devices with Nvidia GPUs. If you pulled the model from huggingface, adjust the model directory (-m) accordingly 
 curl -o https://raw.githubusercontent.com/microsoft/onnxruntime-genai/refs/heads/main/examples/python/model-chat.py
 python model-chat.py -m deepseek-r1-distill-qwen-1.5B/model -e cuda --chat_template "<|begin▁of▁sentence|><|User|>{input}<|Assistant|>"
+```

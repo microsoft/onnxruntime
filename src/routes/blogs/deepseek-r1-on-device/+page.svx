@@ -11,7 +11,7 @@ url: 'https://onnxruntime.ai/blogs/deepseek-r1-on-device'
 ---
 Are you a developer looking to harness the power of your users' local compute for AI inferencing on PCs with NPUs, GPUs, and CPUs? Look no further!  
 
-Building on the recent ability to run models on [Copilot+PCs on NPUs](https://blogs.windows.com/windowsdeveloper/2025/01/29/running-distilled-deepseek-r1-models-locally-on-copilot-pcs-powered-by-windows-copilot-runtime/), you can now efficiently run these models on CPU and GPU devices as well. You can now download and run the ONNX optimized variants of the models from [Hugging Face](https://huggingface.co/onnxruntime/DeepSeek-R1-Distill-ONNX).  
+With the new release you can now run these models on CPU and GPU. Additionally you can also these models on NPU: [Running Distilled DeepSeek R1 models locally on Copilot+ PCs, powered by Windows Copilot Runtime - Windows Developer Blog](https://blogs.windows.com/windowsdeveloper/2025/01/29/running-distilled-deepseek-r1-models-locally-on-copilot-pcs-powered-by-windows-copilot-runtime/) You can now download and run the ONNX optimized variants of the models from [Hugging Face](https://huggingface.co/onnxruntime/DeepSeek-R1-Distill-ONNX).  
 
 
 
@@ -55,17 +55,17 @@ See instructions for GPU (CUDA, DML) [here](https://github.com/microsoft/onnxrun
 
 ONNX enables you to run your models on-device across CPU, GPU, NPU. With ONNX you can run your models on any machine across all silica Qualcomm, AMD, Intel, Nvidia. See table below for some key benchmarks for Windows GPU and CPU devices.
 
-| Model                                     | Precision          | Device Type | Execution Provider | Device   | Token Generation Throughput | Speed Up vs PyTorch |
-| ----------------------------------------- | ------------------ | ----------- | ------------------ | -------- | --------------------------- | ------------------- |
-| deepseek-ai_DeepSeek-R1-Distill-Qwen-1.5B | ONNX fp16          | GPU         | CUDA               | RTX 4090 | 197.195                     | 4X                  |
-| deepseek-ai_DeepSeek-R1-Distill-Qwen-1.5B | ONNX Int4          | GPU         | CUDA               | RTX 4090 | 313.32                      | 6.3X                |
-| deepseek-ai_DeepSeek-R1-Distill-Qwen-7B   | ONNX fp16          | GPU         | CUDA               | RTX 4090 | 57.316                      | 1.3X                |
-| deepseek-ai_DeepSeek-R1-Distill-Qwen-7B   | ONNX Int4          | GPU         | CUDA               | RTX 4090 | 161.00                      | 3.7X                |
-| deepseek-ai_DeepSeek-R1-Distill-Qwen-7B   | ONNX Int4/bfloat16 | CPU         | CPU                | Intel i9 | 3.184                       | 20X                 |
-| deepseek-ai_DeepSeek-R1-Distill-Qwen-1.5B | ONNX Int4          | CPU         | CPU                | Intel i9 | 11.749                      | 1.4X                |
+| Model                                     | Precision           | Execution Provider | Device   | Token Generation Throughput | Speed Up vs PyTorch |
+| ----------------------------------------- | ------------------  | ------------------ | -------- | --------------------------- | ------------------- |
+| deepseek-ai_DeepSeek-R1-Distill-Qwen-1.5B | fp16                | CUDA               | RTX 4090 | 197.195                     | 4X                  |
+| deepseek-ai_DeepSeek-R1-Distill-Qwen-1.5B | Int4                | CUDA               | RTX 4090 | 313.32                      | 6.3X                |
+| deepseek-ai_DeepSeek-R1-Distill-Qwen-7B   | fp16                | CUDA               | RTX 4090 | 57.316                      | 1.3X                |
+| deepseek-ai_DeepSeek-R1-Distill-Qwen-7B   | Int4                | CUDA               | RTX 4090 | 161.00                      | 3.7X                |
+| deepseek-ai_DeepSeek-R1-Distill-Qwen-7B   | Int4/bfloat16       | CPU                | 13th Gen Intel i9 | 3.184                       | 20X                 |
+| deepseek-ai_DeepSeek-R1-Distill-Qwen-1.5B | Int4                | CPU                | 13th Gen Intel i9 | 11.749                      | 1.4X                |
 
-_CUDA BUILD SPECS: Onnxruntime-genai-cuda==0.6.0-dev, transformers==4.46.2, onnxruntime-gpu==1.20.1_ <br/>
-_CPU BUILD SPECS: Onnxruntime-genai==0.6.0-dev, transformers==4.46.2, onnxruntime==1.20.01_
+_CUDA BUILD SPECS: onnxruntime-genai-cuda==0.6.0, transformers==4.46.2, onnxruntime-gpu==1.20.1_ <br/>
+_CPU BUILD SPECS: onnxruntime-genai==0.6.0, transformers==4.46.2, onnxruntime==1.20.01_
 
 ## Easily Finetune your models with Olive.
 
