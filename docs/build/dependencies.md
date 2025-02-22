@@ -7,12 +7,26 @@ Overall, there are three ways to get dependencies for an ONNX Runtime build:
 2. [Build everything from source](#build-everything-from-source)
 3. [Use preinstalled packages](#use-preinstalled-packages) (For Advanced Users)
 
+Below is a quick comparison:
+
+|                           | Support Network Isolation[^1] | Support Binary Cache[^2] | Support Cross-compiling    | Developement Status                         |
+|---------------------------|-------------------|--------------|--------------------|---------------------------------------------|
+| VCPKG                     | YES               | Yes          | Good               | In-progress                                 |
+| Everything From Source    | Partial[^3]           | No           | Just works[^4]         | Fully supported                             |
+| Use Preinstalled Packages | YES               | Yes          | Difficult to setup | Some packages cannot be handled by this way |
+
+[^1]: Can ONNX Runtime be built in an isolated network environment(without accessing the public internet)?
+[^2]: Can the dependency libraries be built only once if they remain unchanged?
+[^3]: For example, ONNX Runtime's native WebGPU does not support building in an isolated network.  Because the EP depends on [Dawn](https://dawn.googlesource.com/dawn) which is difficult to handle. 
+[^4]: It works today, but ONNX Runtime has many EPs and dependencies. Over time, maintaining the current status has become difficult.
+
+If your software needs to meet the U.S. President's Executive Order (EO) 14028 on Improving the Nation's Cybersecurity, we highly recommend using VCPKG. 
+
 ## VCPKG
 
 ### What is VCPKG?
 
 VCPKG is a free and open-source C/C++ package manager maintained by Microsoft and the C++ community. It was mainly developed by the Visual Studio team at Microsoft. It helps developers manage their C++ dependencies in a simple and declarative way. It is based on CMake and can be integrated into your CMake project or used separately before building. ONNX Runtime uses the former approach, known as manifest mode.
-VCPKG provides better support for cross-compiling. For example, if you are building ONNX Runtime for ARM64 on a x64 machine, VCPKG will compile protoc in x64, simplifying the build process.
 
 ### Prerequisites for using VCPKG
 
@@ -39,15 +53,34 @@ A triplet is a cmake file that contains configurations that are applied to all p
 
 A toolchain file is for setting up compilers/linkers etc, which is more powerful.  ONNX Runtime usually use standard vcpkg toolchain files, except for WebAssembly build.
 
+### Unique Features
+Compared to the other solutions listed in this page, VCPKG provides some unique features that we really want to have:
+
+VCPKG provides better support for cross-compiling. For example, ONNX Runtime depends ONNX.  ONNX's source code has a few *.proto files. When building ONNX from source, we need to use protoc to generate C++ source files from the *.proto files. So, we need to build protoc and protoc's dependencies for the host OS. For example, if we are building an arm64 package on an x64 machine, we need to build protoc for x64 instead of arm64. And because protoc depends on libprotobuf, we must build libprotobuf twice for each CPU architecture. Whether using vcpkg or not, it must be built twice. CMake doesn't handle such scenarios, which added extra complexity to our build system. Now we can use vcpkg to solve this problem. It directly works fine out-of-box. 
+
+With VCPKG, we only need to declare the root dependencies. Before moving to VCPKG, we needed to add all transitive dependencies to cmake/deps.txt and the cmake files under cmake/external folder to meet network isolation requirements(so that we could have an easy way to find all the download URLs) and [component detection](https://github.com/microsoft/component-detection) requirements. Now it is no longer needed because VCPKG has builtin support for asset cache and [SBOM generation](https://learn.microsoft.com/en-us/vcpkg/reference/software-bill-of-materials). 
+
+VCPKG enforces that one library can only have one version. For example, the protobuf library used by onnxruntime_provider_openvino.dll and onnxruntime.dll must be exactly the same. Though it is stricter than necessary, it helps prevent ODR violation problems. It provides more benefit than dealing with potential conflicts and inconsistencies that arise from using multiple versions of the same library.
+
 ### Limitations 
 
 Currently the support the vcpkg is still development in progress. It does not support the following scenarios:
 
-1.  When --minimal_build is enabled
-2.  When --ios is enabled
+1.  Minimal build
+2.  iOS build
 3.  Windows WebGPU native build
 
-And some dependencies are not managed by VCPKG yet. For example, Dawn.    
+And some dependencies are not managed by VCPKG yet. For example, Dawn.   
+
+When building for webassembly, it assumes the "--enable_wasm_simd" flag and "--enable_wasm_threads" flag are always set. It supports much less build varients than the second mode([Build everything from source](#build-everything-from-source)) 
+
+Additionally, in this mode, the python interpreter used for running tools/ci_build/build.py might differ from the one used for building the VCPKG ports. This inconsistency can cause issues. Therefore, if you have multiple Python installations, we recommend adding the desired version to the beginning of your `PATH` to set it as the default.
+
+It doesn't support setting VC toolset version or Windows SDK version yet. 
+
+The support for Windows ARM64EC(including ARM64X) is experimental and is not well tested yet.
+
+While the standard cmake has 4 different build types(Debug, Release, RelWithDebInfo and MinSizeRel), vcpkg only supports two. Therefore you may see binary size getting increase when building ONNX Runtime for RelWithDebInfo or MinSizeRel. This issue can be addressed by doing more customizations in the custom triplet files.  
 
 ### Do I have to convert all dependencies to vcpkg ports?
 
