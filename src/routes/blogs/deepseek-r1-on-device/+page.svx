@@ -11,7 +11,7 @@ url: 'https://onnxruntime.ai/blogs/deepseek-r1-on-device'
 ---
 Are you a developer looking to harness the power of your users' local compute for AI inferencing on PCs with NPUs, GPUs, and CPUs? Look no further!  
 
-With the new release you can now run these models on CPU and GPU. Additionally you can also these models on NPU: [Running Distilled DeepSeek R1 models locally on Copilot+ PCs, powered by Windows Copilot Runtime - Windows Developer Blog](https://blogs.windows.com/windowsdeveloper/2025/01/29/running-distilled-deepseek-r1-models-locally-on-copilot-pcs-powered-by-windows-copilot-runtime/) You can now download and run the ONNX optimized variants of the models from [Hugging Face](https://huggingface.co/onnxruntime/DeepSeek-R1-Distill-ONNX).  
+With the new release you can now run these models on CPU and GPU. Additionally you can also these models on NPU: [Windows Developer Blog](https://blogs.windows.com/windowsdeveloper/2025/01/29/running-distilled-deepseek-r1-models-locally-on-copilot-pcs-powered-by-windows-copilot-runtime/). You can now download and run the ONNX optimized variants of the models from [Hugging Face](https://huggingface.co/onnxruntime/DeepSeek-R1-Distill-ONNX).  
 
 
 
