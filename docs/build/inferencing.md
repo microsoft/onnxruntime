@@ -588,6 +588,8 @@ This option is very fast and allows the package to be built in minutes, but is c
 
 2. Use `.\build.bat` and specify `--arm` or `--arm64` as the build option to start building. Preferably use `Developer Command Prompt for VS` or make sure all the installed cross-compilers are findable from the command prompt being used to build using the PATH environmant variable.
 
+3. Add `--use_vcpkg` to your build command, which can avoid manually handling protoc.exe.
+
 ---
 
 ### Mobile 
