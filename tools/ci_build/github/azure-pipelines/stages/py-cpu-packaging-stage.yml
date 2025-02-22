@@ -123,7 +123,7 @@ stages:
             --skip_submodule_sync
             --cmake_generator "Visual Studio 17 2022"
             --enable_pybind
-            --enable_onnx_tests
+            --enable_onnx_tests --use_vcpkg --use_vcpkg_ms_internal_asset_cache 
             ${{ parameters.build_py_parameters }}
             --parallel --use_binskim_compliant_compile_flags --update --build
             $(TelemetryOption)
