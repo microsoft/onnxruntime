@@ -160,7 +160,6 @@ To initiate build, run the below command
     
 
 #### Notes
-* You may build onnxruntime with VCPKG. The document [/docs/build/dependencies.md](/docs/build/dependencies.md) has more information about it.
 * Please note that these instructions build the debug build, which may have performance tradeoffs. The "--config" parameter has four valid values: Debug, Release, RelWithDebInfo and MinSizeRel. Compared to "Release", "RelWithDebInfo" not only has debug info, it also disables some inlines to make the binary easier to debug. Thus RelWithDebInfo is slower than Release.
 * To build the version from each release (which include Windows, Linux, and Mac variants), see these [.yml files](https://github.com/microsoft/onnxruntime/tree/main/tools/ci_build/github/azure-pipelines/) for reference
 * The build script runs all unit tests by default for native builds and skips tests by default for cross-compiled builds.
@@ -277,6 +276,9 @@ Nuget packages are created under <native_build_dir>\nuget-artifacts
 ---
 
 ## Other build options
+
+* You may build onnxruntime with VCPKG. The document [/docs/build/dependencies.md](/docs/build/dependencies.md) has more information about it.
+
 
 ### Reduced Operator Kernel Build
 
