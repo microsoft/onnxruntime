@@ -82,9 +82,9 @@ The support for Windows ARM64EC(including ARM64X) is experimental and is not wel
 
 While the standard cmake has 4 different build types(Debug, Release, RelWithDebInfo and MinSizeRel), vcpkg only supports two. Therefore you may see binary size getting increase when building ONNX Runtime for RelWithDebInfo or MinSizeRel. This issue can be addressed by doing more customizations in the custom triplet files.  
 
-### Do I have to convert all dependencies to vcpkg ports?
+### I am an EP developer. Do I have to convert all dependencies to vcpkg ports?
 
-If the dependency is used by an ONNX Runtime release package, then definitely yes. Otherwise we can discuss it case by case.
+If the dependency is used by an ONNX Runtime release package that is published by Microsoft, then definitely yes. Otherwise we can discuss it case by case.
 
 ### Process for updating a VCPKG port
 
