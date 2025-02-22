@@ -61,7 +61,7 @@ ONNX enables you to run your models on-device across CPU, GPU, NPU. With ONNX yo
 | deepseek-ai_DeepSeek-R1-Distill-Qwen-1.5B | Int4                | CUDA               | RTX 4090 | 313.32                      | 6.3X                |
 | deepseek-ai_DeepSeek-R1-Distill-Qwen-7B   | fp16                | CUDA               | RTX 4090 | 57.316                      | 1.3X                |
 | deepseek-ai_DeepSeek-R1-Distill-Qwen-7B   | Int4                | CUDA               | RTX 4090 | 161.00                      | 3.7X                |
-| deepseek-ai_DeepSeek-R1-Distill-Qwen-7B   | Int4/bfloat16       | CPU                | 13th Gen Intel i9 | 3.184                       | 20X                 |
+| deepseek-ai_DeepSeek-R1-Distill-Qwen-7B   | Int4       | CPU                | 13th Gen Intel i9 | 3.184                       | 20X                 |
 | deepseek-ai_DeepSeek-R1-Distill-Qwen-1.5B | Int4                | CPU                | 13th Gen Intel i9 | 11.749                      | 1.4X                |
 
 _CUDA BUILD SPECS: onnxruntime-genai-cuda==0.6.0, transformers==4.46.2, onnxruntime-gpu==1.20.1_ <br/>
