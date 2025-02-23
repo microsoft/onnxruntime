@@ -75,6 +75,7 @@ class WebGpuContext final {
 
   Status Wait(wgpu::Future f);
 
+  const wgpu::Adapter& Adapter() const { return adapter_; }
   const wgpu::Device& Device() const { return device_; }
 
   const wgpu::AdapterInfo& AdapterInfo() const { return adapter_info_; }
@@ -199,6 +200,7 @@ class WebGpuContext final {
   LibraryHandles modules_;
 
   wgpu::Instance instance_;
+  wgpu::Adapter adapter_;
   wgpu::Device device_;
 
   webgpu::ValidationMode validation_mode_;
