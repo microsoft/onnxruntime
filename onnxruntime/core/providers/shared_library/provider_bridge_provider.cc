@@ -331,8 +331,9 @@ bool IAllocator::CalcMemSizeForArrayWithAlignment(size_t nmemb, size_t size, siz
 }
 
 std::vector<std::unique_ptr<ComputeCapability>> IExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_viewer,
-                                                                                  const IKernelLookup& kernel_lookup) const {
-  return g_host->IExecutionProvider__GetCapability(this, graph_viewer, kernel_lookup);
+                                                                                  const IKernelLookup& kernel_lookup,
+                                                                                  IResourceAccountant* resource_accountant) const {
+  return g_host->IExecutionProvider__GetCapability(this, graph_viewer, kernel_lookup, resource_accountant);
 }
 common::Status IExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& fused_nodes_and_graphs,
                                            std::vector<NodeComputeInfo>& node_compute_funcs) {
@@ -504,6 +505,9 @@ Status UnpackTensor(const ONNX_NAMESPACE::TensorProto& tensor, const void* raw_d
 Status UnpackInitializerData(const ONNX_NAMESPACE::TensorProto& tensor, const std::filesystem::path& model_path,
                              /*out*/ std::vector<uint8_t>& unpacked_tensor) {
   return g_host->UnpackInitializerData(tensor, model_path, unpacked_tensor);
+}
+Status UnpackInitializerData(const ONNX_NAMESPACE::TensorProto& tensor, /*out*/ std::vector<uint8_t>& unpacked_tensor) {
+  return g_host->UnpackInitializerData(tensor, std::filesystem::path(), unpacked_tensor);
 }
 
 }  // namespace utils
@@ -788,5 +792,5 @@ std::string ToUTF8String(const std::wstring& s) {
 std::wstring ToWideString(const std::string& s) {
   return g_host->ToWideString(s);
 }
-#endif
+#endif  // _WIN32
 }  // namespace onnxruntime

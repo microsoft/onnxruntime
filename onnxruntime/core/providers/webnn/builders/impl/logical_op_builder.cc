@@ -38,15 +38,16 @@ Status LogicalOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, cons
   emscripten::val options = emscripten::val::object();
   options.set("label", node.Name());
 
-  std::string webnn_op_type;
-  ORT_RETURN_IF_NOT(GetWebNNOpType(op_type, webnn_op_type), "Cannot get WebNN op type");
+  const std::string_view webnn_op_type = GetWebNNOpType(op_type);
+  ORT_RETURN_IF(webnn_op_type.empty(), "Cannot get WebNN op type");
 
   if (input_defs.size() == 1) {
     // Not
-    output = model_builder.GetBuilder().call<emscripten::val>(webnn_op_type.c_str(), input0, options);
+    output = model_builder.GetBuilder().call<emscripten::val>(std::string(webnn_op_type).c_str(), input0, options);
   } else {
     input1 = model_builder.GetOperand(input_defs[1]->Name());
-    output = model_builder.GetBuilder().call<emscripten::val>(webnn_op_type.c_str(), input0, input1, options);
+    output = model_builder.GetBuilder().call<emscripten::val>(
+        std::string(webnn_op_type).c_str(), input0, input1, options);
   }
 
   model_builder.AddOperand(node.OutputDefs()[0]->Name(), std::move(output));
@@ -74,7 +75,7 @@ bool LogicalOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& /* initiali
 bool LogicalOpBuilder::HasSupportedInputsImpl(const InitializedTensorSet& /* initializers */, const Node& node,
                                               const emscripten::val& wnn_limits, const logging::Logger& logger) const {
   const auto& input_defs = node.InputDefs();
-  const auto& op_type = node.OpType();
+  const std::string_view op_type = node.OpType();
   int32_t input0_type;
   int32_t input1_type;
 

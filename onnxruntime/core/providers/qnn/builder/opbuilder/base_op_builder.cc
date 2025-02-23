@@ -2,14 +2,8 @@
 // Licensed under the MIT License.
 
 #include "core/providers/qnn/builder/opbuilder/base_op_builder.h"
+#include <utility>
 #include "core/providers/qnn/builder/qnn_utils.h"
-
-#include <core/providers/common.h>
-
-#include "core/providers/shared/utils/utils.h"
-#include "core/framework/tensorprotoutils.h"
-#include "core/providers/cpu/tensor/transpose.h"
-#include "core/common/safeint.h"
 
 namespace onnxruntime {
 namespace qnn {
@@ -267,37 +261,6 @@ Status BaseOpBuilder::SetOutputQParamEqualToInputIfNearlyEqual(QnnModelWrapper& 
                             << "input_index: " << input_index << ", output index: " << output_index << ".";
     }
   }
-
-  return Status::OK();
-}
-
-Status BaseOpBuilder::TransposeInitializer(const QnnModelWrapper& qnn_model_wrapper,
-                                           const onnx::TensorProto& initializer,
-                                           const std::vector<size_t>& perm,
-                                           std::vector<uint8_t>& transposed_data) const {
-  const DataTypeImpl* tensor_dtype = DataTypeImpl::TensorTypeFromONNXEnum(initializer.data_type())->GetElementType();
-  const auto tensor_shape_dims = onnxruntime::utils::GetTensorShapeFromTensorProto(initializer);
-  TensorShape tensor_shape{tensor_shape_dims};
-  AllocatorPtr cpu_allocator = std::make_shared<CPUAllocator>();
-  Tensor in_tensor = Tensor(tensor_dtype, tensor_shape, cpu_allocator);
-
-  auto rank = perm.size();
-  std::vector<int64_t> new_tensor_shape_dims;
-  std::vector<size_t> permutations;
-  new_tensor_shape_dims.reserve(rank);
-  permutations.reserve(rank);
-  for (int64_t p : perm) {
-    permutations.push_back(p);
-    new_tensor_shape_dims.push_back(tensor_shape_dims[p]);
-  }
-
-  TensorShape new_tensor_shape(new_tensor_shape_dims);
-  Tensor out_tensor = Tensor(tensor_dtype, new_tensor_shape, cpu_allocator);
-  ORT_RETURN_IF_ERROR(onnxruntime::utils::TensorProtoToTensor(
-      Env::Default(), qnn_model_wrapper.GetGraphViewer().ModelPath(), initializer, in_tensor));
-  ORT_RETURN_IF_ERROR(Transpose::DoTranspose(permutations, in_tensor, out_tensor));
-  onnx::TensorProto new_tensor_proto = onnxruntime::utils::TensorToTensorProto(out_tensor, "test");
-  ORT_RETURN_IF_ERROR(qnn_model_wrapper.UnpackInitializerData(new_tensor_proto, transposed_data));
 
   return Status::OK();
 }

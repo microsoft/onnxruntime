@@ -401,6 +401,7 @@ Return Value:
                 this->QNBitGemmDispatch = &MlasSQNBitGemmDispatchAvx2;
                 this->CastF16ToF32Kernel = &MlasCastF16ToF32KernelAvx2;
                 this->CastF32ToF16Kernel = &MlasCastF32ToF16KernelAvx2;
+                this->RopeDispatch = &MlasRopeDispatchAvx2;
 
 
                 //
@@ -544,6 +545,8 @@ Return Value:
     this->ConvSymS8S8Dispatch = &MlasConvSymS8DispatchNeon;
     this->QNBitGemmDispatch = &MlasSQNBitGemmDispatchNeon;
     this->RopeDispatch = &MlasRopeDispatchNeon;
+    this->HGemmDispatch = &MlasHGemmDispatchNeon;
+    this->SoftmaxDispatch = &MlasSoftmaxDispatchNeon;
 
     //
     // Check if the processor supports ASIMD dot product instructions.

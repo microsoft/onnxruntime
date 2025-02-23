@@ -51,7 +51,7 @@ parameters:
 - name: QnnSDKVersion
   displayName: QNN SDK Version
   type: string
-  default: '2.28.0.241029'
+  default: '2.31.0.250130'
 
 jobs:
 - job: Android_Java_API_AAR_Packaging_${{ parameters.job_name_suffix }}
@@ -76,13 +76,12 @@ jobs:
         mkdir -p $(artifacts_directory)
       workingDirectory: $(Build.BinariesDirectory)
 
-  #TODO: use a different docker file since this job doesn't need to rely on manylinux
   - template: get-docker-image-steps.yml
     parameters:
-      Dockerfile: tools/ci_build/github/linux/docker/Dockerfile.manylinux2_28_cpu
-      Context: tools/ci_build/github/linux/docker
+      Dockerfile: tools/ci_build/github/linux/docker/inference/x86_64/default/cpu/Dockerfile
+      Context: tools/ci_build/github/linux/docker/inference/x86_64/default/cpu
       DockerBuildArgs: "--build-arg BUILD_UID=$( id -u )"
-      Repository: onnxruntimecpubuild
+      Repository: onnxruntimecpubuildcentos8x64_packaging
 
   - template: set-version-number-variables-step.yml
 
@@ -112,7 +111,7 @@ jobs:
           QNN_VOLUME=""
           USE_QNN="0"
         fi
-        docker run --rm \
+        docker run -e SYSTEM_COLLECTIONURI --rm \
           --volume $(Build.SourcesDirectory):/onnxruntime_src \
           --volume $(Build.BinariesDirectory):/build \
           --volume $ANDROID_HOME:/android_home \
@@ -127,7 +126,7 @@ jobs:
           -e PUBLISH_EXECUTABLES=${{parameters.publish_executables}} \
           -e PACKAGE_NAME=${{parameters.packageName}} \
           -e RELEASE_VERSION_SUFFIX=${{parameters.ReleaseVersionSuffix}} \
-          onnxruntimecpubuild \
+          onnxruntimecpubuildcentos8x64_packaging \
             /bin/bash /onnxruntime_src/tools/ci_build/github/android/build_aar_and_copy_artifacts.sh $USE_QNN
       workingDirectory: $(Build.SourcesDirectory)
 

@@ -6,7 +6,6 @@
 import argparse
 import logging
 import os
-from typing import List, Union
 
 import coloredlogs
 from constants import (
@@ -26,15 +25,15 @@ logger = logging.getLogger(__name__)
 class PackingAttentionBase:
     def __init__(self, model: OnnxModel, attention_op_type: str):
         self.model: OnnxModel = model
-        self.nodes_to_remove: List = []
-        self.nodes_to_add: List = []
+        self.nodes_to_remove: list = []
+        self.nodes_to_add: list = []
         self.prune_graph: bool = False
         self.node_name_to_graph_name: dict = {}
         self.this_graph_name: str = self.model.model.graph.name
         self.attention_op_type = attention_op_type
         self.attention_nodes = self.model.get_nodes_by_op_type(attention_op_type)
 
-    def _try_getting_attention_mask(self) -> Union[str, None]:
+    def _try_getting_attention_mask(self) -> str | None:
         mask_index = (
             AttentionInputIDs.MASK_INDEX
             if self.attention_op_type == Operators.ATTENTION
@@ -54,13 +53,13 @@ class PackingAttentionBase:
 
         return attention_mask
 
-    def _try_getting_first_attention(self) -> Union[NodeProto, None]:
+    def _try_getting_first_attention(self) -> NodeProto | None:
         if len(self.attention_nodes) <= 0:
             return None
 
         return self.attention_nodes[0]
 
-    def _try_getting_last_layernorm(self) -> Union[NodeProto, None]:
+    def _try_getting_last_layernorm(self) -> NodeProto | None:
         last_layernorm_node = None
         for node in self.model.nodes():
             if node.op_type == Operators.LAYERNORM or node.op_type == Operators.SKIPLAYERNORM:
@@ -70,7 +69,7 @@ class PackingAttentionBase:
     def _are_attentions_supported(self) -> bool:
         raise NotImplementedError()
 
-    def _insert_removepadding_node(self, inputs: List[str], outputs: List[str]) -> None:
+    def _insert_removepadding_node(self, inputs: list[str], outputs: list[str]) -> None:
         new_node = helper.make_node(
             Operators.REMOVEPADDING,
             inputs=inputs,
@@ -82,7 +81,7 @@ class PackingAttentionBase:
         self.nodes_to_add.append(new_node)
         self.node_name_to_graph_name[new_node.name] = self.this_graph_name
 
-    def _insert_restorepadding_node(self, inputs: List[str], outputs: List[str]) -> None:
+    def _insert_restorepadding_node(self, inputs: list[str], outputs: list[str]) -> None:
         new_node = helper.make_node(
             Operators.RESTOREPADDING,
             inputs=inputs,
@@ -97,7 +96,7 @@ class PackingAttentionBase:
     def _replace_attention_with_packing_attention(self, token_offset: str, cumulative_sequence_length: str) -> None:
         raise NotImplementedError()
 
-    def _get_input_to_remove_padding(self, first_attention_node) -> Union[str, None]:
+    def _get_input_to_remove_padding(self, first_attention_node) -> str | None:
         if self.attention_op_type == Operators.ATTENTION:
             return first_attention_node.input[AttentionInputIDs.INPUT]
         return None
@@ -306,7 +305,7 @@ class PackingMultiHeadAttention(PackingAttentionBase):
         logger.info("Converted %d MultiHeadAttention nodes to PackedMultiHeadAttention.", len(self.attention_nodes))
         logger.info("Converted %d GatedRelativePositionBias nodes to packing mode.", gated_relative_pos_bias_count)
 
-    def _get_input_to_remove_padding(self, first_attention_node) -> Union[str, None]:
+    def _get_input_to_remove_padding(self, first_attention_node) -> str | None:
         # When there are query, key and value inputs, we need to find the first input of the parent MatMul node.
         matmul = self.model.get_parent(first_attention_node, 0)
         if matmul and matmul.op_type == "MatMul":

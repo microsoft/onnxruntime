@@ -287,8 +287,8 @@ export const init = async (
       // jsepReleaseTensorId,
       (tensorId: number) => backend.releaseTensorId(tensorId),
       // jsepEnsureTensor
-      async (tensorId: number, onnxDataType: number, shape: number[], copyOld) =>
-        backend.ensureTensor(tensorId, onnxDataType, shape, copyOld),
+      async (sessionId: number | undefined, tensorId: number, onnxDataType: number, shape: number[], copyOld) =>
+        backend.ensureTensor(sessionId, tensorId, onnxDataType, shape, copyOld),
       // jsepUploadTensor
       (tensorId: number, data: Uint8Array) => {
         backend.uploadTensor(tensorId, data);

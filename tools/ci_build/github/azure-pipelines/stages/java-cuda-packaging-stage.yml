@@ -142,9 +142,9 @@ stages:
       value: false
     - name: docker_base_image
       ${{ if eq(parameters.CudaVersion, '11.8') }}:
-        value: onnxruntimebuildcache.azurecr.io/internal/azureml/onnxruntime/build/cuda11_x64_almalinux8_gcc11:20250109.1
+        value: onnxruntimebuildcache.azurecr.io/internal/azureml/onnxruntime/build/cuda11_x64_almalinux8_gcc11:20250124.1
       ${{ if eq(parameters.CudaVersion, '12.2') }}:
-        value: onnxruntimebuildcache.azurecr.io/internal/azureml/onnxruntime/build/cuda12_x64_ubi8_gcc12:20250109.1
+        value: onnxruntimebuildcache.azurecr.io/internal/azureml/onnxruntime/build/cuda12_x64_ubi8_gcc12:20250124.1
     timeoutInMinutes: 60
 
     steps:
@@ -170,10 +170,9 @@ stages:
         --build-arg TRT_VERSION=${{ variables.linux_trt_version }}
         "
         Repository: onnxruntimeubi8packagestest
-        UpdateDepsTxt: false
 
     - bash: |
-        docker run --rm \
+        docker run -e SYSTEM_COLLECTIONURI --rm \
           --gpus all \
           --volume $(Build.SourcesDirectory):/onnxruntime_src \
           --volume $(Build.BinariesDirectory):/build \

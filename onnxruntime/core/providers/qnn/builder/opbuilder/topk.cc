@@ -1,8 +1,8 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 #include "core/providers/qnn/builder/opbuilder/base_op_builder.h"
-#include "core/framework/utils.h"
 #include "core/providers/qnn/builder/op_builder_factory.h"
+#include "core/providers/qnn/builder/qnn_utils.h"
 namespace onnxruntime {
 namespace qnn {
 const int TOPK_MIN_INPUT = 2;
@@ -45,7 +45,7 @@ Status TopKOpBuilder::ExplictOpCheck(QnnModelWrapper& qnn_model_wrapper, const N
                     "For ONNX TopK operation the expected number of inputs is 2.");
   // Skip the first input. The second input needs to be an initializer.
   const auto& input_1 = node_unit.Inputs()[1].node_arg.Name();
-  if (!qnn_model_wrapper.IsInitializerInput(input_1)) {
+  if (!qnn_model_wrapper.IsConstantInput(input_1)) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "The number of top elements to retrieve must be specified as constant input.");
   }
   NodeAttrHelper node_helper(node_unit);
@@ -91,10 +91,10 @@ Status TopKOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_wra
                                                   bool do_op_validation) const {
   auto& input_name = node_unit.Inputs()[1].node_arg.Name();
   uint32_t k = 0;  // The number of elements to extract from the input tensor at each position.
-  bool is_initializer_input = qnn_model_wrapper.IsInitializerInput(input_name);
-  if (is_initializer_input) {
+  bool is_constant_input = qnn_model_wrapper.IsConstantInput(input_name);
+  if (is_constant_input) {
     std::vector<uint8_t> unpacked_tensor;
-    const auto& input_tensor = qnn_model_wrapper.GetInitializerTensors().at(input_name);
+    const auto& input_tensor = qnn_model_wrapper.GetConstantTensor(input_name);
     ORT_RETURN_IF_ERROR(qnn_model_wrapper.UnpackInitializerData(*input_tensor, unpacked_tensor));
     const int64_t* tensor_data = reinterpret_cast<const int64_t*>(unpacked_tensor.data());
     k = static_cast<uint32_t>(*tensor_data);
