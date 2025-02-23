@@ -8,11 +8,11 @@ This document provides additional information to CMake’s [“Using Dependencie
 
 Below is a quick comparison:
 
-|                           | Support Network Isolation[^1] | Support Binary Cache[^2] | Support Cross-compiling    | Developement Status                         |
-|---------------------------|-------------------|--------------|--------------------|---------------------------------------------|
-| VCPKG                     | YES               | Yes          | Good               | In-progress                                 |
-| Everything From Source    | Partial[^3]           | No           | Just works[^4]         | Fully supported                             |
-| Use Preinstalled Packages | YES               | Yes          | Difficult to setup | Some packages cannot be handled by this way |
+|                           | Support Network Isolation[^1] | Support Binary Cache[^2] | Support Cross-compiling    | Developement Status                         |Vulnerability Management                        |
+|---------------------------|-------------------|--------------|--------------------|---------------------------------------------|---------------------------------------------|
+| VCPKG                     | YES               | Yes          | Good               | In-progress                                 | Provided by the ONNX Runtime team |
+| Everything From Source    | Partial[^3]           | No           | Just works[^4]         | Fully supported                             | Provided by the ONNX Runtime team |
+| Use Preinstalled Packages | YES               | Yes          | Difficult to setup | Some packages cannot be handled by this way | Provided by your package manager |
 
 [^1]: Can ONNX Runtime be built in an isolated network environment(without accessing the public internet)?
 [^2]: Can the dependency libraries be built only once if they remain unchanged?
@@ -100,7 +100,9 @@ When declaring a dependency in ONNX Runtime’s CMake files, if FIND_PACKAGE arg
 
 ## Use preinstalled packages
 
-This is the default mode when building ONNX Runtime from source. If a build has neither '--use_vcpkg' nor '--cmake_extra_defines FETCHCONTENT_TRY_FIND_PACKAGE_MODE=NEVER', it will be in this mode. It is because FetchContent is a wrapper around various CMake Dependency Providers. By default it prefers to use [find_package](https://cmake.org/cmake/help/latest/command/find_package.html) if FIND_PACKAGE arguments are provided for the dependency.   If you are integrating ONNX Runtime into a package manager(like dnf), you will need to use this approach. However, it has some caveats:
+This is the default mode when building ONNX Runtime from source. If a build has neither '--use_vcpkg' nor '--cmake_extra_defines FETCHCONTENT_TRY_FIND_PACKAGE_MODE=NEVER', it will be in this mode. It is because FetchContent is a wrapper around various CMake Dependency Providers. By default it prefers to use [find_package](https://cmake.org/cmake/help/latest/command/find_package.html) if FIND_PACKAGE arguments are provided for the dependency.   If you are integrating ONNX Runtime into a package manager(like dnf), you will need to use this approach. 
+
+However, it has some caveats:
 
 1. ONNX Runtime has local patches for dependencies that will not be applied to your preinstalled libraries. Most patches are not necessary for basic functionality.
 2. If you have installed a library version different from what ONNX Runtime expects, the build script cannot warn you. This may lead to strange build failures.
