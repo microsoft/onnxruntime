@@ -15,17 +15,20 @@
  * limitations under the License.
  */
 
-#if defined(__GNUC__)
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wunused-variable"
-#pragma GCC diagnostic ignored "-Wunused-but-set-variable"
-#elif defined(_MSC_VER)
-#pragma warning(push)
-#pragma warning(disable : 4267)
-#pragma warning(disable : 4100)
-#pragma warning(disable : 4101)  // equivalent to GCC's -Wunused-variable
-#pragma warning(disable : 4189)  // equivalent to GCC's -Wunused-but-set-variable
-#endif
+ #if defined(__GNUC__)
+ #pragma GCC diagnostic push
+ //#pragma GCC diagnostic ignored "-Wunused-variable"
+ #pragma GCC diagnostic ignored "-Wunused-parameter"
+ //#pragma GCC diagnostic ignored "-Wunused-but-set-variable"
+ //#pragma GCC diagnostic ignored "-Wunused-local-typedefs"
+ #elif defined(_MSC_VER)
+ #pragma warning(push)
+ #pragma warning(disable : 4100)  // Unused parameter (-Wunused-parameter)
+//  #pragma warning(disable : 4101)  // Unused variable (-Wunused-variable)
+//  #pragma warning(disable : 4189)  // Unused but set variable (-Wunused-but-set-variable)
+//  #pragma warning(disable : 4505)  // Unused function (-Wunused-function, not explicitly listed in GCC settings but often relevant)
+//  #pragma warning(disable : 4514)  // Unreferenced inline function removed (similar to -Wunused-local-typedefs)
+ #endif
 
 #include "contrib_ops/cuda/llm/common/cublasMMWrapper.h"
 #include "core/providers/cuda/cuda_kernel.h"
