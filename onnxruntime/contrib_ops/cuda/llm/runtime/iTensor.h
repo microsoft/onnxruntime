@@ -48,7 +48,7 @@ class ITensor : virtual public IBuffer {
   using SharedPtr = std::shared_ptr<ITensor>;
   using UniqueConstPtr = std::unique_ptr<ITensor const>;
   using SharedConstPtr = std::shared_ptr<ITensor const>;
-  using Shape = nvinfer1::Dims;
+  using Shape = onnxruntime::llm::nvinfer1::Dims;
   using DimType64 = std::remove_reference_t<decltype(Shape::d[0])>;
   using TensorMap = runtime::StringPtrMap<runtime::ITensor>;
 

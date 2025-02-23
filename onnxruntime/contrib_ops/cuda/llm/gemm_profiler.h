@@ -181,7 +181,8 @@ class GemmPluginProfiler {
 
   GemmPluginProfiler();
 
-  virtual ~GemmPluginProfiler();
+  virtual ~GemmPluginProfiler(){}
+
   /*
   void serialize(char*& buffer, GemmIdType const& gemmId) const;
 

@@ -97,8 +97,8 @@ class BufferManager {
   //! \brief Allocates an `ITensor` of the given dimensions in UVM.
   [[nodiscard]] static ITensorPtr managed(nvinfer1::Dims dims, nvinfer1::DataType type = kBYTE_TYPE);
 
-  //! \brief Allocates an `ITensor` of the given dimensions for NVLS
-  [[nodiscard]] static ITensorPtr ipcNvls(std::set<int> ranks, nvinfer1::Dims dims, nvinfer1::DataType type);
+  // //! \brief Allocates an `ITensor` of the given dimensions for NVLS
+  // [[nodiscard]] static ITensorPtr ipcNvls(std::set<int> ranks, nvinfer1::Dims dims, nvinfer1::DataType type);
 
   //! \brief Allocates an `IBuffer` of the given size and memory type.
   [[nodiscard]] IBufferPtr allocate(

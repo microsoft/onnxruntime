@@ -120,13 +120,13 @@ void printLogitsKeyInfo(ITensor const& tensor, std::string const& infoStr)
     ss << infoStr;
     ss << " Shape: " << shape;
     ss << "; Top 5: ";
-    for (size_t ki = 0; ki < 5; ++ki)
+    for (int64_t ki = 0; ki < 5; ++ki)
     {
         ss << static_cast<float>(hostData[ki]) << ", ";
     }
 
     ss << " Last 5: ";
-    for (size_t ki = volume - 6; ki < volume; ++ki)
+    for (int64_t ki = volume - 6; ki < volume; ++ki)
     {
         ss << static_cast<float>(hostData[ki]) << ", ";
     }
@@ -136,7 +136,7 @@ void printLogitsKeyInfo(ITensor const& tensor, std::string const& infoStr)
     float mMax = -FLT_MAX;
     float mMin = FLT_MAX;
 
-    for (size_t ki = 0; ki < volume; ++ki)
+    for (int64_t ki = 0; ki < volume; ++ki)
     {
         float value = static_cast<float>(hostData[ki]);
         mSum += value;

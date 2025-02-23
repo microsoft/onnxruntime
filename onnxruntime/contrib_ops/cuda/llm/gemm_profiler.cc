@@ -15,11 +15,11 @@
  * limitations under the License.
  */
 
-#if defined(__GNUC__)
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wunused-parameter"
-#pragma GCC diagnostic ignored "-Wstrict-aliasing"
-#endif
+// #if defined(__GNUC__)
+// #pragma GCC diagnostic push
+// #pragma GCC diagnostic ignored "-Wunused-parameter"
+// #pragma GCC diagnostic ignored "-Wstrict-aliasing"
+// #endif
 
 #include "contrib_ops/cuda/llm/gemm_profiler.h"
 #include "contrib_ops/cuda/llm/common/cublasMMWrapper.h"
@@ -369,6 +369,6 @@ template class GemmPluginProfiler<cublasLtMatmulHeuristicResult_t,
 
 }  // namespace onnxruntime::llm
 
-#if defined(__GNUC__)
-#pragma GCC diagnostic pop
-#endif
+// #if defined(__GNUC__)
+// #pragma GCC diagnostic pop
+// #endif
