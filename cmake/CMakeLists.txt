@@ -669,7 +669,8 @@ if (WIN32)
     endif()
 
 else()
-  # Default target type is executable. Set to static library to simplify these steps.
+  # Default target type is executable. Set to static library to avoid extra linking and mobile SDK steps.
+  set(PREV_TRY_COMPILE_TARGET_TYPE ${CMAKE_TRY_COMPILE_TARGET_TYPE})
   set(CMAKE_TRY_COMPILE_TARGET_TYPE STATIC_LIBRARY)
   check_cxx_compiler_flag(-Wambiguous-reversed-operator HAS_AMBIGUOUS_REVERSED_OPERATOR)
   check_cxx_compiler_flag(-Wbitwise-instead-of-logical HAS_BITWISE_INSTEAD_OF_LOGICAL)
@@ -699,6 +700,7 @@ else()
   check_cxx_compiler_flag(-Wunused-but-set-variable HAS_UNUSED_BUT_SET_VARIABLE)
   check_cxx_compiler_flag(-Wunused-variable HAS_UNUSED_VARIABLE)
   check_cxx_compiler_flag(-Wuseless-cast HAS_USELESS_CAST)
+  set(CMAKE_TRY_COMPILE_TARGET_TYPE ${PREV_TRY_COMPILE_TARGET_TYPE})
 
   if(onnxruntime_ENABLE_TRAINING_APIS)
     if(HAS_DANGLING_REFERENCE)
