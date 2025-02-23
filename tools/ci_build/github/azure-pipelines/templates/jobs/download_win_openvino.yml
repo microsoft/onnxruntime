@@ -1,30 +1,26 @@
 parameters:
-  - name: QnnSDKVersion
+  - name: OpenVINOVersion
     type: string
-    default: '2.31.0.250130'
+    default: '2025.0.0'
 
 steps:
   - powershell: |
-      azcopy.exe cp --recursive https://lotusscus.blob.core.windows.net/models/qnnsdk/qnn-v${{ parameters.QnnSDKVersion }} $(Agent.TempDirectory)
-    displayName: 'Download QNN SDK v${{ parameters.QnnSDKVersion }}'
+      azcopy.exe cp --recursive https://lotusscus.blob.core.windows.net/models/openvino/openvino-v${{ parameters.OpenVINOVersion }} $(Agent.TempDirectory)
+    displayName: 'Download OpenVINO Toolkit v${{ parameters.OpenVINOVersion }}'
 
   - powershell: |
-      echo "##vso[task.setvariable variable=QnnSDKRootDir]$(Agent.TempDirectory)\qnn-v${{ parameters.QnnSDKVersion }}"
-    displayName: Set QnnSDKRootDir
+      echo "##vso[task.setvariable variable=OpenVINORootDir]$(Agent.TempDirectory)\openvino-v${{ parameters.OpenVINOVersion }}"
+    displayName: 'Set OpenVINORootDir'
 
   - task: CmdLine@2
     inputs:
       script: |
-        echo $(QnnSDKRootDir)
-    displayName: 'Print QnnSDKRootDir after downloading QNN SDK'
-
-  - powershell: |
-      azcopy.exe cp --recursive 'https://lotusscus.blob.core.windows.net/models/qnnsdk/Qualcomm AI Hub Proprietary License.pdf' $(QnnSDKRootDir)
-    displayName: 'Download Qualcomm AI Hub license'
+        echo $(OpenVINORootDir)
+    displayName: 'Print OpenVINORootDir after downloading OpenVINO'
 
   - task: CmdLine@2
-    displayName: 'Print contents of QNN SDK'
+    displayName: 'Print contents of OpenVINO Toolkit'
     inputs:
       script: |
-        dir $(QnnSDKRootDir)
+        dir $(OpenVINORootDir)
 
