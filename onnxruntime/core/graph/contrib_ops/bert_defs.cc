@@ -1684,6 +1684,59 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
           ONNX_NAMESPACE::defs::math::utils::MatMulShapeInference(ctx, 0, 1);
         }));
 
+constexpr const char* Gemm_ver1_doc = R"DOC(
+  Gemm that is flexible to support padding and different output types.)DOC";
+
+ONNX_MS_OPERATOR_SET_SCHEMA(
+    FlexGemm, 1,
+    OpSchema()
+        .SetDoc(Gemm_ver1_doc)
+        .Attr("transa",
+              "Whether to transpose A. Default value is 0.",
+              AttributeProto::INT,
+              static_cast<int64_t>(0))
+        .Attr("transb",
+              "Whether to transpose B. Default value is 0.",
+              AttributeProto::INT,
+              static_cast<int64_t>(0))
+        .Attr("pad_lda",
+              "pad length for lda.",
+              AttributeProto::INT,
+              static_cast<int64_t>(0))
+        .Attr("pad_ldb",
+              "pad length for ldb.",
+              AttributeProto::INT,
+              static_cast<int64_t>(0))
+        .Attr("pad_ldc",
+              "pad length for ldc.",
+              AttributeProto::INT,
+              static_cast<int64_t>(0))
+        .Attr("type_id",
+              "output type id.",
+              AttributeProto::INT,
+              static_cast<int64_t>(0))
+        // .Attr("use_fp8",
+        //     "output type id.",
+        //     AttributeProto::INT,
+        //     static_cast<int64_t>(0))
+        .Attr("alpha",
+              "alpha value.",
+              AttributeProto::FLOAT,
+              1.0f)
+        .Input(0, "X", "input tensor", "T")
+        .Input(1, "W", "input tensor", "T")
+        .Input(2, "bias", "bias tensor", "T", OpSchema::Optional)
+        .Output(0, "Y", "output tensor", "U")
+        .TypeConstraint("T", {"tensor(float)", "tensor(float16)", "tensor(bfloat16)"},
+                        "Constrain input to float tensors.")
+        .TypeConstraint("U", {"tensor(float)", "tensor(float16)", "tensor(bfloat16)"},
+                        "Constrain output to float tensors.")
+        .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+          ONNX_NAMESPACE::propagateElemTypeFromInputToOutput(ctx, 0, 0);
+          // TODO: handle transpose
+          ONNX_NAMESPACE::defs::math::utils::MatMulShapeInference(ctx, 0, 1);
+        }));
+
 constexpr const char* RemovePadding_ver1_doc = R"DOC(
 Compress transformer input by removing paddings. It assumes padding is on the right side of sequence.
 

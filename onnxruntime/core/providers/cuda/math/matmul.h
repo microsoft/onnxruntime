@@ -6,6 +6,10 @@
 #include "core/providers/cuda/cuda_kernel.h"
 #include "core/providers/cpu/math/matmul_helper.h"
 
+#ifndef DISABLE_CONTRIB_OPS
+#include "contrib_ops/cuda/llm/gemm_runner.h"
+#endif
+
 namespace onnxruntime {
 namespace cuda {
 template <typename T>
@@ -25,6 +29,12 @@ class MatMul final : public CudaKernel {
   Status ComputeDefault(OpKernelContext* context, MatMulComputeHelper& helper) const;
 
  private:
+
+ #ifndef DISABLE_CONTRIB_OPS
+  mutable std::unique_ptr<llm::IGemmRunner> gemm_runner_;
+  mutable std::mutex gemm_runner_mutex_;
+#endif
+
   const float alpha_;
   const bool trans_A_;
   const bool trans_B_;

@@ -60,7 +60,8 @@ def get_package_version(package_name: str):
 
 
 def load_onnx_model(
-    model_id: str, onnx_path: str | None = None, provider="CUDAExecutionProvider", use_io_binding: bool = False
+    model_id: str, onnx_path: str | None = None, provider="CUDAExecutionProvider", use_io_binding: bool = False,
+    enable_tuning: bool = False,
 ):
     """Load onnx model given pretrained model name and optional ONNX model path. If onnx_path is None,
     the default onnx model from optimum will be used.
@@ -68,6 +69,9 @@ def load_onnx_model(
     Args:
         model_id (str): pretrained model name or checkpoint path
         onnx_path (Optional[str], optional): path of onnx model to evaluate. Defaults to None.
+        provider (str, optional): Execution Provider to use. Defaults to "CUDAExecutionProvider".
+        use_io_binding (bool, optional): Use IO Binding for GPU. Defaults to False.
+
 
     Returns:
         model: ORTModel for the onnx model
@@ -84,12 +88,19 @@ def load_onnx_model(
         onnx_path = os.path.join(save_onnx_dir, "model.onnx")
         print("Model is exported to onnx file:", onnx_path)
     else:
+        provider_options = {}
+        if enable_tuning:
+            provider_options = {
+                "tunable_op_enable": 1,
+                "tunable_op_tuning_enable": 1,
+                #"enable_skip_layer_norm_strict_mode": True
+            }
         model = ORTModelForQuestionAnswering.from_pretrained(
             os.path.dirname(onnx_path),
             file_name=Path(onnx_path).name,
             provider=provider,
             use_io_binding=use_io_binding,
-            # provider_options={"enable_skip_layer_norm_strict_mode": True},
+            provider_options=provider_options,
         )
 
     return model, onnx_path
@@ -224,7 +235,7 @@ def main():
         if args.onnx is None:
             print("Exporting onnx model. It might take a few minutes...")
         start_time = time.time()
-        ort_model, onnx_path = load_onnx_model(pretrained_model_name, args.onnx, args.provider, args.use_io_binding)
+        ort_model, onnx_path = load_onnx_model(pretrained_model_name, args.onnx, args.provider, args.use_io_binding, args.tuning)
         latency = time.time() - start_time
         print(f"Onnx model exported or loaded in {latency:.1f} seconds")
 
@@ -319,6 +330,9 @@ def parse_arguments(argv=None):
 
     parser.add_argument("--use_io_binding", required=False, action="store_true", help="Use IO Binding for GPU.")
     parser.set_defaults(use_io_binding=False)
+
+    parser.add_argument("--tuning", required=False, action="store_true", help="Enable Tuning op.")
+    parser.set_defaults(tuning=False)
 
     args = parser.parse_args(argv)
 

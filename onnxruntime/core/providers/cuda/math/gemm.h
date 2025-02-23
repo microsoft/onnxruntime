@@ -5,6 +5,10 @@
 
 #include "core/providers/cuda/cuda_kernel.h"
 
+#ifndef DISABLE_CONTRIB_OPS
+#include "contrib_ops/cuda/llm/gemm_runner.h"
+#endif
+
 namespace onnxruntime {
 namespace cuda {
 template <typename T>
@@ -32,6 +36,11 @@ class Gemm final : public CudaKernel {
   bool trans_B_;
   float alpha_;
   float beta_;
+
+#ifndef DISABLE_CONTRIB_OPS
+  mutable std::unique_ptr<llm::IGemmRunner> gemm_runner_;
+  mutable std::mutex gemm_runner_mutex_;
+#endif
 };
 }  // namespace cuda
 }  // namespace onnxruntime

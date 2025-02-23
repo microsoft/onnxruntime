@@ -122,6 +122,28 @@ Status MatMul<T>::ComputeInternal(OpKernelContext* ctx) const {
   }
 
   if (GetTuningContext()->IsTunableOpEnabled()) {
+#ifndef DISABLE_CONTRIB_OPS
+    if (left_X->Shape().NumDimensions() == 3 && right_X->Shape().NumDimensions() == 2 && !(trans_batch_a_ || trans_batch_b_)) {
+      if (std::is_same<T, MLFloat16>::value || std::is_same<T, BFloat16>::value || std::is_same<T, float>::value) {
+        printf("use gemm runner\n");
+        if (gemm_runner_ == nullptr) {
+          std::lock_guard<std::mutex> lock(gemm_runner_mutex_);
+          if (gemm_runner_ == nullptr) {
+            int output_dtype = Y->GetElementType();
+            gemm_runner_ = llm::GemmRunner::Create(0, 0, 0, trans_a, trans_b, output_dtype, alpha_);
+          }
+        }
+
+        void* workspace = nullptr;
+        cudaStream_t stream = this->Stream(ctx);
+        cublasHandle_t cublas_handle = GetCublasHandle(ctx);
+        cublasLtHandle_t cublasLt_handle = CublasLtHandle();
+        gemm_runner_->Run(left_X, right_X, Y, workspace, stream, cublas_handle, cublasLt_handle);
+        return Status::OK();
+      }
+    }
+#endif
+
     return tunable::TunableMatMul<T>(alpha_, trans_a, trans_b, trans_batch_a_, trans_batch_b_, helper, this, ctx);
   }
 

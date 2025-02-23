@@ -147,6 +147,30 @@ Status Gemm<T>::ComputeDefault(OpKernelContext* ctx, int M, int N, int K) const 
     return Status::OK();
   }
 
+  #ifndef DISABLE_CONTRIB_OPS
+  if (GetTuningContext()->IsTunableOpEnabled()) {
+    if (beta_ == 0 || B == nullptr){
+      if (std::is_same<T, MLFloat16>::value || std::is_same<T, BFloat16>::value || std::is_same<T, float>::value) {
+        printf("use gemm runner\n");
+        if (gemm_runner_ == nullptr) {
+          std::lock_guard<std::mutex> lock(gemm_runner_mutex_);
+          if (gemm_runner_ == nullptr){
+            int output_dtype = Y->GetElementType();
+            gemm_runner_ = llm::GemmRunner::Create(0, 0, 0, trans_A_, trans_B_, output_dtype, alpha_);
+          }
+        }
+
+        void* workspace = nullptr;
+        cudaStream_t stream = this->Stream(ctx);
+        cublasHandle_t cublas_handle = GetCublasHandle(ctx);
+        cublasLtHandle_t cublasLt_handle = CublasLtHandle();
+        gemm_runner_->Run(X, W, Y, workspace, stream, cublas_handle, cublasLt_handle);
+        return Status::OK();
+      }
+    }
+  }
+  #endif
+
   CudaT alpha = ToCudaType<T>::FromFloat(alpha_);
   CudaT beta = ToCudaType<T>::FromFloat(beta_);
   // Gemm, note that CUDA assumes col-major, so Y(N,M) = alpha * op(W) x op(X) + beta * Y
