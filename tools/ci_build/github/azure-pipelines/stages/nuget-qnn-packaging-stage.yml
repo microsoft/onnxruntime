@@ -69,7 +69,7 @@ stages:
         FolderPath: '$(Build.ArtifactStagingDirectory)/nuget-artifact-merged'
         DoEsrp: ${{ parameters.DoEsrp }}
 
-    - task: 1ES.PublishPipelineArtifact@0
+    - task: 1ES.PublishPipelineArtifact@1
       displayName: 'Publish Pipeline NuGet Artifact'
       inputs:
         artifactName: 'drop-signed-nuget-qnn'
