@@ -17,18 +17,19 @@ using namespace onnxruntime::webgpu;
 
 class CopyKVCacheProgram final : public Program<CopyKVCacheProgram> {
  public:
-  CopyKVCacheProgram(const std::string& kernel_name, bool has_past)
-      : Program{kernel_name}, has_past_(has_past) {
+  CopyKVCacheProgram(const std::string& kernel_name, bool has_past, bool kv_BNSH, bool past_present_share_buffer)
+      : Program{kernel_name}, has_past_(has_past), kv_BNSH_(kv_BNSH), past_present_share_buffer_(past_present_share_buffer) {
   }
 
   Status GenerateShaderCode(ShaderHelper& sh) const override;
 
-  WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES({"past_sequence_length", ProgramUniformVariableDataType::Uint32},
-                                          {"kv_sequence_length", ProgramUniformVariableDataType::Uint32},
-                                          {"vectorized_head_size", ProgramUniformVariableDataType::Uint32});
+  WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES({"valid_present_size", ProgramUniformVariableDataType::Uint32},
+                                          {"past_sequence_length", ProgramUniformVariableDataType::Uint32});
 
  private:
   bool has_past_;
+  bool kv_BNSH_;
+  bool past_present_share_buffer_;
 };
 
 class FlashAttentionProgram final : public Program<FlashAttentionProgram> {
@@ -46,7 +47,10 @@ class FlashAttentionProgram final : public Program<FlashAttentionProgram> {
   Status GenerateShaderCode(ShaderHelper& sh) const override;
 
   WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES({"new_sequence_length", ProgramUniformVariableDataType::Uint32},
+                                          {"total_sequence_length", ProgramUniformVariableDataType::Uint32},
                                           {"present_sequence_length", ProgramUniformVariableDataType::Uint32},
+                                          {"is_gqa", ProgramUniformVariableDataType::Uint32},
+                                          {"n_reps", ProgramUniformVariableDataType::Uint32},
                                           {"alpha", ProgramUniformVariableDataType::Float32});
 
  private:
