@@ -63,9 +63,15 @@ jobs:
       OpenVINOVersion: ${{ parameters.OpenVINO }}
 
   - powershell: |
+      Get-ChildItem Env:
       Write-Output "Setting up OpenVINO environment variables"
       . "$(OpenVINORootDir)\setupvars.ps1"
+      Get-ChildItem Env:
     displayName: 'Set up OpenVINO environment'
+
+  - powershell: |
+      Get-ChildItem Env:
+    displayName: 'Dump environment'
 
   - template: templates/jobs/win-ci-build-steps.yml
     parameters:
