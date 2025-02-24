@@ -59,6 +59,63 @@ class FlashAttentionProgram final : public Program<FlashAttentionProgram> {
   int qkv_num_heads_;
 };
 
+class AttentionProbsProgram1 final : public Program<AttentionProbsProgram1> {
+ public:
+  AttentionProbsProgram1(const std::string& kernel_name,
+                         bool has_attention_bias, int tile_size, int components, int n_reps = 1)
+      : Program{kernel_name}, has_attention_bias_(has_attention_bias), tile_size_(tile_size), components_(components), n_reps_(n_reps) {
+  }
+
+  Status GenerateShaderCode(ShaderHelper& sh) const override;
+
+  WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES({"M", ProgramUniformVariableDataType::Uint32},
+                                          {"K", ProgramUniformVariableDataType::Uint32},
+                                          {"N", ProgramUniformVariableDataType::Uint32},
+                                          {"num_heads", ProgramUniformVariableDataType::Uint32},
+                                          {"head_size", ProgramUniformVariableDataType::Uint32},
+                                          {"alpha", ProgramUniformVariableDataType::Float32},
+                                          {"past_sequence_length", ProgramUniformVariableDataType::Uint32},
+                                          {"kv_sequence_length", ProgramUniformVariableDataType::Uint32},
+                                          {"present_sequence_length", ProgramUniformVariableDataType::Uint32},
+                                          {"n_reps", ProgramUniformVariableDataType::Uint32},
+                                          {"is_first_prompt", ProgramUniformVariableDataType::Uint32});
+
+  WEBGPU_PROGRAM_DEFINE_OVERRIDABLE_CONSTANTS({"TILE_SIZE", ProgramConstantDataType::Uint32});
+
+ private:
+  bool has_attention_bias_;
+  int tile_size_;
+  int components_;
+  int n_reps_;
+};
+
+class VxAttentionScoreProgram1 final : public Program<VxAttentionScoreProgram1> {
+ public:
+  VxAttentionScoreProgram1(const std::string& kernel_name, int tile_size, int n_reps = 1)
+      : Program{kernel_name}, tile_size_(tile_size), n_reps_(n_reps) {
+  }
+
+  Status GenerateShaderCode(ShaderHelper& sh) const override;
+
+  WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES({"M", ProgramUniformVariableDataType::Uint32},
+                                          {"K", ProgramUniformVariableDataType::Uint32},
+                                          {"N", ProgramUniformVariableDataType::Uint32},
+                                          {"num_heads", ProgramUniformVariableDataType::Uint32},
+                                          {"head_size", ProgramUniformVariableDataType::Uint32},
+                                          {"v_hidden_size", ProgramUniformVariableDataType::Uint32},
+                                          {"past_sequence_length", ProgramUniformVariableDataType::Uint32},
+                                          {"kv_sequence_length", ProgramUniformVariableDataType::Uint32},
+                                          {"present_sequence_length", ProgramUniformVariableDataType::Uint32},
+                                          {"n_reps", ProgramUniformVariableDataType::Uint32},
+                                          {"is_first_prompt", ProgramUniformVariableDataType::Uint32});
+
+  WEBGPU_PROGRAM_DEFINE_OVERRIDABLE_CONSTANTS({"TILE_SIZE", ProgramConstantDataType::Uint32});
+
+ private:
+  int tile_size_;
+  int n_reps_;
+};
+
 Status ApplyFlashAttention(const Tensor* Q, const Tensor* K, const Tensor* V, const Tensor* attention_bias,
                            Tensor* output, const Tensor* past_key, Tensor* present_key, const Tensor* past_value, Tensor* present_value,
                            const WebgpuAttentionParameters& parameters, onnxruntime::webgpu::ComputeContext& context);
