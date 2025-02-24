@@ -1291,9 +1291,7 @@ if (NOT onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
       ${ep_weight_sharing_ctx_gen_src_patterns}
       )
     onnxruntime_add_executable(ep_weight_sharing_ctx_gen ${ep_weight_sharing_ctx_gen_src})
-    target_include_directories(ep_weight_sharing_ctx_gen PRIVATE   ${ONNXRUNTIME_ROOT}
-          ${onnxruntime_graph_header} ${onnxruntime_exec_src_dir}
-          ${CMAKE_CURRENT_BINARY_DIR})
+    target_include_directories(ep_weight_sharing_ctx_gen PRIVATE ${ONNXRUNTIME_ROOT} ${CMAKE_CURRENT_BINARY_DIR})
     if (WIN32)
       target_compile_options(ep_weight_sharing_ctx_gen PRIVATE ${disabled_warnings})
       if (NOT DEFINED SYS_PATH_LIB)
@@ -1304,7 +1302,7 @@ if (NOT onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
     if(WIN32)
       target_link_libraries(ep_weight_sharing_ctx_gen PRIVATE debug dbghelp advapi32)
     endif()
-    target_link_libraries(ep_weight_sharing_ctx_gen PRIVATE onnx_test_runner_common onnxruntime_test_utils onnxruntime_common onnxruntime_graph onnxruntime_session onnxruntime_providers onnxruntime_framework onnxruntime_util onnxruntime_mlas onnxruntime_optimizer onnxruntime_flatbuffers onnx_test_data_proto ${onnxruntime_test_providers_libs} ${onnxruntime_EXTERNAL_LIBRARIES} ${GETOPT_LIB_WIDE} ${SYS_PATH_LIB} ${CMAKE_DL_LIBS})
+    target_link_libraries(ep_weight_sharing_ctx_gen PRIVATE onnxruntime_session ${onnxruntime_test_providers_libs} ${onnxruntime_EXTERNAL_LIBRARIES} ${GETOPT_LIB_WIDE})
 
     set_target_properties(ep_weight_sharing_ctx_gen PROPERTIES FOLDER "ONNXRuntimeTest")
   endif()

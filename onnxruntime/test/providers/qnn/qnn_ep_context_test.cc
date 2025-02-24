@@ -43,7 +43,7 @@ static const std::string& GetNodeAttr(const Node& node, const std::string& attr_
   return default_val;
 }
 
-// from the context ache Onnx model, find the EPContext node with main_context=1,
+// from the context cache Onnx model, find the EPContext node with main_context=1,
 // and get the QNN context binary file name
 static void GetContextBinaryFileName(const std::string onnx_ctx_file,
                                      std::string& last_ctx_bin_file,
