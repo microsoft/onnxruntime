@@ -41,6 +41,7 @@ void CreateLogicalOpBuilder(const std::string& op_type, OpBuilderRegistrations& 
 void CreateLRNOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
 void CreateLstmOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
 void CreateMaxMinOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
+void CreateMultiHeadAttentionOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
 void CreateNormalizationOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
 void CreatePadOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
 void CreatePoolOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
