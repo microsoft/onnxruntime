@@ -102,7 +102,7 @@ jobs:
       targetPath: '$(Build.BinariesDirectory)/dist'
       artifactName: onnxruntime-${{ parameters.ep }}
 
-  - task: 1ES.PublishPipelineArtifact@0
+  - task: 1ES.PublishPipelineArtifact@1
     displayName: 'Publish Test Binaries'
     inputs:
       artifactName: 'drop-linux-cpu-${{ parameters.arch }}-${{ parameters.ep }}'
