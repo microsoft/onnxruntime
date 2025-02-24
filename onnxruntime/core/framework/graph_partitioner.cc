@@ -667,9 +667,9 @@ static Status InlineFunctionsAOTImpl(const ExecutionProviders& execution_provide
 }
 
 // Validate the ep_context_path to make sure it is file path and check whether the file exist already
-static Status EpContextFilePathCheck(const std::string& ep_context_path,
-                                     const std::filesystem::path& model_path) {
-  std::filesystem::path context_cache_path;
+static Status EpContextFilePathCheckOrGet(const std::filesystem::path& ep_context_path,
+                                           const std::filesystem::path& model_path,
+                                           std::filesystem::path& context_cache_path) {
   if (!ep_context_path.empty()) {
     context_cache_path = ep_context_path;
     if (!context_cache_path.has_filename()) {
@@ -677,7 +677,11 @@ static Status EpContextFilePathCheck(const std::string& ep_context_path,
     }
   } else if (!model_path.empty()) {
     auto pos = model_path.native().find_last_of(ORT_TSTR("."));
-    context_cache_path = model_path.native().substr(0, pos) + ORT_TSTR("_ctx.onnx");
+    if (pos != std::string::npos) {
+      context_cache_path = model_path.native().substr(0, pos) + ORT_TSTR("_ctx.onnx");
+    } else {
+      context_cache_path = model_path.native() + ORT_TSTR("_ctx.onnx");
+    }
   } else {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Both ep_context_path and model_path are empty.");
   }
@@ -715,20 +719,7 @@ static Status CreateEpContextModel(const ExecutionProviders& execution_providers
   };
 
   std::filesystem::path context_cache_path;
-  const std::filesystem::path& model_path = graph.ModelPath();
-
-  if (!ep_context_path.empty()) {
-    context_cache_path = ep_context_path;
-  } else if (!model_path.empty()) {
-    auto pos = model_path.native().find_last_of(ORT_TSTR("."));
-    if (pos != std::string::npos) {
-      context_cache_path = model_path.native().substr(0, pos) + ORT_TSTR("_ctx.onnx");
-    } else {
-      context_cache_path = model_path.native() + ORT_TSTR("_ctx.onnx");
-    }
-  } else {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Both ep_context_path and model_path are empty.");
-  }
+  ORT_RETURN_IF_ERROR(EpContextFilePathCheckOrGet(ep_context_path, graph.ModelPath(), context_cache_path));
 
   Model ep_context_model(graph.Name(), false, graph.GetModel().MetaData(),
                          graph.GetModel().ModelPath(),  // use source model path so that external initializers can find the data file path
@@ -1074,7 +1065,8 @@ Status GraphPartitioner::Partition(Graph& graph, FuncManager& func_mgr,
     if (ep_context_enabled) {
       std::string ep_context_path = config_options.GetConfigOrDefault(kOrtSessionOptionEpContextFilePath, "");
       // Check before EP compile graphs
-      ORT_RETURN_IF_ERROR(EpContextFilePathCheck(ep_context_path, graph.ModelPath()));
+      std::filesystem::path context_cache_path;
+      ORT_RETURN_IF_ERROR(EpContextFilePathCheckOrGet(ep_context_path, graph.ModelPath(), context_cache_path));
     }
 
     // We use this only if Resource Aware Partitioning is enabled for any of the EPs
