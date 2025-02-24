@@ -19,12 +19,10 @@ namespace onnxruntime {
       Dropout<T1, T2>);
 
 #define REGISTER_KERNEL_TYPED(OpName, VER, T1, T2)                    \
-  ONNX_OPERATOR_TYPED_KERNEL_EX(                                      \
+  ONNX_CPU_OPERATOR_TYPED_KERNEL(                                     \
       OpName,                                                         \
-      kOnnxDomain,                                                    \
       VER,                                                            \
       T1##_##T2,                                                      \
-      kCpuExecutionProvider,                                          \
       KernelDefBuilder()                                              \
           .TypeConstraint("T", DataTypeImpl::GetTensorType<T1>())     \
           .TypeConstraint("T1", DataTypeImpl::GetTensorType<T2>())    \
@@ -42,8 +40,14 @@ REGISTER_KERNEL_VERSIONED_TYPED(Dropout, 12, 12, float, double)
 REGISTER_KERNEL_VERSIONED_TYPED(Dropout, 12, 12, double, float)
 REGISTER_KERNEL_VERSIONED_TYPED(Dropout, 12, 12, double, double)
 
-REGISTER_KERNEL_TYPED(Dropout, 13, float, float)
-REGISTER_KERNEL_TYPED(Dropout, 13, float, double)
-REGISTER_KERNEL_TYPED(Dropout, 13, double, float)
-REGISTER_KERNEL_TYPED(Dropout, 13, double, double)
+REGISTER_KERNEL_VERSIONED_TYPED(Dropout, 13, 21, float, float)
+REGISTER_KERNEL_VERSIONED_TYPED(Dropout, 13, 21, float, double)
+REGISTER_KERNEL_VERSIONED_TYPED(Dropout, 13, 21, double, float)
+REGISTER_KERNEL_VERSIONED_TYPED(Dropout, 13, 21, double, double)
+
+// Opset 22 supports BFloat16
+REGISTER_KERNEL_TYPED(Dropout, 22, float, float)
+REGISTER_KERNEL_TYPED(Dropout, 22, float, double)
+REGISTER_KERNEL_TYPED(Dropout, 22, double, float)
+REGISTER_KERNEL_TYPED(Dropout, 22, double, double)
 }  // namespace onnxruntime

@@ -108,7 +108,10 @@ ds = SampleData(x, y)
 
 print("Initialize deepspeed")
 model_engine, optimizer, _, _ = deepspeed.initialize(
-    args=args, model=model, model_parameters=params, training_data=ds  # (x,y)#
+    args=args,
+    model=model,
+    model_parameters=params,
+    training_data=ds,  # (x,y)#
 )
 
 for step in range(args.steps):

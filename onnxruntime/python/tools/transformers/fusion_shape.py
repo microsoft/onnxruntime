@@ -4,7 +4,6 @@
 # --------------------------------------------------------------------------
 
 from logging import getLogger
-from typing import Dict, List, Union
 
 from fusion_base import Fusion
 from fusion_utils import FusionUtils
@@ -22,13 +21,13 @@ class FusionShape(Fusion):
         self.shape_infer = None
         self.shape_infer_done = False
 
-    def get_dimensions_from_tensor_proto(self, tensor_proto: TensorProto) -> Union[int, None]:
+    def get_dimensions_from_tensor_proto(self, tensor_proto: TensorProto) -> int | None:
         if tensor_proto.type.tensor_type.HasField("shape"):
             return len(tensor_proto.type.tensor_type.shape.dim)
         else:
             return None
 
-    def get_dimensions(self, input_name: str) -> Union[int, None]:
+    def get_dimensions(self, input_name: str) -> int | None:
         shape = self.model.get_shape(input_name)
         if shape is not None:
             return len(shape)
@@ -45,8 +44,8 @@ class FusionShape(Fusion):
     def fuse(
         self,
         concat_node: NodeProto,
-        input_name_to_nodes: Dict[str, List[NodeProto]],
-        output_name_to_node: Dict[str, NodeProto],
+        input_name_to_nodes: dict[str, list[NodeProto]],
+        output_name_to_node: dict[str, NodeProto],
     ):
         #
         # Simplify subgraph like

@@ -22,7 +22,6 @@ import logging
 import os
 import tempfile
 from pathlib import Path
-from typing import Dict, List, Optional, Union
 
 import coloredlogs
 from fusion_options import FusionOptions
@@ -72,17 +71,17 @@ MODEL_TYPES = {
 
 
 def optimize_by_onnxruntime(
-    onnx_model: Optional[Union[str, ModelProto]] = None,
+    onnx_model: str | ModelProto | None = None,
     use_gpu: bool = False,
-    optimized_model_path: Optional[str] = None,
-    opt_level: Optional[int] = 99,
-    disabled_optimizers: List[str] = [],  # noqa: B006
+    optimized_model_path: str | None = None,
+    opt_level: int | None = 99,
+    disabled_optimizers: list[str] = [],  # noqa: B006
     verbose: bool = False,
     save_as_external_data: bool = False,
     external_data_filename: str = "",
     external_data_file_threshold: int = 1024,
     *,
-    provider: Optional[str] = None,
+    provider: str | None = None,
     **deprecated_kwargs,
 ) -> str:
     """
@@ -217,7 +216,7 @@ def optimize_by_fusion(
     model_type: str = "bert",
     num_heads: int = 0,
     hidden_size: int = 0,
-    optimization_options: Optional[FusionOptions] = None,
+    optimization_options: FusionOptions | None = None,
 ) -> OnnxModel:
     """Optimize Model by graph fusion logic.
 
@@ -274,17 +273,17 @@ def optimize_by_fusion(
 
 
 def optimize_model(
-    input: Union[str, ModelProto],
+    input: str | ModelProto,
     model_type: str = "bert",
     num_heads: int = 0,
     hidden_size: int = 0,
-    optimization_options: Optional[FusionOptions] = None,
-    opt_level: Optional[int] = None,
+    optimization_options: FusionOptions | None = None,
+    opt_level: int | None = None,
     use_gpu: bool = False,
     only_onnxruntime: bool = False,
     verbose: bool = False,
     *,
-    provider: Optional[str] = None,
+    provider: str | None = None,
 ) -> OnnxModel:
     """Optimize Model by OnnxRuntime and/or python fusion logic.
 
@@ -414,7 +413,7 @@ def optimize_model(
     return optimizer
 
 
-def get_fusion_statistics(optimized_model_path: str) -> Dict[str, int]:
+def get_fusion_statistics(optimized_model_path: str) -> dict[str, int]:
     """
     Get counter of fused operators in optimized model.
 
@@ -537,7 +536,7 @@ def _parse_arguments():
         "--disable_symbolic_shape_infer",
         required=False,
         action="store_true",
-        help="diable symbolic shape inference",
+        help="disable symbolic shape inference",
     )
     parser.set_defaults(disable_symbolic_shape_infer=False)
 
@@ -548,6 +547,14 @@ def _parse_arguments():
         help="convert the model to packing mode. Only available for BERT like model",
     )
     parser.set_defaults(convert_to_packing_mode=False)
+
+    parser.add_argument(
+        "--convert_attribute",
+        required=False,
+        action="store_true",
+        help="convert attributes when using a rewritten ONNX model (e.g. Dynamo-exported model from ONNX Script)",
+    )
+    parser.set_defaults(convert_attribute=False)
 
     args = parser.parse_args()
 
@@ -609,7 +616,7 @@ def main():
         else:
             logger.warning("Packing mode only supports BERT like models")
 
-    optimizer.save_model_to_file(args.output, args.use_external_data_format)
+    optimizer.save_model_to_file(args.output, args.use_external_data_format, convert_attribute=args.convert_attribute)
 
 
 if __name__ == "__main__":

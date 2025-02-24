@@ -7,9 +7,9 @@ import copy
 import gc
 import inspect
 from collections import OrderedDict, abc
+from collections.abc import Callable, Mapping, Sequence
 from functools import partial
 from logging import Logger
-from typing import Callable, Dict, List, Mapping, Optional, Sequence, Tuple
 
 import torch
 
@@ -78,7 +78,7 @@ class _OutputIdentityOp(torch.autograd.Function):
 
 def deepcopy_model_input(
     *args, **kwargs
-) -> Tuple[Sequence[ORTModelInputOutputType], Mapping[str, ORTModelInputOutputType]]:
+) -> tuple[Sequence[ORTModelInputOutputType], Mapping[str, ORTModelInputOutputType]]:
     def extract_tensor(value):
         if isinstance(value, torch.Tensor):
             if value.requires_grad:
@@ -101,7 +101,7 @@ def deepcopy_model_input(
 
 def _extract_schema(
     data: ORTModelInputOutputType, device
-) -> Tuple[Sequence[ORTModelInputOutputType], ORTModelInputOutputSchemaType]:
+) -> tuple[Sequence[ORTModelInputOutputType], ORTModelInputOutputSchemaType]:
     try:
         flatten_data, schema = extract_data_and_schema(data, constant_as_tensor=True, device=device)
         return flatten_data, schema
@@ -119,15 +119,15 @@ class _FlattenedModule(torch.nn.Module):
         # original module's forward function.
         # So we need set those information that are needed to unflatten the args and kwargs, before calling the
         # torch.export.
-        self._device: Optional[torch.device] = None
-        self._args_schema: Optional[ORTModelInputOutputSchemaType] = None
-        self._kwargs_schema: Optional[ORTModelInputOutputSchemaType] = None
-        self._num_positionals: Optional[int] = None
+        self._device: torch.device | None = None
+        self._args_schema: ORTModelInputOutputSchemaType | None = None
+        self._kwargs_schema: ORTModelInputOutputSchemaType | None = None
+        self._num_positionals: int | None = None
 
         # Similarly, to make torch.export happy, we need to flatten the original module's outputs into a 1-D list of tensors.
         # Need to keep the output schema to unflatten the outputs back to the original structure.
         # Then those code depends on the original structure of the outputs can work properly.
-        self._output_schema: Optional[ORTModelInputOutputSchemaType] = None
+        self._output_schema: ORTModelInputOutputSchemaType | None = None
 
     def forward(self, *args):
         new_args = unflatten_data_using_schema(args[: self._num_positionals], self._args_schema)
@@ -150,17 +150,17 @@ class _FlattenedModule(torch.nn.Module):
 class ModelInfoForExport:
     def __init__(
         self,
-        onnx_graph_input_names: List[str],
-        onnx_graph_input_names_require_grad: List[str],
-        onnx_graph_input_dynamic_axes_map: Dict[str, Dict[int, str]],
-        onnx_graph_input_shapes: List[List[int]],
-        onnx_graph_input_data_accessor_user_defined: Optional[Dict[str, callable]] = None,
-        onnx_graph_input_const_as_tensor: Optional[Dict[str, torch.device]] = None,
-        onnx_graph_input_arg_schema: Optional[Dict[str, ORTModelInputOutputSchemaType]] = None,
-        onnx_graph_input_kwarg_schema: Optional[Dict[str, ORTModelInputOutputSchemaType]] = None,
+        onnx_graph_input_names: list[str],
+        onnx_graph_input_names_require_grad: list[str],
+        onnx_graph_input_dynamic_axes_map: dict[str, dict[int, str]],
+        onnx_graph_input_shapes: list[list[int]],
+        onnx_graph_input_data_accessor_user_defined: dict[str, callable] | None = None,
+        onnx_graph_input_const_as_tensor: dict[str, torch.device] | None = None,
+        onnx_graph_input_arg_schema: dict[str, ORTModelInputOutputSchemaType] | None = None,
+        onnx_graph_input_kwarg_schema: dict[str, ORTModelInputOutputSchemaType] | None = None,
         num_positional_args: int = 0,
-        export_mode: Optional[int] = None,
-        export_extra_kwargs: Optional[Dict[str, any]] = None,
+        export_mode: int | None = None,
+        export_extra_kwargs: dict[str, any] | None = None,
     ):
         # Value can be either torch.onnx.TrainingMode.TRAINING or torch.onnx.TrainingMode.EVAL
         self.export_mode = export_mode
@@ -172,41 +172,41 @@ class ModelInfoForExport:
         # Input names parsed and then flatten from the model's forward function signature.
         # This should contains ONLY the user defined input names
         # Be noted: some of the input might not be used by the model for its compute.
-        self.onnx_graph_input_names: List[str] = onnx_graph_input_names
+        self.onnx_graph_input_names: list[str] = onnx_graph_input_names
 
         # A subset of onnx_graph_input_names.
         # Input names that require gradient parsed and then flatten from the model's forward function signature
         # This should contains ONLY the user defined input names
         # Be noted: some of the input might not be used by the model for its compute.
-        self.onnx_graph_input_names_require_grad: List[str] = onnx_graph_input_names_require_grad
+        self.onnx_graph_input_names_require_grad: list[str] = onnx_graph_input_names_require_grad
 
         # Create symbolic names for each dimension of the graph input (e.g. onnx_graph_input_names).
         # The key is the input name, the value is a dict of {dim_index: symbolic_dim_name}
         # e.g. {"input1": {0: "input1_dim0", 1: "input1_dim1"}, "input2": {0: "input2_dim0"}}
-        self.onnx_graph_input_dynamic_axes_map: Dict[str, Dict[int, str]] = onnx_graph_input_dynamic_axes_map
+        self.onnx_graph_input_dynamic_axes_map: dict[str, dict[int, str]] = onnx_graph_input_dynamic_axes_map
 
-        self.onnx_graph_input_shapes: List[List[int]] = onnx_graph_input_shapes
+        self.onnx_graph_input_shapes: list[list[int]] = onnx_graph_input_shapes
 
         # The input args schema for the original model's forward function.
         # Only contains the schema for those inputs used by the model for its compute (e.g. as the inputs
         # of the export model).
-        self.onnx_graph_input_arg_schema: Dict[str, ORTModelInputOutputSchemaType] = onnx_graph_input_arg_schema
+        self.onnx_graph_input_arg_schema: dict[str, ORTModelInputOutputSchemaType] = onnx_graph_input_arg_schema
 
         # The input kwargs schema for the original model's forward function.
         # Only contains the schema for those inputs used by the model for its compute (e.g. as the inputs
         # of the export model).
-        self.onnx_graph_input_kwarg_schema: Dict[str, ORTModelInputOutputSchemaType] = onnx_graph_input_kwarg_schema
+        self.onnx_graph_input_kwarg_schema: dict[str, ORTModelInputOutputSchemaType] = onnx_graph_input_kwarg_schema
 
         self.num_positional_args: int = num_positional_args
 
         # A function to access the input data from the args and kwargs.
         # If it is not None, the length is same as onnx_graph_input_names.
         # For i-th input name, we can use the i-th function to get the input data from args and kwargs.
-        self.onnx_graph_input_data_accessor_user_defined: Optional[Dict[str, callable]] = (
+        self.onnx_graph_input_data_accessor_user_defined: dict[str, callable] | None = (
             onnx_graph_input_data_accessor_user_defined
         )
 
-        self.onnx_graph_input_const_as_tensor: Optional[Dict[str, torch.device]] = onnx_graph_input_const_as_tensor
+        self.onnx_graph_input_const_as_tensor: dict[str, torch.device] | None = onnx_graph_input_const_as_tensor
 
     def __str__(self) -> str:
         return f"""ModelInfoForExport class:
@@ -237,14 +237,14 @@ class SkipRetValue:
 
 
 def parse_inputs_for_onnx_export(
-    all_input_parameters: List[inspect.Parameter],
+    all_input_parameters: list[inspect.Parameter],
     args: Sequence[ORTModelInputOutputType],
     kwargs: Mapping[str, ORTModelInputOutputType],
     constant_as_tensor: bool,
     device: torch.device,
     export_mode: int,
     logger: Logger,
-    export_extra_kwargs: Optional[Dict[str, any]] = None,
+    export_extra_kwargs: dict[str, any] | None = None,
 ) -> ModelInfoForExport:
     """Parses through the model inputs and returns _InputInfo.
 
@@ -275,7 +275,7 @@ def parse_inputs_for_onnx_export(
     arg_tensor_idx = [-1]
     kwarg_tensor_idx = [-1]
 
-    def _add_dynamic_shape(name, input) -> Dict[str, Dict[int, str]]:
+    def _add_dynamic_shape(name, input) -> dict[str, dict[int, str]]:
         dynamic_axes[name] = {}
         for dim_idx in range(len(input.shape)):
             dynamic_axes[name].update({dim_idx: f"{name}_dim{dim_idx}"})
@@ -285,7 +285,7 @@ def parse_inputs_for_onnx_export(
         logger.info(f"Received input of type {type(data)} is treated as a constant by ORT by default.")
 
     def _add_input(
-        name: str, input_value, onnx_graph_input_names: List[str], cur_func: Callable, tensor_idx: List[int]
+        name: str, input_value, onnx_graph_input_names: list[str], cur_func: Callable, tensor_idx: list[int]
     ):
         """Returns number of expanded non none inputs that _add_input processed"""
 
@@ -396,16 +396,16 @@ def parse_inputs_for_onnx_export(
 
         raise ORTModuleIOError(f"ORTModule does not support input type {type(value)} for input {name}")
 
-    visited_input_names: List[str] = []
+    visited_input_names: list[str] = []
 
-    onnx_graph_input_names: List[str] = []
-    dynamic_axes: Dict[str, Dict[int, str]] = {}
-    input_names_require_grad: List[str] = []
-    input_shape: List[List[int]] = []
+    onnx_graph_input_names: list[str] = []
+    dynamic_axes: dict[str, dict[int, str]] = {}
+    input_names_require_grad: list[str] = []
+    input_shape: list[list[int]] = []
     input_arg_schema: ORTModelInputOutputSchemaType = []
     input_kwarg_schema: ORTModelInputOutputSchemaType = OrderedDict()
-    data_accessors: Dict[str, Callable] = OrderedDict()
-    const_to_tensor_inputs: Dict[str, torch.device] = OrderedDict()
+    data_accessors: dict[str, Callable] = OrderedDict()
+    const_to_tensor_inputs: dict[str, torch.device] = OrderedDict()
     num_positional_args: int = 0
 
     var_positional_idx = 0
@@ -511,7 +511,7 @@ def calculate_total_parameter_size_in_bytes(module: torch.nn.Module) -> int:
     return total_size
 
 
-def can_module_be_deep_cloned(module: torch.nn.Module, device: Optional[torch.device]) -> bool:
+def can_module_be_deep_cloned(module: torch.nn.Module, device: torch.device | None) -> bool:
     """Check if the module can be cloned
 
     If the 2 times total module parameter size >= device memory, the module cannot be cloned.
@@ -568,8 +568,8 @@ def parse_outputs_for_onnx_export_and_extract_schema(
         sample_outputs = model_copy(*sample_args_copy, **sample_kwargs_copy)
 
         # Parse the output and extract the output_names and output_dynamic_axes to be used for onnx export
-        output_names: List[str] = []
-        output_dynamic_axes: Dict[str, Dict[int, str]] = {}
+        output_names: list[str] = []
+        output_dynamic_axes: dict[str, dict[int, str]] = {}
         for output_idx, output in enumerate(sample_outputs):
             output_name = f"output-{output_idx}"
             output_names.append(output_name)

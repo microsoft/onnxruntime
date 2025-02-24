@@ -6,7 +6,7 @@
 import itertools
 import warnings
 from collections import defaultdict
-from typing import Any, Dict, List, Set, Tuple
+from typing import Any
 
 import sympy
 from onnx import NodeProto, helper
@@ -37,31 +37,31 @@ class NodeGroup:
 
     """
 
-    def __init__(self, node: NodeProto, reduce_axes: List[int], keep_dims: int, node_arg_infos: Dict[str, TensorInfo]):
+    def __init__(self, node: NodeProto, reduce_axes: list[int], keep_dims: int, node_arg_infos: dict[str, TensorInfo]):
         self._node_arg_infos = node_arg_infos
-        self.nodes_groups: List[Any] = [node]
-        self.target_shape: List[sympy.Expr] = self._get_target_shape(node)
+        self.nodes_groups: list[Any] = [node]
+        self.target_shape: list[sympy.Expr] = self._get_target_shape(node)
         rank = len(self.target_shape)
-        self.reduce_axes: List[int] = sort_reduce_axes(reduce_axes, rank)
+        self.reduce_axes: list[int] = sort_reduce_axes(reduce_axes, rank)
         x_dims = [self.target_shape[dim] for dim in range(rank) if dim not in self.reduce_axes]
         # x_numel is meant to hint how many rows of tensor will be processed by each kernel.
         # x is same as CUDA block in X direction.
         x_numel: sympy.Expr = sympy.prod(x_dims) if len(x_dims) > 0 else sympy.Integer(1)
-        r_dims: List[sympy.Expr] = [self.target_shape[dim] for dim in self.reduce_axes]
+        r_dims: list[sympy.Expr] = [self.target_shape[dim] for dim in self.reduce_axes]
         # r_numel is meant to hint how many elements in a row of tensor will be processed by each kernel.
         # r is a abbreviation of reduction, so, it's only used for reduction nodes.
         r_numel: sympy.Expr = sympy.prod(r_dims) if len(r_dims) > 0 else sympy.Integer(1)
         self.autotune_configs: AutotuneConfigs = AutotuneConfigs(
             x_numel, r_numel, len(self.reduce_axes) == 0 or self.reduce_axes[-1] == rank - 1
         )
-        self.reduced_args: Set[str] = set()
+        self.reduced_args: set[str] = set()
         if keep_dims != 1:
             self.reduced_args.add(node.output[0])
 
     # Check if shape can be broadcasted to target_shape.
     # For example, [1, 3, 1, 1] can be broadcasted to [1, 3, 5, 7].
     # and we support `keepdims = false``, so [1, 3, 5, 7] is compatible with [1, 3, 5].
-    def _compatible_shape(self, shape: List[sympy.Expr], split_if_different: bool) -> bool:
+    def _compatible_shape(self, shape: list[sympy.Expr], split_if_different: bool) -> bool:
         if split_if_different:
             return shape == self.target_shape
         if len(shape) > len(self.target_shape):
@@ -88,7 +88,7 @@ class NodeGroup:
     #     2. The target shape of a group is determined by the first node in the group.
     #       we call it dominators, and it determinate the partition strategy of X_numel/R_numel.
     #       A group can't have multiple dominators.
-    def compatible(self, node: NodeProto, reduce_axes: List[int], keep_dims: int, split_if_different: bool) -> bool:
+    def compatible(self, node: NodeProto, reduce_axes: list[int], keep_dims: int, split_if_different: bool) -> bool:
         target_shape = self._get_target_shape(node)
         if is_reduction_node(node):
             # If the following nodes are all elementwise nodes on reduce output shape.
@@ -105,7 +105,7 @@ class NodeGroup:
 
     # 1. Create a new group with the reduction node.
     # 2. Add this node to the current group.
-    def add_node(self, node: NodeProto, reduce_axes: List[int], keep_dims: int):
+    def add_node(self, node: NodeProto, reduce_axes: list[int], keep_dims: int):
         if is_reduction_node(node):
             group = NodeGroup(node, reduce_axes, keep_dims, self._node_arg_infos)
             self.nodes_groups.append(group)
@@ -142,7 +142,7 @@ class NodeGroup:
         return node_map, reduce_nodes
 
     # finalize the group, and return the flatten nodes
-    def flatten(self, sorted_nodes: List[NodeProto]) -> Tuple[List[NodeProto], List[List[int]]]:
+    def flatten(self, sorted_nodes: list[NodeProto]) -> tuple[list[NodeProto], list[list[int]]]:
         if self.autotune_configs.requires_for_loop:
             layers = []
             group_layer = [self]
@@ -193,12 +193,12 @@ class KernelIO:
     """
 
     def __init__(self):
-        self.module_inputs: List[str] = []
-        self.cross_kernel_inputs: List[str] = []
-        self.constants: List[str] = []
-        self.module_outputs: List[str] = []
-        self.cross_kernel_outputs: List[str] = []
-        self.internal_args: List[str] = []
+        self.module_inputs: list[str] = []
+        self.cross_kernel_inputs: list[str] = []
+        self.constants: list[str] = []
+        self.module_outputs: list[str] = []
+        self.cross_kernel_outputs: list[str] = []
+        self.internal_args: list[str] = []
 
 
 class GraphLowering:
@@ -217,51 +217,50 @@ class GraphLowering:
 
     def __init__(self, sorted_graph: SortedGraph):
         self._sorted_graph: SortedGraph = sorted_graph
-        self._node_arg_infos: Dict[str, TensorInfo] = sorted_graph.node_arg_infos
-        self._module_inputs: List[TensorArg] = []
-        self._module_outputs: List[TensorArg] = []
-        self._module_constants: List[TensorArg] = []
-        self._module_input_names: Set[str] = set()
-        self._module_output_names: Set[str] = set()
-        self._module_constant_names: Set[str] = set()
-        self._tensor_args: Dict[str, TensorArg] = {}
+        self._node_arg_infos: dict[str, TensorInfo] = sorted_graph.node_arg_infos
+        self._module_inputs: list[TensorArg] = []
+        self._module_outputs: list[TensorArg] = []
+        self._module_constants: list[TensorArg] = []
+        self._module_input_names: set[str] = set()
+        self._module_output_names: set[str] = set()
+        self._module_constant_names: set[str] = set()
+        self._tensor_args: dict[str, TensorArg] = {}
         # Extract module inputs, outputs and constants.
         self._extract_module_io()
 
         # Group nodes into NodeGroups, each NodeGroup represents a kernel.
-        self._groups: List[NodeGroup] = []
+        self._groups: list[NodeGroup] = []
         self._group_nodes()
 
         # Convert NodeGroups to KernelNodes.
-        self._kernel_nodes: List[KernelNode] = []
-        self._kernel_io_list: List[KernelIO] = []
+        self._kernel_nodes: list[KernelNode] = []
+        self._kernel_io_list: list[KernelIO] = []
         self._lower()
 
     # A module is map to a real onnx graph.
     def _extract_module_io(self):
         graph = self._sorted_graph.original_graph
         self._module_inputs = [TensorArg(input.name, self._node_arg_infos[input.name]) for input in graph.input]
-        self._module_input_names = set(arg.name for arg in self._module_inputs)
+        self._module_input_names = {arg.name for arg in self._module_inputs}
         self._module_outputs = [TensorArg(output.name, self._node_arg_infos[output.name]) for output in graph.output]
-        self._module_output_names = set(arg.name for arg in self._module_outputs)
+        self._module_output_names = {arg.name for arg in self._module_outputs}
         for initializer in graph.initializer:
             data = to_torch_tensor(initializer)
             self._module_constants.append(TensorArg(initializer.name, data=data))
         for const_node in self._sorted_graph.const_nodes:
             data = to_torch_tensor(const_node)
             self._module_constants.append(TensorArg(const_node.output[0], data=data))
-        self._module_constant_names = set(arg.name for arg in self._module_constants)
-        self._tensor_args = dict(
-            (arg.name, arg)
-            for arg in itertools.chain(self._module_inputs, self._module_outputs, self._module_constants)
-        )
+        self._module_constant_names = {arg.name for arg in self._module_constants}
+        self._tensor_args = {
+            arg.name: arg for arg in itertools.chain(self._module_inputs, self._module_outputs, self._module_constants)
+        }
 
-    def _get_reduce_info(self, node) -> Tuple[int, List[int]]:
+    def _get_reduce_info(self, node) -> tuple[int, list[int]]:
         assert is_reduction_node(node)
         input_rank = len(self._node_arg_infos[node.input[0]].shape)
         return get_reduce_info(node, self._sorted_graph.original_graph, input_rank)
 
-    def _process_node(self, node: NodeProto, precessors: Dict[str, List[NodeProto]], group: NodeGroup):
+    def _process_node(self, node: NodeProto, precessors: dict[str, list[NodeProto]], group: NodeGroup):
         dependent_nodes = set()
         dependent_nodes.add(node.name)
         for precessor in precessors[node.name]:
@@ -328,7 +327,7 @@ class GraphLowering:
             self._groups.append(group_i)
             flag.add(i)
 
-    def _get_node_io(self, node: NodeProto) -> Tuple[List[TensorArg], List[TensorArg]]:
+    def _get_node_io(self, node: NodeProto) -> tuple[list[TensorArg], list[TensorArg]]:
         input_args = []
         for input in node.input:
             if input in self._tensor_args:
@@ -345,7 +344,7 @@ class GraphLowering:
                 self._tensor_args[output] = output_args[-1]
         return input_args, output_args
 
-    def _extract_kernel_io(self, nodes: List[NodeProto]) -> KernelIO:
+    def _extract_kernel_io(self, nodes: list[NodeProto]) -> KernelIO:
         kernel_io = KernelIO()
         input_set = set()
         output_set = set()

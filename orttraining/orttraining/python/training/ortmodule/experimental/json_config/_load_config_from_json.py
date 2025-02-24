@@ -59,9 +59,9 @@ def _load_use_external_gpu_allocator(ortmodule_config_accessor, data):
     assert hasattr(data, _load_use_external_gpu_allocator.loading_key)
     log.info(f"Found keyword {_load_use_external_gpu_allocator.loading_key} in json. Loading attributes from file.")
 
-    assert isinstance(
-        data.UseExternalGPUAllocator, bool
-    ), f"{_load_use_external_gpu_allocator.loading_key} must be a boolean"
+    assert isinstance(data.UseExternalGPUAllocator, bool), (
+        f"{_load_use_external_gpu_allocator.loading_key} must be a boolean"
+    )
     ortmodule_config_accessor._runtime_options.use_external_gpu_allocator = data.UseExternalGPUAllocator
 
 
@@ -73,9 +73,9 @@ def _load_enable_custom_autograd_function(ortmodule_config_accessor, data):
         f"Found keyword {_load_enable_custom_autograd_function.loading_key} in json. Loading attributes from file."
     )
 
-    assert isinstance(
-        data.EnableCustomAutogradFunction, bool
-    ), f"{_load_enable_custom_autograd_function.loading_key} must be a boolean"
+    assert isinstance(data.EnableCustomAutogradFunction, bool), (
+        f"{_load_enable_custom_autograd_function.loading_key} must be a boolean"
+    )
 
     from onnxruntime.training.ortmodule._custom_autograd_function import enable_custom_autograd_support
 
@@ -89,9 +89,9 @@ def _load_enable_grad_acc_optimization(ortmodule_config_accessor, data):
     assert hasattr(data, _load_enable_grad_acc_optimization.loading_key)
     log.info(f"Found keyword {_load_enable_grad_acc_optimization.loading_key} in json. Loading attributes from file.")
 
-    assert isinstance(
-        data.EnableGradAccOptimization, bool
-    ), f"{_load_enable_grad_acc_optimization.loading_key} must be a boolean"
+    assert isinstance(data.EnableGradAccOptimization, bool), (
+        f"{_load_enable_grad_acc_optimization.loading_key} must be a boolean"
+    )
     ortmodule_config_accessor._runtime_options.enable_grad_acc_optimization = data.EnableGradAccOptimization
 
 
@@ -101,9 +101,9 @@ def _load_run_symbolic_shape_infer(ortmodule_config_accessor, data):
     assert hasattr(data, _load_run_symbolic_shape_infer.loading_key)
     log.info(f"Found keyword {_load_run_symbolic_shape_infer.loading_key} in json. Loading attributes from file.")
 
-    assert isinstance(
-        data.RunSymbolicShapeInference, bool
-    ), f"{_load_run_symbolic_shape_infer.loading_key} must be a boolean"
+    assert isinstance(data.RunSymbolicShapeInference, bool), (
+        f"{_load_run_symbolic_shape_infer.loading_key} must be a boolean"
+    )
     ortmodule_config_accessor._runtime_options.run_symbolic_shape_infer = data.RunSymbolicShapeInference
 
 
@@ -175,9 +175,9 @@ def _load_use_memory_efficient_gradient(ortmodule_config_accessor, data):
     assert hasattr(data, _load_use_memory_efficient_gradient.loading_key)
     log.info(f"Found keyword {_load_use_memory_efficient_gradient.loading_key} in json. Loading attributes from file.")
 
-    assert isinstance(
-        data.UseMemoryEfficientGradient, bool
-    ), f"{_load_use_memory_efficient_gradient.loading_key} must be a boolean"
+    assert isinstance(data.UseMemoryEfficientGradient, bool), (
+        f"{_load_use_memory_efficient_gradient.loading_key} must be a boolean"
+    )
     ortmodule_config_accessor._runtime_options.use_memory_efficient_gradient = data.UseMemoryEfficientGradient
 
 

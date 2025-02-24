@@ -1,0 +1,13 @@
+app: ..\Microsoft.ML.OnnxRuntime.Tests.MAUI\bin\Release\net8.0-android\publish\ORT.CSharp.Tests.MAUI-Signed.apk
+platforms:
+  - platformName: android
+    deviceName: Samsung Galaxy S22 Ultra
+    platformVersion: 12.0
+browserstackLocal: true
+buildName: ORT android test
+buildIdentifier: ${BUILD_NUMBER}
+projectName: ORT-UITests
+debug: true
+networkLogs: false
+testContextOptions:
+    skipSessionStatus: true   

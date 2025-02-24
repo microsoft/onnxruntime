@@ -40,6 +40,8 @@ std::shared_ptr<IExecutionProviderFactory> WebGpuProviderFactoryCreator::Create(
       DataLayout::NHWC,
       // graph capture feature is disabled by default
       false,
+      // enable pix capture feature is diabled by default
+      false,
   };
 
   std::string preferred_layout_str;
@@ -104,14 +106,6 @@ std::shared_ptr<IExecutionProviderFactory> WebGpuProviderFactoryCreator::Create(
                 std::from_chars(webgpu_instance_str.data(), webgpu_instance_str.data() + webgpu_instance_str.size(), webgpu_instance).ec);
   }
 
-  size_t webgpu_adapter = 0;
-  std::string webgpu_adapter_str;
-  if (config_options.TryGetConfigEntry(kWebGpuAdapter, webgpu_adapter_str)) {
-    static_assert(sizeof(WGPUAdapter) == sizeof(size_t), "WGPUAdapter size mismatch");
-    ORT_ENFORCE(std::errc{} ==
-                std::from_chars(webgpu_adapter_str.data(), webgpu_adapter_str.data() + webgpu_adapter_str.size(), webgpu_adapter).ec);
-  }
-
   size_t webgpu_device = 0;
   std::string webgpu_device_str;
   if (config_options.TryGetConfigEntry(kWebGpuDevice, webgpu_device_str)) {
@@ -152,7 +146,6 @@ std::shared_ptr<IExecutionProviderFactory> WebGpuProviderFactoryCreator::Create(
   webgpu::WebGpuContextConfig context_config{
       context_id,
       reinterpret_cast<WGPUInstance>(webgpu_instance),
-      reinterpret_cast<WGPUAdapter>(webgpu_adapter),
       reinterpret_cast<WGPUDevice>(webgpu_device),
       reinterpret_cast<const void*>(dawn_proc_table),
       validation_mode,
@@ -219,15 +212,28 @@ std::shared_ptr<IExecutionProviderFactory> WebGpuProviderFactoryCreator::Create(
   buffer_cache_config.default_entry.mode = parse_buffer_cache_mode(kDefaultBufferCacheMode, webgpu::BufferCacheMode::Disabled);
   LOGS_DEFAULT(VERBOSE) << "WebGPU EP default buffer cache mode: " << buffer_cache_config.default_entry.mode;
 
+  bool enable_pix_capture = false;
+  std::string enable_pix_capture_str;
+  if (config_options.TryGetConfigEntry(kEnablePIXCapture, enable_pix_capture_str)) {
+    if (enable_pix_capture_str == kEnablePIXCapture_ON) {
+      enable_pix_capture = true;
+    } else if (enable_pix_capture_str == kEnablePIXCapture_OFF) {
+      enable_pix_capture = false;
+    } else {
+      ORT_THROW("Invalid enable pix capture: ", enable_pix_capture_str);
+    }
+  }
+  LOGS_DEFAULT(VERBOSE) << "WebGPU EP pix capture enable: " << enable_pix_capture;
+
   //
   // STEP.4 - start initialization.
   //
 
-  // Load the Dawn library and create the WebGPU instance and adapter.
+  // Load the Dawn library and create the WebGPU instance.
   auto& context = webgpu::WebGpuContextFactory::CreateContext(context_config);
 
   // Create WebGPU device and initialize the context.
-  context.Initialize(buffer_cache_config, backend_type);
+  context.Initialize(buffer_cache_config, backend_type, enable_pix_capture);
 
   // Create WebGPU EP factory.
   return std::make_shared<WebGpuProviderFactory>(context_id, context, std::move(webgpu_ep_config));

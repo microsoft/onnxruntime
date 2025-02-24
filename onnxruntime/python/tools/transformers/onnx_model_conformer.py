@@ -3,7 +3,6 @@
 # Licensed under the MIT License.
 # --------------------------------------------------------------------------
 import logging
-from typing import Optional
 
 from fusion_attention import AttentionMask
 from fusion_conformer_attention import FusionConformerAttention
@@ -19,7 +18,7 @@ class ConformerOnnxModel(BertOnnxModel):
         self.attention_mask = AttentionMask(self)
         self.attention_fusion = FusionConformerAttention(self, self.hidden_size, self.num_heads, self.attention_mask)
 
-    def optimize(self, options: Optional[FusionOptions] = None, add_dynamic_axes: bool = False):
+    def optimize(self, options: FusionOptions | None = None, add_dynamic_axes: bool = False):
         self.attention_fusion.use_multi_head_attention = False if options is None else options.use_multi_head_attention
         self.attention_fusion.disable_multi_head_attention_bias = (
             False if options is None else options.disable_multi_head_attention_bias

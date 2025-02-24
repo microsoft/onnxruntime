@@ -25,7 +25,7 @@ in
 o) BUILD_OS=${OPTARG};;
 #gpu, tensorrt or openvino. It is ignored when BUILD_OS is yocto.
 d) BUILD_DEVICE=${OPTARG};;
-#python version: 3.8 3.9 3.10 3.11 3.12 (absence means default 3.8)
+#python version: 3.8 3.9 3.10 3.11 3.12 (absence means default 3.10)
 p) PYTHON_VER=${OPTARG};;
 # "--build_wheel --use_openblas"
 x) BUILD_EXTR_PAR=${OPTARG};;
@@ -46,7 +46,7 @@ done
 
 # shellcheck disable=SC2034
 EXIT_CODE=1
-DEFAULT_PYTHON_VER="3.8"
+DEFAULT_PYTHON_VER="3.10"
 
 PYTHON_VER=${PYTHON_VER:=$DEFAULT_PYTHON_VER}
 echo "bo=$BUILD_OS bd=$BUILD_DEVICE bdir=$BUILD_DIR pv=$PYTHON_VER bex=$BUILD_EXTR_PAR"
@@ -110,14 +110,13 @@ DOCKER_RUN_PARAMETER="--volume $SOURCE_ROOT:/onnxruntime_src \
                       --volume $BUILD_DIR:/build \
                       --volume /data/models:/build/models:ro \
                       --volume /data/onnx:/data/onnx:ro \
-                      --volume $HOME/.cache/onnxruntime:/home/onnxruntimedev/.cache/onnxruntime \
                       --volume $HOME/.onnx:/home/onnxruntimedev/.onnx"
 if [ $BUILD_DEVICE = "openvino" ] && [[ $BUILD_EXTR_PAR == *"--use_openvino GPU_FP"* ]]; then
     DOCKER_RUN_PARAMETER="$DOCKER_RUN_PARAMETER --device /dev/dri:/dev/dri"
 fi
 # Though this command has a yocto version argument, none of our ci build pipelines use yocto.
 $DOCKER_CMD run $RUNTIME --rm $DOCKER_RUN_PARAMETER \
-    -e NIGHTLY_BUILD \
+    -e NIGHTLY_BUILD -e SYSTEM_COLLECTIONURI \
     -e $ALLOW_RELEASED_ONNX_OPSET_ONLY_ENV \
     "onnxruntime-$IMAGE" \
     /bin/bash /onnxruntime_src/tools/ci_build/github/linux/run_build.sh \

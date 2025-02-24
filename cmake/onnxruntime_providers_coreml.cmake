@@ -6,26 +6,17 @@ if (onnxruntime_MINIMAL_BUILD AND NOT onnxruntime_EXTENDED_MINIMAL_BUILD)
 endif()
 
 add_compile_definitions(USE_COREML=1)
+add_compile_definitions(COREML_ENABLE_MLPROGRAM=1)
+
 
 # Check if we can build the coremltools code for creating an mlpackage with an mlprogram.
-# The coremltools source requires std::filesystem::path which is only available from iOS 13 on.
-set(_enable_ML_PROGRAM ON)
-if (IOS AND CMAKE_OSX_DEPLOYMENT_TARGET VERSION_LESS 13.0)
-  message(WARNING "CoreML ML Program is not supported on iOS < 13.0. Excluding ML Program support from build.")
-  set(_enable_ML_PROGRAM OFF)
-elseif(LINUX)
-  # uuid-dev is required. we don't bother installing on CIs as it's really for manual developer testing.
+if(LINUX)
   find_library(LibUUID_LIBRARY NAMES uuid)
   find_path(LibUUID_INCLUDE_DIR NAMES uuid/uuid.h)
   if (NOT LibUUID_INCLUDE_DIR)
-    message(STATUS "uuid/uuid.h was not found as is required for ML Program support. "
+    message(FATAL "uuid/uuid.h was not found as is required for ML Program support. "
                     "Run `sudo apt install uuid-dev` if you need to test ML Program related CoreML EP code. ")
-    set(_enable_ML_PROGRAM OFF)
   endif()
-endif()
-
-if (_enable_ML_PROGRAM)
-  add_compile_definitions(COREML_ENABLE_MLPROGRAM=1)
 endif()
 
 # Compile CoreML proto definition to ${CMAKE_CURRENT_BINARY_DIR}/coreml_proto
@@ -93,10 +84,9 @@ file(GLOB_RECURSE
   "${ONNXRUNTIME_ROOT}/core/providers/coreml/builders/*.cc"
 )
 
-if(_enable_ML_PROGRAM)
   # Add helpers to create mlpackage weights. limit to just the files we need to minimize the changes to make them
   # build on Windows and Linux.
-  file(GLOB
+file(GLOB
     onnxruntime_providers_coreml_milblob_cc_srcs CONFIGURE_DEPENDS
     "${coremltools_SOURCE_DIR}/mlmodel/src/MILBlob/*.hpp"
     "${coremltools_SOURCE_DIR}/mlmodel/src/MILBlob/*.cpp"
@@ -105,22 +95,21 @@ if(_enable_ML_PROGRAM)
     "${coremltools_SOURCE_DIR}/mlmodel/src/MILBlob/Blob/StorageFormat.hpp"
     "${coremltools_SOURCE_DIR}/mlmodel/src/MILBlob/Blob/FileWriter.?pp"
     "${coremltools_SOURCE_DIR}/mlmodel/src/MILBlob/Blob/StorageWriter.?pp"
-  )
+)
 
-  # Add helpers to create mlpackage
-  file(GLOB
+# Add helpers to create mlpackage
+file(GLOB
     onnxruntime_providers_coreml_modelpackage_cc_srcs CONFIGURE_DEPENDS
     "${coremltools_SOURCE_DIR}/modelpackage/src/ModelPackage.?pp"
     "${coremltools_SOURCE_DIR}/modelpackage/src/utils/JsonMap.?pp"
-  )
+)
 
-  set(coremltools_srcs
+set(coremltools_srcs
     ${onnxruntime_providers_coreml_milblob_cc_srcs}
     ${onnxruntime_providers_coreml_modelpackage_cc_srcs}
-  )
+)
 
-  source_group(TREE ${coremltools_SOURCE_DIR} PREFIX coremltools FILES ${coremltools_srcs})
-endif()
+source_group(TREE ${coremltools_SOURCE_DIR} PREFIX coremltools FILES ${coremltools_srcs})
 
 # Add CoreML objective c++ source code
 if (APPLE)
@@ -163,8 +152,28 @@ onnxruntime_add_static_library(onnxruntime_providers_coreml
 
 onnxruntime_add_include_to_target(onnxruntime_providers_coreml
   onnxruntime_common onnxruntime_framework onnx onnx_proto ${PROTOBUF_LIB} flatbuffers::flatbuffers Boost::mp11
-  safeint_interface
+  safeint_interface nlohmann_json::nlohmann_json
 )
+
+# In ONNX Runtime's code, when we need to use the json library, we have: `#include "nlohmann/json.hpp"`.
+# But, coremltool's code includes the json.hpp directly without the folder name: `#include "json.hpp"`.
+# Therefore here we need to tweak INCLUDE_DIRECTORIES a little bit to fix that.
+
+if(nlohmann_json_SOURCE_DIR)
+  target_include_directories(onnxruntime_providers_coreml PRIVATE ${nlohmann_json_SOURCE_DIR}/single_include/nlohmann)
+elseif(TARGET nlohmann_json::nlohmann_json)
+  get_target_property(nlohmann_json_include_dirs nlohmann_json::nlohmann_json INTERFACE_INCLUDE_DIRECTORIES)
+  foreach(nlohmann_json_include_dir IN LISTS nlohmann_json_include_dirs)
+    target_include_directories(onnxruntime_providers_coreml PRIVATE "${nlohmann_json_include_dir}/nlohmann")
+  endforeach()
+endif()
+
+if(fp16_SOURCE_DIR)
+  set(FP16_INCLUDE_DIRS ${fp16_SOURCE_DIR}/include)
+else()
+  find_path(FP16_INCLUDE_DIRS "fp16.h")
+endif()
+target_include_directories(onnxruntime_providers_coreml PRIVATE ${FP16_INCLUDE_DIRS})
 
 onnxruntime_add_include_to_target(onnxruntime_providers_coreml coreml_proto)
 target_link_libraries(onnxruntime_providers_coreml PRIVATE coreml_proto)
@@ -174,33 +183,20 @@ if (APPLE)
   target_compile_definitions(onnxruntime_providers_coreml PRIVATE __APPLE__)
 endif()
 
-if (_enable_ML_PROGRAM)
-  # Setup coremltools fp16 and json dependencies for creating an mlpackage.
-  #
-  # These are also used by external/xnnpack.cmake. fp16 depends on psimd
-  FetchContent_Declare(psimd URL ${DEP_URL_psimd} URL_HASH SHA1=${DEP_SHA1_psimd})
-  onnxruntime_fetchcontent_makeavailable(psimd)
-  set(PSIMD_SOURCE_DIR ${psimd_SOURCE_DIR})
-  FetchContent_Declare(fp16 URL ${DEP_URL_fp16} URL_HASH SHA1=${DEP_SHA1_fp16})
-  set(FP16_BUILD_TESTS OFF CACHE INTERNAL "")
-  set(FP16_BUILD_BENCHMARKS OFF CACHE INTERNAL "")
-  onnxruntime_fetchcontent_makeavailable(fp16)
 
-  # need to tweak the include paths to match what the coreml source code expects
-  target_include_directories(onnxruntime_providers_coreml PRIVATE
-                            ${fp16_SOURCE_DIR}/include
-                            ${nlohmann_json_SOURCE_DIR}/single_include/nlohmann
+
+# need to tweak the include paths to match what the coreml source code expects
+target_include_directories(onnxruntime_providers_coreml PRIVATE
                             ${coremltools_SOURCE_DIR}
                             ${coremltools_SOURCE_DIR}/mlmodel/src/
                             ${coremltools_SOURCE_DIR}/modelpackage/src/
-  )
+)
 
-  add_dependencies(onnxruntime_providers_coreml nlohmann_json::nlohmann_json fp16)
-
-  if (LINUX)
-    target_link_libraries(onnxruntime_providers_coreml PRIVATE uuid)
-  endif()
+if (LINUX)
+  target_link_libraries(onnxruntime_providers_coreml PRIVATE uuid)
 endif()
+
+
 
 if (APPLE)
   target_link_libraries(onnxruntime_providers_coreml PRIVATE "-framework Foundation" "-framework CoreML")

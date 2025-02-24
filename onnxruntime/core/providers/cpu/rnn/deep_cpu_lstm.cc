@@ -163,7 +163,14 @@ ONNX_CPU_OPERATOR_VERSIONED_KERNEL(LSTM, 7, 13,
                                        .TypeConstraint("T1", DataTypeImpl::GetTensorType<int32_t>()),
                                    DeepCpuLstmOp);
 
-ONNX_CPU_OPERATOR_KERNEL(LSTM, 14,
+ONNX_CPU_OPERATOR_VERSIONED_KERNEL(LSTM, 14, 21,
+                                   KernelDefBuilder()
+                                       .TypeConstraint("T", {DataTypeImpl::GetTensorType<float>(),
+                                                             DataTypeImpl::GetTensorType<double>()})
+                                       .TypeConstraint("T1", DataTypeImpl::GetTensorType<int32_t>()),
+                                   DeepCpuLstmOp);
+
+ONNX_CPU_OPERATOR_KERNEL(LSTM, 22,
                          KernelDefBuilder()
                              .TypeConstraint("T", {DataTypeImpl::GetTensorType<float>(),
                                                    DataTypeImpl::GetTensorType<double>()})

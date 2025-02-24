@@ -89,6 +89,75 @@ Node& graph_add_node(Graph& graph, const std::string& name, const std::string& o
   return ret;
 }
 
+// copied from graph.cc, trying to exit the function early as leave function may change the validity of the graph
+void graph_reverse_dfs_from(
+    const Graph& graph, gsl::span<const Node* const> from,
+    const std::function<bool(const Node*)>& enter,
+    const std::function<bool(const Node*)>& leave,
+    const std::function<bool(const Node*, const Node*)>& comp,
+    const std::function<bool(const Node* from, const Node* to)>&
+        stop) {
+  using WorkEntry = std::pair<const Node*, bool>;  // bool represents leave or not
+  InlinedVector<WorkEntry> stack;
+  stack.reserve(from.size());
+  for (auto node : from) {
+    stack.emplace_back(node, false);
+  }
+
+  InlinedVector<bool> visited(graph.MaxNodeIndex(), false);
+  while (!stack.empty()) {
+    const WorkEntry last_entry = stack.back();
+    stack.pop_back();
+
+    if (last_entry.first == nullptr) {
+      continue;
+    }
+    const Node& n = *last_entry.first;
+
+    if (last_entry.second) {
+      // leave node
+      if (leave(&n)) {
+        return;
+      }
+      continue;
+    }
+
+    if (visited[n.Index()]) continue;
+
+    visited[n.Index()] = true;
+
+    if (enter) {
+      if (enter(&n)) {
+        return;
+      }
+    }
+    if (leave) stack.emplace_back(&n, true);
+
+    if (comp) {
+      InlinedVector<const Node*> sorted_nodes;
+      for (auto iter = n.InputNodesBegin(); iter != n.InputNodesEnd(); ++iter) {
+        if (stop && stop(&n, &(*iter))) continue;
+        sorted_nodes.push_back(&(*iter));
+      }
+      std::sort(sorted_nodes.begin(), sorted_nodes.end(), comp);
+      for (const auto* in : sorted_nodes) {
+        const NodeIndex idx = in->Index();
+        if (!visited[idx]) {
+          stack.emplace_back(in, false);
+        }
+      }
+    } else {
+      for (auto iter = n.InputNodesBegin(); iter != n.InputNodesEnd(); ++iter) {
+        if (stop && stop(&n, &(*iter))) continue;
+        const NodeIndex idx = (*iter).Index();
+        if (!visited[idx]) {
+          stack.emplace_back(graph.GetNode(idx), false);
+        }
+      }
+    }
+  }
+}
+
 void graph_remove_node(Graph& graph, const NodeInput& node_input) {
   if (node_input.node == nullptr && node_input.node_arg != nullptr) {
     assert(node_input.node_arg->Exists());

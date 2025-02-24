@@ -11,6 +11,9 @@
   onnxruntime_add_include_to_target(onnxruntime_providers_dml
     onnxruntime_common onnxruntime_framework onnx onnx_proto ${PROTOBUF_LIB} flatbuffers::flatbuffers Boost::mp11 safeint_interface ${WIL_TARGET}
   )
+  if(TARGET Microsoft::DirectX-Headers)
+    onnxruntime_add_include_to_target(onnxruntime_providers_dml Microsoft::DirectX-Headers)
+  endif()
   add_dependencies(onnxruntime_providers_dml ${onnxruntime_EXTERNAL_DEPENDENCIES})
   target_include_directories(onnxruntime_providers_dml PRIVATE
     ${ONNXRUNTIME_ROOT}

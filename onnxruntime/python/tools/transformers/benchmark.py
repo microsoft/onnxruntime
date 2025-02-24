@@ -13,33 +13,33 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-""" Benchmarking the inference of pretrained transformer models.
-    PyTorch/TorchScript benchmark is based on https://github.com/huggingface/transformers/blob/master/examples/benchmarks.py.
-    One difference is that random input_ids is generated in this benchmark.
+"""Benchmarking the inference of pretrained transformer models.
+PyTorch/TorchScript benchmark is based on https://github.com/huggingface/transformers/blob/master/examples/benchmarks.py.
+One difference is that random input_ids is generated in this benchmark.
 
-    For onnxruntime, this script will convert a pretrained model to ONNX, and optimize it when -o parameter is used.
+For onnxruntime, this script will convert a pretrained model to ONNX, and optimize it when -o parameter is used.
 
-    Example commands:
-        Export all models to ONNX, optimize and validate them:
-            python benchmark.py -b 0 -o -v -i 1 2 3
-        Run OnnxRuntime on GPU for all models:
-            python benchmark.py -g
-        Run OnnxRuntime on GPU for all models with fp32 optimization:
-            python benchmark.py -g -o
-        Run OnnxRuntime on GPU with fp16 optimization:
-            python benchmark.py -g -o -p "fp16"
-        Run TorchScript on GPU for all models:
-            python benchmark.py -e torchscript -g
-        Run TorchScript on GPU for all models with fp16:
-            python benchmark.py -e torchscript -g -p "fp16"
-        Run ONNXRuntime and TorchScript on CPU for all models with quantization:
-            python benchmark.py -e torchscript onnxruntime -p "int8" -o
-        Run OnnxRuntime with the ROCM provider and graph optimization script:
-            python benchmark.py -g -m bert-base-cased --provider rocm --optimizer_info by_script --disable_embed_layer_norm
-        Run OnnxRuntime with bfloat16 fastmath mode kernels on aarch64 platforms with bfloat16 support:
-            python benchmark.py --enable_arm64_bfloat16_fastmath_mlas_gemm
+Example commands:
+    Export all models to ONNX, optimize and validate them:
+        python benchmark.py -b 0 -o -v -i 1 2 3
+    Run OnnxRuntime on GPU for all models:
+        python benchmark.py -g
+    Run OnnxRuntime on GPU for all models with fp32 optimization:
+        python benchmark.py -g -o
+    Run OnnxRuntime on GPU with fp16 optimization:
+        python benchmark.py -g -o -p "fp16"
+    Run TorchScript on GPU for all models:
+        python benchmark.py -e torchscript -g
+    Run TorchScript on GPU for all models with fp16:
+        python benchmark.py -e torchscript -g -p "fp16"
+    Run ONNXRuntime and TorchScript on CPU for all models with quantization:
+        python benchmark.py -e torchscript onnxruntime -p "int8" -o
+    Run OnnxRuntime with the ROCM provider and graph optimization script:
+        python benchmark.py -g -m bert-base-cased --provider rocm --optimizer_info by_script --disable_embed_layer_norm
+    Run OnnxRuntime with bfloat16 fastmath mode kernels on aarch64 platforms with bfloat16 support:
+        python benchmark.py --enable_arm64_bfloat16_fastmath_mlas_gemm
 
-    It is recommended to use run_benchmark.sh to launch benchmark.
+It is recommended to use run_benchmark.sh to launch benchmark.
 """
 
 import argparse
@@ -117,6 +117,7 @@ def run_onnxruntime(
     if (
         use_gpu
         and ("CUDAExecutionProvider" not in onnxruntime.get_available_providers())
+        and ("MIGraphXExecutionProvider" not in onnxruntime.get_available_providers())
         and ("ROCMExecutionProvider" not in onnxruntime.get_available_providers())
         and ("DmlExecutionProvider" not in onnxruntime.get_available_providers())
     ):
@@ -438,9 +439,9 @@ def run_with_tf_optimizations(do_eager_mode: bool, use_xla: bool):
             return func(*args, **kwargs)
 
         if do_eager_mode is True:
-            assert (
-                use_xla is False
-            ), "Cannot run model in XLA, if `args.eager_mode` is set to `True`. Please set `args.eager_mode=False`."
+            assert use_xla is False, (
+                "Cannot run model in XLA, if `args.eager_mode` is set to `True`. Please set `args.eager_mode=False`."
+            )
             return run_in_eager_mode
         else:
             return run_in_graph_mode

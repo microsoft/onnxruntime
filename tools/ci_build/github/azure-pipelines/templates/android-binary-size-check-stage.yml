@@ -38,13 +38,12 @@ stages:
       submodules: none
 
     - template: use-android-ndk.yml
-    #TODO: use a different docker file since this job doesn't need to rely on manylinux
     - template: get-docker-image-steps.yml
       parameters:
-        Dockerfile: tools/ci_build/github/linux/docker/Dockerfile.manylinux2_28_cpu
-        Context: tools/ci_build/github/linux/docker
+        Dockerfile: tools/ci_build/github/linux/docker/inference/x86_64/default/cpu/Dockerfile
+        Context: tools/ci_build/github/linux/docker/inference/x86_64/default/cpu
         DockerBuildArgs: "--build-arg BUILD_UID=$( id -u )"
-        Repository: onnxruntimecpubuild
+        Repository: onnxruntimecpubuildcentos8x64_packaging
 
     - task: PythonScript@0
       displayName: 'Set variables from config file "${{ parameters.BuildConfigFile }}"'
@@ -78,11 +77,12 @@ stages:
             BINARY_SIZE_THRESHOLD_ARGS="--threshold_size_in_bytes ${{ parameters.BinarySizeThresholdInBytes }}"
           fi
           NDK_HOME=$(realpath $ANDROID_NDK_HOME)
-          docker run --rm \
+          docker run -e SYSTEM_COLLECTIONURI --rm \
             --volume $(Build.SourcesDirectory):/onnxruntime_src \
             --volume $(Build.BinariesDirectory):/build \
             --volume $ANDROID_HOME:/android_home \
             --volume $NDK_HOME:/ndk_home \
+            -w /onnxruntime_src \
             -e ALLOW_RELEASED_ONNX_OPSET_ONLY=1 \
             -e NIGHTLY_BUILD \
             -e BUILD_BUILDNUMBER \
@@ -90,11 +90,10 @@ stages:
             -e BUILD_ID=$(Build.BuildId) \
             -e BUILD_REASON=$(Build.Reason) \
             -e BUILD_BRANCH=$(Build.SourceBranch) \
-            onnxruntimecpubuild \
-              /opt/python/cp310-cp310/bin/python3 /onnxruntime_src/tools/ci_build/github/linux/ort_minimal/build_ort_and_check_binary_size.py \
+            onnxruntimecpubuildcentos8x64_packaging \
+              bash -c "python3 -m pip install -r tools/ci_build/requirements/pybind/requirements.txt && python3 tools/ci_build/github/linux/ort_minimal/build_ort_and_check_binary_size.py \
                 --build_dir /build/1a \
-                ${BINARY_SIZE_THRESHOLD_ARGS} \
-                "/onnxruntime_src/${{ parameters.BuildConfigFile }}"
+                ${BINARY_SIZE_THRESHOLD_ARGS} ${{ parameters.BuildConfigFile }} "
         workingDirectory: $(Build.SourcesDirectory)
 
     - task: AzureCLI@2
@@ -134,11 +133,12 @@ stages:
           script: |
             set -e -x
             NDK_HOME=$(realpath $ANDROID_NDK_HOME)
-            docker run --rm \
+            docker run -e SYSTEM_COLLECTIONURI --rm \
               --volume $(Build.SourcesDirectory):/onnxruntime_src \
               --volume $(Build.BinariesDirectory):/build \
               --volume $ANDROID_HOME:/android_home \
               --volume $NDK_HOME:/ndk_home \
+              -w /onnxruntime_src \
               -e ALLOW_RELEASED_ONNX_OPSET_ONLY=1 \
               -e NIGHTLY_BUILD \
               -e BUILD_BUILDNUMBER \
@@ -146,11 +146,10 @@ stages:
               -e BUILD_ID=$(Build.BuildId) \
               -e BUILD_REASON=$(Build.Reason) \
               -e BUILD_BRANCH=$(Build.SourceBranch) \
-              onnxruntimecpubuild \
-                /opt/python/cp310-cp310/bin/python3 /onnxruntime_src/tools/ci_build/github/linux/ort_minimal/build_ort_and_check_binary_size.py \
+              onnxruntimecpubuildcentos8x64_packaging \
+                bash -c "python3 -m pip install -r tools/ci_build/requirements/pybind/requirements.txt && python3 tools/ci_build/github/linux/ort_minimal/build_ort_and_check_binary_size.py \
                   --build_dir /build/1b \
-                  --with_debug_info \
-                  "/onnxruntime_src/${{ parameters.BuildConfigFile }}"
+                  --with_debug_info ${{ parameters.BuildConfigFile }}"
           workingDirectory: $(Build.SourcesDirectory)
 
       - task: PublishPipelineArtifact@1

@@ -178,7 +178,7 @@ class MixedPrecisionTensorQuantOverridesFixer:
         # Use type requests to "fix" tensor quantization overrides by adding
         # quantization type conversions where necessary.
         for tensor_name, type_req in type_requests.items():
-            all_consumers = set([node.name for node in self.consumers.get(tensor_name, [])])
+            all_consumers = {node.name for node in self.consumers.get(tensor_name, [])}
             has_producer_req = type_req.producer is not None
             has_consumer_req = bool(type_req.consumers)
 

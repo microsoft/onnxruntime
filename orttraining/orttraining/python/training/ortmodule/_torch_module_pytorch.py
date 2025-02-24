@@ -3,7 +3,8 @@
 # _torch_module_pytorch.py
 
 from collections import OrderedDict
-from typing import Callable, Iterator, Optional, Tuple, TypeVar
+from collections.abc import Callable, Iterator
+from typing import Optional, TypeVar
 
 import torch
 
@@ -38,10 +39,10 @@ class TorchModulePytorch(TorchModuleInterface):
     def load_state_dict(self, state_dict: "OrderedDict[str, torch.Tensor]", strict: bool = True):
         return self._original_module.load_state_dict(state_dict, strict=strict)
 
-    def register_buffer(self, name: str, tensor: Optional[torch.Tensor], persistent: bool = True) -> None:
+    def register_buffer(self, name: str, tensor: torch.Tensor | None, persistent: bool = True) -> None:
         self._original_module.register_buffer(name, tensor, persistent=persistent)
 
-    def register_parameter(self, name: str, param: Optional[torch.nn.Parameter]) -> None:
+    def register_parameter(self, name: str, param: torch.nn.Parameter | None) -> None:
         self._original_module.register_parameter(name, param)
 
     def get_parameter(self, target: str) -> torch.nn.Parameter:
@@ -53,13 +54,13 @@ class TorchModulePytorch(TorchModuleInterface):
     def parameters(self, recurse: bool = True) -> Iterator[torch.nn.Parameter]:
         yield from self._original_module.parameters(recurse=recurse)
 
-    def named_parameters(self, prefix: str = "", recurse: bool = True) -> Iterator[Tuple[str, torch.nn.Parameter]]:
+    def named_parameters(self, prefix: str = "", recurse: bool = True) -> Iterator[tuple[str, torch.nn.Parameter]]:
         yield from self._original_module.named_parameters(prefix=prefix, recurse=recurse)
 
     def buffers(self, recurse: bool = True) -> Iterator[torch.Tensor]:
         yield from self._original_module.buffers(recurse=recurse)
 
-    def named_buffers(self, prefix: str = "", recurse: bool = True) -> Iterator[Tuple[str, torch.Tensor]]:
+    def named_buffers(self, prefix: str = "", recurse: bool = True) -> Iterator[tuple[str, torch.Tensor]]:
         yield from self._original_module.named_buffers(prefix=prefix, recurse=recurse)
 
     def _load_from_state_dict(
@@ -69,7 +70,7 @@ class TorchModulePytorch(TorchModuleInterface):
             state_dict, prefix, local_metadata, strict, missing_keys, unexpected_keys, error_msgs
         )
 
-    def named_children(self) -> Iterator[Tuple[str, T]]:
+    def named_children(self) -> Iterator[tuple[str, T]]:
         yield from self._original_module.named_children()
 
     def modules(self) -> Iterator[T]:

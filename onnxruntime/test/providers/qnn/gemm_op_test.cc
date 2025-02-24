@@ -9,7 +9,7 @@
 #include "test/providers/qnn/qnn_test_utils.h"
 #include "core/graph/node_attr_utils.h"
 
-#include "onnx/onnx_pb.h"
+#include "core/graph/onnx_protobuf.h"
 #include "gtest/gtest.h"
 
 namespace onnxruntime {
@@ -29,6 +29,7 @@ static void RunGemmTestOnCPU(const std::vector<TestInputDef<DataType>>& input_de
 #else
   provider_options["backend_path"] = "libQnnCpu.so";
 #endif
+  provider_options["offload_graph_io_quantization"] = "0";
 
   RunQnnModelTest(BuildOpTestCase<float>("Gemm", input_defs, {}, attrs),
                   provider_options,
@@ -177,6 +178,47 @@ TEST_F(QnnCPUBackendTests, Gemm_Broadcast_Bias_DynamicA_StaticB_StaticC) {
                           ExpectedEPNodeAssignment::All);
 }
 
+namespace {
+GetTestModelFn BuildReshapeGemmTestCase(const TestInputDef<float>& input, const TestInputDef<int64_t>& shape,
+                                        const TestInputDef<float>& weight, const TestInputDef<float>& bias) {
+  return [&](ModelTestBuilder& builder) {
+    std::vector<NodeArg*> reshape_inputs = {MakeTestInput<float>(builder, input),
+                                            MakeTestInput<int64_t>(builder, shape)};
+    auto* reshape_output = builder.MakeIntermediate();
+    builder.AddNode("Reshape", reshape_inputs, {reshape_output});
+    NodeArg* output = builder.MakeOutput();
+    std::vector<NodeArg*> gemm_inputs = {reshape_output, MakeTestInput<float>(builder, weight),
+                                         MakeTestInput<float>(builder, bias)};
+    builder.AddNode("Gemm", gemm_inputs, {output});
+  };
+}
+
+void RunCPUReshapeGemmTest(const TestInputDef<float>& input, const TestInputDef<int64_t>& shape,
+                           const TestInputDef<float>& weight, const TestInputDef<float>& bias,
+                           ExpectedEPNodeAssignment expected_ep_assignment, float fp32_abs_err = 1e-5f) {
+  ProviderOptions provider_options;
+
+#if defined(_WIN32)
+  provider_options["backend_path"] = "QnnCpu.dll";
+#else
+  provider_options["backend_path"] = "libQnnCpu.so";
+#endif
+  auto build_fn = BuildReshapeGemmTestCase(input, shape, weight, bias);
+  RunQnnModelTest(build_fn, provider_options, 18, expected_ep_assignment, fp32_abs_err);
+}
+
+}  // namespace
+
+TEST_F(QnnCPUBackendTests, ReshapeGemmFusion) {
+  std::vector<float> input_data = {1.0f, 2.0f, 3.0f, 4.0f, -1.0f, -2.0f, -3.0f, -4.0f};
+  std::vector<int64_t> shape_data = {4, 2};
+  std::vector<float> weight_data(6, 1.0f);
+  std::vector<float> bias_data = {1.0f, 2.0f, 3.0f};
+  RunCPUReshapeGemmTest(TestInputDef<float>({2, 2, 2}, false, input_data), TestInputDef<int64_t>({2}, true, shape_data),
+                        TestInputDef<float>({2, 3}, true, weight_data), TestInputDef<float>({3}, true, bias_data),
+                        ExpectedEPNodeAssignment::All);
+}
+
 #if defined(__aarch64__) || defined(_M_ARM64) || defined(__linux__)
 //
 // HTP tests:
@@ -246,6 +288,8 @@ static void RunQDQGemmTestOnHTP(const std::vector<TestInputDef<float>>& input_de
 #else
   provider_options["backend_path"] = "libQnnHtp.so";
 #endif
+  provider_options["offload_graph_io_quantization"] = "0";
+
   auto f32_model_builder = BuildOpTestCase<float>("Gemm", input_defs, {}, attrs);
   auto qdq_model_builder = BuildQDQGemmTestCase<InputAQType, InputBQType>(input_defs, attrs, use_contrib_qdq);
   TestQDQModelAccuracy<InputAQType>(f32_model_builder,
@@ -335,7 +379,13 @@ TEST_F(QnnHTPBackendTests, Gemm_Broadcast_Bias_DynamicA_StaticB_StaticC) {
 // Expected val: 120.73912048339844
 // QNN QDQ val: 0 (err 120.73912048339844)
 // CPU QDQ val: 120.73889923095703 (err 0.00022125244140625)
+// Issue fixed in 2.30
+#ifdef __linux__
+// Failed on Linux with 2.31
 TEST_F(QnnHTPBackendTests, DISABLED_Gemm_Dynamic_A_Static_B_Dynamic_Bias_U16) {
+#else
+TEST_F(QnnHTPBackendTests, Gemm_Dynamic_A_Static_B_Dynamic_Bias_U16) {
+#endif
   std::vector<float> input_a_data = GetFloatDataInRange(-10.0f, 10.0f, 6);
   std::vector<float> input_b_data = GetFloatDataInRange(-5.0f, 5.0f, 24);
   std::vector<float> input_c_data = GetFloatDataInRange(-1.0f, 1.0f, 4);
@@ -368,7 +418,8 @@ TEST_F(QnnHTPBackendTests, Gemm_Dynamic_A_Static_B_Dynamic_Bias_U16Act_U8Weight)
 // Expected val: 120.73912048339844
 // QNN QDQ val: 77.012794494628906 (err 43.726325988769531)
 // CPU QDQ val: 119.85115814208984 (err 0.88796234130859375)
-TEST_F(QnnHTPBackendTests, DISABLED_Gemm_Dynamic_A_B_Static_Bias) {
+// Issue fixed in 2.30
+TEST_F(QnnHTPBackendTests, Gemm_Dynamic_A_B_Static_Bias) {
   std::vector<float> input_a_data = GetFloatDataInRange(-10.0f, 10.0f, 6);
   std::vector<float> input_b_data = GetFloatDataInRange(-5.0f, 5.0f, 24);
   std::vector<float> input_c_data = GetFloatDataInRange(-1.0f, 1.0f, 4);

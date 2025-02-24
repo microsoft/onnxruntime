@@ -6,7 +6,7 @@ import copy
 import logging
 import os
 from abc import ABC, abstractmethod
-from typing import Any, List, Optional
+from typing import Any
 
 import numpy as np
 import onnx
@@ -402,7 +402,7 @@ class InputLike(Block):
 
         self._like = like
 
-    def build(self, input_name: Optional[str] = None):
+    def build(self, input_name: str | None = None):
         cloned_input = None
         with contextlib.suppress(LookupError):
             # Suppress LookupError because we want to try to get the input from the output if it's not found in the inputs
@@ -428,12 +428,12 @@ class LabelEncoder(Block):
         default_float: float = 0.0,
         default_int64: int = -1,
         default_string: str = "_Unused",
-        keys_floats: Optional[List[float]] = None,
-        keys_int64s: Optional[List[int]] = None,
-        keys_strings: Optional[List[str]] = None,
-        values_floats: Optional[List[float]] = None,
-        values_int64s: Optional[List[int]] = None,
-        values_strings: Optional[List[str]] = None,
+        keys_floats: list[float] | None = None,
+        keys_int64s: list[int] | None = None,
+        keys_strings: list[str] | None = None,
+        values_floats: list[float] | None = None,
+        values_int64s: list[int] | None = None,
+        values_strings: list[str] | None = None,
     ):
         super().__init__()
 
@@ -443,8 +443,8 @@ class LabelEncoder(Block):
             "default_string": default_string,
         }
 
-        def _add_attributes(names: List[str], values: List[Any]):
-            for name, value in zip(names, values):
+        def _add_attributes(names: list[str], values: list[Any]):
+            for name, value in zip(names, values, strict=False):
                 if value is not None:
                     self._attributes[name] = value
 

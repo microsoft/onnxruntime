@@ -51,7 +51,7 @@ parameters:
 - name: QnnSDKVersion
   displayName: QNN SDK Version
   type: string
-  default: 2.28.0.241029
+  default: 2.31.0.250130
 
 stages:
 - template: linux-cpu-packaging-pipeline.yml
@@ -82,10 +82,12 @@ stages:
       packageName: 'onnxruntime-android'
       ReleaseVersionSuffix: $(ReleaseVersionSuffix)
 
+- stage: Android_Java_API_AAR_Testing_Full
+  dependsOn: Android_Java_API_AAR_Packaging_Full
+  jobs:
   - template: android-java-api-aar-test.yml
     parameters:
       artifactName: 'onnxruntime-android-full-aar'
-      job_name_suffix: 'Full'
       ReleaseVersionSuffix: $(ReleaseVersionSuffix)
 
 - stage: Android_Java_API_AAR_Packaging_QNN
@@ -105,10 +107,12 @@ stages:
       ReleaseVersionSuffix: $(ReleaseVersionSuffix)
       QnnSDKVersion: ${{ parameters.QnnSDKVersion }}
 
+- stage: Final_AAR_Testing_Android_QNN
+  dependsOn: Android_Java_API_AAR_Packaging_QNN
+  jobs:
   - template: android-java-api-aar-test.yml
     parameters:
       artifactName: 'onnxruntime-android-qnn-aar'
-      job_name_suffix: 'QNN'
       packageName: 'onnxruntime-android-qnn'
       QnnSDKVersion: ${{ parameters.QnnSDKVersion }}
 
@@ -125,15 +129,6 @@ stages:
     - template: set-version-number-variables-step.yml
 
     - template: use-xcode-version.yml
-
-    - template: download-deps.yml
-
-    - task: PythonScript@0
-      displayName: 'Update deps.txt'
-      inputs:
-        scriptPath: $(Build.SourcesDirectory)/tools/ci_build/replace_urls_in_deps.py
-        arguments: --new_dir $(Build.BinariesDirectory)/deps
-        workingDirectory: $(Build.BinariesDirectory)
 
     - script: |
         set -e -x
@@ -187,7 +182,7 @@ stages:
     buildArch: x64
     msbuildPlatform: arm64
     packageName: arm64
-    buildparameter: --build_nodejs --arm64 ${{ parameters.AdditionalBuildFlags }}  ${{ parameters.AdditionalWinBuildFlags}} --path_to_protoc_exe $(Build.BinariesDirectory)\RelWithDebInfo\installed\bin\protoc.exe
+    buildparameter: --build_nodejs --arm64 ${{ parameters.AdditionalBuildFlags }}  ${{ parameters.AdditionalWinBuildFlags}}
     runTests: false
     buildJava: false
     buildNodejs: true
@@ -385,14 +380,6 @@ stages:
         StepName: 'Download Android-full-aar Pipeline Artifact'
         ArtifactName: 'onnxruntime-android-full-aar'
         TargetPath: '$(Build.BinariesDirectory)/nuget-artifact'
-        SpecificArtifact: ${{ parameters.specificArtifact }}
-        BuildId: ${{ parameters.BuildId }}
-
-    - template: flex-downloadPipelineArtifact.yml
-      parameters:
-        StepName: 'Download drop-extra Pipeline Artifact'
-        ArtifactName: 'drop-extra'
-        TargetPath: '$(Build.BinariesDirectory)/extra-artifact'
         SpecificArtifact: ${{ parameters.specificArtifact }}
         BuildId: ${{ parameters.BuildId }}
 
@@ -655,12 +642,6 @@ stages:
       inputs:
         artifactName: 'drop-onnxruntime-nodejs-linux-aarch64'
         targetPath: '$(Build.BinariesDirectory)/nodejs-artifacts/linux/arm64/'
-
-    - task: DownloadPipelineArtifact@0
-      displayName: 'Download Pipeline Artifact - NuGet'
-      inputs:
-        artifactName: 'drop-extra'
-        targetPath: '$(Build.BinariesDirectory)/extra-artifact'
 
     - task: PowerShell@2
       displayName: 'PowerShell Script'

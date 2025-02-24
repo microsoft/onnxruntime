@@ -614,6 +614,12 @@ Status ExecutionFrame::AllocateMLValueTensorSelfOwnBufferHelper(OrtValue& ort_va
 #endif
   }
 
+#if !defined(ORT_MINIMAL_BUILD)
+  if (session_state_.GetNodeStatsRecorder() != nullptr) {
+    ort_value_to_dynamic_allocations_size_.insert_or_assign(ort_value_index, size);
+  }
+#endif
+
   return Status::OK();
 }
 

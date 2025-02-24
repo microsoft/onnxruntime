@@ -6,7 +6,7 @@
 #include <cstdint>
 #include <memory>
 
-#include "core/common/common.h"
+#include "core/providers/qnn/ort_api.h"
 
 namespace onnxruntime::qnn {
 

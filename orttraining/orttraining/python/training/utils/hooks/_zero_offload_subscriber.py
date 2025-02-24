@@ -7,9 +7,10 @@ import ctypes
 import inspect
 import warnings
 from collections import OrderedDict
+from collections.abc import Callable
 from datetime import timedelta
 from types import CodeType, FunctionType
-from typing import Any, Callable, Dict, List, Optional, Tuple, Union
+from typing import Any
 
 import onnx
 import torch
@@ -80,7 +81,7 @@ class DummyWork(torch.distributed.distributed_c10d.Work):
     def _source_rank(self) -> int:
         return 0
 
-    def result(self) -> List[torch.Tensor]:
+    def result(self) -> list[torch.Tensor]:
         return []
 
     def synchronize(self):
@@ -177,7 +178,7 @@ except ImportError as e:
 
 
 @nvtx_function_decorator
-def _get_params_for_current_module(module: torch.nn.Module) -> List[torch.nn.parameter.Parameter]:
+def _get_params_for_current_module(module: torch.nn.Module) -> list[torch.nn.parameter.Parameter]:
     """Retrieve the parameters for this module.
 
     Logic adapted from
@@ -186,13 +187,13 @@ def _get_params_for_current_module(module: torch.nn.Module) -> List[torch.nn.par
     from deepspeed.runtime.zero.partitioned_param_coordinator import iter_params
 
     # Retrieve all parameters for this module.
-    partitioned_params = [param for param in iter_params(module)]
+    partitioned_params = list(iter_params(module))
 
     return partitioned_params
 
 
 @nvtx_function_decorator
-def _get_all_zero_stage3_params(module: torch.nn.Module) -> Dict[str, torch.nn.parameter.Parameter]:
+def _get_all_zero_stage3_params(module: torch.nn.Module) -> dict[str, torch.nn.parameter.Parameter]:
     """Retrieve all the parameters that are offloaded."""
     from deepspeed.runtime.zero.partition_parameters import ZeroParamStatus
 
@@ -205,7 +206,7 @@ def _get_all_zero_stage3_params(module: torch.nn.Module) -> Dict[str, torch.nn.p
 
 
 # Used to cache the map avoid repeated loop up (X us) overhead during training.
-_ModuleToParametersRefs: Dict[torch.nn.Module, List[torch.nn.parameter.Parameter]] = OrderedDict()
+_ModuleToParametersRefs: dict[torch.nn.Module, list[torch.nn.parameter.Parameter]] = OrderedDict()
 
 
 class ORTZeROOffloadPreForwardFunction(torch.autograd.Function):
@@ -295,7 +296,7 @@ class ORTZeROOffloadPreForwardFunction(torch.autograd.Function):
         # completing the full backward propagation, will not affect parameter updates.
         passed_in_param_grad = [
             torch.zeros(shape, dtype=dtype, device=device)
-            for shape, dtype, device in zip(ctx.shapes, ctx.dtypes, ctx.devices)
+            for shape, dtype, device in zip(ctx.shapes, ctx.dtypes, ctx.devices, strict=False)
         ]
 
         zero_grads = updated_grads[:input_count] + tuple(passed_in_param_grad)
@@ -306,9 +307,9 @@ class ORTZeROOffloadPreForwardFunction(torch.autograd.Function):
     @staticmethod
     def infer_shape(
         node: onnx.NodeProto,
-        tensor_input_shapes: List[Optional[List[Union[int, str]]]],
-        tensor_input_dtypes: List[torch.onnx.TensorProtoDataType],
-    ) -> Tuple[List[Optional[List[Union[int, str]]]], List[torch.onnx.TensorProtoDataType]]:
+        tensor_input_shapes: list[list[int | str] | None],
+        tensor_input_dtypes: list[torch.onnx.TensorProtoDataType],
+    ) -> tuple[list[list[int | str] | None], list[torch.onnx.TensorProtoDataType]]:
         input_pointer_scalars_attr_name = "input_pointer_scalars"
         found = [attr for attr in node.attribute if attr.name == input_pointer_scalars_attr_name]
         assert len(found) == 1
@@ -414,9 +415,9 @@ class ORTZeROOffloadPostForwardFunction(torch.autograd.Function):
     @staticmethod
     def infer_shape(
         node: onnx.NodeProto,
-        tensor_input_shapes: List[Optional[List[Union[int, str]]]],
-        tensor_input_dtypes: List[torch.onnx.TensorProtoDataType],
-    ) -> Tuple[List[Optional[List[Union[int, str]]]], List[torch.onnx.TensorProtoDataType]]:
+        tensor_input_shapes: list[list[int | str] | None],
+        tensor_input_dtypes: list[torch.onnx.TensorProtoDataType],
+    ) -> tuple[list[list[int | str] | None], list[torch.onnx.TensorProtoDataType]]:
         return tensor_input_shapes, tensor_input_dtypes
 
     @staticmethod
@@ -480,7 +481,7 @@ class ZeROOffloadSubscriber(SubscriberBase):
         module: torch.nn.Module,
         args: ORTModelInputOutputType,
         kwargs: ORTModelInputOutputType,
-    ) -> Tuple[ORTModelInputOutputType, ORTModelInputOutputType]:
+    ) -> tuple[ORTModelInputOutputType, ORTModelInputOutputType]:
         """This function is a dispatcher to call DeepSpeed stage3 pre forward hooks in sequence.
 
         All hook functions can be retrieved from the function store, due to exporter only supports a list of tensors as
@@ -556,7 +557,7 @@ class ZeROOffloadSubscriber(SubscriberBase):
         module: torch.nn.Module,
         args: ORTModelInputOutputType,
         outputs: ORTModelInputOutputType,
-    ) -> Tuple[ORTModelInputOutputType, ORTModelInputOutputType]:
+    ) -> tuple[ORTModelInputOutputType, ORTModelInputOutputType]:
         """This function is a dispatcher to call DeepSpeed stage3 post forward hooks in sequence.
 
         All hook functions can be retrieved from function store, due to exporter only supports a list of tensors as
@@ -615,7 +616,7 @@ class ZeROOffloadSubscriber(SubscriberBase):
         module: torch.nn.Module,
         args: ORTModelInputOutputType,
         outputs: ORTModelInputOutputType,
-    ) -> Tuple[ORTModelInputOutputType, ORTModelInputOutputType]:
+    ) -> tuple[ORTModelInputOutputType, ORTModelInputOutputType]:
         outputs_tensors, outputs_schema = extract_data_and_schema(outputs)
 
         _end_of_forward_hook = self._functions.get("_end_of_forward_hook")
@@ -636,7 +637,7 @@ class ZeROOffloadSubscriber(SubscriberBase):
         return args, updated_outputs
 
     @nvtx_function_decorator
-    def _check_all_tensor(self, tensor_list: Tuple[torch.Tensor], module: torch.nn.Module, name: str):
+    def _check_all_tensor(self, tensor_list: tuple[torch.Tensor], module: torch.nn.Module, name: str):
         if not self._enable_debug_info:
             return
 

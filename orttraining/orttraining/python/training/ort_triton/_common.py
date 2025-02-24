@@ -4,7 +4,7 @@
 # --------------------------------------------------------------------------
 
 from abc import abstractmethod
-from typing import Any, Dict, List, Tuple
+from typing import Any
 
 import sympy
 from onnx import GraphProto, NodeProto, TensorProto
@@ -12,7 +12,7 @@ from onnx import GraphProto, NodeProto, TensorProto
 from ._sympy_utils import extract_shape_from_symbol
 from ._utils import get_attribute, get_reduce_info, next_power_of_2
 
-_SPECIAL_FLOATS: List[str] = ["inf", "-inf"]
+_SPECIAL_FLOATS: list[str] = ["inf", "-inf"]
 
 
 class CodegenContext:
@@ -20,8 +20,8 @@ class CodegenContext:
     record variable name mapping in term of IRnodes.
     """
 
-    def __init__(self, var_map: Dict[str, str]):
-        self._var_map: Dict[str, str] = {**var_map}
+    def __init__(self, var_map: dict[str, str]):
+        self._var_map: dict[str, str] = {**var_map}
 
     # Get variable name by the node arg name in ONNX graph.
     def get_variable_name(self, name: str) -> str:
@@ -36,7 +36,7 @@ class CodegenContext:
 
 class CodeBuffer:
     def __init__(self):
-        self.buffer: List[str] = []
+        self.buffer: list[str] = []
 
     def __iadd__(self, other: str):
         self.buffer.append(other)
@@ -59,7 +59,7 @@ class SymbolicDSU:
     """
 
     def __init__(self):
-        self._dsu: Dict[sympy.Expr, sympy.Expr] = {}
+        self._dsu: dict[sympy.Expr, sympy.Expr] = {}
 
     def find(self, symbolic: sympy.Expr) -> sympy.Expr:
         if symbolic not in self._dsu:
@@ -81,25 +81,25 @@ class TensorInfo:
     Represent a input/output tensor of a node.
     """
 
-    def __init__(self, dtype: TensorProto.DataType, shape: List[sympy.Expr]):
+    def __init__(self, dtype: TensorProto.DataType, shape: list[sympy.Expr]):
         self._dtype: TensorProto.DataType = dtype
-        self._shape: List[sympy.Expr] = shape
+        self._shape: list[sympy.Expr] = shape
 
     @property
     def dtype(self) -> TensorProto.DataType:
         return self._dtype
 
     @property
-    def shape(self) -> List[sympy.Expr]:
+    def shape(self) -> list[sympy.Expr]:
         return self._shape
 
     def update_shape(self, symbolics: SymbolicDSU):
         self._shape = [symbolics.find(dim) if dim.is_symbol else dim for dim in self._shape]
 
 
-def _infer_elementwise_shape(input_infos: List[TensorInfo], symbolics: SymbolicDSU) -> List[sympy.Expr]:
+def _infer_elementwise_shape(input_infos: list[TensorInfo], symbolics: SymbolicDSU) -> list[sympy.Expr]:
     max_len = max([len(input_info.shape) for input_info in input_infos])
-    output_shape: List[sympy.Expr] = [sympy.Integer(1)] * max_len
+    output_shape: list[sympy.Expr] = [sympy.Integer(1)] * max_len
     for input_info in input_infos:
         offset = max_len - len(input_info.shape)
         for idx, dim in enumerate(input_info.shape):
@@ -112,22 +112,22 @@ def _infer_elementwise_shape(input_infos: List[TensorInfo], symbolics: SymbolicD
 
 
 def _infer_elementwise(
-    node: NodeProto, input_infos: List[TensorInfo], graph: GraphProto, symbolics: SymbolicDSU
-) -> List[TensorInfo]:
+    node: NodeProto, input_infos: list[TensorInfo], graph: GraphProto, symbolics: SymbolicDSU
+) -> list[TensorInfo]:
     # pylint: disable=unused-argument
     return [TensorInfo(input_infos[0].dtype, _infer_elementwise_shape(input_infos, symbolics))]
 
 
 def _infer_where(
-    node: NodeProto, input_infos: List[TensorInfo], graph: GraphProto, symbolics: SymbolicDSU
-) -> List[TensorInfo]:
+    node: NodeProto, input_infos: list[TensorInfo], graph: GraphProto, symbolics: SymbolicDSU
+) -> list[TensorInfo]:
     # pylint: disable=unused-argument
     return [TensorInfo(input_infos[1].dtype, _infer_elementwise_shape(input_infos, symbolics))]
 
 
 def _infer_reduction(
-    node: NodeProto, input_infos: List[TensorInfo], graph: GraphProto, symbolics: SymbolicDSU
-) -> List[TensorInfo]:
+    node: NodeProto, input_infos: list[TensorInfo], graph: GraphProto, symbolics: SymbolicDSU
+) -> list[TensorInfo]:
     # pylint: disable=unused-argument
     input_rank = len(input_infos[0].shape)
     keep_dims, axes = get_reduce_info(node, graph, input_rank)
@@ -141,15 +141,15 @@ def _infer_reduction(
 
 
 def _infer_unary(
-    node: NodeProto, input_infos: List[TensorInfo], graph: GraphProto, symbolics: SymbolicDSU
-) -> List[TensorInfo]:
+    node: NodeProto, input_infos: list[TensorInfo], graph: GraphProto, symbolics: SymbolicDSU
+) -> list[TensorInfo]:
     # pylint: disable=unused-argument
     return [input_infos[0]]
 
 
 def _infer_cast(
-    node: NodeProto, input_infos: List[TensorInfo], graph: GraphProto, symbolics: SymbolicDSU
-) -> List[TensorInfo]:
+    node: NodeProto, input_infos: list[TensorInfo], graph: GraphProto, symbolics: SymbolicDSU
+) -> list[TensorInfo]:
     # pylint: disable=unused-argument
     dtype = get_attribute(node, "to", TensorProto.UNDEFINED)
     assert dtype != TensorProto.UNDEFINED
@@ -157,8 +157,8 @@ def _infer_cast(
 
 
 def _infer_dropout(
-    node: NodeProto, input_infos: List[TensorInfo], graph: GraphProto, symbolics: SymbolicDSU
-) -> List[TensorInfo]:
+    node: NodeProto, input_infos: list[TensorInfo], graph: GraphProto, symbolics: SymbolicDSU
+) -> list[TensorInfo]:
     # pylint: disable=unused-argument
     return [input_infos[0], TensorInfo(TensorProto.BOOL, input_infos[0].shape)]
 
@@ -190,8 +190,8 @@ class TypeAndShapeInfer:
 
     @classmethod
     def infer(
-        cls, node: NodeProto, input_infos: List[TensorInfo], graph: GraphProto, symbolics: SymbolicDSU
-    ) -> List[TensorInfo]:
+        cls, node: NodeProto, input_infos: list[TensorInfo], graph: GraphProto, symbolics: SymbolicDSU
+    ) -> list[TensorInfo]:
         if node.op_type not in cls._INFER_FUNC_MAP:
             raise NotImplementedError(f"Unsupported op type: {node.op_type}")
         return cls._INFER_FUNC_MAP[node.op_type](node, input_infos, graph, symbolics)
@@ -224,7 +224,7 @@ class AutotuneConfigs:
                 )
             )
         )
-        self.configs: List[Tuple[int, int, int]] = self._gen_autotune_configs(x_numel_int, r_numel_int, contiguous)
+        self.configs: list[tuple[int, int, int]] = self._gen_autotune_configs(x_numel_int, r_numel_int, contiguous)
         # If there is symbolic shape, we will not tune the kernel.
         if not x_numel.is_number or not r_numel.is_number:
             self.configs = self.configs[-1:]
@@ -233,13 +233,13 @@ class AutotuneConfigs:
     def _num_warps(self, x: int, r: int) -> int:
         return min(max(x * r // 256, 2), 8)
 
-    def _gen_config(self, xnp2: int, rnp2: int, x: int, r: int) -> Tuple[int, int, int]:
+    def _gen_config(self, xnp2: int, rnp2: int, x: int, r: int) -> tuple[int, int, int]:
         x = min(x, xnp2)
         r = min(r, rnp2)
         return x, r, self._num_warps(x, r)
 
     # TODO: we need to tune more kernels to get more reasonable configs for better performance.
-    def _gen_autotune_configs(self, x_numel: int, r_numel: int, contiguous: bool) -> List[Tuple[int, int, int]]:
+    def _gen_autotune_configs(self, x_numel: int, r_numel: int, contiguous: bool) -> list[tuple[int, int, int]]:
         configs = []
         xnp2 = next_power_of_2(x_numel)
         if r_numel == 1:

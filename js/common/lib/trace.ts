@@ -55,7 +55,7 @@ export const TRACE_FUNC_END = (extraMsg?: string) => {
 /**
  * @ignore
  */
-export const TRACE_EVENT_BEGIN = (extraMsg?: string) => {
+export const TRACE_EVENT_BEGIN = (extraMsg: string) => {
   if (typeof env.trace === 'undefined' ? !env.wasm.trace : !env.trace) {
     return;
   }
@@ -65,7 +65,7 @@ export const TRACE_EVENT_BEGIN = (extraMsg?: string) => {
 /**
  * @ignore
  */
-export const TRACE_EVENT_END = (extraMsg?: string) => {
+export const TRACE_EVENT_END = (extraMsg: string) => {
   if (typeof env.trace === 'undefined' ? !env.wasm.trace : !env.trace) {
     return;
   }

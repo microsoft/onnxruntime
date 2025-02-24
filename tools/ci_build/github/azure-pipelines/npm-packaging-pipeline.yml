@@ -61,7 +61,8 @@ stages:
 
 - stage: Download_Node_Package_And_Publish_Validation_Script
   dependsOn:
-  - ReactNative_CI
+  - ReactNative_CI_Android
+  - ReactNative_CI_iOS
   - Build_web_Release
   - Build_web_Debug
   jobs:
@@ -71,9 +72,11 @@ stages:
       runCodesignValidationInjection: false
     timeoutInMinutes: 10
     steps:
+#    This pipeline usually are triggered by Zip-Nuget-Java-Nodejs Packaging Pipeline,
+#    The NPM_packages is from Android_Java_API_AAR_Packaging_QNN, not from RN_CI
     - download: build
       artifact: 'NPM_packages'
-      displayName: 'Download onnxruntime-node Pipeline Artifact'
+      displayName: 'Download NPM_packages from Zip-Nuget-Java-Nodejs Packaging Pipeline Pipeline Artifact'
 
     - task: CopyFiles@2
       inputs:

@@ -2,9 +2,7 @@
 // Licensed under the MIT License
 
 #include "core/providers/qnn/rpcmem_library.h"
-
-#include "core/common/logging/logging.h"
-#include "core/platform/env.h"
+#include "core/providers/qnn/ort_api.h"
 
 namespace onnxruntime::qnn {
 
@@ -25,7 +23,7 @@ DynamicLibraryHandle LoadDynamicLibrary(const PathString& path, bool global_symb
       return;
     }
 
-    const auto& env = Env::Default();
+    const auto& env = GetDefaultEnv();
     const auto unload_status = env.UnloadDynamicLibrary(library_handle);
 
     if (!unload_status.IsOK()) {
@@ -33,7 +31,7 @@ DynamicLibraryHandle LoadDynamicLibrary(const PathString& path, bool global_symb
     }
   };
 
-  const auto& env = Env::Default();
+  const auto& env = GetDefaultEnv();
   void* library_handle = nullptr;
 
   const auto load_status = env.LoadDynamicLibrary(path, global_symbols, &library_handle);
@@ -47,7 +45,7 @@ DynamicLibraryHandle LoadDynamicLibrary(const PathString& path, bool global_symb
 RpcMemApi CreateApi(void* library_handle) {
   RpcMemApi api{};
 
-  const auto& env = Env::Default();
+  const auto& env = GetDefaultEnv();
   ORT_THROW_IF_ERROR(env.GetSymbolFromLibrary(library_handle, "rpcmem_alloc", (void**)&api.alloc));
 
   ORT_THROW_IF_ERROR(env.GetSymbolFromLibrary(library_handle, "rpcmem_free", (void**)&api.free));

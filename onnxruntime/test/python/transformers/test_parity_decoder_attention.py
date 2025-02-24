@@ -10,7 +10,6 @@
 # license information.
 # -------------------------------------------------------------------------
 
-from typing import List, Optional, Tuple
 
 import numpy
 import torch
@@ -118,7 +117,7 @@ class AttentionProjection(nn.Module):
         self,
         query,
         key,
-        layer_state: Optional[List[Tensor]],
+        layer_state: list[Tensor] | None,
         encoder_decoder_attention: bool,
         use_past=torch.tensor(False),  # noqa: B008
     ):
@@ -182,13 +181,13 @@ class AttentionForONNX(nn.Module):
         self,
         query,
         key: Tensor,
-        key_padding_mask: Optional[Tensor] = None,
-        layer_state: Optional[List[Tensor]] = None,
-        attn_mask: Optional[Tensor] = None,
+        key_padding_mask: Tensor | None = None,
+        layer_state: list[Tensor] | None = None,
+        attn_mask: Tensor | None = None,
         output_attentions: bool = False,
         use_past=torch.tensor(False),  # noqa: B008
         has_key_padding_mask: bool = False,
-    ) -> Tuple[Tensor, Optional[Tensor]]:
+    ) -> tuple[Tensor, Tensor | None]:
         """Input shape: Time(SeqLen) x Batch x Channel"""
         static_kv: bool = self.encoder_decoder_attention
         tgt_len, bsz, embed_dim = query.size()
@@ -241,13 +240,13 @@ class AttentionForONNX(nn.Module):
         self,
         query,
         key: Tensor,
-        key_padding_mask: Optional[Tensor] = None,
-        layer_state: Optional[List[Tensor]] = None,
-        attn_mask: Optional[Tensor] = None,
+        key_padding_mask: Tensor | None = None,
+        layer_state: list[Tensor] | None = None,
+        attn_mask: Tensor | None = None,
         output_attentions: bool = False,
         use_past=torch.tensor(False),  # noqa: B008
         has_key_padding_mask: bool = False,
-    ) -> Tuple[Tensor, Optional[Tensor]]:
+    ) -> tuple[Tensor, Tensor | None]:
         """Input shape: Time(SeqLen) x Batch x Channel"""
         # For readability
         static_kv = bool(self.encoder_decoder_attention)

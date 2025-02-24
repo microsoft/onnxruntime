@@ -363,7 +363,6 @@ Status EinsumTypedComputeProcessor<T>::Run() {
   {
     TensorShapeVector reduced_dims;
     TensorShapeVector preserved_dims;                                           // dims which were not reduced
-    TensorShapeVector preserved_shape;                                          // shape pertaining to only the dims that were preserved (not reduced)
     reduced_dims.reserve(onnxruntime::narrow<size_t>(num_subscript_labels));    // num_subscript_labels is the upper bound. No harm in over-reserving.
     preserved_dims.reserve(onnxruntime::narrow<size_t>(num_subscript_labels));  // num_subscript_labels is the upper bound. No harm in over-reserving.
 

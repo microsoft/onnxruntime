@@ -1,6 +1,3 @@
-from enum import Enum  # noqa: F401
-
-import numpy as np  # noqa: F401
 import onnx
 from onnx import OperatorSetIdProto, TensorProto, helper
 

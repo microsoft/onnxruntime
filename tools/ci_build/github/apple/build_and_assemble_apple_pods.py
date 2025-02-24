@@ -11,8 +11,9 @@ import sys
 import tempfile
 
 from c.assemble_c_pod_package import assemble_c_pod_package
-from objectivec.assemble_objc_pod_package import assemble_objc_pod_package
 from package_assembly_utils import PackageVariant, get_ort_version
+
+from objectivec.assemble_objc_pod_package import assemble_objc_pod_package
 
 SCRIPT_PATH = pathlib.Path(__file__).resolve()
 SCRIPT_DIR = SCRIPT_PATH.parent

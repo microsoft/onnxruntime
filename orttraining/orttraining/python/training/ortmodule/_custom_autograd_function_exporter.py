@@ -191,7 +191,6 @@ def _export_pt_1_10(g, n, *args, **kwargs):
 def _default_export(
     g, func_full_qual_name, func_class, cconv, output_size, output_tensor_types, output_tensor_ranks, *args, **kwargs
 ):
-
     input_tensor_types = []
     input_tensor_ranks = []
 
@@ -224,7 +223,7 @@ def _default_export(
     assert len(args) == len(cconv), "Number of arguments does not match calling convention"
 
     # Encode inputs to torch.autograd.Function.
-    for i, arg, call_type in zip(range(len(args)), args, cconv):
+    for i, arg, call_type in zip(range(len(args)), args, cconv, strict=False):
         if call_type == "d":
             # Got a tensor variable.
             tensor_args.append(arg)

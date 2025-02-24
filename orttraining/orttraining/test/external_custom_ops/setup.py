@@ -50,6 +50,6 @@ setup(
     description="External custom ops example",
     long_description="",
     ext_modules=[CMakeExtension("orttrainng_external_custom_ops")],
-    cmdclass=dict(build_ext=CMakeBuild),
+    cmdclass={"build_ext": CMakeBuild},
     zip_safe=False,
 )

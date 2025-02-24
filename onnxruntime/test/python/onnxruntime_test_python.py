@@ -17,13 +17,14 @@ import numpy as np
 from helper import get_name
 
 import onnxruntime as onnxrt
+from onnxruntime.capi import _pybind_state as C
 from onnxruntime.capi.onnxruntime_pybind11_state import Fail, OrtValueVector, RunOptions
 
 # handle change from python 3.8 and on where loading a dll from the current directory needs to be explicitly allowed.
 if platform.system() == "Windows" and sys.version_info.major >= 3 and sys.version_info.minor >= 8:  # noqa: YTT204
     os.add_dll_directory(os.getcwd())
 
-available_providers = [provider for provider in onnxrt.get_available_providers()]
+available_providers = list(onnxrt.get_available_providers())
 
 # TVM EP doesn't support:
 # * calling Run() on different threads using the same session object
@@ -85,7 +86,7 @@ class TestInferenceSession(unittest.TestCase):
         if result != 0:
             error_str = ctypes.c_char_p()
             cuda_lib.cuGetErrorString(result, ctypes.byref(error_str))
-            print("cuDeviceGetCount failed with error code %d: %s" % (result, error_str.value.decode()))
+            print(f"cuDeviceGetCount failed with error code {result}: {error_str.value.decode()}")
             return -1
         return num_device.value
 
@@ -183,7 +184,7 @@ class TestInferenceSession(unittest.TestCase):
             so.add_session_config_entry(
                 "session.optimized_model_external_initializers_file_name", external_initializers_file
             )
-            so.add_session_config_entry("session.optimized_model_external_initializers_min_size_in_bytes", "100")
+            so.add_session_config_entry("session.optimized_model_external_initializers_min_size_in_bytes", "20")
             onnxrt.InferenceSession(get_name("model_with_orig_ext_data.onnx"), sess_options=so)
             self.assertTrue(os.path.isfile(so.optimized_model_filepath))
             self.assertTrue(os.path.isfile(os.path.join(directory, external_initializers_file)))
@@ -213,14 +214,10 @@ class TestInferenceSession(unittest.TestCase):
             "session.optimized_model_external_initializers_file_name", external_initializers_file
         )
 
-        # TODO(anyone): Set this to 100 will cause test error since some tensor below the threshold
-        # still refers to the original external data file. We shall fix this issue so that the
-        # optimized model only refers to one external data file.
-        so.add_session_config_entry("session.optimized_model_external_initializers_min_size_in_bytes", "10")
+        so.add_session_config_entry("session.optimized_model_external_initializers_min_size_in_bytes", "100")
         session1 = onnxrt.InferenceSession(get_name("model_with_orig_ext_data.onnx"), sess_options=so)
         del session1
         self.assertTrue(os.path.isfile(optimized_model_filepath))
-        self.assertTrue(os.path.isfile(external_initializers_file))
 
         so2 = onnxrt.SessionOptions()
         so2.log_severity_level = 1
@@ -240,7 +237,6 @@ class TestInferenceSession(unittest.TestCase):
 
         # Remove model 1 to make sure optimized model 2 can be loaded independently from model 1
         os.remove(optimized_model_filepath)
-        os.remove(external_initializers_file)
 
         session3 = onnxrt.InferenceSession(optimized_model_filepath_2, sess_options=onnxrt.SessionOptions())
         del session3
@@ -329,8 +325,6 @@ class TestInferenceSession(unittest.TestCase):
             self.assertEqual(option["trt_force_sequential_engine_build"], "1")
             self.assertEqual(option["user_compute_stream"], "1")
             self.assertEqual(option["has_user_compute_stream"], "1")
-
-            from onnxruntime.capi import _pybind_state as C
 
             session_options = C.get_default_session_options()
 
@@ -1426,6 +1420,31 @@ class TestInferenceSession(unittest.TestCase):
                 outs = session.run(output_names=["output"], input_feed=upstreams_onnxrt)[0]
                 self.assertTrue(np.allclose(inps, outs))
 
+    @unittest.skipIf(not hasattr(C.OrtValue, "from_dlpack"), "dlpack not enabled in this build")
+    def test_ort_value_dlpack(self):
+        # Tests originally from orttraining/orttraining/test/python/orttraining_test_ortvalue.py testOrtValueDlPack_float32
+        numpy_arr_input = np.array([[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]], dtype=np.float32)
+        ortvalue = onnxrt.OrtValue.ortvalue_from_numpy(numpy_arr_input)
+        self.assertEqual(numpy_arr_input.shape, tuple(ortvalue.shape()))
+        ptr = ortvalue._ortvalue.data_ptr()
+
+        dlp = ortvalue._ortvalue.to_dlpack()
+        self.assertFalse(C.is_dlpack_uint8_tensor(dlp))
+        ortvalue2 = C.OrtValue.from_dlpack(dlp, False)
+        self.assertEqual(ptr, ortvalue2.data_ptr())
+        new_array = ortvalue2.numpy()
+        np.testing.assert_equal(numpy_arr_input, new_array)
+
+        dlp = ortvalue._ortvalue.__dlpack__()
+        self.assertFalse(C.is_dlpack_uint8_tensor(dlp))
+        ortvalue2 = C.OrtValue.from_dlpack(dlp, False)
+        self.assertEqual(ptr, ortvalue2.data_ptr())
+        new_array = ortvalue2.numpy()
+        np.testing.assert_equal(numpy_arr_input, new_array)
+
+        device = ortvalue._ortvalue.__dlpack_device__()
+        self.assertEqual((1, 0), device)
+
     def test_sparse_tensor_coo_format(self):
         cpu_device = onnxrt.OrtDevice.make("cpu", 0)
         shape = [9, 9]
@@ -1699,8 +1718,6 @@ class TestInferenceSession(unittest.TestCase):
         check_failure([("a", {1: 2})], [{3: 4}])
 
     def test_register_custom_e_ps_library(self):
-        from onnxruntime.capi import _pybind_state as C
-
         available_eps = C.get_available_providers()
         # skip amd gpu build
         if "ROCMExecutionProvider" in available_eps:

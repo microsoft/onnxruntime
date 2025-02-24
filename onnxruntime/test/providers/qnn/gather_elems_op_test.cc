@@ -11,7 +11,7 @@
 #include "test/optimizer/qdq_test_utils.h"
 #include "test/providers/qnn/qnn_test_utils.h"
 
-#include "onnx/onnx_pb.h"
+#include "core/graph/onnx_protobuf.h"
 
 #include "gtest/gtest.h"
 
@@ -67,6 +67,7 @@ static void RunCPUGatherElemsOpTest(const TestInputDef<float>& input_def,
 #else
   provider_options["backend_path"] = "libQnnCpu.so";
 #endif
+  provider_options["offload_graph_io_quantization"] = "0";
 
   RunQnnModelTest(BuildOpTestCase<DataType, IndexType>("GatherElements", {input_def}, {indices_def}, attrs),
                   provider_options,
@@ -91,6 +92,7 @@ static void RunHTPQDQGatherElemsOpTest(const TestInputDef<float>& input_def,
 #else
   provider_options["backend_path"] = "libQnnHtp.so";
 #endif
+  provider_options["offload_graph_io_quantization"] = "0";
 
   auto f32_model_builder = BuildOpTestCase<float, IndexType>("GatherElements", {input_def}, {indices_def}, attrs);
   auto qdq_model_builder = BuildQDQGatherElemsTestCase<QuantType, IndexType>(input_def, indices_def, attrs,
@@ -119,6 +121,7 @@ static void RunHTPGatherElemsOpTest(const TestInputDef<DataType>& input_def,
 #else
   provider_options["backend_path"] = "libQnnHtp.so";
 #endif
+  provider_options["offload_graph_io_quantization"] = "0";
 
   RunQnnModelTest(BuildOpTestCase<DataType, IndexType>("GatherElements", {input_def}, {indices_def}, attrs),
                   provider_options,

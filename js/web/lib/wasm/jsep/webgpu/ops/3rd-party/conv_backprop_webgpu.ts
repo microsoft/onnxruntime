@@ -148,7 +148,12 @@ export const createConvTranspose2DProgramInfo = (
             // Convolve dy(?, ?, d2) with w(:, :, d1, d2) to compute dx(xR, xC, d1).
             // ? = to be determined. : = across all values in that axis.
             var dotProd = ${output.type.value}(0.0);
-            for (var wR: u32 = 0; wR < uniforms.effective_filter_dims.x; wR = wR + 1) {
+            var wR: u32 = 0;
+            if (uniforms.dilations.x == 1) {
+              // Minimum wR >= 0 that satisfies (dyRCorner + wR) % (uniforms.strides.x) == 0
+              wR = u32(((dyRCorner + i32(uniforms.strides.x) - 1) / i32(uniforms.strides.x)) * i32(uniforms.strides.x) - dyRCorner);
+            }
+            for (; wR < uniforms.effective_filter_dims.x; wR = wR + 1) {
               if (wR % uniforms.dilations.x != 0) {
                 continue;
               }
@@ -158,10 +163,14 @@ export const createConvTranspose2DProgramInfo = (
                   wRPerm < 0) {
                 continue;
               }
-              wR = wR + uniforms.strides[0] - 1;
               let idyR: u32 = u32(dyR);
+              var wC: u32 = 0;
+              if (uniforms.dilations.y == 1) {
+                // Minimum wC >= 0 that satisfies (dyCCorner + wC) % (uniforms.strides.y) == 0
+                wC = u32(((dyCCorner + i32(uniforms.strides.y) - 1) / i32(uniforms.strides.y)) * i32(uniforms.strides.y) - dyCCorner);
+              }
 
-              for (var wC: u32 = 0; wC < uniforms.effective_filter_dims.y; wC = wC + 1) {
+              for (; wC < uniforms.effective_filter_dims.y; wC = wC + 1) {
                 if (wC % uniforms.dilations.y != 0) {
                   continue;
                 }
@@ -171,7 +180,6 @@ export const createConvTranspose2DProgramInfo = (
                     fract(dyC) > 0.0 || wCPerm < 0) {
                   continue;
                 }
-                wC = wC + uniforms.strides.y - 1;
                 let idyC: u32 = u32(dyC);
                 var inputChannel = groupId * uniforms.input_channels_per_group;
                 for (var d2: u32 = 0; d2 < uniforms.input_channels_per_group; d2 = d2 + ${aComponents}) {
@@ -185,7 +193,9 @@ export const createConvTranspose2DProgramInfo = (
                   ${calculateResult()}
                   inputChannel = inputChannel + ${aComponents};
                 }
+                wC = wC + uniforms.strides.y - 1;
               }
+              wR = wR + uniforms.strides[0] - 1;
             }
             let value = dotProd${hasBias ? ` + bias[d1 / ${components}]` : ''};
             ${output.setByOffset('global_idx', 'value')};

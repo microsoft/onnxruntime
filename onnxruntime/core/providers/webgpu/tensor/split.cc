@@ -65,11 +65,11 @@ Status SplitProgram::GenerateShaderCode(ShaderHelper& shader) const {
 
   shader.MainFunctionBody() << shader.GuardAgainstOutOfBoundsWorkgroupSizes("uniforms.input_size")
                             << "  var indices = " << input.OffsetToIndices("global_idx") << ";\n"
-                            << "  var index = indices[" << axis_ << "];\n"
+                            << "  var index = " << input.IndicesGet("indices", axis_) << ";\n"
                             << "  let output_number = calculate_output_index(index);\n"
                             << "  if (output_number != 0u) {\n"
                             << "    index -= uniforms.sizes_in_split_axis[output_number - 1u];\n"
-                            << "    indices[" << axis_ << "] = index;\n"
+                            << "    " << input.IndicesSet("indices", axis_, "index") << "\n"
                             << "  }\n"
                             << "  write_buffer_data(output_number, global_idx, indices);\n";
 

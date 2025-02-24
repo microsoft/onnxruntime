@@ -62,7 +62,7 @@ bool IsQDQPairSupported(
   Initializer dq_scale(*dq_scale_tensor_proto, model_path);
 
   if (q_zp.data_type() != dq_zp.data_type() ||
-      q_scale.data_type() != q_scale.data_type() ||
+      q_scale.data_type() != dq_scale.data_type() ||
       !SpanEq(q_zp.DataAsByteSpan(), dq_zp.DataAsByteSpan())) {
     return false;
   }

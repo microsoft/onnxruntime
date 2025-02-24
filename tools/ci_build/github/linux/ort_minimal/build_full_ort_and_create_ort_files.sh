@@ -5,10 +5,10 @@
 
 set -e
 set -x
-export PATH=/opt/python/cp310-cp310/bin:$PATH
 
 BUILD_DIR=${1:?"usage: $0 <build directory>"}
 
+python3 -m pip install -r /onnxruntime_src/tools/ci_build/github/linux/python/requirements.txt
 # Validate the operator kernel registrations, as the ORT model uses hashes of the kernel registration details
 # to find kernels. If the hashes from the registration details are incorrect we will produce a model that will break
 # when the registration is fixed in the future.
@@ -22,11 +22,10 @@ python3 /onnxruntime_src/tools/ci_build/build.py \
     --build_dir ${BUILD_DIR} --cmake_generator Ninja \
     --config Debug \
     --skip_submodule_sync \
-    --parallel --use_binskim_compliant_compile_flags \
+    --parallel --use_vcpkg --use_vcpkg_ms_internal_asset_cache --use_binskim_compliant_compile_flags \
     --build_wheel \
     --skip_tests \
     --enable_training_ops \
-    --enable_pybind --cmake_extra_defines PYTHON_INCLUDE_DIR=/opt/python/cp310-cp310/include/python3.10 PYTHON_LIBRARY=/usr/lib64/librt.so \
     --use_nnapi \
     --use_coreml
 

@@ -152,9 +152,18 @@ ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
         .TypeConstraint("T1", DataTypeImpl::GetTensorType<int32_t>()),
     DeepCpuGruOp);
 
-ONNX_CPU_OPERATOR_KERNEL(
+ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
     GRU,
     14,
+    21,
+    KernelDefBuilder().TypeConstraint("T", {DataTypeImpl::GetTensorType<float>(),
+                                            DataTypeImpl::GetTensorType<double>()})
+        .TypeConstraint("T1", DataTypeImpl::GetTensorType<int32_t>()),
+    DeepCpuGruOp);
+
+ONNX_CPU_OPERATOR_KERNEL(
+    GRU,
+    22,
     KernelDefBuilder().TypeConstraint("T", {DataTypeImpl::GetTensorType<float>(),
                                             DataTypeImpl::GetTensorType<double>()})
         .TypeConstraint("T1", DataTypeImpl::GetTensorType<int32_t>()),

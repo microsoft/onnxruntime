@@ -5,7 +5,7 @@
 
 from abc import abstractmethod
 from collections import defaultdict
-from typing import Any, Dict, List, Optional, Set, Tuple
+from typing import Any
 
 import sympy
 import torch
@@ -22,16 +22,16 @@ class TensorArg:
     If it's constant (initializer or constant node), it also contains the data in numpy array.
     """
 
-    def __init__(self, name: str, tensor_info: Optional[TensorInfo] = None, data: Optional[torch.Tensor] = None):
+    def __init__(self, name: str, tensor_info: TensorInfo | None = None, data: torch.Tensor | None = None):
         self._name: str = name
-        self._data: Optional[torch.Tensor] = data
+        self._data: torch.Tensor | None = data
         if data is not None:
             self._dtype: torch.dtype = data.dtype
-            self._shape: List[sympy.Expr] = parse_shape(list(data.shape))
+            self._shape: list[sympy.Expr] = parse_shape(list(data.shape))
         else:
             assert tensor_info is not None
             self._dtype: torch.dtype = to_torch_dtype(tensor_info.dtype)
-            self._shape: List[sympy.Expr] = tensor_info.shape
+            self._shape: list[sympy.Expr] = tensor_info.shape
         self.cross_kernels: bool = False
 
     @property
@@ -43,11 +43,11 @@ class TensorArg:
         return self._dtype
 
     @property
-    def shape(self) -> List[sympy.Expr]:
+    def shape(self) -> list[sympy.Expr]:
         return self._shape
 
     @property
-    def data(self) -> Optional[torch.Tensor]:
+    def data(self) -> torch.Tensor | None:
         return self._data
 
 
@@ -61,18 +61,18 @@ class OffsetCalculator:
     If a reduce node has non-contiguous axes, need to decompose it into multiple reduce nodes before code-gen.
     """
 
-    def __init__(self, target_shape: List[sympy.Expr], reduce_axes: List[int]):
-        self.target_shape: List[sympy.Expr] = target_shape
+    def __init__(self, target_shape: list[sympy.Expr], reduce_axes: list[int]):
+        self.target_shape: list[sympy.Expr] = target_shape
         self.is_reduction: bool = len(reduce_axes) > 0
         self.rank = len(target_shape)
         self.reduce_axes = sort_reduce_axes(reduce_axes, self.rank)
-        self.x_dims: List[sympy.Expr] = [target_shape[dim] for dim in range(self.rank) if dim not in self.reduce_axes]
+        self.x_dims: list[sympy.Expr] = [target_shape[dim] for dim in range(self.rank) if dim not in self.reduce_axes]
         self.x_rank: int = len(self.x_dims)
         self.x_numel: sympy.Expr = sympy.prod(self.x_dims) if self.x_rank > 0 else sympy.Integer(1)
-        self.r_dims: List[sympy.Expr] = [target_shape[dim] for dim in self.reduce_axes]
+        self.r_dims: list[sympy.Expr] = [target_shape[dim] for dim in self.reduce_axes]
         self.r_rank: int = len(self.r_dims)
         self.r_numel: sympy.Expr = sympy.prod(self.r_dims) if self.r_rank > 0 else sympy.Integer(1)
-        self.x_strides: List[sympy.Expr] = []
+        self.x_strides: list[sympy.Expr] = []
         if self.x_rank > 0:
             self.x_strides.append(sympy.Integer(1))
             for i in range(self.x_rank - 2, -1, -1):
@@ -80,14 +80,14 @@ class OffsetCalculator:
         # To avoid generating useless code for offset calculation, we use x_compute_dims and r_compute_dims to
         # track the dimensions that need to be computed in the offset calculation. These 2 sets will be set in
         # register_tensor_arg function below.
-        self.x_compute_dims: Set[int] = set()
-        self.r_strides: List[sympy.Expr] = []
+        self.x_compute_dims: set[int] = set()
+        self.r_strides: list[sympy.Expr] = []
         if self.r_rank > 0:
             self.r_strides.append(sympy.Integer(1))
             for i in range(self.r_rank - 2, -1, -1):
                 self.r_strides.insert(0, self.r_strides[0] * self.r_dims[i + 1])
-        self.r_compute_dims: Set[int] = set()
-        self.input_strides: Dict[str, List[sympy.Expr]] = dict()
+        self.r_compute_dims: set[int] = set()
+        self.input_strides: dict[str, list[sympy.Expr]] = {}
         self.autotune_configs: AutotuneConfigs = AutotuneConfigs(
             self.x_numel, self.r_numel, not self.is_reduction or self.reduce_axes[-1] == self.rank - 1
         )
@@ -99,17 +99,17 @@ class OffsetCalculator:
         self.requires_r_mask: bool = any(
             simplified_r_numel % sympy.Integer(config[1]) != 0 for config in self.autotune_configs.configs
         )
-        self.reduced_args: Set[str] = set()
-        self.symbolic_shape_variables: Set[str] = set()
+        self.reduced_args: set[str] = set()
+        self.symbolic_shape_variables: set[str] = set()
 
-    def get_input_strides(self, name: str) -> List[sympy.Expr]:
+    def get_input_strides(self, name: str) -> list[sympy.Expr]:
         assert name in self.input_strides
         return self.input_strides[name]
 
-    def get_x_input_strides(self, name: str) -> List[sympy.Expr]:
+    def get_x_input_strides(self, name: str) -> list[sympy.Expr]:
         return [dim for idx, dim in enumerate(self.get_input_strides(name)) if idx not in self.reduce_axes]
 
-    def get_r_input_strides(self, name: str) -> List[sympy.Expr]:
+    def get_r_input_strides(self, name: str) -> list[sympy.Expr]:
         return [dim for idx, dim in enumerate(self.get_input_strides(name)) if idx in self.reduce_axes]
 
     # Whether the x shape of the tensor argument is contiguous and is same as the target shape.
@@ -195,9 +195,9 @@ class IRNode:
     The base class for all IR nodes.
     """
 
-    def __init__(self, inputs: List[TensorArg], outputs: List[TensorArg]):
-        self.inputs: List[TensorArg] = inputs
-        self.outputs: List[TensorArg] = outputs
+    def __init__(self, inputs: list[TensorArg], outputs: list[TensorArg]):
+        self.inputs: list[TensorArg] = inputs
+        self.outputs: list[TensorArg] = outputs
 
     @abstractmethod
     def codegen(self, visitor: NodeVisitor, context: CodegenContext, code_buffer: CodeBuffer, indent: int = 0):
@@ -212,13 +212,13 @@ class ComputeNode(IRNode):
     def __init__(
         self,
         op_type: str,
-        inputs: List[TensorArg],
-        outputs: List[TensorArg],
-        attributes: Dict[str, Any] = {},  # noqa: B006
+        inputs: list[TensorArg],
+        outputs: list[TensorArg],
+        attributes: dict[str, Any] = {},  # noqa: B006
     ):
         super().__init__(inputs, outputs)
         self._op_type: str = op_type
-        self._attributes: Dict[str, Any] = attributes
+        self._attributes: dict[str, Any] = attributes
 
     @property
     def op_type(self):
@@ -230,7 +230,7 @@ class ComputeNode(IRNode):
 
 
 class ReduceNode(ComputeNode):
-    def __init__(self, op_type: str, inputs: List[TensorArg], outputs: List[TensorArg], offset_calc: OffsetCalculator):
+    def __init__(self, op_type: str, inputs: list[TensorArg], outputs: list[TensorArg], offset_calc: OffsetCalculator):
         super().__init__(op_type, inputs, outputs)
         assert op_type == "ReduceSum" or op_type == "ReduceMax" or op_type == "ReduceMin"
         self.default_value: str = (
@@ -250,9 +250,9 @@ class ReduceForLoopStart(ComputeNode):
     shared-memory declaration
     """
 
-    def __init__(self, reduce_nodes: List[ReduceNode], offset_calc: OffsetCalculator):
+    def __init__(self, reduce_nodes: list[ReduceNode], offset_calc: OffsetCalculator):
         super().__init__("", [], [])
-        self.reduce_nodes: List[ReduceNode] = reduce_nodes
+        self.reduce_nodes: list[ReduceNode] = reduce_nodes
         self.offset_calc: OffsetCalculator = offset_calc
 
 
@@ -261,9 +261,9 @@ class ReduceForLoopEnd(ComputeNode):
     shared-memory reduction
     """
 
-    def __init__(self, reduce_nodes: List[ReduceNode], offset_calc: OffsetCalculator):
+    def __init__(self, reduce_nodes: list[ReduceNode], offset_calc: OffsetCalculator):
         super().__init__("", [], [])
-        self.reduce_nodes: List[ReduceNode] = reduce_nodes
+        self.reduce_nodes: list[ReduceNode] = reduce_nodes
         self.offset_calc: OffsetCalculator = offset_calc
 
 
@@ -273,7 +273,7 @@ class DropoutNode(ComputeNode):
     if there are more than one dropout operators in the subgraph.
     """
 
-    def __init__(self, inputs: List[TensorArg], outputs: List[TensorArg], offset_calc: OffsetCalculator):
+    def __init__(self, inputs: list[TensorArg], outputs: list[TensorArg], offset_calc: OffsetCalculator):
         super().__init__("Dropout", inputs, outputs)
         self.offset_calc: OffsetCalculator = offset_calc
         self.offset_calc.register_tensor_arg(inputs[0])
@@ -301,14 +301,14 @@ class KernelNode(IRNode):
 
     """
 
-    def __init__(self, inputs: List[TensorArg], outputs: List[TensorArg], target_shape: List, reduce_axes: List[int]):
+    def __init__(self, inputs: list[TensorArg], outputs: list[TensorArg], target_shape: list, reduce_axes: list[int]):
         super().__init__(inputs, outputs)
         self.name: str = gen_unique_name("triton")
-        self.internal_args: Set[str] = set()
-        self.constants: Dict[str, TensorArg] = dict()
-        self.target_shape: List[sympy.Expr] = target_shape
-        self.sub_nodes: List[IRNode] = []
-        self.var_map: Dict[str, str] = dict()
+        self.internal_args: set[str] = set()
+        self.constants: dict[str, TensorArg] = {}
+        self.target_shape: list[sympy.Expr] = target_shape
+        self.sub_nodes: list[IRNode] = []
+        self.var_map: dict[str, str] = {}
         self.has_dropout: bool = False
         self.offset_calc: OffsetCalculator = OffsetCalculator(target_shape, reduce_axes)
 
@@ -335,18 +335,18 @@ class KernelNode(IRNode):
 
 
 class ElementwiseKernelNode(KernelNode):
-    def __init__(self, inputs: List[TensorArg], outputs: List[TensorArg], target_shape: List[sympy.Expr]):
+    def __init__(self, inputs: list[TensorArg], outputs: list[TensorArg], target_shape: list[sympy.Expr]):
         super().__init__(inputs, outputs, target_shape, [])
 
 
 class ReduceKernelNode(KernelNode):
     def __init__(
         self,
-        inputs: List[TensorArg],
-        outputs: List[TensorArg],
-        target_shape: List[sympy.Expr],
-        reduce_axes: List[int],
-        reduced_args: Set[str],
+        inputs: list[TensorArg],
+        outputs: list[TensorArg],
+        target_shape: list[sympy.Expr],
+        reduce_axes: list[int],
+        reduced_args: set[str],
     ):
         super().__init__(inputs, outputs, target_shape, reduce_axes)
         self.offset_calc.reduced_args.update(reduced_args)
@@ -361,18 +361,18 @@ class ModuleNode(IRNode):
     def __init__(
         self,
         func_name: str,
-        inputs: List[TensorArg],
-        outputs: List[TensorArg],
-        constants: List[TensorArg],
-        cross_kernel_args: List[Tuple[TensorArg, int]],
-        kernels: List[KernelNode],
+        inputs: list[TensorArg],
+        outputs: list[TensorArg],
+        constants: list[TensorArg],
+        cross_kernel_args: list[tuple[TensorArg, int]],
+        kernels: list[KernelNode],
     ):
         super().__init__(inputs, outputs)
         self.func_name: str = func_name
         # Currently need inputs and outputs only. May need intermediate vars and constants later.
-        self.constants: List[TensorArg] = constants
-        self.kernels: List[KernelNode] = kernels
-        self.var_map: Dict[str, str] = dict()
+        self.constants: list[TensorArg] = constants
+        self.kernels: list[KernelNode] = kernels
+        self.var_map: dict[str, str] = {}
         existing_names = set()
         for input in self.inputs:
             name = gen_variable_name(input.name, "in", existing_names)
@@ -380,7 +380,7 @@ class ModuleNode(IRNode):
         for output in self.outputs:
             name = gen_variable_name(output.name, "out", existing_names)
             self.var_map[output.name] = name
-        self.cross_kernel_args_to_delete: Dict[int, Set[str]] = defaultdict(set)
+        self.cross_kernel_args_to_delete: dict[int, set[str]] = defaultdict(set)
         for pair in cross_kernel_args:
             name = gen_variable_name(pair[0].name, "buf", existing_names)
             self.cross_kernel_args_to_delete[pair[1]].add(name)

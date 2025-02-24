@@ -183,13 +183,13 @@ def parse_single_file(f):
         print("------First run ops map (START)------")
         for key, map in provider_op_map_first_run.items():
             print(key)
-            pp.pprint({k: v for k, v in sorted(map.items(), key=lambda item: item[1], reverse=True)})
+            pp.pprint(dict(sorted(map.items(), key=lambda item: item[1], reverse=True)))
 
         print("------First run ops map (END) ------")
         print("------Second run ops map (START)------")
         for key, map in provider_op_map.items():
             print(key)
-            pp.pprint({k: v for k, v in sorted(map.items(), key=lambda item: item[1], reverse=True)})
+            pp.pprint(dict(sorted(map.items(), key=lambda item: item[1], reverse=True)))
         print("------Second run ops map (END) ------")
 
     if model_run_flag:

@@ -1379,6 +1379,7 @@ TensorrtExecutionProvider::TensorrtExecutionProvider(const TensorrtExecutionProv
     profile_opt_shapes = info.profile_opt_shapes;
     cuda_graph_enable_ = info.cuda_graph_enable;
     engine_hw_compatible_ = info.engine_hw_compatible;
+    op_types_to_exclude_ = info.op_types_to_exclude;
   } else {
     try {
       const std::string max_partition_iterations_env = onnxruntime::GetEnvironmentVar(tensorrt_env_vars::kMaxPartitionIterations);
@@ -1563,6 +1564,11 @@ TensorrtExecutionProvider::TensorrtExecutionProvider(const TensorrtExecutionProv
       const std::string cuda_graph_enable_env = onnxruntime::GetEnvironmentVar(tensorrt_env_vars::kCudaGraphEnable);
       if (!cuda_graph_enable_env.empty()) {
         cuda_graph_enable_ = (std::stoi(cuda_graph_enable_env) == 0 ? false : true);
+      }
+
+      const std::string op_types_to_exclude_env = onnxruntime::GetEnvironmentVar(tensorrt_env_vars::kOpTypesToExclude);
+      if (!op_types_to_exclude_env.empty()) {
+        op_types_to_exclude_ = op_types_to_exclude_env;
       }
 
     } catch (const std::invalid_argument& ex) {
@@ -1768,7 +1774,8 @@ TensorrtExecutionProvider::TensorrtExecutionProvider(const TensorrtExecutionProv
                         << ", trt_ep_context_embed_mode: " << ep_context_embed_mode_
                         << ", trt_cache_prefix: " << cache_prefix_
                         << ", trt_engine_hw_compatible: " << engine_hw_compatible_
-                        << ", trt_onnx_model_bytestream_size_: " << onnx_model_bytestream_size_;
+                        << ", trt_onnx_model_bytestream_size_: " << onnx_model_bytestream_size_
+                        << ", trt_op_types_to_exclude: " << op_types_to_exclude_;
 }
 
 TensorrtExecutionProvider::~TensorrtExecutionProvider() {
@@ -2451,7 +2458,8 @@ bool TensorrtExecutionProvider::DetectTensorRTGraphCycles(SubGraphCollection_t& 
 
 std::vector<std::unique_ptr<ComputeCapability>>
 TensorrtExecutionProvider::GetCapability(const GraphViewer& graph,
-                                         const IKernelLookup& /*kernel_lookup*/) const {
+                                         const IKernelLookup& /*kernel_lookup*/,
+                                         IResourceAccountant* /* resource_accountant */) const {
   // Construct subgraph capability from node list
   std::vector<std::unique_ptr<ComputeCapability>> result;
   // Get ModelPath
@@ -2481,18 +2489,19 @@ TensorrtExecutionProvider::GetCapability(const GraphViewer& graph,
   std::vector<size_t> nodes_vector(number_of_ort_nodes);
   std::iota(std::begin(nodes_vector), std::end(nodes_vector), 0);
 
-  std::set<std::string> exclude_ops_set;
+  auto get_exclude_ops_set = [&](std::string node_list_to_exclude) -> std::set<std::string> {
+    std::set<std::string> set;
+    if (!node_list_to_exclude.empty()) {
+      std::stringstream node_list(node_list_to_exclude);
+      std::string node;
+      while (std::getline(node_list, node, ',')) {
+        set.insert(node);
+      }
+    }
+    return set;
+  };
 
-  /*
-   * There is a known performance issue with the DDS ops (NonMaxSuppression, NonZero and RoiAlign) in TRT 10.
-   * TRT EP automatically excludes DDS ops from running on TRT.
-   */
-  if (trt_version_ >= 100000 && trt_version_ < 110000) {
-    exclude_ops_set.insert("NonMaxSuppression");
-    exclude_ops_set.insert("NonZero");
-    exclude_ops_set.insert("RoiAlign");
-    LOGS_DEFAULT(VERBOSE) << "There is a known performance issue with the DDS ops (NonMaxSuppression, NonZero and RoiAlign) in TRT 10. TRT EP automatically excludes DDS ops from running on TRT, if applicable";
-  }
+  auto exclude_ops_set = get_exclude_ops_set(op_types_to_exclude_);
 
   SubGraphCollection_t parser_nodes_vector, supported_nodes_vector;
   const std::vector<NodeIndex>& node_index = graph.GetNodesInTopologicalOrder(1 /*priority-based topological sort*/);

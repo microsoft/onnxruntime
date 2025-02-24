@@ -2,7 +2,7 @@
 # Licensed under the MIT License.
 
 """This file is used to generate test data for Adam optimizer tests in
-   orttraining/orttraining/test/training_ops/cuda/optimizer/adamw_test.cc."""
+orttraining/orttraining/test/training_ops/cuda/optimizer/adamw_test.cc."""
 
 import torch
 

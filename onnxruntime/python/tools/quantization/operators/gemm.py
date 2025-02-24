@@ -3,9 +3,15 @@ import logging
 import numpy as np  # noqa: F401
 import onnx
 
-from ..quant_utils import find_by_name  # noqa: F401
-from ..quant_utils import get_mul_node  # noqa: F401
-from ..quant_utils import TENSOR_NAME_QUANT_SUFFIX, QuantizedValue, QuantizedValueType, attribute_to_kwarg, ms_domain
+from ..quant_utils import (
+    TENSOR_NAME_QUANT_SUFFIX,
+    QuantizedValue,
+    QuantizedValueType,
+    attribute_to_kwarg,
+    find_by_name,  # noqa: F401
+    get_mul_node,  # noqa: F401
+    ms_domain,
+)
 from .base_operator import QuantOperatorBase  # noqa: F401
 from .matmul import QOpMatMul
 from .qdq_base_operator import QDQOperatorBase

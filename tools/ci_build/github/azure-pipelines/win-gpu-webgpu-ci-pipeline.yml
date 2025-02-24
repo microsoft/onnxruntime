@@ -45,7 +45,6 @@ stages:
         buildArch: x64
         # add --build_java if necessary
         additionalBuildFlags: >-
-          --enable_pybind
           --build_nodejs
           --use_webgpu
           --cmake_extra_defines onnxruntime_BUILD_UNIT_TESTS=ON onnxruntime_BUILD_DAWN_MONOLITHIC_LIBRARY=ON

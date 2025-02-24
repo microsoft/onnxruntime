@@ -3,7 +3,6 @@
 # Licensed under the MIT License.
 # --------------------------------------------------------------------------
 from logging import getLogger
-from typing import Dict, List
 
 from fusion_base import Fusion
 from onnx import TensorProto, helper
@@ -18,7 +17,7 @@ class FusionLayerNormalization(Fusion):
         self.check_constant_and_dimension = check_constant_and_dimension
         self.force = force
 
-    def fuse(self, node, input_name_to_nodes: Dict, output_name_to_node: Dict):
+    def fuse(self, node, input_name_to_nodes: dict, output_name_to_node: dict):
         """
         Fuse Layer Normalization subgraph into one node LayerNormalization:
               +----------------------+
@@ -184,7 +183,7 @@ class FusionLayerNormalizationNCHW(Fusion):
 
         return value.reshape([value.shape[0]])
 
-    def create_transpose_node(self, input_name: str, perm: List[int], output_name=None):
+    def create_transpose_node(self, input_name: str, perm: list[int], output_name=None):
         """Append a Transpose node after an input"""
         node_name = self.model.create_node_name("Transpose")
 
@@ -196,7 +195,7 @@ class FusionLayerNormalizationNCHW(Fusion):
 
         return transpose_node
 
-    def fuse(self, node, input_name_to_nodes: Dict, output_name_to_node: Dict):
+    def fuse(self, node, input_name_to_nodes: dict, output_name_to_node: dict):
         """
         Fuse Layer Normalization subgraph into one node LayerNormalization:
               +----------------------+
@@ -328,7 +327,7 @@ class FusionLayerNormalizationTF(Fusion):
     def __init__(self, model: OnnxModel):
         super().__init__(model, "LayerNormalization", "Add", "TF")
 
-    def fuse(self, node, input_name_to_nodes: Dict, output_name_to_node: Dict):
+    def fuse(self, node, input_name_to_nodes: dict, output_name_to_node: dict):
         """
          Layer Norm from Tensorflow model(using keras2onnx or tf2onnx):
           +------------------------------------+

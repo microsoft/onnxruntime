@@ -68,7 +68,7 @@ def process_trainabledropout(model):
         if node.op_type == "TrainableDropout":
             new_dropout = model.graph.node.add()
             new_dropout.op_type = "Dropout"
-            new_dropout.name = "Dropout_%d" % index
+            new_dropout.name = f"Dropout_{index}"
             # add seed attribute
             attr = new_dropout.attribute.add()
             attr.name = "seed"
@@ -83,14 +83,14 @@ def process_trainabledropout(model):
             ratio_scalar = ratio_data.astype(np.float32).reshape(())
             ratio_value = numpy_helper.from_array(ratio_scalar, "ratio")
             new_ratio_node = add_const(
-                model, "dropout_ratio_node_%d" % index, "dropout_ratio_%d" % index, t_value=ratio_value
+                model, f"dropout_ratio_node_{index}", f"dropout_ratio_{index}", t_value=ratio_value
             )
             index += 1
             # add training_mode output
             mode_scalar = np.asarray([True]).astype(bool).reshape(())
             mode_value = numpy_helper.from_array(mode_scalar, "training_mode")
             training_mode_node = add_const(
-                model, "dropout_training_mode_node_%d" % index, "dropout_training_mode_%d" % index, t_value=mode_value
+                model, f"dropout_training_mode_node_{index}", f"dropout_training_mode_{index}", t_value=mode_value
             )
             index += 1
 

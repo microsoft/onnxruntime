@@ -266,7 +266,7 @@ TEST(XnnpackEP, TestQDQConvS8S8_per_channel) {
   RunModelTestWithPath(ort_model_path, "xnnpack_qdq_test_graph_conv_s8s8_perchannel", graph_verify, 0.2f);
 }
 
-TEST(XnnpackEP, DISABLED_TestAveragePool) {  // [ONNXRuntimeError] : 9 : NOT_IMPLEMENTED : Could not find an implementation for AveragePool(19) node with name 'node'
+TEST(XnnpackEP, TestAveragePool) {
   const std::vector<int64_t> input_shape = {1, 2, 3, 3};
   auto modelBuilder = [&input_shape](ModelTestBuilder& builder) {
     auto* input_arg = builder.MakeInput<float>(input_shape, -1.f, 1.f);
@@ -295,7 +295,7 @@ TEST(XnnpackEP, DISABLED_TestQDQAveragePool) {  //  [ONNXRuntimeError] : 9 : NOT
                });
 }
 
-TEST(XnnpackEP, DISABLED_TestMaxPool) {  // NOT_IMPLEMENTED : Could not find an implementation for MaxPool(22) node with name 'node'
+TEST(XnnpackEP, TestMaxPool) {
   const std::vector<int64_t> input_shape = {1, 2, 13, 13};
   auto modelBuilder = [&input_shape](ModelTestBuilder& builder) {
     auto* input_arg = builder.MakeInput<float>(input_shape, -1.f, 1.f);
@@ -395,7 +395,7 @@ TEST(XnnpackEP, TestConvTranspose) {
   RunModelTestWithPath(ort_model_path, "test_conv_follow_convtrans", nullptr);
 }
 
-TEST(XnnpackEP, DISABLED_TestConvTranspose_With_Outputpadding) {  // NOT_IMPLEMENTED : Could not find an implementation for ConvTranspose(22) node with name 'node'
+TEST(XnnpackEP, TestConvTranspose_With_Outputpadding) {
   const std::vector<int64_t> input_shape = {1, 4, 15, 15};
   auto modelBuilder = [&input_shape](ModelTestBuilder& builder) {
     auto* input_arg = builder.MakeInput<float>(input_shape, -127.f, 127.f);
@@ -415,7 +415,7 @@ TEST(XnnpackEP, DISABLED_TestConvTranspose_With_Outputpadding) {  // NOT_IMPLEME
                });
 }
 
-TEST(XnnpackEP, DISABLED_TestConvTranspose_With_OutputShape) {  // NOT_IMPLEMENTED : Could not find an implementation for ConvTranspose(22) node with name 'node'
+TEST(XnnpackEP, TestConvTranspose_With_OutputShape) {
   const std::vector<int64_t> input_shape = {1, 4, 15, 15};
   auto modelBuilder = [&input_shape](ModelTestBuilder& builder) {
     auto* input_arg = builder.MakeInput<float>(input_shape, -127.f, 127.f);

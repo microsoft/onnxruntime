@@ -1,7 +1,7 @@
 'use strict';
 const fs = require('fs');
 const util = require('util');
-const InferenceSession = require('onnxruntime').InferenceSession;
+const InferenceSession = require('onnxruntime-node').InferenceSession;
 
 // use an async context to call onnxruntime functions.
 async function main() {

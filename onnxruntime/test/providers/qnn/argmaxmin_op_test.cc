@@ -9,7 +9,7 @@
 #include "core/graph/node_attr_utils.h"
 #include "test/providers/qnn/qnn_test_utils.h"
 
-#include "onnx/onnx_pb.h"
+#include "core/graph/onnx_protobuf.h"
 #include "gtest/gtest.h"
 
 namespace onnxruntime {
@@ -70,6 +70,7 @@ static void RunQDQArgMxxOpTest(const std::string& op_type, TestInputDef<float> i
 #else
   provider_options["backend_path"] = "libQnnHtp.so";
 #endif
+  provider_options["offload_graph_io_quantization"] = "0";
 
   TestQDQModelAccuracy(BuildOpTestCase<float>(op_type, {input_def}, {}, attrs),   // baseline float32 model
                        BuildQDQArgMxxTestCase<QType>(op_type, input_def, attrs),  // QDQ model

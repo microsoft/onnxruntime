@@ -1,5 +1,4 @@
 import argparse
-from typing import Dict, Tuple
 
 import deepspeed
 import torch
@@ -39,14 +38,14 @@ class SampleData(utils.data.Dataset):
     def __len__(self) -> int:
         return self.x.size(0)
 
-    def __getitem__(self, idx: int) -> Tuple[torch.Tensor, torch.Tensor]:
+    def __getitem__(self, idx: int) -> tuple[torch.Tensor, torch.Tensor]:
         return self.x[idx], self.y[idx]
 
 
 class SimpleNetPipeInput(nn.Module):
     """First stage of the pipeline, responsible for initial processing."""
 
-    def __init__(self, config: Dict[str, int]):
+    def __init__(self, config: dict[str, int]):
         super().__init__()
         self.linear = nn.Linear(config["input_size"], config["hidden_size"])
         self.activation = nn.ReLU()
@@ -60,7 +59,7 @@ class SimpleNetPipeInput(nn.Module):
 class SimpleNetPipeBlock(nn.Module):
     """Intermediate stage of the pipeline, can be duplicated to deepen the network."""
 
-    def __init__(self, config: Dict[str, int]):
+    def __init__(self, config: dict[str, int]):
         super().__init__()
         self.linear = nn.Linear(config["hidden_size"], config["hidden_size"])
         self.activation = nn.ReLU()
@@ -74,7 +73,7 @@ class SimpleNetPipeBlock(nn.Module):
 class SimpleNetPipeOutput(nn.Module):
     """Final stage of the pipeline, producing the output."""
 
-    def __init__(self, config: Dict[str, int]):
+    def __init__(self, config: dict[str, int]):
         super().__init__()
         self.linear = nn.Linear(config["hidden_size"], config["output_size"])
 
@@ -83,7 +82,7 @@ class SimpleNetPipeOutput(nn.Module):
         return x
 
 
-def build_model(config: Dict[str, int], n: int, layer_spec: bool) -> nn.Module:
+def build_model(config: dict[str, int], n: int, layer_spec: bool) -> nn.Module:
     """Constructs and returns the model either using LayerSpec or nn.Sequential."""
     if layer_spec:
         print("Wrapping layers with LayerSpec")

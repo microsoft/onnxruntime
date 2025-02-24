@@ -7,7 +7,6 @@
 import argparse
 import logging
 import os
-from typing import List, Tuple
 
 import numpy as np
 import numpy.typing as npt
@@ -44,7 +43,7 @@ class MatMulBnb4Quantizer:
         self.nodes_to_exclude = set(nodes_to_exclude)
 
     @staticmethod
-    def __get_initializer(name, graph_path: List[GraphProto]) -> Tuple[TensorProto, GraphProto]:
+    def __get_initializer(name, graph_path: list[GraphProto]) -> tuple[TensorProto, GraphProto]:
         for gid in range(len(graph_path) - 1, -1, -1):
             graph = graph_path[gid]
             for tensor in graph.initializer:
@@ -74,7 +73,7 @@ class MatMulBnb4Quantizer:
 
         return (packed, absmax)
 
-    def _bnb4_matmul_node_weight(self, node: NodeProto, graph_stack: List[GraphProto]) -> NodeProto:
+    def _bnb4_matmul_node_weight(self, node: NodeProto, graph_stack: list[GraphProto]) -> NodeProto:
         """If the node is MatMul with fp32 const weight, quantize the weight with int4, and return the new node"""
 
         if node.op_type != "MatMul":
@@ -129,7 +128,7 @@ class MatMulBnb4Quantizer:
 
         return matmul_bnb4_node
 
-    def _process_subgraph(self, graph_stack: List[GraphProto]):
+    def _process_subgraph(self, graph_stack: list[GraphProto]):
         new_nodes = []
         graph = graph_stack[-1]
 

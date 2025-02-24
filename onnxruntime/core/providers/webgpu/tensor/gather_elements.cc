@@ -59,7 +59,7 @@ Status GatherElements::ComputeInternal(ComputeContext& context) const {
     axis += input_rank;
   }
 
-  auto axis_dim_limit = input_shape[axis];
+  auto axis_dim_limit = input_shape[static_cast<size_t>(axis)];
 
   auto output_dims = indices_shape.AsShapeVector();
   TensorShape output_shape(output_dims);

@@ -576,7 +576,7 @@ class ONNXModel:
         if init.data_type == onnx.TensorProto.FLOAT8E4M3FN:
             if init.HasField("raw_data"):
                 b = list(init.raw_data)
-                if any(map(lambda i: (i & 127) == 127, b)):
+                if any((i & 127) == 127 for i in b):
                     raise ValueError(f"Initializer {init.name!r} has nan.")
         return init
 

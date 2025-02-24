@@ -8,7 +8,7 @@
 #include "test/providers/qnn/qnn_test_utils.h"
 #include "core/graph/node_attr_utils.h"
 
-#include "onnx/onnx_pb.h"
+#include "core/graph/onnx_protobuf.h"
 #include "gtest/gtest.h"
 
 namespace onnxruntime {
@@ -98,6 +98,7 @@ static void RunQDQTileTestOnHTP(const TestInputDef<float>& input_def,
 #else
   provider_options["backend_path"] = "libQnnHtp.so";
 #endif
+  provider_options["offload_graph_io_quantization"] = "0";
 
   auto f32_model_builder = BuildOpTestCase<float, int64_t>("Tile", {input_def}, {repeats_def}, {});
   auto qdq_model_builder = BuildQDQTileTestCase<QType>(input_def, repeats_def, use_contrib_qdq);

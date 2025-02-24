@@ -842,7 +842,7 @@ class QDQQuantizer(BaseQuantizer):
 
             <Producer> ---> Q1 ---> DQ1 ---> Q2 ---> DQ2 ---> <Graph output>
         """
-        tensor_recv_nodes = set([node.name for node in self.tensor_to_its_receiving_nodes.get(tensor_name, [])])
+        tensor_recv_nodes = {node.name for node in self.tensor_to_its_receiving_nodes.get(tensor_name, [])}
 
         if (
             self.dedicated_qdq_pair
@@ -1253,9 +1253,9 @@ class QDQQuantizer(BaseQuantizer):
         scale = quant_params["scale"]
         zero_point_type = quant_params["quant_type"]
         axis: int | None = quant_params.get("axis")
-        assert (axis is not None and len(scale.shape) == 1) or (
-            axis is None and len(scale.shape) == 0
-        ), "Wrong scale/zp shapes"
+        assert (axis is not None and len(scale.shape) == 1) or (axis is None and len(scale.shape) == 0), (
+            "Wrong scale/zp shapes"
+        )
         assert len(scale.shape) == len(zero_point.shape), "Scale and zero-point must have the same rank"
 
         zero_point_name = param_name + "_zero_point" + init_name_suffix

@@ -3,10 +3,6 @@
 
 #pragma once
 
-#ifdef __EMSCRIPTEN__
-#include <emscripten/emscripten.h>
-#endif
-
 #include <string>
 #include <unordered_map>
 

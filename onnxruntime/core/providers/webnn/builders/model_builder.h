@@ -81,7 +81,7 @@ class ModelBuilder {
 
   InlinedHashMap<std::string, OnnxTensorInfo> input_output_info_;
 
-  InlinedHashSet<std::string> skipped_initializers_;
+  std::unordered_map<std::string, int> initializer_usage_;
   InlinedHashSet<std::string> skipped_inputs_;
 
   uint32_t name_token_{0};

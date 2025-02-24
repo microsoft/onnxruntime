@@ -86,7 +86,7 @@ def _shape_to_string(shape):
         value = next(iter(dict_obj.values()))
         if len(res) != 0:
             res += ","
-        res += f'{key}({"x".join(str(v) for v in value)})'
+        res += f"{key}({'x'.join(str(v) for v in value)})"
     return res
 
 
@@ -200,7 +200,7 @@ def _print_op_kernel_mapping_info(cpu_df, gpu_df, num_runs, csv=None):
     # Count op occurrences in the selected runs
     op_counts = defaultdict(int)
     for op in cpu_df.T.to_dict().values():
-        identifiers = tuple([op["name"], op["input_type_shape"]])
+        identifiers = (op["name"], op["input_type_shape"])
         op_counts[identifiers] += 1
 
     # Collect kernel stats: count/duration
@@ -212,7 +212,7 @@ def _print_op_kernel_mapping_info(cpu_df, gpu_df, num_runs, csv=None):
         input_type_shape = kernel["input_type_shape"]
         kernel_name = kernel["name"]
         dimensions = kernel["dimensions"]
-        identifiers = tuple([op_name, input_type_shape, kernel_name, dimensions])
+        identifiers = (op_name, input_type_shape, kernel_name, dimensions)
         stat_dict[identifiers]["count"] += 1
         stat_dict[identifiers]["duration"] += kernel["duration"]
 
@@ -220,7 +220,7 @@ def _print_op_kernel_mapping_info(cpu_df, gpu_df, num_runs, csv=None):
     kernel_list = []
     for identifiers, stat in stat_dict.items():
         op_name, input_type_shape, kernel_name, dimensions = identifiers
-        op_count = op_counts.get(tuple([op_name, input_type_shape]))
+        op_count = op_counts.get((op_name, input_type_shape))
         if op_count is None:
             continue
         kernel_list.append(

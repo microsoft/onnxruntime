@@ -379,10 +379,10 @@ def check_op_type_count(testcase, model_path, **kwargs):
         if node.op_type in optype2count:
             optype2count[node.op_type] += 1
 
-    for op_type in kwargs:
+    for op_type, value in kwargs.items():
         try:
             testcase.assertEqual(
-                kwargs[op_type],
+                value,
                 optype2count[op_type],
                 f"op_type {op_type} count not same",
             )
@@ -414,7 +414,7 @@ def check_sign_f8_quantization(model_path_origin, model_path_to_check):
         scale_zp = [i.name for i in model_f8.graph.initializer if i.name.startswith(name)]
         if len(scale_zp) not in (1, 3):
             raise AssertionError(
-                f"Need one or three names not {scale_zp}, all names: {set(i.name for i in model_f8.graph.initializer)}."
+                f"Need one or three names not {scale_zp}, all names: { {i.name for i in model_f8.graph.initializer} }."
             )
         scale = [name for name in scale_zp if "scale" in name]
         zero = [name for name in scale_zp if "zero" in name]
@@ -480,7 +480,7 @@ def check_model_correctness(
 
     with open(model_path_origin, "rb") as f:
         model_onnx = onnx.load(f)
-    ops_set = set(node.op_type for node in model_onnx.graph.node)
+    ops_set = {node.op_type for node in model_onnx.graph.node}
     check_reference_evaluator = not (ops_set & {"EmbedLayerNormalization", "Conv", "Attention", "Transpose"})
     check_target_evaluator = False
 
@@ -639,7 +639,7 @@ def check_qtype_by_node_type(testcase, model_to_check, check_list):
                 tensor_name = node.input[check_item[1]] if check_item[0] == "i" else node.output[check_item[1]]
                 if tensor_name not in value_infos and tensor_name not in initializers:
                     raise AssertionError(
-                        f"Unable to find tensor_name={tensor_name!r} in {list(sorted(value_infos))}\n{model}"
+                        f"Unable to find tensor_name={tensor_name!r} in {sorted(value_infos)}\n{model}"
                     )
                 if tensor_name in value_infos:
                     vi = value_infos[tensor_name]

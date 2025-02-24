@@ -99,7 +99,7 @@ def _torch_softmax(input, **kwargs):
 
 def _torch_reduce(input, func, **kwargs):
     rank = len(input.shape)
-    axes = kwargs.get("axes", [idx for idx in range(rank)])
+    axes = kwargs.get("axes", list(range(rank)))
     keepdims = kwargs.get("keepdims", True)
     axes = [axis if axis >= 0 else rank + axis for axis in axes]
     axes.sort(reverse=True)
@@ -206,7 +206,7 @@ def _run_op_test(op_type, onnx_dtype, create_model_func, gen_inputs_func, **kwar
     if isinstance(pt_outputs, tuple):
         assert isinstance(ort_outputs, tuple)
         assert len(pt_outputs) == len(ort_outputs)
-        for pt_output, ort_output in zip(pt_outputs, ort_outputs):
+        for pt_output, ort_output in zip(pt_outputs, ort_outputs, strict=False):
             _test_helpers.assert_values_are_close(pt_output, _from_dlpack(ort_output), rtol=rtol, atol=atol)
     else:
         _test_helpers.assert_values_are_close(pt_outputs, _from_dlpack(ort_outputs), rtol=rtol, atol=atol)
@@ -489,7 +489,7 @@ def test_dropout_op(onnx_dtype, input_shape_and_ratio):
     def _check_output(x, y, mask, ratio):
         all_count = 0
         masked_count = 0
-        for x_value, y_value, mask_value in zip(x, y, mask):
+        for x_value, y_value, mask_value in zip(x, y, mask, strict=False):
             if mask_value:
                 assert abs(y_value - x_value / (1.0 - ratio)) < 0.05
             else:

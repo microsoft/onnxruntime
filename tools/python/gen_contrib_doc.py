@@ -8,10 +8,8 @@ import os
 import pathlib
 import sys
 from collections import defaultdict
-from typing import Any, Dict, List, Sequence, Set, Text, Tuple  # noqa: F401
 
-import numpy as np  # type: ignore
-from onnx import AttributeProto, FunctionProto  # noqa: F401
+import numpy as np
 
 import onnxruntime.capi.onnxruntime_pybind11_state as rtpy
 from onnxruntime.capi.onnxruntime_pybind11_state import schemadef  # noqa: F401
@@ -305,11 +303,6 @@ def support_level_str(level):  # type: (OpSchema.SupportType) -> Text
     return "<sub>experimental</sub> " if level == OpSchema.SupportType.EXPERIMENTAL else ""
 
 
-# def function_status_str(status=OperatorStatus.Value("EXPERIMENTAL")):  # type: ignore
-#     return \
-#         "<sub>experimental</sub> " if status == OperatorStatus.Value('EXPERIMENTAL') else ""  # type: ignore
-
-
 def main(output_path: str, domain_filter: [str]):
     with open(output_path, "w", newline="", encoding="utf-8") as fout:
         fout.write("## Contrib Operator Schemas\n")
@@ -320,9 +313,7 @@ def main(output_path: str, domain_filter: [str]):
         )
 
         # domain -> support level -> name -> [schema]
-        index = defaultdict(
-            lambda: defaultdict(lambda: defaultdict(list))
-        )  # type: Dict[Text, Dict[int, Dict[Text, List[OpSchema]]]]
+        index = defaultdict(lambda: defaultdict(lambda: defaultdict(list)))  # type: Dict[Text, Dict[int, Dict[Text, List[OpSchema]]]]
 
         for schema in rtpy.get_all_operator_schema():
             index[schema.domain][int(schema.support_level)][schema.name].append(schema)
@@ -331,17 +322,15 @@ def main(output_path: str, domain_filter: [str]):
 
         # Preprocess the Operator Schemas
         # [(domain, [(support_level, [(schema name, current schema, all versions schemas)])])]
-        operator_schemas = (
-            list()
-        )  # type: List[Tuple[Text, List[Tuple[int, List[Tuple[Text, OpSchema, List[OpSchema]]]]]]]
+        operator_schemas = []  # type: List[Tuple[Text, List[Tuple[int, List[Tuple[Text, OpSchema, List[OpSchema]]]]]]]
         exsting_ops = set()  # type: Set[Text]
         for domain, _supportmap in sorted(index.items()):
             if not should_render_domain(domain, domain_filter):
                 continue
 
-            processed_supportmap = list()
+            processed_supportmap = []
             for _support, _namemap in sorted(_supportmap.items()):
-                processed_namemap = list()
+                processed_namemap = []
                 for n, unsorted_versions in sorted(_namemap.items()):
                     versions = sorted(unsorted_versions, key=lambda s: s.since_version)
                     schema = versions[-1]
@@ -394,7 +383,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--domains",
         nargs="+",
-        help="Filter to specified domains. " "e.g. `--domains com.microsoft com.microsoft.nchwc`",  # noqa: ISC001
+        help="Filter to specified domains. e.g. `--domains com.microsoft com.microsoft.nchwc`",
     )
     parser.add_argument(
         "--output_path",

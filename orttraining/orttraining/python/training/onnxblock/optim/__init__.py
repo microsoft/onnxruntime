@@ -3,4 +3,4 @@
 
 from onnxruntime.training.onnxblock.optim.optim import SGD, AdamW, ClipGradNorm
 
-__all__ = ["AdamW", "ClipGradNorm", "SGD"]
+__all__ = ["SGD", "AdamW", "ClipGradNorm"]

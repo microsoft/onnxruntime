@@ -33,7 +33,7 @@ parameters:
 - name: QnnSdk
   displayName: QNN SDK version
   type: string
-  default: 2.28.2.241116
+  default: 2.31.0.250130
 
 jobs:
   - job: Build_QNN_EP
@@ -41,16 +41,16 @@ jobs:
     timeoutInMinutes: 60
     workspace:
       clean: all
-
+    strategy:
+      matrix:
+        SHARED_LIB:
+          QnnLibKind: 'shared_lib'
+        STATIC_LIB:
+          QnnLibKind: 'static_lib'
     steps:
       - script: |
           ls -R /data/qnn_test_data
         displayName: Check QNN test data
-
-      - task: UsePythonVersion@0
-        displayName: Use Python $(pythonVersion)
-        inputs:
-          versionSpec: $(pythonVersion)
 
       - script: sudo apt-get update -y && sudo apt-get install -y coreutils ninja-build
         displayName: Install coreutils and ninja
@@ -65,10 +65,11 @@ jobs:
             --config Release \
             --use_binskim_compliant_compile_flags \
             --build_java \
-            --use_qnn \
+            --build_shared_lib \
+            --use_qnn $(QnnLibKind) \
             --qnn_home $(QnnSDKRootDir) \
             --cmake_generator=Ninja \
-            --update --build --parallel
+            --update --build --parallel --use_vcpkg --use_vcpkg_ms_internal_asset_cache
         displayName: Build QNN EP
 
       - script: |
@@ -77,10 +78,11 @@ jobs:
             --config Release \
             --use_binskim_compliant_compile_flags \
             --build_java \
-            --use_qnn \
+            --build_shared_lib \
+            --use_qnn $(QnnLibKind) \
             --qnn_home $(QnnSDKRootDir) \
             --cmake_generator=Ninja \
-            --test
+            --test --use_vcpkg --use_vcpkg_ms_internal_asset_cache
         displayName: Run unit tests
 
       - task: CmdLine@2

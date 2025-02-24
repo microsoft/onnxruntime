@@ -103,7 +103,7 @@ if __name__ == "__main__":
         # Parse mem_test log
         logs = ["valgrind.log", "concurrency_test.log"]
         csv_paths = ["mem_test.csv", "concurrency_test.csv"]
-        for log, csv_path in zip(logs, csv_paths):
+        for log, csv_path in zip(logs, csv_paths, strict=False):
             if os.path.exists(log):
                 print(f"{identifier}: Parsing {log}")
                 if log == logs[0]:
@@ -112,7 +112,9 @@ if __name__ == "__main__":
                     parse_concurrency_test_log(log, csv_path)
 
         # Upload to db
-        for csv_path, db_table_name in zip(csv_paths, ["ep_valgrind_record", "ep_concurrencytest_record"]):
+        for csv_path, db_table_name in zip(
+            csv_paths, ["ep_valgrind_record", "ep_concurrencytest_record"], strict=False
+        ):
             if os.path.exists(csv_path):
                 table = pd.read_csv(csv_path)
                 write_table(

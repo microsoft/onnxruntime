@@ -1,5 +1,5 @@
 parameters:
-  QnnSdk: '2.28.2.241116'
+  QnnSdk: '2.31.0.250130'
   build_config: 'RelWithDebInfo'
   IsReleaseBuild: false
   DoEsrp: false
@@ -93,12 +93,18 @@ stages:
           workingFolder: '$(Build.BinariesDirectory)\${{ parameters.build_config }}'
           createLogFile: true
 
+      - task: CmdLine@2
+        displayName: 'Print contents of binaries directory'
+        inputs:
+          script: |
+            dir $(Build.BinariesDirectory)\${{ parameters.build_config }}\${{ parameters.build_config }}
+
       - template: win-esrp-dll.yml
         parameters:
           FolderPath: '$(Build.BinariesDirectory)\${{ parameters.build_config }}\${{ parameters.build_config }}'
           DisplayName: 'ESRP - Sign dlls'
           DoEsrp: ${{ parameters.DoEsrp }}
-          Pattern: 'onnxruntime.dll'
+          Pattern: 'onnxruntime*.dll'
 
       - task: MSBuild@1
         displayName: 'Restore NuGet Packages and create project.assets.json'

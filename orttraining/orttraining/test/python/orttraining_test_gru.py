@@ -355,7 +355,9 @@ class GRU:
                 prev_h = (
                     all_hidden_states[t - 1, 0, idx, :]
                     if t > 0
-                    else initial_hidden_state[0, idx, :] if initial_hidden_state is not None else 0
+                    else initial_hidden_state[0, idx, :]
+                    if initial_hidden_state is not None
+                    else 0
                 )
 
                 grad_update_gate = (prev_h - hidden_gate) * grad_h
@@ -664,7 +666,7 @@ def test_gru_forward(sequence_length, batch_size, input_size, hidden_size, linea
     outs_ort = gru.forward_ort(inputs, weights, recurrence_weights, bias, initial_hidden_state)
     outs_np = gru.forward_np(inputs, weights, recurrence_weights, bias, initial_hidden_state)
 
-    for ort_out, np_out in zip(outs_ort, outs_np):
+    for ort_out, np_out in zip(outs_ort, outs_np, strict=False):
         assert np.allclose(ort_out, np_out, rtol=1e-03, atol=1e-05)
 
 
@@ -714,5 +716,5 @@ def test_gru_backward(sequence_length, batch_size, input_size, hidden_size, line
         grad_final_hidden_state,
     )
 
-    for ort_out, np_out in zip(outs_ort, outs_np):
+    for ort_out, np_out in zip(outs_ort, outs_np, strict=False):
         assert np.allclose(ort_out, np_out, rtol=1e-01, atol=1e-03)

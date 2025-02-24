@@ -4,13 +4,12 @@
 # license information.
 # --------------------------------------------------------------------------
 
-from typing import List, Tuple
 
 import torch
 from transformers import BartConfig, BartForConditionalGeneration, BartTokenizer
 
 
-def group_by_self_and_cross(present_key_values: Tuple[torch.Tensor], concat: bool = False):
+def group_by_self_and_cross(present_key_values: tuple[torch.Tensor], concat: bool = False):
     """Categorize present_key_values into self and cross attention.
 
     Split present state from grouped by layer to grouped by self/cross attention.
@@ -27,8 +26,8 @@ def group_by_self_and_cross(present_key_values: Tuple[torch.Tensor], concat: boo
         present_self (Tuple[torch.Tensor]): present key and values from self attention
         present_cross (Tuple[torch.Tensor]): present key and values from cross attention
     """
-    present_self: List[torch.Tensor] = []
-    present_cross: List[torch.Tensor] = []
+    present_self: list[torch.Tensor] = []
+    present_cross: list[torch.Tensor] = []
     for _, present_layer_i in enumerate(present_key_values):
         assert len(present_layer_i) == 4, f"Expected to have four items. Got {len(present_layer_i)}"
         present_key_self, present_value_self, present_key_cross, present_value_cross = present_layer_i
@@ -40,7 +39,7 @@ def group_by_self_and_cross(present_key_values: Tuple[torch.Tensor], concat: boo
         return present_self, present_cross
 
 
-def back_group_by_layer(past_key_values: Tuple[Tuple[torch.Tensor]]):
+def back_group_by_layer(past_key_values: tuple[tuple[torch.Tensor]]):
     """Categorize present_key_values from self and cross attention to layer by layer.
 
     Reorder past state from grouped by self/cross attention to grouped by layer.
@@ -70,7 +69,7 @@ def back_group_by_layer(past_key_values: Tuple[Tuple[torch.Tensor]]):
     return past_tuples
 
 
-def get_input_names(past_key_values: Tuple[Tuple[torch.Tensor]], encoder=True):
+def get_input_names(past_key_values: tuple[tuple[torch.Tensor]], encoder=True):
     """Process input names of model wrapper.
 
     Args:
@@ -89,7 +88,7 @@ def get_input_names(past_key_values: Tuple[Tuple[torch.Tensor]], encoder=True):
     return names
 
 
-def get_output_names(past_key_values: Tuple[torch.Tensor]):
+def get_output_names(past_key_values: tuple[torch.Tensor]):
     """Process output names of model wrapper.
 
     As cross attention is unchanged during every iteration of beam search,

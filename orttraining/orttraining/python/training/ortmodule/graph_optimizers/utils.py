@@ -4,7 +4,8 @@
 # --------------------------------------------------------------------------
 
 import itertools
-from typing import Any, Dict, List, Sequence, Tuple
+from collections.abc import Sequence
+from typing import Any
 
 import numpy as np
 from onnx import GraphProto, NodeProto, TensorProto, helper, numpy_helper
@@ -54,8 +55,8 @@ class GraphMatcher:
 
     def __init__(self, graph: GraphProto):
         self._graph: GraphProto = graph
-        self._op_type_to_nodes: Dict[str, List[NodeProto]] = {}
-        self._consumer_count: Dict[str, int] = {}
+        self._op_type_to_nodes: dict[str, list[NodeProto]] = {}
+        self._consumer_count: dict[str, int] = {}
         for node in graph.node:
             if node.op_type not in self._op_type_to_nodes:
                 self._op_type_to_nodes[node.op_type] = []
@@ -117,7 +118,7 @@ class GraphMatcher:
             return initializers[0].data_type, initializers[0].dims
         return None, None
 
-    def _match_pattern(self, node: NodeProto, pattern: List[Tuple[str, bool, List[Tuple[int, int, int]]]]):
+    def _match_pattern(self, node: NodeProto, pattern: list[tuple[str, bool, list[tuple[int, int, int]]]]):
         nodes = [node]
         for i in range(1, len(pattern)):
             next_op_type = pattern[i][0]
@@ -140,7 +141,7 @@ class GraphMatcher:
             nodes.append(next_node)
         return nodes
 
-    def match_pattern(self, pattern: List[Tuple[str, bool, List[Tuple[int, int, int]]]]):
+    def match_pattern(self, pattern: list[tuple[str, bool, list[tuple[int, int, int]]]]):
         for node in self._op_type_to_nodes.get(pattern[0][0], []):
             result = self._match_pattern(node, pattern)
             if len(result) == len(pattern):
@@ -165,9 +166,9 @@ def make_constant_node(name: str, dtype: TensorProto.DataType, dims: Sequence[in
 
 def update_graph(
     graph: GraphProto,
-    nodes_to_remove: List[NodeProto],
-    nodes_to_add: List[NodeProto],
-    new_value_infos: List[TensorProto] = [],  # noqa: B006
+    nodes_to_remove: list[NodeProto],
+    nodes_to_add: list[NodeProto],
+    new_value_infos: list[TensorProto] = [],  # noqa: B006
 ):
     """Update an ONNX graph by removing some nodes, and adding some new nodes and value infos."""
     nodes = [node for node in graph.node if node not in nodes_to_remove]

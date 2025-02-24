@@ -15,9 +15,9 @@ from . import amp, artifacts, optim
 __all__ = [
     "PropagateCastOpsStrategy",
     "TrainingParameters",
-    "is_ortmodule_available",
     "amp",
     "artifacts",
+    "is_ortmodule_available",
     "optim",
 ]
 

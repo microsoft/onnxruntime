@@ -31,7 +31,7 @@ def _printf_stderr(fmt, *args):
 def _read_results_file(results_path):
     with open(results_path) as results_file:
         csv_reader = csv.DictReader(results_file)
-        return [row for row in csv_reader]
+        return list(csv_reader)
 
 
 def _compare_results(expected_results, actual_results, field_comparisons):
@@ -43,7 +43,7 @@ def _compare_results(expected_results, actual_results, field_comparisons):
         return False
 
     mismatch_detected = False
-    for row_idx, (expected_row, actual_row) in enumerate(zip(expected_results, actual_results)):
+    for row_idx, (expected_row, actual_row) in enumerate(zip(expected_results, actual_results, strict=False)):
         for field_name, comparison in field_comparisons.items():
             actual, expected = actual_row[field_name], expected_row[field_name]
             if not comparison.fn(actual, expected):
