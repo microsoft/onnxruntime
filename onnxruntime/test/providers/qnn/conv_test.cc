@@ -1519,9 +1519,10 @@ TEST_F(QnnHTPBackendTests, Conv3D_U16S8S32_PerChannel2) {
 // Expected val: 87.354057312011719
 // QNN QDQ val: 0 (err 87.354057312011719)
 // CPU QDQ val: 87.3583984375 (err 0.00434112548828125)
-TEST_F(QnnHTPBackendTests, DISABLED_ConvU16S16S32_DynamicBias) {
+// Issue fixed in 2.30
+TEST_F(QnnHTPBackendTests, ConvU16S16S32_DynamicBias) {
   TestInputDef<float> input_def({1, 2, 5, 5}, false, GetFloatDataInRange(-10.0f, 10.0f, 50));
-  TestInputDef<float> weight_def({1, 2, 3, 3}, false, GetFloatDataInRange(-1.0f, 5.0f, 18));
+  TestInputDef<float> weight_def({1, 2, 3, 3}, true, GetFloatDataInRange(-1.0f, 5.0f, 18));
   RunHTPConvOpTest<uint16_t, int16_t>("Conv",
                                       input_def,                                   // Input
                                       weight_def.OverrideValueRange(-5.0f, 5.0f),  // Weights (symmetric quant range)
@@ -1537,9 +1538,10 @@ TEST_F(QnnHTPBackendTests, DISABLED_ConvU16S16S32_DynamicBias) {
 
 // Tests 16-bit QDQ Conv with dynamic weights and bias (uses QNN's DepthwiseConv2d)
 // TODO(adrianlizarraga): FAIL: Failed to finalize QNN graph. Error code 1002
-TEST_F(QnnHTPBackendTests, DISABLED_DepthwiseConvU16S16S32_DynamicBias) {
+// Issue fixed in 2.30
+TEST_F(QnnHTPBackendTests, DepthwiseConvU16S16S32_DynamicBias) {
   TestInputDef<float> input_def({1, 1, 5, 5}, false, GetFloatDataInRange(-10.0f, 10.0f, 25));
-  TestInputDef<float> weight_def({1, 1, 3, 3}, false, GetFloatDataInRange(-1.0f, 5.0f, 9));
+  TestInputDef<float> weight_def({1, 1, 3, 3}, true, GetFloatDataInRange(-1.0f, 5.0f, 9));
   RunHTPConvOpTest<uint16_t, int16_t>("Conv",
                                       input_def,                                   // Input
                                       weight_def.OverrideValueRange(-5.0f, 5.0f),  // Weights (symmetric quant range)
@@ -1559,9 +1561,10 @@ TEST_F(QnnHTPBackendTests, DISABLED_DepthwiseConvU16S16S32_DynamicBias) {
 // Expected val: 85.354057312011719
 // QNN QDQ val: 0 (err 85.354057312011719)
 // CPU QDQ val: 85.358139038085938 (err 0.00408172607421875)
-TEST_F(QnnHTPBackendTests, DISABLED_ConvU16S16S32_NoBias) {
+// Issue fixed in 2.30
+TEST_F(QnnHTPBackendTests, ConvU16S16S32_NoBias) {
   TestInputDef<float> input_def({1, 2, 5, 5}, false, GetFloatDataInRange(-10.0f, 10.0f, 50));
-  TestInputDef<float> weight_def({1, 2, 3, 3}, false, GetFloatDataInRange(-1.0f, 5.0f, 18));
+  TestInputDef<float> weight_def({1, 2, 3, 3}, true, GetFloatDataInRange(-1.0f, 5.0f, 18));
   RunHTPConvOpTest<uint16_t, int16_t>("Conv",
                                       input_def,                                   // Input
                                       weight_def.OverrideValueRange(-5.0f, 5.0f),  // Weights (symmetric quant range)
@@ -1577,12 +1580,13 @@ TEST_F(QnnHTPBackendTests, DISABLED_ConvU16S16S32_NoBias) {
 
 // Tests 16-bit QDQ Conv with dynamic weights and no bias (uses QNN's DepthWiseConv2d)
 // TODO(adrianlizarraga): FAIL: Failed to finalize QNN graph. Error code 1002
-TEST_F(QnnHTPBackendTests, DISABLED_DepthwiseConvU16S16S32_NoBias) {
+// Issue fixed in 2.30
+TEST_F(QnnHTPBackendTests, DepthwiseConvU16S16S32_NoBias) {
   std::vector<float> input_data = GetFloatDataInRange(-10.0f, 10.0f, 25);
   std::vector<float> weight_data = GetFloatDataInRange(-10.0f, 10.0f, 9);
   RunHTPConvOpTest<uint16_t, int16_t>("Conv",
                                       TestInputDef<float>({1, 1, 5, 5}, false, input_data),   // Input
-                                      TestInputDef<float>({1, 1, 3, 3}, false, weight_data),  // Weights
+                                      TestInputDef<float>({1, 1, 3, 3}, true, weight_data),   // Weights
                                       TestInputDef<float>(),                                  // Bias
                                       {1, 1},                                                 // Strides
                                       {0, 0, 0, 0},                                           // Pads
