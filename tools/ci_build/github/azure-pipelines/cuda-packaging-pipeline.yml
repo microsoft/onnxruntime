@@ -102,16 +102,7 @@ extends:
         PreReleaseVersionSuffixNumber: ${{ parameters.PreReleaseVersionSuffixNumber }}
 
     # this is needed for certain artifacts to be published
-    - stage: Linux_C_API_Packaging_CPU
-      dependsOn: []
-      jobs:
-      - template: templates/c-api-linux-cpu.yml
-        parameters:
-          OnnxruntimeArch: 'x64'
-          OnnxruntimeNodejsBindingArch: 'x64'
-          PoolName: 'onnxruntime-Ubuntu2204-AMD-CPU'
-          PackageJava: false
-          PackageNodeJS: false
+    - template: stages/c-api-linux-cpu-stage.yml
 
     # Nuget Packaging
     - template: stages/nuget-combine-cuda-stage.yml
