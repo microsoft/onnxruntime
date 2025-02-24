@@ -157,7 +157,7 @@ stages:
         Contents: '*.snupkg'
         TargetFolder: '$(Build.ArtifactStagingDirectory)'
 
-    - task: PublishPipelineArtifact@0
+    - task: 1ES.PublishPipelineArtifact@0
       displayName: 'Publish Pipeline x64 NuGet Artifact'
       inputs:
         artifactName: ${{ parameters.ArtifactName }}
