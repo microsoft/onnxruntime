@@ -124,7 +124,7 @@ stages:
         GdnBreakPolicyMinSev: Error
 
     #TODO: allow choosing different feeds
-    - task:1ES.PublishNuget@1
+    - task: 1ES.PublishNuget@1
       displayName: 'Copy Signed Native NuGet Package to ORT-NIGHTLY'
       inputs:
         packagesToPush: '$(Build.BinariesDirectory)/nuget-artifact/final-package/*.nupkg'
