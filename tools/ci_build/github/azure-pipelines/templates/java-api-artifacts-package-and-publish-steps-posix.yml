@@ -15,7 +15,7 @@ steps:
     args: '-r $(Build.BinariesDirectory) -c ${{parameters.buildConfig}} -a ${{parameters.artifactName}} -l ${{parameters.libraryName}} -n ${{parameters.nativeLibraryName}} -v ${{parameters.version}} -h ${{parameters.arch}}'
     workingDirectory: '$(Build.BinariesDirectory)/${{parameters.buildConfig}}'
 
-- task: 1ES.PublishBuildArtifacts@1
+- task: 1ES.PublishPipelineArtifact@1
   inputs:
-    pathtoPublish: '$(Build.BinariesDirectory)/${{parameters.artifactName}}'
+    targetPath: '$(Build.BinariesDirectory)/${{parameters.artifactName}}'
     artifactName: 'drop-${{parameters.artifactName}}'
