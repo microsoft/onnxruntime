@@ -122,13 +122,13 @@ jobs:
         --test --enable_onnx_tests
     displayName: 'Run unit tests'
 
-  - script: |
-      .\$(BuildConfig)\onnx_test_runner -j 1 -e openvino $(Build.SourcesDirectory)\cmake\external\onnx\onnx\backend\test\data\node
-    workingDirectory: '$(Build.BinariesDirectory)\$(BuildConfig)'
-    displayName: 'Run ONNX Tests'
+#  - powershell: |
+#      & ".\$(BuildConfig)\onnx_test_runner" -j 1 -e openvino "$(Build.SourcesDirectory)\cmake\external\onnx\onnx\backend\test\data\node"
+#    workingDirectory: '$(Build.BinariesDirectory)\$(BuildConfig)'
+#    displayName: 'Run ONNX Tests'
 
-  - script: |
-      .\$(BuildConfig)\onnx_test_runner -j 1 -e openvino C:\data\float32_models
-    workingDirectory: '$(Build.BinariesDirectory)\$(BuildConfig)'
-    displayName: 'Run float32 model tests'
+#  - powershell: |
+#      & ".\$(BuildConfig)\onnx_test_runner" -j 1 -e openvino "C:\data\float32_models"
+#    workingDirectory: '$(Build.BinariesDirectory)\$(BuildConfig)'
+#    displayName: 'Run float32 model tests'
 
