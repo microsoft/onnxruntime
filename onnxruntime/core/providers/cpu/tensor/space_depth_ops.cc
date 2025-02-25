@@ -7,6 +7,7 @@
 #endif
 
 #include "core/providers/cpu/tensor/space_depth_ops.h"
+#include "core/providers/cpu/tensor/transpose.h"
 #include "core/common/eigen_common_wrapper.h"
 #include <array>
 
@@ -55,6 +56,18 @@ ONNX_CPU_OPERATOR_KERNEL(
                               DataTypeImpl::GetTensorType<double>(),
                               DataTypeImpl::GetTensorType<uint8_t>()}),
     DepthToSpace);
+
+namespace contrib {
+ONNX_OPERATOR_TYPED_KERNEL_EX(
+    DepthToSpace,
+    kMSDomain,
+    1,
+    uint8_t,
+    kCpuExecutionProvider,
+    KernelDefBuilder()
+        .TypeConstraint("T", DataTypeImpl::GetTensorType<uint8_t>()),
+    DepthToSpace);
+}
 
 // intermediate tensor shapes are:
 // (batch, blocksize, blocksize, input_depth / (blocksize * blocksize), input_height, input_width) for DepthToSpace
@@ -156,6 +169,47 @@ Status DepthToSpace::Compute(OpKernelContext* context) const {
   int64_t output_depth = -1;
   int64_t output_height = -1;
   int64_t output_width = -1;
+
+  if (is_nhwc_) {
+    ORT_RETURN_IF_ERROR(InputValidationsAndOutputDimsCalc<true>(input,
+                                                          batch,
+                                                          input_depth, input_height, input_width,
+                                                          output_depth, output_height, output_width,
+                                                          false));
+
+    Tensor& output = *context->Output(0, {batch, output_height, output_width, output_depth});
+
+    int64_t virtual_input_depth = input_depth / blocksize_ / blocksize_;
+
+    TensorShape virtual_input_shape;
+    if (is_dcr_) {
+      virtual_input_shape = TensorShape{batch, input_height, input_width,
+                                        blocksize_, blocksize_, virtual_input_depth};
+    } else {
+      virtual_input_shape = TensorShape{batch, input_height, input_width,
+                                        virtual_input_depth, blocksize_, blocksize_};
+    }
+
+    TensorShape virtual_output_shape = TensorShape{batch,
+                                                   input_height, blocksize_,
+                                                   input_width, blocksize_,
+                                                   virtual_input_depth};
+
+    std::vector<size_t> permutation = is_dcr_ ? std::vector<size_t>{0, 1, 3, 2, 4, 5}
+                                              : std::vector<size_t>{0, 1, 4, 2, 5, 3};
+
+    if (input.IsDataType<uint8_t>()) {
+
+      return Transpose::DoTranspose(
+        permutation, input, output, &virtual_input_shape, &virtual_output_shape, context->GetOperatorThreadPool());
+
+    } else {
+      // user will not see this as the kernel doesn't claim support for types other than float and double
+      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Unsupported input type in DepthToSpace (channels_last = 1) op: ", input.DataType());
+    }
+
+    return Status::OK();
+  }
 
   ORT_RETURN_IF_ERROR(InputValidationsAndOutputDimsCalc(input,
                                                         batch,
