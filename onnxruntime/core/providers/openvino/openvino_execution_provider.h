@@ -45,12 +45,13 @@ static std::vector<std::string> split(const std::string& s, char delim) {
 // Logical device representation.
 class OpenVINOExecutionProvider : public IExecutionProvider {
  public:
-  explicit OpenVINOExecutionProvider(const ProviderInfo& info, SharedContext& shared_context);
+  explicit OpenVINOExecutionProvider(const ProviderInfo& info, std::shared_ptr<SharedContext> shared_context);
   ~OpenVINOExecutionProvider();
 
   std::vector<std::unique_ptr<ComputeCapability>>
   GetCapability(const GraphViewer& graph_viewer,
-                const IKernelLookup& /*kernel_lookup*/) const override;
+                const IKernelLookup& /*kernel_lookup*/,
+                IResourceAccountant* /* resource_accountant */) const override;
 
   Status Compile(const std::vector<FusedNodeAndGraph>& fused_nodes,
                  std::vector<NodeComputeInfo>& node_compute_funcs) override;
@@ -69,7 +70,7 @@ class OpenVINOExecutionProvider : public IExecutionProvider {
 #endif
  private:
   SessionContext session_context_;
-  SharedContext& shared_context_;
+  std::shared_ptr<SharedContext> shared_context_;
   std::list<BackendManager> backend_managers_;  // EP session owns the backend objects
   EPCtxHandler ep_ctx_handle_;
 };

@@ -55,7 +55,8 @@ WebNNExecutionProvider::~WebNNExecutionProvider() {}
 
 std::vector<std::unique_ptr<ComputeCapability>>
 WebNNExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_viewer,
-                                      const IKernelLookup& /*kernel_registries*/) const {
+                                      const IKernelLookup& /*kernel_registries*/,
+                                      IResourceAccountant* /* resource_accountant */) const {
   // For subgraph which is the attribute of the control flow nodes, part of its initializers are stored in its
   // ancestor graphs as common initializers shared for other subgraphs. We need to collect all of them used for
   // identifying the required initializer names and storing into 'meta_def->constant_initializers'.
@@ -292,7 +293,8 @@ class WebNNMemcpy : public OpKernel {
       shape.call<void>("push", SafeInt<uint32_t>(dim).Ref());
     }
 
-    jsepEnsureTensor(reinterpret_cast<intptr_t>(Y->MutableDataRaw()),
+    jsepEnsureTensor(emscripten::val::undefined(),
+                     reinterpret_cast<intptr_t>(Y->MutableDataRaw()),
                      Y->GetElementType(),
                      shape, false)
         .await();

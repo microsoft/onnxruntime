@@ -45,7 +45,7 @@ Status SliceOpBuilder::ExplictOpCheck(QnnModelWrapper& qnn_model_wrapper, const 
     // Skip the first input. All other input need to be initializer
     for (size_t i = 1; i < input_count; i++) {
       const auto& next_input = node_unit.Inputs()[i].node_arg.Name();
-      if (!qnn_model_wrapper.IsInitializerInput(next_input)) {
+      if (!qnn_model_wrapper.IsConstantInput(next_input)) {
         return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "QNN desn't support dynamic slice.");
       }
     }
@@ -73,8 +73,8 @@ void SliceOpBuilder::GetDataFromAttribute(const NodeUnit& node_unit,
 static Status GetInitializerInputData(const NodeUnitIODef& input, const QnnModelWrapper& qnn_model_wrapper,
                                       TensorShapeVector& output) {
   const auto& input_name = input.node_arg.Name();
-  const bool is_initializer = qnn_model_wrapper.IsInitializerInput(input_name);
-  ORT_RETURN_IF_NOT(is_initializer, "Expected input ", input_name.c_str(), " to be an initializer.");
+  const bool is_constant = qnn_model_wrapper.IsConstantInput(input_name);
+  ORT_RETURN_IF_NOT(is_constant, "Expected input ", input_name.c_str(), " to be an initializer.");
   gsl::not_null<const ONNX_NAMESPACE::TensorProto*> initializer_proto = qnn_model_wrapper
                                                                             .GetInitializerTensors()
                                                                             .at(input_name);

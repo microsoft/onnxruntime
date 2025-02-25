@@ -91,6 +91,12 @@ endif()
 
 
 if(onnxruntime_USE_MIMALLOC)
+  add_definitions(-DUSE_MIMALLOC)
+
+  set(MI_OVERRIDE OFF CACHE BOOL "" FORCE)
+  set(MI_BUILD_TESTS OFF CACHE BOOL "" FORCE)
+  set(MI_DEBUG_FULL OFF CACHE BOOL "" FORCE)
+  set(MI_BUILD_SHARED OFF CACHE BOOL "" FORCE)
   onnxruntime_fetchcontent_declare(
     mimalloc
     URL ${DEP_URL_mimalloc}
@@ -119,7 +125,7 @@ onnxruntime_fetchcontent_makeavailable(utf8_range)
 include_directories(${utf8_range_SOURCE_DIR})
 
 # Download a protoc binary from Internet if needed
-if(NOT ONNX_CUSTOM_PROTOC_EXECUTABLE)
+if(NOT ONNX_CUSTOM_PROTOC_EXECUTABLE AND NOT onnxruntime_USE_VCPKG)
   # This part of code is only for users' convenience. The code couldn't handle all cases. Users always can manually
   # download protoc from Protobuf's Github release page and pass the local path to the ONNX_CUSTOM_PROTOC_EXECUTABLE
   # variable.
@@ -286,20 +292,22 @@ onnxruntime_fetchcontent_declare(
 )
 onnxruntime_fetchcontent_makeavailable(date)
 
-onnxruntime_fetchcontent_declare(
-  mp11
-  URL ${DEP_URL_mp11}
-  URL_HASH SHA1=${DEP_SHA1_mp11}
-  EXCLUDE_FROM_ALL
-  FIND_PACKAGE_ARGS NAMES Boost
-)
-onnxruntime_fetchcontent_makeavailable(mp11)
 if(NOT TARGET Boost::mp11)
   if(onnxruntime_USE_VCPKG)
-    find_package(Boost REQUIRED)
+     find_package(Boost REQUIRED)
+     message(STATUS "Aliasing Boost::headers to Boost::mp11")
+     add_library(Boost::mp11 ALIAS Boost::headers)
+  else()
+    onnxruntime_fetchcontent_declare(
+     mp11
+     URL ${DEP_URL_mp11}
+     FIND_PACKAGE_ARGS NAMES Boost
+    )
+    onnxruntime_fetchcontent_makeavailable(mp11)    
+    if(NOT TARGET Boost::mp11)
+      add_library(Boost::mp11 ALIAS Boost::headers)
+    endif()
   endif()
-  message(STATUS "Aliasing Boost::headers to Boost::mp11")
-  add_library(Boost::mp11 ALIAS Boost::headers)
 endif()
 
 set(JSON_BuildTests OFF CACHE INTERNAL "")
@@ -534,14 +542,19 @@ if(TARGET ONNX::onnx_proto AND NOT TARGET onnx_proto)
   message(STATUS "Aliasing ONNX::onnx_proto to onnx_proto")
   add_library(onnx_proto ALIAS ONNX::onnx_proto)
 endif()
-
-include(external/eigen.cmake)
-
-if(onnxruntime_USE_VCPKG AND WIN32)
-  find_package(wil CONFIG REQUIRED)
-  set(WIL_TARGET "WIL::WIL")
+if(onnxruntime_USE_VCPKG)
+  find_package(Eigen3 CONFIG REQUIRED)
 else()
-  include(wil) # FetchContent
+  include(external/eigen.cmake)
+endif()
+
+if(WIN32)
+  if(onnxruntime_USE_VCPKG)
+    find_package(wil CONFIG REQUIRED)
+    set(WIL_TARGET "WIL::WIL")
+  else()
+    include(wil) # FetchContent
+  endif()
 endif()
 
 # XNNPACK EP
@@ -568,20 +581,10 @@ if (onnxruntime_USE_XNNPACK)
   endif()
 endif()
 
-if (onnxruntime_USE_MIMALLOC)
-  add_definitions(-DUSE_MIMALLOC)
-
-  set(MI_OVERRIDE OFF CACHE BOOL "" FORCE)
-  set(MI_BUILD_TESTS OFF CACHE BOOL "" FORCE)
-  set(MI_DEBUG_FULL OFF CACHE BOOL "" FORCE)
-  set(MI_BUILD_SHARED OFF CACHE BOOL "" FORCE)
-  onnxruntime_fetchcontent_makeavailable(mimalloc)
-endif()
-
 set(onnxruntime_EXTERNAL_LIBRARIES ${onnxruntime_EXTERNAL_LIBRARIES_XNNPACK} ${WIL_TARGET} nlohmann_json::nlohmann_json
                                    onnx onnx_proto ${PROTOBUF_LIB} re2::re2 Boost::mp11 safeint_interface
                                    flatbuffers::flatbuffers ${GSL_TARGET} ${ABSEIL_LIBS} date::date
-                                   ${ONNXRUNTIME_CLOG_TARGET_NAME})
+                                   ${ONNXRUNTIME_CLOG_TARGET_NAME} Eigen3::Eigen)
 
 # The source code of onnx_proto is generated, we must build this lib first before starting to compile the other source code that uses ONNX protobuf types.
 # The other libs do not have the problem. All the sources are already there. We can compile them in any order.
@@ -628,35 +631,10 @@ endif()
 
 
 if (onnxruntime_USE_WEBGPU)
-  if (onnxruntime_CUSTOM_DAWN_SRC_PATH)
-    # use the custom dawn source path if provided
-    #
-    # specified as:
-    # build.py --use_webgpu --cmake_extra_defines "onnxruntime_CUSTOM_DAWN_SRC_PATH=<PATH_TO_DAWN_SRC_ROOT>"
-    onnxruntime_fetchcontent_declare(
-      dawn
-      SOURCE_DIR ${onnxruntime_CUSTOM_DAWN_SRC_PATH}
-      EXCLUDE_FROM_ALL
-    )
-  else()
-    onnxruntime_fetchcontent_declare(
-      dawn
-      URL ${DEP_URL_dawn}
-      URL_HASH SHA1=${DEP_SHA1_dawn}
-      # # All previous patches are merged into the upstream dawn project. We don't need to apply any patches right now.
-      # # if we need to apply patches in the future, we can uncomment the following line.
-      #
-      # The dawn.patch contains the following changes:
-      # - https://dawn-review.googlesource.com/c/dawn/+/225514
-      PATCH_COMMAND ${Patch_EXECUTABLE} --binary --ignore-whitespace -p1 < ${PROJECT_SOURCE_DIR}/patches/dawn/dawn.patch
-      EXCLUDE_FROM_ALL
-    )
-  endif()
-
   set(DAWN_BUILD_SAMPLES OFF CACHE BOOL "" FORCE)
   set(DAWN_ENABLE_NULL OFF CACHE BOOL "" FORCE)
   set(DAWN_FETCH_DEPENDENCIES ON CACHE BOOL "" FORCE)
-
+  set(DAWN_BUILD_TESTS OFF CACHE BOOL "" FORCE)
   if (CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
     set(DAWN_EMSCRIPTEN_TOOLCHAIN "${REPO_ROOT}/cmake/external/emsdk/upstream/emscripten" CACHE STRING "" FORCE)
   else()
@@ -734,6 +712,30 @@ if (onnxruntime_USE_WEBGPU)
       set(DAWN_ENABLE_D3D11 OFF CACHE BOOL "" FORCE)
     endif()
   endif()
+  if (onnxruntime_CUSTOM_DAWN_SRC_PATH)
+    # use the custom dawn source path if provided
+    #
+    # specified as:
+    # build.py --use_webgpu --cmake_extra_defines "onnxruntime_CUSTOM_DAWN_SRC_PATH=<PATH_TO_DAWN_SRC_ROOT>"
+    onnxruntime_fetchcontent_declare(
+      dawn
+      SOURCE_DIR ${onnxruntime_CUSTOM_DAWN_SRC_PATH}
+      EXCLUDE_FROM_ALL
+    )
+  else()
+    onnxruntime_fetchcontent_declare(
+      dawn
+      URL ${DEP_URL_dawn}
+      URL_HASH SHA1=${DEP_SHA1_dawn}
+      # # All previous patches are merged into the upstream dawn project. We don't need to apply any patches right now.
+      # # if we need to apply patches in the future, we can uncomment the following line.
+      #
+      # The dawn.patch contains the following changes:
+      # - https://dawn-review.googlesource.com/c/dawn/+/225514
+      PATCH_COMMAND ${Patch_EXECUTABLE} --binary --ignore-whitespace -p1 < ${PROJECT_SOURCE_DIR}/patches/dawn/dawn.patch
+      EXCLUDE_FROM_ALL
+    )
+  endif()
 
   onnxruntime_fetchcontent_makeavailable(dawn)
 
@@ -749,7 +751,7 @@ if (onnxruntime_USE_WEBGPU)
   endif()
 
   if (onnxruntime_ENABLE_PIX_FOR_WEBGPU_EP)
-    list(APPEND onnxruntime_EXTERNAL_LIBRARIES glfw webgpu_glfw)
+    list(APPEND onnxruntime_EXTERNAL_LIBRARIES webgpu_glfw glfw)
   endif()
 endif()
 

@@ -21,6 +21,7 @@
 #include "core/framework/external_data_loader_manager.h"
 #include "core/framework/kernel_registry_manager.h"
 #include "core/framework/prepacked_weights_container.h"
+#include "core/framework/resource_accountant.h"
 #include "core/framework/session_state.h"
 #include "core/framework/tuning_results.h"
 #include "core/framework/framework_provider_common.h"
@@ -545,6 +546,31 @@ class InferenceSession {
    */
   Status AddPrePackedWeightsContainer(PrepackedWeightsContainer* prepacked_weights_container);
 
+#if !defined(ORT_MINIMAL_BUILD)
+  /**
+   * CreateNodeStats recorder and enable collection of node statistics that is useful
+   * for resource constrained partitioning and otherwise.
+   *
+   * @param node_stats_file - this file will be created at the same folder where the model file is present.
+   */
+  Status CreateNodeStatsRecorder(const std::filesystem::path& node_stats_file);
+
+  /**
+   * Returns true if collection is enabled
+   */
+  bool IsNodeStatsCollectionEnabled() const noexcept {
+    return node_stats_recorder_.has_value();
+  }
+
+  /**
+   * NodeStatsRecorder pointer. If not present, returns nullptr
+   */
+  NodeStatsRecorder* GetNodeStatsRecorder() noexcept {
+    return node_stats_recorder_.has_value() ? &*node_stats_recorder_ : nullptr;
+  }
+
+#endif
+
  protected:
 #if !defined(ORT_MINIMAL_BUILD)
 
@@ -911,6 +937,11 @@ class InferenceSession {
   };
 
   CachedExecutionProviderForGraphReplay cached_execution_provider_for_graph_replay_;
+
+#if !defined(ORT_MINIMAL_BUILD)
+  // Enable nodestats collection
+  std::optional<NodeStatsRecorder> node_stats_recorder_;
+#endif
 };
 
 struct SessionIOBinding {

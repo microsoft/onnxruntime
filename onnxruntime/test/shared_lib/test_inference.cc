@@ -40,6 +40,7 @@
 #endif
 
 #ifdef USE_CUDA
+#include "core/providers/cuda/cuda_provider_options.h"
 #include <cuda_runtime.h>
 #endif
 
@@ -1959,20 +1960,9 @@ static bool CreateSessionWithQnnEpAndQnnHtpSharedMemoryAllocator(PATH_TYPE model
     session = Ort::Session{*ort_env, model_path, session_options};
     return true;
   } catch (const Ort::Exception& e) {
-    // handle particular exception that indicates that the libcdsprpc.so / dll can't be loaded
-    // NOTE: To run this on a local Windows ARM64 device, you need to copy libcdsprpc.dll to the build directory:
-    //  - Open File Explorer
-    //  - Go to C:/Windows/System32/DriverStore/FileRepository/
-    //  - Search for a folder that begins with qcnspmcdm8380.inf_arm64_ and open it
-    //  - Copy the libcdsprpc.dll into the build/[PATH CONTAINING onnxruntime.dll] directory of the application.
-    // TODO(adrianlizarraga): Update CMake build for unittests to automatically copy libcdsprpc.dll into build directory
+    // handle exception that indicates that the libcdsprpc.so / dll can't be loaded
     std::string_view error_message = e.what();
-
-#if defined(_WIN32)
-    std::string_view expected_error_message = "Failed to load libcdsprpc.dll";
-#else
-    std::string_view expected_error_message = "Failed to load libcdsprpc.so";
-#endif
+    std::string_view expected_error_message = "Failed to initialize RPCMEM dynamic library handle";
 
     if (e.GetOrtErrorCode() == ORT_FAIL &&
         error_message.find(expected_error_message) != std::string_view::npos) {
@@ -4777,3 +4767,82 @@ TEST(CApiTest, OrtCustomOp_GetInPlace) {
   ASSERT_EQ(len, static_cast<size_t>(2));
   mock_gqa.ReleaseAliasMap(input_index, output_index);
 }
+
+#if !defined(ORT_MINIMAL_BUILD) && defined(USE_CUDA)
+
+TEST(CApiTest, GenerateNodeStatsFile) {
+  Ort::Env env(ORT_LOGGING_LEVEL_INFO);
+  constexpr const ORTCHAR_T* model_path = TSTR("testdata/transformers/tiny_gpt2_beamsearch.onnx");
+
+  Ort::SessionOptions session_options;
+  session_options.AddConfigEntry(kOrtSessionOptionsCollectNodeMemoryStatsToFile,
+                                 "tiny_gpt2_beamsearch_node_stats.txt");
+
+  OrtCUDAProviderOptionsV2 cuda_options;
+  cuda_options.use_tf32 = false;
+  session_options.AppendExecutionProvider_CUDA_V2(cuda_options);
+
+  std::vector<int64_t> input_ids_shape{3, 12};
+  std::vector<int32_t> input_ids{
+      0, 0, 0, 0, 0, 52, 195, 731, 321, 301, 734, 620,
+      41, 554, 74, 622, 206, 222, 75, 223, 221, 198, 224, 572,
+      0, 0, 0, 52, 328, 219, 328, 206, 288, 227, 896, 328};
+
+  std::vector<int64_t> parameter_shape{1};
+  std::vector<int32_t> max_length{20};
+  std::vector<int32_t> min_length{1};
+  std::vector<int32_t> num_beams{4};
+  std::vector<int32_t> num_return_sequences{1};
+  std::vector<float> length_penalty{1.0f};
+  std::vector<float> repetition_penalty{1.0f};
+
+  std::vector<int64_t> expected_output_shape{input_ids_shape[0], num_return_sequences[0], max_length[0]};
+  std::vector<int32_t> expected_output{
+      0, 0, 0, 0, 0, 52, 195, 731, 321, 301, 734, 620, 131, 131, 131, 181, 638, 638, 638, 638,
+      41, 554, 74, 622, 206, 222, 75, 223, 221, 198, 224, 572, 292, 292, 292, 292, 292, 292, 292, 292,
+      0, 0, 0, 52, 328, 219, 328, 206, 288, 227, 896, 328, 328, 669, 669, 669, 669, 669, 669, 669};
+
+  Ort::MemoryInfo info("Cpu", OrtDeviceAllocator, 0, OrtMemTypeDefault);
+  auto input_ids_tensor = Ort::Value::CreateTensor(
+      info, input_ids.data(), input_ids.size(), input_ids_shape.data(), input_ids_shape.size());
+
+  auto max_length_tensor = Ort::Value::CreateTensor(
+      info, max_length.data(), max_length.size(), parameter_shape.data(), parameter_shape.size());
+
+  auto min_length_tensor = Ort::Value::CreateTensor(
+      info, min_length.data(), min_length.size(), parameter_shape.data(), parameter_shape.size());
+
+  auto num_beams_tensor = Ort::Value::CreateTensor(
+      info, num_beams.data(), num_beams.size(), parameter_shape.data(), parameter_shape.size());
+
+  auto num_return_sequences_tensor = Ort::Value::CreateTensor(
+      info, num_return_sequences.data(), num_return_sequences.size(), parameter_shape.data(), parameter_shape.size());
+
+  auto length_penalty_tensor = Ort::Value::CreateTensor(
+      info, length_penalty.data(), length_penalty.size(), parameter_shape.data(), parameter_shape.size());
+
+  auto repetition_penalty_tensor = Ort::Value::CreateTensor(
+      info, repetition_penalty.data(), repetition_penalty.size(), parameter_shape.data(), parameter_shape.size());
+
+  std::vector<Ort::Value> ort_inputs;
+  ort_inputs.push_back(std::move(input_ids_tensor));
+  ort_inputs.push_back(std::move(max_length_tensor));
+  ort_inputs.push_back(std::move(min_length_tensor));
+  ort_inputs.push_back(std::move(num_beams_tensor));
+  ort_inputs.push_back(std::move(num_return_sequences_tensor));
+  ort_inputs.push_back(std::move(length_penalty_tensor));
+  ort_inputs.push_back(std::move(repetition_penalty_tensor));
+  const char* input_names[] = {"input_ids", "max_length", "min_length", "num_beams", "num_return_sequences",
+                               "length_penalty", "repetition_penalty"};
+  const char* const output_names[] = {"sequences"};
+
+  // The ONNX model is generated like the following:
+  // python convert_generation.py --model_type gpt2 -m hf-internal-testing/tiny-random-gpt2
+  //        --output tiny_gpt2_beamsearch_fp16.onnx --use_gpu --max_length 20
+  // (with separate_gpt2_decoder_for_init_run set to False as it is now set to True by default)
+  Ort::Session session(env, model_path, session_options);
+  session.Run(Ort::RunOptions{}, input_names, ort_inputs.data(), ort_inputs.size(),
+              output_names, 1);
+}
+
+#endif
