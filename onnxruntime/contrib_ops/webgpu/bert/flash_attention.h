@@ -80,8 +80,6 @@ class AttentionProbsProgram1 final : public Program<AttentionProbsProgram1> {
                                           {"n_reps", ProgramUniformVariableDataType::Uint32},
                                           {"is_first_prompt", ProgramUniformVariableDataType::Uint32});
 
-  WEBGPU_PROGRAM_DEFINE_OVERRIDABLE_CONSTANTS({"TILE_SIZE", ProgramConstantDataType::Uint32});
-
  private:
   bool has_attention_bias_;
   int tile_size_;

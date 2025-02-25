@@ -435,45 +435,60 @@ Status AttentionProbsProgram1::GenerateShaderCode(ShaderHelper& shader) const {
   }
   shader.AddOutput("output", ShaderUsage::UseUniform | ShaderUsage::UseValueTypeAlias);
 
-  shader.AdditionalImplementation() << "var<workgroup> tileQ: array<q_value_t, " << tile_size_ * tile_size_ << ">;\n"
-                                    << "var<workgroup> tileK: array<present_key_value_t, " << tile_size_ * tile_size_ << ">;\n"
-                                    << "alias f32_val_t = " << (components_ == 4 ? "vec4<f32>" : (components_ == 2 ? "vec2<f32>" : "f32")) << ";\n";
-  shader.MainFunctionBody() << "// x holds the N and y holds the M\n"
-                            << "let m = workgroup_id.y * TILE_SIZE;\n"
-                            << "let n = workgroup_id.x * TILE_SIZE;\n"
-                            << "let batch_idx = workgroup_id.z / uniforms.num_heads;\n"
-                            << "let qOffset = workgroup_id.z * uniforms.M * uniforms.K + m * uniforms.K;\n"
-                            << "let sequence_length = uniforms.M;\n"
-                            << "var total_sequence_length = uniforms.N;\n";
-  shader.MainFunctionBody() << "let presentKeyOffset = (workgroup_id.z / " << n_reps_ << ") * uniforms.present_sequence_length * uniforms.K;\n";
+  shader.AdditionalImplementation() << R"ADDNL_FN(
+const Tile_N_Size = 64u;
+const Tile_Size = 8u;
+var<workgroup> tileQ: array<q_value_t, Tile_Size>;
+var<workgroup> inner_res: array<array<output_value_t, Tile_Size>, Tile_N_Size>;
+)ADDNL_FN"; 
 
-  shader.MainFunctionBody() << "var value = f32_val_t(0);\n"
-                               "for (var w: u32 = 0u; w < uniforms.K; w += TILE_SIZE) {\n"
-                               "  if (global_id.y < uniforms.M && w + local_id.x < uniforms.K) {\n"
-                               "    tileQ[TILE_SIZE * local_id.y + local_id.x] = q[qOffset + local_id.y * uniforms.K + w + local_id.x];\n"
-                               "  }\n"
-                               "  if (n + local_id.y < uniforms.N && w + local_id.x < uniforms.K) {\n"
-                               "    var idx = TILE_SIZE * local_id.y + local_id.x;\n"
-                               "    tileK[idx] = present_key[presentKeyOffset + (n + local_id.y) * uniforms.K + w + local_id.x];\n";
-  shader.MainFunctionBody() << "  }\n"
-                            << "  workgroupBarrier();\n"
-                            << "  for (var k: u32 = 0u; k < TILE_SIZE && w+k < uniforms.K; k++) {\n"
-                            << "    value += f32_val_t(tileQ[TILE_SIZE * local_id.y + k] * tileK[TILE_SIZE * local_id.x + k]);\n"
-                            << "  }\n"
-                            << "  workgroupBarrier();\n"
-                            << "}\n";
 
-  shader.MainFunctionBody() << "if (global_id.y < uniforms.M && global_id.x < total_sequence_length) {\n"
-                            << "  let headOffset = workgroup_id.z * uniforms.M * uniforms.N;\n"
-                            << "  let outputIdx = headOffset + global_id.y * uniforms.N + global_id.x;\n"
-                            << "  var sum: f32 = " << (components_ == 4 ? "value.x + value.y + value.z + value.w" : (components_ == 2 ? "value.x + value.y" : "value")) << ";\n";
-
-  shader.MainFunctionBody() << "  output[outputIdx] = output_value_t(sum * uniforms.alpha)";
   if (has_attention_bias_) {
-    shader.MainFunctionBody() << " + attention_bias[outputIdx]";
+    shader.AdditionalImplementation() << R"HELPER_FN(
+      fn loadAttentionBias(idx: u32) -> output_value_t
+      {
+        return attention_bias[idx];
+      }
+    )HELPER_FN";
+  } else {
+    shader.AdditionalImplementation() << R"HELPER_FN(
+      fn loadAttentionBias(idx: u32) -> output_value_t
+      {
+        return output_value_t(0);
+      }
+    )HELPER_FN";
   }
-  shader.MainFunctionBody() << ";\n"
-                            << "}\n";
+
+  shader.MainFunctionBody() << R"MAIN_FN(
+    let m = workgroup_id.y;
+    let n = workgroup_id.x * Tile_N_Size;
+    let batch_idx = workgroup_id.z / uniforms.num_heads;
+    let qOffset = workgroup_id.z * uniforms.M * uniforms.K + m * uniforms.K;
+    let sequence_length = uniforms.M;
+    var total_sequence_length = uniforms.N;
+    let presentKeyOffset = (workgroup_id.z / uniforms.n_reps) * uniforms.present_sequence_length * uniforms.K;
+    for (var w: u32 = 0u; w < uniforms.K; w += Tile_Size) {
+      if (local_idx < Tile_Size && w + local_idx < uniforms.K) {
+        tileQ[local_idx] = q[qOffset + w + local_idx];
+      }
+      workgroupBarrier();
+      for (var row_offset = 0u; row_offset < Tile_N_Size; row_offset += Tile_Size) {
+        if (n + row_offset + local_id.y < uniforms.N && w + local_id.x < uniforms.K) {
+          inner_res[row_offset + local_id.y][local_id.x] += dot(present_key[presentKeyOffset + (n + row_offset + local_id.y) * uniforms.K + w + local_id.x], tileQ[local_id.x]);
+        }
+      }
+      workgroupBarrier();
+    }
+    var sum = output_value_t(0);
+    for (var i = 0u; i < Tile_Size; i++) {
+      sum += inner_res[local_idx][i];
+    }
+    if ((n + local_idx) < total_sequence_length) {
+      let headOffset = workgroup_id.z * uniforms.M * uniforms.N;
+      let outputIdx = headOffset + m * uniforms.N + n + local_idx;
+      output[outputIdx] = sum * output_value_t(uniforms.alpha) + loadAttentionBias(outputIdx);
+    }
+)MAIN_FN";
 
   return Status::OK();
 }
@@ -485,10 +500,11 @@ Status ComputeAttentionProbs1(onnxruntime::webgpu::ComputeContext& context, cons
                                                 : parameters.scale_;
 
   const bool has_attention_bias = attention_bias != nullptr;
-  constexpr int tile_size = 12;
+  constexpr int tile_size = 8;
+  constexpr int tile_n_size = 64;
   const int components = parameters.head_size_ % 4 == 0 ? 4 : (parameters.head_size_ % 2 == 0 ? 2 : 1);
 
-  AttentionProbsProgram1 program{"AttentionProbs", has_attention_bias, tile_size,
+  AttentionProbsProgram1 program{"AttentionProbs1", has_attention_bias, tile_size,
                                 components, parameters.n_reps};
   program.AddInputs({{Q, ProgramTensorMetadataDependency::TypeAndRank, components},
                      {present_key, ProgramTensorMetadataDependency::TypeAndRank, components}});
@@ -498,8 +514,8 @@ Status ComputeAttentionProbs1(onnxruntime::webgpu::ComputeContext& context, cons
   program.AddOutputs({{probs, ProgramTensorMetadataDependency::Rank}});
 
   const uint32_t vectorized_head_size = (parameters.head_size_ + components - 1) / components;
-  program.SetDispatchGroupSize((total_sequence_length + tile_size - 1) / tile_size,
-                               (parameters.sequence_length_ + tile_size - 1) / tile_size,
+  program.SetDispatchGroupSize((total_sequence_length + tile_n_size - 1) / tile_n_size,
+                               parameters.sequence_length_,
                                parameters.batch_size_ * parameters.num_heads_)
       .SetWorkgroupSize(tile_size, tile_size)
       .CacheHint(std::to_string(tile_size), has_attention_bias, components)
@@ -513,8 +529,7 @@ Status ComputeAttentionProbs1(onnxruntime::webgpu::ComputeContext& context, cons
                             {static_cast<uint32_t>(parameters.kv_sequence_length_)},
                             {static_cast<uint32_t>(parameters.is_gqa_ ? parameters.seqlen_present_kv_cache_ : total_sequence_length)},
                             {static_cast<uint32_t>(parameters.n_reps)},
-                            {static_cast<uint32_t>(parameters.is_first_prompt_ ? 1 : 0)}})
-      .SetOverridableConstants({{static_cast<uint32_t>(tile_size)}});
+                            {static_cast<uint32_t>(parameters.is_first_prompt_ ? 1 : 0)}});
 
   return context.RunProgram(program);
 }
@@ -524,68 +539,67 @@ Status VxAttentionScoreProgram1::GenerateShaderCode(ShaderHelper& shader) const 
   shader.AddInput("present_value", ShaderUsage::UseUniform | ShaderUsage::UseValueTypeAlias);
   shader.AddOutput("output", ShaderUsage::UseUniform | ShaderUsage::UseValueTypeAlias);
 
-  shader.AdditionalImplementation() << "const min_value = f32(-3.402823e+38f);\n"
-                                    << "var<workgroup> tileQ: array<array<probs_value_t, " << tile_size_ << ">, " << tile_size_ << ">;\n"
-                                    << "var<workgroup> tileK: array<present_value_value_t, " << tile_size_ * tile_size_ << ">;\n";
-  shader.MainFunctionBody() << "let head_idx = workgroup_id.z % uniforms.num_heads;\n"
-                            << "let batch_idx = workgroup_id.z / uniforms.num_heads;\n"
-                            << "let m = global_id.y;\n"
-                            << "let n = global_id.x;\n"
-                            << "let offsetA = workgroup_id.z * (uniforms.M * uniforms.K) + m * uniforms.K;\n"
-                            << "let sequence_length = uniforms.M;\n"
-                            << "var total_sequence_length = uniforms.K;\n"
-                               "var previous_max = min_value;\n"
-                               "var previous_denom = f32(0);";
-  shader.MainFunctionBody() << "let presentValueOffset = (workgroup_id.z / " << n_reps_ << ") * uniforms.N * uniforms.present_sequence_length + n;\n";
+  shader.AdditionalImplementation() << R"HELPER_FN(
+const min_value = f32(-3.402823e+38f);
+var<workgroup> tileQ: array<array<probs_value_t, 12>, 12>;
+var<workgroup> tileK: array<present_value_value_t, 144>;
+  )HELPER_FN";
 
-  shader.MainFunctionBody() << "var value = output_value_t(0);\n"
-                            << "let seq_causal_length = total_sequence_length;\n"
-                            << "for (var w: u32 = 0u; w < total_sequence_length; w += TILE_SIZE) {\n"
-                               "  tileQ[local_id.y][local_id.x] = probs_value_t(0);"
-                            << "  if (m < uniforms.M && w + local_id.x < seq_causal_length) {\n"
-                            << "    tileQ[local_id.y][local_id.x] = probs[offsetA + w + local_id.x];\n"
-                            << "  }\n"
-                            << "  if (n < uniforms.N && w + local_id.y < seq_causal_length) {\n"
-                            << "    var idx = TILE_SIZE * local_id.y + local_id.x;\n"
-                            << "    tileK[idx] = present_value[presentValueOffset + (w + local_id.y) * uniforms.N];\n";
-  shader.MainFunctionBody() << "  }\n"
-                            << "  workgroupBarrier();\n";
-  // Compute SoftMax as per Flash Attention technique.
-  // Similar with flash_attention.cc
-  shader.MainFunctionBody() << "  var local_max = min_value;\n"
-                               "  for (var i = 0u; i < TILE_SIZE && w + i < seq_causal_length; i++) {\n"
-                               "    local_max = max(local_max, f32(tileQ[local_id.y][i]));\n"
-                               "  }\n"
-                               "  let new_max = max(previous_max, local_max);\n"
-                               "  tileQ[local_id.y][local_id.x] = probs_value_t(exp(f32(tileQ[local_id.y][local_id.x]) - new_max));\n"
-                               "  workgroupBarrier();\n"
-                               "  var sum = f32(0);\n"
-                               "  for (var i = 0u; i < TILE_SIZE && w + i < seq_causal_length; i++) {\n"
-                               "    sum += f32(tileQ[local_id.y][i]);\n"
-                               "  }\n"
-                               "  let dleft = previous_denom * exp(previous_max-new_max);\n"
-                               "  var d = dleft + sum;\n"
-                               "  d = select(d,f32(0.0000001),d==0);"
-                               "  tileQ[local_id.y][local_id.x] = probs_value_t(f32(tileQ[local_id.y][local_id.x]) / d);\n"
-                               "  workgroupBarrier();\n"
-                               "  previous_max = new_max;\n"
-                               "  previous_denom = d;\n";
+  shader.MainFunctionBody() << R"MAIN_FN(
+    let head_idx = workgroup_id.z % uniforms.num_heads;
+    let batch_idx = workgroup_id.z / uniforms.num_heads;
+    let m = global_id.y;
+    let n = global_id.x;
+    let offsetA = workgroup_id.z * (uniforms.M * uniforms.K) + m * uniforms.K;
+    let sequence_length = uniforms.M;
+    var total_sequence_length = uniforms.K;
+    var previous_max = min_value;
+    var previous_denom = f32(0);let presentValueOffset = (workgroup_id.z / uniforms.n_reps) * uniforms.N * uniforms.present_sequence_length + n;
+    var value = output_value_t(0);
+    let seq_causal_length = total_sequence_length;
+    for (var w: u32 = 0u; w < total_sequence_length; w += TILE_SIZE) {
+      tileQ[local_id.y][local_id.x] = probs_value_t(0);  if (m < uniforms.M && w + local_id.x < seq_causal_length) {
+        tileQ[local_id.y][local_id.x] = probs[offsetA + w + local_id.x];
+      }
+      if (n < uniforms.N && w + local_id.y < seq_causal_length) {
+        var idx = TILE_SIZE * local_id.y + local_id.x;
+        tileK[idx] = present_value[presentValueOffset + (w + local_id.y) * uniforms.N];
+      }
+      workgroupBarrier();
+      var local_max = min_value;
+      for (var i = 0u; i < TILE_SIZE && w + i < seq_causal_length; i++) {
+        local_max = max(local_max, f32(tileQ[local_id.y][i]));
+      }
 
-  shader.MainFunctionBody() << "  let o_ratio = dleft / d;\n "
-                               "  var sub_value = output_value_t(0);\n"
-                            << "  for (var k: u32 = 0u; k < TILE_SIZE && w+k < seq_causal_length; k++) {\n"
-                            << "    sub_value += tileQ[local_id.y][k] * tileK[TILE_SIZE * k + local_id.x];\n"
-                            << "  }\n"
-                               "  value = value * probs_value_t(o_ratio) + sub_value;\n"
-                            << "  workgroupBarrier();\n"
-                            << "}\n";
+      let new_max = max(previous_max, local_max);
+      tileQ[local_id.y][local_id.x] = probs_value_t(exp(f32(tileQ[local_id.y][local_id.x]) - new_max));
+      workgroupBarrier();
+      var sum = f32(0);
+      for (var i = 0u; i < TILE_SIZE && w + i < seq_causal_length; i++) {
+        sum += f32(tileQ[local_id.y][i]);
+      }
+      let dleft = previous_denom * exp(previous_max-new_max);
+      var d = dleft + sum;
+      d = select(d,f32(0.0000001),d==0);
+      tileQ[local_id.y][local_id.x] = probs_value_t(f32(tileQ[local_id.y][local_id.x]) / d);
+      workgroupBarrier();
+      previous_max = new_max;
+      previous_denom = d;
+      let o_ratio = dleft / d;
 
-  shader.MainFunctionBody() << "// we need to transpose output from BNSH_v to BSND_v\n"
-                            << "if (m < uniforms.M && n < uniforms.N) {\n"
-                            << "  let outputIdx = batch_idx * uniforms.M * uniforms.v_hidden_size + "
-                            << "  m * uniforms.v_hidden_size + head_idx * uniforms.N + n;\n"
-                            << "  output[outputIdx] = value;\n"
-                            << "}\n";
+      var sub_value = output_value_t(0);
+      for (var k: u32 = 0u; k < TILE_SIZE && w+k < seq_causal_length; k++) {
+        sub_value += tileQ[local_id.y][k] * tileK[TILE_SIZE * k + local_id.x];
+      }
+      value = value * probs_value_t(o_ratio) + sub_value;
+      workgroupBarrier();
+    }
+    // we need to transpose output from BNSH_v to BSND_v
+    if (m < uniforms.M && n < uniforms.N) {
+      let outputIdx = batch_idx * uniforms.M * uniforms.v_hidden_size + m * uniforms.v_hidden_size + head_idx * uniforms.N + n;
+      output[outputIdx] = value;
+    }
+)MAIN_FN";
 
   return Status::OK();
 }
@@ -600,7 +614,7 @@ Status ComputeVxAttentionScore1(onnxruntime::webgpu::ComputeContext& context,
   const int components = parameters.v_head_size_ % 4 == 0 ? 4 : (parameters.v_head_size_ % 2 == 0 ? 2 : 1);
   constexpr int tile_size = 12;
   int tile_n_size = tile_size * components;
-  VxAttentionScoreProgram1 program{"VxAttentionScore", tile_size, parameters.n_reps};
+  VxAttentionScoreProgram1 program{"VxAttentionScore1", tile_size, parameters.n_reps};
   program.AddInputs({{probs, ProgramTensorMetadataDependency::TypeAndRank},
                      {present_value, ProgramTensorMetadataDependency::TypeAndRank, components}});
   program.AddOutputs({{output, ProgramTensorMetadataDependency::TypeAndRank, components}});
@@ -630,7 +644,7 @@ Status ApplyFlashAttention(const Tensor* Q, const Tensor* K, const Tensor* V, co
                            Tensor* output, const Tensor* past_key, Tensor* present_key, const Tensor* past_value, Tensor* present_value,
                            const WebgpuAttentionParameters& parameters, onnxruntime::webgpu::ComputeContext& context) {
   ORT_RETURN_IF_ERROR(CopyKVCache(context, parameters, K, past_key, present_key, V, past_value, present_value));
-
+  /*
   if (parameters.sequence_length_ > 1) {
     const uint32_t tile_size = 64;
     bool has_attention_bias = attention_bias != nullptr;
@@ -659,7 +673,7 @@ Status ApplyFlashAttention(const Tensor* Q, const Tensor* K, const Tensor* V, co
 
     return context.RunProgram(program);
   }
-
+  */
   TensorShapeVector q_new_dims({parameters.batch_size_, parameters.num_heads_,
                                 parameters.sequence_length_, parameters.head_size_});
   TensorShape q_new_shape(q_new_dims);
