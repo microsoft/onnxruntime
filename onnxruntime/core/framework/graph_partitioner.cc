@@ -965,6 +965,13 @@ static Status PartitionOrtFormatModel(const PartitionParams& partition_params,
                                       const logging::Logger& logger) {
   // process full graph with each EP
   for (const auto& ep : execution_providers) {
+#ifdef USE_OPENCL
+    if (ep->Type() == kOpenCLExecutionProvider) {
+      // hash for kernel is stored in session state for EPs that have pre-registered kernels
+      // (vs. runtime fused kernels) so nothing to do here.
+      continue;
+    }
+#endif
     ORT_RETURN_IF_ERROR(PartitionOrtFormatModelImpl(partition_params, kernel_registry_manager, *ep, logger));
   }
 
