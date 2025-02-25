@@ -46,4 +46,4 @@ jobs:
       run: |
         cd tools/ci_build/github/linux/
         dir
-        ./run_dockerbuild.sh -o ubuntu22.04 -p 3.10 -d openvino -v 2024.5.0 -x "--config Release --use_openvino CPU --build_wheel --build_shared_lib --parallel "
+        ./run_dockerbuild.sh -o ubuntu22.04 -p 3.10 -d openvino -v 2025.0.0 -x "--config Release --use_openvino CPU --build_wheel --build_shared_lib --parallel "
