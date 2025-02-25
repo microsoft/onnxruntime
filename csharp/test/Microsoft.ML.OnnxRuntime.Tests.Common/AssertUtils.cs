@@ -32,7 +32,8 @@ namespace Microsoft.ML.OnnxRuntime.Tests
         }
         else
         {
-          Assert.Contains(expectedExceptionMessage, ex.Message);
+          Assert.True(ex.Message.Contains(expectedExceptionMessage),
+          $"{feedbackMessage}\nExpected exception message to contain '{expectedExceptionMessage}', but got '{ex.Message}'");
         }
       }
       catch (Exception ex)
@@ -67,7 +68,8 @@ namespace Microsoft.ML.OnnxRuntime.Tests
         }
         else
         {
-          Assert.Contains(expectedExceptionMessage, ex.Message);
+          Assert.True(ex.Message.Contains(expectedExceptionMessage),
+          $"{feedbackMessage}\nExpected exception message to contain '{expectedExceptionMessage}', but got '{ex.Message}'");
         }
       }
       catch (Exception ex)
