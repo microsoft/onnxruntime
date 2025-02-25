@@ -169,6 +169,7 @@ endif()
 target_link_libraries(onnxruntime_pybind11_state PRIVATE
     onnxruntime_session
     ${onnxruntime_libs}
+    ${PROVIDERS_OPENCL}
     ${PROVIDERS_TVM}
     ${PROVIDERS_NNAPI}
     ${PROVIDERS_XNNPACK}
@@ -983,6 +984,15 @@ if (onnxruntime_USE_TVM)
           --target_file $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/capi/_ld_preload.py
   )
 
+endif()
+
+if (onnxruntime_USE_OPENCL)
+  add_custom_command(
+    TARGET onnxruntime_pybind11_state POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy
+        $<TARGET_FILE:onnxruntime_providers_opencl>
+        $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/capi/
+  )
 endif()
 
 if (onnxruntime_USE_DML)

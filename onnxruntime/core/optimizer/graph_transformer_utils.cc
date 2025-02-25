@@ -13,6 +13,7 @@
 #include "core/optimizer/qdq_transformer/selectors_actions/qdq_selector_action_transformer.h"
 #include "core/optimizer/selectors_actions/selector_action_transformer_apply_contexts.h"
 #include "core/session/onnxruntime_session_options_config_keys.h"
+#include "core/optimizer/conv_add_act_fusion.h"
 
 #if !defined(ORT_MINIMAL_BUILD)
 
@@ -269,7 +270,6 @@ InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
                                                             QDQIsInt8Allowed() ? "1" : "0") == "1";
       const bool enable_gelu_approximation =
           session_options.config_options.GetConfigOrDefault(kOrtSessionOptionsEnableGeluApproximation, "0") == "1";
-
       const InlinedHashSet<std::string_view> cuda_rocm_eps = {onnxruntime::kCudaExecutionProvider,
                                                               onnxruntime::kRocmExecutionProvider};
       const InlinedHashSet<std::string_view> cpu_cuda_rocm_eps = {onnxruntime::kCpuExecutionProvider,

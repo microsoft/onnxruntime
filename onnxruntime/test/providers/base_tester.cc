@@ -429,6 +429,7 @@ bool SetEpsForAllNodes(Graph& graph,
           provider_type == onnxruntime::kTensorrtExecutionProvider ||
           provider_type == onnxruntime::kNnapiExecutionProvider ||
           provider_type == onnxruntime::kVSINPUExecutionProvider ||
+          provider_type == onnxruntime::kOpenCLExecutionProvider ||
           provider_type == onnxruntime::kCoreMLExecutionProvider ||
           provider_type == onnxruntime::kDnnlExecutionProvider ||
           provider_type == onnxruntime::kQnnExecutionProvider ||
@@ -651,6 +652,7 @@ void BaseTester::RunWithConfig(size_t* number_of_pre_packed_weights_counter,
           kArmNNExecutionProvider,
           kNnapiExecutionProvider,
           kVSINPUExecutionProvider,
+          kOpenCLExecutionProvider,
           kRocmExecutionProvider,
           kCoreMLExecutionProvider,
           kCoreMLExecutionProviderMLProgram,
@@ -692,6 +694,8 @@ void BaseTester::RunWithConfig(size_t* number_of_pre_packed_weights_counter,
           execution_provider = DefaultNnapiExecutionProvider();
         else if (provider_type == onnxruntime::kVSINPUExecutionProvider)
           execution_provider = DefaultVSINPUExecutionProvider();
+        else if (provider_type == onnxruntime::kOpenCLExecutionProvider)
+          execution_provider = DefaultOpenCLExecutionProvider();
         else if (provider_type == onnxruntime::kRknpuExecutionProvider)
           execution_provider = DefaultRknpuExecutionProvider();
         else if (provider_type == onnxruntime::kAclExecutionProvider)

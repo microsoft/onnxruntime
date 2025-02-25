@@ -143,12 +143,18 @@ namespace perftest {
       "\t-D [Disable thread spinning]: disable spinning entirely for thread owned by onnxruntime intra-op thread pool.\n"
       "\t-Z [Force thread to stop spinning between runs]: disallow thread from spinning during runs to reduce cpu usage.\n"
       "\t-n [Exit after session creation]: allow user to measure session creation time to measure impact of enabling any initialization optimizations.\n"
+      "\t    [OPENCL only] [use_fp16]: Use fp16 relaxation in opencl EP..\n"
+      "\t    [OPENCL only] [auto_tune]: auto tuning local-size in OPENCL EP.\n"
+      "\t [Usage]: -e <provider_name> -i '<key1> <key2>'\n\n"
+      "\t [Example] [For OPENCL EP] -e opencl -i \" use_fp16 use_fp16  \"\n"
       "\t-h: help\n");
 }
 #ifdef _WIN32
 static const ORTCHAR_T* overrideDelimiter = L":";
+static const ORTCHAR_T* extraDelimiter = L" ";
 #else
 static const ORTCHAR_T* overrideDelimiter = ":";
+static const ORTCHAR_T* extraDelimiter = " ";
 #endif
 static bool ParseDimensionOverride(std::basic_string<ORTCHAR_T>& dim_identifier, int64_t& override_val) {
   std::basic_string<ORTCHAR_T> free_dim_str(optarg);
@@ -265,6 +271,8 @@ static bool ParseSessionConfigs(const std::string& configs_string,
           test_config.machine_config.provider_type_name = onnxruntime::kVSINPUExecutionProvider;
         } else if (!CompareCString(optarg, ORT_TSTR("coreml"))) {
           test_config.machine_config.provider_type_name = onnxruntime::kCoreMLExecutionProvider;
+        } else if (!CompareCString(optarg, ORT_TSTR("opencl"))) {
+          test_config.machine_config.provider_type_name = onnxruntime::kOpenCLExecutionProvider;
         } else if (!CompareCString(optarg, ORT_TSTR("dml"))) {
           test_config.machine_config.provider_type_name = onnxruntime::kDmlExecutionProvider;
         } else if (!CompareCString(optarg, ORT_TSTR("acl"))) {
@@ -370,7 +378,7 @@ static bool ParseSessionConfigs(const std::string& configs_string,
         test_config.run_config.set_denormal_as_zero = true;
         break;
       case 'i':
-        test_config.run_config.ep_runtime_config_string = optarg;
+        test_config.run_config.ep_runtime_config_string.append(std::basic_string<ORTCHAR_T>(extraDelimiter) + optarg);
         break;
       case 'T':
         test_config.run_config.intra_op_thread_affinities = ToUTF8String(optarg);

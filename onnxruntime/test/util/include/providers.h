@@ -7,6 +7,11 @@
 #ifdef USE_DNNL
 #include "core/providers/dnnl/dnnl_provider_factory.h"
 #endif
+
+#ifdef USE_OPENCL
+#include "core/providers/opencl/opencl_provider_factory.h"
+#endif
+
 #ifdef USE_TVM
 #include "core/providers/tvm/tvm_provider_factory.h"
 #endif

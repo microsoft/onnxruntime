@@ -59,6 +59,9 @@ function(add_op_reduction_include_dirs target)
 endfunction()
 
 
+if(onnxruntime_USE_OPENCL)
+  set(PROVIDERS_OPENCL onnxruntime_providers_opencl)
+endif()
 if(onnxruntime_USE_VITISAI)
   set(PROVIDERS_VITISAI onnxruntime_providers_vitisai)
 endif()
@@ -133,6 +136,10 @@ endif()
 
 if (onnxruntime_USE_TENSORRT)
   include(onnxruntime_providers_tensorrt.cmake)
+endif()
+
+if (onnxruntime_USE_OPENCL)
+  include(onnxruntime_providers_opencl.cmake)
 endif()
 
 if (onnxruntime_USE_VITISAI)
