@@ -176,7 +176,7 @@ Status Softmax::ComputeInternal(ComputeContext& context) const {
   auto* output_tensor = context.Output(0, input_shape);
 
   // normalize axis
-  size_t axis = HandleNegativeAxis(axis_, input_rank);
+  size_t axis = static_cast<size_t>(HandleNegativeAxis(axis_, input_rank));
   bool is_transpose_required = axis < input_rank - 1;
 
   TensorShape transposed_input_shape;
