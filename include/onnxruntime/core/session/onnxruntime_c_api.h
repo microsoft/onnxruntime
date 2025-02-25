@@ -4996,8 +4996,11 @@ struct OrtCustomOp {
  */
 struct OrtModelEditorApi {
   // Model building/editing requires a full build. We return nullptr from GetModelEditorApi if this is a minimal
-  // build so it doesn't matter if there are no function pointers in this struct when that happens.
-#if !defined(ORT_MINIMAL_BUILD)
+  // build, so it doesn't matter if there are no function pointers in this struct as a user will never get an
+  // OrtModelEditorApi instance. We do however need a dummy field to avoid empty struct warning.
+#if defined(ORT_MINIMAL_BUILD)
+  const bool valid = false;
+#else
   /** \brief Create an OrtTypeInfo instance for a Tensor.
    *
    * Create an OrtTypeInfo instance for a Tensor to use as graph inputs/outputs with the Model Editor API.
