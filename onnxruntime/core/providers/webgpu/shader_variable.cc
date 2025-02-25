@@ -158,7 +158,7 @@ void ShaderIndicesHelper::Impl(std::ostream& ss) const {
       SS_APPEND(ss, "  var indices: ", IndicesType(), ";\n");
       SS_APPEND(ss, "  var current = offset;\n");
       for (int i = 0; i < rank_ - 1; i++) {
-        auto current_stride = GetElementAt(stride, i, rank_ - 1);
+        auto current_stride = GetElementAt(stride, i, rank_);
         SS_APPEND(ss, "  indices[", i, "] = current / ", current_stride, ";\n");
         SS_APPEND(ss, "  current = current % ", current_stride, ";\n");
       }
@@ -174,9 +174,9 @@ void ShaderIndicesHelper::Impl(std::ostream& ss) const {
       SS_APPEND(ss, "fn i2o_", name_, "(indices : ", IndicesType(), ")->u32 {\n");
       SS_APPEND(ss, "  return ");
       for (int i = 0; i < rank_ - 1; i++) {
-        SS_APPEND(ss, "indices[", i, "] * ", GetElementAt(stride, i, rank_ - 1), " + ");
+        SS_APPEND(ss, GetElementAt(stride, i, rank_ - 1), " * (indices[", i, "])   + ");
       }
-      SS_APPEND(ss, "indices[", rank_ - 1, "];\n");
+      SS_APPEND(ss, "indices[", rank_ - 1, "] * ",  GetElementAt(stride, rank_ - 1 , rank_ - 1),  ";\n");
       SS_APPEND(ss, "}\n");
     }
   }

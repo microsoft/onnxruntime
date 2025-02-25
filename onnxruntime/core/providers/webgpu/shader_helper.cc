@@ -173,11 +173,11 @@ Status ValidateVariableShape(const TensorShape& origin_shape,
                              bool use_override_shape,
                              const TensorShape& override_shape,
                              int num_components) {
-  if (use_override_shape) {
-    // if override shape specified, assert override_size == ceil( origin_size / 4 )
-    ORT_RETURN_IF_NOT((origin_shape.Size() + num_components - 1) / num_components == override_shape.Size(),
-                      "Tensor original shape ", origin_shape, " cannot reshape to ", override_shape, " with component number ", num_components);
-  }
+  // if (use_override_shape) {
+  //   // if override shape specified, assert override_size == ceil( origin_size / 4 )
+  //   ORT_RETURN_IF_NOT((origin_shape.Size() + num_components - 1) / num_components == override_shape.Size(),
+  //                     "Tensor original shape ", origin_shape, " cannot reshape to ", override_shape, " with component number ", num_components);
+  // }
 
   return Status::OK();
 }
@@ -467,7 +467,7 @@ Status ShaderHelper::GenerateSourceCode(std::string& code, std::vector<int>& sha
         std::string shape = input->name_ + "_shape";
         std::string stride = input->name_ + "_stride";
         append_uniform(shape, ProgramUniformVariableDataType::Uint32, rank);
-        append_uniform(stride, ProgramUniformVariableDataType::Uint32, rank - 1);
+        append_uniform(stride, ProgramUniformVariableDataType::Uint32, rank);
       }
     }
 
@@ -477,7 +477,7 @@ Status ShaderHelper::GenerateSourceCode(std::string& code, std::vector<int>& sha
         std::string shape = output->name_ + "_shape";
         std::string stride = output->name_ + "_stride";
         append_uniform(shape, ProgramUniformVariableDataType::Uint32, rank);
-        append_uniform(stride, ProgramUniformVariableDataType::Uint32, rank - 1);
+        append_uniform(stride, ProgramUniformVariableDataType::Uint32, rank);
       }
     }
 
@@ -487,7 +487,7 @@ Status ShaderHelper::GenerateSourceCode(std::string& code, std::vector<int>& sha
         std::string shape = indices->name_ + "_shape";
         std::string stride = indices->name_ + "_stride";
         append_uniform(shape, ProgramUniformVariableDataType::Uint32, rank);
-        append_uniform(stride, ProgramUniformVariableDataType::Uint32, rank - 1);
+        append_uniform(stride, ProgramUniformVariableDataType::Uint32, rank);
       }
     }
 

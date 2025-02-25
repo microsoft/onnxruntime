@@ -6,6 +6,8 @@
 #include "core/providers/webgpu/webgpu_kernel.h"
 #include "core/providers/webgpu/program.h"
 #include "core/providers/cpu/math/matmul_helper.h"
+#include "core/providers/webgpu/math/matmul_utils.h"
+#include "core/providers/webgpu/math/matmul_packed.h"
 
 namespace onnxruntime {
 namespace webgpu {
@@ -15,24 +17,18 @@ class MatMul final : public WebGpuKernel {
   MatMul(const OpKernelInfo& info) : WebGpuKernel{info} {}
 
   Status ComputeInternal(ComputeContext& context) const override;
-};
-
-class MatMulProgram final : public Program<MatMulProgram> {
- public:
-  MatMulProgram() : Program{"MatMul"} {}
-
-  Status GenerateShaderCode(ShaderHelper& sh) const override;
-
-  // uniform variables
-
-
+  Status PrintGPUTensor(ComputeContext& context, const Tensor& tensor) const;
+  constexpr static uint32_t MATMUL_PACKED_WORKGROUP_SIZE_X = 8;
+  constexpr static uint32_t MATMUL_PACKED_WORKGROUP_SIZE_Y = 8;
+  constexpr static uint32_t MATMUL_PACKED_WORKGROUP_SIZE_Z = 1;
 };
 
 class MatMulNativeProgram final: public Program<MatMulNativeProgram> {
  public:
-  MatMulNativeProgram(const int64_t output_size, const gsl::span<const int64_t>& outer_dims)
-      : Program{"MatMulNative"}, output_size_(output_Size), outer_dims_(outer_dims.begin(), outer_dims.end()) {
-  }
+  MatMulNativeProgram(const int64_t output_size, int output_number, bool has_bias)
+      : Program{"MatMulNative"}, output_size_(output_size), output_number_(output_number), has_bias_{has_bias} {
+      }
+
 
   Status GenerateShaderCode(ShaderHelper& sh) const override;
 
@@ -41,11 +37,10 @@ class MatMulNativeProgram final: public Program<MatMulNativeProgram> {
                                          {"M", ProgramUniformVariableDataType::Uint32},
                                          {"N", ProgramUniformVariableDataType::Uint32},
                                          {"K", ProgramUniformVariableDataType::Uint32});
-
-
   private:
     const int64_t output_size_;
-    const TensorShapeVector outer_dims_;
+    const int output_number_;
+    const bool has_bias_;
 };
 
 }  // namespace webgpu
