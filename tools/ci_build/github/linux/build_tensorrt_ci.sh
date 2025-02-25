@@ -31,6 +31,9 @@ for arg in "$@"; do
       BUILD_ARGS+=("--enable_cuda_minimal_build")
       BUILD_ARGS+=("--skip_tests")
       ;;
+    --tensorrt_oss_parser=ON)
+      BUILD_ARGS+=("--use_tensorrt_oss_parser")
+      ;;
   esac
 done
 

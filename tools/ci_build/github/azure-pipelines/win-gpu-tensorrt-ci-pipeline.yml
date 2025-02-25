@@ -36,6 +36,11 @@ parameters:
     - 11.8
     - 12.2
 
+- name: UseTensorrtOssParser
+  displayName: Use TensorRT-OSS Parser
+  type: boolean
+  default: true
+
 variables:
   - template: templates/common-variables.yml
   - name: win_trt_folder
@@ -43,7 +48,9 @@ variables:
       value: ${{ variables.win_trt_folder_cuda11 }}
     ${{ if eq(parameters.CudaVersion, '12.2') }}:
       value: ${{ variables.win_trt_folder_cuda12 }}
-
+  - name: parser_config
+    ${{ if eq(parameters.UseTensorrtOssParser, true) }}:
+      value: --use_tensorrt_oss_parser
 jobs:
 - job: 'build'
   pool: 'onnxruntime-Win2022-GPU-A10'
@@ -72,7 +79,7 @@ jobs:
       WithCache: True
       Today: $(TODAY)
       AdditionalKey: "gpu-tensorrt | RelWithDebInfo"
-      BuildPyArguments: '--config RelWithDebInfo --parallel --use_binskim_compliant_compile_flags --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --build_shared_lib --update --cmake_generator "Visual Studio 17 2022" --build_wheel --enable_onnx_tests --use_tensorrt --tensorrt_home="$(Agent.TempDirectory)\${{ variables.win_trt_folder }}" --cuda_home="$(Agent.TempDirectory)\v${{ parameters.CudaVersion }}" --use_vcpkg --use_vcpkg_ms_internal_asset_cache --cmake_extra_defines CMAKE_CUDA_ARCHITECTURES=86'
+      BuildPyArguments: '--config RelWithDebInfo --parallel --use_binskim_compliant_compile_flags --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --build_shared_lib --update --cmake_generator "Visual Studio 17 2022" --build_wheel --enable_onnx_tests --use_tensorrt ${{ variables.parser_config }} --tensorrt_home="$(Agent.TempDirectory)\${{ variables.win_trt_folder }}" --cuda_home="$(Agent.TempDirectory)\v${{ parameters.CudaVersion }}" --use_vcpkg --use_vcpkg_ms_internal_asset_cache --cmake_extra_defines CMAKE_CUDA_ARCHITECTURES=86'
       MsbuildArguments: $(MsbuildArguments)
       BuildArch: 'x64'
       Platform: 'x64'
@@ -92,7 +99,7 @@ jobs:
      del wheel_filename_file
      python.exe -m pip install -q --upgrade %WHEEL_FILENAME%
      set PATH=$(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo;%PATH%
-     python $(Build.SourcesDirectory)\tools\ci_build\build.py --config RelWithDebInfo --use_binskim_compliant_compile_flags --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --build_shared_lib --test --cmake_generator "Visual Studio 17 2022" --build_wheel --enable_onnx_tests --use_tensorrt --tensorrt_home="$(Agent.TempDirectory)\${{ variables.win_trt_folder }}"  --cuda_home="$(Agent.TempDirectory)\v${{ parameters.CudaVersion }}" --use_vcpkg --use_vcpkg_ms_internal_asset_cache --cmake_extra_defines CMAKE_CUDA_ARCHITECTURES=86
+     python $(Build.SourcesDirectory)\tools\ci_build\build.py --config RelWithDebInfo --use_binskim_compliant_compile_flags --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --build_shared_lib --test --cmake_generator "Visual Studio 17 2022" --build_wheel --enable_onnx_tests --use_tensorrt ${{ variables.parser_config }} --tensorrt_home="$(Agent.TempDirectory)\${{ variables.win_trt_folder }}"  --cuda_home="$(Agent.TempDirectory)\v${{ parameters.CudaVersion }}" --use_vcpkg --use_vcpkg_ms_internal_asset_cache --cmake_extra_defines CMAKE_CUDA_ARCHITECTURES=86
 
     workingDirectory: '$(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo'
     displayName: 'Run tests'
