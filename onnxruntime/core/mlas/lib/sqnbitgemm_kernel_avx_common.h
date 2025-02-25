@@ -11,7 +11,7 @@ Q4BitGemmPackQuantBDataSize(
     size_t N,
     size_t K,
     size_t BlkLen,
-    bool,
+    bool /* HasZeroPoint */,
     MLAS_QNBIT_GEMM_COMPUTE_TYPE ComputeType
 )
 {
@@ -332,7 +332,7 @@ Q4BitGemmPerGemmWorkspaceSize(
     size_t N,
     size_t K,
     size_t BlkLen,
-    bool,
+    bool /* HasZeroPoint */,
     MLAS_QNBIT_GEMM_COMPUTE_TYPE ComputeType
 )
 {
