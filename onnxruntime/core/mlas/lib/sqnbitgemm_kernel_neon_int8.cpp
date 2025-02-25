@@ -155,10 +155,8 @@ QuantizeA_Packed_CompInt8(
     const size_t lhs_packed_offset = kai_get_lhs_packed_offset_lhs_quant_pack_qai8dxp_f32(
                             0, CountK, mr, kr, sr);
 
-    const float* src_ptr = reinterpret_cast<const float*>(
-                            reinterpret_cast<const uint8_t*>(A) + lhs_offset);
-    void*        dst_ptr = reinterpret_cast<void *>(
-                            reinterpret_cast<uint8_t*>(QuantA) + lhs_packed_offset);
+    const float* src_ptr = reinterpret_cast<const float*>(reinterpret_cast<const std::byte*>(A) + lhs_offset);
+    void* dst_ptr = QuantA + lhs_packed_offset;
 
     kai_run_lhs_quant_pack_qai8dxp_f32(CountM, CountK, mr, kr, sr, 0, src_ptr, src_stride, dst_ptr);
 }
@@ -1460,12 +1458,9 @@ SQ4BitGemmKernel_Packed_CompInt8(
     const size_t rhs_packed_offset = ukernel.get_rhs_packed_offset(RangeStartN, CountK, BlkLen);
     const size_t dst_offset = ukernel.get_dst_offset(RangeStartM, RangeStartN, dst_stride);
 
-    const void* lhs_ptr = reinterpret_cast<const void*>(
-            reinterpret_cast<const char *>(QuantA) + lhs_packed_offset);
-    const void* rhs_ptr = reinterpret_cast<const void*>(
-            reinterpret_cast<const char *>(PackedQuantBData) + rhs_packed_offset);
-    float* dst_ptr = reinterpret_cast<float*>(
-            reinterpret_cast<uint8_t*>(C) + dst_offset);
+    const void* lhs_ptr = QuantA + lhs_packed_offset;
+    const void* rhs_ptr = PackedQuantBData + rhs_packed_offset;
+    float* dst_ptr = reinterpret_cast<float*>(reinterpret_cast<std::byte*>(C) + dst_offset);
 
     ukernel.run_matmul(
         RangeCountM, RangeCountN, CountK, BlkLen, lhs_ptr, rhs_ptr, dst_ptr, dst_stride, sizeof(float),
