@@ -93,22 +93,22 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                 opt.GraphOptimizationLevel = GraphOptimizationLevel.ORT_ENABLE_EXTENDED;
                 Assert.Equal(GraphOptimizationLevel.ORT_ENABLE_EXTENDED, opt.GraphOptimizationLevel);
 
-                AssertUtils.IfThrowsCheckException<OnnxRuntimeException>(
-                    () => { opt.GraphOptimizationLevel = (GraphOptimizationLevel)10; }, 
+                AssertUtils.AssertThrowsCheckException<OnnxRuntimeException>(
+                    () => { opt.GraphOptimizationLevel = (GraphOptimizationLevel)10; },
                     "Set an invalid Graph Optimization Level.");
 
                 opt.AddSessionConfigEntry("key", "value");
 
-                AssertUtils.IfThrowsCheckException<OnnxRuntimeException>(
-                    () => { opt.AddSessionConfigEntry("", "invalid key"); }, 
-                    "Added an invalid config entry.", 
+                AssertUtils.AssertThrowsCheckException<OnnxRuntimeException>(
+                    () => { opt.AddSessionConfigEntry("", "invalid key"); },
+                    "Added an invalid config entry.",
                     "[ErrorCode:InvalidArgument] Config key is empty");
 
-        // SessionOptions.RegisterOrtExtensions can be manually tested by referencing the
-        // Microsoft.ML.OnnxRuntime.Extensions nuget package. After that is done, this should not throw.
-                AssertUtils.IfThrowsCheckException<OnnxRuntimeException>(
-                    () => { opt.RegisterOrtExtensions(); }, 
-                    "RegisterOrtExtensions should throw if the Extensions package is not referenced", 
+                // SessionOptions.RegisterOrtExtensions can be manually tested by referencing the
+                // Microsoft.ML.OnnxRuntime.Extensions nuget package. After that is done, this should not throw.
+                AssertUtils.AssertThrowsCheckException<OnnxRuntimeException>(
+                    () => { opt.RegisterOrtExtensions(); },
+                    "RegisterOrtExtensions should throw if the Extensions package is not referenced",
                     "Microsoft.ML.OnnxRuntime.Extensions NuGet package must be referenced");
 
 #if USE_CUDA
@@ -152,10 +152,6 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                 opt.AppendExecutionProvider_Nnapi(0);
 #endif
 
-#if USE_TVM
-                opt.AppendExecutionProvider_Tvm("Vulkan -device=amd_apu");
-#endif
-
 #if USE_OPENVINO
                 opt.AppendExecutionProvider_OpenVINO();
 #endif
@@ -168,18 +164,18 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                 opt.AppendExecutionProvider_Tensorrt(0);
 #endif
                 AssertUtils.IfThrowsCheckException<OnnxRuntimeException>(
-                    () => { opt.AppendExecutionProvider("XNNPACK"); }, 
-                    "Attempted to add XNNPack execution provider to session options when USE_XNNPACK flag is disabled. ", 
+                    () => { opt.AppendExecutionProvider("XNNPACK"); },
+                    "Attempted to add XNNPack execution provider to session options when USE_XNNPACK flag is disabled. ",
                     "XNNPACK execution provider is not supported in this build");
 
                 AssertUtils.IfThrowsCheckException<OnnxRuntimeException>(
-                    () => { opt.AppendExecutionProvider("SNPE"); }, 
-                    "Attempted to add SNPE execution provider to session options when USE_SNPE flag is disabled. ", 
+                    () => { opt.AppendExecutionProvider("SNPE"); },
+                    "Attempted to add SNPE execution provider to session options when USE_SNPE flag is disabled. ",
                     "SNPE execution provider is not supported in this build");
 
                 AssertUtils.IfThrowsCheckException<OnnxRuntimeException>(
-                    () => { opt.AppendExecutionProvider("QNN"); }, 
-                    "Attempted to add QNN execution provider to session options when USE_QNN flag is disabled. ", 
+                    () => { opt.AppendExecutionProvider("QNN"); },
+                    "Attempted to add QNN execution provider to session options when USE_QNN flag is disabled. ",
                     "QNN execution provider is not supported in this build");
 
         opt.AppendExecutionProvider_CPU(1);
@@ -2043,7 +2039,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
         }
 
         // Test hangs on mobile.
-#if !(ANDROID || IOS)  
+#if !(ANDROID || IOS)
         [Fact(DisplayName = "TestModelRunAsyncTask")]
         private async Task TestModelRunAsyncTask()
         {
