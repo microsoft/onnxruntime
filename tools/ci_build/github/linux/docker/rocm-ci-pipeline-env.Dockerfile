@@ -1,7 +1,7 @@
 # Refer to https://github.com/RadeonOpenCompute/ROCm-docker/blob/master/dev/Dockerfile-ubuntu-22.04-complete
 FROM ubuntu:22.04
 
-ARG ROCM_VERSION=6.1.3
+ARG ROCM_VERSION=6.3.2
 ARG AMDGPU_VERSION=${ROCM_VERSION}
 ARG APT_PREF='Package: *\nPin: release o=repo.radeon.com\nPin-Priority: 600'
 
@@ -17,10 +17,10 @@ RUN apt-get update && \
     printf "deb [arch=amd64] https://repo.radeon.com/rocm/apt/$ROCM_VERSION/ jammy main" | tee /etc/apt/sources.list.d/rocm.list   && \
     printf "deb [arch=amd64] https://repo.radeon.com/amdgpu/$AMDGPU_VERSION/ubuntu jammy main" | tee /etc/apt/sources.list.d/amdgpu.list   && \
     apt-get update && apt-get install -y --no-install-recommends \
-    sudo \
+    sudo git \
     libelf1 \
     kmod \
-    file \
+    file zip unzip \
     python3 \
     python3-pip \
     rocm-dev \
@@ -44,10 +44,20 @@ ENV LANG C.UTF-8
 WORKDIR /stage
 
 # Cmake
-ENV CMAKE_VERSION=3.30.1
+ENV CMAKE_VERSION=3.31.5
 RUN cd /usr/local && \
     wget -q https://github.com/Kitware/CMake/releases/download/v${CMAKE_VERSION}/cmake-${CMAKE_VERSION}-Linux-x86_64.tar.gz && \
-    tar -zxf /usr/local/cmake-3.30.1-Linux-x86_64.tar.gz --strip=1 -C /usr
+    tar -zxf /usr/local/cmake-3.31.5-Linux-x86_64.tar.gz --strip=1 -C /usr
+
+# Install Ninja
+COPY scripts/install-ninja.sh /build_scripts/
+RUN /bin/bash /build_scripts/install-ninja.sh
+
+# Install VCPKG
+ENV VCPKG_INSTALLATION_ROOT=/usr/local/share/vcpkg
+ENV VCPKG_FORCE_SYSTEM_BINARIES=ON
+COPY scripts/install-vcpkg.sh /build_scripts/
+RUN /bin/bash /build_scripts/install-vcpkg.sh
 
 # ccache
 RUN mkdir -p /tmp/ccache && \
@@ -87,14 +97,8 @@ RUN pip install packaging \
                 scipy==1.14.1 \
                 numpy==1.26.4
 
-RUN apt install -y git
-
-# Install Cupy to decrease CPU utilization
-# Note that the version of Cupy requires numpy < 1.27
-RUN git clone https://github.com/ROCm/cupy && cd cupy && \
-    git checkout 432a8683351d681e00903640489cb2f4055d2e09 && \
-    export CUPY_INSTALL_USE_HIP=1 && \
-    export ROCM_HOME=/opt/rocm && \
-    export HCC_AMDGPU_TARGET=gfx906,gfx908,gfx90a && \
-    git submodule update --init && \
-    pip install -e . --no-cache-dir -vvvv
+ARG BUILD_UID=1000
+ARG BUILD_USER=onnxruntimedev
+RUN adduser --gecos 'onnxruntime Build User' --disabled-password $BUILD_USER --uid $BUILD_UID
+USER $BUILD_USER
+WORKDIR /home/$BUILD_USER

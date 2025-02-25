@@ -267,7 +267,7 @@ bool QnnModelWrapper::CreateQnnNode(const std::string& qnn_node_name,
   }
 }
 
-bool QnnModelWrapper::ComposeQnnGraph() {
+bool QnnModelWrapper::ComposeQnnGraph(bool build_json_qnn_graph) {
   LOGS(logger_, VERBOSE) << "Compose Qnn Graph.";
   // ORT_RETURN_IF(qnn_op_property_list_.empty(), "Empty Qnn op list, no graph to compose.");
   if (qnn_op_property_list_.empty()) {
@@ -305,6 +305,10 @@ bool QnnModelWrapper::ComposeQnnGraph() {
     if (!rt) {
       LOGS(logger_, ERROR) << error_msg;
       return false;
+    }
+
+    if (build_json_qnn_graph) {
+      json_qnn_graph_.AddOp(op_config_wrapper);
     }
   }
 
@@ -502,9 +506,9 @@ Status QnnModelWrapper::GetTensorInfo(const NodeUnitIODef& input, TensorInfo& te
   ORT_RETURN_IF_NOT(GetOnnxShape(input.node_arg, tensor_info.shape), "Cannot get shape");
 
   // Fill in initializer info.
-  tensor_info.is_initializer = IsInitializerInput(name);
+  tensor_info.is_initializer = IsConstantInput(name);
   if (tensor_info.is_initializer) {
-    tensor_info.initializer_tensor = GetInitializerTensors().at(name);
+    tensor_info.initializer_tensor = GetConstantTensor(name);
   }
 
   return Status::OK();
