@@ -146,11 +146,11 @@ MlasGemmBatch(
 
     ptrdiff_t TargetThreadCount;
 
-    if (Complexity < double(MLAS_QGEMM_THREAD_COMPLEXITY * GetMlasPlatform().MaximumThreadCount)) {
+    // if (Complexity < double(MLAS_QGEMM_THREAD_COMPLEXITY * GetMlasPlatform().MaximumThreadCount)) {
         TargetThreadCount = ptrdiff_t(Complexity / double(MLAS_QGEMM_THREAD_COMPLEXITY)) + 1;
-    } else {
-        TargetThreadCount = GetMlasPlatform().MaximumThreadCount;
-    }
+    // } else {
+    //     TargetThreadCount = GetMlasPlatform().MaximumThreadCount;
+    // }
 
     ptrdiff_t MaximumThreadCount = MlasGetMaximumThreadCount(ThreadPool);
 
@@ -308,7 +308,7 @@ size_t
 MLASCALL
 MlasGemmPackBSize(
     size_t N,
-    size_t K, 
+    size_t K,
     bool AIsSigned,
     bool BIsSigned
     )
@@ -479,7 +479,7 @@ size_t
 MLASCALL
 MlasSymmQgemmPackBSize(
     size_t N,
-    size_t K, 
+    size_t K,
     bool AIsSigned
     )
 {
