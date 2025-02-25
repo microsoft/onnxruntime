@@ -331,7 +331,7 @@ If this option is enabled, the execution provider prefers NHWC operators over NC
 
 This flag is supported only in the V2 version of the provider options struct when using the C API. The V2 provider options struct can be created using [CreateCUDAProviderOptions](https://onnxruntime.ai/docs/api/c/struct_ort_api.html#a0d29cbf555aa806c050748cf8d2dc172) and updated using [UpdateCUDAProviderOptions](https://onnxruntime.ai/docs/api/c/struct_ort_api.html#a4710fc51f75a4b9a75bde20acbfa0783).
 
-**Default value:** `0`
+Default value: 0
 
 ## Performance Tuning
 
