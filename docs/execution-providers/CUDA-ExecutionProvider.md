@@ -325,19 +325,13 @@ Default value: 0
 
 ### prefer_nhwc
 
-This option is not available in default builds ! One has to compile ONNX Runtime
-with `onnxruntime_USE_CUDA_NHWC_OPS=ON`.
-If this is enabled the EP prefers NHWC operators over NCHW. Needed transforms will be added to the model. As NVIDIA
-tensor cores can only work on NHWC layout this can increase performance if the model consists of many supported
-operators and does not need too many new transpose nodes. Wider operator support is planned in the future.
+This option is available since ONNX Runtime 1.20, where the build has `onnxruntime_USE_CUDA_NHWC_OPS=ON` by default.
 
-This flag is only supported from the V2 version of the provider options struct when used using the C API. The V2
-provider options struct can be created
-using [CreateCUDAProviderOptions](https://onnxruntime.ai/docs/api/c/struct_ort_api.html#a0d29cbf555aa806c050748cf8d2dc172)
-and updated
-using [UpdateCUDAProviderOptions](https://onnxruntime.ai/docs/api/c/struct_ort_api.html#a4710fc51f75a4b9a75bde20acbfa0783).
+If this option is enabled, the execution provider prefers NHWC operators over NCHW. Necessary layout transformations will be applied to the model automatically. Since NVIDIA tensor cores operate more efficiently with NHWC layout, enabling this option can improve performance when the model consists of many supported operators and does not require excessive additional transpose operations. Wider operator support for NHWC is planned for future releases.
 
-Default value: 0
+This flag is supported only in the V2 version of the provider options struct when using the C API. The V2 provider options struct can be created using [CreateCUDAProviderOptions](https://onnxruntime.ai/docs/api/c/struct_ort_api.html#a0d29cbf555aa806c050748cf8d2dc172) and updated using [UpdateCUDAProviderOptions](https://onnxruntime.ai/docs/api/c/struct_ort_api.html#a4710fc51f75a4b9a75bde20acbfa0783).
+
+**Default value:** `0`
 
 ## Performance Tuning
 
