@@ -44,7 +44,69 @@ curl https://raw.githubusercontent.com/microsoft/onnxruntime-genai/refs/heads/ma
 python .\model-qa.py -e cpu -g -v --system_prompt "You are a helpful assistant. Be brief and concise." --chat_template "<|user|>\n{input} <|end|>\n<|assistant|>" -m ..\..\models\microsoft\phi-3.5-mini-instruct-npu-qnn-2.31-v2
 ```
 
-## C# Application
+### A look inside the Python script
+
+
+## C++ Application
+
+To run the models on snadragon NPU within a C++ application, use the code from here: https://github.com/microsoft/onnxruntime-genai/tree/main/examples/c.
+
+Building and running this application requires a Windows PC with a Snadragon NPU, as well as:
+* cmake
+* Visual Studio 2022
+
+
+1. Clone the repo
+
+   ```powershell
+   git clone https://github.com/microsoft/onnxruntime-genai
+   cd examples\c
+   ```
+
+2. Install onnxruntime
+
+   Currently requires the nightly build of onnxruntime, as there are up to the minute changes to QNN support for language models. 
+   
+   Download the nightly version of the ONNX Runtime QNN binaries from [here](https://aiinfra.visualstudio.com/PublicPackages/_artifacts/feed/ORT-Nightly/NuGet/Microsoft.ML.OnnxRuntime.QNN/overview/1.22.0-dev-20250225-0548-e46c0d8)
+
+
+   ```powershell
+   mkdir onnxruntime-win-arm64-qnn
+   move Microsoft.ML.OnnxRuntime.QNN.1.22.0-dev-20250225-0548-e46c0d8.nupkg onnxruntime-win-arm64-qnn
+   cd onnxruntime-win-arm64-qnn
+   tar xvzf Microsoft.ML.OnnxRuntime.QNN.1.22.0-dev-20250225-0548-e46c0d8.nupkg
+   copy runtimes\win-arm64\native\* ..\..\..\lib
+   cd ..
+   ```
+
+
+3. Install onnxruntime-genai
+
+   ```powershell
+   curl https://github.com/microsoft/onnxruntime-genai/releases/download/v0.6.0/onnxruntime-genai-0.6.0-win-arm64.zip -o onnxruntime-genai-win-arm64.zip
+   tar xvf onnxruntime-genai-win-arm64.zip
+   cd onnxruntime-genai-0.6.0-win-arm64
+   copy include\* ..\include
+   copy lib\* ..\lib
+   ```
+
+4. Build the sample
+
+   ```powershell
+   cmake -A arm64 -S . -B build -DPHI3-QA=ON
+   cd build
+   cmake --build . --config Release
+   ```
+
+5. Run the sample
+
+   ```
+   cd Release
+   .\phi3_qa.exe <path_to_model>
+   ```
+
+
+
 
 
 

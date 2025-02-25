@@ -117,18 +117,16 @@ To build from source on Linux, follow the instructions [here](https://onnxruntim
 
 
 
-## C#/C/C++/WinML Installs
+## C# Installs
 
-### Install ONNX Runtime
-
-#### Install ONNX Runtime CPU
+### Install ONNX Runtime CPU
 
 ```bash
 # CPU
 dotnet add package Microsoft.ML.OnnxRuntime
 ```
 
-#### Install ONNX Runtime GPU (CUDA 12.x)
+### Install ONNX Runtime GPU (CUDA 12.x)
 
 The default CUDA version for ORT is 12.x
 
@@ -137,7 +135,7 @@ The default CUDA version for ORT is 12.x
 dotnet add package Microsoft.ML.OnnxRuntime.Gpu
 ```
 
-#### Install ONNX Runtime GPU (CUDA 11.8)
+### Install ONNX Runtime GPU (CUDA 11.8)
 
 1. Project Setup
 
@@ -178,6 +176,41 @@ dotnet add package Microsoft.ML.OnnxRuntime.DirectML
 ```bash
 dotnet add package Microsoft.AI.MachineLearning
 ```
+
+## C++/C Installs
+
+### CPU
+
+Find your release here: https://github.com/microsoft/onnxruntime/releases
+
+Download and unzip the archive.
+
+For example:
+
+```
+curl -LO https://github.com/microsoft/onnxruntime/releases/download/v1.20.0/onnxruntime-win-arm64-1.20.0.zip
+```
+
+On Windows
+
+```
+tar xvzf onnxruntime-win-arm64-1.20.0.zip
+move onnxruntime-win-arm64-1.20.0\include <your application include folder>
+move onnxruntime-win-arm64-1.20.0\lib <your application lib folder>
+move 
+```
+
+### Arm64 QNN 
+
+QNN binaries are published in the NuGet archive
+
+```
+curl -LO https://www.nuget.org/api/v2/package/Microsoft.ML.OnnxRuntime.QNN/1.20.0
+tar xvzf microsoft.ml.onnxruntime.qnn.1.20.2.nupkg
+move build\native\include <your application include folder>
+move build\native\win-arm64\native <your application lib folder>
+```
+
 
 ## Install on web and mobile
 
