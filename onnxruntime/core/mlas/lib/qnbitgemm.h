@@ -98,7 +98,7 @@ struct MLAS_QNBIT_GEMM_DISPATCH {
         size_t N,
         size_t K,
         size_t BlkLen,
-        bool HasZpInput,
+        bool HasZeroPoint,
         MLAS_QNBIT_GEMM_COMPUTE_TYPE ComputeType
     );
 
@@ -125,7 +125,7 @@ struct MLAS_QNBIT_GEMM_DISPATCH {
         MLAS_QNBIT_GEMM_COMPUTE_TYPE ComputeType,
         const std::byte* QuantBDataBegin,
         const float* QuantBScaleBegin,
-        bool HasZpInput,
+        bool HasZeroPoint,
         const std::byte* QuantBZPBegin,
         PackedQuantBDataStruct<float>& PackedQuantB,
         MLAS_THREADPOOL* ThreadPool
@@ -145,7 +145,7 @@ struct MLAS_QNBIT_GEMM_DISPATCH {
      * @param[in]   N               column size of matrix B and C
      * @param[in]   K               column size of matrix A and row size of matrix B
      * @param[in]   BlkLen          number of quantized values per block
-     * @param[in]   HasZpInput      whether zero points are provided
+     * @param[in]   HasZeroPoint    whether zero points are provided
      * @param[in]   ComputeType     GEMM compute type (e.g., multiplying float or int8 values)
      */
     typedef size_t(Q4BitGemmPerGemmWorkspaceSize_Fn)(
@@ -153,7 +153,7 @@ struct MLAS_QNBIT_GEMM_DISPATCH {
         size_t N,
         size_t K,
         size_t BlkLen,
-        bool HasZpInput,
+        bool HasZeroPoint,
         MLAS_QNBIT_GEMM_COMPUTE_TYPE ComputeType
     );
 

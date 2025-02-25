@@ -303,7 +303,7 @@ PackQuantBDataAndBlkSum(
     size_t SubBlkLen,
     const std::byte* QuantBDataBegin,
     const float* QuantBScaleBegin,
-    bool HasZpInput,
+    bool HasZeroPoint,
     const std::byte* QuantBZPBegin,
     PackedQuantBDataStruct<float>& PackedQuantB,
     MLAS_THREADPOOL* ThreadPool
@@ -317,7 +317,7 @@ PackQuantBDataAndBlkSum(
         std::copy(QuantBScaleBegin, QuantBScaleBegin + N * BlockCountK, PackedQuantB.PackedQuantBScale);
     }
 
-    if ((QuantBScaleBegin && !HasZpInput) || QuantBZPBegin) {
+    if ((QuantBScaleBegin && !HasZeroPoint) || QuantBZPBegin) {
         ComputePackBlkSum(BlkLen, SubBlkLen, N, PackedQuantB.PackedQuantBScale, QuantBZPBegin, PackedQuantB.QuantBBlkSum, ThreadPool, BlockCountK);
     }
 }
