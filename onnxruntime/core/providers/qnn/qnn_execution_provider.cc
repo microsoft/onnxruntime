@@ -195,6 +195,10 @@ QNNExecutionProvider::QNNExecutionProvider(const ProviderOptions& provider_optio
     share_ep_contexts_ =
         config_options->GetConfigOrDefault(kOrtSessionOptionShareEpContexts, "0") == "1";
     LOGS_DEFAULT(VERBOSE) << "User specified option - share EP contexts across sessions: " << share_ep_contexts_;
+
+    stop_share_ep_contexts_ =
+        config_options->GetConfigOrDefault(kOrtSessionOptionStopShareEpContexts, "0") == "1";
+    LOGS_DEFAULT(VERBOSE) << "User specified option - stop share EP contexts across sessions: " << stop_share_ep_contexts_;
   }
 
   static const std::string BACKEND_PATH = "backend_path";
@@ -388,9 +392,10 @@ QNNExecutionProvider::QNNExecutionProvider(const ProviderOptions& provider_optio
   // So that all graphs from later sessions will be compiled into the same QNN context
   if (context_cache_enabled_ && share_ep_contexts_ && SharedContext::GetInstance().GetSharedQnnBackendManager()) {
     qnn_backend_manager_ = SharedContext::GetInstance().GetSharedQnnBackendManager();
-    qnn_backend_manager_shared = true;
-    // Only allow the share across 2 sessions in case out of control
-    SharedContext::GetInstance().ResetSharedQnnBackendManager();
+    // Clear the QnnBackendManager from singleton to stop the resource share
+    if (stop_share_ep_contexts_) {
+      SharedContext::GetInstance().ResetSharedQnnBackendManager();
+    }
   } else {
     qnn_backend_manager_ = qnn::QnnBackendManager::Create(
         qnn::QnnBackendManagerConfig{backend_path,
@@ -1038,7 +1043,7 @@ Status QNNExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& fused
                                                   max_spill_fill_buffer_size,
                                                   logger));
 
-    if (share_ep_contexts_ && !qnn_backend_manager_shared &&
+    if (share_ep_contexts_ && !stop_share_ep_contexts_ &&
         nullptr == SharedContext::GetInstance().GetSharedQnnBackendManager()) {
       ORT_RETURN_IF_NOT(SharedContext::GetInstance().SetSharedQnnBackendManager(qnn_backend_manager_),
                         "Failed to set shared QnnBackendManager.");

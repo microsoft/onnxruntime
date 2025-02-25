@@ -1094,6 +1094,7 @@ static void DumpModelWithSharedCtx(const ProviderOptions& provider_options,
   // to the 2nd session, so graphs from these 2 models are all included in the 2nd context binary
   Ort::Session session1(*ort_env, ToPathString(onnx_model_path1).c_str(), so);
 
+  so.AddConfigEntry(kOrtSessionOptionStopShareEpContexts, "1");
   Ort::Session session2(*ort_env, ToPathString(onnx_model_path2).c_str(), so);
 }
 
@@ -1375,6 +1376,8 @@ TEST_F(QnnHTPBackendTests, QnnContextGenWeightSharingSessionAPI) {
                            DefaultLoggingManager().DefaultLogger());
   EXPECT_TRUE(!qnn_ctx_binary_file_name1.empty());
 
+  // Tell the EP stop share the QnnBackendManager from this session then on
+  so.AddConfigEntry(kOrtSessionOptionStopShareEpContexts, "1");
   Ort::Session session2(*ort_env, ToPathString(onnx_model_paths[1]).c_str(), so);
   std::string qnn_ctx_binary_file_name2;
   GetContextBinaryFileName(ctx_model_paths[1], qnn_ctx_binary_file_name2,

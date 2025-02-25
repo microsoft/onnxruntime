@@ -164,11 +164,6 @@ int real_main(int argc, char* argv[]) {
         provider_options["backend_path"] = "libQnnHtp.so";
 #endif
 
-        if (test_config.model_file_paths.size() > 2) {
-          std::cerr << "QNN EP only support 2 models for the weight sharing feature.";
-          return -1;
-        }
-
         // set default QNN EP option to enable weight sharing if not set by user
         const std::string enable_htp_weight_sharing = "enable_htp_weight_sharing";
         if (provider_options.find(enable_htp_weight_sharing) == provider_options.end()) {
@@ -182,8 +177,13 @@ int real_main(int argc, char* argv[]) {
         ORT_THROW("This execution provider is not included in this tool.\n");
       }
 
-      for (auto model_path : test_config.model_file_paths) {
-        std::cout << "Generate context cache model for: " << ToUTF8String(model_path) << std::endl;
+      auto total_file_count = test_config.model_file_paths.size();
+      for (auto i = 0; i < total_file_count; ++i) {
+        auto model_path = test_config.model_file_paths[i];
+        std::cout << "Generating context cache model for: " << ToUTF8String(model_path) << std::endl;
+        if (i == total_file_count - 1) {
+          so.AddConfigEntry(kOrtSessionOptionStopShareEpContexts, "1");
+        }
         Ort::Session session(env, model_path.c_str(), so);
       }
     }
