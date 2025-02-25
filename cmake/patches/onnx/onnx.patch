@@ -1,8 +1,8 @@
 ﻿diff --git a/CMakeLists.txt b/CMakeLists.txt
-index 6d7ca846..69aa622f 100644
+index d15d97ed..a483255f 100644
 --- a/CMakeLists.txt
 +++ b/CMakeLists.txt
-@@ -499,6 +499,7 @@ if (MSVC)
+@@ -496,6 +496,7 @@ if (MSVC)
    endif()
  else()
    # On non-Windows, hide all symbols we don't need
@@ -10,7 +10,7 @@ index 6d7ca846..69aa622f 100644
    set(ONNX_API_DEFINE "-DONNX_API=__attribute__\(\(__visibility__\(\"default\"\)\)\)")
    set_target_properties(onnx_proto PROPERTIES CXX_VISIBILITY_PRESET hidden)
    set_target_properties(onnx_proto PROPERTIES VISIBILITY_INLINES_HIDDEN 1)
-@@ -653,20 +654,9 @@ endif()
+@@ -631,20 +632,9 @@ endif()
  if(MSVC)
    target_compile_options(onnx_proto
                           PRIVATE /MP
@@ -36,15 +36,15 @@ index b847798e..a6c31904 100644
 --- a/onnx/common/file_utils.h
 +++ b/onnx/common/file_utils.h
 @@ -6,7 +6,6 @@
-
+ 
  #pragma once
-
+ 
 -#include <filesystem>
  #include <fstream>
  #include <string>
-
+ 
 @@ -17,8 +16,7 @@ namespace ONNX_NAMESPACE {
-
+ 
  template <typename T>
  void LoadProtoFromPath(const std::string proto_path, T& proto) {
 -  std::filesystem::path proto_u8_path = std::filesystem::u8path(proto_path);
@@ -60,7 +60,7 @@ index 0aab3e26..398ac2d6 100644
 @@ -47,10 +47,28 @@
  #define ONNX_API ONNX_IMPORT
  #endif
-
+ 
 +#if defined(__GNUC__)
 +#pragma GCC diagnostic push
 +
@@ -80,7 +80,7 @@ index 0aab3e26..398ac2d6 100644
  #else
  #include "onnx/onnx.pb.h"
  #endif
-
+ 
 +#if defined(__GNUC__)
 +#pragma GCC diagnostic pop
 +#endif
