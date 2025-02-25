@@ -36,15 +36,15 @@ index b847798e..a6c31904 100644
 --- a/onnx/common/file_utils.h
 +++ b/onnx/common/file_utils.h
 @@ -6,7 +6,6 @@
- 
+
  #pragma once
- 
+
 -#include <filesystem>
  #include <fstream>
  #include <string>
- 
+
 @@ -17,8 +16,7 @@ namespace ONNX_NAMESPACE {
- 
+
  template <typename T>
  void LoadProtoFromPath(const std::string proto_path, T& proto) {
 -  std::filesystem::path proto_u8_path = std::filesystem::u8path(proto_path);
@@ -60,7 +60,7 @@ index 0aab3e26..398ac2d6 100644
 @@ -47,10 +47,28 @@
  #define ONNX_API ONNX_IMPORT
  #endif
- 
+
 +#if defined(__GNUC__)
 +#pragma GCC diagnostic push
 +
@@ -80,7 +80,7 @@ index 0aab3e26..398ac2d6 100644
  #else
  #include "onnx/onnx.pb.h"
  #endif
- 
+
 +#if defined(__GNUC__)
 +#pragma GCC diagnostic pop
 +#endif
