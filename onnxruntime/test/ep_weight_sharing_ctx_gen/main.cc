@@ -177,8 +177,8 @@ int real_main(int argc, char* argv[]) {
         ORT_THROW("This execution provider is not included in this tool.\n");
       }
 
-      auto total_file_count = test_config.model_file_paths.size();
-      for (auto i = 0; i < total_file_count; ++i) {
+      size_t total_file_count = test_config.model_file_paths.size();
+      for (size_t i = 0; i < total_file_count; ++i) {
         auto model_path = test_config.model_file_paths[i];
         std::cout << "Generating context cache model for: " << ToUTF8String(model_path) << std::endl;
         if (i == total_file_count - 1) {
