@@ -127,7 +127,7 @@ jobs:
   - task: 1ES.PublishPipelineArtifact@1
     displayName: 'Publish Artifact: ONNXRuntime python wheel'
     inputs:
-      artifactName: onnxruntime_qnn_arm64ec
+      artifactName: onnxruntime_qnn_arm64ec_$(PythonVersion)
       targetPath: '$(Build.ArtifactStagingDirectory)'
   - script: |
       7z x *.whl
