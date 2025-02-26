@@ -427,7 +427,7 @@ Status FlashAttentionProgram::GenerateShaderCode(ShaderHelper& shader) const {
   return Status::OK();
 }
 
-Status AttentionProbsProgram1::GenerateShaderCode(ShaderHelper& shader) const {
+Status FlashAttentionDecodeSplitKProgram::GenerateShaderCode(ShaderHelper& shader) const {
   shader.AddInput("q", ShaderUsage::UseUniform | ShaderUsage::UseValueTypeAlias);
   shader.AddInput("present_key", ShaderUsage::UseUniform | ShaderUsage::UseElementTypeAlias);
   shader.AddInput("present_value", ShaderUsage::UseUniform);
@@ -437,7 +437,7 @@ Status AttentionProbsProgram1::GenerateShaderCode(ShaderHelper& shader) const {
   shader.AddOutput("out_split_k", ShaderUsage::UseUniform | ShaderUsage::UseValueTypeAlias);
   shader.AddOutput("metadata", ShaderUsage::UseUniform | ShaderUsage::UseValueTypeAlias | ShaderUsage::UseElementTypeAlias);
 
-    shader.AdditionalImplementation() << "const qkv_head_size: u32 = " << vectorized_head_size_ << ";\n";
+  shader.AdditionalImplementation() << "const qkv_head_size: u32 = " << vectorized_head_size_ << ";\n";
 
   shader.AdditionalImplementation() << R"ADDNL_FN(
 const min_value = metadata_element_t(-65504.0);
@@ -449,8 +449,7 @@ var<workgroup> inner_res: array<array<present_key_element_t, Tile_Size>, Tile_N_
 var<workgroup> inner_res2: array<array<out_split_k_value_t, Tile_Size>, Tile_N_Size>;
 var<workgroup> qk_values: array<present_key_element_t, Tile_N_Size>;
 var<workgroup> qkv_values: array<out_split_k_value_t, qkv_head_size>;
-)ADDNL_FN"; 
-
+)ADDNL_FN";
 
   if (has_attention_bias_) {
     shader.AdditionalImplementation() << R"HELPER_FN(
@@ -546,19 +545,19 @@ var<workgroup> qkv_values: array<out_split_k_value_t, qkv_head_size>;
 }
 
 // splitK
-Status ComputeAttentionProbs1(onnxruntime::webgpu::ComputeContext& context, const Tensor* Q,
-                              const Tensor* attention_bias, Tensor* out_split_k, Tensor* metadata, Tensor* present_key, Tensor* present_value,
-                              const WebgpuAttentionParameters& parameters, int past_sequence_length, int total_sequence_length, int split_k) {
+Status ComputeFlashAttentionDecodeSplitK(onnxruntime::webgpu::ComputeContext& context, const Tensor* Q,
+                                         const Tensor* attention_bias, Tensor* out_split_k, Tensor* metadata, Tensor* present_key, Tensor* present_value,
+                                         const WebgpuAttentionParameters& parameters, int split_k) {
   const float alpha = parameters.scale_ == 0.0f ? 1.f / sqrt(static_cast<float>(parameters.head_size_))
                                                 : parameters.scale_;
 
   const bool has_attention_bias = attention_bias != nullptr;
   constexpr int tile_size = 8;
-//  constexpr int tile_n_size = 64;
-  const int components = parameters.head_size_ % 4 == 0 ? 4 : (parameters.head_size_ % 2 == 0 ? 2 : 1);
+  const int components = 4;
   const int vectorized_head_size = (parameters.head_size_ + components - 1) / components;
-  AttentionProbsProgram1 program{"AttentionProbs1", has_attention_bias, tile_size, vectorized_head_size,
-                                components, parameters.n_reps};
+  const int total_sequence_length = parameters.total_sequence_length_;
+  FlashAttentionDecodeSplitKProgram program{"FlashAttentionDecodeSplitK", has_attention_bias, tile_size, vectorized_head_size,
+                                            components, parameters.n_reps};
   program.AddInputs({{Q, ProgramTensorMetadataDependency::TypeAndRank, components},
                      {present_key, ProgramTensorMetadataDependency::TypeAndRank, components},
                      {present_value, ProgramTensorMetadataDependency::TypeAndRank, components}});
@@ -577,10 +576,7 @@ Status ComputeAttentionProbs1(onnxruntime::webgpu::ComputeContext& context, cons
                             {static_cast<uint32_t>(vectorized_head_size)},
                             {static_cast<uint32_t>(total_sequence_length)},
                             {static_cast<uint32_t>(parameters.num_heads_)},
-                            {static_cast<uint32_t>(parameters.head_size_)},
                             {static_cast<float>(alpha)},
-                            {static_cast<uint32_t>(past_sequence_length)},
-                            {static_cast<uint32_t>(parameters.kv_sequence_length_)},
                             {static_cast<uint32_t>(parameters.is_gqa_ ? parameters.seqlen_present_kv_cache_ : total_sequence_length)},
                             {static_cast<uint32_t>(parameters.n_reps)},
                             {static_cast<uint32_t>(split_k)}});
@@ -589,7 +585,7 @@ Status ComputeAttentionProbs1(onnxruntime::webgpu::ComputeContext& context, cons
 }
 
 // split_k reduce
-Status VxAttentionScoreProgram1::GenerateShaderCode(ShaderHelper& shader) const {
+Status FlashAttentionDecodeReduceProgram::GenerateShaderCode(ShaderHelper& shader) const {
   shader.AddInput("out_split_k", ShaderUsage::UseUniform | ShaderUsage::UseValueTypeAlias | ShaderUsage::UseElementTypeAlias);
   shader.AddInput("metadata", ShaderUsage::UseUniform | ShaderUsage::UseValueTypeAlias | ShaderUsage::UseElementTypeAlias);
   shader.AddOutput("output", ShaderUsage::UseUniform | ShaderUsage::UseValueTypeAlias | ShaderUsage::UseElementTypeAlias);
@@ -650,17 +646,16 @@ var<workgroup> sub_metadata: array<metadata_value_t, 12>;
   return Status::OK();
 }
 
-Status ComputeVxAttentionScore1(onnxruntime::webgpu::ComputeContext& context,
-                                const Tensor* out_split_k,
-                                const Tensor* metadata,
-                               Tensor* output,
-                               const WebgpuAttentionParameters& parameters,
-                               int past_sequence_length,
-                                int total_sequence_length, int split_k) {
-  const int components = parameters.v_head_size_ % 4 == 0 ? 4 : (parameters.v_head_size_ % 2 == 0 ? 2 : 1);
+Status ComputeFlashAttentionDecodeReduce(onnxruntime::webgpu::ComputeContext& context,
+                                         const Tensor* out_split_k,
+                                         const Tensor* metadata,
+                                         Tensor* output,
+                                         const WebgpuAttentionParameters& parameters,
+                                         int split_k) {
+  const int components = 4;
   constexpr int tile_size = 12;
   int tile_n_size = tile_size * components;
-  VxAttentionScoreProgram1 program{"VxAttentionScore1", tile_size, parameters.n_reps};
+  FlashAttentionDecodeReduceProgram program{"FlashAttentionDecodeReduce", tile_size, parameters.n_reps};
   program.AddInputs({{out_split_k, ProgramTensorMetadataDependency::TypeAndRank, components},
                      {metadata, ProgramTensorMetadataDependency::TypeAndRank, 2}});
   program.AddOutputs({{output, ProgramTensorMetadataDependency::TypeAndRank, components}});
@@ -670,16 +665,7 @@ Status ComputeVxAttentionScore1(onnxruntime::webgpu::ComputeContext& context,
                                parameters.batch_size_ * parameters.num_heads_)
       .CacheHint(std::to_string(tile_size), parameters.past_present_share_buffer_, parameters.is_first_prompt_)
       .SetWorkgroupSize(tile_size, tile_size)
-      .AddUniformVariables({{static_cast<uint32_t>(parameters.sequence_length_)},
-                            {static_cast<uint32_t>(total_sequence_length)},
-                            {static_cast<uint32_t>(parameters.v_head_size_ / components)},
-                            {static_cast<uint32_t>(parameters.num_heads_)},
-                            {static_cast<uint32_t>(parameters.head_size_)},
-                            {static_cast<uint32_t>(parameters.v_hidden_size_ * parameters.n_reps / components)},
-                            {static_cast<uint32_t>(past_sequence_length)},
-                            {static_cast<uint32_t>(parameters.kv_sequence_length_)},
-                            {static_cast<uint32_t>(parameters.is_gqa_ ? parameters.seqlen_present_kv_cache_ : total_sequence_length)},
-                            {static_cast<uint32_t>(parameters.n_reps)},
+      .AddUniformVariables({{static_cast<uint32_t>(parameters.v_head_size_ / components)},
                             {static_cast<uint32_t>(split_k)}})
       .SetOverridableConstants({{static_cast<uint32_t>(tile_size)}});
 
@@ -727,8 +713,6 @@ Status ApplyFlashAttention(const Tensor* Q, const Tensor* K, const Tensor* V, co
   ORT_RETURN_IF_ERROR(TransferBSDToBNSH(
       context, parameters.num_heads_, parameters.sequence_length_, parameters.head_size_, Q, nullptr, 0, &query));
 
-  const int output_count = std::min({context.OutputCount(), 1 + (past_key != nullptr ? 1 : 0) + (past_value != nullptr ? 1 : 0)});
-  const int past_sequence_length = output_count > 1 ? parameters.past_sequence_length_ : 0;
   const int total_sequence_length = parameters.total_sequence_length_;
 
   const int Tile_Size = 64;
@@ -742,15 +726,13 @@ Status ApplyFlashAttention(const Tensor* Q, const Tensor* K, const Tensor* V, co
   Tensor metadata = context.CreateGPUTensor(Q->DataType(), metadata_shape);
 
   // splitK decoding
-  ORT_RETURN_IF_ERROR(ComputeAttentionProbs1(context, &query, attention_bias, &out_split_k, &metadata, present_key, present_value,
-                                             parameters, past_sequence_length, total_sequence_length, split_k));
+  ORT_RETURN_IF_ERROR(ComputeFlashAttentionDecodeSplitK(context, &query, attention_bias, &out_split_k, &metadata, present_key, present_value,
+                                                        parameters, split_k));
 
   // splitK reduce
-  ORT_RETURN_IF_ERROR(ComputeVxAttentionScore1(context, &out_split_k, &metadata, output,
-                                               parameters, past_sequence_length, total_sequence_length, split_k));
+  ORT_RETURN_IF_ERROR(ComputeFlashAttentionDecodeReduce(context, &out_split_k, &metadata, output, parameters, split_k));
 
   return Status::OK();
-
 }
 
 bool CanApplyFlashAttention(const Tensor* bias, const Tensor* present_key, const Tensor* present_value,
