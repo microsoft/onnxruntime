@@ -1512,6 +1512,11 @@ if (onnxruntime_USE_OPENVINO)
 
 endif()
 
+if (onnxruntime_USE_OPENVINO_INTERFACE AND (NOT onnxruntime_USE_OPENVINO))
+    add_definitions(-DUSE_OPENVINO=1)
+    add_definitions(-DOPENVINO_CONFIG_NPU=1)
+endif()
+
 if (onnxruntime_USE_VITISAI)
     set(CMAKE_MODULE_PATH "${CMAKE_MODULE_PATH};${CMAKE_CURRENT_LIST_DIR}")
 endif()
