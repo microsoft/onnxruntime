@@ -126,6 +126,7 @@ extends:
         SpecificArtifact: ${{ parameters.SpecificArtifact }}
         BuildId: ${{ parameters.BuildId }}
         QnnSDKVersion: ${{ parameters.QnnSdk }}
+        is1ES: true
 
     - template: stages/java-cuda-packaging-stage.yml
       parameters:

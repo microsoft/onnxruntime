@@ -53,6 +53,11 @@ parameters:
   type: string
   default: 2.31.0.250130
 
+- name: is1ES
+  displayName: Is 1ES pipeline
+  type: boolean
+  default: false
+
 stages:
 - template: linux-cpu-packaging-pipeline.yml
   parameters:
@@ -106,6 +111,7 @@ stages:
       packageName: 'onnxruntime-android-qnn'
       ReleaseVersionSuffix: $(ReleaseVersionSuffix)
       QnnSDKVersion: ${{ parameters.QnnSDKVersion }}
+      is1ES: ${{ parameters.is1ES }}
 
 - stage: Final_AAR_Testing_Android_QNN
   dependsOn: Android_Java_API_AAR_Packaging_QNN
