@@ -20,8 +20,6 @@ stages:
 
     pool:
       name: ${{ parameters.qnn_ep_build_pool_name }}
-      hostArchitecture: parameters.buildPlatform
-
     variables:
       ${{ if eq(parameters.buildArch, 'ARM64') }}:
         targetArchitecture: 'arm64'
