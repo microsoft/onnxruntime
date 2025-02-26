@@ -216,6 +216,6 @@ extends:
     
       
 
-        - template: stages/nuget_dml_packaging_stage.yml
-          parameters:
-            DoEsrp: ${{ parameters.DoEsrp }}
+    - template: stages/nuget_dml_packaging_stage.yml
+      parameters:
+        DoEsrp: ${{ parameters.DoEsrp }}
