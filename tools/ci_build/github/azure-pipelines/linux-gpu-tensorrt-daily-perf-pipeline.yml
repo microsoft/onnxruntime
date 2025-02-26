@@ -189,8 +189,8 @@ jobs:
 
     - task: PublishBuildArtifacts@1
       inputs:
-        path: '$(Build.SourcesDirectory)/Artifact'
-        artifact: 'result-$(Build.BuildNumber)'
+        pathtoPublish: '$(Build.SourcesDirectory)/Artifact'
+        artifactName: 'result-$(Build.BuildNumber)'
 
     - template: templates/component-governance-component-detection-steps.yml
       parameters :
