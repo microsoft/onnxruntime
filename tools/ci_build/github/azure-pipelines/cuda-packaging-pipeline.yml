@@ -90,12 +90,12 @@ extends:
   template: v1/1ES.Official.PipelineTemplate.yml@1esPipelines
   parameters:
     sdl:
-      sourceAnalysisPool:
-        name: onnxruntime-Win-CPU-2022
-        os: windows
       sourceRepositoriesToScan:
         exclude:
         - repository: onnxruntime-inference-examples
+      sourceAnalysisPool:
+        name: onnxruntime-Win-CPU-2022
+        os: windows
     stages:
     # Set ReleaseVersionSuffix
     - template: stages/set_packaging_variables_stage.yml
