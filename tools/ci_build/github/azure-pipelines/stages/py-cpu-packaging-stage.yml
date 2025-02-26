@@ -154,7 +154,7 @@ stages:
       - task: 1ES.PublishPipelineArtifact@1
         displayName: 'Publish Artifact: ONNXRuntime python wheel'
         inputs:
-          artifactName: onnxruntime
+          artifactName: onnxruntime-win-$(PythonVersion)
           targetPath: '$(Build.ArtifactStagingDirectory)'
 
       - script: |
@@ -257,7 +257,7 @@ stages:
       - task: 1ES.PublishPipelineArtifact@1
         displayName: 'Publish Artifact: ONNXRuntime python wheel'
         inputs:
-          artifactName: onnxruntime
+          artifactName: onnxruntime-macos-$(PythonVersion)
           targetPath: '$(Build.ArtifactStagingDirectory)'
 
       - template: ../templates/component-governance-component-detection-steps.yml
