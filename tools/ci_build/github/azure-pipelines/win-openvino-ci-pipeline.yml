@@ -105,6 +105,7 @@ jobs:
         --use_openvino CPU
         --use_binskim_compliant_compile_flags
         --update --parallel
+        --enable_msvc_static_runtime
       MsbuildArguments: $(MsbuildArguments)
       BuildArch: $(buildArch)
       Platform: 'x64'
@@ -119,7 +120,8 @@ jobs:
         --build_wheel `
         --use_openvino CPU `
         --use_binskim_compliant_compile_flags `
-        --test --enable_onnx_tests
+        --test --enable_onnx_tests `
+        --enable_msvc_static_runtime
     displayName: 'Run unit tests'
 
 #  - powershell: |
