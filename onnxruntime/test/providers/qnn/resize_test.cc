@@ -456,11 +456,12 @@ TEST_F(QnnHTPBackendTests, ResizeU8_2xNearestAsymmetricRoundPreferFloor_Unsuppor
 // ORT CPU EP (f32 model) outputs: -10.0000000 -10.0000000 -3.33333349 -3.33333349 -3.33333349 -3.33333349 -10.00 ...
 // ORT CPU EP (qdq model) outputs: -9.96078491 -9.96078491 -3.29411769 -3.29411769 -3.29411769 -3.29411769 -9.961 ...
 // ORT QNN EP (qdq model) outputs: -9.96078491 -9.96078491 -9.96078491 -3.37254906 -3.37254906 -3.37254906 -9.961 ...
-TEST_F(QnnHTPBackendTests, DISABLED_ResizeU8_3xNearestAsymmetricRoundPreferFloor) {
+// UPDATE: "round_prefer_floor" no longer supported in QNN SDK 2.21 (supported in QNN SDK 2.19)
+TEST_F(QnnHTPBackendTests, ResizeU8_3xNearestAsymmetricRoundPreferFloor_Unsupported) {
   std::vector<float> input_data = GetFloatDataInRange(-10.0f, 10.0f, 4);
   RunQDQResizeOpTest<uint8_t>(TestInputDef<float>({1, 1, 2, 2}, false, input_data),
                               {1, 1, 6, 6}, "nearest", "asymmetric", "round_prefer_floor",
-                              ExpectedEPNodeAssignment::All);
+                              ExpectedEPNodeAssignment::None);  // No longer supported as of QNN SDK 2.21
 }
 
 // Test 0.5x QDQ Resize mode: "nearest", coordinate_transformation_mode: "asymmetric", nearest_mode: "floor"
