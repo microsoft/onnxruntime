@@ -15,7 +15,7 @@ stages:
     workspace:
       clean: all
     timeoutInMinutes: 150
-    pool: 'onnxruntime-Ubuntu2204-AMD-CPU'
+    pool: 'onnxruntime-Ubuntu2404-AMD-CPU'
     variables:
     - name: CUDA_VERSION_MAJOR
       ${{ if eq(parameters.CudaVersion, '11.8') }}:
@@ -66,7 +66,7 @@ stages:
     workspace:
       clean: all
     timeoutInMinutes: 180
-    pool: 'onnxruntime-Ubuntu2204-AMD-CPU'
+    pool: 'onnxruntime-Ubuntu2404-AMD-CPU'
     variables:
     - template: ../templates/common-variables.yml
     - name: CUDA_VERSION_MAJOR

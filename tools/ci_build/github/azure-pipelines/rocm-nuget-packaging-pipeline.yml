@@ -86,7 +86,7 @@ stages:
     workspace:
       clean: all
     timeoutInMinutes: 480
-    pool: onnxruntime-Ubuntu2204-AMD-CPU
+    pool: onnxruntime-Ubuntu2404-AMD-CPU
     variables:
       RocmVersion: '6.2'
       RocmVersionPatchSuffix: ''
