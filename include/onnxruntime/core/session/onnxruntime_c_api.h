@@ -5127,7 +5127,7 @@ struct OrtModelEditorApi {
 
   /** \brief Set the inputs for the OrtGraph.
    *
-   * Set the graph inputs.
+   * Set the graph inputs. This will replace any existing inputs with the new values.
    * The OrtGraph takes ownership of the OrtValueInfo instances and you should NOT call ReleaseOrtValueInfo.
    *
    * \param[in] graph The OrtGraph instance to update.
@@ -5138,12 +5138,12 @@ struct OrtModelEditorApi {
    *
    * \since Version 1.21.
    */
-  ORT_API2_STATUS(SetGraphInputs, _In_ OrtGraph* graph,
+  ORT_API2_STATUS(SetGraphInputs, _Inout_ OrtGraph* graph,
                   _In_reads_(inputs_len) _In_ OrtValueInfo** inputs, _In_ size_t inputs_len);
 
   /** \brief Set the outputs for the OrtGraph.
    *
-   * Set the graph outputs.
+   * Set the graph outputs. This will replace any existing outputs with the new values.
    * The OrtGraph takes ownership of the OrtValueInfo instances provided and you should NOT call ReleaseOrtValueInfo.
    *
    * \param[in] graph The OrtGraph instance to update.
@@ -5154,7 +5154,7 @@ struct OrtModelEditorApi {
    *
    * \since Version 1.21.
    */
-  ORT_API2_STATUS(SetGraphOutputs, _In_ OrtGraph* graph,
+  ORT_API2_STATUS(SetGraphOutputs, _Inout_ OrtGraph* graph,
                   _In_reads_(outputs_len) _In_ OrtValueInfo** outputs, _In_ size_t outputs_len);
 
   /** \brief Add an initializer to the OrtGraph
@@ -5195,7 +5195,7 @@ struct OrtModelEditorApi {
    *
    * \since Version 1.21.
    */
-  ORT_API2_STATUS(AddInitializerToGraph, _In_ OrtGraph* graph, _In_ const char* name, _Inout_ OrtValue* tensor,
+  ORT_API2_STATUS(AddInitializerToGraph, _Inout_ OrtGraph* graph, _In_ const char* name, _In_ OrtValue* tensor,
                   bool data_is_external);
 
   /** \brief Add an OrtNode to an OrtGraph
@@ -5209,7 +5209,7 @@ struct OrtModelEditorApi {
    *
    * \since Version 1.21.
    */
-  ORT_API2_STATUS(AddNodeToGraph, _In_ OrtGraph* graph, _In_ OrtNode* node);
+  ORT_API2_STATUS(AddNodeToGraph, _Inout_ OrtGraph* graph, _In_ OrtNode* node);
 
   /** \brief Create an OrtModel.
    *
@@ -5247,7 +5247,7 @@ struct OrtModelEditorApi {
    *
    * \since Version 1.21.
    */
-  ORT_API2_STATUS(AddGraphToModel, _In_ OrtModel* model, _Inout_ OrtGraph* graph);
+  ORT_API2_STATUS(AddGraphToModel, _Inout_ OrtModel* model, _In_ OrtGraph* graph);
 
   /** \brief Create an OrtSession using the OrtModel.
    *
@@ -5284,6 +5284,10 @@ struct OrtModelEditorApi {
    * Add the new information from the OrtModel to the original model using ApplyModelToSession, and prepare the
    * session for inferencing by calling FinalizeModelEditorSession.
    *
+   * \param{in} env The OrtEnv instance.
+   * \param{in} model_path The path to the existing ONNX model to augment.
+   * \param{in} options The OrtSessionOptions instance.
+   * \param{out} out The created OrtSession instance.
    * \snippet{doc} snippets.dox OrtStatus Return Value
    *
    * \since Version 1.21.
@@ -5323,7 +5327,7 @@ struct OrtModelEditorApi {
   /** \brief Query the session for the opset version of a domain.
    *
    * When using the Model Editor API to augment a model, any new nodes must conform to the opset version of the
-   * original model.
+   * original model. To do that the user must be able to discover that opset version.
    *
    * \param[in] session OrtSession to query
    * \param[in] domain Domain to query. The ONNX domain is an empty string.
@@ -5335,34 +5339,41 @@ struct OrtModelEditorApi {
    */
   ORT_API2_STATUS(SessionGetOpsetForDomain, _In_ const OrtSession* session, _In_ const char* domain, _Out_ int* opset);
 
-  /** \brief Apply the changes from the model to the session.
+  /** \brief Apply changes to augment the ONNX model in a session created using CreateModelEditorSession[FromArray]
    *
-   * Apply the changes from the model to a session that was created using CreateModelEditorSession[FromArray].
+   * Adds new nodes and updates graph inputs/outputs using `model` to augment the original ONNX model in the session.
    * All changes will be validated.
    * Call FinalizeModelEditorSession to prepare the session for inferencing.
    *
    * Existing input/outputs will only be updated if the OrtGraph inputs/outputs are set in the OrtModel.
    *   i.e. you don't need to call SetGraphInputs/SetGraphOutputs if they are unchanged.
    *
-   * ReleaseOrtModel must be called to free the OrtModel after it is successfully applied to the session.
+   * ReleaseOrtModel must be called to free the OrtModel after it is applied to the session.
+   *
+   * \param[in] session OrtSession to update. Session must have been created using CreateModelEditorSession[FromArray].
+   * \param[in] model OrtModel containing new nodes, new initializers, and updated graph input and/or output info.
    *
    * \snippet{doc} snippets.dox OrtStatus Return Value
    *
    * \since Version 1.21.
    */
-  ORT_API2_STATUS(ApplyModelToModelEditorSession, _In_ OrtSession* session, _In_ OrtModel* model);
+  ORT_API2_STATUS(ApplyModelToModelEditorSession, _Inout_ OrtSession* session, _In_ OrtModel* model);
 
-  /** \brief Finalize the Model Editor session.
+  /** \brief Finalize the Model Editor session that was created using CreateModelEditorSession[FromArray].
    *
-   * Finalize the Model Editor session.
+   * Finalize the Model Editor session that augmented an ONNX model by adding new nodes.
    * This will run optimizers and prepare the session for inferencing.
    *
+   * \param[in] session OrtSession to finalize. Session must have been created using CreateModelEditorSession[FromArray].
+   * \param[in] options OrtSessionOptions to use for the session.
+   * \param[in] Optional prepacked_weights_container OrtPrepackedWeightsContainer to use for the session.
+                Set to nullptr if not used.
    * \snippet{doc} snippets.dox OrtStatus Return Value
    *
    * \since Version 1.21.
    */
-  ORT_API2_STATUS(FinalizeModelEditorSession, _In_ OrtSession* session, _In_ const OrtSessionOptions* options,
-                  _Inout_ OrtPrepackedWeightsContainer* prepacked_weights_container);
+  ORT_API2_STATUS(FinalizeModelEditorSession, _Inout_ OrtSession* session, _In_ const OrtSessionOptions* options,
+                  _In_opt_ OrtPrepackedWeightsContainer* prepacked_weights_container);
 #endif  // !defined(ORT_MINIMAL_BUILD)
 };
 

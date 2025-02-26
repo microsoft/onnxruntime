@@ -61,7 +61,7 @@ ORT_API_STATUS_IMPL(OrtApis::SetDimensions, OrtTensorTypeAndShapeInfo* info,
   // make shape and dim_values consistent
   info->dim_params.resize(num_dims, "");
 
-  std::vector<int64_t> dims;
+  onnxruntime::TensorShapeVector dims;
   dims.resize(num_dims, -1);
 
   for (size_t idx = 0; idx < dim_count; ++idx) {
