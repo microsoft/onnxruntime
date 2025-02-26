@@ -790,7 +790,7 @@ stages:
 
 - template: ../nuget/templates/test_win.yml
   parameters:
-    AgentPool: 'onnxruntime-Win-CPU-2022'
+    AgentPool: onnxruntime-Win-CPU-2022
     Skipx86Tests: false
     NugetPackageName: 'Microsoft.ML.OnnxRuntime'
     ArtifactSuffix: 'CPU'
@@ -812,7 +812,7 @@ stages:
 
 - template: ../nodejs/templates/test_win.yml
   parameters:
-    AgentPool: 'onnxruntime-Win-CPU-2022'
+    AgentPool: onnxruntime-Win-CPU-2022
     StageSuffix: 'Win_CPU_x64'
 
 - template: ../nodejs/templates/test_linux.yml
