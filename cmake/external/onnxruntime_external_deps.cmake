@@ -426,12 +426,6 @@ target_include_directories(safeint_interface INTERFACE ${safeint_SOURCE_DIR})
 # Flatbuffers
 if(onnxruntime_USE_VCPKG)
   find_package(flatbuffers REQUIRED)
-  add_custom_command(
-    OUTPUT ${ONNXRUNTIME_ROOT}/core/flatbuffers/schema/ort.fbs.h
-    COMMAND $<TARGET_FILE:Python::Interpreter> ${ONNXRUNTIME_ROOT}/core/flatbuffers/schema/compile_schema.py --flatc $<TARGET_FILE:flatbuffers::flatc>)
-  add_custom_command(
-    OUTPUT ${ONNXRUNTIME_ROOT}/lora/adapter_format/adapter_schema.fbs.h
-    COMMAND $<TARGET_FILE:Python::Interpreter> ${ONNXRUNTIME_ROOT}/lora/adapter_format/compile_schema.py --flatc $<TARGET_FILE:flatbuffers::flatc>)
 else()
 # We do not need to build flatc for iOS or Android Cross Compile
 if (CMAKE_SYSTEM_NAME STREQUAL "iOS" OR CMAKE_SYSTEM_NAME STREQUAL "Android" OR CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
@@ -484,7 +478,12 @@ namespace std { using ::getenv; }
   endif()
 endif()
 endif()
-
+add_custom_command(
+    OUTPUT ${ONNXRUNTIME_ROOT}/core/flatbuffers/schema/ort.fbs.h
+    COMMAND $<TARGET_FILE:Python::Interpreter> ${ONNXRUNTIME_ROOT}/core/flatbuffers/schema/compile_schema.py --flatc $<TARGET_FILE:flatbuffers::flatc>)
+add_custom_command(
+    OUTPUT ${ONNXRUNTIME_ROOT}/lora/adapter_format/adapter_schema.fbs.h
+    COMMAND $<TARGET_FILE:Python::Interpreter> ${ONNXRUNTIME_ROOT}/lora/adapter_format/compile_schema.py --flatc $<TARGET_FILE:flatbuffers::flatc>)
 # ONNX
 if (NOT onnxruntime_USE_FULL_PROTOBUF)
   set(ONNX_USE_LITE_PROTO ON CACHE BOOL "" FORCE)
@@ -581,7 +580,7 @@ set(onnxruntime_EXTERNAL_LIBRARIES ${onnxruntime_EXTERNAL_LIBRARIES_XNNPACK} ${W
 
 # The source code of onnx_proto is generated, we must build this lib first before starting to compile the other source code that uses ONNX protobuf types.
 # The other libs do not have the problem. All the sources are already there. We can compile them in any order.
-set(onnxruntime_EXTERNAL_DEPENDENCIES onnx::onnx_proto flatbuffers::flatbuffers)
+set(onnxruntime_EXTERNAL_DEPENDENCIES onnx_proto flatbuffers::flatbuffers)
 
 if(NOT (onnx_FOUND OR ONNX_FOUND)) # building ONNX from source
   target_compile_definitions(onnx PUBLIC $<TARGET_PROPERTY:onnx_proto,INTERFACE_COMPILE_DEFINITIONS> PRIVATE "__ONNX_DISABLE_STATIC_REGISTRATION")
