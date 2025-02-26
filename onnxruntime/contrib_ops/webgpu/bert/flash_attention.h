@@ -62,8 +62,8 @@ class FlashAttentionProgram final : public Program<FlashAttentionProgram> {
 class AttentionProbsProgram1 final : public Program<AttentionProbsProgram1> {
  public:
   AttentionProbsProgram1(const std::string& kernel_name,
-                         bool has_attention_bias, int tile_size, int components, int n_reps = 1)
-      : Program{kernel_name}, has_attention_bias_(has_attention_bias), tile_size_(tile_size), components_(components), n_reps_(n_reps) {
+                         bool has_attention_bias, int tile_size, int vectorized_head_size, int components, int n_reps = 1)
+      : Program{kernel_name}, has_attention_bias_(has_attention_bias), tile_size_(tile_size), vectorized_head_size_(vectorized_head_size), components_(components), n_reps_(n_reps) {
   }
 
   Status GenerateShaderCode(ShaderHelper& sh) const override;
@@ -78,11 +78,12 @@ class AttentionProbsProgram1 final : public Program<AttentionProbsProgram1> {
                                           {"kv_sequence_length", ProgramUniformVariableDataType::Uint32},
                                           {"present_sequence_length", ProgramUniformVariableDataType::Uint32},
                                           {"n_reps", ProgramUniformVariableDataType::Uint32},
-                                          {"is_first_prompt", ProgramUniformVariableDataType::Uint32});
+                                          {"split_k", ProgramUniformVariableDataType::Uint32});
 
  private:
   bool has_attention_bias_;
   int tile_size_;
+  int vectorized_head_size_;
   int components_;
   int n_reps_;
 };
@@ -97,7 +98,7 @@ class VxAttentionScoreProgram1 final : public Program<VxAttentionScoreProgram1> 
 
   WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES({"M", ProgramUniformVariableDataType::Uint32},
                                           {"K", ProgramUniformVariableDataType::Uint32},
-                                          {"N", ProgramUniformVariableDataType::Uint32},
+                                          {"head_size_vec", ProgramUniformVariableDataType::Uint32},
                                           {"num_heads", ProgramUniformVariableDataType::Uint32},
                                           {"head_size", ProgramUniformVariableDataType::Uint32},
                                           {"v_hidden_size", ProgramUniformVariableDataType::Uint32},
@@ -105,7 +106,7 @@ class VxAttentionScoreProgram1 final : public Program<VxAttentionScoreProgram1> 
                                           {"kv_sequence_length", ProgramUniformVariableDataType::Uint32},
                                           {"present_sequence_length", ProgramUniformVariableDataType::Uint32},
                                           {"n_reps", ProgramUniformVariableDataType::Uint32},
-                                          {"is_first_prompt", ProgramUniformVariableDataType::Uint32});
+                                          {"split_k", ProgramUniformVariableDataType::Uint32});
 
   WEBGPU_PROGRAM_DEFINE_OVERRIDABLE_CONSTANTS({"TILE_SIZE", ProgramConstantDataType::Uint32});
 
