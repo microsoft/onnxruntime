@@ -107,23 +107,6 @@ if(onnxruntime_USE_MIMALLOC)
   FetchContent_MakeAvailable(mimalloc)
 endif()
 
-#Protobuf depends on utf8_range
-onnxruntime_fetchcontent_declare(
-    utf8_range
-    URL ${DEP_URL_utf8_range}
-    URL_HASH SHA1=${DEP_SHA1_utf8_range}
-    EXCLUDE_FROM_ALL
-    FIND_PACKAGE_ARGS NAMES utf8_range
-)
-
-set(utf8_range_ENABLE_TESTS OFF CACHE BOOL "Build test suite" FORCE)
-set(utf8_range_ENABLE_INSTALL OFF CACHE BOOL "Configure installation" FORCE)
-
-# The next line will generate an error message "fatal: not a git repository", but it is ok. It is from flatbuffers
-onnxruntime_fetchcontent_makeavailable(utf8_range)
-# protobuf's cmake/utf8_range.cmake has the following line
-include_directories(${utf8_range_SOURCE_DIR})
-
 # Download a protoc binary from Internet if needed
 if(NOT ONNX_CUSTOM_PROTOC_EXECUTABLE AND NOT onnxruntime_USE_VCPKG)
   # This part of code is only for users' convenience. The code couldn't handle all cases. Users always can manually
@@ -441,6 +424,15 @@ target_include_directories(safeint_interface INTERFACE ${safeint_SOURCE_DIR})
 
 
 # Flatbuffers
+if(onnxruntime_USE_VCPKG)
+  find_package(flatbuffers REQUIRED)
+  add_custom_command(
+    OUTPUT ${ONNXRUNTIME_ROOT}/core/flatbuffers/schema/ort.fbs.h
+    COMMAND $<TARGET_FILE:Python::Interpreter> ${ONNXRUNTIME_ROOT}/core/flatbuffers/schema/compile_schema.py --flatc $<TARGET_FILE:flatbuffers::flatc>)
+  add_custom_command(
+    OUTPUT ${ONNXRUNTIME_ROOT}/lora/adapter_format/adapter_schema.fbs.h
+    COMMAND $<TARGET_FILE:Python::Interpreter> ${ONNXRUNTIME_ROOT}/lora/adapter_format/compile_schema.py --flatc $<TARGET_FILE:flatbuffers::flatc>)
+else()
 # We do not need to build flatc for iOS or Android Cross Compile
 if (CMAKE_SYSTEM_NAME STREQUAL "iOS" OR CMAKE_SYSTEM_NAME STREQUAL "Android" OR CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
   set(FLATBUFFERS_BUILD_FLATC OFF CACHE BOOL "FLATBUFFERS_BUILD_FLATC" FORCE)
@@ -490,6 +482,7 @@ namespace std { using ::getenv; }
       target_compile_options(flatc PRIVATE /FI${CMAKE_BINARY_DIR}/gdk_cstdlib_wrapper.h)
     endif()
   endif()
+endif()
 endif()
 
 # ONNX
@@ -588,7 +581,7 @@ set(onnxruntime_EXTERNAL_LIBRARIES ${onnxruntime_EXTERNAL_LIBRARIES_XNNPACK} ${W
 
 # The source code of onnx_proto is generated, we must build this lib first before starting to compile the other source code that uses ONNX protobuf types.
 # The other libs do not have the problem. All the sources are already there. We can compile them in any order.
-set(onnxruntime_EXTERNAL_DEPENDENCIES onnx_proto flatbuffers::flatbuffers)
+set(onnxruntime_EXTERNAL_DEPENDENCIES onnx::onnx_proto flatbuffers::flatbuffers)
 
 if(NOT (onnx_FOUND OR ONNX_FOUND)) # building ONNX from source
   target_compile_definitions(onnx PUBLIC $<TARGET_PROPERTY:onnx_proto,INTERFACE_COMPILE_DEFINITIONS> PRIVATE "__ONNX_DISABLE_STATIC_REGISTRATION")
