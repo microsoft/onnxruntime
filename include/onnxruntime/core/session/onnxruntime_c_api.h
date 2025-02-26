@@ -4999,7 +4999,7 @@ struct OrtModelEditorApi {
   // build, so it doesn't matter if there are no function pointers in this struct as a user will never get an
   // OrtModelEditorApi instance. We do however need a dummy field to avoid empty struct warning.
 #if defined(ORT_MINIMAL_BUILD)
-  const bool valid = false;
+  const bool not_defined_in_this_build;
 #else
   /** \brief Create an OrtTypeInfo instance for a Tensor.
    *
