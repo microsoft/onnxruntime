@@ -9,7 +9,7 @@ file(GLOB onnxruntime_lora_srcs CONFIGURE_DEPENDS
 
 source_group(TREE ${REPO_ROOT} FILES ${onnxruntime_lora_srcs})
 
-onnxruntime_add_static_library(onnxruntime_lora ${onnxruntime_lora_srcs} ${ONNXRUNTIME_ROOT}/lora/adapter_format/adapter_schema.fbs.h)
+onnxruntime_add_static_library(onnxruntime_lora ${onnxruntime_lora_srcs})
 onnxruntime_add_include_to_target(onnxruntime_lora onnx flatbuffers::flatbuffers Boost::mp11 ${GSL_TARGET})
 target_link_libraries(onnxruntime_lora onnxruntime_framework)
 

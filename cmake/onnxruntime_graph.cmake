@@ -94,8 +94,11 @@ if (onnxruntime_ENABLE_TRAINING_OPS)
   list(REMOVE_ITEM orttraining_graph_src ${orttraining_graph_src_exclude})
 endif()
 
+add_library(onnxruntime_flatbuffers_generated INTERFACE ${ONNXRUNTIME_ROOT}/core/flatbuffers/schema/ort.fbs.h ${ONNXRUNTIME_ROOT}/lora/adapter_format/adapter_schema.fbs.h ${ONNXRUNTIME_ROOT}/test/flatbuffers/flatbuffers_utils_test.fbs.h)
+LIST(APPEND onnxruntime_EXTERNAL_DEPENDENCIES onnxruntime_flatbuffers_generated)
+
 onnxruntime_add_static_library(onnxruntime_graph ${onnxruntime_graph_src} ${orttraining_graph_src})
-add_dependencies(onnxruntime_graph onnx_proto flatbuffers::flatbuffers)
+add_dependencies(onnxruntime_graph ${onnxruntime_EXTERNAL_DEPENDENCIES})
 onnxruntime_add_include_to_target(onnxruntime_graph onnxruntime_common ${WIL_TARGET} onnx onnx_proto ${PROTOBUF_LIB} flatbuffers::flatbuffers safeint_interface Boost::mp11)
 
 if (MSVC)
