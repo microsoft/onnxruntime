@@ -116,10 +116,11 @@ jobs:
           Contents: '*.whl'
           TargetFolder: '$(Build.ArtifactStagingDirectory)'
 
-      - task: PublishBuildArtifacts@1
+      - task: 1ES.PublishPipelineArtifact@1
         displayName: 'Publish Artifact: ONNXRuntime python wheel'
         inputs:
-          ArtifactName: onnxruntime_qnn_x64
+          artifactName: onnxruntime_qnn_x64
+          targetPath: '$(Build.ArtifactStagingDirectory)'
 
       - script: |
           7z x *.whl
