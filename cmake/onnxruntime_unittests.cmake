@@ -884,6 +884,12 @@ if (CMAKE_SYSTEM_NAME STREQUAL "Emscripten" OR IOS)
       "${TEST_SRC_DIR}/providers/cpu/model_tests.cc"
     )
 endif()
+if (USE_ROCM)
+    # The following unit test takes about 40 minutes.
+    list(REMOVE_ITEM all_tests
+      "${TEST_SRC_DIR}/contrib_ops/matmul_4bits_test.cc"
+    )
+endif()
 
 set(test_all_args)
 if (onnxruntime_USE_TENSORRT)
