@@ -24,9 +24,16 @@ parameters:
   type: boolean
   default: false
 
+- name: is1ES
+  displayName: 'Is 1ES pipeline'
+  type: boolean
+  default: false
+
 jobs:
 - job: build_onnxruntime_web
-  pool: ${{ parameters.PoolName }}
+  pool:
+    name: ${{ parameters.PoolName }}
+    os: windows
 
   variables:
     webgpuCommandlineExtraFlags: '--chromium-flags=--ignore-gpu-blocklist --chromium-flags=--gpu-vendor-id=0x10de'
@@ -45,28 +52,28 @@ jobs:
     displayName: 'Get commit SHA'
     condition: eq('${{ parameters.CommitOverride }}', 'true')
   - script: |
-     set /p __commit__=<$(Pipeline.Workspace)\__commit.txt
-     git fetch origin +%__commit__%:refs/remotes/origin/%__commit__%
-     git checkout --force %__commit__%
+      set /p __commit__=<$(Pipeline.Workspace)\__commit.txt
+      git fetch origin +%__commit__%:refs/remotes/origin/%__commit__%
+      git checkout --force %__commit__%
     workingDirectory: '$(Build.SourcesDirectory)'
     displayName: 'Read commit SHA and checkout'
     condition: eq('${{ parameters.CommitOverride }}', 'true')
   - script: |
-     echo.$(Build.SourceVersion)>$(Pipeline.Workspace)\__commit.txt
+      echo.$(Build.SourceVersion)>$(Pipeline.Workspace)\__commit.txt
     workingDirectory: '$(Build.SourcesDirectory)'
     displayName: 'Write commit SHA to __commit.txt'
     condition: ne('${{ parameters.CommitOverride }}', 'true')
   - script: |
-     git submodule sync -- cmake\external\onnx
-     git submodule update --init -- cmake\external\onnx
+      git submodule sync -- cmake\external\onnx
+      git submodule update --init -- cmake\external\onnx
     workingDirectory: '$(Build.SourcesDirectory)'
     displayName: 'Checkout submodule onnx'
   - script: |
-     echo.>>.gitattributes
-     echo /js/** text=auto eol=lf>>.gitattributes
-     rd /s /q js
-     git checkout -- js/**
-     git checkout -- .gitattributes
+      echo.>>.gitattributes
+      echo /js/** text=auto eol=lf>>.gitattributes
+      rd /s /q js
+      git checkout -- js/**
+      git checkout -- .gitattributes
     workingDirectory: '$(Build.SourcesDirectory)'
     displayName: 'Testing: force EOL to lf on windows for /js/**'
   - task: NodeTool@0
@@ -86,43 +93,43 @@ jobs:
       flattenFolders: true
     displayName: 'Binplace dist files'
   - script: |
-     npm ci
+      npm ci
     workingDirectory: '$(Build.SourcesDirectory)\js'
     displayName: 'npm ci /js/'
   - script: |
-     npm ci
+      npm ci
     workingDirectory: '$(Build.SourcesDirectory)\js\common'
     displayName: 'npm ci /js/common/'
   - script: |
-     npm test
+      npm test
     workingDirectory: '$(Build.SourcesDirectory)\js\common'
     displayName: 'run onnxruntime-common tests'
   - script: |
-     npm ci
+      npm ci
     workingDirectory: '$(Build.SourcesDirectory)\js\web'
     displayName: 'npm ci /js/web/'
   - script: |
-     npm run prebuild
+      npm run prebuild
     workingDirectory: '$(Build.SourcesDirectory)\js\web'
     displayName: 'run TypeScript type check in /js/web/'
   - script: |
-     npm run lint
+      npm run lint
     workingDirectory: '$(Build.SourcesDirectory)\js'
     displayName: 'run ESLint'
   - script: |
-     npm run format
+      npm run format
     workingDirectory: '$(Build.SourcesDirectory)\js'
     displayName: 'Clang-format'
   - script: |
-     node -e "a=require('child_process').execSync('git diff --name-only').toString();if(a)throw new Error('Following source files are not formatted: (did you run \"npm run format\"?)\n'+a)"
+      node -e "a=require('child_process').execSync('git diff --name-only').toString();if(a)throw new Error('Following source files are not formatted: (did you run \"npm run format\"?)\n'+a)"
     workingDirectory: '$(Build.SourcesDirectory)\js'
     displayName: 'Check unformatted files'
   - script: |
-     npm run build:doc
+      npm run build:doc
     workingDirectory: '$(Build.SourcesDirectory)\js\web'
     displayName: 'Generating documents'
   - script: |
-     node -e "a=require('child_process').execSync('git diff --name-only').toString();if(a)throw new Error('Following documents are not up-to-date: (did you run \"npm run build:doc\"?)\n'+a)"
+      node -e "a=require('child_process').execSync('git diff --name-only').toString();if(a)throw new Error('Following documents are not up-to-date: (did you run \"npm run build:doc\"?)\n'+a)"
     workingDirectory: '$(Build.SourcesDirectory)\js\web'
     displayName: 'Check out of dated documents'
   - task: Cache@2
@@ -142,67 +149,67 @@ jobs:
       errorActionPreference: stop
     displayName: 'Pack NPM packages'
   - script: |
-     powershell "Get-WmiObject Win32_Process -Filter \"name = 'chrome.exe'\" | Format-List CommandLine"
+      powershell "Get-WmiObject Win32_Process -Filter \"name = 'chrome.exe'\" | Format-List CommandLine"
     displayName: 'Check active Chrome processes (before test)'
     condition: and(succeeded(), eq(variables['Agent.Diagnostic'], 'true'))
   - script: |
-     mkdir $(Agent.TempDirectory)\web\test\01
-     dir $(Agent.TempDirectory)\web\test\01
-     npm test -- -e=chrome -b=webgl,wasm --user-data-dir=$(Agent.TempDirectory)\web\test\01 --chromium-flags=--enable-logging --chromium-flags=--v=1
+      mkdir $(Agent.TempDirectory)\web\test\01
+      dir $(Agent.TempDirectory)\web\test\01
+      npm test -- -e=chrome -b=webgl,wasm --user-data-dir=$(Agent.TempDirectory)\web\test\01 --chromium-flags=--enable-logging --chromium-flags=--v=1
     workingDirectory: '$(Build.SourcesDirectory)\js\web'
     displayName: 'Run ort-web tests (wasm,webgl backend)'
     condition: and(succeeded(), eq('${{ parameters.RunWebGpuTests }}', 'false'))
   - script: |
-     powershell "Get-WmiObject Win32_Process -Filter \"name = 'chrome.exe'\" | Format-List CommandLine"
+      powershell "Get-WmiObject Win32_Process -Filter \"name = 'chrome.exe'\" | Format-List CommandLine"
     displayName: 'Check active Chrome processes (before test)'
     condition: and(succeeded(), eq(variables['Agent.Diagnostic'], 'true'))
   - script: |
-     mkdir $(Agent.TempDirectory)\web\test\02
-     dir $(Agent.TempDirectory)\web\test\02
-     npm test -- -e=chrome -b=webgl,wasm,webgpu $(webgpuCommandlineExtraFlags) --user-data-dir=$(Agent.TempDirectory)\web\test\02 --chromium-flags=--enable-logging --chromium-flags=--v=1
+      mkdir $(Agent.TempDirectory)\web\test\02
+      dir $(Agent.TempDirectory)\web\test\02
+      npm test -- -e=chrome -b=webgl,wasm,webgpu $(webgpuCommandlineExtraFlags) --user-data-dir=$(Agent.TempDirectory)\web\test\02 --chromium-flags=--enable-logging --chromium-flags=--v=1
     workingDirectory: '$(Build.SourcesDirectory)\js\web'
     displayName: 'Run ort-web tests (ALL backends)'
     condition: and(succeeded(), eq('${{ parameters.RunWebGpuTests }}', 'true'))
   - script: |
-     powershell "Get-WmiObject Win32_Process -Filter \"name = 'chrome.exe'\" | Format-List CommandLine"
+      powershell "Get-WmiObject Win32_Process -Filter \"name = 'chrome.exe'\" | Format-List CommandLine"
     displayName: 'Check active Chrome processes (before test)'
     condition: and(succeeded(), eq(variables['Agent.Diagnostic'], 'true'))
   - script: |
-     mkdir $(Agent.TempDirectory)\web\test\03
-     dir $(Agent.TempDirectory)\web\test\03
-     npm test -- suite1 -e=chrome -b=webgpu --io-binding=gpu-tensor $(webgpuCommandlineExtraFlags) --user-data-dir=$(Agent.TempDirectory)\web\test\03 --chromium-flags=--enable-logging --chromium-flags=--v=1
+      mkdir $(Agent.TempDirectory)\web\test\03
+      dir $(Agent.TempDirectory)\web\test\03
+      npm test -- suite1 -e=chrome -b=webgpu --io-binding=gpu-tensor $(webgpuCommandlineExtraFlags) --user-data-dir=$(Agent.TempDirectory)\web\test\03 --chromium-flags=--enable-logging --chromium-flags=--v=1
     workingDirectory: '$(Build.SourcesDirectory)\js\web'
     displayName: 'Run ort-web tests (Suite1, webgpu, IO-binding=gpu-tensor)'
     condition: and(succeeded(), eq('${{ parameters.RunWebGpuTests }}', 'true'))
   - script: |
-     powershell "Get-WmiObject Win32_Process -Filter \"name = 'chrome.exe'\" | Format-List CommandLine"
+      powershell "Get-WmiObject Win32_Process -Filter \"name = 'chrome.exe'\" | Format-List CommandLine"
     displayName: 'Check active Chrome processes (before test)'
     condition: and(succeeded(), eq(variables['Agent.Diagnostic'], 'true'))
   - script: |
-     mkdir $(Agent.TempDirectory)\web\test\04
-     dir $(Agent.TempDirectory)\web\test\04
-     npm test -- suite1 -e=chrome -b=webgpu --io-binding=gpu-location $(webgpuCommandlineExtraFlags) --user-data-dir=$(Agent.TempDirectory)\web\test\04 --chromium-flags=--enable-logging --chromium-flags=--v=1
+      mkdir $(Agent.TempDirectory)\web\test\04
+      dir $(Agent.TempDirectory)\web\test\04
+      npm test -- suite1 -e=chrome -b=webgpu --io-binding=gpu-location $(webgpuCommandlineExtraFlags) --user-data-dir=$(Agent.TempDirectory)\web\test\04 --chromium-flags=--enable-logging --chromium-flags=--v=1
     workingDirectory: '$(Build.SourcesDirectory)\js\web'
     displayName: 'Run ort-web tests (Suite1, webgpu, IO-binding=gpu-location)'
     condition: and(succeeded(), eq('${{ parameters.RunWebGpuTests }}', 'true'))
   - script: |
-     powershell "Get-WmiObject Win32_Process -Filter \"name = 'chrome.exe'\" | Format-List CommandLine"
+      powershell "Get-WmiObject Win32_Process -Filter \"name = 'chrome.exe'\" | Format-List CommandLine"
     displayName: 'Check active Chrome processes (before test)'
     condition: and(succeeded(), eq(variables['Agent.Diagnostic'], 'true'))
   - script: |
-     mkdir $(Agent.TempDirectory)\web\test\05
-     dir $(Agent.TempDirectory)\web\test\05
-     npm test -- --webgl.pack -b=webgl -e=chrome --user-data-dir=$(Agent.TempDirectory)\web\test\05 --chromium-flags=--enable-logging --chromium-flags=--v=1
+      mkdir $(Agent.TempDirectory)\web\test\05
+      dir $(Agent.TempDirectory)\web\test\05
+      npm test -- --webgl.pack -b=webgl -e=chrome --user-data-dir=$(Agent.TempDirectory)\web\test\05 --chromium-flags=--enable-logging --chromium-flags=--v=1
     workingDirectory: '$(Build.SourcesDirectory)\js\web'
     displayName: 'Run ort-web tests - WebGL: packed mode'
   - script: |
-     powershell "Get-WmiObject Win32_Process -Filter \"name = 'chrome.exe'\" | Format-List CommandLine"
+      powershell "Get-WmiObject Win32_Process -Filter \"name = 'chrome.exe'\" | Format-List CommandLine"
     displayName: 'Check active Chrome processes (before test)'
     condition: and(succeeded(), eq(variables['Agent.Diagnostic'], 'true'))
   - script: |
-     mkdir $(Agent.TempDirectory)\web\test\06
-     dir $(Agent.TempDirectory)\web\test\06
-     npm test -- --wasm.proxy -b=wasm -e=chrome --user-data-dir=$(Agent.TempDirectory)\web\test\06 --chromium-flags=--enable-logging --chromium-flags=--v=1
+      mkdir $(Agent.TempDirectory)\web\test\06
+      dir $(Agent.TempDirectory)\web\test\06
+      npm test -- --wasm.proxy -b=wasm -e=chrome --user-data-dir=$(Agent.TempDirectory)\web\test\06 --chromium-flags=--enable-logging --chromium-flags=--v=1
     workingDirectory: '$(Build.SourcesDirectory)\js\web'
     displayName: 'Run ort-web tests - WebAssembly: proxy'
     condition: and(succeeded(), eq('${{ parameters.BuildConfig }}', 'Release'))
@@ -226,12 +233,20 @@ jobs:
       targetFolder: $(Build.ArtifactStagingDirectory)
     displayName: 'Create Artifacts (onnxruntime-web)'
     condition: and(succeeded(), eq('${{ parameters.BuildConfig }}', 'Release'))
-  - task: PublishPipelineArtifact@0
-    inputs:
-      artifactName: '${{ parameters.PackageName }}'
-      targetPath: '$(Build.ArtifactStagingDirectory)'
-    displayName: 'Publish Pipeline Artifact'
-    condition: and(succeeded(), eq('${{ parameters.BuildConfig }}', 'Release'))
+  - ${{ if eq(parameters.is1ES, false) }}:
+    - task: PublishPipelineArtifact@0
+      inputs:
+        artifactName: '${{ parameters.PackageName }}'
+        targetPath: '$(Build.ArtifactStagingDirectory)'
+      displayName: 'Publish Pipeline Artifact'
+      condition: and(succeeded(), eq('${{ parameters.BuildConfig }}', 'Release'))
+  - ${{ if eq(parameters.is1ES, true) }}:
+    - task: 1ES.PublishPipelineArtifact@1
+      inputs:
+        artifactName: '${{ parameters.PackageName }}'
+        targetPath: '$(Build.ArtifactStagingDirectory)'
+      displayName: 'Publish Pipeline Artifact'
+      condition: and(succeeded(), eq('${{ parameters.BuildConfig }}', 'Release'))
   - script: |
       if exist 01 (echo ------------------- BEGIN 01 -------------------&&type 01\chrome_debug.log&&echo ------------------- END 01 ------------------- )
       if exist 02 (echo ------------------- BEGIN 02 -------------------&&type 02\chrome_debug.log&&echo ------------------- END 02 ------------------- )
@@ -243,5 +258,5 @@ jobs:
     workingDirectory: '$(Agent.TempDirectory)\web\test'
     condition: always()
   - template: component-governance-component-detection-steps.yml
-    parameters :
-      condition : 'succeeded'
+    parameters:
+      condition: 'succeeded'
