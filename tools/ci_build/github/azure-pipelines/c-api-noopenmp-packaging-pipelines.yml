@@ -94,9 +94,7 @@ extends:
   parameters:
 
     sdl:
-      sourceAnalysisPool:
-        name: 'onnxruntime-Win-CPU-2022'
-        os: windows
+      sourceAnalysisPool: 'Onnxruntime-Win-CPU-2022'
       sourceRepositoriesToScan:
         exclude:
         - repository: onnxruntime-inference-examples
