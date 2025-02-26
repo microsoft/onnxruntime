@@ -92,7 +92,6 @@ extends:
   # For productions pipelines, use "Official".
   template: v1/1ES.Official.PipelineTemplate.yml@1esPipelines
   parameters:
-
     sdl:
       sourceAnalysisPool: 'Onnxruntime-Win-CPU-2022'
       sourceRepositoriesToScan:
