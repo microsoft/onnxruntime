@@ -72,6 +72,7 @@ variables:
     value: $(Agent.TempDirectory)\v11.8
   ${{ if eq(parameters.CudaVersion, '12.2') }}:
     value: $(Agent.TempDirectory)\v12.2
+
 resources:
   repositories:
   - repository: onnxruntime-inference-examples # The name used to reference this repository in the checkout step
@@ -90,12 +91,12 @@ extends:
   template: v1/1ES.Official.PipelineTemplate.yml@1esPipelines
   parameters:
     sdl:
-      sourceRepositoriesToScan:
-        exclude:
-        - repository: onnxruntime-inference-examples
       sourceAnalysisPool:
         name: onnxruntime-Win-CPU-2022
         os: windows
+      sourceRepositoriesToScan:
+        exclude:
+        - repository: onnxruntime-inference-examples
     stages:
     # Set ReleaseVersionSuffix
     - template: stages/set_packaging_variables_stage.yml
