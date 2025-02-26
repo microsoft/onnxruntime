@@ -26,7 +26,6 @@ jobs:
     clean: all
   pool:
     name: ${{ parameters.MACHINE_POOL }}
-    hostArchitecture: Arm64
     os: windows
   strategy:
     matrix:
