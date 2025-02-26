@@ -85,8 +85,8 @@ steps:
 
 - task: 1ES.PublishPipelineArtifact@1
   inputs:
-    path: '$(Build.ArtifactStagingDirectory)'
-    artifact: 'onnxruntime-osx-${{ parameters.MacosArch }}'
+    targetPath: '$(Build.ArtifactStagingDirectory)'
+    artifactName: 'onnxruntime-osx-${{ parameters.MacosArch }}'
 
 - ${{ if eq(parameters.BuildJava, true) }}:
     - template: java-api-artifacts-package-and-publish-steps-posix.yml

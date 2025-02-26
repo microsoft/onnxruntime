@@ -156,8 +156,8 @@ stages:
 
     - task: 1ES.PublishPipelineArtifact@1
       inputs:
-        path: '$(Build.BinariesDirectory)/artifacts'
-        artifact: 'onnxruntime-ios-full-xcframework'
+        targetPath: '$(Build.BinariesDirectory)/artifacts'
+        artifactName: 'onnxruntime-ios-full-xcframework'
 
     - template: component-governance-component-detection-steps.yml
       parameters:
@@ -287,8 +287,8 @@ stages:
     - task: 1ES.PublishPipelineArtifact@1
       displayName: 'Publish Pipeline Artifact'
       inputs:
-        path: '$(Build.ArtifactStagingDirectory)'
-        artifact: 'onnxruntime-java'
+        targetPath: '$(Build.ArtifactStagingDirectory)'
+        artifactName: 'onnxruntime-java'
 
     - template: component-governance-component-detection-steps.yml
       parameters:
@@ -493,8 +493,8 @@ stages:
     - task: 1ES.PublishPipelineArtifact@1
       displayName: 'Publish Pipeline NuGet Artifact'
       inputs:
-        path: '$(Build.ArtifactStagingDirectory)'
-        artifact: 'drop-signed-nuget-CPU'
+        targetPath: '$(Build.ArtifactStagingDirectory)'
+        artifactName: 'drop-signed-nuget-CPU'
 
 
 
@@ -773,8 +773,8 @@ stages:
     - task: 1ES.PublishPipelineArtifact@1
       displayName: 'Publish NPM packages files'
       inputs:
-        path: '$(Build.ArtifactStagingDirectory)'
-        artifact: 'NPM_packages'
+        targetPath: '$(Build.ArtifactStagingDirectory)'
+        artifactName: 'NPM_packages'
 
     - template: component-governance-component-detection-steps.yml
       parameters:

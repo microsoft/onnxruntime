@@ -134,7 +134,7 @@ stages:
     - task: 1ES.PublishPipelineArtifact@1
       inputs:
         targetPath: '$(Build.ArtifactStagingDirectory)'
-        artifact: 'onnxruntime-osx'
+        artifactName: 'onnxruntime-osx'
         condition: 'succeededOrFailed()'
 
     - template: component-governance-component-detection-steps.yml
