@@ -32,7 +32,7 @@ stages:
     - job: NuGet_Packaging_GPU
       workspace:
         clean: all
-      pool: 'onnxruntime-Win-CPU-2022'
+      pool: 'Onnxruntime-Win-CPU-2022'
       variables:
         breakCodesignValidationInjection: ${{ parameters.DoEsrp }}
         ReleaseVersionSuffix: $[stageDependencies.Setup.Set_Variables.outputs['Set_Release_Version_Suffix.ReleaseVersionSuffix']]
