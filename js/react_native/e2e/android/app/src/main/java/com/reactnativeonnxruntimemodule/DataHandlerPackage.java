@@ -1,7 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-package com.example.reactnativeonnxruntimemodule;
+package com.reactnativeonnxruntimemodule;
 
 import com.facebook.react.ReactPackage;
 import com.facebook.react.bridge.NativeModule;
