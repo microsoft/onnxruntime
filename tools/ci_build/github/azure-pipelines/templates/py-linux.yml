@@ -100,7 +100,7 @@ jobs:
     displayName: 'Publish Artifact: ONNXRuntime python wheel'
     inputs:
       targetPath: '$(Build.BinariesDirectory)/dist'
-      artifactName: onnxruntime-${{ parameters.ep }}
+      artifactName: onnxruntime-${{ parameters.ep }}-${{ parameters.arch }}
 
   - task: 1ES.PublishPipelineArtifact@1
     displayName: 'Publish Test Binaries'
