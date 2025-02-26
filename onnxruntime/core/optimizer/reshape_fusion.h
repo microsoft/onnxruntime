@@ -27,6 +27,11 @@ class ReshapeFusion : public GraphTransformer {
   static bool Is_One_Element_Input(const Node& cur_node, int index);
   static bool Is_One_Element_Output_Subgraph(Graph& graph, const NodeArg& root_input, const Node& concat,
                                              int index, gsl::span<const int64_t> shape_value, const logging::Logger& logger);
+
+  // Remove contiguous Reshape/Squeeze/Unsqueeze if the shape info is concrete.
+  // For some EP, such reshape Ops are not no-op, such as QNN EP, memory is allocated for each output,
+  // so this fusion can help to reduce memory usage on such devices.
+  static bool FuseContiguousReshapes(Node& reshape, Graph& graph);
 };
 
 }  // namespace onnxruntime

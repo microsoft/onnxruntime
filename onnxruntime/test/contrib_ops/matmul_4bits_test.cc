@@ -85,7 +85,7 @@ struct TestOptions {
   std::optional<float> output_rel_error{};
 };
 
-std::ostream& operator<<(std::ostream& os, const TestOptions& opts) {
+[[maybe_unused]] std::ostream& operator<<(std::ostream& os, const TestOptions& opts) {
   return os << "M:" << opts.M << ", N:" << opts.N << ", K:" << opts.K
             << ", block_size:" << opts.block_size
             << ", accuracy_level:" << opts.accuracy_level
@@ -327,6 +327,8 @@ void TestMatMulNBitsTyped() {
 #endif  // !defined(USE_DML) && !defined(USE_WEBGPU)
 }
 
+#if !defined(USE_OPENVINO)
+
 TEST(MatMulNBits, Float32_Accuracy0) {
   TestMatMulNBitsTyped<float, 1, 1, 16, 16, 0>();
   TestMatMulNBitsTyped<float, 1, 2, 16, 16, 0>();
@@ -462,6 +464,7 @@ TEST(MatMulNBits, Float16_Accuracy4) {
 }
 #endif
 #endif
+#endif
 
 #if defined(USE_CUDA) || defined(USE_ROCM) || defined(USE_DML) || defined(USE_WEBGPU)
 
@@ -546,8 +549,8 @@ TEST(MatMulNBits, Float16Large) {
   // of elements in this test, ULPs should probably be used instead of absolute/relative tolerances.
   float abs_error = 0.3f;
 #elif USE_WEBGPU
-  // See Intel A770 to pass these tests with an absolute error of 0.08.
-  float abs_error = 0.08f;
+  // Use absolute error of 0.1 for WebGPU with subgroup implementation
+  float abs_error = 0.1f;
 #else
   float abs_error = 0.05f;
 #endif

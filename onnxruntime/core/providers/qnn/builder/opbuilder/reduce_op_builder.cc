@@ -2,16 +2,13 @@
 // Licensed under the MIT License.
 
 #include <algorithm>
-#include <string>
 #include <array>
+#include <set>
+#include <string>
 #include <vector>
 
-#include "core/common/safeint.h"
-#include "onnx/defs/data_type_utils.h"
-#include "core/providers/common.h"
-#include "core/framework/endian_utils.h"
-#include "core/providers/shared/utils/utils.h"
 #include "core/providers/qnn/builder/opbuilder/base_op_builder.h"
+#include "core/providers/qnn/ort_api.h"
 #include "core/providers/qnn/builder/op_builder_factory.h"
 #include "core/providers/qnn/builder/qnn_model_wrapper.h"
 #include "core/providers/qnn/builder/qnn_utils.h"
@@ -71,7 +68,7 @@ class ReduceOpBuilder : public BaseOpBuilder {
   using AxesQnnIntType = uint32_t;
 
   Status GetAxesSet(QnnModelWrapper& qnn_model_wrapper, const NodeUnit& node_unit,
-                    InlinedHashSet<AxesOnnxIntType>& axes_set) const;
+                    std::set<AxesOnnxIntType>& axes_set) const;
 
   // Maps an operator type to the opset in which "axes" became an input instead of an attribute.
   static const std::array<int, REDUCE_OP_TYPE_COUNT> opset_with_axes_as_input;
@@ -87,7 +84,7 @@ const std::array<int, REDUCE_OP_TYPE_COUNT> ReduceOpBuilder::opset_with_axes_as_
 };
 
 Status ReduceOpBuilder::GetAxesSet(QnnModelWrapper& qnn_model_wrapper, const NodeUnit& node_unit,
-                                   InlinedHashSet<AxesOnnxIntType>& axes_set) const {
+                                   std::set<AxesOnnxIntType>& axes_set) const {
   ReduceOpType reduce_op_type = GetReduceOpType(node_unit.OpType());
   if (reduce_op_type == ReduceOpType::REDUCE_OP_TYPE_UNKNOWN) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "QNN EP: Unknown reduce operator ", node_unit.OpType());
@@ -130,12 +127,12 @@ Status ReduceOpBuilder::GetAxesSet(QnnModelWrapper& qnn_model_wrapper, const Nod
       const std::string& axes_input_name = inputs[1].node_arg.Name();
 
       // Check that the axes input is an initializer.
-      if (!qnn_model_wrapper.IsInitializerInput(axes_input_name)) {
+      if (!qnn_model_wrapper.IsConstantInput(axes_input_name)) {
         return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "QNN EP: \"axes\" input for reduce operator must be an initializer");
       }
 
       // Get axes initializer bytes.
-      const auto& axes_tensor = qnn_model_wrapper.GetInitializerTensors().at(axes_input_name);
+      const auto& axes_tensor = qnn_model_wrapper.GetConstantTensor(axes_input_name);
       std::vector<uint8_t> axes_bytes;
 
       ORT_RETURN_IF_ERROR(qnn_model_wrapper.UnpackInitializerData(*axes_tensor, axes_bytes));
@@ -146,10 +143,7 @@ Status ReduceOpBuilder::GetAxesSet(QnnModelWrapper& qnn_model_wrapper, const Nod
       auto src_span = gsl::make_span(axes_bytes.data(), axes_bytes.size());
       auto dst_span = gsl::make_span(reduce_axes.data(), reduce_axes.size());
 
-      // Copy initializer bytes (stored in little-endian order) to vector of int64_t.
-      // ReadLittleEndian returns a status error if the source and destination spans do not have
-      // matching byte sizes.
-      ORT_RETURN_IF_ERROR(onnxruntime::utils::ReadLittleEndian(src_span, dst_span));
+      std::memcpy(dst_span.data(), src_span.data(), src_span.size_bytes());
     }
   }
 
@@ -218,7 +212,7 @@ Status ReduceOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_w
   //
   // Handle axes param.
   //
-  InlinedHashSet<AxesOnnxIntType> axes_set;
+  std::set<AxesOnnxIntType> axes_set;
   ORT_RETURN_IF_ERROR(GetAxesSet(qnn_model_wrapper, node_unit, axes_set));
   const size_t num_axes = axes_set.size();
 

@@ -5,6 +5,7 @@
 # --------------------------------------------------------------------------
 from __future__ import annotations
 
+import copy
 import logging
 import os
 import tempfile
@@ -196,9 +197,9 @@ def _check_type(*args, zero_point_index=-1):
 
 
 def quantize_nparray(qType, arr, scale, zero_point, low=None, high=None):
-    assert (
-        qType in ONNX_TYPE_TO_NP_TYPE
-    ), f"Unexpected data type {qType} requested. Only INT8, UINT8, INT16, and UINT16 are supported."
+    assert qType in ONNX_TYPE_TO_NP_TYPE, (
+        f"Unexpected data type {qType} requested. Only INT8, UINT8, INT16, and UINT16 are supported."
+    )
     if qType in (
         onnx_proto.TensorProto.FLOAT8E4M3FN,
         onnx_proto.TensorProto.FLOAT8E4M3FNUZ,
@@ -289,7 +290,7 @@ def compute_scale_zp(rmin, rmax, qmin, qmax, symmetric=False, min_real_range=Non
     dr = numpy.array(rmax - rmin, dtype=numpy.float64)
     dq = numpy.array(qmax, dtype=numpy.float64) - numpy.array(qmin, dtype=numpy.float64)
     scale = numpy.array(dr / dq)
-    assert scale >= 0, "scale isse"
+    assert scale >= 0, "scale issue"
     if scale < numpy.finfo(rmax.dtype).tiny:
         scale = numpy.array(1.0, dtype=rmax.dtype)
         zero_point = numpy.array(0, dtype=qmin.dtype)
@@ -906,11 +907,7 @@ def smooth_distribution(p, eps=0.0001):
         # raise ValueError('The discrete probability distribution is malformed. All entries are 0.')
         return None
     eps1 = eps * float(n_zeros) / float(n_nonzeros)
-    assert eps1 < 1.0, "n_zeros=%d, n_nonzeros=%d, eps1=%f" % (
-        n_zeros,
-        n_nonzeros,
-        eps1,
-    )
+    assert eps1 < 1.0, f"n_zeros={n_zeros}, n_nonzeros={n_nonzeros}, eps1={eps1}"
 
     hist = p.astype(numpy.float32)
     hist += eps * is_zeros + (-eps1) * is_nonzeros
@@ -921,10 +918,7 @@ def smooth_distribution(p, eps=0.0001):
 
 def model_has_external_data(model_path: Path):
     model = onnx.load(model_path.as_posix(), load_external_data=False)
-    for intializer in model.graph.initializer:
-        if external_data_helper.uses_external_data(intializer):
-            return True
-    return False
+    return any(external_data_helper.uses_external_data(intializer) for intializer in model.graph.initializer)
 
 
 def optimize_model(model_path: Path, opt_model_path: Path):
@@ -988,8 +982,9 @@ def load_model_with_shape_infer(model_path: Path) -> ModelProto:
 
 def save_and_reload_model_with_shape_infer(model: ModelProto) -> ModelProto:
     with tempfile.TemporaryDirectory(prefix="ort.quant.") as quant_tmp_dir:
+        model_copy = copy.deepcopy(model)
         model_path = Path(quant_tmp_dir).joinpath("model.onnx")
-        onnx.save_model(model, model_path.as_posix(), save_as_external_data=True)
+        onnx.save_model(model_copy, model_path.as_posix(), save_as_external_data=True)
         return load_model_with_shape_infer(model_path)
 
 

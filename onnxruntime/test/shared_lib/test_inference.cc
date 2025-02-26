@@ -40,6 +40,7 @@
 #endif
 
 #ifdef USE_CUDA
+#include "core/providers/cuda/cuda_provider_options.h"
 #include <cuda_runtime.h>
 #endif
 
@@ -1934,6 +1935,48 @@ TEST(ReducedOpsBuildTest, test_excluded_ops) {
 }
 #endif
 
+#if defined(USE_QNN)
+
+// Returns true if QNN EP was created and QNN HTP shared memory allocator is available, false otherwise.
+static bool CreateSessionWithQnnEpAndQnnHtpSharedMemoryAllocator(PATH_TYPE model_path, Ort::Session& session) {
+#if defined(__aarch64__) || defined(_M_ARM64) || defined(__linux__)
+  constexpr bool use_htp_backend = true;
+#else
+  constexpr bool use_htp_backend = false;
+#endif
+
+#if defined(_WIN32)
+  const char* backend_path = use_htp_backend ? "QnnHtp.dll" : "QnnCpu.dll";
+#else
+  const char* backend_path = use_htp_backend ? "libQnnHtp.so" : "libQnnCpu.so";
+#endif
+
+  Ort::SessionOptions session_options;
+  session_options.AppendExecutionProvider("QNN",
+                                          {{"enable_htp_shared_memory_allocator", "1"},
+                                           {"backend_path", backend_path}});
+
+  try {
+    session = Ort::Session{*ort_env, model_path, session_options};
+    return true;
+  } catch (const Ort::Exception& e) {
+    // handle exception that indicates that the libcdsprpc.so / dll can't be loaded
+    std::string_view error_message = e.what();
+    std::string_view expected_error_message = "Failed to initialize RPCMEM dynamic library handle";
+
+    if (e.GetOrtErrorCode() == ORT_FAIL &&
+        error_message.find(expected_error_message) != std::string_view::npos) {
+      session = Ort::Session{nullptr};
+      return false;
+    }
+
+    // propagate other exceptions
+    throw;
+  }
+}
+
+#endif  // defined(USE_QNN)
+
 TEST(CApiTest, get_allocator_cpu) {
   Ort::SessionOptions session_options;
   Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_CPU(session_options, 1));
@@ -2000,6 +2043,32 @@ TEST(CApiTest, get_allocator_rocm) {
   ASSERT_EQ(1024U, mem_allocation.size());
 }
 #endif
+
+#if defined(USE_QNN)
+
+TEST(CApiTest, get_allocator_qnn_htp_shared) {
+  Ort::Session session{nullptr};
+
+  if (!CreateSessionWithQnnEpAndQnnHtpSharedMemoryAllocator(NAMED_AND_ANON_DIM_PARAM_URI, session)) {
+    GTEST_SKIP() << "HTP shared memory allocator is unavailable.";
+  }
+
+  Ort::MemoryInfo info_qnn_htp_shared("QnnHtpShared", OrtAllocatorType::OrtDeviceAllocator, 0, OrtMemTypeDefault);
+  Ort::Allocator qnn_htp_shared_allocator(session, info_qnn_htp_shared);
+
+  auto allocator_info = qnn_htp_shared_allocator.GetInfo();
+  ASSERT_EQ(allocator_info, info_qnn_htp_shared);
+
+  void* p = qnn_htp_shared_allocator.Alloc(1024);
+  ASSERT_NE(p, nullptr);
+  qnn_htp_shared_allocator.Free(p);
+
+  auto mem_allocation = qnn_htp_shared_allocator.GetAllocation(1024);
+  ASSERT_NE(mem_allocation.get(), nullptr);
+  ASSERT_EQ(mem_allocation.size(), size_t{1024});
+}
+
+#endif  // defined(USE_QNN)
 
 TEST(CApiTest, io_binding) {
   Ort::SessionOptions session_options;
@@ -2177,6 +2246,104 @@ TEST(CApiTest, io_binding_cuda) {
   binding.ClearBoundOutputs();
 }
 #endif
+
+#if defined(USE_QNN)
+
+TEST(CApiTest, io_binding_qnn_htp_shared) {
+  Ort::Session session{nullptr};
+  if (!CreateSessionWithQnnEpAndQnnHtpSharedMemoryAllocator(MODEL_URI, session)) {
+    GTEST_SKIP() << "HTP shared memory allocator is unavailable.";
+  }
+
+  Ort::MemoryInfo info_qnn_htp_shared("QnnHtpShared", OrtAllocatorType::OrtDeviceAllocator, 0, OrtMemTypeDefault);
+
+  Ort::Allocator qnn_htp_shared_allocator(session, info_qnn_htp_shared);
+  auto allocator_info = qnn_htp_shared_allocator.GetInfo();
+  ASSERT_EQ(info_qnn_htp_shared, allocator_info);
+
+  const std::array<int64_t, 2> x_shape = {3, 2};
+  std::array<float, 3 * 2> x_values = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f};
+  auto input_data = qnn_htp_shared_allocator.GetAllocation(x_values.size() * sizeof(float));
+  ASSERT_NE(input_data.get(), nullptr);
+  memcpy(input_data.get(), x_values.data(), sizeof(float) * x_values.size());
+
+  // Create an OrtValue tensor backed by data on QNN HTP shared memory
+  Ort::Value bound_x = Ort::Value::CreateTensor(info_qnn_htp_shared, reinterpret_cast<float*>(input_data.get()), x_values.size(),
+                                                x_shape.data(), x_shape.size());
+
+  // Setup expected output (y) from model. Note that QNN EP runs float32 operators as float16,
+  // so the output will not be exactly equal.
+  const std::array<int64_t, 2> expected_y_shape = {3, 2};
+  const std::array<float, 3 * 2> expected_y = {1.0f, 4.0f, 9.0f, 16.0f, 25.0f, 36.0f};
+  constexpr float y_max_abs_err = 1e-5f;
+  auto output_data = qnn_htp_shared_allocator.GetAllocation(expected_y.size() * sizeof(float));
+  ASSERT_NE(output_data.get(), nullptr);
+
+  // Create an OrtValue tensor backed by data on QNN HTP shared memory
+  Ort::Value bound_y = Ort::Value::CreateTensor(info_qnn_htp_shared, reinterpret_cast<float*>(output_data.get()),
+                                                expected_y.size(), expected_y_shape.data(), expected_y_shape.size());
+
+  Ort::IoBinding binding(session);
+  binding.BindInput("X", bound_x);
+  binding.BindOutput("Y", bound_y);
+
+  session.Run(Ort::RunOptions(), binding);
+
+  // Check the values against the bound raw memory
+  {
+    gsl::span y{reinterpret_cast<const float*>(output_data.get()), expected_y.size()};
+    EXPECT_THAT(expected_y, ::testing::Pointwise(::testing::FloatNear(y_max_abs_err), y));
+  }
+
+  // Now compare values via GetOutputValues
+  {
+    std::vector<Ort::Value> output_values = binding.GetOutputValues();
+    ASSERT_EQ(output_values.size(), 1U);
+    const Ort::Value& Y_value = output_values[0];
+    ASSERT_TRUE(Y_value.IsTensor());
+    Ort::TensorTypeAndShapeInfo type_info = Y_value.GetTensorTypeAndShapeInfo();
+    ASSERT_EQ(ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT, type_info.GetElementType());
+    auto count = type_info.GetElementCount();
+    ASSERT_EQ(expected_y.size(), count);
+
+    gsl::span y{Y_value.GetTensorData<float>(), count};
+    EXPECT_THAT(expected_y, ::testing::Pointwise(::testing::FloatNear(y_max_abs_err), y));
+  }
+
+  {
+    std::vector<std::string> output_names = binding.GetOutputNames();
+    ASSERT_EQ(1U, output_names.size());
+    ASSERT_EQ(output_names[0].compare("Y"), 0);
+  }
+
+  // Now replace binding of Y with an on device binding instead of pre-allocated memory.
+  // This is when we can not allocate an OrtValue due to unknown dimensions
+  {
+    binding.BindOutput("Y", info_qnn_htp_shared);
+    session.Run(Ort::RunOptions(), binding);
+  }
+
+  // Check the output value allocated based on the device binding.
+  {
+    std::vector<Ort::Value> output_values = binding.GetOutputValues();
+    ASSERT_EQ(output_values.size(), 1U);
+    const Ort::Value& Y_value = output_values[0];
+    ASSERT_TRUE(Y_value.IsTensor());
+    Ort::TensorTypeAndShapeInfo type_info = Y_value.GetTensorTypeAndShapeInfo();
+    ASSERT_EQ(ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT, type_info.GetElementType());
+    auto count = type_info.GetElementCount();
+    ASSERT_EQ(expected_y.size(), count);
+
+    gsl::span y{Y_value.GetTensorData<float>(), count};
+    EXPECT_THAT(expected_y, ::testing::Pointwise(::testing::FloatNear(y_max_abs_err), y));
+  }
+
+  // Clean up
+  binding.ClearBoundInputs();
+  binding.ClearBoundOutputs();
+}
+
+#endif  // defined(USE_QNN)
 
 #if defined(USE_CUDA) || defined(USE_TENSORRT) || defined(USE_ROCM) || defined(USE_DML)
 TEST(CApiTest, basic_cuda_graph) {
@@ -4600,3 +4767,82 @@ TEST(CApiTest, OrtCustomOp_GetInPlace) {
   ASSERT_EQ(len, static_cast<size_t>(2));
   mock_gqa.ReleaseAliasMap(input_index, output_index);
 }
+
+#if !defined(ORT_MINIMAL_BUILD) && defined(USE_CUDA)
+
+TEST(CApiTest, GenerateNodeStatsFile) {
+  Ort::Env env(ORT_LOGGING_LEVEL_INFO);
+  constexpr const ORTCHAR_T* model_path = TSTR("testdata/transformers/tiny_gpt2_beamsearch.onnx");
+
+  Ort::SessionOptions session_options;
+  session_options.AddConfigEntry(kOrtSessionOptionsCollectNodeMemoryStatsToFile,
+                                 "tiny_gpt2_beamsearch_node_stats.txt");
+
+  OrtCUDAProviderOptionsV2 cuda_options;
+  cuda_options.use_tf32 = false;
+  session_options.AppendExecutionProvider_CUDA_V2(cuda_options);
+
+  std::vector<int64_t> input_ids_shape{3, 12};
+  std::vector<int32_t> input_ids{
+      0, 0, 0, 0, 0, 52, 195, 731, 321, 301, 734, 620,
+      41, 554, 74, 622, 206, 222, 75, 223, 221, 198, 224, 572,
+      0, 0, 0, 52, 328, 219, 328, 206, 288, 227, 896, 328};
+
+  std::vector<int64_t> parameter_shape{1};
+  std::vector<int32_t> max_length{20};
+  std::vector<int32_t> min_length{1};
+  std::vector<int32_t> num_beams{4};
+  std::vector<int32_t> num_return_sequences{1};
+  std::vector<float> length_penalty{1.0f};
+  std::vector<float> repetition_penalty{1.0f};
+
+  std::vector<int64_t> expected_output_shape{input_ids_shape[0], num_return_sequences[0], max_length[0]};
+  std::vector<int32_t> expected_output{
+      0, 0, 0, 0, 0, 52, 195, 731, 321, 301, 734, 620, 131, 131, 131, 181, 638, 638, 638, 638,
+      41, 554, 74, 622, 206, 222, 75, 223, 221, 198, 224, 572, 292, 292, 292, 292, 292, 292, 292, 292,
+      0, 0, 0, 52, 328, 219, 328, 206, 288, 227, 896, 328, 328, 669, 669, 669, 669, 669, 669, 669};
+
+  Ort::MemoryInfo info("Cpu", OrtDeviceAllocator, 0, OrtMemTypeDefault);
+  auto input_ids_tensor = Ort::Value::CreateTensor(
+      info, input_ids.data(), input_ids.size(), input_ids_shape.data(), input_ids_shape.size());
+
+  auto max_length_tensor = Ort::Value::CreateTensor(
+      info, max_length.data(), max_length.size(), parameter_shape.data(), parameter_shape.size());
+
+  auto min_length_tensor = Ort::Value::CreateTensor(
+      info, min_length.data(), min_length.size(), parameter_shape.data(), parameter_shape.size());
+
+  auto num_beams_tensor = Ort::Value::CreateTensor(
+      info, num_beams.data(), num_beams.size(), parameter_shape.data(), parameter_shape.size());
+
+  auto num_return_sequences_tensor = Ort::Value::CreateTensor(
+      info, num_return_sequences.data(), num_return_sequences.size(), parameter_shape.data(), parameter_shape.size());
+
+  auto length_penalty_tensor = Ort::Value::CreateTensor(
+      info, length_penalty.data(), length_penalty.size(), parameter_shape.data(), parameter_shape.size());
+
+  auto repetition_penalty_tensor = Ort::Value::CreateTensor(
+      info, repetition_penalty.data(), repetition_penalty.size(), parameter_shape.data(), parameter_shape.size());
+
+  std::vector<Ort::Value> ort_inputs;
+  ort_inputs.push_back(std::move(input_ids_tensor));
+  ort_inputs.push_back(std::move(max_length_tensor));
+  ort_inputs.push_back(std::move(min_length_tensor));
+  ort_inputs.push_back(std::move(num_beams_tensor));
+  ort_inputs.push_back(std::move(num_return_sequences_tensor));
+  ort_inputs.push_back(std::move(length_penalty_tensor));
+  ort_inputs.push_back(std::move(repetition_penalty_tensor));
+  const char* input_names[] = {"input_ids", "max_length", "min_length", "num_beams", "num_return_sequences",
+                               "length_penalty", "repetition_penalty"};
+  const char* const output_names[] = {"sequences"};
+
+  // The ONNX model is generated like the following:
+  // python convert_generation.py --model_type gpt2 -m hf-internal-testing/tiny-random-gpt2
+  //        --output tiny_gpt2_beamsearch_fp16.onnx --use_gpu --max_length 20
+  // (with separate_gpt2_decoder_for_init_run set to False as it is now set to True by default)
+  Ort::Session session(env, model_path, session_options);
+  session.Run(Ort::RunOptions{}, input_names, ort_inputs.data(), ort_inputs.size(),
+              output_names, 1);
+}
+
+#endif
