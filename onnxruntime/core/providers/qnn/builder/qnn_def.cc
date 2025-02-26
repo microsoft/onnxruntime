@@ -3,6 +3,7 @@
 
 #include "core/providers/qnn/builder/qnn_def.h"
 #include "core/providers/qnn/builder/qnn_utils.h"
+#include <functional>
 #include <memory>
 #include <ostream>
 #include <cstring>
@@ -432,6 +433,15 @@ Status CompareQnnQuantParams(const Qnn_QuantizeParams_t& qparam0, const Qnn_Quan
   return Status::OK();
 }
 
+uint32_t CalcQnnTensorNumElems(const Qnn_Tensor_t& qnn_tensor) {
+  uint32_t* qnn_tensor_dims = GetQnnTensorDims(qnn_tensor);
+  uint32_t qnn_tensor_rank = GetQnnTensorRank(qnn_tensor);
+  return std::accumulate(qnn_tensor_dims,
+                         qnn_tensor_dims + qnn_tensor_rank,
+                         1,
+                         std::multiplies<uint32_t>());
+}
+
 bool CreateTensorInQnnGraph(const QNN_INTERFACE_VER_TYPE& qnn_interface,
                             const Qnn_GraphHandle_t& graph,
                             const std::string& node_name,
@@ -466,12 +476,7 @@ bool CreateTensorInQnnGraph(const QNN_INTERFACE_VER_TYPE& qnn_interface,
       return false;
     }
     // verify size expressed by the dims matches the raw tensor size
-    auto qnn_tensor_dims = GetQnnTensorDims(qnn_tensor);
-    auto qnn_tensor_rank = GetQnnTensorRank(qnn_tensor);
-    uint32_t qnn_tensor_size = std::accumulate(qnn_tensor_dims,
-                                               qnn_tensor_dims + qnn_tensor_rank,
-                                               static_cast<uint32_t>(data_size),
-                                               std::multiplies<uint32_t>());
+    uint32_t qnn_tensor_size = CalcQnnTensorNumElems(qnn_tensor) * gsl::narrow_cast<uint32_t>(data_size);
     auto qnn_tensor_buf_size = GetQnnTensorClientBuf(qnn_tensor).dataSize;
     if (qnn_tensor_size != qnn_tensor_buf_size) {
       ss << "Data length mismatch for static tensor. node_name: " << node_name

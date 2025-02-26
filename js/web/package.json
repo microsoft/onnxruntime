@@ -7,7 +7,7 @@
     "type": "git"
   },
   "author": "fs-eire",
-  "version": "1.21.0",
+  "version": "1.22.0",
   "jsdelivr": "dist/ort.min.js",
   "dependencies": {
     "flatbuffers": "^25.1.24",
@@ -73,28 +73,23 @@
         "require": "./dist/ort.node.min.js"
       },
       "import": "./dist/ort.bundle.min.mjs",
-      "require": "./dist/ort.min.js",
-      "types": "./types.d.ts"
+      "require": "./dist/ort.min.js"
     },
     "./all": {
       "import": "./dist/ort.all.bundle.min.mjs",
-      "require": "./dist/ort.all.min.js",
-      "types": "./types.d.ts"
+      "require": "./dist/ort.all.min.js"
     },
     "./wasm": {
       "import": "./dist/ort.wasm.bundle.min.mjs",
-      "require": "./dist/ort.wasm.min.js",
-      "types": "./types.d.ts"
+      "require": "./dist/ort.wasm.min.js"
     },
     "./webgl": {
       "import": "./dist/ort.webgl.min.mjs",
-      "require": "./dist/ort.webgl.min.js",
-      "types": "./types.d.ts"
+      "require": "./dist/ort.webgl.min.js"
     },
     "./webgpu": {
       "import": "./dist/ort.webgpu.bundle.min.mjs",
-      "require": "./dist/ort.webgpu.min.js",
-      "types": "./types.d.ts"
+      "require": "./dist/ort.webgpu.min.js"
     }
   },
   "types": "./types.d.ts",

@@ -127,12 +127,12 @@ Status ReduceOpBuilder::GetAxesSet(QnnModelWrapper& qnn_model_wrapper, const Nod
       const std::string& axes_input_name = inputs[1].node_arg.Name();
 
       // Check that the axes input is an initializer.
-      if (!qnn_model_wrapper.IsInitializerInput(axes_input_name)) {
+      if (!qnn_model_wrapper.IsConstantInput(axes_input_name)) {
         return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "QNN EP: \"axes\" input for reduce operator must be an initializer");
       }
 
       // Get axes initializer bytes.
-      const auto& axes_tensor = qnn_model_wrapper.GetInitializerTensors().at(axes_input_name);
+      const auto& axes_tensor = qnn_model_wrapper.GetConstantTensor(axes_input_name);
       std::vector<uint8_t> axes_bytes;
 
       ORT_RETURN_IF_ERROR(qnn_model_wrapper.UnpackInitializerData(*axes_tensor, axes_bytes));

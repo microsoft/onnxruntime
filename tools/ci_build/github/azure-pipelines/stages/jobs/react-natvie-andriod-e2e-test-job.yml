@@ -12,12 +12,17 @@ parameters:
   displayName: 'NPM packages publish configuration'
   type: string
   default: 'dev'
-
+- name: is1ES
+  type: boolean
+  default: false
 jobs:
 - job: ReactNative_CI_Android
-  pool: 'onnxruntime-Ubuntu2204-AMD-CPU'
+  pool:
+    name: onnxruntime-Ubuntu2204-AMD-CPU
+    os: linux
   variables:
     runCodesignValidationInjection: false
+    ANDROID_AVD_HOME: $(Agent.TempDirectory)
   timeoutInMinutes: 90
   steps:
   - task: UsePythonVersion@0
@@ -194,18 +199,30 @@ jobs:
       contents: onnxruntime-react-native*.tgz
       targetFolder: $(Build.ArtifactStagingDirectory)
     displayName: Create Artifacts onnxruntime-react-native
+  - ${{ if eq(parameters.is1ES, true) }}:
+    - task: 1ES.PublishPipelineArtifact@1
+      inputs:
+        artifact: android_e2e_test_logs_$(Build.BuildId)_$(Build.BuildNumber)_$(System.JobAttempt)
+        targetPath: '$(Build.SourcesDirectory)/js/react_native/e2e/artifacts'
+      condition: succeededOrFailed()
+      displayName: Publish React Native Detox E2E test logs
+    - task: 1ES.PublishPipelineArtifact@1
+      inputs:
+        artifactName: '${{parameters.PackageName}}'
+        targetPath: '$(Build.ArtifactStagingDirectory)'
+      displayName: Publish Pipeline Artifact
 
-  - task: PublishPipelineArtifact@1
-    inputs:
-      artifact: android_e2e_test_logs_$(Build.BuildId)_$(Build.BuildNumber)_$(System.JobAttempt)
-      targetPath: '$(Build.SourcesDirectory)/js/react_native/e2e/artifacts'
-    condition: succeededOrFailed()
-    displayName: Publish React Native Detox E2E test logs
-
-  - task: PublishPipelineArtifact@0
-    inputs:
-      artifactName: '${{parameters.PackageName}}'
-      targetPath: '$(Build.ArtifactStagingDirectory)'
-    displayName: Publish Pipeline Artifact
+  - ${{ if eq(parameters.is1ES, false) }}:
+    - task: PublishPipelineArtifact@1
+      inputs:
+        artifact: android_e2e_test_logs_$(Build.BuildId)_$(Build.BuildNumber)_$(System.JobAttempt)
+        targetPath: '$(Build.SourcesDirectory)/js/react_native/e2e/artifacts'
+      condition: succeededOrFailed()
+      displayName: Publish React Native Detox E2E test logs
+    - task: PublishPipelineArtifact@1
+      inputs:
+        artifactName: '${{parameters.PackageName}}'
+        targetPath: '$(Build.ArtifactStagingDirectory)'
+      displayName: Publish Pipeline Artifact
 
   - template: ../../templates/explicitly-defined-final-tasks.yml

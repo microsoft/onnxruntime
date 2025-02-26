@@ -53,7 +53,7 @@ jobs:
     inputs:
       script: |
         mkdir -p $HOME/.onnx
-        docker run --rm \
+        docker run -e SYSTEM_COLLECTIONURI --rm \
           --volume /data/onnx:/data/onnx:ro \
           --volume $(Build.SourcesDirectory):/onnxruntime_src \
           --volume $(Build.BinariesDirectory):/build \
@@ -67,7 +67,7 @@ jobs:
               --config Debug Release \
               --skip_submodule_sync \
               --build_shared_lib \
-              --parallel --use_vcpkg \
+              --parallel --use_vcpkg --use_vcpkg_ms_internal_asset_cache \
               --enable_pybind \
               --enable_onnx_tests \
               --build_java \

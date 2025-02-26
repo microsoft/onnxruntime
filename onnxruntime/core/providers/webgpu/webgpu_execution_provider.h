@@ -23,15 +23,17 @@ class WebGpuProfiler;
 }  // namespace webgpu
 
 struct WebGpuExecutionProviderConfig {
-  WebGpuExecutionProviderConfig(DataLayout data_layout, bool enable_graph_capture)
+  WebGpuExecutionProviderConfig(DataLayout data_layout, bool enable_graph_capture, bool enable_pix_capture)
       : data_layout{data_layout},
-        enable_graph_capture{enable_graph_capture} {}
+        enable_graph_capture{enable_graph_capture},
+        enable_pix_capture{enable_pix_capture} {}
   WebGpuExecutionProviderConfig(WebGpuExecutionProviderConfig&&) = default;
   WebGpuExecutionProviderConfig& operator=(WebGpuExecutionProviderConfig&&) = default;
   ORT_DISALLOW_COPY_AND_ASSIGNMENT(WebGpuExecutionProviderConfig);
 
   DataLayout data_layout;
   bool enable_graph_capture;
+  bool enable_pix_capture;
   std::vector<std::string> force_cpu_node_names;
 };
 
@@ -42,7 +44,8 @@ class WebGpuExecutionProvider : public IExecutionProvider {
 
   std::vector<std::unique_ptr<ComputeCapability>> GetCapability(
       const onnxruntime::GraphViewer& graph_viewer,
-      const IKernelLookup& /*kernel_lookup*/) const override;
+      const IKernelLookup& /*kernel_lookup*/,
+      IResourceAccountant* /* resource_accountant */) const override;
 
   std::shared_ptr<KernelRegistry> GetKernelRegistry() const override;
   std::unique_ptr<onnxruntime::IDataTransfer> GetDataTransfer() const override;

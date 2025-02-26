@@ -110,14 +110,13 @@ DOCKER_RUN_PARAMETER="--volume $SOURCE_ROOT:/onnxruntime_src \
                       --volume $BUILD_DIR:/build \
                       --volume /data/models:/build/models:ro \
                       --volume /data/onnx:/data/onnx:ro \
-                      --volume $HOME/.cache/onnxruntime:/home/onnxruntimedev/.cache/onnxruntime \
                       --volume $HOME/.onnx:/home/onnxruntimedev/.onnx"
 if [ $BUILD_DEVICE = "openvino" ] && [[ $BUILD_EXTR_PAR == *"--use_openvino GPU_FP"* ]]; then
     DOCKER_RUN_PARAMETER="$DOCKER_RUN_PARAMETER --device /dev/dri:/dev/dri"
 fi
 # Though this command has a yocto version argument, none of our ci build pipelines use yocto.
 $DOCKER_CMD run $RUNTIME --rm $DOCKER_RUN_PARAMETER \
-    -e NIGHTLY_BUILD \
+    -e NIGHTLY_BUILD -e SYSTEM_COLLECTIONURI \
     -e $ALLOW_RELEASED_ONNX_OPSET_ONLY_ENV \
     "onnxruntime-$IMAGE" \
     /bin/bash /onnxruntime_src/tools/ci_build/github/linux/run_build.sh \
