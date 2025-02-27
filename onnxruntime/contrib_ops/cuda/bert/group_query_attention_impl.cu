@@ -874,7 +874,7 @@ Status EfficientAttention(
   p.max_sequence_length = present_sequence_length;
   p.qk_head_size = head_size;
   p.v_head_size = head_size;
-  p.causal = true;
+  p.causal = parameters.is_unidirectional;
   p.scale = scale;
   p.softcap = parameters.softcap;
   p.seqlen_k_ptr = seqlens_k;  // Note: seqlens_k is total sequence length for efficient
