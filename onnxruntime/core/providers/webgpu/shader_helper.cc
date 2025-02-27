@@ -65,8 +65,8 @@ Status ShaderHelper::Init() {
               "        @builtin(local_invocation_id) local_id : vec3<u32>";
   if (device_.HasFeature(wgpu::FeatureName::Subgroups)) {
     body_ss_ << ",\n"
-                " @builtin(subgroup_invocation_id) sg_id : u32,\n"
-                " @builtin(subgroup_size) sg_size : u32";
+                "        @builtin(subgroup_invocation_id) sg_id : u32,\n"
+                "        @builtin(subgroup_size) sg_size : u32";
   }
   if (!is_1d_dispatch) {
     body_ss_ << ",\n"
