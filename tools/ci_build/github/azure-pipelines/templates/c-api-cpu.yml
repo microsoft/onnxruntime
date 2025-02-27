@@ -86,6 +86,7 @@ stages:
       enable_code_sign: ${{ parameters.DoEsrp }}
       packageName: 'onnxruntime-android'
       ReleaseVersionSuffix: $(ReleaseVersionSuffix)
+      is1ES: ${{ parameters.is1ES }}
 
 - stage: Android_Java_API_AAR_Testing_Full
   dependsOn: Android_Java_API_AAR_Packaging_Full
