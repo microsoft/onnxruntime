@@ -73,10 +73,10 @@ stages:
         SourceFolder: '$(Build.BinariesDirectory)\java-artifact\onnxruntime-java-win-x64'
         TargetFolder: '$(Build.ArtifactStagingDirectory)'
 
-    - task: PublishPipelineArtifact@1
+    - task: 1ES.PublishPipelineArtifact@1
       displayName: 'Publish Pipeline Artifact'
       inputs:
-        targetPath: '$(Build.ArtifactStagingDirectory)'
+        path: '$(Build.ArtifactStagingDirectory)'
         artifact: 'onnxruntime-java-gpu'
 
     - template: ../templates/component-governance-component-detection-steps.yml
@@ -136,7 +136,9 @@ stages:
       Jar_Packaging_GPU
     workspace:
       clean: all
-    pool: 'Onnxruntime-Linux-GPU'
+    pool:
+      name: 'Onnxruntime-Linux-GPU-A10'
+      os: linux
     variables:
     - name: runCodesignValidationInjection
       value: false
@@ -172,7 +174,7 @@ stages:
         Repository: onnxruntimeubi8packagestest
 
     - bash: |
-        docker run -e SYSTEM_COLLECTIONURI --rm \
+        docker run --rm \
           --gpus all \
           --volume $(Build.SourcesDirectory):/onnxruntime_src \
           --volume $(Build.BinariesDirectory):/build \
