@@ -453,6 +453,12 @@ Status InsertConvertOp(QnnModelWrapper& qnn_model_wrapper,
  * @return execution status of this function
  */
 Status GetPermToLastAxis(uint32_t axis, uint32_t rank, std::vector<uint32_t>& perm);
+/**
+ * Get the current timestamp in microseconds
+ *
+ * @return the current timestamp in microseconds
+ */
+uint64_t GetTimeStampInUs();
 
 }  // namespace utils
 }  // namespace qnn
