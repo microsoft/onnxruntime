@@ -8,12 +8,6 @@
 #include <cuda_runtime.h>
 #endif
 
-struct Input {
-  const char* name = nullptr;
-  std::vector<int64_t> dims;
-  std::vector<float> values;
-};
-
 struct MyCustomKernel {
   MyCustomKernel(const OrtApi& ort_api, const OrtKernelInfo* /*info*/)
       : ort_(ort_api) {

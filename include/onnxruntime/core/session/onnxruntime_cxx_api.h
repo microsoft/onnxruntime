@@ -26,16 +26,17 @@
 #include "onnxruntime_c_api.h"
 #include "onnxruntime_float16.h"
 
+#include <array>
 #include <cstddef>
 #include <cstdio>
-#include <array>
 #include <memory>
 #include <stdexcept>
 #include <string>
-#include <vector>
+#include <type_traits>
 #include <unordered_map>
 #include <utility>
-#include <type_traits>
+#include <variant>
+#include <vector>
 
 #ifdef ORT_NO_EXCEPTIONS
 #include <iostream>
@@ -120,7 +121,7 @@ const OrtApi* Global<T>::api_ = OrtGetApiBase()->GetApi(ORT_API_VERSION);
 #endif
 #endif
 
-/// This returns a reference to the OrtApi interface in use
+/// This returns a reference to the ORT C API.
 inline const OrtApi& GetApi() noexcept { return *Global<void>::api_; }
 
 /// <summary>
@@ -142,6 +143,20 @@ std::string GetBuildInfoString();
 /// </summary>
 /// <returns>vector of strings</returns>
 std::vector<std::string> GetAvailableProviders();
+
+/// <summary>
+/// This returns a reference to the ORT C Model Editor API. Used if building or augmenting a model at runtime.
+/// </summary>
+/// <returns>ORT C Model Editor API reference</returns>
+inline const OrtModelEditorApi& GetModelEditorApi() {
+  auto* api = GetApi().GetModelEditorApi();
+  if (api == nullptr) {
+    // minimal build
+    ORT_CXX_API_THROW("Model Editor API is not available in this build", ORT_FAIL);
+  }
+
+  return *api;
+}
 
 /** \brief IEEE 754 half-precision floating point data type
  *
@@ -523,6 +538,10 @@ ORT_DEFINE_RELEASE(Status);
 ORT_DEFINE_RELEASE(OpAttr);
 ORT_DEFINE_RELEASE(Op);
 ORT_DEFINE_RELEASE(KernelInfo);
+ORT_DEFINE_RELEASE(ValueInfo);
+ORT_DEFINE_RELEASE(Node);
+ORT_DEFINE_RELEASE(Graph);
+ORT_DEFINE_RELEASE(Model);
 
 #undef ORT_DEFINE_RELEASE
 
@@ -559,7 +578,9 @@ struct Base {
 
   constexpr Base() = default;
   constexpr explicit Base(contained_type* p) noexcept : p_{p} {}
-  ~Base() { OrtRelease(p_); }
+  ~Base() {
+    OrtRelease(p_);
+  }
 
   Base(const Base&) = delete;
   Base& operator=(const Base&) = delete;
@@ -635,9 +656,13 @@ struct AllocatedFree {
 
 struct AllocatorWithDefaultOptions;
 struct Env;
+struct Graph;
+struct Model;
+struct Node;
+struct ModelMetadata;
 struct TypeInfo;
 struct Value;
-struct ModelMetadata;
+struct ValueInfo;
 
 /** \brief unique_ptr typedef used to own strings allocated by OrtAllocators
  *  and release them at the end of the scope. The lifespan of the given allocator
@@ -1051,6 +1076,10 @@ struct ConstSessionImpl : Base<T> {
   size_t GetOutputCount() const;                  ///< Returns the number of model outputs
   size_t GetOverridableInitializerCount() const;  ///< Returns the number of inputs that have defaults that can be overridden
 
+  std::vector<std::string> GetInputNames() const;
+  std::vector<std::string> GetOutputNames() const;
+  std::vector<std::string> GetOverridableInitializerNames() const;
+
   /** \brief Returns a copy of input name at the specified index.
    *
    * \param index must less than the value returned by GetInputCount()
@@ -1084,6 +1113,12 @@ struct ConstSessionImpl : Base<T> {
   TypeInfo GetInputTypeInfo(size_t index) const;                   ///< Wraps OrtApi::SessionGetInputTypeInfo
   TypeInfo GetOutputTypeInfo(size_t index) const;                  ///< Wraps OrtApi::SessionGetOutputTypeInfo
   TypeInfo GetOverridableInitializerTypeInfo(size_t index) const;  ///< Wraps OrtApi::SessionGetOverridableInitializerTypeInfo
+
+  int GetOpset(const std::string& domain) const;  ///< Wraps OrtApi::SessionGetOpsetForDomain
+
+  // Will move before checkin if that's the case.
+  std::vector<ValueInfo> GetInputs() const;
+  std::vector<ValueInfo> GetOutputs() const;
 };
 
 template <typename T>
@@ -1161,6 +1196,9 @@ struct SessionImpl : ConstSessionImpl<T> {
    * \param[in] kv_len Number of elements in the keys and values arrays
    */
   void SetEpDynamicOptions(const char* const* keys, const char* const* values, size_t kv_len);
+
+  void FinalizeModelEditorSession(const Model& model, const SessionOptions& options,
+                                  OrtPrepackedWeightsContainer* prepacked_weights_container = nullptr);
 };
 
 }  // namespace detail
@@ -1172,13 +1210,34 @@ using UnownedSession = detail::SessionImpl<detail::Unowned<OrtSession>>;
  *
  */
 struct Session : detail::SessionImpl<OrtSession> {
-  explicit Session(std::nullptr_t) {}                                                   ///< Create an empty Session object, must be assigned a valid one to be used
-  Session(const Env& env, const ORTCHAR_T* model_path, const SessionOptions& options);  ///< Wraps OrtApi::CreateSession
+  /// Create an empty Session object, must be assigned a valid one to be used. Wraps OrtApi::CreateSession
+  explicit Session(std::nullptr_t) {}
+  explicit Session(OrtSession* p) : SessionImpl{p} {}  ///< C API Interop
+
+  Session(const Env& env, const ORTCHAR_T* model_path, const SessionOptions& options);
+
+  /// Wraps OrtApi::CreateSessionWithPrepackedWeightsContainer
   Session(const Env& env, const ORTCHAR_T* model_path, const SessionOptions& options,
-          OrtPrepackedWeightsContainer* prepacked_weights_container);                                        ///< Wraps OrtApi::CreateSessionWithPrepackedWeightsContainer
-  Session(const Env& env, const void* model_data, size_t model_data_length, const SessionOptions& options);  ///< Wraps OrtApi::CreateSessionFromArray
+          OrtPrepackedWeightsContainer* prepacked_weights_container);
+
+  /// Wraps OrtApi::CreateSessionFromArray
+  Session(const Env& env, const void* model_data, size_t model_data_length, const SessionOptions& options);
+
+  /// Wraps OrtApi::CreateSessionFromArrayWithPrepackedWeightsContainer
   Session(const Env& env, const void* model_data, size_t model_data_length, const SessionOptions& options,
-          OrtPrepackedWeightsContainer* prepacked_weights_container);  ///< Wraps OrtApi::CreateSessionFromArrayWithPrepackedWeightsContainer
+          OrtPrepackedWeightsContainer* prepacked_weights_container);
+
+#if !defined(ORT_MINIMAL_BUILD)
+  /// Wraps OrtModelEditorApi::CreateSessionFromModel
+  Session(const Env& env, const Model& model, const SessionOptions& options);
+
+  /// Wraps OrtModelEditorApi::CreateModelEditorSession
+  static Session CreateModelEditorSession(const Env& env, const ORTCHAR_T* model_path, const SessionOptions& options);
+
+  /// Wraps OrtModelEditorApi::CreateModelEditorSession
+  static Session CreateModelEditorSession(const Env& env, const void* model_data, size_t model_data_length,
+                                          const SessionOptions& options);
+#endif  // !defined(ORT_MINIMAL_BUILD)
 
   ConstSession GetConst() const { return ConstSession{this->p_}; }
   UnownedSession GetUnowned() const { return UnownedSession{this->p_}; }
@@ -1210,7 +1269,7 @@ using ConstMemoryInfo = detail::MemoryInfoImpl<detail::Unowned<const OrtMemoryIn
 struct MemoryInfo : detail::MemoryInfoImpl<OrtMemoryInfo> {
   static MemoryInfo CreateCpu(OrtAllocatorType type, OrtMemType mem_type1);
   explicit MemoryInfo(std::nullptr_t) {}                                       ///< No instance is created
-  explicit MemoryInfo(OrtMemoryInfo* p) : MemoryInfoImpl<OrtMemoryInfo>{p} {}  ///< Take ownership of a pointer created by C Api
+  explicit MemoryInfo(OrtMemoryInfo* p) : MemoryInfoImpl<OrtMemoryInfo>{p} {}  ///< Take ownership of a pointer created by C API
   MemoryInfo(const char* name, OrtAllocatorType type, int id, OrtMemType mem_type);
   ConstMemoryInfo GetConst() const { return ConstMemoryInfo{this->p_}; }
 };
@@ -1233,6 +1292,7 @@ struct TensorTypeAndShapeInfoImpl : Base<T> {
   [[deprecated("use GetShape()")]] void GetDimensions(int64_t* values, size_t values_count) const;  ///< Wraps OrtApi::GetDimensions
 
   void GetSymbolicDimensions(const char** values, size_t values_count) const;  ///< Wraps OrtApi::GetSymbolicDimensions
+  std::vector<const char*> GetSymbolicDimensions() const;
 
   std::vector<int64_t> GetShape() const;  ///< Uses GetDimensionsCount & GetDimensions to return a std::vector of the shape
 };
@@ -1248,8 +1308,18 @@ struct TensorTypeAndShapeInfo : detail::TensorTypeAndShapeInfoImpl<OrtTensorType
   using Base = detail::TensorTypeAndShapeInfoImpl<OrtTensorTypeAndShapeInfo>;
   using Base::Base;
 
-  explicit TensorTypeAndShapeInfo(std::nullptr_t) {}                                                ///< Create an empty TensorTypeAndShapeInfo object, must be assigned a valid one to be used
-  explicit TensorTypeAndShapeInfo(OrtTensorTypeAndShapeInfo* p) : TensorTypeAndShapeInfoImpl{p} {}  ///< Used for interop with the C API
+  /// Create an empty TensorTypeAndShapeInfo object, must be assigned a valid one to be used
+  explicit TensorTypeAndShapeInfo(std::nullptr_t) {}
+  /// Used for interop with the C API
+  explicit TensorTypeAndShapeInfo(OrtTensorTypeAndShapeInfo* p) : TensorTypeAndShapeInfoImpl{p} {}
+
+  // Create a TensorTypeAndShapeInfo object with the specified element type and dimensions
+  // symbolic_dims are optional, but should be 1:1 with dims.
+  // The value in symbolic_dims will be used for all entries in dims that are -1.
+  explicit TensorTypeAndShapeInfo(ONNXTensorElementDataType element_type,
+                                  const std::vector<int64_t>& dims,
+                                  const std::vector<std::string>* symbolic_dims = nullptr);
+
   ConstTensorTypeAndShapeInfo GetConst() const { return ConstTensorTypeAndShapeInfo{this->p_}; }
 };
 
@@ -1344,8 +1414,17 @@ struct TypeInfo : detail::TypeInfoImpl<OrtTypeInfo> {
   using Base = detail::TypeInfoImpl<OrtTypeInfo>;
   using Base::Base;
 
-  explicit TypeInfo(std::nullptr_t) {}                                 ///< Create an empty TypeInfo object, must be assigned a valid one to be used
+  /// Create an empty TypeInfo object, must be assigned a valid one to be used
+  explicit TypeInfo(std::nullptr_t) {}
   explicit TypeInfo(OrtTypeInfo* p) : TypeInfoImpl<OrtTypeInfo>{p} {}  ///< C API Interop
+
+#if !defined(ORT_MINIMAL_BUILD)
+  static TypeInfo CreateTensorInfo(ConstTensorTypeAndShapeInfo tensor_info);
+  static TypeInfo CreateSparseTensorInfo(ConstTensorTypeAndShapeInfo sparse_tensor_info);
+  static TypeInfo CreateSequenceTypeInfo(ConstTypeInfo sequence_type);
+  static TypeInfo CreateMapTypeInfo(ONNXTensorElementDataType key_type, ConstTypeInfo value_type);
+  static TypeInfo CreateOptionalTypeInfo(ConstTypeInfo contained_type);
+#endif  // !defined(ORT_MINIMAL_BUILD)
 
   ConstTypeInfo GetConst() const { return ConstTypeInfo{this->p_}; }
 };
@@ -1701,7 +1780,8 @@ struct Value : detail::ValueImpl<OrtValue> {
    * \param shape_len The number of tensor shape dimensions.
    */
   template <typename T>
-  static Value CreateTensor(const OrtMemoryInfo* info, T* p_data, size_t p_data_element_count, const int64_t* shape, size_t shape_len);
+  static Value CreateTensor(const OrtMemoryInfo* info, T* p_data, size_t p_data_element_count,
+                            const int64_t* shape, size_t shape_len);
 
   /** \brief Creates a tensor with a user supplied buffer. Wraps OrtApi::CreateTensorWithDataAsOrtValue.
    *
@@ -1712,11 +1792,25 @@ struct Value : detail::ValueImpl<OrtValue> {
    * \param shape_len The number of tensor shape dimensions.
    * \param type The data type.
    */
-  static Value CreateTensor(const OrtMemoryInfo* info, void* p_data, size_t p_data_byte_count, const int64_t* shape, size_t shape_len,
+  static Value CreateTensor(const OrtMemoryInfo* info, void* p_data, size_t p_data_byte_count,
+                            const int64_t* shape, size_t shape_len,
+                            ONNXTensorElementDataType type);
+
+  /** \brief Creates a tensor with a user supplied buffer. Wraps OrtApi::CreateTensorWithDataAndDeleterAsOrtValue.
+   *
+   * \param deleter OrtAllocator that will be used to free the buffer when no longer required.
+   * \param p_data Pointer to the data buffer.
+   * \param p_data_byte_count The number of bytes in the data buffer.
+   * \param shape Pointer to the tensor shape dimensions.
+   * \param shape_len The number of tensor shape dimensions.
+   * \param type The data type.
+   */
+  static Value CreateTensor(OrtAllocator* deleter, void* p_data, size_t p_data_byte_count,
+                            const int64_t* shape, size_t shape_len,
                             ONNXTensorElementDataType type);
 
   /** \brief Creates an OrtValue with a tensor using a supplied OrtAllocator. Wraps OrtApi::CreateTensorAsOrtValue.
-   *         This overload will allocate the buffer for the tensor  according to the supplied shape and data type.
+   *         This overload will allocate the buffer for the tensor according to the supplied shape and data type.
    *         The allocated buffer will be owned by the returned OrtValue and will be freed when the OrtValue is released.
    *         The input data would need to be copied into the allocated buffer.
    *         This API is not suitable for strings.
@@ -1740,7 +1834,8 @@ struct Value : detail::ValueImpl<OrtValue> {
    * \param shape_len The number of tensor shape dimensions.
    * \param type The data type.
    */
-  static Value CreateTensor(OrtAllocator* allocator, const int64_t* shape, size_t shape_len, ONNXTensorElementDataType type);
+  static Value CreateTensor(OrtAllocator* allocator, const int64_t* shape, size_t shape_len,
+                            ONNXTensorElementDataType type);
 
   /** \brief Creates an OrtValue with a Map Onnx type representation.
    *  The API would ref-count the supplied OrtValues and they will be released
@@ -2459,6 +2554,129 @@ struct CustomOpBase : OrtCustomOp {
   int end_ver_ = MAX_CUSTOM_OP_END_VER;
 };
 
-}  // namespace Ort
+namespace detail {
+template <typename T>
+struct ValueInfoImpl : Ort::detail::Base<T> {
+  using B = Ort::detail::Base<T>;
+  using B::B;
 
+  std::string Name() const;
+  ConstTypeInfo TypeInfo() const;
+};
+}  // namespace detail
+
+// Const object holder that does not own the underlying object
+using ConstValueInfo = detail::ValueInfoImpl<Ort::detail::Unowned<const OrtValueInfo>>;
+
+/** \brief Wrapper around ::OrtValueInfo
+ *
+ */
+struct ValueInfo : detail::ValueInfoImpl<OrtValueInfo> {
+  explicit ValueInfo(std::nullptr_t) {}  ///< No instance is created
+  /// Take ownership of a pointer created by C API
+  explicit ValueInfo(OrtValueInfo* p) : ValueInfoImpl<OrtValueInfo>{p} {}
+
+  // Create ValueInfo for a tensor
+  explicit ValueInfo(const std::string& name, const ConstTypeInfo& type_info);
+
+  ConstValueInfo GetConst() const { return ConstValueInfo{this->p_}; }
+};
+
+namespace detail {
+template <typename T>
+struct NodeImpl : Ort::detail::Base<T> {
+  using B = Ort::detail::Base<T>;
+  using B::B;
+};
+}  // namespace detail
+
+/** \brief Wrapper around ::OrtNode
+ *
+ */
+struct Node : detail::NodeImpl<OrtNode> {
+  explicit Node(std::nullptr_t) {}                     ///< No instance is created
+  explicit Node(OrtNode* p) : NodeImpl<OrtNode>{p} {}  ///< Take ownership of a pointer created by C API
+
+#if !defined(ORT_MINIMAL_BUILD)
+  Node(const std::string& operator_name, const std::string& operator_domain,
+       const std::string& node_name,
+       const std::vector<std::string>& input_names,
+       const std::vector<std::string>& output_names);
+
+  /// <summary>
+  /// Wraps CreateNode. Node takes ownership of attributes on success and updates the OpAttr in `attributes` to do so.
+  /// </summary>
+  Node(const std::string& operator_name, const std::string& operator_domain,
+       const std::string& node_name,
+       const std::vector<std::string>& input_names,
+       const std::vector<std::string>& output_names,
+       std::vector<OpAttr>& attributes);
+
+ private:
+  static void Init(const std::string& operator_name, const std::string& operator_domain,
+                   const std::string& node_name,
+                   const std::vector<std::string>& input_names,
+                   const std::vector<std::string>& output_names,
+                   std::vector<OpAttr>& attributes,
+                   OrtNode*& node);
+#endif  // !defined(ORT_MINIMAL_BUILD)
+};
+
+namespace detail {
+template <typename T>
+struct GraphImpl : Ort::detail::Base<T> {
+  using B = Ort::detail::Base<T>;
+  using B::B;
+
+#if !defined(ORT_MINIMAL_BUILD)
+  void SetInputs(std::vector<ValueInfo>& inputs);
+  void SetOutputs(std::vector<ValueInfo>& outputs);
+  void AddInitializer(const std::string& name, Value& initializer, bool data_is_external);  // Graph takes ownership of Value
+  void AddNode(Node& node);                                                                 // Graph takes ownership of Node
+#endif                                                                                      // !defined(ORT_MINIMAL_BUILD)
+};
+}  // namespace detail
+
+/** \brief Wrapper around ::OrtGraph
+ *
+ */
+struct Graph : detail::GraphImpl<OrtGraph> {
+  explicit Graph(std::nullptr_t) {}                        ///< No instance is created
+  explicit Graph(OrtGraph* p) : GraphImpl<OrtGraph>{p} {}  ///< Take ownership of a pointer created by C API
+#if !defined(ORT_MINIMAL_BUILD)
+  Graph();
+#endif
+};
+
+namespace detail {
+template <typename T>
+struct ModelImpl : Ort::detail::Base<T> {
+  using B = Ort::detail::Base<T>;
+  using B::B;
+
+#if !defined(ORT_MINIMAL_BUILD)
+  void AddGraph(Graph& graph);
+#endif
+};
+}  // namespace detail
+
+// Const object holder that does not own the underlying object
+using ConstModel = detail::ModelImpl<Ort::detail::Unowned<const OrtModel>>;
+
+/** \brief Wrapper around ::OrtModel
+ *
+ */
+struct Model : detail::ModelImpl<OrtModel> {
+  using DomainOpsetPair = std::pair<std::string, int>;
+
+  explicit Model(std::nullptr_t) {}                        ///< No instance is created
+  explicit Model(OrtModel* p) : ModelImpl<OrtModel>{p} {}  ///< Take ownership of a pointer created by C API
+
+#if !defined(ORT_MINIMAL_BUILD)
+  explicit Model(const std::vector<DomainOpsetPair>& opsets);
+#endif
+
+  ConstModel GetConst() const { return ConstModel{this->p_}; }
+};
+}  // namespace Ort
 #include "onnxruntime_cxx_inline.h"
