@@ -262,7 +262,8 @@ InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
       // run TransposeOptimizer last as it works in a slightly different way by moving Transpose nodes around.
       // shouldn't affect the end result - just easier to debug any issue if it's last.
       transformers.emplace_back(std::make_unique<TransposeOptimizer>(std::move(cpu_allocator)));
-      transformers.emplace_back(std::make_unique<QDQStripping>());
+      InlinedHashSet<NodeIndex> node_index_set;
+      transformers.emplace_back(std::make_unique<QDQStripping>(node_index_set));
     } break;
 
     case TransformerLevel::Level2: {

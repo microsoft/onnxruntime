@@ -9,98 +9,122 @@
 
 namespace onnxruntime {
 /**
+ * Remove Q and DQ node pairs in the graph.
+ *
+ * @param candidate_dq_to_q_map All the qualified Q and DQ node pairs to be removed.
  */
-Status RemoveQDQ(Graph& graph, 
+Status RemoveQDQ(Graph& graph,
                  std::unordered_map<Node*, Node*>& candidate_dq_to_q_map,
                  std::unordered_map<const Node*, const NodeUnit*>& node_unit_map,
                  bool& modified) {
-  std::map<const onnxruntime::NodeArg*, onnxruntime::NodeArg*> replacement_defs_for_graph_output;
-  // Remove DQ output edges and node args
+  // Prior to remove the Q and DQ nodes, we need to 'rewire' input or output of the nodes.
+  // Two scenarios:
+  // 1. Replace target node's input (i.e. DQ node's output) with Q node's input.
+  //    i.e. node_1 -> Q -> DQ -> node_2  => node_1 -> node_2
+  //         graph's input -> Q -> DQ -> node_1 => graph's input -> node_1
+  //
+  // 2. Make producer node of Q node generate the graph's output.
+  //    i.e. node_1 -> Q -> DQ -> graph's output => node_1 -> graph's output
+  //
+  std::map<onnxruntime::Node*, std::map<const onnxruntime::NodeArg*, onnxruntime::NodeArg*>> node_to_replacement_defs_map;
+
+  // Find src node arg to be replaced by dst node arg
   for (auto qdq_pair : candidate_dq_to_q_map) {
     auto dq_node = qdq_pair.first;
     auto q_node = qdq_pair.second;
     assert(node_unit_map.find(dq_node) != node_unit_map.end());
     auto node_unit = node_unit_map[dq_node];
 
-    // Get node args for replacement, two scenarios:
-    // 1. Replace target node's input (i.e. DQ node's output) with Q node's input.
-    //    i.e. node_1 -> Q -> DQ -> node_2  => node_1 -> node_2
-    //
-    // 2. Make producer node of Q node generate the graph output.
-    //    i.e. node_1 -> Q -> DQ -> graph's output => node_1 -> graph's output
-    //
     assert(q_node->InputDefs().size() == 3);
     assert(dq_node->OutputDefs().size() == 1);
     auto q_node_input_arg = q_node->MutableInputDefs()[0];
     auto dq_node_output_arg = dq_node->MutableOutputDefs()[0];
 
-    // Remove DQ output edges
-    graph_utils::RemoveNodeOutputEdges(graph, *dq_node);
-
     std::map<const onnxruntime::NodeArg*, onnxruntime::NodeArg*> replacement_defs;
     auto target_node = graph.GetNode(node_unit->GetNode().Index());
-    if (target_node != dq_node) { 
-      // node_1 -> Q -> DQ -> node_2  => node_1 -> node_2
-      replacement_defs[dq_node_output_arg] = q_node_input_arg;
-      target_node->ReplaceDefs(replacement_defs);
-
-      // Remove DQ output defs
-      // Note: If we don't remove the unused node args here, once calling graph.Resolve will fail
-      // due to graph.BuildConnections founds node arg that is not a graph input, initializer, or output of a previous node.
-      // We can't rely on graph.CleanUnusedInitializersAndNodeArgs because it's called after graph.BuildConnections.
-      for (auto node_arg : dq_node->MutableOutputDefs()) {
-        graph.RemoveNodeArg(node_arg->Name());
+    if (target_node != dq_node) {
+      // Scenario #1: node_1 -> Q -> DQ -> node_2  => node_1 -> node_2
+      if (node_to_replacement_defs_map.find(target_node) == node_to_replacement_defs_map.end()) {
+        replacement_defs[dq_node_output_arg] = q_node_input_arg;
+        node_to_replacement_defs_map[target_node] = replacement_defs;
+      } else {
+        node_to_replacement_defs_map[target_node][dq_node_output_arg] = q_node_input_arg;
       }
-    } else { 
-      // node_1 -> Q -> DQ -> graph's output
-      replacement_defs_for_graph_output[q_node_input_arg] = dq_node_output_arg;
+    } else {
+      // Scenario #2: node_1 -> Q -> DQ -> graph's output => node_1 -> graph's output
+      auto node = q_node->InputNodesBegin();
+      if (node != q_node->InputNodesEnd()) {
+        target_node = graph.GetNode(node->Index());
+        if (node_to_replacement_defs_map.find(target_node) == node_to_replacement_defs_map.end()) {
+          replacement_defs[q_node_input_arg] = dq_node_output_arg;
+          node_to_replacement_defs_map[target_node] = replacement_defs;
+        } else {
+          node_to_replacement_defs_map[target_node][q_node_input_arg] = dq_node_output_arg;
+        }
+      }
     }
   }
 
   std::unordered_set<Node*> seen_q_nodes;
-  std::unordered_set<Node*> nodes_to_change_node_arg;
+  std::unordered_set<std::string> node_args_to_remove;  // The node args of Q/DQ nodes that no longer needed
 
-  // Remove Q output edges and node args
+  // Remove Q/DQ nodes
   for (auto qdq_pair : candidate_dq_to_q_map) {
     auto dq_node = qdq_pair.first;
     auto q_node = qdq_pair.second;
-    auto node_unit = node_unit_map[dq_node];
 
-    Node* producer_node_to_q_node = nullptr;
-    auto target_node = graph.GetNode(node_unit->GetNode().Index());
-    if (target_node == dq_node) {
-      auto const_node = q_node->InputNodesBegin();
-      if (const_node != q_node->InputNodesEnd()) {
-        producer_node_to_q_node = graph.GetNode(const_node->Index());
+    // Collect DQ nodes' node args to be removed at the end
+    // Make sure not to include graph's output
+    for (auto node_arg : dq_node->MutableOutputDefs()) {
+      bool is_graph_output = false;
+      for (auto graph_output : graph.GetOutputs()) {
+        if (node_arg == graph_output) {
+          is_graph_output = true;
+          break;
+        }
+      }
+      if (!is_graph_output) {
+        node_args_to_remove.insert(node_arg->Name());
       }
     }
 
-    // It's safe to remove DQ node now
+    // Remove DQ output edges and DQ node itself
+    graph_utils::RemoveNodeOutputEdges(graph, *dq_node);
     graph.RemoveNode(dq_node->Index());
 
     if (seen_q_nodes.find(q_node) != seen_q_nodes.end()) {
       continue;
     }
     seen_q_nodes.insert(q_node);
-    
-    graph_utils::RemoveNodeOutputEdges(graph, *q_node);
 
-    // Remove Q output defs
-    // Note: If we don't remove the unused node args here, once calling graph.Resolve will fail
-    // due to graph.BuildConnections founds node arg that is not a graph input, initializer, or output of a previous node.
-    // We can't rely on graph.CleanUnusedInitializersAndNodeArgs because it's called after graph.BuildConnections.
+    // Collect Q nodes' node args to be removed at the end
     for (auto node_arg : q_node->MutableOutputDefs()) {
-      graph.RemoveNodeArg(node_arg->Name());
+      node_args_to_remove.insert(node_arg->Name());
     }
 
+    // Remove Q output edges and Q node itself
+    graph_utils::RemoveNodeOutputEdges(graph, *q_node);
     graph.RemoveNode(q_node->Index());
-
-    if (producer_node_to_q_node) {
-      producer_node_to_q_node->ReplaceDefs(replacement_defs_for_graph_output);
-    }
 
     modified = true;
   }
+
+  // Replace src node arg with dst node arg
+  for (auto entry : node_to_replacement_defs_map) {
+    auto target_node = entry.first;
+    auto replacement_defs = entry.second;
+    target_node->ReplaceDefs(replacement_defs);
+  }
+
+  // Remove all the unused node args
+  //
+  // Note: If we don't remove the unused node args here, once calling graph.Resolve will fail
+  // due to graph.BuildConnections founds node arg that is not a graph input, initializer, or output of a previous node.
+  // We can't rely on graph.CleanUnusedInitializersAndNodeArgs because it's called after graph.BuildConnections.
+  for (auto node_arg : node_args_to_remove) {
+    graph.RemoveNodeArg(node_arg);
+  }
+
   return Status::OK();
 }
 
@@ -171,7 +195,7 @@ bool QDQStripping::AllowStripping(const Node& node) const {
 }
 
 Status QDQStripping::ApplyImpl(Graph& graph, bool& modified, int graph_level,
-                                             const logging::Logger& logger) const {
+                               const logging::Logger& logger) const {
   GraphViewer graph_viewer(graph);
 
   // Get all the NodeUnits in the graph_viewer
@@ -179,10 +203,10 @@ Status QDQStripping::ApplyImpl(Graph& graph, bool& modified, int graph_level,
   std::unordered_map<const Node*, const NodeUnit*> node_unit_map;
   std::tie(node_unit_holder, node_unit_map) = QDQ::GetAllNodeUnits(graph_viewer, logger);
   std::unordered_set<const NodeUnit*> seen_node_units;
-  
+
   // DQ -> Q map where Q node is the producer node for DQ node, e.g. node_1 -> Q -> DQ -> node_2.
   // The DQ and Q pairs are selected by this optimizer to be removed.
-  // The reason to use a map here is that every DQ is unique because of EnsureUniqueDQForNodeUnit optimization, 
+  // The reason to use a map here is that every DQ is unique because of applying EnsureUniqueDQForNodeUnit optimization,
   // but different DQ nodes can trace back to the same producer Q node.
   std::unordered_map<Node*, Node*> candidate_dq_to_q_map;
 
@@ -190,10 +214,6 @@ Status QDQStripping::ApplyImpl(Graph& graph, bool& modified, int graph_level,
   for (auto node_index : graph_viewer.GetNodesInTopologicalOrder()) {
     gsl::not_null<const onnxruntime::Node*> node(graph_viewer.GetNode(node_index));
 
-    if (node->Name() == "encoded_DequantizeLinear") {
-      std::cout << node->Name() << std::endl;
-    }
-    
     // Get the node_unit associated with the node.
     gsl::not_null<const NodeUnit*> node_unit = node_unit_map.at(node);
 
