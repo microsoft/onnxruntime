@@ -3505,9 +3505,8 @@ void Graph::RemoveInitializedTensor(const std::string& tensor_name) {
     sparse_tensor_names_.erase(tensor_name);
 #endif
 
-    if (auto it = ortvalue_initializers_.find(tensor_name); it != ortvalue_initializers_.end()) {
-      ortvalue_initializers_.erase(it);
-    }
+    // doesn't matter if it existed or not
+    ORT_IGNORE_RETURN_VALUE(ortvalue_initializers_.erase(tensor_name));
 
     SetGraphResolveNeeded();
   } else {
@@ -5828,9 +5827,8 @@ Status Graph::LoadFromModelEditorApiModel(const OrtGraph& api_graph, bool updati
         ExternalDataInfo::SetExternalLocationToProto(onnxruntime::utils::kTensorProtoMemoryAddressTag,
                                                      offset, t.SizeInBytes(), tensor_proto);
 
-        // copy OrtValue to keep it alive and to store the deleter if provided.
-        ortvalue_initializers_.emplace(name, v);
-        v = OrtValue{};  // reset as we have taken a copy
+        // add OrtValue to ortvalue_initializers_ to keep it alive and to store the deleter if provided.
+        ortvalue_initializers_.emplace(name, std::move(v));
       } else {
         tensor_proto.set_raw_data(t.DataRaw(), t.SizeInBytes());
       }

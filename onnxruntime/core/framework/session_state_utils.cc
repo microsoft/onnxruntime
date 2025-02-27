@@ -400,10 +400,9 @@ common::Status SaveInitializedTensors(
           session_options.config_options.GetConfigOrDefault(kOrtSessionOptionsUseDeviceAllocatorForInitializers, "0") == "1";
 
       Tensor* p_tensor = nullptr;
-      if (auto iter = buffered_tensors.find(name);
-          iter != buffered_tensors.end()) {
-        p_tensor = iter->second.release();
-        buffered_tensors.erase(iter);
+      auto buffered_tensors_iter = buffered_tensors.find(name);
+      if (buffered_tensors_iter != buffered_tensors.end()) {
+        p_tensor = buffered_tensors_iter->second.get();
       }
 
       Status st = DeserializeTensorProto(env, graph_loc, tensor_proto, (m.has_value()) ? &*m : nullptr, alloc,
@@ -414,6 +413,12 @@ common::Status SaveInitializedTensors(
         std::ostringstream oss;
         oss << "Deserialize tensor " << name << " failed." << st.ErrorMessage();
         return Status(st.Category(), st.Code(), oss.str());
+      }
+
+      if (p_tensor != nullptr) {
+        // p_tensor was wrapped in a deleter by DeserializeTensorProto so we can simply release it here.
+        ORT_IGNORE_RETURN_VALUE(buffered_tensors_iter->second.release());
+        buffered_tensors.erase(buffered_tensors_iter);
       }
     }
 
