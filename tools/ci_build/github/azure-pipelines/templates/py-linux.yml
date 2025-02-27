@@ -107,18 +107,24 @@ jobs:
       inputs:
         targetPath: '$(Build.BinariesDirectory)/dist'
         artifactName: onnxruntime-${{ parameters.ep }}-${{ parameters.arch }}
+    - task: 1ES.PublishPipelineArtifact@1
+      displayName: 'Publish Test Binaries'
+      inputs:
+        artifactName: 'drop-linux-cpu-${{ parameters.arch }}-${{ parameters.ep }}'
+        targetPath: '$(Build.BinariesDirectory)/${{ parameters.cmake_build_type }}'
   - ${{ if eq(parameters.is1ES, false) }}:
     - task: PublishPipelineArtifact@1
       displayName: 'Publish Artifact: ONNXRuntime python wheel'
       inputs:
         targetPath: '$(Build.BinariesDirectory)/dist'
         artifactName: onnxruntime-${{ parameters.ep }}-${{ parameters.arch }}
+    - task: PublishPipelineArtifact@1
+      displayName: 'Publish Test Binaries'
+      inputs:
+        artifactName: 'drop-linux-cpu-${{ parameters.arch }}-${{ parameters.ep }}'
+        targetPath: '$(Build.BinariesDirectory)/${{ parameters.cmake_build_type }}'
 
-  - task: 1ES.PublishPipelineArtifact@1
-    displayName: 'Publish Test Binaries'
-    inputs:
-      artifactName: 'drop-linux-cpu-${{ parameters.arch }}-${{ parameters.ep }}'
-      targetPath: '$(Build.BinariesDirectory)/${{ parameters.cmake_build_type }}'
+
 
   - template: component-governance-component-detection-steps.yml
     parameters:
