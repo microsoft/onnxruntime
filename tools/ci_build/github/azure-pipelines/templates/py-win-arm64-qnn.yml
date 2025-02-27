@@ -19,6 +19,11 @@ parameters:
   type: string
   default: ''
 
+- name: is1ES
+  displayName: 'Whether the pipeline is running in 1ES'
+  type: boolean
+  default: false
+
 jobs:
 - job: Win_py_arm64_qnn_Wheels
   timeoutInMinutes: 210
@@ -141,11 +146,18 @@ jobs:
       Contents: '*.whl'
       TargetFolder: '$(Build.ArtifactStagingDirectory)'
 
-  - task: 1ES.PublishPipelineArtifact@1
-    displayName: 'Publish Artifact: ONNXRuntime python wheel'
-    inputs:
-      artifactName: onnxruntime_qnn_arm64_$(PythonVersion)
-      targetPath: '$(Build.ArtifactStagingDirectory)'
+  - ${{ if eq(parameters.is1ES, true) }}:
+    - task: 1ES.PublishPipelineArtifact@1
+      displayName: 'Publish Artifact: ONNXRuntime python wheel'
+      inputs:
+        artifactName: onnxruntime_qnn_arm64_$(PythonVersion)
+        targetPath: '$(Build.ArtifactStagingDirectory)'
+  - ${{ if eq(parameters.is1ES, false) }}:
+    - task: PublishPipelineArtifact@1
+      displayName: 'Publish Artifact: ONNXRuntime python wheel'
+      input:
+        artifactName: onnxruntime_qnn_arm64_$(PythonVersion)
+        targetPath: '$(Build.ArtifactStagingDirectory)'
 
   - script: |
       7z x *.whl

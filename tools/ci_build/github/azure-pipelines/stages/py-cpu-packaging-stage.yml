@@ -275,6 +275,7 @@ stages:
           machine_pool: 'onnxruntime-linux-ARM64-CPU-2019'
           extra_build_arg: ${{ parameters.build_py_parameters }}
           cmake_build_type: ${{ parameters.cmake_build_type }}
+          is1ES: true
 
 - ${{ if eq(parameters.enable_linux_cpu, true) }}:
   - stage: Python_Packaging_Linux_CPU
@@ -286,6 +287,7 @@ stages:
         machine_pool: 'onnxruntime-Ubuntu2204-AMD-CPU-Large'
         extra_build_arg: ${{ parameters.build_py_parameters }}
         cmake_build_type: ${{ parameters.cmake_build_type }}
+        is1ES: true
 
 - ${{ if eq(parameters.enable_windows_arm64_qnn, true) }}:
   - stage: Python_Packaging_Windows_ARM64_QNN
@@ -296,6 +298,7 @@ stages:
         MACHINE_POOL: 'onnxruntime-qnn-windows-vs-2022-arm64'
         QNN_SDK: ${{ parameters.qnn_sdk_version }}
         BUILD_PY_PARAMETERS: ${{ parameters.build_py_parameters }}
+        is1ES: true
 
 - ${{ if eq(parameters.enable_windows_arm64ec_qnn, true) }}:
   - stage: Python_Packaging_Windows_arm64ec_QNN
@@ -306,6 +309,7 @@ stages:
           MACHINE_POOL: 'Onnxruntime-QNNEP-Windows-2022-CPU'
           QNN_SDK: ${{ parameters.qnn_sdk_version }}
           BUILD_PY_PARAMETERS: ${{ parameters.build_py_parameters }}
+          is1ES: true
 
 - ${{ if eq(parameters.enable_windows_x64_qnn, true) }}:
   - stage: Python_Packaging_Windows_x64_QNN
@@ -316,6 +320,7 @@ stages:
           MACHINE_POOL: 'Onnxruntime-QNNEP-Windows-2022-CPU'
           QNN_SDK: ${{ parameters.qnn_sdk_version }}
           BUILD_PY_PARAMETERS: ${{ parameters.build_py_parameters }}
+          is1ES: true
 
 - ${{ if eq(parameters.enable_linux_x64_qnn, true) }}:
   - stage: Python_Packaging_Linux_x64_QNN
@@ -326,3 +331,4 @@ stages:
         machine_pool: 'onnxruntime-Ubuntu2204-AMD-CPU'
         extra_build_arg: ${{ parameters.build_py_parameters }}
         cmake_build_type: ${{ parameters.cmake_build_type }}
+        is1ES: true
