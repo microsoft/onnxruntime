@@ -1,0 +1,3 @@
+__kernel void Nop(){
+
+}

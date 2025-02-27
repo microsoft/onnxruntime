@@ -620,6 +620,10 @@ if(onnxruntime_USE_COREML)
   list(APPEND onnxruntime_test_providers_dependencies onnxruntime_providers_coreml coreml_proto)
 endif()
 
+if(onnxruntime_USE_OPENCL)
+  list(APPEND onnxruntime_test_providers_dependencies onnxruntime_providers_opencl)
+endif()
+
 if(onnxruntime_USE_ACL)
   list(APPEND onnxruntime_test_providers_dependencies onnxruntime_providers_acl)
 endif()
@@ -636,6 +640,7 @@ set(ONNXRUNTIME_TEST_STATIC_PROVIDER_LIBS
     ${PROVIDERS_JS}
     ${PROVIDERS_WEBGPU}
     ${PROVIDERS_SNPE}
+    ${PROVIDERS_OPENCL}
     ${PROVIDERS_RKNPU}
     ${PROVIDERS_DML}
     ${PROVIDERS_ACL}
