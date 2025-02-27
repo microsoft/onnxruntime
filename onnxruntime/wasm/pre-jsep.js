@@ -243,13 +243,27 @@ Module['jsepInit'] = (name, params) => {
     Module['jsepCreateMLContext'] = (optionsOrGpuDevice) => {
       return backend['createMLContext'](optionsOrGpuDevice);
     };
-    Module['jsepRegisterMLConstant'] = (externalFilePath, dataOffset, dataLength, builder, desc) => {
-      return backend['registerMLConstant'](
-          externalFilePath, dataOffset, dataLength, builder, desc, Module.MountedFiles);
+    Module["jsepRegisterMLConstant"] = (
+      externalFilePath,
+      dataOffset,
+      dataLength,
+      builder,
+      desc,
+      shouldConvertInt64ToInt32,
+    ) => {
+      return backend["registerMLConstant"](
+        externalFilePath,
+        dataOffset,
+        dataLength,
+        builder,
+        desc,
+        Module.MountedFiles,
+        shouldConvertInt64ToInt32,
+      );
     };
     Module['jsepRegisterGraphInput'] = backend['registerGraphInput'].bind(backend);
     Module['jsepIsGraphInput'] = backend['isGraphInput'].bind(backend);
-
     Module['jsepCreateTemporaryTensor'] = backend['createTemporaryTensor'].bind(backend);
+    Module['jsepIsInt64Supported'] = backend['isInt64Supported'].bind(backend);
   }
 };
