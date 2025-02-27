@@ -47,6 +47,10 @@
 #include "core/providers/armnn/armnn_provider_factory.h"
 #endif
 
+#ifdef USE_OPENCL
+#include "core/providers/opencl/opencl_provider_factory.h"
+#endif
+
 #include "test/common/cuda_op_test_utils.h"
 
 // test infrastructure
@@ -248,6 +252,11 @@ TEST_P(ModelTest, Run) {
         ASSERT_ORT_STATUS_OK(OrtSessionOptionsAppendExecutionProvider_VSINPU(ortso));
       }
 #endif
+#ifdef USE_OPENCL
+      else if (provider_name == "opencl") {
+        ASSERT_ORT_STATUS_OK(OrtSessionOptionsAppendExecutionProvider_OpenCL(ortso, 0, 0));
+      }
+#endif
 #ifdef USE_RKNPU
       else if (provider_name == "rknpu") {
         ASSERT_ORT_STATUS_OK(OrtSessionOptionsAppendExecutionProvider_Rknpu(ortso));
@@ -422,6 +431,9 @@ static constexpr ORT_STRING_VIEW provider_name_nnapi = ORT_TSTR("nnapi");
 #ifdef USE_VSINPU
 static ORT_STRING_VIEW provider_name_vsinpu = ORT_TSTR("vsinpu");
 #endif
+#ifdef USE_OPENCL
+static ORT_STRING_VIEW provider_name_opencl = ORT_TSTR("opencl");
+#endif
 #ifdef USE_RKNPU
 static constexpr ORT_STRING_VIEW provider_name_rknpu = ORT_TSTR("rknpu");
 #endif
@@ -468,6 +480,9 @@ static constexpr ORT_STRING_VIEW provider_name_dml = ORT_TSTR("dml");
 #endif
 #ifdef USE_VSINPU
   provider_names[provider_name_vsinpu] = {};
+#endif
+#ifdef USE_OPENCL
+  provider_names[provider_name_opencl] = {opset14};
 #endif
 #ifdef USE_RKNPU
   provider_names[provider_name_rknpu] = {};
