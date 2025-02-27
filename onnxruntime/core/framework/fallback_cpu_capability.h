@@ -3,6 +3,8 @@
 
 #pragma once
 
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
+
 #include <gsl/gsl>
 #include "core/common/inlined_containers_fwd.h"
 #include "core/framework/execution_provider.h"  // for IExecutionProvider::IKernelLookup
@@ -26,3 +28,5 @@ std::unordered_set<NodeIndex> GetCpuPreferredNodes(const GraphViewer& graph,
                                                    const logging::Logger& logger);
 
 }  // namespace onnxruntime
+
+#endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
