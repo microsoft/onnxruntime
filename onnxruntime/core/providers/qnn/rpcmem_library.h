@@ -10,7 +10,11 @@
 
 namespace onnxruntime::qnn {
 
-using DynamicLibraryHandle = std::unique_ptr<void, void (*)(void*)>;
+struct DynamicLibraryHandleDeleter {
+  void operator()(void* library_handle) noexcept;
+};
+
+using UniqueDynamicLibraryHandle = std::unique_ptr<void, DynamicLibraryHandleDeleter>;
 
 // This namespace contains constants and typedefs corresponding to functions from rpcmem.h.
 // https://github.com/quic/fastrpc/blob/v0.1.1/inc/rpcmem.h
@@ -61,7 +65,7 @@ class RpcMemLibrary {
   const RpcMemApi& Api() const { return api_; }
 
  private:
-  DynamicLibraryHandle library_handle_;
+  UniqueDynamicLibraryHandle library_handle_;
   RpcMemApi api_;
 };
 

@@ -1960,20 +1960,9 @@ static bool CreateSessionWithQnnEpAndQnnHtpSharedMemoryAllocator(PATH_TYPE model
     session = Ort::Session{*ort_env, model_path, session_options};
     return true;
   } catch (const Ort::Exception& e) {
-    // handle particular exception that indicates that the libcdsprpc.so / dll can't be loaded
-    // NOTE: To run this on a local Windows ARM64 device, you need to copy libcdsprpc.dll to the build directory:
-    //  - Open File Explorer
-    //  - Go to C:/Windows/System32/DriverStore/FileRepository/
-    //  - Search for a folder that begins with qcnspmcdm8380.inf_arm64_ and open it
-    //  - Copy the libcdsprpc.dll into the build/[PATH CONTAINING onnxruntime.dll] directory of the application.
-    // TODO(adrianlizarraga): Update CMake build for unittests to automatically copy libcdsprpc.dll into build directory
+    // handle exception that indicates that the libcdsprpc.so / dll can't be loaded
     std::string_view error_message = e.what();
-
-#if defined(_WIN32)
-    std::string_view expected_error_message = "Failed to load libcdsprpc.dll";
-#else
-    std::string_view expected_error_message = "Failed to load libcdsprpc.so";
-#endif
+    std::string_view expected_error_message = "Failed to initialize RPCMEM dynamic library handle";
 
     if (e.GetOrtErrorCode() == ORT_FAIL &&
         error_message.find(expected_error_message) != std::string_view::npos) {
