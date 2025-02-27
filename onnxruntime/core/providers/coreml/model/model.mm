@@ -369,9 +369,8 @@ void ProfileComputePlan(NSURL* compileUrl, MLModelConfiguration* config) {
 #define HAS_COREMLOPTIMIZATIONHINT 0
 #endif
 
-API_AVAILABLE_COREML8
 void ConfigureOptimizationHints(MLModelConfiguration* config, const CoreMLOptions& coreml_options) {
-#if HAS_COREMLOPTIMIZATIONHINT
+#if HAS_COREMLOPTIMIZATIONHINT && CAN_USE_COREML8_OR_LATER
   MLOptimizationHints* optimizationHints = [[MLOptimizationHints alloc] init];
   if (coreml_options.UseStrategy("FastPrediction")) {
     optimizationHints.specializationStrategy = MLSpecializationStrategyFastPrediction;
