@@ -11,7 +11,7 @@ namespace onnxruntime {
 namespace cuda {
 
 template <typename T>
-void UpampleImpl(cudaStream_t stream,
+void UpsampleImpl(cudaStream_t stream,
                  const onnxruntime::UpsampleMode upsample_mode,
                  const size_t rank,
                  const int64_t input_dim2,

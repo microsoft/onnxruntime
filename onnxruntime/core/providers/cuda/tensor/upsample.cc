@@ -290,7 +290,7 @@ Status Upsample<T>::BaseCompute(OpKernelContext* context,
       scales_div[i] = fast_divmod(gsl::narrow_cast<int>(ceil(scales[i])));
     }
 
-    UpampleImpl(Stream(context),
+    UpsampleImpl(Stream(context),
                 mode_,
                 rank,
                 (UpsampleMode::LINEAR == mode_) ? (rank == 2 ? X_dims[0] : X_dims[2]) : 0,
