@@ -35,71 +35,87 @@ resources:
     endpoint: Microsoft
     name: pypa/manylinux
     ref: 5eda9aded5462201e6310105728d33016e637ea7
-
-stages:
-- template: templates/web-ci.yml
+  - repository: 1esPipelines
+    type: git
+    name: 1ESPipelineTemplates/1ESPipelineTemplates
+    ref: refs/tags/release
+extends:
+  # The pipeline extends the 1ES PT which will inject different SDL and compliance tasks.
+  # For non-production pipelines, use "Unofficial" as defined below.
+  # For productions pipelines, use "Official".
+  template: v1/1ES.Official.PipelineTemplate.yml@1esPipelines
   parameters:
-    NpmPackagingMode: ${{ variables.NpmPackagingMode }}
-    IsReleasePipeline: true
-    PoolName: 'onnxruntime-Ubuntu2204-AMD-CPU'
-    PackageName: 'onnxruntime-web'
-    ExtraBuildArgs: ''
-    UseWebPoolName: true
-    RunWebGpuTestsForDebugBuild: false
-    RunWebGpuTestsForReleaseBuild: true
-    WebGpuPoolName: 'onnxruntime-Win2022-VS2022-webgpu-A10'
-    WebCpuPoolName: 'onnxruntime-Win2022-VS2022-webgpu-A10'
+    # Update the pool with your team's 1ES hosted pool.
+    sdl:
+      sourceAnalysisPool:
+        name: onnxruntime-Win-CPU-2022
+        os: windows
+    stages:
+    - template: templates/web-ci.yml
+      parameters:
+        NpmPackagingMode: ${{ variables.NpmPackagingMode }}
+        IsReleasePipeline: true
+        PoolName: 'onnxruntime-Ubuntu2204-AMD-CPU'
+        PackageName: 'onnxruntime-web'
+        ExtraBuildArgs: ''
+        UseWebPoolName: true
+        RunWebGpuTestsForDebugBuild: false
+        RunWebGpuTestsForReleaseBuild: true
+        WebGpuPoolName: 'onnxruntime-Win2022-VS2022-webgpu-A10'
+        WebCpuPoolName: 'onnxruntime-Win2022-VS2022-webgpu-A10'
+        is1ES: true
 
-- template: templates/react-native-ci.yml
-  parameters:
-    NpmPackagingMode: ${{ variables.NpmPackagingMode }}
-    BuildConfig: 'Release'
-    PoolName: 'onnxruntime-Ubuntu2204-AMD-CPU'
-    PackageName: 'onnxruntime-react-native'
-    InitialStageDependsOn: 'Precheck_and_extract_commit'
-    enable_code_sign: false
+    - template: templates/react-native-ci.yml
+      parameters:
+        NpmPackagingMode: ${{ variables.NpmPackagingMode }}
+        BuildConfig: 'Release'
+        PoolName: 'onnxruntime-Ubuntu2204-AMD-CPU'
+        PackageName: 'onnxruntime-react-native'
+        InitialStageDependsOn: 'Precheck_and_extract_commit'
+        enable_code_sign: false
+        is1ES: true
 
-- stage: Download_Node_Package_And_Publish_Validation_Script
-  dependsOn:
-  - ReactNative_CI_Android
-  - ReactNative_CI_iOS
-  - Build_web_Release
-  - Build_web_Debug
-  jobs:
-  - job: Download_Node_Package_And_Publish_Validation_Script
-    pool: 'Onnxruntime-Win-CPU-2022'
-    variables:
-      runCodesignValidationInjection: false
-    timeoutInMinutes: 10
-    steps:
-#    This pipeline usually are triggered by Zip-Nuget-Java-Nodejs Packaging Pipeline,
-#    The NPM_packages is from Android_Java_API_AAR_Packaging_QNN, not from RN_CI
-    - download: build
-      artifact: 'NPM_packages'
-      displayName: 'Download NPM_packages from Zip-Nuget-Java-Nodejs Packaging Pipeline Pipeline Artifact'
+    - stage: Download_Node_Package_And_Publish_Validation_Script
+      dependsOn:
+      - ReactNative_CI_Android
+      - ReactNative_CI_iOS
+      - Build_web_Release
+      - Build_web_Debug
+      jobs:
+      - job: Download_Node_Package_And_Publish_Validation_Script
+        pool: 'Onnxruntime-Win-CPU-2022'
+        variables:
+          runCodesignValidationInjection: false
+        timeoutInMinutes: 10
+        steps:
+    #    This pipeline usually are triggered by Zip-Nuget-Java-Nodejs Packaging Pipeline,
+    #    The NPM_packages is from Android_Java_API_AAR_Packaging_QNN, not from RN_CI
+        - download: build
+          artifact: 'NPM_packages'
+          displayName: 'Download NPM_packages from Zip-Nuget-Java-Nodejs Packaging Pipeline Pipeline Artifact'
 
-    - task: CopyFiles@2
-      inputs:
-        sourceFolder: '$(Pipeline.Workspace)\build\NPM_packages'
-        contents: onnxruntime-*.tgz
-        targetFolder: $(Build.ArtifactStagingDirectory)\node-artifacts
-      displayName: 'Copy onnxruntime-node Artifacts'
+        - task: CopyFiles@2
+          inputs:
+            sourceFolder: '$(Pipeline.Workspace)\build\NPM_packages'
+            contents: onnxruntime-*.tgz
+            targetFolder: $(Build.ArtifactStagingDirectory)\node-artifacts
+          displayName: 'Copy onnxruntime-node Artifacts'
 
-    - task: PublishPipelineArtifact@0
-      inputs:
-        artifactName: 'onnxruntime-node'
-        targetPath: '$(Build.ArtifactStagingDirectory)\node-artifacts'
-      displayName: 'Publish onnxruntime-node Pipeline Artifact'
+        - task: 1ES.PublishPipelineArtifact@1
+          inputs:
+            artifactName: 'onnxruntime-node'
+            targetPath: '$(Build.ArtifactStagingDirectory)\node-artifacts'
+          displayName: 'Publish onnxruntime-node Pipeline Artifact'
 
-    - task: CopyFiles@2
-      inputs:
-        sourceFolder: $(Build.SourcesDirectory)\tools\ci_build\github\js
-        contents: validate-npm-packages.py
-        targetFolder: $(Build.ArtifactStagingDirectory)\validation-scripts
-      displayName: 'Copy validation scripts'
+        - task: CopyFiles@2
+          inputs:
+            sourceFolder: $(Build.SourcesDirectory)\tools\ci_build\github\js
+            contents: validate-npm-packages.py
+            targetFolder: $(Build.ArtifactStagingDirectory)\validation-scripts
+          displayName: 'Copy validation scripts'
 
-    - task: PublishPipelineArtifact@0
-      inputs:
-        artifactName: 'validation_scripts'
-        targetPath: '$(Build.ArtifactStagingDirectory)\validation-scripts'
-      displayName: 'Publish validation scripts'
+        - task: 1ES.PublishPipelineArtifact@1
+          inputs:
+            artifactName: 'validation_scripts'
+            targetPath: '$(Build.ArtifactStagingDirectory)\validation-scripts'
+          displayName: 'Publish validation scripts'
