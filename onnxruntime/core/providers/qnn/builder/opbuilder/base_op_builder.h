@@ -162,6 +162,7 @@ class BaseOpBuilder : public IOpBuilder {
         {"Transpose", QNN_OP_TRANSPOSE},
         {"GridSample", QNN_OP_GRID_SAMPLE},
         {"LpNormalization", QNN_OP_L2_NORM},
+        {"Matmul2Bit", "Matmul2Bit"},
 
         {"DequantizeLinear", QNN_OP_DEQUANTIZE},
         {"QuantizeLinear", QNN_OP_QUANTIZE},
@@ -212,6 +213,19 @@ class BaseOpBuilder : public IOpBuilder {
     auto it = onnx_op_type_to_qnn_op_type.find(onnx_op_type);
     ORT_ENFORCE(it != onnx_op_type_to_qnn_op_type.end());
     return it->second;
+  }
+
+  static const std::string& GetQnnOpPackageName(const std::string& onnx_op_type) {
+    static const std::unordered_map<std::string, std::string> qnn_op_type_to_op_package_name = {
+        {"Matmul2Bit", "Matmul2BitOpPackage"}};
+
+    static const std::string default_qnn_package_name(QNN_OP_PACKAGE_NAME_QTI_AISW);
+    auto it = qnn_op_type_to_op_package_name.find(onnx_op_type);
+    if (it != qnn_op_type_to_op_package_name.end()) {
+      return it->second;
+    } else {
+      return default_qnn_package_name;
+    }
   }
 
   // Onnx Pads is [x1_begin, x2_begin, x1_end, x2_end], QNN requires [x1_begin, x1_end, x2_begin, x2_end]

@@ -3565,6 +3565,28 @@ MatMulBnb4 is a MatMul with weight quantized with 4 bits using either FP4 or NF4
         MatmulWithQuantWeightShapeInference(ctx, in_features, out_features, transB);
       });
 
+  static const char* Matmul2Bit_ver1_doc = R"DOC(
+Matmul2Bit is a MatMul with weight quantized with
+)DOC";
+  ONNX_CONTRIB_OPERATOR_SCHEMA(Matmul2Bit)
+      .SetDomain(kMSDomain)
+      .SinceVersion(1)
+      .SetDoc(Matmul2Bit_ver1_doc)
+      .Input(0, "A", "The input tensor, not quantized", "T1")
+      .Input(1, "B", "The input tensor, quantized", "T2")
+      .Input(2, "zero_points", "quantization zero points", "T3", OpSchema::Optional)
+      .Input(3, "scales", "quantization scale", "T1")
+      .Output(0, "Y", "tensor. The output tensor has the same rank as the input. ", "T1")
+      .TypeConstraint("T1", {"tensor(float)", "tensor(float16)"}, "Constrain input and output types to float/half_float tensors.")
+      .TypeConstraint("T2", {"tensor(uint8)", "tensor(int32)"}, "Constrain quantized weight types to uint8/int32.")
+      .TypeConstraint("T3", {"tensor(uint8)", "tensor(int32)", "tensor(float16)", "tensor(float)"}, "Constrain quantized zero point types to uint8/int32/float16/float.")
+      .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+        // Type inference
+        propagateElemTypeFromInputToOutput(ctx, 0, 0);
+        // Shape inference
+        propagateShapeFromInputToOutput(ctx, 0, 0);
+      });
+
   static const char* GatherBlockQuantized_ver1_doc = R"DOC(
 GatherBlockQuantized is a Gather with data quantized. It is similar to Gather (https://github.com/onnx/onnx/blob/main/docs/Operators.md#gather) with differences:
   1. Input `data` is a constant. It is quantized block-wise along attribute `quantize_axis` with block size specified by attribute `block_size`.

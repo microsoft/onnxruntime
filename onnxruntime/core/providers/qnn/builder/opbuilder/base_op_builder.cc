@@ -205,7 +205,7 @@ Status BaseOpBuilder::ProcessOutputs(QnnModelWrapper& qnn_model_wrapper,
   }
 
   ORT_RETURN_IF_NOT(qnn_model_wrapper.CreateQnnNode(utils::GetNodeName(node_unit),
-                                                    QNN_OP_PACKAGE_NAME_QTI_AISW,
+                                                    GetQnnOpPackageName(qnn_op_type),
                                                     qnn_op_type,  // Typically GetQnnOpType(), but can be overridden.
                                                     std::move(input_names),
                                                     std::move(output_names),
