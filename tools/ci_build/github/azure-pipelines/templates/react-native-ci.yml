@@ -67,7 +67,7 @@ stages:
       image: 'macOS-13'
       os: 'macOS'
 
-    timeoutInMinutes: 90
+    timeoutInMinutes: 120
 
     variables:
       runCodesignValidationInjection: false
