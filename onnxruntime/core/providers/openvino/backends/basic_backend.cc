@@ -167,7 +167,7 @@ void BasicBackend::PopulateConfigValue(ov::AnyMap& device_config) {
   if (session_context_.precision.find("ACCURACY") != std::string::npos &&
       session_context_.device_type.find("GPU") != std::string::npos) {
     if (session_context_.OpenVINO_Version.at(0) >= 2024) {
-      device_config.emplace(ov::hint::inference_precision(ov::element::undefined));
+      device_config.emplace(ov::hint::inference_precision(ov::element::dynamic));
       device_config.emplace(ov::hint::execution_mode(ov::hint::ExecutionMode::ACCURACY));
     } else {
       if (!subgraph_context_.model_precision.empty())
