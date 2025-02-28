@@ -31,11 +31,11 @@ Status GraphOptimizerRegistry::Create(const onnxruntime::SessionOptions* sess_op
     if (!graph_optimizer_registry_) {  // Second Check (with locking)
       graph_optimizer_registry_ = std::unique_ptr<GraphOptimizerRegistry>(new GraphOptimizerRegistry(sess_options, cpu_ep, logger));
       graph_optimizer_registry_->CreatePredefinedSelectionFuncs();
-      return Status::OK();
     }
+  } else {
+    LOGS(*graph_optimizer_registry_->GetLogger(), INFO) << "The GraphOptimizerRegistry instance has been created before.";
   }
 
-  LOGS(*graph_optimizer_registry_->GetLogger(), INFO) << "The GraphOptimizerRegistry instance has been created before.";
   return Status::OK();
 }
 
