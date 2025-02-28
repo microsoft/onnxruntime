@@ -3402,14 +3402,8 @@ bool Graph::ResolveContext::IsOuterScopeValue(const std::string& name) const {
 #endif  // !defined(ORT_MINIMAL_BUILD)
 
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
-void Graph::AddInitializedTensor(const TensorProto& tensor) {
-  auto existing = name_to_initial_tensor_.find(tensor.name());
-  if (existing != name_to_initial_tensor_.cend()) {
-    ORT_ENFORCE(existing->second == &tensor,
-                "AddInitializedTensor already has tensor with name ", tensor.name(), " but different TensorProto.");
-    return;
-  }
 
+void Graph::AddInitializedTensorHelper(const ONNX_NAMESPACE::TensorProto& tensor) {
   const gsl::not_null<TensorProto*> tensor_added{graph_proto_->add_initializer()};
   *(tensor_added) = tensor;
   name_to_initial_tensor_.emplace(tensor.name(), tensor_added);
@@ -3422,6 +3416,38 @@ void Graph::AddInitializedTensor(const TensorProto& tensor) {
     t.mutable_tensor_type()->set_elem_type(tensor.data_type());
     ORT_IGNORE_RETURN_VALUE(GetOrCreateNodeArg(tensor.name(), &t));
   }
+}
+
+void Graph::AddInitializedTensor(const TensorProto& tensor) {
+  auto existing = name_to_initial_tensor_.find(tensor.name());
+  if (existing != name_to_initial_tensor_.cend()) {
+    ORT_ENFORCE(existing->second == &tensor,
+                "AddInitializedTensor already has tensor with name ", tensor.name(), " but different TensorProto.");
+    return;
+  }
+
+  AddInitializedTensorHelper(tensor);
+}
+
+Status Graph::AddInitializedOrtValue(const ONNX_NAMESPACE::TensorProto& tensor, OrtValue ortvalue_initializer) {
+  auto existing = name_to_initial_tensor_.find(tensor.name());
+  if (existing != name_to_initial_tensor_.cend()) {
+    ORT_RETURN_IF_NOT(existing->second == &tensor,
+                      "AddInitializedTensor already has tensor with name ", tensor.name(),
+                      " but different TensorProto.");
+    return Status::OK();
+  }
+
+  if (ortvalue_initializer.IsAllocated()) {
+    ortvalue_initializers_.insert_or_assign(tensor.name(), std::move(ortvalue_initializer));
+  } else {
+    // Small initializer, the data is still in TensorProto.
+    ortvalue_initializers_.erase(tensor.name());
+  }
+
+  AddInitializedTensorHelper(tensor);
+
+  return Status::OK();
 }
 
 void Graph::FindAllSubgraphs(std::vector<Graph*>& subgraphs) {

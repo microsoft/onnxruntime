@@ -743,8 +743,22 @@ class Graph {  // NOLINT(clang-analyzer-optin.performance.Padding): preserve exi
 #endif  // !defined(ORT_MINIMAL_BUILD)
 
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
+  void AddInitializedTensorHelper(const ONNX_NAMESPACE::TensorProto& tensor_proto);
+
   /** Add an initializer tensor to the Graph. */
   void AddInitializedTensor(const ONNX_NAMESPACE::TensorProto& tensor_proto);
+
+  /// <summary>
+  /// Add initializer to the Graph. This method takes a tensor proto that contains
+  /// a data pointer to ort_value. For small tensors (<127b),
+  /// the data would still be contained within tensor_proto, and
+  /// OrtValue would be unallocated in this case, and not added to ortvalue_initializers_.
+  /// </summary>
+  /// <param name="tensor_proto">tensor proto with external data pointing to OrtValue.</param>
+  /// <param name="ort_value_initializer">value that contains the initializer tensor. This may
+  /// be unallocated for small tensors. Passed by value and can be moved in when chosen.</param>
+  Status AddInitializedOrtValue(const ONNX_NAMESPACE::TensorProto& tensor_proto,
+                                OrtValue ort_value_initializer);
 #endif
 
   /** Remove the initializer tensor with the provided name from the Graph. */

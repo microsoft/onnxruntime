@@ -56,7 +56,7 @@ common::Status SaveInitializedTensors(
 
 common::Status AllocateTensor(
     const onnxruntime::MemBuffer* m,
-    std::unique_ptr<onnxruntime::Tensor>& p_tensor,
+    Tensor& p_tensor,
     const onnxruntime::DataTypeImpl* const& type,
     onnxruntime::TensorShape& tensor_shape,
     bool use_device_allocator_for_initializers,
@@ -67,12 +67,12 @@ common::Status AllocateTensorOnDeviceOrMemory(
     onnxruntime::TensorShape& tensor_shape,
     const onnxruntime::DataTypeImpl* const& type,
     const onnxruntime::AllocatorPtr& alloc,
-    std::unique_ptr<onnxruntime::Tensor>& p_tensor);
+    Tensor& p_tensor);
 
 common::Status CopyTensorFromCPUToDevice(
     const onnxruntime::DataTransferManager& data_transfer_mgr,
-    std::unique_ptr<onnxruntime::Tensor>& p_deserialize_tensor,
-    std::unique_ptr<onnxruntime::Tensor>& p_tensor,
+    const Tensor& deserialize_tensor,
+    Tensor&& tensor,
     OrtValue& ort_value);
 
 common::Status SaveInputOutputNamesToNodeMapping(const GraphViewer& graph,

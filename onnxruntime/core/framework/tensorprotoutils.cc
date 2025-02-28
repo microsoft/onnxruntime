@@ -216,7 +216,7 @@ Status TensorProtoToOrtValueImpl(const Env& env, const std::filesystem::path& mo
                              tensor->SizeInBytes(), ", Got ", m->GetLen());
     }
   } else {
-    tensor = std::make_unique<Tensor>(type, tensor_shape, alloc);
+    tensor = std::make_unique<Tensor>(type, tensor_shape, std::move(alloc));
   }
 
   ORT_RETURN_IF_ERROR(TensorProtoToTensor(env, model_path, tensor_proto, *tensor));

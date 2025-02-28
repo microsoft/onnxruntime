@@ -38,6 +38,15 @@ Checks that new_initializer does not already exist in 'graph' before adding it.
 */
 NodeArg& AddInitializer(Graph& graph, const ONNX_NAMESPACE::TensorProto& new_initializer);
 
+/** Add a new initializer to 'graph'.
+ * Checks that new_initializer does not already exist in 'graph' before adding it.
+ * @param new_initializer tensor proto that points to data within the ort_value
+ * @param tensor with data
+ * @returns The NodeArg for the new initializer.
+ * @remarks No matching graph input is created, so the initializer will be constant.
+ */
+NodeArg& AddInitializer(Graph& graph, const ONNX_NAMESPACE::TensorProto& new_initializer, Tensor&& tensor);
+
 /** Gets the index of an output arg with the specified output arg name. */
 int GetNodeOutputIndexFromOutputName(const Node& node, const std::string& output_name);
 
