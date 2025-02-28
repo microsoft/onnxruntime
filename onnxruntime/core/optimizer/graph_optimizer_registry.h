@@ -32,9 +32,9 @@ class GraphOptimizerRegistry {
    * Create and initialize the graph optimizer registry instance as a singleton.
    * The registry also keeps the references to session options, cpu_ep and logger tha are required by some optimizers.
    */
-  static const GraphOptimizerRegistry& Create(const onnxruntime::SessionOptions* sess_options,
-                                              const onnxruntime::IExecutionProvider* cpu_ep,
-                                              const logging::Logger* logger);
+  static Status Create(const onnxruntime::SessionOptions* sess_options,
+                       const onnxruntime::IExecutionProvider* cpu_ep,
+                       const logging::Logger* logger);
 
   /**
    * Get optimizer selection function. If the optimizer name can't be found, return nullopt.
@@ -73,6 +73,6 @@ class GraphOptimizerRegistry {
   /**
    * Create pre-defined selection functions.
    */
-  common::Status CreatePredefinedSelectionFuncs();
+  Status CreatePredefinedSelectionFuncs();
 };
 }  // namespace onnxruntime
