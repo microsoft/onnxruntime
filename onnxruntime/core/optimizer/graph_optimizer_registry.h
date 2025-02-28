@@ -66,9 +66,9 @@ class GraphOptimizerRegistry {
 
   InlinedHashMap<std::string, SelectionFunc> transformer_name_to_selection_func_;
 
-  GraphOptimizerRegistry::GraphOptimizerRegistry(const onnxruntime::SessionOptions* sess_options,
-                                                 const onnxruntime::IExecutionProvider* cpu_ep,
-                                                 const logging::Logger* logger);
+  GraphOptimizerRegistry(const onnxruntime::SessionOptions* sess_options,
+                         const onnxruntime::IExecutionProvider* cpu_ep,
+                         const logging::Logger* logger);
 
   /**
    * Create pre-defined selection functions.
