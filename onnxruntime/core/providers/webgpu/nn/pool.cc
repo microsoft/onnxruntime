@@ -69,8 +69,8 @@ POOLING_KERNEL(GlobalMaxPool, kOnnxDomain, false, MaxPool<1>, 1)
 POOLING_KERNEL(GlobalMaxPool, kMSInternalNHWCDomain, true, MaxPool<1>, 1)
 
 Status PoolProgram::GenerateShaderCode(ShaderHelper& shader) const {
-  const auto& input = shader.AddInput("input", ShaderUsage::UseUniform | ShaderUsage::UseIndicesTypeAlias);
-  const auto& output = shader.AddOutput("output", ShaderUsage::UseUniform | ShaderUsage::UseIndicesTypeAlias);
+  const auto& input = shader.AddInput("input", ShaderUsage::UseUniform);
+  const auto& output = shader.AddOutput("output", ShaderUsage::UseUniform);
 
   // Declare and initialize the variables needed.
   std::string var_decl_code;
@@ -107,10 +107,12 @@ Status PoolProgram::GenerateShaderCode(ShaderHelper& shader) const {
     }
     sampling_code = sampling_ss.str();
 
-    downsampling_code = "  value /= f32(count);\n";
+    std::stringstream downsampling_ss;
+    downsampling_ss << "  value /= " << (is_float16_ ? "f16" : "f32") <<"(count);\n";
+    downsampling_code = downsampling_ss.str();
   }
 
-  const auto kernal_rank = kernel_shape_.size();
+  const auto kernel_rank = kernel_shape_.size();
   const auto pads_rank = kernel_shape_.size() * 2;
   // The dimension index for H or D1
   const auto data_dim_begin = is_nhwc_ ? 1 : 2;
@@ -127,23 +129,23 @@ Status PoolProgram::GenerateShaderCode(ShaderHelper& shader) const {
   body << shader.GuardAgainstOutOfBoundsWorkgroupSizes("uniforms.output_size")
        << "  let y_indices = " << output.OffsetToIndices("global_idx") << ";\n"
        << "  var x_indices = y_indices;\n"
-       << "  var k_indices: array<u32, " << kernal_rank << ">;\n"
+       << "  var k_indices: array<u32, " << kernel_rank << ">;\n"
        <<    var_decl_code
        << "  for (var i: u32 = 0; i < uniforms.kernel_size; i++) {\n"
        << "    var offset = i;\n"
        // ---- Compute offset to indices in pooling window.
-       << "    for (var j = 0; j < " << kernal_rank << "; j++) {\n"
-       << "      k_indices[j] = offset / " << GetElementAt("uniforms.kernel_strides", "j", kernal_rank) << ";\n"
-       << "      offset = offset % " << GetElementAt("uniforms.kernel_strides", "j", kernal_rank) << ";\n"
+       << "    for (var j = 0; j < " << kernel_rank << "; j++) {\n"
+       << "      k_indices[j] = offset / " << GetElementAt("uniforms.kernel_strides", "j", kernel_rank) << ";\n"
+       << "      offset = offset % " << GetElementAt("uniforms.kernel_strides", "j", kernel_rank) << ";\n"
        << "    }\n"
        // ---- Apply dilations in pooling window.
-       << "    for (var j = 0; j < " << kernal_rank << "; j++) {\n"
-       << "      k_indices[j] *= " << GetElementAt("uniforms.dilations", "j", kernal_rank) << ";\n"
+       << "    for (var j = 0; j < " << kernel_rank << "; j++) {\n"
+       << "      k_indices[j] *= " << GetElementAt("uniforms.dilations", "j", kernel_rank) << ";\n"
        << "    }\n"
        << "    var is_pad = false;\n"
        // ---- Compute x_indices in each data dimension
        << "    for (var j = " << data_dim_begin << "; j < " << data_dim_end << "; j++) {\n"
-       << "      x_indices[j] = y_indices[j] * " << GetElementAt("uniforms.strides", d_idx_code, kernal_rank) << ";\n"
+       << "      x_indices[j] = y_indices[j] * " << GetElementAt("uniforms.strides", d_idx_code, kernel_rank) << ";\n"
        << "      x_indices[j] += k_indices[" << d_idx_code << "];\n"
        << "      x_indices[j] -= " << GetElementAt("uniforms.pads", d_idx_code, pads_rank) << ";\n"
        << "      let j_dim_len = " << input.IndicesGet("uniforms.input_shape", "j") << ";\n"
@@ -168,7 +170,7 @@ Status PoolProgram::GenerateShaderCode(ShaderHelper& shader) const {
 template <typename PoolType, bool is_nhwc>
 Status Pool<PoolType, is_nhwc>::ComputeInternal(ComputeContext& context) const {
   // TODO: support 'ceil' mode.
-  ORT_RETURN_IF_NOT(pool_attrs_.ceil_mode == 0, "Using ceil ceil_mode is not supported yet.");
+  ORT_RETURN_IF_NOT(pool_attrs_.ceil_mode == 0, "Using ceil is not supported yet.");
   // TODO: support 'column major' storage_order.
   ORT_RETURN_IF_NOT(pool_attrs_.storage_order == 0, "Using column major storage_order is not supported yet.");
 
