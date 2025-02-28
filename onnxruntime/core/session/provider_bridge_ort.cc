@@ -1248,6 +1248,7 @@ struct ProviderHostImpl : ProviderHost {
   const Graph* Graph__ParentGraph(const Graph* p) const override { return p->ParentGraph(); }
   Graph* Graph__MutableParentGraph(Graph* p) override { return p->MutableParentGraph(); }
   const std::string& Graph__Name(const Graph* p) const noexcept override { return p->Name(); }
+  void Graph__SetName(Graph* p, const std::string& name) const noexcept override { return p->SetName(name); }
   const std::filesystem::path& Graph__ModelPath(const Graph* p) const override { return p->ModelPath(); }
   const std::vector<const NodeArg*>& Graph__GetInputsIncludingInitializers(const Graph* p) const noexcept override { return p->GetInputsIncludingInitializers(); }
   bool Graph__IsSubgraph(const Graph* p) override { return p->IsSubgraph(); }
