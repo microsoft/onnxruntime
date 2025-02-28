@@ -14,12 +14,22 @@
 
 namespace onnxruntime {
 namespace openvino_ep {
-void ParseConfigOptions(ProviderInfo& pi, const ConfigOptions& config_options) {
-  pi.so_disable_cpu_ep_fallback = config_options.GetConfigOrDefault(kOrtSessionOptionsDisableCPUEPFallback, "0") == "1";
-  pi.so_context_enable = config_options.GetConfigOrDefault(kOrtSessionOptionEpContextEnable, "0") == "1";
-  pi.so_context_embed_mode = config_options.GetConfigOrDefault(kOrtSessionOptionEpContextEmbedMode, "0") == "1";
-  pi.so_share_ep_contexts = config_options.GetConfigOrDefault(kOrtSessionOptionShareEpContexts, "0") == "1";
-  pi.so_context_file_path = config_options.GetConfigOrDefault(kOrtSessionOptionEpContextFilePath, "");
+void ParseConfigOptions(ProviderInfo& pi) {
+  if(pi.config_options==NULL)
+    return;
+
+  pi.so_disable_cpu_ep_fallback = pi.config_options->GetConfigOrDefault(kOrtSessionOptionsDisableCPUEPFallback, "0") == "1";
+  pi.so_context_enable = pi.config_options->GetConfigOrDefault(kOrtSessionOptionEpContextEnable, "0") == "1";
+  pi.so_context_embed_mode = pi.config_options->GetConfigOrDefault(kOrtSessionOptionEpContextEmbedMode, "0") == "1";
+  pi.so_share_ep_contexts = pi.config_options->GetConfigOrDefault(kOrtSessionOptionShareEpContexts, "0") == "1";
+  pi.so_context_file_path = pi.config_options->GetConfigOrDefault(kOrtSessionOptionEpContextFilePath, "");
+
+  if (pi.so_share_ep_contexts) {
+    ov::AnyMap map;
+    map["NPU_COMPILATION_MODE_PARAMS"] = "enable-wd-blockarg-input=true compute-layers-with-higher-precision=Sqrt,Power,ReduceSum";
+    pi.load_config["NPU"] = std::move(map);
+  }
+
 }
 
 void* ParseUint64(const ProviderOptions& provider_options, std::string option_name) {
@@ -166,6 +176,7 @@ struct OpenVINOProviderFactory : IExecutionProviderFactory {
   ~OpenVINOProviderFactory() override {}
 
   std::unique_ptr<IExecutionProvider> CreateProvider() override {
+    ParseConfigOptions(provider_info_);
     return std::make_unique<OpenVINOExecutionProvider>(provider_info_, shared_context_);
   }
 
@@ -184,13 +195,23 @@ struct OpenVINO_Provider : Provider {
   void* GetInfo() override { return &info_; }
 
   std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory(const void* void_params) override {
-    // Extract the void_params into ProviderOptions and ConfigOptions
-    using ConfigBuffer = std::pair<const ProviderOptions*, const ConfigOptions&>;
-    const ConfigBuffer* buffer = reinterpret_cast<const ConfigBuffer*>(void_params);
-    const auto& provider_options = *buffer->first;
-    const auto& config_options = buffer->second;
+    if (void_params == nullptr) {
+      LOGS_DEFAULT(ERROR) << "[OpenVINO EP] Passed NULL options to CreateExecutionProviderFactory()";
+      return nullptr;
+    }
+
+    std::array<void*, 2> pointers_array = *reinterpret_cast<const std::array<void*, 2>*>(void_params);
+    const ProviderOptions* provider_options_ptr = reinterpret_cast<ProviderOptions*>(pointers_array[0]);
+    const ConfigOptions* config_options = reinterpret_cast<ConfigOptions*>(pointers_array[1]);
+
+    if(provider_options_ptr == NULL) {
+      LOGS_DEFAULT(ERROR) << "[OpenVINO EP] Passed NULL ProviderOptions to CreateExecutionProviderFactory()";
+      return nullptr;
+    }
+    const ProviderOptions provider_options = *provider_options_ptr;
 
     ProviderInfo pi;
+    pi.config_options = config_options;
 
     std::string bool_flag = "";
 
@@ -326,18 +347,9 @@ struct OpenVINO_Provider : Provider {
 
     pi.disable_dynamic_shapes = ParseBooleanOption(provider_options, "disable_dynamic_shapes");
 
-    ParseConfigOptions(pi, config_options);
-
     // Always true for NPU plugin or when passed .
     if (pi.device_type.find("NPU") != std::string::npos) {
       pi.disable_dynamic_shapes = true;
-    }
-
-    // Append values to config to support weight-as-inputs conversion for shared contexts
-    if (pi.so_share_ep_contexts) {
-      ov::AnyMap map;
-      map["NPU_COMPILATION_MODE_PARAMS"] = "enable-wd-blockarg-input=true compute-layers-with-higher-precision=Sqrt,Power,ReduceSum";
-      pi.load_config["NPU"] = std::move(map);
     }
 
     return std::make_shared<OpenVINOProviderFactory>(pi, SharedContext::Get());
