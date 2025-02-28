@@ -158,7 +158,7 @@
       set(onnxruntime_NVCC_THREADS "1" CACHE STRING "Number of threads that NVCC can use for compilation.")
       target_compile_options(${target} PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:--threads \"${onnxruntime_NVCC_THREADS}\">")
     endif()
-    
+
     # Since CUDA 12.8, compiling diagnostics become stricter
     if (CMAKE_CUDA_COMPILER_VERSION VERSION_GREATER_EQUAL 12.8)
       target_compile_options(${target} PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:--relocatable-device-code=true>")
@@ -204,6 +204,7 @@
     endif()
 
     add_dependencies(${target} onnxruntime_providers_shared ${onnxruntime_EXTERNAL_DEPENDENCIES})
+    set(onnxruntime_providers_cuda_dll_deps)
     if(onnxruntime_CUDA_MINIMAL)
       target_compile_definitions(${target} PRIVATE USE_CUDA_MINIMAL)
       target_link_libraries(${target} PRIVATE ${ABSEIL_LIBS} ${ONNXRUNTIME_PROVIDERS_SHARED} Boost::mp11 safeint_interface CUDA::cudart)
@@ -218,6 +219,25 @@
       endif()
       target_link_libraries(${target} PRIVATE CUDA::cublasLt CUDA::cublas CUDNN::cudnn_all cudnn_frontend CUDA::curand CUDA::cufft CUDA::cudart
               ${ABSEIL_LIBS} ${ONNXRUNTIME_PROVIDERS_SHARED} Boost::mp11 safeint_interface)
+      # Add the CUDA DLLs as dependencies so that they are copied to the output directory
+      set(cuda_deps_partial_keywords "cublas" "cudnn" "curand" "cufft" "cudart")
+      file(GLOB CUDA_DLLs "${CUDAToolkit_BIN_DIR}/*.dll")
+      foreach(cuda_dll ${CUDA_DLLs})
+        get_filename_component(cuda_dll_name ${cuda_dll} NAME)
+        set(MATCH_FOUND FALSE)
+        foreach(keyword ${cuda_deps_partial_keywords})
+          string(FIND ${cuda_dll_name} ${keyword} KEYWORD_INDEX)
+
+          if(KEYWORD_INDEX GREATER -1)
+            set(MATCH_FOUND TRUE)
+            break()
+          endif()
+        endforeach()
+        if(MATCH_FOUND)
+          message(STATUS "Adding CUDA DLL dependency: ${cuda_dll}")
+          list(APPEND onnxruntime_providers_cuda_dll_deps ${cuda_dll})
+        endif()
+      endforeach()
     endif()
 
     if (onnxruntime_USE_TRITON_KERNEL)
@@ -296,6 +316,15 @@
     if (onnxruntime_ENABLE_ATEN)
       target_compile_definitions(${target} PRIVATE ENABLE_ATEN)
     endif()
+
+    # Copy dependency DLLs to the output directory
+    add_custom_command(
+      TARGET onnxruntime_providers_cuda
+      POST_BUILD
+      COMMAND ${CMAKE_COMMAND} -E copy_if_different "${onnxruntime_providers_cuda_dll_deps}" "$<TARGET_FILE_DIR:onnxruntime_providers_cuda>"
+      COMMAND_EXPAND_LISTS
+      VERBATIM
+    )
   endfunction()
   if(onnxruntime_ENABLE_CUDA_EP_INTERNAL_TESTS)
     config_cuda_provider_shared_module(onnxruntime_providers_cuda_obj)
