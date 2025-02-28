@@ -5,6 +5,7 @@
 
 #include "core/common/inlined_containers.h"
 #include "core/common/logging/logging.h"
+#include "core/common/common.h"
 #include "core/optimizer/graph_transformer.h"
 #include "core/framework/execution_providers.h"
 #include "core/framework/compute_capability.h"
@@ -18,29 +19,22 @@ using SelectionFunc = std::function<std::vector<std::unique_ptr<ComputeCapabilit
  */
 class GraphOptimizerRegistry {
  public:
-  explicit GraphOptimizerRegistry();
-  GraphOptimizerRegistry(const GraphOptimizerRegistry&) = delete;
-
   /**
-   * Get GraphOptimizerRegistry instance as a singleton.
+   * Get the GraphOptimizerRegistry instance.
+   * Note: Please call Create() to create the GraphOptimizerRegistry instance before using Get().
    */
-  static std::shared_ptr<GraphOptimizerRegistry> Get() {
-    if (!graph_optimizer_registry) {  // First Check (without locking)
-      std::lock_guard<std::mutex> lock(registry_mutex);
-      if (!graph_optimizer_registry) {  // Second Check (with locking)
-        graph_optimizer_registry = std::make_shared<GraphOptimizerRegistry>();
-      }
-    }
-    return graph_optimizer_registry;
+  static const GraphOptimizerRegistry& Get() {
+    ORT_ENFORCE(graph_optimizer_registry_);
+    return *graph_optimizer_registry_;
   }
 
   /**
-   * Initialize the graph optimizer registry as well as add predefined optimizers and selection functions for later lookup.
+   * Create and initialize the graph optimizer registry instance as a singleton.
    * The registry also keeps the references to session options, cpu_ep and logger tha are required by some optimizers.
    */
-  common::Status Create(const onnxruntime::SessionOptions* sess_options,
-                        const onnxruntime::IExecutionProvider* cpu_ep,
-                        const logging::Logger* logger);
+  static const GraphOptimizerRegistry& Create(const onnxruntime::SessionOptions* sess_options,
+                                              const onnxruntime::IExecutionProvider* cpu_ep,
+                                              const logging::Logger* logger);
 
   /**
    * Get optimizer selection function. If the optimizer name can't be found, return nullopt.
@@ -48,22 +42,37 @@ class GraphOptimizerRegistry {
   std::optional<SelectionFunc> GetSelectionFunc(std::string& name) const;
 
   /**
-   * Get CPU EP reference.
+   * Get CPU EP.
    */
-  const onnxruntime::IExecutionProvider* GetCpuEpReference() const { return cpu_ep_; }
+  const onnxruntime::IExecutionProvider& GetCpuEp() const { return *cpu_ep_; }
 
   /**
-   * Get Session Options reference.
+   * Get Session Options.
    */
-  const onnxruntime::SessionOptions* GetSessionOptionsReference() const { return session_options_; }
+  const onnxruntime::SessionOptions& GetSessionOptions() const { return *session_options_; }
+
+  /**
+   * Get Logger.
+   */
+  const logging::Logger* GetLogger() const { return logger_; }
 
  private:
-  InlinedHashMap<std::string, SelectionFunc> transformer_name_to_selection_func_;
   const logging::Logger* logger_;
   const onnxruntime::IExecutionProvider* cpu_ep_;
   const onnxruntime::SessionOptions* session_options_;
 
-  static std::shared_ptr<GraphOptimizerRegistry> graph_optimizer_registry;
-  static std::mutex registry_mutex;
+  static std::unique_ptr<GraphOptimizerRegistry> graph_optimizer_registry_;
+  static std::mutex registry_mutex_;
+
+  InlinedHashMap<std::string, SelectionFunc> transformer_name_to_selection_func_;
+
+  GraphOptimizerRegistry::GraphOptimizerRegistry(const onnxruntime::SessionOptions* sess_options,
+                                                 const onnxruntime::IExecutionProvider* cpu_ep,
+                                                 const logging::Logger* logger);
+
+  /**
+   * Create pre-defined selection functions.
+   */
+  common::Status CreatePredefinedSelectionFuncs();
 };
 }  // namespace onnxruntime

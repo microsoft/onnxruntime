@@ -56,9 +56,9 @@ Status ConstantFoldingDQFuncs::Optimize(Graph& graph, const ComputeCapability& o
   }
 
   auto optimizer_registry = onnxruntime::GraphOptimizerRegistry::Get();
-  static auto transformer = std::make_unique<ConstantFoldingDQ>(*optimizer_registry->GetCpuEpReference(),
+  static auto transformer = std::make_unique<ConstantFoldingDQ>(optimizer_registry.GetCpuEp(),
                                                                 false /*skip_dequantize_linear*/,
-                                                                optimizer_registry->GetSessionOptionsReference()->config_options,
+                                                                optimizer_registry.GetSessionOptions().config_options,
                                                                 dq_node_index_set);
 
   bool modified = false;

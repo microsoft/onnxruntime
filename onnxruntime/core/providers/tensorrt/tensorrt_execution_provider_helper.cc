@@ -283,9 +283,9 @@ void TensorrtExecutionProvider::SelectQualifiedDQNode(const GraphViewer& graph,
     // Node selection: (i.e. initializer -> DQ -> bias of X)
     // 1. DequantizeLinear op
     // 2. DQ node does not produce graph output, single consumer
-    // 3. The fist input of DQ is constant initializer.
+    // 3. The first input of DQ is constant initializer.
     // 4. The data type of initializer is INT32, UINT16 or INT16
-    // 4. X should be Gemm, Conv or LayerNormalization ?
+    // 5. X should be Gemm, Conv or LayerNormalization ?
     if (node->OpType() == "DequantizeLinear" &&
         node->GetOutputEdgesCount() == 1 &&
         (data_type == ONNX_NAMESPACE::TensorProto_DataType_INT32 || data_type == ONNX_NAMESPACE::TensorProto_DataType_INT16 || data_type == ONNX_NAMESPACE::TensorProto_DataType_UINT16) &&

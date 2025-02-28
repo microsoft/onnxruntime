@@ -244,7 +244,7 @@ struct ProviderHostImpl : ProviderHost {
     std::string optimizer_name(name);
 
     auto optimizer_registry = onnxruntime::GraphOptimizerRegistry::Get();
-    auto func = optimizer_registry->GetSelectionFunc(optimizer_name);
+    auto func = optimizer_registry.GetSelectionFunc(optimizer_name);
 
     if (func.has_value()) {
       selection_func = func.value();
