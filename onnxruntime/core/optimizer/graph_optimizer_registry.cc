@@ -30,7 +30,7 @@ Status GraphOptimizerRegistry::Create(const onnxruntime::SessionOptions* sess_op
     std::lock_guard<std::mutex> lock(registry_mutex_);
     if (!graph_optimizer_registry_) {  // Second Check (with locking)
       graph_optimizer_registry_ = std::unique_ptr<GraphOptimizerRegistry>(new GraphOptimizerRegistry(sess_options, cpu_ep, logger));
-      graph_optimizer_registry_->CreatePredefinedSelectionFuncs();
+      ORT_RETURN_IF_ERROR(graph_optimizer_registry_->CreatePredefinedSelectionFuncs());
     }
   } else {
     LOGS(*graph_optimizer_registry_->GetLogger(), INFO) << "The GraphOptimizerRegistry instance has been created before.";

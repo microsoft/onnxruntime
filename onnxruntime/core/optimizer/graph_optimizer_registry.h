@@ -57,9 +57,9 @@ class GraphOptimizerRegistry {
   const logging::Logger* GetLogger() const { return logger_; }
 
  private:
-  const logging::Logger* logger_;
-  const onnxruntime::IExecutionProvider* cpu_ep_;
   const onnxruntime::SessionOptions* session_options_;
+  const onnxruntime::IExecutionProvider* cpu_ep_;
+  const logging::Logger* logger_;
 
   static std::unique_ptr<GraphOptimizerRegistry> graph_optimizer_registry_;
   static std::mutex registry_mutex_;
