@@ -6,8 +6,7 @@ vcpkg_from_github(
     REF v3.21.12
     SHA512 152f8441c325e808b942153c15e82fdb533d5273b50c25c28916ec568ada880f79242bb61ee332ac5fb0d20f21239ed6f8de02ef6256cc574b1fc354d002c6b0
     HEAD_REF master
-    PATCHES
-	protobuf_cmake.patch
+    PATCHES ../../patches/protobuf/protobuf_cmake.patch
 )
 
 string(COMPARE EQUAL "${TARGET_TRIPLET}" "${HOST_TRIPLET}" protobuf_BUILD_PROTOC_BINARIES)
