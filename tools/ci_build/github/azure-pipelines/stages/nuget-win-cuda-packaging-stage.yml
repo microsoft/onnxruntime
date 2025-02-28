@@ -80,7 +80,7 @@ stages:
 - stage: Windows_Packaging_combined_GPU
   dependsOn:
     - Windows_Packaging_CUDA
-    # - Windows_Packaging_TensorRT
+    - Windows_Packaging_TensorRT
   condition: succeeded()
 
   jobs:
