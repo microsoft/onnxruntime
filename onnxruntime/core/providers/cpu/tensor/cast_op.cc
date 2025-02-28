@@ -254,11 +254,16 @@ struct TensorCasterNoSat<std::string, DstType> {
 // tensor MLFloat16 -> float
 template <>
 struct TensorCaster<MLFloat16, float> {
-  void Cast(const OpKernelContext&, const TensorShape& shape, const Tensor& in, Tensor& out) const {
+  void Cast(const OpKernelContext& ctx, const TensorShape& shape, const Tensor& in, Tensor& out) const {
     auto out_data = out.MutableData<float>();
     auto in_data = in.Data<MLFloat16>();
     const size_t shape_size = narrow<size_t>(shape.Size());
-    MlasConvertHalfToFloatBuffer(in_data, out_data, shape_size);
+
+    concurrency::ThreadPool::TryParallelFor(ctx.GetOperatorThreadPool(), shape_size,
+                                            {shape_size * 2.f, shape_size * 4.f, static_cast<double>(shape_size / 4)},
+        [in_data, out_data](std::ptrdiff_t first_span, std::ptrdiff_t last_span) {
+          MlasConvertHalfToFloatBuffer(in_data + first_span, out_data + first_span, static_cast<size_t>(last_span - first_span));
+        });
   }
 };
 
