@@ -379,7 +379,7 @@ Status FlashAttentionProgram::GenerateShaderCode(ShaderHelper& shader) const {
     if (sg_size > 8) {
       for (var i:u32 = 0; i < qkv_head_size_vec; i++)
       {
-          var val = select(vec4<q_element_t>(0), v_tile[capped_sg_id][i], k_start + capped_sg_id < seq_causal_length);
+          var val = v_tile[capped_sg_id][i];
           var sum = subgroupShuffle(val, 0) * qk_1[0];
           sum += subgroupShuffle(val, 1) * qk_1[1];
           sum += subgroupShuffle(val, 2) * qk_1[2];
