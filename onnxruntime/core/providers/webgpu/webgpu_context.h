@@ -6,7 +6,7 @@
 #include <memory>
 #include <mutex>
 
-#include <webgpu/webgpu_cpp.h>
+#include "core/providers/webgpu/webgpu_external_header.h"
 
 #include "core/common/common.h"
 #include "core/framework/library_handles.h"
