@@ -53,6 +53,11 @@ parameters:
   type: string
   default: 2.31.0.250130
 
+- name: is1ES
+  displayName: Is 1ES pipeline
+  type: boolean
+  default: false
+
 stages:
 - template: linux-cpu-packaging-pipeline.yml
   parameters:
@@ -81,6 +86,7 @@ stages:
       enable_code_sign: ${{ parameters.DoEsrp }}
       packageName: 'onnxruntime-android'
       ReleaseVersionSuffix: $(ReleaseVersionSuffix)
+      is1ES: ${{ parameters.is1ES }}
 
 - stage: Android_Java_API_AAR_Testing_Full
   dependsOn: Android_Java_API_AAR_Packaging_Full
@@ -106,6 +112,7 @@ stages:
       packageName: 'onnxruntime-android-qnn'
       ReleaseVersionSuffix: $(ReleaseVersionSuffix)
       QnnSDKVersion: ${{ parameters.QnnSDKVersion }}
+      is1ES: ${{ parameters.is1ES }}
 
 - stage: Final_AAR_Testing_Android_QNN
   dependsOn: Android_Java_API_AAR_Packaging_QNN
@@ -152,9 +159,9 @@ stages:
           --mac_catalyst_enabled
       displayName: "Test Apple framework"
 
-    - task: PublishBuildArtifacts@1
+    - task: 1ES.PublishPipelineArtifact@1
       inputs:
-        pathtoPublish: '$(Build.BinariesDirectory)/artifacts'
+        targetPath: '$(Build.BinariesDirectory)/artifacts'
         artifactName: 'onnxruntime-ios-full-xcframework'
 
     - template: component-governance-component-detection-steps.yml
@@ -282,11 +289,11 @@ stages:
         SourceFolder: '$(Build.BinariesDirectory)\java-artifact\onnxruntime-java-win-x64'
         TargetFolder: '$(Build.ArtifactStagingDirectory)'
 
-    - task: PublishPipelineArtifact@1
+    - task: 1ES.PublishPipelineArtifact@1
       displayName: 'Publish Pipeline Artifact'
       inputs:
         targetPath: '$(Build.ArtifactStagingDirectory)'
-        artifact: 'onnxruntime-java'
+        artifactName: 'onnxruntime-java'
 
     - template: component-governance-component-detection-steps.yml
       parameters :
@@ -488,7 +495,7 @@ stages:
         PlatformsSupported: 'win-x64,win-x86,linux-x64,linux-arm64,osx-x64'
         VerifyNugetSigning: false
 
-    - task: PublishPipelineArtifact@0
+    - task: 1ES.PublishPipelineArtifact@1
       displayName: 'Publish Pipeline NuGet Artifact'
       inputs:
         artifactName: 'drop-signed-nuget-CPU'
@@ -767,7 +774,7 @@ stages:
         Contents: 'onnxruntime-node-*.tgz'
         TargetFolder: '$(Build.ArtifactStagingDirectory)'
 
-    - task: PublishPipelineArtifact@0
+    - task: 1ES.PublishPipelineArtifact@1
       displayName: 'Publish NPM packages files'
       inputs:
         artifactName: 'NPM_packages'
