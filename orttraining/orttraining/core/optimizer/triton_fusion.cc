@@ -64,7 +64,7 @@ bool CheckAxes(const Graph& graph, const Node& node, bool single_axis, const std
     if (!axes_const) {
       return false;
     }
-    Initializer initializer{*axes_const, graph.ModelPath()};
+    Initializer initializer{graph, *axes_const, graph.ModelPath()};
     axes_values.insert(axes_values.end(), initializer.DataAsSpan<int64_t>().begin(),
                        initializer.DataAsSpan<int64_t>().end());
   } else {

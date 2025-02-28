@@ -83,7 +83,7 @@ Status SceLossGradBiasFusion::ApplyImpl(Graph& graph, bool& modified, int graph_
       ignore_index_initializer_proto.set_name(graph.GenerateNodeArgName("sce_grad_ignore_index"));
       ignore_index_initializer_proto.set_data_type(ONNX_NAMESPACE::TensorProto_DataType_INT64);
       ignore_index_initializer_proto.add_int64_data(static_cast<int64_t>(-1));
-      new_scegrad_node_inputs.emplace_back(&graph_utils::AddInitializer(graph, ignore_index_initializer_proto));
+      new_scegrad_node_inputs.emplace_back(&graph_utils::AddInitializerWithExternalData(graph, ignore_index_initializer_proto));
     }
     new_scegrad_node_inputs.emplace_back(bias_def);
     if (!p_reshape) {

@@ -61,6 +61,13 @@ class ScopedOrtCallbackInvoker {
     return *this;
   }
 
+  OrtCallback Release() noexcept {
+    OrtCallback callback = callback_;
+    callback_.f = nullptr;
+    callback_.param = nullptr;
+    return callback;
+  }
+
   ~ScopedOrtCallbackInvoker() noexcept {
     if (callback_.f) {
       callback_.f(callback_.param);

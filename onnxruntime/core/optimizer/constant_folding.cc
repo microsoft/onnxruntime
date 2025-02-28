@@ -109,7 +109,7 @@ static Status ConstantFoldIfNode(Graph& graph, Node& if_node, const logging::Log
   }
 
   // This is a boolean initializer with a single element.
-  Initializer condition{*initializer};
+  Initializer condition{graph, *initializer};
   ORT_RETURN_IF_NOT(condition.size() == 1, "If node condition initializer: `", condition_def->Name(),
                     "' is expected to have a single boolean element");
 

@@ -62,8 +62,8 @@ Status BatchNormalizationAddFusion::Apply(Graph& graph, Node& node, RewriteRuleE
     return Status::OK();
   }
 
-  Initializer BatchNormalization_B{*BatchNormalization_B_tensor_proto, graph.ModelPath()};
-  Initializer add_B{*add_B_tensor_proto, graph.ModelPath()};
+  Initializer BatchNormalization_B{graph, *BatchNormalization_B_tensor_proto, graph.ModelPath()};
+  Initializer add_B{graph, *add_B_tensor_proto, graph.ModelPath()};
 
   if (BatchNormalization_B.size() != add_B.size()) {
     return Status::OK();

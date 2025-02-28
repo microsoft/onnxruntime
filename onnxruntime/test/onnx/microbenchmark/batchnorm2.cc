@@ -24,7 +24,7 @@ void SetRandom(Tensor& input) {
 }
 
 static void BM_BatchNormOldEigen(benchmark::State& state) {
-  std::shared_ptr<CPUAllocator> alloc = std::make_shared<CPUAllocator>();
+  std::shared_ptr<CPUAllocator> alloc = CPUAllocator::Instance();
   const int64_t batch_size = state.range(0);
 
   const TensorShape shape = {batch_size, 64, 75, 75};

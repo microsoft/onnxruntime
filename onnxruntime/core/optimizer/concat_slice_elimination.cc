@@ -86,7 +86,7 @@ static bool GetSliceInfo(const Graph& graph,
 
     auto get_initializer_data =
         [&graph](const ONNX_NAMESPACE::TensorProto* initializer) -> InlinedVector<int64_t> {
-      Initializer init(*initializer, graph.ModelPath());
+      Initializer init(graph, *initializer, graph.ModelPath());
       if (initializer->data_type() == ONNX_NAMESPACE::TensorProto::INT32) {
         int32_t* init_data = init.data<int32_t>();
         return InlinedVector<int64_t>(init_data, init_data + init.size());

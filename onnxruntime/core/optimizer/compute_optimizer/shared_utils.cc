@@ -189,7 +189,7 @@ NodeArg* CreateInitializerFromVector(Graph& graph,
               "total_count: ", total_count, " values.size(): ", values.size());
 
   utils::SetRawDataInTensorProto(const_tensor, values.data(), values.size() * sizeof(int64_t));
-  return &graph_utils::AddInitializer(graph, const_tensor);
+  return &graph_utils::AddInitializerWithExternalData(graph, const_tensor);
 }
 
 NodeArg* InsertNodesForValidIndices(Graph& graph,

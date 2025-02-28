@@ -172,13 +172,21 @@ DEFINE_INT4_UNPACK_TENSOR_WITH_RAW_DATA_IMPL(UInt4x2)
 Status ReadExternalDataForTensor(const ONNX_NAMESPACE::TensorProto& tensor_proto,
                                  const std::filesystem::path& tensor_proto_dir,
                                  std::vector<uint8_t>& unpacked_tensor) {
-  std::basic_string<ORTCHAR_T> external_file_path;
+  PathString external_file_path;
   onnxruntime::FileOffsetType file_offset;
   SafeInt<size_t> tensor_byte_size;
   ORT_RETURN_IF_ERROR(
       GetExternalDataInfo(tensor_proto, tensor_proto_dir, external_file_path, file_offset, tensor_byte_size));
 
   unpacked_tensor.resize(tensor_byte_size);
+
+  if (external_file_path == kTensorProtoMemoryAddressTag) {
+    // The external data is in the same memory as the tensor proto.
+    // The offset is the address of the data.
+    std::memcpy(unpacked_tensor.data(), reinterpret_cast<const void*>(file_offset), tensor_byte_size);
+    return Status::OK();
+  }
+
   ORT_RETURN_IF_ERROR(onnxruntime::Env::Default().ReadFileIntoBuffer(
       external_file_path.c_str(),
       file_offset,
@@ -216,7 +224,7 @@ Status TensorProtoToOrtValueImpl(const Env& env, const std::filesystem::path& mo
                              tensor->SizeInBytes(), ", Got ", m->GetLen());
     }
   } else {
-    tensor = std::make_unique<Tensor>(type, tensor_shape, alloc);
+    tensor = std::make_unique<Tensor>(type, tensor_shape, std::move(alloc));
   }
 
   ORT_RETURN_IF_ERROR(TensorProtoToTensor(env, model_path, tensor_proto, *tensor));
@@ -1018,16 +1026,16 @@ static Status GetFileContent(const Env& env, const std::filesystem::path& file_p
 }
 #endif
 
-Status GetExtDataFromTensorProto(const Env& env, const std::filesystem::path& model_path,
-                                 const ONNX_NAMESPACE::TensorProto& tensor_proto, void*& ext_data_buf,
-                                 SafeInt<size_t>& ext_data_len, OrtCallback& ext_data_deleter,
-                                 Tensor* buffered_tensor,
-                                 PrepackedWeightsForGraph* prepacked_info) {
+Status GetExtDataFromTensorProto(const Env& env,
+                                 const std::filesystem::path& model_path,
+                                 const ONNX_NAMESPACE::TensorProto& tensor_proto,
+                                 OrtValue& ort_value, PrepackedWeightsForGraph* prepacked_info) {
   ORT_ENFORCE(utils::HasExternalData(tensor_proto));
   std::basic_string<ORTCHAR_T> tensor_proto_dir;
   if (!model_path.empty()) {
     ORT_RETURN_IF_ERROR(GetDirNameFromFilePath(model_path, tensor_proto_dir));
   }
+
   std::basic_string<ORTCHAR_T> external_data_file_path;
   FileOffsetType file_offset;
   SafeInt<size_t> raw_data_safe_len = 0;
@@ -1035,20 +1043,24 @@ Status GetExtDataFromTensorProto(const Env& env, const std::filesystem::path& mo
   if (prepacked_info != nullptr) {
     prepacked_infos.emplace();
   }
+
   ORT_RETURN_IF_ERROR(
       GetExternalDataInfo(tensor_proto, tensor_proto_dir, external_data_file_path, file_offset,
                           raw_data_safe_len, (prepacked_info != nullptr) ? &*prepacked_infos : nullptr));
 
+  TensorShape tensor_shape = utils::GetTensorShapeFromTensorProto(tensor_proto);
+  const DataTypeImpl* const type = DataTypeImpl::TensorTypeFromONNXEnum(tensor_proto.data_type())->GetElementType();
+  MLDataType ml_tensor_type = DataTypeImpl::GetType<Tensor>();
+  const auto& name = tensor_proto.name();
+
   if (external_data_file_path == onnxruntime::utils::kTensorProtoMemoryAddressTag) {
     // the value in location is the memory address of the data
-    ext_data_buf = reinterpret_cast<void*>(file_offset);
-    ext_data_len = raw_data_safe_len;
-    if (buffered_tensor) {
-      ext_data_deleter = OrtCallback{[](void* p) noexcept { delete reinterpret_cast<Tensor*>(p); },
-                                     reinterpret_cast<void*>(buffered_tensor)};
-    } else {
-      ext_data_deleter = OrtCallback{nullptr, nullptr};
-    }
+    void* ext_data_buf = reinterpret_cast<void*>(file_offset);
+    auto tensor = Tensor{type, tensor_shape, ext_data_buf, OrtMemoryInfo(CPU, OrtAllocatorType::OrtDeviceAllocator)};
+    ORT_RETURN_IF(raw_data_safe_len != tensor.SizeInBytes(), "Weight: ", name,
+                  " kTensorProtoMemoryAddressTag address points to length: ", static_cast<size_t>(raw_data_safe_len),
+                  " while shape has bytes size: ", tensor.SizeInBytes());
+    Tensor::InitOrtValue(std::move(tensor), ort_value);
   } else {
 #if defined(__wasm__)
     ORT_RETURN_IF(file_offset < 0 || file_offset + raw_data_safe_len >= 4294967296,
@@ -1057,19 +1069,23 @@ Status GetExtDataFromTensorProto(const Env& env, const std::filesystem::path& mo
                   " are out of bounds or can not be read in full (>4GB).");
 
     auto buffer = std::make_unique<char[]>(raw_data_safe_len);
-    ext_data_deleter = OrtCallback{DeleteCharArray, buffer.get()};
-    ext_data_buf = buffer.release();
-    ext_data_len = raw_data_safe_len;
+    auto p_tensor = std::make_unique<Tensor>(type, tensor_shape, buffer.get(),
+                                             OrtMemoryInfo(CPU, OrtAllocatorType::OrtDeviceAllocator));
+    auto ext_data_deleter = OrtCallback{DeleteCharArray, buffer.get()};
+    OrtCallbackInvoker deleter{ext_data_deleter};
+
+    ort_value.Init(p_tensor.release(), ml_tensor_type, deleter);
+    buffer.release();
 
     ORT_RETURN_IF_ERROR(LoadWebAssemblyExternalData(env,
                                                     external_data_file_path,
                                                     file_offset,
                                                     ext_data_len,
                                                     ExternalDataLoadType::CPU,
-                                                    ext_data_buf));
+                                                    buffer.get()));
 #else
-    // The GetFileContent function doesn't report error if the requested data range is invalid. Therefore we need to
-    // manually check file size first.
+    //  The GetFileContent function doesn't report error if the requested data range is invalid. Therefore we need to
+    //  manually check file size first.
     std::uintmax_t file_length = std::filesystem::file_size(external_data_file_path);
 
     SafeInt<FileOffsetType> end_of_read(file_offset);
@@ -1078,9 +1094,22 @@ Status GetExtDataFromTensorProto(const Env& env, const std::filesystem::path& mo
                   "External initializer: ", tensor_proto.name(), " offset: ", file_offset,
                   " size to read: ", static_cast<size_t>(raw_data_safe_len), " given file_length: ", file_length,
                   " are out of bounds or can not be read in full.");
+
+    void* ext_data_buf = nullptr;
+    OrtCallback ext_data_deleter;
     ORT_RETURN_IF_ERROR(GetFileContent(env, external_data_file_path.c_str(), file_offset, raw_data_safe_len,
                                        ext_data_buf, ext_data_deleter));
-    ext_data_len = raw_data_safe_len;
+
+    // Temp guard
+    ScopedOrtCallbackInvoker guard{ext_data_deleter};
+    auto p_tensor = std::make_unique<Tensor>(type, tensor_shape, ext_data_buf,
+                                             OrtMemoryInfo(CPU, OrtAllocatorType::OrtDeviceAllocator));
+    ORT_RETURN_IF(raw_data_safe_len != p_tensor->SizeInBytes(), "Weight: ", name,
+                  " External file content has length: ", static_cast<size_t>(raw_data_safe_len),
+                  " while shape has bytes size: ", p_tensor->SizeInBytes());
+
+    ort_value.Init(p_tensor.release(), ml_tensor_type, OrtCallbackInvoker{ext_data_deleter});
+    guard.Release();
 
     if (prepacked_info != nullptr && !prepacked_infos->empty()) {
       for (const auto& [key, blobs] : *prepacked_infos) {
@@ -1157,9 +1186,27 @@ Status TensorProtoToTensor(const Env& env, const std::filesystem::path& model_pa
                            const ONNX_NAMESPACE::TensorProto& tensor_proto, Tensor& tensor) {
   // Validate tensor compatibility
   TensorShape tensor_shape = GetTensorShapeFromTensorProto(tensor_proto);
-  if (tensor_shape != tensor.Shape()) {
-    return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT, "TensorProtoToTensor() tensor shape mismatch!");
+
+  if (std::any_of(tensor_shape.GetDims().begin(), tensor_shape.GetDims().end(),
+                  [](int64_t dim) {
+                    return dim < 0;
+                  })) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "tensor can't contain negative dims");
   }
+
+  if (utils::HasExternalData(tensor_proto)) {
+    OrtValue ort_value;
+    ORT_RETURN_IF_ERROR(GetExtDataFromTensorProto(env, model_path, tensor_proto, ort_value));
+    ORT_ENFORCE(ort_value.IsTensor());
+    const auto& ext_tensor = ort_value.Get<Tensor>();
+    MakeCpuTensorCopy(ext_tensor, tensor);
+    return Status::OK();
+  }
+
+  if (tensor_shape != tensor.Shape()) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "TensorProtoToTensor() tensor shape mismatch!");
+  }
+
   const DataTypeImpl* const source_type =
       DataTypeImpl::TensorTypeFromONNXEnum(tensor_proto.data_type())->GetElementType();
   if (source_type->Size() > tensor.DataType()->Size()) {
@@ -1167,15 +1214,12 @@ Status TensorProtoToTensor(const Env& env, const std::filesystem::path& model_pa
                            " can not be written into Tensor type ", DataTypeImpl::ToString(tensor.DataType()));
   }
 
+  //  Below we handle the case where TensorProto contains data in itself
+
   // find raw data in proto buf
   void* raw_data = nullptr;
   SafeInt<size_t> raw_data_len = 0;
-  AutoDelete deleter_for_file_data;
-  OrtCallback& d = deleter_for_file_data.d;
-
-  if (utils::HasExternalData(tensor_proto)) {
-    ORT_RETURN_IF_ERROR(GetExtDataFromTensorProto(env, model_path, tensor_proto, raw_data, raw_data_len, d));
-  } else if (utils::HasRawData(tensor_proto)) {
+  if (utils::HasRawData(tensor_proto)) {
     raw_data = const_cast<char*>(tensor_proto.raw_data().data());
     // TODO The line above has const-correctness issues. Below is a possible fix which copies the tensor_proto data
     //      into a writeable buffer. However, it requires extra memory which may exceed the limit for certain tests.
@@ -1186,25 +1230,19 @@ Status TensorProtoToTensor(const Env& env, const std::filesystem::path& model_pa
     raw_data_len = tensor_proto.raw_data().size();
   }
 
-  if (nullptr != raw_data && utils::IsPrimitiveDataType<std::string>(source_type)) {
+  if (nullptr != raw_data && utils::HasString(tensor_proto)) {
     return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT, "string tensor can not have raw data");
   }
 
   // unpacking tensor_proto data to preallocated tensor
   void* preallocated = tensor.MutableDataRaw();
-  int64_t tensor_size = 1;
-  {
-    for (auto i : tensor_proto.dims()) {
-      if (i < 0) {
-        return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT, "tensor can't contain negative dims");
-      }
-      tensor_size *= i;
-    }
-  }
+  const int64_t tensor_size = tensor_shape.Size();
+
   // tensor_size could be zero. see test_slice_start_out_of_bounds\test_data_set_0\output_0.pb
-  if (static_cast<uint64_t>(tensor_size) > SIZE_MAX) {
+  if (narrow<uint64_t>(tensor_size) > SIZE_MAX) {
     return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT, "size overflow");
   }
+
   switch (tensor_proto.data_type()) {
     CASE_PROTO(FLOAT, float);
     CASE_PROTO(DOUBLE, double);
@@ -1239,6 +1277,20 @@ Status TensorProtoToTensor(const Env& env, const std::filesystem::path& model_pa
     }
   }
 
+  return Status::OK();
+}
+
+common::Status CreateTensorFromTensorProto(const Env& env, const std::filesystem::path& model_path,
+                                           const ONNX_NAMESPACE::TensorProto& tensor_proto, Tensor& tensor) {
+  ORT_RETURN_IF_NOT(utils::HasDataType(tensor_proto), "Initializer must have a datatype");
+  auto proto_data_type = tensor_proto.data_type();
+
+  auto proto_shape = utils::GetTensorShapeFromTensorProto(tensor_proto);
+  Tensor w(DataTypeImpl::TensorTypeFromONNXEnum(proto_data_type)->GetElementType(), proto_shape,
+           CPUAllocator::Instance());
+  ORT_RETURN_IF_ERROR(utils::TensorProtoToTensor(env, model_path, tensor_proto, w));
+
+  tensor = std::move(w);
   return Status::OK();
 }
 
@@ -1304,15 +1356,7 @@ ONNX_NAMESPACE::TensorProto TensorToTensorProto(const Tensor& tensor,
   }
 
   tensor_proto.set_data_type(tensor.GetElementType());
-  if (tensor.IsDataTypeString()) {
-    auto* mutable_string_data = tensor_proto.mutable_string_data();
-    auto f = tensor.Data<std::string>();
-    auto end = f + tensor.Shape().Size();
-    for (; f < end; ++f) {
-      *mutable_string_data->Add() = *f;
-    }
-  } else if (use_tensor_buffer && tensor.SizeInBytes() > 127) {
-    // The logic aligns with
+  if (use_tensor_buffer && tensor.SizeInBytes() > kSmallTensorExternalDataThreshold) {
     // https://github.com/microsoft/onnxruntime/blob/main/onnxruntime/core/graph/graph_flatbuffers_utils.cc#L302
     const auto* raw_data = tensor.DataRaw();
     ORT_ENFORCE(raw_data, "Missing raw data for tensor proto. Invalid tensor.");
@@ -1327,7 +1371,16 @@ ONNX_NAMESPACE::TensorProto TensorToTensorProto(const Tensor& tensor,
                                                  offset, tensor.SizeInBytes(), tensor_proto);
 
   } else {
-    utils::SetRawDataInTensorProto(tensor_proto, tensor.DataRaw(), tensor.SizeInBytes());
+    if (tensor.IsDataTypeString()) {
+      auto* mutable_string_data = tensor_proto.mutable_string_data();
+      auto f = tensor.Data<std::string>();
+      auto end = f + tensor.Shape().Size();
+      for (; f < end; ++f) {
+        *mutable_string_data->Add() = *f;
+      }
+    } else {
+      SetRawDataInTensorProto(tensor_proto, tensor.DataRaw(), tensor.SizeInBytes());
+    }
   }
 
   return tensor_proto;
@@ -1397,6 +1450,15 @@ common::Status ConstantNodeProtoToTensorProto(const ONNX_NAMESPACE::NodeProto& n
                                               ONNX_NAMESPACE::TensorProto& tensor) {
   ORT_ENFORCE(node.output_size() == 1, "NodeProto for Constant should have 1 output. Got:", node.output_size());
   return ConstantNodeProtoToTensorProto(node, model_path, tensor, node.output(0));
+}
+
+void MakeCpuTensorCopy(const Tensor& src_tensor, Tensor& dst_tensor) {
+  if (src_tensor.IsDataTypeString()) {
+    auto src_span = src_tensor.DataAsSpan<std::string>();
+    std::copy(src_span.begin(), src_span.end(), dst_tensor.MutableDataAsSpan<std::string>().begin());
+  } else {
+    std::memcpy(dst_tensor.MutableDataRaw(), src_tensor.DataRaw(), src_tensor.SizeInBytes());
+  }
 }
 
 #if !defined(DISABLE_SPARSE_TENSORS)
@@ -1833,7 +1895,7 @@ Status UnpackInitializerData(const onnx::TensorProto& initializer,
   // TODO, if std::vector does not use a custom allocator, the default std::allocator will
   // allocation the memory aligned to std::max_align_t, need look into allocating
   // forced aligned memory (align as 16 or larger)for unpacked_tensor
-  if (initializer.data_location() == TensorProto_DataLocation_EXTERNAL) {
+  if (HasExternalData(initializer)) {
     ORT_RETURN_IF_ERROR(ReadExternalDataForTensor(
         initializer,
         model_path.parent_path(),

@@ -425,7 +425,7 @@ void GetQuantizationScaleAndZeroPoint(
     if (!s) {
       LOGS_DEFAULT(ERROR) << name + " is not a constant initializer";
     };
-    Initializer unpacked_tensor(*s, model_path);
+    Initializer unpacked_tensor(graph_viewer.GetGraph(), *s, model_path);
     scale = unpacked_tensor.DataAsSpan<float>()[0];
 
     // per channel quantized handling
@@ -442,7 +442,7 @@ void GetQuantizationScaleAndZeroPoint(
     if (!s) {
       LOGS_DEFAULT(ERROR) << name + " is not a constant initializer";
     };
-    Initializer unpacked_tensor(*s, model_path);
+    Initializer unpacked_tensor(graph_viewer.GetGraph(), *s, model_path);
     bool is_i8_zp = unpacked_tensor.data_type() == onnx::TensorProto_DataType_INT8;
     // some qdq conv bias is int32 quantized
     bool is_int32_zp = unpacked_tensor.data_type() == onnx::TensorProto_DataType_INT32;

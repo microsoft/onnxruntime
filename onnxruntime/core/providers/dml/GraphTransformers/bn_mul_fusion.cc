@@ -54,8 +54,8 @@ Status BatchNormalizationMulFusion::Apply(Graph& graph, Node& node, RewriteRuleE
     }
   }
 
-  Initializer BatchNormalization_Scale{*BatchNormalization_Scale_tensor_proto, graph.ModelPath()};
-  Initializer mul_B{*mul_B_tensor_proto, graph.ModelPath()};
+  Initializer BatchNormalization_Scale{graph, *BatchNormalization_Scale_tensor_proto, graph.ModelPath()};
+  Initializer mul_B{graph, *mul_B_tensor_proto, graph.ModelPath()};
 
   const ONNX_NAMESPACE::TensorProto* BatchNormalization_B_tensor_proto = nullptr;
   if (!graph.GetInitializedTensor(BatchNormalization_inputs[2]->Name(), BatchNormalization_B_tensor_proto))
@@ -67,7 +67,7 @@ Status BatchNormalizationMulFusion::Apply(Graph& graph, Node& node, RewriteRuleE
       BatchNormalization_B_tensor_proto->dims_size() != 1) {
     return Status::OK();
   }
-  Initializer BatchNormalization_B{*BatchNormalization_B_tensor_proto, graph.ModelPath()};
+  Initializer BatchNormalization_B{graph, *BatchNormalization_B_tensor_proto, graph.ModelPath()};
 
   // Calculate new value of initializers of BatchNormalization node
   BatchNormalization_Scale.scale_by_axis(mul_B, 1);

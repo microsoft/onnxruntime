@@ -786,7 +786,7 @@ std::string_view ApiGraph::AddInitializer(api::DataType dtype, const std::vector
   }
   utils::SetRawDataInTensorProto(tensor_proto, data.data(), data.size());
 
-  const auto& node_arg = graph_utils::AddInitializer(graph_, tensor_proto);
+  const auto& node_arg = graph_utils::AddInitializerWithExternalData(graph_, tensor_proto);
   return node_arg.Name();
 }
 

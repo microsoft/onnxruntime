@@ -103,6 +103,11 @@ void AllocatorDefaultFree(void* p) {
 
 #endif  // USE_MIMALLOC
 
+AllocatorPtr CPUAllocator::Instance() {
+  static AllocatorPtr instance = std::make_shared<CPUAllocator>();
+  return instance;
+}
+
 void* CPUAllocator::Alloc(size_t size) {
   return AllocatorDefaultAlloc(size);
 }

@@ -11,10 +11,11 @@
 #include "core/common/common.h"
 #include "core/common/narrow.h"
 #include "core/framework/allocator.h"
-#include "core/optimizer/graph_transformer.h"
+#include "core/framework/ort_value.h"
 #include "core/framework/tensor_shape.h"
 #include "core/framework/tensorprotoutils.h"
 #include "core/graph/onnx_protobuf.h"
+#include "core/optimizer/graph_transformer.h"
 #include "core/util/math.h"
 
 namespace onnxruntime {
@@ -29,18 +30,22 @@ class Initializer final {
   Initializer(const ONNX_NAMESPACE::TensorProto& tensor_proto,
               const std::filesystem::path& model_path = {});
 
-  ~Initializer() = default;
+  Initializer(const Graph& graph, const ONNX_NAMESPACE::TensorProto& tensor_proto,
+              const std::filesystem::path& model_path = {});
+
+  ~Initializer();
 
   void ToProto(ONNX_NAMESPACE::TensorProto& tensor_proto) const {
-    tensor_proto = utils::TensorToTensorProto(data_, name_);
+    tensor_proto = utils::TensorToTensorProto(*data_, name_);
   }
+
 #if !defined(ORT_EXTENDED_MINIMAL_BUILD)
   ONNX_NAMESPACE::TensorProto ToFP16(const std::string& name) const;
 
   ONNX_NAMESPACE::TensorProto ToBFloat16(const std::string& name) const;
 #endif  // ORT_EXTENDED_MINIMAL_BUILD
   int data_type() const {
-    return data_.GetElementType();
+    return data_->GetElementType();
   }
 
   std::string_view name() const {
@@ -49,28 +54,28 @@ class Initializer final {
 
   template <typename T>
   T* data() {
-    return data_.MutableData<T>();
+    return data_->MutableData<T>();
   }
 
   template <typename T>
   const T* data() const {
-    return data_.Data<T>();
+    return data_->Data<T>();
   }
 
   template <typename T>
   auto DataAsSpan() const {
-    return data_.DataAsSpan<T>();
+    return data_->DataAsSpan<T>();
   }
 
   gsl::span<const uint8_t> DataAsByteSpan() const {
-    return gsl::make_span(reinterpret_cast<const uint8_t*>(data_.DataRaw()), data_.SizeInBytes());
+    return gsl::make_span(reinterpret_cast<const uint8_t*>(data_->DataRaw()), data_->SizeInBytes());
   }
 
   gsl::span<const int64_t> dims() const {
-    return data_.Shape().GetDims();
+    return data_->Shape().GetDims();
   }
 
-  size_t size() const { return narrow<size_t>(data_.Shape().Size()); }
+  size_t size() const { return narrow<size_t>(data_->Shape().Size()); }
 
 #if !defined(ORT_EXTENDED_MINIMAL_BUILD)
   Initializer& add(float value);
@@ -89,7 +94,8 @@ class Initializer final {
 #endif  // ORT_EXTENDED_MINIMAL_BUILD
  private:
   std::string name_;
-  Tensor data_;
+  OrtValue ort_value_;
+  Tensor* data_;
 };
 
 }  // namespace onnxruntime

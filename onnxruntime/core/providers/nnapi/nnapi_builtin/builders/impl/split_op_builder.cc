@@ -104,7 +104,7 @@ bool SplitOpBuilder::IsOpSupportedImpl(const GraphViewer& graph_viewer, const No
       return false;
     }
 
-    Initializer unpacked_tensor(*splits);
+    Initializer unpacked_tensor(graph_viewer.GetGraph(), *splits);
     auto splits_span = unpacked_tensor.DataAsSpan<int64_t>();
     uint32_t sum_of_splits = std::accumulate(splits_span.begin(), splits_span.end(), SafeInt<uint32_t>(0));
     if (sum_of_splits != split_dims_at_axis) {
