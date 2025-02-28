@@ -5779,8 +5779,9 @@ Status Graph::LoadFromModelEditorApiModel(const OrtGraph& api_graph, bool updati
   // add inputs first. the shape from an input for a non-const initializer is preferred, so we want to create the
   // NodeArg for the value using that
 
-  auto add_graph_inputs_outputs = [&, this](const std::vector<std::unique_ptr<OrtValueInfo>>& graph_inputs_or_outputs,
-                                            bool is_input) {
+  auto add_graph_inputs_outputs = [&, this](
+                                      const InlinedVector<std::unique_ptr<OrtValueInfo>>& graph_inputs_or_outputs,
+                                      bool is_input) {
     // when updating a model we don't require the inputs or outputs to be set if they're unchanged.
     if (updating_existing_graph && graph_inputs_or_outputs.empty()) {
       return;

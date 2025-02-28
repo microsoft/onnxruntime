@@ -1,6 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include "core/common/inlined_containers.h"
 #include "core/framework/ort_value.h"
 #include "core/framework/onnxruntime_typeinfo.h"
 #include "core/graph/onnx_protobuf.h"
@@ -24,17 +25,17 @@ struct OrtNode {
 
   // OrtOpAttr is 1:1 with ONNX_NAMESPACE::AttributeProto currently.
   // https://github.com/microsoft/onnxruntime/blob/bd5a759d0cdbed6e7f611c990d4eb5457a9ecf60/onnxruntime/core/session/standalone_op_invoker.cc#L318
-  std::vector<ONNX_NAMESPACE::AttributeProto> attributes;
-  std::vector<std::string> input_names;
-  std::vector<std::string> output_names;
+  onnxruntime::InlinedVector<ONNX_NAMESPACE::AttributeProto> attributes;
+  onnxruntime::InlinedVector<std::string> input_names;
+  onnxruntime::InlinedVector<std::string> output_names;
 
   // FUTURE if we need control flow nodes
   // std::unordered_map<std::string, OrtGraph> subgraphs;
 };
 
 struct OrtGraph {
-  std::vector<std::unique_ptr<OrtValueInfo>> inputs;
-  std::vector<std::unique_ptr<OrtValueInfo>> outputs;
+  onnxruntime::InlinedVector<std::unique_ptr<OrtValueInfo>> inputs;
+  onnxruntime::InlinedVector<std::unique_ptr<OrtValueInfo>> outputs;
   std::unordered_map<std::string, std::unique_ptr<OrtValue>> initializers;
   std::unordered_map<std::string, std::unique_ptr<OrtValue>> external_initializers;
   std::vector<std::unique_ptr<OrtNode>> nodes;

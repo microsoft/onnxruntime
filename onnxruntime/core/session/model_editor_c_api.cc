@@ -93,8 +93,6 @@ ORT_API_STATUS_IMPL(OrtModelEditorAPI::CreateGraph, _Outptr_ OrtGraph** graph) {
   auto g = std::make_unique<OrtGraph>();
 
   // do some reserves to reduce reallocation. if we had a hint about sizes upfront that would be optimal
-  g->inputs.reserve(8);
-  g->outputs.reserve(8);
   g->initializers.reserve(32);
   g->external_initializers.reserve(32);
   g->nodes.reserve(64);
