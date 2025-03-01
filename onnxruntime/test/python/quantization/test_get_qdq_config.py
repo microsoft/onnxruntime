@@ -180,6 +180,14 @@ class TestGetQDQConfig(unittest.TestCase):
         qdq_config = get_qdq_config(float_model, data_reader, op_types_to_quantize=["Mul"])
         self.assertEqual(set(qdq_config.op_types_to_quantize), {"Mul"})
 
+        # exclude op_type indirectly by specifying nodes_to_exclude arg.
+        qdq_config = get_qdq_config(
+            float_model,
+            data_reader,
+            nodes_to_exclude=[node.name for node in float_model.graph.node if node.op_type == "Add"],
+        )
+        self.assertEqual(set(qdq_config.op_types_to_quantize), set())
+
     def test_calibration_providers(self):
         """
         Test that get_qdq_config() returns a config that sets the calibration providers arg.
