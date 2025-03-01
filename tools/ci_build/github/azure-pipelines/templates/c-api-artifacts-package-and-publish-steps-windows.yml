@@ -57,6 +57,15 @@ steps:
           copy $(Build.BinariesDirectory)\${{parameters.buildConfig}}\${{parameters.buildConfig}}\onnxruntime_providers_cuda.pdb $(Build.BinariesDirectory)\${{parameters.artifactName}}\lib
           copy $(Build.BinariesDirectory)\${{parameters.buildConfig}}\${{parameters.buildConfig}}\onnxruntime_providers_cuda.lib $(Build.BinariesDirectory)\${{parameters.artifactName}}\lib
 
+          # Copy over cuda, cudnn and webgpu dependencies if required
+          copy $(Build.BinariesDirectory)\${{parameters.buildConfig}}\${{parameters.buildConfig}}\cublas*.dll $(Build.BinariesDirectory)\${{parameters.artifactName}}\lib /Y
+          copy $(Build.BinariesDirectory)\${{parameters.buildConfig}}\${{parameters.buildConfig}}\cudart*.dll $(Build.BinariesDirectory)\${{parameters.artifactName}}\lib /Y
+          copy $(Build.BinariesDirectory)\${{parameters.buildConfig}}\${{parameters.buildConfig}}\cudnn*.dll $(Build.BinariesDirectory)\${{parameters.artifactName}}\lib /Y
+          copy $(Build.BinariesDirectory)\${{parameters.buildConfig}}\${{parameters.buildConfig}}\cufft*.dll $(Build.BinariesDirectory)\${{parameters.artifactName}}\lib /Y
+          copy $(Build.BinariesDirectory)\${{parameters.buildConfig}}\${{parameters.buildConfig}}\curand*.dll $(Build.BinariesDirectory)\${{parameters.artifactName}}\lib /Y
+          copy $(Build.BinariesDirectory)\${{parameters.buildConfig}}\${{parameters.buildConfig}}\dxcompiler.dll $(Build.BinariesDirectory)\${{parameters.artifactName}}\lib
+          copy $(Build.BinariesDirectory)\${{parameters.buildConfig}}\${{parameters.buildConfig}}\dxil.dll $(Build.BinariesDirectory)\${{parameters.artifactName}}\lib
+
           # copy trt ep libraries only when trt ep is enabled
           copy $(Build.BinariesDirectory)\${{parameters.buildConfig}}\${{parameters.buildConfig}}\onnxruntime_providers_tensorrt.dll $(Build.BinariesDirectory)\${{parameters.artifactName}}\lib
           copy $(Build.BinariesDirectory)\${{parameters.buildConfig}}\${{parameters.buildConfig}}\onnxruntime_providers_tensorrt.pdb $(Build.BinariesDirectory)\${{parameters.artifactName}}\lib
