@@ -9,7 +9,7 @@
 #include "core/providers/coreml/model/model.h"
 #include "core/providers/coreml/coreml_options.h"
 
-#if defined(COREML_ENABLE_MLPROGRAM)
+#if defined(USE_COREML)
 // coremltools classes
 namespace MPL {
 class ModelPackage;
@@ -58,7 +58,7 @@ class ModelBuilder {
 
   // Returns true if we are creating an ML Program
   bool CreateMLProgram() const {
-#if defined(COREML_ENABLE_MLPROGRAM)
+#if defined(USE_COREML)
     return create_ml_program_;
 #else
     return false;
@@ -76,7 +76,7 @@ class ModelBuilder {
   // Add layer to the Core ML NeuralNetwork model
   void AddLayer(std::unique_ptr<COREML_SPEC::NeuralNetworkLayer> layer);
 
-#if defined(COREML_ENABLE_MLPROGRAM)
+#if defined(USE_COREML)
   /*
    * MLProgram helpers
    */
@@ -176,7 +176,7 @@ class ModelBuilder {
   const logging::Logger& Logger() const { return logger_; }
 
  private:
-#if defined(COREML_ENABLE_MLPROGRAM)
+#if defined(USE_COREML)
   template <typename T>
   std::string_view AddConstantImpl(std::string_view op_type, std::string_view value_type, gsl::span<const T> value,
                                    std::optional<gsl::span<const int64_t>> shape = std::nullopt);
@@ -237,7 +237,7 @@ class ModelBuilder {
   uint32_t name_token_{0};
   std::unordered_set<std::string> unique_names_;
 
-#if defined(COREML_ENABLE_MLPROGRAM)
+#if defined(USE_COREML)
   // mlprogram_main_ is the main block of the CoreML ML Program.
   // It is set in CreateModel to the CoreML Model.mlprogram.functions['main'].block_specializations['CoreML<ver>']
   // entry we create.

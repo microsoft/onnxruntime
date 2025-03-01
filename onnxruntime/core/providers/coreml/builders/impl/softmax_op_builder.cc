@@ -37,7 +37,6 @@ Status SoftmaxOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
   const auto axis = helper.Get("axis", axis_default_value);
   auto axis_nonnegative = HandleNegativeAxis(axis, data_shape.size());
 
-#if defined(COREML_ENABLE_MLPROGRAM)
   // CoreML's softmax match onnx's softmax behavior since opset 13.
   // For opset < 13, we need to reshape to 2D and set axis to -1 to simulate onnx softmax behavior.
   // [B,D,...](onnx softmax opset 12, axis=1)->[B,D*...](CoreML softmax, axis=-1)->[B,D,...](reshape back)
@@ -78,9 +77,7 @@ Status SoftmaxOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
       AddOperationOutput(*reshape2, *node.OutputDefs()[0]);
       model_builder.AddOperation(std::move(reshape2));
     }
-  } else  // NOLINT
-#endif
-  {
+  } else {
     if (node.SinceVersion() >= 13 || (data_shape.size() == 2)) {
       auto* coreml_softmaxnd = layer->mutable_softmaxnd();
       coreml_softmaxnd->set_axis(axis);
