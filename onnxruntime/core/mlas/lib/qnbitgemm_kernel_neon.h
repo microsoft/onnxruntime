@@ -107,12 +107,43 @@ HQ4BitGemmKernel_CompFp16(
 
 // SQNBIT_CompInt8 declarations
 
+bool
+UsePacked_CompInt8(
+    size_t K,
+    size_t BlkLen,
+    bool HasZp
+);
+
+void
+QuantizeA_Packed_CompInt8(
+    size_t BlkLen,
+    const float* A,
+    size_t CountM,
+    size_t CountK,
+    std::byte* QuantA
+);
+
 void
 QuantizeARow_CompInt8(
     size_t BlkLen,
     const float* A,
     size_t CountK,
     std::byte* QuantA
+);
+
+void
+SQ4BitGemmKernel_Packed_CompInt8(
+    size_t BlkLen,
+    const std::byte* QuantA,
+    const std::byte* PackedQuantBData,
+    float* C,
+    const size_t RangeStartM,
+    const size_t RangeCountM,
+    const size_t RangeStartN,
+    const size_t RangeCountN,
+    size_t CountK,
+    size_t ldc,
+    const float *Bias
 );
 
 size_t
@@ -130,6 +161,9 @@ SQ4BitGemmKernel_CompInt8(
     size_t ldc,
     const float* Bias
 );
+
+bool
+UseKleidiAI(size_t K, size_t BlkLen, bool HasZp);
 
 //
 // General helpers.

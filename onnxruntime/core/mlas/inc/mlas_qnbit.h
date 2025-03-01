@@ -123,6 +123,7 @@ MlasIsQNBitGemmAvailable(
  * @param[in]   BatchN          number of batches
  * @param[in]   BlkBitWidth     quantized value bit width (e.g., 4 means 4 bit ints)
  * @param[in]   BlkLen          number of quantized values per block
+ * @param[in]   HasZeroPoint    whether zero points are provided
  * @param[in]   ComputeType     GEMM compute type (e.g., multiplying float or int8 values)
  */
 size_t MLASCALL
@@ -133,6 +134,7 @@ MlasQNBitGemmBatchWorkspaceSize(
     size_t BatchN,
     size_t BlkBitWidth,
     size_t BlkLen,
+    bool HasZeroPoint,
     MLAS_QNBIT_GEMM_COMPUTE_TYPE ComputeType
 );
 
@@ -147,6 +149,7 @@ MlasQNBitGemmBatchWorkspaceSize(
  * @param[in]   K               column size of matrix A and row size of matrix B
  * @param[in]   BlkBitWidth     quantized value bit width (e.g., 4 means 4 bit ints)
  * @param[in]   BlkLen          number of quantized values per block
+ * @param[in]   HasZeroPoint    whether zero points are provided
  * @param[in]   ComputeType     GEMM compute type (e.g., multiplying float or int8 values)
  */
 size_t MLASCALL
@@ -155,6 +158,7 @@ MlasQNBitGemmPackQuantBDataSize(
     size_t K,
     size_t BlkBitWidth,
     size_t BlkLen,
+    bool HasZeroPoint,
     MLAS_QNBIT_GEMM_COMPUTE_TYPE ComputeType
 );
 
@@ -181,7 +185,7 @@ MlasQNBitGemmPackQuantBDataSize(
  * @param[in]   QuantBData                      quantized B data
  * @param[in]   PackedQuantBDataAndOrBlkSum     buffer to store packed quantized B data and/or BlkSum
  * @param[in]   QuantBScale                     quantized B scale
- * @param[in]   has_zp_input                    whether QuantBZeroPoint is provided
+ * @param[in]   HasZeroPoint                    whether QuantBZeroPoint is provided
  * @param[in]   QuantBZeroPoint                 quantized B zero point
  * @param[in]   ThreadPool          thread pool to use (no parallel if nullptr)
  */
@@ -195,7 +199,25 @@ MlasQNBitGemmPackQuantBData(
     const void* QuantBData,
     void* PackedQuantBDataAndOrBlkSum,
     const void* QuantBScale,
-    bool has_zp_input,
+    bool HasZeroPoint,
     const void* QuantBZeroPoint,
     MLAS_THREADPOOL* ThreadPool
+);
+
+/**
+ * @brief Returns true if scales are packed when calling MlasQNBitGemmPackQuantBData the first time.
+ *
+ * @param[in]   K               column size of matrix A and row size of matrix B
+ * @param[in]   BlkBitWidth     quantized value bit width (e.g., 4 means 4 bit ints)
+ * @param[in]   BlkLen          number of quantized values per block
+ * @param[in]   ComputeType     GEMM compute type (e.g., multiplying float or int8 values)
+ * @param[in]   HasZeroPoint    whether QuantBZeroPoint is provided
+ */
+bool MLASCALL
+MlasQNBitGemmScalesPacked(
+    size_t K,
+    size_t BlkBitWidth,
+    size_t BlkLen,
+    MLAS_QNBIT_GEMM_COMPUTE_TYPE ComputeType,
+    bool HasZeroPoint
 );
