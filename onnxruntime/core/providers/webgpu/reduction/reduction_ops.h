@@ -17,13 +17,16 @@ namespace webgpu {
 typedef std::array<std::string, 3> ReduceOpSpecificCode;
 class ReduceKernelProgram final : public Program<ReduceKernelProgram> {
  public:
-  ReduceKernelProgram(std::string name, bool keepdims, bool no_op_with_empty_axes, const std::vector<int64_t>& axes, ReduceOpSpecificCode code) : Program{name}, keepdims_(keepdims), no_op_with_empty_axes_(no_op_with_empty_axes), axes_(axes.begin(), axes.end()), code_(code) {}
+  ReduceKernelProgram(std::string name, bool keepdims, bool no_op_with_empty_axes, const InlinedVector<uint32_t>& axes, ReduceOpSpecificCode code) : Program{name}, keepdims_(keepdims), no_op_with_empty_axes_(no_op_with_empty_axes), axes_(axes.begin(), axes.end()), code_(code) {}
   Status GenerateShaderCode(ShaderHelper& wgpuShaderModuleAddRef) const override;
-  WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES({"output_size", ProgramUniformVariableDataType::Uint32});
+  WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES({"output_size", ProgramUniformVariableDataType::Uint32},
+                                          {"no_op_with_empty_axes", ProgramUniformVariableDataType::Uint32},
+                                          {"axes", ProgramUniformVariableDataType::Uint32});
+
  private:
   const bool keepdims_;
   const bool no_op_with_empty_axes_;
-  InlinedVector<int64_t> axes_;
+  InlinedVector<uint32_t> axes_;
   ReduceOpSpecificCode code_;
 };
 
@@ -41,7 +44,8 @@ class ReduceKernel : public WebGpuKernel, public ReduceKernelBase<allow_multi_ax
         name_(name) {
   }
   Status ComputeInternal(ComputeContext& ctx) const;
-  virtual ReduceOpSpecificCode GetOpSpecificCode(const Tensor* input_tensor, const std::vector<int64_t>& axes) const = 0;
+  virtual ReduceOpSpecificCode GetOpSpecificCode(const Tensor* input_tensor, size_t axes_size) const = 0;
+
  private:
   std::string name_;
 };
@@ -49,7 +53,7 @@ class ReduceKernel : public WebGpuKernel, public ReduceKernelBase<allow_multi_ax
 class ReduceMean final : public ReduceKernel<true> {
  public:
   ReduceMean(const OpKernelInfo& info) : ReduceKernel<true>(info, "ReduceMean") {}
-  ReduceOpSpecificCode GetOpSpecificCode(const Tensor* input_tensor, const std::vector<int64_t>& axes) const override;
+  ReduceOpSpecificCode GetOpSpecificCode(const Tensor* input_tensor, size_t axes_size) const override;
   Status ComputeInternal(ComputeContext& ctx) const;
 };
 
