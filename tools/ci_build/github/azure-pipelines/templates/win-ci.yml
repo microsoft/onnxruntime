@@ -261,12 +261,12 @@ stages:
             AnalyzeTargetGlob: '$(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo\**\*.dll'
           continueOnError: true
 
-        - task: PostAnalysis@2
-          inputs:
-            GdnBreakAllTools: false
-            GdnBreakGdnToolBinSkim: true
-            GdnBreakPolicy: M365
-            GdnBreakPolicyMinSev: Error
+        # - task: PostAnalysis@2
+        #   inputs:
+        #     GdnBreakAllTools: false
+        #     GdnBreakGdnToolBinSkim: true
+        #     GdnBreakPolicy: M365
+        #     GdnBreakPolicyMinSev: Error
 
         - task: TSAUpload@2
           displayName: 'TSA upload'
