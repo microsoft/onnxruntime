@@ -21,7 +21,7 @@ parameters:
 
 jobs:
 - job: Final_AAR_Testing_Android
-  pool: 'onnxruntime-Ubuntu2204-AMD-CPU'
+  pool: 'onnxruntime-Ubuntu-2404-CPU-nvme-test'
   workspace:
     clean: all
   variables:

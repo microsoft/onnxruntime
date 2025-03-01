@@ -7,7 +7,7 @@ stages:
   jobs:
   - job: Set_Variables
     pool:
-      name: 'onnxruntime-Ubuntu2204-AMD-CPU'
+      name: 'onnxruntime-Ubuntu-2404-CPU-nvme-test'
     steps:
     - checkout: none
     - bash: |
@@ -47,7 +47,7 @@ stages:
   jobs:
   - job: D1
     pool:
-      name: 'onnxruntime-Ubuntu2204-AMD-CPU'
+      name: 'onnxruntime-Ubuntu-2404-CPU-nvme-test'
     variables:
       MyVar: $[stageDependencies.Setup.Set_Variables.outputs['Set_Release_Version_Suffix.ReleaseVersionSuffix']]
       BuildDate: $[stageDependencies.Setup.Set_Variables.outputs['Set_Build_Date.BuildDate']]

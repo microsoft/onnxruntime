@@ -56,7 +56,7 @@ stages:
     ANDROID_AVD_HOME: $(Agent.TempDirectory)
   jobs:
   - job: BUILD_AND_TEST_CPU
-    pool: onnxruntime-Ubuntu2204-AMD-CPU
+    pool: onnxruntime-Ubuntu-2404-CPU-nvme-test
     workspace:
       clean: all
     timeoutInMinutes: 30
@@ -113,7 +113,7 @@ stages:
       JobsTimeout: 60
   jobs:
   - job: BUILD_AND_TEST_NNAPI_EP
-    pool: onnxruntime-Ubuntu2204-AMD-CPU
+    pool: onnxruntime-Ubuntu-2404-CPU-nvme-test
     timeoutInMinutes: ${{ variables.JobsTimeout }}
     workspace:
       clean: all
@@ -173,7 +173,7 @@ stages:
     ANDROID_AVD_HOME: $(Agent.TempDirectory)
   jobs:
   - job: NNAPI_EP_MASTER
-    pool: onnxruntime-Ubuntu2204-AMD-CPU
+    pool: onnxruntime-Ubuntu-2404-CPU-nvme-test
     timeoutInMinutes: 180
     workspace:
       clean: all

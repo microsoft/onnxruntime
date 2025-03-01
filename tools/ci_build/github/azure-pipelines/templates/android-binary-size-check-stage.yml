@@ -31,7 +31,7 @@ stages:
     timeoutInMinutes: 60
     workspace:
       clean: all
-    pool: onnxruntime-Ubuntu2204-AMD-CPU
+    pool: onnxruntime-Ubuntu-2404-CPU-nvme-test
     steps:
     - checkout: self
       clean: true

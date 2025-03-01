@@ -96,7 +96,7 @@ stages:
       parameters:
         OnnxruntimeArch: 'x64'
         OnnxruntimeNodejsBindingArch: 'x64'
-        PoolName: 'onnxruntime-Ubuntu2204-AMD-CPU'
+        PoolName: 'onnxruntime-Ubuntu-2404-CPU-nvme-test'
         PackageJava: false
         PackageNodeJS: false
 

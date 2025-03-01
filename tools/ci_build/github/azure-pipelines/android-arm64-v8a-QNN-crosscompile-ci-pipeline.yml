@@ -36,7 +36,7 @@ parameters:
 
 jobs:
 - job: Build_QNN_EP
-  pool: onnxruntime-Ubuntu2204-AMD-CPU
+  pool: onnxruntime-Ubuntu-2404-CPU-nvme-test
   timeoutInMinutes: 30
   workspace:
     clean: all

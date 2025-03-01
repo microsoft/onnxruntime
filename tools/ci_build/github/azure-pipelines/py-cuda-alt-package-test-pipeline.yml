@@ -25,7 +25,7 @@ stages:
     dependsOn:
     jobs:
     - job: Python_Publishing_GPU
-      pool: 'onnxruntime-Ubuntu2204-AMD-CPU'
+      pool: 'onnxruntime-Ubuntu-2404-CPU-nvme-test'
       steps:
       - checkout: none
       - download: build

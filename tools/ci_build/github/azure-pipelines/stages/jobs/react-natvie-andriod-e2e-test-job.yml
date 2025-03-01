@@ -18,7 +18,7 @@ parameters:
 jobs:
 - job: ReactNative_CI_Android
   pool:
-    name: onnxruntime-Ubuntu2204-AMD-CPU
+    name: onnxruntime-Ubuntu-2404-CPU-nvme-test
     os: linux
   variables:
     runCodesignValidationInjection: false

@@ -47,7 +47,7 @@ jobs:
     TODAY: $[format('{0:dd}{0:MM}{0:yyyy}', pipeline.startTime)]
   workspace:
     clean: all
-  pool: onnxruntime-Ubuntu2204-AMD-CPU
+  pool: onnxruntime-Ubuntu-2404-CPU-nvme-test
   timeoutInMinutes: 240
 
   steps:

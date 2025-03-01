@@ -4,7 +4,7 @@ stages:
   jobs:
   - job: Download_Java_Tools
     pool:
-      name: 'onnxruntime-Ubuntu2204-AMD-CPU'
+      name: 'onnxruntime-Ubuntu-2404-CPU-nvme-test'
     steps:
     - checkout: none
     - task: CmdLine@2

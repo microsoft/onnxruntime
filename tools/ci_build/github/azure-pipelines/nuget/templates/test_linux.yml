@@ -1,5 +1,5 @@
 parameters:
-  AgentPool: 'onnxruntime-Ubuntu2204-AMD-CPU'
+  AgentPool: 'onnxruntime-Ubuntu-2404-CPU-nvme-test'
   ArtifactSuffix: ''
   NugetPackageName : ''
   StageSuffix: 'CPU'
