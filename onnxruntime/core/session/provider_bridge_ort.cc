@@ -1998,10 +1998,14 @@ std::shared_ptr<IExecutionProviderFactory> QNNProviderFactoryCreator::Create(con
 std::shared_ptr<IExecutionProviderFactory> OpenVINOProviderFactoryCreator::Create(
     const ProviderOptions* provider_options_map, const SessionOptions* session_options) {
   // Append session options applicable for EP to EP Provider options.
-  std::pair<const ProviderOptions*, const ConfigOptions&> config_buffer = {provider_options_map,
-                                                                           session_options->config_options};
-  const void* obj = reinterpret_cast<const void*>(&config_buffer);
-  return s_library_openvino.Get().CreateExecutionProviderFactory(obj);
+  const ConfigOptions* config_options = nullptr;
+  if (session_options !=nullptr) {
+    config_options = &session_options->config_options;
+  }
+
+  std::array<const void*, 2> configs_array = {provider_options_map, config_options};
+  const void* arg = reinterpret_cast<const void*>(&configs_array);
+  return s_library_openvino.Get().CreateExecutionProviderFactory(arg);
 }
 
 std::shared_ptr<IExecutionProviderFactory> DnnlProviderFactoryCreator::Create(const OrtDnnlProviderOptions* dnnl_options) {
