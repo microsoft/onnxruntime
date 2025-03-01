@@ -281,7 +281,6 @@ InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
                                                             QDQIsInt8Allowed() ? "1" : "0") == "1";
       const bool enable_gelu_approximation =
           session_options.config_options.GetConfigOrDefault(kOrtSessionOptionsEnableGeluApproximation, "0") == "1";
-
       const InlinedHashSet<std::string_view> cuda_rocm_eps = {onnxruntime::kCudaExecutionProvider,
                                                               onnxruntime::kRocmExecutionProvider};
       const InlinedHashSet<std::string_view> cpu_cuda_rocm_eps = {onnxruntime::kCpuExecutionProvider,
