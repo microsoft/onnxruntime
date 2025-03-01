@@ -46,7 +46,7 @@ export const createConvTranspose2DProgramInfo = (
   const inputChannelsPerGroup = wShape[2] / group;
   const outputChannelsPerGroup = wShape[3];
   const aComponents = isChannelsLast ? getMaxComponents(inputChannelsPerGroup) : 1;
-  const packInputAs4 = isChannelsLast && outputChannelsPerGroup === 1;
+  const packInputAs4 = isChannelsLast && outputChannelsPerGroup === 1 && inputChannelsPerGroup >= 4;
   const inputChannelsPerGroupInt = packInputAs4
     ? Math.floor(inputChannelsPerGroup / 4) * 4
     : Math.floor(inputChannelsPerGroup / aComponents) * aComponents;
@@ -269,7 +269,7 @@ export const createConvTranspose2DProgramInfo = (
   return {
     name: 'ConvTranspose2D',
     shaderCache: {
-      hint: `${attributes.cacheKey};${aComponents}${bComponents}${components}${outputChannelsPerGroup === 1}${inputChannelsRemainder}`,
+      hint: `${attributes.cacheKey};${aComponents}${bComponents}${components}${packInputAs4}${inputChannelsRemainder}`,
       inputDependencies,
     },
     getRunData: () => ({
