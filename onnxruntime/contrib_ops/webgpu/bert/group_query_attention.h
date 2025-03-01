@@ -14,6 +14,29 @@ namespace webgpu {
 
 using namespace onnxruntime::webgpu;
 
+class GeneratePositionIDsProgram final : public Program<GeneratePositionIDsProgram> {
+ public:
+  GeneratePositionIDsProgram(bool is_first_prompt, bool is_subsequent_prompt) : Program{"GeneratePositionIDs"}, is_first_prompt_(is_first_prompt), is_subsequent_prompt_(is_subsequent_prompt) {}
+
+  Status GenerateShaderCode(ShaderHelper& sh) const override;
+
+  WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES({"batch_size", ProgramUniformVariableDataType::Uint32}, {"sequence_length", ProgramUniformVariableDataType::Uint32});
+
+ private:
+  bool is_first_prompt_;
+  bool is_subsequent_prompt_;
+};
+
+class SplitPackedQKVProgram final : public Program<SplitPackedQKVProgram> {
+ public:
+  SplitPackedQKVProgram() : Program{"SplitPackedQKV"} {}
+
+  Status GenerateShaderCode(ShaderHelper& sh) const override;
+
+  WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES({"hidden_size", ProgramUniformVariableDataType::Uint32},
+                                          {"kv_hidden_size", ProgramUniformVariableDataType::Uint32});
+};
+
 class GroupQueryAttention final : public WebGpuKernel {
  public:
   GroupQueryAttention(const OpKernelInfo& info) : WebGpuKernel(info) {
