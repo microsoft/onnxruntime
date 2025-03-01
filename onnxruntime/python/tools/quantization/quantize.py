@@ -331,7 +331,7 @@ def get_qdq_config(
             model_has_external_data = True
 
     op_types_to_quantize_set = set(op_types_to_quantize) if op_types_to_quantize else None
-    nodes_to_exclude_set = set(nodes_to_exclude if isinstance(nodes_to_exclude, list) else [])
+    nodes_to_exclude_set = set(nodes_to_exclude) if isinstance(nodes_to_exclude, list) else set()
 
     # Iterate through nodes to get all operator types in the model and
     # call user's function to filter out nodes from quantization.
