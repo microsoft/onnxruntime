@@ -15,7 +15,9 @@ stages:
     workspace:
       clean: all
     timeoutInMinutes: 150
-    pool: 'onnxruntime-Ubuntu2204-AMD-CPU'
+    pool:
+      name: 'onnxruntime-Ubuntu2204-AMD-CPU'
+      os: linux
     variables:
     - name: CUDA_VERSION_MAJOR
       ${{ if eq(parameters.CudaVersion, '11.8') }}:
@@ -218,7 +220,7 @@ stages:
           /src_dir/onnxruntime-inference-examples/c_cxx/squeezenet/run_capi_application.sh -o /src_dir/onnxruntime -p /artifact_src/onnxruntime-linux-x64-gpu-$(OnnxRuntimeVersion).tgz -w /src_dir/onnxruntime-inference-examples/c_cxx/squeezenet
         workingDirectory: '$(Build.ArtifactStagingDirectory)'
 
-    - task: PublishPipelineArtifact@1
+    - task: 1ES.PublishPipelineArtifact@1
       inputs:
         targetPath: '$(Build.ArtifactStagingDirectory)/onnxruntime-linux-x64-gpu-$(OnnxRuntimeVersion).tgz'
         artifactName: 'onnxruntime-linux-x64-gpu'
