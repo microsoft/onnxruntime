@@ -84,6 +84,7 @@ export const createConvTranspose2DProgramInfo = (
     { type: DataType.uint32, data: effectiveFilterDims },
     { type: DataType.int32, data: pads },
     { type: DataType.uint32, data: inputChannelsPerGroupInt },
+    { type: DataType.uint32, data: inputChannelsPerGroup },
     { type: DataType.uint32, data: outputChannelsPerGroup },
     ...createTensorShapeVariables(inputs[0].dims, inputs[1].dims),
   ];
@@ -101,6 +102,7 @@ export const createConvTranspose2DProgramInfo = (
       { name: 'dilations', type: 'u32', length: filterDims.length },
       { name: 'effective_filter_dims', type: 'u32', length: effectiveFilterDims.length },
       { name: 'pads', type: 'i32', length: pads.length },
+      { name: 'input_channels_per_group_int', type: 'u32' },
       { name: 'input_channels_per_group', type: 'u32' },
       { name: 'output_channels_per_group', type: 'u32' },
     ];
@@ -244,7 +246,7 @@ export const createConvTranspose2DProgramInfo = (
                   `
                     : ''
                 }
-                for (var d2: u32 = 0; d2 < uniforms.input_channels_per_group; d2 = d2 + ${packInputAs4 ? 4 : aComponents}) {
+                for (var d2: u32 = 0; d2 < uniforms.input_channels_per_group_int; d2 = d2 + ${packInputAs4 ? 4 : aComponents}) {
                   ${calculateResult()}
                   inputChannel = inputChannel + ${packInputAs4 ? 4 : aComponents};
                 }
