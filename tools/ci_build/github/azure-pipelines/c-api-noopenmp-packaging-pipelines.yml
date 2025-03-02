@@ -3,6 +3,9 @@ parameters:
   type: string
   default: '12.2'
 
+- name: win_cuda_home
+  type: string
+
 variables:
   - template: templates/common-variables.yml
   - name: ReleaseVersionSuffix
