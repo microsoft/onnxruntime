@@ -42,6 +42,7 @@
 #include "core/graph/model_saving_options.h"
 #include "core/optimizer/graph_transformer_utils.h"
 #include "core/optimizer/graph_transformer.h"
+#include "core/optimizer/graph_optimizer_registry.h"
 #include "core/optimizer/layout_transformation/layout_transformation.h"
 #include "core/optimizer/insert_cast_transformer.h"
 #include "core/optimizer/qdq_transformer/ensure_unique_dq_for_node_unit.h"
@@ -1937,6 +1938,9 @@ common::Status InferenceSession::Initialize() {
                                                                minimal_build_optimization_handling,
                                                                record_runtime_optimization_produced_op_schema,
                                                                *session_logger_));
+
+      // Create predefined graph optimizers and selection functions for EPs to lookup.
+      ORT_RETURN_IF_ERROR_SESSIONID_(onnxruntime::GraphOptimizerRegistry::Create(&session_options_, execution_providers_.Get(onnxruntime::kCpuExecutionProvider), session_logger_));
 
 #ifdef USE_DML
       const IExecutionProvider* dmlExecutionProvider = execution_providers_.Get(kDmlExecutionProvider);
