@@ -50,8 +50,8 @@ stages:
       DoEsrp: true
       ArtifactName: 'drop-nuget-qnn-arm64'
       # Add --use_webgpu to enable WebGPU
-      buildParameter: '--arm64'
+      buildParameter: '--arm64 --use_webgpu'
       buildPlatform: 'ARM64'
       buildArch: 'ARM64'
       StageName: 'OnnxRuntime_QNN_Nuget_Win_Arm64'
-      build_config: 'RelWithDebInfo'
+      build_config: 'Release'
