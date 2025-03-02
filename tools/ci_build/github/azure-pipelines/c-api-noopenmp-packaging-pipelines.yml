@@ -14,7 +14,7 @@ variables:
       value: $(Agent.TempDirectory)\v12.2
 
 stages:
-  - template: ../templates/win-ci.yml
+  - template: templates/win-ci.yml
     parameters:
       ort_build_pool_name: 'onnxruntime-Win2022-GPU-A10'
       DoCompliance: true
