@@ -415,4 +415,13 @@ interface MLContext {
   readTensor(sourceTensor: MLTensor): Promise<ArrayBuffer>;
   readTensor(sourceTensor: MLTensor, destinationData: ArrayBufferView|ArrayBuffer): Promise<undefined>;
   dispatch(graph: MLGraph, inputs: MLNamedTensor, outputs: MLNamedTensor): void;
+  opSupportLimits() : MLOpSupportLimits;
+}
+
+interface MLOpSupportLimits {
+  input: MLSupportLimits;
+}
+
+interface MLSupportLimits {
+  dataTypes: MLOperandDataType[];
 }

@@ -159,14 +159,22 @@ Status RotaryEmbeddingOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_build
   if (position_ids_is_offset) {
     // We generate a sequence from 0 to sequence_length and add the offset to it.
     const std::vector<uint32_t> position_ids_range_shape = {1, sequence_length};
-    emscripten::val position_ids_range_buffer = emscripten::val::global("BigInt64Array").new_(sequence_length);
+    std::string typed_array_name = "BigInt64Array";
+    int position_ids_data_type = ONNX_NAMESPACE::TensorProto_DataType_INT64;
+    const bool is_int64_supported = model_builder.IsInt64Supported();
+    if (!is_int64_supported) {
+      // Int64 is not supported by current context, use int32 instead.
+      typed_array_name = "Int32Array";
+      position_ids_data_type = ONNX_NAMESPACE::TensorProto_DataType_INT32;
+    }
+    emscripten::val position_ids_range_buffer = emscripten::val::global(typed_array_name.c_str()).new_(sequence_length);
     for (uint32_t i = 0; i < sequence_length; i++) {
-      position_ids_range_buffer.set(i, emscripten::val::global("BigInt")(i));
+      position_ids_range_buffer.set(i, is_int64_supported ? emscripten::val::global("BigInt")(i) : emscripten::val(i));
     }
     emscripten::val position_ids_range_desc = emscripten::val::object();
     position_ids_range_desc.set("shape", emscripten::val::array(position_ids_range_shape));
     position_ids_range_desc.set("dimensions", emscripten::val::array(position_ids_range_shape));
-    position_ids_range_desc.set("dataType", emscripten::val("int64"));
+    ORT_RETURN_IF_NOT(SetWebnnDataType(position_ids_range_desc, position_ids_data_type), "Unsupported data type");
     emscripten::val position_ids_range = wnn_builder.call<emscripten::val>(
         "constant", position_ids_range_desc, position_ids_range_buffer);
     // Add the offset to the sequence.
