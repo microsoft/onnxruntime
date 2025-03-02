@@ -141,6 +141,7 @@ void WebGpuContext::Initialize(const WebGpuBufferCacheConfig& buffer_cache_confi
     ORT_ENFORCE(Device().GetLimits(&device_supported_limits));
     device_limits_ = device_supported_limits.limits;
 
+    supports_buffer_map_extended_usages_ = device_.HasFeature(wgpu::FeatureName::BufferMapExtendedUsages);
     // create buffer manager
     buffer_mgr_ = BufferManagerFactory::Create(*this,
                                                buffer_cache_config.storage.mode,
@@ -401,13 +402,25 @@ Status WebGpuContext::Run(ComputeContext& context, const ProgramBase& program) {
 
   WriteTimestamp(num_pending_dispatches_ * 2);
 
+  // UMA buffers are mapped at creation time, so we may need to unmap them before using them by GPU.
+  auto EnsureBufferUnmapped = [this](WGPUBuffer buffer) {
+    auto map_state = wgpuBufferGetMapState(buffer);
+    if (map_state != WGPUBufferMapState_Unmapped && SupportsBufferMapExtendedUsages()) {
+      wgpuBufferUnmap(buffer);
+    }
+  };
+
   uint32_t entry_index = 0;
   std::vector<wgpu::BindGroupEntry> bind_group_entries;
   for (const auto& input : inputs) {
-    bind_group_entries.push_back({nullptr, entry_index++, reinterpret_cast<WGPUBuffer>(const_cast<void*>(input.tensor->DataRaw()))});
+    auto buffer = reinterpret_cast<WGPUBuffer>(const_cast<void*>(input.tensor->DataRaw()));
+    EnsureBufferUnmapped(buffer);
+    bind_group_entries.push_back({nullptr, entry_index++, buffer});
   }
   for (const auto& output : outputs) {
-    bind_group_entries.push_back({nullptr, entry_index++, reinterpret_cast<WGPUBuffer>(output.tensor->MutableDataRaw())});
+    auto buffer = reinterpret_cast<WGPUBuffer>(output.tensor->MutableDataRaw());
+    EnsureBufferUnmapped(buffer);
+    bind_group_entries.push_back({nullptr, entry_index++, buffer});
   }
   if (uniform_buffer) {
     bind_group_entries.push_back({nullptr, entry_index++, uniform_buffer});
@@ -490,7 +503,9 @@ std::vector<wgpu::FeatureName> WebGpuContext::GetAvailableRequiredFeatures(const
       wgpu::FeatureName::TimestampQuery,
       wgpu::FeatureName::ShaderF16,
       wgpu::FeatureName::Subgroups,
-      wgpu::FeatureName::SubgroupsF16};
+      wgpu::FeatureName::SubgroupsF16,
+      wgpu::FeatureName::BufferMapExtendedUsages
+  };
   for (auto feature : features) {
     if (adapter.HasFeature(feature)) {
       required_features.push_back(feature);
