@@ -66,7 +66,7 @@ Status BiasSplitGelu::ComputeInternal(onnxruntime::webgpu::ComputeContext& conte
 
   BiasSplitGeluProgram program{channels};
   program.AddInputs({{input, ProgramTensorMetadataDependency::TypeAndRank},
-                   {bias}})
+                     {bias}})
       .AddOutput({output})
       .SetDispatchGroupSize((output_size + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE)
       .AddUniformVariables({{static_cast<uint32_t>(output_size)}});
