@@ -66,6 +66,11 @@ steps:
           copy $(Build.BinariesDirectory)\${{parameters.buildConfig}}\${{parameters.buildConfig}}\dxcompiler.dll $(Build.BinariesDirectory)\${{parameters.artifactName}}\lib
           copy $(Build.BinariesDirectory)\${{parameters.buildConfig}}\${{parameters.buildConfig}}\dxil.dll $(Build.BinariesDirectory)\${{parameters.artifactName}}\lib
 
+          # Copy QNN dependencies if required
+          copy $(Build.BinariesDirectory)\${{parameters.buildConfig}}\${{parameters.buildConfig}}\libQnnHtp*.so $(Build.BinariesDirectory)\${{parameters.artifactName}}\lib /Y
+          copy $(Build.BinariesDirectory)\${{parameters.buildConfig}}\${{parameters.buildConfig}}\libqnnhtp*.cat $(Build.BinariesDirectory)\${{parameters.artifactName}}\lib /Y
+          copy $(Build.BinariesDirectory)\${{parameters.buildConfig}}\${{parameters.buildConfig}}\Qnn*.dll $(Build.BinariesDirectory)\${{parameters.artifactName}}\lib /Y
+
           # copy trt ep libraries only when trt ep is enabled
           copy $(Build.BinariesDirectory)\${{parameters.buildConfig}}\${{parameters.buildConfig}}\onnxruntime_providers_tensorrt.dll $(Build.BinariesDirectory)\${{parameters.artifactName}}\lib
           copy $(Build.BinariesDirectory)\${{parameters.buildConfig}}\${{parameters.buildConfig}}\onnxruntime_providers_tensorrt.pdb $(Build.BinariesDirectory)\${{parameters.artifactName}}\lib

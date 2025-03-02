@@ -99,6 +99,13 @@ stages:
           script: |
             dir $(Build.BinariesDirectory)\${{ parameters.build_config }}\${{ parameters.build_config }}
 
+      - template: c-api-artifacts-package-and-publish-steps-windows.yml
+        parameters:
+          buildConfig: ${{ parameters.build_config }}
+          artifactName: 'onnxruntime-win-${{ parameters.buildPlatform }}-qnn'
+          artifactNameNoVersionString: 'onnxruntime-win-${{ parameters.buildPlatform }}-qnn'
+          DoEsrp: ${{ parameters.DoEsrp }}
+
       - template: win-esrp-dll.yml
         parameters:
           FolderPath: '$(Build.BinariesDirectory)\${{ parameters.build_config }}\${{ parameters.build_config }}'

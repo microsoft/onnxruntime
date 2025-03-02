@@ -49,7 +49,8 @@ stages:
       IsReleaseBuild: ${{ parameters.IsReleaseBuild }}
       DoEsrp: true
       ArtifactName: 'drop-nuget-qnn-arm64'
-      buildParameter: '--arm64 --use_webgpu'
+      # Add --use_webgpu to enable WebGPU
+      buildParameter: '--arm64'
       buildPlatform: 'ARM64'
       buildArch: 'ARM64'
       StageName: 'OnnxRuntime_QNN_Nuget_Win_Arm64'
