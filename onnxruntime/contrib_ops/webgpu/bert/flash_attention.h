@@ -23,7 +23,7 @@ class CopyKVCacheProgram final : public Program<CopyKVCacheProgram> {
 
   Status GenerateShaderCode(ShaderHelper& sh) const override;
 
-  WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES({"valid_present_size", ProgramUniformVariableDataType::Uint32},
+  WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES({"valid_new_present_size", ProgramUniformVariableDataType::Uint32},
                                           {"past_sequence_length", ProgramUniformVariableDataType::Uint32});
 
  private:
@@ -57,6 +57,50 @@ class FlashAttentionProgram final : public Program<FlashAttentionProgram> {
   bool has_attention_bias_;
   int qkv_head_size_;
   int qkv_num_heads_;
+};
+
+class FlashAttentionDecodeSplitKProgram final : public Program<FlashAttentionDecodeSplitKProgram> {
+ public:
+  FlashAttentionDecodeSplitKProgram(const std::string& kernel_name,
+                                    bool has_attention_bias, int tile_size, int vectorized_head_size, int components, int n_reps = 1)
+      : Program{kernel_name}, has_attention_bias_(has_attention_bias), tile_size_(tile_size), vectorized_head_size_(vectorized_head_size), components_(components), n_reps_(n_reps) {
+  }
+
+  Status GenerateShaderCode(ShaderHelper& sh) const override;
+
+  WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES({"M", ProgramUniformVariableDataType::Uint32},
+                                          {"K", ProgramUniformVariableDataType::Uint32},
+                                          {"N", ProgramUniformVariableDataType::Uint32},
+                                          {"num_heads", ProgramUniformVariableDataType::Uint32},
+                                          {"alpha", ProgramUniformVariableDataType::Float32},
+                                          {"present_sequence_length", ProgramUniformVariableDataType::Uint32},
+                                          {"n_reps", ProgramUniformVariableDataType::Uint32},
+                                          {"split_k", ProgramUniformVariableDataType::Uint32});
+
+ private:
+  bool has_attention_bias_;
+  int tile_size_;
+  int vectorized_head_size_;
+  int components_;
+  int n_reps_;
+};
+
+class FlashAttentionDecodeReduceProgram final : public Program<FlashAttentionDecodeReduceProgram> {
+ public:
+  FlashAttentionDecodeReduceProgram(const std::string& kernel_name, int tile_size, int n_reps = 1)
+      : Program{kernel_name}, tile_size_(tile_size), n_reps_(n_reps) {
+  }
+
+  Status GenerateShaderCode(ShaderHelper& sh) const override;
+
+  WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES({"head_size_vec", ProgramUniformVariableDataType::Uint32},
+                                          {"split_k", ProgramUniformVariableDataType::Uint32});
+
+  WEBGPU_PROGRAM_DEFINE_OVERRIDABLE_CONSTANTS({"TILE_SIZE", ProgramConstantDataType::Uint32});
+
+ private:
+  int tile_size_;
+  int n_reps_;
 };
 
 Status ApplyFlashAttention(const Tensor* Q, const Tensor* K, const Tensor* V, const Tensor* attention_bias,
