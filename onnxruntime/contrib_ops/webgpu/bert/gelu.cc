@@ -20,13 +20,13 @@ ONNX_OPERATOR_KERNEL_EX(
     Gelu);
 
 void AppendErfFunction(std::ostream& os) {
-  os << "const r0: input_indices_t = 0.3275911;\n"
-     << "const r1: input_indices_t = 0.254829592;\n"
-     << "const r2: input_indices_t = -0.284496736;\n"
-     << "const r3: input_indices_t = 1.421413741;\n"
-     << "const r4: input_indices_t = -1.453152027;\n"
-     << "const r5: input_indices_t = 1.061405429;\n\n"
-     << "fn erf_vf32(v: vec4<input_indices_t>) -> vec4<input_indices_t> {\n"
+  os << "const r0: f32 = 0.3275911;\n"
+     << "const r1: f32 = 0.254829592;\n"
+     << "const r2: f32 = -0.284496736;\n"
+     << "const r3: f32 = 1.421413741;\n"
+     << "const r4: f32 = -1.453152027;\n"
+     << "const r5: f32 = 1.061405429;\n\n"
+     << "fn erf_vf32(v: vec4<f32>) -> vec4<f32> {\n"
      << "  let absv = abs(v);\n"
      << "  let x = 1.0 / (1.0 + r0 * absv);\n"
      << "  return sign(v) * (1.0 - ((((r5 * x + r4) * x + r3) * x + r2) * x + r1) * x * exp(-absv * absv));\n"
@@ -36,6 +36,8 @@ void AppendErfFunction(std::ostream& os) {
 Status GeluProgram::GenerateShaderCode(ShaderHelper& shader) const {
   const ShaderVariableHelper& input = shader.AddInput("input");
   const ShaderVariableHelper& output = shader.AddOutput("output");
+
+  
 
   AppendErfFunction(shader.AdditionalImplementation());
 
