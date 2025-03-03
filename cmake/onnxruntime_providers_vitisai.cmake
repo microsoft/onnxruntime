@@ -37,7 +37,7 @@
     set_property(TARGET onnxruntime_providers_vitisai APPEND_STRING PROPERTY LINK_FLAGS "-Xlinker --version-script=${ONNXRUNTIME_ROOT}/core/providers/vitisai/version_script.lds -Xlinker --gc-sections")
   endif(MSVC)
 
-  target_include_directories(onnxruntime_providers_vitisai PRIVATE "${ONNXRUNTIME_ROOT}/core/providers/vitisai/include" ${XRT_INCLUDE_DIRS} ${CMAKE_CURRENT_BINARY_DIR}/VitisAI)
+  target_include_directories(onnxruntime_providers_vitisai PRIVATE "${ONNXRUNTIME_ROOT}/core/providers/vitisai/include" ${CMAKE_CURRENT_BINARY_DIR}/VitisAI)
   if(MSVC)
     target_compile_options(onnxruntime_providers_vitisai PRIVATE "/Zc:__cplusplus")
     # for dll interface warning.
