@@ -39,7 +39,7 @@ Status GeluProgram::GenerateShaderCode(ShaderHelper& shader) const {
 
   AppendErfFunction(shader.AdditionalImplementation());
 
-  const vecSize = "(uniforms.output_size + 3) / 4"; // equivalent to Math.ceil(output_size / 4)
+  const vecSize = "(uniforms.output_size + 3) / 4";  // equivalent to Math.ceil(output_size / 4)
 
   shader.MainFunctionBody() << shader.GuardAgainstOutOfBoundsWorkgroupSizes(vecSize)
                             << "let a = " << input.GetByOffset("global_idx") << ";\n"
