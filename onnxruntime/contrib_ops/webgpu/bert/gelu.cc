@@ -3,6 +3,7 @@
 
 #include "core/providers/webgpu/shader_helper.h"
 #include "core/providers/webgpu/webgpu_supported_types.h"
+#include "core/providers/webgpu/math/unary_elementwise_ops.h"
 #include "contrib_ops/webgpu/bert/gelu.h"
 #include "contrib_ops/webgpu/webgpu_contrib_kernels.h"
 
@@ -11,56 +12,42 @@ namespace contrib {
 namespace webgpu {
 
 ONNX_OPERATOR_KERNEL_EX(
-    Gelu,
+    FastGelu,
     kMSDomain,
     1,
     kWebGpuExecutionProvider,
     (*KernelDefBuilder::Create())
         .TypeConstraint("T", WebGpuSupportedFloatTypes()),
-    Gelu);
+    FastGelu);
 
-void AppendErfFunction(std::ostream& os) {
-  os << "const r0: f32 = 0.3275911;\n"
-     << "const r1: f32 = 0.254829592;\n"
-     << "const r2: f32 = -0.284496736;\n"
-     << "const r3: f32 = 1.421413741;\n"
-     << "const r4: f32 = -1.453152027;\n"
-     << "const r5: f32 = 1.061405429;\n\n"
-     << "fn erf_vf32(v: vec4<f32>) -> vec4<f32> {\n"
-     << "  let absv = abs(v);\n"
-     << "  let x = 1.0 / (1.0 + r0 * absv);\n"
-     << "  return sign(v) * (1.0 - ((((r5 * x + r4) * x + r3) * x + r2) * x + r1) * x * exp(-absv * absv));\n"
-     << "}\n";
-}
+Status FastGeluProgram::GenerateShaderCode(ShaderHelper& shader) const {
+  const auto& x = shader.AddInput("x", ShaderUsage::UseUniform | ShaderUsage::UseValueTypeAlias);
+  const auto& y = shader.AddOutput("y", ShaderUsage::UseUniform);
 
-Status GeluProgram::GenerateShaderCode(ShaderHelper& shader) const {
-  const ShaderVariableHelper& input = shader.AddInput("input");
-  const ShaderVariableHelper& output = shader.AddOutput("output");
-
-  AppendErfFunction(shader.AdditionalImplementation());
-
-  const std::string vecSize = "(uniforms.output_size + 3u) / 4u";  // equivalent to Math.ceil(output_size / 4)
-
-  shader.MainFunctionBody() << shader.GuardAgainstOutOfBoundsWorkgroupSizes(vecSize)
-                            << "let a = f32(" << input.GetByOffset("global_idx") << ");\n"
-                            << "let value = 0.5 * a * (1.0 + erf_vf32(a * 0.7071067811865475));\n"
-                            << output.SetByOffset("global_idx", "input_indices_t(value)");
+  shader.AdditionalImplementation() << ErfImpl;
+  shader.MainFunctionBody() << shader.GuardAgainstOutOfBoundsWorkgroupSizes("uniforms.vec_size")
+                            << "  var a = " << x.GetByOffset("global_idx") << ";\n"
+                            << y.SetByOffset("global_idx", onnxruntime::webgpu::GeluExpr);
 
   return Status::OK();
 }
 
-Status Gelu::ComputeInternal(onnxruntime::webgpu::ComputeContext& context) const {
+Status FastGelu::ComputeInternal(onnxruntime::webgpu::ComputeContext& context) const {
   const auto* input = context.Input(0);
-  TensorShape input_shape = input->Shape();
+  auto* output = context.Output(0, input->Shape());
 
-  auto* output = context.Output(0, input_shape);
-  int64_t output_size = output->Shape().Size();
+  uint32_t data_size = gsl::narrow<uint32_t>(output->Shape().Size());
+  if (data_size == 0) {
+    return Status::OK();
+  }
+
+  const auto vec_size = (data_size + 3) / 4;
 
   GeluProgram program{};
-  program.AddInputs({{input, ProgramTensorMetadataDependency::TypeAndRank}})
-      .AddOutput({output})
-      .SetDispatchGroupSize((output_size + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE)
-      .AddUniformVariables({{static_cast<uint32_t>(output_size)}});
+  program.AddInput({input, ProgramTensorMetadataDependency::Type, {vec_size}, 4})
+      .AddOutput({output, ProgramTensorMetadataDependency::None, {vec_size}, 4})
+      .SetDispatchGroupSize((vec_size + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE)
+      .AddUniformVariable({vec_size});
   return context.RunProgram(program);
 }
 

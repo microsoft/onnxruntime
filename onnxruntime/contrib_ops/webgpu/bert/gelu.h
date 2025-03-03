@@ -13,16 +13,23 @@ namespace webgpu {
 using namespace onnxruntime::webgpu;
 using onnxruntime::webgpu::ComputeContext;
 
-class GeluProgram final : public Program<GeluProgram> {
+class FastGeluProgram final : public Program<FastGeluProgram> {
  public:
-  GeluProgram() : Program{"Gelu"} {}
+  FastGeluProgram(int bias_components) : Program{"FastGelu"}, bias_components_{bias_components} {
+  }
+
   Status GenerateShaderCode(ShaderHelper& sh) const override;
-  WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES({"output_size", ProgramUniformVariableDataType::Uint32});
+
+  WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES({"vec_size", ProgramUniformVariableDataType::Uint32});
+
+ private:
+  int bias_components_;
 };
 
-class Gelu final : public WebGpuKernel {
+class FastGelu final : public WebGpuKernel {
  public:
-  Gelu(const OpKernelInfo& info) : WebGpuKernel(info) {}
+  FastGelu(const OpKernelInfo& info) : WebGpuKernel(info) {}
+
   Status ComputeInternal(ComputeContext& context) const override;
 };
 
