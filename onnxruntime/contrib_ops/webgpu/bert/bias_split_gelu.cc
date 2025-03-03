@@ -25,17 +25,17 @@ Status BiasSplitGeluProgram::GenerateShaderCode(ShaderHelper& shader) const {
   const ShaderVariableHelper& bias = shader.AddInput("bias");
   const ShaderVariableHelper& output = shader.AddOutput("output");
 
-  AppendErfFunction(shader.AdditionalImplementation());
+  shader.AdditionalImplementation() << ErfImpl;
 
   shader.MainFunctionBody() << shader.GuardAgainstOutOfBoundsWorkgroupSizes("uniforms.output_size")
                             << "const M_SQRT2: f32 = sqrt(2.0);\n"
-                            << "const halfChannels = (" << channels_ << " / 4 / 2)u;\n"
+                            << "const halfChannels = (uniforms.channels / 4 / 2)u;\n"
                             << "let biasIdx = global_idx % halfChannels;\n"
                             << "let batchIndex = global_idx / halfChannels;\n"
                             << "let inputOffset = biasIdx + batchIndex * halfChannels * 2;\n"
                             << "let valueLeft = " << input.GetByOffset("inputOffset") << " + " << bias.GetByOffset("biasIdx") << ";\n"
                             << "let valueRight = " << input.GetByOffset("inputOffset + halfChannels") << " + " << bias.GetByOffset("biasIdx + halfChannels") << ";\n"
-                            << "let geluRight = valueRight * 0.5 * (erf_vf32(f32(valueRight) / M_SQRT2) + 1);\n"
+                            << "let geluRight = valueRight * 0.5 * (erf_v(valueRight / M_SQRT2) + 1);\n"
                             << output.SetByOffset("global_idx", "input_indices_t(valueLeft * geluRight)");
 
   return Status::OK();
@@ -64,12 +64,13 @@ Status BiasSplitGelu::ComputeInternal(onnxruntime::webgpu::ComputeContext& conte
   auto* output = context.Output(0, input_shape);
   int64_t output_size = output->Shape().Size();
 
-  BiasSplitGeluProgram program{channels};
+  BiasSplitGeluProgram program{};
   program.AddInputs({{input, ProgramTensorMetadataDependency::TypeAndRank},
                      {bias}})
       .AddOutput({output})
       .SetDispatchGroupSize((output_size + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE)
-      .AddUniformVariables({{static_cast<uint32_t>(output_size)}});
+      .AddUniformVariables({{static_cast<uint32_t>(output_size)},
+                            {static_cast<uint32_t>(channels)}});
   return context.RunProgram(program);
 }
 

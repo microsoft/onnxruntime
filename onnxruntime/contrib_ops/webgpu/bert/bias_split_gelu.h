@@ -15,12 +15,10 @@ using onnxruntime::webgpu::ComputeContext;
 
 class BiasSplitGeluProgram final : public Program<BiasSplitGeluProgram> {
  public:
-  BiasSplitGeluProgram(int64_t channels) : Program{"BiasSplitGelu"}, channels_{channels} {}
+  BiasSplitGeluProgram() : Program{"BiasSplitGelu"} {}
   Status GenerateShaderCode(ShaderHelper& sh) const override;
-  WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES({"output_size", ProgramUniformVariableDataType::Uint32});
-
- private:
-  int64_t channels_;
+  WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES({"output_size", ProgramUniformVariableDataType::Uint32},
+                                          {"channels", ProgramUniformVariableDataType::Uint32});
 };
 
 class BiasSplitGelu final : public WebGpuKernel {
