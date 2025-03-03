@@ -64,7 +64,7 @@ Status BiasAdd::ComputeInternal(onnxruntime::webgpu::ComputeContext& context) co
       .AddOutput({output})
       .SetDispatchGroupSize((output_size + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE)
       .AddUniformVariables({{static_cast<uint32_t>(output_size)},
-                           {static_cast<uint32_t>(channels)}});
+                            {static_cast<uint32_t>(channels)}});
   return context.RunProgram(program);
 }
 
