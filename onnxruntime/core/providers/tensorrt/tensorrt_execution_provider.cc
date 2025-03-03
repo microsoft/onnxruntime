@@ -3278,7 +3278,7 @@ Status TensorrtExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphView
         if (!trt_builder->setMaxThreads(desiredMaxThreads)) {
           LOGS_DEFAULT(INFO) << "[TensorRT EP] Failed to set max threads to " << desiredMaxThreads;
         } else {
-          LOGS_DEFAULT(INFO) << "[TensorRT EP] Max threads set to: " << builder->getMaxThreads();
+          LOGS_DEFAULT(INFO) << "[TensorRT EP] Max threads set to: " << trt_builder->getMaxThreads();
         }
         size_t currentMaxThreads = trt_builder->getMaxThreads();
         LOGS_DEFAULT(INFO) << "[TensorRT EP] Current max threads when building engine: " << currentMaxThreads;
