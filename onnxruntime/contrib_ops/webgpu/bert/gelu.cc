@@ -37,8 +37,6 @@ Status GeluProgram::GenerateShaderCode(ShaderHelper& shader) const {
   const ShaderVariableHelper& input = shader.AddInput("input");
   const ShaderVariableHelper& output = shader.AddOutput("output");
 
-  
-
   AppendErfFunction(shader.AdditionalImplementation());
 
   const std::string vecSize = "(uniforms.output_size + 3u) / 4u";  // equivalent to Math.ceil(output_size / 4)
