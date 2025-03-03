@@ -267,6 +267,34 @@ static const char* const kOrtSessionOptionsModelExternalInitializersFileFolderPa
 static const char* const kOrtSessionOptionsSavePrePackedConstantInitializers =
     "session.save_external_prepacked_constant_initializers";
 
+// Use this config when you want to collect memory stats for each node in the graph.
+// The file format is a CSV file with the following columns:
+// The file will be created if it does not exist, and will be overwritten if it does.
+//
+// The content of the file can be used to estimate memory requirements at run time including
+// the temporary allocations. This operation is preferably done on a CPU device, as the model may exceed
+// device memory limits in constrained environments. When enabling this option, it is important to disable
+// memory patterns, as they tend to allocate large blocks to avoid fragmentation and accommodate needs of multiple
+// kernels. Memory patterns may make it difficult to allocate on a device with limited memory.
+//
+// The collected stats then can be used to partition the graph among the devices in a way that only the
+// required memory is allocated on each device.
+//
+// node_name, initializers_memory, dynamic_outputs_sizes, temp_allocations_size
+//
+// - "full path to file": there is not a default for this option. If the file can not be opened for writing, an error will be returned.
+static const char* const kOrtSessionOptionsCollectNodeMemoryStatsToFile = "session.collect_node_memory_stats_to_file";
+
+/// This is a composite CSV setting formatted as "memory limit in kb,file name for collected stats"
+/// "limit > 0": enables Capacity Aware Partitioning for Cuda EP. `limit` is optional and when absent
+/// the provider may attempt to figure out the memory available automatically.
+/// The setting with no limit is expected to look like: ",file name for collected stats"
+///  The EP will place nodes on device "file name" :
+/// this file is expected to be found at the same folder with the model. The file contains
+/// pre-recorded stats collected when running with kOrtSessionOptionsCollectNodeMemoryStatsToFile enforce (see above)
+static const char* const kOrtSessionOptionsResourceCudaPartitioningSettings =
+    "session.resource_cuda_partitioning_settings";
+
 // Enable EP context feature to dump the partitioned graph which includes the EP context into Onnx file.
 // The dumped Onnx model with EP context can be used for future inference to avoid the EP graph partitioning/compile overhead.
 // "0": disable. (default)

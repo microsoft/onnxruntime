@@ -193,6 +193,12 @@ class GraphViewer {
   IOnnxRuntimeOpSchemaCollectionPtr GetSchemaRegistry() const { return graph_->GetSchemaRegistry(); }
 #endif
 
+  /** Populate `value` if an externally allocated OrtValue exists for an initializer with the given name.
+   */
+  bool GetOrtValueInitializer(const std::string& name, OrtValue& value) const {
+    return graph_->GetOrtValueInitializer(name, value);
+  }
+
  private:
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(GraphViewer);
   GraphViewer(const Graph& graph, const IndexedSubGraph* filter_info);

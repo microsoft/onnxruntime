@@ -844,18 +844,9 @@ INSTANTIATE_UNPACK_TENSOR(UInt4x2)
     break;
 
 template <size_t alignment>
-common::Status GetSizeInBytesFromTensorProto(const ONNX_NAMESPACE::TensorProto& tensor_proto, size_t* out) {
-  const auto& dims = tensor_proto.dims();
-  size_t size = 1;
-  for (google::protobuf::int64 dim : dims) {
-    if (dim < 0 || static_cast<uint64_t>(dim) >= std::numeric_limits<size_t>::max()) {
-      return common::Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT, "Invalid TensorProto");
-    }
-    if (!IAllocator::CalcMemSizeForArray(size, static_cast<size_t>(dim), &size)) {
-      return common::Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT, "Invalid TensorProto");
-    }
-  }
-  switch (tensor_proto.data_type()) {
+common::Status GetSizeInBytesFromTensorShapeAndType(const TensorShape& shape, int32_t element_type, size_t* out) {
+  const auto size = narrow<size_t>(shape.Size());
+  switch (element_type) {
     CASE_PROTO_TRACE(FLOAT, float);
     CASE_PROTO_TRACE(DOUBLE, double);
     CASE_PROTO_TRACE(BOOL, bool);
@@ -884,24 +875,61 @@ common::Status GetSizeInBytesFromTensorProto(const ONNX_NAMESPACE::TensorProto& 
   return Status::OK();
 }
 
+template <size_t alignment>
+common::Status GetSizeInBytesFromTensorProto(const ONNX_NAMESPACE::TensorProto& tensor_proto, size_t* out) {
+  TensorShape tensor_shape = GetTensorShapeFromTensorProto(tensor_proto);
+
+  bool any_out_of_bounds = std::any_of(tensor_shape.GetDims().begin(), tensor_shape.GetDims().end(),
+                                       [](int64_t dim) {
+                                         if (dim < 0 ||
+                                             static_cast<uint64_t>(dim) >= std::numeric_limits<size_t>::max()) {
+                                           return true;
+                                         }
+                                         return false;
+                                       });
+
+  ORT_RETURN_IF(any_out_of_bounds, "Out of bounds dimensions in TypeProto_Tensor");
+
+  return GetSizeInBytesFromTensorShapeAndType<alignment>(tensor_shape, tensor_proto.data_type(), out);
+}
+
+template <size_t alignment>
+common::Status GetSizeInBytesFromTensorTypeProto(const ONNX_NAMESPACE::TypeProto_Tensor& tensor_proto, size_t* out) {
+  ORT_RETURN_IF_NOT(HasShape(tensor_proto), "TypeProto_Tensor does not have shape");
+  ORT_RETURN_IF_NOT(HasElemType(tensor_proto), "TypeProto_Tensor does not have element type");
+
+  TensorShape tensor_shape = GetTensorShapeFromTensorShapeProto(tensor_proto.shape());
+
+  bool any_out_of_bounds = std::any_of(tensor_shape.GetDims().begin(), tensor_shape.GetDims().end(),
+                                       [](int64_t dim) {
+                                         return dim < 0 ||
+                                                static_cast<uint64_t>(dim) >= std::numeric_limits<size_t>::max();
+                                       });
+  ORT_RETURN_IF(any_out_of_bounds, "Out of bounds dimensions in TypeProto_Tensor");
+
+  return GetSizeInBytesFromTensorShapeAndType<alignment>(tensor_shape, tensor_proto.elem_type(), out);
+}
+
+template Status GetSizeInBytesFromTensorTypeProto<0>(const ONNX_NAMESPACE::TypeProto_Tensor& tensor_proto, size_t* out);
+
 TensorShape GetTensorShapeFromTensorShapeProto(const ONNX_NAMESPACE::TensorShapeProto& tensor_shape_proto) {
   const auto& dims = tensor_shape_proto.dim();
-  std::vector<int64_t> tensor_shape_vec(static_cast<size_t>(dims.size()));
+  TensorShapeVector tensor_shape_vec(static_cast<size_t>(dims.size()));
   for (int i = 0; i < dims.size(); ++i) {
     tensor_shape_vec[i] =
         HasDimValue(dims[i]) ? dims[i].dim_value() : -1; /* symbolic dimensions are represented as -1 in onnxruntime*/
   }
-  return TensorShape(std::move(tensor_shape_vec));
+  return TensorShape(tensor_shape_vec);
 }
 
 TensorShape GetTensorShapeFromTensorProto(const ONNX_NAMESPACE::TensorProto& tensor_proto) {
   const auto& dims = tensor_proto.dims();
-  std::vector<int64_t> tensor_shape_vec(static_cast<size_t>(dims.size()));
+  TensorShapeVector tensor_shape_vec(static_cast<size_t>(dims.size()));
   for (int i = 0; i < dims.size(); ++i) {
     tensor_shape_vec[i] = dims[i];
   }
 
-  return TensorShape(std::move(tensor_shape_vec));
+  return TensorShape(tensor_shape_vec);
 }
 
 struct UnInitializeParam {
@@ -1289,22 +1317,15 @@ ONNX_NAMESPACE::TensorProto TensorToTensorProto(const Tensor& tensor,
     const auto* raw_data = tensor.DataRaw();
     ORT_ENFORCE(raw_data, "Missing raw data for tensor proto. Invalid tensor.");
     static_assert(sizeof(void*) <= sizeof(ExternalDataInfo::OFFSET_TYPE));
-    tensor_proto.set_data_location(ONNX_NAMESPACE::TensorProto_DataLocation_EXTERNAL);
 
     // we reinterpret_cast this back to void* in tensorprotoutils.cc:GetExtDataFromTensorProto.
     // use intptr_t as OFFSET_TYPE is signed. in theory you could get a weird looking value if the address uses the
     // high bit, but that should be unlikely in a scenario where we care about memory usage enough to use this path.
     auto offset = narrow<ExternalDataInfo::OFFSET_TYPE>(reinterpret_cast<intptr_t>(raw_data));
 
-    ONNX_NAMESPACE::StringStringEntryProto* entry = tensor_proto.mutable_external_data()->Add();
-    entry->set_key("location");
-    entry->set_value(ToUTF8String(onnxruntime::utils::kTensorProtoMemoryAddressTag));
-    entry = tensor_proto.mutable_external_data()->Add();
-    entry->set_key("offset");
-    entry->set_value(std::to_string(offset));
-    entry = tensor_proto.mutable_external_data()->Add();
-    entry->set_key("length");
-    entry->set_value(std::to_string(tensor.SizeInBytes()));
+    ExternalDataInfo::SetExternalLocationToProto(onnxruntime::utils::kTensorProtoMemoryAddressTag,
+                                                 offset, tensor.SizeInBytes(), tensor_proto);
+
   } else {
     utils::SetRawDataInTensorProto(tensor_proto, tensor.DataRaw(), tensor.SizeInBytes());
   }

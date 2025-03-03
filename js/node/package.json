@@ -13,7 +13,7 @@
       3
     ]
   },
-  "version": "1.21.0",
+  "version": "1.22.0",
   "dependencies": {
     "global-agent": "^3.0.0",
     "onnxruntime-common": "file:../common",

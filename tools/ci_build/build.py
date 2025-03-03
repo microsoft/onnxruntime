@@ -494,11 +494,16 @@ def parse_arguments():
         action="store_true",
         help="Use vcpkg to search dependencies. Requires CMAKE_TOOLCHAIN_FILE for vcpkg.cmake",
     )
+    parser.add_argument(
+        "--use_vcpkg_ms_internal_asset_cache",
+        action="store_true",
+        help="Microsoft internal option",
+    )
 
     # WebAssembly build
     parser.add_argument("--build_wasm", action="store_true", help="Build for WebAssembly")
     parser.add_argument("--build_wasm_static_lib", action="store_true", help="Build for WebAssembly static library")
-    parser.add_argument("--emsdk_version", default="4.0.3", help="Specify version of emsdk")
+    parser.add_argument("--emsdk_version", default="4.0.4", help="Specify version of emsdk")
 
     parser.add_argument("--enable_wasm_simd", action="store_true", help="Enable WebAssembly SIMD")
     parser.add_argument("--enable_wasm_threads", action="store_true", help="Enable WebAssembly multi-threads support")
@@ -1064,26 +1069,20 @@ def generate_vcpkg_install_options(build_dir, args):
         temp_dir = os.environ["AGENT_TEMPDIRECTORY"]
         vcpkg_install_options.append(f"--x-buildtrees-root={temp_dir}")
 
-    SYSTEM_COLLECTIONURI = os.getenv("SYSTEM_COLLECTIONURI")  # noqa: N806
-
     # Config asset cache
-    terrapin_cmd_path = shutil.which("TerrapinRetrievalTool")
-    if terrapin_cmd_path is None:
-        terrapin_cmd_path = "C:\\local\\Terrapin\\TerrapinRetrievalTool.exe"
-        if not os.path.exists(terrapin_cmd_path):
-            terrapin_cmd_path = None
-    if terrapin_cmd_path is not None:
-        vcpkg_install_options.append(
-            "--x-asset-sources=x-script,"
-            + terrapin_cmd_path
-            + " -b https://vcpkg.storage.devpackages.microsoft.io/artifacts/ -a true -u Environment -p {url} -s {sha512} -d {dst}\\;x-block-origin"
-        )
-    else:
-        if (
-            SYSTEM_COLLECTIONURI == "https://dev.azure.com/onnxruntime/"
-            or SYSTEM_COLLECTIONURI == "https://dev.azure.com/aiinfra/"
-            or SYSTEM_COLLECTIONURI == "https://aiinfra.visualstudio.com/"
-        ):
+    if args.use_vcpkg_ms_internal_asset_cache:
+        terrapin_cmd_path = shutil.which("TerrapinRetrievalTool")
+        if terrapin_cmd_path is None:
+            terrapin_cmd_path = "C:\\local\\Terrapin\\TerrapinRetrievalTool.exe"
+            if not os.path.exists(terrapin_cmd_path):
+                terrapin_cmd_path = None
+        if terrapin_cmd_path is not None:
+            vcpkg_install_options.append(
+                "--x-asset-sources=x-script,"
+                + terrapin_cmd_path
+                + " -b https://vcpkg.storage.devpackages.microsoft.io/artifacts/ -a true -u Environment -p {url} -s {sha512} -d {dst}\\;x-block-origin"
+            )
+        else:
             vcpkg_install_options.append(
                 "--x-asset-sources=x-azurl,https://vcpkg.storage.devpackages.microsoft.io/artifacts/\\;x-block-origin"
             )
@@ -1503,7 +1502,7 @@ def generate_build_tree(
         ]
 
     # VitisAI and OpenVINO providers currently only support full_protobuf option.
-    if args.use_full_protobuf or args.use_openvino or args.use_vitisai or args.gen_doc:
+    if args.use_full_protobuf or args.use_openvino or args.use_vitisai or args.gen_doc or args.enable_generic_interface:
         cmake_args += ["-Donnxruntime_USE_FULL_PROTOBUF=ON", "-DProtobuf_USE_STATIC_LIBS=ON"]
 
     if args.use_cuda and not is_windows():
@@ -1739,12 +1738,6 @@ def generate_build_tree(
             "-Donnxruntime_FUZZ_TEST=ON",
             "-Donnxruntime_USE_FULL_PROTOBUF=ON",
         ]
-
-    # When this flag is enabled, that means we only build ONNXRuntime shared library, expecting some compatible EP
-    # shared lib being build in a seperate process. So we skip the test for now as ONNXRuntime shared lib built under
-    # this flag is not expected to work alone
-    if args.enable_generic_interface:
-        cmake_args += ["-Donnxruntime_BUILD_UNIT_TESTS=OFF"]
 
     if args.enable_lazy_tensor:
         import torch
@@ -2909,7 +2902,12 @@ def main():
         # Disable ONNX Runtime's builtin memory checker
         args.disable_memleak_checker = True
 
-    if args.enable_generic_interface:
+    # When this flag is enabled, it is possible ONNXRuntime shared library is build separately, expecting some compatible EP
+    # shared lib being build in a seperate process. So we skip the testing if none of the primary EPs are built with ONNXRuntime
+    # shared lib
+    if args.enable_generic_interface and not (
+        args.use_tensorrt or args.use_openvino or args.use_vitisai or (args.use_qnn and args.use_qnn != "static_lib")
+    ):
         args.test = False
 
     # If there was no explicit argument saying what to do, default

@@ -1,17 +1,19 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include <memory>
-#include <vector>
-#include <iostream>
-#include <fstream>
-#include <sstream>
-#include <atomic>
-#include <mutex>
 #include <algorithm>
+#include <atomic>
+#include <fstream>
+#include <iostream>
+#include <memory>
+#include <mutex>
+#include <sstream>
 #include <thread>
+#include <vector>
 
 #include <absl/base/config.h>
+#include <gsl/gsl>
+
 #include "gtest/gtest.h"
 #include "gmock/gmock.h"
 
@@ -25,13 +27,13 @@
 #include "core/session/onnxruntime_run_options_config_keys.h"
 #include "core/util/thread_utils.h"
 
-#include "onnxruntime_config.h"
-#include "providers.h"
-#include "test_allocator.h"
-#include "test_fixture.h"
-#include "utils.h"
-#include "custom_op_utils.h"
-#include <gsl/gsl>
+#include "test/shared_lib/custom_op_utils.h"
+#include "test/shared_lib/test_fixture.h"
+#include "test/shared_lib/utils.h"
+#include "test/util/include/providers.h"
+#include "test/util/include/test_allocator.h"
+
+#include "onnxruntime_config.h"  // generated file in build output dir
 
 #ifdef _WIN32
 #include <Windows.h>
@@ -40,6 +42,7 @@
 #endif
 
 #ifdef USE_CUDA
+#include "core/providers/cuda/cuda_provider_options.h"
 #include <cuda_runtime.h>
 #endif
 
@@ -61,48 +64,6 @@ template <typename T, size_t N>
 constexpr size_t countof(T (&)[N]) { return N; }
 
 extern std::unique_ptr<Ort::Env> ort_env;
-
-template <typename OutT, typename InT = float, typename InputT = Input>
-void RunSession(OrtAllocator* allocator, Ort::Session& session_object,
-                const std::vector<InputT>& inputs,
-                const char* output_name,
-                const std::vector<int64_t>& dims_y,
-                const std::vector<OutT>& values_y,
-                Ort::Value* output_tensor) {
-  std::vector<Ort::Value> ort_inputs;
-  std::vector<const char*> input_names;
-  for (size_t i = 0; i < inputs.size(); i++) {
-    input_names.emplace_back(inputs[i].name);
-    ort_inputs.emplace_back(
-        Ort::Value::CreateTensor<InT>(allocator->Info(allocator), const_cast<InT*>(inputs[i].values.data()),
-                                      inputs[i].values.size(), inputs[i].dims.data(), inputs[i].dims.size()));
-  }
-
-  std::vector<Ort::Value> ort_outputs;
-  if (output_tensor)
-    session_object.Run(Ort::RunOptions{nullptr}, input_names.data(), ort_inputs.data(), ort_inputs.size(),
-                       &output_name, output_tensor, 1);
-  else {
-    ort_outputs = session_object.Run(Ort::RunOptions{}, input_names.data(), ort_inputs.data(), ort_inputs.size(),
-                                     &output_name, 1);
-    ASSERT_EQ(ort_outputs.size(), 1u);
-    output_tensor = &ort_outputs[0];
-  }
-
-  auto type_info = output_tensor->GetTensorTypeAndShapeInfo();
-  ASSERT_EQ(type_info.GetShape(), dims_y);
-  size_t total_len = type_info.GetElementCount();
-  ASSERT_EQ(values_y.size(), total_len);
-
-  OutT* f = output_tensor->GetTensorMutableData<OutT>();
-  for (size_t i = 0; i != total_len; ++i) {
-    if constexpr (std::is_same<OutT, float>::value || std::is_same<OutT, double>::value) {
-      ASSERT_NEAR(values_y[i], f[i], 1e-3);
-    } else {
-      ASSERT_EQ(values_y[i], f[i]);
-    }
-  }
-}
 
 #ifdef USE_DML
 struct DmlObjects {
@@ -299,12 +260,12 @@ Ort::Value CreateTensorValueFromExistingD3DResource(
 
 #endif
 
-template <typename OutT, typename InT = float, typename InputT = Input>
+template <typename ModelOutputT, typename ModelInputT = float, typename InputT = Input<float>>
 static void TestInference(Ort::Env& env, const std::basic_string<ORTCHAR_T>& model_uri,
                           const std::vector<InputT>& inputs,
                           const char* output_name,
                           const std::vector<int64_t>& expected_dims_y,
-                          const std::vector<OutT>& expected_values_y,
+                          const std::vector<ModelOutputT>& expected_values_y,
                           int provider_type,
                           OrtCustomOpDomain* custom_op_domain_ptr,
                           const ORTCHAR_T* custom_op_library_filename,
@@ -361,26 +322,26 @@ static void TestInference(Ort::Env& env, const std::basic_string<ORTCHAR_T>& mod
     auto default_allocator = std::make_unique<MockedOrtAllocator>();
 
     // without preallocated output tensor
-    RunSession<OutT, InT, InputT>(default_allocator.get(),
-                                  session,
-                                  inputs,
-                                  output_name,
-                                  expected_dims_y,
-                                  expected_values_y,
-                                  nullptr);
+    RunSession<ModelOutputT, ModelInputT, InputT>(default_allocator.get(),
+                                                  session,
+                                                  inputs,
+                                                  output_name,
+                                                  expected_dims_y,
+                                                  expected_values_y,
+                                                  nullptr);
     // with preallocated output tensor
-    Ort::Value value_y = Ort::Value::CreateTensor<OutT>(default_allocator.get(),
-                                                        expected_dims_y.data(), expected_dims_y.size());
+    Ort::Value value_y = Ort::Value::CreateTensor<ModelOutputT>(default_allocator.get(),
+                                                                expected_dims_y.data(), expected_dims_y.size());
 
     // test it twice
     for (int i = 0; i != 2; ++i)
-      RunSession<OutT, InT, InputT>(default_allocator.get(),
-                                    session,
-                                    inputs,
-                                    output_name,
-                                    expected_dims_y,
-                                    expected_values_y,
-                                    &value_y);
+      RunSession<ModelOutputT, ModelInputT, InputT>(default_allocator.get(),
+                                                    session,
+                                                    inputs,
+                                                    output_name,
+                                                    expected_dims_y,
+                                                    expected_values_y,
+                                                    &value_y);
   }
 }
 
@@ -449,8 +410,8 @@ class CApiTestWithProvider : public testing::Test, public ::testing::WithParamIn
 TEST_P(CApiTestWithProvider, simple) {
   // simple inference test
   // prepare inputs
-  std::vector<Input> inputs(1);
-  Input& input = inputs.back();
+  std::vector<Input<float>> inputs(1);
+  auto& input = inputs.back();
   input.name = "X";
   input.dims = {3, 2};
   input.values = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f};
@@ -620,8 +581,8 @@ TEST(CApiTest, SparseInputModel) {
 TEST(CApiTest, custom_op_handler) {
   std::cout << "Running custom op inference" << std::endl;
 
-  std::vector<Input> inputs(1);
-  Input& input = inputs[0];
+  std::vector<Input<float>> inputs(1);
+  auto& input = inputs[0];
   input.name = "X";
   input.dims = {3, 2};
   input.values = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f};
@@ -656,8 +617,8 @@ TEST(CApiTest, custom_op_handler) {
 TEST(CApiTest, custom_op_set_input_memory_type) {
   std::cout << "Running custom op inference" << std::endl;
 
-  std::vector<Input> inputs(1);
-  Input& input = inputs[0];
+  std::vector<Input<float>> inputs(1);
+  auto& input = inputs[0];
   input.name = "X";
   input.dims = {3, 2};
   input.values = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f};
@@ -686,8 +647,8 @@ TEST(CApiTest, custom_op_set_input_memory_type) {
 
 #if !defined(ORT_MINIMAL_BUILD)
 TEST(CApiTest, StandaloneOpHandler) {
-  std::vector<Input> inputs(1);
-  Input& input = inputs[0];
+  std::vector<Input<float>> inputs(1);
+  auto& input = inputs[0];
   input.name = "X";
   input.dims = {3, 2};
   input.values = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f};
@@ -810,7 +771,7 @@ TEST(CApiTest, test_enable_ort_customops_stringlower) {
 
 // test custom op which accepts float and double as inputs
 TEST(CApiTest, varied_input_custom_op_handler) {
-  std::vector<Input> inputs(2);
+  std::vector<Input<float>> inputs(2);
   inputs[0].name = "X";
   inputs[0].dims = {3};
   inputs[0].values = {2.0f, 3.0f, 4.0f};
@@ -1421,8 +1382,8 @@ TEST(CApiTest, custom_op_with_attributes_handler) {
 TEST(CApiTest, RegisterCustomOpForCPUAndCUDA) {
   std::cout << "Tests registration of a custom op of the same name for both CPU and CUDA EPs" << std::endl;
 
-  std::vector<Input> inputs(1);
-  Input& input = inputs[0];
+  std::vector<Input<float>> inputs(1);
+  auto& input = inputs[0];
   input.name = "X";
   input.dims = {3, 2};
   input.values = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f};
@@ -1530,7 +1491,7 @@ TEST(CApiTest, test_custom_op_openvino_wrapper_library) {
   // The custom op extracts the serialized .xml/.bin bytes and creates an in-memory OpenVINO model
   // during kernel creation. The custom op is passed an image of a hand-drawn "1" as an input during computation, which
   // is then inferenced using OpenVINO C++ APIs.
-  std::vector<Input> inputs(1);
+  std::vector<Input<float>> inputs(1);
   inputs[0].name = "Input3";
   inputs[0].dims = {1, 1, 28, 28};
 
@@ -1629,7 +1590,7 @@ TEST(CApiTest, test_custom_op_library) {
 #endif
   std::cout << "Running inference using custom op shared library" << std::endl;
 
-  std::vector<Input> inputs(2);
+  std::vector<Input<float>> inputs(2);
   inputs[0].name = "input_1";
   inputs[0].dims = {3, 5};
   inputs[0].values = {1.1f, 2.2f, 3.3f, 4.4f, 5.5f,
@@ -1681,7 +1642,7 @@ TEST(CApiTest, DISABLED_test_custom_op_shape_infer_attr) {
 #else
 TEST(CApiTest, test_custom_op_shape_infer_attr) {
 #endif
-  std::vector<Input> inputs(1);
+  std::vector<Input<float>> inputs(1);
   inputs[0].name = "input_0";
   inputs[0].dims = {5};
   inputs[0].values = {1.f, 2.f, 3.f, 4.f, 5.f};
@@ -1714,7 +1675,7 @@ TEST(CApiTest, test_custom_op_library_copy_variadic) {
 #endif
   std::cout << "Running inference using custom op shared library" << std::endl;
 
-  std::vector<Input> inputs(2);
+  std::vector<Input<float>> inputs(2);
   inputs[0].name = "input_0";
   inputs[0].dims = {15};
   inputs[0].values = {1.1f, 2.2f, 3.3f, 4.4f, 5.5f,
@@ -1868,8 +1829,8 @@ void PrepareModule() {
 
 TEST(CApiTest, test_pyop) {
   std::call_once(my_module_flag, PrepareModule);
-  std::vector<Input> inputs(1);
-  Input& input = inputs[0];
+  std::vector<Input<float>> inputs(1);
+  auto& input = inputs[0];
   input.name = "X";
   input.dims = {2, 2};
   input.values = {1.0f, 2.0f, 3.0f, 4.0f};
@@ -1881,8 +1842,8 @@ TEST(CApiTest, test_pyop) {
 
 TEST(CApiTest, test_pyop_multi) {
   std::call_once(my_module_flag, PrepareModule);
-  std::vector<Input> inputs(1);
-  Input& input = inputs[0];
+  std::vector<Input<float>> inputs(1);
+  auto& input = inputs[0];
   input.name = "X";
   input.dims = {2, 2};
   input.values = {1.0f, 2.0f, 3.0f, 4.0f};
@@ -1894,8 +1855,8 @@ TEST(CApiTest, test_pyop_multi) {
 
 TEST(CApiTest, test_pyop_kwarg) {
   std::call_once(my_module_flag, PrepareModule);
-  std::vector<Input> inputs(1);
-  Input& input = inputs[0];
+  std::vector<Input<float>> inputs(1);
+  auto& input = inputs[0];
   input.name = "X";
   input.dims = {2, 2};
   input.values = {1.0f, 2.0f, 3.0f, 4.0f};
@@ -1919,7 +1880,7 @@ TEST(ReducedOpsBuildTest, test_excluded_ops) {
   // In reduced ops build, test a model containing ops not included in required_ops.config cannot be loaded.
   // See onnxruntime/test/testdata/reduced_build_test.readme.txt for more details of the setup
   constexpr PATH_TYPE model_uri = TSTR("testdata/reduced_build_test.onnx_model_with_excluded_ops");
-  std::vector<Input> inputs = {{"X", {3}, {-1.0f, 2.0f, -3.0f}}};
+  std::vector<Input<float>> inputs = {{"X", {3}, {-1.0f, 2.0f, -3.0f}}};
   std::vector<int64_t> expected_dims_y = {3};
   std::vector<float> expected_values_y = {0.1f, 0.1f, 0.1f};
   bool failed = false;
@@ -1959,20 +1920,9 @@ static bool CreateSessionWithQnnEpAndQnnHtpSharedMemoryAllocator(PATH_TYPE model
     session = Ort::Session{*ort_env, model_path, session_options};
     return true;
   } catch (const Ort::Exception& e) {
-    // handle particular exception that indicates that the libcdsprpc.so / dll can't be loaded
-    // NOTE: To run this on a local Windows ARM64 device, you need to copy libcdsprpc.dll to the build directory:
-    //  - Open File Explorer
-    //  - Go to C:/Windows/System32/DriverStore/FileRepository/
-    //  - Search for a folder that begins with qcnspmcdm8380.inf_arm64_ and open it
-    //  - Copy the libcdsprpc.dll into the build/[PATH CONTAINING onnxruntime.dll] directory of the application.
-    // TODO(adrianlizarraga): Update CMake build for unittests to automatically copy libcdsprpc.dll into build directory
+    // handle exception that indicates that the libcdsprpc.so / dll can't be loaded
     std::string_view error_message = e.what();
-
-#if defined(_WIN32)
-    std::string_view expected_error_message = "Failed to load libcdsprpc.dll";
-#else
-    std::string_view expected_error_message = "Failed to load libcdsprpc.so";
-#endif
+    std::string_view expected_error_message = "Failed to initialize RPCMEM dynamic library handle";
 
     if (e.GetOrtErrorCode() == ORT_FAIL &&
         error_message.find(expected_error_message) != std::string_view::npos) {
@@ -3332,8 +3282,8 @@ TEST(CApiTest, TestSharedAllocators) {
   OrtEnv* env_ptr = (OrtEnv*)(*ort_env);
 
   // prepare inputs
-  std::vector<Input> inputs(1);
-  Input& input = inputs.back();
+  std::vector<Input<float>> inputs(1);
+  auto& input = inputs.back();
   input.name = "X";
   input.dims = {3, 2};
   input.values = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f};
@@ -3519,8 +3469,8 @@ TEST(CApiTest, TestSharedAllocators) {
 TEST(CApiTest, TestSharingOfInitializerAndItsPrepackedVersion) {
   // simple inference test
   // prepare inputs
-  std::vector<Input> inputs(1);
-  Input& input = inputs.back();
+  std::vector<Input<float>> inputs(1);
+  auto& input = inputs.back();
   input.name = "X";
   input.dims = {3, 2};
   input.values = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f};
@@ -3915,8 +3865,8 @@ TEST_P(CApiTensorRTTest, TestConfigureTensorRTProviderOptions) {
 
   // simple inference test
   // prepare inputs
-  std::vector<Input> inputs(1);
-  Input& input = inputs.back();
+  std::vector<Input<float>> inputs(1);
+  auto& input = inputs.back();
   input.name = "X";
   input.dims = {3, 2};
   input.values = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f};
@@ -4777,3 +4727,82 @@ TEST(CApiTest, OrtCustomOp_GetInPlace) {
   ASSERT_EQ(len, static_cast<size_t>(2));
   mock_gqa.ReleaseAliasMap(input_index, output_index);
 }
+
+#if !defined(ORT_MINIMAL_BUILD) && defined(USE_CUDA)
+
+TEST(CApiTest, GenerateNodeStatsFile) {
+  Ort::Env env(ORT_LOGGING_LEVEL_INFO);
+  constexpr const ORTCHAR_T* model_path = TSTR("testdata/transformers/tiny_gpt2_beamsearch.onnx");
+
+  Ort::SessionOptions session_options;
+  session_options.AddConfigEntry(kOrtSessionOptionsCollectNodeMemoryStatsToFile,
+                                 "tiny_gpt2_beamsearch_node_stats.txt");
+
+  OrtCUDAProviderOptionsV2 cuda_options;
+  cuda_options.use_tf32 = false;
+  session_options.AppendExecutionProvider_CUDA_V2(cuda_options);
+
+  std::vector<int64_t> input_ids_shape{3, 12};
+  std::vector<int32_t> input_ids{
+      0, 0, 0, 0, 0, 52, 195, 731, 321, 301, 734, 620,
+      41, 554, 74, 622, 206, 222, 75, 223, 221, 198, 224, 572,
+      0, 0, 0, 52, 328, 219, 328, 206, 288, 227, 896, 328};
+
+  std::vector<int64_t> parameter_shape{1};
+  std::vector<int32_t> max_length{20};
+  std::vector<int32_t> min_length{1};
+  std::vector<int32_t> num_beams{4};
+  std::vector<int32_t> num_return_sequences{1};
+  std::vector<float> length_penalty{1.0f};
+  std::vector<float> repetition_penalty{1.0f};
+
+  std::vector<int64_t> expected_output_shape{input_ids_shape[0], num_return_sequences[0], max_length[0]};
+  std::vector<int32_t> expected_output{
+      0, 0, 0, 0, 0, 52, 195, 731, 321, 301, 734, 620, 131, 131, 131, 181, 638, 638, 638, 638,
+      41, 554, 74, 622, 206, 222, 75, 223, 221, 198, 224, 572, 292, 292, 292, 292, 292, 292, 292, 292,
+      0, 0, 0, 52, 328, 219, 328, 206, 288, 227, 896, 328, 328, 669, 669, 669, 669, 669, 669, 669};
+
+  Ort::MemoryInfo info("Cpu", OrtDeviceAllocator, 0, OrtMemTypeDefault);
+  auto input_ids_tensor = Ort::Value::CreateTensor(
+      info, input_ids.data(), input_ids.size(), input_ids_shape.data(), input_ids_shape.size());
+
+  auto max_length_tensor = Ort::Value::CreateTensor(
+      info, max_length.data(), max_length.size(), parameter_shape.data(), parameter_shape.size());
+
+  auto min_length_tensor = Ort::Value::CreateTensor(
+      info, min_length.data(), min_length.size(), parameter_shape.data(), parameter_shape.size());
+
+  auto num_beams_tensor = Ort::Value::CreateTensor(
+      info, num_beams.data(), num_beams.size(), parameter_shape.data(), parameter_shape.size());
+
+  auto num_return_sequences_tensor = Ort::Value::CreateTensor(
+      info, num_return_sequences.data(), num_return_sequences.size(), parameter_shape.data(), parameter_shape.size());
+
+  auto length_penalty_tensor = Ort::Value::CreateTensor(
+      info, length_penalty.data(), length_penalty.size(), parameter_shape.data(), parameter_shape.size());
+
+  auto repetition_penalty_tensor = Ort::Value::CreateTensor(
+      info, repetition_penalty.data(), repetition_penalty.size(), parameter_shape.data(), parameter_shape.size());
+
+  std::vector<Ort::Value> ort_inputs;
+  ort_inputs.push_back(std::move(input_ids_tensor));
+  ort_inputs.push_back(std::move(max_length_tensor));
+  ort_inputs.push_back(std::move(min_length_tensor));
+  ort_inputs.push_back(std::move(num_beams_tensor));
+  ort_inputs.push_back(std::move(num_return_sequences_tensor));
+  ort_inputs.push_back(std::move(length_penalty_tensor));
+  ort_inputs.push_back(std::move(repetition_penalty_tensor));
+  const char* input_names[] = {"input_ids", "max_length", "min_length", "num_beams", "num_return_sequences",
+                               "length_penalty", "repetition_penalty"};
+  const char* const output_names[] = {"sequences"};
+
+  // The ONNX model is generated like the following:
+  // python convert_generation.py --model_type gpt2 -m hf-internal-testing/tiny-random-gpt2
+  //        --output tiny_gpt2_beamsearch_fp16.onnx --use_gpu --max_length 20
+  // (with separate_gpt2_decoder_for_init_run set to False as it is now set to True by default)
+  Ort::Session session(env, model_path, session_options);
+  session.Run(Ort::RunOptions{}, input_names, ort_inputs.data(), ort_inputs.size(),
+              output_names, 1);
+}
+
+#endif

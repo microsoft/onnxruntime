@@ -52,63 +52,7 @@ static std::vector<std::string> parseDevices(const std::string& device_string,
 }
 #endif
 
-// Parking this code here for now before it's moved to the factory
-void AdjustProviderInfo(ProviderInfo& info) {
-  std::set<std::string> ov_supported_device_types = {"CPU", "GPU",
-                                                     "GPU.0", "GPU.1", "NPU"};
-
-  std::vector<std::string> available_devices = OVCore::GetAvailableDevices();
-
-  for (auto& device : available_devices) {
-    if (ov_supported_device_types.find(device) == ov_supported_device_types.end()) {
-      ov_supported_device_types.emplace(device);
-    }
-  }
-
-  if (info.device_type == "") {
-    LOGS_DEFAULT(INFO) << "[OpenVINO-EP]"
-                       << "No runtime device selection option provided.";
-#if defined OPENVINO_CONFIG_CPU
-    info.device_type = "CPU";
-    info.precision = "FP32";
-#elif defined OPENVINO_CONFIG_GPU
-    info.device_type = "GPU";
-    info.precision = "FP16";
-#elif defined OPENVINO_CONFIG_NPU
-    info.device_type = "NPU";
-    info.precision = "FP16";
-#elif defined OPENVINO_CONFIG_HETERO || defined OPENVINO_CONFIG_MULTI || defined OPENVINO_CONFIG_AUTO
-#ifdef DEVICE_NAME
-#define DEVICE DEVICE_NAME
-#endif
-    dev_type = DEVICE;
-
-    if (info.device_type.find("HETERO") == 0 || info.device_type.find("MULTI") == 0 || info.device_type.find("AUTO") == 0) {
-      std::vector<std::string> devices = parseDevices(info.device_type, available_devices);
-      info.precision = "FP16";
-      if (devices[0] == "CPU") {
-        info.precision = "FP32";
-      }
-      info.device_type = std::move(dev_type);
-    }
-#endif
-  } else if (ov_supported_device_types.find(info.device_type) != ov_supported_device_types.end()) {
-    info.device_type = std::move(info.device_type);
-  }
-#if defined OPENVINO_CONFIG_HETERO || defined OPENVINO_CONFIG_MULTI || defined OPENVINO_CONFIG_AUTO
-  else if (info.device_type.find("HETERO") == 0 || info.device_type.find("MULTI") == 0 || info.device_type.find("AUTO") == 0) {
-    std::ignore = parseDevices(info.device_type, available_devices);
-    info.device_type = std::move(info.device_type);
-  }
-#endif
-  else {
-    ORT_THROW("Invalid device string: " + info.device_type);
-  }
-  LOGS_DEFAULT(INFO) << "[OpenVINO-EP]"
-                     << "Choosing Device: " << info.device_type << " , Precision: " << info.precision;
-}
-
-OpenVINOExecutionProvider::OpenVINOExecutionProvider(const ProviderInfo& info, SharedContext& shared_context)
+OpenVINOExecutionProvider::OpenVINOExecutionProvider(const ProviderInfo& info, std::shared_ptr<SharedContext> shared_context)
     : IExecutionProvider{onnxruntime::kOpenVINOExecutionProvider},
       session_context_(info),
       shared_context_{shared_context},
@@ -119,7 +63,7 @@ OpenVINOExecutionProvider::OpenVINOExecutionProvider(const ProviderInfo& info, S
   // using OVCore capability GetAvailableDevices to fetch list of devices plugged in
   if (info.cache_dir.empty()) {
     bool device_found = false;
-    std::vector<std::string> available_devices = OVCore::GetAvailableDevices();
+    std::vector<std::string> available_devices = OVCore::Get()->GetAvailableDevices();
     // Checking for device_type configuration
     if (info.device_type != "") {
       if (info.device_type.find("HETERO") != std::string::npos ||
@@ -162,7 +106,8 @@ OpenVINOExecutionProvider::~OpenVINOExecutionProvider() {
 
 std::vector<std::unique_ptr<ComputeCapability>>
 OpenVINOExecutionProvider::GetCapability(const GraphViewer& graph_viewer,
-                                         const IKernelLookup& /*kernel_lookup*/) const {
+                                         const IKernelLookup& /*kernel_lookup*/,
+                                         IResourceAccountant* /* resource_accountant */) const {
   std::vector<std::unique_ptr<ComputeCapability>> result;
 
   // Enable CI Logs
@@ -194,7 +139,7 @@ common::Status OpenVINOExecutionProvider::Compile(
   }
 
   // Temporary code to read metadata before it moves to the .bin
-  auto& metadata = shared_context_.shared_weights.metadata;
+  auto& metadata = shared_context_->shared_weights.metadata;
   if (session_context_.so_share_ep_contexts && metadata.empty()) {
     // Metadata is always read from model location, this could be a source or epctx model
     fs::path metadata_filename = session_context_.onnx_model_path_name.parent_path() / "metadata.bin";
@@ -222,7 +167,7 @@ common::Status OpenVINOExecutionProvider::Compile(
     // For original model, check if the user wants to export a model with pre-compiled blob
 
     auto& backend_manager = backend_managers_.emplace_back(session_context_,
-                                                           shared_context_,
+                                                           *shared_context_,
                                                            fused_node,
                                                            graph_body_viewer,
                                                            logger,
@@ -291,7 +236,7 @@ std::vector<AllocatorPtr> OpenVINOExecutionProvider::CreatePreferredAllocators()
     AllocatorCreationInfo npu_allocator_info{
         [this](OrtDevice::DeviceId device_id) {
           return std::make_unique<OVRTAllocator>(
-              OVCore::Get(),
+              OVCore::Get()->core,
               OrtDevice::NPU,
               device_id,
               OpenVINO_RT_NPU);
