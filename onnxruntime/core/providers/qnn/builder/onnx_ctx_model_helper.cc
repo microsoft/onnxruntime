@@ -198,35 +198,13 @@ Status LoadQnnCtxFromOnnxGraph(const onnxruntime::GraphViewer& graph_viewer,
   return Status::OK();
 }
 
-// Figure out the real context cache file path
-// return true if context cache file exists
-bool ValidateContextCacheFilePath(bool is_qnn_ctx_model,
-                                  const std::string& customer_context_cache_path,
-                                  const onnxruntime::PathString& model_pathstring,
-                                  onnxruntime::PathString& context_cache_path) {
-  // always try the path set by user first, it's the only way to set it if load model from memory
-  if (!customer_context_cache_path.empty()) {
-    context_cache_path = ToPathString(customer_context_cache_path);
-  } else if (!model_pathstring.empty()) {  // model loaded from file
-    if (is_qnn_ctx_model) {
-      // it's a context cache model, just use the model path
-      context_cache_path = model_pathstring;
-    } else if (!model_pathstring.empty()) {
-      // this is not a normal Onnx model, no customer path, create a default path for generation: model_path + _ctx.onnx
-      context_cache_path = model_pathstring + ToPathString("_ctx.onnx");
-    }
-  }
-
-  return std::filesystem::is_regular_file(context_cache_path) && std::filesystem::exists(context_cache_path);
-}
-
 Status CreateEPContextNodes(Model* model,
                             unsigned char* buffer,
                             uint64_t buffer_size,
                             const std::string& sdk_build_version,
                             const std::vector<IExecutionProvider::FusedNodeAndGraph>& fused_nodes_and_graphs,
                             const QnnModelLookupTable& qnn_models,
-                            const onnxruntime::PathString& context_cache_path,
+                            const onnxruntime::PathString& context_model_path,
                             bool qnn_context_embed_mode,
                             uint64_t max_spill_fill_buffer_size,
                             const logging::Logger& logger) {
@@ -262,7 +240,19 @@ Status CreateEPContextNodes(Model* model,
         std::string cache_payload(buffer, buffer + buffer_size);
         ep_node.AddAttribute(EP_CACHE_CONTEXT, cache_payload);
       } else {
-        onnxruntime::PathString context_bin_path = context_cache_path + ToPathString("_" + graph_name + ".bin");
+        onnxruntime::PathString context_bin_path;
+        auto pos = context_model_path.find_last_of(ORT_TSTR("."));
+        if (pos != std::string::npos) {
+          context_bin_path = context_model_path.substr(0, pos);
+        } else {
+          context_bin_path = context_model_path;
+        }
+        std::string graph_name_in_file(graph_name);
+        auto name_pos = graph_name_in_file.find_first_of(kQnnExecutionProvider);
+        if (name_pos != std::string::npos) {
+          graph_name_in_file.replace(name_pos, strlen(kQnnExecutionProvider), "");
+        }
+        context_bin_path = context_bin_path + ToPathString(graph_name_in_file + ".bin");
         std::string context_cache_name(std::filesystem::path(context_bin_path).filename().string());
         std::ofstream of_stream(context_bin_path.c_str(), std::ofstream::binary);
         if (!of_stream) {
