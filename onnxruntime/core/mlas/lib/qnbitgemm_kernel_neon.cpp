@@ -169,15 +169,22 @@ Q4BitGemmPerGemmWorkspaceAlignment(
 
 size_t
 Q2BitGemmPackQuantBDataSize(
-    size_t /*N*/,
-    size_t /*K*/,
-    size_t /*BlkLen*/,
-    MLAS_QNBIT_GEMM_COMPUTE_TYPE /*ComputeType*/
+    size_t N,
+    size_t K,
+    size_t BlkLen,
+    MLAS_QNBIT_GEMM_COMPUTE_TYPE ComputeType
 )
 {
-    return 0;
+    MLAS_UNREFERENCED_PARAMETER(ComputeType);  // same size regardless of ComputeType
+
+    constexpr size_t BlkBitWidth = 2;
+
+    const size_t BlockCountK = MlasDivRoundup(K, BlkLen);
+    const size_t PackedQuantBDataSize = N * BlockCountK * MlasQNBitBlkDataSizeInBytes(BlkBitWidth, BlkLen);
+    return PackedQuantBDataSize;
 }
 
+// Weight transform for data reuse
 void
 SQ2BitGemmPackQuantBData(
     size_t /*N*/,
@@ -193,15 +200,28 @@ SQ2BitGemmPackQuantBData(
 
 size_t
 Q2BitGemmPerGemmWorkspaceSize(
-    size_t /*M*/,
-    size_t /*N*/,
-    size_t /*K*/,
-    size_t /*BlkLen*/,
-    MLAS_QNBIT_GEMM_COMPUTE_TYPE /*ComputeType*/
+    size_t M,
+    size_t N,
+    size_t K,
+    size_t BlkLen,
+    MLAS_QNBIT_GEMM_COMPUTE_TYPE ComputeType
 )
 {
-    return 0;
+    MLAS_UNREFERENCED_PARAMETER(N);
+
+    switch (ComputeType) {
+        case SQNBIT_CompInt8: {
+            // workspace buffer is used for block quantization of A to int8
+            const size_t BlockCountK = MlasDivRoundup(K, BlkLen);
+            const size_t PerGemmWorkspaceSize = M * BlockCountK * Q8BlkSize(BlkLen);
+            return PerGemmWorkspaceSize;
+        }
+        default: {
+            return 0;
+        }
+    }
 }
+
 
 size_t
 Q2BitGemmPerGemmWorkspaceAlignment(
