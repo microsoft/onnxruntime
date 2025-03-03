@@ -15,7 +15,7 @@
 namespace onnxruntime {
 namespace openvino_ep {
 void ParseConfigOptions(ProviderInfo& pi) {
-  if(pi.config_options==NULL)
+  if (pi.config_options == nullptr)
     return;
 
   pi.so_disable_cpu_ep_fallback = pi.config_options->GetConfigOrDefault(kOrtSessionOptionsDisableCPUEPFallback, "0") == "1";
@@ -201,14 +201,8 @@ struct OpenVINO_Provider : Provider {
     }
 
     std::array<void*, 2> pointers_array = *reinterpret_cast<const std::array<void*, 2>*>(void_params);
-    const ProviderOptions* provider_options_ptr = reinterpret_cast<ProviderOptions*>(pointers_array[0]);
+    const ProviderOptions provider_options = *reinterpret_cast<ProviderOptions*>(pointers_array[0]);
     const ConfigOptions* config_options = reinterpret_cast<ConfigOptions*>(pointers_array[1]);
-
-    if(provider_options_ptr == NULL) {
-      LOGS_DEFAULT(ERROR) << "[OpenVINO EP] Passed NULL ProviderOptions to CreateExecutionProviderFactory()";
-      return nullptr;
-    }
-    const ProviderOptions provider_options = *provider_options_ptr;
 
     ProviderInfo pi;
     pi.config_options = config_options;
