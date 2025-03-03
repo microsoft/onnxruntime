@@ -21,7 +21,8 @@ class ReduceKernelProgram final : public Program<ReduceKernelProgram> {
   Status GenerateShaderCode(ShaderHelper& wgpuShaderModuleAddRef) const override;
   WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES({"output_size", ProgramUniformVariableDataType::Uint32},
                                           {"no_op_with_empty_axes", ProgramUniformVariableDataType::Uint32},
-                                          {"axes", ProgramUniformVariableDataType::Uint32});
+                                          {"axes", ProgramUniformVariableDataType::Uint32},
+                                          {"axes_size", ProgramUniformVariableDataType::Uint32});
 
  private:
   const bool keepdims_;
@@ -54,7 +55,7 @@ class ReduceMean final : public ReduceKernel<true> {
  public:
   ReduceMean(const OpKernelInfo& info) : ReduceKernel<true>(info, "ReduceMean") {}
   ReduceOpSpecificCode GetOpSpecificCode(const Tensor* input_tensor, size_t axes_size) const override;
-  Status ComputeInternal(ComputeContext& ctx) const;
+  Status ComputeInternal(ComputeContext& ctx) const override;
 };
 
 }  // namespace webgpu

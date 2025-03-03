@@ -4,6 +4,8 @@
 #include "core/providers/webgpu/reduction/reduction_ops.h"
 #include <sstream>
 #include <algorithm>
+#include "core/framework/data_transfer_manager.h"
+#include "core/providers/webgpu/data_transfer.h"
 #include "core/providers/webgpu/shader_helper.h"
 #include "core/providers/webgpu/webgpu_supported_types.h"
 
@@ -41,7 +43,7 @@ Status ReduceKernelProgram::GenerateShaderCode(ShaderHelper& shader) const {
   std::string loop_body = "let current_element: input_value_t = " + input.GetByIndices("input_indices") + ";\n" + code_[1];
   std::string loop_footer = code_[2];
   const auto input_rank = input.Rank();
-  for (size_t i = 0, l = 0; i < input_rank; ++i) {
+  for (int i = 0, l = 0; i < input_rank; ++i) {
     if (reduce_on_all_axes || std::find(axes_.begin(), axes_.end(), i) != axes_.end()) {
       if (keepdims_) {
         l++;
@@ -91,17 +93,34 @@ Status ReduceKernel<allow_multi_axes>::ComputeInternal(ComputeContext& context) 
     const Tensor* axes_tensor = context.Input<Tensor>(1);
     auto size = static_cast<size_t>(axes_tensor->Shape()[0]);
     const auto* data = axes_tensor->Data<int64_t>();
-    input_axes.resize(size);
+    input_axes.reserve(size);
     std::transform(data, data + size, std::back_inserter(input_axes), transform_axis);
   } else {
-    input_axes.resize(axes_.size());
+    input_axes.reserve(axes_.size());
     std::transform(axes_.begin(), axes_.end(), std::back_inserter(input_axes), transform_axis);
+  }
+  if (input_axes.empty()) {
+    if (noop_with_empty_axes_ || rank == 0) {
+      // If axes is empty and noop_with_empty_axes_ is true, it is a no-op according to the spec
+      // If input tensor is a scalar, return the input tensor as is.
+      // This is not correct for ReduceLogSum and ReduceSumSquare
+      // TODO handle these cases separately.
+      auto output = context.Output(0, input_tensor->Shape());
+      if (output->DataRaw() != input_tensor->DataRaw()) {
+        ORT_RETURN_IF_ERROR(Info().GetDataTransferManager().CopyTensor(*input_tensor, *output));
+      }
+      return Status::OK();
+    } else {
+      // If axes is empty and noop_with_empty_axes_ is false, it is a reduction over all axes
+      input_axes.resize(rank);
+      std::iota(input_axes.begin(), input_axes.end(), 0);
+    }
   }
   const auto code = GetOpSpecificCode(input_tensor, input_axes.size());
   // Compute output shape
   std::vector<int64_t> output_shape;
-  for (int i = 0; i < input_tensor->Shape().NumDimensions(); ++i) {
-    if ((input_axes.empty() && !noop_with_empty_axes_) || std::find(input_axes.begin(), input_axes.end(), i) != input_axes.end()) {
+  for (size_t i = 0; i < input_tensor->Shape().NumDimensions(); ++i) {
+    if (std::find(input_axes.begin(), input_axes.end(), i) != input_axes.end()) {
       if (keepdims_) {
         output_shape.push_back(1);
       }
@@ -117,7 +136,9 @@ Status ReduceKernel<allow_multi_axes>::ComputeInternal(ComputeContext& context) 
       .SetDispatchGroupSize((output_size + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE)
       .AddUniformVariables({{static_cast<uint32_t>(output_size)},
                             {static_cast<uint32_t>(noop_with_empty_axes_ ? 1 : 0)},
-                            {input_axes}});
+                            {input_axes},
+                            {static_cast<uint32_t>(input_axes.size())}});
+
   return context.RunProgram(program);
 }
 
@@ -125,16 +146,10 @@ ReduceOpSpecificCode ReduceMean::GetOpSpecificCode(const Tensor* input_tensor, s
   const TensorShape& input_shape = input_tensor->Shape();
   size_t input_rank = input_shape.NumDimensions();
   std::stringstream ss;
-  ss << "size: f32 = 1.0;\n"
-     << "if (uniforms.noop_with_empty_axes == 0u && uniforms.axes_size == 0) {\n"
-     << "  for (i: i32 = 0; i < " << input_rank << "; ++i) { \n"
-     << "    size = size * " << GetElementAt("uniforms.input_shape", "i", input_rank) << ";\n"
-     << "  }\n"
-     << "} else {\n"
-     << "  for (i: i32 = 0; i < uniforms.axes_size; ++i) { \n"
-     << "    index: i32 = " << GetElementAt("uniforms.axes", "i", axes_size) << ";\n"
-     << "    size = size * " << GetElementAt("uniforms.input_shape", "index", input_rank) << ";\n"
-     << "  }\n"
+  ss << "var size: u32 = 1;\n"
+     << "for (var i: u32 = 0; i < uniforms.axes_size; i += 1) { \n"
+     << "  let index = " << GetElementAt("uniforms.axes", "i", axes_size) << ";\n"
+     << "  size = size * " << GetElementAt("uniforms.input_shape", "index", input_rank) << ";\n"
      << "}\n"
      << "let output_value = output_value_t(sum / f32(size));";
   ReduceOpSpecificCode code({"var sum = f32(0);", "sum += f32(current_element);", ss.str()});
