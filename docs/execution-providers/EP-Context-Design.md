@@ -56,16 +56,16 @@ Atrribures:
 
 OnnxRuntime EPs should follow these rules to create the EP context cache model to maintain a unified user interface.
 - ep.context_enable
-  OnnxRuntime create the EP context cache model if ep.context_enable = 1. Otherwise, ep.context_enable = 0 (default), just do the normal workflow.
+  - OnnxRuntime create the EP context cache model if ep.context_enable = 1. Otherwise, ep.context_enable = 0 (default), just do the normal workflow.
 - ep.context_file_path
-  OnnxRuntime just change the origitnal input file name by replacing ".onnx" to “_ctx.onnx” as the output file name if no ep.context_file_path provided. Otherwise just use the user provided file path.
-  ep.context_file_path is required if user loads the model from memory buffer, since there’s no way for OnnxRuntime to get the input file path for this scenario.
+  - OnnxRuntime just change the origitnal input file name by replacing ".onnx" to “_ctx.onnx” as the output file name if no ep.context_file_path provided. Otherwise just use the user provided file path.
+  - ep.context_file_path is required if user loads the model from memory buffer, since there’s no way for OnnxRuntime to get the input file path for this scenario.
 - ep.context_embed_mode
-  1 (default): dump the EP context context content into the Onnx model.
-  0: dump the EP context content as a separate file. EP decides the file name and tracks the file name in EPContext node attribute ep_cache_context. The separate file should always at the same location as the dumped Onnx model file. And the file path tracked in EPContext node is a relative path to the Onnx model file. Note: subfolder is allowed.
+  - 1 (default): dump the EP context context content into the Onnx model.
+  - 0: dump the EP context content as a separate file. EP decides the file name and tracks the file name in EPContext node attribute ep_cache_context. The separate file should always at the same location as the dumped Onnx model file. And the file path tracked in EPContext node is a relative path to the Onnx model file. Note: subfolder is allowed.
 - ep.context_node_name_prefix
-  In case the user wants to add special tag inside the EPContext node name (also the partition_name attribute, and graph name), EP should provide this capability when EP creates the EPContext nodes.
-  This is useful if the user wants to glue multiple EPContext nodes from multiple models into one model and there’s risk that node name (graph name) confliction happens across models. Dependes on EP implementation. QNN EP supports multiple EPContext nodes, so user can merge and re-connect EPContext nodes from different models.
+  - In case the user wants to add special tag inside the EPContext node name (also the partition_name attribute, and graph name), EP should provide this capability when EP creates the EPContext nodes.
+  - This is useful if the user wants to glue multiple EPContext nodes from multiple models into one model and there’s risk that node name (graph name) confliction happens across models. Dependes on EP implementation. QNN EP supports multiple EPContext nodes, so user can merge and re-connect EPContext nodes from different models.
 
 ## Inference from EP Context cache model workflow
 
