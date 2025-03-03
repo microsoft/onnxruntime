@@ -26,7 +26,7 @@ Status BiasAddProgram::GenerateShaderCode(ShaderHelper& shader) const {
   const ShaderVariableHelper& output = shader.AddOutput("output");
 
   shader.MainFunctionBody() << shader.GuardAgainstOutOfBoundsWorkgroupSizes("uniforms.output_size")
-                            << "const channels = (uniforms.channels / 4)u;\n"
+                            << "const channels = uniforms.channels / 4u;\n"
                             << "let value = " << input.GetByOffset("global_idx")
                             << "  + " << bias.GetByOffset("global_idx % channels")
                             << "  + " << residual.GetByOffset("global_idx") << ";\n"
