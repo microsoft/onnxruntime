@@ -27,6 +27,11 @@ parameters:
   displayName: QNN SDK version
   type: string
   default: 2.31.0.250130
+  
+- name: is1ES
+  displayName: 'Whether the pipeline is running in 1ES'
+  type: boolean
+  default: false
 
 jobs:
 - job: Linux_py_qnn_Wheels_x64
@@ -84,12 +89,19 @@ jobs:
           arguments: -i onnxruntimecpubuildpythonx86_64_qnn -d "${{ parameters.device }}" -c ${{ parameters.cmake_build_type }} $(extra_build_args)
         env:
           ADDITIONAL_DOCKER_PARAMETER: "--volume $(QnnSDKRootDir):/qnn_sdk"
+  - ${{ if eq(parameters.is1ES, true) }}:
+    - task: 1ES.PublishPipelineArtifact@1
+      displayName: 'Publish Artifact: Linux ONNXRuntime QNN python wheel'
+      inputs:
+        targetPath: '$(Build.BinariesDirectory)/dist'
+        artifactName: onnxruntime-linux-qnn-x64
 
-  - task: 1ES.PublishPipelineArtifact@1
-    displayName: 'Publish Artifact: Linux ONNXRuntime QNN python wheel'
-    inputs:
-      targetPath: '$(Build.BinariesDirectory)/dist'
-      artifactName: onnxruntime-linux-qnn-x64
+  - ${{ if eq(parameters.is1ES, false) }}:
+    - task: PublishPipelineArtifact@1
+      displayName: 'Publish Artifact: Linux ONNXRuntime QNN python wheel'
+      inputs:
+        targetPath: '$(Build.BinariesDirectory)/dist'
+        artifactName: onnxruntime-linux-qnn-x64
 
   - template: component-governance-component-detection-steps.yml
     parameters:
