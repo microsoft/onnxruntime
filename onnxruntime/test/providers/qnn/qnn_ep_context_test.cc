@@ -610,7 +610,7 @@ TEST_F(QnnHTPBackendTests, QnnContextBinaryCacheEmbedModeTest) {
 
   // 2nd run directly loads and run from Qnn context cache model
   std::unordered_map<std::string, std::string> session_option_pairs2;
-  session_option_pairs2.emplace(kOrtSessionOptionEpContextFilePath, context_binary_file);
+  session_option_pairs2.emplace(kOrtSessionOptionEpContextFilePath, context_model_file);
   TestQDQModelAccuracy(BuildOpTestCase<float>(op_type, {input_def}, {}, {}),
                        BuildQDQOpTestCase<uint8_t>(op_type, {input_def}, {}, {}),
                        provider_options,
@@ -946,7 +946,7 @@ TEST_F(QnnHTPBackendTests, QnnContextBinary2InputsTest) {
 
   // 2nd run directly loads and run from Qnn context cache model
   std::unordered_map<std::string, std::string> session_option_pairs2;
-  session_option_pairs2.emplace(kOrtSessionOptionEpContextFilePath, context_binary_file);
+  session_option_pairs2.emplace(kOrtSessionOptionEpContextFilePath, context_model_file);
   TestQDQModelAccuracy(BuildOpTestCase<float>(op_type, {input_def1, input_def2}, {}, {}),
                        BuildQDQOpTestCase<uint8_t>(op_type, {input_def1, input_def2}, {}, {}),
                        provider_options,
