@@ -20,7 +20,7 @@ ONNX_OPERATOR_KERNEL_EX(
         .TypeConstraint("T", WebGpuSupportedFloatTypes()),
     Gelu);
 
-Status FastGeluProgram::GenerateShaderCode(ShaderHelper& shader) const {
+Status GeluProgram::GenerateShaderCode(ShaderHelper& shader) const {
   const auto& x = shader.AddInput("x", ShaderUsage::UseUniform | ShaderUsage::UseValueTypeAlias);
   const auto& y = shader.AddOutput("y", ShaderUsage::UseUniform);
 

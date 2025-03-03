@@ -13,7 +13,7 @@ namespace webgpu {
 using namespace onnxruntime::webgpu;
 using onnxruntime::webgpu::ComputeContext;
 
-class FastGeluProgram final : public Program<FastGeluProgram> {
+class GeluProgram final : public Program<GeluProgram> {
  public:
   GeluProgram() : Program{"Gelu"} {}
   Status GenerateShaderCode(ShaderHelper& sh) const override;
