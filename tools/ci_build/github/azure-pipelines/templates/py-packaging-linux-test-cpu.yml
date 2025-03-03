@@ -50,7 +50,7 @@ jobs:
       artifact: 'drop-linux-cpu-${{ parameters.arch }}-${{parameters.ep}}'
 
     - download: current   # pipeline resource identifier.
-      artifact: 'onnxruntime${{ parameters.python_wheel_suffix }}-${{ parameters.ep }}'
+      artifact: 'onnxruntime-${{ parameters.arch }}-${{ parameters.ep }}'
 
     - bash: |
         set -e -x
@@ -64,7 +64,7 @@ jobs:
       artifact: 'drop-linux-cpu-${{ parameters.arch }}-${{parameters.ep}}'
 
     - download: build   # pipeline resource identifier.
-      artifact: 'onnxruntime${{ parameters.python_wheel_suffix }}-${{ parameters.ep }}'
+      artifact: 'onnxruntime-${{ parameters.arch }}-${{ parameters.ep }}'
 
     - bash: |
         set -e -x

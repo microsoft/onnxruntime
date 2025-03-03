@@ -106,7 +106,7 @@ jobs:
       displayName: 'Publish Artifact: ONNXRuntime python wheel'
       inputs:
         targetPath: '$(Build.BinariesDirectory)/dist'
-        artifactName: onnxruntime-${{ parameters.ep }}-${{ parameters.arch }}
+        artifactName: onnxruntime-${{ parameters.arch }}-${{ parameters.ep }}
     - task: 1ES.PublishPipelineArtifact@1
       displayName: 'Publish Test Binaries'
       inputs:
@@ -117,7 +117,7 @@ jobs:
       displayName: 'Publish Artifact: ONNXRuntime python wheel'
       inputs:
         targetPath: '$(Build.BinariesDirectory)/dist'
-        artifactName: onnxruntime-${{ parameters.ep }}-${{ parameters.arch }}
+        artifactName: onnxruntime-${{ parameters.arch }}-${{ parameters.ep }}
     - task: PublishPipelineArtifact@1
       displayName: 'Publish Test Binaries'
       inputs:
