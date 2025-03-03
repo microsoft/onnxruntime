@@ -50,7 +50,6 @@ stages:
           version: '$(OnnxRuntimeVersion)'
           libraryName: 'libonnxruntime.so'
           nativeLibraryName: 'libonnxruntime4j_jni.so'
-          is1ES: true
 
     - template: ../templates/c-api-artifacts-package-and-publish-steps-posix.yml
       parameters:
@@ -114,7 +113,6 @@ stages:
           version: '$(OnnxRuntimeVersion)'
           libraryName: 'libonnxruntime.so'
           nativeLibraryName: 'libonnxruntime4j_jni.so'
-          is1ES: true
 
     - ${{ if eq(parameters.buildNodejs, 'true') }}:
       - template: ../templates/nodejs-artifacts-package-and-publish-steps-posix.yml

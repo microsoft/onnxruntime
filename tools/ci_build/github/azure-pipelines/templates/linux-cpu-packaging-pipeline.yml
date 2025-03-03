@@ -22,13 +22,9 @@ parameters:
   type: boolean
   default: true
 
-- name: is1ES
-  displayName: Is 1ES pipeline
-  type: boolean
-  default: false
 stages:
 - stage: Linux_C_API_Packaging_${{ parameters.stage_name_suffix }}
-  dependsOn: [ ]
+  dependsOn: []
   jobs:
   - template: c-api-linux-cpu.yml
     parameters:
@@ -39,7 +35,6 @@ stages:
       ArtifactNamePrefix: ${{ parameters.ArtifactNamePrefix }}
       PackageJava: ${{ parameters.PackageJava }}
       PackageNodeJS: ${{ parameters.PackageNodeJS }}
-      is1ES: ${{ parameters.is1ES }}
 
   - template: c-api-linux-cpu.yml
     parameters:
@@ -50,4 +45,3 @@ stages:
       ArtifactNamePrefix: ${{ parameters.ArtifactNamePrefix }}
       PackageJava: ${{ parameters.PackageJava }}
       PackageNodeJS: ${{ parameters.PackageNodeJS }}
-      is1ES: ${{ parameters.is1ES }}

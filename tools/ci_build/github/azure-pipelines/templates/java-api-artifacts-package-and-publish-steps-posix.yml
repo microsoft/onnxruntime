@@ -19,9 +19,7 @@ parameters:
 - name: version
   type: string
   default: ''
-- name: is1ES
-  type: boolean
-  default: false
+
 steps:
 - task: ShellScript@2
   displayName: 'Copy build artifacts for zipping'
@@ -30,13 +28,8 @@ steps:
     args: '-r $(Build.BinariesDirectory) -c ${{parameters.buildConfig}} -a ${{parameters.artifactName}} -l ${{parameters.libraryName}} -n ${{parameters.nativeLibraryName}} -v ${{parameters.version}} -h ${{parameters.arch}}'
     workingDirectory: '$(Build.BinariesDirectory)/${{parameters.buildConfig}}'
 
-- ${{ if eq(parameters.is1ES, true) }}:
-  - task: 1ES.PublishPipelineArtifact@1
-    inputs:
-      targetPath: '$(Build.BinariesDirectory)/${{parameters.artifactName}}'
-      artifactName: 'drop-${{parameters.artifactName}}'
-- ${{ if eq(parameters.is1ES, false) }}:
-  - task: PublishPipelineArtifact@1
-    inputs:
-      targetPath: '$(Build.BinariesDirectory)/${{parameters.artifactName}}'
-      artifactName: 'drop-${{parameters.artifactName}}'
+- task: 1ES.PublishPipelineArtifact@1
+  inputs:
+    targetPath: '$(Build.BinariesDirectory)/${{parameters.artifactName}}'
+    artifactName: 'drop-${{parameters.artifactName}}'
+

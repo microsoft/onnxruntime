@@ -62,7 +62,6 @@ stages:
 - template: linux-cpu-packaging-pipeline.yml
   parameters:
     AdditionalBuildFlags: ${{ parameters.AdditionalBuildFlags }}
-    is1ES: ${{ parameters.is1ES }}
 
 - template: mac-cpu-packaging-pipeline.yml
   parameters:
