@@ -6,9 +6,8 @@
 #include <limits>
 #include <optional>
 #include <utility>
-#include "core/graph/graph_utils.h"
-#include "core/framework/node_unit.h"
-#include "core/providers/shared/utils/utils.h"
+
+#include "core/providers/qnn/ort_api.h"
 #include "core/providers/qnn/builder/qnn_utils.h"
 #include "core/providers/qnn/builder/op_builder_factory.h"
 #include "core/providers/qnn/builder/qnn_node_group/utils.h"
@@ -170,9 +169,11 @@ static bool IsDQQConversion(const GraphViewer& graph_viewer, const Node& dq_node
     return false;
   }
 
-  // check Q/DQ have same scale type and different zero point type
-  return (dq_zp_tensor_proto->data_type() != q_zp_tensor_proto->data_type()) &&
-         (dq_scale_tensor_proto->data_type() == q_scale_tensor_proto->data_type());
+  // For scale, ensure that the Q/DQ have same scale type.
+  //
+  // For zero-point: we previously only fused (DQ -> Q) into a Convert op if the quantization types differed.
+  // However, a single Convert op is faster than (DQ -> Q), so we should always fuse regardless of the zero-point type.
+  return (dq_scale_tensor_proto->data_type() == q_scale_tensor_proto->data_type());
 }
 
 }  // namespace qnn

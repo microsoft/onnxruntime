@@ -49,6 +49,8 @@ class Memcpy final : public OpKernel {
     const IDataTransfer* gpu_data_transfer = Info().GetDataTransferManager().GetDataTransfer(X->Location().device, Y->Location().device);
     if (!gpu_data_transfer)
       return Status(common::ONNXRUNTIME, common::EP_FAIL, "gpu data transfer is missing in Migraphx EP.");
+    // CopyTensorAsync could handle both pinned memory and non-pinned CPU memory.
+    // For non-pinned CPU memory, the copy is synchronous.
     return gpu_data_transfer->CopyTensorAsync(*X, *Y, *(ctx->GetComputeStream()));
   }
 };
@@ -800,6 +802,7 @@ GetUnsupportedNodeIndices(const GraphViewer& graph_viewer,
                                                     "ATen",
                                                     "AveragePool",
                                                     "BatchNormalization",
+                                                    "BiasGelu",
                                                     "Cast",
                                                     "Ceil",
                                                     "Celu",
@@ -818,23 +821,28 @@ GetUnsupportedNodeIndices(const GraphViewer& graph_viewer,
                                                     "DequantizeLinear",
                                                     "Div",
                                                     "Dropout",
+                                                    "Einsum",
                                                     "Elu",
                                                     "Equal",
                                                     "Erf",
                                                     "Exp",
                                                     "Expand",
                                                     "EyeLike",
+                                                    "FastGelu",
                                                     "Flatten",
                                                     "Floor",
                                                     "GRU",
                                                     "Gather",
                                                     "GatherElements",
                                                     "GatherND",
+                                                    "Gelu",
                                                     "Gemm",
                                                     "GlobalAveragePool",
                                                     "GlobalMaxPool",
                                                     "Greater",
                                                     "GreaterOrEqual",
+                                                    "GroupNormalization",
+                                                    "GroupQueryAttention",
                                                     "HardSigmoid",
                                                     "HardSwish",
                                                     "Identity",
@@ -842,6 +850,7 @@ GetUnsupportedNodeIndices(const GraphViewer& graph_viewer,
                                                     "ImageScaler",
                                                     "InstanceNormalization",
                                                     "IsNan",
+                                                    "LayerNormalization",
                                                     "LeakyRelu",
                                                     "Less",
                                                     "LessOrEqual",
@@ -853,6 +862,7 @@ GetUnsupportedNodeIndices(const GraphViewer& graph_viewer,
                                                     "LSTM",
                                                     "MatMul",
                                                     "MatMulInteger",
+                                                    "MatMulNBits",
                                                     "Max",
                                                     "MaxPool",
                                                     "Mean",
@@ -861,6 +871,7 @@ GetUnsupportedNodeIndices(const GraphViewer& graph_viewer,
                                                     "Mul",
                                                     "Multinomial",
                                                     "Neg",
+                                                    "NegativeLogLikelihoodLoss",
                                                     "NonMaxSuppression",
                                                     "NonZero",
                                                     "Not",
@@ -904,10 +915,13 @@ GetUnsupportedNodeIndices(const GraphViewer& graph_viewer,
                                                     "Shape",
                                                     "Sigmoid",
                                                     "Sign",
+                                                    "SimplifiedLayerNormalization",
                                                     "Sin",
                                                     "Sinh",
+                                                    "SkipSimplifiedLayerNormalization",
                                                     "Slice",
                                                     "Softmax",
+                                                    "SoftmaxCrossEntropyLoss",
                                                     "Softplus",
                                                     "Softsign",
                                                     "SpaceToDepth",
@@ -978,7 +992,8 @@ GetPartitionedSubgraphs(const std::vector<NodeIndex>& topological_order,
 
 std::vector<std::unique_ptr<ComputeCapability>>
 MIGraphXExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_viewer,
-                                         const IKernelLookup& /*kernel_lookup*/) const {
+                                         const IKernelLookup& /*kernel_lookup*/,
+                                         IResourceAccountant* /* resource_accountant */) const {
   std::vector<std::unique_ptr<ComputeCapability>> result;
   auto model = graph_viewer.CreateModel(*GetLogger());
   auto model_proto = model->ToProto();
@@ -1016,15 +1031,6 @@ MIGraphXExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_v
     }
 
     if (unsupported_nodes.size() > 10) {
-      return result;
-    }
-
-    // migraphx cannot handle Loop, If, and SoftmaxCrossEntropyLoss for now,
-    // so if a model contain any of these operators, fall back to CPU
-    std::unordered_set<std::string> vec_ops = {"SoftmaxCrossEntropyLoss"};
-    if (std::any_of(unsupported_nodes.begin(), unsupported_nodes.end(), [&](auto i) {
-          return (vec_ops.count(graph_viewer.GetNode(i)->OpType()) > 0);
-        })) {
       return result;
     }
 
@@ -1153,7 +1159,7 @@ Status MIGraphXExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& 
 
     if (!no_input_shape) {
       if (!load_precompiled_model(prog, load_compiled_model_, std::string{load_compiled_path_})) {
-        LOGS_DEFAULT(INFO) << "No Input shapes detected quantizing model";
+        LOGS_DEFAULT(INFO) << "No input shapes detected quantizing model";
         prog = migraphx::parse_onnx_buffer(onnx_string_buffer, options);
 
         // Read in the calibration data and map it to an migraphx paramater map for the calibration ops
@@ -1294,7 +1300,7 @@ Status MIGraphXExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& 
       // re-compile the program
       if (!input_shape_match) {
         if (!load_precompiled_model(prog, load_compiled_model_, std::string{load_compiled_path_})) {
-          LOGS_DEFAULT(VERBOSE) << "No Input shapes mismatch detected. Recompiling" << std::endl;
+          LOGS_DEFAULT(VERBOSE) << "Input shape mismatch detected. Recompiling" << std::endl;
 #ifndef ENABLE_TRAINING_CORE
 #if HIP_VERSION_MAJOR > 6 || (HIP_VERSION_MAJOR == 6 && HIP_VERSION_MINOR >= 2)
           cmp_options.set_external_data_path(model_path_.has_parent_path() ? model_path_.parent_path().string() : std::filesystem::current_path().string());
@@ -1420,7 +1426,7 @@ Status MIGraphXExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& 
 
       {
         // lock to avoid race condition
-        std::lock_guard<OrtMutex> lock(*(mgx_state->mgx_mu_ptr));
+        std::lock_guard<std::mutex> lock(*(mgx_state->mgx_mu_ptr));
 
         void* rocm_stream;
         Ort::ThrowOnError(api->KernelContext_GetGPUComputeStream(context, &rocm_stream));
@@ -1438,7 +1444,11 @@ Status MIGraphXExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& 
             std::vector<int64_t> ort_shape{res_lens.begin(), res_lens.end()};
             auto output_tensor = ctx.GetOutput(i, ort_shape.data(), ort_shape.size());
             void* output_data = output_tensor.GetTensorMutableRawData();
-            HIP_CALL_THROW(hipMemcpy(output_data, gpu_res.data(), res_shape.bytes(), hipMemcpyDeviceToDevice));
+            HIP_CALL_THROW(hipMemcpyWithStream(output_data,
+                                               gpu_res.data(),
+                                               res_shape.bytes(),
+                                               hipMemcpyDeviceToDevice,
+                                               static_cast<hipStream_t>(rocm_stream)));
           }
         }
       };

@@ -7,7 +7,7 @@ parameters:
 - name: QNN_SDK
   displayName: QNN SDK Version
   type: string
-  default: 2.26.0.240828
+  default: 2.31.0.250130
 
 - name: ENV_SETUP_SCRIPT
   type: string
@@ -34,6 +34,9 @@ jobs:
       Python312_arm64:
         PythonVersion: '3.12.6'
         LocalPythonDir: 'C:\Python\Python312'
+      Python313_arm64:
+        PythonVersion: '3.13.2'
+        LocalPythonDir: 'C:\Python\Python313'
   variables:
     GRADLE_OPTS: '-Dorg.gradle.daemon=false'
     VSGenerator: 'Visual Studio 17 2022'
@@ -58,6 +61,11 @@ jobs:
           versionSpec: $(PythonVersion)
           addToPath: true
           architecture: 'arm64'
+
+      - task: PipAuthenticate@1
+        displayName: 'Pip Authenticate'
+        inputs:
+          artifactFeeds: 'Lotus'
 
       - task: onebranch.pipeline.tsaoptions@1
         displayName: 'OneBranch TSAOptions'
@@ -89,10 +97,11 @@ jobs:
             --build_dir $(Build.BinariesDirectory)
             --skip_submodule_sync
             --cmake_generator "$(VSGenerator)"
+            --build_shared_lib
             --use_qnn
             --qnn_home $(QnnSDKRootDir)
             --enable_pybind
-            --parallel --update
+            --parallel --use_vcpkg --use_vcpkg_ms_internal_asset_cache --update
             $(TelemetryOption) ${{ parameters.BUILD_PY_PARAMETERS }}
           workingDirectory: '$(Build.BinariesDirectory)'
 

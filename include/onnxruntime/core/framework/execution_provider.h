@@ -38,6 +38,8 @@ struct OrtRunOptions;
 
 namespace onnxruntime {
 
+class IResourceAccountant;
+
 /**
    Logical device representation.
 */
@@ -130,7 +132,8 @@ class IExecutionProvider {
   */
   virtual std::vector<std::unique_ptr<ComputeCapability>>
   GetCapability(const onnxruntime::GraphViewer& graph_viewer,
-                const IKernelLookup& kernel_lookup) const;
+                const IKernelLookup& kernel_lookup,
+                IResourceAccountant* resource_accountant = nullptr) const;
 
   /**
      Get kernel registry per execution provider type.
@@ -211,6 +214,14 @@ class IExecutionProvider {
      that all commands of current Run has been submmited by CPU
   */
   virtual common::Status OnRunEnd(bool /*sync_stream*/, const onnxruntime::RunOptions& /*run_options*/) {
+    return Status::OK();
+  }
+
+  /**
+     Called when InferenceSession::SetEpDynamicOptions is called
+  */
+  virtual common::Status SetEpDynamicOptions(gsl::span<const char* const> /*keys*/,
+                                             gsl::span<const char* const> /*values*/) {
     return Status::OK();
   }
 

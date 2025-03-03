@@ -24,7 +24,8 @@ class WebNNExecutionProvider : public IExecutionProvider {
 
   std::vector<std::unique_ptr<ComputeCapability>>
   GetCapability(const onnxruntime::GraphViewer& graph_viewer,
-                const IKernelLookup& /*kernel_registries*/) const override;
+                const IKernelLookup& /*kernel_registries*/,
+                IResourceAccountant* /* resource_accountant */) const override;
 
   DataLayout GetPreferredLayout() const override { return preferred_layout_; }
 
@@ -40,6 +41,8 @@ class WebNNExecutionProvider : public IExecutionProvider {
 #endif
 
   std::shared_ptr<KernelRegistry> GetKernelRegistry() const override;
+  std::unique_ptr<onnxruntime::IDataTransfer> GetDataTransfer() const override;
+  std::vector<AllocatorPtr> CreatePreferredAllocators() override;
 
  private:
   emscripten::val wnn_context_ = emscripten::val::undefined();

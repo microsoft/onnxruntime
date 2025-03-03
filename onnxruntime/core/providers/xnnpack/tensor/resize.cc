@@ -29,9 +29,7 @@ bool Resize::IsOnnxNodeSupported(const NodeUnit& node_unit,
     const auto& x_arg = inputs[0].node_arg;
 
     const auto* x_type = x_arg.TypeAsProto();
-    if (x_type == nullptr || (x_type->tensor_type().elem_type() != ONNX_NAMESPACE::TensorProto_DataType_FLOAT &&
-                              x_type->tensor_type().elem_type() != ONNX_NAMESPACE::TensorProto_DataType_UINT8 &&
-                              x_type->tensor_type().elem_type() != ONNX_NAMESPACE::TensorProto_DataType_INT8)) {
+    if (x_type == nullptr || !IsComputeTypeSupported(x_type->tensor_type().elem_type())) {
       break;
     }
 
@@ -66,7 +64,6 @@ bool Resize::IsOnnxNodeSupported(const NodeUnit& node_unit,
 
     // check the scale for the second dim is 1 or the size of the second dim matches the input shape.
     // if not, it is not the C dim as a Resize will not change the number of channels.
-    InlinedVector<float> scale(4, 1.0F);
     if (scale_tensor) {
       const Initializer scale_val(*scale_tensor, node_unit.ModelPath());
       const auto scales = scale_val.DataAsSpan<float>();
@@ -181,6 +178,9 @@ Resize::Resize(const OpKernelInfo& info) : UpsampleBase(info), XnnpackKernel{inf
     case ONNX_NAMESPACE::TensorProto_DataType_FLOAT:
       op_type_ = OpComputeType::op_compute_type_fp32;
       break;
+    case ONNX_NAMESPACE::TensorProto_DataType_FLOAT16:
+      op_type_ = OpComputeType::op_compute_type_fp16;
+      break;
     case ONNX_NAMESPACE::TensorProto_DataType_UINT8:
       op_type_ = OpComputeType::op_compute_type_qu8;
       break;
@@ -189,7 +189,7 @@ Resize::Resize(const OpKernelInfo& info) : UpsampleBase(info), XnnpackKernel{inf
       break;
     default:
       auto stype = DataTypeImpl::ToString(DataTypeImpl::TypeFromProto(*input_defs[0]->TypeAsProto()));
-      ORT_THROW("unsupported op in Resize, we have FLOAT|UINT8|INT8, but get ", stype);
+      ORT_THROW("unsupported op in Resize, we have FLOAT|FLOAT16|UINT8|INT8, but get ", stype);
   }
 
   const auto* x_shape = input_defs[0]->Shape();
@@ -229,6 +229,8 @@ Resize::Resize(const OpKernelInfo& info) : UpsampleBase(info), XnnpackKernel{inf
   auto out_w = output_dims_[2];
   if (op_type_ == OpComputeType::op_compute_type_fp32) {
     xstatus = xnn_create_resize_bilinear2d_nhwc_f32(out_h, out_w, flags, &p);
+  } else if (op_type_ == OpComputeType::op_compute_type_fp16) {
+    xstatus = xnn_create_resize_bilinear2d_nhwc_f16(out_h, out_w, flags, &p);
   } else if (op_type_ == OpComputeType::op_compute_type_qu8) {
     xstatus = xnn_create_resize_bilinear2d_nhwc_u8(out_h, out_w, flags, &p);
   } else {
@@ -261,7 +263,9 @@ Status Resize::ComputeInternal(OpKernelContext* ctx, const Tensor* input,
   std::unique_ptr<void, decltype(deallocator)> workspace(nullptr, deallocator);
 
   auto reshape_fn = xnn_reshape_resize_bilinear2d_nhwc_f32;
-  if (op_type_ == OpComputeType::op_compute_type_qu8) {
+  if (op_type_ == OpComputeType::op_compute_type_fp16) {
+    reshape_fn = xnn_reshape_resize_bilinear2d_nhwc_f16;
+  } else if (op_type_ == OpComputeType::op_compute_type_qu8) {
     reshape_fn = xnn_reshape_resize_bilinear2d_nhwc_u8;
   } else if (op_type_ == OpComputeType::op_compute_type_qs8) {
     reshape_fn = xnn_reshape_resize_bilinear2d_nhwc_s8;
@@ -279,6 +283,9 @@ Status Resize::ComputeInternal(OpKernelContext* ctx, const Tensor* input,
   if (op_type_ == OpComputeType::op_compute_type_fp32) {
     status = xnn_setup_resize_bilinear2d_nhwc_f32(op0_.get(), workspace.get(), input->Data<float>(),
                                                   output->MutableData<float>());
+  } else if (op_type_ == OpComputeType::op_compute_type_fp16) {
+    status = xnn_setup_resize_bilinear2d_nhwc_f16(op0_.get(), workspace.get(), input->Data<MLFloat16>(),
+                                                  output->MutableData<MLFloat16>());
   } else if (op_type_ == OpComputeType::op_compute_type_qu8) {
     status = xnn_setup_resize_bilinear2d_nhwc_u8(op0_.get(), workspace.get(), input->Data<uint8_t>(),
                                                  output->MutableData<uint8_t>());
@@ -327,22 +334,26 @@ Status Resize::Compute(OpKernelContext* ctx) const {
 
 ONNX_OPERATOR_VERSIONED_KERNEL_EX(Resize, kMSInternalNHWCDomain, 10, 10, kXnnpackExecutionProvider,
                                   KernelDefBuilder().TypeConstraint("T", {DataTypeImpl::GetTensorType<float>(),
+                                                                          DataTypeImpl::GetTensorType<MLFloat16>(),
                                                                           DataTypeImpl::GetTensorType<uint8_t>(),
                                                                           DataTypeImpl::GetTensorType<int8_t>()}),
                                   Resize);
 ONNX_OPERATOR_VERSIONED_KERNEL_EX(Resize, kMSInternalNHWCDomain, 11, 12, kXnnpackExecutionProvider,
                                   KernelDefBuilder().TypeConstraint("T1", {DataTypeImpl::GetTensorType<float>(),
+                                                                           DataTypeImpl::GetTensorType<MLFloat16>(),
                                                                            DataTypeImpl::GetTensorType<uint8_t>(),
                                                                            DataTypeImpl::GetTensorType<int8_t>()}),
                                   Resize);
 ONNX_OPERATOR_VERSIONED_KERNEL_EX(Resize, kMSInternalNHWCDomain, 13, 17, kXnnpackExecutionProvider,
                                   KernelDefBuilder().TypeConstraint("T1", {DataTypeImpl::GetTensorType<float>(),
+                                                                           DataTypeImpl::GetTensorType<MLFloat16>(),
                                                                            DataTypeImpl::GetTensorType<uint8_t>(),
                                                                            DataTypeImpl::GetTensorType<int8_t>()}),
                                   Resize);
 
 ONNX_OPERATOR_VERSIONED_KERNEL_EX(Resize, kMSInternalNHWCDomain, 18, 18, kXnnpackExecutionProvider,
                                   KernelDefBuilder().TypeConstraint("T1", {DataTypeImpl::GetTensorType<float>(),
+                                                                           DataTypeImpl::GetTensorType<MLFloat16>(),
                                                                            DataTypeImpl::GetTensorType<uint8_t>(),
                                                                            DataTypeImpl::GetTensorType<int8_t>()}),
                                   Resize);

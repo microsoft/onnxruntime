@@ -37,19 +37,8 @@ function GetFile {
 mkdir -p /tmp/src
 
 cd /tmp/src
+CPU_ARCH=$(uname -m)
 
-echo "Installing cmake"
-GetFile https://github.com/Kitware/CMake/releases/download/v3.30.1/cmake-3.30.1-linux-`uname -m`.tar.gz /tmp/src/cmake-3.30.1-linux-`uname -m`.tar.gz
-tar -zxf /tmp/src/cmake-3.30.1-linux-`uname -m`.tar.gz --strip=1 -C /usr
-
-echo "Installing Ninja"
-GetFile https://github.com/ninja-build/ninja/archive/v1.10.0.tar.gz /tmp/src/ninja-linux.tar.gz
-tar -zxf ninja-linux.tar.gz
-pushd ninja-1.10.0
-cmake -Bbuild-cmake -H.
-cmake --build build-cmake
-mv ./build-cmake/ninja /usr/bin
-popd
 
 echo "Installing Node.js"
 CPU_ARCH=`uname -m`

@@ -38,7 +38,7 @@ function(get_c_cxx_api_headers HEADERS_VAR)
 
   # need to add header files for enabled EPs
   foreach(f ${ONNXRUNTIME_PROVIDER_NAMES})
-    # The header files in include/onnxruntime/core/providers/cuda directory cannot be flattened to the same directory 
+    # The header files in include/onnxruntime/core/providers/cuda directory cannot be flattened to the same directory
     # with onnxruntime_c_api.h . Most other EPs probably also do not work in this way.
     if((NOT f STREQUAL cuda) AND (NOT f STREQUAL rocm))
       file(GLOB _provider_headers CONFIGURE_DEPENDS
@@ -62,7 +62,7 @@ foreach(f ${ONNXRUNTIME_PROVIDER_NAMES})
   list(APPEND SYMBOL_FILES "${ONNXRUNTIME_ROOT}/core/providers/${f}/symbols.txt")
 endforeach()
 
-if(NOT ${CMAKE_SYSTEM_NAME} MATCHES "AIX")
+if(NOT CMAKE_SYSTEM_NAME MATCHES "AIX")
 add_custom_command(OUTPUT ${SYMBOL_FILE} ${CMAKE_CURRENT_BINARY_DIR}/generated_source.c
   COMMAND ${Python_EXECUTABLE} "${REPO_ROOT}/tools/ci_build/gen_def.py"
     --version_file "${ONNXRUNTIME_ROOT}/../VERSION_NUMBER" --src_root "${ONNXRUNTIME_ROOT}"
@@ -77,6 +77,7 @@ if(WIN32)
   onnxruntime_add_shared_library(onnxruntime
     ${SYMBOL_FILE}
     "${ONNXRUNTIME_ROOT}/core/dll/dllmain.cc"
+    "${ONNXRUNTIME_ROOT}/core/dll/delay_load_hook.cc"
     "${ONNXRUNTIME_ROOT}/core/dll/onnxruntime.rc"
   )
 elseif(onnxruntime_BUILD_APPLE_FRAMEWORK)
@@ -89,10 +90,22 @@ elseif(onnxruntime_BUILD_APPLE_FRAMEWORK)
   # create Info.plist for the framework and podspec for CocoaPods (optional)
   set(MACOSX_FRAMEWORK_NAME "onnxruntime")
   set(MACOSX_FRAMEWORK_IDENTIFIER "com.microsoft.onnxruntime")
-  # Need to include CoreML as a weaklink for CocoaPods package if the EP is enabled
+
+  # Setup weak frameworks for macOS/iOS. 'weak' as the CoreML or WebGPU EPs are optionally enabled.
   if(onnxruntime_USE_COREML)
-    set(APPLE_WEAK_FRAMEWORK "\\\"CoreML\\\"")
+    list(APPEND _weak_frameworks "\\\"CoreML\\\"")
   endif()
+
+  if(onnxruntime_USE_WEBGPU)
+    list(APPEND _weak_frameworks "\\\"QuartzCore\\\"")
+    list(APPEND _weak_frameworks "\\\"IOSurface\\\"")
+    list(APPEND _weak_frameworks "\\\"Metal\\\"")
+  endif()
+
+  if (_weak_frameworks)
+    string(JOIN ", " APPLE_WEAK_FRAMEWORK ${_weak_frameworks})
+  endif()
+
   set(INFO_PLIST_PATH "${CMAKE_CURRENT_BINARY_DIR}/Info.plist")
   configure_file(${REPO_ROOT}/cmake/Info.plist.in ${INFO_PLIST_PATH})
   configure_file(
@@ -105,17 +118,21 @@ elseif(onnxruntime_BUILD_APPLE_FRAMEWORK)
     # Note: The PUBLIC_HEADER and VERSION properties for the 'onnxruntime' target will be set later in this file.
   )
 else()
-  if(${CMAKE_SYSTEM_NAME} MATCHES "AIX")
+  if(CMAKE_SYSTEM_NAME MATCHES "AIX")
     onnxruntime_add_shared_library(onnxruntime ${ONNXRUNTIME_ROOT}/core/session/onnxruntime_c_api.cc)
   else()
     onnxruntime_add_shared_library(onnxruntime ${CMAKE_CURRENT_BINARY_DIR}/generated_source.c )
   endif()
-  if (onnxruntime_USE_CUDA)
-    set_property(TARGET onnxruntime APPEND_STRING PROPERTY LINK_FLAGS " -Xlinker -rpath=\\$ORIGIN")
+  if(NOT APPLE)
+    include(CheckLinkerFlag)
+    check_linker_flag(CXX "LINKER:-rpath=\$ORIGIN" LINKER_SUPPORT_RPATH)
+    if(LINKER_SUPPORT_RPATH)
+      target_link_options(onnxruntime PRIVATE "LINKER:-rpath=\$ORIGIN")
+    endif()
   endif()
 endif()
 
-if(${CMAKE_SYSTEM_NAME} MATCHES "AIX")
+if(CMAKE_SYSTEM_NAME MATCHES "AIX")
   add_dependencies(onnxruntime ${onnxruntime_EXTERNAL_DEPENDENCIES})
 else()
   add_dependencies(onnxruntime onnxruntime_generate_def ${onnxruntime_EXTERNAL_DEPENDENCIES})
@@ -127,17 +144,17 @@ target_compile_definitions(onnxruntime PRIVATE FILE_NAME=\"onnxruntime.dll\")
 
 if(UNIX)
   if (APPLE)
-    set(ONNXRUNTIME_SO_LINK_FLAG " -Xlinker -dead_strip")
-  elseif(NOT ${CMAKE_SYSTEM_NAME} MATCHES "AIX")
-    set(ONNXRUNTIME_SO_LINK_FLAG " -Xlinker --version-script=${SYMBOL_FILE} -Xlinker --no-undefined -Xlinker --gc-sections -z noexecstack")
+    target_link_options(onnxruntime PRIVATE "LINKER:-dead_strip")
+  elseif(NOT CMAKE_SYSTEM_NAME MATCHES "AIX")
+    target_link_options(onnxruntime PRIVATE  "LINKER:--version-script=${SYMBOL_FILE}" "LINKER:--no-undefined" "LINKER:--gc-sections")
   endif()
 else()
-  set(ONNXRUNTIME_SO_LINK_FLAG " -DEF:${SYMBOL_FILE}")
+  target_link_options(onnxruntime PRIVATE  "-DEF:${SYMBOL_FILE}")
 endif()
 
-if (NOT WIN32)
-  if (APPLE OR ${CMAKE_SYSTEM_NAME} MATCHES "^iOS")
-    set(ONNXRUNTIME_SO_LINK_FLAG " -Wl,-exported_symbols_list,${SYMBOL_FILE}")
+
+if (APPLE OR ${CMAKE_SYSTEM_NAME} MATCHES "^iOS")
+    target_link_options(onnxruntime PRIVATE  "LINKER:-exported_symbols_list,${SYMBOL_FILE}")
     if (${CMAKE_SYSTEM_NAME} STREQUAL "iOS")
       set_target_properties(onnxruntime PROPERTIES
         MACOSX_RPATH TRUE
@@ -147,10 +164,8 @@ if (NOT WIN32)
     else()
         set_target_properties(onnxruntime PROPERTIES INSTALL_RPATH "@loader_path")
     endif()
-  elseif (NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten" AND NOT ${CMAKE_SYSTEM_NAME} MATCHES "AIX")
-    set(CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} -Wl,-rpath='$ORIGIN'")
-  endif()
 endif()
+
 
 
 if(CMAKE_SYSTEM_NAME STREQUAL "Android" AND onnxruntime_MINIMAL_BUILD)
@@ -184,29 +199,36 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Android" AND onnxruntime_BUILD_JAVA)
   endforeach()
 endif()
 
-# This list is a reversed topological ordering of library dependencies.
-# Earlier entries may depend on later ones. Later ones should not depend on earlier ones.
-set(onnxruntime_INTERNAL_LIBRARIES
-  onnxruntime_session
-  ${onnxruntime_libs}
+set(onnxruntime_INTERNAL_PROVIDER_LIBRARIES
   ${PROVIDERS_ACL}
   ${PROVIDERS_ARMNN}
   ${PROVIDERS_COREML}
   ${PROVIDERS_DML}
   ${PROVIDERS_NNAPI}
-  ${PROVIDERS_QNN}
   ${PROVIDERS_SNPE}
-  ${PROVIDERS_TVM}
   ${PROVIDERS_RKNPU}
   ${PROVIDERS_VSINPU}
   ${PROVIDERS_XNNPACK}
+  ${PROVIDERS_WEBGPU}
   ${PROVIDERS_WEBNN}
   ${PROVIDERS_AZURE}
   ${PROVIDERS_INTERNAL_TESTING}
+)
+
+if (onnxruntime_BUILD_QNN_EP_STATIC_LIB)
+  list(APPEND onnxruntime_INTERNAL_PROVIDER_LIBRARIES onnxruntime_providers_qnn)
+endif()
+
+# This list is a reversed topological ordering of library dependencies.
+# Earlier entries may depend on later ones. Later ones should not depend on earlier ones.
+set(onnxruntime_INTERNAL_LIBRARIES
+  onnxruntime_session
+  ${onnxruntime_libs}
+  ${onnxruntime_INTERNAL_PROVIDER_LIBRARIES}
   ${onnxruntime_winml}
   onnxruntime_optimizer
   onnxruntime_providers
-  ${onnxruntime_tvm_libs}
+  onnxruntime_lora
   onnxruntime_framework
   onnxruntime_graph
   onnxruntime_util
@@ -215,7 +237,7 @@ set(onnxruntime_INTERNAL_LIBRARIES
   onnxruntime_flatbuffers
 )
 
-if (${CMAKE_SYSTEM_NAME} MATCHES "AIX")
+if (CMAKE_SYSTEM_NAME MATCHES "AIX")
   list(APPEND onnxruntime_INTERNAL_LIBRARIES  iconv)
 endif()
 
@@ -234,10 +256,12 @@ target_link_libraries(onnxruntime PRIVATE
     ${onnxruntime_EXTERNAL_LIBRARIES}
 )
 
-set_property(TARGET onnxruntime APPEND_STRING PROPERTY LINK_FLAGS ${ONNXRUNTIME_SO_LINK_FLAG} ${onnxruntime_DELAYLOAD_FLAGS})
+if(WIN32)
+  target_link_options(onnxruntime PRIVATE ${onnxruntime_DELAYLOAD_FLAGS})
+endif()
 #See: https://cmake.org/cmake/help/latest/prop_tgt/SOVERSION.html
 if(NOT APPLE AND NOT WIN32)
-  if(${CMAKE_SYSTEM_NAME} MATCHES "AIX")
+  if(CMAKE_SYSTEM_NAME MATCHES "AIX")
     set_target_properties(onnxruntime PROPERTIES
       PUBLIC_HEADER "${ONNXRUNTIME_PUBLIC_HEADERS}"
       VERSION ${ORT_VERSION}
@@ -363,16 +387,73 @@ if(onnxruntime_BUILD_APPLE_FRAMEWORK)
     endif()
   endforeach()
 
+  # helper function that recurses to also handle static library dependencies of the ORT external libraries
+  set(_processed_libs)  # keep track of processed libraries to skip any duplicate dependencies
+  function(add_symlink_for_static_lib_and_dependencies lib)
+    function(process cur_target)
+      # de-alias if applicable so a consistent target name is used
+      get_target_property(alias ${cur_target} ALIASED_TARGET)
+      if(TARGET ${alias})
+        set(cur_target ${alias})
+      endif()
+
+      if(${cur_target} IN_LIST _processed_libs OR ${cur_target} IN_LIST lib_and_dependencies)
+        return()
+      endif()
+
+      list(APPEND lib_and_dependencies ${cur_target})
+
+      set(all_link_libraries)
+
+      get_property(link_libraries_set TARGET ${cur_target} PROPERTY LINK_LIBRARIES SET)
+      if(link_libraries_set)
+        get_target_property(link_libraries ${cur_target} LINK_LIBRARIES)
+        list(APPEND all_link_libraries ${link_libraries})
+      endif()
+
+      get_property(interface_link_libraries_set TARGET ${cur_target} PROPERTY INTERFACE_LINK_LIBRARIES SET)
+      if(interface_link_libraries_set)
+        get_target_property(interface_link_libraries ${cur_target} INTERFACE_LINK_LIBRARIES)
+        list(APPEND all_link_libraries ${interface_link_libraries})
+      endif()
+
+      list(REMOVE_DUPLICATES all_link_libraries)
+
+      foreach(dependency ${all_link_libraries})
+        if(TARGET ${dependency})
+          process(${dependency})
+        endif()
+      endforeach()
+
+      set(lib_and_dependencies ${lib_and_dependencies} PARENT_SCOPE)
+    endfunction()
+
+    set(lib_and_dependencies)
+    process(${lib})
+
+    foreach(_target ${lib_and_dependencies})
+      get_target_property(type ${_target} TYPE)
+      if(${type} STREQUAL "STATIC_LIBRARY")
+        # message(STATUS "Adding symlink for ${_target}")
+        add_custom_command(TARGET onnxruntime POST_BUILD
+                           COMMAND ${CMAKE_COMMAND} -E create_symlink
+                             $<TARGET_FILE:${_target}> ${STATIC_LIB_DIR}/$<TARGET_LINKER_FILE_NAME:${_target}>)
+      endif()
+    endforeach()
+
+    list(APPEND _processed_libs ${lib_and_dependencies})
+    set(_processed_libs ${_processed_libs} PARENT_SCOPE)
+  endfunction()
+
   # for external libraries we create a symlink to the .a file
   foreach(_LIB ${onnxruntime_EXTERNAL_LIBRARIES})
-    if(NOT TARGET ${_LIB}) # if we didn't build from source. it may not a target
+    if(NOT TARGET ${_LIB}) # if we didn't build from source it may not be a target
       continue()
     endif()
+
     GET_TARGET_PROPERTY(_LIB_TYPE ${_LIB} TYPE)
     if(_LIB_TYPE STREQUAL "STATIC_LIBRARY")
-      add_custom_command(TARGET onnxruntime POST_BUILD
-                         COMMAND ${CMAKE_COMMAND} -E create_symlink
-                           $<TARGET_FILE:${_LIB}> ${STATIC_LIB_DIR}/$<TARGET_LINKER_FILE_NAME:${_LIB}>)
+      add_symlink_for_static_lib_and_dependencies(${_LIB})
     endif()
   endforeach()
 

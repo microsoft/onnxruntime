@@ -58,6 +58,15 @@ stages:
         showWarnings: true
         workingDirectory: '$(Build.BinariesDirectory)\java-artifact'
 
+    - template: ../templates/jar-esrp-dll.yml
+      parameters:
+        JarFileDirectory: '$(Build.BinariesDirectory)\java-artifact\onnxruntime-java-win-x64'
+        JarFileName: 'onnxruntime_gpu-$(OnnxRuntimeVersion).jar'
+
+    - template: ../templates/jar-maven-signing-win.yml
+      parameters:
+        JarFileDirectory: '$(Build.BinariesDirectory)\java-artifact\onnxruntime-java-win-x64'
+
     - task: CopyFiles@2
       displayName: 'Copy Java Files to Artifact Staging Directory'
       inputs:
@@ -73,9 +82,6 @@ stages:
     - template: ../templates/component-governance-component-detection-steps.yml
       parameters:
         condition: 'succeeded'
-    - task: mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3
-      displayName: 'Clean Agent Directories'
-      condition: always()
   - job: Final_Jar_Testing_Windows_GPU
     dependsOn:
       Jar_Packaging_GPU
@@ -125,9 +131,6 @@ stages:
     - template: ../templates/component-governance-component-detection-steps.yml
       parameters:
         condition: 'succeeded'
-    - task: mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3
-      displayName: 'Clean Agent Directories'
-      condition: always()
   - job: Final_Jar_Testing_Linux_GPU
     dependsOn:
       Jar_Packaging_GPU
@@ -139,9 +142,9 @@ stages:
       value: false
     - name: docker_base_image
       ${{ if eq(parameters.CudaVersion, '11.8') }}:
-        value: onnxruntimebuildcache.azurecr.io/internal/azureml/onnxruntime/build/cuda11_x64_almalinux8_gcc11:20240531.1
+        value: onnxruntimebuildcache.azurecr.io/internal/azureml/onnxruntime/build/cuda11_x64_almalinux8_gcc11:20250124.1
       ${{ if eq(parameters.CudaVersion, '12.2') }}:
-        value: onnxruntimebuildcache.azurecr.io/internal/azureml/onnxruntime/build/cuda12_x64_ubi8_gcc12:20240719.1
+        value: onnxruntimebuildcache.azurecr.io/internal/azureml/onnxruntime/build/cuda12_x64_ubi8_gcc12:20250124.1
     timeoutInMinutes: 60
 
     steps:
@@ -167,10 +170,9 @@ stages:
         --build-arg TRT_VERSION=${{ variables.linux_trt_version }}
         "
         Repository: onnxruntimeubi8packagestest
-        UpdateDepsTxt: false
 
     - bash: |
-        docker run --rm \
+        docker run -e SYSTEM_COLLECTIONURI --rm \
           --gpus all \
           --volume $(Build.SourcesDirectory):/onnxruntime_src \
           --volume $(Build.BinariesDirectory):/build \
@@ -182,6 +184,3 @@ stages:
     - template: ../templates/component-governance-component-detection-steps.yml
       parameters:
         condition: 'succeeded'
-    - task: mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3
-      displayName: 'Clean Agent Directories'
-      condition: always()

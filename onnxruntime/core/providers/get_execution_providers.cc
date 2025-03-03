@@ -69,14 +69,6 @@ constexpr ProviderInfo kProvidersInPriorityOrder[] =
 #endif
         },
         {
-            kTvmExecutionProvider,
-#ifdef USE_TVM
-            true,
-#else
-            false,
-#endif
-        },
-        {
             kVitisAIExecutionProvider,
 #ifdef USE_VITISAI
             true,
@@ -159,6 +151,14 @@ constexpr ProviderInfo kProvidersInPriorityOrder[] =
         {
             kWebNNExecutionProvider,
 #ifdef USE_WEBNN
+            true,
+#else
+            false,
+#endif
+        },
+        {
+            kWebGpuExecutionProvider,
+#ifdef USE_WEBGPU
             true,
 #else
             false,

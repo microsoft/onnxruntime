@@ -7,6 +7,10 @@ using System.Runtime.InteropServices;
 using System.Text.RegularExpressions;
 using Xunit;
 
+#if NET8_0_OR_GREATER
+using SystemNumericsTensors = System.Numerics.Tensors;
+#endif
+
 namespace Microsoft.ML.OnnxRuntime.Tests
 {
     /// <summary>
@@ -66,6 +70,194 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                 }
             }
         }
+
+#if NET8_0_OR_GREATER
+#pragma warning disable SYSLIB5001 // System.Numerics.Tensors is only in preview so we can continue receiving API feedback
+        [Theory]
+        [InlineData(GraphOptimizationLevel.ORT_DISABLE_ALL, true)]
+        [InlineData(GraphOptimizationLevel.ORT_DISABLE_ALL, false)]
+        [InlineData(GraphOptimizationLevel.ORT_ENABLE_EXTENDED, true)]
+        [InlineData(GraphOptimizationLevel.ORT_ENABLE_EXTENDED, false)]
+        private void CanRunInferenceOnAModelDotnetTensors(GraphOptimizationLevel graphOptimizationLevel, bool enableParallelExecution)
+        {
+            var model = TestDataLoader.LoadModelFromEmbeddedResource("squeezenet.onnx");
+
+            using (var cleanUp = new DisposableListTest<IDisposable>())
+            {
+                // Set the graph optimization level for this session.
+                SessionOptions options = new SessionOptions();
+                cleanUp.Add(options);
+                options.GraphOptimizationLevel = graphOptimizationLevel;
+
+                var session = new InferenceSession(model, options);
+                cleanUp.Add(session);
+
+                using var runOptions = new RunOptions();
+                var inputMeta = session.InputMetadata;
+                var outputMeta = session.OutputMetadata;
+
+                float[] expectedOutput = TestDataLoader.LoadTensorFromEmbeddedResource("bench.expected_out");
+                long[] expectedDimensions = { 1, 1000, 1, 1 };  // hardcoded for now for the test data
+                ReadOnlySpan<long> expectedOutputDimensions = expectedDimensions;
+
+                float[] inputData = TestDataLoader.LoadTensorFromEmbeddedResource("bench.in"); // this is the data for only one input tensor for this model
+
+                using var inputOrtValues = new DisposableListTest<DisposableTestPair<OrtValue>>(session.InputMetadata.Count);
+
+                foreach (var name in inputMeta.Keys)
+                {
+                    Assert.Equal(typeof(float), inputMeta[name].ElementType);
+                    Assert.True(inputMeta[name].IsTensor);
+                    var tensor = SystemNumericsTensors.Tensor.Create<float>(inputData, inputMeta[name].Dimensions.Select(x => (nint)x).ToArray());
+                    inputOrtValues.Add(new DisposableTestPair<OrtValue>(name, OrtValue.CreateTensorValueFromSystemNumericsTensorObject<float>(tensor)));
+
+                }
+
+                runOptions.LogId = "CsharpTest";
+                runOptions.Terminate = false;  // TODO: Test terminate = true, it currently crashes
+                runOptions.LogSeverityLevel = OrtLoggingLevel.ORT_LOGGING_LEVEL_ERROR;
+                // Run inference with named inputs and outputs created with in Run()
+                using (var results = session.Run(runOptions, inputOrtValues.Select(x => x.Key).ToList(), inputOrtValues.Select(x => x.Value).ToList(), new List<string>(["softmaxout_1"])))  // results is an IDisposableReadOnlyCollection<OrtValue> container
+                {
+                    // validate the results
+                    foreach (var r in results)
+                    {
+                        Assert.Single(results);
+
+                        ValidateRunResult(r, expectedOutput, expectedDimensions);
+                    }
+                }
+            }
+        }
+
+        [Fact]
+        public void InferenceSessionDisposedDotnetTensors()
+        {
+            var model = TestDataLoader.LoadModelFromEmbeddedResource("squeezenet.onnx");
+
+            // Set the graph optimization level for this session.
+            using (SessionOptions options = new SessionOptions())
+            {
+                options.ProfileOutputPathPrefix = "Ort_P_";
+                options.EnableProfiling = true;
+                using (var session = new InferenceSession(model, options))
+                {
+                    var inputMeta = session.InputMetadata;
+                    var container = new List<NamedOnnxValue>();
+
+                    float[] inputData = TestDataLoader.LoadTensorFromEmbeddedResource("bench.in"); // this is the data for only one input tensor for this model
+
+                    using (var runOptions = new RunOptions())
+                    using (var inputOrtValues = new DisposableListTest<DisposableTestPair<OrtValue>>(session.InputMetadata.Count))
+                    using (var outputOrtValues = new DisposableListTest<DisposableTestPair<OrtValue>>(session.OutputMetadata.Count))
+                    {
+                        
+                        foreach (var name in inputMeta.Keys)
+                        {
+                            Assert.Equal(typeof(float), inputMeta[name].ElementType);
+                            Assert.True(inputMeta[name].IsTensor);
+                            var tensor = SystemNumericsTensors.Tensor.Create<float>(inputData, inputMeta[name].Dimensions.Select(x => (nint) x).ToArray());
+                            inputOrtValues.Add(new DisposableTestPair<OrtValue>(name, OrtValue.CreateTensorValueFromSystemNumericsTensorObject<float>(tensor)));
+                        }
+                        
+                        // Run inference with named inputs and outputs created with in Run()
+                        using (var results = session.Run(runOptions, inputOrtValues.Select(x => x.Key).ToList(), inputOrtValues.Select(x => x.Value).ToList(), new List<string>(["softmaxout_1"])))  // results is an IDisposableReadOnlyCollection<OrtValue> container
+                        {
+                            // validate the results
+                            foreach (var r in results)
+                            {
+                                Assert.Single(results);
+
+                                float[] expectedOutput = TestDataLoader.LoadTensorFromEmbeddedResource("bench.expected_out");
+                                long[] expectedDimensions = { 1, 1000, 1, 1 };  // hardcoded for now for the test data
+                                ValidateRunResult(r, expectedOutput, expectedDimensions);
+                            }
+                        }
+                    }
+
+                    string profile_file = session.EndProfiling();
+
+                    // Profile file should have the output path prefix in it
+                    Assert.Contains("Ort_P_", profile_file);
+                }
+            }
+        }
+
+        [Fact]
+        private void ThrowWrongOutputNameDotnetTensors()
+        {
+            var tuple = OpenSessionSqueezeNet();
+            var session = tuple.Item1;
+            var inputData = tuple.Item2;
+            var inputTensor = tuple.Item3;
+
+            using (var runOptions = new RunOptions())
+            using (var inputOrtValues = new DisposableListTest<DisposableTestPair<OrtValue>>(session.InputMetadata.Count))
+            using (var outputOrtValues = new DisposableListTest<DisposableTestPair<OrtValue>>(session.OutputMetadata.Count))
+            {
+                var tensor = SystemNumericsTensors.Tensor.Create<float>(inputData, Array.ConvertAll<int, nint>(inputTensor.Dimensions.ToArray(), x => (nint)x));
+
+                inputOrtValues.Add(new DisposableTestPair<OrtValue>("data_0", OrtValue.CreateTensorValueFromSystemNumericsTensorObject<float>(tensor)));
+                outputOrtValues.Add(new DisposableTestPair<OrtValue>("bad_output_name", OrtValue.CreateTensorValueFromSystemNumericsTensorObject(tensor)));
+
+                var ex = Assert.Throws<OnnxRuntimeException>(() => session.Run(runOptions, ["data_0"], [inputOrtValues[0].Value], ["bad_output_name"], [outputOrtValues[0].Value]));
+                Assert.Contains("Output name: 'bad_output_name' is not in the metadata", ex.Message);
+            }
+
+            session.Dispose();
+        }
+
+        [Fact]
+        private void ThrowWrongOutputDimensionDotnetTensors()
+        {
+            var tuple = OpenSessionSqueezeNet();
+            var session = tuple.Item1;
+            var inputData = tuple.Item2;
+            var inputTensor = tuple.Item3;
+            var outputTensor = SystemNumericsTensors.Tensor.Create<float>([1, 1001, 1, 1]);
+
+            using (var runOptions = new RunOptions())
+            using (var inputOrtValues = new DisposableListTest<DisposableTestPair<OrtValue>>(session.InputMetadata.Count))
+            using (var outputOrtValues = new DisposableListTest<DisposableTestPair<OrtValue>>(session.OutputMetadata.Count))
+            {
+                var tensor = SystemNumericsTensors.Tensor.Create<float>(inputData, Array.ConvertAll<int, nint>(inputTensor.Dimensions.ToArray(), x => (nint)x));
+
+                inputOrtValues.Add(new DisposableTestPair<OrtValue>("data_0", OrtValue.CreateTensorValueFromSystemNumericsTensorObject<float>(tensor)));
+                outputOrtValues.Add(new DisposableTestPair<OrtValue>("softmaxout_1", OrtValue.CreateTensorValueFromSystemNumericsTensorObject(outputTensor)));
+                
+                var ex = Assert.Throws<OnnxRuntimeException>(() => session.Run(runOptions, ["data_0"], [inputOrtValues[0].Value], ["softmaxout_1"], [outputOrtValues[0].Value]));
+            }
+
+            session.Dispose();
+        }
+
+        [Fact]
+        private void ThrowInconsistentPinnedOutputsDotnetTensors()
+        {
+            var tuple = OpenSessionSqueezeNet();
+            using var cleanUp = new DisposableListTest<IDisposable>();
+            cleanUp.Add(tuple.Item1);
+            var session = tuple.Item1;
+            var inputData = tuple.Item2;
+            var inputTensor = tuple.Item3;
+            var outputTensor = SystemNumericsTensors.Tensor.Create([1, 1001, 1, 1], [4]);
+
+            using (var runOptions = new RunOptions())
+            using (var inputOrtValues = new DisposableListTest<DisposableTestPair<OrtValue>>(session.InputMetadata.Count))
+            using (var outputOrtValues = new DisposableListTest<DisposableTestPair<OrtValue>>(session.OutputMetadata.Count))
+            {
+                var tensor = SystemNumericsTensors.Tensor.Create<float>(inputData, Array.ConvertAll<int, nint>(inputTensor.Dimensions.ToArray(), x => (nint)x));
+
+                inputOrtValues.Add(new DisposableTestPair<OrtValue>("data_0", OrtValue.CreateTensorValueFromSystemNumericsTensorObject<float>(tensor)));
+                outputOrtValues.Add(new DisposableTestPair<OrtValue>("softmaxout_1", OrtValue.CreateTensorValueFromSystemNumericsTensorObject(outputTensor)));
+                OrtValue[] outputs = [];
+                var ex = Assert.Throws<ArgumentException>(() => session.Run(runOptions, ["data_0"], [inputOrtValues[0].Value], ["softmaxout_1"], outputs));
+                Assert.StartsWith("Length of outputNames (1) must match that of outputValues (0).", ex.Message);
+            }
+        }
+#pragma warning restore SYSLIB5001 // System.Numerics.Tensors is only in preview so we can continue receiving API feedback
+#endif
+
 
 #if USE_CUDA
         [Fact(DisplayName = "TestCUDAProviderOptions")]
@@ -680,7 +872,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
 
             var orderedInputNames = new List<string>(inputContainer.Count);
             var orderdedInputs = new List<OrtValue>(inputContainer.Count);
-            foreach(var pair in inputContainer)
+            foreach (var pair in inputContainer)
             {
                 orderedInputNames.Add(pair.Key);
                 orderdedInputs.Add(pair.Value);
@@ -772,7 +964,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                     throw new Exception($"Opset {opset} Model {modelName}. Can't determine model file name. Found these :{modelNamesList}");
                 }
 
-                using(var runOptions = new RunOptions())
+                using (var runOptions = new RunOptions())
                 using (var session = new InferenceSession(onnxModelFileName))
                 {
                     string testDataDirNamePattern = "test_data*";
@@ -1077,7 +1269,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                         Assert.Equal(result.GetStringTensorAsArray(), expectedValue.AsTensor<string>().ToArray(), new ExactComparer<string>());
                         break;
                     default:
-                        Assert.Fail($"VerifyTensorResults cannot handle ElementType: { resultTypeShape.ElementDataType}");
+                        Assert.Fail($"VerifyTensorResults cannot handle ElementType: {resultTypeShape.ElementDataType}");
                         break;
                 }
             }
@@ -1251,6 +1443,88 @@ namespace Microsoft.ML.OnnxRuntime.Tests
             }
         }
 
+        private static OrtLoraAdapter CreateLoraAdapterFromFile()
+        {
+            var adapterPath = Path.Combine(Directory.GetCurrentDirectory(), "two_params_lora_model.onnx_adapter");
+            return OrtLoraAdapter.Create(adapterPath, null);
+        }
+
+        private static OrtLoraAdapter CreateLoraAdapterFromArray()
+        {
+            var adapterPath = Path.Combine(Directory.GetCurrentDirectory(), "two_params_lora_model.onnx_adapter");
+            var adapterBytes = File.ReadAllBytes(adapterPath);
+            return OrtLoraAdapter.Create(adapterBytes, null);
+        }
+
+        // See tests below for running with Lora Adapters
+        [Fact(DisplayName = "TestInferenceWithBaseLoraModel")]
+        private void TestInferenceWithBaseLoraModel()
+        {
+            var modelPath = Path.Combine(Directory.GetCurrentDirectory(), "two_params_lora_model.onnx");
+
+            var inputShape = new long[] { 4, 4 };
+            var inputData = new float[16];
+            Array.Fill(inputData, 1);
+            using var inputOrtValue = OrtValue.CreateTensorValueFromMemory(inputData, inputShape);
+
+            var expectedOutput = new float[] {
+                    28, 32, 36, 40,
+                    28, 32, 36, 40,
+                    28, 32, 36, 40,
+                    28, 32, 36, 40 };
+
+            using var session = new InferenceSession(modelPath);
+            using var runOptions = new RunOptions();
+
+            using var outputs = session.Run(runOptions, ["input_x"], [inputOrtValue], ["output"]);
+            Assert.Single(outputs);
+            var output = outputs[0].GetTensorDataAsSpan<float>();
+            Assert.Equal(expectedOutput.Length, output.Length);
+            Assert.Equal(expectedOutput, output.ToArray(), new FloatComparer());
+        }
+
+
+        private static void TestInferenceWithLoraAdapter(OrtLoraAdapter ortLoraAdapter)
+        {
+            var modelPath = Path.Combine(Directory.GetCurrentDirectory(), "two_params_lora_model.onnx");
+            var adapterPath = Path.Combine(Directory.GetCurrentDirectory(), "two_params_lora_model.onnx_adapter");
+
+            var inputShape = new long[] { 4, 4 };
+            var inputData = new float[16];
+            Array.Fill(inputData, 1);
+            using var inputOrtValue = OrtValue.CreateTensorValueFromMemory(inputData, inputShape);
+
+            var expectedOutput = new float[] {
+                  154, 176, 198, 220,
+                  154, 176, 198, 220,
+                  154, 176, 198, 220,
+                  154, 176, 198, 220 };
+
+            using var session = new InferenceSession(modelPath);
+            using var runOptions = new RunOptions();
+            runOptions.AddActiveLoraAdapter(ortLoraAdapter);
+
+            using var outputs = session.Run(runOptions, ["input_x"], [inputOrtValue], ["output"]);
+            Assert.Single(outputs);
+            var output = outputs[0].GetTensorDataAsSpan<float>();
+            Assert.Equal(expectedOutput.Length, output.Length);
+            Assert.Equal(expectedOutput, output.ToArray(), new FloatComparer());
+        }
+
+        [Fact(DisplayName = "TestInferenceWithLoraAdapterFromFile")]
+        private void TestInferenceWithLoraAdapterFromFile()
+        {
+            using var ortAdapter = CreateLoraAdapterFromFile();
+            TestInferenceWithLoraAdapter(ortAdapter);
+        }
+
+        [Fact(DisplayName = "TestInferenceWithLoraAdapterFromArray")]
+        private void TestInferenceWithLoraAdapterFromArray()
+        {
+            using var ortAdapter = CreateLoraAdapterFromArray();
+            TestInferenceWithLoraAdapter(ortAdapter);
+        }
+
         // TestGpu() will test
         //  - the CUDA EP on CUDA enabled builds
         //  - the DML EP on DML enabled builds
@@ -1333,6 +1607,25 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                 UnloadLibrary(libraryHandle);
             }
         }
+
+#if NET8_0_OR_GREATER
+#pragma warning disable SYSLIB5001 // Type is for evaluation purposes only and is subject to change or removal in future updates. Suppress this diagnostic to proceed.
+        private void ValidateRunResultData(SystemNumericsTensors.Tensor<float> resultTensor, float[] expectedOutput, int[] expectedDimensions)
+        {
+            Assert.Equal(expectedDimensions.Length, resultTensor.Rank);
+
+            var resultDimensions = resultTensor.Lengths;
+            for (int i = 0; i < expectedDimensions.Length; i++)
+            {
+                Assert.Equal(expectedDimensions[i], resultDimensions[i]);
+            }
+
+            var resultArray = resultTensor.ToArray();
+            Assert.Equal(expectedOutput.Length, resultArray.Length);
+            Assert.Equal(expectedOutput, resultArray, new FloatComparer());
+        }
+#pragma warning restore SYSLIB5001 // Type is for evaluation purposes only and is subject to change or removal in future updates. Suppress this diagnostic to proceed.
+#endif
 
         static string GetTestModelsDir()
         {

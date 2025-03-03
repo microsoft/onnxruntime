@@ -38,13 +38,18 @@ class SimpleTest {
     @Test
     fun runSigmoidModelTest() {
         for (intraOpNumThreads in 1..4) {
-            runSigmoidModelTestImpl(intraOpNumThreads)
+            runSigmoidModelTestImpl(intraOpNumThreads, OrtProvider.CPU)
         }
     }
 
     @Test
     fun runSigmoidModelTestNNAPI() {
-        runSigmoidModelTestImpl(1, true)
+        runSigmoidModelTestImpl(1, OrtProvider.NNAPI)
+    }
+
+    @Test
+    fun runSigmoidModelTestQNN() {
+        runSigmoidModelTestImpl(1, OrtProvider.QNN)
     }
 
     @Throws(IOException::class)
@@ -54,22 +59,49 @@ class SimpleTest {
     }
 
     @Throws(OrtException::class, IOException::class)
-    fun runSigmoidModelTestImpl(intraOpNumThreads: Int, useNNAPI: Boolean = false) {
-        reportHelper.label("Start Running Test with intraOpNumThreads=$intraOpNumThreads, useNNAPI=$useNNAPI")
+    fun runSigmoidModelTestImpl(intraOpNumThreads: Int, executionProvider: OrtProvider) {
+        reportHelper.label("Start Running Test with intraOpNumThreads=$intraOpNumThreads, executionProvider=$executionProvider")
         Log.println(Log.INFO, TAG, "Testing with intraOpNumThreads=$intraOpNumThreads")
-        Log.println(Log.INFO, TAG, "Testing with useNNAPI=$useNNAPI")
+        Log.println(Log.INFO, TAG, "Testing with executionProvider=$executionProvider")
+
         val env = OrtEnvironment.getEnvironment(OrtLoggingLevel.ORT_LOGGING_LEVEL_VERBOSE)
         env.use {
             val opts = SessionOptions()
             opts.setIntraOpNumThreads(intraOpNumThreads)
-            if (useNNAPI) {
-                if (OrtEnvironment.getAvailableProviders().contains(OrtProvider.NNAPI)) {
-                    opts.addNnapi()
-                } else {
-                    Log.println(Log.INFO, TAG, "NO NNAPI EP available, skip the test")
-                    return
+
+            when (executionProvider) {
+
+                OrtProvider.NNAPI -> {
+                    if (OrtEnvironment.getAvailableProviders().contains(OrtProvider.NNAPI)) {
+                        opts.addNnapi()
+                    } else {
+                        Log.println(Log.INFO, TAG, "NO NNAPI EP available, skip the test")
+                        return
+                    }
+                }
+
+                OrtProvider.QNN -> {
+                    if (OrtEnvironment.getAvailableProviders().contains(OrtProvider.QNN)) {
+                        // Since this is running in an Android environment, we use the .so library
+                        val qnnLibrary = "libQnnHtp.so"
+                        val providerOptions = Collections.singletonMap("backend_path", qnnLibrary)
+                        opts.addQnn(providerOptions)
+                    } else {
+                        Log.println(Log.INFO, TAG, "NO QNN EP available, skip the test")
+                        return
+                    }
+                }
+
+                OrtProvider.CPU -> {
+                    // No additional configuration is needed for CPU
+                }
+
+                else -> {
+                    //  Non exhaustive when statements on enum will be prohibited in future Gradle versions
+                    Log.println(Log.INFO, TAG, "Skipping test as OrtProvider is not implemented")
                 }
             }
+
             opts.use {
                 val session = env.createSession(readModel("sigmoid.ort"), opts)
                 session.use {
@@ -92,13 +124,15 @@ class SimpleTest {
                         output.use {
                             @Suppress("UNCHECKED_CAST")
                             val rawOutput = output[0].value as Array<Array<FloatArray>>
+                            // QNN EP will run the Sigmoid float32 op with fp16 precision
+                            val precision = if (executionProvider == OrtProvider.QNN) 1e-3 else 1e-6
                             for (i in 0..2) {
                                 for (j in 0..3) {
                                     for (k in 0..4) {
                                         Assert.assertEquals(
                                             rawOutput[i][j][k],
                                             expected[i][j][k],
-                                            1e-6.toFloat()
+                                            precision.toFloat()
                                         )
                                     }
                                 }

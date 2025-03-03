@@ -11,7 +11,7 @@
   add_library(onnxruntime_providers_vsinpu ${onnxruntime_providers_vsinpu_srcs})
   onnxruntime_add_include_to_target(onnxruntime_providers_vsinpu
     onnxruntime_common onnxruntime_framework onnx onnx_proto protobuf::libprotobuf-lite flatbuffers Boost::mp11
-    safeint_interface nsync::nsync_cpp)
+    safeint_interface )
   add_dependencies(onnxruntime_providers_vsinpu ${onnxruntime_EXTERNAL_DEPENDENCIES})
   set_target_properties(onnxruntime_providers_vsinpu PROPERTIES FOLDER "ONNXRuntime" LINKER_LANGUAGE CXX)
   target_include_directories(onnxruntime_providers_vsinpu PRIVATE ${ONNXRUNTIME_ROOT} $ENV{TIM_VX_INSTALL}/include)

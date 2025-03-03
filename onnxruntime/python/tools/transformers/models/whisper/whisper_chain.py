@@ -24,7 +24,7 @@ def verify_inputs(beam_inputs, graph_inputs):
     # Verify that ONNX graph's inputs match beam search op's inputs
     beam_required_inputs = list(filter(lambda beam_input: beam_input, beam_inputs))
     assert len(graph_inputs) == len(beam_required_inputs)
-    for graph_input, beam_input in zip(graph_inputs, beam_required_inputs):
+    for graph_input, beam_input in zip(graph_inputs, beam_required_inputs, strict=False):
         # Check if graph_input is in beam_input to handle beam_input names with the "_fp16" suffix
         assert graph_input.name in beam_input
 
@@ -323,4 +323,7 @@ def chain_model(args):
         convert_attribute=True,
         location=f"{os.path.basename(args.beam_model_output_dir)}.data",
     )
-    onnx.checker.check_model(args.beam_model_output_dir, full_check=True)
+    try:
+        onnx.checker.check_model(args.beam_model_output_dir, full_check=True)
+    except Exception as e:
+        logger.error(f"An error occurred while running the ONNX checker: {e}", exc_info=True)  # noqa: G201

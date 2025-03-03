@@ -4,6 +4,7 @@
 
 #pragma once
 
+#include <cstring>
 #include <core/common/status.h>
 #include "core/common/inlined_containers.h"
 #include <core/graph/basic_types.h>
@@ -31,8 +32,35 @@ enum class WebnnDeviceType {
   NPU,
 };
 
+WebnnDeviceType DeviceTypeFromString(const std::string_view& device_type);
+
 // Collects all the initializer tensors in the subGraph and its ancestor graphs.
 InitializedTensorSet CollectAllInitializedTensors(const GraphViewer& graph_viewer);
+
+inline std::vector<int64_t> convertAxesFromNCHWtoNHWC(const std::vector<int64_t>& axes) {
+  constexpr std::array<int64_t, 4> nchw_to_nhwc = {0, 3, 1, 2};
+  std::vector<int64_t> new_axes;
+  new_axes.reserve(axes.size());
+  for (int64_t axis : axes) {
+    if (axis >= nchw_to_nhwc.size()) {
+      ORT_THROW("Invalid axis value: ", axis);
+    }
+    new_axes.push_back(nchw_to_nhwc[static_cast<size_t>(axis)]);
+  }
+  return new_axes;
+}
+
+inline std::vector<int64_t> HandleNegativeAxes(const std::vector<int64_t>& axes, size_t input_size) {
+  std::vector<int64_t> new_axes(axes.size());
+  for (size_t i = 0; i < axes.size(); ++i) {
+    new_axes[i] = HandleNegativeAxis(axes[i], input_size);
+  }
+  return new_axes;
+}
+
+inline std::vector<int64_t> GetResolvedAxes(const NodeAttrHelper& helper, size_t input_size) {
+  return HandleNegativeAxes(helper.Get("axes", std::vector<int64_t>{}), input_size);
+}
 
 bool GetShape(const NodeArg& node_arg, std::vector<int64_t>& shape, const logging::Logger& logger);
 
@@ -54,7 +82,7 @@ inline std::string GetTensorName(const ConstPointerContainer<std::vector<NodeArg
   return (input_defs.size() > index) ? std::string(input_defs[index]->Name()) : "";
 }
 
-inline std::vector<uint32_t> GetVecUint32FromVecInt64(const std::vector<int64_t>& int64_vec) {
+inline std::vector<uint32_t> GetVecUint32FromVecInt64(gsl::span<const int64_t> int64_vec) {
   std::vector<uint32_t> uint32_vec;
   uint32_vec.reserve(int64_vec.size());
   std::transform(int64_vec.begin(), int64_vec.end(),
@@ -142,17 +170,43 @@ inline bool ReadScalarTensorData(const onnx::TensorProto& tensor, emscripten::va
   return true;
 }
 
-bool IsInputSupported(const NodeArg& node_arg, const std::string& parent_name, const logging::Logger& logger);
+inline bool IsEmptyTensor(const InitializedTensorSet& initializers, const std::string& name) {
+  if (name.empty() || !Contains(initializers, name)) {
+    return true;
+  }
 
-// Get a list of groups of supported nodes, each group represents a subgraph supported by WebNN EP.
-std::vector<std::vector<NodeIndex>> GetSupportedNodes(const GraphViewer& graph_viewer,
-                                                      const emscripten::val& wnn_builder,
-                                                      const WebnnDeviceType device_type,
-                                                      const emscripten::val& wnn_limits,
-                                                      const logging::Logger& logger);
-static const InlinedHashMap<std::string, std::string> op_map = {
+  const auto& tensor = *initializers.at(name);
+  const auto dims = tensor.dims();
+  // An empty tensor contains a 0 in the dimensions list.
+  return std::any_of(dims.begin(), dims.end(), [](auto d) { return d == 0; });
+}
+
+inline bool TensorExists(const ConstPointerContainer<std::vector<NodeArg*>>& defs, size_t tensor_index) noexcept {
+  return tensor_index < defs.size() && defs[tensor_index]->Exists();
+}
+
+bool IsTensorShapeSupported(const NodeArg& node_arg, const std::string& parent_name,
+                            const logging::Logger& logger, bool allow_empty_input = false);
+
+// Get a set of nodes supported by WebNN EP.
+std::unordered_set<const Node*> GetSupportedNodes(const GraphViewer& graph_viewer,
+                                                  const emscripten::val& wnn_builder,
+                                                  const WebnnDeviceType device_type,
+                                                  const emscripten::val& wnn_limits,
+                                                  const logging::Logger& logger);
+
+// Some ONNX ops are supported by decomposed WebNN ops.
+const std::map<std::string_view, std::vector<std::string_view>> decomposed_op_map = {
+    {"LRN", {"add", "averagePool2d", "div", "mul", "pad", "pow", "transpose"}},
+    {"RotaryEmbedding", {"add", "concat", "gather", "mul", "reshape", "split"}},
+    {"SimplifiedLayerNormalization", {"add", "div", "mul", "pow", "reduceMean", "sqrt"}},
+    {"SkipSimplifiedLayerNormalization", {"add", "div", "mul", "pow", "reduceMean", "sqrt"}},
+};
+// ONNX op type to WebNN op type mapping.
+const std::map<std::string_view, std::string_view> op_map = {
     {"Abs", "abs"},
     {"Add", "add"},
+    {"And", "logicalAnd"},
     {"ArgMax", "argMax"},
     {"ArgMin", "argMin"},
     {"AveragePool", "averagePool2d"},
@@ -165,10 +219,12 @@ static const InlinedHashMap<std::string, std::string> op_map = {
     {"ConvInteger", "conv2dInteger"},
     {"ConvTranspose", "convTranspose2d"},
     {"Cos", "cos"},
+    {"CumSum", "cumulativeSum"},
     {"Div", "div"},
     {"DequantizeLinear", "dequantizeLinear"},
     {"Dropout", "identity"},
     {"DynamicQuantizeLinear", "dynamicQuantizeLinear"},
+    {"Einsum", "matmul"},
     {"Elu", "elu"},
     {"Equal", "equal"},
     {"Erf", "erf"},
@@ -177,6 +233,8 @@ static const InlinedHashMap<std::string, std::string> op_map = {
     {"Flatten", "reshape"},
     {"Floor", "floor"},
     {"Gather", "gather"},
+    {"GatherElements", "gatherElements"},
+    {"GatherND", "gatherND"},
     {"Gelu", "gelu"},
     {"Gemm", "gemm"},
     {"GlobalAveragePool", "averagePool2d"},
@@ -184,7 +242,7 @@ static const InlinedHashMap<std::string, std::string> op_map = {
     {"GlobalLpPool", "l2Pool2d"},
     {"Greater", "greater"},
     {"GreaterOrEqual", "greaterOrEqual"},
-    {"Gru", "gru"},
+    {"GRU", "gru"},
     {"HardSigmoid", "hardSigmoid"},
     {"HardSwish", "hardSwish"},
     {"Identity", "identity"},
@@ -195,6 +253,7 @@ static const InlinedHashMap<std::string, std::string> op_map = {
     {"LessOrEqual", "lesserOrEqual"},
     {"Log", "log"},
     {"LpPool", "l2Pool2d"},
+    {"LSTM", "lstm"},
     {"MatMul", "matmul"},
     {"MatMulInteger", "matmulInteger"},
     {"Max", "max"},
@@ -203,6 +262,7 @@ static const InlinedHashMap<std::string, std::string> op_map = {
     {"Mul", "mul"},
     {"Neg", "neg"},
     {"Not", "logicalNot"},
+    {"Or", "logicalOr"},
     {"Pad", "pad"},
     {"Pow", "pow"},
     {"PRelu", "prelu"},
@@ -221,8 +281,11 @@ static const InlinedHashMap<std::string, std::string> op_map = {
     {"Relu", "relu"},
     {"Reshape", "reshape"},
     {"Resize", "resample2d"},
+    {"ScatterElements", "scatterElements"},
+    {"ScatterND", "scatterND"},
     {"Shape", "slice"},
     {"Sigmoid", "sigmoid"},
+    {"Sign", "sign"},
     {"Softplus", "softplus"},
     {"Softsign", "softsign"},
     {"Sin", "sin"},
@@ -234,35 +297,56 @@ static const InlinedHashMap<std::string, std::string> op_map = {
     {"Sub", "sub"},
     {"Tan", "tan"},
     {"Tanh", "tanh"},
+    {"Tile", "tile"},
     {"Transpose", "transpose"},
     {"Trilu", "triangular"},
     {"Unsqueeze", "reshape"},
     {"Where", "where"},
+    {"Xor", "logicalXor"},
 };
 
-inline bool CheckSingleOp(const std::string& op_type, const emscripten::val& wnn_builder,
-                          const WebnnDeviceType device_type) {
-  auto op_map_entry = op_map.find(op_type);
-  // Returns false if the op_type is not listed in the op_map or
-  // if the WebNN op has not been implemented in MLGraphBuilder in current browser.
-  if (op_map_entry == op_map.end() || !wnn_builder[op_map_entry->second].as<bool>()) {
-    return false;
-  }
+// WebNN op name to its first input name mapping, only record the name that is different from "input".
+// This map is used to determine the first input name of a WebNN op and is utilized by OpSupportLimits.
+const std::map<std::string_view, std::string_view> webnn_op_first_input_name_map = {
+    {"add", "a"},
+    {"concat", "inputs"},
+    {"div", "a"},
+    {"equal", "a"},
+    {"gemm", "a"},
+    {"greater", "a"},
+    {"greaterOrEqual", "a"},
+    {"lesser", "a"},
+    {"lesserOrEqual", "a"},
+    {"logicalAnd", "a"},
+    {"logicalNot", "a"},
+    {"logicalOr", "a"},
+    {"logicalXor", "a"},
+    {"matmul", "a"},
+    {"max", "a"},
+    {"min", "a"},
+    {"mul", "a"},
+    {"pow", "a"},
+    {"sub", "a"},
+    {"where", "condition"},
+};
 
-  return true;
+// Retrieve the first input name of a WebNN op used for validating supported input data types.
+// WebNN ops have various first input names such as 'a', 'input', 'inputs', etc.
+// Special names other than 'input' are recorded in the webnn_op_first_input_name_map.
+inline std::string_view GetWebNNOpFirstInputName(const std::string_view webnn_op_type) {
+  auto it = webnn_op_first_input_name_map.find(webnn_op_type);
+  return (it != webnn_op_first_input_name_map.end()) ? it->second : "input";
 }
 
-inline bool GetWebNNOpType(const std::string& op_type, std::string& webnn_op_type) {
+inline std::string_view GetWebNNOpType(const std::string_view op_type) {
   auto it = op_map.find(op_type);
-  // Returns false if the op_type is not listed in the op_map.
-  if (it == op_map.end()) {
-    return false;
-  }
-  webnn_op_type = it->second;
-  return true;
+  // Return an empty string if the op_type is not listed in the op_map.
+  return (it != op_map.end()) ? it->second : "";
 }
 
-static const InlinedHashMap<ONNX_NAMESPACE::TensorProto_DataType, std::string> onnx_to_webnn_data_type_map = {
+const std::map<ONNX_NAMESPACE::TensorProto_DataType, std::string_view> onnx_to_webnn_data_type_map = {
+    {ONNX_NAMESPACE::TensorProto_DataType_INT4, "int4"},
+    {ONNX_NAMESPACE::TensorProto_DataType_UINT4, "uint4"},
     {ONNX_NAMESPACE::TensorProto_DataType_BOOL, "uint8"},
     {ONNX_NAMESPACE::TensorProto_DataType_INT8, "int8"},
     {ONNX_NAMESPACE::TensorProto_DataType_UINT8, "uint8"},
@@ -274,22 +358,34 @@ static const InlinedHashMap<ONNX_NAMESPACE::TensorProto_DataType, std::string> o
     {ONNX_NAMESPACE::TensorProto_DataType_UINT64, "uint64"},
 };
 
-bool AreInputDataTypesSame(const std::string& op_type,
+bool AreInputDataTypesSame(const std::string_view op_type,
                            gsl::span<const int32_t> input_types,
                            const logging::Logger& logger);
 bool IsSupportedDataType(const int32_t onnx_data_type, const emscripten::val& webnn_supported_data_types);
-bool IsDataTypeSupportedByOp(const std::string& onnx_op_type,
+bool IsDataTypeSupportedByOp(const std::string_view onnx_op_type,
                              const int32_t onnx_data_type,
                              const emscripten::val& wnn_limits,
-                             const std::string& webnn_input_output_name,
-                             const std::string& onnx_input_output_name,
+                             const std::string_view webnn_input_output_name,
+                             const std::string_view onnx_input_output_name,
                              const logging::Logger& logger);
+bool IsDataTypeSupportedByWebNNOp(const std::string_view onnx_op_type,
+                                  const std::string_view webnn_op_type,
+                                  const int32_t onnx_data_type,
+                                  const emscripten::val& wnn_limits,
+                                  const std::string_view webnn_input_output_name,
+                                  const std::string_view onnx_input_output_name,
+                                  const logging::Logger& logger);
 
 bool GetBidirectionalBroadcastShape(std::vector<int64_t>& shape_a,
                                     std::vector<int64_t>& shape_b,
                                     std::vector<int64_t>& output_shape);
 
 bool SetWebnnDataType(emscripten::val& desc, const int32_t data_type);
+
+bool IsMLTensorSupported();
+
+uint8_t PackInt8ToUint8AsNibble(int8_t value, const int32_t& data_type);
+uint16_t PackFloat32ToUint16AsFloat16(float value);
 
 }  // namespace webnn
 }  // namespace onnxruntime

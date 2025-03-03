@@ -12,7 +12,7 @@
 #include <omp.h>
 #endif  // defined(DNNL_OPENMP)
 
-#include "core/platform/ort_mutex.h"
+#include <mutex>
 #include "core/providers/shared_library/provider_api.h"
 #include "core/providers/dnnl/dnnl_execution_provider.h"
 
@@ -146,7 +146,8 @@ std::vector<std::vector<NodeIndex>> DnnlExecutionProvider::GetSupportedNodes(con
 
 std::vector<std::unique_ptr<ComputeCapability>> DnnlExecutionProvider::GetCapability(
     const GraphViewer& graph_viewer,
-    const IKernelLookup& /*kernel_lookup*/) const {
+    const IKernelLookup& /*kernel_lookup*/,
+    IResourceAccountant* /* resource_accountant */) const {
   // follow from coreml ep's Getcapability
 
   std::vector<std::unique_ptr<ComputeCapability>> result;
@@ -356,7 +357,7 @@ Status DnnlExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& fuse
 
       // lock each subgraph_primitive as multiple threads have shared memories
       {
-        std::unique_lock<OrtMutex> lock(subgraph_primitive->GetMutex());
+        std::unique_lock<std::mutex> lock(subgraph_primitive->GetMutex());
         subgraph_primitive->Compile(inputs);
         std::unordered_map<std::string, ort_dnnl::OnnxTensorData> outputs;
         outputs.reserve(subgraph_num_outputs);

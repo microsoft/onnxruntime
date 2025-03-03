@@ -52,8 +52,12 @@ export declare namespace Test {
    * `preferredOutputLocation` will be set to `gpu-buffer`.
    * - gpu-tensor: inputs and outputs will all be pre-allocated as GPU tensors. `preferredOutputLocation`
    * will not be set.
+   * - ml-location: inputs will be pre-allocated as ML tensors; no output will be pre-allocated;
+   * `preferredOutputLocation` will be set to `ml-tensor`.
+   * - ml-tensor: inputs and outputs will all be pre-allocated as MLTensor tensors. `preferredOutputLocation`
+   * will not be set.
    */
-  export type IOBindingMode = 'none' | 'gpu-tensor' | 'gpu-location';
+  export type IOBindingMode = 'none' | 'gpu-tensor' | 'gpu-location' | 'ml-tensor' | 'ml-location';
 
   export interface ModelTestCase {
     name: string;
@@ -168,6 +172,7 @@ export declare namespace Test {
 
     log: ReadonlyArray<{ category: string; config: Logger.Config }>;
     profile: boolean;
+    downloadModel: boolean;
     options: Options;
   }
 }

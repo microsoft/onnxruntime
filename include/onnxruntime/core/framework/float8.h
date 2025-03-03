@@ -102,6 +102,10 @@ struct Float8E4M3FN {
 #endif
   }
 
+  inline ORT_HOST_DEVICE bool IsNaN() const {
+    return (val & 0b01111111) == 0b01111111;
+  }
+
   inline ORT_HOST_DEVICE float ToFloat() const {
 #if defined(CUDA_VERSION) && CUDA_VERSION >= 11080
     return __half2float(__nv_cvt_fp8_to_halfraw(val, __NV_E4M3));
@@ -161,11 +165,11 @@ inline ORT_HOST_DEVICE bool operator<(const Float8E4M3FN& left, const Float8E4M3
 // initializers with MLFloat8E4M3FN and Float8E4M3FN from unsigned char
 #if !defined(__CUDACC__) && !defined(__HIPCC__)
 
-inline Float8E4M3FN operator"" _f8e4m3fn(unsigned long long int v) {
+inline Float8E4M3FN operator""_f8e4m3fn(unsigned long long int v) {
   return Float8E4M3FN(narrow<uint8_t>(v), Float8E4M3FN::FromBits());
 }
 
-inline Float8E4M3FN operator"" _f8e4m3fnp8(long double v) {
+inline Float8E4M3FN operator""_f8e4m3fnp8(long double v) {
   return Float8E4M3FN(static_cast<float>(v), true);
 }
 
@@ -266,6 +270,10 @@ struct Float8E4M3FNUZ {
     }
   }
 
+  inline ORT_HOST_DEVICE bool IsNaN() const {
+    return val == 0b10000000;
+  }
+
   inline ORT_HOST_DEVICE float ToFloat() const {
     // This type does not exist on CUDA.
     uint32_t res;
@@ -315,11 +323,11 @@ inline ORT_HOST_DEVICE bool operator<(const Float8E4M3FNUZ& left, const Float8E4
 // initializers with MLFloat8E4M3FN and Float8E4M3FN from unsigned char
 #if !defined(__CUDACC__) && !defined(__HIPCC__)
 
-inline Float8E4M3FNUZ operator"" _f8e4m3p8fnuz(unsigned long long int v) {
+inline Float8E4M3FNUZ operator""_f8e4m3p8fnuz(unsigned long long int v) {
   return Float8E4M3FNUZ(narrow<uint8_t>(v), Float8E4M3FNUZ::FromBits());
 }
 
-inline Float8E4M3FNUZ operator"" _f8e4m3fnuzp8(long double v) {
+inline Float8E4M3FNUZ operator""_f8e4m3fnuzp8(long double v) {
   return Float8E4M3FNUZ(static_cast<float>(v), true);
 }
 
@@ -416,6 +424,16 @@ struct Float8E5M2 {
 #endif
   }
 
+  inline ORT_HOST_DEVICE bool IsNaN() const {
+    // 7D, 7E, 7F are positive NaNs; FD, FE, FF are negative NaNs
+    return (val & 0b01111111) > 0b01111100;
+  }
+
+  inline ORT_HOST_DEVICE bool IsInfinity() const {
+    // 7C and FC are infinity
+    return (val & 0b01111111) == 0b01111100;
+  }
+
   inline ORT_HOST_DEVICE float ToFloat() const {
 #if defined(CUDA_VERSION) && CUDA_VERSION >= 11080
     return __half2float(__nv_cvt_fp8_to_halfraw(val, __NV_E5M2));
@@ -475,11 +493,11 @@ inline ORT_HOST_DEVICE bool operator<(const Float8E5M2& left, const Float8E5M2& 
 // initializers with MLFloat8E5M2 and Float8E5M2 from unsigned char
 #if !defined(__CUDACC__) && !defined(__HIPCC__)
 
-inline Float8E5M2 operator"" _f8e5m2fn(unsigned long long int v) {
+inline Float8E5M2 operator""_f8e5m2fn(unsigned long long int v) {
   return Float8E5M2(narrow<uint8_t>(v), Float8E5M2::FromBits());
 }
 
-inline Float8E5M2 operator"" _f8e5m2fnp8(long double v) {
+inline Float8E5M2 operator""_f8e5m2fnp8(long double v) {
   return Float8E5M2(static_cast<float>(v), true);
 }
 
@@ -575,6 +593,10 @@ struct Float8E5M2FNUZ {
     }
   }
 
+  inline ORT_HOST_DEVICE bool IsNaN() const {
+    return val == 0b10000000;
+  }
+
   inline ORT_HOST_DEVICE float ToFloat() const {
     // This type does not exist on CUDA.
     uint32_t res;
@@ -620,11 +642,11 @@ inline ORT_HOST_DEVICE bool operator<(const Float8E5M2FNUZ& left, const Float8E5
 // initializers with MLFloat8E5M2 and Float8E5M2 from unsigned char
 #if !defined(__CUDACC__) && !defined(__HIPCC__)
 
-inline Float8E5M2FNUZ operator"" _f8e5m2fnuz(unsigned long long int v) {
+inline Float8E5M2FNUZ operator""_f8e5m2fnuz(unsigned long long int v) {
   return Float8E5M2FNUZ(narrow<uint8_t>(v), Float8E5M2FNUZ::FromBits());
 }
 
-inline Float8E5M2FNUZ operator"" _f8e5m2fnuzp8(long double v) {
+inline Float8E5M2FNUZ operator""_f8e5m2fnuzp8(long double v) {
   return Float8E5M2FNUZ(static_cast<float>(v), true);
 }
 
@@ -647,5 +669,252 @@ inline void FloatToFloat8E5M2FNUZ(const float* flt, Float8E5M2FNUZ* blf, size_t 
 }
 
 }  // namespace onnxruntime
+
+namespace std {
+
+template <>
+class numeric_limits<onnxruntime::Float8E4M3FN> {
+ public:
+  static constexpr onnxruntime::Float8E4M3FN lowest() {
+    return onnxruntime::Float8E4M3FN(0xFE, onnxruntime::Float8E4M3FN::FromBits());  // -448
+  }
+
+  static constexpr onnxruntime::Float8E4M3FN max() {
+    return onnxruntime::Float8E4M3FN(0x7E, onnxruntime::Float8E4M3FN::FromBits());  // 448
+  }
+
+  static constexpr onnxruntime::Float8E4M3FN min() {
+    return onnxruntime::Float8E4M3FN(0x08, onnxruntime::Float8E4M3FN::FromBits());  // 2^-6 = 0.015625
+  }
+
+  static constexpr onnxruntime::Float8E4M3FN denorm_min() {
+    return onnxruntime::Float8E4M3FN(0x01, onnxruntime::Float8E4M3FN::FromBits());  // 2^-9 = 0.001953125
+  }
+
+  static constexpr onnxruntime::Float8E4M3FN epsilon() {
+    return onnxruntime::Float8E4M3FN(0x20, onnxruntime::Float8E4M3FN::FromBits());
+  }
+
+  static constexpr onnxruntime::Float8E4M3FN round_error() {
+    return onnxruntime::Float8E4M3FN(0x30, onnxruntime::Float8E4M3FN::FromBits());
+  }
+
+  static constexpr onnxruntime::Float8E4M3FN infinity() {
+    // no infinity, returns quiet NaN instead
+    return quiet_NaN();
+  }
+
+  static constexpr onnxruntime::Float8E4M3FN quiet_NaN() {
+    return onnxruntime::Float8E4M3FN(0x7F, onnxruntime::Float8E4M3FN::FromBits());
+  }
+
+  static constexpr bool is_specialized = true;
+  static constexpr bool is_signed = true;
+  static constexpr bool is_integer = false;
+  static constexpr bool is_exact = false;
+  static constexpr bool has_infinity = false;
+  static constexpr bool has_quiet_NaN = true;
+  static constexpr bool has_signaling_NaN = false;
+  static constexpr auto has_denorm = true;
+  static constexpr auto has_denorm_loss = true;
+  static constexpr auto round_style = round_to_nearest;
+  static constexpr bool is_iec559 = false;
+  static constexpr bool is_bounded = true;
+  static constexpr bool is_modulo = false;
+  static constexpr int digits = 4;
+  static constexpr int digits10 = 0;
+  static constexpr int max_digits10 = 3;
+  static constexpr int radix = 2;
+  static constexpr int min_exponent = -5;
+  static constexpr int min_exponent10 = -1;
+  static constexpr int max_exponent = 8;
+  static constexpr int max_exponent10 = 2;
+  static constexpr auto traps = false;
+  static constexpr auto tinyness_before = false;
+};
+
+template <>
+class numeric_limits<onnxruntime::Float8E5M2> {
+ public:
+  static constexpr onnxruntime::Float8E5M2 lowest() {
+    return onnxruntime::Float8E5M2(0xFB, onnxruntime::Float8E5M2::FromBits());  // -57344.0
+  }
+
+  static constexpr onnxruntime::Float8E5M2 max() {
+    return onnxruntime::Float8E5M2(0x7B, onnxruntime::Float8E5M2::FromBits());  // 57344.0
+  }
+
+  static constexpr onnxruntime::Float8E5M2 min() {
+    return onnxruntime::Float8E5M2(0x4, onnxruntime::Float8E5M2::FromBits());  // 2^-14 = 0.00006103515
+  }
+
+  static constexpr onnxruntime::Float8E5M2 denorm_min() {
+    return onnxruntime::Float8E5M2(0x01, onnxruntime::Float8E5M2::FromBits());  // 2^-16 = 0.00001525878
+  }
+
+  static constexpr onnxruntime::Float8E5M2 epsilon() {
+    return onnxruntime::Float8E5M2(0x34, onnxruntime::Float8E5M2::FromBits());
+  }
+
+  static constexpr onnxruntime::Float8E5M2 round_error() {
+    return onnxruntime::Float8E5M2(0x38, onnxruntime::Float8E5M2::FromBits());
+  }
+
+  static constexpr onnxruntime::Float8E5M2 infinity() {
+    return onnxruntime::Float8E5M2(0x7C, onnxruntime::Float8E5M2::FromBits());
+  }
+
+  static constexpr onnxruntime::Float8E5M2 quiet_NaN() {
+    return onnxruntime::Float8E5M2(0x7F, onnxruntime::Float8E5M2::FromBits());
+  }
+
+  static constexpr bool is_specialized = true;
+  static constexpr bool is_signed = true;
+  static constexpr bool is_integer = false;
+  static constexpr bool is_exact = false;
+  static constexpr bool has_infinity = true;
+  static constexpr bool has_quiet_NaN = true;
+  static constexpr bool has_signaling_NaN = false;
+  static constexpr auto has_denorm = true;
+  static constexpr auto has_denorm_loss = true;
+  static constexpr auto round_style = round_to_nearest;
+  static constexpr bool is_iec559 = false;
+  static constexpr bool is_bounded = true;
+  static constexpr bool is_modulo = false;
+  static constexpr int digits = 3;
+  static constexpr int digits10 = 0;
+  static constexpr int max_digits10 = 2;
+  static constexpr int radix = 2;
+  static constexpr int min_exponent = -13;
+  static constexpr int min_exponent10 = -4;
+  static constexpr int max_exponent = 16;
+  static constexpr int max_exponent10 = 4;
+  static constexpr auto traps = false;
+  static constexpr auto tinyness_before = false;
+};
+
+template <>
+class numeric_limits<onnxruntime::Float8E4M3FNUZ> {
+ public:
+  static constexpr onnxruntime::Float8E4M3FNUZ lowest() {
+    return onnxruntime::Float8E4M3FNUZ(0xFF, onnxruntime::Float8E4M3FNUZ::FromBits());  // -240.0
+  }
+
+  static constexpr onnxruntime::Float8E4M3FNUZ max() {
+    return onnxruntime::Float8E4M3FNUZ(0x7F, onnxruntime::Float8E4M3FNUZ::FromBits());  // 240.0
+  }
+
+  static constexpr onnxruntime::Float8E4M3FNUZ min() {
+    return onnxruntime::Float8E4M3FNUZ(0x08, onnxruntime::Float8E4M3FNUZ::FromBits());  // 2^-7 = 0.0078125
+  }
+
+  static constexpr onnxruntime::Float8E4M3FNUZ denorm_min() {
+    return onnxruntime::Float8E4M3FNUZ(0x01, onnxruntime::Float8E4M3FNUZ::FromBits());  // 2^-10 = 0.0009765625
+  }
+
+  static constexpr onnxruntime::Float8E4M3FNUZ epsilon() {
+    return onnxruntime::Float8E4M3FNUZ(0x28, onnxruntime::Float8E4M3FNUZ::FromBits());
+  }
+
+  static constexpr onnxruntime::Float8E4M3FNUZ round_error() {
+    return onnxruntime::Float8E4M3FNUZ(0x38, onnxruntime::Float8E4M3FNUZ::FromBits());
+  }
+
+  static constexpr onnxruntime::Float8E4M3FNUZ infinity() {
+    // no infinity, returns quiet NaN instead
+    return quiet_NaN();
+  }
+
+  static constexpr onnxruntime::Float8E4M3FNUZ quiet_NaN() {
+    return onnxruntime::Float8E4M3FNUZ(0x80, onnxruntime::Float8E4M3FNUZ::FromBits());
+  }
+
+  static constexpr bool is_specialized = true;
+  static constexpr bool is_signed = true;
+  static constexpr bool is_integer = false;
+  static constexpr bool is_exact = false;
+  static constexpr bool has_infinity = false;
+  static constexpr bool has_quiet_NaN = true;
+  static constexpr bool has_signaling_NaN = false;
+  static constexpr auto has_denorm = true;
+  static constexpr auto has_denorm_loss = true;
+  static constexpr auto round_style = round_to_nearest;
+  static constexpr bool is_iec559 = false;
+  static constexpr bool is_bounded = true;
+  static constexpr bool is_modulo = false;
+  static constexpr int digits = 4;
+  static constexpr int digits10 = 0;
+  static constexpr int max_digits10 = 3;
+  static constexpr int radix = 2;
+  static constexpr int min_exponent = -6;
+  static constexpr int min_exponent10 = -1;
+  static constexpr int max_exponent = 8;
+  static constexpr int max_exponent10 = 2;
+  static constexpr auto traps = false;
+  static constexpr auto tinyness_before = false;
+};
+
+template <>
+class numeric_limits<onnxruntime::Float8E5M2FNUZ> {
+ public:
+  static constexpr onnxruntime::Float8E5M2FNUZ lowest() {
+    return onnxruntime::Float8E5M2FNUZ(0xFF, onnxruntime::Float8E5M2FNUZ::FromBits());  // -57344.0
+  }
+
+  static constexpr onnxruntime::Float8E5M2FNUZ max() {
+    return onnxruntime::Float8E5M2FNUZ(0x7F, onnxruntime::Float8E5M2FNUZ::FromBits());  // 57344.0
+  }
+
+  static constexpr onnxruntime::Float8E5M2FNUZ min() {
+    return onnxruntime::Float8E5M2FNUZ(0x04, onnxruntime::Float8E5M2FNUZ::FromBits());  // 2^-15 = 0.00003051757
+  }
+
+  static constexpr onnxruntime::Float8E5M2FNUZ denorm_min() {
+    return onnxruntime::Float8E5M2FNUZ(0x01, onnxruntime::Float8E5M2FNUZ::FromBits());  // 2^-17 = 0.00000762939
+  }
+
+  static constexpr onnxruntime::Float8E5M2FNUZ epsilon() {
+    return onnxruntime::Float8E5M2FNUZ(0x34, onnxruntime::Float8E5M2FNUZ::FromBits());
+  }
+
+  static constexpr onnxruntime::Float8E5M2FNUZ round_error() {
+    return onnxruntime::Float8E5M2FNUZ(0x38, onnxruntime::Float8E5M2FNUZ::FromBits());
+  }
+
+  static constexpr onnxruntime::Float8E5M2FNUZ infinity() {
+    // no infinity, returns quiet NaN instead
+    return quiet_NaN();
+  }
+
+  static constexpr onnxruntime::Float8E5M2FNUZ quiet_NaN() {
+    return onnxruntime::Float8E5M2FNUZ(0x80, onnxruntime::Float8E5M2FNUZ::FromBits());
+  }
+
+  static constexpr bool is_specialized = true;
+  static constexpr bool is_signed = true;
+  static constexpr bool is_integer = false;
+  static constexpr bool is_exact = false;
+  static constexpr bool has_infinity = false;
+  static constexpr bool has_quiet_NaN = true;
+  static constexpr bool has_signaling_NaN = false;
+  static constexpr auto has_denorm = true;
+  static constexpr auto has_denorm_loss = true;
+  static constexpr auto round_style = round_to_nearest;
+  static constexpr bool is_iec559 = false;
+  static constexpr bool is_bounded = true;
+  static constexpr bool is_modulo = false;
+  static constexpr int digits = 3;
+  static constexpr int digits10 = 0;
+  static constexpr int max_digits10 = 2;
+  static constexpr int radix = 2;
+  static constexpr int min_exponent = -14;
+  static constexpr int min_exponent10 = -4;
+  static constexpr int max_exponent = 16;
+  static constexpr int max_exponent10 = 4;
+  static constexpr auto traps = false;
+  static constexpr auto tinyness_before = false;
+};
+
+}  // namespace std
 
 #endif  // DISABLE_FLOAT8_TYPES

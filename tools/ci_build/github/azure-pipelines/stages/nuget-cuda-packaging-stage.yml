@@ -135,7 +135,7 @@ stages:
         - task: UsePythonVersion@0
           displayName: 'Use Python'
           inputs:
-            versionSpec: 3.8
+            versionSpec: 3.12
 
         - task: MSBuild@1
           displayName: 'Build Nuget Packages'
@@ -224,6 +224,3 @@ stages:
             artifactName: 'drop-signed-nuget-GPU'
             targetPath: '$(Build.ArtifactStagingDirectory)'
 
-        - task: mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3
-          displayName: 'Clean Agent Directories'
-          condition: always()

@@ -4,7 +4,6 @@
 # license information.
 # --------------------------------------------------------------------------
 
-from typing import List
 
 import numpy as np
 import onnx
@@ -13,7 +12,7 @@ from onnx import TensorProto, helper, numpy_helper
 
 
 # Adapted from bert_model_generator.py
-def get_tensor_and_weight(name: str, shape: List[int], random=False, zeros=False):
+def get_tensor_and_weight(name: str, shape: list[int], random=False, zeros=False):
     low = 0.0
     high = 1.0
     total_elements = 1
@@ -22,7 +21,9 @@ def get_tensor_and_weight(name: str, shape: List[int], random=False, zeros=False
     weights = (
         [np.random.uniform(low, high) for _ in range(total_elements)]
         if random
-        else [0.0] * total_elements if zeros else [1.0] * total_elements
+        else [0.0] * total_elements
+        if zeros
+        else [1.0] * total_elements
     )
     return helper.make_tensor(name, TensorProto.FLOAT, shape, weights), weights
 
@@ -305,8 +306,8 @@ def create_whisper_encoder_attention(
         )
     else:
         next_sln_inputs = [
-            "layernorm_output_to_skiplayernorm",
             "matmul_after_attn_output",
+            "layernorm_output_to_skiplayernorm",
             "layernorm_weight",
             "layernorm_bias",
             "add_after_attn_initializer",
@@ -444,7 +445,7 @@ def create_whisper_decoder_attention(
                         "Attention_0_qkv_bias",
                         "",
                         "",
-                        "attention_add_qk_mask",
+                        "attention_add_qk",
                     ],
                     ["attn_output", "present_0_decoder"],
                     "Attention_0",
@@ -748,16 +749,6 @@ def create_whisper_decoder_attention(
             ),
         ]
     )
-    if fused:
-        nodes.append(
-            helper.make_node(
-                "Concat",
-                inputs=["attention_add_qk" for _ in range(num_heads)],
-                outputs=["attention_add_qk_mask"],
-                name="Concat_0",
-                axis=1,
-            ),
-        )
 
     # Create final nodes to conclude attention
     nodes.append(
@@ -795,8 +786,8 @@ def create_whisper_decoder_attention(
         )
     else:
         next_sln_inputs = [
-            "layernorm_output_to_skiplayernorm",
             "matmul_after_attn_output",
+            "layernorm_output_to_skiplayernorm",
             "layernorm_weight",
             "layernorm_bias",
             "add_after_attn_initializer",
@@ -1161,8 +1152,8 @@ def create_whisper_decoder_multihead_attention(
         )
     else:
         next_sln_inputs = [
-            "layernorm_output_to_skiplayernorm",
             "matmul_after_attn_output",
+            "layernorm_output_to_skiplayernorm",
             "layernorm_weight",
             "layernorm_bias",
             "add_after_attn_initializer",
@@ -1588,8 +1579,8 @@ def create_whisper_decoder_with_past_multihead_self_attention(
         )
     else:
         next_sln_inputs = [
-            "layernorm_output_to_skiplayernorm",
             "matmul_after_attn_output",
+            "layernorm_output_to_skiplayernorm",
             "layernorm_weight",
             "layernorm_bias",
             "add_after_attn_initializer",
@@ -1927,8 +1918,8 @@ def create_whisper_decoder_with_past_multihead_cross_attention(
         )
     else:
         next_sln_inputs = [
-            "layernorm_output_to_skiplayernorm",
             "matmul_after_attn_output",
+            "layernorm_output_to_skiplayernorm",
             "layernorm_weight",
             "layernorm_bias",
             "add_after_attn_initializer",

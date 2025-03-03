@@ -11,6 +11,10 @@
 #include <wrl/client.h>
 #include <wrl/implements.h>
 
+namespace onnxruntime {
+class IResourceAccountant;
+}
+
 namespace WRL {
 template <typename... TInterfaces>
 using Base = Microsoft::WRL::RuntimeClass<
@@ -88,8 +92,9 @@ namespace Dml
         std::vector<std::unique_ptr<onnxruntime::ComputeCapability>>
         GetCapability(
             const onnxruntime::GraphViewer& graph,
-            const onnxruntime::IExecutionProvider::IKernelLookup& kernel_lookup
-            ) const;
+            const onnxruntime::IExecutionProvider::IKernelLookup& kernel_lookup,
+            onnxruntime::IResourceAccountant* resource_accountant,
+            const onnxruntime::logging::Logger& logger) const;
 
         uint32_t GetSupportedDeviceDataTypeMask() const;
 
@@ -242,8 +247,8 @@ namespace Dml
 
         bool CanCopy(const OrtDevice& srcDevice, const OrtDevice& dstDevice) const final
         {
-              return (srcDevice.Type() == OrtDevice::GPU) ||
-                     (dstDevice.Type() == OrtDevice::GPU);
+          return (srcDevice.Type() == OrtDevice::DML) ||
+                 (dstDevice.Type() == OrtDevice::DML);
         }
 
     private:
@@ -282,7 +287,8 @@ namespace Dml
 
         std::vector<std::unique_ptr<onnxruntime::ComputeCapability>>
             GetCapability(const onnxruntime::GraphViewer& graph,
-                const onnxruntime::IExecutionProvider::IKernelLookup& kernel_lookup) const final override;
+                const onnxruntime::IExecutionProvider::IKernelLookup& kernel_lookup,
+                onnxruntime::IResourceAccountant* resource_accountant) const final override;
 
         onnxruntime::common::Status OnSessionInitializationEnd() override
         {

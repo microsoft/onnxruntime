@@ -50,7 +50,7 @@ int EMSCRIPTEN_KEEPALIVE OrtInit(int num_threads, int logging_level);
  * @param error_code [out] a pointer to accept the error code.
  * @param error_message [out] a pointer to accept the error message. The message buffer is only available before any ORT API is called.
  */
-void EMSCRIPTEN_KEEPALIVE OrtGetLastError(int* error_code, const char** error_message);
+int EMSCRIPTEN_KEEPALIVE OrtGetLastError(int* error_code, const char** error_message);
 
 /**
  * create an instance of ORT session options.
@@ -109,7 +109,7 @@ int EMSCRIPTEN_KEEPALIVE OrtAddSessionConfigEntry(ort_session_options_handle_t s
 /**
  * release the specified ORT session options.
  */
-void EMSCRIPTEN_KEEPALIVE OrtReleaseSessionOptions(ort_session_options_handle_t session_options);
+int EMSCRIPTEN_KEEPALIVE OrtReleaseSessionOptions(ort_session_options_handle_t session_options);
 
 /**
  * create an instance of ORT session.
@@ -124,7 +124,7 @@ ort_session_handle_t EMSCRIPTEN_KEEPALIVE OrtCreateSession(void* data,
 /**
  * release the specified ORT session.
  */
-void EMSCRIPTEN_KEEPALIVE OrtReleaseSession(ort_session_handle_t session);
+int EMSCRIPTEN_KEEPALIVE OrtReleaseSession(ort_session_handle_t session);
 
 /**
  * get model's input count and output count.
@@ -158,7 +158,7 @@ char* EMSCRIPTEN_KEEPALIVE OrtGetOutputName(ort_session_handle_t session, size_t
  * free the specified buffer.
  * @param ptr a pointer to the buffer.
  */
-void EMSCRIPTEN_KEEPALIVE OrtFree(void* ptr);
+int EMSCRIPTEN_KEEPALIVE OrtFree(void* ptr);
 
 /**
  * create an instance of ORT tensor.
@@ -183,12 +183,12 @@ ort_tensor_handle_t EMSCRIPTEN_KEEPALIVE OrtCreateTensor(int data_type, void* da
  *           'dims' (for all types of tensor), 'data' (only for string tensor)
  * @returns ORT error code. If not zero, call OrtGetLastError() to get detailed error message.
  */
-int EMSCRIPTEN_KEEPALIVE OrtGetTensorData(ort_tensor_handle_t tensor, int* data_type, void** data, size_t** dims, size_t* dims_length);
+int EMSCRIPTEN_KEEPALIVE OrtGetTensorData(ort_tensor_handle_t tensor, size_t* data_type, void** data, size_t** dims, size_t* dims_length);
 
 /**
  * release the specified tensor.
  */
-void EMSCRIPTEN_KEEPALIVE OrtReleaseTensor(ort_tensor_handle_t tensor);
+int EMSCRIPTEN_KEEPALIVE OrtReleaseTensor(ort_tensor_handle_t tensor);
 
 /**
  * create an instance of ORT run options.
@@ -218,7 +218,7 @@ int EMSCRIPTEN_KEEPALIVE OrtAddRunConfigEntry(ort_run_options_handle_t run_optio
 /**
  * release the specified ORT run options.
  */
-void EMSCRIPTEN_KEEPALIVE OrtReleaseRunOptions(ort_run_options_handle_t run_options);
+int EMSCRIPTEN_KEEPALIVE OrtReleaseRunOptions(ort_run_options_handle_t run_options);
 
 /**
  * create an instance of ORT IO binding.
@@ -252,12 +252,12 @@ int EMSCRIPTEN_KEEPALIVE OrtBindOutput(ort_io_binding_handle_t io_binding,
 /**
  * clear all bound outputs.
  */
-void EMSCRIPTEN_KEEPALIVE OrtClearBoundOutputs(ort_io_binding_handle_t io_binding);
+int EMSCRIPTEN_KEEPALIVE OrtClearBoundOutputs(ort_io_binding_handle_t io_binding);
 
 /**
  * release the specified ORT IO binding.
  */
-void EMSCRIPTEN_KEEPALIVE OrtReleaseBinding(ort_io_binding_handle_t io_binding);
+int EMSCRIPTEN_KEEPALIVE OrtReleaseBinding(ort_io_binding_handle_t io_binding);
 
 /**
  * inference the model.
@@ -311,7 +311,7 @@ ort_training_checkpoint_handle_t EMSCRIPTEN_KEEPALIVE OrtTrainingLoadCheckpoint(
  *
  * @param training_checkpoint_state_handle handle for the CheckpointState
  */
-void EMSCRIPTEN_KEEPALIVE OrtTrainingReleaseCheckpoint(ort_training_checkpoint_handle_t training_checkpoint_state_handle);
+int EMSCRIPTEN_KEEPALIVE OrtTrainingReleaseCheckpoint(ort_training_checkpoint_handle_t training_checkpoint_state_handle);
 
 /**
  * Creates an instance of a training session that can be used to begin or resume training from a given checkpoint state
@@ -466,7 +466,7 @@ char* EMSCRIPTEN_KEEPALIVE OrtTrainingGetModelInputOutputName(ort_training_sessi
  *
  * @param training_session_handle handle of the training session
  */
-void EMSCRIPTEN_KEEPALIVE OrtTrainingReleaseSession(ort_training_session_handle_t training_session_handle);
+int EMSCRIPTEN_KEEPALIVE OrtTrainingReleaseSession(ort_training_session_handle_t training_session_handle);
 
 #endif
 };

@@ -166,7 +166,7 @@ function (get_winml_test_model_src
       "${winml_test_src_path}/model/*.cpp")
   set(${output_winml_test_model_src} ${winml_test_model_src} PARENT_SCOPE)
   set(${winml_test_model_libs} onnx_test_data_proto onnx_test_runner_common onnxruntime_common onnxruntime_mlas
-    onnxruntime_graph onnxruntime_test_utils onnxruntime_framework onnxruntime_util onnxruntime_flatbuffers PARENT_SCOPE)
+    onnxruntime_graph onnxruntime_test_utils onnxruntime_lora onnxruntime_framework onnxruntime_util onnxruntime_flatbuffers PARENT_SCOPE)
 endfunction()
 
 file(GLOB winml_test_common_src CONFIGURE_DEPENDS
@@ -254,7 +254,7 @@ get_winml_test_adapter_src(${WINML_TEST_SRC_DIR} winml_test_adapter_src winml_te
 add_winml_test(
   TARGET winml_test_adapter
   SOURCES ${winml_test_adapter_src}
-  LIBS ${winml_test_adapter_libs}
+  LIBS ${winml_test_adapter_libs} Eigen3::Eigen
 )
 target_include_directories(winml_test_adapter PRIVATE ${REPO_ROOT}/winml/adapter)
 target_include_directories(winml_test_adapter PRIVATE ${REPO_ROOT}/winml/lib/Api.Ort)
@@ -274,7 +274,6 @@ target_include_directories(winml_test_adapter PRIVATE ${ONNXRUNTIME_INCLUDE_DIR}
 target_include_directories(winml_test_adapter PRIVATE ${ONNXRUNTIME_ROOT})
 
 onnxruntime_add_include_to_target(winml_test_adapter onnxruntime_common onnxruntime_framework onnx onnx_proto ${PROTOBUF_LIB} flatbuffers::flatbuffers safeint_interface Boost::mp11)
-target_include_directories(winml_test_adapter PRIVATE ${ONNXRUNTIME_ROOT} ${eigen_INCLUDE_DIRS})
 add_dependencies(winml_test_adapter ${onnxruntime_EXTERNAL_DEPENDENCIES})
 target_include_directories(winml_test_adapter PRIVATE ${winml_adapter_dir})
 target_include_directories(winml_test_adapter PRIVATE ${winml_lib_common_dir}/inc)

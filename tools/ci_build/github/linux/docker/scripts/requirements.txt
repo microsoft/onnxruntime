@@ -1,11 +1,11 @@
 cerberus
 numpy==1.24.4 ; python_version < '3.9'
-numpy==2.0.0; python_version >= '3.9'
+numpy==2.1.2; python_version >= '3.9'
 mypy
 pytest
 setuptools==69.0.3
 wheel==0.42.0
-onnx==1.16.1
+onnx==1.17.0 ; python_version < '3.13'
 argparse
 sympy==1.12
 flatbuffers

@@ -12,7 +12,7 @@ import {
 
 import { SerializableInternalBuffer, TensorMetadata } from './proxy-messages';
 import { copyFromExternalBuffer, createSession, endProfiling, releaseSession, run } from './proxy-wrapper';
-import { isGpuBufferSupportedType } from './wasm-common';
+import { isGpuBufferSupportedType, isMLTensorSupportedType } from './wasm-common';
 import { isNode } from './wasm-utils-env';
 import { loadFile } from './wasm-utils-load-file';
 
@@ -22,6 +22,8 @@ export const encodeTensorMetadata = (tensor: Tensor, getName: () => string): Ten
       return [tensor.type, tensor.dims, tensor.data, 'cpu'];
     case 'gpu-buffer':
       return [tensor.type, tensor.dims, { gpuBuffer: tensor.gpuBuffer }, 'gpu-buffer'];
+    case 'ml-tensor':
+      return [tensor.type, tensor.dims, { mlTensor: tensor.mlTensor }, 'ml-tensor'];
     default:
       throw new Error(`invalid data location: ${tensor.location} for ${getName()}`);
   }
@@ -38,6 +40,14 @@ export const decodeTensorMetadata = (tensor: TensorMetadata): Tensor => {
       }
       const { gpuBuffer, download, dispose } = tensor[2];
       return Tensor.fromGpuBuffer(gpuBuffer, { dataType, dims: tensor[1], download, dispose });
+    }
+    case 'ml-tensor': {
+      const dataType = tensor[0];
+      if (!isMLTensorSupportedType(dataType)) {
+        throw new Error(`not supported data type: ${dataType} for deserializing MLTensor tensor`);
+      }
+      const { mlTensor, download, dispose } = tensor[2];
+      return Tensor.fromMLTensor(mlTensor, { dataType, dims: tensor[1], download, dispose });
     }
     default:
       throw new Error(`invalid data location: ${tensor[3]}`);

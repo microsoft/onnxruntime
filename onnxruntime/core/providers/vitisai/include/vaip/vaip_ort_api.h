@@ -13,7 +13,7 @@ struct OrtApi;
 
 namespace vaip_core {
 
-#define VAIP_ORT_API_MAJOR (9u)
+#define VAIP_ORT_API_MAJOR (14u)
 #define VAIP_ORT_API_MINOR (0u)
 #define VAIP_ORT_API_PATCH (0u)
 struct OrtApiForVaip {
@@ -230,6 +230,26 @@ struct OrtApiForVaip {
   void (*graph_set_inputs)(Graph& graph,
                            gsl::span<const NodeArg* const> inputs);                                                                                   // [92]
   int (*node_arg_external_location)(const Graph& graph, const NodeArg& node_arg, std::string& file, size_t& offset, size_t& size, size_t& checksum);  // [93]
+  void (*session_option_configuration)(void* mmap, void* session_option, void (*push)(void* mmap, const char* name, const char* value));              // [94]
+  ModelProto* (*model_to_proto)(Model& model);                                                                                                        // [95]
+  DllSafe<std::string> (*model_proto_serialize_as_string)(ModelProto& model_proto);                                                                   // [96]
+  void (*model_proto_delete)(ModelProto* p);                                                                                                          // [97]
+  DllSafe<std::string> (*attr_proto_release_string)(AttributeProto* attr);                                                                            // [98]
+  bool (*is_profiling_enabled)(void* session_options);                                                                                                // [99]                                                                                        // [98]
+  TensorProto* (*tensor_proto_new_i4)(const std::string& name,
+                                      const std::vector<int64_t>& shape,
+                                      const std::vector<int8_t>& data);  // [100]
+  TensorProto* (*tensor_proto_new_u4)(const std::string& name,
+                                      const std::vector<int64_t>& shape,
+                                      const std::vector<uint8_t>& data);                  // [101]
+  void (*graph_remove_initialized_tensor)(Graph& graph, const std::string& tensor_name);  // [102]
+  void (*graph_reverse_dfs_from_preemp)(
+      const Graph& graph, gsl::span<const Node* const> from,
+      const std::function<bool(const Node*)>& enter,
+      const std::function<bool(const Node*)>& leave,
+      const std::function<bool(const Node*, const Node*)>& comp,
+      const std::function<bool(const Node* from, const Node* to)>&
+          stop);  // [103]
 };
 
 #ifndef USE_VITISAI

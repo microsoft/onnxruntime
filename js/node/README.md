@@ -14,7 +14,7 @@ Refer to [ONNX Runtime JavaScript examples](https://github.com/microsoft/onnxrun
 
 ## Requirements
 
-ONNXRuntime works on Node.js v16.x+ (recommend v18.x+) or Electron v15.x+ (recommend v28.x+).
+ONNXRuntime works on Node.js v16.x+ (recommend v20.x+) or Electron v15.x+ (recommend v28.x+).
 
 The following table lists the supported versions of ONNX Runtime Node.js binding provided with pre-built binaries.
 

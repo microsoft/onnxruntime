@@ -51,7 +51,7 @@ void* MIGraphXExternalAllocator::Alloc(size_t size) {
 
 void MIGraphXExternalAllocator::Free(void* p) {
   free_(p);
-  std::lock_guard<OrtMutex> lock(lock_);
+  std::lock_guard<std::mutex> lock(lock_);
   auto it = reserved_.find(p);
   if (it != reserved_.end()) {
     reserved_.erase(it);
@@ -62,7 +62,7 @@ void MIGraphXExternalAllocator::Free(void* p) {
 void* MIGraphXExternalAllocator::Reserve(size_t size) {
   void* p = Alloc(size);
   if (!p) return nullptr;
-  std::lock_guard<OrtMutex> lock(lock_);
+  std::lock_guard<std::mutex> lock(lock_);
   ORT_ENFORCE(reserved_.find(p) == reserved_.end());
   reserved_.insert(p);
   return p;

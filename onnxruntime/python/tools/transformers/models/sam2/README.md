@@ -26,6 +26,7 @@ Clone the SAM2 git repository and download the checkpoints:
 ```bash
 git clone https://github.com/facebookresearch/segment-anything-2.git
 cd segment-anything-2
+export sam2_dir=$PWD
 python3 -m pip install -e .
 cd checkpoints
 sh ./download_ckpts.sh
@@ -42,7 +43,7 @@ curl https://dl.fbaipublicfiles.com/segment_anything_2/072824/sam2_hiera_large.p
 ## Export ONNX
 To export ONNX models, run the convert_to_onnx.py script and specify the segment-anything-2 directory created by the above git clone command:
 ```bash
-python3 convert_to_onnx.py  --sam2_dir path/to/segment-anything-2
+python3 convert_to_onnx.py  --sam2_dir $sam2_dir
 ```
 
 The exported ONNX models will be found in the sam2_onnx_models sub-directory. You can change the output directory using the `--output_dir` option.
@@ -58,12 +59,12 @@ python3 convert_to_onnx.py  -h
 
 To optimize the onnx models for CPU with float32 data type:
 ```bash
-python3 convert_to_onnx.py  --sam2_dir path/to/segment-anything-2 --optimize --dtype fp32
+python3 convert_to_onnx.py  --sam2_dir $sam2_dir --optimize --dtype fp32
 ```
 
 To optimize the onnx models for GPU with float16 data type:
 ```bash
-python3 convert_to_onnx.py  --sam2_dir path/to/segment-anything-2 --optimize --dtype fp16 --use_gpu
+python3 convert_to_onnx.py  --sam2_dir $sam2_dir --optimize --dtype fp16 --use_gpu
 ```
 
 Another option is to use optimizer.py like the following:
@@ -80,13 +81,42 @@ The optimizer.py could be helpful when you have SAM2 onnx models that is exporte
 The exported ONNX models can run on a CPU. The demo will output sam2_demo.png.
 ```bash
 curl https://raw.githubusercontent.com/facebookresearch/segment-anything-2/main/notebooks/images/truck.jpg > truck.jpg
-python3 convert_to_onnx.py  --sam2_dir path/to/segment-anything-2 --demo
+python3 convert_to_onnx.py  --sam2_dir $sam2_dir --demo
 ```
 
 It is able to run demo on optimized model as well. For example,
 ```bash
-python3 convert_to_onnx.py  --sam2_dir path/to/segment-anything-2 --optimize --dtype fp16 --use_gpu --demo
+python3 convert_to_onnx.py  --sam2_dir $sam2_dir --optimize --dtype fp16 --use_gpu --demo
 ```
+
+## Benchmark and Profiling
+
+We can create a conda environment then run GPU benchmark like the following:
+```bash
+conda create -n sam2_gpu python=3.11 -y
+conda activate sam2_gpu
+install_dir=$HOME
+profiling=true
+bash benchmark_sam2.sh $install_dir gpu $profiling
+```
+
+or create a new conda environment for CPU benchmark:
+```bash
+conda create -n sam2_cpu python=3.11 -y
+conda activate sam2_cpu
+bash benchmark_sam2.sh $HOME cpu
+```
+
+The first parameter is a directory to clone git repositories or install CUDA/cuDNN for benchmark.
+The second parameter can be either "gpu" or "cpu", which indicates the device to run benchmark.
+The third parameter is optional. Value "true" will enable profiling after running benchmarking on GPU.
+
+The script will automatically install required packages in current conda environment, download checkpoints, export onnx,
+and run demo, benchmark and optionally run profiling.
+
+* The performance test result is in sam2_gpu.csv or sam2_cpu.csv, which can be loaded into Excel.
+* The demo output is sam2_demo_fp16_gpu.png or sam2_demo_fp32_cpu.png.
+* The profiling results are in *.nsys-rep or *.json files in current directory. Use Nvidia NSight System to view the *.nsys-rep file.
 
 ## Limitations
 - The exported image_decoder model does not support batch mode for now.

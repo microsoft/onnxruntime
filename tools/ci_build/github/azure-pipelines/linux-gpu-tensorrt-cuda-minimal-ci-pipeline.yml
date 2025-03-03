@@ -1,0 +1,105 @@
+##### start trigger Don't edit it manually, Please do edit set-trigger-rules.py ####
+### please do rerun set-trigger-rules.py ###
+trigger:
+  branches:
+    include:
+    - main
+    - rel-*
+  paths:
+    exclude:
+    - docs/**
+    - README.md
+    - CONTRIBUTING.md
+    - BUILD.md
+    - 'js/web'
+    - 'onnxruntime/core/providers/js'
+pr:
+  branches:
+    include:
+    - main
+    - rel-*
+  paths:
+    exclude:
+    - docs/**
+    - README.md
+    - CONTRIBUTING.md
+    - BUILD.md
+    - 'js/web'
+    - 'onnxruntime/core/providers/js'
+#### end trigger ####
+parameters:
+  - name: CudaVersion
+    displayName: CUDA version
+    type: string
+    default: '12.2'
+    values:
+      - 11.8
+      - 12.2
+
+variables:
+  - template: templates/common-variables.yml
+  - name: docker_base_image
+    ${{ if eq(parameters.CudaVersion, '11.8') }}:
+      value: onnxruntimebuildcache.azurecr.io/internal/azureml/onnxruntime/build/cuda11_x64_almalinux8_gcc11:20250124.1
+    ${{ if eq(parameters.CudaVersion, '12.2') }}:
+      value: onnxruntimebuildcache.azurecr.io/internal/azureml/onnxruntime/build/cuda12_x64_ubi8_gcc12:20250124.1
+  - name: linux_trt_version
+    ${{ if eq(parameters.CudaVersion, '11.8') }}:
+      value: ${{ variables.linux_trt_version_cuda11 }}
+    ${{ if eq(parameters.CudaVersion, '12.2') }}:
+      value: ${{ variables.linux_trt_version_cuda12 }}
+
+jobs:
+- job: Linux_Build
+  timeoutInMinutes: 180
+  variables:
+    skipComponentGovernanceDetection: true
+    ALLOW_RELEASED_ONNX_OPSET_ONLY: '1'
+    ORT_CACHE_DIR: '$(Agent.TempDirectory)/ort/ccache'
+    TODAY: $[format('{0:dd}{0:MM}{0:yyyy}', pipeline.startTime)]
+  workspace:
+    clean: all
+  pool: onnxruntime-tensorrt-linuxbuild-T4
+  steps:
+
+  - checkout: self
+    clean: true
+    submodules: none
+
+  - template: templates/get-docker-image-steps.yml
+    parameters:
+      Dockerfile: tools/ci_build/github/linux/docker/Dockerfile.manylinux2_28_cuda
+      Context: tools/ci_build/github/linux/docker
+      DockerBuildArgs: "
+      --network=host
+      --build-arg BASEIMAGE=${{ variables.docker_base_image }}
+      --build-arg TRT_VERSION=${{ variables.linux_trt_version }}
+      --build-arg BUILD_UID=$( id -u )
+      "
+      Repository: onnxruntimetensorrtcudaminimalbuild
+
+  - template: templates/linux-build-step-with-cache.yml
+    parameters:
+      WithCache: true
+      Today: $(TODAY)
+      AdditionalKey: gpu_tensorrt_cuda_minimal
+      CacheDir: '$(ORT_CACHE_DIR)'
+      BuildStep:
+        - task: CmdLine@2
+          inputs:
+            script: |
+              docker run -e SYSTEM_COLLECTIONURI --gpus all --rm \
+                  --volume /data/onnx:/data/onnx:ro \
+                  --volume $(Build.SourcesDirectory):/onnxruntime_src \
+                  --volume $(Build.BinariesDirectory):/build \
+                  --volume /data/models:/build/models:ro \
+                  --volume $HOME/.onnx:/home/onnxruntimedev/.onnx \
+                  --volume $(ORT_CACHE_DIR):/cache \
+                  -e ALLOW_RELEASED_ONNX_OPSET_ONLY=0 \
+                  -e NIGHTLY_BUILD \
+                  -e BUILD_BUILDNUMBER \
+                  -e CCACHE_DIR=/cache -w /onnxruntime_src \
+                  onnxruntimetensorrtcudaminimalbuild tools/ci_build/github/linux/build_tensorrt_ci.sh --cuda_minimal=ON
+            workingDirectory: $(Build.SourcesDirectory)
+
+  - template: templates/explicitly-defined-final-tasks.yml

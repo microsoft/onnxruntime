@@ -4,7 +4,7 @@
 #pragma once
 
 #include <hip/hip_fp16.h>
-#include <rocblas/rocblas.h>
+#include <hipblas/hipblas.h>
 #include "contrib_ops/cpu/bert/attention_common.h"
 #include "core/providers/rocm/shared_inc/rocm_utils.h"
 #include "core/providers/rocm/tunable/rocm_tunable.h"
@@ -70,64 +70,59 @@ Status LaunchConcatTensorToTensor(hipStream_t stream,
                                   const half* tensor_add,
                                   half* tensor_out);
 
-inline rocblas_status _compat_rocblas_gemm_strided_batched_ex(rocblas_handle handle,
-                                                              rocblas_operation transa,
-                                                              rocblas_operation transb,
-                                                              int m,
-                                                              int n,
-                                                              int k,
-                                                              const void* alpha,
-                                                              const void* A,
-                                                              rocblas_datatype a_type,
-                                                              rocblas_int lda,
-                                                              rocblas_stride stride_A,
-                                                              const void* b,
-                                                              rocblas_datatype b_type,
-                                                              rocblas_int ldb,
-                                                              rocblas_stride stride_b,
-                                                              const void* beta,
-                                                              void* c,
-                                                              rocblas_datatype c_type,
-                                                              rocblas_int ldc,
-                                                              rocblas_stride stride_c,
-                                                              rocblas_int batch_count,
-                                                              rocblas_datatype compute_type,
-                                                              rocblas_gemm_algo algo) {
-  return rocblas_gemm_strided_batched_ex(handle,
-                                         transa,
-                                         transb,
-                                         m,            // m
-                                         n,            // n
-                                         k,            // k
-                                         alpha,        // alpha
-                                         A,            // A
-                                         a_type,       // A type
-                                         lda,          // lda
-                                         stride_A,     // strideA
-                                         b,            // B
-                                         b_type,       // B type
-                                         ldb,          // ldb
-                                         stride_b,     // strideB
-                                         beta,         // beta
-                                         c,            // C
-                                         c_type,       // C type
-                                         ldc,          // ldc
-                                         stride_c,     // strideC
-                                         c,            // D = C
-                                         c_type,       // D type = C type
-                                         ldc,          // ldd = ldc
-                                         stride_c,     // strideD = strideC
-                                         batch_count,  // batch count
-                                         compute_type,
-                                         algo,
-                                         0, 0);
+inline hipblasStatus_t _compat_hipblas_gemm_strided_batched_ex(hipblasHandle_t handle,
+                                                               hipblasOperation_t transa,
+                                                               hipblasOperation_t transb,
+                                                               int m,
+                                                               int n,
+                                                               int k,
+                                                               const void* alpha,
+                                                               const void* A,
+                                                               hipDataType a_type,
+                                                               int lda,
+                                                               hipblasStride stride_A,
+                                                               const void* b,
+                                                               hipDataType b_type,
+                                                               int ldb,
+                                                               hipblasStride stride_b,
+                                                               const void* beta,
+                                                               void* c,
+                                                               hipDataType c_type,
+                                                               int ldc,
+                                                               hipblasStride stride_c,
+                                                               int batch_count,
+                                                               hipblasComputeType_t compute_type,
+                                                               hipblasGemmAlgo_t algo) {
+  return hipblasGemmStridedBatchedEx(handle,
+                                     transa,
+                                     transb,
+                                     m,            // m
+                                     n,            // n
+                                     k,            // k
+                                     alpha,        // alpha
+                                     A,            // A
+                                     a_type,       // A type
+                                     lda,          // lda
+                                     stride_A,     // strideA
+                                     b,            // B
+                                     b_type,       // B type
+                                     ldb,          // ldb
+                                     stride_b,     // strideB
+                                     beta,         // beta
+                                     c,            // C
+                                     c_type,       // C type
+                                     ldc,          // ldc
+                                     stride_c,     // strideC
+                                     batch_count,  // batch count
+                                     compute_type,
+                                     algo);
 }
 
 // Compatible for CublasMathModeSetter
-class CompatRocblasMathModeSetter {
+class CompatHipblasMathModeSetter {
  public:
-  CompatRocblasMathModeSetter(const hipDeviceProp_t&,
-                              rocblas_handle,
+  CompatHipblasMathModeSetter(const hipDeviceProp_t&,
+                              hipblasHandle_t,
                               int) {
   }
 };

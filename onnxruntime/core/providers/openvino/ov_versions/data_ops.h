@@ -30,7 +30,12 @@ enum versionNum {
   V_2024_0,
   V_2024_1,
   V_2024_2,
-  V_2024_3
+  V_2024_3,
+  V_2024_4,
+  V_2024_5,
+  V_2024_6,
+  V_2025_0,
+  V_2025_1
 };
 
 using VersionNum = enum versionNum;
@@ -70,22 +75,23 @@ class DataOps {
   void populate_types_supported();
   bool op_is_supported(std::string name, std::vector<SupportedOp>& list);
   bool dimension_unsupported(const Node* node);
-  bool unsupported_op_mode(const Node* node);
+  bool unsupported_op_mode(const Node* node, bool& has_external_weights_);
   bool type_is_supported(const NodeArg* node_arg, bool is_initializer);
-  bool node_is_supported(const NodeIndex node_idx);
+  bool node_is_supported(const NodeIndex node_idx, bool& has_external_weights_);
 
  public:
   DataOps(const GraphViewer& graph_viewer_param, VersionNum ver,
           const std::string dev_id, const bool npu_qdq_optimizer_enabled)
       : graph_viewer_(graph_viewer_param),
         version_id_(ver),
-        device_id_(dev_id),
+        device_id_(std::move(dev_id)),
         npu_qdq_optimizer_enabled_(npu_qdq_optimizer_enabled) {
     populate_op_mode_supported();
     populate_types_supported();
   }
 
-  virtual std::vector<NodeIndex> GetUnsupportedNodeIndices(std::unordered_set<std::string>& ng_required_initializers);
+  virtual std::vector<NodeIndex> GetUnsupportedNodeIndices(
+      std::unordered_set<std::string>& ng_required_initializers, bool& has_external_weights_);
   virtual bool IsOpSupportedOnlyInModel(std::string name);
   virtual bool SpecialConditionForClusterSizeOne(
       std::unordered_set<std::string>& ng_required_initializers, const Node* node);

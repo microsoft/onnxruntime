@@ -144,7 +144,9 @@ FakeRCTBlobManager* fakeBlobManager = nil;
     XCTAssertEqualObjects(outputNames[0], @"output");
   }
 
-  { [onnxruntimeModule dispose:sessionKey]; }
+  {
+    [onnxruntimeModule dispose:sessionKey];
+  }
 }
 
 @end

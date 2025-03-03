@@ -22,6 +22,7 @@
 #include "test/optimizer/graph_transform_test_builder.h"
 #include "test/providers/internal_testing/internal_testing_execution_provider.h"
 #include "test/util/include/asserts.h"
+#include "test/util/include/default_providers.h"
 #include "test/util/include/inference_session_wrapper.h"
 #include "test/util/include/test_utils.h"
 
@@ -3800,6 +3801,46 @@ TEST(TransposeOptimizerTests, TestCast) {
                     /*opset_version*/ {15, 18});
 }
 
+TEST(TransposeOptimizerTests, TestQLinearSoftmax) {
+  auto build_test_case_1 = [&](ModelTestBuilder& builder) {
+    auto* input0_arg = MakeInput<uint8_t>(builder, std::nullopt, {1, 384, 384, 21}, 0, 255);
+    auto* transpose_1_out_0 = builder.MakeIntermediate();
+    auto* input_x_scale = builder.MakeScalarInitializer<float>(0.5086354613304138);
+    auto* input_x_zero_point = builder.MakeScalarInitializer<uint8_t>(74);
+    auto* input_y_scale = builder.MakeScalarInitializer<float>(0.003921568859368563);
+    auto* input_y_zero_point = builder.MakeScalarInitializer<uint8_t>(0);
+    auto* qlinearsoftmax_1_out_0 = builder.MakeIntermediate();
+    auto* transpose_2_out_0 = builder.MakeOutput();
+
+    auto& transpose_1 = builder.AddNode("Transpose", {input0_arg}, {transpose_1_out_0});
+    transpose_1.AddAttribute("perm", std::vector<int64_t>{0, 3, 1, 2});
+    auto& qlinearsoftmax_1 = builder.AddNode("QLinearSoftmax",
+                                             {transpose_1_out_0, input_x_scale, input_x_zero_point, input_y_scale, input_y_zero_point},
+                                             {qlinearsoftmax_1_out_0}, kMSDomain);
+    qlinearsoftmax_1.AddAttribute("axis", static_cast<int64_t>(1));
+    qlinearsoftmax_1.AddAttribute("opset", static_cast<int64_t>(13));
+    auto& transpose_2 = builder.AddNode("Transpose", {qlinearsoftmax_1_out_0}, {transpose_2_out_0});
+    transpose_2.AddAttribute("perm", std::vector<int64_t>{0, 2, 3, 1});
+  };
+
+  auto check_optimized_graph_1 = [&](InferenceSessionWrapper& session) {
+    int transpose_cost = EstimateTransposeCost(session.GetGraph());
+    EXPECT_EQ(transpose_cost, 0);
+  };
+
+  TransformerTester(build_test_case_1,
+                    check_optimized_graph_1,
+                    TransformerLevel::Level2,
+                    TransformerLevel::Level3,
+                    /*opset_version*/ 13,
+                    /*per_sample_tolerance*/ 0.0,
+                    /*relative_per_sample_tolerance*/ 0.0,
+                    /*transformer*/ nullptr,
+                    /*add_session_options*/ {},
+                    /*disabled_optimizers*/ {},
+                    /*ep*/ DefaultCpuExecutionProvider());
+}
+
 TEST(TransposeOptimizerTests, TestBroadcastReusedInputs) {
   auto build_test_case_1 = [&](ModelTestBuilder& builder) {
     auto* input0_arg = MakeInput<float>(builder, {{-1, -1, 3, 4}}, {1, 2, 3, 4}, 0.0, 1.0);
@@ -4962,6 +5003,90 @@ TEST(TransposeOptimizerTests, FixQDQNodeUnitWithPerAxisDQUnsqueezeTranspose) {
 
   ASSERT_THAT(fetches_orig[0].Get<Tensor>().DataAsSpan<float>(),
               testing::ContainerEq(fetches[0].Get<Tensor>().DataAsSpan<float>()));
+}
+
+// Test that the TransposeOptimizer's qdq-fixup pass converts the sequence (Op -> DQ -> Q -> GRAPH_OUTPUT) to
+// (Op -> GRAPH_OUTPUT).
+TEST(TransposeOptimizerTests, RemoveEmptyDQQAtGraphOutput) {
+  auto model_uri = ORT_TSTR("testdata/transpose_optimizer_empty_dq_q_at_graph_output.onnx");
+
+  RandomValueGenerator random{123};
+  std::vector<int64_t> input_dims{1, 3, 4, 4};
+  std::vector<float> input0_data = random.Gaussian<float>(input_dims, 0.0f, 1.0f);
+
+  auto allocators = TestCPUExecutionProvider()->CreatePreferredAllocators();
+  OrtValue input0;
+  CreateMLValue<float>(allocators[0], input_dims, input0_data, &input0);
+
+  NameMLValMap feeds{{"input0", input0}};
+
+  std::vector<std::string> output_names{"output0"};
+  std::vector<OrtValue> fetches_orig;
+  std::vector<OrtValue> fetches;
+
+  SessionOptions so;
+  ASSERT_STATUS_OK(so.config_options.AddConfigEntry(kOrtSessionOptionsDisableQuantQDQ, "1"));
+  so.graph_optimization_level = TransformerLevel::Default;  // off
+
+  // get results with no modifications to the model
+  {
+    InferenceSessionWrapper session{so, GetEnvironment()};
+    ASSERT_STATUS_OK(session.Load(model_uri));
+    ASSERT_STATUS_OK(session.Initialize());
+    ASSERT_STATUS_OK(session.Run(feeds, output_names, &fetches_orig));
+  }
+
+  {
+    InferenceSessionWrapper session{so, GetEnvironment()};
+    ASSERT_STATUS_OK(session.Load(model_uri));
+
+    Graph& graph = session.GetMutableGraph();
+    CPUAllocator allocator;
+
+    namespace alias_oto = onnx_transpose_optimization;
+    auto api_graph = MakeApiGraph(graph,
+                                  TestCPUExecutionProvider()->CreatePreferredAllocators()[0],
+                                  /*new_node_ep*/ nullptr);
+
+    alias_oto::OptimizeResult result = alias_oto::Optimize(*api_graph);
+    ASSERT_EQ(result.error_msg, std::nullopt);
+    ASSERT_TRUE(result.graph_modified);
+    ASSERT_TRUE(graph.GraphResolveNeeded());
+    ASSERT_STATUS_OK(graph.Resolve());
+
+    // Use this hack to save model for viewing if needed
+    // ASSERT_STATUS_OK(Model::Save(const_cast<Model&>(session.GetModel()),
+    // ToPathString("updated_model_empty_dqq_graph_output.onnx")));
+
+    std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
+    EXPECT_EQ(op_to_count["Transpose"], 0) << "2 pre-existing Transposes at the I/O cancel. ";
+
+    // Check that the graph ends in the sequence (Mul -> Q -> GRAPH_OUTPUT)
+    Node* mul_node = nullptr;
+    for (auto& node : graph.Nodes()) {
+      if (node.OpType() == "Mul") {
+        mul_node = &node;
+        break;
+      }
+    }
+
+    // Mul should be followed by a Q node.
+    ASSERT_TRUE(mul_node != nullptr);
+    const auto& last_q_node = *(mul_node->OutputNodesBegin());
+    EXPECT_EQ(last_q_node.OpType(), "QuantizeLinear");
+
+    // The Q node should generate the graph's output.
+    const std::string& q_out_name = last_q_node.OutputDefs()[0]->Name();
+    const std::string& graph_out_name = graph.GetOutputs()[0]->Name();
+    EXPECT_EQ(q_out_name, graph_out_name);
+
+    // Run optimized model.
+    ASSERT_STATUS_OK(session.Initialize());
+    ASSERT_STATUS_OK(session.Run(feeds, output_names, &fetches));
+  }
+
+  ASSERT_THAT(fetches_orig[0].Get<Tensor>().DataAsSpan<uint8_t>(),
+              testing::ContainerEq(fetches[0].Get<Tensor>().DataAsSpan<uint8_t>()));
 }
 
 // Tests the in-place unsqueeze and transpose of a constant consumed by a per-axis DQ.

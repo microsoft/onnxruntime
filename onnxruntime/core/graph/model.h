@@ -20,6 +20,8 @@
 
 namespace onnxruntime {
 
+class PrepackedShareableWeightsContainer;
+
 namespace fbs {
 struct Model;
 }  // namespace fbs
@@ -190,15 +192,7 @@ class Model {
   // initializer offset could be page aligned and allocation granularity aligned for mmap support.
   ONNX_NAMESPACE::ModelProto ToGraphProtoWithExternalInitializers(const std::filesystem::path& external_file_name,
                                                                   const std::filesystem::path& file_path,
-                                                                  size_t initializer_size_threshold,
-                                                                  const Graph::OffsetAlignmentInfo& align_info) const;
-
-  ONNX_NAMESPACE::ModelProto ToGraphProtoWithExternalInitializers(const std::filesystem::path& external_file_name,
-                                                                  const std::filesystem::path& file_path,
-                                                                  size_t initializer_size_threshold) const {
-    Graph::OffsetAlignmentInfo default_align_info;
-    return ToGraphProtoWithExternalInitializers(external_file_name, file_path, initializer_size_threshold, default_align_info);
-  }
+                                                                  const ModelSavingOptions& model_saving_options) const;
 
   static common::Status Save(Model& model, const PathString& file_path);
 
@@ -209,32 +203,13 @@ class Model {
   static common::Status SaveWithExternalInitializers(Model& model,
                                                      const std::filesystem::path& file_path,
                                                      const std::filesystem::path& external_file_path,
-                                                     size_t initializer_size_threshold,
-                                                     const Graph::OffsetAlignmentInfo& align_info);
-
-  static common::Status SaveWithExternalInitializers(Model& model,
-                                                     const std::filesystem::path& file_path,
-                                                     const std::filesystem::path& external_file_path,
-                                                     size_t initializer_size_threshold) {
-    Graph::OffsetAlignmentInfo default_align_info;
-    return SaveWithExternalInitializers(model, file_path, external_file_path, initializer_size_threshold, default_align_info);
-  }
+                                                     const ModelSavingOptions& save_options);
 
   static common::Status SaveWithExternalInitializers(Model& model,
                                                      int fd,
                                                      const std::filesystem::path& file_path,
                                                      const std::filesystem::path& external_file_path,
-                                                     size_t initializer_size_threshold,
-                                                     const Graph::OffsetAlignmentInfo& align_info);
-
-  static common::Status SaveWithExternalInitializers(Model& model,
-                                                     int fd,
-                                                     const std::filesystem::path& file_path,
-                                                     const std::filesystem::path& external_file_path,
-                                                     size_t initializer_size_threshold) {
-    Graph::OffsetAlignmentInfo default_align_info;
-    return SaveWithExternalInitializers(model, fd, file_path, external_file_path, initializer_size_threshold, default_align_info);
-  }
+                                                     const ModelSavingOptions& save_options);
 
   static common::Status Load(std::istream& model_istream, ONNX_NAMESPACE::ModelProto* p_model_proto);
 
@@ -305,6 +280,12 @@ class Model {
                              const logging::Logger& logger,
                              const ModelOptions& options = {});
 
+  static common::Status LoadFromModelEditorApiModel(const OrtModel& graph_api_model,
+                                                    const IOnnxRuntimeOpSchemaRegistryList* local_registries,
+                                                    const ModelOptions& options,
+                                                    const logging::Logger& logger,
+                                                    std::unique_ptr<Model>& model);
+
   common::Status SaveToOrtFormat(flatbuffers::FlatBufferBuilder& builder,
                                  flatbuffers::Offset<onnxruntime::fbs::Model>& model) const;
 
@@ -358,7 +339,7 @@ class Model {
   ModelMetaData model_metadata_;
 
   // Path to model file. May be empty.
-  const std::filesystem::path model_path_;
+  std::filesystem::path model_path_;
 
   // Main graph of the model.
   std::unique_ptr<Graph> graph_;

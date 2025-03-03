@@ -787,14 +787,14 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                "M")
         .Input(7,
                "beam_width",
-               "The beam width that is being used while decoding."
+               "The beam width that is being used while decoding. "
                "If not provided, the beam width will be assumed to be 1.",
                "M",
                OpSchema::Optional)
         .Input(8,
                "cache_indirection",
-               "A buffer of shape [batch_size, beam_width, max_output_length] where an [i, j, k] entry specifies"
-               "which beam the 'k' th token came from for the 'j' th beam for batch 'i' in the current iteration",
+               "A buffer of shape [batch_size, beam_width, max_output_length] where an `[i, j, k]` entry specifies "
+               "which beam the `k`-th token came from for the `j`-th beam for batch `i` in the current iteration",
                "M",
                OpSchema::Optional)
         .Output(0,
@@ -871,7 +871,7 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                OpSchema::Optional)
         .Input(4,
                "attention_bias",
-               "additional add to QxK' with shape (batch_size, num_heads, sequence_length, total_sequence_length)",
+               "additional add to QxK' with shape (batch_size or 1, num_heads or 1, sequence_length, total_sequence_length)",
                "T",
                OpSchema::Optional)
         .Input(5,
@@ -902,15 +902,14 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                OpSchema::Optional)
         .Input(8,
                "beam_width",
-               "The beam width that is being used while decoding."
+               "The beam width that is being used while decoding. "
                "If not provided, the beam width will be assumed to be 1.",
                "M",
                OpSchema::Optional)
         .Input(9,
                "cache_indirection",
-               // This input is useful for CUDA EP only.
-               "A buffer of shape [batch_size, beam_width, max_output_length] where an [i, j, k] entry specifies"
-               "which beam the 'k' th token came from for the 'j' th beam for batch 'i' in the current iteration",
+               "A buffer of shape [batch_size, beam_width, max_output_length] where an `[i, j, k]` entry specifies "
+               "which beam the `k`-th token came from for the `j`-th beam for batch `i` in the current iteration",
                "M",
                OpSchema::Optional)
         .Input(10,
@@ -940,7 +939,7 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                 OpSchema::Optional)
         .Output(3,
                 "qk",
-                "normalized Q * K, of shape (batch_size, num_heads, 1, head_size). ",
+                "normalized Q * K, of shape (batch_size, num_heads, 1, total_sequence_length). ",
                 "V",
                 OpSchema::Optional)
         .TypeConstraint("V", {"tensor(float)"}, "Constrain qk output types to float32 tensors.")
@@ -1345,7 +1344,9 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
               AttributeProto::FLOAT,
               OPTIONAL_VALUE)
         .Attr("interleaved",
-              "Rotate using interleaved pattern. Default value is 0 (False).",
+              "Indicates whether the input has real and imaginary parts interleaved. "
+              "Default value is 0 (False), meaning the first half of the input consists of real values "
+              "and the second half consists of imaginary values.",
               AttributeProto::INT,
               OPTIONAL_VALUE)
         .Attr("rotary_embedding_dim",
@@ -1491,7 +1492,7 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
         .Input(0, "X", "input tensor", "T")
         .Input(1, "bias", "bias tensor", "T", OpSchema::Optional)
         .Output(0, "Y", "output tensor", "T")
-        .TypeConstraint("T", {"tensor(float)", "tensor(float16)", "tensor(bfloat16)"}, "Constrain input and output types to float or half tensors.")
+        .TypeConstraint("T", {"tensor(float)", "tensor(double)", "tensor(float16)", "tensor(bfloat16)"}, "Constrain input and output types to float or half tensors.")
         .TypeAndShapeInferenceFunction(ONNX_NAMESPACE::propagateShapeAndTypeFromFirstInput)
         .SetContextDependentFunctionBodyBuilder([](const FunctionBodyBuildContext& ctx, const OpSchema& schema, FunctionProto& functionProto) {
           // fastgelu(x) =

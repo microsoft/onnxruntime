@@ -84,7 +84,7 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
   Tensor* present = context->Output(kPresentOutputIndex, present_shape);
 
   auto stream = Stream(context);
-  rocblas_handle rocblas = GetRocblasHandle(context);
+  hipblasHandle_t hipblas = GetHipblasHandle(context);
 
   using HipT = typename ToHipType<T>::MappedType;
   using QkvProjectGeneric = GemmPermuteGenericPipeline<HipT>;
@@ -113,7 +113,7 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
     auto& params = gemm_permute_params;
     params.tuning_ctx = GetTuningContext();
     params.stream = context->GetComputeStream();
-    params.handle = rocblas;
+    params.handle = hipblas;
     params.attention = &attn;
     params.device_prop = &device_prop;
 
@@ -179,7 +179,7 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
     auto& params = gemm_softmax_gemm_permute_params;
     params.tuning_ctx = GetTuningContext();
     params.stream = context->GetComputeStream();
-    params.handle = rocblas;
+    params.handle = hipblas;
     params.attention = &attn;
     params.device_prop = &device_prop;
     // FIXME: the params.scale seems to be different from AttentionParameters::scale;

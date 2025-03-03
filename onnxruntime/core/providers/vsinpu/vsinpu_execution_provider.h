@@ -39,15 +39,16 @@ class VSINPUExecutionProvider : public IExecutionProvider {
 
   std::vector<std::unique_ptr<ComputeCapability>> GetCapability(
       const onnxruntime::GraphViewer& graph_viewer,
-      const IKernelLookup& kernel_lookup) const override;
+      const IKernelLookup& kernel_lookup,
+      IResourceAccountant* /* resource_accountant */) const override;
   std::shared_ptr<KernelRegistry> GetKernelRegistry() const override;
   Status Compile(const std::vector<FusedNodeAndGraph>& fused_nodes_and_graphs,
                  std::vector<NodeComputeInfo>& node_compute_funcs) override;
-  OrtMutex& GetMutex() { return mutex_; }
+  std::mutex& GetMutex() { return mutex_; }
 
  private:
   int device_id_;
-  OrtMutex mutex_;
+  std::mutex mutex_;
 };
 
 }  // namespace onnxruntime
