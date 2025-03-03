@@ -37,13 +37,6 @@ stages:
       clean: true
       submodules: none
 
-    - task: JavaToolInstaller@0
-      displayName: Use jdk 17
-      inputs:
-        versionSpec: '17'
-        jdkArchitectureOption: 'x64'
-        jdkSourceOption: 'PreInstalled'
-
     - template: use-android-ndk.yml
     - template: get-docker-image-steps.yml
       parameters:

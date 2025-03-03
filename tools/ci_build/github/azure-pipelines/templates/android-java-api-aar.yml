@@ -81,13 +81,6 @@ jobs:
     clean: true
     submodules: none
 
-  - task: JavaToolInstaller@0
-    displayName: Use jdk 17
-    inputs:
-      versionSpec: '17'
-      jdkArchitectureOption: 'x64'
-      jdkSourceOption: 'PreInstalled'
-
   - task: CmdLine@2
     displayName: Create artifacts directory
     inputs:
