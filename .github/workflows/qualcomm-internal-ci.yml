@@ -1,0 +1,24 @@
+name: Qualcomm_Internal_Windows_CI
+on:
+  push:
+    branches:
+      - main
+      - rel-*
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  Windows-Build-Test-All:
+    runs-on: ["self-hosted", "Windows", "X64"]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: false
+
+      - name: Qualcomm Internal Build Script
+        shell: cmd
+        run: |
+          "C:\Program Files\Microsoft Visual Studio\2022\Professional\VC\Auxiliary\Build\vcvarsall.bat" amd64 && ^
+          .\build.bat --config RelWithDebInfo --build_shared_lib --parallel --compile_no_warning_as_error --cmake_generator "Visual Studio 17 2022" ^
+          --use_qnn --qnn_home "C:\Users\hungjuiw\workspace\qairt\2.31.0.250130"
