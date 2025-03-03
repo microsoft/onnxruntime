@@ -1399,4 +1399,24 @@ SQ4BitGemmKernel_CompInt8(
     return CountM;
 }
 
-}  // namespace sqnbitgemm_neon
+// 2 bits kernel
+size_t
+SQ2BitGemmKernel_CompInt8(
+    size_t BlkLen,
+    const std::byte* QuantA,
+    const std::byte* QuantBData,
+    const float* QuantBScale,
+    const std::byte* QuantBZeroPoint,
+    float* C,
+    size_t CountM,
+    size_t CountN,
+    size_t /*CountK*/,
+    size_t BlockCountK,
+    size_t ldc,
+    const float* Bias
+)
+{
+    return 0;
+}  
+
+// namespace sqnbitgemm_neon
