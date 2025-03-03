@@ -199,7 +199,7 @@ Status MultiHeadAttentionOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_bu
       }
 
       common_options.set("label", node.Name() + "/MHA/key/concat");
-      std::vector<emscripten::val> inputs({present_key, past_key_input});
+      std::vector<emscripten::val> inputs({past_key_input, present_key});
       uint32_t axis = 2;
       present_key = model_builder.GetBuilder().call<emscripten::val>("concat", emscripten::val::array(inputs), axis,
                                                                      common_options);
@@ -238,7 +238,7 @@ Status MultiHeadAttentionOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_bu
       }
 
       common_options.set("label", node.Name() + "/MHA/value/concat");
-      std::vector<emscripten::val> inputs({present_value, past_value_input});
+      std::vector<emscripten::val> inputs({past_value_input, present_value});
       uint32_t axis = 2;
       present_value = model_builder.GetBuilder().call<emscripten::val>("concat", emscripten::val::array(inputs), axis,
                                                                        common_options);
