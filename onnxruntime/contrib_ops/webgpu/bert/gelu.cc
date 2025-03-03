@@ -39,7 +39,9 @@ Status GeluProgram::GenerateShaderCode(ShaderHelper& shader) const {
 
   AppendErfFunction(shader.AdditionalImplementation());
 
-  shader.MainFunctionBody() << shader.GuardAgainstOutOfBoundsWorkgroupSizes("uniforms.output_size")
+  const vecSize = "(uniforms.output_size + 3) / 4";
+
+  shader.MainFunctionBody() << shader.GuardAgainstOutOfBoundsWorkgroupSizes(vecSize)
                             << "let a = " << input.GetByOffset("global_idx") << ";\n"
                             << "let value = 0.5 * a * (1.0 + erf_vf32(a * 0.7071067811865475));\n"
                             << output.SetByOffset("global_idx", "value");
