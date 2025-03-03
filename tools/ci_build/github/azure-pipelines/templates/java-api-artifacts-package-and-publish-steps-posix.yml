@@ -36,7 +36,7 @@ steps:
       targetPath: '$(Build.BinariesDirectory)/${{parameters.artifactName}}'
       artifactName: 'drop-${{parameters.artifactName}}'
 - ${{ if eq(parameters.is1ES, false) }}:
-  - task: PublishBuildArtifacts@1
+  - task: PublishPipelineArtifact@1
     inputs:
-      pathtoPublish: '$(Build.BinariesDirectory)/${{parameters.artifactName}}'
+      targetPath: '$(Build.BinariesDirectory)/${{parameters.artifactName}}'
       artifactName: 'drop-${{parameters.artifactName}}'
