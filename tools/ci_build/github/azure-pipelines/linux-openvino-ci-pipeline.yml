@@ -31,7 +31,7 @@ pr:
 jobs:
 - template: templates/linux-ci.yml
   parameters:
-    AgentPool : 'Linux-CPU-2019'
+    AgentPool : 'onnxruntime-Ubuntu2204-AMD-CPU'
     JobName: 'Linux_CI_Dev'
     RunDockerBuildArgs: '-o ubuntu22.04 -p 3.10 -d openvino -v 2024.5.0 -x "--enable_generic_interface --use_openvino CPU --build_wheel"'
     TimeoutInMinutes: 120
