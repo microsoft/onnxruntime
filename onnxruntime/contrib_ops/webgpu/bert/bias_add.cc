@@ -26,7 +26,7 @@ Status BiasAddProgram::GenerateShaderCode(ShaderHelper& shader) const {
   const ShaderVariableHelper& output = shader.AddOutput("output");
 
   shader.MainFunctionBody() << shader.GuardAgainstOutOfBoundsWorkgroupSizes("uniforms.output_size")
-                            << "const channels = (" << channels_ << "/ 4)u;\n"
+                            << "const channels = (uniforms.channels / 4)u;\n"
                             << "let value = " << input.GetByOffset("global_idx")
                             << "  + " << bias.GetByOffset("global_idx % channels")
                             << "  + " << residual.GetByOffset("global_idx") << ";\n"
@@ -63,7 +63,8 @@ Status BiasAdd::ComputeInternal(onnxruntime::webgpu::ComputeContext& context) co
   program.AddInputs({{input}, {bias}, {residual}})
       .AddOutput({output})
       .SetDispatchGroupSize((output_size + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE)
-      .AddUniformVariables({{static_cast<uint32_t>(output_size)}});
+      .AddUniformVariables({{static_cast<uint32_t>(output_size)},
+                           {static_cast<uint32_t>(channels)}});
   return context.RunProgram(program);
 }
 

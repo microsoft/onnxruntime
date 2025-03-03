@@ -15,12 +15,10 @@ using onnxruntime::webgpu::ComputeContext;
 
 class BiasAddProgram final : public Program<BiasAddProgram> {
  public:
-  BiasAddProgram(int64_t channels) : Program{"BiasAdd"}, channels_{channels} {}
+  BiasAddProgram(int64_t channels) : Program{"BiasAdd"} {}
   Status GenerateShaderCode(ShaderHelper& sh) const override;
-  WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES({"output_size", ProgramUniformVariableDataType::Uint32});
-
- private:
-  int64_t channels_;
+  WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES({"output_size", ProgramUniformVariableDataType::Uint32},
+                                          {"channels", ProgramUniformVariableDataType::Uint32});
 };
 
 class BiasAdd final : public WebGpuKernel {
