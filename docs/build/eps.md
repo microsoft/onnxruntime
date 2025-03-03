@@ -377,7 +377,7 @@ See more information on the QNN execution provider [here](../execution-providers
 ```
 build.bat --use_qnn --qnn_home=[QNN_SDK_PATH] --build_shared_lib --build_wheel --cmake_generator "Visual Studio 17 2022" --config Release --build_dir build\Windows
 ```
-**NOTE:** On Windows x86_64, the QNN Execution Provider cannot execute models and is generally only able to [generate optimized compiled models](../execution_providers/QNN-ExecutionProvider.md#qnn-context-binary-cache-feature) (as of QNN SDK 2.31.x). On Windows ARM64, the QNN Execution Provider enables hardware accelerated execution on Qualcomm chipsets, in addition to supporting the generation of optimized compiled models.
+**NOTE:** On Windows x86_64, the QNN Execution Provider cannot execute models and is generally only able to [generate optimized compiled models](../execution-providers/QNN-ExecutionProvider.md#qnn-context-binary-cache-feature) (as of QNN SDK 2.31.x). On Windows ARM64, the QNN Execution Provider enables hardware accelerated execution on Qualcomm chipsets, in addition to supporting the generation of optimized compiled models.
 #### Windows (x86_64 host, ARM64 cross-compile target)
 ```
 build.bat --arm64 --use_qnn --qnn_home=[QNN_SDK_PATH] --build_shared_lib --build_wheel --cmake_generator "Visual Studio 17 2022" --config Release --build_dir build\Windows
