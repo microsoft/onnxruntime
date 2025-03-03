@@ -366,7 +366,7 @@ See more information on the QNN execution provider [here](../execution-providers
 * `--qnn_home QNN_SDK_PATH`: The path to the Qualcomm AI Engine Direct SDK.
   * Example on Windows: `--qnn_home 'C:\Qualcomm\AIStack\QAIRT\2.31.0.250130'`
   * Example on Linux: `--qnn_home /opt/qcom/aistack/qairt/2.31.0.250130`
-* `--build_wheel`: Builds Python wheel and enables python bindings.
+* `--build_wheel`: Enables Python bindings and builds Python wheel.
 * `--arm64`: Cross-compile for ARM64.
 
 
