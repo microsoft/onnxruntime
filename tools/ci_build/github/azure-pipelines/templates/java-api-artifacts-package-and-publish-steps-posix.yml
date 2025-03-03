@@ -1,13 +1,27 @@
 # sets up common build tools for the windows build machines before build
 
 parameters:
-  arch: 'linux-x64'
-  buildConfig: 'RelWithDebInfo'
-  artifactName: 'onnxruntime-java-linux-x64'
-  libraryName: 'libonnxruntime.so'
-  nativeLibraryName: 'libonnxruntime4j_jni.so'
-  version: ''
-  is1ES: false
+- name: arch
+  type: string
+  default: 'linux-x64'
+- name: buildConfig
+  type: string
+  default: 'RelWithDebInfo'
+- name: artifactName
+  type: string
+  default: 'onnxruntime-java-linux-x64'
+- name: libraryName
+  type: string
+  default: 'libonnxruntime.so'
+- name: nativeLibraryName
+  type: string
+  default: 'libonnxruntime4j_jni.so'
+- name: version
+  type: string
+  default: ''
+- name: is1ES
+  type: boolean
+  default: false
 steps:
 - task: ShellScript@2
   displayName: 'Copy build artifacts for zipping'
