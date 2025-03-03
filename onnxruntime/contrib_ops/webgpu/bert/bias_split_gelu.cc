@@ -28,15 +28,15 @@ Status BiasSplitGeluProgram::GenerateShaderCode(ShaderHelper& shader) const {
   AppendErfFunction(shader.AdditionalImplementation());
 
   shader.MainFunctionBody() << shader.GuardAgainstOutOfBoundsWorkgroupSizes("uniforms.output_size")
-                            << "const M_SQRT2 = sqrt(2.0);\n"
+                            << "const M_SQRT2: f32 = sqrt(2.0);\n"
                             << "const halfChannels = (" << channels_ << " / 4 / 2)u;\n"
                             << "let biasIdx = global_idx % halfChannels;\n"
                             << "let batchIndex = global_idx / halfChannels;\n"
                             << "let inputOffset = biasIdx + batchIndex * halfChannels * 2;\n"
                             << "let valueLeft = " << input.GetByOffset("inputOffset") << " + " << bias.GetByOffset("biasIdx") << ";\n"
                             << "let valueRight = " << input.GetByOffset("inputOffset + halfChannels") << " + " << bias.GetByOffset("biasIdx + halfChannels") << ";\n"
-                            << "let geluRight = valueRight * 0.5 * (erf_vf32(valueRight / M_SQRT2) + 1);\n"
-                            << output.SetByOffset("global_idx", "valueLeft * geluRight");
+                            << "let geluRight = valueRight * 0.5 * (erf_vf32(f32(valueRight) / M_SQRT2) + 1);\n"
+                            << output.SetByOffset("global_idx", "input_indices_t(valueLeft * geluRight)");
 
   return Status::OK();
 }
