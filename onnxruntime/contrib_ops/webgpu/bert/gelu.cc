@@ -42,9 +42,9 @@ Status GeluProgram::GenerateShaderCode(ShaderHelper& shader) const {
   const std::string vecSize = "(uniforms.output_size + 3u) / 4u";  // equivalent to Math.ceil(output_size / 4)
 
   shader.MainFunctionBody() << shader.GuardAgainstOutOfBoundsWorkgroupSizes(vecSize)
-                            << "let a = " << input.GetByOffset("global_idx") << ";\n"
+                            << "let a = f32(" << input.GetByOffset("global_idx") << ");\n"
                             << "let value = 0.5 * a * (1.0 + erf_vf32(a * 0.7071067811865475));\n"
-                            << output.SetByOffset("global_idx", "value");
+                            << output.SetByOffset("global_idx", "input_indices_t(value)");
 
   return Status::OK();
 }
