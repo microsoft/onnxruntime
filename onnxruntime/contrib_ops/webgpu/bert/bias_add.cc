@@ -57,7 +57,7 @@ Status BiasAdd::ComputeInternal(onnxruntime::webgpu::ComputeContext& context) co
   }
 
   auto* output = context.Output(0, input_shape);
-  int64_t output_size = output->Shape().Size();
+  int64_t output_size = output->Shape().Size() / 4;
 
   BiasAddProgram program{channels};
   program.AddInputs({{input}, {bias}, {residual}})
