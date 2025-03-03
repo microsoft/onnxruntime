@@ -12,13 +12,13 @@ namespace contrib {
 namespace webgpu {
 
 ONNX_OPERATOR_KERNEL_EX(
-    FastGelu,
+    Gelu,
     kMSDomain,
     1,
     kWebGpuExecutionProvider,
     (*KernelDefBuilder::Create())
         .TypeConstraint("T", WebGpuSupportedFloatTypes()),
-    FastGelu);
+    Gelu);
 
 Status FastGeluProgram::GenerateShaderCode(ShaderHelper& shader) const {
   const auto& x = shader.AddInput("x", ShaderUsage::UseUniform | ShaderUsage::UseValueTypeAlias);
@@ -32,7 +32,7 @@ Status FastGeluProgram::GenerateShaderCode(ShaderHelper& shader) const {
   return Status::OK();
 }
 
-Status FastGelu::ComputeInternal(onnxruntime::webgpu::ComputeContext& context) const {
+Status Gelu::ComputeInternal(onnxruntime::webgpu::ComputeContext& context) const {
   const auto* input = context.Input(0);
   auto* output = context.Output(0, input->Shape());
 
