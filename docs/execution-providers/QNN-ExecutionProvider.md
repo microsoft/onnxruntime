@@ -411,7 +411,7 @@ options.add_session_config_entry("ep.context_enable", "1")
 ```
 
 ### Configure the context binary file path
-The generated Onnx model with QNN context binary is default to [input_QDQ_model_path]_ctx.onnx in case user does not specify the path. User can to set the path in the session option with the key "ep.context_file_path". Example code below:
+The generated Onnx model with QNN context binary is default to [input_QDQ_model_name]_ctx.onnx in case user does not specify the path. User can to set the path in the session option with the key "ep.context_file_path". Example code below:
 
 ```
 // C++
@@ -427,7 +427,7 @@ options.add_session_config_entry("ep.context_file_path", "./model_a_ctx.onnx")
 ```
 
 ### Enable the embed mode
-The QNN context binary content is not embedded in the generated Onnx model by default. A bin file will be generated separately. The file name looks like [ctx.onnx]_QNNExecutionProvider_QNN_[hash_id]_x_x.bin. The name is provided by Ort and tracked in the generated Onnx model. It will cause problems if any changes are made to the bin file. This bin file needs to sit together with the generated Onnx file. User can enable it by setting "ep.context_embed_mode" to "1". In that case the content of the context binary is embedded inside the Onnx model.
+The QNN context binary content is not embedded in the generated Onnx model by default. A bin file will be generated separately. The file name looks like [input_model_file_name]_QNNExecutionProvider_QNN_[hash_id]_x_x.bin. The name is provided by Ort and tracked in the generated Onnx model. It will cause problems if any changes are made to the bin file. This bin file needs to sit together with the generated Onnx file. User can enable it by setting "ep.context_embed_mode" to "1". In that case the content of the context binary is embedded inside the Onnx model.
 
 ```
 // C++
@@ -462,24 +462,24 @@ The way OnnxRuntime to convert Onnx model with weight sharing to QNN context bin
 OnnxRuntime QNN EP provides [OnnxRuntime_qnn_ctx_gen](https://github.com/microsoft/onnxruntime/tree/main/onnxruntime/test/qnn_ctx_gen) tool to complete these steps.
 Example command line:
 ```
-./onnxruntime_qnn_ctx_gen -i "soc_model|60 htp_graph_finalization_optimization_mode|3" ./model1.onnx,./model2.onnx
+./ep_weight_sharing_ctx_gen -e qnn -i "soc_model|60 htp_graph_finalization_optimization_mode|3" ./model1.onnx,./model2.onnx
 ```
-It creates 2 Onnx model (model1.onnx_ctx.onnx, model2.onnx_ctx.onnx) and a QNN context binary file (model2.onnx_ctx.onnx_xxx.bin).
+It creates 2 Onnx model (model1_ctx.onnx, model2_ctx.onnx) and a QNN context binary file (model2_xxx.bin).
 <p align="center"><img width="90%" src="../../images/Ort_Qnn_Ep_weight_sharing.png" alt="Weight sharing from Onnx to QNN"/></p>
 If user creates the QNN context binary .bin file weight sharing from QNN toolchain (qnn-context-binary-generator). The context binary .bin file looks the same. User needs to create model1.onnx and model2.onnx with EPContext node which points to this .bin file. Each EPContext node should refer (node name and partition_name) to different Qnn graph names from the QNN context. Here’s an example script for reference [gen_qnn_ctx_onnx_model.py](https://github.com/microsoft/onnxruntime/blob/main/onnxruntime/python/tools/qnn/gen_qnn_ctx_onnx_model.py) which wraps one single QNN graph into EPContext node. 
 
 ### Inference with QNN resource sharing workflow
 OnnxRuntime inference session need to have resource sharing enabled (set session option ep.share_ep_contexts to 1) to use the dumped Qnn context model with weight sharing enabled.
-- Create OnnxRuntime inference session with ep.share_ep_contexts=1, loads the model1.onnx_ctx.onnx model.
-  - The session loads the model1.onnx_ctx.onnx model.
+- Create OnnxRuntime inference session with ep.share_ep_contexts=1, loads the model1_ctx.onnx model.
+  - The session loads the model1_ctx.onnx model.
   - The shared place is empty.
-  - EPContext node1 in model1.onnx_ctx.onnx specifies that it uses Qnn_graph1
+  - EPContext node1 in model1_ctx.onnx specifies that it uses Qnn_graph1
   - QNN EP loads the qnn_ctx.bin and deserialize the binary to get Qnn graphs (Qnn_graph1, Qnn_graph2).
   - Uses Qnn_graph1 for this OnnxRuntime session.
   - Put the Qnn_graph2 into the shared place.
-- Create OnnxRuntime inference session with ep.share_ep_contexts=1, loads the model2.onnx_ctx.onnx model.
-  - The session loads the model2.onnx_ctx.onnx model.
-  - The EPContext node2 in model2.onnx_ctx.onnx specifies that it uses Qnn_graph2.
+- Create OnnxRuntime inference session with ep.share_ep_contexts=1, loads the model2_ctx.onnx model.
+  - The session loads the model2_ctx.onnx model.
+  - The EPContext node2 in model2_ctx.onnx specifies that it uses Qnn_graph2.
   - The shared place has Qnn_graph2.
   - QNN EP skips loading qnn_ctx.bin since it gets what it wants from the shared place.
   - Uses Qnn_graph2 from the shared place for this session.
