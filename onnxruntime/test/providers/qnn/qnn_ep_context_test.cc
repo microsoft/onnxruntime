@@ -1380,7 +1380,13 @@ TEST_F(QnnHTPBackendTests, QnnContextGenWeightSharingSessionAPI) {
   for (auto model_path : onnx_model_paths) {
     CreateQdqModel(model_path, DefaultLoggingManager().DefaultLogger());
     EXPECT_TRUE(std::filesystem::exists(model_path.c_str()));
-    ctx_model_paths.push_back(model_path + "_ctx.onnx");
+    auto pos = model_path.find_last_of(".");
+    if (pos != std::string::npos) {
+      model_path = model_path.substr(0, pos) + "_ctx.onnx";
+    } else {
+      model_path = model_path + "_ctx.onnx";
+    }
+    ctx_model_paths.push_back(model_path);
   }
 
   Ort::SessionOptions so;
