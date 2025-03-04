@@ -798,18 +798,13 @@ sess.run(None, args)
 Please note that there is a constraint of using this explicit shape range feature, i.e., all the dynamic shape inputs should be provided with corresponding min/max/opt shapes.
 
 ### Data-dependant shape (DDS) ops
-DDS ops are NonMaxSuppression, NonZero and RoiAlign. The output shape of the DDS op is not known until runtime.
-To enable DDS ops run by TRT-EP/TRT not by CUDA-EP, please check following two things:
-* For TensorRT < 10.7, you need to build ORT against [onnx-tensorrt OSS parser](https://github.com/onnx/onnx-tensorrt) and make sure using the 10.X-GA-ORT-DDS branch.
-* For ORT, by default, it relies on TRT parser to determine whether the DDS ops will be run by TRT. But please note that ORT 1.20.1 and 1.20.2 are exceptions where they implicitly filters out DDS ops from being run by TRT
-  due to the [known performance issue](https://onnxruntime.ai/docs/execution-providers/TensorRT-ExecutionProvider.html#known-issues).
+The DDS operations — NonMaxSuppression, NonZero, and RoiAlign — have output shapes that are only determined at runtime. To ensure DDS ops are executed by TRT-EP/TRT instead of CUDA EP or CPU EP, please check the following:
+* For TensorRT < 10.7: Build ORT with [onnx-tensorrt OSS parser](https://github.com/onnx/onnx-tensorrt) and use `10.X-GA-ORT-DDS` branch.
+  For TensrRT >= 10.7: By default, DDS ops will be executed by TRT.
+* For ORT: By default, ORT relies on the TRT parser to decide if DDS ops run with TRT. However, note that ORT versions 1.20.1 and 1.20.2 will **not** run DDS ops with TRT due to a [known performance issue](https://onnxruntime.ai/docs/execution-providers/TensorRT-ExecutionProvider.html#known-issues).
 
-To avoid the performance issue mentioned above. please use `trt_op_types_to_exclude` so that DDS ops will be run by CUDA EP or CPU EP:
+To mitigate this performance issue, use the `trt_op_types_to_exclude` option so that DDS ops will be run by CUDA EP or CPU EP:
 ```bash
-    # e.g.
-    # -r: set up test repeat time
-    # -e: set up execution provider
-    # -i: set up params for execution provider options
     ./onnxruntime_perf_test -r 1 -e tensorrt -i "trt_op_types_to_exclude|NonMaxSuppression,NonZero,RoiAlign" /path/to/onnx/your_model.onnx
 ```
 
@@ -849,4 +844,6 @@ Please see [this Notebook](https://github.com/microsoft/onnxruntime/blob/main/do
 ## Known Issues
 - TensorRT 8.6 built-in parser and TensorRT oss parser behaves differently. Namely built-in parser cannot recognize some custom plugin ops while OSS parser can. See [EfficientNMS_TRT missing attribute class_agnostic w/ TensorRT 8.6
 ](https://github.com/microsoft/onnxruntime/issues/16121).
-- There is a performance issue when running models, e.g. Faster-RCNN, that a) contains data-dependant shape (DDS) ops, e.g. NonMaxSuppression, NonZero and RoiAlign, and b) the DDS ops are run by TensorRT using TensorRT version 10.0 to 10.5.
+- There is a performance issue for TensorRT versions 10.0 to 10.5 when running models, such as Faster-RCNN, that:
+a) contain data-dependent shape (DDS) operations, like NonMaxSuppression, NonZero, and RoiAlign, and
+b) DDS ops are executed with TRT
