@@ -48,9 +48,6 @@ class GraphOptimizerRegistry {
   const onnxruntime::IExecutionProvider* cpu_ep_;
   const logging::Logger* logger_;
 
-  static std::unique_ptr<GraphOptimizerRegistry> graph_optimizer_registry_;
-  static std::mutex registry_mutex_;
-
   InlinedHashMap<std::string, SelectionFunc> transformer_name_to_selection_func_;
 
   /**
