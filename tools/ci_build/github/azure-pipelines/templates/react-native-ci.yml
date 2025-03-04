@@ -62,10 +62,14 @@ stages:
   dependsOn: '${{parameters.InitialStageDependsOn}}'
   jobs:
   - job: ReactNative_CI_iOS
-    pool:
-      name: 'Azure Pipelines'
-      image: 'macOS-13'
-      os: 'macOS'
+    ${{ if eq(parameters.is1ES, false) }}:
+      pool:
+        vmImage: 'macOS-13'
+    ${{ if eq(parameters.is1ES, true) }}:
+      pool:
+        name: 'Azure Pipelines'
+        image: 'macOS-13'
+        os: 'macOS'
 
     timeoutInMinutes: 90
 
