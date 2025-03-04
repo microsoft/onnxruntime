@@ -127,6 +127,7 @@ Output files:
 * onnxruntime_image_[encoder|decoder].json has ONNX Runtime profiling results. Use `chrome://tracing` in Chrome browser to view it.
 * torch_image_[encoder|decoder].json has PyTorch profiling results. Use `chrome://tracing` in Chrome browser to view it.
 * sam2_fp16_profile_image_[encoder|decoder]_[ort|torch]_gpu.[nsys-rep|sqlite] has NVTX profiling. Use Nvidia NSight System to view it.
+* torch_image_encoder_compiled_code.txt has the compiled kernel code from Pytorch.
 
 ## Limitations
 - The exported image_decoder model does not support batch mode for now.

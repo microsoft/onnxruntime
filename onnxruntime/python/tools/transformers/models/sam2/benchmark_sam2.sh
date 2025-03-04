@@ -42,29 +42,51 @@ echo "install_dir: $install_dir"
 echo "cpu_or_gpu: $cpu_or_gpu"
 
 cuda_version=12.6
-install_cuda_12()
-{
-    pushd $install_dir
-    wget https://developer.download.nvidia.com/compute/cuda/12.6.2/local_installers/cuda_12.6.2_560.35.03_linux.run
-    sh cuda_12.6.2_560.35.03_linux.run --toolkit --toolkitpath=$install_dir/cuda${cuda_version} --silent --override --no-man-page
-    popd
-}
-
 cudnn_version=9.5
-install_cudnn_9() {
-    pushd "$install_dir"
-    wget -q https://developer.download.nvidia.com/compute/cudnn/redist/cudnn/linux-x86_64/cudnn-linux-x86_64-9.5.0.50_cuda12-archive.tar.xz
-    mkdir -p "$install_dir/cudnn${cudnn_version}"
-    tar -Jxvf cudnn-linux-x86_64-9.5.0.50_cuda12-archive.tar.xz -C "$install_dir/cudnn${cudnn_version}" --strip=1
-    popd
+
+# Function to check if a command exists
+command_exists() {
+    command -v "$1" >/dev/null 2>&1
 }
 
-set_env_vars() {
+# Ensure necessary tools are installed
+if ! command_exists wget; then
+    echo "wget is not installed. Please install it and try again."
+    exit 1
+fi
+
+if ! command_exists git; then
+    echo "git is not installed. Please install it and try again."
+    exit 1
+fi
+
+if ! command_exists pip; then
+    echo "pip is not installed. Please install it and try again."
+    exit 1
+fi
+
+# Install CUDA 12.6
+install_cuda_12() {
+    if ! [ -d $install_dir/cuda${cuda_version} ]; then
+        pushd $install_dir || exit
+        wget https://developer.download.nvidia.com/compute/cuda/12.6.2/local_installers/cuda_12.6.2_560.35.03_linux.run
+        sh cuda_12.6.2_560.35.03_linux.run --toolkit --toolkitpath=$install_dir/cuda${cuda_version} --silent --override --no-man-page
+        popd
+    fi
     export PATH="$install_dir/cuda${cuda_version}/bin:$PATH"
     export LD_LIBRARY_PATH="$install_dir/cuda${cuda_version}/lib64:$LD_LIBRARY_PATH"
+}
+
+# Install cuDNN 9.5
+install_cudnn_9() {
+    if ! [ -d $install_dir/cudnn${cudnn_version} ]; then
+        pushd "$install_dir" || exit
+        wget -q https://developer.download.nvidia.com/compute/cudnn/redist/cudnn/linux-x86_64/cudnn-linux-x86_64-9.5.0.50_cuda12-archive.tar.xz
+        mkdir -p "$install_dir/cudnn${cudnn_version}"
+        tar -Jxvf cudnn-linux-x86_64-9.5.0.50_cuda12-archive.tar.xz -C "$install_dir/cudnn${cudnn_version}" --strip=1
+        popd
+    fi
     export LD_LIBRARY_PATH="$install_dir/cudnn${cudnn_version}/lib:$LD_LIBRARY_PATH"
-    echo "PATH: $PATH"
-    echo "LD_LIBRARY_PATH: $LD_LIBRARY_PATH"
 }
 
 install_ort() {
@@ -73,9 +95,9 @@ install_ort() {
 
     if [ "$nightly" = "true" ]; then
         pip install flatbuffers numpy packaging protobuf sympy
-        pip install --pre --index-url https://aiinfra.pkgs.visualstudio.com/PublicPackages/_packaging/ORT-Nightly/pypi/simple/ $ort
+        pip install --pre --index-url https://aiinfra.pkgs.visualstudio.com/PublicPackages/_packaging/ORT-Nightly/pypi/simple/ "$ort"
     else
-        pip install $ort
+        pip install "$ort"
     fi
 
     pip install onnx onnxscript opencv-python matplotlib
@@ -83,31 +105,30 @@ install_ort() {
 
 # Install GPU dependencies
 install_gpu() {
-    [ ! -d "$install_dir/cuda${cuda_version}" ] && install_cuda_12
-    [ ! -d "$install_dir/cudnn${cudnn_version}" ] && install_cudnn_9
+    install_cuda_12
+    install_cudnn_9
+    echo "PATH: $PATH"
+    echo "LD_LIBRARY_PATH: $LD_LIBRARY_PATH"
 
-    set_env_vars
-
-    # Some dynamo export need torch 2.6.0 or later. Use the latest one.
+    # The dynamo export need torch 2.6.0 or later. Use the latest one.
     pip install torch torchvision --index-url https://download.pytorch.org/whl/cu124 --upgrade
 
     install_ort "onnxruntime-gpu"
 }
 
-
 # Install CPU dependencies
 install_cpu() {
     pip install torch torchvision --index-url https://download.pytorch.org/whl/cpu
-    install_ort onnxruntime
+    install_ort "onnxruntime"
 }
 
 # Clone and install SAM2 if not already installed
 install_sam2() {
-    pushd "$install_dir"
+    pushd "$install_dir" || exit
     if [ ! -d "$sam2_dir" ]; then
         git clone https://github.com/facebookresearch/segment-anything-2.git
     fi
-    cd "$sam2_dir"
+    cd "$sam2_dir" || exit
     pip show SAM-2 > /dev/null 2>&1 || pip install -e .
     [ ! -f checkpoints/sam2_hiera_large.pt ] && (cd checkpoints && sh ./download_ckpts.sh)
     popd
@@ -122,9 +143,9 @@ run_cpu_benchmark() {
     local repeats="$1"
 
     if [ "$dynamo" = "true" ]; then
-        $python convert_to_onnx.py --sam2_dir "$sam2_dir" --optimize --demo
-    else
         $python convert_to_onnx.py --sam2_dir "$sam2_dir" --optimize --demo --dynamo
+    else
+        $python convert_to_onnx.py --sam2_dir "$sam2_dir" --optimize --demo
     fi
 
     for component in image_encoder image_decoder; do
@@ -164,7 +185,6 @@ run_ort_gpu_benchmark() {
     # Test prefer_nhwc.
     $python benchmark_sam2.py --model_type "$model" --engine ort --sam2_dir "$sam2_dir" --repeats "$repeats" --use_gpu --dtype fp16 --component "$component" --onnx_path "${onnx_dir}/${model}_${component}_${dtype}_gpu.onnx" --prefer_nhwc
 }
-
 
 run_torch_gpu_benchmark() {
     local repeats="$1"
@@ -251,8 +271,7 @@ build_onnxruntime_gpu_for_profiling() {
 }
 
 # Run profiling with NVTX.
-run_nvtx_profile()
-{
+run_nvtx_profile() {
     local engine="$1"
     # Only trace one device to avoid huge output file size.
     device_id=0
@@ -274,9 +293,7 @@ run_nvtx_profile()
     done
 }
 
-
-run_ort_profile()
-{
+run_ort_profile() {
     export ORT_ENABLE_CUDNN_FLASH_ATTENTION=1
     rm -f onnxruntime_*.json
     for component in image_encoder image_decoder; do
