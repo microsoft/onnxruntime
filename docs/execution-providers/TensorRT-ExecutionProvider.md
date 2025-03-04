@@ -469,6 +469,12 @@ TensorRT configurations can be set by execution provider options. It's useful wh
   * Turing and former Nvidia GPU architecture and Nvidia Jetson Orin platform are not eligble to this option.
 
 
+##### trt_op_types_to_exclude
+
+
+* Description: exclude specific op types to run on TRT.
+
+
 ### Environment Variables(deprecated)
 
 Following environment variables can be set for TensorRT execution provider. Click below for more details.
@@ -791,6 +797,11 @@ sess.run(None, args)
 
 Please note that there is a constraint of using this explicit shape range feature, i.e., all the dynamic shape inputs should be provided with corresponding min/max/opt shapes.
 
+### Data-dependant shape (DDS) ops
+DDS ops are NonMaxSuppression, NonZero and RoiAlign. The output shape of the DDS op is not known until runtime.
+To enable DDS ops run by TRT-EP/TRT not by CUDA-EP, please check following two things:
+* For TensorRT < 10.7, you need to build ORT against [onnx-tensorrt OSS parser](https://github.com/onnx/onnx-tensorrt) and make sure using 
+*
 
 ## Samples
 
@@ -827,4 +838,5 @@ Please see [this Notebook](https://github.com/microsoft/onnxruntime/blob/main/do
 
 ## Known Issues
 - TensorRT 8.6 built-in parser and TensorRT oss parser behaves differently. Namely built-in parser cannot recognize some custom plugin ops while OSS parser can. See [EfficientNMS_TRT missing attribute class_agnostic w/ TensorRT 8.6
-](https://github.com/microsoft/onnxruntime/issues/16121). 
+](https://github.com/microsoft/onnxruntime/issues/16121).
+- There is a performance issue when running models, e.g. Faster-RCNN, that a) contains data-dependant shape (DDS) ops, e.g. NonMaxSuppression, NonZero and RoiAlign, and b) the DDS ops are run by TensorRT using TensorRT version 10.0 to 10.5.
