@@ -55,35 +55,35 @@ Atrribures:
 ## EP Context cache model generation workflow
 
 OnnxRuntime EPs should follow these rules to create the EP context cache model to maintain a unified user interface.
-1. ep.context_enable
-  OnnxRuntime create the EP context cache model if ep.context_enable = 1. Otherwise, ep.context_enable = 0 (default), just do the normal workflow.
-2. ep.context_file_path
-  OnnxRuntime just append “_ctx.onnx” to the input file name as the output file name if no ep.context_file_path provided. Otherwise just use the user provided file path.
-  ep.context_file_path is required if user loads the model from memory buffer, since there’s no way for OnnxRuntime to get the input file path for this scenario.
-3. ep.context_embed_mode
-  1 (default): dump the EP context context content into the Onnx model.
-  0: dump the EP context content as a separate file. EP decides the file name and tracks the file name in EPContext node attribute ep_cache_context. The separate file should always at the same location as the dumped Onnx model file. And the file path tracked in EPContext node is a relative path to the Onnx model file. Note: subfolder is allowed.
-4. ep.context_node_name_prefix
-  In case the user wants to add special tag inside the EPContext node name (also the partition_name attribute, and graph name), EP should provide this capability when EP creates the EPContext nodes.
-  This is useful if the user wants to glue multiple EPContext nodes from multiple models into one model and there’s risk that node name (graph name) confliction happens across models. Dependes on EP implementation. QNN EP supports multiple EPContext nodes, so user can merge and re-connect EPContext nodes from different models.
+- ep.context_enable
+  - OnnxRuntime create the EP context cache model if ep.context_enable = 1. Otherwise, ep.context_enable = 0 (default), just do the normal workflow.
+- ep.context_file_path
+  - OnnxRuntime just change the origitnal input file name by replacing ".onnx" to “_ctx.onnx” as the output file name if no ep.context_file_path provided. Otherwise just use the user provided file path.
+  - ep.context_file_path is required if user loads the model from memory buffer, since there’s no way for OnnxRuntime to get the input file path for this scenario.
+- ep.context_embed_mode
+  - 1 (default): dump the EP context context content into the Onnx model.
+  - 0: dump the EP context content as a separate file. EP decides the file name and tracks the file name in EPContext node attribute ep_cache_context. The separate file should always at the same location as the dumped Onnx model file. And the file path tracked in EPContext node is a relative path to the Onnx model file. Note: subfolder is allowed.
+- ep.context_node_name_prefix
+  - In case the user wants to add special tag inside the EPContext node name (also the partition_name attribute, and graph name), EP should provide this capability when EP creates the EPContext nodes.
+  - This is useful if the user wants to glue multiple EPContext nodes from multiple models into one model and there’s risk that node name (graph name) confliction happens across models. Dependes on EP implementation. QNN EP supports multiple EPContext nodes, so user can merge and re-connect EPContext nodes from different models.
 
 ## Inference from EP Context cache model workflow
 
 OnnxRuntime EPs which support loading from Onnx model with EPContext nodes should follow the workflow/rules for model inference.
-1. EP should be able to identify the model which has EPContext node.
-  a. EP follows its normal workflow if there’s no EPContext nodes inside the model.
-  b. If it is the Onnx model has EPContext nodes.
-    i. EP should check the source node attribute from all EPContext nodes to make sure there is any EPContext node for this EP (the source node attribute matches the key required by the EP).
-    ii. EP only partition in the EPContext nodes which has source node attribute matches the key required by the EP.
-    iii. EP loads from the cached context inside EPContext node
-2. If the context cache Onnx model is dumped with embed_mode = 1, so there is separate context binary file beside the Onnx model in the same folder. 
-  a. OnnxRuntime EP gets the context binary file relative path from EPContext ep_cache_context node attribute.
-  b. If the user loads the model from a Onnx model file path, then EP should get the input model folder path, and combine it with the relative path got from step a) as the context binary file full path.
-  c. If the user loads the model from memory buffer, user needs to provide session option ep.context_file_path. EP gets the folder path from ep.context_file_path, and combines it with the relative path   got from step a) as the context binary file full path. 
+- EP should be able to identify the model which has EPContext node.
+  - EP follows its normal workflow if there’s no EPContext nodes inside the model.
+  - If it is the Onnx model has EPContext nodes.
+    - EP should check the source node attribute from all EPContext nodes to make sure there is any EPContext node for this EP (the source node attribute matches the key required by the EP).
+    - EP only partition in the EPContext nodes which has source node attribute matches the key required by the EP.
+    - EP loads from the cached context inside EPContext node
+- If the context cache Onnx model is dumped with embed_mode = 1, so there is separate context binary file beside the Onnx model in the same folder. 
+  - OnnxRuntime EP gets the context binary file relative path from EPContext ep_cache_context node attribute.
+  - If the user loads the model from a Onnx model file path, then EP should get the input model folder path, and combine it with the relative path got from step a) as the context binary file full path.
+  - If the user loads the model from memory buffer, user needs to provide session option ep.context_file_path. EP gets the folder path from ep.context_file_path, and combines it with the relative path   got from step a) as the context binary file full path. 
 
 <p align="center"><img width="60%" src="../../images/EP_context_nodes_with_different_eps.png" alt="EP Context nodes with different EPs"/></p>
 
-## New ExecutionProvider interface GetEpContextNodes() to help generate the EP Context cache model
+## ExecutionProvider interface GetEpContextNodes() to help generate the EP Context cache model
 
 It is hard for Execution Providers to generate the partitioned graph within the Execution Provider code since an Execution Provider does not have a good picture of the whole partitioned graph. New ExecutionProvider interface GetEpContextNodes() is added to support this.
 
