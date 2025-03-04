@@ -9,6 +9,7 @@
 # Licensed under the MIT License.  See License.txt in the project root for
 # license information.
 # -------------------------------------------------------------------------
+from dataclasses import dataclass
 import math
 import random
 import unittest
@@ -35,48 +36,34 @@ NUMPY_TYPE = numpy.float16 if ORT_TYPE == TensorProto.FLOAT16 else numpy.float32
 RTOL = 3e-2 if ORT_TYPE == TensorProto.FLOAT16 else 1e-3
 ATOL = RTOL
 
+DO_TREE_ATTENTION = True
+
 
 class Formats:
     BSNH = 0
     BNSH = 1
 
 
+@dataclass
 class Config:
-    batch_size = 0
-    sequence_length = 0
-    kv_sequence_length = 0
-    past_sequence_length = 0
-    num_heads = 0
-    kv_num_heads = 0
-    head_size = 0
-
-    def __init__(self, b, s, s2, sp, n, n2, h):
-        self.batch_size = b
-        self.sequence_length = s
-        self.kv_sequence_length = s2
-        self.past_sequence_length = sp
-        self.num_heads = n
-        self.kv_num_heads = n2
-        self.head_size = h
+    batch_size: int = 0
+    sequence_length: int = 0
+    kv_sequence_length: int = 0
+    past_sequence_length: int = 0
+    num_heads: int = 0
+    kv_num_heads: int = 0
+    head_size: int = 0
 
 
+@dataclass
 class PromptConfig:
-    batch_size = 0
-    q_sequence_length = 0
-    kv_sequence_length = 0
-    buffer_sequence_length = 0
-    num_heads = 0
-    kv_num_heads = 0
-    head_size = 0
-
-    def __init__(self, b, sq, skv, sb, n, n2, h):
-        self.batch_size = b
-        self.q_sequence_length = sq
-        self.kv_sequence_length = skv
-        self.buffer_sequence_length = sb
-        self.num_heads = n
-        self.kv_num_heads = n2
-        self.head_size = h
+    batch_size: int = 0
+    q_sequence_length: int = 0
+    kv_sequence_length: int = 0
+    buffer_sequence_length: int = 0
+    num_heads: int = 0
+    kv_num_heads: int = 0
+    head_size: int = 0
 
 
 # LLaMA Microsoft model
@@ -173,6 +160,8 @@ def create_group_query_attention_graph_prompt(
                 "total_sequence_length",
                 "cos_cache" if rotary else "",
                 "sin_cache" if rotary else "",
+                "custom_pos_ids" if DO_TREE_ATTENTION else "",
+                "custom_causal_attention_mask" if DO_TREE_ATTENTION else ""
             ],
             ["output", "present_key", "present_value"],
             "GroupQueryAttention_0",
@@ -278,6 +267,20 @@ def create_group_query_attention_graph_prompt(
             ),
         ]
 
+    if DO_TREE_ATTENTION:
+        graph_input += [
+            helper.make_tensor_value_info(
+                "custom_pos_ids",
+                TensorProto.INT64,
+                [1, 1]
+            ),
+            helper.make_tensor_value_info(
+                "custom_causal_attention_mask",
+                ORT_TYPE,
+                [config.batch_size, config.kv_sequence_length, config.kv_sequence_length]
+            )
+        ]
+
     graph_output = [
         helper.make_tensor_value_info(
             "output",
@@ -334,11 +337,13 @@ def create_group_query_attention_graph_prompt(
     )
 
     model = helper.make_model(graph)
+
     return model.SerializeToString()
 
 
 def create_group_query_attention_graph_past(
     config,
+    seqlens_k,
     past_kv_format=Formats.BSNH,
     share_buffer=True,
     local_window_size=-1,
@@ -352,6 +357,7 @@ def create_group_query_attention_graph_past(
     present_kv_seqlen = (
         config.kv_sequence_length if share_buffer else config.kv_sequence_length + config.sequence_length
     )
+    max_seqlen_in_batch = seqlens_k.max().item() + 1
     nodes = [
         helper.make_node(
             "GroupQueryAttention",
@@ -365,6 +371,9 @@ def create_group_query_attention_graph_past(
                 "total_sequence_length",
                 "cos_cache" if rotary else "",
                 "sin_cache" if rotary else "",
+                "custom_pos_ids" if DO_TREE_ATTENTION else "",
+                "custom_causal_attention_mask" if DO_TREE_ATTENTION else ""
+
             ],
             ["output", "present_key", "present_value"],
             "GroupQueryAttention_0",
@@ -465,6 +474,20 @@ def create_group_query_attention_graph_past(
                     (math.floor(config.head_size / 16) * 16) // 2,
                 ],
             ),
+        ]
+
+    if DO_TREE_ATTENTION:
+        graph_input += [
+            helper.make_tensor_value_info(
+                "custom_pos_ids",
+                TensorProto.INT64,
+                [config.batch_size, config.sequence_length]
+            ),
+            helper.make_tensor_value_info(
+                "custom_causal_attention_mask",
+                ORT_TYPE,
+                [config.batch_size, config.sequence_length, max_seqlen_in_batch]
+            )
         ]
 
     graph_output = [
@@ -699,9 +722,22 @@ def gqa_prompt_func(
         softcap=softcap,
         use_smooth_softmax=use_smooth_softmax,
     )
+
     q = torch.reshape(q, (config.batch_size, config.q_sequence_length, -1))
     past_k = k.clone() if share_buffer else None
     past_v = v.clone() if share_buffer else None
+
+    # Construct position ids and attention mask data
+    custom_pos_ids = torch.tensor(data=[[0]], dtype=torch.int64)
+    custom_causal_attention_mask = torch.rand(config.batch_size, config.kv_sequence_length, config.kv_sequence_length, dtype=TORCH_TYPE)
+    custom_causal_attention_mask = torch.triu(custom_causal_attention_mask, diagonal=1)
+
+    # print(f"Tree causal attention mask shape {custom_causal_attention_mask.shape}")
+    # print(f"Seqlens_k: {seqlens_k}")
+    # print(f"Q shape: {q.shape}")
+    # print(f"total_sequence_length: {config.q_sequence_length}")
+    # print(f"kv_sequence_length: {config.kv_sequence_length}")
+
     if new_k is not None:
         new_k = torch.reshape(new_k, (config.batch_size, config.kv_sequence_length, -1))
         new_v = torch.reshape(new_v, (config.batch_size, config.kv_sequence_length, -1))
@@ -713,6 +749,7 @@ def gqa_prompt_func(
             "seqlens_k": seqlens_k.detach().cpu().numpy().astype(numpy.int32),
             "total_sequence_length": torch.tensor([config.q_sequence_length], dtype=torch.int32).detach().cpu().numpy(),
         }
+
         sess_options = SessionOptions()
         ort_session = InferenceSession(onnx_model_str, sess_options, providers=["CPUExecutionProvider"])
         io_binding = ort_session.io_binding()
@@ -726,6 +763,13 @@ def gqa_prompt_func(
             ort_inputs["sin_cache"] = sin.detach().cpu().numpy()
             io_binding.bind_cpu_input("cos_cache", ort_inputs["cos_cache"])
             io_binding.bind_cpu_input("sin_cache", ort_inputs["sin_cache"])
+
+        if DO_TREE_ATTENTION:
+            ort_inputs["custom_pos_ids"] = custom_pos_ids.detach().cpu().numpy()
+            ort_inputs["custom_causal_attention_mask"] = custom_causal_attention_mask.detach().cpu().numpy()
+            io_binding.bind_cpu_input("custom_pos_ids", ort_inputs["custom_pos_ids"])
+            io_binding.bind_cpu_input("custom_causal_attention_mask", ort_inputs["custom_causal_attention_mask"])
+
         io_binding.bind_cpu_input("query", ort_inputs["query"])
         io_binding.bind_input(
             "past_key", "cpu", 0, NUMPY_TYPE, ort_inputs["past_key"].shape(), ort_inputs["past_key"].data_ptr()
@@ -767,6 +811,13 @@ def gqa_prompt_func(
             ort_inputs["sin_cache"] = sin.detach().cpu().numpy()
             io_binding.bind_cpu_input("cos_cache", ort_inputs["cos_cache"])
             io_binding.bind_cpu_input("sin_cache", ort_inputs["sin_cache"])
+
+        if DO_TREE_ATTENTION:
+            ort_inputs["custom_pos_ids"] = custom_pos_ids.detach().cpu().numpy()
+            ort_inputs["custom_causal_attention_mask"] = custom_causal_attention_mask.detach().cpu().numpy()
+            io_binding.bind_cpu_input("custom_pos_ids", ort_inputs["custom_pos_ids"])
+            io_binding.bind_cpu_input("custom_causal_attention_mask", ort_inputs["custom_causal_attention_mask"])
+
         io_binding.bind_cpu_input("query", ort_inputs["query"])
         io_binding.bind_cpu_input("seqlens_k", ort_inputs["seqlens_k"])
         io_binding.bind_cpu_input("total_sequence_length", ort_inputs["total_sequence_length"])
@@ -800,6 +851,7 @@ def gqa_past_func(
     assert seqlens_k is not None
     onnx_model_str = create_group_query_attention_graph_past(
         config,
+        seqlens_k,
         past_kv_format,
         share_buffer,
         local_window_size=window_size,
@@ -812,6 +864,29 @@ def gqa_past_func(
     q = torch.reshape(q, (config.batch_size, config.sequence_length, -1))
     past_k = k.clone()
     past_v = v.clone()
+
+    # Construct position ids and mask data
+    custom_pos_ids_data = []
+    max_seqlen_in_batch = seqlens_k.max().item() + 1
+    custom_causal_attention_mask = torch.zeros((config.batch_size, config.sequence_length, max_seqlen_in_batch), dtype=TORCH_TYPE)
+    for b in range(config.batch_size):
+        total_seq_len = seqlens_k[b] + 1
+        past_seq_len = total_seq_len - config.sequence_length;
+        custom_pos_ids_data.append(list(range(past_seq_len, past_seq_len + config.sequence_length)))
+
+        # Configure mask
+        for i in range(config.sequence_length):
+            for j in range(past_seq_len + i + 1, max_seqlen_in_batch):
+                custom_causal_attention_mask[b][i][j] = -5000
+
+    custom_pos_ids = torch.tensor(data=custom_pos_ids_data, dtype=torch.int64)
+
+    # print(custom_causal_attention_mask[0])
+    # print(f"Tree causal attention mask shape: {custom_causal_attention_mask.shape}")
+    # print(f"Seqlens_k: {seqlens_k}")
+    # print(f"Q shape: {q.shape}")
+    # print(f"past k shape: {past_k.shape}")
+
     if new_k is not None:
         new_k = torch.reshape(new_k, (config.batch_size, config.sequence_length, -1))
         new_v = torch.reshape(new_v, (config.batch_size, config.sequence_length, -1))
@@ -839,6 +914,13 @@ def gqa_past_func(
             ort_inputs["sin_cache"] = sin.detach().cpu().numpy()
             io_binding.bind_cpu_input("cos_cache", ort_inputs["cos_cache"])
             io_binding.bind_cpu_input("sin_cache", ort_inputs["sin_cache"])
+
+        if DO_TREE_ATTENTION:
+            ort_inputs["custom_pos_ids"] = custom_pos_ids.detach().cpu().numpy()
+            ort_inputs["custom_causal_attention_mask"] = custom_causal_attention_mask.detach().cpu().numpy()
+            io_binding.bind_cpu_input("custom_pos_ids", ort_inputs["custom_pos_ids"])
+            io_binding.bind_cpu_input("custom_causal_attention_mask", ort_inputs["custom_causal_attention_mask"])
+
         io_binding.bind_cpu_input("query", ort_inputs["query"])
         io_binding.bind_input(
             "past_key", "cpu", 0, NUMPY_TYPE, ort_inputs["past_key"].shape(), ort_inputs["past_key"].data_ptr()
@@ -887,6 +969,13 @@ def gqa_past_func(
             ort_inputs["sin_cache"] = sin.detach().cpu().numpy()
             io_binding.bind_cpu_input("cos_cache", ort_inputs["cos_cache"])
             io_binding.bind_cpu_input("sin_cache", ort_inputs["sin_cache"])
+
+        if DO_TREE_ATTENTION:
+            ort_inputs["custom_pos_ids"] = custom_pos_ids.detach().cpu().numpy()
+            ort_inputs["custom_causal_attention_mask"] = custom_causal_attention_mask.detach().cpu().numpy()
+            io_binding.bind_cpu_input("custom_pos_ids", ort_inputs["custom_pos_ids"])
+            io_binding.bind_cpu_input("custom_causal_attention_mask", ort_inputs["custom_causal_attention_mask"])
+
         io_binding.bind_cpu_input("query", ort_inputs["query"])
         io_binding.bind_cpu_input("past_key", ort_inputs["past_key"])
         io_binding.bind_cpu_input("past_value", ort_inputs["past_value"])
@@ -1087,6 +1176,7 @@ def parity_check_gqa_prompt(
         dtype=TORCH_TYPE,
         requires_grad=False,
     )
+
     v = torch.randn(
         config.batch_size,
         config.buffer_sequence_length if past_format == Formats.BSNH else config.kv_num_heads,
@@ -1195,7 +1285,7 @@ def parity_check_gqa_prompt(
             None,
             cos,
             sin,
-            cache_seqlens,
+            cache_seqlens - 1,
             left_window_size,
             past_format,
             True,
@@ -1213,7 +1303,7 @@ def parity_check_gqa_prompt(
             new_v,
             cos,
             sin,
-            cache_seqlens,
+            cache_seqlens - 1,
             left_window_size,
             past_format,
             True,
@@ -1530,6 +1620,7 @@ def parity_check_gqa_past(
     if past_format == Formats.BNSH:
         k_cache_ref = k_cache_ref.transpose(1, 2)
         v_cache_ref = v_cache_ref.transpose(1, 2)
+    # TODO(derdeljan): Move random seqlens_k selection to config
     cache_seqlens = torch.randint(
         0,
         config.kv_sequence_length - config.sequence_length + 1,
@@ -1752,6 +1843,7 @@ def parity_check_gqa_past_no_buff(
         v_cache_ref = v_cache_ref.transpose(1, 2)
     k_cache_ref = torch.cat((k_cache_ref, new_k), 1)
     v_cache_ref = torch.cat((v_cache_ref, new_v), 1)
+    # TODO(derdeljan): Move random seqlens_k selection to config
     cache_seqlens = torch.randint(
         0,
         config.kv_sequence_length,
