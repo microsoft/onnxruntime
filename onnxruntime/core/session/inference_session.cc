@@ -1660,7 +1660,7 @@ Status PartitionOrtFormatModel(onnxruntime::Graph& graph,
                                                                            providers.Get(onnxruntime::kCpuExecutionProvider),
                                                                            &logger);
 
-  GraphPartitioner partitioner(kernel_registry_manager, providers, nullptr);
+  GraphPartitioner partitioner(kernel_registry_manager, providers, std::move(graph_optimizer_registry));
   ORT_RETURN_IF_ERROR(partitioner.Partition(graph,
                                             session_state.GetMutableFuncMgr(),
                                             transform_layout_fn,
