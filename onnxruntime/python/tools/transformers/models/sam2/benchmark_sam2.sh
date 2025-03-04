@@ -41,9 +41,6 @@ fi
 echo "install_dir: $install_dir"
 echo "cpu_or_gpu: $cpu_or_gpu"
 
-cuda_version=12.6
-cudnn_version=9.5
-
 # Function to check if a command exists
 command_exists() {
     command -v "$1" >/dev/null 2>&1
@@ -65,13 +62,16 @@ if ! command_exists pip; then
     exit 1
 fi
 
+cuda_version=12.6
+cudnn_version=9.5
+
 # Install CUDA 12.6
 install_cuda_12() {
-    if ! [ -d $install_dir/cuda${cuda_version} ]; then
-        pushd $install_dir || exit
+    if ! [ -d "$install_dir/cuda${cuda_version}" ]; then
+        pushd "$install_dir" || exit
         wget https://developer.download.nvidia.com/compute/cuda/12.6.2/local_installers/cuda_12.6.2_560.35.03_linux.run
-        sh cuda_12.6.2_560.35.03_linux.run --toolkit --toolkitpath=$install_dir/cuda${cuda_version} --silent --override --no-man-page
-        popd
+        sh cuda_12.6.2_560.35.03_linux.run --toolkit --toolkitpath="$install_dir/cuda${cuda_version}" --silent --override --no-man-page
+        popd || exit
     fi
     export PATH="$install_dir/cuda${cuda_version}/bin:$PATH"
     export LD_LIBRARY_PATH="$install_dir/cuda${cuda_version}/lib64:$LD_LIBRARY_PATH"
@@ -79,12 +79,12 @@ install_cuda_12() {
 
 # Install cuDNN 9.5
 install_cudnn_9() {
-    if ! [ -d $install_dir/cudnn${cudnn_version} ]; then
+    if ! [ -d "$install_dir/cudnn${cudnn_version}" ]; then
         pushd "$install_dir" || exit
         wget -q https://developer.download.nvidia.com/compute/cudnn/redist/cudnn/linux-x86_64/cudnn-linux-x86_64-9.5.0.50_cuda12-archive.tar.xz
         mkdir -p "$install_dir/cudnn${cudnn_version}"
         tar -Jxvf cudnn-linux-x86_64-9.5.0.50_cuda12-archive.tar.xz -C "$install_dir/cudnn${cudnn_version}" --strip=1
-        popd
+        popd || exit
     fi
     export LD_LIBRARY_PATH="$install_dir/cudnn${cudnn_version}/lib:$LD_LIBRARY_PATH"
 }
@@ -131,7 +131,7 @@ install_sam2() {
     cd "$sam2_dir" || exit
     pip show SAM-2 > /dev/null 2>&1 || pip install -e .
     [ ! -f checkpoints/sam2_hiera_large.pt ] && (cd checkpoints && sh ./download_ckpts.sh)
-    popd
+    popd || exit
 }
 
 # Download test image if not available
@@ -204,7 +204,11 @@ run_torch_gpu_benchmark() {
 }
 
 install_all() {
-    [ "$cpu_or_gpu" = "gpu" ] && install_gpu || install_cpu
+    if [ "$cpu_or_gpu" = "gpu" ]; then
+        install_gpu
+    else
+        install_cpu
+    fi
     install_sam2
     download_test_image
 }
@@ -248,11 +252,11 @@ fi
 
 # Build onnxruntime-gpu from source for profiling
 build_onnxruntime_gpu_for_profiling() {
-    pushd "$install_dir"
+    pushd "$install_dir" || exit
     if ! [ -d onnxruntime ]; then
         git clone https://github.com/microsoft/onnxruntime
     fi
-    cd onnxruntime
+    cd onnxruntime || exit
     pip install --upgrade pip cmake psutil setuptools wheel packaging ninja numpy
     build_dir=build/cuda${cuda_version}
     rm -rf ${build_dir}/Release/dist
@@ -267,7 +271,7 @@ build_onnxruntime_gpu_for_profiling() {
             --enable_cuda_line_info
     pip uninstall onnxruntime-gpu -y
     pip install ${build_dir}/Release/dist/onnxruntime_gpu-*-linux_x86_64.whl
-    popd
+    popd || exit
 }
 
 # Run profiling with NVTX.

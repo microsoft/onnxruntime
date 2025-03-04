@@ -91,6 +91,7 @@ def export_image_encoder_onnx(
     dynamic_batch_axes: bool = False,
     verbose: bool = False,
     dynamo: bool = False,
+    clear_dynamo_metadata: bool = False,
 ):
     image = random_sam2_input_image()
 
@@ -156,13 +157,13 @@ def export_image_encoder_onnx(
             if dynamic_batch_axes:
                 # Fix labels of dynamic axes since they can't be specified during Dynamo export currently
                 onnx_model.graph.input[0].type.tensor_type.shape.dim[0].dim_param = "batch_size"
-                onnx_model.graph.output[0].type.tensor_type.shape.dim[0].dim_param = "batch_size"
-                onnx_model.graph.output[1].type.tensor_type.shape.dim[0].dim_param = "batch_size"
-                onnx_model.graph.output[2].type.tensor_type.shape.dim[0].dim_param = "batch_size"
+                for i in range(3):
+                    onnx_model.graph.output[i].type.tensor_type.shape.dim[0].dim_param = "batch_size"
 
             onnx_model_helper = DynamoOnnxHelper(onnx_model)
             onnx_model_helper.convert_constants_to_initializers()
-            # onnx_model_helper.clear_metadata()
+            if clear_dynamo_metadata:
+                onnx_model_helper.clear_metadata()
 
             import os
 
