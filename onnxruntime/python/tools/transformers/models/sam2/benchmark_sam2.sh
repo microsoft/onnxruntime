@@ -172,7 +172,7 @@ run_ort_gpu_benchmark() {
 
     component="image_encoder"
     for dtype in fp32 fp16; do
-        $python benchmark_sam2.py --model_type "$model" --engine ort --sam2_dir "$sam2_dir" --repeats "$repeats" --use_gpu --dtype $dtype --component "$component" --onnx_path "${onnx_dir}/${model}_${component}_${dtype}_gpu.onnx" --use_cuda_graph
+        $python benchmark_sam2.py --model_type "$model" --engine ort --sam2_dir "$sam2_dir" --repeats "$repeats" --use_gpu --dtype "$dtype" --component "$component" --onnx_path "${onnx_dir}/${model}_${component}_${dtype}_gpu.onnx" --use_cuda_graph
     done
     # Test prefer_nhwc.
     $python benchmark_sam2.py --model_type "$model" --engine ort --sam2_dir "$sam2_dir" --repeats "$repeats" --use_gpu --dtype fp16 --component "$component" --onnx_path "${onnx_dir}/${model}_${component}_${dtype}_gpu.onnx" --use_cuda_graph --prefer_nhwc
@@ -180,7 +180,7 @@ run_ort_gpu_benchmark() {
     component="image_decoder"
     for dtype in fp32 fp16; do
         # TODO: decoder does not work with cuda graph
-        $python benchmark_sam2.py --model_type "$model" --engine ort --sam2_dir "$sam2_dir" --repeats "$repeats" --use_gpu --dtype $dtype --component "$component" --onnx_path "${onnx_dir}/${model}_${component}_${dtype}_gpu.onnx"
+        $python benchmark_sam2.py --model_type "$model" --engine ort --sam2_dir "$sam2_dir" --repeats "$repeats" --use_gpu --dtype "$dtype" --component "$component" --onnx_path "${onnx_dir}/${model}_${component}_${dtype}_gpu.onnx"
     done
     # Test prefer_nhwc.
     $python benchmark_sam2.py --model_type "$model" --engine ort --sam2_dir "$sam2_dir" --repeats "$repeats" --use_gpu --dtype fp16 --component "$component" --onnx_path "${onnx_dir}/${model}_${component}_${dtype}_gpu.onnx" --prefer_nhwc
@@ -192,14 +192,14 @@ run_torch_gpu_benchmark() {
     # Test PyTorch eager mode.
     for component in image_encoder image_decoder; do
         for dtype in bf16 fp32 fp16; do
-            $python benchmark_sam2.py --model_type "$model" --engine torch --sam2_dir "$sam2_dir" --repeats "$repeats" --use_gpu --dtype $dtype --component "$component"
+            $python benchmark_sam2.py --model_type "$model" --engine torch --sam2_dir "$sam2_dir" --repeats "$repeats" --use_gpu --dtype "$dtype" --component "$component"
         done
     done
 
     # Test different torch compile modes on image encoder
     for torch_compile_mode in none max-autotune reduce-overhead max-autotune-no-cudagraphs
     do
-        $python benchmark_sam2.py --model_type $model --engine torch --sam2_dir "$sam2_dir" --repeats "$repeats" --use_gpu --dtype fp16 --component image_encoder --torch_compile_mode $torch_compile_mode
+        $python benchmark_sam2.py --model_type "$model" --engine torch --sam2_dir "$sam2_dir" --repeats "$repeats" --use_gpu --dtype fp16 --component image_encoder --torch_compile_mode $torch_compile_mode
     done
 }
 
@@ -282,18 +282,18 @@ run_nvtx_profile() {
     envs="CUDA_VISIBLE_DEVICES=$device_id,ORT_ENABLE_CUDNN_FLASH_ATTENTION=1,LD_LIBRARY_PATH=$LD_LIBRARY_PATH,TORCHINDUCTOR_UNIQUE_KERNEL_NAMES=1"
     cuda_graph_trace=node
     for component in image_encoder image_decoder; do
-        sudo $install_dir/cuda${cuda_version}/bin/nsys profile --capture-range=nvtx --nvtx-capture='one_run' \
+        sudo "$install_dir/cuda${cuda_version}/bin/nsys" profile --capture-range=nvtx --nvtx-capture='one_run' \
             --gpu-metrics-devices $device_id --force-overwrite true \
             --sample process-tree --backtrace fp --stats true \
             -t cuda,cudnn,cublas,osrt,nvtx --cuda-memory-usage true --cudabacktrace all \
-            --cuda-graph-trace $cuda_graph_trace \
-            -e $envs,NSYS_NVTX_PROFILER_REGISTER_ONLY=0 \
-            -o sam2_fp16_profile_${component}_${engine}_${cpu_or_gpu} \
-            $python benchmark_sam2.py --model_type $model --engine $engine \
-                                        --sam2_dir  $sam2_dir --warm_up 1 --repeats 0 \
-                                        --onnx_path ${onnx_dir}/${model}_${component}_fp16_gpu.onnx \
-                                        --component $component \
-                                        --use_gpu --dtype fp16 --enable_nvtx_profile
+            --cuda-graph-trace "$cuda_graph_trace" \
+            -e "$envs,NSYS_NVTX_PROFILER_REGISTER_ONLY=0" \
+            -o "sam2_fp16_profile_${component}_${engine}_${cpu_or_gpu}" \
+            $python benchmark_sam2.py --model_type "$model" --engine "$engine" \
+                                      --sam2_dir "$sam2_dir" --warm_up 1 --repeats 0 \
+                                      --onnx_path "${onnx_dir}/${model}_${component}_fp16_gpu.onnx" \
+                                      --component "$component" \
+                                      --use_gpu --dtype fp16 --enable_nvtx_profile
     done
 }
 
@@ -301,11 +301,11 @@ run_ort_profile() {
     export ORT_ENABLE_CUDNN_FLASH_ATTENTION=1
     rm -f onnxruntime_*.json
     for component in image_encoder image_decoder; do
-        $python benchmark_sam2.py --model_type $model --engine ort \
-                                    --sam2_dir  $sam2_dir --warm_up 1 --repeats 0 \
-                                    --onnx_path ${onnx_dir}/${model}_${component}_fp16_gpu.onnx \
-                                    --component $component \
-                                    --use_gpu --dtype fp16 --enable_ort_profile
+        $python benchmark_sam2.py --model_type "$model" --engine ort \
+                                  --sam2_dir  "$sam2_dir" --warm_up 1 --repeats 0 \
+                                  --onnx_path "${onnx_dir}/${model}_${component}_fp16_gpu.onnx" \
+                                  --component "$component" \
+                                  --use_gpu --dtype fp16 --enable_ort_profile
         mv onnxruntime_profile*.json onnxruntime_$component.json
     done
 }
@@ -316,18 +316,18 @@ run_torch_profile() {
     export TORCH_LOGS="+inductor,+output_code"
     export TORCHINDUCTOR_UNIQUE_KERNEL_NAMES=1
     component=image_encoder
-    $python benchmark_sam2.py --model_type $model --engine torch \
-                                --sam2_dir  $sam2_dir --warm_up 1 --repeats 0 \
-                                --component $component \
-                                --torch_compile_mode max-autotune \
-                                --use_gpu --dtype fp16 --enable_torch_profile > torch_${component}_compiled_code.txt
+    $python benchmark_sam2.py --model_type "$model" --engine torch \
+                              --sam2_dir "$sam2_dir" --warm_up 1 --repeats 0 \
+                              --component "$component" \
+                              --torch_compile_mode max-autotune \
+                              --use_gpu --dtype fp16 --enable_torch_profile > "torch_${component}_compiled_code.txt"
 
     component=image_decoder
-    $python benchmark_sam2.py --model_type $model --engine torch \
-                                --sam2_dir  $sam2_dir --warm_up 1 --repeats 0 \
-                                --component $component \
-                                --torch_compile_mode none \
-                                --use_gpu --dtype fp16 --enable_torch_profile
+    $python benchmark_sam2.py --model_type "$model" --engine torch \
+                              --sam2_dir "$sam2_dir" --warm_up 1 --repeats 0 \
+                              --component "$component" \
+                              --torch_compile_mode none \
+                              --use_gpu --dtype fp16 --enable_torch_profile
 }
 
 run_nvtx_profilings() {
