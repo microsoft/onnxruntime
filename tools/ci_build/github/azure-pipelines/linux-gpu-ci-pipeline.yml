@@ -72,7 +72,7 @@ stages:
         Dockerfile: tools/ci_build/github/linux/docker/Dockerfile.manylinux2_28_cuda
         Context: tools/ci_build/github/linux/docker
         DockerBuildArgs: "--build-arg BASEIMAGE=$(docker_base_image) --build-arg BUILD_UID=$( id -u )"
-      Repository: $(Repository)
+        Repository: $(Repository)
 
     - task: Cache@2
       inputs:
