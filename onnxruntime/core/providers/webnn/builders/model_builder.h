@@ -76,7 +76,7 @@ class ModelBuilder {
 
   emscripten::val wnn_context_ = emscripten::val::undefined();
   emscripten::val wnn_builder_ = emscripten::val::undefined();
-  bool is_int64_supported_{false};
+  bool is_int64_supported_ = false;
   DataLayout preferred_layout_;
   WebnnDeviceType wnn_device_type_;
   emscripten::val wnn_limits_ = emscripten::val::undefined();

@@ -56,7 +56,8 @@ Status CastOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
       operand_type = "int32";
       break;
     case ONNX_NAMESPACE::TensorProto_DataType_INT64:
-      operand_type = "int64";
+      // If int64 is not supported by current context, use int32 instead.
+      operand_type = model_builder.IsInt64Supported() ? "int64" : "int32";
       break;
     case ONNX_NAMESPACE::TensorProto_DataType_UINT32:
       operand_type = "uint32";
@@ -73,10 +74,6 @@ Status CastOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
   emscripten::val options = emscripten::val::object();
   options.set("label", node.Name());
 
-  if (to_type == ONNX_NAMESPACE::TensorProto_DataType_INT64 && !model_builder.IsInt64Supported()) {
-    // Int64 is not supported by current context, use int32 instead.
-    operand_type = "int32";
-  }
   emscripten::val output =
       model_builder.GetBuilder().call<emscripten::val>("cast", input, emscripten::val(operand_type), options);
 

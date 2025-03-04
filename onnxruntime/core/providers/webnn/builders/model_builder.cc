@@ -204,15 +204,11 @@ Status ModelBuilder::RegisterInitializers() {
         }
 
         // If int64 is not supported, convert int64 to int32.
-        std::vector<int32_t> int32_data(num_elements);
+        std::vector<int32_t> int32_data;
         if (should_convert_int64_to_int32) {
           try {
-            std::transform(reinterpret_cast<int64_t*>(tensor_ptr),
-                           reinterpret_cast<int64_t*>(tensor_ptr) + static_cast<int64_t>(num_elements),
-                           int32_data.begin(),
-                           [](int64_t val) -> int32_t {
-                             return gsl::narrow<int32_t>(val);
-                           });
+            int32_data = GetNarrowedIntfromInt64<int32_t>(
+                gsl::span<const int64_t>(reinterpret_cast<int64_t*>(tensor_ptr), num_elements));
             LOGS(logger_, VERBOSE) << "Initializer '" << name << "' is converted from int64 to int32.";
           } catch (const std::exception& e) {
             return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, e.what());

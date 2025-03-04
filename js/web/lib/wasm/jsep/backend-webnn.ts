@@ -327,7 +327,7 @@ export class WebNNBackend {
       case 'int64':
         if (shouldConvertInt64ToInt32) {
           // Int64 is not supported by current context, use int32 instead.
-          bufferView = convertInt64ToInt32(new Uint8Array(buffer), false);
+          bufferView = convertInt64ToInt32(new Uint8Array(buffer), false) as Int32Array;
           desc.dataType = 'int32';
         } else {
           bufferView = new BigInt64Array(buffer);

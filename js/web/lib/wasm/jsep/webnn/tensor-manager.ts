@@ -151,7 +151,7 @@ class TensorWrapper {
     if (shouldConvertInt32ToInt64) {
       // This was an int64 data as saved as int32 as workaround, we need to read it as int64.
       const data = await this.mlContext.readTensor(this.mlTensor);
-      const int64Data = convertInt32ToInt64(new Uint8Array(data));
+      const int64Data = convertInt32ToInt64(new Uint8Array(data)) as Uint8Array;
 
       if (dstBuffer) {
         const targetBuffer =
@@ -264,9 +264,8 @@ class TensorIdTracker {
     if (this.wrapper) {
       if (this.wrapper.shouldConvertInt64toInt32) {
         // Convert int64 to int32.
-        const new_data = convertInt64ToInt32(data, true);
+        data = convertInt64ToInt32(data, true) as Uint8Array;
         this.wrapper.setIsInt64ToInt32Converted(true);
-        data = new_data instanceof Int32Array ? new Uint8Array(new_data.buffer) : new_data;
       }
       if (data.byteLength === this.wrapper.byteLength) {
         this.wrapper.write(data);
@@ -288,7 +287,7 @@ class TensorIdTracker {
     if (this.activeUpload) {
       // If this.activeUpload has been converted to int32, we need to convert it back to int64 data.
       const dstData = this.wrapper?.isInt64ToInt32Converted
-        ? convertInt32ToInt64(this.activeUpload)
+        ? (convertInt32ToInt64(this.activeUpload) as Uint8Array)
         : this.activeUpload;
 
       if (dstBuffer) {
@@ -470,7 +469,7 @@ export const createTensorManager = (...args: ConstructorParameters<typeof Tensor
 export function convertInt64ToInt32(data: Uint8Array, returnUint8 = true): Uint8Array | Int32Array {
   // Make sure it is a multiple of 8 bytes (BigInt64Array).
   if (data.byteLength % 8 !== 0) {
-    throw new Error('Invalid Uint8Array length, must be a multiple of 8 (BigInt).');
+    throw new Error('Invalid Uint8Array length - must be a multiple of 8 (BigInt).');
   }
 
   // Convert Uint8Array to BigInt64Array.
@@ -496,10 +495,10 @@ export function convertInt64ToInt32(data: Uint8Array, returnUint8 = true): Uint8
 }
 
 // Convert Int32Array buffer data to BigInt64Array buffer data.
-function convertInt32ToInt64(data: Uint8Array): Uint8Array {
+function convertInt32ToInt64(data: Uint8Array, returnUint8 = true): Uint8Array | BigInt64Array {
   // Make sure it is a multiple of 4 bytes (Int32Array).
   if (data.byteLength % 4 !== 0) {
-    throw new Error('Invalid Uint8Array length, must be a multiple of 4 (Int32).');
+    throw new Error('Invalid Uint8Array length - must be a multiple of 4 (Int32).');
   }
 
   // Convert Uint8Array to Int32Array.
@@ -509,6 +508,6 @@ function convertInt32ToInt64(data: Uint8Array): Uint8Array {
   // Convert Int32Array to BigInt64Array (same number of elements).
   const bigInt64Array = BigInt64Array.from(int32Array, BigInt);
 
-  // Return BigInt64Array buffer data.
-  return new Uint8Array(bigInt64Array.buffer);
+  // Return based on the requested format.
+  return returnUint8 ? new Uint8Array(bigInt64Array.buffer) : bigInt64Array;
 }
