@@ -378,36 +378,35 @@ Run `python tools/ci_build/build.py --help` for a description of all available b
 
 #### Windows
 ```
-build.bat --use_qnn --qnn_home=[QNN_SDK_PATH] --build_shared_lib --build_wheel --cmake_generator "Visual Studio 17 2022" --config Release --parallel --build_dir build\Windows
+.\build.bat --use_qnn --qnn_home=[QNN_SDK_PATH] --build_shared_lib --build_wheel --cmake_generator "Visual Studio 17 2022" --config Release --parallel --build_dir build\Windows
 ```
 #### Windows (Arm64 cross-compile target)
 ```
-build.bat --arm64 --use_qnn --qnn_home=[QNN_SDK_PATH] --build_shared_lib --build_wheel --cmake_generator "Visual Studio 17 2022" --config Release --parallel --build_dir build\Windows
+.\build.bat --arm64 --use_qnn --qnn_home=[QNN_SDK_PATH] --build_shared_lib --build_wheel --cmake_generator "Visual Studio 17 2022" --config Release --parallel --build_dir build\Windows
 ```
 #### Windows (Arm64EC cross-compile target)
 ```
-build.bat --arm64ec --use_qnn --qnn_home=[QNN_SDK_PATH] --build_shared_lib --build_wheel --cmake_generator "Visual Studio 17 2022" --config Release --parallel --build_dir build\Windows
+.\build.bat --arm64ec --use_qnn --qnn_home=[QNN_SDK_PATH] --build_shared_lib --build_wheel --cmake_generator "Visual Studio 17 2022" --config Release --parallel --build_dir build\Windows
 ```
 #### Windows (Arm64X cross-compile target)
 Use the `build_arm64x.bat` script to build Arm64X binaries. Arm64X binaries bundle both Arm64 and Arm64EC code, making Arm64X compatible with both Arm64 and Arm64EC processes on a Windows on Arm device. Refer to the [Arm64X PE files overview](https://learn.microsoft.com/en-us/windows/arm/arm64x-pe).
 
 ```
-build_arm64x.bat --use_qnn --qnn_home=[QNN_SDK_PATH] --build_shared_lib --build_wheel --cmake_generator "Visual Studio 17 2022" --config Release --parallel
+.\build_arm64x.bat --use_qnn --qnn_home=[QNN_SDK_PATH] --build_shared_lib --build_wheel --cmake_generator "Visual Studio 17 2022" --config Release --parallel
 ```
 #### Linux (x86_64)
 ```
-build.sh --use_qnn --qnn_home=[QNN_SDK_PATH] --build_shared_lib --build_wheel --config Release --parallel --build_dir build/Linux
+./build.sh --use_qnn --qnn_home=[QNN_SDK_PATH] --build_shared_lib --build_wheel --config Release --parallel --build_dir build/Linux
 ```
 #### Android (cross-compile):
 
 Please reference [Build OnnxRuntime For Android](android.md)
 ```
 # on Windows
-build.bat --build_shared_lib --android --config Release --use_qnn static_lib --qnn_home [QNN_SDK_PATH] --android_sdk_path [android_SDK path] --android_ndk_path [android_NDK path] --android_abi arm64-v8a --android_api [api-version] --cmake_generator Ninja --build_dir build\Android
+.\build.bat --build_shared_lib --android --config Release --use_qnn static_lib --qnn_home [QNN_SDK_PATH] --android_sdk_path [android_SDK path] --android_ndk_path [android_NDK path] --android_abi arm64-v8a --android_api [api-version] --cmake_generator Ninja --build_dir build\Android
 
 # on Linux
-build.sh --build_shared_lib --android --config Release --use_qnn static_lib --qnn_home [QNN_SDK_PATH] --android_sdk_path [android_SDK path] --android_ndk_path [android_NDK path] --android_abi arm64-v8a --android_api [api-version] --cmake_generator Ninja --build_dir build/Android
-
+./build.sh --build_shared_lib --android --config Release --use_qnn static_lib --qnn_home [QNN_SDK_PATH] --android_sdk_path [android_SDK path] --android_ndk_path [android_NDK path] --android_abi arm64-v8a --android_api [api-version] --cmake_generator Ninja --build_dir build/Android
 ```
 
 ---
