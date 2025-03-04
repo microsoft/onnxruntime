@@ -1264,7 +1264,7 @@ TEST_F(QnnHTPBackendTests, TestAlignedCustomCPUAllocator) {
   Ort::SessionOptions session_options;
   session_options.SetGraphOptimizationLevel(ORT_ENABLE_ALL);
 
-  // IMPORTANT: Tell ORT to use our custom allocator for all sessions created from this Env.
+  // IMPORTANT: Tell ORT to use our custom allocator for this session.
   session_options.AddConfigEntry(kOrtSessionOptionsConfigUseEnvAllocators, "1");
 
   // Configure QNN EP
