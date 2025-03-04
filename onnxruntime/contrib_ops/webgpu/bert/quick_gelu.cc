@@ -24,7 +24,7 @@ Status QuickGeluProgram::GenerateShaderCode(ShaderHelper& shader) const {
   const auto& x = shader.AddInput("x", ShaderUsage::UseUniform | ShaderUsage::UseValueTypeAlias);
   const auto& y = shader.AddOutput("y", ShaderUsage::UseUniform);
 
-  shader.AdditionalImplementation() << ErfImpl;
+  shader.AdditionalImplementation() << QuickGeluImpl;
   shader.MainFunctionBody() << shader.GuardAgainstOutOfBoundsWorkgroupSizes("uniforms.vec_size")
                             << "  var a = " << x.GetByOffset("global_idx") << ";\n"
                             << "  var alpha = " << alpha_ << ";\n"
