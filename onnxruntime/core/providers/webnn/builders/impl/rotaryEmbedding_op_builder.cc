@@ -275,7 +275,7 @@ Status RotaryEmbeddingOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_build
   }
 
   // Reshape the output to the original shape. The output shape is the same as the input shape.
-  const std::vector<uint32_t> output_shape = GetVecUint32FromVecInt64(input_shape);
+  const std::vector<uint32_t> output_shape = GetNarrowedIntfromInt64<uint32_t>(input_shape);
   emscripten::val reshape_output_options = emscripten::val::object();
   reshape_output_options.set("label", node_name + "_reshape_output");
   output = wnn_builder.call<emscripten::val>(
