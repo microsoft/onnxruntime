@@ -368,22 +368,35 @@ See more information on the QNN execution provider [here](../execution-providers
   * Example on Windows: `--qnn_home 'C:\Qualcomm\AIStack\QAIRT\2.31.0.250130'`
   * Example on Linux: `--qnn_home /opt/qcom/aistack/qairt/2.31.0.250130`
 * `--build_wheel`: Enables Python bindings and builds Python wheel.
-* `--arm64`: Cross-compile for ARM64.
+* `--arm64`: Cross-compile for Arm64.
+* `--arm64ec`: Cross-compile for Arm64EC. Arm64EC code runs with native performance and is interoperable with x64 code running under emulation within the same process on a Windows on Arm device. Refer to the [Arm64EC Overview](https://learn.microsoft.com/en-us/windows/arm/arm64ec).
+
+Run `python tools/ci_build/build.py --help` for a description of all available build options.
 
 ### Build Instructions
 {: .no_toc }
 
 #### Windows
 ```
-build.bat --use_qnn --qnn_home=[QNN_SDK_PATH] --build_shared_lib --build_wheel --cmake_generator "Visual Studio 17 2022" --config Release --build_dir build\Windows
+build.bat --use_qnn --qnn_home=[QNN_SDK_PATH] --build_shared_lib --build_wheel --cmake_generator "Visual Studio 17 2022" --config Release --parallel --build_dir build\Windows
 ```
-#### Windows (x86_64 host, ARM64 cross-compile target)
+#### Windows (Arm64 cross-compile target)
 ```
-build.bat --arm64 --use_qnn --qnn_home=[QNN_SDK_PATH] --build_shared_lib --build_wheel --cmake_generator "Visual Studio 17 2022" --config Release --build_dir build\Windows
+build.bat --arm64 --use_qnn --qnn_home=[QNN_SDK_PATH] --build_shared_lib --build_wheel --cmake_generator "Visual Studio 17 2022" --config Release --parallel --build_dir build\Windows
+```
+#### Windows (Arm64EC cross-compile target)
+```
+build.bat --arm64ec --use_qnn --qnn_home=[QNN_SDK_PATH] --build_shared_lib --build_wheel --cmake_generator "Visual Studio 17 2022" --config Release --parallel --build_dir build\Windows
+```
+#### Windows (Arm64X cross-compile target)
+Use the `build_arm64x.bat` script to build Arm64X binaries. Arm64X binaries bundle both Arm64 and Arm64EC code, making Arm64X compatible with both Arm64 and Arm64EC processes on a Windows on Arm device. Refer to the [Arm64X PE files overview](https://learn.microsoft.com/en-us/windows/arm/arm64x-pe).
+
+```
+build_arm64x.bat --use_qnn --qnn_home=[QNN_SDK_PATH] --build_shared_lib --build_wheel --cmake_generator "Visual Studio 17 2022" --config Release --parallel
 ```
 #### Linux (x86_64)
 ```
-build.sh --use_qnn --qnn_home=[QNN_SDK_PATH] --build_shared_lib --build_wheel --config Release --build_dir build/Linux
+build.sh --use_qnn --qnn_home=[QNN_SDK_PATH] --build_shared_lib --build_wheel --config Release --parallel --build_dir build/Linux
 ```
 #### Android (cross-compile):
 
