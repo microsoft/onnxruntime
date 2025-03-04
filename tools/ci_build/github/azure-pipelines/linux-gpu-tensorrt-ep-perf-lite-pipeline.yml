@@ -30,17 +30,11 @@ parameters:
     default: []
 
 variables:
-  - template: templates/common-variables.yml
   - name: docker_base_image
     ${{ if eq(parameters.CudaVersion, '11.8') }}:
       value: onnxruntimebuildcache.azurecr.io/internal/azureml/onnxruntime/build/cuda11_x64_almalinux8_gcc11:20250124.1
     ${{ if eq(parameters.CudaVersion, '12.2') }}:
       value: onnxruntimebuildcache.azurecr.io/internal/azureml/onnxruntime/build/cuda12_x64_ubi8_gcc12:20250124.1
-  - name: linux_trt_version
-    ${{ if eq(parameters.CudaVersion, '11.8') }}:
-      value: ${{ variables.linux_trt_version_cuda11 }}
-    ${{ if eq(parameters.CudaVersion, '12.2') }}:
-      value: ${{ variables.linux_trt_version_cuda12 }}
   - name: Repository
     ${{ if eq(parameters.CudaVersion, '11.8') }}:
       value: 'onnxruntimecuda11manylinuxbuild'
@@ -52,8 +46,6 @@ variables:
   - name: cudaEPOptionsArg
     ${{ if not(eq(length(parameters.CUDAEPOptions), 0)) }}:
       value: --cuda_ep_options ${{ join(',',parameters.CUDAEPOptions) }}
-  - name: image
-    value: ort-image-${{ parameters.BuildId }}
   - name: optional_arguments
     value: -a "-a -z -g $(optimizeGraph) -b $(bindInputs) $(trtEPOptionsArg) $(cudaEPOptionsArg)"
 
@@ -79,12 +71,7 @@ stages:
       parameters:
         Dockerfile: tools/ci_build/github/linux/docker/Dockerfile.manylinux2_28_cuda
         Context: tools/ci_build/github/linux/docker
-      DockerBuildArgs: "
-      --network=host
-      --build-arg BASEIMAGE=${{ variables.docker_base_image }}
-      --build-arg TRT_VERSION=${{ variables.linux_trt_version }}
-      --build-arg BUILD_UID=$( id -u )
-      "
+        DockerBuildArgs: "--build-arg BASEIMAGE=$(docker_base_image) --build-arg BUILD_UID=$( id -u )"
       Repository: $(Repository)
 
     - task: Cache@2
@@ -116,7 +103,7 @@ stages:
           -e NIGHTLY_BUILD \
           -e BUILD_BUILDNUMBER \
           -e CCACHE_DIR=/cache -w /onnxruntime_src \
-                  $(Repository) tools/ci_build/github/linux/build_tensorrt_ci.sh
+          $(Repository) tools/ci_build/github/linux/build_tensorrt_ci.sh
       workingDirectory: $(Build.SourcesDirectory)
       displayName: Build Onnxruntime
 
