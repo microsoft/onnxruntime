@@ -1656,7 +1656,7 @@ Status PartitionOrtFormatModel(onnxruntime::Graph& graph,
 #endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
 
   // Create GraphOptimizerRegistry instance for providing predefined graph optimizers and selection functions for EPs to lookup
-  auto graph_optimizer_registry = std::make_unique<GraphOptimizerRegistry>(sess_options,
+  auto graph_optimizer_registry = std::make_unique<GraphOptimizerRegistry>(&sess_options,
                                                                            providers.Get(onnxruntime::kCpuExecutionProvider),
                                                                            &logger);
 
