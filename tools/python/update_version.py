@@ -108,7 +108,7 @@ def update_version():
 
     # upgrade version for onnxruntime-react-native
     run(["npm", "version", version], cwd=os.path.join(js_root, "react_native"))
-    run(["npm", "update", "onnxruntime-common"], cwd=os.path.join(js_root, "react_native"))
+    run(["npm", "install", "--package-lock-only", "--ignore-scripts"], cwd=os.path.join(js_root, "react_native"))
 
     # upgrade version.ts in each package
     run(["npm", "ci"], cwd=js_root)
