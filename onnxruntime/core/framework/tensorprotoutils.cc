@@ -344,12 +344,9 @@ void ConvertRawDataInTensorProto(TensorProto* tensor,
   }
 
   if (ext_data_buf) {
-    if (ext_data_len % element_size != 0) {
-      return;
-    } else {
-      num_elements = ext_data_len / element_size;
-      bytes = reinterpret_cast<char*>(ext_data_buf);
-    }
+    ORT_ENFORCE(ext_data_len % element_size == 0);
+    num_elements = ext_data_len / element_size;
+    bytes = reinterpret_cast<char*>(ext_data_buf);
   }
   for (size_t i = 0; i < num_elements; ++i) {
     char* start_byte = bytes + i * element_size;
