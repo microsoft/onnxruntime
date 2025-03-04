@@ -46,9 +46,9 @@ void printDebugInfo(const ov::CompiledModel& obj) {
 }
 #endif
 
-std::shared_ptr<OVNetwork> OVCore::ReadModel(const std::string& model, const std::string& model_path) {
+std::shared_ptr<OVNetwork> OVCore::ReadModel(std::string&& model, const std::string& model_path) {
   try {
-    std::istringstream modelStringStream(model);
+    std::istringstream modelStringStream(std::move(model));
     std::istream& modelStream = modelStringStream;
     // Try to load with FrontEndManager
     ov::frontend::FrontEndManager manager;

@@ -69,14 +69,11 @@ BasicBackend::BasicBackend(std::unique_ptr<ONNX_NAMESPACE::ModelProto>& model_pr
                                                 subgraph_context_.subgraph_name);
       model_stream.reset();  // Delete stream after it is no longer needed
     } else {
-      std::shared_ptr<const OVNetwork> ov_model;
-      {
-        const std::string model = model_proto->SerializeAsString();
-        if (!subgraph_context.has_dynamic_input_shape) {
-          delete model_proto.release();
-        }
-        ov_model = CreateOVModel(model, session_context_, const_outputs_map_);
+      std::string model = model_proto->SerializeAsString();
+      if (!subgraph_context.has_dynamic_input_shape) {
+        model_proto.reset()
       }
+      auto ov_model = CreateOVModel(std::move(model), session_context_, const_outputs_map_);
       LOGS_DEFAULT(INFO) << log_tag << "IO Buffering Enabled";
       exe_network_ = OVCore::Get()->CompileModel(
           ov_model, remote_context_, subgraph_context_.subgraph_name);
@@ -108,14 +105,11 @@ BasicBackend::BasicBackend(std::unique_ptr<ONNX_NAMESPACE::ModelProto>& model_pr
                                                  subgraph_context_.subgraph_name);
     } else {  // For all other types use ov::ov_core read_model() to generate OV IR
               // followed by ov::ov_core compile_model()
-      std::shared_ptr<const OVNetwork> ov_model;
-      {
-        const std::string model = model_proto->SerializeAsString();
-        if (!subgraph_context.has_dynamic_input_shape) {
-          delete model_proto.release();
-        }
-        ov_model = CreateOVModel(std::move(model), session_context_, const_outputs_map_);
+      std::string model = model_proto->SerializeAsString();
+      if (!subgraph_context.has_dynamic_input_shape) {
+        model_proto.reset();
       }
+      auto ov_model = CreateOVModel(std::move(model), session_context_, const_outputs_map_);
       exe_network_ = OVCore::Get()->CompileModel(
           ov_model, hw_target, device_config, subgraph_context_.subgraph_name);
     }

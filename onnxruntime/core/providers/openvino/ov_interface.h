@@ -67,7 +67,7 @@ struct OVCore : WeakSingleton<OVCore> {
   ov::Core core;
 
   // OV Interface For Reading Model
-  std::shared_ptr<OVNetwork> ReadModel(const std::string& model_stream, const std::string& model_path);
+  std::shared_ptr<OVNetwork> ReadModel(std::string&& model_stream, const std::string& model_path);
 
   // OV Interface for Compiling OV Model Type
   OVExeNetwork CompileModel(std::shared_ptr<const OVNetwork>& ie_cnn_network,
