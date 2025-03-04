@@ -59,7 +59,7 @@ jobs:
     TODAY: $[format('{0:dd}{0:MM}{0:yyyy}', pipeline.startTime)]
   workspace:
     clean: all
-  pool: onnxruntime-Ubuntu2204-AMD-CPU
+  pool: onnxruntime-tensorrt-linuxbuild-T4
   steps:
 
   - checkout: self
@@ -76,7 +76,7 @@ jobs:
       --build-arg TRT_VERSION=${{ variables.linux_trt_version }}
       --build-arg BUILD_UID=$( id -u )
       "
-      Repository: onnxruntimetensorrt86gpubuild
+      Repository: onnxruntime_ep_perf_lite_build
 
   - template: templates/linux-build-step-with-cache.yml
     parameters:
@@ -99,7 +99,7 @@ jobs:
                   -e NIGHTLY_BUILD \
                   -e BUILD_BUILDNUMBER \
                   -e CCACHE_DIR=/cache -w /onnxruntime_src \
-                  onnxruntimetensorrt86gpubuild tools/ci_build/github/linux/build_tensorrt_ci.sh
+                  onnxruntime_ep_perf_lite_build tools/ci_build/github/linux/build_tensorrt_ci.sh
             workingDirectory: $(Build.SourcesDirectory)
             displayName: Build Onnxruntime with TensorRT EP
 
