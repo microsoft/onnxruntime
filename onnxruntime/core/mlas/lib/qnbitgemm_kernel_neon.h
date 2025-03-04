@@ -115,18 +115,35 @@ UsePacked_CompInt8(
 );
 
 void
-QuantizeA_Packed_CompInt8(
+QuantizeARow_CompInt8(
     size_t BlkLen,
     const float* A,
-    size_t CountM,
     size_t CountK,
     std::byte* QuantA
 );
 
+size_t
+SQ4BitGemmKernel_CompInt8(
+    size_t BlkLen,
+    const std::byte* QuantA,
+    const std::byte* QuantBData,
+    const float* QuantBScale,
+    const std::byte* QuantBZeroPoint,
+    float* C,
+    size_t CountM,
+    size_t CountN,
+    size_t /*CountK*/,
+    size_t BlockCountK,
+    size_t ldc,
+    const float* Bias
+);
+
+#ifdef USE_KLEIDIAI
 void
-QuantizeARow_CompInt8(
+QuantizeA_Packed_CompInt8(
     size_t BlkLen,
     const float* A,
+    size_t CountM,
     size_t CountK,
     std::byte* QuantA
 );
@@ -145,22 +162,7 @@ SQ4BitGemmKernel_Packed_CompInt8(
     size_t ldc,
     const float *Bias
 );
-
-size_t
-SQ4BitGemmKernel_CompInt8(
-    size_t BlkLen,
-    const std::byte* QuantA,
-    const std::byte* QuantBData,
-    const float* QuantBScale,
-    const std::byte* QuantBZeroPoint,
-    float* C,
-    size_t CountM,
-    size_t CountN,
-    size_t /*CountK*/,
-    size_t BlockCountK,
-    size_t ldc,
-    const float* Bias
-);
+#endif
 
 bool
 UseKleidiAI(size_t K, size_t BlkLen, bool HasZp);

@@ -24,8 +24,11 @@ Abstract:
 #include "qnbitgemm.h"
 #include "qnbitgemm_kernel_neon.h"
 #include "sqnbitgemm_q8_block.h"
+
+#ifdef USE_KLEIDIAI
 #include "kai/ukernels/matmul/pack/kai_lhs_quant_pack_qai8dxp_f32.h"
 #include "kai_ukernel_interface.h"
+#endif
 
 namespace sqnbitgemm_neon
 {
@@ -134,6 +137,7 @@ UsePacked_CompInt8(size_t K, size_t BlkLen, bool HasZp)
     return UseKleidiAI(K, BlkLen, HasZp);
 }
 
+#ifdef USE_KLEIDIAI
 void
 QuantizeA_Packed_CompInt8(
     size_t,
@@ -160,6 +164,7 @@ QuantizeA_Packed_CompInt8(
 
     kai_run_lhs_quant_pack_qai8dxp_f32(CountM, CountK, mr, kr, sr, 0, src_ptr, src_stride, dst_ptr);
 }
+#endif
 
 void
 QuantizeARow_CompInt8(
@@ -1434,6 +1439,7 @@ SQ4BitGemmKernel_CompInt8(
     return CountM;
 }
 
+#ifdef USE_KLEIDIAI
 void
 SQ4BitGemmKernel_Packed_CompInt8(
     size_t BlkLen,
@@ -1474,5 +1480,6 @@ SQ4BitGemmKernel_Packed_CompInt8(
         }
     }
 }
+#endif
 
 }  // namespace sqnbitgemm_neon
