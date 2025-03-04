@@ -800,8 +800,18 @@ Please note that there is a constraint of using this explicit shape range featur
 ### Data-dependant shape (DDS) ops
 DDS ops are NonMaxSuppression, NonZero and RoiAlign. The output shape of the DDS op is not known until runtime.
 To enable DDS ops run by TRT-EP/TRT not by CUDA-EP, please check following two things:
-* For TensorRT < 10.7, you need to build ORT against [onnx-tensorrt OSS parser](https://github.com/onnx/onnx-tensorrt) and make sure using 
-*
+* For TensorRT < 10.7, you need to build ORT against [onnx-tensorrt OSS parser](https://github.com/onnx/onnx-tensorrt) and make sure using the 10.X-GA-ORT-DDS branch.
+* For ORT, by default, it relies on TRT parser to determine whether the DDS ops will be run by TRT. But please note that ORT 1.20.1 and 1.20.2 are exceptions where they implicitly filters out DDS ops from being run by TRT
+  due to the [known performance issue](https://onnxruntime.ai/docs/execution-providers/TensorRT-ExecutionProvider.html#known-issues).
+
+To avoid the performance issue mentioned above. please use `trt_op_types_to_exclude` so that DDS ops will be run by CUDA EP or CPU EP:
+```bash
+    # e.g.
+    # -r: set up test repeat time
+    # -e: set up execution provider
+    # -i: set up params for execution provider options
+    ./onnxruntime_perf_test -r 1 -e tensorrt -i "trt_op_types_to_exclude|NonMaxSuppression,NonZero,RoiAlign" /path/to/onnx/your_model.onnx
+```
 
 ## Samples
 
