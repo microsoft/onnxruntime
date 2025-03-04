@@ -44,7 +44,7 @@ Status QuickGelu::ComputeInternal(onnxruntime::webgpu::ComputeContext& context) 
 
   const auto vec_size = (data_size + 3) / 4;
 
-  QuickGeluProgram program{};
+  QuickGeluProgram program{alpha_};
   program.AddInput({input, ProgramTensorMetadataDependency::Type, {vec_size}, 4})
       .AddOutput({output, ProgramTensorMetadataDependency::None, {vec_size}, 4})
       .SetDispatchGroupSize((vec_size + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE)
