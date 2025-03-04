@@ -130,7 +130,7 @@ constexpr const char GeluExpr[] = "0.5 * a * (1.0 + erf_v(a * 0.7071067811865475
 constexpr const char FastGeluExpr[] = "a * (0.5 + 0.5 * tanh_v(a * (0.035677408136300125 * a * a + 0.7978845608028654)))";
 
 // quick GELU expression, depending on quick_gelu_impl
-constexpr const char QuickGeluExpr[] = "quick_gelu_impl(a, alpha)"
+constexpr const char QuickGeluExpr[] = "quick_gelu_impl(a, alpha)";
 
 }  // namespace webgpu
 }  // namespace onnxruntime
