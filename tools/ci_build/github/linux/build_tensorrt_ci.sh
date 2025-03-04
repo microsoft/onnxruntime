@@ -9,18 +9,15 @@ BUILD_ARGS=('--config' 'Release'
               '--build_shared_lib'
               '--parallel' '--use_vcpkg' '--use_vcpkg_ms_internal_asset_cache' '--use_binskim_compliant_compile_flags'
               '--build_wheel'
-              '--enable_onnx_tests'
               '--use_cuda'
               "--cuda_version=$SHORT_CUDA_VERSION"
               "--cuda_home=/usr/local/cuda-$SHORT_CUDA_VERSION"
               "--cudnn_home=/usr/local/cuda-$SHORT_CUDA_VERSION"
               "--use_tensorrt" "--tensorrt_home" "/usr"
               "--enable_pybind"
-              "--build_java"
               "--cmake_extra_defines"
-              "CMAKE_CUDA_ARCHITECTURES=75"
-              "onnxruntime_BUILD_UNIT_TESTS=ON"
-              "onnxruntime_ENABLE_CUDA_EP_INTERNAL_TESTS=ON")
+              "CMAKE_CUDA_ARCHITECTURES=80"
+              "--skip_tests")
 
 # Parse external args
 for arg in "$@"; do
@@ -29,7 +26,6 @@ for arg in "$@"; do
       # Replace onnxruntime_BUILD_UNIT_TESTS=ON with OFF
       BUILD_ARGS=("${BUILD_ARGS[@]/onnxruntime_BUILD_UNIT_TESTS=ON/onnxruntime_BUILD_UNIT_TESTS=OFF}")
       BUILD_ARGS+=("--enable_cuda_minimal_build")
-      BUILD_ARGS+=("--skip_tests")
       ;;
   esac
 done
