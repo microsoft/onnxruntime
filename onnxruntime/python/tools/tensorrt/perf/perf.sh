@@ -65,4 +65,5 @@ setup() {
 }
 
 setup
+which python; \
 python benchmark_wrapper.py -r both -t 1200 -m $MODEL_PATH -o result/$OPTION $OPTIONAL_ARGS
