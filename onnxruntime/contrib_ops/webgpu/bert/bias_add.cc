@@ -59,7 +59,7 @@ Status BiasAdd::ComputeInternal(onnxruntime::webgpu::ComputeContext& context) co
   auto* output = context.Output(0, input_shape);
   int64_t output_size = output->Shape().Size() / 4;
 
-  BiasAddProgram program{channels};
+  BiasAddProgram program{};
   program.AddInputs({{input}, {bias}, {residual}})
       .AddOutput({output})
       .SetDispatchGroupSize((output_size + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE)
