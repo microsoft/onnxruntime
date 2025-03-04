@@ -31,7 +31,7 @@ class QuickGelu final : public WebGpuKernel {
   Status ComputeInternal(ComputeContext& context) const override;
 
  private:
- float alpha_;
+  float alpha_;
 };
 
 }  // namespace webgpu
