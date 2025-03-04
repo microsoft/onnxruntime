@@ -192,7 +192,13 @@ int real_main(int argc, char* argv[]) {
     std::vector<std::basic_string<ORTCHAR_T>> ep_ctx_files;
     ep_ctx_files.reserve(test_config.model_file_paths.size());
     for (auto model_path : test_config.model_file_paths) {
-      ep_ctx_files.push_back(model_path + ORT_TSTR("_ctx.onnx"));
+      auto pos = model_path.find_last_of(ORT_TSTR("."));
+      if (pos != std::string::npos) {
+        model_path = model_path.substr(0, pos) + ORT_TSTR("_ctx.onnx");
+      } else {
+        model_path = model_path + ORT_TSTR("_ctx.onnx");
+      }
+      ep_ctx_files.push_back(model_path);
     }
 
     // Get the last context binary file name
