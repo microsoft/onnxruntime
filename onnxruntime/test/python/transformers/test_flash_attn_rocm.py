@@ -24,7 +24,7 @@ import onnxruntime
 )
 class TestRocmGQA(unittest.TestCase):
     @parameterized.expand(gqa_no_past_flash_attention_test_cases())
-    def test_gqa_no_past_flash_attention(self, _, config, local, rotary, rotary_interleaved, packed, softcap):
+    def test_gqa_no_past_flash_attention(self, _, config, local, causal, rotary, rotary_interleaved, packed, softcap):
         config.ep = "ROCMExecutionProvider"
         print("------- FLASH ATTENTION (PROMPT CASE) --------")
 
@@ -37,6 +37,7 @@ class TestRocmGQA(unittest.TestCase):
             packed=packed,
             rtol=0.001,
             atol=0.005,
+            causal=causal,
         )
         parity_check_gqa_prompt_no_buff(
             config,
@@ -47,10 +48,11 @@ class TestRocmGQA(unittest.TestCase):
             packed=packed,
             rtol=0.001,
             atol=0.005,
+            causal=causal,
         )
 
     @parameterized.expand(gqa_past_flash_attention_test_cases())
-    def test_gqa_past_flash_attention(self, _, config, local, rotary, rotary_interleaved, packed, softcap):
+    def test_gqa_past_flash_attention(self, _, config, local, causal, rotary, rotary_interleaved, packed, softcap):
         config.ep = "ROCMExecutionProvider"
         print("------- FLASH ATTENTION (TOKEN GEN) -------")
 
@@ -63,6 +65,7 @@ class TestRocmGQA(unittest.TestCase):
             packed=packed,
             rtol=0.001,
             atol=0.005,
+            causal=causal,
         )
         parity_check_gqa_past_no_buff(
             config,
@@ -73,6 +76,7 @@ class TestRocmGQA(unittest.TestCase):
             packed=packed,
             rtol=0.001,
             atol=0.005,
+            causal=causal,
         )
 
 
