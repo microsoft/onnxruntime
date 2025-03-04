@@ -20,6 +20,7 @@ struct ComputeCapability;
 class KernelRegistry;
 struct KernelCreateInfo;
 class Node;
+class GraphOptimizerRegistry;
 }  // namespace onnxruntime
 #else
 #include <memory>
@@ -133,6 +134,7 @@ class IExecutionProvider {
   virtual std::vector<std::unique_ptr<ComputeCapability>>
   GetCapability(const onnxruntime::GraphViewer& graph_viewer,
                 const IKernelLookup& kernel_lookup,
+                const GraphOptimizerRegistry& graph_optimizer_registry,
                 IResourceAccountant* resource_accountant = nullptr) const;
 
   /**

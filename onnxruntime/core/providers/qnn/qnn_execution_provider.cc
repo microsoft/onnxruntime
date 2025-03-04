@@ -655,6 +655,7 @@ static void PartitionCtxModel(const onnxruntime::GraphViewer& graph_viewer,
 std::vector<std::unique_ptr<ComputeCapability>>
 QNNExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_viewer,
                                     const IKernelLookup& /*kernel_lookup*/,
+                                    const GraphOptimizerRegistry& /* graph_optimizer_registry */,
                                     IResourceAccountant* /* resource_accountant */) const {
   std::vector<std::unique_ptr<ComputeCapability>> result;
 

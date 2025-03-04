@@ -19,22 +19,9 @@ using SelectionFunc = std::function<std::vector<std::unique_ptr<ComputeCapabilit
  */
 class GraphOptimizerRegistry {
  public:
-  /**
-   * Get the GraphOptimizerRegistry instance.
-   * Note: Please call Create() to create the GraphOptimizerRegistry instance before using Get().
-   */
-  static const GraphOptimizerRegistry& Get() {
-    ORT_ENFORCE(graph_optimizer_registry_);
-    return *graph_optimizer_registry_;
-  }
-
-  /**
-   * Create and initialize the graph optimizer registry instance as a singleton.
-   * The registry also keeps the references to session options, cpu_ep and logger tha are required by some optimizers.
-   */
-  static Status Create(const onnxruntime::SessionOptions* sess_options,
-                       const onnxruntime::IExecutionProvider* cpu_ep,
-                       const logging::Logger* logger);
+  GraphOptimizerRegistry(const onnxruntime::SessionOptions* sess_options,
+                         const onnxruntime::IExecutionProvider* cpu_ep,
+                         const logging::Logger* logger);
 
   /**
    * Get optimizer selection function. If the optimizer name can't be found, return nullopt.
@@ -65,10 +52,6 @@ class GraphOptimizerRegistry {
   static std::mutex registry_mutex_;
 
   InlinedHashMap<std::string, SelectionFunc> transformer_name_to_selection_func_;
-
-  GraphOptimizerRegistry(const onnxruntime::SessionOptions* sess_options,
-                         const onnxruntime::IExecutionProvider* cpu_ep,
-                         const logging::Logger* logger);
 
   /**
    * Create pre-defined selection functions.

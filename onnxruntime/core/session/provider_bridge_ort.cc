@@ -240,11 +240,11 @@ struct ProviderHostImpl : ProviderHost {
   const OrtApiBase* OrtGetApiBase() override { return ::OrtGetApiBase(); }
 
   Status GetOptimizerByName(const std::string& name,
+                            const GraphOptimizerRegistry& graph_optimizer_registry,
                             SelectionFunc& selection_func) override {
     std::string optimizer_name(name);
 
-    auto optimizer_registry = onnxruntime::GraphOptimizerRegistry::Get();
-    auto func = optimizer_registry.GetSelectionFunc(optimizer_name);
+    auto func = graph_optimizer_registry.GetSelectionFunc(optimizer_name);
 
     if (func.has_value()) {
       selection_func = func.value();
@@ -377,8 +377,9 @@ struct ProviderHostImpl : ProviderHost {
   std::vector<std::unique_ptr<ComputeCapability>> IExecutionProvider__GetCapability(
       const IExecutionProvider* p, const onnxruntime::GraphViewer& graph_viewer,
       const IExecutionProvider::IKernelLookup& kernel_lookup,
+      const GraphOptimizerRegistry& graph_optimizer_registry,
       IResourceAccountant* resource_accountant) override {
-    return p->IExecutionProvider::GetCapability(graph_viewer, kernel_lookup, resource_accountant);
+    return p->IExecutionProvider::GetCapability(graph_viewer, kernel_lookup, graph_optimizer_registry, resource_accountant);
   }
 
   common::Status IExecutionProvider__Compile(IExecutionProvider* p, const std::vector<IExecutionProvider::FusedNodeAndGraph>& fused_nodes_and_graphs, std::vector<NodeComputeInfo>& node_compute_funcs) override {

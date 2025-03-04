@@ -1228,8 +1228,13 @@ common::Status InferenceSession::TransformGraph(onnxruntime::Graph& graph, bool 
   // 6. insert cast nodes (required transformer).
   // 7. insert copy nodes (required transformer).
 
+  // Create GraphOptimizerRegistry instance for providing predefined graph optimizers and selection functions for EPs to lookup
+  auto graph_optimizer_registry = std::make_unique<GraphOptimizerRegistry>(&session_options_,
+                                                                           execution_providers_.Get(onnxruntime::kCpuExecutionProvider),
+                                                                           session_logger_);
+  GraphPartitioner partitioner(kernel_registry_manager_, execution_providers_, std::move(graph_optimizer_registry));
+
   // Run Ahead Of time function inlining
-  GraphPartitioner partitioner(kernel_registry_manager_, execution_providers_);
   if (const bool disable_aot_function_inlining =
           session_options_.config_options.GetConfigOrDefault(
               kOrtSessionOptionsDisableAheadOfTimeFunctionInlining, "0") == "1";
@@ -1649,8 +1654,7 @@ Status PartitionOrtFormatModel(onnxruntime::Graph& graph,
     };
   }
 #endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
-
-  GraphPartitioner partitioner(kernel_registry_manager, providers);
+  GraphPartitioner partitioner(kernel_registry_manager, providers, nullptr);
   ORT_RETURN_IF_ERROR(partitioner.Partition(graph,
                                             session_state.GetMutableFuncMgr(),
                                             transform_layout_fn,
@@ -1887,9 +1891,6 @@ common::Status InferenceSession::Initialize() {
                                                                minimal_build_optimization_handling,
                                                                record_runtime_optimization_produced_op_schema,
                                                                *session_logger_));
-
-      // Create predefined graph optimizers and selection functions for EPs to lookup.
-      ORT_RETURN_IF_ERROR_SESSIONID_(onnxruntime::GraphOptimizerRegistry::Create(&session_options_, execution_providers_.Get(onnxruntime::kCpuExecutionProvider), session_logger_));
 
 #ifdef USE_DML
       const IExecutionProvider* dmlExecutionProvider = execution_providers_.Get(kDmlExecutionProvider);

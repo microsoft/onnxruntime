@@ -142,13 +142,15 @@ struct GetCapabilityForEPParams {
   std::reference_wrapper<const layout_transformation::DebugGraphFn> debug_graph_fn;
 #endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
   IResourceAccountant* resource_accountant;
+  std::reference_wrapper<GraphOptimizerRegistry> graph_optimizer_registry;
 };
 
 auto get_capabilities = [](const IExecutionProvider& ep,
                            const GraphViewer& graph_viewer,
                            const IExecutionProvider::IKernelLookup& kernel_lookup,
-                           IResourceAccountant* resource_accountant) {
-  auto capabilities = ep.GetCapability(graph_viewer, kernel_lookup, resource_accountant);
+                           IResourceAccountant* resource_accountant,
+                           const GraphOptimizerRegistry& graph_optimizer_registry) {
+  auto capabilities = ep.GetCapability(graph_viewer, kernel_lookup, graph_optimizer_registry, resource_accountant);
 
   // In theory an EP could return an empty capability. Remove those.
   capabilities.erase(std::remove_if(capabilities.begin(), capabilities.end(),
@@ -182,10 +184,11 @@ static Status GetCapabilityForEP(const GetCapabilityForEPParams& params, const l
 
   auto& graph = params.graph.get();
   auto& capabilities = params.capabilities.get();
+  const auto& graph_optimizer_registry = params.graph_optimizer_registry.get();
 
   {
     const GraphViewer graph_viewer(graph);
-    capabilities = get_capabilities(current_ep, graph_viewer, kernel_lookup, params.resource_accountant);
+    capabilities = get_capabilities(current_ep, graph_viewer, kernel_lookup, params.resource_accountant, graph_optimizer_registry);
 
     if (capabilities.empty()) {
       return Status::OK();
@@ -223,7 +226,7 @@ static Status GetCapabilityForEP(const GetCapabilityForEPParams& params, const l
     capabilities.clear();
 
     const GraphViewer graph_viewer(graph);
-    capabilities = get_capabilities(current_ep, graph_viewer, kernel_lookup, params.resource_accountant);
+    capabilities = get_capabilities(current_ep, graph_viewer, kernel_lookup, params.resource_accountant, graph_optimizer_registry);
 
     // all nodes with an index >= first_new_node with domain of kMSInternalNHWCDomain should be in the capabilities
     InlinedHashSet<NodeIndex> new_nodes_in_capabilities;
@@ -261,6 +264,7 @@ static Status GetCapabilityForEP(const GetCapabilityForEPParams& params, const l
 static Status GetCapabilityForEPForAotInlining(const GraphViewer& graph_viewer,
                                                const KernelRegistryManager& kernel_registry_mgr,
                                                const IExecutionProvider& current_ep,
+                                               GraphOptimizerRegistry& graph_optimizer_registry,
                                                const logging::Logger& logger,
                                                std::vector<std::unique_ptr<ComputeCapability>>& capabilities) {
   const auto& ep_type = current_ep.Type();
@@ -272,7 +276,7 @@ static Status GetCapabilityForEPForAotInlining(const GraphViewer& graph_viewer,
                                    logger};
 
   // TODO: Provide EP with a capability to look inside the functions.
-  capabilities = get_capabilities(current_ep, graph_viewer, kernel_lookup, nullptr);
+  capabilities = get_capabilities(current_ep, graph_viewer, kernel_lookup, nullptr, graph_optimizer_registry);
 
   return Status::OK();
 }
@@ -401,7 +405,8 @@ static Status PartitionOnnxFormatModelImpl(Graph& graph, FuncManager& func_mgr,
                                            int& fused_node_unique_id,
                                            const layout_transformation::TransformLayoutFunction& transform_layout_fn,
                                            const layout_transformation::DebugGraphFn& debug_graph_fn,
-                                           const logging::Logger& logger, IResourceAccountant* resource_accountant) {
+                                           const logging::Logger& logger, IResourceAccountant* resource_accountant,
+                                           GraphOptimizerRegistry& graph_optimizer_registry) {
   // handle testing edge case where optimizers or constant lifting results in graph with no nodes.
   // doing it here saves all providers checking for this in GetCapability
   if (graph.NumberOfNodes() == 0) {
@@ -415,7 +420,7 @@ static Status PartitionOnnxFormatModelImpl(Graph& graph, FuncManager& func_mgr,
       // we pass through the FuncManager from the top level graph
       ORT_RETURN_IF_ERROR(PartitionOnnxFormatModelImpl(*subgraph, func_mgr, kernel_registry_mgr,
                                                        fused_kernel_registry, current_ep, mode, fused_node_unique_id,
-                                                       transform_layout_fn, debug_graph_fn, logger, resource_accountant));
+                                                       transform_layout_fn, debug_graph_fn, logger, resource_accountant, graph_optimizer_registry));
     }
   }
 
@@ -439,7 +444,8 @@ static Status PartitionOnnxFormatModelImpl(Graph& graph, FuncManager& func_mgr,
       mode,
       std::cref(transform_layout_fn),
       std::cref(debug_graph_fn),
-      resource_accountant};
+      resource_accountant,
+      std::ref(graph_optimizer_registry)};
 
   ORT_RETURN_IF_ERROR(GetCapabilityForEP(get_capability_params, logger));
   if (capabilities.empty()) {
@@ -475,7 +481,7 @@ static Status PartitionOnnxFormatModelImpl(Graph& graph, FuncManager& func_mgr,
     if (sub_graph_available_for_assignment && !capability->nodes_to_optimize.empty()) {
       for (auto& optimization_cc : capability->nodes_to_optimize) {
         if (optimization_cc->optimization_func) {
-          auto status = optimization_cc->optimization_func(graph, *optimization_cc, *capability, logger);
+          auto status = optimization_cc->optimization_func(graph, *optimization_cc, *capability, graph_optimizer_registry);
           if (status != Status::OK()) {
             return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, type, "The optimization function failed to finish.");
           }
@@ -625,6 +631,7 @@ static Status InlineNodes(Graph& graph, bool& modified_graph) {
 static Status InlineFunctionsAOTImpl(const ExecutionProviders& execution_providers,
                                      const KernelRegistryManager& kernel_registry_mgr,
                                      Graph& graph,
+                                     GraphOptimizerRegistry& graph_optimizer_registry,
                                      const logging::Logger& logger,
                                      InlinedHashSet<std::string>& not_inlined,
                                      size_t& inlined_count) {
@@ -641,6 +648,7 @@ static Status InlineFunctionsAOTImpl(const ExecutionProviders& execution_provide
       ORT_RETURN_IF_ERROR(InlineFunctionsAOTImpl(execution_providers,
                                                  kernel_registry_mgr,
                                                  *subgraph,
+                                                 graph_optimizer_registry,
                                                  logger,
                                                  not_inlined,
                                                  inlined_count));
@@ -665,7 +673,7 @@ static Status InlineFunctionsAOTImpl(const ExecutionProviders& execution_provide
   InlinedHashSet<NodeIndex> claimed_by_ep;
   for (const auto& ep : execution_providers) {
     std::vector<std::unique_ptr<ComputeCapability>> capabilities;
-    ORT_RETURN_IF_ERROR(GetCapabilityForEPForAotInlining(graph_viewer, kernel_registry_mgr, *ep, logger,
+    ORT_RETURN_IF_ERROR(GetCapabilityForEPForAotInlining(graph_viewer, kernel_registry_mgr, *ep, graph_optimizer_registry, logger,
                                                          capabilities));
     for (auto& capability : capabilities) {
       const auto& nodes = capability->sub_graph->nodes;
@@ -832,6 +840,7 @@ static Status PartitionOnnxFormatModel(const PartitionParams& partition_params, 
                                        const ExecutionProviders& execution_providers,
                                        KernelRegistryManager& kernel_registry_manager,
                                        const std::optional<ResourceAccountantMap>& acc_map,
+                                       GraphOptimizerRegistry& graph_optimizer_registry,
                                        const logging::Logger& logger) {
   bool modified_graph = false;
 
@@ -855,7 +864,7 @@ static Status PartitionOnnxFormatModel(const PartitionParams& partition_params, 
                                                        fused_kernel_registry, *ep, mode, fused_node_unique_id,
                                                        transform_layout_function,
                                                        partition_params.debug_graph_fn,
-                                                       logger, resource_accountant));
+                                                       logger, resource_accountant, graph_optimizer_registry));
     }
 
     // expand any nodes that have an ONNX function definition but no matching ORT kernel.
@@ -876,6 +885,7 @@ static Status PartitionOnnxFormatModel(const PartitionParams& partition_params, 
 static Status PartitionOrtFormatModelImpl(const PartitionParams& partition_params,
                                           KernelRegistryManager& kernel_registry_mgr,
                                           IExecutionProvider& current_ep,
+                                          GraphOptimizerRegistry& graph_optimizer_registry,
                                           const logging::Logger& logger) {
   // handle testing edge case where optimizers or constant lifting results in graph with no nodes.
   // doing it here saves all providers checking for this in GetCapability
@@ -891,7 +901,7 @@ static Status PartitionOrtFormatModelImpl(const PartitionParams& partition_param
       PartitionParams subgraph_partition_params = partition_params;
       subgraph_partition_params.graph = std::ref(subgraph);
       ORT_RETURN_IF_ERROR(PartitionOrtFormatModelImpl(subgraph_partition_params, kernel_registry_mgr,
-                                                      current_ep, logger));
+                                                      current_ep, graph_optimizer_registry, logger));
     }
   }
 
@@ -907,7 +917,8 @@ static Status PartitionOrtFormatModelImpl(const PartitionParams& partition_param
       std::cref(partition_params.transform_layout_function),
       std::cref(partition_params.debug_graph_fn),
 #endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
-      nullptr
+      nullptr,
+      std::ref(graph_optimizer_registry)
   };
   // clang-format on
 
@@ -1000,10 +1011,11 @@ static Status PartitionOrtFormatModelImpl(const PartitionParams& partition_param
 static Status PartitionOrtFormatModel(const PartitionParams& partition_params,
                                       const ExecutionProviders& execution_providers,
                                       KernelRegistryManager& kernel_registry_manager,
+                                      GraphOptimizerRegistry& graph_optimizer_registry,
                                       const logging::Logger& logger) {
   // process full graph with each EP
   for (const auto& ep : execution_providers) {
-    ORT_RETURN_IF_ERROR(PartitionOrtFormatModelImpl(partition_params, kernel_registry_manager, *ep, logger));
+    ORT_RETURN_IF_ERROR(PartitionOrtFormatModelImpl(partition_params, kernel_registry_manager, *ep, graph_optimizer_registry, logger));
   }
 
   return Status::OK();
@@ -1030,6 +1042,7 @@ Status GraphPartitioner::InlineFunctionsAOT(Model& model,
     ORT_RETURN_IF_ERROR(InlineFunctionsAOTImpl(execution_providers,
                                                kernel_registry_manager,
                                                graph,
+                                               *graph_optimizer_registry_,
                                                logger,
                                                not_inlined,
                                                inlined_count));
@@ -1086,8 +1099,7 @@ Status GraphPartitioner::Partition(Graph& graph, FuncManager& func_mgr,
       std::ref(*fused_kernel_registry),
       std::ref(fused_node_unique_id),
       std::cref(transform_layout_function),
-      std::cref(debug_graph_fn),
-  };
+      std::cref(debug_graph_fn)};
 
 #else  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
 
@@ -1115,7 +1127,7 @@ Status GraphPartitioner::Partition(Graph& graph, FuncManager& func_mgr,
     ORT_RETURN_IF_ERROR(NodeStatsRecorder::CreateAccountants(config_options, graph.ModelPath(), ep_acc_map));
 
     ORT_RETURN_IF_ERROR(PartitionOnnxFormatModel(partition_params, mode, providers_, kernel_registry_mgr_,
-                                                 ep_acc_map, logger));
+                                                 ep_acc_map, *graph_optimizer_registry_, logger));
 
     if (ep_context_enabled) {
       std::string ep_context_path = config_options.GetConfigOrDefault(kOrtSessionOptionEpContextFilePath, "");
@@ -1129,7 +1141,7 @@ Status GraphPartitioner::Partition(Graph& graph, FuncManager& func_mgr,
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "ONNX models are not supported in this build.");
 #endif  //! defined(ORT_MINIMAL_BUILD)
   } else {
-    ORT_RETURN_IF_ERROR(PartitionOrtFormatModel(partition_params, providers_, kernel_registry_mgr_, logger));
+    ORT_RETURN_IF_ERROR(PartitionOrtFormatModel(partition_params, providers_, kernel_registry_mgr_, *graph_optimizer_registry_, logger));
   }
 
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)

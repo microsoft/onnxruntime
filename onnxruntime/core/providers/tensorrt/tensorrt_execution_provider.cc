@@ -2452,6 +2452,7 @@ bool TensorrtExecutionProvider::DetectTensorRTGraphCycles(SubGraphCollection_t& 
 std::vector<std::unique_ptr<ComputeCapability>>
 TensorrtExecutionProvider::GetCapability(const GraphViewer& graph,
                                          const IKernelLookup& /*kernel_lookup*/,
+                                         const GraphOptimizerRegistry& graph_optimizer_registry,
                                          IResourceAccountant* /* resource_accountant */) const {
   // Construct subgraph capability from node list
   std::vector<std::unique_ptr<ComputeCapability>> result;
@@ -2679,7 +2680,7 @@ TensorrtExecutionProvider::GetCapability(const GraphViewer& graph,
   if (dla_enable_) {
     std::string optimizer_name = "ConstantFoldingDQ";
     const std::unordered_map<std::string, std::string> key_value_config;
-    auto status = g_host->GetOptimizerByName(optimizer_name, selection_func);
+    auto status = g_host->GetOptimizerByName(optimizer_name, graph_optimizer_registry, selection_func);
     if (status == Status::OK()) {
       if (selection_func) {
         selection_cc = selection_func(graph, key_value_config);
