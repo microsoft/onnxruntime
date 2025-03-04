@@ -127,7 +127,7 @@ OpenVINOExecutionProvider::GetCapability(const GraphViewer& graph_viewer,
 common::Status OpenVINOExecutionProvider::Compile(
     const std::vector<FusedNodeAndGraph>& fused_nodes,
     std::vector<NodeComputeInfo>& node_compute_funcs) {
-  std::cerr << "[Log] Enter OpenVINOExecutionProvider::Compile()\n";
+  //std::cerr << "[Log] Enter OpenVINOExecutionProvider::Compile()\n";
   auto& logger = *GetLogger();
   Status status = Status::OK();
 
