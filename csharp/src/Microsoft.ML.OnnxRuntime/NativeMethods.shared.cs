@@ -847,7 +847,7 @@ namespace Microsoft.ML.OnnxRuntime
         /// Creates an instance of OrtSession with provided parameters
         /// </summary>
         /// <param name="environment">Native OrtEnv instance</param>
-        /// <param name="modelData">Byte array correspoonding to the model</param>
+        /// <param name="modelData">Byte array corresponding to the model</param>
         /// <param name="modelSize">Size of the model in bytes</param>
         /// <param name="sessionOptions">Native SessionOptions instance</param>
         /// <param name="prepackedWeightsContainer">Native OrtPrepackedWeightsContainer instance</param>
@@ -1258,7 +1258,7 @@ namespace Microsoft.ML.OnnxRuntime
         /// </summary>
         /// <param name="options">Native SessionOptions instance</param>
         /// <param name="name">Name of the initializer</param>
-        /// <param name="ortValue">Native OrtValue instnce</param>
+        /// <param name="ortValue">Native OrtValue instance</param>
         [UnmanagedFunctionPointer(CallingConvention.Winapi)]
         public delegate IntPtr /*(OrtStatus*)*/ DOrtAddInitializer(IntPtr /*(OrtSessionOptions*)*/ options,
                                                                    byte[] /*(const char*)*/ name,

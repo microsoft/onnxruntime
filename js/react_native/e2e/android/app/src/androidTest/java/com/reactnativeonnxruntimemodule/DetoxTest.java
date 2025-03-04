@@ -2,7 +2,7 @@
 // Detox requires the project to have a single dummy native Android Test with some special content,
 // which will be picked up by the testRunner.
 
-package com.example.reactnativeonnxruntimemodule;
+package com.reactnativeonnxruntimemodule;
 
 import android.content.Intent;
 
