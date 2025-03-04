@@ -53,6 +53,9 @@ Status GroupQueryAttention<T>::Compute(OpKernelContext* context) const {
   const Tensor* cos_cache = context->Input<Tensor>(7);
   const Tensor* sin_cache = context->Input<Tensor>(8);
 
+  const Tensor* custom_pos_ids = context->Input<Tensor>(9);
+  const Tensor* custom_causal_attention_mask = context->Input<Tensor>(10);
+
   GroupQueryAttentionParameters parameters = {};
   ORT_RETURN_IF_ERROR(group_query_attention_helper::CheckInputs(query,
                                                                 key,
@@ -130,7 +133,12 @@ Status GroupQueryAttention<T>::Compute(OpKernelContext* context) const {
     // Generate position ids
     const int pos_ids_size = parameters.is_first_prompt ? 1 : batch_size * sequence_length;
     std::vector<int64_t> pos_ids(pos_ids_size);
-    if (parameters.is_first_prompt) {
+    const int64_t* pos_ids_data = pos_ids.data();
+
+    if (custom_pos_ids != nullptr) {
+      ORT_RETURN_IF_NOT(pos_ids_size == custom_pos_ids->Shape()[0] * custom_pos_ids->Shape()[1]);
+      pos_ids_data = custom_pos_ids->Data<int64_t>();
+    } else if (parameters.is_first_prompt) {
       pos_ids[0] = static_cast<int64_t>(0);
     } else {
       // Note: As of now, continuous decoding supports only batch size 1 and token generation supports only sequence length 1.
@@ -146,6 +154,7 @@ Status GroupQueryAttention<T>::Compute(OpKernelContext* context) const {
         }
       }
     }
+
     // Initialize separate buffers for rotary embeddings
     const T* q_input;
     const T* k_input;
@@ -165,7 +174,7 @@ Status GroupQueryAttention<T>::Compute(OpKernelContext* context) const {
     }
     // Run rotary embedding for Q and K
     ORT_RETURN_IF_ERROR(RunRotaryEmbedding<T>(tp, rotary_params, q_input,
-                                              pos_ids.data(), cos_cache->Data<T>(),
+                                              pos_ids_data, cos_cache->Data<T>(),
                                               sin_cache->Data<T>(), q_rotary, rotary_interleaved_));
 
     rotary_params.num_heads = kv_num_heads_;
@@ -174,7 +183,7 @@ Status GroupQueryAttention<T>::Compute(OpKernelContext* context) const {
       rotary_params.batch_stride = kv_num_heads_ * rotary_params.head_stride;
     }
     ORT_RETURN_IF_ERROR(RunRotaryEmbedding<T>(tp, rotary_params, k_input,
-                                              pos_ids.data(), cos_cache->Data<T>(),
+                                              pos_ids_data, cos_cache->Data<T>(),
                                               sin_cache->Data<T>(), k_rotary, rotary_interleaved_));
     // Pack V into rotary QKV buffer
     if (packed_qkv) {
@@ -192,9 +201,10 @@ Status GroupQueryAttention<T>::Compute(OpKernelContext* context) const {
   }
 
   ORT_RETURN_IF_ERROR(context->GetTempSpaceAllocator(&allocator));
+
   // Compute the attention score and apply the score to V
   return ApplyAttention(q_rotary, packed_qkv ? nullptr : k_rotary, packed_qkv ? nullptr : V.Get<Tensor>().Data<T>(),
-                        past_key, past_value, output, present_k, present_v,
+                        custom_causal_attention_mask, past_key, past_value, output, present_k, present_v,
                         seqlens_k, parameters, allocator, context);
 }
 }  // namespace contrib
