@@ -26,13 +26,21 @@ Status BiasAddProgram::GenerateShaderCode(ShaderHelper& shader) const {
   const ShaderVariableHelper& output = shader.AddOutput("output");
 
   shader.MainFunctionBody() << shader.GuardAgainstOutOfBoundsWorkgroupSizes("uniforms.output_size")
-                            << "const channels = uniforms.channels / 4u;\n"
                             << "let value = " << input.GetByOffset("global_idx")
-                            << "  + " << bias.GetByOffset("global_idx % channels")
+                            << "  + " << bias.GetByOffset("global_idx % uniforms.channels")
                             << "  + " << residual.GetByOffset("global_idx") << ";\n"
                             << output.SetByOffset("global_idx", "value");
 
   return Status::OK();
+}
+
+static int64_t GetMaxComponents(int64_t size) {
+  if (size % 4 == 0) {
+    return 4;
+  } else if (size % 2 == 0) {
+    return 2;
+  }
+  return 1;
 }
 
 Status BiasAdd::ComputeInternal(onnxruntime::webgpu::ComputeContext& context) const {
@@ -47,9 +55,8 @@ Status BiasAdd::ComputeInternal(onnxruntime::webgpu::ComputeContext& context) co
   }
 
   int64_t channels = input_shape[2];
-  if (channels != 320 && channels != 640 && channels != 1280) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "BiasAdd input should have 320, 640 or 1280 channels.");
-  }
+  int64_t components = GetMaxComponents(channels);
+  channels /= components;
 
   TensorShape bias_shape = bias->Shape();
   if (bias_shape.NumDimensions() != 1 || bias_shape[0] != channels) {
