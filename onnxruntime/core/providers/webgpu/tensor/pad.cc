@@ -4,6 +4,7 @@
 #include <string>
 #include <vector>
 
+#include "core/util/math.h"
 #include "core/providers/webgpu/tensor/pad.h"
 #include "core/providers/webgpu/shader_helper.h"
 #include "core/providers/webgpu/webgpu_supported_types.h"
@@ -137,12 +138,17 @@ Status Pad::ComputeInternal(ComputeContext& context) const {
 
   // Read constant value and bitcast to uint32.
   uint32_t value_uint32 = 0;
-  bool is_float16 = false;
+  const auto data_type = input_tensor->GetElementType();
+  bool is_float16 = data_type == ONNX_NAMESPACE::TensorProto_DataType_FLOAT16;
+  const Tensor* value_tensor = context.Input<Tensor>(2);
   if (!is_dynamic_) {
-    value_uint32 = *reinterpret_cast<const uint32_t*>(&value_);
-  } else {
-    const auto data_type = input_tensor->GetElementType();
-    const Tensor* value_tensor = context.Input<Tensor>(2);
+    if (is_float16) {
+      uint16_t value = math::floatToHalf(value_);
+      std::memcpy(&value_uint32, &value, sizeof(value));
+    } else {
+      value_uint32 = *reinterpret_cast<const uint32_t*>(&value_);
+    }
+  } else if (value_tensor) {
     ORT_ENFORCE(value_tensor->DataType() == input_tensor->DataType() && value_tensor->Shape().Size() == 1,
                 "Value tensor should be a 1D tensor of size 1 with the same type as that of the input tensor");
     switch (data_type) {
@@ -157,7 +163,6 @@ Status Pad::ComputeInternal(ComputeContext& context) const {
       case ONNX_NAMESPACE::TensorProto_DataType_FLOAT16: {
         uint16_t value = value_tensor->Data<MLFloat16>()[0].val;
         std::memcpy(&value_uint32, &value, sizeof(value));
-        is_float16 = true;
       } break;
       case ONNX_NAMESPACE::TensorProto_DataType_UINT32: {
         value_uint32 = value_tensor->Data<uint32_t>()[0];
