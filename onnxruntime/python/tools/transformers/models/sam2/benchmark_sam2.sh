@@ -260,9 +260,9 @@ build_onnxruntime_gpu_for_profiling() {
     pip install --upgrade pip cmake psutil setuptools wheel packaging ninja numpy
     build_dir=build/cuda${cuda_version}
     rm -rf ${build_dir}/Release/dist
-    sh build.sh --config Release --build_dir ${build_dir} --build_shared_lib --parallel \
-            --use_cuda --cuda_version ${cuda_version} --cuda_home $install_dir/cuda${cuda_version} \
-            --cudnn_home $install_dir/cudnn${cudnn_version} \
+    sh build.sh --config Release --build_dir "${build_dir}" --build_shared_lib --parallel \
+            --use_cuda --cuda_version ${cuda_version} --cuda_home "$install_dir/cuda${cuda_version}" \
+            --cudnn_home "$install_dir/cudnn${cudnn_version}" \
             --build_wheel --skip_tests \
             --cmake_generator Ninja \
             --compile_no_warning_as_error \
@@ -270,7 +270,7 @@ build_onnxruntime_gpu_for_profiling() {
             --cmake_extra_defines onnxruntime_ENABLE_NVTX_PROFILE=ON \
             --enable_cuda_line_info
     pip uninstall onnxruntime-gpu -y
-    pip install ${build_dir}/Release/dist/onnxruntime_gpu-*-linux_x86_64.whl
+    pip install "${build_dir}/Release/dist/onnxruntime_gpu-*-linux_x86_64.whl"
     popd || exit
 }
 
