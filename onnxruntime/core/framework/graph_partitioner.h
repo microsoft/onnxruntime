@@ -29,8 +29,10 @@ class GraphPartitioner {
                    const ExecutionProviders& providers,
                    std::unique_ptr<GraphOptimizerRegistry> graph_optimizer_registry)
       : kernel_registry_mgr_(kernel_registry_mgr),
-        providers_(providers),
-        graph_optimizer_registry_(std::move(graph_optimizer_registry)) {
+        providers_(providers) {
+    if (graph_optimizer_registry) {
+      graph_optimizer_registry_ = std::move(graph_optimizer_registry);
+    }
   }
 
   // Run partitioning.
