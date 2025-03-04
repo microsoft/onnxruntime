@@ -3,7 +3,6 @@
 
 #include "core/providers/webgpu/reduction/reduction_ops.h"
 #include <sstream>
-#include <algorithm>
 #include "core/framework/data_transfer_manager.h"
 #include "core/providers/webgpu/data_transfer.h"
 #include "core/providers/webgpu/shader_helper.h"
@@ -65,9 +64,14 @@ Status ReduceKernelProgram::GenerateShaderCode(ShaderHelper& shader) const {
       l++;
     }
   }
+  std::stringstream input_indices_init_value;
+  for (int i = 0; i < input_rank - 1; ++i) {
+    input_indices_init_value << "0, ";
+  }
+  input_indices_init_value << "0";
   shader.MainFunctionBody() << shader.GuardAgainstOutOfBoundsWorkgroupSizes("uniforms.output_size")
                             << "let output_indices: output_indices_t = " << output.OffsetToIndices("global_idx") << ";\n"
-                            << "var input_indices: input_indices_t = input_indices_t(0);\n"
+                            << "var input_indices: input_indices_t = input_indices_t(" << input_indices_init_value.str() << ");\n"
                             << loop_header << loop_body << loop_footer;
   shader.MainFunctionBody() << output.SetByOffset("global_idx", "output_value");
   return Status::OK();
