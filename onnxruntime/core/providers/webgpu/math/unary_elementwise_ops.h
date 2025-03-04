@@ -104,11 +104,33 @@ fn elu_v(v: vec4<x_element_t>) -> vec4<x_element_t> {
 }
 )";
 
+constexpr const char QuickGeluImpl[] = R"(
+  const one = x_element_t(1.0);
+  const zero = x_element_t(0.0);
+
+  fn quick_gelu_impl(x: vec4<x_element_t>, alpha: f32) -> vec4<x_element_t> {
+    const alpha_vec = vec4<x_element_t>(alpha);
+    let v = x * alpha_vec;
+    var x1 : vec4<x_element_t>;
+    for (var i = 0; i < 4; i = i + 1) {
+      if (v[i] >= zero) {
+        x1[i] = one / (one + exp(-v[i]));
+      } else {
+        x1[i] = one - one / (one + exp(v[i]));
+      }
+    }
+    return x * x1;
+  }
+)";
+
 // default GELU expression, depending on ErfImpl
 constexpr const char GeluExpr[] = "0.5 * a * (1.0 + erf_v(a * 0.7071067811865475))";
 
 // fast GELU expression, depending on TanhImpl
 constexpr const char FastGeluExpr[] = "a * (0.5 + 0.5 * tanh_v(a * (0.035677408136300125 * a * a + 0.7978845608028654)))";
+
+// quick GELU expression, depending on quick_gelu_impl
+constexpr const char QuickGeluExpr[] = "quick_gelu_impl(a, alpha)"
 
 }  // namespace webgpu
 }  // namespace onnxruntime
