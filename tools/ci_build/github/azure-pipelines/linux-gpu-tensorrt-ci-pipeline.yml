@@ -76,7 +76,7 @@ jobs:
       --build-arg TRT_VERSION=${{ variables.linux_trt_version }}
       --build-arg BUILD_UID=$( id -u )
       "
-      Repository: onnxruntime_ep_perf_lite_build
+      Repository: onnxruntimetensorrt86gpubuild
 
   - template: templates/linux-build-step-with-cache.yml
     parameters:
@@ -99,7 +99,7 @@ jobs:
                   -e NIGHTLY_BUILD \
                   -e BUILD_BUILDNUMBER \
                   -e CCACHE_DIR=/cache -w /onnxruntime_src \
-                  onnxruntime_ep_perf_lite_build tools/ci_build/github/linux/build_tensorrt_ci.sh
+                  onnxruntimetensorrt86gpubuild tools/ci_build/github/linux/build_tensorrt_ci.sh
             workingDirectory: $(Build.SourcesDirectory)
             displayName: Build Onnxruntime with TensorRT EP
 
