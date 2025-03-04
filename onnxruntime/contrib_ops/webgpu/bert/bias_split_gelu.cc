@@ -20,6 +20,15 @@ ONNX_OPERATOR_KERNEL_EX(
         .TypeConstraint("T", WebGpuSupportedFloatTypes()),
     BiasSplitGelu);
 
+static int64_t GetMaxComponents(int64_t size) {
+  if (size % 4 == 0) {
+    return 4;
+  } else if (size % 2 == 0) {
+    return 2;
+  }
+  return 1;
+}
+
 Status BiasSplitGeluProgram::GenerateShaderCode(ShaderHelper& shader) const {
   const ShaderVariableHelper& input = shader.AddInput("input");
   const ShaderVariableHelper& bias = shader.AddInput("bias");
@@ -29,7 +38,7 @@ Status BiasSplitGeluProgram::GenerateShaderCode(ShaderHelper& shader) const {
 
   shader.MainFunctionBody() << shader.GuardAgainstOutOfBoundsWorkgroupSizes("uniforms.output_size")
                             << "const M_SQRT2: f32 = sqrt(2.0);\n"
-                            << "const halfChannels = (uniforms.channels / 4 / 2)u;\n"
+                            << "const halfChannels = uniforms.channels / 2u;\n"
                             << "let biasIdx = global_idx % halfChannels;\n"
                             << "let batchIndex = global_idx / halfChannels;\n"
                             << "let inputOffset = biasIdx + batchIndex * halfChannels * 2;\n"
@@ -52,9 +61,8 @@ Status BiasSplitGelu::ComputeInternal(onnxruntime::webgpu::ComputeContext& conte
   }
 
   int64_t channels = input_shape[2];
-  if (channels != 2560 && channels != 5120 && channels != 10240) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "BiasSplitGelu hidden state should be 2560, 5120 or 10240.");
-  }
+  int64_t components = GetMaxComponents(channels);
+  channels /= components;
 
   TensorShape bias_shape = bias->Shape();
   if (bias_shape.NumDimensions() != 1 || bias_shape[0] != channels) {
