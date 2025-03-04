@@ -20,7 +20,7 @@ class QuickGeluProgram final : public Program<QuickGeluProgram> {
   WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES({"vec_size", ProgramUniformVariableDataType::Uint32});
 
  private:
- float alpha_;
+  float alpha_;
 };
 
 class QuickGelu final : public WebGpuKernel {
@@ -31,7 +31,7 @@ class QuickGelu final : public WebGpuKernel {
   Status ComputeInternal(ComputeContext& context) const override;
 
  private:
- float alpha_;
+  float alpha_;
 };
 
 }  // namespace webgpu
