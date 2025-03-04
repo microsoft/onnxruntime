@@ -1306,11 +1306,6 @@ class TestInferenceSession(unittest.TestCase):
         )
 
     def test_register_custom_ops_library(self):
-        available_eps = C.get_available_providers()
-        # FIXME: Enable OpenVINOExecutionProvider build
-        if "OpenVINOExecutionProvider" in available_eps:
-            return
-
         if sys.platform.startswith("win"):
             shared_library = "custom_op_library.dll"
             if not os.path.exists(shared_library):
@@ -1725,8 +1720,7 @@ class TestInferenceSession(unittest.TestCase):
     def test_register_custom_e_ps_library(self):
         available_eps = C.get_available_providers()
         # skip amd gpu build
-        # FIXME: Enable OpenVINOExecutionProvider build
-        if "ROCMExecutionProvider" in available_eps or "OpenVINOExecutionProvider" in available_eps:
+        if "ROCMExecutionProvider" in available_eps:
             return
 
         if sys.platform.startswith("win"):
