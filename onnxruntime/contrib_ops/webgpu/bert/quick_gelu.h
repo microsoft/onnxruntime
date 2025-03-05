@@ -15,12 +15,9 @@ using onnxruntime::webgpu::ComputeContext;
 
 class QuickGeluProgram final : public Program<QuickGeluProgram> {
  public:
-  QuickGeluProgram(float alpha) : Program{"QuickGelu"}, alpha_(alpha) {}
+  QuickGeluProgram() : Program{"QuickGelu"} {}
   Status GenerateShaderCode(ShaderHelper& sh) const override;
   WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES({"vec_size", ProgramUniformVariableDataType::Uint32});
-
- private:
-  float alpha_;
 };
 
 class QuickGelu final : public WebGpuKernel {

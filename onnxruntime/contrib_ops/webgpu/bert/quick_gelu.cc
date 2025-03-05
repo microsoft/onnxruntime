@@ -27,7 +27,6 @@ Status QuickGeluProgram::GenerateShaderCode(ShaderHelper& shader) const {
   shader.AdditionalImplementation() << QuickGeluImpl;
   shader.MainFunctionBody() << shader.GuardAgainstOutOfBoundsWorkgroupSizes("uniforms.vec_size")
                             << "  var a = " << x.GetByOffset("global_idx") << ";\n"
-                            << "  var alpha = " << alpha_ << ";\n"
                             << y.SetByOffset("global_idx", onnxruntime::webgpu::QuickGeluExpr);
 
   return Status::OK();
@@ -44,7 +43,7 @@ Status QuickGelu::ComputeInternal(onnxruntime::webgpu::ComputeContext& context) 
 
   const auto vec_size = (data_size + 3) / 4;
 
-  QuickGeluProgram program{alpha_};
+  QuickGeluProgram program{};
   program.AddInput({input, ProgramTensorMetadataDependency::Type, {vec_size}, 4})
       .AddOutput({output, ProgramTensorMetadataDependency::None, {vec_size}, 4})
       .SetDispatchGroupSize((vec_size + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE)
