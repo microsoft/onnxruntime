@@ -9,7 +9,7 @@ nav_order: 4
 
 # How to build model assets for Snapdragon NPU devices
 
-These instructions demonstrate generating the Llama 3.2 3B model. You can use the same instructions to generate the Phi-3.5 model.
+These instructions demonstrate generating the Llama 3.2 3B model. You can use the same instructions to generate the Phi-3.5 mini instruct model.
 
 ## Setup and pre-requisites
 
@@ -90,11 +90,13 @@ These instructions demonstrate generating the Llama 3.2 3B model. You can use th
    }
    ```
 
+## Add other assets
+
+Download assets from https://huggingface.co/onnx-community/Llama-3.2-3B-instruct-hexagon-npu-assets 
+
 ## Check model assets
 
 Once the above instructions are complete you should have the following model assets
-
-TODO: need somewhere to host the other model assets
 
 * `genai_config.json`
 * `tokenizer.json`
@@ -107,3 +109,4 @@ TODO: need somewhere to host the other model assets
   * Qualcomm context binaries (`*.bin`)
   * Context binary meta data (`*.json`)
   * ONNX wrapper models (`*.onnx`)
+
