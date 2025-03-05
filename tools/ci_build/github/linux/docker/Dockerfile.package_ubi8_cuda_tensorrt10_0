@@ -6,7 +6,7 @@
 
 # Build base image with required system packages
 ARG BASEIMAGE=nvidia/cuda:12.5.1-cudnn-devel-ubi8
-ARG TRT_VERSION=10.8.0.43-1.cuda12.8
+ARG TRT_VERSION=10.9.0.34-1.cuda12.8
 FROM $BASEIMAGE AS base
 ARG TRT_VERSION
 ENV PATH=/opt/python/cp310-cp310/bin:/usr/local/nvidia/bin:/usr/local/cuda/bin:/usr/src/tensorrt/bin:${PATH}
