@@ -158,7 +158,6 @@ extends:
         sln_platform: 'x64'
         DoDebugBuild: 'false'
         DoNugetPack: 'true'
-        DoCompliance: 'false'
         DoEsrp: ${{ parameters.DoEsrp }}
         NuPackScript: |
           msbuild $(Build.SourcesDirectory)\csharp\OnnxRuntime.CSharp.proj /p:Configuration=RelWithDebInfo /t:CreatePackage /p:OrtPackageId=Microsoft.ML.OnnxRuntime.DirectML /p:IsReleaseBuild=${{ parameters.IsReleaseBuild }} /p:CurrentData=$(BuildDate) /p:CurrentTime=$(BuildTime)
@@ -178,7 +177,6 @@ extends:
         sln_platform: 'Win32'
         DoDebugBuild: 'false'
         DoNugetPack: 'true'
-        DoCompliance: ${{ parameters.DoCompliance }}
         DoEsrp: ${{ parameters.DoEsrp }}
         RunTests: 'false'
         NuPackScript: |
@@ -200,7 +198,6 @@ extends:
         sln_platform: 'arm64'
         DoDebugBuild: 'false'
         DoNugetPack: 'true'
-        DoCompliance: ${{ parameters.DoCompliance }}
         DoEsrp: ${{ parameters.DoEsrp }}
         RunTests: 'false'
         NuPackScript: |
