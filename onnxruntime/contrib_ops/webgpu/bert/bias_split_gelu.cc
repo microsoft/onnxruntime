@@ -70,7 +70,7 @@ Status BiasSplitGelu::ComputeInternal(onnxruntime::webgpu::ComputeContext& conte
   }
 
   auto* output = context.Output(0, input_shape);
-  int64_t output_size = output->Shape().Size();
+  int64_t output_size = output->Shape().Size() / components;
 
   BiasSplitGeluProgram program{};
   program.AddInputs({{input, ProgramTensorMetadataDependency::TypeAndRank},
