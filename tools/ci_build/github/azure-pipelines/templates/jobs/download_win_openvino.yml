@@ -5,7 +5,41 @@ parameters:
 
 steps:
   - powershell: |
-      azcopy.exe cp --recursive https://lotusscus.blob.core.windows.net/models/openvino/openvino-v${{ parameters.OpenVINOVersion }} $(Agent.TempDirectory)
+      # Define variables
+      $Url = "https://storage.openvinotoolkit.org/repositories/openvino/packages/2025.0/windows/openvino_toolkit_windows_2025.0.0.17942.1f68be9f594_x86_64.zip"
+      $OutputPath = $(Agent.TempDirectory)\openvino.zip
+      $ExtractPath = $(Agent.TempDirectory)\openvino-v${{ parameters.OpenVINOVersion }}
+      $TempExtractPath = $(Agent.TempDirectory)\openvino_temp
+
+      # Ensure directories exist
+      if (Test-Path $ExtractPath) {
+        Remove-Item -Recurse -Force $ExtractPath
+      }
+      New-Item -ItemType Directory -Path $ExtractPath | Out-Null
+      New-Item -ItemType Directory -Path $TempExtractPath | Out-Null
+
+      # Download OpenVINO ZIP
+      Write-Output "Downloading OpenVINO..."
+      Invoke-WebRequest -Uri $Url -OutFile $OutputPath
+
+      # Extract to temporary directory first
+      Write-Output "Extracting OpenVINO to a temporary directory..."
+      Expand-Archive -Path $OutputPath -DestinationPath $TempExtractPath -Force
+
+      # Locate the nested subdirectory
+      $InnerFolder = Get-ChildItem -Path $TempExtractPath -Directory | Select-Object -First 1
+
+      if ($InnerFolder) {
+        Write-Output "Moving extracted files to final destination..."
+        Move-Item -Path "$($InnerFolder.FullName)\*" -Destination $ExtractPath -Force
+      }
+
+      # Clean up temporary files
+      Remove-Item -Recurse -Force $TempExtractPath
+      Remove-Item -Force $OutputPath
+
+      # Confirm success
+      Write-Output "OpenVINO extracted to $ExtractPath"
     displayName: 'Download OpenVINO Toolkit v${{ parameters.OpenVINOVersion }}'
 
   - powershell: |
