@@ -11,11 +11,12 @@
 #include "core/providers/openvino/backend_utils.h"
 #include "core/session/onnxruntime_session_options_config_keys.h"
 #include "nlohmann/json.hpp"
+#include "core/providers/openvino/openvino_parser_utils.h"
 
 namespace onnxruntime {
 namespace openvino_ep {
 void ParseConfigOptions(ProviderInfo& pi) {
-  if(pi.config_options==NULL)
+  if (pi.config_options == NULL)
     return;
 
   pi.so_disable_cpu_ep_fallback = pi.config_options->GetConfigOrDefault(kOrtSessionOptionsDisableCPUEPFallback, "0") == "1";
@@ -29,7 +30,6 @@ void ParseConfigOptions(ProviderInfo& pi) {
     map["NPU_COMPILATION_MODE_PARAMS"] = "enable-wd-blockarg-input=true compute-layers-with-higher-precision=Sqrt,Power,ReduceSum";
     pi.load_config["NPU"] = std::move(map);
   }
-
 }
 
 void* ParseUint64(const ProviderOptions& provider_options, std::string option_name) {
@@ -115,58 +115,6 @@ std::string ParseDeviceType(std::shared_ptr<OVCore> ov_core, const ProviderOptio
   }
 }
 
-// Depends on ProviderOptions.
-std::string ParsePrecision(const ProviderOptions& provider_options, std::string& device_type, const std::string& option_name) {
-  using DeviceName = std::string;
-  using DefaultValue = std::string;
-  using ValidValues = std::list<std::string>;
-  using foo = std::pair<DefaultValue, ValidValues>;
-  using ParserHelper = std::map<DeviceName, foo>;
-  ParserHelper helper = {
-      {"GPU", {"FP16", {"FP16", "FP32"}}},
-      {"NPU", {"FP16", {"FP16"}}},
-      {"CPU", {"FP32", {"FP32"}}},
-  };
-
-  std::set<std::string> deprecated_device_types = {"CPU_FP32", "GPU_FP32",
-                                                   "GPU.0_FP32", "GPU.1_FP32", "GPU_FP16",
-                                                   "GPU.0_FP16", "GPU.1_FP16"};
-
-  if (provider_options.contains(option_name)) {
-    // Start by checking if the device_type is a normal valid one
-    if (helper.contains(device_type)) {
-      auto const& valid_values = helper[device_type].second;
-      const auto& precision = provider_options.at(option_name);
-      if (precision == "ACCURACY") {
-        return valid_values.back();  // Return highest supported precision
-      } else {
-        if (std::find(valid_values.begin(), valid_values.end(), precision) != valid_values.end()) {
-          return precision;  // Return precision selected if valid
-        } else {
-          auto value_iter = valid_values.begin();
-          std::string valid_values_joined = *value_iter;
-          // Append 2nd and up, if only one then ++value_iter is same as end()
-          for (++value_iter; value_iter != valid_values.end(); ++value_iter) {
-            valid_values_joined += ", " + *value_iter;
-          }
-
-          ORT_THROW("[ERROR] [OpenVINO] Unsupported inference precision is selected. ", device_type, " only supports", valid_values_joined, ".\n");
-        }
-      }
-    } else if (deprecated_device_types.contains(device_type)) {
-      LOGS_DEFAULT(WARNING) << "[OpenVINO] Selected 'device_type' " + device_type + " is deprecated. \n"
-                            << "Update the 'device_type' to specified types 'CPU', 'GPU', 'GPU.0', "
-                            << "'GPU.1', 'NPU' or from"
-                            << " HETERO/MULTI/AUTO options and set 'precision' separately. \n";
-      auto delimit = device_type.find("_");
-      device_type = device_type.substr(0, delimit);
-      return device_type.substr(delimit + 1);
-    }
-  }
-  // Return default
-  return helper[device_type].first;
-}
-
 void ParseProviderOptions([[maybe_unused]] ProviderInfo& result, [[maybe_unused]] const ProviderOptions& config_options) {}
 
 struct OpenVINOProviderFactory : IExecutionProviderFactory {
@@ -204,7 +152,7 @@ struct OpenVINO_Provider : Provider {
     const ProviderOptions* provider_options_ptr = reinterpret_cast<ProviderOptions*>(pointers_array[0]);
     const ConfigOptions* config_options = reinterpret_cast<ConfigOptions*>(pointers_array[1]);
 
-    if(provider_options_ptr == NULL) {
+    if (provider_options_ptr == NULL) {
       LOGS_DEFAULT(ERROR) << "[OpenVINO EP] Passed NULL ProviderOptions to CreateExecutionProviderFactory()";
       return nullptr;
     }
@@ -234,7 +182,7 @@ struct OpenVINO_Provider : Provider {
       pi.cache_dir = provider_options.at("cache_dir");
     }
 
-    pi.precision = ParsePrecision(provider_options, pi.device_type, "precision");
+    pi.precision = OpenVINOParserUtils::ParsePrecision(provider_options, pi.device_type, "precision");
 
     if (provider_options.contains("load_config")) {
       auto parse_config = [&](const std::string& config_str) -> std::map<std::string, ov::AnyMap> {
