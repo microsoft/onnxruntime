@@ -37,7 +37,7 @@ parameters:
 
 jobs:
 - job: 'BUILD_OPENVINO_EP'
-  pool: 'Onnxruntime-QNNEP-Windows-2022-CPU'  # 'Onnxruntime-OpenVINO-Windows-2022-CPU'
+  pool: 'onnxruntime-Win2022-Intel-CPU'  # 'Onnxruntime-OpenVINO-Windows-2022-CPU'
   variables:
     MsbuildArguments: '-detailedsummary -maxcpucount -consoleloggerparameters:PerformanceSummary'
     OnnxRuntimeBuildDirectory: '$(Build.BinariesDirectory)'
