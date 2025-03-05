@@ -188,6 +188,10 @@ stages:
             $(Repository) \
             /bin/bash -c '
               set -ex; \
+              cp /onnxruntime_src/tools/ci_build/github/linux/docker/scripts/manylinux/requirements.txt /tmp/requirements.txt; \
+              export PATH=/opt/python/cp312-cp312/bin:$PATH; \
+              python3 -m pip install -r /tmp/requirements.txt; \
+              python3 -m pip install /build/Release/dist/*.whl; \
               cd /onnxruntime_src/onnxruntime/python/tools/tensorrt/perf; \
               ./perf.sh -d /onnxruntime_src/onnxruntime/python/tools/tensorrt/perf \
                     -o onnx-zoo-models \
