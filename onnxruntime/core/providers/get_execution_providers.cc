@@ -69,6 +69,14 @@ constexpr ProviderInfo kProvidersInPriorityOrder[] =
 #endif
         },
         {
+            kOpenCLExecutionProvider,
+#ifdef USE_OPENCL
+            true,
+#else
+            false,
+#endif
+        },
+        {
             kVitisAIExecutionProvider,
 #ifdef USE_VITISAI
             true,

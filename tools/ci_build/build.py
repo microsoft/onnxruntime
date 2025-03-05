@@ -697,6 +697,9 @@ def parse_arguments():
     parser.add_argument("--armnn_home", help="Path to ArmNN home dir")
     parser.add_argument("--armnn_libs", help="Path to ArmNN libraries")
     parser.add_argument("--build_micro_benchmarks", action="store_true", help="Build ONNXRuntime micro-benchmarks.")
+    parser.add_argument(
+        "--use_opencl", action="store_true",
+        help="Enable OpenCL Execution Provider for mobile GPU.")
 
     # options to reduce binary size
     parser.add_argument(
@@ -1146,6 +1149,7 @@ def generate_build_tree(
         "-Donnxruntime_USE_RKNPU=" + ("ON" if args.use_rknpu else "OFF"),
         "-Donnxruntime_ENABLE_MICROSOFT_INTERNAL=" + ("ON" if args.enable_msinternal else "OFF"),
         "-Donnxruntime_USE_VITISAI=" + ("ON" if args.use_vitisai else "OFF"),
+        "-Donnxruntime_USE_OPENCL=" + ("ON" if args.use_opencl else "OFF"),
         "-Donnxruntime_USE_TENSORRT=" + ("ON" if args.use_tensorrt else "OFF"),
         "-Donnxruntime_USE_TENSORRT_BUILTIN_PARSER="
         + ("ON" if args.use_tensorrt_builtin_parser and not args.use_tensorrt_oss_parser else "OFF"),
@@ -2537,6 +2541,7 @@ def build_python_wheel(
     use_cann,
     use_azure,
     use_qnn,
+    use_opencl,
     wheel_name_suffix,
     enable_training,
     nightly_build=False,
@@ -2577,10 +2582,8 @@ def build_python_wheel(
             args.append("--use_rocm")
             if rocm_version:
                 args.append(f"--rocm_version={rocm_version}")
-            if use_migraphx:
-                args.append("--use_migraphx")
-        elif use_migraphx:
-            args.append("--use_migraphx")
+        elif use_opencl:
+            args.append('--use_opencl')
         elif use_openvino:
             args.append("--use_openvino")
         elif use_dnnl:
@@ -3248,6 +3251,7 @@ def main():
                 args.use_cann,
                 args.use_azure,
                 args.use_qnn,
+                args.use_opencl,
                 args.wheel_name_suffix,
                 args.enable_training,
                 nightly_build=nightly_build,

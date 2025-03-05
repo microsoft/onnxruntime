@@ -13,6 +13,8 @@ import torch
 
 import onnxruntime as ort
 
+# ort.set_default_logger_severity(0)
+
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
@@ -32,7 +34,7 @@ def add_arguments(parser: ArgumentParser):
         "--provider",
         required=False,
         type=str,
-        choices=["cuda", "rocm", "cpu", None],
+        choices=["cuda", "rocm", "cpu", "opencl", None],
         default=None,
         help=(
             "Execution provider to use. By default, a "
@@ -62,6 +64,7 @@ def provider_name(name):
         "cuda": "CUDAExecutionProvider",
         "rocm": "ROCMExecutionProvider",
         "cpu": "CPUExecutionProvider",
+        "opencl": "OpenCLExecutionProvider",
     }
     return provider_map[name]
 
@@ -71,6 +74,8 @@ def get_default_provider():
         return "CUDAExecutionProvider"
     if "ROCMExecutionProvider" in ort.get_available_providers():
         return "ROCMExecutionProvider"
+    if "OpenCLExecutionProvider" in ort.get_available_providers():
+        return "OpenCLExecutionProvider"
     return "CPUExecutionProvider"
 
 
