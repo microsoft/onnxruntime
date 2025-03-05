@@ -147,7 +147,7 @@ stages:
           set -e -x
           mkdir -p $HOME/.onnx
           docker run --gpus all --rm \
-            --volume  $(Build.SourcesDirectory):/onnxruntime_src \
+            --volume $(Build.SourcesDirectory):/onnxruntime_src \
             --volume $(Build.BinariesDirectory)/Release:/build/Release \
             --volume /data/models:/build/models:ro \
             --volume $HOME/.onnx:/home/onnxruntimedev/.onnx \
@@ -177,17 +177,19 @@ stages:
           set -e -x
           mkdir -p $HOME/.onnx
           docker run --gpus all --shm-size=1g --ipc=host --ulimit memlock=-1 --ulimit stack=67108864 --rm \
-            --volume  $(Build.SourcesDirectory):/onnxruntime_src \
+            --volume $(Build.SourcesDirectory):/onnxruntime_src \
             --volume $(Build.BinariesDirectory)/Release:/build/Release \
             --volume /data/models:/build/models:ro \
             --volume $HOME/.onnx:/home/onnxruntimedev/.onnx \
             --volume /data/onnx:/data/onnx \
+            --volume $(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/mem_test:/mem_test \
+            --volume /data/ep-perf-models:/data/ep-perf-models \
             -e NVIDIA_TF32_OVERRIDE=0 \
             $(Repository) \
             /bin/bash -c '
               set -ex; \
-              cd $(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf; \
-              ./perf.sh -d $(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf \
+              cd /onnxruntime_src/onnxruntime/python/tools/tensorrt/perf; \
+              ./perf.sh -d /onnxruntime_src/onnxruntime/python/tools/tensorrt/perf \
                     -o onnx-zoo-models \
                     -m $(onnx-zoo-models) \
                     -b true \
