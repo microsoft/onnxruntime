@@ -15,7 +15,6 @@ import {
   AdapterInfo,
   ComputeContext,
   ComputeContextInputsOutputsMapping,
-  DeviceInfo,
   ProgramInfo,
 } from './webgpu/types';
 import { WebNNBackend } from './backend-webnn';
@@ -76,7 +75,6 @@ class TensorViewImpl implements TensorView {
 
 class ComputeContextImpl implements ComputeContext {
   readonly adapterInfo: AdapterInfo;
-  readonly deviceInfo: DeviceInfo;
   readonly opKernelContext: number;
   readonly inputs: readonly TensorView[];
   readonly outputCount: number;
@@ -94,7 +92,6 @@ class ComputeContextImpl implements ComputeContext {
     contextDataOffset: number,
   ) {
     this.adapterInfo = backend.adapterInfo;
-    this.deviceInfo = backend.deviceInfo;
 
     // extract context data
     const ptrSize = module.PTR_SIZE;

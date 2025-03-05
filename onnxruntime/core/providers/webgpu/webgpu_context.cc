@@ -490,8 +490,7 @@ std::vector<wgpu::FeatureName> WebGpuContext::GetAvailableRequiredFeatures(const
 #endif
       wgpu::FeatureName::TimestampQuery,
       wgpu::FeatureName::ShaderF16,
-      wgpu::FeatureName::Subgroups,
-      wgpu::FeatureName::SubgroupsF16};
+      wgpu::FeatureName::Subgroups};
   for (auto feature : features) {
     if (adapter.HasFeature(feature)) {
       required_features.push_back(feature);
