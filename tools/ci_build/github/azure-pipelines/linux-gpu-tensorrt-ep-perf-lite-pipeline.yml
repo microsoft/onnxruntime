@@ -41,7 +41,7 @@ variables:
     ${{ if not(eq(length(parameters.CUDAEPOptions), 0)) }}:
       value: --cuda_ep_options ${{ join(',',parameters.CUDAEPOptions) }}
   - name: optional_arguments
-    value: -a "-a -z -g $(optimizeGraph) -b $(bindInputs) $(trtEPOptionsArg) $(cudaEPOptionsArg)"
+    value: -a -z -g $(optimizeGraph) -b $(bindInputs) $(trtEPOptionsArg) $(cudaEPOptionsArg)
   - name: Repository
     value: onnxruntime_ep_perf_lite_build
 
@@ -193,6 +193,7 @@ stages:
               python3 -m pip install -r /tmp/requirements.txt; \
               python3 -m pip install /build/Release/dist/*.whl; \
               cd /onnxruntime_src/onnxruntime/python/tools/tensorrt/perf; \
+              echo 
               ./perf.sh -d /onnxruntime_src/onnxruntime/python/tools/tensorrt/perf \
                     -o onnx-zoo-models \
                     -m $(onnx-zoo-models) \
