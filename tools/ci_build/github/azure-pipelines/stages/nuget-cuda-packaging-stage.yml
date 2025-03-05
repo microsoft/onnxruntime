@@ -1,7 +1,4 @@
 parameters:
-- name: DoCompliance
-  type: boolean
-
 - name: DoEsrp
   type: boolean
 

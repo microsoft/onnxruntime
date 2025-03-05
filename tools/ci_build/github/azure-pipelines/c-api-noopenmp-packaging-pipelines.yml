@@ -133,7 +133,6 @@ extends:
 
     - template: stages/nuget-combine-cuda-stage.yml
       parameters:
-        DoCompliance: ${{ parameters.DoCompliance }}
         CudaVersion: 11.8
         RunOnnxRuntimeTests: ${{ parameters.RunOnnxRuntimeTests }}
         UseIncreasedTimeoutForTests: ${{ parameters.UseIncreasedTimeoutForTests }}

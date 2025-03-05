@@ -3,12 +3,6 @@ parameters:
   displayName: Run Tests?
   type: boolean
   default: true
-
-- name: DoCompliance
-  displayName: Run Compliance Tasks?
-  type: boolean
-  default: true
-
 - name: DoEsrp
   displayName: Run code sign tasks? Must be true if you are doing an Onnx Runtime release.
   type: boolean
@@ -173,7 +167,6 @@ stages:
 
 - template: win-ci.yml
   parameters:
-    DoCompliance: ${{ parameters.DoCompliance }}
     DoEsrp: ${{ parameters.DoEsrp }}
     stage_name_suffix: CPU_x86_${{ parameters.BuildVariant }}
     buildArch: x86
@@ -186,7 +179,6 @@ stages:
 
 - template: win-ci.yml
   parameters:
-    DoCompliance: ${{ parameters.DoCompliance }}
     DoEsrp: ${{ parameters.DoEsrp }}
     stage_name_suffix: CPU_arm64_${{ parameters.BuildVariant }}
     buildArch: x64
@@ -199,7 +191,6 @@ stages:
 
 - template: win-ci.yml
   parameters:
-    DoCompliance: ${{ parameters.DoCompliance }}
     DoEsrp: ${{ parameters.DoEsrp }}
     stage_name_suffix: CPU_x64_${{ parameters.BuildVariant }}
     buildArch: x64
