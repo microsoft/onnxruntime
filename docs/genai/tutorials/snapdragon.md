@@ -89,6 +89,7 @@ The complete Python script is published here: https://github.com/microsoft/onnxr
    while True:
        # Read prompt
        # Run the generation, streaming the output tokens
+   ```
 
 4. Generative loop
 
@@ -203,6 +204,7 @@ The C++ application is published here: https://github.com/microsoft/onnxruntime-
    while True:
        # Read prompt
        # Run the generation, streaming the output tokens
+   ```
 
 4. Generative loop
 
