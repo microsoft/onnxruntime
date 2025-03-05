@@ -105,10 +105,9 @@ fn elu_v(v: vec4<x_element_t>) -> vec4<x_element_t> {
 )";
 
 constexpr const char QuickGeluImpl[] = R"(
-  const one = x_element_t(1.0);
-  const zero = x_element_t(0.0);
-
   fn quick_gelu_impl(x: vec4<x_element_t>, alpha: f32) -> vec4<x_element_t> {
+    const one = x_element_t(1.0);
+    const zero = x_element_t(0.0);
     const alpha_vec = vec4<x_element_t>(alpha);
     let v = x * alpha_vec;
     var x1 : vec4<x_element_t>;
