@@ -219,13 +219,13 @@ Status RotaryEmbeddingOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_build
     sign_buffer.set(0, -1.0f);
     sign_buffer.set(1, 1.0f);
   } else if (input_data_type == ONNX_NAMESPACE::TensorProto_DataType_FLOAT16) {
-    if(model_builder.IsFloat16ArrayAvailable()) {
-      // Float16Array is avaliable, use Float16Array.
+    if (model_builder.IsFloat16ArrayAvailable()) {
+      // Float16Array is avaliable - use Float16Array.
       sign_buffer = emscripten::val::global("Float16Array").new_(2);
       sign_buffer.set(0, -1.0f);
       sign_buffer.set(1, 1.0f);
     } else {
-      // Float16Array is not available, use Uint16Array instead.
+      // Float16Array is not available - use Uint16Array instead.
       sign_buffer = emscripten::val::global("Uint16Array").new_(2);
       sign_buffer.set(0, PackFloat32ToUint16AsFloat16(-1.0f));
       sign_buffer.set(1, PackFloat32ToUint16AsFloat16(1.0f));
