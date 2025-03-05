@@ -370,7 +370,6 @@ See more information on the QNN execution provider [here](../execution-providers
    ```bash
    git clone --recursive https://github.com/Microsoft/onnxruntime.git
    cd onnxruntime
-   git submodule update --init --recursive
    ```
 
 * Install ONNX Runtime Python dependencies.
