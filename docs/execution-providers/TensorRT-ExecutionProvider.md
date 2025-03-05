@@ -202,6 +202,7 @@ Ort::ThrowOnError(api.GetTensorRTProviderOptionsAsString(tensorrt_options,      
 | Set minimum size for subgraphs in partitioning     | [trt_min_subgraph_size](./TensorRT-ExecutionProvider.md#trt_min_subgraph_size)             | int    |
 | Dump optimized subgraphs for debugging             | [trt_dump_subgraphs](./TensorRT-ExecutionProvider.md#trt_dump_subgraphs)                   | bool   |
 | Force sequential engine builds under multi-GPU     | [trt_force_sequential_engine_build](./TensorRT-ExecutionProvider.md#trt_force_sequential_engine_build) | bool   |
+| Exclude specific op types from running on TRT      | [trt_op_types_to_exclude](./TensorRT-ExecutionProvider.md#trt_op_types_to_exclude)         | string |
 |                                                    |                                                                                            |        |
 | **Advanced Configuration and Profiling**           |                                                                                            |        |
 | Enable sharing of context memory between subgraphs | [trt_context_memory_sharing_enable](./TensorRT-ExecutionProvider.md#trt_context_memory_sharing_enable) | bool   |
