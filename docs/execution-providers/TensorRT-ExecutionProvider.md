@@ -202,6 +202,7 @@ Ort::ThrowOnError(api.GetTensorRTProviderOptionsAsString(tensorrt_options,      
 | Set minimum size for subgraphs in partitioning     | [trt_min_subgraph_size](./TensorRT-ExecutionProvider.md#trt_min_subgraph_size)             | int    |
 | Dump optimized subgraphs for debugging             | [trt_dump_subgraphs](./TensorRT-ExecutionProvider.md#trt_dump_subgraphs)                   | bool   |
 | Force sequential engine builds under multi-GPU     | [trt_force_sequential_engine_build](./TensorRT-ExecutionProvider.md#trt_force_sequential_engine_build) | bool   |
+| Exclude specific op types from running on TRT      | [trt_op_types_to_exclude](./TensorRT-ExecutionProvider.md#trt_op_types_to_exclude)         | string |
 |                                                    |                                                                                            |        |
 | **Advanced Configuration and Profiling**           |                                                                                            |        |
 | Enable sharing of context memory between subgraphs | [trt_context_memory_sharing_enable](./TensorRT-ExecutionProvider.md#trt_context_memory_sharing_enable) | bool   |
@@ -468,6 +469,17 @@ TensorRT configurations can be set by execution provider options. It's useful wh
   * Engines will be generated and loaded with `sm80+` name suffix, instead of actual compute capacity.
   * Turing and former Nvidia GPU architecture and Nvidia Jetson Orin platform are not eligble to this option.
 
+
+##### trt_op_types_to_exclude
+
+
+* Description: exclude specific op types from running on TRT. (Available in ORT 1.21.0)
+  * The format is `op_type_1,op_type_2,op_type_3...`
+  * One use case is to mitigate the performance issue mentioned [below](https://onnxruntime.ai/docs/execution-providers/TensorRT-ExecutionProvider.html#known-issues), it allows users to prevent DDS ops from running on TensorRT, ensuring they are executed by CUDA EP or CPU EP instead:
+    ```bash
+    ./onnxruntime_perf_test -r 1 -e tensorrt -i "trt_op_types_to_exclude|NonMaxSuppression,NonZero,RoiAlign" /path/to/onnx/your_model.onnx
+    ```
+  * Another use case is experimenting assigning ops to CUDA EP vs TRT EP
 
 ### Environment Variables(deprecated)
 
@@ -791,6 +803,15 @@ sess.run(None, args)
 
 Please note that there is a constraint of using this explicit shape range feature, i.e., all the dynamic shape inputs should be provided with corresponding min/max/opt shapes.
 
+### Data-dependant shape (DDS) ops
+The DDS operations — *NonMaxSuppression*, *NonZero*, and *RoiAlign* — have output shapes that are only determined at runtime. 
+
+To ensure DDS ops are executed by TRT-EP/TRT instead of CUDA EP or CPU EP, please check the following:
+* For TensorRT < 10.7: Build ORT with [onnx-tensorrt OSS parser](https://github.com/onnx/onnx-tensorrt) and use `10.X-GA-ORT-DDS` branch.
+* For TensorRT >= 10.7: By default, DDS ops will be executed by TRT.
+* For ORT: By default, ORT relies on the TRT parser to decide if DDS ops run with TRT. However, note that ORT 1.20.1 and 1.20.2 will **not** run DDS ops with TRT due to a [known performance issue](https://onnxruntime.ai/docs/execution-providers/TensorRT-ExecutionProvider.html#known-issues).
+
+
 
 ## Samples
 
@@ -827,4 +848,7 @@ Please see [this Notebook](https://github.com/microsoft/onnxruntime/blob/main/do
 
 ## Known Issues
 - TensorRT 8.6 built-in parser and TensorRT oss parser behaves differently. Namely built-in parser cannot recognize some custom plugin ops while OSS parser can. See [EfficientNMS_TRT missing attribute class_agnostic w/ TensorRT 8.6
-](https://github.com/microsoft/onnxruntime/issues/16121). 
+](https://github.com/microsoft/onnxruntime/issues/16121).
+- There is a performance issue for TensorRT versions 10.0 to 10.5 when running models, such as Faster-RCNN, that:
+  - contain data-dependent shape (DDS) operations, like NonMaxSuppression, NonZero, and RoiAlign, and
+  - DDS ops are executed with TRT
