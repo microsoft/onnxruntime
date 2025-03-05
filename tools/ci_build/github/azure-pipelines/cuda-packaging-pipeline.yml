@@ -92,6 +92,9 @@ extends:
       sourceRepositoriesToScan:
         exclude:
         - repository: onnxruntime-inference-examples
+      spotBugs:
+        enabled: false
+        justificationForDisabling: "Getting ##[error]1. SpotBugs Error gdn.unknownFormatResult - File: spotbugs.xml, which indicates that SpotBugs found one or more errors, which are not handled by the Guardian right now."
     stages:
     # Set ReleaseVersionSuffix
     - template: stages/set_packaging_variables_stage.yml
