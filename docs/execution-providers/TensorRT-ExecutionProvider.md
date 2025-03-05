@@ -472,12 +472,12 @@ TensorRT configurations can be set by execution provider options. It's useful wh
 ##### trt_op_types_to_exclude
 
 
-* Description: exclude specific op types from running on TRT.
+* Description: exclude specific op types from running on TRT. (Available in ORT 1.21.0)
   * The format is `op_type_1,op_type_2,op_type_3...`
-  * One use case is to mitigate this performance issue mentioned [here](https://onnxruntime.ai/docs/execution-providers/TensorRT-ExecutionProvider.html#known-issues), users can use this option to prevent DDS ops from running on TensorRT, ensuring they are executed by CUDA EP or CPU EP instead:
-  ```bash
-  ./onnxruntime_perf_test -r 1 -e tensorrt -i "trt_op_types_to_exclude|NonMaxSuppression,NonZero,RoiAlign" /path/to/onnx/your_model.onnx
-  ```
+  * One use case is to mitigate the performance issue mentioned [below](https://onnxruntime.ai/docs/execution-providers/TensorRT-ExecutionProvider.html#known-issues), it allows users to prevent DDS ops from running on TensorRT, ensuring they are executed by CUDA EP or CPU EP instead:
+    ```bash
+    ./onnxruntime_perf_test -r 1 -e tensorrt -i "trt_op_types_to_exclude|NonMaxSuppression,NonZero,RoiAlign" /path/to/onnx/your_model.onnx
+    ```
 
 
 ### Environment Variables(deprecated)
