@@ -114,6 +114,10 @@ jobs:
       BuildConfig: $(BuildConfig)
 
   - powershell: |
+      Write-Output "Getting CPU information"
+      Get-WmiObject Win32_Processor | Select-Object Name, NumberOfCores, NumberOfLogicalProcessors, Architecture | Format-Table -AutoSize
+
+      Write-Output "Starting unit tests"
       python "$(Build.SourcesDirectory)\tools\ci_build\build.py" `
         --config "$(BuildConfig)" `
         --build_dir "$(Build.BinariesDirectory)" `
