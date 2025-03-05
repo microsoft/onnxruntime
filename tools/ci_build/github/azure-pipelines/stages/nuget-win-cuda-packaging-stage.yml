@@ -7,10 +7,6 @@ parameters:
   type: boolean
   default: false
 
-- name: DoCompliance
-  type: boolean
-  default: true
-
 - name: DoEsrp
   type: boolean
   default: true
@@ -43,7 +39,6 @@ stages:
 - template: ../templates/win-ci.yml
   parameters:
     ort_build_pool_name: 'onnxruntime-Win2022-GPU-A10'
-    DoCompliance: ${{ parameters.DoCompliance }}
     DoEsrp: ${{ parameters.DoEsrp }}
     stage_name_suffix: CUDA
     buildArch: x64
@@ -61,7 +56,6 @@ stages:
 - template: ../templates/win-ci.yml
   parameters:
     ort_build_pool_name: 'onnxruntime-Win2022-GPU-A10'
-    DoCompliance: ${{ parameters.DoCompliance }}
     DoEsrp: ${{ parameters.DoEsrp }}
     stage_name_suffix: TensorRT
     buildArch: x64
