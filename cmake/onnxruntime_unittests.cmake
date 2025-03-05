@@ -1289,31 +1289,34 @@ if (NOT onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
 
   if(onnxruntime_USE_QNN)
     #qnn ctx generator
-    set(onnxruntime_qnn_ctx_gen_src_dir ${TEST_SRC_DIR}/qnn_ctx_gen)
-    set(onnxruntime_qnn_ctx_gen_src_patterns
-    "${onnxruntime_qnn_ctx_gen_src_dir}/*.cc"
-    "${onnxruntime_qnn_ctx_gen_src_dir}/*.h")
+    set(ep_weight_sharing_ctx_gen_src_dir ${TEST_SRC_DIR}/ep_weight_sharing_ctx_gen)
+    set(ep_weight_sharing_ctx_gen_src_patterns
+    "${ep_weight_sharing_ctx_gen_src_dir}/*.cc"
+    "${ep_weight_sharing_ctx_gen_src_dir}/*.h")
 
-    file(GLOB onnxruntime_qnn_ctx_gen_src CONFIGURE_DEPENDS
-      ${onnxruntime_qnn_ctx_gen_src_patterns}
+    file(GLOB ep_weight_sharing_ctx_gen_src CONFIGURE_DEPENDS
+      ${ep_weight_sharing_ctx_gen_src_patterns}
       )
-    onnxruntime_add_executable(onnxruntime_qnn_ctx_gen ${onnxruntime_qnn_ctx_gen_src})
-    target_include_directories(onnxruntime_qnn_ctx_gen PRIVATE   ${onnx_test_runner_src_dir} ${ONNXRUNTIME_ROOT}
-          ${onnxruntime_graph_header} ${onnxruntime_exec_src_dir}
-          ${CMAKE_CURRENT_BINARY_DIR})
+    onnxruntime_add_executable(ep_weight_sharing_ctx_gen ${ep_weight_sharing_ctx_gen_src})
+    target_include_directories(ep_weight_sharing_ctx_gen PRIVATE ${ONNXRUNTIME_ROOT} ${CMAKE_CURRENT_BINARY_DIR})
     if (WIN32)
-      target_compile_options(onnxruntime_qnn_ctx_gen PRIVATE ${disabled_warnings})
+      target_compile_options(ep_weight_sharing_ctx_gen PRIVATE ${disabled_warnings})
       if (NOT DEFINED SYS_PATH_LIB)
         set(SYS_PATH_LIB shlwapi)
       endif()
     endif()
 
-    if(WIN32)
-      target_link_libraries(onnxruntime_qnn_ctx_gen PRIVATE debug dbghelp advapi32)
+    if (onnxruntime_BUILD_SHARED_LIB)
+      set(ep_weight_sharing_ctx_gen_libs onnxruntime_common onnxruntime ${onnxruntime_EXTERNAL_LIBRARIES} ${GETOPT_LIB_WIDE})
+      target_link_libraries(ep_weight_sharing_ctx_gen PRIVATE ${ep_weight_sharing_ctx_gen_libs})
+      if (WIN32)
+        target_link_libraries(ep_weight_sharing_ctx_gen PRIVATE debug dbghelp advapi32)
+      endif()
+    else()
+      target_link_libraries(ep_weight_sharing_ctx_gen PRIVATE onnxruntime_session ${onnxruntime_test_providers_libs} ${onnxruntime_EXTERNAL_LIBRARIES} ${GETOPT_LIB_WIDE})
     endif()
-    target_link_libraries(onnxruntime_qnn_ctx_gen PRIVATE onnx_test_runner_common onnxruntime_test_utils onnxruntime_common onnxruntime_graph onnxruntime_session onnxruntime_providers onnxruntime_framework onnxruntime_util onnxruntime_mlas onnxruntime_optimizer onnxruntime_flatbuffers onnx_test_data_proto ${onnxruntime_test_providers_libs} ${onnxruntime_EXTERNAL_LIBRARIES} ${GETOPT_LIB_WIDE} ${SYS_PATH_LIB} ${CMAKE_DL_LIBS})
 
-    set_target_properties(onnxruntime_qnn_ctx_gen PROPERTIES FOLDER "ONNXRuntimeTest")
+    set_target_properties(ep_weight_sharing_ctx_gen PROPERTIES FOLDER "ONNXRuntimeTest")
   endif()
 
   # shared lib
