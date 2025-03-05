@@ -598,6 +598,8 @@ Status DP4AMatMulNBitsProgram::GenerateShaderCode(ShaderHelper& shader) const {
   // this shader require A to be int8 quantized with block size 64. B is regular
   // matmulnbits input with block size 32.
 
+  shader.AdditionalImplementation() << "  const block_size = " << block_size_ << ";";
+
   shader.AdditionalImplementation() << R"ADDNL_FN(
   const tile_size = 64;
   const subtile_size = 16;
@@ -605,7 +607,6 @@ Status DP4AMatMulNBitsProgram::GenerateShaderCode(ShaderHelper& shader) const {
   const vec_factor = 4;
   const u32_factor = 4;
   const tile_size_k_vec = 2;
-  const block_size = 32;
 
   // Shared memory
   var<workgroup> tile_A : array<array<vec4<u32>, tile_size>, tile_size_k_vec>;                     // 64 x 32
@@ -648,7 +649,7 @@ Status DP4AMatMulNBitsProgram::GenerateShaderCode(ShaderHelper& shader) const {
       if (col == 0)
       {
         // kidx_v - each kidx_v covers 16 values of k
-        scale_B[row] = scales_b[b_global*(uniforms.K/32) + kidx_v/2];
+        scale_B[row] = scales_b[b_global*(uniforms.K/block_size) + kidx_v/(block_size/16)];
       }
   }
 
@@ -826,7 +827,7 @@ Status MatMulNBits::ComputeInternal(onnxruntime::webgpu::ComputeContext& context
   // macOS - Avoid using dp4a on Metal, as it does not appear to have native dp4a support.
   // https://github.com/gpuweb/gpuweb/issues/2677#issuecomment-1713292226
   const bool use_dp4a = has_subgroup && context.AdapterInfo().backendType != wgpu::BackendType::Metal;
-  if (accuracy_level_ == 4 && block_size == 32 &&
+  if (accuracy_level_ == 4 && block_size % 32 == 0 &&
       batch_count == 1 && components_a == 4 && K % 64 == 0 && N % 16 == 0 &&
       !has_zero_points && use_dp4a && M >= kMinMForTileOptimization) {
     constexpr uint32_t kVec4Components = 4;
@@ -849,7 +850,7 @@ Status MatMulNBits::ComputeInternal(onnxruntime::webgpu::ComputeContext& context
 
     constexpr uint32_t kTileSize = 64;
     TensorShape reshaped_y_shape{1, M, N / kVec4Components};
-    DP4AMatMulNBitsProgram mul_program;
+    DP4AMatMulNBitsProgram mul_program{block_size};
     mul_program.SetWorkgroupSize(256);
     mul_program.SetDispatchGroupSize(
         (M + kTileSize - 1) / kTileSize,
@@ -863,7 +864,8 @@ Status MatMulNBits::ComputeInternal(onnxruntime::webgpu::ComputeContext& context
                               {static_cast<uint32_t>(K)},
                               {static_cast<uint32_t>(K / 8)},
                               {static_cast<uint32_t>(K / 16)}})
-        .AddOutput({y, ProgramTensorMetadataDependency::TypeAndRank, reshaped_y_shape, gsl::narrow<int>(kVec4Components)});
+        .AddOutput({y, ProgramTensorMetadataDependency::TypeAndRank, reshaped_y_shape, gsl::narrow<int>(kVec4Components)})
+        .CacheHint("Block" + std::to_string(block_size));
     return context.RunProgram(mul_program);
   }
 
