@@ -28,16 +28,9 @@ pr:
     - 'onnxruntime/core/providers/js'
 #### end trigger ####
 
-parameters:
-
-- name: OpenVINO
-  displayName: OpenVINO Toolkit Version
-  type: string
-  default: 2025.0.0
-
 jobs:
 - job: 'BUILD_OPENVINO_EP'
-  pool: 'onnxruntime-Win2022-Intel-CPU'  # 'Onnxruntime-OpenVINO-Windows-2022-CPU'
+  pool: 'onnxruntime-Win-CPU-2022'
   variables:
     MsbuildArguments: '-detailedsummary -maxcpucount -consoleloggerparameters:PerformanceSummary'
     OnnxRuntimeBuildDirectory: '$(Build.BinariesDirectory)'
@@ -47,7 +40,7 @@ jobs:
     BuildConfig: 'RelWithDebInfo'
     ALLOW_RELEASED_ONNX_OPSET_ONLY: '1'
     TODAY: $[format('{0:dd}{0:MM}{0:yyyy}', pipeline.startTime)]
-  timeoutInMinutes: 1200
+  timeoutInMinutes: 120
   workspace:
     clean: all
   steps:
@@ -58,13 +51,7 @@ jobs:
       addToPath: true
       architecture: $(buildArch)
 
-  - powershell: |
-      Get-WmiObject Win32_Processor | Select-Object Name, NumberOfCores, NumberOfLogicalProcessors, Architecture
-    displayName: "Get CPU Information"
-
   - template: templates/jobs/download_win_openvino.yml
-    parameters:
-      OpenVINOVersion: ${{ parameters.OpenVINO }}
 
   - powershell: |
       Write-Output "Setting up OpenVINO environment variables"
@@ -127,14 +114,3 @@ jobs:
         --use_binskim_compliant_compile_flags `
         --test --enable_onnx_tests
     displayName: 'Run unit tests'
-
-#  - powershell: |
-#      & ".\$(BuildConfig)\onnx_test_runner" -j 1 -e openvino "$(Build.SourcesDirectory)\cmake\external\onnx\onnx\backend\test\data\node"
-#    workingDirectory: '$(Build.BinariesDirectory)\$(BuildConfig)'
-#    displayName: 'Run ONNX Tests'
-
-#  - powershell: |
-#      & ".\$(BuildConfig)\onnx_test_runner" -j 1 -e openvino "C:\data\float32_models"
-#    workingDirectory: '$(Build.BinariesDirectory)\$(BuildConfig)'
-#    displayName: 'Run float32 model tests'
-
