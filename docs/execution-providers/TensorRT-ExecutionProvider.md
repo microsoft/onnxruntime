@@ -478,7 +478,7 @@ TensorRT configurations can be set by execution provider options. It's useful wh
     ```bash
     ./onnxruntime_perf_test -r 1 -e tensorrt -i "trt_op_types_to_exclude|NonMaxSuppression,NonZero,RoiAlign" /path/to/onnx/your_model.onnx
     ```
-
+  * Another use case is experimenting assigning ops to CUDA EP vs TRT EP
 
 ### Environment Variables(deprecated)
 
