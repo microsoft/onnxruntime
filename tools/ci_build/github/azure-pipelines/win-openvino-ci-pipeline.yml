@@ -58,6 +58,10 @@ jobs:
       addToPath: true
       architecture: $(buildArch)
 
+  - powershell: |
+      Get-WmiObject Win32_Processor | Select-Object Name, NumberOfCores, NumberOfLogicalProcessors, Architecture
+    displayName: "Get CPU Information"
+
   - template: templates/jobs/download_win_openvino.yml
     parameters:
       OpenVINOVersion: ${{ parameters.OpenVINO }}
