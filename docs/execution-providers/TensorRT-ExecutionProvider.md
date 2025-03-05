@@ -472,7 +472,12 @@ TensorRT configurations can be set by execution provider options. It's useful wh
 ##### trt_op_types_to_exclude
 
 
-* Description: exclude specific op types to run on TRT.
+* Description: exclude specific op types from running on TRT.
+  * The format is `op_type_1,op_type_2,op_type_3...`
+  * One use case is to mitigate this performance issue mentioned [here](https://onnxruntime.ai/docs/execution-providers/TensorRT-ExecutionProvider.html#known-issues), users can use this option to prevent DDS ops from running on TensorRT, ensuring they are executed by CUDA EP or CPU EP instead:
+```bash
+    ./onnxruntime_perf_test -r 1 -e tensorrt -i "trt_op_types_to_exclude|NonMaxSuppression,NonZero,RoiAlign" /path/to/onnx/your_model.onnx
+```
 
 
 ### Environment Variables(deprecated)
@@ -800,13 +805,10 @@ Please note that there is a constraint of using this explicit shape range featur
 ### Data-dependant shape (DDS) ops
 The DDS operations — NonMaxSuppression, NonZero, and RoiAlign — have output shapes that are only determined at runtime. To ensure DDS ops are executed by TRT-EP/TRT instead of CUDA EP or CPU EP, please check the following:
 * For TensorRT < 10.7: Build ORT with [onnx-tensorrt OSS parser](https://github.com/onnx/onnx-tensorrt) and use `10.X-GA-ORT-DDS` branch.
-  For TensrRT >= 10.7: By default, DDS ops will be executed by TRT.
+* For TensorRT >= 10.7: By default, DDS ops will be executed by TRT.
 * For ORT: By default, ORT relies on the TRT parser to decide if DDS ops run with TRT. However, note that ORT versions 1.20.1 and 1.20.2 will **not** run DDS ops with TRT due to a [known performance issue](https://onnxruntime.ai/docs/execution-providers/TensorRT-ExecutionProvider.html#known-issues).
 
-To mitigate this performance issue, use the `trt_op_types_to_exclude` option so that DDS ops will be run by CUDA EP or CPU EP:
-```bash
-    ./onnxruntime_perf_test -r 1 -e tensorrt -i "trt_op_types_to_exclude|NonMaxSuppression,NonZero,RoiAlign" /path/to/onnx/your_model.onnx
-```
+
 
 ## Samples
 
