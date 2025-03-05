@@ -9,11 +9,6 @@ parameters:
   type: boolean
   default: false
 
-- name: DoCompliance
-  displayName: Run Compliance Tasks?
-  type: boolean
-  default: true
-
 - name: DoEsrp
   displayName: Run code sign tasks? Must be true if you are doing an ONNX Runtime release
   type: boolean
@@ -111,7 +106,6 @@ extends:
     # Nuget Packaging
     - template: stages/nuget-combine-cuda-stage.yml
       parameters:
-        DoCompliance: ${{ parameters.DoCompliance }}
         CudaVersion: ${{ parameters.CudaVersion }}
         RunOnnxRuntimeTests: ${{ parameters.RunOnnxRuntimeTests }}
         UseIncreasedTimeoutForTests: ${{ parameters.UseIncreasedTimeoutForTests }}
