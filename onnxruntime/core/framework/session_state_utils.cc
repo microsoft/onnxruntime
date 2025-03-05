@@ -82,7 +82,7 @@ static common::Status ExtDataTensorProtoToTensor(const Env& env,
                                                        ext_data_buf, ext_data_len, ext_data_deleter,
                                                        buffered_tensor, &prepacked_for_graph));
   if constexpr (endian::native != endian::little) {
-    if (!proto_path.empty() && proto_path.compare(onnxruntime::utils::kTensorProtoMemoryAddressTag)) {
+    if (!proto_path.empty() && (proto_path.compare(onnxruntime::utils::kTensorProtoMemoryAddressTag) != 0)) {
       utils::ConvertRawDataInTensorProto((ONNX_NAMESPACE::TensorProto*)&tensor_proto, ext_data_buf, ext_data_len);
     }
   }
