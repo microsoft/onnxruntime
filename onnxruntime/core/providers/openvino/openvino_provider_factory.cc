@@ -29,7 +29,6 @@ void ParseConfigOptions(ProviderInfo& pi) {
     map["NPU_COMPILATION_MODE_PARAMS"] = "enable-wd-blockarg-input=true compute-layers-with-higher-precision=Sqrt,Power,ReduceSum";
     pi.load_config["NPU"] = std::move(map);
   }
-
 }
 
 void* ParseUint64(const ProviderOptions& provider_options, std::string option_name) {
