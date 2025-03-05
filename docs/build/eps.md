@@ -17,7 +17,7 @@ redirect_from: /docs/how-to/build/eps
 
 ## Execution Provider Shared Libraries
 
-The oneDNN, TensorRT, OpenVINO™, and CANN providers are built as shared libraries vs being statically linked into the main onnxruntime. This enables them to be loaded only when needed, and if the dependent libraries of the provider are not installed onnxruntime will still run fine, it just will not be able to use that provider. For non shared library providers, all dependencies of the provider must exist to load onnxruntime.
+The oneDNN, TensorRT, OpenVINO™, CANN, and QNN providers are built as shared libraries vs being statically linked into the main onnxruntime. This enables them to be loaded only when needed, and if the dependent libraries of the provider are not installed onnxruntime will still run fine, it just will not be able to use that provider. For non shared library providers, all dependencies of the provider must exist to load onnxruntime.
 
 ### Built files
 {: .no_toc }
@@ -356,34 +356,88 @@ See more information on the QNN execution provider [here](../execution-providers
 
 ### Prerequisites
 {: .no_toc }
-* Qualcomm AI Engine Direct SDK (Qualcomm Neural Network SDK) [Linux/Android/Windows](https://qpm.qualcomm.com/main/tools/details/qualcomm_ai_engine_direct)
+* Install the Qualcomm AI Engine Direct SDK (Qualcomm Neural Network SDK) [Linux/Android/Windows](https://qpm.qualcomm.com/main/tools/details/qualcomm_ai_engine_direct)
+
+* Install [cmake-3.28](https://cmake.org/download/) or higher.
+
+* Install Python 3.10 or higher.
+  * [Python 3.12 for Windows Arm64](https://www.python.org/ftp/python/3.12.9/python-3.12.9-arm64.exe)
+  * [Python 3.12 for Windows x86-64](https://www.python.org/ftp/python/3.12.9/python-3.12.9-amd64.exe)
+  * Note: Windows on Arm supports a x86-64 Python environment via emulation. Ensure that the Arm64 Python environment is actived for a native Arm64 ONNX Runtime build.
+
+* Checkout the source tree:
+
+   ```bash
+   git clone --recursive https://github.com/Microsoft/onnxruntime.git
+   cd onnxruntime
+   ```
+
+* Install ONNX Runtime Python dependencies.
+   ```bash
+   pip install -r requirements.txt
+   ```
+
+### Build Options
+{: .no_toc }
+
+* `--use_qnn [QNN_LIBRARY_KIND]`: Builds the QNN Execution provider. `QNN_LIBRARY_KIND` is optional and specifies whether to build the QNN Execution Provider as a shared library (default) or static library.
+  * `--use_qnn` or `--use_qnn shared_lib`: Builds the QNN Execution Provider as a shared library.
+  * `--use_qnn static_lib`: Builds QNN Execution Provider as a static library linked into ONNX Runtime. This is required for Android builds.
+* `--qnn_home QNN_SDK_PATH`: The path to the Qualcomm AI Engine Direct SDK.
+  * Example on Windows: `--qnn_home 'C:\Qualcomm\AIStack\QAIRT\2.31.0.250130'`
+  * Example on Linux: `--qnn_home /opt/qcom/aistack/qairt/2.31.0.250130`
+* `--build_wheel`: Enables Python bindings and builds Python wheel.
+* `--arm64`: Cross-compile for Arm64.
+* `--arm64ec`: Cross-compile for Arm64EC. Arm64EC code runs with native performance and is interoperable with x64 code running under emulation within the same process on a Windows on Arm device. Refer to the [Arm64EC Overview](https://learn.microsoft.com/en-us/windows/arm/arm64ec).
+
+Run `python tools/ci_build/build.py --help` for a description of all available build options.
 
 ### Build Instructions
 {: .no_toc }
 
-#### Windows (arm64 native build)
+#### Windows (native x86-64 or native Arm64)
 ```
-build.bat --arm64 --use_qnn --qnn_home=[QNN_SDK path] --build_shared_lib --cmake_generator "Visual Studio 17 2022" --skip_submodule_sync --config Release --build_dir \build\Windows
+.\build.bat --use_qnn --qnn_home [QNN_SDK_PATH] --build_shared_lib --build_wheel --cmake_generator "Visual Studio 17 2022" --config Release --parallel --skip_tests --build_dir build\Windows
 ```
 
-build python bindings 
+Notes:
+* Not all Qualcomm backends (e.g., HTP) are supported for model execution on a native x86-64 build. Refer to the [Qualcomm SDK backend documentation](https://docs.qualcomm.com/bundle/publicresource/topics/80-63442-50/backend.html) for more information.
+* Even if a Qualcomm backend does not support execution on x86-64, the QNN Execution provider may be able to [generate compiled models](../execution-providers/QNN-ExecutionProvider.md#qnn-context-binary-cache-feature) for the Qualcomm backend.
+
+#### Windows (Arm64 cross-compile target)
 ```
-build.bat --arm64 --use_qnn --qnn_home=[QNN_SDK path] --build_wheel --cmake_generator "Visual Studio 17 2022" --skip_submodule_sync --config Release --build_dir \build\Windows
+.\build.bat --arm64 --use_qnn --qnn_home [QNN_SDK_PATH] --build_shared_lib --build_wheel --cmake_generator "Visual Studio 17 2022" --config Release --parallel --build_dir build\Windows
 ```
-#### Linux (x64)
+
+#### Windows (Arm64EC cross-compile target)
 ```
-build.py --use_qnn --qnn_home=[QNN_SDK path] --build_shared_lib --skip_submodule_sync --config Release
+.\build.bat --arm64ec --use_qnn --qnn_home [QNN_SDK_PATH] --build_shared_lib --build_wheel --cmake_generator "Visual Studio 17 2022" --config Release --parallel --build_dir build\Windows
 ```
-#### Android (Cross-Compile):
+
+#### Windows (Arm64X cross-compile target)
+Use the `build_arm64x.bat` script to build Arm64X binaries. Arm64X binaries bundle both Arm64 and Arm64EC code, making Arm64X compatible with both Arm64 and Arm64EC processes on a Windows on Arm device. Refer to the [Arm64X PE files overview](https://learn.microsoft.com/en-us/windows/arm/arm64x-pe).
+
+```
+.\build_arm64x.bat --use_qnn --qnn_home [QNN_SDK_PATH] --build_shared_lib --cmake_generator "Visual Studio 17 2022" --config Release --parallel
+```
+Notes:
+* Do not specify a `--build_dir` option because `build_arm64x.bat` sets specific build directories.
+* The above command places Arm64X binaries in the `.\build\arm64ec-x\Release\Release\` directory.
+
+#### Linux (x86_64)
+```
+./build.sh --use_qnn --qnn_home [QNN_SDK_PATH] --build_shared_lib --build_wheel --config Release --parallel --skip_tests --build_dir build/Linux
+```
+
+#### Android (cross-compile):
 
 Please reference [Build OnnxRuntime For Android](android.md)
 ```
 # on Windows
-build.bat --build_shared_lib --skip_submodule_sync --android --config Release --use_qnn --qnn_home [QNN_SDK path] --android_sdk_path [android_SDK path] --android_ndk_path [android_NDK path] --android_abi arm64-v8a --android_api [api-version] --cmake_generator Ninja --build_dir build\Android
+.\build.bat --build_shared_lib --android --config Release --parallel --use_qnn static_lib --qnn_home [QNN_SDK_PATH] --android_sdk_path [android_SDK path] --android_ndk_path [android_NDK path] --android_abi arm64-v8a --android_api [api-version] --cmake_generator Ninja --build_dir build\Android
 
 # on Linux
-build.sh --build_shared_lib --skip_submodule_sync --android --config Release --use_qnn --qnn_home [QNN_SDK path] --android_sdk_path [android_SDK path] --android_ndk_path [android_NDK path] --android_abi arm64-v8a --android_api [api-version] --cmake_generator Ninja --build_dir build/Android
-
+./build.sh --build_shared_lib --android --config Release --parallel --use_qnn static_lib --qnn_home [QNN_SDK_PATH] --android_sdk_path [android_SDK path] --android_ndk_path [android_NDK path] --android_abi arm64-v8a --android_api [api-version] --cmake_generator Ninja --build_dir build/Android
 ```
 
 ---
