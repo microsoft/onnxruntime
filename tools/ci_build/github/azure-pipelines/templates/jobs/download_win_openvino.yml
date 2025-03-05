@@ -5,7 +5,6 @@ parameters:
 
 steps:
   - powershell: |
-      # Define variables
       $Url = "https://storage.openvinotoolkit.org/repositories/openvino/packages/2025.0/windows/openvino_toolkit_windows_2025.0.0.17942.1f68be9f594_x86_64.zip"
       $OutputPath = "$env:Agent_TempDirectory\openvino.zip"
       $ExtractPath = "$env:Agent_TempDirectory\openvino-v$env:OpenVINOVersion"
@@ -19,18 +18,18 @@ steps:
       New-Item -ItemType Directory -Path $TempExtractPath | Out-Null
 
       # Download OpenVINO ZIP
-      Write-Output "Downloading OpenVINO..."
+      Write-Output "Downloading OpenVINO"
       Invoke-WebRequest -Uri $Url -OutFile $OutputPath
 
       # Extract to temporary directory first
-      Write-Output "Extracting OpenVINO to a temporary directory..."
+      Write-Output "Extracting OpenVINO to a temporary directory"
       Expand-Archive -Path $OutputPath -DestinationPath $TempExtractPath -Force
 
       # Locate the nested subdirectory
       $InnerFolder = Get-ChildItem -Path $TempExtractPath -Directory | Select-Object -First 1
 
       if ($InnerFolder) {
-        Write-Output "Moving extracted files to final destination..."
+        Write-Output "Moving extracted files to final destination"
         Move-Item -Path "$($InnerFolder.FullName)\*" -Destination $ExtractPath -Force
       }
 
