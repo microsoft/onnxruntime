@@ -4,9 +4,8 @@ parameters:
     type: string
     default: '12.2'
     values:
-      - 11.8
       - 12.2
-
+  
   - name: SpecificArtifact
     displayName: Use Specific Artifact
     type: boolean
@@ -30,16 +29,11 @@ parameters:
     default: []
 
 variables:
+  - template: templates/common-variables.yml
   - name: docker_base_image
-    ${{ if eq(parameters.CudaVersion, '11.8') }}:
-      value: onnxruntimebuildcache.azurecr.io/internal/azureml/onnxruntime/build/cuda11_x64_almalinux8_gcc11:20250124.1
-    ${{ if eq(parameters.CudaVersion, '12.2') }}:
-      value: onnxruntimebuildcache.azurecr.io/internal/azureml/onnxruntime/build/cuda12_x64_ubi8_gcc12:20250124.1
-  - name: Repository
-    ${{ if eq(parameters.CudaVersion, '11.8') }}:
-      value: 'onnxruntimecuda11manylinuxbuild'
-    ${{ if eq(parameters.CudaVersion, '12.2') }}:
-      value: 'onnxruntimecuda12manylinuxbuild'
+    value: onnxruntimebuildcache.azurecr.io/internal/azureml/onnxruntime/build/cuda12_x64_ubi8_gcc12:20250124.1
+  - name: linux_trt_version
+    value: ${{ variables.linux_trt_version_cuda12 }}
   - name: trtEPOptionsArg
     ${{ if not(eq(length(parameters.TrtEPOptions), 0)) }}:
       value: --trt_ep_options ${{ join(',',parameters.TrtEPOptions) }}
@@ -48,6 +42,8 @@ variables:
       value: --cuda_ep_options ${{ join(',',parameters.CUDAEPOptions) }}
   - name: optional_arguments
     value: -a "-a -z -g $(optimizeGraph) -b $(bindInputs) $(trtEPOptionsArg) $(cudaEPOptionsArg)"
+  - name: Repository
+    value: onnxruntime_ep_perf_lite_build
 
 stages:
 - stage: Linux_Build
@@ -56,11 +52,12 @@ stages:
     timeoutInMinutes: 180
     variables:
       skipComponentGovernanceDetection: true
-      CCACHE_DIR: $(Pipeline.Workspace)/ccache
+      ALLOW_RELEASED_ONNX_OPSET_ONLY: '1'
+      ORT_CACHE_DIR: '$(Agent.TempDirectory)/ort/ccache'
+      TODAY: $[format('{0:dd}{0:MM}{0:yyyy}', pipeline.startTime)]
     workspace:
       clean: all
-    pool: onnxruntime-Ubuntu2204-AMD-CPU
-
+    pool: onnxruntime-tensorrt-linuxbuild-T4
     steps:
 
     - checkout: self
@@ -71,50 +68,46 @@ stages:
       parameters:
         Dockerfile: tools/ci_build/github/linux/docker/Dockerfile.manylinux2_28_cuda
         Context: tools/ci_build/github/linux/docker
-        DockerBuildArgs: "--build-arg BASEIMAGE=$(docker_base_image) --build-arg BUILD_UID=$( id -u )"
-        Repository: $(Repository)
+        DockerBuildArgs: "
+        --network=host
+        --build-arg BASEIMAGE=${{ variables.docker_base_image }}
+        --build-arg TRT_VERSION=${{ variables.linux_trt_version }}
+        --build-arg BUILD_UID=$( id -u )
+        "
+        Repository: ${{ variables.Repository }}
 
-    - task: Cache@2
-      inputs:
-        key: '"ccache" | "${{parameters.CudaVersion}}" |"$(Build.SourceBranch)" | "$(Build.SourceVersion)"'
-        path: $(CCACHE_DIR)
-        restoreKeys: |
-          "ccache" | "${{parameters.CudaVersion}}" | "$(Build.SourceBranch)"
-          "ccache"
-        cacheHitVar: CACHE_RESTORED
-      displayName: Cach Task
-
-    - script: |
-        sudo mkdir -p $(Pipeline.Workspace)/ccache
-      condition: ne(variables.CACHE_RESTORED, 'true')
-      displayName: Create Cache Dir
-
-    - script: |
-        set -e -x
-        mkdir -p $HOME/.onnx
-        docker run --rm \
-          --volume /data/onnx:/data/onnx:ro \
-          --volume $(Build.SourcesDirectory):/onnxruntime_src \
-          --volume $(Build.BinariesDirectory):/build \
-          --volume /data/models:/build/models:ro \
-          --volume $HOME/.onnx:/home/onnxruntimedev/.onnx \
-          --volume $(Pipeline.Workspace)/ccache:/cache \
-          -e ALLOW_RELEASED_ONNX_OPSET_ONLY=0 \
-          -e NIGHTLY_BUILD \
-          -e BUILD_BUILDNUMBER \
-          -e CCACHE_DIR=/cache -w /onnxruntime_src \
-          $(Repository) tools/ci_build/github/linux/build_tensorrt_ci.sh
-      workingDirectory: $(Build.SourcesDirectory)
-      displayName: Build Onnxruntime
+    - template: templates/linux-build-step-with-cache.yml
+      parameters:
+        WithCache: true
+        Today: $(TODAY)
+        AdditionalKey: gpu_tensorrt
+        CacheDir: '$(ORT_CACHE_DIR)'
+        BuildStep:
+          - task: CmdLine@2
+            inputs:
+              script: |
+                docker run -e SYSTEM_COLLECTIONURI --gpus all --rm \
+                    --volume /data/onnx:/data/onnx:ro \
+                    --volume $(Build.SourcesDirectory):/onnxruntime_src \
+                    --volume $(Build.BinariesDirectory):/build \
+                    --volume /data/models:/build/models:ro \
+                    --volume $HOME/.onnx:/home/onnxruntimedev/.onnx \
+                    --volume $(ORT_CACHE_DIR):/cache \
+                    -e ALLOW_RELEASED_ONNX_OPSET_ONLY=0 \
+                    -e NIGHTLY_BUILD \
+                    -e BUILD_BUILDNUMBER \
+                    -e CCACHE_DIR=/cache -w /onnxruntime_src \
+                    ${{ variables.Repository }} tools/ci_build/github/linux/build_tensorrt_ci.sh
+              workingDirectory: $(Build.SourcesDirectory)
+              displayName: Build Onnxruntime with TensorRT EP
 
     - script: $(Build.SourcesDirectory)/tools/ci_build/github/linux/delete_unused_files_before_upload.sh
 
     - task: PublishPipelineArtifact@0
       displayName: 'Publish Pipeline Artifact'
       inputs:
-        artifactName: 'drop-linux'
+        artifactName: 'onnxruntime-linux-x64-tensorrt'
         targetPath: '$(Build.BinariesDirectory)/Release'
-
     - template: templates/explicitly-defined-final-tasks.yml
 
 - stage: Linux_Test
@@ -135,7 +128,7 @@ stages:
 
     - template: templates/flex-downloadPipelineArtifact.yml
       parameters:
-        ArtifactName: 'drop-linux'
+        ArtifactName: 'onnxruntime-linux-x64-tensorrt'
         StepName: 'Download Pipeline Artifact - Linux Build'
         TargetPath: '$(Build.BinariesDirectory)/Release'
         SpecificArtifact: ${{ parameters.SpecificArtifact }}
@@ -146,7 +139,7 @@ stages:
         Dockerfile: tools/ci_build/github/linux/docker/Dockerfile.manylinux2_28_cuda
         Context: tools/ci_build/github/linux/docker
         DockerBuildArgs: "--build-arg BASEIMAGE=$(docker_base_image) --build-arg BUILD_UID=$( id -u )"
-        Repository: $(Repository)
+        Repository: ${{ variables.Repository }}
 
     - task: CmdLine@2
       inputs:
@@ -160,7 +153,7 @@ stages:
             --volume $HOME/.onnx:/home/onnxruntimedev/.onnx \
             --volume /data/onnx:/data/onnx \
             -e NVIDIA_TF32_OVERRIDE=0 \
-            $(Repository) \
+            ${{ variables.Repository }} \
             /bin/bash -c '
               set -e
               nvidia-smi; \
@@ -169,6 +162,7 @@ stages:
               cat /usr/include/cudnn_version.h | grep CUDNN_MAJOR -m1 -A 2; \
               export PATH=/opt/python/cp312-cp312/bin:$PATH; \
               which python3; \
+              df -h; \
               python3 -m pip install /build/Release/dist/*.whl; \
               python3 -u -c "from onnxruntime.capi._pybind_state import (OrtDevice as C_OrtDevice) ; \
                         ort_device = C_OrtDevice(C_OrtDevice.cuda(), C_OrtDevice.default_memory(), 0); \
