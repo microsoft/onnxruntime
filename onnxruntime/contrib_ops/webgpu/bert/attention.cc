@@ -80,7 +80,9 @@ void InitVarStub(std::ostringstream& ss, const Tensor* seqlen_k) {
 
 Status AttentionProbsProgram::GenerateShaderCode(ShaderHelper& shader) const {
   shader.AddInput("q", ShaderUsage::UseUniform | ShaderUsage::UseValueTypeAlias);
-  shader.AddInput("key", ShaderUsage::UseUniform | ShaderUsage::UseValueTypeAlias);
+  if (!is_packed_qkv_) {
+    shader.AddInput("key", ShaderUsage::UseUniform | ShaderUsage::UseValueTypeAlias);
+  }
   if (feed_past_key_) {
     shader.AddInput("past_key", ShaderUsage::UseUniform);
   }
@@ -96,42 +98,51 @@ Status AttentionProbsProgram::GenerateShaderCode(ShaderHelper& shader) const {
   }
 
   shader.AdditionalImplementation() << "var<workgroup> tileQ: array<q_value_t, " << tile_size_ * tile_size_ << ">;\n"
-                                    << "var<workgroup> tileK: array<key_value_t, " << tile_size_ * tile_size_ << ">;\n"
+                                    << "var<workgroup> tileK: array<" << (is_packed_qkv_ ? "q_value_t" : "key_value_t") << ", " << tile_size_ * tile_size_ << ">;\n"
                                     << "alias f32_val_t = " << (components_ == 4 ? "vec4<f32>" : (components_ == 2 ? "vec2<f32>" : "f32")) << ";\n";
   shader.MainFunctionBody() << "// x holds the N and y holds the M\n"
                             << "let m = workgroup_id.y * TILE_SIZE;\n"
                             << "let n = workgroup_id.x * TILE_SIZE;\n"
                             << "let batch_idx = workgroup_id.z / uniforms.num_heads;\n"
-                            << "let qOffset = workgroup_id.z * uniforms.M * uniforms.K + m * uniforms.K;\n"
                             << "let sequence_length = uniforms.M;\n"
                             << "var total_sequence_length = uniforms.N;\n";
+  if (is_packed_qkv_) {
+    shader.MainFunctionBody() << "let head_idx = workgroup_id.z % uniforms.num_heads;\n"
+                              << "let kv_num_heads = uniforms.num_heads /" << n_reps_ << ";\n"
+                              << "let packed_batch_stride = (uniforms.num_heads + 2 * kv_num_heads) * uniforms.M * uniforms.K;\n"
+                              << "let qOffset = batch_idx * packed_batch_stride + head_idx * uniforms.M * uniforms.K;\n"
+                              << "let kvHeadIdx = head_idx / " << n_reps_ << ";\n"
+                              << "let kOffset = batch_idx * packed_batch_stride + (uniforms.num_heads + kvHeadIdx) * uniforms.kv_sequence_length * uniforms.K;\n";
+  } else {
+    shader.MainFunctionBody() << "let qOffset = workgroup_id.z * uniforms.M * uniforms.K + m * uniforms.K;\n"
+                              << "let kOffset = (workgroup_id.z / " << n_reps_ << ") * uniforms.kv_sequence_length * uniforms.K;\n";
+  }
   std::ostringstream oss;
   InitVarStub(oss, seqlen_k_);
   shader.MainFunctionBody() << oss.str();
-  shader.MainFunctionBody() << "let kOffset = (workgroup_id.z / " << n_reps_ << ") * uniforms.kv_sequence_length * uniforms.K;\n";
   if (has_present_key_) {
     shader.MainFunctionBody() << "let presentKeyOffset = (workgroup_id.z / " << n_reps_ << ") * uniforms.present_sequence_length * uniforms.K;\n";
   }
 
   shader.MainFunctionBody() << "var value = f32_val_t(0);\n"
-                               "for (var w: u32 = 0u; w < uniforms.K; w += TILE_SIZE) {\n"
-                               "  if (global_id.y < uniforms.M && w + local_id.x < uniforms.K) {\n"
-                               "    tileQ[TILE_SIZE * local_id.y + local_id.x] = q[qOffset + local_id.y * uniforms.K + w + local_id.x];\n"
-                               "  }\n"
-                               "  if (n + local_id.y < uniforms.N && w + local_id.x < uniforms.K) {\n"
-                               "    var idx = TILE_SIZE * local_id.y + local_id.x;\n";
+                            << "for (var w: u32 = 0u; w < uniforms.K; w += TILE_SIZE) {\n"
+                            << "  if (global_id.y < uniforms.M && w + local_id.x < uniforms.K) {\n"
+                            << "    tileQ[TILE_SIZE * local_id.y + local_id.x] = q[qOffset + local_id.y * uniforms.K + w + local_id.x];\n"
+                            << "  }\n"
+                            << "  if (n + local_id.y < uniforms.N && w + local_id.x < uniforms.K) {\n"
+                            << "    var idx = TILE_SIZE * local_id.y + local_id.x;\n";
 
   if ((feed_past_key_ && has_present_key_) || (past_present_share_buffer_ && !is_first_prompt_)) {
     shader.MainFunctionBody() << "    if (n + local_id.y < past_sequence_length) {\n"
                               << "      let pastKeyOffset = (workgroup_id.z / " << n_reps_ << ") * uniforms.past_sequence_length * uniforms.K;\n"
                               << "      tileK[idx] = " << (past_present_share_buffer_ ? "present_key" : "past_key") << "[pastKeyOffset + (n + local_id.y) * uniforms.K + w + local_id.x];\n"
                               << "    } else  if (n + local_id.y - past_sequence_length < uniforms.kv_sequence_length) {\n"
-                              << "      tileK[idx] = key[kOffset + (n + local_id.y - past_sequence_length) * uniforms.K + w + local_id.x];\n"
+                              << "      tileK[idx] = " << (is_packed_qkv_ ? "q" : "key") << "[kOffset + (n + local_id.y - past_sequence_length) * uniforms.K + w + local_id.x];\n"
                               << "    }\n";
   } else {
     shader.MainFunctionBody() << "    if (n + local_id.y < uniforms.kv_sequence_length) {\n"
-                                 "      tileK[idx] = key[kOffset + (n + local_id.y) * uniforms.K + w + local_id.x];\n"
-                                 "    }\n";
+                              << "      tileK[idx] = " << (is_packed_qkv_ ? "q" : "key") << "[kOffset + (n + local_id.y) * uniforms.K + w + local_id.x];\n"
+                              << "    }\n";
   }
 
   if (has_present_key_) {
@@ -181,9 +192,11 @@ Status ComputeAttentionProbs(onnxruntime::webgpu::ComputeContext& context, int o
   const int components = parameters.head_size_ % 4 == 0 ? 4 : (parameters.head_size_ % 2 == 0 ? 2 : 1);
 
   AttentionProbsProgram program{"AttentionProbs", feed_past_key, has_present_key, has_attention_bias, tile_size,
-                                components, parameters.is_first_prompt_, parameters.n_reps, seqlen_k, parameters.past_present_share_buffer_};
-  program.AddInputs({{Q, ProgramTensorMetadataDependency::TypeAndRank, components},
-                     {K, ProgramTensorMetadataDependency::TypeAndRank, components}});
+                                components, parameters.is_first_prompt_, parameters.is_packed_qkv_, parameters.n_reps, seqlen_k, parameters.past_present_share_buffer_};
+  program.AddInput({Q, ProgramTensorMetadataDependency::TypeAndRank, components});
+  if (K != nullptr) {
+    program.AddInput({K, ProgramTensorMetadataDependency::TypeAndRank, components});
+  }
   if (feed_past_key) {
     program.AddInput({past_key, ProgramTensorMetadataDependency::TypeAndRank, components});
   }
@@ -203,7 +216,7 @@ Status ComputeAttentionProbs(onnxruntime::webgpu::ComputeContext& context, int o
                                (parameters.sequence_length_ + tile_size - 1) / tile_size,
                                parameters.batch_size_ * parameters.num_heads_)
       .SetWorkgroupSize(tile_size, tile_size)
-      .CacheHint(std::to_string(tile_size), parameters.past_present_share_buffer_, feed_past_key, has_present_key, has_attention_bias, seqlen_k != nullptr, components, parameters.is_first_prompt_)
+      .CacheHint(std::to_string(tile_size), parameters.past_present_share_buffer_, feed_past_key, has_present_key, has_attention_bias, seqlen_k != nullptr, components, parameters.is_first_prompt_, parameters.is_packed_qkv_)
       .AddUniformVariables({{static_cast<uint32_t>(parameters.sequence_length_)},
                             {static_cast<uint32_t>(vectorized_head_size)},
                             {static_cast<uint32_t>(total_sequence_length)},
@@ -331,7 +344,14 @@ Status VxAttentionScoreProgram::GenerateShaderCode(ShaderHelper& shader) const {
   std::ostringstream oss;
   InitVarStub(oss, seqlen_k_);
   shader.MainFunctionBody() << oss.str();
-  shader.MainFunctionBody() << "let vOffset = (workgroup_id.z / " << n_reps_ << ") * uniforms.N * uniforms.kv_sequence_length + n;\n";
+  if (is_packed_qkv_) {
+    shader.MainFunctionBody() << "let kv_num_heads = uniforms.num_heads / " << n_reps_ << ";\n"
+                              << "let packed_batch_stride = (uniforms.num_heads + 2 * kv_num_heads) * uniforms.M * uniforms.K;\n"
+                              << "let kvHeadIdx = head_idx / " << n_reps_ << ";\n"
+                              << "let vOffset = batch_idx * packed_batch_stride + (uniforms.num_heads + kv_num_heads + kvHeadIdx) * uniforms.N * uniforms.kv_sequence_length + n;\n";
+  } else {
+    shader.MainFunctionBody() << "let vOffset = (workgroup_id.z / " << n_reps_ << ") * uniforms.N * uniforms.kv_sequence_length + n;\n";
+  }
   if (has_present_value_) {
     shader.MainFunctionBody() << "let presentValueOffset = (workgroup_id.z / " << n_reps_ << ") * uniforms.N * uniforms.present_sequence_length + n;\n";
   }
@@ -400,7 +420,7 @@ Status ComputeVxAttentionScore(onnxruntime::webgpu::ComputeContext& context, int
   const int components = parameters.v_head_size_ % 4 == 0 ? 4 : (parameters.v_head_size_ % 2 == 0 ? 2 : 1);
   constexpr int tile_size = 12;
   int tile_n_size = tile_size * components;
-  VxAttentionScoreProgram program{"VxAttentionScore", feed_past_value, has_present_value, tile_size, parameters.is_first_prompt_, parameters.n_reps, seqlen_k, parameters.past_present_share_buffer_};
+  VxAttentionScoreProgram program{"VxAttentionScore", feed_past_value, has_present_value, tile_size, parameters.is_first_prompt_, parameters.is_packed_qkv_, parameters.n_reps, seqlen_k, parameters.past_present_share_buffer_};
   program.AddInputs({{probs, ProgramTensorMetadataDependency::TypeAndRank},
                      {V, ProgramTensorMetadataDependency::TypeAndRank, components}});
   if (feed_past_value) {
@@ -417,7 +437,7 @@ Status ComputeVxAttentionScore(onnxruntime::webgpu::ComputeContext& context, int
   program.SetDispatchGroupSize((parameters.v_head_size_ + tile_n_size - 1) / tile_n_size,
                                (parameters.sequence_length_ + tile_size - 1) / tile_size,
                                parameters.batch_size_ * parameters.num_heads_)
-      .CacheHint(std::to_string(tile_size), parameters.past_present_share_buffer_, feed_past_value, has_present_value, seqlen_k != nullptr, parameters.is_first_prompt_)
+      .CacheHint(std::to_string(tile_size), parameters.past_present_share_buffer_, feed_past_value, has_present_value, seqlen_k != nullptr, parameters.is_first_prompt_, parameters.is_packed_qkv_)
       .SetWorkgroupSize(tile_size, tile_size)
       .AddUniformVariables({{static_cast<uint32_t>(parameters.sequence_length_)},
                             {static_cast<uint32_t>(total_sequence_length)},
@@ -452,7 +472,7 @@ Status ApplyAttention(const Tensor* Q, const Tensor* K, const Tensor* V, const T
   ORT_RETURN_IF_ERROR(ComputeInPlaceSoftmax(context, &probs,
                                             parameters.batch_size_, parameters.num_heads_, parameters.past_sequence_length_, parameters.sequence_length_, total_sequence_length, seqlen_k, parameters.is_first_prompt_));
 
-  ORT_RETURN_IF_ERROR(ComputeVxAttentionScore(context, output_count, &probs, V, past_value, output, present_value,
+  ORT_RETURN_IF_ERROR(ComputeVxAttentionScore(context, output_count, &probs, parameters.is_packed_qkv_ ? Q : V, past_value, output, present_value,
                                               parameters, past_sequence_length, total_sequence_length, seqlen_k));
 
   return Status::OK();

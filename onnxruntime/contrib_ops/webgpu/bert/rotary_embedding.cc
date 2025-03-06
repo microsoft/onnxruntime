@@ -30,10 +30,14 @@ Status RotaryEmbeddingProgram::GenerateShaderCode(ShaderHelper& shader) const {
   const auto& output_indices = shader.AddIndices("output_indices", false);
   const auto interleaved_str = interleaved_ ? "true" : "false";
   shader.MainFunctionBody() << "  let half_rotary_emb_dim = uniforms.cos_cache_shape[1];\n"
-                               "  let bsnh = global_idx / uniforms.global_stride % uniforms.global_shape;\n"
-                               "  let size = uniforms.global_shape[0] * uniforms.global_stride[0];\n"
-                               "  if (global_idx >= size) { return; }\n"
-                               "  if (bsnh[3] < half_rotary_emb_dim) {\n"
+                            << "  let bsnh = global_idx / uniforms.global_stride % uniforms.global_shape;\n"
+                            << "  let size = uniforms.global_shape[0] * uniforms.global_stride[0];\n"
+                            << "  if (global_idx >= size) { return; }\n"
+                            << "  if (uniforms.is_packed_qkv == 1 && bsnh[2] >= uniforms.num_heads + uniforms.kv_num_heads) {\n"
+                            << "    let i = dot(bsnh, uniforms.input_output_stride);\n"
+                            << "    " << output.SetByOffset("i", input.GetByOffset("i")) << "\n"
+                            << "    " << output.SetByOffset("i + 1", input.GetByOffset("i + 1")) << "\n"
+                            << "  } else if (bsnh[3] < half_rotary_emb_dim) {\n"
                             << "    let position_ids_idx = " << position_ids.BroadcastedIndicesToOffset("bsnh.xy", output_indices) << ";\n"
                             << "    let position_id = u32(" << position_ids.GetByOffset("position_ids_idx") << ") + select(0, bsnh[1], position_ids_idx == 0);\n"
                             << "    let i = dot(bsnh, uniforms.input_output_stride) + select(0, bsnh[3], " << interleaved_str << ");\n"
@@ -43,7 +47,7 @@ Status RotaryEmbeddingProgram::GenerateShaderCode(ShaderHelper& shader) const {
                             << "    let im = " << input.GetByOffset("i") << " * " << sin_cache.GetByIndices("vec2<u32>(position_id, bsnh[3])") << " + " << input.GetByOffset("j") + " * " << cos_cache.GetByIndices("vec2<u32>(position_id, bsnh[3])") << ";\n"
                             << "    " << output.SetByOffset("j", "im") << "\n"
                             << "  } else { \n"
-                               "    let k = dot(bsnh, uniforms.input_output_stride) + half_rotary_emb_dim;\n"
+                            << "    let k = dot(bsnh, uniforms.input_output_stride) + half_rotary_emb_dim;\n"
                             << "    " << output.SetByOffset("k", input.GetByOffset("k")) << "\n"
                             << "  }";
 
@@ -109,7 +113,10 @@ Status RotaryEmbedding::ComputeInternal(onnxruntime::webgpu::ComputeContext& con
       .AddUniformVariables({{scale_},
                             {gsl::make_span(global_dims)},
                             {gsl::make_span(global_strides)},
-                            {gsl::make_span(input_output_strides)}})
+                            {gsl::make_span(input_output_strides)},
+                            {static_cast<uint32_t>(0)},  // is_packed_qkv
+                            {static_cast<uint32_t>(num_heads_)},  // num_heads
+                            {static_cast<uint32_t>(0)}})  // kv_numheads
       .AddIndices(TensorShape{1, 1});
   return context.RunProgram(program);
 }

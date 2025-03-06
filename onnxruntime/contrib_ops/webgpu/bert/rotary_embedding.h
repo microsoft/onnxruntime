@@ -23,7 +23,10 @@ class RotaryEmbeddingProgram final : public Program<RotaryEmbeddingProgram> {
   WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES({"scale", ProgramUniformVariableDataType::Float32},
                                           {"global_shape", ProgramUniformVariableDataType::Uint32},
                                           {"global_stride", ProgramUniformVariableDataType::Uint32},
-                                          {"input_output_stride", ProgramUniformVariableDataType::Uint32});
+                                          {"input_output_stride", ProgramUniformVariableDataType::Uint32},
+                                          {"is_packed_qkv", ProgramUniformVariableDataType::Uint32},
+                                          {"num_heads", ProgramUniformVariableDataType::Uint32},
+                                          {"kv_num_heads", ProgramUniformVariableDataType::Uint32});
 
  private:
   const bool interleaved_;
