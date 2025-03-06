@@ -260,14 +260,15 @@ class GQAAttentionBase {
           const size_t window_size = should_apply_local_window ? local_window_size_ + 1 : seq_causal_length;
 
           // Apply custom attention mask if there is any
-          // TODO: Vectorize this addition
           if (attention_mask_batch != nullptr) {
-            for (size_t idx = start_offset; idx < start_offset + window_size; idx++) {
-              if constexpr (std::is_same<U, float>::value) {
-                output_softmax[idx] += static_cast<float>(attention_mask_batch[idx]);
-              } else {
-                output_softmax[idx] = MLFloat16(output_softmax[idx].ToFloat() + attention_mask_batch[idx].ToFloat());
-              }
+            if constexpr (std::is_same_v<U, T>) {
+              ApplyAttentionMask(output_softmax + start_offset, attention_mask_batch + start_offset,
+                                 static_cast<int>(window_size));
+            } else {
+              // TODO: Handle the case where U and T are different types
+              // The only case where U and T can be of different types is when U is float32 and T is float16
+              // In that case, allocate a float32 scratch buffer and upcast the mask to it
+              // Then, invoke the ApplyAttentionMask<float> with the temporary buffer being passed in
             }
           }
 
