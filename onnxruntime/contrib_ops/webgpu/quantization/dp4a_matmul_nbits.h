@@ -35,22 +35,22 @@ class DP4AMatMulNBitsProgram final : public Program<DP4AMatMulNBitsProgram> {
 };
 
 Status ApplyDP4AMatrixMatMulNBits(const Tensor* a, const Tensor* b, const Tensor* scales,
-    uint32_t M,
-    uint32_t N,
-    uint32_t K,
-    uint32_t block_size,
-    onnxruntime::webgpu::ComputeContext& context,
-    Tensor* y);
+                                  uint32_t M,
+                                  uint32_t N,
+                                  uint32_t K,
+                                  uint32_t block_size,
+                                  onnxruntime::webgpu::ComputeContext& context,
+                                  Tensor* y);
 
 bool CanApplyDP4AMatrixMatMulNBits(onnxruntime::webgpu::ComputeContext& context,
-     uint64_t accuracy_level,
-     uint32_t block_size,
-     uint32_t batch_count,
-     uint32_t N,
-     uint32_t K,
-     uint32_t components_k,
-     bool has_zero_points);
+                                   uint64_t accuracy_level,
+                                   uint32_t block_size,
+                                   uint32_t batch_count,
+                                   uint32_t N,
+                                   uint32_t K,
+                                   uint32_t components_k,
+                                   bool has_zero_points);
 
-}  // namespace onnxruntime
-}  // namespace contrib
 }  // namespace webgpu
+}  // namespace contrib
+}  // namespace onnxruntime
