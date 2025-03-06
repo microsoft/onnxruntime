@@ -353,6 +353,12 @@ common::Status SaveInitializedTensors(
         oss << "Deserialize tensor " << name << " failed." << st.ErrorMessage();
         return Status(st.Category(), st.Code(), oss.str());
       }
+
+      if (p_tensor != nullptr) {
+        // p_tensor was wrapped in a deleter by DeserializeTensorProto so we can simply release it here.
+        ORT_IGNORE_RETURN_VALUE(buffered_tensors_iter->second.release());
+        buffered_tensors.erase(buffered_tensors_iter);
+      }
     }
 
     // 'name' is a reference to a string within the TensorProto that save_tensor_func may free
