@@ -11,8 +11,22 @@
 #include "core/framework/compute_capability.h"
 
 namespace onnxruntime {
+/**
+ * Optimizer's selection function: Selects a set of nodes from a given graph for optimization. Additional key/value strings can be provided to configure the optimizer.
+ *                                 If needed, use graph_optimizer_registry to access the session options, the CPU EP and the logger.
+ *
+ * Optimizer's optimization function: Gets the nodes in ComputeCapability from nodes_to_optimize. Use graph_optimizer_registry to access the session options, the CPU EP
+ *                                    and the logger if needed to create the optimizer. Run optimization on the nodes/subgraph, and finally, update the ComputeCapability.
+ *
+ */
+using SelectionFunc = std::function<std::vector<std::unique_ptr<ComputeCapability>>(const GraphViewer&,
+                                                                                    const KeyValueConfig&,
+                                                                                    const GraphOptimizerRegistry& graph_optimizer_registry)>;
+using OptimizationFunc = std::function<Status(Graph& graph,
+                                              const ComputeCapability& optimization_cc,
+                                              ComputeCapability& cc_to_update,
+                                              const GraphOptimizerRegistry& graph_optimizer_registry)>;
 using KeyValueConfig = std::unordered_map<std::string, std::string>;
-using SelectionFunc = std::function<std::vector<std::unique_ptr<ComputeCapability>>(const GraphViewer&, const KeyValueConfig&, const GraphOptimizerRegistry& graph_optimizer_registry)>;
 
 /**
  * A registration/lookup class for re-usable optimizers for EPs.

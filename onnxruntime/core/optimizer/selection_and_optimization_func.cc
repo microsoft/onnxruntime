@@ -9,10 +9,8 @@
 namespace onnxruntime {
 
 std::vector<std::unique_ptr<ComputeCapability>> ConstantFoldingDQFuncs::Select(const GraphViewer& graph_viewer,
-                                                                               const KeyValueConfig& config,
-                                                                               const GraphOptimizerRegistry& graph_optimizer_registry) {
-  ORT_UNUSED_PARAMETER(config);
-  ORT_UNUSED_PARAMETER(graph_optimizer_registry);
+                                                                               const KeyValueConfig& /*config*/,
+                                                                               const GraphOptimizerRegistry& /*graph_optimizer_registry*/) {
   std::vector<std::unique_ptr<ComputeCapability>> result;
   std::unique_ptr<IndexedSubGraph> sub_graph = std::make_unique<IndexedSubGraph>();
   const std::vector<NodeIndex>& node_index = graph_viewer.GetNodesInTopologicalOrder(ExecutionOrder::PRIORITY_BASED /*priority-based topological sort*/);
