@@ -31,6 +31,19 @@ void ComputeAttentionSoftcapInplace(T* scores, int sequence_length, T softcap) {
   MlasComputeSoftcap(scores, scores, sequence_length, softcap);
 }
 
+template<typename T>
+void ApplyAttentionMask(T* softmax_logits, const T* attention_mask, int N) {
+  MlasEltwiseAdd(softmax_logits, attention_mask, softmax_logits, N);
+
+  // for (int i = 0; i < N; i++) {
+  //   if constexpr (std::is_same<T, float>::value) {
+  //     softmax_logits[i] += static_cast<float>(attention_mask[i]);
+  //   } else {
+  //     softmax_logits[i] = MLFloat16(softmax_logits[i].ToFloat() + attention_mask[i].ToFloat());
+  //   }
+  // }
+}
+
 template <typename T>
 void PrepareMask(const int32_t* mask_index,
                  gsl::span<const int64_t> mask_index_dims,
