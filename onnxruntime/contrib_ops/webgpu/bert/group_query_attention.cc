@@ -31,42 +31,6 @@ ONNX_OPERATOR_KERNEL_EX(
         .InputMemoryType(OrtMemTypeCPUInput, 6),
     GroupQueryAttention);
 
-Status SplitPackedQKVProgram::GenerateShaderCode(ShaderHelper& sh) const {
-  const auto& packed_qkv = sh.AddInput("packed_qkv", ShaderUsage::UseOffsetToIndices | ShaderUsage::UseUniform);
-  const auto& query = sh.AddOutput("query", ShaderUsage::UseSetByIndices | ShaderUsage::UseUniform);
-  const auto& key = sh.AddOutput("key", ShaderUsage::UseSetByIndices | ShaderUsage::UseUniform);
-  const auto& value = sh.AddOutput("val", ShaderUsage::UseSetByIndices | ShaderUsage::UseUniform);
-  sh.MainFunctionBody() << "  let packed_qkv_indices = " << packed_qkv.OffsetToIndices("global_idx") << ";\n"
-                        << "  let input_data = " << packed_qkv.GetByOffset("global_idx") << ";\n"
-                        << "  let index = " << packed_qkv.IndicesGet("packed_qkv_indices", "2") << ";\n"
-                        << "  if (index < uniforms.hidden_size) {\n"
-                        << "    " << query.SetByIndices("packed_qkv_indices", "input_data") << ";\n"
-                        << "  } else if (index < (uniforms.hidden_size + uniforms.kv_hidden_size)) {\n"
-                        << "    var key_indices = packed_qkv_indices;\n"
-                        << "   " << key.IndicesSet("key_indices", "2", "u32(index - uniforms.hidden_size)") << ";\n"
-                        << "   " << key.SetByIndices("key_indices", "input_data") << ";\n"
-                        << "  } else {\n"
-                        << "    var val_indices = packed_qkv_indices;\n"
-                        << "   " << value.IndicesSet("val_indices", "2", "u32(index - uniforms.hidden_size - uniforms.kv_hidden_size)") << ";\n"
-                        << "   " << value.SetByIndices("val_indices", "input_data") << ";\n"
-                        << "  }";
-  return Status::OK();
-}
-
-Status SplitPackedQKV(onnxruntime::webgpu::ComputeContext& context, const WebgpuAttentionParameters& params, const Tensor* packedQKV, Tensor* query, Tensor* key, Tensor* val) {
-  SplitPackedQKVProgram program;
-  auto input_size = packedQKV->Shape().Size();
-  program
-      .AddInput({packedQKV, ProgramTensorMetadataDependency::Rank})
-      .AddOutputs({{query, ProgramTensorMetadataDependency::Rank}, {key, ProgramTensorMetadataDependency::Rank}, {val, ProgramTensorMetadataDependency::Rank}})
-      .AddUniformVariables({
-          {static_cast<uint32_t>(params.hidden_size_)},
-          {static_cast<uint32_t>(params.kv_hidden_size_)},
-      })
-      .SetDispatchGroupSize((input_size + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE);
-  return context.RunProgram(program);
-}
-
 Status GeneratePositionIDsProgram::GenerateShaderCode(ShaderHelper& sh) const {
   const auto& output = sh.AddOutput("output", ShaderUsage::UseUniform);
   const auto& seqlens = sh.AddInput("seqlens", ShaderUsage::UseUniform);
@@ -110,10 +74,11 @@ Status GeneratePositionIDs(onnxruntime::webgpu::ComputeContext& context, const W
   return context.RunProgram(program);
 }
 
-Status RunRotaryEmbedding(onnxruntime::webgpu::ComputeContext& context, const WebgpuAttentionParameters& params, const Tensor* input, const Tensor* pos_ids, const Tensor* cos_cache, const Tensor* sin_cache, Tensor* output, bool is_query_input) {
+Status RunRotaryEmbedding(onnxruntime::webgpu::ComputeContext& context, const WebgpuAttentionParameters& params, const Tensor* input, const Tensor* pos_ids, const Tensor* cos_cache, const Tensor* sin_cache, Tensor* output, bool is_packed, bool is_query_input) {
   const auto half_rotary_embedding_dim = gsl::narrow<uint32_t>(cos_cache->Shape()[1]);
   const auto head_size = params.head_size_;
-  const auto hidden_size = is_query_input ? params.hidden_size_ : params.kv_hidden_size_;
+  const auto hidden_size = is_packed ? params.hidden_size_ + 2 * params.kv_hidden_size_ : is_query_input ? params.hidden_size_ : params.kv_hidden_size_;
+  const auto input_output_hidden_size = is_packed ? params.hidden_size_ + 2 * params.kv_hidden_size_ : is_query_input ? params.hidden_size_ : params.kv_hidden_size_;
   const TensorShape global_shape({params.batch_size_, params.sequence_length_, hidden_size / head_size, static_cast<int64_t>(head_size - half_rotary_embedding_dim)});
   const auto rank = global_shape.NumDimensions();
   std::vector<uint32_t> global_dims(rank);
@@ -122,7 +87,7 @@ Status RunRotaryEmbedding(onnxruntime::webgpu::ComputeContext& context, const We
     global_dims[j] = gsl::narrow<uint32_t>(global_shape[j]);
     global_strides[j] = gsl::narrow<uint32_t>(global_shape.SizeFromDimension(j + 1));
   }
-  const auto input_output_strides = std::vector<uint32_t>({gsl::narrow<uint32_t>(input->Shape().SizeFromDimension(1)), gsl::narrow<uint32_t>(hidden_size), gsl::narrow<uint32_t>(head_size), 1});
+  const auto input_output_strides = std::vector<uint32_t>({gsl::narrow<uint32_t>(input->Shape().SizeFromDimension(1)), gsl::narrow<uint32_t>(input_output_hidden_size), gsl::narrow<uint32_t>(head_size), 1});
   const auto output_size = gsl::narrow<const uint32_t>(global_shape.Size());
 
   RotaryEmbeddingProgram program(params.rotary_interleaved_);
@@ -137,7 +102,10 @@ Status RunRotaryEmbedding(onnxruntime::webgpu::ComputeContext& context, const We
       .AddUniformVariables({{params.scale_},
                             {gsl::make_span(global_dims)},
                             {gsl::make_span(global_strides)},
-                            {gsl::make_span(input_output_strides)}})
+                            {gsl::make_span(input_output_strides)},
+                            {static_cast<uint32_t>(is_packed ? 1 : 0)},
+                            {static_cast<uint32_t>(is_query_input ? params.num_heads_ : params.kv_num_heads_)},
+                            {static_cast<uint32_t>(is_query_input ? params.kv_num_heads_ : 0)}})
       .AddIndices(TensorShape{1, 1});
   return context.RunProgram(program);
 }
@@ -189,32 +157,20 @@ Status GroupQueryAttention::ComputeInternal(onnxruntime::webgpu::ComputeContext&
                                present_value, parameters, context);
   }
 
-  Tensor qSplit;
-  Tensor kSplit;
-  Tensor vSplit;
-  if (parameters.is_packed_qkv_) {
-    qSplit = context.CreateGPUTensor(query->DataType(), TensorShape({parameters.batch_size_, parameters.sequence_length_, parameters.hidden_size_}));
-    kSplit = context.CreateGPUTensor(query->DataType(), TensorShape({parameters.batch_size_, parameters.sequence_length_, parameters.kv_hidden_size_}));
-    vSplit = context.CreateGPUTensor(query->DataType(), TensorShape({parameters.batch_size_, parameters.sequence_length_, parameters.kv_hidden_size_}));
-    ORT_RETURN_IF_ERROR(SplitPackedQKV(context, parameters, query, &qSplit, &kSplit, &vSplit));
-    parameters.is_packed_qkv_ = false;
-    query = &qSplit;
-    key = &kSplit;
-    value = &vSplit;
-  }
-
   Tensor qRotary;
   Tensor kRotary;
   if (do_rotary_) {
     qRotary = context.CreateGPUTensor(query->DataType(), query->Shape());
-    kRotary = context.CreateGPUTensor(key->DataType(), key->Shape());
     auto pos_ids_shape = TensorShape({parameters.batch_size_, parameters.sequence_length_});
     Tensor pos_ids = context.CreateGPUTensor(DataTypeImpl::GetType<int64_t>(), pos_ids_shape);
     ORT_RETURN_IF_ERROR(GeneratePositionIDs(context, parameters, seqlen_k, &pos_ids));
-    ORT_RETURN_IF_ERROR(RunRotaryEmbedding(context, parameters, query, &pos_ids, cos_cache, sin_cache, &qRotary, /* is_query_input = */ true));
-    ORT_RETURN_IF_ERROR(RunRotaryEmbedding(context, parameters, key, &pos_ids, cos_cache, sin_cache, &kRotary, /* is_query_input = */ false));
+    ORT_RETURN_IF_ERROR(RunRotaryEmbedding(context, parameters, query, &pos_ids, cos_cache, sin_cache, &qRotary, parameters.is_packed_qkv_, /* is_query_input = */ true));
+    if (!parameters.is_packed_qkv_) {
+      kRotary = context.CreateGPUTensor(key->DataType(), key->Shape());
+      ORT_RETURN_IF_ERROR(RunRotaryEmbedding(context, parameters, key, &pos_ids, cos_cache, sin_cache, &kRotary, parameters.is_packed_qkv_, /* is_query_input = */ false));
+      key = &kRotary;
+    }
     query = &qRotary;
-    key = &kRotary;
   }
 
   TensorShapeVector q_new_dims({parameters.batch_size_, parameters.num_heads_,
@@ -227,21 +183,28 @@ Status GroupQueryAttention::ComputeInternal(onnxruntime::webgpu::ComputeContext&
     return ApplyAttention(&Q, key, value, nullptr, past_key, past_value, output, present_key,
                           present_value, parameters, context, seqlen_k);
   }
-
-  TensorShapeVector k_new_dims({parameters.batch_size_, parameters.kv_num_heads_,
-                                parameters.kv_sequence_length_, parameters.head_size_});
-  TensorShape k_new_shape(k_new_dims);
-  Tensor K = context.CreateGPUTensor(key->DataType(), k_new_shape);
-  ORT_RETURN_IF_ERROR(TransferBSDToBNSH(context, parameters.kv_num_heads_, parameters.kv_sequence_length_,
-                                        parameters.head_size_, key, nullptr, 0, &K));
-
-  TensorShapeVector v_new_dims({parameters.batch_size_, parameters.kv_num_heads_,
-                                parameters.kv_sequence_length_, parameters.v_head_size_});
-  TensorShape v_new_shape(v_new_dims);
-  Tensor V = context.CreateGPUTensor(value->DataType(), v_new_shape);
-  ORT_RETURN_IF_ERROR(TransferBSDToBNSH(context, parameters.kv_num_heads_, parameters.kv_sequence_length_,
-                                        parameters.v_head_size_, value, nullptr, 0, &V));
-  return ApplyAttention(&Q, &K, &V, nullptr, past_key, past_value, output, present_key,
+  query = &Q;
+  Tensor K;
+  Tensor V;
+  if (key) {
+    TensorShapeVector k_new_dims({parameters.batch_size_, parameters.kv_num_heads_,
+                                  parameters.kv_sequence_length_, parameters.head_size_});
+    TensorShape k_new_shape(k_new_dims);
+    K = context.CreateGPUTensor(key->DataType(), k_new_shape);
+    ORT_RETURN_IF_ERROR(TransferBSDToBNSH(context, parameters.kv_num_heads_, parameters.kv_sequence_length_,
+                                          parameters.head_size_, key, nullptr, 0, &K));
+    key = &K;
+  }
+  if (value) {
+    TensorShapeVector v_new_dims({parameters.batch_size_, parameters.kv_num_heads_,
+                                  parameters.kv_sequence_length_, parameters.v_head_size_});
+    TensorShape v_new_shape(v_new_dims);
+    V = context.CreateGPUTensor(value->DataType(), v_new_shape);
+    ORT_RETURN_IF_ERROR(TransferBSDToBNSH(context, parameters.kv_num_heads_, parameters.kv_sequence_length_,
+                                          parameters.v_head_size_, value, nullptr, 0, &V));
+    value = &V;
+  }
+  return ApplyAttention(query, key, value, nullptr, past_key, past_value, output, present_key,
                         present_value, parameters, context, seqlen_k);
 }
 
