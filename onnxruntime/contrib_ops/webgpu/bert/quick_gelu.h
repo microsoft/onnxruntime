@@ -18,7 +18,7 @@ class QuickGeluProgram final : public Program<QuickGeluProgram> {
   QuickGeluProgram() : Program{"QuickGelu"} {}
   Status GenerateShaderCode(ShaderHelper& sh) const override;
   WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES({"vec_size", ProgramUniformVariableDataType::Uint32},
-                                           {"alpha", ProgramUniformVariableDataType::Float32});
+                                          {"alpha", ProgramUniformVariableDataType::Float32});
 };
 
 class QuickGelu final : public WebGpuKernel {
