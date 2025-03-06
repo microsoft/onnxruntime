@@ -51,7 +51,7 @@ class GraphOptimizerRegistry {
   const onnxruntime::IExecutionProvider* cpu_ep_;
   const logging::Logger* logger_;
 
-#if !defined(ORT_MINIMAL_BUILD)
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
   InlinedHashMap<std::string, SelectionFunc> transformer_name_to_selection_func_;
 
   /**

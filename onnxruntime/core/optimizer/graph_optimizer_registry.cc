@@ -10,7 +10,7 @@ using namespace onnxruntime;
 using namespace ::onnxruntime::common;
 
 namespace onnxruntime {
-#if !defined(ORT_MINIMAL_BUILD)
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
 GraphOptimizerRegistry::GraphOptimizerRegistry(const onnxruntime::SessionOptions* sess_options,
                                                const onnxruntime::IExecutionProvider* cpu_ep,
                                                const logging::Logger* logger) : session_options_(sess_options),
@@ -22,7 +22,9 @@ GraphOptimizerRegistry::GraphOptimizerRegistry(const onnxruntime::SessionOptions
 }
 
 Status GraphOptimizerRegistry::CreatePredefinedSelectionFuncs() {
+#if !defined(ORT_EXTENDED_MINIMAL_BUILD)
   transformer_name_to_selection_func_[kConstantFoldingDQ] = ConstantFoldingDQFuncs::Select;
+#endif
 
   return Status::OK();
 }
