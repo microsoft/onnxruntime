@@ -642,12 +642,9 @@ class FusionAttention(Fusion):
             name=mha_node_name,
         )
         mha_node.domain = "com.microsoft"
-        mha_node.attribute.extend(
-            [
-                helper.make_attribute("num_heads", num_heads),
-                helper.make_attribute("unidirectional", int(unidirectional)),
-            ]
-        )
+        mha_node.attribute.append(helper.make_attribute("num_heads", num_heads))
+        if unidirectional:
+            mha_node.attribute.append(helper.make_attribute("unidirectional", int(unidirectional)))
 
         self.increase_counter("MultiHeadAttention")
         return mha_node

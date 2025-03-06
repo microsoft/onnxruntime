@@ -3,7 +3,6 @@
 
 #include "contrib_ops/cpu/bert/attention_base.h"
 #include "contrib_ops/cpu/bert/multihead_attention_helper.h"
-#include "contrib_ops/cpu/utils/dump_tensor.h"
 #include "core/providers/common.h"
 
 namespace onnxruntime {

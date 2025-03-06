@@ -125,6 +125,7 @@ class AttentionCPUBase : public AttentionBase {
     return Status::OK();
   }
 
+  // For DecoderMaskedMultiHeadAttention
   template <typename T>
   Status ApplyAttentionWithBeams(const T* Q,
                                  const T* K,
@@ -152,7 +153,7 @@ class AttentionCPUBase : public AttentionBase {
 
     auto* tp = context->GetOperatorThreadPool();
 
-    int total_sequence_length = past_sequence_length + 1;
+    int total_sequence_length = past_sequence_length + 1;  // This is +1 because this is used during token generation via DecoderMaskedMultiHeadAttention
     size_t bytes = SafeInt<size_t>(batch_size) * num_heads_ * total_sequence_length * sizeof(T);
     auto attention_probs = allocator->Alloc(bytes);
     BufferUniquePtr scratch_buffer(attention_probs, BufferDeleter(allocator));
@@ -318,11 +319,6 @@ class AttentionCPUBase : public AttentionBase {
     }
 
     DUMP_CPU_TENSOR("QK (scaled)", attention_probs, batch_size, num_heads_, sequence_length, total_sequence_length);
-    if (output_qk != nullptr) {
-      const ptrdiff_t attention_probs_size = SafeInt<ptrdiff_t>(batch_size * num_heads_ * sequence_length * total_sequence_length);
-      const ptrdiff_t attention_probs_bytes = attention_probs_size * sizeof(T);
-      memcpy(output_qk, attention_probs, attention_probs_bytes);
-    }
 
     // attention_probs(B, N, S, T) = Softmax(attention_probs)
     {

@@ -85,7 +85,7 @@ class FusionBartAttention(FusionAttention):
         reshape_qkv_path = self.model.match_parent_path(
             reshape_qkv_2, ["Concat", "Slice", "Shape", "Transpose"], [1, 0, 0, 0]
         )
-        if reshape_qkv_path[-1].input[0] != matmul_qkv.output[0]:
+        if reshape_qkv_path is None or reshape_qkv_path[-1].input[0] != matmul_qkv.output[0]:
             return False
 
         matmul_qk_path_1 = self.model.match_parent_path(
