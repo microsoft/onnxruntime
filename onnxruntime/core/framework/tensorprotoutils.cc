@@ -343,6 +343,9 @@ void ConvertRawDataInTensorProto(TensorProto* tensor,
     bytes = const_cast<char*>(tensor->mutable_raw_data()->c_str());
   }
 
+  if (element_size == 1) {
+    return;
+  }
   if (ext_data_buf) {
     ORT_ENFORCE(ext_data_len % element_size == 0);
     num_elements = ext_data_len / element_size;
