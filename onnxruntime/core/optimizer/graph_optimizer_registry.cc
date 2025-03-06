@@ -22,9 +22,7 @@ GraphOptimizerRegistry::GraphOptimizerRegistry(const onnxruntime::SessionOptions
 }
 
 Status GraphOptimizerRegistry::CreatePredefinedSelectionFuncs() {
-#if !defined(ORT_MINIMAL_BUILD)
   transformer_name_to_selection_func_[kConstantFoldingDQ] = ConstantFoldingDQFuncs::Select;
-#endif
 
   return Status::OK();
 }
