@@ -299,9 +299,9 @@ Status ApplyDP4AMatrixMatMulNBits(const Tensor* a, const Tensor* b, const Tensor
                             {static_cast<uint32_t>(K)},
                             {static_cast<uint32_t>(K / 8)},
                             {static_cast<uint32_t>(K / 16)}})
-        .AddOutput({y, ProgramTensorMetadataDependency::TypeAndRank, reshaped_y_shape, gsl::narrow<int>(kVec4Components)})
-        .CacheHint("Block" + std::to_string(block_size));
-    return context.RunProgram(mul_program);
+      .AddOutput({y, ProgramTensorMetadataDependency::TypeAndRank, reshaped_y_shape, gsl::narrow<int>(kVec4Components)})
+      .CacheHint("Block" + std::to_string(block_size));
+  return context.RunProgram(mul_program);
 }
 
 bool CanApplyDP4AMatrixMatMulNBits(onnxruntime::webgpu::ComputeContext& context,
