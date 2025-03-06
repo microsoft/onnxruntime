@@ -148,7 +148,7 @@ Status GroupQueryAttention::ComputeInternal(onnxruntime::webgpu::ComputeContext&
   const Tensor* value = context.Input<Tensor>(2);
   const Tensor* past_key = context.Input<Tensor>(3);
   const Tensor* past_value = context.Input<Tensor>(4);
-  const Tensor* seqlens_k = context.Input<Tensor>(5);
+  const Tensor* seqlen_k = context.Input<Tensor>(5);
   const Tensor* total_seqlen_tensor = context.Input<Tensor>(6);
   const Tensor* cos_cache = context.Input<Tensor>(7);
   const Tensor* sin_cache = context.Input<Tensor>(8);
@@ -164,12 +164,11 @@ Status GroupQueryAttention::ComputeInternal(onnxruntime::webgpu::ComputeContext&
                                                                 &params,
                                                                 num_heads_,
                                                                 kv_num_heads_,
-                                                                seqlens_k,
+                                                                seqlen_k,
                                                                 total_seqlen_tensor,
                                                                 scale_,
                                                                 softcap_));
   WebgpuAttentionParameters parameters(params);
-
   TensorShapeVector output_shape(3);
   output_shape[0] = static_cast<int64_t>(parameters.batch_size_);
   output_shape[1] = static_cast<int64_t>(parameters.sequence_length_);
@@ -184,6 +183,7 @@ Status GroupQueryAttention::ComputeInternal(onnxruntime::webgpu::ComputeContext&
   Tensor* present_key = context.Output(1, present_kv_shape);
   Tensor* present_value = context.Output(2, present_kv_shape);
   parameters.past_present_share_buffer_ = present_key != nullptr && present_value != nullptr && past_key != nullptr && past_value != nullptr && past_key->DataRaw() == present_key->DataRaw() && past_value->DataRaw() == present_value->DataRaw();
+
   if (!do_rotary_ && CanApplyFlashAttention(nullptr /* bias */, present_key, present_value, parameters, context)) {
     return ApplyFlashAttention(query, key, value, nullptr /* attention_bias */, output, past_key, present_key, past_value,
                                present_value, parameters, context);
@@ -192,7 +192,7 @@ Status GroupQueryAttention::ComputeInternal(onnxruntime::webgpu::ComputeContext&
   Tensor qSplit;
   Tensor kSplit;
   Tensor vSplit;
-  if (parameters.is_packed_qkv_ && do_rotary_) {
+  if (parameters.is_packed_qkv_) {
     qSplit = context.CreateGPUTensor(query->DataType(), TensorShape({parameters.batch_size_, parameters.sequence_length_, parameters.hidden_size_}));
     kSplit = context.CreateGPUTensor(query->DataType(), TensorShape({parameters.batch_size_, parameters.sequence_length_, parameters.kv_hidden_size_}));
     vSplit = context.CreateGPUTensor(query->DataType(), TensorShape({parameters.batch_size_, parameters.sequence_length_, parameters.kv_hidden_size_}));
@@ -210,36 +210,39 @@ Status GroupQueryAttention::ComputeInternal(onnxruntime::webgpu::ComputeContext&
     kRotary = context.CreateGPUTensor(key->DataType(), key->Shape());
     auto pos_ids_shape = TensorShape({parameters.batch_size_, parameters.sequence_length_});
     Tensor pos_ids = context.CreateGPUTensor(DataTypeImpl::GetType<int64_t>(), pos_ids_shape);
-    ORT_RETURN_IF_ERROR(GeneratePositionIDs(context, parameters, seqlens_k, &pos_ids));
+    ORT_RETURN_IF_ERROR(GeneratePositionIDs(context, parameters, seqlen_k, &pos_ids));
     ORT_RETURN_IF_ERROR(RunRotaryEmbedding(context, parameters, query, &pos_ids, cos_cache, sin_cache, &qRotary, /* is_query_input = */ true));
     ORT_RETURN_IF_ERROR(RunRotaryEmbedding(context, parameters, key, &pos_ids, cos_cache, sin_cache, &kRotary, /* is_query_input = */ false));
     query = &qRotary;
     key = &kRotary;
   }
 
-  TensorShapeVector q_new_dims({parameters.batch_size_, parameters.num_heads_, parameters.sequence_length_, parameters.head_size_});
+  TensorShapeVector q_new_dims({parameters.batch_size_, parameters.num_heads_,
+    parameters.sequence_length_, parameters.head_size_});
   TensorShape q_new_shape(q_new_dims);
-  Tensor qBNSH = context.CreateGPUTensor(query->DataType(), q_new_shape);
-  ORT_RETURN_IF_ERROR(TransferBSDToBNSH(context, parameters.is_packed_qkv_ ? parameters.num_heads_ + 2 * parameters.kv_num_heads_ : parameters.num_heads_, parameters.sequence_length_, parameters.head_size_, query, nullptr, 0, &qBNSH));
-  query = &qBNSH;
-  Tensor kBNSH;
-  Tensor vBNSH;
-  if (nullptr != key) {
-    TensorShapeVector k_new_dims({parameters.batch_size_, parameters.kv_num_heads_, parameters.kv_sequence_length_, parameters.head_size_});
+  Tensor Q = context.CreateGPUTensor(query->DataType(), q_new_shape);
+  ORT_RETURN_IF_ERROR(TransferBSDToBNSH(
+    context, parameters.num_heads_, parameters.sequence_length_, parameters.head_size_, query, nullptr, 0, &Q));
+  if (parameters.qkv_format_ == Q_K_V_BSNH_BNSH_BNSH) {  // key and value in BNSH format
+    return ApplyAttention(&Q, key, value, nullptr, past_key, past_value, output, present_key,
+                          present_value, parameters, context, seqlen_k);
+  }
+
+  TensorShapeVector k_new_dims({parameters.batch_size_, parameters.kv_num_heads_,
+                                parameters.kv_sequence_length_, parameters.head_size_});
     TensorShape k_new_shape(k_new_dims);
-    kBNSH = context.CreateGPUTensor(key->DataType(), k_new_shape);
-    ORT_RETURN_IF_ERROR(TransferBSDToBNSH(context, parameters.kv_num_heads_, parameters.kv_sequence_length_, parameters.head_size_, key, nullptr, 0, &kBNSH));
-    key = &kBNSH;
-  }
-  if (nullptr != value) {
-    TensorShapeVector v_new_dims({parameters.batch_size_, parameters.kv_num_heads_, parameters.kv_sequence_length_, parameters.v_head_size_});
+  Tensor K = context.CreateGPUTensor(key->DataType(), k_new_shape);
+  ORT_RETURN_IF_ERROR(TransferBSDToBNSH(context, parameters.kv_num_heads_, parameters.kv_sequence_length_,
+                                        parameters.head_size_, key, nullptr, 0, &K));
+
+  TensorShapeVector v_new_dims({parameters.batch_size_, parameters.kv_num_heads_,
+                                parameters.kv_sequence_length_, parameters.v_head_size_});
     TensorShape v_new_shape(v_new_dims);
-    vBNSH = context.CreateGPUTensor(value->DataType(), v_new_shape);
-    ORT_RETURN_IF_ERROR(TransferBSDToBNSH(context, parameters.kv_num_heads_, parameters.kv_sequence_length_, parameters.v_head_size_, value, nullptr, 0, &vBNSH));
-    value = &vBNSH;
-  }
-  return ApplyAttention(query, key, value, nullptr, past_key, past_value, output, present_key,
-                        present_value, parameters, context, seqlens_k);
+  Tensor V = context.CreateGPUTensor(value->DataType(), v_new_shape);
+  ORT_RETURN_IF_ERROR(TransferBSDToBNSH(context, parameters.kv_num_heads_, parameters.kv_sequence_length_,
+                                        parameters.v_head_size_, value, nullptr, 0, &V));
+  return ApplyAttention(&Q, &K, &V, nullptr, past_key, past_value, output, present_key,
+                        present_value, parameters, context, seqlen_k);
 }
 
 }  // namespace webgpu
