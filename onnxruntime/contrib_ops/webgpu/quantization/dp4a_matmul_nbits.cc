@@ -255,46 +255,46 @@ Status DP4AMatMulNBitsProgram::GenerateShaderCode(ShaderHelper& shader) const {
         }
     )MAIN_FN";
 
-    return Status::OK();
+  return Status::OK();
 }
 
 Status ApplyDP4AMatrixMatMulNBits(const Tensor* a, const Tensor* b, const Tensor* scales,
-    uint32_t M,
-    uint32_t N,
-    uint32_t K,
-    uint32_t block_size,
-    onnxruntime::webgpu::ComputeContext& context,
-    Tensor* y) {
-    constexpr uint32_t kVec4Components = 4;
-    constexpr uint32_t kVec2Components = 2;
-    constexpr uint32_t kU32Components = 4;
+                                  uint32_t M,
+                                  uint32_t N,
+                                  uint32_t K,
+                                  uint32_t block_size,
+                                  onnxruntime::webgpu::ComputeContext& context,
+                                  Tensor* y) {
+  constexpr uint32_t kVec4Components = 4;
+  constexpr uint32_t kVec2Components = 2;
+  constexpr uint32_t kU32Components = 4;
 
-    constexpr uint32_t kBlockSizeA = 128;
-    DP4AMatMulQuantizeProgram quantize_program;
-    quantize_program.SetWorkgroupSize(1);
-    quantize_program.SetDispatchGroupSize(M * K / kBlockSizeA, 1, 1);
-    TensorShape a_quant_shape{1, M, K / kU32Components};
-    Tensor a_quant = context.CreateGPUTensor(DataTypeImpl::GetType<uint32_t>(), a_quant_shape);
-    TensorShapeVector a_scales_dims({1, 1, M, K / kBlockSizeA});
-    Tensor a_scale = context.CreateGPUTensor(a->DataType(), a_scales_dims);
-    quantize_program.AddInputs({{a, ProgramTensorMetadataDependency::TypeAndRank, gsl::narrow<int>(kVec4Components)}})
-        .AddOutputs({{&a_quant, ProgramTensorMetadataDependency::Rank, a_quant.Shape(), gsl::narrow<int>(1)},
-                    {&a_scale, ProgramTensorMetadataDependency::Rank, a_scale.Shape(), gsl::narrow<int>(1)}})
-        .AddUniformVariable({static_cast<uint32_t>(M * K / kVec4Components)});
-    ORT_RETURN_IF_ERROR(context.RunProgram(quantize_program));
+  constexpr uint32_t kBlockSizeA = 128;
+  DP4AMatMulQuantizeProgram quantize_program;
+  quantize_program.SetWorkgroupSize(1);
+  quantize_program.SetDispatchGroupSize(M * K / kBlockSizeA, 1, 1);
+  TensorShape a_quant_shape{1, M, K / kU32Components};
+  Tensor a_quant = context.CreateGPUTensor(DataTypeImpl::GetType<uint32_t>(), a_quant_shape);
+  TensorShapeVector a_scales_dims({1, 1, M, K / kBlockSizeA});
+  Tensor a_scale = context.CreateGPUTensor(a->DataType(), a_scales_dims);
+  quantize_program.AddInputs({{a, ProgramTensorMetadataDependency::TypeAndRank, gsl::narrow<int>(kVec4Components)}})
+      .AddOutputs({{&a_quant, ProgramTensorMetadataDependency::Rank, a_quant.Shape(), gsl::narrow<int>(1)},
+                   {&a_scale, ProgramTensorMetadataDependency::Rank, a_scale.Shape(), gsl::narrow<int>(1)}})
+      .AddUniformVariable({static_cast<uint32_t>(M * K / kVec4Components)});
+  ORT_RETURN_IF_ERROR(context.RunProgram(quantize_program));
 
-    constexpr uint32_t kTileSize = 64;
-    TensorShape reshaped_y_shape{1, M, N / kVec4Components};
-    DP4AMatMulNBitsProgram mul_program{block_size};
-    mul_program.SetWorkgroupSize(256);
-    mul_program.SetDispatchGroupSize(
-        (M + kTileSize - 1) / kTileSize,
-        (N + kTileSize - 1) / kTileSize, 1);
-    mul_program.AddInputs({{&a_quant, ProgramTensorMetadataDependency::TypeAndRank, gsl::narrow<int>(kVec4Components)},
-                        {&a_scale, ProgramTensorMetadataDependency::TypeAndRank, gsl::narrow<int>(1)},
-                        {b, ProgramTensorMetadataDependency::TypeAndRank, gsl::narrow<int>(kVec2Components * kU32Components)},
-                        {scales, ProgramTensorMetadataDependency::TypeAndRank, gsl::narrow<int>(1)}})
-        .AddUniformVariables({{static_cast<uint32_t>(M)},
+  constexpr uint32_t kTileSize = 64;
+  TensorShape reshaped_y_shape{1, M, N / kVec4Components};
+  DP4AMatMulNBitsProgram mul_program{block_size};
+  mul_program.SetWorkgroupSize(256);
+  mul_program.SetDispatchGroupSize(
+      (M + kTileSize - 1) / kTileSize,
+      (N + kTileSize - 1) / kTileSize, 1);
+  mul_program.AddInputs({{&a_quant, ProgramTensorMetadataDependency::TypeAndRank, gsl::narrow<int>(kVec4Components)},
+                         {&a_scale, ProgramTensorMetadataDependency::TypeAndRank, gsl::narrow<int>(1)},
+                         {b, ProgramTensorMetadataDependency::TypeAndRank, gsl::narrow<int>(kVec2Components * kU32Components)},
+                         {scales, ProgramTensorMetadataDependency::TypeAndRank, gsl::narrow<int>(1)}})
+      .AddUniformVariables({{static_cast<uint32_t>(M)},
                             {static_cast<uint32_t>(N)},
                             {static_cast<uint32_t>(K)},
                             {static_cast<uint32_t>(K / 8)},
