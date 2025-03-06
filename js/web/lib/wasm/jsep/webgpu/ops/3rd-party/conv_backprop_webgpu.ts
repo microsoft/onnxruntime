@@ -46,6 +46,11 @@ export const createConvTranspose2DProgramInfo = (
   const inputChannelsPerGroup = wShape[2] / group;
   const outputChannelsPerGroup = wShape[3];
   const aComponents = isChannelsLast ? getMaxComponents(inputChannelsPerGroup) : 1;
+  const packInputAs4 = isChannelsLast && outputChannelsPerGroup === 1 && inputChannelsPerGroup >= 4;
+  const inputChannelsPerGroupInt = packInputAs4
+    ? Math.floor(inputChannelsPerGroup / 4) * 4
+    : Math.floor(inputChannelsPerGroup / aComponents) * aComponents;
+  const inputChannelsRemainder = inputChannelsPerGroup - inputChannelsPerGroupInt;
   const components = isChannelsLast ? getMaxComponents(outputChannelsPerGroup) : 1;
   const bComponents = isChannelsLast ? (outputChannelsPerGroup === 1 ? aComponents : components) : 1;
   const outputSize = ShapeUtil.size(outputShape) / components;
@@ -78,6 +83,7 @@ export const createConvTranspose2DProgramInfo = (
     { type: DataType.uint32, data: dilations },
     { type: DataType.uint32, data: effectiveFilterDims },
     { type: DataType.int32, data: pads },
+    { type: DataType.uint32, data: inputChannelsPerGroupInt },
     { type: DataType.uint32, data: inputChannelsPerGroup },
     { type: DataType.uint32, data: outputChannelsPerGroup },
     ...createTensorShapeVariables(inputs[0].dims, inputs[1].dims),
@@ -96,6 +102,7 @@ export const createConvTranspose2DProgramInfo = (
       { name: 'dilations', type: 'u32', length: filterDims.length },
       { name: 'effective_filter_dims', type: 'u32', length: effectiveFilterDims.length },
       { name: 'pads', type: 'i32', length: pads.length },
+      { name: 'input_channels_per_group_int', type: 'u32' },
       { name: 'input_channels_per_group', type: 'u32' },
       { name: 'output_channels_per_group', type: 'u32' },
     ];
@@ -114,16 +121,40 @@ export const createConvTranspose2DProgramInfo = (
 
     const calculateResult = (): string => {
       let calcStr = '';
-      if (aComponents === 1) {
-        calcStr += `
-        let w_offset = ${w.indicesToOffset(`${w.type.indices}(u32(wRPerm), u32(wCPerm), inputChannel, wOutChannel)`)};
-        let wValue = ${w.getByOffset(`w_offset / ${bComponents}`)};
-        dotProd = dotProd + xValue * wValue;`;
-      } else {
-        if (outputChannelsPerGroup === 1) {
+      if (packInputAs4) {
+        if (aComponents === 4) {
           calcStr += `
-          let wValue = ${w.getByOffset(`${w.indicesToOffset(`${w.type.indices}(u32(wRPerm), u32(wCPerm), inputChannel, wOutChannel)`)} / ${bComponents}`)};
-          dotProd = dotProd + dot(xValue, wValue);`;
+        let xValue = ${dy.getByOffset('x_offset')};
+        let wValue = ${w.getByOffset('w_offset')};
+        dotProd = dotProd + dot(xValue, wValue);
+        x_offset += 1u;
+        w_offset += 1u;`;
+        } else if (aComponents === 2) {
+          calcStr += `
+          dotProd = dotProd + dot(vec4<${dataType}>(${dy.getByOffset('x_offset')}, ${dy.getByOffset('x_offset + 1u')}), vec4<${dataType}>(${w.getByOffset('w_offset')}, ${w.getByOffset('w_offset + 1u')}));
+          x_offset += 2u;
+          w_offset += 2u;`;
+        } else if (aComponents === 1) {
+          calcStr += `
+          dotProd = dotProd + dot(vec4<${dataType}>(${dy.getByOffset('x_offset')}, ${dy.getByOffset('x_offset + 1u')}, ${dy.getByOffset('x_offset + 2u')}, ${dy.getByOffset('x_offset + 3u')}), vec4<${dataType}>(${w.getByOffset('w_offset')}, ${w.getByOffset('w_offset + 1u')}, ${w.getByOffset('w_offset + 2u')}, ${w.getByOffset('w_offset + 3u')}));
+          x_offset += 4u;
+          w_offset += 4u;`;
+        }
+      } else {
+        calcStr += `
+                  let xValue = ${
+                    isChannelsLast
+                      ? dy.getByOffset(
+                          `${dy.indicesToOffset(`${dy.type.indices}(batch, idyR, idyC, inputChannel)`)} / ${aComponents}`,
+                        )
+                      : dy.get('batch', 'inputChannel', 'idyR', 'idyC')
+                  };
+        `;
+        if (aComponents === 1) {
+          calcStr += `
+          let w_offset = ${w.indicesToOffset(`${w.type.indices}(u32(wRPerm), u32(wCPerm), inputChannel, wOutChannel)`)};
+          let wValue = ${w.getByOffset(`w_offset / ${bComponents}`)};
+          dotProd = dotProd + xValue * wValue;`;
         } else {
           for (let c = 0; c < aComponents; c++) {
             calcStr += `
@@ -131,6 +162,32 @@ export const createConvTranspose2DProgramInfo = (
             dotProd = dotProd + xValue[${c}] * wValue${c};`;
           }
         }
+      }
+      return calcStr;
+    };
+    const calculateRemainder = (): string => {
+      if (inputChannelsRemainder === 0) {
+        return '';
+      }
+      if (!packInputAs4) {
+        throw new Error(`packInputAs4 ${packInputAs4} is not true.`);
+      }
+      let calcStr = '';
+      if (aComponents === 1) {
+        calcStr += 'dotProd = dotProd';
+        for (let i = 0; i < inputChannelsRemainder; i++) {
+          calcStr += `
+            + ${dy.getByOffset(`x_offset + ${i}`)} * ${w.getByOffset(`w_offset + ${i}`)}`;
+        }
+        calcStr += ';';
+      } else if (aComponents === 2) {
+        if (inputChannelsRemainder !== 2) {
+          throw new Error(`Invalid inputChannelsRemainder ${inputChannelsRemainder}.`);
+        }
+        calcStr += `
+          let xValue = ${dy.getByOffset('x_offset')};
+          let wValue = ${w.getByOffset('w_offset')};
+          dotProd = dotProd + dot(xValue, wValue);`;
       }
       return calcStr;
     };
@@ -169,7 +226,6 @@ export const createConvTranspose2DProgramInfo = (
                 // Minimum wC >= 0 that satisfies (dyCCorner + wC) % (uniforms.strides.y) == 0
                 wC = u32(((dyCCorner + i32(uniforms.strides.y) - 1) / i32(uniforms.strides.y)) * i32(uniforms.strides.y) - dyCCorner);
               }
-
               for (; wC < uniforms.effective_filter_dims.y; wC = wC + 1) {
                 if (wC % uniforms.dilations.y != 0) {
                   continue;
@@ -182,17 +238,19 @@ export const createConvTranspose2DProgramInfo = (
                 }
                 let idyC: u32 = u32(dyC);
                 var inputChannel = groupId * uniforms.input_channels_per_group;
-                for (var d2: u32 = 0; d2 < uniforms.input_channels_per_group; d2 = d2 + ${aComponents}) {
-                  let xValue = ${
-                    isChannelsLast
-                      ? dy.getByOffset(
-                          `${dy.indicesToOffset(`${dy.type.indices}(batch, idyR, idyC, inputChannel)`)} / ${aComponents}`,
-                        )
-                      : dy.get('batch', 'inputChannel', 'idyR', 'idyC')
-                  };
-                  ${calculateResult()}
-                  inputChannel = inputChannel + ${aComponents};
+                ${
+                  packInputAs4
+                    ? `
+                var x_offset = ${dy.indicesToOffset(`${dy.type.indices}(batch, idyR, idyC, inputChannel)`)} / ${aComponents};
+                var w_offset = ${w.indicesToOffset(`${w.type.indices}(wRPerm, wCPerm, inputChannel, wOutChannel)`)} / ${bComponents};
+                  `
+                    : ''
                 }
+                for (var d2: u32 = 0; d2 < uniforms.input_channels_per_group_int; d2 = d2 + ${packInputAs4 ? 4 : aComponents}) {
+                  ${calculateResult()}
+                  inputChannel = inputChannel + ${packInputAs4 ? 4 : aComponents};
+                }
+                ${calculateRemainder()}
                 wC = wC + uniforms.strides.y - 1;
               }
               wR = wR + uniforms.strides[0] - 1;
@@ -211,7 +269,7 @@ export const createConvTranspose2DProgramInfo = (
   return {
     name: 'ConvTranspose2D',
     shaderCache: {
-      hint: `${attributes.cacheKey};${aComponents}${bComponents}${components}${outputChannelsPerGroup === 1}`,
+      hint: `${attributes.cacheKey};${aComponents}${bComponents}${components}${packInputAs4}${inputChannelsRemainder}`,
       inputDependencies,
     },
     getRunData: () => ({
