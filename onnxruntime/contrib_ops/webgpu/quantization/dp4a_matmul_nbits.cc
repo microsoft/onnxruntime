@@ -305,20 +305,20 @@ Status ApplyDP4AMatrixMatMulNBits(const Tensor* a, const Tensor* b, const Tensor
 }
 
 bool CanApplyDP4AMatrixMatMulNBits(onnxruntime::webgpu::ComputeContext& context,
-    uint64_t accuracy_level,
-    uint32_t block_size,
-    uint32_t batch_count,
-    uint32_t N,
-    uint32_t K,
-    uint32_t components_k,
-    bool has_zero_points) {
-    // macOS - Avoid using dp4a on Metal, as it does not appear to have native dp4a support.
-    // https://github.com/gpuweb/gpuweb/issues/2677#issuecomment-1713292226
-    bool use_dp4a = context.Device().HasFeature(wgpu::FeatureName::Subgroups) &&
-        context.AdapterInfo().backendType != wgpu::BackendType::Metal;
-    return (accuracy_level == 4 && block_size % 32 == 0 &&
-        batch_count == 1 && components_k == 4 && K % 64 == 0 && N % 16 == 0 &&
-        !has_zero_points && use_dp4a);
+                                   uint64_t accuracy_level,
+                                   uint32_t block_size,
+                                   uint32_t batch_count,
+                                   uint32_t N,
+                                   uint32_t K,
+                                   uint32_t components_k,
+                                   bool has_zero_points) {
+  // macOS - Avoid using dp4a on Metal, as it does not appear to have native dp4a support.
+  // https://github.com/gpuweb/gpuweb/issues/2677#issuecomment-1713292226
+  bool use_dp4a = context.Device().HasFeature(wgpu::FeatureName::Subgroups) &&
+                  context.AdapterInfo().backendType != wgpu::BackendType::Metal;
+  return (accuracy_level == 4 && block_size % 32 == 0 &&
+          batch_count == 1 && components_k == 4 && K % 64 == 0 && N % 16 == 0 &&
+          !has_zero_points && use_dp4a);
 }
 
 }  // namespace webgpu
