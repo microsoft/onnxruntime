@@ -102,11 +102,20 @@ export const initRuntime = async (env: Env): Promise<void> => {
  * @param epName
  */
 export const initEp = async (env: Env, epName: string): Promise<void> => {
+  // initialize ASYNCIFY support
+  getInstance().asyncInit?.();
+
+  if (epName === 'webgpu' && BUILD_DEFS.USE_WEBGPU_EP) {
+    getInstance().webgpuInit!((device) => {
+      env.webgpu.device = device;
+    });
+  }
+
   if (!BUILD_DEFS.DISABLE_JSEP) {
     // eslint-disable-next-line @typescript-eslint/no-require-imports, @typescript-eslint/no-var-requires
     const initJsep = require('./jsep/init').init;
 
-    if (epName === 'webgpu') {
+    if (epName === 'webgpu' && !BUILD_DEFS.USE_WEBGPU_EP) {
       // perform WebGPU availability check
       if (typeof navigator === 'undefined' || !navigator.gpu) {
         throw new Error('WebGPU is not supported in current environment');
@@ -270,7 +279,7 @@ export const createSession = async (
   const outputNamesUTF8Encoded = [];
 
   try {
-    [sessionOptionsHandle, allocs] = setSessionOptions(options);
+    [sessionOptionsHandle, allocs] = await setSessionOptions(options);
 
     if (options?.externalData && wasm.mountExternalData) {
       const loadingPromises = [];
@@ -278,7 +287,7 @@ export const createSession = async (
         const path = typeof file === 'string' ? file : file.path;
         loadingPromises.push(
           loadFile(typeof file === 'string' ? file : file.data).then((data) => {
-            wasm.mountExternalData!(path, data);
+            wasm.mountExternalData(path, data);
           }),
         );
       }
@@ -312,6 +321,7 @@ export const createSession = async (
     }
 
     sessionHandle = await wasm._OrtCreateSession(modelDataOffset, modelDataLength, sessionOptionsHandle);
+    wasm.webgpuOnCreateSession?.(sessionHandle);
     if (sessionHandle === 0) {
       checkLastError("Can't create a session.");
     }
@@ -444,6 +454,7 @@ export const releaseSession = (sessionId: number): void => {
   }
 
   wasm.jsepOnReleaseSession?.(sessionId);
+  wasm.webgpuOnReleaseSession?.(sessionId);
 
   inputNamesUTF8Encoded.forEach((buf) => wasm._OrtFree(buf));
   outputNamesUTF8Encoded.forEach((buf) => wasm._OrtFree(buf));
@@ -491,11 +502,20 @@ export const prepareInputOutputTensor = async (
     const gpuBuffer = tensor[2].gpuBuffer;
     dataByteLength = calculateTensorSizeInBytes(tensorDataTypeStringToEnum(dataType), dims)!;
 
-    const registerBuffer = wasm.jsepRegisterBuffer;
-    if (!registerBuffer) {
-      throw new Error('Tensor location "gpu-buffer" is not supported without using WebGPU.');
+    if (BUILD_DEFS.USE_WEBGPU_EP) {
+      const registerBuffer = wasm.webgpuRegisterBuffer;
+      if (!registerBuffer) {
+        throw new Error('Tensor location "gpu-buffer" is not supported without using WebGPU.');
+      }
+
+      rawData = registerBuffer(gpuBuffer, sessionId);
+    } else {
+      const registerBuffer = wasm.jsepRegisterBuffer;
+      if (!registerBuffer) {
+        throw new Error('Tensor location "gpu-buffer" is not supported without using WebGPU.');
+      }
+      rawData = registerBuffer(sessionId, index, gpuBuffer, dataByteLength);
     }
-    rawData = registerBuffer(sessionId, index, gpuBuffer, dataByteLength);
   } else if (location === 'ml-tensor') {
     const mlTensor = tensor[2].mlTensor as MLTensor;
     dataByteLength = calculateTensorSizeInBytes(tensorDataTypeStringToEnum(dataType), dims)!;
@@ -791,7 +811,7 @@ export const run = async (
           // If a certain output's preferred location is GPU but the tensor is empty, we still need to create a CPU
           // tensor for it. There is no mapping GPU buffer for an empty tensor.
           if (preferredLocation === 'gpu-buffer' && size > 0) {
-            const getBuffer = wasm.jsepGetBuffer;
+            const getBuffer = BUILD_DEFS.USE_WEBGPU_EP ? wasm.webgpuGetBuffer : wasm.jsepGetBuffer;
             if (!getBuffer) {
               throw new Error('preferredLocation "gpu-buffer" is not supported without using WebGPU.');
             }
@@ -804,20 +824,43 @@ export const run = async (
             // do not release the tensor right now. it will be released when user calls tensor.dispose().
             keepOutputTensor = true;
 
-            output.push([
-              type,
-              dims,
-              {
-                gpuBuffer,
-                download: wasm.jsepCreateDownloader!(gpuBuffer, bufferSize, type),
-                dispose: () => {
-                  if (wasm._OrtReleaseTensor(tensor) !== 0) {
-                    checkLastError("Can't release tensor.");
-                  }
+            if (BUILD_DEFS.USE_WEBGPU_EP) {
+              wasm.webgpuRegisterBuffer!(gpuBuffer, sessionId, dataOffset);
+              const downloadDataFunction = wasm.webgpuCreateDownloader!(gpuBuffer, bufferSize, sessionId);
+              output.push([
+                type,
+                dims,
+                {
+                  gpuBuffer,
+                  download: async () => {
+                    const arrayBuffer = await downloadDataFunction();
+                    const data = new (tensorTypeToTypedArrayConstructor(type!))(arrayBuffer);
+                    return data as Tensor.DataTypeMap[Tensor.GpuBufferDataTypes];
+                  },
+                  dispose: () => {
+                    if (wasm._OrtReleaseTensor(tensor) !== 0) {
+                      checkLastError("Can't release tensor.");
+                    }
+                  },
                 },
-              },
-              'gpu-buffer',
-            ]);
+                'gpu-buffer',
+              ]);
+            } else {
+              output.push([
+                type,
+                dims,
+                {
+                  gpuBuffer,
+                  download: wasm.jsepCreateDownloader!(gpuBuffer, bufferSize, type),
+                  dispose: () => {
+                    if (wasm._OrtReleaseTensor(tensor) !== 0) {
+                      checkLastError("Can't release tensor.");
+                    }
+                  },
+                },
+                'gpu-buffer',
+              ]);
+            }
           } else if (preferredLocation === 'ml-tensor' && size > 0) {
             const ensureTensor = wasm.jsepEnsureTensor;
             if (!ensureTensor) {
@@ -887,6 +930,18 @@ export const run = async (
   } finally {
     wasm.stackRestore(beforeRunStack);
 
+    if (BUILD_DEFS.USE_WEBGPU_EP) {
+      inputTensors.forEach((t) => {
+        if (t && t[3] === 'gpu-buffer') {
+          wasm.webgpuUnregisterBuffer!(t[2].gpuBuffer);
+        }
+      });
+      outputTensors.forEach((t) => {
+        if (t && t[3] === 'gpu-buffer') {
+          wasm.webgpuUnregisterBuffer!(t[2].gpuBuffer);
+        }
+      });
+    }
     inputTensorHandles.forEach((v) => wasm._OrtReleaseTensor(v));
     outputTensorHandles.forEach((v) => wasm._OrtReleaseTensor(v));
     inputOutputAllocs.forEach((p) => wasm._free(p));
