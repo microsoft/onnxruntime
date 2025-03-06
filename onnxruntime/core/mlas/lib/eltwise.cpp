@@ -6,16 +6,19 @@ Licensed under the MIT License.
 
 Module Name:
 
-    eltwise_add.cpp
+    eltwise.cpp
 
 Abstract:
 
-    This module implements routines to compute eltwise addition of two vectors.
+    This module implements routines to compute eltwise operations on two vectors.
+
+    Currently supported eltwise operations:
+        - Add
 
 --*/
 
 #include "mlasi.h"
-#include <iostream>
+#include "eltwise.h"
 
 template <>
 void
@@ -26,11 +29,6 @@ MlasEltwiseAdd<float>(
     float* output,
     size_t N
 ) {
-    // std::cout << "running vectorized mlas kernel for fp32 addition" << std::endl;
-    // for (size_t i = 0; i < N; i++) {
-    //     output[i] = left[i] + right[i];
-    // }
-
     while (N > 0) {
         MLAS_FLOAT32X4 LeftVec, RightVec;
 
@@ -82,5 +80,9 @@ MlasEltwiseAdd<MLAS_FP16>(
     MLAS_FP16* output,
     size_t N
 ) {
-    MLAS_THROW_EX(std::runtime_error, "Mlas eltwise add for fp16 is not yet supported.");
+    const auto* dispatch = GetMlasPlatform().EltwiseDispatch;
+    if (dispatch == nullptr || dispatch->Add_Fp16 == nullptr) {
+        MLAS_THROW_EX(std::runtime_error, "Add_Fp16 is not supported.");
+    }
+    dispatch->Add_Fp16(left, right, output, N);
 }
