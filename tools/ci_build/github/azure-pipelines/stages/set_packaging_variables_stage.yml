@@ -11,19 +11,23 @@ stages:
       os: linux
     steps:
     - checkout: none
-    - bash: |
-        # Do not output ##vso[] commands with `set -x` or they may be parsed again and include a trailing quote.
+    - task: Bash@3
+      displayName: "Set Release Version Suffix"
+      env:
+        IS_RELEASE_BUILD: ${{ parameters.IsReleaseBuild }}
+        PRE_RELEASE_SUFFIX_STRING: ${{ parameters.PreReleaseVersionSuffixString }}
+        PRE_RELEASE_SUFFIX_NUMBER: ${{ parameters.PreReleaseVersionSuffixNumber }}
+      script: |
         set +x
-        if [[ "${{ parameters.IsReleaseBuild }}" = True && "${{ parameters.PreReleaseVersionSuffixString }}" != "none"  ]]; then
-          if [[ "${{ parameters.PreReleaseVersionSuffixNumber }}" -eq 0 ]]; then
-            echo "##vso[task.setvariable variable=ReleaseVersionSuffix;isOutput=true]-${{ parameters.PreReleaseVersionSuffixString }}"
+        if [[ "$IS_RELEASE_BUILD" == "True" && "$PRE_RELEASE_SUFFIX_STRING" != "none" ]]; then
+          if [[ "$PRE_RELEASE_SUFFIX_NUMBER" -eq 0 ]]; then
+            echo "##vso[task.setvariable variable=ReleaseVersionSuffix;isOutput=true]-$PRE_RELEASE_SUFFIX_STRING"
           else
-            echo "##vso[task.setvariable variable=ReleaseVersionSuffix;isOutput=true]-${{ parameters.PreReleaseVersionSuffixString }}.${{ parameters.PreReleaseVersionSuffixNumber }}"
+            echo "##vso[task.setvariable variable=ReleaseVersionSuffix;isOutput=true]-$PRE_RELEASE_SUFFIX_STRING.$PRE_RELEASE_SUFFIX_NUMBER"
           fi
         else
           echo "##vso[task.setvariable variable=ReleaseVersionSuffix;isOutput=true]"
         fi
-      name: Set_Release_Version_Suffix
     - script: |
         # Extracting hours and minutes
         date=$(date +'%Y%m%d')
