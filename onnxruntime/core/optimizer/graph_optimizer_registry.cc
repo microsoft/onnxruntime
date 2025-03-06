@@ -10,6 +10,7 @@ using namespace onnxruntime;
 using namespace ::onnxruntime::common;
 
 namespace onnxruntime {
+#if !defined(ORT_MINIMAL_BUILD)
 GraphOptimizerRegistry::GraphOptimizerRegistry(const onnxruntime::SessionOptions* sess_options,
                                                const onnxruntime::IExecutionProvider* cpu_ep,
                                                const logging::Logger* logger) : session_options_(sess_options),
@@ -36,4 +37,16 @@ std::optional<SelectionFunc> GraphOptimizerRegistry::GetSelectionFunc(std::strin
   LOGS(*logger_, WARNING) << "Can't find selection function of " << name;
   return std::nullopt;
 }
+#else
+GraphOptimizerRegistry::GraphOptimizerRegistry(const onnxruntime::SessionOptions* sess_options,
+                                               const onnxruntime::IExecutionProvider* cpu_ep,
+                                               const logging::Logger* logger) : session_options_(sess_options),
+                                                                                cpu_ep_(cpu_ep),
+                                                                                logger_(logger) {}
+
+std::optional<SelectionFunc> GraphOptimizerRegistry::GetSelectionFunc(std::string& name) const {
+  ORT_UNUSED_PARAMETER(name);
+  return std::nullopt;
+}
+#endif
 }  // namespace onnxruntime
