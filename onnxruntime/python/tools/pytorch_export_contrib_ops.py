@@ -107,7 +107,7 @@ def register():
             dim_i=dim,
             size_i=size,
             step_i=step,
-        ).setType(self.type())
+        ).setType(self.type().with_sizes([None, None, None, None, size]))
 
     _reg(UnfoldTensor, namespace="onnxruntime")
 

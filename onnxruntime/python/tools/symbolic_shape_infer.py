@@ -228,7 +228,7 @@ class SymbolicShapeInference:
             "SkipLayerNormalization": self._infer_SkipLayerNormalization,
             "SkipSimplifiedLayerNormalization": self._infer_SkipLayerNormalization,
             "SparseAttention": self._infer_SparseAttention,
-            "UnfoldTensor": self._infer_aten_unfold,
+            "UnfoldTensor": self._infer_UnfoldTensor,
         }
         self.aten_op_dispatcher_ = {
             "embedding": self._infer_Gather,
@@ -2400,6 +2400,29 @@ class SymbolicShapeInference:
                     vi.CopyFrom(helper.make_tensor_value_info(vi.name, output_dtype, past_shape))
                     vi = self.known_vi_[node.output[2]]
                     vi.CopyFrom(helper.make_tensor_value_info(vi.name, output_dtype, past_shape))
+
+    def _infer_UnfoldTensor(self, node):  # noqa: N802
+        input_shape = self._get_shape(node, 0)
+        if input_shape is not None:
+            output_shape = input_shape.copy()
+            output_dtype = self.known_vi_[node.input[0]].type.tensor_type.elem_type
+            assert output_dtype is not None
+
+            rank, dim, size, step = len(input_shape), None, None, None
+            for attr in node.attribute:
+                if attr.name == "dim":
+                    dim = attr.i
+                    dim = rank + dim if dim == -1 else dim
+                elif attr.name == "size":
+                    size = attr.i
+                elif attr.name == "step":
+                    step = attr.i
+
+            output_shape.append(size)
+            output_shape[dim] = (input_shape[dim] - size) // step + 1
+
+            vi = self.known_vi_[node.output[0]]
+            vi.CopyFrom(helper.make_tensor_value_info(node.output[0], output_dtype, output_shape))
 
     def _infer_DynamicTimeWarping(self, node):  # noqa: N802
         # Input 0 has shape M x N or 1 x M x N
