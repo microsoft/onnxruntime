@@ -88,7 +88,7 @@ void Add_Kernel_Fp16(const MLAS_FP16* left, const MLAS_FP16* right, MLAS_FP16* o
     if (N & 4) {
         auto l0 = MlasLoadFloat16x4(left_fp16);
         auto r0 = MlasLoadFloat16x4(right_fp16);
-        auto o0 = MlasAddFLoat16(l0, r0);
+        auto o0 = MlasAddFloat16(l0, r0);
         MlasStoreFloat16x4(output_fp16, o0);
 
         left_fp16 += 4;
