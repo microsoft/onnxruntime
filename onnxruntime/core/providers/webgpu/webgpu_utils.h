@@ -10,5 +10,5 @@ namespace webgpu {
 
 int64_t GetMaxComponents(int64_t size);
 
-}  // namespace utils
+}  // namespace webgpu
 }  // namespace onnxruntime
