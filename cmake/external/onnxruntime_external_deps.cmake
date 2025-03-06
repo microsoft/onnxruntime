@@ -301,9 +301,10 @@ if(NOT TARGET Boost::mp11)
     onnxruntime_fetchcontent_declare(
      mp11
      URL ${DEP_URL_mp11}
+     EXCLUDE_FROM_ALL
      FIND_PACKAGE_ARGS NAMES Boost
     )
-    onnxruntime_fetchcontent_makeavailable(mp11)    
+    onnxruntime_fetchcontent_makeavailable(mp11)
     if(NOT TARGET Boost::mp11)
       add_library(Boost::mp11 ALIAS Boost::headers)
     endif()
@@ -671,17 +672,10 @@ if (onnxruntime_USE_WEBGPU)
 
     # disable things we don't use
     set(DAWN_DXC_ENABLE_ASSERTS_IN_NDEBUG OFF)
-    set(DAWN_ENABLE_DESKTOP_GL OFF CACHE BOOL "" FORCE)
-    set(DAWN_ENABLE_OPENGLES OFF CACHE BOOL "" FORCE)
-    set(DAWN_SUPPORTS_GLFW_FOR_WINDOWING OFF CACHE BOOL "" FORCE)
-    set(DAWN_USE_GLFW OFF CACHE BOOL "" FORCE)
-    set(DAWN_USE_WINDOWS_UI OFF CACHE BOOL "" FORCE)
     set(DAWN_USE_X11 OFF CACHE BOOL "" FORCE)
 
     set(TINT_BUILD_TESTS OFF CACHE BOOL "" FORCE)
     set(TINT_BUILD_CMD_TOOLS OFF CACHE BOOL "" FORCE)
-    set(TINT_BUILD_GLSL_WRITER OFF CACHE BOOL "" FORCE)
-    set(TINT_BUILD_GLSL_VALIDATOR OFF CACHE BOOL "" FORCE)
     set(TINT_BUILD_IR_BINARY OFF CACHE BOOL "" FORCE)
     set(TINT_BUILD_SPV_READER OFF CACHE BOOL "" FORCE)  # don't need. disabling is a large binary size saving
     set(TINT_BUILD_WGSL_WRITER ON CACHE BOOL "" FORCE)  # needed to create cache key. runtime error if not enabled.

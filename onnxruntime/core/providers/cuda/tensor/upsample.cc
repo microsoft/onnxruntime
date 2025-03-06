@@ -290,16 +290,16 @@ Status Upsample<T>::BaseCompute(OpKernelContext* context,
       scales_div[i] = fast_divmod(gsl::narrow_cast<int>(ceil(scales[i])));
     }
 
-    UpampleImpl(Stream(context),
-                mode_,
-                rank,
-                (UpsampleMode::LINEAR == mode_) ? (rank == 2 ? X_dims[0] : X_dims[2]) : 0,
-                input_strides,
-                output_div_pitches,
-                scales_div,
-                reinterpret_cast<const CudaT*>(X->Data<T>()),
-                reinterpret_cast<CudaT*>(Y->MutableData<T>()),
-                output_count);
+    UpsampleImpl(Stream(context),
+                 mode_,
+                 rank,
+                 (UpsampleMode::LINEAR == mode_) ? (rank == 2 ? X_dims[0] : X_dims[2]) : 0,
+                 input_strides,
+                 output_div_pitches,
+                 scales_div,
+                 reinterpret_cast<const CudaT*>(X->Data<T>()),
+                 reinterpret_cast<CudaT*>(Y->MutableData<T>()),
+                 output_count);
   }
 
   return Status::OK();

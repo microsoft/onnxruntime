@@ -165,7 +165,6 @@ void WebGpuContext::Initialize(const WebGpuBufferCacheConfig& buffer_cache_confi
 #if defined(ENABLE_PIX_FOR_WEBGPU_EP)
       // set pix frame generator
       pix_frame_generator_ = std::make_unique<WebGpuPIXFrameGenerator>(instance_,
-                                                                       Adapter(),
                                                                        Device());
 #else
     ORT_THROW("Support PIX capture requires extra build flags (--enable_pix_capture)");
@@ -490,8 +489,7 @@ std::vector<wgpu::FeatureName> WebGpuContext::GetAvailableRequiredFeatures(const
 #endif
       wgpu::FeatureName::TimestampQuery,
       wgpu::FeatureName::ShaderF16,
-      wgpu::FeatureName::Subgroups,
-      wgpu::FeatureName::SubgroupsF16};
+      wgpu::FeatureName::Subgroups};
   for (auto feature : features) {
     if (adapter.HasFeature(feature)) {
       required_features.push_back(feature);
