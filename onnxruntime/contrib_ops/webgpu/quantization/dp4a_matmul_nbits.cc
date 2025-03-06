@@ -21,7 +21,7 @@ Status DP4AMatMulQuantizeProgram::GenerateShaderCode(ShaderHelper& shader) const
             return input_a[offset];
         }
     )ADDNL_FN";
-    shader.MainFunctionBody() << R"MAIN_FN(
+  shader.MainFunctionBody() << R"MAIN_FN(
         var local_a : array<vec4<input_a_element_t>, 32>;
         var max_value:vec4<input_a_element_t> = vec4<input_a_element_t>(0);
         for (var idx:u32=0;idx<32;idx+=1)
