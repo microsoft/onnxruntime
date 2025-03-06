@@ -39,7 +39,7 @@ Status DP4AMatMulQuantizeProgram::GenerateShaderCode(ShaderHelper& shader) const
         // 127 is the max value of signed int8 [-127,127] used by pack4x8snorm for 1.0f.
         scales[workgroup_idx] = scale/127;
     )MAIN_FN";
-    return Status::OK();
+  return Status::OK();
 }
 
 Status DP4AMatMulNBitsProgram::GenerateShaderCode(ShaderHelper& shader) const {
