@@ -166,6 +166,7 @@ class SymbolicShapeInference:
             "Range": self._infer_Range,
             "Reciprocal": self._pass_on_shape_and_type,
             "ReduceSum": self._infer_ReduceSum,
+            "ReduceMean": self._infer_ReduceMean,
             "ReduceProd": self._infer_ReduceProd,
             "Reshape": self._infer_Reshape,
             "Resize": self._infer_Resize,
@@ -202,6 +203,7 @@ class SymbolicShapeInference:
             "EmbedLayerNormalization": self._infer_EmbedLayerNormalization,
             "FastGelu": self._infer_FastGelu,
             "GatedRelativePositionBias": self._infer_GatedRelativePositionBias,
+            "GatherBlockQuantized": self._infer_Gather,
             "Gelu": self._infer_Gelu,
             "GemmFastGelu": self._infer_GemmFastGelu,
             "GemmFloat8": self._infer_GemmFloat8,
@@ -464,6 +466,7 @@ class SymbolicShapeInference:
             "DynamicTimeWarping",
             "EmbedLayerNormalization",
             "FastGelu",
+            "GatherBlockQuantized",
             "Gelu",
             "GemmFastGelu",
             "GroupNorm",
@@ -1120,10 +1123,17 @@ class SymbolicShapeInference:
         axis = handle_negative_axis(get_attribute(node, "axis", 0), len(data_shape))
         indices_shape = self._get_shape(node, 1)
         vi = self.known_vi_[node.output[0]]
+        if node.op_type == "Gather":
+            elem_type = self.known_vi_[node.input[0]].type.tensor_type.elem_type
+        elif node.op_type == "GatherBlockQuantized":
+            # scales
+            elem_type = self.known_vi_[node.input[2]].type.tensor_type.elem_type
+        else:
+            raise ValueError(f"Unsupported Gather op_type: {node.op_type}")
         vi.CopyFrom(
             helper.make_tensor_value_info(
                 node.output[0],
-                self.known_vi_[node.input[0]].type.tensor_type.elem_type,
+                elem_type,
                 data_shape[:axis] + indices_shape + data_shape[axis + 1 :],
             )
         )
@@ -1605,6 +1615,11 @@ class SymbolicShapeInference:
                         output_shape,
                     )
                 )
+
+    def _infer_ReduceMean(self, node):  # noqa: N802
+        if get_opset(self.out_mp_) >= 18:
+            # reduce mean spec 18+ is same as reduce sum spec 13+
+            self._infer_ReduceSum(node)
 
     def _infer_ReduceProd(self, node):  # noqa: N802
         axes = get_attribute(node, "axes")

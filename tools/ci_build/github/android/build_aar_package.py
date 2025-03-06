@@ -93,7 +93,11 @@ def _build_aar(args):
     aar_dir = os.path.join(intermediates_dir, "aar", build_config)
     jnilibs_dir = os.path.join(intermediates_dir, "jnilibs", build_config)
     exe_dir = os.path.join(intermediates_dir, "executables", build_config)
-    base_build_command = [sys.executable, BUILD_PY] + build_settings["build_params"] + ["--config=" + build_config]
+    base_build_command = (
+        [sys.executable, BUILD_PY]
+        + build_settings["build_params"]
+        + ["--config=" + build_config, "--use_vcpkg", "--use_vcpkg_ms_internal_asset_cache"]
+    )
     header_files_path = ""
 
     if qnn_android_build:

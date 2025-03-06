@@ -848,12 +848,10 @@ class FusionAttention(Fusion):
                 attention_inputs.append(past_kv)
 
             if add_qk_str:
-                mask_output_name = self.reshape_add_qk(add_qk_str)
-
-                # Add attention mask to attention node
+                # Add additional add to attention node (input name = attention_bias)
                 if not past_exists:
                     attention_inputs.append("")
-                attention_inputs.append(mask_output_name)
+                attention_inputs.append(add_qk_str)
 
             attention_outputs = [output]
             if present_k and present_v:

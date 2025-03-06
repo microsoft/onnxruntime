@@ -170,10 +170,9 @@ stages:
         --build-arg TRT_VERSION=${{ variables.linux_trt_version }}
         "
         Repository: onnxruntimeubi8packagestest
-        UpdateDepsTxt: false
 
     - bash: |
-        docker run --rm \
+        docker run -e SYSTEM_COLLECTIONURI --rm \
           --gpus all \
           --volume $(Build.SourcesDirectory):/onnxruntime_src \
           --volume $(Build.BinariesDirectory):/build \

@@ -36,10 +36,7 @@ elseif(onnxruntime_ENABLE_TRITON)
 endif()
 
 if (onnxruntime_MINIMAL_BUILD)
-  set(onnxruntime_framework_src_exclude
-    "${ONNXRUNTIME_ROOT}/core/framework/fallback_cpu_capability.h"
-    "${ONNXRUNTIME_ROOT}/core/framework/fallback_cpu_capability.cc"
-  )
+  set(onnxruntime_framework_src_exclude)
 
   # custom ops support must be explicitly enabled in a minimal build. exclude if not.
   if (NOT onnxruntime_MINIMAL_BUILD_CUSTOM_OPS)
@@ -69,16 +66,15 @@ endif()
 if(onnxruntime_USE_TENSORRT OR onnxruntime_USE_NCCL)
 # TODO: for now, core framework depends on CUDA. It should be moved to TensorRT EP
 # TODO: provider_bridge_ort.cc should not include nccl.h
-target_include_directories(onnxruntime_framework PRIVATE ${ONNXRUNTIME_ROOT} ${eigen_INCLUDE_DIRS} PUBLIC ${CMAKE_CURRENT_BINARY_DIR} ${CMAKE_CUDA_TOOLKIT_INCLUDE_DIRECTORIES})
+target_include_directories(onnxruntime_framework PRIVATE ${ONNXRUNTIME_ROOT} PUBLIC ${CMAKE_CURRENT_BINARY_DIR} ${CMAKE_CUDA_TOOLKIT_INCLUDE_DIRECTORIES})
 else()
-target_include_directories(onnxruntime_framework PRIVATE ${ONNXRUNTIME_ROOT} ${eigen_INCLUDE_DIRS} PUBLIC ${CMAKE_CURRENT_BINARY_DIR})
+target_include_directories(onnxruntime_framework PRIVATE ${ONNXRUNTIME_ROOT} PUBLIC ${CMAKE_CURRENT_BINARY_DIR})
 endif()
 # Needed for the provider interface, as it includes training headers when training is enabled
 if (onnxruntime_ENABLE_TRAINING_OPS)
   target_include_directories(onnxruntime_framework PRIVATE ${ORTTRAINING_ROOT})
   if (onnxruntime_ENABLE_TRAINING_TORCH_INTEROP OR onnxruntime_ENABLE_TRITON)
-    onnxruntime_add_include_to_target(onnxruntime_framework Python::Module)
-    target_include_directories(onnxruntime_framework PRIVATE ${dlpack_SOURCE_DIR}/include)
+    onnxruntime_add_include_to_target(onnxruntime_framework Python::Module dlpack::dlpack)
   endif()
 endif()
 if (onnxruntime_USE_MPI)
@@ -86,14 +82,12 @@ if (onnxruntime_USE_MPI)
 endif()
 
 if (onnxruntime_ENABLE_ATEN)
-  # DLPack is a header-only dependency
-  set(DLPACK_INCLUDE_DIR ${dlpack_SOURCE_DIR}/include)
-  target_include_directories(onnxruntime_framework PRIVATE ${DLPACK_INCLUDE_DIR})
+  onnxruntime_add_include_to_target(onnxruntime_framework dlpack::dlpack)
 endif()
-onnxruntime_add_include_to_target(onnxruntime_framework onnxruntime_common onnx onnx_proto ${PROTOBUF_LIB} flatbuffers::flatbuffers safeint_interface Boost::mp11 nlohmann_json::nlohmann_json)
+onnxruntime_add_include_to_target(onnxruntime_framework onnxruntime_common onnx onnx_proto ${PROTOBUF_LIB} flatbuffers::flatbuffers safeint_interface Boost::mp11 nlohmann_json::nlohmann_json Eigen3::Eigen)
 
 if (onnxruntime_USE_MIMALLOC)
-    target_link_libraries(onnxruntime_framework mimalloc-static)
+    onnxruntime_add_include_to_target(onnxruntime_framework mimalloc-static)
 endif()
 
 if (CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
@@ -108,7 +102,7 @@ add_dependencies(onnxruntime_framework ${onnxruntime_EXTERNAL_DEPENDENCIES})
 # For the shared onnxruntime library, this is set in onnxruntime.cmake through CMAKE_SHARED_LINKER_FLAGS
 # But our test files don't use the shared library so this must be set for them.
 # For Win32 it generates an absolute path for shared providers based on the location of the executable/onnxruntime.dll
-if (UNIX AND NOT APPLE AND NOT onnxruntime_MINIMAL_BUILD AND NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten" AND NOT ${CMAKE_SYSTEM_NAME} MATCHES "AIX")
+if (UNIX AND NOT APPLE AND NOT onnxruntime_MINIMAL_BUILD AND NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten" AND NOT CMAKE_SYSTEM_NAME MATCHES "AIX")
   set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -Wl,-rpath='$ORIGIN'")
 endif()
 

@@ -158,13 +158,6 @@ def parse_arguments(argv=None):
     )
     conversion_args.set_defaults(no_beam_search_op=False)
 
-    conversion_args.add_argument(
-        "--state_dict_path",
-        type=str,
-        default="",
-        help="Filepath to load pre-trained model with custom state dictionary (e.g. pytorch_model.bin)",
-    )
-
     #############################################################
     # Optional inputs for Whisper
     # (listed below in the order that WhisperBeamSearch expects)
@@ -336,7 +329,6 @@ def export_onnx_models(
     quantize_embedding_layer: bool = False,
     quantize_per_channel: bool = False,
     quantize_reduce_range: bool = False,
-    state_dict_path: str = "",
     provider: str = "cpu",
 ):
     device = torch.device("cuda" if use_gpu else "cpu")
@@ -350,7 +342,6 @@ def export_onnx_models(
         merge_encoder_and_decoder_init,
         no_beam_search_op,
         output_qk,
-        state_dict_path,
     )
     config = models["decoder"].config
 
@@ -489,7 +480,6 @@ def main(argv=None):
         args.quantize_embedding_layer,
         args.quantize_per_channel,
         args.quantize_reduce_range,
-        args.state_dict_path,
         args.provider,
     )
 

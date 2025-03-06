@@ -77,7 +77,6 @@ class WhisperHelper:
         merge_encoder_and_decoder_init: bool = True,
         no_beam_search_op: bool = False,
         output_qk: bool = False,
-        state_dict_path: str = "",
     ) -> dict[str, torch.nn.Module]:
         """Load model given a pretrained name or path, then build models for ONNX conversion.
 
@@ -90,7 +89,6 @@ class WhisperHelper:
             merge_encoder_and_decoder_init (bool, optional): Whether merge encoder and decoder initialization into one ONNX model. Defaults to True.
             no_beam_search_op (bool, optional): Whether to use beam search op or not. Defaults to False.
             output_qk (bool, optional): Whether to output QKs to calculate batched jump times for word-level timestamps. Defaults to False.
-            state_dict_path (str, optional): custom path to load weights from
         Returns:
             Dict[str, torch.nn.Module]: mapping from name to modules for ONNX conversion.
         """
@@ -100,8 +98,6 @@ class WhisperHelper:
             model = WhisperForConditionalGeneration.from_pretrained(
                 model_name_or_path, cache_dir=cache_dir, attn_implementation="eager"
             )
-            if state_dict_path:
-                model.load_state_dict(torch.load(state_dict_path), strict=False)
         else:
             # Load from OpenAI
             import whisper
