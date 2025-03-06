@@ -968,7 +968,7 @@ TEST(MathOpTest, Abs) {
   test.Run();
 }
 
-#ifdef USE_DNNL
+#if defined(USE_CUDA) || defined(USE_DNNL)
 TEST(MathOpTest, Abs_bfloat16) {
 #ifdef USE_DNNL
   if (!DnnlHasBF16Support()) {
@@ -981,8 +981,19 @@ TEST(MathOpTest, Abs_bfloat16) {
   test_bf16.AddInput<BFloat16>("X", dims, MakeBFloat16({1.0f, -2.0f, -0.0f, -10.0f}));
   test_bf16.AddOutput<BFloat16>("Y", dims, MakeBFloat16({1.0f, 2.0f, 0.0f, 10.0f}));
   test_bf16.Run();
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+#if defined(USE_CUDA)
+  execution_providers.push_back(DefaultCudaExecutionProvider());
+#endif
+
+#if defined(USE_DNNL)
+  execution_providers.push_back(DefaultDnnlExecutionProvider());
+#endif
+
+  test_bf16.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
 }
-#endif  //  USE_DNNL
+#endif  //  USE_CUDA || USE_DNNL
 
 TEST(MathOpTest, Abs_int8) {
   OpTester test("Abs");
