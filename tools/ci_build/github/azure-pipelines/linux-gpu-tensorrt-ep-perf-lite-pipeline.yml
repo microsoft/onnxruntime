@@ -157,6 +157,8 @@ stages:
             /bin/bash -c '
               set -e
               nvidia-smi; \
+              export PATH=/usr/src/tensorrt/bin:$PATH; \
+              trtexec; \
               /sbin/ldconfig -N -v $(sed "s/:/ /" <<< $LD_LIBRARY_PATH) 2>/dev/null | grep -E "libcudart.so|libcudnn.so|libnvinfer.so"; \
               cat /usr/local/cuda/include/cuda.h | grep -m1 CUDA_VERSION; \
               cat /usr/include/cudnn_version.h | grep CUDNN_MAJOR -m1 -A 2; \
@@ -190,6 +192,7 @@ stages:
               set -ex; \
               cp /onnxruntime_src/tools/ci_build/github/linux/docker/scripts/manylinux/requirements.txt /tmp/requirements.txt; \
               export PATH=/opt/python/cp312-cp312/bin:$PATH; \
+              export PATH=/usr/src/tensorrt/bin:$PATH; \
               python3 -m pip install -r /tmp/requirements.txt; \
               python3 -m pip install /build/Release/dist/*.whl; \
               cd /onnxruntime_src/onnxruntime/python/tools/tensorrt/perf; \
