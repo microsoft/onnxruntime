@@ -9,10 +9,10 @@ namespace contrib {
 namespace webgpu {
 
 Status DP4AMatMulQuantizeProgram::GenerateShaderCode(ShaderHelper& shader) const {
-    shader.AddInput("input_a", ShaderUsage::UseUniform | ShaderUsage::UseIndicesTypeAlias | ShaderUsage::UseValueTypeAlias | ShaderUsage::UseElementTypeAlias);
-    shader.AddOutput("output", ShaderUsage::UseUniform);
-    shader.AddOutput("scales", ShaderUsage::UseUniform);
-    shader.AdditionalImplementation() << R"ADDNL_FN(
+  shader.AddInput("input_a", ShaderUsage::UseUniform | ShaderUsage::UseIndicesTypeAlias | ShaderUsage::UseValueTypeAlias | ShaderUsage::UseElementTypeAlias);
+  shader.AddOutput("output", ShaderUsage::UseUniform);
+  shader.AddOutput("scales", ShaderUsage::UseUniform);
+  shader.AdditionalImplementation() << R"ADDNL_FN(
         fn readInput(offset: u32) -> input_a_value_t
         {
             if (offset > uniforms.input_size) {
