@@ -105,22 +105,22 @@ fn elu_v(v: vec4<x_element_t>) -> vec4<x_element_t> {
 )";
 
 constexpr const char QuickGeluImpl[] = R"(
-  fn quick_gelu_v(a: vec4<x_element_t>) -> vec4<x_element_t> {
-    let one = x_element_t(1.0);
-    let zero = x_element_t(0.0);
-    let alpha = x_element_t(uniforms.attr);
-    let alpha_vec = vec4<x_element_t>(alpha);
-    let v = a * alpha_vec;
-    var x1 : vec4<x_element_t>;
-    for (var i = 0; i < 4; i = i + 1) {
-      if (v[i] >= zero) {
-        x1[i] = one / (one + exp(-v[i]));
-      } else {
-        x1[i] = one - one / (one + exp(v[i]));
-      }
+fn quick_gelu_v(a: x_value_t) -> x_value_t {
+  let one = 1.0;
+  let zero = 0.0;
+  let alpha = uniforms.attr;
+  let alpha_vec = x_value_t(alpha);
+  let v = a * alpha_vec;
+  var x1 : x_value_t;
+  for (var i = 0; i < 4; i = i + 1) {
+    if (v[i] >= zero) {
+      x1[i] = one / (one + exp(-v[i]));
+    } else {
+      x1[i] = one - one / (one + exp(v[i]));
     }
-    return a * x1;
   }
+  return a * x1;
+}
 )";
 
 // default GELU expression, depending on ErfImpl
