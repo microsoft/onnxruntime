@@ -2685,7 +2685,7 @@ TensorrtExecutionProvider::GetCapability(const GraphViewer& graph,
     auto status = g_host->GetOptimizerByName(optimizer_name, graph_optimizer_registry, selection_func);
     if (status == Status::OK()) {
       if (selection_func) {
-        selection_cc = selection_func(graph, key_value_config);
+        selection_cc = selection_func(graph, key_value_config, graph_optimizer_registry);
         SelectQualifiedDQNode(graph, trt_selection_node_set, consumer_to_dq);
       }
     } else {
