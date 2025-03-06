@@ -31,6 +31,12 @@ steps:
       if ($InnerFolder) {
         Write-Output "Moving extracted files to final destination"
         Move-Item -Path "$($InnerFolder.FullName)\*" -Destination $ExtractPath -Force
+      } else {
+        Write-Error @"
+        Extraction failed: No expected subdirectory found in $TempExtractPath.
+        The archive may not have extracted correctly, or its structure is different than expected.
+        "@
+        exit 1  # Exit with an error status to indicate failure
       }
 
       # Clean up temporary files
@@ -58,4 +64,3 @@ steps:
     inputs:
       script: |
         dir $(OpenVINORootDir)
-
