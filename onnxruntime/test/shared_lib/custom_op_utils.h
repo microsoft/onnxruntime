@@ -464,14 +464,14 @@ struct MulTopOpFloat16 : Ort::CustomOpBase<MulTopOpFloat16, MulTopKernelFloat16>
 // Example overriding an operator where type inference is required for the output so kernel matching works correctly
 //
 struct CustomCastKernel {
-  CustomCastKernel(const OrtApi& ort_api, const OrtKernelInfo* /*info*/)
-      : ort_(ort_api) {
+  CustomCastKernel(const OrtApi& /*ort_api*/, const OrtKernelInfo* /*info*/)
+  /*: ort_(ort_api)*/ {
   }
 
   OrtStatusPtr ComputeV2(OrtKernelContext* context);
 
  private:
-  const OrtApi& ort_;
+  // const OrtApi& ort_;
 };
 
 // Custom Cast op that takes float input and converts based on 'to' attribute.
