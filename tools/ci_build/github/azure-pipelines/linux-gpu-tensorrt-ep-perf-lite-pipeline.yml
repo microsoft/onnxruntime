@@ -185,7 +185,8 @@ stages:
             --volume $HOME/.onnx:/home/onnxruntimedev/.onnx \
             --volume /data/onnx:/data/onnx \
             --volume $(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/mem_test:/mem_test \
-            --volume /data/ep-perf-models:/data/ep-perf-models \
+            --volume $(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf:/perf \
+            --volume $(modelVolume)/onnx-zoo-models:/perf/onnx-zoo-models \
             -e NVIDIA_TF32_OVERRIDE=0 \
             $(Repository) \
             /bin/bash -c '
@@ -195,9 +196,8 @@ stages:
               export PATH=/usr/src/tensorrt/bin:$PATH; \
               python3 -m pip install -r /tmp/requirements.txt; \
               python3 -m pip install /build/Release/dist/*.whl; \
-              cd /onnxruntime_src/onnxruntime/python/tools/tensorrt/perf; \
-              echo 
-              ./perf.sh -d /onnxruntime_src/onnxruntime/python/tools/tensorrt/perf \
+              cd /perf; \
+              ./perf.sh -d /perf/ \
                     -o onnx-zoo-models \
                     -m $(onnx-zoo-models) \
                     -b true \
