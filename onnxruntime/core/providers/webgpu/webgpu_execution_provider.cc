@@ -23,6 +23,7 @@
 
 #include "core/providers/webgpu/webgpu_context.h"
 #include "core/providers/webgpu/data_transfer.h"
+#include "core/providers/webgpu/external_data_loader.h"
 #include "core/providers/webgpu/webgpu_profiler.h"
 
 namespace onnxruntime {
@@ -824,6 +825,12 @@ std::shared_ptr<KernelRegistry> WebGpuExecutionProvider::GetKernelRegistry() con
 std::unique_ptr<onnxruntime::IDataTransfer> WebGpuExecutionProvider::GetDataTransfer() const {
   return std::make_unique<webgpu::DataTransfer>(context_);
 }
+
+#if defined(__wasm__)
+std::unique_ptr<onnxruntime::IExternalDataLoader> WebGpuExecutionProvider::GetExternalDataLoader() const {
+  return std::make_unique<webgpu::ExternalDataLoader>();
+}
+#endif
 
 WebGpuExecutionProvider::~WebGpuExecutionProvider() {
   WebGpuContextFactory::ReleaseContext(context_id_);
