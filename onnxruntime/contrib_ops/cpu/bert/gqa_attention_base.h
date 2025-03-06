@@ -265,10 +265,12 @@ class GQAAttentionBase {
               ApplyAttentionMask(output_softmax + start_offset, attention_mask_batch + start_offset,
                                  static_cast<int>(window_size));
             } else {
-              // TODO: Handle the case where U and T are different types
-              // The only case where U and T can be of different types is when U is float32 and T is float16
-              // In that case, allocate a float32 scratch buffer and upcast the mask to it
-              // Then, invoke the ApplyAttentionMask<float> with the temporary buffer being passed in
+              size_t bytes = window_size * sizeof(float);
+              auto attention_mask_batch_fp32 = static_cast<float*>(allocator->Alloc(bytes));
+              BufferUniquePtr scratch_buffer(attention_mask_batch_fp32, BufferDeleter(allocator));
+
+              MlasConvertHalfToFloatBuffer(attention_mask_batch + start_offset, attention_mask_batch_fp32, window_size);
+              ApplyAttentionMask(output_softmax, attention_mask_batch_fp32, static_cast<int>(window_size));
             }
           }
 
