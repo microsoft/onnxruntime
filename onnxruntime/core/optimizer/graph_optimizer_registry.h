@@ -12,13 +12,16 @@
 
 namespace onnxruntime {
 using KeyValueConfig = std::unordered_map<std::string, std::string>;
-using SelectionFunc = std::function<std::vector<std::unique_ptr<ComputeCapability>>(const GraphViewer&, const KeyValueConfig&)>;
+using SelectionFunc = std::function<std::vector<std::unique_ptr<ComputeCapability>>(const GraphViewer&, const KeyValueConfig&, const GraphOptimizerRegistry& graph_optimizer_registry)>;
 
 /**
  * A registration/lookup class for re-usable optimizers for EPs.
  */
 class GraphOptimizerRegistry {
  public:
+  /**
+   * The constructor takes in session options, the CPU EP and a logger as these are required by some optimizers.
+   */
   GraphOptimizerRegistry(const onnxruntime::SessionOptions* sess_options,
                          const onnxruntime::IExecutionProvider* cpu_ep,
                          const logging::Logger* logger);

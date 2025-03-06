@@ -8,8 +8,11 @@
 
 namespace onnxruntime {
 
-std::vector<std::unique_ptr<ComputeCapability>> ConstantFoldingDQFuncs::Select(const GraphViewer& graph_viewer, const KeyValueConfig& config) {
+std::vector<std::unique_ptr<ComputeCapability>> ConstantFoldingDQFuncs::Select(const GraphViewer& graph_viewer,
+                                                                               const KeyValueConfig& config,
+                                                                               const GraphOptimizerRegistry& graph_optimizer_registry) {
   ORT_UNUSED_PARAMETER(config);
+  ORT_UNUSED_PARAMETER(graph_optimizer_registry);
   std::vector<std::unique_ptr<ComputeCapability>> result;
   std::unique_ptr<IndexedSubGraph> sub_graph = std::make_unique<IndexedSubGraph>();
   const std::vector<NodeIndex>& node_index = graph_viewer.GetNodesInTopologicalOrder(ExecutionOrder::PRIORITY_BASED /*priority-based topological sort*/);
@@ -33,13 +36,16 @@ std::vector<std::unique_ptr<ComputeCapability>> ConstantFoldingDQFuncs::Select(c
   return result;
 }
 
-Status ConstantFoldingDQFuncs::Optimize(Graph& graph, const ComputeCapability& optimization_cc, ComputeCapability& cc_to_update, const GraphOptimizerRegistry& graph_optimizer_registry) {
+Status ConstantFoldingDQFuncs::Optimize(Graph& graph,
+                                        const ComputeCapability& optimization_cc,
+                                        ComputeCapability& cc_to_update,
+                                        const GraphOptimizerRegistry& graph_optimizer_registry) {
   std::string optimizer_name = kConstantFoldingDQ;
   std::unordered_set<std::string> original_initializers_to_remove;
   std::unordered_set<std::string> new_initializers_to_add;
   InlinedHashSet<NodeIndex> dq_node_index_set;
 
-  // iterate node_to_optimize to:
+  // iterate the nodes in node_to_optimize to:
   //   1. get original initializers to remove
   //   2. add new initializers
   //   3. create dq node index set

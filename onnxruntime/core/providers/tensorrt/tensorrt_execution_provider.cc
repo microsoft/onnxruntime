@@ -2660,10 +2660,12 @@ TensorrtExecutionProvider::GetCapability(const GraphViewer& graph,
   /**
    * Enable EP related L2+ graph optimizations:
    *
-   *   1. Call provider bridge API to lookup pre-defined optimizer by name and get selection function
-   *   2. Run selection function to get selection ComputeCapability
-          - ComputeCapability.optimize_func would be set by the optimizer to the function that does the optimization
-   *
+   * 1. Calls provider bridge API to lookup pre-defined optimizer by name and get selection function.
+   *    - Example: g_host->GetOptimizerByName(optimizer_name, graph_optimizer_registry, selection_func)
+   * 2. Executes the selection function to obtain the selection ComputeCapability.
+   *    - ComputeCapability.optimize_func would be set by the optimizer to the function that does the optimization.
+   * 3. Uses the selection ComputeCapability to create the optimization ComputeCapability.
+   * 4. Returns the final ComputeCapability, with nodes_to_optimize set to the optimization ComputeCapability.
    *
    * Current available optimizations:
    *   - (ConstantFoldingDQ) constant folding on DQ nodes, i.e. dequantize INT32, UINT16, INT16 constant to FP32.

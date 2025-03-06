@@ -142,7 +142,7 @@ struct GetCapabilityForEPParams {
   std::reference_wrapper<const layout_transformation::DebugGraphFn> debug_graph_fn;
 #endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
   IResourceAccountant* resource_accountant;
-  std::reference_wrapper<GraphOptimizerRegistry> graph_optimizer_registry;
+  std::reference_wrapper<const GraphOptimizerRegistry> graph_optimizer_registry;
 };
 
 auto get_capabilities = [](const IExecutionProvider& ep,
@@ -264,7 +264,7 @@ static Status GetCapabilityForEP(const GetCapabilityForEPParams& params, const l
 static Status GetCapabilityForEPForAotInlining(const GraphViewer& graph_viewer,
                                                const KernelRegistryManager& kernel_registry_mgr,
                                                const IExecutionProvider& current_ep,
-                                               GraphOptimizerRegistry& graph_optimizer_registry,
+                                               const GraphOptimizerRegistry& graph_optimizer_registry,
                                                const logging::Logger& logger,
                                                std::vector<std::unique_ptr<ComputeCapability>>& capabilities) {
   const auto& ep_type = current_ep.Type();
@@ -406,7 +406,7 @@ static Status PartitionOnnxFormatModelImpl(Graph& graph, FuncManager& func_mgr,
                                            const layout_transformation::TransformLayoutFunction& transform_layout_fn,
                                            const layout_transformation::DebugGraphFn& debug_graph_fn,
                                            const logging::Logger& logger, IResourceAccountant* resource_accountant,
-                                           GraphOptimizerRegistry& graph_optimizer_registry) {
+                                           const GraphOptimizerRegistry& graph_optimizer_registry) {
   // handle testing edge case where optimizers or constant lifting results in graph with no nodes.
   // doing it here saves all providers checking for this in GetCapability
   if (graph.NumberOfNodes() == 0) {
@@ -631,7 +631,7 @@ static Status InlineNodes(Graph& graph, bool& modified_graph) {
 static Status InlineFunctionsAOTImpl(const ExecutionProviders& execution_providers,
                                      const KernelRegistryManager& kernel_registry_mgr,
                                      Graph& graph,
-                                     GraphOptimizerRegistry& graph_optimizer_registry,
+                                     const GraphOptimizerRegistry& graph_optimizer_registry,
                                      const logging::Logger& logger,
                                      InlinedHashSet<std::string>& not_inlined,
                                      size_t& inlined_count) {
@@ -840,7 +840,7 @@ static Status PartitionOnnxFormatModel(const PartitionParams& partition_params, 
                                        const ExecutionProviders& execution_providers,
                                        KernelRegistryManager& kernel_registry_manager,
                                        const std::optional<ResourceAccountantMap>& acc_map,
-                                       GraphOptimizerRegistry& graph_optimizer_registry,
+                                       const GraphOptimizerRegistry& graph_optimizer_registry,
                                        const logging::Logger& logger) {
   bool modified_graph = false;
 
@@ -885,7 +885,7 @@ static Status PartitionOnnxFormatModel(const PartitionParams& partition_params, 
 static Status PartitionOrtFormatModelImpl(const PartitionParams& partition_params,
                                           KernelRegistryManager& kernel_registry_mgr,
                                           IExecutionProvider& current_ep,
-                                          GraphOptimizerRegistry& graph_optimizer_registry,
+                                          const GraphOptimizerRegistry& graph_optimizer_registry,
                                           const logging::Logger& logger) {
   // handle testing edge case where optimizers or constant lifting results in graph with no nodes.
   // doing it here saves all providers checking for this in GetCapability
@@ -1011,7 +1011,7 @@ static Status PartitionOrtFormatModelImpl(const PartitionParams& partition_param
 static Status PartitionOrtFormatModel(const PartitionParams& partition_params,
                                       const ExecutionProviders& execution_providers,
                                       KernelRegistryManager& kernel_registry_manager,
-                                      GraphOptimizerRegistry& graph_optimizer_registry,
+                                      const GraphOptimizerRegistry& graph_optimizer_registry,
                                       const logging::Logger& logger) {
   // process full graph with each EP
   for (const auto& ep : execution_providers) {
