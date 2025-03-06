@@ -197,7 +197,8 @@ Status ModelBuilder::RegisterInitializers() {
 
         // Wasm memory grow will cause all array buffers reallocation, which will be treated as detached
         // buffers in JS side. Simply create a copy to fix it.
-        operand = wnn_builder_.call<emscripten::val>("constant", desc, view.call<emscripten::val>("slice"));
+        view = view.call<emscripten::val>("slice");
+        operand = wnn_builder_.call<emscripten::val>("constant", desc, view["buffer"]);
       }
     } else {
       // TODO: support other type.
@@ -350,7 +351,8 @@ Status ModelBuilder::AddOperandFromPersistMemoryBuffer(
   emscripten::val operand = emscripten::val::object();
   // Wasm memory grow will cause all array buffers reallocation, which will be treated as detached
   // buffers in JS side. Simply create a copy to fix it.
-  operand = wnn_builder_.call<emscripten::val>("constant", desc, view.call<emscripten::val>("slice"));
+  view = view.call<emscripten::val>("slice");
+  operand = wnn_builder_.call<emscripten::val>("constant", desc, view["buffer"]);
 
   AddOperand(name, operand);
   mem_persist_buffers_.push_back(std::move(persist_buffer));
