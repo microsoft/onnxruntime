@@ -218,11 +218,11 @@ Status GroupQueryAttention::ComputeInternal(onnxruntime::webgpu::ComputeContext&
   }
 
   TensorShapeVector q_new_dims({parameters.batch_size_, parameters.num_heads_,
-    parameters.sequence_length_, parameters.head_size_});
+                                parameters.sequence_length_, parameters.head_size_});
   TensorShape q_new_shape(q_new_dims);
   Tensor Q = context.CreateGPUTensor(query->DataType(), q_new_shape);
   ORT_RETURN_IF_ERROR(TransferBSDToBNSH(
-    context, parameters.num_heads_, parameters.sequence_length_, parameters.head_size_, query, nullptr, 0, &Q));
+      context, parameters.num_heads_, parameters.sequence_length_, parameters.head_size_, query, nullptr, 0, &Q));
   if (parameters.qkv_format_ == Q_K_V_BSNH_BNSH_BNSH) {  // key and value in BNSH format
     return ApplyAttention(&Q, key, value, nullptr, past_key, past_value, output, present_key,
                           present_value, parameters, context, seqlen_k);
@@ -230,14 +230,14 @@ Status GroupQueryAttention::ComputeInternal(onnxruntime::webgpu::ComputeContext&
 
   TensorShapeVector k_new_dims({parameters.batch_size_, parameters.kv_num_heads_,
                                 parameters.kv_sequence_length_, parameters.head_size_});
-    TensorShape k_new_shape(k_new_dims);
+  TensorShape k_new_shape(k_new_dims);
   Tensor K = context.CreateGPUTensor(key->DataType(), k_new_shape);
   ORT_RETURN_IF_ERROR(TransferBSDToBNSH(context, parameters.kv_num_heads_, parameters.kv_sequence_length_,
                                         parameters.head_size_, key, nullptr, 0, &K));
 
   TensorShapeVector v_new_dims({parameters.batch_size_, parameters.kv_num_heads_,
                                 parameters.kv_sequence_length_, parameters.v_head_size_});
-    TensorShape v_new_shape(v_new_dims);
+  TensorShape v_new_shape(v_new_dims);
   Tensor V = context.CreateGPUTensor(value->DataType(), v_new_shape);
   ORT_RETURN_IF_ERROR(TransferBSDToBNSH(context, parameters.kv_num_heads_, parameters.kv_sequence_length_,
                                         parameters.v_head_size_, value, nullptr, 0, &V));
