@@ -11,12 +11,7 @@ import { WebGpuBackend } from './backend-webgpu';
 import { LOG_DEBUG } from './log';
 import { TensorView } from './tensor-view';
 import { ShapeUtil } from './util';
-import {
-  AdapterInfo,
-  ComputeContext,
-  ComputeContextInputsOutputsMapping,
-  ProgramInfo,
-} from './webgpu/types';
+import { AdapterInfo, ComputeContext, ComputeContextInputsOutputsMapping, ProgramInfo } from './webgpu/types';
 import { WebNNBackend } from './backend-webnn';
 
 /* eslint-disable no-bitwise */
