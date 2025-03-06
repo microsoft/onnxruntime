@@ -123,13 +123,17 @@ async function minifyWasmModuleJsForBrowser(filepath: string): Promise<string> {
     // ```
     // with:
     // ```
-    // new Worker(import.meta.url.startsWith('file:')
-    //              ? new URL(BUILD_DEFS.BUNDLE_FILENAME, import.meta.url)
-    //              : new URL(import.meta.url), ...
+    // new Worker((() => {
+    //                      const URL2 = URL;
+    //                      return import.meta.url > 'file:' && import.meta.url < 'file;'
+    //                        ? new URL2(BUILD_DEFS.BUNDLE_FILENAME, import.meta.url)
+    //                        : new URL(import.meta.url);
+    //                    })(), ...
     // ```
     //
     // NOTE: this is a workaround for some bundlers that does not support runtime import.meta.url.
-    // TODO: in emscripten 3.1.61+, need to update this code.
+    //
+    // Check more details in the comment of `isEsmImportMetaUrlHardcodedAsFileUri()` and `getScriptSrc()` in file `lib/wasm/wasm-utils-import.ts`.
 
     // First, check if there is exactly one occurrence of "new Worker(new URL(import.meta.url)".
     const matches = [...contents.matchAll(/new Worker\(new URL\(import\.meta\.url\),/g)];
@@ -142,7 +146,12 @@ async function minifyWasmModuleJsForBrowser(filepath: string): Promise<string> {
     // Replace the only occurrence.
     contents = contents.replace(
       /new Worker\(new URL\(import\.meta\.url\),/,
-      `new Worker(import.meta.url.startsWith('file:')?new URL(BUILD_DEFS.BUNDLE_FILENAME, import.meta.url):new URL(import.meta.url),`,
+      `new Worker((() => {
+                            const URL2 = URL;
+                            return (import.meta.url > 'file:' && import.meta.url < 'file;')
+                              ? new URL2(BUILD_DEFS.BUNDLE_FILENAME, import.meta.url)
+                              : new URL(import.meta.url);
+                         })(),`,
     );
 
     // Use terser to minify the code with special configurations:
