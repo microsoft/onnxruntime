@@ -11,6 +11,39 @@ import { isNode } from './wasm-utils-env';
  */
 const origin = isNode || typeof location === 'undefined' ? undefined : location.origin;
 
+/**
+ * Some bundlers (eg. Webpack) will rewrite `import.meta.url` to a file URL at compile time.
+ *
+ * This function checks if `import.meta.url` starts with `file:`, but using the `>` and `<` operators instead of
+ * `startsWith` function so that code minimizers can remove the dead code correctly.
+ *
+ * For example, if we use terser to minify the following code:
+ * ```js
+ * if ("file://hard-coded-filename".startsWith("file:")) {
+ *   console.log(1)
+ * } else {
+ *   console.log(2)
+ * }
+ *
+ * if ("file://hard-coded-filename" > "file:" && "file://hard-coded-filename" < "file;") {
+ *   console.log(3)
+ * } else {
+ *   console.log(4)
+ * }
+ * ```
+ *
+ * The minified code will be:
+ * ```js
+ * "file://hard-coded-filename".startsWith("file:")?console.log(1):console.log(2),console.log(3);
+ * ```
+ *
+ * (use Terser 5.39.0 with default options, https://try.terser.org/)
+ *
+ * @returns true if the import.meta.url is hardcoded as a file URI.
+ */
+export const isEsmImportMetaUrlHardcodedAsFileUri =
+  BUILD_DEFS.IS_ESM && BUILD_DEFS.ESM_IMPORT_META_URL! > 'file:' && BUILD_DEFS.ESM_IMPORT_META_URL! < 'file;';
+
 const getScriptSrc = (): string | undefined => {
   // if Nodejs, return undefined
   if (isNode) {
@@ -26,9 +59,22 @@ const getScriptSrc = (): string | undefined => {
     // new URL('actual-bundle-name.js', import.meta.url).href
     // ```
     // So that bundler can preprocess the URL correctly.
-    if (BUILD_DEFS.ESM_IMPORT_META_URL?.startsWith('file:')) {
+    if (isEsmImportMetaUrlHardcodedAsFileUri) {
       // if the rewritten URL is a relative path, we need to use the origin to resolve the URL.
-      return new URL(new URL(BUILD_DEFS.BUNDLE_FILENAME, BUILD_DEFS.ESM_IMPORT_META_URL).href, origin).href;
+
+      // The following is a workaround for Vite.
+      //
+      // Vite uses a bundler(rollup/rolldown) that does not rewrite `import.meta.url` to a file URL. So in theory, this
+      // code path should not be executed in Vite. However, the bundler does not know it and it still try to load the
+      // following pattern:
+      // - `return new URL('filename', import.meta.url).href`
+      //
+      // By replacing the pattern above with the following code, we can skip the resource loading behavior:
+      // - `const URL2 = URL; return new URL2('filename', import.meta.url).href;`
+      //
+      // And it still works in Webpack.
+      const URL2 = URL;
+      return new URL(new URL2(BUILD_DEFS.BUNDLE_FILENAME, BUILD_DEFS.ESM_IMPORT_META_URL).href, origin).href;
     }
 
     return BUILD_DEFS.ESM_IMPORT_META_URL;
