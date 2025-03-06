@@ -4,6 +4,7 @@
 #pragma once
 
 #include <iosfwd>
+#include <unordered_map>
 
 #include <webgpu/webgpu_cpp.h>
 
@@ -57,18 +58,29 @@ class IBufferCacheManager {
 //
 class BufferManager {
  public:
-  BufferManager(WebGpuContext& context, BufferCacheMode storage_buffer_cache_mode, BufferCacheMode uniform_buffer_cache_mode, BufferCacheMode query_resolve_buffer_cache_mode);
+  explicit BufferManager(WebGpuContext& context) : context_{context} {}
 
-  void Upload(void* src, WGPUBuffer dst, size_t size);
-  void MemCpy(WGPUBuffer src, WGPUBuffer dst, size_t size);
-  WGPUBuffer Create(size_t size, wgpu::BufferUsage usage = wgpu::BufferUsage::Storage | wgpu::BufferUsage::CopySrc | wgpu::BufferUsage::CopyDst);
+  virtual ~BufferManager() = default;
+
+  virtual void Initialize(BufferCacheMode storage_buffer_cache_mode,
+                BufferCacheMode uniform_buffer_cache_mode, BufferCacheMode query_resolve_buffer_cache_mode);
+
+  virtual void Upload(void* src, WGPUBuffer dst, size_t size);
+  virtual void MemCpy(WGPUBuffer src, WGPUBuffer dst, size_t size);
+  virtual WGPUBuffer Create(size_t size, wgpu::BufferUsage usage = wgpu::BufferUsage::Storage |
+                                                                   wgpu::BufferUsage::CopySrc |
+                                                                   wgpu::BufferUsage::CopyDst);
+  virtual void Download(WGPUBuffer src, void* dst, size_t size);
+
   void Release(WGPUBuffer buffer);
-  void Download(WGPUBuffer src, void* dst, size_t size);
-  void RefreshPendingBuffers();
+  virtual void RefreshPendingBuffers();
 
- private:
+ protected:
   IBufferCacheManager& GetCacheManager(WGPUBufferUsage usage) const;
   IBufferCacheManager& GetCacheManager(WGPUBuffer buffer) const;
+
+  virtual std::unique_ptr<IBufferCacheManager> CreateBufferCacheManager(BufferCacheMode cache_mode);
+  WGPUBuffer Create(size_t size, wgpu::BufferUsage usage, bool mapped_at_creation);
 
   WebGpuContext& context_;
   std::unique_ptr<IBufferCacheManager> storage_cache_;
@@ -79,9 +91,39 @@ class BufferManager {
   std::vector<wgpu::Buffer> pending_staging_buffers_;
 };
 
+//
+// BufferManagerUMA needn't use staging buffers for upload and download operations. It only works with UMA GPUs.
+//
+class BufferManagerUMA : public BufferManager {
+ public:
+  explicit BufferManagerUMA(WebGpuContext& context) : BufferManager(context) {}
+  ~BufferManagerUMA() override;
+
+  void OnBufferRelease(WGPUBuffer buffer);
+
+ private:
+  void Initialize(BufferCacheMode storage_buffer_cache_mode, BufferCacheMode uniform_buffer_cache_mode,
+                  BufferCacheMode query_resolve_buffer_cache_mode) override;
+
+  WGPUBuffer Create(size_t size, wgpu::BufferUsage usage) override;
+  void Upload(void* src, WGPUBuffer dst, size_t size) override;
+  void Download(WGPUBuffer src, void* dst, size_t size) override;
+  void MemCpy(WGPUBuffer src, WGPUBuffer dst, size_t size) override;
+  void RefreshPendingBuffers() override;
+
+  std::unique_ptr<IBufferCacheManager> CreateBufferCacheManager(BufferCacheMode cache_mode) override;
+
+  // Check if the buffer was created by the class with the extended map usages.
+  bool IsUMABuffer(WGPUBuffer buffer) const;
+  // All the buffers created by the class with the extended map usages.
+  std::unordered_map<WGPUBuffer, bool> uma_buffers_;
+};
+
 class BufferManagerFactory {
  public:
-  static std::unique_ptr<BufferManager> Create(WebGpuContext& context, BufferCacheMode storage_buffer_cache_mode, BufferCacheMode uniform_buffer_cache_mode, BufferCacheMode query_resolve_buffer_cache_mode);
+  static std::unique_ptr<BufferManager> Create(WebGpuContext& context, BufferCacheMode storage_buffer_cache_mode,
+                                               BufferCacheMode uniform_buffer_cache_mode,
+                                               BufferCacheMode query_resolve_buffer_cache_mode);
 
  private:
   BufferManagerFactory() {}
