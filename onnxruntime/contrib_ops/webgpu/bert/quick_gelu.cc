@@ -47,7 +47,7 @@ Status QuickGelu::ComputeInternal(onnxruntime::webgpu::ComputeContext& context) 
   program.AddInput({input, ProgramTensorMetadataDependency::Type, {vec_size}, 4})
       .AddOutput({output, ProgramTensorMetadataDependency::None, {vec_size}, 4})
       .SetDispatchGroupSize((vec_size + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE)
-      .AddUniformVariable({vec_size}, {alpha_});
+      .AddUniformVariables({vec_size}, {static_cast<float32_t>(alpha_)});
   return context.RunProgram(program);
 }
 
