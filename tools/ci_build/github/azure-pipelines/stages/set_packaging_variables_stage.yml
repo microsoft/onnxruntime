@@ -8,7 +8,6 @@ stages:
   - job: Set_Variables
     pool:
       name: 'onnxruntime-Ubuntu2204-AMD-CPU'
-      os: linux
     steps:
     - checkout: none
     - bash: |
@@ -49,7 +48,6 @@ stages:
   - job: D1
     pool:
       name: 'onnxruntime-Ubuntu2204-AMD-CPU'
-      os: linux
     variables:
       MyVar: $[stageDependencies.Setup.Set_Variables.outputs['Set_Release_Version_Suffix.ReleaseVersionSuffix']]
       BuildDate: $[stageDependencies.Setup.Set_Variables.outputs['Set_Build_Date.BuildDate']]
