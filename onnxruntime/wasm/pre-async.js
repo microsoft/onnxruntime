@@ -1,8 +1,6 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-"use strict";
-
 //
 // This file contains the pre-run code for the ORT WebAssembly module. The code in this file will be injected into the
 // final module using Emscripten's `--pre-js` option.
