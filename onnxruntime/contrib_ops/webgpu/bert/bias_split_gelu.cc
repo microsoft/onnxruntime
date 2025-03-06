@@ -6,6 +6,7 @@
 #include "contrib_ops/webgpu/bert/bias_split_gelu.h"
 #include "contrib_ops/webgpu/bert/gelu.cc"
 #include "contrib_ops/webgpu/webgpu_contrib_kernels.h"
+#include "core/providers/webgpu/webgpu_utils.h"
 
 namespace onnxruntime {
 namespace contrib {
@@ -19,15 +20,6 @@ ONNX_OPERATOR_KERNEL_EX(
     (*KernelDefBuilder::Create())
         .TypeConstraint("T", WebGpuSupportedFloatTypes()),
     BiasSplitGelu);
-
-static int64_t GetMaxComponents(int64_t size) {
-  if (size % 4 == 0) {
-    return 4;
-  } else if (size % 2 == 0) {
-    return 2;
-  }
-  return 1;
-}
 
 Status BiasSplitGeluProgram::GenerateShaderCode(ShaderHelper& shader) const {
   const ShaderVariableHelper& input = shader.AddInput("input");
@@ -45,7 +37,7 @@ Status BiasSplitGeluProgram::GenerateShaderCode(ShaderHelper& shader) const {
                             << "let valueLeft = " << input.GetByOffset("inputOffset") << " + " << bias.GetByOffset("biasIdx") << ";\n"
                             << "let valueRight = " << input.GetByOffset("inputOffset + halfChannels") << " + " << bias.GetByOffset("biasIdx + halfChannels") << ";\n"
                             << "let geluRight = valueRight * 0.5 * (erf_v(valueRight / M_SQRT2) + 1);\n"
-                            << output.SetByOffset("global_idx", "input_indices_t(valueLeft * geluRight)");
+                            << output.SetByOffset("global_idx", "valueLeft * geluRight");
 
   return Status::OK();
 }

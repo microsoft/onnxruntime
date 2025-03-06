@@ -26,7 +26,7 @@ Status GeluProgram::GenerateShaderCode(ShaderHelper& shader) const {
 
   shader.AdditionalImplementation() << ErfImpl;
   shader.MainFunctionBody() << shader.GuardAgainstOutOfBoundsWorkgroupSizes("uniforms.vec_size")
-                            << "  var a = " << x.GetByOffset("global_idx") << ";\n"
+                            << "  let a = " << x.GetByOffset("global_idx") << ";\n"
                             << y.SetByOffset("global_idx", onnxruntime::webgpu::GeluExpr);
 
   return Status::OK();
