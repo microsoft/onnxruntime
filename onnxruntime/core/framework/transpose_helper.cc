@@ -59,12 +59,15 @@ typename std::enable_if<has_mlas_transpose<T>::value, void>::type SimpleTranspos
 
 //  `input_shape_override` overrides the shape of `input` for compute purposes.
 void TransposeSingleAxisOutwards(gsl::span<const size_t> permutations, const Tensor& input, Tensor& output,
-                                 size_t from, size_t to, const TensorShape* input_shape_override = nullptr,
+                                 size_t from, size_t to,
+                                 const TensorShape* input_shape_override = nullptr,
+                                 const TensorShape* output_shape_override = nullptr,
                                  concurrency::ThreadPool* tp = nullptr) {
   ORT_UNUSED_PARAMETER(permutations);
 
   const auto& input_shape = input_shape_override ? *input_shape_override : input.Shape();
   const auto& input_dims = input_shape.GetDims();
+  const auto& output_shape = output_shape_override ? *output_shape_override : output.Shape();
 
   const auto element_size = input.DataType()->Size();
 
@@ -106,7 +109,7 @@ void TransposeSingleAxisOutwards(gsl::span<const size_t> permutations, const Ten
     default: {
       TensorPitches src_strides(input_dims);
 
-      TensorPitches contig_dst_strides(output);
+      TensorPitches contig_dst_strides(output_shape);
 
       const auto dims = input_dims.size();
       TensorShapeVector dst_strides(dims);
@@ -231,10 +234,13 @@ void TransposeSingleAxisInwards(gsl::span<const size_t> permutations, const Tens
 }
 
 //  `input_shape_override` overrides the shape of `input` for compute purposes.
-void SingleAxisTranspose(gsl::span<const size_t> permutations, const Tensor& input, Tensor& output, size_t from,
-                         size_t to, const TensorShape* input_shape_override, concurrency::ThreadPool* tp) {
+void SingleAxisTranspose(gsl::span<const size_t> permutations, const Tensor& input, Tensor& output,
+                         size_t from, size_t to,
+                         const TensorShape* input_shape_override, const TensorShape* output_shape_override,
+                         concurrency::ThreadPool* tp) {
   if (from > to) {
-    TransposeSingleAxisOutwards(permutations, input, output, from, to, input_shape_override, tp);
+    TransposeSingleAxisOutwards(permutations, input, output, from, to,
+                                input_shape_override, output_shape_override, tp);
   } else {
     TransposeSingleAxisInwards(permutations, input, output, from, to, input_shape_override);
   }
