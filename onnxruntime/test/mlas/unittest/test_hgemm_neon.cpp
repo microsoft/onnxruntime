@@ -388,7 +388,7 @@ class MlasNeonHGemmBTest : public MlasTestBase {
 
  public:
   MlasNeonHGemmBTest()
-      : seed_(rd_()), gen_(seed_), distrib_(-1.f, 1.f) {
+      : seed_(172387), gen_(seed_), distrib_(-1.f, 1.f) {
   }
 
   static const char* GetTestSuiteName() {
