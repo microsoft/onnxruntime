@@ -160,11 +160,8 @@ stages:
               /sbin/ldconfig -N -v $(sed "s/:/ /" <<< $LD_LIBRARY_PATH) 2>/dev/null | grep -E "libcudart.so|libcudnn.so|libnvinfer.so"; \
               cat /usr/local/cuda/include/cuda.h | grep -m1 CUDA_VERSION; \
               cat /usr/include/cudnn_version.h | grep CUDNN_MAJOR -m1 -A 2; \
-              ls /usr/src/; \
-              ls /usr/src/tensorrt; \
-              ls /usr/src/tensorrt/bin; \
               df -h; \
-              export PATH=/opt/python/cp312-cp312/bin:$PATH; \
+              export PATH=/opt/python/cp312-cp312/bin:/usr/src/tensorrt/bin$PATH; \
               python3 -m pip install /build/Release/dist/*.whl; \
               python3 -u -c "from onnxruntime.capi._pybind_state import (OrtDevice as C_OrtDevice) ; \
                         ort_device = C_OrtDevice(C_OrtDevice.cuda(), C_OrtDevice.default_memory(), 0); \
@@ -187,14 +184,12 @@ stages:
             --volume $(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/mem_test:/mem_test \
             --volume $(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf:/perf \
             --volume $(modelVolume)/onnx-zoo-models:/perf/onnx-zoo-models \
-            --volume /usr/src/tensorrt:/usr/src/tensorrt \
             -e NVIDIA_TF32_OVERRIDE=0 \
             $(Repository) \
             /bin/bash -c '
               set -ex; \
               cp /onnxruntime_src/tools/ci_build/github/linux/docker/scripts/manylinux/requirements.txt /tmp/requirements.txt; \
-              export PATH=/opt/python/cp312-cp312/bin:$PATH; \
-              export PATH=/usr/src/tensorrt/bin:$PATH; \
+              export PATH=/opt/python/cp312-cp312/bin:/usr/src/tensorrt/bin$PATH; \
               python3 -m pip install -r /tmp/requirements.txt; \
               python3 -m pip install /build/Release/dist/*.whl; \
               cd /perf; \
