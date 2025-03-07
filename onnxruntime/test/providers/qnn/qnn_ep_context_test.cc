@@ -1399,7 +1399,7 @@ TEST_F(QnnHTPBackendTests, QnnContextGenWeightSharingSessionAPI) {
   EXPECT_TRUE(!qnn_ctx_binary_file_name2.empty());
 
   // 2 *_ctx.onn point to same .bin file
-  EXPECT_TRUE(qnn_ctx_binary_file_name1  == qnn_ctx_binary_file_name2);
+  EXPECT_TRUE(qnn_ctx_binary_file_name1 == qnn_ctx_binary_file_name2);
 
   // clean up
   for (auto model_path : onnx_model_paths) {
