@@ -88,6 +88,9 @@ extends:
   template: v1/1ES.Official.PipelineTemplate.yml@1esPipelines
   parameters:
     sdl:
+      binskim:
+        enabled: true
+        targetPathExclusionPattern: '\".exe\"' # We don't ship the exe files
       sourceAnalysisPool: "Onnxruntime-Win-CPU-2022"
       sourceRepositoriesToScan:
         exclude:
