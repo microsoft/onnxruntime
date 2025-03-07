@@ -45,13 +45,13 @@ int64_t GetMaxComponents(int64_t size) {
   return 1;
 }
 
-void AppendPermFunction(std::ostream& os, const ShaderVariableHelper& input, int64_t perm[6]) {
-  os << "fn perm(i: input_indices_t) -> input_indices_t {\n";
-  << "var a: input_indices_t;\n";
+void AppendPermFunction(std::ostream& os, const ShaderVariableHelper& input, int64_t* perm) {
+  os << "fn perm(i: input_indices_t) -> input_indices_t {\n"
+     << "  var a: input_indices_t;\n";
   for (int i = 0; i < input.Rank(); ++i) {
-    os << input.IndicesSet("a", std::to_string(perm[i]), "i[" + std::to_string(i) + "]);\n");
+    os << "  " << input.IndicesSet("a", std::to_string(*perm[i]), "i[" + std::to_string(i) + "]);\n");
   }
-  os << "return a;\n"
+  os << "  return a;\n"
      << "}\n";
 }
 
@@ -75,7 +75,6 @@ Status DepthToSpace<is_nchw>::ComputeInternal(onnxruntime::webgpu::ComputeContex
   const TensorShape input_shape = input->Shape();
 
   int64_t n, c, h, w;
-  int64_t components;
   int64_t shape[6];
   int64_t perm[6];
   if constexpr (is_nchw) {
@@ -88,7 +87,7 @@ Status DepthToSpace<is_nchw>::ComputeInternal(onnxruntime::webgpu::ComputeContex
       shape[0] = n;
       shape[1] = blocksize_;
       shape[2] = blocksize_;
-      shape[3] = c / (blocksize_ * *2);
+      shape[3] = c / (blocksize_ ** 2);
       shape[4] = h;
       shape[5] = w;
 
@@ -100,7 +99,7 @@ Status DepthToSpace<is_nchw>::ComputeInternal(onnxruntime::webgpu::ComputeContex
       perm[5] = 2;
     } else {
       shape[0] = n;
-      shape[1] = c / (blocksize_ * *2);
+      shape[1] = c / (blocksize_ ** 2);
       shape[2] = blocksize_;
       shape[3] = blocksize_;
       shape[4] = h;
@@ -125,7 +124,7 @@ Status DepthToSpace<is_nchw>::ComputeInternal(onnxruntime::webgpu::ComputeContex
       shape[2] = w;
       shape[3] = blocksize_;
       shape[4] = blocksize_;
-      shape[5] = c / (blocksize_ * *2);
+      shape[5] = c / (blocksize_ ** 2);
 
       perm[0] = 0;
       perm[1] = 1;
@@ -137,7 +136,7 @@ Status DepthToSpace<is_nchw>::ComputeInternal(onnxruntime::webgpu::ComputeContex
       shape[0] = n;
       shape[1] = h;
       shape[2] = w;
-      shape[3] = c / (blocksize_ * *2);
+      shape[3] = c / (blocksize_ ** 2);
       shape[4] = blocksize_;
       shape[5] = blocksize_;
 
@@ -154,13 +153,13 @@ Status DepthToSpace<is_nchw>::ComputeInternal(onnxruntime::webgpu::ComputeContex
   int64_t components = GetMaxComponents(c);
 
   auto* output = context.Output(0, override_shape);
-  int64_t output_size = output_tensor->Shape().Size() / components;
+  int64_t output_size = output->Shape().Size() / components;
 
   if (output_size == 0) {
     return Status::OK();
   }
 
-  DepthToSpaceProgram program{perm};
+  DepthToSpaceProgram program{&perm};
   program
       .AddInput({input, ProgramTensorMetadataDependency::TypeAndRank, override_shape, static_cast<int>(components)})
       .AddOutput({output})
