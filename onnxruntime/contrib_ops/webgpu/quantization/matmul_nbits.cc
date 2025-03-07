@@ -372,7 +372,7 @@ Status MatMulNBitsProgram::GenerateShaderCode(ShaderHelper& shader) const {
     }
   } else {
     const std::string quantized_data_type = QuantizedDataType(a.NumComponents());
-    const int output_element_number = y.NumComponents() * gsl::narrow<int>(output_number_);
+    const int output_element_number = y.NumComponents() * onnxruntime::narrow<int>(output_number_);
 
     const uint32_t shared_memory_size = output_number_ * WORKGROUP_SIZE;
     std::string offset = "workgroup_idx * " + std::to_string(output_number_);
@@ -548,16 +548,16 @@ Status MatMulNBits::ComputeInternal(onnxruntime::webgpu::ComputeContext& context
   TensorShape b_shape({N_, K_});
   ORT_RETURN_IF_ERROR(helper.Compute(a->Shape(), b_shape, false, true));
   auto* y = context.Output(0, helper.OutputShape());
-  const uint32_t data_size = gsl::narrow<uint32_t>(y->Shape().Size());
+  const uint32_t data_size = onnxruntime::narrow<uint32_t>(y->Shape().Size());
   if (data_size == 0) {
     return Status::OK();
   }
 
-  const uint32_t batch_count = gsl::narrow<uint32_t>(helper.OutputOffsets().size());
-  const uint32_t M = gsl::narrow<uint32_t>(helper.M());
-  const uint32_t N = gsl::narrow<uint32_t>(helper.N());
-  const uint32_t K = gsl::narrow<uint32_t>(helper.K());
-  const uint32_t block_size = gsl::narrow<uint32_t>(block_size_);
+  const uint32_t batch_count = onnxruntime::narrow<uint32_t>(helper.OutputOffsets().size());
+  const uint32_t M = onnxruntime::narrow<uint32_t>(helper.M());
+  const uint32_t N = onnxruntime::narrow<uint32_t>(helper.N());
+  const uint32_t K = onnxruntime::narrow<uint32_t>(helper.K());
+  const uint32_t block_size = onnxruntime::narrow<uint32_t>(block_size_);
   constexpr uint32_t nbits = 4;
 
   const uint32_t n_blocks_per_col = (K + block_size - 1) / block_size;
@@ -584,7 +584,7 @@ Status MatMulNBits::ComputeInternal(onnxruntime::webgpu::ComputeContext& context
   const uint32_t tile_m = M > kMinMForTileOptimization ? 4 : 1;
   const bool has_subgroup = context.Device().HasFeature(wgpu::FeatureName::Subgroups);
   const bool use_subgroup = has_subgroup && context.AdapterInfo().vendor == std::string_view{"intel"} && components_a == 4 && block_size == 32;
-  MatMulNBitsProgram program{output_number, block_size, tile_m, gsl::narrow<int>(components_b), has_zero_points, use_subgroup};
+  MatMulNBitsProgram program{output_number, block_size, tile_m, static_cast<int>(components_b), has_zero_points, use_subgroup};
   if (M > kMinMForTileOptimization && block_size == 32) {
     components = 1;
     constexpr uint32_t workgroup_size = 64;
@@ -614,10 +614,10 @@ Status MatMulNBits::ComputeInternal(onnxruntime::webgpu::ComputeContext& context
   TensorShape reshaped_y_shape{batch_count, M, N / components};
 
   program
-      .AddInputs({{a, ProgramTensorMetadataDependency::TypeAndRank, reshaped_a_shape, gsl::narrow<int>(components_a)},
-                  {b, ProgramTensorMetadataDependency::TypeAndRank, reshaped_b_shape, gsl::narrow<int>(components_b * 4 /** b will be accessed as uint32 which includs 4 uint8. So here we need to multiply 4.*/)},
+      .AddInputs({{a, ProgramTensorMetadataDependency::TypeAndRank, reshaped_a_shape, static_cast<int>(components_a)},
+                  {b, ProgramTensorMetadataDependency::TypeAndRank, reshaped_b_shape, static_cast<int>(components_b * 4 /** b will be accessed as uint32 which includs 4 uint8. So here we need to multiply 4.*/)},
                   {scales, ProgramTensorMetadataDependency::None}})
-      .AddOutput({y, ProgramTensorMetadataDependency::TypeAndRank, reshaped_y_shape, gsl::narrow<int>(components)})
+      .AddOutput({y, ProgramTensorMetadataDependency::TypeAndRank, reshaped_y_shape, static_cast<int>(components)})
       .AddUniformVariable({block_size});
   if (has_zero_points) {
     program.AddInput({zero_points, ProgramTensorMetadataDependency::None, {(zero_points->Shape().Size() + 3) / 4}, 4});

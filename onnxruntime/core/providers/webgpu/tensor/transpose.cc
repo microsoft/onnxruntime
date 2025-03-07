@@ -105,7 +105,7 @@ Status Transpose::DoTranspose(onnxruntime::webgpu::ComputeContext& context,
                               const Tensor& input, Tensor& output) {
   const auto& input_shape = input.Shape();
   const auto& input_dims = input_shape.GetDims();
-  int32_t rank = gsl::narrow_cast<int32_t>(input_shape.NumDimensions());
+  int32_t rank = static_cast<int32_t>(input_shape.NumDimensions());
 
   TensorShapeVector output_dims(rank);
 
@@ -131,7 +131,7 @@ Status Transpose::DoTranspose(onnxruntime::webgpu::ComputeContext& context,
     new_output_shape = TensorShape({new_input_shape[1], new_input_shape[0]});
   }
 
-  uint32_t output_size = gsl::narrow_cast<int32_t>(input_shape.Size());
+  uint32_t output_size = onnxruntime::narrow<int32_t>(input_shape.Size());
   TransposeProgram program{permutations, use_shared};
 
   if (use_shared) {
@@ -156,7 +156,7 @@ Status Transpose::DoTranspose(onnxruntime::webgpu::ComputeContext& context,
 Status Transpose::ComputeInternal(ComputeContext& context) const {
   const auto* input_tensor = context.Input(0);
   const TensorShape& input_shape = input_tensor->Shape();
-  int32_t rank = gsl::narrow_cast<int32_t>(input_shape.NumDimensions());
+  int32_t rank = static_cast<int32_t>(input_shape.NumDimensions());
 
   TensorShapeVector output_dims(rank);
   InlinedVector<size_t> default_perm(rank);
