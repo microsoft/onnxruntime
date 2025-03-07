@@ -4,7 +4,6 @@
 
 #include <math.h>
 
-#include "core/common/safeint.h"
 #include "core/providers/common.h"
 #include "core/framework/tensorprotoutils.h"
 #include "core/providers/webnn/builders/helper.h"
