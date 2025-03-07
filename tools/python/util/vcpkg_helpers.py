@@ -222,7 +222,7 @@ def generate_triplet_for_posix_platform(
     enable_asan: bool,
     crt_linkage: str,
     target_abi: str,
-    osx_deployment_target: str = None,
+    osx_deployment_target: str,
 ) -> None:
     """
     Generate triplet file for POSIX platforms (Linux, macOS).
@@ -532,7 +532,7 @@ def generate_linux_triplets(build_dir: str) -> None:
                         )
 
 
-def generate_macos_triplets(build_dir: str, osx_deployment_target: str = None) -> None:
+def generate_macos_triplets(build_dir: str, osx_deployment_target: str) -> None:
     """
     Generate triplet files for macOS platforms.
 

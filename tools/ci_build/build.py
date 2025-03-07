@@ -1334,10 +1334,10 @@ def generate_build_tree(
             generate_windows_triplets(build_dir)
         elif is_macOS():
             osx_target = args.apple_deploy_target
-            if apple_deploy_target is None:
-              osx_target = os.environ.get("MACOSX_DEPLOYMENT_TARGET")
+            if args.apple_deploy_target is None:
+                osx_target = os.environ.get("MACOSX_DEPLOYMENT_TARGET")
             if osx_target is not None:
-               log.info(f"Setting VCPKG_OSX_DEPLOYMENT_TARGET to {MACOSX_DEPLOYMENT_TARGET}")
+                log.info(f"Setting VCPKG_OSX_DEPLOYMENT_TARGET to {osx_target}")
             generate_macos_triplets(build_dir, osx_target)
         else:
             # Linux, *BSD, AIX or other platforms
