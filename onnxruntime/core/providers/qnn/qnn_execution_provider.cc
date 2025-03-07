@@ -352,6 +352,10 @@ QNNExecutionProvider::QNNExecutionProvider(const ProviderOptions& provider_optio
     LOGS_DEFAULT(VERBOSE) << "User specified enable_htp_weight_sharing: " << enable_htp_weight_sharing;
   }
 
+  if (qnn_context_embed_mode_ && enable_htp_weight_sharing) {
+    LOGS_DEFAULT(ERROR) << "[EP context generation:] Weight sharing enabled conflict with EP context embed mode. Inference will not work as expected!";
+  }
+
   // Add this option because this feature requires QnnSystem lib and it's no supported for Windows x86_64 platform
   enable_spill_fill_buffer_ = ParseBoolOption("enable_htp_spill_fill_buffer", false, provider_options_map);
 
@@ -1051,7 +1055,9 @@ Status QNNExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& fused
                                                   context_model_path,
                                                   qnn_context_embed_mode_,
                                                   max_spill_fill_buffer_size,
-                                                  logger));
+                                                  logger,
+                                                  share_ep_contexts_,
+                                                  stop_share_ep_contexts_));
 
     if (share_ep_contexts_ && !stop_share_ep_contexts_ &&
         nullptr == SharedContext::GetInstance().GetSharedQnnBackendManager()) {

@@ -16,10 +16,8 @@ using namespace onnxruntime;
 using ProviderOptions = std::unordered_map<std::string, std::string>;
 
 // from the last context cache Onnx model, find the EPContext node with main_context=1,
-// and get the QNN context binary file name, this context binary contains all graphs from all Onnx models
 // get the max spill fill buffer size
 static void GetLastContextBinaryFileName(const std::basic_string<ORTCHAR_T> last_onnx_ctx_file,
-                                         std::string& last_ctx_bin_file,
                                          int64_t& max_size) {
   max_size = 0;
 
@@ -37,9 +35,6 @@ static void GetLastContextBinaryFileName(const std::basic_string<ORTCHAR_T> last
         if (attr.name() == "max_size") {
           max_size = attr.i();
         }
-        if (attr.name() == "ep_cache_context") {
-          last_ctx_bin_file = attr.s();
-        }
       }
       if (is_main_context) {
         return;
@@ -50,11 +45,8 @@ static void GetLastContextBinaryFileName(const std::basic_string<ORTCHAR_T> last
   onnx_file_stream.close();
 }
 
-// Update generated context cache Onnx model to make the main EPContext node point to
-// the last QNN context binary file
-// Remove not used QNN context binary file, only keep the last one which contains all graphs
+// Update generated context cache Onnx model to have the same max_size (align with the last generated model)
 static void UpdateEpContextModel(const std::vector<std::basic_string<ORTCHAR_T>>& ep_ctx_files,
-                                 const std::string& last_qnn_ctx_binary_file_name,
                                  int64_t max_size) {
   for (auto ep_ctx_file : ep_ctx_files) {
     onnx::ModelProto model;
@@ -65,9 +57,7 @@ static void UpdateEpContextModel(const std::vector<std::basic_string<ORTCHAR_T>>
     for (auto& node : *(model.mutable_graph()->mutable_node())) {
       if (node.op_type() == "EPContext") {
         int64_t is_main_context = 0;
-        std::string old_qnn_ctx_binary_file_name;
         int max_size_index = 0;
-        int ep_context_index = 0;
         for (auto i = 0; i < node.attribute_size(); ++i) {
           auto& attr = node.attribute()[i];
           if (attr.name() == "main_context") {
@@ -77,19 +67,9 @@ static void UpdateEpContextModel(const std::vector<std::basic_string<ORTCHAR_T>>
             max_size = attr.i();
             max_size_index = i;
           }
-          if (attr.name() == "ep_cache_context") {
-            old_qnn_ctx_binary_file_name = attr.s();
-            ep_context_index = 0;
-          }
         }
         if (is_main_context) {
-          auto path_str = ToPathString(ep_ctx_file);
-          auto path = std::filesystem::path(path_str);
-          auto file_path = path.replace_filename(old_qnn_ctx_binary_file_name);
-          std::remove(file_path.string().c_str());
-
           node.mutable_attribute(max_size_index)->set_i(max_size);
-          node.mutable_attribute(ep_context_index)->set_s(last_qnn_ctx_binary_file_name);
         }
       }
     }
@@ -188,33 +168,33 @@ int real_main(int argc, char* argv[]) {
       }
     }
 
-    std::cout << "Start to update the generated Onnx model." << std::endl;
-    std::vector<std::basic_string<ORTCHAR_T>> ep_ctx_files;
-    ep_ctx_files.reserve(test_config.model_file_paths.size());
-    for (auto model_path : test_config.model_file_paths) {
-      auto pos = model_path.find_last_of(ORT_TSTR("."));
-      if (pos != std::string::npos) {
-        model_path = model_path.substr(0, pos) + ORT_TSTR("_ctx.onnx");
-      } else {
-        model_path = model_path + ORT_TSTR("_ctx.onnx");
+    // Update generated context cache Onnx model to have the same max_size (align with the last generated model)
+    // so that the inference session can be created with any order of the ctx.onnx models
+    // otherwise, user can also skip this step, but they need to create the inference session from the last generated ctx.onnx model
+    // since only the last ctx.onnx has EPContext nodes with correct max_size
+    const std::string enable_htp_weight_sharing = "enable_htp_spill_fill_buffer";
+    if (provider_options.find(enable_htp_weight_sharing) == provider_options.end()) {
+      std::cout << "Start to update the generated Onnx model to reflect the max_size." << std::endl;
+
+      // The steps below only used for spill fill buffer enabled
+      std::vector<std::basic_string<ORTCHAR_T>> ep_ctx_files;
+      ep_ctx_files.reserve(test_config.model_file_paths.size());
+      for (auto model_path : test_config.model_file_paths) {
+        auto pos = model_path.find_last_of(ORT_TSTR("."));
+        if (pos != std::string::npos) {
+          model_path = model_path.substr(0, pos) + ORT_TSTR("_ctx.onnx");
+        } else {
+          model_path = model_path + ORT_TSTR("_ctx.onnx");
+        }
+        ep_ctx_files.push_back(model_path);
       }
-      ep_ctx_files.push_back(model_path);
-    }
 
-    // Get the last context binary file name
-    std::string last_qnn_ctx_binary_file_name;
-    int64_t max_size = 0;
-    GetLastContextBinaryFileName(ep_ctx_files.back(), last_qnn_ctx_binary_file_name, max_size);
-    std::cout << "The last context binary file: " << last_qnn_ctx_binary_file_name << std::endl;
-    if (last_qnn_ctx_binary_file_name.empty()) {
-      throw Ort::Exception("Can't find QNN context binary file from the Onnx model.", OrtErrorCode::ORT_FAIL);
-    }
-    ep_ctx_files.pop_back();
+      int64_t max_size = 0;
+      GetLastContextBinaryFileName(ep_ctx_files.back(), max_size);
+      ep_ctx_files.pop_back();
 
-    // Update generated context cache Onnx model to make the main EPContext node point to
-    // the last QNN context binary file
-    // Remove not used QNN context binary file, only keep the last one only which contains all graphs
-    UpdateEpContextModel(ep_ctx_files, last_qnn_ctx_binary_file_name, max_size);
+      UpdateEpContextModel(ep_ctx_files, max_size);
+    }
   }
   ORT_CATCH(const Ort::Exception& e) {
     std::cerr << "Failed to generate context cache file: " << e.what();
