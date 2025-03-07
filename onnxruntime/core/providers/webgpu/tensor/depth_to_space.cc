@@ -168,6 +168,10 @@ Status DepthToSpace<is_nchw>::ComputeInternal(onnxruntime::webgpu::ComputeContex
   TensorShape final_output_shape(gsl::make_span(output_shape, 4));
 
   auto* output = context.Output(0, final_output_shape);
+
+  // Map from the reshaped 6D input to 4D output
+  TensorShape output_reshape(gsl::make_span(shape, 6));
+  int64_t components = GetMaxComponents(c);
   int64_t output_size = output->Shape().Size() / components;
 
   if (output_size == 0) {
@@ -177,7 +181,7 @@ Status DepthToSpace<is_nchw>::ComputeInternal(onnxruntime::webgpu::ComputeContex
   DepthToSpaceProgram program{perm};
   program
       .AddInput({input, ProgramTensorMetadataDependency::TypeAndRank, override_shape, static_cast<int>(components)})
-      .AddOutput({output})
+      .AddOutput({output, ProgramTensorMetadataDependency::TypeAndRank, output_reshape, static_cast<int>(components)})
       .SetDispatchGroupSize((output_size + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE)
       .AddUniformVariable({static_cast<uint32_t>(output_size)});
   return context.RunProgram(program);
