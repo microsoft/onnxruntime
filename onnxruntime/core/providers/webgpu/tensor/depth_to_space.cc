@@ -152,7 +152,22 @@ Status DepthToSpace<is_nchw>::ComputeInternal(onnxruntime::webgpu::ComputeContex
   TensorShape override_shape(gsl::make_span(shape));
   int64_t components = GetMaxComponents(c);
 
-  auto* output = context.Output(0, override_shape);
+  // Calculate the final 4D output shape
+  int64_t output_shape[4];
+  if (is_nchw) {
+    output_shape[0] = n;
+    output_shape[1] = c / (blocksize_ * blocksize_);
+    output_shape[2] = h * blocksize_;
+    output_shape[3] = w * blocksize_;
+  } else {
+    output_shape[0] = n;
+    output_shape[1] = h * blocksize_;
+    output_shape[2] = w * blocksize_;
+    output_shape[3] = c / (blocksize_ * blocksize_);
+  }
+  TensorShape final_output_shape(gsl::make_span(output_shape, 4));
+
+  auto* output = context.Output(0, final_output_shape);
   int64_t output_size = output->Shape().Size() / components;
 
   if (output_size == 0) {
