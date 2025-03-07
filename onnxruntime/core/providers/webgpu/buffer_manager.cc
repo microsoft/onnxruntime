@@ -256,10 +256,10 @@ void BufferManager::Upload(void* src, WGPUBuffer dst, size_t size) {
   memcpy(mapped_data, src, size);
   staging_buffer.Unmap();
 
-  auto& command_encoder = context_.GetCommandEncoder();
-  context_.EndComputePass();
+  auto command_encoder = context_.Device().CreateCommandEncoder();
   command_encoder.CopyBufferToBuffer(staging_buffer, 0, dst, 0, buffer_size);
-  pending_staging_buffers_.push_back(staging_buffer);
+  auto command_buffer = command_encoder.Finish();
+  context_.Device().GetQueue().Submit(1, &command_buffer);
 }
 
 void BufferManager::MemCpy(WGPUBuffer src, WGPUBuffer dst, size_t size) {
@@ -325,7 +325,6 @@ void BufferManager::Download(WGPUBuffer src, void* dst, size_t size) {
 }
 
 void BufferManager::RefreshPendingBuffers() {
-  pending_staging_buffers_.clear();
   storage_cache_->OnRefresh();
   uniform_cache_->OnRefresh();
   query_resolve_cache_->OnRefresh();
