@@ -749,6 +749,12 @@ public class InferenceTest {
     runProvider(OrtProvider.QNN);
   }
 
+  @Test
+  @EnabledIfSystemProperty(named = "USE_WEBGPU", matches = "1")
+  public void testWEBGPU() throws OrtException {
+    runProvider(OrtProvider.WEBGPU);
+  }
+
   private void runProvider(OrtProvider provider) throws OrtException {
     EnumSet<OrtProvider> providers = OrtEnvironment.getAvailableProviders();
     assertTrue(providers.size() > 1);

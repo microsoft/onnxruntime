@@ -1328,6 +1328,17 @@ public class OrtSession implements AutoCloseable {
     }
 
     /**
+     * Adds WEBGPU as an execution backend.
+     *
+     * @param providerOptions Configuration options for the WEBGPU backend. Refer to the WEBGPU execution
+     *     provider's documentation.
+     * @throws OrtException If there was an error in native code.
+     */
+    public void addWebGPU(Map<String, String> providerOptions) throws OrtException {
+      String webGpuProviderName = "WEBGPU";
+      addExecutionProvider(webGpuProviderName, providerOptions);
+    }
+    /**
      * Adds CoreML as an execution backend.
      *
      * @param providerOptions Configuration options for the CoreML backend. Refer to the CoreML
