@@ -51,6 +51,7 @@ class OpenVINOExecutionProvider : public IExecutionProvider {
   std::vector<std::unique_ptr<ComputeCapability>>
   GetCapability(const GraphViewer& graph_viewer,
                 const IKernelLookup& /*kernel_lookup*/,
+                const GraphOptimizerRegistry& /* graph_optimizer_registry */,
                 IResourceAccountant* /* resource_accountant */) const override;
 
   Status Compile(const std::vector<FusedNodeAndGraph>& fused_nodes,

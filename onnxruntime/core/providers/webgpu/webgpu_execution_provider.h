@@ -45,10 +45,14 @@ class WebGpuExecutionProvider : public IExecutionProvider {
   std::vector<std::unique_ptr<ComputeCapability>> GetCapability(
       const onnxruntime::GraphViewer& graph_viewer,
       const IKernelLookup& /*kernel_lookup*/,
+      const GraphOptimizerRegistry& /* graph_optimizer_registry */,
       IResourceAccountant* /* resource_accountant */) const override;
 
   std::shared_ptr<KernelRegistry> GetKernelRegistry() const override;
   std::unique_ptr<onnxruntime::IDataTransfer> GetDataTransfer() const override;
+#if defined(__wasm__)
+  std::unique_ptr<onnxruntime::IExternalDataLoader> GetExternalDataLoader() const override;
+#endif
 
   DataLayout GetPreferredLayout() const override { return preferred_data_layout_; }
 
