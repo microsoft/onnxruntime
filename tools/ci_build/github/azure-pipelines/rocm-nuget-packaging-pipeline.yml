@@ -219,7 +219,7 @@ stages:
     - task: MSBuild@1
       displayName: 'Restore NuGet Packages and create project.assets.json'
       inputs:
-        solution: '$(Build.SourcesDirectory)\csharp\OnnxRuntime.CSharp.sln'
+        solution: '$(Build.SourcesDirectory)\csharp\OnnxRuntime.DesktopOnly.CSharp.sln'
         platform: 'Any CPU'
         configuration: RelWithDebInfo
         msbuildArguments: '-t:restore -p:OrtPackageId="Microsoft.ML.OnnxRuntime.ROCm"'
@@ -228,7 +228,7 @@ stages:
     - task: MSBuild@1
       displayName: 'Build C# bindings'
       inputs:
-        solution: '$(Build.SourcesDirectory)\csharp\OnnxRuntime.CSharp.sln'
+        solution: '$(Build.SourcesDirectory)\csharp\OnnxRuntime.DesktopOnly.CSharp.sln'
         platform: 'Any CPU'
         configuration: RelWithDebInfo
         msbuildArguments: >
@@ -312,7 +312,7 @@ stages:
     - task: MSBuild@1
       displayName: 'Clean C#'
       inputs:
-        solution: '$(Build.SourcesDirectory)\csharp\OnnxRuntime.CSharp.sln'
+        solution: '$(Build.SourcesDirectory)\csharp\OnnxRuntime.DesktopOnly.CSharp.sln'
         platform: 'Any CPU'
         configuration: RelWithDebInfo
         msbuildArguments: '-t:Clean -p:OnnxRuntimeBuildDirectory="$(Build.BinariesDirectory)" -p:OrtPackageId=Microsoft.ML.OnnxRuntime.ROCm'

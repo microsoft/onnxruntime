@@ -94,35 +94,27 @@ stages:
       inputs:
         versionSpec: 6.10.x
 
-    - task: PowerShell@2
-      displayName: Install MAUI workloads
-      inputs:
-        targetType: 'inline'
-        script: |
-          dotnet workload install android ios maccatalyst
-        workingDirectory: '$(Build.SourcesDirectory)\csharp'
+        - task: MSBuild@1
+          displayName: 'Restore NuGet Packages and create project.assets.json'
+          inputs:
+            solution: '$(Build.SourcesDirectory)\csharp\OnnxRuntime.DesktopOnly.CSharp.sln'
+            platform: 'Any CPU'
+            configuration: RelWithDebInfo
+            msbuildArguments: '-t:restore -p:OrtPackageId="Microsoft.ML.OnnxRuntime.Gpu"'
+            workingDirectory: '$(Build.SourcesDirectory)\csharp'
 
-    - task: MSBuild@1
-      displayName: 'Restore NuGet Packages and create project.assets.json'
-      inputs:
-        solution: '$(Build.SourcesDirectory)\csharp\OnnxRuntime.CSharp.sln'
-        platform: 'Any CPU'
-        configuration: RelWithDebInfo
-        msbuildArguments: '-t:restore -p:OrtPackageId="Microsoft.ML.OnnxRuntime.Gpu"'
-        workingDirectory: '$(Build.SourcesDirectory)\csharp'
-
-    - task: MSBuild@1
-      displayName: 'Build C# bindings'
-      inputs:
-        solution: '$(Build.SourcesDirectory)\csharp\OnnxRuntime.CSharp.sln'
-        configuration: RelWithDebInfo
-        platform: 'Any CPU'
-        msbuildArguments: >
-          -p:OnnxRuntimeBuildDirectory="$(Build.BinariesDirectory)"
-          -p:OrtPackageId="Microsoft.ML.OnnxRuntime.Gpu"
-          -p:IsReleaseBuild=${{ parameters.IsReleaseBuild }}
-          -p:ReleaseVersionSuffix=$(ReleaseVersionSuffix)
-        workingDirectory: '$(Build.SourcesDirectory)\csharp'
+        - task: MSBuild@1
+          displayName: 'Build C# bindings'
+          inputs:
+            solution: '$(Build.SourcesDirectory)\csharp\OnnxRuntime.DesktopOnly.CSharp.sln'
+            configuration: RelWithDebInfo
+            platform: 'Any CPU'
+            msbuildArguments: >
+              -p:OnnxRuntimeBuildDirectory="$(Build.BinariesDirectory)"
+              -p:OrtPackageId="Microsoft.ML.OnnxRuntime.Gpu"
+              -p:IsReleaseBuild=${{ parameters.IsReleaseBuild }}
+              -p:ReleaseVersionSuffix=$(ReleaseVersionSuffix)
+            workingDirectory: '$(Build.SourcesDirectory)\csharp'
 
     - template: ../templates/win-esrp-dll.yml
       parameters:
@@ -203,14 +195,14 @@ stages:
         PlatformsSupported: 'linux-x64'
         VerifyNugetSigning: false
 
-    - task: MSBuild@1
-      displayName: 'Clean C#'
-      inputs:
-        solution: '$(Build.SourcesDirectory)\csharp\OnnxRuntime.CSharp.sln'
-        platform: 'Any CPU'
-        configuration: RelWithDebInfo
-        msbuildArguments: '-t:Clean -p:OnnxRuntimeBuildDirectory="$(Build.BinariesDirectory)" -p:OrtPackageId=Microsoft.ML.OnnxRuntime.Gpu'
-        workingDirectory: '$(Build.SourcesDirectory)\csharp'
+        - task: MSBuild@1
+          displayName: 'Clean C#'
+          inputs:
+            solution: '$(Build.SourcesDirectory)\csharp\OnnxRuntime.DesktopOnly.CSharp.sln'
+            platform: 'Any CPU'
+            configuration: RelWithDebInfo
+            msbuildArguments: '-t:Clean -p:OnnxRuntimeBuildDirectory="$(Build.BinariesDirectory)" -p:OrtPackageId=Microsoft.ML.OnnxRuntime.Gpu'
+            workingDirectory: '$(Build.SourcesDirectory)\csharp'
 
     - template: ../templates/component-governance-component-detection-steps.yml
       parameters:
@@ -221,4 +213,3 @@ stages:
       inputs:
         artifactName: 'drop-signed-nuget-GPU'
         targetPath: '$(Build.ArtifactStagingDirectory)'
-
