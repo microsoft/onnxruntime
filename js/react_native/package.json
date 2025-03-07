@@ -2,7 +2,7 @@
   "react-native": "lib/index",
   "module": "dist/module/index",
   "engines": {
-    "node": ">=16"
+    "node": ">=18"
   },
   "jest": {
     "modulePathIgnorePatterns": [
@@ -20,14 +20,12 @@
     "ONNX Runtime"
   ],
   "devDependencies": {
-    "@types/jest": "^29.2.1",
-    "@types/react": "^18.0.24",
-    "@tsconfig/react-native": "^3.0.0",
-    "jest": "^29.2.1",
+    "@react-native/typescript-config": "0.73.1",
+    "@types/react": "^18.2.6",
     "pod-install": "^0.1.36",
-    "prettier": "^2.6.2",
+    "prettier": "^2.8.8",
     "react": "^18.2.0",
-    "react-native": "^0.72.17"
+    "react-native": "^0.73.11"
   },
   "peerDependencies": {
     "react": "*",
@@ -38,7 +36,7 @@
     "registry": "https://registry.npmjs.org/"
   },
   "source": "lib/index",
-  "version": "1.21.0",
+  "version": "1.22.0",
   "main": "dist/commonjs/index",
   "homepage": "https://github.com/microsoft/onnxruntime/blob/main/js/react_native/README.md",
   "files": [
@@ -63,9 +61,7 @@
   "description": "ONNX Runtime bridge for react native",
   "repository": "https://github.com/Microsoft/onnxruntime.git",
   "dependencies": {
-    "@expo/config-plugins": "^7.2.4",
-    "buffer": "^6.0.3",
-    "onnxruntime-common": "file:../common"
+    "buffer": "^6.0.3"
   },
   "scripts": {
     "typescript": "tsc --noEmit",

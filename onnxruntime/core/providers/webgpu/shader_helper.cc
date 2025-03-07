@@ -65,8 +65,8 @@ Status ShaderHelper::Init() {
               "        @builtin(local_invocation_id) local_id : vec3<u32>";
   if (device_.HasFeature(wgpu::FeatureName::Subgroups)) {
     body_ss_ << ",\n"
-                " @builtin(subgroup_invocation_id) sg_id : u32,\n"
-                " @builtin(subgroup_size) sg_size : u32";
+                "        @builtin(subgroup_invocation_id) sg_id : u32,\n"
+                "        @builtin(subgroup_size) sg_size : u32";
   }
   if (!is_1d_dispatch) {
     body_ss_ << ",\n"
@@ -345,9 +345,6 @@ Status ShaderHelper::GenerateSourceCode(std::string& code, std::vector<int>& sha
                   })) {
     ORT_RETURN_IF_NOT(device_.HasFeature(wgpu::FeatureName::ShaderF16), "Program ", program_.Name(), " requires f16 but the device does not support it.");
     ss << "enable f16;\n";
-    if (device_.HasFeature(wgpu::FeatureName::SubgroupsF16)) {
-      ss << "enable subgroups_f16;\n";
-    }
   }
   if (device_.HasFeature(wgpu::FeatureName::Subgroups)) {
     ss << "enable subgroups;\n";
