@@ -126,7 +126,6 @@ function(setup_mlas_source_for_windows)
 
       if (onnxruntime_USE_KLEIDIAI)
         setup_kleidiai()
-        onnxruntime_fetchcontent_makeavailable(kleidiai)
         set(KLEIDIAI_SRC ${kleidiai_SOURCE_DIR})
 
         set(mlas_platform_preprocess_srcs
@@ -266,45 +265,38 @@ function(setup_mlas_source_for_windows)
 endfunction()
 
 function(setup_kleidiai)
-  set(onnxruntime_USE_KLEIDIAI ${ARM64} CACHE BOOL "")
-  target_compile_definitions(onnxruntime_mlas PRIVATE $<$<BOOL:${onnxruntime_USE_KLEIDIAI}>:USE_KLEIDIAI>)
+  target_compile_definitions(onnxruntime_mlas PRIVATE USE_KLEIDIAI)
 
-  if (onnxruntime_USE_KLEIDIAI)
-    # Disable the KleidiAI tests
-    set(KLEIDIAI_BUILD_TESTS  OFF)
+  # Disable the KleidiAI tests
+  set(KLEIDIAI_BUILD_TESTS  OFF)
 
-    # Fetch KleidiAI sources:
-    if (NOT TARGET kleidiai)
-      if (POLICY CMP0135)
-        cmake_policy(SET CMP0135 NEW)
-      endif()
+  # Fetch KleidiAI sources:
+  if (NOT TARGET kleidiai)
+    onnxruntime_fetchcontent_declare(kleidiai URL ${DEP_URL_kleidiai} URL_HASH SHA1=${DEP_SHA1_kleidiai} EXCLUDE_FROM_ALL)
+  endif()
+  onnxruntime_fetchcontent_makeavailable(kleidiai)
+  set(KLEIDIAI_SRC ${kleidiai_SOURCE_DIR})
 
-      FetchContent_Declare(kleidiai URL ${DEP_URL_kleidiai} URL_HASH SHA1=${DEP_SHA1_kleidiai})
-    endif()
-    onnxruntime_fetchcontent_makeavailable(kleidiai)
-    set(KLEIDIAI_SRC ${kleidiai_SOURCE_DIR})
+  # KleidiAI
+  include_directories(${KLEIDIAI_SRC}/)
 
-    # KleidiAI
-    include_directories(${KLEIDIAI_SRC}/)
+  target_sources(onnxruntime_mlas PRIVATE
+    ${MLAS_SRC_DIR}/kai_ukernel_interface.cpp
+    ${KLEIDIAI_SRC}/kai/ukernels/matmul/pack/kai_rhs_pack_nxk_qsi4c32p_qsu4c32s1s0.c
+    ${KLEIDIAI_SRC}/kai/ukernels/matmul/pack/kai_lhs_quant_pack_qai8dxp_f32.c
+    ${KLEIDIAI_SRC}/kai/ukernels/matmul/matmul_clamp_f32_qai8dxp_qsi4c32p/kai_matmul_clamp_f32_qai8dxp1x4_qsi4c32p4x4_1x4_neon_dotprod.c
+    ${KLEIDIAI_SRC}/kai/ukernels/matmul/matmul_clamp_f32_qai8dxp_qsi4c32p/kai_matmul_clamp_f32_qai8dxp4x4_qsi4c32p4x4_16x4_neon_dotprod.c
+    ${KLEIDIAI_SRC}/kai/ukernels/matmul/matmul_clamp_f32_qai8dxp_qsi4c32p/kai_matmul_clamp_f32_qai8dxp1x8_qsi4c32p4x8_1x4x32_neon_dotprod.c
+    ${KLEIDIAI_SRC}/kai/ukernels/matmul/matmul_clamp_f32_qai8dxp_qsi4c32p/kai_matmul_clamp_f32_qai8dxp4x8_qsi4c32p4x8_16x4x32_neon_i8mm.c
+    ${KLEIDIAI_SRC}/kai/ukernels/matmul/matmul_clamp_f32_qai8dxp_qsi4c32p/kai_matmul_clamp_f32_qai8dxp1x4_qsi4c32p4x4_1x4_neon_dotprod_asm.S
+    ${KLEIDIAI_SRC}/kai/ukernels/matmul/matmul_clamp_f32_qai8dxp_qsi4c32p/kai_matmul_clamp_f32_qai8dxp4x4_qsi4c32p4x4_16x4_neon_dotprod_asm.S
+    ${KLEIDIAI_SRC}/kai/ukernels/matmul/matmul_clamp_f32_qai8dxp_qsi4c32p/kai_matmul_clamp_f32_qai8dxp1x8_qsi4c32p4x8_1x4x32_neon_dotprod_asm.S
+    ${KLEIDIAI_SRC}/kai/ukernels/matmul/matmul_clamp_f32_qai8dxp_qsi4c32p/kai_matmul_clamp_f32_qai8dxp4x8_qsi4c32p4x8_16x4x32_neon_i8mm_asm.S
+  )
 
-    target_sources(onnxruntime_mlas PRIVATE
-      ${MLAS_SRC_DIR}/kai_ukernel_interface.cpp
-      ${KLEIDIAI_SRC}/kai/ukernels/matmul/pack/kai_rhs_pack_nxk_qsi4c32p_qsu4c32s1s0.c
-      ${KLEIDIAI_SRC}/kai/ukernels/matmul/pack/kai_lhs_quant_pack_qai8dxp_f32.c
-      ${KLEIDIAI_SRC}/kai/ukernels/matmul/matmul_clamp_f32_qai8dxp_qsi4c32p/kai_matmul_clamp_f32_qai8dxp1x4_qsi4c32p4x4_1x4_neon_dotprod.c
-      ${KLEIDIAI_SRC}/kai/ukernels/matmul/matmul_clamp_f32_qai8dxp_qsi4c32p/kai_matmul_clamp_f32_qai8dxp4x4_qsi4c32p4x4_16x4_neon_dotprod.c
-      ${KLEIDIAI_SRC}/kai/ukernels/matmul/matmul_clamp_f32_qai8dxp_qsi4c32p/kai_matmul_clamp_f32_qai8dxp1x8_qsi4c32p4x8_1x4x32_neon_dotprod.c
-      ${KLEIDIAI_SRC}/kai/ukernels/matmul/matmul_clamp_f32_qai8dxp_qsi4c32p/kai_matmul_clamp_f32_qai8dxp4x8_qsi4c32p4x8_16x4x32_neon_i8mm.c
-      ${KLEIDIAI_SRC}/kai/ukernels/matmul/matmul_clamp_f32_qai8dxp_qsi4c32p/kai_matmul_clamp_f32_qai8dxp1x4_qsi4c32p4x4_1x4_neon_dotprod_asm.S
-      ${KLEIDIAI_SRC}/kai/ukernels/matmul/matmul_clamp_f32_qai8dxp_qsi4c32p/kai_matmul_clamp_f32_qai8dxp4x4_qsi4c32p4x4_16x4_neon_dotprod_asm.S
-      ${KLEIDIAI_SRC}/kai/ukernels/matmul/matmul_clamp_f32_qai8dxp_qsi4c32p/kai_matmul_clamp_f32_qai8dxp1x8_qsi4c32p4x8_1x4x32_neon_dotprod_asm.S
-      ${KLEIDIAI_SRC}/kai/ukernels/matmul/matmul_clamp_f32_qai8dxp_qsi4c32p/kai_matmul_clamp_f32_qai8dxp4x8_qsi4c32p4x8_16x4x32_neon_i8mm_asm.S
-    )
-
-    if (NOT MSVC)
-      set_source_files_properties(${MLAS_SRC_DIR}/sqnbitgemm_kernel_neon_int8.cpp
-                                  PROPERTIES COMPILE_FLAGS " -march=armv8.2-a+dotprod")
-    endif()
+  if (NOT MSVC)
+    set_source_files_properties(${MLAS_SRC_DIR}/sqnbitgemm_kernel_neon_int8.cpp
+                                PROPERTIES COMPILE_FLAGS " -march=armv8.2-a+dotprod")
   endif()
 endfunction()
 
@@ -445,7 +437,9 @@ else()
           ${MLAS_SRC_DIR}/softmax_kernel_neon.h
           ${MLAS_SRC_DIR}/softmax_kernel_neon.cpp
         )
-        setup_kleidiai()
+        if (onnxruntime_USE_KLEIDIAI)
+          setup_kleidiai()
+        endif()
         set_source_files_properties(${MLAS_SRC_DIR}/sqnbitgemm_kernel_neon_int8.cpp
                                     PROPERTIES COMPILE_FLAGS " -march=armv8.2-a+dotprod")
         if (NOT APPLE)
