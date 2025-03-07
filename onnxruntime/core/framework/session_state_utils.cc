@@ -61,6 +61,11 @@ struct ExtDataValueDeleter {
   }
 };
 
+  if constexpr (endian::native != endian::little) {
+    if (!proto_path.empty() && (proto_path.compare(onnxruntime::utils::kTensorProtoMemoryAddressTag) != 0)) {
+      utils::ConvertRawDataInTensorProto(const_cast<ONNX_NAMESPACE::TensorProto*>(&tensor_proto), ext_data_buf, ext_data_len);
+    }
+  }
 static common::Status DeserializeTensorProto(const Env& env, const std::basic_string<PATH_CHAR_TYPE>& proto_path,
                                              const ONNX_NAMESPACE::TensorProto& tensor_proto, const MemBuffer* memory_buffer,
                                              const AllocatorPtr& alloc, const AllocatorPtr& default_cpu_alloc,
