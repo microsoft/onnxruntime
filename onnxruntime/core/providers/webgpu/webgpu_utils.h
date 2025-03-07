@@ -8,7 +8,7 @@
 namespace onnxruntime {
 namespace webgpu {
 
-inline const int64_t GetMaxComponents(int64_t size) {
+inline int64_t GetMaxComponents(int64_t size) {
   if (size % 4 == 0) {
     return 4;
   } else if (size % 2 == 0) {
