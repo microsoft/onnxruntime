@@ -18,7 +18,7 @@ import onnx
 from onnx.onnx_pb import GraphProto, ModelProto, NodeProto, TensorProto
 from packaging import version
 
-from onnxruntime.capi._pybind_state import quantize_matmul_4bits, quantize_qdq_matmul_4bits
+from onnxruntime.capi._pybind_state import quantize_matmul_nbits, quantize_qdq_matmul_4bits
 
 from .calibrate import CalibrationDataReader
 from .onnx_model import ONNXModel
@@ -185,6 +185,7 @@ class HQQWeightOnlyQuantConfig(WeightOnlyQuantConfig):
 class DefaultWeightOnlyQuantConfig(WeightOnlyQuantConfig):
     def __init__(
         self,
+        bits: int = 4,
         block_size: int = 128,
         is_symmetric: bool = False,
         accuracy_level: int | None = None,
@@ -221,7 +222,7 @@ class DefaultWeightOnlyQuantConfig(WeightOnlyQuantConfig):
         )
         self.block_size = block_size
         self.is_symmetric = is_symmetric
-        self.bits = 4
+        self.bits = bits
         self.accuracy_level = accuracy_level
 
 
@@ -742,8 +743,8 @@ class DefaultWeightOnlyQuantizer:
             packed = np.zeros((cols, k_blocks, blob_size), dtype="uint8")
             zero_point = np.zeros(cols * ((k_blocks + 1) // 2), dtype="uint8")
             scales = np.zeros((cols * k_blocks), dtype=fp32weight.dtype)
-            quantize_matmul_4bits(
-                packed, fp32weight, scales, zero_point, block_size, cols, rows, self.config.is_symmetric
+            quantize_matmul_nbits(
+                packed, fp32weight, self.config.bits, scales, zero_point, block_size, cols, rows, self.config.is_symmetric
             )
         else:
             packed = np.zeros((rows * cols + 1) // 2, dtype="uint8")
@@ -800,7 +801,7 @@ class DefaultWeightOnlyQuantizer:
             rows, cols = b_ndarray.shape
             kwargs["K"] = rows
             kwargs["N"] = cols
-            kwargs["bits"] = 4
+            kwargs["bits"] = self.config.bits
             kwargs["block_size"] = self.config.block_size
             if self.config.accuracy_level is not None:
                 kwargs["accuracy_level"] = self.config.accuracy_level
@@ -1090,6 +1091,7 @@ class MatMul4BitsQuantizer:
     def __init__(
         self,
         model: ModelProto | str,
+        bits: int,
         block_size: int = 128,
         is_symmetric: bool = False,
         accuracy_level: int | None = None,
@@ -1104,6 +1106,7 @@ class MatMul4BitsQuantizer:
             nodes_to_exclude = []
         self.model = ONNXModel(onnx.load(model)) if isinstance(model, str) else ONNXModel(model)
         self.model_path = model if isinstance(model, str) else None
+        self.bits = bits
         self.block_size = block_size
         self.is_symmetric = is_symmetric
         self.accuracy_level = accuracy_level
@@ -1113,6 +1116,7 @@ class MatMul4BitsQuantizer:
 
         if algo_config is None:
             algo_config = DefaultWeightOnlyQuantConfig(
+                bits=bits,
                 block_size=block_size,
                 is_symmetric=is_symmetric,
                 accuracy_level=accuracy_level,
@@ -1433,6 +1437,7 @@ if __name__ == "__main__":
         )
     elif args.quant_method == "default":
         quant_config = DefaultWeightOnlyQuantConfig(
+            bits=args.bits,
             block_size=args.block_size,
             is_symmetric=args.symmetric,
             accuracy_level=args.accuracy_level,
@@ -1469,6 +1474,7 @@ if __name__ == "__main__":
 
     quant = MatMul4BitsQuantizer(
         model=model,
+        bits=args.bits,
         accuracy_level=args.accuracy_level,
         nodes_to_exclude=args.nodes_to_exclude,
         nodes_to_include=args.nodes_to_include,

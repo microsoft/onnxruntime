@@ -907,12 +907,12 @@ def quantize(
             extra_options=quant_config.extra_options,
         )
     else:
-        # training package doesn't has quantize_matmul_4bits, avoid global import
+        # training package doesn't has quantize_matmul_nbits, avoid global import
         from .matmul_4bits_quantizer import MatMul4BitsQuantizer, WeightOnlyQuantConfig
 
         if isinstance(quant_config, WeightOnlyQuantConfig):
             model = model_input if isinstance(model_input, onnx.ModelProto) else onnx.load(model_input)
-            quant = MatMul4BitsQuantizer(model, algo_config=quant_config)
+            quant = MatMul4BitsQuantizer(model, bits=4, algo_config=quant_config)
             quant.process()
             quant.model.save_model_to_file(model_output, True)
         else:

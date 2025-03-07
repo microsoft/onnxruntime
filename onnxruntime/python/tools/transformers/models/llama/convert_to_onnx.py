@@ -636,6 +636,8 @@ def get_args():
 
     blockwise_group = parser.add_argument_group("blockwise (4-bit quantization)")
 
+    parser.add_argument("--bits", default=4, type=int, help="the target bits to represent weight")
+
     blockwise_group.add_argument(
         "--block_size",
         required=False,
@@ -957,6 +959,7 @@ def main():
                         model = onnx.load_model(fp_path, load_external_data=True)
                         quant = MatMul4BitsQuantizer(
                             model=model,
+                            bits=args.bits,
                             block_size=args.block_size,
                             is_symmetric=True,
                             accuracy_level=args.int4_accuracy_level,
