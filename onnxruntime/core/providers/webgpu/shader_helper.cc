@@ -530,6 +530,122 @@ Status ShaderHelper::GenerateSourceCode(std::string& code, std::vector<int>& sha
         "}\n";
 
   code = SS_GET(ss);
+
+ // let code be this string
+
+/*
+ code = R"(
+struct Uniforms {
+  a_shape: vec4<u32>,
+  a_strides: vec4<u32>,
+  b_shape: vec3<u32>,
+  b_strides: vec3<u32>,
+  output_shape: vec3<u32>,
+  output_strides: vec3<u32>,
+  batch_dims_shape: vec2<u32>,
+  batch_dims_strides: vec2<u32>,
+  output_size: u32,
+  M: u32,
+  N: u32,
+  K: u32
+};
+@group(0) @binding(3) var<uniform> uniforms: Uniforms;
+
+  fn i2o_a(indices: vec4<u32>) -> u32 {
+    return uniforms.a_strides[3] * (indices[3])+uniforms.a_strides[2] * (indices[2])+uniforms.a_strides[1] * (indices[1])+uniforms.a_strides[0] * (indices[0]);
+  }
+
+  fn i2o_b(indices: vec3<u32>) -> u32 {
+    return uniforms.b_strides[2] * (indices[2])+uniforms.b_strides[1] * (indices[1])+uniforms.b_strides[0] * (indices[0]);
+  }
+
+  fn i2o_output(indices: vec3<u32>) -> u32 {
+    return uniforms.output_strides[2] * (indices[2])+uniforms.output_strides[1] * (indices[1])+uniforms.output_strides[0] * (indices[0]);
+  }
+  fn o2i_batch_dims(offset: u32) -> vec2<u32> {
+    var indices: vec2<u32>;
+    var current = offset;
+
+    let dim0 = current / uniforms.batch_dims_strides[0];
+    let rest0 = current % uniforms.batch_dims_strides[0];
+    indices[0] = dim0;
+    current = rest0;
+    indices[1] = current;
+    return indices;
+  }
+
+  @group(0) @binding(0) var<storage, read> a: array<vec2<f32>>;
+@group(0) @binding(1) var<storage, read> b: array<vec2<f32>>;
+@group(0) @binding(2) var<storage, read_write> output: array<vec2<f32>>;
+  @compute @workgroup_size(64, 1, 1)
+  fn main(@builtin(global_invocation_id) global_id : vec3<u32>,
+    @builtin(workgroup_id) workgroup_id : vec3<u32>,
+    @builtin(local_invocation_index) local_idx : u32,
+    @builtin(local_invocation_id) local_id : vec3<u32>) {
+    let global_idx = global_id.x;
+         let workgroup_index = workgroup_id.x;
+
+    if (global_idx >= uniforms.output_size) { return; }
+    let col = (global_idx % (uniforms.N / 2)) * 2;
+    var index1 = global_idx / (uniforms.N / 2);
+    let stride1 = uniforms.M / 1;
+    let row = (index1 % stride1) * 1;
+    let batch = index1 / stride1;
+
+    let batch_indices = o2i_batch_dims(batch);
+
+    var a_indices: vec4<u32>;
+
+
+      if (uniforms.a_shape[0] != 1) {
+        a_indices[0]=batch_indices[0];
+      } else {
+        a_indices[0]=0;
+      }
+      if (uniforms.a_shape[1] != 1) {
+        a_indices[1]=batch_indices[1];
+      } else {
+        a_indices[1]=0;
+      }
+
+    a_indices[2]=0;
+    a_indices[3]=0;
+    let a_offset = i2o_a(a_indices);
+
+    var b_indices: vec3<u32>;
+
+
+      if (uniforms.b_shape[0] != 1) {
+        b_indices[0]=batch_indices[1];
+      } else {
+        b_indices[0]=0;
+      }
+
+    b_indices[1]=0;
+    b_indices[2]=0;
+    let b_offset = i2o_b(b_indices);
+    var values: array<vec2<f32>, 1>;
+    for (var k: u32 = 0u; k < uniforms.K; k = k + 2) {
+      var a_data: vec2<f32>;
+              let b_data0 = b[(b_offset + (k + 0) * uniforms.N + col) / 2];
+              let b_data1 = b[(b_offset + (k + 1) * uniforms.N + col) / 2];a_data = a[(a_offset + (row + 0) * uniforms.K + k) / 2];
+            values[0] = fma(vec2<f32>(a_data[0]), b_data0, values[0]);
+
+            values[0] = fma(vec2<f32>(a_data[1]), b_data1, values[0]);
+
+    }
+    for (var i = 0u; i < 1u; i++) {
+      var value = values[i];
+
+
+      let cur_indices = vec3<u32>(batch, row + i, col);
+      let offset = i2o_output(cur_indices);
+      output[offset / 2]=value;;
+    }
+  }
+)";
+*/
+
   return Status::OK();
 }
 

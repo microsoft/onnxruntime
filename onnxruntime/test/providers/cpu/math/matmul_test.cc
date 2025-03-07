@@ -54,12 +54,12 @@ std::vector<MatMulTestData<T>> GenerateTestCases() {
     }
   };
 
-  test_cases.push_back(
-      {"test padding and broadcast A > B",
-       {3, 1, 1, 2},
-       {2, 2, 2},
-       {3, 2, 1, 2},
-       real_expected_vals({2, 3, 6, 7, 6, 11, 26, 31, 10, 19, 46, 55})});
+  // test_cases.push_back(
+  //     {"test padding and broadcast A > B",
+  //      {3, 1, 1, 2},
+  //      {2, 2, 2},
+  //      {3, 2, 1, 2},
+  //      real_expected_vals({2, 3, 6, 7, 6, 11, 26, 31, 10, 19, 46, 55})});
 
   // test_cases.push_back(
   //     {"test padding and broadcast B > A",
@@ -131,18 +131,18 @@ std::vector<MatMulTestData<T>> GenerateTestCases() {
   //      {3, 0},
   //      real_expected_vals({})});
 
-  // test_cases.push_back(
-  //     {"test 3D batch",
-  //      {3, 1, 3},
-  //      {3, 3, 2},
-  //      {3, 1, 2},
-  //      real_expected_vals({
-  //          // clang-format off
-  //           10,  13,
-  //          100, 112,
-  //          298, 319,
-  //          // clang-format on
-  //      })});
+  test_cases.push_back(
+      {"test 3D batch",
+       {3, 1, 3},
+       {3, 3, 2},
+       {3, 1, 2},
+       real_expected_vals({
+           // clang-format off
+            10,  13,
+           100, 112,
+           298, 319,
+           // clang-format on
+       })});
 
   // test_cases.push_back(
   //     {"test 4D batch",

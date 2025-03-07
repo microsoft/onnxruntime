@@ -33,6 +33,7 @@ class MatMulNativeProgram final: public Program<MatMulNativeProgram> {
   Status GenerateShaderCode(ShaderHelper& sh) const override;
 
   // uniform variables output_size, M,N, K
+  //WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES({"output_size", ProgramUniformVariableDataType::Uint32});
   WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES({"output_size", ProgramUniformVariableDataType::Uint32},
                                          {"M", ProgramUniformVariableDataType::Uint32},
                                          {"N", ProgramUniformVariableDataType::Uint32},

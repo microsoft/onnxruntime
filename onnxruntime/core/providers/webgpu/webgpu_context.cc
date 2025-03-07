@@ -32,6 +32,7 @@
 #include "core/providers/webgpu/program_manager.h"
 #include "core/providers/webgpu/string_macros.h"
 
+#include "core/common/logging/logging.h"
 namespace onnxruntime {
 namespace webgpu {
 
@@ -320,13 +321,22 @@ Status WebGpuContext::Run(ComputeContext& context, const ProgramBase& program) {
                     ", Actual: ", shape.NumDimensions());
 
       std::vector<uint32_t> dims(expected_rank);
-      std::vector<uint32_t> stride(expected_rank - 1);
+      std::vector<uint32_t> stride(expected_rank);
       for (size_t j = 0; j < expected_rank; ++j) {
         dims[j] = gsl::narrow<uint32_t>(shape[j]);
         if (j < expected_rank - 1) {
           stride[j] = gsl::narrow<uint32_t>(shape.SizeFromDimension(j + 1));
+        } else {
+          stride[j] = 1;
         }
       }
+
+      // print dims, stride
+      LOGS_DEFAULT(VERBOSE) << "Shape uniform: dims: " << VecToString(dims)
+                      << ", stride: " << VecToString(stride)
+                      << " shape: " << shape.ToString()
+                      << "expected_rank: " << expected_rank
+                      << "dimensions: " << shape.NumDimensions();
 
       shape_uniforms.emplace_back(gsl::make_span(dims));
       if (expected_rank > 1) {
@@ -337,6 +347,13 @@ Status WebGpuContext::Run(ComputeContext& context, const ProgramBase& program) {
   };
 
   for (size_t i = 0; i < inputs.size(); i++) {
+    // print tensor shape
+    LOGS_DEFAULT(VERBOSE) << "Input[" << i << "] tensor shape: " << inputs[i].tensor->Shape().ToString();
+    // print override shape if any
+    if (inputs[i].use_override_shape) {
+      LOGS_DEFAULT(VERBOSE) << "Input[" << i << "] override shape: " << inputs[i].override_shape.ToString();
+    }
+
     ORT_RETURN_IF_ERROR(append_shape_uniforms(i,
                                               inputs[i].use_override_shape ? inputs[i].override_shape : inputs[i].tensor->Shape()));
   }
