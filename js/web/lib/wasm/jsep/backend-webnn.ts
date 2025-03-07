@@ -288,7 +288,7 @@ export class WebNNBackend {
     builder: MLGraphBuilder,
     desc: MLOperandDescriptor,
     mountedFiles: Map<string, Uint8Array> | undefined,
-    shouldConvertInt64ToInt32: boolean = false,
+    shouldConvertInt64ToInt32 = false,
   ): MLOperand {
     // If available, "Module.MountedFiles" is a Map for all preloaded files.
     if (!mountedFiles) {
@@ -373,7 +373,7 @@ export class WebNNBackend {
 
   public isInt64Supported(sessionId: number): boolean {
     const context = this.mlContextBySessionId.get(sessionId);
-    return !!context?.opSupportLimits()['input']['dataTypes'].includes('int64');
+    return !!context?.opSupportLimits().input.dataTypes.includes('int64');
   }
 
   public flush(): void {
