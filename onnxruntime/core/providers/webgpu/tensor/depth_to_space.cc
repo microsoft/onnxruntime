@@ -77,7 +77,7 @@ Status DepthToSpace<is_nchw>::ComputeInternal(onnxruntime::webgpu::ComputeContex
   int64_t n, c, h, w;
   int64_t shape[6];
   int64_t perm[6];
-  if constexpr (is_nchw) {
+  if (is_nchw) {
     n = input_shape[0];
     c = input_shape[1];
     h = input_shape[2];
