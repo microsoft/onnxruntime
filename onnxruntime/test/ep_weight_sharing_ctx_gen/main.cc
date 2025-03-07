@@ -17,8 +17,8 @@ using ProviderOptions = std::unordered_map<std::string, std::string>;
 
 // from the last context cache Onnx model, find the EPContext node with main_context=1,
 // get the max spill fill buffer size
-static void GetLastContextBinaryFileName(const std::basic_string<ORTCHAR_T> last_onnx_ctx_file,
-                                         int64_t& max_size) {
+static void GetEpContextInfoFromLastContextModel(const std::basic_string<ORTCHAR_T> last_onnx_ctx_file,
+                                                 int64_t& max_size) {
   max_size = 0;
 
   onnx::ModelProto model;
@@ -182,9 +182,9 @@ int real_main(int argc, char* argv[]) {
       std::vector<std::basic_string<ORTCHAR_T>> ep_ctx_files;
       ep_ctx_files.reserve(test_config.model_file_paths.size());
       for (auto model_path : test_config.model_file_paths) {
-        auto pos = model_path.find_last_of(ORT_TSTR("."));
-        if (pos != std::string::npos) {
-          model_path = model_path.substr(0, pos) + ORT_TSTR("_ctx.onnx");
+        auto dot_pos = model_path.find_last_of(ORT_TSTR("."));
+        if (dot_pos != std::string::npos) {
+          model_path = model_path.substr(0, dot_pos) + ORT_TSTR("_ctx.onnx");
         } else {
           model_path = model_path + ORT_TSTR("_ctx.onnx");
         }
@@ -192,7 +192,7 @@ int real_main(int argc, char* argv[]) {
       }
 
       int64_t max_size = 0;
-      GetLastContextBinaryFileName(ep_ctx_files.back(), max_size);
+      GetEpContextInfoFromLastContextModel(ep_ctx_files.back(), max_size);
       ep_ctx_files.pop_back();
 
       UpdateEpContextModel(ep_ctx_files, max_size);
