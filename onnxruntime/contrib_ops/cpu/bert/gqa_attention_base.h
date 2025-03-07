@@ -50,7 +50,7 @@ class GQAAttentionBase {
   Status ApplyAttention(const T* Q,                                 // Q data with shape BxNxSxH
                         const T* K,                                 // K data with shape BxN_kvxSxH
                         const T* V,                                 // V data with shape BxN_kvxSxH
-                        const Tensor* attention_mask,                    // Causal attention mask to apply before
+                        const Tensor* attention_mask,               // Causal attention mask to apply before
                         const Tensor* past_key,                     // past K input tensor (if not using past state)
                         const Tensor* past_value,                   // past V input tensor (if not using past state)
                         Tensor* output,                             // output tensor
@@ -135,7 +135,7 @@ class GQAAttentionBase {
                              const T* Q,                                   // Q data. Its size is BxNxSxH
                              const T* K,                                   // k data. Its size is BxNxLxH
                              const int32_t* seqlens_k,                     // total - 1 sequence lengths tensor
-                             const T* attention_mask,
+                             const T* attention_mask,                      // optional causal attention mask
                              const size_t batch_size,                      // batch size of self-attention
                              const size_t sequence_length,                 // sequence length of self-attention (S)
                              const size_t attention_mask_total_seqlen,     // max total seqlen in batch used for attention last dim
