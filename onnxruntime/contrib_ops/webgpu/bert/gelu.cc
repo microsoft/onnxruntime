@@ -2,7 +2,7 @@
 // Licensed under the MIT License.
 
 #include "core/providers/webgpu/webgpu_supported_types.h"
-#include "core/providers/webgpu/math/unary_elementwise_ops.h"
+#include "core/providers/webgpu/math/unary_elementwise_ops.cc"
 #include "contrib_ops/webgpu/webgpu_contrib_kernels.h"
 
 namespace onnxruntime {
