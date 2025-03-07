@@ -368,8 +368,7 @@ bool TransformerMemcpyImpl::ProcessInitializers(const KernelRegistryManager& ker
                                                 const InitializedTensorSet& initializers_consumed,
                                                 const logging::Logger& logger) {
   std::map<const onnxruntime::NodeArg*, onnxruntime::NodeArg*> replacements;
-  for (const auto& pair : initializers_consumed) {
-    const auto& name = pair.first;
+  for (const auto& [name, tensor_proto] : initializers_consumed) {
     const onnxruntime::NodeArg* provider_def = FindNodeArg(provider_input_defs_, name);
     const onnxruntime::NodeArg* non_provider_def = FindNodeArg(non_provider_input_defs_, name);
     if (provider_def != nullptr && non_provider_def != nullptr) {
@@ -384,7 +383,6 @@ bool TransformerMemcpyImpl::ProcessInitializers(const KernelRegistryManager& ker
       // This should not directly affect runtime performance as the copies occur during initialization
       // but overuse of the provider device's memory is definitely inefficient
       // In future, we need to "statefully" make the copy only once and use it in all subgraphs referencing the initializer
-      const TensorProto* tensor_proto = pair.second;
       TensorProto new_tensor_proto = *tensor_proto;
       *(new_tensor_proto.mutable_name()) = new_def_name;
       graph_.AddInitializedTensor(new_tensor_proto);

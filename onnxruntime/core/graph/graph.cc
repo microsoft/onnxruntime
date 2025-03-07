@@ -3403,10 +3403,62 @@ bool Graph::ResolveContext::IsOuterScopeValue(const std::string& name) const {
 
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
 
-void Graph::AddInitializedTensorHelper(const ONNX_NAMESPACE::TensorProto& tensor) {
+void Graph::AddInitializedTensor(const TensorProto& tensor) {
+  auto existing = name_to_initial_tensor_.find(tensor.name());
+  const bool exists = existing != name_to_initial_tensor_.cend();
+  if (exists) {
+    ORT_ENFORCE(existing->second == &tensor,
+                "AddInitializedTensor already has tensor with name ", tensor.name(), " but different TensorProto.");
+    return;
+  }
+
+  // No need to add a new entry if it already exists.
+  if (!exists) {
+    // XXX: This overload is used when the tensor does not point to an OrtValue which
+    // would need to be updated, but it is okay if it is pointing to flatbuffers at the moment.
+    // We will need to create a corresponding OrtValue for flatbuffers as well to make it uniform.
+    if (utils::HasExternalData(tensor)) {
+      if (ortvalue_initializers_.count(tensor.name()) > 0) {
+        ORT_THROW("OrtValue needs to be inserted. Using wrong overload");
+      }
+    }
+    const gsl::not_null<TensorProto*> tensor_added{graph_proto_->add_initializer()};
+    *(tensor_added) = tensor;
+    name_to_initial_tensor_.emplace(tensor.name(), tensor_added);
+  }
+
+  bool resolve_needed = !exists;
+  if (!is_loaded_from_model_file_ && GetNodeArg(tensor.name()) == nullptr) {
+    // make sure there is a NodeArg for the initializer as SetGraphInputsOutputs may add it to the graph inputs.
+    // the shape will be set to the correct value in TypeCheckInputsAndInitializers as we don't yet know whether there
+    // will be a matching graph input for this initializer (we prefer shape info from the graph input).
+    TypeProto t;
+    t.mutable_tensor_type()->set_elem_type(tensor.data_type());
+    ORT_IGNORE_RETURN_VALUE(GetOrCreateNodeArg(tensor.name(), &t));
+    resolve_needed = true;
+  }
+
+  if (resolve_needed) {
+    SetGraphResolveNeeded();
+  }
+}
+
+Status Graph::AddInitializedOrtValue(const ONNX_NAMESPACE::TensorProto& tensor, OrtValue ortvalue_initializer) {
+  ORT_RETURN_IF(name_to_initial_tensor_.count(tensor.name()) > 0, "Attempt to replace the existing tensor");
+
   const gsl::not_null<TensorProto*> tensor_added{graph_proto_->add_initializer()};
   *(tensor_added) = tensor;
+  // Need to replace in case we are adding a corresponding OrtValue it may be pointing to.
   name_to_initial_tensor_.emplace(tensor.name(), tensor_added);
+
+  if (ortvalue_initializer.IsAllocated()) {
+    ortvalue_initializers_.insert_or_assign(tensor.name(), std::move(ortvalue_initializer));
+  } else {
+    // XXX: This is for cases when the data is short. At the moment we only keep it
+    // inside the TensorProto
+    ortvalue_initializers_.erase(tensor.name());
+  }
+
   SetGraphResolveNeeded();
   if (!is_loaded_from_model_file_ && GetNodeArg(tensor.name()) == nullptr) {
     // make sure there is a NodeArg for the initializer as SetGraphInputsOutputs may add it to the graph inputs.
@@ -3416,35 +3468,6 @@ void Graph::AddInitializedTensorHelper(const ONNX_NAMESPACE::TensorProto& tensor
     t.mutable_tensor_type()->set_elem_type(tensor.data_type());
     ORT_IGNORE_RETURN_VALUE(GetOrCreateNodeArg(tensor.name(), &t));
   }
-}
-
-void Graph::AddInitializedTensor(const TensorProto& tensor) {
-  auto existing = name_to_initial_tensor_.find(tensor.name());
-  if (existing != name_to_initial_tensor_.cend()) {
-    ORT_ENFORCE(existing->second == &tensor,
-                "AddInitializedTensor already has tensor with name ", tensor.name(), " but different TensorProto.");
-    return;
-  }
-
-  AddInitializedTensorHelper(tensor);
-}
-
-Status Graph::AddInitializedOrtValue(const ONNX_NAMESPACE::TensorProto& tensor, OrtValue ortvalue_initializer) {
-  auto existing = name_to_initial_tensor_.find(tensor.name());
-  if (existing != name_to_initial_tensor_.cend()) {
-    ORT_RETURN_IF_NOT(existing->second == &tensor,
-                      "AddInitializedTensor already has tensor with name ", tensor.name(),
-                      " but different TensorProto.");
-    return Status::OK();
-  }
-
-  if (ortvalue_initializer.IsAllocated()) {
-    ortvalue_initializers_.insert_or_assign(tensor.name(), std::move(ortvalue_initializer));
-  } else {
-    ortvalue_initializers_.erase(tensor.name());
-  }
-
-  AddInitializedTensorHelper(tensor);
 
   return Status::OK();
 }
@@ -3722,14 +3745,18 @@ bool Graph::GetInitializedTensor(const std::string& tensor_name, const TensorPro
   return true;
 }
 
-bool Graph::GetOrtValueInitializer(const std::string& name, OrtValue& value) const {
+bool Graph::GetOrtValueInitializer(const std::string& name, OrtValue& value, bool check_outer_scope) const {
   auto it = ortvalue_initializers_.find(name);
-  if (it == ortvalue_initializers_.end()) {
-    return false;
+  if (it != ortvalue_initializers_.end()) {
+    value = it->second;
+    return true;
+  } else if (check_outer_scope && IsSubgraph()) {
+    if (IsOuterScopeValue(name)) {
+      // make sure there's not a local value with the same name. if there is it shadows any initializer in outer scope.
+      return parent_graph_->GetOrtValueInitializer(name, value, check_outer_scope);
+    }
   }
-
-  value = it->second;
-  return true;
+  return false;
 }
 
 void Graph::CleanAllInitializedTensors() noexcept {

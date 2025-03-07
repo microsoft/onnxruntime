@@ -47,25 +47,6 @@ static common::Status AllocateBufferUsingDeviceAllocatorFromShapeAndType(const T
   return Status::OK();
 }
 
-// deleter for external data tensors managed by an OrtValue; manages the release of
-// the tensor's data buffer (which points to the external data) and the tensor itself
-struct ExtDataValueDeleter {
-  OrtCallback ext_delete_cb;
-  Tensor* p_tensor;
-  void operator()(void*) noexcept {
-    if (ext_delete_cb.f) {
-      ext_delete_cb.f(ext_delete_cb.param);
-    }
-
-    delete p_tensor;
-  }
-};
-
-  if constexpr (endian::native != endian::little) {
-    if (!proto_path.empty() && (proto_path.compare(onnxruntime::utils::kTensorProtoMemoryAddressTag) != 0)) {
-      utils::ConvertRawDataInTensorProto(const_cast<ONNX_NAMESPACE::TensorProto*>(&tensor_proto), ext_data_buf, ext_data_len);
-    }
-  }
 static common::Status DeserializeTensorProto(const Env& env, const std::basic_string<PATH_CHAR_TYPE>& proto_path,
                                              const ONNX_NAMESPACE::TensorProto& tensor_proto, const MemBuffer* memory_buffer,
                                              const AllocatorPtr& alloc, const AllocatorPtr& default_cpu_alloc,

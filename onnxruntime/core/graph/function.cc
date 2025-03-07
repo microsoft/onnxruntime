@@ -4,6 +4,7 @@
 #include "core/common/inlined_containers.h"
 #include "core/framework/tensorprotoutils.h"
 #include "core/graph/function_impl.h"
+#include "core/graph/graph_utils.h"
 #include "core/graph/graph_viewer.h"
 #include "core/graph/model.h"
 
@@ -72,24 +73,11 @@ FunctionImpl::FunctionImpl(onnxruntime::Graph& graph,
   }
 
   for (const auto& input : meta_def->inputs) {
-    const ONNX_NAMESPACE::TensorProto* initializer = nullptr;
-    if (graph.GetInitializedTensor(input, initializer)) {
-      // meta_def->inputs could have duplicates so make sure we only add once
-      const ONNX_NAMESPACE::TensorProto* subgraph_initializer = nullptr;
-      if (!function_body_graph_.GetInitializedTensor(input, subgraph_initializer)) {
-        function_body_graph_.AddInitializedTensor(*initializer);
-      }
-    }
+    graph_utils::MakeInitializerCopyIfNotExist(graph, function_body_graph_, input);
   }
 
   for (const auto& constant_initializer : meta_def->constant_initializers) {
-    const ONNX_NAMESPACE::TensorProto* initializer = graph.GetConstantInitializer(constant_initializer, true);
-    ORT_ENFORCE(initializer != nullptr, "Initializer " + constant_initializer + " is not found or is not constant initializer.");
-    // meta_def->constant_initializers could have duplicates so make sure we only add once
-    const ONNX_NAMESPACE::TensorProto* subgraph_initializer = nullptr;
-    if (!function_body_graph_.GetInitializedTensor(constant_initializer, subgraph_initializer)) {
-      function_body_graph_.AddInitializedTensor(*initializer);
-    }
+    graph_utils::MakeConstantInitializerCopyIfNotExist(graph, function_body_graph_, constant_initializer, true);
   }
 
   // TODO: if we reuse the nodes in parent graph, maybe we don't need to resolve it.

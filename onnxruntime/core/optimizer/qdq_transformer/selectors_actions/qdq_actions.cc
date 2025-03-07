@@ -197,7 +197,7 @@ void SetOptionalZeroPoint::UpdateNodes(Graph& graph, const NodesToOptimize& sele
 
     const ONNX_NAMESPACE::TensorProto* dummy_zp_tensor_proto;
     if (!graph.GetInitializedTensor(zp_tensor_proto.name(), dummy_zp_tensor_proto)) {
-      graph.AddInitializedTensor(zp_tensor_proto);
+      graph_utils::AddInitializerWithExternalData(graph, zp_tensor_proto);
     }
 
     auto& node_arg = graph.GetOrCreateNodeArg(zp_tensor_proto.name(), nullptr);

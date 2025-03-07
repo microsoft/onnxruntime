@@ -58,6 +58,26 @@ NodeArg& AddInitializerWithExternalData(Graph& graph, const ONNX_NAMESPACE::Tens
  */
 NodeArg& AddInitializerWithExternalData(Graph& graph, const ONNX_NAMESPACE::TensorProto& new_initializer);
 
+/// <summary>
+/// If the initializer with the given name does not exist in the destination graph, but exists in the
+/// source graph, copy it to the destination graph along with its OrtValue if present
+/// </summary>
+/// <param name="src_graph">source graph s</param>
+/// <param name="dst_graph">destination</param>
+/// <param name="name">initializers name</param>
+void MakeInitializerCopyIfNotExist(const Graph& src_graph, Graph& dst_graph, const std::string& name);
+
+/// <summary>
+/// If the constant initializer with the given name does not exist in the destination graph, but exists in the
+/// source graph, copy it to the destination graph along with its OrtValue if present.
+/// </summary>
+/// <param name="src_graph"></param>
+/// <param name="dst_graph"></param>
+/// <param name="name"></param>
+/// <param name="check_outer_scope">checks outerscope if true</param>
+void MakeConstantInitializerCopyIfNotExist(const Graph& src_graph, Graph& dst_graph,
+                                           const std::string& name, bool check_outer_scope);
+
 /** Gets the index of an output arg with the specified output arg name. */
 int GetNodeOutputIndexFromOutputName(const Node& node, const std::string& output_name);
 
