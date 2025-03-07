@@ -57,7 +57,7 @@ stages:
       TODAY: $[format('{0:dd}{0:MM}{0:yyyy}', pipeline.startTime)]
     workspace:
       clean: all
-    pool: onnxruntime-Ubuntu2204-AMD-CPU
+    pool: onnxruntime-tensorrt-linuxbuild-T4
     steps:
 
     - checkout: self
