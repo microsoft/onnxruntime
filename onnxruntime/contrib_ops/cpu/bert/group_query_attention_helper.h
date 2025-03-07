@@ -288,6 +288,54 @@ Status CheckInputs(const T* query,
 
   return CheckInputs(query, key, value, past_key, past_value, cos_cache, sin_cache, parameters, num_heads, kv_num_heads, seqlens_k, total_seqlen, scale, softcap);
 }
+
+template<typename T = Tensor>
+Status CheckCustomAttentionInputs(const T* custom_pos_ids,
+                                  const T* custom_causal_attention_mask,
+                                  const int max_seqlens_k,
+                                  const GroupQueryAttentionParameters& parameters)
+{
+  if (custom_pos_ids != nullptr) {
+    const auto& pos_ids_shape = custom_pos_ids->Shape();
+    if (parameters.is_first_prompt) {
+      if (pos_ids_shape[0] != 1 || pos_ids_shape[1] != 1) {
+        return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                               "Shape of custom_pos_ids must be [1, 1] when processing the prompt");
+      }
+    } else {
+      if (pos_ids_shape[0] != parameters.batch_size) {
+        return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                               "custom_pos_ids dimension 0 must be equal to the batch size, got ", pos_ids_shape[0]);
+      }
+
+      if (pos_ids_shape[1] < parameters.sequence_length) {
+        return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                               "custom_pos_ids dimension 1 must be atleast sequence length, got ", pos_ids_shape[1]);
+      }
+    }
+  }
+
+  if (custom_causal_attention_mask != nullptr) {
+    const auto& mask_shape = custom_causal_attention_mask->Shape();
+    if (mask_shape[0] != parameters.batch_size) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                             "custom_causal_attention_mask dimension 0 must be equal to the batch size, got ", mask_shape[0]);
+    }
+
+    if (mask_shape[1] != parameters.sequence_length) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                             "custom_causal_attention_mask dimension 1 must be equal to the sequence length, got ", mask_shape[1]);
+    }
+
+    if (mask_shape[2] < max_seqlens_k + 1) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                             "custom_causal_attention_mask dimension 2 must be atleast max(seqlens_k) + 1, got ", mask_shape[2]);
+    }
+  }
+
+  return Status::OK();
+}
+
 }  // namespace group_query_attention_helper
 }  // namespace contrib
 }  // namespace onnxruntime
