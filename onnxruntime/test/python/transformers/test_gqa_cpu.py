@@ -36,8 +36,6 @@ NUMPY_TYPE = numpy.float16 if ORT_TYPE == TensorProto.FLOAT16 else numpy.float32
 RTOL = 3e-2 if ORT_TYPE == TensorProto.FLOAT16 else 1e-3
 ATOL = RTOL
 
-DO_TREE_ATTENTION = True
-
 
 class Formats:
     BSNH = 0
@@ -144,6 +142,7 @@ def create_group_query_attention_graph_prompt(
     packed=False,
     softcap=0.0,
     use_smooth_softmax=False,
+    do_custom_tree_attention=False,
 ):
     past_kv_seqlen = config.buffer_sequence_length if share_buffer else 0
     present_kv_seqlen = config.buffer_sequence_length if share_buffer else config.kv_sequence_length
@@ -160,8 +159,8 @@ def create_group_query_attention_graph_prompt(
                 "total_sequence_length",
                 "cos_cache" if rotary else "",
                 "sin_cache" if rotary else "",
-                "custom_pos_ids" if DO_TREE_ATTENTION else "",
-                "custom_causal_attention_mask" if DO_TREE_ATTENTION else ""
+                "custom_pos_ids" if do_custom_tree_attention else "",
+                "custom_causal_attention_mask" if do_custom_tree_attention else ""
             ],
             ["output", "present_key", "present_value"],
             "GroupQueryAttention_0",
@@ -267,7 +266,7 @@ def create_group_query_attention_graph_prompt(
             ),
         ]
 
-    if DO_TREE_ATTENTION:
+    if do_custom_tree_attention:
         graph_input += [
             helper.make_tensor_value_info(
                 "custom_pos_ids",
@@ -352,6 +351,7 @@ def create_group_query_attention_graph_past(
     packed=False,
     softcap=0.0,
     use_smooth_softmax=False,
+    do_custom_tree_attention=False
 ):
     past_kv_seqlen = config.kv_sequence_length
     present_kv_seqlen = (
@@ -371,8 +371,8 @@ def create_group_query_attention_graph_past(
                 "total_sequence_length",
                 "cos_cache" if rotary else "",
                 "sin_cache" if rotary else "",
-                "custom_pos_ids" if DO_TREE_ATTENTION else "",
-                "custom_causal_attention_mask" if DO_TREE_ATTENTION else ""
+                "custom_pos_ids" if do_custom_tree_attention else "",
+                "custom_causal_attention_mask" if do_custom_tree_attention else ""
 
             ],
             ["output", "present_key", "present_value"],
@@ -476,7 +476,7 @@ def create_group_query_attention_graph_past(
             ),
         ]
 
-    if DO_TREE_ATTENTION:
+    if do_custom_tree_attention:
         graph_input += [
             helper.make_tensor_value_info(
                 "custom_pos_ids",
@@ -704,12 +704,15 @@ def gqa_prompt_func(
     cos=None,
     sin=None,
     seqlens_k=None,
+    custom_pos_ids=None,
+    custom_causal_attention_mask=None,
     window_size=-1,
     past_kv_format=Formats.BSNH,
     share_buffer=True,
     rotary_interleaved=False,
     softcap=0.0,
     use_smooth_softmax=False,
+    do_custom_tree_attention=False
 ):
     onnx_model_str = create_group_query_attention_graph_prompt(
         config,
@@ -721,22 +724,16 @@ def gqa_prompt_func(
         packed=new_k is None,
         softcap=softcap,
         use_smooth_softmax=use_smooth_softmax,
+        do_custom_tree_attention=do_custom_tree_attention
     )
 
     q = torch.reshape(q, (config.batch_size, config.q_sequence_length, -1))
     past_k = k.clone() if share_buffer else None
     past_v = v.clone() if share_buffer else None
 
-    # Construct position ids and attention mask data
-    custom_pos_ids = torch.tensor(data=[[0]], dtype=torch.int64)
-    custom_causal_attention_mask = torch.rand(config.batch_size, config.kv_sequence_length, config.kv_sequence_length, dtype=TORCH_TYPE)
-    custom_causal_attention_mask = torch.triu(custom_causal_attention_mask, diagonal=1)
-
-    # print(f"Tree causal attention mask shape {custom_causal_attention_mask.shape}")
-    # print(f"Seqlens_k: {seqlens_k}")
-    # print(f"Q shape: {q.shape}")
-    # print(f"total_sequence_length: {config.q_sequence_length}")
-    # print(f"kv_sequence_length: {config.kv_sequence_length}")
+    if do_custom_tree_attention:
+        assert custom_pos_ids is not None
+        assert custom_causal_attention_mask is not None
 
     if new_k is not None:
         new_k = torch.reshape(new_k, (config.batch_size, config.kv_sequence_length, -1))
@@ -764,7 +761,7 @@ def gqa_prompt_func(
             io_binding.bind_cpu_input("cos_cache", ort_inputs["cos_cache"])
             io_binding.bind_cpu_input("sin_cache", ort_inputs["sin_cache"])
 
-        if DO_TREE_ATTENTION:
+        if do_custom_tree_attention:
             ort_inputs["custom_pos_ids"] = custom_pos_ids.detach().cpu().numpy()
             ort_inputs["custom_causal_attention_mask"] = custom_causal_attention_mask.detach().cpu().numpy()
             io_binding.bind_cpu_input("custom_pos_ids", ort_inputs["custom_pos_ids"])
@@ -812,7 +809,7 @@ def gqa_prompt_func(
             io_binding.bind_cpu_input("cos_cache", ort_inputs["cos_cache"])
             io_binding.bind_cpu_input("sin_cache", ort_inputs["sin_cache"])
 
-        if DO_TREE_ATTENTION:
+        if do_custom_tree_attention:
             ort_inputs["custom_pos_ids"] = custom_pos_ids.detach().cpu().numpy()
             ort_inputs["custom_causal_attention_mask"] = custom_causal_attention_mask.detach().cpu().numpy()
             io_binding.bind_cpu_input("custom_pos_ids", ort_inputs["custom_pos_ids"])
@@ -841,12 +838,15 @@ def gqa_past_func(
     cos=None,
     sin=None,
     seqlens_k=None,
+    custom_pos_ids=None,
+    custom_causal_attention_mask=None,
     past_kv_format=Formats.BSNH,
     share_buffer=True,
     window_size=-1,
     rotary_interleaved=False,
     softcap=0.0,
     use_smooth_softmax=False,
+    do_custom_tree_attention=False
 ):
     assert seqlens_k is not None
     onnx_model_str = create_group_query_attention_graph_past(
@@ -860,32 +860,15 @@ def gqa_past_func(
         packed=new_k is None,
         softcap=softcap,
         use_smooth_softmax=use_smooth_softmax,
+        do_custom_tree_attention=do_custom_tree_attention
     )
     q = torch.reshape(q, (config.batch_size, config.sequence_length, -1))
     past_k = k.clone()
     past_v = v.clone()
 
-    # Construct position ids and mask data
-    custom_pos_ids_data = []
-    max_seqlen_in_batch = seqlens_k.max().item() + 1
-    custom_causal_attention_mask = torch.zeros((config.batch_size, config.sequence_length, max_seqlen_in_batch), dtype=TORCH_TYPE)
-    for b in range(config.batch_size):
-        total_seq_len = seqlens_k[b] + 1
-        past_seq_len = total_seq_len - config.sequence_length;
-        custom_pos_ids_data.append(list(range(past_seq_len, past_seq_len + config.sequence_length)))
-
-        # Configure mask
-        for i in range(config.sequence_length):
-            for j in range(past_seq_len + i + 1, max_seqlen_in_batch):
-                custom_causal_attention_mask[b][i][j] = -5000
-
-    custom_pos_ids = torch.tensor(data=custom_pos_ids_data, dtype=torch.int64)
-
-    # print(custom_causal_attention_mask[0])
-    # print(f"Tree causal attention mask shape: {custom_causal_attention_mask.shape}")
-    # print(f"Seqlens_k: {seqlens_k}")
-    # print(f"Q shape: {q.shape}")
-    # print(f"past k shape: {past_k.shape}")
+    if do_custom_tree_attention:
+        assert custom_pos_ids is not None
+        assert custom_causal_attention_mask is not None
 
     if new_k is not None:
         new_k = torch.reshape(new_k, (config.batch_size, config.sequence_length, -1))
@@ -915,7 +898,7 @@ def gqa_past_func(
             io_binding.bind_cpu_input("cos_cache", ort_inputs["cos_cache"])
             io_binding.bind_cpu_input("sin_cache", ort_inputs["sin_cache"])
 
-        if DO_TREE_ATTENTION:
+        if do_custom_tree_attention:
             ort_inputs["custom_pos_ids"] = custom_pos_ids.detach().cpu().numpy()
             ort_inputs["custom_causal_attention_mask"] = custom_causal_attention_mask.detach().cpu().numpy()
             io_binding.bind_cpu_input("custom_pos_ids", ort_inputs["custom_pos_ids"])
@@ -970,7 +953,7 @@ def gqa_past_func(
             io_binding.bind_cpu_input("cos_cache", ort_inputs["cos_cache"])
             io_binding.bind_cpu_input("sin_cache", ort_inputs["sin_cache"])
 
-        if DO_TREE_ATTENTION:
+        if do_custom_tree_attention:
             ort_inputs["custom_pos_ids"] = custom_pos_ids.detach().cpu().numpy()
             ort_inputs["custom_causal_attention_mask"] = custom_causal_attention_mask.detach().cpu().numpy()
             io_binding.bind_cpu_input("custom_pos_ids", ort_inputs["custom_pos_ids"])
@@ -1145,6 +1128,31 @@ def attention_qkvpacked_ref(
     )
 
 
+def get_custom_attention_inputs(batch_size, sequence_length, seqlens_k=None, past=False):
+    if past:
+        assert seqlens_k is not None
+        custom_pos_ids_data = []
+        max_seqlen_in_batch = seqlens_k.max().item() + 1
+        custom_causal_attention_mask = torch.zeros((batch_size, sequence_length, max_seqlen_in_batch), dtype=TORCH_TYPE)
+        for b in range(batch_size):
+            total_seq_len = seqlens_k[b] + 1
+            past_seq_len = total_seq_len - sequence_length;
+            custom_pos_ids_data.append(list(range(past_seq_len, past_seq_len + sequence_length)))
+
+            # Configure mask
+            for i in range(sequence_length):
+                for j in range(past_seq_len + i + 1, max_seqlen_in_batch):
+                    custom_causal_attention_mask[b][i][j] = -5000
+
+        custom_pos_ids = torch.tensor(data=custom_pos_ids_data, dtype=torch.int64)
+    else:
+        custom_pos_ids = torch.tensor(data=[[0]], dtype=torch.int64)
+        custom_causal_attention_mask = torch.rand(batch_size, sequence_length, sequence_length, dtype=TORCH_TYPE)
+        custom_causal_attention_mask = torch.triu(custom_causal_attention_mask, diagonal=1)
+
+    return custom_pos_ids, custom_causal_attention_mask
+
+
 def parity_check_gqa_prompt(
     config,
     causal=True,
@@ -1155,6 +1163,7 @@ def parity_check_gqa_prompt(
     packed=False,
     softcap=0.0,
     use_smooth_softmax=False,
+    do_custom_tree_attention=False,
     rtol=RTOL,
     atol=ATOL,
 ):
@@ -1244,6 +1253,13 @@ def parity_check_gqa_prompt(
         cos, sin = None, None
         q_ro, k_ro = q, new_k
 
+    if do_custom_tree_attention:
+        custom_pos_ids, custom_causal_attention_mask = get_custom_attention_inputs(
+            config.batch_size, config.kv_sequence_length, past=False)
+    else:
+        custom_pos_ids = None
+        custom_causal_attention_mask = None
+
     rearrange(torch.arange(config.kv_sequence_length, device="cpu"), "s -> 1 s")
     arange = rearrange(torch.arange(config.buffer_sequence_length, device="cpu"), "s -> 1 s")
     cache_seqlens_expanded = rearrange(cache_seqlens, "b -> b 1")
@@ -1286,12 +1302,15 @@ def parity_check_gqa_prompt(
             cos,
             sin,
             cache_seqlens - 1,
+            custom_pos_ids,
+            custom_causal_attention_mask,
             left_window_size,
             past_format,
             True,
             rotary_interleaved,
             softcap,
             use_smooth_softmax=use_smooth_softmax,
+            do_custom_tree_attention=do_custom_tree_attention
         )
     else:
         out, present_k, present_v = gqa_prompt_func(
@@ -1304,12 +1323,15 @@ def parity_check_gqa_prompt(
             cos,
             sin,
             cache_seqlens - 1,
+            custom_pos_ids,
+            custom_causal_attention_mask,
             left_window_size,
             past_format,
             True,
             rotary_interleaved,
             softcap,
             use_smooth_softmax=use_smooth_softmax,
+            do_custom_tree_attention=do_custom_tree_attention
         )
     out = torch.squeeze(out, 0)
     out = torch.reshape(out, (config.batch_size, config.q_sequence_length, config.num_heads, config.head_size))
@@ -1338,6 +1360,8 @@ def parity_check_gqa_prompt(
         softcap,
         " smooth_softmax:",
         use_smooth_softmax,
+        " custom_tree_attention:",
+        do_custom_tree_attention,
         "past kv format:",
         "BSNH" if past_format == Formats.BSNH else "BNSH",
         " B:",
@@ -1369,6 +1393,7 @@ def parity_check_gqa_prompt_no_buff(
     packed=False,
     softcap=0.0,
     use_smooth_softmax=False,
+    do_custom_tree_attention=False,
     rtol=RTOL,
     atol=ATOL,
 ):
@@ -1437,6 +1462,13 @@ def parity_check_gqa_prompt_no_buff(
         q_ro, k_ro = q, k_cache_ref
     k_cache_ref = k_ro
 
+    if do_custom_tree_attention:
+        custom_pos_ids, custom_causal_attention_mask = get_custom_attention_inputs(
+            config.batch_size, config.kv_sequence_length, past=False)
+    else:
+        custom_pos_ids = None
+        custom_causal_attention_mask = None
+
     brange = rearrange(torch.arange(config.kv_sequence_length, device="cpu"), "s -> 1 s")
     cache_seqlens_expanded = rearrange(cache_seqlens, "b -> b 1")
     new_mask = brange < cache_seqlens_expanded
@@ -1473,6 +1505,8 @@ def parity_check_gqa_prompt_no_buff(
             cos,
             sin,
             cache_seqlens - 1,
+            custom_pos_ids,
+            custom_causal_attention_mask,
             left_window_size,
             past_format,
             False,
@@ -1491,6 +1525,8 @@ def parity_check_gqa_prompt_no_buff(
             cos,
             sin,
             cache_seqlens - 1,
+            custom_pos_ids,
+            custom_causal_attention_mask,
             left_window_size,
             past_format,
             False,
@@ -1525,6 +1561,8 @@ def parity_check_gqa_prompt_no_buff(
         softcap,
         " smooth_softmax:",
         use_smooth_softmax,
+        " custom_tree_attention:",
+        do_custom_tree_attention,
         "past kv format:",
         "BSNH" if past_format == Formats.BSNH else "BNSH",
         " B:",
@@ -1556,6 +1594,7 @@ def parity_check_gqa_past(
     packed=False,
     softcap=0.0,
     use_smooth_softmax=False,
+    do_custom_tree_attention=False,
     rtol=RTOL,
     atol=ATOL,
 ):
@@ -1620,7 +1659,6 @@ def parity_check_gqa_past(
     if past_format == Formats.BNSH:
         k_cache_ref = k_cache_ref.transpose(1, 2)
         v_cache_ref = v_cache_ref.transpose(1, 2)
-    # TODO(derdeljan): Move random seqlens_k selection to config
     cache_seqlens = torch.randint(
         0,
         config.kv_sequence_length - config.sequence_length + 1,
@@ -1680,6 +1718,13 @@ def parity_check_gqa_past(
 
     cache_seqlens += config.sequence_length - 1
 
+    if do_custom_tree_attention:
+        custom_pos_ids, custom_causal_attention_mask = get_custom_attention_inputs(
+            config.batch_size, config.sequence_length, seqlens_k=cache_seqlens, past=True)
+    else:
+        custom_pos_ids = None
+        custom_causal_attention_mask = None
+
     # ORT function
     if packed:
         packed_qkv = torch.concatenate([q, new_k, new_v], dim=2)
@@ -1693,12 +1738,15 @@ def parity_check_gqa_past(
             cos,
             sin,
             cache_seqlens,
+            custom_pos_ids,
+            custom_causal_attention_mask,
             past_format,
             True,
             left_window_size,
             rotary_interleaved,
             softcap,
             use_smooth_softmax=use_smooth_softmax,
+            do_custom_tree_attention=do_custom_tree_attention
         )
     else:
         out, present_k, present_v = gqa_past_func(
@@ -1711,12 +1759,15 @@ def parity_check_gqa_past(
             cos,
             sin,
             cache_seqlens,
+            custom_pos_ids,
+            custom_causal_attention_mask,
             past_format,
             True,
             left_window_size,
             rotary_interleaved,
             softcap,
             use_smooth_softmax=use_smooth_softmax,
+            do_custom_tree_attention=do_custom_tree_attention
         )
     out = torch.squeeze(out, 0)
     out = torch.reshape(out, (config.batch_size, config.sequence_length, config.num_heads, config.head_size))
@@ -1747,6 +1798,8 @@ def parity_check_gqa_past(
         softcap,
         " smooth_softmax:",
         use_smooth_softmax,
+        " custom_tree_attention:",
+        do_custom_tree_attention,
         " B:",
         config.batch_size,
         " S:",
@@ -1776,6 +1829,7 @@ def parity_check_gqa_past_no_buff(
     packed=False,
     softcap=0.0,
     use_smooth_softmax=False,
+    do_custom_tree_attention=False,
     rtol=RTOL,
     atol=ATOL,
 ):
@@ -1843,7 +1897,6 @@ def parity_check_gqa_past_no_buff(
         v_cache_ref = v_cache_ref.transpose(1, 2)
     k_cache_ref = torch.cat((k_cache_ref, new_k), 1)
     v_cache_ref = torch.cat((v_cache_ref, new_v), 1)
-    # TODO(derdeljan): Move random seqlens_k selection to config
     cache_seqlens = torch.randint(
         0,
         config.kv_sequence_length,
@@ -1906,6 +1959,13 @@ def parity_check_gqa_past_no_buff(
 
     cache_seqlens += config.sequence_length - 1
 
+    if do_custom_tree_attention:
+        custom_pos_ids, custom_causal_attention_mask = get_custom_attention_inputs(
+            config.batch_size, config.sequence_length, seqlens_k=cache_seqlens, past=True)
+    else:
+        custom_pos_ids = None
+        custom_causal_attention_mask = None
+
     # Flash function
     if packed:
         packed_qkv = torch.concatenate([q, new_k, new_v], dim=2)
@@ -1919,6 +1979,8 @@ def parity_check_gqa_past_no_buff(
             cos,
             sin,
             cache_seqlens,
+            custom_pos_ids,
+            custom_causal_attention_mask,
             past_format,
             False,
             window_size=left_window_size,
@@ -1937,6 +1999,8 @@ def parity_check_gqa_past_no_buff(
             cos,
             sin,
             cache_seqlens,
+            custom_pos_ids,
+            custom_causal_attention_mask,
             past_format,
             False,
             window_size=left_window_size,
@@ -1967,6 +2031,8 @@ def parity_check_gqa_past_no_buff(
         softcap,
         " smooth_softmax:",
         use_smooth_softmax,
+        " custom_tree_attention:",
+        do_custom_tree_attention,
         "past kv format:",
         "BSNH" if past_format == Formats.BSNH else "BNSH",
         " B:",
@@ -2019,30 +2085,33 @@ class TestGQA(unittest.TestCase):
                                 for packed in [False, True]:
                                     for softcap in [0.0, 50.0]:
                                         for use_smooth_softmax in [False, True]:
-                                            config = PromptConfig(b, sq, skv, sq + skv + 8, n, n2, h)
-                                            past_kv_format = Formats.BNSH
-                                            all_close = parity_check_gqa_prompt(
-                                                config,
-                                                local=local,
-                                                past_format=past_kv_format,
-                                                rotary=rotary,
-                                                rotary_interleaved=rotary_interleaved,
-                                                packed=packed,
-                                                softcap=softcap,
-                                                use_smooth_softmax=use_smooth_softmax,
-                                            )
-                                            self.assertTrue(all_close)
-                                            all_close = parity_check_gqa_prompt_no_buff(
-                                                config,
-                                                local=local,
-                                                past_format=past_kv_format,
-                                                rotary=rotary,
-                                                rotary_interleaved=rotary_interleaved,
-                                                packed=packed,
-                                                softcap=softcap,
-                                                use_smooth_softmax=use_smooth_softmax,
-                                            )
-                                            self.assertTrue(all_close)
+                                            for do_custom_tree_attention in [False, True]:
+                                                config = PromptConfig(b, sq, skv, sq + skv + 8, n, n2, h)
+                                                past_kv_format = Formats.BNSH
+                                                all_close = parity_check_gqa_prompt(
+                                                    config,
+                                                    local=local,
+                                                    past_format=past_kv_format,
+                                                    rotary=rotary,
+                                                    rotary_interleaved=rotary_interleaved,
+                                                    packed=packed,
+                                                    softcap=softcap,
+                                                    use_smooth_softmax=use_smooth_softmax,
+                                                    do_custom_tree_attention=do_custom_tree_attention
+                                                )
+                                                self.assertTrue(all_close)
+                                                all_close = parity_check_gqa_prompt_no_buff(
+                                                    config,
+                                                    local=local,
+                                                    past_format=past_kv_format,
+                                                    rotary=rotary,
+                                                    rotary_interleaved=rotary_interleaved,
+                                                    packed=packed,
+                                                    softcap=softcap,
+                                                    use_smooth_softmax=use_smooth_softmax,
+                                                    do_custom_tree_attention=do_custom_tree_attention
+                                                )
+                                                self.assertTrue(all_close)
 
     def test_gqa_past(self):
         print("-------- TEST GQA PAST (TOKEN GEN) ---------")
@@ -2076,35 +2145,38 @@ class TestGQA(unittest.TestCase):
                                 for packed in [False, True]:
                                     for softcap in [0.0, 50.0]:
                                         for use_smooth_softmax in [False, True]:
-                                            sp = random.randint(1, s2 - s) if s2 - s > 0 else 0
-                                            config = Config(b, s, s2, sp, n, n2, h)
-                                            past_kv_format = Formats.BNSH
-                                            all_close = parity_check_gqa_past(
-                                                config,
-                                                local=local,
-                                                past_format=past_kv_format,
-                                                rtol=RTOL,
-                                                atol=ATOL,
-                                                rotary=rotary,
-                                                rotary_interleaved=rotary_interleaved,
-                                                packed=packed,
-                                                softcap=softcap,
-                                                use_smooth_softmax=use_smooth_softmax,
-                                            )
-                                            self.assertTrue(all_close)
-                                            all_close = parity_check_gqa_past_no_buff(
-                                                config,
-                                                local=local,
-                                                past_format=past_kv_format,
-                                                rtol=RTOL,
-                                                atol=ATOL,
-                                                rotary=rotary,
-                                                rotary_interleaved=rotary_interleaved,
-                                                packed=packed,
-                                                softcap=softcap,
-                                                use_smooth_softmax=use_smooth_softmax,
-                                            )
-                                            self.assertTrue(all_close)
+                                            for do_custom_tree_attention in [False, True]:
+                                                sp = random.randint(1, s2 - s) if s2 - s > 0 else 0
+                                                config = Config(b, s, s2, sp, n, n2, h)
+                                                past_kv_format = Formats.BNSH
+                                                all_close = parity_check_gqa_past(
+                                                    config,
+                                                    local=local,
+                                                    past_format=past_kv_format,
+                                                    rtol=RTOL,
+                                                    atol=ATOL,
+                                                    rotary=rotary,
+                                                    rotary_interleaved=rotary_interleaved,
+                                                    packed=packed,
+                                                    softcap=softcap,
+                                                    use_smooth_softmax=use_smooth_softmax,
+                                                    do_custom_tree_attention=do_custom_tree_attention
+                                                )
+                                                self.assertTrue(all_close)
+                                                all_close = parity_check_gqa_past_no_buff(
+                                                    config,
+                                                    local=local,
+                                                    past_format=past_kv_format,
+                                                    rtol=RTOL,
+                                                    atol=ATOL,
+                                                    rotary=rotary,
+                                                    rotary_interleaved=rotary_interleaved,
+                                                    packed=packed,
+                                                    softcap=softcap,
+                                                    use_smooth_softmax=use_smooth_softmax,
+                                                    do_custom_tree_attention=do_custom_tree_attention
+                                                )
+                                                self.assertTrue(all_close)
 
     def test_gqa_interactive_one_batch(self):
         print("-------- TEST GQA INTERACTIVE ---------")
@@ -2136,30 +2208,33 @@ class TestGQA(unittest.TestCase):
                         for local in [False, True]:
                             for rotary, rotary_interleaved in [(False, False), (True, False), (True, True)]:
                                 for packed in [False, True]:
-                                    config = Config(b, s, s2, -1, n, n2, h)
-                                    past_kv_format = Formats.BNSH
-                                    all_close = parity_check_gqa_past(
-                                        config,
-                                        local=local,
-                                        past_format=past_kv_format,
-                                        rtol=RTOL,
-                                        atol=ATOL,
-                                        rotary=rotary,
-                                        rotary_interleaved=rotary_interleaved,
-                                        packed=packed,
-                                    )
-                                    self.assertTrue(all_close)
-                                    all_close = parity_check_gqa_past_no_buff(
-                                        config,
-                                        local=local,
-                                        past_format=past_kv_format,
-                                        rtol=RTOL,
-                                        atol=ATOL,
-                                        rotary=rotary,
-                                        rotary_interleaved=rotary_interleaved,
-                                        packed=packed,
-                                    )
-                                    self.assertTrue(all_close)
+                                    for do_custom_tree_attention in [False, True]:
+                                        config = Config(b, s, s2, -1, n, n2, h)
+                                        past_kv_format = Formats.BNSH
+                                        all_close = parity_check_gqa_past(
+                                            config,
+                                            local=local,
+                                            past_format=past_kv_format,
+                                            rtol=RTOL,
+                                            atol=ATOL,
+                                            rotary=rotary,
+                                            rotary_interleaved=rotary_interleaved,
+                                            packed=packed,
+                                            do_custom_tree_attention=do_custom_tree_attention
+                                        )
+                                        self.assertTrue(all_close)
+                                        all_close = parity_check_gqa_past_no_buff(
+                                            config,
+                                            local=local,
+                                            past_format=past_kv_format,
+                                            rtol=RTOL,
+                                            atol=ATOL,
+                                            rotary=rotary,
+                                            rotary_interleaved=rotary_interleaved,
+                                            packed=packed,
+                                            do_custom_tree_attention=do_custom_tree_attention
+                                        )
+                                        self.assertTrue(all_close)
 
 
 if __name__ == "__main__":
