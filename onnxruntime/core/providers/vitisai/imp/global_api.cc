@@ -371,7 +371,7 @@ vaip_core::OrtApiForVaip* create_org_api_hook() {
     return graph.ToGraphProto().release();
   };
   the_global_api.graph_proto_delete = [](ONNX_NAMESPACE::GraphProto* p) { delete p; };
-  the_global_api.graph_infer_shapes = [](ONNX_NAMESPACE::ModelProto & m) -> auto { return Provider_GetHost()->InferShapes(m); };
+  the_global_api.graph_infer_shapes = [](ONNX_NAMESPACE::ModelProto& m) -> auto { return Provider_GetHost()->InferShapes(m); };
 
   // node
   the_global_api.node_get_inputs_unsafe = vaip::node_get_inputs;
