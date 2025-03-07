@@ -103,7 +103,7 @@ extends:
     - template: stages/set_packaging_variables_stage.yml
       parameters:
         IsReleaseBuild: ${{ parameters.IsReleaseBuild }}
-        PreReleaseVersionSuffixString: ${{ parameters.PreReleaseVersionSuffixString }}"
+        PreReleaseVersionSuffixString: ${{ parameters.PreReleaseVersionSuffixString }}
         PreReleaseVersionSuffixNumber: ${{ parameters.PreReleaseVersionSuffixNumber }}
 
     - template: stages/download-java-tools-stage.yml
