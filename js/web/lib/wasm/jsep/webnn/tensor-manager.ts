@@ -9,6 +9,53 @@ import { LOG_DEBUG } from '../log';
 // https://github.com/webmachinelearning/webnn/issues/677
 /// <reference path="webnn.d.ts" />
 
+// Convert BigInt64Array buffer data to Int32Array buffer data.
+export const convertInt64ToInt32 = (data: Uint8Array, returnUint8 = true): Uint8Array | Int32Array => {
+  // Make sure it is a multiple of 8 bytes (BigInt64Array).
+  if (data.byteLength % 8 !== 0) {
+    throw new Error('Invalid Uint8Array length - must be a multiple of 8 (BigInt).');
+  }
+
+  // Convert Uint8Array to BigInt64Array.
+  const numElements = data.byteLength / 8;
+  const bigInt64Array = new BigInt64Array(data.buffer, data.byteOffset, numElements);
+
+  // Convert BigInt64Array to Int32Array (same number of elements).
+  const int32Array = new Int32Array(numElements);
+
+  for (let i = 0; i < numElements; i++) {
+    const value = bigInt64Array[i];
+
+    // Check for overflow.
+    if (value > 2147483647n || value < -2147483648n) {
+      throw new Error(`Overflow occurred when converting BigInt to Int32 at index ${i}: ${value}`);
+    }
+
+    int32Array[i] = Number(value);
+  }
+
+  // Return based on the requested format.
+  return returnUint8 ? new Uint8Array(int32Array.buffer) : int32Array;
+};
+
+// Convert Int32Array buffer data to BigInt64Array buffer data.
+const convertInt32ToInt64 = (data: Uint8Array, returnUint8 = true): Uint8Array | BigInt64Array => {
+  // Make sure it is a multiple of 4 bytes (Int32Array).
+  if (data.byteLength % 4 !== 0) {
+    throw new Error('Invalid Uint8Array length - must be a multiple of 4 (Int32).');
+  }
+
+  // Convert Uint8Array to Int32Array.
+  const numElements = data.byteLength / 4;
+  const int32Array = new Int32Array(data.buffer, data.byteOffset, numElements);
+
+  // Convert Int32Array to BigInt64Array (same number of elements).
+  const bigInt64Array = BigInt64Array.from(int32Array, BigInt);
+
+  // Return based on the requested format.
+  return returnUint8 ? new Uint8Array(bigInt64Array.buffer) : bigInt64Array;
+};
+
 export type TensorId = number;
 
 /**
@@ -89,8 +136,8 @@ class TensorWrapper {
   // The id of the last session that used this tensor.
   public sessionId: number;
   // This flag is used to indicate whether we should convert data from int64 to int32.
-  public shouldConvertInt64toInt32: boolean = false;
-  public isInt64ToInt32Converted: boolean = false;
+  public shouldConvertInt64toInt32 = false;
+  public isInt64ToInt32Converted = false;
 
   private mlContext: MLContext;
   private mlTensor: MLTensor;
@@ -164,9 +211,7 @@ class TensorWrapper {
         return int64Data.buffer;
       }
     } else {
-      return dstBuffer
-        ? await this.mlContext.readTensor(this.mlTensor, dstBuffer)
-        : await this.mlContext.readTensor(this.mlTensor);
+      return dstBuffer ? this.mlContext.readTensor(this.mlTensor, dstBuffer) : this.mlContext.readTensor(this.mlTensor);
     }
   }
 
@@ -215,21 +260,22 @@ class TensorIdTracker {
     shape: readonly number[],
     copyOld: boolean,
   ): Promise<MLTensor> {
+    let newDataType = dataType;
     const context = this.tensorManager.getMLContext(sessionId);
     // If the data type is int64 and the context does not support int64, we need to convert it to int32.
     const shouldConvertInt64toInt32 =
-      dataType === 'int64' && !context.opSupportLimits()['input']['dataTypes'].includes('int64');
+      newDataType === 'int64' && !context.opSupportLimits().input.dataTypes.includes('int64');
     if (shouldConvertInt64toInt32) {
-      dataType = 'int32';
+      newDataType = 'int32';
       LOG_DEBUG('verbose', () => `[WebNN] TensorIdTracker.ensureTensor: convert dataType from int64 to int32`);
     }
 
     if (this.wrapper) {
-      if (this.wrapper.canReuseTensor(context, dataType, shape)) {
+      if (this.wrapper.canReuseTensor(context, newDataType, shape)) {
         return this.wrapper.tensor;
       } else {
         if (copyOld) {
-          if (this.wrapper.byteLength !== calculateByteLength(dataType, shape)) {
+          if (this.wrapper.byteLength !== calculateByteLength(newDataType, shape)) {
             throw new Error('Unable to copy data to tensor with different size.');
           }
           this.activeUpload = new Uint8Array(await this.wrapper.read());
@@ -242,7 +288,7 @@ class TensorIdTracker {
     const usage = typeof MLTensorUsage == 'undefined' ? undefined : MLTensorUsage.READ | MLTensorUsage.WRITE;
     this.wrapper = await this.tensorManager.getCachedTensor(
       sessionId,
-      dataType,
+      newDataType,
       shape,
       usage,
       true,
@@ -261,14 +307,15 @@ class TensorIdTracker {
   }
 
   public upload(data: Uint8Array): void {
+    let newData = data;
     if (this.wrapper) {
       if (this.wrapper.shouldConvertInt64toInt32) {
         // Convert int64 to int32.
-        data = convertInt64ToInt32(data, true) as Uint8Array;
+        newData = convertInt64ToInt32(data, true) as Uint8Array;
         this.wrapper.setIsInt64ToInt32Converted(true);
       }
-      if (data.byteLength === this.wrapper.byteLength) {
-        this.wrapper.write(data);
+      if (newData.byteLength === this.wrapper.byteLength) {
+        this.wrapper.write(newData);
         return;
       } else {
         LOG_DEBUG('verbose', () => 'Data size does not match tensor size. Releasing tensor.');
@@ -277,9 +324,9 @@ class TensorIdTracker {
     }
 
     if (this.activeUpload) {
-      this.activeUpload.set(data);
+      this.activeUpload.set(newData);
     } else {
-      this.activeUpload = new Uint8Array(data);
+      this.activeUpload = new Uint8Array(newData);
     }
   }
 
@@ -428,7 +475,7 @@ class TensorManagerImpl implements TensorManager {
     usage: MLTensorUsageFlags | undefined,
     writable: boolean,
     readable: boolean,
-    shouldConvertInt64toInt32: boolean = false,
+    shouldConvertInt64toInt32 = false,
   ): Promise<TensorWrapper> {
     const context = this.getMLContext(sessionId);
     for (const [index, tensor] of this.freeTensors.entries()) {
@@ -464,50 +511,3 @@ class TensorManagerImpl implements TensorManager {
 
 export const createTensorManager = (...args: ConstructorParameters<typeof TensorManagerImpl>): TensorManager =>
   new TensorManagerImpl(...args);
-
-// Convert BigInt64Array buffer data to Int32Array buffer data.
-export function convertInt64ToInt32(data: Uint8Array, returnUint8 = true): Uint8Array | Int32Array {
-  // Make sure it is a multiple of 8 bytes (BigInt64Array).
-  if (data.byteLength % 8 !== 0) {
-    throw new Error('Invalid Uint8Array length - must be a multiple of 8 (BigInt).');
-  }
-
-  // Convert Uint8Array to BigInt64Array.
-  const numElements = data.byteLength / 8;
-  const bigInt64Array = new BigInt64Array(data.buffer, data.byteOffset, numElements);
-
-  // Convert BigInt64Array to Int32Array (same number of elements).
-  const int32Array = new Int32Array(numElements);
-
-  for (let i = 0; i < numElements; i++) {
-    const value = bigInt64Array[i];
-
-    // Check for overflow.
-    if (value > 2147483647n || value < -2147483648n) {
-      throw new Error(`Overflow occurred when converting BigInt to Int32 at index ${i}: ${value}`);
-    }
-
-    int32Array[i] = Number(value);
-  }
-
-  // Return based on the requested format.
-  return returnUint8 ? new Uint8Array(int32Array.buffer) : int32Array;
-}
-
-// Convert Int32Array buffer data to BigInt64Array buffer data.
-function convertInt32ToInt64(data: Uint8Array, returnUint8 = true): Uint8Array | BigInt64Array {
-  // Make sure it is a multiple of 4 bytes (Int32Array).
-  if (data.byteLength % 4 !== 0) {
-    throw new Error('Invalid Uint8Array length - must be a multiple of 4 (Int32).');
-  }
-
-  // Convert Uint8Array to Int32Array.
-  const numElements = data.byteLength / 4;
-  const int32Array = new Int32Array(data.buffer, data.byteOffset, numElements);
-
-  // Convert Int32Array to BigInt64Array (same number of elements).
-  const bigInt64Array = BigInt64Array.from(int32Array, BigInt);
-
-  // Return based on the requested format.
-  return returnUint8 ? new Uint8Array(bigInt64Array.buffer) : bigInt64Array;
-}
