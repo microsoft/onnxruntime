@@ -289,12 +289,11 @@ Status CheckInputs(const T* query,
   return CheckInputs(query, key, value, past_key, past_value, cos_cache, sin_cache, parameters, num_heads, kv_num_heads, seqlens_k, total_seqlen, scale, softcap);
 }
 
-template<typename T = Tensor>
+template <typename T = Tensor>
 Status CheckCustomAttentionInputs(const T* custom_pos_ids,
                                   const T* custom_causal_attention_mask,
                                   const int max_seqlens_k,
-                                  const GroupQueryAttentionParameters& parameters)
-{
+                                  const GroupQueryAttentionParameters& parameters) {
   if (custom_pos_ids != nullptr) {
     const auto& pos_ids_shape = custom_pos_ids->Shape();
     if (parameters.is_first_prompt) {
