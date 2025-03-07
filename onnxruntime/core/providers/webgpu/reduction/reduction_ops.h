@@ -55,7 +55,27 @@ class ReduceMean final : public ReduceKernel<true> {
  public:
   ReduceMean(const OpKernelInfo& info) : ReduceKernel<true>(info, "ReduceMean") {}
   ReduceOpSpecificCode GetOpSpecificCode(const Tensor* input_tensor, size_t axes_size) const override;
-  Status ComputeInternal(ComputeContext& ctx) const override;
+  Status ComputeInternal(ComputeContext& ctx) const override {
+    return ReduceKernel<true>::ComputeInternal(ctx);
+  }
+};
+
+class ReduceMax final : public ReduceKernel<true> {
+  public:
+   ReduceMax(const OpKernelInfo& info) : ReduceKernel<true>(info, "ReduceMax") {}
+   ReduceOpSpecificCode GetOpSpecificCode(const Tensor* input_tensor, size_t axes_size) const override;
+   Status ComputeInternal(ComputeContext& ctx) const override {
+     return ReduceKernel<true>::ComputeInternal(ctx);
+   }
+};
+
+class ReduceSum final : public ReduceKernel<true> {
+  public:
+   ReduceSum(const OpKernelInfo& info) : ReduceKernel<true>(info, "ReduceSum") {}
+   ReduceOpSpecificCode GetOpSpecificCode(const Tensor* input_tensor, size_t axes_size) const override;
+   Status ComputeInternal(ComputeContext& ctx) const override {
+      return ReduceKernel<true>::ComputeInternal(ctx);
+   }
 };
 
 }  // namespace webgpu
