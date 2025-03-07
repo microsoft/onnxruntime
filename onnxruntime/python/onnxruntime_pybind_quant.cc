@@ -35,9 +35,10 @@ namespace py = pybind11;
 using namespace onnxruntime;
 
 template <typename T>
-void QuantizeMatMul4BitsBlockwise(
+void QuantizeMatMulNBitsBlockwise(
     py::array_t<uint8_t> dst,          // shape: [ N, block_per_K, block_blob_size ]
     py::array_t<T> src,                // shape: [K, N]
+    int32_t bits,
     py::array_t<T> scale,              // shape: [N, block_per_K]
     py::array_t<uint8_t> zero_points,  // shape: [N, block_per_K] if bits > 4 else [N, (block_per_K + 1) / 2]
     int32_t block_size,
@@ -53,7 +54,23 @@ void QuantizeMatMul4BitsBlockwise(
   py::buffer_info scale_buf = scale.request();
   py::buffer_info zp_buf = zero_points.request();
 
-  MlasQuantizeBlockwise<T, 4>(
+  if (bits == 2) {
+    if constexpr (std::is_same<T, MLFloat16>::value) {
+      assert(false);
+    }
+    MlasQuantizeBlockwise<float, 2>(
+      reinterpret_cast<uint8_t*>(dst_buf.ptr),
+      reinterpret_cast<float*>(scale_buf.ptr),
+      is_symmetric ? nullptr : reinterpret_cast<uint8_t*>(zp_buf.ptr),
+      reinterpret_cast<const float*>(src_buf.ptr),
+      block_size,
+      true,
+      K,
+      N,
+      N,
+      tp.get());
+  } else if (bits == 4) {
+    MlasQuantizeBlockwise<T, 4>(
       reinterpret_cast<uint8_t*>(dst_buf.ptr),
       reinterpret_cast<T*>(scale_buf.ptr),
       is_symmetric ? nullptr : reinterpret_cast<uint8_t*>(zp_buf.ptr),
@@ -64,6 +81,9 @@ void QuantizeMatMul4BitsBlockwise(
       N,
       N,
       tp.get());
+  } else {
+    assert(false);
+  }
 }
 
 template <typename T>
@@ -126,8 +146,8 @@ void QuantizeMatMulBnb4Blockwise(
 }
 
 void CreateQuantPybindModule(py::module& m) {
-  m.def("quantize_matmul_4bits", &QuantizeMatMul4BitsBlockwise<float>);
-  m.def("quantize_matmul_4bits", &QuantizeMatMul4BitsBlockwise<MLFloat16>);
+  m.def("quantize_matmul_nbits", &QuantizeMatMulNBitsBlockwise<float>);
+  m.def("quantize_matmul_nbits", &QuantizeMatMulNBitsBlockwise<MLFloat16>);
   m.def("quantize_matmul_bnb4", &QuantizeMatMulBnb4Blockwise<float>);
   m.def("quantize_matmul_bnb4", &QuantizeMatMulBnb4Blockwise<MLFloat16>);
   m.def("quantize_qdq_matmul_4bits", &QuantizeQDQMatMul4BitsBlockwise<float>);
