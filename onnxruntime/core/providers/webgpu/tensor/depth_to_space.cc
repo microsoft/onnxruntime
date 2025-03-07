@@ -159,7 +159,7 @@ Status DepthToSpace<is_nchw>::ComputeInternal(onnxruntime::webgpu::ComputeContex
     return Status::OK();
   }
 
-  DepthToSpaceProgram program{&perm};
+  DepthToSpaceProgram program{perm};
   program
       .AddInput({input, ProgramTensorMetadataDependency::TypeAndRank, override_shape, static_cast<int>(components)})
       .AddOutput({output})
