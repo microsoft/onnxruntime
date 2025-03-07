@@ -11,7 +11,7 @@ namespace webgpu {
 
 class DepthToSpaceProgram final : public Program<DepthToSpaceProgram> {
  public:
-  DepthToSpaceProgram(int64_t perm[6]) : Program{"DepthToSpace"}, perm_{perm} {}
+  DepthToSpaceProgram(int64_t* perm) : Program{"DepthToSpace"}, perm_{perm} {}
   Status GenerateShaderCode(ShaderHelper& sh) const override;
   WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES({"output_size", ProgramUniformVariableDataType::Uint32});
 
