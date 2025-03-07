@@ -300,14 +300,13 @@ class Gelu : public UnaryElementwise {
 WEBGPU_ELEMENTWISE_KERNEL(Gelu, 20, WebGpuSupportedFloatTypes())
 
 ONNX_OPERATOR_KERNEL_EX(
-  Gelu,
-  kMSDomain,
-  1,
-  kWebGpuExecutionProvider,
-  (*KernelDefBuilder::Create())
-    .TypeConstraint("T", WebGpuSupportedFloatTypes()),
-  Gelu
-);
+    Gelu,
+    kMSDomain,
+    1,
+    kWebGpuExecutionProvider,
+    (*KernelDefBuilder::Create())
+        .TypeConstraint("T", WebGpuSupportedFloatTypes()),
+    Gelu);
 
 WEBGPU_ELEMENTWISE_IMPL(Relu, "select(x_value_t(0), a, a > x_value_t(0))", "", ShaderUsage::UseValueTypeAlias)
 WEBGPU_ELEMENTWISE_VERSIONED_KERNEL(Relu, 6, 12, WebGpuSupportedFloatTypes())
