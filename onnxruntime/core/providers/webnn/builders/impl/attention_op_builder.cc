@@ -41,10 +41,10 @@ void GroupQueryAttentionOpBuilder::AddInitializersToSkip(ModelBuilder& model_bui
   model_builder.AddInputToSkip(input_name);
 }
 
-std::vector<int64_t> generate_indices(int64_t batch_size, int64_t kv_num_heads, int64_t sequence_length) {
-  std::vector<int64_t> indices;
-  for (int64_t i = 0; i < sequence_length; ++i) {
-    for (int64_t j = 0; j < batch_size * kv_num_heads; ++j) {
+std::vector<int32_t> generate_indices(int32_t batch_size, int32_t kv_num_heads, int32_t sequence_length) {
+  std::vector<int32_t> indices;
+  for (int32_t i = 0; i < sequence_length; ++i) {
+    for (int32_t j = 0; j < batch_size * kv_num_heads; ++j) {
       indices.push_back(j / kv_num_heads);
       indices.push_back(j % kv_num_heads);
     }
@@ -52,10 +52,10 @@ std::vector<int64_t> generate_indices(int64_t batch_size, int64_t kv_num_heads, 
   return indices;
 }
 
-std::vector<int64_t> repeat_sequence(int64_t sequence_length, int64_t kv_num_heads, int64_t batch_size) {
-  std::vector<int64_t> repeated;
-  for (int64_t i = 0; i < sequence_length; ++i) {
-    for (int64_t j = 0; j < batch_size * kv_num_heads; ++j) {
+std::vector<int32_t> repeat_sequence(int32_t sequence_length, int32_t kv_num_heads, int32_t batch_size) {
+  std::vector<int32_t> repeated;
+  for (int32_t i = 0; i < sequence_length; ++i) {
+    for (int32_t j = 0; j < batch_size * kv_num_heads; ++j) {
       repeated.push_back(i);
     }
   }
@@ -181,21 +181,21 @@ Status GroupQueryAttentionOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_b
   auto right = repeat_sequence(qkv_sequence_length, kv_num_heads, batch_size);
 
   emscripten::val desc_left = emscripten::val::object();
-  ORT_RETURN_IF_NOT(SetWebnnDataType(desc_left, ONNX_NAMESPACE::TensorProto_DataType_INT64), "Unsupported data type");
+  ORT_RETURN_IF_NOT(SetWebnnDataType(desc_left, ONNX_NAMESPACE::TensorProto_DataType_INT32), "Unsupported data type");
   emscripten::val dims_left =
       emscripten::val::array(std::vector<uint32_t>({batch_size * qkv_sequence_length * kv_num_heads, 2}));
   desc_left.set("dimensions", dims_left);
   desc_left.set("shape", dims_left);
-  emscripten::val left_buffer = emscripten::val::global("BigInt64Array").new_(emscripten::val::array(left));
+  emscripten::val left_buffer = emscripten::val::global("Int32Array").new_(emscripten::val::array(left));
   emscripten::val left_constant = model_builder.GetBuilder().call<emscripten::val>("constant", desc_left, left_buffer);
 
   emscripten::val desc_right = emscripten::val::object();
-  ORT_RETURN_IF_NOT(SetWebnnDataType(desc_right, ONNX_NAMESPACE::TensorProto_DataType_INT64), "Unsupported data type");
+  ORT_RETURN_IF_NOT(SetWebnnDataType(desc_right, ONNX_NAMESPACE::TensorProto_DataType_INT32), "Unsupported data type");
   emscripten::val dims_right =
       emscripten::val::array(std::vector<uint32_t>({batch_size * qkv_sequence_length * kv_num_heads, 1}));
   desc_right.set("dimensions", dims_right);
   desc_right.set("shape", dims_right);
-  emscripten::val right_buffer = emscripten::val::global("BigInt64Array").new_(emscripten::val::array(right));
+  emscripten::val right_buffer = emscripten::val::global("Int32Array").new_(emscripten::val::array(right));
   emscripten::val right_constant =
       model_builder.GetBuilder().call<emscripten::val>("constant", desc_right, right_buffer);
 
@@ -218,10 +218,6 @@ Status GroupQueryAttentionOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_b
   emscripten::val value_for_scatter = model_builder.GetBuilder().call<emscripten::val>(
       "reshape", value_input, emscripten::val::array(reshape_kv_shape), common_options);
 
-  common_options.set("label", node.Name() + "seqlens_k_casted");
-  emscripten::val seqlens_k_casted = model_builder.GetBuilder().call<emscripten::val>(
-      "cast", seqlens_k_input, emscripten::val("int64"), common_options);
-
   // The prefill and decode stages require different index construction for ScatterND operations.
   // Similar to other EPs like CPU and DirectML, when qkv_sequence_length > 1, the key and value are scattered to the
   // beginning of kv cache.
@@ -236,20 +232,20 @@ Status GroupQueryAttentionOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_b
   emscripten::val condition_constant =
       model_builder.GetBuilder().call<emscripten::val>("constant", desc, first_condition_buffer);
 
-  std::vector<int64_t> value_zero({0});
+  std::vector<int32_t> value_zero({0});
   emscripten::val desc_value_zero = emscripten::val::object();
-  ORT_RETURN_IF_NOT(SetWebnnDataType(desc_value_zero, ONNX_NAMESPACE::TensorProto_DataType_INT64),
+  ORT_RETURN_IF_NOT(SetWebnnDataType(desc_value_zero, ONNX_NAMESPACE::TensorProto_DataType_INT32),
                     "Unsupported data type");
   emscripten::val dims_zero = emscripten::val::array(std::vector<uint32_t>({1}));
   desc_value_zero.set("dimensions", dims_zero);
   desc_value_zero.set("shape", dims_zero);
-  emscripten::val value_zero_buffer = emscripten::val::global("BigInt64Array").new_(emscripten::val::array(value_zero));
+  emscripten::val value_zero_buffer = emscripten::val::global("Int32Array").new_(emscripten::val::array(value_zero));
   emscripten::val value_zero_constant =
       model_builder.GetBuilder().call<emscripten::val>("constant", desc_value_zero, value_zero_buffer);
 
   common_options.set("label", node.Name() + "/GQA/scatter/where");
   emscripten::val scatter_pos = model_builder.GetBuilder().call<emscripten::val>(
-      "where", condition_constant, value_zero_constant, seqlens_k_casted, common_options);
+      "where", condition_constant, value_zero_constant, seqlens_k_input, common_options);
 
   common_options.set("label", node.Name() + "/GQA/reshaped_qkv_sequence_length_shape/add");
   emscripten::val reshaped_qkv_sequence_length_shape_plus =
@@ -335,16 +331,16 @@ Status GroupQueryAttentionOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_b
 
   // static_cast<int64_t>(batch_size), static_cast<int64_t>(num_heads), static_cast<int64_t>(qkv_sequence_length),
   // static_cast<int64_t>(past_sequence_length)
-  std::vector<int64_t> mask_shape_ones_shape(batch_size * num_heads * qkv_sequence_length * past_sequence_length, 1);
+  std::vector<int32_t> mask_shape_ones_shape(batch_size * num_heads * qkv_sequence_length * past_sequence_length, 1);
   emscripten::val desc_mask_shape_ones_shape = emscripten::val::object();
-  ORT_RETURN_IF_NOT(SetWebnnDataType(desc_mask_shape_ones_shape, ONNX_NAMESPACE::TensorProto_DataType_INT64),
+  ORT_RETURN_IF_NOT(SetWebnnDataType(desc_mask_shape_ones_shape, ONNX_NAMESPACE::TensorProto_DataType_INT32),
                     "Unsupported data type");
   emscripten::val dims_mask_shape =
       emscripten::val::array(std::vector<uint32_t>({batch_size, num_heads, qkv_sequence_length, past_sequence_length}));
   desc_mask_shape_ones_shape.set("dimensions", dims_mask_shape);
   desc_mask_shape_ones_shape.set("shape", dims_mask_shape);
   emscripten::val mask_shape_ones_shape_buffer =
-      emscripten::val::global("BigInt64Array").new_(emscripten::val::array(mask_shape_ones_shape));
+      emscripten::val::global("Int32Array").new_(emscripten::val::array(mask_shape_ones_shape));
   emscripten::val mask_shape_ones_shape_constant = model_builder.GetBuilder().call<emscripten::val>(
       "constant", desc_mask_shape_ones_shape, mask_shape_ones_shape_buffer);
 
@@ -355,17 +351,17 @@ Status GroupQueryAttentionOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_b
       "cumulativeSum", mask_shape_ones_shape_constant, gsl::narrow<uint32_t>(3), options);
 
   std::vector<uint32_t> reshape_pre_neq_right = {past_sequence_length, qkv_sequence_length};
-  std::vector<int64_t> pre_neq_right_data_range(qkv_sequence_length);
+  std::vector<int32_t> pre_neq_right_data_range(qkv_sequence_length);
   std::iota(pre_neq_right_data_range.begin(), pre_neq_right_data_range.end(), 1);
 
   emscripten::val desc_pre_neq_right_data_range = emscripten::val::object();
-  ORT_RETURN_IF_NOT(SetWebnnDataType(desc_pre_neq_right_data_range, ONNX_NAMESPACE::TensorProto_DataType_INT64),
+  ORT_RETURN_IF_NOT(SetWebnnDataType(desc_pre_neq_right_data_range, ONNX_NAMESPACE::TensorProto_DataType_INT32),
                     "Unsupported data type");
   emscripten::val dims_pre_neq_right_data_range = emscripten::val::array(std::vector<uint32_t>({qkv_sequence_length}));
   desc_pre_neq_right_data_range.set("dimensions", dims_pre_neq_right_data_range);
   desc_pre_neq_right_data_range.set("shape", dims_pre_neq_right_data_range);
   emscripten::val pre_neq_right_data_range_buffer =
-      emscripten::val::global("BigInt64Array").new_(emscripten::val::array(pre_neq_right_data_range));
+      emscripten::val::global("Int32Array").new_(emscripten::val::array(pre_neq_right_data_range));
   emscripten::val pre_neq_right_data_range_constant = model_builder.GetBuilder().call<emscripten::val>(
       "constant", desc_pre_neq_right_data_range, pre_neq_right_data_range_buffer);
 
