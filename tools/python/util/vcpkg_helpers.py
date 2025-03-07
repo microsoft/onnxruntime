@@ -529,6 +529,7 @@ def generate_linux_triplets(build_dir: str) -> None:
                             enable_asan,
                             "dynamic",
                             target_abi,
+                            None,
                         )
 
 
