@@ -87,7 +87,7 @@ Status DepthToSpace<is_nchw>::ComputeInternal(onnxruntime::webgpu::ComputeContex
       shape[0] = n;
       shape[1] = blocksize_;
       shape[2] = blocksize_;
-      shape[3] = c / (blocksize_ ** 2);
+      shape[3] = c / (blocksize_ * blocksize_);
       shape[4] = h;
       shape[5] = w;
 
@@ -99,7 +99,7 @@ Status DepthToSpace<is_nchw>::ComputeInternal(onnxruntime::webgpu::ComputeContex
       perm[5] = 2;
     } else {
       shape[0] = n;
-      shape[1] = c / (blocksize_ ** 2);
+      shape[1] = c / (blocksize_ * blocksize_);
       shape[2] = blocksize_;
       shape[3] = blocksize_;
       shape[4] = h;
@@ -124,7 +124,7 @@ Status DepthToSpace<is_nchw>::ComputeInternal(onnxruntime::webgpu::ComputeContex
       shape[2] = w;
       shape[3] = blocksize_;
       shape[4] = blocksize_;
-      shape[5] = c / (blocksize_ ** 2);
+      shape[5] = c / (blocksize_ * blocksize_);
 
       perm[0] = 0;
       perm[1] = 1;
@@ -136,7 +136,7 @@ Status DepthToSpace<is_nchw>::ComputeInternal(onnxruntime::webgpu::ComputeContex
       shape[0] = n;
       shape[1] = h;
       shape[2] = w;
-      shape[3] = c / (blocksize_ ** 2);
+      shape[3] = c / (blocksize_ * blocksize_);
       shape[4] = blocksize_;
       shape[5] = blocksize_;
 
