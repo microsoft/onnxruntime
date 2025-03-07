@@ -52,6 +52,11 @@ class SimpleTest {
         runSigmoidModelTestImpl(1, OrtProvider.QNN)
     }
 
+    @Test
+    fun runSigmoidModelTestWEBGPU() {
+        runSigmoidModelTestImpl(1, OrtProvider.WEBGPU)
+    }
+
     @Throws(IOException::class)
     private fun readModel(fileName: String): ByteArray {
         return InstrumentationRegistry.getInstrumentation().context.assets.open(fileName)
@@ -76,6 +81,15 @@ class SimpleTest {
                         opts.addNnapi()
                     } else {
                         Log.println(Log.INFO, TAG, "NO NNAPI EP available, skip the test")
+                        return
+                    }
+                }
+
+                OrtProvider.WEBGPU -> {
+                    if (OrtEnvironment.getAvailableProviders().contains(OrtProvider.WEBGPU)) {
+                        opts.addWebGPU()
+                    } else {
+                        Log.println(Log.INFO, TAG, "NO WEBGPU EP available, skip the test")
                         return
                     }
                 }
