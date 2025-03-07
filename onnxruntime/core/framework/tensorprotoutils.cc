@@ -278,37 +278,33 @@ void SetRawDataInTensorProto(ONNX_NAMESPACE::TensorProto& tensor_proto, std::str
   tensor_proto.set_raw_data(std::move(param));
 }
 
-void ConvertRawDataInTensorProto(TensorProto* tensor,
-                                 void* ext_data_buf,
-                                 size_t ext_data_len) {
+void ConvertRawDataInTensorProto(TensorProto* tensor) {
   size_t element_size = 1;
-  char* bytes = NULL;
+  unsigned char* bytes = NULL;
   size_t num_elements = 0;
-  if (ext_data_buf && !ext_data_len) {
-    return;
-  }
+
   switch (tensor->data_type()) {
     case TensorProto_DataType_FLOAT:
-      bytes = reinterpret_cast<char*>(tensor->mutable_float_data()->mutable_data());
+      bytes = reinterpret_cast<unsigned char*>(tensor->mutable_float_data()->mutable_data());
       num_elements = tensor->float_data_size();
       element_size = sizeof(float);
       break;
 
     case TensorProto_DataType_INT32:
-      bytes = reinterpret_cast<char*>(tensor->mutable_int32_data()->mutable_data());
+      bytes = reinterpret_cast<unsigned char*>(tensor->mutable_int32_data()->mutable_data());
       num_elements = tensor->int32_data_size();
       element_size = sizeof(int32_t);
       break;
 
     case TensorProto_DataType_UINT32:
-      bytes = reinterpret_cast<char*>(tensor->mutable_int32_data()->mutable_data());
+      bytes = reinterpret_cast<unsigned char*>(tensor->mutable_int32_data()->mutable_data());
       num_elements = tensor->int32_data_size();
       element_size = sizeof(uint32_t);
       break;
 
     case TensorProto_DataType_UINT8:
     case TensorProto_DataType_INT8:
-      bytes = reinterpret_cast<char*>(tensor->mutable_int32_data()->mutable_data());
+      bytes = reinterpret_cast<unsigned char*>(tensor->mutable_int32_data()->mutable_data());
       num_elements = tensor->int32_data_size();
       element_size = sizeof(uint8_t);
       break;
@@ -317,56 +313,47 @@ void ConvertRawDataInTensorProto(TensorProto* tensor,
     case TensorProto_DataType_INT16:
     case TensorProto_DataType_FLOAT16:
     case TensorProto_DataType_BFLOAT16:
-      bytes = reinterpret_cast<char*>(tensor->mutable_int32_data()->mutable_data());
+      bytes = reinterpret_cast<unsigned char*>(tensor->mutable_int32_data()->mutable_data());
       num_elements = tensor->int32_data_size();
       element_size = sizeof(uint16_t);
       break;
 
     case TensorProto_DataType_UINT64:
-      bytes = reinterpret_cast<char*>(tensor->mutable_uint64_data()->mutable_data());
+      bytes = reinterpret_cast<unsigned char*>(tensor->mutable_uint64_data()->mutable_data());
       num_elements = tensor->uint64_data_size();
       element_size = sizeof(uint64_t);
       break;
 
     case TensorProto_DataType_DOUBLE:
-      bytes = reinterpret_cast<char*>(tensor->mutable_double_data()->mutable_data());
+      bytes = reinterpret_cast<unsigned char*>(tensor->mutable_double_data()->mutable_data());
       num_elements = tensor->double_data_size();
       element_size = sizeof(double);
       break;
 
     case TensorProto_DataType_INT64:
-      bytes = reinterpret_cast<char*>(tensor->mutable_int64_data()->mutable_data());
+      bytes = reinterpret_cast<unsigned char*>(tensor->mutable_int64_data()->mutable_data());
       num_elements = tensor->int64_data_size();
       element_size = sizeof(int64_t);
       break;
 
     case TensorProto_DataType_COMPLEX64:
-      bytes = reinterpret_cast<char*>(tensor->mutable_float_data()->mutable_data());
+      bytes = reinterpret_cast<unsigned char*>(tensor->mutable_float_data()->mutable_data());
       num_elements = tensor->float_data_size();
       element_size = sizeof(float);
       break;
-  }
-  if (tensor->has_raw_data()) {
-    num_elements = (tensor->raw_data().size()) / element_size;
-    bytes = const_cast<char*>(tensor->mutable_raw_data()->c_str());
   }
 
   if (element_size == 1) {
     return;
   }
-  if (ext_data_buf) {
-    ORT_ENFORCE(ext_data_len % element_size == 0);
-    num_elements = ext_data_len / element_size;
-    bytes = reinterpret_cast<char*>(ext_data_buf);
+
+  if (tensor->has_raw_data()) {
+    num_elements = (tensor->raw_data().size()) / element_size;
+    bytes = reinterpret_cast<unsigned char*>(tensor->mutable_raw_data()->data());
   }
-  for (size_t i = 0; i < num_elements; ++i) {
-    char* start_byte = bytes + i * element_size;
-    char* end_byte = start_byte + element_size - 1;
-    for (size_t count = 0; count < element_size / 2; ++count) {
-      std::swap(*start_byte++, *end_byte--);
-    }
-  }
-  return;
+
+  gsl::span<unsigned char> span = gsl::make_span(bytes, num_elements * element_size);
+  SwapByteOrderInplace(element_size, span);
 }
 
 #if !defined(ORT_MINIMAL_BUILD)
@@ -992,26 +979,10 @@ ORT_API(void, OrtUninitializeBuffer, _In_opt_ void* input, size_t input_len, enu
 #if defined(_MSC_VER) && !defined(__clang__)
 #pragma warning(disable : 26409)
 #endif
-class AutoDelete {
- public:
-  OrtCallback d{nullptr, nullptr};
-  AutoDelete() = default;
-  ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(AutoDelete);
-  ~AutoDelete() {
-    if (d.f != nullptr) {
-      d.f(d.param);
-    }
-  }
-};
-
-static void DeleteCharArray(void* param) noexcept {
-  auto arr = reinterpret_cast<char*>(param);
-  delete[] arr;
-}
 
 #if !defined(__wasm__)
 static Status GetFileContent(const Env& env, const std::filesystem::path& file_path, FileOffsetType offset,
-                             size_t length, void*& raw_buffer, OrtCallback& deleter) {
+                             size_t length, IAllocatorUniquePtr<void>& external_data) {
   // query length if it is 0
   if (length == 0) {
     // The return type of std::filesystem::file_size is uintmax_t which could be bigger than size_t
@@ -1023,8 +994,9 @@ static Status GetFileContent(const Env& env, const std::filesystem::path& file_p
     Env::MappedMemoryPtr mapped_memory{};
     auto status = env.MapFileIntoMemory(file_path.native().c_str(), offset, length, mapped_memory);
     if (status.IsOK()) {
-      deleter = mapped_memory.get_deleter().callback;
-      raw_buffer = mapped_memory.release();
+      IAllocatorUniquePtr<void> raw_buffer(mapped_memory.release(),
+                                           mapped_memory.get_deleter());
+      external_data.swap(raw_buffer);
       return Status::OK();
     }
   }
@@ -1034,8 +1006,8 @@ static Status GetFileContent(const Env& env, const std::filesystem::path& file_p
   ORT_RETURN_IF_ERROR(
       env.ReadFileIntoBuffer(file_path.native().c_str(), offset, length, gsl::make_span(buffer.get(), length)));
 
-  deleter = OrtCallback{DeleteCharArray, buffer.get()};
-  raw_buffer = buffer.release();
+  IAllocatorUniquePtr<void> raw_buffer(buffer.release(), [](void* p) { delete[] reinterpret_cast<char*>(p); });
+  external_data.swap(raw_buffer);
   return Status::OK();
 }
 #endif
@@ -1044,7 +1016,9 @@ Status GetExtDataFromTensorProto(const Env& env,
                                  const std::filesystem::path& model_path,
                                  const ONNX_NAMESPACE::TensorProto& tensor_proto,
                                  OrtValue& ort_value, PrepackedWeightsForGraph* prepacked_info) {
-  ORT_ENFORCE(utils::HasExternalData(tensor_proto));
+  ORT_ENFORCE(utils::HasExternalData(tensor_proto), "TensorProto for: ",
+              tensor_proto.name(), "Expected to have external data");
+
   std::basic_string<ORTCHAR_T> tensor_proto_dir;
   if (!model_path.empty()) {
     ORT_RETURN_IF_ERROR(GetDirNameFromFilePath(model_path, tensor_proto_dir));
@@ -1109,21 +1083,34 @@ Status GetExtDataFromTensorProto(const Env& env,
                   " size to read: ", static_cast<size_t>(raw_data_safe_len), " given file_length: ", file_length,
                   " are out of bounds or can not be read in full.");
 
-    void* ext_data_buf = nullptr;
-    OrtCallback ext_data_deleter;
-    ORT_RETURN_IF_ERROR(GetFileContent(env, external_data_file_path.c_str(), file_offset, raw_data_safe_len,
-                                       ext_data_buf, ext_data_deleter));
+    IAllocatorUniquePtr<void> ext_data_buf;
+    ORT_RETURN_IF_ERROR(GetFileContent(env, external_data_file_path, file_offset, raw_data_safe_len,
+                                       ext_data_buf));
 
-    // Temp guard
-    ScopedOrtCallbackInvoker guard{ext_data_deleter};
-    auto p_tensor = std::make_unique<Tensor>(type, tensor_shape, ext_data_buf,
+    // Data on disk is little endian
+    if constexpr (endian::native != endian::little) {
+      if (type->Size() > 1) {
+        gsl::span<unsigned char> data_span{reinterpret_cast<unsigned char*>(ext_data_buf.get()), raw_data_safe_len};
+        SwapByteOrderInplace(type->Size(), data_span);
+      }
+    }
+
+    auto p_tensor = std::make_unique<Tensor>(type, tensor_shape, ext_data_buf.get(),
                                              OrtMemoryInfo(CPU, OrtAllocatorType::OrtDeviceAllocator));
     ORT_RETURN_IF(raw_data_safe_len != p_tensor->SizeInBytes(), "Weight: ", name,
                   " External file content has length: ", static_cast<size_t>(raw_data_safe_len),
                   " while shape has bytes size: ", p_tensor->SizeInBytes());
 
-    ort_value.Init(p_tensor.release(), ml_tensor_type, OrtCallbackInvoker{ext_data_deleter});
-    guard.Release();
+    // Will destroy ext_data as a member of the functor
+    // can not move the unique_ptr as it is not copyable
+    std::function<void(void*)> deleter = [ext_data = ext_data_buf.get(),
+                                          d = ext_data_buf.get_deleter()](void* t) {
+      delete reinterpret_cast<Tensor*>(t);
+      d(ext_data);
+    };
+
+    ort_value.Init(p_tensor.release(), ml_tensor_type, std::move(deleter));
+    ext_data_buf.release();
 
     if (prepacked_info != nullptr && !prepacked_infos->empty()) {
       for (const auto& [key, blobs] : *prepacked_infos) {
@@ -1138,12 +1125,11 @@ Status GetExtDataFromTensorProto(const Env& env,
           ORT_RETURN_IF(blob_offset < 0 || static_cast<uintmax_t>(end_of_blob) > file_length,
                         "Pre-packed blob: ", key, " offset: ", blob_offset, " file_length: ", file_length,
                         " is out of bounds and can not read in full");
-          void* data_ptr;
-          OrtCallback data_deleter;
-          ORT_RETURN_IF_ERROR(GetFileContent(env, external_data_file_path.c_str(), blob_offset, blob_length,
-                                             data_ptr, data_deleter));
-          IAllocatorUniquePtr<void> data_ptr_unique{data_ptr, OrtCallbackInvoker(data_deleter)};
-          prepacked_weights.buffers_.push_back(std::move(data_ptr_unique));
+
+          IAllocatorUniquePtr<void> data_ptr;
+          ORT_RETURN_IF_ERROR(GetFileContent(env, external_data_file_path, blob_offset, blob_length,
+                                             data_ptr));
+          prepacked_weights.buffers_.push_back(std::move(data_ptr));
           prepacked_weights.buffer_sizes_.push_back(blob_length);
         }
         if (!blobs.empty()) {
