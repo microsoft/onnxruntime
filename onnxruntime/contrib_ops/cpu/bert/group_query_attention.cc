@@ -52,7 +52,6 @@ Status GroupQueryAttention<T>::Compute(OpKernelContext* context) const {
   const Tensor* total_seqlen_tensor = context->Input<Tensor>(6);
   const Tensor* cos_cache = context->Input<Tensor>(7);
   const Tensor* sin_cache = context->Input<Tensor>(8);
-
   const Tensor* custom_pos_ids = context->Input<Tensor>(9);
   const Tensor* custom_causal_attention_mask = context->Input<Tensor>(10);
 
@@ -71,6 +70,13 @@ Status GroupQueryAttention<T>::Compute(OpKernelContext* context) const {
                                                                 total_seqlen_tensor,
                                                                 scale_,
                                                                 softcap_));
+
+  const int32_t* seqlens_k_data = seqlens_k->Data<int32_t>();
+  const int32_t max_seqlens_k = *std::max_element(seqlens_k_data, seqlens_k_data + parameters.batch_size);
+  ORT_RETURN_IF_ERROR(group_query_attention_helper::CheckCustomAttentionInputs(custom_pos_ids,
+                                                                               custom_causal_attention_mask,
+                                                                               max_seqlens_k,
+                                                                               parameters));
 
   const int batch_size = parameters.batch_size;
   const int sequence_length = parameters.sequence_length;
@@ -136,7 +142,6 @@ Status GroupQueryAttention<T>::Compute(OpKernelContext* context) const {
     const int64_t* pos_ids_data = pos_ids.data();
 
     if (custom_pos_ids != nullptr) {
-      ORT_RETURN_IF_NOT(pos_ids_size == custom_pos_ids->Shape()[0] * custom_pos_ids->Shape()[1]);
       pos_ids_data = custom_pos_ids->Data<int64_t>();
     } else if (parameters.is_first_prompt) {
       pos_ids[0] = static_cast<int64_t>(0);
