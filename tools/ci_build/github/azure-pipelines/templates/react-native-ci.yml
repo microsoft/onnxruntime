@@ -28,6 +28,9 @@ parameters:
   displayName: Use GPG to sign the jars
   type: boolean
 
+- name: is1ES
+  type: boolean
+  default: false
 stages:
 - stage: Build_Android_Packages
   displayName: Build_Android_Packages
@@ -42,6 +45,7 @@ stages:
       enable_code_sign: '${{parameters.enable_code_sign}}'
       pool_name: '${{parameters.PoolName}}'
       packageName: 'onnxruntime-android'
+      is1ES: '${{parameters.is1ES}}'
 - stage: ReactNative_CI_Android
   displayName: ReactNative_CI_Android
   dependsOn: Build_Android_Packages
@@ -51,6 +55,7 @@ stages:
       PackageName: '${{parameters.PackageName}}'
       ArtifactName: 'onnxruntime-android-full-aar'
       NpmPackagingMode: '${{parameters.NpmPackagingMode}}'
+      is1ES: '${{parameters.is1ES}}'
 
 - stage: ReactNative_CI_iOS
   displayName: ReactNative_CI_iOS
@@ -58,9 +63,11 @@ stages:
   jobs:
   - job: ReactNative_CI_iOS
     pool:
-      vmImage: 'macOS-13'
+      name: 'Azure Pipelines'
+      image: 'macOS-13'
+      os: 'macOS'
 
-    timeoutInMinutes: 90
+    timeoutInMinutes: 120
 
     variables:
       runCodesignValidationInjection: false
@@ -242,13 +249,20 @@ stages:
         testRunTitle: 'React Native Detox iOS e2e Test Results'
       condition: succeededOrFailed()
       displayName: Publish React Native Detox iOS e2e Test Results
-
-    - task: PublishPipelineArtifact@1
-      inputs:
-        artifact: ios_e2e_test_logs_$(Build.BuildId)_$(Build.BuildNumber)_$(System.JobAttempt)
-        targetPath: '$(Build.SourcesDirectory)/js/react_native/e2e/artifacts'
-      condition: succeededOrFailed()
-      displayName: Publish React Native Detox E2E test logs
+    - ${{ if eq(parameters.is1ES, true) }}:
+      - task: 1ES.PublishPipelineArtifact@1
+        inputs:
+          artifactName: 'ios_e2e_test_logs_$(Build.BuildId)_$(Build.BuildNumber)_$(System.JobAttempt)'
+          targetPath: '$(Build.SourcesDirectory)/js/react_native/e2e/artifacts'
+        condition: succeededOrFailed()
+        displayName: Publish React Native Detox E2E test logs
+    - ${{ if eq(parameters.is1ES, false) }}:
+      - task: PublishPipelineArtifact@1
+        inputs:
+          artifact: ios_e2e_test_logs_$(Build.BuildId)_$(Build.BuildNumber)_$(System.JobAttempt)
+          targetPath: '$(Build.SourcesDirectory)/js/react_native/e2e/artifacts'
+        condition: succeededOrFailed()
+        displayName: Publish React Native Detox E2E test logs
 
     - template: explicitly-defined-final-tasks.yml
 

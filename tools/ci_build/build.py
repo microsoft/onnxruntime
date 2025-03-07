@@ -503,7 +503,7 @@ def parse_arguments():
     # WebAssembly build
     parser.add_argument("--build_wasm", action="store_true", help="Build for WebAssembly")
     parser.add_argument("--build_wasm_static_lib", action="store_true", help="Build for WebAssembly static library")
-    parser.add_argument("--emsdk_version", default="4.0.3", help="Specify version of emsdk")
+    parser.add_argument("--emsdk_version", default="4.0.4", help="Specify version of emsdk")
 
     parser.add_argument("--enable_wasm_simd", action="store_true", help="Enable WebAssembly SIMD")
     parser.add_argument("--enable_wasm_threads", action="store_true", help="Enable WebAssembly multi-threads support")
@@ -1502,7 +1502,7 @@ def generate_build_tree(
         ]
 
     # VitisAI and OpenVINO providers currently only support full_protobuf option.
-    if args.use_full_protobuf or args.use_openvino or args.use_vitisai or args.gen_doc:
+    if args.use_full_protobuf or args.use_openvino or args.use_vitisai or args.gen_doc or args.enable_generic_interface:
         cmake_args += ["-Donnxruntime_USE_FULL_PROTOBUF=ON", "-DProtobuf_USE_STATIC_LIBS=ON"]
 
     if args.use_cuda and not is_windows():
@@ -1592,8 +1592,11 @@ def generate_build_tree(
             raise BuildError("WebNN is only available for WebAssembly build.")
         cmake_args += ["-Donnxruntime_USE_WEBNN=ON"]
 
-    if args.use_jsep and args.use_webgpu:
-        raise BuildError("JSEP (--use_jsep) and WebGPU (--use_webgpu) cannot be enabled at the same time.")
+    # TODO: currently we allows building with both --use_jsep and --use_webgpu in this working branch.
+    #       This situation is temporary. Eventually, those two flags will be mutually exclusive.
+    #
+    # if args.use_jsep and args.use_webgpu:
+    #     raise BuildError("JSEP (--use_jsep) and WebGPU (--use_webgpu) cannot be enabled at the same time.")
 
     if args.use_external_dawn and not args.use_webgpu:
         raise BuildError("External Dawn (--use_external_dawn) must be enabled with WebGPU (--use_webgpu).")

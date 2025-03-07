@@ -13,7 +13,6 @@ import { ProgramManager } from './webgpu/program-manager';
 import {
   AdapterInfo,
   ComputeContext,
-  DeviceInfo,
   GpuArchitecture,
   GpuData,
   GpuVendor,
@@ -135,26 +134,6 @@ class AdapterInfoImpl implements AdapterInfo {
   }
 }
 
-class DeviceInfoImpl implements DeviceInfo {
-  readonly subgroupsSupported: boolean;
-  readonly subgroupsF16Supported: boolean;
-  readonly subgroupSizeRange?: readonly [number, number];
-
-  constructor(device: GPUDevice) {
-    this.subgroupsSupported = device.features.has('subgroups' as GPUFeatureName);
-    this.subgroupsF16Supported = device.features.has('subgroups' as GPUFeatureName);
-    // Currently subgroups feature is still experimental and size attributes are not in the WebGPU IDL, so we have to
-    // workaround the IDL type checks.
-    // TODO: clean this after subgroups feature is settled in IDL.
-    const deviceSubgroupsLimits = device.limits as { minSubgroupSize?: number; maxSubgroupSize?: number };
-    if (!this.subgroupsSupported || !deviceSubgroupsLimits.minSubgroupSize || !deviceSubgroupsLimits.maxSubgroupSize) {
-      this.subgroupSizeRange = undefined;
-    } else {
-      this.subgroupSizeRange = [deviceSubgroupsLimits.minSubgroupSize, deviceSubgroupsLimits.maxSubgroupSize];
-    }
-  }
-}
-
 /**
  * this class is designed to store status and being used as a singleton for JSEP. It will be passed to jsepInit() as
  * the first parameter so that it is stored for future use.
@@ -162,7 +141,6 @@ class DeviceInfoImpl implements DeviceInfo {
 export class WebGpuBackend {
   adapterInfo: AdapterInfoImpl;
   device: GPUDevice;
-  deviceInfo: DeviceInfoImpl;
   /**
    * an instance of GpuDataManager to manage a GpuDataId -> GpuBuffer mapping
    */
@@ -274,13 +252,9 @@ export class WebGpuBackend {
     }
     requireFeatureIfAvailable('shader-f16');
     // Try subgroups
-    if (requireFeatureIfAvailable('subgroups' as GPUFeatureName)) {
-      // If subgroups feature is available, also try subgroups-f16
-      requireFeatureIfAvailable('subgroups-f16' as GPUFeatureName);
-    }
+    requireFeatureIfAvailable('subgroups' as GPUFeatureName);
 
     this.device = await adapter.requestDevice(deviceDescriptor);
-    this.deviceInfo = new DeviceInfoImpl(this.device);
     this.adapterInfo = new AdapterInfoImpl(adapter.info || (await adapter.requestAdapterInfo()));
     this.gpuDataManager = createGpuDataManager(this);
     this.programManager = new ProgramManager(this);
