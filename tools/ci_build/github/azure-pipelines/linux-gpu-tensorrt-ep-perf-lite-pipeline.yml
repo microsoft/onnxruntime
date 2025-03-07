@@ -152,6 +152,7 @@ stages:
             --volume /data/models:/build/models:ro \
             --volume $HOME/.onnx:/home/onnxruntimedev/.onnx \
             --volume /data/onnx:/data/onnx \
+            --volume /usr/src/tensorrt:/usr/src/tensorrt \
             -e NVIDIA_TF32_OVERRIDE=0 \
             ${{ variables.Repository }} \
             /bin/bash -c '
@@ -187,6 +188,7 @@ stages:
             --volume $(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/mem_test:/mem_test \
             --volume $(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf:/perf \
             --volume $(modelVolume)/onnx-zoo-models:/perf/onnx-zoo-models \
+            --volume /usr/src/tensorrt:/usr/src/tensorrt \
             -e NVIDIA_TF32_OVERRIDE=0 \
             $(Repository) \
             /bin/bash -c '
