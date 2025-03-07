@@ -9,10 +9,10 @@
 # Licensed under the MIT License.  See License.txt in the project root for
 # license information.
 # -------------------------------------------------------------------------
-from dataclasses import dataclass
 import math
 import random
 import unittest
+from dataclasses import dataclass
 
 import numpy
 import torch
@@ -1136,7 +1136,7 @@ def get_custom_attention_inputs(batch_size, sequence_length, seqlens_k=None, pas
         custom_causal_attention_mask = torch.zeros((batch_size, sequence_length, max_seqlen_in_batch), dtype=TORCH_TYPE)
         for b in range(batch_size):
             total_seq_len = seqlens_k[b] + 1
-            past_seq_len = total_seq_len - sequence_length;
+            past_seq_len = total_seq_len - sequence_length
             custom_pos_ids_data.append(list(range(past_seq_len, past_seq_len + sequence_length)))
 
             # Configure mask

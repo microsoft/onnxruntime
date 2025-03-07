@@ -89,7 +89,8 @@ class GQAAttentionBase {
     T* present_value_data = present_value != nullptr ? present_value->MutableData<T>() : nullptr;
 
     const T* attention_mask_data = attention_mask != nullptr ? attention_mask->Data<T>() : nullptr;
-    const size_t attention_mask_total_seqlen = attention_mask != nullptr ? attention_mask->Shape()[2] : 0;
+    const size_t attention_mask_total_seqlen =
+        attention_mask != nullptr ? static_cast<size_t>(attention_mask->Shape()[2]) : static_cast<size_t>(0);
 
     bool past_present_share_buffer = past_key_data == present_key_data && past_value_data == present_value_data;
 
