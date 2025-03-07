@@ -255,8 +255,8 @@ Status GetExternalDataInfo(const ONNX_NAMESPACE::TensorProto& tensor_proto,
 
   const auto& location = external_data_info->GetRelPath();
 
-  external_file_path = location == onnxruntime::utils::kTensorProtoMemoryAddressTag ? std::filesystem::path(location)
-                                                                                    : (tensor_proto_dir / location);
+  external_file_path = location == kTensorProtoMemoryAddressTag ? std::filesystem::path(location)
+                                                                : (tensor_proto_dir / location);
 
   ORT_RETURN_IF_ERROR(onnxruntime::utils::GetSizeInBytesFromTensorProto<0>(tensor_proto, &tensor_byte_size));
   const size_t external_data_length = external_data_info->GetLength();

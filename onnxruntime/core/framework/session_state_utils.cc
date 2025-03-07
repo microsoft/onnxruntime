@@ -62,13 +62,13 @@ struct ExtDataValueDeleter {
 };
 
 static common::Status DeserializeTensorProto(const Env& env, const std::basic_string<PATH_CHAR_TYPE>& proto_path,
-                                             const ONNX_NAMESPACE::TensorProto& tensor_proto, const MemBuffer* m,
+                                             const ONNX_NAMESPACE::TensorProto& tensor_proto, const MemBuffer* memory_buffer,
                                              const AllocatorPtr& alloc, const AllocatorPtr& default_cpu_alloc,
                                              OrtValue& ort_value, const DataTransferManager& data_transfer_mgr,
                                              const ExternalDataLoaderManager& external_data_loader_mgr,
                                              PrepackedWeightsForGraph& prepacked_for_graph,
                                              bool use_device_allocator_for_initializers = false) {
-  if (bool(alloc) == (m != nullptr)) {
+  if (bool(alloc) == (memory_buffer != nullptr)) {
     return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT,
                   "DeserializeTensorProto() takes either pre-allocated buffer or an allocator!");
   }
@@ -78,14 +78,14 @@ static common::Status DeserializeTensorProto(const Env& env, const std::basic_st
   Tensor tensor;
 
   // Get shape and type of the tensor, and allocate the empty tensor
-  auto& memory_info = (alloc != nullptr) ? alloc->Info() : m->GetAllocInfo();
-  auto device_type = memory_info.device.Type();
+  const auto& memory_info = (alloc != nullptr) ? alloc->Info() : memory_buffer->GetAllocInfo();
+  const auto device_type = memory_info.device.Type();
 
   if (utils::HasExternalData(tensor_proto)) {
     auto external_data_loader = external_data_loader_mgr.GetExternalDataLoader(memory_info);
     if (external_data_loader) {
       // if custom external data loader is used, always allocate memory on device
-      ORT_RETURN_IF_ERROR(AllocateTensor(m, tensor, type, tensor_shape, use_device_allocator_for_initializers, alloc));
+      ORT_RETURN_IF_ERROR(AllocateTensor(memory_buffer, tensor, type, tensor_shape, use_device_allocator_for_initializers, alloc));
       ORT_RETURN_IF_ERROR(utils::LoadExtDataToTensorFromTensorProto(env, proto_path, tensor_proto,
                                                                     *external_data_loader, tensor));
 
@@ -111,7 +111,7 @@ static common::Status DeserializeTensorProto(const Env& env, const std::basic_st
       // 2. load initializer into CPU memory - p_deserialize_tensor,
       //    we will use mmap so no need to allocate memory on CPU in advance
       // 3. copy tensor from CPU to device - p_deserialize_tensor -> p_tensor
-      ORT_RETURN_IF_ERROR(AllocateTensor(m, tensor, type, tensor_shape, use_device_allocator_for_initializers, alloc));
+      ORT_RETURN_IF_ERROR(AllocateTensor(memory_buffer, tensor, type, tensor_shape, use_device_allocator_for_initializers, alloc));
 
       OrtValue deserialized_value;
       ORT_RETURN_IF_ERROR(utils::GetExtDataFromTensorProto(env, proto_path, tensor_proto,
@@ -123,7 +123,7 @@ static common::Status DeserializeTensorProto(const Env& env, const std::basic_st
     }
   } else {
     // for internal initializer, always allocate memory on device - p_tensor
-    ORT_RETURN_IF_ERROR(AllocateTensor(m, tensor, type, tensor_shape, use_device_allocator_for_initializers, alloc));
+    ORT_RETURN_IF_ERROR(AllocateTensor(memory_buffer, tensor, type, tensor_shape, use_device_allocator_for_initializers, alloc));
 
     if (device_type == OrtDevice::CPU) {
       // deserialize directly to CPU tensor
@@ -152,17 +152,17 @@ static common::Status DeserializeTensorProto(const Env& env, const std::basic_st
   }
 }
 
-common::Status AllocateTensor(const onnxruntime::MemBuffer* m,
+common::Status AllocateTensor(const onnxruntime::MemBuffer* memory_buffer,
                               Tensor& tensor,
                               const onnxruntime::DataTypeImpl* const& type,
                               onnxruntime::TensorShape& tensor_shape,
                               bool use_device_allocator_for_initializers,
                               const onnxruntime::AllocatorPtr& alloc) {
-  if (m != nullptr) {
-    tensor = Tensor{type, tensor_shape, m->GetBuffer(), m->GetAllocInfo()};
-    if (m->GetLen() < tensor.SizeInBytes()) {
+  if (memory_buffer != nullptr) {
+    tensor = Tensor{type, tensor_shape, memory_buffer->GetBuffer(), memory_buffer->GetAllocInfo()};
+    if (memory_buffer->GetLen() < tensor.SizeInBytes()) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Internal error. The preallocated buffer is too small. Requires ",
-                             tensor.SizeInBytes(), ", Got ", m->GetLen());
+                             tensor.SizeInBytes(), ", Got ", memory_buffer->GetLen());
     }
   } else {
     return AllocateTensorOnDeviceOrMemory(use_device_allocator_for_initializers, tensor_shape, type, alloc, tensor);
@@ -281,10 +281,25 @@ common::Status SaveInitializedTensors(
     const auto entry = initialized_tensors_to_allocate.find(ort_value_index);
     ORT_ENFORCE(entry != initialized_tensors_to_allocate.end(),
                 "OrtValue index: ", ort_value_index, " from initializer_allocation_order not found among initialized tensors");
-    if (!(utils::HasExternalData(*entry->second) && exec_plan.GetLocation(ort_value_index).Type() == OrtDevice::CPU)) {
-      // can not trace string tensor
-      ORT_ENFORCE(!utils::HasString(*entry->second), "Can not trace string tensor");
-      ORT_RETURN_IF_ERROR(planner.Trace(entry->first, entry->second));
+    const auto [_, tensor_proto] = *entry;
+
+    // We need to check if this is an external data on disk
+    // in memory we can still trace it
+    bool trace_allocation = exec_plan.GetLocation(ort_value_index).Type() != OrtDevice::CPU;
+    if (trace_allocation) {
+      if (utils::HasExternalData(*tensor_proto)) {
+        /// No quick way to find out if we are dealing with the pointer
+        /// Except may quickly check if ortvalue with the same name exists in graph ortvalue_initializers_
+        std::unique_ptr<ExternalDataInfo> external_data_info;
+        ORT_RETURN_IF_ERROR(ExternalDataInfo::Create(tensor_proto->external_data(), external_data_info));
+        trace_allocation = external_data_info->GetRelPath().compare(utils::kTensorProtoMemoryAddressTag) == 0;
+      }
+    }
+
+    if (trace_allocation) {
+      // can not trace string tensor, and they exist only on CPU
+      ORT_ENFORCE(!utils::HasString(*tensor_proto), "Can not trace string tensor");
+      ORT_RETURN_IF_ERROR(planner.Trace(ort_value_index, tensor_proto));
     }
     initialized_tensors_to_allocate.erase(entry);
   }
@@ -332,26 +347,55 @@ common::Status SaveInitializedTensors(
       ort_value = *(session_options.initializers_to_share_map.at(name));
       LOGS(logger, INFO) << "Using user supplied initializer with name (" << name << ").";
 
-    } else if (graph.GetOrtValueInitializer(name, ort_value)) {
+      // } else if (graph.GetOrtValueInitializer(name, ort_value)) {
       // populated OrtValue from the Graph instance
     } else {
       const ONNX_NAMESPACE::TensorProto& tensor_proto = *(entry.second);
 
-      std::optional<MemBuffer> m;
+      std::optional<MemBuffer> memory_buffer;
       AllocatorPtr alloc;
       // TODO: if the tensor need be copied, does it have enough room?
-      ORT_RETURN_IF_ERROR(planner.GetPreallocatedBuffer(ort_value_index, name, m, alloc));
+      ORT_RETURN_IF_ERROR(planner.GetPreallocatedBuffer(ort_value_index, name, memory_buffer, alloc));
       bool use_device_allocator_for_initializers =
-          session_options.config_options.GetConfigOrDefault(kOrtSessionOptionsUseDeviceAllocatorForInitializers, "0") == "1";
+          session_options.config_options.GetConfigOrDefault(
+              kOrtSessionOptionsUseDeviceAllocatorForInitializers, "0") == "1";
 
-      Status st = DeserializeTensorProto(env, graph_loc, tensor_proto, (m.has_value()) ? &*m : nullptr, alloc,
-                                         default_cpu_alloc, ort_value, data_transfer_mgr, external_data_loader_mgr,
-                                         prepacked_for_graph,
-                                         use_device_allocator_for_initializers);
-      if (!st.IsOK()) {
-        std::ostringstream oss;
-        oss << "Deserialize tensor " << name << " failed." << st.ErrorMessage();
-        return Status(st.Category(), st.Code(), oss.str());
+      // Check if we already have an OrtValue for this initializer on CPU
+      if (OrtValue ort_value_from_graph;
+          graph.GetOrtValueInitializer(name, ort_value_from_graph)) {
+        const auto& memory_info = (alloc != nullptr) ? alloc->Info() : memory_buffer->GetAllocInfo();
+        const auto device_type = memory_info.device.Type();
+        if (device_type == OrtDevice::CPU && !memory_buffer) {
+          // This is on CPU and there is not a pre-allocated buffer for it.
+          // Use directly from the graph
+          ort_value = std::move(ort_value_from_graph);
+        } else {
+          TensorShape tensor_shape = utils::GetTensorShapeFromTensorProto(tensor_proto);
+          const DataTypeImpl* const type = DataTypeImpl::TensorTypeFromONNXEnum(
+                                               tensor_proto.data_type())
+                                               ->GetElementType();
+          Tensor tensor;
+          ORT_RETURN_IF_ERROR(AllocateTensor((memory_buffer) ? &*memory_buffer : nullptr, tensor, type,
+                                             tensor_shape, use_device_allocator_for_initializers,
+                                             alloc));
+          ORT_RETURN_IF_ERROR(CopyTensorFromCPUToDevice(data_transfer_mgr,
+                                                        ort_value_from_graph.Get<Tensor>(),
+                                                        std::move(tensor), ort_value));
+        }
+      } else {
+        // We need to deserialize the tensor proto into an OrtValue
+        // using the preallocated buffer or allocator.
+        // auto device_type = memory_info.device.Type();
+
+        Status st = DeserializeTensorProto(env, graph_loc, tensor_proto, (memory_buffer.has_value()) ? &*memory_buffer : nullptr, alloc,
+                                           default_cpu_alloc, ort_value, data_transfer_mgr, external_data_loader_mgr,
+                                           prepacked_for_graph,
+                                           use_device_allocator_for_initializers);
+        if (!st.IsOK()) {
+          std::ostringstream oss;
+          oss << "Deserialize tensor " << name << " failed." << st.ErrorMessage();
+          return Status(st.Category(), st.Code(), oss.str());
+        }
       }
     }
 

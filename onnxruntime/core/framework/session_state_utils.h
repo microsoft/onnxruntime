@@ -54,7 +54,7 @@ common::Status SaveInitializedTensors(
     PrepackedWeightsForGraph& prepacked_for_graph);
 
 common::Status AllocateTensor(
-    const onnxruntime::MemBuffer* m,
+    const onnxruntime::MemBuffer* memory_buffer,
     Tensor& p_tensor,
     const onnxruntime::DataTypeImpl* const& type,
     onnxruntime::TensorShape& tensor_shape,
