@@ -359,7 +359,7 @@ const std::map<ONNX_NAMESPACE::TensorProto_DataType, std::string_view> onnx_to_w
     {ONNX_NAMESPACE::TensorProto_DataType_UINT64, "uint64"},
 };
 
-bool AreInputDataTypesSame(const std::string_view op_type,
+bool AreDataTypesSame(const std::string_view op_type,
                            gsl::span<const int32_t> input_types,
                            const logging::Logger& logger);
 bool IsSupportedDataType(const int32_t onnx_data_type, const emscripten::val& webnn_supported_data_types);

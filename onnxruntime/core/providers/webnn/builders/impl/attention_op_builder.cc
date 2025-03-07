@@ -104,7 +104,7 @@ present_key<---\----ScatterND <---------|-----(scatter_indices*)    |
 */
 
 Status GroupQueryAttentionOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node,
-                                                 const logging::Logger& logger) const {
+                                                           const logging::Logger& logger) const {
   const auto& op_type = node.OpType();
   if (op_type != "GroupQueryAttention") {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Unsupported attention op: ", op_type);
@@ -118,8 +118,6 @@ Status GroupQueryAttentionOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_b
   emscripten::val past_key_input = model_builder.GetOperand(input_defs[3]->Name());
   emscripten::val past_value_input = model_builder.GetOperand(input_defs[4]->Name());
   emscripten::val seqlens_k_input = model_builder.GetOperand(input_defs[5]->Name());
-  ORT_RETURN_IF_NOT(input_defs[7]->Name() == "" && input_defs[8]->Name() == "",
-                    "Do not support cos_cache and sin_cache.");
 
   std::vector<int64_t> input_q_shape, input_k_shape, input_v_shape, input_past_k_shape, input_past_v_shape;
   ORT_RETURN_IF_NOT(GetShape(*input_defs[0], input_q_shape, logger), "Cannot get query shape");
@@ -462,8 +460,8 @@ Status GroupQueryAttentionOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_b
 // Operator support related.
 
 bool GroupQueryAttentionOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& initializers, const Node& node,
-                                           const WebnnDeviceType /* device_type */,
-                                           const logging::Logger& logger) const {
+                                                     const WebnnDeviceType /* device_type */,
+                                                     const logging::Logger& logger) const {
   const auto& input_defs = node.InputDefs();
   const auto& op_type = node.OpType();
   NodeAttrHelper helper(node);
@@ -472,6 +470,13 @@ bool GroupQueryAttentionOpBuilder::IsOpSupportedImpl(const InitializedTensorSet&
   if (!GetShape(*input_defs[0], input_shape, logger)) {
     LOGS(logger, VERBOSE) << "Cannot get input shape.";
     return false;
+  }
+
+  if (input_defs.size() != 7) {
+    if (input_defs[7]->Name() != "" || input_defs[8]->Name() != "") {
+      LOGS(logger, VERBOSE) << op_type << " valid output count must be seven.";
+      return false;
+    }
   }
 
   const auto& output_defs = node.OutputDefs();
@@ -483,9 +488,9 @@ bool GroupQueryAttentionOpBuilder::IsOpSupportedImpl(const InitializedTensorSet&
   return true;
 }
 
-bool GroupQueryAttentionOpBuilder::HasSupportedInputsImpl(const InitializedTensorSet& /* initializers */, const Node& node,
-                                                const emscripten::val& wnn_limits,
-                                                const logging::Logger& logger) const {
+bool GroupQueryAttentionOpBuilder::HasSupportedInputsImpl(const InitializedTensorSet& /* initializers */,
+                                                          const Node& node, const emscripten::val& wnn_limits,
+                                                          const logging::Logger& logger) const {
   const auto& input_defs = node.InputDefs();
   const auto& op_type = node.OpType();
 
@@ -495,34 +500,59 @@ bool GroupQueryAttentionOpBuilder::HasSupportedInputsImpl(const InitializedTenso
       return false;
     }
   }
-  for (int i = 7; i < 9; i++) {
-    if (input_defs[i]->Name() != "") {
-      LOGS(logger, VERBOSE) << op_type << " does not support input " << i;
-      return false;
-    }
+
+  int32_t q_type = 0;
+  int32_t k_type = 0;
+  int32_t v_type = 0;
+  int32_t past_k_type = 0;
+  int32_t past_v_type = 0;
+  int32_t seqlens_k_type = 0;
+  int32_t total_sequence_length_type = 0;
+  if (!GetType(*input_defs[0], q_type, logger) || !GetType(*input_defs[1], k_type, logger) ||
+      !GetType(*input_defs[2], v_type, logger) || !GetType(*input_defs[3], past_k_type, logger) ||
+      !GetType(*input_defs[4], past_v_type, logger) || !GetType(*input_defs[5], seqlens_k_type, logger) ||
+      !GetType(*input_defs[6], total_sequence_length_type, logger)) {
+    return false;
   }
+
+  std::array<int32_t, 5> input_types{q_type, k_type, v_type, past_k_type, past_v_type};
+  if (!AreDataTypesSame(op_type, input_types, logger)) {
+    return false;
+  }
+
+  if (q_type != ONNX_NAMESPACE::TensorProto_DataType_FLOAT && q_type != ONNX_NAMESPACE::TensorProto_DataType_FLOAT16) {
+    return false;
+  }
+
+  if (seqlens_k_type != ONNX_NAMESPACE::TensorProto_DataType_INT32 &&
+      total_sequence_length_type != ONNX_NAMESPACE::TensorProto_DataType_INT32) {
+    return false;
+  }
+
   return true;
 }
 
 bool GroupQueryAttentionOpBuilder::HasSupportedOutputsImpl(const Node& node, const emscripten::val& wnn_limits,
-                                                 const logging::Logger& logger) const {
+                                                           const logging::Logger& logger) const {
   const auto& output_defs = node.OutputDefs();
   const std::string_view op_type = node.OpType();
   int32_t output_type = 0;
-  if (!GetType(*output_defs[0], output_type, logger)) {
+  int32_t present_k_type = 0;
+  int32_t present_v_type = 0;
+  if (!GetType(*output_defs[0], output_type, logger) || !GetType(*output_defs[1], present_k_type, logger) ||
+      !GetType(*output_defs[2], present_v_type, logger)) {
     return false;
   }
 
-  // Check if the output data type is supported by every decomposed WebNN op.
-  for (const std::string_view webnn_op_type : decomposed_op_map.at(op_type)) {
-    if (webnn_op_type == "constant") continue;
-    const std::string_view webnn_output_name = webnn_op_type == "split" ? "outputs" : "output";
-    if (!IsDataTypeSupportedByWebNNOp(op_type, webnn_op_type, output_type, wnn_limits, webnn_output_name, "output",
-                                      logger)) {
-      return false;
-    }
+  std::array<int32_t, 3> output_types{output_type, present_k_type, present_v_type};
+  if (!AreDataTypesSame(op_type, output_types, logger)) {
+    return false;
   }
 
+  if (output_type != ONNX_NAMESPACE::TensorProto_DataType_FLOAT &&
+      output_type != ONNX_NAMESPACE::TensorProto_DataType_FLOAT16) {
+    return false;
+  }
   return true;
 }
 
