@@ -19,6 +19,7 @@ namespace onnxruntime {
  *                                    and the logger if needed to create the optimizer. Run optimization on the nodes/subgraph, and finally, update the ComputeCapability.
  *
  */
+using KeyValueConfig = std::unordered_map<std::string, std::string>;
 using SelectionFunc = std::function<std::vector<std::unique_ptr<ComputeCapability>>(const GraphViewer&,
                                                                                     const KeyValueConfig&,
                                                                                     const GraphOptimizerRegistry& graph_optimizer_registry)>;
@@ -26,7 +27,6 @@ using OptimizationFunc = std::function<Status(Graph& graph,
                                               const ComputeCapability& optimization_cc,
                                               ComputeCapability& cc_to_update,
                                               const GraphOptimizerRegistry& graph_optimizer_registry)>;
-using KeyValueConfig = std::unordered_map<std::string, std::string>;
 
 /**
  * A registration/lookup class for re-usable optimizers for EPs.
