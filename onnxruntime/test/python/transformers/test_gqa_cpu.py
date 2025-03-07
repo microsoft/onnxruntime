@@ -160,7 +160,7 @@ def create_group_query_attention_graph_prompt(
                 "cos_cache" if rotary else "",
                 "sin_cache" if rotary else "",
                 "custom_pos_ids" if do_custom_tree_attention else "",
-                "custom_causal_attention_mask" if do_custom_tree_attention else ""
+                "custom_causal_attention_mask" if do_custom_tree_attention else "",
             ],
             ["output", "present_key", "present_value"],
             "GroupQueryAttention_0",
@@ -268,16 +268,12 @@ def create_group_query_attention_graph_prompt(
 
     if do_custom_tree_attention:
         graph_input += [
-            helper.make_tensor_value_info(
-                "custom_pos_ids",
-                TensorProto.INT64,
-                [1, 1]
-            ),
+            helper.make_tensor_value_info("custom_pos_ids", TensorProto.INT64, [1, 1]),
             helper.make_tensor_value_info(
                 "custom_causal_attention_mask",
                 ORT_TYPE,
-                [config.batch_size, config.kv_sequence_length, config.kv_sequence_length]
-            )
+                [config.batch_size, config.kv_sequence_length, config.kv_sequence_length],
+            ),
         ]
 
     graph_output = [
@@ -351,7 +347,7 @@ def create_group_query_attention_graph_past(
     packed=False,
     softcap=0.0,
     use_smooth_softmax=False,
-    do_custom_tree_attention=False
+    do_custom_tree_attention=False,
 ):
     past_kv_seqlen = config.kv_sequence_length
     present_kv_seqlen = (
@@ -372,8 +368,7 @@ def create_group_query_attention_graph_past(
                 "cos_cache" if rotary else "",
                 "sin_cache" if rotary else "",
                 "custom_pos_ids" if do_custom_tree_attention else "",
-                "custom_causal_attention_mask" if do_custom_tree_attention else ""
-
+                "custom_causal_attention_mask" if do_custom_tree_attention else "",
             ],
             ["output", "present_key", "present_value"],
             "GroupQueryAttention_0",
@@ -479,15 +474,13 @@ def create_group_query_attention_graph_past(
     if do_custom_tree_attention:
         graph_input += [
             helper.make_tensor_value_info(
-                "custom_pos_ids",
-                TensorProto.INT64,
-                [config.batch_size, config.sequence_length]
+                "custom_pos_ids", TensorProto.INT64, [config.batch_size, config.sequence_length]
             ),
             helper.make_tensor_value_info(
                 "custom_causal_attention_mask",
                 ORT_TYPE,
-                [config.batch_size, config.sequence_length, max_seqlen_in_batch]
-            )
+                [config.batch_size, config.sequence_length, max_seqlen_in_batch],
+            ),
         ]
 
     graph_output = [
@@ -712,7 +705,7 @@ def gqa_prompt_func(
     rotary_interleaved=False,
     softcap=0.0,
     use_smooth_softmax=False,
-    do_custom_tree_attention=False
+    do_custom_tree_attention=False,
 ):
     onnx_model_str = create_group_query_attention_graph_prompt(
         config,
@@ -724,7 +717,7 @@ def gqa_prompt_func(
         packed=new_k is None,
         softcap=softcap,
         use_smooth_softmax=use_smooth_softmax,
-        do_custom_tree_attention=do_custom_tree_attention
+        do_custom_tree_attention=do_custom_tree_attention,
     )
 
     q = torch.reshape(q, (config.batch_size, config.q_sequence_length, -1))
@@ -846,7 +839,7 @@ def gqa_past_func(
     rotary_interleaved=False,
     softcap=0.0,
     use_smooth_softmax=False,
-    do_custom_tree_attention=False
+    do_custom_tree_attention=False,
 ):
     assert seqlens_k is not None
     onnx_model_str = create_group_query_attention_graph_past(
@@ -860,7 +853,7 @@ def gqa_past_func(
         packed=new_k is None,
         softcap=softcap,
         use_smooth_softmax=use_smooth_softmax,
-        do_custom_tree_attention=do_custom_tree_attention
+        do_custom_tree_attention=do_custom_tree_attention,
     )
     q = torch.reshape(q, (config.batch_size, config.sequence_length, -1))
     past_k = k.clone()
@@ -1255,7 +1248,8 @@ def parity_check_gqa_prompt(
 
     if do_custom_tree_attention:
         custom_pos_ids, custom_causal_attention_mask = get_custom_attention_inputs(
-            config.batch_size, config.kv_sequence_length, past=False)
+            config.batch_size, config.kv_sequence_length, past=False
+        )
     else:
         custom_pos_ids = None
         custom_causal_attention_mask = None
@@ -1310,7 +1304,7 @@ def parity_check_gqa_prompt(
             rotary_interleaved,
             softcap,
             use_smooth_softmax=use_smooth_softmax,
-            do_custom_tree_attention=do_custom_tree_attention
+            do_custom_tree_attention=do_custom_tree_attention,
         )
     else:
         out, present_k, present_v = gqa_prompt_func(
@@ -1331,7 +1325,7 @@ def parity_check_gqa_prompt(
             rotary_interleaved,
             softcap,
             use_smooth_softmax=use_smooth_softmax,
-            do_custom_tree_attention=do_custom_tree_attention
+            do_custom_tree_attention=do_custom_tree_attention,
         )
     out = torch.squeeze(out, 0)
     out = torch.reshape(out, (config.batch_size, config.q_sequence_length, config.num_heads, config.head_size))
@@ -1464,7 +1458,8 @@ def parity_check_gqa_prompt_no_buff(
 
     if do_custom_tree_attention:
         custom_pos_ids, custom_causal_attention_mask = get_custom_attention_inputs(
-            config.batch_size, config.kv_sequence_length, past=False)
+            config.batch_size, config.kv_sequence_length, past=False
+        )
     else:
         custom_pos_ids = None
         custom_causal_attention_mask = None
@@ -1720,7 +1715,8 @@ def parity_check_gqa_past(
 
     if do_custom_tree_attention:
         custom_pos_ids, custom_causal_attention_mask = get_custom_attention_inputs(
-            config.batch_size, config.sequence_length, seqlens_k=cache_seqlens, past=True)
+            config.batch_size, config.sequence_length, seqlens_k=cache_seqlens, past=True
+        )
     else:
         custom_pos_ids = None
         custom_causal_attention_mask = None
@@ -1746,7 +1742,7 @@ def parity_check_gqa_past(
             rotary_interleaved,
             softcap,
             use_smooth_softmax=use_smooth_softmax,
-            do_custom_tree_attention=do_custom_tree_attention
+            do_custom_tree_attention=do_custom_tree_attention,
         )
     else:
         out, present_k, present_v = gqa_past_func(
@@ -1767,7 +1763,7 @@ def parity_check_gqa_past(
             rotary_interleaved,
             softcap,
             use_smooth_softmax=use_smooth_softmax,
-            do_custom_tree_attention=do_custom_tree_attention
+            do_custom_tree_attention=do_custom_tree_attention,
         )
     out = torch.squeeze(out, 0)
     out = torch.reshape(out, (config.batch_size, config.sequence_length, config.num_heads, config.head_size))
@@ -1961,7 +1957,8 @@ def parity_check_gqa_past_no_buff(
 
     if do_custom_tree_attention:
         custom_pos_ids, custom_causal_attention_mask = get_custom_attention_inputs(
-            config.batch_size, config.sequence_length, seqlens_k=cache_seqlens, past=True)
+            config.batch_size, config.sequence_length, seqlens_k=cache_seqlens, past=True
+        )
     else:
         custom_pos_ids = None
         custom_causal_attention_mask = None
@@ -2097,7 +2094,7 @@ class TestGQA(unittest.TestCase):
                                                     packed=packed,
                                                     softcap=softcap,
                                                     use_smooth_softmax=use_smooth_softmax,
-                                                    do_custom_tree_attention=do_custom_tree_attention
+                                                    do_custom_tree_attention=do_custom_tree_attention,
                                                 )
                                                 self.assertTrue(all_close)
                                                 all_close = parity_check_gqa_prompt_no_buff(
@@ -2109,7 +2106,7 @@ class TestGQA(unittest.TestCase):
                                                     packed=packed,
                                                     softcap=softcap,
                                                     use_smooth_softmax=use_smooth_softmax,
-                                                    do_custom_tree_attention=do_custom_tree_attention
+                                                    do_custom_tree_attention=do_custom_tree_attention,
                                                 )
                                                 self.assertTrue(all_close)
 
@@ -2160,7 +2157,7 @@ class TestGQA(unittest.TestCase):
                                                     packed=packed,
                                                     softcap=softcap,
                                                     use_smooth_softmax=use_smooth_softmax,
-                                                    do_custom_tree_attention=do_custom_tree_attention
+                                                    do_custom_tree_attention=do_custom_tree_attention,
                                                 )
                                                 self.assertTrue(all_close)
                                                 all_close = parity_check_gqa_past_no_buff(
@@ -2174,7 +2171,7 @@ class TestGQA(unittest.TestCase):
                                                     packed=packed,
                                                     softcap=softcap,
                                                     use_smooth_softmax=use_smooth_softmax,
-                                                    do_custom_tree_attention=do_custom_tree_attention
+                                                    do_custom_tree_attention=do_custom_tree_attention,
                                                 )
                                                 self.assertTrue(all_close)
 
@@ -2220,7 +2217,7 @@ class TestGQA(unittest.TestCase):
                                             rotary=rotary,
                                             rotary_interleaved=rotary_interleaved,
                                             packed=packed,
-                                            do_custom_tree_attention=do_custom_tree_attention
+                                            do_custom_tree_attention=do_custom_tree_attention,
                                         )
                                         self.assertTrue(all_close)
                                         all_close = parity_check_gqa_past_no_buff(
@@ -2232,7 +2229,7 @@ class TestGQA(unittest.TestCase):
                                             rotary=rotary,
                                             rotary_interleaved=rotary_interleaved,
                                             packed=packed,
-                                            do_custom_tree_attention=do_custom_tree_attention
+                                            do_custom_tree_attention=do_custom_tree_attention,
                                         )
                                         self.assertTrue(all_close)
 
