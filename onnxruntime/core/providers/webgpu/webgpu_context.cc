@@ -322,9 +322,9 @@ Status WebGpuContext::Run(ComputeContext& context, const ProgramBase& program) {
       std::vector<uint32_t> dims(expected_rank);
       std::vector<uint32_t> stride(expected_rank - 1);
       for (size_t j = 0; j < expected_rank; ++j) {
-        dims[j] = gsl::narrow<uint32_t>(shape[j]);
+        dims[j] = onnxruntime::narrow<uint32_t>(shape[j]);
         if (j < expected_rank - 1) {
-          stride[j] = gsl::narrow<uint32_t>(shape.SizeFromDimension(j + 1));
+          stride[j] = onnxruntime::narrow<uint32_t>(shape.SizeFromDimension(j + 1));
         }
       }
 

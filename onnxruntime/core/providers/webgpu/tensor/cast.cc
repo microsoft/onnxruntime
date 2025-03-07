@@ -69,7 +69,7 @@ Status Cast::ComputeInternal(ComputeContext& context) const {
   if (size == 0) {
     return Status::OK();
   }
-  uint32_t vec_size = gsl::narrow<uint32_t>((size + 3) / 4);
+  uint32_t vec_size = onnxruntime::narrow<uint32_t>((size + 3) / 4);
 
   CastProgram program{to_};
   program

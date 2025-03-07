@@ -130,7 +130,7 @@ Status Pad::ComputeInternal(ComputeContext& context) const {
   }
 
   auto* output_tensor = context.Output(0, output_shape);
-  uint32_t output_size = gsl::narrow<uint32_t>(output_shape.Size());
+  uint32_t output_size = onnxruntime::narrow<uint32_t>(output_shape.Size());
   if (output_size == 0) {
     // Do not need to fill output, return
     return Status::OK();
