@@ -174,7 +174,8 @@ int real_main(int argc, char* argv[]) {
     // otherwise, user can also skip this step, but they need to create the inference session from the last generated ctx.onnx model
     // since only the last ctx.onnx has EPContext nodes has the correct max_size covers graphs for all sessions
     const std::string enable_htp_weight_sharing = "enable_htp_spill_fill_buffer";
-    if (provider_options.find(enable_htp_weight_sharing) != provider_options.end()) {
+    auto pos = provider_options.find(enable_htp_weight_sharing);
+    if (pos != provider_options.end() && pos->second == "1") {
       std::cout << "Start to update the generated Onnx model to reflect the max_size." << std::endl;
 
       // The steps below only used for spill fill buffer enabled
