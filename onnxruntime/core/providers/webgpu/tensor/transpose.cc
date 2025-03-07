@@ -100,7 +100,7 @@ Status TransposeProgram::GenerateShaderCode(ShaderHelper& shader) const {
 Status Transpose::ComputeInternal(ComputeContext& context) const {
   const auto* input_tensor = context.Input(0);
   const TensorShape& input_shape = input_tensor->Shape();
-  int32_t rank = gsl::narrow_cast<int32_t>(input_shape.NumDimensions());
+  int32_t rank = static_cast<int32_t>(input_shape.NumDimensions());
 
   TensorShapeVector output_dims(rank);
   InlinedVector<size_t> default_perm(rank);
@@ -126,7 +126,7 @@ Status Transpose::ComputeInternal(ComputeContext& context) const {
     new_output_shape = TensorShape({new_input_shape[1], new_input_shape[0]});
   }
 
-  uint32_t output_size = gsl::narrow_cast<int32_t>(input_tensor->Shape().Size());
+  uint32_t output_size = onnxruntime::narrow<int32_t>(input_tensor->Shape().Size());
   TransposeProgram program{*p_perm, use_shared};
   if (use_shared) {
     program.SetWorkgroupSize(TILE_SIZE, TILE_SIZE, 1);
