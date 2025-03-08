@@ -1,5 +1,5 @@
 parameters:
-  IsMacOS : 'true'
+  IsMacOS: 'true'
   ArtifactSuffix: ''
 stages:
 - stage: NuGet_Test_MacOS
@@ -11,7 +11,9 @@ stages:
     workspace:
       clean: all
     pool:
-      vmImage: 'macOS-13'
+      name: 'Azure Pipelines'
+      image: 'macOS-13'
+      os: 'macOS'
 
     variables:
     - name: OnnxRuntimeBuildDirectory
@@ -35,24 +37,24 @@ stages:
 
     - script: |
         echo "TODO: Enable this test once fix this nuget test issue"
-  #     $(Build.SourcesDirectory)/csharp/test/Microsoft.ML.OnnxRuntime.EndToEndTests/runtest.sh \
-  #               $(Build.BinariesDirectory)/nuget-artifact \
-  #               $(NuGetPackageVersionNumber) \
-  #               ${{ parameters.IsMacOS }}
-  #
-  #     if [ $? -ne 0 ]; then
-  #         echo "Failed to run test"
-  #         exit 1
-  #     fi
+      #     $(Build.SourcesDirectory)/csharp/test/Microsoft.ML.OnnxRuntime.EndToEndTests/runtest.sh \
+      #               $(Build.BinariesDirectory)/nuget-artifact \
+      #               $(NuGetPackageVersionNumber) \
+      #               ${{ parameters.IsMacOS }}
+      #
+      #     if [ $? -ne 0 ]; then
+      #         echo "Failed to run test"
+      #         exit 1
+      #     fi
       displayName: 'Run Test'
       env:
-          OnnxRuntimeBuildDirectory: $(Build.BinariesDirectory)
-          DisableContribOps: $(DisableContribOps)
-          DisableMlOps: $(DisableMlOps)
-          IsReleaseBuild: $(IsReleaseBuild)
+        OnnxRuntimeBuildDirectory: $(Build.BinariesDirectory)
+        DisableContribOps: $(DisableContribOps)
+        DisableMlOps: $(DisableMlOps)
+        IsReleaseBuild: $(IsReleaseBuild)
 
     - template: ../../templates/component-governance-component-detection-steps.yml
-      parameters :
-        condition : 'always'
+      parameters:
+        condition: 'always'
 
     - template: ../../templates/clean-agent-build-directory-step.yml

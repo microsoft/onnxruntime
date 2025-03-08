@@ -10,8 +10,9 @@ stages:
   - job: Nodejs_Test_${{ parameters.StageSuffix }}
     workspace:
       clean: all
-    timeoutInMinutes:  120
-    pool: ${{ parameters.AgentPool }}
+    timeoutInMinutes: 120
+    pool:
+      name: ${{ parameters.AgentPool }}
     variables:
     - name: OnnxRuntimeBuildDirectory
       value: '$(Build.BinariesDirectory)'
