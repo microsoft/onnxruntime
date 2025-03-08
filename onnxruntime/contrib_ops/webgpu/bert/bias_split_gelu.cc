@@ -4,7 +4,6 @@
 #include "core/providers/webgpu/shader_helper.h"
 #include "core/providers/webgpu/webgpu_supported_types.h"
 #include "contrib_ops/webgpu/bert/bias_split_gelu.h"
-#include "contrib_ops/webgpu/bert/gelu.cc"
 #include "contrib_ops/webgpu/webgpu_contrib_kernels.h"
 #include "core/providers/webgpu/webgpu_utils.h"
 
