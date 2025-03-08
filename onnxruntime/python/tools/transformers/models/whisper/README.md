@@ -19,9 +19,65 @@ In addition to the above packages, you will need to install `ffmpeg` on your mac
 
 **FFMPEG includes numerous codecs, many of which are likely not used by your product/service. Microsoft engineering teams using FFMPEG must build FFMPEG to remove all the unneeded and unused codecs. Including codecs in your product/service, even if not used, can create patent risk for Microsoft. You are responsible for building FFMPEG in a way that follows this codec guidance.**
 
+## Exporting Whisper
+
+It is recommended to export Whisper for ONNX Runtime GenAI as you will get much more granular control over the generation loop and you can produce word-level timestamps. The alternative option is to export Whisper with the beam search op in the ONNX model, which does not provide these extra benefits and may have additional limitations.
+
+To see all available options:
+```
+# From source:
+$ python3 -m models.whisper.convert_to_onnx --help
+
+# From wheel:
+$ python3 -m onnxruntime.transformers.models.whisper.convert_to_onnx --help
+```
+
+## Exporting Whisper for [ONNX Runtime GenAI](https://github.com/microsoft/onnxruntime-genai)
+
+To export Whisper for ONNX Runtime GenAI, you can use the `convert_to_onnx.py` script.
+
+```
+# From source
+$ git clone https://github.com/microsoft/onnxruntime
+$ cd onnxruntime/onnxruntime/python/tools/transformers/
+$ python3 -m models.whisper.convert_to_onnx -m openai/whisper-large-v3-turbo --output whisper-turbo --use_external_data_format --no_beam_search_op --output_cross_qk
+
+# From wheel
+$ python3 -m onnxruntime.transformers.models.whisper.convert_to_onnx -m openai/whisper-large-v3-turbo --output whisper-turbo --use_external_data_format --no_beam_search_op --output_cross_qk
+```
+
+Here are some additional examples for exporting Whisper for ONNX Runtime GenAI.
+
+Export + Optimize for FP32 CPU
+```
+# From source:
+$ python3 -m models.whisper.convert_to_onnx -m openai/whisper-large-v3-turbo --output whisper-turbo --precision fp32 --provider cpu --use_external_data_format --optimize_onnx --no_beam_search_op --output_cross_qk
+
+# From wheel:
+$ python3 -m onnxruntime.transformers.models.whisper.convert_to_onnx -m openai/whisper-large-v3-turbo --output whisper-turbo --precision fp32 --provider cpu --use_external_data_format --optimize_onnx --no_beam_search_op --output_cross_qk
+```
+
+Export + Optimize for FP32 CUDA
+```
+# From source:
+$ python3 -m models.whisper.convert_to_onnx -m openai/whisper-large-v3-turbo --output whisper-turbo --precision fp32 --provider cuda --use_gpu --use_external_data_format --optimize_onnx --no_beam_search_op --output_cross_qk
+
+# From wheel:
+$ python3 -m onnxruntime.transformers.models.whisper.convert_to_onnx -m openai/whisper-large-v3-turbo --output whisper-turbo --precision fp32 --provider cuda --use_gpu --use_external_data_format --optimize_onnx --no_beam_search_op --output_cross_qk
+```
+
+Export + Optimize for FP16 CUDA
+```
+# From source:
+$ python3 -m models.whisper.convert_to_onnx -m openai/whisper-large-v3-turbo --output whisper-turbo --precision fp16 --provider cuda --use_gpu --use_external_data_format --optimize_onnx --no_beam_search_op --output_cross_qk
+
+# From wheel:
+$ python3 -m onnxruntime.transformers.models.whisper.convert_to_onnx -m openai/whisper-large-v3-turbo --output whisper-turbo --precision fp16 --provider cuda --use_gpu --use_external_data_format --optimize_onnx --no_beam_search_op --output_cross_qk
+```
+
 ## Exporting Whisper with Beam Search
 
-There are several ways to export Whisper with beam search (using Whisper tiny as an example).
+There are several ways to export Whisper with beam search.
 
 ### Option 1: from convert_to_onnx
 
@@ -29,10 +85,10 @@ There are several ways to export Whisper with beam search (using Whisper tiny as
 # From source
 $ git clone https://github.com/microsoft/onnxruntime
 $ cd onnxruntime/onnxruntime/python/tools/transformers/
-$ python3 -m models.whisper.convert_to_onnx -m openai/whisper-large-v3 --output whisperlargev3 --use_external_data_format
+$ python3 -m models.whisper.convert_to_onnx -m openai/whisper-large-v3-turbo --output whisper-turbo --use_external_data_format
 
 # From wheel
-$ python3 -m onnxruntime.transformers.models.whisper.convert_to_onnx -m openai/whisper-large-v3 --output whisperlargev3 --use_external_data_format
+$ python3 -m onnxruntime.transformers.models.whisper.convert_to_onnx -m openai/whisper-large-v3-turbo --output whisper-turbo --use_external_data_format
 ```
 
 ### Option 2: end-to-end model from [Olive](https://github.com/microsoft/Olive/tree/main/examples/whisper)
@@ -46,7 +102,7 @@ Run the following Python code to export:
 ```
 from optimum.onnxruntime import ORTModelForSpeechSeq2Seq
 
-model_name = "openai/whisper-large-v2"
+model_name = "openai/whisper-large-v3-turbo"
 model = ORTModelForSpeechSeq2Seq.from_pretrained(
     model_name,
     export=True,
@@ -58,50 +114,45 @@ model.save_pretrained(model_name.split("/")[-1] + "-onnx")
 
 Here are some additional examples for exporting Whisper with beam search.
 
-To see all available options
-```
-# From source:
-$ python3 -m models.whisper.convert_to_onnx --help
-
-# From wheel:
-$ python3 -m onnxruntime.transformers.models.whisper.convert_to_onnx --help
-```
-
 Export with Forced Decoder Input Ids
 ```
 # From source:
-$ python3 -m models.whisper.convert_to_onnx -m openai/whisper-large-v3 --output whisperlargev3 --use_external_data_format --use_forced_decoder_ids
+$ python3 -m models.whisper.convert_to_onnx -m openai/whisper-large-v3-turbo --output whisper-turbo --use_external_data_format --use_forced_decoder_ids
 
 # From wheel:
-$ python3 -m onnxruntime.transformers.models.whisper.convert_to_onnx -m openai/whisper-large-v3 --output whisperlargev3 --use_external_data_format --use_forced_decoder_ids
+$ python3 -m onnxruntime.transformers.models.whisper.convert_to_onnx -m openai/whisper-large-v3-turbo --output whisper-turbo --use_external_data_format --use_forced_decoder_ids
 ```
 
 Export + Optimize for FP32
 ```
 # From source:
-$ python3 -m models.whisper.convert_to_onnx -m openai/whisper-large-v3 --output whisperlargev3 --use_external_data_format --optimize_onnx --precision fp32
+$ python3 -m models.whisper.convert_to_onnx -m openai/whisper-large-v3-turbo --output whisper-turbo --use_external_data_format --optimize_onnx --precision fp32
 
 # From wheel:
-$ python3 -m onnxruntime.transformers.models.whisper.convert_to_onnx -m openai/whisper-large-v3 --output whisperlargev3 --use_external_data_format --optimize_onnx --precision fp32
+$ python3 -m onnxruntime.transformers.models.whisper.convert_to_onnx -m openai/whisper-large-v3-turbo --output whisper-turbo --use_external_data_format --optimize_onnx --precision fp32
 ```
 
-Export + Optimize for FP16 and GPU
+Note: FP32 CPU is not compatible with `--output_cross_qk`.
+
+Export + Optimize for FP16 GPU
 ```
 # From source:
-$ python3 -m models.whisper.convert_to_onnx -m openai/whisper-large-v3 --output whisperlargev3 --use_external_data_format --optimize_onnx --precision fp16 --use_gpu --provider cuda --disable_auto_mixed_precision
+$ python3 -m models.whisper.convert_to_onnx -m openai/whisper-large-v3-turbo --output whisper-turbo --use_external_data_format --optimize_onnx --precision fp16 --use_gpu --provider cuda
 
 # From wheel:
-$ python3 -m onnxruntime.transformers.models.whisper.convert_to_onnx -m openai/whisper-large-v3 --output whisperlargev3 --use_external_data_format --optimize_onnx --precision fp16 --use_gpu --provider cuda --disable_auto_mixed_precision
+$ python3 -m onnxruntime.transformers.models.whisper.convert_to_onnx -m openai/whisper-large-v3-turbo --output whisper-turbo --use_external_data_format --optimize_onnx --precision fp16 --use_gpu --provider cuda
 ```
 
 Export + Quantize for INT8
 ```
 # From source:
-$ python3 -m models.whisper.convert_to_onnx -m openai/whisper-large-v3 --output whisperlargev3 --use_external_data_format --precision int8 --quantize_embedding_layer
+$ python3 -m models.whisper.convert_to_onnx -m openai/whisper-large-v3-turbo --output whisper-turbo --use_external_data_format --precision int8 --quantize_embedding_layer
 
 # From wheel:
-$ python3 -m onnxruntime.transformers.models.whisper.convert_to_onnx -m openai/whisper-large-v3 --output whisperlargev3 --use_external_data_format --precision int8 --quantize_embedding_layer
+$ python3 -m onnxruntime.transformers.models.whisper.convert_to_onnx -m openai/whisper-large-v3-turbo --output whisper-turbo --use_external_data_format --precision int8 --quantize_embedding_layer
 ```
+
+Note: INT8 CPU is not compatible with `--output_cross_qk`.
 
 ## Benchmark Whisper
 
@@ -114,7 +165,7 @@ Here are some examples of how you can benchmark Whisper across various end-to-en
 python3 -m models.whisper.benchmark \
     --benchmark-type hf-pt-eager \
     --audio-path 1272-141231-0002.mp3 \
-    --model-name openai/whisper-large-v2 \
+    --model-name openai/whisper-large-v3-turbo \
     --precision fp32 \
     --device cpu
 ```
@@ -124,7 +175,7 @@ python3 -m models.whisper.benchmark \
 python3 -m models.whisper.benchmark \
     --benchmark-type hf-pt-compile \
     --audio-path 1272-141231-0002.mp3 \
-    --model-name openai/whisper-large-v2 \
+    --model-name openai/whisper-large-v3-turbo \
     --precision fp16 \
     --device cuda
 ```
@@ -134,8 +185,8 @@ python3 -m models.whisper.benchmark \
 python3 -m models.whisper.benchmark \
     --benchmark-type hf-ort \
     --audio-path 1272-141231-0002.mp3 \
-    --model-name openai/whisper-large-v2 \
-    --hf-ort-dir-path ./whisper-large-v2-onnx/ \
+    --model-name openai/whisper-large-v3-turbo \
+    --hf-ort-dir-path ./whisper-large-v3-turbo-onnx/ \
     --precision fp32 \
     --device cpu
 ```
@@ -145,8 +196,8 @@ python3 -m models.whisper.benchmark \
 python3 -m models.whisper.benchmark \
     --benchmark-type ort \
     --audio-path 1272-141231-0002.mp3 \
-    --model-name openai/whisper-large-v2 \
-    --ort-model-path ./wlarge-fp32/whisper-large-v2_beamsearch.onnx \
+    --model-name openai/whisper-large-v3-turbo \
+    --ort-model-path ./wlarge-fp32/whisper-large-v3-turbo_beamsearch.onnx \
     --precision fp32 \
     --device cpu
 ```
@@ -156,7 +207,7 @@ python3 -m models.whisper.benchmark \
 python3 -m models.whisper.benchmark \
     --benchmark-type ort \
     --audio-path 1272-141231-0002.mp3 \
-    --model-name openai/whisper-large-v2 \
+    --model-name openai/whisper-large-v3-turbo \
     --ort-model-path ./wlarge-fp32/whisper-large_all.onnx \
     --precision fp16 \
     --device cuda
@@ -167,8 +218,8 @@ python3 -m models.whisper.benchmark \
 python3 -m models.whisper.benchmark \
     --benchmark-type ort \
     --audio-path 1272-141231-0002.mp3 \
-    --model-name openai/whisper-large-v2 \
-    --ort-model-path ./wlarge-fp32/whisper-large-v2_all.onnx \
+    --model-name openai/whisper-large-v3-turbo \
+    --ort-model-path ./wlarge-fp32/whisper-large-v3-turbo_all.onnx \
     --precision fp32 \
     --device cpu
 ```
@@ -184,9 +235,9 @@ python3 -m models.whisper.benchmark_all \
     --audio-path ./whisper-test-audios/ \
     --hf-pt-eager \
     --hf-pt-compile \
-    --hf-ort-dir-path ./whisper-large-v2-onnx/ \
-    --ort-model-path ./wlarge-fp32/whisper-large-v2_all.onnx \
-    --model-name openai/whisper-large-v2 \
+    --hf-ort-dir-path ./whisper-large-v3-turbo-onnx/ \
+    --ort-model-path ./wlarge-fp32/whisper-large-v3-turbo_all.onnx \
+    --model-name openai/whisper-large-v3-turbo \
     --precision fp32 \
     --device cpu
 ```

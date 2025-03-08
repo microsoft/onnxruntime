@@ -7,6 +7,7 @@
 #include "contrib_ops/cuda/bert/group_query_attention_impl.h"
 #include "contrib_ops/cpu/bert/attention_common.h"
 #include "contrib_ops/cuda/bert/attention_impl.h"
+#include "contrib_ops/cuda/bert/attention_kv_cache.h"
 #include "contrib_ops/cuda/sparse/sparse_attention_v1/sparse_attention_common.h"
 #include "contrib_ops/cuda/sparse/sparse_attention_v1/sparse_attention_v1_api.h"
 #include "contrib_ops/cuda/sparse/sparse_attention_v2/sparse_attention_v2_api.h"
