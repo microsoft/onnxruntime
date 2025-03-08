@@ -1030,6 +1030,16 @@ MlasComputeSoftcap(
     T cap
     );
 
+template <typename T>
+void
+MLASCALL
+MlasEltwiseAdd(
+    const T* left,
+    const T* right,
+    T* output,
+    size_t N
+    );
+
 template<typename T>
 void
 MLASCALL
