@@ -121,7 +121,7 @@ TEST(InstanceNormalizationOpTest, InstanceNormBatch2) {
 }
 
 // Only CUDA and ROCm kernels have float 16 support
-#if defined(USE_CUDA) || defined(USE_ROCM) || defined(COREML_ENABLE_MLPROGRAM)
+#if defined(USE_CUDA) || defined(USE_ROCM) || defined(USE_COREML)
 
 TEST(InstanceNormalizationOpTest, InstanceNormBatch1_fp16) {
   OpTester test("InstanceNormalization");
