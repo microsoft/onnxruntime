@@ -16,19 +16,17 @@ Example 3: convert gpt2 model with beam search with mixed precision and enable S
     python convert_generation.py -m gpt2 --output gpt2_beam_search.onnx --use_gpu -p fp16 --use_sln_strict_mode
 
 Example 4: convert T5 model with beam search in two steps:
-    cd ./models/t5
-    python convert_to_onnx.py -m t5-small
-    cd ../..
-    python convert_generation.py -m t5-small --model_type t5                                    \
-        --decoder_onnx ./models/t5/onnx_models/t5-small_decoder.onnx                            \
-        --encoder_decoder_init_onnx ./models/t5/onnx_models/t5-small_encoder_decoder_init.onnx  \
-        --output ./models/t5/onnx_models/t5_small_beam_search.onnx
+    python -m models.t5.convert_to_onnx -m t5-small
+    python convert_generation.py -m t5-small --model_type t5             \
+        --decoder_onnx ./onnx_models/t5-small_decoder.onnx               \
+        --encoder_decoder_init_onnx ./onnx_models/t5-small_encoder.onnx  \
+        --output ./onnx_models/t5_small_beam_search.onnx
 
 Example 5: convert T5 model with beam search. All in one step:
-    python convert_generation.py -m t5-small --model_type t5 --output ./models/t5/onnx_models/t5_small_beam_search.onnx
+    python convert_generation.py -m t5-small --model_type t5 --output t5_small_beam_search.onnx
 
 Example 6: convert T5 model with beam search containing specific cuda optimizations. All in one step:
-    python convert_generation.py -m t5-small --model_type t5 --output ./models/t5/onnx_models/t5_small_beam_search.onnx   \
+    python convert_generation.py -m t5-small --model_type t5 --output t5_small_beam_search.onnx   \
         --use_gpu --past_present_share_buffer --use_decoder_masked_attention
 
 Example 7: convert MT5 model with external data file like mt5-base-beamsearch.onnx.data in below example.
@@ -527,16 +525,15 @@ def t5_to_onnx(args: argparse.Namespace):
         args (argparse.Namespace): arguments parsed from command line
     """
     paths = export_t5_onnx_models(
-        args.model_name_or_path,
-        args.cache_dir,
-        Path(args.output).parent,
+        model_name_or_path=args.model_name_or_path,
+        cache_dir=args.cache_dir,
+        output_dir=Path(args.output).parent,
         use_gpu=args.use_gpu,
         use_external_data_format=args.use_external_data_format,
         optimize_onnx=(args.precision != Precision.FLOAT16),
         precision=args.precision,
         verbose=False,
         use_decoder_start_token=False,
-        merge_encoder_and_decoder_init=True,
         overwrite=True,
         disable_auto_mixed_precision=False,
         use_int32_inputs=True,
@@ -826,14 +823,15 @@ def verify_t5_encoder_decoder_init_subgraph(graph: onnx.GraphProto, precision: P
         ValueError: Output data type is not expected.
     """
     is_float16 = precision == Precision.FLOAT16
-    layer_count = (len(graph.output) - 2) // 4
-    assert layer_count >= 1
+    new_format = "cross" in graph.output[0].name
 
     # Expect 3 inputs:
     #   encoder_input_ids:      int32 (B, encode_sequence_length)
     #   encoder_attention_mask: int32 (B, encode_sequence_length)
     #   decoder_input_ids:      int32 (B, 1)
     expected_inputs = ["encoder_input_ids", "encoder_attention_mask", "decoder_input_ids"]
+    if new_format:
+        expected_inputs = expected_inputs[:2]
     if len(graph.input) != len(expected_inputs):
         raise ValueError(f"Number of inputs expected to be {len(expected_inputs)}. Got {len(graph.input)}")
 
@@ -846,22 +844,41 @@ def verify_t5_encoder_decoder_init_subgraph(graph: onnx.GraphProto, precision: P
         if input_type != expected_type:
             raise ValueError(f"Input {i} is expected to have onnx data type {expected_type}. Got {input_type}")
 
-    # Expected outputs:
-    #   logits:                (B, 1, vocab_size)
-    #   encoder_hidden_states: (B, encode_sequence_length, encoder_hidden_size)
-    #   present_key_self_0:    (B, num_heads, 1, head_size)
-    #   present_value_self_0:  (B, num_heads, 1, head_size)
-    #                      ... (for each self attention layer)
-    #   present_key_cross_0:   (B, num_heads, encode_sequence_length, head_size)
-    #   present_value_cross_0: (B, num_heads, encode_sequence_length, head_size)
-    #                      ... (for each cross attention layer)
-    expected_outputs = ["logits", "encoder_hidden_states"]
-    for i in range(layer_count):
-        expected_outputs.append(f"present_key_self_{i}")
-        expected_outputs.append(f"present_value_self_{i}")
-    for i in range(layer_count):
-        expected_outputs.append(f"present_key_cross_{i}")
-        expected_outputs.append(f"present_value_cross_{i}")
+    if new_format:
+        assert len(graph.output) % 2 == 0
+        layer_count = len(graph.output) // 2
+        assert layer_count >= 1
+
+        # Expected outputs:
+        #   present_key_cross_0:   (B, num_heads, encode_sequence_length, head_size)
+        #   present_value_cross_0: (B, num_heads, encode_sequence_length, head_size)
+        #                      ... (for each cross attention layer)
+        expected_outputs = []
+        for i in range(layer_count):
+            expected_outputs.append(f"present_key_cross_{i}")
+            expected_outputs.append(f"present_value_cross_{i}")
+    else:
+        logger.warning("This format is deprecated. Please export T5 encoder in new format with only cross outputs.")
+        assert (len(graph.output) - 2) % 4 == 0
+        layer_count = (len(graph.output) - 2) // 4
+        assert layer_count >= 1
+
+        # Expected outputs:
+        #   logits:                (B, 1, vocab_size)
+        #   encoder_hidden_states: (B, encode_sequence_length, encoder_hidden_size)
+        #   present_key_self_0:    (B, num_heads, 1, head_size)
+        #   present_value_self_0:  (B, num_heads, 1, head_size)
+        #                      ... (for each self attention layer)
+        #   present_key_cross_0:   (B, num_heads, encode_sequence_length, head_size)
+        #   present_value_cross_0: (B, num_heads, encode_sequence_length, head_size)
+        #                      ... (for each cross attention layer)
+        expected_outputs = ["logits", "encoder_hidden_states"]
+        for i in range(layer_count):
+            expected_outputs.append(f"present_key_self_{i}")
+            expected_outputs.append(f"present_value_self_{i}")
+        for i in range(layer_count):
+            expected_outputs.append(f"present_key_cross_{i}")
+            expected_outputs.append(f"present_value_cross_{i}")
 
     if len(graph.output) != len(expected_outputs):
         raise ValueError(f"Number of outputs expected to be {len(expected_outputs)}. Got {len(graph.output)}")
@@ -2372,7 +2389,8 @@ def convert_generation_model(args: argparse.Namespace, generation_type: Generati
             logger.info(f"Symbolic shape inference on {args.encoder_decoder_init_onnx}. The file will be overwritten.")
             shape_inference(args.encoder_decoder_init_onnx, args.use_external_data_format)
         encoder_model = onnx.load_model(args.encoder_decoder_init_onnx, load_external_data=True)
-        encoder_model.graph.name = f"{args.model_type} encoder and decoder init"
+        suffix = "encoder" if len(encoder_model.graph.input) == 2 else "encoder and decoder init"
+        encoder_model.graph.name = f"{args.model_type} {suffix}"
         verify_t5_encoder_decoder_init_subgraph(encoder_model.graph, args.precision)
 
         make_dim_proto_numeric_t5(encoder_model, config)
@@ -2415,10 +2433,7 @@ def convert_generation_model(args: argparse.Namespace, generation_type: Generati
             [
                 onnx.helper.make_attribute("encoder", encoder_model.graph),
                 onnx.helper.make_attribute("decoder", decoder_model.graph),
-                onnx.helper.make_attribute(
-                    "decoder_start_token_id",
-                    config.decoder_start_token_id if len(encoder_model.graph.input) == 3 else -1,
-                ),
+                onnx.helper.make_attribute("decoder_start_token_id", config.decoder_start_token_id),
             ]
         )
     else:
