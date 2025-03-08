@@ -6,6 +6,7 @@
 #include "contrib_ops/webgpu/bert/bias_split_gelu.h"
 #include "contrib_ops/webgpu/webgpu_contrib_kernels.h"
 #include "core/providers/webgpu/webgpu_utils.h"
+#include "core/providers/webgpu/math/unary_elementwise_ops.h"
 
 namespace onnxruntime {
 namespace contrib {
