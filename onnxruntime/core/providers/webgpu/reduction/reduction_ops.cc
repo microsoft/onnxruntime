@@ -191,7 +191,7 @@ ReduceOpSpecificCode ReduceMean::GetOpSpecificCode(const Tensor* input_tensor) c
   std::string loop_body = "sum += f32(current_element);";
   std::stringstream ss;
   ss << "var size: u32 = 1;\n"
-     << "for (var i: u32 = 0; i < " <<input_rank << "; i += 1) { \n"
+     << "for (var i: u32 = 0; i < " << input_rank << "; i += 1) { \n"
      << "  let index_reduced_or_not = " << GetElementAt("uniforms.reduce_axes", "i", input_rank) << ";\n"
      << "  if (index_reduced_or_not == 1) { \n"
      << "    size = size * " << GetElementAt("uniforms.input_shape", "i", input_rank) << ";\n"

@@ -43,13 +43,14 @@ class ReduceKernel : public WebGpuKernel, public ReduceKernelBase<allow_multi_ax
   ReduceKernel(const OpKernelInfo& info, std::string name, bool allow_empty_input = false, optional<int64_t> keepdims_override = {})
       : WebGpuKernel(info),
         ReduceKernelBase<allow_multi_axes>(info, keepdims_override),
-        name_(name), allow_empty_input_(allow_empty_input) {
+        name_(name),
+        allow_empty_input_(allow_empty_input) {
   }
   Status ComputeInternal(ComputeContext& ctx) const;
   virtual ReduceOpSpecificCode GetOpSpecificCode(const Tensor* input_tensor) const = 0;
 
   virtual Status CheckInput(const Tensor* input_tensor) const {
-    ORT_ENFORCE(input_tensor != nullptr &&  (input_tensor->Shape().Size() > 0 || allow_empty_input_), "Input tensor cannot be null or empty");
+    ORT_ENFORCE(input_tensor != nullptr && (input_tensor->Shape().Size() > 0 || allow_empty_input_), "Input tensor cannot be null or empty");
     return Status::OK();
   }
 
