@@ -88,7 +88,7 @@ extends:
     sdl:
       binskim:
         enabled: true
-        targetPathExclusionPattern: '\".exe\"' # We don't ship the exe files
+        targetPathExclusionPattern: '\".*\.exe\"' # We don't ship the exe files
       sourceAnalysisPool:
         name: onnxruntime-Win-CPU-2022
         os: windows
