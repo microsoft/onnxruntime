@@ -222,6 +222,7 @@ def generate_triplet_for_posix_platform(
     enable_asan: bool,
     crt_linkage: str,
     target_abi: str,
+    osx_deployment_target: str,
 ) -> None:
     """
     Generate triplet file for POSIX platforms (Linux, macOS).
@@ -235,6 +236,7 @@ def generate_triplet_for_posix_platform(
         enable_asan (bool): Flag indicating if AddressSanitizer is enabled.
         crt_linkage (str): The CRT linkage type ("static" or "dynamic").
         target_abi (str): The target ABI, which maps to the VCPKG_TARGET_ARCHITECTURE variable. Valid options include x86, x64, arm, arm64, arm64ec, s390x, ppc64le, riscv32, riscv64, loongarch32, loongarch64, mips64.
+        osx_deployment_target (str, optional): The macOS deployment target version. The parameter sets the minimum macOS version for compiled binaries. It also changes what versions of the macOS platform SDK CMake will search for. See the CMake documentation for CMAKE_OSX_DEPLOYMENT_TARGET for more information.
     """
     folder_name_parts = []
     if enable_asan:
@@ -341,6 +343,8 @@ def generate_triplet_for_posix_platform(
             else:
                 osx_abi = target_abi
             f.write(f'set(VCPKG_OSX_ARCHITECTURES "{osx_abi}")\n')
+            if osx_deployment_target:
+                f.write(f'set(VCPKG_OSX_DEPLOYMENT_TARGET "{osx_deployment_target}")\n')
         f.write("set(CMAKE_POSITION_INDEPENDENT_CODE ON)\n")
         f.write(
             "list(APPEND VCPKG_CMAKE_CONFIGURE_OPTIONS --compile-no-warning-as-error -DBENCHMARK_ENABLE_WERROR=OFF)\n"
@@ -501,32 +505,58 @@ def generate_windows_triplets(build_dir: str) -> None:
                                 add_port_configs(f, enable_exception, False)
 
 
-def generate_posix_triplets(build_dir: str) -> None:
+def generate_linux_triplets(build_dir: str) -> None:
     """
-    Generate triplet files for POSIX platforms (Linux, macOS).
+    Generate triplet files for Linux platforms.
 
     Args:
         build_dir (str): The directory to save the generated triplet files.
     """
-    for os_name in ["linux", "osx"]:
-        if os_name == "linux":
-            target_abis = ["x86", "x64", "arm", "arm64", "s390x", "ppc64le", "riscv64", "loongarch64", "mips64"]
-        else:
-            target_abis = ["x64", "arm64", "universal2"]
-        for enable_rtti in [True, False]:
-            for enable_exception in [True, False]:
-                for enable_binskim in [True, False]:
-                    for enable_asan in [True, False]:
-                        if enable_asan and enable_binskim:
-                            continue
-                        for target_abi in target_abis:
-                            generate_triplet_for_posix_platform(
-                                build_dir,
-                                os_name,
-                                enable_rtti,
-                                enable_exception,
-                                enable_binskim,
-                                enable_asan,
-                                "dynamic",
-                                target_abi,
-                            )
+    target_abis = ["x86", "x64", "arm", "arm64", "s390x", "ppc64le", "riscv64", "loongarch64", "mips64"]
+    for enable_rtti in [True, False]:
+        for enable_exception in [True, False]:
+            for enable_binskim in [True, False]:
+                for enable_asan in [True, False]:
+                    if enable_asan and enable_binskim:
+                        continue
+                    for target_abi in target_abis:
+                        generate_triplet_for_posix_platform(
+                            build_dir,
+                            "linux",
+                            enable_rtti,
+                            enable_exception,
+                            enable_binskim,
+                            enable_asan,
+                            "dynamic",
+                            target_abi,
+                            None,
+                        )
+
+
+def generate_macos_triplets(build_dir: str, osx_deployment_target: str) -> None:
+    """
+    Generate triplet files for macOS platforms.
+
+    Args:
+        build_dir (str): The directory to save the generated triplet files.
+        osx_deployment_target (str, optional): The macOS deployment target version.
+    """
+    target_abis = ["x64", "arm64", "universal2"]
+    for enable_rtti in [True, False]:
+        for enable_exception in [True, False]:
+            for enable_binskim in [True, False]:
+                for enable_asan in [True, False]:
+                    if enable_asan and enable_binskim:
+                        continue
+                    for target_abi in target_abis:
+                        generate_triplet_for_posix_platform(
+                            build_dir,
+                            "osx",
+                            enable_rtti,
+                            enable_exception,
+                            enable_binskim,
+                            enable_asan,
+                            "dynamic",
+                            target_abi,
+                            osx_deployment_target,
+                        )

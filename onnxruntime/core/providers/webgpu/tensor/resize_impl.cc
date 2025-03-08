@@ -211,7 +211,7 @@ Status ResizeNearestImpl(ComputeContext& context,
                          onnxruntime::ResizeNearestMode nearest_mode) {
   TensorShape output_shape(output_dims);
   auto* output_tensor = context.Output(0, output_shape);
-  uint32_t output_size = gsl::narrow<uint32_t>(output_shape.Size());
+  uint32_t output_size = onnxruntime::narrow<uint32_t>(output_shape.Size());
 
   ResizeNearestProgram program{coordinate_transform_mode, nearest_mode, extrapolation_enabled, rank};
   program.AddInput({input_tensor, ProgramTensorMetadataDependency::TypeAndRank})
@@ -299,7 +299,7 @@ Status ResizeBilinearImpl(ComputeContext& context,
                           onnxruntime::ResizeCoordinateTransformationMode coordinate_transform_mode) {
   TensorShape output_shape(output_dims);
   auto* output_tensor = context.Output(0, output_shape);
-  uint32_t output_size = gsl::narrow<uint32_t>(output_shape.Size());
+  uint32_t output_size = onnxruntime::narrow<uint32_t>(output_shape.Size());
 
   ResizeBilinearProgram program{coordinate_transform_mode, extrapolation_enabled, rank};
   program.AddInput({input_tensor, ProgramTensorMetadataDependency::TypeAndRank})
@@ -413,7 +413,7 @@ Status ResizeTrilinearImpl(ComputeContext& context,
                            onnxruntime::ResizeCoordinateTransformationMode coordinate_transform_mode) {
   TensorShape output_shape(output_dims);
   auto* output_tensor = context.Output(0, output_shape);
-  uint32_t output_size = gsl::narrow<uint32_t>(output_shape.Size());
+  uint32_t output_size = onnxruntime::narrow<uint32_t>(output_shape.Size());
 
   ResizeTrilinearProgram program{coordinate_transform_mode, extrapolation_enabled, rank};
   program.AddInput({input_tensor, ProgramTensorMetadataDependency::TypeAndRank})
@@ -534,7 +534,7 @@ Status ResizeBiCubicImpl(ComputeContext& context,
                          onnxruntime::ResizeCoordinateTransformationMode coordinate_transform_mode) {
   TensorShape output_shape(output_dims);
   auto* output_tensor = context.Output(0, output_shape);
-  uint32_t output_size = gsl::narrow<uint32_t>(output_shape.Size());
+  uint32_t output_size = onnxruntime::narrow<uint32_t>(output_shape.Size());
 
   ResizeBiCubicProgram program{coordinate_transform_mode, extrapolation_enabled, exclude_outside, rank};
   program.AddInput({input_tensor, ProgramTensorMetadataDependency::TypeAndRank})
