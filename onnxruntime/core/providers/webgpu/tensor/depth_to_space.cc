@@ -171,7 +171,6 @@ Status DepthToSpace<is_nchw>::ComputeInternal(onnxruntime::webgpu::ComputeContex
 
   // Map from the reshaped 6D input to 4D output
   TensorShape output_reshape(gsl::make_span(shape, 6));
-  int64_t components = GetMaxComponents(c);
   int64_t output_size = output->Shape().Size() / components;
 
   if (output_size == 0) {
