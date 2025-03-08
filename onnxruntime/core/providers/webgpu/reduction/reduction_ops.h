@@ -13,22 +13,23 @@ namespace webgpu {
 // reduceOpSpecificCode is a 3-element array of strings that represent the op specific code for the reduce operation.
 // The first element is the loop header, the second element is the loop body, and the third element is the loop footer.
 // The loop header is the code that is executed before the loop starts. The loop body is the code that is executed for each element in the loop.
-// The loop footer is the code that is executed after the loop ends.
+// The loop footer is the code that is executed after the loop ends. The loop body should contain the code that accumulates the result of the reduction and
+// the loop footer should contain the code that assigins output_value the result of the reduction.
 typedef std::array<std::string, 3> ReduceOpSpecificCode;
 class ReduceKernelProgram final : public Program<ReduceKernelProgram> {
  public:
-  ReduceKernelProgram(std::string name, bool keepdims, bool no_op_with_empty_axes, const InlinedVector<uint32_t>& axes, ReduceOpSpecificCode code) : Program{name}, keepdims_(keepdims), no_op_with_empty_axes_(no_op_with_empty_axes), axes_(axes.begin(), axes.end()), code_(code) {}
+  ReduceKernelProgram(std::string name, bool keepdims, bool no_op_with_empty_axes, const InlinedVector<uint32_t>& axes, ReduceOpSpecificCode code, bool is_input_empty) : Program{name}, keepdims_(keepdims), no_op_with_empty_axes_(no_op_with_empty_axes), axes_(axes.begin(), axes.end()), code_(code), is_input_empty_(is_input_empty) {}
   Status GenerateShaderCode(ShaderHelper& wgpuShaderModuleAddRef) const override;
   WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES({"output_size", ProgramUniformVariableDataType::Uint32},
                                           {"no_op_with_empty_axes", ProgramUniformVariableDataType::Uint32},
-                                          {"axes", ProgramUniformVariableDataType::Uint32},
-                                          {"axes_size", ProgramUniformVariableDataType::Uint32});
+                                          {"reduce_axes", ProgramUniformVariableDataType::Uint32});
 
  private:
   const bool keepdims_;
   const bool no_op_with_empty_axes_;
   InlinedVector<uint32_t> axes_;
   ReduceOpSpecificCode code_;
+  bool is_input_empty_;
 };
 
 template <bool allow_multi_axes = true>
@@ -39,22 +40,28 @@ class ReduceKernel : public WebGpuKernel, public ReduceKernelBase<allow_multi_ax
   using ReduceKernelBase<allow_multi_axes>::keepdims_;
   using ReduceKernelBase<allow_multi_axes>::select_last_index_;
 
-  ReduceKernel(const OpKernelInfo& info, std::string name, optional<int64_t> keepdims_override = {})
+  ReduceKernel(const OpKernelInfo& info, std::string name, bool allow_empty_input = false, optional<int64_t> keepdims_override = {})
       : WebGpuKernel(info),
         ReduceKernelBase<allow_multi_axes>(info, keepdims_override),
-        name_(name) {
+        name_(name), allow_empty_input_(allow_empty_input) {
   }
   Status ComputeInternal(ComputeContext& ctx) const;
-  virtual ReduceOpSpecificCode GetOpSpecificCode(const Tensor* input_tensor, size_t axes_size) const = 0;
+  virtual ReduceOpSpecificCode GetOpSpecificCode(const Tensor* input_tensor) const = 0;
+
+  virtual Status CheckInput(const Tensor* input_tensor) const {
+    ORT_ENFORCE(input_tensor != nullptr &&  (input_tensor->Shape().Size() > 0 || allow_empty_input_), "Input tensor cannot be null or empty");
+    return Status::OK();
+  }
 
  private:
   std::string name_;
+  bool allow_empty_input_;
 };
 
 class ReduceMean final : public ReduceKernel<true> {
  public:
-  ReduceMean(const OpKernelInfo& info) : ReduceKernel<true>(info, "ReduceMean") {}
-  ReduceOpSpecificCode GetOpSpecificCode(const Tensor* input_tensor, size_t axes_size) const override;
+  ReduceMean(const OpKernelInfo& info) : ReduceKernel<true>(info, "ReduceMean", true) {}
+  ReduceOpSpecificCode GetOpSpecificCode(const Tensor* input_tensor) const override;
   Status ComputeInternal(ComputeContext& ctx) const override {
     return ReduceKernel<true>::ComputeInternal(ctx);
   }
@@ -63,7 +70,7 @@ class ReduceMean final : public ReduceKernel<true> {
 class ReduceMax final : public ReduceKernel<true> {
  public:
   ReduceMax(const OpKernelInfo& info) : ReduceKernel<true>(info, "ReduceMax") {}
-  ReduceOpSpecificCode GetOpSpecificCode(const Tensor* input_tensor, size_t axes_size) const override;
+  ReduceOpSpecificCode GetOpSpecificCode(const Tensor* input_tensor) const override;
   Status ComputeInternal(ComputeContext& ctx) const override {
     return ReduceKernel<true>::ComputeInternal(ctx);
   }
@@ -71,8 +78,8 @@ class ReduceMax final : public ReduceKernel<true> {
 
 class ReduceSum final : public ReduceKernel<true> {
  public:
-  ReduceSum(const OpKernelInfo& info) : ReduceKernel<true>(info, "ReduceSum") {}
-  ReduceOpSpecificCode GetOpSpecificCode(const Tensor* input_tensor, size_t axes_size) const override;
+  ReduceSum(const OpKernelInfo& info) : ReduceKernel<true>(info, "ReduceSum", true) {}
+  ReduceOpSpecificCode GetOpSpecificCode(const Tensor* input_tensor) const override;
   Status ComputeInternal(ComputeContext& ctx) const override {
     return ReduceKernel<true>::ComputeInternal(ctx);
   }
