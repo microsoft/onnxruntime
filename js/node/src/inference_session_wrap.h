@@ -45,19 +45,12 @@ class InferenceSessionWrap : public Napi::ObjectWrap<InferenceSessionWrap> {
   // following functions have to be called after model is loaded.
 
   /**
-   * [sync] get input names.
+   * [sync] get metadata of the model's inputs or outputs.
    * @param nothing
-   * @returns a string array.
+   * @returns an array of objects with keys: name, isTensor, type, symbolicDimensions, shape
    * @throw nothing
    */
-  Napi::Value GetInputNames(const Napi::CallbackInfo& info);
-  /**
-   * [sync] get output names.
-   * @param nothing
-   * @returns a string array.
-   * @throw nothing
-   */
-  Napi::Value GetOutputNames(const Napi::CallbackInfo& info);
+  Napi::Value GetMetadata(const Napi::CallbackInfo& info);
 
   /**
    * [sync] run the model.
@@ -98,11 +91,9 @@ class InferenceSessionWrap : public Napi::ObjectWrap<InferenceSessionWrap> {
 
   // input/output metadata
   std::vector<std::string> inputNames_;
-  std::vector<ONNXType> inputTypes_;
-  std::vector<ONNXTensorElementDataType> inputTensorElementDataTypes_;
+  std::vector<Ort::TypeInfo> inputTypes_;
   std::vector<std::string> outputNames_;
-  std::vector<ONNXType> outputTypes_;
-  std::vector<ONNXTensorElementDataType> outputTensorElementDataTypes_;
+  std::vector<Ort::TypeInfo> outputTypes_;
 
   // preferred output locations
   std::vector<int> preferredOutputLocations_;

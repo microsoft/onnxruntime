@@ -60,6 +60,13 @@ export class OnnxruntimeWebAssemblySessionHandler implements InferenceSessionHan
   inputNames: string[];
   outputNames: string[];
 
+  get inputMetadata(): readonly InferenceSession.ValueMetadata[] {
+    throw new Error('Getting model metadata is currently not implemented for webassembly backend.');
+  }
+  get outputMetadata(): readonly InferenceSession.ValueMetadata[] {
+    throw new Error('Getting model metadata is currently not implemented for webassembly backend.');
+  }
+
   async fetchModelAndCopyToWasmMemory(path: string): Promise<SerializableInternalBuffer> {
     // fetch model from url and move to wasm heap.
     return copyFromExternalBuffer(await loadFile(path));

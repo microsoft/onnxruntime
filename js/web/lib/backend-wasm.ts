@@ -88,7 +88,7 @@ export class OnnxruntimeWebAssemblyBackend implements Backend {
   ): Promise<InferenceSessionHandler> {
     const handler = new OnnxruntimeWebAssemblySessionHandler();
     await handler.loadModel(pathOrBuffer, options);
-    return Promise.resolve(handler);
+    return handler;
   }
 }
 
