@@ -62,6 +62,7 @@ class BufferManager {
   void Upload(void* src, WGPUBuffer dst, size_t size);
   void MemCpy(WGPUBuffer src, WGPUBuffer dst, size_t size);
   WGPUBuffer Create(size_t size, wgpu::BufferUsage usage = wgpu::BufferUsage::Storage | wgpu::BufferUsage::CopySrc | wgpu::BufferUsage::CopyDst);
+  WGPUBuffer CreateUMA(size_t size, wgpu::BufferUsage usage = wgpu::BufferUsage::Storage | wgpu::BufferUsage::CopySrc | wgpu::BufferUsage::CopyDst);
   void Release(WGPUBuffer buffer);
   void Download(WGPUBuffer src, void* dst, size_t size);
   void RefreshPendingBuffers();
