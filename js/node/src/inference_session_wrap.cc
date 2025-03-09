@@ -34,8 +34,8 @@ Napi::Object InferenceSessionWrap::Init(Napi::Env env, Napi::Object exports) {
        InstanceMethod("run", &InferenceSessionWrap::Run),
        InstanceMethod("dispose", &InferenceSessionWrap::Dispose),
        InstanceMethod("endProfiling", &InferenceSessionWrap::EndProfiling),
-       InstanceAccessor("inputNames", &InferenceSessionWrap::GetInputNames, nullptr, napi_default, nullptr),
-       InstanceAccessor("outputNames", &InferenceSessionWrap::GetOutputNames, nullptr, napi_default, nullptr)});
+       InstanceAccessor("inputMetadata", &InferenceSessionWrap::GetMetadata, nullptr, napi_default, reinterpret_cast<void*>(true)),
+       InstanceAccessor("outputMetadata", &InferenceSessionWrap::GetMetadata, nullptr, napi_default, reinterpret_cast<void*>(false))});
 
   wrappedSessionConstructor = Napi::Persistent(func);
   wrappedSessionConstructor.SuppressDestruct();
@@ -120,27 +120,17 @@ Napi::Value InferenceSessionWrap::LoadModel(const Napi::CallbackInfo& info) {
     size_t count = session_->GetInputCount();
     inputNames_.reserve(count);
     for (size_t i = 0; i < count; i++) {
-      auto inp_name = session_->GetInputNameAllocated(i, allocator);
-      inputNames_.emplace_back(inp_name.get());
-      auto typeInfo = session_->GetInputTypeInfo(i);
-      auto onnxType = typeInfo.GetONNXType();
-      inputTypes_.emplace_back(onnxType);
-      inputTensorElementDataTypes_.emplace_back(onnxType == ONNX_TYPE_TENSOR
-                                                    ? typeInfo.GetTensorTypeAndShapeInfo().GetElementType()
-                                                    : ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED);
+      auto input_name = session_->GetInputNameAllocated(i, allocator);
+      inputNames_.emplace_back(input_name.get());
+      inputTypes_.push_back(session_->GetInputTypeInfo(i));
     }
 
     count = session_->GetOutputCount();
     outputNames_.reserve(count);
     for (size_t i = 0; i < count; i++) {
-      auto out_name = session_->GetOutputNameAllocated(i, allocator);
-      outputNames_.emplace_back(out_name.get());
-      auto typeInfo = session_->GetOutputTypeInfo(i);
-      auto onnxType = typeInfo.GetONNXType();
-      outputTypes_.emplace_back(onnxType);
-      outputTensorElementDataTypes_.emplace_back(onnxType == ONNX_TYPE_TENSOR
-                                                     ? typeInfo.GetTensorTypeAndShapeInfo().GetElementType()
-                                                     : ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED);
+      auto output_name = session_->GetOutputNameAllocated(i, allocator);
+      outputNames_.emplace_back(output_name.get());
+      outputTypes_.push_back(session_->GetOutputTypeInfo(i));
     }
 
     // cache preferred output locations
@@ -157,22 +147,32 @@ Napi::Value InferenceSessionWrap::LoadModel(const Napi::CallbackInfo& info) {
   return env.Undefined();
 }
 
-Napi::Value InferenceSessionWrap::GetInputNames(const Napi::CallbackInfo& info) {
+Napi::Value InferenceSessionWrap::GetMetadata(const Napi::CallbackInfo& info) {
   Napi::Env env = info.Env();
   ORT_NAPI_THROW_ERROR_IF(!this->initialized_, env, "Session is not initialized.");
   ORT_NAPI_THROW_ERROR_IF(this->disposed_, env, "Session already disposed.");
 
   Napi::EscapableHandleScope scope(env);
-  return scope.Escape(CreateNapiArrayFrom(env, inputNames_));
-}
+  auto& names = info.Data() != nullptr ? inputNames_ : outputNames_;
+  auto& types = info.Data() != nullptr ? inputTypes_ : outputTypes_;
+  auto array = Napi::Array::New(env, types.size());
+  for (uint32_t i = 0; i < types.size(); i++) {
+    Napi::Object obj = Napi::Object::New(env);
+    obj.Set("name", names[i]);
+    auto& typeInfo = types[i];
+    if (typeInfo.GetONNXType() == ONNX_TYPE_TENSOR) {
+      obj.Set("isTensor", true);
 
-Napi::Value InferenceSessionWrap::GetOutputNames(const Napi::CallbackInfo& info) {
-  Napi::Env env = info.Env();
-  ORT_NAPI_THROW_ERROR_IF(!this->initialized_, env, "Session is not initialized.");
-  ORT_NAPI_THROW_ERROR_IF(this->disposed_, env, "Session already disposed.");
-
-  Napi::EscapableHandleScope scope(env);
-  return scope.Escape(CreateNapiArrayFrom(env, outputNames_));
+      auto tensorInfo = typeInfo.GetTensorTypeAndShapeInfo();
+      obj.Set("type", static_cast<std::underlying_type_t<ONNXTensorElementDataType>>(tensorInfo.GetElementType()));
+      obj.Set("symbolicDimensions", CreateNapiArrayFrom(env, tensorInfo.GetSymbolicDimensions()));
+      obj.Set("shape", CreateNapiArrayFrom(env, tensorInfo.GetShape()));
+    } else {
+      obj.Set("isTensor", false);
+    }
+    array.Set(i, Napi::Value::From(env, obj));
+  }
+  return scope.Escape(array);
 }
 
 Napi::Value InferenceSessionWrap::Run(const Napi::CallbackInfo& info) {

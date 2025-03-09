@@ -305,8 +305,12 @@ export interface OrtInferenceAPIs {
   _OrtCreateSession(dataOffset: number, dataLength: number, sessionOptionsHandle: number): Promise<number>;
   _OrtReleaseSession(sessionHandle: number): number;
   _OrtGetInputOutputCount(sessionHandle: number, inputCountOffset: number, outputCountOffset: number): number;
-  _OrtGetInputName(sessionHandle: number, index: number): number;
-  _OrtGetOutputName(sessionHandle: number, index: number): number;
+  _OrtGetInputOutputMetadata(
+    sessionHandle: number,
+    index: number,
+    namePtrOffset: number,
+    metadataPtrOffset: number,
+  ): number;
 
   _OrtFree(stringHandle: number): number;
 
