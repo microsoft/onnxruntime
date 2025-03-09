@@ -15,6 +15,18 @@ nav_order: 4
 
 ## Installation issues
 
+### API compatibility issue 
+
+```
+AttributeError: 'onnxruntime_genai.onnxruntime_genai.GeneratorParams' object has no attribute 'input_ids'
+```
+
+```
+AttributeError: 'onnxruntime_genai.onnxruntime_genai.Generator' object has no attribute 'compute_logits'
+```
+
+If you see the above errors, this means that you are running version < 0.5.2 code in a > 0.6.0 environment. See the [migration guide](./migrate.md) for a full description of the new API and how to write code to be compatible with it. 
+
 ### Windows Conda import error
 
 ```
