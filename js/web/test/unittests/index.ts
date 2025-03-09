@@ -11,4 +11,6 @@ if (typeof window !== 'undefined') {
   require('./backends/webgl/test-matmul-packed');
 }
 
+require('./backends/wasm/test-model-metadata');
+
 require('./opset');

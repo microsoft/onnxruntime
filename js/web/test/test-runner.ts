@@ -1016,8 +1016,9 @@ export class ProtoOpTestContext {
       // check if all test cases have the same shape for each inputs
       if (
         test.cases.some((testCase) =>
-          testCase.inputs!.some((input: Test.TensorValue, i) =>
-            TensorResultValidator.integerEqual(input.dims, (test.cases[0].inputs![i] as Test.TensorValue).dims),
+          testCase.inputs!.some(
+            (input: Test.TensorValue, i) =>
+              !TensorResultValidator.integerEqual(input.dims, (test.cases[0].inputs![i] as Test.TensorValue).dims),
           ),
         )
       ) {
