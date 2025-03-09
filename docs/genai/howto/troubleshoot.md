@@ -4,7 +4,7 @@ description: How to troubleshoot common problems
 has_children: false
 parent: How to
 grand_parent: Generate API (Preview)
-nav_order: 4
+nav_order: 5
 ---
 
 # Troubleshoot issues with ONNX Runtime generate() API
