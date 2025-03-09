@@ -147,16 +147,6 @@ Napi::Value InferenceSessionWrap::LoadModel(const Napi::CallbackInfo& info) {
   return env.Undefined();
 }
 
-Napi::Value InferenceSessionWrap::GetNames(const Napi::CallbackInfo& info) {
-  Napi::Env env = info.Env();
-  ORT_NAPI_THROW_ERROR_IF(!this->initialized_, env, "Session is not initialized.");
-  ORT_NAPI_THROW_ERROR_IF(this->disposed_, env, "Session already disposed.");
-
-  Napi::EscapableHandleScope scope(env);
-  auto& names = info.Data() != nullptr ? inputNames_ : outputNames_;
-  return scope.Escape(CreateNapiArrayFrom(env, names));
-}
-
 Napi::Value InferenceSessionWrap::GetMetadata(const Napi::CallbackInfo& info) {
   Napi::Env env = info.Env();
   ORT_NAPI_THROW_ERROR_IF(!this->initialized_, env, "Session is not initialized.");
