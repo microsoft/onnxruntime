@@ -55,7 +55,7 @@ Status BiasSplitGelu::ComputeInternal(onnxruntime::webgpu::ComputeContext& conte
   int64_t channels = input_shape[2];
   int64_t components = GetMaxComponents(channels);
   channels /= components;
-  input_shape[2] = channels / 2;  // for output shape calculation (N,S,D) -> (N,S,D/2)
+  input_shape[2] = channels / 2; // for output shape calculation (N,S,D) -> (N,S,D/2)
 
   TensorShape bias_shape = bias->Shape();
   if (bias_shape.NumDimensions() != 1 || bias_shape[0] != channels) {
