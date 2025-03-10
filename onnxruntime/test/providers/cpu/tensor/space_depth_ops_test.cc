@@ -323,7 +323,8 @@ TYPED_TEST(TensorOpTest, DepthToSpaceTest_3) {
     ORT_THROW("Type not supported");
   }
 
-  test.Run(OpTester::ExpectResult::kExpectSuccess);
+  // type not supported by QNN EP: MLFloat16 and unsigned char
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kQnnExecutionProvider});
 }
 
 TYPED_TEST(TensorOpTest, DepthToSpaceTest_4) {
@@ -386,7 +387,8 @@ TYPED_TEST(TensorOpTest, DepthToSpaceTest_4) {
     ORT_THROW("Type not supported");
   }
 
-  test.Run(OpTester::ExpectResult::kExpectSuccess);
+  // type not supported by QNN EP: MLFloat16 and unsigned char
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kQnnExecutionProvider});
 }
 
 TYPED_TEST(TensorOpTest, DepthToSpaceTest_5) {
@@ -431,7 +433,8 @@ TYPED_TEST(TensorOpTest, DepthToSpaceTest_5) {
     ORT_THROW("Type not supported");
   }
 
-  test.Run(OpTester::ExpectResult::kExpectSuccess);
+  // type not supported by QNN EP: MLFloat16 and unsigned char
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kQnnExecutionProvider});
 }
 
 TEST(TensorOpTest, DepthToSpaceTest_CRD_Batched) {
