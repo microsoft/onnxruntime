@@ -82,6 +82,8 @@ Status DepthToSpace<is_nchw>::ComputeInternal(onnxruntime::webgpu::ComputeContex
   }
   std::cout << std::endl;
 
+  std::cout << "blocksize: " << blocksize_ << std::endl;
+
   int64_t n, c, h, w;
   int64_t shape[6];
   int64_t perm[6];
