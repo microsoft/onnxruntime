@@ -60,12 +60,7 @@ common::Status LoadWebAssemblyExternalData(const Env& env,
                                      break;
                                    case 1:
                                      // Load external data to GPU.
-                                     // TODO: use a unified interface for upload external buffer.
-                                     if (Module.webgpuUploadExternalBuffer) {
-                                       Module.webgpuUploadExternalBuffer(dataIdOrBuffer, data);
-                                     } else {
-                                       Module.jsepUploadExternalBuffer(dataIdOrBuffer, data);
-                                     }
+                                     Module.jsepUploadExternalBuffer(dataIdOrBuffer, data);
                                      break;
                                    default:
                                      return 4;  // Unknown error occurred in memory copy.

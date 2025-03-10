@@ -1254,7 +1254,6 @@ GetSubGraphPartition(const std::vector<NodeIndex>& topological_order, const std:
 std::vector<std::unique_ptr<ComputeCapability>>
 CANNExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_viewer,
                                      const IKernelLookup& kernel_lookup,
-                                     const GraphOptimizerRegistry& /* graph_optimizer_registry */,
                                      IResourceAccountant*) const {
   std::vector<std::unique_ptr<ComputeCapability>> result;
 

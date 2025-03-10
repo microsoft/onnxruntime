@@ -42,7 +42,7 @@ class IExternalDataLoader {
 
 enum class ExternalDataLoadType {
   CPU = 0,
-#if defined(USE_JSEP) || defined(USE_WEBGPU)
+#if defined(USE_JSEP)
   WEBGPU_BUFFER = 1,
 #endif
 };

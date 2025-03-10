@@ -151,12 +151,6 @@ std::shared_ptr<IExecutionProviderFactory> WebGpuProviderFactoryCreator::Create(
       validation_mode,
   };
 
-  LOGS_DEFAULT(VERBOSE) << "WebGPU EP Device ID: " << context_id;
-  LOGS_DEFAULT(VERBOSE) << "WebGPU EP WGPUInstance: " << webgpu_instance;
-  LOGS_DEFAULT(VERBOSE) << "WebGPU EP WGPUDevice: " << webgpu_device;
-  LOGS_DEFAULT(VERBOSE) << "WebGPU EP DawnProcTable: " << dawn_proc_table;
-  LOGS_DEFAULT(VERBOSE) << "WebGPU EP ValidationMode: " << validation_mode;
-
   //
   // STEP.3 - prepare parameters for WebGPU context initialization.
   //

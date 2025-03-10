@@ -41,7 +41,7 @@ namespace webgpu {
 // WebGpuContext destruction.
 class WebGpuPIXFrameGenerator {
  public:
-  WebGpuPIXFrameGenerator(wgpu::Instance instance, wgpu::Device device);
+  WebGpuPIXFrameGenerator(wgpu::Instance instance, wgpu::Adapter adapter, wgpu::Device device);
   ~WebGpuPIXFrameGenerator();
   void GeneratePIXFrame();
 

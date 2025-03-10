@@ -200,7 +200,6 @@ struct SparseTensor;
 class TensorSeq;
 class SessionState;
 class ModelMetadefIdGenerator;
-class GraphOptimizerRegistry;
 
 class If;
 class Loop;

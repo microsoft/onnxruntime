@@ -27,7 +27,6 @@
 #include "test/util/include/default_providers.h"
 #include "test/util/include/file_util.h"
 #include "core/optimizer/layout_transformation/layout_transformation.h"
-#include "core/optimizer/graph_optimizer_registry.h"
 
 using namespace ONNX_NAMESPACE;
 namespace onnxruntime {
@@ -265,11 +264,7 @@ TEST_P(SessionStateTestP, TestInitializerProcessing) {
   SessionState session_state(graph, execution_providers, tp.get(), nullptr, dtm, edlm,
                              DefaultLoggingManager().DefaultLogger(), profiler, sess_options);
 
-  // Create GraphOptimizerRegistry instance for providing predefined graph optimizers and selection functions for EPs to lookup
-  auto graph_optimizer_registry = std::make_unique<GraphOptimizerRegistry>(&sess_options,
-                                                                           execution_providers.Get(onnxruntime::kCpuExecutionProvider),
-                                                                           &DefaultLoggingManager().DefaultLogger());
-  GraphPartitioner partitioner(krm, execution_providers, std::move(graph_optimizer_registry));
+  GraphPartitioner partitioner(krm, execution_providers);
   ASSERT_STATUS_OK(
       partitioner.Partition(
           graph, session_state.GetMutableFuncMgr(),
@@ -355,12 +350,8 @@ TEST(SessionStateTest, TestInitializerMemoryAllocatedUsingNonArenaMemory) {
     SessionState session_state(graph, execution_providers, nullptr, nullptr, dtm, edlm,
                                DefaultLoggingManager().DefaultLogger(), profiler, sess_options);
 
-    // Create GraphOptimizerRegistry instance for providing predefined graph optimizers and selection functions for EPs to lookup
-    auto graph_optimizer_registry = std::make_unique<GraphOptimizerRegistry>(&sess_options,
-                                                                             execution_providers.Get(onnxruntime::kCpuExecutionProvider),
-                                                                             &DefaultLoggingManager().DefaultLogger());
     // Partition the graph
-    GraphPartitioner partitioner(krm, execution_providers, std::move(graph_optimizer_registry));
+    GraphPartitioner partitioner(krm, execution_providers);
     ASSERT_STATUS_OK(partitioner.Partition(
         graph, session_state.GetMutableFuncMgr(),
         [&cpu_allocator](Graph& graph, bool& modified, const IExecutionProvider& execution_provider,
@@ -418,13 +409,8 @@ TEST(SessionStateTest, TestInitializerMemoryAllocatedUsingNonArenaMemory) {
     SessionState session_state(graph, execution_providers, nullptr, nullptr, dtm, edlm,
                                DefaultLoggingManager().DefaultLogger(), profiler, sess_options);
 
-    // Create GraphOptimizerRegistry instance for providing predefined graph optimizers and selection functions for EPs to lookup
-    auto graph_optimizer_registry = std::make_unique<GraphOptimizerRegistry>(&sess_options,
-                                                                             execution_providers.Get(onnxruntime::kCpuExecutionProvider),
-                                                                             &DefaultLoggingManager().DefaultLogger());
-
     // Partition the graph
-    GraphPartitioner partitioner(krm, execution_providers, std::move(graph_optimizer_registry));
+    GraphPartitioner partitioner(krm, execution_providers);
     ASSERT_STATUS_OK(partitioner.Partition(
         graph, session_state.GetMutableFuncMgr(),
         [&cpu_allocator](Graph& graph, bool& modified,
@@ -493,12 +479,7 @@ void LoadWithResourceAwarePartitioning(const ORTCHAR_T* model_path,
   SessionState session_state(model->MainGraph(), execution_providers, tp.get(), nullptr, dtm, edlm,
                              default_logger, profiler, sess_options);
 
-  // Create GraphOptimizerRegistry instance for providing predefined graph optimizers and selection functions for EPs to lookup
-  auto graph_optimizer_registry = std::make_unique<GraphOptimizerRegistry>(&sess_options,
-                                                                           execution_providers.Get(onnxruntime::kCpuExecutionProvider),
-                                                                           &DefaultLoggingManager().DefaultLogger());
-
-  GraphPartitioner partitioner(krm, execution_providers, std::move(graph_optimizer_registry));
+  GraphPartitioner partitioner(krm, execution_providers);
   layout_transformation::TransformLayoutFunction transform_layout_fn;
   layout_transformation::DebugGraphFn debug_graph_fn;
   ASSERT_STATUS_OK(

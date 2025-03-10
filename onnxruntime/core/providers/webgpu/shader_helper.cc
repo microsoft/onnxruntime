@@ -345,6 +345,9 @@ Status ShaderHelper::GenerateSourceCode(std::string& code, std::vector<int>& sha
                   })) {
     ORT_RETURN_IF_NOT(device_.HasFeature(wgpu::FeatureName::ShaderF16), "Program ", program_.Name(), " requires f16 but the device does not support it.");
     ss << "enable f16;\n";
+    if (device_.HasFeature(wgpu::FeatureName::SubgroupsF16)) {
+      ss << "enable subgroups_f16;\n";
+    }
   }
   if (device_.HasFeature(wgpu::FeatureName::Subgroups)) {
     ss << "enable subgroups;\n";

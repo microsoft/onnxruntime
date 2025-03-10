@@ -90,7 +90,7 @@ jobs:
         --config $(BuildConfig)
         --build_dir $(Build.BinariesDirectory)
         --cmake_generator "Visual Studio 17 2022"
-        --build_shared_lib --use_vcpkg --use_vcpkg_ms_internal_asset_cache 
+        --build_shared_lib
         --use_qnn $(QnnLibKind)
         --qnn_home $(QnnSDKRootDir)
         --update --build --parallel

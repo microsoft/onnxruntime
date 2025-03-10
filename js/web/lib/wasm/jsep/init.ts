@@ -1,17 +1,23 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-import type { Env } from 'onnxruntime-common';
+import { Env } from 'onnxruntime-common';
 
 import { calculateTensorSizeInBytes, DataType } from '../wasm-common';
 
 import type { OrtWasmModule } from '../wasm-types';
 
-import type { WebGpuBackend } from './backend-webgpu';
+import { WebGpuBackend } from './backend-webgpu';
 import { LOG_DEBUG } from './log';
-import type { TensorView } from './tensor-view';
+import { TensorView } from './tensor-view';
 import { ShapeUtil } from './util';
-import type { AdapterInfo, ComputeContext, ComputeContextInputsOutputsMapping, ProgramInfo } from './webgpu/types';
+import {
+  AdapterInfo,
+  ComputeContext,
+  ComputeContextInputsOutputsMapping,
+  DeviceInfo,
+  ProgramInfo,
+} from './webgpu/types';
 import { WebNNBackend } from './backend-webnn';
 
 /* eslint-disable no-bitwise */
@@ -70,6 +76,7 @@ class TensorViewImpl implements TensorView {
 
 class ComputeContextImpl implements ComputeContext {
   readonly adapterInfo: AdapterInfo;
+  readonly deviceInfo: DeviceInfo;
   readonly opKernelContext: number;
   readonly inputs: readonly TensorView[];
   readonly outputCount: number;
@@ -87,6 +94,7 @@ class ComputeContextImpl implements ComputeContext {
     contextDataOffset: number,
   ) {
     this.adapterInfo = backend.adapterInfo;
+    this.deviceInfo = backend.deviceInfo;
 
     // extract context data
     const ptrSize = module.PTR_SIZE;
@@ -197,83 +205,79 @@ export const init = async (
   }
 
   if (name === 'webgpu') {
-    if (!BUILD_DEFS.USE_WEBGPU_EP) {
-      // eslint-disable-next-line @typescript-eslint/no-require-imports, @typescript-eslint/no-var-requires
-      const webGpuBackendImpl = require('./backend-webgpu').WebGpuBackend;
-      const backend = new webGpuBackendImpl();
-      await backend.initialize(env, gpuAdapter!);
+    const backend = new WebGpuBackend();
+    await backend.initialize(env, gpuAdapter!);
 
-      jsepInit('webgpu', [
-        // backend
-        backend,
+    jsepInit('webgpu', [
+      // backend
+      backend,
 
-        // jsepAlloc()
-        (size: number) => backend.alloc(Number(size)),
+      // jsepAlloc()
+      (size: number) => backend.alloc(Number(size)),
 
-        // jsepFree()
-        (ptr: number) => backend.free(ptr),
+      // jsepFree()
+      (ptr: number) => backend.free(ptr),
 
-        // jsepCopy(src, dst, size, isSourceGpu)
-        (src: number, dst: number, size: number, isSourceGpu = false) => {
-          if (isSourceGpu) {
-            LOG_DEBUG(
-              'verbose',
-              () => `[WebGPU] jsepCopyGpuToGpu: src=${Number(src)}, dst=${Number(dst)}, size=${Number(size)}`,
-            );
-            backend.memcpy(Number(src), Number(dst));
-          } else {
-            LOG_DEBUG(
-              'verbose',
-              () =>
-                `[WebGPU] jsepCopyCpuToGpu: dataOffset=${Number(src)}, gpuDataId=${Number(dst)}, size=${Number(size)}`,
-            );
-            const data = module.HEAPU8.subarray(Number(src >>> 0), Number(src >>> 0) + Number(size));
-            backend.upload(Number(dst), data);
-          }
-        },
-
-        // jsepCopyAsync(src, dst, size)
-        async (gpuDataId: number, dataOffset: number, size: number): Promise<void> => {
+      // jsepCopy(src, dst, size, isSourceGpu)
+      (src: number, dst: number, size: number, isSourceGpu = false) => {
+        if (isSourceGpu) {
           LOG_DEBUG(
             'verbose',
-            () => `[WebGPU] jsepCopyGpuToCpu: gpuDataId=${gpuDataId}, dataOffset=${dataOffset}, size=${size}`,
+            () => `[WebGPU] jsepCopyGpuToGpu: src=${Number(src)}, dst=${Number(dst)}, size=${Number(size)}`,
           );
-
-          await backend.download(Number(gpuDataId), () =>
-            module.HEAPU8.subarray(Number(dataOffset) >>> 0, Number(dataOffset + size) >>> 0),
-          );
-        },
-
-        // jsepCreateKernel
-        (kernelType: string, kernelId: number, attribute: unknown) =>
-          backend.createKernel(
-            kernelType,
-            Number(kernelId),
-            attribute,
-            module.UTF8ToString(module._JsepGetNodeName!(Number(kernelId))),
-          ),
-
-        // jsepReleaseKernel
-        (kernel: number) => backend.releaseKernel(kernel),
-
-        // jsepRun
-        (kernel: number, contextDataOffset: number, sessionHandle: number, errors: Array<Promise<string | null>>) => {
+          backend.memcpy(Number(src), Number(dst));
+        } else {
           LOG_DEBUG(
             'verbose',
             () =>
-              `[WebGPU] jsepRun: sessionHandle=${sessionHandle}, kernel=${kernel}, contextDataOffset=${contextDataOffset}`,
+              `[WebGPU] jsepCopyCpuToGpu: dataOffset=${Number(src)}, gpuDataId=${Number(dst)}, size=${Number(size)}`,
           );
-          const context = new ComputeContextImpl(module, backend, Number(contextDataOffset));
-          return backend.computeKernel(Number(kernel), context, errors);
-        },
-        // jsepCaptureBegin
-        () => backend.captureBegin(),
-        // jsepCaptureEnd
-        () => backend.captureEnd(),
-        // jsepReplay
-        () => backend.replay(),
-      ]);
-    }
+          const data = module.HEAPU8.subarray(Number(src >>> 0), Number(src >>> 0) + Number(size));
+          backend.upload(Number(dst), data);
+        }
+      },
+
+      // jsepCopyAsync(src, dst, size)
+      async (gpuDataId: number, dataOffset: number, size: number): Promise<void> => {
+        LOG_DEBUG(
+          'verbose',
+          () => `[WebGPU] jsepCopyGpuToCpu: gpuDataId=${gpuDataId}, dataOffset=${dataOffset}, size=${size}`,
+        );
+
+        await backend.download(Number(gpuDataId), () =>
+          module.HEAPU8.subarray(Number(dataOffset) >>> 0, Number(dataOffset + size) >>> 0),
+        );
+      },
+
+      // jsepCreateKernel
+      (kernelType: string, kernelId: number, attribute: unknown) =>
+        backend.createKernel(
+          kernelType,
+          Number(kernelId),
+          attribute,
+          module.UTF8ToString(module._JsepGetNodeName!(Number(kernelId))),
+        ),
+
+      // jsepReleaseKernel
+      (kernel: number) => backend.releaseKernel(kernel),
+
+      // jsepRun
+      (kernel: number, contextDataOffset: number, sessionHandle: number, errors: Array<Promise<string | null>>) => {
+        LOG_DEBUG(
+          'verbose',
+          () =>
+            `[WebGPU] jsepRun: sessionHandle=${sessionHandle}, kernel=${kernel}, contextDataOffset=${contextDataOffset}`,
+        );
+        const context = new ComputeContextImpl(module, backend, Number(contextDataOffset));
+        return backend.computeKernel(Number(kernel), context, errors);
+      },
+      // jsepCaptureBegin
+      () => backend.captureBegin(),
+      // jsepCaptureEnd
+      () => backend.captureEnd(),
+      // jsepReplay
+      () => backend.replay(),
+    ]);
   } else {
     const backend = new WebNNBackend(env);
     jsepInit('webnn', [

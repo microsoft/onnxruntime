@@ -206,26 +206,6 @@ ProgramVariableDataType ToProgramVariableDataType(int32_t element_type, int comp
   }
 }
 
-std::ostream& operator<<(std::ostream& os, ValidationMode mode) {
-  switch (mode) {
-    case ValidationMode::Disabled:
-      os << "Disabled";
-      break;
-    case ValidationMode::WGPUOnly:
-      os << "WGPUOnly";
-      break;
-    case ValidationMode::Basic:
-      os << "Basic";
-      break;
-    case ValidationMode::Full:
-      os << "Full";
-      break;
-    default:
-      os << "Unknown(" << static_cast<int>(mode) << ")";
-  }
-  return os;
-}
-
 namespace {
 TensorShape GetReducedShape(const TensorShape& shape, int component /* > 1 */) {
   ORT_ENFORCE(shape.NumDimensions() > 0 && shape.GetDims()[shape.NumDimensions() - 1] % component == 0,

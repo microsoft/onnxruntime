@@ -26,7 +26,7 @@ class Cast final : public WebGpuKernel {
     int64_t to;
     Status status = info.GetAttr("to", &to);
     ORT_ENFORCE(status.IsOK(), "Attribute to is not set.");
-    to_ = onnxruntime::narrow<int32_t>(to);
+    to_ = gsl::narrow<int32_t>(to);
 
     // ignore attribute 'saturate' as float8 is not supported in WebGPU
   }

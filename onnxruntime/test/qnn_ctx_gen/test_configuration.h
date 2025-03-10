@@ -14,20 +14,15 @@
 namespace onnxruntime {
 namespace qnnctxgen {
 
-struct MachineConfig {
-  std::string provider_type_name{onnxruntime::kQnnExecutionProvider};
-};
-
 struct RunConfig {
   bool f_verbose{false};
   std::unordered_map<std::string, std::string> session_config_entries;
-  std::unordered_map<std::string, std::string> provider_options;
+  std::unordered_map<std::string, std::string> qnn_options;
 };
 
 struct TestConfig {
   std::vector<std::basic_string<ORTCHAR_T>> model_file_paths;
   RunConfig run_config;
-  MachineConfig machine_config;
 };
 
 }  // namespace qnnctxgen

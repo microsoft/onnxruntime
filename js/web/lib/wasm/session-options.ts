@@ -1,7 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-import type { InferenceSession } from 'onnxruntime-common';
+import { InferenceSession } from 'onnxruntime-common';
 
 import { getInstance } from './wasm-factory';
 import { allocWasmString, checkLastError, iterateExtraOptions } from './wasm-utils';
@@ -54,28 +54,13 @@ const appendDefaultOptions = (options: InferenceSession.SessionOptions): void =>
   }
 };
 
-const appendSessionConfig = (sessionOptionsHandle: number, key: string, value: string, allocs: number[]): void => {
-  const keyDataOffset = allocWasmString(key, allocs);
-  const valueDataOffset = allocWasmString(value, allocs);
-  if (getInstance()._OrtAddSessionConfigEntry(sessionOptionsHandle, keyDataOffset, valueDataOffset) !== 0) {
-    checkLastError(`Can't set a session config entry: ${key} - ${value}.`);
-  }
-};
-
-const appendEpOption = (epOptions: Array<[number, number]>, key: string, value: string, allocs: number[]): void => {
-  const keyDataOffset = allocWasmString(key, allocs);
-  const valueDataOffset = allocWasmString(value, allocs);
-  epOptions.push([keyDataOffset, valueDataOffset]);
-};
-
-const setExecutionProviders = async (
+const setExecutionProviders = (
   sessionOptionsHandle: number,
   executionProviders: readonly InferenceSession.ExecutionProviderConfig[],
   allocs: number[],
-): Promise<void> => {
+): void => {
   for (const ep of executionProviders) {
     let epName = typeof ep === 'string' ? ep : ep.name;
-    const epOptions: Array<[number, number]> = [];
 
     // check EP name
     switch (epName) {
@@ -86,44 +71,26 @@ const setExecutionProviders = async (
           // const context = (webnnOptions as InferenceSession.WebNNOptionsWithMLContext)?.context;
           const deviceType = (webnnOptions as InferenceSession.WebNNContextOptions)?.deviceType;
           if (deviceType) {
-            appendSessionConfig(sessionOptionsHandle, 'deviceType', deviceType, allocs);
+            const keyDataOffset = allocWasmString('deviceType', allocs);
+            const valueDataOffset = allocWasmString(deviceType, allocs);
+            if (getInstance()._OrtAddSessionConfigEntry(sessionOptionsHandle, keyDataOffset, valueDataOffset) !== 0) {
+              checkLastError(`Can't set a session config entry: 'deviceType' - ${deviceType}.`);
+            }
           }
         }
         break;
       case 'webgpu':
-        if (BUILD_DEFS.USE_WEBGPU_EP) {
-          epName = 'WebGPU';
-          let customDevice: GPUDevice | undefined;
-
-          if (typeof ep !== 'string') {
-            const customOptions = ep as unknown as { device: GPUDevice };
-            if (customOptions.device) {
-              if (typeof GPUDevice !== 'undefined' && customOptions.device instanceof GPUDevice) {
-                customDevice = customOptions.device;
-              } else {
-                throw new Error('Invalid GPU device set in WebGPU EP options.');
-              }
+        epName = 'JS';
+        if (typeof ep !== 'string') {
+          const webgpuOptions = ep as InferenceSession.WebGpuExecutionProviderOption;
+          if (webgpuOptions?.preferredLayout) {
+            if (webgpuOptions.preferredLayout !== 'NCHW' && webgpuOptions.preferredLayout !== 'NHWC') {
+              throw new Error(`preferredLayout must be either 'NCHW' or 'NHWC': ${webgpuOptions.preferredLayout}`);
             }
-
-            // TODO: handle more options
-          }
-
-          const info = getInstance().webgpuRegisterDevice!(customDevice);
-          if (info) {
-            const [deviceId, instanceHandle, deviceHandle] = info;
-            appendEpOption(epOptions, 'deviceId', deviceId.toString(), allocs);
-            appendEpOption(epOptions, 'webgpuInstance', instanceHandle.toString(), allocs);
-            appendEpOption(epOptions, 'webgpuDevice', deviceHandle.toString(), allocs);
-          }
-        } else {
-          epName = 'JS';
-          if (typeof ep !== 'string') {
-            const webgpuOptions = ep as InferenceSession.WebGpuExecutionProviderOption;
-            if (webgpuOptions?.preferredLayout) {
-              if (webgpuOptions.preferredLayout !== 'NCHW' && webgpuOptions.preferredLayout !== 'NHWC') {
-                throw new Error(`preferredLayout must be either 'NCHW' or 'NHWC': ${webgpuOptions.preferredLayout}`);
-              }
-              appendSessionConfig(sessionOptionsHandle, 'preferredLayout', webgpuOptions.preferredLayout, allocs);
+            const keyDataOffset = allocWasmString('preferredLayout', allocs);
+            const valueDataOffset = allocWasmString(webgpuOptions.preferredLayout, allocs);
+            if (getInstance()._OrtAddSessionConfigEntry(sessionOptionsHandle, keyDataOffset, valueDataOffset) !== 0) {
+              checkLastError(`Can't set a session config entry: 'preferredLayout' - ${webgpuOptions.preferredLayout}.`);
             }
           }
         }
@@ -136,34 +103,13 @@ const setExecutionProviders = async (
     }
 
     const epNameDataOffset = allocWasmString(epName, allocs);
-    const epOptionsCount = epOptions.length;
-    let keysOffset = 0;
-    let valuesOffset = 0;
-    if (epOptionsCount > 0) {
-      keysOffset = getInstance()._malloc(epOptionsCount * getInstance().PTR_SIZE);
-      allocs.push(keysOffset);
-      valuesOffset = getInstance()._malloc(epOptionsCount * getInstance().PTR_SIZE);
-      allocs.push(valuesOffset);
-      for (let i = 0; i < epOptionsCount; i++) {
-        getInstance().setValue(keysOffset + i * getInstance().PTR_SIZE, epOptions[i][0], '*');
-        getInstance().setValue(valuesOffset + i * getInstance().PTR_SIZE, epOptions[i][1], '*');
-      }
-    }
-    if (
-      (await getInstance()._OrtAppendExecutionProvider(
-        sessionOptionsHandle,
-        epNameDataOffset,
-        keysOffset,
-        valuesOffset,
-        epOptionsCount,
-      )) !== 0
-    ) {
+    if (getInstance()._OrtAppendExecutionProvider(sessionOptionsHandle, epNameDataOffset) !== 0) {
       checkLastError(`Can't append execution provider: ${epName}.`);
     }
   }
 };
 
-export const setSessionOptions = async (options?: InferenceSession.SessionOptions): Promise<[number, number[]]> => {
+export const setSessionOptions = (options?: InferenceSession.SessionOptions): [number, number[]] => {
   const wasm = getInstance();
   let sessionOptionsHandle = 0;
   const allocs: number[] = [];
@@ -209,19 +155,20 @@ export const setSessionOptions = async (options?: InferenceSession.SessionOption
     }
 
     if (sessionOptions.executionProviders) {
-      await setExecutionProviders(sessionOptionsHandle, sessionOptions.executionProviders, allocs);
+      setExecutionProviders(sessionOptionsHandle, sessionOptions.executionProviders, allocs);
     }
 
     if (sessionOptions.enableGraphCapture !== undefined) {
       if (typeof sessionOptions.enableGraphCapture !== 'boolean') {
         throw new Error(`enableGraphCapture must be a boolean value: ${sessionOptions.enableGraphCapture}`);
       }
-      appendSessionConfig(
-        sessionOptionsHandle,
-        'enableGraphCapture',
-        sessionOptions.enableGraphCapture.toString(),
-        allocs,
-      );
+      const keyDataOffset = allocWasmString('enableGraphCapture', allocs);
+      const valueDataOffset = allocWasmString(sessionOptions.enableGraphCapture.toString(), allocs);
+      if (wasm._OrtAddSessionConfigEntry(sessionOptionsHandle, keyDataOffset, valueDataOffset) !== 0) {
+        checkLastError(
+          `Can't set a session config entry: 'enableGraphCapture' - ${sessionOptions.enableGraphCapture}.`,
+        );
+      }
     }
 
     if (sessionOptions.freeDimensionOverrides) {
@@ -241,7 +188,12 @@ export const setSessionOptions = async (options?: InferenceSession.SessionOption
 
     if (sessionOptions.extra !== undefined) {
       iterateExtraOptions(sessionOptions.extra, '', new WeakSet<Record<string, unknown>>(), (key, value) => {
-        appendSessionConfig(sessionOptionsHandle, key, value, allocs);
+        const keyDataOffset = allocWasmString(key, allocs);
+        const valueDataOffset = allocWasmString(value, allocs);
+
+        if (wasm._OrtAddSessionConfigEntry(sessionOptionsHandle, keyDataOffset, valueDataOffset) !== 0) {
+          checkLastError(`Can't set a session config entry: ${key} - ${value}.`);
+        }
       });
     }
 

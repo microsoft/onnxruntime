@@ -236,14 +236,14 @@ function(AddTest)
         )
       endif()
       # Set test timeout to 3 hours.
-      set_tests_properties(${_UT_TARGET} PROPERTIES TIMEOUT 10800)
+      set_tests_properties(${_UT_TARGET} PROPERTIES TIMEOUT 7200)
     else()
       add_test(NAME ${_UT_TARGET}
         COMMAND ${_UT_TARGET} ${TEST_ARGS}
         WORKING_DIRECTORY $<TARGET_FILE_DIR:${_UT_TARGET}>
       )
       # Set test timeout to 3 hours.
-      set_tests_properties(${_UT_TARGET} PROPERTIES TIMEOUT 10800)
+      set_tests_properties(${_UT_TARGET} PROPERTIES TIMEOUT 7200)
     endif()
   endif()
 endfunction(AddTest)
@@ -503,7 +503,6 @@ set (onnxruntime_shared_lib_test_SRC
 
 if (NOT onnxruntime_MINIMAL_BUILD)
   list(APPEND onnxruntime_shared_lib_test_SRC ${ONNXRUNTIME_SHARED_LIB_TEST_SRC_DIR}/test_inference.cc)
-  list(APPEND onnxruntime_shared_lib_test_SRC ${ONNXRUNTIME_SHARED_LIB_TEST_SRC_DIR}/test_model_builder_api.cc)
 endif()
 
 if(onnxruntime_RUN_ONNX_TESTS)
@@ -1289,34 +1288,31 @@ if (NOT onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
 
   if(onnxruntime_USE_QNN)
     #qnn ctx generator
-    set(ep_weight_sharing_ctx_gen_src_dir ${TEST_SRC_DIR}/ep_weight_sharing_ctx_gen)
-    set(ep_weight_sharing_ctx_gen_src_patterns
-    "${ep_weight_sharing_ctx_gen_src_dir}/*.cc"
-    "${ep_weight_sharing_ctx_gen_src_dir}/*.h")
+    set(onnxruntime_qnn_ctx_gen_src_dir ${TEST_SRC_DIR}/qnn_ctx_gen)
+    set(onnxruntime_qnn_ctx_gen_src_patterns
+    "${onnxruntime_qnn_ctx_gen_src_dir}/*.cc"
+    "${onnxruntime_qnn_ctx_gen_src_dir}/*.h")
 
-    file(GLOB ep_weight_sharing_ctx_gen_src CONFIGURE_DEPENDS
-      ${ep_weight_sharing_ctx_gen_src_patterns}
+    file(GLOB onnxruntime_qnn_ctx_gen_src CONFIGURE_DEPENDS
+      ${onnxruntime_qnn_ctx_gen_src_patterns}
       )
-    onnxruntime_add_executable(ep_weight_sharing_ctx_gen ${ep_weight_sharing_ctx_gen_src})
-    target_include_directories(ep_weight_sharing_ctx_gen PRIVATE ${ONNXRUNTIME_ROOT} ${CMAKE_CURRENT_BINARY_DIR})
+    onnxruntime_add_executable(onnxruntime_qnn_ctx_gen ${onnxruntime_qnn_ctx_gen_src})
+    target_include_directories(onnxruntime_qnn_ctx_gen PRIVATE   ${onnx_test_runner_src_dir} ${ONNXRUNTIME_ROOT}
+          ${onnxruntime_graph_header} ${onnxruntime_exec_src_dir}
+          ${CMAKE_CURRENT_BINARY_DIR})
     if (WIN32)
-      target_compile_options(ep_weight_sharing_ctx_gen PRIVATE ${disabled_warnings})
+      target_compile_options(onnxruntime_qnn_ctx_gen PRIVATE ${disabled_warnings})
       if (NOT DEFINED SYS_PATH_LIB)
         set(SYS_PATH_LIB shlwapi)
       endif()
     endif()
 
-    if (onnxruntime_BUILD_SHARED_LIB)
-      set(ep_weight_sharing_ctx_gen_libs onnxruntime_common onnxruntime ${onnxruntime_EXTERNAL_LIBRARIES} ${GETOPT_LIB_WIDE})
-      target_link_libraries(ep_weight_sharing_ctx_gen PRIVATE ${ep_weight_sharing_ctx_gen_libs})
-      if (WIN32)
-        target_link_libraries(ep_weight_sharing_ctx_gen PRIVATE debug dbghelp advapi32)
-      endif()
-    else()
-      target_link_libraries(ep_weight_sharing_ctx_gen PRIVATE onnxruntime_session ${onnxruntime_test_providers_libs} ${onnxruntime_EXTERNAL_LIBRARIES} ${GETOPT_LIB_WIDE})
+    if(WIN32)
+      target_link_libraries(onnxruntime_qnn_ctx_gen PRIVATE debug dbghelp advapi32)
     endif()
+    target_link_libraries(onnxruntime_qnn_ctx_gen PRIVATE onnx_test_runner_common onnxruntime_test_utils onnxruntime_common onnxruntime_graph onnxruntime_session onnxruntime_providers onnxruntime_framework onnxruntime_util onnxruntime_mlas onnxruntime_optimizer onnxruntime_flatbuffers onnx_test_data_proto ${onnxruntime_test_providers_libs} ${onnxruntime_EXTERNAL_LIBRARIES} ${GETOPT_LIB_WIDE} ${SYS_PATH_LIB} ${CMAKE_DL_LIBS})
 
-    set_target_properties(ep_weight_sharing_ctx_gen PROPERTIES FOLDER "ONNXRuntimeTest")
+    set_target_properties(onnxruntime_qnn_ctx_gen PROPERTIES FOLDER "ONNXRuntimeTest")
   endif()
 
   # shared lib
@@ -1363,19 +1359,14 @@ if (NOT onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
             LIBS ${onnxruntime_shared_lib_test_LIBS}
             DEPENDS ${all_dependencies}
     )
-
-    target_include_directories(onnxruntime_shared_lib_test PRIVATE ${ONNXRUNTIME_ROOT})
-
     if (onnxruntime_USE_CUDA)
       target_include_directories(onnxruntime_shared_lib_test PRIVATE ${CMAKE_CUDA_TOOLKIT_INCLUDE_DIRECTORIES})
       target_sources(onnxruntime_shared_lib_test PRIVATE ${ONNXRUNTIME_SHARED_LIB_TEST_SRC_DIR}/cuda_ops.cu)
     endif()
-
     if (onnxruntime_USE_ROCM)
       target_include_directories(onnxruntime_shared_lib_test PRIVATE ${onnxruntime_ROCM_HOME}/include)
       target_compile_definitions(onnxruntime_shared_lib_test PRIVATE __HIP_PLATFORM_AMD__)
     endif()
-
     if (CMAKE_SYSTEM_NAME STREQUAL "Android")
       target_sources(onnxruntime_shared_lib_test PRIVATE
         "${ONNXRUNTIME_ROOT}/core/platform/android/cxa_demangle.cc"
