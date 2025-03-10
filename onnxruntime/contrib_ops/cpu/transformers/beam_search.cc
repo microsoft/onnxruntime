@@ -139,7 +139,7 @@ Status BeamSearch::SetupSubgraphExecutionInfo(const SessionState& session_state,
       ORT_RETURN_IF_ERROR(t5_encoder_subgraph_->Setup(session_state, subgraph_session_state));
       encoder_feeds_fetches_manager_ = t5_encoder_subgraph_->GetFeedsFetchesManager();
 
-      if (t5_encoder_subgraph_->HasLogitsOutput()) {
+      if (!t5_encoder_subgraph_->HasLogitsOutput()) {
         // New format requires start token id.
         ORT_ENFORCE(parameters_->decoder_start_token_id >= 0);
       } else {
