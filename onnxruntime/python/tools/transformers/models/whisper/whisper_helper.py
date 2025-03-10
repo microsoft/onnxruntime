@@ -346,6 +346,33 @@ class WhisperHelper:
         return expected_transcription_options
 
     @staticmethod
+    def get_outputs(
+        pt_outputs: np.ndarray,
+        ort_outputs: np.ndarray,
+        i: int,
+    ):
+        """Get PyTorch and ONNX Runtime output token ids at index i"""
+        pt_output, ort_output = pt_outputs[i], ort_outputs[i]
+        pt_shape, ort_shape = pt_output.shape, ort_output.shape
+
+        # Hugging Face impl. + Beam Search op: PyTorch = (26,) and ORT = (30,)
+        # OpenAI impl. + Beam Search op: PyTorch = (1, 30) and ORT = (30,)
+        if pt_shape != ort_shape:
+            if len(pt_shape) > 1:
+                pt_output = pt_output[0]
+                pt_shape = pt_output.shape
+            if len(ort_shape) > 1:
+                ort_output = ort_output[0]
+                ort_shape = ort_output.shape
+            if pt_shape[0] != ort_shape[0]:
+                min_len = min(pt_shape[0], ort_shape[0])
+                pt_output = pt_output[:min_len]
+                ort_output = ort_output[:min_len]
+
+        assert pt_output.shape == ort_output.shape
+        return pt_output, ort_output
+
+    @staticmethod
     def verify_onnx(
         model_name_or_path: str,
         cache_dir: str,
@@ -429,6 +456,12 @@ class WhisperHelper:
 
         parity = 1
         for i in range(batch_size):
+            pt_output, ort_output = WhisperHelper.get_outputs(pt_outputs, ort_outputs, i)
+
+            # Check if token ids match
+            parity *= np.allclose(pt_output, ort_output)
+
+            # Check if transcribed outputs match
             parity *= (
                 pt_transcription[i] in expected_transcription_options
                 and ort_transcription[i] in expected_transcription_options
@@ -437,19 +470,8 @@ class WhisperHelper:
 
         if not parity:
             for i in range(batch_size):
-                pt_shape = pt_outputs[i].shape
-                ort_shape = ort_outputs[i].shape
-                diff = None
-
-                if pt_shape != ort_shape:
-                    if len(pt_shape) == len(ort_shape):
-                        # Hugging Face impl. + Beam Search op: PyTorch = (26,) and ORT = (30,)
-                        diff = pt_outputs[i] - ort_outputs[i][:, : len(pt_outputs[i])]
-                    else:
-                        # OpenAI impl. + Beam Search op: PyTorch = (1, 30) and ORT = (30,)
-                        diff = pt_outputs[i][0] - ort_outputs[i]
-                else:
-                    diff = pt_outputs[i] - ort_outputs[i]
+                pt_output, ort_output = WhisperHelper.get_outputs(pt_outputs, ort_outputs, i)
+                diff = pt_output - ort_output
 
                 max_diff_i = max(diff.min(), diff.max(), key=abs)
                 max_diff = max(max_diff, max_diff_i)
