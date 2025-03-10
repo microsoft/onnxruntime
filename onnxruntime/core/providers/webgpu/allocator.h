@@ -24,10 +24,14 @@ class GpuBufferAllocator : public IAllocator {
   virtual void* Alloc(size_t size) override;
   virtual void Free(void* p) override;
   void GetStats(AllocatorStats* stats) override;
+  void SetAllocHint(AllocHint hint) override {
+      alloc_hint_ = hint;
+  }
 
  private:
   AllocatorStats stats_;
   const WebGpuContext& context_;
+  AllocHint alloc_hint_ = AllocHint::None;
 };
 
 }  // namespace webgpu

@@ -13,7 +13,13 @@ void* GpuBufferAllocator::Alloc(size_t size) {
     return nullptr;
   }
 
-  auto buffer = context_.BufferManager().Create(size);
+  WGPUBuffer buffer;
+  // Use UMA for upload destination buffers if the device supports it.
+  if (alloc_hint_ == AllocHint::UploadDst && context_.SupportsBufferMapExtendedUsages()) {
+    buffer = context_.BufferManager().CreateUMA(size);
+  } else {
+    buffer = context_.BufferManager().Create(size);
+  }
 
   stats_.num_allocs++;
   return buffer;

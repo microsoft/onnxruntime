@@ -163,7 +163,9 @@ static common::Status DeserializeTensorProto(const Env& env, const std::basic_st
       // 2. load initializer into CPU memory - p_deserialize_tensor,
       //    we will use mmap so no need to allocate memory on CPU in advance
       // 3. copy tensor from CPU to device - p_deserialize_tensor -> p_tensor
+      alloc->SetAllocHint(IAllocator::AllocHint::UploadDst);
       ORT_RETURN_IF_ERROR(AllocateTensor(m, p_tensor, type, tensor_shape, use_device_allocator_for_initializers, alloc));
+      alloc->SetAllocHint(IAllocator::AllocHint::None);
 
       std::unique_ptr<Tensor> p_deserialize_tensor = std::make_unique<Tensor>(type, TensorShape(), default_cpu_alloc);
 
@@ -179,7 +181,9 @@ static common::Status DeserializeTensorProto(const Env& env, const std::basic_st
     }
   } else {
     // for internal initializer, always allocate memory on device - p_tensor
+    alloc->SetAllocHint(IAllocator::AllocHint::UploadDst);
     ORT_RETURN_IF_ERROR(AllocateTensor(m, p_tensor, type, tensor_shape, use_device_allocator_for_initializers, alloc));
+    alloc->SetAllocHint(IAllocator::AllocHint::None);
 
     if (device_type == OrtDevice::CPU) {
       // deserialize directly to CPU tensor

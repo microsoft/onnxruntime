@@ -244,6 +244,14 @@ BufferManager::BufferManager(WebGpuContext& context, BufferCacheMode storage_buf
 }
 
 void BufferManager::Upload(void* src, WGPUBuffer dst, size_t size) {
+  wgpu::Buffer dst_buffer = dst;
+  auto mapped_data = dst_buffer.GetMappedRange();
+  if (mapped_data) {
+    memcpy(mapped_data, src, size);
+    dst_buffer.Unmap();
+    return;
+  }
+
   auto buffer_size = NormalizeBufferSize(size);
 
   wgpu::BufferDescriptor desc{};
@@ -252,7 +260,7 @@ void BufferManager::Upload(void* src, WGPUBuffer dst, size_t size) {
   desc.mappedAtCreation = true;
 
   auto staging_buffer = context_.Device().CreateBuffer(&desc);
-  auto mapped_data = staging_buffer.GetMappedRange();
+  mapped_data = staging_buffer.GetMappedRange();
   memcpy(mapped_data, src, size);
   staging_buffer.Unmap();
 
@@ -290,6 +298,25 @@ WGPUBuffer BufferManager::Create(size_t size, wgpu::BufferUsage usage) {
   desc.usage = usage;
   // desc.label = std::to_string(xx++).c_str();
   buffer = context_.Device().CreateBuffer(&desc).MoveToCHandle();
+
+  ORT_ENFORCE(buffer, "Failed to create GPU buffer: size=", buffer_size, ", usage=", uint64_t(usage), ".");
+
+  cache.RegisterBuffer(buffer, size);
+  return buffer;
+}
+
+WGPUBuffer BufferManager::CreateUMA(size_t size, wgpu::BufferUsage usage) {
+  ORT_ENFORCE(usage & wgpu::BufferUsage::Storage, "UMA feature is only enabled for storage buffers.");
+  usage |= wgpu::BufferUsage::MapRead | wgpu::BufferUsage::MapWrite;
+  auto& cache = GetCacheManager(static_cast<WGPUBufferUsage>(usage));
+  auto buffer_size = cache.CalculateBufferSize(size);
+
+  wgpu::BufferDescriptor desc{};
+  desc.size = buffer_size;
+  desc.usage = usage;
+  desc.mappedAtCreation = true;
+
+  auto buffer = context_.Device().CreateBuffer(&desc).MoveToCHandle();
 
   ORT_ENFORCE(buffer, "Failed to create GPU buffer: size=", buffer_size, ", usage=", uint64_t(usage), ".");
 

@@ -222,6 +222,14 @@ class IAllocator {
                                   }};
   }
 
+  enum class AllocHint {
+    None = 0,
+    UploadDst = 1,
+  };
+  // Set the allocation hint for the allocator. Once set, the Alloc operations of this allocator will be aware of this
+  // hint.
+  virtual void SetAllocHint(AllocHint hint) { ORT_UNUSED_PARAMETER(hint); }
+
  private:
   //
   // validation functions. split out from methods that are templatized on the data type to minimize binary size.
