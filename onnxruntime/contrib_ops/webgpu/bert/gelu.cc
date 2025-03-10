@@ -21,7 +21,7 @@ ONNX_OPERATOR_KERNEL_EX(
     kWebGpuExecutionProvider,
     (*KernelDefBuilder::Create())
         .TypeConstraint("T", WebGpuSupportedFloatTypes()),
-    Gelu);
+    onnxruntime::webgpu::Gelu);
 
 // Status GeluProgram::GenerateShaderCode(ShaderHelper& shader) const {
 //   const auto& x = shader.AddInput("x", ShaderUsage::UseUniform | ShaderUsage::UseValueTypeAlias);
