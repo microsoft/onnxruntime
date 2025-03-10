@@ -15,7 +15,7 @@ class MlasEltwiseAddTest : public MlasTestBase {
   MatrixGuardBuffer<MLAS_FP16> BufferInputRightFp16;
   MatrixGuardBuffer<MLAS_FP16> BufferOutputFp16;
 
-  void Test(size_t N, float MinimumValue, float MaximumValue) {
+  void Test(size_t N, float MinimumValue, float MaximumValue, const std::optional<float>& ScalarValue = std::nullopt) {
     float* InputLeft = BufferInputLeft.GetBuffer(N);
     float* InputRight = BufferInputRight.GetBuffer(N);
     float* Output = BufferOutput.GetBuffer(N);
@@ -26,7 +26,7 @@ class MlasEltwiseAddTest : public MlasTestBase {
 
     for (size_t n = 0; n < N; n++) {
       InputLeft[n] = distribution(generator);
-      InputRight[n] = distribution(generator);
+      InputRight[n] = ScalarValue.value_or(distribution(generator));
     }
 
     for (size_t n = 0; n < N; n++) {
@@ -47,7 +47,7 @@ class MlasEltwiseAddTest : public MlasTestBase {
 
 #if defined(MLAS_F16VEC_INTRINSICS_SUPPORTED) && defined(MLAS_TARGET_ARM64)
 
-  void TestFp16(size_t N, float MinimumValue, float MaximumValue) {
+  void TestFp16(size_t N, float MinimumValue, float MaximumValue, const std::optional<float>& ScalarValue = std::nullopt) {
     MLAS_FP16* InputLeft = BufferInputLeftFp16.GetBuffer(N);
     MLAS_FP16* InputRight = BufferInputRightFp16.GetBuffer(N);
     MLAS_FP16* Output = BufferOutputFp16.GetBuffer(N);
@@ -57,7 +57,7 @@ class MlasEltwiseAddTest : public MlasTestBase {
 
     for (size_t n = 0; n < N; n++) {
       InputLeft[n] = MLAS_FP16(distribution(generator));
-      InputRight[n] = MLAS_FP16(distribution(generator));
+      InputRight[n] = MLAS_FP16(ScalarValue.value_or(distribution(generator)));
     }
 
     MlasEltwiseAdd(InputLeft, InputRight, Output, N);
@@ -88,8 +88,10 @@ class MlasEltwiseAddTest : public MlasTestBase {
   void ExecuteShort(void) override {
     for (size_t n = 1; n < 128; n++) {
       Test(n, -10.f, 10.f);
+      Test(n, -10.f, 10.f, -5000.f);
 #if defined(MLAS_F16VEC_INTRINSICS_SUPPORTED) && defined(MLAS_TARGET_ARM64)
       TestFp16(n, -17.f, 11.f);
+      TestFp16(n, -17.f, 11.f, -5000.f);
 #endif  // defined(MLAS_F16VEC_INTRINSICS_SUPPORTED) && defined(MLAS_TARGET_ARM64)
     }
   }

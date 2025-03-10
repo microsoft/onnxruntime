@@ -261,6 +261,7 @@ class GQAAttentionBase {
           const size_t window_size = should_apply_local_window ? local_window_size_ + 1 : seq_causal_length;
 
           // Apply custom attention mask if there is any
+          // TODO (#23982): Implement masking during softmax / softcap computation in GQA CPU operator
           if (attention_mask_batch != nullptr) {
             if constexpr (std::is_same_v<U, T>) {
               ApplyAttentionMask(output_softmax + start_offset, attention_mask_batch + start_offset,
@@ -286,7 +287,7 @@ class GQAAttentionBase {
             }
           }
 
-          // Calculate softmax
+          // Calculate softcap / softmax
           if (softcap_ > 0.f) {
             ComputeAttentionSoftcapInplace(output_softmax + start_offset, static_cast<int>(window_size),
                                            static_cast<U>(softcap_));
