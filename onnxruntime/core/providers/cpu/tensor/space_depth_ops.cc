@@ -199,9 +199,8 @@ Status DepthToSpace::Compute(OpKernelContext* context) const {
                                               : std::vector<size_t>{0, 1, 4, 2, 5, 3};
 
     if (input.IsDataType<uint8_t>()) {
-
       return Transpose::DoTranspose(
-        permutation, input, output, &virtual_input_shape, &virtual_output_shape, context->GetOperatorThreadPool());
+          permutation, input, output, &virtual_input_shape, &virtual_output_shape, context->GetOperatorThreadPool());
 
     } else {
       // user will not see this as the kernel doesn't claim support for types other than float and double
