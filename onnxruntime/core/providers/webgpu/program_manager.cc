@@ -67,17 +67,17 @@ Status ProgramManager::Build(const ProgramBase& program,
   std::string code;
   ORT_RETURN_IF_ERROR(shader_helper.GenerateSourceCode(code, shape_uniform_ranks));
 
-  LOGS_DEFAULT(VERBOSE) << "\n=== WebGPU Shader code [" << program.Name()
+  std::cerr << "\n=== WebGPU Shader code [" << program.Name()
 #ifndef NDEBUG  // if debug build
-                        << ", Key=\"" << program_key << "\""
+            << ", Key=\"" << program_key << "\""
 #endif
-                        << "] Start ===\n\n"
-                        << code
-                        << "\n=== WebGPU Shader code [" << program.Name()
+            << "] Start ===\n\n"
+            << code
+            << "\n=== WebGPU Shader code [" << program.Name()
 #ifndef NDEBUG  // if debug build
-                        << ", Key=\"" << program_key << "\""
+            << ", Key=\"" << program_key << "\""
 #endif
-                        << "] End ===\n";
+            << "] End ===\n";
 
   wgpu::ShaderModuleWGSLDescriptor wgsl_descriptor{};
   wgsl_descriptor.code = code.c_str();
