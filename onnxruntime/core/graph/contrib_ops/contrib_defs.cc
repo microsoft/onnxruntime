@@ -3763,9 +3763,9 @@ It is similar to DepthToSpace (https://github.com/onnx/onnx/blob/main/docs/Opera
                   ctx,
                   0,
                   {input_shape.dim(0),
-                    input_shape.dim(1) * blocksize,
-                    input_shape.dim(2) * blocksize,
-                    input_shape.dim(3) / (blocksize * blocksize)});
+                   input_shape.dim(1) * blocksize,
+                   input_shape.dim(2) * blocksize,
+                   input_shape.dim(3) / (blocksize * blocksize)});
             }
           } else {
             fail_shape_inference("Input tensor must be 4-dimensional");
