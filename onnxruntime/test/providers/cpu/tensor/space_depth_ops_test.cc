@@ -44,9 +44,7 @@ TEST(TensorOpTest, SpaceToDepthTest_1) {
       3.1f, 3.3f};
   test.AddOutput<float>("output", {N, C * blocksize * blocksize, H / blocksize, W / blocksize}, result);
 
-  // TODO: Test is flaky on QNN EP (CPU backend).
-  // Re-enable when the QnnCPUBackendTests.DISABLED_SpaceToDepth_Flaky test  is fixed.
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kQnnExecutionProvider});
+  test.Run(OpTester::ExpectResult::kExpectSuccess);
 }
 
 TEST(TensorOpTest, SpaceToDepthTest_1_double) {
@@ -111,9 +109,7 @@ TEST(TensorOpTest, SpaceToDepthTest_2) {
       88., 103., 106., 68., 71., 86., 89., 104., 107.};
   test.AddOutput<float>("output", {2, 27, 1, 2}, result);
 
-  // TODO: Test is flaky on QNN EP (CPU backend).
-  // Re-enable when the QnnCPUBackendTests.DISABLED_SpaceToDepth_Flaky2 test is fixed.
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kQnnExecutionProvider});
+  test.Run(OpTester::ExpectResult::kExpectSuccess);
 }
 
 TEST(TensorOpTest, SpaceToDepthTest_3) {
@@ -327,9 +323,7 @@ TYPED_TEST(TensorOpTest, DepthToSpaceTest_3) {
     ORT_THROW("Type not supported");
   }
 
-  // TODO: Test is flaky on QNN EP (CPU backend).
-  // Re-enable when the QnnCPUBackendTests.DISABLED_SpaceToDepth_Flaky test is fixed.
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kQnnExecutionProvider});
+  test.Run(OpTester::ExpectResult::kExpectSuccess);
 }
 
 TYPED_TEST(TensorOpTest, DepthToSpaceTest_4) {
@@ -392,9 +386,7 @@ TYPED_TEST(TensorOpTest, DepthToSpaceTest_4) {
     ORT_THROW("Type not supported");
   }
 
-  // TODO: Test is flaky on QNN EP (CPU backend).
-  // Re-enable when the QnnCPUBackendTests.DISABLED_SpaceToDepth_Flaky2 test is fixed.
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kQnnExecutionProvider});
+  test.Run(OpTester::ExpectResult::kExpectSuccess);
 }
 
 TYPED_TEST(TensorOpTest, DepthToSpaceTest_5) {
@@ -439,9 +431,7 @@ TYPED_TEST(TensorOpTest, DepthToSpaceTest_5) {
     ORT_THROW("Type not supported");
   }
 
-  // TODO: Test is flaky on QNN EP (CPU backend).
-  // Re-enable when the QnnCPUBackendTests.DISABLED_SpaceToDepth_Flaky2 test is fixed.
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kQnnExecutionProvider});
+  test.Run(OpTester::ExpectResult::kExpectSuccess);
 }
 
 TEST(TensorOpTest, DepthToSpaceTest_CRD_Batched) {

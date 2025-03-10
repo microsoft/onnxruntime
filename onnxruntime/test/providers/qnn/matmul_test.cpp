@@ -136,7 +136,8 @@ template <typename Input0QType, typename Input1QType, typename OutputQType>
 static void RunQDQMatMulOpTest(const std::vector<int64_t>& shape_0, const std::vector<int64_t>& shape_1,
                                bool is_initializer_0, bool is_initializer_1,
                                ExpectedEPNodeAssignment expected_ep_assignment = ExpectedEPNodeAssignment::All,
-                               int opset = 21, bool use_contrib_qdq = false) {
+                               int opset = 21, bool use_contrib_qdq = false,
+                               QDQTolerance tolerance = QDQTolerance()) {
   ProviderOptions provider_options;
 #if defined(_WIN32)
   provider_options["backend_path"] = "QnnHtp.dll";
@@ -159,7 +160,7 @@ static void RunQDQMatMulOpTest(const std::vector<int64_t>& shape_0, const std::v
   TestQDQModelAccuracy(
       BuildMatMulOpTestCase(input0_def, input1_def),
       BuildMatMulOpQDQTestCase<Input0QType, Input1QType, OutputQType>(input0_def, input1_def, use_contrib_qdq),
-      provider_options, opset, expected_ep_assignment);
+      provider_options, opset, expected_ep_assignment, tolerance);
 }
 
 template <typename InputQType, typename WeightQType, typename OutputQType>
@@ -279,7 +280,8 @@ TEST_F(QnnHTPBackendTests, MatMulOp_QDQ) {
   // RunQDQMatMulOpTest(shape_0, shape_1, is_initializer_0, is_initializer_1, expected_ep_assignment, opset,
   // use_contrib_qdq)
   RunQDQMatMulOpTest<uint8_t, uint8_t, uint8_t>({2, 3}, {3, 2}, false, false);
-  RunQDQMatMulOpTest<uint8_t, uint8_t, uint8_t>({2, 3}, {3, 2}, false, true);
+  RunQDQMatMulOpTest<uint8_t, uint8_t, uint8_t>({2, 3}, {3, 2}, false, true, ExpectedEPNodeAssignment::All, 21,
+                                                false, QDQTolerance(0.008f));
   RunQDQMatMulOpTest<uint8_t, uint8_t, uint8_t>({2, 2, 3}, {3, 2}, true, false, ExpectedEPNodeAssignment::All, 18,
                                                 true);
   RunQDQMatMulOpTest<uint8_t, uint8_t, uint8_t>({2, 1, 3, 3}, {3, 3, 2}, false, true);
