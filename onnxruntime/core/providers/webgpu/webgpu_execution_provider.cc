@@ -843,6 +843,8 @@ std::unique_ptr<profiling::EpProfiler> WebGpuExecutionProvider::GetProfiler() {
   return profiler;
 }
 
+Status WebGpuExecutionProvider::OnSessionInitializationEnd() { return context_.OnSessionInitializationEnd(); }
+
 Status WebGpuExecutionProvider::OnRunStart(const onnxruntime::RunOptions& /*run_options*/) {
   if (context_.ValidationMode() >= ValidationMode::Basic) {
     context_.PushErrorScope();

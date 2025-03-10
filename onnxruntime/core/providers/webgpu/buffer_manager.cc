@@ -243,7 +243,21 @@ BufferManager::BufferManager(WebGpuContext& context, BufferCacheMode storage_buf
       default_cache_{CreateBufferCacheManager(BufferCacheMode::Disabled)} {
 }
 
+Status BufferManager::OnSessionInitializationEnd() {
+  session_initialized_ = true;
+  return Status::OK();
+}
+
 void BufferManager::Upload(void* src, WGPUBuffer dst, size_t size) {
+  if (!session_initialized_ && context_.SupportsBufferMapExtendedUsages()) {
+    wgpu::Buffer dst_buffer = dst;
+    auto mapped_data = dst_buffer.GetMappedRange();
+    ORT_ENFORCE(mapped_data, "Buffer must be mapped at creation for UMA buffer support.");
+    memcpy(mapped_data, src, size);
+    dst_buffer.Unmap();
+    return;
+  }
+
   auto buffer_size = NormalizeBufferSize(size);
 
   wgpu::BufferDescriptor desc{};
@@ -256,13 +270,14 @@ void BufferManager::Upload(void* src, WGPUBuffer dst, size_t size) {
   memcpy(mapped_data, src, size);
   staging_buffer.Unmap();
 
-  auto& command_encoder = context_.GetCommandEncoder();
-  context_.EndComputePass();
+  auto command_encoder = context_.Device().CreateCommandEncoder();
   command_encoder.CopyBufferToBuffer(staging_buffer, 0, dst, 0, buffer_size);
-  pending_staging_buffers_.push_back(staging_buffer);
+  auto command_buffer = command_encoder.Finish();
+  context_.Device().GetQueue().Submit(1, &command_buffer);
 }
 
 void BufferManager::MemCpy(WGPUBuffer src, WGPUBuffer dst, size_t size) {
+  ORT_ENFORCE(session_initialized_, "Session must be initialized before calling MemCpy.");
   ORT_ENFORCE(src != dst, "Source and destination buffers must be different.");
 
   auto buffer_size = NormalizeBufferSize(size);
@@ -279,29 +294,40 @@ WGPUBuffer BufferManager::Create(size_t size, wgpu::BufferUsage usage) {
   auto& cache = GetCacheManager(static_cast<WGPUBufferUsage>(usage));
   auto buffer_size = cache.CalculateBufferSize(size);
 
+  auto CreateBuffer = [this, size, buffer_size, &cache](wgpu::BufferUsage usage, bool map_at_creation) -> WGPUBuffer {
+    wgpu::BufferDescriptor desc{};
+    desc.size = buffer_size;
+    desc.usage = usage;
+    desc.mappedAtCreation = map_at_creation;
+    auto buffer = context_.Device().CreateBuffer(&desc).MoveToCHandle();
+
+    ORT_ENFORCE(buffer, "Failed to create GPU buffer: size=", buffer_size, ", usage=", uint64_t(usage), ".");
+
+    cache.RegisterBuffer(buffer, size);
+    return buffer;
+  };
+
+  if (!session_initialized_ && context_.SupportsBufferMapExtendedUsages()) {
+    ORT_ENFORCE(usage & wgpu::BufferUsage::Storage,
+                "UMA buffer support is only allowed for storage buffers before session initialization.");
+    return CreateBuffer(usage | wgpu::BufferUsage::MapRead | wgpu::BufferUsage::MapWrite, true);
+  }
+
   auto buffer = cache.TryAcquireCachedBuffer(buffer_size);
   if (buffer) {
     return buffer;
   }
 
-  // cache miss, create a new buffer
-  wgpu::BufferDescriptor desc{};
-  desc.size = buffer_size;
-  desc.usage = usage;
-  // desc.label = std::to_string(xx++).c_str();
-  buffer = context_.Device().CreateBuffer(&desc).MoveToCHandle();
-
-  ORT_ENFORCE(buffer, "Failed to create GPU buffer: size=", buffer_size, ", usage=", uint64_t(usage), ".");
-
-  cache.RegisterBuffer(buffer, size);
-  return buffer;
+  return CreateBuffer(usage, false);
 }
 
 void BufferManager::Release(WGPUBuffer buffer) {
+  ORT_ENFORCE(session_initialized_, "Session must be initialized before calling Release.");
   GetCacheManager(buffer).ReleaseBuffer(buffer);
 }
 
 void BufferManager::Download(WGPUBuffer src, void* dst, size_t size) {
+  ORT_ENFORCE(session_initialized_, "Session must be initialized before calling Download.");
   auto buffer_size = NormalizeBufferSize(size);
 
   wgpu::BufferDescriptor desc{};
@@ -325,7 +351,6 @@ void BufferManager::Download(WGPUBuffer src, void* dst, size_t size) {
 }
 
 void BufferManager::RefreshPendingBuffers() {
-  pending_staging_buffers_.clear();
   storage_cache_->OnRefresh();
   uniform_cache_->OnRefresh();
   query_resolve_cache_->OnRefresh();

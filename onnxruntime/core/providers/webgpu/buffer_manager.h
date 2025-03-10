@@ -59,6 +59,8 @@ class BufferManager {
  public:
   BufferManager(WebGpuContext& context, BufferCacheMode storage_buffer_cache_mode, BufferCacheMode uniform_buffer_cache_mode, BufferCacheMode query_resolve_buffer_cache_mode);
 
+  Status OnSessionInitializationEnd();
+
   void Upload(void* src, WGPUBuffer dst, size_t size);
   void MemCpy(WGPUBuffer src, WGPUBuffer dst, size_t size);
   WGPUBuffer Create(size_t size, wgpu::BufferUsage usage = wgpu::BufferUsage::Storage | wgpu::BufferUsage::CopySrc | wgpu::BufferUsage::CopyDst);
@@ -76,7 +78,7 @@ class BufferManager {
   std::unique_ptr<IBufferCacheManager> query_resolve_cache_;
   std::unique_ptr<IBufferCacheManager> default_cache_;
 
-  std::vector<wgpu::Buffer> pending_staging_buffers_;
+  bool session_initialized_ = false;
 };
 
 class BufferManagerFactory {
