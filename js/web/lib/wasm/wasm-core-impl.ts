@@ -229,6 +229,49 @@ const getSessionInputOutputCount = (sessionHandle: number): [number, number] => 
   }
 };
 
+const getSessionInputOutputMetadata = (
+  sessionHandle: number,
+  index: number,
+): [nameOffset: number, elementType: number, dims?: Array<number | string>] => {
+  const wasm = getInstance();
+  const stack = wasm.stackSave();
+  let metadataOffset = 0;
+  try {
+    const ptrSize = wasm.PTR_SIZE;
+    const dataOffset = wasm.stackAlloc(2 * ptrSize);
+    const errorCode = wasm._OrtGetInputOutputMetadata(sessionHandle, index, dataOffset, dataOffset + ptrSize);
+    if (errorCode !== 0) {
+      checkLastError("Can't get session input/output metadata.");
+    }
+    const nameOffset = Number(wasm.getValue(dataOffset, '*'));
+    metadataOffset = Number(wasm.getValue(dataOffset + ptrSize, '*'));
+    // get element type
+    const elementType = wasm.HEAP32[metadataOffset / 4];
+    if (elementType === 0) {
+      return [nameOffset, 0]; // non-tensor
+    }
+
+    // get dims count
+    const dimsCount = wasm.HEAPU32[metadataOffset / 4 + 1];
+    // get dims
+    const dims: Array<number | string> = [];
+    for (let i = 0; i < dimsCount; i++) {
+      const symbolicDimNameOffset = Number(wasm.getValue(metadataOffset + 8 + i * ptrSize, '*'));
+      dims.push(
+        symbolicDimNameOffset !== 0
+          ? wasm.UTF8ToString(symbolicDimNameOffset)
+          : Number(wasm.getValue(metadataOffset + 8 + (i + dimsCount) * ptrSize, '*')),
+      );
+    }
+    return [nameOffset, elementType, dims];
+  } finally {
+    wasm.stackRestore(stack);
+    if (metadataOffset !== 0) {
+      wasm._OrtFree(metadataOffset);
+    }
+  }
+};
+
 /**
  * allocate the memory and memcpy the external buffer.
  *
@@ -341,23 +384,36 @@ export const createSession = async (
 
     const inputNames = [];
     const outputNames = [];
+    const inputMetadata: InferenceSession.ValueMetadata[] = [];
+    const outputMetadata: InferenceSession.ValueMetadata[] = [];
     const outputPreferredLocations: SupportedTensorDataLocationForInputOutput[] = [];
     for (let i = 0; i < inputCount; i++) {
-      const name = wasm._OrtGetInputName(sessionHandle, i);
-      if (name === 0) {
+      const [nameOffset, elementType, shape] = getSessionInputOutputMetadata(sessionHandle, i);
+      if (nameOffset === 0) {
         checkLastError("Can't get an input name.");
       }
-      inputNamesUTF8Encoded.push(name);
-      inputNames.push(wasm.UTF8ToString(name));
+      inputNamesUTF8Encoded.push(nameOffset);
+      const name = wasm.UTF8ToString(nameOffset);
+      inputNames.push(name);
+      inputMetadata.push(
+        elementType === 0
+          ? { name, isTensor: false }
+          : { name, isTensor: true, type: tensorDataTypeEnumToString(elementType), shape },
+      );
     }
     for (let i = 0; i < outputCount; i++) {
-      const name = wasm._OrtGetOutputName(sessionHandle, i);
-      if (name === 0) {
+      const [nameOffset, elementType, shape] = getSessionInputOutputMetadata(sessionHandle, i + inputCount);
+      if (nameOffset === 0) {
         checkLastError("Can't get an output name.");
       }
-      outputNamesUTF8Encoded.push(name);
-      const nameString = wasm.UTF8ToString(name);
+      outputNamesUTF8Encoded.push(nameOffset);
+      const nameString = wasm.UTF8ToString(nameOffset);
       outputNames.push(nameString);
+      outputMetadata.push(
+        elementType === 0
+          ? { name: nameString, isTensor: false }
+          : { name: nameString, isTensor: true, type: tensorDataTypeEnumToString(elementType), shape },
+      );
 
       if (!BUILD_DEFS.DISABLE_JSEP) {
         if (enableGraphCapture && options?.preferredOutputLocation === undefined) {
@@ -403,7 +459,7 @@ export const createSession = async (
       enableGraphCapture,
       false,
     ]);
-    return [sessionHandle, inputNames, outputNames];
+    return [sessionHandle, inputNames, outputNames, inputMetadata, outputMetadata];
   } catch (e) {
     inputNamesUTF8Encoded.forEach((buf) => wasm._OrtFree(buf));
     outputNamesUTF8Encoded.forEach((buf) => wasm._OrtFree(buf));
@@ -469,6 +525,7 @@ export const prepareInputOutputTensor = async (
   tensorHandles: number[],
   allocs: number[],
   sessionId: number,
+  tensorNameUTF8Encoded: number,
   index: number,
   enableGraphCapture = false,
 ): Promise<void> => {
@@ -542,8 +599,7 @@ export const prepareInputOutputTensor = async (
     } else {
       const isGraphInput = wasm.jsepIsGraphInput;
       if (dataType !== 'string' && isGraphInput) {
-        const tensorNameUTF8 = wasm._OrtGetInputName(sessionId, index);
-        const tensorName = wasm.UTF8ToString(tensorNameUTF8);
+        const tensorName = wasm.UTF8ToString(tensorNameUTF8Encoded);
         // Promote the tensor to 'ml-tensor' if it is a graph input.
         if (isGraphInput(sessionId, tensorName)) {
           const dataTypeEnum = tensorDataTypeStringToEnum(dataType);
@@ -643,6 +699,7 @@ export const run = async (
         inputTensorHandles,
         inputOutputAllocs,
         sessionId,
+        inputNamesUTF8Encoded[inputIndices[i]],
         inputIndices[i],
         enableGraphCapture,
       );
@@ -655,6 +712,7 @@ export const run = async (
         outputTensorHandles,
         inputOutputAllocs,
         sessionId,
+        outputNamesUTF8Encoded[outputIndices[i]],
         inputCount + outputIndices[i],
         enableGraphCapture,
       );

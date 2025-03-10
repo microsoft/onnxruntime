@@ -46,7 +46,13 @@ export type UnserializableTensorMetadata =
  */
 export type TensorMetadata = SerializableTensorMetadata | UnserializableTensorMetadata;
 
-export type SerializableSessionMetadata = [sessionHandle: number, inputNames: string[], outputNames: string[]];
+export type SerializableSessionMetadata = [
+  sessionHandle: number,
+  inputNames: string[],
+  outputNames: string[],
+  inputMetadata: InferenceSession.ValueMetadata[],
+  outputMetadata: InferenceSession.ValueMetadata[],
+];
 
 export type SerializableInternalBuffer = [bufferOffset: number, bufferLength: number];
 
