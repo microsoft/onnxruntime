@@ -143,6 +143,8 @@ void WebGpuContext::Initialize(const WebGpuBufferCacheConfig& buffer_cache_confi
     ORT_ENFORCE(Device().GetLimits(&device_supported_limits));
     device_limits_ = device_supported_limits.limits;
 
+    supports_buffer_map_extended_usages_ = device_.HasFeature(wgpu::FeatureName::BufferMapExtendedUsages);
+
     // create buffer manager
     buffer_mgr_ = BufferManagerFactory::Create(*this,
                                                buffer_cache_config.storage.mode,
@@ -491,7 +493,9 @@ std::vector<wgpu::FeatureName> WebGpuContext::GetAvailableRequiredFeatures(const
 #endif
       wgpu::FeatureName::TimestampQuery,
       wgpu::FeatureName::ShaderF16,
-      wgpu::FeatureName::Subgroups};
+      wgpu::FeatureName::Subgroups,
+      wgpu::FeatureName::BufferMapExtendedUsages,
+  };
   for (auto feature : features) {
     if (adapter.HasFeature(feature)) {
       required_features.push_back(feature);

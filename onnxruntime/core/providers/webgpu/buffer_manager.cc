@@ -244,6 +244,16 @@ BufferManager::BufferManager(WebGpuContext& context, BufferCacheMode storage_buf
 }
 
 void BufferManager::Upload(void* src, WGPUBuffer dst, size_t size) {
+  // If the buffer is mapped, we can directly write to it.
+  wgpu::Buffer dst_buffer = dst;
+  auto mapped_data = dst_buffer.GetMappedRange();
+  if (mapped_data) {
+    memcpy(mapped_data, src, size);
+    dst_buffer.Unmap();
+    return;
+  }
+
+  // Otherwise, we need to use a staging buffer to upload data.
   auto buffer_size = NormalizeBufferSize(size);
 
   wgpu::BufferDescriptor desc{};
@@ -252,18 +262,20 @@ void BufferManager::Upload(void* src, WGPUBuffer dst, size_t size) {
   desc.mappedAtCreation = true;
 
   auto staging_buffer = context_.Device().CreateBuffer(&desc);
-  auto mapped_data = staging_buffer.GetMappedRange();
+  mapped_data = staging_buffer.GetMappedRange();
   memcpy(mapped_data, src, size);
   staging_buffer.Unmap();
 
-  auto& command_encoder = context_.GetCommandEncoder();
-  context_.EndComputePass();
+  auto command_encoder = context_.Device().CreateCommandEncoder();
   command_encoder.CopyBufferToBuffer(staging_buffer, 0, dst, 0, buffer_size);
-  pending_staging_buffers_.push_back(staging_buffer);
+  auto command_buffer = command_encoder.Finish();
+  context_.Device().GetQueue().Submit(1, &command_buffer);
 }
 
 void BufferManager::MemCpy(WGPUBuffer src, WGPUBuffer dst, size_t size) {
   ORT_ENFORCE(src != dst, "Source and destination buffers must be different.");
+  ORT_ENFORCE(wgpuBufferGetMapState(src) == WGPUBufferMapState_Unmapped, "Source buffer must be unmapped.");
+  ORT_ENFORCE(wgpuBufferGetMapState(dst) == WGPUBufferMapState_Unmapped, "Destination buffer must be unmapped.");
 
   auto buffer_size = NormalizeBufferSize(size);
   ORT_ENFORCE(buffer_size <= wgpuBufferGetSize(src) && buffer_size <= wgpuBufferGetSize(dst),
@@ -297,11 +309,31 @@ WGPUBuffer BufferManager::Create(size_t size, wgpu::BufferUsage usage) {
   return buffer;
 }
 
+WGPUBuffer BufferManager::CreateUMA(size_t size, wgpu::BufferUsage usage) {
+  ORT_ENFORCE(usage & wgpu::BufferUsage::Storage, "UMA buffer must have storage usage.");
+  auto& cache = GetCacheManager(static_cast<WGPUBufferUsage>(usage));
+  auto buffer_size = cache.CalculateBufferSize(size);
+
+  wgpu::BufferDescriptor desc{};
+  desc.size = buffer_size;
+  // Ensure the buffer is mapped for writing at creation.
+  desc.usage = usage | wgpu::BufferUsage::MapWrite;
+  desc.mappedAtCreation = true;
+  auto buffer = context_.Device().CreateBuffer(&desc).MoveToCHandle();
+
+  ORT_ENFORCE(buffer, "Failed to create GPU buffer: size=", buffer_size, ", usage=", uint64_t(usage), ".");
+
+  cache.RegisterBuffer(buffer, size);
+  return buffer;
+}
+
 void BufferManager::Release(WGPUBuffer buffer) {
+  ORT_ENFORCE(wgpuBufferGetMapState(buffer) == WGPUBufferMapState_Unmapped, "Buffer must be unmapped before releasing.");
   GetCacheManager(buffer).ReleaseBuffer(buffer);
 }
 
 void BufferManager::Download(WGPUBuffer src, void* dst, size_t size) {
+  ORT_ENFORCE(wgpuBufferGetMapState(src) == WGPUBufferMapState_Unmapped, "Source buffer must be unmapped.");
   auto buffer_size = NormalizeBufferSize(size);
 
   wgpu::BufferDescriptor desc{};
@@ -325,7 +357,6 @@ void BufferManager::Download(WGPUBuffer src, void* dst, size_t size) {
 }
 
 void BufferManager::RefreshPendingBuffers() {
-  pending_staging_buffers_.clear();
   storage_cache_->OnRefresh();
   uniform_cache_->OnRefresh();
   query_resolve_cache_->OnRefresh();
