@@ -118,11 +118,11 @@ stages:
       inputs:
         versionSpec: '20.x'
     - script:
-        brew install coreutils ninja npm yarn
-      displayName: Install coreutils, ninja, npm, and yarn
+        brew install coreutils ninja npm
+      displayName: Install coreutils, ninja, npm
 
     - script:
-        yarn global add detox-cli
+        npm install -g detox-cli
       displayName: Install detox cli tools
 
     - script:
@@ -144,9 +144,9 @@ stages:
       displayName: npm ci js/common
 
     - script: |
-        yarn
+        npm install
       workingDirectory: '$(Build.SourcesDirectory)/js/react_native'
-      displayName: yarn js/react_native
+      displayName: npm install js/react_native
 
     - task: PowerShell@2
       inputs:
@@ -159,17 +159,22 @@ stages:
       displayName: Pack NPM packages
 
     - script: |
-        set -x -e
+        set -e -x
+        npm install
+        ls node_modules
         mv $(Build.SourcesDirectory)/js/common/onnxruntime-common*.tgz onnxruntime-common.tgz
-        yarn add --no-lockfile file:./onnxruntime-common.tgz
         mv $(Build.SourcesDirectory)/js/react_native/onnxruntime-react-native*.tgz onnxruntime-react-native.tgz
-        yarn add --no-lockfile file:./onnxruntime-react-native.tgz
-        yarn
+        npm install ./onnxruntime-common.tgz
+        ls node_modules/onnxruntime*
+        npm install ./onnxruntime-react-native.tgz
+        ls node_modules/onnxruntime*
+
+
       workingDirectory: '$(Build.SourcesDirectory)/js/react_native/e2e'
       displayName: Bootstrap Android and iOS e2e tests
 
     - script: |
-        yarn add --dev jest-junit
+        npm install --save-dev jest-junit
       workingDirectory: '$(Build.SourcesDirectory)/js/react_native/e2e'
       displayName: install jest junit reporter js/react_native/e2e
 

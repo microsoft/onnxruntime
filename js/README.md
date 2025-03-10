@@ -361,7 +361,7 @@ From ORT v1.19 onwards, the ONNX Runtime Mobile packages are no longer published
    From `<ORT_ROOT>/js/react_native,
 
    ```sh
-   yarn bootstrap
+   npm run bootstrap
    ```
 
    When testing with a custom built ONNX Runtime Android package, copy `<BUILD_DIRECTORY>/aar_out/MinSizeRel/com/microsoft/onnxruntime/onnxruntime-android/<version>/onnxruntime-android-<version>.aar` into the `<ORT_ROOT>/js/react_native/e2e/android/app/libs` directory.
@@ -377,7 +377,7 @@ From ORT v1.19 onwards, the ONNX Runtime Mobile packages are no longer published
     Install detox command line tools:
 
     ```
-    yarn global add detox-cli
+    npm install -g detox-cli
     ```
 
     Install applesimutils which is required by Detox to work with iOS simulators. (Requires a MacOS device)
@@ -439,13 +439,13 @@ From ORT v1.19 onwards, the ONNX Runtime Mobile packages are no longer published
     To record logs for testing results, add `--record-logs`. Output logs and test results will be produced in the `e2e/artifacts/` folder.
     See: [Detox/logger#artifacts](https://wix.github.io/Detox/docs/api/logger#artifacts)
 
-    **_`yarn bootstrap` changes `packages.json` and `yarn.lock` files. Once testing is done, restore changes to avoid unwanted commit._**
+    **_`npm run bootstrap` changes `packages.json` and `package-lock.json` files. Once testing is done, restore changes to avoid unwanted commit._**
 
 5. Run Android and iOS apps.
 
    ```sh
-   yarn e2e android
-   yarn e2e ios
+   npm run e2e:android
+   npm run e2e:ios
    ```
 
 ### NPM Packaging
@@ -460,4 +460,4 @@ From ORT v1.19 onwards, the ONNX Runtime Mobile packages are no longer published
 
 ### Distribution
 
-It should be able to consumed by React Native projects that uses Yarn packages through `yarn add onnxruntime-react-native`.
+It should be able to consumed by React Native projects that uses npm packages through `npm install onnxruntime-react-native`.
