@@ -111,6 +111,16 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                     "RegisterOrtExtensions should throw if the Extensions package is not referenced",
                     "Microsoft.ML.OnnxRuntime.Extensions NuGet package must be referenced");
 
+                // The below tests what happens when various execution providers are added
+                // to the session options. Due to changes in how execution providers are handled,
+                // only some are expected to throw exceptions.
+
+                // We can only check what EP's the package was built with for the
+                // Microsoft.ML.OnnxRuntime.Managed package because those contain the
+                // C# preprocessor directives (such as USE_CUDA). The Microsoft.ML.OnnxRuntime
+                // package will use the appropriate platform bindings (ie the Android bindings)
+                // where using the correct ifdefs for the C# preprocessor directives are
+                // impossible, so we use IfThrowsCheckException instead of using ifdefs.
 #if USE_CUDA
                 opt.AppendExecutionProvider_CUDA(0);
 #endif

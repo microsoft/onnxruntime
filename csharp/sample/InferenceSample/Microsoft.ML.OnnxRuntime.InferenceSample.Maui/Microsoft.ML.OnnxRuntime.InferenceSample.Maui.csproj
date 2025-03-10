@@ -28,10 +28,6 @@
 		<DefaultLanguage>en</DefaultLanguage>
 	</PropertyGroup>
 
-	<PropertyGroup Condition="'$(Configuration)|$(TargetFramework)|$(Platform)'=='Release|net8.0-android|AnyCPU'">
-	  <RunAOTCompilation>False</RunAOTCompilation>
-	</PropertyGroup>
-
 	<ItemGroup>
 		<!-- NOTE:
 		You need to manually put builds from other platforms such as Android in the correct place for this to work for cross-platform

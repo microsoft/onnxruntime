@@ -33,7 +33,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
         else
         {
           Assert.True(ex.Message.Contains(expectedExceptionMessage),
-          $"{feedbackMessage}\nExpected exception message to contain '{expectedExceptionMessage}', but got '{ex.Message}'");
+            $"{feedbackMessage}\nExpected exception message to contain '{expectedExceptionMessage}', but got '{ex.Message}'");
         }
       }
       catch (Exception ex)
@@ -69,12 +69,12 @@ namespace Microsoft.ML.OnnxRuntime.Tests
         else
         {
           Assert.True(ex.Message.Contains(expectedExceptionMessage),
-          $"{feedbackMessage}\nExpected exception message to contain '{expectedExceptionMessage}', but got '{ex.Message}'");
+            $"{feedbackMessage}\nExpected exception message to contain '{expectedExceptionMessage}', but got '{ex.Message}'");
         }
       }
       catch (Exception ex)
       {
-        Assert.Fail($"{feedbackMessage}\nExpected {typeof(T).Name} but got {ex.GetType().Name}. S");
+        Assert.Fail($"{feedbackMessage}\nExpected {typeof(T).Name} but got {ex.GetType().Name}. ");
       }
     }
   }
