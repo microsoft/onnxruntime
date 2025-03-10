@@ -86,12 +86,14 @@ Status DepthToSpace<is_nchw>::ComputeInternal(onnxruntime::webgpu::ComputeContex
   int64_t shape[6];
   int64_t perm[6];
   if (is_nchw) {
+    std::cout << "is_nchw" << std::endl;
     n = input_shape[0];
     c = input_shape[1];
     h = input_shape[2];
     w = input_shape[3];
 
     if (is_dcr_) {
+      std::cout << "is_dcr" << std::endl;
       shape[0] = n;
       shape[1] = blocksize_;
       shape[2] = blocksize_;
@@ -106,6 +108,7 @@ Status DepthToSpace<is_nchw>::ComputeInternal(onnxruntime::webgpu::ComputeContex
       perm[4] = 5;
       perm[5] = 2;
     } else {
+      std::cout << "NOT is_dcr" << std::endl;
       shape[0] = n;
       shape[1] = c / (blocksize_ * blocksize_);
       shape[2] = blocksize_;
@@ -121,12 +124,14 @@ Status DepthToSpace<is_nchw>::ComputeInternal(onnxruntime::webgpu::ComputeContex
       perm[5] = 3;
     }
   } else {
+    std::cout << "NOT is_nhwc" << std::endl;
     n = input_shape[0];
     h = input_shape[1];
     w = input_shape[2];
     c = input_shape[3];
 
     if (is_dcr_) {
+      std::cout << "is_dcr" << std::endl;
       shape[0] = n;
       shape[1] = h;
       shape[2] = w;
@@ -141,6 +146,7 @@ Status DepthToSpace<is_nchw>::ComputeInternal(onnxruntime::webgpu::ComputeContex
       perm[4] = 4;
       perm[5] = 5;
     } else {
+      std::cout << "NOT is_dcr" << std::endl;
       shape[0] = n;
       shape[1] = h;
       shape[2] = w;
