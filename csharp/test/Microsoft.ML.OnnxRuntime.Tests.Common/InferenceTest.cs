@@ -175,17 +175,17 @@ namespace Microsoft.ML.OnnxRuntime.Tests
 #endif
                 AssertUtils.IfThrowsCheckException<OnnxRuntimeException>(
                     () => { opt.AppendExecutionProvider("XNNPACK"); },
-                    "Attempted to add XNNPack execution provider to session options when USE_XNNPACK flag is disabled. ",
+                    "Attempted to add XNNPack execution provider to session options. ",
                     "XNNPACK execution provider is not supported in this build");
 
                 AssertUtils.IfThrowsCheckException<OnnxRuntimeException>(
                     () => { opt.AppendExecutionProvider("SNPE"); },
-                    "Attempted to add SNPE execution provider to session options when USE_SNPE flag is disabled. ",
+                    "Attempted to add SNPE execution provider to session options. ",
                     "SNPE execution provider is not supported in this build");
 
                 AssertUtils.IfThrowsCheckException<OnnxRuntimeException>(
                     () => { opt.AppendExecutionProvider("QNN"); },
-                    "Attempted to add QNN execution provider to session options when USE_QNN flag is disabled. ",
+                    "Attempted to add QNN execution provider to session options. ",
                     "QNN execution provider is not supported in this build");
 
         opt.AppendExecutionProvider_CPU(1);
