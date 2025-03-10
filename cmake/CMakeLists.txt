@@ -831,6 +831,30 @@ else()
   endif()
 endif()
 
+if (NOT DEFINED onnxruntime_USE_KLEIDIAI)
+  if ((onnxruntime_target_platform STREQUAL "aarch64") OR (onnxruntime_target_platform STREQUAL "ARM64"))
+    set(onnxruntime_USE_KLEIDIAI ON CACHE BOOL "" FORCE)
+  else()
+    set(onnxruntime_USE_KLEIDIAI OFF CACHE BOOL "" FORCE)
+  endif()
+endif()
+
+if (onnxruntime_USE_KLEIDIAI)
+  if (NOT ((onnxruntime_target_platform STREQUAL "aarch64") OR (onnxruntime_target_platform STREQUAL "ARM64")))
+    message(FATAL_ERROR  "KleidiAI is only supported on AArch64")
+  endif()
+  if (NOT MSVC)
+    check_cxx_compiler_flag(-march=armv8.2-a+dotprod HAS_ARM64_DOTPROD)
+    check_cxx_compiler_flag(-march=armv8.2-a+i8mm HAS_ARM64_I8MM)
+    if (NOT HAS_ARM64_DOTPROD)
+      message(FATAL_ERROR  "The compiler doesn't support dotprod")
+    endif()
+    if (NOT HAS_ARM64_I8MM)
+      message(FATAL_ERROR  "The compiler doesn't support i8mm")
+    endif()
+  endif()
+endif()
+
 #names in this var must match the directory names under onnxruntime/core/providers
 #ONNXRUNTIME_PROVIDER_NAMES is the list of providers that needs to export additional symbols in the global namespace.
 #For example CUDA EP exports "OrtSessionOptionsAppendExecutionProvider_CUDA", which is a global function.
