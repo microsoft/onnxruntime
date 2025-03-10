@@ -66,6 +66,9 @@ Status DepthToSpaceProgram::GenerateShaderCode(ShaderHelper& shader) const {
                             << "let aIndices = perm(indices);\n"
                             << output.SetByOffset("global_idx", input.GetByOffset("aIndices")) << ";\n";
 
+  std::cout << *shader.AdditionalImplementation().str() << std::endl;
+  std::cout << *shader.MainFunctionBody().str() << std::endl;
+
   return Status::OK();
 }
 
@@ -73,6 +76,11 @@ template <bool is_nchw>
 Status DepthToSpace<is_nchw>::ComputeInternal(onnxruntime::webgpu::ComputeContext& context) const {
   const auto* input = context.Input(0);
   const TensorShape input_shape = input->Shape();
+  std::cout << "input shape: ";
+  for (int i = 0; i < input_shape.NumDimensions(); ++i) {
+    std::cout << input_shape[i] << " ";
+  }
+  std::cout << std::endl;
 
   int64_t n, c, h, w;
   int64_t shape[6];
@@ -149,8 +157,22 @@ Status DepthToSpace<is_nchw>::ComputeInternal(onnxruntime::webgpu::ComputeContex
     }
   }
 
+  std::cout << "n: " << n << " c: " << c << " h: " << h << " w: " << w << std::endl;
+  std::cout << "shape: ";
+  for (int i = 0; i < 6; ++i) {
+    std::cout << shape[i] << " ";
+  }
+  std::cout << std::endl;
+
+  std::cout << "perm: ";
+  for (int i = 0; i < 6; ++i) {
+    std::cout << perm[i] << " ";
+  }
+  std::cout << std::endl;
+
   TensorShape override_shape(gsl::make_span(shape));
   int64_t components = GetMaxComponents(c);
+  std::cout << "components: " << components << std::endl;
 
   // Calculate the final 4D output shape
   int64_t output_shape[4];
@@ -166,15 +188,22 @@ Status DepthToSpace<is_nchw>::ComputeInternal(onnxruntime::webgpu::ComputeContex
     output_shape[3] = c / (blocksize_ * blocksize_);
   }
   TensorShape final_output_shape(gsl::make_span(output_shape));
+  std::cout << "final output shape: ";
+  for (int i = 0; i < 4; ++i) {
+    std::cout << output_shape[i] << " ";
+  }
+  std::cout << std::endl;
 
   auto* output = context.Output(0, final_output_shape);
   int64_t output_size = output->Shape().Size() / components;
+  std::cout << "output size: " << output_size << std::endl;
 
   if (output_size == 0) {
     return Status::OK();
   }
 
   DepthToSpaceProgram program{perm};
+  std::cout << "running program..." << std::endl;
   program
       .AddInput({input, ProgramTensorMetadataDependency::TypeAndRank, override_shape, static_cast<int>(components)})
       .AddOutput({output, ProgramTensorMetadataDependency::TypeAndRank})
