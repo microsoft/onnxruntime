@@ -91,7 +91,7 @@ ShaderIndicesHelper::ShaderIndicesHelper(std::string_view name, ProgramVariableD
     : name_(name),
       type_(type),
       num_components_{NumberOfComponents(type)},
-      rank_{gsl::narrow<int>(dims.NumDimensions())},
+      rank_{static_cast<int>(dims.NumDimensions())},
       dims_{dims},
       usage_(usage),
       indices_type_{GetIndicesType(rank_)},

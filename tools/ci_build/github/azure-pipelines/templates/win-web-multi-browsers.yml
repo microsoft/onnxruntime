@@ -44,10 +44,18 @@ jobs:
     inputs:
       sourceFolder: $(Pipeline.Workspace)\artifacts
       contents: |
-        **\*.*
+        **\ort-*.wasm
       targetFolder: $(Build.SourcesDirectory)\js\web\dist
       flattenFolders: true
-    displayName: 'Binplace dist files'
+    displayName: 'Binplace dist files (.wasm)'
+  - task: CopyFiles@2
+    inputs:
+      sourceFolder: $(Pipeline.Workspace)\artifacts
+      contents: |
+        **\ort-*.mjs
+      targetFolder: $(Build.SourcesDirectory)\js\web\dist
+      flattenFolders: true
+    displayName: 'Binplace dist files (.mjs)'
   - script: |
      npm ci
     workingDirectory: '$(Build.SourcesDirectory)\js'

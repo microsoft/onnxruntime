@@ -647,7 +647,7 @@ void BasicBackend::CompleteAsyncInference(Ort::KernelContext& context, OVInferRe
         const auto& out_name = item.first;
         auto node = item.second;
         Ort::UnownedValue output_tensor = GetOutputTensor(context,
-                                                          std::move(out_name),
+                                                          out_name,
                                                           subgraph_context_.output_names,
                                                           node);
         auto mem_info = output_tensor.GetTensorMemoryInfo();
