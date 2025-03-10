@@ -1,0 +1,142 @@
+parameters:
+- name: CudaVersion
+  type: string
+  default: '12.2'
+
+- name: QnnSdk
+  displayName: QNN SDK Version
+  type: string
+  default: 2.31.0.250130
+
+- name: IsReleaseBuild
+  displayName: Is a release build? Set it to true if you are doing an Onnx Runtime release.
+  type: boolean
+  default: false
+
+- name: PackageName
+  displayName: What is the package name?
+  type: string
+  default: 'Microsoft.ML.OnnxRuntime.Flamingo'
+
+variables:
+  - template: templates/common-variables.yml
+  - name: ReleaseVersionSuffix
+    value: ''
+  - name: win_cuda_home
+    ${{ if eq(parameters.CudaVersion, '11.8') }}:
+      value: $(Agent.TempDirectory)\v11.8
+    ${{ if eq(parameters.CudaVersion, '12.2') }}:
+      value: $(Agent.TempDirectory)\v12.2
+
+stages:
+  - template: templates/win-ci.yml
+    parameters:
+      ort_build_pool_name: 'onnxruntime-Win2022-GPU-A10'
+      DoCompliance: false
+      DoEsrp: true
+      stage_name_suffix: CUDA
+      buildArch: x64
+      msbuildPlatform: x64
+      packageName: x64-cuda
+      CudaVersion: ${{ parameters.CudaVersion }}
+      buildparameter: --use_cuda --cuda_home=${{ variables.win_cuda_home }} --enable_onnx_tests --enable_wcos --use_webgpu --cmake_extra_defines "CMAKE_CUDA_ARCHITECTURES=52-real;61-real;75-real;86-real;89-real;90-virtual"
+      runTests: false
+      buildJava: false
+      java_artifact_id: onnxruntime_gpu
+      UseIncreasedTimeoutForTests: false
+      SpecificArtifact: false
+      BuildId: '0'
+
+  - template: templates/qnn-ep-win.yml
+    parameters:
+      qnn_ep_build_pool_name: 'Onnxruntime-QNNEP-Windows-2022-CPU'
+      QnnSdk: ${{ parameters.QnnSdk }}
+      IsReleaseBuild: ${{ parameters.IsReleaseBuild }}
+      DoEsrp: true
+      ArtifactName: 'drop-nuget-qnn-arm64'
+      # Add --use_webgpu to enable WebGPU
+      buildParameter: '--arm64'
+      buildPlatform: 'ARM64'
+      buildArch: 'ARM64'
+      StageName: 'OnnxRuntime_QNN_Nuget_Win_Arm64'
+      build_config: 'RelWithDebInfo'
+      Is1ES: false
+      PublishArchive: true
+
+  - stage: NugetPackaging
+    dependsOn: [Windows_Packaging_CUDA, OnnxRuntime_QNN_Nuget_Win_Arm64]
+    jobs:
+    - job: CreateNugetPackage
+      pool: 'Onnxruntime-Win2022-GPU-A10'
+      timeoutInMinutes: 120
+      steps:
+      - checkout: self
+        clean: true
+        submodules: none
+
+      - task: UsePythonVersion@0
+        inputs:
+          versionSpec: '3.12'
+          addToPath: true
+
+      - task: DownloadPipelineArtifact@0
+        displayName: 'Download Pipeline Artifact - managed nuget'
+        inputs:
+          artifactName: 'drop-nuget-qnn-arm64'
+          targetPath: '$(Build.BinariesDirectory)/managed-nuget'
+
+      - task: DownloadPipelineArtifact@0
+        displayName: 'Download Pipeline Artifact - win-x64'
+        inputs:
+          artifactName: 'onnxruntime-win-x64-cuda'
+          targetPath: '$(Build.BinariesDirectory)/win-x64'
+
+      - task: DownloadPipelineArtifact@0
+        displayName: 'Download Pipeline Artifact - win-arm64'
+        inputs:
+          artifactName: 'onnxruntime-win-ARM64-qnn'
+          targetPath: '$(Build.BinariesDirectory)/win-arm64'
+
+      - task: PowerShell@2
+        displayName: 'Extract Nuget Package Version'
+        inputs:
+          targetType: 'inline'
+          script: |
+            $nupkgs = (Get-ChildItem $(Build.BinariesDirectory)/managed-nuget -Filter Microsoft.ML.OnnxRuntime.Managed.*.nupkg -Recurse)
+            $package_name = $nupkgs[0].Name
+            $version_length = $package_name.Length - "Microsoft.ML.OnnxRuntime.Managed.".Length - ".nupkg".Length
+            $package_version = $package_name.Substring("Microsoft.ML.OnnxRuntime.Managed.".Length, $version_length)
+            Write-Host "##vso[task.setvariable variable=package_version;]$package_version"
+          workingDirectory: $(Build.BinariesDirectory)
+
+      - task: PowerShell@2
+        displayName: 'Extract Archives'
+        inputs:
+          targetType: 'inline'
+          script: |
+            Expand-Archive -Path $(Build.BinariesDirectory)/win-x64/onnxruntime-win-x64-cuda*.zip -DestinationPath $(Build.BinariesDirectory)/win-x64
+            Expand-Archive -Path $(Build.BinariesDirectory)/win-arm64/onnxruntime-win-ARM64-qnn*.zip -DestinationPath $(Build.BinariesDirectory)/win-arm64
+            $win_x64 = (Get-ChildItem -Path $(Build.BinariesDirectory)/win-x64 -Filter onnxruntime-win-x64-cuda*)[0].FullName
+            $win_arm64 = (Get-ChildItem -Path $(Build.BinariesDirectory)/win-arm64 -Filter onnxruntime-win-ARM64-qnn*)[0].FullName
+            Write-Host "##vso[task.setvariable variable=win_x64;]$win_x64"
+            Write-Host "##vso[task.setvariable variable=win_arm64;]$win_arm64"
+          workingDirectory: $(Build.BinariesDirectory)
+
+      - task: PythonScript@0
+        displayName: 'Generate Nuget Package'
+        inputs:
+          scriptPath: '$(Build.SourcesDirectory)/tools/nuget/generate_nuspec_for_custom_nuget.py'
+          arguments: '--nuspec_path "$(Build.BinariesDirectory)/${{ parameters.PackageName }}.nuspec" --root_dir "$(Build.SourcesDirectory)" --commit_id "$(Build.SourceVersion)" --win_arm64 "$(win_arm64)" --win_x64 "$(win_x64)" --package_version "$(package_version)" --package_name "${{ parameters.PackageName }}"'
+
+      - task: NuGetCommand@2
+        displayName: 'Pack Nuget Package'
+        inputs:
+          command: 'pack'
+          packagesToPack: '$(Build.BinariesDirectory)/${{ parameters.PackageName }}.nuspec'
+          packDestination: $(Build.ArtifactStagingDirectory)\
+
+      - task: PublishBuildArtifacts@1
+        displayName: 'Publish Artifact: Nuget'
+        inputs:
+          pathtoPublish: '$(Build.ArtifactStagingDirectory)'
+          artifactName: '${{ parameters.PackageName }}'
