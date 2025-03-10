@@ -3755,10 +3755,10 @@ It is similar to DepthToSpace (https://github.com/onnx/onnx/blob/main/docs/Opera
                   ctx,
                   0,
                   {input_shape.dim(0),
-                    input_shape.dim(1) / (blocksize * blocksize),
-                    input_shape.dim(2) * blocksize,
-                    input_shape.dim(3) * blocksize});
-            } else { // channels_last
+                   input_shape.dim(1) / (blocksize * blocksize),
+                   input_shape.dim(2) * blocksize,
+                   input_shape.dim(3) * blocksize});
+            } else {  // channels_last
               updateOutputShape(
                   ctx,
                   0,
