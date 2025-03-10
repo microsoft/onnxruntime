@@ -990,12 +990,11 @@ MlasComputeErf(
     size_t N
     );
 
-template <typename T>
 void
 MLASCALL
 MlasComputeExp(
-    const T* Input,
-    T* Output,
+    const float* Input,
+    float* Output,
     size_t N
     );
 
@@ -1007,12 +1006,11 @@ MlasComputeLogistic(
     size_t N
     );
 
-template <typename T>
 void
 MLASCALL
 MlasComputeSoftmax(
-    const T* Input,
-    T* Output,
+    const float* Input,
+    float* Output,
     size_t N,
     size_t D,
     bool LogSoftmax,
@@ -1020,22 +1018,11 @@ MlasComputeSoftmax(
     MLAS_THREADPOOL* ThreadPool
     );
 
-template <typename T>
-void
-MLASCALL
-MlasComputeSoftcap(
-    const T* Input,
-    T* Output,
-    size_t N,
-    T cap
-    );
-
-template<typename T>
 void
 MLASCALL
 MlasComputeTanh(
-    const T* Input,
-    T* Output,
+    const float* Input,
+    float* Output,
     size_t N
     );
 

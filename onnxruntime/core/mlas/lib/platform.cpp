@@ -546,7 +546,6 @@ Return Value:
     this->QNBitGemmDispatch = &MlasSQNBitGemmDispatchNeon;
     this->RopeDispatch = &MlasRopeDispatchNeon;
     this->HGemmDispatch = &MlasHGemmDispatchNeon;
-    this->SoftmaxDispatch = &MlasSoftmaxDispatchNeon;
 
     //
     // Check if the processor supports ASIMD dot product instructions.

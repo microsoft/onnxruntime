@@ -1066,9 +1066,6 @@ extern const MLAS_ROPE_DISPATCH MlasRopeDispatchAvx2;
 struct MLAS_HGEMM_DISPATCH;
 extern const MLAS_HGEMM_DISPATCH MlasHGemmDispatchNeon;
 
-// softmax dispatch structure
-struct MLAS_SOFTMAX_DISPATCH;
-extern const MLAS_SOFTMAX_DISPATCH MlasSoftmaxDispatchNeon;
 
 //
 // Quantized depthwise convolution kernels.
@@ -1232,7 +1229,6 @@ struct MLAS_PLATFORM {
 
     const MLAS_ROPE_DISPATCH* RopeDispatch{nullptr};
     const MLAS_HGEMM_DISPATCH* HGemmDispatch{nullptr};
-    const MLAS_SOFTMAX_DISPATCH* SoftmaxDispatch{nullptr};
 };
 
 inline
