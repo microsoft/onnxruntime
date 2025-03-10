@@ -60,6 +60,11 @@ class UnaryElementwise : public WebGpuKernel {
   ShaderUsage additional_usage_;
 };
 
+class Gelu : public UnaryElementwise {
+ public:
+  Gelu(const OpKernelInfo& info);
+}
+
 constexpr const char ErfImpl[] = R"(
 const r0 = 0.3275911;
 const r1 = 0.254829592;
@@ -104,11 +109,32 @@ fn elu_v(v: vec4<x_element_t>) -> vec4<x_element_t> {
 }
 )";
 
+constexpr const char QuickGeluImpl[] = R"(
+fn quick_gelu_v(a: x_value_t) -> x_value_t {
+  let one = 1.0;
+  let zero = 0.0;
+  let alpha_vec = x_value_t(uniforms.alpha);
+  let v = a * alpha_vec;
+  var x1 : x_value_t;
+  for (var i = 0; i < 4; i = i + 1) {
+    if (v[i] >= zero) {
+      x1[i] = one / (one + exp(-v[i]));
+    } else {
+      x1[i] = one - one / (one + exp(v[i]));
+    }
+  }
+  return a * x1;
+}
+)";
+
 // default GELU expression, depending on ErfImpl
 constexpr const char GeluExpr[] = "0.5 * a * (1.0 + erf_v(a * 0.7071067811865475))";
 
 // fast GELU expression, depending on TanhImpl
 constexpr const char FastGeluExpr[] = "a * (0.5 + 0.5 * tanh_v(a * (0.035677408136300125 * a * a + 0.7978845608028654)))";
+
+// quick GELU expression, depending on QuickGeluImpl
+constexpr const char QuickGeluExpr[] = "quick_gelu_v(a)";
 
 }  // namespace webgpu
 }  // namespace onnxruntime
