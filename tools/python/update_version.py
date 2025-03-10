@@ -90,7 +90,7 @@ def update_version():
             args = ["cmd", "/c", *args]
         run(*args, cwd=cwd)
 
-    # check if node and npm
+    # check if node and npm are installed
     run(["node", "--version"], cwd=js_root)
     run(["npm", "--version"], cwd=js_root)
 
