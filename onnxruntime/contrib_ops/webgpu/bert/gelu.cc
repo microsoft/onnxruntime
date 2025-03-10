@@ -3,7 +3,7 @@
 
 #include "core/providers/webgpu/shader_helper.h"
 #include "core/providers/webgpu/webgpu_supported_types.h"
-#include "core/providers/webgpu/math/unary_elementwise_ops.cc"  // contains Gelu definition
+#include "core/providers/webgpu/math/unary_elementwise_ops.h"  // contains Gelu definition
 // #include "contrib_ops/webgpu/bert/gelu.h"
 #include "contrib_ops/webgpu/webgpu_contrib_kernels.h"
 
@@ -21,7 +21,7 @@ ONNX_OPERATOR_KERNEL_EX(
     kWebGpuExecutionProvider,
     (*KernelDefBuilder::Create())
         .TypeConstraint("T", WebGpuSupportedFloatTypes()),
-    onnxruntime::webgpu::Gelu);
+    Gelu);
 
 // Status GeluProgram::GenerateShaderCode(ShaderHelper& shader) const {
 //   const auto& x = shader.AddInput("x", ShaderUsage::UseUniform | ShaderUsage::UseValueTypeAlias);

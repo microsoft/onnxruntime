@@ -60,6 +60,18 @@ class UnaryElementwise : public WebGpuKernel {
   ShaderUsage additional_usage_;
 };
 
+class Gelu : public UnaryElementwise {
+ public:
+  Gelu(const OpKernelInfo& info)
+      : UnaryElementwise{info,
+                         "Gelu",
+                         info.GetAttrOrDefault<std::string>("approximate", "none") == "tanh" ? FastGeluExpr : GeluExpr,
+                         info.GetAttrOrDefault<std::string>("approximate", "none") == "tanh" ? TanhImpl : ErfImpl,
+                         ShaderUsage::UseValueTypeAlias} {
+    cache_hint = info.GetAttrOrDefault<std::string>("approximate", "none");
+  }
+};
+
 constexpr const char ErfImpl[] = R"(
 const r0 = 0.3275911;
 const r1 = 0.254829592;
