@@ -174,7 +174,7 @@ Status ReduceKernel<allow_multi_axes>::ComputeInternal(ComputeContext& context) 
     program.AddInput({input_tensor, ProgramTensorMetadataDependency::TypeAndRank});
   }
 
-  program.CacheHint(keepdims_, is_input_empty)
+  program.CacheHint(is_input_empty)
       .AddOutput({context.Output(0, output_shape), ProgramTensorMetadataDependency::TypeAndRank})
       .SetDispatchGroupSize((output_size + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE)
       .AddUniformVariables({{static_cast<uint32_t>(output_size)},
