@@ -791,6 +791,7 @@ std::vector<AllocatorPtr> JsExecutionProvider::CreatePreferredAllocators() {
 std::vector<std::unique_ptr<ComputeCapability>> JsExecutionProvider::GetCapability(
     const onnxruntime::GraphViewer& graph,
     const IKernelLookup& kernel_lookup,
+    const GraphOptimizerRegistry& /* graph_optimizer_registry */,
     IResourceAccountant* /* resource_accountant */) const {
   InlinedVector<NodeIndex> candidates;
   // `tenative_candidates` is a subset of `candidates`.

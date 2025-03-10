@@ -4,6 +4,7 @@
 // This is the Onnxruntime side of the bridge to allow providers to be built as a DLL
 // It implements onnxruntime::ProviderHost
 
+#include <optional>
 #include "core/common/inlined_containers.h"
 #include "core/common/path_string.h"
 #include "core/framework/allocator_utils.h"
@@ -35,6 +36,7 @@
 #include "core/graph/graph_proto_serializer.h"
 #include "core/framework/murmurhash3.h"
 #include "core/framework/model_metadef_id_generator.h"
+#include "core/optimizer/graph_optimizer_registry.h"
 #include "core/optimizer/qdq_transformer/selectors_actions/qdq_selectors.h"
 #include "core/optimizer/qdq_transformer/selectors_actions/shared/utils.h"
 
@@ -237,6 +239,21 @@ common::Status LoadDynamicLibraryFromProvider(onnxruntime::PathString library_na
 struct ProviderHostImpl : ProviderHost {
   const OrtApiBase* OrtGetApiBase() override { return ::OrtGetApiBase(); }
 
+  Status GetOptimizerByName(const std::string& name,
+                            const GraphOptimizerRegistry& graph_optimizer_registry,
+                            SelectionFunc& selection_func) override {
+    std::string optimizer_name(name);
+
+    auto func = graph_optimizer_registry.GetSelectionFunc(optimizer_name);
+
+    if (func.has_value()) {
+      selection_func = func.value();
+    } else {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to get optimizer " + optimizer_name);
+    }
+    return Status::OK();
+  };
+
   void* HeapAllocate(size_t size) override { return new uint8_t[size]; }
   void HeapFree(void* p) override { delete[] reinterpret_cast<uint8_t*>(p); }
 
@@ -360,8 +377,9 @@ struct ProviderHostImpl : ProviderHost {
   std::vector<std::unique_ptr<ComputeCapability>> IExecutionProvider__GetCapability(
       const IExecutionProvider* p, const onnxruntime::GraphViewer& graph_viewer,
       const IExecutionProvider::IKernelLookup& kernel_lookup,
+      const GraphOptimizerRegistry& graph_optimizer_registry,
       IResourceAccountant* resource_accountant) override {
-    return p->IExecutionProvider::GetCapability(graph_viewer, kernel_lookup, resource_accountant);
+    return p->IExecutionProvider::GetCapability(graph_viewer, kernel_lookup, graph_optimizer_registry, resource_accountant);
   }
 
   common::Status IExecutionProvider__Compile(IExecutionProvider* p, const std::vector<IExecutionProvider::FusedNodeAndGraph>& fused_nodes_and_graphs, std::vector<NodeComputeInfo>& node_compute_funcs) override {
@@ -797,6 +815,8 @@ struct ProviderHostImpl : ProviderHost {
   std::unique_ptr<ComputeCapability> ComputeCapability__construct(std::unique_ptr<IndexedSubGraph> t_sub_graph) override { return std::make_unique<ComputeCapability>(std::move(t_sub_graph)); }
   void ComputeCapability__operator_delete(ComputeCapability* p) override { delete p; }
   std::unique_ptr<IndexedSubGraph>& ComputeCapability__SubGraph(ComputeCapability* p) override { return p->sub_graph; }
+  void ComputeCapability__copy_optimization_func(ComputeCapability* p, ComputeCapability* selection_cc) override { p->optimization_func = selection_cc->optimization_func; }
+  void ComputeCapability__add_nodes_to_optimize(ComputeCapability* p, std::unique_ptr<ComputeCapability> optimization_cc) override { p->nodes_to_optimize.push_back(std::move(optimization_cc)); }
 
   // DataTransferManager (wrapped)
   Status DataTransferManager__CopyTensor(const DataTransferManager* p, const Tensor& src, Tensor& dst) override { return p->CopyTensor(src, dst); }
@@ -1631,6 +1651,7 @@ struct ProviderHostImpl : ProviderHost {
   Status LoadDynamicLibrary(onnxruntime::PathString library_name) override { return LoadDynamicLibraryFromProvider(library_name); };
 #endif
 } provider_host_;
+
 #if defined(_MSC_VER) && !defined(__clang__)
 #pragma warning(pop)
 #endif
