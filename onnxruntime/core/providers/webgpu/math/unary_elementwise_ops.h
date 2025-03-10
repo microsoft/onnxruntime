@@ -63,7 +63,7 @@ class UnaryElementwise : public WebGpuKernel {
 class Gelu : public UnaryElementwise {
  public:
   Gelu(const OpKernelInfo& info);
-}
+};
 
 constexpr const char ErfImpl[] = R"(
 const r0 = 0.3275911;
