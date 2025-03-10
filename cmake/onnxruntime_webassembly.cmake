@@ -211,14 +211,10 @@ else()
     target_link_libraries(onnxruntime_webassembly PRIVATE tensorboard)
   endif()
 
-  set(onnxruntime_webassembly_script_deps "${ONNXRUNTIME_ROOT}/wasm/pre.js")
-
-  set(EXPORTED_FUNCTIONS "_malloc,_free")
   if (onnxruntime_USE_JSEP)
-    string(APPEND EXPORTED_FUNCTIONS ",_JsepOutput,_JsepGetNodeName")
-  endif()
-  if (onnxruntime_USE_WEBGPU)
-    string(APPEND EXPORTED_FUNCTIONS ",_wgpuBufferRelease,_wgpuCreateInstance")
+    set(EXPORTED_FUNCTIONS "_malloc,_free,_JsepOutput,_JsepGetNodeName")
+  else()
+    set(EXPORTED_FUNCTIONS "_malloc,_free")
   endif()
 
   if (onnxruntime_ENABLE_WEBASSEMBLY_MEMORY64)
@@ -316,15 +312,13 @@ else()
         target_compile_options(noexcep_operators PRIVATE ${SMEMORY_FLAG} -Wno-experimental)
     endif()
     target_link_options(onnxruntime_webassembly PRIVATE
-      "SHELL:--post-js \"${ONNXRUNTIME_ROOT}/wasm/js_post_js_64.js\""
+      --post-js "${ONNXRUNTIME_ROOT}/wasm/js_post_js_64.js"
     )
-    list(APPEND onnxruntime_webassembly_script_deps "${ONNXRUNTIME_ROOT}/wasm/js_post_js_64.js")
   else ()
     set(MAXIMUM_MEMORY "4294967296")
     target_link_options(onnxruntime_webassembly PRIVATE
-      "SHELL:--post-js \"${ONNXRUNTIME_ROOT}/wasm/js_post_js.js\""
+      --post-js "${ONNXRUNTIME_ROOT}/wasm/js_post_js.js"
     )
-    list(APPEND onnxruntime_webassembly_script_deps "${ONNXRUNTIME_ROOT}/wasm/js_post_js.js")
   endif ()
 
   target_link_options(onnxruntime_webassembly PRIVATE
@@ -378,6 +372,7 @@ jsepDownload:_pp_")
       "SHELL:-s SIGNATURE_CONVERSIONS='${SIGNATURE_CONVERSIONS}'"
     )
   endif ()
+  set_target_properties(onnxruntime_webassembly PROPERTIES LINK_DEPENDS ${ONNXRUNTIME_ROOT}/wasm/pre.js)
 
   if (onnxruntime_USE_JSEP)
     # NOTE: "-s ASYNCIFY=1" is required for JSEP to work with WebGPU
@@ -387,8 +382,10 @@ jsepDownload:_pp_")
     target_compile_definitions(onnxruntime_webassembly PRIVATE USE_JSEP=1)
     target_link_options(onnxruntime_webassembly PRIVATE
       "SHELL:--pre-js \"${ONNXRUNTIME_ROOT}/wasm/pre-jsep.js\""
+      "SHELL:-s ASYNCIFY=1"
+      "SHELL:-s ASYNCIFY_STACK_SIZE=65536"
     )
-    list(APPEND onnxruntime_webassembly_script_deps "${ONNXRUNTIME_ROOT}/wasm/pre-jsep.js")
+    set_target_properties(onnxruntime_webassembly PROPERTIES LINK_DEPENDS ${ONNXRUNTIME_ROOT}/wasm/pre-jsep.js)
 
     if (onnxruntime_ENABLE_WEBASSEMBLY_MEMORY64)
       target_link_options(onnxruntime_webassembly PRIVATE
@@ -400,20 +397,6 @@ jsepDownload:_pp_")
 
   if (onnxruntime_USE_WEBGPU)
     target_compile_definitions(onnxruntime_webassembly PRIVATE USE_WEBGPU=1)
-    target_link_options(onnxruntime_webassembly PRIVATE
-      "SHELL:--post-js \"${ONNXRUNTIME_ROOT}/wasm/post-webgpu.js\""
-    )
-    list(APPEND onnxruntime_webassembly_script_deps "${ONNXRUNTIME_ROOT}/wasm/post-webgpu.js")
-  endif()
-
-  if (onnxruntime_USE_JSEP OR onnxruntime_USE_WEBGPU OR onnxruntime_USE_WEBNN)
-    # if any of the above is enabled, we need to use the asyncify library
-    target_link_options(onnxruntime_webassembly PRIVATE
-      "SHELL:--pre-js \"${ONNXRUNTIME_ROOT}/wasm/pre-async.js\""
-      "SHELL:-s ASYNCIFY=1"
-      "SHELL:-s ASYNCIFY_STACK_SIZE=65536"
-    )
-    list(APPEND onnxruntime_webassembly_script_deps "${ONNXRUNTIME_ROOT}/wasm/pre-async.js")
   endif()
 
   if (onnxruntime_EMSCRIPTEN_SETTINGS)
@@ -474,8 +457,6 @@ jsepDownload:_pp_")
       "SHELL:-s EXPORT_NAME=ortWasm"
     )
   endif()
-
-  set_target_properties(onnxruntime_webassembly PROPERTIES LINK_DEPENDS "${onnxruntime_webassembly_script_deps}")
 
   set(target_name_list ort)
 

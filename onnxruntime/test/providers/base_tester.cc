@@ -174,7 +174,7 @@ static std::unique_ptr<SparseTensor> MakeSparseTensor(MLDataType data_type, cons
   return p_tensor;
 }
 
-void BaseTester::CopyDataToTensor(gsl::span<const std::byte> data, Tensor& dst) {
+void BaseTester::CopyDataToTensor(gsl::span<const gsl::byte> data, Tensor& dst) {
   ORT_ENFORCE(dst.SizeInBytes() >= data.size_bytes(), "Not enough space in the destination tensor");
   memcpy(dst.MutableDataRaw(), data.data(), data.size_bytes());
 }
@@ -203,7 +203,7 @@ void BaseTester::AddSparseCooTensorData(std::vector<Data>& data,
                                         MLDataType data_type,
                                         const char* name,
                                         gsl::span<const int64_t> dims,
-                                        gsl::span<const std::byte> values,
+                                        gsl::span<const gsl::byte> values,
                                         gsl::span<const int64_t> indices,
                                         const ValidateOutputParams& check_params,
                                         const std::vector<std::string>* dim_params) {
@@ -247,7 +247,7 @@ void BaseTester::AddSparseCsrTensorData(std::vector<Data>& data,
                                         MLDataType data_type,
                                         const char* name,
                                         gsl::span<const int64_t> dims,
-                                        gsl::span<const std::byte> values,
+                                        gsl::span<const gsl::byte> values,
                                         gsl::span<const int64_t> inner_indices,
                                         gsl::span<const int64_t> outer_indices,
                                         const ValidateOutputParams& check_params,

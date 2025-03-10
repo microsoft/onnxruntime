@@ -25,7 +25,7 @@ namespace Microsoft.ML.OnnxRuntime
         /// </summary>
         /// <param name="namedOnnxValue"></param>
         /// <param name="metadata"></param>
-        /// <returns>OrtValue created according to the metadata</returns>
+        /// <returns>OrtValye created accoding to the metadata</returns>
         internal static OrtValue CreateProjection(NamedOnnxValue namedOnnxValue, NodeMetadata metadata)
         {
             OrtValue result;
@@ -191,3 +191,4 @@ namespace Microsoft.ML.OnnxRuntime
         }
     }
 }
+

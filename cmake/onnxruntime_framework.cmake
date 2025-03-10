@@ -36,7 +36,10 @@ elseif(onnxruntime_ENABLE_TRITON)
 endif()
 
 if (onnxruntime_MINIMAL_BUILD)
-  set(onnxruntime_framework_src_exclude)
+  set(onnxruntime_framework_src_exclude
+    "${ONNXRUNTIME_ROOT}/core/framework/fallback_cpu_capability.h"
+    "${ONNXRUNTIME_ROOT}/core/framework/fallback_cpu_capability.cc"
+  )
 
   # custom ops support must be explicitly enabled in a minimal build. exclude if not.
   if (NOT onnxruntime_MINIMAL_BUILD_CUSTOM_OPS)

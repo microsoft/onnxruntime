@@ -22,7 +22,6 @@ endif()
 if (onnxruntime_MINIMAL_BUILD)
   set(onnxruntime_session_src_exclude
     "${ONNXRUNTIME_ROOT}/core/session/provider_bridge_ort.cc"
-    "${ONNXRUNTIME_ROOT}/core/session/model_builder_c_api.cc"
   )
 
   list(REMOVE_ITEM onnxruntime_session_srcs ${onnxruntime_session_src_exclude})

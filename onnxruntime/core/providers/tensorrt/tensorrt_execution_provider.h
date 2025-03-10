@@ -249,7 +249,6 @@ class TensorrtExecutionProvider : public IExecutionProvider {
   std::vector<std::unique_ptr<ComputeCapability>>
   GetCapability(const GraphViewer& graph,
                 const IKernelLookup& /*kernel_lookup*/,
-                const GraphOptimizerRegistry& graph_optimizer_registry,
                 IResourceAccountant* /* resource_accountant */) const override;
 
   int GetDeviceId() const { return device_id_; }
@@ -593,35 +592,5 @@ class TensorrtExecutionProvider : public IExecutionProvider {
    * This function only creates the instance at the first time it's being called."
    */
   nvinfer1::IBuilder* GetBuilder(TensorrtLogger& trt_logger) const;
-
-  /**
-   *  This is the helper function for ConstantFoldingDQ graph transformer.
-   *
-   *  It selects the qualified/required DQ node to be optimized as well as provides a mapping table
-   *  to help TRT EP later include the DQ node which is filtered out by TRT parser.
-   */
-  void SelectQualifiedDQNode(const GraphViewer& graph,
-                             std::unordered_set<NodeIndex>& selection_node_set,
-                             std::unordered_map<NodeIndex, NodeIndex>& consumer_to_dq) const;
-
-  /**
-   * This function returns an optimization ComputeCapability that is limited to:
-   *  1. the DQ nodes in this individual TRT ComputeCapability
-   *  2. the DQ nodes that are qualified and selected by TRT EP
-   *
-   * It also needs to make sure the DQ nodes is a subset of the complete list of DQ nodes to optimize in original selection ComputeCapability.
-   * Finally, copy the optimization function from the original selection ComputeCapability.
-   */
-  std::unique_ptr<ComputeCapability> CreateOptimizationComputeCapability(ComputeCapability* selection_cc,
-                                                                         std::unordered_set<NodeIndex>& trt_selection_node_set,
-                                                                         ComputeCapability* trt_cc) const;
-  /**
-   * This function helps add back the DQ nodes that are filtered out by TRT parser.
-   * The reason is the DQ nodes can be optimized and dequantized by applying ConstantFoldingDQ optimizer by ORT L2+ optimization.
-   */
-  void UpdateSupportedNodeVectorForDQ(const GraphViewer& graph,
-                                      SubGraph_t& supported_node_vector,
-                                      SubGraphCollection_t& supported_nodes_vector,
-                                      std::unordered_map<NodeIndex, NodeIndex> consumer_to_dq) const;
 };
 }  // namespace onnxruntime

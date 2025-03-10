@@ -16,6 +16,8 @@ skip_js_changes = [
     "android-x86_64-crosscompile-ci-pipeline.yml",
     "bigmodels-ci-pipeline.yml",
     "linux-ci-pipeline.yml",
+    "linux-cpu-aten-pipeline.yml",
+    "linux-cpu-eager-pipeline.yml",
     "linux-dnnl-ci-pipeline.yml",
     "linux-gpu-ci-pipeline.yml",
     "linux-gpu-tensorrt-ci-pipeline.yml",
@@ -34,7 +36,6 @@ skip_js_changes = [
     "win-gpu-doc-gen-ci-pipeline.yml",
     "win-gpu-tensorrt-ci-pipeline.yml",
     "win-gpu-webgpu-ci-pipeline.yml",
-    "win-openvino-ci-pipeline.yml",
     "win-qnn-arm64-ci-pipeline.yml",
     "win-qnn-ci-pipeline.yml",
 ]

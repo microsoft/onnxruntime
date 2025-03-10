@@ -153,7 +153,6 @@ std::shared_ptr<KernelRegistry> ACLExecutionProvider::GetKernelRegistry() const 
 std::vector<std::unique_ptr<ComputeCapability>>
 ACLExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph,
                                     const IKernelLookup& kernel_lookup,
-                                    const GraphOptimizerRegistry& /* graph_optimizer_registry */,
                                     IResourceAccountant*) const {
   std::vector<std::unique_ptr<ComputeCapability>> result;
   for (const auto& node : graph.Nodes()) {

@@ -1,9 +1,12 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+'use strict';
+
 //
 // This file contains the pre-run code for the ORT WebAssembly module. The code in this file will be injected into the
 // final module using Emscripten's `--pre-js` option.
+
 
 /**
  * Mount external data files of a model to an internal map, which will be used during session initialization.
@@ -11,8 +14,8 @@
  * @param {string} externalDataFilesPath
  * @param {Uint8Array} externalDataFilesData
  */
-Module["mountExternalData"] = (externalDataFilePath, externalDataFileData) => {
-  if (externalDataFilePath.startsWith("./")) {
+Module['mountExternalData'] = (externalDataFilePath, externalDataFileData) => {
+  if (externalDataFilePath.startsWith('./')) {
     externalDataFilePath = externalDataFilePath.substring(2);
   }
   const files = Module.MountedFiles || (Module.MountedFiles = new Map());
@@ -22,7 +25,7 @@ Module["mountExternalData"] = (externalDataFilePath, externalDataFileData) => {
 /**
  * Unmount external data files of a model.
  */
-Module["unmountExternalData"] = () => {
+Module['unmountExternalData'] = () => {
   delete Module.MountedFiles;
 };
 
@@ -45,7 +48,5 @@ Module["unmountExternalData"] = () => {
  *
  * @suppress {checkVars}
  */
-var SharedArrayBuffer =
-  globalThis.SharedArrayBuffer ??
-  new WebAssembly.Memory({ initial: 0, maximum: 0, shared: true }).buffer
-    .constructor;
+var SharedArrayBuffer = globalThis.SharedArrayBuffer ??
+    new WebAssembly.Memory({'initial': 0, 'maximum': 0, 'shared': true}).buffer.constructor;

@@ -2,19 +2,17 @@
 
 This tool provides the way to generate Onnx models that wraps QNN context binary warpt with weight sharing enabled. The options to use with the tool are listed below:
 
-`ep_weight_sharing_ctx_gen [options...] model_1_path,model_2_path`
+`onnxruntime_qnn_ctx_gen [options...] model_path,model_path`
 
-./ep_weight_sharing_ctx_gen -e qnn -v -i "soc_model|60 htp_graph_finalization_optimization_mode|3" /mnt/c/model1.onnx,/mnt/c/model2.onnx
+./onnxruntime_qnn_ctx_gen -v -i "soc_model|60 htp_graph_finalization_optimization_mode|3" -C "ep.context_enable|1 ep.context_embed_mode|0" /mnt/c/model1.onnx,/mnt/c/model2.onnx
 
 Options:
-
-    -e [qnn|tensorrt|openvino|vitisai]: Specifies the compile based provider qnn, tensorrt, openvino, vitisai. Default is qnn.
-
+       
     -v: Show verbose information.
 
     -C: [session_config_entries]: Specify session configuration entries as key-value pairs: -C "<key1>|<val1> <key2>|<val2>"
                                   Refer to onnxruntime_session_options_config_keys.h for valid keys and values.
-                                  [Example] -C "ep.context_enable|1 ep.context_embed_mode|0". These are set as default so can be ignored.
+                                  [Example] -C "ep.context_enable|1 ep.context_embed_mode|0"
 
     -i: [provider_options]: Specify QNN EP specific runtime options as key value pairs. Different runtime options available are:
             [Usage]: -i '<key1>|<value1> <key2>|<value2>'

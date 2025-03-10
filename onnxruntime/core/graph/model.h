@@ -280,12 +280,6 @@ class Model {
                              const logging::Logger& logger,
                              const ModelOptions& options = {});
 
-  static common::Status LoadFromModelEditorApiModel(const OrtModel& graph_api_model,
-                                                    const IOnnxRuntimeOpSchemaRegistryList* local_registries,
-                                                    const ModelOptions& options,
-                                                    const logging::Logger& logger,
-                                                    std::unique_ptr<Model>& model);
-
   common::Status SaveToOrtFormat(flatbuffers::FlatBufferBuilder& builder,
                                  flatbuffers::Offset<onnxruntime::fbs::Model>& model) const;
 
@@ -339,7 +333,7 @@ class Model {
   ModelMetaData model_metadata_;
 
   // Path to model file. May be empty.
-  std::filesystem::path model_path_;
+  const std::filesystem::path model_path_;
 
   // Main graph of the model.
   std::unique_ptr<Graph> graph_;

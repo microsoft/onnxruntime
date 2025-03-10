@@ -98,7 +98,7 @@ Status CopyKVCache(onnxruntime::webgpu::ComputeContext& context, const WebgpuAtt
   program.AddOutputs({{present_key, ProgramTensorMetadataDependency::Rank, components},
                       {present_value, ProgramTensorMetadataDependency::Rank, components}})
       .AddIndices(valid_present_shape);
-  program.SetDispatchGroupSize(onnxruntime::narrow<uint32_t>(valid_kv_size + 63 / 64))
+  program.SetDispatchGroupSize(gsl::narrow<uint32_t>(valid_kv_size + 63 / 64))
       .SetWorkgroupSize(64)
       .CacheHint(has_past, parameters.qkv_format_, parameters.past_present_share_buffer_)
       .AddUniformVariables({{static_cast<uint32_t>(valid_kv_size)},
@@ -379,7 +379,7 @@ Status FlashAttentionProgram::GenerateShaderCode(ShaderHelper& shader) const {
     if (sg_size > 8) {
       for (var i:u32 = 0; i < qkv_head_size_vec; i++)
       {
-          var val = v_tile[capped_sg_id][i];
+          var val = select(vec4<q_element_t>(0), v_tile[capped_sg_id][i], k_start + capped_sg_id < seq_causal_length);
           var sum = subgroupShuffle(val, 0) * qk_1[0];
           sum += subgroupShuffle(val, 1) * qk_1[1];
           sum += subgroupShuffle(val, 2) * qk_1[2];

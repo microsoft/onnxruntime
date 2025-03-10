@@ -61,39 +61,13 @@ class SharedContext {
     return graph_exist;
   }
 
-  bool SetSharedQnnBackendManager(std::shared_ptr<qnn::QnnBackendManager>& qnn_backend_manager) {
-    const std::lock_guard<std::mutex> lock(mtx_);
-
-    if (qnn_backend_manager_ != nullptr) {
-      if (qnn_backend_manager_ == qnn_backend_manager) {
-        return true;
-      }
-      return false;
-    }
-    qnn_backend_manager_ = qnn_backend_manager;
-    return true;
-  }
-
-  std::shared_ptr<qnn::QnnBackendManager> GetSharedQnnBackendManager() {
-    const std::lock_guard<std::mutex> lock(mtx_);
-    return qnn_backend_manager_;
-  }
-
-  void ResetSharedQnnBackendManager() {
-    const std::lock_guard<std::mutex> lock(mtx_);
-    qnn_backend_manager_.reset();
-  }
-
  private:
   SharedContext() = default;
   ~SharedContext() = default;
 
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(SharedContext);
 
-  // Used for passing through QNN models (deserialized from context binary) across sessions
   std::vector<std::unique_ptr<qnn::QnnModel>> shared_qnn_models_;
-  // Used for compiling multiple models into same QNN context binary
-  std::shared_ptr<qnn::QnnBackendManager> qnn_backend_manager_;
   // Producer sessions can be in parallel
   // Consumer sessions have to be after producer sessions initialized
   std::mutex mtx_;

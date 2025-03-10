@@ -314,8 +314,7 @@ export class WebNNBackend {
         bufferView = new Float32Array(buffer);
         break;
       case 'float16':
-        bufferView =
-          typeof Float16Array !== 'undefined' && Float16Array.from ? new Float16Array(buffer) : new Uint16Array(buffer);
+        bufferView = new Uint16Array(buffer);
         break;
       case 'int32':
         bufferView = new Int32Array(buffer);

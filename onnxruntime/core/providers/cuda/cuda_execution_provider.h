@@ -73,7 +73,6 @@ class CUDAExecutionProvider : public IExecutionProvider {
   std::vector<std::unique_ptr<ComputeCapability>> GetCapability(
       const onnxruntime::GraphViewer& graph,
       const IKernelLookup& kernel_lookup,
-      const GraphOptimizerRegistry& /* graph_optimizer_registry */,
       IResourceAccountant* resource_accountant) const override;
 
   int GetDeviceId() const override { return info_.device_id; }

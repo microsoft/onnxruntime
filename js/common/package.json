@@ -15,8 +15,7 @@
     "build": "node ./build.js",
     "prepare": "npm run build",
     "pretest": "tsc --build ./test",
-    "test": "mocha \"./test/**/*.js\" --timeout 30000",
-    "test:f16": "mocha -n js-float16array \"./test/**/*.js\" --timeout 30000"
+    "test": "mocha ./test/**/*.js --timeout 30000"
   },
   "devDependencies": {
     "typedoc": "^0.25.7"

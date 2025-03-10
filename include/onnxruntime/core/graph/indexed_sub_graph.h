@@ -72,12 +72,6 @@ struct IndexedSubGraph {
     return meta_def_.get();
   }
 
-  /** Gets the mutable meta definition needed to represent this subgraph as a FunctionProto.
-  @returns MetaDef instance if it has been set. nullptr if not. */
-  MetaDef* GetMutableMetaDef() {
-    return meta_def_.get();
-  }
-
   // Check if the accounting is enabled for the current EP
   bool IsAccountingEnabled() const {
     return resource_accountant != nullptr &&

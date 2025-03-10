@@ -81,7 +81,6 @@ NnapiExecutionProvider::~NnapiExecutionProvider() {}
 std::vector<std::unique_ptr<ComputeCapability>>
 NnapiExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_viewer,
                                       const IKernelLookup& /*kernel_lookup*/,
-                                      const GraphOptimizerRegistry& /* graph_optimizer_registry */,
                                       IResourceAccountant* /* resource_accountant */) const {
   std::vector<std::unique_ptr<ComputeCapability>> result;
   const logging::Logger& logger = *GetLogger();

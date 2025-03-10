@@ -31,7 +31,6 @@ class QNNExecutionProvider : public IExecutionProvider {
   std::vector<std::unique_ptr<ComputeCapability>>
   GetCapability(const onnxruntime::GraphViewer& graph_view,
                 const IKernelLookup& /*kernel_lookup*/,
-                const GraphOptimizerRegistry& /* graph_optimizer_registry */,
                 IResourceAccountant* /* resource_accountant */) const override;
 
   Status Compile(const std::vector<FusedNodeAndGraph>& fused_nodes_and_graphs,
@@ -91,7 +90,6 @@ class QNNExecutionProvider : public IExecutionProvider {
   uint32_t default_rpc_control_latency_ = 0;
   bool enable_HTP_FP16_precision_ = true;
   bool share_ep_contexts_ = false;
-  bool stop_share_ep_contexts_ = false;
   bool enable_spill_fill_buffer_ = false;
 #if defined(_WIN32)
   onnxruntime::logging::EtwRegistrationManager::EtwInternalCallback callback_ETWSink_provider_ = nullptr;

@@ -21,6 +21,11 @@ export interface AdapterInfo {
   isArchitecture: (architecture: GpuArchitecture) => boolean;
   isVendor: (vendor: GpuVendor) => boolean;
 }
+export interface DeviceInfo {
+  readonly subgroupsSupported: boolean;
+  readonly subgroupsF16Supported: boolean;
+  readonly subgroupSizeRange?: readonly [number, number];
+}
 
 export interface GpuData {
   type: GpuDataType;
@@ -159,6 +164,11 @@ export interface ComputeContext {
    * gpu adapter info
    */
   readonly adapterInfo: AdapterInfo;
+
+  /**
+   * gpu device info
+   */
+  readonly deviceInfo: DeviceInfo;
 
   /**
    * stores the pointer to OpKernelContext
