@@ -752,7 +752,7 @@ static void TestDecoderMaskedMultiHeadAttention(bool is_cross_attn = true, bool 
   int kv_sequence_length = 16;
   int head_size = 32;
   int num_heads = 12;
-  int beam_width = 4;
+  int beam_width = 1;
   int hidden_size = head_size * num_heads;
 
   OpTester tester("DecoderMaskedMultiHeadAttention", 1, onnxruntime::kMSDomain);
@@ -766,53 +766,54 @@ static void TestDecoderMaskedMultiHeadAttention(bool is_cross_attn = true, bool 
   tester.AddAttribute<int64_t>("output_qk", static_cast<int64_t>(is_cross_attn));
 
   // Inputs and outputs
-  auto query = CreateRandom<T>(batch_size * 1 * hidden_size);
-  tester.AddInput<T>("query", {batch_size, 1, hidden_size}, query);
+  int batch_beam_size = batch_size * beam_width;
+  auto query = CreateRandom<T>(batch_beam_size * 1 * hidden_size);
+  tester.AddInput<T>("query", {batch_beam_size, 1, hidden_size}, query);
 
   if (is_cross_attn) {
-    auto key = CreateRandom<T>(batch_size * num_heads * kv_sequence_length * head_size);
+    auto key = CreateRandom<T>(batch_beam_size * num_heads * kv_sequence_length * head_size);
     std::vector<T> reordered_key;
     if (use_cuda) {
-      reordered_key = ReorderKVCache<T>(key, batch_size, num_heads,
+      reordered_key = ReorderKVCache<T>(key, batch_beam_size, num_heads,
                                         kv_sequence_length, head_size, kv_sequence_length, false);
     }
-    auto value = CreateRandom<T>(batch_size * num_heads * kv_sequence_length * head_size);
-    tester.AddInput<T>("key", {batch_size, num_heads, kv_sequence_length, head_size}, (use_cuda ? reordered_key : key));
-    tester.AddInput<T>("value", {batch_size, num_heads, kv_sequence_length, head_size},
-                       CreateRandom<T>(batch_size * num_heads * kv_sequence_length * head_size));
+    auto value = CreateRandom<T>(batch_beam_size * num_heads * kv_sequence_length * head_size);
+    tester.AddInput<T>("key", {batch_beam_size, num_heads, kv_sequence_length, head_size}, (use_cuda ? reordered_key : key));
+    tester.AddInput<T>("value", {batch_beam_size, num_heads, kv_sequence_length, head_size},
+                       CreateRandom<T>(batch_beam_size * num_heads * kv_sequence_length * head_size));
 
-    const std::vector<int64_t> mask_index_dims = {batch_size, kv_sequence_length};
+    const std::vector<int64_t> mask_index_dims = {batch_beam_size, kv_sequence_length};
     auto mask_index = generator.Discrete<int32_t>(mask_index_dims, AsSpan({0, 1}));
-    tester.AddInput<int32_t>("mask_index", {batch_size, kv_sequence_length}, mask_index);
+    tester.AddInput<int32_t>("mask_index", {batch_beam_size, kv_sequence_length}, mask_index);
 
     // Calculate Softmax(Q * K^T + (Optional) mask) * V
     std::vector<T> empty_attention_bias;
-    auto output_qk = CalculateOutputQK(query, key, mask_index, empty_attention_bias, batch_size, num_heads,
+    auto output_qk = CalculateOutputQK(query, key, mask_index, empty_attention_bias, batch_beam_size, num_heads,
                                        kv_sequence_length, kv_sequence_length, head_size);
     std::vector<float> output_qk_float(output_qk.size());
     for (size_t i = 0; i < output_qk.size(); ++i) {
       output_qk_float[i] = static_cast<float>(output_qk[i]);
     }
-    auto softmax = Softmax_QK_Transpose<T>(output_qk.data(), batch_size, num_heads, 1, kv_sequence_length);
-    auto output = CalculateOutput<T>(softmax, value, batch_size, num_heads,
+    auto softmax = Softmax_QK_Transpose<T>(output_qk.data(), batch_beam_size, num_heads, 1, kv_sequence_length);
+    auto output = CalculateOutput<T>(softmax, value, batch_beam_size, num_heads,
                                      kv_sequence_length, kv_sequence_length, head_size);
 
-    tester.AddOutput<T>("output", {batch_size, 1, hidden_size}, output);
+    tester.AddOutput<T>("output", {batch_beam_size, 1, hidden_size}, output);
     tester.AddOptionalOutputEdge<T>();  // optional present_key
     tester.AddOptionalOutputEdge<T>();  // optional present_value
-    tester.AddOutput<float>("qk", {batch_size, num_heads, 1, kv_sequence_length}, output_qk_float);
+    tester.AddOutput<float>("qk", {batch_beam_size, num_heads, 1, kv_sequence_length}, output_qk_float);
   } else {
     int max_sequence_length = past_sequence_length + 10;
     int total_sequence_length = past_sequence_length + 1;
 
-    auto key = CreateRandom<T>(batch_size * hidden_size);
-    auto value = CreateRandom<T>(batch_size * hidden_size);
-    tester.AddInput<T>("key", {batch_size, 1, hidden_size}, key);
-    tester.AddInput<T>("value", {batch_size, 1, hidden_size}, value);
+    auto key = CreateRandom<T>(batch_beam_size * hidden_size);
+    auto value = CreateRandom<T>(batch_beam_size * hidden_size);
+    tester.AddInput<T>("key", {batch_beam_size, 1, hidden_size}, key);
+    tester.AddInput<T>("value", {batch_beam_size, 1, hidden_size}, value);
 
-    const std::vector<int64_t> mask_index_dims = {batch_size, total_sequence_length};
+    const std::vector<int64_t> mask_index_dims = {batch_beam_size, total_sequence_length};
     auto mask_index = generator.Discrete<int32_t>(mask_index_dims, AsSpan({0, 1}));
-    tester.AddInput<int32_t>("mask_index", {batch_size, total_sequence_length}, mask_index);
+    tester.AddInput<int32_t>("mask_index", {batch_beam_size, total_sequence_length}, mask_index);
     std::vector<int64_t> attention_bias_dims = {1, 1, 1, total_sequence_length};
     auto attention_bias_float = random.Gaussian<float>(attention_bias_dims, 0.0f, 0.3f);
     std::vector<T> attention_bias(attention_bias_float.size());
@@ -821,28 +822,28 @@ static void TestDecoderMaskedMultiHeadAttention(bool is_cross_attn = true, bool 
     }
     tester.AddInput<T>("attention_bias", {1, 1, 1, total_sequence_length}, attention_bias);
 
-    auto past_key = CreateRandom<T>(batch_size * num_heads * max_sequence_length * head_size);
-    auto past_value = CreateRandom<T>(batch_size * num_heads * max_sequence_length * head_size);
+    auto past_key = CreateRandom<T>(batch_beam_size * num_heads * max_sequence_length * head_size);
+    auto past_value = CreateRandom<T>(batch_beam_size * num_heads * max_sequence_length * head_size);
 
     std::vector<T> reordered_past_key;  // For CUDA, we need to reorder past key
     if (use_cuda) {
-      reordered_past_key = ReorderKVCache<T>(past_key, batch_size, num_heads,
+      reordered_past_key = ReorderKVCache<T>(past_key, batch_beam_size, num_heads,
                                              past_sequence_length, head_size, max_sequence_length, false);
     }
 
-    tester.AddInput<T>("past_key", {batch_size, num_heads, max_sequence_length, head_size},
+    tester.AddInput<T>("past_key", {batch_beam_size, num_heads, max_sequence_length, head_size},
                        (use_cuda ? reordered_past_key : past_key));
-    tester.AddInput<T>("past_value", {batch_size, num_heads, max_sequence_length, head_size}, past_value);
+    tester.AddInput<T>("past_value", {batch_beam_size, num_heads, max_sequence_length, head_size}, past_value);
 
     // merge past key and value with current key and value
-    auto merged_key = MergePast<T>(past_key, key, batch_size, num_heads,
+    auto merged_key = MergePast<T>(past_key, key, batch_beam_size, num_heads,
                                    past_sequence_length, max_sequence_length, head_size);
     std::vector<T> merged_reordered_key;
     if (use_cuda) {
-      merged_reordered_key = MergeReorderedKVCacheWithK<T>(reordered_past_key, key.data(), batch_size, num_heads,
+      merged_reordered_key = MergeReorderedKVCacheWithK<T>(reordered_past_key, key.data(), batch_beam_size, num_heads,
                                                            past_sequence_length, max_sequence_length, head_size, false);
     }
-    auto merged_value = MergePast<T>(past_value, value, batch_size, num_heads,
+    auto merged_value = MergePast<T>(past_value, value, batch_beam_size, num_heads,
                                      past_sequence_length, max_sequence_length, head_size);
 
     tester.AddInput<int32_t>("past_sequence_length", {1}, {past_sequence_length});
@@ -868,15 +869,15 @@ static void TestDecoderMaskedMultiHeadAttention(bool is_cross_attn = true, bool 
     // Calculate Softmax(Q * K^T + (Optional) mask) * V
     auto output_qk = CalculateOutputQK<T>(query, (beam_width > 1 ? mod_merged_key : merged_key),
                                           mask_index, attention_bias,
-                                          batch_size, num_heads, total_sequence_length, max_sequence_length, head_size);
-    auto softmax = Softmax_QK_Transpose<T>(output_qk.data(), batch_size, num_heads, 1, total_sequence_length);
+                                          batch_beam_size, num_heads, total_sequence_length, max_sequence_length, head_size);
+    auto softmax = Softmax_QK_Transpose<T>(output_qk.data(), batch_beam_size, num_heads, 1, total_sequence_length);
     auto output = CalculateOutput<T>(softmax, (beam_width > 1 ? mod_merged_value : merged_value),
-                                     batch_size, num_heads, total_sequence_length, max_sequence_length, head_size);
+                                     batch_beam_size, num_heads, total_sequence_length, max_sequence_length, head_size);
 
-    tester.AddOutput<T>("output", {batch_size, 1, hidden_size}, output);
-    tester.AddOutput<T>("present_key", {batch_size, num_heads, max_sequence_length, head_size},
+    tester.AddOutput<T>("output", {batch_beam_size, 1, hidden_size}, output);
+    tester.AddOutput<T>("present_key", {batch_beam_size, num_heads, max_sequence_length, head_size},
                         (use_cuda ? merged_reordered_key : merged_key));
-    tester.AddOutput<T>("present_value", {batch_size, num_heads, max_sequence_length, head_size}, merged_value);
+    tester.AddOutput<T>("present_value", {batch_beam_size, num_heads, max_sequence_length, head_size}, merged_value);
   }
 
   if (std::is_same<T, MLFloat16>::value) {

@@ -1360,6 +1360,7 @@ Status ExpandBuffer(Stream* ort_stream,
   // Input shape (batch_size, xxx). The input is required with data type T.
   // Output shape (batch_size * num_beams, xxx)
   const TensorShape& input_shape = input.Get<Tensor>().Shape();
+
   const int64_t& batch_size = input_shape[0];
   int64_t sequence_length = 0;
 
