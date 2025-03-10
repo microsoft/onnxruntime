@@ -259,6 +259,9 @@ def parse_arguments():
 
     parser.add_argument("--gen-api-doc", action="store_true", help="Generate API documentation for PyTorch frontend")
 
+    # Build QNN execution provider tool in onnxruntime/samples/
+    parser.add_argument("--build_qnn_ep_tool", action="store_true", help="Build executable tool for inference.")
+
     # CUDA related
     parser.add_argument("--use_cuda", action="store_true", help="Enable CUDA.")
     parser.add_argument(
@@ -1134,6 +1137,7 @@ def generate_build_tree(
         "-Donnxruntime_USE_VCPKG=" + ("ON" if args.use_vcpkg else "OFF"),
         "-Donnxruntime_USE_MIMALLOC=" + ("ON" if args.use_mimalloc else "OFF"),
         "-Donnxruntime_ENABLE_PYTHON=" + ("ON" if args.enable_pybind else "OFF"),
+        "-Donnxruntime_BUILD_QNN_EP_TOOL=" + ("ON" if args.build_qnn_ep_tool else "OFF"),
         "-Donnxruntime_BUILD_CSHARP=" + ("ON" if args.build_csharp else "OFF"),
         "-Donnxruntime_BUILD_JAVA=" + ("ON" if args.build_java else "OFF"),
         "-Donnxruntime_BUILD_NODEJS=" + ("ON" if args.build_nodejs else "OFF"),
