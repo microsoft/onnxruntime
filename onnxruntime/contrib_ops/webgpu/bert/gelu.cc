@@ -3,7 +3,7 @@
 
 #include "core/providers/webgpu/shader_helper.h"
 #include "core/providers/webgpu/webgpu_supported_types.h"
-#include "core/providers/webgpu/math/unary_elementwise_ops.cc" // contains Gelu definition
+#include "core/providers/webgpu/math/unary_elementwise_ops.cc"  // contains Gelu definition
 // #include "contrib_ops/webgpu/bert/gelu.h"
 #include "contrib_ops/webgpu/webgpu_contrib_kernels.h"
 
