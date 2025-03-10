@@ -2459,6 +2459,7 @@ bool TensorrtExecutionProvider::DetectTensorRTGraphCycles(SubGraphCollection_t& 
 std::vector<std::unique_ptr<ComputeCapability>>
 TensorrtExecutionProvider::GetCapability(const GraphViewer& graph,
                                          const IKernelLookup& /*kernel_lookup*/,
+                                         const GraphOptimizerRegistry& graph_optimizer_registry,
                                          IResourceAccountant* /* resource_accountant */) const {
   // Construct subgraph capability from node list
   std::vector<std::unique_ptr<ComputeCapability>> result;
@@ -2664,11 +2665,61 @@ TensorrtExecutionProvider::GetCapability(const GraphViewer& graph,
     }
   }
 
+  /**
+   * Enable EP related L2+ graph optimizations:
+   *
+   * 1. Calls provider bridge API to lookup pre-defined optimizer by name and get selection function.
+   *    - Example: g_host->GetOptimizerByName(optimizer_name, graph_optimizer_registry, selection_func)
+   * 2. Executes the selection function to obtain the selection ComputeCapability.
+   *    - ComputeCapability.optimize_func would be set by the optimizer to the function that does the optimization.
+   * 3. Uses the selection ComputeCapability to create the optimization ComputeCapability.
+   * 4. Returns the final ComputeCapability, with nodes_to_optimize set to the optimization ComputeCapability.
+   *
+   * Current available optimizations:
+   *   - (ConstantFoldingDQ) constant folding on DQ nodes, i.e. dequantize INT32, UINT16, INT16 constant to FP32.
+   */
+
+  SelectionFunc selection_func;
+  std::vector<std::unique_ptr<ComputeCapability>> selection_cc;
+
+  // Prepare for ConstantFoldingDQ optimizer
+  // Note: The NodeIndex here is the node index in the graph, not the index in node vector in supported_nodes_vector.
+  std::unordered_set<NodeIndex> trt_selection_node_set;     // The qualified dq nodes selected by TRT EP
+  std::unordered_map<NodeIndex, NodeIndex> consumer_to_dq;  // consumer node -> dq node
+
+  if (dla_enable_) {
+    std::string optimizer_name = "ConstantFoldingDQ";
+    const std::unordered_map<std::string, std::string> key_value_config;
+    auto status = g_host->GetOptimizerByName(optimizer_name, graph_optimizer_registry, selection_func);
+    if (status == Status::OK()) {
+      if (selection_func) {
+        selection_cc = selection_func(graph, key_value_config, graph_optimizer_registry);
+        SelectQualifiedDQNode(graph, trt_selection_node_set, consumer_to_dq);
+      }
+    } else {
+      LOGS_DEFAULT(WARNING) << "[TensorRT EP] Can't get optimizer " << optimizer_name;
+    }
+  }
+
+  // Create ComputeCapability
   int number_of_trt_nodes = 0, subgraph_index = 0;
-  for (const auto& group : supported_nodes_vector) {
+  for (auto& group : supported_nodes_vector) {
     if (!group.first.empty()) {
+      if (!selection_cc.empty()) {
+        // Include DQ nodes that are filtered out by TRT parser
+        UpdateSupportedNodeVectorForDQ(graph, group, supported_nodes_vector, consumer_to_dq);
+      }
+
       std::unique_ptr<IndexedSubGraph> sub_graph = GetSubGraph(group, graph, model_hash, subgraph_index);
-      result.push_back(ComputeCapability::Create(std::move(sub_graph)));
+      auto compute_capability = ComputeCapability::Create(std::move(sub_graph));
+
+      // add optimization ComputeCapability to node_to_optimize
+      for (auto& cc : selection_cc) {
+        std::unique_ptr<ComputeCapability> optimization_cc = CreateOptimizationComputeCapability(cc.get(), trt_selection_node_set, compute_capability.get());
+        compute_capability->add_nodes_to_optimize(std::move(optimization_cc));
+      }
+
+      result.push_back(std::move(compute_capability));
       number_of_trt_nodes += static_cast<int>(group.first.size());
       subgraph_index++;
     }

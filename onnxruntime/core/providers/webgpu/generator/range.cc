@@ -23,7 +23,7 @@ Status Range<T>::ComputeInternal(ComputeContext& context) const {
     return Status::OK();
   }
 
-  uint32_t output_size = gsl::narrow<uint32_t>(n);
+  uint32_t output_size = onnxruntime::narrow<uint32_t>(n);
   RangeProgram program{};
 #if defined(__GNUC__)
 #pragma GCC diagnostic push

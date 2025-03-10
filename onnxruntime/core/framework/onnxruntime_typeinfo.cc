@@ -10,8 +10,8 @@
 #include "core/framework/sparse_tensor.h"
 #include "core/graph/onnx_protobuf.h"
 #include "core/session/ort_apis.h"
+#include "core/session/model_editor_api.h"
 #include "core/framework/error_code_helper.h"
-
 #include "core/framework/tensor_type_and_shape.h"
 #include "core/framework/onnxruntime_map_type_info.h"
 #include "core/framework/onnxruntime_sequence_type_info.h"
@@ -40,7 +40,7 @@ OrtTypeInfo::OrtTypeInfo(std::unique_ptr<OrtOptionalTypeInfo> optional_type_info
     : type(ONNX_TYPE_OPTIONAL), optional_type_info(std::move(optional_type_info)) {}
 
 OrtTypeInfo::OrtTypeInfo(ONNXType type, std::unique_ptr<OrtTensorTypeAndShapeInfo> data) noexcept
-    : type(type), data(std::move(data)) {
+    : type(type), tensor_type_info(std::move(data)) {
 }
 
 OrtTypeInfo::~OrtTypeInfo() = default;
@@ -55,7 +55,9 @@ ORT_API_STATUS_IMPL(OrtApis::GetOnnxTypeFromTypeInfo, _In_ const struct OrtTypeI
 ORT_API_STATUS_IMPL(OrtApis::CastTypeInfoToTensorInfo, _In_ const struct OrtTypeInfo* input,
                     _Outptr_result_maybenull_ const struct OrtTensorTypeAndShapeInfo** out) {
   API_IMPL_BEGIN
-  *out = (input->type == ONNX_TYPE_TENSOR || input->type == ONNX_TYPE_SPARSETENSOR) ? input->data.get() : nullptr;
+  *out = (input->type == ONNX_TYPE_TENSOR || input->type == ONNX_TYPE_SPARSETENSOR)
+             ? input->tensor_type_info.get()
+             : nullptr;
   return nullptr;
   API_IMPL_END
 }
@@ -84,14 +86,69 @@ ORT_API_STATUS_IMPL(OrtApis::CastTypeInfoToOptionalTypeInfo, _In_ const OrtTypeI
   API_IMPL_END
 }
 
-ORT_API_STATUS_IMPL(OrtApis::GetDenotationFromTypeInfo, _In_ const OrtTypeInfo* type_info, _Out_ const char** const out,
-                    _Out_ size_t* len) {
+ORT_API_STATUS_IMPL(OrtApis::GetDenotationFromTypeInfo, _In_ const OrtTypeInfo* type_info,
+                    _Out_ const char** const out, _Out_ size_t* len) {
   API_IMPL_BEGIN
   *out = type_info->denotation.c_str();
   *len = type_info->denotation.size();
   return nullptr;
   API_IMPL_END
 }
+
+#if !defined(ORT_MINIMAL_BUILD)
+ORT_API_STATUS_IMPL(OrtModelEditorAPI::CreateTensorTypeInfo, _In_ const OrtTensorTypeAndShapeInfo* tensor_info,
+                    _Out_ OrtTypeInfo** type_info) {
+  API_IMPL_BEGIN
+  auto ti = std::make_unique<OrtTypeInfo>(ONNXType::ONNX_TYPE_TENSOR);
+  ti->tensor_type_info = tensor_info->Clone();
+  *type_info = ti.release();
+  return nullptr;
+  API_IMPL_END
+}
+
+ORT_API_STATUS_IMPL(OrtModelEditorAPI::CreateSparseTensorTypeInfo, _In_ const OrtTensorTypeAndShapeInfo* tensor_info,
+                    _Out_ OrtTypeInfo** type_info) {
+  API_IMPL_BEGIN
+  auto ti = std::make_unique<OrtTypeInfo>(ONNXType::ONNX_TYPE_SPARSETENSOR);
+  ti->tensor_type_info = tensor_info->Clone();
+  *type_info = ti.release();
+  return nullptr;
+  API_IMPL_END
+}
+
+ORT_API_STATUS_IMPL(OrtModelEditorAPI::CreateMapTypeInfo, ONNXTensorElementDataType map_key_type,
+                    _In_ const OrtTypeInfo* map_value_type, _Out_ OrtTypeInfo** type_info) {
+  API_IMPL_BEGIN
+  auto ti = std::make_unique<OrtTypeInfo>(ONNXType::ONNX_TYPE_MAP);
+  ti->map_type_info = std::make_unique<OrtMapTypeInfo>(map_key_type, map_value_type->Clone());
+  *type_info = ti.release();
+
+  return nullptr;
+  API_IMPL_END
+}
+
+ORT_API_STATUS_IMPL(OrtModelEditorAPI::CreateSequenceTypeInfo, _In_ const OrtTypeInfo* sequence_type,
+                    _Out_ OrtTypeInfo** type_info) {
+  API_IMPL_BEGIN
+  auto ti = std::make_unique<OrtTypeInfo>(ONNXType::ONNX_TYPE_SEQUENCE);
+  ti->sequence_type_info = std::make_unique<OrtSequenceTypeInfo>(sequence_type->Clone());
+  *type_info = ti.release();
+
+  return nullptr;
+  API_IMPL_END
+}
+
+ORT_API_STATUS_IMPL(OrtModelEditorAPI::CreateOptionalTypeInfo, _In_ const OrtTypeInfo* contained_type,
+                    _Out_ OrtTypeInfo** type_info) {
+  API_IMPL_BEGIN
+  auto ti = std::make_unique<OrtTypeInfo>(ONNXType::ONNX_TYPE_OPTIONAL);
+  ti->optional_type_info = std::make_unique<OrtOptionalTypeInfo>(contained_type->Clone());
+  *type_info = ti.release();
+
+  return nullptr;
+  API_IMPL_END
+}
+#endif  // !defined(ORT_MINIMAL_BUILD)
 
 ORT_API(void, OrtApis::ReleaseTypeInfo, _Frees_ptr_opt_ OrtTypeInfo* ptr) {
   std::unique_ptr<OrtTypeInfo> p(ptr);
@@ -298,8 +355,8 @@ std::unique_ptr<OrtTypeInfo> OrtTypeInfo::Clone() const {
 #endif
     case ONNX_TYPE_TENSOR: {
       std::unique_ptr<OrtTensorTypeAndShapeInfo> info;
-      if (data) {
-        info = data->Clone();
+      if (tensor_type_info) {
+        info = tensor_type_info->Clone();
       }
       result = MakePtr(type, std::move(info));
       result->denotation = denotation;

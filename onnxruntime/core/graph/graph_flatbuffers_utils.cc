@@ -300,8 +300,6 @@ Status LoadInitializerOrtFormat(const fbs::Tensor& fbs_tensor, TensorProto& init
     const auto* fbs_raw_data = fbs_tensor.raw_data();
     if (fbs_raw_data) {
       if (load_options.can_use_flatbuffer_for_initializers && fbs_raw_data->size() > 127) {
-        initializer.set_data_location(ONNX_NAMESPACE::TensorProto_DataLocation_EXTERNAL);
-
         static_assert(sizeof(void*) <= sizeof(ExternalDataInfo::OFFSET_TYPE));
         const void* data_offset = fbs_raw_data->Data();
         // we reinterpret_cast this back to void* in tensorprotoutils.cc:GetExtDataFromTensorProto.
@@ -309,15 +307,9 @@ Status LoadInitializerOrtFormat(const fbs::Tensor& fbs_tensor, TensorProto& init
         // high bit, but that should be unlikely in a scenario where we care about memory usage enough to use this path.
         auto offset = narrow<ExternalDataInfo::OFFSET_TYPE>(reinterpret_cast<intptr_t>(data_offset));
 
-        ONNX_NAMESPACE::StringStringEntryProto* entry = initializer.mutable_external_data()->Add();
-        entry->set_key("location");
-        entry->set_value(ToUTF8String(onnxruntime::utils::kTensorProtoMemoryAddressTag));
-        entry = initializer.mutable_external_data()->Add();
-        entry->set_key("offset");
-        entry->set_value(std::to_string(offset));
-        entry = initializer.mutable_external_data()->Add();
-        entry->set_key("length");
-        entry->set_value(std::to_string(fbs_raw_data->size()));
+        ExternalDataInfo::SetExternalLocationToProto(onnxruntime::utils::kTensorProtoMemoryAddressTag,
+                                                     offset, fbs_raw_data->size(), initializer);
+
       } else {
         // fbs_raw_data is uint8_t vector, so the size is byte size
         initializer.set_raw_data(fbs_raw_data->Data(), fbs_raw_data->size());
