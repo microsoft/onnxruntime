@@ -249,6 +249,7 @@ export declare namespace JSEP {
      * @param dataLength - specify the external data length.
      * @param builder - specify the MLGraphBuilder used for constructing the Constant.
      * @param desc - specify the MLOperandDescriptor of the Constant.
+     * @param shouldConvertInt64ToInt32 - specify whether to convert int64 to int32.
      * @returns the WebNN Constant operand for the specified external data.
      */
     jsepRegisterMLConstant(
@@ -257,6 +258,7 @@ export declare namespace JSEP {
       dataLength: number,
       builder: MLGraphBuilder,
       desc: MLOperandDescriptor,
+      shouldConvertInt64ToInt32: boolean,
     ): MLOperand;
 
     /**
@@ -279,6 +281,12 @@ export declare namespace JSEP {
      * @returns the MLTensor ID for the temporary MLTensor.
      */
     jsepCreateTemporaryTensor: (sessionId: number, dataType: DataType, shape: readonly number[]) => Promise<number>;
+    /**
+     * [exported from pre-jsep.js] Check if a session's associated WebNN Context supports int64.
+     * @param sessionId - specify the session ID.
+     * @returns whether the WebNN Context supports int64.
+     */
+    jsepIsInt64Supported: (sessionId: number) => boolean;
   }
 }
 
