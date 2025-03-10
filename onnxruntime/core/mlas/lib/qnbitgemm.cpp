@@ -542,19 +542,91 @@ HQ4BitGemm_CompFp16(
     }
 }
 
+
+/* SQ2BitGemm_CompInt8
+*
+* It is used to compute the matrix multiplication of two quantized matrices with 2-bit quantization.
+* SQ2BitGemm_CompInt8 process [strideM, strideN] blocks of C. then SQ2BitGemmKernel_CompInt8 process [strideM, 128]
+* For GEMM, It takes fixed LUT(QuantBData) and RangeCountN Activation(QuantA).
+*
+* The function takes the following parameters:
+* - BlkLen: The block length for the quantized matrices.
+* - K: The number of columns in the first matrix and the number of rows in the second matrix.
+* - DataParams: A pointer to the MLAS_QNBIT_GEMM_DATA_PARAMS structure that contains the parameters
+*   for the quantized matrix multiplication.
+* - PerGemmWorkspace: A pointer to the workspace for the kernel.
+* - RangeStartM: The starting index for the rows of the first matrix.
+* - RangeCountM: The number of rows to process in the first matrix.
+* - RangeStartN: The starting index for the columns of the second matrix.
+* - RangeCountN: The number of columns to process in the second matrix.
+*
+*/
 void
 SQ2BitGemm_CompInt8(
-    const size_t /*BlkLen*/,
-    const size_t /*K*/,
-    const MLAS_QNBIT_GEMM_DATA_PARAMS<float>* const /*DataParams*/,
-    void* const /*PerGemmWorkspace*/,
-    const size_t /*RangeStartM*/,
-    const size_t /*RangeCountM*/,
-    const size_t /*RangeStartN*/,
-    const size_t /*RangeCountN*/
+    const size_t BlkLen,
+    const size_t K,
+    const MLAS_QNBIT_GEMM_DATA_PARAMS<float>* const DataParams,
+    void* const PerGemmWorkspace,
+    const size_t RangeStartM,
+    const size_t RangeCountM,
+    const size_t RangeStartN,
+    const size_t RangeCountN
 )
 {
-  // TODO: implement this to call 2bit t-mac kernel
+    constexpr size_t BlkBitWidth = 2;
+
+    const size_t k_blks = MlasDivRoundup(K, BlkLen);
+
+    const size_t lda = k_blks * Q8BlkSize(BlkLen);
+    const size_t ldc = DataParams->ldc;
+    const size_t ldb = k_blks * MlasQNBitBlkDataSizeInBytes(BlkBitWidth, BlkLen);
+    const size_t k_blks_zp_bytes = MlasQNBitZeroPointsForBlksSizeInBytes<BlkBitWidth>(k_blks);
+
+    const std::byte* QuantA = static_cast<const std::byte*>(PerGemmWorkspace) + RangeStartM * lda;
+
+    const std::byte* QuantBData = static_cast<const std::byte*>(DataParams->PackedQuantBData) + RangeStartN * ldb;
+    const float* QuantBScale = DataParams->QuantBScale + RangeStartN * k_blks;
+    const std::byte* QuantBZeroPoint =
+        (DataParams->QuantBZeroPoint == nullptr)
+            ? nullptr
+            : static_cast<const std::byte*>(DataParams->QuantBZeroPoint) + RangeStartN * k_blks_zp_bytes;
+
+    float* C = DataParams->C + RangeStartM * ldc + RangeStartN;
+
+    const float* Bias = (DataParams->Bias == nullptr) ? nullptr : DataParams->Bias + RangeStartN;
+
+    size_t CountN = 1;
+    // In T-MAC we process 1 row of LUT and 128 columns of Activation.
+    for (size_t n = 0; n < RangeCountN; n += CountN) {
+        const std::byte* a_row = QuantA;
+        const std::byte* b_col = QuantBData + n * ldb;
+        const float* b_col_scale = QuantBScale + n * k_blks;
+        const std::byte* b_col_zp =
+            (QuantBZeroPoint == nullptr) ? nullptr : QuantBZeroPoint + n * k_blks_zp_bytes;
+        float* c_blk = C + n;
+        const float* bias = (Bias == nullptr) ? nullptr : Bias + n;
+
+        if (GetMlasPlatform().QNBitGemmDispatch->SQ2BitGemmKernel_CompInt8 != nullptr) {
+            size_t RowsRemaining = RangeCountM;
+            while (RowsRemaining > 0) {
+                const auto RowsHandled = GetMlasPlatform().QNBitGemmDispatch->SQ2BitGemmKernel_CompInt8(
+                    BlkLen,
+                    a_row, b_col, b_col_scale, b_col_zp, c_blk, RowsRemaining, CountN, K, k_blks, ldc, bias
+                );
+
+                if (DataParams->PostProcessor != nullptr) {
+                    DataParams->PostProcessor->Process(
+                        DataParams->C, RangeStartM + RangeCountM - RowsRemaining, RangeStartN + n,
+                        RowsHandled, CountN, ldc
+                    );
+                }
+
+                c_blk += RowsHandled * ldc;
+                a_row += RowsHandled * lda;
+
+                RowsRemaining -= RowsHandled;
+            }
+        }
 }
 
 void
@@ -752,6 +824,9 @@ InitializeWorkspace_CompInt8<float>(
             std::byte* QuantARowPtr = static_cast<std::byte*>(Workspace) + gemm_idx * PerGemmWorkspaceStride;
             for (size_t m = 0; m < M; ++m) {
                 QuantizeARow(BlkLen, ARowPtr, K, QuantARowPtr);
+
+                // T-MAC LUT Creator
+                LUTCreator();
 
                 ARowPtr += data.lda;
                 QuantARowPtr += QuantAStride;
