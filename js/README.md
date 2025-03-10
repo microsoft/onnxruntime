@@ -439,7 +439,7 @@ From ORT v1.19 onwards, the ONNX Runtime Mobile packages are no longer published
     To record logs for testing results, add `--record-logs`. Output logs and test results will be produced in the `e2e/artifacts/` folder.
     See: [Detox/logger#artifacts](https://wix.github.io/Detox/docs/api/logger#artifacts)
 
-    **_`npm run bootstrap` changes `packages.json` and `pacakge-lock.json` files. Once testing is done, restore changes to avoid unwanted commit._**
+    **_`npm run bootstrap` changes `packages.json` and `package-lock.json` files. Once testing is done, restore changes to avoid unwanted commit._**
 
 5. Run Android and iOS apps.
 
