@@ -49,7 +49,7 @@ class ReduceKernel : public WebGpuKernel, public ReduceKernelBase<allow_multi_ax
   Status ComputeInternal(ComputeContext& ctx) const;
   virtual ReduceOpSpecificCode GetOpSpecificCode(const Tensor* input_tensor) const = 0;
 
-  virtual Status CheckInput(const Tensor* input_tensor) const {
+  Status CheckInput(const Tensor* input_tensor) const {
     ORT_ENFORCE(input_tensor != nullptr && (input_tensor->Shape().Size() > 0 || allow_empty_input_), "Input tensor cannot be null or empty");
     return Status::OK();
   }
@@ -63,27 +63,18 @@ class ReduceMean final : public ReduceKernel<true> {
  public:
   ReduceMean(const OpKernelInfo& info) : ReduceKernel<true>(info, "ReduceMean", true) {}
   ReduceOpSpecificCode GetOpSpecificCode(const Tensor* input_tensor) const override;
-  Status ComputeInternal(ComputeContext& ctx) const override {
-    return ReduceKernel<true>::ComputeInternal(ctx);
-  }
 };
 
 class ReduceMax final : public ReduceKernel<true> {
  public:
   ReduceMax(const OpKernelInfo& info) : ReduceKernel<true>(info, "ReduceMax") {}
   ReduceOpSpecificCode GetOpSpecificCode(const Tensor* input_tensor) const override;
-  Status ComputeInternal(ComputeContext& ctx) const override {
-    return ReduceKernel<true>::ComputeInternal(ctx);
-  }
 };
 
 class ReduceSum final : public ReduceKernel<true> {
  public:
   ReduceSum(const OpKernelInfo& info) : ReduceKernel<true>(info, "ReduceSum", true) {}
   ReduceOpSpecificCode GetOpSpecificCode(const Tensor* input_tensor) const override;
-  Status ComputeInternal(ComputeContext& ctx) const override {
-    return ReduceKernel<true>::ComputeInternal(ctx);
-  }
 };
 
 }  // namespace webgpu
