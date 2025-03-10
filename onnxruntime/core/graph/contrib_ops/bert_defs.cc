@@ -318,7 +318,7 @@ void BaseGroupQueryAttentionTypeAndShapeInference(ONNX_NAMESPACE::InferenceConte
 
 void GroupQueryAttentionTypeAndShapeInference(ONNX_NAMESPACE::InferenceContext& ctx, int past_key_index) {
   // TODO(aciddelgado): propagate output shapes depending if kv-share buffer is on or not
-  constexpr int use_max_past_present_buffer = -1;
+  constexpr int use_max_past_present_buffer = 1;
   BaseGroupQueryAttentionTypeAndShapeInference(ctx, past_key_index, use_max_past_present_buffer);
 }
 
