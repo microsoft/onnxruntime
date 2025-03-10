@@ -35,7 +35,8 @@ sys.path.insert(0, os.path.join(REPO_DIR, "tools", "python"))
 import util.android as android  # noqa: E402
 from util import (  # noqa: E402
     generate_android_triplets,
-    generate_posix_triplets,
+    generate_linux_triplets,
+    generate_macos_triplets,
     generate_vcpkg_triplets_for_emscripten,
     generate_windows_triplets,
     get_logger,
@@ -1115,7 +1116,6 @@ def generate_build_tree(
     cmake_extra_args,
 ):
     log.info("Generating CMake build tree")
-
     cmake_dir = os.path.join(source_dir, "cmake")
     cmake_args = [cmake_path, cmake_dir]
     if not use_dev_mode(args):
@@ -1330,8 +1330,16 @@ def generate_build_tree(
             generate_android_triplets(build_dir, args.android_cpp_shared, args.android_api)
         elif is_windows():
             generate_windows_triplets(build_dir)
+        elif is_macOS():
+            osx_target = args.apple_deploy_target
+            if args.apple_deploy_target is None:
+                osx_target = os.environ.get("MACOSX_DEPLOYMENT_TARGET")
+            if osx_target is not None:
+                log.info(f"Setting VCPKG_OSX_DEPLOYMENT_TARGET to {osx_target}")
+            generate_macos_triplets(build_dir, osx_target)
         else:
-            generate_posix_triplets(build_dir)
+            # Linux, *BSD, AIX or other platforms
+            generate_linux_triplets(build_dir)
         add_default_definition(cmake_extra_defines, "CMAKE_TOOLCHAIN_FILE", str(vcpkg_toolchain_path))
 
         vcpkg_install_options = generate_vcpkg_install_options(build_dir, args)
