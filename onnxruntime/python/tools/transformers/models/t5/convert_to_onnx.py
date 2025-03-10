@@ -10,7 +10,12 @@ import logging
 import os
 
 import torch
-from benchmark_helper import Precision, create_onnxruntime_session, prepare_environment, setup_logger
+from benchmark_helper import (
+    Precision,
+    create_onnxruntime_session,
+    prepare_environment,
+    setup_logger,
+)
 from t5_helper import PRETRAINED_MT5_MODELS, PRETRAINED_T5_MODELS, T5Helper
 
 logger = logging.getLogger("")
@@ -26,7 +31,8 @@ def parse_arguments():
         required=False,
         default=PRETRAINED_T5_MODELS[0],
         type=str,
-        help="Model path, or pretrained model name in the list: " + ", ".join(pretrained_models),
+        help="Model path, or pretrained model name in the list: "
+        + ", ".join(pretrained_models),
     )
 
     parser.add_argument(
@@ -63,7 +69,9 @@ def parse_arguments():
     )
     parser.set_defaults(optimize_onnx=False)
 
-    parser.add_argument("--use_gpu", required=False, action="store_true", help="use GPU for inference")
+    parser.add_argument(
+        "--use_gpu", required=False, action="store_true", help="use GPU for inference"
+    )
     parser.set_defaults(use_gpu=False)
 
     parser.add_argument(
@@ -79,7 +87,9 @@ def parse_arguments():
     parser.add_argument("--verbose", required=False, action="store_true")
     parser.set_defaults(verbose=False)
 
-    parser.add_argument("-e", "--use_external_data_format", required=False, action="store_true")
+    parser.add_argument(
+        "-e", "--use_external_data_format", required=False, action="store_true"
+    )
     parser.set_defaults(use_external_data_format=False)
 
     parser.add_argument(
@@ -109,14 +119,6 @@ def parse_arguments():
     parser.set_defaults(disable_auto_mixed_precision=False)
 
     parser.add_argument(
-        "--separate_encoder_and_decoder_init",
-        required=False,
-        action="store_true",
-        help="Do not merge encode and decoder init. Output 3 instead of 2 onnx models.",
-    )
-    parser.set_defaults(separate_encoder_and_decoder_init=False)
-
-    parser.add_argument(
         "--use_int64_inputs",
         required=False,
         action="store_true",
@@ -130,6 +132,14 @@ def parse_arguments():
         default="",
         help="filepath to load pre-trained model with custom state dictionary (e.g. pytorch_model.bin)",
     )
+
+    parser.add_argument(
+        "--encode_decoder_init",
+        required=False,
+        action="store_true",
+        help="Combine encoder and decoder kv cache initialization into one model.",
+    )
+    parser.set_defaults(encode_decoder_init=False)
 
     args = parser.parse_args()
 
@@ -146,17 +156,22 @@ def export_onnx_models(
     precision,
     verbose,
     use_decoder_start_token: bool = False,
-    merge_encoder_and_decoder_init: bool = True,
     overwrite: bool = False,
     disable_auto_mixed_precision: bool = False,
     use_int32_inputs: bool = True,
     model_type: str = "t5",
     state_dict_path: str = "",
+    encode_decoder_init: bool = False,
 ):
     device = torch.device("cuda:0" if use_gpu else "cpu")
 
     models = T5Helper.load_model(
-        model_name_or_path, cache_dir, device, merge_encoder_and_decoder_init, model_type, state_dict_path
+        model_name_or_path,
+        cache_dir,
+        device,
+        model_type,
+        state_dict_path,
+        encode_decoder_init=encode_decoder_init,
     )
     config = models["decoder"].config
 
@@ -220,11 +235,17 @@ def export_onnx_models(
         ort_session = create_onnxruntime_session(
             output_path,
             use_gpu=use_gpu,
-            provider=["CUDAExecutionProvider", "CPUExecutionProvider"] if use_gpu else ["CPUExecutionProvider"],
+            provider=(
+                ["CUDAExecutionProvider", "CPUExecutionProvider"]
+                if use_gpu
+                else ["CPUExecutionProvider"]
+            ),
         )
 
         with torch.no_grad():
-            max_diff = T5Helper.verify_onnx(model, ort_session, device, use_int32_inputs)
+            max_diff = T5Helper.verify_onnx(
+                model, ort_session, device, use_int32_inputs
+            )
         logger.info(f"PyTorch and OnnxRuntime results max difference = {max_diff}")
         if max_diff > 1e-4:
             logger.warning("PyTorch and OnnxRuntime results are NOT close")
@@ -242,7 +263,11 @@ def main():
     logger.info(f"Arguments:{args}")
 
     cache_dir = args.cache_dir
-    output_dir = args.output if not args.output.endswith(".onnx") else os.path.dirname(args.output)
+    output_dir = (
+        args.output
+        if not args.output.endswith(".onnx")
+        else os.path.dirname(args.output)
+    )
     prepare_environment(cache_dir, output_dir, args.use_gpu)
 
     if args.precision != Precision.FLOAT32:
@@ -264,11 +289,11 @@ def main():
         args.precision,
         args.verbose,
         args.use_decoder_start_token,
-        not args.separate_encoder_and_decoder_init,
         args.overwrite,
         args.disable_auto_mixed_precision,
         not args.use_int64_inputs,
         args.model_type,
+        encode_decoder_init=args.encode_decoder_init,
     )
 
     logger.info(f"Done! Outputs: {output_paths}")
