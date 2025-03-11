@@ -105,7 +105,7 @@ elseif (APPLE)
   target_link_libraries(onnxruntime_binding PRIVATE libonnxruntime.${ort_version}.dylib)
   set_target_properties(onnxruntime_binding PROPERTIES INSTALL_RPATH "@loader_path")
 else()
-  target_link_libraries(onnxruntime_binding PRIVATE onnxruntime)
+  target_link_libraries(onnxruntime_binding PRIVATE libonnxruntime.so.${ort_version})
   set_target_properties(onnxruntime_binding PROPERTIES INSTALL_RPATH "$ORIGIN/")
 endif()
 
