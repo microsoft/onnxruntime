@@ -7,7 +7,7 @@ def read_env_file(filepath):
         for line in f:
             match = re.match(r'^(.*?)=(.*)$', line.strip())
             if match:
-                env_vars[match.group(1)] = match.group(2)
+                env_vars[match.group(1).upper()] = match.group(2)
     return env_vars
 
 initial_env = read_env_file('initial_env.txt')
