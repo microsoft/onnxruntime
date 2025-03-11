@@ -85,7 +85,9 @@ class LinearUnit : public UnaryElementwise {
   float alpha_;
 };
 
-class QuickGelu : public LinearUnit {};
+class QuickGelu : public LinearUnit {
+  QuickGelu(const OpKernelInfo& info);
+};
 
 constexpr const char ErfImpl[] = R"(
 const r0 = 0.3275911;

@@ -265,8 +265,6 @@ WEBGPU_CLIP_KERNEL(MLFloat16)
 WEBGPU_LU_IMPL(Elu, "elu_v(a)", EluImpl, 1.0)
 WEBGPU_ELEMENTWISE_KERNEL(Elu, 6, WebGpuSupportedFloatTypes())
 
-WEBGPU_LU_IMPL(QuickGelu, "quick_gelu_v(a)", QuickGeluImpl, 0.2)
-
 Gelu::Gelu(const OpKernelInfo& info)
     : UnaryElementwise{info,
                        "Gelu",
@@ -275,6 +273,9 @@ Gelu::Gelu(const OpKernelInfo& info)
                        ShaderUsage::UseValueTypeAlias} {
   cache_hint = info.GetAttrOrDefault<std::string>("approximate", "none");
 }
+
+QuickGelu::QuickGelu(const OpKernelInfo& info)
+    : LinearUnit{info, "QuickGelu", "elu_v(a)", QuickGeluExpr, 0.2f} {}
 
 WEBGPU_ELEMENTWISE_KERNEL(Gelu, 20, WebGpuSupportedFloatTypes())
 
