@@ -27,7 +27,7 @@ Status UnaryElementwise::ComputeInternal(ComputeContext& context) const {
   if (size == 0) {
     return Status::OK();
   }
-  uint32_t vec_size = gsl::narrow<uint32_t>((size + 3) / 4);
+  uint32_t vec_size = onnxruntime::narrow<uint32_t>((size + 3) / 4);
   UnaryElementwiseProgram program{kernel_name_, expression_, additional_impl_, additional_usage_};
   program
       .AddInputs({{input_tensor, ProgramTensorMetadataDependency::Type, {vec_size}, 4}})

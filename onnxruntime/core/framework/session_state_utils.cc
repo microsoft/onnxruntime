@@ -81,6 +81,11 @@ static common::Status ExtDataTensorProtoToTensor(const Env& env,
   ORT_RETURN_IF_ERROR(utils::GetExtDataFromTensorProto(env, proto_path.c_str(), tensor_proto,
                                                        ext_data_buf, ext_data_len, ext_data_deleter,
                                                        buffered_tensor, &prepacked_for_graph));
+  if constexpr (endian::native != endian::little) {
+    if (!proto_path.empty() && (proto_path.compare(onnxruntime::utils::kTensorProtoMemoryAddressTag) != 0)) {
+      utils::ConvertRawDataInTensorProto(const_cast<ONNX_NAMESPACE::TensorProto*>(&tensor_proto), ext_data_buf, ext_data_len);
+    }
+  }
 
   // NB: creating a do-nothing allocator per tensor is wasteful; can perhaps be
   // avoided if the Tensor class implements the do-nothing behavior when given a
