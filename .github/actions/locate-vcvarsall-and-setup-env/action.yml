@@ -28,7 +28,9 @@ runs:
 
             if os.path.exists(vcvarsall_path):
                 print(f"vcvarsall found at: {vcvarsall_path}")
-                print(f"::set-output name=vcvarsall_path::{vcvarsall_path}")
+                # Use GITHUB_OUTPUT environment variable
+                with open(os.environ['GITHUB_OUTPUT'], 'a') as f:
+                    f.write(f"vcvarsall_path={vcvarsall_path}\n")
             else:
                 print(f"vcvarsall.bat not found at expected path: {vcvarsall_path}")
                 # Use 'exit(1)' for Python to properly signal failure to GitHub Actions

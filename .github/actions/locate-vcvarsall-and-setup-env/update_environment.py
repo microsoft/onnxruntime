@@ -25,5 +25,7 @@ for key, value in final_env.items():
                     for path in added_paths:
                         f.write(path + os.linesep)
         else:
-            value = value.replace('%', '%25').replace('\r', '%0D').replace('\n', '%0A')
-            print(f'::set-env name={key}::{value}')
+            # Use GITHUB_ENV
+            with open(os.environ['GITHUB_ENV'], 'a') as f:
+                # No need to escape special characters when using GITHUB_ENV file
+                f.write(f"{key}={value}\n")
