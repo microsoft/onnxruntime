@@ -65,11 +65,11 @@ constexpr MlasExpConstants<_mlas_fp16_> ExpConstantsFp16 = {
 
 template <typename T>
 MLAS_FORCEINLINE
-MlasExpConstants<T> Get_Exp_Constants();
+const MlasExpConstants<T>& Get_Exp_Constants();
 
 template <>
 MLAS_FORCEINLINE
-MlasExpConstants<float16x8_t> Get_Exp_Constants<float16x8_t>() {
+const MlasExpConstants<float16x8_t>& Get_Exp_Constants<float16x8_t>() {
     const static MlasExpConstants<float16x8_t> ExpConstantsFp16x8 = {
         MlasBroadcastFloat16x8(ExpConstantsFp16.LowerRange),
         MlasBroadcastFloat16x8(ExpConstantsFp16.UpperRange),
@@ -94,7 +94,7 @@ MlasExpConstants<float16x8_t> Get_Exp_Constants<float16x8_t>() {
 
 template <>
 MLAS_FORCEINLINE
-MlasExpConstants<float16x4_t> Get_Exp_Constants<float16x4_t>() {
+const MlasExpConstants<float16x4_t>& Get_Exp_Constants<float16x4_t>() {
     const static MlasExpConstants<float16x4_t> ExpConstantsFp16x4 = {
         MlasBroadcastFloat16x4(ExpConstantsFp16.LowerRange),
         MlasBroadcastFloat16x4(ExpConstantsFp16.UpperRange),
@@ -431,11 +431,11 @@ constexpr MlasTanhConstants<_mlas_fp16_> TanhConstantsFp16 = {
 
 template <typename T>
 MLAS_FORCEINLINE
-MlasTanhConstants<T> Get_Tanh_Constants();
+const MlasTanhConstants<T>& Get_Tanh_Constants();
 
 template <>
 MLAS_FORCEINLINE
-MlasTanhConstants<float16x8_t> Get_Tanh_Constants<float16x8_t>() {
+const MlasTanhConstants<float16x8_t>& Get_Tanh_Constants<float16x8_t>() {
     const static MlasTanhConstants<float16x8_t> TanhConstantsFp16x8 = {
         MlasBroadcastFloat16x8(TanhConstantsFp16.LowerRange),
         MlasBroadcastFloat16x8(TanhConstantsFp16.UpperRange),
@@ -453,7 +453,7 @@ MlasTanhConstants<float16x8_t> Get_Tanh_Constants<float16x8_t>() {
 
 template <>
 MLAS_FORCEINLINE
-MlasTanhConstants<float16x4_t> Get_Tanh_Constants<float16x4_t>() {
+const MlasTanhConstants<float16x4_t>& Get_Tanh_Constants<float16x4_t>() {
     const static MlasTanhConstants<float16x4_t> TanhConstantsFp16x4 = {
         MlasBroadcastFloat16x4(TanhConstantsFp16.LowerRange),
         MlasBroadcastFloat16x4(TanhConstantsFp16.UpperRange),
