@@ -275,7 +275,7 @@ Gelu::Gelu(const OpKernelInfo& info)
 }
 
 QuickGelu::QuickGelu(const OpKernelInfo& info)
-    : LinearUnit{info, "QuickGelu", "quick_gelu_v(a)", QuickGeluExpr, 0.2f} {}
+    : LinearUnit{info, "QuickGelu", "quick_gelu_v(a)", QuickGeluExpr, 1.702f} {}
 
 WEBGPU_ELEMENTWISE_KERNEL(Gelu, 20, WebGpuSupportedFloatTypes())
 
