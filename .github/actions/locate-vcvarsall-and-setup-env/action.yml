@@ -52,7 +52,7 @@ runs:
         set > initial_env.txt
 
         REM Call vcvarsall.bat using the output from the previous step
-        call "${{ steps.find-vcvarsall.outputs.vcvarsall_path }}" "${{ inputs.architecture }}"
+        call "${{ steps.find-vcvarsall.outputs.vcvarsall_path }}" ${{ inputs.architecture }}
 
         REM Get environment variables after calling vcvarsall.bat
         set > final_env.txt
