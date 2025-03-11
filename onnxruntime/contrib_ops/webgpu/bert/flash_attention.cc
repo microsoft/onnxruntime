@@ -100,7 +100,7 @@ Status CopyKVCache(onnxruntime::webgpu::ComputeContext& context, const WebgpuAtt
   program.AddOutputs({{present_key, ProgramTensorMetadataDependency::Rank, components},
                       {present_value, ProgramTensorMetadataDependency::Rank, components}})
       .AddIndices(valid_new_present_shape);
-  program.SetDispatchGroupSize(gsl::narrow<uint32_t>(valid_new_kv_size + 63 / 64))
+  program.SetDispatchGroupSize(static_cast<uint32_t>(valid_new_kv_size + 63 / 64))
       .SetWorkgroupSize(64)
       .CacheHint(has_past, parameters.qkv_format_, parameters.past_present_share_buffer_)
       .AddUniformVariables({{static_cast<uint32_t>(valid_new_kv_size)},
