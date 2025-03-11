@@ -20,17 +20,11 @@ runs:
         import subprocess
 
         vswhere_path = os.path.join(os.environ["ProgramFiles(x86)"], "Microsoft Visual Studio", "Installer", "vswhere.exe")
-        architecture = "${{ inputs.architecture }}"
-
-        if architecture == "x86":
-            vcvarsall_arch = "x86"
-        else:
-            vcvarsall_arch = "x64"
 
         try:
             process = subprocess.run([vswhere_path, "-latest", "-property", "installationPath"], capture_output=True, text=True, check=True)
             vs_install_path = process.stdout.strip()
-            vcvarsall_path = os.path.join(vs_install_path, "VC", "Auxiliary", "Build", f"vcvars{vcvarsall_arch}.bat")
+            vcvarsall_path = os.path.join(vs_install_path, "VC", "Auxiliary", "Build", "vcvarsall.bat")
 
             if os.path.exists(vcvarsall_path):
                 print(f"vcvarsall found at: {vcvarsall_path}")
@@ -59,7 +53,7 @@ runs:
         set > initial_env.txt
 
         REM Call vcvarsall.bat using the output from the previous step
-        call "${{ steps.find-vcvarsall.outputs.vcvarsall_path }}"
+        call "${{ steps.find-vcvarsall.outputs.vcvarsall_path }}" "${{ inputs.architecture }}"
 
         REM Get environment variables after calling vcvarsall.bat
         set > final_env.txt
