@@ -13,7 +13,7 @@ runs:
       shell: cmd
       run: |
         @echo off
-        set vswherepath="%ProgramFiles(x86)%\Microsoft Visual Studio\Installer\vswhere.exe"
+        set vswherepath="%ProgramFiles(x86)%\\Microsoft Visual Studio\\Installer\\vswhere.exe"
         set vcvarsall_arch=${{ inputs.architecture }}
         if "%vcvarsall_arch%" == "x86" (
           set vcvarsall_arch=x86
@@ -22,8 +22,8 @@ runs:
         )
 
         for /f "usebackq delims=" %%i in (`"%vswherepath%" -latest -property installationPath`) do (
-          if exist "%%i\VC\Auxiliary\Build\vcvars%vcvarsall_arch%.bat" (
-            set "vcvarsall=%%i\VC\Auxiliary\Build\vcvars%vcvarsall_arch%.bat"
+          if exist "%%i\\VC\\Auxiliary\\Build\\vcvars%vcvarsall_arch%.bat" (
+            set "vcvarsall=%%i\\VC\\Auxiliary\\Build\\vcvars%vcvarsall_arch%.bat"
           )
         )
 
@@ -69,5 +69,6 @@ runs:
                             f.write(path + os.linesep)
                 else:
                     value = value.replace('%', '%25').replace('\r', '%0D').replace('\n', '%0A')
+                    print(f'Setting env name={key}::{value}')
                     print(f'::set-env name={key}::{value}')
         EOF
