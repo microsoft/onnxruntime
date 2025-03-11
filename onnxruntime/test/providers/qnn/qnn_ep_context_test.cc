@@ -1236,7 +1236,7 @@ TEST_F(QnnHTPBackendTests, QnnContextShareAcrossSessions) {
 
   auto ort_outputs1 = session1.Run(Ort::RunOptions{}, input_names_c.data(), ort_inputs.data(), ort_inputs.size(),
                                    output_names_c.data(), 1);
-  #endif
+#endif
 
   for (auto model_path : onnx_model_paths) {
     std::remove(model_path.c_str());
@@ -1246,7 +1246,6 @@ TEST_F(QnnHTPBackendTests, QnnContextShareAcrossSessions) {
   }
   std::remove(qnn_ctx_binary_file_name1.c_str());
 }
-
 
 // For Ort sessions to generate the context binary, with session option ep.share_ep_contexts enabled
 // Ort sessions will share the QnnBackendManager, so that all graphs from all models compile into the same Qnn context
