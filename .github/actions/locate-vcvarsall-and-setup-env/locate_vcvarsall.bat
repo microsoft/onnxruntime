@@ -9,14 +9,13 @@ if "%vcvarsall_arch%" == "x86" (
   set vcvarsall_arch=x64
 )
 
-for /f "usebackq delims=" %%i in (`"%vswherepath%" -latest -property installationPath`) do (
+for /f "usebackq delims=" %%i in (`%vswherepath% -latest -property installationPath`) do (
   if exist "%%i\VC\Auxiliary\Build\vcvars%vcvarsall_arch%.bat" (
     set "vcvarsall=%%i\VC\Auxiliary\Build\vcvars%vcvarsall_arch%.bat"
   )
 )
 
 echo "vcvarsall will be used as the VC compiler: %vcvarsall%"
-echo "::save-state name=vcvarsall::%vcvarsall%"
 
 REM Get initial environment variables
 set > initial_env.txt
