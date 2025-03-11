@@ -1088,7 +1088,7 @@ static void CreateQdqModel(const std::string& model_file_name, const Logger& log
   ASSERT_STATUS_OK(onnxruntime::Model::Save(model, ToPathString(model_file_name)));
 }
 
-static void DumpModelWithSharedCtx(const ProviderOptions& provider_options,
+static void DumpModelWithSharedCtx(ProviderOptions provider_options,
                                    const std::string& onnx_model_path1,
                                    const std::string& onnx_model_path2) {
   Ort::SessionOptions so;
@@ -1096,6 +1096,14 @@ static void DumpModelWithSharedCtx(const ProviderOptions& provider_options,
   so.AddConfigEntry(kOrtSessionOptionEpContextEmbedMode, "0");
   // enable ep.share_ep_contexts so that QNNEP share the QnnBackendManager across sessions
   so.AddConfigEntry(kOrtSessionOptionShareEpContexts, "1");
+
+#ifndef __aarch64__
+#ifndef _M_ARM64
+  // weight sharing only available for v73 and higher
+  provider_options["soc_model"] = "60";
+#endif  // !_M_ARM64
+#endif  // !__aarch64__
+
 
   so.AppendExecutionProvider("QNN", provider_options);
 
