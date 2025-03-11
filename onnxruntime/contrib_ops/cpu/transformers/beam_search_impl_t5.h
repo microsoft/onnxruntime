@@ -311,14 +311,18 @@ Status BeamSearchT5<T>::Execute(const FeedsFetchesManager& encoder_feeds_fetches
 
   while (current_length < parameters->max_length) {
     iteration_counter++;
+
 #ifdef DEBUG_GENERATION
-    auto cur_len = std::to_string(current_length);
-    dumper->Print("***CurrentLength", cur_len, true);
+    dumper->Print(::onnxruntime::MakeString("Iteration=", iteration_counter,
+                                            ", CurrentLength=", current_length,
+                                            ", num_layers=", decoder_subgraph_.num_layers,
+                                            ", decoder_feeds=", decoder_feeds.size()));
 
     for (int i = 0; i < decoder_subgraph_.GetFirstPastInputIndex(); i++) {
       dumper->Print("decoder_feeds", i, true);
       dumper->Print("", decoder_feeds[i]);
     }
+
     for (int i = 0; i < decoder_subgraph_.num_layers; i++) {
       int self_key_idx = decoder_subgraph_.GetFirstPastInputIndex() + 2 * i;
       int self_value_idx = self_key_idx + 1;

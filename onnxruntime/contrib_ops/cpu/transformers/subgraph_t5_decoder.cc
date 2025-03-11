@@ -153,7 +153,7 @@ Status T5DecoderSubgraph::Validate(const std::vector<const NodeArg*>& subgraph_i
 //   encoder fetches: logits, encoder_hidden_states,
 //                    present_key_self_0, present_value_self_0, ...,
 //                    present_key_cross_0, present_value_cross_0, ...
-//   decoder_feeds: input_ids, encoder_input_ids (optiona), encoder_attention_mask, encoder_hidden_states,
+//   decoder_feeds: input_ids, encoder_input_ids (optional), encoder_attention_mask, encoder_hidden_states (optional),
 //                  present_key_self_0, present_value_self_0, ...,
 //                  present_key_cross_0, present_value_cross_0, ...
 //                  past_seq_len (optional), num_beams (optional), cache_indirection (optional)
@@ -315,7 +315,8 @@ Status T5DecoderSubgraph::CreateInitialFeeds(
       ADD_DECODER_FEED(encoder_fetches[j], false);
     }
   } else {
-    for (size_t j = 1 + has_hidden_state_; j < encoder_fetches.size(); j++) {
+    // Encoder output has hidden state. If decoder does not use hidden state, copy from 3rd outputs of encoder (skip the hidden state).
+    for (size_t j = 2 - has_hidden_state_; j < encoder_fetches.size(); j++) {
       // past key/value for cross attention does not need to be initialized with max_seq_len since they are static.
       bool is_dynamic_kv_cache = (j - first_past_input_index_) < 2 * static_cast<size_t>(num_layers);
       ADD_DECODER_FEED(encoder_fetches[j], is_dynamic_kv_cache);

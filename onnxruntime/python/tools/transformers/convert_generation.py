@@ -115,9 +115,7 @@ def parse_arguments(argv: list[str] | None = None) -> argparse.Namespace:
         required=True,
         type=str,
         help="Pytorch model checkpoint path, or pretrained model name in the list: "
-        + ", ".join(
-            PRETRAINED_GPT2_MODELS + PRETRAINED_T5_MODELS + PRETRAINED_MT5_MODELS
-        ),
+        + ", ".join(PRETRAINED_GPT2_MODELS + PRETRAINED_T5_MODELS + PRETRAINED_MT5_MODELS),
     )
 
     input_group.add_argument(
@@ -126,8 +124,7 @@ def parse_arguments(argv: list[str] | None = None) -> argparse.Namespace:
         type=str,
         default="gpt2",
         choices=["gpt2", "t5", "mt5"],
-        help="Model type (default is gpt2) in the list: "
-        + ", ".join(["gpt2", "t5", "mt5"]),
+        help="Model type (default is gpt2) in the list: " + ", ".join(["gpt2", "t5", "mt5"]),
     )
 
     input_group.add_argument(
@@ -240,9 +237,7 @@ def parse_arguments(argv: list[str] | None = None) -> argparse.Namespace:
     )
     output_group.set_defaults(disable_shared_initializers=False)
 
-    model_group = parser.add_argument_group(
-        "Beam search parameters that stored in the output model"
-    )
+    model_group = parser.add_argument_group("Beam search parameters that stored in the output model")
 
     model_group.add_argument(
         "--output_sequences_scores",
@@ -332,17 +327,11 @@ def parse_arguments(argv: list[str] | None = None) -> argparse.Namespace:
         "Beam search parameters not stored in the output model, for testing parity and performance"
     )
 
-    beam_parameters_group.add_argument(
-        "--min_length", type=int, required=False, default=1, help="Min sequence length"
-    )
+    beam_parameters_group.add_argument("--min_length", type=int, required=False, default=1, help="Min sequence length")
 
-    beam_parameters_group.add_argument(
-        "--max_length", type=int, required=False, default=50, help="Max sequence length"
-    )
+    beam_parameters_group.add_argument("--max_length", type=int, required=False, default=50, help="Max sequence length")
 
-    beam_parameters_group.add_argument(
-        "--num_beams", type=int, required=False, default=4, help="Beam size"
-    )
+    beam_parameters_group.add_argument("--num_beams", type=int, required=False, default=4, help="Beam size")
 
     beam_parameters_group.add_argument(
         "--num_return_sequences",
@@ -440,9 +429,7 @@ def parse_arguments(argv: list[str] | None = None) -> argparse.Namespace:
         help="custom pad_token_id for generating model with existing onnx encoder/decoder",
     )
 
-    test_group = parser.add_argument_group(
-        "Other options for testing parity and performance"
-    )
+    test_group = parser.add_argument_group("Other options for testing parity and performance")
 
     test_group.add_argument(
         "--use_sln_strict_mode",
@@ -539,9 +526,7 @@ def gpt2_to_onnx(args: argparse.Namespace):
         arguments.extend(args.op_block_list)
 
     if args.precision == Precision.FLOAT16:
-        assert (
-            args.use_gpu
-        ), "fp16 or mixed precision model cannot run in CPU. Please add --use_gpu"
+        assert args.use_gpu, "fp16 or mixed precision model cannot run in CPU. Please add --use_gpu"
         # TODO(tianleiwu): Use auto mixed precision for fp16 conversion: arguments.append('--auto_mixed_precision')
         #       Need change cuda kernel to support a combination of fp32 logits and fp16 past state.
         #       Currently logits and past state shall be same data type.
@@ -591,18 +576,14 @@ def shape_inference(onnx_path: str, use_external_data_format: bool = True):
     from onnxruntime.tools.symbolic_shape_infer import SymbolicShapeInference
 
     model = onnx.load_model(onnx_path, load_external_data=True)
-    out = SymbolicShapeInference.infer_shapes(
-        model, auto_merge=True, guess_output_rank=False
-    )
+    out = SymbolicShapeInference.infer_shapes(model, auto_merge=True, guess_output_rank=False)
     if out:
         OnnxModel.save(out, onnx_path, save_as_external_data=use_external_data_format)
     else:
         logger.warning("Failed to run symbolic shape inference on the model.")
 
 
-def pad_weights_of_logits_matmul(
-    onnx_path: str, use_external_data_format: bool = True
-) -> bool:
+def pad_weights_of_logits_matmul(onnx_path: str, use_external_data_format: bool = True) -> bool:
     """Pad the logits MatMul weight in the provided decoder model, which will be overwritten.
 
     Args:
@@ -629,9 +610,7 @@ def pad_weights_of_logits_matmul(
     pad_along_axis_1 = True
     logits_weight = decoder_model.get_initializer(matmul_node.input[1])
     if logits_weight is None:
-        transpose_before_matmul = decoder_model.match_parent(
-            matmul_node, "Transpose", 1
-        )
+        transpose_before_matmul = decoder_model.match_parent(matmul_node, "Transpose", 1)
 
         if transpose_before_matmul is None:
             return False
@@ -666,15 +645,11 @@ def pad_weights_of_logits_matmul(
     if logits_weight.raw_data:
         if pad_along_axis_1:
             padding_data = np.zeros((logits_weight.dims[0], padding), dtype=np.float16)
-            weight_with_padding = np.concatenate(
-                (NumpyHelper.to_array(logits_weight), padding_data), axis=1
-            )
+            weight_with_padding = np.concatenate((NumpyHelper.to_array(logits_weight), padding_data), axis=1)
             logits_weight.dims[1] = padded_vocab_size
         else:
             padding_data = np.zeros((padding, logits_weight.dims[1]), dtype=np.float16)
-            weight_with_padding = np.concatenate(
-                (NumpyHelper.to_array(logits_weight), padding_data), axis=0
-            )
+            weight_with_padding = np.concatenate((NumpyHelper.to_array(logits_weight), padding_data), axis=0)
             logits_weight.dims[0] = padded_vocab_size
 
         logits_weight.raw_data = weight_with_padding.tobytes()
@@ -682,15 +657,11 @@ def pad_weights_of_logits_matmul(
         return False
 
     # Save the model
-    OnnxModel.save(
-        decoder_model_proto, onnx_path, save_as_external_data=use_external_data_format
-    )
+    OnnxModel.save(decoder_model_proto, onnx_path, save_as_external_data=use_external_data_format)
     return True
 
 
-def create_ort_session(
-    model_path: str, use_gpu: bool, use_sln_strict_mode: bool
-) -> InferenceSession:
+def create_ort_session(model_path: str, use_gpu: bool, use_sln_strict_mode: bool) -> InferenceSession:
     """Create OnnxRuntime session.
 
     Args:
@@ -706,11 +677,7 @@ def create_ort_session(
     """
     sess_options = SessionOptions()
     sess_options.graph_optimization_level = GraphOptimizationLevel.ORT_DISABLE_ALL
-    execution_providers = (
-        ["CUDAExecutionProvider", "CPUExecutionProvider"]
-        if use_gpu
-        else ["CPUExecutionProvider"]
-    )
+    execution_providers = ["CUDAExecutionProvider", "CPUExecutionProvider"] if use_gpu else ["CPUExecutionProvider"]
     if use_gpu:
         if "CUDAExecutionProvider" not in get_available_providers():
             raise RuntimeError("CUDAExecutionProvider is not available for --use_gpu!")
@@ -720,13 +687,10 @@ def create_ort_session(
             cuda_provider_options = {"enable_skip_layer_norm_strict_mode": True}
             provider_options = {"CUDAExecutionProvider": cuda_provider_options}
             execution_providers = [
-                (name, provider_options[name]) if name in provider_options else name
-                for name in execution_providers
+                (name, provider_options[name]) if name in provider_options else name for name in execution_providers
             ]
 
-    ort_session = InferenceSession(
-        model_path, sess_options, providers=execution_providers
-    )
+    ort_session = InferenceSession(model_path, sess_options, providers=execution_providers)
     return ort_session
 
 
@@ -751,19 +715,13 @@ def verify_gpt2_subgraph(graph: onnx.GraphProto, precision: Precision):
     layer_count = input_count - 3
     assert layer_count >= 1
 
-    expected_inputs = ["input_ids", "position_ids", "attention_mask"] + [
-        f"past_{i}" for i in range(layer_count)
-    ]
+    expected_inputs = ["input_ids", "position_ids", "attention_mask"] + [f"past_{i}" for i in range(layer_count)]
     if len(graph.input) != len(expected_inputs):
-        raise ValueError(
-            f"Number of inputs expected to be {len(expected_inputs)}. Got {len(graph.input)}"
-        )
+        raise ValueError(f"Number of inputs expected to be {len(expected_inputs)}. Got {len(graph.input)}")
 
     for i, expected_input in enumerate(expected_inputs):
         if graph.input[i].name != expected_input:
-            raise ValueError(
-                f"Input {i} is expected to be {expected_input}. Got {graph.input[i].name}"
-            )
+            raise ValueError(f"Input {i} is expected to be {expected_input}. Got {graph.input[i].name}")
 
         expected_type = TensorProto.INT32
         if i >= 3:
@@ -771,29 +729,21 @@ def verify_gpt2_subgraph(graph: onnx.GraphProto, precision: Precision):
 
         input_type = graph.input[i].type.tensor_type.elem_type
         if input_type != expected_type:
-            raise ValueError(
-                f"Input {i} is expected to have onnx data type {expected_type}. Got {input_type}"
-            )
+            raise ValueError(f"Input {i} is expected to have onnx data type {expected_type}. Got {input_type}")
     logger.info("Verifying GPT-2 graph inputs: name and data type are good.")
 
     expected_outputs = ["logits"] + [f"present_{i}" for i in range(layer_count)]
     if len(graph.output) != len(expected_outputs):
-        raise ValueError(
-            f"Number of outputs expected to be {len(expected_outputs)}. Got {len(graph.output)}"
-        )
+        raise ValueError(f"Number of outputs expected to be {len(expected_outputs)}. Got {len(graph.output)}")
 
     for i, expected_output in enumerate(expected_outputs):
         if graph.output[i].name != expected_output:
-            raise ValueError(
-                f"Output {i} is expected to be {expected_output}. Got {graph.output[i].name}"
-            )
+            raise ValueError(f"Output {i} is expected to be {expected_output}. Got {graph.output[i].name}")
 
         expected_type = TensorProto.FLOAT16 if is_float16 else TensorProto.FLOAT
         output_type = graph.output[i].type.tensor_type.elem_type
         if output_type != expected_type:
-            raise ValueError(
-                f"Input {i} is expected to have onnx data type {expected_type}. Got {output_type}"
-            )
+            raise ValueError(f"Input {i} is expected to have onnx data type {expected_type}. Got {output_type}")
     logger.info("Verifying GPT-2 graph outputs: name and data type are good.")
 
     # TODO(tianleiwu): verify shapes of inputs and outputs.
@@ -844,22 +794,16 @@ def verify_t5_decoder_subgraph(graph: onnx.GraphProto, precision: Precision):
         expected_inputs.append(f"past_value_cross_{i}")
 
     if len(graph.input) != len(expected_inputs):
-        raise ValueError(
-            f"Number of inputs expected to be {len(expected_inputs)}. Got {len(graph.input)}"
-        )
+        raise ValueError(f"Number of inputs expected to be {len(expected_inputs)}. Got {len(graph.input)}")
 
     for i, expected_input in enumerate(expected_inputs):
         if graph.input[i].name != expected_input:
-            raise ValueError(
-                f"Input {i} is expected to be {expected_input}. Got {graph.input[i].name}"
-            )
+            raise ValueError(f"Input {i} is expected to be {expected_input}. Got {graph.input[i].name}")
 
         expected_type = TensorProto.INT32 if i < 2 else float_type
         input_type = graph.input[i].type.tensor_type.elem_type
         if input_type != expected_type:
-            raise ValueError(
-                f"Input {i} is expected to have onnx data type {expected_type}. Got {input_type}"
-            )
+            raise ValueError(f"Input {i} is expected to have onnx data type {expected_type}. Got {input_type}")
 
     # Expect outputs:
     #   logits:               (B, 1, vocab_size)
@@ -872,25 +816,17 @@ def verify_t5_decoder_subgraph(graph: onnx.GraphProto, precision: Precision):
         expected_outputs.append(f"present_value_self_{i}")
 
     if len(graph.output) != len(expected_outputs):
-        raise ValueError(
-            f"Number of outputs expected to be {len(expected_outputs)}. Got {len(graph.output)}"
-        )
+        raise ValueError(f"Number of outputs expected to be {len(expected_outputs)}. Got {len(graph.output)}")
 
     for i, expected_output in enumerate(expected_outputs):
         if graph.output[i].name != expected_output:
-            raise ValueError(
-                f"Output {i} is expected to be {expected_output}. Got {graph.output[i].name}"
-            )
+            raise ValueError(f"Output {i} is expected to be {expected_output}. Got {graph.output[i].name}")
         output_type = graph.output[i].type.tensor_type.elem_type
         if output_type != float_type:
-            raise ValueError(
-                f"Output {i} is expected to have onnx data type {float_type}. Got {output_type}"
-            )
+            raise ValueError(f"Output {i} is expected to have onnx data type {float_type}. Got {output_type}")
 
 
-def verify_t5_encoder_decoder_init_subgraph(
-    graph: onnx.GraphProto, precision: Precision
-):
+def verify_t5_encoder_decoder_init_subgraph(graph: onnx.GraphProto, precision: Precision):
     """Verify T5 decoder subgraph
 
     Args:
@@ -920,22 +856,16 @@ def verify_t5_encoder_decoder_init_subgraph(
     if new_format:
         expected_inputs = expected_inputs[:2]
     if len(graph.input) != len(expected_inputs):
-        raise ValueError(
-            f"Number of inputs expected to be {len(expected_inputs)}. Got {len(graph.input)}"
-        )
+        raise ValueError(f"Number of inputs expected to be {len(expected_inputs)}. Got {len(graph.input)}")
 
     for i, expected_input in enumerate(expected_inputs):
         if graph.input[i].name != expected_input:
-            raise ValueError(
-                f"Input {i} is expected to be {expected_input}. Got {graph.input[i].name}"
-            )
+            raise ValueError(f"Input {i} is expected to be {expected_input}. Got {graph.input[i].name}")
 
         expected_type = TensorProto.INT32
         input_type = graph.input[i].type.tensor_type.elem_type
         if input_type != expected_type:
-            raise ValueError(
-                f"Input {i} is expected to have onnx data type {expected_type}. Got {input_type}"
-            )
+            raise ValueError(f"Input {i} is expected to have onnx data type {expected_type}. Got {input_type}")
 
     if new_format:
         assert len(graph.output) % 2 == 0
@@ -951,9 +881,7 @@ def verify_t5_encoder_decoder_init_subgraph(
             expected_outputs.append(f"present_key_cross_{i}")
             expected_outputs.append(f"present_value_cross_{i}")
     else:
-        logger.warning(
-            "This format is deprecated. Please export T5 encoder in new format with only cross outputs."
-        )
+        logger.warning("This format is deprecated. Please export T5 encoder in new format with only cross outputs.")
         assert (len(graph.output) - 2) % 4 == 0
         layer_count = (len(graph.output) - 2) // 4
         assert layer_count >= 1
@@ -976,26 +904,18 @@ def verify_t5_encoder_decoder_init_subgraph(
             expected_outputs.append(f"present_value_cross_{i}")
 
     if len(graph.output) != len(expected_outputs):
-        raise ValueError(
-            f"Number of outputs expected to be {len(expected_outputs)}. Got {len(graph.output)}"
-        )
+        raise ValueError(f"Number of outputs expected to be {len(expected_outputs)}. Got {len(graph.output)}")
 
     for i, expected_output in enumerate(expected_outputs):
         if graph.output[i].name != expected_output:
-            raise ValueError(
-                f"Output {i} is expected to be {expected_output}. Got {graph.output[i].name}"
-            )
+            raise ValueError(f"Output {i} is expected to be {expected_output}. Got {graph.output[i].name}")
 
         expected_type = TensorProto.FLOAT16 if is_float16 else TensorProto.FLOAT
         output_type = graph.output[i].type.tensor_type.elem_type
         if output_type != expected_type:
-            raise ValueError(
-                f"Output {i} is expected to have onnx data type {expected_type}. Got {output_type}"
-            )
+            raise ValueError(f"Output {i} is expected to have onnx data type {expected_type}. Got {output_type}")
 
-    logger.info(
-        "T5 encoder graph verified: name and data type of inputs and outputs are good."
-    )
+    logger.info("T5 encoder graph verified: name and data type of inputs and outputs are good.")
 
 
 def remove_shared_initializers(
@@ -1031,12 +951,8 @@ def remove_shared_initializers(
             if not (initializer2.dims and sum(initializer2.dims) >= min_elements):
                 continue
 
-            if OnnxModel.has_same_value(
-                initializer1, initializer2, signature_cache1, signature_cache2
-            ):
-                mapping_initializers_1[initializer1.name] = (
-                    shared_prefix + initializer2.name
-                )
+            if OnnxModel.has_same_value(initializer1, initializer2, signature_cache1, signature_cache2):
+                mapping_initializers_1[initializer1.name] = shared_prefix + initializer2.name
                 shared_initializers_1.append(initializer1)
 
                 if initializer2.name not in mapping_initializers_2:
@@ -1074,9 +990,7 @@ def remove_shared_initializers(
         for j in range(len(node.input)):
             if node.input[j] in mapping_initializers_2:
                 new_name = mapping_initializers_2[node.input[j]]
-                logger.debug(
-                    f"graph 2 rename node {node.name} input {j} from {node.input[j]} to {new_name}"
-                )
+                logger.debug(f"graph 2 rename node {node.name} input {j} from {node.input[j]} to {new_name}")
                 node.input[j] = new_name
 
     #  Remove shared initializers from graph 1
@@ -1093,9 +1007,7 @@ def remove_shared_initializers(
         for j in range(len(node.input)):
             if node.input[j] in mapping_initializers_1:
                 new_name = mapping_initializers_1[node.input[j]]
-                logger.debug(
-                    f"graph 1 rename node {node.name} input {j} from {node.input[j]} to {new_name}"
-                )
+                logger.debug(f"graph 1 rename node {node.name} input {j} from {node.input[j]} to {new_name}")
                 node.input[j] = new_name
 
     # Rename shared initializers in graph 2
@@ -1104,9 +1016,7 @@ def remove_shared_initializers(
 
     for initializer in shared_initializers_2:
         shape = onnx.numpy_helper.to_array(initializer).shape
-        value_info = onnx.helper.make_tensor_value_info(
-            initializer.name, initializer.data_type, shape
-        )
+        value_info = onnx.helper.make_tensor_value_info(initializer.name, initializer.data_type, shape)
         # Need add value_info for initializers moved to parent graph. Otherwise, ORT will fail.
         graph1.value_info.append(value_info)
         graph2.value_info.append(value_info)
@@ -1157,9 +1067,7 @@ def move_initializers(
     # Add type info, otherwise ORT will raise error: "input arg (*) does not have type information set by parent node."
     for initializer in moved_initializers:
         shape = onnx.numpy_helper.to_array(initializer).shape
-        value_info = onnx.helper.make_tensor_value_info(
-            initializer.name, initializer.data_type, shape
-        )
+        value_info = onnx.helper.make_tensor_value_info(initializer.name, initializer.data_type, shape)
         graph.value_info.append(value_info)
 
     return moved_initializers
@@ -1197,9 +1105,7 @@ def _attribute_to_pair(attribute):
     elif attribute.type == 10:
         value = attribute.graphs
     else:
-        raise ValueError(
-            f"attribute {attribute.name} has unsupported type {attribute.type}."
-        )
+        raise ValueError(f"attribute {attribute.name} has unsupported type {attribute.type}.")
 
     return (attribute.name, value)
 
@@ -1215,12 +1121,7 @@ def kwargs_of(node):
 
 
 def shape_of(vi):
-    return tuple(
-        [
-            d.dim_param if (d.dim_param) else d.dim_value
-            for d in vi.type.tensor_type.shape.dim
-        ]
-    )
+    return tuple([d.dim_param if (d.dim_param) else d.dim_value for d in vi.type.tensor_type.shape.dim])
 
 
 def update_decoder_subgraph_past_present_share_buffer(subg: GraphProto):
@@ -1236,13 +1137,7 @@ def update_decoder_subgraph_past_present_share_buffer(subg: GraphProto):
                 shape=[shape[0], shape[1], shape[2], "max_seq_len", shape[4]],
             )
         new_inputs.extend([vi])
-    new_inputs.extend(
-        [
-            onnx.helper.make_tensor_value_info(
-                "past_sequence_length", onnx.TensorProto.INT32, shape=[1]
-            )
-        ]
-    )
+    new_inputs.extend([onnx.helper.make_tensor_value_info("past_sequence_length", onnx.TensorProto.INT32, shape=[1])])
     subg.ClearField("input")
     subg.input.extend(new_inputs)
 
@@ -1271,9 +1166,7 @@ def update_decoder_subgraph_past_present_share_buffer(subg: GraphProto):
                 nis.extend([""])
             if len(nis) < 7:
                 nis.extend(["past_sequence_length"])
-            new_node = onnx.helper.make_node(
-                "Attention", nis, node.output, name=node.name, **kwargs
-            )
+            new_node = onnx.helper.make_node("Attention", nis, node.output, name=node.name, **kwargs)
         new_nodes.extend([new_node])
     subg.ClearField("node")
     subg.node.extend(new_nodes)
@@ -1296,13 +1189,7 @@ def update_decoder_subgraph_use_decoder_masked_attention(
             new_inputs.extend([vi])
 
         # Add 2 BeamSearch specific inputs
-        new_inputs.extend(
-            [
-                onnx.helper.make_tensor_value_info(
-                    "beam_width", onnx.TensorProto.INT32, shape=[1]
-                )
-            ]
-        )
+        new_inputs.extend([onnx.helper.make_tensor_value_info("beam_width", onnx.TensorProto.INT32, shape=[1])])
         new_inputs.extend(
             [
                 onnx.helper.make_tensor_value_info(
@@ -1414,11 +1301,7 @@ def find_past_seq_len_usage(subg: GraphProto):
             if ini_gather_indices is None:
                 continue
             gather_indices_arr = onnx.numpy_helper.to_array(ini_gather_indices)
-            if (
-                gather_indices_arr.size == 1
-                and gather_indices_arr.item() == 2
-                and node.input[0] in output_name_to_node
-            ):
+            if gather_indices_arr.size == 1 and gather_indices_arr.item() == 2 and node.input[0] in output_name_to_node:
                 shape_node = output_name_to_node[shape_tensor_name]
                 if (
                     shape_node.op_type == "Shape"
@@ -1538,16 +1421,10 @@ def replace_mha_with_gqa(
     #             GroupQueryAttention
     #
 
-    mha_nodes = list(
-        filter(
-            lambda node: node.op_type == "MultiHeadAttention", model.model.graph.node
-        )
-    )
+    mha_nodes = list(filter(lambda node: node.op_type == "MultiHeadAttention", model.model.graph.node))
     for idx, node in enumerate(mha_nodes):
         # Detect Q path to MHA
-        q_path_1 = model.match_parent_path(
-            node, ["RotaryEmbedding", "Add", "MatMul"], [0, 0, 0]
-        )
+        q_path_1 = model.match_parent_path(node, ["RotaryEmbedding", "Add", "MatMul"], [0, 0, 0])
         q_path_2 = model.match_parent_path(node, ["RotaryEmbedding", "MatMul"], [0, 0])
 
         q_rotary, q_add, q_matmul = None, None, None
@@ -1557,9 +1434,7 @@ def replace_mha_with_gqa(
             q_rotary, q_matmul = q_path_2
 
         # Detect K path to MHA
-        k_path_1 = model.match_parent_path(
-            node, ["RotaryEmbedding", "Add", "MatMul"], [1, 0, 0]
-        )
+        k_path_1 = model.match_parent_path(node, ["RotaryEmbedding", "Add", "MatMul"], [1, 0, 0])
         k_path_2 = model.match_parent_path(node, ["RotaryEmbedding", "MatMul"], [1, 0])
 
         k_rotary, k_add, k_matmul = None, None, None
@@ -1592,15 +1467,10 @@ def replace_mha_with_gqa(
                 num_heads = att.i
 
         # Check if root_input to Q/K/V paths is the same
-        root_input_is_same = (
-            q_matmul.input[0] == k_matmul.input[0]
-            and k_matmul.input[0] == v_matmul.input[0]
-        )
+        root_input_is_same = q_matmul.input[0] == k_matmul.input[0] and k_matmul.input[0] == v_matmul.input[0]
 
         # Check if Q/K/V paths all have bias or all don't have bias
-        all_paths_have_bias = (
-            q_add is not None and k_add is not None and v_add is not None
-        )
+        all_paths_have_bias = q_add is not None and k_add is not None and v_add is not None
         all_paths_have_no_bias = q_add is None and k_add is None and v_add is None
 
         # Make PackedMatMul node if possible
@@ -1612,9 +1482,7 @@ def replace_mha_with_gqa(
 
             dim = qw.shape[-1]
             qkv_weight = np.stack((qw, kw, vw), axis=1).reshape(dim, 3 * dim)
-            qkv_weight = onnx.numpy_helper.from_array(
-                qkv_weight, name=f"QKV_Weight_{idx}"
-            )
+            qkv_weight = onnx.numpy_helper.from_array(qkv_weight, name=f"QKV_Weight_{idx}")
             model.add_initializer(qkv_weight)
 
             packed_matmul_node = onnx.helper.make_node(
@@ -1637,9 +1505,7 @@ def replace_mha_with_gqa(
 
                 dim = qb.shape[-1]
                 qkv_bias = np.stack((qb, kb, vb), axis=0).reshape(3 * dim)
-                qkv_bias = onnx.numpy_helper.from_array(
-                    qkv_bias, name=f"QKV_Bias_{idx}"
-                )
+                qkv_bias = onnx.numpy_helper.from_array(qkv_bias, name=f"QKV_Bias_{idx}")
                 model.add_initializer(qkv_bias)
                 packed_add_node = onnx.helper.make_node(
                     "Add",
@@ -1668,22 +1534,14 @@ def replace_mha_with_gqa(
                 node.input[7],  # past_value
                 seqlen_k_cast_node.output[0],  # seqlens_k (for attention mask)
                 total_seqlen_cast_node.output[0],  # total_seq_len (for attention mask)
-                (
-                    q_rotary.input[2] if q_rotary is not None else ""
-                ),  # cos_cache (for rotary embeddings)
-                (
-                    q_rotary.input[3] if q_rotary is not None else ""
-                ),  # sin_cache (for rotary embeddings)
+                (q_rotary.input[2] if q_rotary is not None else ""),  # cos_cache (for rotary embeddings)
+                (q_rotary.input[3] if q_rotary is not None else ""),  # sin_cache (for rotary embeddings)
             ],
             outputs=node.output,
             name=node.name.replace("MultiHeadAttention", "GroupQueryAttention"),
             domain="com.microsoft",
             num_heads=num_heads // world_size,
-            kv_num_heads=(
-                num_heads // world_size
-                if kv_num_heads == 0
-                else kv_num_heads // world_size
-            ),
+            kv_num_heads=(num_heads // world_size if kv_num_heads == 0 else kv_num_heads // world_size),
             local_window_size=window_size,
             do_rotary=int(q_rotary is not None and k_rotary is not None),
             rotary_interleaved=interleaved,
@@ -1703,18 +1561,13 @@ def update_decoder_subgraph_output_cross_attention(subg: GraphProto):
     input_self_past_0 = 1
     # w/wo attention mask, w/wo hidden_state
     graph_input_names = [gi.name for gi in subg.input]
-    while input_self_past_0 < 3 and not graph_input_names[input_self_past_0].startswith(
-        "past"
-    ):
+    while input_self_past_0 < 3 and not graph_input_names[input_self_past_0].startswith("past"):
         input_self_past_0 += 1
     output_self_present_0 = 1
 
     num_layers = (len(subg.output) - output_self_present_0) // 2
     input_cross_past_0 = 2 * num_layers + input_self_past_0
-    past_key_cross_inputs = {
-        subg.input[layer * 2 + input_cross_past_0].name: layer
-        for layer in range(num_layers)
-    }
+    past_key_cross_inputs = {subg.input[layer * 2 + input_cross_past_0].name: layer for layer in range(num_layers)}
     print(f"    --past_key_cross_inputs={past_key_cross_inputs}")
 
     input_past_key_cross_0_shape = shape_of(subg.input[input_cross_past_0])
@@ -1725,12 +1578,8 @@ def update_decoder_subgraph_output_cross_attention(subg: GraphProto):
 
     num_layer_output_qk = 0
     for node in subg.node:
-        if (node.op_type == "DecoderMaskedMultiHeadAttention") and (
-            node.input[1] in past_key_cross_inputs
-        ):
-            print(
-                f"    -- add cross QK output from: node: {node.name} with output: {node.output}"
-            )
+        if (node.op_type == "DecoderMaskedMultiHeadAttention") and (node.input[1] in past_key_cross_inputs):
+            print(f"    -- add cross QK output from: node: {node.name} with output: {node.output}")
             num_layer_output_qk += 1
             layer = past_key_cross_inputs[node.input[1]]
             cross_attention_out_name = f"output_cross_qk_{layer}"
@@ -1746,18 +1595,14 @@ def update_decoder_subgraph_output_cross_attention(subg: GraphProto):
             )
             subg.output.extend([cross_attention])
     if num_layer_output_qk != num_layers:
-        raise ValueError(
-            f"Did not add cross QK for all layers{num_layers} vs {num_layer_output_qk}"
-        )
+        raise ValueError(f"Did not add cross QK for all layers{num_layers} vs {num_layer_output_qk}")
 
 
 def update_decoder_subgraph_share_buffer_and_use_decoder_masked_mha(subg: ModelProto):
     input_self_past_0 = 1
     # w/wo attention mask, w/wo hidden_state
     graph_input_names = [gi.name for gi in subg.input]
-    while input_self_past_0 < 3 and not graph_input_names[input_self_past_0].startswith(
-        "past"
-    ):
+    while input_self_past_0 < 3 and not graph_input_names[input_self_past_0].startswith("past"):
         input_self_past_0 += 1
     output_self_past_0 = 1
 
@@ -1794,9 +1639,7 @@ def update_decoder_subgraph_share_buffer_and_use_decoder_masked_mha(subg: ModelP
     tensor_names_to_rename, nodes_to_remove = find_past_seq_len_usage(subg)
     if len(tensor_names_to_rename) > 0:
         for name_to_rename in tensor_names_to_rename:
-            print(
-                f"Found tensor name {name_to_rename} to be renamed to {target_squeezed_past_seq_name}"
-            )
+            print(f"Found tensor name {name_to_rename} to be renamed to {target_squeezed_past_seq_name}")
         for nr in nodes_to_remove:
             print(f"Found node to removed: type:{nr.op_type}, name:{nr.name}")
 
@@ -1816,11 +1659,7 @@ def update_decoder_subgraph_share_buffer_and_use_decoder_masked_mha(subg: ModelP
         new_nodes.extend([squeeze_node, cast_node])
 
     for node in subg.node:
-        if (
-            len(node.output) > 0
-            and rel_pos_bias_node is not None
-            and node.output[0] == rel_pos_bias_node.input[1]
-        ):
+        if len(node.output) > 0 and rel_pos_bias_node is not None and node.output[0] == rel_pos_bias_node.input[1]:
             cast_node = onnx.helper.make_node(
                 "Cast",
                 ["past_sequence_length"],
@@ -1885,20 +1724,10 @@ def update_decoder_subgraph_share_buffer_and_use_decoder_masked_mha(subg: ModelP
         new_inputs.extend([vi])
     if "past_sequence_length" not in orig_input_names:
         new_inputs.extend(
-            [
-                onnx.helper.make_tensor_value_info(
-                    "past_sequence_length", onnx.TensorProto.INT32, shape=[1]
-                )
-            ]
+            [onnx.helper.make_tensor_value_info("past_sequence_length", onnx.TensorProto.INT32, shape=[1])]
         )
     if "beam_width" not in orig_input_names:
-        new_inputs.extend(
-            [
-                onnx.helper.make_tensor_value_info(
-                    "beam_width", onnx.TensorProto.INT32, shape=[1]
-                )
-            ]
-        )
+        new_inputs.extend([onnx.helper.make_tensor_value_info("beam_width", onnx.TensorProto.INT32, shape=[1])])
     if "cache_indirection" not in orig_input_names:
         new_inputs.extend(
             [
@@ -1936,10 +1765,7 @@ def pack_qkv_for_decoder_masked_mha(model_proto: ModelProto):
     nodes_to_remove = []
     for node in onnx_model.nodes():
         if node.op_type == "DecoderMaskedMultiHeadAttention":
-            if (
-                "past_key_cross" in node.input[1]
-                and "past_value_cross" in node.input[2]
-            ):
+            if "past_key_cross" in node.input[1] and "past_value_cross" in node.input[2]:
                 continue
             q_matmul = output_name_to_node[node.input[0]]
             k_matmul = output_name_to_node[node.input[1]]
@@ -1957,16 +1783,10 @@ def pack_qkv_for_decoder_masked_mha(model_proto: ModelProto):
 
             qkv_weight = np.concatenate([qw, kw, vw], axis=1)
 
-            matmul_node_name = onnx_model.create_node_name(
-                "MatMul", name_prefix="MatMul_QKV"
-            )
+            matmul_node_name = onnx_model.create_node_name("MatMul", name_prefix="MatMul_QKV")
             weight = onnx.helper.make_tensor(
                 name=matmul_node_name + "_weight",
-                data_type=(
-                    TensorProto.FLOAT
-                    if q_weight.data_type == 1
-                    else TensorProto.FLOAT16
-                ),
+                data_type=(TensorProto.FLOAT if q_weight.data_type == 1 else TensorProto.FLOAT16),
                 dims=[qkv_weight.shape[0], qkv_weight.shape[1]],
                 vals=qkv_weight.flatten().tolist(),
             )
@@ -1996,9 +1816,7 @@ def pack_qkv_for_decoder_masked_mha(model_proto: ModelProto):
     return True
 
 
-def update_input_shapes_for_gpt2_decoder_model(
-    decoder_onnx_path: str, use_external_data_format: bool = True
-):
+def update_input_shapes_for_gpt2_decoder_model(decoder_onnx_path: str, use_external_data_format: bool = True):
     """Update the input shapes for the inputs "input_ids" and "position_ids" and make the sequence length dim value 1 for each of them.
        The decoder model will be over-written.
 
@@ -2013,9 +1831,7 @@ def update_input_shapes_for_gpt2_decoder_model(
             decoder_model_proto.graph.input[i].name == "input_ids"
             or decoder_model_proto.graph.input[i].name == "position_ids"
         ):
-            shape_dim_proto = decoder_model_proto.graph.input[
-                i
-            ].type.tensor_type.shape.dim[1]
+            shape_dim_proto = decoder_model_proto.graph.input[i].type.tensor_type.shape.dim[1]
 
             # Clear any existing dim_param first
             if shape_dim_proto.HasField("dim_param"):
@@ -2045,9 +1861,7 @@ def generate_gpt2_init_decoder(
         init_decoder_onnx_path (str): Path of GPT-2 init decoder onnx model
         use_external_data_format(bool): output tensors to external data or not.
     """
-    init_decoder_model_proto = onnx.load_model(
-        decoder_onnx_path, load_external_data=True
-    )
+    init_decoder_model_proto = onnx.load_model(decoder_onnx_path, load_external_data=True)
 
     logits_output_name = init_decoder_model_proto.graph.output[0].name
 
@@ -2125,18 +1939,16 @@ def generate_gpt2_init_decoder(
 
         # Normalization Node is : SkipLayerNormalization
         if logits_matmul_to_residual_add_path is None:
-            logits_matmul_to_residual_add_path = (
-                gpt2_init_decoder_model.match_parent_path(
-                    logits_matmul_node,
-                    [
-                        "SkipLayerNormalization",
-                        "MatMul",
-                        "FastGelu",
-                        "MatMul",
-                        "SkipLayerNormalization",
-                    ],
-                    [0, 1, 0, 0, 0],
-                )
+            logits_matmul_to_residual_add_path = gpt2_init_decoder_model.match_parent_path(
+                logits_matmul_node,
+                [
+                    "SkipLayerNormalization",
+                    "MatMul",
+                    "FastGelu",
+                    "MatMul",
+                    "SkipLayerNormalization",
+                ],
+                [0, 1, 0, 0, 0],
             )
 
     # TODO(hasesh): Are there more permutations to try before returning ?
@@ -2224,9 +2036,7 @@ def generate_gpt2_init_decoder(
     if residual_add_to_attention_path is None:
         return False
 
-    residual_add_to_add_parent_index = (
-        0 if residual_add_to_attention_parent_index == 1 else 1
-    )
+    residual_add_to_add_parent_index = 0 if residual_add_to_attention_parent_index == 1 else 1
 
     # Regular LayerNormalization path
     if not is_skiplayernorm_path:
@@ -2300,9 +2110,7 @@ def generate_gpt2_init_decoder(
     # If the 'Add' output is produced by a SkipLayerNormalization node, then adjust its output
     # index appropriately
     add_before_residual_add_output = (
-        add_before_residual_add.output[0]
-        if not is_skiplayernorm_path
-        else add_before_residual_add.output[3]
+        add_before_residual_add.output[0] if not is_skiplayernorm_path else add_before_residual_add.output[3]
     )
 
     slice_1_output_name = "edge_modified_" + add_before_residual_add.output[0]
@@ -2324,12 +2132,8 @@ def generate_gpt2_init_decoder(
     gpt2_init_decoder_model.add_node(slice_node_1)
 
     # Adjust the input(s) to the nodes consuming the outputs of the added Slice nodes
-    gpt2_init_decoder_model.replace_node_input(
-        matmul_after_attention, attention.output[0], slice_0_output_name
-    )
-    gpt2_init_decoder_model.replace_node_input(
-        residual_add_node, add_before_residual_add_output, slice_1_output_name
-    )
+    gpt2_init_decoder_model.replace_node_input(matmul_after_attention, attention.output[0], slice_0_output_name)
+    gpt2_init_decoder_model.replace_node_input(residual_add_node, add_before_residual_add_output, slice_1_output_name)
 
     # Topologically sort the updated graph
     gpt2_init_decoder_model.topological_sort()
@@ -2405,33 +2209,21 @@ def convert_generation_model(
                 "FastGelu",
             ]
             logger.info(f"**** Setting op_block_list to {args.op_block_list}")
-            logger.info(
-                "**** use --op_block_list if you want to override the block operator list."
-            )
+            logger.info("**** use --op_block_list if you want to override the block operator list.")
         else:
             args.op_block_list = []
 
     if is_greedysearch or is_sampling:
         if not is_gpt2:
-            raise NotImplementedError(
-                "Currently only gpt2 with greedy search/sampling is supported"
-            )
+            raise NotImplementedError("Currently only gpt2 with greedy search/sampling is supported")
         if args.output_sequences_scores:
-            raise NotImplementedError(
-                "output_sequences_scores currently is not supported in greedy search/sampling"
-            )
+            raise NotImplementedError("output_sequences_scores currently is not supported in greedy search/sampling")
         if args.output_token_scores:
-            raise NotImplementedError(
-                "output_token_scores currently is not supported in greedy search/sampling"
-            )
+            raise NotImplementedError("output_token_scores currently is not supported in greedy search/sampling")
 
     # For BeamSearch, sharing buffers for past and present states is only supported
     # when using `use_decoder_masked_attention`
-    if (
-        past_present_share_buffer
-        and is_beamsearch
-        and not args.use_decoder_masked_attention
-    ):
+    if past_present_share_buffer and is_beamsearch and not args.use_decoder_masked_attention:
         raise ValueError(
             "`use_decoder_masked_attention` MUST be turned on to use `past_present_share_buffer` in case of BeamSearch"
         )
@@ -2439,16 +2231,12 @@ def convert_generation_model(
     # For any kind of sampling, using decoder masked multihead attention is only supported
     # when using `past_present_share_buffer`
     if args.use_decoder_masked_attention and not past_present_share_buffer:
-        raise ValueError(
-            "`past_present_share_buffer` MUST be turned on to use `use_decoder_masked_attention`"
-        )
+        raise ValueError("`past_present_share_buffer` MUST be turned on to use `use_decoder_masked_attention`")
 
     # For any kind of sampling, using decoder masked multihead attention is only supported
     # on GPUs
     if args.use_decoder_masked_attention and not args.use_gpu:
-        raise ValueError(
-            "`use_decoder_masked_attention` option is only supported on GPUs"
-        )
+        raise ValueError("`use_decoder_masked_attention` option is only supported on GPUs")
 
     if is_gpt2:
         if args.decoder_onnx and os.path.exists(args.decoder_onnx):
@@ -2459,13 +2247,9 @@ def convert_generation_model(
                     args.model_name_or_path,
                     "fp16" if args.precision == Precision.FLOAT16 else "fp32",
                 )
-                args.decoder_onnx = Path(
-                    Path(args.output).parent, onnx_filename
-                ).as_posix()
+                args.decoder_onnx = Path(Path(args.output).parent, onnx_filename).as_posix()
 
-            logger.info(
-                f"Convert GPT model {args.model_name_or_path} to onnx {args.decoder_onnx} ..."
-            )
+            logger.info(f"Convert GPT model {args.model_name_or_path} to onnx {args.decoder_onnx} ...")
             gpt2_to_onnx(args)
     else:  # t5 or mt5
         if args.decoder_onnx and args.encoder_decoder_init_onnx:
@@ -2492,9 +2276,7 @@ def convert_generation_model(
             f"Pad logits MatMul weights for optimal MatMul perf in fp16 on {args.decoder_onnx}. "
             "The file will be overwritten."
         )
-        logits_matmul_weight_padded = pad_weights_of_logits_matmul(
-            args.decoder_onnx, args.use_external_data_format
-        )
+        logits_matmul_weight_padded = pad_weights_of_logits_matmul(args.decoder_onnx, args.use_external_data_format)
         if not logits_matmul_weight_padded:
             logger.warning(
                 "Tried and failed to pad logits MatMul weights. Performance may be sub-optimal for this MatMul"
@@ -2513,9 +2295,7 @@ def convert_generation_model(
             "fp16" if args.precision == Precision.FLOAT16 else "fp32"
         )
 
-        gpt2_init_decoder_onnx_path = Path(
-            Path(args.output).parent, gpt2_init_decoder_onnx_filename
-        ).as_posix()
+        gpt2_init_decoder_onnx_path = Path(Path(args.output).parent, gpt2_init_decoder_onnx_filename).as_posix()
 
         gpt2_init_decoder_generated = generate_gpt2_init_decoder(
             args.decoder_onnx,
@@ -2531,47 +2311,28 @@ def convert_generation_model(
 
         # Update the graph input shapes for the non-initial decoder model to account
         # for the fact that the sequence length will always be 1
-        if (
-            gpt2_init_decoder_generated
-            and not update_input_shapes_for_gpt2_decoder_model(
-                args.decoder_onnx, args.use_external_data_format
-            )
+        if gpt2_init_decoder_generated and not update_input_shapes_for_gpt2_decoder_model(
+            args.decoder_onnx, args.use_external_data_format
         ):
             # Can't proceed further - better to raise an exception
-            raise ValueError(
-                "Could not update the input shapes for the non-initial decoder subgraph."
-            )
+            raise ValueError("Could not update the input shapes for the non-initial decoder subgraph.")
 
     # If the user explicitly requests running shape inference or if we padded/mutated
     # weight(s)/input shape(s) in the decoder, we want to run shape inference to capture the new
     # shapes
-    if (
-        logits_matmul_weight_padded
-        or args.run_shape_inference
-        or gpt2_init_decoder_generated
-    ):
-        logger.info(
-            f"Run symbolic shape inference on {args.decoder_onnx}. The file will be overwritten."
-        )
+    if logits_matmul_weight_padded or args.run_shape_inference or gpt2_init_decoder_generated:
+        logger.info(f"Run symbolic shape inference on {args.decoder_onnx}. The file will be overwritten.")
         shape_inference(args.decoder_onnx, args.use_external_data_format)
         if gpt2_init_decoder_generated:
-            logger.info(
-                f"Run symbolic shape inference on {gpt2_init_decoder_onnx_path}. The file will be overwritten."
-            )
+            logger.info(f"Run symbolic shape inference on {gpt2_init_decoder_onnx_path}. The file will be overwritten.")
             shape_inference(gpt2_init_decoder_onnx_path, args.use_external_data_format)
 
     if is_gpt2:
-        config = GPT2Config.from_pretrained(
-            args.model_name_or_path, cache_dir=args.cache_dir
-        )
+        config = GPT2Config.from_pretrained(args.model_name_or_path, cache_dir=args.cache_dir)
     elif args.model_type == "t5":
-        config = T5Config.from_pretrained(
-            args.model_name_or_path, cache_dir=args.cache_dir
-        )
+        config = T5Config.from_pretrained(args.model_name_or_path, cache_dir=args.cache_dir)
     else:
-        config = MT5Config.from_pretrained(
-            args.model_name_or_path, cache_dir=args.cache_dir
-        )
+        config = MT5Config.from_pretrained(args.model_name_or_path, cache_dir=args.cache_dir)
 
     if args.verbose:
         logger.info(f"Config={config}")
@@ -2598,9 +2359,7 @@ def convert_generation_model(
 
         # If we generated the init decoder model, verify that as well
         if gpt2_init_decoder_generated:
-            gpt2_init_decoder_model = onnx.load_model(
-                gpt2_init_decoder_onnx_path, load_external_data=True
-            )
+            gpt2_init_decoder_model = onnx.load_model(gpt2_init_decoder_onnx_path, load_external_data=True)
             gpt2_init_decoder_model.graph.name = f"{args.model_type} init decoder"
             verify_gpt2_subgraph(gpt2_init_decoder_model.graph, args.precision)
     else:
@@ -2654,9 +2413,7 @@ def convert_generation_model(
         outputs.append("sequences_scores")
 
     if args.output_token_scores:
-        assert (
-            args.output_sequences_scores
-        ), "--output_token_scores requires --output_sequences_scores"
+        assert args.output_sequences_scores, "--output_token_scores requires --output_sequences_scores"
         outputs.append("scores")
 
     node = None
@@ -2689,37 +2446,23 @@ def convert_generation_model(
         attr_to_extend = [
             onnx.helper.make_attribute("eos_token_id", eos_token_id),
             onnx.helper.make_attribute("pad_token_id", pad_token_id),
-            onnx.helper.make_attribute(
-                "no_repeat_ngram_size", args.no_repeat_ngram_size
-            ),
-            onnx.helper.make_attribute(
-                "early_stopping", 1 if args.early_stopping else 0
-            ),
-            onnx.helper.make_attribute(
-                "model_type", 0 if args.model_type == "gpt2" else 1
-            ),
+            onnx.helper.make_attribute("no_repeat_ngram_size", args.no_repeat_ngram_size),
+            onnx.helper.make_attribute("early_stopping", 1 if args.early_stopping else 0),
+            onnx.helper.make_attribute("model_type", 0 if args.model_type == "gpt2" else 1),
         ]
     elif is_greedysearch:
         attr_to_extend = [
             onnx.helper.make_attribute("eos_token_id", eos_token_id),
             onnx.helper.make_attribute("pad_token_id", pad_token_id),
-            onnx.helper.make_attribute(
-                "model_type", 0 if args.model_type == "gpt2" else 1
-            ),
-            onnx.helper.make_attribute(
-                "no_repeat_ngram_size", args.no_repeat_ngram_size
-            ),
+            onnx.helper.make_attribute("model_type", 0 if args.model_type == "gpt2" else 1),
+            onnx.helper.make_attribute("no_repeat_ngram_size", args.no_repeat_ngram_size),
         ]
     elif is_sampling:
         attr_to_extend = [
             onnx.helper.make_attribute("eos_token_id", eos_token_id),
             onnx.helper.make_attribute("pad_token_id", pad_token_id),
-            onnx.helper.make_attribute(
-                "model_type", 0 if args.model_type == "gpt2" else 1
-            ),
-            onnx.helper.make_attribute(
-                "no_repeat_ngram_size", args.no_repeat_ngram_size
-            ),
+            onnx.helper.make_attribute("model_type", 0 if args.model_type == "gpt2" else 1),
+            onnx.helper.make_attribute("no_repeat_ngram_size", args.no_repeat_ngram_size),
             onnx.helper.make_attribute("temperature", args.temperature),
             onnx.helper.make_attribute("top_p", args.top_p),
             onnx.helper.make_attribute("filter_value", args.filter_value),
@@ -2738,20 +2481,10 @@ def convert_generation_model(
 
     if args.model_type in ["t5", "mt5"]:
         if args.run_shape_inference:
-            logger.info(
-                f"Symbolic shape inference on {args.encoder_decoder_init_onnx}. The file will be overwritten."
-            )
-            shape_inference(
-                args.encoder_decoder_init_onnx, args.use_external_data_format
-            )
-        encoder_model = onnx.load_model(
-            args.encoder_decoder_init_onnx, load_external_data=True
-        )
-        suffix = (
-            "encoder"
-            if len(encoder_model.graph.input) == 2
-            else "encoder and decoder init"
-        )
+            logger.info(f"Symbolic shape inference on {args.encoder_decoder_init_onnx}. The file will be overwritten.")
+            shape_inference(args.encoder_decoder_init_onnx, args.use_external_data_format)
+        encoder_model = onnx.load_model(args.encoder_decoder_init_onnx, load_external_data=True)
+        suffix = "encoder" if len(encoder_model.graph.input) == 2 else "encoder and decoder init"
         encoder_model.graph.name = f"{args.model_type} {suffix}"
         verify_t5_encoder_decoder_init_subgraph(encoder_model.graph, args.precision)
 
@@ -2761,21 +2494,15 @@ def convert_generation_model(
         # Update decoder subgraph in preparation to use past present share buffer
         if past_present_share_buffer:
             if not args.use_decoder_masked_attention:
-                raise ValueError(
-                    "past_present_share_buffer is only supported with use_decoder_masked_attention"
-                )
+                raise ValueError("past_present_share_buffer is only supported with use_decoder_masked_attention")
 
             logger.info(
                 "*****update t5 decoder subgraph to share past/present buffer and use decoder_masked_multihead_attention*****"
             )
-            if update_decoder_subgraph_share_buffer_and_use_decoder_masked_mha(
-                decoder_model.graph
-            ):
+            if update_decoder_subgraph_share_buffer_and_use_decoder_masked_mha(decoder_model.graph):
                 logger.info("*****update t5 decoder subgraph successfully!!!*****")
             else:
-                logger.info(
-                    "*****DecoderMaskedMultiHeadAttention is not applied to T5 decoder*****"
-                )
+                logger.info("*****DecoderMaskedMultiHeadAttention is not applied to T5 decoder*****")
 
             if pack_qkv_for_decoder_masked_mha(decoder_model):
                 logger.info("*****pack qkv for decoder masked mha successfully!!!*****")
@@ -2797,17 +2524,13 @@ def convert_generation_model(
             # )
             # initializers.extend(moved_initializers)
 
-        assert (
-            config.decoder_start_token_id >= 0
-        ), "decoder_start_token_id should be >= 0"
+        assert config.decoder_start_token_id >= 0, "decoder_start_token_id should be >= 0"
 
         node.attribute.extend(
             [
                 onnx.helper.make_attribute("encoder", encoder_model.graph),
                 onnx.helper.make_attribute("decoder", decoder_model.graph),
-                onnx.helper.make_attribute(
-                    "decoder_start_token_id", config.decoder_start_token_id
-                ),
+                onnx.helper.make_attribute("decoder_start_token_id", config.decoder_start_token_id),
             ]
         )
     else:
@@ -2816,90 +2539,52 @@ def convert_generation_model(
             # graph and remove them from these models
             if not args.disable_shared_initializers:
                 # Unique shared initializers from the decoder and decoder_init could reduce memory usage in inference.
-                initializers = get_shared_initializers(
-                    gpt2_init_decoder_model, decoder_model
-                )
+                initializers = get_shared_initializers(gpt2_init_decoder_model, decoder_model)
                 logger.info(
                     f"{len(initializers)} shared initializers ({[i.name for i in initializers]}) in decoder and init decoder subgraphs are moved to the main graph"
                 )
 
             # Update init decoder subgraph in preparation to use past present share buffer
             if past_present_share_buffer:
-                logger.info(
-                    "*****update init decoder subgraph to make past and present share buffer******************"
-                )
-                update_decoder_subgraph_past_present_share_buffer(
-                    gpt2_init_decoder_model.graph
-                )
+                logger.info("*****update init decoder subgraph to make past and present share buffer******************")
+                update_decoder_subgraph_past_present_share_buffer(gpt2_init_decoder_model.graph)
 
             # Update init decoder subgraph in preparation to use DecoderMaskedSelfAttention
             # NOTE: Even if we will not use DecoderMaskedSelfAttention in the init decoder subgraph
             # it makes the runtime changes cleaner if we keep both the init decoder and decoder subgraphs
             # same in terms of the subgraph inputs.
-            if (
-                args.use_decoder_masked_attention
-                and not update_decoder_subgraph_use_decoder_masked_attention(
-                    gpt2_init_decoder_model.graph, is_beamsearch, False
-                )
+            if args.use_decoder_masked_attention and not update_decoder_subgraph_use_decoder_masked_attention(
+                gpt2_init_decoder_model.graph, is_beamsearch, False
             ):
-                raise ValueError(
-                    "Could not update the init decoder subgraph to use DecoderMaskedSelfAttention"
-                )
+                raise ValueError("Could not update the init decoder subgraph to use DecoderMaskedSelfAttention")
 
-            node.attribute.append(
-                onnx.helper.make_attribute(
-                    "init_decoder", gpt2_init_decoder_model.graph
-                )
-            )
+            node.attribute.append(onnx.helper.make_attribute("init_decoder", gpt2_init_decoder_model.graph))
         else:
             # Move initializer from subgraph to main graph could reduce memory usage in inference.
             initializers = move_initializers(decoder_model.graph)
-            logger.info(
-                f"{len(initializers)} initializers from the decoder are moved to the main graph"
-            )
+            logger.info(f"{len(initializers)} initializers from the decoder are moved to the main graph")
 
         # Update decoder subgraph in preparation to use past present share buffer
         if past_present_share_buffer:
-            logger.info(
-                "*****update decoder subgraph to make past and present share buffer******************"
-            )
+            logger.info("*****update decoder subgraph to make past and present share buffer******************")
             update_decoder_subgraph_past_present_share_buffer(decoder_model.graph)
 
         # Update decoder subgraph in preparation to use DecoderMaskedSelfAttention
-        if (
-            args.use_decoder_masked_attention
-            and not update_decoder_subgraph_use_decoder_masked_attention(
-                decoder_model.graph, is_beamsearch, True
-            )
+        if args.use_decoder_masked_attention and not update_decoder_subgraph_use_decoder_masked_attention(
+            decoder_model.graph, is_beamsearch, True
         ):
-            raise ValueError(
-                "Could not update the decoder subgraph to use DecoderMaskedSelfAttention"
-            )
+            raise ValueError("Could not update the decoder subgraph to use DecoderMaskedSelfAttention")
 
-        node.attribute.append(
-            onnx.helper.make_attribute("decoder", decoder_model.graph)
-        )
+        node.attribute.append(onnx.helper.make_attribute("decoder", decoder_model.graph))
 
     # graph inputs
-    input_ids = onnx.helper.make_tensor_value_info(
-        "input_ids", TensorProto.INT32, ["batch_size", "sequence_length"]
-    )
-    max_length = onnx.helper.make_tensor_value_info(
-        "max_length", TensorProto.INT32, [1]
-    )
-    min_length = onnx.helper.make_tensor_value_info(
-        "min_length", TensorProto.INT32, [1]
-    )
+    input_ids = onnx.helper.make_tensor_value_info("input_ids", TensorProto.INT32, ["batch_size", "sequence_length"])
+    max_length = onnx.helper.make_tensor_value_info("max_length", TensorProto.INT32, [1])
+    min_length = onnx.helper.make_tensor_value_info("min_length", TensorProto.INT32, [1])
     num_beams = onnx.helper.make_tensor_value_info("num_beams", TensorProto.INT32, [1])
-    num_return_sequences = onnx.helper.make_tensor_value_info(
-        "num_return_sequences", TensorProto.INT32, [1]
-    )
-    length_penalty = onnx.helper.make_tensor_value_info(
-        "length_penalty", TensorProto.FLOAT, [1]
-    )
-    repetition_penalty = onnx.helper.make_tensor_value_info(
-        "repetition_penalty", TensorProto.FLOAT, [1]
-    )
+    num_return_sequences = onnx.helper.make_tensor_value_info("num_return_sequences", TensorProto.INT32, [1])
+    length_penalty = onnx.helper.make_tensor_value_info("length_penalty", TensorProto.FLOAT, [1])
+    repetition_penalty = onnx.helper.make_tensor_value_info("repetition_penalty", TensorProto.FLOAT, [1])
 
     graph_inputs = None
     if is_beamsearch:
@@ -2921,9 +2606,7 @@ def convert_generation_model(
         ]
 
     if args.vocab_mask:
-        vocab_mask = onnx.helper.make_tensor_value_info(
-            "vocab_mask", TensorProto.INT32, [vocab_size]
-        )
+        vocab_mask = onnx.helper.make_tensor_value_info("vocab_mask", TensorProto.INT32, [vocab_size])
         graph_inputs.append(vocab_mask)
 
     if args.prefix_vocab_mask:
@@ -2983,11 +2666,7 @@ def convert_generation_model(
 
     new_graph = onnx.helper.make_graph(
         [node],
-        (
-            f"{args.model_type} beam search"
-            if not is_greedysearch
-            else f"{args.model_type} greedy search"
-        ),
+        (f"{args.model_type} beam search" if not is_greedysearch else f"{args.model_type} greedy search"),
         graph_inputs,
         graph_outputs,
         initializers,
@@ -3045,9 +2724,7 @@ def test_torch_performance(
         Dict[str, Any]: A dictionary with string with metric name, and value can be integer or string.
     """
     if args.use_gpu and not torch.cuda.is_available():
-        raise RuntimeError(
-            "Please install PyTorch with Cuda for testing gpu performance."
-        )
+        raise RuntimeError("Please install PyTorch with Cuda for testing gpu performance.")
 
     if args.precision == Precision.FLOAT16:
         model.half()
@@ -3114,9 +2791,7 @@ def test_gpt_model(
     """
     assert args.model_type == "gpt2"
 
-    tokenizer = GPT2Tokenizer.from_pretrained(
-        args.model_name_or_path, cache_dir=args.cache_dir
-    )
+    tokenizer = GPT2Tokenizer.from_pretrained(args.model_name_or_path, cache_dir=args.cache_dir)
     tokenizer.padding_side = "left"
     tokenizer.pad_token = tokenizer.eos_token
 
@@ -3201,9 +2876,7 @@ def test_gpt_model(
             "max_length": np.array([args.max_length], dtype=np.int32),
             "min_length": np.array([args.min_length], dtype=np.int32),
             "num_beams": np.array([args.num_beams], dtype=np.int32),
-            "num_return_sequences": np.array(
-                [args.num_return_sequences], dtype=np.int32
-            ),
+            "num_return_sequences": np.array([args.num_return_sequences], dtype=np.int32),
             "length_penalty": np.array([args.length_penalty], dtype=np.float32),
             "repetition_penalty": np.array([args.repetition_penalty], dtype=np.float32),
         }
@@ -3220,9 +2893,7 @@ def test_gpt_model(
 
     batch_size = input_ids.shape[0]
     if args.prefix_vocab_mask:
-        logger.info(
-            "Use prefix vocab mask with all ones in ORT, but no corresponding setting for Torch model."
-        )
+        logger.info("Use prefix vocab mask with all ones in ORT, but no corresponding setting for Torch model.")
         prefix_vocab_mask = np.ones((batch_size, vocab_size), dtype=np.int32)
         inputs["prefix_vocab_mask"] = prefix_vocab_mask
 
@@ -3244,9 +2915,7 @@ def test_gpt_model(
         return
 
     logger.debug("Creating ort session......")
-    ort_session = create_ort_session(
-        args.output, args.use_gpu, args.use_sln_strict_mode
-    )
+    ort_session = create_ort_session(args.output, args.use_gpu, args.use_sln_strict_mode)
 
     logger.debug("Run ort session......")
     result = ort_session.run(None, inputs)
@@ -3283,16 +2952,12 @@ def test_gpt_model(
         ort_decoded_sequences = []
         for i in range(batch_size):
             for j in range(num_sequences):
-                decoded_sequence = tokenizer.decode(
-                    sequences[i][j], skip_special_tokens=True
-                )
+                decoded_sequence = tokenizer.decode(sequences[i][j], skip_special_tokens=True)
                 ort_decoded_sequences.append(decoded_sequence)
                 print(f"batch {i} sequence {j}: {decoded_sequence}")
 
     if beam_outputs:
-        torch_sequences = beam_outputs.sequences.reshape(
-            batch_size, args.num_return_sequences, -1
-        )
+        torch_sequences = beam_outputs.sequences.reshape(batch_size, args.num_return_sequences, -1)
         ort_sequences = torch.LongTensor(sequences)
         print("-" * 50)
         print("Torch Sequences:")
@@ -3338,14 +3003,10 @@ def test_t5_model(args: argparse.Namespace, sentences: list[str] | None = None):
     assert args.model_type in ["t5", "mt5"]
 
     if args.prefix_vocab_mask:
-        logger.debug(
-            "Skipping parity test as prefix vocab mask is not implemented by Hugging Face"
-        )
+        logger.debug("Skipping parity test as prefix vocab mask is not implemented by Hugging Face")
         return None
 
-    tokenizer = T5Tokenizer.from_pretrained(
-        args.model_name_or_path, cache_dir=args.cache_dir
-    )
+    tokenizer = T5Tokenizer.from_pretrained(args.model_name_or_path, cache_dir=args.cache_dir)
     tokenizer.padding_side = "left"
 
     if args.model_type == "t5":
@@ -3384,9 +3045,7 @@ def test_t5_model(args: argparse.Namespace, sentences: list[str] | None = None):
     eos_token_id = config.eos_token_id
     pad_token_id = config.pad_token_id
     vocab_size = config.vocab_size
-    logger.debug(
-        f"eos_token_id:{eos_token_id}, pad_token_id:{pad_token_id}, vocab_size:{vocab_size}"
-    )
+    logger.debug(f"eos_token_id:{eos_token_id}, pad_token_id:{pad_token_id}, vocab_size:{vocab_size}")
 
     torch_decoded_sequences = []
     if not args.disable_parity:
@@ -3458,9 +3117,7 @@ def test_t5_model(args: argparse.Namespace, sentences: list[str] | None = None):
 
     logger.debug("ORT inputs", inputs)  # noqa: PLE1205
 
-    ort_session = create_ort_session(
-        args.output, args.use_gpu, args.use_sln_strict_mode
-    )
+    ort_session = create_ort_session(args.output, args.use_gpu, args.use_sln_strict_mode)
 
     # Test performance
     latency = []
@@ -3485,16 +3142,12 @@ def test_t5_model(args: argparse.Namespace, sentences: list[str] | None = None):
     ort_decoded_sequences = []
     for i in range(batch_size):
         for j in range(num_sequences):
-            decoded_sequence = tokenizer.decode(
-                sequences[i][j], skip_special_tokens=True
-            )
+            decoded_sequence = tokenizer.decode(sequences[i][j], skip_special_tokens=True)
             ort_decoded_sequences.append(decoded_sequence)
             print(f"batch {i} sequence {j}: {decoded_sequence}")
 
     if not args.disable_parity:
-        torch_sequences = beam_outputs.sequences.reshape(
-            batch_size, args.num_return_sequences, -1
-        )
+        torch_sequences = beam_outputs.sequences.reshape(batch_size, args.num_return_sequences, -1)
         ort_sequences = torch.LongTensor(sequences)
         print("-" * 50)
         print("Torch Sequences:")
@@ -3546,20 +3199,14 @@ def main(argv: list[str] | None = None, sentences: list[str] | None = None):
     setup_logger(args.verbose)
 
     if args.model_type in ["t5", "mt5"]:
-        if args.encoder_decoder_init_onnx and not os.path.exists(
-            args.encoder_decoder_init_onnx
-        ):
-            raise ValueError(
-                f"Path does not exist: --encoder_decoder_init_onnx {args.encoder_decoder_init_onnx}"
-            )
+        if args.encoder_decoder_init_onnx and not os.path.exists(args.encoder_decoder_init_onnx):
+            raise ValueError(f"Path does not exist: --encoder_decoder_init_onnx {args.encoder_decoder_init_onnx}")
         if args.decoder_onnx and not os.path.exists(args.decoder_onnx):
             raise ValueError(f"Path does not exist: --decoder_onnx {args.decoder_onnx}")
         if (args.encoder_decoder_init_onnx and not args.decoder_onnx) or (
             args.decoder_onnx and not args.encoder_decoder_init_onnx
         ):
-            raise ValueError(
-                "--decoder_onnx shall use together with --encoder_decoder_init_onnx"
-            )
+            raise ValueError("--decoder_onnx shall use together with --encoder_decoder_init_onnx")
 
     is_greedy = args.num_beams == 1 and args.num_return_sequences == 1
 
