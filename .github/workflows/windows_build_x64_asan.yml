@@ -3,7 +3,7 @@ name: build_x64_asan
 
 on:
   push:
-    branches: [ main, 'rel-*', 'snnn/es1' ]
+    branches: [ main, 'rel-*']
   pull_request:
     branches: [ main ]
 
@@ -46,7 +46,6 @@ jobs:
         VCPKG_BINARY_SOURCES: "clear;x-gha,readwrite"    
       run: |
         @echo off
-        if not exist "%GITHUB_WORKSPACE%\build" mkdir "%GITHUB_WORKSPACE%\build"
-        cd "%GITHUB_WORKSPACE%\build"
+        echo %PATH%
         python -m pip install -r "%GITHUB_WORKSPACE%\tools\ci_build/github/windows\python\requirements.txt"
-        python "%GITHUB_WORKSPACE%\tools\ci_build\build.py" --config Debug --build_dir "%GITHUB_WORKSPACE%\build" --skip_submodule_sync --parallel --use_vcpkg --use_vcpkg_ms_internal_asset_cache --cmake_generator "Visual Studio 17 2022" --disable_memleak_checker --enable_address_sanitizer
+        python "%GITHUB_WORKSPACE%\tools\ci_build\build.py" --config Debug --build_dir "%RUNNER_TEMP%\build" --skip_submodule_sync --parallel --use_vcpkg --use_vcpkg_ms_internal_asset_cache --cmake_generator "Visual Studio 17 2022" --disable_memleak_checker --enable_address_sanitizer

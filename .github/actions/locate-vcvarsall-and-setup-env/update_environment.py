@@ -26,7 +26,7 @@ for key, value in final_env.items():
                 print("Adding paths")
                 with open(os.environ['GITHUB_PATH'], 'a') as f:
                     for path in added_paths:
-                        print(f"XXXXXX:Add {path}")
+                        print(f"Adding PATH: {path}")
                         f.write(path + os.linesep)
         else:
             # Use GITHUB_ENV
