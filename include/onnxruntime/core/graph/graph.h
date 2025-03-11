@@ -727,6 +727,15 @@ class Graph {  // NOLINT(clang-analyzer-optin.performance.Padding): preserve exi
   */
   common::Status ReplaceInitializedTensor(const ONNX_NAMESPACE::TensorProto& new_initializer);
 
+  /** Replaces the initializer tensor with the same name as the given initializer tensor.
+  The replacement initializer tensor must have the same type and shape as the existing initializer tensor.
+  The new_initializer is expected to be either small or have external data reference stored in OrtValue.
+
+  Note: This currently has linear time complexity. There is room for improvement but it would likely require changes to
+  how initializer tensors are stored and tracked.
+  */
+  common::Status ReplaceInitializedTensor(const ONNX_NAMESPACE::TensorProto& new_initializer, const OrtValue& ort_value);
+
 #if !defined(DISABLE_EXTERNAL_INITIALIZERS)
   /** This function takes externally provided data for initializers with external data
    *    and replaces graph initializers with its content.
@@ -756,7 +765,7 @@ class Graph {  // NOLINT(clang-analyzer-optin.performance.Padding): preserve exi
   /// <param name="ort_value_initializer">value that contains the initializer tensor. This may
   /// be unallocated for small tensors. Passed by value and can be moved in when chosen.</param>
   Status AddInitializedOrtValue(const ONNX_NAMESPACE::TensorProto& tensor_proto,
-                                OrtValue ort_value_initializer);
+                                const OrtValue& ort_value_initializer);
 #endif
 
   /** Remove the initializer tensor with the provided name from the Graph. */

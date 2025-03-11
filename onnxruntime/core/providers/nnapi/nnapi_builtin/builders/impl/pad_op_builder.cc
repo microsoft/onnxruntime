@@ -80,7 +80,7 @@ Status PadOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const No
   const auto* pads_initializer = model_builder.GetConstantInitializer(pads);
   ORT_RETURN_IF_NOT(pads_initializer, "pads must be a constant");
 
-  Initializer pads_initializer_raw_data(graph, *pads_initializer);
+  Initializer pads_initializer_raw_data(model_builder.GetGraphViewer().GetGraph(), *pads_initializer);
   // assume pads_initializer has int64 data, per ONNX spec
   std::vector<int32_t> converted_pads_data{};
   converted_pads_data.reserve(2 * data_rank);
@@ -102,7 +102,7 @@ Status PadOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const No
     const auto& constant_value = inputs[2].node_arg.Name();
     const auto* constant_value_initializer = model_builder.GetConstantInitializer(constant_value);
     ORT_RETURN_IF_NOT(constant_value_initializer, "constant_value must be a constant");
-    Initializer pad_value_raw_data_init(graph, *constant_value_initializer);
+    Initializer pad_value_raw_data_init(model_builder.GetGraphViewer().GetGraph(), *constant_value_initializer);
     pad_value = pad_value_raw_data_init.DataAsSpan<float>()[0];
   }
 

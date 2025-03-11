@@ -47,7 +47,7 @@ template <typename T>
 static void ApplyNewInputValue(Graph& graph, Node& node, QDQ::InputIndex index, T value) {
   const auto* input_tensor = graph_utils::GetConstantInitializer(graph, node.InputDefs()[index]->Name());
   Initializer input_init{graph, *input_tensor, graph.ModelPath()};
-  ONNX_NAMESPACE::TensorProto new_input_tensor(*input_tensor);
+  ONNX_NAMESPACE::TensorProto new_input_tensor;
   input_init.data<T>()[0] = value;
   input_init.ToProto(new_input_tensor);
   auto new_name = graph.GenerateNodeArgName("DoubleQDQRemoved_" + node.InputDefs()[index]->Name());
