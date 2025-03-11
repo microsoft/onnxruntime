@@ -16,6 +16,10 @@ class T5EncoderSubgraph : public Subgraph {
       const onnxruntime::Node& node_in,
       const std::string& attribute_name,
       const GraphViewer& subgraph_in) : Subgraph(node_in, attribute_name, subgraph_in) {
+    has_logits_output_ = num_subgraph_outputs > 0 && subgraph_output_names[0] == "logits";
+
+    // Old format: The first output is logits, the second one is encoder_hidden_states.
+    // New format: No logits and encoder_hidden_states. All outputs are cross.
     first_present_output_index_ = HasLogitsOutput() ? 2 : 0;
   }
 
@@ -43,10 +47,11 @@ class T5EncoderSubgraph : public Subgraph {
 #endif
 
   bool HasLogitsOutput() const {
-    return num_subgraph_inputs != 2;
+    return has_logits_output_;
   }
 
  protected:
+  bool has_logits_output_;
   int first_present_output_index_;
 };
 
