@@ -1,4 +1,4 @@
-name: build_x86_release
+name: Windows CPU CI Pipeline
 
 on:
   push:
