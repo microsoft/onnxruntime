@@ -15,16 +15,16 @@ for /f "usebackq delims=" %%i in (`%vswherepath% -latest -property installationP
   )
 )
 
-REM Get initial environment variables
+echo "Get initial environment variables"
 set > initial_env.txt
 
-REM Call vcvarsall.bat
+echo "Call vcvarsall.bat"
 call "%vcvarsall%"
 
-REM Get environment variables after calling vcvarsall.bat
+echo "Get environment variables after calling vcvarsall.bat"
 set > final_env.txt
 
-REM Call the Python script to update the GitHub Actions environment
+echo "Call the Python script to update the GitHub Actions environment"
 python "%~dp0\update_environment.py"
 
 endlocal
