@@ -69,7 +69,7 @@ void DumpInputs(contrib::AttentionParameters& parameters, AttentionData<T>& data
       DUMP_TENSOR_D("Query(BSN3H)", data.query, batch_size, sequence_length, num_heads * 3, qk_head_size);
     } else if (parameters.qkv_format == AttentionQkvFormat::Q_KV_BSNH_BSN2H) {
       DUMP_TENSOR_D("Query(BSNH)", data.query, batch_size, sequence_length, num_heads, qk_head_size);
-      DUMP_TENSOR_D("Value(BSN2H)", data.value, batch_size, sequence_length, num_heads * 2, qk_head_size);
+      DUMP_TENSOR_D("Key(BSN2H)", data.key, batch_size, sequence_length, num_heads * 2, qk_head_size);
     }
   }
 
