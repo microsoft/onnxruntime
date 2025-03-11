@@ -86,6 +86,7 @@ class LinearUnit : public UnaryElementwise {
 };
 
 class QuickGelu : public LinearUnit {
+ public:
   QuickGelu(const OpKernelInfo& info);
 };
 
