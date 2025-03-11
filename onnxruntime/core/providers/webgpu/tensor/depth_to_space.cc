@@ -72,8 +72,8 @@ Status DepthToSpaceProgram::GenerateShaderCode(ShaderHelper& shader) const {
   return Status::OK();
 }
 
-template <bool is_nchw>
-Status DepthToSpace<is_nchw>::ComputeInternal(onnxruntime::webgpu::ComputeContext& context) const {
+template <bool is_nhwc>
+Status DepthToSpace<is_nhwc>::ComputeInternal(onnxruntime::webgpu::ComputeContext& context) const {
   const auto* input = context.Input(0);
   const TensorShape input_shape = input->Shape();
   std::cout << "input shape: ";
@@ -87,46 +87,8 @@ Status DepthToSpace<is_nchw>::ComputeInternal(onnxruntime::webgpu::ComputeContex
   int64_t n, c, h, w;
   int64_t shape[6];
   int64_t perm[6];
-  if (is_nchw) {
-    std::cout << "is_nchw" << std::endl;
-    n = input_shape[0];
-    c = input_shape[1];
-    h = input_shape[2];
-    w = input_shape[3];
-
-    if (is_dcr_) {
-      std::cout << "is_dcr" << std::endl;
-      shape[0] = n;
-      shape[1] = blocksize_;
-      shape[2] = blocksize_;
-      shape[3] = c / (blocksize_ * blocksize_);
-      shape[4] = h;
-      shape[5] = w;
-
-      perm[0] = 0;
-      perm[1] = 3;
-      perm[2] = 4;
-      perm[3] = 1;
-      perm[4] = 5;
-      perm[5] = 2;
-    } else {
-      std::cout << "NOT is_dcr" << std::endl;
-      shape[0] = n;
-      shape[1] = c / (blocksize_ * blocksize_);
-      shape[2] = blocksize_;
-      shape[3] = blocksize_;
-      shape[4] = h;
-      shape[5] = w;
-
-      perm[0] = 0;
-      perm[1] = 1;
-      perm[2] = 4;
-      perm[3] = 2;
-      perm[4] = 5;
-      perm[5] = 3;
-    }
-  } else {
-    std::cout << "NOT is_nchw" << std::endl;
+  if (is_nhwc) {
+    std::cout << "is_nhwc" << std::endl;
     n = input_shape[0];
     h = input_shape[1];
     w = input_shape[2];
@@ -163,6 +125,44 @@ Status DepthToSpace<is_nchw>::ComputeInternal(onnxruntime::webgpu::ComputeContex
       perm[4] = 5;
       perm[5] = 3;
     }
+  } else {
+    std::cout << "NOT is_nhwc" << std::endl;
+    n = input_shape[0];
+    c = input_shape[1];
+    h = input_shape[2];
+    w = input_shape[3];
+
+    if (is_dcr_) {
+      std::cout << "is_dcr" << std::endl;
+      shape[0] = n;
+      shape[1] = blocksize_;
+      shape[2] = blocksize_;
+      shape[3] = c / (blocksize_ * blocksize_);
+      shape[4] = h;
+      shape[5] = w;
+
+      perm[0] = 0;
+      perm[1] = 3;
+      perm[2] = 4;
+      perm[3] = 1;
+      perm[4] = 5;
+      perm[5] = 2;
+    } else {
+      std::cout << "NOT is_dcr" << std::endl;
+      shape[0] = n;
+      shape[1] = c / (blocksize_ * blocksize_);
+      shape[2] = blocksize_;
+      shape[3] = blocksize_;
+      shape[4] = h;
+      shape[5] = w;
+
+      perm[0] = 0;
+      perm[1] = 1;
+      perm[2] = 4;
+      perm[3] = 2;
+      perm[4] = 5;
+      perm[5] = 3;
+    }
   }
 
   std::cout << "n: " << n << " c: " << c << " h: " << h << " w: " << w << std::endl;
@@ -184,16 +184,16 @@ Status DepthToSpace<is_nchw>::ComputeInternal(onnxruntime::webgpu::ComputeContex
 
   // Calculate the final 4D output shape
   int64_t output_shape[4];
-  if (is_nchw) {
-    output_shape[0] = n;
-    output_shape[1] = c / (blocksize_ * blocksize_);
-    output_shape[2] = h * blocksize_;
-    output_shape[3] = w * blocksize_;
-  } else {
+  if (is_nhwc) {
     output_shape[0] = n;
     output_shape[1] = h * blocksize_;
     output_shape[2] = w * blocksize_;
     output_shape[3] = c / (blocksize_ * blocksize_);
+  } else {
+    output_shape[0] = n;
+    output_shape[1] = c / (blocksize_ * blocksize_);
+    output_shape[2] = h * blocksize_;
+    output_shape[3] = w * blocksize_;
   }
   TensorShape final_output_shape(gsl::make_span(output_shape));
   std::cout << "final output shape: ";
