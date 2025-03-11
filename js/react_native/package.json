@@ -25,7 +25,8 @@
     "pod-install": "^0.1.36",
     "prettier": "^2.8.8",
     "react": "^18.2.0",
-    "react-native": "^0.73.11"
+    "react-native": "^0.73.11",
+    "react-native-builder-bob": "^0.37.0"
   },
   "peerDependencies": {
     "react": "*",
@@ -60,17 +61,33 @@
   ],
   "description": "ONNX Runtime bridge for react native",
   "repository": "https://github.com/Microsoft/onnxruntime.git",
+  "react-native-builder-bob": {
+    "source": "lib",
+    "targets": [
+      "commonjs",
+      "module",
+      [
+        "typescript",
+        {
+          "project": "tsconfig.build.json",
+          "tsc": "../node_modules/.bin/tsc"
+        }
+      ]
+    ],
+    "output": "dist"
+  },
   "dependencies": {
     "buffer": "^6.0.3"
   },
   "scripts": {
     "typescript": "tsc --noEmit",
+    "prepare": "bob build",
     "bootstrap": "npm run pack-common && npm run unpack-common && npm run pack-libs && npm run unpack-libs && npm run e2e && npm run pods",
     "test": "jest",
     "pack-common": "cd ../common && npm pack && mv -f onnxruntime-common-*.tgz ../react_native/e2e/onnxruntime-common.tgz",
-    "unpack-common": "cd e2e && npm install --no-save ./onnxruntime-common.tgz",
+    "unpack-common": "cd e2e && npm install ./onnxruntime-common.tgz",
     "pack-libs": "npm pack --ort-js-pack-mode=e2e && mv -f onnxruntime-react-native-*.tgz e2e/onnxruntime-react-native.tgz",
-    "unpack-libs": "cd e2e && npm install --no-save ./onnxruntime-react-native.tgz",
+    "unpack-libs": "cd e2e && npm install ./onnxruntime-react-native.tgz",
     "prepack": "tsc --build ./tsconfig.scripts.json && node ./scripts/prepack",
     "pods": "cd e2e && npx pod-install --quiet",
     "e2e": "npm --prefix e2e install"
