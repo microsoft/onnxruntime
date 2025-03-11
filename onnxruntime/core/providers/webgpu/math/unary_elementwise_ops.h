@@ -135,7 +135,7 @@ constexpr const char QuickGeluImpl[] = R"(
 fn quick_gelu_v(a: x_value_t) -> x_value_t {
   let one = 1.0;
   let zero = 0.0;
-  let alpha_vec = x_value_t(uniforms.alpha);
+  let alpha_vec = x_value_t(uniforms.attr);
   let v = a * alpha_vec;
   var x1 : x_value_t;
   for (var i = 0; i < 4; i = i + 1) {
