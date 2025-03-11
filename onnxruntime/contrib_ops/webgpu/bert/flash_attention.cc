@@ -771,10 +771,10 @@ bool CanApplyFlashAttention(const Tensor* bias, const Tensor* present_key, const
   return parameters.batch_size_ == 1 &&
          !parameters.is_packed_qkv_ &&
          parameters.head_size_ == parameters.v_head_size_ &&
-         // Only use flash decoding when total_sequence_length is large. Below threshold is empirical value.
+         // Only use flash decoding when total_sequence_length is large and past_present_share_buffer is true. Below threshold is empirical value.
          // [total_sequence_length / 64] and [head_size / 16] are the dispatched workgroups on dimension X with and without flash attention.
          // And when the former is 2x larger than latter, switching to flash attention can improve the parallelism by dispatching more workgroups.
-         (parameters.sequence_length_ > 1 || parameters.total_sequence_length_ / 64 >= parameters.head_size_ / 16) &&
+         (parameters.sequence_length_ > 1 || (parameters.past_present_share_buffer_ && parameters.total_sequence_length_ / 64 >= parameters.head_size_ / 16)) &&
          bias == nullptr &&
          context.Device().HasFeature(wgpu::FeatureName::Subgroups) &&
          present_key != nullptr && present_value != nullptr && present_key->SizeInBytes() > 0 &&
