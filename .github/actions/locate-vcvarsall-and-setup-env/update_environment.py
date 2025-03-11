@@ -15,17 +15,21 @@ final_env = read_env_file('final_env.txt')
 
 for key, value in final_env.items():
     if key not in initial_env or initial_env[key] != value:
+        if key.startswith("_"):
+           continue
         if key.upper() == 'PATH':
             new_paths = value.split(';')
             initial_paths = initial_env.get('PATH','').split(';')
             added_paths = [p for p in new_paths if p not in initial_paths and p]
 
             if added_paths:
+                print("Adding paths")
                 with open(os.environ['GITHUB_PATH'], 'a') as f:
                     for path in added_paths:
+                        print(f"XXXXXX:Add {path}")
                         f.write(path + os.linesep)
         else:
             # Use GITHUB_ENV
             with open(os.environ['GITHUB_ENV'], 'a') as f:
-                # No need to escape special characters when using GITHUB_ENV file
+                print(f"Setting {key}={value}\n")
                 f.write(f"{key}={value}\n")

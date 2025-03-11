@@ -33,12 +33,20 @@ jobs:
       with:
         architecture: x86
 
+    - name: Export GitHub Actions cache environment variables
+      uses: actions/github-script@v7
+      with:
+        script: |
+          core.exportVariable('ACTIONS_CACHE_URL', process.env.ACTIONS_CACHE_URL || '');
+          core.exportVariable('ACTIONS_RUNTIME_TOKEN', process.env.ACTIONS_RUNTIME_TOKEN || '');
     - name: Build and Test (Combined)
       shell: cmd
+      env: 
+        VCPKG_BINARY_SOURCES: "clear;x-gha,readwrite"
       run: |
         @echo off
         set
         if not exist "%GITHUB_WORKSPACE%\build" mkdir "%GITHUB_WORKSPACE%\build"
         cd "%GITHUB_WORKSPACE%\build"
         python -m pip install -r "%GITHUB_WORKSPACE%\tools/ci_build/github/windows\python\requirements.txt"
-        python "%GITHUB_WORKSPACE%\tools\ci_build\build.py" --config Debug --build_dir "%GITHUB_WORKSPACE%\build" --skip_submodule_sync --parallel --use_vcpkg --use_vcpkg_ms_internal_asset_cache --cmake_generator "Visual Studio 17 2022" --disable_memleak_checker --enable_address_sanitizer  --build_x86_asan true
+        python "%GITHUB_WORKSPACE%\tools\ci_build\build.py" --config Debug --build_dir "%GITHUB_WORKSPACE%\build" --skip_submodule_sync --parallel --use_vcpkg --use_vcpkg_ms_internal_asset_cache --cmake_generator "Visual Studio 17 2022" --disable_memleak_checker --enable_address_sanitizer
