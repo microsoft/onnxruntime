@@ -106,8 +106,8 @@ Status SplitOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
     if (input_defs.size() > 1) {
       // if "split" is explicitly provided as an input
       // const auto& split_tensor = *model_builder.GetInitializerTensors().at(input_defs[1]->Name());
-      const auto& const_init* model_builder.GetConstantInitializer(input_defs[1]->Name());
-      Initializer unpacked_tensor(graph, const_init);
+      const auto& const_init = *model_builder.GetConstantInitializer(input_defs[1]->Name());
+      Initializer unpacked_tensor(model_builder.GetGraphViewer().GetGraph(), const_init);
       auto split_span = unpacked_tensor.DataAsSpan<int64_t>();
       for (const auto& split_size : split_span) {
         coreml_splitnd->add_splitsizes(split_size);
@@ -169,7 +169,8 @@ bool SplitOpBuilder::IsOpSupportedImpl(const Node& node, const OpBuilderInputPar
       return false;
     }
 
-    Initializer unpacked_tensor(graph, *splits_tensor, graph.ModelPath());
+    Initializer unpacked_tensor(input_params.graph_viewer.GetGraph(), *splits_tensor,
+                                input_params.graph_viewer.ModelPath());
     auto splits_span = unpacked_tensor.DataAsSpan<int64_t>();
     int64_t sum_of_splits = std::accumulate(splits_span.begin(), splits_span.end(), int64_t{0});
     if (sum_of_splits != split_dims_at_axis) {

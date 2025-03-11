@@ -171,8 +171,8 @@ bool MegatronTransformer::PartitionWeightByColumn(const Graph& graph, const Node
     LOGS_DEFAULT(WARNING) << "Checkpointing is not currently supported for graphs requiring partitioning of weight with stride > 1";
   }
 
-  auto initializer = std::make_unique<Initializer>(*tensor_proto, graph.ModelPath());
-  const float* a_weight = initializer->data<float>();
+  auto initializer = Initializer{graph, *tensor_proto, graph.ModelPath()};
+  const float* a_weight = initializer.data<float>();
 
   std::string new_initializer_name = original_name + "_column_rank_" + std::to_string(horizontal_parallel_rank_);
 
@@ -306,8 +306,8 @@ bool MegatronTransformer::PartitionWeightByRow(const Graph& graph, const NodeArg
                           << horizontal_parallel_size_ << ", not supported currently.";
     return false;
   }
-  auto initializer = std::make_unique<Initializer>(*tensor_proto, graph.ModelPath());
-  const float* a_weight = initializer->data<float>();
+  auto initializer = Initializer{graph, *tensor_proto, graph.ModelPath()};
+  const float* a_weight = initializer.data<float>();
 
   std::string new_initializer_name = original_name + "_row_rank_" + std::to_string(horizontal_parallel_rank_);
 
@@ -787,15 +787,15 @@ Status MegatronTransformer::TransformGPT2Attention(Graph& graph, bool& modified,
 
     // The number of the values should be more than 2, and the 3rd value should be divisible by parallel size,
     // i.e., the attention head number should be divisible by parallel size.
-    auto init_const = std::make_unique<Initializer>(*tensor, graph.ModelPath());
-    if (init_const->size() != 3 && init_const->size() != 4) {
+    auto init_const = Initializer{graph, *tensor, graph.ModelPath()};
+    if (init_const.size() != 3 && init_const.size() != 4) {
       is_reshape_valid = false;
       break;
     }
 
-    const int64_t* val = init_const->data<int64_t>();
+    const int64_t* val = init_const.data<int64_t>();
     if (val[2] % horizontal_parallel_size_ != 0) {
-      LOGS_DEFAULT(WARNING) << (init_const->size() == 3 ? "Hidden size " : "Number of attention heads ") << val[2]
+      LOGS_DEFAULT(WARNING) << (init_const.size() == 3 ? "Hidden size " : "Number of attention heads ") << val[2]
                             << " is not divisible by horizontal_parallel_size_ "
                             << horizontal_parallel_size_ << ", not supported currently.";
       is_reshape_valid = false;
@@ -836,9 +836,9 @@ Status MegatronTransformer::TransformGPT2Attention(Graph& graph, bool& modified,
     const ONNX_NAMESPACE::TensorProto* tensor;
     graph.GetInitializedTensor(shape_arg->Name(), tensor);
     auto data_type = tensor->data_type();
-    auto init_const = std::make_unique<Initializer>(*tensor, graph.ModelPath());
-    const int64_t* val = init_const->data<int64_t>();
-    int64_t size = init_const->size();
+    auto init_const = Initializer{graph, *tensor, graph.ModelPath()};
+    const int64_t* val = init_const.data<int64_t>();
+    int64_t size = init_const.size();
     ONNX_NAMESPACE::TensorProto tensor_partition;
     tensor_partition.set_name(graph.GenerateNodeArgName("partition_" + shape_arg->Name()));
     tensor_partition.set_data_type(data_type);
@@ -1068,12 +1068,12 @@ Status MegatronTransformer::TransformBARTAttention(Graph& graph, bool& modified,
     }
     // The number of the values should be more than idx, and the idx'th value should be divisible by parallel size,
     // i.e., the attention head number should be divisible by parallel size.
-    auto init_const = std::make_unique<Initializer>(*tensor, graph.ModelPath());
-    if (init_const->size() <= idx) {
+    auto init_const = Initializer{graph, *tensor, graph.ModelPath()};
+    if (init_const.size() <= idx) {
       is_reshape_valid = false;
       break;
     }
-    const int64_t* val = init_const->data<int64_t>();
+    const int64_t* val = init_const.data<int64_t>();
     if (val[idx] % horizontal_parallel_size_ != 0) {
       LOGS_DEFAULT(WARNING) << "dim[" << idx << "]: " << val[idx]
                             << " is not divisible by horizontal_parallel_size_ "
@@ -1162,11 +1162,12 @@ Status MegatronTransformer::TransformBARTAttention(Graph& graph, bool& modified,
     int64_t idx = x.second;
     auto shape_arg = node_ptr->MutableInputDefs()[1];
     const ONNX_NAMESPACE::TensorProto* tensor;
-    graph.GetInitializedTensor(shape_arg->Name(), tensor);
+    ORT_RETURN_IF_NOT(graph.GetInitializedTensor(shape_arg->Name(), tensor),
+                      "Expecting initializer present: ", shape_arg->Name());
     auto data_type = tensor->data_type();
-    auto init_const = std::make_unique<Initializer>(*tensor, graph.ModelPath());
-    const int64_t* val = init_const->data<int64_t>();
-    int64_t size = init_const->size();
+    auto init_const = Initializer{graph, *tensor, graph.ModelPath()};
+    const int64_t* val = init_const.data<int64_t>();
+    int64_t size = init_const.size();
     ONNX_NAMESPACE::TensorProto tensor_partition;
     tensor_partition.set_name(graph.GenerateNodeArgName("partition_" + shape_arg->Name()));
     tensor_partition.set_data_type(data_type);

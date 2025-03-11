@@ -18,7 +18,6 @@
 #include "core/common/logging/logging.h"
 #include "core/common/profiler.h"
 #include "core/framework/allocation_planner.h"
-#include "core/framework/callback.h"
 #include "core/framework/data_transfer_manager.h"
 #include "core/framework/external_data_loader_manager.h"
 #include "core/framework/execution_providers.h"

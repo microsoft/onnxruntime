@@ -108,6 +108,7 @@ Status TransformModelInputsForInference(Graph& inference_graph,
       ORT_ENFORCE(!inference_graph.IsInitializedTensor(named_parameter_it->first),
                   "The eval graph is invalid. Expected model parameter ",
                   named_parameter_it->first, " to be a graph input, not a graph initializer.");
+
       inference_graph.AddInitializedTensor(utils::CopyTensorToTensorProto(
           named_parameter_it->second->Data().Get<onnxruntime::Tensor>(),
           named_parameter_it->first, data_transfer_manager));

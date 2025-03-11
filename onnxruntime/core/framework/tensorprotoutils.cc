@@ -22,7 +22,6 @@
 #include "core/framework/tensor.h"
 #include "core/framework/ort_value_pattern_planner.h"
 #include "core/framework/allocator.h"
-#include "core/framework/callback.h"
 #include "core/framework/data_types.h"
 #include "core/platform/path_lib.h"
 #include "core/framework/to_tensor_proto_element_type.h"
@@ -1057,20 +1056,24 @@ Status GetExtDataFromTensorProto(const Env& env,
                   " are out of bounds or can not be read in full (>4GB).");
 
     auto buffer = std::make_unique<char[]>(raw_data_safe_len);
-    auto p_tensor = std::make_unique<Tensor>(type, tensor_shape, buffer.get(),
-                                             OrtMemoryInfo(CPU, OrtAllocatorType::OrtDeviceAllocator));
-    auto ext_data_deleter = OrtCallback{DeleteCharArray, buffer.get()};
-    OrtCallbackInvoker deleter{ext_data_deleter};
-
-    ort_value.Init(p_tensor.release(), ml_tensor_type, deleter);
-    buffer.release();
-
     ORT_RETURN_IF_ERROR(LoadWebAssemblyExternalData(env,
                                                     external_data_file_path,
                                                     file_offset,
-                                                    ext_data_len,
+                                                    raw_data_safe_len,
                                                     ExternalDataLoadType::CPU,
                                                     buffer.get()));
+
+    auto p_tensor = std::make_unique<Tensor>(type, tensor_shape, buffer.get(),
+                                             OrtMemoryInfo(CPU, OrtAllocatorType::OrtDeviceAllocator));
+
+    std::function<void(void*)> deleter = [ext_data = buffer.get()](void* t) {
+      delete reinterpret_cast<Tensor*>(t);
+      delete[] ext_data;
+    };
+
+    ort_value.Init(p_tensor.release(), ml_tensor_type, std::move(deleter));
+    buffer.release();
+
 #else
     //  The GetFileContent function doesn't report error if the requested data range is invalid. Therefore we need to
     //  manually check file size first.

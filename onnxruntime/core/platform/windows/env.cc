@@ -44,15 +44,8 @@ EXTERN_C IMAGE_DOS_HEADER __ImageBase;
 
 namespace onnxruntime {
 
-class UnmapFileParam {
- public:
-  void* addr;
-  size_t len;
-};
-
-static void UnmapFile(void* param) noexcept {
-  std::unique_ptr<UnmapFileParam> p(reinterpret_cast<UnmapFileParam*>(param));
-  bool ret = UnmapViewOfFile(p->addr);
+static void UnmapFile(void* addr) noexcept {
+  bool ret = UnmapViewOfFile(addr);
   if (!ret) {
     const auto error_code = GetLastError();
     LOGS_DEFAULT(ERROR) << "unmap view of file failed. error code: " << error_code
@@ -466,9 +459,12 @@ Status WindowsEnv::MapFileIntoMemory(_In_z_ const ORTCHAR_T* file_path,
                                           static_cast<DWORD>(mapped_offset & 0xFFFFFFFF),
                                           mapped_length);
   GSL_SUPPRESS(r.11)
+
   mapped_memory =
       MappedMemoryPtr{reinterpret_cast<char*>(mapped_base) + offset_to_page,
-                      OrtCallbackInvoker{OrtCallback{UnmapFile, new UnmapFileParam{mapped_base, mapped_length}}}};
+                      [mapped_base](void*) {
+                        UnmapFile(mapped_base);
+                      }};
 
   return Status::OK();
 }
