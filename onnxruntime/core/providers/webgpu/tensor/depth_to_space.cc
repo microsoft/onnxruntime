@@ -126,7 +126,7 @@ Status DepthToSpace<is_nchw>::ComputeInternal(onnxruntime::webgpu::ComputeContex
       perm[5] = 3;
     }
   } else {
-    std::cout << "NOT is_nhwc" << std::endl;
+    std::cout << "NOT is_nchw" << std::endl;
     n = input_shape[0];
     h = input_shape[1];
     w = input_shape[2];
