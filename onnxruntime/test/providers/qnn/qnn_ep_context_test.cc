@@ -1104,7 +1104,6 @@ static void DumpModelWithSharedCtx(ProviderOptions provider_options,
 #endif  // !_M_ARM64
 #endif  // !__aarch64__
 
-
   so.AppendExecutionProvider("QNN", provider_options);
 
   // Create 2 sessions to generate context binary models, the 1st session will share the QnnBackendManager
@@ -1384,23 +1383,13 @@ TEST_F(QnnHTPBackendTests, QnnContextGenWeightSharingSessionAPI) {
     std::remove(ctx_model_path.c_str());
   }
 
-  Ort::SessionOptions so;
-  so.AddConfigEntry(kOrtSessionOptionEpContextEnable, "1");
-  so.AddConfigEntry(kOrtSessionOptionEpContextEmbedMode, "0");
-  // enable ep.share_ep_contexts so that QNNEP share the QnnBackendManager across sessions
-  so.AddConfigEntry(kOrtSessionOptionShareEpContexts, "1");
+  DumpModelWithSharedCtx(provider_options, onnx_model_paths[0], onnx_model_paths[1]);
 
-  so.AppendExecutionProvider("QNN", provider_options);
-
-  Ort::Session session1(*ort_env, ToPathString(onnx_model_paths[0]).c_str(), so);
   std::string qnn_ctx_binary_file_name1;
   GetContextBinaryFileName(ctx_model_paths[0], qnn_ctx_binary_file_name1,
                            DefaultLoggingManager().DefaultLogger());
   EXPECT_TRUE(!qnn_ctx_binary_file_name1.empty());
 
-  // Tell the EP stop share the QnnBackendManager from this session then on
-  so.AddConfigEntry(kOrtSessionOptionStopShareEpContexts, "1");
-  Ort::Session session2(*ort_env, ToPathString(onnx_model_paths[1]).c_str(), so);
   std::string qnn_ctx_binary_file_name2;
   GetContextBinaryFileName(ctx_model_paths[1], qnn_ctx_binary_file_name2,
                            DefaultLoggingManager().DefaultLogger());

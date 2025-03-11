@@ -867,14 +867,13 @@ Status QnnBackendManager::SetupBackend(const logging::Logger& logger,
   }
 
   bool enable_htp_weight_sharing = false;
-  // weight sharing only available with offline generation on x64 platform, not available on the real device
-#if defined(__aarch64__) || defined(_M_ARM64)
-  ORT_UNUSED_PARAMETER(share_ep_contexts);
-#else
   if (share_ep_contexts && !load_from_cached_context) {
+#if defined(__aarch64__) || defined(_M_ARM64)
+    LOGS(logger, WARNING) << "Weight sharing only available with offline generation on x64 platform, not work on real device.";
+#else
     enable_htp_weight_sharing = true;
-  }
 #endif
+  }
 
   if (!load_from_cached_context) {
     if (status.IsOK()) {
