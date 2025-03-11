@@ -43,7 +43,6 @@ struct QnnBackendManagerConfig {
   uint32_t device_id;
   QnnHtpDevice_Arch_t htp_arch;
   uint32_t soc_model;
-  bool enable_htp_weight_sharing;
 };
 
 class QnnBackendManager : public std::enable_shared_from_this<QnnBackendManager> {
@@ -67,8 +66,7 @@ class QnnBackendManager : public std::enable_shared_from_this<QnnBackendManager>
         qnn_saver_path_(config.qnn_saver_path),
         device_id_(config.device_id),
         htp_arch_(config.htp_arch),
-        soc_model_(config.soc_model),
-        enable_htp_weight_sharing_(config.enable_htp_weight_sharing) {
+        soc_model_(config.soc_model) {
   }
 
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(QnnBackendManager);
@@ -84,7 +82,8 @@ class QnnBackendManager : public std::enable_shared_from_this<QnnBackendManager>
 
   // Initializes handles to QNN resources (device, logger, etc.).
   // NOTE: This function locks the internal `logger_recursive_mutex_`.
-  Status SetupBackend(const logging::Logger& logger, bool load_from_cached_context, bool need_load_system_lib);
+  Status SetupBackend(const logging::Logger& logger, bool load_from_cached_context,
+                      bool need_load_system_lib, bool share_ep_contexts);
 
   Status CreateHtpPowerCfgId(uint32_t deviceId, uint32_t coreId, uint32_t& htp_power_config_id);
 
@@ -155,7 +154,7 @@ class QnnBackendManager : public std::enable_shared_from_this<QnnBackendManager>
 
   Status ReleaseProfilehandle();
 
-  Status CreateContext();
+  Status CreateContext(bool enable_htp_weight_sharing);
 
   Status ReleaseContext();
 
@@ -298,7 +297,6 @@ class QnnBackendManager : public std::enable_shared_from_this<QnnBackendManager>
   uint32_t device_id_ = 0;
   QnnHtpDevice_Arch_t htp_arch_ = QNN_HTP_DEVICE_ARCH_NONE;
   uint32_t soc_model_ = QNN_SOC_MODEL_UNKNOWN;
-  bool enable_htp_weight_sharing_ = false;
 };
 
 }  // namespace qnn

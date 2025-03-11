@@ -538,7 +538,7 @@ Status SetQnnContextConfig(ContextPriority context_priority, QnnContext_Config_t
   return Status::OK();
 }
 
-Status QnnBackendManager::CreateContext() {
+Status QnnBackendManager::CreateContext(bool enable_htp_weight_sharing) {
   if (true == context_created_) {
     LOGS_DEFAULT(INFO) << "Context created already.";
     return Status::OK();
@@ -547,7 +547,7 @@ Status QnnBackendManager::CreateContext() {
   QnnContext_Config_t context_config_weight_sharing = QNN_CONTEXT_CONFIG_INIT;
   QnnHtpContext_CustomConfig_t custom_config;
   custom_config.option = QNN_HTP_CONTEXT_CONFIG_OPTION_WEIGHT_SHARING_ENABLED;
-  custom_config.weightSharingEnabled = enable_htp_weight_sharing_;
+  custom_config.weightSharingEnabled = enable_htp_weight_sharing;
   context_config_weight_sharing.option = QNN_CONTEXT_CONFIG_OPTION_CUSTOM;
   context_config_weight_sharing.customConfig = &custom_config;
 
@@ -810,7 +810,8 @@ Status QnnBackendManager::LoadCachedQnnContextFromBuffer(char* buffer, uint64_t 
 // or generate Qnn context binary is enabled -- to get the max spill fill buffer size
 Status QnnBackendManager::SetupBackend(const logging::Logger& logger,
                                        bool load_from_cached_context,
-                                       bool need_load_system_lib) {
+                                       bool need_load_system_lib,
+                                       bool share_ep_contexts) {
   std::lock_guard<std::recursive_mutex> lock(logger_recursive_mutex_);
   if (backend_setup_completed_) {
     LOGS(logger, VERBOSE) << "Backend setup already!";
@@ -865,9 +866,19 @@ Status QnnBackendManager::SetupBackend(const logging::Logger& logger,
     LOGS(logger, VERBOSE) << "InitializeProfiling succeed.";
   }
 
+  bool enable_htp_weight_sharing = false;
+  // weight sharing only available with offline generation on x64 platform, not available on the real device
+#if defined(__aarch64__) || defined(_M_ARM64)
+  ORT_UNUSED_PARAMETER(share_ep_contexts);
+#else
+  if (share_ep_contexts && !load_from_cached_context) {
+    enable_htp_weight_sharing = true;
+  }
+#endif
+
   if (!load_from_cached_context) {
     if (status.IsOK()) {
-      status = CreateContext();
+      status = CreateContext(enable_htp_weight_sharing);
     }
     if (status.IsOK()) {
       LOGS(logger, VERBOSE) << "CreateContext succeed.";
