@@ -57,6 +57,6 @@ jobs:
         python3 -m pip install --find-links "$(Pipeline.Workspace)/build/onnxruntime-${{ parameters.arch }}-${{ parameters.ep }}" $PYTHON_PACKAGE_NAME
         python3 -m pip show $PYTHON_PACKAGE_NAME
         python3 -c "import onnxruntime as ort; print(ort.__version__)"
-      workingDirectory: $(Pipeline.Workspace)/build/onnxruntime
+      workingDirectory: $(Pipeline.Workspace)/build/onnxruntime-${{ parameters.arch }}-${{ parameters.ep }}
     displayName: Test Package Installation
 
