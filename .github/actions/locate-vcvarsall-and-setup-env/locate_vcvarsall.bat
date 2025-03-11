@@ -15,8 +15,6 @@ for /f "usebackq delims=" %%i in (`%vswherepath% -latest -property installationP
   )
 )
 
-echo "vcvarsall will be used as the VC compiler: %vcvarsall%"
-
 REM Get initial environment variables
 set > initial_env.txt
 
