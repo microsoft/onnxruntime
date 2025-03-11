@@ -2,7 +2,9 @@ const ort = require('.');
 
 async function main() {
   const session2 = await ort.InferenceSession.create(
-    'op_test_generated_model_abs_symbol.onnx',
+    'op_test_generated_model_abs_symbol.onnx', {
+      executionProviders: [process.argv[2]],
+    }
   );
   console.log(session2.inputNames);
   console.log(session2.outputNames);
