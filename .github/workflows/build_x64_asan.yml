@@ -1,0 +1,43 @@
+# .github/workflows/build_x64_asan.yml
+name: build_x64_asan
+
+on:
+  push:
+    branches: [ main, 'rel-*', 'snnn/es1' ]
+  pull_request:
+    branches: [ main ]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build_x64:
+    runs-on: ["self-hosted", "1ES.Pool=onnxruntime-github-vs2022-mms"]
+    timeout-minutes: 300
+
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v3
+      with:
+        submodules: false
+
+    - name: Setup Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.12'
+        architecture: x64
+
+    - name: Locate vcvarsall and Setup Env
+      uses: ./.github/actions/locate-vcvarsall-and-setup-env  # Use the composite action
+      with:
+        architecture: x64
+
+    - name: Build and Test (Combined)
+      shell: cmd
+      run: |
+        @echo off
+        if not exist "%GITHUB_WORKSPACE%\build" mkdir "%GITHUB_WORKSPACE%\build"
+        cd "%GITHUB_WORKSPACE%\build"
+        python -m pip install -r "%GITHUB_WORKSPACE%\tools\ci_build/github/windows\python\requirements.txt"
+        python "%GITHUB_WORKSPACE%\tools\ci_build\build.py" --config Debug --build_dir "%GITHUB_WORKSPACE%\build" --skip_submodule_sync --parallel --use_vcpkg --use_vcpkg_ms_internal_asset_cache --cmake_generator "Visual Studio 17 2022" --disable_memleak_checker --enable_address_sanitizer  --build_x64_asan true
