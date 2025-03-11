@@ -36,7 +36,7 @@ Status QuickGelu::ComputeInternal(onnxruntime::webgpu::ComputeContext& context) 
   const auto* input = context.Input(0);
   auto* output = context.Output(0, input->Shape());
 
-  uint32_t data_size = gsl::narrow<uint32_t>(output->Shape().Size());
+  uint32_t data_size = static_cast<uint32_t>(output->Shape().Size());
   if (data_size == 0) {
     return Status::OK();
   }
