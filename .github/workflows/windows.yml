@@ -1,44 +1,67 @@
-name: Windows_CI
+name: build_x64_asan
+
 on:
+  workflow_dispatch:  # Allow manual triggering
   push:
     branches:
       - main
-      - rel-*
+      - snnn/es
+      - 'rel-*' # Trigger on releases branches
   pull_request:
+    branches:
+      - main 
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.head_ref || github.run_id }}
+  group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
-env:
-  AZCOPY_AUTO_LOGIN_TYPE: MSI
-  AZCOPY_MSI_CLIENT_ID: 63b63039-6328-442f-954b-5a64d124e5b4
-
 jobs:
-  Windows-CUDA-12:
-    runs-on: ["self-hosted", "1ES.Pool=onnxruntime-github-vs2022-mms"]
+  build_x64_asan:
+    runs-on: ["self-hosted", "1ES.Pool=onnxruntime-github-vs2022-mms"]  # Use the specified self-hosted runner
+    timeout-minutes: 300
+
     steps:
-      - uses: actions/checkout@v4
-        with:
-          submodules: false
-      - uses: actions/setup-python@v5
-        with:
-          python-version: '3.11.x'
-          architecture: 'x64'
+    - name: Checkout repository
+      uses: actions/checkout@v3
+      with:
+        submodules: false
 
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 18
+    - name: Setup Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.12'
+        architecture: x64
 
-      - name: Download cuda
-        run: azcopy.exe cp --recursive "https://lotusscus.blob.core.windows.net/models/cuda_sdk/v12.2" cuda_sdk
+    - name: Locate vcvarsall via vswhere
+      id: locate-vcvarsall
+      shell: cmd
+      run: |
+        @echo off
+        set vswherepath="%ProgramFiles(x86)%\Microsoft Visual Studio\Installer\vswhere.exe"
+        for /f "usebackq delims=" %%i in (`%vswherepath% -latest -property installationPath`) do (
+          if exist "%%i\VC\Auxiliary\Build\vcvars64.bat" (
+            set vcvarsall="%%i\VC\Auxiliary\Build\vcvars64.bat"
+          )
+        )
 
+        echo "vcvarsall will be used as the VC compiler: %vcvarsall%"
+        echo "vcvarsall=%vcvarsall%" >> $GITHUB_ENV
 
-      - name: Delete build folder
-        run: |
-          if (Test-Path D:\b) { Remove-Item -Recurse -Force D:\b }
+    - name: Build and Test (Combined)
+      shell: cmd  # Use cmd for the initial environment setup
+      run: |
+        @echo off
+        call "%vcvarsall%"
 
+        REM Create build directory.  Important to do this *before* changing directory.
+        if not exist "%GITHUB_WORKSPACE%\build" mkdir "%GITHUB_WORKSPACE%\build"
+        cd "%GITHUB_WORKSPACE%\build"
 
-      # The build machine doesn't have a GPU. So the value of CMAKE_CUDA_ARCHITECTURES doesn't matter.
-      - name: Build code
-        run: python tools\ci_build\build.py --windows_sdk_version 10.0.22621.0 --enable_training --build_java --config Debug --build_dir D:\b --skip_submodule_sync --build_csharp --update --build --parallel --cmake_generator "Visual Studio 17 2022" --build_shared_lib --enable_pybind --use_cuda --cuda_home=${{ github.workspace }}\cuda_sdk\v12.2 --enable_cuda_profiling  --cmake_extra_defines CMAKE_CUDA_ARCHITECTURES=75
+        REM Install Python modules *after* setting up the VC environment
+        python -m pip install -r "%GITHUB_WORKSPACE%\tools\ci_build\github\windows\python\requirements.txt"
+
+        REM Execute the build script, also within the VC environment.
+        python "%GITHUB_WORKSPACE%\tools\ci_build\build.py" --config Debug --build_dir "%GITHUB_WORKSPACE%\build" --skip_submodule_sync --parallel --use_vcpkg --use_vcpkg_ms_internal_asset_cache --cmake_generator "Visual Studio 17 2022" --disable_memleak_checker --enable_address_sanitizer
+
+      env:
+        vcvarsall: ${{ env.vcvarsall }} # Pass vcvarsall path to this combined step
