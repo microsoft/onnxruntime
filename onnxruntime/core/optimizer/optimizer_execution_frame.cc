@@ -7,7 +7,6 @@
 #include "core/common/logging/logging.h"
 #include "core/common/logging/macros.h"
 #include "core/common/status.h"
-#include "core/framework/callback.h"
 #include "core/framework/data_transfer_manager.h"
 #include "core/framework/data_types.h"
 #include "core/framework/fuse_nodes_funcs.h"

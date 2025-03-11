@@ -287,7 +287,7 @@ bool ResizeOpBuilder::IsOpSupportedImpl(const GraphViewer& graph_viewer, const N
         return false;
       }
 
-      Initializer unpacked_tensor(grpah_viewer.GetGraph(), *sizes);
+      Initializer unpacked_tensor(graph_viewer.GetGraph(), *sizes);
       auto sizes_data = unpacked_tensor.DataAsSpan<int64_t>();
 
       input_is_nchw = sizes_data[1] == input_shape[1];

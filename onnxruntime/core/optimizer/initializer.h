@@ -31,13 +31,26 @@ class Initializer final {
               const std::filesystem::path& model_path = {});
 
   Initializer(const Graph& graph, const ONNX_NAMESPACE::TensorProto& tensor_proto,
-              const std::filesystem::path& model_path = {});
+              const std::filesystem::path& model_path = {}, bool check_outer_scope = false);
 
   ~Initializer();
 
+  /// <summary>
+  /// This function creates a new tensor_proto with a complete copy of the data
+  /// </summary>
+  /// <param name="tensor_proto">output</param>
   void ToProto(ONNX_NAMESPACE::TensorProto& tensor_proto) const {
     tensor_proto = utils::TensorToTensorProto(*data_, name_);
   }
+
+  /// <summary>
+  /// This function creates a pair of TensorProto and OrtValue. Unless the data
+  /// is short, tensor_proto will be a reference to the data in OrtValue.
+  /// Useful when adding a new initializer to the graph with external data.
+  /// </summary>
+  /// <param name="tensor_proto"></param>
+  /// <param name="ort_value"></param>
+  void ToProtoWithOrtValue(ONNX_NAMESPACE::TensorProto& tensor_proto, OrtValue& ort_value) const;
 
 #if !defined(ORT_EXTENDED_MINIMAL_BUILD)
   ONNX_NAMESPACE::TensorProto ToFP16(const std::string& name) const;
@@ -48,7 +61,7 @@ class Initializer final {
     return data_->GetElementType();
   }
 
-  std::string_view name() const {
+  const std::string& name() const {
     return name_;
   }
 
@@ -60,6 +73,14 @@ class Initializer final {
   template <typename T>
   const T* data() const {
     return data_->Data<T>();
+  }
+
+  const void* data_raw() const {
+    return data_->DataRaw();
+  }
+
+  void* mutable_data_raw() {
+    return data_->MutableDataRaw();
   }
 
   template <typename T>

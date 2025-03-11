@@ -98,7 +98,7 @@ Status ConvBNFusion::Apply(Graph& graph, Node& node, RewriteRuleEffect& rule_eff
   }
 
   // Create new initializers of conv
-  ONNX_NAMESPACE::TensorProto new_conv_W_tensor_proto(*conv_W_tensor_proto);
+  ONNX_NAMESPACE::TensorProto new_conv_W_tensor_proto;
   conv_W.ToProto(new_conv_W_tensor_proto);
 
   ONNX_NAMESPACE::TensorProto new_conv_B_tensor_proto;

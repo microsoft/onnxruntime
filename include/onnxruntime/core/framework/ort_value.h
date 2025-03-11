@@ -18,7 +18,7 @@ class SparseTensor;
 class TensorSeq;
 }  // namespace onnxruntime
 
-#endif
+#endif  // SHARED_PROVIDER
 
 /**
    Represents both tensors and non-tensors.

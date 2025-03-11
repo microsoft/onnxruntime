@@ -3443,7 +3443,7 @@ void Graph::AddInitializedTensor(const TensorProto& tensor) {
   }
 }
 
-Status Graph::AddInitializedOrtValue(const ONNX_NAMESPACE::TensorProto& tensor, OrtValue ortvalue_initializer) {
+Status Graph::AddInitializedOrtValue(const ONNX_NAMESPACE::TensorProto& tensor, const OrtValue& ortvalue_initializer) {
   ORT_RETURN_IF(name_to_initial_tensor_.count(tensor.name()) > 0, "Attempt to replace the existing tensor");
 
   const gsl::not_null<TensorProto*> tensor_added{graph_proto_->add_initializer()};
@@ -3452,7 +3452,7 @@ Status Graph::AddInitializedOrtValue(const ONNX_NAMESPACE::TensorProto& tensor, 
   name_to_initial_tensor_.emplace(tensor.name(), tensor_added);
 
   if (ortvalue_initializer.IsAllocated()) {
-    ortvalue_initializers_.insert_or_assign(tensor.name(), std::move(ortvalue_initializer));
+    ortvalue_initializers_.insert_or_assign(tensor.name(), ortvalue_initializer);
   } else {
     // XXX: This is for cases when the data is short. At the moment we only keep it
     // inside the TensorProto
@@ -3630,6 +3630,9 @@ Status Graph::ReplaceInitializedTensorImpl(ONNX_NAMESPACE::TensorProto new_initi
 }
 
 Status Graph::ReplaceInitializedTensor(const ONNX_NAMESPACE::TensorProto& new_initializer) {
+  ORT_RETURN_IF(utils::HasExternalData(new_initializer),
+                "ReplaceInitializedTensor: OrtValue is expected for the external data");
+
   Tensor tensor;
   ORT_RETURN_IF_ERROR(utils::CreateTensorFromTensorProto(Env::Default(), ModelPath(), new_initializer, tensor));
   auto tensor_proto_extrernal = utils::TensorToTensorProto(tensor, new_initializer.name(), true);
@@ -3640,6 +3643,11 @@ Status Graph::ReplaceInitializedTensor(const ONNX_NAMESPACE::TensorProto& new_in
   }
 
   return ReplaceInitializedTensorImpl(std::move(tensor_proto_extrernal), std::move(ort_value), false);
+}
+
+common::Status Graph::ReplaceInitializedTensor(const ONNX_NAMESPACE::TensorProto& new_initializer,
+                                               const OrtValue& ort_value) {
+  return ReplaceInitializedTensorImpl(new_initializer, ort_value, false);
 }
 
 #if !defined(DISABLE_EXTERNAL_INITIALIZERS)

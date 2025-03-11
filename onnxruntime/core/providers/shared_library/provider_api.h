@@ -419,6 +419,12 @@ inline std::unique_ptr<ComputeCapability> MakeComputeCapability(const GraphViewe
 }
 }  // namespace utils
 
+namespace graph_utils {
+NodeArg& AddInitializerWithExternalData(Graph& graph, const ONNX_NAMESPACE::TensorProto& new_initializer);
+void MakeInitializerCopyIfNotExist(const Graph& src_graph, Graph& dst_graph, const std::string& name,
+                                   bool load_in_memory = false);
+}  // namespace graph_utils
+
 namespace QDQ {
 inline std::pair<std::vector<std::unique_ptr<NodeUnit>>, std::unordered_map<const Node*, const NodeUnit*>>
 GetAllNodeUnits(const GraphViewer* graph_viewer, const logging::Logger& logger) {
@@ -434,6 +440,19 @@ void InitProviderOrtApi();
 inline Env& GetDefaultEnv() {
   return g_host->Env__Default();
 }
+
+template <class T>
+inline const T* Initializer::data() const {
+  constexpr const int data_type = static_cast<int>(utils::GetONNXTensorElementDataType<T>());
+  return reinterpret_cast<const T*>(g_host->Initializer__data(*this_ptr_, data_type));
+}
+
+template <class T>
+inline T* Initializer::data() {
+  constexpr const int data_type = static_cast<int>(utils::GetONNXTensorElementDataType<T>());
+  return reinterpret_cast<T*>(g_host->Initializer__mutable_data(*this_ptr_, data_type));
+}
+
 }  // namespace onnxruntime
 
 #define CREATE_MESSAGE(logger, severity, category, datatype) \

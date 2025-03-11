@@ -53,7 +53,7 @@ Initializer::Initializer(const ONNX_NAMESPACE::TensorProto& tensor_proto, const 
 }
 
 Initializer::Initializer(const Graph& graph, const ONNX_NAMESPACE::TensorProto& tensor_proto,
-                         const std::filesystem::path& model_path) {
+                         const std::filesystem::path& model_path, bool check_outer_scope) {
   if (utils::HasName(tensor_proto)) {
     name_ = tensor_proto.name();
   }
@@ -61,9 +61,22 @@ Initializer::Initializer(const Graph& graph, const ONNX_NAMESPACE::TensorProto& 
   // Check if ort_value if already available with this name
   if (utils::HasExternalData(tensor_proto)) {
     OrtValue ort_value;
-    if (graph.GetOrtValueInitializer(name_, ort_value)) {
+    if (graph.GetOrtValueInitializer(name_, ort_value, check_outer_scope)) {
       const auto& src_tensor = ort_value.Get<Tensor>();
+      if (check_outer_scope) {
+        // let's make sure we are not using tensor we really want
+        ORT_ENFORCE(src_tensor.GetElementType() == tensor_proto.data_type(),
+                    "Tensor data type mismatch. Expected: ",
+                    DataTypeImpl::ToString(DataTypeImpl::TensorTypeFromONNXEnum(tensor_proto.data_type())),
+                    " Found: ", DataTypeImpl::ToString(src_tensor.DataType()));
+        auto tensor_shape_from_proto = utils::GetTensorShapeFromTensorProto(tensor_proto);
+        ORT_ENFORCE(src_tensor.Shape() == tensor_shape_from_proto,
+                    "Tensor shape mismatch. Expected: ", tensor_shape_from_proto.ToString(),
+                    " Found: ", src_tensor.Shape().ToString());
+      }
       // We need to make a copy of the data to ensure that the original data is not mutated
+      // This is generally inline with TensorProtoToTensor() behavior which copies data from
+      // TensorProto to Tensor.
       Tensor initializer{src_tensor.DataType(), src_tensor.Shape(), CPUAllocator::Instance()};
       utils::MakeCpuTensorCopy(src_tensor, initializer);
       Tensor::InitOrtValue(std::move(initializer), ort_value_);
@@ -84,6 +97,12 @@ Initializer::Initializer(const Graph& graph, const ONNX_NAMESPACE::TensorProto& 
 }
 
 Initializer::~Initializer() = default;
+
+void Initializer::ToProtoWithOrtValue(ONNX_NAMESPACE::TensorProto& tensor_proto, OrtValue& ort_value) const {
+  constexpr const bool user_tensor_buffer_true = true;
+  tensor_proto = utils::TensorToTensorProto(*data_, name_, user_tensor_buffer_true);
+  ort_value = ort_value_;
+}
 
 #if !defined(ORT_EXTENDED_MINIMAL_BUILD)
 namespace {

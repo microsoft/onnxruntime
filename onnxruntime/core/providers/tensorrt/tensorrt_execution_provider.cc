@@ -263,7 +263,6 @@ struct ShutdownProtobuf {
 } g_protobuf;
 
 namespace onnxruntime {
-
 namespace cuda {
 template <>
 void Impl_Cast(
@@ -2139,28 +2138,22 @@ SubGraphCollection_t TensorrtExecutionProvider::GetSupportedList(SubGraphCollect
         // subgraph's output list
         std::vector<std::string> subgraph_output_names;
         for (const auto& index : group.first) {
+          // Initializers that refer to a memory location in OrtValue
+          // can not be handled by TRT (unlike those that are on disk).
+          // This prevents us from sharing the data and we have to make a copy here.
+          constexpr const bool load_initializers_in_memory_true = true;
           const auto& node = graph.GetNode(node_index[index]);
           std::vector<onnxruntime::NodeArg*> inputs, outputs;
           for (auto input : node->InputDefs()) {
             auto& n_input = graph_build.GetOrCreateNodeArg(input->Name(), input->TypeAsProto());
             inputs.push_back(&n_input);
-            const ONNX_NAMESPACE::TensorProto* initializer = nullptr;
-            if (graph.GetInitializedTensor(input->Name(), initializer)) {
-              const ONNX_NAMESPACE::TensorProto* subgraph_initializer = nullptr;
-              if (!graph_build.GetInitializedTensor(input->Name(), subgraph_initializer)) {
-                graph_build.AddInitializedTensor(*(initializer));
-              }
-            }
+            graph_utils::MakeInitializerCopyIfNotExist(graph.GetGraph(), graph_build, input->Name(),
+                                                       load_initializers_in_memory_true);
           }
 
           for (auto input : node->ImplicitInputDefs()) {
-            const ONNX_NAMESPACE::TensorProto* initializer = nullptr;
-            if (graph.GetInitializedTensor(input->Name(), initializer)) {
-              const ONNX_NAMESPACE::TensorProto* subgraph_initializer = nullptr;
-              if (!graph_build.GetInitializedTensor(input->Name(), subgraph_initializer)) {
-                graph_build.AddInitializedTensor(*(initializer));
-              }
-            }
+            graph_utils::MakeInitializerCopyIfNotExist(graph.GetGraph(), graph_build, input->Name(),
+                                                       load_initializers_in_memory_true);
           }
           for (auto output : node->OutputDefs()) {
             auto& n_output = graph_build.GetOrCreateNodeArg(output->Name(), output->TypeAsProto());

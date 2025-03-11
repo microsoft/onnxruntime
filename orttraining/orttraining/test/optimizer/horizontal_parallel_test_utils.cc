@@ -183,10 +183,10 @@ Status GetDataAndShapeFromTensorProto(const Graph& graph, const NodeArg* input_a
   }
 
   const ONNX_NAMESPACE::TensorProto* tensor_proto = nullptr;
-  graph.GetInitializedTensor(input_arg->Name(), tensor_proto);
-  auto init_const = std::make_unique<Initializer>(*tensor_proto, graph.ModelPath());
-  const float* data_float = init_const->data<float>();
-  data.insert(data.end(), data_float, data_float + element_count);
+  ASSERT_TRUE(graph.GetInitializedTensor(input_arg->Name(), tensor_proto));
+  auto init_const = Initializer{graph, *tensor_proto, graph.ModelPath()};
+  auto data_float = init_const.DataAsSpan<float>();
+  data.insert(data.end(), data_float.begin(), data_float.end());
 
   return Status::OK();
 }

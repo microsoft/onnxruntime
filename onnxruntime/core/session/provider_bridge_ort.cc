@@ -36,6 +36,7 @@
 #include "core/graph/graph_proto_serializer.h"
 #include "core/framework/murmurhash3.h"
 #include "core/framework/model_metadef_id_generator.h"
+#include "core/optimizer/initializer.h"
 #include "core/optimizer/graph_optimizer_registry.h"
 #include "core/optimizer/qdq_transformer/selectors_actions/qdq_selectors.h"
 #include "core/optimizer/qdq_transformer/selectors_actions/shared/utils.h"
@@ -1242,6 +1243,8 @@ struct ProviderHostImpl : ProviderHost {
 
   Status Graph__Resolve(Graph* p) override { return p->Resolve(); }
   void Graph__AddInitializedTensor(Graph* p, const ONNX_NAMESPACE::TensorProto& tensor) override { p->AddInitializedTensor(tensor); }
+  Status Graph__AddInitializedOrtValue(Graph* p, const ONNX_NAMESPACE::TensorProto& tensor,
+                                       const OrtValue& value) override { return p->AddInitializedOrtValue(tensor, value); }
   Node& Graph__AddNode(Graph* p, const std::string& name, const std::string& op_type, const std::string& description, const gsl::span<NodeArg* const>& input_args, const gsl::span<NodeArg* const>& output_args, const NodeAttributes* attributes, const std::string& domain) override {
     return p->AddNode(name, op_type, description, input_args, output_args, attributes, domain);
   }
@@ -1390,6 +1393,71 @@ struct ProviderHostImpl : ProviderHost {
     return std::make_unique<ConstGraphNodes_Iterator_Impl>(p->cend());
   }
   bool ConstGraphNodes__empty(const ConstGraphNodes* p) noexcept override { return p->empty(); }
+
+  NodeArg& GraphUtils__AddInitializerWithExternalData(Graph& graph,
+                                                      const ONNX_NAMESPACE::TensorProto& new_initializer) override {
+    return graph_utils::AddInitializerWithExternalData(graph, new_initializer);
+  }
+
+  void GraphUtils__MakeInitializerCopyIfNotExist(const Graph& src_graph, Graph& dst_graph,
+                                                 const std::string& name, bool load_in_memory) override {
+    graph_utils::MakeInitializerCopyIfNotExist(src_graph, dst_graph, name, load_in_memory);
+  }
+
+  // Initializer (wrapped)
+  Initializer* Initializer__constructor(ONNX_NAMESPACE::TensorProto_DataType data_type,
+                                        std::string_view name,
+                                        gsl::span<const int64_t> dims) override {
+    return new Initializer(data_type, name, dims);
+  }
+
+  Initializer* Initializer__constructor(const Graph& graph, const ONNX_NAMESPACE::TensorProto& tensor_proto,
+                                        const std::filesystem::path& model_path,
+                                        bool check_outer_scope) override {
+    return new Initializer(graph, tensor_proto, model_path, check_outer_scope);
+  }
+  void Initializer__destructor(Initializer* p) override { delete p; }
+  void Initializer__ToProto(const Initializer& initializer,
+                            ONNX_NAMESPACE::TensorProto& tensor_proto) override {
+    initializer.ToProto(tensor_proto);
+  }
+  void Initializer__ToProtoWithOrtValue(const Initializer& initializer,
+                                        ONNX_NAMESPACE::TensorProto& tensor_proto, OrtValue& ort_value) override {
+    initializer.ToProtoWithOrtValue(tensor_proto, ort_value);
+  }
+  int Initializer__data_type(const Initializer& initializer) override {
+    return initializer.data_type();
+  }
+  const std::string& Initializer__name(const Initializer& initializer) override {
+    return initializer.name();
+  }
+  gsl::span<const int64_t> Initializer__dims(const Initializer& initializer) override {
+    return initializer.dims();
+  }
+  size_t Initializer__size(const Initializer& initializer) override {
+    return initializer.size();
+  }
+
+  void* Initializer__mutable_data(Initializer& initializer, int data_type) override {
+    if (data_type != initializer.data_type()) {
+      throw std::invalid_argument("Initializer mutable data type mismatch");
+    }
+    return initializer.mutable_data_raw();
+  }
+
+  const void* Initializer__data(const Initializer& initializer, int data_type) override {
+    if (data_type != initializer.data_type()) {
+      throw std::invalid_argument("Initializer data type mismatch");
+    }
+    return initializer.data_raw();
+  }
+
+  void* Initializer__mutable_data_raw(Initializer& initializer) override {
+    return initializer.mutable_data_raw();
+  }
+  const void* Initializer__data_raw(const Initializer& initializer) override {
+    return initializer.data_raw();
+  }
 
   // OpKernel (direct)
   const Node& OpKernel__Node(const OpKernel* p) override { return p->OpKernel::Node(); }
