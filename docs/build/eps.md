@@ -110,7 +110,7 @@ See more information on the TensorRT Execution Provider [here](../execution-prov
 
  * Follow [instructions for CUDA execution provider](#cuda) to install CUDA and cuDNN, and setup environment variables.
  * Follow [instructions for installing TensorRT](https://docs.nvidia.com/deeplearning/tensorrt/latest/installing-tensorrt/installing.html)
-   * The TensorRT execution provider for ONNX Runtime is built and tested with TensorRT 10.0.
+   * The TensorRT execution provider for ONNX Runtime is built and tested with TensorRT 10.8.
    * The path to TensorRT installation must be provided via the `--tensorrt_home` parameter.
    * ONNX Runtime uses TensorRT built-in parser from `tensorrt_home` by default.
    * To use open-sourced [onnx-tensorrt](https://github.com/onnx/onnx-tensorrt/tree/main) parser instead, add `--use_tensorrt_oss_parser` parameter in build commands below.
@@ -119,6 +119,15 @@ See more information on the TensorRT Execution Provider [here](../execution-prov
          * Select the commit of [onnx-tensorrt](https://github.com/onnx/onnx-tensorrt/commits) that you preferred;
          * Run `sha1sum` command with downloaded onnx-tensorrt zip file to acquire the SHA1 hash 
          * Update [cmake/deps.txt](https://github.com/microsoft/onnxruntime/blob/main/cmake/deps.txt) with updated onnx-tensorrt commit and hash info.
+
+### **[Note to ORT 1.21.0 open-sourced parser users]** 
+
+* ORT 1.21.0 links against onnx-tensorrt 10.8-GA, which requires upcoming onnx 1.18.
+  * Here's a temporarily fix to preview on onnx-tensorrt 10.8-GA when building ORT 1.21.0: 
+    * Replace the [onnx line in cmake/deps.txt](https://github.com/microsoft/onnxruntime/blob/rel-1.21.0/cmake/deps.txt#L38) 
+      with `onnx;https://github.com/onnx/onnx/archive/f22a2ad78c9b8f3bd2bb402bfce2b0079570ecb6.zip;324a781c31e30306e30baff0ed7fe347b10f8e3c`  
+    * Replace the onnx.patch with [this](https://github.com/microsoft/onnxruntime/blob/7b2733a526c12b5ef4475edd47fd9997ebc2b2c6/cmake/patches/onnx/onnx.patch) 
+    * Build ORT 1.21.0 with trt-related flags above (including `--use_tensorrt_oss_parser`)
 
 ### Build Instructions
 {: .no_toc }
