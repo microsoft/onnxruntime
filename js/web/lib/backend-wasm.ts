@@ -25,10 +25,6 @@ export const initializeFlags = (): void => {
     );
   }
 
-  if (typeof env.wasm.relaxedSimd !== 'boolean') {
-    env.wasm.relaxedSimd = false;
-  }
-
   if (typeof env.wasm.proxy !== 'boolean') {
     env.wasm.proxy = false;
   }

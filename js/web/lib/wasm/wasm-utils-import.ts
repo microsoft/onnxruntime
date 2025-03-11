@@ -234,18 +234,13 @@ export const importWasmModule = async (
   urlOverride: string | undefined,
   prefixOverride: string | undefined,
   isMultiThreaded: boolean,
-  isRelaxedSimd: boolean,
 ): Promise<[undefined | string, EmscriptenModuleFactory<OrtWasmModule>]> => {
   if (!urlOverride && !prefixOverride && embeddedWasmModule && scriptSrc && isSameOrigin(scriptSrc)) {
     return [undefined, embeddedWasmModule];
   } else {
     const wasmModuleFilename = !BUILD_DEFS.DISABLE_JSEP
-      ? isRelaxedSimd
-        ? 'ort-wasm-relaxedsimd-threaded.jsep.mjs'
-        : 'ort-wasm-simd-threaded.jsep.mjs'
-      : isRelaxedSimd
-        ? 'ort-wasm-relaxedsimd-threaded.mjs'
-        : 'ort-wasm-simd-threaded.mjs';
+      ? 'ort-wasm-simd-threaded.jsep.mjs'
+      : 'ort-wasm-simd-threaded.mjs';
     const wasmModuleUrl = urlOverride ?? normalizeUrl(wasmModuleFilename, prefixOverride);
     // need to preload if all of the following conditions are met:
     // 1. not in Node.js.

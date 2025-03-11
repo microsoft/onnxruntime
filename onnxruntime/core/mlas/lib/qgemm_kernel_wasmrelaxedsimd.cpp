@@ -18,7 +18,7 @@ Abstract:
 #include "qgemm.h"
 
 bool HasUSDot() {
-// Check out-of-bounds behaviour of Relaxed Integer Dot Product with Accumulation with signed and unsigned input (e.g. vpdpbusd).
+// Check out-of-bounds behavior of Relaxed Integer Dot Product with Accumulation with signed and unsigned input (e.g. vpdpbusd).
       const v128_t int8_input = wasm_i8x16_const(0, 0, 0, 1, 0, 0, 1, 0, 0, 1, 0, 0, 1, 0, 0, 0);
       const volatile v128_t xint8_input = wasm_i8x16_const(0, 0, 0, -128, 0, 0, -128, 0, 0, -128, 0, 0, -128, 0, 0, 0);  // volatile to confuse Clang which otherwise ICE's
       const v128_t xint8_output = wasm_i32x4_relaxed_dot_i8x16_i7x16_add(int8_input, xint8_input, wasm_i8x16_const_splat(0));
@@ -33,11 +33,6 @@ bool HasUSDot() {
 // wasm implementation of "_mm_unpacklo_epi8"
 v128_t __attribute__((__always_inline__, __nodebug__)) wasm_i8x16_unpacklo_relaxed(v128_t a, v128_t b) {
     return wasm_i8x16_shuffle(a, b, 0, 16, 1, 17, 2, 18, 3, 19, 4, 20, 5, 21, 6, 22, 7, 23);
-}
-
-// wasm implementation of "_mm_unpackhi_epi8"
-v128_t __attribute__((__always_inline__, __nodebug__)) wasm_i8x16_unpackhi_relaxed(v128_t a, v128_t b) {
-    return wasm_i8x16_shuffle(a, b, 8, 24, 9, 25, 10, 26, 11, 27, 12, 28, 13, 29, 14, 30, 15, 31);
 }
 
 // wasm implementation of "_mm_unpacklo_epi16"
