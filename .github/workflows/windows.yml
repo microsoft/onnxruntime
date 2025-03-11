@@ -5,7 +5,7 @@ on:
   push:
     branches:
       - main
-      - snnn/es
+      - snnn/es1
       - 'rel-*' # Trigger on releases branches
   pull_request:
     branches:
