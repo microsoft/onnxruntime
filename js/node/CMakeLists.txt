@@ -120,10 +120,10 @@ if (WIN32)
   endif()
 
 elseif (APPLE)
-  file(COPY ${ONNXRUNTIME_BUILD_DIR}/libonnxruntime.dylib
+  file(COPY ${ONNXRUNTIME_BUILD_DIR}/libonnxruntime.${ort_version}.dylib
       DESTINATION ${dist_folder} FOLLOW_SYMLINK_CHAIN)
 elseif (UNIX)
-  file(COPY ${ONNXRUNTIME_BUILD_DIR}/libonnxruntime.so
+  file(COPY ${ONNXRUNTIME_BUILD_DIR}/libonnxruntime.so.${ort_version}
       DESTINATION ${dist_folder} FOLLOW_SYMLINK_CHAIN)
 else()
   message(FATAL_ERROR "Platform not supported.")
