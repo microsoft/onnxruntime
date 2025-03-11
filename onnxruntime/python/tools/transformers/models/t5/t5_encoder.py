@@ -58,9 +58,7 @@ class T5EncoderInputs:
             device=device,
         )
 
-        attention_mask = torch.ones(
-            [batch_size, sequence_length], dtype=dtype, device=device
-        )
+        attention_mask = torch.ones([batch_size, sequence_length], dtype=dtype, device=device)
         if sequence_length >= 2:
             for i in range(batch_size):
                 padding_position = random.randint(0, sequence_length - 1)

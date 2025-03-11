@@ -315,8 +315,8 @@ Status T5DecoderSubgraph::CreateInitialFeeds(
       ADD_DECODER_FEED(encoder_fetches[j], false);
     }
   } else {
-    // Encoder output has hidden state. If decoder does not use hidden state, copy from 3rd outputs of encoder (skip the hidden state).
-    for (size_t j = 2 - has_hidden_state_; j < encoder_fetches.size(); j++) {
+    // present_* output of encoder are added as decoder inputs.
+    for (size_t j = 2; j < encoder_fetches.size(); j++) {
       // past key/value for cross attention does not need to be initialized with max_seq_len since they are static.
       bool is_dynamic_kv_cache = (j - first_past_input_index_) < 2 * static_cast<size_t>(num_layers);
       ADD_DECODER_FEED(encoder_fetches[j], is_dynamic_kv_cache);

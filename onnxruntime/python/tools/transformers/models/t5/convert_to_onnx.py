@@ -31,8 +31,7 @@ def parse_arguments():
         required=False,
         default=PRETRAINED_T5_MODELS[0],
         type=str,
-        help="Model path, or pretrained model name in the list: "
-        + ", ".join(pretrained_models),
+        help="Model path, or pretrained model name in the list: " + ", ".join(pretrained_models),
     )
 
     parser.add_argument(
@@ -69,9 +68,7 @@ def parse_arguments():
     )
     parser.set_defaults(optimize_onnx=False)
 
-    parser.add_argument(
-        "--use_gpu", required=False, action="store_true", help="use GPU for inference"
-    )
+    parser.add_argument("--use_gpu", required=False, action="store_true", help="use GPU for inference")
     parser.set_defaults(use_gpu=False)
 
     parser.add_argument(
@@ -87,9 +84,7 @@ def parse_arguments():
     parser.add_argument("--verbose", required=False, action="store_true")
     parser.set_defaults(verbose=False)
 
-    parser.add_argument(
-        "-e", "--use_external_data_format", required=False, action="store_true"
-    )
+    parser.add_argument("-e", "--use_external_data_format", required=False, action="store_true")
     parser.set_defaults(use_external_data_format=False)
 
     parser.add_argument(
@@ -235,17 +230,11 @@ def export_onnx_models(
         ort_session = create_onnxruntime_session(
             output_path,
             use_gpu=use_gpu,
-            provider=(
-                ["CUDAExecutionProvider", "CPUExecutionProvider"]
-                if use_gpu
-                else ["CPUExecutionProvider"]
-            ),
+            provider=(["CUDAExecutionProvider", "CPUExecutionProvider"] if use_gpu else ["CPUExecutionProvider"]),
         )
 
         with torch.no_grad():
-            max_diff = T5Helper.verify_onnx(
-                model, ort_session, device, use_int32_inputs
-            )
+            max_diff = T5Helper.verify_onnx(model, ort_session, device, use_int32_inputs)
         logger.info(f"PyTorch and OnnxRuntime results max difference = {max_diff}")
         if max_diff > 1e-4:
             logger.warning("PyTorch and OnnxRuntime results are NOT close")
@@ -263,11 +252,7 @@ def main():
     logger.info(f"Arguments:{args}")
 
     cache_dir = args.cache_dir
-    output_dir = (
-        args.output
-        if not args.output.endswith(".onnx")
-        else os.path.dirname(args.output)
-    )
+    output_dir = args.output if not args.output.endswith(".onnx") else os.path.dirname(args.output)
     prepare_environment(cache_dir, output_dir, args.use_gpu)
 
     if args.precision != Precision.FLOAT32:
