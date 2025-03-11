@@ -256,26 +256,6 @@ WEBGPU_CLIP_KERNEL(MLFloat16)
 // activation
 //
 
-class LinearUnit : public UnaryElementwise {
- public:
-  LinearUnit(const OpKernelInfo& info,
-             const std::string& kernel_name,
-             const std::string& expression,
-             const std::string& additional_impl,
-             float default_alpha)
-      : UnaryElementwise{info, kernel_name, expression, additional_impl, ShaderUsage::UseElementTypeAlias} {
-    info.GetAttrOrDefault("alpha", &alpha_, default_alpha);
-  }
-
-  Status ConfigureProgram(const ComputeContext& /*context*/, UnaryElementwiseProgram& program) const override {
-    program.AddUniformVariables({alpha_});
-    return Status::OK();
-  }
-
- protected:
-  float alpha_;
-};
-
 #define WEBGPU_LU_IMPL(OP_TYPE, ...)                                               \
   class OP_TYPE final : public LinearUnit {                                        \
    public:                                                                         \
@@ -293,6 +273,9 @@ Gelu::Gelu(const OpKernelInfo& info)
                        ShaderUsage::UseValueTypeAlias} {
   cache_hint = info.GetAttrOrDefault<std::string>("approximate", "none");
 }
+
+QuickGelu::QuickGelu(const OpKernelInfo& info)
+    : LinearUnit{info, "QuickGelu", "quick_gelu_v(a)", QuickGeluImpl, 1.702f} {}
 
 WEBGPU_ELEMENTWISE_KERNEL(Gelu, 20, WebGpuSupportedFloatTypes())
 

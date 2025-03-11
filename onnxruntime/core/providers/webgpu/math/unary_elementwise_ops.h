@@ -65,6 +65,31 @@ class Gelu : public UnaryElementwise {
   Gelu(const OpKernelInfo& info);
 };
 
+class LinearUnit : public UnaryElementwise {
+ public:
+  LinearUnit(const OpKernelInfo& info,
+             const std::string& kernel_name,
+             const std::string& expression,
+             const std::string& additional_impl,
+             float default_alpha)
+      : UnaryElementwise{info, kernel_name, expression, additional_impl, ShaderUsage::UseElementTypeAlias} {
+    info.GetAttrOrDefault("alpha", &alpha_, default_alpha);
+  }
+
+  Status ConfigureProgram(const ComputeContext& /*context*/, UnaryElementwiseProgram& program) const override {
+    program.AddUniformVariables({alpha_});
+    return Status::OK();
+  }
+
+ protected:
+  float alpha_;
+};
+
+class QuickGelu : public LinearUnit {
+ public:
+  QuickGelu(const OpKernelInfo& info);
+};
+
 constexpr const char ErfImpl[] = R"(
 const r0 = 0.3275911;
 const r1 = 0.254829592;
@@ -110,12 +135,12 @@ fn elu_v(v: vec4<x_element_t>) -> vec4<x_element_t> {
 )";
 
 constexpr const char QuickGeluImpl[] = R"(
-fn quick_gelu_v(a: x_value_t) -> x_value_t {
+fn quick_gelu_v(a: vec4<x_element_t>) -> vec4<x_element_t> {
   let one = 1.0;
   let zero = 0.0;
-  let alpha_vec = x_value_t(uniforms.alpha);
+  let alpha_vec = vec4<x_element_t>(uniforms.attr);
   let v = a * alpha_vec;
-  var x1 : x_value_t;
+  var x1 : vec4<x_element_t>;
   for (var i = 0; i < 4; i = i + 1) {
     if (v[i] >= zero) {
       x1[i] = one / (one + exp(-v[i]));
@@ -132,9 +157,6 @@ constexpr const char GeluExpr[] = "0.5 * a * (1.0 + erf_v(a * 0.7071067811865475
 
 // fast GELU expression, depending on TanhImpl
 constexpr const char FastGeluExpr[] = "a * (0.5 + 0.5 * tanh_v(a * (0.035677408136300125 * a * a + 0.7978845608028654)))";
-
-// quick GELU expression, depending on QuickGeluImpl
-constexpr const char QuickGeluExpr[] = "quick_gelu_v(a)";
 
 }  // namespace webgpu
 }  // namespace onnxruntime
