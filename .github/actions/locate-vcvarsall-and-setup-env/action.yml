@@ -48,7 +48,6 @@ runs:
     - name: Setup Environment
       shell: cmd
       run: |
-        @echo off
         REM Get initial environment variables
         set > initial_env.txt
 
