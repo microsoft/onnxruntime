@@ -41,12 +41,18 @@ Status GetExternalDataInfo(const ONNX_NAMESPACE::TensorProto& tensor_proto,
                            ExternalDataInfo::PrepackedInfos* prepacked_infos = nullptr);
 /**
  * This function is used to convert the endianess of Tensor data.
+ * If ext_data_buf is provided, then this buffer content's endianess
+ * will be changed.
  * Mostly, will be used in big endian system to support the model file
  * generated on little endian system.
- * @param initializer       given initializer tensor
+ * @param tensor_proto given initializer tensor
+ * @param ext_data_buf optional externl data buffer
+ * @param ext_data_len optional externl data buffer lengeh
  * @returns                 None
  */
-void ConvertRawDataInTensorProto(ONNX_NAMESPACE::TensorProto* initializer);
+void ConvertRawDataInTensorProto(ONNX_NAMESPACE::TensorProto* tensor_proto,
+                                 void* ext_data_buf = NULL,
+                                 size_t ext_data_len = 0);
 
 /**
  * Wrapper function for set_raw_data.

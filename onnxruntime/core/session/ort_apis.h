@@ -20,6 +20,10 @@ ORT_API(void, ReleaseCustomOpDomain, _Frees_ptr_opt_ OrtCustomOpDomain*);
 ORT_API(void, ReleaseMapTypeInfo, _Frees_ptr_opt_ OrtMapTypeInfo*);
 ORT_API(void, ReleaseSequenceTypeInfo, _Frees_ptr_opt_ OrtSequenceTypeInfo*);
 ORT_API(void, ReleaseModelMetadata, _Frees_ptr_opt_ OrtModelMetadata*);
+ORT_API(void, ReleaseValueInfo, _Frees_ptr_opt_ OrtValueInfo*);
+ORT_API(void, ReleaseNode, _Frees_ptr_opt_ OrtNode*);
+ORT_API(void, ReleaseGraph, _Frees_ptr_opt_ OrtGraph*);
+ORT_API(void, ReleaseModel, _Frees_ptr_opt_ OrtModel*);
 
 _Check_return_ _Ret_notnull_ [[nodiscard]] OrtStatus* ORT_API_CALL CreateStatus(OrtErrorCode code, _In_z_ const char* msg)
     NO_EXCEPTION;
@@ -533,4 +537,16 @@ ORT_API_STATUS_IMPL(RunOptionsAddActiveLoraAdapter, _Inout_ OrtRunOptions* optio
 
 ORT_API_STATUS_IMPL(SetEpDynamicOptions, _Inout_ OrtSession* sess, _In_reads_(kv_len) const char* const* keys,
                     _In_reads_(kv_len) const char* const* values, _In_ size_t kv_len);
+
+ORT_API_STATUS_IMPL(GetValueInfoName, _In_ const OrtValueInfo* value_info, _Out_ const char** name);
+ORT_API_STATUS_IMPL(GetValueInfoTypeInfo, _In_ const OrtValueInfo* value_info, _Outptr_ const OrtTypeInfo** type_info);
+
+ORT_API(const OrtModelEditorApi*, GetModelEditorApi);
+
+ORT_API_STATUS_IMPL(CreateTensorWithDataAndDeleterAsOrtValue, _In_ OrtAllocator* deleter,
+                    _In_ void* p_data, size_t p_data_len,
+                    _In_ const int64_t* shape, size_t shape_len,
+                    ONNXTensorElementDataType type,
+                    _Outptr_ OrtValue** out);
+
 }  // namespace OrtApis

@@ -9,6 +9,7 @@ if (onnxruntime_MINIMAL_BUILD)
   list(APPEND onnxruntime_optimizer_src_patterns
     "${ONNXRUNTIME_INCLUDE_DIR}/core/optimizer/graph_transformer.h"
     "${ONNXRUNTIME_ROOT}/core/optimizer/graph_transformer.cc"
+    "${ONNXRUNTIME_ROOT}/core/optimizer/graph_optimizer_registry.cc"
   )
 
   if (onnxruntime_EXTENDED_MINIMAL_BUILD)
