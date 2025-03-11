@@ -251,26 +251,32 @@ Status BeamSearchT5<T>::Execute(const FeedsFetchesManager& encoder_feeds_fetches
     ++current_length;  // Increase sequence length after a new token is generated.
   }
 
-  // Generate inputs for next decoder subgraph call.
   if (current_length < parameters->max_length) {
-    ORT_RETURN_IF_ERROR(decoder_subgraph_.CreateInitialFeeds(this->cpu_allocator_,
-                                                             ReinterpretAsSpan<const int32_t>(beam_next_tokens),
-                                                             this->implicit_inputs_,
-                                                             encoder_feeds,
-                                                             encoder_fetches,
-                                                             decoder_feeds,
-                                                             this->device_copy_int32_func_,
-                                                             this->expand_buffer_int32_func_,
-                                                             this->expand_buffer_float_func_,
-                                                             this->expand_buffer_float16_func_,
-                                                             parameters->num_beams,
-                                                             this->ort_stream_,
-                                                             decoder_subgraph_.UseSequenceAsInputIds(),
-                                                             current_length,
-                                                             cpu_state.sequences,
-                                                             parameters->max_length,
-                                                             decoder_subgraph_.has_decoder_masked_attention_,
-                                                             this->cuda_device_prop_ != nullptr));
+    // when no logits, copy sequence (filled with start token IDs) to input_ids for decoder.
+    bool copy_sequence_to_input_ids = decoder_subgraph_.UseSequenceAsInputIds() || !encoder_subgraph_.HasLogitsOutput();
+    if (copy_sequence_to_input_ids) {
+      ORT_ENFORCE(current_length == cpu_state.sequences.GetSequenceLength());
+    }
+
+    // Generate inputs for next decoder subgraph call.
+    ORT_RETURN_IF_ERROR(decoder_subgraph_.CreateInitialFeeds(
+        this->cpu_allocator_,
+        ReinterpretAsSpan<const int32_t>(beam_next_tokens),
+        this->implicit_inputs_,
+        encoder_feeds,
+        encoder_fetches,
+        decoder_feeds,
+        this->device_copy_int32_func_,
+        this->expand_buffer_int32_func_,
+        this->expand_buffer_float_func_,
+        this->expand_buffer_float16_func_,
+        parameters->num_beams,
+        this->ort_stream_,
+        copy_sequence_to_input_ids,
+        cpu_state.sequences,
+        parameters->max_length,
+        decoder_subgraph_.has_decoder_masked_attention_,
+        this->cuda_device_prop_ != nullptr));
 
     if (decoder_subgraph_.past_present_share_buffer_) {
       // Configure buffer sharing of past and present kv cache.
@@ -316,7 +322,8 @@ Status BeamSearchT5<T>::Execute(const FeedsFetchesManager& encoder_feeds_fetches
     dumper->Print(::onnxruntime::MakeString("Iteration=", iteration_counter,
                                             ", CurrentLength=", current_length,
                                             ", num_layers=", decoder_subgraph_.num_layers,
-                                            ", decoder_feeds=", decoder_feeds.size()));
+                                            ", decoder_feeds=", decoder_feeds.size(),
+                                            ", start_token_id=", parameters->decoder_start_token_id));
 
     for (int i = 0; i < decoder_subgraph_.GetFirstPastInputIndex(); i++) {
       dumper->Print("decoder_feeds", i, true);

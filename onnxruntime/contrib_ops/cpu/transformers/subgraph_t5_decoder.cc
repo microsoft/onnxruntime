@@ -171,8 +171,7 @@ Status T5DecoderSubgraph::CreateInitialFeeds(
     const GenerationDeviceHelper::ExpandBufferFunc<MLFloat16>& expand_buffer_float16_func,
     int num_beam,
     Stream* stream,
-    bool use_sequence_as_input_ids,
-    int cur_len,
+    bool copy_sequence_to_input_ids,
     transformers::Sequences& sequences,
     int past_present_share_buffer_max_seq_len,
     bool need_cache_indir,
@@ -185,28 +184,27 @@ Status T5DecoderSubgraph::CreateInitialFeeds(
   int batch_beam_size = static_cast<int>(encoder_fetches[0].Get<Tensor>().Shape()[0]) * num_beam;
 
   // Copy beam next tokens in CPU to input_ids in provider device (CPU for CPU EP, or GPU for CUDA EP).
-  int sequence_length = !use_sequence_as_input_ids ? 1 : cur_len;
+  int sequence_length = !copy_sequence_to_input_ids ? 1 : sequences.GetSequenceLength();
   int64_t dims[] = {batch_beam_size, sequence_length};
   TensorShape input_ids_shape(&dims[0], 2);
   OrtValue input_ids;
   Tensor::InitOrtValue(DataTypeImpl::GetType<int32_t>(), input_ids_shape, allocator, input_ids);
 
   // Prepare data for input_ids.
-  if (!use_sequence_as_input_ids_) {  // use next tokens for input_ids. This is for Whisper model.
+  if (!copy_sequence_to_input_ids) {  // use next tokens for input_ids.
     ORT_RETURN_IF_ERROR(device_copy_int32_func(
         input_ids.GetMutable<Tensor>()->MutableDataAsSpan<int32_t>(),
         beam_next_tokens,
         stream,
         DeviceCopyDirection::hostToDevice));
-  } else {
+  } else {  // use whole sequences for input_ids.
     int32_t* input_ids_data = input_ids.GetMutable<Tensor>()->MutableData<int32_t>();
     if (use_cuda) {
       auto sequences_buffer = sequences.GetCurrentDeviceSequences();
       for (int i = 0; i < batch_beam_size; i++) {
         size_t offset = static_cast<size_t>(i) * static_cast<size_t>(sequences.GetMaxLength());
-        int seq_size = sequences.GetSequenceLength();
-        gsl::span<const int32_t> sequence = sequences_buffer.subspan(offset, seq_size);
-        gsl::span<int> temp_input(input_ids_data + static_cast<ptrdiff_t>(i) * seq_size, seq_size);
+        gsl::span<const int32_t> sequence = sequences_buffer.subspan(offset, sequence_length);
+        gsl::span<int> temp_input(input_ids_data + static_cast<ptrdiff_t>(i) * sequence_length, sequence_length);
         ORT_RETURN_IF_ERROR(device_copy_int32_func(
             temp_input,
             sequence,
@@ -214,19 +212,19 @@ Status T5DecoderSubgraph::CreateInitialFeeds(
             DeviceCopyDirection::deviceToDevice));
       }
     } else {
-      size_t total_size = static_cast<size_t>(cur_len) * static_cast<size_t>(batch_beam_size);
+      size_t total_size = static_cast<size_t>(sequence_length) * static_cast<size_t>(batch_beam_size);
       size_t total_size_bytes = total_size * sizeof(int);
       AllocatorPtr buffer_allocator = std::make_shared<onnxruntime::CPUAllocator>();
       // TODO: not need extra buffer. Copy directly to input_ids_data instead like the user_cuda above.
       auto seq_copy = IAllocator::MakeUniquePtr<int>(buffer_allocator, total_size_bytes, false, stream);
       int* seq_copy_ptr = seq_copy.get();
 
-      const size_t cur_len_bytes = cur_len * sizeof(int);
+      const size_t sequence_bytes = sequence_length * sizeof(int);
       for (int i = 0; i < batch_beam_size; i++) {
         gsl::span<const int32_t> sequence = sequences.GetSequence(i);
         const int32_t* sequence_data = sequence.data();
-        ptrdiff_t seq_index = static_cast<ptrdiff_t>(i) * cur_len;
-        memcpy(seq_copy_ptr + seq_index, sequence_data, cur_len_bytes);
+        ptrdiff_t seq_index = static_cast<ptrdiff_t>(i) * sequence_length;
+        memcpy(seq_copy_ptr + seq_index, sequence_data, sequence_bytes);
       }
       gsl::span<int> temp_input(input_ids_data, total_size);
       gsl::span<int> temp_sequence(seq_copy_ptr, total_size);
