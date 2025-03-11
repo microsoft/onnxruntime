@@ -1,7 +1,6 @@
 /*++
 
 Copyright (c) Microsoft Corporation. All rights reserved.
-SPDX-FileCopyrightText: Copyright 2025 Arm Limited and/or its affiliates <open-source-office@arm.com>
 
 Licensed under the MIT License.
 
@@ -99,7 +98,7 @@ struct MLAS_QNBIT_GEMM_DISPATCH {
         size_t N,
         size_t K,
         size_t BlkLen,
-        bool has_zp_input,
+        bool HasZeroPoint,
         MLAS_QNBIT_GEMM_COMPUTE_TYPE ComputeType
     );
 
@@ -126,9 +125,9 @@ struct MLAS_QNBIT_GEMM_DISPATCH {
         MLAS_QNBIT_GEMM_COMPUTE_TYPE ComputeType,
         const std::byte* QuantBDataBegin,
         const float* QuantBScaleBegin,
-        bool has_zp_input,
+        bool HasZeroPoint,
         const std::byte* QuantBZPBegin,
-        PackedQuantBDataStruct<float>& packed_quant_b,
+        PackedQuantBDataStruct<float>& PackedQuantB,
         MLAS_THREADPOOL* ThreadPool
     );
 
@@ -146,7 +145,7 @@ struct MLAS_QNBIT_GEMM_DISPATCH {
      * @param[in]   N               column size of matrix B and C
      * @param[in]   K               column size of matrix A and row size of matrix B
      * @param[in]   BlkLen          number of quantized values per block
-     * @param[in]   has_zp_input    whether zero points are provided
+     * @param[in]   HasZeroPoint    whether zero points are provided
      * @param[in]   ComputeType     GEMM compute type (e.g., multiplying float or int8 values)
      */
     typedef size_t(Q4BitGemmPerGemmWorkspaceSize_Fn)(
@@ -154,7 +153,7 @@ struct MLAS_QNBIT_GEMM_DISPATCH {
         size_t N,
         size_t K,
         size_t BlkLen,
-        bool has_zp_input,
+        bool HasZeroPoint,
         MLAS_QNBIT_GEMM_COMPUTE_TYPE ComputeType
     );
 
@@ -277,6 +276,7 @@ struct MLAS_QNBIT_GEMM_DISPATCH {
     /**
      * @brief Multiply quantized 8-bit integer matrix A with quantized 4-bit integer matrix B.
      *        A and B are block quantized and B is column major.
+     *        A should be packed using QuantizeA_Packed_CompInt8.
      *
      * @param       BlkLen              Number of values in a block.
      * @param       QuantA              Supplies the quantized A matrix.
@@ -290,7 +290,7 @@ struct MLAS_QNBIT_GEMM_DISPATCH {
      * @param       CountK              Number of columns of A and rows of B.
      * @param       ldc                 Number of elements between adjacent rows of C.
      */
-    typedef void(SQ4BitGemm_CompInt8_Fn)(
+    typedef void(SQ4BitGemmKernel_Packed_CompInt8_Fn)(
         size_t BlkLen,
         const std::byte* QuantA,
         const std::byte* PackedQuantBData,
@@ -304,7 +304,7 @@ struct MLAS_QNBIT_GEMM_DISPATCH {
         const float* Bias
     );
 
-    SQ4BitGemm_CompInt8_Fn* SQ4BitGemm_CompInt8 = nullptr;
+    SQ4BitGemmKernel_Packed_CompInt8_Fn* SQ4BitGemmKernel_Packed_CompInt8 = nullptr;
 
     /**
      * @brief Multiply quantized 8-bit integer matrix A with quantized 4-bit integer matrix B.
@@ -383,18 +383,19 @@ struct MLAS_QNBIT_GEMM_DISPATCH {
     SQ4BitGemmKernel_CompInt8_Fn* SQ4BitGemmKernel_CompInt8 = nullptr;
 
     /**
-     * @brief Whether to use tile-level interface for this problem.
+     * @brief Whether to use SQ4BitGemmKernel_Packed_CompInt8 for this problem.
      */
-    typedef bool(UseTiled_CompInt8_Fn)(
+    typedef bool(UsePacked_CompInt8_Fn)(
         size_t K,
         size_t BlkLen,
-        bool has_zp
+        bool HasZp
     );
 
-    UseTiled_CompInt8_Fn* UseTiled_CompInt8 = nullptr;
+    UsePacked_CompInt8_Fn* UsePacked_CompInt8 = nullptr;
 
     /**
      * @brief Block quantize values from matrix A from floats to quantized 8-bit integers.
+     *        Used in conjunction with SQ4BitGemmKernel_Packed_CompInt8.
      *
      * @param       BlkLen  Number of values in a block.
      * @param       A       Supplies the A matrix.
@@ -403,7 +404,7 @@ struct MLAS_QNBIT_GEMM_DISPATCH {
      * @param[out]  QuantA  Supplies the output quantized A matrix.
      *                      Binary data containing block quantized int8 data and scale values.
      */
-    typedef void(QuantizeA_CompInt8_Fn)(
+    typedef void(QuantizeA_Packed_CompInt8_Fn)(
         size_t BlkLen,
         const float* A,
         size_t CountM,
@@ -411,7 +412,7 @@ struct MLAS_QNBIT_GEMM_DISPATCH {
         std::byte* QuantA
     );
 
-    QuantizeA_CompInt8_Fn* QuantizeA_CompInt8 = nullptr;
+    QuantizeA_Packed_CompInt8_Fn* QuantizeA_Packed_CompInt8 = nullptr;
 
     /**
      * @brief Block quantize values from one row of matrix A from floats to quantized 8-bit integers.

@@ -1521,6 +1521,52 @@ TEST(QDQTransformerTests, DoubleQDQ) {
                    bad_float_point, good_float_point_2, true);  // Use com.microsoft QDQ ops
 }
 
+// Verifies fix for bug in the IsQDQPairSupported utility function, which is used by
+// various optimizers such as DoubleQDQPairsRemover. The bug causes an exception when
+// IsQDQPairIsSupported() is called with a Q -> DQ sequence that uses different scale types.
+TEST(QDQTransformerTests, DoubleQDQPairsRemover_Bug_RejectDifferentScaleTypes) {
+  // Function that builds a model with a QDQ nodes that use different scale data types:
+  // input_fp32 -> Q(scale_fp32) -> DQ(scale_fp16) -> Mul(fp16) -> Q(scale_fp16) -> DQ(scale_fp32) -> output_fp32
+  auto build_model_func = [](ModelTestBuilder& builder) {
+    auto* input0_arg = builder.MakeInput<float>({1, 1, 1, 3}, {1.0f, 2.0f, 3.0f});
+    NodeArg* q1_output = builder.MakeIntermediate();
+    NodeArg* dq1_output = builder.MakeIntermediate();
+    NodeArg* mul_output = builder.MakeIntermediate();
+    NodeArg* q2_output = builder.MakeIntermediate();
+    NodeArg* dq2_output = builder.MakeOutput();
+    NodeArg* const_arg = builder.MakeScalarInitializer(MLFloat16(10.0f));
+
+    const float scale_fp32 = 1.0f;
+    const MLFloat16 scale_fp16 = MLFloat16(scale_fp32);
+    const uint8_t zp = 127;
+
+    builder.AddQuantizeLinearNode<uint8_t, float>(input0_arg, scale_fp32, zp, q1_output);
+    builder.AddDequantizeLinearNode<uint8_t, MLFloat16>(q1_output, scale_fp16, zp, dq1_output);
+    builder.AddNode("Mul", {dq1_output, const_arg}, {mul_output});
+    builder.AddQuantizeLinearNode<uint8_t, MLFloat16>(mul_output, scale_fp16, zp, q2_output);
+    builder.AddDequantizeLinearNode<uint8_t, float>(q2_output, scale_fp32, zp, dq2_output);
+  };
+
+  // Previously, using different scale data types caused an exception in IsQDQPairSupported.
+  // Now, we just reject the sequence. The DoubleQDQPairsRemover optimizer should not change the
+  // graph.
+  auto graph_checker = [](InferenceSessionWrapper& session) {
+    auto op_to_count = CountOpsInGraph(session.GetGraph());
+    EXPECT_EQ(op_to_count["QuantizeLinear"], 2);
+    EXPECT_EQ(op_to_count["Mul"], 1);
+    EXPECT_EQ(op_to_count["DequantizeLinear"], 2);
+  };
+  TransformerTester(
+      build_model_func,
+      graph_checker,
+      TransformerLevel::Default,
+      TransformerLevel::Level1,
+      21,
+      /*per_sample_tolerance*/ 0.0,
+      /*relative_per_sample_tolerance*/ 0.0,
+      std::make_unique<DoubleQDQPairsRemover>());
+}
+
 template <typename QuantType>
 static void RunDoubleQDQWithoutLastNodeBeingOutput(int output_index, int expected_Q_count, int expected_DQ_count,
                                                    bool use_contrib_qdq = false, int opset = 12) {

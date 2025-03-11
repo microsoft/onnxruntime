@@ -1,7 +1,6 @@
 /*++
 
 Copyright (c) Microsoft Corporation. All rights reserved.
-SPDX-FileCopyrightText: Copyright 2024-2025 Arm Limited and/or its affiliates <open-source-office@arm.com>
 
 Licensed under the MIT License.
 
@@ -92,7 +91,7 @@ MlasIsQNBitGemmAvailable(
         }
         case SQNBitGemmVariant_BitWidth4_CompInt8: { // SQ4BitGemmKernel_BlkSum_CompInt8
             return
-              (Dispatch->SQ4BitGemm_CompInt8 != nullptr && Dispatch->QuantizeA_CompInt8 != nullptr) ||
+              (Dispatch->SQ4BitGemmKernel_Packed_CompInt8 != nullptr && Dispatch->QuantizeA_Packed_CompInt8 != nullptr) ||
               (Dispatch->SQ4BitGemmKernel_CompInt8 != nullptr && Dispatch->QuantizeARow_CompInt8 != nullptr) ||
               (Dispatch->SQ4BitGemmKernel_BlkSum_CompInt8 != nullptr && Dispatch->QuantizeARowComputeBlkSum_CompInt8 != nullptr);
         }
@@ -112,7 +111,7 @@ QNBitGemmPerGemmWorkspaceSize(
     size_t K,
     size_t BlkBitWidth,
     size_t BlkLen,
-    bool has_zp_input,
+    bool HasZeroPoint,
     MLAS_QNBIT_GEMM_COMPUTE_TYPE ComputeType
 )
 {
@@ -122,7 +121,7 @@ QNBitGemmPerGemmWorkspaceSize(
     }
 
     if (BlkBitWidth == 4 && Dispatch->Q4BitGemmPerGemmWorkspaceSize != nullptr) {
-        return Dispatch->Q4BitGemmPerGemmWorkspaceSize(M, N, K, BlkLen, has_zp_input, ComputeType);
+        return Dispatch->Q4BitGemmPerGemmWorkspaceSize(M, N, K, BlkLen, HasZeroPoint, ComputeType);
     }
 
     return 0;
@@ -154,11 +153,11 @@ QNBitGemmPerGemmWorkspaceStride(
     size_t K,
     size_t BlkBitWidth,
     size_t BlkLen,
-    bool has_zp_input,
+    bool HasZeroPoint,
     MLAS_QNBIT_GEMM_COMPUTE_TYPE ComputeType
 )
 {
-    const auto Size = QNBitGemmPerGemmWorkspaceSize(M, N, K, BlkBitWidth, BlkLen, has_zp_input, ComputeType);
+    const auto Size = QNBitGemmPerGemmWorkspaceSize(M, N, K, BlkBitWidth, BlkLen, HasZeroPoint, ComputeType);
     const auto Alignment = QNBitGemmPerGemmWorkspaceAlignment(BlkBitWidth, BlkLen, ComputeType);
     return MlasDivRoundup(Size, Alignment) * Alignment;
 }
@@ -173,11 +172,12 @@ MlasQNBitGemmBatchWorkspaceSize(
     size_t BatchN,
     size_t BlkBitWidth,
     size_t BlkLen,
-    bool has_zp_input,
+    bool HasZeroPoint,
     MLAS_QNBIT_GEMM_COMPUTE_TYPE ComputeType
 )
 {
-    const size_t PerGemmWorkspaceStride = QNBitGemmPerGemmWorkspaceStride(M, N, K, BlkBitWidth, BlkLen, has_zp_input, ComputeType);
+    const size_t PerGemmWorkspaceStride =
+        QNBitGemmPerGemmWorkspaceStride(M, N, K, BlkBitWidth, BlkLen, HasZeroPoint, ComputeType);
     if (PerGemmWorkspaceStride == 0) {
         return 0;
     }
@@ -195,7 +195,7 @@ MlasQNBitGemmPackQuantBDataSize(
     size_t K,
     size_t BlkBitWidth,
     size_t BlkLen,
-    bool has_zp_input,
+    bool HasZeroPoint,
     MLAS_QNBIT_GEMM_COMPUTE_TYPE ComputeType
 )
 {
@@ -206,7 +206,7 @@ MlasQNBitGemmPackQuantBDataSize(
 
     if (BlkBitWidth == 4 && Dispatch->Q4BitGemmPackQuantBDataSize != nullptr) {
         return Dispatch->Q4BitGemmPackQuantBDataSize(
-            N, K, BlkLen, has_zp_input, ComputeType
+            N, K, BlkLen, HasZeroPoint, ComputeType
         );
     }
 
@@ -238,7 +238,7 @@ MlasQNBitGemmPackQuantBData(
     const void* QuantBData,
     void* PackedQuantBDataAndOrBlkSumWorkspace,
     const void* QuantBScale,
-    bool has_zp_input,
+    bool HasZeroPoint,
     const void* QuantBZeroPoint,
     MLAS_THREADPOOL* ThreadPool
 )
@@ -259,7 +259,7 @@ MlasQNBitGemmPackQuantBData(
                 ComputeType,
                 static_cast<const std::byte*>(QuantBData),
                 static_cast<const float*>(QuantBScale),
-                has_zp_input,
+                HasZeroPoint,
                 static_cast<const std::byte*>(QuantBZeroPoint),
                 packed_quant_b,
                 ThreadPool
@@ -298,19 +298,19 @@ MlasQNBitGemmScalesPacked(
     size_t BlkBitWidth,
     size_t BlkLen,
     MLAS_QNBIT_GEMM_COMPUTE_TYPE ComputeType,
-    bool has_zp_input
+    bool HasZeroPoint
 ) {
 #ifdef MLAS_TARGET_ARM64
     if (BlkBitWidth == 4 && ComputeType == SQNBIT_CompInt8) {
-      const auto UseTiled = GetMlasPlatform().QNBitGemmDispatch->UseTiled_CompInt8;
-      return UseTiled && UseTiled(K, BlkLen, has_zp_input);
+      const auto UsePacked = GetMlasPlatform().QNBitGemmDispatch->UsePacked_CompInt8;
+      return UsePacked && UsePacked(K, BlkLen, HasZeroPoint);
     }
 #else
     MLAS_UNREFERENCED_PARAMETER(K);
     MLAS_UNREFERENCED_PARAMETER(BlkBitWidth);
     MLAS_UNREFERENCED_PARAMETER(BlkLen);
     MLAS_UNREFERENCED_PARAMETER(ComputeType);
-    MLAS_UNREFERENCED_PARAMETER(has_zp_input);
+    MLAS_UNREFERENCED_PARAMETER(HasZeroPoint);
 #endif  // MLAS_TARGET_ARM64
     return false;
 }
@@ -548,9 +548,9 @@ SQ4BitGemm_CompInt8(
     const size_t RangeCountN
 )
 {
-    const auto UseTiled = GetMlasPlatform().QNBitGemmDispatch->UseTiled_CompInt8;
-    const auto SQ4BitGemm = GetMlasPlatform().QNBitGemmDispatch->SQ4BitGemm_CompInt8;
-    if (UseTiled && SQ4BitGemm && UseTiled(K, BlkLen, DataParams->QuantBZeroPoint)) {
+    const auto UsePacked = GetMlasPlatform().QNBitGemmDispatch->UsePacked_CompInt8;
+    const auto SQ4BitGemm = GetMlasPlatform().QNBitGemmDispatch->SQ4BitGemmKernel_Packed_CompInt8;
+    if (UsePacked && SQ4BitGemm && UsePacked(K, BlkLen, DataParams->QuantBZeroPoint)) {
         const std::byte* QuantA = static_cast<const std::byte*>(PerGemmWorkspace);
         SQ4BitGemm(BlkLen, QuantA, DataParams->PackedQuantBData,
             DataParams->C, RangeStartM, RangeCountM, RangeStartN, RangeCountN, K,
@@ -705,8 +705,8 @@ InitializeWorkspace_CompInt8<float>(
 {
     MLAS_UNREFERENCED_PARAMETER(N);
 
-    const auto UseTiled = GetMlasPlatform().QNBitGemmDispatch->UseTiled_CompInt8;
-    const auto QuantizeA = GetMlasPlatform().QNBitGemmDispatch->QuantizeA_CompInt8;
+    const auto UsePacked = GetMlasPlatform().QNBitGemmDispatch->UsePacked_CompInt8;
+    const auto QuantizeA_Packed = GetMlasPlatform().QNBitGemmDispatch->QuantizeA_Packed_CompInt8;
     const auto QuantizeARow = GetMlasPlatform().QNBitGemmDispatch->QuantizeARow_CompInt8;
     const auto QuantizeARow2 = GetMlasPlatform().QNBitGemmDispatch->QuantizeARowComputeBlkSum_CompInt8;
 
@@ -714,13 +714,13 @@ InitializeWorkspace_CompInt8<float>(
     const size_t QuantAStride = BlockCountK * Q8BlkSize(BlkLen);
 
     // TODO: try parallel on BatchN * M threads because BatchN is usually 1.
-    if (UseTiled && QuantizeA && UseTiled(K, BlkLen, DataParams->QuantBZeroPoint)) {
+    if (UsePacked && QuantizeA_Packed && UsePacked(K, BlkLen, DataParams->QuantBZeroPoint)) {
         MlasTrySimpleParallel(ThreadPool, BatchN, [&](ptrdiff_t gemm_idx) {
             const auto& data = DataParams[gemm_idx];
 
             const float* ARowPtr = data.A;
             std::byte* QuantARowPtr = static_cast<std::byte*>(Workspace) + gemm_idx * PerGemmWorkspaceStride;
-            QuantizeA(BlkLen, ARowPtr, M, K, QuantARowPtr);
+            QuantizeA_Packed(BlkLen, ARowPtr, M, K, QuantARowPtr);
         });
     } else if (QuantizeARow) {
         MlasTrySimpleParallel(ThreadPool, BatchN, [&](ptrdiff_t gemm_idx) {
@@ -894,7 +894,8 @@ MlasQNBitGemmBatch(
     }
 
     const bool has_zp_input = DataParams->QuantBZeroPoint;
-    const size_t PerGemmWorkspaceStride = QNBitGemmPerGemmWorkspaceStride(M, N, K, BlkBitWidth, BlkLen, has_zp_input, ComputeType);
+    const size_t PerGemmWorkspaceStride =
+        QNBitGemmPerGemmWorkspaceStride(M, N, K, BlkBitWidth, BlkLen, has_zp_input, ComputeType);
 
     if (const auto InitializeWorkspaceOperation = GetInitializeWorkspace<T>(Variant);
         InitializeWorkspaceOperation != nullptr) {

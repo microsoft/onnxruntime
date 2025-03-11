@@ -1,8 +1,6 @@
 /*++
 
 Copyright (c) Microsoft Corporation. All rights reserved.
-SPDX-FileCopyrightText: Copyright 2025 Arm Limited and/or its affiliates <open-source-office@arm.com>
-
 Licensed under the MIT License.
 
 Module Name:
@@ -26,8 +24,11 @@ Abstract:
 #include "qnbitgemm.h"
 #include "qnbitgemm_kernel_neon.h"
 #include "sqnbitgemm_q8_block.h"
+
+#ifdef USE_KLEIDIAI
 #include "kai/ukernels/matmul/pack/kai_lhs_quant_pack_qai8dxp_f32.h"
 #include "kai_ukernel_interface.h"
+#endif
 
 namespace sqnbitgemm_neon
 {
@@ -131,13 +132,14 @@ QuantizeBlock(
 }  // namespace
 
 bool
-UseTiled_CompInt8(size_t K, size_t BlkLen, bool has_zp)
+UsePacked_CompInt8(size_t K, size_t BlkLen, bool HasZp)
 {
-    return UseKleidiAI(K, BlkLen, has_zp);
+    return UseKleidiAI(K, BlkLen, HasZp);
 }
 
+#ifdef USE_KLEIDIAI
 void
-QuantizeA_CompInt8(
+QuantizeA_Packed_CompInt8(
     size_t,
     const float* A,
     size_t CountM,
@@ -157,13 +159,12 @@ QuantizeA_CompInt8(
     const size_t lhs_packed_offset = kai_get_lhs_packed_offset_lhs_quant_pack_qai8dxp_f32(
                             0, CountK, mr, kr, sr);
 
-    const float* src_ptr = reinterpret_cast<const float*>(
-                            reinterpret_cast<const uint8_t*>(A) + lhs_offset);
-    void*        dst_ptr = reinterpret_cast<void *>(
-                            reinterpret_cast<uint8_t*>(QuantA) + lhs_packed_offset);
+    const float* src_ptr = reinterpret_cast<const float*>(reinterpret_cast<const std::byte*>(A) + lhs_offset);
+    void* dst_ptr = QuantA + lhs_packed_offset;
 
     kai_run_lhs_quant_pack_qai8dxp_f32(CountM, CountK, mr, kr, sr, 0, src_ptr, src_stride, dst_ptr);
 }
+#endif
 
 void
 QuantizeARow_CompInt8(
@@ -1438,8 +1439,9 @@ SQ4BitGemmKernel_CompInt8(
     return CountM;
 }
 
+#ifdef USE_KLEIDIAI
 void
-SQ4BitGemm_CompInt8(
+SQ4BitGemmKernel_Packed_CompInt8(
     size_t BlkLen,
     const std::byte* QuantA,
     const std::byte* PackedQuantBData,
@@ -1462,12 +1464,9 @@ SQ4BitGemm_CompInt8(
     const size_t rhs_packed_offset = ukernel.get_rhs_packed_offset(RangeStartN, CountK, BlkLen);
     const size_t dst_offset = ukernel.get_dst_offset(RangeStartM, RangeStartN, dst_stride);
 
-    const void* lhs_ptr = reinterpret_cast<const void*>(
-            reinterpret_cast<const char *>(QuantA) + lhs_packed_offset);
-    const void* rhs_ptr = reinterpret_cast<const void*>(
-            reinterpret_cast<const char *>(PackedQuantBData) + rhs_packed_offset);
-    float* dst_ptr = reinterpret_cast<float*>(
-            reinterpret_cast<uint8_t*>(C) + dst_offset);
+    const void* lhs_ptr = QuantA + lhs_packed_offset;
+    const void* rhs_ptr = PackedQuantBData + rhs_packed_offset;
+    float* dst_ptr = reinterpret_cast<float*>(reinterpret_cast<std::byte*>(C) + dst_offset);
 
     ukernel.run_matmul(
         RangeCountM, RangeCountN, CountK, BlkLen, lhs_ptr, rhs_ptr, dst_ptr, dst_stride, sizeof(float),
@@ -1481,5 +1480,6 @@ SQ4BitGemm_CompInt8(
         }
     }
 }
+#endif
 
 }  // namespace sqnbitgemm_neon
