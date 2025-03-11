@@ -65,6 +65,28 @@ class Gelu : public UnaryElementwise {
   Gelu(const OpKernelInfo& info);
 };
 
+class LinearUnit : public UnaryElementwise {
+  public:
+   LinearUnit(const OpKernelInfo& info,
+              const std::string& kernel_name,
+              const std::string& expression,
+              const std::string& additional_impl,
+              float default_alpha)
+       : UnaryElementwise{info, kernel_name, expression, additional_impl, ShaderUsage::UseElementTypeAlias} {
+     info.GetAttrOrDefault("alpha", &alpha_, default_alpha);
+   }
+ 
+   Status ConfigureProgram(const ComputeContext& /*context*/, UnaryElementwiseProgram& program) const override {
+     program.AddUniformVariables({alpha_});
+     return Status::OK();
+   }
+ 
+  protected:
+   float alpha_;
+};
+
+class QuickGelu : public LinearUnit {};
+
 constexpr const char ErfImpl[] = R"(
 const r0 = 0.3275911;
 const r1 = 0.254829592;
