@@ -84,34 +84,33 @@ class SparseAttentionBase {
 
     if (attention_mlas_supported) {
       ComputeAttentionProbs(
-        static_cast<T*>(attention_probs), Q, k, total_key_lengths->Data<int32_t>(),
-        batch_size, sequence_length, parameters.total_sequence_length,
-        past_buffer_sequence_length, present_buffer_sequence_length, head_size,
-        past_key->Data<T>(), present_key->MutableData<T>(), past_present_share_buffer, packed_qkv,
-        block_row_indices->Data<int32_t>(), block_col_indices->Data<int32_t>(), parameters, tp);
+          static_cast<T*>(attention_probs), Q, k, total_key_lengths->Data<int32_t>(),
+          batch_size, sequence_length, parameters.total_sequence_length,
+          past_buffer_sequence_length, present_buffer_sequence_length, head_size,
+          past_key->Data<T>(), present_key->MutableData<T>(), past_present_share_buffer, packed_qkv,
+          block_row_indices->Data<int32_t>(), block_col_indices->Data<int32_t>(), parameters, tp);
 
       ComputeVxAttentionScore(
-        output->MutableData<T>(), static_cast<T*>(attention_probs), v,
-        total_key_lengths->Data<int32_t>(),
-        batch_size, sequence_length, parameters.total_sequence_length,
-        past_buffer_sequence_length, present_buffer_sequence_length, head_size, parameters.hidden_size,
-        past_value->Data<T>(), present_value->MutableData<T>(), past_present_share_buffer, packed_qkv, tp);
+          output->MutableData<T>(), static_cast<T*>(attention_probs), v,
+          total_key_lengths->Data<int32_t>(),
+          batch_size, sequence_length, parameters.total_sequence_length,
+          past_buffer_sequence_length, present_buffer_sequence_length, head_size, parameters.hidden_size,
+          past_value->Data<T>(), present_value->MutableData<T>(), past_present_share_buffer, packed_qkv, tp);
     } else {
       ComputeAttentionProbs(
-        static_cast<float*>(attention_probs), Q, k, total_key_lengths->Data<int32_t>(),
-        batch_size, sequence_length, parameters.total_sequence_length,
-        past_buffer_sequence_length, present_buffer_sequence_length, head_size,
-        past_key->Data<T>(), present_key->MutableData<T>(), past_present_share_buffer, packed_qkv,
-        block_row_indices->Data<int32_t>(), block_col_indices->Data<int32_t>(), parameters, tp);
+          static_cast<float*>(attention_probs), Q, k, total_key_lengths->Data<int32_t>(),
+          batch_size, sequence_length, parameters.total_sequence_length,
+          past_buffer_sequence_length, present_buffer_sequence_length, head_size,
+          past_key->Data<T>(), present_key->MutableData<T>(), past_present_share_buffer, packed_qkv,
+          block_row_indices->Data<int32_t>(), block_col_indices->Data<int32_t>(), parameters, tp);
 
       ComputeVxAttentionScore(
-        output->MutableData<T>(), static_cast<float*>(attention_probs), v,
-        total_key_lengths->Data<int32_t>(),
-        batch_size, sequence_length, parameters.total_sequence_length,
-        past_buffer_sequence_length, present_buffer_sequence_length, head_size, parameters.hidden_size,
-        past_value->Data<T>(), present_value->MutableData<T>(), past_present_share_buffer, packed_qkv, tp);
+          output->MutableData<T>(), static_cast<float*>(attention_probs), v,
+          total_key_lengths->Data<int32_t>(),
+          batch_size, sequence_length, parameters.total_sequence_length,
+          past_buffer_sequence_length, present_buffer_sequence_length, head_size, parameters.hidden_size,
+          past_value->Data<T>(), present_value->MutableData<T>(), past_present_share_buffer, packed_qkv, tp);
     }
-
 
     return Status::OK();
   }
