@@ -49,7 +49,7 @@ void AppendPermFunction(std::ostream& os, const ShaderVariableHelper& input, int
   os << "fn perm(i: input_indices_t) -> input_indices_t {\n"
      << "  var a: input_indices_t;\n";
   for (int i = 0; i < input.Rank(); ++i) {
-    os << "  " << input.IndicesSet("a", std::to_string(perm[i]), "i[" + std::to_string(i) + "])") << "\n";
+    os << "  " << input.IndicesSet("a", std::to_string(perm[i]), "i[" + std::to_string(i) + "]") << "\n";
   }
   os << "  return a;\n"
      << "}\n";
