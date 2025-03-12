@@ -523,7 +523,7 @@ Status MatMulNBitsProgram::GenerateShaderCode(ShaderHelper& shader) const {
   return Status::OK();
 }
 
-Status MatMulNBitsBlock32Program::GenerateShaderCode(ShaderHelper& shader) const {
+Status MatMulNBitsBlockWideTileProgram::GenerateShaderCode(ShaderHelper& shader) const {
   const auto& a = shader.AddInput("input_a", ShaderUsage::UseUniform | ShaderUsage::UseIndicesTypeAlias | ShaderUsage::UseValueTypeAlias);
   const auto& b = shader.AddInput("input_b", ShaderUsage::UseUniform | ShaderUsage::UseIndicesTypeAlias | ShaderUsage::UseValueTypeAlias);
   const auto& scales = shader.AddInput("scales", ShaderUsage::UseUniform);
@@ -680,12 +680,13 @@ Status MatMulNBits::ComputeInternal(onnxruntime::webgpu::ComputeContext& context
     return ApplyDP4AMatrixMatMulNBits(a, b, scales, M, N, K, block_size, kMinMForTileOptimization, context, y);
   }
 
-  // Block32 prefill program
+  // BlockWideTileProgram
   // This program is optimized for Block32 prefill using Tile16x128.
-  const bool use_block32_program = block_size == 32 && batch_count == 1 && !has_zero_points &&
-                                   components_a == 4 && components_b == 4 && M > 1 &&
-                                   context.AdapterInfo().vendor == std::string_view{"intel"};
-  if (use_block32_program) {
+  // TODO: loosen restrictions on batch_count, has_zero_points, and vendor.
+  const bool use_block_wide_tile_program = block_size == 32 && batch_count == 1 && !has_zero_points &&
+                                           components_a == 4 && components_b == 4 && M >= kMinMForTileOptimization &&
+                                           context.AdapterInfo().vendor == std::string_view{"intel"};
+  if (use_block_wide_tile_program) {
     // enforce components to 1.
     components = 1;
 
@@ -693,7 +694,7 @@ Status MatMulNBits::ComputeInternal(onnxruntime::webgpu::ComputeContext& context
     constexpr uint32_t tile_m = workgroup_size / 8;
     constexpr uint32_t tile_n = workgroup_size;
 
-    MatMulNBitsBlock32Program program{};
+    MatMulNBitsBlockWideTileProgram program{};
     program.SetWorkgroupSize(workgroup_size);
     program.SetDispatchGroupSize((N + tile_n - 1) / tile_n,
                                  (M + tile_m - 1) / tile_m,
