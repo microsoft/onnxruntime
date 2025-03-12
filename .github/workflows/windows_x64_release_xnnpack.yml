@@ -1,4 +1,4 @@
-name: build_x64_release_winml
+name: build_x64_release_xnnpack
 
 on:
   push:
@@ -11,7 +11,7 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  build_x64_release_winml:
+  build_x64_release_xnnpack:
     runs-on: ["self-hosted", "1ES.Pool=onnxruntime-github-vs2022-mms"]
     timeout-minutes: 300
 
@@ -85,7 +85,7 @@ jobs:
     - name: Build and Test
       shell: pwsh
       run: |
-        python.exe "${{ github.workspace }}\tools\ci_build\build.py" --config RelWithDebInfo --build_dir "${{ github.workspace }}\build" --skip_submodule_sync --build_csharp --parallel --use_binskim_compliant_compile_flags --cmake_generator "Visual Studio 17 2022" --build_shared_lib --enable_onnx_tests --use_winml --enable_wcos --disable_rtti --msbuild_extra_options "IncludeMobileTargets=false" --build_nuget --use_vcpkg --use_vcpkg_ms_internal_asset_cache
+        python.exe "${{ github.workspace }}\tools\ci_build\build.py" --use_xnnpack --config RelWithDebInfo --build_dir "${{ github.workspace }}\build" --skip_submodule_sync --build_csharp --parallel --use_binskim_compliant_compile_flags --cmake_generator "Visual Studio 17 2022" --build_shared_lib --enable_onnx_tests --disable_rtti --msbuild_extra_options "IncludeMobileTargets=false" --build_nuget --use_vcpkg --use_vcpkg_ms_internal_asset_cache
         if ($LASTEXITCODE -ne 0) {
           exit $LASTEXITCODE
         }
@@ -93,7 +93,7 @@ jobs:
       env:
         ALLOW_RELEASED_ONNX_OPSET_ONLY: '0'
         DocUpdateNeeded: 'false'
-        VCPKG_BINARY_SOURCES: "clear;x-gha,readwrite"'
+        VCPKG_BINARY_SOURCES: "clear;x-gha,readwrite"
 
     - name: Validate C# native delegates
       shell: cmd
