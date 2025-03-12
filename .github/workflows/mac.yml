@@ -1,4 +1,4 @@
-name: Mac_CI
+name: "MacOS CI Pipeline"
 
 on:
   push:
@@ -19,6 +19,142 @@ env:
   python_version: 3.11
 
 jobs:
+  MacOS_C_API_Packaging_CPU_x86_64:
+    runs-on: macos-13
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v3
+      with:
+        submodules: false
+
+    - name: Use Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: ${{ env.python_version }}
+
+    - name: Use Node.js 20.x
+      uses: actions/setup-node@v4
+      with:
+        node-version: '20.x'
+
+    - name: Install Java 17
+      uses: actions/setup-java@v4
+      with:
+        distribution: 'temurin'
+        java-version: '17'
+        architecture: x64
+
+    - name: Set version number variables for Unix
+      shell: bash
+      run: |
+        # Do not output ##vso[] commands with `set -x` or they may be parsed again and include a trailing quote.
+        set +x
+
+        _OnnxRuntimeVersion=$(head -1 ${{ github.workspace }}/VERSION_NUMBER)
+        echo "OnnxRuntimeVersion=$_OnnxRuntimeVersion"
+
+        _OnnxRuntimeGitCommitHash=$(git rev-parse HEAD)
+        echo "OnnxRuntimeGitCommitHash=$_OnnxRuntimeGitCommitHash"
+
+        _OnnxRuntimeGitCommitHash=$(git rev-parse --short=8 HEAD)
+        echo "OnnxRuntimeGitCommitHashShort=$_OnnxRuntimeGitCommitHash"
+      working-directory: ${{ github.workspace }}
+
+    - name: Use Xcode 14.3.1
+      shell: bash
+      run: |
+        set -e -x
+        XCODE_DEVELOPER_DIR="/Applications/Xcode_14.3.1.app/Contents/Developer"
+        sudo xcode-select --switch "${XCODE_DEVELOPER_DIR}"
+
+    - name: Setup environment variables
+      shell: bash
+      run: |
+        set -e -x
+        export PATH=${{ github.workspace }}/installed/bin:$PATH
+        export ONNX_ML=1
+        export CMAKE_ARGS="-DONNX_GEN_PB_TYPE_STUBS=ON -DONNX_WERROR=OFF"
+        python3 -m pip install -r '${{ github.workspace }}/tools/ci_build/github/linux/docker/scripts/requirements.txt'
+
+    - name: Export GitHub Actions cache environment variables
+      uses: actions/github-script@v7
+      with:
+        script: |
+          core.exportVariable('ACTIONS_CACHE_URL', process.env.ACTIONS_CACHE_URL || '');
+          core.exportVariable('ACTIONS_RUNTIME_TOKEN', process.env.ACTIONS_RUNTIME_TOKEN || '');
+
+    - name: Configure Build (build.py --update)
+      shell: bash
+      run: |
+        set -e -x
+        rm -rf ${{ github.workspace }}/Release
+        python3 ${{ github.workspace }}/tools/ci_build/build.py --update --build_objc --build_wheel --use_xnnpack --build_nodejs --build_java --use_coreml --use_webgpu --build_dir ${{ github.workspace }} --skip_submodule_sync --parallel --use_vcpkg --use_vcpkg_ms_internal_asset_cache --use_binskim_compliant_compile_flags --build_shared_lib --config Release --use_vcpkg --use_vcpkg_ms_internal_asset_cache
+
+    - name: Build (build.py --build)
+      shell: bash
+      run: |
+        set -e -x
+        python3 ${{ github.workspace }}/tools/ci_build/build.py --build --build_objc --build_wheel --use_xnnpack --build_nodejs --build_java --use_coreml --use_webgpu --build_dir ${{ github.workspace }} --skip_submodule_sync --parallel --use_vcpkg --use_vcpkg_ms_internal_asset_cache --use_binskim_compliant_compile_flags --build_shared_lib --config Release --use_vcpkg --use_vcpkg_ms_internal_asset_cache
+
+    - name: Install
+      shell: bash
+      run: |
+        set -e -x
+        cd ${{ github.workspace }}/Release
+        make install DESTDIR=${{ github.workspace }}/installed
+
+    - name: Running Tests (build.py --test)
+      shell: bash
+      run: |
+        set -e -x
+        python3 ${{ github.workspace }}/tools/ci_build/build.py --test --build_objc --build_wheel --use_xnnpack --build_nodejs --build_java --use_coreml --use_webgpu --build_dir ${{ github.workspace }} --skip_submodule_sync --parallel --use_binskim_compliant_compile_flags --build_shared_lib --config Release --use_vcpkg --use_vcpkg_ms_internal_asset_cache
+
+    - name: Copy build artifacts for zipping
+      uses: ./tools/ci_build/github/linux/copy_strip_binary.sh
+      with:
+        args: -r ${{ github.workspace }} -a onnxruntime-osx-x86_64-${{ env.OnnxRuntimeVersion }} -l libonnxruntime.${{ env.OnnxRuntimeVersion }}.dylib -c Release -s ${{ github.workspace }} -t ${{ env.OnnxRuntimeGitCommitHash }}
+      working-directory: ${{ github.workspace }}/Release
+
+    - name: Archive build artifacts
+      uses: actions/upload-artifact@v4
+      with:
+         name: onnxruntime-osx-x86_64
+         path: ${{ github.workspace }}/onnxruntime-osx-x86_64-${{ env.OnnxRuntimeVersion }}
+
+    - name: Copy libcustom_op_library.dylib to ArtifactStagingDirectory
+      shell: bash
+      run: |
+        set -e -x
+        mkdir -p ${{ runner.temp }}/testdata
+        cp ${{ github.workspace }}/Release/libcustom_op_library.dylib ${{ runner.temp }}/testdata
+
+    - name: Upload libcustom_op_library
+      uses: actions/upload-artifact@v4
+      with:
+        name: onnxruntime-osx-x86_64-extra-libs
+        path: ${{ runner.temp }}/testdata
+
+    - name: Copy build artifacts for zipping
+      uses: ./tools/ci_build/github/linux/java_copy_strip_binary.sh
+      with:
+        args: -r ${{ github.workspace }} -c Release -a onnxruntime-java-osx-x86_64 -l libonnxruntime.dylib -n libonnxruntime4j_jni.dylib -v ${{ env.OnnxRuntimeVersion }} -h osx-x86_64
+      working-directory: ${{ github.workspace }}/Release
+    - name: Upload java build artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: drop-onnxruntime-java-osx-x86_64
+        path: ${{ github.workspace }}/onnxruntime-java-osx-x86_64
+
+    - name: Upload nodejs build artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: drop-onnxruntime-nodejs-osx-x86_64
+        path: ${{ github.workspace }}/js/node/bin/napi-v3/darwin/x64/onnxruntime_binding.node
+    timeout-minutes: 300
+    env:
+      MACOSX_DEPLOYMENT_TARGET: '13.3'
+      ALLOW_RELEASED_ONNX_OPSET_ONLY: '0'
+
   ARM64-Xcode16:
     runs-on: macos-15
 
