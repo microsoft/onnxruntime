@@ -88,7 +88,7 @@ extends:
     sdl:
       binskim:
         enabled: true
-        AnalyzeTargetGlobs: $(Build.ArtifactStagingDirectory)/**.dll
+        AnalyzeTargetGlob: $(Build.ArtifactStagingDirectory)/**.dll
       sourceAnalysisPool:
         name: onnxruntime-Win-CPU-2022
         os: windows
@@ -97,7 +97,7 @@ extends:
         - repository: onnxruntime-inference-examples
       spotBugs:
         enabled: false
-        justificationForDisabling: "Getting ##[error]1. SpotBugs Error gdn.unknownFormatResult - File: spotbugs.xml, which indicates that SpotBugs found one or more errors, which are not handled by the Guardian right now."
+        justificationForDisabling: "Getting ##[error1. SpotBugs Error gdn.unknownFormatResult - File: spotbugs.xml, which indicates that SpotBugs found one or more errors, which are not handled by the Guardian right now."
     stages:
     # Set ReleaseVersionSuffix
     - template: stages/set_packaging_variables_stage.yml
