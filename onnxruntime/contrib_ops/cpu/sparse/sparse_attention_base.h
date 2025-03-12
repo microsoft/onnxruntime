@@ -88,28 +88,28 @@ class SparseAttentionBase {
           batch_size, sequence_length, parameters.total_sequence_length,
           past_buffer_sequence_length, present_buffer_sequence_length, head_size,
           past_key->Data<T>(), present_key->MutableData<T>(), past_present_share_buffer, packed_qkv,
-          block_row_indices->Data<int32_t>(), block_col_indices->Data<int32_t>(), parameters, tp);
+          block_row_indices->Data<int32_t>(), block_col_indices->Data<int32_t>(), parameters, tp, allocator);
 
       ComputeVxAttentionScore(
           output->MutableData<T>(), static_cast<T*>(attention_probs), v,
           total_key_lengths->Data<int32_t>(),
           batch_size, sequence_length, parameters.total_sequence_length,
           past_buffer_sequence_length, present_buffer_sequence_length, head_size, parameters.hidden_size,
-          past_value->Data<T>(), present_value->MutableData<T>(), past_present_share_buffer, packed_qkv, tp);
+          past_value->Data<T>(), present_value->MutableData<T>(), past_present_share_buffer, packed_qkv, tp, allocator);
     } else {
       ComputeAttentionProbs(
           static_cast<float*>(attention_probs), Q, k, total_key_lengths->Data<int32_t>(),
           batch_size, sequence_length, parameters.total_sequence_length,
           past_buffer_sequence_length, present_buffer_sequence_length, head_size,
           past_key->Data<T>(), present_key->MutableData<T>(), past_present_share_buffer, packed_qkv,
-          block_row_indices->Data<int32_t>(), block_col_indices->Data<int32_t>(), parameters, tp);
+          block_row_indices->Data<int32_t>(), block_col_indices->Data<int32_t>(), parameters, tp, allocator);
 
       ComputeVxAttentionScore(
           output->MutableData<T>(), static_cast<float*>(attention_probs), v,
           total_key_lengths->Data<int32_t>(),
           batch_size, sequence_length, parameters.total_sequence_length,
           past_buffer_sequence_length, present_buffer_sequence_length, head_size, parameters.hidden_size,
-          past_value->Data<T>(), present_value->MutableData<T>(), past_present_share_buffer, packed_qkv, tp);
+          past_value->Data<T>(), present_value->MutableData<T>(), past_present_share_buffer, packed_qkv, tp, allocator);
     }
 
     return Status::OK();
@@ -138,7 +138,8 @@ class SparseAttentionBase {
       const int32_t* block_row_indices,       // block row indices
       const int32_t* block_col_indices,       // block column indices
       SparseAttentionParameters& parameters,  // parameters
-      ThreadPool* tp) const {                 // thread pool
+      ThreadPool* tp,                         // thread pool
+      AllocatorPtr allocator) const {
     const bool is_prompt = (total_sequence_length == sequence_length);
     const ptrdiff_t packed_batch_stride =
         packed_qkv ? SafeInt<ptrdiff_t>(num_heads_ + 2 * kv_num_heads_) * sequence_length * head_size
@@ -367,7 +368,8 @@ class SparseAttentionBase {
                                T* present_value,                    // present value only
                                bool past_present_share_buffer,      // whether past_key and present_key share the buffer
                                bool packed_qkv,                     // whether Q, K, V are packed
-                               ThreadPool* tp) const {
+                               ThreadPool* tp,
+                               AllocatorPtr allocator) const {
     const bool is_prompt = sequence_length == total_sequence_length;
     const ptrdiff_t packed_batch_stride =
         packed_qkv ? SafeInt<ptrdiff_t>(num_heads_ + 2 * kv_num_heads_) * sequence_length * head_size
