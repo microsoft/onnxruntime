@@ -11,6 +11,8 @@
     "test": "jest"
   },
   "dependencies": {
+    "onnxruntime-common": "file:onnxruntime-common.tgz",
+    "onnxruntime-react-native": "file:onnxruntime-react-native.tgz",
     "react": "^18.2.0",
     "react-native": "^0.73.11",
     "react-native-fs": "^2.20.0"

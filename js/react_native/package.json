@@ -82,7 +82,8 @@
   "scripts": {
     "typescript": "tsc --noEmit",
     "prepare": "bob build",
-    "bootstrap": "npm run pack-common && npm run unpack-common && npm run pack-libs && npm run unpack-libs && npm run e2e && npm run pods",
+    "bootstrap-no-pods": "npm run pack-common && npm run unpack-common && npm run pack-libs && npm run unpack-libs && npm run e2e",
+    "bootstrap": "npm run bootstrap-no-pods && npm run pods",
     "test": "jest",
     "pack-common": "cd ../common && npm pack && mv -f onnxruntime-common-*.tgz ../react_native/e2e/onnxruntime-common.tgz",
     "unpack-common": "cd e2e && npm install ./onnxruntime-common.tgz",
@@ -90,7 +91,7 @@
     "unpack-libs": "cd e2e && npm install ./onnxruntime-react-native.tgz",
     "prepack": "tsc --build ./tsconfig.scripts.json && node ./scripts/prepack",
     "pods": "cd e2e && npx pod-install --quiet",
-    "e2e": "npm --prefix e2e install"
+    "e2e": "npm --prefix e2e ci"
   },
   "types": "dist/typescript/index.d.ts",
   "name": "onnxruntime-react-native",
