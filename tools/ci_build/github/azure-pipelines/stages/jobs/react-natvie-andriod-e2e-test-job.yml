@@ -61,7 +61,7 @@ jobs:
       targetFolder: $(Build.SourcesDirectory)/js/react_native/android/libs
     displayName: Copy Android package to React Native directory
 
-  - template: jobs/steps/react-native-bootstrap-steps.yml
+  - template: steps/react-native-bootstrap-steps.yml
 
   - script: |
       keytool -genkey -v -keystore debug.keystore -alias androiddebugkey -storepass android \
