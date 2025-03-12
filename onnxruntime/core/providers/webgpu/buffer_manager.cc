@@ -7,9 +7,19 @@
 namespace onnxruntime {
 namespace webgpu {
 
+namespace {
+
 constexpr size_t NormalizeBufferSize(size_t size) {
   return (size + 15) / 16 * 16;
 }
+
+void EnforceBufferUnmapped(WebGpuContext& context, WGPUBuffer buffer) {
+  if (context.ValidationMode() > ValidationMode::Basic) {
+    ORT_ENFORCE(wgpuBufferGetMapState(buffer) == WGPUBufferMapState_Unmapped, "Buffer is still mapped.");
+  }
+}
+
+}  // namespace anonymous
 
 class DisabledCacheManager : public IBufferCacheManager {
   size_t CalculateBufferSize(size_t request_size) override {
@@ -274,8 +284,8 @@ void BufferManager::Upload(void* src, WGPUBuffer dst, size_t size) {
 
 void BufferManager::MemCpy(WGPUBuffer src, WGPUBuffer dst, size_t size) {
   ORT_ENFORCE(src != dst, "Source and destination buffers must be different.");
-  ORT_ENFORCE(wgpuBufferGetMapState(src) == WGPUBufferMapState_Unmapped, "Source buffer must be unmapped.");
-  ORT_ENFORCE(wgpuBufferGetMapState(dst) == WGPUBufferMapState_Unmapped, "Destination buffer must be unmapped.");
+  EnforceBufferUnmapped(context_, src);
+  EnforceBufferUnmapped(context_, dst);
 
   auto buffer_size = NormalizeBufferSize(size);
   ORT_ENFORCE(buffer_size <= wgpuBufferGetSize(src) && buffer_size <= wgpuBufferGetSize(dst),
@@ -328,12 +338,12 @@ WGPUBuffer BufferManager::CreateUMA(size_t size, wgpu::BufferUsage usage) {
 }
 
 void BufferManager::Release(WGPUBuffer buffer) {
-  ORT_ENFORCE(wgpuBufferGetMapState(buffer) == WGPUBufferMapState_Unmapped, "Buffer must be unmapped before releasing.");
+  EnforceBufferUnmapped(context_, buffer);
   GetCacheManager(buffer).ReleaseBuffer(buffer);
 }
 
 void BufferManager::Download(WGPUBuffer src, void* dst, size_t size) {
-  ORT_ENFORCE(wgpuBufferGetMapState(src) == WGPUBufferMapState_Unmapped, "Source buffer must be unmapped.");
+  EnforceBufferUnmapped(context_, src);
   auto buffer_size = NormalizeBufferSize(size);
 
   wgpu::BufferDescriptor desc{};

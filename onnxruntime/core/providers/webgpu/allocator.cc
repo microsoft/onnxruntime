@@ -35,9 +35,8 @@ void GpuBufferAllocator::GetStats(AllocatorStats* stats) {
   *stats = stats_;
 }
 
-Status GpuBufferAllocator::OnSessionInitializationEnd() {
+void GpuBufferAllocator::OnSessionInitializationEnd() {
   session_initialized_ = true;
-  return Status::OK();
 }
 
 }  // namespace webgpu

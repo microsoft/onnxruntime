@@ -78,8 +78,6 @@ class BufferManager {
   std::unique_ptr<IBufferCacheManager> uniform_cache_;
   std::unique_ptr<IBufferCacheManager> query_resolve_cache_;
   std::unique_ptr<IBufferCacheManager> default_cache_;
-
-  bool session_initialized_ = false;
 };
 
 class BufferManagerFactory {
