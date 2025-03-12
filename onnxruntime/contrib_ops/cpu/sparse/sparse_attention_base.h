@@ -67,7 +67,10 @@ class SparseAttentionBase {
     int present_buffer_sequence_length = static_cast<int>(present_key->Shape().GetDims()[2]);
 
     // Allocate a buffer to store Softmax(QK)
-    size_t bytes = SafeInt<size_t>(batch_size) * num_heads_ * sequence_length * parameters.total_sequence_length * sizeof(T);
+    bool attention_mlas_supported = MlasGQASupported<T>(CblasNoTrans, CblasTrans) &&
+                                    MlasGQASupported<T>(CblasNoTrans, CblasNoTrans);
+    size_t bytes = SafeInt<size_t>(batch_size) * num_heads_ * sequence_length * parameters.total_sequence_length *
+                   (attention_mlas_supported ? sizeof(T) : sizeof(float));
     auto attention_probs = allocator->Alloc(bytes);
     BufferUniquePtr scratch_buffer(attention_probs, BufferDeleter(allocator));
 
@@ -77,21 +80,38 @@ class SparseAttentionBase {
     auto* tp = context->GetOperatorThreadPool();
 
     const T* k = packed_qkv ? Q + num_heads_ * sequence_length * head_size : K;
-    ComputeAttentionProbs<T>(
+    const T* v = packed_qkv ? Q + (num_heads_ + kv_num_heads_) * sequence_length * head_size : V;
+
+    if (attention_mlas_supported) {
+      ComputeAttentionProbs(
         static_cast<T*>(attention_probs), Q, k, total_key_lengths->Data<int32_t>(),
         batch_size, sequence_length, parameters.total_sequence_length,
         past_buffer_sequence_length, present_buffer_sequence_length, head_size,
         past_key->Data<T>(), present_key->MutableData<T>(), past_present_share_buffer, packed_qkv,
         block_row_indices->Data<int32_t>(), block_col_indices->Data<int32_t>(), parameters, tp);
 
-    // Compute the attentionScore * Value: out(B, N, S, H_v) = attention_probs(B, N, S, T) x V(B, N, T, H_v)
-    const T* v = packed_qkv ? Q + (num_heads_ + kv_num_heads_) * sequence_length * head_size : V;
-    ComputeVxAttentionScore<T>(
+      ComputeVxAttentionScore(
         output->MutableData<T>(), static_cast<T*>(attention_probs), v,
         total_key_lengths->Data<int32_t>(),
         batch_size, sequence_length, parameters.total_sequence_length,
         past_buffer_sequence_length, present_buffer_sequence_length, head_size, parameters.hidden_size,
         past_value->Data<T>(), present_value->MutableData<T>(), past_present_share_buffer, packed_qkv, tp);
+    } else {
+      ComputeAttentionProbs(
+        static_cast<float*>(attention_probs), Q, k, total_key_lengths->Data<int32_t>(),
+        batch_size, sequence_length, parameters.total_sequence_length,
+        past_buffer_sequence_length, present_buffer_sequence_length, head_size,
+        past_key->Data<T>(), present_key->MutableData<T>(), past_present_share_buffer, packed_qkv,
+        block_row_indices->Data<int32_t>(), block_col_indices->Data<int32_t>(), parameters, tp);
+
+      ComputeVxAttentionScore(
+        output->MutableData<T>(), static_cast<float*>(attention_probs), v,
+        total_key_lengths->Data<int32_t>(),
+        batch_size, sequence_length, parameters.total_sequence_length,
+        past_buffer_sequence_length, present_buffer_sequence_length, head_size, parameters.hidden_size,
+        past_value->Data<T>(), present_value->MutableData<T>(), past_present_share_buffer, packed_qkv, tp);
+    }
+
 
     return Status::OK();
   }
@@ -100,9 +120,9 @@ class SparseAttentionBase {
   // Helper function to compute the attention probs. It does 2 things:
   //  attention_probs(B, N, S, T) = 1/sqrt(H) x Q(B, N, S, H) x K'(B, N, T, H -> B, N, H, T)
   //  attention_probs(B, N, S, T) = Softmax(attention_probs)
-  template <typename T>
+  template <typename T, typename U>
   void ComputeAttentionProbs(
-      T* attention_probs,                     // output buffer with size BxNxSxT
+      U* attention_probs,                     // output buffer with size BxNxSxT
       const T* Q,                             // query start pointer
       const T* K,                             // key start pointer
       const int32_t* total_key_lengths,       // total key sequence lengths (past + new)
@@ -299,9 +319,9 @@ class SparseAttentionBase {
     });
   }
 
-  template <typename T>
+  template <typename T, typename U>
   void ComputeVxAttentionScore(T* output,                           // buffer for the result with size BxSxNxH
-                               const T* attention_probs,            // Softmax of Q*K' with size BxNxSxT
+                               const U* attention_probs,            // Softmax of Q*K' with size BxNxSxT
                                const T* V,                          // v value with size BxN_kvxSxH
                                const int32_t* total_key_lengths,    // total sequence lengths
                                int batch_size,                      // batch size
