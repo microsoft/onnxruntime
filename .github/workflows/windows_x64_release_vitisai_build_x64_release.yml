@@ -92,7 +92,6 @@ jobs:
         Remove-Item "${{ github.workspace }}\build\RelWithDebInfo" -Include "*.obj" -Recurse
       env:
         ALLOW_RELEASED_ONNX_OPSET_ONLY: '0'
-        VCPKG_BINARY_SOURCES: "clear;x-gha,readwrite"
 
     - name: Validate C# native delegates
       shell: cmd

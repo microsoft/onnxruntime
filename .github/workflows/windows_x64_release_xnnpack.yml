@@ -93,7 +93,6 @@ jobs:
       env:
         ALLOW_RELEASED_ONNX_OPSET_ONLY: '0'
         DocUpdateNeeded: 'false'
-        VCPKG_BINARY_SOURCES: "clear;x-gha,readwrite"
 
     - name: Validate C# native delegates
       shell: cmd

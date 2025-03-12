@@ -42,8 +42,6 @@ jobs:
 
     - name: Build and Test (Combined)
       shell: cmd
-      env: 
-        VCPKG_BINARY_SOURCES: "clear;x-gha,readwrite"    
       run: |
         @echo off
         echo %PATH%
