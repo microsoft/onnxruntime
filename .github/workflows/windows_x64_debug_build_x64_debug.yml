@@ -120,5 +120,3 @@ jobs:
       OrtPackageId: Microsoft.ML.OnnxRuntime
       OnnxRuntimeBuildDirectory: ${{ github.workspace }}\build
       DOTNET_SKIP_FIRST_TIME_EXPERIENCE: 'true'
-      TODAY: ${{ format('{0:dd}{0:MM}{0:yyyy}', github.event.head_commit.timestamp) }} # Or a different suitable date
-      workspace_clean: all # This seems to be unused
