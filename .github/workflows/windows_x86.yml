@@ -125,4 +125,4 @@ jobs:
     env:
       OrtPackageId: Microsoft.ML.OnnxRuntime
       OnnxRuntimeBuildDirectory: ${{ github.workspace }}\build
-      DOTNET_SKIP_FIRST_TIME_EXPERIENCE: 'true
+      DOTNET_SKIP_FIRST_TIME_EXPERIENCE: 'true'
