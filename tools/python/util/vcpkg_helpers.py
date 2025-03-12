@@ -365,73 +365,74 @@ def generate_vcpkg_triplets_for_emscripten(build_dir: str, emscripten_root: str)
         emscripten_root (str): The root path of Emscripten.
     """
     for enable_wasm_exception_catching in [True, False]:
-      for enable_rtti in [True, False]:
-        for enable_asan in [True, False]:
-            for target_abi in ["wasm32", "wasm64"]:
-                folder_name_parts = []
-                if enable_asan:
-                    folder_name_parts.append("asan")
-                folder_name = "default" if len(folder_name_parts) == 0 else "_".join(folder_name_parts)
-                os_name = "emscripten"
-                folder_name_parts = []
-                if enable_asan:
-                    folder_name_parts.append("asan")
-                if not enable_rtti:
-                    folder_name_parts.append("nortti")
-                if enable_wasm_exception_catching:
-                    folder_name_parts.append("exception_catching")
-                folder_name = "default" if len(folder_name_parts) == 0 else "_".join(folder_name_parts)
-                file_name = f"{target_abi}-{os_name}.cmake"
-                dest_path = Path(build_dir) / folder_name / file_name
-                os.makedirs(dest_path.parent, exist_ok=True)
-                with open(dest_path, "w", encoding="utf-8") as f:
-                    add_copyright_header(f)
-                    f.write(r"""
+        for enable_rtti in [True, False]:
+            for enable_asan in [True, False]:
+                for target_abi in ["wasm32", "wasm64"]:
+                    folder_name_parts = []
+                    if enable_asan:
+                        folder_name_parts.append("asan")
+                    folder_name = "default" if len(folder_name_parts) == 0 else "_".join(folder_name_parts)
+                    os_name = "emscripten"
+                    folder_name_parts = []
+                    if enable_asan:
+                        folder_name_parts.append("asan")
+                    if not enable_rtti:
+                        folder_name_parts.append("nortti")
+                    if enable_wasm_exception_catching:
+                        folder_name_parts.append("exception_catching")
+                    folder_name = "default" if len(folder_name_parts) == 0 else "_".join(folder_name_parts)
+                    file_name = f"{target_abi}-{os_name}.cmake"
+                    dest_path = Path(build_dir) / folder_name / file_name
+                    os.makedirs(dest_path.parent, exist_ok=True)
+                    with open(dest_path, "w", encoding="utf-8") as f:
+                        add_copyright_header(f)
+                        f.write(r"""
     set(VCPKG_CRT_LINKAGE dynamic)
     set(VCPKG_LIBRARY_LINKAGE static)
     set(VCPKG_CMAKE_SYSTEM_NAME Emscripten)
     """)
-                    f.write(f"set(VCPKG_TARGET_ARCHITECTURE {target_abi})\n")
-                    emscripten_root_path_cmake_path = emscripten_root.replace("\\", "/")
-                    f.write(f'set(EMSCRIPTEN_ROOT_PATH "{emscripten_root_path_cmake_path}")\n')
-                    vcpkg_toolchain_file = (Path(build_dir) / "emsdk_vcpkg_toolchain.cmake").absolute()
-                    vcpkg_toolchain_file_cmake_path = str(vcpkg_toolchain_file).replace("\\", "/")
-                    f.write(f'set(VCPKG_CHAINLOAD_TOOLCHAIN_FILE "{vcpkg_toolchain_file_cmake_path}")\n')
-                    cflags_release = ["-DNDEBUG", "-O3", "-pthread"]
-                    ldflags = []
-                    cflags = [
-                        "-ffunction-sections",
-                        "-fdata-sections",
-                        "-msimd128",
-                        "-pthread",
-                        "-Wno-pthreads-mem-growth",
-                    ]
-                    if enable_wasm_exception_catching:
-                        cflags.append("-sDISABLE_EXCEPTION_CATCHING=0")
-                    if enable_asan:
-                        cflags += ["-fsanitize=address"]
-                        ldflags += ["-fsanitize=address"]
-                    if target_abi == "wasm64":
-                        cflags.append("-sMEMORY64")
-                        ldflags.append("-sMEMORY64")
-                    if len(ldflags) >= 1:
-                        f.write('set(VCPKG_LINKER_FLAGS "{}")\n'.format(" ".join(ldflags)))
-                    if not enable_rtti:
-                        cflags.append("-DEMSCRIPTEN_HAS_UNBOUND_TYPE_NAMES=0")
-                    cxxflags = cflags.copy()
-                    if not enable_rtti:
-                        cxxflags.append("-fno-rtti")
-                    if cflags:
-                        f.write(f'set(VCPKG_C_FLAGS "{" ".join(cflags)}")\n')
-                    if cxxflags:
-                        f.write(f'set(VCPKG_CXX_FLAGS "{" ".join(cxxflags)}")\n')
-                    if cflags_release:
-                        cflags_release += cflags
-                        f.write(f'set(VCPKG_C_FLAGS_RELEASE "{" ".join(cflags_release)}")\n')
-                        f.write(f'set(VCPKG_CXX_FLAGS_RELEASE "{" ".join(cflags_release)}")\n')
-                        f.write(f'set(VCPKG_C_FLAGS_RELWITHDEBINFO "{" ".join(cflags_release)}")\n')
-                        f.write(f'set(VCPKG_CXX_FLAGS_RELWITHDEBINFO "{" ".join(cflags_release)}")\n')
-                    add_port_configs(f, True, True)
+                        f.write(f"set(VCPKG_TARGET_ARCHITECTURE {target_abi})\n")
+                        emscripten_root_path_cmake_path = emscripten_root.replace("\\", "/")
+                        f.write(f'set(EMSCRIPTEN_ROOT_PATH "{emscripten_root_path_cmake_path}")\n')
+                        vcpkg_toolchain_file = (Path(build_dir) / "emsdk_vcpkg_toolchain.cmake").absolute()
+                        vcpkg_toolchain_file_cmake_path = str(vcpkg_toolchain_file).replace("\\", "/")
+                        f.write(f'set(VCPKG_CHAINLOAD_TOOLCHAIN_FILE "{vcpkg_toolchain_file_cmake_path}")\n')
+                        cflags_release = ["-DNDEBUG", "-O3", "-pthread"]
+                        ldflags = []
+                        cflags = [
+                            "-ffunction-sections",
+                            "-fdata-sections",
+                            "-msimd128",
+                            "-pthread",
+                            "-Wno-pthreads-mem-growth",
+                        ]
+                        if enable_wasm_exception_catching:
+                            cflags.append("-sDISABLE_EXCEPTION_CATCHING=0")
+                        if enable_asan:
+                            cflags += ["-fsanitize=address"]
+                            ldflags += ["-fsanitize=address"]
+                        if target_abi == "wasm64":
+                            cflags.append("-sMEMORY64")
+                            ldflags.append("-sMEMORY64")
+                        if len(ldflags) >= 1:
+                            f.write('set(VCPKG_LINKER_FLAGS "{}")\n'.format(" ".join(ldflags)))
+                        if not enable_rtti:
+                            cflags.append("-DEMSCRIPTEN_HAS_UNBOUND_TYPE_NAMES=0")
+                        cxxflags = cflags.copy()
+                        if not enable_rtti:
+                            cxxflags.append("-fno-rtti")
+                        if cflags:
+                            f.write(f'set(VCPKG_C_FLAGS "{" ".join(cflags)}")\n')
+                        if cxxflags:
+                            f.write(f'set(VCPKG_CXX_FLAGS "{" ".join(cxxflags)}")\n')
+                        if cflags_release:
+                            cflags_release += cflags
+                            f.write(f'set(VCPKG_C_FLAGS_RELEASE "{" ".join(cflags_release)}")\n')
+                            f.write(f'set(VCPKG_CXX_FLAGS_RELEASE "{" ".join(cflags_release)}")\n')
+                            f.write(f'set(VCPKG_C_FLAGS_RELWITHDEBINFO "{" ".join(cflags_release)}")\n')
+                            f.write(f'set(VCPKG_CXX_FLAGS_RELWITHDEBINFO "{" ".join(cflags_release)}")\n')
+                        add_port_configs(f, True, True)
+
 
 def generate_windows_triplets(build_dir: str) -> None:
     """
