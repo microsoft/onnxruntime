@@ -61,26 +61,7 @@ jobs:
       targetFolder: $(Build.SourcesDirectory)/js/react_native/android/libs
     displayName: Copy Android package to React Native directory
 
-  - script: |
-      npm ci
-    workingDirectory: '$(Build.SourcesDirectory)/js'
-    displayName: npm ci js
-
-  - script: |
-      npm ci
-    workingDirectory: '$(Build.SourcesDirectory)/js/common'
-    displayName: npm ci js/common
-
-  - script: |
-      npm run bootstrap
-      npm ci
-    workingDirectory: '$(Build.SourcesDirectory)/js/react_native'
-    displayName: bootstrap react_native
-
-  - script: |
-      npm install jest-junit
-    workingDirectory: '$(Build.SourcesDirectory)/js/react_native/e2e'
-    displayName: install jest junit reporter js/react_native/e2e
+  - template: jobs/steps/react-native-bootstrap-steps.yml
 
   - script: |
       keytool -genkey -v -keystore debug.keystore -alias androiddebugkey -storepass android \
@@ -94,10 +75,6 @@ jobs:
       contents: onnxruntime-*.aar
       targetFolder: $(Build.SourcesDirectory)/js/react_native/e2e/android/app/libs
     displayName: Copy Android package to Android e2e test directory
-
-  - script: |
-      npm install -g detox-cli
-    displayName: Install detox cli tools
 
   - script: |
       detox build --configuration android.emu.release
@@ -175,6 +152,7 @@ jobs:
       contents: onnxruntime-react-native*.tgz
       targetFolder: $(Build.ArtifactStagingDirectory)
     displayName: Create Artifacts onnxruntime-react-native
+
   - ${{ if eq(parameters.is1ES, true) }}:
     - task: 1ES.PublishPipelineArtifact@1
       inputs:

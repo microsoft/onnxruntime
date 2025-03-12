@@ -120,11 +120,6 @@ stages:
     - script:
         brew install coreutils ninja npm
       displayName: Install coreutils, ninja, npm
-
-    - script:
-        npm install -g detox-cli
-      displayName: Install detox cli tools
-
     - script:
         brew tap wix/brew
       displayName: brew tap wix/brew
@@ -133,26 +128,7 @@ stages:
         brew install applesimutils
       displayName: Install applesimutils tools required by detox ios
 
-    - script: |
-        npm ci
-      workingDirectory: '$(Build.SourcesDirectory)/js'
-      displayName: npm ci js
-
-    - script: |
-        npm ci
-      workingDirectory: '$(Build.SourcesDirectory)/js/common'
-      displayName: npm ci js/common
-
-    - script: |
-        npm run bootstrap
-        npm ci
-      workingDirectory: '$(Build.SourcesDirectory)/js/react_native'
-      displayName: bootstrap react_native
-
-    - script: |
-        npm install --save-dev jest-junit
-      workingDirectory: '$(Build.SourcesDirectory)/js/react_native/e2e'
-      displayName: install jest junit reporter js/react_native/e2e
+    - template: ../stages/jobs/steps/react-native-bootstrap-steps.yml
 
     - script: |
         ORT_C_LOCAL_POD_PATH=$(Build.BinariesDirectory)/ios-full-pod/onnxruntime-c \
