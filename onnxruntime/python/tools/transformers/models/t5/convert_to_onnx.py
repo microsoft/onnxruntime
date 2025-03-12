@@ -109,9 +109,17 @@ def parse_arguments():
         "--disable_auto_mixed_precision",
         required=False,
         action="store_true",
-        help="use pure fp16 instead of mixed precision",
+        help="do not use auto mixed precision conversion",
     )
     parser.set_defaults(disable_auto_mixed_precision=False)
+
+    parser.add_argument(
+        "--force_fp16_io",
+        required=False,
+        action="store_true",
+        help="Force to convert all float inputs and outputs to fp16 when precision is fp16.",
+    )
+    parser.set_defaults(force_fp16_io=False)
 
     parser.add_argument(
         "--use_int64_inputs",
@@ -157,6 +165,7 @@ def export_onnx_models(
     model_type: str = "t5",
     state_dict_path: str = "",
     encode_decoder_init: bool = False,
+    force_fp16_io: bool = False,
 ):
     device = torch.device("cuda:0" if use_gpu else "cpu")
 
@@ -221,6 +230,7 @@ def export_onnx_models(
                     use_external_data_format,
                     auto_mixed_precision=not disable_auto_mixed_precision,
                     use_gpu=use_gpu,
+                    force_fp16_io=force_fp16_io,
                 )
             else:
                 logger.info(f"Skip optimizing: existed ONNX model {onnx_path}")
@@ -279,6 +289,7 @@ def main():
         not args.use_int64_inputs,
         args.model_type,
         encode_decoder_init=args.encode_decoder_init,
+        force_fp16_io=args.force_fp16_io,
     )
 
     logger.info(f"Done! Outputs: {output_paths}")

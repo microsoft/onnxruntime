@@ -144,12 +144,14 @@ class T5Helper:
             "Relu",
             "Add",
         ],
+        force_fp16_logits: bool = False,
     ):
         """Convert model to mixed precision.
            It detects whether original model has fp16 precision weights, and set parameters for float16 conversion automatically.
         Args:
             onnx_model (OnnxModel): optimized ONNX model
             op_block_list (List[str], optional): . Defaults to ["SimplifiedLayerNormalization", "SkipSimplifiedLayerNormalization", "Relu", "Add"]
+            force_fp16_logits (bool, optional): force logits and last MatMul node to be in float16. Defaults to False.
         Returns:
             parameters(dict): a dictionary of parameters used in float16 conversion
         """
@@ -186,7 +188,7 @@ class T5Helper:
 
         keep_io_types = []
         node_block_list = []
-        if (not is_weight_fp16_precision) and (last_matmul_node is not None):
+        if (not is_weight_fp16_precision) and (last_matmul_node is not None) and not force_fp16_logits:
             # When original weight is float32 precision, keep logits and last MatMul in float32 could get better precision.
             keep_io_types = [logits_output_name]
             node_block_list = [last_matmul_node.name]
@@ -213,6 +215,7 @@ class T5Helper:
         use_external_data_format: bool = False,
         auto_mixed_precision: bool = True,
         use_gpu: bool = False,
+        force_fp16_io: bool = False,
     ):
         """Optimize ONNX model with an option to convert it to use mixed precision."""
 
@@ -236,9 +239,9 @@ class T5Helper:
 
         if is_float16:
             if auto_mixed_precision:
-                T5Helper.auto_mixed_precision(m)
+                T5Helper.auto_mixed_precision(m, force_fp16_logits=force_fp16_io)
             else:
-                m.convert_model_float32_to_float16(cast_input_output=False)
+                m.convert_model_float32_to_float16(cast_input_output=force_fp16_io)
 
         m.save_model_to_file(optimized_model_path, use_external_data_format, all_tensors_to_one_file=True)
 
