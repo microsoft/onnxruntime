@@ -119,6 +119,15 @@ See more information on the TensorRT Execution Provider [here](../execution-prov
          * Select the commit of [onnx-tensorrt](https://github.com/onnx/onnx-tensorrt/commits) that you preferred;
          * Run `sha1sum` command with downloaded onnx-tensorrt zip file to acquire the SHA1 hash 
          * Update [cmake/deps.txt](https://github.com/microsoft/onnxruntime/blob/main/cmake/deps.txt) with updated onnx-tensorrt commit and hash info.
+   * To avoid compatibility issue, it's suggested to keep TensorRT built-in/oss-tensorrt parser version encoded in [cmake/deps.txt](https://github.com/microsoft/onnxruntime/blob/main/cmake/deps.txt) the same
+
+### [Note to Windows users who would like to build ORT under Debug mode]
+
+* `--use_tensorrt_oss_parser` will be enabled by default
+  * As TensorRT built-in parser only supports release build
+  * Open-sourced onnx-tensorrt parser encoded in [cmake/deps.txt](https://github.com/microsoft/onnxruntime/blob/main/cmake/deps.txt) will be used
+* Please make sure TensorRT built-in parser/open-sourced onnx-tensorrt encoded in [cmake/deps.txt](https://github.com/microsoft/onnxruntime/blob/main/cmake/deps.txt) are version-matched.
+  * i.e It's version-matched to use TensorRT-10.8 built-in binaries and onnx-tensorrt links against 10.8-GA branch under cmake/deps.txt.
 
 ### **[Note to ORT 1.21.0 open-sourced parser users]** 
 
