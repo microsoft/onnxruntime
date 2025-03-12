@@ -12,7 +12,7 @@ concurrency:
 
 jobs:
   build_x64_release:
-    runs-on: ["self-hosted", "1ES.Pool=onnxruntime-github-vs2022-mms"]
+    runs-on: ${{ github.repository == 'microsoft/onnxruntime' ? ["self-hosted", "1ES.Pool=onnxruntime-github-vs2022-mms"] : 'ubuntu-latest' }}
     timeout-minutes: 300
 
     steps:
