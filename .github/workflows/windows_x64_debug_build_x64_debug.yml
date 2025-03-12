@@ -1,4 +1,4 @@
-name: build_x64_debug
+name: windows_x64_debug
 
 on:
   push:

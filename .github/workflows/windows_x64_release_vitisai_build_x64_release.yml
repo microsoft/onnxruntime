@@ -1,4 +1,4 @@
-name: build_x64_release_vitisai
+name: windows_x64_release_vitisai
 
 on:
   push:

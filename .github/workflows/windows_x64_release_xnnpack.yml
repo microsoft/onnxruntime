@@ -1,4 +1,4 @@
-name: build_x64_release_xnnpack
+name: windows_x64_release_xnnpack
 
 on:
   push:

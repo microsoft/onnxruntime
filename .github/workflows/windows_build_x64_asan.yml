@@ -1,5 +1,5 @@
 # .github/workflows/build_x64_asan.yml
-name: build_x64_asan
+name: windows_x64_asan
 
 on:
   push:
