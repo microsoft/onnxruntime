@@ -17,7 +17,7 @@ These instructions demonstrate generating the Llama 3.2 3B model. You can use th
 
    Once signed up, configure your Qualcomm AI hub API token
 
-   Follow instructions shown here: https://app.aihub.qualcomm.com/docs/hub/getting_started.html#getting-started
+   Follow instructions shown here: [https://app.aihub.qualcomm.com/docs/hub/getting_started.html#getting-started]
 
 2. Install the [Qualcomm AI Engine Direct SDK](https://softwarecenter.qualcomm.com/#/catalog/item/qualcomm_neural_processing_sdk_public)
 
@@ -51,7 +51,7 @@ These instructions demonstrate generating the Llama 3.2 3B model. You can use th
    python -m qai_hub_models.models.llama_v3_2_3b_chat_quantized.export --device "Snapdragon X Elite CRD" --skip-inferencing --skip-profiling --output-dir .
    ```
 
-   More information on this step can be found at: https://github.com/quic/ai-hub-apps/tree/main/tutorials/llm_on_genie.
+   More information on this step can be found at: [https://github.com/quic/ai-hub-apps/tree/main/tutorials/llm_on_genie].
 
 ## Generate ONNX wrapper models
 
@@ -62,7 +62,13 @@ These instructions demonstrate generating the Llama 3.2 3B model. You can use th
    curl -LO https://raw.githubusercontent.com/microsoft/onnxruntime/refs/heads/main/onnxruntime/python/tools/qnn/gen_qnn_ctx_onnx_model.py
    ```
 
-2. Extract the QNN graph information from QNN context binary file, once for each model (.bin file)
+2. Install the `onnx` package
+
+   ```bash
+   pip install onnx
+   ```
+
+3. Extract the QNN graph information from QNN context binary file, once for each model (.bin file)
 
    Note: this script only runs on Linux with libc++-dev installed (from the setup section)
 
@@ -70,7 +76,7 @@ These instructions demonstrate generating the Llama 3.2 3B model. You can use th
    for bin_file in *.bin; do $QNN_SDK_ROOT/bin/x86_64-linux-clang/qnn-context-binary-utility --context_binary="$bin_file" --json_file="${bin_file%.bin}.json"; done
    ```
 
-3. Generate the ONNX wrapper models
+4. Generate the ONNX wrapper models
 
    Run the following command below to generate the ONNX wrapper models
 
@@ -92,7 +98,7 @@ These instructions demonstrate generating the Llama 3.2 3B model. You can use th
 
 ## Add other assets
 
-Download assets from https://huggingface.co/onnx-community/Llama-3.2-3B-instruct-hexagon-npu-assets 
+Download assets from [https://huggingface.co/onnx-community/Llama-3.2-3B-instruct-hexagon-npu-assets] 
 
 ## Check model assets
 
