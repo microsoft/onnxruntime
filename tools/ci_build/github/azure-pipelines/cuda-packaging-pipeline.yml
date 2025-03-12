@@ -88,7 +88,7 @@ extends:
     sdl:
       binskim:
         enabled: true
-        AnalyzeTargetGlob: $(Build.ArtifactStagingDirectory)/**.dll
+        analyzeTargetGlob: $(Build.ArtifactStagingDirectory)/**.dll
       sourceAnalysisPool:
         name: onnxruntime-Win-CPU-2022
         os: windows
