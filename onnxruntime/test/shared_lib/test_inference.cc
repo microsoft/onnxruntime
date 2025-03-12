@@ -2311,58 +2311,66 @@ TEST(CApiTest, basic_cuda_graph) {
   Ort::SessionOptions session_options;
 
 #if defined(USE_TENSORRT)
-  // Enable cuda graph in TRT provider option.
-  OrtTensorRTProviderOptionsV2* trt_options;
-  ASSERT_TRUE(api.CreateTensorRTProviderOptions(&trt_options) == nullptr);
-  std::unique_ptr<OrtTensorRTProviderOptionsV2, decltype(api.ReleaseTensorRTProviderOptions)>
-      rel_trt_options(trt_options, api.ReleaseTensorRTProviderOptions);
-  std::vector<const char*> keys{"trt_cuda_graph_enable"};
-  std::vector<const char*> values{"1"};
-  ASSERT_TRUE(api.UpdateTensorRTProviderOptions(rel_trt_options.get(), keys.data(), values.data(), keys.size()) == nullptr);
+  {
+    // Enable cuda graph in TRT provider option.
+    OrtTensorRTProviderOptionsV2* trt_options;
+    ASSERT_TRUE(api.CreateTensorRTProviderOptions(&trt_options) == nullptr);
+    std::unique_ptr<OrtTensorRTProviderOptionsV2, decltype(api.ReleaseTensorRTProviderOptions)>
+        rel_trt_options(trt_options, api.ReleaseTensorRTProviderOptions);
+    std::vector<const char*> keys{"trt_cuda_graph_enable"};
+    std::vector<const char*> values{"1"};
+    ASSERT_TRUE(api.UpdateTensorRTProviderOptions(rel_trt_options.get(), keys.data(), values.data(), keys.size()) == nullptr);
 
-  ASSERT_TRUE(api.SessionOptionsAppendExecutionProvider_TensorRT_V2(
-                  static_cast<OrtSessionOptions*>(session_options),
-                  rel_trt_options.get()) == nullptr);
+    ASSERT_TRUE(api.SessionOptionsAppendExecutionProvider_TensorRT_V2(
+                    static_cast<OrtSessionOptions*>(session_options),
+                    rel_trt_options.get()) == nullptr);
+  }
 #endif
 
 #if defined(USE_CUDA)
-  // Enable cuda graph in cuda provider option.
-  OrtCUDAProviderOptionsV2* cuda_options = nullptr;
-  ASSERT_TRUE(api.CreateCUDAProviderOptions(&cuda_options) == nullptr);
-  std::unique_ptr<OrtCUDAProviderOptionsV2, decltype(api.ReleaseCUDAProviderOptions)>
-      rel_cuda_options(cuda_options, api.ReleaseCUDAProviderOptions);
-  std::vector<const char*> keys{"enable_cuda_graph"};
-  std::vector<const char*> values{"1"};
-  ASSERT_TRUE(api.UpdateCUDAProviderOptions(rel_cuda_options.get(), keys.data(), values.data(), 1) == nullptr);
+  {
+    // Enable cuda graph in cuda provider option.
+    OrtCUDAProviderOptionsV2* cuda_options = nullptr;
+    ASSERT_TRUE(api.CreateCUDAProviderOptions(&cuda_options) == nullptr);
+    std::unique_ptr<OrtCUDAProviderOptionsV2, decltype(api.ReleaseCUDAProviderOptions)>
+        rel_cuda_options(cuda_options, api.ReleaseCUDAProviderOptions);
+    std::vector<const char*> keys{"enable_cuda_graph"};
+    std::vector<const char*> values{"1"};
+    ASSERT_TRUE(api.UpdateCUDAProviderOptions(rel_cuda_options.get(), keys.data(), values.data(), 1) == nullptr);
 
-  ASSERT_TRUE(api.SessionOptionsAppendExecutionProvider_CUDA_V2(
-                  static_cast<OrtSessionOptions*>(session_options),
-                  rel_cuda_options.get()) == nullptr);
+    ASSERT_TRUE(api.SessionOptionsAppendExecutionProvider_CUDA_V2(
+                    static_cast<OrtSessionOptions*>(session_options),
+                    rel_cuda_options.get()) == nullptr);
+  }
 #endif
 
 #if defined(USE_ROCM)
-  // Enable hip graph in rocm provider option.
-  OrtROCMProviderOptions* rocm_options = nullptr;
-  ASSERT_TRUE(api.CreateROCMProviderOptions(&rocm_options) == nullptr);
-  std::unique_ptr<OrtROCMProviderOptions, decltype(api.ReleaseROCMProviderOptions)>
-      rel_rocm_options(rocm_options, api.ReleaseROCMProviderOptions);
-  std::vector<const char*> keys{"enable_hip_graph"};
-  std::vector<const char*> values{"1"};
-  ASSERT_TRUE(api.UpdateROCMProviderOptions(rel_rocm_options.get(), keys.data(), values.data(), 1) == nullptr);
+  {
+    // Enable hip graph in rocm provider option.
+    OrtROCMProviderOptions* rocm_options = nullptr;
+    ASSERT_TRUE(api.CreateROCMProviderOptions(&rocm_options) == nullptr);
+    std::unique_ptr<OrtROCMProviderOptions, decltype(api.ReleaseROCMProviderOptions)>
+        rel_rocm_options(rocm_options, api.ReleaseROCMProviderOptions);
+    std::vector<const char*> keys{"enable_hip_graph"};
+    std::vector<const char*> values{"1"};
+    ASSERT_TRUE(api.UpdateROCMProviderOptions(rel_rocm_options.get(), keys.data(), values.data(), 1) == nullptr);
 
-  ASSERT_TRUE(api.SessionOptionsAppendExecutionProvider_ROCM(
-                  static_cast<OrtSessionOptions*>(session_options),
-                  rel_rocm_options.get()) == nullptr);
+    ASSERT_TRUE(api.SessionOptionsAppendExecutionProvider_ROCM(
+                    static_cast<OrtSessionOptions*>(session_options),
+                    rel_rocm_options.get()) == nullptr);
+  }
 #endif
 
 #if defined(USE_DML)
-  // Enable dynamic DML graph in DML provider option.
-  session_options.AddConfigEntry("ep.dml.enable_graph_capture", "1");
-  const OrtDmlApi* ort_dml_api;
-  Ort::ThrowOnError(api.GetExecutionProviderApi("DML", ORT_API_VERSION, reinterpret_cast<const void**>(&ort_dml_api)));
+  {
+    // Enable dynamic DML graph in DML provider option.
+    session_options.AddConfigEntry("ep.dml.enable_graph_capture", "1");
+    const OrtDmlApi* ort_dml_api;
+    Ort::ThrowOnError(api.GetExecutionProviderApi("DML", ORT_API_VERSION, reinterpret_cast<const void**>(&ort_dml_api)));
 
-  auto dml_objects = CreateDmlObjects();
-  ort_dml_api->SessionOptionsAppendExecutionProvider_DML1(session_options, dml_objects.dml_device.Get(), dml_objects.command_queue.Get());
+    auto dml_objects = CreateDmlObjects();
+    ort_dml_api->SessionOptionsAppendExecutionProvider_DML1(session_options, dml_objects.dml_device.Get(), dml_objects.command_queue.Get());
+  }
 #endif
 
   Ort::Session session(*ort_env, MODEL_URI, session_options);
