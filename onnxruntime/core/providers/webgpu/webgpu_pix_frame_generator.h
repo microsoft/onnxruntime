@@ -14,7 +14,7 @@
 
 #include <memory>
 
-#include <webgpu/webgpu_cpp.h>
+#include "core/providers/webgpu/webgpu_external_header.h"
 
 namespace onnxruntime {
 
@@ -41,7 +41,7 @@ namespace webgpu {
 // WebGpuContext destruction.
 class WebGpuPIXFrameGenerator {
  public:
-  WebGpuPIXFrameGenerator(wgpu::Instance instance, wgpu::Adapter adapter, wgpu::Device device);
+  WebGpuPIXFrameGenerator(wgpu::Instance instance, wgpu::Device device);
   ~WebGpuPIXFrameGenerator();
   void GeneratePIXFrame();
 
