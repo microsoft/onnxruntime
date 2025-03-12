@@ -44,6 +44,7 @@ stages:
         Context: tools/ci_build/github/linux/docker/inference/x86_64/default/cpu
         DockerBuildArgs: "--build-arg BUILD_UID=$( id -u )"
         Repository: onnxruntimecpubuildcentos8x64_packaging
+        UpdateDepsTxt: false
 
     - task: PythonScript@0
       displayName: 'Set variables from config file "${{ parameters.BuildConfigFile }}"'
