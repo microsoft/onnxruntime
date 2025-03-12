@@ -168,7 +168,6 @@ class TestFusion(unittest.TestCase):
         optimized_model = optimize_model(
             model_path, model_type="bart", num_heads=num_heads, hidden_size=hidden_size, optimization_options=options
         )
-        optimized_model.save_model_to_file("decoder_with_past_self_mha_split_bias_new_fused.onnx")
         os.remove(model_path)
         self.verify_fusion(optimized_model, "decoder_with_past_self_mha_split_bias_fused.onnx")
 
