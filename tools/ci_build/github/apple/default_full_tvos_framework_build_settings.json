@@ -19,12 +19,12 @@
         "appletvos": [
             "--tvos",
             "--use_xcode",
-            "--apple_deploy_target=16.0"
+            "--apple_deploy_target=13.0"
         ],
         "appletvsimulator": [
             "--tvos",
             "--use_xcode",
-            "--apple_deploy_target=16.0"
+            "--apple_deploy_target=13.0"
         ]
     }
 }
