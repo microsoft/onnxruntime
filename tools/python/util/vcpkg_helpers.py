@@ -416,6 +416,8 @@ def generate_vcpkg_triplets_for_emscripten(build_dir: str, emscripten_root: str)
                     if len(ldflags) >= 1:
                         f.write('set(VCPKG_LINKER_FLAGS "{}")\n'.format(" ".join(ldflags)))
                     cxxflags = cflags.copy()
+                    if not enable_rtti:
+                        cxxflags.append("-fno-rtti")
                     if cflags:
                         f.write(f'set(VCPKG_C_FLAGS "{" ".join(cflags)}")\n')
                     if cxxflags:
@@ -427,7 +429,6 @@ def generate_vcpkg_triplets_for_emscripten(build_dir: str, emscripten_root: str)
                         f.write(f'set(VCPKG_C_FLAGS_RELWITHDEBINFO "{" ".join(cflags_release)}")\n')
                         f.write(f'set(VCPKG_CXX_FLAGS_RELWITHDEBINFO "{" ".join(cflags_release)}")\n')
                     add_port_configs(f, True, True)
-
 
 def generate_windows_triplets(build_dir: str) -> None:
     """
