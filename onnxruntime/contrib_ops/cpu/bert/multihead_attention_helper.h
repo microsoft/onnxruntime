@@ -236,24 +236,24 @@ AttentionMaskType GetMaskType(const T* key_padding_mask, int batch_size, int seq
 }
 
 inline Status CheckCacheIndirection(
-    const gsl::span<const int64_t>& cache_indir_dims, int64_t batch_beam_size, int64_t& num_beams, int64_t max_sequence_length) {
+    const gsl::span<const int64_t>& cache_indir_dims, int batch_beam_size, int& num_beams, int max_sequence_length) {
   if (cache_indir_dims.size() != 3) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                            "Input 'cache_indirection' is expected to have 3 dimensions, got ",
                            cache_indir_dims.size());
   }
-  num_beams = cache_indir_dims[1];
+  num_beams = static_cast<int>(cache_indir_dims[1]);
   if (cache_indir_dims[1] == 0) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                            "Input 'cache_indirection' dimension 1 should be num_beams, got ",
                            cache_indir_dims[1]);
   }
-  if (cache_indir_dims[0] != (batch_beam_size / num_beams)) {
+  if (cache_indir_dims[0] != static_cast<int64_t>(batch_beam_size / num_beams)) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                            "Input 'cache_indirection' dimension 0 should be batch_size, got ",
                            cache_indir_dims[0]);
   }
-  if (max_sequence_length > 0 && cache_indir_dims[2] != max_sequence_length) {
+  if (max_sequence_length > 0 && cache_indir_dims[2] != static_cast<int64_t>(max_sequence_length)) {
     // First condition is to avoid this check for cross attention layers where
     // past key/past value are passed directly into key/value (which means
     // that max_sequence_length = 0)
@@ -443,7 +443,7 @@ Status CheckInputs(const T* query,
   assert(qkv_format != UNKNOWN);
 
   gsl::span<const int64_t> cache_indir_dims;
-  int64_t num_beams = 0;
+  int num_beams = 0;
   if (cache_indirection != nullptr) {
     cache_indir_dims = cache_indirection->Shape().GetDims();
     ORT_RETURN_IF_ERROR(CheckCacheIndirection(cache_indir_dims, batch_size, num_beams, max_sequence_length));
