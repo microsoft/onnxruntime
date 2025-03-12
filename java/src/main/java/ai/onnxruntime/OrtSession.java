@@ -1334,8 +1334,9 @@ public class OrtSession implements AutoCloseable {
      *     provider's documentation.
      * @throws OrtException If there was an error in native code.
      */
-    public void addWebGPU(Map<String, String> providerOptions) throws OrtException {
+    public void addWebGPU() throws OrtException {
       String webGpuProviderName = "WEBGPU";
+      Map<String, String> providerOptions= Collections.emptyMap();
       addExecutionProvider(webGpuProviderName, providerOptions);
     }
     /**
