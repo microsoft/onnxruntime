@@ -35,7 +35,6 @@ jobs:
     - name: Install python modules
       shell: cmd
       run: python -m pip install -r "${{ github.workspace }}\tools\ci_build\github\windows\python\requirements.txt"
-      working-directory: "${{ github.workspace }}\\build"
 
     - name: Setup Node.js
       uses: actions/setup-node@v3
