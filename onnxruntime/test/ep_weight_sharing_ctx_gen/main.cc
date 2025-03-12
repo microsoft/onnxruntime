@@ -166,8 +166,6 @@ int real_main(int argc, char* argv[]) {
     // Only with enable_htp_spill_fill_buffer enabled:
     // Update generated context cache Onnx model to have the same max_size (align with the last generated model)
     // so that the inference session can be created with any order of the ctx.onnx models
-    // otherwise, user can also skip this step, but they need to create the inference session from the last generated ctx.onnx model
-    // since only the last ctx.onnx has EPContext nodes has the correct max_size covers graphs for all sessions
     const std::string enable_htp_spill_fill_buffer = "enable_htp_spill_fill_buffer";
     auto pos = provider_options.find(enable_htp_spill_fill_buffer);
     if (pos != provider_options.end() && pos->second == "1") {
