@@ -193,7 +193,7 @@ class SparseAttentionBase {
         const int total_seq_len = total_key_lengths[batch_index];
 
         const ptrdiff_t output_offset = SafeInt<ptrdiff_t>(i) * sequence_length * total_sequence_length;
-        T* output = attention_probs + output_offset;
+        U* output = attention_probs + output_offset;
 
         const T* k;
         if (packed_qkv) {
@@ -225,14 +225,34 @@ class SparseAttentionBase {
         DUMP_CPU_TENSOR("Q", q, sequence_length, head_size);
         DUMP_CPU_TENSOR("K", k, total_seq_len, head_size);
 
-        math::GemmEx<T, ThreadPool>(CblasNoTrans, CblasTrans, sequence_length, total_seq_len, head_size, alpha, q,
-                                    head_size, k, head_size, 0.0f /*bata*/, output, total_seq_len,
-                                    nullptr);
+        if constexpr (std::is_same<T, float>::value) {
+          math::GemmEx<T, ThreadPool>(CblasNoTrans, CblasTrans, sequence_length, total_seq_len, head_size, alpha, q,
+                                      head_size, k, head_size, 0.0f /*bata*/, output, total_seq_len,
+                                      nullptr);
+        } else if constexpr (std::is_same<U, MLFloat16>::value) {
+          MlasGemm(CblasNoTrans, CblasTrans, sequence_length, total_seq_len, head_size,
+                   q, head_size, k, head_size, output, total_seq_len,
+                   MLFloat16(alpha).val, static_cast<uint16_t>(0) /*beta*/, nullptr);
+        } else {
+          size_t bytes = head_size * (sequence_length + total_seq_len) * sizeof(float);
+          auto q_k_fp32 = allocator->Alloc(bytes);
+          BufferUniquePtr scratch_buffer(q_k_fp32, BufferDeleter(allocator));
+
+          float* q_fp32 = static_cast<float*>(q_k_fp32);
+          MlasConvertHalfToFloatBuffer(q, q_fp32, head_size * sequence_length);
+
+          float* k_fp32 = q_fp32 + head_size * sequence_length;
+          MlasConvertHalfToFloatBuffer(k, k_fp32, head_size * total_seq_len);
+
+          math::GemmEx<float, ThreadPool>(CblasNoTrans, CblasTrans, sequence_length, total_seq_len, head_size,
+                                          alpha, q_fp32, head_size, k_fp32, head_size, 0.0f /*bata*/,
+                                          output, total_seq_len, nullptr);
+        }
 
         DUMP_CPU_TENSOR("QK", output, sequence_length, total_seq_len);
 
         // Compute Softmax for causal and output result in place.
-        T* output_softmax = output;
+        U* output_softmax = output;
 
         int layout_id = head_index % parameters.num_sparse_layout;
         bool is_sparse_layout = layout_has_sparse[layout_id];
@@ -244,7 +264,11 @@ class SparseAttentionBase {
             int causal_length = past_seq_len + q_id + 1;
             ComputeAttentionSoftmaxInplace(output_softmax, 1, causal_length, nullptr);
             for (int remain_seq_id = causal_length; remain_seq_id < total_seq_len; remain_seq_id++) {
-              output_softmax[remain_seq_id] = 0.f;
+              if constexpr (std::is_same<U, float>::value) {
+                output_softmax[remain_seq_id] = 0.f;
+              } else {
+                output_softmax[remain_seq_id] = MLFloat16::FromBits(static_cast<uint16_t>(0));
+              }
             }
             output_softmax += total_seq_len;
           }
@@ -298,14 +322,23 @@ class SparseAttentionBase {
             // Update inline according to attention mask.
             if (has_sparse) {
               for (int s = 0; s < causal_length; s++) {
-                if (mask[s] == 0)
-                  output_softmax[s] = std::numeric_limits<T>::lowest();
+                if (mask[s] == 0) {
+                  if constexpr (std::is_same<U, float>::value) {
+                    output_softmax[s] = std::numeric_limits<T>::lowest();
+                  } else {
+                    output_softmax[s] = MLFloat16::FromBits(static_cast<uint16_t>(0xFBFF));
+                  }
+                }
               }
             }
             ComputeAttentionSoftmaxInplace(output_softmax, 1, causal_length, nullptr);
 
             for (int remain_seq_id = causal_length; remain_seq_id < total_seq_len; remain_seq_id++) {
-              output_softmax[remain_seq_id] = 0.f;
+              if constexpr (std::is_same<U, float>::value) {
+                output_softmax[remain_seq_id] = 0.f;
+              } else {
+                output_softmax[remain_seq_id] = MLFloat16::FromBits(static_cast<uint16_t>(0));
+              }
             }
 
             output_softmax += total_seq_len;
