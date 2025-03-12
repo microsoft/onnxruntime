@@ -144,34 +144,10 @@ stages:
       displayName: npm ci js/common
 
     - script: |
-        npm install
+        npm run bootstrap
+        npm ci
       workingDirectory: '$(Build.SourcesDirectory)/js/react_native'
-      displayName: npm install js/react_native
-
-    - task: PowerShell@2
-      inputs:
-        filePath: '$(Build.SourcesDirectory)/tools/ci_build/github/js/pack-npm-packages.ps1'
-        arguments: '"-dev.$(Get-Date -Format yyyyMMdd)-$(git rev-parse --short HEAD)" $(Build.SourcesDirectory) react_native'
-        workingDirectory: '$(Build.SourcesDirectory)'
-        errorActionPreference: stop
-      env:
-        ORT_JS_PACK_MODE: e2e
-      displayName: Pack NPM packages
-
-    - script: |
-        set -e -x
-        npm install
-        ls node_modules
-        mv $(Build.SourcesDirectory)/js/common/onnxruntime-common*.tgz onnxruntime-common.tgz
-        mv $(Build.SourcesDirectory)/js/react_native/onnxruntime-react-native*.tgz onnxruntime-react-native.tgz
-        npm install ./onnxruntime-common.tgz
-        ls node_modules/onnxruntime*
-        npm install ./onnxruntime-react-native.tgz
-        ls node_modules/onnxruntime*
-
-
-      workingDirectory: '$(Build.SourcesDirectory)/js/react_native/e2e'
-      displayName: Bootstrap Android and iOS e2e tests
+      displayName: bootstrap react_native
 
     - script: |
         npm install --save-dev jest-junit

@@ -44,9 +44,8 @@ jobs:
       versionSpec: '20.x'
 
   - script: |
-      sudo apt install coreutils ninja-build nodejs npm yarn
-      npm install --global yarn
-    displayName: Install coreutils, ninja, npm, and yarn
+      sudo apt install coreutils ninja-build nodejs npm
+    displayName: Install coreutils, ninja, npm
 
   - task: DownloadPipelineArtifact@2
     inputs:
@@ -73,31 +72,13 @@ jobs:
     displayName: npm ci js/common
 
   - script: |
-      yarn
+      npm run bootstrap
+      npm ci
     workingDirectory: '$(Build.SourcesDirectory)/js/react_native'
-    displayName: yarn js/react_native
-
-  - task: PowerShell@2
-    inputs:
-      filePath: '$(Build.SourcesDirectory)/tools/ci_build/github/js/pack-npm-packages.ps1'
-      arguments: '"-dev.$(Get-Date -Format yyyyMMdd)-$(git rev-parse --short HEAD)" $(Build.SourcesDirectory) react_native'
-      workingDirectory: '$(Build.SourcesDirectory)'
-      errorActionPreference: stop
-    env:
-      ORT_JS_PACK_MODE: e2e
-    displayName: Pack NPM packages
+    displayName: bootstrap react_native
 
   - script: |
-      mv $(Build.SourcesDirectory)/js/common/onnxruntime-common*.tgz onnxruntime-common.tgz
-      yarn add --no-lockfile file:./onnxruntime-common.tgz
-      mv $(Build.SourcesDirectory)/js/react_native/onnxruntime-react-native*.tgz onnxruntime-react-native.tgz
-      yarn add --no-lockfile file:./onnxruntime-react-native.tgz
-      yarn
-    workingDirectory: '$(Build.SourcesDirectory)/js/react_native/e2e'
-    displayName: Bootstrap Android and iOS e2e tests
-
-  - script: |
-      yarn add --dev jest-junit
+      npm install jest-junit
     workingDirectory: '$(Build.SourcesDirectory)/js/react_native/e2e'
     displayName: install jest junit reporter js/react_native/e2e
 
@@ -115,13 +96,8 @@ jobs:
     displayName: Copy Android package to Android e2e test directory
 
   - script: |
-      yarn global add detox-cli
-      echo "Path: $PATH"
-      echo "##vso[task.prependpath]$(yarn global bin)"
-      echo "Updated PATH: $PATH"
-      echo "Detox bin directory: $(yarn global bin)"
-      ls $(yarn global bin)
-    displayName: Install detox cli tools and prepend to PATH
+      npm install -g detox-cli
+    displayName: Install detox cli tools
 
   - script: |
       detox build --configuration android.emu.release
