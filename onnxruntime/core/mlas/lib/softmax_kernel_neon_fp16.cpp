@@ -121,7 +121,7 @@ const MlasExpConstants<float16x4_t>& Get_Exp_Constants<float16x4_t>() {
 template<typename T>
 MLAS_FORCEINLINE
 T Exp_Vector_Fp16(T x) {
-    const auto constants = Get_Exp_Constants<T>();
+    const auto& constants = Get_Exp_Constants<T>();
     auto clamped_x = MlasClampFloat16(x, constants.LowerRange, constants.UpperRange);
 
     // integral
@@ -239,7 +239,7 @@ void Exp_Kernel_Fp16(const MLAS_FP16* Input, MLAS_FP16* Output, size_t N) {
 template<typename T>
 MLAS_FORCEINLINE
 T SumExp_Vector_Fp16(T x, T negative_maximum) {
-    const auto constants = Get_Exp_Constants<T>();
+    const auto& constants = Get_Exp_Constants<T>();
     auto clamped_x = MlasMaximumFloat16(MlasAddFloat16(x, negative_maximum), constants.LowerRangeSumExp);
 
     // integral
@@ -473,7 +473,7 @@ const MlasTanhConstants<float16x4_t>& Get_Tanh_Constants<float16x4_t>() {
 template <typename T>
 MLAS_FORCEINLINE
 T Tanh_Vector_Fp16(T x) {
-    const auto constants = Get_Tanh_Constants<T>();
+    const auto& constants = Get_Tanh_Constants<T>();
     x = MlasClampFloat16(x, constants.LowerRange, constants.UpperRange);
 
     T x_2 = MlasMultiplyFloat16(x, x);
