@@ -81,14 +81,14 @@
   },
   "scripts": {
     "typescript": "tsc --noEmit",
-    "prepare": "bob build",
+    "prepare": "npx bob build",
     "bootstrap-no-pods": "npm run pack-common && npm run unpack-common && npm run pack-libs && npm run unpack-libs && npm run e2e",
     "bootstrap": "npm run bootstrap-no-pods && npm run pods",
     "test": "jest",
     "pack-common": "cd ../common && npm pack && mv -f onnxruntime-common-*.tgz ../react_native/e2e/onnxruntime-common.tgz",
-    "unpack-common": "cd e2e && npm install ./onnxruntime-common.tgz",
+    "unpack-common": "cd e2e && npm install ./onnxruntime-common*.tgz",
     "pack-libs": "npm pack --ort-js-pack-mode=e2e && mv -f onnxruntime-react-native-*.tgz e2e/onnxruntime-react-native.tgz",
-    "unpack-libs": "cd e2e && npm install ./onnxruntime-react-native.tgz",
+    "unpack-libs": "cd e2e && npm install ./onnxruntime-react-native*.tgz",
     "prepack": "tsc --build ./tsconfig.scripts.json && node ./scripts/prepack",
     "pods": "cd e2e && npx pod-install --quiet",
     "e2e": "npm --prefix e2e ci"
