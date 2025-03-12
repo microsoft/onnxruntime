@@ -108,48 +108,6 @@ jobs:
       run: |
         set -e -x
         python3 ${{ github.workspace }}/tools/ci_build/build.py --test --build_objc --build_wheel --use_xnnpack --build_nodejs --build_java --use_coreml --use_webgpu --build_dir ${{ github.workspace }} --skip_submodule_sync --parallel --use_binskim_compliant_compile_flags --build_shared_lib --config Release --use_vcpkg --use_vcpkg_ms_internal_asset_cache
-
-    - name: Copy build artifacts for zipping
-      uses: ./tools/ci_build/github/linux/copy_strip_binary.sh
-      with:
-        args: -r ${{ github.workspace }} -a onnxruntime-osx-x86_64-${{ env.OnnxRuntimeVersion }} -l libonnxruntime.${{ env.OnnxRuntimeVersion }}.dylib -c Release -s ${{ github.workspace }} -t ${{ env.OnnxRuntimeGitCommitHash }}
-      working-directory: ${{ github.workspace }}/Release
-
-    - name: Archive build artifacts
-      uses: actions/upload-artifact@v4
-      with:
-         name: onnxruntime-osx-x86_64
-         path: ${{ github.workspace }}/onnxruntime-osx-x86_64-${{ env.OnnxRuntimeVersion }}
-
-    - name: Copy libcustom_op_library.dylib to ArtifactStagingDirectory
-      shell: bash
-      run: |
-        set -e -x
-        mkdir -p ${{ runner.temp }}/testdata
-        cp ${{ github.workspace }}/Release/libcustom_op_library.dylib ${{ runner.temp }}/testdata
-
-    - name: Upload libcustom_op_library
-      uses: actions/upload-artifact@v4
-      with:
-        name: onnxruntime-osx-x86_64-extra-libs
-        path: ${{ runner.temp }}/testdata
-
-    - name: Copy build artifacts for zipping
-      uses: ./tools/ci_build/github/linux/java_copy_strip_binary.sh
-      with:
-        args: -r ${{ github.workspace }} -c Release -a onnxruntime-java-osx-x86_64 -l libonnxruntime.dylib -n libonnxruntime4j_jni.dylib -v ${{ env.OnnxRuntimeVersion }} -h osx-x86_64
-      working-directory: ${{ github.workspace }}/Release
-    - name: Upload java build artifacts
-      uses: actions/upload-artifact@v4
-      with:
-        name: drop-onnxruntime-java-osx-x86_64
-        path: ${{ github.workspace }}/onnxruntime-java-osx-x86_64
-
-    - name: Upload nodejs build artifacts
-      uses: actions/upload-artifact@v4
-      with:
-        name: drop-onnxruntime-nodejs-osx-x86_64
-        path: ${{ github.workspace }}/js/node/bin/napi-v3/darwin/x64/onnxruntime_binding.node
     timeout-minutes: 300
     env:
       MACOSX_DEPLOYMENT_TARGET: '13.3'
