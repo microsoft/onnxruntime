@@ -305,9 +305,6 @@ def generate_triplet_for_posix_platform(
 
         ldflags.append("-g")
 
-        if not enable_rtti:
-            cflags.append("-DEMSCRIPTEN_HAS_UNBOUND_TYPE_NAMES=0")
-
         cxxflags = cflags.copy()
         if os_name == "osx":
             cxxflags += ["-fvisibility=hidden", "-fvisibility-inlines-hidden"]
@@ -367,7 +364,8 @@ def generate_vcpkg_triplets_for_emscripten(build_dir: str, emscripten_root: str)
         build_dir (str): The directory to save the generated triplet files.
         emscripten_root (str): The root path of Emscripten.
     """
-    for enable_rtti in [True, False]:
+    for enable_wasm_exception_catching in [True, False]:
+      for enable_rtti in [True, False]:
         for enable_asan in [True, False]:
             for target_abi in ["wasm32", "wasm64"]:
                 folder_name_parts = []
@@ -380,6 +378,8 @@ def generate_vcpkg_triplets_for_emscripten(build_dir: str, emscripten_root: str)
                     folder_name_parts.append("asan")
                 if not enable_rtti:
                     folder_name_parts.append("nortti")
+                if enable_wasm_exception_catching:
+                    folder_name_parts.append("wasm_api_exception_catching")
                 folder_name = "default" if len(folder_name_parts) == 0 else "_".join(folder_name_parts)
                 file_name = f"{target_abi}-{os_name}.cmake"
                 dest_path = Path(build_dir) / folder_name / file_name
@@ -405,8 +405,9 @@ def generate_vcpkg_triplets_for_emscripten(build_dir: str, emscripten_root: str)
                         "-msimd128",
                         "-pthread",
                         "-Wno-pthreads-mem-growth",
-                        "-sDISABLE_EXCEPTION_CATCHING=0",
                     ]
+                    if enable_wasm_exception_catching:
+                        cflags.append("-sDISABLE_EXCEPTION_CATCHING=0")
                     if enable_asan:
                         cflags += ["-fsanitize=address"]
                         ldflags += ["-fsanitize=address"]
@@ -415,6 +416,8 @@ def generate_vcpkg_triplets_for_emscripten(build_dir: str, emscripten_root: str)
                         ldflags.append("-sMEMORY64")
                     if len(ldflags) >= 1:
                         f.write('set(VCPKG_LINKER_FLAGS "{}")\n'.format(" ".join(ldflags)))
+                    if not enable_rtti:
+                        cflags.append("-DEMSCRIPTEN_HAS_UNBOUND_TYPE_NAMES=0")
                     cxxflags = cflags.copy()
                     if not enable_rtti:
                         cxxflags.append("-fno-rtti")
