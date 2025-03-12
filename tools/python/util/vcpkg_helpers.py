@@ -379,7 +379,7 @@ def generate_vcpkg_triplets_for_emscripten(build_dir: str, emscripten_root: str)
                 if not enable_rtti:
                     folder_name_parts.append("nortti")
                 if enable_wasm_exception_catching:
-                    folder_name_parts.append("wasm_api_exception_catching")
+                    folder_name_parts.append("exception_catching")
                 folder_name = "default" if len(folder_name_parts) == 0 else "_".join(folder_name_parts)
                 file_name = f"{target_abi}-{os_name}.cmake"
                 dest_path = Path(build_dir) / folder_name / file_name

@@ -1058,7 +1058,7 @@ def generate_vcpkg_install_options(build_dir, args):
     if args.disable_rtti:
         folder_name_parts.append("nortti")
     if args.build_wasm and not args.disable_wasm_exception_catching:
-        folder_name_parts.append("wasm_exception_catching")
+        folder_name_parts.append("exception_catching")
     if args.disable_exceptions and not args.build_wasm:
         folder_name_parts.append("noexception")
     if len(folder_name_parts) == 0:
