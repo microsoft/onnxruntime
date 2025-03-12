@@ -135,7 +135,6 @@ TEST(DepthToSpaceOpTest, ContribDCR) {
 }
 
 TEST(DepthToSpaceOpTest, ContribCRD) {
-
   constexpr int64_t N = 2, H = 3, W = 2, C = 12;
   constexpr int64_t blocksize = 2;
   std::vector<uint8_t> input = {
