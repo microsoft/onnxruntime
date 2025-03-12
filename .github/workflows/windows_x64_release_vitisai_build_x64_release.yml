@@ -35,7 +35,7 @@ jobs:
     - name: Install python modules
       shell: cmd
       run: python -m pip install -r "${{ github.workspace }}\tools\ci_build\github\windows\python\requirements.txt"
-      working-directory: "${{ github.workspace }}\build"
+      working-directory: "${{ github.workspace }}\\build"
 
     - name: Setup Node.js
       uses: actions/setup-node@v3
@@ -98,7 +98,7 @@ jobs:
     - name: Validate C# native delegates
       shell: cmd
       run: python tools\ValidateNativeDelegateAttributes.py
-      working-directory: ${{ github.workspace }}\csharp
+      working-directory: ${{ github.workspace }}\\csharp
 
     - name: Install onnxruntime wheel
       shell: pwsh
@@ -108,7 +108,7 @@ jobs:
           exit $LASTEXITCODE
         }
         Get-ChildItem -Path dist/*.whl | foreach {pip --disable-pip-version-check install --upgrade $_.fullname}
-      working-directory:  "${{ github.workspace }}\build\RelWithDebInfo\RelWithDebInfo"   
+      working-directory:  "${{ github.workspace }}\\build\\RelWithDebInfo\\RelWithDebInfo"   
     env:
       OrtPackageId: Microsoft.ML.OnnxRuntime
       OnnxRuntimeBuildDirectory: ${{ github.workspace }}\build
