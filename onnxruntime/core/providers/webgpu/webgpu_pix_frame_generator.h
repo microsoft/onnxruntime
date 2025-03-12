@@ -14,7 +14,7 @@
 
 #include <memory>
 
-#include <webgpu/webgpu_cpp.h>
+#include "core/providers/webgpu/webgpu_external_header.h"
 
 namespace onnxruntime {
 
