@@ -877,7 +877,7 @@ Status PastPresentBufferShare(int batch_size, int num_heads, int qk_head_size, i
                               AttentionData<T>& data,
                               cudaStream_t stream,
                               int max_threads_per_block) {
-  assert(qk_head_size == v_head_size);
+  ORT_ENFORCE(qk_head_size == v_head_size);
   assert(data.fused_cross_attention_kernel == nullptr);
   assert(nullptr == fused_runner || parameters.is_unidirectional);
   assert(!data.use_memory_efficient_attention);

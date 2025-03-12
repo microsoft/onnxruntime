@@ -31,7 +31,7 @@ Status CopyQK(cudaStream_t stream,
               QK* output) {
   const bool half2float = std::is_same<T, half>::value && std::is_same<QK, float>::value;
   const bool float2half = std::is_same<T, float>::value && std::is_same<QK, half>::value;
-  assert(half2float || float2half);
+  ORT_ENFORCE(half2float || float2half);
 
   int block_size = 256;
   int num_blocks = (qk_size + block_size - 1) / block_size;
