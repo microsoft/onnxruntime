@@ -43,6 +43,35 @@ uint32_t CountSetBits(DWORD input) {
   return c;
 }
 
+IntelChecks checkIntel() {
+  bool isIntelSpecifiedPlatform = false;
+  const int kVendorID_IntelSpecifiedPlatformIDs[3] = {
+      // ExtendedModel, ExtendedFamily, Family Code, and Model Number
+      0xa06a,  // MTL
+      0xc065,  // ARL-H
+      0xb065   // ARL-U
+  };
+  const int kVendorID_Intel[3] = {0x756e6547, 0x6c65746e, 0x49656e69};  // "GenuntelineI"
+  int regs_leaf0[4];
+  int regs_leaf1[4];
+  __cpuid(regs_leaf0, 0);
+  __cpuid(regs_leaf1, 0x1);
+
+  auto isIntel = (kVendorID_Intel[0] == regs_leaf0[1]) && (kVendorID_Intel[1] == regs_leaf0[2]) && (kVendorID_Intel[2] == regs_leaf0[3]);
+
+  for (int intelSpecifiedPlatform : kVendorID_IntelSpecifiedPlatformIDs) {
+    if ((regs_leaf1[0] >> 4) == intelSpecifiedPlatform) {
+      isIntelSpecifiedPlatform = true;
+    }
+  }
+
+  IntelChecks intelCheck;
+  intelCheck.isIntel = isIntel;
+  intelCheck.isIntelSpecifiedPlatform = isIntelSpecifiedPlatform;
+
+  return intelCheck;
+}
+
 static CoreCounter GetCoreInfo() {
   auto logicalProcessorInformation = GetLogicalProcessorInfos(RelationAll);
 
@@ -85,30 +114,11 @@ uint32_t HardwareCoreEnumerator::DefaultIntraOpNumThreads() {
   // # of logical cores = # of P cores x 2 (if hyper threading is enabled) + # of E cores + # of Soc Cores.
   auto cores = GetCoreInfo();
 #if !defined(_M_ARM64EC) && !defined(_M_ARM64) && !defined(__aarch64__)
-  const int kVendorID_Intel[3] = {0x756e6547, 0x6c65746e, 0x49656e69};  // "GenuntelineI"
-  bool isIntelSpecifiedPlatform = false;
-  const int kVendorID_IntelSpecifiedPlatformIDs[3] = {
-      // ExtendedModel, ExtendedFamily, Family Code, and Model Number
-      0xa06a,  // MTL
-      0xc065,  // ARL-H
-      0xb065   // ARL-U
-  };
+  
+  IntelChecks checkIfIntel = checkIntel();
 
-  int regs_leaf0[4];
-  int regs_leaf1[4];
-  __cpuid(regs_leaf0, 0);
-  __cpuid(regs_leaf1, 0x1);
-
-  auto isIntel = (kVendorID_Intel[0] == regs_leaf0[1]) && (kVendorID_Intel[1] == regs_leaf0[2]) && (kVendorID_Intel[2] == regs_leaf0[3]);
-
-  for (int intelSpecifiedPlatform : kVendorID_IntelSpecifiedPlatformIDs) {
-    if ((regs_leaf1[0] >> 4) == intelSpecifiedPlatform) {
-      isIntelSpecifiedPlatform = true;
-    }
-  }
-
-  if (isIntel) {
-    if (isIntelSpecifiedPlatform) {
+  if (checkIfIntel.isIntel) {
+    if (checkIfIntel.isIntelSpecifiedPlatform) {
       // We want to exclude cores without an LLC
       return cores.LLCCores;
     } else {
