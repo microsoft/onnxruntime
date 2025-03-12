@@ -25,7 +25,7 @@ class GpuBufferAllocator : public IAllocator {
   virtual void Free(void* p) override;
   void GetStats(AllocatorStats* stats) override;
 
-  Status OnSessionInitializationEnd();
+  void OnSessionInitializationEnd();
 
  private:
   AllocatorStats stats_;

@@ -20,6 +20,7 @@ KernelCreateInfo BuildKernelCreateInfo();
 class WebGpuContext;
 enum class BufferCacheMode;
 class WebGpuProfiler;
+class GpuBufferAllocator;
 }  // namespace webgpu
 
 struct WebGpuExecutionProviderConfig {
@@ -89,7 +90,7 @@ class WebGpuExecutionProvider : public IExecutionProvider {
   bool is_graph_captured_ = false;
   int regular_run_count_before_graph_capture_ = 0;
   const int min_num_runs_before_cuda_graph_capture_ = 1;  // required min regular runs before graph capture for the necessary memory allocations.
-  std::vector<AllocatorPtr> preferred_allocators_;
+  webgpu::GpuBufferAllocator* allocator_ = nullptr;
 };
 
 }  // namespace onnxruntime
