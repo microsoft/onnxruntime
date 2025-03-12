@@ -394,6 +394,13 @@ class SparseAttentionBase {
       unit_cost.bytes_stored += bytes_to_copy_value;
     }
 
+    size_t output_fp32_bytes = 0;
+    if constexpr (std::is_same<T, MLFloat16>::value && std::is_same<U, float>::value) {
+      output_fp32_bytes = SafeInt<size_t>(sequence_length) * batch_size * num_heads_ * head_size * sizeof(float);
+    }
+    auto output_fp32 = allocator->Alloc(output_fp32_bytes);
+    BufferUniquePtr scratch_buffer(output_fp32, BufferDeleter(allocator));
+
     DUMP_CPU_TENSOR_INIT();
 
     ThreadPool::TryParallelFor(
@@ -429,14 +436,42 @@ class SparseAttentionBase {
 
             DUMP_CPU_TENSOR("attention_probs", attention_probs + attention_probs_offset, sequence_length, total_seq_len);
 
-            math::GemmEx<T, ThreadPool>(CblasNoTrans, CblasNoTrans, sequence_length, head_size, total_seq_len,
-                                        1.f, /*alpha*/
-                                        attention_probs + attention_probs_offset, total_seq_len, v,
-                                        head_size, 0.0f /*beta*/, output_current, hidden_size, nullptr);
+            if constexpr (std::is_same<T, float>::value) {
+              math::GemmEx<T, ThreadPool>(CblasNoTrans, CblasNoTrans, sequence_length, head_size, total_seq_len,
+                                          1.f, /*alpha*/
+                                          attention_probs + attention_probs_offset, total_seq_len, v,
+                                          head_size, 0.0f /*beta*/, output_current, hidden_size, nullptr);
+            } else if constexpr (std::is_same<U, MLFloat16>::value) {
+              MlasGemm(CblasNoTrans, CblasNoTrans, sequence_length, head_size, total_seq_len,
+                       attention_probs + attention_probs_offset, total_seq_len,
+                       v, head_size, output_current, hidden_size,
+                       MLFloat16(1.0f).val, static_cast<uint16_t>(0) /*beta*/, nullptr);
+            } else {
+              size_t bytes = head_size * total_seq_len * sizeof(float);
+              auto v_fp32 = allocator->Alloc(bytes);
+              BufferUniquePtr scratch_buffer(v_fp32, BufferDeleter(allocator));
+
+              float* v_fp32_ptr = static_cast<float*>(v_fp32);
+              MlasConvertHalfToFloatBuffer(v, v_fp32_ptr, head_size * total_seq_len);
+
+              float* output_fp32_current = static_cast<float*>(output_fp32) +
+                                           (batch_index * sequence_length * num_heads_ + head_index) * head_size;
+              math::GemmEx<float, ThreadPool>(CblasNoTrans, CblasNoTrans, sequence_length, head_size, total_seq_len,
+                                              1.f, /*alpha*/ attention_probs + attention_probs_offset,
+                                              total_seq_len, v_fp32_ptr,
+                                              head_size, 0.0f /*beta*/, output_fp32_current,
+                                              hidden_size, nullptr);
+            }
 
             DUMP_CPU_TENSOR("out", attention_probs + attention_probs_offset, sequence_length, head_size);
           }
         });
+
+    if constexpr (std::is_same<T, MLFloat16>::value && std::is_same<U, float>::value) {
+      MlasConvertFloatToHalfBuffer(static_cast<float*>(output_fp32),
+                                   output,
+                                   SafeInt<size_t>(sequence_length) * batch_size * num_heads_ * head_size);
+    }
   }
 };
 
