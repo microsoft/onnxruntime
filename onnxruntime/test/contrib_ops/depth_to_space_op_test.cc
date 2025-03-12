@@ -219,8 +219,7 @@ TEST(DepthToSpaceOpTest, ContribCRD) {
       122, 126, 130,
       123, 127, 131,
       134, 138, 142,
-      135, 139, 143
-  };
+      135, 139, 143};
   std::vector<int64_t> output_shape = {N, H * blocksize, W * blocksize, C / (blocksize * blocksize)};
 
   RunDepthToSpace<uint8_t>(input, input_shape, blocksize, 1, "CRD", output, output_shape);
