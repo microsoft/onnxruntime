@@ -190,9 +190,9 @@ Status BinaryElementwise::ComputeInternal(ComputeContext& context) const {
     // Mode Vectorize broadcast
     // cache hint: "V{a_rank};{b_rank};{output_rank}"
     program
-        .AddIndices(reshaped_output_shape)
-        .AddIndices(reshaped_lhs_shape)
-        .AddIndices(reshaped_rhs_shape)
+        .AddIndices(std::move(reshaped_output_shape))
+        .AddIndices(std::move(reshaped_lhs_shape))
+        .AddIndices(std::move(reshaped_rhs_shape))
         .CacheHint("V");
   } else {
     // Mode Broadcast

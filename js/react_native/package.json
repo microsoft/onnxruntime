@@ -65,15 +65,15 @@
   },
   "scripts": {
     "typescript": "tsc --noEmit",
-    "bootstrap": "yarn pack-common && yarn unpack-common && yarn pack-libs && yarn unpack-libs && yarn e2e && yarn pods",
+    "bootstrap": "npm run pack-common && npm run unpack-common && npm run pack-libs && npm run unpack-libs && npm run e2e && npm run pods",
     "test": "jest",
     "pack-common": "cd ../common && npm pack && mv -f onnxruntime-common-*.tgz ../react_native/e2e/onnxruntime-common.tgz",
-    "unpack-common": "cd e2e && yarn add --no-lockfile file:./onnxruntime-common.tgz",
+    "unpack-common": "cd e2e && npm install --no-save ./onnxruntime-common.tgz",
     "pack-libs": "npm pack --ort-js-pack-mode=e2e && mv -f onnxruntime-react-native-*.tgz e2e/onnxruntime-react-native.tgz",
-    "unpack-libs": "cd e2e && yarn add --no-lockfile file:./onnxruntime-react-native.tgz",
+    "unpack-libs": "cd e2e && npm install --no-save ./onnxruntime-react-native.tgz",
     "prepack": "tsc --build ./tsconfig.scripts.json && node ./scripts/prepack",
-    "pods": "cd e2e && pod-install --quiet",
-    "e2e": "yarn --cwd e2e"
+    "pods": "cd e2e && npx pod-install --quiet",
+    "e2e": "npm --prefix e2e install"
   },
   "types": "dist/typescript/index.d.ts",
   "name": "onnxruntime-react-native",

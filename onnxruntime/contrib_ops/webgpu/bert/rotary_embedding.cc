@@ -27,7 +27,7 @@ Status RotaryEmbeddingProgram::GenerateShaderCode(ShaderHelper& shader) const {
   const auto& sin_cache = shader.AddInput("sin_cache", ShaderUsage::UseUniform);
   const auto& output = shader.AddOutput("output", ShaderUsage::UseUniform);
   // TODO: remove output_indices.
-  const auto& output_indices = shader.AddIndices("output_indices", false);
+  const auto& output_indices = shader.AddIndices("output_indices", ShaderUsage::None);
   const auto interleaved_str = interleaved_ ? "true" : "false";
   shader.MainFunctionBody() << "  let half_rotary_emb_dim = uniforms.cos_cache_shape[1];\n"
                                "  let bsnh = global_idx / uniforms.global_stride % uniforms.global_shape;\n"

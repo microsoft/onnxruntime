@@ -84,6 +84,21 @@ class SharedContext {
     qnn_backend_manager_.reset();
   }
 
+  void SetSharedCtxBinFileName(std::string& shared_ctx_bin_file_name) {
+    const std::lock_guard<std::mutex> lock(mtx_);
+    shared_ctx_bin_file_name_ = shared_ctx_bin_file_name;
+  }
+
+  const std::string& GetSharedCtxBinFileName() {
+    const std::lock_guard<std::mutex> lock(mtx_);
+    return shared_ctx_bin_file_name_;
+  }
+
+  void ResetSharedCtxBinFileName() {
+    const std::lock_guard<std::mutex> lock(mtx_);
+    shared_ctx_bin_file_name_.clear();
+  }
+
  private:
   SharedContext() = default;
   ~SharedContext() = default;
@@ -94,6 +109,9 @@ class SharedContext {
   std::vector<std::unique_ptr<qnn::QnnModel>> shared_qnn_models_;
   // Used for compiling multiple models into same QNN context binary
   std::shared_ptr<qnn::QnnBackendManager> qnn_backend_manager_;
+  // Track the shared ctx binary .bin file name, all _ctx.onnx point to this .bin file
+  // only the last session generate the .bin file since it contains all graphs from all sessions.
+  std::string shared_ctx_bin_file_name_;
   // Producer sessions can be in parallel
   // Consumer sessions have to be after producer sessions initialized
   std::mutex mtx_;
