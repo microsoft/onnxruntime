@@ -2572,10 +2572,10 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>2D tensor with shape (max_sequence_length, head_size / 2).</dd>
 <dt><tt>sin_cache</tt> (optional) : T</dt>
 <dd>2D tensor with shape (max_sequence_length, head_size / 2).</dd>
-<dt><tt>custom_pos_ids</tt> (optional) : tensor(int64)</dt>
+<dt><tt>pos_ids</tt> (optional) : tensor(int64)</dt>
 <dd>2D tensor with shape (batch_size, sequence_length).</dd>
-<dt><tt>custom_causal_attention_mask</tt> (optional) : T</dt>
-<dd>3D tensor with shape (batch_size, sequence_length, total_sequence_length)</dd>
+<dt><tt>attention_mask</tt> (optional) : T</dt>
+<dd>4D tensor with shape (batch_size or 1, num_heads or 1, sequence_length, total_sequence_length).</dd>
 </dl>
 
 #### Outputs
