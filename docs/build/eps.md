@@ -135,7 +135,7 @@ See more information on the TensorRT Execution Provider [here](../execution-prov
   * Here's a temporarily fix to preview on onnx-tensorrt 10.8-GA (or newer) when building ORT 1.21.0: 
     * Replace the [onnx line in cmake/deps.txt](https://github.com/microsoft/onnxruntime/blob/rel-1.21.0/cmake/deps.txt#L38) 
       with `onnx;https://github.com/onnx/onnx/archive/f22a2ad78c9b8f3bd2bb402bfce2b0079570ecb6.zip;324a781c31e30306e30baff0ed7fe347b10f8e3c`  
-    * Replace the onnx.patch with [this](https://github.com/microsoft/onnxruntime/blob/7b2733a526c12b5ef4475edd47fd9997ebc2b2c6/cmake/patches/onnx/onnx.patch) 
+    * Replace [cmake/patches/onnx/onnx.patch](https://github.com/microsoft/onnxruntime/blob/rel-1.21.0/cmake/patches/onnx/onnx.patch) with [this](https://github.com/microsoft/onnxruntime/blob/7b2733a526c12b5ef4475edd47fd9997ebc2b2c6/cmake/patches/onnx/onnx.patch) 
     * Build ORT 1.21.0 with trt-related flags above (including `--use_tensorrt_oss_parser`)
 
 ### Build Instructions
