@@ -19,14 +19,7 @@ Q4BitGemmPackQuantBDataSize(
     if (ComputeType == SQNBIT_CompInt8) {
         size_t PackedQuantBDataSize = N * BlockCountK * MlasQNBitBlkDataSizeInBytes(BlkBitWidth, BlkLen);
         const size_t ScaleSize = N * BlockCountK * sizeof(float);
-        size_t BlkSumSize = MlasDivRoundup(N, 16) * BlockCountK * 16 * sizeof(float);
-
-        // _mm256_load_si256 requires alignment on a 32-byte boundary
-        constexpr size_t PackedQuantBDataAlignment = 32;
-        PackedQuantBDataSize += PackedQuantBDataAlignment - 1;
-        constexpr size_t BlkSumAlignment = MlasQNBitQuantBBlkSumAlignment();
-        BlkSumSize += BlkSumAlignment - 1;
-
+        const size_t BlkSumSize = ScaleSize;
         return PackedQuantBDataSize + ScaleSize + BlkSumSize;
     } else {
         const size_t PackedQuantBDataSize = N * BlockCountK * MlasQNBitBlkDataSizeInBytes(BlkBitWidth, BlkLen);
@@ -145,6 +138,40 @@ GetContinueLayoutOffsetBlkInSubBlk(size_t N, const size_t n, const size_t BlockC
 }
 
 static void
+pack_4b_4blk_blklen32_avx512(const std::byte* QuantBData, std::byte* PackedQuantBData)
+{
+    // dst: |0~3/16~19|32~35/48~51|64~67/80~83|96~99/112~115|     16 bytes
+    //      |4~7/20~23|36~39/52~55|68~71/84~87|100~103/116~119|   16 bytes
+    //      |8~11/24~27|40~43/56~59|72~75/88~91|104~107/120~123|  16 bytes
+    //      |12~15/28~31|44~47/60~63|76~79/92~95|108~111/124~127| 16 bytes
+    // where |0~3/16~19| means |0 16|1 17|2 18|3 19| so that it is unpacked
+    // by load_4blk_4b_packed_blklen32 to:
+    // reg512_0: 0 1 2 3 32 33,,, and reg512_1: 16 17 18 19 48 49,,,
+    // 64 bytes (512bits) total of 128 4bit weights, unpack to 2 512 registers, each as:
+    // 0000111122223333 0000111122223333 0000111122223333 0000111122223333 (64 unsigned int8)
+    //
+    for (int g0 = 0; g0 < 4; g0++) {
+        for (int g1 = 0; g1 < 4; g1++) {
+            int src_byte_idx_lo = (g0 * 4 + g1 * 32) / 2;
+            int src_byte_idx_hi = (g0 * 4 + g1 * 32 + 16) / 2;
+            int dst_byte_idx = g0 * 16 + g1 * 4;
+            const std::byte* src_lo = &QuantBData[src_byte_idx_lo];
+            const std::byte* src_hi = &QuantBData[src_byte_idx_hi];
+
+            std::byte* dst = &PackedQuantBData[dst_byte_idx];
+            for (int w = 0; w < 2; w++) {
+                *dst = (*src_lo & std::byte{0x0F}) | ((*src_hi & std::byte{0x0F}) << 4);
+                dst++;
+                *dst = ((*src_lo & std::byte{0xF0}) >> 4) | (*src_hi & std::byte{0xF0});
+                dst++;
+                src_lo++;
+                src_hi++;
+            }
+        }
+    }
+}
+
+static void
 PackQuantB(
   const std::byte* QuantBDataBegin,
   std::byte* PackedQuantBDataBegin,
@@ -169,6 +196,12 @@ PackQuantB(
     // dst blklen32: | v0 v16 | v1 v17 | ... | v14 v30 | v15 v31 |
     // dst blklen16: | v0 v8 | v1 v9 | v2 v11 | v3 v12 | v4 v13 | v5 v14 | v6 v15 | v7 v16 |
 
+    // for avx512 && BlkLen == 32
+    // dst: |0~3/16~19|32~35/48~51|64~67/80~83|96~99/112~115|
+    //      |4~7/20~23|36~39/52~55|68~71/84~87|100~103/116~119|
+    //      |8~11/24~27|40~43/56~59|72~75/88~91|104~107/120~123|
+    //      |12~15/28~31|44~47/60~63|76~79/92~95|108~111/124~127|
+    // 
     // for avx512
     // dst: | v0 v64 | v1 v65 | ... | v62 v126 | v63 v127 |
     // for the remaining blk, it shall be:
@@ -191,6 +224,8 @@ PackQuantB(
               const std::byte* QuantBData, std::byte* PackedQuantBData,
               size_t pack_byte_pair_count, size_t pack_data_size) {
             for (size_t byte_pair_idx = 0; byte_pair_idx < pack_byte_pair_count; ++byte_pair_idx) {
+                // (avx256)dst: | v0 v32 | v1 v33 | ... | v30 v62 | v31 v63 |
+                // (avx512)dst: | v0 v64 | v1 v65 | ... | v62 v126 | v63 v127 |
                 const std::byte src0 = QuantBData[byte_pair_idx];
                 const std::byte src1 = QuantBData[byte_pair_idx + pack_data_size / 2];
 
@@ -239,7 +274,13 @@ PackQuantB(
                     const size_t k_blk = k_subblk * blks_per_sub;
                     const size_t dst_data_offset = GetContinueLayoutOffsetBlkInSubBlk(N, n, BlockCountK, k_blk, blks_per_sub);
                     std::byte* PackedQuantBData = PackedQuantBDataBegin + dst_data_offset * BlkLen / 2;
-                    pack_subblk(QuantBData, PackedQuantBData, PackBytePairCount, PackDataSize);
+                    if (BlkLen == 32 && SubBlkLen == 128)
+                    {
+                        // this is avx512
+                        pack_4b_4blk_blklen32_avx512(QuantBData, PackedQuantBData);
+                    } else {
+                        pack_subblk(QuantBData, PackedQuantBData, PackBytePairCount, PackDataSize);
+                    }
                 }
             }
         }
@@ -277,11 +318,21 @@ ComputePackBlkSum(
             zp = (uint8_t)(low_zp ? ((*QuantBZP) & low_mask) : ((*QuantBZP) >> 4));
         }
 
-          // BlockSum is a width 16 row major matrix
-          const size_t dst_offset = ((n / 16) * BlockCountK + k_blk) * 16 + n % 16;
-        *(BlockSumBegin + dst_offset) = -QuantBScale * zp;
-        if (BlkLen == 16) {  // TODO
+        bool is_avx512 = SubBlkLen == 128;
+        if (is_avx512) {
+            if (BlkLen == 32) {
+                int blks_per_sub = (int)(SubBlkLen / BlkLen);
+                size_t dst_offset = GetContinueLayoutOffsetBlkInSubBlk(N, n, BlockCountK, k_blk, blks_per_sub);
+                *(QuantBScaleBegin + dst_offset) = QuantBScale;
+                *(BlockSumBegin + dst_offset) = -QuantBScale * zp;
+                return;
+            }
+        } 
 
+        const size_t dst_offset = n * BlockCountK + k_blk;
+        *(BlockSumBegin + dst_offset) = -QuantBScale * zp;
+
+        if (BlkLen == 16) {
         } else if (BlkLen >= SubBlkLen) {
             const size_t scale_dst_offset = GetContinueLayoutOffsetSubBlk(N, n, BlockCountK, k_blk);
             *(QuantBScaleBegin + scale_dst_offset) = QuantBScale;
