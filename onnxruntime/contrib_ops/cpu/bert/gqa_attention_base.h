@@ -50,7 +50,7 @@ class GQAAttentionBase {
   Status ApplyAttention(const T* Q,                                 // Q data with shape BxNxSxH
                         const T* K,                                 // K data with shape BxN_kvxSxH
                         const T* V,                                 // V data with shape BxN_kvxSxH
-                        const Tensor* attention_mask,               // Attention mask to apply before softmax / softcap
+                        const Tensor* attention_mask,               // Attention mask to apply before softmax
                         const Tensor* past_key,                     // past K input tensor (if not using past state)
                         const Tensor* past_value,                   // past V input tensor (if not using past state)
                         Tensor* output,                             // output tensor
@@ -275,8 +275,24 @@ class GQAAttentionBase {
           const size_t start_offset = should_apply_local_window ? seq_causal_length - local_window_size_ - 1 : 0;
           const size_t window_size = should_apply_local_window ? local_window_size_ + 1 : seq_causal_length;
 
+          // Mask everything before local window, if local window should be applied
+          if (should_apply_local_window) {
+            for (size_t total_seq_id = 0; total_seq_id < seq_causal_length - local_window_size_ - 1; total_seq_id++) {
+              if constexpr (std::is_same<U, float>::value) {
+                output_softmax[total_seq_id] = 0.f;
+              } else {
+                output_softmax[total_seq_id] = MLFloat16::FromBits(static_cast<uint16_t>(0));
+              }
+            }
+          }
+
+          if (softcap_ > 0.f) {
+            ComputeAttentionSoftcapInplace(output_softmax + start_offset, static_cast<int>(window_size),
+                                           static_cast<U>(softcap_));
+          }
+
           // Apply custom attention mask if there is any
-          // TODO (#23982): Implement masking during softmax / softcap computation in GQA CPU operator
+          // TODO (#23982): Implement masking during softmax computation in GQA CPU operator
           if (attention_mask_thread != nullptr) {
             if constexpr (std::is_same_v<U, T>) {
               ApplyAttentionMask(output_softmax + start_offset, attention_mask_thread + start_offset,
@@ -291,22 +307,6 @@ class GQAAttentionBase {
             }
           }
 
-          // Mask everything before local window, if local window should be applied
-          if (should_apply_local_window) {
-            for (size_t total_seq_id = 0; total_seq_id < seq_causal_length - local_window_size_ - 1; total_seq_id++) {
-              if constexpr (std::is_same<U, float>::value) {
-                output_softmax[total_seq_id] = 0.f;
-              } else {
-                output_softmax[total_seq_id] = MLFloat16::FromBits(static_cast<uint16_t>(0));
-              }
-            }
-          }
-
-          // Calculate softcap / softmax
-          if (softcap_ > 0.f) {
-            ComputeAttentionSoftcapInplace(output_softmax + start_offset, static_cast<int>(window_size),
-                                           static_cast<U>(softcap_));
-          }
           if (use_smooth_softmax_) {
             ComputeSmoothSoftmaxInplace(output_softmax + start_offset, 1, static_cast<int>(window_size), nullptr);
           } else {
