@@ -72,14 +72,20 @@ class ReduceMax final : public ReduceKernel<true> {
 };
 
 class ReduceMin final : public ReduceKernel<true> {
-  public:
+ public:
   ReduceMin(const OpKernelInfo& info) : ReduceKernel<true>(info, "ReduceMin") {}
-   ReduceOpSpecificCode GetOpSpecificCode(const Tensor* input_tensor) const override;
- };
+  ReduceOpSpecificCode GetOpSpecificCode(const Tensor* input_tensor) const override;
+};
 
 class ReduceSum final : public ReduceKernel<true> {
  public:
   ReduceSum(const OpKernelInfo& info) : ReduceKernel<true>(info, "ReduceSum", true) {}
+  ReduceOpSpecificCode GetOpSpecificCode(const Tensor* input_tensor) const override;
+};
+
+class ReduceProd final : public ReduceKernel<true> {
+ public:
+  ReduceProd(const OpKernelInfo& info) : ReduceKernel<true>(info, "ReduceProd", true) {}
   ReduceOpSpecificCode GetOpSpecificCode(const Tensor* input_tensor) const override;
 };
 

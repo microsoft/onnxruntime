@@ -233,6 +233,14 @@ ReduceOpSpecificCode ReduceSum::GetOpSpecificCode(const Tensor* input_tensor) co
   ReduceOpSpecificCode code({loop_header, loop_body, loop_footer});
   return code;
 }
+ReduceOpSpecificCode ReduceProd::GetOpSpecificCode(const Tensor* input_tensor) const {
+  ORT_UNUSED_PARAMETER(input_tensor);
+  std::string loop_header = "var prod = f32(1);";
+  std::string loop_body = "prod *= f32(current_element);";
+  std::string loop_footer = "let output_value = output_value_t(prod);";
+  ReduceOpSpecificCode code({loop_header, loop_body, loop_footer});
+  return code;
+}
 
 }  // namespace webgpu
 }  // namespace onnxruntime
