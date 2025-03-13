@@ -211,7 +211,7 @@ def no_kv_cache_test_cases(provider: str, comprehensive: bool):
         return
         yield
 
-    # Lengths of arraies are prime numbers since modulo (% length) is used in non comprehensive mode.
+    # Lengths of arrays are prime numbers since modulo (% length) is used in non comprehensive mode.
     batch_sizes = [1, 2, 3]
     sequence_lengths = [1, 16, 127, 128, 256, 384, 512]
     heads = [1, 2, 3, 4, 16]
@@ -307,7 +307,7 @@ def kv_cache_test_cases(provider: str, comprehensive: bool):
         return
         yield
 
-    # Lengths of arraies are prime numbers since modulo (% length) is used in non comprehensive mode.
+    # Lengths of arrays are prime numbers since modulo (% length) is used in non comprehensive mode.
     batch_sizes = [1, 2, 3]
     sequence_lengths = [1, 15, 16, 255, 256, 384, 512]
     heads = [1, 2, 3, 4, 16]
