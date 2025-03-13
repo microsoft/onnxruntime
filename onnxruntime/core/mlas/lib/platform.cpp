@@ -543,7 +543,6 @@ Return Value:
     this->SymmQgemmDispatch = &MlasSymmQgemmS8DispatchNeon;
     this->ConvSymU8S8Dispatch = &MlasConvSymU8DispatchNeon;
     this->ConvSymS8S8Dispatch = &MlasConvSymS8DispatchNeon;
-    this->QNBitGemmDispatch = &MlasSQNBitGemmDispatchNeon;
     this->RopeDispatch = &MlasRopeDispatchNeon;
     this->HGemmDispatch = &MlasHGemmDispatchNeon;
     this->SoftmaxDispatch = &MlasSoftmaxDispatchNeon;
@@ -570,8 +569,9 @@ Return Value:
         this->SymmQgemmDispatch = &MlasSymmQgemmS8DispatchSdot;
         this->ConvSymU8S8Dispatch = &MlasConvSymU8DispatchDot;
         this->ConvSymS8S8Dispatch = &MlasConvSymS8DispatchDot;
-        this->QNBitGemmDispatch = &MlasSQNBitGemmDispatchNeonDot;
     }
+
+    this->QNBitGemmDispatch = &GetMlasQNBitGemmDispatchNeon(HasDotProductInstructions);
 
 #if defined(__linux__)
     //

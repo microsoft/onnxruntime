@@ -173,43 +173,41 @@ Q4BitGemmPerGemmWorkspaceAlignment(
 }  // namespace sqnbitgemm_neon
 
 //
-// Kernel dispatch structures.
+// Kernel dispatch structure accessor.
 //
 
-namespace
-{
-
-MLAS_QNBIT_GEMM_DISPATCH
-MakeDispatch(
-    bool HasDotSupport
+const MLAS_QNBIT_GEMM_DISPATCH&
+GetMlasQNBitGemmDispatchNeon(
+    bool InitializeWithDotSupport
 )
 {
-    MLAS_QNBIT_GEMM_DISPATCH d;
+    // Note: The InitializeWithX parameters are only used in the invocation of this method that initializes the static
+    // MLAS_QNBIT_GEMM_DISPATCH instance.
 
-    d.Q4BitGemmPackQuantBDataSize = sqnbitgemm_neon::Q4BitGemmPackQuantBDataSize;
-    d.SQ4BitGemmPackQuantBData = sqnbitgemm_neon::SQ4BitGemmPackQuantBData;
+    static const MLAS_QNBIT_GEMM_DISPATCH MlasQNBitGemmDispatchNeon = [&]() {
+        MLAS_QNBIT_GEMM_DISPATCH d;
 
-    d.Q4BitGemmPerGemmWorkspaceSize = sqnbitgemm_neon::Q4BitGemmPerGemmWorkspaceSize;
-    d.Q4BitGemmPerGemmWorkspaceAlignment = sqnbitgemm_neon::Q4BitGemmPerGemmWorkspaceAlignment;
+        d.Q4BitGemmPackQuantBDataSize = sqnbitgemm_neon::Q4BitGemmPackQuantBDataSize;
+        d.SQ4BitGemmPackQuantBData = sqnbitgemm_neon::SQ4BitGemmPackQuantBData;
 
-    d.SQ4BitGemmM1Kernel_CompFp32 = sqnbitgemm_neon::SQ4BitGemmM1Kernel_CompFp32;
-    d.SQ4BitBlkDequantBForSgemm_CompFp32 = sqnbitgemm_neon::SQ4BitBlkDequantBForSgemm_CompFp32;
-    if (HasDotSupport) {
-        d.SQ4BitGemmKernel_CompInt8 = sqnbitgemm_neon::SQ4BitGemmKernel_CompInt8;
-    }
-    d.QuantizeARow_CompInt8 = sqnbitgemm_neon::QuantizeARow_CompInt8;
+        d.Q4BitGemmPerGemmWorkspaceSize = sqnbitgemm_neon::Q4BitGemmPerGemmWorkspaceSize;
+        d.Q4BitGemmPerGemmWorkspaceAlignment = sqnbitgemm_neon::Q4BitGemmPerGemmWorkspaceAlignment;
+
+        d.SQ4BitGemmM1Kernel_CompFp32 = sqnbitgemm_neon::SQ4BitGemmM1Kernel_CompFp32;
+        d.SQ4BitBlkDequantBForSgemm_CompFp32 = sqnbitgemm_neon::SQ4BitBlkDequantBForSgemm_CompFp32;
+        if (InitializeWithDotSupport) {
+            d.SQ4BitGemmKernel_CompInt8 = sqnbitgemm_neon::SQ4BitGemmKernel_CompInt8;
+        }
+        d.QuantizeARow_CompInt8 = sqnbitgemm_neon::QuantizeARow_CompInt8;
 
 #if defined(MLAS_F16VEC_INTRINSICS_SUPPORTED) && defined(MLAS_TARGET_ARM64)
-    d.HQ4BitGemmPackQuantBData = sqnbitgemm_neon::HQ4BitGemmPackQuantBData_CompFp16;
-    d.HQ4BitBlkDequantBForHgemm_CompFp16 = sqnbitgemm_neon::HQ4BitBlkDequantBForHgemm_CompFp16;
-    d.HQ4BitGemmKernel_CompFp16 = sqnbitgemm_neon::HQ4BitGemmKernel_CompFp16;
+        d.HQ4BitGemmPackQuantBData = sqnbitgemm_neon::HQ4BitGemmPackQuantBData_CompFp16;
+        d.HQ4BitBlkDequantBForHgemm_CompFp16 = sqnbitgemm_neon::HQ4BitBlkDequantBForHgemm_CompFp16;
+        d.HQ4BitGemmKernel_CompFp16 = sqnbitgemm_neon::HQ4BitGemmKernel_CompFp16;
 #endif  // MLAS_F16VEC_INTRINSICS_SUPPORTED && MLAS_TARGET_ARM64
 
-    return d;
+        return d;
+    }();
+
+    return MlasQNBitGemmDispatchNeon;
 }
-
-}  // namespace
-
-const MLAS_QNBIT_GEMM_DISPATCH MlasSQNBitGemmDispatchNeon = MakeDispatch(/* HasDotSupport */ false);
-
-const MLAS_QNBIT_GEMM_DISPATCH MlasSQNBitGemmDispatchNeonDot = MakeDispatch(/* HasDotSupport */ true);

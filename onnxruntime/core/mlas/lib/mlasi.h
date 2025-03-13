@@ -1043,9 +1043,10 @@ extern const MLAS_FPQ4GEMM_DISPATCH MlasFpQ4GemmDispatchAvx512;
 
 struct MLAS_QNBIT_GEMM_DISPATCH;
 
-extern const MLAS_QNBIT_GEMM_DISPATCH MlasSQNBitGemmDispatchNeon;
-
-extern const MLAS_QNBIT_GEMM_DISPATCH MlasSQNBitGemmDispatchNeonDot;
+const MLAS_QNBIT_GEMM_DISPATCH&
+GetMlasQNBitGemmDispatchNeon(
+    bool InitializeWithDotSupport
+);
 
 extern const MLAS_QNBIT_GEMM_DISPATCH MlasSQNBitGemmDispatchAvx2;
 
