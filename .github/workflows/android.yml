@@ -1,0 +1,153 @@
+name: Android_CI_Pipeline
+
+on:
+  push:
+    branches: [ main, 'rel-*', 'snnn/es*']
+  pull_request:
+    branches: [ main ]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  android_build_and_test_cpu:
+    runs-on: ["self-hosted", "1ES.Pool=onnxruntime-github-Ubuntu2204-AMD-CPU"]
+    timeout-minutes: 60
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Use jdk 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+          architecture: x64
+
+      - name: Setup Android NDK
+        uses: ./.github/actions/setup-android-ndk
+        with:
+          ndk-version: '27.2.12479018'
+          # android-sdk-root: ${{ env.ANDROID_SDK_ROOT }}  # Optional, uses default
+
+      - name: Export GitHub Actions cache environment variables
+        uses: actions/github-script@v7
+        with:
+          script: |
+            core.exportVariable('ACTIONS_CACHE_URL', process.env.ACTIONS_CACHE_URL || '');
+            core.exportVariable('ACTIONS_RUNTIME_TOKEN', process.env.ACTIONS_RUNTIME_TOKEN || '');
+
+      - name: CPU EP, Build and Test
+        shell: bash
+        run: |
+          python3 tools/ci_build/build.py \
+            --enable_lto \
+            --android \
+            --build_dir build \
+            --android_sdk_path "$ANDROID_HOME" \
+            --android_ndk_path "$ANDROID_NDK_HOME" \
+            --android_abi=x86_64 \
+            --android_api=30 \
+            --skip_submodule_sync \
+            --parallel --use_vcpkg --use_vcpkg_ms_internal_asset_cache \
+            --cmake_generator=Ninja \
+            --build_java
+
+      - name: Install psutil for emulator shutdown by run_android_emulator.py
+        if: always()
+        shell: bash
+        run: |
+          set -e -x
+          python3 -m pip install psutil
+
+      - name: Stop Android Emulator
+        if: always()
+        shell: bash
+        run: |
+          set -e -x
+          if test -f ./emulator.pid; then
+            echo "Emulator PID: `cat ./emulator.pid`"
+            python3 tools/python/run_android_emulator.py \
+              --android-sdk-root "${ANDROID_SDK_ROOT}" \
+              --stop \
+              --emulator-pid-file ./emulator.pid
+            rm ./emulator.pid
+          else
+            echo "Emulator PID file was expected to exist but does not."
+          fi
+          
+  android_build_and_test_nnapi_ep:
+    runs-on: ["self-hosted", "1ES.Pool=onnxruntime-github-Ubuntu2204-AMD-CPU"]
+    timeout-minutes: 120
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Use jdk 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'  # Use Temurin distribution
+          java-version: '17'
+          architecture: x64
+
+      - name: Setup Android NDK
+        uses: ./.github/actions/setup-android-ndk  # Path to the custom action
+        with:
+          ndk-version: '27.2.12479018'
+          # android-sdk-root: ${{ env.ANDROID_SDK_ROOT }}  # Optional, uses default
+
+      - name: Export GitHub Actions cache environment variables
+        uses: actions/github-script@v7
+        with:
+          script: |
+            core.exportVariable('ACTIONS_CACHE_URL', process.env.ACTIONS_CACHE_URL || '');
+            core.exportVariable('ACTIONS_RUNTIME_TOKEN', process.env.ACTIONS_RUNTIME_TOKEN || '');
+
+      - name: NNAPI EP, Build, Test on Android Emulator
+        shell: bash
+        run: |
+          python3 tools/ci_build/build.py \
+            --enable_lto \
+            --android \
+            --build_dir build_nnapi \
+            --android_sdk_path "$ANDROID_HOME" \
+            --android_ndk_path "$ANDROID_NDK_HOME" \
+            --android_abi=x86_64 \
+            --android_api=29 \
+            --skip_submodule_sync \
+            --parallel --use_vcpkg --use_vcpkg_ms_internal_asset_cache \
+            --use_nnapi \
+            --build_shared_lib \
+            --cmake_generator=Ninja \
+            --build_java
+
+      - name: Build Minimal ORT with NNAPI and run tests
+        shell: bash  # Explicitly specify bash
+        run: ./tools/ci_build/github/linux/ort_minimal/nnapi_minimal_build_minimal_ort_and_run_tests.sh "$(pwd)"
+
+      - name: Install psutil for emulator shutdown by run_android_emulator.py
+        if: always()
+        shell: bash
+        run: |
+          set -e -x
+          python3 -m pip install psutil
+
+      - name: Stop Android Emulator
+        if: always()
+        shell: bash
+        run: |
+          set -e -x
+          if test -f ./emulator.pid; then
+            echo "Emulator PID: `cat ./emulator.pid`"
+            python3 tools/python/run_android_emulator.py \
+              --android-sdk-root "${ANDROID_SDK_ROOT}" \
+              --stop \
+              --emulator-pid-file ./emulator.pid
+            rm ./emulator.pid
+          else
+            echo "Emulator PID file was expected to exist but does not."
+          fi
+  
