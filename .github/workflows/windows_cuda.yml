@@ -2,7 +2,7 @@ name: ONNX Runtime CUDA Builds
 
 on:
   push:
-    branches: [ main, 'rel-*', 'snnn/es1']
+    branches: [ main, 'rel-*']
   pull_request:
     branches: [ main ]
 
@@ -60,6 +60,7 @@ jobs:
 
       - name: API Documentation Check and generate
         run: |
+          where nvcc
           set ORT_DOXY_SRC=${{ github.workspace }}
           set ORT_DOXY_OUT=${{ runner.temp }}\build\RelWithDebInfo\RelWithDebInfo
           mkdir %ORT_DOXY_SRC%

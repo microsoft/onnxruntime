@@ -2,7 +2,7 @@ name: ONNX Runtime WebGPU Builds
 
 on:
   push:
-    branches: [ main, 'rel-*', 'snnn/es1']
+    branches: [ main, 'rel-*']
   pull_request:
     branches: [ main ]
 

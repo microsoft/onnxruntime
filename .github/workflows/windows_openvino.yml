@@ -2,7 +2,7 @@ name: Windows OpenVINO CI Pipeline
 
 on:
   push:
-    branches: [ main, 'rel-*', 'snnn/es1']
+    branches: [ main, 'rel-*']
   pull_request:
     branches: [ main ]
 
@@ -12,7 +12,7 @@ concurrency:
 
 jobs:
   BUILD_OPENVINO_EP:
-  name: Windows OpenVINO CI Pipeline
+    name: Windows OpenVINO CI Pipeline
     runs-on: ["self-hosted", "1ES.Pool=onnxruntime-github-vs2022-mms"]
     timeout-minutes: 240
     env:
