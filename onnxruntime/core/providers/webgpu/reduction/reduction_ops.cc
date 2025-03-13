@@ -40,6 +40,12 @@ REGISTER_UNARY_ELEMENTWISE_VERSIONED_KERNEL(ReduceMax, 12, 12);
 REGISTER_UNARY_ELEMENTWISE_VERSIONED_KERNEL(ReduceMax, 13, 17);
 REGISTER_UNARY_ELEMENTWISE_KERNEL(ReduceMax, 18);
 
+REGISTER_UNARY_ELEMENTWISE_VERSIONED_KERNEL(ReduceMin, 1, 10);
+REGISTER_UNARY_ELEMENTWISE_VERSIONED_KERNEL(ReduceMin, 11, 11);
+REGISTER_UNARY_ELEMENTWISE_VERSIONED_KERNEL(ReduceMin, 12, 12);
+REGISTER_UNARY_ELEMENTWISE_VERSIONED_KERNEL(ReduceMin, 13, 17);
+REGISTER_UNARY_ELEMENTWISE_KERNEL(ReduceMin, 18);
+
 REGISTER_UNARY_ELEMENTWISE_VERSIONED_KERNEL(ReduceSum, 1, 10);
 REGISTER_UNARY_ELEMENTWISE_VERSIONED_KERNEL(ReduceSum, 11, 12);
 REGISTER_UNARY_ELEMENTWISE_KERNEL(ReduceSum, 13);
@@ -208,6 +214,14 @@ ReduceOpSpecificCode ReduceMax::GetOpSpecificCode(const Tensor* input_tensor) co
   std::string loop_header = "var max_element = first_element;";
   std::string loop_body = "max_element = max(max_element, current_element);";
   std::string loop_footer = "let output_value = output_value_t(max_element);";
+  ReduceOpSpecificCode code({loop_header, loop_body, loop_footer});
+  return code;
+}
+ReduceOpSpecificCode ReduceMin::GetOpSpecificCode(const Tensor* input_tensor) const {
+  ORT_UNUSED_PARAMETER(input_tensor);
+  std::string loop_header = "var min_element = first_element;";
+  std::string loop_body = "min_element = min(min_element, current_element);";
+  std::string loop_footer = "let output_value = output_value_t(min_element);";
   ReduceOpSpecificCode code({loop_header, loop_body, loop_footer});
   return code;
 }
