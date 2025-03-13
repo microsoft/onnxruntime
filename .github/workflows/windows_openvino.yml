@@ -1,4 +1,4 @@
-name: ONNX Runtime OpenVINO Builds
+name: Windows OpenVINO CI Pipeline
 
 on:
   push:
@@ -12,6 +12,7 @@ concurrency:
 
 jobs:
   BUILD_OPENVINO_EP:
+  name: Windows OpenVINO CI Pipeline
     runs-on: ["self-hosted", "1ES.Pool=onnxruntime-github-vs2022-mms"]
     timeout-minutes: 240
     env:
