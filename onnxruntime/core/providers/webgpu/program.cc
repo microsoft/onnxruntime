@@ -308,16 +308,6 @@ ProgramBase& ProgramBase::AddOutputs(std::initializer_list<ProgramOutput> output
   return *this;
 }
 
-ProgramBase& ProgramBase::AddIndices(const TensorShape& shape) {
-  indices_.emplace_back(shape);
-  return *this;
-}
-
-ProgramBase& ProgramBase::AddIndices(TensorShape&& shape) {
-  indices_.emplace_back(shape);
-  return *this;
-}
-
 ProgramBase& ProgramBase::SetDispatchGroupSize(uint32_t x) {
   return SetDispatchGroupSize(x, 1, 1);
 }
