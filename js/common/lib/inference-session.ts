@@ -434,7 +434,7 @@ export declare namespace InferenceSession {
   /**
    * The common part of the value metadata type for both tensor and non-tensor values.
    */
-  interface ValueMetadataBase {
+  export interface ValueMetadataBase {
     /**
      * The name of the specified input or output.
      */
@@ -444,7 +444,7 @@ export declare namespace InferenceSession {
   /**
    * Represents the metadata of a non-tensor value.
    */
-  interface ValueNonTensorMetadata extends ValueMetadataBase {
+  export interface NonTensorValueMetadata extends ValueMetadataBase {
     /**
      * Get a value indicating whether the value is a tensor.
      */
@@ -454,7 +454,7 @@ export declare namespace InferenceSession {
   /**
    * Represents the metadata of a tensor value.
    */
-  interface ValueTensorMetadata extends ValueMetadataBase {
+  export interface TensorValueMetadata extends ValueMetadataBase {
     /**
      * Get a value indicating whether the value is a tensor.
      */
@@ -466,17 +466,17 @@ export declare namespace InferenceSession {
     /**
      * Get the shape of the tensor.
      *
-     * If the shape is not defined, the value will be `undefined`. Otherwise, it will be an array representing the shape
+     * If the shape is not defined, the value will an empty array. Otherwise, it will be an array representing the shape
      * of the tensor. Each element in the array can be a number or a string. If the element is a number, it represents
      * the corresponding dimension size. If the element is a string, it represents a symbolic dimension.
      */
-    readonly shape?: ReadonlyArray<number | string>;
+    readonly shape: ReadonlyArray<number | string>;
   }
 
   /**
    * Represents the metadata of a value.
    */
-  export type ValueMetadata = ValueNonTensorMetadata | ValueTensorMetadata;
+  export type ValueMetadata = NonTensorValueMetadata | TensorValueMetadata;
 
   // #endregion
 }
