@@ -52,6 +52,70 @@ static const char* DlError() {
 #endif
 }
 
+Status ReadBinaryFromFile(const std::string& file_path, uint8_t* buffer, size_t buffer_size) {
+  ORT_RETURN_IF(nullptr == buffer, "Binary buffer is nullptr");
+  std::ifstream in(file_path, std::ifstream::binary);
+  ORT_RETURN_IF(!in, "Failed to open input file: ", file_path.c_str());
+  ORT_RETURN_IF(!in.read(reinterpret_cast<char*>(buffer), buffer_size), "Failed to read the contents of: ", file_path.c_str());
+  return Status::OK();
+}
+
+Status QnnBackendManager::ParseLoraConfig(std::string lora_config_path) {
+  LOGS_DEFAULT(INFO) << "Acquiring the QnnInterface " << lora_config_path;
+
+  // QNN Lora Config file format should be a single line, with the graph name first,
+  // followed by the qnn lora context binary path, separated by a semicolon (;)
+  // Example: <graph_name>;<binary_path>
+  LOGS_DEFAULT(INFO) << "Loading Lora Config " << lora_config_path;
+  std::ifstream file(lora_config_path);
+  std::string line;
+
+  if (file.is_open()) {
+    if (std::getline(file, line)) {
+      std::istringstream ss(line);
+      std::string graph_name;
+      std::string lora_adapter_bin_path;
+
+      if (std::getline(ss, graph_name, ';') && std::getline(ss, lora_adapter_bin_path)) {
+        size_t buffer_size = std::filesystem::file_size(lora_adapter_bin_path.c_str());
+
+        ORT_RETURN_IF(0 == buffer_size, "Received path to an empty file. Nothing to deserialize.");
+        std::unique_ptr<uint8_t[]> buffer = std::make_unique<uint8_t[]>(buffer_size);
+        void* voidBufferPtr = static_cast<void*>(buffer.get());
+        QnnContext_Buffer_t contextBuffer{QNN_CONTEXT_BUFFER_VERSION_1,
+                                          {QNN_CONTEXTMEMTYPE_RAW, {{voidBufferPtr, buffer_size}}}};
+
+        auto status = ReadBinaryFromFile(lora_adapter_bin_path,
+                                         reinterpret_cast<uint8_t*>(buffer.get()),
+                                         buffer_size);
+
+        ORT_RETURN_IF(status != Status::OK(), "Failed to read binary data.");
+        Qnn_GraphHandle_t graph;
+        bool graph_retrieve_success = false;
+        for (size_t cIdx = 0; cIdx < contexts_.size(); cIdx++) {
+          auto graph_retrieve_rt = qnn_interface_.graphRetrieve(contexts_[cIdx], graph_name.c_str(), &graph);
+          if (QNN_SUCCESS != graph_retrieve_rt) {
+            continue;
+          }
+
+          graph_retrieve_success = true;
+
+          auto context_apply_binary_section_rt = qnn_interface_.contextApplyBinarySection(
+              contexts_[cIdx], graph, QNN_CONTEXT_SECTION_UPDATABLE, &contextBuffer, profile_backend_handle_, nullptr);
+          ORT_RETURN_IF(QNN_SUCCESS != context_apply_binary_section_rt, "Failed to apply binary section.");
+          break;
+        }
+        ORT_RETURN_IF_NOT(graph_retrieve_success, "Failed to retrieve graph: ", graph_name, " and apply binary section.");
+      }
+    }
+    file.close();
+  } else {
+    LOGS_DEFAULT(ERROR) << "Unable to load Lora Config " << lora_config_path;
+  }
+
+  return Status::OK();
+}
+
 template <typename F, class T>
 Status QnnBackendManager::GetQnnInterfaceProvider(const char* lib_path,
                                                   const char* interface_provider_name,
