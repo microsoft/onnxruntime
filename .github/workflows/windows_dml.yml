@@ -13,8 +13,7 @@ concurrency:
 jobs:
   build_x64_RelWithDebInfo:
     env:
-      OrtPackageId: Microsoft.ML.OnnxRuntime
-      OnnxRuntimeBuildDirectory: ${{ github.workspace }}\build
+      OrtPackageId: Microsoft.ML.OnnxRuntime.DirectML
       DOTNET_SKIP_FIRST_TIME_EXPERIENCE: true
       setVcvars: true
       ALLOW_RELEASED_ONNX_OPSET_ONLY: '0'
@@ -84,9 +83,16 @@ jobs:
             core.exportVariable('ACTIONS_CACHE_URL', process.env.ACTIONS_CACHE_URL || '');
             core.exportVariable('ACTIONS_RUNTIME_TOKEN', process.env.ACTIONS_RUNTIME_TOKEN || '');
 
-      - name: Build and Test
+      - name: Set OnnxRuntimeBuildDirectory
+        shell: pwsh
         run: |
-          python.exe ${{ github.workspace }}\tools\ci_build\build.py --config RelWithDebInfo --build_dir ${{ github.workspace }} --skip_submodule_sync --build_csharp --parallel  --use_binskim_compliant_compile_flags --cmake_generator "Visual Studio 17 2022" --build_shared_lib --enable_onnx_tests --build_wheel --use_dml --enable_wcos --use_winml --use_vcpkg --use_vcpkg_ms_internal_asset_cache
+          $buildDir = Join-Path ${{ runner.temp }} "build"
+          echo "OnnxRuntimeBuildDirectory=$buildDir" >> $env:GITHUB_ENV
+
+      - name: Build and Test
+        working-directory: ${{ runner.temp }}
+        run: |
+          python.exe ${{ github.workspace }}\tools\ci_build\build.py --config RelWithDebInfo --build_dir build --skip_submodule_sync --build_csharp --parallel  --use_binskim_compliant_compile_flags --cmake_generator "Visual Studio 17 2022" --build_shared_lib --enable_onnx_tests --build_wheel --use_dml --enable_wcos --use_vcpkg --use_vcpkg_ms_internal_asset_cache
           if ($lastExitCode -ne 0) {
             exit $lastExitCode
           }

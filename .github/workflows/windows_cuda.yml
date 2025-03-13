@@ -86,6 +86,12 @@ jobs:
             core.exportVariable('ACTIONS_CACHE_URL', process.env.ACTIONS_CACHE_URL || '');
             core.exportVariable('ACTIONS_RUNTIME_TOKEN', process.env.ACTIONS_RUNTIME_TOKEN || '');
 
+      - name: Set OnnxRuntimeBuildDirectory
+        shell: pwsh
+        run: |
+          $buildDir = Join-Path ${{ runner.temp }} "build"
+          echo "OnnxRuntimeBuildDirectory=$buildDir" >> $env:GITHUB_ENV
+
       - name: Build and Test
         working-directory: ${{ runner.temp }}
         run: |
@@ -110,8 +116,7 @@ jobs:
 
     timeout-minutes: 300
     env:
-      OrtPackageId: Microsoft.ML.OnnxRuntime
-      OnnxRuntimeBuildDirectory: ${{ runner.temp }}\build
+      OrtPackageId: Microsoft.ML.OnnxRuntime.Gpu
       DOTNET_SKIP_FIRST_TIME_EXPERIENCE: true
       setVcvars: true
       ALLOW_RELEASED_ONNX_OPSET_ONLY: '0'
