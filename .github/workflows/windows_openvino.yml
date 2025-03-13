@@ -47,9 +47,9 @@ jobs:
         shell: pwsh
         run: |
           $Url = "https://storage.openvinotoolkit.org/repositories/openvino/packages/2025.0/windows/openvino_toolkit_windows_2025.0.0.17942.1f68be9f594_x86_64.zip"
-          $OutputPath = "$env:Agent_TempDirectory\openvino.zip"
-          $ExtractPath = "$env:Agent_TempDirectory\openvino-v$env:OpenVINOVersion"
-          $TempExtractPath = "$env:Agent_TempDirectory\openvino_temp"
+          $OutputPath = "$env:RUNNER_TEMP\openvino.zip"
+          $ExtractPath = "$env:RUNNER_TEMP\openvino-v$env:OpenVINOVersion"
+          $TempExtractPath = "$env:RUNNER_TEMP\openvino_temp"
 
           # Ensure directories exist
           if (Test-Path $ExtractPath) {
