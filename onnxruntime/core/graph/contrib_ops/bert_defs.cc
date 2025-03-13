@@ -1130,7 +1130,7 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                OpSchema::Optional)
         .Input(9,
                "position_ids",
-               "2D tensor with shape (batch_size, sequence_length). When processing the first prompt the kernel ",
+               "2D tensor with shape (batch_size, sequence_length). When processing the first prompt the kernel "
                "uses only the first element",
                "tensor(int64)",
                OpSchema::Optional)
