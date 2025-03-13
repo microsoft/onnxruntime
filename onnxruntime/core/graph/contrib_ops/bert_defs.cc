@@ -1135,8 +1135,7 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                OpSchema::Optional)
         .Input(10,
                "attention_mask",
-               "4D tensor with shape (batch_size or 1, num_heads or 1, sequence_length, total_sequence_length). "
-               "The op only supports local and causal attention.",
+               "4D tensor with shape (batch_size or 1, num_heads or 1, sequence_length, total_sequence_length)."
                "T",
                OpSchema::Optional)
         .Output(0,

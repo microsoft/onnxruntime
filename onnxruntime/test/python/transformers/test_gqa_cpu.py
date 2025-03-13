@@ -30,7 +30,7 @@ RED = "\033[31m"
 GREEN = "\033[32m"
 RESET = "\033[0m"
 
-ORT_TYPE = TensorProto.FLOAT16
+ORT_TYPE = TensorProto.FLOAT
 TORCH_TYPE = torch.float16 if ORT_TYPE == TensorProto.FLOAT16 else torch.float32
 NUMPY_TYPE = numpy.float16 if ORT_TYPE == TensorProto.FLOAT16 else numpy.float32
 RTOL = 3e-2 if ORT_TYPE == TensorProto.FLOAT16 else 1e-3
