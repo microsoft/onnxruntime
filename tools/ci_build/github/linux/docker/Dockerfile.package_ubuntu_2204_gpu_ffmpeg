@@ -5,8 +5,8 @@
 # Dockerfile to run ONNXRuntime with TensorRT integration
 
 # Build base image with required system packages
-ARG BASEIMAGE=nvidia/cuda:12.1.0-cudnn8-devel-ubuntu22.04
-ARG TRT_VERSION=10.8.0.43-1+cuda12.1
+ARG BASEIMAGE=nvidia/cuda:12.4.1-cudnn-devel-ubuntu22.04
+ARG TRT_VERSION=10.8.0.43-1.cuda12.8
 ARG LD_LIBRARY_PATH_ARG=/usr/local/lib64:/usr/local/cuda/lib64
 FROM $BASEIMAGE AS base
 ARG TRT_VERSION
@@ -28,7 +28,7 @@ RUN apt-get install -y --no-install-recommends \
 RUN pip install --upgrade pip
 
 # Install TensorRT
-RUN apt-key adv --fetch-keys https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2004/x86_64/7fa2af80.pub &&\
+RUN apt-key adv --fetch-keys https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2004/x86_64/3bf863cc.pub &&\
     apt-get update &&\
     apt-get install -y \
     libnvinfer-dev=${TRT_VERSION} \
