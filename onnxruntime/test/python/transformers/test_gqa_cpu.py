@@ -159,7 +159,7 @@ def create_group_query_attention_graph_prompt(
                 "total_sequence_length",
                 "cos_cache" if rotary else "",
                 "sin_cache" if rotary else "",
-                "",
+                "position_ids" if do_custom_tree_attention else "",
                 "attention_bias" if do_custom_tree_attention else "",
             ],
             ["output", "present_key", "present_value"],
@@ -268,6 +268,11 @@ def create_group_query_attention_graph_prompt(
 
     if do_custom_tree_attention:
         graph_input += [
+            helper.make_tensor_value_info(
+                "position_ids",
+                TensorProto.INT64,
+                [config.batch_size, config.kv_sequence_length],
+            ),
             helper.make_tensor_value_info(
                 "attention_bias",
                 ORT_TYPE,
@@ -694,6 +699,7 @@ def gqa_prompt_func(
     cos=None,
     sin=None,
     seqlens_k=None,
+    position_ids=None,
     attention_bias=None,
     window_size=-1,
     past_kv_format=Formats.BSNH,
@@ -721,6 +727,7 @@ def gqa_prompt_func(
     past_v = v.clone() if share_buffer else None
 
     if do_custom_tree_attention:
+        assert position_ids is not None
         assert attention_bias is not None
 
     if new_k is not None:
@@ -751,7 +758,9 @@ def gqa_prompt_func(
 
         if do_custom_tree_attention:
             ort_inputs["attention_bias"] = attention_bias.detach().cpu().numpy()
+            ort_inputs["position_ids"] = position_ids.detach().cpu().numpy()
             io_binding.bind_cpu_input("attention_bias", ort_inputs["attention_bias"])
+            io_binding.bind_cpu_input("position_ids", ort_inputs["position_ids"])
 
         io_binding.bind_cpu_input("query", ort_inputs["query"])
         io_binding.bind_input(
@@ -797,7 +806,9 @@ def gqa_prompt_func(
 
         if do_custom_tree_attention:
             ort_inputs["attention_bias"] = attention_bias.detach().cpu().numpy()
+            ort_inputs["position_ids"] = position_ids.detach().cpu().numpy()
             io_binding.bind_cpu_input("attention_bias", ort_inputs["attention_bias"])
+            io_binding.bind_cpu_input("position_ids", ort_inputs["position_ids"])
 
         io_binding.bind_cpu_input("query", ort_inputs["query"])
         io_binding.bind_cpu_input("seqlens_k", ort_inputs["seqlens_k"])
@@ -1128,7 +1139,7 @@ def get_custom_attention_inputs(batch_size, sequence_length, total_seq_len, seql
 
         position_ids = torch.tensor(data=position_ids_data, dtype=torch.int64)
     else:
-        position_ids = None
+        position_ids = torch.zeros((batch_size, sequence_length), dtype=torch.int64)
         attention_bias = torch.rand(batch_size, 1, sequence_length, total_seq_len, dtype=TORCH_TYPE)
         attention_bias = torch.triu(attention_bias, diagonal=1)
 
@@ -1236,10 +1247,11 @@ def parity_check_gqa_prompt(
         q_ro, k_ro = q, new_k
 
     if do_custom_tree_attention:
-        _, attention_bias = get_custom_attention_inputs(
+        position_ids, attention_bias = get_custom_attention_inputs(
             config.batch_size, config.kv_sequence_length, config.q_sequence_length, seqlens_k=None, past=False
         )
     else:
+        position_ids = None
         attention_bias = None
 
     rearrange(torch.arange(config.kv_sequence_length, device="cpu"), "s -> 1 s")
@@ -1284,6 +1296,7 @@ def parity_check_gqa_prompt(
             cos,
             sin,
             cache_seqlens - 1,
+            position_ids,
             attention_bias,
             left_window_size,
             past_format,
@@ -1304,6 +1317,7 @@ def parity_check_gqa_prompt(
             cos,
             sin,
             cache_seqlens - 1,
+            position_ids,
             attention_bias,
             left_window_size,
             past_format,
@@ -1443,10 +1457,11 @@ def parity_check_gqa_prompt_no_buff(
     k_cache_ref = k_ro
 
     if do_custom_tree_attention:
-        _, attention_bias = get_custom_attention_inputs(
+        position_ids, attention_bias = get_custom_attention_inputs(
             config.batch_size, config.kv_sequence_length, config.q_sequence_length, seqlens_k=None, past=False
         )
     else:
+        position_ids = None
         attention_bias = None
 
     brange = rearrange(torch.arange(config.kv_sequence_length, device="cpu"), "s -> 1 s")
@@ -1485,6 +1500,7 @@ def parity_check_gqa_prompt_no_buff(
             cos,
             sin,
             cache_seqlens - 1,
+            position_ids,
             attention_bias,
             left_window_size,
             past_format,
@@ -1504,6 +1520,7 @@ def parity_check_gqa_prompt_no_buff(
             cos,
             sin,
             cache_seqlens - 1,
+            position_ids,
             attention_bias,
             left_window_size,
             past_format,

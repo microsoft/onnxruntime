@@ -138,10 +138,10 @@ Status GroupQueryAttention<T>::Compute(OpKernelContext* context) const {
     std::vector<int64_t> default_pos_ids(pos_ids_size);
     const int64_t* pos_ids_data = default_pos_ids.data();
 
-    if (parameters.is_first_prompt) {
-      default_pos_ids[0] = static_cast<int64_t>(0);
-    } else if (position_ids != nullptr) {
+    if (position_ids != nullptr) {
       pos_ids_data = position_ids->Data<int64_t>();
+    } else if (parameters.is_first_prompt) {
+      default_pos_ids[0] = static_cast<int64_t>(0);
     } else {
       // Note: As of now, continuous decoding supports only batch size 1 and token generation supports only sequence length 1.
       for (int b = 0; b < batch_size; b++) {

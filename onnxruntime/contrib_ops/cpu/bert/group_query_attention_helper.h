@@ -294,20 +294,15 @@ Status CheckCustomAttentionInputs(const T* position_ids,
                                   const T* attention_bias,
                                   const GroupQueryAttentionParameters& parameters) {
   if (position_ids != nullptr) {
-    if (parameters.is_first_prompt) {
-        return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                               "Position ids input is not allowed when processing the first prompt");
-    }
-
     const auto& pos_ids_shape = position_ids->Shape();
     if (pos_ids_shape[0] != parameters.batch_size) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                             "pos_ids dimension 0 must be equal to the batch size, got ", pos_ids_shape[0]);
+                             "position_ids dimension 0 must be equal to the batch size, got ", pos_ids_shape[0]);
     }
 
     if (pos_ids_shape[1] < parameters.sequence_length) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                             "pos_ids dimension 1 must be atleast sequence length, got ", pos_ids_shape[1]);
+                             "position_ids dimension 1 must be atleast sequence length, got ", pos_ids_shape[1]);
     }
   }
 
