@@ -10,7 +10,7 @@ Module Name:
 
 Abstract:
 
-    This module implements the fp16 eltwise kernels for ARM NEON.
+    This module implements the fp16 element-wise kernels for ARM NEON.
 
 --*/
 #include <arm_neon.h>

@@ -10,9 +10,9 @@ Module Name:
 
 Abstract:
 
-    This module implements routines to compute eltwise operations on two vectors.
+    This module implements routines to compute element-wise operations on two vectors.
 
-    Currently supported eltwise operations:
+    Currently supported element-wise operations:
         - Add
 
 --*/
@@ -30,29 +30,12 @@ MlasEltwiseAdd<float>(
     size_t N
 ) {
     while (N > 0) {
-        MLAS_FLOAT32X4 LeftVec, RightVec;
-
         if (N >= 4) {
-            LeftVec = MlasLoadFloat32x4(left);
-            RightVec = MlasLoadFloat32x4(right);
-        } else {
-#if defined(MLAS_SSE2_INTRINSICS)
-            // N.B. SSE2 lacks a broadcast load instruction, so avoid a shuffle
-            // and use zeroes for the upper elements.
-            LeftVec = _mm_load_ss(left);
-            RightVec = _mm_load_ss(right);
-#elif defined(MLAS_LSX_INTRINSICS)
-            LeftVec = (MLAS_FLOAT32X4)__lsx_vldrepl_w(left, 0);
-            RightVec = (MLAS_FLOAT32X4)__lsx_vldrepl_w(right, 0);
-#else
-            LeftVec = MlasBroadcastFloat32x4(left);
-            RightVec = MlasBroadcastFloat32x4(right);
-#endif
-        }
+            MLAS_FLOAT32X4 LeftVec = MlasLoadFloat32x4(left);
+            MLAS_FLOAT32X4 RightVec = MlasLoadFloat32x4(right);
 
-        MLAS_FLOAT32X4 ResultVec = MlasAddFloat32x4(LeftVec, RightVec);
+            MLAS_FLOAT32X4 ResultVec = MlasAddFloat32x4(LeftVec, RightVec);
 
-        if (N >= 4) {
             MlasStoreFloat32x4(output, ResultVec);
 
             left += 4;
@@ -60,7 +43,7 @@ MlasEltwiseAdd<float>(
             output += 4;
             N -= 4;
         } else {
-            MlasStoreLaneFloat32x4<0>(output, ResultVec);
+            *output = *left + *right;
 
             left += 1;
             right += 1;

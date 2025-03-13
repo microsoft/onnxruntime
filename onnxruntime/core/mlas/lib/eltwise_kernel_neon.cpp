@@ -10,7 +10,7 @@ Module Name:
 
 Abstract:
 
-    This module implements the eltwise kernels for ARM NEON.
+    This module implements the element-wise kernels for ARM NEON.
 
 --*/
 

@@ -11,7 +11,7 @@ Module Name:
 Abstract:
 
     This module includes kernel function prototypes and helper functions for
-    eltwise operations.
+    element-wise operations.
 
 --*/
 #pragma once

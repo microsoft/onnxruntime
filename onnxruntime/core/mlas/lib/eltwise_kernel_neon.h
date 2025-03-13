@@ -11,7 +11,7 @@ Module Name:
 Abstract:
 
     This module includes function declarations and common helper functions for
-    eltwise operations on ARM cpu.
+    element-wise operations on ARM cpu.
 
 --*/
 
