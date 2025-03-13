@@ -105,7 +105,7 @@ jobs:
         shell: pwsh
 
     timeout-minutes: 300
-    variables:
+    var:
       OrtPackageId: Microsoft.ML.OnnxRuntime
       OnnxRuntimeBuildDirectory: ${{ github.workspace }}
       DOTNET_SKIP_FIRST_TIME_EXPERIENCE: true
