@@ -132,24 +132,24 @@ class GQAAttentionBase {
   //  attention_probs(B, N, S, T) = Softmax(attention_probs)
   // If T is float32, U is float32. If T is float16, U could be float16 or float32.
   template <typename T, typename U>
-  void ComputeAttentionProbs(U* attention_probs,                                  // output buffer with size BxNxSxT
-                             const T* Q,                                          // Q data. Its size is BxNxSxH
-                             const T* K,                                          // k data. Its size is BxNxLxH
-                             const int32_t* seqlens_k,                            // total - 1 sequence lengths tensor
-                             const T* attention_mask,                             // optional attention mask
-                             const size_t batch_size,                             // batch size of self-attention
-                             const size_t sequence_length,                        // sequence length of self-attention (S)
-                             const gsl::span<const int64_t> attention_mask_shape, // shape of the attention mask
-                             const size_t past_buffer_sequence_length,            // sequence length of past state
-                             const size_t present_buffer_sequence_length,         // sequence length of present state
-                             const size_t head_size,                              // head size of self-attention
-                             const T* past_key,                                   // past key only
-                             T* present_key,                                      // present key only
-                             const bool past_present_share_buffer,                // whether present key and value share the same buffer
-                             const bool packed_qkv,                               // whether Q, K, V are packed
-                             const bool is_prompt,                                // whether it is prompt
-                             ThreadPool* tp,                                      // thread pool
-                             AllocatorPtr allocator) const {                      // allocator for temporary buffer
+  void ComputeAttentionProbs(U* attention_probs,                                   // output buffer with size BxNxSxT
+                             const T* Q,                                           // Q data. Its size is BxNxSxH
+                             const T* K,                                           // k data. Its size is BxNxLxH
+                             const int32_t* seqlens_k,                             // total - 1 sequence lengths tensor
+                             const T* attention_mask,                              // optional attention mask
+                             const size_t batch_size,                              // batch size of self-attention
+                             const size_t sequence_length,                         // sequence length of self-attention (S)
+                             const gsl::span<const int64_t> attention_mask_shape,  // shape of the attention mask
+                             const size_t past_buffer_sequence_length,             // sequence length of past state
+                             const size_t present_buffer_sequence_length,          // sequence length of present state
+                             const size_t head_size,                               // head size of self-attention
+                             const T* past_key,                                    // past key only
+                             T* present_key,                                       // present key only
+                             const bool past_present_share_buffer,                 // whether present key and value share the same buffer
+                             const bool packed_qkv,                                // whether Q, K, V are packed
+                             const bool is_prompt,                                 // whether it is prompt
+                             ThreadPool* tp,                                       // thread pool
+                             AllocatorPtr allocator) const {                       // allocator for temporary buffer
     const ptrdiff_t packed_batch_stride =
         packed_qkv ? SafeInt<ptrdiff_t>(num_heads_ + 2 * kv_num_heads_) * sequence_length * head_size
                    : SafeInt<ptrdiff_t>(0);
