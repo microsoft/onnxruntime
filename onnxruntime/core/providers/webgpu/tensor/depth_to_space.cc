@@ -64,7 +64,7 @@ Status DepthToSpaceProgram::GenerateShaderCode(ShaderHelper& shader) const {
   shader.MainFunctionBody() << shader.GuardAgainstOutOfBoundsWorkgroupSizes("uniforms.output_size")
                             << "  let indices = " << output.OffsetToIndices("global_idx") << ";\n"
                             << "  let aIndices = perm(indices);\n"
-                            << "  " << output.SetByOffset("global_idx", input.GetByOffset("aIndices"));
+                            << "  " << output.SetByOffset("global_idx", input.GetByIndices("aIndices"));
 
   std::cout << *shader.AdditionalImplementation().str() << std::endl;
   std::cout << *shader.MainFunctionBody().str() << std::endl;
