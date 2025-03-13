@@ -47,9 +47,12 @@ const DEBUG = process.env.npm_config_debug || args.debug; // boolean|'verbose'|'
 /**
  * --webgpu-ep
  * --no-webgpu-ep (default)
+ * --webgpu-ep=runtime
  *
  * Enable or disable the use of WebGPU EP. If enabled, the WebGPU EP will be used. If disabled, the WebGPU backend will
  * be used with JSEP.
+ *
+ * If set to "runtime", it will be determined at runtime based on the value of `globalThis.WEBGPU_EP`.
  *
  * (temporary) This flag is used to test the WebGPU EP integration. It will be removed in the future.
  */
@@ -69,7 +72,7 @@ const DEFAULT_DEFINE = {
   'BUILD_DEFS.DISABLE_WASM': 'false',
   'BUILD_DEFS.DISABLE_WASM_PROXY': 'false',
   'BUILD_DEFS.ENABLE_BUNDLE_WASM_JS': 'false',
-  'BUILD_DEFS.USE_WEBGPU_EP': JSON.stringify(!!USE_WEBGPU_EP),
+  'BUILD_DEFS.USE_WEBGPU_EP': USE_WEBGPU_EP === "runtime" ? 'globalThis.WEBGPU_EP' : JSON.stringify(!!USE_WEBGPU_EP),
 
   'BUILD_DEFS.IS_ESM': 'false',
   'BUILD_DEFS.ESM_IMPORT_META_URL': 'undefined',
