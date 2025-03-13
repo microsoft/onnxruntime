@@ -12,13 +12,20 @@ concurrency:
 
 
 jobs:
-  build_x64_RelWithDebInfo_1:  # Job for the first YAML file
+  webgpu_build_x64_RelWithDebInfo:  # Job for the first YAML file
     runs-on: ["self-hosted", "1ES.Pool=onnxruntime-github-Win2022-GPU-A10"]
     timeout-minutes: 300
     env:
       AZCOPY_AUTO_LOGIN_TYPE: MSI
       AZCOPY_MSI_CLIENT_ID: 63b63039-6328-442f-954b-5a64d124e5b4
-
+      OrtPackageId: Microsoft.ML.OnnxRuntime
+      OnnxRuntimeBuildDirectory: ${{ github.workspace }}
+      DOTNET_SKIP_FIRST_TIME_EXPERIENCE: true
+      setVcvars: true
+      ALLOW_RELEASED_ONNX_OPSET_ONLY: '0'
+      DocUpdateNeeded: false
+      NVIDIA_TF32_OVERRIDE: '0'
+      ONNXRUNTIME_TEST_GPU_DEVICE_ID: '0'
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -104,17 +111,8 @@ jobs:
         working-directory: ${{ github.workspace }}\csharp
         continue-on-error: true
 
-    env:
-      OrtPackageId: Microsoft.ML.OnnxRuntime
-      OnnxRuntimeBuildDirectory: ${{ github.workspace }}
-      DOTNET_SKIP_FIRST_TIME_EXPERIENCE: true
-      setVcvars: true
-      ALLOW_RELEASED_ONNX_OPSET_ONLY: '0'
-      DocUpdateNeeded: false
-      NVIDIA_TF32_OVERRIDE: '0'
-      ONNXRUNTIME_TEST_GPU_DEVICE_ID: '0'
 
-  build_x64_RelWithDebInfo_2:  # Job for the second YAML file
+  webgpu_external_dawn_build_x64_RelWithDebInfo:
     runs-on: ["self-hosted", "1ES.Pool=onnxruntime-github-Win2022-GPU-A10"]
     timeout-minutes: 300
     env:
@@ -166,16 +164,18 @@ jobs:
         shell: cmd
         working-directory: ${{ github.workspace }}\RelWithDebInfo\RelWithDebInfo
 
-    env:
-      #  Variables specific to this pipeline (if any)
-      NVIDIA_TF32_OVERRIDE: '0' #  Example - add others as needed.
-
-  build_x64_RelWithDebInfo_3:  # Job for the third YAML file
+  webgpu_minimal_build_edge_build_x64_RelWithDebInfo:
     runs-on: ["self-hosted", "1ES.Pool=onnxruntime-github-Win2022-GPU-A10"]
     timeout-minutes: 300
     env:
         AZCOPY_AUTO_LOGIN_TYPE: MSI
         AZCOPY_MSI_CLIENT_ID: 63b63039-6328-442f-954b-5a64d124e5b4
+        OrtPackageId: Microsoft.ML.OnnxRuntime
+        OnnxRuntimeBuildDirectory: ${{ github.workspace }}
+        DOTNET_SKIP_FIRST_TIME_EXPERIENCE: true
+        ALLOW_RELEASED_ONNX_OPSET_ONLY: '0'
+        DocUpdateNeeded: false
+        ONNXRUNTIME_TEST_GPU_DEVICE_ID: '0'
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -259,14 +259,3 @@ jobs:
         run: python tools\ValidateNativeDelegateAttributes.py
         shell: cmd
         working-directory: ${{ github.workspace }}\csharp
-        continue-on-error: true
-
-    env:
-      OrtPackageId: Microsoft.ML.OnnxRuntime
-      OnnxRuntimeBuildDirectory: ${{ github.workspace }}
-      DOTNET_SKIP_FIRST_TIME_EXPERIENCE: true
-      setVcvars: true
-      ALLOW_RELEASED_ONNX_OPSET_ONLY: '0'
-      DocUpdateNeeded: false
-      NVIDIA_TF32_OVERRIDE: '0'
-      ONNXRUNTIME_TEST_GPU_DEVICE_ID: '0'
