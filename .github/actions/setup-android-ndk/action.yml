@@ -5,6 +5,7 @@ inputs:
   ndk-version:
     description: 'The version of the Android NDK to install (e.g., 27.2.12479018)'
     required: true
+    default: '27.2.12479018'
   android-sdk-root:
     description: 'The root directory of the Android SDK'
     required: true
