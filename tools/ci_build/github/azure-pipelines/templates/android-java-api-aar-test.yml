@@ -95,11 +95,18 @@ jobs:
       set -e -x
       pip install requests
 
+      if [[ ${{ parameters.packageName }} == *qnn* ]]; then
+        # device list with native qnn support https://app.aihub.qualcomm.com/devices/
+        devices_to_test=("Samsung Galaxy S23-13.0" "Samsung Galaxy S21")
+      else
+        devices_to_test=("Samsung Galaxy S23-13.0" "Google Pixel 3-9.0")
+      fi
+
       python $(Build.SourcesDirectory)/tools/python/upload_and_run_browserstack_tests.py \
         --test_platform espresso \
         --app_path "debug/app-debug.apk" \
         --test_path "androidTest/debug/app-debug-androidTest.apk" \
-        --devices "Samsung Galaxy S23-13.0" "Google Pixel 3-9.0" \
+        --devices "${devices_to_test[@]}" \
         --build_tag "${{ parameters.packageName }}"
 
     displayName: Run E2E tests using Browserstack
@@ -112,4 +119,3 @@ jobs:
   - template: component-governance-component-detection-steps.yml
     parameters :
       condition : 'succeeded'
-
