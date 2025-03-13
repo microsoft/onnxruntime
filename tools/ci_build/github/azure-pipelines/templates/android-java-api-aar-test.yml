@@ -68,7 +68,9 @@ jobs:
     - script: |
         set -e -x
         cd android_test/android
-        $(Build.SourcesDirectory)/java/gradlew --no-daemon clean connectedDebugAndroidTest --stacktrace
+        #$(Build.SourcesDirectory)/java/gradlew --no-daemon clean connectedDebugAndroidTest --stacktrace
+        $(Build.SourcesDirectory)/java/gradlew  --no-daemon clean assembleDebug assembleAndroidTest --stacktrace
+
       displayName: Run E2E test using Emulator
       workingDirectory: $(Build.BinariesDirectory)
 
