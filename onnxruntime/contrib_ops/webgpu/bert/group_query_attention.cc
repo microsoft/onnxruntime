@@ -111,7 +111,7 @@ Status GeneratePositionIDs(onnxruntime::webgpu::ComputeContext& context, const W
 }
 
 Status RunRotaryEmbedding(onnxruntime::webgpu::ComputeContext& context, const WebgpuAttentionParameters& params, const Tensor* input, const Tensor* pos_ids, const Tensor* cos_cache, const Tensor* sin_cache, Tensor* output, bool is_query_input) {
-  const auto half_rotary_embedding_dim = gsl::narrow<uint32_t>(cos_cache->Shape()[1]);
+  const auto half_rotary_embedding_dim = gsl::narrow_cast<uint32_t>(cos_cache->Shape()[1]);
   const auto head_size = params.head_size_;
   const auto hidden_size = is_query_input ? params.hidden_size_ : params.kv_hidden_size_;
   const TensorShape global_shape({params.batch_size_, params.sequence_length_, hidden_size / head_size, static_cast<int64_t>(head_size - half_rotary_embedding_dim)});
@@ -119,11 +119,11 @@ Status RunRotaryEmbedding(onnxruntime::webgpu::ComputeContext& context, const We
   std::vector<uint32_t> global_dims(rank);
   std::vector<uint32_t> global_strides(rank);
   for (size_t j = 0; j < rank; ++j) {
-    global_dims[j] = gsl::narrow<uint32_t>(global_shape[j]);
-    global_strides[j] = gsl::narrow<uint32_t>(global_shape.SizeFromDimension(j + 1));
+    global_dims[j] = gsl::narrow_cast<uint32_t>(global_shape[j]);
+    global_strides[j] = gsl::narrow_cast<uint32_t>(global_shape.SizeFromDimension(j + 1));
   }
-  const auto input_output_strides = std::vector<uint32_t>({gsl::narrow<uint32_t>(input->Shape().SizeFromDimension(1)), gsl::narrow<uint32_t>(hidden_size), gsl::narrow<uint32_t>(head_size), 1});
-  const auto output_size = gsl::narrow<const uint32_t>(global_shape.Size());
+  const auto input_output_strides = std::vector<uint32_t>({gsl::narrow_cast<uint32_t>(input->Shape().SizeFromDimension(1)), gsl::narrow_cast<uint32_t>(hidden_size), gsl::narrow_cast<uint32_t>(head_size), 1});
+  const auto output_size = gsl::narrow_cast<const uint32_t>(global_shape.Size());
 
   RotaryEmbeddingProgram program(params.rotary_interleaved_);
   program
