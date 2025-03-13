@@ -57,14 +57,14 @@ void AppendPermFunction(std::ostream& os, const ShaderVariableHelper& input, int
 
 Status DepthToSpaceProgram::GenerateShaderCode(ShaderHelper& shader) const {
   const ShaderVariableHelper& input = shader.AddInput("input");
-  const ShaderVariableHelper& output = shader.AddOutput("output");
+  const ShaderVariableHelper& permedOutput = shader.AddOutput("output", input.Dims());
 
   AppendPermFunction(shader.AdditionalImplementation(), input, perm_);
 
   shader.MainFunctionBody() << shader.GuardAgainstOutOfBoundsWorkgroupSizes("uniforms.output_size")
-                            << "  let indices = " << output.OffsetToIndices("global_idx") << ";\n"
+                            << "  let indices = " << permedOutput.OffsetToIndices("global_idx") << ";\n"
                             << "  let aIndices = perm(indices);\n"
-                            << "  " << output.SetByOffset("global_idx", input.GetByOffset("aIndices"));
+                            << "  " << permedOutput.SetByOffset("global_idx", input.GetByOffset("aIndices"));
 
   std::cout << *shader.AdditionalImplementation().str() << std::endl;
   std::cout << *shader.MainFunctionBody().str() << std::endl;
