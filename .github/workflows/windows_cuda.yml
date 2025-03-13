@@ -1,4 +1,4 @@
-name: ONNX Runtime WebGPU Builds
+name: ONNX Runtime CUDA Builds
 
 on:
   push:
