@@ -57,14 +57,14 @@ void AppendPermFunction(std::ostream& os, const ShaderVariableHelper& input, int
 
 Status DepthToSpaceProgram::GenerateShaderCode(ShaderHelper& shader) const {
   const ShaderVariableHelper& input = shader.AddInput("input");
-  const ShaderVariableHelper& permedOutput = shader.AddOutput("output", input.Dims());
+  const ShaderVariableHelper& output = shader.AddOutput("output");
 
   AppendPermFunction(shader.AdditionalImplementation(), input, perm_);
 
   shader.MainFunctionBody() << shader.GuardAgainstOutOfBoundsWorkgroupSizes("uniforms.output_size")
-                            << "  let indices = " << permedOutput.OffsetToIndices("global_idx") << ";\n"
+                            << "  let indices = " << output.OffsetToIndices("global_idx") << ";\n"
                             << "  let aIndices = perm(indices);\n"
-                            << "  " << permedOutput.SetByOffset("global_idx", input.GetByOffset("aIndices"));
+                            << "  " << output.SetByOffset("global_idx", input.GetByOffset("aIndices"));
 
   std::cout << *shader.AdditionalImplementation().str() << std::endl;
   std::cout << *shader.MainFunctionBody().str() << std::endl;
@@ -214,7 +214,7 @@ Status DepthToSpace<is_nhwc>::ComputeInternal(onnxruntime::webgpu::ComputeContex
   std::cout << "running program..." << std::endl;
   program
       .AddInput({input, ProgramTensorMetadataDependency::TypeAndRank, override_shape, static_cast<int>(components)})
-      .AddOutput({output, ProgramTensorMetadataDependency::TypeAndRank})
+      .AddOutput({output, ProgramTensorMetadataDependency::TypeAndRank, override_shape, static_cast<int>(components)})
       .SetDispatchGroupSize((output_size + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE)
       .AddUniformVariable({static_cast<uint32_t>(output_size)});
   return context.RunProgram(program);
