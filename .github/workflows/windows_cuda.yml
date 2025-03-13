@@ -35,14 +35,17 @@ jobs:
         working-directory: ${{ github.workspace }}
         shell: cmd
 
-      - name: Download Primary CUDA SDK v12.2
+      - name: Download CUDA SDK v12.2
         run: |
           azcopy.exe cp --recursive "https://lotusscus.blob.core.windows.net/models/cuda_sdk/v12.2" $env:RUNNER_TEMP 
         shell: pwsh
 
       - name: Add CUDA to PATH
-        run: echo "::add-path::$env:RUNNER_TEMP\v12.2\bin"
-        shell: pwsh
+        shell: powershell
+        run: |
+          Write-Host "Adding CUDA to PATH"
+          Write-Host "CUDA Path: $env:RUNNER_TEMP\v12.2\bin"
+          Add-Content -Path $env:GITHUB_PATH -Value "$env:RUNNER_TEMP\v12.2\bin"
 
       - uses: actions/setup-node@v4
         with:
