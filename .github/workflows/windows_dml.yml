@@ -12,6 +12,14 @@ concurrency:
 
 jobs:
   build_x64_RelWithDebInfo:
+    env:
+      OrtPackageId: Microsoft.ML.OnnxRuntime
+      OnnxRuntimeBuildDirectory: ${{ github.workspace }}\build
+      DOTNET_SKIP_FIRST_TIME_EXPERIENCE: true
+      setVcvars: true
+      ALLOW_RELEASED_ONNX_OPSET_ONLY: '0'
+      DocUpdateNeeded: false
+      ONNXRUNTIME_TEST_GPU_DEVICE_ID: '0'
     runs-on: ["self-hosted", "1ES.Pool=onnxruntime-github-Win2022-GPU-A10"]
     steps:
       - uses: actions/checkout@v4
@@ -97,12 +105,4 @@ jobs:
         working-directory: ${{ github.workspace }}\RelWithDebInfo\RelWithDebInfo
         shell: pwsh
 
-    timeout-minutes: 300
-    variables:
-      OrtPackageId: Microsoft.ML.OnnxRuntime
-      OnnxRuntimeBuildDirectory: ${{ github.workspace }}
-      DOTNET_SKIP_FIRST_TIME_EXPERIENCE: true
-      setVcvars: true
-      ALLOW_RELEASED_ONNX_OPSET_ONLY: '0'
-      DocUpdateNeeded: false
-      ONNXRUNTIME_TEST_GPU_DEVICE_ID: '0'
+      
