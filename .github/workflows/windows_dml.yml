@@ -108,7 +108,7 @@ jobs:
         run: |
           python -m pip uninstall -y onnxruntime onnxruntime-gpu onnxruntime-training onnxruntime-directml -qq
           Get-ChildItem -Path dist/*.whl | foreach {pip --disable-pip-version-check install --upgrade $_.fullname}
-        working-directory: ${{ github.workspace }}\RelWithDebInfo\RelWithDebInfo
+        working-directory: ${{ runner.temp }}\build\RelWithDebInfo\RelWithDebInfo
         shell: pwsh
 
       
