@@ -1692,7 +1692,11 @@ def generate_build_tree(
             cmake_args += [
                 "-DCMAKE_SYSTEM_NAME=tvOS",
                 "-DCMAKE_TOOLCHAIN_FILE="
-                + (args.tvos_toolchain_file if args.tvos_toolchain_file else "../cmake/onnxruntime_tvos.toolchain.cmake"),
+                + (
+                    args.tvos_toolchain_file
+                    if args.tvos_toolchain_file
+                    else "../cmake/onnxruntime_tvos.toolchain.cmake"
+                ),
             ]
 
     if args.build_wasm:
