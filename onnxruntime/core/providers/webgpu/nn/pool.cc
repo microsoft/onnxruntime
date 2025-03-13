@@ -108,7 +108,7 @@ Status PoolProgram::GenerateShaderCode(ShaderHelper& shader) const {
     sampling_code = sampling_ss.str();
 
     std::stringstream downsampling_ss;
-    downsampling_ss << "  value /= " << (is_float16_ ? "f16" : "f32") <<"(count);\n";
+    downsampling_ss << "  value /= " << (is_float16_ ? "f16" : "f32") << "(count);\n";
     downsampling_code = downsampling_ss.str();
   }
 
