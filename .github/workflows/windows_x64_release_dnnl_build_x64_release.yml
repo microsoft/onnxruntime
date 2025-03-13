@@ -1,4 +1,4 @@
-name: windows_x64_release_vitisai
+name: windows_x64_dnnl_release
 
 on:
   push:
@@ -11,7 +11,7 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  build_x64_release_vitisai:
+  build_x64_dnnl_release:
     runs-on: ["self-hosted", "1ES.Pool=onnxruntime-github-vs2022-mms"]
     timeout-minutes: 300
 
@@ -82,10 +82,10 @@ jobs:
           core.exportVariable('ACTIONS_CACHE_URL', process.env.ACTIONS_CACHE_URL || '');
           core.exportVariable('ACTIONS_RUNTIME_TOKEN', process.env.ACTIONS_RUNTIME_TOKEN || '');
 
-    - name: Build
+    - name: Build and Test
       shell: pwsh
       run: |
-        python.exe "${{ github.workspace }}\tools\ci_build\build.py" --config RelWithDebInfo --build_dir "${{ github.workspace }}\build" --skip_submodule_sync --build_csharp --parallel --use_binskim_compliant_compile_flags --cmake_generator "Visual Studio 17 2022" --build_shared_lib --update --build --build_wheel --use_vitisai --use_vcpkg --use_vcpkg_ms_internal_asset_cache
+        python.exe "${{ github.workspace }}\tools\ci_build\build.py" --config RelWithDebInfo --build_dir "${{ github.workspace }}\build" --skip_submodule_sync --build_csharp --parallel --use_binskim_compliant_compile_flags --cmake_generator "Visual Studio 17 2022" --build_shared_lib --enable_onnx_tests --build_wheel --build_java --build_nodejs --msbuild_extra_options "IncludeMobileTargets=false" --build_nuget --use_vcpkg --use_vcpkg_ms_internal_asset_cache --use_dnnl
         if ($LASTEXITCODE -ne 0) {
           exit $LASTEXITCODE
         }
@@ -102,11 +102,23 @@ jobs:
       shell: pwsh
       run: |
         python -m pip uninstall -y onnxruntime onnxruntime-gpu onnxruntime-training onnxruntime-directml -qq
-        if ($LASTEXITCODE -ne 0) {
-          exit $LASTEXITCODE
-        }
         Get-ChildItem -Path dist/*.whl | foreach {pip --disable-pip-version-check install --upgrade $_.fullname}
-      working-directory:  "${{ github.workspace }}\\build\\RelWithDebInfo\\RelWithDebInfo"   
+      working-directory:  "${{ github.workspace }}\\build\\RelWithDebInfo\\RelWithDebInfo"
+
+    - name: Publish OperatorKernels.md (Conditional)
+      uses: actions/upload-artifact@v4
+      if: failure() && env.DocUpdateNeeded == 'true'
+      with:
+        name: OperatorKernels.md
+        path: ${{ github.workspace }}/docs/OperatorKernels.md
+
+    - name: Publish ContribOperators.md (Conditional)
+      uses: actions/upload-artifact@v4
+      if: failure() && env.DocUpdateNeeded == 'true'
+      with:
+        name: ContribOperators.md
+        path: ${{ github.workspace }}/docs/ContribOperators.md
+
     env:
       OrtPackageId: Microsoft.ML.OnnxRuntime
       OnnxRuntimeBuildDirectory: ${{ github.workspace }}\build
