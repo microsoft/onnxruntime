@@ -226,7 +226,7 @@ stages:
 
     - task: 1ES.PublishPipelineArtifact@1
       inputs:
-        targetPath: '$(Build.ArtifactStagingDirectory)/onnxruntime-linux-x64-gpu-$(OnnxRuntimeVersion).tgz'
+        targetPath: '$(Build.ArtifactStagingDirectory)'
         artifactName: 'onnxruntime-linux-x64-gpu'
     - template: ../templates/component-governance-component-detection-steps.yml
       parameters:
