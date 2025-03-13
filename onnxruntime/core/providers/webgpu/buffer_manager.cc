@@ -19,7 +19,7 @@ void EnforceBufferUnmapped(WebGpuContext& context, WGPUBuffer buffer) {
   }
 }
 
-}  // namespace anonymous
+}  // namespace
 
 class DisabledCacheManager : public IBufferCacheManager {
   size_t CalculateBufferSize(size_t request_size) override {
