@@ -2,7 +2,7 @@ name: ONNX Runtime OpenVINO Builds
 
 on:
   push:
-    branches: [ main, 'rel-*', 'snnn/es2']
+    branches: [ main, 'rel-*', 'snnn/es1']
   pull_request:
     branches: [ main ]
 
@@ -141,19 +141,17 @@ jobs:
 
       - name: Build
         shell: pwsh
+        working-directory: ${{ runner.temp }}
         run: |
-          python.exe ${{ github.workspace }}\tools\ci_build\build.py --config ${{ env.BuildConfig }} --build_dir ${{ github.workspace }} --cmake_generator "Visual Studio 17 2022" --build_shared_lib --use_openvino CPU --use_binskim_compliant_compile_flags --update --parallel --use_cache
+          python.exe ${{ github.workspace }}\tools\ci_build\build.py --config ${{ env.BuildConfig }} --build_dir build --cmake_generator "Visual Studio 17 2022" --build_shared_lib --use_openvino CPU --use_binskim_compliant_compile_flags --update --parallel --use_cache
 
       - name: Run unit tests
         shell: pwsh
+        working-directory: ${{ runner.temp }}
         run: |
-          Write-Output "Getting CPU information"
-          Get-WmiObject Win32_Processor | Select-Object Name, NumberOfCores, NumberOfLogicalProcessors, Architecture | Format-Table -AutoSize
-
-          Write-Output "Starting unit tests"
           python "${{ github.workspace }}\tools\ci_build\build.py" `
             --config "${{ env.BuildConfig }}" `
-            --build_dir "${{ github.workspace }}"\build `
+            --build_dir build `
             --cmake_generator "Visual Studio 17 2022" `
             --build_shared_lib `
             --use_openvino CPU `

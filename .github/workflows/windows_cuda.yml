@@ -40,9 +40,8 @@ jobs:
           azcopy.exe cp --recursive "https://lotusscus.blob.core.windows.net/models/cuda_sdk/v12.2" $env:RUNNER_TEMP 
         shell: pwsh
 
-      - name: Download Secondary CUDA SDK v11.8
-        run: |
-          azcopy.exe cp --recursive "https://lotusscus.blob.core.windows.net/models/cuda_sdk/v11.8" $env:RUNNER_TEMP 
+      - name: Add CUDA to PATH
+        run: echo "::add-path::$env:RUNNER_TEMP\v12.2\bin"
         shell: pwsh
 
       - uses: actions/setup-node@v4
@@ -58,7 +57,7 @@ jobs:
       - name: API Documentation Check and generate
         run: |
           set ORT_DOXY_SRC=${{ github.workspace }}
-          set ORT_DOXY_OUT=${{ github.workspace }}\RelWithDebInfo\RelWithDebInfo
+          set ORT_DOXY_OUT=${{ runner.temp }}\build\RelWithDebInfo\RelWithDebInfo
           mkdir %ORT_DOXY_SRC%
           mkdir %ORT_DOXY_OUT%
           "C:\Program Files\doxygen\bin\doxygen.exe" ${{ github.workspace }}\tools\ci_build\github\Doxyfile_csharp.cfg
@@ -77,7 +76,7 @@ jobs:
             nuget-version: '6.x'
 
       - name: NuGet restore
-        run: nuget restore ${{ github.workspace }}\packages.config -ConfigFile ${{ github.workspace }}\NuGet.config -PackagesDirectory ${{ github.workspace }}\RelWithDebInfo
+        run: nuget restore ${{ github.workspace }}\packages.config -ConfigFile ${{ github.workspace }}\NuGet.config -PackagesDirectory ${{ runner.temp }}\build\RelWithDebInfo
         shell: cmd
 
       - name: Export GitHub Actions cache environment variables
@@ -88,12 +87,13 @@ jobs:
             core.exportVariable('ACTIONS_RUNTIME_TOKEN', process.env.ACTIONS_RUNTIME_TOKEN || '');
 
       - name: Build and Test
+        working-directory: ${{ runner.temp }}
         run: |
-          python.exe ${{ github.workspace }}\tools\ci_build\build.py --config RelWithDebInfo --build_dir ${{ github.workspace }} --skip_submodule_sync --build_csharp --parallel  --use_binskim_compliant_compile_flags --cmake_generator "Visual Studio 17 2022" --build_shared_lib --enable_onnx_tests --build_wheel --build_java --build_nodejs --use_cuda --cuda_home="$env:RUNNER_TEMP\v12.2" --enable_cuda_profiling --enable_transformers_tool_test --use_vcpkg --use_vcpkg_ms_internal_asset_cache --cmake_extra_defines CMAKE_CUDA_ARCHITECTURES=86 --cmake_extra_defines onnxruntime_BUILD_UNIT_TESTS=ON --cmake_extra_defines onnxruntime_ENABLE_CUDA_EP_INTERNAL_TESTS=ON
+          python.exe ${{ github.workspace }}\tools\ci_build\build.py --config RelWithDebInfo --build_dir build --skip_submodule_sync --build_csharp --parallel  --use_binskim_compliant_compile_flags --cmake_generator "Visual Studio 17 2022" --build_shared_lib --enable_onnx_tests --build_wheel --build_java --build_nodejs --use_cuda --cuda_home="$env:RUNNER_TEMP\v12.2" --enable_cuda_profiling --enable_transformers_tool_test --use_vcpkg --use_vcpkg_ms_internal_asset_cache --cmake_extra_defines CMAKE_CUDA_ARCHITECTURES=86 --cmake_extra_defines onnxruntime_BUILD_UNIT_TESTS=ON --cmake_extra_defines onnxruntime_ENABLE_CUDA_EP_INTERNAL_TESTS=ON
           if ($lastExitCode -ne 0) {
             exit $lastExitCode
           }
-          Remove-Item "${{ github.workspace }}\RelWithDebInfo" -Include "*.obj" -Recurse
+          Remove-Item "${{ runner.temp }}\build\RelWithDebInfo" -Include "*.obj" -Recurse
         shell: pwsh
 
       - name: Validate C# native delegates
@@ -105,13 +105,13 @@ jobs:
         run: |
           python -m pip uninstall -y onnxruntime onnxruntime-gpu onnxruntime-training onnxruntime-directml -qq
           Get-ChildItem -Path dist/*.whl | foreach {pip --disable-pip-version-check install --upgrade $_.fullname}
-        working-directory: ${{ github.workspace }}\RelWithDebInfo\RelWithDebInfo
+        working-directory: ${{ runner.temp }}\build\RelWithDebInfo\RelWithDebInfo
         shell: pwsh
 
     timeout-minutes: 300
     env:
       OrtPackageId: Microsoft.ML.OnnxRuntime
-      OnnxRuntimeBuildDirectory: ${{ github.workspace }}
+      OnnxRuntimeBuildDirectory: ${{ runner.temp }}\build
       DOTNET_SKIP_FIRST_TIME_EXPERIENCE: true
       setVcvars: true
       ALLOW_RELEASED_ONNX_OPSET_ONLY: '0'
