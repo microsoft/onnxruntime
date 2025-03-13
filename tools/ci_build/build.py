@@ -1618,7 +1618,12 @@ def generate_build_tree(
     if args.use_snpe:
         cmake_args += ["-Donnxruntime_USE_SNPE=ON"]
 
-    targeting_arm64 = args.arm64 or platform.machine() in ["aarch64", "arm64", "ARM64"]
+    targeting_arm64 = args.arm64
+    if not targeting_arm64:
+        if is_macOS():
+            targeting_arm64 = args.osx_arch == "arm64"
+        else:
+            targeting_arm64 = platform.machine() in ["aarch64", "arm64", "ARM64"]
     cmake_args += ["-Donnxruntime_USE_KLEIDIAI=" + ("ON" if targeting_arm64 and not args.no_kleidiai else "OFF")]
 
     if args.macos or args.ios or args.visionos:
