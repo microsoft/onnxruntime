@@ -234,15 +234,15 @@ class SparseAttentionBase {
                    q, head_size, k, head_size, output, total_seq_len,
                    MLFloat16(alpha).val, static_cast<uint16_t>(0) /*beta*/, nullptr);
         } else {
-          size_t bytes = head_size * (sequence_length + total_seq_len) * sizeof(float);
+          size_t bytes = static_cast<size_t>(head_size) * (sequence_length + total_seq_len) * sizeof(float);
           auto q_k_fp32 = allocator->Alloc(bytes);
           BufferUniquePtr scratch_buffer(q_k_fp32, BufferDeleter(allocator));
 
           float* q_fp32 = static_cast<float*>(q_k_fp32);
-          MlasConvertHalfToFloatBuffer(q, q_fp32, head_size * sequence_length);
+          MlasConvertHalfToFloatBuffer(q, q_fp32, static_cast<size_t>(head_size) * sequence_length);
 
           float* k_fp32 = q_fp32 + head_size * sequence_length;
-          MlasConvertHalfToFloatBuffer(k, k_fp32, head_size * total_seq_len);
+          MlasConvertHalfToFloatBuffer(k, k_fp32, static_cast<size_t>(head_size) * total_seq_len);
 
           math::GemmEx<float, ThreadPool>(CblasNoTrans, CblasTrans, sequence_length, total_seq_len, head_size,
                                           alpha, q_fp32, head_size, k_fp32, head_size, 0.0f /*bata*/,
@@ -448,12 +448,12 @@ class SparseAttentionBase {
                        v, head_size, output_current, hidden_size,
                        MLFloat16(1.0f).val, static_cast<uint16_t>(0) /*beta*/, nullptr);
             } else {
-              size_t bytes = head_size * total_seq_len * sizeof(float);
+              size_t bytes = static_cast<size_t>(head_size) * total_seq_len * sizeof(float);
               auto v_fp32 = allocator->Alloc(bytes);
               BufferUniquePtr scratch_buffer(v_fp32, BufferDeleter(allocator));
 
               float* v_fp32_ptr = static_cast<float*>(v_fp32);
-              MlasConvertHalfToFloatBuffer(v, v_fp32_ptr, head_size * total_seq_len);
+              MlasConvertHalfToFloatBuffer(v, v_fp32_ptr, static_cast<size_t>(head_size) * total_seq_len);
 
               float* output_fp32_current = static_cast<float*>(output_fp32) +
                                            (batch_index * sequence_length * num_heads_ + head_index) * head_size;
