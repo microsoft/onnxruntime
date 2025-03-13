@@ -52,6 +52,74 @@ static const char* DlError() {
 #endif
 }
 
+Status readBinaryFromFile(std::string filePath, uint8_t* buffer, size_t bufferSize) {
+  ORT_RETURN_IF(nullptr == buffer, "Binary buffer is nullptr");
+  std::ifstream in(filePath, std::ifstream::binary);
+  ORT_RETURN_IF(!in, "Failed to open input file: ", filePath.c_str());
+  ORT_RETURN_IF(!in.read(reinterpret_cast<char*>(buffer), bufferSize), "Failed to read the contents of: ", filePath.c_str());
+  return Status::OK();
+}
+
+
+Status QnnBackendManager::ParseLoraConfig(std::string lora_config_path) {
+
+  LOGS_DEFAULT(INFO) << "Acquiring the QnnInterface " << lora_config_path;
+
+  QnnInterface_t* backend_interface_provider{nullptr};
+  auto rt = GetQnnInterfaceProvider<QnnInterfaceGetProvidersFn_t,
+                                    QnnInterface_t>(backend_path_.c_str(),
+                                                    "QnnInterface_getProviders",
+                                                    &backend_lib_handle_,
+                                                    {QNN_API_VERSION_MAJOR,
+                                                     QNN_API_VERSION_MINOR,
+                                                     QNN_API_VERSION_PATCH},
+                                                    &backend_interface_provider);
+
+  ORT_RETURN_IF_ERROR(rt);
+  qnn_interface_ = backend_interface_provider->QNN_INTERFACE_VER_NAME;
+
+  // QNN Lora Config file format should be a single line, with the graph name first,
+  // followed by the qnn lora context binary path, separated by a semicolon (;)
+  // Example: <graph_name>;<binary_path>
+  LOGS_DEFAULT(INFO) << "Loading Lora Config " << lora_config_path;
+  std::ifstream file(lora_config_path);
+  std::string line;
+
+  if (file.is_open()) {
+      if (std::getline(file, line)) {
+          std::istringstream ss(line);
+          std::string graph_name;
+          std::string lora_adapter_bin_path;
+
+          if (std::getline(ss, graph_name, ';') && std::getline(ss, lora_adapter_bin_path)) {
+              size_t bufferSize = std::filesystem::file_size(lora_adapter_bin_path.c_str());
+
+              ORT_RETURN_IF(0 == bufferSize,  "Received path to an empty file. Nothing to deserialize.");
+              std::unique_ptr<uint8_t[]> buffer = std::make_unique<uint8_t[]>(bufferSize);
+              void *voidBufferPtr               = static_cast<void *>(buffer.get());
+              QnnContext_Buffer_t contextBuffer{QNN_CONTEXT_BUFFER_VERSION_1,
+                                                {QNN_CONTEXTMEMTYPE_RAW, {voidBufferPtr, bufferSize}}};
+
+              auto status = readBinaryFromFile(lora_adapter_bin_path,
+                                               reinterpret_cast<uint8_t *>(buffer.get()),
+                                               bufferSize);
+
+              ORT_RETURN_IF(status != Status::OK(),  "Failed to read binary data.");
+              Qnn_GraphHandle_t graph;
+              qnn_interface_.graphRetrieve(contexts_[0], graph_name.c_str(), &graph);
+
+              qnn_interface_.contextApplyBinarySection(
+                contexts_[0], graph, QNN_CONTEXT_SECTION_UPDATABLE, &contextBuffer, profile_backend_handle_, nullptr);
+          }
+      }
+      file.close();
+  } else {
+      LOGS_DEFAULT(ERROR) << "Unable to load Lora Config " << lora_config_path;
+  }
+
+  return Status::OK();
+}
+
 template <typename F, class T>
 Status QnnBackendManager::GetQnnInterfaceProvider(const char* lib_path,
                                                   const char* interface_provider_name,
