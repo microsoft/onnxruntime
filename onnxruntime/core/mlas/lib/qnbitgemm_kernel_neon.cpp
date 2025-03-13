@@ -15,12 +15,13 @@ Abstract:
 
 --*/
 
+#include "qnbitgemm_kernel_neon.h"
+
 #include <arm_neon.h>
 
 #include <cassert>
 
 #include "qnbitgemm.h"
-#include "qnbitgemm_kernel_neon.h"
 #include "sqnbitgemm_q8_block.h"
 
 namespace sqnbitgemm_neon
@@ -172,10 +173,17 @@ Q4BitGemmPerGemmWorkspaceAlignment(
 }  // namespace sqnbitgemm_neon
 
 //
-// Kernel dispatch structure definition.
+// Kernel dispatch structures.
 //
 
-const MLAS_QNBIT_GEMM_DISPATCH MlasSQNBitGemmDispatchNeon = []() {
+namespace
+{
+
+MLAS_QNBIT_GEMM_DISPATCH
+MakeDispatch(
+    bool HasDotSupport
+)
+{
     MLAS_QNBIT_GEMM_DISPATCH d;
 
     d.Q4BitGemmPackQuantBDataSize = sqnbitgemm_neon::Q4BitGemmPackQuantBDataSize;
@@ -186,7 +194,7 @@ const MLAS_QNBIT_GEMM_DISPATCH MlasSQNBitGemmDispatchNeon = []() {
 
     d.SQ4BitGemmM1Kernel_CompFp32 = sqnbitgemm_neon::SQ4BitGemmM1Kernel_CompFp32;
     d.SQ4BitBlkDequantBForSgemm_CompFp32 = sqnbitgemm_neon::SQ4BitBlkDequantBForSgemm_CompFp32;
-    if (MLAS_CPUIDINFO::GetCPUIDInfo().HasArmNeonDot()) {
+    if (HasDotSupport) {
         d.SQ4BitGemmKernel_CompInt8 = sqnbitgemm_neon::SQ4BitGemmKernel_CompInt8;
     }
     d.QuantizeARow_CompInt8 = sqnbitgemm_neon::QuantizeARow_CompInt8;
@@ -198,4 +206,10 @@ const MLAS_QNBIT_GEMM_DISPATCH MlasSQNBitGemmDispatchNeon = []() {
 #endif  // MLAS_F16VEC_INTRINSICS_SUPPORTED && MLAS_TARGET_ARM64
 
     return d;
-}();
+}
+
+}  // namespace
+
+const MLAS_QNBIT_GEMM_DISPATCH MlasSQNBitGemmDispatchNeon = MakeDispatch(/* HasDotSupport */ false);
+
+const MLAS_QNBIT_GEMM_DISPATCH MlasSQNBitGemmDispatchNeonDot = MakeDispatch(/* HasDotSupport */ true);

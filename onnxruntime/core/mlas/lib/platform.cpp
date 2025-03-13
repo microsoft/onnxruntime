@@ -576,6 +576,7 @@ Return Value:
         this->SymmQgemmDispatch = &MlasSymmQgemmS8DispatchSdot;
         this->ConvSymU8S8Dispatch = &MlasConvSymU8DispatchDot;
         this->ConvSymS8S8Dispatch = &MlasConvSymS8DispatchDot;
+        this->QNBitGemmDispatch = &MlasSQNBitGemmDispatchNeonDot;
     }
 
 #if defined(__linux__)

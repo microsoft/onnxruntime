@@ -1045,6 +1045,8 @@ struct MLAS_QNBIT_GEMM_DISPATCH;
 
 extern const MLAS_QNBIT_GEMM_DISPATCH MlasSQNBitGemmDispatchNeon;
 
+extern const MLAS_QNBIT_GEMM_DISPATCH MlasSQNBitGemmDispatchNeonDot;
+
 extern const MLAS_QNBIT_GEMM_DISPATCH MlasSQNBitGemmDispatchAvx2;
 
 extern const MLAS_QNBIT_GEMM_DISPATCH MlasSQNBitGemmDispatchAvx2vnni;
