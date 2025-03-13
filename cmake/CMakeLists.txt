@@ -88,6 +88,7 @@ option(onnxruntime_USE_RKNPU "Build with RKNPU support" OFF)
 option(onnxruntime_USE_DNNL "Build with DNNL support" OFF)
 option(onnxruntime_USE_JSEP "Build with JavaScript implemented kernels support" OFF)
 option(onnxruntime_BUILD_UNIT_TESTS "Build ONNXRuntime unit tests" ON)
+option(onnxruntime_BUILD_QNN_EP_TOOL "Build ONNXRuntime qnn-ep-tool" OFF)
 option(onnxruntime_BUILD_CSHARP "Build C# library" OFF)
 option(onnxruntime_BUILD_OBJC "Build Objective-C library" OFF)
 option(onnxruntime_USE_PREINSTALLED_EIGEN "Use pre-installed EIGEN. Need to provide eigen_SOURCE_PATH if turn this on." OFF)
@@ -1840,6 +1841,10 @@ endif()
 
 if (onnxruntime_BUILD_UNIT_TESTS)
   list(APPEND ONNXRUNTIME_CMAKE_FILES onnxruntime_unittests)
+endif()
+
+if (onnxruntime_BUILD_QNN_EP_TOOL)
+  list(APPEND ONNXRUNTIME_CMAKE_FILES onnxruntime_qnn_ep_tool)
 endif()
 
 if (onnxruntime_BUILD_WINML_TESTS)
