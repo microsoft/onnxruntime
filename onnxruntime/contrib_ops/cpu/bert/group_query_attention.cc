@@ -52,8 +52,8 @@ Status GroupQueryAttention<T>::Compute(OpKernelContext* context) const {
   const Tensor* total_seqlen_tensor = context->Input<Tensor>(6);
   const Tensor* cos_cache = context->Input<Tensor>(7);
   const Tensor* sin_cache = context->Input<Tensor>(8);
-  const Tensor* pos_ids = context->Input<Tensor>(9);
-  const Tensor* attention_mask = context->Input<Tensor>(10);
+  const Tensor* position_ids = context->Input<Tensor>(9);
+  const Tensor* attention_bias = context->Input<Tensor>(10);
 
   GroupQueryAttentionParameters parameters = {};
   ORT_RETURN_IF_ERROR(group_query_attention_helper::CheckInputs(query,
@@ -71,11 +71,8 @@ Status GroupQueryAttention<T>::Compute(OpKernelContext* context) const {
                                                                 scale_,
                                                                 softcap_));
 
-  const int32_t* seqlens_k_data = seqlens_k->Data<int32_t>();
-  const int32_t max_seqlens_k = *std::max_element(seqlens_k_data, seqlens_k_data + parameters.batch_size);
-  ORT_RETURN_IF_ERROR(group_query_attention_helper::CheckCustomAttentionInputs(pos_ids,
-                                                                               attention_mask,
-                                                                               max_seqlens_k,
+  ORT_RETURN_IF_ERROR(group_query_attention_helper::CheckCustomAttentionInputs(position_ids,
+                                                                               attention_bias,
                                                                                parameters));
 
   const int batch_size = parameters.batch_size;
@@ -141,10 +138,10 @@ Status GroupQueryAttention<T>::Compute(OpKernelContext* context) const {
     std::vector<int64_t> default_pos_ids(pos_ids_size);
     const int64_t* pos_ids_data = default_pos_ids.data();
 
-    if (pos_ids != nullptr) {
-      pos_ids_data = pos_ids->Data<int64_t>();
-    } else if (parameters.is_first_prompt) {
+    if (parameters.is_first_prompt) {
       default_pos_ids[0] = static_cast<int64_t>(0);
+    } else if (position_ids != nullptr) {
+      pos_ids_data = position_ids->Data<int64_t>();
     } else {
       // Note: As of now, continuous decoding supports only batch size 1 and token generation supports only sequence length 1.
       for (int b = 0; b < batch_size; b++) {
@@ -209,7 +206,7 @@ Status GroupQueryAttention<T>::Compute(OpKernelContext* context) const {
 
   // Compute the attention score and apply the score to V
   return ApplyAttention(q_rotary, packed_qkv ? nullptr : k_rotary, packed_qkv ? nullptr : V.Get<Tensor>().Data<T>(),
-                        attention_mask, past_key, past_value, output, present_k, present_v,
+                        attention_bias, past_key, past_value, output, present_k, present_v,
                         seqlens_k, parameters, allocator, context);
 }
 }  // namespace contrib

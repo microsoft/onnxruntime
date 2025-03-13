@@ -290,50 +290,47 @@ Status CheckInputs(const T* query,
 }
 
 template <typename T = Tensor>
-Status CheckCustomAttentionInputs(const T* pos_ids,
-                                  const T* attention_mask,
-                                  const int max_seqlens_k,
+Status CheckCustomAttentionInputs(const T* position_ids,
+                                  const T* attention_bias,
                                   const GroupQueryAttentionParameters& parameters) {
-  if (pos_ids != nullptr) {
-    const auto& pos_ids_shape = pos_ids->Shape();
+  if (position_ids != nullptr) {
     if (parameters.is_first_prompt) {
-      if (pos_ids_shape[0] != 1 || pos_ids_shape[1] != 1) {
         return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                               "Shape of pos_ids must be [1, 1] when processing the prompt");
-      }
-    } else {
-      if (pos_ids_shape[0] != parameters.batch_size) {
-        return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                               "pos_ids dimension 0 must be equal to the batch size, got ", pos_ids_shape[0]);
-      }
+                               "Position ids input is not allowed when processing the first prompt");
+    }
 
-      if (pos_ids_shape[1] < parameters.sequence_length) {
-        return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                               "pos_ids dimension 1 must be atleast sequence length, got ", pos_ids_shape[1]);
-      }
+    const auto& pos_ids_shape = position_ids->Shape();
+    if (pos_ids_shape[0] != parameters.batch_size) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                             "pos_ids dimension 0 must be equal to the batch size, got ", pos_ids_shape[0]);
+    }
+
+    if (pos_ids_shape[1] < parameters.sequence_length) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                             "pos_ids dimension 1 must be atleast sequence length, got ", pos_ids_shape[1]);
     }
   }
 
-  if (attention_mask != nullptr) {
-    const auto& mask_shape = attention_mask->Shape();
-    if ((mask_shape[0] != parameters.batch_size) && (mask_shape[0] != 1)) {
+  if (attention_bias != nullptr) {
+    const auto& attn_bias_shape = attention_bias->Shape();
+    if ((attn_bias_shape[0] != parameters.batch_size) && (attn_bias_shape[0] != 1)) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                             "attention_mask dimension 0 must be equal to the batch size or 1, got ", mask_shape[0]);
+                             "attention_bias dimension 0 must be equal to the batch size or 1, got ", attn_bias_shape[0]);
     }
 
-    if ((mask_shape[1] != parameters.num_heads) && (mask_shape[1] != 1)) {
+    if ((attn_bias_shape[1] != parameters.num_heads) && (attn_bias_shape[1] != 1)) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                             "attention_mask dimension 1 must be equal to the num heads or 1, got ", mask_shape[1]);
+                             "attention_bias dimension 1 must be equal to the num heads or 1, got ", attn_bias_shape[1]);
     }
 
-    if (mask_shape[2] != parameters.sequence_length) {
+    if (attn_bias_shape[2] != parameters.sequence_length) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                             "attention_mask dimension 2 must be equal to the sequence length, got ", mask_shape[2]);
+                             "attention_bias dimension 2 must be equal to the sequence length, got ", attn_bias_shape[2]);
     }
 
-    if (mask_shape[3] < max_seqlens_k + 1) {
+    if (attn_bias_shape[3] != parameters.total_sequence_length) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                             "attention_mask dimension 3 must be atleast max(seqlens_k) + 1, got ", mask_shape[3]);
+                             "attention_bias dimension 3 must be equal to total_sequence_length, got ", attn_bias_shape[3]);
     }
   }
 

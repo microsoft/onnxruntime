@@ -159,8 +159,8 @@ def create_group_query_attention_graph_prompt(
                 "total_sequence_length",
                 "cos_cache" if rotary else "",
                 "sin_cache" if rotary else "",
-                "pos_ids" if do_custom_tree_attention else "",
-                "attention_mask" if do_custom_tree_attention else "",
+                "",
+                "attention_bias" if do_custom_tree_attention else "",
             ],
             ["output", "present_key", "present_value"],
             "GroupQueryAttention_0",
@@ -268,9 +268,8 @@ def create_group_query_attention_graph_prompt(
 
     if do_custom_tree_attention:
         graph_input += [
-            helper.make_tensor_value_info("pos_ids", TensorProto.INT64, [1, 1]),
             helper.make_tensor_value_info(
-                "attention_mask",
+                "attention_bias",
                 ORT_TYPE,
                 [config.batch_size, 1, config.kv_sequence_length, config.kv_sequence_length],
             ),
@@ -338,7 +337,6 @@ def create_group_query_attention_graph_prompt(
 
 def create_group_query_attention_graph_past(
     config,
-    seqlens_k,
     past_kv_format=Formats.BSNH,
     share_buffer=True,
     local_window_size=-1,
@@ -353,7 +351,6 @@ def create_group_query_attention_graph_past(
     present_kv_seqlen = (
         config.kv_sequence_length if share_buffer else config.kv_sequence_length + config.sequence_length
     )
-    max_seqlen_in_batch = seqlens_k.max().item() + 1
     nodes = [
         helper.make_node(
             "GroupQueryAttention",
@@ -367,8 +364,8 @@ def create_group_query_attention_graph_past(
                 "total_sequence_length",
                 "cos_cache" if rotary else "",
                 "sin_cache" if rotary else "",
-                "pos_ids" if do_custom_tree_attention else "",
-                "attention_mask" if do_custom_tree_attention else "",
+                "position_ids" if do_custom_tree_attention else "",
+                "attention_bias" if do_custom_tree_attention else "",
             ],
             ["output", "present_key", "present_value"],
             "GroupQueryAttention_0",
@@ -473,11 +470,13 @@ def create_group_query_attention_graph_past(
 
     if do_custom_tree_attention:
         graph_input += [
-            helper.make_tensor_value_info("pos_ids", TensorProto.INT64, [config.batch_size, config.sequence_length]),
             helper.make_tensor_value_info(
-                "attention_mask",
+                "position_ids", TensorProto.INT64, [config.batch_size, config.sequence_length]
+            ),
+            helper.make_tensor_value_info(
+                "attention_bias",
                 ORT_TYPE,
-                [config.batch_size, 1, config.sequence_length, max_seqlen_in_batch],
+                [config.batch_size, 1, config.sequence_length, present_kv_seqlen],
             ),
         ]
 
@@ -695,8 +694,7 @@ def gqa_prompt_func(
     cos=None,
     sin=None,
     seqlens_k=None,
-    pos_ids=None,
-    attention_mask=None,
+    attention_bias=None,
     window_size=-1,
     past_kv_format=Formats.BSNH,
     share_buffer=True,
@@ -723,8 +721,7 @@ def gqa_prompt_func(
     past_v = v.clone() if share_buffer else None
 
     if do_custom_tree_attention:
-        assert pos_ids is not None
-        assert attention_mask is not None
+        assert attention_bias is not None
 
     if new_k is not None:
         new_k = torch.reshape(new_k, (config.batch_size, config.kv_sequence_length, -1))
@@ -753,10 +750,8 @@ def gqa_prompt_func(
             io_binding.bind_cpu_input("sin_cache", ort_inputs["sin_cache"])
 
         if do_custom_tree_attention:
-            ort_inputs["pos_ids"] = pos_ids.detach().cpu().numpy()
-            ort_inputs["attention_mask"] = attention_mask.detach().cpu().numpy()
-            io_binding.bind_cpu_input("pos_ids", ort_inputs["pos_ids"])
-            io_binding.bind_cpu_input("attention_mask", ort_inputs["attention_mask"])
+            ort_inputs["attention_bias"] = attention_bias.detach().cpu().numpy()
+            io_binding.bind_cpu_input("attention_bias", ort_inputs["attention_bias"])
 
         io_binding.bind_cpu_input("query", ort_inputs["query"])
         io_binding.bind_input(
@@ -801,10 +796,8 @@ def gqa_prompt_func(
             io_binding.bind_cpu_input("sin_cache", ort_inputs["sin_cache"])
 
         if do_custom_tree_attention:
-            ort_inputs["pos_ids"] = pos_ids.detach().cpu().numpy()
-            ort_inputs["attention_mask"] = attention_mask.detach().cpu().numpy()
-            io_binding.bind_cpu_input("pos_ids", ort_inputs["pos_ids"])
-            io_binding.bind_cpu_input("attention_mask", ort_inputs["attention_mask"])
+            ort_inputs["attention_bias"] = attention_bias.detach().cpu().numpy()
+            io_binding.bind_cpu_input("attention_bias", ort_inputs["attention_bias"])
 
         io_binding.bind_cpu_input("query", ort_inputs["query"])
         io_binding.bind_cpu_input("seqlens_k", ort_inputs["seqlens_k"])
@@ -829,8 +822,8 @@ def gqa_past_func(
     cos=None,
     sin=None,
     seqlens_k=None,
-    pos_ids=None,
-    attention_mask=None,
+    position_ids=None,
+    attention_bias=None,
     past_kv_format=Formats.BSNH,
     share_buffer=True,
     window_size=-1,
@@ -842,7 +835,6 @@ def gqa_past_func(
     assert seqlens_k is not None
     onnx_model_str = create_group_query_attention_graph_past(
         config,
-        seqlens_k,
         past_kv_format,
         share_buffer,
         local_window_size=window_size,
@@ -858,8 +850,8 @@ def gqa_past_func(
     past_v = v.clone()
 
     if do_custom_tree_attention:
-        assert pos_ids is not None
-        assert attention_mask is not None
+        assert position_ids is not None
+        assert attention_bias is not None
 
     if new_k is not None:
         new_k = torch.reshape(new_k, (config.batch_size, config.sequence_length, -1))
@@ -890,10 +882,10 @@ def gqa_past_func(
             io_binding.bind_cpu_input("sin_cache", ort_inputs["sin_cache"])
 
         if do_custom_tree_attention:
-            ort_inputs["pos_ids"] = pos_ids.detach().cpu().numpy()
-            ort_inputs["attention_mask"] = attention_mask.detach().cpu().numpy()
-            io_binding.bind_cpu_input("pos_ids", ort_inputs["pos_ids"])
-            io_binding.bind_cpu_input("attention_mask", ort_inputs["attention_mask"])
+            ort_inputs["position_ids"] = position_ids.detach().cpu().numpy()
+            ort_inputs["attention_bias"] = attention_bias.detach().cpu().numpy()
+            io_binding.bind_cpu_input("position_ids", ort_inputs["position_ids"])
+            io_binding.bind_cpu_input("attention_bias", ort_inputs["attention_bias"])
 
         io_binding.bind_cpu_input("query", ort_inputs["query"])
         io_binding.bind_input(
@@ -945,10 +937,10 @@ def gqa_past_func(
             io_binding.bind_cpu_input("sin_cache", ort_inputs["sin_cache"])
 
         if do_custom_tree_attention:
-            ort_inputs["pos_ids"] = pos_ids.detach().cpu().numpy()
-            ort_inputs["attention_mask"] = attention_mask.detach().cpu().numpy()
-            io_binding.bind_cpu_input("pos_ids", ort_inputs["pos_ids"])
-            io_binding.bind_cpu_input("attention_mask", ort_inputs["attention_mask"])
+            ort_inputs["position_ids"] = position_ids.detach().cpu().numpy()
+            ort_inputs["attention_bias"] = attention_bias.detach().cpu().numpy()
+            io_binding.bind_cpu_input("position_ids", ort_inputs["position_ids"])
+            io_binding.bind_cpu_input("attention_bias", ort_inputs["attention_bias"])
 
         io_binding.bind_cpu_input("query", ort_inputs["query"])
         io_binding.bind_cpu_input("past_key", ort_inputs["past_key"])
@@ -1119,29 +1111,28 @@ def attention_qkvpacked_ref(
     )
 
 
-def get_custom_attention_inputs(batch_size, sequence_length, seqlens_k=None, past=False):
+def get_custom_attention_inputs(batch_size, sequence_length, total_seq_len, seqlens_k=None, past=False):
     if past:
         assert seqlens_k is not None
-        pos_ids_data = []
-        max_seqlen_in_batch = seqlens_k.max().item() + 1
-        attention_mask = torch.zeros((batch_size, 1, sequence_length, max_seqlen_in_batch), dtype=TORCH_TYPE)
+        position_ids_data = []
+        attention_bias = torch.zeros((batch_size, 1, sequence_length, total_seq_len), dtype=TORCH_TYPE)
         for b in range(batch_size):
             total_seq_len = seqlens_k[b] + 1
             past_seq_len = total_seq_len - sequence_length
-            pos_ids_data.append(list(range(past_seq_len, past_seq_len + sequence_length)))
+            position_ids_data.append(list(range(past_seq_len, past_seq_len + sequence_length)))
 
-            # Configure mask
+            # Configure bias
             for i in range(sequence_length):
-                for j in range(past_seq_len + i + 1, max_seqlen_in_batch):
-                    attention_mask[b][0][i][j] = -5000
+                for j in range(past_seq_len + i + 1, total_seq_len):
+                    attention_bias[b][0][i][j] = -5000
 
-        pos_ids = torch.tensor(data=pos_ids_data, dtype=torch.int64)
+        position_ids = torch.tensor(data=position_ids_data, dtype=torch.int64)
     else:
-        pos_ids = torch.tensor(data=[[0]], dtype=torch.int64)
-        attention_mask = torch.rand(batch_size, 1, sequence_length, sequence_length, dtype=TORCH_TYPE)
-        attention_mask = torch.triu(attention_mask, diagonal=1)
+        position_ids = None
+        attention_bias = torch.rand(batch_size, 1, sequence_length, total_seq_len, dtype=TORCH_TYPE)
+        attention_bias = torch.triu(attention_bias, diagonal=1)
 
-    return pos_ids, attention_mask
+    return position_ids, attention_bias
 
 
 def parity_check_gqa_prompt(
@@ -1245,10 +1236,11 @@ def parity_check_gqa_prompt(
         q_ro, k_ro = q, new_k
 
     if do_custom_tree_attention:
-        pos_ids, attention_mask = get_custom_attention_inputs(config.batch_size, config.kv_sequence_length, past=False)
+        _, attention_bias = get_custom_attention_inputs(
+            config.batch_size, config.kv_sequence_length, config.q_sequence_length, seqlens_k=None, past=False
+        )
     else:
-        pos_ids = None
-        attention_mask = None
+        attention_bias = None
 
     rearrange(torch.arange(config.kv_sequence_length, device="cpu"), "s -> 1 s")
     arange = rearrange(torch.arange(config.buffer_sequence_length, device="cpu"), "s -> 1 s")
@@ -1292,8 +1284,7 @@ def parity_check_gqa_prompt(
             cos,
             sin,
             cache_seqlens - 1,
-            pos_ids,
-            attention_mask,
+            attention_bias,
             left_window_size,
             past_format,
             True,
@@ -1313,8 +1304,7 @@ def parity_check_gqa_prompt(
             cos,
             sin,
             cache_seqlens - 1,
-            pos_ids,
-            attention_mask,
+            attention_bias,
             left_window_size,
             past_format,
             True,
@@ -1453,10 +1443,11 @@ def parity_check_gqa_prompt_no_buff(
     k_cache_ref = k_ro
 
     if do_custom_tree_attention:
-        pos_ids, attention_mask = get_custom_attention_inputs(config.batch_size, config.kv_sequence_length, past=False)
+        _, attention_bias = get_custom_attention_inputs(
+            config.batch_size, config.kv_sequence_length, config.q_sequence_length, seqlens_k=None, past=False
+        )
     else:
-        pos_ids = None
-        attention_mask = None
+        attention_bias = None
 
     brange = rearrange(torch.arange(config.kv_sequence_length, device="cpu"), "s -> 1 s")
     cache_seqlens_expanded = rearrange(cache_seqlens, "b -> b 1")
@@ -1494,8 +1485,7 @@ def parity_check_gqa_prompt_no_buff(
             cos,
             sin,
             cache_seqlens - 1,
-            pos_ids,
-            attention_mask,
+            attention_bias,
             left_window_size,
             past_format,
             False,
@@ -1514,8 +1504,7 @@ def parity_check_gqa_prompt_no_buff(
             cos,
             sin,
             cache_seqlens - 1,
-            pos_ids,
-            attention_mask,
+            attention_bias,
             left_window_size,
             past_format,
             False,
@@ -1708,12 +1697,12 @@ def parity_check_gqa_past(
     cache_seqlens += config.sequence_length - 1
 
     if do_custom_tree_attention:
-        pos_ids, attention_mask = get_custom_attention_inputs(
-            config.batch_size, config.sequence_length, seqlens_k=cache_seqlens, past=True
+        position_ids, attention_bias = get_custom_attention_inputs(
+            config.batch_size, config.sequence_length, config.kv_sequence_length, seqlens_k=cache_seqlens, past=True
         )
     else:
-        pos_ids = None
-        attention_mask = None
+        position_ids = None
+        attention_bias = None
 
     # ORT function
     if packed:
@@ -1728,8 +1717,8 @@ def parity_check_gqa_past(
             cos,
             sin,
             cache_seqlens,
-            pos_ids,
-            attention_mask,
+            position_ids,
+            attention_bias,
             past_format,
             True,
             left_window_size,
@@ -1749,8 +1738,8 @@ def parity_check_gqa_past(
             cos,
             sin,
             cache_seqlens,
-            pos_ids,
-            attention_mask,
+            position_ids,
+            attention_bias,
             past_format,
             True,
             left_window_size,
@@ -1950,12 +1939,16 @@ def parity_check_gqa_past_no_buff(
     cache_seqlens += config.sequence_length - 1
 
     if do_custom_tree_attention:
-        pos_ids, attention_mask = get_custom_attention_inputs(
-            config.batch_size, config.sequence_length, seqlens_k=cache_seqlens, past=True
+        position_ids, attention_bias = get_custom_attention_inputs(
+            config.batch_size,
+            config.sequence_length,
+            config.kv_sequence_length + config.sequence_length,
+            seqlens_k=cache_seqlens,
+            past=True,
         )
     else:
-        pos_ids = None
-        attention_mask = None
+        position_ids = None
+        attention_bias = None
 
     # Flash function
     if packed:
@@ -1970,8 +1963,8 @@ def parity_check_gqa_past_no_buff(
             cos,
             sin,
             cache_seqlens,
-            pos_ids,
-            attention_mask,
+            position_ids,
+            attention_bias,
             past_format,
             False,
             window_size=left_window_size,
@@ -1990,8 +1983,8 @@ def parity_check_gqa_past_no_buff(
             cos,
             sin,
             cache_seqlens,
-            pos_ids,
-            attention_mask,
+            position_ids,
+            attention_bias,
             past_format,
             False,
             window_size=left_window_size,
