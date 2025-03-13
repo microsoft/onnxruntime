@@ -398,7 +398,7 @@ export const createSession = async (
       inputMetadata.push(
         elementType === 0
           ? { name, isTensor: false }
-          : { name, isTensor: true, type: tensorDataTypeEnumToString(elementType), shape },
+          : { name, isTensor: true, type: tensorDataTypeEnumToString(elementType), shape: shape! },
       );
     }
     for (let i = 0; i < outputCount; i++) {
@@ -412,7 +412,7 @@ export const createSession = async (
       outputMetadata.push(
         elementType === 0
           ? { name: nameString, isTensor: false }
-          : { name: nameString, isTensor: true, type: tensorDataTypeEnumToString(elementType), shape },
+          : { name: nameString, isTensor: true, type: tensorDataTypeEnumToString(elementType), shape: shape! },
       );
 
       if (!BUILD_DEFS.DISABLE_JSEP) {
