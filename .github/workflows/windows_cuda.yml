@@ -6,6 +6,10 @@ on:
   pull_request:
     branches: [ main ]
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   build_x64_RelWithDebInfo:
     name: Windows GPU CUDA CI Pipeline  # Job name set here
