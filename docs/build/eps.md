@@ -112,27 +112,27 @@ See more information on the TensorRT Execution Provider [here](../execution-prov
  * Follow [instructions for installing TensorRT](https://docs.nvidia.com/deeplearning/tensorrt/latest/installing-tensorrt/installing.html)
    * The TensorRT execution provider for ONNX Runtime is built and tested with TensorRT 10.8.
    * The path to TensorRT installation must be provided via the `--tensorrt_home` parameter.
-   * ONNX Runtime uses TensorRT built-in parser from `tensorrt_home` by default.
+   * ONNX Runtime uses [TensorRT built-in parser](https://developer.nvidia.com/tensorrt/download) from `tensorrt_home` by default.
    * To use open-sourced [onnx-tensorrt](https://github.com/onnx/onnx-tensorrt/tree/main) parser instead, add `--use_tensorrt_oss_parser` parameter in build commands below.
-       * The default version of open-sourced onnx-tensorrt parser is encoded in [cmake/deps.txt](https://github.com/microsoft/onnxruntime/blob/main/cmake/deps.txt).
+       * The default version of open-sourced onnx-tensorrt parser is specified in [cmake/deps.txt](https://github.com/microsoft/onnxruntime/blob/main/cmake/deps.txt).
        * To specify a different version of onnx-tensorrt parser:
          * Select the commit of [onnx-tensorrt](https://github.com/onnx/onnx-tensorrt/commits) that you preferred;
          * Run `sha1sum` command with downloaded onnx-tensorrt zip file to acquire the SHA1 hash 
          * Update [cmake/deps.txt](https://github.com/microsoft/onnxruntime/blob/main/cmake/deps.txt) with updated onnx-tensorrt commit and hash info.
-   * To avoid compatibility issue, it's suggested to keep TensorRT built-in/oss-tensorrt parser version encoded in [cmake/deps.txt](https://github.com/microsoft/onnxruntime/blob/main/cmake/deps.txt) the same
+       * Please make sure TensorRT built-in parser/open-sourced onnx-tensorrt specified in [cmake/deps.txt](https://github.com/microsoft/onnxruntime/blob/main/cmake/deps.txt) are **version-matched**, if enabling `--use_tensorrt_oss_parser`. 
+         * i.e It's version-matched if assigning `tensorrt_home` with path to TensorRT-10.9 built-in binaries and onnx-tensorrt [10.9-GA branch](https://github.com/onnx/onnx-tensorrt/tree/release/10.9-GA) specified in [cmake/deps.txt](https://github.com/microsoft/onnxruntime/blob/main/cmake/deps.txt).
 
-### [Note to Windows users who would like to build ORT under Debug mode]
+### [Note to **Windows** users who would like to build ORT under **Debug** mode]
 
-* `--use_tensorrt_oss_parser` will be enabled by default
-  * As TensorRT built-in parser only supports release build
-  * Open-sourced onnx-tensorrt parser encoded in [cmake/deps.txt](https://github.com/microsoft/onnxruntime/blob/main/cmake/deps.txt) will be used
-* Please make sure TensorRT built-in parser/open-sourced onnx-tensorrt encoded in [cmake/deps.txt](https://github.com/microsoft/onnxruntime/blob/main/cmake/deps.txt) are version-matched.
-  * i.e It's version-matched to use TensorRT-10.8 built-in binaries and onnx-tensorrt links against 10.8-GA branch under cmake/deps.txt.
+* `--use_tensorrt_oss_parser` will be enabled by default.
+  * As there's a limit that [TensorRT built-in parser](https://developer.nvidia.com/tensorrt/download) only supports release build;
+  * And open-sourced onnx-tensorrt parser specified in [cmake/deps.txt](https://github.com/microsoft/onnxruntime/blob/main/cmake/deps.txt) will be used.
+
 
 ### **[Note to ORT 1.21.0 open-sourced parser users]** 
 
 * ORT 1.21.0 links against onnx-tensorrt 10.8-GA, which requires upcoming onnx 1.18.
-  * Here's a temporarily fix to preview on onnx-tensorrt 10.8-GA when building ORT 1.21.0: 
+  * Here's a temporarily fix to preview on onnx-tensorrt 10.8-GA (or newer) when building ORT 1.21.0: 
     * Replace the [onnx line in cmake/deps.txt](https://github.com/microsoft/onnxruntime/blob/rel-1.21.0/cmake/deps.txt#L38) 
       with `onnx;https://github.com/onnx/onnx/archive/f22a2ad78c9b8f3bd2bb402bfce2b0079570ecb6.zip;324a781c31e30306e30baff0ed7fe347b10f8e3c`  
     * Replace the onnx.patch with [this](https://github.com/microsoft/onnxruntime/blob/7b2733a526c12b5ef4475edd47fd9997ebc2b2c6/cmake/patches/onnx/onnx.patch) 
@@ -144,20 +144,20 @@ See more information on the TensorRT Execution Provider [here](../execution-prov
 #### Windows
 ```bash
 # to build with tensorrt built-in parser
-.\build.bat --cudnn_home <path to cuDNN home> --cuda_home <path to CUDA home> --use_tensorrt --tensorrt_home <path to TensorRT home> --cmake_generator "Visual Studio 17 2022"
+.\build.bat --config Release --parallel --cudnn_home <path to cuDNN home> --cuda_home <path to CUDA home> --use_tensorrt --tensorrt_home <path to TensorRT home> --cmake_generator "Visual Studio 17 2022"
 
 # to build with specific version of open-sourced onnx-tensorrt parser configured in cmake/deps.txt
-.\build.bat --cudnn_home <path to cuDNN home> --cuda_home <path to CUDA home> --use_tensorrt --tensorrt_home <path to TensorRT home> --use_tensorrt_oss_parser --cmake_generator "Visual Studio 17 2022" 
+.\build.bat --config Release --parallel --cudnn_home <path to cuDNN home> --cuda_home <path to CUDA home> --use_tensorrt --tensorrt_home <path to TensorRT home> --use_tensorrt_oss_parser --cmake_generator "Visual Studio 17 2022" 
 ```
 
 #### Linux
 
 ```bash
 # to build with tensorrt built-in parser
-./build.sh --cudnn_home <path to cuDNN e.g. /usr/lib/x86_64-linux-gnu/> --cuda_home <path to folder for CUDA e.g. /usr/local/cuda> --use_tensorrt --tensorrt_home <path to TensorRT home>
+./build.sh --config Release --parallel --cudnn_home <path to cuDNN e.g. /usr/lib/x86_64-linux-gnu/> --cuda_home <path to folder for CUDA e.g. /usr/local/cuda> --use_tensorrt --tensorrt_home <path to TensorRT home>
 
 # to build with specific version of open-sourced onnx-tensorrt parser configured in cmake/deps.txt
-./build.sh  --cudnn_home <path to cuDNN e.g. /usr/lib/x86_64-linux-gnu/> --cuda_home <path to folder for CUDA e.g. /usr/local/cuda> --use_tensorrt --use_tensorrt_oss_parser --tensorrt_home <path to TensorRT home> --skip_submodule_sync
+./build.sh --config Release --parallel --cudnn_home <path to cuDNN e.g. /usr/lib/x86_64-linux-gnu/> --cuda_home <path to folder for CUDA e.g. /usr/local/cuda> --use_tensorrt --use_tensorrt_oss_parser --tensorrt_home <path to TensorRT home> --skip_submodule_sync
 ```
 
 Dockerfile instructions are available [here](https://github.com/microsoft/onnxruntime/tree/main/dockerfiles#tensorrt)
@@ -216,14 +216,10 @@ These instructions are for the latest [JetPack SDK](https://developer.nvidia.com
    ```bash
    sudo apt install -y --no-install-recommends \
      build-essential software-properties-common libopenblas-dev \
-     libpython3.8-dev python3-pip python3-dev python3-setuptools python3-wheel
+     libpython3.10-dev python3-pip python3-dev python3-setuptools python3-wheel
    ```
 
-4. Cmake is needed to build ONNX Runtime. The minimum required CMake version is 3.26. This can be either installed by:
-
-   1. (Unix/Linux) Build from source. Download sources from [https://cmake.org/download/](https://cmake.org/download/)
-      and follow [https://cmake.org/install/](https://cmake.org/install/) to build from source. 
-   2. (Ubuntu) Install deb package via apt repository: e.g [https://apt.kitware.com/](https://apt.kitware.com/)
+4. Cmake is needed to build ONNX Runtime. Please check the minimum required CMake version [here](https://github.com/microsoft/onnxruntime/blob/main/cmake/CMakeLists.txt#L6). Download from https://cmake.org/download/ and add cmake executable to `PATH` to use it.
 
 5. Build the ONNX Runtime Python wheel:
 
