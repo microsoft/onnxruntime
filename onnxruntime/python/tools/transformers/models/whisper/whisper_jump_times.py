@@ -200,9 +200,9 @@ class WhisperJumpTimes(torch.nn.Module):
         try:
             assert torch.utils.cpp_extension.verify_ninja_availability()
         except Exception as e:
-            logger.error(f"An error occurred while verifying `jinja` is available: {e}", exc_info=True)  # noqa: G201
-            install_cmd = "pip install Jinja2"
-            logger.warning(f"Could not import `jinja`. Attempting to install `jinja` via `{install_cmd}`.")
+            logger.error(f"An error occurred while verifying `ninja` is available: {e}", exc_info=True)  # noqa: G201
+            install_cmd = "pip install ninja"
+            logger.warning(f"Could not import `ninja`. Attempting to install `ninja` via `{install_cmd}`.")
             os.system(install_cmd)
 
         # Create UnfoldTensor torch op

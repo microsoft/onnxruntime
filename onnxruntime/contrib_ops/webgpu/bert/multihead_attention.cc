@@ -42,6 +42,11 @@ Status MultiHeadAttention::ComputeInternal(onnxruntime::webgpu::ComputeContext& 
   const Tensor* past_key = context.Input(6);
   const Tensor* past_value = context.Input(7);
 
+  // Not supported in WebGPU EP currently
+  const Tensor* cache_indirection = nullptr;
+  const Tensor* past_sequence_length = nullptr;
+  constexpr bool past_present_share_buffer = false;
+
   if (query->Shape().GetDims().size() == 5) {
     ORT_NOT_IMPLEMENTED("Packed QKV of shape (B, L, N, 3, H) not implemented for webgpu");
   }
@@ -53,9 +58,23 @@ Status MultiHeadAttention::ComputeInternal(onnxruntime::webgpu::ComputeContext& 
   }
 
   AttentionParameters params;
-  ORT_RETURN_IF_ERROR(multihead_attention_helper::CheckInputs<Tensor>(query, key, value,
-                                                                      bias, key_padding_mask, attention_bias, past_key, past_value, nullptr, &params,
-                                                                      num_heads_, mask_filter_value_, scale_, is_unidirectional_, false, kMultiHeadAttention,
+  ORT_RETURN_IF_ERROR(multihead_attention_helper::CheckInputs<Tensor>(query,
+                                                                      key,
+                                                                      value,
+                                                                      bias,
+                                                                      key_padding_mask,
+                                                                      attention_bias,
+                                                                      past_key,
+                                                                      past_value,
+                                                                      cache_indirection,
+                                                                      past_sequence_length,
+                                                                      &params,
+                                                                      num_heads_,
+                                                                      mask_filter_value_,
+                                                                      scale_,
+                                                                      is_unidirectional_,
+                                                                      past_present_share_buffer,
+                                                                      kMultiHeadAttention,
                                                                       context.DeviceLimits().maxComputeInvocationsPerWorkgroup));
   WebgpuAttentionParameters parameters(params);
   TensorShapeVector output_shape(3);
