@@ -1191,17 +1191,17 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>present state for key with shape (batch_size, num_heads, total_sequence_length, head_size). If past_present_share_buffer is set, its shape is (batch_size, num_heads, max_sequence_length, head_size), while effective_seq_length = (past_sequence_length + kv_sequence_length).</dd>
 <dt><tt>present_value</tt> (optional) : T</dt>
 <dd>present state for value with shape (batch_size, num_heads, total_sequence_length, head_size). If past_present_share_buffer is set, its shape is (batch_size, num_heads, max_sequence_length, head_size), while effective_seq_length = (past_sequence_length + kv_sequence_length).</dd>
-<dt><tt>qk</tt> (optional) : V</dt>
+<dt><tt>qk</tt> (optional) : QK</dt>
 <dd>normalized Q * K, of shape (batch_size, num_heads, 1, total_sequence_length). </dd>
 </dl>
 
 #### Type Constraints
 
 <dl>
-<dt><tt>V</tt> : tensor(float)</dt>
-<dd>Constrain qk output types to float32 tensors.</dd>
 <dt><tt>T</tt> : tensor(float), tensor(float16)</dt>
 <dd>Constrain input and output types to float tensors.</dd>
+<dt><tt>QK</tt> : tensor(float), tensor(float16)</dt>
+<dd>Constrain QK output to float32 or float16 tensors, independent of input type or output type.</dd>
 <dt><tt>M</tt> : tensor(int32)</dt>
 <dd>Constrain mask index to integer types</dd>
 </dl>
@@ -3199,7 +3199,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>Whether every token can only attend to previous tokens. Default value is 0.</dd>
 </dl>
 
-#### Inputs (1 - 8)
+#### Inputs (1 - 10)
 
 <dl>
 <dt><tt>query</tt> : T</dt>
@@ -3218,9 +3218,13 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>past state for self attention key with shape (batch_size, num_heads, past_sequence_length, head_size)</dd>
 <dt><tt>past_value</tt> (optional) : T</dt>
 <dd>past state for self attention value with shape (batch_size, num_heads, past_sequence_length, head_size)</dd>
+<dt><tt>past_sequence_length</tt> (optional) : M</dt>
+<dd>The past_sequence_length when buffer sharing is used with</dd>
+<dt><tt>cache_indirection</tt> (optional) : M</dt>
+<dd>A buffer of shape [batch_size, beam_width, max_sequence_length] where an [i, j, k] entry specifieswhich beam the 'k' th token came from for the 'j' th beam for batch 'i' in the current iteration</dd>
 </dl>
 
-#### Outputs (1 - 3)
+#### Outputs (1 - 4)
 
 <dl>
 <dt><tt>output</tt> : T</dt>
@@ -3229,6 +3233,8 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>present state for cross attention key with shape (batch_size, num_heads, kv_sequence_length, head_size)or present state for self attention key with shape (batch_size, num_heads, total_sequence_length, head_size)</dd>
 <dt><tt>present_value</tt> (optional) : T</dt>
 <dd>present state for cross attention value with shape (batch_size, num_heads, kv_sequence_length, head_size)or present state for self attention value with shape (batch_size, num_heads, total_sequence_length, head_size)</dd>
+<dt><tt>qk</tt> (optional) : QK</dt>
+<dd>normalized Q * K, of shape (batch_size, num_heads, sequence_length, total_sequence_length). </dd>
 </dl>
 
 #### Type Constraints
@@ -3236,6 +3242,8 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dl>
 <dt><tt>T</tt> : tensor(float), tensor(float16)</dt>
 <dd>Constrain input and output to float tensors.</dd>
+<dt><tt>QK</tt> : tensor(float), tensor(float16)</dt>
+<dd>Constrain QK output to float32 or float16 tensors, independent of input type or output type.</dd>
 <dt><tt>M</tt> : tensor(int32)</dt>
 <dd>Constrain mask to integer types</dd>
 </dl>
