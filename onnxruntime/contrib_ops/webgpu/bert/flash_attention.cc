@@ -97,7 +97,7 @@ Status CopyKVCache(onnxruntime::webgpu::ComputeContext& context, const WebgpuAtt
   }
   program.AddOutputs({{present_key, ProgramTensorMetadataDependency::Rank, components},
                       {present_value, ProgramTensorMetadataDependency::Rank, components}})
-      .AddIndices(valid_present_shape);
+      .AddIndices(std::move(valid_present_shape));
   program.SetDispatchGroupSize(onnxruntime::narrow<uint32_t>((valid_kv_size + 63) / 64))
       .SetWorkgroupSize(64)
       .CacheHint(has_past, parameters.qkv_format_, parameters.past_present_share_buffer_)
@@ -300,7 +300,7 @@ Status FlashAttentionProgram::GenerateShaderCode(ShaderHelper& shader) const {
       qk_4 = qk_4 * q_element_t(uniforms.alpha) + loadAttentionBias(q_idx_global, k_start+12, head_idx);
     }
 
-    let seq_causal_length = select(uniforms.total_sequence_length, q_idx_global + 1, uniforms.is_gqa > 0);
+    let seq_causal_length = select(uniforms.total_sequence_length, uniforms.past_sequence_length + q_idx_global + 1, uniforms.is_gqa > 0);
     // Neuter qk values where K is out of bounds.
     qk_1[0] = select(min_value, qk_1[0], k_start+0 < seq_causal_length);
     qk_1[1] = select(min_value, qk_1[1], k_start+1 < seq_causal_length);
@@ -451,6 +451,7 @@ Status ApplyFlashAttention(const Tensor* Q, const Tensor* K, const Tensor* V, co
       .AddUniformVariables({{static_cast<uint32_t>(parameters.sequence_length_)},
                             {static_cast<uint32_t>(parameters.total_sequence_length_)},
                             {static_cast<uint32_t>(parameters.past_present_share_buffer_ ? parameters.past_sequence_length_ : parameters.total_sequence_length_)},
+                            {static_cast<uint32_t>(parameters.total_sequence_length_ - parameters.kv_sequence_length_)},
                             {static_cast<uint32_t>(parameters.is_gqa_ ? 1 : 0)},
                             {static_cast<uint32_t>(parameters.n_reps)},
                             {alpha}});

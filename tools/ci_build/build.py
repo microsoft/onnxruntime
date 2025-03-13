@@ -1069,6 +1069,10 @@ def generate_vcpkg_install_options(build_dir, args):
     if "AGENT_TEMPDIRECTORY" in os.environ:
         temp_dir = os.environ["AGENT_TEMPDIRECTORY"]
         vcpkg_install_options.append(f"--x-buildtrees-root={temp_dir}")
+    elif "RUNNER_TEMP" in os.environ:
+        temp_dir = os.environ["RUNNER_TEMP"]
+        vcpkg_install_options.append(f"--x-buildtrees-root={temp_dir}")
+        vcpkg_install_options.append("--binarysource=clear\\;x-gha,readwrite")
 
     # Config asset cache
     if args.use_vcpkg_ms_internal_asset_cache:
@@ -1952,7 +1956,7 @@ def generate_build_tree(
             ]
         env = {}
         if args.use_vcpkg:
-            env["VCPKG_KEEP_ENV_VARS"] = "TRT_UPLOAD_AUTH_TOKEN"
+            env["VCPKG_KEEP_ENV_VARS"] = "TRT_UPLOAD_AUTH_TOKEN;EMSDK;EMSDK_NODE;EMSDK_PYTHON"
             if args.build_wasm:
                 env["EMSDK"] = emsdk_dir
 
@@ -2784,21 +2788,21 @@ def run_csharp_tests(
     csharp_source_dir = os.path.join(source_dir, "csharp")
 
     # define macros based on build args
-    macros = ""
+    macros = []
     if use_openvino:
-        macros += "USE_OPENVINO;"
+        macros.append("USE_OPENVINO")
     if use_tensorrt:
-        macros += "USE_TENSORRT;"
+        macros.append("USE_TENSORRT")
     if use_dnnl:
-        macros += "USE_DNNL;"
+        macros.append("USE_DNNL")
     if use_cuda:
-        macros += "USE_CUDA;"
+        macros.append("USE_CUDA")
     if enable_training_apis:
-        macros += "__TRAINING_ENABLED_NATIVE_BUILD__;__ENABLE_TRAINING_APIS__"
+        macros += ["__TRAINING_ENABLED_NATIVE_BUILD__", "__ENABLE_TRAINING_APIS__"]
 
     define_constants = ""
     if macros:
-        define_constants = '/p:DefineConstants="' + macros + '"'
+        define_constants = '/p:DefineConstants="' + ";".join(macros) + '"'
 
     # set build directory based on build_dir arg
     native_build_dir = os.path.normpath(os.path.join(source_dir, build_dir))
