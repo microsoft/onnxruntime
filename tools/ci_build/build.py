@@ -2630,6 +2630,7 @@ def build_nuget_package(
     use_dnnl,
     use_winml,
     use_qnn,
+    use_dml,
     enable_training_apis,
     msbuild_extra_options,
 ):
@@ -3287,6 +3288,7 @@ def main():
                 args.use_dnnl,
                 args.use_winml,
                 args.use_qnn,
+                args.use_dml,
                 args.enable_training_apis,
                 normalize_arg_list(args.msbuild_extra_options),
             )
