@@ -72,7 +72,7 @@ const DEFAULT_DEFINE = {
   'BUILD_DEFS.DISABLE_WASM': 'false',
   'BUILD_DEFS.DISABLE_WASM_PROXY': 'false',
   'BUILD_DEFS.ENABLE_BUNDLE_WASM_JS': 'false',
-  'BUILD_DEFS.USE_WEBGPU_EP': USE_WEBGPU_EP === "runtime" ? 'globalThis.WEBGPU_EP' : JSON.stringify(!!USE_WEBGPU_EP),
+  'BUILD_DEFS.USE_WEBGPU_EP': USE_WEBGPU_EP === 'runtime' ? 'globalThis.WEBGPU_EP' : JSON.stringify(!!USE_WEBGPU_EP),
 
   'BUILD_DEFS.IS_ESM': 'false',
   'BUILD_DEFS.ESM_IMPORT_META_URL': 'undefined',
