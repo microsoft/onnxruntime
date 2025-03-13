@@ -39,6 +39,7 @@ jobs:
         working-directory: ${{ runner.temp }}
         run: |
           azcopy.exe cp --recursive "https://lotusscus.blob.core.windows.net/models/cuda_sdk/v12.2" .
+          dir
         shell: pwsh
 
       - name: Add CUDA to PATH
@@ -60,7 +61,9 @@ jobs:
 
       - name: API Documentation Check and generate
         run: |
+          echo %PATH%
           where nvcc
+          dir %RUNNER_TEMP%\v12.2\bin
           set ORT_DOXY_SRC=${{ github.workspace }}
           set ORT_DOXY_OUT=${{ runner.temp }}\build\RelWithDebInfo\RelWithDebInfo
           mkdir %ORT_DOXY_SRC%
