@@ -2532,6 +2532,9 @@ struct CustomOpBase : OrtCustomOp {
     return std::vector<std::string>{};
   }
 
+  // Ort::CustomOpBase derived class should provide the following static method with the type/shape inferencing
+  // implementation if needed:
+  //   static OrtStatusPtr InferOutputShape(Ort::ShapeInferContext& context)
   template <typename C>
   decltype(&C::InferOutputShape) SetShapeInferFn(decltype(&C::InferOutputShape)) {
     OrtCustomOp::InferOutputShapeFn = [](const OrtCustomOp*, OrtShapeInferContext* ort_ctx) -> OrtStatusPtr {

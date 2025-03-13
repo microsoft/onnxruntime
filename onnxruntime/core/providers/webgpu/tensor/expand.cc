@@ -42,7 +42,7 @@ Status Expand::ComputeInternal(ComputeContext& context) const {
                                                                                                               : 1;
   const int components_o = output_shape.IsScalar() ? 1 : output_shape[output_shape.NumDimensions() - 1] % 4 == 0 ? 4
                                                                                                                  : 1;
-  uint32_t data_size = gsl::narrow<uint32_t>(output_shape.Size() / components_o);
+  uint32_t data_size = onnxruntime::narrow<uint32_t>(output_shape.Size() / components_o);
 
   ExpandProgram program{};
   program
@@ -53,7 +53,7 @@ Status Expand::ComputeInternal(ComputeContext& context) const {
           {data_size},
       });
   if (components_i != components_o) {
-    program.AddIndices(output_shape);
+    program.AddIndices(std::move(output_shape));
   }
   return context.RunProgram(program);
 }
