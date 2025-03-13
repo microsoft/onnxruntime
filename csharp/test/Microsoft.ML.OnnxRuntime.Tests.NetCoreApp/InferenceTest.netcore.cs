@@ -74,11 +74,9 @@ namespace Microsoft.ML.OnnxRuntime.Tests
 #if NET8_0_OR_GREATER
 #pragma warning disable SYSLIB5001 // System.Numerics.Tensors is only in preview so we can continue receiving API feedback
         [Theory]
-        [InlineData(GraphOptimizationLevel.ORT_DISABLE_ALL, true)]
-        [InlineData(GraphOptimizationLevel.ORT_DISABLE_ALL, false)]
-        [InlineData(GraphOptimizationLevel.ORT_ENABLE_EXTENDED, true)]
-        [InlineData(GraphOptimizationLevel.ORT_ENABLE_EXTENDED, false)]
-        private void CanRunInferenceOnAModelDotnetTensors(GraphOptimizationLevel graphOptimizationLevel, bool enableParallelExecution)
+        [InlineData(GraphOptimizationLevel.ORT_DISABLE_ALL)]
+        [InlineData(GraphOptimizationLevel.ORT_ENABLE_EXTENDED)]
+        private void CanRunInferenceOnAModelDotnetTensors(GraphOptimizationLevel graphOptimizationLevel)
         {
             var model = TestDataLoader.LoadModelFromEmbeddedResource("squeezenet.onnx");
 
@@ -151,7 +149,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                     using (var inputOrtValues = new DisposableListTest<DisposableTestPair<OrtValue>>(session.InputMetadata.Count))
                     using (var outputOrtValues = new DisposableListTest<DisposableTestPair<OrtValue>>(session.OutputMetadata.Count))
                     {
-                        
+
                         foreach (var name in inputMeta.Keys)
                         {
                             Assert.Equal(typeof(float), inputMeta[name].ElementType);
@@ -159,7 +157,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                             var tensor = SystemNumericsTensors.Tensor.Create<float>(inputData, inputMeta[name].Dimensions.Select(x => (nint) x).ToArray());
                             inputOrtValues.Add(new DisposableTestPair<OrtValue>(name, OrtValue.CreateTensorValueFromSystemNumericsTensorObject<float>(tensor)));
                         }
-                        
+
                         // Run inference with named inputs and outputs created with in Run()
                         using (var results = session.Run(runOptions, inputOrtValues.Select(x => x.Key).ToList(), inputOrtValues.Select(x => x.Value).ToList(), new List<string>(["softmaxout_1"])))  // results is an IDisposableReadOnlyCollection<OrtValue> container
                         {
@@ -224,7 +222,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
 
                 inputOrtValues.Add(new DisposableTestPair<OrtValue>("data_0", OrtValue.CreateTensorValueFromSystemNumericsTensorObject<float>(tensor)));
                 outputOrtValues.Add(new DisposableTestPair<OrtValue>("softmaxout_1", OrtValue.CreateTensorValueFromSystemNumericsTensorObject(outputTensor)));
-                
+
                 var ex = Assert.Throws<OnnxRuntimeException>(() => session.Run(runOptions, ["data_0"], [inputOrtValues[0].Value], ["softmaxout_1"], [outputOrtValues[0].Value]));
             }
 
