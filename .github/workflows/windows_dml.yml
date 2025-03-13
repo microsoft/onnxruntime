@@ -2,13 +2,9 @@ name: build_x64_RelWithDebInfo
 
 on:
   push:
-    branches:
-      - main
-      - 'rel-*'
+    branches: [ main, 'rel-*', 'snnn/es1']
   pull_request:
-    branches:
-      - main
-      - 'rel-*'
+    branches: [ main ]
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
