@@ -766,7 +766,7 @@ Status UnfusedAttention(
         cudaMemcpyAsync(data.output_qk, data.scratch, qk_size * sizeof(QK), cudaMemcpyDeviceToDevice, stream);
       } else {
         ORT_RETURN_IF_ERROR(
-          (CopyQK<T, QK>(stream, qk_size, data.scratch, reinterpret_cast<QK*>(data.output_qk))));
+          (CopyQK<T, QK>(stream, static_cast<int>(qk_size), data.scratch, reinterpret_cast<QK*>(data.output_qk))));
       }
     }
     ORT_RETURN_IF_ERROR(

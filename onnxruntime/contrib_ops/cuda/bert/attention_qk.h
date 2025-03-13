@@ -14,7 +14,7 @@ namespace cuda {
 
 template <typename T, typename QK>
 Status CopyQK(cudaStream_t stream,
-              const int64_t qk_size,
+              const int qk_size,
               const T* input,
               QK* output);
 

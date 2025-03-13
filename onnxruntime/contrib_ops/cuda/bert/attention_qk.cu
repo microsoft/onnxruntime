@@ -26,7 +26,7 @@ __global__ void ConvertAndCopyQK(const int count, const half* input, float* outp
 
 template <typename T, typename QK>
 Status CopyQK(cudaStream_t stream,
-              const int64_t qk_size,
+              const int qk_size,
               const T* input,
               QK* output) {
   const bool half2float = std::is_same<T, half>::value && std::is_same<QK, float>::value;
@@ -41,12 +41,12 @@ Status CopyQK(cudaStream_t stream,
 }
 
 template Status CopyQK<float, half>(cudaStream_t stream,
-                                    const int64_t qk_size,
+                                    const int qk_size,
                                     const float* input,
                                     half* output);
 
 template Status CopyQK<half, float>(cudaStream_t stream,
-                                    const int64_t qk_size,
+                                    const int qk_size,
                                     const half* input,
                                     float* output);
 
