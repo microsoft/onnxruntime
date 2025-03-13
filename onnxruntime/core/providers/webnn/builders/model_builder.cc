@@ -133,12 +133,12 @@ Status ModelBuilder::RegisterInitializers() {
         ORT_RETURN_IF_ERROR(utils::GetExternalDataInfo(
             tensor, graph_viewer_.ModelPath(), external_file_path, data_offset, tensor_byte_size));
 
-        auto jsepRegisterMLConstant = emscripten::val::module_property("jsepRegisterMLConstant");
-        operand = jsepRegisterMLConstant(emscripten::val(external_file_path),
-                                         static_cast<int32_t>(data_offset),
-                                         static_cast<int32_t>(tensor_byte_size),
-                                         wnn_builder_,
-                                         desc);
+        auto webnnRegisterMLConstant = emscripten::val::module_property("webnnRegisterMLConstant");
+        operand = webnnRegisterMLConstant(emscripten::val(external_file_path),
+                                          static_cast<int32_t>(data_offset),
+                                          static_cast<int32_t>(tensor_byte_size),
+                                          wnn_builder_,
+                                          desc);
       } else {
         if (tensor.has_raw_data()) {
           tensor_ptr = reinterpret_cast<std::byte*>(const_cast<char*>(tensor.raw_data().c_str()));
@@ -261,7 +261,7 @@ Status ModelBuilder::RegisterModelInputOutput(const NodeArg& node_arg, bool is_i
 
   if (is_input) {
     wnn_operands_.insert(std::make_pair(name, wnn_builder_.call<emscripten::val>("input", name, desc)));
-    emscripten::val::module_property("jsepRegisterGraphInput")(name);
+    emscripten::val::module_property("webnnRegisterGraphInput")(name);
     input_names_.push_back(name);
   } else {
     output_names_.push_back(name);
