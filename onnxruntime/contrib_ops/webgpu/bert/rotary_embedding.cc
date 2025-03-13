@@ -27,7 +27,7 @@ Status RotaryEmbeddingProgram::GenerateShaderCode(ShaderHelper& shader) const {
   const auto& sin_cache = shader.AddInput("sin_cache", ShaderUsage::UseUniform);
   const auto& output = shader.AddOutput("output", ShaderUsage::UseUniform);
   // TODO: remove output_indices.
-  const auto& output_indices = shader.AddIndices("output_indices", false);
+  const auto& output_indices = shader.AddIndices("output_indices", ShaderUsage::None);
   const auto interleaved_str = interleaved_ ? "true" : "false";
   shader.MainFunctionBody() << "  let half_rotary_emb_dim = uniforms.cos_cache_shape[1];\n"
                                "  let bsnh = global_idx / uniforms.global_stride % uniforms.global_shape;\n"
@@ -66,11 +66,11 @@ Status RotaryEmbedding::ComputeInternal(onnxruntime::webgpu::ComputeContext& con
   const auto* sin_cache = context.Input<Tensor>(3);
   auto* output = context.Output(0, input_shape);
 
-  const auto batch_size = gsl::narrow<uint32_t>(input->Shape()[0]);
-  const auto batch_stride = gsl::narrow<uint32_t>(input_shape.SizeFromDimension(1));
-  const auto sequence_length = gsl::narrow<uint32_t>(input_shape[input_shape.NumDimensions() - 2]);
+  const auto batch_size = onnxruntime::narrow<uint32_t>(input->Shape()[0]);
+  const auto batch_stride = onnxruntime::narrow<uint32_t>(input_shape.SizeFromDimension(1));
+  const auto sequence_length = onnxruntime::narrow<uint32_t>(input_shape[input_shape.NumDimensions() - 2]);
   const auto hidden_size = batch_stride / sequence_length;
-  const auto half_rotary_embedding_dim = gsl::narrow<uint32_t>(cos_cache->Shape()[1]);
+  const auto half_rotary_embedding_dim = onnxruntime::narrow<uint32_t>(cos_cache->Shape()[1]);
   const auto head_size = rotary_embedding_dim_ == 0 ? half_rotary_embedding_dim * 2 : hidden_size / num_heads_;
 
   // Rotary embeddings will be calculated in a pair-wise fashion. In accordance, use the shape
@@ -85,11 +85,11 @@ Status RotaryEmbedding::ComputeInternal(onnxruntime::webgpu::ComputeContext& con
   std::vector<uint32_t> global_dims(rank);
   std::vector<uint32_t> global_strides(rank);
   for (size_t j = 0; j < rank; ++j) {
-    global_dims[j] = gsl::narrow<uint32_t>(global_shape[j]);
-    global_strides[j] = gsl::narrow<uint32_t>(global_shape.SizeFromDimension(j + 1));
+    global_dims[j] = onnxruntime::narrow<uint32_t>(global_shape[j]);
+    global_strides[j] = onnxruntime::narrow<uint32_t>(global_shape.SizeFromDimension(j + 1));
   }
 
-  const auto output_size = gsl::narrow<const uint32_t>(global_shape.Size());
+  const auto output_size = onnxruntime::narrow<const uint32_t>(global_shape.Size());
   RotaryEmbeddingProgram program{interleaved_};
   const auto input_output_strides =
       input_shape.NumDimensions() == 3

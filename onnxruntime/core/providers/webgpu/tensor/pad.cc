@@ -130,7 +130,7 @@ Status Pad::ComputeInternal(ComputeContext& context) const {
   }
 
   auto* output_tensor = context.Output(0, output_shape);
-  uint32_t output_size = gsl::narrow<uint32_t>(output_shape.Size());
+  uint32_t output_size = onnxruntime::narrow<uint32_t>(output_shape.Size());
   if (output_size == 0) {
     // Do not need to fill output, return
     return Status::OK();
@@ -146,27 +146,21 @@ Status Pad::ComputeInternal(ComputeContext& context) const {
       uint16_t value = math::floatToHalf(value_);
       std::memcpy(&value_uint32, &value, sizeof(value));
     } else {
-      value_uint32 = *reinterpret_cast<const uint32_t*>(&value_);
+      std::memcpy(&value_uint32, &value_, sizeof(value_uint32));
     }
   } else if (value_tensor) {
     ORT_ENFORCE(value_tensor->DataType() == input_tensor->DataType() && value_tensor->Shape().Size() == 1,
                 "Value tensor should be a 1D tensor of size 1 with the same type as that of the input tensor");
     switch (data_type) {
-      case ONNX_NAMESPACE::TensorProto_DataType_INT32: {
-        int32_t value = value_tensor->Data<int32_t>()[0];
-        value_uint32 = *reinterpret_cast<uint32_t*>(&value);
-      } break;
-      case ONNX_NAMESPACE::TensorProto_DataType_FLOAT: {
-        float value = value_tensor->Data<float>()[0];
-        value_uint32 = *reinterpret_cast<uint32_t*>(&value);
-      } break;
       case ONNX_NAMESPACE::TensorProto_DataType_FLOAT16: {
         uint16_t value = value_tensor->Data<MLFloat16>()[0].val;
         std::memcpy(&value_uint32, &value, sizeof(value));
       } break;
-      case ONNX_NAMESPACE::TensorProto_DataType_UINT32: {
-        value_uint32 = value_tensor->Data<uint32_t>()[0];
-      } break;
+      case ONNX_NAMESPACE::TensorProto_DataType_INT32:
+      case ONNX_NAMESPACE::TensorProto_DataType_FLOAT:
+      case ONNX_NAMESPACE::TensorProto_DataType_UINT32:
+        std::memcpy(&value_uint32, value_tensor->DataRaw(), sizeof(value_uint32));
+        break;
       default:
         return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Unsupported input type: ", static_cast<int>(data_type));
     }

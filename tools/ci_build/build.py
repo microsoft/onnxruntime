@@ -35,7 +35,8 @@ sys.path.insert(0, os.path.join(REPO_DIR, "tools", "python"))
 import util.android as android  # noqa: E402
 from util import (  # noqa: E402
     generate_android_triplets,
-    generate_posix_triplets,
+    generate_linux_triplets,
+    generate_macos_triplets,
     generate_vcpkg_triplets_for_emscripten,
     generate_windows_triplets,
     get_logger,
@@ -1068,6 +1069,10 @@ def generate_vcpkg_install_options(build_dir, args):
     if "AGENT_TEMPDIRECTORY" in os.environ:
         temp_dir = os.environ["AGENT_TEMPDIRECTORY"]
         vcpkg_install_options.append(f"--x-buildtrees-root={temp_dir}")
+    elif "RUNNER_TEMP" in os.environ:
+        temp_dir = os.environ["RUNNER_TEMP"]
+        vcpkg_install_options.append(f"--x-buildtrees-root={temp_dir}")
+        vcpkg_install_options.append("--binarysource=clear\\;x-gha,readwrite")
 
     # Config asset cache
     if args.use_vcpkg_ms_internal_asset_cache:
@@ -1115,7 +1120,6 @@ def generate_build_tree(
     cmake_extra_args,
 ):
     log.info("Generating CMake build tree")
-
     cmake_dir = os.path.join(source_dir, "cmake")
     cmake_args = [cmake_path, cmake_dir]
     if not use_dev_mode(args):
@@ -1330,8 +1334,16 @@ def generate_build_tree(
             generate_android_triplets(build_dir, args.android_cpp_shared, args.android_api)
         elif is_windows():
             generate_windows_triplets(build_dir)
+        elif is_macOS():
+            osx_target = args.apple_deploy_target
+            if args.apple_deploy_target is None:
+                osx_target = os.environ.get("MACOSX_DEPLOYMENT_TARGET")
+            if osx_target is not None:
+                log.info(f"Setting VCPKG_OSX_DEPLOYMENT_TARGET to {osx_target}")
+            generate_macos_triplets(build_dir, osx_target)
         else:
-            generate_posix_triplets(build_dir)
+            # Linux, *BSD, AIX or other platforms
+            generate_linux_triplets(build_dir)
         add_default_definition(cmake_extra_defines, "CMAKE_TOOLCHAIN_FILE", str(vcpkg_toolchain_path))
 
         vcpkg_install_options = generate_vcpkg_install_options(build_dir, args)
@@ -1592,8 +1604,11 @@ def generate_build_tree(
             raise BuildError("WebNN is only available for WebAssembly build.")
         cmake_args += ["-Donnxruntime_USE_WEBNN=ON"]
 
-    if args.use_jsep and args.use_webgpu:
-        raise BuildError("JSEP (--use_jsep) and WebGPU (--use_webgpu) cannot be enabled at the same time.")
+    # TODO: currently we allows building with both --use_jsep and --use_webgpu in this working branch.
+    #       This situation is temporary. Eventually, those two flags will be mutually exclusive.
+    #
+    # if args.use_jsep and args.use_webgpu:
+    #     raise BuildError("JSEP (--use_jsep) and WebGPU (--use_webgpu) cannot be enabled at the same time.")
 
     if args.use_external_dawn and not args.use_webgpu:
         raise BuildError("External Dawn (--use_external_dawn) must be enabled with WebGPU (--use_webgpu).")
@@ -1941,7 +1956,7 @@ def generate_build_tree(
             ]
         env = {}
         if args.use_vcpkg:
-            env["VCPKG_KEEP_ENV_VARS"] = "TRT_UPLOAD_AUTH_TOKEN"
+            env["VCPKG_KEEP_ENV_VARS"] = "TRT_UPLOAD_AUTH_TOKEN;EMSDK;EMSDK_NODE;EMSDK_PYTHON"
             if args.build_wasm:
                 env["EMSDK"] = emsdk_dir
 
@@ -2773,21 +2788,21 @@ def run_csharp_tests(
     csharp_source_dir = os.path.join(source_dir, "csharp")
 
     # define macros based on build args
-    macros = ""
+    macros = []
     if use_openvino:
-        macros += "USE_OPENVINO;"
+        macros.append("USE_OPENVINO")
     if use_tensorrt:
-        macros += "USE_TENSORRT;"
+        macros.append("USE_TENSORRT")
     if use_dnnl:
-        macros += "USE_DNNL;"
+        macros.append("USE_DNNL")
     if use_cuda:
-        macros += "USE_CUDA;"
+        macros.append("USE_CUDA")
     if enable_training_apis:
-        macros += "__TRAINING_ENABLED_NATIVE_BUILD__;__ENABLE_TRAINING_APIS__"
+        macros += ["__TRAINING_ENABLED_NATIVE_BUILD__", "__ENABLE_TRAINING_APIS__"]
 
     define_constants = ""
     if macros:
-        define_constants = '/p:DefineConstants="' + macros + '"'
+        define_constants = '/p:DefineConstants="' + ";".join(macros) + '"'
 
     # set build directory based on build_dir arg
     native_build_dir = os.path.normpath(os.path.join(source_dir, build_dir))
