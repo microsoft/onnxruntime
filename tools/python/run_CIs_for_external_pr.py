@@ -19,9 +19,6 @@ def get_pipeline_names():
         # windows
         "Windows ARM64 QNN CI Pipeline",
         "Windows x64 QNN CI Pipeline",
-        "Windows CPU CI Pipeline",
-        "Windows GPU CUDA CI Pipeline",
-        "Windows GPU DML CI Pipeline",
         "Windows GPU Doc Gen CI Pipeline",
         "Windows GPU TensorRT CI Pipeline",
         "Windows OpenVINO CI Pipeline",
@@ -34,8 +31,6 @@ def get_pipeline_names():
         "Linux GPU TensorRT CI Pipeline",
         "Linux OpenVINO CI Pipeline",
         "Linux QNN CI Pipeline",
-        # mac
-        "MacOS CI Pipeline",
         # checks
         "onnxruntime-binary-size-checks-ci-pipeline",
         # big models
@@ -46,7 +41,6 @@ def get_pipeline_names():
         "Android CI Pipeline",
         "iOS CI Pipeline",
         "ONNX Runtime React Native CI Pipeline",
-        "CoreML CI Pipeline",
         "Linux DNNL CI Pipeline",
         "Linux MIGraphX CI Pipeline",
         "Linux ROCm CI Pipeline",
