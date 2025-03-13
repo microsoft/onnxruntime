@@ -50,7 +50,7 @@ class GQAAttentionBase {
   Status ApplyAttention(const T* Q,                                 // Q data with shape BxNxSxH
                         const T* K,                                 // K data with shape BxN_kvxSxH
                         const T* V,                                 // V data with shape BxN_kvxSxH
-                        const Tensor* attention_mask,               // Causal attention mask to apply before
+                        const Tensor* attention_mask,               // Attention mask to apply before softmax / softcap
                         const Tensor* past_key,                     // past K input tensor (if not using past state)
                         const Tensor* past_value,                   // past V input tensor (if not using past state)
                         Tensor* output,                             // output tensor
@@ -89,17 +89,17 @@ class GQAAttentionBase {
     T* present_value_data = present_value != nullptr ? present_value->MutableData<T>() : nullptr;
 
     const T* attention_mask_data = attention_mask != nullptr ? attention_mask->Data<T>() : nullptr;
-    const size_t attention_mask_total_seqlen =
-        attention_mask != nullptr ? static_cast<size_t>(attention_mask->Shape()[2]) : static_cast<size_t>(0);
+    auto attention_mask_shape = attention_mask != nullptr ? attention_mask->Shape().GetDims() : gsl::span<const int64_t>{};
 
     bool past_present_share_buffer = past_key_data == present_key_data && past_value_data == present_value_data;
 
     const T* k = packed_qkv ? Q + num_heads_ * sequence_length * head_size : K;
 
     if (gqa_mlas_supported) {
-      ComputeAttentionProbs(static_cast<T*>(attention_probs), Q, k, seqlens_k->Data<int32_t>(), attention_mask_data, batch_size,
-                            sequence_length, attention_mask_total_seqlen, seqlen_past_kv_cache, seqlen_present_kv_cache, head_size, past_key_data,
-                            present_key_data, past_present_share_buffer, packed_qkv, is_prompt, tp, allocator);
+      ComputeAttentionProbs(static_cast<T*>(attention_probs), Q, k, seqlens_k->Data<int32_t>(), attention_mask_data,
+                            batch_size, sequence_length, attention_mask_shape, seqlen_past_kv_cache, seqlen_present_kv_cache,
+                            head_size, past_key_data, present_key_data, past_present_share_buffer, packed_qkv, is_prompt,
+                            tp, allocator);
 
       // Compute the attentionScore * Value: out(B, N, S, H_v) = attention_probs(B, N, S, T) x V(B, N, T, H_v)
       const T* v = packed_qkv ? Q + (num_heads_ + kv_num_heads_) * sequence_length * head_size : V;
@@ -110,9 +110,9 @@ class GQAAttentionBase {
                               is_prompt, tp, allocator);
     } else {
       ComputeAttentionProbs(static_cast<float*>(attention_probs), Q, k, seqlens_k->Data<int32_t>(), attention_mask_data,
-                            batch_size, sequence_length, attention_mask_total_seqlen, seqlen_past_kv_cache, seqlen_present_kv_cache, head_size,
-                            past_key_data, present_key_data, past_present_share_buffer, packed_qkv, is_prompt, tp,
-                            allocator);
+                            batch_size, sequence_length, attention_mask_shape, seqlen_past_kv_cache, seqlen_present_kv_cache,
+                            head_size, past_key_data, present_key_data, past_present_share_buffer, packed_qkv, is_prompt,
+                            tp, allocator);
 
       // Compute the attentionScore * Value: out(B, N, S, H_v) = attention_probs(B, N, S, T) x V(B, N, T, H_v)
       const T* v = packed_qkv ? Q + (num_heads_ + kv_num_heads_) * sequence_length * head_size : V;
@@ -132,24 +132,24 @@ class GQAAttentionBase {
   //  attention_probs(B, N, S, T) = Softmax(attention_probs)
   // If T is float32, U is float32. If T is float16, U could be float16 or float32.
   template <typename T, typename U>
-  void ComputeAttentionProbs(U* attention_probs,                           // output buffer with size BxNxSxT
-                             const T* Q,                                   // Q data. Its size is BxNxSxH
-                             const T* K,                                   // k data. Its size is BxNxLxH
-                             const int32_t* seqlens_k,                     // total - 1 sequence lengths tensor
-                             const T* attention_mask,                      // optional causal attention mask
-                             const size_t batch_size,                      // batch size of self-attention
-                             const size_t sequence_length,                 // sequence length of self-attention (S)
-                             const size_t attention_mask_total_seqlen,     // max total seqlen in batch used for attention last dim
-                             const size_t past_buffer_sequence_length,     // sequence length of past state
-                             const size_t present_buffer_sequence_length,  // sequence length of present state
-                             const size_t head_size,                       // head size of self-attention
-                             const T* past_key,                            // past key only
-                             T* present_key,                               // present key only
-                             const bool past_present_share_buffer,         // whether present key and value share the same buffer
-                             const bool packed_qkv,                        // whether Q, K, V are packed
-                             const bool is_prompt,                         // whether it is prompt
-                             ThreadPool* tp,                               // thread pool
-                             AllocatorPtr allocator) const {               // allocator for temporary buffer
+  void ComputeAttentionProbs(U* attention_probs,                                  // output buffer with size BxNxSxT
+                             const T* Q,                                          // Q data. Its size is BxNxSxH
+                             const T* K,                                          // k data. Its size is BxNxLxH
+                             const int32_t* seqlens_k,                            // total - 1 sequence lengths tensor
+                             const T* attention_mask,                             // optional attention mask
+                             const size_t batch_size,                             // batch size of self-attention
+                             const size_t sequence_length,                        // sequence length of self-attention (S)
+                             const gsl::span<const int64_t> attention_mask_shape, // shape of the attention mask
+                             const size_t past_buffer_sequence_length,            // sequence length of past state
+                             const size_t present_buffer_sequence_length,         // sequence length of present state
+                             const size_t head_size,                              // head size of self-attention
+                             const T* past_key,                                   // past key only
+                             T* present_key,                                      // present key only
+                             const bool past_present_share_buffer,                // whether present key and value share the same buffer
+                             const bool packed_qkv,                               // whether Q, K, V are packed
+                             const bool is_prompt,                                // whether it is prompt
+                             ThreadPool* tp,                                      // thread pool
+                             AllocatorPtr allocator) const {                      // allocator for temporary buffer
     const ptrdiff_t packed_batch_stride =
         packed_qkv ? SafeInt<ptrdiff_t>(num_heads_ + 2 * kv_num_heads_) * sequence_length * head_size
                    : SafeInt<ptrdiff_t>(0);
@@ -197,8 +197,23 @@ class GQAAttentionBase {
         const ptrdiff_t output_offset = SafeInt<ptrdiff_t>(i) * sequence_length * present_buffer_sequence_length;
         U* output = attention_probs + output_offset;
 
-        const ptrdiff_t attention_mask_offset = SafeInt<ptrdiff_t>(batch_index) * sequence_length * attention_mask_total_seqlen;
-        const T* attention_mask_batch = attention_mask != nullptr ? attention_mask + attention_mask_offset : nullptr;
+        // Compute attention mask offset based on the batch and head indexes
+        // Attention mask is of shape (B or 1, H or 1, S, T) so handle broadcasting
+        const T* attention_mask_thread = nullptr;
+        ptrdiff_t attention_total_seqlen = 0;
+        if (attention_mask != nullptr) {
+          ptrdiff_t attention_mask_offset = 0;
+          attention_total_seqlen = static_cast<ptrdiff_t>(attention_mask_shape[3]);
+          const ptrdiff_t attention_matrix_size = SafeInt<ptrdiff_t>(attention_mask_shape[2]) * attention_total_seqlen;
+          if (attention_mask_shape[0] != 1) {
+            attention_mask_offset += SafeInt<ptrdiff_t>(batch_index) * attention_mask_shape[1] * attention_matrix_size;
+          }
+          if (attention_mask_shape[1] != 1) {
+            attention_mask_offset += SafeInt<ptrdiff_t>(head_index) * attention_matrix_size;
+          }
+
+          attention_mask_thread = attention_mask + attention_mask_offset;
+        }
 
         const T* k;
         if (packed_qkv) {
@@ -262,17 +277,17 @@ class GQAAttentionBase {
 
           // Apply custom attention mask if there is any
           // TODO (#23982): Implement masking during softmax / softcap computation in GQA CPU operator
-          if (attention_mask_batch != nullptr) {
+          if (attention_mask_thread != nullptr) {
             if constexpr (std::is_same_v<U, T>) {
-              ApplyAttentionMask(output_softmax + start_offset, attention_mask_batch + start_offset,
+              ApplyAttentionMask(output_softmax + start_offset, attention_mask_thread + start_offset,
                                  static_cast<int>(window_size));
             } else {
               size_t bytes = window_size * sizeof(float);
-              auto attention_mask_batch_fp32 = static_cast<float*>(allocator->Alloc(bytes));
-              BufferUniquePtr scratch_buffer(attention_mask_batch_fp32, BufferDeleter(allocator));
+              auto attention_mask_thread_fp32 = static_cast<float*>(allocator->Alloc(bytes));
+              BufferUniquePtr scratch_buffer(attention_mask_thread_fp32, BufferDeleter(allocator));
 
-              MlasConvertHalfToFloatBuffer(attention_mask_batch + start_offset, attention_mask_batch_fp32, window_size);
-              ApplyAttentionMask(output_softmax, attention_mask_batch_fp32, static_cast<int>(window_size));
+              MlasConvertHalfToFloatBuffer(attention_mask_thread + start_offset, attention_mask_thread_fp32, window_size);
+              ApplyAttentionMask(output_softmax, attention_mask_thread_fp32, static_cast<int>(window_size));
             }
           }
 
@@ -309,8 +324,8 @@ class GQAAttentionBase {
 
           output_softmax += present_buffer_sequence_length;
 
-          if (attention_mask_batch != nullptr) {
-            attention_mask_batch += attention_mask_total_seqlen;
+          if (attention_mask_thread != nullptr) {
+            attention_mask_thread += attention_total_seqlen;
           }
         }
       }
