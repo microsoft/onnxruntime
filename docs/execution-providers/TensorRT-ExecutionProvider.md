@@ -29,25 +29,25 @@ See [Build instructions](../build/eps.md#tensorrt).
 
 Note: Starting with version 1.19, **CUDA 12** becomes the default version when distributing ONNX Runtime GPU packages.
 
-| ONNX Runtime | TensorRT | CUDA           |
-| :----------- | :------- | :------------- |
-| main         | 10.8     | **12.x**, 11.8 |
-| 1.21         | 10.8     | **12.x**, 11.8 |
-| 1.20         | 10.4     | **12.x**, 11.8 |
-| 1.19         | 10.2     | **12.x**, 11.8 |
-| 1.18         | 10.0     | 11.8, 12.x     |
-| 1.17         | 8.6      | 11.8, 12.x     |
-| 1.16         | 8.6      | 11.8           |
-| 1.15         | 8.6      | 11.8           |
-| 1.14         | 8.5      | 11.6           |
-| 1.12-1.13    | 8.4      | 11.4           |
-| 1.11         | 8.2      | 11.4           |
-| 1.10         | 8.0      | 11.4           |
-| 1.9          | 8.0      | 11.4           |
-| 1.7-1.8      | 7.2      | 11.0.3         |
-| 1.5-1.6      | 7.1      | 10.2           |
-| 1.2-1.4      | 7.0      | 10.1           |
-| 1.0-1.1      | 6.0      | 10.0           |
+| ONNX Runtime | TensorRT | CUDA                |
+| :----------- | :------- | :------------------ |
+| main         | 10.9     | **12.0-12.8**, 11.8 |
+| 1.21         | 10.8     | **12.0-12.8**, 11.8 |
+| 1.20         | 10.4     | **12.0-12.6**, 11.8 |
+| 1.19         | 10.2     | **12.0-12.6**, 11.8 |
+| 1.18         | 10.0     | 11.8, 12.0-12.6     |
+| 1.17         | 8.6      | 11.8, 12.0-12.6     |
+| 1.16         | 8.6      | 11.8                |
+| 1.15         | 8.6      | 11.8                |
+| 1.14         | 8.5      | 11.6                |
+| 1.12-1.13    | 8.4      | 11.4                |
+| 1.11         | 8.2      | 11.4                |
+| 1.10         | 8.0      | 11.4                |
+| 1.9          | 8.0      | 11.4                |
+| 1.7-1.8      | 7.2      | 11.0.3              |
+| 1.5-1.6      | 7.1      | 10.2                |
+| 1.2-1.4      | 7.0      | 10.1                |
+| 1.0-1.1      | 6.0      | 10.0                |
 
 For more details on CUDA/cuDNN versions, please see [CUDA EP requirements](./CUDA-ExecutionProvider.md#requirements).
 
@@ -266,7 +266,7 @@ TensorRT configurations can be set by execution provider options. It's useful wh
         assert options["TensorrtExecutionProvider"].get("has_user_compute_stream", "") == "1"
     ...
     ```
-
+    
     </Details>
 
 * To take advantage of user compute stream, it is recommended to use [I/O Binding](https://onnxruntime.ai/docs/api/python/api_summary.html#data-on-device) to bind inputs and outputs to tensors in device.

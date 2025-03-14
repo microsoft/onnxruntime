@@ -138,20 +138,20 @@ See more information on the TensorRT Execution Provider [here](../execution-prov
 #### Windows
 ```bash
 # to build with tensorrt built-in parser
-.\build.bat --config Release --parallel --cudnn_home <path to cuDNN home> --cuda_home <path to CUDA home> --use_tensorrt --tensorrt_home <path to TensorRT home> --cmake_generator "Visual Studio 17 2022"
+.\build.bat --config Release --parallel  --cmake_extra_defines 'CMAKE_CUDA_ARCHITECTURES=native' --cudnn_home <path to cuDNN home> --cuda_home <path to CUDA home> --use_tensorrt --tensorrt_home <path to TensorRT home> --cmake_generator "Visual Studio 17 2022"
 
 # to build with specific version of open-sourced onnx-tensorrt parser configured in cmake/deps.txt
-.\build.bat --config Release --parallel --cudnn_home <path to cuDNN home> --cuda_home <path to CUDA home> --use_tensorrt --tensorrt_home <path to TensorRT home> --use_tensorrt_oss_parser --cmake_generator "Visual Studio 17 2022" 
+.\build.bat --config Release --parallel  --cmake_extra_defines 'CMAKE_CUDA_ARCHITECTURES=native' --cudnn_home <path to cuDNN home> --cuda_home <path to CUDA home> --use_tensorrt --tensorrt_home <path to TensorRT home> --use_tensorrt_oss_parser --cmake_generator "Visual Studio 17 2022" 
 ```
 
 #### Linux
 
 ```bash
 # to build with tensorrt built-in parser
-./build.sh --config Release --parallel --cudnn_home <path to cuDNN e.g. /usr/lib/x86_64-linux-gnu/> --cuda_home <path to folder for CUDA e.g. /usr/local/cuda> --use_tensorrt --tensorrt_home <path to TensorRT home>
+./build.sh --config Release --parallel --cmake_extra_defines 'CMAKE_CUDA_ARCHITECTURES=native' --cudnn_home <path to cuDNN e.g. /usr/lib/x86_64-linux-gnu/> --cuda_home <path to folder for CUDA e.g. /usr/local/cuda> --use_tensorrt --tensorrt_home <path to TensorRT home>
 
 # to build with specific version of open-sourced onnx-tensorrt parser configured in cmake/deps.txt
-./build.sh --config Release --parallel --cudnn_home <path to cuDNN e.g. /usr/lib/x86_64-linux-gnu/> --cuda_home <path to folder for CUDA e.g. /usr/local/cuda> --use_tensorrt --use_tensorrt_oss_parser --tensorrt_home <path to TensorRT home> --skip_submodule_sync
+./build.sh --config Release --parallel --cmake_extra_defines 'CMAKE_CUDA_ARCHITECTURES=native' --cudnn_home <path to cuDNN e.g. /usr/lib/x86_64-linux-gnu/> --cuda_home <path to folder for CUDA e.g. /usr/local/cuda> --use_tensorrt --use_tensorrt_oss_parser --tensorrt_home <path to TensorRT home> --skip_submodule_sync
 ```
 
 Dockerfile instructions are available [here](https://github.com/microsoft/onnxruntime/tree/main/dockerfiles#tensorrt)
@@ -229,7 +229,7 @@ These instructions are for the latest [JetPack SDK](https://developer.nvidia.com
 
 * By default, `onnxruntime-gpu` wheel file will be captured under `path_to/onnxruntime/build/Linux/Release/dist/` (build path can be customized by adding `--build_dir` followed by a customized path to the build command above).
 
-* Append `--skip_tests --cmake_extra_defines 'CMAKE_CUDA_ARCHITECTURES=72;87' 'onnxruntime_BUILD_UNIT_TESTS=OFF' 'onnxruntime_USE_FLASH_ATTENTION=OFF'
+* Append `--skip_tests --cmake_extra_defines 'CMAKE_CUDA_ARCHITECTURES=native' 'onnxruntime_BUILD_UNIT_TESTS=OFF' 'onnxruntime_USE_FLASH_ATTENTION=OFF'
 'onnxruntime_USE_MEMORY_EFFICIENT_ATTENTION=OFF'` to the build command to opt out optional features and reduce build time.
 
 * For a portion of Jetson devices like the Xavier series, higher power mode involves more cores (up to 6) to compute but it consumes more resource when building ONNX Runtime. Set `--parallel 1` in the build command if OOM happens and system is hanging.
