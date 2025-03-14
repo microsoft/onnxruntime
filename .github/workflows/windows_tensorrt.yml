@@ -84,10 +84,10 @@ jobs:
       - name: Build wheel
         run: python ${{ github.workspace }}\setup.py bdist_wheel
         shell: cmd
-        working-directory: ${{ github.workspace }}\RelWithDebInfo\RelWithDebInfo
+        working-directory: ${{ github.workspace }}\build\RelWithDebInfo\RelWithDebInfo
 
       - name: Run tests
-        working-directory: ${{ runner.temp }}
+        working-directory: ${{ runner.temp }}\build\RelWithDebInfo\RelWithDebInfo
         run: |
           mklink  /D /J ${{ github.workspace }}\RelWithDebInfo\models ${{ github.workspace }}\models
           DIR dist\ /S /B > wheel_filename_file
@@ -97,5 +97,5 @@ jobs:
           set PATH=${{ github.workspace }}\RelWithDebInfo\RelWithDebInfo;%PATH%
           python ${{ github.workspace }}\tools\ci_build\build.py --config RelWithDebInfo --parallel --use_binskim_compliant_compile_flags             --build_dir build --skip_submodule_sync --build_shared_lib --test --cmake_generator "Visual Studio 17 2022" --build_wheel --enable_onnx_tests             --use_tensorrt --tensorrt_home="${{ runner.temp }}\TensorRT-10.8.0.43.Windows10.x86_64.cuda-12.8"             --cuda_home="${{ runner.temp }}\v12.2" --use_vcpkg --use_vcpkg_ms_internal_asset_cache             --cmake_extra_defines CMAKE_CUDA_ARCHITECTURES=86
         shell: cmd
-        working-directory: ${{ github.workspace }}\RelWithDebInfo\RelWithDebInfo
+        working-directory: ${{ github.workspace }}\
         timeout-minutes: 180
