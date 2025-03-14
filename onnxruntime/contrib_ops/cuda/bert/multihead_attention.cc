@@ -94,7 +94,7 @@ Status MultiHeadAttention<T, QK>::ComputeInternal(OpKernelContext* context) cons
   const Tensor* past_sequence_length = context->Input<Tensor>(8);
   const Tensor* cache_indirection = context->Input<Tensor>(9);
 
-  bool past_present_share_buffer = past_sequence_length != nullptr;
+  bool past_present_share_buffer = past_key != nullptr && past_sequence_length != nullptr;
   if (past_key != nullptr && past_sequence_length != nullptr && cache_indirection != nullptr) {
     ORT_ENFORCE(past_present_share_buffer);
   }
@@ -525,7 +525,7 @@ Status MultiHeadAttention<T, QK>::ComputeInternal(OpKernelContext* context) cons
     auto seqlens_k_buffer = GetScratchBuffer<void>(seqlens_k_bytes, context->GetComputeStream());
     if (seqlens_k_buffer != nullptr) {
       data.seqlens_k_total = reinterpret_cast<int*>(seqlens_k_buffer.get());
-      CUDA_RETURN_IF_ERROR(cudaMemcpy(data.seqlens_k_total, seqlens_k.data(), seqlens_k_bytes, cudaMemcpyHostToDevice, stream));
+      CUDA_RETURN_IF_ERROR(cudaMemcpy(data.seqlens_k_total, seqlens_k.data(), seqlens_k_bytes, cudaMemcpyHostToDevice));
     }
   }
 

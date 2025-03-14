@@ -73,7 +73,7 @@ Status MultiHeadAttention<T>::Compute(OpKernelContext* context) const {
     ORT_NOT_IMPLEMENTED("Packed KV not implemented for CPU");
   }
 
-  bool past_present_share_buffer = past_sequence_length != nullptr;
+  bool past_present_share_buffer = past_key != nullptr && past_sequence_length != nullptr;
   if (past_key != nullptr && past_sequence_length != nullptr && cache_indirection != nullptr) {
     ORT_ENFORCE(past_present_share_buffer);
   }
