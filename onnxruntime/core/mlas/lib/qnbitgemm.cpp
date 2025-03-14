@@ -104,7 +104,7 @@ MlasIsQNBitGemmAvailable(
               (Dispatch->SQ4BitGemmKernel_BlkSum_CompInt8 != nullptr && Dispatch->QuantizeARowComputeBlkSum_CompInt8 != nullptr);
         }
         case SQNBitGemmVariant_BitWidth2_CompInt8: {
-            return (Dispatch->SQ2BitGemmKernel_CompInt8 != nullptr && Dispatch->QuantizeARow_CompInt8 != nullptr);
+            return (Dispatch->SQ2BitGemmKernel_CompInt8 != nullptr && Dispatch->QuantizeARowLUT_CompInt8 != nullptr);
         }
         default: {
             return false;
@@ -586,7 +586,7 @@ SQ2BitGemm_CompInt8(
 
     const std::byte* QuantA = per_gemm_quant_a_workspace->QuantData + RangeStartM * lda;
     const float* QuantAScale = per_gemm_quant_a_workspace->QuantScale + RangeStartM * k_blks;
-    const std::byte* QuantAZeroPoint = per_gemm_quant_a_workspace->QuantZeroPoint + RangeStartM * k_blks;
+    const float* QuantAZeroPoint = per_gemm_quant_a_workspace->QuantZeroPoint + RangeStartM * k_blks;
 
     // TODO: why?
     // assert(RangeStartN % 4 == 0);
@@ -828,22 +828,43 @@ InitializeWorkspace_CompInt8<float>(
             }
         });
     } else {
-        MlasTrySimpleParallel(ThreadPool, BatchN, [&](ptrdiff_t gemm_idx) {
+        // One thread process one row.
+        size_t threadsCounts = min(std::thread::hardware_concurrency(), M);
+        const auto LUTCreator = GetMlasPlatform().QNBitGemmDispatch->QuantizeARowLUT_CompInt8;
+        MlasTrySimpleParallel(ThreadPool, BatchN * threadsCounts, [&](ptrdiff_t tid) {
+            size_t gemm_idx = tid / threadsCounts;
+            size_t row = tid % threadsCounts;
             const auto& data = DataParams[gemm_idx];
+            const float* ARowPtr = data.A + data.lda * row;
 
-            const float* ARowPtr = data.A;
-            std::byte* QuantARowPtr = static_cast<std::byte*>(Workspace) + gemm_idx * PerGemmWorkspaceStride;
-            for (size_t m = 0; m < M; ++m) {
-                QuantizeARow(BlkLen, ARowPtr, K, QuantARowPtr);
+            void* PerGemmWorkspace = static_cast<std::byte*>(Workspace) + gemm_idx * PerGemmWorkspaceStride;
+            PerGemmQuantAWorkspace quant_a_data(PerGemmWorkspace, M, BlockCountK, BlkLen);
+            std::byte* QuantARowPtr = quant_a_data.QuantData + BlockCountK * BlkLen * row;
+            float* QuantARowScalePtr = quant_a_data.QuantScale + BlockCountK * row;
+            float* QuantARowZeroPointPtr = quant_a_data.QuantZeroPoint + BlockCountK * row;
+
+            for (size_t m = row; m < M; m += threadsCounts) {
+                // TODO: Ensure this quantization is not nessesary.
+                // QuantizeARow(BlkLen, ARowPtr, K, QuantARowPtr);
 
                 // T-MAC LUT Creator
-                LUTCreator();
+                LUTCreator(
+                    BlkLen,
+                    ARowPtr,
+                    QuantARowPtr,
+                    K,
+                    QuantARowScalePtr,
+                    QuantARowZeroPointPtr,
+                );
 
-                ARowPtr += data.lda;
-                QuantARowPtr += QuantAStride;
+                ARowPtr += data.lda * threadsCounts;
+                QuantARowPtr += BlockCountK * BlkLen * threadsCounts;
+                QuantARowScalePtr += BlockCountK * threadsCounts;
+                QuantARowZeroPointPtr += BlockCountK * threadsCounts;
             }
         });
     }
+
 }
 
 template <>

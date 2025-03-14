@@ -22,6 +22,7 @@ Abstract:
 #include "qnbitgemm.h"
 #include "qnbitgemm_kernel_neon.h"
 #include "sqnbitgemm_q8_block.h"
+#include "sqnbitgemm_tmac_kernel_neon_int8.h"
 
 namespace sqnbitgemm_neon
 {
@@ -240,6 +241,39 @@ Q2BitGemmPerGemmWorkspaceAlignment(
         }
     }
 }
+
+void
+QuantizeARowLUT_CompInt8 (
+    size_t BlkLen,
+    const float* A,
+    std::byte* QuantA,
+    size_t CountK,
+    float* QuantAScale,
+    float * QuantAZeroPoint
+)
+{
+    if (CountK == 4096) {
+        preprocessor_k4096(
+            A,
+            QuantAScale,
+            QuantAZeroPoint,
+            QuantA
+        )
+    }
+    else if (CountK == 14336) {
+        preprocessor_k14336(
+            A,
+            QuantAScale,
+            QuantAZeroPoint,
+            QuantA
+        );
+    }
+    else {
+        ORT_ENFORCE(false, "Unsupported shape: CountK=", CountK,
+            ". Supported combinations: 4096, 14336");
+    }
+}
+
 
 
 }  // namespace

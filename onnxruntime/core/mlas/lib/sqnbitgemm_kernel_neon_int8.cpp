@@ -1406,7 +1406,7 @@ SQ2BitGemmKernel_CompInt8(
     size_t BlkLen,
     const std::byte* QuantA,
     const float* QuantAScale,
-    const std::byte* QuantAZeroPoint,
+    const float* QuantAZeroPoint,
     const std::byte* QuantBData,
     const float* QuantBScale,
     const std::byte* QuantBZeroPoint,
@@ -1467,7 +1467,7 @@ SQ2BitGemmKernel_CompInt8_DispatchOnBlkLen(
     size_t BlkLen,
     const std::byte* QuantA,
     const float* QuantAScale,
-    const std::byte* QuantAZeroPoint,
+    const float* QuantAZeroPoint,
     const std::byte* QuantBData,
     const float* QuantBScale,
     const std::byte* QuantBZeroPoint,
@@ -1504,7 +1504,7 @@ void
 SQ2BitGemmKernel_CompInt8_BlkLen16(
     const std::byte* QuantA,
     const float* QuantAScale,
-    const std::byte* QuantAZeroPoint,
+    const float* QuantAZeroPoint,
     const std::byte* QuantBData,
     const float* QuantBScale,
     const std::byte* QuantBZeroPoint,
@@ -1523,7 +1523,7 @@ SQ2BitGemmKernel_CompInt8_BlkLen16(
     /* LUT */        const_cast<std::byte*>(QuantA),              // std::byte* → void*
     /* Scales */     const_cast<float*>(QuantBScale),             // float* → void*
     /* LUT_Scales */ const_cast<float*>(QuantAScale),             // float* → void*
-    /* LUT_Biases */ const_cast<std::byte*>(QuantAZeroPoint),     // std::byte* → void*
+    /* LUT_Biases */ const_cast<float*>(QuantAZeroPoint),         // float* → void*
     /* C */          C                                            // float* → void*
     )
  } else if (CountM == 256 && CountK == 4096) {
@@ -1532,7 +1532,7 @@ SQ2BitGemmKernel_CompInt8_BlkLen16(
         const_cast<std::byte*>(QuantA),
         const_cast<float*>(QuantBScale),
         const_cast<float*>(QuantAScale),
-        const_cast<std::byte*>(QuantAZeroPoint),
+        const_cast<float*>(QuantAZeroPoint),
         C
     )
 
@@ -1542,7 +1542,7 @@ SQ2BitGemmKernel_CompInt8_BlkLen16(
         const_cast<std::byte*>(QuantA),
         const_cast<float*>(QuantBScale),
         const_cast<float*>(QuantAScale),
-        const_cast<std::byte*>(QuantAZeroPoint),
+        const_cast<float*>(QuantAZeroPoint),
         C
     )
 
@@ -1552,7 +1552,7 @@ SQ2BitGemmKernel_CompInt8_BlkLen16(
         const_cast<std::byte*>(QuantA),
         const_cast<float*>(QuantBScale),
         const_cast<float*>(QuantAScale),
-        const_cast<std::byte*>(QuantAZeroPoint),
+        const_cast<float*>(QuantAZeroPoint),
         C
     )
  } else {

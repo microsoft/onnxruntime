@@ -356,7 +356,7 @@ struct MLAS_QNBIT_GEMM_DISPATCH {
         size_t BlkLen,
         const std::byte* QuantA,
         const float* QuantAScale,
-        const std::byte* QuantAZeroPoint,
+        const float* QuantAZeroPoint,
         const std::byte* QuantBData,
         const float* QuantBScale,
         const std::byte* QuantBZeroPoint,
@@ -398,6 +398,18 @@ struct MLAS_QNBIT_GEMM_DISPATCH {
         float* AScaledGroupSum  // scale_k * Sum_blklen(a_i)
     );
     QuantizeARowComputeBlkSum_CompInt8_Fn* QuantizeARowComputeBlkSum_CompInt8 = nullptr;
+
+    typedef void(QuantizeARowLUT_CompInt8_Fn)(
+        size_t BlkLen,
+        const float* A,
+        std::byte* QuantA,
+        size_t CountK,
+        float* QuantAScale,
+        float * QuantAZeroPoint
+    );
+    QuantizeARowLUT_CompInt8_Fn* QuantizeARowLUT_CompInt8 = nullptr;
+
+
 
     /**
      * @brief Multiply fp16 matrix A rows with fp16 matrix B columns.
