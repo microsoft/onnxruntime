@@ -159,7 +159,7 @@ std::vector<MatMulTestData<T>> GenerateTestCases() {
        })});
 
 #ifdef USE_WEBGPU
-    test_cases.push_back(
+  test_cases.push_back(
       {"test 3D tensors with M = 1",
        {6, 1, 8},
        {1, 8, 3},
@@ -175,22 +175,20 @@ std::vector<MatMulTestData<T>> GenerateTestCases() {
            // clang-format on
        })});
 
-    test_cases.push_back(
+  test_cases.push_back(
       {"test 4D tensors with M = 1",
-       {2,3,1,8},
-       {1,1,8,3},
-       {2,3,1,3},
-       real_expected_vals({
-        420, 448, 476, 1092, 1184, 1276, 1764, 1920, 2076, 2436, 2656, 2876, 3108, 3392, 3676, 3780, 4128, 4476
-       })});
+       {2, 3, 1, 8},
+       {1, 1, 8, 3},
+       {2, 3, 1, 3},
+       real_expected_vals({420, 448, 476, 1092, 1184, 1276, 1764, 1920, 2076, 2436, 2656, 2876, 3108, 3392, 3676, 3780, 4128, 4476})});
 
-    test_cases.push_back(
+  test_cases.push_back(
       {"test 4D tensors",
-        {2, 3, 4, 3},
-        {2, 3, 3, 5},
-        {2, 3, 4, 5},
-      real_expected_vals({
-          // clang-format off
+       {2, 3, 4, 3},
+       {2, 3, 3, 5},
+       {2, 3, 4, 5},
+       real_expected_vals({
+           // clang-format off
           25, 28, 31, 34, 37, 70, 82, 94, 106, 118, 115, 136, 157, 178, 199, 160, 190, 220,
           250, 280, 790, 829, 868, 907, 946, 970, 1018, 1066, 1114, 1162, 1150, 1207, 1264,
           1321, 1378, 1330, 1396, 1462, 1528, 1594, 2635, 2710, 2785, 2860, 2935, 2950, 3034,
@@ -200,17 +198,17 @@ std::vector<MatMulTestData<T>> GenerateTestCases() {
           10618, 10774, 10735, 10900, 11065, 11230, 11395, 11320, 11494, 11668, 11842, 12016,
           14650, 14833, 15016, 15199, 15382, 15370, 15562, 15754, 15946, 16138, 16090, 16291,
           16492, 16693, 16894, 16810, 17020, 17230, 17440, 17650
-          // clang-format on
-      })});
+           // clang-format on
+       })});
 
-     // Test case: multiplies 2D broadcasted to 4D tensors
-    test_cases.push_back(
+  // Test case: multiplies 2D broadcasted to 4D tensors
+  test_cases.push_back(
       {"test 2D broadcasted to 4D tensors",
-      {2, 4},
-      {4, 3, 2, 4, 2},
-      {4, 3, 2, 2, 2},
-      real_expected_vals({
-          // clang-format off
+       {2, 4},
+       {4, 3, 2, 4, 2},
+       {4, 3, 2, 2, 2},
+       real_expected_vals({
+           // clang-format off
           28, 34, 76, 98, 76, 82, 252, 274, 124, 130, 428, 450, 172, 178, 604, 626,
           220, 226, 780, 802, 268, 274, 956, 978, 316, 322, 1132, 1154, 364, 370,
           1308, 1330, 412, 418, 1484, 1506, 460, 466, 1660, 1682, 508, 514, 1836,
@@ -219,17 +217,17 @@ std::vector<MatMulTestData<T>> GenerateTestCases() {
           850, 3068, 3090, 892, 898, 3244, 3266, 940, 946, 3420, 3442, 988, 994,
           3596, 3618, 1036, 1042, 3772, 3794, 1084, 1090, 3948, 3970, 1132, 1138,
           4124, 4146
-          // clang-format on
-      })});
+           // clang-format on
+       })});
 
-    // Test case: multiplies 4D broadcasted to 5D tensors
-    test_cases.push_back(
+  // Test case: multiplies 4D broadcasted to 5D tensors
+  test_cases.push_back(
       {"test 4D broadcasted to 5D tensors",
-      {3, 1, 2, 4},
-      {4, 3, 2, 4, 2},
-      {4, 3, 2, 2, 2},
-      real_expected_vals({
-          // clang-format off
+       {3, 1, 2, 4},
+       {4, 3, 2, 4, 2},
+       {4, 3, 2, 2, 2},
+       real_expected_vals({
+           // clang-format off
             28, 34, 76, 98, 76, 82, 252, 274, 732, 770, 1036, 1090, 1036, 1074, 1468,
             1522, 2460, 2530, 3020, 3106, 3020, 3090, 3708, 3794, 316, 322, 1132,
             1154, 364, 370, 1308, 1330, 2556, 2594, 3628, 3682, 2860, 2898, 4060,
@@ -239,32 +237,32 @@ std::vector<MatMulTestData<T>> GenerateTestCases() {
             3266, 940, 946, 3420, 3442, 6204, 6242, 8812, 8866, 6508, 6546, 9244,
             9298, 12540, 12610, 15404, 15490, 13100, 13170, 16092, 16178
 
-          // clang-format on
-      })});
+           // clang-format on
+       })});
 
-    // // Test case: same ranks different broadcast small 1
-    test_cases.push_back(
+  // Test case: same ranks different broadcast small 1
+  test_cases.push_back(
       {"test same ranks different broadcast small 1",
-      {2, 1, 2, 2},
-      {1, 2, 2, 1},
-      {2, 2, 2, 1},
-      real_expected_vals({1, 3, 3, 13, 5, 7, 23, 33})});
+       {2, 1, 2, 2},
+       {1, 2, 2, 1},
+       {2, 2, 2, 1},
+       real_expected_vals({1, 3, 3, 13, 5, 7, 23, 33})});
 
-    // // Test case: same ranks different broadcast larger 0
-    test_cases.push_back(
+  // Test case: same ranks different broadcast larger 0
+  test_cases.push_back(
       {"test same ranks different broadcast larger 0",
-      {1, 2, 2, 8},
-      {2, 1, 8, 1},
-      {2, 2, 2, 1},
-      real_expected_vals({140, 364, 588, 812, 364, 1100, 1836, 2572})});
+       {1, 2, 2, 8},
+       {2, 1, 8, 1},
+       {2, 2, 2, 1},
+       real_expected_vals({140, 364, 588, 812, 364, 1100, 1836, 2572})});
 
-    // Test case: same ranks different broadcast larger 1
-    test_cases.push_back(
+  // Test case: same ranks different broadcast larger 1
+  test_cases.push_back(
       {"test same ranks different broadcast larger 1",
-      {2, 1, 2, 8},
-      {1, 2, 8, 1},
-      {2, 2, 2, 1},
-      real_expected_vals({140, 364, 364, 1100, 588, 812, 1836, 2572})});
+       {2, 1, 2, 8},
+       {1, 2, 8, 1},
+       {2, 2, 2, 1},
+       real_expected_vals({140, 364, 364, 1100, 588, 812, 1836, 2572})});
 #endif
   return test_cases;
 }
