@@ -147,8 +147,8 @@ static Status LoadNodeAllocationStats(
     size_t initializers_sizes = SafeInt<size_t>(std::stoull(std::string{splits[2]}));
     size_t total_dynamic_sizes = SafeInt<size_t>(std::stoull(std::string{splits[3]}));
     size_t total_temp_allocations = SafeInt<size_t>(std::stoull(std::string{splits[4]}));
-    node_stats.insert_or_assign(std::move(node_name), {input_sizes, initializers_sizes,
-                                                       total_dynamic_sizes, total_temp_allocations});
+    const NodeAllocationStats stats = {input_sizes, initializers_sizes, total_dynamic_sizes, total_temp_allocations};
+    node_stats.insert_or_assign(std::move(node_name), stats);
   }
 
   result.swap(node_stats);

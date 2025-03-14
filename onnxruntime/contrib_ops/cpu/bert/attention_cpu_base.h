@@ -267,7 +267,7 @@ class AttentionCPUBase : public AttentionBase {
             // Here we handle the broadcast of batch_size and num_heads dimensions.
             ptrdiff_t attn_bias_offset = 0;
             if (attn_bias_dims[0] != 1) {
-              attn_bias_offset += SafeInt<ptrdiff_t>(batch_index) * num_heads_ * probs_matrix_size;
+              attn_bias_offset += SafeInt<ptrdiff_t>(batch_index) * attn_bias_dims[1] * probs_matrix_size;
             }
             if (attn_bias_dims[1] != 1) {
               attn_bias_offset += head_index * probs_matrix_size;
