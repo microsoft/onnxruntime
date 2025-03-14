@@ -1380,7 +1380,7 @@ def generate_build_tree(
             target_arch = platform.machine()
             if args.arm64:
                 target_arch = "ARM64"
-            elif args.arm64:
+            elif args.arm64ec:
                 target_arch = "ARM64EC"
             cpu_arch = platform.architecture()[0]
             if target_arch == "AMD64":
