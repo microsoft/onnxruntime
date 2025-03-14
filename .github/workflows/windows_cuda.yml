@@ -118,12 +118,10 @@ jobs:
         working-directory: ${{ github.workspace }}\csharp
         shell: cmd
 
-      - name: Install onnxruntime wheel
-        run: |
-          python -m pip uninstall -y onnxruntime onnxruntime-gpu onnxruntime-training onnxruntime-directml -qq
-          Get-ChildItem -Path dist/*.whl | foreach {pip --disable-pip-version-check install --upgrade $_.fullname}
-        working-directory: ${{ runner.temp }}\build\RelWithDebInfo\RelWithDebInfo
-        shell: pwsh
+      - name: Install ONNX Runtime Wheel
+        uses: ./.github/actions/install-onnxruntime-wheel
+        with:
+          whl-directory: ${{ runner.temp }}\build\RelWithDebInfo\RelWithDebInfo\dist
 
     timeout-minutes: 300
     env:
