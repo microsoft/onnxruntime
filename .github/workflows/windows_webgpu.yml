@@ -2,22 +2,24 @@ name: ONNX Runtime WebGPU Builds
 
 on:
   push:
-    branches: [ main, 'rel-*']
+    branches:
+      - main
+      - rel-*
   pull_request:
-    branches: [ main ]
+    branches:
+      - main
+      - rel-*
+  workflow_dispatch:
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
-
 jobs:
-  webgpu_build_x64_RelWithDebInfo:  # Job for the first YAML file
+  webgpu_build_x64_RelWithDebInfo:
     runs-on: ["self-hosted", "1ES.Pool=onnxruntime-github-Win2022-GPU-A10"]
     timeout-minutes: 300
     env:
-      AZCOPY_AUTO_LOGIN_TYPE: MSI
-      AZCOPY_MSI_CLIENT_ID: 63b63039-6328-442f-954b-5a64d124e5b4
       OrtPackageId: Microsoft.ML.OnnxRuntime
       OnnxRuntimeBuildDirectory: ${{ github.workspace }}
       DOTNET_SKIP_FIRST_TIME_EXPERIENCE: true
@@ -115,10 +117,6 @@ jobs:
   webgpu_external_dawn_build_x64_RelWithDebInfo:
     runs-on: ["self-hosted", "1ES.Pool=onnxruntime-github-Win2022-GPU-A10"]
     timeout-minutes: 300
-    env:
-      AZCOPY_AUTO_LOGIN_TYPE: MSI
-      AZCOPY_MSI_CLIENT_ID: 63b63039-6328-442f-954b-5a64d124e5b4
-
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -173,8 +171,6 @@ jobs:
     runs-on: ["self-hosted", "1ES.Pool=onnxruntime-github-Win2022-GPU-A10"]
     timeout-minutes: 300
     env:
-        AZCOPY_AUTO_LOGIN_TYPE: MSI
-        AZCOPY_MSI_CLIENT_ID: 63b63039-6328-442f-954b-5a64d124e5b4
         OrtPackageId: Microsoft.ML.OnnxRuntime
         OnnxRuntimeBuildDirectory: ${{ github.workspace }}
         DOTNET_SKIP_FIRST_TIME_EXPERIENCE: true

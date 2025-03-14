@@ -20,8 +20,6 @@ def get_pipeline_names():
         "Windows ARM64 QNN CI Pipeline",
         "Windows x64 QNN CI Pipeline",
         "Windows GPU Doc Gen CI Pipeline",
-        "Windows GPU TensorRT CI Pipeline",
-        "Windows OpenVINO CI Pipeline",
         "ONNX Runtime Web CI Pipeline",
         "Win_TRT_Minimal_CUDA_Test_CI",
         # linux

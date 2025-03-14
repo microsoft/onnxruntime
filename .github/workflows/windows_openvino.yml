@@ -2,9 +2,14 @@ name: Windows OpenVINO CI Pipeline
 
 on:
   push:
-    branches: [ main, 'rel-*']
+    branches:
+      - main
+      - rel-*
   pull_request:
-    branches: [ main ]
+    branches:
+      - main
+      - rel-*
+  workflow_dispatch:
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
