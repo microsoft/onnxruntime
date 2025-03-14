@@ -1552,13 +1552,13 @@ if (onnxruntime_USE_CUDA)
     # To add PTX only, assign "xy-virtual"
     if (CMAKE_LIBRARY_ARCHITECTURE STREQUAL "aarch64-linux-gnu")
       # Support for Jetson/Tegra ARM devices
-      set(CMAKE_CUDA_ARCHITECTURES "53;62;72;87") # TX1/Nano, TX2, Xavier, Orin
+      set(CMAKE_CUDA_ARCHITECTURES "53-real;62-real;72-real;87") # TX1/Nano, TX2, Xavier, Orin
     else()
       if (CMAKE_CUDA_COMPILER_VERSION VERSION_LESS 12)
         # 37, 50 still work in CUDA 11 but are marked deprecated and will be removed in future CUDA version.
-        set(CMAKE_CUDA_ARCHITECTURES "37;50;52;60;70;75;80;86;89")
+        set(CMAKE_CUDA_ARCHITECTURES "37-real;50-real;52-real;60-real;70-real;75-real;80-real;86-real;89")
       elseif (CMAKE_CUDA_COMPILER_VERSION VERSION_LESS 12.8)
-        set(CMAKE_CUDA_ARCHITECTURES "52;60;70;75;80;86;89;90")
+        set(CMAKE_CUDA_ARCHITECTURES "52-real;60-real;70-real;75-real;80-real;86-real;89-real;90")
       else()
         # https://cmake.org/cmake/help/latest/prop_tgt/CUDA_ARCHITECTURES.html
         set(CMAKE_CUDA_ARCHITECTURES "all") # Supporting all, including latest Blackwell B series & RTX 50 series
