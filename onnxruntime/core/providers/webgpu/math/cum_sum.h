@@ -11,7 +11,7 @@ namespace webgpu {
 
 class CumSumProgram final : public Program<CumSumProgram> {
  public:
- CumSumProgram(int64_t exclusive, int64_t reverse) : Program{"CumSum"}, exclusive_{exclusive}, reverse_{reverse} {}
+  CumSumProgram(int64_t exclusive, int64_t reverse) : Program{"CumSum"}, exclusive_{exclusive}, reverse_{reverse} {}
 
   Status GenerateShaderCode(ShaderHelper& sh) const override;
 
@@ -34,7 +34,7 @@ class GatherElements final : public WebGpuKernel {
 
  private:
   int64_t exclusive_;
-    int64_t reverse_;
+  int64_t reverse_;
 };
 
 }  // namespace webgpu
