@@ -164,7 +164,7 @@ jobs:
       matrix:
         target_arch: [x86_64, arm64]
 
-    timeout-minutes: 60
+    timeout-minutes: 75
 
     steps:
     - uses: actions/setup-python@v5
