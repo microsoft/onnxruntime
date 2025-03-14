@@ -86,7 +86,7 @@
     "bootstrap": "npm run bootstrap-no-pods && npm run pods",
     "test": "jest",
     "pack-common": "cd ../common && npm pack && mv -f onnxruntime-common-*.tgz ../react_native/e2e/onnxruntime-common.tgz",
-    "unpack-common": "npm install --no-save ./e2e/onnxruntime-common.tgz && npm --prefix e2e install ./e2e/onnxruntime-common.tgz",
+    "unpack-common": "npm install ./e2e/onnxruntime-common.tgz && npm --prefix e2e install ./e2e/onnxruntime-common.tgz",
     "pack-libs": "npm pack --ort-js-pack-mode=e2e && mv -f onnxruntime-react-native-*.tgz e2e/onnxruntime-react-native.tgz",
     "unpack-libs": "npm --prefix e2e install ./e2e/onnxruntime-react-native.tgz",
     "prepack": "tsc --build ./tsconfig.scripts.json && node ./scripts/prepack",
