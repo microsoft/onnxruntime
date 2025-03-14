@@ -182,7 +182,7 @@ class TestBeamSearchT5(unittest.TestCase):
     def setUp(self):
         self.model_name = "t5-small"
         self.decoder_onnx_path = os.path.join(".", "onnx_models", "t5-small_decoder.onnx")
-        self.encoder_onnx_path = os.path.join(".", "onnx_models", "t5-small_encoder_decoder_init.onnx")
+        self.encoder_onnx_path = os.path.join(".", "onnx_models", "t5-small_encoder.onnx")
         self.beam_search_onnx_path = os.path.join(".", "onnx_models", "t5_small_beam_search.onnx")
         self.default_arguments = [
             f"-m {self.model_name}",
@@ -206,7 +206,6 @@ class TestBeamSearchT5(unittest.TestCase):
             precision=Precision.FLOAT32,
             verbose=False,
             use_decoder_start_token=False,
-            merge_encoder_and_decoder_init=True,
             overwrite=True,
             disable_auto_mixed_precision=False,
             use_int32_inputs=True,
