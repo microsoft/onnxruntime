@@ -50,7 +50,7 @@ MultiHeadAttention<T>::MultiHeadAttention(const OpKernelInfo& info) : OpKernel(i
 
   disable_flash_ = ParseEnvironmentVariableWithDefault<bool>(attention::kDisableFlashAttention, false);
 
-  disable_ft_causal_attention_ = ParseEnvironmentVariableWithDefault<bool>(attention::kDisableFtCausalAttention, false);
+  disable_decoder_attention_ = ParseEnvironmentVariableWithDefault<bool>(attention::kDisableDecoderAttention, false);
 }
 
 template <typename T>
@@ -73,7 +73,7 @@ Status MultiHeadAttention<T>::Compute(OpKernelContext* context) const {
     ORT_NOT_IMPLEMENTED("Packed KV not implemented for CPU");
   }
 
-  bool past_present_share_buffer = (past_key == present_key);
+  bool past_present_share_buffer = past_sequence_length != nullptr;
   if (past_key != nullptr && past_sequence_length != nullptr && cache_indirection != nullptr) {
     ORT_ENFORCE(past_present_share_buffer);
   }
@@ -154,7 +154,7 @@ Status MultiHeadAttention<T>::Compute(OpKernelContext* context) const {
     bool use_dmmha_cross_attention = parameters.qkv_format == AttentionQkvFormat::Q_K_V_BSNH_BNSH_BNSH &&
                                      past_key == nullptr && past_value == nullptr && nullptr != past_sequence_length &&
                                      parameters.past_sequence_length != *((*past_sequence_length).template Data<int32_t>());
-    use_decoder_masked_multihead_attention = !disable_ft_causal_attention_ &&
+    use_decoder_masked_multihead_attention = !disable_decoder_attention_ &&
                                              (use_dmmha_self_attention || use_dmmha_cross_attention) &&
                                              parameters.sequence_length == 1 &&
                                              parameters.head_size == parameters.v_head_size &&

@@ -49,7 +49,7 @@ enum AttentionKernelType {
   AttentionKernel_FlashAttention,
   AttentionKernel_CudnnFlashAttention,
   AttentionKernel_LeanAttention,
-  AttentionKernel_FtCausalAttention,
+  AttentionKernel_DecoderAttention,
   AttentionKernel_Default
 };
 
@@ -77,7 +77,7 @@ enum class AttentionBackend : int {
 
   // Experimental kernels
   LEAN_ATTENTION = 256,
-  FT_CAUSAL_ATTENTION = 512,  // FasterTransformer's decoder masked multihead attention
+  DECODER_ATTENTION = 512,  // FasterTransformer's decoder masked multihead attention
 };
 
 // Environment variable to enable debug information of attention kernel to be printed. Default is 0 (disabled).
@@ -109,7 +109,7 @@ constexpr const char* kDisableFlashAttention = "ORT_DISABLE_FLASH_ATTENTION";
 constexpr const char* kEnableLeanAttention = "ORT_ENABLE_LEAN_ATTENTION";
 
 // Environment variable to enable or disable FasterTransformer's decoder masked multi-head attention. Default is 0 (enabled).
-constexpr const char* kDisableFtCausalAttention = "ORT_DISABLE_FT_CAUSAL_ATTENTION";
+constexpr const char* kDisableDecoderAttention = "ORT_DISABLE_DECODER_ATTENTION";
 
 // Minimum sequence length to perfer memory efficient attention when data type is float32
 constexpr const char* kMinSeqLenForEfficientAttentionFp32 = "ORT_MIN_SEQ_LEN_EFFICIENT_ATTENTION_FP32";

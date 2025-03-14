@@ -37,7 +37,7 @@ class MultiHeadAttention final : public CudaKernel {
 #endif
   bool disable_memory_efficient_attention_;
   bool enable_cudnn_flash_attention_;
-  bool disable_ft_causal_attention_;
+  bool disable_decoder_attention_;
 
   // These mutable members are readonly after they are initialized so that they can be shared among multiple threads.
   // Initialization are done only once by the first thread using the resource, so use once_flag to guard each resource.

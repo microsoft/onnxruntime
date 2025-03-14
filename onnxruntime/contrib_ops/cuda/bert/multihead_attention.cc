@@ -71,7 +71,7 @@ MultiHeadAttention<T, QK>::MultiHeadAttention(const OpKernelInfo& info)
 
   enable_cudnn_flash_attention_ = sizeof(T) == 2 && kernel_options_->UseCudnnFlashAttention();
 
-  disable_ft_causal_attention_ = !kernel_options_->UseFtCausalAttention();
+  disable_decoder_attention_ = !kernel_options_->UseDecoderAttention();
 
   // Allocate cache buffers
   constexpr size_t cache_bytes = sizeof(int32_t) * (static_cast<size_t>(kCumulatedSequenceLengthCacheMaxBatchSize) + 1);
@@ -94,7 +94,7 @@ Status MultiHeadAttention<T, QK>::ComputeInternal(OpKernelContext* context) cons
   const Tensor* past_sequence_length = context->Input<Tensor>(8);
   const Tensor* cache_indirection = context->Input<Tensor>(9);
 
-  bool past_present_share_buffer = (past_key == present_key);
+  bool past_present_share_buffer = past_sequence_length != nullptr;
   if (past_key != nullptr && past_sequence_length != nullptr && cache_indirection != nullptr) {
     ORT_ENFORCE(past_present_share_buffer);
   }
@@ -199,7 +199,7 @@ Status MultiHeadAttention<T, QK>::ComputeInternal(OpKernelContext* context) cons
     bool use_dmmha_cross_attention = parameters.qkv_format == AttentionQkvFormat::Q_K_V_BSNH_BNSH_BNSH &&
                                      past_key == nullptr && past_value == nullptr && nullptr != past_sequence_length &&
                                      parameters.past_sequence_length != *((*past_sequence_length).template Data<int32_t>());
-    use_decoder_masked_multihead_attention = !disable_ft_causal_attention_ &&
+    use_decoder_masked_multihead_attention = !disable_decoder_attention_ &&
                                              (std::is_same<T, float>::value || std::is_same<T, MLFloat16>::value) &&
                                              (use_dmmha_self_attention || use_dmmha_cross_attention) &&
                                              parameters.sequence_length == 1 &&
@@ -211,7 +211,7 @@ Status MultiHeadAttention<T, QK>::ComputeInternal(OpKernelContext* context) cons
   DUMP_STRING("Use DMMHA = ", (use_decoder_masked_multihead_attention == true));
   if (use_decoder_masked_multihead_attention) {
     // Kernel only works for token generation with beam search
-    kernel_type = AttentionKernelType::AttentionKernel_FtCausalAttention;
+    kernel_type = AttentionKernelType::AttentionKernel_DecoderAttention;
 
     // No production use-case will incur this copy cost as the implementation of
     // DecoderMaskedMultiHeadAttention is written in such a way that the past and present buffers
