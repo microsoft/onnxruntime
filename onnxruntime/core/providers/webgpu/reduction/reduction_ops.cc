@@ -162,14 +162,27 @@ Status ReduceKernel<allow_multi_axes>::ComputeInternal(ComputeContext& context) 
   if (input_axes.empty()) {
     if (noop_with_empty_axes_ || rank == 0) {
       // If axes is empty and noop_with_empty_axes_ is true, it is a no-op according to the spec
-      // If input tensor is a scalar, return the input tensor as is.
-      // This is not correct for ReduceLogSum and ReduceSumSquare
-      // TODO handle these cases separately.
-      auto output = context.Output(0, input_tensor->Shape());
-      if (output->DataRaw() != input_tensor->DataRaw()) {
-        ORT_RETURN_IF_ERROR(Info().GetDataTransferManager().CopyTensor(*input_tensor, *output));
+      // If input tensor is a scalar and it's not a ReduceLogSum or ReduceSumSquare, return the input tensor as is.
+      if (rank == 0 && (name_ == "ReduceLogSum" || name_ == "ReduceSumSquare")) {
+        // For ReduceLogSum with scalar input, output = log(input)
+        // For ReduceSumSquare with scalar input, output = input * input
+        auto output = context.Output(0, input_tensor->Shape());
+        // We need to run the operation even for scalar inputs for these ops
+        const auto code = GetOpSpecificCode(input_tensor);
+        ReduceKernelProgram program(name_, keepdims_, noop_with_empty_axes_, input_axes, code, false);
+        program.AddInput({input_tensor, ProgramTensorMetadataDependency::TypeAndRank})
+            .AddOutput({output, ProgramTensorMetadataDependency::TypeAndRank})
+            .SetDispatchGroupSize(1)
+            .AddUniformVariables({{1}, {static_cast<uint32_t>(noop_with_empty_axes_ ? 1 : 0)}, {{0}}});
+        return context.RunProgram(program);
+      } else {
+        // For other ops, or when axes is empty with noop_with_empty_axes_ true, just copy the input
+        auto output = context.Output(0, input_tensor->Shape());
+        if (output->DataRaw() != input_tensor->DataRaw()) {
+          ORT_RETURN_IF_ERROR(Info().GetDataTransferManager().CopyTensor(*input_tensor, *output));
+        }
+        return Status::OK();
       }
-      return Status::OK();
     } else {
       // If axes is empty and noop_with_empty_axes_ is false, it is a reduction over all axes
       input_axes.resize(rank);
