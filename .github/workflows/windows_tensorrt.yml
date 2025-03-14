@@ -11,6 +11,10 @@ on:
       - rel-*
   workflow_dispatch:
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   Windows_GPU_TensorRT_CI_Pipeline:
     name: Windows GPU TensorRT CI Pipeline
@@ -18,7 +22,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          fetch-depth: 0  # Fetch all history for all branches and tags
+          fetch-depth: 0 # Fetch all history for all tags and branches
+          submodules: 'none'
 
       - uses: actions/setup-python@v5
         with:
@@ -26,7 +31,7 @@ jobs:
           architecture: x64
 
       - name: Locate vcvarsall and Setup Env
-        uses: ./.github/actions/locate-vcvarsall-and-setup-env@v1
+        uses: ./.github/actions/locate-vcvarsall-and-setup-env
         with:
           architecture: x64
 
