@@ -89,5 +89,17 @@ class ReduceProd final : public ReduceKernel<true> {
   ReduceOpSpecificCode GetOpSpecificCode(const Tensor* input_tensor) const override;
 };
 
+class ReduceL1 final : public ReduceKernel<true> {
+ public:
+  ReduceL1(const OpKernelInfo& info) : ReduceKernel<true>(info, "ReduceL1", true) {}
+  ReduceOpSpecificCode GetOpSpecificCode(const Tensor* input_tensor) const override;
+};
+
+class ReduceL2 final : public ReduceKernel<true> {
+ public:
+  ReduceL2(const OpKernelInfo& info) : ReduceKernel<true>(info, "ReduceL2", true) {}
+  ReduceOpSpecificCode GetOpSpecificCode(const Tensor* input_tensor) const override;
+};
+
 }  // namespace webgpu
 }  // namespace onnxruntime

@@ -50,6 +50,21 @@ REGISTER_UNARY_ELEMENTWISE_VERSIONED_KERNEL(ReduceSum, 1, 10);
 REGISTER_UNARY_ELEMENTWISE_VERSIONED_KERNEL(ReduceSum, 11, 12);
 REGISTER_UNARY_ELEMENTWISE_KERNEL(ReduceSum, 13);
 
+REGISTER_UNARY_ELEMENTWISE_VERSIONED_KERNEL(ReduceProd, 1, 10);
+REGISTER_UNARY_ELEMENTWISE_VERSIONED_KERNEL(ReduceProd, 11, 12);
+REGISTER_UNARY_ELEMENTWISE_VERSIONED_KERNEL(ReduceProd, 13, 17);
+REGISTER_UNARY_ELEMENTWISE_KERNEL(ReduceProd, 18);
+
+REGISTER_UNARY_ELEMENTWISE_VERSIONED_KERNEL(ReduceL1, 1, 10);
+REGISTER_UNARY_ELEMENTWISE_VERSIONED_KERNEL(ReduceL1, 11, 12);
+REGISTER_UNARY_ELEMENTWISE_VERSIONED_KERNEL(ReduceL1, 13, 17);
+REGISTER_UNARY_ELEMENTWISE_KERNEL(ReduceL1, 18);
+
+REGISTER_UNARY_ELEMENTWISE_VERSIONED_KERNEL(ReduceL2, 1, 10);
+REGISTER_UNARY_ELEMENTWISE_VERSIONED_KERNEL(ReduceL2, 11, 12);
+REGISTER_UNARY_ELEMENTWISE_VERSIONED_KERNEL(ReduceL2, 13, 17);
+REGISTER_UNARY_ELEMENTWISE_KERNEL(ReduceL2, 18);
+
 Status ReduceKernelProgram::GenerateShaderCode(ShaderHelper& shader) const {
   const auto& output = shader.AddOutput("output", ShaderUsage::UseUniform | ShaderUsage::UseIndicesTypeAlias | ShaderUsage::UseValueTypeAlias);
   if (is_input_empty_) {
@@ -238,6 +253,22 @@ ReduceOpSpecificCode ReduceProd::GetOpSpecificCode(const Tensor* input_tensor) c
   std::string loop_header = "var prod = f32(1);";
   std::string loop_body = "prod *= f32(current_element);";
   std::string loop_footer = "let output_value = output_value_t(prod);";
+  ReduceOpSpecificCode code({loop_header, loop_body, loop_footer});
+  return code;
+}
+ReduceOpSpecificCode ReduceL1::GetOpSpecificCode(const Tensor* input_tensor) const {
+  ORT_UNUSED_PARAMETER(input_tensor);
+  std::string loop_header = "var l1 = f32(0);";
+  std::string loop_body = "l1 += abs(current_element);";
+  std::string loop_footer = "let output_value = output_value_t(l1);";
+  ReduceOpSpecificCode code({loop_header, loop_body, loop_footer});
+  return code;
+}
+ReduceOpSpecificCode ReduceL2::GetOpSpecificCode(const Tensor* input_tensor) const {
+  ORT_UNUSED_PARAMETER(input_tensor);
+  std::string loop_header = "var l2 = f32(0);";
+  std::string loop_body = "l2 += (current_element * current_element);";
+  std::string loop_footer = "l2 = sqrt(l2); let output_value = output_value_t(l2);";
   ReduceOpSpecificCode code({loop_header, loop_body, loop_footer});
   return code;
 }
