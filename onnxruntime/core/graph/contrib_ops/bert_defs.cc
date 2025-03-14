@@ -1013,13 +1013,13 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                OpSchema::Optional)
         .Input(6,
                "past_key",
-               "past state for self attention key with shape (batch_size, num_heads, past_sequence_length, head_size) ",
+               "past state for key with shape (batch_size, num_heads, past_sequence_length, head_size) ",
                "or (batch_size, sequence_length, max_sequence_length, head_size) when buffer sharing is used",
                "T",
                OpSchema::Optional)
         .Input(7,
                "past_value",
-               "past state for self attention value with shape (batch_size, num_heads, past_sequence_length, head_size) ",
+               "past state for value with shape (batch_size, num_heads, past_sequence_length, head_size) ",
                "or (batch_size, sequence_length, max_sequence_length, head_size) when buffer sharing is used",
                "T",
                OpSchema::Optional)
@@ -1040,15 +1040,13 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                 "T")
         .Output(1,
                 "present_key",
-                "present state for cross attention key with shape (batch_size, num_heads, kv_sequence_length, head_size) "
-                "or present state for self attention key with shape (batch_size, num_heads, total_sequence_length, head_size) ",
+                "present state for key with shape (batch_size, num_heads, total_sequence_length, head_size) ",
                 "or (batch_size, sequence_length, max_sequence_length, head_size) when buffer sharing is used",
                 "T",
                 OpSchema::Optional)
         .Output(2,
                 "present_value",
-                "present state for cross attention value with shape (batch_size, num_heads, kv_sequence_length, head_size)"
-                "or present state for self attention value with shape (batch_size, num_heads, total_sequence_length, head_size)",
+                "present state for value with shape (batch_size, num_heads, total_sequence_length, head_size) ",
                 "or (batch_size, sequence_length, max_sequence_length, head_size) when buffer sharing is used",
                 "T",
                 OpSchema::Optional)
