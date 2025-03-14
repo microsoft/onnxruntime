@@ -24,7 +24,7 @@ parameters:
 
 stages:
 - stage: Linux_C_API_Packaging_${{ parameters.stage_name_suffix }}
-  dependsOn: []
+  dependsOn: [ ]
   jobs:
   - template: c-api-linux-cpu.yml
     parameters:
