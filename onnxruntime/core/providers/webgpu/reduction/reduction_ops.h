@@ -103,7 +103,7 @@ class ReduceL2 final : public ReduceKernel<true> {
 
 class ReduceLogSum final : public ReduceKernel<true> {
  public:
- ReduceLogSum(const OpKernelInfo& info) : ReduceKernel<true>(info, "ReduceLogSum", true) {}
+  ReduceLogSum(const OpKernelInfo& info) : ReduceKernel<true>(info, "ReduceLogSum", true) {}
   ReduceOpSpecificCode GetOpSpecificCode(const Tensor* input_tensor) const override;
 };
 
