@@ -139,11 +139,11 @@ def generate_triplet_for_android(
         # Valid options are dynamic and static. Libraries can ignore this setting if they do not support the preferred linkage type. In our case, we prefer to use static libs.
         f.write("set(VCPKG_LIBRARY_LINKAGE static)\n")
         if not enable_rtti:
-            f.write("set(CMAKE_ANDROID_RTTI OFF)")
+            f.write("set(CMAKE_ANDROID_RTTI OFF)\n")
         if not enable_exception:
-            f.write("set(CMAKE_ANDROID_EXCEPTIONS OFF)")
+            f.write("set(CMAKE_ANDROID_EXCEPTIONS OFF)\n")
         if use_cpp_shared:
-            f.write("set(ANDROID_STL c++_shared)")
+            f.write("set(ANDROID_STL c++_shared)\n")
 
         ldflags = []
 

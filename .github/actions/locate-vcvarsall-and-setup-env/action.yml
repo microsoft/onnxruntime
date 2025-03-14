@@ -1,0 +1,63 @@
+name: 'Locate vcvarsall and Setup Environment'
+description: 'Locates vcvarsall.bat, sets up the environment, and handles PATH updates.'
+inputs:
+  architecture:
+    description: 'Target architecture (x64 or x86)'
+    required: true
+    default: 'x64'
+outputs:
+  vcvarsall_path:
+    description: "Path to vcvarsall.bat"
+    value: ${{ steps.find-vcvarsall.outputs.vcvarsall_path }}
+runs:
+  using: "composite"
+  steps:
+    - name: Find vcvarsall.bat
+      id: find-vcvarsall
+      shell: python  # Use Python shell
+      run: |
+        import os
+        import subprocess
+
+        vswhere_path = os.path.join(os.environ["ProgramFiles(x86)"], "Microsoft Visual Studio", "Installer", "vswhere.exe")
+
+        try:
+            process = subprocess.run([vswhere_path, "-latest", "-property", "installationPath"], capture_output=True, text=True, check=True)
+            vs_install_path = process.stdout.strip()
+            vcvarsall_path = os.path.join(vs_install_path, "VC", "Auxiliary", "Build", "vcvarsall.bat")
+
+            if os.path.exists(vcvarsall_path):
+                print(f"vcvarsall found at: {vcvarsall_path}")
+                # Use GITHUB_OUTPUT environment variable
+                with open(os.environ['GITHUB_OUTPUT'], 'a') as f:
+                    f.write(f"vcvarsall_path={vcvarsall_path}\n")
+            else:
+                print(f"vcvarsall.bat not found at expected path: {vcvarsall_path}")
+                # Use 'exit(1)' for Python to properly signal failure to GitHub Actions
+                exit(1)
+
+
+        except subprocess.CalledProcessError as e:
+            print(f"Error running vswhere.exe: {e}")
+            print(f"vswhere output: {e.stdout}")
+            print(f"vswhere stderr: {e.stderr}")
+            exit(1) # Exit with a non-zero code on error
+        except FileNotFoundError:
+            print(f"vswhere.exe not found at: {vswhere_path}")
+            exit(1)
+
+
+    - name: Setup Environment
+      shell: cmd
+      run: |
+        REM Get initial environment variables
+        set > initial_env.txt
+
+        REM Call vcvarsall.bat using the output from the previous step
+        call "${{ steps.find-vcvarsall.outputs.vcvarsall_path }}" ${{ inputs.architecture }}
+
+        REM Get environment variables after calling vcvarsall.bat
+        set > final_env.txt
+
+        REM Call the Python script to update the GitHub Actions environment
+        python ${{ github.action_path }}\update_environment.py
