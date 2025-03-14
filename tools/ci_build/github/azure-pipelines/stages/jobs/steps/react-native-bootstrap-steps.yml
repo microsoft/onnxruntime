@@ -15,7 +15,6 @@ steps:
 
 - script: |
     npm run bootstrap-no-pods
-    npm ci
   workingDirectory: '$(Build.SourcesDirectory)/js/react_native'
   displayName: bootstrap react_native
 
