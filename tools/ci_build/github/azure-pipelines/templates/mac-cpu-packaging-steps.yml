@@ -97,6 +97,7 @@ steps:
           version: '$(OnnxRuntimeVersion)'
           libraryName: 'libonnxruntime.dylib'
           nativeLibraryName: 'libonnxruntime4j_jni.dylib'
+          is1ES: true
 
 - ${{ if eq(parameters.BuildNodejs, true) }}:
     - template: nodejs-artifacts-package-and-publish-steps-posix.yml
