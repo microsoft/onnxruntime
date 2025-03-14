@@ -1194,15 +1194,16 @@ TEST_F(QnnHTPBackendTests, UseHtpSharedMemoryAllocatorForInputs) {
 
 // Custom CPU allocator that uses a custom alignment.
 struct CPUAlignedAllocator : OrtAllocator {
-  CPUAlignedAllocator(size_t alignment) : alignment_(alignment), cpu_memory_info_(nullptr) {
+  CPUAlignedAllocator(size_t alignment, const OrtMemoryInfo* mem_info) : alignment_(alignment), cpu_memory_info_(mem_info) {
     OrtAllocator::version = ORT_API_VERSION;
     OrtAllocator::Alloc = [](OrtAllocator* this_, size_t size) { return static_cast<CPUAlignedAllocator*>(this_)->Alloc(size); };
     OrtAllocator::Free = [](OrtAllocator* this_, void* p) { static_cast<CPUAlignedAllocator*>(this_)->Free(p); };
     OrtAllocator::Info = [](const OrtAllocator* this_) -> const OrtMemoryInfo* { return static_cast<const CPUAlignedAllocator*>(this_)->Info(); };
     OrtAllocator::Reserve = [](OrtAllocator* this_, size_t size) { return static_cast<CPUAlignedAllocator*>(this_)->Reserve(size); };
-    cpu_memory_info_ = Ort::MemoryInfo::CreateCpu(OrtDeviceAllocator, OrtMemTypeDefault);
   }
-  ~CPUAlignedAllocator() {}
+
+  ~CPUAlignedAllocator() {
+  }
 
   void* Alloc(size_t size) {
 #ifdef _MSC_VER
@@ -1218,7 +1219,7 @@ struct CPUAlignedAllocator : OrtAllocator {
     std::free(p);
 #endif
   }
-  Ort::ConstMemoryInfo Info() const { return cpu_memory_info_.GetConst(); }
+  const OrtMemoryInfo* Info() const { return cpu_memory_info_; }
 
   // Allocator for use during session initialization only. Doesn't need to be aligned, but just
   // forward to Alloc() for now.
@@ -1248,7 +1249,7 @@ struct CPUAlignedAllocator : OrtAllocator {
   CPUAlignedAllocator& operator=(const CPUAlignedAllocator&) = delete;
 
   size_t alignment_;
-  Ort::MemoryInfo cpu_memory_info_;
+  const OrtMemoryInfo* cpu_memory_info_;
 };
 
 TEST_F(QnnHTPBackendTests, TestAlignedCustomCPUAllocator) {
@@ -1256,31 +1257,31 @@ TEST_F(QnnHTPBackendTests, TestAlignedCustomCPUAllocator) {
 
   // Create a custom CPU allocator that use 4096 alignment and register the allocator with ORT Env.
   // This same allocator can be used across ORT sessions that use the same Env.
-  size_t alignment = 4096;
-  CPUAlignedAllocator cpu_allocator(4096);
+  OrtMemoryInfo* cpu_mem_info = nullptr;
+  Ort::ThrowOnError(Ort::GetApi().CreateCpuMemoryInfo(OrtDeviceAllocator, OrtMemTypeDefault, &cpu_mem_info));
+
+  constexpr size_t alignment = 4096;
+  CPUAlignedAllocator cpu_allocator(alignment, cpu_mem_info);
   Ort::Status status = Ort::Status(Ort::GetApi().RegisterAllocator(*ort_env, &cpu_allocator));
   ASSERT_TRUE(status.IsOK());
 
-  Ort::SessionOptions session_options;
-  session_options.SetGraphOptimizationLevel(ORT_ENABLE_ALL);
+  OrtSessionOptions* session_options = nullptr;
+  Ort::ThrowOnError(Ort::GetApi().CreateSessionOptions(&session_options));
+  Ort::ThrowOnError(Ort::GetApi().SetSessionGraphOptimizationLevel(session_options, ORT_ENABLE_BASIC));
 
   // IMPORTANT: Tell ORT to use our custom allocator for this session.
-  session_options.AddConfigEntry(kOrtSessionOptionsConfigUseEnvAllocators, "1");
+  Ort::ThrowOnError(Ort::GetApi().AddSessionConfigEntry(session_options, kOrtSessionOptionsConfigUseEnvAllocators, "1"));
 
   // Configure QNN EP
-  onnxruntime::ProviderOptions qnn_options;
-  qnn_options["offload_graph_io_quantization"] = "1";  // Make I/O Q/DQ run on CPU EP.
-#if defined(_WIN32)
-  qnn_options["backend_path"] = "QnnHtp.dll";
-#else
-  qnn_options["backend_path"] = "libQnnHtp.so";
+  const char* qnn_option_keys[2] = {"backend_path", "offload_graph_io_quantization"};
+  const char* qnn_option_vals[2] = {"QnnHtp.dll", "1"};
+#if !defined(_WIN32)
+  qnn_option_vals[1] = "libQnnHtp.so";
 #endif
-  session_options.AppendExecutionProvider("QNN", qnn_options);
+  Ort::ThrowOnError(Ort::GetApi().SessionOptionsAppendExecutionProvider(session_options, "QNN", qnn_option_keys, qnn_option_vals, 2));
 
-  // Create an inference session
-  Ort::Session session(*ort_env, model_path, session_options);
-  std::vector<Ort::Value> ort_inputs;
-  std::vector<const char*> ort_input_names;
+  std::array<OrtValue*, 1> ort_inputs = {nullptr};
+  std::array<const char*, 1> ort_input_names = {"MobilenetEdgeTPU/expanded_conv_1/project/BatchNorm/FusedBatchNormV3"};
 
   // Input: MobilenetEdgeTPU/expanded_conv_1/project/BatchNorm/FusedBatchNormV3
   // Shape: float32[1,32,56,56]
@@ -1291,31 +1292,54 @@ TEST_F(QnnHTPBackendTests, TestAlignedCustomCPUAllocator) {
   std::unique_ptr<float, CPUAlignedAllocator::Deleter> input_data = cpu_allocator.AllocElems<float>(num_elems);
   EXPECT_EQ((uintptr_t)input_data.get() & (alignment - 1), 0);  // Input should be aligned
 
-  // Note: this is a wrapper over the C API CreateTensorWithDataAsOrtValue()
-  ort_inputs.emplace_back(Ort::Value::CreateTensor<float>(
-      cpu_allocator.Info(), input_data.get(), num_elems, input_shape.data(), input_shape.size()));
-  ort_input_names.push_back("MobilenetEdgeTPU/expanded_conv_1/project/BatchNorm/FusedBatchNormV3");
+  Ort::ThrowOnError(Ort::GetApi().CreateTensorWithDataAsOrtValue(cpu_allocator.Info(),
+                                                                 input_data.get(), num_elems * sizeof(float),
+                                                                 input_shape.data(), input_shape.size(),
+                                                                 ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT,
+                                                                 &ort_inputs[0]));
 
   // Run session and get outputs
-  std::array<const char*, 2> output_names{"MobilenetEdgeTPU/expanded_conv_4/add",
-                                          "MobilenetEdgeTPU/expanded_conv_3/add_DequantizeLinear"};
-  std::vector<Ort::Value> ort_outputs = session.Run(Ort::RunOptions{nullptr}, ort_input_names.data(), ort_inputs.data(),
-                                                    ort_inputs.size(), output_names.data(), output_names.size());
+  OrtSession* session = nullptr;
+  Ort::ThrowOnError(Ort::GetApi().CreateSession(*ort_env, model_path, session_options, &session));
+
+  std::array<const char*, 2> ort_output_names{"MobilenetEdgeTPU/expanded_conv_4/add",
+                                              "MobilenetEdgeTPU/expanded_conv_3/add_DequantizeLinear"};
+  std::array<OrtValue*, 2> ort_outputs = {nullptr, nullptr};
+  OrtRunOptions* run_options = nullptr;
+  Ort::ThrowOnError(Ort::GetApi().Run(session,
+                                      run_options,
+                                      ort_input_names.data(), ort_inputs.data(), ort_inputs.size(),
+                                      ort_output_names.data(), ort_output_names.size(), ort_outputs.data()));
 
   // Check that output data, which is stored in a CPU buffer, is also aligned correctly.
   // The output buffers are created by ORT using our custom allocator.
-  Ort::Value& ort_output = ort_outputs[0];
-  const void* output_raw_data = ort_output.GetTensorRawData();
+  OrtValue* ort_output = ort_outputs[0];
+  void* output_raw_data = nullptr;
+  Ort::ThrowOnError(Ort::GetApi().GetTensorMutableData(ort_output, &output_raw_data));
   EXPECT_EQ((uintptr_t)output_raw_data & (alignment - 1), 0);  // Output should be aligned too
 
   // Sanity check: check that output shape is correct
-  auto typeshape = ort_output.GetTensorTypeAndShapeInfo();
-  std::vector<int64_t> output_shape = typeshape.GetShape();
+  OrtTensorTypeAndShapeInfo* output_info = nullptr;
+  Ort::ThrowOnError(Ort::GetApi().GetTensorTypeAndShape(ort_output, &output_info));
+
+  size_t num_dims = 0;
+  Ort::ThrowOnError(Ort::GetApi().GetDimensionsCount(output_info, &num_dims));
+
+  std::vector<int64_t> output_shape(num_dims, -1);
+  Ort::ThrowOnError(Ort::GetApi().GetDimensions(output_info, output_shape.data(), output_shape.size()));
   EXPECT_THAT(output_shape, ::testing::ElementsAre(1, 32, 56, 56));
 
   // Remove our registered cpu allocator from the global environment
   Ort::Status unreg_status = Ort::Status(Ort::GetApi().UnregisterAllocator(*ort_env, cpu_allocator.Info()));
   ASSERT_TRUE(unreg_status.IsOK());
+
+  Ort::GetApi().ReleaseTensorTypeAndShapeInfo(output_info);
+  Ort::GetApi().ReleaseSession(session);
+  Ort::GetApi().ReleaseValue(ort_outputs[1]);
+  Ort::GetApi().ReleaseValue(ort_outputs[0]);
+  Ort::GetApi().ReleaseValue(ort_inputs[0]);
+  Ort::GetApi().ReleaseSessionOptions(session_options);
+  Ort::GetApi().ReleaseMemoryInfo(cpu_mem_info);
 }
 
 #endif  // defined(__aarch64__) || defined(_M_ARM64) || defined(__linux__)
