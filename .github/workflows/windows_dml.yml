@@ -1,4 +1,4 @@
-name: build_x64_RelWithDebInfo
+name: ONNX Runtime DirectML Builds
 
 on:
   push:
@@ -12,6 +12,7 @@ concurrency:
 
 jobs:
   build_x64_RelWithDebInfo:
+    name: Windows GPU DML CI Pipeline
     env:
       OrtPackageId: Microsoft.ML.OnnxRuntime.DirectML
       DOTNET_SKIP_FIRST_TIME_EXPERIENCE: true
