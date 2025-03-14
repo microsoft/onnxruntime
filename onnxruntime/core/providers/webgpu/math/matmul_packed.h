@@ -12,29 +12,25 @@ namespace onnxruntime {
 namespace webgpu {
 class MatMulProgram final : public Program<MatMulProgram> {
  public:
-MatMulProgram(bool bias, bool is_vec4, const gsl::span<int64_t>& elements_per_thread) :
-            Program{"MatMul"},
-            has_bias_{bias},
-            is_vec4_{is_vec4},
-            elements_per_thread_(elements_per_thread.begin(), elements_per_thread.end()) {}
+  MatMulProgram(bool bias, bool is_vec4, const gsl::span<int64_t>& elements_per_thread) : Program{"MatMul"},
+                                                                                          has_bias_{bias},
+                                                                                          is_vec4_{is_vec4},
+                                                                                          elements_per_thread_(elements_per_thread.begin(), elements_per_thread.end()) {}
 
   Status GenerateShaderCode(ShaderHelper& sh) const override;
   WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES({"dim_a_outer", ProgramUniformVariableDataType::Int32},
-                                         {"dim_b_outer", ProgramUniformVariableDataType::Int32},
-                                         {"dim_inner", ProgramUniformVariableDataType::Int32});
+                                          {"dim_b_outer", ProgramUniformVariableDataType::Int32},
+                                          {"dim_inner", ProgramUniformVariableDataType::Int32});
 
-  // uniform variables
-
-  private:
+ private:
   const bool has_bias_;
   const bool is_vec4_;
   const InlinedVector<int64_t> elements_per_thread_;
 
   void MatMulReadWriteFnSource(ShaderHelper& shader, const ShaderVariableHelper& a, const ShaderVariableHelper& b, const ShaderVariableHelper& output, const ShaderIndicesHelper& batch_dims) const;
-  //void MatMulReadWriteFnSource(ShaderHelper& shader, const ShaderIndicesHelper& a, const ShaderIndicesHelper& b, const ShaderIndicesHelper& output, const ShaderIndicesHelper& batch_dims);
   Status MakeMatMUlPackedVec4Source(ShaderHelper& shader, const ShaderIndicesHelper& batch_dims) const;
   Status MakeMatMulPackedSource(ShaderHelper& shader, const ShaderIndicesHelper& batch_dims) const;
 };
 
 }  // namespace webgpu
-} // namespace onnxruntime
+}  // namespace onnxruntime

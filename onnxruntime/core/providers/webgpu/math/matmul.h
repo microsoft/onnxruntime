@@ -8,6 +8,7 @@
 #include "core/providers/cpu/math/matmul_helper.h"
 #include "core/providers/webgpu/math/matmul_utils.h"
 #include "core/providers/webgpu/math/matmul_packed.h"
+#include "core/providers/webgpu/webgpu_utils.h"
 
 namespace onnxruntime {
 namespace webgpu {
@@ -23,26 +24,24 @@ class MatMul final : public WebGpuKernel {
   constexpr static uint32_t MATMUL_PACKED_WORKGROUP_SIZE_Z = 1;
 };
 
-class MatMulNativeProgram final: public Program<MatMulNativeProgram> {
+class MatMulNativeProgram final : public Program<MatMulNativeProgram> {
  public:
   MatMulNativeProgram(const int64_t output_size, int output_number, bool has_bias)
       : Program{"MatMulNative"}, output_size_(output_size), output_number_(output_number), has_bias_{has_bias} {
-      }
-
+  }
 
   Status GenerateShaderCode(ShaderHelper& sh) const override;
 
-  // uniform variables output_size, M,N, K
-  //WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES({"output_size", ProgramUniformVariableDataType::Uint32});
   WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES({"output_size", ProgramUniformVariableDataType::Uint32},
-                                         {"M", ProgramUniformVariableDataType::Uint32},
-                                         {"N", ProgramUniformVariableDataType::Uint32},
-                                         {"K", ProgramUniformVariableDataType::Uint32});
-  private:
-    const int64_t output_size_;
-    const int output_number_;
-    const bool has_bias_;
+                                          {"M", ProgramUniformVariableDataType::Uint32},
+                                          {"N", ProgramUniformVariableDataType::Uint32},
+                                          {"K", ProgramUniformVariableDataType::Uint32});
+
+ private:
+  const int64_t output_size_;
+  const int output_number_;
+  const bool has_bias_;
 };
 
 }  // namespace webgpu
-} // namespace onnxruntime
+}  // namespace onnxruntime
