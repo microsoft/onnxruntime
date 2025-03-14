@@ -267,8 +267,32 @@ ReduceOpSpecificCode ReduceL1::GetOpSpecificCode(const Tensor* input_tensor) con
 ReduceOpSpecificCode ReduceL2::GetOpSpecificCode(const Tensor* input_tensor) const {
   ORT_UNUSED_PARAMETER(input_tensor);
   std::string loop_header = "var l2 = f32(0);";
-  std::string loop_body = "let t = f32(current_element); l2 += (current_element * current_element);";
+  std::string loop_body = "let t = f32(current_element); l2 += (t * t);";
   std::string loop_footer = "l2 = sqrt(l2); let output_value = output_value_t(l2);";
+  ReduceOpSpecificCode code({loop_header, loop_body, loop_footer});
+  return code;
+}
+ReduceOpSpecificCode ReduceLogSum::GetOpSpecificCode(const Tensor* input_tensor) const {
+  ORT_UNUSED_PARAMETER(input_tensor);
+  std::string loop_header = "var log_sum = f32(0);";
+  std::string loop_body = "log_sum += f32(current_element);";
+  std::string loop_footer = "log_sum = log(log_sum); let output_value = output_value_t(log_sum);";
+  ReduceOpSpecificCode code({loop_header, loop_body, loop_footer});
+  return code;
+}
+ReduceOpSpecificCode ReduceSumSquare::GetOpSpecificCode(const Tensor* input_tensor) const {
+  ORT_UNUSED_PARAMETER(input_tensor);
+  std::string loop_header = "var sum_square = f32(0);";
+  std::string loop_body = "let t = f32(current_element); sum_square += (t * t);";
+  std::string loop_footer = "let output_value = output_value_t(sum_square);";
+  ReduceOpSpecificCode code({loop_header, loop_body, loop_footer});
+  return code;
+}
+ReduceOpSpecificCode ReduceLogSumExp::GetOpSpecificCode(const Tensor* input_tensor) const {
+  ORT_UNUSED_PARAMETER(input_tensor);
+  std::string loop_header = "var log_sum_exp = f32(0);";
+  std::string loop_body = "log_sum_exp += exp(f32(current_element));";
+  std::string loop_footer = "log_sum_exp = log(log_sum_exp); let output_value = output_value_t(log_sum_exp);";
   ReduceOpSpecificCode code({loop_header, loop_body, loop_footer});
   return code;
 }

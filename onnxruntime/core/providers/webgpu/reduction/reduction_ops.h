@@ -101,5 +101,23 @@ class ReduceL2 final : public ReduceKernel<true> {
   ReduceOpSpecificCode GetOpSpecificCode(const Tensor* input_tensor) const override;
 };
 
+class ReduceLogSum final : public ReduceKernel<true> {
+ public:
+ ReduceLogSum(const OpKernelInfo& info) : ReduceKernel<true>(info, "ReduceLogSum", true) {}
+  ReduceOpSpecificCode GetOpSpecificCode(const Tensor* input_tensor) const override;
+};
+
+class ReduceSumSquare final : public ReduceKernel<true> {
+ public:
+  ReduceSumSquare(const OpKernelInfo& info) : ReduceKernel<true>(info, "ReduceSumSquare", true) {}
+  ReduceOpSpecificCode GetOpSpecificCode(const Tensor* input_tensor) const override;
+};
+
+class ReduceLogSumExp final : public ReduceKernel<true> {
+ public:
+  ReduceLogSumExp(const OpKernelInfo& info) : ReduceKernel<true>(info, "ReduceLogSumExp", true) {}
+  ReduceOpSpecificCode GetOpSpecificCode(const Tensor* input_tensor) const override;
+};
+
 }  // namespace webgpu
 }  // namespace onnxruntime
