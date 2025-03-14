@@ -90,14 +90,14 @@ jobs:
       displayName: Build QNN APK
       workingDirectory: $(Build.BinariesDirectory)/android_test/android
 
-  # we run e2e tests on one older device (Pixel 3) and one newer device (Galaxy 23)
+  # we run e2e tests on one older device (Pixel 3/ Galaxy S21) and one newer device (Galaxy 23)
   - script: |
       set -e -x
       pip install requests
 
       if [[ ${{ parameters.packageName }} == *qnn* ]]; then
         # device list with native qnn support https://app.aihub.qualcomm.com/devices/
-        devices_to_test=("Samsung Galaxy S23-13.0" "Samsung Galaxy S21")
+        devices_to_test=("Samsung Galaxy S23-13.0" "Samsung Galaxy S21-11.0")
       else
         devices_to_test=("Samsung Galaxy S23-13.0" "Google Pixel 3-9.0")
       fi
