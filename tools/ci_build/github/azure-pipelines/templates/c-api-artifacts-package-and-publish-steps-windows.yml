@@ -111,7 +111,7 @@ steps:
         archiveFile: '$(Build.ArtifactStagingDirectory)\${{parameters.artifactName}}.zip'
         replaceExistingArchive: true
 
-    - task: PublishPipelineArtifact@1
+    - task: 1ES.PublishPipelineArtifact@1
       inputs:
-        targetPath: '$(Build.ArtifactStagingDirectory)\${{parameters.artifactName}}.zip'
+        targetPath: '$(Build.ArtifactStagingDirectory)'
         artifactName: '${{parameters.artifactNameNoVersionString}}'
