@@ -2,8 +2,7 @@
 // Licensed under the MIT License.
 
 #include "core/common/inlined_containers.h"
-#include "core/providers/webgpu/tensor/gather_elements.h"
-#include "core/providers/cpu/tensor/utils.h"
+#include "core/providers/webgpu/math/cum_sum.h"
 #include "core/providers/webgpu/shader_helper.h"
 #include "core/providers/webgpu/webgpu_supported_types.h"
 
