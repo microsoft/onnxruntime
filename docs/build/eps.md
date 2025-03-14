@@ -122,12 +122,6 @@ See more information on the TensorRT Execution Provider [here](../execution-prov
        * Please make sure TensorRT built-in parser/open-sourced onnx-tensorrt specified in [cmake/deps.txt](https://github.com/microsoft/onnxruntime/blob/main/cmake/deps.txt) are **version-matched**, if enabling `--use_tensorrt_oss_parser`. 
          * i.e It's version-matched if assigning `tensorrt_home` with path to TensorRT-10.9 built-in binaries and onnx-tensorrt [10.9-GA branch](https://github.com/onnx/onnx-tensorrt/tree/release/10.9-GA) specified in [cmake/deps.txt](https://github.com/microsoft/onnxruntime/blob/main/cmake/deps.txt).
 
-### [Note to **Windows** users who would like to build ORT under **Debug** mode]
-
-* `--use_tensorrt_oss_parser` will be enabled by default.
-  * As there's a limit that [TensorRT built-in parser](https://developer.nvidia.com/tensorrt/download) only supports release build;
-  * And open-sourced onnx-tensorrt parser specified in [cmake/deps.txt](https://github.com/microsoft/onnxruntime/blob/main/cmake/deps.txt) will be used.
-
 
 ### **[Note to ORT 1.21.0 open-sourced parser users]** 
 
@@ -135,7 +129,7 @@ See more information on the TensorRT Execution Provider [here](../execution-prov
   * Here's a temporarily fix to preview on onnx-tensorrt 10.8-GA (or newer) when building ORT 1.21.0: 
     * Replace the [onnx line in cmake/deps.txt](https://github.com/microsoft/onnxruntime/blob/rel-1.21.0/cmake/deps.txt#L38) 
       with `onnx;https://github.com/onnx/onnx/archive/f22a2ad78c9b8f3bd2bb402bfce2b0079570ecb6.zip;324a781c31e30306e30baff0ed7fe347b10f8e3c`  
-    * Replace [cmake/patches/onnx/onnx.patch](https://github.com/microsoft/onnxruntime/blob/rel-1.21.0/cmake/patches/onnx/onnx.patch) with [this](https://github.com/microsoft/onnxruntime/blob/7b2733a526c12b5ef4475edd47fd9997ebc2b2c6/cmake/patches/onnx/onnx.patch) 
+    * Download [this](https://github.com/microsoft/onnxruntime/blob/7b2733a526c12b5ef4475edd47fd9997ebc2b2c6/cmake/patches/onnx/onnx.patch) as raw file and save file to [cmake/patches/onnx/onnx.patch](https://github.com/microsoft/onnxruntime/blob/rel-1.21.0/cmake/patches/onnx/onnx.patch) (do not copy/paste from browser, as it might alter line break type)
     * Build ORT 1.21.0 with trt-related flags above (including `--use_tensorrt_oss_parser`)
 
 ### Build Instructions
@@ -182,7 +176,7 @@ These instructions are for the latest [JetPack SDK](https://developer.nvidia.com
 2. Specify the CUDA compiler, or add its location to the PATH.
 
    1. JetPack 5.x users can upgrade to the latest CUDA release without updating the JetPack version or Jetson Linux BSP (Board Support Package). 
-    
+   
       1. For JetPack 5.x users, CUDA>=11.8 and GCC>9.4 are required to be installed on and after ONNX Runtime 1.17. 
 
       2. Check [this official blog](https://developer.nvidia.com/blog/simplifying-cuda-upgrades-for-nvidia-jetson-users/) for CUDA upgrade instruction (CUDA 12.2 has been verified on JetPack 5.1.2 on Jetson Xavier NX).
