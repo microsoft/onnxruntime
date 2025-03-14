@@ -341,7 +341,7 @@ Status CheckInputs(const T* query,
   //  Other inputs:
   //     bias             (Q/K/V)   : None or (3 * D)
   //     key_padding_mask (K/V)     : None or (B, T)
-  //     attention_bias             : (1, N, S, T), or (B, N, S, T) where only 1 x N x S x T data is used in CUDA.
+  //     attention_bias             : (B, N, S, T), (1, N, S, T), (B, 1, S, T) or (1, 1, S, T)
   //     cache_indirection          : (B, W, M)
   //
   //  The following inputs are not used in cross attention (so they are None for cross attention):

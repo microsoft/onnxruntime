@@ -94,11 +94,15 @@ Status MultiHeadAttention<T, QK>::ComputeInternal(OpKernelContext* context) cons
   const Tensor* past_sequence_length = context->Input<Tensor>(8);
   const Tensor* cache_indirection = context->Input<Tensor>(9);
 
+  bool past_present_share_buffer = (past_key == present_key);
+  if (past_key != nullptr && past_sequence_length != nullptr && cache_indirection != nullptr) {
+    ORT_ENFORCE(past_present_share_buffer);
+  }
+
   auto& device_prop = GetDeviceProp();
   AttentionParameters parameters;
   parameters.use_tf32 = UseTF32();
 
-  bool past_present_share_buffer = past_key != nullptr && past_sequence_length != nullptr && cache_indirection != nullptr;
   ORT_RETURN_IF_ERROR(multihead_attention_helper::CheckInputs<Tensor>(query,
                                                                       key,
                                                                       value,
@@ -187,16 +191,23 @@ Status MultiHeadAttention<T, QK>::ComputeInternal(OpKernelContext* context) cons
   AttentionKernelType kernel_type = AttentionKernelType::AttentionKernel_Default;
   cudaStream_t stream = Stream(context);
 
-  bool use_dmmha_self_attention = parameters.qkv_format == AttentionQkvFormat::Q_K_V_BSNH && parameters.past_present_share_buffer && parameters.past_sequence_length > 0;
-  bool use_dmmha_cross_attention = parameters.qkv_format == AttentionQkvFormat::Q_K_V_BSNH_BNSH_BNSH && past_key == nullptr && past_value == nullptr && nullptr != past_sequence_length && parameters.past_sequence_length != *((*past_sequence_length).template Data<int32_t>());
-  bool use_decoder_masked_multihead_attention = !disable_ft_causal_attention_ &&
-                                                (std::is_same<T, float>::value || std::is_same<T, MLFloat16>::value) &&
-                                                (use_dmmha_self_attention || use_dmmha_cross_attention) &&
-                                                parameters.sequence_length == 1 &&
-                                                parameters.head_size == parameters.v_head_size &&
-                                                (parameters.mask_type == AttentionMaskType::MASK_2D_KEY_PADDING || parameters.mask_type == AttentionMaskType::MASK_NONE) &&
-                                                nullptr != past_sequence_length && nullptr != cache_indirection &&
-                                                has_decoder_masked_multihead_attention(sm, parameters.head_size);
+  bool use_decoder_masked_multihead_attention = false;
+  if (cache_indirection != nullptr) {
+    bool use_dmmha_self_attention = parameters.qkv_format == AttentionQkvFormat::Q_K_V_BSNH &&
+                                    parameters.past_present_share_buffer &&
+                                    parameters.past_sequence_length > 0;
+    bool use_dmmha_cross_attention = parameters.qkv_format == AttentionQkvFormat::Q_K_V_BSNH_BNSH_BNSH &&
+                                     past_key == nullptr && past_value == nullptr && nullptr != past_sequence_length &&
+                                     parameters.past_sequence_length != *((*past_sequence_length).template Data<int32_t>());
+    use_decoder_masked_multihead_attention = !disable_ft_causal_attention_ &&
+                                             (std::is_same<T, float>::value || std::is_same<T, MLFloat16>::value) &&
+                                             (use_dmmha_self_attention || use_dmmha_cross_attention) &&
+                                             parameters.sequence_length == 1 &&
+                                             parameters.head_size == parameters.v_head_size &&
+                                             (parameters.mask_type == AttentionMaskType::MASK_2D_KEY_PADDING || parameters.mask_type == AttentionMaskType::MASK_NONE) &&
+                                             nullptr != past_sequence_length && nullptr != cache_indirection &&
+                                             has_decoder_masked_multihead_attention(sm, parameters.head_size);
+  }
   DUMP_STRING("Use DMMHA = ", (use_decoder_masked_multihead_attention == true));
   if (use_decoder_masked_multihead_attention) {
     // Kernel only works for token generation with beam search
@@ -514,7 +525,7 @@ Status MultiHeadAttention<T, QK>::ComputeInternal(OpKernelContext* context) cons
     auto seqlens_k_buffer = GetScratchBuffer<void>(seqlens_k_bytes, context->GetComputeStream());
     if (seqlens_k_buffer != nullptr) {
       data.seqlens_k_total = reinterpret_cast<int*>(seqlens_k_buffer.get());
-      CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(data.seqlens_k_total, seqlens_k.data(), seqlens_k_bytes, cudaMemcpyHostToDevice, stream));
+      CUDA_RETURN_IF_ERROR(cudaMemcpy(data.seqlens_k_total, seqlens_k.data(), seqlens_k_bytes, cudaMemcpyHostToDevice, stream));
     }
   }
 

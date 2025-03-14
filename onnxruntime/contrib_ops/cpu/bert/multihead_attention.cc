@@ -73,8 +73,12 @@ Status MultiHeadAttention<T>::Compute(OpKernelContext* context) const {
     ORT_NOT_IMPLEMENTED("Packed KV not implemented for CPU");
   }
 
+  bool past_present_share_buffer = (past_key == present_key);
+  if (past_key != nullptr && past_sequence_length != nullptr && cache_indirection != nullptr) {
+    ORT_ENFORCE(past_present_share_buffer);
+  }
+
   AttentionParameters parameters = {};
-  bool past_present_share_buffer = past_key != nullptr && past_sequence_length != nullptr && cache_indirection != nullptr;
   ORT_RETURN_IF_ERROR(multihead_attention_helper::CheckInputs<Tensor>(query,
                                                                       key,
                                                                       value,
@@ -142,14 +146,22 @@ Status MultiHeadAttention<T>::Compute(OpKernelContext* context) const {
   Tensor* present_value = context->Output(2, present_value_shape);
   Tensor* output_qk = context->Output(3, output_qk_shape);
 
-  bool use_dmmha_self_attention = parameters.qkv_format == AttentionQkvFormat::Q_K_V_BSNH && parameters.past_present_share_buffer && parameters.past_sequence_length > 0;
-  bool use_dmmha_cross_attention = parameters.qkv_format == AttentionQkvFormat::Q_K_V_BSNH_BNSH_BNSH && past_key == nullptr && past_value == nullptr && nullptr != past_sequence_length && parameters.past_sequence_length != *((*past_sequence_length).template Data<int32_t>());
-  bool use_decoder_masked_multihead_attention = !disable_ft_causal_attention_ &&
-                                                (use_dmmha_self_attention || use_dmmha_cross_attention) &&
-                                                parameters.sequence_length == 1 &&
-                                                parameters.head_size == parameters.v_head_size &&
-                                                (parameters.mask_type == AttentionMaskType::MASK_2D_KEY_PADDING || parameters.mask_type == AttentionMaskType::MASK_NONE) &&
-                                                nullptr != past_sequence_length && nullptr != cache_indirection;
+  bool use_decoder_masked_multihead_attention = false;
+  if (cache_indirection != nullptr) {
+    bool use_dmmha_self_attention = parameters.qkv_format == AttentionQkvFormat::Q_K_V_BSNH &&
+                                    parameters.past_present_share_buffer &&
+                                    parameters.past_sequence_length > 0;
+    bool use_dmmha_cross_attention = parameters.qkv_format == AttentionQkvFormat::Q_K_V_BSNH_BNSH_BNSH &&
+                                     past_key == nullptr && past_value == nullptr && nullptr != past_sequence_length &&
+                                     parameters.past_sequence_length != *((*past_sequence_length).template Data<int32_t>());
+    use_decoder_masked_multihead_attention = !disable_ft_causal_attention_ &&
+                                             (use_dmmha_self_attention || use_dmmha_cross_attention) &&
+                                             parameters.sequence_length == 1 &&
+                                             parameters.head_size == parameters.v_head_size &&
+                                             (parameters.mask_type == AttentionMaskType::MASK_2D_KEY_PADDING || parameters.mask_type == AttentionMaskType::MASK_NONE) &&
+                                             nullptr != past_sequence_length && nullptr != cache_indirection;
+  }
+
   AllocatorPtr allocator;
   ORT_RETURN_IF_ERROR(context->GetTempSpaceAllocator(&allocator));
 

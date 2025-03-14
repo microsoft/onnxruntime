@@ -523,7 +523,7 @@ class FusionBartAttention(FusionAttention):
         decoder_cross_attention_with_past = three_root_inputs and qk_nodes == qk_nodes_1
 
         # For decoder_attention, the attention mask needs to be included in the attention node
-        mask_index = None
+        mask_index, mask_nodes = None, []
         if decoder_attention:
             mask_nodes_bart = self.model.match_parent_path(
                 add_qk,
@@ -537,8 +537,10 @@ class FusionBartAttention(FusionAttention):
             )
             if mask_nodes_whisper is not None:
                 mask_index = mask_nodes_whisper[0].output[-1]
+                mask_nodes = mask_nodes_whisper
             elif mask_nodes_bart is not None:
                 mask_index = mask_nodes_bart[0].output[-1]
+                mask_nodes = mask_nodes_bart
 
         if (
             encoder_attention
@@ -597,7 +599,7 @@ class FusionBartAttention(FusionAttention):
                     hidden_size=hidden_size,
                     first_input=root_input,
                     output=attention_last_node.output[0],
-                    add_qk_str=None,  # deprecate and use is_unidirectional attr instead
+                    add_qk_str=(None if len(mask_nodes) > 1 else add_qk_str),  # deprecate and use is_unidirectional attr instead for Whisper
                     past_k=past_k,
                     past_v=past_v,
                     present_k=present_k,
