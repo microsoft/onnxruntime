@@ -1013,12 +1013,14 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                OpSchema::Optional)
         .Input(6,
                "past_key",
-               "past state for self attention key with shape (batch_size, num_heads, past_sequence_length, head_size)",
+               "past state for self attention key with shape (batch_size, num_heads, past_sequence_length, head_size) ",
+               "or (batch_size, sequence_length, max_sequence_length, head_size) when buffer sharing is used",
                "T",
                OpSchema::Optional)
         .Input(7,
                "past_value",
-               "past state for self attention value with shape (batch_size, num_heads, past_sequence_length, head_size)",
+               "past state for self attention value with shape (batch_size, num_heads, past_sequence_length, head_size) ",
+               "or (batch_size, sequence_length, max_sequence_length, head_size) when buffer sharing is used",
                "T",
                OpSchema::Optional)
         .Input(8,
