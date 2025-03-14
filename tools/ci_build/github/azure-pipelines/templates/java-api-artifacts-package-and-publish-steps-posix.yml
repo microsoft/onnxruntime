@@ -1,25 +1,13 @@
 # sets up common build tools for the windows build machines before build
 
 parameters:
-- name: arch
-  type: string
-  default: 'linux-x64'
-- name: buildConfig
-  type: string
-  default: 'RelWithDebInfo'
-- name: artifactName
-  type: string
-  default: 'onnxruntime-java-linux-x64'
-- name: libraryName
-  type: string
-  default: 'libonnxruntime.so'
-- name: nativeLibraryName
-  type: string
-  default: 'libonnxruntime4j_jni.so'
-- name: version
-  type: string
-  default: ''
-
+  arch: 'linux-x64'
+  buildConfig: 'RelWithDebInfo'
+  artifactName: 'onnxruntime-java-linux-x64'
+  libraryName: 'libonnxruntime.so'
+  nativeLibraryName: 'libonnxruntime4j_jni.so'
+  version: ''
+  is1ES: false
 steps:
 - task: ShellScript@2
   displayName: 'Copy build artifacts for zipping'
@@ -28,8 +16,13 @@ steps:
     args: '-r $(Build.BinariesDirectory) -c ${{parameters.buildConfig}} -a ${{parameters.artifactName}} -l ${{parameters.libraryName}} -n ${{parameters.nativeLibraryName}} -v ${{parameters.version}} -h ${{parameters.arch}}'
     workingDirectory: '$(Build.BinariesDirectory)/${{parameters.buildConfig}}'
 
-- task: 1ES.PublishPipelineArtifact@1
-  inputs:
-    targetPath: '$(Build.BinariesDirectory)/${{parameters.artifactName}}'
-    artifactName: 'drop-${{parameters.artifactName}}'
-
+- ${{ if eq(parameters.is1ES, true) }}:
+  - task: 1ES.PublishPipelineArtifact@1
+    inputs:
+      targetPath: '$(Build.BinariesDirectory)/${{parameters.artifactName}}'
+      artifactName: 'drop-${{parameters.artifactName}}'
+- ${{ if eq(parameters.is1ES, false) }}:
+  - task: PublishBuildArtifacts@1
+    inputs:
+      pathtoPublish: '$(Build.BinariesDirectory)/${{parameters.artifactName}}'
+      artifactName: 'drop-${{parameters.artifactName}}'

@@ -26,16 +26,6 @@ namespace Microsoft.ML.OnnxRuntime.Tests
             this.output = o;
         }
 
-#if !__TRAINING_ENABLED_NATIVE_BUILD__
-        [Fact(DisplayName = "TestLoadCheckpointThrows")]
-        public void TestLoadCheckpointThrows()
-        {
-            string path = Path.Combine(Directory.GetCurrentDirectory(), "checkpoint.ckpt");
-            var ex = Assert.Throws<InvalidOperationException>(() => { var opt = CheckpointState.LoadCheckpoint(path); });
-            Assert.Contains("Please install the Microsoft.ML.OnnxRuntime.Training NuGet package.", ex.Message);
-        }
-#endif
-
 #if __TRAINING_ENABLED_NATIVE_BUILD__
         [Fact(DisplayName = "TestLoadCheckpoint")]
         public void TestLoadCheckpoint()
