@@ -23,9 +23,9 @@ class CumSumProgram final : public Program<CumSumProgram> {
   int64_t reverse_;
 };
 
-class GatherElements final : public WebGpuKernel {
+class CumSum final : public WebGpuKernel {
  public:
-  GatherElements(const OpKernelInfo& info) : WebGpuKernel(info) {
+  CumSum(const OpKernelInfo& info) : WebGpuKernel(info) {
     exclusive_ = info.GetAttrOrDefault<int64_t>("exclusive", 0);
     reverse_ = info.GetAttrOrDefault<int64_t>("reverse", 0);
   }

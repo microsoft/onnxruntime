@@ -10,22 +10,22 @@ namespace onnxruntime {
 namespace webgpu {
 
 ONNX_OPERATOR_VERSIONED_KERNEL_EX(
-    GatherElements,
+    CumSum,
     kOnnxDomain,
     11, 13,
     kWebGpuExecutionProvider,
     (*KernelDefBuilder::Create()).TypeConstraint("T", WebGpuSupportedFloatTypes()),
-    GatherElements);
+    CumSum);
 
 ONNX_OPERATOR_KERNEL_EX(
-    GatherElements,
+    CumSum,
     kOnnxDomain,
     14,
     kWebGpuExecutionProvider,
     (*KernelDefBuilder::Create()).TypeConstraint("T", WebGpuSupportedFloatTypes()),
-    GatherElements);
+    CumSum);
 
-Status GatherElementsProgram::GenerateShaderCode(ShaderHelper& shader) const {
+Status CumSumProgram::GenerateShaderCode(ShaderHelper& shader) const {
   const ShaderVariableHelper& input = shader.AddInput("input", ShaderUsage::UseUniform);
   const ShaderVariableHelper& indices = shader.AddInput("indices", ShaderUsage::UseUniform);
   const ShaderVariableHelper& output = shader.AddOutput("output", ShaderUsage::UseUniform);
@@ -48,7 +48,7 @@ Status GatherElementsProgram::GenerateShaderCode(ShaderHelper& shader) const {
   return Status::OK();
 }
 
-Status GatherElements::ComputeInternal(ComputeContext& context) const {
+Status CumSum::ComputeInternal(ComputeContext& context) const {
   const auto* input_tensor = context.Input(0);
   const TensorShape& input_shape = input_tensor->Shape();
   int64_t input_rank = input_shape.NumDimensions();
@@ -69,7 +69,7 @@ Status GatherElements::ComputeInternal(ComputeContext& context) const {
     return Status::OK();
   }
 
-  GatherElementsProgram program{exclusive_, reverse_};
+  CumSumProgram program{exclusive_, reverse_};
   program
       .AddInput({input_tensor})
       .AddOutput({output_tensor, ProgramTensorMetadataDependency::TypeAndRank})
