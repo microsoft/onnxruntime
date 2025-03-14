@@ -13,7 +13,7 @@ ONNX_OPERATOR_VERSIONED_KERNEL_EX(
     kOnnxDomain,
     11, 13,
     kWebGpuExecutionProvider,
-    (*KernelDefBuilder::Create()).TypeConstraint("T", WebGpuSupportedFloatTypes()).TypeConstraint("T1", WebGpuSupportedNumberTypes()),
+    (*KernelDefBuilder::Create()).TypeConstraint("T", WebGpuSupportedFloatTypes()).TypeConstraint("T2", WebGpuSupportedNumberTypes()),
     CumSum);
 
 ONNX_OPERATOR_KERNEL_EX(
@@ -21,7 +21,7 @@ ONNX_OPERATOR_KERNEL_EX(
     kOnnxDomain,
     14,
     kWebGpuExecutionProvider,
-    (*KernelDefBuilder::Create()).TypeConstraint("T", WebGpuSupportedFloatTypes()).TypeConstraint("T1", WebGpuSupportedNumberTypes()),
+    (*KernelDefBuilder::Create()).TypeConstraint("T", WebGpuSupportedFloatTypes()).TypeConstraint("T2", WebGpuSupportedNumberTypes()),
     CumSum);
 
 Status CumSumProgram::GenerateShaderCode(ShaderHelper& shader) const {
