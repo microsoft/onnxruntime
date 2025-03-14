@@ -1410,6 +1410,8 @@ std::unique_ptr<std::set<BrokenTest>> GetBrokenTests(const std::string& provider
     broken_tests->insert({"convtranspose_1d", "Access violation 0xc000005 from call graphAddNode."});
     broken_tests->insert({"convtranspose", "Access violation 0xc000005 from call graphAddNode."});
     broken_tests->insert({"averagepool_2d_ceil", "result differs. expected 13.5 (41580000), got 0 (0)"});
+    // Fails with QNN 2.32
+    broken_tests->insert({"resize_upsample_scales_linear", "expected 1 (3f800000), got 0.25 (3e800000)"});
   }
 
 #ifdef DISABLE_CONTRIB_OPS
