@@ -193,7 +193,7 @@ endif()
 # Due to many dependencies have different symbol visibility settings, set global compile flags here.
 if (${CMAKE_SYSTEM_NAME} MATCHES "Darwin|iOS|visionOS|tvOS")
   foreach(flags CMAKE_CXX_FLAGS CMAKE_OBJC_FLAGS CMAKE_OBJCXX_FLAGS)
-    string(APPEND ${flags} " -fvisibility=hidden -fvisibility-inlines-hidden -Wno-unsafe-buffer-usage")
+    string(APPEND ${flags} " -fvisibility=hidden -fvisibility-inlines-hidden")
   endforeach()
 endif()
 
