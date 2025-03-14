@@ -14,9 +14,8 @@ steps:
   displayName: npm ci js/common
 
 - script: |
-    npm run bootstrap-no-pods
-    npm install ./e2e/onnxruntime-common.tgz
     npm ci
+    npm run bootstrap-no-pods
   workingDirectory: '$(Build.SourcesDirectory)/js/react_native'
   displayName: bootstrap react_native
 
