@@ -81,7 +81,7 @@
   },
   "scripts": {
     "typescript": "tsc --noEmit",
-    "prepare": "npx bob build",
+    "prepare": "bob build",
     "bootstrap-no-pods": "npm run pack-common && npm run unpack-common && npm run pack-libs && npm run unpack-libs && npm run e2e",
     "bootstrap": "npm run bootstrap-no-pods && npm run pods",
     "test": "jest",
