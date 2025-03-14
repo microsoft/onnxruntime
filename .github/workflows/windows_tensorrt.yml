@@ -70,13 +70,15 @@ jobs:
           Add-Content -Path $env:GITHUB_PATH -Value "$env:RUNNER_TEMP\TensorRT-10.8.0.43.Windows10.x86_64.cuda-12.8\lib"
 
       - name: Generate sln
+        working-directory: ${{ runner.temp }}
         run: |
-          python ${{ github.workspace }}\tools\ci_build\build.py --config RelWithDebInfo --parallel --use_binskim_compliant_compile_flags             --build_dir ${{ github.workspace }} --skip_submodule_sync --build_shared_lib             --build --cmake_generator "Visual Studio 17 2022" --build_wheel --enable_onnx_tests             --use_tensorrt --tensorrt_home="${{ runner.temp }}\TensorRT-10.8.0.43.Windows10.x86_64.cuda-12.8"             --cuda_home="${{ runner.temp }}\v12.2" --use_vcpkg --use_vcpkg_ms_internal_asset_cache             --cmake_extra_defines CMAKE_CUDA_ARCHITECTURES=86
+          python ${{ github.workspace }}\tools\ci_build\build.py --config RelWithDebInfo --parallel --use_binskim_compliant_compile_flags             --build_dir build --skip_submodule_sync --build_shared_lib             --build --cmake_generator "Visual Studio 17 2022" --build_wheel --enable_onnx_tests             --use_tensorrt --tensorrt_home="${{ runner.temp }}\TensorRT-10.8.0.43.Windows10.x86_64.cuda-12.8"             --cuda_home="${{ runner.temp }}\v12.2" --use_vcpkg --use_vcpkg_ms_internal_asset_cache             --cmake_extra_defines CMAKE_CUDA_ARCHITECTURES=86
         shell: cmd
 
       - name: Build
+        working-directory: ${{ runner.temp }}
         run: |
-          python ${{ github.workspace }}\tools\ci_build\build.py --config RelWithDebInfo --parallel --use_binskim_compliant_compile_flags             --build_dir ${{ github.workspace }} --skip_submodule_sync --build_shared_lib             --build --cmake_generator "Visual Studio 17 2022" --build_wheel --enable_onnx_tests             --use_tensorrt --tensorrt_home="${{ runner.temp }}\TensorRT-10.8.0.43.Windows10.x86_64.cuda-12.8"             --cuda_home="${{ runner.temp }}\v12.2" --use_vcpkg --use_vcpkg_ms_internal_asset_cache             --cmake_extra_defines CMAKE_CUDA_ARCHITECTURES=86
+          python ${{ github.workspace }}\tools\ci_build\build.py --config RelWithDebInfo --parallel --use_binskim_compliant_compile_flags             --build_dir build --skip_submodule_sync --build_shared_lib             --build --cmake_generator "Visual Studio 17 2022" --build_wheel --enable_onnx_tests             --use_tensorrt --tensorrt_home="${{ runner.temp }}\TensorRT-10.8.0.43.Windows10.x86_64.cuda-12.8"             --cuda_home="${{ runner.temp }}\v12.2" --use_vcpkg --use_vcpkg_ms_internal_asset_cache             --cmake_extra_defines CMAKE_CUDA_ARCHITECTURES=86
         shell: cmd
 
       - name: Build wheel
@@ -85,6 +87,7 @@ jobs:
         working-directory: ${{ github.workspace }}\RelWithDebInfo\RelWithDebInfo
 
       - name: Run tests
+        working-directory: ${{ runner.temp }}
         run: |
           mklink  /D /J ${{ github.workspace }}\RelWithDebInfo\models ${{ github.workspace }}\models
           DIR dist\ /S /B > wheel_filename_file
@@ -92,7 +95,7 @@ jobs:
           del wheel_filename_file
           python.exe -m pip install -q --upgrade %WHEEL_FILENAME%
           set PATH=${{ github.workspace }}\RelWithDebInfo\RelWithDebInfo;%PATH%
-          python ${{ github.workspace }}\tools\ci_build\build.py --config RelWithDebInfo --parallel --use_binskim_compliant_compile_flags             --build_dir ${{ github.workspace }} --skip_submodule_sync --build_shared_lib --test --cmake_generator "Visual Studio 17 2022" --build_wheel --enable_onnx_tests             --use_tensorrt --tensorrt_home="${{ runner.temp }}\TensorRT-10.8.0.43.Windows10.x86_64.cuda-12.8"             --cuda_home="${{ runner.temp }}\v12.2" --use_vcpkg --use_vcpkg_ms_internal_asset_cache             --cmake_extra_defines CMAKE_CUDA_ARCHITECTURES=86
+          python ${{ github.workspace }}\tools\ci_build\build.py --config RelWithDebInfo --parallel --use_binskim_compliant_compile_flags             --build_dir build --skip_submodule_sync --build_shared_lib --test --cmake_generator "Visual Studio 17 2022" --build_wheel --enable_onnx_tests             --use_tensorrt --tensorrt_home="${{ runner.temp }}\TensorRT-10.8.0.43.Windows10.x86_64.cuda-12.8"             --cuda_home="${{ runner.temp }}\v12.2" --use_vcpkg --use_vcpkg_ms_internal_asset_cache             --cmake_extra_defines CMAKE_CUDA_ARCHITECTURES=86
         shell: cmd
         working-directory: ${{ github.workspace }}\RelWithDebInfo\RelWithDebInfo
         timeout-minutes: 180
