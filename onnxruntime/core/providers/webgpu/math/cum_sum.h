@@ -15,8 +15,8 @@ class CumSumProgram final : public Program<CumSumProgram> {
 
   Status GenerateShaderCode(ShaderHelper& sh) const override;
 
-  WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES({"output_size", ProgramUniformVariableDataType::Uint32,
-                                           "axis", ProgramUniformVariableDataType::Uint32});
+  WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES({"output_size", ProgramUniformVariableDataType::Uint32},
+                                          {"axis", ProgramUniformVariableDataType::Uint32});
 
  private:
   int64_t exclusive_;
