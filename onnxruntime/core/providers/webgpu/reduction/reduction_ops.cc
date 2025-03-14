@@ -267,7 +267,7 @@ ReduceOpSpecificCode ReduceL1::GetOpSpecificCode(const Tensor* input_tensor) con
 ReduceOpSpecificCode ReduceL2::GetOpSpecificCode(const Tensor* input_tensor) const {
   ORT_UNUSED_PARAMETER(input_tensor);
   std::string loop_header = "var l2 = f32(0);";
-  std::string loop_body = "l2 += (f32(current_element) * f32(current_element));";
+  std::string loop_body = "let t = f32(current_element); l2 += (current_element * current_element);";
   std::string loop_footer = "l2 = sqrt(l2); let output_value = output_value_t(l2);";
   ReduceOpSpecificCode code({loop_header, loop_body, loop_footer});
   return code;
