@@ -1014,13 +1014,13 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
         .Input(6,
                "past_key",
                "past state for key with shape (batch_size, num_heads, past_sequence_length, head_size) ",
-               "or (batch_size, sequence_length, max_sequence_length, head_size) when buffer sharing is used",
+               "or (batch_size, num_heads, max_sequence_length, head_size) when buffer sharing is used",
                "T",
                OpSchema::Optional)
         .Input(7,
                "past_value",
                "past state for value with shape (batch_size, num_heads, past_sequence_length, head_size) ",
-               "or (batch_size, sequence_length, max_sequence_length, head_size) when buffer sharing is used",
+               "or (batch_size, num_heads, max_sequence_length, head_size) when buffer sharing is used",
                "T",
                OpSchema::Optional)
         .Input(8,
@@ -1041,13 +1041,13 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
         .Output(1,
                 "present_key",
                 "present state for key with shape (batch_size, num_heads, total_sequence_length, head_size) ",
-                "or (batch_size, sequence_length, max_sequence_length, head_size) when buffer sharing is used",
+                "or (batch_size, num_heads, max_sequence_length, head_size) when buffer sharing is used",
                 "T",
                 OpSchema::Optional)
         .Output(2,
                 "present_value",
                 "present state for value with shape (batch_size, num_heads, total_sequence_length, head_size) ",
-                "or (batch_size, sequence_length, max_sequence_length, head_size) when buffer sharing is used",
+                "or (batch_size, num_heads, max_sequence_length, head_size) when buffer sharing is used",
                 "T",
                 OpSchema::Optional)
         .Output(3,
