@@ -429,7 +429,7 @@ def generate_vcpkg_triplets_for_emscripten(build_dir: str, emscripten_root: str)
                     add_port_configs(f, True, True)
 
 
-def generate_windows_triplets(build_dir: str, toolset_version: str = None) -> None:
+def generate_windows_triplets(build_dir: str, toolset_version: str) -> None:
     """
     Generate triplet files for Windows platforms.
 
@@ -506,7 +506,6 @@ def generate_windows_triplets(build_dir: str, toolset_version: str = None) -> No
                                 if ldflags:
                                     f.write(f'set(VCPKG_LINKER_FLAGS "{" ".join(ldflags)}")\n')
                                 add_port_configs(f, enable_exception, False)
-
 
 
 def generate_linux_triplets(build_dir: str) -> None:
