@@ -12,5 +12,5 @@ parameters:
 steps:
     - task: 1ES.PublishPipelineArtifact@1
       inputs:
-        targetPath: '$(Build.SourcesDirectory)/js/node/bin/napi-v3/${{ parameters.os }}/${{ parameters.arch }}/onnxruntime_binding.node' 
+        targetPath: '$(Build.SourcesDirectory)/js/node/bin/napi-v3/${{ parameters.os }}/${{ parameters.arch }}'
         artifactName: '${{parameters.artifactName}}'
