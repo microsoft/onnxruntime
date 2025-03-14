@@ -704,6 +704,7 @@ def parse_arguments():
     parser.add_argument("--armnn_home", help="Path to ArmNN home dir")
     parser.add_argument("--armnn_libs", help="Path to ArmNN libraries")
     parser.add_argument("--build_micro_benchmarks", action="store_true", help="Build ONNXRuntime micro-benchmarks.")
+    parser.add_argument("--no_kleidiai", action="store_true", help="Disable KleidiAI integration on Arm platforms.")
 
     # options to reduce binary size
     parser.add_argument(
@@ -1626,6 +1627,14 @@ def generate_build_tree(
 
     if args.use_snpe:
         cmake_args += ["-Donnxruntime_USE_SNPE=ON"]
+
+    targeting_arm64 = args.arm64
+    if not targeting_arm64:
+        if is_macOS():
+            targeting_arm64 = args.osx_arch == "arm64"
+        else:
+            targeting_arm64 = platform.machine() in ["aarch64", "arm64", "ARM64"]
+    cmake_args += ["-Donnxruntime_USE_KLEIDIAI=" + ("ON" if targeting_arm64 and not args.no_kleidiai else "OFF")]
 
     if args.macos or args.ios or args.visionos or args.tvos:
         # Note: Xcode CMake generator doesn't have a good support for Mac Catalyst yet.
