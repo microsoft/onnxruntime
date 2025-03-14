@@ -174,18 +174,23 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                 opt.AppendExecutionProvider_Tensorrt(0);
 #endif
                 AssertUtils.IfThrowsCheckException<OnnxRuntimeException>(
+                    () => { opt.AppendExecutionProvider("CoreML"); },
+                    "Appending CoreML EP should have succeeded or thrown an OnnRuntimeException with the expected message. ",
+                    "CoreML execution provider is not supported in this build");
+
+                AssertUtils.IfThrowsCheckException<OnnxRuntimeException>(
                     () => { opt.AppendExecutionProvider("XNNPACK"); },
-                    "Attempted to add XNNPack execution provider to session options. ",
+                    "Appending XNNPACK EP should have succeeded or thrown an OnnRuntimeException with the expected message. ",
                     "XNNPACK execution provider is not supported in this build");
 
                 AssertUtils.IfThrowsCheckException<OnnxRuntimeException>(
                     () => { opt.AppendExecutionProvider("SNPE"); },
-                    "Attempted to add SNPE execution provider to session options. ",
+                    "Appending SNPE EP should have succeeded or thrown an OnnRuntimeException with the expected message. ",
                     "SNPE execution provider is not supported in this build");
 
                 AssertUtils.IfThrowsCheckException<OnnxRuntimeException>(
                     () => { opt.AppendExecutionProvider("QNN"); },
-                    "Attempted to add QNN execution provider to session options. ",
+                    "Appending QNN EP should have succeeded or thrown an OnnRuntimeException with the expected message. ",
                     "QNN execution provider is not supported in this build");
 
         opt.AppendExecutionProvider_CPU(1);
