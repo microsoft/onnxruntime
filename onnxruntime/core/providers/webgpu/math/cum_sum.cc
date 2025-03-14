@@ -27,7 +27,6 @@ ONNX_OPERATOR_KERNEL_EX(
 
 Status CumSumProgram::GenerateShaderCode(ShaderHelper& shader) const {
   const ShaderVariableHelper& input = shader.AddInput("input", ShaderUsage::UseUniform);
-  const ShaderVariableHelper& indices = shader.AddInput("indices", ShaderUsage::UseUniform);
   const ShaderVariableHelper& output = shader.AddOutput("output", ShaderUsage::UseUniform);
 
   std::string index = "i32(" + input.IndicesGet("uniforms.input_shape", "uniforms.axis", input.Rank()) + ")";
