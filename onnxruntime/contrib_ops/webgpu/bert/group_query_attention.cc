@@ -173,12 +173,12 @@ Status GroupQueryAttention::ComputeInternal(onnxruntime::webgpu::ComputeContext&
     query = &qRotary;
   }
 
-  TensorShapeVector q_new_dims({parameters.batch_size_, parameter.is_packed_qkv_ ? parameters.num_heads_ + 2* parameters.kv_num_heads_ : parameters.num_heads_,
+  TensorShapeVector q_new_dims({parameters.batch_size_, parameters.is_packed_qkv_ ? parameters.num_heads_ + 2 * parameters.kv_num_heads_ : parameters.num_heads_,
                                 parameters.sequence_length_, parameters.head_size_});
   TensorShape q_new_shape(q_new_dims);
   Tensor Q = context.CreateGPUTensor(query->DataType(), q_new_shape);
   ORT_RETURN_IF_ERROR(TransferBSDToBNSH(
-      context, parameter.is_packed_qkv_ ? parameters.num_heads_ + 2* parameters.kv_num_heads_ , parameters.sequence_length_, parameters.head_size_, query, nullptr, 0, &Q));
+      context, parameters.is_packed_qkv_ ? parameters.num_heads_ + 2 * parameters.kv_num_heads_ : parameters.num_heads_, parameters.sequence_length_, parameters.head_size_, query, nullptr, 0, &Q));
   if (parameters.qkv_format_ == Q_K_V_BSNH_BNSH_BNSH) {  // key and value in BNSH format
     return ApplyAttention(&Q, key, value, nullptr, past_key, past_value, output, present_key,
                           present_value, parameters, context, seqlen_k);
