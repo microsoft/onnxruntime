@@ -1128,6 +1128,17 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                "2D tensor with shape (max_sequence_length, head_size / 2).",
                "T",
                OpSchema::Optional)
+        .Input(9,
+               "position_ids",
+               "2D tensor with shape (batch_size, sequence_length). When processing the first prompt the kernel "
+               "uses only the first element",
+               "tensor(int64)",
+               OpSchema::Optional)
+        .Input(10,
+               "attention_bias",
+               "additional add to QxK' with shape (batch_size or 1, num_heads or 1, sequence_length, total_sequence_length)",
+               "T",
+               OpSchema::Optional)
         .Output(0,
                 "output",
                 "3D output tensor with shape (batch_size, sequence_length, hidden_size)",
