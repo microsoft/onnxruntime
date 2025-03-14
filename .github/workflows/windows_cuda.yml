@@ -48,6 +48,7 @@ jobs:
           Write-Host "Adding CUDA to PATH"
           Write-Host "CUDA Path: $env:RUNNER_TEMP\v12.2\bin"
           Add-Content -Path $env:GITHUB_PATH -Value "$env:RUNNER_TEMP\v12.2\bin"
+          Add-Content -Path $env:GITHUB_PATH -Value "$env:RUNNER_TEMP\v12.2\extras\CUPTI\lib64"
 
       - uses: actions/setup-node@v4
         with:
@@ -61,9 +62,6 @@ jobs:
 
       - name: API Documentation Check and generate
         run: |
-          echo %PATH%
-          where nvcc
-          dir %RUNNER_TEMP%\v12.2\bin
           set ORT_DOXY_SRC=${{ github.workspace }}
           set ORT_DOXY_OUT=${{ runner.temp }}\build\RelWithDebInfo\RelWithDebInfo
           mkdir %ORT_DOXY_SRC%
