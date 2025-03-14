@@ -3,7 +3,7 @@
     "baseUrl": ".",
     "paths": {
       "onnxruntime-react-native": ["./lib/index"],
-      "onnxruntime-common": ["../common"],
+      "onnxruntime-common": ["../common"]
     },
     "allowUnreachableCode": false,
     "allowUnusedLabels": false,
