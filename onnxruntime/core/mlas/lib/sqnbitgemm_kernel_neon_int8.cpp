@@ -24,6 +24,7 @@ Abstract:
 #include "qnbitgemm.h"
 #include "qnbitgemm_kernel_neon.h"
 #include "sqnbitgemm_q8_block.h"
+#include "sqnbitgemm_tmac_kernel_neon_int8.h"
 
 namespace sqnbitgemm_neon
 {
@@ -1404,13 +1405,15 @@ size_t
 SQ2BitGemmKernel_CompInt8(
     size_t BlkLen,
     const std::byte* QuantA,
+    const float* QuantAScale,
+    const std::byte* QuantAZeroPoint,
     const std::byte* QuantBData,
     const float* QuantBScale,
     const std::byte* QuantBZeroPoint,
     float* C,
     size_t CountM,
     size_t CountN,
-    size_t /*CountK*/,
+    size_t CountK,
     size_t BlockCountK,
     size_t ldc,
     const float* Bias
@@ -1421,12 +1424,15 @@ SQ2BitGemmKernel_CompInt8(
         SQ2BitGemmKernel_CompInt8_DispatchOnBlkLen<HasZeroPoint>(
             BlkLen,
             QuantA,
+            QuantAScale,
+            QuantAZeroPoint,
             QuantBData,
             QuantBScale,
             QuantBZeroPoint,
             C,
             CountM,
             CountN,
+            CountK,
             BlockCountK,
             ldc,
             Bias
@@ -1436,12 +1442,15 @@ SQ2BitGemmKernel_CompInt8(
         SQ2BitGemmKernel_CompInt8_DispatchOnBlkLen<HasZeroPoint>(
             BlkLen,
             QuantA,
+            QuantAScale,
+            QuantAZeroPoint,
             QuantBData,
             QuantBScale,
             QuantBZeroPoint,
             C,
             CountM,
             CountN,
+            CountK,
             BlockCountK,
             ldc,
             Bias
@@ -1457,12 +1466,15 @@ void
 SQ2BitGemmKernel_CompInt8_DispatchOnBlkLen(
     size_t BlkLen,
     const std::byte* QuantA,
+    const float* QuantAScale,
+    const std::byte* QuantAZeroPoint,
     const std::byte* QuantBData,
     const float* QuantBScale,
     const std::byte* QuantBZeroPoint,
     float* C,
     size_t CountM,
     size_t CountN,
+    size_t CountK,
     size_t BlockCountK,
     size_t ldc,
     const float* Bias
@@ -1471,12 +1483,15 @@ SQ2BitGemmKernel_CompInt8_DispatchOnBlkLen(
     if (BlkLen == 16) {
         SQ2BitGemmKernel_CompInt8_BlkLen16<HasZeroPoint>(
             QuantA,
+            QuantAScale,
+            QuantAZeroPoint,
             QuantBData,
             QuantBScale,
             QuantBZeroPoint,
             C,
             CountM,
             CountN,
+            CountK,
             BlockCountK,
             ldc,
             Bias
@@ -1484,139 +1499,66 @@ SQ2BitGemmKernel_CompInt8_DispatchOnBlkLen(
     }
 }
 
-// int8_m256_k4096_n1_b2
 template <bool HasZeroPoint>
 void
 SQ2BitGemmKernel_CompInt8_BlkLen16(
     const std::byte* QuantA,
+    const float* QuantAScale,
+    const std::byte* QuantAZeroPoint,
     const std::byte* QuantBData,
     const float* QuantBScale,
     const std::byte* QuantBZeroPoint,
     float* C,
     size_t CountM,
     size_t CountN,
+    size_t CountK,
     size_t BlockCountK,
     size_t ldc,
     const float* Bias
 )
 {
-    void* A_1 = (QuantBData);
-    void* LUT_1 = (QuantA);
-    void* Scales_1 = (QuantBScale);
-    // TODO: LUT Scales and Biases
-    void* LUT_Scales_1 = (LUT_Scales);
-    void* LUT_Biases_1 = (LUT_Biases);
+ if (CountM == 128 && CountK == 4096) {
+    qgemm_lut_t1_int8_m128_k4096_n1_b2(
+    /* A */          const_cast<std::byte*>(QuantBData),          // std::byte* → void*
+    /* LUT */        const_cast<std::byte*>(QuantA),              // std::byte* → void*
+    /* Scales */     const_cast<float*>(QuantBScale),             // float* → void*
+    /* LUT_Scales */ const_cast<float*>(QuantAScale),             // float* → void*
+    /* LUT_Biases */ const_cast<std::byte*>(QuantAZeroPoint),     // std::byte* → void*
+    /* C */          C                                            // float* → void*
+    )
+ } else if (CountM == 256 && CountK == 4096) {
+    qgemm_lut_t1_int8_m256_k4096_n1_b2(
+        const_cast<std::byte*>(QuantBData),
+        const_cast<std::byte*>(QuantA),
+        const_cast<float*>(QuantBScale),
+        const_cast<float*>(QuantAScale),
+        const_cast<std::byte*>(QuantAZeroPoint),
+        C
+    )
 
-    void* C_1 = (C);
+ } else if (CountM == 128 && CountK == 14336) {
+    qgemm_lut_t1_int8_m128_k14336_n1_b2(
+        const_cast<std::byte*>(QuantBData),
+        const_cast<std::byte*>(QuantA),
+        const_cast<float*>(QuantBScale),
+        const_cast<float*>(QuantAScale),
+        const_cast<std::byte*>(QuantAZeroPoint),
+        C
+    )
 
-    alignas(32) half CBits[256];
-    alignas(32) half C_global[128];
-    tbl_float_reset(256, (&(CBits[0])));
-    for (int32_t k_outer = 0; k_outer < 64; ++k_outer) {
-      tbl_g4_int8_float_update_strue_k16_b2_ak16_fafalse_ztrue_osfalse(256, (&(CBits[0])), (&(((int8_t*)LUT_1)[(k_outer * 256)])), (&(((uint8_t*)A_1)[(k_outer * 2048)])), (&(((half*)Scales_1)[((k_outer >> 1) * 256)])), (&(((half*)LUT_Scales_1)[k_outer])), (&(((half*)LUT_Biases_1)[k_outer])));
-    }
-    for (int32_t m_c_outer = 0; m_c_outer < 4; ++m_c_outer) {
-        int32_t cse_var_2 = (m_c_outer * 64);
-        int32_t cse_var_1 = (m_c_outer * 32);
-        C_global[cse_var_1] = ((half)((((float)CBits[cse_var_2]) * 5.000000e-01f) + ((float)CBits[(cse_var_2 + 8)])));
-        C_global[(cse_var_1 + 1)] = ((half)((((float)CBits[(cse_var_2 + 1)]) * 5.000000e-01f) + ((float)CBits[(cse_var_2 + 9)])));
-        C_global[(cse_var_1 + 2)] = ((half)((((float)CBits[(cse_var_2 + 2)]) * 5.000000e-01f) + ((float)CBits[(cse_var_2 + 10)])));
-        C_global[(cse_var_1 + 3)] = ((half)((((float)CBits[(cse_var_2 + 3)]) * 5.000000e-01f) + ((float)CBits[(cse_var_2 + 11)])));
-        C_global[(cse_var_1 + 4)] = ((half)((((float)CBits[(cse_var_2 + 4)]) * 5.000000e-01f) + ((float)CBits[(cse_var_2 + 12)])));
-        C_global[(cse_var_1 + 5)] = ((half)((((float)CBits[(cse_var_2 + 5)]) * 5.000000e-01f) + ((float)CBits[(cse_var_2 + 13)])));
-        C_global[(cse_var_1 + 6)] = ((half)((((float)CBits[(cse_var_2 + 6)]) * 5.000000e-01f) + ((float)CBits[(cse_var_2 + 14)])));
-        C_global[(cse_var_1 + 7)] = ((half)((((float)CBits[(cse_var_2 + 7)]) * 5.000000e-01f) + ((float)CBits[(cse_var_2 + 15)])));
-        C_global[(cse_var_1 + 8)] = ((half)((((float)CBits[(cse_var_2 + 16)]) * 5.000000e-01f) + ((float)CBits[(cse_var_2 + 24)])));
-        C_global[(cse_var_1 + 9)] = ((half)((((float)CBits[(cse_var_2 + 17)]) * 5.000000e-01f) + ((float)CBits[(cse_var_2 + 25)])));
-        C_global[(cse_var_1 + 10)] = ((half)((((float)CBits[(cse_var_2 + 18)]) * 5.000000e-01f) + ((float)CBits[(cse_var_2 + 26)])));
-        C_global[(cse_var_1 + 11)] = ((half)((((float)CBits[(cse_var_2 + 19)]) * 5.000000e-01f) + ((float)CBits[(cse_var_2 + 27)])));
-        C_global[(cse_var_1 + 12)] = ((half)((((float)CBits[(cse_var_2 + 20)]) * 5.000000e-01f) + ((float)CBits[(cse_var_2 + 28)])));
-        C_global[(cse_var_1 + 13)] = ((half)((((float)CBits[(cse_var_2 + 21)]) * 5.000000e-01f) + ((float)CBits[(cse_var_2 + 29)])));
-        C_global[(cse_var_1 + 14)] = ((half)((((float)CBits[(cse_var_2 + 22)]) * 5.000000e-01f) + ((float)CBits[(cse_var_2 + 30)])));
-        C_global[(cse_var_1 + 15)] = ((half)((((float)CBits[(cse_var_2 + 23)]) * 5.000000e-01f) + ((float)CBits[(cse_var_2 + 31)])));
-        C_global[(cse_var_1 + 16)] = ((half)((((float)CBits[(cse_var_2 + 32)]) * 5.000000e-01f) + ((float)CBits[(cse_var_2 + 40)])));
-        C_global[(cse_var_1 + 17)] = ((half)((((float)CBits[(cse_var_2 + 33)]) * 5.000000e-01f) + ((float)CBits[(cse_var_2 + 41)])));
-        C_global[(cse_var_1 + 18)] = ((half)((((float)CBits[(cse_var_2 + 34)]) * 5.000000e-01f) + ((float)CBits[(cse_var_2 + 42)])));
-        C_global[(cse_var_1 + 19)] = ((half)((((float)CBits[(cse_var_2 + 35)]) * 5.000000e-01f) + ((float)CBits[(cse_var_2 + 43)])));
-        C_global[(cse_var_1 + 20)] = ((half)((((float)CBits[(cse_var_2 + 36)]) * 5.000000e-01f) + ((float)CBits[(cse_var_2 + 44)])));
-        C_global[(cse_var_1 + 21)] = ((half)((((float)CBits[(cse_var_2 + 37)]) * 5.000000e-01f) + ((float)CBits[(cse_var_2 + 45)])));
-        C_global[(cse_var_1 + 22)] = ((half)((((float)CBits[(cse_var_2 + 38)]) * 5.000000e-01f) + ((float)CBits[(cse_var_2 + 46)])));
-        C_global[(cse_var_1 + 23)] = ((half)((((float)CBits[(cse_var_2 + 39)]) * 5.000000e-01f) + ((float)CBits[(cse_var_2 + 47)])));
-        C_global[(cse_var_1 + 24)] = ((half)((((float)CBits[(cse_var_2 + 48)]) * 5.000000e-01f) + ((float)CBits[(cse_var_2 + 56)])));
-        C_global[(cse_var_1 + 25)] = ((half)((((float)CBits[(cse_var_2 + 49)]) * 5.000000e-01f) + ((float)CBits[(cse_var_2 + 57)])));
-        C_global[(cse_var_1 + 26)] = ((half)((((float)CBits[(cse_var_2 + 50)]) * 5.000000e-01f) + ((float)CBits[(cse_var_2 + 58)])));
-        C_global[(cse_var_1 + 27)] = ((half)((((float)CBits[(cse_var_2 + 51)]) * 5.000000e-01f) + ((float)CBits[(cse_var_2 + 59)])));
-        C_global[(cse_var_1 + 28)] = ((half)((((float)CBits[(cse_var_2 + 52)]) * 5.000000e-01f) + ((float)CBits[(cse_var_2 + 60)])));
-        C_global[(cse_var_1 + 29)] = ((half)((((float)CBits[(cse_var_2 + 53)]) * 5.000000e-01f) + ((float)CBits[(cse_var_2 + 61)])));
-        C_global[(cse_var_1 + 30)] = ((half)((((float)CBits[(cse_var_2 + 54)]) * 5.000000e-01f) + ((float)CBits[(cse_var_2 + 62)])));
-        C_global[(cse_var_1 + 31)] = ((half)((((float)CBits[(cse_var_2 + 55)]) * 5.000000e-01f) + ((float)CBits[(cse_var_2 + 63)])));
-    }
-    for (int32_t m_inner_outer = 0; m_inner_outer < 4; ++m_inner_outer) {
-    int32_t cse_var_34 = (m_inner_outer * 32);
-    int32_t cse_var_33 = (cse_var_34 + 9);
-    int32_t cse_var_32 = (cse_var_34 + 8);
-    int32_t cse_var_31 = (cse_var_34 + 7);
-    int32_t cse_var_30 = (cse_var_34 + 6);
-    int32_t cse_var_29 = (cse_var_34 + 5);
-    int32_t cse_var_28 = (cse_var_34 + 4);
-    int32_t cse_var_27 = (cse_var_34 + 31);
-    int32_t cse_var_26 = (cse_var_34 + 30);
-    int32_t cse_var_25 = (cse_var_34 + 3);
-    int32_t cse_var_24 = (cse_var_34 + 29);
-    int32_t cse_var_23 = (cse_var_34 + 28);
-    int32_t cse_var_22 = (cse_var_34 + 27);
-    int32_t cse_var_21 = (cse_var_34 + 26);
-    int32_t cse_var_20 = (cse_var_34 + 25);
-    int32_t cse_var_19 = (cse_var_34 + 24);
-    int32_t cse_var_18 = (cse_var_34 + 23);
-    int32_t cse_var_17 = (cse_var_34 + 22);
-    int32_t cse_var_16 = (cse_var_34 + 21);
-    int32_t cse_var_15 = (cse_var_34 + 20);
-    int32_t cse_var_14 = (cse_var_34 + 2);
-    int32_t cse_var_13 = (cse_var_34 + 19);
-    int32_t cse_var_12 = (cse_var_34 + 18);
-    int32_t cse_var_11 = (cse_var_34 + 17);
-    int32_t cse_var_10 = (cse_var_34 + 16);
-    int32_t cse_var_9 = (cse_var_34 + 15);
-    int32_t cse_var_8 = (cse_var_34 + 14);
-    int32_t cse_var_7 = (cse_var_34 + 13);
-    int32_t cse_var_6 = (cse_var_34 + 12);
-    int32_t cse_var_5 = (cse_var_34 + 11);
-    int32_t cse_var_4 = (cse_var_34 + 10);
-    int32_t cse_var_3 = (cse_var_34 + 1);
-    ((half*)C_1)[cse_var_34] = C_global[cse_var_34];
-    ((half*)C_1)[cse_var_3] = C_global[cse_var_3];
-    ((half*)C_1)[cse_var_14] = C_global[cse_var_14];
-    ((half*)C_1)[cse_var_25] = C_global[cse_var_25];
-    ((half*)C_1)[cse_var_28] = C_global[cse_var_28];
-    ((half*)C_1)[cse_var_29] = C_global[cse_var_29];
-    ((half*)C_1)[cse_var_30] = C_global[cse_var_30];
-    ((half*)C_1)[cse_var_31] = C_global[cse_var_31];
-    ((half*)C_1)[cse_var_32] = C_global[cse_var_32];
-    ((half*)C_1)[cse_var_33] = C_global[cse_var_33];
-    ((half*)C_1)[cse_var_4] = C_global[cse_var_4];
-    ((half*)C_1)[cse_var_5] = C_global[cse_var_5];
-    ((half*)C_1)[cse_var_6] = C_global[cse_var_6];
-    ((half*)C_1)[cse_var_7] = C_global[cse_var_7];
-    ((half*)C_1)[cse_var_8] = C_global[cse_var_8];
-    ((half*)C_1)[cse_var_9] = C_global[cse_var_9];
-    ((half*)C_1)[cse_var_10] = C_global[cse_var_10];
-    ((half*)C_1)[cse_var_11] = C_global[cse_var_11];
-    ((half*)C_1)[cse_var_12] = C_global[cse_var_12];
-    ((half*)C_1)[cse_var_13] = C_global[cse_var_13];
-    ((half*)C_1)[cse_var_15] = C_global[cse_var_15];
-    ((half*)C_1)[cse_var_16] = C_global[cse_var_16];
-    ((half*)C_1)[cse_var_17] = C_global[cse_var_17];
-    ((half*)C_1)[cse_var_18] = C_global[cse_var_18];
-    ((half*)C_1)[cse_var_19] = C_global[cse_var_19];
-    ((half*)C_1)[cse_var_20] = C_global[cse_var_20];
-    ((half*)C_1)[cse_var_21] = C_global[cse_var_21];
-    ((half*)C_1)[cse_var_22] = C_global[cse_var_22];
-    ((half*)C_1)[cse_var_23] = C_global[cse_var_23];
-    ((half*)C_1)[cse_var_24] = C_global[cse_var_24];
-    ((half*)C_1)[cse_var_26] = C_global[cse_var_26];
-    ((half*)C_1)[cse_var_27] = C_global[cse_var_27];
-    }
+ } else if (CountM == 512 && CountK == 4096) {
+    qgemm_lut_t1_int8_m512_k4096_n1_b2(
+        const_cast<std::byte*>(QuantBData),
+        const_cast<std::byte*>(QuantA),
+        const_cast<float*>(QuantBScale),
+        const_cast<float*>(QuantAScale),
+        const_cast<std::byte*>(QuantAZeroPoint),
+        C
+    )
+ } else {
+    ORT_ENFORCE(false, "Unsupported shape: CountM=", CountM, " CountK=", CountK,
+        ". Supported combinations: (128,4096), (256,4096), (128,14336), (512,4096)");
+ }
 
 }
 

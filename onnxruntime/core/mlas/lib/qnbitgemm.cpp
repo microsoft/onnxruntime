@@ -240,6 +240,7 @@ struct PerGemmQuantAWorkspace {
     std::byte* QuantData;     // NxBlockCountKxBlkLen
     float* QuantScale;        // NxBlockCountK
     float* BlockSum;          // NxBlockCountK
+    float* QuantZeroPoint;    // NxBlockCountK
     void* PerGemmWorkspace_;  // memory for above data
     size_t M_, BlockCountK_, BlkLen_;
 };
@@ -573,17 +574,22 @@ SQ2BitGemm_CompInt8(
     const size_t RangeCountN
 )
 {
+    PerGemmQuantAWorkspace* const per_gemm_quant_a_workspace = static_cast<PerGemmQuantAWorkspace*>(PerGemmWorkspace);
     constexpr size_t BlkBitWidth = 2;
 
     const size_t k_blks = MlasDivRoundup(K, BlkLen);
 
-    const size_t lda = k_blks * Q8BlkSize(BlkLen);
+    const size_t lda = k_blks * (per_gemm_quant_a_workspace->QuantScale ? BlkLen : Q8BlkSize(BlkLen));
     const size_t ldc = DataParams->ldc;
     const size_t ldb = k_blks * MlasQNBitBlkDataSizeInBytes(BlkBitWidth, BlkLen);
     const size_t k_blks_zp_bytes = MlasQNBitZeroPointsForBlksSizeInBytes<BlkBitWidth>(k_blks);
 
-    const std::byte* QuantA = static_cast<const std::byte*>(PerGemmWorkspace) + RangeStartM * lda;
+    const std::byte* QuantA = per_gemm_quant_a_workspace->QuantData + RangeStartM * lda;
+    const float* QuantAScale = per_gemm_quant_a_workspace->QuantScale + RangeStartM * k_blks;
+    const std::byte* QuantAZeroPoint = per_gemm_quant_a_workspace->QuantZeroPoint + RangeStartM * k_blks;
 
+    // TODO: why?
+    // assert(RangeStartN % 4 == 0);
     const std::byte* QuantBData = static_cast<const std::byte*>(DataParams->PackedQuantBData) + RangeStartN * ldb;
     const float* QuantBScale = DataParams->QuantBScale + RangeStartN * k_blks;
     const std::byte* QuantBZeroPoint =
@@ -607,26 +613,31 @@ SQ2BitGemm_CompInt8(
         const float* bias = (Bias == nullptr) ? nullptr : Bias + n;
 
         if (GetMlasPlatform().QNBitGemmDispatch->SQ2BitGemmKernel_CompInt8 != nullptr) {
-            size_t RowsRemaining = RangeCountM;
-            while (RowsRemaining > 0) {
-                const auto RowsHandled = GetMlasPlatform().QNBitGemmDispatch->SQ2BitGemmKernel_CompInt8(
-                    BlkLen,
-                    a_row, b_col, b_col_scale, b_col_zp, c_blk, RowsRemaining, CountN, K, k_blks, ldc, bias
+            GetMlasPlatform().QNBitGemmDispatch->SQ2BitGemmKernel_CompInt8(
+                BlkLen,
+                QuantA,
+                QuantAScale,
+                QuantAZeroPoint,
+                b_col,
+                b_col_scale,
+                b_col_zp,
+                c_blk,
+                RangeCountM,
+                CountN,
+                K,
+                k_blks,
+                ldc,
+                bias
+            );
+
+            if (DataParams->PostProcessor != nullptr) {
+                DataParams->PostProcessor->Process(
+                    DataParams->C, RangeStartM, RangeStartN + n,
+                    RangeCountM, CountN, ldc
                 );
-
-                if (DataParams->PostProcessor != nullptr) {
-                    DataParams->PostProcessor->Process(
-                        DataParams->C, RangeStartM + RangeCountM - RowsRemaining, RangeStartN + n,
-                        RowsHandled, CountN, ldc
-                    );
-                }
-
-                c_blk += RowsHandled * ldc;
-                a_row += RowsHandled * lda;
-
-                RowsRemaining -= RowsHandled;
             }
         }
+    }
 }
 
 void
@@ -1073,6 +1084,9 @@ MlasQNBitGemmBatch(
             const_cast<MLAS_QNBIT_GEMM_DATA_PARAMS<T>*>(Data)->QuantBBlkSum = packed_quant_b.QuantBBlkSum;
             const_cast<MLAS_QNBIT_GEMM_DATA_PARAMS<T>*>(Data)->QuantBScale = packed_quant_b.PackedQuantBScale;
 
+            PerGemmQuantAWorkspace per_gemm_quant_a_workspace(PerGemmWorkspace, M, BlockCountK, BlkLen);
+            ComputeOperation(BlkLen, K, Data, &per_gemm_quant_a_workspace, RangeStartM, RangeCountM, RangeStartN, RangeCountN);
+        } else if (BlkBitWidth == 2 && ComputeType == SQNBIT_CompInt8 && GetMlasPlatform().QNBitGemmDispatch->SQ2BitGemmPackQuantBData != nullptr) {
             PerGemmQuantAWorkspace per_gemm_quant_a_workspace(PerGemmWorkspace, M, BlockCountK, BlkLen);
             ComputeOperation(BlkLen, K, Data, &per_gemm_quant_a_workspace, RangeStartM, RangeCountM, RangeStartN, RangeCountN);
         } else {

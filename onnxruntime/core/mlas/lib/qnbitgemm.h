@@ -52,7 +52,6 @@ struct PackedQuantBDataStruct {
         : QuantBWorkspace_(PackedQuantBWorkspace), N_(N), BlockCountK_(BlockCountK), BlkLen_(BlkLen)
     {
       // TODO: duplicate code from Q4BitGemmPackQuantBDataSize
-        constexpr size_t BlkBitWidth = 4;
         const size_t PackedQuantBDataSize = N * BlockCountK * MlasQNBitBlkDataSizeInBytes(BlkBitWidth, BlkLen);
         size_t BlkSumSize = MlasDivRoundup(N, 16) * BlockCountK * 16 * sizeof(T);
 
@@ -351,7 +350,26 @@ struct MLAS_QNBIT_GEMM_DISPATCH {
     );
 
     SQ4BitGemmKernel_CompInt8_Fn* SQ4BitGemmKernel_CompInt8 = nullptr;
-    SQ4BitGemmKernel_CompInt8_Fn* SQ2BitGemmKernel_CompInt8 = nullptr;
+
+
+    typedef size_t(SQ2BitGemmKernel_CompInt8_Fn)(
+        size_t BlkLen,
+        const std::byte* QuantA,
+        const float* QuantAScale,
+        const std::byte* QuantAZeroPoint,
+        const std::byte* QuantBData,
+        const float* QuantBScale,
+        const std::byte* QuantBZeroPoint,
+        float* C,
+        size_t CountM,
+        size_t CountN,
+        size_t CountK,
+        size_t BlockCountK,
+        size_t ldc,
+        const float* Bias
+    );
+
+    SQ2BitGemmKernel_CompInt8_Fn* SQ2BitGemmKernel_CompInt8 = nullptr;
 
     /**
      * @brief Block quantize values from one row of matrix A from floats to quantized 8-bit integers.

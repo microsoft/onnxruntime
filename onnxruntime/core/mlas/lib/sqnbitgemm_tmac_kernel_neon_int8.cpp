@@ -15,7 +15,7 @@ Abstract:
     - tbl_g4_int8_float_update_impl: T-MAC GEMM Kernel
 --*/
 
-#include "t-mac/kernels.h"
+#include "sqnbitgemm_tmac_kernel_neon_int8.h"
 #ifndef INTRINSIC_TYPES_H
 #define INTRINSIC_TYPES_H
 

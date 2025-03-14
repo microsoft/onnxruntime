@@ -136,13 +136,15 @@ size_t
 SQ2BitGemmKernel_CompInt8(
     size_t BlkLen,
     const std::byte* QuantA,
+    const float* QuantAScale,
+    const std::byte* QuantAZeroPoint,
     const std::byte* QuantBData,
     const float* QuantBScale,
     const std::byte* QuantBZeroPoint,
     float* C,
     size_t CountM,
     size_t CountN,
-    size_t /*CountK*/,
+    size_t CountK,
     size_t BlockCountK,
     size_t ldc,
     const float* Bias
