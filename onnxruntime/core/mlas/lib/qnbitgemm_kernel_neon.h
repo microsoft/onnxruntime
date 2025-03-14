@@ -23,6 +23,7 @@ Abstract:
 #include <cstddef>
 #include <utility>
 
+#include "mlas_qnbit.h"
 #include "mlasi.h"
 
 namespace sqnbitgemm_neon
