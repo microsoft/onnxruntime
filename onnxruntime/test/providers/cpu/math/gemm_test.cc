@@ -761,9 +761,10 @@ TYPED_TEST(GemmOpTypedTests, ZeroKWithBias) {
   test.AddInput<TypeParam>("C", {4}, std::vector<TypeParam>(4, static_cast<TypeParam>(1.0f)));
   test.AddOutput<TypeParam>("Y", {4, 4}, std::vector<TypeParam>(16, static_cast<TypeParam>(1.0f)));
 
+  // WebGPU EP doesn't support zero buffer.
   test.ConfigExcludeEps({kCoreMLExecutionProvider, kNnapiExecutionProvider,
                          kDmlExecutionProvider, kDnnlExecutionProvider, kQnnExecutionProvider,
-                         kOpenVINOExecutionProvider})
+                         kOpenVINOExecutionProvider, kWebGpuExecutionProvider})
       .Config(run_with_tunable_op)
       .RunWithConfig();
 }
@@ -780,9 +781,10 @@ TYPED_TEST(GemmOpTypedTests, ZeroKWithNoBias) {
   test.AddInput<TypeParam>("B", {0, 4}, {});
   test.AddOutput<TypeParam>("Y", {4, 4}, std::vector<TypeParam>(16, static_cast<TypeParam>(0.0f)));
 
+  // WebGPU EP doesn't support zero buffer.
   test.ConfigExcludeEps({kCoreMLExecutionProvider, kNnapiExecutionProvider,
                          kDmlExecutionProvider, kDnnlExecutionProvider, kQnnExecutionProvider,
-                         kOpenVINOExecutionProvider})
+                         kOpenVINOExecutionProvider, kWebGpuExecutionProvider})
       .Config(run_with_tunable_op)
       .RunWithConfig();
 }
