@@ -2551,7 +2551,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>Softcap value for attention weights. Default value is 0.</dd>
 </dl>
 
-#### Inputs (7 - 9)
+#### Inputs (7 - 11)
 
 <dl>
 <dt><tt>query</tt> : T</dt>
@@ -2572,6 +2572,10 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>2D tensor with shape (max_sequence_length, head_size / 2).</dd>
 <dt><tt>sin_cache</tt> (optional) : T</dt>
 <dd>2D tensor with shape (max_sequence_length, head_size / 2).</dd>
+<dt><tt>position_ids</tt> (optional) : tensor(int64)</dt>
+<dd>2D tensor with shape (batch_size, sequence_length). When processing the first prompt the kernel uses only the first element</dd>
+<dt><tt>attention_bias</tt> (optional) : T</dt>
+<dd>additional add to QxK' with shape (batch_size or 1, num_heads or 1, sequence_length, total_sequence_length)</dd>
 </dl>
 
 #### Outputs
