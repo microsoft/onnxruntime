@@ -136,7 +136,8 @@ Module["jsepInit"] = (name, params) => {
       dataOffset,
       dataLength,
       builder,
-      desc
+      desc,
+      shouldConvertInt64ToInt32,
     ) => {
       return backend["registerMLConstant"](
         externalFilePath,
@@ -144,14 +145,13 @@ Module["jsepInit"] = (name, params) => {
         dataLength,
         builder,
         desc,
-        Module.MountedFiles
+        Module.MountedFiles,
+        shouldConvertInt64ToInt32,
       );
     };
-    Module["jsepRegisterGraphInput"] =
-      backend["registerGraphInput"].bind(backend);
-    Module["jsepIsGraphInput"] = backend["isGraphInput"].bind(backend);
-
-    Module["jsepCreateTemporaryTensor"] =
-      backend["createTemporaryTensor"].bind(backend);
+    Module['jsepRegisterGraphInput'] = backend['registerGraphInput'].bind(backend);
+    Module['jsepIsGraphInput'] = backend['isGraphInput'].bind(backend);
+    Module['jsepCreateTemporaryTensor'] = backend['createTemporaryTensor'].bind(backend);
+    Module['jsepIsInt64Supported'] = backend['isInt64Supported'].bind(backend);
   }
 };
