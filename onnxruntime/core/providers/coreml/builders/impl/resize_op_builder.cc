@@ -77,7 +77,8 @@ bool GetValidatedResizeScales(const GraphViewer& graph_viewer,
     return false;
   }
 
-  Initializer unpacked_tensor(*scales_tensor);
+  const auto& graph = graph_viewer.GetGraph();
+  Initializer unpacked_tensor(graph, *scales_tensor, graph.ModelPath());
   auto scales_data = unpacked_tensor.DataAsSpan<float>();
   scales.assign(scales_data.begin(), scales_data.end());
 
@@ -108,7 +109,7 @@ bool GetValidatedResizeSizes(const GraphViewer& graph_viewer,
     return false;
   }
 
-  Initializer unpacked_tensor(*sizes_tensor);
+  Initializer unpacked_tensor(graph_viewer.GetGraph(), *sizes_tensor, graph_viewer.ModelPath());
   auto sizes_data = unpacked_tensor.DataAsSpan<int64_t>();
   sizes.assign(sizes_data.begin(), sizes_data.end());
 

@@ -13,7 +13,8 @@ using namespace ONNX_NAMESPACE;
 using namespace onnxruntime::common;
 namespace onnxruntime {
 
-Status BatchNormalizationMulFusion::Apply(Graph& graph, Node& node, RewriteRuleEffect& rule_effect, const onnxruntime::logging::Logger&) const {
+Status BatchNormalizationMulFusion::Apply(Graph& graph, Node& node, RewriteRuleEffect& rule_effect,
+  const onnxruntime::logging::Logger&) const {
   auto& BatchNormalization_node = node;
   const auto& mul_node = *BatchNormalization_node.OutputNodesBegin();
   const auto& BatchNormalization_inputs = BatchNormalization_node.InputDefs();
@@ -54,8 +55,8 @@ Status BatchNormalizationMulFusion::Apply(Graph& graph, Node& node, RewriteRuleE
     }
   }
 
-  Initializer BatchNormalization_Scale{*BatchNormalization_Scale_tensor_proto, graph.ModelPath()};
-  Initializer mul_B{*mul_B_tensor_proto, graph.ModelPath()};
+  Initializer BatchNormalization_Scale{graph, *BatchNormalization_Scale_tensor_proto, graph.ModelPath()};
+  Initializer mul_B{graph, *mul_B_tensor_proto, graph.ModelPath()};
 
   const ONNX_NAMESPACE::TensorProto* BatchNormalization_B_tensor_proto = nullptr;
   if (!graph.GetInitializedTensor(BatchNormalization_inputs[2]->Name(), BatchNormalization_B_tensor_proto))
@@ -67,7 +68,7 @@ Status BatchNormalizationMulFusion::Apply(Graph& graph, Node& node, RewriteRuleE
       BatchNormalization_B_tensor_proto->dims_size() != 1) {
     return Status::OK();
   }
-  Initializer BatchNormalization_B{*BatchNormalization_B_tensor_proto, graph.ModelPath()};
+  Initializer BatchNormalization_B{graph, *BatchNormalization_B_tensor_proto, graph.ModelPath()};
 
   // Calculate new value of initializers of BatchNormalization node
   BatchNormalization_Scale.scale_by_axis(mul_B, 1);
@@ -79,17 +80,20 @@ Status BatchNormalizationMulFusion::Apply(Graph& graph, Node& node, RewriteRuleE
   }
 
   // Create new initializers of BatchNormalization
-  ONNX_NAMESPACE::TensorProto new_BatchNormalization_Scale_tensor_proto(*BatchNormalization_Scale_tensor_proto);
-  BatchNormalization_Scale.ToProto(new_BatchNormalization_Scale_tensor_proto);
+  ONNX_NAMESPACE::TensorProto new_BatchNormalization_Scale_tensor_proto;
+  OrtValue ort_value_scale;
+  BatchNormalization_Scale.ToProtoWithOrtValue(new_BatchNormalization_Scale_tensor_proto, ort_value_scale);
 
   // Replace initializers of BatchNormalization node
   graph.RemoveInitializedTensor(BatchNormalization_inputs[1]->Name());
-  graph.AddInitializedTensor(new_BatchNormalization_Scale_tensor_proto);
+  ORT_RETURN_IF_ERROR(graph.AddInitializedOrtValue(new_BatchNormalization_Scale_tensor_proto, ort_value_scale));
 
-  ONNX_NAMESPACE::TensorProto new_BatchNormalization_B_tensor_proto(*BatchNormalization_B_tensor_proto);
-  BatchNormalization_B.ToProto(new_BatchNormalization_B_tensor_proto);
+  ONNX_NAMESPACE::TensorProto new_BatchNormalization_B_tensor_proto;
+  OrtValue ort_value_B_scale;
+  BatchNormalization_B.ToProtoWithOrtValue(new_BatchNormalization_B_tensor_proto, ort_value_B_scale);
+
   graph.RemoveInitializedTensor(BatchNormalization_inputs[2]->Name());
-  graph.AddInitializedTensor(new_BatchNormalization_B_tensor_proto);
+  ORT_RETURN_IF_ERROR(graph.AddInitializedOrtValue(new_BatchNormalization_B_tensor_proto, ort_value_B_scale));
 
   // Remove Mul node.
   auto* mul_node_to_remove = graph.GetNode(mul_node.Index());

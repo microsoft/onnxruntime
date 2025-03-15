@@ -102,8 +102,8 @@ RknpuExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_view
   const auto graph_outputs = graph_viewer.GetOutputs();
   // Add initializer to graph_viewer
   const auto& init_tensors = graph_viewer.GetAllInitializedTensors();
-  for (const auto& tensor : init_tensors) {
-    graph_build.AddInitializedTensor(*(tensor.second));
+  for (const auto& [name, _] : init_tensors) {
+    graph_utils::MakeInitializerCopyIfNotExist(graph_viewer.GetGraph(), graph_build, name);
   }
 
   ORT_ENFORCE(graph_build.Resolve().IsOK());

@@ -48,6 +48,18 @@ void SwapByteOrderCopy(size_t element_size_in_bytes,
   }
 }
 
+void SwapByteOrderInplace(size_t element_size_in_bytes, gsl::span<unsigned char> bytes) {
+  assert(bytes.size_bytes() % element_size_in_bytes == 0);
+  auto* data = bytes.data();
+  for (size_t i = 0, num_elements = bytes.size(); i < num_elements; ++i) {
+    auto* start_byte = data + i * element_size_in_bytes;
+    auto* end_byte = start_byte + element_size_in_bytes - 1;
+    for (size_t count = 0; count < element_size_in_bytes / 2; ++count) {
+      std::swap(*start_byte++, *end_byte--);
+    }
+  }
+}
+
 namespace detail {
 
 Status CopyLittleEndian(size_t element_size_in_bytes,

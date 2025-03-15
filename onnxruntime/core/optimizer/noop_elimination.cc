@@ -68,7 +68,7 @@ bool NoopElimination::SatisfyCondition(const Graph& graph, const Node& node, con
       op_type == "Mul" ||
       op_type == "Div") {
     int32_t data_type = initializer->data_type();
-    Initializer add_init(*initializer, graph.ModelPath());
+    Initializer add_init(graph, *initializer, graph.ModelPath());
 
     float value = 0.0f;
     switch (data_type) {

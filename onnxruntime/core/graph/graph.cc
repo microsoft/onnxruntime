@@ -3402,17 +3402,63 @@ bool Graph::ResolveContext::IsOuterScopeValue(const std::string& name) const {
 #endif  // !defined(ORT_MINIMAL_BUILD)
 
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
+
 void Graph::AddInitializedTensor(const TensorProto& tensor) {
   auto existing = name_to_initial_tensor_.find(tensor.name());
-  if (existing != name_to_initial_tensor_.cend()) {
+  const bool exists = existing != name_to_initial_tensor_.cend();
+  if (exists) {
     ORT_ENFORCE(existing->second == &tensor,
                 "AddInitializedTensor already has tensor with name ", tensor.name(), " but different TensorProto.");
     return;
   }
 
+  // No need to add a new entry if it already exists.
+  if (!exists) {
+    // XXX: This overload is used when the tensor does not point to an OrtValue which
+    // would need to be updated, but it is okay if it is pointing to flatbuffers at the moment.
+    // We will need to create a corresponding OrtValue for flatbuffers as well to make it uniform.
+    if (utils::HasExternalData(tensor)) {
+      if (ortvalue_initializers_.count(tensor.name()) > 0) {
+        ORT_THROW("OrtValue needs to be inserted. Using wrong overload");
+      }
+    }
+    const gsl::not_null<TensorProto*> tensor_added{graph_proto_->add_initializer()};
+    *(tensor_added) = tensor;
+    name_to_initial_tensor_.emplace(tensor.name(), tensor_added);
+  }
+
+  bool resolve_needed = !exists;
+  if (!is_loaded_from_model_file_ && GetNodeArg(tensor.name()) == nullptr) {
+    // make sure there is a NodeArg for the initializer as SetGraphInputsOutputs may add it to the graph inputs.
+    // the shape will be set to the correct value in TypeCheckInputsAndInitializers as we don't yet know whether there
+    // will be a matching graph input for this initializer (we prefer shape info from the graph input).
+    TypeProto t;
+    t.mutable_tensor_type()->set_elem_type(tensor.data_type());
+    ORT_IGNORE_RETURN_VALUE(GetOrCreateNodeArg(tensor.name(), &t));
+    resolve_needed = true;
+  }
+
+  if (resolve_needed) {
+    SetGraphResolveNeeded();
+  }
+}
+
+Status Graph::AddInitializedOrtValue(const ONNX_NAMESPACE::TensorProto& tensor, const OrtValue& ortvalue_initializer) {
+  ORT_RETURN_IF(name_to_initial_tensor_.count(tensor.name()) > 0, "Attempt to replace the existing tensor");
+
   const gsl::not_null<TensorProto*> tensor_added{graph_proto_->add_initializer()};
   *(tensor_added) = tensor;
+  // Need to replace in case we are adding a corresponding OrtValue it may be pointing to.
   name_to_initial_tensor_.emplace(tensor.name(), tensor_added);
+
+  if (ortvalue_initializer.IsAllocated()) {
+    ortvalue_initializers_.insert_or_assign(tensor.name(), ortvalue_initializer);
+  } else {
+    // XXX: This is for cases when the data is short. At the moment we only keep it
+    // inside the TensorProto
+    ortvalue_initializers_.erase(tensor.name());
+  }
+
   SetGraphResolveNeeded();
   if (!is_loaded_from_model_file_ && GetNodeArg(tensor.name()) == nullptr) {
     // make sure there is a NodeArg for the initializer as SetGraphInputsOutputs may add it to the graph inputs.
@@ -3422,6 +3468,8 @@ void Graph::AddInitializedTensor(const TensorProto& tensor) {
     t.mutable_tensor_type()->set_elem_type(tensor.data_type());
     ORT_IGNORE_RETURN_VALUE(GetOrCreateNodeArg(tensor.name(), &t));
   }
+
+  return Status::OK();
 }
 
 void Graph::FindAllSubgraphs(std::vector<Graph*>& subgraphs) {
@@ -3529,7 +3577,8 @@ void Graph::RemoveInitializedTensor(const std::string& tensor_name) {
 }
 
 #if !defined(ORT_MINIMAL_BUILD)
-Status Graph::ReplaceInitializedTensorImpl(ONNX_NAMESPACE::TensorProto new_initializer, bool is_external) {
+Status Graph::ReplaceInitializedTensorImpl(ONNX_NAMESPACE::TensorProto new_initializer,
+                                           OrtValue ort_value, bool must_replace_external) {
   // name_to_initial_tensor_ maps from name to const TensorProto*, so we first
   // look up the const pointer by name, then find and modify the mutable
   // pointed-to TensorProto in graph_proto_.
@@ -3548,8 +3597,13 @@ Status Graph::ReplaceInitializedTensorImpl(ONNX_NAMESPACE::TensorProto new_initi
     return true;
   };
 
-  ORT_RETURN_IF_NOT(!is_external || utils::HasExternalData(old_initializer),
+  ORT_RETURN_IF_NOT(!must_replace_external || utils::HasExternalData(old_initializer),
                     "Trying to replace non-external initializer with external data");
+
+  // New initializers data generally are within OrtValues
+  // Small initializers are still stored inside TensorProto
+  ORT_RETURN_IF_NOT(utils::HasExternalData(new_initializer) || !ort_value.IsAllocated(),
+                    "All TensorProtos are expected to point to an OrtValue");
 
   ORT_RETURN_IF_NOT(dims_eq(), "Replacement tensor's dimensions do not match.");
   ORT_RETURN_IF_NOT(old_initializer.data_type() == new_initializer.data_type(),
@@ -3564,22 +3618,59 @@ Status Graph::ReplaceInitializedTensorImpl(ONNX_NAMESPACE::TensorProto new_initi
   ORT_ENFORCE(existing_entry != mutable_initializers.pointer_end(),
               "graph_proto_ is not in sync with name_to_initial_tensor_");
 
+  if (ort_value.IsAllocated()) {
+    ORT_IGNORE_RETURN_VALUE(ortvalue_initializers_.insert_or_assign(initializer_name, std::move(ort_value)));
+  } else {
+    ORT_IGNORE_RETURN_VALUE(ortvalue_initializers_.erase(initializer_name));
+  }
+
   **existing_entry = std::move(new_initializer);
 
   return Status::OK();
 }
 
-Status Graph::ReplaceInitializedTensor(ONNX_NAMESPACE::TensorProto new_initializer) {
-  return ReplaceInitializedTensorImpl(std::move(new_initializer), false);
+Status Graph::ReplaceInitializedTensor(const ONNX_NAMESPACE::TensorProto& new_initializer) {
+  ORT_RETURN_IF(utils::HasExternalData(new_initializer),
+                "ReplaceInitializedTensor: OrtValue is expected for the external data");
+
+  Tensor tensor;
+  ORT_RETURN_IF_ERROR(utils::CreateTensorFromTensorProto(Env::Default(), ModelPath(), new_initializer, tensor));
+  auto tensor_proto_extrernal = utils::TensorToTensorProto(tensor, new_initializer.name(), true);
+
+  OrtValue ort_value;
+  if (utils::HasExternalData(tensor_proto_extrernal)) {
+    Tensor::InitOrtValue(std::move(tensor), ort_value);
+  }
+
+  return ReplaceInitializedTensorImpl(std::move(tensor_proto_extrernal), std::move(ort_value), false);
+}
+
+common::Status Graph::ReplaceInitializedTensor(const ONNX_NAMESPACE::TensorProto& new_initializer,
+                                               const OrtValue& ort_value) {
+  return ReplaceInitializedTensorImpl(new_initializer, ort_value, false);
 }
 
 #if !defined(DISABLE_EXTERNAL_INITIALIZERS)
 Status Graph::InjectExternalInitializedTensors(const InlinedHashMap<std::string, OrtValue>& external_initializers) {
-  for (const auto& e : external_initializers) {
-    const auto& name = e.first;
-    const OrtValue& ort_value = e.second;
-    auto tensor_proto = utils::TensorToTensorProto(ort_value.Get<Tensor>(), name);
-    ORT_RETURN_IF_ERROR(ReplaceInitializedTensorImpl(std::move(tensor_proto), true));
+  for (const auto& [name, value] : external_initializers) {
+    const auto& user_tensor = value.Get<Tensor>();
+
+    OrtValue ort_value;
+    TensorProto tensor_proto;
+    if (user_tensor.SizeInBytes() > utils::kSmallTensorExternalDataThreshold) {
+      Tensor initializer{user_tensor.DataType(), user_tensor.Shape(), CPUAllocator::Instance()};
+      utils::MakeCpuTensorCopy(user_tensor, initializer);
+
+      constexpr const bool use_tensor_buffer_true = true;
+      tensor_proto = utils::TensorToTensorProto(initializer, name, use_tensor_buffer_true);
+      ORT_ENFORCE(utils::HasExternalData(tensor_proto), "Expecting this tensor_proto to have a pointer");
+      Tensor::InitOrtValue(std::move(initializer), ort_value);
+    } else {
+      constexpr const bool use_tensor_buffer_false = false;
+      tensor_proto = utils::TensorToTensorProto(user_tensor, name, use_tensor_buffer_false);
+    }
+
+    ORT_RETURN_IF_ERROR(ReplaceInitializedTensorImpl(std::move(tensor_proto), std::move(ort_value), true));
     LOGS(logger_, INFO) << "Replaced external initializer: " << name;
   }
   return Status::OK();
@@ -3589,14 +3680,14 @@ Status Graph::InjectExternalInitializersFromFilesInMemory(
     const InlinedHashMap<PathString, std::pair<char*, size_t>>& external_initializer_files) {
   for (const auto& [tensor_name, tensor_proto] : name_to_initial_tensor_) {
     if (tensor_proto->data_location() == TensorProto_DataLocation_EXTERNAL) {
-      std::unique_ptr<onnxruntime::ExternalDataInfo> external_data_info;
-      ORT_RETURN_IF_ERROR(onnxruntime::ExternalDataInfo::Create(tensor_proto->external_data(), external_data_info));
+      std::unique_ptr<ExternalDataInfo> external_data_info;
+      ORT_RETURN_IF_ERROR(ExternalDataInfo::Create(tensor_proto->external_data(), external_data_info));
 
       const auto& external_file = external_data_info->GetRelPath();
       onnxruntime::FileOffsetType file_offset = external_data_info->GetOffset();
       const size_t external_data_length = external_data_info->GetLength();
       SafeInt<size_t> tensor_byte_size;
-      ORT_RETURN_IF_ERROR(onnxruntime::utils::GetSizeInBytesFromTensorProto<0>(*tensor_proto, &tensor_byte_size));
+      ORT_RETURN_IF_ERROR(utils::GetSizeInBytesFromTensorProto<0>(*tensor_proto, &tensor_byte_size));
       ORT_RETURN_IF_NOT(external_data_length == 0 || external_data_length == tensor_byte_size,
                         "TensorProto: ", tensor_name, " external data size mismatch. Computed size: ",
                         *&tensor_byte_size, ", external_data.length: ", external_data_length);
@@ -3632,7 +3723,16 @@ Status Graph::InjectExternalInitializersFromFilesInMemory(
       TensorShape tensor_shape = utils::GetTensorShapeFromTensorProto(old_initializer);
       auto tensor = Tensor(type, tensor_shape, tensor_buffer,
                            OrtMemoryInfo(CPU, OrtAllocatorType::OrtDeviceAllocator));
-      auto new_tensor_proto = utils::TensorToTensorProto(tensor, tensor_name);
+
+      constexpr const bool use_tensor_buffer_true = true;
+      auto new_tensor_proto = utils::TensorToTensorProto(tensor, tensor_name, use_tensor_buffer_true);
+      const bool has_external_data = utils::HasExternalData(new_tensor_proto);
+
+      OrtValue ort_value;
+      if (has_external_data) {
+        Tensor::InitOrtValue(std::move(tensor), ort_value);
+      }
+      ortvalue_initializers_.insert_or_assign(tensor_name, std::move(ort_value));
       **existing_entry = std::move(new_tensor_proto);
     }
   }
@@ -3653,14 +3753,18 @@ bool Graph::GetInitializedTensor(const std::string& tensor_name, const TensorPro
   return true;
 }
 
-bool Graph::GetOrtValueInitializer(const std::string& name, OrtValue& value) const {
+bool Graph::GetOrtValueInitializer(const std::string& name, OrtValue& value, bool check_outer_scope) const {
   auto it = ortvalue_initializers_.find(name);
-  if (it == ortvalue_initializers_.end()) {
-    return false;
+  if (it != ortvalue_initializers_.end()) {
+    value = it->second;
+    return true;
+  } else if (check_outer_scope && IsSubgraph()) {
+    if (IsOuterScopeValue(name)) {
+      // make sure there's not a local value with the same name. if there is it shadows any initializer in outer scope.
+      return parent_graph_->GetOrtValueInitializer(name, value, check_outer_scope);
+    }
   }
-
-  value = it->second;
-  return true;
+  return false;
 }
 
 void Graph::CleanAllInitializedTensors() noexcept {
