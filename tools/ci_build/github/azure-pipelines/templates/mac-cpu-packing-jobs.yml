@@ -37,7 +37,9 @@ jobs:
     PROTO_CACHE_DIR: $(Pipeline.Workspace)/ccache_proto
     ORT_CACHE_DIR: $(Pipeline.Workspace)/ccache_ort
   pool:
-    vmImage: 'macOS-13'
+    name: "Azure Pipelines"
+    image: 'macOS-13'
+    os: macOS
   timeoutInMinutes: 300
   steps:
   - checkout: self
