@@ -38,13 +38,15 @@ REGISTER_UNARY_ELEMENTWISE_VERSIONED_KERNEL(ReduceMax, 1, 10);
 REGISTER_UNARY_ELEMENTWISE_VERSIONED_KERNEL(ReduceMax, 11, 11);
 REGISTER_UNARY_ELEMENTWISE_VERSIONED_KERNEL(ReduceMax, 12, 12);
 REGISTER_UNARY_ELEMENTWISE_VERSIONED_KERNEL(ReduceMax, 13, 17);
-REGISTER_UNARY_ELEMENTWISE_KERNEL(ReduceMax, 18);
+REGISTER_UNARY_ELEMENTWISE_VERSIONED_KERNEL(ReduceMax, 17, 18);
+REGISTER_UNARY_ELEMENTWISE_KERNEL(ReduceMax, 20);
 
 REGISTER_UNARY_ELEMENTWISE_VERSIONED_KERNEL(ReduceMin, 1, 10);
 REGISTER_UNARY_ELEMENTWISE_VERSIONED_KERNEL(ReduceMin, 11, 11);
 REGISTER_UNARY_ELEMENTWISE_VERSIONED_KERNEL(ReduceMin, 12, 12);
 REGISTER_UNARY_ELEMENTWISE_VERSIONED_KERNEL(ReduceMin, 13, 17);
-REGISTER_UNARY_ELEMENTWISE_KERNEL(ReduceMin, 18);
+REGISTER_UNARY_ELEMENTWISE_VERSIONED_KERNEL(ReduceMin, 17, 18);
+REGISTER_UNARY_ELEMENTWISE_KERNEL(ReduceMin, 20);
 
 REGISTER_UNARY_ELEMENTWISE_VERSIONED_KERNEL(ReduceSum, 1, 10);
 REGISTER_UNARY_ELEMENTWISE_VERSIONED_KERNEL(ReduceSum, 11, 12);
@@ -163,7 +165,7 @@ Status ReduceKernel<allow_multi_axes>::ComputeInternal(ComputeContext& context) 
     if (noop_with_empty_axes_ || rank == 0) {
       // If axes is empty and noop_with_empty_axes_ is true, it is a no-op according to the spec
       // If input tensor is a scalar and it's not a ReduceLogSum or ReduceSumSquare, return the input tensor as is.
-      if (rank == 0 && (name_ == "ReduceLogSum" || name_ == "ReduceSumSquare")) {
+      if (rank == 0 && (name_ == "ReduceLogSum" || name_ == "ReduceSumSquare" || name == "ReduceL1" || name == "ReduceL2")) {
         // For ReduceLogSum with scalar input, output = log(input)
         // For ReduceSumSquare with scalar input, output = input * input
         auto output = context.Output(0, input_tensor->Shape());
@@ -303,9 +305,9 @@ ReduceOpSpecificCode ReduceL2::GetOpSpecificCode(const Tensor* input_tensor) con
 }
 ReduceOpSpecificCode ReduceLogSum::GetOpSpecificCode(const Tensor* input_tensor) const {
   ORT_UNUSED_PARAMETER(input_tensor);
-  std::string loop_header = "var log_sum = f32(0);";
-  std::string loop_body = "log_sum += f32(current_element);";
-  std::string loop_footer = "log_sum = log(log_sum); let output_value = output_value_t(log_sum);";
+  std::string loop_header = "var sum = f32(0);";
+  std::string loop_body = "sum += f32(current_element);";
+  std::string loop_footer = "let log_sum = log(sum); let output_value = output_value_t(log_sum);";
   ReduceOpSpecificCode code({loop_header, loop_body, loop_footer});
   return code;
 }
@@ -319,9 +321,9 @@ ReduceOpSpecificCode ReduceSumSquare::GetOpSpecificCode(const Tensor* input_tens
 }
 ReduceOpSpecificCode ReduceLogSumExp::GetOpSpecificCode(const Tensor* input_tensor) const {
   ORT_UNUSED_PARAMETER(input_tensor);
-  std::string loop_header = "var log_sum_exp = f32(0);";
-  std::string loop_body = "log_sum_exp += exp(f32(current_element));";
-  std::string loop_footer = "log_sum_exp = log(log_sum_exp); let output_value = output_value_t(log_sum_exp);";
+  std::string loop_header = "var sum_exp = f32(0);";
+  std::string loop_body = "sum_exp += exp(f32(current_element));";
+  std::string loop_footer = "let log_sum_exp = log(sum_exp); let output_value = output_value_t(log_sum_exp);";
   ReduceOpSpecificCode code({loop_header, loop_body, loop_footer});
   return code;
 }
