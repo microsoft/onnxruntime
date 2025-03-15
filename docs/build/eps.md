@@ -110,15 +110,27 @@ See more information on the TensorRT Execution Provider [here](../execution-prov
 
  * Follow [instructions for CUDA execution provider](#cuda) to install CUDA and cuDNN, and setup environment variables.
  * Follow [instructions for installing TensorRT](https://docs.nvidia.com/deeplearning/tensorrt/latest/installing-tensorrt/installing.html)
-   * The TensorRT execution provider for ONNX Runtime is built and tested with TensorRT 10.0.
+   * The TensorRT execution provider for ONNX Runtime is built and tested with TensorRT 10.8.
    * The path to TensorRT installation must be provided via the `--tensorrt_home` parameter.
-   * ONNX Runtime uses TensorRT built-in parser from `tensorrt_home` by default.
+   * ONNX Runtime uses [TensorRT built-in parser](https://developer.nvidia.com/tensorrt/download) from `tensorrt_home` by default.
    * To use open-sourced [onnx-tensorrt](https://github.com/onnx/onnx-tensorrt/tree/main) parser instead, add `--use_tensorrt_oss_parser` parameter in build commands below.
-       * The default version of open-sourced onnx-tensorrt parser is encoded in [cmake/deps.txt](https://github.com/microsoft/onnxruntime/blob/main/cmake/deps.txt).
+       * The default version of open-sourced onnx-tensorrt parser is specified in [cmake/deps.txt](https://github.com/microsoft/onnxruntime/blob/main/cmake/deps.txt).
        * To specify a different version of onnx-tensorrt parser:
          * Select the commit of [onnx-tensorrt](https://github.com/onnx/onnx-tensorrt/commits) that you preferred;
          * Run `sha1sum` command with downloaded onnx-tensorrt zip file to acquire the SHA1 hash 
          * Update [cmake/deps.txt](https://github.com/microsoft/onnxruntime/blob/main/cmake/deps.txt) with updated onnx-tensorrt commit and hash info.
+       * Please make sure TensorRT built-in parser/open-sourced onnx-tensorrt specified in [cmake/deps.txt](https://github.com/microsoft/onnxruntime/blob/main/cmake/deps.txt) are **version-matched**, if enabling `--use_tensorrt_oss_parser`. 
+         * i.e It's version-matched if assigning `tensorrt_home` with path to TensorRT-10.9 built-in binaries and onnx-tensorrt [10.9-GA branch](https://github.com/onnx/onnx-tensorrt/tree/release/10.9-GA) specified in [cmake/deps.txt](https://github.com/microsoft/onnxruntime/blob/main/cmake/deps.txt).
+
+
+### **[Note to ORT 1.21.0 open-sourced parser users]** 
+
+* ORT 1.21.0 links against onnx-tensorrt 10.8-GA, which requires upcoming onnx 1.18.
+  * Here's a temporarily fix to preview on onnx-tensorrt 10.8-GA (or newer) when building ORT 1.21.0: 
+    * Replace the [onnx line in cmake/deps.txt](https://github.com/microsoft/onnxruntime/blob/rel-1.21.0/cmake/deps.txt#L38) 
+      with `onnx;https://github.com/onnx/onnx/archive/f22a2ad78c9b8f3bd2bb402bfce2b0079570ecb6.zip;324a781c31e30306e30baff0ed7fe347b10f8e3c`  
+    * Download [this](https://github.com/microsoft/onnxruntime/blob/7b2733a526c12b5ef4475edd47fd9997ebc2b2c6/cmake/patches/onnx/onnx.patch) as raw file and save file to [cmake/patches/onnx/onnx.patch](https://github.com/microsoft/onnxruntime/blob/rel-1.21.0/cmake/patches/onnx/onnx.patch) (do not copy/paste from browser, as it might alter line break type)
+    * Build ORT 1.21.0 with trt-related flags above (including `--use_tensorrt_oss_parser`)
 
 ### Build Instructions
 {: .no_toc }
@@ -126,20 +138,20 @@ See more information on the TensorRT Execution Provider [here](../execution-prov
 #### Windows
 ```bash
 # to build with tensorrt built-in parser
-.\build.bat --cudnn_home <path to cuDNN home> --cuda_home <path to CUDA home> --use_tensorrt --tensorrt_home <path to TensorRT home> --cmake_generator "Visual Studio 17 2022"
+.\build.bat --config Release --parallel  --cmake_extra_defines 'CMAKE_CUDA_ARCHITECTURES=native' --cudnn_home <path to cuDNN home> --cuda_home <path to CUDA home> --use_tensorrt --tensorrt_home <path to TensorRT home> --cmake_generator "Visual Studio 17 2022"
 
 # to build with specific version of open-sourced onnx-tensorrt parser configured in cmake/deps.txt
-.\build.bat --cudnn_home <path to cuDNN home> --cuda_home <path to CUDA home> --use_tensorrt --tensorrt_home <path to TensorRT home> --use_tensorrt_oss_parser --cmake_generator "Visual Studio 17 2022" 
+.\build.bat --config Release --parallel  --cmake_extra_defines 'CMAKE_CUDA_ARCHITECTURES=native' --cudnn_home <path to cuDNN home> --cuda_home <path to CUDA home> --use_tensorrt --tensorrt_home <path to TensorRT home> --use_tensorrt_oss_parser --cmake_generator "Visual Studio 17 2022" 
 ```
 
 #### Linux
 
 ```bash
 # to build with tensorrt built-in parser
-./build.sh --cudnn_home <path to cuDNN e.g. /usr/lib/x86_64-linux-gnu/> --cuda_home <path to folder for CUDA e.g. /usr/local/cuda> --use_tensorrt --tensorrt_home <path to TensorRT home>
+./build.sh --config Release --parallel --cmake_extra_defines 'CMAKE_CUDA_ARCHITECTURES=native' --cudnn_home <path to cuDNN e.g. /usr/lib/x86_64-linux-gnu/> --cuda_home <path to folder for CUDA e.g. /usr/local/cuda> --use_tensorrt --tensorrt_home <path to TensorRT home>
 
 # to build with specific version of open-sourced onnx-tensorrt parser configured in cmake/deps.txt
-./build.sh  --cudnn_home <path to cuDNN e.g. /usr/lib/x86_64-linux-gnu/> --cuda_home <path to folder for CUDA e.g. /usr/local/cuda> --use_tensorrt --use_tensorrt_oss_parser --tensorrt_home <path to TensorRT home> --skip_submodule_sync
+./build.sh --config Release --parallel --cmake_extra_defines 'CMAKE_CUDA_ARCHITECTURES=native' --cudnn_home <path to cuDNN e.g. /usr/lib/x86_64-linux-gnu/> --cuda_home <path to folder for CUDA e.g. /usr/local/cuda> --use_tensorrt --use_tensorrt_oss_parser --tensorrt_home <path to TensorRT home> --skip_submodule_sync
 ```
 
 Dockerfile instructions are available [here](https://github.com/microsoft/onnxruntime/tree/main/dockerfiles#tensorrt)
@@ -164,7 +176,7 @@ These instructions are for the latest [JetPack SDK](https://developer.nvidia.com
 2. Specify the CUDA compiler, or add its location to the PATH.
 
    1. JetPack 5.x users can upgrade to the latest CUDA release without updating the JetPack version or Jetson Linux BSP (Board Support Package). 
-    
+   
       1. For JetPack 5.x users, CUDA>=11.8 and GCC>9.4 are required to be installed on and after ONNX Runtime 1.17. 
 
       2. Check [this official blog](https://developer.nvidia.com/blog/simplifying-cuda-upgrades-for-nvidia-jetson-users/) for CUDA upgrade instruction (CUDA 12.2 has been verified on JetPack 5.1.2 on Jetson Xavier NX).
@@ -198,14 +210,10 @@ These instructions are for the latest [JetPack SDK](https://developer.nvidia.com
    ```bash
    sudo apt install -y --no-install-recommends \
      build-essential software-properties-common libopenblas-dev \
-     libpython3.8-dev python3-pip python3-dev python3-setuptools python3-wheel
+     libpython3.10-dev python3-pip python3-dev python3-setuptools python3-wheel
    ```
 
-4. Cmake is needed to build ONNX Runtime. The minimum required CMake version is 3.26. This can be either installed by:
-
-   1. (Unix/Linux) Build from source. Download sources from [https://cmake.org/download/](https://cmake.org/download/)
-      and follow [https://cmake.org/install/](https://cmake.org/install/) to build from source. 
-   2. (Ubuntu) Install deb package via apt repository: e.g [https://apt.kitware.com/](https://apt.kitware.com/)
+4. Cmake is needed to build ONNX Runtime. Please check the minimum required CMake version [here](https://github.com/microsoft/onnxruntime/blob/main/cmake/CMakeLists.txt#L6). Download from https://cmake.org/download/ and add cmake executable to `PATH` to use it.
 
 5. Build the ONNX Runtime Python wheel:
 
@@ -221,7 +229,7 @@ These instructions are for the latest [JetPack SDK](https://developer.nvidia.com
 
 * By default, `onnxruntime-gpu` wheel file will be captured under `path_to/onnxruntime/build/Linux/Release/dist/` (build path can be customized by adding `--build_dir` followed by a customized path to the build command above).
 
-* Append `--skip_tests --cmake_extra_defines 'CMAKE_CUDA_ARCHITECTURES=72;87' 'onnxruntime_BUILD_UNIT_TESTS=OFF' 'onnxruntime_USE_FLASH_ATTENTION=OFF'
+* Append `--skip_tests --cmake_extra_defines 'CMAKE_CUDA_ARCHITECTURES=native' 'onnxruntime_BUILD_UNIT_TESTS=OFF' 'onnxruntime_USE_FLASH_ATTENTION=OFF'
 'onnxruntime_USE_MEMORY_EFFICIENT_ATTENTION=OFF'` to the build command to opt out optional features and reduce build time.
 
 * For a portion of Jetson devices like the Xavier series, higher power mode involves more cores (up to 6) to compute but it consumes more resource when building ONNX Runtime. Set `--parallel 1` in the build command if OOM happens and system is hanging.
