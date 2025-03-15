@@ -19,12 +19,19 @@ type RunOptions = InferenceSession.RunOptions;
  * Binding exports a simple synchronized inference session object wrap.
  */
 export declare namespace Binding {
+  export interface ValueMetadata {
+    name: string;
+    isTensor: boolean;
+    symbolicDimensions: string[];
+    shape: number[];
+    type: number;
+  }
   export interface InferenceSession {
     loadModel(modelPath: string, options: SessionOptions): void;
     loadModel(buffer: ArrayBuffer, byteOffset: number, byteLength: number, options: SessionOptions): void;
 
-    readonly inputNames: string[];
-    readonly outputNames: string[];
+    readonly inputMetadata: ValueMetadata[];
+    readonly outputMetadata: ValueMetadata[];
 
     run(feeds: FeedsType, fetches: FetchesType, options: RunOptions): ReturnType;
 
