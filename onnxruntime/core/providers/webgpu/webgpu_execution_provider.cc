@@ -759,7 +759,9 @@ std::vector<AllocatorPtr> WebGpuExecutionProvider::CreatePreferredAllocators() {
     return std::make_unique<webgpu::GpuBufferAllocator>(context_);
   },
                                                        0, false);
-  return std::vector<AllocatorPtr>{CreateAllocator(gpuBufferAllocatorCreationInfo)};
+  auto preferred_allocators = std::vector<AllocatorPtr>{CreateAllocator(gpuBufferAllocatorCreationInfo)};
+  allocator_ = reinterpret_cast<webgpu::GpuBufferAllocator*>(preferred_allocators[0].get());
+  return preferred_allocators;
 }
 
 std::vector<std::unique_ptr<ComputeCapability>> WebGpuExecutionProvider::GetCapability(
@@ -841,6 +843,13 @@ std::unique_ptr<profiling::EpProfiler> WebGpuExecutionProvider::GetProfiler() {
   auto profiler = std::make_unique<WebGpuProfiler>(context_);
   profiler_ = profiler.get();
   return profiler;
+}
+
+Status WebGpuExecutionProvider::OnSessionInitializationEnd() {
+  if (allocator_ != nullptr) {
+    allocator_->OnSessionInitializationEnd();
+  }
+  return Status::OK();
 }
 
 Status WebGpuExecutionProvider::OnRunStart(const onnxruntime::RunOptions& /*run_options*/) {
