@@ -363,7 +363,9 @@ void ProfileComputePlan(NSURL* compileUrl, MLModelConfiguration* config) {
 #endif
 }
 
-#if __has_include(<CoreML/MLOptimizationHints.h>)
+#if (defined(__TVOS_18_0) && __TV_OS_VERSION_MAX_ALLOWED >= __TVOS_18_0) || \
+    (defined(__IPHONE_18_0) && __IPHONE_OS_VERSION_MAX_ALLOWED >= __IPHONE_18_0) || \
+    (defined(__MAC_15_0) && __MAC_OS_VERSION_MAX_ALLOWED >= __MAC_15_0)
 #define HAS_COREMLOPTIMIZATIONHINT 1
 #else
 #define HAS_COREMLOPTIMIZATIONHINT 0
