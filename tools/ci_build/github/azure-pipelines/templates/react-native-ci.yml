@@ -64,11 +64,11 @@ stages:
   - job: ReactNative_CI_iOS
     ${{ if eq(parameters.is1ES, false) }}:
       pool:
-        vmImage: 'macOS-13'
+        vmImage: 'macOS-14'
     ${{ if eq(parameters.is1ES, true) }}:
       pool:
         name: 'Azure Pipelines'
-        image: 'macOS-13'
+        image: 'macOS-14'
         os: 'macOS'
 
     timeoutInMinutes: 120
