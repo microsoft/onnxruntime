@@ -9,6 +9,53 @@ import { LOG_DEBUG } from '../log';
 // https://github.com/webmachinelearning/webnn/issues/677
 /// <reference path="webnn.d.ts" />
 
+// Convert BigInt64Array buffer data to Int32Array buffer data.
+export const convertInt64ToInt32 = (data: Uint8Array, returnUint8 = true): Uint8Array | Int32Array => {
+  // Make sure it is a multiple of 8 bytes (BigInt64Array).
+  if (data.byteLength % 8 !== 0) {
+    throw new Error('Invalid Uint8Array length - must be a multiple of 8 (BigInt).');
+  }
+
+  // Convert Uint8Array to BigInt64Array.
+  const numElements = data.byteLength / 8;
+  const bigInt64Array = new BigInt64Array(data.buffer, data.byteOffset, numElements);
+
+  // Convert BigInt64Array to Int32Array (same number of elements).
+  const int32Array = new Int32Array(numElements);
+
+  for (let i = 0; i < numElements; i++) {
+    const value = bigInt64Array[i];
+
+    // Check for overflow.
+    if (value > 2147483647n || value < -2147483648n) {
+      throw new Error(`Overflow occurred when converting BigInt to Int32 at index ${i}: ${value}`);
+    }
+
+    int32Array[i] = Number(value);
+  }
+
+  // Return based on the requested format.
+  return returnUint8 ? new Uint8Array(int32Array.buffer) : int32Array;
+};
+
+// Convert Int32Array buffer data to BigInt64Array buffer data.
+const convertInt32ToInt64 = (data: Uint8Array, returnUint8 = true): Uint8Array | BigInt64Array => {
+  // Make sure it is a multiple of 4 bytes (Int32Array).
+  if (data.byteLength % 4 !== 0) {
+    throw new Error('Invalid Uint8Array length - must be a multiple of 4 (Int32).');
+  }
+
+  // Convert Uint8Array to Int32Array.
+  const numElements = data.byteLength / 4;
+  const int32Array = new Int32Array(data.buffer, data.byteOffset, numElements);
+
+  // Convert Int32Array to BigInt64Array (same number of elements).
+  const bigInt64Array = BigInt64Array.from(int32Array, BigInt);
+
+  // Return based on the requested format.
+  return returnUint8 ? new Uint8Array(bigInt64Array.buffer) : bigInt64Array;
+};
+
 export type TensorId = number;
 
 /**
@@ -27,6 +74,7 @@ export interface TensorManager {
    * Ensure a MLTensor is created for the TensorId.
    */
   ensureTensor(
+    sessionId: number,
     tensorId: TensorId,
     dataType: MLOperandDataType,
     shape: readonly number[],
@@ -46,9 +94,9 @@ export interface TensorManager {
    */
   releaseTensorsForSession(session: number): void;
   /**
-   * Register an externally created MLTensor with a given MLContext and return a TensorId.
+   * Register an externally created MLTensor with a given session id and return a TensorId.
    */
-  registerTensor(mlContext: MLContext, mlTensor: MLTensor, dataType: MLOperandDataType, shape: number[]): TensorId;
+  registerTensor(sessionId: number, mlTensor: MLTensor, dataType: MLOperandDataType, shape: number[]): TensorId;
 }
 
 let tensorGuid = 1;
@@ -87,6 +135,9 @@ const calculateByteLength = (dataType: MLOperandDataType, shape: readonly number
 class TensorWrapper {
   // The id of the last session that used this tensor.
   public sessionId: number;
+  // This flag is used to indicate whether we should convert data from int64 to int32.
+  public shouldConvertInt64toInt32 = false;
+  public isInt64ToInt32Converted = false;
 
   private mlContext: MLContext;
   private mlTensor: MLTensor;
@@ -99,12 +150,15 @@ class TensorWrapper {
     tensor: MLTensor;
     dataType: MLOperandDataType;
     shape: readonly number[];
+    shouldConvertInt64toInt32?: boolean;
   }) {
-    this.sessionId = descriptor.sessionId;
-    this.mlContext = descriptor.context;
-    this.mlTensor = descriptor.tensor;
-    this.dataType = descriptor.dataType;
-    this.tensorShape = descriptor.shape;
+    const { sessionId, context, tensor, dataType, shape, shouldConvertInt64toInt32 = false } = descriptor;
+    this.sessionId = sessionId;
+    this.mlContext = context;
+    this.mlTensor = tensor;
+    this.dataType = dataType;
+    this.tensorShape = shape;
+    this.shouldConvertInt64toInt32 = shouldConvertInt64toInt32;
   }
 
   public get tensor(): MLTensor {
@@ -132,13 +186,33 @@ class TensorWrapper {
     this.mlContext.writeTensor(this.mlTensor, data);
   }
 
-  public async read(): Promise<ArrayBuffer>;
-  public async read(dstBuffer: ArrayBufferView | ArrayBuffer): Promise<undefined>;
-  async read(dstBuffer?: ArrayBufferView | ArrayBuffer): Promise<ArrayBuffer | undefined> {
-    if (dstBuffer) {
-      return this.mlContext.readTensor(this.mlTensor, dstBuffer);
+  public async read(shouldConvertInt32ToInt64?: boolean): Promise<ArrayBuffer>;
+  public async read(
+    shouldConvertInt32ToInt64?: boolean,
+    dstBuffer?: ArrayBufferView | ArrayBuffer,
+  ): Promise<ArrayBuffer | undefined>;
+  public async read(
+    shouldConvertInt32ToInt64?: boolean,
+    dstBuffer?: ArrayBufferView | ArrayBuffer,
+  ): Promise<ArrayBuffer | undefined> {
+    if (shouldConvertInt32ToInt64) {
+      // This was an int64 data as saved as int32 as workaround, we need to read it as int64.
+      const data = await this.mlContext.readTensor(this.mlTensor);
+      const int64Data = convertInt32ToInt64(new Uint8Array(data)) as Uint8Array;
+
+      if (dstBuffer) {
+        const targetBuffer =
+          dstBuffer instanceof ArrayBuffer
+            ? new Uint8Array(dstBuffer)
+            : new Uint8Array(dstBuffer.buffer, dstBuffer.byteOffset, dstBuffer.byteLength);
+        targetBuffer.set(int64Data);
+        return undefined;
+      } else {
+        return int64Data.buffer;
+      }
+    } else {
+      return dstBuffer ? this.mlContext.readTensor(this.mlTensor, dstBuffer) : this.mlContext.readTensor(this.mlTensor);
     }
-    return this.mlContext.readTensor(this.mlTensor);
   }
 
   public canReuseTensor(context: MLContext, dataType: MLOperandDataType, shape: readonly number[]): boolean {
@@ -148,6 +222,10 @@ class TensorWrapper {
       this.tensorShape.length === shape.length &&
       this.tensorShape.every((v, i) => v === shape[i])
     );
+  }
+
+  public setIsInt64ToInt32Converted(isConverted: boolean): void {
+    this.isInt64ToInt32Converted = isConverted;
   }
 }
 
@@ -177,17 +255,27 @@ class TensorIdTracker {
   }
 
   public async ensureTensor(
-    context: MLContext,
+    sessionId: number,
     dataType: MLOperandDataType,
     shape: readonly number[],
     copyOld: boolean,
   ): Promise<MLTensor> {
+    let newDataType = dataType;
+    const context = this.tensorManager.getMLContext(sessionId);
+    // If the data type is int64 and the context does not support int64, we need to convert it to int32.
+    const shouldConvertInt64toInt32 =
+      newDataType === 'int64' && !context.opSupportLimits().input.dataTypes.includes('int64');
+    if (shouldConvertInt64toInt32) {
+      newDataType = 'int32';
+      LOG_DEBUG('verbose', () => `[WebNN] TensorIdTracker.ensureTensor: convert dataType from int64 to int32`);
+    }
+
     if (this.wrapper) {
-      if (this.wrapper.canReuseTensor(context, dataType, shape)) {
+      if (this.wrapper.canReuseTensor(context, newDataType, shape)) {
         return this.wrapper.tensor;
       } else {
         if (copyOld) {
-          if (this.wrapper.byteLength !== calculateByteLength(dataType, shape)) {
+          if (this.wrapper.byteLength !== calculateByteLength(newDataType, shape)) {
             throw new Error('Unable to copy data to tensor with different size.');
           }
           this.activeUpload = new Uint8Array(await this.wrapper.read());
@@ -198,9 +286,19 @@ class TensorIdTracker {
 
     // eslint-disable-next-line no-bitwise
     const usage = typeof MLTensorUsage == 'undefined' ? undefined : MLTensorUsage.READ | MLTensorUsage.WRITE;
-    this.wrapper = await this.tensorManager.getCachedTensor(dataType, shape, usage, true, true);
+    this.wrapper = await this.tensorManager.getCachedTensor(
+      sessionId,
+      newDataType,
+      shape,
+      usage,
+      true,
+      true,
+      shouldConvertInt64toInt32,
+    );
 
     if (copyOld && this.activeUpload) {
+      // We don't need to convert the old int64 data to int32,
+      // because it has been converted when it was uploaded.
       this.wrapper.write(this.activeUpload);
       this.activeUpload = undefined;
     }
@@ -209,9 +307,15 @@ class TensorIdTracker {
   }
 
   public upload(data: Uint8Array): void {
+    let newData = data;
     if (this.wrapper) {
-      if (data.byteLength === this.wrapper.byteLength) {
-        this.wrapper.write(data);
+      if (this.wrapper.shouldConvertInt64toInt32) {
+        // Convert int64 to int32.
+        newData = convertInt64ToInt32(data, true) as Uint8Array;
+        this.wrapper.setIsInt64ToInt32Converted(true);
+      }
+      if (newData.byteLength === this.wrapper.byteLength) {
+        this.wrapper.write(newData);
         return;
       } else {
         LOG_DEBUG('verbose', () => 'Data size does not match tensor size. Releasing tensor.');
@@ -220,32 +324,38 @@ class TensorIdTracker {
     }
 
     if (this.activeUpload) {
-      this.activeUpload.set(data);
+      this.activeUpload.set(newData);
     } else {
-      this.activeUpload = new Uint8Array(data);
+      this.activeUpload = new Uint8Array(newData);
     }
   }
 
   public async download(dstBuffer?: ArrayBufferView | ArrayBuffer): Promise<ArrayBuffer | undefined> {
     if (this.activeUpload) {
+      // If this.activeUpload has been converted to int32, we need to convert it back to int64 data.
+      const dstData = this.wrapper?.isInt64ToInt32Converted
+        ? (convertInt32ToInt64(this.activeUpload) as Uint8Array)
+        : this.activeUpload;
+
       if (dstBuffer) {
         if (dstBuffer instanceof ArrayBuffer) {
-          new Uint8Array(dstBuffer).set(this.activeUpload);
+          new Uint8Array(dstBuffer).set(dstData);
         } else {
-          new Uint8Array(dstBuffer.buffer, dstBuffer.byteOffset, dstBuffer.byteLength).set(this.activeUpload);
+          new Uint8Array(dstBuffer.buffer, dstBuffer.byteOffset, dstBuffer.byteLength).set(dstData);
         }
         return;
       } else {
-        return this.activeUpload.buffer;
+        return dstData.buffer;
       }
     }
     if (!this.wrapper) {
       throw new Error('Tensor has not been created.');
     }
+
     if (!dstBuffer) {
-      return this.wrapper.read();
+      return this.wrapper.read(this.wrapper?.shouldConvertInt64toInt32);
     }
-    return this.wrapper.read(dstBuffer);
+    return this.wrapper.read(this.wrapper?.shouldConvertInt64toInt32, dstBuffer);
   }
 }
 
@@ -255,6 +365,14 @@ class TensorManagerImpl implements TensorManager {
   private externalTensors: Set<TensorWrapper> = new Set();
 
   constructor(private backend: WebNNBackend) {}
+
+  public getMLContext(sessionId: number): MLContext {
+    const context = this.backend.getMLContext(sessionId);
+    if (!context) {
+      throw new Error('MLContext not found for session.');
+    }
+    return context;
+  }
 
   public reserveTensorId(): TensorId {
     const tensorId = createNewTensorId();
@@ -274,6 +392,7 @@ class TensorManagerImpl implements TensorManager {
   }
 
   public async ensureTensor(
+    sessionId: number,
     tensorId: TensorId,
     dataType: MLOperandDataType,
     shape: number[],
@@ -290,7 +409,7 @@ class TensorManagerImpl implements TensorManager {
     if (!tensor) {
       throw new Error('Tensor not found.');
     }
-    return tensor.ensureTensor(this.backend.currentContext, dataType, shape, copyOld);
+    return tensor.ensureTensor(sessionId, dataType, shape, copyOld);
   }
 
   public upload(tensorId: TensorId, data: Uint8Array): void {
@@ -325,17 +444,18 @@ class TensorManagerImpl implements TensorManager {
   }
 
   public registerTensor(
-    mlContext: MLContext,
+    sessionId: number,
     mlTensor: MLTensor,
     dataType: MLOperandDataType,
     shape: readonly number[],
   ): TensorId {
+    const context = this.getMLContext(sessionId);
     const tensorId = createNewTensorId();
     // Defaulting to READ | WRITE if usage is not provided.
     // eslint-disable-next-line no-bitwise
     const wrapper = new TensorWrapper({
-      sessionId: this.backend.currentSessionId,
-      context: mlContext,
+      sessionId,
+      context,
       tensor: mlTensor,
       dataType,
       shape,
@@ -349,14 +469,15 @@ class TensorManagerImpl implements TensorManager {
    * Get or create an MLTensor with the given data type and shape.
    */
   public async getCachedTensor(
+    sessionId: number,
     dataType: MLOperandDataType,
     shape: readonly number[],
     usage: MLTensorUsageFlags | undefined,
     writable: boolean,
     readable: boolean,
+    shouldConvertInt64toInt32 = false,
   ): Promise<TensorWrapper> {
-    const sessionId = this.backend.currentSessionId;
-    const context = this.backend.currentContext;
+    const context = this.getMLContext(sessionId);
     for (const [index, tensor] of this.freeTensors.entries()) {
       if (tensor.canReuseTensor(context, dataType, shape)) {
         LOG_DEBUG('verbose', () => `[WebNN] Reusing tensor {dataType: ${dataType}, shape: ${shape}}`);
@@ -374,7 +495,7 @@ class TensorManagerImpl implements TensorManager {
       writable,
       readable,
     });
-    return new TensorWrapper({ sessionId, context, tensor, dataType, shape });
+    return new TensorWrapper({ sessionId, context, tensor, dataType, shape, shouldConvertInt64toInt32 });
   }
 
   /**

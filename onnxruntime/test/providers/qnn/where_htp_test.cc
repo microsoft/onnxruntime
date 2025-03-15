@@ -79,6 +79,7 @@ static void RunWhereQDQTest(const TestInputDef<bool>& condition_def,
 #else
   provider_options["backend_path"] = "libQnnHtp.so";
 #endif
+  provider_options["offload_graph_io_quantization"] = "0";
 
   // Runs model with DQ-> Where -> Q and compares the outputs of the CPU and QNN EPs.
   TestQDQModelAccuracy(BuildWhereTestCase(condition_def, x_def, y_def),

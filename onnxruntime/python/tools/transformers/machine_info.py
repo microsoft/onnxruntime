@@ -215,6 +215,14 @@ def get_machine_info(silent=True) -> str:
     return json.dumps(machine.machine_info, indent=2)
 
 
+def get_device_info(silent=True) -> str:
+    machine = MachineInfo(silent)
+    info = machine.machine_info
+    if info:
+        info = {key: value for key, value in info.items() if key in ["gpu", "cpu", "memory"]}
+    return json.dumps(info, indent=2)
+
+
 if __name__ == "__main__":
     args = parse_arguments()
     print(get_machine_info(args.silent))

@@ -10,8 +10,7 @@
 namespace onnxruntime {
 namespace cann {
 
-static int lower_bound = 8;   // Supported domain version lower bounds
-static int upper_bound = 15;  // Supported domain version upper bounds
+static int lower_bound = 8;  // Supported domain version lower bounds
 
 std::once_flag flag;
 
@@ -62,7 +61,7 @@ std::vector<NodeIndex> SupportONNXModel(const GraphViewer& graph_viewer) {
   for (const auto& index : graph_viewer.GetNodesInTopologicalOrder()) {
     const auto& node = graph_viewer.GetNode(index);
 
-    if (node->Domain() != kOnnxDomain || domain_version < lower_bound || domain_version > upper_bound ||
+    if (node->Domain() != kOnnxDomain || domain_version < lower_bound ||
         !cann_supported_ops.count(node->OpType())) {
       unsupported_nodes.push_back(index);
       continue;

@@ -10,6 +10,10 @@
 
 #include <emscripten.h>
 
+#ifdef USE_WEBGPU
+#include <webgpu/webgpu.h>
+#endif
+
 #include <stddef.h>
 
 struct OrtSession;
@@ -85,7 +89,10 @@ ort_session_options_handle_t EMSCRIPTEN_KEEPALIVE OrtCreateSessionOptions(size_t
  * @returns ORT error code. If not zero, call OrtGetLastError() to get detailed error message.
  */
 int EMSCRIPTEN_KEEPALIVE OrtAppendExecutionProvider(ort_session_options_handle_t session_options,
-                                                    const char* name);
+                                                    const char* name,
+                                                    const char* const* provider_options_keys,
+                                                    const char* const* provider_options_values,
+                                                    size_t num_keys);
 
 /**
  * add a free dimension override for one dimension of a session's input.
@@ -293,6 +300,21 @@ int EMSCRIPTEN_KEEPALIVE OrtRun(ort_session_handle_t session,
  * Caller must release the C style string after use by calling OrtFree().
  */
 char* EMSCRIPTEN_KEEPALIVE OrtEndProfiling(ort_session_handle_t session);
+
+// WebGPU API Section
+
+#ifdef USE_WEBGPU
+
+/**
+ * get the GPU Device by device ID.
+ *
+ * This function is only available after the GPU Device is initialized in WebGpuContextFactory.
+ *
+ * @returns a WGPUDevice handle.
+ */
+WGPUDevice EMSCRIPTEN_KEEPALIVE OrtGetWebGpuDevice(int device_id);
+
+#endif
 
 // Training API Section
 

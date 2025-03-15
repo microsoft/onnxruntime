@@ -1754,7 +1754,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 #### Type Constraints
 
 <dl>
-<dt><tt>T</tt> : tensor(float), tensor(float16), tensor(bfloat16)</dt>
+<dt><tt>T</tt> : tensor(float), tensor(double), tensor(float16), tensor(bfloat16)</dt>
 <dd>Constrain input and output types to float or half tensors.</dd>
 </dl>
 
@@ -2551,7 +2551,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>Softcap value for attention weights. Default value is 0.</dd>
 </dl>
 
-#### Inputs (7 - 9)
+#### Inputs (7 - 11)
 
 <dl>
 <dt><tt>query</tt> : T</dt>
@@ -2572,6 +2572,10 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>2D tensor with shape (max_sequence_length, head_size / 2).</dd>
 <dt><tt>sin_cache</tt> (optional) : T</dt>
 <dd>2D tensor with shape (max_sequence_length, head_size / 2).</dd>
+<dt><tt>position_ids</tt> (optional) : tensor(int64)</dt>
+<dd>2D tensor with shape (batch_size, sequence_length). When processing the first prompt the kernel uses only the first element</dd>
+<dt><tt>attention_bias</tt> (optional) : T</dt>
+<dd>additional add to QxK' with shape (batch_size or 1, num_heads or 1, sequence_length, total_sequence_length)</dd>
 </dl>
 
 #### Outputs
@@ -5253,7 +5257,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 
 <dl>
 <dt><tt>interleaved</tt> : int</dt>
-<dd>Rotate using interleaved pattern. Default value is 0 (False).</dd>
+<dd>Indicates whether the input has real and imaginary parts interleaved. Default value is 0 (False), meaning the first half of the input consists of real values and the second half consists of imaginary values.</dd>
 <dt><tt>is_packed_batching</tt> : int</dt>
 <dd>ragged batch inputs or not. Default value is 0</dd>
 <dt><tt>num_heads</tt> : int</dt>

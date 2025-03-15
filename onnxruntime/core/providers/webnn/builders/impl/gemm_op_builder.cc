@@ -55,22 +55,20 @@ Status GemmOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
     if (a_shape.size() == 1) {
       extended_a_shape = true;
       a_shape.insert(a_shape.begin(), 1);
+      emscripten::val a_shape_arr = emscripten::val::array(GetNarrowedIntfromInt64<uint32_t>(a_shape));
       emscripten::val reshape_a_options = emscripten::val::object();
       reshape_a_options.set("label", node.Name() + "_reshape_a");
-      a = model_builder.GetBuilder().call<emscripten::val>("reshape", a,
-                                                           emscripten::val::array(GetVecUint32FromVecInt64(a_shape)),
-                                                           reshape_a_options);
+      a = model_builder.GetBuilder().call<emscripten::val>("reshape", a, a_shape_arr, reshape_a_options);
     }
     // If the second argument is 1-D, it is promoted to a matrix by appending a 1 to its dimensions.
     bool extended_b_shape = false;
     if (b_shape.size() == 1) {
       extended_b_shape = true;
       b_shape.push_back(1);
+      emscripten::val b_shape_arr = emscripten::val::array(GetNarrowedIntfromInt64<uint32_t>(b_shape));
       emscripten::val reshape_b_options = emscripten::val::object();
       reshape_b_options.set("label", node.Name() + "_reshape_b");
-      b = model_builder.GetBuilder().call<emscripten::val>("reshape", b,
-                                                           emscripten::val::array(GetVecUint32FromVecInt64(b_shape)),
-                                                           reshape_b_options);
+      b = model_builder.GetBuilder().call<emscripten::val>("reshape", b, b_shape_arr, reshape_b_options);
     }
 
     output = model_builder.GetBuilder().call<emscripten::val>("matmul", a, b, options);
@@ -218,7 +216,7 @@ bool GemmOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& /* initializer
 bool GemmOpBuilder::HasSupportedInputsImpl(const InitializedTensorSet& /* initializers */, const Node& node,
                                            const emscripten::val& wnn_limits, const logging::Logger& logger) const {
   const auto& input_defs = node.InputDefs();
-  const auto& op_type = node.OpType();
+  const std::string_view op_type = node.OpType();
   int32_t input0_type;  // A data type
   int32_t input1_type;  // B data type
   int32_t input2_type;  // C or a_zero_point data type

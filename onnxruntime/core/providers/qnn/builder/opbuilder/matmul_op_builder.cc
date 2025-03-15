@@ -336,10 +336,10 @@ Status MatMulOpBuilder::ProcessInputsForQnnFullyConnected(QnnModelWrapper& qnn_m
     if (!reshape_input_1) {
       // 2D initializer should be transposed to [n, k].
       std::vector<uint32_t> original_shape_copy = input_info_1.shape;
-      ORT_RETURN_IF_ERROR(TwoDimensionTranspose(qnn_model_wrapper,
-                                                original_shape_copy,  // Will be modified to new shape (unnecessary)
-                                                *input_info_1.initializer_tensor,
-                                                unpacked_tensor));
+      ORT_RETURN_IF_ERROR(utils::TwoDimensionTranspose(qnn_model_wrapper,
+                                                       original_shape_copy,  // Will be modified to new shape (unnecessary)
+                                                       *input_info_1.initializer_tensor,
+                                                       unpacked_tensor));
     } else {
       ORT_RETURN_IF_ERROR(qnn_model_wrapper.UnpackInitializerData(*input_info_1.initializer_tensor, unpacked_tensor));
     }

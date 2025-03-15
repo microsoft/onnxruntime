@@ -990,11 +990,12 @@ MlasComputeErf(
     size_t N
     );
 
+template <typename T>
 void
 MLASCALL
 MlasComputeExp(
-    const float* Input,
-    float* Output,
+    const T* Input,
+    T* Output,
     size_t N
     );
 
@@ -1006,11 +1007,12 @@ MlasComputeLogistic(
     size_t N
     );
 
+template <typename T>
 void
 MLASCALL
 MlasComputeSoftmax(
-    const float* Input,
-    float* Output,
+    const T* Input,
+    T* Output,
     size_t N,
     size_t D,
     bool LogSoftmax,
@@ -1018,11 +1020,32 @@ MlasComputeSoftmax(
     MLAS_THREADPOOL* ThreadPool
     );
 
+template <typename T>
+void
+MLASCALL
+MlasComputeSoftcap(
+    const T* Input,
+    T* Output,
+    size_t N,
+    T cap
+    );
+
+template <typename T>
+void
+MLASCALL
+MlasEltwiseAdd(
+    const T* left,
+    const T* right,
+    T* output,
+    size_t N
+    );
+
+template<typename T>
 void
 MLASCALL
 MlasComputeTanh(
-    const float* Input,
-    float* Output,
+    const T* Input,
+    T* Output,
     size_t N
     );
 
@@ -1451,8 +1474,8 @@ void
 MLASCALL
 MlasRotaryEmbedOneRow(
     const T* input,
-    const T* sin,
-    const T* cos,
+    const T* sin_data,
+    const T* cos_data,
     size_t dim,
     bool interleaved,
     T* output
@@ -1478,6 +1501,17 @@ struct MLAS_HGEMM_DATA_PARAMS {
 bool
 MLASCALL
 MlasHGemmSupported(
+    CBLAS_TRANSPOSE TransA,
+    CBLAS_TRANSPOSE TransB
+    );
+
+/**
+ * @brief Check whether mlas supports GQA kernels with the type and transpose settings.
+ */
+template <typename T>
+bool
+MLASCALL
+MlasGQASupported(
     CBLAS_TRANSPOSE TransA,
     CBLAS_TRANSPOSE TransB
     );

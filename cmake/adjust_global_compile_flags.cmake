@@ -1,12 +1,6 @@
-# work around Android NDK bug which doesn't include -O flag for Release configuration
-# https://github.com/android/ndk/issues/1740
-# TODO: remove this when the NDK version(s) we support get fixed
-if (ANDROID)
-  # NB: attempting to match the effects of this fix: https://android-review.googlesource.com/c/platform/ndk/+/2168845
-  string(APPEND CMAKE_C_FLAGS_RELEASE " -O3")
-  string(APPEND CMAKE_CXX_FLAGS_RELEASE " -O3")
-  string(APPEND CMAKE_ASM_FLAGS_RELEASE " -O3")
+# The flags set by this file are applied to 3rd-party libraries(e.g. protobuf) as well. If you want to set something that is only for ORT's code, please put it in the main CMakeLists.txt file.
 
+if (ANDROID)
   # Build shared libraries with support for 16 KB ELF alignment
   # https://source.android.com/docs/core/architecture/16kb-page-size/16kb#build-lib-16kb-alignment
   set(CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} -Wl,-z,max-page-size=16384")
@@ -101,28 +95,26 @@ if (onnxruntime_MINIMAL_BUILD)
   endif()
 endif()
 
-# Enable stream for all the non-minimal build
-if (NOT onnxruntime_MINIMAL_BUILD)
-  add_compile_definitions(ORT_ENABLE_STREAM)
-endif()
-
 if (onnxruntime_ENABLE_LTO)
     include(CheckIPOSupported)
     check_ipo_supported(RESULT ipo_enabled OUTPUT ipo_output)
     if (NOT ipo_enabled)
-      message(WARNING "IPO is not supported by this compiler")
+      message(WARNING "Interprocedural optimization (IPO) is not supported by this compiler. ${ipo_output}")
       set(onnxruntime_ENABLE_LTO OFF)
     else()
       set(CMAKE_INTERPROCEDURAL_OPTIMIZATION ON)
+
+      # See https://cmake.org/cmake/help/latest/policy/CMP0069.html.
+      #
+      # "The OLD behavior for this policy is to add IPO flags only for Intel compiler on Linux.
+      # The NEW behavior for this policy is to add IPO flags for the current compiler or produce an error if CMake does
+      # not know the flags."
+      #
+      # CMake versions 3.8 and lower use the OLD behavior. This project requires CMake version > 3.8.
+      # However, some dependencies may specify a lower required CMake version and default to the OLD behavior.
+      # Ensure that CMake also uses the NEW behavior for such dependencies.
+      set(CMAKE_POLICY_DEFAULT_CMP0069 NEW)
     endif()
-endif()
-
-if (onnxruntime_REDUCED_OPS_BUILD)
-  add_compile_definitions(REDUCED_OPS_BUILD)
-endif()
-
-if (onnxruntime_DISABLE_EXTERNAL_INITIALIZERS)
-  add_definitions(-DDISABLE_EXTERNAL_INITIALIZERS=1)
 endif()
 
 if (onnxruntime_DISABLE_RTTI)
@@ -160,6 +152,7 @@ if (onnxruntime_DISABLE_EXCEPTIONS)
   add_compile_definitions("ORT_NO_EXCEPTIONS")
   add_compile_definitions("MLAS_NO_EXCEPTION")
   add_compile_definitions("ONNX_NO_EXCEPTIONS")
+  # The following line of code probably is not needed because the same effect can be achieved by setting the compiler flag -fno-exceptions.
   add_compile_definitions("JSON_NOEXCEPTION")  # https://json.nlohmann.me/api/macros/json_noexception/
 
   if (MSVC)
@@ -196,17 +189,9 @@ if (onnxruntime_CROSS_COMPILING)
   endif()
 endif()
 
-if (CMAKE_CXX_COMPILER_VERSION VERSION_LESS 9.0)
-  check_cxx_compiler_flag(-Wno-error HAS_NOERROR)
-  if (HAS_NOERROR)
-    string(APPEND CMAKE_CXX_FLAGS " -Wno-error=attributes")
-    string(APPEND CMAKE_C_FLAGS " -Wno-error=attributes")
-  endif()
-endif()
-
-# Mark symbols to be invisible, for macOS/iOS/visionOS target only
+# Mark symbols to be invisible, for macOS/iOS/visionOS/tvOS target only
 # Due to many dependencies have different symbol visibility settings, set global compile flags here.
-if (${CMAKE_SYSTEM_NAME} MATCHES "Darwin|iOS|visionOS")
+if (${CMAKE_SYSTEM_NAME} MATCHES "Darwin|iOS|visionOS|tvOS")
   foreach(flags CMAKE_CXX_FLAGS CMAKE_OBJC_FLAGS CMAKE_OBJCXX_FLAGS)
     string(APPEND ${flags} " -fvisibility=hidden -fvisibility-inlines-hidden")
   endforeach()
@@ -252,7 +237,6 @@ if (MSVC)
   else()
     message(FATAL_ERROR "Unknown CMAKE_SYSTEM_PROCESSOR: ${CMAKE_SYSTEM_PROCESSOR}")
   endif()
-
 
   #Always enable exception handling, even for Windows ARM
   if (NOT onnxruntime_DISABLE_EXCEPTIONS)
@@ -326,9 +310,6 @@ else()
     string(APPEND CMAKE_C_FLAGS   " -g -O0 --coverage ")
   endif()
   if("${CMAKE_C_COMPILER_ID}" STREQUAL "GNU")
-    # suppress warnings from flatbuffers
-    string(APPEND CMAKE_CXX_FLAGS " -Wno-restrict ")
-    string(APPEND CMAKE_C_FLAGS   " -Wno-restrict ")
     if(onnxruntime_USE_XNNPACK)
       # https://github.com/google/XNNPACK/issues/7650
       string(APPEND CMAKE_C_FLAGS   " -Wno-incompatible-pointer-types ")

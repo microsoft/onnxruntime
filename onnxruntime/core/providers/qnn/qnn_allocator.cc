@@ -181,7 +181,9 @@ void HtpSharedMemoryAllocator::Free(void* allocation_address) {
   // Avoid throwing exceptions as this may be running from a destructor.
   try {
     // take ownership of shared memory and free at end of scope
-    auto shared_memory = WrapSharedMemoryWithUniquePtr(allocation_address, rpcmem_lib_->Api());
+    const size_t allocation_offset = AllocationOffsetFromStartOfHeader();
+    void* raw_allocation_address = (void*)((std::byte*)allocation_address - allocation_offset);
+    auto shared_memory = WrapSharedMemoryWithUniquePtr(raw_allocation_address, rpcmem_lib_->Api());
 
     // destroy header
     allocation_header.~AllocationHeader();

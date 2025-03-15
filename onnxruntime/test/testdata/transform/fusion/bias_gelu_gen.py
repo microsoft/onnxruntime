@@ -29,3 +29,40 @@ graph = helper.make_graph(
 
 model = helper.make_model(graph)
 onnx.save(model, r"bias_gelu_fusion.onnx")
+
+graph = helper.make_graph(
+    [
+        helper.make_node("Add", ["X", "B"], ["add0_out"], "add0"),
+        helper.make_node("Gelu", ["add0_out"], ["Y"], "gelu"),
+    ],
+    "Gelu_Add_Fusion",  # name
+    [  # inputs
+        helper.make_tensor_value_info("X", TensorProto.FLOAT, ["batch", "seqlen", 1024]),
+        helper.make_tensor_value_info("B", TensorProto.FLOAT, [1024]),
+    ],
+    [  # outputs
+        helper.make_tensor_value_info("Y", TensorProto.FLOAT, ["batch", "seqlen", 1024]),
+    ],
+)
+
+model = helper.make_model(graph)
+onnx.save(model, r"bias_onnx_gelu_fusion.onnx")
+
+
+graph = helper.make_graph(
+    [
+        helper.make_node("Add", ["X", "B"], ["add0_out"], "add0"),
+        helper.make_node("Gelu", ["add0_out"], ["Y"], "gelu", approximate="tanh"),
+    ],
+    "Gelu_Add_Fusion",  # name
+    [  # inputs
+        helper.make_tensor_value_info("X", TensorProto.FLOAT, ["batch", "seqlen", 1024]),
+        helper.make_tensor_value_info("B", TensorProto.FLOAT, [1024]),
+    ],
+    [  # outputs
+        helper.make_tensor_value_info("Y", TensorProto.FLOAT, ["batch", "seqlen", 1024]),
+    ],
+)
+
+model = helper.make_model(graph)
+onnx.save(model, r"bias_onnx_fast_gelu_fusion.onnx")

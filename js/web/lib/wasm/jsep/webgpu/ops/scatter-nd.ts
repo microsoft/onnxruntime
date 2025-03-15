@@ -111,8 +111,32 @@ const createScatterNDProgramInfo = (inputs: readonly TensorView[], attributes: S
         .declareVariables(indices, updates, output)}
       ${shaderHelper.mainStart()}
         ${shaderHelper.guardAgainstOutOfBoundsWorkgroupSizes('uniforms.output_size')}
+  var hasDuplicates = false;
+  if (${attributes.reduction === 'none'}) {
+    let n = ${ShapeUtil.size(indicesShape)};
+    for (var i = 0; i < n; i = i + 1) {
+      for (var j = i + 1; j < n; j = j + 1) {
+        var index_i = i32(indices[i].x);
+        var index_j = i32(indices[j].x);
+        if (index_i == index_j) {
+          hasDuplicates = true;
+          break;
+        }
+      }
+      if (hasDuplicates) {
+        break;
+      }
+    }
+  }
+
   var data_offset = 0u;
-  let indices_start = uniforms.last_index_dimension * global_idx;
+  var indices_start = uniforms.last_index_dimension * global_idx;
+  if (${attributes.reduction === 'none'} && hasDuplicates) {
+    if (global_idx != 0u) {
+      return;
+    }
+    indices_start = 0u;
+  }
   let indices_end = indices_start + uniforms.last_index_dimension;
   for (var i = indices_start; i < indices_end; i++) {
     var index = i32(indices[i].x);

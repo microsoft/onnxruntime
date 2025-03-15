@@ -501,7 +501,6 @@ inline hipblasStatus_t hipblasTransposeHelper(hipStream_t /*stream*/, hipblasHan
   return hipblasDgeam(handle, transa, transb, m, n, alpha, A, lda, beta, B, ldb, C, ldc);
 }
 
-inline bool CanUse_hipblasTransposeHelper_MLFloat16(int /*m*/, int /*n*/) { return true; }  // CUDA has a limited grid size of 65536, ROCm has higher limits.
 hipblasStatus_t hipblasTransposeHelper(hipStream_t stream, hipblasHandle_t, hipblasOperation_t, hipblasOperation_t, int m, int n, const half*, const half* A, int, const half*, const half*, int, half* C, int);
 
 // copy

@@ -1,5 +1,5 @@
 diff --git a/include/cpuinfo.h b/include/cpuinfo.h
-index 03f2776..eaf6497 100644
+index 6eb4b8c..4346a5a 100644
 --- a/include/cpuinfo.h
 +++ b/include/cpuinfo.h
 @@ -18,7 +18,7 @@
@@ -20,3 +20,16 @@ index 03f2776..eaf6497 100644
  #define CPUINFO_ARCH_ARM64 1
  #endif
  
+diff --git a/src/arm/windows/init.c b/src/arm/windows/init.c
+index de2f6cc..c3a7835 100644
+--- a/src/arm/windows/init.c
++++ b/src/arm/windows/init.c
+@@ -175,7 +175,7 @@ static struct woa_chip_info* get_system_info_from_registry(void) {
+ 	if (chip_info == NULL) {
+ 		/* No match was found, so print a warning and assign the unknown
+ 		 * case. */
+-		cpuinfo_log_error(
++		cpuinfo_log_debug(
+ 			"Unknown chip model name '%ls'.\nPlease add new Windows on Arm SoC/chip support to arm/windows/init.c!",
+ 			text_buffer);
+ 	} else {

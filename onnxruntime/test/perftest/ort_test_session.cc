@@ -1,6 +1,6 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Copyright (c) 2023 NVIDIA Corporation.
-// SPDX-FileCopyrightText: Copyright 2024 Arm Limited and/or its affiliates <open-source-office@arm.com>
+// SPDX-FileCopyrightText: Copyright 2024-2025 Arm Limited and/or its affiliates <open-source-office@arm.com>
 // Licensed under the MIT License.
 
 #include "ort_test_session.h"
@@ -203,11 +203,11 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
                          "vtcm_mb", "soc_model", "device_id", "htp_performance_mode", "qnn_saver_path",
                          "htp_graph_finalization_optimization_mode", "qnn_context_priority", "htp_arch",
                          "enable_htp_fp16_precision", "offload_graph_io_quantization", "enable_htp_spill_fill_buffer",
-                         "enable_htp_shared_memory_allocator"});
+                         "enable_htp_shared_memory_allocator", "dump_json_qnn_graph", "json_qnn_graph_dir"});
     for (const auto& provider_option : provider_options) {
       const std::string& key = provider_option.first;
       const std::string& value = provider_option.second;
-      if (key == "backend_path" || key == "profiling_file_path") {
+      if (key == "backend_path" || key == "profiling_file_path" || key == "json_qnn_graph_dir") {
         if (value.empty()) {
           ORT_THROW("Please provide the valid file path.");
         }
@@ -257,7 +257,8 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
       } else if (key == "enable_htp_fp16_precision" ||
                  key == "offload_graph_io_quantization" ||
                  key == "enable_htp_spill_fill_buffer" ||
-                 key == "enable_htp_shared_memory_allocator") {
+                 key == "enable_htp_shared_memory_allocator" ||
+                 key == "dump_json_qnn_graph") {
         std::set<std::string> supported_options = {"0", "1"};
         if (supported_options.find(value) == supported_options.end()) {
           std::ostringstream str_stream;
@@ -478,6 +479,8 @@ select from 'TF8', 'TF16', 'UINT8', 'FLOAT', 'ITENSOR'. \n)");
     bool enable_fast_math = false;
     ParseSessionConfigs(ov_string, provider_options, {"enable_fast_math"});
     for (const auto& provider_option : provider_options) {
+      const std::string& key = provider_option.first;
+      const std::string& value = provider_option.second;
       if (key == "enable_fast_math") {
         std::set<std::string> ov_supported_values = {"true", "True", "false", "False"};
         if (ov_supported_values.find(value) != ov_supported_values.end()) {

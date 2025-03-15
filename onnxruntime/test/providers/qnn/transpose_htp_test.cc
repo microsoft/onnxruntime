@@ -70,6 +70,7 @@ static void RunTransposeQDQTest(const TestInputDef<float>& input_def,
 #else
   provider_options["backend_path"] = "libQnnHtp.so";
 #endif
+  provider_options["offload_graph_io_quantization"] = "0";
 
   // Runs model with DQ-> Transpose -> Q and compares the outputs of the CPU and QNN EPs.
   TestQDQModelAccuracy(BuildTransposeTestCase<float>(input_def, attrs),

@@ -198,7 +198,7 @@ class OnnxModel:
                 node.input[j] = new_input_name
 
     def replace_input_of_all_nodes(self, old_input_name, new_input_name):
-        for node in self.model.graph.node:
+        for node in self.nodes():
             OnnxModel.replace_node_input(node, old_input_name, new_input_name)
 
     @staticmethod
@@ -1028,6 +1028,10 @@ class OnnxModel:
                 nodes_to_keep.append(node)
             else:
                 num_nodes_removed += 1
+
+        self.all_graphs = (
+            None  # to prevent pass-by-copy after ClearField(), forces the use of pass-by-reference instead
+        )
         self.model.graph.ClearField("node")
         self.model.graph.node.extend(nodes_to_keep)
 
@@ -1238,7 +1242,14 @@ class OnnxModel:
         else:
             save_model(model, output_path)
 
-    def save_model_to_file(self, output_path, use_external_data_format=False, all_tensors_to_one_file=True):
+    def save_model_to_file(
+        self,
+        output_path,
+        use_external_data_format=False,
+        all_tensors_to_one_file=True,
+        size_threshold=1024,
+        convert_attribute=False,
+    ):
         logger.info("Sort graphs in topological order")
         self.topological_sort()
 
@@ -1246,7 +1257,14 @@ class OnnxModel:
         #       You need reload the onnx model if you want to read tensor from self.model object.
         #       It is because the base directory is not updated for self.model object so attempt to read tensor data
         #       might encounter error since external data cannot be located.
-        OnnxModel.save(self.model, output_path, use_external_data_format, all_tensors_to_one_file)
+        OnnxModel.save(
+            self.model,
+            output_path,
+            use_external_data_format,
+            all_tensors_to_one_file,
+            size_threshold,
+            convert_attribute,
+        )
         logger.info(f"Model saved to {output_path}")
 
     def get_graph_inputs_excluding_initializers(self):
@@ -1353,7 +1371,14 @@ class OnnxModel:
 
         return False
 
-    def remove_duplicated_initializer(self, cache: dict | None = None):
+    def remove_initializer(self, tensor):
+        for graph in self.graphs():
+            if tensor in graph.initializer:
+                graph.initializer.remove(tensor)
+                return
+        logger.warning("Failed to remove initializer %s", tensor)  # It might be a bug to hit this line.
+
+    def remove_duplicated_initializer(self, cache: dict | None):
         """Remove initializers with duplicated values, and only keep the first one.
         It could help reduce size of models (like ALBert) with shared weights.
         If require_raw_data passed, method will only compare raw_data initializers to speed runtime

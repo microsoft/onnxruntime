@@ -141,7 +141,7 @@ Status BinaryElementwise::ComputeInternal(ComputeContext& context) const {
     }
   }
 
-  uint32_t vec_size = gsl::narrow<uint32_t>((size + 3) / 4);
+  uint32_t vec_size = onnxruntime::narrow<uint32_t>((size + 3) / 4);
   BinaryElementwiseProgram program{kernel_name_,
                                    expression_,
                                    is_broadcast,
@@ -190,9 +190,9 @@ Status BinaryElementwise::ComputeInternal(ComputeContext& context) const {
     // Mode Vectorize broadcast
     // cache hint: "V{a_rank};{b_rank};{output_rank}"
     program
-        .AddIndices(reshaped_output_shape)
-        .AddIndices(reshaped_lhs_shape)
-        .AddIndices(reshaped_rhs_shape)
+        .AddIndices(std::move(reshaped_output_shape))
+        .AddIndices(std::move(reshaped_lhs_shape))
+        .AddIndices(std::move(reshaped_rhs_shape))
         .CacheHint("V");
   } else {
     // Mode Broadcast

@@ -35,24 +35,6 @@ class MatMulNBitsProgram final : public Program<MatMulNBitsProgram> {
   bool use_subgroup_;
 };
 
-class DP4AMatMulQuantizeProgram final : public Program<DP4AMatMulQuantizeProgram> {
- public:
-  DP4AMatMulQuantizeProgram() : Program{"DP4AMatMulQuantize"} {}
-  Status GenerateShaderCode(ShaderHelper& sh) const override;
-};
-
-class DP4AMatMulNBitsProgram final : public Program<DP4AMatMulNBitsProgram> {
- public:
-  DP4AMatMulNBitsProgram() : Program{"DP4AMatMulNBits"} {}
-  Status GenerateShaderCode(ShaderHelper& sh) const override;
-  WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES(
-      {"M", ProgramUniformVariableDataType::Uint32},
-      {"N", ProgramUniformVariableDataType::Uint32},
-      {"K", ProgramUniformVariableDataType::Uint32},
-      {"K8", ProgramUniformVariableDataType::Uint32},
-      {"K16", ProgramUniformVariableDataType::Uint32});
-};
-
 class MatMulNBits final : public WebGpuKernel {
  public:
   MatMulNBits(const OpKernelInfo& info) : WebGpuKernel(info) {

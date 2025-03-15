@@ -7,6 +7,7 @@
 #include "core/graph/graph.h"
 #include "core/framework/fuse_nodes_funcs.h"
 #include "core/framework/transform_layout_functions.h"
+#include "core/optimizer/graph_optimizer_registry.h"
 
 namespace onnxruntime {
 
@@ -24,9 +25,12 @@ class GraphPartitioner {
   };
 
   // The order of providers represents the user preference.
-  GraphPartitioner(KernelRegistryManager& kernel_registry_mgr, const ExecutionProviders& providers)
+  GraphPartitioner(KernelRegistryManager& kernel_registry_mgr,
+                   const ExecutionProviders& providers,
+                   std::unique_ptr<GraphOptimizerRegistry> graph_optimizer_registry)
       : kernel_registry_mgr_(kernel_registry_mgr),
-        providers_(providers) {
+        providers_(providers),
+        graph_optimizer_registry_(std::move(graph_optimizer_registry)) {
   }
 
   // Run partitioning.
@@ -64,6 +68,7 @@ class GraphPartitioner {
 
   KernelRegistryManager& kernel_registry_mgr_;
   const ExecutionProviders& providers_;
+  std::unique_ptr<GraphOptimizerRegistry> graph_optimizer_registry_;
 };
 
 }  // namespace onnxruntime

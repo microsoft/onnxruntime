@@ -1,4 +1,4 @@
-name: Mac_CI
+name: "MacOS CI Pipeline"
 
 on:
   push:
@@ -19,6 +19,100 @@ env:
   python_version: 3.11
 
 jobs:
+  MacOS_C_API_Packaging_CPU_x86_64:
+    runs-on: macos-13
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+      with:
+        submodules: false
+
+    - name: Use Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: ${{ env.python_version }}
+
+    - name: Use Node.js 20.x
+      uses: actions/setup-node@v4
+      with:
+        node-version: '20.x'
+
+    - name: Install Java 17
+      uses: actions/setup-java@v4
+      with:
+        distribution: 'temurin'
+        java-version: '17'
+        architecture: x64
+
+    - name: Set version number variables for Unix
+      shell: bash
+      run: |
+        # Do not output ##vso[] commands with `set -x` or they may be parsed again and include a trailing quote.
+        set +x
+
+        _OnnxRuntimeVersion=$(head -1 ${{ github.workspace }}/VERSION_NUMBER)
+        echo "OnnxRuntimeVersion=$_OnnxRuntimeVersion"
+
+        _OnnxRuntimeGitCommitHash=$(git rev-parse HEAD)
+        echo "OnnxRuntimeGitCommitHash=$_OnnxRuntimeGitCommitHash"
+
+        _OnnxRuntimeGitCommitHash=$(git rev-parse --short=8 HEAD)
+        echo "OnnxRuntimeGitCommitHashShort=$_OnnxRuntimeGitCommitHash"
+      working-directory: ${{ github.workspace }}
+
+    - name: Use Xcode 14.3.1
+      shell: bash
+      run: |
+        set -e -x
+        XCODE_DEVELOPER_DIR="/Applications/Xcode_14.3.1.app/Contents/Developer"
+        sudo xcode-select --switch "${XCODE_DEVELOPER_DIR}"
+
+    - name: Setup environment variables
+      shell: bash
+      run: |
+        set -e -x
+        export PATH=${{ github.workspace }}/installed/bin:$PATH
+        export ONNX_ML=1
+        export CMAKE_ARGS="-DONNX_GEN_PB_TYPE_STUBS=ON -DONNX_WERROR=OFF"
+        python3 -m pip install -r '${{ github.workspace }}/tools/ci_build/github/linux/docker/scripts/requirements.txt'
+
+    - name: Export GitHub Actions cache environment variables
+      uses: actions/github-script@v7
+      with:
+        script: |
+          core.exportVariable('ACTIONS_CACHE_URL', process.env.ACTIONS_CACHE_URL || '');
+          core.exportVariable('ACTIONS_RUNTIME_TOKEN', process.env.ACTIONS_RUNTIME_TOKEN || '');
+
+    - name: Configure Build (build.py --update)
+      shell: bash
+      run: |
+        set -e -x
+        rm -rf ${{ github.workspace }}/Release
+        python3 ${{ github.workspace }}/tools/ci_build/build.py --update --build_objc --build_wheel --use_xnnpack --build_nodejs --build_java --use_coreml --use_webgpu --build_dir ${{ github.workspace }} --skip_submodule_sync --parallel --use_vcpkg --use_vcpkg_ms_internal_asset_cache --use_binskim_compliant_compile_flags --build_shared_lib --config Release --use_vcpkg --use_vcpkg_ms_internal_asset_cache
+
+    - name: Build (build.py --build)
+      shell: bash
+      run: |
+        set -e -x
+        python3 ${{ github.workspace }}/tools/ci_build/build.py --build --build_objc --build_wheel --use_xnnpack --build_nodejs --build_java --use_coreml --use_webgpu --build_dir ${{ github.workspace }} --skip_submodule_sync --parallel --use_vcpkg --use_vcpkg_ms_internal_asset_cache --use_binskim_compliant_compile_flags --build_shared_lib --config Release --use_vcpkg --use_vcpkg_ms_internal_asset_cache
+
+    - name: Install
+      shell: bash
+      run: |
+        set -e -x
+        cd ${{ github.workspace }}/Release
+        make install DESTDIR=${{ github.workspace }}/installed
+
+    - name: Running Tests (build.py --test)
+      shell: bash
+      run: |
+        set -e -x
+        python3 ${{ github.workspace }}/tools/ci_build/build.py --test --build_objc --build_wheel --use_xnnpack --build_nodejs --build_java --use_coreml --use_webgpu --build_dir ${{ github.workspace }} --skip_submodule_sync --parallel --use_binskim_compliant_compile_flags --build_shared_lib --config Release --use_vcpkg --use_vcpkg_ms_internal_asset_cache
+    timeout-minutes: 300
+    env:
+      MACOSX_DEPLOYMENT_TARGET: '13.3'
+      ALLOW_RELEASED_ONNX_OPSET_ONLY: '0'
+
   ARM64-Xcode16:
     runs-on: macos-15
 
@@ -70,7 +164,7 @@ jobs:
       matrix:
         target_arch: [x86_64, arm64]
 
-    timeout-minutes: 60
+    timeout-minutes: 75
 
     steps:
     - uses: actions/setup-python@v5
@@ -108,101 +202,6 @@ jobs:
           --apple_deploy_target=15.1 \
           --apple_sysroot=iphonesimulator \
           --osx_arch=${{ matrix.target_arch }}
-
-  Vcpkg:
-    runs-on: macos-13
-    steps:
-    - uses: actions/checkout@v4
-    - uses: actions/setup-python@v5
-      with:
-        python-version: ${{ env.python_version }}
-
-    - name: "Run Homebrew"
-      run: brew install autoconf automake autoconf-archive
-
-    - name: "Run vcpkg(x64-osx)"
-      uses: lukka/run-vcpkg@v11
-      with:
-        vcpkgDirectory: "${{ runner.temp }}/vcpkg"
-        vcpkgGitCommitId: "b322364f06308bdd24823f9d8f03fe0cc86fd46f" # 2024.12.16
-        runVcpkgInstall: true # vcpkg install --x-manifest-root cmake --x-install-root .build --overlay-triplets cmake/vcpkg-triplets/default
-        vcpkgJsonGlob: "cmake/vcpkg.json"
-        vcpkgConfigurationJsonGlob: "cmake/vcpkg-configuration.json"
-      env:
-        VCPKG_INSTALLED_DIR: "${{ github.workspace }}/.build"
-        VCPKG_DEFAULT_TRIPLET: "x64-osx"
-        VCPKG_OVERLAY_TRIPLETS: "${{ github.workspace }}/cmake/vcpkg-triplets/default"
-        # VCPKG_BINARY_SOURCES: "default" # https://learn.microsoft.com/en-us/vcpkg/reference/binarycaching
-
-    - name: "Run compile_schema.py"
-      run: |
-        set -e -x
-        # Runner's host triplet should be x64-osx or arm64-osx
-        export FLATC_DIR="${{ github.workspace }}/.build/${{ runner.arch }}-osx/tools/flatbuffers"
-        export PATH="$FLATC_DIR:$PATH"
-        flatc --version
-        python onnxruntime/core/flatbuffers/schema/compile_schema.py --flatc "$(which flatc)"
-        python onnxruntime/lora/adapter_format/compile_schema.py --flatc "$(which flatc)"
-
-    - name: "Detect protoc"
-      id: protoc-detect
-      run: |
-        export PROTOC_DIR="${{ github.workspace }}/.build/${{ runner.arch }}-osx/tools/protobuf"
-        export PATH="$PROTOC_DIR:$PATH"
-        protoc --version
-        echo "protoc_path=$(which protoc)" >> "$GITHUB_OUTPUT"
-
-    - name: "Run build.py(x64-osx)"
-      run: |
-        python ./tools/ci_build/build.py \
-          --build_dir "build/x64-osx" \
-          --skip_submodule_sync \
-          --skip_tests \
-          --compile_no_warning_as_error \
-          --parallel \
-          --path_to_protoc_exe "${{ steps.protoc-detect.outputs.protoc_path }}" \
-          --osx_arch x86_64 \
-          --use_vcpkg \
-          --cmake_extra_defines "CMAKE_TOOLCHAIN_FILE:FILEPATH=${VCPKG_ROOT}/scripts/buildsystems/vcpkg.cmake" \
-          --cmake_extra_defines "VCPKG_TARGET_TRIPLET=x64-osx" \
-          --cmake_extra_defines "VCPKG_INSTALLED_DIR:PATH=${{ github.workspace }}/.build" \
-          --cmake_extra_defines "VCPKG_INSTALL_OPTIONS=--x-feature=tests"
-      env:
-        VCPKG_OVERLAY_TRIPLETS: "${{ github.workspace }}/cmake/vcpkg-triplets/default"
-      shell: bash
-
-    - name: "Run vcpkg(arm64-osx)"
-      uses: lukka/run-vcpkg@v11
-      with:
-        vcpkgDirectory: "${{ runner.temp }}/vcpkg"
-        doNotUpdateVcpkg: true
-        runVcpkgInstall: true # vcpkg install --x-manifest-root cmake --x-install-root .build --overlay-triplets cmake/vcpkg-triplets/default
-        vcpkgJsonGlob: "cmake/vcpkg.json"
-        vcpkgConfigurationJsonGlob: "cmake/vcpkg-configuration.json"
-      env:
-        VCPKG_INSTALLED_DIR: "${{ github.workspace }}/.build"
-        VCPKG_DEFAULT_TRIPLET: "arm64-osx"
-        VCPKG_OVERLAY_TRIPLETS: "${{ github.workspace }}/cmake/vcpkg-triplets/default"
-        # VCPKG_BINARY_SOURCES: "default" # https://learn.microsoft.com/en-us/vcpkg/reference/binarycaching
-
-    - name: "Run build.py(arm64-osx)"
-      run: |
-        python ./tools/ci_build/build.py \
-          --build_dir "build/arm64-osx" \
-          --skip_submodule_sync \
-          --skip_tests \
-          --compile_no_warning_as_error \
-          --parallel \
-          --path_to_protoc_exe "${{ steps.protoc-detect.outputs.protoc_path }}" \
-          --osx_arch arm64 \
-          --use_vcpkg \
-          --cmake_extra_defines "CMAKE_TOOLCHAIN_FILE:FILEPATH=${VCPKG_ROOT}/scripts/buildsystems/vcpkg.cmake" \
-          --cmake_extra_defines "VCPKG_TARGET_TRIPLET=arm64-osx" \
-          --cmake_extra_defines "VCPKG_INSTALLED_DIR:PATH=${{ github.workspace }}/.build" \
-          --cmake_extra_defines "VCPKG_INSTALL_OPTIONS=--x-feature=tests"
-      env:
-        VCPKG_OVERLAY_TRIPLETS: "${{ github.workspace }}/cmake/vcpkg-triplets/default"
-      shell: bash
 
   Objective-C-StaticAnalysis:
     runs-on: macos-14
