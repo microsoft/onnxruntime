@@ -35,19 +35,31 @@ class DP4AMatMulNBitsProgram final : public Program<DP4AMatMulNBitsProgram> {
 };
 
 class DP4AMatMulNBitsGenerationProgram final : public Program<DP4AMatMulNBitsGenerationProgram> {
-  public:
-   DP4AMatMulNBitsGenerationProgram(uint32_t block_size, uint32_t a_block_size) : Program{"DP4AMatMulNBitsGeneration"}, block_size_(block_size), a_block_size_(a_block_size) {}
-   Status GenerateShaderCode(ShaderHelper& sh) const override;
-   WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES(
-       {"M", ProgramUniformVariableDataType::Uint32},
-       {"N", ProgramUniformVariableDataType::Uint32},
-       {"K", ProgramUniformVariableDataType::Uint32},
-       {"K16", ProgramUniformVariableDataType::Uint32});
+ public:
+  DP4AMatMulNBitsGenerationProgram(uint32_t block_size,
+                                   uint32_t a_block_size,
+                                   uint32_t k,
+                                   uint32_t b_tile_size,
+                                   uint32_t workgroup_size) : Program{"DP4AMatMulNBitsGeneration"},
+                                                              block_size_(block_size),
+                                                              a_block_size_(a_block_size),
+                                                              k_(k),
+                                                              b_tile_size_(b_tile_size),
+                                                              workgroup_size_(workgroup_size) {}
+  Status GenerateShaderCode(ShaderHelper& sh) const override;
+  WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES(
+      {"M", ProgramUniformVariableDataType::Uint32},
+      {"N", ProgramUniformVariableDataType::Uint32},
+      {"K", ProgramUniformVariableDataType::Uint32},
+      {"K16", ProgramUniformVariableDataType::Uint32});
 
-  private:
-   uint32_t block_size_;
-   uint32_t a_block_size_;
- };
+ private:
+  uint32_t block_size_;
+  uint32_t a_block_size_;
+  uint32_t k_;
+  uint32_t b_tile_size_;
+  uint32_t workgroup_size_;
+};
 
 Status ApplyDP4AMatrixMatMulNBits(const Tensor* a, const Tensor* b, const Tensor* scales,
                                   uint32_t M,

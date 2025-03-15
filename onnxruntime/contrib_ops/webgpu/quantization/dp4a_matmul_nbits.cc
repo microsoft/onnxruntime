@@ -259,46 +259,25 @@ Status DP4AMatMulNBitsProgram::GenerateShaderCode(ShaderHelper& shader) const {
 }
 
 Status DP4AMatMulNBitsGenerationProgram::GenerateShaderCode(ShaderHelper& shader) const {
-    shader.AddInput("input_a", ShaderUsage::UseUniform | ShaderUsage::UseIndicesTypeAlias | ShaderUsage::UseValueTypeAlias);
-    shader.AddInput("scales_a", ShaderUsage::UseUniform);
-    shader.AddInput("input_b", ShaderUsage::UseUniform);
-    shader.AddInput("scales_b", ShaderUsage::UseUniform);
-    shader.AddOutput("output", ShaderUsage::UseUniform | ShaderUsage::UseElementTypeAlias);
+  shader.AddInput("input_a", ShaderUsage::UseUniform | ShaderUsage::UseIndicesTypeAlias | ShaderUsage::UseValueTypeAlias);
+  shader.AddInput("scales_a", ShaderUsage::UseUniform);
+  shader.AddInput("input_b", ShaderUsage::UseUniform);
+  shader.AddInput("scales_b", ShaderUsage::UseUniform);
+  shader.AddOutput("output", ShaderUsage::UseUniform | ShaderUsage::UseElementTypeAlias);
 
-    shader.AdditionalImplementation() << "  const block_size = " << block_size_ << ";";
-    shader.AdditionalImplementation() << "  const a_block_size = " << a_block_size_ << ";";
+  shader.AdditionalImplementation() << "  const block_size = " << block_size_ << ";";
+  shader.AdditionalImplementation() << "  const a_block_size = " << a_block_size_ << ";";
+  shader.AdditionalImplementation() << "  const k32_per_thread:u32 = " << uint32_t(k_ / (workgroup_size_ * 32)) << ";";
+  shader.AdditionalImplementation() << "  const workgroup_size:u32 = " << uint32_t(workgroup_size_) << ";";
+  // b_tile_size_ is the number of rows of B that this workgroup will process.
+  shader.AdditionalImplementation() << "  const b_tile_size:u32 = " << uint32_t(b_tile_size_) << ";";
 
-    shader.AdditionalImplementation() << R"ADDNL_FN(
-        // Tile size is the same as workgroup size, this ensures that no threads are idle when loading tile_A.
-        const tile_size = 256;
-        const vec_factor = 4;
-        const u32_factor = 4;
-        const k_per_cycle = (tile_size*vec_factor*u32_factor);
-        const scale_count = u32(k_per_cycle/a_block_size);
+  shader.AdditionalImplementation() << R"ADDNL_FN(
+        // Shared memory for intermediate subgroup results
+        // sg_size 8 is the minimum that is supported, hence allocate space of workgroup_size/8 per b.
+        var<workgroup> intermediate_results: array<array<output_element_t, workgroup_size/8>, b_tile_size>;
 
-        // Shared memory
-        var<workgroup> tile_A  : array<vec4<u32>, tile_size>;
-        var<workgroup> scale_A : array<output_element_t, scale_count>;
-
-        fn loadB(b_global:u32, kidx_v:u32) -> vec4<u32>
-        {
-            if (b_global >= uniforms.N)
-            {
-                return vec4<u32>(0);
-            }
-
-            let b_value = input_b[b_global*uniforms.K16+kidx_v];
-            var b_value_lower = vec4<i32>(unpack4xU8(b_value[0] & 0x0F0F0F0Fu)) - vec4<i32>(8);
-            var b_value_upper = vec4<i32>(unpack4xU8((b_value[0] >> 4) & 0x0F0F0F0Fu)) - vec4<i32>(8);
-            let r1 = pack4xI8(vec4<i32>(b_value_lower[0], b_value_upper[0], b_value_lower[1], b_value_upper[1]));
-            let r2 = pack4xI8(vec4<i32>(b_value_lower[2], b_value_upper[2], b_value_lower[3], b_value_upper[3]));
-            b_value_lower = vec4<i32>(unpack4xU8(b_value[1] & 0x0F0F0F0Fu)) - vec4<i32>(8);
-            b_value_upper = vec4<i32>(unpack4xU8((b_value[1] >> 4) & 0x0F0F0F0Fu)) - vec4<i32>(8);
-            let r3 = pack4xI8(vec4<i32>(b_value_lower[0], b_value_upper[0], b_value_lower[1], b_value_upper[1]));
-            let r4 = pack4xI8(vec4<i32>(b_value_lower[2], b_value_upper[2], b_value_lower[3], b_value_upper[3]));
-            return vec4<u32>(r1, r2, r3, r4);
-        }
-        // Scaled dot product of 8 packed unsigned integers.
+        // Scaled dot product of 8 packed unsigned integers
         fn SDP8AI(a1:vec4<u32>, b1:vec4<u32>, a2:vec4<u32>, b2:vec4<u32>, scale:output_element_t) -> output_element_t
         {
             var local_sum = dot4I8Packed(a1[0], b1[0]);
@@ -311,41 +290,121 @@ Status DP4AMatMulNBitsGenerationProgram::GenerateShaderCode(ShaderHelper& shader
             local_sum += dot4I8Packed(a2[3], b2[3]);
             return output_element_t(local_sum) * scale;
         }
+
+        fn loadB(b_global:u32, kidx_v:u32) -> vec4<u32>
+        {
+            if (b_global >= uniforms.N)
+            {
+                return vec4<u32>(0);
+            }
+            let b_value = input_b[b_global*uniforms.K16+kidx_v];
+            var b_value_lower = vec4<i32>(unpack4xU8(b_value[0] & 0x0F0F0F0Fu)) - vec4<i32>(8);
+            var b_value_upper = vec4<i32>(unpack4xU8((b_value[0] >> 4) & 0x0F0F0F0Fu)) - vec4<i32>(8);
+            let r1 = pack4xI8(vec4<i32>(b_value_lower[0], b_value_upper[0], b_value_lower[1], b_value_upper[1]));
+            let r2 = pack4xI8(vec4<i32>(b_value_lower[2], b_value_upper[2], b_value_lower[3], b_value_upper[3]));
+            b_value_lower = vec4<i32>(unpack4xU8(b_value[1] & 0x0F0F0F0Fu)) - vec4<i32>(8);
+            b_value_upper = vec4<i32>(unpack4xU8((b_value[1] >> 4) & 0x0F0F0F0Fu)) - vec4<i32>(8);
+            let r3 = pack4xI8(vec4<i32>(b_value_lower[0], b_value_upper[0], b_value_lower[1], b_value_upper[1]));
+            let r4 = pack4xI8(vec4<i32>(b_value_lower[2], b_value_upper[2], b_value_lower[3], b_value_upper[3]));
+            return vec4<u32>(r1, r2, r3, r4);
+        }
     )ADDNL_FN";
 
-    shader.MainFunctionBody() << R"MAIN_FN(
-        let b_global = workgroup_idx * tile_size + local_idx;
-        var scale_base:u32= 0;
-        var accumulate:output_element_t = 0;
-        for (var kidx_v:u32 = 0; kidx_v < uniforms.K16; kidx_v+=tile_size)
-        {
-            workgroupBarrier();
-            let local_kidx_v = kidx_v + local_idx;
-            if (local_kidx_v < uniforms.K16)
-            {
-                tile_A[local_idx] = input_a[local_kidx_v];
-            }
-            if (local_idx < scale_count && local_idx+scale_base < uniforms.K/a_block_size)
-            {
-                scale_A[local_idx] = scales_a[local_idx+scale_base];
-            }
-            scale_base += scale_count;
-            workgroupBarrier();
-            for (var idx:u32=0;idx<tile_size;idx+=2)
-            {
-                let b1 = loadB(b_global, kidx_v+idx);
-                let b2 = loadB(b_global, kidx_v+idx+1);
-                let b_scale = scales_b[(b_global)*(uniforms.K/block_size) + (kidx_v + idx)/(block_size/16)];
-                let a1 = tile_A[idx];
-                let a2 = tile_A[idx+1];
-                let a_scale = scale_A[idx/(a_block_size/16)];
-                accumulate += SDP8AI(a1, b1, a2, b2,  a_scale * b_scale);
+  shader.MainFunctionBody() << R"MAIN_FN(
+        // Calculate which B rows this workgroup processes
+        let base_b_row = workgroup_idx * b_tile_size;
+        let subgroup_count = workgroup_size / sg_size;
+        let sg_idx = u32(local_idx / sg_size);
+        let sg_lane = local_idx % sg_size;
+
+        // Preload A values and scales once for all B rows
+        var a_values_array: array<vec4<u32>, k32_per_thread>;
+        var a_next_values_array: array<vec4<u32>, k32_per_thread>;
+        var a_scales_array: array<output_element_t, k32_per_thread>;
+
+        // Preload all A values that will be needed
+        for (var k_vec_32_idx = 0u; k_vec_32_idx < k32_per_thread; k_vec_32_idx += 1u) {
+            let k_global_vec_16_idx = (local_idx * k32_per_thread + k_vec_32_idx) * 2;
+            if (k_global_vec_16_idx < uniforms.K16) {
+                // Load A values
+                let a_chunk_idx = k_global_vec_16_idx;
+                a_values_array[k_vec_32_idx] = input_a[a_chunk_idx];
+
+                // Load next A values (or zero if out of bounds)
+                let a_next_idx = a_chunk_idx + 1u;
+                a_next_values_array[k_vec_32_idx] = select(vec4<u32>(0), input_a[a_next_idx], a_next_idx < uniforms.K16);
+
+                // Get A scale
+                let a_scale_idx = k_global_vec_16_idx / (a_block_size / 16u);
+                a_scales_array[k_vec_32_idx] = select(output_element_t(0.0), scales_a[a_scale_idx], a_scale_idx < (uniforms.K / a_block_size));
+            } else {
+                // Out of bounds - set to zero
+                a_values_array[k_vec_32_idx] = vec4<u32>(0);
+                a_next_values_array[k_vec_32_idx] = vec4<u32>(0);
+                a_scales_array[k_vec_32_idx] = output_element_t(0.0);
             }
         }
-        output[b_global] = accumulate;
-      )MAIN_FN";
 
-    return Status::OK();
+        // Process b_tile_size rows of B at a time
+        for (var b_offset = 0u; b_offset < b_tile_size; b_offset += 1u) {
+            let b_row = base_b_row + b_offset;
+            if (b_row >= uniforms.N) { break; }
+
+            // Initialize accumulator for this B row
+            var accumulate: output_element_t = 0.0;
+
+            // Each thread processes its portion of K dimension using preloaded A values
+            for (var k_vec_32_idx = 0u; k_vec_32_idx < k32_per_thread; k_vec_32_idx += 1u) {
+                let k_global_vec_16_idx = (local_idx * k32_per_thread + k_vec_32_idx) * 2;
+                if (k_global_vec_16_idx >= uniforms.K16) { break; }
+
+                // Use preloaded A values and scales
+                let a_values = a_values_array[k_vec_32_idx];
+                let a_next_values = a_next_values_array[k_vec_32_idx];
+                let a_scale = a_scales_array[k_vec_32_idx];
+
+                // Load B values for the current row
+                let b_values = loadB(b_row, k_global_vec_16_idx);
+                let b_next_idx = k_global_vec_16_idx + 1u;
+                let b_next_values = select(vec4<u32>(0), loadB(b_row, b_next_idx), b_next_idx < uniforms.K16);
+
+                // Get B scale
+                let b_scale_idx = b_row * (uniforms.K / block_size) + k_global_vec_16_idx / (block_size / 16u);
+                let b_scale = select(output_element_t(0.0), scales_b[b_scale_idx], b_scale_idx < (uniforms.N * uniforms.K / block_size));
+
+                // Compute the dot product
+                let combined_scale = a_scale * b_scale;
+                accumulate += SDP8AI(a_values, b_values, a_next_values, b_next_values, combined_scale);
+            }
+
+            // Subgroup reduction to get sum across the subgroup
+            var subgroup_result = subgroupAdd(accumulate);
+
+            // First lane in each subgroup stores the result
+            if (sg_lane == 0u) {
+                intermediate_results[b_offset][sg_idx] = subgroup_result;
+            }
+        }
+
+        // Ensure all subgroups have written their results
+        workgroupBarrier();
+
+        // The first b_tile_size threads accumulate results from the entire workgroup.
+        if (local_idx < b_tile_size) {
+            let b_row = base_b_row + local_idx;
+            if (b_row < uniforms.N) {
+                var final_result: output_element_t = 0.0;
+                // Sum up contributions from all subgroups for this B row
+                for (var i = 0u; i < subgroup_count; i += 1u) {
+                    final_result += intermediate_results[local_idx][i];
+                }
+                // Write final result to output
+                output[b_row] = final_result;
+            }
+        }
+    )MAIN_FN";
+
+  return Status::OK();
 }
 
 Status ApplyDP4AMatrixMatMulNBits(const Tensor* a, const Tensor* b, const Tensor* scales,
@@ -375,24 +434,27 @@ Status ApplyDP4AMatrixMatMulNBits(const Tensor* a, const Tensor* b, const Tensor
   ORT_RETURN_IF_ERROR(context.RunProgram(quantize_program));
 
   if (is_generation) {
-    DP4AMatMulNBitsGenerationProgram generation_program{block_size, kBlockSizeA};
-    constexpr uint32_t workgroup_size = 256;
-    generation_program.SetWorkgroupSize(workgroup_size);
-    generation_program.SetDispatchGroupSize((N + workgroup_size - 1) / workgroup_size);
+    constexpr uint32_t kWorkGroupSize = 96;
+    constexpr uint32_t kBTileSize = 16;
+    DP4AMatMulNBitsGenerationProgram generation_program{block_size, kBlockSizeA, K, kBTileSize, kWorkGroupSize};
+    generation_program.SetWorkgroupSize(kWorkGroupSize);
+    generation_program.SetDispatchGroupSize((N + kBTileSize - 1) / kBTileSize);
     generation_program.AddInputs({{&a_quant, ProgramTensorMetadataDependency::TypeAndRank, static_cast<int>(kVec4Components)},
-                    {&a_scale, ProgramTensorMetadataDependency::TypeAndRank, 1},
-                    {b, ProgramTensorMetadataDependency::TypeAndRank, static_cast<int>(kVec2Components * kU32Components)},
-                    {scales, ProgramTensorMetadataDependency::TypeAndRank, 1}})
+                                  {&a_scale, ProgramTensorMetadataDependency::TypeAndRank, 1},
+                                  {b, ProgramTensorMetadataDependency::TypeAndRank, static_cast<int>(kVec2Components * kU32Components)},
+                                  {scales, ProgramTensorMetadataDependency::TypeAndRank, 1}})
         .AddUniformVariables({{static_cast<uint32_t>(M)},
-                            {static_cast<uint32_t>(N)},
-                            {static_cast<uint32_t>(K)},
-                            {static_cast<uint32_t>(K / 16)}})
+                              {static_cast<uint32_t>(N)},
+                              {static_cast<uint32_t>(K)},
+                              {static_cast<uint32_t>(K / 16)}})
         .AddOutput({y, ProgramTensorMetadataDependency::TypeAndRank, y->Shape(), static_cast<int>(1)})
-        .CacheHint("Block" + std::to_string(block_size) + "ABlock" + std::to_string(kBlockSizeA) + "Generation");
+        .CacheHint("Generation Block" + std::to_string(block_size) +
+                   "ABlock" + std::to_string(kBlockSizeA) +
+                   "WorkgroupSize" + std::to_string(kWorkGroupSize) +
+                   "BTile" + std::to_string(kBTileSize) +
+                   "K" + std::to_string(K));
     return context.RunProgram(generation_program);
-  }
-  else
-  {
+  } else {
     constexpr uint32_t kTileSize = 64;
     TensorShape reshaped_y_shape{1, M, N / kVec4Components};
     DP4AMatMulNBitsProgram mul_program{block_size};
@@ -401,14 +463,14 @@ Status ApplyDP4AMatrixMatMulNBits(const Tensor* a, const Tensor* b, const Tensor
         (M + kTileSize - 1) / kTileSize,
         (N + kTileSize - 1) / kTileSize, 1);
     mul_program.AddInputs({{&a_quant, ProgramTensorMetadataDependency::TypeAndRank, static_cast<int>(kVec4Components)},
-                            {&a_scale, ProgramTensorMetadataDependency::TypeAndRank, 1},
-                            {b, ProgramTensorMetadataDependency::TypeAndRank, static_cast<int>(kVec2Components * kU32Components)},
-                            {scales, ProgramTensorMetadataDependency::TypeAndRank, 1}})
+                           {&a_scale, ProgramTensorMetadataDependency::TypeAndRank, 1},
+                           {b, ProgramTensorMetadataDependency::TypeAndRank, static_cast<int>(kVec2Components * kU32Components)},
+                           {scales, ProgramTensorMetadataDependency::TypeAndRank, 1}})
         .AddUniformVariables({{static_cast<uint32_t>(M)},
-                                {static_cast<uint32_t>(N)},
-                                {static_cast<uint32_t>(K)},
-                                {static_cast<uint32_t>(K / 8)},
-                                {static_cast<uint32_t>(K / 16)}})
+                              {static_cast<uint32_t>(N)},
+                              {static_cast<uint32_t>(K)},
+                              {static_cast<uint32_t>(K / 8)},
+                              {static_cast<uint32_t>(K / 16)}})
         .AddOutput({y, ProgramTensorMetadataDependency::TypeAndRank, reshaped_y_shape, static_cast<int>(kVec4Components)})
         .CacheHint("Block" + std::to_string(block_size));
     return context.RunProgram(mul_program);
