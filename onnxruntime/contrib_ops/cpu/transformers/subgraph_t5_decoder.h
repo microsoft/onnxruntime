@@ -45,7 +45,6 @@ class T5DecoderSubgraph : public Subgraph {
       int num_beam,
       Stream* stream,
       bool use_sequence_as_input_ids,
-      int cur_len,
       transformers::Sequences& sequences,
       int past_present_share_buffer_max_seq_len = -1,
       bool need_cache_indir = false,
@@ -70,6 +69,10 @@ class T5DecoderSubgraph : public Subgraph {
 
   inline bool UseSequenceAsInputIds() const {
     return use_sequence_as_input_ids_;
+  }
+
+  inline bool UseEncoderHiddenState() const {
+    return has_hidden_state_;
   }
 
  protected:

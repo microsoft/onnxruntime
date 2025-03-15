@@ -10,7 +10,12 @@ import logging
 import os
 
 import torch
-from benchmark_helper import Precision, create_onnxruntime_session, prepare_environment, setup_logger
+from benchmark_helper import (
+    Precision,
+    create_onnxruntime_session,
+    prepare_environment,
+    setup_logger,
+)
 from t5_helper import PRETRAINED_MT5_MODELS, PRETRAINED_T5_MODELS, T5Helper
 
 logger = logging.getLogger("")
@@ -104,17 +109,17 @@ def parse_arguments():
         "--disable_auto_mixed_precision",
         required=False,
         action="store_true",
-        help="use pure fp16 instead of mixed precision",
+        help="do not use auto mixed precision conversion",
     )
     parser.set_defaults(disable_auto_mixed_precision=False)
 
     parser.add_argument(
-        "--separate_encoder_and_decoder_init",
+        "--force_fp16_io",
         required=False,
         action="store_true",
-        help="Do not merge encode and decoder init. Output 3 instead of 2 onnx models.",
+        help="Force to convert all float inputs and outputs to fp16 when precision is fp16.",
     )
-    parser.set_defaults(separate_encoder_and_decoder_init=False)
+    parser.set_defaults(force_fp16_io=False)
 
     parser.add_argument(
         "--use_int64_inputs",
@@ -131,6 +136,14 @@ def parse_arguments():
         help="filepath to load pre-trained model with custom state dictionary (e.g. pytorch_model.bin)",
     )
 
+    parser.add_argument(
+        "--encode_decoder_init",
+        required=False,
+        action="store_true",
+        help="Combine encoder and decoder kv cache initialization into one model.",
+    )
+    parser.set_defaults(encode_decoder_init=False)
+
     args = parser.parse_args()
 
     return args
@@ -146,17 +159,23 @@ def export_onnx_models(
     precision,
     verbose,
     use_decoder_start_token: bool = False,
-    merge_encoder_and_decoder_init: bool = True,
     overwrite: bool = False,
     disable_auto_mixed_precision: bool = False,
     use_int32_inputs: bool = True,
     model_type: str = "t5",
     state_dict_path: str = "",
+    encode_decoder_init: bool = False,
+    force_fp16_io: bool = False,
 ):
     device = torch.device("cuda:0" if use_gpu else "cpu")
 
     models = T5Helper.load_model(
-        model_name_or_path, cache_dir, device, merge_encoder_and_decoder_init, model_type, state_dict_path
+        model_name_or_path,
+        cache_dir,
+        device,
+        model_type,
+        state_dict_path,
+        encode_decoder_init=encode_decoder_init,
     )
     config = models["decoder"].config
 
@@ -211,6 +230,7 @@ def export_onnx_models(
                     use_external_data_format,
                     auto_mixed_precision=not disable_auto_mixed_precision,
                     use_gpu=use_gpu,
+                    force_fp16_io=force_fp16_io,
                 )
             else:
                 logger.info(f"Skip optimizing: existed ONNX model {onnx_path}")
@@ -220,7 +240,7 @@ def export_onnx_models(
         ort_session = create_onnxruntime_session(
             output_path,
             use_gpu=use_gpu,
-            provider=["CUDAExecutionProvider", "CPUExecutionProvider"] if use_gpu else ["CPUExecutionProvider"],
+            provider=(["CUDAExecutionProvider", "CPUExecutionProvider"] if use_gpu else ["CPUExecutionProvider"]),
         )
 
         with torch.no_grad():
@@ -264,11 +284,12 @@ def main():
         args.precision,
         args.verbose,
         args.use_decoder_start_token,
-        not args.separate_encoder_and_decoder_init,
         args.overwrite,
         args.disable_auto_mixed_precision,
         not args.use_int64_inputs,
         args.model_type,
+        encode_decoder_init=args.encode_decoder_init,
+        force_fp16_io=args.force_fp16_io,
     )
 
     logger.info(f"Done! Outputs: {output_paths}")

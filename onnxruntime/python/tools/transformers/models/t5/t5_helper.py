@@ -1,8 +1,7 @@
 # -------------------------------------------------------------------------
-# Copyright (c) Microsoft Corporation.  All rights reserved.
-# Licensed under the MIT License.  See License.txt in the project root for
-# license information.
-# --------------------------------------------------------------------------
+# Copyright (c) Microsoft Corporation. All rights reserved.
+# Licensed under the MIT License.
+# -------------------------------------------------------------------------
 
 import logging
 import os
@@ -12,8 +11,7 @@ import torch
 from float16 import float_to_float16_max_diff
 from onnx_model import OnnxModel
 from optimizer import optimize_model
-from t5_decoder import T5Decoder, T5DecoderHelper, T5DecoderInit
-from t5_encoder import T5Encoder, T5EncoderHelper
+from t5_decoder import T5Decoder, T5DecoderHelper
 from t5_encoder_decoder_init import T5EncoderDecoderInit, T5EncoderDecoderInitHelper
 from transformers import MT5ForConditionalGeneration, T5ForConditionalGeneration
 
@@ -22,7 +20,13 @@ from onnxruntime import InferenceSession
 logger = logging.getLogger(__name__)
 
 PRETRAINED_T5_MODELS = ["t5-small", "t5-base", "t5-large", "t5-3b", "t5-11b"]
-PRETRAINED_MT5_MODELS = ["google/mt5-small", "google/mt5-base", "google/mt5-large", "google/mt5-xl", "google/mt5-xxl"]
+PRETRAINED_MT5_MODELS = [
+    "google/mt5-small",
+    "google/mt5-base",
+    "google/mt5-large",
+    "google/mt5-xl",
+    "google/mt5-xxl",
+]
 
 
 class T5Helper:
@@ -60,9 +64,9 @@ class T5Helper:
         model_name_or_path: str,
         cache_dir: str,
         device: torch.device,
-        merge_encoder_and_decoder_init: bool = True,
         model_type: str = "t5",
         state_dict_path: str = "",
+        encode_decoder_init: bool = False,
     ) -> dict[str, torch.nn.Module]:
         """Load model given a pretrained name or path, then build models for ONNX conversion.
 
@@ -70,8 +74,9 @@ class T5Helper:
             model_name_or_path (str): pretrained model name or path
             cache_dir (str): cache directory
             device (torch.device): device to run the model
-            merge_encoder_and_decoder_init (bool, optional): Whether merge encoder and decoder initialization into one ONNX model. Defaults to True.
-            is_mt5 (bool, optional): whether the model is MT5 instead of T5
+            model_type (str, optional): model type "t5" or "mt5"
+            state_dict_path(str, optional): state dictionary path
+            encode_decoder_init (bool, optional): combine encoder and decoder kv cache initialization into one model.
         Returns:
             Dict[str, torch.nn.Module]: mapping from name to modules for ONNX conversion.
         """
@@ -88,29 +93,21 @@ class T5Helper:
         decoder = T5Decoder(model.decoder, model.lm_head, model.config)
         decoder.eval().to(device)
 
-        if merge_encoder_and_decoder_init:
-            encoder_decoder_init = T5EncoderDecoderInit(
-                model.encoder,
-                model.decoder,
-                model.lm_head,
-                model.config,
-                decoder_start_token_id=None,
-            )
-            return {"encoder_decoder_init": encoder_decoder_init, "decoder": decoder}
-        else:
-            encoder = T5Encoder(model.encoder, model.config)
-            encoder.eval().to(device)
-            decoder_init = T5DecoderInit(model.decoder, model.lm_head, model.config)
-            decoder_init.eval().to(device)
-            return {
-                "encoder": encoder,
-                "decoder": decoder,
-                "decoder_init": decoder_init,
-            }
+        encoder_decoder_init = T5EncoderDecoderInit(
+            model.encoder,
+            model.decoder,
+            model.lm_head,
+            model.config,
+            decoder_start_token_id=None,
+            output_cross_only=not encode_decoder_init,
+        )
+
+        encoder_name = "encoder_decoder_init" if encode_decoder_init else "encoder"
+        return {encoder_name: encoder_decoder_init, "decoder": decoder}
 
     @staticmethod
     def export_onnx(
-        model: T5Encoder | T5Decoder | T5DecoderInit | T5EncoderDecoderInit,
+        model: T5Decoder | T5EncoderDecoderInit,
         device: torch.device,
         onnx_model_path: str,
         verbose: bool = True,
@@ -118,16 +115,7 @@ class T5Helper:
         use_decoder_input_ids: bool = True,
         use_int32_inputs: bool = False,
     ):
-        if isinstance(model, T5Encoder):
-            T5EncoderHelper.export_onnx(
-                model,
-                device,
-                onnx_model_path,
-                verbose,
-                use_external_data_format,
-                use_int32_inputs,
-            )
-        elif isinstance(model, T5EncoderDecoderInit):
+        if isinstance(model, T5EncoderDecoderInit):
             T5EncoderDecoderInitHelper.export_onnx(
                 model,
                 device,
@@ -156,12 +144,14 @@ class T5Helper:
             "Relu",
             "Add",
         ],
+        force_fp16_logits: bool = False,
     ):
         """Convert model to mixed precision.
            It detects whether original model has fp16 precision weights, and set parameters for float16 conversion automatically.
         Args:
             onnx_model (OnnxModel): optimized ONNX model
             op_block_list (List[str], optional): . Defaults to ["SimplifiedLayerNormalization", "SkipSimplifiedLayerNormalization", "Relu", "Add"]
+            force_fp16_logits (bool, optional): force logits and last MatMul node to be in float16. Defaults to False.
         Returns:
             parameters(dict): a dictionary of parameters used in float16 conversion
         """
@@ -198,7 +188,7 @@ class T5Helper:
 
         keep_io_types = []
         node_block_list = []
-        if (not is_weight_fp16_precision) and (last_matmul_node is not None):
+        if (not is_weight_fp16_precision) and (last_matmul_node is not None) and not force_fp16_logits:
             # When original weight is float32 precision, keep logits and last MatMul in float32 could get better precision.
             keep_io_types = [logits_output_name]
             node_block_list = [last_matmul_node.name]
@@ -225,6 +215,7 @@ class T5Helper:
         use_external_data_format: bool = False,
         auto_mixed_precision: bool = True,
         use_gpu: bool = False,
+        force_fp16_io: bool = False,
     ):
         """Optimize ONNX model with an option to convert it to use mixed precision."""
 
@@ -248,23 +239,20 @@ class T5Helper:
 
         if is_float16:
             if auto_mixed_precision:
-                T5Helper.auto_mixed_precision(m)
+                T5Helper.auto_mixed_precision(m, force_fp16_logits=force_fp16_io)
             else:
-                m.convert_model_float32_to_float16(cast_input_output=False)
+                m.convert_model_float32_to_float16(cast_input_output=force_fp16_io)
 
         m.save_model_to_file(optimized_model_path, use_external_data_format, all_tensors_to_one_file=True)
 
     @staticmethod
     def verify_onnx(
-        model: T5Encoder | T5Decoder | T5DecoderInit | T5EncoderDecoderInit,
+        model: T5Decoder | T5EncoderDecoderInit,
         ort_session: InferenceSession,
         device: torch.device,
         use_int32_inputs: bool,
     ):
         """Compare the result from PyTorch and OnnxRuntime to verify the ONNX model is good."""
-        if isinstance(model, T5Encoder):
-            return T5EncoderHelper.verify_onnx(model, ort_session, device, use_int32_inputs)
-
         if isinstance(model, T5EncoderDecoderInit):
             return T5EncoderDecoderInitHelper.verify_onnx(model, ort_session, device, use_int32_inputs)
 
