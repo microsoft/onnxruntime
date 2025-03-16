@@ -611,10 +611,10 @@ Status ApplyDP4AMatrixMatMulNBits(const Tensor* a, const Tensor* b, const Tensor
       .AddUniformVariable({static_cast<uint32_t>(M * K / kVec4Components)});
   ORT_RETURN_IF_ERROR(context.RunProgram(quantize_program));
   constexpr unsigned int kMinMForTileOptimization = 4;
-  if (M == 1) {
+  if (M < kMinMForTileOptimization) {
     // M == 1 is the only case supported for generation program.
 
-     constexpr uint32_t kWorkGroupSize = 64;
+ /*    constexpr uint32_t kWorkGroupSize = 64;
      constexpr uint32_t kBTileSize = 16;
      DP4AMatMulNBitsGenerationProgram generation_program{block_size, kBlockSizeA, K, kBTileSize, kWorkGroupSize};
      generation_program.SetWorkgroupSize(kWorkGroupSize);
@@ -633,26 +633,26 @@ Status ApplyDP4AMatrixMatMulNBits(const Tensor* a, const Tensor* b, const Tensor
                     "WorkgroupSize" + std::to_string(kWorkGroupSize) +
                     "BTile" + std::to_string(kBTileSize) +
                     "K" + std::to_string(K));
-     return context.RunProgram(generation_program);
+     return context.RunProgram(generation_program);*/
 
     // M < kMinMForTileOptimization is supported for DP4AMatMulNBitsSmallMProgram program.
 
-    //constexpr uint32_t kTileSize = 16;
-    //DP4AMatMulNBitsSmallMProgram mul_program;
-    //mul_program.SetWorkgroupSize(64);
-    //mul_program.SetDispatchGroupSize(
-    //    (N + kTileSize - 1) / kTileSize, M, 1);
-    //mul_program.AddInputs({{&a_quant, ProgramTensorMetadataDependency::TypeAndRank, gsl::narrow<int>(kVec4Components)},
-    //                       {&a_scale, ProgramTensorMetadataDependency::TypeAndRank, gsl::narrow<int>(4)},
-    //                       {b, ProgramTensorMetadataDependency::TypeAndRank, gsl::narrow<int>(kVec4Components * kU32Components)},
-    //                       {scales, ProgramTensorMetadataDependency::TypeAndRank, gsl::narrow<int>(1)}})
-    //    .AddUniformVariables({{static_cast<uint32_t>(M)},
-    //                          {static_cast<uint32_t>(N)},
-    //                          {static_cast<uint32_t>(K)},
-    //                          {static_cast<uint32_t>(K / 16)},
-    //                          {static_cast<uint32_t>(K / 32)}})
-    //    .AddOutput({y, ProgramTensorMetadataDependency::TypeAndRank, gsl::narrow<int>(4)});
-    //return context.RunProgram(mul_program);
+    constexpr uint32_t kTileSize = 16;
+    DP4AMatMulNBitsSmallMProgram mul_program;
+    mul_program.SetWorkgroupSize(64);
+    mul_program.SetDispatchGroupSize(
+        (N + kTileSize - 1) / kTileSize, M, 1);
+    mul_program.AddInputs({{&a_quant, ProgramTensorMetadataDependency::TypeAndRank, gsl::narrow<int>(kVec4Components)},
+                           {&a_scale, ProgramTensorMetadataDependency::TypeAndRank, gsl::narrow<int>(4)},
+                           {b, ProgramTensorMetadataDependency::TypeAndRank, gsl::narrow<int>(kVec4Components * kU32Components)},
+                           {scales, ProgramTensorMetadataDependency::TypeAndRank, gsl::narrow<int>(1)}})
+        .AddUniformVariables({{static_cast<uint32_t>(M)},
+                              {static_cast<uint32_t>(N)},
+                              {static_cast<uint32_t>(K)},
+                              {static_cast<uint32_t>(K / 16)},
+                              {static_cast<uint32_t>(K / 32)}})
+        .AddOutput({y, ProgramTensorMetadataDependency::TypeAndRank, gsl::narrow<int>(4)});
+    return context.RunProgram(mul_program);
   } else {
     constexpr uint32_t kTileSize = 64;
     TensorShape reshaped_y_shape{1, M, N / kVec4Components};
