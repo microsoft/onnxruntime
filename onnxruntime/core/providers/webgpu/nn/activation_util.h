@@ -6,10 +6,10 @@
 #include <string>
 
 namespace onnxruntime {
-  namespace webgpu {
+namespace webgpu {
 
-    extern std::string TypeSnippet(uint32_t component, std::string data_type);
-    extern std::string BiasSnippet(bool has_bias);
+extern std::string TypeSnippet(uint32_t component, std::string data_type);
+extern std::string BiasSnippet(bool has_bias);
 
-  }
-}
+}  // namespace webgpu
+}  // namespace onnxruntime

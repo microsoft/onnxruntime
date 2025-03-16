@@ -2,7 +2,7 @@
 // Licensed under the MIT License.
 
 namespace onnxruntime {
-	namespace webgpu {
+namespace webgpu {
 
-	}
-}
+}  // namespace webgpu
+}  // namespace onnxruntime
