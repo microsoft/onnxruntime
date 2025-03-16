@@ -144,6 +144,12 @@ void WebGpuContext::Initialize(const WebGpuBufferCacheConfig& buffer_cache_confi
     wgpu::SupportedLimits device_supported_limits;
     ORT_ENFORCE(Device().GetLimits(&device_supported_limits));
     device_limits_ = device_supported_limits.limits;
+    // cache device features
+    wgpu::SupportedFeatures supported_features;
+    Device().GetFeatures(&supported_features);
+    for (size_t i = 0; i < supported_features.featureCount; i++) {
+      device_features_.insert(supported_features.features[i]);
+    }
 
 #if !defined(__wasm__)
     supports_buffer_map_extended_usages_ = device_.HasFeature(wgpu::FeatureName::BufferMapExtendedUsages);
