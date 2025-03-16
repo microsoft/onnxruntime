@@ -6,6 +6,8 @@
 #include "core/providers/cpu/nn/conv_attributes.h"
 #include "core/providers/webgpu/webgpu_supported_types.h"
 #include "core/providers/webgpu/tensor/transpose.h"
+#include "core/providers/webgpu/nn/conv_backprop_webgpu.h"
+
 namespace onnxruntime {
 namespace webgpu {
 
@@ -16,26 +18,26 @@ Status ConvTranspose<is_channels_last>::ComputeInternal(ComputeContext& context)
   TensorShape input_shape = input->Shape();
   TensorShape kernel_shape = kernel->Shape();
   TensorShapeVector local_output_padding(conv_transpose_attrs_.output_padding.begin(), conv_transpose_attrs_.output_padding.end());
-  TensorShapeVector local_pads(conv_transpose_attrs_.pads.begin(), conv_transpose_attrs_.pads.end());
+  ConvAttributes::ConvPadVector local_pads(conv_transpose_attrs_.pads.begin(), conv_transpose_attrs_.pads.end());
   TensorShapeVector local_dilations(conv_transpose_attrs_.dilations.begin(), conv_transpose_attrs_.dilations.end());
   TensorShapeVector local_strides(conv_transpose_attrs_.strides.begin(), conv_transpose_attrs_.strides.end());
   if (local_output_padding.empty()) {
-    local_output_padding.resize(kernel_shape.size(), 0);
+    local_output_padding.resize(kernel_shape.NumDimensions(), 0);
   }
   if (local_pads.empty()) {
-    local_pads.resize(kernel_shape.size() * 2, 0);
+    local_pads.resize(kernel_shape.NumDimensions() * 2, 0);
   }
   if (local_dilations.empty()) {
-    local_dilations.resize(kernel_shape.size(), 1);
+    local_dilations.resize(kernel_shape.NumDimensions(), 1);
   }
   if (local_strides.empty()) {
-    local_strides.resize(kernel_shape.size(), 1);
+    local_strides.resize(kernel_shape.NumDimensions(), 1);
   }
   auto group = conv_transpose_attrs_.group;
   auto num_output_channels = group * kernel_shape[1];
   auto batch_size = input_shape[0];
   TensorShapeVector output_shape(conv_transpose_attrs_.output_shape.begin(), conv_transpose_attrs_.output_shape.end());
-  conv_transpose_attes_.ComputePadsAndOutputShape(input_shape, num_output_channels, kernel_shape, local_strides, local_dilations, local_output_padding, batch_size, &local_pads, &output_shape, is_channels_last);
+  conv_transpose_attrs_.ComputePadsAndOutputShape(input_shape, num_output_channels, kernel_shape.AsShapeVector(), local_strides, local_dilations, local_output_padding, batch_size, &local_pads, &output_shape, is_channels_last);
   std::vector<uint32_t> strides;
   std::vector<uint32_t> pads;
   std::vector<uint32_t> dilations;
@@ -51,7 +53,7 @@ Status ConvTranspose<is_channels_last>::ComputeInternal(ComputeContext& context)
     // ConvTranspose1D
     TensorShapeVector input_shape_vector = input_shape.AsShapeVector();
     TensorShapeVector kernel_shape_vector = kernel_shape.AsShapeVector();
-    input_shape_vector.insert(input_shape_vector.begin() + (is_channels_last ? 1 : 2, 1));
+    input_shape_vector.insert(input_shape_vector.begin() + (is_channels_last ? 1 : 2, 1), 1);
     kernel_shape_vector.insert(kernel_shape_vector.begin() + 1, 1);
     input_shape = TensorShape(input_shape_vector);
     kernel_shape = TensorShape(kernel_shape_vector);
@@ -68,6 +70,15 @@ Status ConvTranspose<is_channels_last>::ComputeInternal(ComputeContext& context)
   // Transpose weights
   Tensor transposed_kernel;
   ORT_RETURN_IF_ERROR(TransposeKernel(context, kernel, kernel_shape, &transposed_kernel));
+  TensorShape transposed_kernel_shape = transposed_kernel.Shape();
+  std::vector<TensorShape> input_output_shapes = {input_shape, transposed_kernel_shape, output_shape};
+  std::vector<const Tensor*> inputs = {input, &transposed_kernel};
+  if (has_bias) {
+    inputs.push_back(bias);
+  }
+  Tensor* output = context.Output(0, output_shape);
+  auto program = CreateConvTranspose2DProgram(inputs, pads, strides, dilations, output, is_channels_last, input_output_shapes, static_cast<uint32_t>(conv_transpose_attrs_.group));
+  return context.RunProgram(program);
 }
 
 ONNX_OPERATOR_KERNEL_EX(
@@ -83,7 +94,7 @@ ONNX_OPERATOR_KERNEL_EX(
     kOnnxDomain,
     11,
     kWebGpuExecutionProvider,
-    (*KernelDefBuilder::Create()).TypeConstraint("T", WebGpuepSupportedFloatTypes()),
+    (*KernelDefBuilder::Create()).TypeConstraint("T", WebGpuSupportedFloatTypes()),
     ConvTranspose<false>);
 
 ONNX_OPERATOR_VERSIONED_KERNEL_EX(
@@ -91,7 +102,7 @@ ONNX_OPERATOR_VERSIONED_KERNEL_EX(
     kMSInternalNHWCDomain,
     1, 10,
     kWebGpuExecutionProvider,
-    (*KernelDefBuilder::Create()).TypeConstraint("T", WebGpuepSupportedFloatTypes()),
+    (*KernelDefBuilder::Create()).TypeConstraint("T", WebGpuSupportedFloatTypes()),
     ConvTranspose<true>);
 
 ONNX_OPERATOR_VERSIONED_KERNEL_EX(
@@ -99,7 +110,7 @@ ONNX_OPERATOR_VERSIONED_KERNEL_EX(
     kOnnxDomain,
     1, 10,
     kWebGpuExecutionProvider,
-    (*KernelDefBuilder::Create()).TypeConstraint("T", WebGpuepSupportedFloatTypes()),
+    (*KernelDefBuilder::Create()).TypeConstraint("T", WebGpuSupportedFloatTypes()),
     ConvTranspose<false>);
 
 }  // namespace webgpu

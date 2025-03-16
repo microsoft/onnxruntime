@@ -15,31 +15,31 @@
 namespace onnxruntime {
 namespace webgpu {
 std::string Conv2dMMProgram::Conv2dCommonSnippet(const ShaderVariableHelper& x, const ShaderVariableHelper& w, const Activation& activation, uint32_t inner_element_size_x, uint32_t inner_element_size_w, uint32_t inner_element_size, std::string data_type) const {
-  auto get_x_snippet = [](int32_t inner_element_size) -> std::string {
+  auto get_x_snippet = [&](int32_t inner_element_size) -> std::string {
     switch (inner_element_size) {
       case 1:
-        return "resData = " << x.GetByOffset("xIndex") << ";";
+        return "resData = " + x.GetByOffset("xIndex") + ";";
       case 3:
-        return "resData = vec3<x_value_t>(" << x.GetByOffset("xIndex") << ", " << x.GetByOffset("xIndex + 1") << ", " << x.GetByOffset("xIndex + 2") << ");";
+        return "resData = vec3<x_value_t>(" + x.GetByOffset("xIndex") + ", " + x.GetByOffset("xIndex + 1") + ", " + x.GetByOffset("xIndex + 2") + ");";
       case 4:
-        return "resData = " << x.GetByOffset("xIndex") << ";\n ";
+        return "resData = " + x.GetByOffset("xIndex") + ";\n ";
       default:
         ORT_THROW("inner_element_size", inner_element_size, " is not supported.");
     }
   };
-  auto get_w_snippet = [](int32_t inner_element_size) -> std::string {
+  auto get_w_snippet = [&](int32_t inner_element_size) -> std::string {
     switch (inner_element_size) {
       case 1:
-        return "return w[row * i32(uniforms.w_shape[3]) + colIn];\n";
+        return "return " + w.GetByOffset("row * i32(uniforms.w_shape[3]) + colIn") + ";\n";
       case 4:
-        return "return w[row * i32(uniforms.w_shape[3])  + colIn];\n";
+        return "return " + w.GetByOffset("row * i32(uniforms.w_shape[3])  + colIn") + ";\n";
       default:
         ORT_THROW("inner_element_size ", inner_element_size, " is not supported.");
     }
   };
 
   const std::string coord_a_snippet = is_channels_last_ ? "let coord = vec4<i32>(batch, xRow, xCol, xCh);" : "let coord = vec4<i32>(batch, xCh, xRow, xCol);";
-  const std::string coord_res_snippet = is_channels_last_ ? "let coords = vec4<i32>(batch, row / out_width, row % out_width, col);" : "let coords = vec4<i32>(batch, row, col / out_width, col % out_width);";
+  const std::string coord_res_snippet = is_channels_last_ ? "let coords = vec4<i32>(batch, row / outWidth, row % outWidth, col);" : "let coords = vec4<i32>(batch, row, col / outWidth, col % outWidth);";
 
   const std::string xHeight = is_channels_last_ ? "i32(uniforms.x_shape[1])" : "i32(uniforms.x_shape[2])";
   const std::string xWidth = is_channels_last_ ? "i32(uniforms.x_shape[2])" : "i32(uniforms.x_shape[3])";
@@ -146,7 +146,7 @@ Status Conv2dMMProgram::GenerateShaderCode(ShaderHelper& shader) const {
   const auto& x = shader.AddInput("x", ShaderUsage::UseUniform | ShaderUsage::UseShapeAndStride | ShaderUsage::UseIndicesTypeAlias | ShaderUsage::UseValueTypeAlias);
   const auto& w = shader.AddInput("w", ShaderUsage::UseUniform | ShaderUsage::UseShapeAndStride | ShaderUsage::UseIndicesTypeAlias | ShaderUsage::UseValueTypeAlias);
   std::vector<const ShaderVariableHelper*> inputs = {&x, &w};
-  ORT_IGNORE_RETURN_VALUE(shader.AddOutput("result", ShaderUsage::UseUniform | ShaderUsage::UseIndicesTypeAlias));
+  ORT_IGNORE_RETURN_VALUE(shader.AddOutput("result", ShaderUsage::UseUniform | ShaderUsage::UseShapeAndStride | ShaderUsage::UseIndicesTypeAlias));
   if (has_bias_) {
     const auto& bias = shader.AddInput("bias", ShaderUsage::UseUniform | ShaderUsage::UseIndicesTypeAlias);
     inputs.push_back(&bias);
@@ -223,6 +223,7 @@ Conv2dMMProgram CreateConv2dMMProgram(const Activation& activation, const std::v
   program
       .AddOutput({output, ProgramTensorMetadataDependency::TypeAndRank, reduced_output_shape, components})
       .SetDispatchGroupSize(dispatch[0], dispatch[1], dispatch[2])
+      .SetWorkgroupSize(workgroup_size[0], workgroup_size[1], workgroup_size[2])
       .AddUniformVariables({{static_cast<uint32_t>(dim_a_outer)},
                             {static_cast<uint32_t>(dim_b_outer)},
                             {static_cast<uint32_t>(dim_inner)},

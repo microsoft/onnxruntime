@@ -13,15 +13,15 @@ namespace onnxruntime {
 namespace webgpu {
 
 template <bool is_channels_last>
-class ConvTranspose final : public WebgpuKernel {
+class ConvTranspose final : public WebGpuKernel {
  public:
   ConvTranspose(const OpKernelInfo& info) : WebGpuKernel(info), conv_transpose_attrs_(info) {
   }
-  Status ComputeInternal(ComputeContext& context);
-  TensorShape ComputeOutputShape(const TensorShape& input_shape, const TensorShape& weight_shape, std::vector<uint32_t> pads, std::vector<uint32_t> strides, std::vector<uint32_t> dilations) const;
-  protected:
+  Status ComputeInternal(ComputeContext& context) const override;
+
+ protected:
   ConvTransposeAttributes conv_transpose_attrs_;
 };
 
-} // namespace webgpu
+}  // namespace webgpu
 }  // namespace onnxruntime

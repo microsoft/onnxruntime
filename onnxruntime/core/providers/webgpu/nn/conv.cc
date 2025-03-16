@@ -21,7 +21,9 @@ TensorShape Conv<is_channels_last, is_fused>::ComputeOutputShape(const TensorSha
   for (size_t i = 0; i < dilated_kernel_spatial_shape.NumDimensions(); ++i) {
     dilated_kernel_spatial_shape[i] = kernel_spatial_shape[i] + (kernel_spatial_shape[i] - 1) * (dilations[i] - 1);
   }
-  TensorShape input_spacial_shape_with_pads(input_shape.Slice(2));
+  TensorShape input_spacial_shape = input_shape.Slice(is_channels_last ? 1 : 2, is_channels_last ? 3 : 4);
+  TensorShapeVector input_spacial_shape_vector = input_spacial_shape.AsShapeVector();
+  TensorShape input_spacial_shape_with_pads(input_spacial_shape_vector);
   for (size_t i = 0; i < input_spacial_shape_with_pads.NumDimensions(); ++i) {
     input_spacial_shape_with_pads[i] = input_spacial_shape[i] + pads[i] + pads[i + input_spacial_shape_with_pads.NumDimensions()];
   }
@@ -213,7 +215,8 @@ Status Conv<is_channels_last, is_fused>::ComputeInternal(ComputeContext& context
   if (has_bias) {
     inputs[2] = context.Input<Tensor>(2);
   }
-  std::vector<TensorShape> modified_input_output_shapes = {input_shape, kernel_shape};
+  TensorShape transposed_kernel_shape = transposed_kernel.Shape();
+  std::vector<TensorShape> modified_input_output_shapes = {input_shape, transposed_kernel_shape};
   if (has_bias) {
     modified_input_output_shapes.push_back(inputs[2]->Shape());
   }

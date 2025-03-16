@@ -11,6 +11,7 @@
 #include "core/framework/tensor_shape.h"
 #include "core/framework/tensor.h"
 #include "core/providers/webgpu/nn/fuse_utils.h"
+#include "core/providers/webgpu/shader_helper.h"
 
 namespace onnxruntime {
 namespace webgpu {
@@ -31,7 +32,7 @@ class Conv2dMMProgram final : public Program<Conv2dMMProgram> {
                                                                                                                                                                                                                                                                                                                                                       elements_per_thread_(std::move(elements_per_thread)),
                                                                                                                                                                                                                                                                                                                                                       sequentially_access_by_threads_(sequentially_access_by_threads) {}
 
-  std::string Conv2dCommonSnippet(const Activation& activation, uint32_t inner_element_size_x = 4, uint32_t inner_element_size_w = 4, uint32_t inner_element_size = 4, std::string data_type = "f32") const;
+  std::string Conv2dCommonSnippet(const ShaderVariableHelper& x, const ShaderVariableHelper& w, const Activation& activation, uint32_t inner_element_size_x = 4, uint32_t inner_element_size_w = 4, uint32_t inner_element_size = 4, std::string data_type = "f32") const;
   Status GenerateShaderCode(ShaderHelper& sh) const override;
 
   WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES(

@@ -145,7 +145,7 @@ Status MatMulProgram::MakeMatMulPackedVec4Source(ShaderHelper& shader,
       << "    for (var innerRow = 0; innerRow < " << row_per_thread_b << "; innerRow = innerRow + 1) {\n"
       << "      let inputRow = tileRowB + innerRow;\n"
       << "      let inputCol = tileCol;\n"
-      << "      mm_Bsub[inputRow][inputCol] = mm_readB(batch, kStart + inputRow, globalCol, batchIndices);\n"
+      << "      mm_Bsub[inputRow][inputCol] = mm_readB(batch, kStart + inputRow, globalCol" << (nullptr != batch_dims ? ", batchIndices" : "") << ";\n"
       << "    }\n"
       << "    kStart = kStart + tileInner;\n"
       << "    workgroupBarrier();\n";

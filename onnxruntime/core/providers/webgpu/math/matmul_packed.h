@@ -20,9 +20,9 @@ class MatMulProgram final : public Program<MatMulProgram> {
                                                                                                                         elements_per_thread_(elements_per_thread.begin(), elements_per_thread.end()) {}
 
   Status GenerateShaderCode(ShaderHelper& sh) const override;
-  WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES({"dim_a_outer", ProgramUniformVariableDataType::Int32},
-                                          {"dim_b_outer", ProgramUniformVariableDataType::Int32},
-                                          {"dim_inner", ProgramUniformVariableDataType::Int32});
+  WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES({"dim_a_outer", ProgramUniformVariableDataType::Uint32},
+                                          {"dim_b_outer", ProgramUniformVariableDataType::Uint32},
+                                          {"dim_inner", ProgramUniformVariableDataType::Uint32});
 
   static Status MakeMatMulPackedVec4Source(ShaderHelper& shader,
                                            const InlinedVector<int64_t>& elements_per_thread,
