@@ -92,8 +92,10 @@ class CUDA_ONNX_OP_TYPED_CLASS_NAME(1, MLFloat16, Crop);
 class CUDA_MS_OP_TYPED_CLASS_NAME(1, float, MoE);
 class CUDA_MS_OP_TYPED_CLASS_NAME(1, MLFloat16, MoE);
 class CUDA_MS_OP_CLASS_NAME(1, QMoE);
-class CUDA_MS_OP_TYPED_CLASS_NAME(1, float, MultiHeadAttention);
-class CUDA_MS_OP_TYPED_CLASS_NAME(1, MLFloat16, MultiHeadAttention);
+class CUDA_MS_OP_TYPED_CLASS_NAME(1, float_float, MultiHeadAttention);
+class CUDA_MS_OP_TYPED_CLASS_NAME(1, float_MLFloat16, MultiHeadAttention);
+class CUDA_MS_OP_TYPED_CLASS_NAME(1, MLFloat16_float, MultiHeadAttention);
+class CUDA_MS_OP_TYPED_CLASS_NAME(1, MLFloat16_MLFloat16, MultiHeadAttention);
 class CUDA_MS_OP_TYPED_CLASS_NAME(1, MLFloat16, GroupQueryAttention);
 class CUDA_MS_OP_TYPED_CLASS_NAME(1, BFloat16, GroupQueryAttention);
 class CUDA_MS_OP_TYPED_CLASS_NAME(1, float, DecoderAttention);
@@ -169,8 +171,10 @@ class CUDA_MS_OP_CLASS_NAME(1, QOrderedAttention);
 class CUDA_MS_OP_CLASS_NAME(1, QOrderedLongformerAttention);
 class CUDA_MS_OP_TYPED_CLASS_NAME(1, float, DecoderMaskedSelfAttention);
 class CUDA_MS_OP_TYPED_CLASS_NAME(1, MLFloat16, DecoderMaskedSelfAttention);
-class CUDA_MS_OP_TYPED_CLASS_NAME(1, float, DecoderMaskedMultiHeadAttention);
-class CUDA_MS_OP_TYPED_CLASS_NAME(1, MLFloat16, DecoderMaskedMultiHeadAttention);
+class CUDA_MS_OP_TYPED_CLASS_NAME(1, float_float, DecoderMaskedMultiHeadAttention);
+class CUDA_MS_OP_TYPED_CLASS_NAME(1, float_MLFloat16, DecoderMaskedMultiHeadAttention);
+class CUDA_MS_OP_TYPED_CLASS_NAME(1, MLFloat16_float, DecoderMaskedMultiHeadAttention);
+class CUDA_MS_OP_TYPED_CLASS_NAME(1, MLFloat16_MLFloat16, DecoderMaskedMultiHeadAttention);
 class CUDA_MS_OP_CLASS_NAME(1, GemmFloat8);
 class CUDA_MS_OP_TYPED_CLASS_NAME(1, MLFloat16, SparseAttention);
 class CUDA_MS_OP_TYPED_CLASS_NAME(1, BFloat16, SparseAttention);
@@ -298,8 +302,10 @@ Status RegisterCudaContribKernels(KernelRegistry& kernel_registry) {
       BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, float, MoE)>,
       BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, MLFloat16, MoE)>,
       BuildKernelCreateInfo<CUDA_MS_OP_CLASS_NAME(1, QMoE)>,
-      BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, float, MultiHeadAttention)>,
-      BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, MLFloat16, MultiHeadAttention)>,
+      BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, float_float, MultiHeadAttention)>,
+      BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, float_MLFloat16, MultiHeadAttention)>,
+      BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, MLFloat16_float, MultiHeadAttention)>,
+      BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, MLFloat16_MLFloat16, MultiHeadAttention)>,
       BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, MLFloat16, GroupQueryAttention)>,
       BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, BFloat16, GroupQueryAttention)>,
       BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, float, DecoderAttention)>,
@@ -381,8 +387,10 @@ Status RegisterCudaContribKernels(KernelRegistry& kernel_registry) {
       BuildKernelCreateInfo<CUDA_MS_OP_CLASS_NAME(1, QOrderedLongformerAttention)>,
       BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, float, DecoderMaskedSelfAttention)>,
       BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, MLFloat16, DecoderMaskedSelfAttention)>,
-      BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, float, DecoderMaskedMultiHeadAttention)>,
-      BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, MLFloat16, DecoderMaskedMultiHeadAttention)>,
+      BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, float_float, DecoderMaskedMultiHeadAttention)>,
+      BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, float_MLFloat16, DecoderMaskedMultiHeadAttention)>,
+      BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, MLFloat16_float, DecoderMaskedMultiHeadAttention)>,
+      BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, MLFloat16_MLFloat16, DecoderMaskedMultiHeadAttention)>,
       BuildKernelCreateInfo<CUDA_MS_OP_CLASS_NAME(1, GemmFloat8)>,
       BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, MLFloat16, SparseAttention)>,
       BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, BFloat16, SparseAttention)>,
