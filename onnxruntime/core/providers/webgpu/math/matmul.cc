@@ -29,16 +29,16 @@ ONNX_OPERATOR_KERNEL_EX(
         .TypeConstraint("T", WebGpuSupportedNumberTypes()),
     MatMul);
 
-std::string CalcResult(int components, int a_components, int output_number) {
+std::string CalcResult(int64_t components, int64_t a_components, int64_t output_number) {
   std::ostringstream oss;
   oss << "var a_data: a_value_t;\n";
-  for (int i = 0; i < a_components; ++i) {
+  for (int64_t i = 0; i < a_components; ++i) {
     oss << "let b_data" << i << " = b[(b_offset + (k + " << i << ") * uniforms.N + col) / " << components << "];\n";
   }
-  for (int i = 0; i < output_number; ++i) {
+  for (int64_t i = 0; i < output_number; ++i) {
     oss << "a_data = a[(a_offset + (row + " << i << ") * uniforms.K + k) / " << a_components << "];\n";
 
-    for (int j = 0; j < a_components; j++) {
+    for (int64_t j = 0; j < a_components; j++) {
       oss << "values[" << i << "] = fma(b_value_t(a_data" << (a_components == 1 ? "" : "[" + std::to_string(j) + "]") << "), b_data" << j << ", values[" << i << "]);\n";
     }
   }
@@ -62,8 +62,8 @@ Status MatMulNativeProgram::GenerateShaderCode(ShaderHelper& shader) const {
                                                       ShaderUsage::UseIndicesTypeAlias | ShaderUsage::UseValueTypeAlias);
   const auto& batch_dims = shader.AddIndices("batch_dims");
 
-  int a_components = a.NumComponents();
-  int components = b.NumComponents();  // components of N
+  auto a_components = a.NumComponents();
+  auto components = b.NumComponents();  // components of N
 
   shader.MainFunctionBody() << shader.GuardAgainstOutOfBoundsWorkgroupSizes("uniforms.output_size")
                             << "let col = (global_idx % (uniforms.N / " << components << ")) * " << components << ";\n"
@@ -124,10 +124,10 @@ Status MatMul::ComputeInternal(ComputeContext& context) const {
   if (n < 8 && k < 8) {  // call MatMulNativeProgram
 
     LOGS_DEFAULT(VERBOSE) << "Running MatMulNativeProgram";
-    const int components = GetMaxComponents(n);
-    const int a_components = GetMaxComponents(k);
+    const auto components = GetMaxComponents(n);
+    const auto a_components = GetMaxComponents(k);
 
-    const int output_number = GetMaxComponents(m);
+    const auto output_number = GetMaxComponents(m);
     uint32_t output_size = static_cast<uint32_t>(helper.OutputShape().Size() / components / output_number);
 
     const size_t output_rank = helper.OutputShape().NumDimensions();
@@ -138,16 +138,16 @@ Status MatMul::ComputeInternal(ComputeContext& context) const {
     MatMulNativeProgram program{output_size, output_number, has_bias};
     program
         .CacheHint(std::to_string(components), std::to_string(a_components), std::to_string(output_number))
-        .AddInputs({{a, ProgramTensorMetadataDependency::TypeAndRank,a->Shape(), a_components},
-                    {b, ProgramTensorMetadataDependency::TypeAndRank,b->Shape(), components}});
+        .AddInputs({{a, ProgramTensorMetadataDependency::TypeAndRank, a->Shape(), int(a_components)},
+                    {b, ProgramTensorMetadataDependency::TypeAndRank, b->Shape(), int(components)}});
 
     if (has_bias) {
       const auto* bias = context.Input(2);
       program.AddInput({bias, ProgramTensorMetadataDependency::Rank, 1});
     }
     program
-        .AddOutputs({{output_tensor, ProgramTensorMetadataDependency::None, output_shape_shader, components}})
-        .SetDispatchGroupSize(ceil(static_cast<float>(output_size) / 64))
+        .AddOutputs({{output_tensor, ProgramTensorMetadataDependency::None, output_shape_shader, int(components)}})
+        .SetDispatchGroupSize(static_cast<uint32_t>(ceil(output_size / 64)))
         .AddIndices(outer_dims)
         .AddUniformVariables({{output_size}, {m}, {n}, {k}});
 
@@ -201,9 +201,9 @@ Status MatMul::ComputeInternal(ComputeContext& context) const {
                                                    ? InlinedVector<int64_t>({4, 1, 1})
                                                    : InlinedVector<int64_t>({4, 4, 1});
 
-  const uint32_t dispatch_x = ceil(static_cast<float>(dim_b_outer) / MATMUL_PACKED_WORKGROUP_SIZE_X / elements_per_thread[0]);
-  const uint32_t dispatch_y = ceil(static_cast<float>(dim_a_outer) / MATMUL_PACKED_WORKGROUP_SIZE_Y / elements_per_thread[1]);
-  const uint32_t dispatch_z = ceil(static_cast<float>(batch_size) / MATMUL_PACKED_WORKGROUP_SIZE_Z / elements_per_thread[2]);
+  const uint32_t dispatch_x = static_cast<uint32_t>(ceil(dim_b_outer / MATMUL_PACKED_WORKGROUP_SIZE_X / elements_per_thread[0]));
+  const uint32_t dispatch_y = static_cast<uint32_t>(ceil(dim_a_outer / MATMUL_PACKED_WORKGROUP_SIZE_Y / elements_per_thread[1]));
+  const uint32_t dispatch_z = static_cast<uint32_t>(ceil(batch_size / MATMUL_PACKED_WORKGROUP_SIZE_Z / elements_per_thread[2]));
 
   const int components = is_vec4 ? 4 : 1;
   const TensorShape a_shape_temp = BuildTempShapeVector(outer_dims_a, dim_a_outer, dim_inner, components);

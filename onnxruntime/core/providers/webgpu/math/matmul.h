@@ -26,7 +26,7 @@ class MatMul final : public WebGpuKernel {
 
 class MatMulNativeProgram final : public Program<MatMulNativeProgram> {
  public:
-  MatMulNativeProgram(const int64_t output_size, int output_number, bool has_bias)
+  MatMulNativeProgram(int64_t output_size, int64_t output_number, bool has_bias)
       : Program{"MatMulNative"}, output_size_(output_size), output_number_(output_number), has_bias_{has_bias} {
   }
 
@@ -39,7 +39,7 @@ class MatMulNativeProgram final : public Program<MatMulNativeProgram> {
 
  private:
   const int64_t output_size_;
-  const int output_number_;
+  const int64_t output_number_;
   const bool has_bias_;
 };
 
