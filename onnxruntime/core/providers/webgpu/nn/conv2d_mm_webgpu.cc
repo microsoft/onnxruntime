@@ -8,6 +8,7 @@
 #include "core/providers/webgpu/webgpu_supported_types.h"
 #include "core/providers/webgpu/nn/activation_util.h"
 #include "core/providers/webgpu/math/matmul_packed.h"
+#include "core/providers/webgpu/nn/conv_utils.h"
 
 namespace onnxruntime {
 namespace webgpu {
@@ -36,7 +37,7 @@ std::string Conv2dMMProgram::Conv2dCommonSnippet(uint32_t inner_element_size_x, 
   };
 
   const std::string coord_a_snippet = is_channels_last_ ? "let coord = vec4<i32>(batch, xRow, xCol, xCh);" : "let coord = vec4<i32>(batch, xCh, xRow, xCol);";
-  const std::string coord_res_snippet = is_channels_last_ ? "let coords = vec4<i32>(batch, row / out_width, row % out_width, col);" : "let coords = vec4<i32>(batch, row, col / out_width, col % out_width);";
+  const std::string coord_res_snippet = is_channels_last_ ? "let coords = vec4<i32>(batch, row / outWidth, row % outWidth, col);" : "let coords = vec4<i32>(batch, row, col / outWidth, col % outWidth);";
 
   const std::string xHeight = is_channels_last_ ? "i32(uniforms.x_shape[1])" : "i32(uniforms.x_shape[2])";
   const std::string xWidth = is_channels_last_ ? "i32(uniforms.x_shape[2])" : "i32(uniforms.x_shape[3])";
@@ -118,7 +119,7 @@ std::string Conv2dMMProgram::Conv2dCommonSnippet(uint32_t inner_element_size_x, 
             << "}\n"
             << "\n"
             << "fn mm_write(batch : i32, row : i32, colIn : i32, valueIn : " << res_type << ") {\n"
-            << "  let col = colIn * ${inner_element_size};\n"
+            << "  let col = colIn * " << inner_element_size << ";\n"
             << "  if(row < uniforms.dim_a_outer && col < uniforms.dim_b_outer) {\n"
             << "    var value = valueIn;\n"
             << "    let outWidth = " << (is_channels_last_ ? " i32(uniforms.result_shape[2]) " : " i32(uniforms.result_shape[3]) ") << ";\n"
@@ -141,10 +142,10 @@ Status Conv2dMMProgram::GenerateShaderCode(ShaderHelper& shader) const {
                         << "  let flatIndex = getOutputIndexFromCoords(vec4<i32>(d0, d1, d2, d3));\n"
                         << "  setOutputAtIndex(flatIndex " << (is_vec4_ ? "/ 4" : "") << ", value);\n"
                         << "}\n";
-  const auto& x = shader.AddInput("x", ShaderUsage::UseUniform | ShaderUsage::UseIndicesTypeAlias);
-  const auto& w = shader.AddInput("w", ShaderUsage::UseUniform | ShaderUsage::UseIndicesTypeAlias);
+  const auto& x = shader.AddInput("x", ShaderUsage::UseUniform | ShaderUsage::UseShapeAndStride| ShaderUsage::UseIndicesTypeAlias | ShaderUsage::UseValueTypeAlias);
+  const auto& w = shader.AddInput("w", ShaderUsage::UseUniform | ShaderUsage::UseShapeAndStride | ShaderUsage::UseIndicesTypeAlias | ShaderUsage::UseValueTypeAlias);
   std::vector<const ShaderVariableHelper*> inputs = {&x, &w};
-  ORT_IGNORE_RETURN_VALUE(shader.AddOutput("result", ShaderUsage::UseUniform | ShaderUsage::UseIndicesTypeAlias));
+  ORT_IGNORE_RETURN_VALUE(shader.AddOutput("result", ShaderUsage::UseUniform | ShaderUsage::UseShapeAndStride | ShaderUsage::UseIndicesTypeAlias));
   if (has_bias_) {
     const auto& bias = shader.AddInput("bias", ShaderUsage::UseUniform | ShaderUsage::UseIndicesTypeAlias);
     inputs.push_back(&bias);
@@ -152,11 +153,12 @@ Status Conv2dMMProgram::GenerateShaderCode(ShaderHelper& shader) const {
                           << "  return bias[" << (is_channels_last_ ? "coords.w" : "coords.y") << (is_vec4_ ? "/ 4" : "") << "];\n"
                           << "}";
   }
-  shader.MainFunctionBody() << declaration_functions.str()
-                            << Conv2dCommonSnippet()
-                            << (is_vec4_ ? MakeMatMulPackedVec4Source(shader, WorkgroupSizeX(), WorkgroupSizeY(), elements_per_thread_) : MakeMatMulPackedSource(shader, WorkgroupSizeX(), WorkgroupSizeY(), elements_per_thread_));
-
-  return Status::OK();
+  shader.AdditionalImplementation()
+      << UtilFunctions("uniforms.stride")
+      << declaration_functions.str()
+      << Conv2dCommonSnippet(element_size_[0], element_size_[1], element_size_[2]);
+  std::string data_type = "x_value_t";
+  return is_vec4_ ? MakeMatMulPackedVec4Source(shader, WorkgroupSizeX(), WorkgroupSizeY(), elements_per_thread_, data_type) : MakeMatMulPackedSource(shader, WorkgroupSizeX(), WorkgroupSizeY(), elements_per_thread_, data_type);
 }
 
 Conv2dMMProgram CreateConv2dMMProgram(const std::vector<const Tensor*>& inputs, Tensor* output, const ConvAttributes& attrs, uint32_t dim_a_outer, uint32_t dim_b_outer, uint32_t dim_inner, bool is_channels_last_) {
@@ -179,9 +181,9 @@ Conv2dMMProgram CreateConv2dMMProgram(const std::vector<const Tensor*>& inputs, 
   std::vector<uint32_t> workgroup_size = {8, 8, 1};
   InlinedVector<int64_t> elements_per_thread = {4, static_cast<int64_t>(dim_a_outer <= 8 ? 1 : 4), 1};
   const std::vector<uint32_t> dispatch = {
-      static_cast<uint32_t>(ceil(dispatch_x / workgroup_size[0] / elements_per_thread[0])),
-      static_cast<uint32_t>(ceil(dispatch_y / workgroup_size[1] / elements_per_thread[1])),
-      static_cast<uint32_t>(ceil(batch_size / workgroup_size[2] / elements_per_thread[2])),
+      static_cast<uint32_t>(ceil(static_cast<float>(dispatch_x) / workgroup_size[0] / elements_per_thread[0])),
+      static_cast<uint32_t>(ceil(static_cast<float>(dispatch_y) / workgroup_size[1] / elements_per_thread[1])),
+      static_cast<uint32_t>(ceil(static_cast<float>(batch_size) / workgroup_size[2] / elements_per_thread[2])),
   };
 
   uint32_t inner_element_size = is_vec4 ? (is_channels_last_ && in_channels % 4 != 0 ? 3 : 4) : 1;
@@ -208,13 +210,14 @@ Conv2dMMProgram CreateConv2dMMProgram(const std::vector<const Tensor*>& inputs, 
           {dilations},
       };
   Conv2dMMProgram program(attrs, tile_a_outer, tile_b_outer, tile_inner, fit_a_outer, fit_b_outer, fit_inner, is_channels_last_, is_vec4, has_bias, std::move(element_size), std::move(elements_per_thread));
-  program.AddInputs({{input, ProgramTensorMetadataDependency::TypeAndRank}, {weight, ProgramTensorMetadataDependency::TypeAndRank}});
+  program.AddInputs({{input, ProgramTensorMetadataDependency::TypeAndRank, input->Shape(), 1}, {weight, ProgramTensorMetadataDependency::TypeAndRank, weight->Shape(), 1}});
   if (has_bias) {
-    program.AddInput({bias, ProgramTensorMetadataDependency::TypeAndRank});
+    program.AddInput({bias, ProgramTensorMetadataDependency::TypeAndRank, bias->Shape(), 1});
   }
   program
       .AddOutput({output, ProgramTensorMetadataDependency::TypeAndRank})
       .SetDispatchGroupSize(dispatch[0], dispatch[1], dispatch[2])
+      .SetWorkgroupSize(workgroup_size[0], workgroup_size[1], workgroup_size[2])
       .AddUniformVariables({{static_cast<uint32_t>(dim_a_outer)},
                             {static_cast<uint32_t>(dim_b_outer)},
                             {static_cast<uint32_t>(dim_inner)},

@@ -19,16 +19,17 @@ TensorShape Conv<is_channels_last>::ComputeOutputShape(const TensorShape& input_
   for (size_t i = 0; i < dilated_kernel_spatial_shape.NumDimensions(); ++i) {
     dilated_kernel_spatial_shape[i] = kernel_spatial_shape[i] + (kernel_spatial_shape[i] - 1) * (conv_attrs_.dilations[i] - 1);
   }
-  TensorShape input_spacial_shape_with_pads(input_shape.Slice(2));
+  TensorShape input_spacial_shape = input_shape.Slice(is_channels_last ? 1 : 2, is_channels_last ? 3 : 4);
+  TensorShape input_spacial_shape_with_pads(input_spacial_shape);
   for (size_t i = 0; i < input_spacial_shape_with_pads.NumDimensions(); ++i) {
-    input_spacial_shape_with_pads[i] = input_shape[i + 2] + conv_attrs_.pads[i] + conv_attrs_.pads[i + input_spacial_shape_with_pads.NumDimensions()];
+    input_spacial_shape_with_pads[i] = input_spacial_shape[i] + conv_attrs_.pads[i] + conv_attrs_.pads[i + input_spacial_shape_with_pads.NumDimensions()];
   }
   std::vector<int64_t> output_dims(dilated_kernel_spatial_shape.NumDimensions() + 2);
   output_dims[0] = batch_size;
   output_dims[channel_index] = output_channels;
   size_t j = is_channels_last ? 1 : 2;
   for (size_t i = 0; i < dilated_kernel_spatial_shape.NumDimensions(); ++i, ++j) {
-    output_dims[j] = (input_spacial_shape_with_pads[i] - dilated_kernel_spatial_shape[i]) / conv_attrs_.strides[i] + 1;
+    output_dims[j] = static_cast<int64_t>((input_spacial_shape_with_pads[i] - dilated_kernel_spatial_shape[i] + conv_attrs_.strides[i]) / conv_attrs_.strides[i]);
   }
   TensorShape output_shape(output_dims);
 
@@ -42,7 +43,7 @@ Status Conv<is_channels_last>::ComputeInternal(ComputeContext& context) const {
   const auto& input_shape = input->Shape();
   const auto& kernel_shape = kernel->Shape();
   auto channel_index = is_channels_last ? input_shape.NumDimensions() - 1 : 1;
-  if (input_shape.Size() > 4 || kernel_shape.Size() > 4) {
+  if (input_shape.NumDimensions() > 4 || kernel_shape.NumDimensions() > 4) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input and kernel tensors must have at most 4 dimensions");
   }
   // Transpose weights
@@ -51,6 +52,7 @@ Status Conv<is_channels_last>::ComputeInternal(ComputeContext& context) const {
   for (size_t i = 0; i < kernel_shape.NumDimensions(); ++i) {
     transposed_kernel_shape[i] = kernel_shape[perm[i]];
   }
+  // TODO Save transposed kernel if it is a constant.
   auto transposed_kernel = context.CreateGPUTensor(kernel->DataType(), transposed_kernel_shape);
   ORT_RETURN_IF_ERROR(Transpose::DoTranspose(context, perm, *input, transposed_kernel));
   // Compute matmul

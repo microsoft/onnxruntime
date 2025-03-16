@@ -65,7 +65,7 @@ void MatMulProgram::MatMulReadWriteFnSource(ShaderHelper& shader,
       << "}\n\n";
 }
 
-Status MakeMatMulPackedVec4Source(ShaderHelper& shader, uint32_t workgroup_size_x, uint32_t workgroup_size_y, const InlinedVector<int64_t>& elements_per_thread, const ShaderIndicesHelper* batch_dims) {
+Status MakeMatMulPackedVec4Source(ShaderHelper& shader, uint32_t workgroup_size_x, uint32_t workgroup_size_y, const InlinedVector<int64_t>& elements_per_thread, const std::string& data_type, const ShaderIndicesHelper* batch_dims) {
   // elements per thread
   const auto elements_per_thread_x = elements_per_thread[0];
   const auto elements_per_thread_y = elements_per_thread[1];
@@ -77,8 +77,6 @@ Status MakeMatMulPackedVec4Source(ShaderHelper& shader, uint32_t workgroup_size_
   const auto tile_a_height = tile_a_outer;
   const auto inner_elements_size = tile_a_width / workgroup_size_x;
   const auto row_per_thread_b = tile_inner / workgroup_size_y;
-
-  const std::string data_type = "a_value_t";
 
   if (!((inner_elements_size == 3 || inner_elements_size == 4) &&
         tile_a_width % workgroup_size_x == 0 &&
@@ -106,7 +104,7 @@ Status MakeMatMulPackedVec4Source(ShaderHelper& shader, uint32_t workgroup_size_
       << "  let globalRow = i32(global_id.y) * rowPerThread;\n"
       << "  let globalCol = i32(global_id.x);\n"
       << "  let batch = i32(global_id.z);\n"
-      << "  let batchIndices = " << (batch_dims ? batch_dims->OffsetToIndices("u32(batch)") : "") << ";\n"
+      << (nullptr != batch_dims ? "  let batchIndices = " + batch_dims->OffsetToIndices("u32(batch)") + ");\n" : "")
       << "  let globalRowStart = i32(workgroup_id.y) * " << tile_a_outer << ";\n"
       << "  let num_tiles = (uniforms.dim_inner - 1) / tileInner + 1;\n"
       << "  var kStart = 0;\n"
@@ -122,7 +120,7 @@ Status MakeMatMulPackedVec4Source(ShaderHelper& shader, uint32_t workgroup_size_
       << "    for (var innerRow = 0; innerRow < rowPerThread; innerRow = innerRow + 1) {\n"
       << "      let inputRow = tileRow + innerRow;\n"
       << "      let inputCol = tileCol;\n"
-      << "      mm_Asub[inputRow][inputCol] = mm_readA(batch, globalRow + innerRow, kStart / innerElementSize + inputCol, batchIndices);\n"
+      << "      mm_Asub[inputRow][inputCol] = mm_readA(batch, globalRow + innerRow, kStart / innerElementSize + inputCol" << (nullptr != batch_dims ? ", batchIndices" : "") << ");\n"
       << "    }\n";
 
   // Load one tile of B into local memory.
@@ -130,7 +128,7 @@ Status MakeMatMulPackedVec4Source(ShaderHelper& shader, uint32_t workgroup_size_
       << "    for (var innerRow = 0; innerRow < " << row_per_thread_b << "; innerRow = innerRow + 1) {\n"
       << "      let inputRow = tileRowB + innerRow;\n"
       << "      let inputCol = tileCol;\n"
-      << "      mm_Bsub[inputRow][inputCol] = mm_readB(batch, kStart + inputRow, globalCol, batchIndices);\n"
+      << "      mm_Bsub[inputRow][inputCol] = mm_readB(batch, kStart + inputRow, globalCol" << (nullptr != batch_dims ? ", batchIndices" : "") << ";\n"
       << "    }\n"
       << "    kStart = kStart + tileInner;\n"
       << "    workgroupBarrier();\n";
@@ -167,10 +165,10 @@ Status MakeMatMulPackedVec4Source(ShaderHelper& shader, uint32_t workgroup_size_
   return Status::OK();
 }
 
-Status MakeMatMulPackedSource(ShaderHelper& shader, uint32_t workgroup_size_x, uint32_t workgroup_size_y, const InlinedVector<int64_t>& elements_per_thread, const ShaderIndicesHelper* batch_dims) {
+Status MakeMatMulPackedSource(ShaderHelper& shader, uint32_t workgroup_size_x, uint32_t workgroup_size_y, const InlinedVector<int64_t>& elements_per_thread, const std::string& data_type, const ShaderIndicesHelper* batch_dims) {
   const auto elements_per_thread_x = elements_per_thread[0];
   const auto elements_per_thread_y = elements_per_thread[1];
-  const decltype(elements_per_thread_x) tile_inner = 32;
+  const int64_t tile_inner = 32;
 
   const auto tile_a_outer = workgroup_size_y * elements_per_thread_y;
   const auto tile_b_outer = workgroup_size_x * elements_per_thread_x;
@@ -184,8 +182,6 @@ Status MakeMatMulPackedSource(ShaderHelper& shader, uint32_t workgroup_size_x, u
                            ", tile_inner: ", tile_inner, " must be divisible by WorkgroupSizeY: ", workgroup_size_y);
   }
 
-  const std::string data_type = "a_value_t";
-
   const auto row_per_thread_a = tile_a_height / workgroup_size_y;
   const auto col_per_thread_a = tile_a_width / workgroup_size_x;
   const auto row_per_thread_b = tile_inner / workgroup_size_y;
@@ -198,7 +194,7 @@ Status MakeMatMulPackedSource(ShaderHelper& shader, uint32_t workgroup_size_x, u
       << "const tileInner = " << tile_inner << ";\n";
 
   shader.MainFunctionBody() << " let batch = i32(global_id.z);\n"
-                            << " let batchIndices = " << (batch_dims ? batch_dims->OffsetToIndices("u32(batch)") : "") << ";\n"
+                            << (nullptr != batch_dims ? "  let batchIndices = " + batch_dims->OffsetToIndices("u32(batch)") + ");\n" : "")
                             << " let num_tiles = (uniforms.dim_inner - 1) / tileInner + 1;\n"
                             << " var kStart = 0;\n"
                             << " var acc: array<vec4<" << data_type << ">, rowPerThread>;\n";
@@ -223,7 +219,7 @@ Status MakeMatMulPackedSource(ShaderHelper& shader, uint32_t workgroup_size_x, u
       << "    for (var innerCol = 0; innerCol < " << col_per_thread_a << "; innerCol = innerCol + 1) {\n"
       << "      let inputRow = tileRowA + innerRow;\n"
       << "      let inputCol = tileColA + innerCol;\n"
-      << "      mm_Asub[inputRow][inputCol] = mm_readA(batch, globalRowStart + inputRow, kStart + inputCol, batchIndices);\n"
+      << "      mm_Asub[inputRow][inputCol] = mm_readA(batch, globalRowStart + inputRow, kStart + inputCol" << (nullptr != batch_dims ? ", batchIndices" : "") << ");\n"
       << "    }\n"
       << "  }\n";
 
@@ -233,7 +229,7 @@ Status MakeMatMulPackedSource(ShaderHelper& shader, uint32_t workgroup_size_x, u
       << "    for (var innerCol = 0; innerCol < colPerThread; innerCol = innerCol + 1) {\n"
       << "      let inputRow = tileRowB + innerRow;\n"
       << "      let inputCol = tileCol + innerCol;\n"
-      << "      mm_Bsub[inputRow][inputCol] = mm_readB(batch, kStart + inputRow, globalCol + innerCol, batchIndices);\n"
+      << "      mm_Bsub[inputRow][inputCol] = mm_readB(batch, kStart + inputRow, globalCol + innerCol" << (nullptr != batch_dims ? ", batchIndices" : "") << ");\n"
       << "    }\n"
       << "  }\n"
       << "  kStart = kStart + tileInner;\n"
@@ -281,10 +277,11 @@ Status MatMulProgram::GenerateShaderCode(ShaderHelper& shader) const {
   MatMulReadWriteFnSource(shader, a, b, output, batch_dims);
 
   // generate the main function
+  std::string data_type = "a_value_t";
   if (is_vec4_) {
-    ORT_RETURN_IF_ERROR(MakeMatMulPackedVec4Source(shader, WorkgroupSizeX(), WorkgroupSizeY(), elements_per_thread_, & batch_dims));
+    ORT_RETURN_IF_ERROR(MakeMatMulPackedVec4Source(shader, WorkgroupSizeX(), WorkgroupSizeY(), elements_per_thread_, data_type, & batch_dims));
   } else {
-    ORT_RETURN_IF_ERROR(MakeMatMulPackedSource(shader, WorkgroupSizeX(), WorkgroupSizeY(), elements_per_thread_, &batch_dims));
+    ORT_RETURN_IF_ERROR(MakeMatMulPackedSource(shader, WorkgroupSizeX(), WorkgroupSizeY(), elements_per_thread_, data_type, &batch_dims));
   }
   return Status::OK();
 }

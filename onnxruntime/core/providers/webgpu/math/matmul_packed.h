@@ -31,8 +31,8 @@ class MatMulProgram final : public Program<MatMulProgram> {
 
 };
 
-Status MakeMatMulPackedVec4Source(ShaderHelper& shader, uint32_t workgroup_size_x, uint32_t workgroup_size_y, const InlinedVector<int64_t>& elements_per_thread, const ShaderIndicesHelper* batch_dims = nullptr);
-Status MakeMatMulPackedSource(ShaderHelper& shader, uint32_t workgroup_size_x, uint32_t workgroup_size_y, const InlinedVector<int64_t>& elements_per_thread, const ShaderIndicesHelper* batch_dims = nullptr);
+Status MakeMatMulPackedVec4Source(ShaderHelper& shader, uint32_t workgroup_size_x, uint32_t workgroup_size_y, const InlinedVector<int64_t>& elements_per_thread, const std::string& data_type, const ShaderIndicesHelper* batch_dims = nullptr);
+Status MakeMatMulPackedSource(ShaderHelper& shader, uint32_t workgroup_size_x, uint32_t workgroup_size_y, const InlinedVector<int64_t>& elements_per_thread, const std::string& data_type, const ShaderIndicesHelper* batch_dims = nullptr);
 
 }  // namespace webgpu
 }  // namespace onnxruntime
