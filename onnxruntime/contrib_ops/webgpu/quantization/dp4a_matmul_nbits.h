@@ -61,13 +61,24 @@ class DP4AMatMulNBitsGenerationProgram final : public Program<DP4AMatMulNBitsGen
   uint32_t workgroup_size_;
 };
 
+class DP4AMatMulNBitsSmallMProgram final : public Program<DP4AMatMulNBitsSmallMProgram> {
+ public:
+  DP4AMatMulNBitsSmallMProgram() : Program{"DP4AMatMulNBitsSmallMProgram"} {}
+  Status GenerateShaderCode(ShaderHelper& sh) const override;
+  WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES(
+      {"M", ProgramUniformVariableDataType::Uint32},
+      {"N", ProgramUniformVariableDataType::Uint32},
+      {"K", ProgramUniformVariableDataType::Uint32},
+      {"K16", ProgramUniformVariableDataType::Uint32},
+      {"K32", ProgramUniformVariableDataType::Uint32});
+};
+
 Status ApplyDP4AMatrixMatMulNBits(const Tensor* a, const Tensor* b, const Tensor* scales,
                                   uint32_t M,
                                   uint32_t N,
                                   uint32_t K,
                                   uint32_t block_size,
                                   onnxruntime::webgpu::ComputeContext& context,
-                                  bool is_generation,
                                   Tensor* y);
 
 bool CanApplyDP4AMatrixMatMulNBits(onnxruntime::webgpu::ComputeContext& context,

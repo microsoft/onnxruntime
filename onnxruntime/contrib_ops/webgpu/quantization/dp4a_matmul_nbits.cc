@@ -408,13 +408,190 @@ Status DP4AMatMulNBitsGenerationProgram::GenerateShaderCode(ShaderHelper& shader
   return Status::OK();
 }
 
+// tile_N size = 16, workgroup size = 64, scale_A components = 4, b components = 4, output components = 4
+Status DP4AMatMulNBitsSmallMProgram::GenerateShaderCode(ShaderHelper& shader) const {
+  shader.AddInput("input_a", ShaderUsage::UseUniform | ShaderUsage::UseIndicesTypeAlias | ShaderUsage::UseValueTypeAlias);
+  shader.AddInput("scales_a", ShaderUsage::UseUniform);
+  shader.AddInput("input_b", ShaderUsage::UseUniform);
+  shader.AddInput("scales_b", ShaderUsage::UseUniform);
+  shader.AddOutput("output", ShaderUsage::UseUniform | ShaderUsage::UseElementTypeAlias);
+
+  shader.AdditionalImplementation() << R"ADDNL_FN(
+    const tile_size = 16u; // tile_size = tile_size_vec * output components
+    const tile_size_vec = 4u;
+    const tile_size_k_vec = 16u; // tile_size_vec * tile_size_k_vec = workgroup size
+
+    // Shared memory
+    var<workgroup> tile_A : array<vec4<u32>, 32>;                    // 256
+    var<workgroup> scale_A : vec4<output_element_t>;                 // 4
+    var<workgroup> inter_results: array<array<vec4<output_element_t>, tile_size_k_vec>, tile_size_vec>;
+
+    fn loadSHMA(a_global:u32, kidx_v:u32, col: u32)
+    {
+      let k_offset = kidx_v + col;
+      if (k_offset > uniforms.K16)
+      {
+        return;
+      }
+      tile_A[col] = input_a[a_global*uniforms.K16+k_offset];
+      if (col == 0)
+      {
+        // kidx_v - covers 16 values of k
+        scale_A = scales_a[a_global*(uniforms.K/512) + k_offset/32];
+      }
+    }
+
+    // Scaled dot product of 8 packed unsigned integers.
+    fn SDP8AI(a1:vec4<u32>, b1:vec4<u32>, a2:vec4<u32>, b2:vec4<u32>, scale:output_element_t) -> output_element_t
+    {
+        var local_sum = dot4I8Packed(a1[0], b1[0]);
+        local_sum += dot4I8Packed(a1[1], b1[1]);
+        local_sum += dot4I8Packed(a1[2], b1[2]);
+        local_sum += dot4I8Packed(a1[3], b1[3]);
+        local_sum += dot4I8Packed(a2[0], b2[0]);
+        local_sum += dot4I8Packed(a2[1], b2[1]);
+        local_sum += dot4I8Packed(a2[2], b2[2]);
+        local_sum += dot4I8Packed(a2[3], b2[3]);
+        return output_element_t(local_sum) * scale;
+    }
+  )ADDNL_FN";
+
+  shader.MainFunctionBody() << R"MAIN_FN(
+    let a_global = workgroup_id.y;
+    let b_global_base = workgroup_id.x * tile_size;
+
+    let idx = local_idx % tile_size_k_vec;
+    let idy = local_idx / tile_size_k_vec;
+
+    for (var kidx_v:u32 = 0; kidx_v < uniforms.K32; kidx_v+=16)
+    {
+      // Load Phase: Populate shared memory for the workgroup.
+      if (local_idx < 32)
+      {
+        loadSHMA(a_global, kidx_v * 2, local_idx);
+      }
+      workgroupBarrier();
+
+      var own_a: vec4<u32> = tile_A[idx*2];
+      var own_a1: vec4<u32> = tile_A[idx*2 + 1];
+      var own_scale_a: output_element_t = scale_A[idx / 4];
+
+      var own_b = vec4<u32>(0);
+      var own_b1 = vec4<u32>(0);
+      var own_scale_b = output_element_t(0);
+      let b_global = b_global_base + idy * 4;
+      let k_offset = kidx_v+idx;
+      if (b_global < uniforms.N && k_offset < uniforms.K32)
+      {
+        var b_offset = b_global*uniforms.K32+k_offset;
+        var b_value = input_b[b_offset];
+        var b_value_lower = vec4<i32>(unpack4xU8(b_value[0] & 0x0F0F0F0Fu)) - vec4<i32>(8);
+        var b_value_upper = vec4<i32>(unpack4xU8((b_value[0] >> 4) & 0x0F0F0F0Fu)) - vec4<i32>(8);
+        own_b[0] = pack4xI8(vec4<i32>(b_value_lower[0], b_value_upper[0], b_value_lower[1], b_value_upper[1]));
+        own_b[1] = pack4xI8(vec4<i32>(b_value_lower[2], b_value_upper[2], b_value_lower[3], b_value_upper[3]));
+        b_value_lower = vec4<i32>(unpack4xU8(b_value[1] & 0x0F0F0F0Fu)) - vec4<i32>(8);
+        b_value_upper = vec4<i32>(unpack4xU8((b_value[1] >> 4) & 0x0F0F0F0Fu)) - vec4<i32>(8);
+        own_b[2] = pack4xI8(vec4<i32>(b_value_lower[0], b_value_upper[0], b_value_lower[1], b_value_upper[1]));
+        own_b[3] = pack4xI8(vec4<i32>(b_value_lower[2], b_value_upper[2], b_value_lower[3], b_value_upper[3]));
+        b_value_lower = vec4<i32>(unpack4xU8(b_value[2] & 0x0F0F0F0Fu)) - vec4<i32>(8);
+        b_value_upper = vec4<i32>(unpack4xU8((b_value[2] >> 4) & 0x0F0F0F0Fu)) - vec4<i32>(8);
+        own_b1[0] = pack4xI8(vec4<i32>(b_value_lower[0], b_value_upper[0], b_value_lower[1], b_value_upper[1]));
+        own_b1[1] = pack4xI8(vec4<i32>(b_value_lower[2], b_value_upper[2], b_value_lower[3], b_value_upper[3]));
+        b_value_lower = vec4<i32>(unpack4xU8(b_value[3] & 0x0F0F0F0Fu)) - vec4<i32>(8);
+        b_value_upper = vec4<i32>(unpack4xU8((b_value[3] >> 4) & 0x0F0F0F0Fu)) - vec4<i32>(8);
+        own_b1[2] = pack4xI8(vec4<i32>(b_value_lower[0], b_value_upper[0], b_value_lower[1], b_value_upper[1]));
+        own_b1[3] = pack4xI8(vec4<i32>(b_value_lower[2], b_value_upper[2], b_value_lower[3], b_value_upper[3]));
+        own_scale_b = scales_b[b_offset];
+        inter_results[idy][idx].x += SDP8AI(own_a, own_b, own_a1, own_b1, own_scale_a * own_scale_b);
+
+        b_offset = (b_global + 1)*uniforms.K32+k_offset;
+        b_value = input_b[b_offset];
+        b_value_lower = vec4<i32>(unpack4xU8(b_value[0] & 0x0F0F0F0Fu)) - vec4<i32>(8);
+        b_value_upper = vec4<i32>(unpack4xU8((b_value[0] >> 4) & 0x0F0F0F0Fu)) - vec4<i32>(8);
+        own_b[0] = pack4xI8(vec4<i32>(b_value_lower[0], b_value_upper[0], b_value_lower[1], b_value_upper[1]));
+        own_b[1] = pack4xI8(vec4<i32>(b_value_lower[2], b_value_upper[2], b_value_lower[3], b_value_upper[3]));
+        b_value_lower = vec4<i32>(unpack4xU8(b_value[1] & 0x0F0F0F0Fu)) - vec4<i32>(8);
+        b_value_upper = vec4<i32>(unpack4xU8((b_value[1] >> 4) & 0x0F0F0F0Fu)) - vec4<i32>(8);
+        own_b[2] = pack4xI8(vec4<i32>(b_value_lower[0], b_value_upper[0], b_value_lower[1], b_value_upper[1]));
+        own_b[3] = pack4xI8(vec4<i32>(b_value_lower[2], b_value_upper[2], b_value_lower[3], b_value_upper[3]));
+        b_value_lower = vec4<i32>(unpack4xU8(b_value[2] & 0x0F0F0F0Fu)) - vec4<i32>(8);
+        b_value_upper = vec4<i32>(unpack4xU8((b_value[2] >> 4) & 0x0F0F0F0Fu)) - vec4<i32>(8);
+        own_b1[0] = pack4xI8(vec4<i32>(b_value_lower[0], b_value_upper[0], b_value_lower[1], b_value_upper[1]));
+        own_b1[1] = pack4xI8(vec4<i32>(b_value_lower[2], b_value_upper[2], b_value_lower[3], b_value_upper[3]));
+        b_value_lower = vec4<i32>(unpack4xU8(b_value[3] & 0x0F0F0F0Fu)) - vec4<i32>(8);
+        b_value_upper = vec4<i32>(unpack4xU8((b_value[3] >> 4) & 0x0F0F0F0Fu)) - vec4<i32>(8);
+        own_b1[2] = pack4xI8(vec4<i32>(b_value_lower[0], b_value_upper[0], b_value_lower[1], b_value_upper[1]));
+        own_b1[3] = pack4xI8(vec4<i32>(b_value_lower[2], b_value_upper[2], b_value_lower[3], b_value_upper[3]));
+        own_scale_b = scales_b[b_offset];
+        inter_results[idy][idx].y += SDP8AI(own_a, own_b, own_a1, own_b1, own_scale_a * own_scale_b);
+
+        b_offset = (b_global + 2)*uniforms.K32+k_offset;
+        b_value = input_b[b_offset];
+        b_value_lower = vec4<i32>(unpack4xU8(b_value[0] & 0x0F0F0F0Fu)) - vec4<i32>(8);
+        b_value_upper = vec4<i32>(unpack4xU8((b_value[0] >> 4) & 0x0F0F0F0Fu)) - vec4<i32>(8);
+        own_b[0] = pack4xI8(vec4<i32>(b_value_lower[0], b_value_upper[0], b_value_lower[1], b_value_upper[1]));
+        own_b[1] = pack4xI8(vec4<i32>(b_value_lower[2], b_value_upper[2], b_value_lower[3], b_value_upper[3]));
+        b_value_lower = vec4<i32>(unpack4xU8(b_value[1] & 0x0F0F0F0Fu)) - vec4<i32>(8);
+        b_value_upper = vec4<i32>(unpack4xU8((b_value[1] >> 4) & 0x0F0F0F0Fu)) - vec4<i32>(8);
+        own_b[2] = pack4xI8(vec4<i32>(b_value_lower[0], b_value_upper[0], b_value_lower[1], b_value_upper[1]));
+        own_b[3] = pack4xI8(vec4<i32>(b_value_lower[2], b_value_upper[2], b_value_lower[3], b_value_upper[3]));
+        b_value_lower = vec4<i32>(unpack4xU8(b_value[2] & 0x0F0F0F0Fu)) - vec4<i32>(8);
+        b_value_upper = vec4<i32>(unpack4xU8((b_value[2] >> 4) & 0x0F0F0F0Fu)) - vec4<i32>(8);
+        own_b1[0] = pack4xI8(vec4<i32>(b_value_lower[0], b_value_upper[0], b_value_lower[1], b_value_upper[1]));
+        own_b1[1] = pack4xI8(vec4<i32>(b_value_lower[2], b_value_upper[2], b_value_lower[3], b_value_upper[3]));
+        b_value_lower = vec4<i32>(unpack4xU8(b_value[3] & 0x0F0F0F0Fu)) - vec4<i32>(8);
+        b_value_upper = vec4<i32>(unpack4xU8((b_value[3] >> 4) & 0x0F0F0F0Fu)) - vec4<i32>(8);
+        own_b1[2] = pack4xI8(vec4<i32>(b_value_lower[0], b_value_upper[0], b_value_lower[1], b_value_upper[1]));
+        own_b1[3] = pack4xI8(vec4<i32>(b_value_lower[2], b_value_upper[2], b_value_lower[3], b_value_upper[3]));
+        own_scale_b = scales_b[b_offset];
+        inter_results[idy][idx].z += SDP8AI(own_a, own_b, own_a1, own_b1, own_scale_a * own_scale_b);
+
+        b_offset = (b_global + 3)*uniforms.K32+k_offset;
+        b_value = input_b[b_offset];
+        b_value_lower = vec4<i32>(unpack4xU8(b_value[0] & 0x0F0F0F0Fu)) - vec4<i32>(8);
+        b_value_upper = vec4<i32>(unpack4xU8((b_value[0] >> 4) & 0x0F0F0F0Fu)) - vec4<i32>(8);
+        own_b[0] = pack4xI8(vec4<i32>(b_value_lower[0], b_value_upper[0], b_value_lower[1], b_value_upper[1]));
+        own_b[1] = pack4xI8(vec4<i32>(b_value_lower[2], b_value_upper[2], b_value_lower[3], b_value_upper[3]));
+        b_value_lower = vec4<i32>(unpack4xU8(b_value[1] & 0x0F0F0F0Fu)) - vec4<i32>(8);
+        b_value_upper = vec4<i32>(unpack4xU8((b_value[1] >> 4) & 0x0F0F0F0Fu)) - vec4<i32>(8);
+        own_b[2] = pack4xI8(vec4<i32>(b_value_lower[0], b_value_upper[0], b_value_lower[1], b_value_upper[1]));
+        own_b[3] = pack4xI8(vec4<i32>(b_value_lower[2], b_value_upper[2], b_value_lower[3], b_value_upper[3]));
+        b_value_lower = vec4<i32>(unpack4xU8(b_value[2] & 0x0F0F0F0Fu)) - vec4<i32>(8);
+        b_value_upper = vec4<i32>(unpack4xU8((b_value[2] >> 4) & 0x0F0F0F0Fu)) - vec4<i32>(8);
+        own_b1[0] = pack4xI8(vec4<i32>(b_value_lower[0], b_value_upper[0], b_value_lower[1], b_value_upper[1]));
+        own_b1[1] = pack4xI8(vec4<i32>(b_value_lower[2], b_value_upper[2], b_value_lower[3], b_value_upper[3]));
+        b_value_lower = vec4<i32>(unpack4xU8(b_value[3] & 0x0F0F0F0Fu)) - vec4<i32>(8);
+        b_value_upper = vec4<i32>(unpack4xU8((b_value[3] >> 4) & 0x0F0F0F0Fu)) - vec4<i32>(8);
+        own_b1[2] = pack4xI8(vec4<i32>(b_value_lower[0], b_value_upper[0], b_value_lower[1], b_value_upper[1]));
+        own_b1[3] = pack4xI8(vec4<i32>(b_value_lower[2], b_value_upper[2], b_value_lower[3], b_value_upper[3]));
+        own_scale_b = scales_b[b_offset];
+        inter_results[idy][idx].w += SDP8AI(own_a, own_b, own_a1, own_b1, own_scale_a * own_scale_b);
+      }
+    }
+
+    workgroupBarrier();
+    if (local_idx < tile_size_vec) {
+      var output_value = vec4<output_element_t>(0);
+      for (var b = 0u; b < tile_size_k_vec; b++) {
+        output_value += inter_results[local_idx][b];
+      }
+      let b_global =  b_global_base + local_idx * 4;
+      let output_idx = (a_global * uniforms.N + b_global)/4;
+      if (b_global < uniforms.N) {
+        output[output_idx] = output_value;
+      }
+    }
+  )MAIN_FN";
+
+  return Status::OK();
+}
+
 Status ApplyDP4AMatrixMatMulNBits(const Tensor* a, const Tensor* b, const Tensor* scales,
                                   uint32_t M,
                                   uint32_t N,
                                   uint32_t K,
                                   uint32_t block_size,
                                   onnxruntime::webgpu::ComputeContext& context,
-                                  bool is_generation,
                                   Tensor* y) {
   constexpr uint32_t kVec4Components = 4;
   constexpr uint32_t kVec2Components = 2;
@@ -433,28 +610,49 @@ Status ApplyDP4AMatrixMatMulNBits(const Tensor* a, const Tensor* b, const Tensor
                    {&a_scale, ProgramTensorMetadataDependency::Rank, a_scale.Shape(), 1}})
       .AddUniformVariable({static_cast<uint32_t>(M * K / kVec4Components)});
   ORT_RETURN_IF_ERROR(context.RunProgram(quantize_program));
+  constexpr unsigned int kMinMForTileOptimization = 4;
+  if (M == 1) {
+    // M == 1 is the only case supported for generation program.
 
-  if (is_generation) {
-    constexpr uint32_t kWorkGroupSize = 64;
-    constexpr uint32_t kBTileSize = 16;
-    DP4AMatMulNBitsGenerationProgram generation_program{block_size, kBlockSizeA, K, kBTileSize, kWorkGroupSize};
-    generation_program.SetWorkgroupSize(kWorkGroupSize);
-    generation_program.SetDispatchGroupSize((N + kBTileSize - 1) / kBTileSize);
-    generation_program.AddInputs({{&a_quant, ProgramTensorMetadataDependency::TypeAndRank, static_cast<int>(kVec4Components)},
-                                  {&a_scale, ProgramTensorMetadataDependency::TypeAndRank, 1},
-                                  {b, ProgramTensorMetadataDependency::TypeAndRank, static_cast<int>(kVec2Components * kU32Components)},
-                                  {scales, ProgramTensorMetadataDependency::TypeAndRank, 1}})
-        .AddUniformVariables({{static_cast<uint32_t>(M)},
-                              {static_cast<uint32_t>(N)},
-                              {static_cast<uint32_t>(K)},
-                              {static_cast<uint32_t>(K / 16)}})
-        .AddOutput({y, ProgramTensorMetadataDependency::TypeAndRank, y->Shape(), static_cast<int>(1)})
-        .CacheHint("Generation Block" + std::to_string(block_size) +
-                   "ABlock" + std::to_string(kBlockSizeA) +
-                   "WorkgroupSize" + std::to_string(kWorkGroupSize) +
-                   "BTile" + std::to_string(kBTileSize) +
-                   "K" + std::to_string(K));
-    return context.RunProgram(generation_program);
+     constexpr uint32_t kWorkGroupSize = 64;
+     constexpr uint32_t kBTileSize = 16;
+     DP4AMatMulNBitsGenerationProgram generation_program{block_size, kBlockSizeA, K, kBTileSize, kWorkGroupSize};
+     generation_program.SetWorkgroupSize(kWorkGroupSize);
+     generation_program.SetDispatchGroupSize((N + kBTileSize - 1) / kBTileSize);
+     generation_program.AddInputs({{&a_quant, ProgramTensorMetadataDependency::TypeAndRank, static_cast<int>(kVec4Components)},
+                                   {&a_scale, ProgramTensorMetadataDependency::TypeAndRank, 1},
+                                   {b, ProgramTensorMetadataDependency::TypeAndRank, static_cast<int>(kVec2Components * kU32Components)},
+                                   {scales, ProgramTensorMetadataDependency::TypeAndRank, 1}})
+         .AddUniformVariables({{static_cast<uint32_t>(M)},
+                               {static_cast<uint32_t>(N)},
+                               {static_cast<uint32_t>(K)},
+                               {static_cast<uint32_t>(K / 16)}})
+         .AddOutput({y, ProgramTensorMetadataDependency::TypeAndRank, y->Shape(), static_cast<int>(1)})
+         .CacheHint("Generation Block" + std::to_string(block_size) +
+                    "ABlock" + std::to_string(kBlockSizeA) +
+                    "WorkgroupSize" + std::to_string(kWorkGroupSize) +
+                    "BTile" + std::to_string(kBTileSize) +
+                    "K" + std::to_string(K));
+     return context.RunProgram(generation_program);
+
+    // M < kMinMForTileOptimization is supported for DP4AMatMulNBitsSmallMProgram program.
+
+    //constexpr uint32_t kTileSize = 16;
+    //DP4AMatMulNBitsSmallMProgram mul_program;
+    //mul_program.SetWorkgroupSize(64);
+    //mul_program.SetDispatchGroupSize(
+    //    (N + kTileSize - 1) / kTileSize, M, 1);
+    //mul_program.AddInputs({{&a_quant, ProgramTensorMetadataDependency::TypeAndRank, gsl::narrow<int>(kVec4Components)},
+    //                       {&a_scale, ProgramTensorMetadataDependency::TypeAndRank, gsl::narrow<int>(4)},
+    //                       {b, ProgramTensorMetadataDependency::TypeAndRank, gsl::narrow<int>(kVec4Components * kU32Components)},
+    //                       {scales, ProgramTensorMetadataDependency::TypeAndRank, gsl::narrow<int>(1)}})
+    //    .AddUniformVariables({{static_cast<uint32_t>(M)},
+    //                          {static_cast<uint32_t>(N)},
+    //                          {static_cast<uint32_t>(K)},
+    //                          {static_cast<uint32_t>(K / 16)},
+    //                          {static_cast<uint32_t>(K / 32)}})
+    //    .AddOutput({y, ProgramTensorMetadataDependency::TypeAndRank, gsl::narrow<int>(4)});
+    //return context.RunProgram(mul_program);
   } else {
     constexpr uint32_t kTileSize = 64;
     TensorShape reshaped_y_shape{1, M, N / kVec4Components};

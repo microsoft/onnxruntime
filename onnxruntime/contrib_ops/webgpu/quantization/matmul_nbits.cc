@@ -575,7 +575,7 @@ Status MatMulNBits::ComputeInternal(onnxruntime::webgpu::ComputeContext& context
   }
 
   if (CanApplyDP4AMatrixMatMulNBits(context, accuracy_level_, block_size, batch_count, N, K, components_a, has_zero_points)) {
-    return ApplyDP4AMatrixMatMulNBits(a, b, scales, M, N, K, block_size, context, M == 1, y);
+    return ApplyDP4AMatrixMatMulNBits(a, b, scales, M, N, K, block_size, context, y);
   }
 
   // TODO: Support output_number > 1. Some cases are failed when output_number > 1.
