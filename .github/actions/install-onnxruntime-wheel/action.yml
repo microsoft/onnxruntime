@@ -1,0 +1,18 @@
+name: 'Install ONNX Runtime Wheel'
+description: 'Uninstalls existing ONNX Runtime packages and installs a wheel from a specified directory.'
+inputs:
+  whl-directory:
+    description: 'The directory containing the ONNX Runtime wheel files.'
+    required: true
+runs:
+  using: 'composite'
+  steps:
+    - name: Uninstall onnxruntime packages
+      shell: pwsh
+      run: |
+        python -m pip uninstall -y onnxruntime onnxruntime-gpu onnxruntime-training onnxruntime-directml -qq
+
+    - name: Install onnxruntime wheel from specified directory
+      shell: pwsh
+      run: |
+        Get-ChildItem -Path ${{ inputs.whl-directory }}/*.whl | foreach {pip --disable-pip-version-check install --upgrade $_.fullname}
