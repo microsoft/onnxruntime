@@ -39,7 +39,7 @@ limitations under the License.
 #include <wil/Resource.h>
 
 #include "core/platform/path_lib.h"  // for LoopDir()
-#include "dll_load_error.h"
+#include "core/platform/windows/dll_load_error.h"
 
 EXTERN_C IMAGE_DOS_HEADER __ImageBase;
 
@@ -714,7 +714,8 @@ Status WindowsEnv::LoadDynamicLibrary(const PathString& wlibrary_filename, bool 
     s.erase(std::remove(s.begin(), s.end(), L'\r'), s.end());
     s.erase(std::remove(s.begin(), s.end(), L'\n'), s.end());
     std::wostringstream oss;
-    oss << DetermineLoadLibraryError(wlibrary_filename.c_str()) << L" (Error " << error_code << ": \"" << s.c_str() << "\")";
+    oss << DetermineLoadLibraryError(wlibrary_filename.c_str(), LOAD_WITH_ALTERED_SEARCH_PATH)
+        << L" (Error " << error_code << ": \"" << s.c_str() << "\")";
     std::wstring errmsg = oss.str();
     common::Status status(common::ONNXRUNTIME, common::FAIL, ToUTF8String(errmsg));
     return status;
