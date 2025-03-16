@@ -267,7 +267,7 @@ Status DP4AMatMulNBitsGenerationProgram::GenerateShaderCode(ShaderHelper& shader
 
   shader.AdditionalImplementation() << "  const block_size = " << block_size_ << ";";
   shader.AdditionalImplementation() << "  const a_block_size = " << a_block_size_ << ";";
-  shader.AdditionalImplementation() << "  const k32_per_thread:u32 = " << uint32_t(k_ / (workgroup_size_ * 32)) << ";";
+  shader.AdditionalImplementation() << "  const k32_per_thread:u32 = " << uint32_t(((k_ / 32) + workgroup_size_ - 1) / (workgroup_size_)) << ";";
   shader.AdditionalImplementation() << "  const workgroup_size:u32 = " << uint32_t(workgroup_size_) << ";";
   // b_tile_size_ is the number of rows of B that this workgroup will process.
   shader.AdditionalImplementation() << "  const b_tile_size:u32 = " << uint32_t(b_tile_size_) << ";";
@@ -291,13 +291,13 @@ Status DP4AMatMulNBitsGenerationProgram::GenerateShaderCode(ShaderHelper& shader
             return output_element_t(local_sum) * scale;
         }
 
-        fn loadB(b_global:u32, kidx_v:u32) -> vec4<u32>
+        fn loadB(b_global:u32, k_idx_v:u32) -> vec4<u32>
         {
             if (b_global >= uniforms.N)
             {
                 return vec4<u32>(0);
             }
-            let b_value = input_b[b_global*uniforms.K16+kidx_v];
+            let b_value = input_b[b_global*uniforms.K16+k_idx_v];
             var b_value_lower = vec4<i32>(unpack4xU8(b_value[0] & 0x0F0F0F0Fu)) - vec4<i32>(8);
             var b_value_upper = vec4<i32>(unpack4xU8((b_value[0] >> 4) & 0x0F0F0F0Fu)) - vec4<i32>(8);
             let r1 = pack4xI8(vec4<i32>(b_value_lower[0], b_value_upper[0], b_value_lower[1], b_value_upper[1]));
@@ -313,7 +313,7 @@ Status DP4AMatMulNBitsGenerationProgram::GenerateShaderCode(ShaderHelper& shader
   shader.MainFunctionBody() << R"MAIN_FN(
         // Calculate which B rows this workgroup processes
         let base_b_row = workgroup_idx * b_tile_size;
-        let subgroup_count = workgroup_size / sg_size;
+        let subgroup_count = u32(workgroup_size / sg_size);
         let sg_idx = u32(local_idx / sg_size);
         let sg_lane = local_idx % sg_size;
 
@@ -335,7 +335,7 @@ Status DP4AMatMulNBitsGenerationProgram::GenerateShaderCode(ShaderHelper& shader
                 a_next_values_array[k_vec_32_idx] = select(vec4<u32>(0), input_a[a_next_idx], a_next_idx < uniforms.K16);
 
                 // Get A scale
-                let a_scale_idx = k_global_vec_16_idx / (a_block_size / 16u);
+                let a_scale_idx = k_global_vec_16_idx / u32(a_block_size / 16u);
                 a_scales_array[k_vec_32_idx] = select(output_element_t(0.0), scales_a[a_scale_idx], a_scale_idx < (uniforms.K / a_block_size));
             } else {
                 // Out of bounds - set to zero
@@ -369,7 +369,7 @@ Status DP4AMatMulNBitsGenerationProgram::GenerateShaderCode(ShaderHelper& shader
                 let b_next_values = select(vec4<u32>(0), loadB(b_row, b_next_idx), b_next_idx < uniforms.K16);
 
                 // Get B scale
-                let b_scale_idx = b_row * (uniforms.K / block_size) + k_global_vec_16_idx / (block_size / 16u);
+                let b_scale_idx = b_row * u32(uniforms.K / block_size) + k_global_vec_16_idx / u32(block_size / 16u);
                 let b_scale = select(output_element_t(0.0), scales_b[b_scale_idx], b_scale_idx < (uniforms.N * uniforms.K / block_size));
 
                 // Compute the dot product
@@ -434,7 +434,7 @@ Status ApplyDP4AMatrixMatMulNBits(const Tensor* a, const Tensor* b, const Tensor
   ORT_RETURN_IF_ERROR(context.RunProgram(quantize_program));
 
   if (is_generation) {
-    constexpr uint32_t kWorkGroupSize = 96;
+    constexpr uint32_t kWorkGroupSize = 64;
     constexpr uint32_t kBTileSize = 16;
     DP4AMatMulNBitsGenerationProgram generation_program{block_size, kBlockSizeA, K, kBTileSize, kWorkGroupSize};
     generation_program.SetWorkgroupSize(kWorkGroupSize);
