@@ -1017,6 +1017,20 @@ MlasComputeSoftmax(
     size_t D,
     bool LogSoftmax,
     bool SmoothSoftmax,
+    const T* AttentionBias,
+    MLAS_THREADPOOL* ThreadPool
+    );
+
+template <typename T>
+void
+MLASCALL
+MlasComputeSoftmax(
+    const T* Input,
+    T* Output,
+    size_t N,
+    size_t D,
+    bool LogSoftmax,
+    bool SmoothSoftmax,
     MLAS_THREADPOOL* ThreadPool
     );
 

@@ -76,6 +76,7 @@ struct MLAS_SOFTMAX_WORK_BLOCK {
     bool SmoothSoftmax;
     const T* Input;
     T* Output;
+    const T* AttentionBias;
     size_t N;
     size_t D;
 };
@@ -654,6 +655,92 @@ MlasReduceMinimumMaximumF32Kernel(
     *Max = tmp_max;
 }
 
+float
+MLASCALL
+MlasBiasAddReduceMaximumF32Kernel(
+    const float* Input,
+    const float* Bias,
+    size_t N
+)
+/*++
+
+Routine Description:
+
+    This routine implements the generic kernel to find the maximum value of
+    the supplied buffer after adding the values from the bias buffer.
+
+Arguments:
+
+    Input - Supplies the input buffer.
+
+    Bias - Supplies the bias buffer.
+
+    N - Supplies the number of elements to process.
+
+Return Value:
+
+    Returns the maximum value of the supplied buffer.
+
+--*/
+{
+    float Maximum = MlasMinimumF32Value;
+
+    if (N >= 4) {
+        MLAS_FLOAT32X4 MaximumVector0 = MlasBroadcastFloat32x4(Maximum);
+        MLAS_FLOAT32X4 AddBiasInput;
+
+        if (N >= 16) {
+            MLAS_FLOAT32X4 MaximumVector1 = MaximumVector0;
+            MLAS_FLOAT32X4 MaximumVector2 = MaximumVector0;
+            MLAS_FLOAT32X4 MaximumVector3 = MaximumVector0;
+
+            while (N >= 16) {
+
+                AddBiasInput = MlasAddFloat32x4(MlasLoadFloat32x4(Input), MlasLoadFloat32x4(Bias));
+                MaximumVector0 = MlasMaximumFloat32x4(MaximumVector0, AddBiasInput);
+
+                AddBiasInput = MlasAddFloat32x4(MlasLoadFloat32x4(Input + 4), MlasLoadFloat32x4(Bias + 4));
+                MaximumVector1 = MlasMaximumFloat32x4(MaximumVector1, AddBiasInput);
+
+                AddBiasInput = MlasAddFloat32x4(MlasLoadFloat32x4(Input + 8), MlasLoadFloat32x4(Bias + 8));
+                MaximumVector2 = MlasMaximumFloat32x4(MaximumVector2, AddBiasInput);
+
+                AddBiasInput = MlasAddFloat32x4(MlasLoadFloat32x4(Input + 12), MlasLoadFloat32x4(Bias + 12));
+                MaximumVector3 = MlasMaximumFloat32x4(MaximumVector3, AddBiasInput);
+
+                Input += 16;
+                Bias += 16;
+                N -= 16;
+            }
+
+            MaximumVector0 = MlasMaximumFloat32x4(MaximumVector0, MaximumVector1);
+            MaximumVector2 = MlasMaximumFloat32x4(MaximumVector2, MaximumVector3);
+            MaximumVector0 = MlasMaximumFloat32x4(MaximumVector0, MaximumVector2);
+        }
+
+        while (N >= 4) {
+            AddBiasInput = MlasAddFloat32x4(MlasLoadFloat32x4(Input), MlasLoadFloat32x4(Bias));
+            MaximumVector0 = MlasMaximumFloat32x4(MaximumVector0, AddBiasInput);
+
+            Input += 4;
+            Bias += 4;
+            N -= 4;
+        }
+
+        Maximum = MlasReduceMaximumFloat32x4(MaximumVector0);
+    }
+
+    while (N > 0) {
+        Maximum = std::max(Maximum, *Input + *Bias);
+
+        Input += 1;
+        Bias += 1;
+        N -= 1;
+    }
+
+    return Maximum;
+}
+
 void
 MLASCALL
 MlasComputeSoftmaxOutputF32Kernel(
@@ -875,11 +962,23 @@ Return Value:
         // Find the maximum value for the row.
         //
 
+        float Maximum;
+        if (WorkBlock->AttentionBias != nullptr) {
+            const float* AttentionBias = WorkBlock->AttentionBias + n * D;
 #if defined(MLAS_TARGET_AMD64) || defined(MLAS_TARGET_LARCH64)
-        float Maximum = GetMlasPlatform().ReduceMaximumF32Kernel(Input, D);
+            // Maximum = GetMlasPlatform().ReduceMaximumF32Kernel(Input, D);
+            Maximum = MlasBiasAddReduceMaximumF32Kernel(Input, AttentionBias, D);
 #else
-        float Maximum = MlasReduceMaximumF32Kernel(Input, D);
+            Maximum = MlasBiasAddReduceMaximumF32Kernel(Input, AttentionBias, D);
 #endif
+        } else {
+#if defined(MLAS_TARGET_AMD64) || defined(MLAS_TARGET_LARCH64)
+        Maximum = GetMlasPlatform().ReduceMaximumF32Kernel(Input, D);
+#else
+        Maximum = MlasReduceMaximumF32Kernel(Input, D);
+#endif
+        }
+
         float NegativeMaximum = -Maximum;
         if (SmoothSoftmax && NegativeMaximum > 0.0f) {
             NegativeMaximum = 0.0f;
@@ -1014,6 +1113,7 @@ MlasComputeSoftmax(
     size_t D,
     bool LogSoftmax,
     bool SmoothSoftmax,
+    const T* AttentionBias,
     MLAS_THREADPOOL* ThreadPool
 )
 /*++
@@ -1058,6 +1158,7 @@ Return Value:
     WorkBlock.SmoothSoftmax = SmoothSoftmax;
     WorkBlock.Input = Input;
     WorkBlock.Output = Output;
+    WorkBlock.AttentionBias = AttentionBias;
     WorkBlock.N = N;
     WorkBlock.D = D;
 
@@ -1085,6 +1186,49 @@ Return Value:
     WorkBlock.ThreadCountN = ThreadCountN;
 
     MlasExecuteThreaded(MlasComputeSoftmaxThreaded<T>, &WorkBlock, ThreadCountN, ThreadPool);
+}
+
+template
+void
+MLASCALL
+MlasComputeSoftmax<float>(
+    const float* Input,
+    float* Output,
+    size_t N,
+    size_t D,
+    bool LogSoftmax,
+    bool SmoothSoftmax,
+    const float* AttentionBias,
+    MLAS_THREADPOOL* ThreadPool
+);
+
+template
+void
+MLASCALL
+MlasComputeSoftmax<MLAS_FP16>(
+    const MLAS_FP16* Input,
+    MLAS_FP16* Output,
+    size_t N,
+    size_t D,
+    bool LogSoftmax,
+    bool SmoothSoftmax,
+    const MLAS_FP16* AttentionBias,
+    MLAS_THREADPOOL* ThreadPool
+);
+
+template <typename T>
+void
+MLASCALL
+MlasComputeSoftmax(
+    const T* Input,
+    T* Output,
+    size_t N,
+    size_t D,
+    bool LogSoftmax,
+    bool SmoothSoftmax,
+    MLAS_THREADPOOL* ThreadPool
+) {
+    MlasComputeSoftmax<T>(Input, Output, N, D, LogSoftmax, SmoothSoftmax, nullptr, ThreadPool);
 }
 
 template

@@ -17,13 +17,19 @@ namespace onnxruntime {
 namespace contrib {
 
 template <typename T>
-inline void ComputeSmoothSoftmaxInplace(T* score, int N, int D, ThreadPool* tp) {
-  MlasComputeSoftmax(score, score, N, D, false, true, tp);
+inline void ComputeSmoothSoftmaxInplace(T* score, int N, int D, const T* attention_bias, ThreadPool* tp) {
+  MlasComputeSoftmax(score, score, N, D, false, true, attention_bias, tp);
 }
 
 template <typename T>
 inline void ComputeAttentionSoftmaxInplace(T* score, int N, int D, ThreadPool* tp) {
   MlasComputeSoftmax(score, score, N, D, false, false, tp);
+}
+
+
+template <typename T>
+inline void ComputeAttentionSoftmaxInplace(T* score, int N, int D, const T* attention_bias, ThreadPool* tp) {
+  MlasComputeSoftmax(score, score, N, D, false, false, attention_bias, tp);
 }
 
 template <typename T>

@@ -294,25 +294,35 @@ class GQAAttentionBase {
 
           // Add attention bias to QxK' if provided
           // TODO (#23982): Implement bias addition during softmax computation in GQA CPU operator
+          // if (attention_bias_thread != nullptr) {
+          //   if constexpr (std::is_same_v<U, T>) {
+          //     ApplyAttentionBias(output_softmax + start_offset, attention_bias_thread + start_offset,
+          //                        static_cast<int>(window_size));
+          //   } else {
+
+          //     size_t bytes = window_size * sizeof(float);
+          //     auto attention_bias_thread_fp32 = static_cast<float*>(allocator->Alloc(bytes));
+          //     BufferUniquePtr scratch_buffer(attention_bias_thread_fp32, BufferDeleter(allocator));
+
+          //     MlasConvertHalfToFloatBuffer(attention_bias_thread + start_offset, attention_bias_thread_fp32, window_size);
+          //     ApplyAttentionBias(output_softmax + start_offset, attention_bias_thread_fp32, static_cast<int>(window_size));
+          //   }
+          // }
+
+          const U* attention_bias_thread_u_type_offseted = nullptr;
           if (attention_bias_thread != nullptr) {
             if constexpr (std::is_same_v<U, T>) {
-              ApplyAttentionBias(output_softmax + start_offset, attention_bias_thread + start_offset,
-                                 static_cast<int>(window_size));
+              attention_bias_thread_u_type_offseted = attention_bias_thread + start_offset;
             } else {
               static_assert(std::is_same_v<U, float> && std::is_same_v<T, MLFloat16>);
-              size_t bytes = window_size * sizeof(float);
-              auto attention_bias_thread_fp32 = static_cast<float*>(allocator->Alloc(bytes));
-              BufferUniquePtr scratch_buffer(attention_bias_thread_fp32, BufferDeleter(allocator));
-
-              MlasConvertHalfToFloatBuffer(attention_bias_thread + start_offset, attention_bias_thread_fp32, window_size);
-              ApplyAttentionBias(output_softmax + start_offset, attention_bias_thread_fp32, static_cast<int>(window_size));
+              // TODO: Perform upcast in the previous function
             }
           }
 
           if (use_smooth_softmax_) {
-            ComputeSmoothSoftmaxInplace(output_softmax + start_offset, 1, static_cast<int>(window_size), nullptr);
+            ComputeSmoothSoftmaxInplace(output_softmax + start_offset, 1, static_cast<int>(window_size), attention_bias_thread_u_type_offseted, nullptr);
           } else {
-            ComputeAttentionSoftmaxInplace(output_softmax + start_offset, 1, static_cast<int>(window_size), nullptr);
+            ComputeAttentionSoftmaxInplace(output_softmax + start_offset, 1, static_cast<int>(window_size), attention_bias_thread_u_type_offseted, nullptr);
           }
 
           // set causal [seq_causal_length, total_seqlen) to 0.f
