@@ -274,8 +274,8 @@ Status DP4AMatMulNBitsGenerationProgram::GenerateShaderCode(ShaderHelper& shader
 
   shader.AdditionalImplementation() << R"ADDNL_FN(
         // Shared memory for intermediate subgroup results
-        // sg_size 8 is the minimum that is supported, hence allocate space of workgroup_size/8 per b.
-        var<workgroup> intermediate_results: array<array<output_element_t, workgroup_size/8>, b_tile_size>;
+        // sg_size 4 is the minimum that is supported, hence allocate space of workgroup_size/4 per b.
+        var<workgroup> intermediate_results: array<array<output_element_t, workgroup_size/4>, b_tile_size>;
 
         // Scaled dot product of 8 packed unsigned integers
         fn SDP8AI(a1:vec4<u32>, b1:vec4<u32>, a2:vec4<u32>, b2:vec4<u32>, scale:output_element_t) -> output_element_t
@@ -378,6 +378,7 @@ Status DP4AMatMulNBitsGenerationProgram::GenerateShaderCode(ShaderHelper& shader
             }
 
             // Subgroup reduction to get sum across the subgroup
+            // TODO: Support sg_size 128 but using subgroup shuffle to add 64 lanes.
             var subgroup_result = subgroupAdd(accumulate);
 
             // First lane in each subgroup stores the result
