@@ -44,7 +44,7 @@ std::wstring DetermineLoadLibraryError(const wchar_t* filename_in, DWORD flags) 
 
     // Iterate through the import descriptors to see which dependent DLL can't load
     filename.clear();
-    flags = 0; // Dependent libraries are relative, and flags like LOAD_WITH_ALTERED_SEARCH_PATH is undefined for those.
+    flags = 0;  // Dependent libraries are relative, and flags like LOAD_WITH_ALTERED_SEARCH_PATH is undefined for those.
     for (; import_desc->Characteristics; import_desc++) {
       const char* dll_name = reinterpret_cast<const char*>(reinterpret_cast<const BYTE*>(hModule.get()) + import_desc->Name);
       // Try to load the dependent DLL, and if it fails, we loop again with this as the DLL and we'll be one step closer to the missing file.
