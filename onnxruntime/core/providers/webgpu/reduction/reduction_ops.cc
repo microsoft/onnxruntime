@@ -165,7 +165,7 @@ Status ReduceKernel<allow_multi_axes>::ComputeInternal(ComputeContext& context) 
     if (noop_with_empty_axes_ || rank == 0) {
       // If axes is empty and noop_with_empty_axes_ is true, it is a no-op according to the spec
       // If input tensor is a scalar and it's not a ReduceLogSum or ReduceSumSquare, return the input tensor as is.
-      if (rank == 0 && (name_ == "ReduceLogSum" || name_ == "ReduceSumSquare" || name == "ReduceL1" || name == "ReduceL2")) {
+      if (rank == 0 && (name_ == "ReduceLogSum" || name_ == "ReduceSumSquare" || name_ == "ReduceL1" || name_ == "ReduceL2")) {
         // For ReduceLogSum with scalar input, output = log(input)
         // For ReduceSumSquare with scalar input, output = input * input
         auto output = context.Output(0, input_tensor->Shape());
