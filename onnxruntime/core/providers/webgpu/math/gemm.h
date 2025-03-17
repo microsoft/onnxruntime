@@ -12,13 +12,14 @@ namespace webgpu {
 
 class GemmProgram final : public Program<GemmProgram> {
  public:
-  GemmProgram(bool transA, bool transB, float alpha, float beta, bool need_handle_bias)
+  GemmProgram(bool transA, bool transB, float alpha, float beta, bool need_handle_bias, bool need_handle_matmul)
       : Program{"Gemm"},
         transA_{transA},
         transB_{transB},
         alpha_{alpha},
         beta_{beta},
-        need_handle_bias_{need_handle_bias} {}
+        need_handle_bias_{need_handle_bias},
+        need_handle_matmul_{need_handle_matmul} {}
 
   Status GenerateShaderCode(ShaderHelper& sh) const override;
 
@@ -36,6 +37,7 @@ class GemmProgram final : public Program<GemmProgram> {
   float alpha_;
   float beta_;
   bool need_handle_bias_;
+  bool need_handle_matmul_;
 };
 
 class Gemm final : public WebGpuKernel {

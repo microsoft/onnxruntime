@@ -36,42 +36,47 @@ WEBGPU_GEMM_VERSIONED_KERNEL(11, 12)
 WEBGPU_GEMM_KERNEL(13)
 
 Status GemmProgram::GenerateShaderCode(ShaderHelper& shader) const {
-  const ShaderVariableHelper& A = shader.AddInput("A", ShaderUsage::UseUniform | ShaderUsage::UseValueTypeAlias);
-  const ShaderVariableHelper& B = shader.AddInput("B", ShaderUsage::UseUniform | ShaderUsage::UseValueTypeAlias);
-
-  const ShaderVariableHelper& output = shader.AddOutput("output", ShaderUsage::UseUniform | ShaderUsage::UseIndicesTypeAlias);
+  const ShaderVariableHelper& output = shader.AddOutput("output", ShaderUsage::UseUniform | ShaderUsage::UseValueTypeAlias);
 
   shader.MainFunctionBody() << shader.GuardAgainstOutOfBoundsWorkgroupSizes("uniforms.output_size")
                             << "  let m = global_idx / uniforms.N;\n"
                             << "  let n = global_idx % uniforms.N;\n"
-                            << "  var value = A_value_t(0);\n"
-                            << "\n"
-                            << "  for (var k = 0u; k < uniforms.K; k = k + 1u) {\n";
-
-  if (transA_ && transB_) {
-    shader.MainFunctionBody() << "    value = value + " << A.GetByOffset("k * uniforms.M + m")
-                              << " * " << B.GetByOffset("n * uniforms.K + k") << ";\n";
-  } else if (transA_ && !transB_) {
-    shader.MainFunctionBody() << "    value = value + " << A.GetByOffset("k * uniforms.M + m")
-                              << " * " << B.GetByOffset("k * uniforms.N + n") << ";\n";
-  } else if (!transA_ && transB_) {
-    shader.MainFunctionBody() << "    value = value + " << A.GetByOffset("m * uniforms.K + k")
-                              << " * " << B.GetByOffset("n * uniforms.K + k") << ";\n";
-  } else {
-    shader.MainFunctionBody() << "    value = value + " << A.GetByOffset("m * uniforms.K + k")
-                              << " * " << B.GetByOffset("k * uniforms.N + n") << ";\n";
-  }
-  shader.MainFunctionBody() << "  }\n"
+                            << "  var value = output_value_t(0);\n"
                             << "\n";
+
+  // When K == 0, we don't bind A and B. Because WebGPU doesn't support binding a zero-sized buffer,
+  if (need_handle_matmul_) {
+    const ShaderVariableHelper& A = shader.AddInput("A", ShaderUsage::UseUniform);
+    const ShaderVariableHelper& B = shader.AddInput("B", ShaderUsage::UseUniform);
+
+    shader.MainFunctionBody() << "  for (var k = 0u; k < uniforms.K; k = k + 1u) {\n";
+
+    if (transA_ && transB_) {
+      shader.MainFunctionBody() << "    value = value + " << A.GetByOffset("k * uniforms.M + m")
+                                << " * " << B.GetByOffset("n * uniforms.K + k") << ";\n";
+    } else if (transA_ && !transB_) {
+      shader.MainFunctionBody() << "    value = value + " << A.GetByOffset("k * uniforms.M + m")
+                                << " * " << B.GetByOffset("k * uniforms.N + n") << ";\n";
+    } else if (!transA_ && transB_) {
+      shader.MainFunctionBody() << "    value = value + " << A.GetByOffset("m * uniforms.K + k")
+                                << " * " << B.GetByOffset("n * uniforms.K + k") << ";\n";
+    } else {
+      shader.MainFunctionBody() << "    value = value + " << A.GetByOffset("m * uniforms.K + k")
+                                << " * " << B.GetByOffset("k * uniforms.N + n") << ";\n";
+    }
+    shader.MainFunctionBody() << "  }\n"
+                              << "\n";
+  }
+
   // Calculate Alpha
   if (alpha_) {
-    shader.MainFunctionBody() << "  value = value * A_value_t(uniforms.alpha);\n";
+    shader.MainFunctionBody() << "  value = value * output_value_t(uniforms.alpha);\n";
   }
 
   // Calculate Bias
   if (need_handle_bias_) {
-    const ShaderVariableHelper& C = shader.AddInput("C", ShaderUsage::UseUniform | ShaderUsage::UseIndicesTypeAlias);
-    shader.MainFunctionBody() << "  value = value + A_value_t(uniforms.beta) * "
+    const ShaderVariableHelper& C = shader.AddInput("C", ShaderUsage::UseUniform);
+    shader.MainFunctionBody() << "  value = value + output_value_t(uniforms.beta) * "
                               << C.GetByOffset(C.BroadcastedIndicesToOffset("vec2(m, n)", output)) << ";\n";
   }
 
@@ -112,22 +117,26 @@ Status Gemm::ComputeInternal(ComputeContext& context) const {
     return Status::OK();
   }
 
-  constexpr size_t TILE_SIZE = 16;
-  int64_t num_tiles_m = (M + TILE_SIZE - 1) / TILE_SIZE;
-  int64_t num_tiles_n = (N + TILE_SIZE - 1) / TILE_SIZE;
-  int64_t dispatch_size = num_tiles_m * num_tiles_n;
+  // WebGPU doesn't support binding a zero-sized buffer, so we need to check if K == 0
+  bool need_handle_matmul = K != 0;
+  bool need_handle_bias = C && beta_;
 
-  GemmProgram program{transA_, transB_, alpha_, beta_, C && beta_};
-  program.AddInputs({{A, ProgramTensorMetadataDependency::Type},
-                     {B, ProgramTensorMetadataDependency::Type}});
+  GemmProgram program{transA_, transB_, alpha_, beta_, need_handle_bias, need_handle_matmul};
 
-  if (C && beta_) {
+  if (need_handle_matmul) {
+    program.AddInputs({{A, ProgramTensorMetadataDependency::Type},
+                       {B, ProgramTensorMetadataDependency::Type}});
+  }
+
+  if (need_handle_bias) {
     program.AddInput({C, ProgramTensorMetadataDependency::Rank});
   }
 
-  program.AddOutputs({Y})
-      .SetDispatchGroupSize(dispatch_size)
-      .SetWorkgroupSize(TILE_SIZE, TILE_SIZE, 1)
+  constexpr size_t WORKGROUP_SIZE = 64;
+
+  program.AddOutputs({{Y, ProgramTensorMetadataDependency::Type}})
+      .SetDispatchGroupSize(output_size + WORKGROUP_SIZE - 1 / WORKGROUP_SIZE)
+      .SetWorkgroupSize(WORKGROUP_SIZE)
       .AddUniformVariables({
           {static_cast<uint32_t>(output_size)},  // output_size
           {static_cast<uint32_t>(M)},            // M
