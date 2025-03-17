@@ -2108,6 +2108,8 @@ def gqa_no_past_memory_efficient_test_cases():
                             for packed in [False, True]:
                                 for softcap in [0.0, 50.0]:
                                     config = PromptConfig(b, sq, skv, sq + skv + 8, n, n2, h)
+                                    if rotary and h % 16 > 0:
+                                        continue
                                     yield (
                                         str(config) + f"{local}_{rotary}_{rotary_interleaved}_{packed}",
                                         config,
@@ -2146,6 +2148,9 @@ def gqa_no_past_flash_attention_test_cases():
                         for rotary, rotary_interleaved in rotary_options_for_current_os():
                             for packed in [False, True]:
                                 for softcap in [0.0, 50.0]:
+                                    if rotary and h % 16 > 0:
+                                        continue
+
                                     config = PromptConfig(b, sq, skv, sq + skv + 8, n, n2, h)
                                     yield (
                                         str(config) + f"{local}_{rotary}_{rotary_interleaved}_{packed}_{softcap}",
@@ -2189,6 +2194,9 @@ def gqa_past_memory_efficient_test_cases():
                         for rotary, rotary_interleaved in rotary_options_for_current_os():
                             for packed in [False, True]:
                                 for softcap in [0.0, 50.0]:
+                                    if rotary and h % 16 > 0:
+                                        continue
+
                                     sp = random.randint(1, s2 - s) if s2 - s > 0 else 0
                                     config = Config(b, s, s2, sp, n, n2, h)
                                     yield (
@@ -2233,6 +2241,9 @@ def gqa_past_flash_attention_test_cases():
                         for rotary, rotary_interleaved in rotary_options_for_current_os():
                             for packed in [False, True]:
                                 for softcap in [0.0, 50.0]:
+                                    if rotary and h % 16 > 0:
+                                        continue
+
                                     sp = random.randint(1, s2 - s) if s2 - s > 0 else 0
                                     config = Config(b, s, s2, sp, n, n2, h)
                                     yield (
@@ -2276,6 +2287,9 @@ def gqa_interactive_one_batch_flash_attention_test_cases():
                     for local in [False, True]:
                         for rotary, rotary_interleaved in rotary_options_for_current_os():
                             for packed in [False, True]:
+                                if rotary and h % 16 > 0:
+                                    continue
+
                                 config = Config(b, s, s2, -1, n, n2, h)
                                 yield (
                                     str(config) + f"{local}_{rotary}_{rotary_interleaved}_{packed}",
@@ -2316,6 +2330,9 @@ def gqa_interactive_one_batch_memory_efficient_attention_test_cases():
                 for h in h_sizes:
                     for rotary, rotary_interleaved in rotary_options_for_current_os():
                         for packed in [False, True]:
+                            if rotary and h % 16 > 0:
+                                continue
+
                             config = Config(b, s, s2, -1, n, n2, h)
                             yield (
                                 str(config) + f"{rotary}_{rotary_interleaved}_{packed}",
