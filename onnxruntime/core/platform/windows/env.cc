@@ -39,6 +39,7 @@ limitations under the License.
 #include <wil/Resource.h>
 
 #include "core/platform/path_lib.h"  // for LoopDir()
+#include "core/platform/windows/dll_load_error.h"
 
 EXTERN_C IMAGE_DOS_HEADER __ImageBase;
 
@@ -704,17 +705,18 @@ Status WindowsEnv::LoadDynamicLibrary(const PathString& wlibrary_filename, bool 
     static constexpr DWORD bufferLength = 64 * 1024;
     std::wstring s(bufferLength, '\0');
     FormatMessageW(
-        FORMAT_MESSAGE_FROM_SYSTEM |
-            FORMAT_MESSAGE_IGNORE_INSERTS,
+        FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_IGNORE_INSERTS,
         NULL,
         error_code,
         MAKELANGID(LANG_NEUTRAL, SUBLANG_DEFAULT),
         (LPWSTR)s.data(),
-        0, NULL);
+        bufferLength, NULL);
+    s.erase(std::remove(s.begin(), s.end(), L'\r'), s.end());
+    s.erase(std::remove(s.begin(), s.end(), L'\n'), s.end());
     std::wostringstream oss;
-    oss << L"LoadLibrary failed with error " << error_code << L" \"" << s.c_str() << L"\" when trying to load \"" << wlibrary_filename << L"\"";
+    oss << DetermineLoadLibraryError(wlibrary_filename.c_str(), LOAD_WITH_ALTERED_SEARCH_PATH)
+        << L" (Error " << error_code << ": \"" << s.c_str() << "\")";
     std::wstring errmsg = oss.str();
-    // TODO: trim the ending '\r' and/or '\n'
     common::Status status(common::ONNXRUNTIME, common::FAIL, ToUTF8String(errmsg));
     return status;
   }
