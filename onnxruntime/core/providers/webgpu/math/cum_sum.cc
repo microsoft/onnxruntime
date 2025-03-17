@@ -30,26 +30,22 @@ Status CumSumProgram::GenerateShaderCode(ShaderHelper& shader) const {
 
   std::string index = "i32(" + input.IndicesGet("input_indices", "uniforms.axis") + ")";
   std::string max = GetElementAt("uniforms.input_shape", "uniforms.axis", input.Rank());
-  std::stringstream lowerLimit;
-  lowerLimit << "let first : i32 = 0;\n"
-             << "if (uniforms.reverse == 1) {\n"
-             << "  first = " << index << ";\n"
-             << "  if (uniforms.exclusive == 1) { first += 1; }\n"
-             << "}\n";
-  std::stringstream upperLimit;
-  upperLimit << "let last : i32 = 0;\n"
-             << "if (uniforms.reverse == 1) {\n"
-             << "  last = " << max << ";\n"
-             << "} else {\n"
-             << "  last = " << index << ";\n"
-             << "  if (uniforms.exclusive == 0) { last += 1; }\n"
-             << "}\n";
 
   shader.MainFunctionBody() << shader.GuardAgainstOutOfBoundsWorkgroupSizes("uniforms.output_size")
                             << "var input_indices = " << input.OffsetToIndices("global_idx") << ";\n"
                             << "var sum = output_indices_t(0);\n"
-                            << lowerLimit.str()
-                            << upperLimit.str()
+                            << "let first : i32 = 0;\n"
+                            << "if (uniforms.reverse == 1) {\n"
+                            << "  first = " << index << ";\n"
+                            << "  if (uniforms.exclusive == 1) { first += 1; }\n"
+                            << "}\n\n"
+                            << "let last : i32 = 0;\n"
+                            << "if (uniforms.reverse == 1) {\n"
+                            << "  last = " << max << ";\n"
+                            << "} else {\n"
+                            << "  last = " << index << ";\n"
+                            << "  if (uniforms.exclusive == 0) { last += 1; }\n"
+                            << "}\n\n"
                             << "for (var i : i32 = first; i < last; i++) {\n"
                             << "  " << input.IndicesSet("input_indices", "uniforms.axis", "u32(i)") << ";\n"
                             << "  sum = sum + " << input.GetByIndices("input_indices") << ";\n"
