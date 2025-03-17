@@ -344,7 +344,7 @@ Status DP4AMatMulNBitsSmallMProgram::GenerateShaderCode(ShaderHelper& shader) co
           b_value_upper = vec4<i32>(unpack4xU8((b_value[3] >> 4) & 0x0F0F0F0Fu)) - vec4<i32>(8);
           own_b1[2] = pack4xI8(vec4<i32>(b_value_lower[0], b_value_upper[0], b_value_lower[1], b_value_upper[1]));
           own_b1[3] = pack4xI8(vec4<i32>(b_value_lower[2], b_value_upper[2], b_value_lower[3], b_value_upper[3]));
-          let own_scale_b = scales_b[b_offset];
+          let own_scale_b = scales_b[b_global * uniforms.K / uniforms.block_size + k_offset * 32 / uniforms.block_size];
           inter_results[idy][idx][i] += SDP8AI(own_a, own_b, own_a1, own_b1, own_scale_a * own_scale_b);
         }
       }
@@ -402,12 +402,8 @@ Status ApplyDP4AMatrixMatMulNBits(const Tensor* a, const Tensor* b, const Tensor
                            {&a_scale, ProgramTensorMetadataDependency::TypeAndRank, 1},
                            {b, ProgramTensorMetadataDependency::TypeAndRank, static_cast<int>(kVec4Components * kU32Components)},
                            {scales, ProgramTensorMetadataDependency::TypeAndRank, 1}})
-        .AddUniformVariables({{static_cast<uint32_t>(M)},
-                              {static_cast<uint32_t>(N)},
-                              {static_cast<uint32_t>(K)},
-                              {static_cast<uint32_t>(K / 16)},
-                              {static_cast<uint32_t>(K / 32)}})
-        .AddOutput({y, ProgramTensorMetadataDependency::TypeAndRank, gsl::narrow<int>(4)});
+        .AddUniformVariables({M, N, K, K / 16, K / 32, block_size})
+        .AddOutput({y, ProgramTensorMetadataDependency::TypeAndRank, 4});
     return context.RunProgram(mul_program);
   }
 

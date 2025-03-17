@@ -43,7 +43,8 @@ class DP4AMatMulNBitsSmallMProgram final : public Program<DP4AMatMulNBitsSmallMP
       {"N", ProgramUniformVariableDataType::Uint32},
       {"K", ProgramUniformVariableDataType::Uint32},
       {"K16", ProgramUniformVariableDataType::Uint32},
-      {"K32", ProgramUniformVariableDataType::Uint32});
+      {"K32", ProgramUniformVariableDataType::Uint32},
+      {"block_size", ProgramUniformVariableDataType::Uint32});
 };
 
 Status ApplyDP4AMatrixMatMulNBits(const Tensor* a, const Tensor* b, const Tensor* scales,
