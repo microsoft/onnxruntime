@@ -1,0 +1,51 @@
+name: "CoreML CI Pipeline"
+
+on:
+  push:
+    branches: [ main, 'rel-*']
+  pull_request:
+    branches: [ main ]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build_with_coreml:
+    runs-on: macos-13
+    strategy:
+      matrix:
+        use_coreml: [true, false]
+
+    env:
+      MACOSX_DEPLOYMENT_TARGET: '13.3'
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Install coreutils and ninja
+      run: brew install coreutils ninja
+
+    - name: Use Xcode 14.3.1
+      run: |
+        XCODE_DEVELOPER_DIR="/Applications/Xcode_14.3.1.app/Contents/Developer"
+        sudo xcode-select --switch "${XCODE_DEVELOPER_DIR}"
+
+    - name: Export GitHub Actions cache environment variables
+      uses: actions/github-script@v7
+      with:
+        script: |
+          core.exportVariable('ACTIONS_CACHE_URL', process.env.ACTIONS_CACHE_URL || '');
+          core.exportVariable('ACTIONS_RUNTIME_TOKEN', process.env.ACTIONS_RUNTIME_TOKEN || '');
+
+    - name: CoreML EP, Build and Test on macOS
+      run: |
+        python3 tools/ci_build/build.py \
+        --build_dir build \
+        --skip_submodule_sync \
+        --cmake_generator=Ninja \
+        --parallel --use_vcpkg --use_vcpkg_ms_internal_asset_cache --use_binskim_compliant_compile_flags \
+        --build_shared_lib \
+        --config Debug \
+        ${{ matrix.use_coreml && '--use_coreml' || '' }}

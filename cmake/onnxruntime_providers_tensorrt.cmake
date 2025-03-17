@@ -28,17 +28,9 @@
   endif()
   set(CXX_VERSION_DEFINED TRUE)
 
-  # There is an issue when running "Debug build" TRT EP with "Release build" TRT builtin parser on Windows.
-  # We enforce following workaround for now until the real fix.
-  if (WIN32 AND CMAKE_BUILD_TYPE STREQUAL "Debug")
-    set(onnxruntime_USE_TENSORRT_BUILTIN_PARSER OFF)
-    MESSAGE(STATUS "[Note] There is an issue when running \"Debug build\" TRT EP with \"Release build\" TRT built-in parser on Windows. This build will use tensorrt oss parser instead.")
-  endif()
-
   find_path(TENSORRT_INCLUDE_DIR NvInfer.h
     HINTS ${TENSORRT_ROOT}
     PATH_SUFFIXES include)
-
 
   file(READ ${TENSORRT_INCLUDE_DIR}/NvInferVersion.h NVINFER_VER_CONTENT)
   string(REGEX MATCH "define NV_TENSORRT_MAJOR * +([0-9]+)" NV_TENSORRT_MAJOR "${NVINFER_VER_CONTENT}")

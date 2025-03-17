@@ -95,7 +95,7 @@ Status PoolOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
                                       auto_pad_type,
                                       pads_out,
                                       model_builder.GetPreferredLayout() == DataLayout::NCHW));
-    pads = GetVecUint32FromVecInt64(pads_out);
+    pads = GetNarrowedIntfromInt64<uint32_t>(pads_out);
   }
   // Permute the ONNX's pads, which is [beginning_height, beginning_width, ending_height, ending_width],
   // while WebNN's padding is [beginning_height, ending_height, beginning_width, ending_width].
