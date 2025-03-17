@@ -28,7 +28,6 @@ class MatMulProgram final : public Program<MatMulProgram> {
   const InlinedVector<int64_t> elements_per_thread_;
 
   void MatMulReadWriteFnSource(ShaderHelper& shader, const ShaderVariableHelper& a, const ShaderVariableHelper& b, const ShaderVariableHelper& output, const ShaderIndicesHelper& batch_dims) const;
-
 };
 
 Status MakeMatMulPackedVec4Source(ShaderHelper& shader, uint32_t workgroup_size_x, uint32_t workgroup_size_y, const InlinedVector<int64_t>& elements_per_thread, const std::string& data_type, const ShaderIndicesHelper* batch_dims = nullptr);

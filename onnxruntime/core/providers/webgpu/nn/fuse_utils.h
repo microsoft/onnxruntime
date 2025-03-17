@@ -5,5 +5,5 @@
 namespace onnxruntime {
 namespace webgpu {
 
-} // namespace webgpu
+}  // namespace webgpu
 }  // namespace onnxruntime

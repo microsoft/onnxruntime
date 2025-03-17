@@ -85,7 +85,7 @@ Status MakeMatMulPackedVec4Source(ShaderHelper& shader, uint32_t workgroup_size_
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                            "Invalid matrix multiplication configuration inner_elements_size: ", inner_elements_size,
                            " must be 3 or 4. tile_a_width: ", tile_a_width, " must be divisible by WorkgroupSizeX: ",
-                          workgroup_size_x, ". tile_inner: ", tile_inner, " must be divisible by WorkgroupSizeY: ",
+                           workgroup_size_x, ". tile_inner: ", tile_inner, " must be divisible by WorkgroupSizeY: ",
                            workgroup_size_y, ". elements_per_thread_x: ", elements_per_thread_x, " must be 4.");
   }
 
@@ -279,7 +279,7 @@ Status MatMulProgram::GenerateShaderCode(ShaderHelper& shader) const {
   // generate the main function
   std::string data_type = "a_value_t";
   if (is_vec4_) {
-    ORT_RETURN_IF_ERROR(MakeMatMulPackedVec4Source(shader, WorkgroupSizeX(), WorkgroupSizeY(), elements_per_thread_, data_type, & batch_dims));
+    ORT_RETURN_IF_ERROR(MakeMatMulPackedVec4Source(shader, WorkgroupSizeX(), WorkgroupSizeY(), elements_per_thread_, data_type, &batch_dims));
   } else {
     ORT_RETURN_IF_ERROR(MakeMatMulPackedSource(shader, WorkgroupSizeX(), WorkgroupSizeY(), elements_per_thread_, data_type, &batch_dims));
   }
