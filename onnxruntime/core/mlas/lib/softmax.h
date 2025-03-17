@@ -77,6 +77,20 @@ struct MLAS_SOFTMAX_DISPATCH {
     ReduceMax_Fp16_Fn* ReduceMax_Fp16 = nullptr;
 
     /**
+     * @brief Find the max value among the input array after adding the bias
+     * @param Input         Address of the input array
+     * @param Bias          Address of the bias array
+     * @param N             Number of elements in the input and bias arrays
+     */
+    typedef MLAS_FP16(BiasAddReduceMax_Fp16_Fn)(
+        const MLAS_FP16* Input,
+        const MLAS_FP16* Bias,
+        size_t N
+    );
+
+    BiasAddReduceMax_Fp16_Fn* BiasAddReduceMax_Fp16 = nullptr;
+
+    /**
      * @brief Compute the expotential function for each element of the input array and returnt he sum. It has smaller
      *        dynamic range for the input than Exp_Fp16_Fn thus is faster.
      * @param Input         Address of the input array. Valid in [-10.7438, 10.7438]

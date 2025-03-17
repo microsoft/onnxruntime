@@ -29,6 +29,7 @@ const MLAS_SOFTMAX_DISPATCH MlasSoftmaxDispatchNeon = []() {
         d.Softcap_Fp16 = softmax_neon::Softcap_Kernel_Fp16;
         d.Exp_Fp16 = softmax_neon::Exp_Kernel_Fp16;
         d.ReduceMax_Fp16 = softmax_neon::ReduceMax_Kernel_Fp16;
+        d.BiasAddReduceMax_Fp16 = softmax_neon::BiasAddReduceMax_Kernel_Fp16;
         d.SumExp_Fp16 = softmax_neon::SumExp_Kernel_Fp16;
         d.Softmax_Fp16 = softmax_neon::Softmax_Kernel_Fp16;
         d.LogSoftmax_Fp16 = softmax_neon::LogSoftmax_Kernel_Fp16;

@@ -1076,8 +1076,19 @@ Return Value:
         MLAS_THROW_EX(std::runtime_error, "Lacks kernels for fp16 softmax.");
     }
 
+    if (WorkBlock->AttentionBias != nullptr && dispatch->BiasAddReduceMax_Fp16 == nullptr) {
+        MLAS_THROW_EX(std::runtime_error, "Lacks kernels for fp16 softmax.");
+    }
+
     while (CountN > 0) {
-        MLAS_FP16 Maximum = dispatch->ReduceMax_Fp16(Input, D);
+        MLAS_FP16 Maximum;
+        if (WorkBlock->AttentionBias != nullptr) {
+            const MLAS_FP16* AttentionBias = WorkBlock->AttentionBias + n * D;
+            Maximum = dispatch->BiasAddReduceMax_Fp16(Input, AttentionBias, D);
+        } else {
+            Maximum = dispatch->ReduceMax_Fp16(Input, D);
+        }
+
         MLAS_FP16 NegativeMaximum = Maximum.Negate();
         if (SmoothSoftmax && !NegativeMaximum.IsNegative()) {
             NegativeMaximum = MLAS_FP16::FromBits(0);
