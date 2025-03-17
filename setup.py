@@ -205,21 +205,14 @@ try:
 
                 cuda_dependencies = [
                     "libcuda.so.1",
-                    "libcublas.so.11",
                     "libcublas.so.12",
-                    "libcublasLt.so.11",
                     "libcublasLt.so.12",
-                    "libcudart.so.11.0",
                     "libcudart.so.12",
-                    "libcudnn.so.8",
                     "libcudnn.so.9",
-                    "libcufft.so.10",
                     "libcufft.so.11",
                     "libcurand.so.10",
                     "libnvJitLink.so.12",
-                    "libnvrtc.so.11.2",  # A symlink to libnvrtc.so.11.8.89
                     "libnvrtc.so.12",
-                    "libnvrtc-builtins.so.11",
                     "libnvrtc-builtins.so.12",
                 ]
 

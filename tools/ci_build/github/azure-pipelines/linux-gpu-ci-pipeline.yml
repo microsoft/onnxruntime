@@ -33,7 +33,6 @@ parameters:
     type: string
     default: '12.2'
     values:
-      - 11.8
       - 12.2
 
   - name: SpecificArtifact
@@ -51,13 +50,13 @@ variables:
     ${{ if eq(parameters.CudaVersion, '11.8') }}:
       value: onnxruntimebuildcache.azurecr.io/internal/azureml/onnxruntime/build/cuda11_x64_almalinux8_gcc11:20250124.1
     ${{ if eq(parameters.CudaVersion, '12.2') }}:
-      value: onnxruntimebuildcache.azurecr.io/internal/azureml/onnxruntime/build/cuda12_x64_ubi8_gcc12:20250124.1
+    value: onnxruntimebuildcache.azurecr.io/internal/azureml/onnxruntime/build/cuda12_x64_ubi8_gcc12:20250124.1
 
   - name: Repository
     ${{ if eq(parameters.CudaVersion, '11.8') }}:
       value: 'onnxruntimecuda11manylinuxbuild'
     ${{ if eq(parameters.CudaVersion, '12.2') }}:
-      value: 'onnxruntimecuda12manylinuxbuild'
+    value: 'onnxruntimecuda12manylinuxbuild'
 
 stages:
 - stage: Linux_Build

@@ -22,9 +22,8 @@ parameters:
 
 - name: cuda_version
   type: string
-  default: '11.8'
+  default: '12.2'
   values:
-   - 11.8
    - 12.2
 
 stages:
@@ -57,7 +56,7 @@ stages:
         ${{ if eq(parameters.cuda_version, '11.8') }}:
           value: ${{ variables.linux_trt_version_cuda11 }}
         ${{ if eq(parameters.cuda_version, '12.2') }}:
-          value: ${{ variables.linux_trt_version_cuda12 }}
+        value: ${{ variables.linux_trt_version_cuda12 }}
     steps:
       - checkout: self
         clean: true
@@ -67,8 +66,8 @@ stages:
 
       - template: ../templates/get-docker-image-steps.yml
         parameters:
-          Dockerfile: tools/ci_build/github/linux/docker/inference/${{ parameters.arch }}/python/cuda/Dockerfile
-          Context: tools/ci_build/github/linux/docker/inference/${{ parameters.arch }}/python/cuda
+          Dockerfile: tools/ci_build/github/linux/docker/inference/${{ parameters.arch }}/default/cuda12/Dockerfile
+          Context: tools/ci_build/github/linux/docker/inference/${{ parameters.arch }}/default/cuda12
           DockerBuildArgs: "--build-arg BASEIMAGE=${{ parameters.docker_base_image }} --build-arg TRT_VERSION=${{ variables.trt_version }} --build-arg BUILD_UID=$( id -u )"
           Repository: onnxruntimecuda${{ replace(parameters.cuda_version, '.', '') }}xtrt86build${{ parameters.arch }}
 

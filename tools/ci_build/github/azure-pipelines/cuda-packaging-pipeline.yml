@@ -50,7 +50,6 @@ parameters:
   type: string
   default: '12.2'
   values:
-  - 11.8
   - 12.2
 
 variables:
@@ -66,7 +65,7 @@ variables:
   ${{ if eq(parameters.CudaVersion, '11.8') }}:
     value: $(Agent.TempDirectory)\v11.8
   ${{ if eq(parameters.CudaVersion, '12.2') }}:
-    value: $(Agent.TempDirectory)\v12.2
+  value: $(Agent.TempDirectory)\v12.2
 
 resources:
   repositories:

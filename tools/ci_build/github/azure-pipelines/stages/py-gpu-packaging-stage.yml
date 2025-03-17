@@ -36,7 +36,6 @@ parameters:
   displayName: 'CUDA version. Windows Only.'
   default: '12.2'
   values:
-   - 11.8
    - 12.2
 
 - name: PythonVersions
@@ -70,7 +69,7 @@ stages:
           ${{ if eq(parameters.cuda_version, '11.8') }}:
             docker_base_image: onnxruntimebuildcache.azurecr.io/internal/azureml/onnxruntime/build/cuda11_x64_almalinux8_gcc11:20250124.1
           ${{ if eq(parameters.cuda_version, '12.2') }}:
-            docker_base_image: onnxruntimebuildcache.azurecr.io/internal/azureml/onnxruntime/build/cuda12_x64_ubi8_gcc12:20250124.1
+          docker_base_image: onnxruntimebuildcache.azurecr.io/internal/azureml/onnxruntime/build/cuda12_x64_ubi8_gcc12:20250124.1
 
   - ${{ if eq(parameters.enable_windows_dml, true) }}:
     - ${{ each python_version in parameters.PythonVersions }}:
