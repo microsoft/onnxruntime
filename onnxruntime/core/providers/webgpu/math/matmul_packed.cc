@@ -94,6 +94,7 @@ Status MatMulProgram::MakeMatMulPackedVec4Source(ShaderHelper& shader,
                            "Invalid matrix multiplication configuration inner_elements_size: ", inner_elements_size,
                            " must be 3 or 4. tile_a_width: ", tile_a_width, " must be divisible by WorkgroupSizeX: ",
                            workgroup_size_x, ". tile_inner: ", tile_inner, " must be divisible by WorkgroupSizeY: ",
+                           workgroup_size_x, ". tile_inner: ", tile_inner, " must be divisible by WorkgroupSizeY: ",
                            workgroup_size_y, ". elements_per_thread_x: ", elements_per_thread_x, " must be 4.");
   }
 
