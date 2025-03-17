@@ -11,16 +11,14 @@ namespace webgpu {
 
 class CumSumProgram final : public Program<CumSumProgram> {
  public:
-  CumSumProgram(int64_t exclusive, int64_t reverse) : Program{"CumSum"}, exclusive_{exclusive}, reverse_{reverse} {}
+  CumSumProgram() : Program{"CumSum"} {}
 
   Status GenerateShaderCode(ShaderHelper& sh) const override;
 
   WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES({"output_size", ProgramUniformVariableDataType::Uint32},
-                                          {"axis", ProgramUniformVariableDataType::Uint32});
-
- private:
-  int64_t exclusive_;
-  int64_t reverse_;
+                                          {"axis", ProgramUniformVariableDataType::Uint32},
+                                          {"exclusive", ProgramUniformVariableDataType::Uint32},
+                                          {"reverse", ProgramUniformVariableDataType::Uint32});
 };
 
 class CumSum final : public WebGpuKernel {
