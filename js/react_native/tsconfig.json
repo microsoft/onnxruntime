@@ -2,8 +2,7 @@
   "compilerOptions": {
     "baseUrl": ".",
     "paths": {
-      "onnxruntime-react-native": ["./lib/index"],
-      "onnxruntime-common": ["../common"]
+      "onnxruntime-react-native": ["./lib/index"]
     },
     "allowUnreachableCode": false,
     "allowUnusedLabels": false,
