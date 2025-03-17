@@ -19,9 +19,6 @@
 #include "core/framework/op_kernel.h"
 #include "core/framework/session_state.h"
 #include "core/graph/graph.h"
-#include <unordered_set>
-#include <mutex>
-#include <string>
 
 namespace onnxruntime {
 namespace utils {
@@ -40,8 +37,6 @@ constexpr const char* kDumpInputData = "ORT_DEBUG_NODE_IO_DUMP_INPUT_DATA";
 constexpr const char* kDumpOutputData = "ORT_DEBUG_NODE_IO_DUMP_OUTPUT_DATA";
 // Output statistics data like min, max, count of NaN, count of infinity etc.
 constexpr const char* kDumpStatisticsData = "ORT_DEBUG_NODE_IO_DUMP_STATISTICS_DATA";
-// Output node name when any float input or output exceeds a threshold for float16 conversion overflow.
-constexpr const char* kDumpHalfConversionOverflow = "ORT_DEBUG_NODE_IO_DUMP_HALF_CONVERSION_OVERFLOW";
 
 // specify a node name filter to limit the nodes that are dumped
 // see NodeDumpOptions::FilterOptions
@@ -66,10 +61,6 @@ constexpr const char* kSnippetThreshold = "ORT_DEBUG_NODE_IO_SNIPPET_THRESHOLD";
 // Number of array items in snippet at beginning and end of each dimension (default 3)
 constexpr const char* kSnippetEdgeItems = "ORT_DEBUG_NODE_IO_SNIPPET_EDGE_ITEMS";
 
-// Threshold for float to float16 conversion overflow detection (default 50000).
-// It is a positive integer that <= 65504, and it is recommended to add some margin for new inputs.
-constexpr const char* kHalfOverflowThreshold = "ORT_DEBUG_NODE_IO_HALF_OVERFLOW_THRESHOLD";
-
 }  // namespace debug_node_inputs_outputs_env_vars
 
 constexpr char kFilterPatternDelimiter = ';';
@@ -82,8 +73,7 @@ struct NodeDumpOptions {
     OutputData = 1 << 2,
     NodePlacement = 1 << 3,
     StatisticsData = 1 << 4,
-    HalfConversionOverflow = 1 << 5,
-    AllData = Shape | InputData | OutputData | NodePlacement | StatisticsData | HalfConversionOverflow,
+    AllData = Shape | InputData | OutputData | NodePlacement | StatisticsData,
   };
 
   // specifies the information to dump per node
@@ -127,9 +117,6 @@ struct NodeDumpOptions {
 
   // Number of array items in snippet at beginning and end of each dimension for Stdout.
   int snippet_edge_items;
-
-  // Threshold for float16 conversion overflow.
-  float half_overflow_threshold;
 };
 
 struct NodeDumpContext {
@@ -137,16 +124,6 @@ struct NodeDumpContext {
   size_t iteration;
   // which node are we on?
   size_t program_counter;
-};
-
-// A session level analysis of node dumps. It can be used to collect some statistics or analysis during node dumps.
-struct NodeDumpAnalysis {
-  std::mutex set_mutex;
-  std::unordered_set<std::string> half_overflow_nodes;
-  std::unordered_map<std::string, int> half_overflow_ops;
-  int counter{0};
-  void Add(const std::string& node_name, const std::string& op_name, bool is_half_overflow);
-  void PrintToStdOut(const std::string& model_path);
 };
 
 // gets NodeDumpOptions instance configured from environment variable values
@@ -158,15 +135,13 @@ void DumpNodeInputs(
     const NodeDumpContext& dump_context,
     const OpKernelContext& context,
     const Node& node,
-    const SessionState& session_state,
-    NodeDumpAnalysis& dump_analysis);
+    const SessionState& session_state);
 
 void DumpNodeInputs(
     const NodeDumpContext& dump_context,
     const OpKernelContext& context,
     const Node& node,
-    const SessionState& session_state,
-    NodeDumpAnalysis& dump_analysis);
+    const SessionState& session_state);
 
 // dumps outputs for a node
 void DumpNodeOutputs(
@@ -174,15 +149,13 @@ void DumpNodeOutputs(
     const NodeDumpContext& dump_context,
     OpKernelContext& context,
     const Node& node,
-    const SessionState& session_state,
-    NodeDumpAnalysis& dump_analysis);
+    const SessionState& session_state);
 
 void DumpNodeOutputs(
     const NodeDumpContext& dump_context,
     OpKernelContext& context,
     const Node& node,
-    const SessionState& session_state,
-    NodeDumpAnalysis& dump_analysis);
+    const SessionState& session_state);
 
 }  // namespace utils
 }  // namespace onnxruntime

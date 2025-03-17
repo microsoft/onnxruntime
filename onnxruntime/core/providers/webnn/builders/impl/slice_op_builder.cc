@@ -173,7 +173,7 @@ bool SliceOpBuilder::HasSupportedInputsImpl(const InitializedTensorSet& initiali
     return false;
 
   // If there is step < 0, check data type support of reverse.
-  if (TensorExists(input_defs, 4)) {
+  if (input_defs.size() > 4 && input_defs[4]->Exists()) {
     std::vector<int64_t> steps;
     if (!ReadIntArrayFrom1DTensor(*initializers.at(input_defs[4]->Name()), steps, logger))
       return false;

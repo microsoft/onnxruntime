@@ -9,12 +9,8 @@ from functools import wraps
 from onnxruntime.capi import _pybind_state as _C
 
 from .kernel import *  # noqa: F403
-from .triton_op_executor import (
-    call_triton_by_name,
-    call_triton_by_onnx,
-    get_config,
-    register_triton_kernel,  # noqa: F401
-)
+from .triton_op_executor import register_triton_kernel  # noqa: F401
+from .triton_op_executor import call_triton_by_name, call_triton_by_onnx, get_config
 
 
 def run_once_register_triton_op_executor(f):

@@ -355,9 +355,7 @@ class GRU:
                 prev_h = (
                     all_hidden_states[t - 1, 0, idx, :]
                     if t > 0
-                    else initial_hidden_state[0, idx, :]
-                    if initial_hidden_state is not None
-                    else 0
+                    else initial_hidden_state[0, idx, :] if initial_hidden_state is not None else 0
                 )
 
                 grad_update_gate = (prev_h - hidden_gate) * grad_h

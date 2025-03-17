@@ -13,17 +13,9 @@ using namespace onnxruntime::common;
 
 namespace onnxruntime {
 
-ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
-    Det,
-    11,
-    21,
-    KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
-    Det<float>);
-
-// Opset 22 starts to support bfloat16
 ONNX_CPU_OPERATOR_KERNEL(
     Det,
-    22,
+    11,
     KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
     Det<float>);
 

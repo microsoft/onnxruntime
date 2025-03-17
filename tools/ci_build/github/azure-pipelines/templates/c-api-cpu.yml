@@ -296,6 +296,9 @@ stages:
     - template: component-governance-component-detection-steps.yml
       parameters :
         condition : 'succeeded'
+    - task: mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3
+      displayName: 'Clean Agent Directories'
+      condition: always()
 
 - stage: NuGet_Packaging_CPU
   dependsOn:
@@ -521,6 +524,9 @@ stages:
       parameters :
         condition : 'succeeded'
 
+    - task: mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3
+      displayName: 'Clean Agent Directories'
+      condition: always()
 
 - stage: Nodejs_Packaging
   dependsOn:
@@ -796,6 +802,9 @@ stages:
       parameters :
         condition : 'succeeded'
 
+    - task: mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3
+      displayName: 'Clean Agent Directories'
+      condition: always()
 
 - template: ../nuget/templates/test_win.yml
   parameters:

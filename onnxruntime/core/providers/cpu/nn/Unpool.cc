@@ -23,17 +23,9 @@ ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
         .TypeConstraint("T2", DataTypeImpl::GetTensorType<int64_t>()),
     MaxUnpool);
 
-ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
-    MaxUnpool,
-    11, 21,
-    KernelDefBuilder()
-        .TypeConstraint("T1", DataTypeImpl::GetTensorType<float>())
-        .TypeConstraint("T2", DataTypeImpl::GetTensorType<int64_t>()),
-    MaxUnpool);
-
 ONNX_CPU_OPERATOR_KERNEL(
     MaxUnpool,
-    22,
+    11,
     KernelDefBuilder()
         .TypeConstraint("T1", DataTypeImpl::GetTensorType<float>())
         .TypeConstraint("T2", DataTypeImpl::GetTensorType<int64_t>()),

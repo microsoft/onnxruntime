@@ -1337,30 +1337,16 @@ class Sin final : public OpKernel {
   }
 };
 
-ONNX_CPU_OPERATOR_VERSIONED_TYPED_KERNEL(
-    Sin,
-    7, 21,
-    float,
-    KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
-    Sin<float>);
-
-ONNX_CPU_OPERATOR_VERSIONED_TYPED_KERNEL(
-    Sin,
-    7, 21,
-    double,
-    KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<double>()),
-    Sin<double>);
-
 ONNX_CPU_OPERATOR_TYPED_KERNEL(
     Sin,
-    22,
+    7,
     float,
     KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
     Sin<float>);
 
 ONNX_CPU_OPERATOR_TYPED_KERNEL(
     Sin,
-    22,
+    7,
     double,
     KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<double>()),
     Sin<double>);
@@ -1379,17 +1365,9 @@ class Cos final : public OpKernel {
   }
 };
 
-ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
-    Cos,
-    7,
-    21,
-    KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
-    Cos<float>);
-
-// Opset 22 starts to support bfloat16
 ONNX_CPU_OPERATOR_KERNEL(
     Cos,
-    22,
+    7,
     KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
     Cos<float>);
 
@@ -1407,15 +1385,9 @@ class Tan final : public OpKernel {
   }
 };
 
-ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
-    Tan,
-    7, 21,
-    KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
-    Tan<float>);
-
 ONNX_CPU_OPERATOR_KERNEL(
     Tan,
-    22,
+    7,
     KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
     Tan<float>);
 
@@ -1433,17 +1405,9 @@ class Asin final : public OpKernel {
   }
 };
 
-ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
-    Asin,
-    7,
-    21,
-    KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
-    Asin<float>);
-
-// Opset 22 starts to support bfloat16
 ONNX_CPU_OPERATOR_KERNEL(
     Asin,
-    22,
+    7,
     KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
     Asin<float>);
 
@@ -1461,17 +1425,9 @@ class Acos final : public OpKernel {
   }
 };
 
-ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
-    Acos,
-    7,
-    21,
-    KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
-    Acos<float>);
-
-// Opset 22 starts to support bfloat16
 ONNX_CPU_OPERATOR_KERNEL(
     Acos,
-    22,
+    7,
     KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
     Acos<float>);
 
@@ -1489,17 +1445,9 @@ class Atan final : public OpKernel {
   }
 };
 
-ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
-    Atan,
-    7,
-    21,
-    KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
-    Atan<float>);
-
-// Opset 22 starts to support bfloat16
 ONNX_CPU_OPERATOR_KERNEL(
     Atan,
-    22,
+    7,
     KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
     Atan<float>);
 
@@ -1517,17 +1465,9 @@ class Sinh final : public OpKernel {
   }
 };
 
-ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
-    Sinh,
-    9,
-    21,
-    KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
-    Sinh<float>);
-
-// Opset 22 starts to support bfloat16
 ONNX_CPU_OPERATOR_KERNEL(
     Sinh,
-    22,
+    9,
     KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
     Sinh<float>);
 
@@ -1545,17 +1485,9 @@ class Cosh final : public OpKernel {
   }
 };
 
-ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
-    Cosh,
-    9,
-    21,
-    KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
-    Cosh<float>);
-
-// Opset 22 starts to support bfloat16
 ONNX_CPU_OPERATOR_KERNEL(
     Cosh,
-    22,
+    9,
     KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
     Cosh<float>);
 
@@ -1585,17 +1517,9 @@ class Asinh final : public OpKernel {
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(Asinh);
 };
 
-ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
-    Asinh,
-    9,
-    21,
-    KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
-    Asinh<float>);
-
-// Opset 22 starts to support bfloat16
 ONNX_CPU_OPERATOR_KERNEL(
     Asinh,
-    22,
+    9,
     KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
     Asinh<float>);
 
@@ -1625,17 +1549,9 @@ class Acosh final : public OpKernel {
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(Acosh);
 };
 
-ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
-    Acosh,
-    9,
-    21,
-    KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
-    Acosh<float>);
-
-// Opset 22 starts to support bfloat16
 ONNX_CPU_OPERATOR_KERNEL(
     Acosh,
-    22,
+    9,
     KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
     Acosh<float>);
 
@@ -1665,17 +1581,9 @@ class Atanh final : public OpKernel {
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(Atanh);
 };
 
-ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
-    Atanh,
-    9,
-    21,
-    KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
-    Atanh<float>);
-
-// Opset 22 starts to support bfloat16
 ONNX_CPU_OPERATOR_KERNEL(
     Atanh,
-    22,
+    9,
     KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
     Atanh<float>);
 

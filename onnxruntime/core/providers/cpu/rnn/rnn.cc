@@ -24,17 +24,9 @@ ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
         .TypeConstraint("T1", DataTypeImpl::GetTensorType<int>()),
     RNN<float>);
 
-ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
-    RNN,
-    14, 21,
-    KernelDefBuilder()
-        .TypeConstraint("T", DataTypeImpl::GetTensorType<float>())
-        .TypeConstraint("T1", DataTypeImpl::GetTensorType<int>()),
-    RNN<float>);
-
 ONNX_CPU_OPERATOR_KERNEL(
     RNN,
-    22,
+    14,
     KernelDefBuilder()
         .TypeConstraint("T", DataTypeImpl::GetTensorType<float>())
         .TypeConstraint("T1", DataTypeImpl::GetTensorType<int>()),

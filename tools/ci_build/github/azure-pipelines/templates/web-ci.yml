@@ -23,10 +23,6 @@ parameters:
   displayName: 'Build JSEP'
   type: boolean
   default: true
-- name: BuildWebGPU
-  displayName: 'Build WebGPU (EP)'
-  type: boolean
-  default: true
 
 - name: WASMTemplate
   type: string
@@ -43,10 +39,10 @@ parameters:
   default: false
 - name: WebGpuPoolName
   type: string
-  default: 'onnxruntime-Win2022-VS2022-webgpu-A10'
+  default: 'onnxruntime-Win2022-webgpu-A10'
 - name: WebCpuPoolName
   type: string
-  default: 'onnxruntime-Win2022-VS2022-webgpu-A10'
+  default: 'onnxruntime-Win-CPU-2022-web'
 
 - name: ExtraBuildArgs
   displayName: 'Extra build command line arguments'
@@ -102,7 +98,6 @@ stages:
       ExtraBuildArgs: '--enable_wasm_profiling ${{ parameters.ExtraBuildArgs }}'
       PoolName: ${{ parameters.PoolName }}
       BuildJsep: ${{ parameters.BuildJsep }}
-      BuildWebGPU: ${{ parameters.BuildWebGPU }}
       WithCache: ${{ parameters.WithCache }}
 
 - stage: Build_web_Debug
@@ -133,7 +128,6 @@ stages:
       ExtraBuildArgs: '--target onnxruntime_webassembly --skip_tests --enable_wasm_api_exception_catching --disable_rtti ${{ parameters.ExtraBuildArgs }}'
       PoolName: ${{ parameters.PoolName }}
       BuildJsep: ${{ parameters.BuildJsep }}
-      BuildWebGPU: false
       WithCache: ${{ parameters.WithCache }}
 
 - ${{ if eq(parameters.BuildStaticLib, 'true') }}:

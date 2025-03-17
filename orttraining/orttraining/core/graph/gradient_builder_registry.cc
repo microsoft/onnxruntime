@@ -125,7 +125,6 @@ void GradientBuilderRegistry::RegisterGradientBuilders() {
   REGISTER_GRADIENT_BUILDER("LeakyRelu", GetLeakyReluGradient);
   REGISTER_GRADIENT_BUILDER("ConvTranspose", GetConvTransposeGradient);
   REGISTER_GRADIENT_BUILDER("Resize", GetResizeGradient);
-  REGISTER_GRADIENT_BUILDER("Atan", GetAtanGradient);
 
   REGISTER_GRADIENT_BUILDER("ExternalGradient", GetExternalGradient);
 };

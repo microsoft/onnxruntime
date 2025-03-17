@@ -181,21 +181,15 @@ inline bool IsEmptyTensor(const InitializedTensorSet& initializers, const std::s
   return std::any_of(dims.begin(), dims.end(), [](auto d) { return d == 0; });
 }
 
-inline bool TensorExists(const ConstPointerContainer<std::vector<NodeArg*>>& defs, size_t tensor_index) noexcept {
-  return tensor_index < defs.size() && defs[tensor_index]->Exists();
-}
-
 bool IsTensorShapeSupported(const NodeArg& node_arg, const std::string& parent_name,
                             const logging::Logger& logger, bool allow_empty_input = false);
 
-// Get a set of nodes supported by WebNN EP.
-std::unordered_set<const Node*> GetSupportedNodes(const GraphViewer& graph_viewer,
-                                                  const emscripten::val& wnn_builder,
-                                                  const WebnnDeviceType device_type,
-                                                  const emscripten::val& wnn_limits,
-                                                  const logging::Logger& logger);
-// TODO(@Honry): Some ONNX ops are supported by decomposed WebNN ops,
-// we need to check the support of the decomposed ops.
+// Get a list of groups of supported nodes, each group represents a subgraph supported by WebNN EP.
+std::vector<std::vector<NodeIndex>> GetSupportedNodes(const GraphViewer& graph_viewer,
+                                                      const emscripten::val& wnn_builder,
+                                                      const WebnnDeviceType device_type,
+                                                      const emscripten::val& wnn_limits,
+                                                      const logging::Logger& logger);
 static const InlinedHashMap<std::string, std::string> op_map = {
     {"Abs", "abs"},
     {"Add", "add"},
@@ -275,7 +269,6 @@ static const InlinedHashMap<std::string, std::string> op_map = {
     {"Relu", "relu"},
     {"Reshape", "reshape"},
     {"Resize", "resample2d"},
-    {"RotaryEmbedding", "gather"},
     {"ScatterElements", "scatterElements"},
     {"ScatterND", "scatterND"},
     {"Shape", "slice"},
@@ -285,7 +278,6 @@ static const InlinedHashMap<std::string, std::string> op_map = {
     {"Softplus", "softplus"},
     {"Softsign", "softsign"},
     {"Sin", "sin"},
-    {"SkipSimplifiedLayerNormalization", "layerNormalization"},
     {"Slice", "slice"},
     {"Softmax", "softmax"},
     {"Split", "split"},

@@ -5,7 +5,6 @@
 """
 Check OS requirements for ONNX Runtime Python Bindings.
 """
-
 import linecache
 import platform
 import warnings

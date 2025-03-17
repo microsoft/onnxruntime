@@ -6,7 +6,6 @@
 """
 Benchmark performance of GroupQueryAttention.
 """
-
 from typing import Optional
 
 import torch

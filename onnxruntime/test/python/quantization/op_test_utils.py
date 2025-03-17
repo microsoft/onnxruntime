@@ -379,10 +379,10 @@ def check_op_type_count(testcase, model_path, **kwargs):
         if node.op_type in optype2count:
             optype2count[node.op_type] += 1
 
-    for op_type, value in kwargs.items():
+    for op_type in kwargs:
         try:
             testcase.assertEqual(
-                value,
+                kwargs[op_type],
                 optype2count[op_type],
                 f"op_type {op_type} count not same",
             )

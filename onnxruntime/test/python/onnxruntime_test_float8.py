@@ -354,7 +354,8 @@ class TestInferenceSession(unittest.TestCase):
             assert_allclose(expect, y)
         except AssertionError as e:
             raise AssertionError(
-                f"Discrepancies with name={name}, float_name={float_name}, saturate={saturate}\nexpect={expect}\ny={y}"
+                f"Discrepancies with name={name}, float_name={float_name}, "
+                f"saturate={saturate}\nexpect={expect}\ny={y}"
             ) from e
         self.assertEqual(expect.shape, y.shape)
         self.assertEqual(expect.dtype, y.dtype)
@@ -393,7 +394,8 @@ class TestInferenceSession(unittest.TestCase):
             assert_allclose(expect, y)
         except AssertionError as e:
             raise AssertionError(
-                f"Discrepancies with name={name}, float_name={float_name}, saturate={saturate}\nexpect={expect}\ny={y}"
+                f"Discrepancies with name={name}, float_name={float_name}, "
+                f"saturate={saturate}\nexpect={expect}\ny={y}"
             ) from e
         self.assertEqual(expect.shape, y.shape)
         self.assertEqual(expect.dtype, y.dtype)
@@ -606,7 +608,8 @@ class TestInferenceSession(unittest.TestCase):
             if not saturate:
                 return
             raise AssertionError(
-                f"Discrepancies with name={name}, float_name={float_name}, saturate={saturate}\nexpect={expect}\ny={y}"
+                f"Discrepancies with name={name}, float_name={float_name}, "
+                f"saturate={saturate}\nexpect={expect}\ny={y}"
             ) from e
         self.assertEqual(expect.shape, y.shape)
         self.assertEqual(expect.dtype, y.dtype)

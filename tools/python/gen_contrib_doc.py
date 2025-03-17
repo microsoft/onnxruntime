@@ -320,7 +320,9 @@ def main(output_path: str, domain_filter: [str]):
         )
 
         # domain -> support level -> name -> [schema]
-        index = defaultdict(lambda: defaultdict(lambda: defaultdict(list)))  # type: Dict[Text, Dict[int, Dict[Text, List[OpSchema]]]]
+        index = defaultdict(
+            lambda: defaultdict(lambda: defaultdict(list))
+        )  # type: Dict[Text, Dict[int, Dict[Text, List[OpSchema]]]]
 
         for schema in rtpy.get_all_operator_schema():
             index[schema.domain][int(schema.support_level)][schema.name].append(schema)
@@ -329,7 +331,9 @@ def main(output_path: str, domain_filter: [str]):
 
         # Preprocess the Operator Schemas
         # [(domain, [(support_level, [(schema name, current schema, all versions schemas)])])]
-        operator_schemas = list()  # type: List[Tuple[Text, List[Tuple[int, List[Tuple[Text, OpSchema, List[OpSchema]]]]]]]
+        operator_schemas = (
+            list()
+        )  # type: List[Tuple[Text, List[Tuple[int, List[Tuple[Text, OpSchema, List[OpSchema]]]]]]]
         exsting_ops = set()  # type: Set[Text]
         for domain, _supportmap in sorted(index.items()):
             if not should_render_domain(domain, domain_filter):
@@ -390,7 +394,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--domains",
         nargs="+",
-        help="Filter to specified domains. e.g. `--domains com.microsoft com.microsoft.nchwc`",
+        help="Filter to specified domains. " "e.g. `--domains com.microsoft com.microsoft.nchwc`",  # noqa: ISC001
     )
     parser.add_argument(
         "--output_path",

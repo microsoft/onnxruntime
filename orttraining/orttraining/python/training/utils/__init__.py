@@ -24,17 +24,17 @@ from onnxruntime.training.utils.torch_type_map import (
 )
 
 __all__ = [
-    "ORTModelInputOutputSchemaType",
-    "ORTModelInputOutputType",
-    "PTable",
     "PrimitiveType",
+    "ORTModelInputOutputType",
+    "ORTModelInputOutputSchemaType",
     "extract_data_and_schema",
-    "log_memory_usage",
+    "unflatten_data_using_schema",
+    "torch_nvtx_range_push",
+    "torch_nvtx_range_pop",
     "nvtx_function_decorator",
+    "log_memory_usage",
+    "pytorch_type_to_onnx_dtype",
     "onnx_dtype_to_pytorch_dtype",
     "pytorch_scalar_type_to_pytorch_dtype",
-    "pytorch_type_to_onnx_dtype",
-    "torch_nvtx_range_pop",
-    "torch_nvtx_range_push",
-    "unflatten_data_using_schema",
+    "PTable",
 ]

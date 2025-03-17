@@ -99,30 +99,44 @@ bool IsTensorShapeSupported(const NodeArg& node_arg, const std::string& parent_n
   return true;
 }
 
-std::unordered_set<const Node*> GetSupportedNodes(const GraphViewer& graph_viewer,
-                                                  const emscripten::val& wnn_builder,
-                                                  const WebnnDeviceType device_type,
-                                                  const emscripten::val& wnn_limits,
-                                                  const logging::Logger& logger) {
-  std::unordered_set<const Node*> supported_nodes;
+std::vector<std::vector<NodeIndex>> GetSupportedNodes(const GraphViewer& graph_viewer,
+                                                      const emscripten::val& wnn_builder,
+                                                      const WebnnDeviceType device_type,
+                                                      const emscripten::val& wnn_limits,
+                                                      const logging::Logger& logger) {
+  std::vector<std::vector<size_t>> supported_node_groups;
+  std::vector<size_t> supported_node_group;
+  const auto& node_indices = graph_viewer.GetNodesInTopologicalOrder();
 
-  for (const auto& node : graph_viewer.Nodes()) {
+  for (size_t i = 0; i < node_indices.size(); i++) {
+    auto node_idx = node_indices[i];
+    const auto* node(graph_viewer.GetNode(node_idx));
     bool supported = false;
     // Firstly check if platform supports the WebNN op.
-    if (CheckSingleOp(node.OpType(), wnn_builder, device_type)) {
-      supported = IsNodeSupported(node, graph_viewer, device_type, wnn_limits, logger);
+    if (CheckSingleOp(node->OpType(), wnn_builder, device_type)) {
+      supported = IsNodeSupported(*node, graph_viewer, device_type, wnn_limits, logger);
     }
-    LOGS(logger, VERBOSE) << "Operator type: [" << node.OpType()
-                          << "] index: [" << node.Index()
-                          << "] name: [" << node.Name()
+
+    LOGS(logger, VERBOSE) << "Operator type: [" << node->OpType()
+                          << "] index: [" << node_idx
+                          << "] name: [" << node->Name()
                           << "] supported: [" << supported
                           << "]";
     if (supported) {
-      supported_nodes.insert(&node);
+      supported_node_group.push_back(node_idx);
+    } else {
+      if (!supported_node_group.empty()) {
+        supported_node_groups.push_back(supported_node_group);
+        supported_node_group.clear();
+      }
     }
   }
 
-  return supported_nodes;
+  if (!supported_node_group.empty()) {
+    supported_node_groups.push_back(supported_node_group);
+  }
+
+  return supported_node_groups;
 }
 
 bool AreInputDataTypesSame(const std::string& op_type,

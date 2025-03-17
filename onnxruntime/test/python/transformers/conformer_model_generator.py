@@ -22,9 +22,7 @@ def get_tensor_and_weight(name: str, shape: List[int], random=False, zeros=False
     weights = (
         [np.random.uniform(low, high) for _ in range(total_elements)]
         if random
-        else [0.0] * total_elements
-        if zeros
-        else [1.0] * total_elements
+        else [0.0] * total_elements if zeros else [1.0] * total_elements
     )
     return helper.make_tensor(name, TensorProto.FLOAT, shape, weights), weights
 

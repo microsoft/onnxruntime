@@ -61,7 +61,7 @@ is_formatter = true
 
 
 [[linter]]
-code = 'RUFF-FORMAT'
+code = 'BLACK-ISORT'
 include_patterns = [
     '**/*.py',
 ]
@@ -76,7 +76,7 @@ command = [
     '-m',
     'lintrunner_adapters',
     'run',
-    'ruff_format_linter',
+    'black_isort_linter',
     '--',
     '@{{PATHSFILE}}'
 ]

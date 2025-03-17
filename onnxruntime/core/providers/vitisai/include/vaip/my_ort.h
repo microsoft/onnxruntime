@@ -122,5 +122,4 @@ using InitializedTensorSet =
     std::unordered_map<std::string, const TensorProto*>;
 
 using ModelMetaData = std::unordered_map<std::string, std::string>;
-using error_report_func = void (*)(void*, int, const char*);
 }  // namespace vaip_core

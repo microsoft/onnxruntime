@@ -7,11 +7,11 @@
 import torch
 
 __all__ = [
-    "GlobalSubscriberManager",
     "StatisticsSubscriber",
+    "GlobalSubscriberManager",
+    "inspect_activation",
     "ZeROOffloadSubscriber",
     "configure_ort_compatible_zero_stage3",
-    "inspect_activation",
 ]
 
 from ._statistics_subscriber import StatisticsSubscriber, _InspectActivation

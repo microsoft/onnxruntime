@@ -41,7 +41,10 @@ def _parse_build_settings(args):
 
     build_settings = {}
 
-    build_settings["build_abis"] = build_settings_data.get("build_abis", DEFAULT_BUILD_ABIS)
+    if "build_abis" in build_settings_data:
+        build_settings["build_abis"] = build_settings_data["build_abis"]
+    else:
+        build_settings["build_abis"] = DEFAULT_BUILD_ABIS
 
     build_params = []
     if "build_params" in build_settings_data:

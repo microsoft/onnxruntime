@@ -233,21 +233,15 @@ class OnnxModel:
                 nodes.append(node)
         return nodes
 
-    def get_children(self, node, input_name_to_nodes=None, output_index=None):
+    def get_children(self, node, input_name_to_nodes=None):
         if input_name_to_nodes is None:
             input_name_to_nodes = self.input_name_to_nodes()
 
         children = []
-        if output_index is not None:
-            if output_index < len(node.output):
-                output = node.output[output_index]
-                if output in input_name_to_nodes:
-                    children = list(input_name_to_nodes[output])
-        else:
-            for output in node.output:
-                if output in input_name_to_nodes:
-                    children.extend(input_name_to_nodes[output])
-
+        for output in node.output:
+            if output in input_name_to_nodes:
+                for node in input_name_to_nodes[output]:
+                    children.append(node)  # noqa: PERF402
         return children
 
     def get_parents(self, node, output_name_to_node=None):
@@ -442,63 +436,48 @@ class OnnxModel:
         self,
         node,
         child_op_types,
-        edges: Optional[List[Tuple[int, int]]] = None,
-        input_name_to_nodes=None,
+        child_output_index=None,
+        return_indice=None,
         exclude=[],  # noqa: B006
     ):
         """
         Find a sequence of input edges based on constraints on parent op_type and index.
-        Note that we use greedy approach and only consider the first matched child, so it has chance to miss matching.
+        When input_index is None, we will find the first parent node based on constraints,
+        and return_indice will be appended the corresponding input index.
 
         Args:
             node (str): current node name.
             child_op_types (str): constraint of child node op_type of each input edge.
-            edges (list): each edge is represented by two integers: output index of parent node, input index of child node.
-                         None means no constraint.
-            exclude(list): list of nodes that are excluded (not allowed to match as child).
+            child_output_index (list): constraint of input index of each input edge. None means no constraint.
+            return_indice (list): a list to append the input index
+                                  When there is no constraint on input index of an edge.
 
         Returns:
             children: a list of matched children node.
         """
-        if edges is not None:
-            assert len(edges) == len(child_op_types)
-            for edge in edges:
-                assert (
-                    isinstance(edge, tuple) and len(edge) == 2 and isinstance(edge[0], int) and isinstance(edge[1], int)
-                )
-
-        if input_name_to_nodes is None:
-            input_name_to_nodes = self.input_name_to_nodes()
+        if child_output_index is not None:
+            assert len(child_output_index) == len(child_op_types)
 
         current_node = node
         matched_children = []
         for i, op_type in enumerate(child_op_types):
             matched_child = None
-
-            if edges is None:
-                children_nodes = self.get_children(current_node, input_name_to_nodes=input_name_to_nodes)
-            else:
-                children_nodes = self.get_children(
-                    current_node, input_name_to_nodes=input_name_to_nodes, output_index=edges[i][0]
-                )
-
-            for child in children_nodes:
+            node_children = self.get_children(current_node)
+            for child_i, child in enumerate(node_children):
                 if child.op_type == op_type and child not in exclude:
-                    if edges is not None and child.input[edges[i][1]] != current_node.output[edges[i][0]]:
-                        continue
-
-                    # Here we use greedy approach and only consider the first matched child.
-                    # TODO: match recursively if we encounter cases that the correct child is not the first matched.
+                    if child_output_index is not None and child_output_index[i] != child_i:
+                        logger.debug(
+                            f"Failed to match index={i} child_output_index={child_output_index[i]} op_type={op_type}",
+                            stack_info=True,
+                        )
+                        return None
                     matched_child = child
-                    break
-
             if matched_child is None:
-                logger.debug(f"Failed to match child {i} op_type={op_type}", stack_info=True)
+                logger.debug(f"Failed to match child op_type={op_type}", stack_info=True)
                 return None
 
             matched_children.append(matched_child)
             current_node = matched_child
-
         return matched_children
 
     def find_first_parent_by_type(self, node, parent_type, output_name_to_node=None, recursive=True):
@@ -1284,7 +1263,7 @@ class OnnxModel:
             op_count[op] = 1 if op not in op_count else (op_count[op] + 1)
 
         # Sorted by count in the descending order, then by key in alphabetical order.
-        logger.info(f"Operators:{sorted(op_count.items(), key=lambda kv: (-kv[1], kv[0]))}")
+        logger.info(f"Operators:{sorted(op_count.items(), key=lambda kv:(-kv[1], kv[0]))}")
 
         return op_count
 

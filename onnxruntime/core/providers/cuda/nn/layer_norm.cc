@@ -4,7 +4,6 @@
 #include "core/providers/shared_library/provider_api.h"
 #include "core/providers/cuda/nn/layer_norm.h"
 #include "core/providers/cuda/nn/layer_norm_impl.h"
-#include "core/providers/cpu/nn/layer_norm_helper.h"
 #include "core/providers/cuda/cuda_common.h"
 
 namespace onnxruntime {
@@ -45,14 +44,20 @@ Status LayerNorm<T, U, V, simplified>::ComputeInternal(OpKernelContext* ctx) con
   auto bias_data = (simplified || (nullptr == bias)) ? nullptr : reinterpret_cast<const CudaV*>(bias->Data<V>());
 
   const TensorShape& x_shape = X->Shape();
-  auto x_num_dims = x_shape.NumDimensions();
-  const int64_t axis = HandleNegativeAxis(axis_, x_num_dims);
+  const int64_t axis = HandleNegativeAxis(axis_, x_shape.NumDimensions());
 
-  const TensorShape& scale_shape = scale->Shape();
-  const TensorShape& bias_shape = bias_data ? bias->Shape() : TensorShape();
+  int n1 = gsl::narrow<int>(x_shape.SizeToDimension(axis));
+  int n2 = gsl::narrow<int>(x_shape.SizeFromDimension(axis));
 
-  LayerNormParams params;
-  ORT_RETURN_IF_ERROR(LayerNormHelper::CheckInputs(x_shape, scale_shape, bias_shape, bias_data != nullptr, axis, params));
+  const auto scale_size = scale->Shape().Size();
+  const auto bias_size = (bias_data) ? bias->Shape().Size() : 0;
+  if (n2 == 1 || scale_size != n2 || (bias_data && bias_size != n2)) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "Size of X.shape()[axis:] == ", n2,
+                           ". Size of scale and bias (if provided) must match this "
+                           "and the size must not be 1. Got scale size of ",
+                           scale_size, " and bias size of ", bias_size);
+  }
 
   // Outputs
   Tensor* Y = ctx->Output(0, x_shape);
@@ -60,7 +65,7 @@ Status LayerNorm<T, U, V, simplified>::ComputeInternal(OpKernelContext* ctx) con
 
   // Mean and variance
   std::vector<int64_t> mean_inv_std_var_dim;
-  for (int i = 0; i < static_cast<int>(x_num_dims); ++i) {
+  for (int i = 0; i < static_cast<int>(x_shape.NumDimensions()); ++i) {
     if (i < axis) {
       mean_inv_std_var_dim.emplace_back(x_shape.GetDims()[i]);
     } else {
@@ -88,11 +93,8 @@ Status LayerNorm<T, U, V, simplified>::ComputeInternal(OpKernelContext* ctx) con
     return Status::OK();
   }
 
-  HostApplyLayerNorm<CudaT, CudaU, CudaV, simplified>(
-      GetDeviceProp(), Stream(ctx), Y_data, mean_data, inv_var_data, X_data,
-      onnxruntime::narrow<int>(params.num_rows), onnxruntime::narrow<int>(params.norm_size), epsilon_,
-      scale_data, bias_data,
-      onnxruntime::narrow<int>(params.broadcast_param));
+  HostApplyLayerNorm<CudaT, CudaU, CudaV, simplified>(GetDeviceProp(), Stream(ctx), Y_data, mean_data, inv_var_data,
+                                                      X_data, n1, n2, epsilon_, scale_data, bias_data);
   CUDA_RETURN_IF_ERROR(cudaGetLastError());
   return Status::OK();
 }

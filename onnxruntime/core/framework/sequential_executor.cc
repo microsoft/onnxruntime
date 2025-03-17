@@ -239,10 +239,6 @@ class SessionScope {
                             << i.second << " bytes for " << i.first << std::endl;
     }
 #endif
-
-#ifdef DEBUG_NODE_INPUTS_OUTPUTS
-    dump_analysis_.PrintToStdOut(session_state_.GetGraphViewer().ModelPath().string());
-#endif
   }
 
 #if !defined(ORT_MINIMAL_BUILD) && defined(ORT_MEMORY_PROFILE)
@@ -273,7 +269,6 @@ class SessionScope {
 
 #ifdef DEBUG_NODE_INPUTS_OUTPUTS
   utils::NodeDumpContext dump_context_;
-  utils::NodeDumpAnalysis dump_analysis_;
 #endif
 };
 
@@ -334,7 +329,7 @@ class KernelScope {
 #endif
 
 #ifdef DEBUG_NODE_INPUTS_OUTPUTS
-    utils::DumpNodeInputs(dump_context_, kernel_context_, kernel_.Node(), session_state_, session_scope_.dump_analysis_);
+    utils::DumpNodeInputs(dump_context_, kernel_context_, kernel_.Node(), session_state_);
 #endif
 
 #ifdef ENABLE_NVTX_PROFILE
@@ -397,7 +392,7 @@ class KernelScope {
 #endif
 
 #ifdef DEBUG_NODE_INPUTS_OUTPUTS
-    utils::DumpNodeOutputs(dump_context_, kernel_context_, kernel_.Node(), session_state_, session_scope_.dump_analysis_);
+    utils::DumpNodeOutputs(dump_context_, kernel_context_, kernel_.Node(), session_state_);
 #endif
   }  //~KernelScope
 

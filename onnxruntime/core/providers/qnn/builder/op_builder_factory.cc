@@ -51,6 +51,7 @@ OpBuilderRegistrations::OpBuilderRegistrations() {
     CreateSimpleOpBuilder("Sub", *this);
     CreateSimpleOpBuilder("Tanh", *this);
 
+    CreateSimpleOpBuilder("MatMul", *this);
     CreateSimpleOpBuilder("Concat", *this);
 
     CreateSimpleOpBuilder("QuantizeLinear", *this);
@@ -168,10 +169,6 @@ OpBuilderRegistrations::OpBuilderRegistrations() {
 
   {
     CreateExpandOpBuilder("Expand", *this);
-  }
-
-  {
-    CreateMatMulOpBuilder("MatMul", *this);
   }
 }
 

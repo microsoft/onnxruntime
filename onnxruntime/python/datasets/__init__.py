@@ -3,7 +3,6 @@
 """
 Short examples used in the documentation.
 """
-
 import os
 
 
