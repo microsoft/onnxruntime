@@ -189,10 +189,6 @@ class ShaderVariableHelper : public ShaderIndicesHelper {
 
   friend class ShaderHelper;
 };
-#if defined(__GNUC__)
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wstrict-aliasing"
-#endif
 
 inline ShaderUsage operator|(ShaderUsage a, ShaderUsage b) {
   return (uint32_t)a.usage | (uint32_t)b.usage;
@@ -208,10 +204,6 @@ inline ShaderUsage& operator&=(ShaderUsage& a, ShaderUsage b) {
   (uint32_t&)a.usage &= (uint32_t)b.usage;
   return a;
 }
-
-#if defined(__GNUC__)
-#pragma GCC diagnostic pop
-#endif
 
 namespace detail {
 template <typename T, typename = std::enable_if_t<std::is_integral_v<T>>>

@@ -3,7 +3,7 @@
 
 #pragma once
 
-#include "core/graph/onnx_protobuf.h"
+#include "onnx/onnx_pb.h"
 
 #include "core/graph/basic_types.h"
 #include "core/common/status.h"

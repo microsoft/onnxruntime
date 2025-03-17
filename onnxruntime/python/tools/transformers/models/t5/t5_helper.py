@@ -7,6 +7,7 @@
 import logging
 import os
 from pathlib import Path
+from typing import Dict, List, Union
 
 import torch
 from float16 import float_to_float16_max_diff
@@ -63,7 +64,7 @@ class T5Helper:
         merge_encoder_and_decoder_init: bool = True,
         model_type: str = "t5",
         state_dict_path: str = "",
-    ) -> dict[str, torch.nn.Module]:
+    ) -> Dict[str, torch.nn.Module]:
         """Load model given a pretrained name or path, then build models for ONNX conversion.
 
         Args:
@@ -110,7 +111,7 @@ class T5Helper:
 
     @staticmethod
     def export_onnx(
-        model: T5Encoder | T5Decoder | T5DecoderInit | T5EncoderDecoderInit,
+        model: Union[T5Encoder, T5Decoder, T5DecoderInit, T5EncoderDecoderInit],
         device: torch.device,
         onnx_model_path: str,
         verbose: bool = True,
@@ -150,7 +151,7 @@ class T5Helper:
     @staticmethod
     def auto_mixed_precision(
         onnx_model: OnnxModel,
-        op_block_list: list[str] = [  # noqa: B006
+        op_block_list: List[str] = [  # noqa: B006
             "SimplifiedLayerNormalization",
             "SkipSimplifiedLayerNormalization",
             "Relu",
@@ -256,7 +257,7 @@ class T5Helper:
 
     @staticmethod
     def verify_onnx(
-        model: T5Encoder | T5Decoder | T5DecoderInit | T5EncoderDecoderInit,
+        model: Union[T5Encoder, T5Decoder, T5DecoderInit, T5EncoderDecoderInit],
         ort_session: InferenceSession,
         device: torch.device,
         use_int32_inputs: bool,

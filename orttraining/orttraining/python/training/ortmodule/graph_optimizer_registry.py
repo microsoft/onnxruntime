@@ -3,7 +3,7 @@
 # Licensed under the MIT License.
 # --------------------------------------------------------------------------
 
-from collections.abc import Callable
+from typing import Callable
 
 from onnx.onnx_ml_pb2 import GraphProto
 

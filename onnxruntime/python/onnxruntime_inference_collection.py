@@ -9,8 +9,7 @@ import collections.abc
 import os
 import typing
 import warnings
-from collections.abc import Sequence
-from typing import Any
+from typing import Any, Sequence
 
 from onnxruntime.capi import _pybind_state as C
 
@@ -138,19 +137,19 @@ def check_and_normalize_provider_args(
         if len(providers) != len(provider_options):
             raise ValueError("'providers' and 'provider_options' should be the same length if both are given.")
 
-        if not all(isinstance(provider, str) for provider in providers):
+        if not all([isinstance(provider, str) for provider in providers]):
             raise ValueError("Only string values for 'providers' are supported if 'provider_options' is given.")
 
-        if not all(isinstance(options_for_provider, dict) for options_for_provider in provider_options):
+        if not all([isinstance(options_for_provider, dict) for options_for_provider in provider_options]):
             raise ValueError("'provider_options' values must be dicts.")
 
-        for name, options in zip(providers, provider_options, strict=False):
+        for name, options in zip(providers, provider_options):
             set_provider_options(name, options)
 
     else:
         for provider in providers:
             if isinstance(provider, str):
-                set_provider_options(provider, {})
+                set_provider_options(provider, dict())
             elif (
                 isinstance(provider, tuple)
                 and len(provider) == 2

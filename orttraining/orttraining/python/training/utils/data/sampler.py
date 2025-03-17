@@ -3,7 +3,7 @@
 # sampler.py
 
 import math
-from collections.abc import Callable, Iterator
+from typing import Callable, Iterator, Optional
 
 import numpy as np
 import torch
@@ -106,10 +106,10 @@ class LoadBalancingDistributedSampler:
         self,
         dataset: Dataset,
         complexity_fn: Callable[..., int],
-        world_size: int | None = None,
-        rank: int | None = None,
+        world_size: Optional[int] = None,
+        rank: Optional[int] = None,
         shuffle: bool = True,
-        group_size: int | None = None,
+        group_size: Optional[int] = None,
         seed: int = 0,
         drop_last: bool = False,
         random_level: float = 0,

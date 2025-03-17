@@ -4,6 +4,7 @@
 # --------------------------------------------------------------------------
 
 from logging import getLogger
+from typing import Tuple
 
 import numpy as np
 from fusion_attention import AttentionMask
@@ -29,7 +30,7 @@ class FusionQOrderedAttention(Fusion):
 
         super().__init__(model, "QOrderedAttention", "QOrderedLayerNormalization")
 
-    def get_num_heads_and_hidden_size(self, reshape_q: NodeProto) -> tuple[int, int]:
+    def get_num_heads_and_hidden_size(self, reshape_q: NodeProto) -> Tuple[int, int]:
         """Detect num_heads and hidden_size from a reshape node.
         Args:
             reshape_q (NodeProto): reshape node for Q

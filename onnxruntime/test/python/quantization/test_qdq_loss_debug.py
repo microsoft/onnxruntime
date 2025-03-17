@@ -9,6 +9,7 @@
 import tempfile
 import unittest
 from pathlib import Path
+from typing import Dict, List
 
 import numpy as np
 import onnx
@@ -107,7 +108,7 @@ class TestDataReader(CalibrationDataReader):
 
 def augment_model_collect_activations(
     model_path: str, augmented_model_path: str, data_reader: TestDataReader
-) -> dict[str, list[np.ndarray]]:
+) -> Dict[str, List[np.ndarray]]:
     modify_model_output_intermediate_tensors(model_path, augmented_model_path)
 
     tensor_dict = collect_activations(augmented_model_path, data_reader)
@@ -148,12 +149,12 @@ class TestSaveActivations(unittest.TestCase):
         output_dict = {}
         output_info = infer_session.get_outputs()
         for batch in oracle_outputs:
-            for output, output_data in zip(output_info, batch, strict=False):
+            for output, output_data in zip(output_info, batch):
                 output_dict.setdefault(output.name, []).append(output_data)
 
         for output_name, model_outputs in output_dict.items():
             test_outputs = tensor_dict[output_name]
-            for expected, actual in zip(model_outputs, test_outputs, strict=False):
+            for expected, actual in zip(model_outputs, test_outputs):
                 exp = expected.reshape(-1)
                 act = actual.reshape(-1)
                 np.testing.assert_equal(exp, act)

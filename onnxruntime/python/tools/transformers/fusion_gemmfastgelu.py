@@ -4,6 +4,7 @@
 # --------------------------------------------------------------------------
 
 from logging import getLogger
+from typing import Dict, List, Union
 
 from fusion_base import Fusion
 from fusion_utils import NumpyHelper
@@ -19,13 +20,13 @@ class FusionGemmFastGelu(Fusion):
         self.shape_infer = None
         self.shape_infer_done = False
 
-    def get_dimensions_from_tensor_proto(self, tensor_proto: TensorProto) -> int | None:
+    def get_dimensions_from_tensor_proto(self, tensor_proto: TensorProto) -> Union[int, None]:
         if tensor_proto.type.tensor_type.HasField("shape"):
             return len(tensor_proto.type.tensor_type.shape.dim)
         else:
             return None
 
-    def get_dimensions(self, input_name: str) -> int | None:
+    def get_dimensions(self, input_name: str) -> Union[int, None]:
         graph_input = self.model.find_graph_input(input_name)
         if graph_input:
             return self.get_dimensions_from_tensor_proto(graph_input)
@@ -42,8 +43,8 @@ class FusionGemmFastGelu(Fusion):
     def fuse(
         self,
         node: NodeProto,
-        input_name_to_nodes: dict[str, list[NodeProto]],
-        output_name_to_node: dict[str, NodeProto],
+        input_name_to_nodes: Dict[str, List[NodeProto]],
+        output_name_to_node: Dict[str, NodeProto],
     ):
         """
         This pattern is from PyTorch bert model

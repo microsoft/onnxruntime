@@ -3,6 +3,7 @@
 # Licensed under the MIT License.
 # --------------------------------------------------------------------------
 from logging import getLogger
+from typing import Dict, Optional
 
 from fusion_base import Fusion
 from onnx import helper
@@ -15,14 +16,14 @@ class FusionGelu(Fusion):
     def __init__(self, model: OnnxModel):
         super().__init__(model, "Gelu", "Erf")
 
-    def fuse(self, erf_node, input_name_to_nodes: dict, output_name_to_node: dict):
+    def fuse(self, erf_node, input_name_to_nodes: Dict, output_name_to_node: Dict):
         if self.fuse_1(erf_node, input_name_to_nodes, output_name_to_node):
             return
         if self.fuse_2(erf_node, input_name_to_nodes, output_name_to_node):
             return
         self.fuse_3(erf_node, input_name_to_nodes, output_name_to_node)
 
-    def fuse_1(self, erf_node, input_name_to_nodes: dict, output_name_to_node: dict) -> bool | None:
+    def fuse_1(self, erf_node, input_name_to_nodes: Dict, output_name_to_node: Dict) -> Optional[bool]:
         """
         This pattern is from PyTorch model
         Fuse Gelu with Erf into one node:
@@ -106,7 +107,7 @@ class FusionGelu(Fusion):
         self.increase_counter("Gelu")
         return True
 
-    def fuse_2(self, erf_node, input_name_to_nodes: dict, output_name_to_node: dict) -> bool | None:
+    def fuse_2(self, erf_node, input_name_to_nodes: Dict, output_name_to_node: Dict) -> Optional[bool]:
         """
         This pattern is from Keras model
         Fuse Gelu with Erf into one node:
@@ -183,7 +184,7 @@ class FusionGelu(Fusion):
         self.increase_counter("Gelu")
         return True
 
-    def fuse_3(self, erf_node, input_name_to_nodes: dict, output_name_to_node: dict) -> bool | None:
+    def fuse_3(self, erf_node, input_name_to_nodes: Dict, output_name_to_node: Dict) -> Optional[bool]:
         """
         This pattern is from TensorFlow model
         Fuse Gelu with Erf into one node:

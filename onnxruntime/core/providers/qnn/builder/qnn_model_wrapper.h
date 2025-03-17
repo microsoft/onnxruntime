@@ -7,10 +7,13 @@
 #include <string>
 #include <vector>
 
+#include "core/common/status.h"
 #include "QnnInterface.h"
 #include "qnn_def.h"
-
-#include "core/providers/qnn/ort_api.h"
+#include "core/common/logging/logging.h"
+#include "core/framework/node_unit.h"
+#include "core/graph/graph_viewer.h"
+#include "core/providers/shared/utils/utils.h"
 #include "core/providers/qnn/builder/qnn_quant_params_wrapper.h"
 
 namespace onnxruntime {
@@ -63,9 +66,6 @@ class QnnModelWrapper {
 
   // Make a QnnTensorWrapper from an onnx input or output.
   Status MakeTensorWrapper(const NodeUnitIODef& tensor, QnnTensorWrapper& tensor_wrapper) const;
-  Status MakeTensorWrapper(const TensorInfo& tensor_info,
-                           const std::string& tensor_name,
-                           QnnTensorWrapper& tensor_wrapper) const;
 
   // Add to internal tensor wrapper table
   bool AddTensorWrapper(QnnTensorWrapper&& tensor_wrapper);

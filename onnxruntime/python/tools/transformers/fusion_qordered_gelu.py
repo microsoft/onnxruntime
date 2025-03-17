@@ -4,6 +4,7 @@
 # --------------------------------------------------------------------------
 
 from logging import getLogger
+from typing import Dict
 
 from fusion_base import Fusion
 from fusion_utils import FusionUtils
@@ -17,7 +18,7 @@ class FusionQOrderedGelu(Fusion):
     def __init__(self, model: OnnxModel):
         super().__init__(model, "QOrderedGelu", ["Gelu", "FastGelu"])
 
-    def fuse(self, node, input_name_to_nodes: dict, output_name_to_node: dict):
+    def fuse(self, node, input_name_to_nodes: Dict, output_name_to_node: Dict):
         """
         INPUT PATTERN
         Fuse (quantized) Gelu subgraph into one node QOrderedGelu:

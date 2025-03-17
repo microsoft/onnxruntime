@@ -3,6 +3,7 @@
 # Licensed under the MIT License.
 # --------------------------------------------------------------------------
 from logging import getLogger
+from typing import Dict, Optional
 
 from fusion_base import Fusion
 from onnx import helper
@@ -15,7 +16,7 @@ class FusionFastGelu(Fusion):
     def __init__(self, model: OnnxModel):
         super().__init__(model, "FastGelu", "Tanh")
 
-    def fuse(self, tanh_node, input_name_to_nodes: dict, output_name_to_node: dict):
+    def fuse(self, tanh_node, input_name_to_nodes: Dict, output_name_to_node: Dict):
         if self.fuse_1(tanh_node, input_name_to_nodes, output_name_to_node):
             return
 
@@ -28,7 +29,7 @@ class FusionFastGelu(Fusion):
         if self.fuse_4(tanh_node, input_name_to_nodes, output_name_to_node):
             return
 
-    def fuse_1(self, tanh_node, input_name_to_nodes, output_name_to_node) -> bool | None:
+    def fuse_1(self, tanh_node, input_name_to_nodes, output_name_to_node) -> Optional[bool]:
         """
         Fuse Gelu with tanh into one node:
               +---------------------------+
@@ -136,7 +137,7 @@ class FusionFastGelu(Fusion):
         self.node_name_to_graph_name[fused_node.name] = self.this_graph_name
         return True
 
-    def fuse_2(self, tanh_node, input_name_to_nodes: dict, output_name_to_node: dict) -> bool | None:
+    def fuse_2(self, tanh_node, input_name_to_nodes: Dict, output_name_to_node: Dict) -> Optional[bool]:
         """
         This pattern is from Tensorflow model.
         Fuse Gelu with tanh into one node:
@@ -245,7 +246,7 @@ class FusionFastGelu(Fusion):
         self.node_name_to_graph_name[fused_node.name] = self.this_graph_name
         return True
 
-    def fuse_3(self, tanh_node, input_name_to_nodes: dict, output_name_to_node: dict) -> bool | None:
+    def fuse_3(self, tanh_node, input_name_to_nodes: Dict, output_name_to_node: Dict) -> Optional[bool]:
         """
         OpenAI's gelu implementation, also used in Megatron:
            Gelu(x) = x * 0.5 * (1.0 + torch.tanh(0.79788456 * x * (1.0 + 0.044715 * x * x)))
@@ -361,7 +362,7 @@ class FusionFastGelu(Fusion):
         self.node_name_to_graph_name[fused_node.name] = self.this_graph_name
         return True
 
-    def fuse_4(self, tanh_node, input_name_to_nodes: dict, output_name_to_node: dict) -> bool | None:
+    def fuse_4(self, tanh_node, input_name_to_nodes: Dict, output_name_to_node: Dict) -> Optional[bool]:
         """
         This pattern is from stable diffusion 3.5 model.
         Fuse Gelu with tanh into one node:

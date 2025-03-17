@@ -2,6 +2,7 @@
 # Licensed under the MIT License.
 
 import unittest
+from typing import Dict, List
 
 import numpy as np
 from helper import get_name
@@ -13,7 +14,7 @@ class CudaGraphHelper:
     def __init__(
         self,
         ort_session: onnxrt.InferenceSession,
-        input_and_output_shape: dict[str, list[int]],
+        input_and_output_shape: Dict[str, List[int]],
         device_id: int = 0,
     ):
         self.input_names = [input.name for input in ort_session.get_inputs()]
@@ -51,7 +52,7 @@ class CudaGraphHelper:
 
         return name_to_numpy_type
 
-    def update_inputs(self, inputs: dict[str, np.ndarray]):
+    def update_inputs(self, inputs: Dict[str, np.ndarray]):
         for input_name in self.input_names:
             self.io_ort_value[input_name].update_inplace(inputs[input_name])
 

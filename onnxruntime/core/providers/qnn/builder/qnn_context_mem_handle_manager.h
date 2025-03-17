@@ -9,7 +9,10 @@
 
 #include "QnnInterface.h"
 
-#include "core/providers/qnn/ort_api.h"
+#include "core/common/common.h"
+#include "core/common/inlined_containers.h"
+#include "core/common/logging/logging.h"
+#include "core/common/status.h"
 
 namespace onnxruntime::qnn {
 

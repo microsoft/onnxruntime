@@ -1,7 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "core/graph/onnx_protobuf.h"
+#include <onnx/onnx_pb.h>
 
 #include "core/common/logging/logging.h"
 #include "core/common/safeint.h"

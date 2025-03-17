@@ -3,6 +3,7 @@
 # Licensed under the MIT License.
 # --------------------------------------------------------------------------
 import logging
+from typing import Optional, Union
 
 from fusion_attention import FusionAttention
 from fusion_base import Fusion
@@ -50,8 +51,8 @@ class FusionRotaryAttention(FusionAttention):
         past_v: str = "",
         present_k: str = "",
         present_v: str = "",
-        scale: float | None = None,
-    ) -> NodeProto | None:
+        scale: Optional[float] = None,
+    ) -> Union[NodeProto, None]:
         assert self.num_heads > 0
 
         if self.hidden_size > 0 and (self.hidden_size % self.num_heads) != 0:
@@ -1130,7 +1131,7 @@ class FusionRotaryEmbeddings(Fusion):
             extra_initializers.append(constant_tensorproto.name)
 
         # Update references of Constant node outputs to initializer references
-        for extra_output, extra_initializer in zip(extra_outputs, extra_initializers, strict=False):
+        for extra_output, extra_initializer in zip(extra_outputs, extra_initializers):
             nodes_to_update = list(filter(lambda entry: extra_output in entry.input, self.model.model.graph.node))
             for node_to_update in nodes_to_update:
                 OnnxModel.replace_node_input(node_to_update, extra_output, extra_initializer)

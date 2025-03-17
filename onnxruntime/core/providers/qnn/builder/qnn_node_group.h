@@ -8,7 +8,8 @@
 #include <unordered_map>
 #include <vector>
 
-#include "core/providers/qnn/ort_api.h"
+#include "core/common/logging/logging.h"
+#include "core/framework/node_unit.h"
 
 namespace onnxruntime {
 namespace qnn {

@@ -7,6 +7,7 @@ import statistics
 from dataclasses import dataclass
 from enum import Enum
 from time import perf_counter
+from typing import Optional, Tuple
 
 import numpy
 import torch
@@ -214,11 +215,11 @@ def group_norm_ort(
     src: torch.Tensor,
     gamma: torch.Tensor,
     beta: torch.Tensor,
-    skip: torch.Tensor | None,
-    bias: torch.Tensor | None,
+    skip: Optional[torch.Tensor],
+    bias: Optional[torch.Tensor],
     config: GroupNormConfig,
     measure_latency=False,
-) -> tuple[torch.Tensor, torch.Tensor | None, float | None]:
+) -> Tuple[torch.Tensor, Optional[torch.Tensor], Optional[float]]:
     onnx_model_str = create_group_norm_graph(config)
     ort_session = InferenceSession(onnx_model_str, providers=["CUDAExecutionProvider"])
 
@@ -275,10 +276,10 @@ def group_norm_torch(
     src: torch.Tensor,
     gamma: torch.Tensor,
     beta: torch.Tensor,
-    skip: torch.Tensor | None,
-    bias: torch.Tensor | None,
+    skip: Optional[torch.Tensor],
+    bias: Optional[torch.Tensor],
     config: GroupNormConfig,
-) -> tuple[torch.Tensor, torch.Tensor | None]:
+) -> Tuple[torch.Tensor, Optional[torch.Tensor]]:
     add_out = src
 
     if skip is not None:

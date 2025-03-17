@@ -40,6 +40,7 @@ than CUDA forward + backward.
 """
 
 import math
+from typing import List, Tuple
 
 import torch
 import triton
@@ -1008,7 +1009,7 @@ def _make_flash_attention_nodes(
 
 
 # Without causal mask, without Dropout. For example, BERT model in HuggingFace.
-_PATTERN_0: list[tuple[str, bool, list[tuple[int, int, int]]]] = [
+_PATTERN_0: List[Tuple[str, bool, List[Tuple[int, int, int]]]] = [
     ("MatMul", False, []),  # 0
     ("Transpose", True, [(0, 0, 0)]),  # 1
     ("Transpose", True, [(0, 0, 1)]),  # 2
@@ -1033,7 +1034,7 @@ _PATTERN_0: list[tuple[str, bool, list[tuple[int, int, int]]]] = [
 ]
 
 
-def _optimize_for_pattern_0(matcher: GraphMatcher, idx: int, nodes: list[NodeProto]):
+def _optimize_for_pattern_0(matcher: GraphMatcher, idx: int, nodes: List[NodeProto]):
     # Check forward only as the backward is expected to be consistent if it's built correctly.
     scale_value = matcher.get_constant_value(nodes[3].input[1])
     if not (
@@ -1062,7 +1063,7 @@ def _optimize_for_pattern_0(matcher: GraphMatcher, idx: int, nodes: list[NodePro
 
 
 # llama2+peft, k doesn't require grad.
-_PATTERN_1: list[tuple[str, bool, list[tuple[int, int, int]]]] = [
+_PATTERN_1: List[Tuple[str, bool, List[Tuple[int, int, int]]]] = [
     ("MatMul", False, []),  # 0
     ("Transpose", True, [(0, 0, 1)]),  # 1
     ("Div", False, [(0, 0, 0)]),  # 2
@@ -1086,7 +1087,7 @@ _PATTERN_1: list[tuple[str, bool, list[tuple[int, int, int]]]] = [
 ]
 
 
-def _optimize_for_pattern_1(matcher: GraphProto, idx: int, nodes: list[NodeProto]):
+def _optimize_for_pattern_1(matcher: GraphProto, idx: int, nodes: List[NodeProto]):
     # Check forward only as the backward is expected to be consistent if it's built correctly.
     scale_value = matcher.get_constant_value(nodes[2].input[1])
     if not (
@@ -1137,7 +1138,7 @@ def _optimize_for_pattern_1(matcher: GraphProto, idx: int, nodes: list[NodeProto
 
 
 # llama2+peft, k requires grad.
-_PATTERN_2: list[tuple[str, bool, list[tuple[int, int, int]]]] = [
+_PATTERN_2: List[Tuple[str, bool, List[Tuple[int, int, int]]]] = [
     ("MatMul", False, []),  # 0
     ("Transpose", True, [(0, 0, 1)]),  # 1
     ("Div", False, [(0, 0, 0)]),  # 2
@@ -1163,7 +1164,7 @@ _PATTERN_2: list[tuple[str, bool, list[tuple[int, int, int]]]] = [
 ]
 
 
-def _aptimize_for_pattern_2(matcher: GraphProto, idx: int, nodes: list[NodeProto]):
+def _aptimize_for_pattern_2(matcher: GraphProto, idx: int, nodes: List[NodeProto]):
     # Check forward only as the backward is expected to be consistent if it's built correctly.
     scale_value = matcher.get_constant_value(nodes[2].input[1])
     if not (

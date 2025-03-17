@@ -8,6 +8,7 @@ import logging
 import os
 import tempfile
 from pathlib import Path
+from typing import List
 
 import numpy
 import onnx
@@ -66,7 +67,7 @@ class WhisperEncoderInputs:
         )
         return WhisperEncoderInputs(input_features)
 
-    def to_list(self) -> list:
+    def to_list(self) -> List:
         if self.input_ids is None:
             return []
         return [self.input_ids]

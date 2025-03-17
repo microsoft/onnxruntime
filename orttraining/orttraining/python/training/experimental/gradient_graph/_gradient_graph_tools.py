@@ -1,7 +1,6 @@
 import io
-from collections.abc import Callable
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable, Optional, Union  # noqa: F401
 
 import torch
 from torch.onnx import TrainingMode
@@ -16,7 +15,7 @@ def export_gradient_graph(
     loss_fn: Callable[[Any, Any], Any],
     example_input: torch.Tensor,
     example_labels: torch.Tensor,
-    gradient_graph_path: Path | str,
+    gradient_graph_path: Union[Path, str],
     opset_version=12,
 ) -> None:
     r"""
@@ -46,7 +45,7 @@ def export_gradient_graph(
 
     class WrapperModule(torch.nn.Module):
         def forward(self, model_input, expected_labels, *model_params):
-            for param, set_param in zip(model.parameters(), model_params, strict=False):
+            for param, set_param in zip(model.parameters(), model_params):
                 param.data = set_param.data
             output = model(model_input)
             loss = loss_fn(output, expected_labels)

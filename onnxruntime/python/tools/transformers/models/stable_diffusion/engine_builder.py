@@ -5,6 +5,7 @@
 import hashlib
 import os
 from enum import Enum
+from typing import Optional
 
 import torch
 from diffusion_models import CLIP, VAE, CLIPWithProj, PipelineInfo, UNet, UNetXL
@@ -274,7 +275,7 @@ class EngineBuilder:
 
 
 def get_engine_paths(
-    work_dir: str, pipeline_info: PipelineInfo, engine_type: EngineType, framework_model_dir: str | None = None
+    work_dir: str, pipeline_info: PipelineInfo, engine_type: EngineType, framework_model_dir: Optional[str] = None
 ):
     root_dir = work_dir or "."
     short_name = pipeline_info.short_name()

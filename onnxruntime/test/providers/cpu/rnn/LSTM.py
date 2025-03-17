@@ -2,7 +2,13 @@
 # Licensed under the MIT License.
 
 
-import numpy as np
+from typing import Any, Tuple  # noqa: F401
+
+import numpy as np  # type: ignore
+
+# import onnx
+# from ..base import Base
+# from . import expect
 
 DebugOutput = True
 np.set_printoptions(suppress=True)  # , precision=16, floatmode='maxprec')

@@ -2,6 +2,7 @@ import argparse
 import shutil
 import sys
 from pathlib import Path
+from typing import Dict, List, Optional
 
 import numpy as np
 
@@ -83,7 +84,7 @@ def parse_args():
     return args
 
 
-def create_existing_data_map(pb_files: list[Path]):
+def create_existing_data_map(pb_files: List[Path]):
     import onnx_test_data_utils as data_utils
 
     data_map = {}
@@ -97,9 +98,9 @@ def create_existing_data_map(pb_files: list[Path]):
 
 def add_model_and_test_data_to_app(
     model_path: Path,
-    symbolic_dims: dict[str, int] | None = None,
-    input_map: dict[str, np.ndarray] | None = None,
-    output_map: dict[str, np.ndarray] | None = None,
+    symbolic_dims: Optional[Dict[str, int]] = None,
+    input_map: Optional[Dict[str, np.ndarray]] = None,
+    output_map: Optional[Dict[str, np.ndarray]] = None,
 ):
     import ort_test_dir_utils as utils
 

@@ -8,6 +8,8 @@ Decompose a complicated op into a series of simple ops.
 "simple ops" can be executed in one pass
 """
 
+from typing import List
+
 import sympy
 from onnx import GraphProto, NodeProto, TensorProto, helper
 
@@ -28,7 +30,7 @@ class DecomposeDispatch:
     def __init__(self):
         self.count = 0
 
-    def __call__(self, node: NodeProto, graph: GraphProto, **kwargs) -> list[NodeProto]:
+    def __call__(self, node: NodeProto, graph: GraphProto, **kwargs) -> List[NodeProto]:
         op_type = node.op_type
         if not hasattr(self, op_type):
             raise NotImplementedError(f"Not implemented for op type: {op_type}")
@@ -63,7 +65,7 @@ class DecomposeDispatch:
         node_name = node.name
         y = node.output[0]
         op_type = node.op_type
-        inputs = list(node.input)
+        inputs = [input for input in node.input]
         cast_nodes = []
         for idx, input in enumerate(inputs):
             dtype, _ = self._get_dtype_and_shape(input, **kwargs)

@@ -8,9 +8,8 @@ from __future__ import annotations
 import copy
 import logging
 import tempfile
-from collections.abc import Callable
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 
 import onnx
 

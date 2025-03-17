@@ -22,6 +22,7 @@ import argparse
 import os
 import sys
 from dataclasses import dataclass
+from typing import List, Optional, Union
 
 import onnx
 from onnx import TensorProto, helper
@@ -64,7 +65,7 @@ class IOInfo:
     index: int
     name: str
     elem_type: TensorProto.DataType
-    shape: list[int | str] | None
+    shape: Optional[List[Union[int, str]]]
 
 
 def str_is_int(string: str) -> bool:
@@ -75,7 +76,7 @@ def str_is_int(string: str) -> bool:
         return False
 
 
-def parse_shape(shape_str: str) -> list[int | str] | None:
+def parse_shape(shape_str: str) -> Optional[List[Union[int, str]]]:
     try:
         shape = [int(s) if str_is_int(s) else s for s in shape_str.split(",")]
     except ValueError:
@@ -203,7 +204,7 @@ def parse_arguments() -> argparse.Namespace:
     return parser.parse_args()
 
 
-def get_attributes(attr_data_info: list[list[str]]):
+def get_attributes(attr_data_info: List[List[str]]):
     if not attr_data_info:
         return {}
 

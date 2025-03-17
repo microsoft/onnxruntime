@@ -16,6 +16,7 @@ import tempfile
 from collections import deque  # noqa: F401
 from datetime import datetime
 from pathlib import Path  # noqa: F401
+from typing import List, Optional
 
 import numpy as np
 import onnx
@@ -270,7 +271,7 @@ class BertOnnxModelShapeOptimizer(OnnxModel):
             valid_names = [input.name for input in self.model.graph.input]
             raise Exception(f"Input {input} does not exist in the graph inputs: {valid_names}")
 
-    def validate_outputs(self, output_names: list[str]):
+    def validate_outputs(self, output_names: List[str]):
         valid_names = [output.name for output in self.model.graph.output]
         for name in output_names:
             if name not in valid_names:
@@ -284,7 +285,7 @@ class BertOnnxModelShapeOptimizer(OnnxModel):
         input_mask: str,
         enable_shape_opt: bool,
         enable_reshape_opt: bool,
-        output_names: list[str] | None = None,
+        output_names: Optional[List[str]] = None,
         batch_size=1,
         sequence_length=128,
         verbose=False,

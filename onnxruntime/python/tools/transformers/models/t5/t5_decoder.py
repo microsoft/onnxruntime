@@ -8,6 +8,7 @@ import logging
 import os
 import tempfile
 from pathlib import Path
+from typing import List, Optional, Union
 
 import numpy
 import onnx
@@ -33,8 +34,8 @@ class T5DecoderInit(torch.nn.Module):
         self,
         decoder: torch.nn.Module,
         lm_head: torch.nn.Module,
-        config: T5Config | MT5Config,
-        decoder_start_token_id: int | None = None,
+        config: Union[T5Config, MT5Config],
+        decoder_start_token_id: Optional[int] = None,
     ):
         super().__init__()
         self.decoder = decoder
@@ -132,11 +133,11 @@ class T5DecoderInputs:
     ):
         self.decoder_input_ids: torch.LongTensor = decoder_input_ids
         self.encoder_attention_mask: torch.LongTensor = encoder_attention_mask
-        self.past_key_values: list[torch.FloatTensor] | list[torch.HalfTensor] | None = past_key_values
+        self.past_key_values: Union[List[torch.FloatTensor], List[torch.HalfTensor], None] = past_key_values
 
     @staticmethod
     def create_dummy(
-        config: T5Config | MT5Config,
+        config: Union[T5Config, MT5Config],
         batch_size: int,
         encode_sequence_length: int,
         past_decode_sequence_length: int,
@@ -210,7 +211,7 @@ class T5DecoderInputs:
 
         return T5DecoderInputs(decoder_input_ids, encoder_inputs.attention_mask, past)
 
-    def to_list(self) -> list:
+    def to_list(self) -> List:
         input_list = [
             self.decoder_input_ids,
             self.encoder_attention_mask,
@@ -231,7 +232,7 @@ class T5DecoderInputs:
 class T5DecoderHelper:
     @staticmethod
     def export_onnx(
-        decoder: T5Decoder | T5DecoderInit,
+        decoder: Union[T5Decoder, T5DecoderInit],
         device: torch.device,
         onnx_model_path: str,
         verbose: bool = True,
@@ -369,7 +370,7 @@ class T5DecoderHelper:
 
     @staticmethod
     def verify_onnx(
-        model: T5Decoder | T5DecoderInit,
+        model: Union[T5Decoder, T5DecoderInit],
         ort_session: InferenceSession,
         device: torch.device,
         use_int32_inputs: bool,

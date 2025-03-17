@@ -7,7 +7,9 @@
 #include <cstddef>
 #include <algorithm>
 
-#include "core/providers/qnn/ort_api.h"
+#include "core/common/common.h"
+#include "core/common/safeint.h"
+#include "core/mlas/inc/mlas.h"  // for MlasGetPreferredBufferAlignment()
 
 namespace onnxruntime::qnn {
 
@@ -50,8 +52,7 @@ struct AllocationHeader {
 };
 
 size_t AllocationAlignment() {
-  constexpr size_t min_allocation_alignment = 64;  // Equal to MlasGetPreferredBufferAlignment()
-  return std::max(alignof(AllocationHeader), min_allocation_alignment);
+  return std::max(alignof(AllocationHeader), MlasGetPreferredBufferAlignment());
 }
 
 size_t DivRoundUp(size_t a, size_t b) {  // TODO is there already a helper function somewhere for this?
@@ -59,7 +60,7 @@ size_t DivRoundUp(size_t a, size_t b) {  // TODO is there already a helper funct
 }
 
 bool IsAligned(const void* address, size_t alignment) {
-  assert((alignment & (alignment - 1)) == 0);  // alignment must be a power of two
+  assert((alignment & alignment - 1) == 0);  // alignment must be a power of two
   return (reinterpret_cast<uintptr_t>(address) & (alignment - 1)) == 0;
 }
 

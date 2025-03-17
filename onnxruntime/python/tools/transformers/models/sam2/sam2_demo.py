@@ -3,6 +3,7 @@
 # Licensed under the MIT License.
 # --------------------------------------------------------------------------
 import os
+from typing import Union
 
 import matplotlib.image as mpimg
 import matplotlib.pyplot as plt
@@ -63,7 +64,7 @@ def show_masks(
     output_image_file_prefix=None,
     image_files=None,
 ):
-    for i, (mask, score) in enumerate(zip(masks, scores, strict=False)):
+    for i, (mask, score) in enumerate(zip(masks, scores)):
         plt.figure(figsize=(10, 10))
         plt.imshow(image)
         show_mask(mask, plt.gca(), borders=borders)
@@ -91,7 +92,7 @@ def show_masks(
 
 def get_predictor(
     sam2_dir: str,
-    device: str | torch.device,
+    device: Union[str, torch.device],
     dtype: torch.dtype,
     model_type="sam2_hiera_large",
     engine="torch",
@@ -302,7 +303,7 @@ def run_demo(
 def show_all_images(left_images, right_images, suffix=""):
     # Show images in two rows since display screen is horizontal in most cases.
     fig, axes = plt.subplots(nrows=2, ncols=len(left_images), figsize=(19.20, 10.80))
-    for i, (left_img_path, right_img_path) in enumerate(zip(left_images, right_images, strict=False)):
+    for i, (left_img_path, right_img_path) in enumerate(zip(left_images, right_images)):
         left_img = mpimg.imread(left_img_path)
         right_img = mpimg.imread(right_img_path)
 

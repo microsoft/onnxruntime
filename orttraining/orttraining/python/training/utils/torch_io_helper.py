@@ -6,7 +6,7 @@
 import copy
 import warnings
 from collections import OrderedDict, abc
-from collections.abc import Mapping, Sequence
+from typing import List, Mapping, Optional, Sequence, Tuple, Union
 
 import torch
 
@@ -37,16 +37,16 @@ class PrimitiveType:
 
 
 # Data types supported as model inputs and outputs.
-ORTModelInputOutputType = (
-    str
-    | int
-    | bool
-    | float
-    | torch.Tensor
-    | Sequence["ORTModelInputOutputType"]
-    | Mapping[str, "ORTModelInputOutputType"]
-    | None
-)
+ORTModelInputOutputType = Union[
+    None,
+    str,
+    int,
+    bool,
+    float,
+    torch.Tensor,
+    Sequence["ORTModelInputOutputType"],
+    Mapping[str, "ORTModelInputOutputType"],
+]
 
 
 class _TensorStub:
@@ -57,16 +57,16 @@ class _TensorStub:
     def __init__(
         self,
         tensor_idx: int,
-        name: str | None = None,
-        dtype: str | None = None,
+        name: Optional[str] = None,
+        dtype: Optional[str] = None,
         shape=None,
-        shape_dims: int | None = None,
+        shape_dims: Optional[int] = None,
     ):
         self.tensor_idx = tensor_idx
-        self.name: str | None = name
-        self.dtype: str | None = dtype
+        self.name: Optional[str] = name
+        self.dtype: Optional[str] = dtype
         self.shape = shape
-        self.shape_dims: int | None = shape_dims  # r.g. rank.
+        self.shape_dims: Optional[int] = shape_dims  # r.g. rank.
 
     def __repr__(self) -> str:
         result = "_TensorStub("
@@ -108,9 +108,13 @@ class _TensorStub:
 
 
 # Data schema used to represent model's input or output.
-ORTModelInputOutputSchemaType = (
-    str | _TensorStub | Sequence["ORTModelInputOutputSchemaType"] | Mapping[str, "ORTModelInputOutputSchemaType"] | None
-)
+ORTModelInputOutputSchemaType = Union[
+    None,
+    str,
+    _TensorStub,
+    Sequence["ORTModelInputOutputSchemaType"],
+    Mapping[str, "ORTModelInputOutputSchemaType"],
+]
 
 
 def _warn_of_constant_inputs(data):
@@ -122,8 +126,8 @@ def _warn_of_constant_inputs(data):
 
 @nvtx_function_decorator
 def extract_data_and_schema(
-    data: ORTModelInputOutputType, constant_as_tensor=False, device: torch.device | None = None
-) -> tuple[list[torch.Tensor], ORTModelInputOutputSchemaType]:
+    data: ORTModelInputOutputType, constant_as_tensor=False, device: Optional[torch.device] = None
+) -> Tuple[List[torch.Tensor], ORTModelInputOutputSchemaType]:
     """Extract the data schema by replacing every torch.Tensor value with _TensorStub, and return all tensors in
     a list.
 
@@ -231,7 +235,7 @@ def extract_data_and_schema(
 
 @nvtx_function_decorator
 def unflatten_data_using_schema(
-    data: list[torch.Tensor], schema: ORTModelInputOutputSchemaType
+    data: List[torch.Tensor], schema: ORTModelInputOutputSchemaType
 ) -> ORTModelInputOutputType:
     """Follows the schema to generate an output that is expected by the user.
 
@@ -276,7 +280,7 @@ def unflatten_data_using_schema(
 
     """
 
-    def _replace_stub_with_tensor_value(data_schema: ORTModelInputOutputSchemaType, data: list[torch.Tensor]):
+    def _replace_stub_with_tensor_value(data_schema: ORTModelInputOutputSchemaType, data: List[torch.Tensor]):
         # Recursively traverse across user_output and replace all _TensorStub
         # with torch.Tensor values from outputs following output_idx
 

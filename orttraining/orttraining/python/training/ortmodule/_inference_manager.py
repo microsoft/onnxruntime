@@ -4,6 +4,7 @@
 # --------------------------------------------------------------------------
 
 from logging import Logger
+from typing import Tuple
 
 import onnx
 import torch
@@ -34,7 +35,7 @@ class InferenceManager(GraphExecutionManager):
         onnx_model: onnx.ModelProto,
         device: torch.device,
         *inputs,
-    ) -> tuple[tuple[torch.Tensor, ...], _RunStateInfo]:
+    ) -> Tuple[Tuple[torch.Tensor, ...], _RunStateInfo]:
         """Runs the forward pass on `execution_session` with given `onnx_model`, `device` and `inputs`
 
         Args:

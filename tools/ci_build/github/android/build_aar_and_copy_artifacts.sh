@@ -6,6 +6,7 @@
 
 set -e
 set -x
+export PATH=/opt/python/cp312-cp312/bin:$PATH
 
 ls /build
 ls /build/deps
@@ -24,7 +25,7 @@ ANDROID_SDK_HOME="/android_home"
 ANDROID_NDK_HOME="/ndk_home"
 QNN_HOME="/qnn_home"
 
-python3 -m pip install -r /onnxruntime_src/tools/ci_build/requirements/pybind/requirements.txt
+
 # Base command for building the AAR package
 COMMAND="python3 $BUILD_SCRIPT --build_dir /build --config $BUILD_CONFIG --android_sdk_path $ANDROID_SDK_HOME --android_ndk_path $ANDROID_NDK_HOME $BUILD_SETTINGS"
 

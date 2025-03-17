@@ -21,6 +21,7 @@
 # limitations under the License.
 # --------------------------------------------------------------------------
 
+from typing import List, Optional
 
 import numpy as np
 import torch
@@ -390,8 +391,8 @@ class UniPCMultistepScheduler:
         predict_x0: bool = True,
         solver_type: str = "bh2",
         lower_order_final: bool = True,
-        disable_corrector: list[int] | None = None,
-        use_karras_sigmas: bool | None = False,
+        disable_corrector: Optional[List[int]] = None,
+        use_karras_sigmas: Optional[bool] = False,
         timestep_spacing: str = "linspace",
         steps_offset: int = 0,
         sigma_min=None,
@@ -626,7 +627,7 @@ class UniPCMultistepScheduler:
         model_output: torch.FloatTensor,
         *args,
         sample: torch.FloatTensor = None,
-        order: int | None = None,
+        order: Optional[int] = None,
         **kwargs,
     ) -> torch.FloatTensor:
         prev_timestep = args[0] if len(args) > 0 else kwargs.pop("prev_timestep", None)
@@ -733,7 +734,7 @@ class UniPCMultistepScheduler:
         *args,
         last_sample: torch.FloatTensor = None,
         this_sample: torch.FloatTensor = None,
-        order: int | None = None,
+        order: Optional[int] = None,
         **kwargs,
     ) -> torch.FloatTensor:
         this_timestep = args[0] if len(args) > 0 else kwargs.pop("this_timestep", None)
@@ -1083,7 +1084,7 @@ class LCMScheduler:
         model_output: torch.FloatTensor,
         timestep: int,
         sample: torch.FloatTensor,
-        generator: torch.Generator | None = None,
+        generator: Optional[torch.Generator] = None,
     ):
         if self.num_inference_steps is None:
             raise ValueError(

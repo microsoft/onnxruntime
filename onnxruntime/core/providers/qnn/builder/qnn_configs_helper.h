@@ -3,8 +3,7 @@
 
 #pragma once
 
-#include <gsl/gsl>
-#include <vector>
+#include <core/common/inlined_containers_fwd.h>
 
 namespace onnxruntime {
 namespace qnn {
@@ -50,9 +49,9 @@ class QnnConfigsBuilder {
    *
    * \return A reference to a default CustomConfigType object.
    */
-  gsl::not_null<CustomConfigType*> PushCustomConfig() {
-    custom_configs_.push_back(std::make_unique<CustomConfigType>(custom_config_init_));
-    return custom_configs_.back().get();
+  CustomConfigType& PushCustomConfig() {
+    custom_configs_.push_back(custom_config_init_);
+    return custom_configs_.back();
   }
 
   /**
@@ -61,15 +60,15 @@ class QnnConfigsBuilder {
    *
    * \return A reference to a default BaseConfigType object.
    */
-  gsl::not_null<BaseConfigType*> PushConfig() {
-    configs_.push_back(std::make_unique<BaseConfigType>(base_config_init_));
-    BaseConfigType* config = configs_.back().get();
+  BaseConfigType& PushConfig() {
+    configs_.push_back(base_config_init_);
+    BaseConfigType& config = configs_.back();
 
     // Add pointer to this new config to the list of config pointers.
     if (IsNullTerminated()) {
-      config_ptrs_.back() = config;  // Replace last nullptr entry.
+      config_ptrs_.back() = &config;  // Replace last nullptr entry.
     } else {
-      config_ptrs_.push_back(config);
+      config_ptrs_.push_back(&config);
     }
 
     return config;
@@ -82,14 +81,9 @@ class QnnConfigsBuilder {
 
   BaseConfigType base_config_init_;
   CustomConfigType custom_config_init_;
-
-  // Store elements of unique_ptrs instead of by value because std::vector reallocation would change the
-  // location of elements in memory. BaseConfigType objects may contain pointers to CustomConfigType objects,
-  // so we need to make sure that pointers to these objects are stable in memory.
-  std::vector<std::unique_ptr<CustomConfigType>> custom_configs_;
-  std::vector<std::unique_ptr<BaseConfigType>> configs_;
-
-  std::vector<const BaseConfigType*> config_ptrs_;
+  InlinedVector<CustomConfigType> custom_configs_;
+  InlinedVector<BaseConfigType> configs_;
+  InlinedVector<const BaseConfigType*> config_ptrs_;
 };
 
 }  // namespace qnn

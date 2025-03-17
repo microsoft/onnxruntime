@@ -9,9 +9,9 @@ import copy
 import itertools
 import os
 import uuid
-from collections.abc import Sequence
 from enum import Enum
 from pathlib import Path
+from typing import Dict, Optional, Sequence, Tuple, Union
 
 import numpy as np
 import onnx
@@ -39,7 +39,7 @@ def rel_entr(pk: np.ndarray, qk: np.ndarray) -> np.ndarray:
 def entropy(
     pk: np.ndarray,
     qk: np.ndarray,
-    base: float | None = None,
+    base: Optional[float] = None,
     axis: int = 0,
 ) -> np.ndarray:
     """
@@ -100,7 +100,7 @@ class TensorData:
 
 
 class TensorsData:
-    def __init__(self, calibration_method, data: dict[str, TensorData | tuple]):
+    def __init__(self, calibration_method, data: Dict[str, Union[TensorData, Tuple]]):
         self.calibration_method = calibration_method
         self.data = {}
         for k, v in data.items():
@@ -187,8 +187,8 @@ class CalibrationDataReader(metaclass=abc.ABCMeta):
 class CalibraterBase:
     def __init__(
         self,
-        model_path: str | Path,
-        op_types_to_calibrate: Sequence[str] | None = None,
+        model_path: Union[str, Path],
+        op_types_to_calibrate: Optional[Sequence[str]] = None,
         augmented_model_path="augmented_model.onnx",
         symmetric=False,
         use_external_data_format=False,
@@ -297,8 +297,8 @@ class CalibraterBase:
 class MinMaxCalibrater(CalibraterBase):
     def __init__(
         self,
-        model_path: str | Path,
-        op_types_to_calibrate: Sequence[str] | None = None,
+        model_path: Union[str, Path],
+        op_types_to_calibrate: Optional[Sequence[str]] = None,
         augmented_model_path="augmented_model.onnx",
         symmetric=False,
         use_external_data_format=False,
@@ -476,8 +476,7 @@ class MinMaxCalibrater(CalibraterBase):
 
         output_names = [self.infer_session.get_outputs()[i].name for i in range(len(self.intermediate_outputs[0]))]
         output_dicts_list = [
-            dict(zip(output_names, intermediate_output, strict=False))
-            for intermediate_output in self.intermediate_outputs
+            dict(zip(output_names, intermediate_output)) for intermediate_output in self.intermediate_outputs
         ]
 
         merged_output_dict = {}
@@ -504,13 +503,11 @@ class MinMaxCalibrater(CalibraterBase):
 
             if self.symmetric:
                 max_absolute_value = np.max([np.abs(min_value_array), np.abs(max_value_array)], axis=0)
-                pairs.append((-max_absolute_value, max_absolute_value))
+                pairs.append(tuple([-max_absolute_value, max_absolute_value]))
             else:
-                pairs.append((min_value_array, max_value_array))
+                pairs.append(tuple([min_value_array, max_value_array]))
 
-        new_calibrate_tensors_range = TensorsData(
-            CalibrationMethod.MinMax, dict(zip(calibrate_tensor_names, pairs, strict=False))
-        )
+        new_calibrate_tensors_range = TensorsData(CalibrationMethod.MinMax, dict(zip(calibrate_tensor_names, pairs)))
         if self.calibrate_tensors_range:
             self.calibrate_tensors_range = self.merge_range(self.calibrate_tensors_range, new_calibrate_tensors_range)
         else:
@@ -522,8 +519,8 @@ class MinMaxCalibrater(CalibraterBase):
 class HistogramCalibrater(CalibraterBase):
     def __init__(
         self,
-        model_path: str | Path,
-        op_types_to_calibrate: Sequence[str] | None = None,
+        model_path: Union[str, Path],
+        op_types_to_calibrate: Optional[Sequence[str]] = None,
         augmented_model_path="augmented_model.onnx",
         use_external_data_format=False,
         method="percentile",
@@ -611,8 +608,7 @@ class HistogramCalibrater(CalibraterBase):
             raise ValueError("No data is collected.")
 
         output_dicts_list = [
-            dict(zip(output_names, intermediate_output, strict=False))
-            for intermediate_output in self.intermediate_outputs
+            dict(zip(output_names, intermediate_output)) for intermediate_output in self.intermediate_outputs
         ]
 
         merged_dict = {}
@@ -657,8 +653,8 @@ class HistogramCalibrater(CalibraterBase):
 class EntropyCalibrater(HistogramCalibrater):
     def __init__(
         self,
-        model_path: str | Path,
-        op_types_to_calibrate: Sequence[str] | None = None,
+        model_path: Union[str, Path],
+        op_types_to_calibrate: Optional[Sequence[str]] = None,
         augmented_model_path="augmented_model.onnx",
         use_external_data_format=False,
         method="entropy",
@@ -691,8 +687,8 @@ class EntropyCalibrater(HistogramCalibrater):
 class PercentileCalibrater(HistogramCalibrater):
     def __init__(
         self,
-        model_path: str | Path,
-        op_types_to_calibrate: Sequence[str] | None = None,
+        model_path: Union[str, Path],
+        op_types_to_calibrate: Optional[Sequence[str]] = None,
         augmented_model_path="augmented_model.onnx",
         use_external_data_format=False,
         method="percentile",
@@ -725,8 +721,8 @@ class PercentileCalibrater(HistogramCalibrater):
 class DistributionCalibrater(HistogramCalibrater):
     def __init__(
         self,
-        model_path: str | Path,
-        op_types_to_calibrate: Sequence[str] | None = None,
+        model_path: Union[str, Path],
+        op_types_to_calibrate: Optional[Sequence[str]] = None,
         augmented_model_path="augmented_model.onnx",
         use_external_data_format=False,
         method="distribution",
@@ -823,7 +819,7 @@ class HistogramCollector(CalibrationDataCollector):
             if isinstance(data_arr, list):
                 for arr in data_arr:
                     assert isinstance(arr, np.ndarray), f"Unexpected type {type(arr)} for tensor={tensor!r}"
-                dtypes = {a.dtype for a in data_arr}
+                dtypes = set(a.dtype for a in data_arr)
                 assert len(dtypes) == 1, (
                     f"The calibration expects only one element type but got {dtypes} for tensor={tensor!r}"
                 )
@@ -1172,8 +1168,8 @@ class HistogramCollector(CalibrationDataCollector):
 
 
 def create_calibrator(
-    model: str | Path,
-    op_types_to_calibrate: Sequence[str] | None = None,
+    model: Union[str, Path],
+    op_types_to_calibrate: Optional[Sequence[str]] = None,
     augmented_model_path="augmented_model.onnx",
     calibrate_method=CalibrationMethod.MinMax,
     use_external_data_format=False,

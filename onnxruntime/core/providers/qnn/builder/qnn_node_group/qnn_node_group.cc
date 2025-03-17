@@ -10,7 +10,8 @@
 #include <unordered_map>
 #include <utility>
 #include <vector>
-#include "core/providers/qnn/ort_api.h"
+#include "core/graph/graph_utils.h"
+#include "core/framework/node_unit.h"
 #include "core/providers/qnn/builder/qnn_utils.h"
 #include "core/providers/qnn/builder/qnn_model_wrapper.h"
 #include "core/providers/qnn/builder/op_builder_factory.h"

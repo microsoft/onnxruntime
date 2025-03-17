@@ -4,6 +4,7 @@
 # --------------------------------------------------------------------------
 
 from logging import getLogger
+from typing import Dict, List
 
 from fusion_base import Fusion
 from fusion_utils import FusionUtils
@@ -20,8 +21,8 @@ class FusionTranspose(Fusion):
     def fuse(
         self,
         transpose_node: NodeProto,
-        input_name_to_nodes: dict[str, list[NodeProto]],
-        output_name_to_node: dict[str, NodeProto],
+        input_name_to_nodes: Dict[str, List[NodeProto]],
+        output_name_to_node: Dict[str, NodeProto],
     ):
         """
         Note that onnxruntime will do comprehensive transpose optimization after loading model.
@@ -89,7 +90,7 @@ class FusionInsertTranspose(Fusion):
     def __init__(self, model: OnnxModel):
         super().__init__(model, "", "GroupNorm")
 
-    def create_transpose_node(self, input_name: str, perm: list[int], output_name=None):
+    def create_transpose_node(self, input_name: str, perm: List[int], output_name=None):
         """Append a Transpose node after an input"""
         node_name = self.model.create_node_name("Transpose")
         if output_name is None:
@@ -101,8 +102,8 @@ class FusionInsertTranspose(Fusion):
     def fuse(
         self,
         group_norm_node: NodeProto,
-        input_name_to_nodes: dict[str, list[NodeProto]],
-        output_name_to_node: dict[str, NodeProto],
+        input_name_to_nodes: Dict[str, List[NodeProto]],
+        output_name_to_node: Dict[str, NodeProto],
     ):
         """
         This optimization will insert an Transpose, and onnxruntime transpose optimizer will remove it together with

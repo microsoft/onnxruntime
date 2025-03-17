@@ -35,7 +35,7 @@ def extract_raw_data_from_model(model: ModelProto):
                 initializer.name = name
                 initializer.ClearField("raw_data")
 
-    return zip(*external_data, strict=False)
+    return zip(*external_data)
 
 
 def has_external_data(model: ModelProto):

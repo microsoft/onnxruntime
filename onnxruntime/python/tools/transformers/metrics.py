@@ -6,6 +6,7 @@
 
 import datetime
 import json
+from typing import Optional
 
 import pandas as pd
 
@@ -29,10 +30,10 @@ class BaseObject:
 class ModelInfo(BaseObject):
     def __init__(
         self,
-        full_name: str | None = None,
-        is_huggingface: bool | None = False,
-        is_text_generation: bool | None = False,
-        short_name: str | None = None,
+        full_name: Optional[str] = None,
+        is_huggingface: Optional[bool] = False,
+        is_text_generation: Optional[bool] = False,
+        short_name: Optional[str] = None,
     ):
         super().__init__()
         self.full_name = full_name
@@ -45,9 +46,9 @@ class ModelInfo(BaseObject):
 class BackendOptions(BaseObject):
     def __init__(
         self,
-        enable_profiling: bool | None = False,
-        execution_provider: str | None = None,
-        use_io_binding: bool | None = False,
+        enable_profiling: Optional[bool] = False,
+        execution_provider: Optional[str] = None,
+        use_io_binding: Optional[bool] = False,
     ):
         super().__init__()
         self.enable_profiling = enable_profiling
@@ -58,12 +59,12 @@ class BackendOptions(BaseObject):
 class Config(BaseObject):
     def __init__(
         self,
-        backend: str | None = "onnxruntime",
-        batch_size: int | None = 1,
-        seq_length: int | None = 0,
-        precision: str | None = "fp32",
-        warmup_runs: int | None = 1,
-        measured_runs: int | None = 10,
+        backend: Optional[str] = "onnxruntime",
+        batch_size: Optional[int] = 1,
+        seq_length: Optional[int] = 0,
+        precision: Optional[str] = "fp32",
+        warmup_runs: Optional[int] = 1,
+        measured_runs: Optional[int] = 10,
     ):
         super().__init__()
         self.backend = backend
@@ -79,11 +80,11 @@ class Config(BaseObject):
 class Metadata(BaseObject):
     def __init__(
         self,
-        device: str | None = None,
-        package_name: str | None = None,
-        package_version: str | None = None,
-        platform: str | None = None,
-        python_version: str | None = None,
+        device: Optional[str] = None,
+        package_name: Optional[str] = None,
+        package_version: Optional[str] = None,
+        platform: Optional[str] = None,
+        python_version: Optional[str] = None,
     ):
         super().__init__()
         self.device = device
@@ -96,9 +97,9 @@ class Metadata(BaseObject):
 class Metrics(BaseObject):
     def __init__(
         self,
-        latency_ms_mean: float | None = 0.0,
-        throughput_qps: float | None = 0.0,
-        max_memory_usage_GB: float | None = 0.0,
+        latency_ms_mean: Optional[float] = 0.0,
+        throughput_qps: Optional[float] = 0.0,
+        max_memory_usage_GB: Optional[float] = 0.0,
     ):
         super().__init__()
         self.latency_ms_mean = latency_ms_mean
@@ -115,10 +116,10 @@ class BenchmarkRecord:
         device: str,
         package_name: str,
         package_version: str,
-        batch_size: int | None = 1,
-        warmup_runs: int | None = 1,
-        measured_runs: int | None = 10,
-        trigger_date: str | None = None,
+        batch_size: Optional[int] = 1,
+        warmup_runs: Optional[int] = 1,
+        measured_runs: Optional[int] = 10,
+        trigger_date: Optional[str] = None,
     ):
         self.config = Config()
         self.metrics = Metrics()

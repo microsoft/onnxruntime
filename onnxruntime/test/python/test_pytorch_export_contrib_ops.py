@@ -43,10 +43,7 @@ def ort_test_with_input(ort_sess, input, output, rtol, atol):
     assert len(outputs) == len(ort_outs), "number of outputs differ"
 
     # compare onnxruntime and PyTorch results
-    [
-        np.testing.assert_allclose(out, ort_out, rtol=rtol, atol=atol)
-        for out, ort_out in zip(outputs, ort_outs, strict=False)
-    ]
+    [np.testing.assert_allclose(out, ort_out, rtol=rtol, atol=atol) for out, ort_out in zip(outputs, ort_outs)]
 
 
 # These set of tests verify ONNX model export and compares outputs between

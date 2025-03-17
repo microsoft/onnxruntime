@@ -15,6 +15,8 @@ PyTorch also has API for flash attention (currently doesn't support random atten
 support if we want to try in the future.
 """
 
+from typing import List, Tuple
+
 from onnx import GraphProto, NodeProto, TensorProto, helper
 
 from ..graph_optimizer_registry import register_graph_optimizer
@@ -123,7 +125,7 @@ def _make_efficient_attention_nodes(
 
 
 # Without causal mask, with Dropout. For example, BERT model in HuggingFace.
-_PATTERN_0: list[tuple[str, bool, list[tuple[int, int, int]]]] = [
+_PATTERN_0: List[Tuple[str, bool, List[Tuple[int, int, int]]]] = [
     ("MatMul", False, []),  # 0
     ("Transpose", True, [(0, 0, 0)]),  # 1
     ("Transpose", True, [(0, 0, 1)]),  # 2
@@ -150,7 +152,7 @@ _PATTERN_0: list[tuple[str, bool, list[tuple[int, int, int]]]] = [
 ]
 
 
-def _optimize_for_pattern_0(matcher: GraphMatcher, idx: int, nodes: list[NodeProto]):
+def _optimize_for_pattern_0(matcher: GraphMatcher, idx: int, nodes: List[NodeProto]):
     # Check forward only as the backward is expected to be consistent if it's built correctly.
     scale_value = matcher.get_constant_value(nodes[3].input[1])
     ratio_value = matcher.get_constant_value(nodes[6].input[1])
@@ -186,7 +188,7 @@ def _optimize_for_pattern_0(matcher: GraphMatcher, idx: int, nodes: list[NodePro
 
 
 # Without causal mask, without Dropout. For example, BERT model and disabling attention dropout in HuggingFace.
-_PATTERN_1: list[tuple[str, bool, list[tuple[int, int, int]]]] = [
+_PATTERN_1: List[Tuple[str, bool, List[Tuple[int, int, int]]]] = [
     ("MatMul", False, []),  # 0
     ("Transpose", True, [(0, 0, 0)]),  # 1
     ("Transpose", True, [(0, 0, 1)]),  # 2
@@ -211,7 +213,7 @@ _PATTERN_1: list[tuple[str, bool, list[tuple[int, int, int]]]] = [
 ]
 
 
-def _optimize_for_pattern_1(matcher: GraphMatcher, idx: int, nodes: list[NodeProto]):
+def _optimize_for_pattern_1(matcher: GraphMatcher, idx: int, nodes: List[NodeProto]):
     # Check forward only as the backward is expected to be consistent if it's built correctly.
     scale_value = matcher.get_constant_value(nodes[3].input[1])
     if not (

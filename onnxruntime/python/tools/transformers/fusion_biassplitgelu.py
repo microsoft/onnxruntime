@@ -3,6 +3,7 @@
 # Licensed under the MIT License.
 # --------------------------------------------------------------------------
 from logging import getLogger
+from typing import Dict
 
 from fusion_base import Fusion
 from onnx import helper
@@ -15,7 +16,7 @@ class FusionBiasSplitGelu(Fusion):
     def __init__(self, model: OnnxModel):
         super().__init__(model, "BiasSplitGelu", "Gelu")
 
-    def fuse(self, gelu_node, input_name_to_nodes: dict, output_name_to_node: dict):
+    def fuse(self, gelu_node, input_name_to_nodes: Dict, output_name_to_node: Dict):
         """
         [root] --->Add -------------------->  Slice ---------------> Mul -->
                    |                            ^                    ^

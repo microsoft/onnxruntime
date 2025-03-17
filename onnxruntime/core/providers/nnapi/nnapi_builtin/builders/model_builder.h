@@ -2,7 +2,7 @@
 // Licensed under the MIT License.
 
 #pragma once
-#include "core/graph/onnx_protobuf.h"
+#include <onnx/onnx_pb.h>
 #include <unordered_set>
 
 #include "core/common/inlined_containers_fwd.h"

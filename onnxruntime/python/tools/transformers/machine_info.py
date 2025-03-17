@@ -10,6 +10,7 @@ import json
 import logging
 import platform
 from os import environ
+from typing import Dict, List
 
 import cpuinfo
 import psutil
@@ -65,12 +66,12 @@ class MachineInfo:
         }
         return machine_info
 
-    def get_memory_info(self) -> dict:
+    def get_memory_info(self) -> Dict:
         """Get memory info"""
         mem = psutil.virtual_memory()
         return {"total": mem.total, "available": mem.available}
 
-    def _try_get(self, cpu_info: dict, names: list) -> str:
+    def _try_get(self, cpu_info: Dict, names: List) -> str:
         for name in names:
             if name in cpu_info:
                 value = cpu_info[name]
@@ -79,7 +80,7 @@ class MachineInfo:
                 return value
         return ""
 
-    def get_cpu_info(self) -> dict:
+    def get_cpu_info(self) -> Dict:
         """Get CPU info"""
         cpu_info = cpuinfo.get_cpu_info()
 
@@ -93,7 +94,7 @@ class MachineInfo:
             "processor": platform.uname().processor,
         }
 
-    def get_gpu_info_by_nvml(self) -> dict:
+    def get_gpu_info_by_nvml(self) -> Dict:
         """Get GPU info using nvml"""
         gpu_info_list = []
         driver_version = None
@@ -121,7 +122,7 @@ class MachineInfo:
             result["cuda_visible"] = environ["CUDA_VISIBLE_DEVICES"]
         return result
 
-    def get_related_packages(self) -> list[str]:
+    def get_related_packages(self) -> List[str]:
         import pkg_resources
 
         installed_packages = pkg_resources.working_set
@@ -141,7 +142,7 @@ class MachineInfo:
         related_packages_list = {i.key: i.version for i in installed_packages if i.key in related_packages}
         return related_packages_list
 
-    def get_onnxruntime_info(self) -> dict:
+    def get_onnxruntime_info(self) -> Dict:
         try:
             import onnxruntime
 
@@ -158,7 +159,7 @@ class MachineInfo:
                 self.logger.exception(exception, False)
             return None
 
-    def get_pytorch_info(self) -> dict:
+    def get_pytorch_info(self) -> Dict:
         try:
             import torch
 
@@ -176,7 +177,7 @@ class MachineInfo:
                 self.logger.exception(exception, False)
             return None
 
-    def get_tensorflow_info(self) -> dict:
+    def get_tensorflow_info(self) -> Dict:
         try:
             import tensorflow as tf
 

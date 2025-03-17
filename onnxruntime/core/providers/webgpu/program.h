@@ -150,11 +150,6 @@ enum class ProgramTensorMetadataDependency : int {
 };
 std::ostream& operator<<(std::ostream& os, ProgramTensorMetadataDependency);
 
-#if defined(__GNUC__)
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wstrict-aliasing"
-#endif
-
 inline ProgramTensorMetadataDependency operator|(ProgramTensorMetadataDependency a, ProgramTensorMetadataDependency b) {
   return (ProgramTensorMetadataDependency)((int&)a | (int&)b);
 }
@@ -167,10 +162,6 @@ inline ProgramTensorMetadataDependency& operator|=(ProgramTensorMetadataDependen
 inline ProgramTensorMetadataDependency& operator&=(ProgramTensorMetadataDependency& a, ProgramTensorMetadataDependency b) {
   return (ProgramTensorMetadataDependency&)((int&)a &= (int&)b);
 }
-
-#if defined(__GNUC__)
-#pragma GCC diagnostic pop
-#endif
 
 constexpr SafeInt<uint32_t> WORKGROUP_SIZE = 64;
 

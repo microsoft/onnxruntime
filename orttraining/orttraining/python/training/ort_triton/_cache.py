@@ -12,6 +12,7 @@ import os
 import sys
 import tempfile
 from types import ModuleType
+from typing import Tuple
 
 
 @functools.lru_cache(None)
@@ -48,7 +49,7 @@ def _write(source_code, ext, extra=""):
 
 
 class PyCodeCache:
-    cache = {}  # noqa: RUF012
+    cache = dict()  # noqa: RUF012
     clear = staticmethod(cache.clear)
 
     @classmethod
@@ -68,11 +69,11 @@ class PyCodeCache:
 
 
 class ModuleCache:
-    cache = {}  # noqa: RUF012
+    cache = dict()  # noqa: RUF012
     clear = staticmethod(cache.clear)
 
     @classmethod
-    def load(cls, key_func, mod_func, *args) -> tuple[str, ModuleType]:
+    def load(cls, key_func, mod_func, *args) -> Tuple[str, ModuleType]:
         key = key_func(*args)
         if key not in cls.cache:
             func_name, mod = mod_func(*args)

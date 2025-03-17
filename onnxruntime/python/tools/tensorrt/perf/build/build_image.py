@@ -12,6 +12,7 @@ import pty
 import shlex
 import subprocess
 import sys
+from typing import List, Optional
 
 TRT_DOCKER_FILES = {
     "8.6_cuda11.8_cudnn8": "tools/ci_build/github/linux/docker/Dockerfile.ubuntu_cuda11_8_tensorrt8_6",
@@ -22,7 +23,7 @@ TRT_DOCKER_FILES = {
 }
 
 
-def run_cmd(cmd: list[str]) -> int | None:
+def run_cmd(cmd: List[str]) -> Optional[int]:
     """
     Runs a shell command and returns the process's return code.
 
@@ -37,7 +38,7 @@ def run_cmd(cmd: list[str]) -> int | None:
     return pty.spawn(cmd)
 
 
-def get_common_docker_build_args(args: argparse.Namespace) -> list[str]:
+def get_common_docker_build_args(args: argparse.Namespace) -> List[str]:
     """
     Returns a list of common 'docker build' command-line arguments/options.
 

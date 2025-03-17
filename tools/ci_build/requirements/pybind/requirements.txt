@@ -6,4 +6,3 @@ sympy>=1.10
 packaging
 cerberus
 psutil
-flatbuffers

@@ -3,6 +3,7 @@
 # Licensed under the MIT License.
 # --------------------------------------------------------------------------
 import logging
+from typing import Optional, Union
 
 import numpy as np
 from fusion_attention import AttentionMask, FusionAttention
@@ -49,8 +50,8 @@ class FusionT5Attention(FusionAttention):
         input: str,
         output: str,
         add_qk_str: str,
-        scale: float | None = None,
-    ) -> NodeProto | None:
+        scale: Optional[float] = None,
+    ) -> Union[NodeProto, None]:
         """Create an Attention node.
         Args:
             mask_index (str): mask input
@@ -162,7 +163,7 @@ class FusionT5Attention(FusionAttention):
         present_value: str,
         num_heads: int,
         hidden_size: int,
-    ) -> NodeProto | None:
+    ) -> Union[NodeProto, None]:
         assert num_heads > 0
 
         if hidden_size > 0 and (hidden_size % num_heads) != 0:

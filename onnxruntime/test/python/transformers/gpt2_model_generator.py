@@ -5,6 +5,7 @@
 # --------------------------------------------------------------------------
 
 import math
+from typing import List  # noqa: F401
 
 import numpy
 import onnx

@@ -1,6 +1,8 @@
 # Copyright (c) 2023, Tri Dao.
 
 
+from typing import Optional, Tuple, Union
+
 import torch
 import triton
 import triton.language as tl
@@ -140,9 +142,9 @@ def apply_rotary(
     x: torch.Tensor,
     cos: torch.Tensor,
     sin: torch.Tensor,
-    seqlen_offsets: int | torch.Tensor = 0,
-    cu_seqlens: torch.Tensor | None = None,
-    max_seqlen: int | None = None,
+    seqlen_offsets: Union[int, torch.Tensor] = 0,
+    cu_seqlens: Optional[torch.Tensor] = None,
+    max_seqlen: Optional[int] = None,
     interleaved=False,
     inplace=False,
     conjugate=False,
@@ -263,9 +265,9 @@ class ApplyRotaryEmb(torch.autograd.Function):
         sin,
         interleaved=False,
         inplace=False,
-        seqlen_offsets: int | torch.Tensor = 0,
-        cu_seqlens: torch.Tensor | None = None,
-        max_seqlen: int | None = None,
+        seqlen_offsets: Union[int, torch.Tensor] = 0,
+        cu_seqlens: Optional[torch.Tensor] = None,
+        max_seqlen: Optional[int] = None,
     ):
         out = apply_rotary(
             x,
@@ -319,9 +321,9 @@ def apply_rotary_emb(
     sin,
     interleaved=False,
     inplace=False,
-    seqlen_offsets: int | torch.Tensor = 0,
-    cu_seqlens: torch.Tensor | None = None,
-    max_seqlen: int | None = None,
+    seqlen_offsets: Union[int, torch.Tensor] = 0,
+    cu_seqlens: Optional[torch.Tensor] = None,
+    max_seqlen: Optional[int] = None,
 ):
     """
     Arguments:
@@ -358,7 +360,7 @@ class ApplyRotaryEmbQKV(torch.autograd.Function):
         cos_k=None,
         sin_k=None,
         interleaved=False,
-        seqlen_offsets: int | torch.Tensor = 0,
+        seqlen_offsets: Union[int, torch.Tensor] = 0,
     ):
         batch, seqlen, three, nheads, headdim = qkv.shape
         assert three == 3
@@ -430,7 +432,7 @@ def apply_rotary_emb_qkv_(
     cos_k=None,
     sin_k=None,
     interleaved=False,
-    seqlen_offsets: int | torch.Tensor = 0,
+    seqlen_offsets: Union[int, torch.Tensor] = 0,
 ):
     """
     Arguments:
@@ -451,7 +453,7 @@ def apply_rotary_emb_qkv_(
 
 class ApplyRotaryEmbKV(torch.autograd.Function):
     @staticmethod
-    def forward(ctx, kv, cos, sin, interleaved=False, seqlen_offsets: int | torch.Tensor = 0):
+    def forward(ctx, kv, cos, sin, interleaved=False, seqlen_offsets: Union[int, torch.Tensor] = 0):
         batch, seqlen, two, nheads, headdim = kv.shape
         assert two == 2
         k = kv[:, :, 0]
@@ -489,7 +491,7 @@ def apply_rotary_emb_kv_(
     cos,
     sin,
     interleaved=False,
-    seqlen_offsets: int | torch.Tensor = 0,
+    seqlen_offsets: Union[int, torch.Tensor] = 0,
 ):
     """
     Arguments:
@@ -621,10 +623,10 @@ class RotaryEmbedding(torch.nn.Module):
     def forward(
         self,
         qkv: torch.Tensor,
-        kv: torch.Tensor | None = None,
-        seqlen_offset: int | torch.Tensor = 0,
-        max_seqlen: int | None = None,
-    ) -> torch.Tensor | tuple[torch.Tensor, torch.Tensor]:
+        kv: Optional[torch.Tensor] = None,
+        seqlen_offset: Union[int, torch.Tensor] = 0,
+        max_seqlen: Optional[int] = None,
+    ) -> Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]:
         """
         qkv: (batch, seqlen, 3, nheads, headdim) if kv is none,
              else it's just q of shape (batch, seqlen, nheads, headdim)

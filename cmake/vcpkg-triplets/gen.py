@@ -88,11 +88,9 @@ for enable_rtti in [True, False]:
                             # Disable RTTI and turn usage of dynamic_cast and typeid into errors
                             cxxflags += ["/GR-", "/we4541"]
                         # TODO: should it be a cmake list separated by semicolons?
-                        if len(cflags) >= 1:
-                            f.write('set(VCPKG_C_FLAGS "{}")\n'.format(" ".join(cflags)))
-                        if len(cxxflags) >= 1:
-                            f.write('set(VCPKG_CXX_FLAGS "{}")\n'.format(" ".join(cxxflags)))
-                        f.write("list(APPEND VCPKG_CMAKE_CONFIGURE_OPTIONS --compile-no-warning-as-error -DCMAKE_CXX_STANDARD=17)\n")
+                        f.write('set(VCPKG_C_FLAGS "{}")\n'.format(" ".join(cflags)))
+                        f.write('set(VCPKG_CXX_FLAGS "{}")\n'.format(" ".join(cxxflags)))
+                        f.write("list(APPEND VCPKG_CMAKE_CONFIGURE_OPTIONS --compile-no-warning-as-error)\n")
                         if ldflags:
                             f.write('set(VCPKG_LINKER_FLAGS "{}")\n'.format(" ".join(ldflags)))
                         add_port_configs(f)
@@ -137,34 +135,27 @@ for os_name in ["linux", "osx"]:
                                 f.write(f"set(VCPKG_TARGET_ARCHITECTURE {target_abi})\n")
                             f.write(f"set(VCPKG_CRT_LINKAGE {crt_linkage})\n")
                             f.write("set(VCPKG_LIBRARY_LINKAGE static)\n")
-
-
                             if enable_binskim and os_name == "linux":
                                 ldflags = [
                                     "-Wl,-Bsymbolic-functions",
                                     "-Wl,-z,relro",
                                     "-Wl,-z,now",
-                                    "-Wl,-z,noexecstack"
+                                    "-Wl,-z,noexecstack",
                                 ]
                             else:
                                 ldflags = []
-                            # Enable debug info for all build configs
-                            cflags = ["-g"]
-                            cflags_release = ["-DNDEBUG", "-O3"]
+                            cflags = []
                             if enable_binskim:
-                                # A warning may be generated from include/features.h if the _FORTIFY_SOURCE flag was used in a debug build
-                                cflags_release += [
+                                cflags += [
                                     "-Wp,-D_FORTIFY_SOURCE=2",
                                     "-Wp,-D_GLIBCXX_ASSERTIONS",
                                     "-fstack-protector-strong",
                                 ]
                                 if target_abi == "x64":
-                                    cflags_release += ["-fstack-clash-protection", "-fcf-protection"]
+                                    cflags += ["-fstack-clash-protection", "-fcf-protection"]
                             elif enable_asan:
                                 cflags += ["-fsanitize=address"]
                                 ldflags += ["-fsanitize=address"]
-                            # Enable debug info for all build configs
-                            ldflags.append('-g')
                             # Avoid unboundTypeError for WebNN EP since unbound type names are illegal with RTTI disabled
                             # in Embind API, relevant issue: https://github.com/emscripten-core/emscripten/issues/7001
                             if not enable_rtti:
@@ -172,13 +163,8 @@ for os_name in ["linux", "osx"]:
                             cxxflags = cflags.copy()
                             if not enable_rtti:
                                 cxxflags.append("-fno-rtti")
-                            if len(cflags) >= 1:
-                                f.write('set(VCPKG_C_FLAGS "{}")\n'.format(" ".join(cflags)))
-                            if len(cxxflags) >= 1:
-                                f.write('set(VCPKG_CXX_FLAGS "{}")\n'.format(" ".join(cxxflags)))
-                            if len(cflags_release) >= 1:
-                                f.write('set(VCPKG_C_FLAGS_RELEASE "{}")\n'.format(" ".join(cflags_release)))
-                                f.write('set(VCPKG_CXX_FLAGS_RELEASE "{}")\n'.format(" ".join(cflags_release)))
+                            f.write('set(VCPKG_C_FLAGS "{}")\n'.format(" ".join(cflags)))
+                            f.write('set(VCPKG_CXX_FLAGS "{}")\n'.format(" ".join(cxxflags)))
                             if os_name == "linux":
                                 f.write("set(VCPKG_CMAKE_SYSTEM_NAME Linux)\n")
                             else:
@@ -198,8 +184,4 @@ for os_name in ["linux", "osx"]:
 
                             if ldflags:
                                 f.write('set(VCPKG_LINKER_FLAGS "{}")\n'.format(" ".join(ldflags)))
-                            if os_name == 'osx':
-                                f.write('list(APPEND VCPKG_CMAKE_CONFIGURE_OPTIONS -DCMAKE_CXX_STANDARD=20)\n')
-                            else:
-                                f.write('list(APPEND VCPKG_CMAKE_CONFIGURE_OPTIONS -DCMAKE_CXX_STANDARD=17)\n')
                             add_port_configs(f)

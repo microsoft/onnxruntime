@@ -5,6 +5,7 @@
 
 
 import sys
+from typing import Optional, Tuple
 
 import torch
 
@@ -51,7 +52,7 @@ class SubscriberBase:
     With this, the overall flow can be traced as a data flow graph (DAG).
     """
 
-    def __init__(self, start_step: int | None, end_step: int | None):
+    def __init__(self, start_step: Optional[int], end_step: Optional[int]):
         """
         Steps in [start_step, end_step) will run the subscriber's actions, and other steps will skip.
         If start_step is None, 0 is given; if end_step is None, sys.maxsize is given.
@@ -65,7 +66,7 @@ class SubscriberBase:
         module: torch.nn.Module,
         args: ORTModelInputOutputType,
         kwargs: ORTModelInputOutputType,
-    ) -> tuple[ORTModelInputOutputType, ORTModelInputOutputType]:
+    ) -> Tuple[ORTModelInputOutputType, ORTModelInputOutputType]:
         """This function is called inside the nn.Module's pre-forward hook.
 
         Args:
@@ -90,7 +91,7 @@ class SubscriberBase:
         module: torch.nn.Module,
         args: ORTModelInputOutputType,
         kwargs: ORTModelInputOutputType,
-    ) -> tuple[ORTModelInputOutputType, ORTModelInputOutputType]:
+    ) -> Tuple[ORTModelInputOutputType, ORTModelInputOutputType]:
         return args, kwargs
 
     def pre_forward_tensor_apply(
@@ -120,7 +121,7 @@ class SubscriberBase:
         module: torch.nn.Module,
         args: ORTModelInputOutputType,
         outputs: ORTModelInputOutputType,
-    ) -> tuple[ORTModelInputOutputType, ORTModelInputOutputType]:
+    ) -> Tuple[ORTModelInputOutputType, ORTModelInputOutputType]:
         """This function is called inside the nn.Module's post-forward hook.
 
         Args:
@@ -145,7 +146,7 @@ class SubscriberBase:
         module: torch.nn.Module,
         args: ORTModelInputOutputType,
         outputs: ORTModelInputOutputType,
-    ) -> tuple[ORTModelInputOutputType, ORTModelInputOutputType]:
+    ) -> Tuple[ORTModelInputOutputType, ORTModelInputOutputType]:
         return args, outputs
 
     def post_forward_tensor_apply(
@@ -178,7 +179,7 @@ class SubscriberBase:
         module: torch.nn.Module,
         args: ORTModelInputOutputType,
         outputs: ORTModelInputOutputType,
-    ) -> tuple[ORTModelInputOutputType, ORTModelInputOutputType]:
+    ) -> Tuple[ORTModelInputOutputType, ORTModelInputOutputType]:
         """This function is called inside the outmost nn.Module's post-forward hook.
 
         Args:
@@ -203,7 +204,7 @@ class SubscriberBase:
         module: torch.nn.Module,
         args: ORTModelInputOutputType,
         outputs: ORTModelInputOutputType,
-    ) -> tuple[ORTModelInputOutputType, ORTModelInputOutputType]:
+    ) -> Tuple[ORTModelInputOutputType, ORTModelInputOutputType]:
         return args, outputs
 
     def _need_skip_step(self, current_step: int) -> bool:
