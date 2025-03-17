@@ -83,7 +83,7 @@ class GatherOpBuilder : public BaseOpBuilder {
       std::vector<int64_t> origin_data(inputs[1]->GetSpec().GetElementNum());
       inputs[1]->CopyDataFromTensor(origin_data.data());
       std::vector<int32_t> transformed_data(origin_data.begin(), origin_data.end());
-      tim::vx::TensorSpec ts = inputs[1]->GetSpec().SetAttribute(tim::vx::TensorAttribute::INPUT);
+      tim::vx::TensorSpec ts = inputs[1]->GetSpec();
       ts.SetDataType(tim::vx::DataType::INT32);
       auto transformed_indices = graph_ep->GetGraph()->CreateTensor(ts, transformed_data.data());
       transformed_indices->SetScalar(is_scalar_indices);
