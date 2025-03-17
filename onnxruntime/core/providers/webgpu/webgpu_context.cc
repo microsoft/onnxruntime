@@ -153,10 +153,6 @@ void WebGpuContext::Initialize(const WebGpuBufferCacheConfig& buffer_cache_confi
       device_features_.insert(supported_features.features[i]);
     }
 
-#if !defined(__wasm__)
-    supports_buffer_map_extended_usages_ = device_.HasFeature(wgpu::FeatureName::BufferMapExtendedUsages);
-#endif
-
     // create buffer manager
     buffer_mgr_ = BufferManagerFactory::Create(*this,
                                                buffer_cache_config.storage.mode,

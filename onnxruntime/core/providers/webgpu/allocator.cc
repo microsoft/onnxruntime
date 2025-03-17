@@ -3,6 +3,7 @@
 
 #include "core/framework/session_state.h"
 #include "core/providers/webgpu/allocator.h"
+#include "core/providers/webgpu/buffer.h"
 #include "core/providers/webgpu/webgpu_context.h"
 
 namespace onnxruntime {
@@ -13,20 +14,20 @@ void* GpuBufferAllocator::Alloc(size_t size) {
     return nullptr;
   }
 
-  WGPUBuffer buffer;
-  if (!session_initialized_ && context_.SupportsBufferMapExtendedUsages()) {
-    buffer = context_.BufferManager().CreateUMA(size);
-  } else {
-    buffer = context_.BufferManager().Create(size);
-  }
-
   stats_.num_allocs++;
-  return buffer;
+
+#if !defined(__wasm__)
+  if (!session_initialized_ && context_.DeviceHasFeature(wgpu::FeatureName::BufferMapExtendedUsages)) {
+    return context_.BufferManager().CreateUMA(size);
+  }
+#endif  // !defined(__wasm__)
+
+  return context_.BufferManager().Create(size);
 }
 
 void GpuBufferAllocator::Free(void* p) {
   if (p != nullptr) {
-    context_.BufferManager().Release(static_cast<WGPUBuffer>(p));
+    context_.BufferManager().Release(static_cast<WebGpuBuffer>(p));
     stats_.num_allocs--;
   }
 }

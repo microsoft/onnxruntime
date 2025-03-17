@@ -28,14 +28,14 @@ class DisabledCacheManager : public IBufferCacheManager {
     return NormalizeBufferSize(request_size);
   }
 
-  WGPUBuffer TryAcquireCachedBuffer(size_t /*buffer_size*/) override {
+  WebGpuBuffer TryAcquireCachedBuffer(size_t /*buffer_size*/) override {
     // always return empty buffer
     return nullptr;
   }
-  void RegisterBuffer(WGPUBuffer /*buffer*/, size_t /*request_size*/) override {
+  void RegisterBuffer(WebGpuBuffer /*buffer*/, size_t /*request_size*/) override {
     // no-op
   }
-  void ReleaseBuffer(WGPUBuffer buffer) override {
+  void ReleaseBuffer(WebGpuBuffer buffer) override {
     wgpuBufferRelease(buffer);
   }
 
@@ -49,23 +49,36 @@ class LazyReleaseCacheManager : public IBufferCacheManager {
     return NormalizeBufferSize(request_size);
   }
 
-  WGPUBuffer TryAcquireCachedBuffer(size_t /*buffer_size*/) override {
+  WebGpuBuffer TryAcquireCachedBuffer(size_t /*buffer_size*/) override {
     return nullptr;
   }
 
-  void RegisterBuffer(WGPUBuffer /*buffer*/, size_t /*request_size*/) override {
+  void RegisterBuffer(WebGpuBuffer /*buffer*/, size_t /*request_size*/) override {
     // no-op
   }
 
-  void ReleaseBuffer(WGPUBuffer buffer) override {
-    pending_buffers_.emplace_back(wgpu::Buffer::Acquire(buffer));
+  void ReleaseBuffer(WebGpuBuffer buffer) override {
+    pending_buffers_.emplace_back(buffer);
   }
 
   void OnRefresh() override {
+    Release();
     pending_buffers_.clear();
   }
 
-  std::vector<wgpu::Buffer> pending_buffers_;
+ public:
+  ~LazyReleaseCacheManager() {
+    Release();
+  }
+
+ protected:
+  void Release() {
+    for (auto& buffer : pending_buffers_) {
+      wgpuBufferRelease(buffer);
+    }
+  }
+
+  std::vector<WebGpuBuffer> pending_buffers_;
 };
 
 class SimpleCacheManager : public IBufferCacheManager {
@@ -73,10 +86,10 @@ class SimpleCacheManager : public IBufferCacheManager {
     return NormalizeBufferSize(request_size);
   }
 
-  WGPUBuffer TryAcquireCachedBuffer(size_t buffer_size) override {
+  WebGpuBuffer TryAcquireCachedBuffer(size_t buffer_size) override {
     auto it = buffers_.find(buffer_size);
     if (it != buffers_.end() && !it->second.empty()) {
-      auto buffer = it->second.back().MoveToCHandle();
+      auto buffer = it->second.back();
       it->second.pop_back();
       return buffer;
     }
@@ -84,23 +97,36 @@ class SimpleCacheManager : public IBufferCacheManager {
     return nullptr;
   }
 
-  void RegisterBuffer(WGPUBuffer /*buffer*/, size_t /*request_size*/) override {
+  void RegisterBuffer(WebGpuBuffer /*buffer*/, size_t /*request_size*/) override {
     // no-op
   }
 
-  void ReleaseBuffer(WGPUBuffer buffer) override {
-    pending_buffers_.emplace_back(wgpu::Buffer::Acquire(buffer));
+  void ReleaseBuffer(WebGpuBuffer buffer) override {
+    pending_buffers_.emplace_back(buffer);
   }
 
   void OnRefresh() override {
     for (auto& buffer : pending_buffers_) {
-      buffers_[static_cast<size_t>(buffer.GetSize())].emplace_back(std::move(buffer));
+      buffers_[GetBufferSize(buffer)].emplace_back(buffer);
     }
     pending_buffers_.clear();
   }
 
-  std::map<size_t, std::vector<wgpu::Buffer>> buffers_;
-  std::vector<wgpu::Buffer> pending_buffers_;
+ public:
+  ~SimpleCacheManager() {
+    for (auto& buffer : pending_buffers_) {
+      wgpuBufferRelease(buffer);
+    }
+    for (auto& pair : buffers_) {
+      for (auto& buffer : pair.second) {
+        wgpuBufferRelease(buffer);
+      }
+    }
+  }
+
+ protected:
+  std::map<size_t, std::vector<WebGpuBuffer>> buffers_;
+  std::vector<WebGpuBuffer> pending_buffers_;
 };
 
 // TODO: maybe use different bucket size for storage and uniform buffers?
@@ -154,37 +180,50 @@ class BucketCacheManager : public IBufferCacheManager {
     }
   }
 
-  WGPUBuffer TryAcquireCachedBuffer(size_t buffer_size) override {
+  WebGpuBuffer TryAcquireCachedBuffer(size_t buffer_size) override {
     auto it = buckets_.find(buffer_size);
     if (it != buckets_.end() && !it->second.empty()) {
-      auto buffer = it->second.back().MoveToCHandle();
+      auto buffer = it->second.back();
       it->second.pop_back();
       return buffer;
     }
-    return nullptr;
+    return {};
   }
 
-  void RegisterBuffer(WGPUBuffer /*buffer*/, size_t /*request_size*/) override {
+  void RegisterBuffer(WebGpuBuffer /*buffer*/, size_t /*request_size*/) override {
     // no-op
   }
 
-  void ReleaseBuffer(WGPUBuffer buffer) override {
-    pending_buffers_.emplace_back(wgpu::Buffer::Acquire(buffer));
+  void ReleaseBuffer(WebGpuBuffer buffer) override {
+    pending_buffers_.emplace_back(buffer);
   }
 
   void OnRefresh() override {
     // TODO: consider graph capture. currently not supported
 
     for (auto& buffer : pending_buffers_) {
-      auto buffer_size = static_cast<size_t>(buffer.GetSize());
+      auto buffer_size = GetBufferSize(buffer);
 
       auto it = buckets_.find(buffer_size);
       if (it != buckets_.end() && it->second.size() < buckets_limit_[buffer_size]) {
-        it->second.emplace_back(std::move(buffer));
+        it->second.emplace_back(buffer);
+      } else {
+        wgpuBufferRelease(buffer);
       }
     }
 
     pending_buffers_.clear();
+  }
+
+  ~BucketCacheManager() {
+    for (auto& buffer : pending_buffers_) {
+      wgpuBufferRelease(buffer);
+    }
+    for (auto& pair : buckets_) {
+      for (auto& buffer : pair.second) {
+        wgpuBufferRelease(buffer);
+      }
+    }
   }
 
  protected:
@@ -193,7 +232,7 @@ class BucketCacheManager : public IBufferCacheManager {
     buckets_.reserve(buckets_limit_.size());
     for (const auto& pair : buckets_limit_) {
       buckets_keys_.push_back(pair.first);
-      buckets_.emplace(pair.first, std::vector<wgpu::Buffer>());
+      buckets_.emplace(pair.first, std::vector<WebGpuBuffer>());
     }
     std::sort(buckets_keys_.begin(), buckets_keys_.end());
 
@@ -207,8 +246,8 @@ class BucketCacheManager : public IBufferCacheManager {
 #endif
   }
   std::unordered_map<size_t, size_t> buckets_limit_;
-  std::unordered_map<size_t, std::vector<wgpu::Buffer>> buckets_;
-  std::vector<wgpu::Buffer> pending_buffers_;
+  std::unordered_map<size_t, std::vector<WebGpuBuffer>> buckets_;
+  std::vector<WebGpuBuffer> pending_buffers_;
   std::vector<size_t> buckets_keys_;
 };
 
@@ -255,13 +294,12 @@ BufferManager::BufferManager(WebGpuContext& context, BufferCacheMode storage_buf
       default_cache_{CreateBufferCacheManager(BufferCacheMode::Disabled)} {
 }
 
-void BufferManager::Upload(void* src, WGPUBuffer dst, size_t size) {
+void BufferManager::Upload(void* src, WebGpuBuffer dst, size_t size) {
   // If the buffer is mapped, we can directly write to it.
-  wgpu::Buffer dst_buffer = dst;
-  auto mapped_data = dst_buffer.GetMappedRange();
+  void* mapped_data = wgpuBufferGetMappedRange(dst, 0, WGPU_WHOLE_MAP_SIZE);  // ensure the buffer is mapped
   if (mapped_data) {
     memcpy(mapped_data, src, size);
-    dst_buffer.Unmap();
+    wgpuBufferUnmap(dst);
     return;
   }
 
@@ -284,23 +322,25 @@ void BufferManager::Upload(void* src, WGPUBuffer dst, size_t size) {
   context_.Flush();
 }
 
-void BufferManager::MemCpy(WGPUBuffer src, WGPUBuffer dst, size_t size) {
+void BufferManager::MemCpy(WebGpuBuffer src, WebGpuBuffer dst, size_t size) {
   ORT_ENFORCE(src != dst, "Source and destination buffers must be different.");
   EnforceBufferUnmapped(context_, src);
   EnforceBufferUnmapped(context_, dst);
 
   auto buffer_size = NormalizeBufferSize(size);
-  ORT_ENFORCE(buffer_size <= wgpuBufferGetSize(src) && buffer_size <= wgpuBufferGetSize(dst),
+  auto src_size = GetBufferSize(src);
+  auto dst_size = GetBufferSize(dst);
+  ORT_ENFORCE(buffer_size <= src_size && buffer_size <= dst_size,
               "Source and destination buffers must have enough space for the copy operation. src_size=",
-              wgpuBufferGetSize(src), ", dst_size=", wgpuBufferGetSize(dst), ", copy_size=", buffer_size, ".");
+              src_size, ", dst_size=", dst_size, ", copy_size=", buffer_size, ".");
 
   auto& command_encoder = context_.GetCommandEncoder();
   context_.EndComputePass();
   command_encoder.CopyBufferToBuffer(src, 0, dst, 0, buffer_size);
 }
 
-WGPUBuffer BufferManager::Create(size_t size, wgpu::BufferUsage usage) {
-  auto& cache = GetCacheManager(static_cast<WGPUBufferUsage>(usage));
+WebGpuBuffer BufferManager::Create(size_t size, wgpu::BufferUsage usage) {
+  auto& cache = GetCacheManager(usage);
   auto buffer_size = cache.CalculateBufferSize(size);
 
   auto buffer = cache.TryAcquireCachedBuffer(buffer_size);
@@ -312,7 +352,6 @@ WGPUBuffer BufferManager::Create(size_t size, wgpu::BufferUsage usage) {
   wgpu::BufferDescriptor desc{};
   desc.size = buffer_size;
   desc.usage = usage;
-  // desc.label = std::to_string(xx++).c_str();
   buffer = context_.Device().CreateBuffer(&desc).MoveToCHandle();
 
   ORT_ENFORCE(buffer, "Failed to create GPU buffer: size=", buffer_size, ", usage=", uint64_t(usage), ".");
@@ -321,15 +360,17 @@ WGPUBuffer BufferManager::Create(size_t size, wgpu::BufferUsage usage) {
   return buffer;
 }
 
-WGPUBuffer BufferManager::CreateUMA(size_t size, wgpu::BufferUsage usage) {
-  ORT_ENFORCE(usage & wgpu::BufferUsage::Storage, "UMA buffer must have storage usage.");
-  auto& cache = GetCacheManager(static_cast<WGPUBufferUsage>(usage));
+WebGpuBuffer BufferManager::CreateUMA(size_t size, wgpu::BufferUsage usage) {
+  ORT_ENFORCE(usage & wgpu::BufferUsage::Storage, "UMA buffer must be a storage buffer.");
+  auto& cache = GetCacheManager(usage);
   auto buffer_size = cache.CalculateBufferSize(size);
+
+  // Ensure the buffer is mapped for writing at creation.
+  usage |= wgpu::BufferUsage::MapWrite;
 
   wgpu::BufferDescriptor desc{};
   desc.size = buffer_size;
-  // Ensure the buffer is mapped for writing at creation.
-  desc.usage = usage | wgpu::BufferUsage::MapWrite;
+  desc.usage = usage;
   desc.mappedAtCreation = true;
   auto buffer = context_.Device().CreateBuffer(&desc).MoveToCHandle();
 
@@ -339,12 +380,12 @@ WGPUBuffer BufferManager::CreateUMA(size_t size, wgpu::BufferUsage usage) {
   return buffer;
 }
 
-void BufferManager::Release(WGPUBuffer buffer) {
+void BufferManager::Release(WebGpuBuffer buffer) {
   EnforceBufferUnmapped(context_, buffer);
-  GetCacheManager(buffer).ReleaseBuffer(buffer);
+  GetCacheManager(GetBufferUsage(buffer)).ReleaseBuffer(buffer);
 }
 
-void BufferManager::Download(WGPUBuffer src, void* dst, size_t size) {
+void BufferManager::Download(WebGpuBuffer src, void* dst, size_t size) {
   EnforceBufferUnmapped(context_, src);
   auto buffer_size = NormalizeBufferSize(size);
 
@@ -358,8 +399,8 @@ void BufferManager::Download(WGPUBuffer src, void* dst, size_t size) {
   command_encoder.CopyBufferToBuffer(src, 0, staging_buffer, 0, buffer_size);
   context_.Flush();
 
-  //auto now = std::chrono::high_resolution_clock::now();
-  //g_f_events.push_back({'d', now});
+  // auto now = std::chrono::high_resolution_clock::now();
+  // g_f_events.push_back({'d', now});
 
   // TODO: revise wait in whole project
 
@@ -378,20 +419,16 @@ void BufferManager::RefreshPendingBuffers() {
   default_cache_->OnRefresh();
 }
 
-IBufferCacheManager& BufferManager::GetCacheManager(WGPUBufferUsage usage) const {
-  if (usage & WGPUBufferUsage_Storage) {
+IBufferCacheManager& BufferManager::GetCacheManager(wgpu::BufferUsage usage) const {
+  if (usage & wgpu::BufferUsage::Storage) {
     return *storage_cache_;
-  } else if (usage & WGPUBufferUsage_Uniform) {
+  } else if (usage & wgpu::BufferUsage::Uniform) {
     return *uniform_cache_;
-  } else if (usage & WGPUBufferUsage_QueryResolve) {
+  } else if (usage & wgpu::BufferUsage::QueryResolve) {
     return *query_resolve_cache_;
   } else {
     return *default_cache_;
   }
-}
-
-IBufferCacheManager& BufferManager::GetCacheManager(WGPUBuffer buffer) const {
-  return GetCacheManager(wgpuBufferGetUsage(buffer));
 }
 
 std::unique_ptr<BufferManager> BufferManagerFactory::Create(WebGpuContext& context, BufferCacheMode storage_buffer_cache_mode, BufferCacheMode uniform_buffer_cache_mode, BufferCacheMode query_resolve_buffer_cache_mode) {
