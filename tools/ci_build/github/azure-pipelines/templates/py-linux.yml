@@ -78,8 +78,8 @@ jobs:
 
   - template: get-docker-image-steps.yml
     parameters:
-      Dockerfile: tools/ci_build/github/linux/docker/inference/${{ parameters.arch }}/default/cpu/Dockerfile
-      Context: tools/ci_build/github/linux/docker/inference/${{ parameters.arch }}/default/cpu
+      Dockerfile: tools/ci_build/github/linux/docker/inference/${{ parameters.arch }}/python/cpu/Dockerfile
+      Context: tools/ci_build/github/linux/docker/inference/${{ parameters.arch }}/python/cpu
       DockerBuildArgs: "--build-arg BUILD_UID=$( id -u )"
       Repository: onnxruntimecpubuildpython${{ parameters.arch }}
 
