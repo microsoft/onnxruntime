@@ -7,7 +7,6 @@
 
 import copy
 import os
-from typing import Tuple
 
 import onnx
 import pytest
@@ -264,13 +263,13 @@ def test_scalar_and_tuple():
             ctx,
             input,
             alpha: float,
-            beta: Tuple[float, float],
+            beta: tuple[float, float],
             gamma: float,
             delta: bool,
-            epsilon: Tuple[bool, bool],
+            epsilon: tuple[bool, bool],
             zeta: int,
-            eta: Tuple[int, int],
-            theta: Tuple[float, float],
+            eta: tuple[int, int],
+            theta: tuple[float, float],
         ):
             ctx.save_for_backward(input)
             ctx.alpha = alpha
@@ -296,7 +295,7 @@ def test_scalar_and_tuple():
             assert alpha == alpha_value
             assert isinstance(alpha, float)
 
-            assert all(a == b for a, b in zip(beta, beta_value))
+            assert all(a == b for a, b in zip(beta, beta_value, strict=False))
             assert all(isinstance(x, float) for x in beta)
 
             assert gamma == gamma_value
@@ -305,16 +304,16 @@ def test_scalar_and_tuple():
             assert ctx.delta == delta_value
             assert isinstance(ctx.delta, bool)
 
-            assert all(a == b for a, b in zip(ctx.epsilon, epsilon_value))
+            assert all(a == b for a, b in zip(ctx.epsilon, epsilon_value, strict=False))
             assert all(isinstance(x, bool) for x in ctx.epsilon)
 
             assert ctx.zeta == zeta_value
             assert isinstance(ctx.zeta, int)
 
-            assert all(a == b for a, b in zip(ctx.eta, eta_value))
+            assert all(a == b for a, b in zip(ctx.eta, eta_value, strict=False))
             assert all(isinstance(x, int) for x in ctx.eta)
 
-            assert all(a == b for a, b in zip(ctx.theta, theta_value))
+            assert all(a == b for a, b in zip(ctx.theta, theta_value, strict=False))
             assert all(isinstance(x, float) for x in ctx.theta)
 
             return alpha * beta[0] * beta[1] * gamma * grad_input, None, None, None, None, None, None, None, None
@@ -1414,13 +1413,9 @@ def test_pythonop_training_mode():
     def check_pythonop_training_mode(model, is_eval_mode):
         ## make sure the ort's PythonOp's training_mode is correct
         if is_eval_mode:
-            onnx_nodes = (
-                model._torch_module._execution_manager._inference_manager._graph_transition_manager._exported_model_info.exported_model.graph.node
-            )
+            onnx_nodes = model._torch_module._execution_manager._inference_manager._graph_transition_manager._exported_model_info.exported_model.graph.node
         else:
-            onnx_nodes = (
-                model._torch_module._execution_manager._training_manager._graph_transition_manager._exported_model_info.exported_model.graph.node
-            )
+            onnx_nodes = model._torch_module._execution_manager._training_manager._graph_transition_manager._exported_model_info.exported_model.graph.node
 
         found_pythonop = False
         for node in onnx_nodes:
@@ -1642,20 +1637,20 @@ def test_customized_shape_inference():
         _find_shape_and_dtype(graph.value_info)
 
         assert all(s is not None for s in input_shapes), "PythonOp input shape should be found in the optimized_model"
-        assert (
-            all(d is not None for d in input_dtypes) is not None
-        ), "PythonOp input dtype should be found in the optimized_model"
+        assert all(d is not None for d in input_dtypes) is not None, (
+            "PythonOp input dtype should be found in the optimized_model"
+        )
 
         assert all(s is not None for s in output_shapes), "PythonOp output shape should be found in the optimized_model"
-        assert (
-            all(d is not None for d in output_dtypes) is not None
-        ), "PythonOp output dtype should be found in the optimized_model"
+        assert all(d is not None for d in output_dtypes) is not None, (
+            "PythonOp output dtype should be found in the optimized_model"
+        )
 
         def _compare_shape(shape1, shape2):
             if len(shape1.dim) != len(shape2.dim):
                 return False
 
-            for dim1, dim2 in zip(shape1.dim, shape2.dim):
+            for dim1, dim2 in zip(shape1.dim, shape2.dim, strict=False):
                 if dim1.HasField("dim_value") and dim1.HasField("dim_value") and dim1.dim_value == dim2.dim_value:
                     continue
 
@@ -1794,7 +1789,7 @@ def test_python_op_return_persistent_param_as_value():
         _run_step(pt_model, input)
         _run_step(ort_model, input)
 
-        pt_params = {n: p for n, p in pt_model.named_parameters()}
+        pt_params = dict(pt_model.named_parameters())
         for name, param in ort_model.named_parameters():
             assert_values_are_close(param, pt_params[name], rtol=1e-04, atol=1e-3)
             if param.grad is not None:
@@ -1805,7 +1800,6 @@ def test_python_op_return_persistent_param_as_value():
 
 
 def test_determistic_pythonop_export():
-
     class TestFunction(torch.autograd.Function):
         @staticmethod
         # bias is an optional argument
@@ -1839,9 +1833,7 @@ def test_determistic_pythonop_export():
     ortmodule = ORTModule(TestModel(output_size)).train()
     _ = ortmodule(torch.randn(output_size, dtype=torch.float))
 
-    onnx_nodes = (
-        ortmodule._torch_module._execution_manager._training_manager._graph_transition_manager._exported_model_info.exported_model.graph.node
-    )
+    onnx_nodes = ortmodule._torch_module._execution_manager._training_manager._graph_transition_manager._exported_model_info.exported_model.graph.node
 
     found_pythonop = False
     for node in onnx_nodes:

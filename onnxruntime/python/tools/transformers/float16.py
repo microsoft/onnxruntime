@@ -16,7 +16,6 @@ import itertools
 import logging
 import os
 import tempfile
-from typing import Dict
 
 import numpy as np
 import onnx
@@ -201,9 +200,9 @@ def convert_float_to_float16(
     Returns:
         ModelProto: converted model.
     """
-    assert (
-        min_positive_val >= 5.96e-08
-    ), "invalid min_positive_val. smallest positive float16 value: subnormal 5.96e-08, and normalized 6.104e-05"
+    assert min_positive_val >= 5.96e-08, (
+        "invalid min_positive_val. smallest positive float16 value: subnormal 5.96e-08, and normalized 6.104e-05"
+    )
     assert max_finite_val <= float(np.finfo(np.float16).max), "invalid max_finite_val. largest float16 value: 65504"
 
     force_fp16_inputs_dict = {} if force_fp16_inputs is None else force_fp16_inputs
@@ -304,7 +303,7 @@ def convert_float_to_float16(
             value_info_list.append(new_value_info)
             io_casts.add(node_name)
 
-    fp32_initializers: Dict[str, InitializerTracker] = {}
+    fp32_initializers: dict[str, InitializerTracker] = {}
     while queue:
         next_level = []
         for q in queue:

@@ -150,14 +150,14 @@ struct PoolAttributes {
         case AutoPadType::VALID:
           *pad_head = 0;
           *pad_tail = 0;
-          *out_size = ComputeOutputSize(in_size, stride, kernel, 0, dilation);
+          *out_size = ComputeOutputSize(in_size, stride, kernel, 0, 0, dilation);
           break;
         case AutoPadType::SAME_LOWER: {
           int64_t legacy_target_size = (in_size + stride - 1) / stride;
           int64_t pad_needed = (legacy_target_size - 1) * stride + kernel - in_size;
           *pad_head = (pad_needed + 1) / 2;
           *pad_tail = pad_needed - *pad_head;
-          *out_size = ComputeOutputSize(in_size, stride, kernel, pad_needed, dilation);
+          *out_size = ComputeOutputSize(in_size, stride, kernel, *pad_head, *pad_tail, dilation);
           break;
         }
         case AutoPadType::SAME_UPPER: {
@@ -165,7 +165,7 @@ struct PoolAttributes {
           int64_t pad_needed = (legacy_target_size - 1) * stride + kernel - in_size;
           *pad_head = pad_needed / 2;
           *pad_tail = pad_needed - *pad_head;
-          *out_size = ComputeOutputSize(in_size, stride, kernel, pad_needed, dilation);
+          *out_size = ComputeOutputSize(in_size, stride, kernel, *pad_head, *pad_tail, dilation);
           break;
         }
         default: {
@@ -173,7 +173,7 @@ struct PoolAttributes {
         }
       }
     } else {
-      *out_size = ComputeOutputSize(in_size, stride, kernel, *pad_head + *pad_tail, dilation);
+      *out_size = ComputeOutputSize(in_size, stride, kernel, *pad_head, *pad_tail, dilation);
     }
   }
 #if defined(_MSC_VER) && !defined(__clang__)
@@ -184,13 +184,21 @@ struct PoolAttributes {
   int64_t ComputeOutputSize(int64_t in_size,
                             int64_t stride,
                             int64_t kernel,
-                            int64_t pad_needed,
+                            int64_t pad_head,
+                            int64_t pad_tail,
                             int64_t dilation) const {
-    if (ceil_mode == 0) {
-      return static_cast<int64_t>(static_cast<float>(in_size + pad_needed - dilation * (kernel - 1) - 1) / stride + 1);
+    int64_t numerator = in_size + pad_head + pad_tail - dilation * (kernel - 1) - 1;
+    int64_t out_size = numerator / stride + 1;
+
+    if (ceil_mode == 1) {
+      out_size = static_cast<int64_t>(std::ceil(static_cast<float>(numerator) / stride)) + 1;
+      // Ensure that the last pooling starts inside the image (at least 1 pixel)
+      // Reference: https://github.com/onnx/onnx/pull/5741
+      if ((out_size - 1) * stride >= in_size + pad_head) {
+        --out_size;
+      }
     }
-    return static_cast<int64_t>(
-        std::ceil(static_cast<float>(in_size + pad_needed - dilation * (kernel - 1) - 1) / stride + 1));
+    return out_size;
   }
 #if defined(_MSC_VER) && !defined(__clang__)
 #pragma warning(pop)

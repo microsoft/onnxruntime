@@ -12,7 +12,9 @@ ARG OS=ubuntu24.04
 FROM nvcr.io/nvidia/cuda:${CUDA_VERSION}-devel-${OS}
 ARG CUDA_VERSION
 ARG CUDNN_VERSION
-ARG CMAKE_CUDA_ARCHITECTURES="61;70;75;80;86;90"
+# Adjust as needed 
+# Check your CUDA arch: https://developer.nvidia.com/cuda-gpus
+ARG CMAKE_CUDA_ARCHITECTURES="75;80;90"
 
 ENV DEBIAN_FRONTEND=noninteractive
 

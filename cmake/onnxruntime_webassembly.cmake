@@ -93,7 +93,9 @@ if (NOT onnxruntime_ENABLE_WEBASSEMBLY_THREADS)
   set_property(TARGET re2 PROPERTY COMPILE_OPTIONS )
 endif()
 
-target_compile_options(onnx PRIVATE -Wno-unused-parameter -Wno-unused-variable)
+if (NOT onnxruntime_USE_VCPKG)
+  target_compile_options(onnx PRIVATE -Wno-unused-parameter -Wno-unused-variable)
+endif()
 
 if (onnxruntime_BUILD_WEBASSEMBLY_STATIC_LIB)
     bundle_static_library(onnxruntime_webassembly
@@ -111,6 +113,7 @@ if (onnxruntime_BUILD_WEBASSEMBLY_STATIC_LIB)
       ${PROVIDERS_JS}
       ${PROVIDERS_XNNPACK}
       ${PROVIDERS_WEBNN}
+      ${PROVIDERS_WEBGPU}
       onnxruntime_session
       onnxruntime_util
       re2::re2
@@ -188,6 +191,7 @@ else()
     ${PROVIDERS_JS}
     ${PROVIDERS_XNNPACK}
     ${PROVIDERS_WEBNN}
+    ${PROVIDERS_WEBGPU}
     onnxruntime_session
     onnxruntime_util
     re2::re2
@@ -207,10 +211,14 @@ else()
     target_link_libraries(onnxruntime_webassembly PRIVATE tensorboard)
   endif()
 
+  set(onnxruntime_webassembly_script_deps "${ONNXRUNTIME_ROOT}/wasm/pre.js")
+
+  set(EXPORTED_FUNCTIONS "_malloc,_free")
   if (onnxruntime_USE_JSEP)
-    set(EXPORTED_FUNCTIONS "_malloc,_free,_JsepOutput,_JsepGetNodeName")
-  else()
-    set(EXPORTED_FUNCTIONS "_malloc,_free")
+    string(APPEND EXPORTED_FUNCTIONS ",_JsepOutput,_JsepGetNodeName")
+  endif()
+  if (onnxruntime_USE_WEBGPU)
+    string(APPEND EXPORTED_FUNCTIONS ",_wgpuBufferRelease,_wgpuCreateInstance")
   endif()
 
   if (onnxruntime_ENABLE_WEBASSEMBLY_MEMORY64)
@@ -308,13 +316,15 @@ else()
         target_compile_options(noexcep_operators PRIVATE ${SMEMORY_FLAG} -Wno-experimental)
     endif()
     target_link_options(onnxruntime_webassembly PRIVATE
-      --post-js "${ONNXRUNTIME_ROOT}/wasm/js_post_js_64.js"
+      "SHELL:--post-js \"${ONNXRUNTIME_ROOT}/wasm/js_post_js_64.js\""
     )
+    list(APPEND onnxruntime_webassembly_script_deps "${ONNXRUNTIME_ROOT}/wasm/js_post_js_64.js")
   else ()
     set(MAXIMUM_MEMORY "4294967296")
     target_link_options(onnxruntime_webassembly PRIVATE
-      --post-js "${ONNXRUNTIME_ROOT}/wasm/js_post_js.js"
+      "SHELL:--post-js \"${ONNXRUNTIME_ROOT}/wasm/js_post_js.js\""
     )
+    list(APPEND onnxruntime_webassembly_script_deps "${ONNXRUNTIME_ROOT}/wasm/js_post_js.js")
   endif ()
 
   target_link_options(onnxruntime_webassembly PRIVATE
@@ -368,7 +378,6 @@ jsepDownload:_pp_")
       "SHELL:-s SIGNATURE_CONVERSIONS='${SIGNATURE_CONVERSIONS}'"
     )
   endif ()
-  set_target_properties(onnxruntime_webassembly PROPERTIES LINK_DEPENDS ${ONNXRUNTIME_ROOT}/wasm/pre.js)
 
   if (onnxruntime_USE_JSEP)
     # NOTE: "-s ASYNCIFY=1" is required for JSEP to work with WebGPU
@@ -378,12 +387,33 @@ jsepDownload:_pp_")
     target_compile_definitions(onnxruntime_webassembly PRIVATE USE_JSEP=1)
     target_link_options(onnxruntime_webassembly PRIVATE
       "SHELL:--pre-js \"${ONNXRUNTIME_ROOT}/wasm/pre-jsep.js\""
+    )
+    list(APPEND onnxruntime_webassembly_script_deps "${ONNXRUNTIME_ROOT}/wasm/pre-jsep.js")
+
+    if (onnxruntime_ENABLE_WEBASSEMBLY_MEMORY64)
+      target_link_options(onnxruntime_webassembly PRIVATE
+        "SHELL:-s ASYNCIFY_EXPORTS=['OrtRun']"
+        "SHELL:-s ASYNCIFY_IMPORTS=['Module.jsepCopy','Module.jsepCopyAsync','jsepDownload']"
+      )
+    endif()
+  endif()
+
+  if (onnxruntime_USE_WEBGPU)
+    target_compile_definitions(onnxruntime_webassembly PRIVATE USE_WEBGPU=1)
+    target_link_options(onnxruntime_webassembly PRIVATE
+      "SHELL:--post-js \"${ONNXRUNTIME_ROOT}/wasm/post-webgpu.js\""
+    )
+    list(APPEND onnxruntime_webassembly_script_deps "${ONNXRUNTIME_ROOT}/wasm/post-webgpu.js")
+  endif()
+
+  if (onnxruntime_USE_JSEP OR onnxruntime_USE_WEBGPU OR onnxruntime_USE_WEBNN)
+    # if any of the above is enabled, we need to use the asyncify library
+    target_link_options(onnxruntime_webassembly PRIVATE
+      "SHELL:--pre-js \"${ONNXRUNTIME_ROOT}/wasm/pre-async.js\""
       "SHELL:-s ASYNCIFY=1"
       "SHELL:-s ASYNCIFY_STACK_SIZE=65536"
-      "SHELL:-s ASYNCIFY_EXPORTS=['OrtRun']"
-      "SHELL:-s ASYNCIFY_IMPORTS=['Module.jsepCopy','Module.jsepCopyAsync','jsepDownload']"
     )
-    set_target_properties(onnxruntime_webassembly PROPERTIES LINK_DEPENDS ${ONNXRUNTIME_ROOT}/wasm/pre-jsep.js)
+    list(APPEND onnxruntime_webassembly_script_deps "${ONNXRUNTIME_ROOT}/wasm/pre-async.js")
   endif()
 
   if (onnxruntime_EMSCRIPTEN_SETTINGS)
@@ -393,14 +423,21 @@ jsepDownload:_pp_")
   endif()
 
   if (CMAKE_BUILD_TYPE STREQUAL "Debug")
-    target_link_options(onnxruntime_webassembly PRIVATE
-      # NOTE: use "SHELL:-s ASSERTIONS=2" to enable more strict assertions, which may help debugging segfaults.
-      #       However, it may be very slow.
-      # "SHELL:-s ASSERTIONS=2"
-      "SHELL:-s ASSERTIONS=1"
-      "SHELL:-s SAFE_HEAP=1"
-      "SHELL:-s STACK_OVERFLOW_CHECK=2"
-    )
+    if (CMAKE_CXX_FLAGS MATCHES "sanitize=address")
+        # The integer value below might often need be adjusted.
+        target_link_options(onnxruntime_webassembly PRIVATE "-sINITIAL_MEMORY=786432000")
+        target_link_options(onnxruntime_webassembly PRIVATE "-sASSERTIONS=2")
+    else()
+        # Enable SAFE_HEAP in debug build
+        target_link_options(onnxruntime_webassembly PRIVATE
+          # NOTE: use "SHELL:-s ASSERTIONS=2" to enable more strict assertions, which may help debugging segfaults.
+          #       However, it may be very slow.
+          # "SHELL:-s ASSERTIONS=2"
+          "SHELL:-s ASSERTIONS=1"
+          "SHELL:-s SAFE_HEAP=1"
+          "SHELL:-s STACK_OVERFLOW_CHECK=2"
+        )
+    endif()
   else()
     target_link_options(onnxruntime_webassembly PRIVATE
       "SHELL:-s ASSERTIONS=0"
@@ -438,6 +475,8 @@ jsepDownload:_pp_")
     )
   endif()
 
+  set_target_properties(onnxruntime_webassembly PROPERTIES LINK_DEPENDS "${onnxruntime_webassembly_script_deps}")
+
   set(target_name_list ort)
 
   if (onnxruntime_ENABLE_TRAINING_APIS)
@@ -461,4 +500,59 @@ jsepDownload:_pp_")
   endif()
 
   set_target_properties(onnxruntime_webassembly PROPERTIES OUTPUT_NAME ${target_name} SUFFIX ".mjs")
+
+  #
+  # The following POST_BUILD script is a workaround for enabling:
+  # - using onnxruntime-web with Multi-threading enabled when import from CDN
+  # - using onnxruntime-web when consumed in some frameworks like Vite
+  #
+  # In the use case mentioned above, the file name of the script may be changed. So we need to replace the line:
+  # `new Worker(new URL("ort-wasm-*.mjs", import.meta.url),`
+  # with
+  # `new Worker(new URL(import.meta.url),`
+  #
+  # This behavior is introduced in https://github.com/emscripten-core/emscripten/pull/22165. Since it's unlikely to be
+  # reverted, and there is no config to disable this behavior, we have to use a post-build script to workaround it.
+  #
+
+  # Generate a script to do the post-build work
+  file(WRITE ${CMAKE_CURRENT_BINARY_DIR}/wasm_post_build.js "
+    const fs = require('fs');
+    const path = require('path');
+
+    // node wasm_post_build.js <mjsFilePath>
+    const mjsFilePath = process.argv[2];
+    let contents = fs.readFileSync(mjsFilePath).toString();
+
+    const regex = 'new Worker\\\\(new URL\\\\(\".+?\", ?import\\\\.meta\\\\.url\\\\),';
+    const matches = [...contents.matchAll(new RegExp(regex, 'g'))];
+    if (matches.length !== 1) {
+      throw new Error(
+        `Unexpected number of matches for \"${regex}\" in \"${filepath}\": ${matches.length}.`,
+      );
+    }
+
+    // Replace the only occurrence.
+    contents = contents.replace(
+      new RegExp(regex),
+      `new Worker(new URL(import.meta.url),`,
+    );
+
+    fs.writeFileSync(mjsFilePath, contents);
+  "
+  )
+
+  find_program(NODE_EXECUTABLE node required)
+  if (NOT NODE_EXECUTABLE)
+    message(FATAL_ERROR "Node is required to run the post-build script")
+  endif()
+
+  add_custom_command(
+    TARGET onnxruntime_webassembly
+    POST_BUILD
+    # Backup file at $<TARGET_FILE_NAME:onnxruntime_webassembly>.bak
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different "$<TARGET_FILE_NAME:onnxruntime_webassembly>" "$<TARGET_FILE_NAME:onnxruntime_webassembly>.bak"
+    COMMAND ${CMAKE_COMMAND} -E echo "Performing post-process for $<TARGET_FILE_NAME:onnxruntime_webassembly>"
+    COMMAND ${NODE_EXECUTABLE} "${CMAKE_CURRENT_BINARY_DIR}/wasm_post_build.js" "$<TARGET_FILE_NAME:onnxruntime_webassembly>"
+  )
 endif()

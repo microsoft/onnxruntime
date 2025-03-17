@@ -12,10 +12,10 @@ import torch
 import wget
 from sklearn.model_selection import train_test_split
 from torch.utils.data import DataLoader, RandomSampler, SequentialSampler, TensorDataset
-from transformers import BertConfig  # noqa: F401
 from transformers import (
     AdamW,
     AutoConfig,
+    BertConfig,  # noqa: F401
     BertForSequenceClassification,
     BertTokenizer,
     get_linear_schedule_with_warmup,
@@ -376,7 +376,7 @@ def main():
     # Device (CPU vs CUDA)
     if torch.cuda.is_available() and not args.no_cuda:
         device = torch.device("cuda")
-        print("There are %d GPU(s) available." % torch.cuda.device_count())
+        print(f"There are {torch.cuda.device_count()} GPU(s) available.")
         print("We will use the GPU:", torch.cuda.get_device_name(0))
     else:
         print("No GPU available, using the CPU instead.")
@@ -429,7 +429,9 @@ def main():
 
     # Create the learning rate scheduler.
     scheduler = get_linear_schedule_with_warmup(
-        optimizer, num_warmup_steps=0, num_training_steps=total_steps  # Default value in run_glue.py
+        optimizer,
+        num_warmup_steps=0,
+        num_training_steps=total_steps,  # Default value in run_glue.py
     )
     # Seed
     random.seed(args.seed)

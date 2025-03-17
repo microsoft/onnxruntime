@@ -5,8 +5,6 @@
 #include <unordered_map>
 #include <string>
 
-#include <core/graph/graph.h>
-
 #include "op_builder_factory.h"
 
 namespace onnxruntime {

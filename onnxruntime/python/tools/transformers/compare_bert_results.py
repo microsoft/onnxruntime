@@ -37,15 +37,22 @@ def compare(baseline_results, treatment_results, verbose, rtol=1e-1, atol=1e-3):
     # Validate the output of baseline and treatment, to make sure the results are similar.
     diff_count = 0
     max_abs_diff = 0
+    max_diff_percentage = 0
+    case_passed = True
     for test_case_id, results in enumerate(baseline_results):
-        case_passed = True
         for i in range(len(results)):
             treatment_output = treatment_results[test_case_id][i]
-            abs_diff = np.amax(np.abs(treatment_output - results[i]))
+            abs_diff_tensor = np.abs(treatment_output - results[i])
+            abs_diff = np.amax(abs_diff_tensor)
             if verbose and abs_diff > atol:
                 print("abs_diff", abs_diff)
                 print("treatment", treatment_output)
                 print("baseline", results[i])
+
+            count_exceeding = np.sum(abs_diff_tensor > atol)
+            total_elements = abs_diff_tensor.size
+            percentage_exceeding = (count_exceeding / total_elements) * 100
+            max_diff_percentage = max(max_diff_percentage, percentage_exceeding)
 
             max_abs_diff = max(max_abs_diff, abs_diff)
             if not np.allclose(results[i].tolist(), treatment_output.tolist(), rtol=rtol, atol=atol):
@@ -66,6 +73,7 @@ def compare(baseline_results, treatment_results, verbose, rtol=1e-1, atol=1e-3):
         )
 
     print(f"maximum absolute difference={max_abs_diff}")
+    print(f"maximum percentage of elements that exceeds atol={atol} is {max_diff_percentage:.3f}%")
     return max_abs_diff, case_passed
 
 

@@ -5,15 +5,15 @@
 # This script opens an existing model in onnx format and attempts to
 # move initializers from model.graph.initializer field to model.graph.sparse_initializer field
 # and convert them into ONNX COO flat index format.
+from __future__ import annotations
 
 import argparse
 import logging
 import sys
-from typing import List, Tuple  # noqa: F401
 
 import numpy as np
 import onnx
-from onnx import ModelProto, SparseTensorProto, TensorProto, numpy_helper  # noqa: F401
+from onnx import ModelProto, TensorProto, numpy_helper
 
 logger = logging.getLogger(__name__)
 
@@ -54,9 +54,7 @@ def setup_logging(verbose):  # type: (bool)  -> None
     logger.setLevel(logging_level)
 
 
-def convert_tensor_to_sparse(
-    tensor, sparsity_threshold, tolerance
-):  # type: (TensorProto, float, float) -> Tuple[SparseTensorProto, float]
+def convert_tensor_to_sparse(tensor, sparsity_threshold, tolerance):  # type: (TensorProto, float, float) -> Tuple[SparseTensorProto, float]
     """returns a tuple of sparse_tensor and sparsity level"""
     values = []
     indices = []
@@ -140,9 +138,7 @@ def convert_tensor_to_sparse(
     return (sparse_tensor, sparsity)
 
 
-def convert_initializers(
-    model, exclude_names, sparsity_threshold, tolerance
-):  # type: (ModelProto, List[str], float, float) -> None
+def convert_initializers(model, exclude_names, sparsity_threshold, tolerance):  # type: (ModelProto, List[str], float, float) -> None
     graph = model.graph
     converted_sparse = []
     remaining_initializers = []

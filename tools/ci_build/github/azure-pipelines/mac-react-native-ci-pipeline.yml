@@ -39,14 +39,6 @@ parameters:
   - 'custom'
   default: 'nightly (@dev)'
 
-resources:
-  repositories:
-  - repository: manylinux # The name used to reference this repository in the checkout step
-    type: Github
-    endpoint: Microsoft
-    name: pypa/manylinux
-    ref: 5eda9aded5462201e6310105728d33016e637ea7
-
 variables:
   skipComponentGovernanceDetection: true
   ${{ if eq(parameters.NpmPublish, 'nightly (@dev)') }}:

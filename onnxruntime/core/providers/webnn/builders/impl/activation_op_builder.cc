@@ -17,10 +17,6 @@ class ActivationOpBuilder : public BaseOpBuilder {
  private:
   Status AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node,
                                const logging::Logger& logger) const override ORT_MUST_USE_RESULT;
-
-  // Operator support related.
-  bool IsOpSupportedImpl(const InitializedTensorSet& initializers, const Node& node,
-                         WebnnDeviceType device_type, const logging::Logger& logger) const override;
 };
 
 // Add operator related.
@@ -66,30 +62,6 @@ Status ActivationOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
 
   model_builder.AddOperand(node.OutputDefs()[0]->Name(), std::move(output));
   return Status::OK();
-}
-
-// Operator support related.
-bool ActivationOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& /* initializers */,
-                                            const Node& node,
-                                            WebnnDeviceType device_type,
-                                            const logging::Logger& logger) const {
-  const auto& input_defs = node.InputDefs();
-  const auto& op_type = node.OpType();
-
-  std::vector<int64_t> input_shape;
-  if (!GetShape(*input_defs[0], input_shape, logger))
-    return false;
-
-  if (op_type == "Elu" && device_type == WebnnDeviceType::CPU) {
-    NodeAttrHelper helper(node);
-    float alpha = helper.Get("alpha", 1.0f);
-    if (alpha != 1.0f) {
-      LOGS(logger, VERBOSE) << "WebNN CPU backend only supports Elu's alpha == 1.0";
-      return false;
-    }
-  }
-
-  return true;
 }
 
 void CreateActivationOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations) {

@@ -10,7 +10,7 @@
 #include "test/optimizer/qdq_test_utils.h"
 #include "test/providers/qnn/qnn_test_utils.h"
 
-#include "onnx/onnx_pb.h"
+#include "core/graph/onnx_protobuf.h"
 
 #include "gtest/gtest.h"
 
@@ -116,6 +116,7 @@ static void RunPadOpTest(const TestInputDef<float>& data_def,
     provider_options["backend_path"] = "libQnnCpu.so";
 #endif
   }
+  provider_options["offload_graph_io_quantization"] = "0";
 
   if (enable_fp16_precision) {
     provider_options["enable_htp_fp16_precision"] = "1";
@@ -144,6 +145,7 @@ static void RunQDQPadOpTest(const TestInputDef<float>& data_def,
 #else
   provider_options["backend_path"] = "libQnnHtp.so";
 #endif
+  provider_options["offload_graph_io_quantization"] = "0";
 
   TestQDQModelAccuracy(BuildPadTestCase(data_def, pads_def, constant_value_def, attrs),
                        BuildPadQDQTestCase<QuantType>(data_def, pads_def, constant_value_def, attrs,

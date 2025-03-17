@@ -33,10 +33,10 @@ parameters:
 - name: QnnSdk
   displayName: QNN SDK version
   type: string
-  default: 2.28.2.241116
+  default: 2.31.0.250130
 
 jobs:
-- job: 'build'
+- job: 'BUILD_QNN_EP'
   pool: 'onnxruntime-qnn-windows-vs-2022-arm64'
   variables:
     DOTNET_SKIP_FIRST_TIME_EXPERIENCE: true
@@ -46,6 +46,17 @@ jobs:
   timeoutInMinutes: 240
   workspace:
     clean: all
+  strategy:
+    matrix:
+      SHARED_LIB:
+        QnnLibKind: 'shared_lib'
+        qnn_build_args: '--use_qnn'
+      STATIC_LIB:
+        QnnLibKind: 'static_lib'
+        qnn_build_args: '--use_qnn'
+      SHARED_LIB_GENERIC_INTERFACE:
+        QnnLibKind: 'shared_lib'
+        qnn_build_args: '--use_qnn --use_generic_interface'
   steps:
 
   - script: |
@@ -79,7 +90,8 @@ jobs:
         --config $(BuildConfig)
         --build_dir $(Build.BinariesDirectory)
         --cmake_generator "Visual Studio 17 2022"
-        --use_qnn
+        --build_shared_lib --use_vcpkg --use_vcpkg_ms_internal_asset_cache 
+        --use_qnn $(QnnLibKind)
         --qnn_home $(QnnSDKRootDir)
         --update --build --parallel
 
@@ -88,7 +100,8 @@ jobs:
         --config $(BuildConfig) ^
         --build_dir $(Build.BinariesDirectory) ^
         --cmake_generator "Visual Studio 17 2022" ^
-        --use_qnn ^
+        --build_shared_lib ^
+        --use_qnn $(QnnLibKind) ^
         --qnn_home $(QnnSDKRootDir) ^
         --test --enable_onnx_tests
     displayName: 'Run unit tests'
@@ -121,7 +134,7 @@ jobs:
       TargetFolder: '$(Build.ArtifactStagingDirectory)'
       CleanTargetFolder: true
       OverWrite: true
-    condition: and(succeeded(), ne(variables['Build.Reason'], 'PullRequest'))
+    condition: and(succeeded(), and(ne(variables['Build.Reason'], 'PullRequest'), eq(variables['QnnLibKind'], 'shared_lib')))
 
   - task: PublishBuildArtifacts@1
     displayName: 'Publish Artifact'
@@ -129,4 +142,4 @@ jobs:
       PathtoPublish: '$(Build.ArtifactStagingDirectory)'
       ArtifactName: 'internal_release'
       publishLocation: 'Container'
-    condition: and(succeeded(), ne(variables['Build.Reason'], 'PullRequest'))
+    condition: and(succeeded(), and(ne(variables['Build.Reason'], 'PullRequest'), eq(variables['QnnLibKind'], 'shared_lib')))

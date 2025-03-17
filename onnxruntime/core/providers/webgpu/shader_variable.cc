@@ -91,7 +91,7 @@ ShaderIndicesHelper::ShaderIndicesHelper(std::string_view name, ProgramVariableD
     : name_(name),
       type_(type),
       num_components_{NumberOfComponents(type)},
-      rank_{gsl::narrow<int>(dims.NumDimensions())},
+      rank_{static_cast<int>(dims.NumDimensions())},
       dims_{dims},
       usage_(usage),
       indices_type_{GetIndicesType(rank_)},
@@ -159,10 +159,8 @@ void ShaderIndicesHelper::Impl(std::ostream& ss) const {
       SS_APPEND(ss, "  var current = offset;\n");
       for (int i = 0; i < rank_ - 1; i++) {
         auto current_stride = GetElementAt(stride, i, rank_ - 1);
-        SS_APPEND(ss, "  let dim", i, " = current / ", current_stride, ";\n");
-        SS_APPEND(ss, "  let rest", i, " = current % ", current_stride, ";\n");
-        SS_APPEND(ss, "  indices[", i, "] = dim", i, ";\n");
-        SS_APPEND(ss, "  current = rest", i, ";\n");
+        SS_APPEND(ss, "  indices[", i, "] = current / ", current_stride, ";\n");
+        SS_APPEND(ss, "  current = current % ", current_stride, ";\n");
       }
       SS_APPEND(ss, "  indices[", rank_ - 1, "] = current;\n");
       SS_APPEND(ss, "  return indices;\n");

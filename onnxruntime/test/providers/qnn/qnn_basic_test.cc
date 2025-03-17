@@ -5,11 +5,14 @@
 #include <string>
 #include <thread>
 
+#include "core/providers/cpu/cpu_provider_factory.h"  // For OrtSessionOptionsAppendExecutionProvider_CPU
+#if BUILD_QNN_EP_STATIC_LIB
+#include "core/providers/qnn/qnn_allocator.h"  // Used by QnnHTPBackendTests.UseHtpSharedMemoryAllocatorForInputs
+#endif
+#include "core/session/inference_session.h"
 #include "core/session/onnxruntime_cxx_api.h"
 #include "core/session/onnxruntime_session_options_config_keys.h"
 #include "core/session/onnxruntime_run_options_config_keys.h"
-#include "core/providers/cpu/cpu_provider_factory.h"  // For OrtSessionOptionsAppendExecutionProvider_CPU
-#include "core/session/inference_session.h"
 
 #include "test/providers/qnn/qnn_test_utils.h"
 
@@ -117,6 +120,7 @@ TEST(QnnEP, TestDisableCPUFallback_ModelNotFullySupported) {
 #else
     options["backend_path"] = "libQnnCpu.so";
 #endif
+    options["offload_graph_io_quantization"] = "0";
 
     so.AppendExecutionProvider("QNN", options);
 
@@ -148,6 +152,7 @@ TEST(QnnEP, TestDisableCPUFallback_TryingToRunOnQnnCPU) {
 #else
   options["backend_path"] = "libQnnCpu.so";
 #endif
+  options["offload_graph_io_quantization"] = "0";
 
   auto input_defs = {TestInputDef<float>({1, 2, 2, 2}, false, -10.0f, 10.0f),
                      TestInputDef<float>({1, 2, 2, 2}, false, -10.0f, 10.0f)};
@@ -196,6 +201,7 @@ TEST(QnnEP, TestDisableCPUFallback_ConflictingConfig) {
 #else
     options["backend_path"] = "libQnnCpu.so";
 #endif
+    options["offload_graph_io_quantization"] = "0";
 
     so.AppendExecutionProvider("QNN", options);
 
@@ -226,6 +232,7 @@ TEST_F(QnnHTPBackendTests, TestConvWithExternalData) {
 #else
   options["backend_path"] = "libQnnHtp.so";
 #endif
+  options["offload_graph_io_quantization"] = "0";
 
   so.AppendExecutionProvider("QNN", options);
 
@@ -301,6 +308,7 @@ static void RunNHWCResizeModel(const ORTCHAR_T* ort_model_path, bool use_htp, bo
   so.SetGraphOptimizationLevel(ORT_ENABLE_ALL);
 
   onnxruntime::ProviderOptions options;
+  options["offload_graph_io_quantization"] = "0";
 
 #if defined(_WIN32)
   options["backend_path"] = use_htp ? "QnnHtp.dll" : "QnnCpu.dll";
@@ -591,6 +599,7 @@ TEST_F(QnnHTPBackendTests, MultithreadSessionRun) {
 #else
   options["backend_path"] = "libQnnHtp.so";
 #endif
+  options["offload_graph_io_quantization"] = "0";
 
   auto qnn_ep = QnnExecutionProviderWithOptions(options, &session_opts);
   EXPECT_TRUE(session_obj.RegisterExecutionProvider(std::move(qnn_ep)).IsOK());
@@ -640,6 +649,7 @@ TEST_F(QnnHTPBackendTests, MultithreadHtpPowerCfgSessionRunOption) {
 #else
   options["backend_path"] = "libQnnHtp.so";
 #endif
+  options["offload_graph_io_quantization"] = "0";
 
   auto qnn_ep = QnnExecutionProviderWithOptions(options, &session_opts);
   EXPECT_TRUE(session_obj.RegisterExecutionProvider(std::move(qnn_ep)).IsOK());
@@ -705,6 +715,7 @@ TEST_F(QnnHTPBackendTests, MultithreadDefaultHtpPowerCfgFromEpOption) {
 #else
   options["backend_path"] = "libQnnHtp.so";
 #endif
+  options["offload_graph_io_quantization"] = "0";
   options["htp_performance_mode"] = "burst";
 
   auto qnn_ep = QnnExecutionProviderWithOptions(options, &session_opts);
@@ -756,6 +767,7 @@ TEST_F(QnnHTPBackendTests, MultithreadHtpPowerCfgDefaultAndRunOption) {
 #else
   options["backend_path"] = "libQnnHtp.so";
 #endif
+  options["offload_graph_io_quantization"] = "0";
   options["htp_performance_mode"] = "burst";
 
   auto qnn_ep = QnnExecutionProviderWithOptions(options, &session_opts);
@@ -881,10 +893,10 @@ TEST_F(QnnHTPBackendTests, QnnContextPriorityHigh) {
                      "high");  // qnn_context_priority
 }
 
-// Create a model with Case + Add (quantized)
-// cast_input -> Cast -> Q -> DQ \
-//                                Add -> Q -> DQ -> output
-//             input2 -> Q -> DQ /
+// Create a model with Cast + Add (quantized)
+// cast_input -> Cast -> Q -> DQ ----
+//                                   |
+//             input2 -> Q -> DQ -> Add -> Q -> DQ -> output
 static GetTestModelFn BuildCastAddTestCase() {
   return [](ModelTestBuilder& builder) {
     // Creat Cast node int32 -> float32
@@ -920,6 +932,7 @@ TEST_F(QnnHTPBackendTests, ProfilingTest) {
 #else
   provider_options["backend_path"] = "libQnnHtp.so";
 #endif
+  provider_options["offload_graph_io_quantization"] = "0";
   provider_options["enable_htp_fp16_precision"] = "1";
   provider_options["profiling_level"] = "detailed";
   provider_options["profiling_file_path"] = "detailed_profile.csv";
@@ -940,6 +953,7 @@ TEST_F(QnnHTPBackendTests, CastAddHTPAccuracyTest) {
 #else
   provider_options["backend_path"] = "libQnnHtp.so";
 #endif
+  provider_options["offload_graph_io_quantization"] = "0";
 
   RunQnnModelTest(BuildCastAddTestCase(),
                   provider_options,
@@ -1010,6 +1024,7 @@ TEST_F(QnnHTPBackendTests, EPRejectsDynamicShapesF32) {
 #else
   provider_options["backend_path"] = "libQnnHtp.so";
 #endif
+  provider_options["offload_graph_io_quantization"] = "0";
   provider_options["enable_htp_fp16_precision"] = "1";  // QNN EP will use fp16 precision.
                                                         // CPU EP will use fp32, so we can relax accuracy requirements.
 
@@ -1021,6 +1036,42 @@ TEST_F(QnnHTPBackendTests, EPRejectsDynamicShapesF32) {
                   logging::Severity::kERROR,
                   /*verify_output*/ true,
                   &ep_graph_checker);
+}
+
+TEST_F(QnnHTPBackendTests, DumpJsonQNNGraph) {
+  const ORTCHAR_T* ort_model_path = ORT_MODEL_FOLDER "nhwc_resize_sizes_opset18.quant.onnx";
+  Ort::SessionOptions so;
+  onnxruntime::ProviderOptions options;
+#if defined(_WIN32)
+  options["backend_path"] = "QnnHtp.dll";
+#else
+  options["backend_path"] = "libQnnHtp.so";
+#endif
+  options["offload_graph_io_quantization"] = "0";
+
+  const std::filesystem::path dump_dir = "test_qnn_graphs_";
+  options["json_qnn_graph_dir"] = dump_dir.string();
+  options["dump_json_qnn_graph"] = "1";
+
+  // Remove pre-existing json files. Note that fs::remove_all() can handle non-existing paths.
+  std::filesystem::remove_all(dump_dir);
+  ASSERT_TRUE(std::filesystem::create_directory(dump_dir));
+
+  so.AppendExecutionProvider("QNN", options);
+  Ort::Session session(*ort_env, ort_model_path, so);
+
+  // Check that QNN JSON file(s) exist.
+  bool has_a_json_file = false;
+  for (auto const& dir_entry : std::filesystem::directory_iterator{dump_dir}) {
+    EXPECT_TRUE(dir_entry.is_regular_file());
+    EXPECT_EQ(dir_entry.path().extension().string(), ".json");
+    has_a_json_file = true;
+  }
+  EXPECT_TRUE(has_a_json_file);
+
+  // Cleaup generated files.
+  // Comment the following line to inspect generated JSON files.
+  std::filesystem::remove_all(dump_dir);
 }
 
 // Test option for offloading quantization of graph inputs and dequantization of graph outputs to the CPU EP.
@@ -1097,6 +1148,48 @@ TEST_F(QnnHTPBackendTests, EPOffloadsGraphIOQuantDequant) {
     }
   }
 }
+
+// Only compile this test when QNN EP is built as a static library. When QNN EP is a shared library,
+// we cannot include internal QNN EP headers that use the provider-bridge API.
+#if BUILD_QNN_EP_STATIC_LIB
+TEST_F(QnnHTPBackendTests, UseHtpSharedMemoryAllocatorForInputs) {
+  ProviderOptions provider_options;
+#if defined(_WIN32)
+  provider_options["backend_path"] = "QnnHtp.dll";
+#else
+  provider_options["backend_path"] = "libQnnHtp.so";
+#endif
+  provider_options["offload_graph_io_quantization"] = "0";
+  provider_options["enable_htp_shared_memory_allocator"] = "1";
+
+  std::unique_ptr<IExecutionProvider> qnn_ep;
+  try {
+    qnn_ep = QnnExecutionProviderWithOptions(provider_options);
+  } catch (const OnnxRuntimeException& e) {
+    // handle exception that indicates that the libcdsprpc.so / dll can't be loaded
+    constexpr const char* expected_error_message = "Failed to initialize RPCMEM dynamic library handle";
+    ASSERT_THAT(e.what(), testing::HasSubstr(expected_error_message));
+    GTEST_SKIP() << "HTP shared memory allocator is unavailable.";
+  }
+
+  AllocatorPtr htp_shared_memory_allocator{};
+  {
+    auto allocators = qnn_ep->CreatePreferredAllocators();
+    ASSERT_FALSE(allocators.empty());
+    auto& allocator = allocators[0];
+    ASSERT_EQ(allocator->Info(), qnn::HtpSharedMemoryAllocator::AssociatedMemoryInfo());
+    htp_shared_memory_allocator = std::move(allocator);
+  }
+
+  auto input_defs = {TestInputDef<float>({1, 2, 2, 2}, false, -10.0f, 10.0f),
+                     TestInputDef<float>({1, 2, 2, 2}, false, -10.0f, 10.0f)};
+  RunQnnModelTest(BuildOpTestCase<float>("Add", input_defs, {}, {}, kOnnxDomain, htp_shared_memory_allocator),
+                  provider_options,
+                  13,
+                  ExpectedEPNodeAssignment::All,
+                  0.008f);
+}
+#endif  // BUILD_QNN_EP_STATIC_LIB
 
 #endif  // defined(__aarch64__) || defined(_M_ARM64) || defined(__linux__)
 #endif  // !defined(ORT_MINIMAL_BUILD)

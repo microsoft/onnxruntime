@@ -150,6 +150,11 @@ enum class ProgramTensorMetadataDependency : int {
 };
 std::ostream& operator<<(std::ostream& os, ProgramTensorMetadataDependency);
 
+#if defined(__GNUC__)
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wstrict-aliasing"
+#endif
+
 inline ProgramTensorMetadataDependency operator|(ProgramTensorMetadataDependency a, ProgramTensorMetadataDependency b) {
   return (ProgramTensorMetadataDependency)((int&)a | (int&)b);
 }
@@ -162,6 +167,10 @@ inline ProgramTensorMetadataDependency& operator|=(ProgramTensorMetadataDependen
 inline ProgramTensorMetadataDependency& operator&=(ProgramTensorMetadataDependency& a, ProgramTensorMetadataDependency b) {
   return (ProgramTensorMetadataDependency&)((int&)a &= (int&)b);
 }
+
+#if defined(__GNUC__)
+#pragma GCC diagnostic pop
+#endif
 
 constexpr SafeInt<uint32_t> WORKGROUP_SIZE = 64;
 
@@ -228,6 +237,7 @@ enum class ValidationMode {
   Basic,
   Full
 };
+std::ostream& operator<<(std::ostream& os, ValidationMode mode);
 
 namespace details {
 class ProgramWrapper;
@@ -261,9 +271,11 @@ class ProgramBase {
   // add multiple program outputs
   ProgramBase& AddOutputs(std::initializer_list<ProgramOutput> outputs);
   // add a program variable for indices
-  ProgramBase& AddIndices(const TensorShape& shape);
-  // add a program variable for indices
-  ProgramBase& AddIndices(TensorShape&& shape);
+  template <typename... Args>
+  ProgramBase& AddIndices(Args&&... args) {
+    indices_.emplace_back(std::forward<Args>(args)...);
+    return *this;
+  }
 
   // set the size of dispatch groups. Y and Z are 1 if not specified.
   ProgramBase& SetDispatchGroupSize(uint32_t x);

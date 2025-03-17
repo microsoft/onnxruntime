@@ -34,6 +34,9 @@ ModelBuilder::ModelBuilder(const GraphViewer& graph_viewer, const logging::Logge
   if (!wnn_builder_.as<bool>()) {
     ORT_THROW("Failed to create WebNN builder.");
   }
+  if (wnn_limits["input"]["dataTypes"].call<emscripten::val>("includes", emscripten::val("int64")).as<bool>()) {
+    is_int64_supported_ = true;
+  }
 }
 
 Status ModelBuilder::Initialize() {
@@ -75,9 +78,18 @@ InitializedTensorSet ModelBuilder::GetInitializerTensors() {
 }
 
 void ModelBuilder::PreprocessInitializers() {
+  const auto& initializers = graph_viewer_.GetAllInitializedTensors();
   const auto& node_indices = graph_viewer_.GetNodesInTopologicalOrder();
   for (size_t i = 0; i < node_indices.size(); i++) {
     const auto* node(graph_viewer_.GetNode(node_indices[i]));
+
+    // find all initializers consumed. AddInitializersToSkip will potentially decrement the usage count.
+    for (const auto* input : node->InputDefs()) {
+      if (input->Exists() && Contains(initializers, input->Name())) {
+        initializer_usage_[input->Name()]++;
+      }
+    }
+
     if (const auto* op_builder = GetOpBuilder(*node)) {
       op_builder->AddInitializersToSkip(*this, *node);
     }
@@ -90,12 +102,11 @@ Status ModelBuilder::RegisterInitializers() {
     const auto& name = tensor.name();
     const auto& shape = tensor.dims();
 
-    // Ignore the following tensors:
-    // 1. Empty tensors: optional tensors can be indicated by an empty name.
-    // 2. Tensors in skipped_initializers_: These are tensors that are not used as WebNN Constants.
-    //    Note: Scalar tensors are excluded because ONNX Runtime will optimize same scalar initializers into one.
-    if (name.empty() || (Contains(skipped_initializers_, name) && !shape.empty()))
+    // skip initializer if there is no remaining usage
+    auto usage_count = initializer_usage_[name];
+    if (usage_count == 0) {
       continue;
+    }
 
     std::vector<int32_t> dims;
     // When the shape is empty, it is scalar initializer that dims = {};
@@ -117,6 +128,10 @@ Status ModelBuilder::RegisterInitializers() {
       emscripten::val view = emscripten::val::undefined();
       std::byte* tensor_ptr = nullptr;
 
+      // A flag to indicate if we should convert int64 to int32.
+      const bool should_convert_int64_to_int32 = !is_int64_supported_ &&
+                                                 data_type == ONNX_NAMESPACE::TensorProto_DataType_INT64;
+
       if (utils::HasExternalData(tensor)) {
         // Create WebNN Constant from external data.
         std::basic_string<ORTCHAR_T> external_file_path;
@@ -130,7 +145,8 @@ Status ModelBuilder::RegisterInitializers() {
                                          static_cast<int32_t>(data_offset),
                                          static_cast<int32_t>(tensor_byte_size),
                                          wnn_builder_,
-                                         desc);
+                                         desc,
+                                         should_convert_int64_to_int32);
       } else {
         if (tensor.has_raw_data()) {
           tensor_ptr = reinterpret_cast<std::byte*>(const_cast<char*>(tensor.raw_data().c_str()));
@@ -187,15 +203,31 @@ Status ModelBuilder::RegisterInitializers() {
             break;
         }
 
+        // If int64 is not supported, convert int64 to int32.
+        std::vector<int32_t> int32_data;
+        if (should_convert_int64_to_int32) {
+          try {
+            int32_data = GetNarrowedIntfromInt64<int32_t>(
+                gsl::span<const int64_t>(reinterpret_cast<int64_t*>(tensor_ptr), num_elements));
+            LOGS(logger_, VERBOSE) << "Initializer '" << name << "' is converted from int64 to int32.";
+          } catch (const std::exception& e) {
+            return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, e.what());
+          }
+          view = emscripten::val{emscripten::typed_memory_view(num_elements, int32_data.data())};
+
+          desc.set("dataType", emscripten::val("int32"));
+        }
+
         // Wasm memory grow will cause all array buffers reallocation, which will be treated as detached
         // buffers in JS side. Simply create a copy to fix it.
-        operand = wnn_builder_.call<emscripten::val>("constant", desc, view.call<emscripten::val>("slice"));
+        view = view.call<emscripten::val>("slice");
+        operand = wnn_builder_.call<emscripten::val>("constant", desc, view["buffer"]);
       }
     } else {
       // TODO: support other type.
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                              "The initializer of graph has unsupported type, name: ",
-                             tensor.name(), " type: ", data_type);
+                             name, " type: ", data_type);
     }
     wnn_operands_.insert(std::make_pair(name, operand));
   }
@@ -251,7 +283,12 @@ Status ModelBuilder::RegisterModelInputOutput(const NodeArg& node_arg, bool is_i
   }
 
   if (is_input) {
+    if (data_type == ONNX_NAMESPACE::TensorProto_DataType_INT64 && !is_int64_supported_) {
+      // Int64 is not supported by current context, use int32 instead.
+      desc.set("dataType", emscripten::val("int32"));
+    }
     wnn_operands_.insert(std::make_pair(name, wnn_builder_.call<emscripten::val>("input", name, desc)));
+    emscripten::val::module_property("jsepRegisterGraphInput")(name);
     input_names_.push_back(name);
   } else {
     output_names_.push_back(name);
@@ -341,7 +378,8 @@ Status ModelBuilder::AddOperandFromPersistMemoryBuffer(
   emscripten::val operand = emscripten::val::object();
   // Wasm memory grow will cause all array buffers reallocation, which will be treated as detached
   // buffers in JS side. Simply create a copy to fix it.
-  operand = wnn_builder_.call<emscripten::val>("constant", desc, view.call<emscripten::val>("slice"));
+  view = view.call<emscripten::val>("slice");
+  operand = wnn_builder_.call<emscripten::val>("constant", desc, view["buffer"]);
 
   AddOperand(name, operand);
   mem_persist_buffers_.push_back(std::move(persist_buffer));
@@ -385,7 +423,13 @@ void ModelBuilder::AddOperand(const std::string& name, const emscripten::val& op
 }
 
 void ModelBuilder::AddInitializerToSkip(const std::string& tensor_name) {
-  skipped_initializers_.insert(tensor_name);
+  // Decrement usage count if this is a known initializer.
+  // For simplicity the OpBuilder::AddInitializersToSkip implementations may call this for arbitrary input names
+  // without first checking if the value is an initializer.
+  auto entry = initializer_usage_.find(tensor_name);
+  if (entry != initializer_usage_.end()) {
+    --entry->second;
+  }
 }
 
 void ModelBuilder::AddInputToSkip(const std::string& input_name) {

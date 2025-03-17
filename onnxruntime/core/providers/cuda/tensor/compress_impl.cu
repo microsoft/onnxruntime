@@ -13,7 +13,6 @@
 
 #include "core/providers/cuda/tensor/compress_impl.h"
 
-#include <thrust/functional.h>
 #include <thrust/iterator/transform_iterator.h>
 
 namespace onnxruntime {
@@ -23,7 +22,7 @@ namespace cuda {
 // in InclusiveSum(). By default, the accumulator type matches the input, but for int8_t
 // the sum overflows quickly, so we want the source type to match the output (int32_t).
 // see https://github.com/NVIDIA/cub/issues/384
-struct CastToInt32 : public thrust::unary_function<int8_t, int32_t> {
+struct CastToInt32 {
   __host__ __device__ int32_t operator()(int8_t v) const {
     return static_cast<int32_t>(v);
   }

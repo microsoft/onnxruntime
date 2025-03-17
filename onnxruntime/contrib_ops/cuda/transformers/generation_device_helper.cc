@@ -524,7 +524,8 @@ Status ProcessLogits(const OrtValue& logits,                                 // 
     beam_state->remaining_scores = beam_state->remaining_scores.subspan(next_token_scores.size());
   }
 
-  if (num_beams <= 32) {
+  gsl::span<float> scores_to_process = beam_state->next_scores;
+  if (parameters->use_fast_topk && num_beams <= 32) {
     constexpr size_t max_parts_of_vocab = 128;
     size_t candidate_count = SafeInt<size_t>(batch_beam_size) * 2 * num_beams;
     float* topk_tmp_buffer = beam_state->topk_buffer.data();
@@ -546,13 +547,6 @@ Status ProcessLogits(const OrtValue& logits,                                 // 
                          beam_state->next_tokens.data(),
                          beam_state->next_indices.data(),
                          cuda_stream);
-
-    // Select [batch_size, 2 * num_beams] from [batch_size * num_beams, 2 * num_beams]
-#ifdef DEBUG_GENERATION
-    dumper->Print("next_tokens before scorer", beam_state->next_tokens.data(), batch_size, 2 * num_beams);
-    dumper->Print("next_indices before scorer", beam_state->next_indices.data(), batch_size, 2 * num_beams);
-    dumper->Print("next_scores before scorer", beam_state->next_scores.data(), batch_size, 2 * num_beams);
-#endif
   } else {
     // Apply top-k selection like the following:
     //   next_token_scores = next_token_scores.view(batch_size, num_beams * vocab_size)
@@ -588,17 +582,19 @@ Status ProcessLogits(const OrtValue& logits,                                 // 
     cuda::LaunchNextTokenKernel(next_token_indices, beam_state->next_indices.data(), beam_state->next_tokens.data(),
                                 batch_size, top_k, vocab_size, cuda_stream);
 
-#ifdef DEBUG_GENERATION
-    dumper->Print("next_scores before scorer", topk_scores->Data<float>(), batch_size, top_k);
-    dumper->Print("next_tokens before scorer", beam_state->next_tokens.data(), batch_size, top_k);
-    dumper->Print("next_indices before scorer", beam_state->next_indices.data(), batch_size, top_k);
-#endif
+    scores_to_process = gsl::span<float>(topk_scores->MutableData<float>(), batch_size * top_k);
   }
 
   // gsl::span doesn't convert from non const to const, so all we're doing here is making each const.
-  gsl::span<const float> next_scores(beam_state->next_scores.data(), beam_state->next_scores.size());
+  gsl::span<const float> next_scores(scores_to_process.data(), scores_to_process.size());
   gsl::span<const int32_t> next_tokens(beam_state->next_tokens.data(), beam_state->next_tokens.size());
   gsl::span<const int32_t> next_indices(beam_state->next_indices.data(), beam_state->next_indices.size());
+
+#ifdef DEBUG_GENERATION
+  dumper->Print("next_scores before scorer", next_scores.data(), batch_size, 2 * num_beams);
+  dumper->Print("next_tokens before scorer", next_tokens.data(), batch_size, 2 * num_beams);
+  dumper->Print("next_indices before scorer", next_indices.data(), batch_size, 2 * num_beams);
+#endif
 
   beam_scorer->Process(
       *sequences,
@@ -735,6 +731,7 @@ void CudaBeamSearchScorer::Process(transformers::ISequences& sequences,
                                        next_tokens,
                                        next_indices,
                                        stream_);
+
   CUDA_CALL_THROW(cudaEventRecord(event_process_complete_.Get(), stream_));
 
   cuda::LaunchBeamSearchScorer_AppendNextTokenToSequences(*state_cpu_,
@@ -1363,6 +1360,7 @@ Status ExpandBuffer(Stream* ort_stream,
   // Input shape (batch_size, xxx). The input is required with data type T.
   // Output shape (batch_size * num_beams, xxx)
   const TensorShape& input_shape = input.Get<Tensor>().Shape();
+
   const int64_t& batch_size = input_shape[0];
   int64_t sequence_length = 0;
 

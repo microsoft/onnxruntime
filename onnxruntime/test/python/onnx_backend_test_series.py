@@ -9,7 +9,6 @@ import platform
 import re
 import sys
 import unittest
-from typing import Dict
 
 import numpy as np
 import onnx
@@ -28,8 +27,8 @@ class OrtBackendTest(onnx.backend.test.runner.Runner):
     # pylint: disable=too-few-public-methods
     def __init__(
         self,
-        rtol_overrides: Dict[str, float],
-        atol_overrides: Dict[str, float],
+        rtol_overrides: dict[str, float],
+        atol_overrides: dict[str, float],
     ):
         self._rtol_overrides = rtol_overrides
         self._atol_overrides = atol_overrides

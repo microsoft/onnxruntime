@@ -32,6 +32,7 @@ static void RunOpTestOnCPU(const std::string& op_type,
 #else
   provider_options["backend_path"] = "libQnnCpu.so";
 #endif
+  provider_options["offload_graph_io_quantization"] = "0";
 
   RunQnnModelTest(BuildOpTestCase<InputType>(op_type, input_defs, {}, attrs, op_domain),
                   provider_options,
@@ -129,6 +130,7 @@ static void RunQDQOpTest(const std::string& op_type,
 #else
   provider_options["backend_path"] = "libQnnHtp.so";
 #endif
+  provider_options["offload_graph_io_quantization"] = "0";
 
   TestQDQModelAccuracy(BuildOpTestCase<float>(op_type, input_defs, {}, attrs, op_domain),
                        BuildQDQOpTestCase<InputQType>(op_type, input_defs, {}, attrs, op_domain, use_contrib_qdq),
@@ -230,7 +232,7 @@ TEST_F(QnnHTPBackendTests, UnaryOp_Tanh) {
 }
 
 // disabled for QNN 2.28.0.241029 backendValidateOpConfig failed
-// still fails on QNN 2.28.2.
+// still fails on QNN 2.28.2 and QNN 2.30.0
 // QnnDsp <E> [4294967295] has incorrect Value -32768, expected equal to 0.
 // QnnDsp <V> validateNativeOps node_token_6:qti.aisw:Tanh htp op validator failed 3110
 // QnnDsp <V> registered validator failed => 3110
@@ -238,9 +240,11 @@ TEST_F(QnnHTPBackendTests, UnaryOp_Tanh) {
 // QnnDsp <V> Wake up free backend (id: 1)'s thread(s)
 // QnnDsp <E> Failed to validate op node_token_6 with error 0xc26
 // Tests accuracy of 16-bit QDQ Tanh.
-TEST_F(QnnHTPBackendTests, DISABLED_UnaryOp_Tanh_U16) {
+//
+// We now skip QNN validation as a workaround for QNN SDK 2.28.0 to 2.30.0
+TEST_F(QnnHTPBackendTests, UnaryOp_Tanh_U16) {
   RunQDQOpTest<uint16_t>("Tanh",
-                         {TestInputDef<float>({1, 2, 3}, false, GetFloatDataInRange(-10.0f, 10.0f, 6))},
+                         {TestInputDef<float>({1, 2, 64}, false, GetFloatDataInRange(-10.0f, 10.0f, 128))},
                          {},
                          13,
                          ExpectedEPNodeAssignment::All,
@@ -293,7 +297,8 @@ TEST_F(QnnHTPBackendTests, UnaryOp_Elu) {
 // Expected val: -0.99751651287078857
 // QNN QDQ val: 6.2726154327392578 (err 7.2701320648193359)
 // CPU QDQ val: -0.99753034114837646 (err 1.3828277587890625e-05)
-TEST_F(QnnHTPBackendTests, DISABLE_UnaryOp_Elu_U16) {
+// Issue fixed in 2.30
+TEST_F(QnnHTPBackendTests, UnaryOp_Elu_U16) {
   RunQDQOpTest<uint16_t>("Elu",
                          {TestInputDef<float>({1, 2, 3}, false, GetFloatDataInRange(-10.0f, 10.0f, 6))},
                          {},
@@ -665,7 +670,8 @@ TEST_F(QnnHTPBackendTests, UnaryOp_Ceil) {
 // CPU EP f32 model output: [-12.0, -7.0, -2.0, 3.0, 8.0, 12.0]
 // CPU EP qdq model output: [-12.0, -6.99, -1.99, 3.0, 8.0, 11.99]
 // QNN EP qdq model output: [-11.0 (WRONG), -7.0, -2.0, 2.99, 8.0, 11.99]
-TEST_F(QnnHTPBackendTests, DISABLED_UnaryOp_Ceil_U16) {
+// Issue fixed in 2.30
+TEST_F(QnnHTPBackendTests, UnaryOp_Ceil_U16) {
   const std::vector<float> input_data = GetFloatDataInRange(-12.0f, 12.0f, 6);
   RunQDQOpTest<uint16_t>("Ceil",
                          {TestInputDef<float>({1, 2, 3}, false, input_data)},
@@ -780,6 +786,7 @@ TEST_F(QnnHTPBackendTests, QuantAccuracyTest) {
 #else
   provider_options["backend_path"] = "libQnnHtp.so";
 #endif
+  provider_options["offload_graph_io_quantization"] = "0";
 
   // Note: a graph input -> Q -> DQ -> is optimized by Qnn to have a perfectly accurate output.
   // ORT's CPU EP, on the otherhand, actually quantizes and dequantizes the input, which leads to different outputs.
@@ -1070,7 +1077,8 @@ TEST_F(QnnHTPBackendTests, GridSample_U16_AlignCorners) {
 // Expected val: 3.3620510101318359
 // QNN QDQ val: 3.2922921180725098 (err 0.069758892059326172)
 // CPU QDQ val: 3.3850328922271729 (err 0.022981882095336914)
-TEST_F(QnnHTPBackendTests, DISABLED_GridSample_BorderPadding) {
+// Issue fixed in 2.30
+TEST_F(QnnHTPBackendTests, GridSample_BorderPadding) {
   RunQDQOpTest<uint8_t>("GridSample",
                         {TestInputDef<float>({1, 1, 3, 2}, false, -10.0f, 10.0f),
                          TestInputDef<float>({1, 2, 4, 2}, false, -10.0f, 10.0f)},
@@ -1206,6 +1214,7 @@ TEST_F(QnnHTPBackendTests, Add_U8_U16_Convert) {
 #else
   provider_options["backend_path"] = "libQnnHtp.so";
 #endif
+  provider_options["offload_graph_io_quantization"] = "0";
 
   TestQDQModelAccuracy(BuildOpTestCase<float>("Add", {input0_def, input1_def}, {}, {}, kOnnxDomain),
                        BuildQDQConvertAddTestCase(input0_def, input1_def),
@@ -1271,6 +1280,7 @@ TEST_F(QnnHTPBackendTests, DQ_Q_ConvertFusion_SameType) {
 #else
   provider_options["backend_path"] = "libQnnHtp.so";
 #endif
+  provider_options["offload_graph_io_quantization"] = "0";
 
   QuantParams<uint8_t> out_qparams_u8 = {1.0f, 128};
   QuantParams<uint16_t> out_qparams_u16 = {1.0f, 32768};

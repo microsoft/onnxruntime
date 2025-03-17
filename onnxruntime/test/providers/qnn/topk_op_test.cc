@@ -8,7 +8,7 @@
 #include "test/providers/qnn/qnn_test_utils.h"
 #include "core/graph/node_attr_utils.h"
 
-#include "onnx/onnx_pb.h"
+#include "core/graph/onnx_protobuf.h"
 #include "gtest/gtest.h"
 
 namespace onnxruntime {
@@ -154,6 +154,7 @@ static void RunQDQTopKTestOnHTP(const TestInputDef<float>& input_def,
 #else
   provider_options["backend_path"] = "libQnnHtp.so";
 #endif
+  provider_options["offload_graph_io_quantization"] = "0";
 
   auto f32_model_builder = BuildTopKTestCase<float>(input_def, k_def, attrs);
   auto qdq_model_builder = BuildQDQTopKTestCase<QType>(input_def, k_def, attrs, use_contrib_qdq);

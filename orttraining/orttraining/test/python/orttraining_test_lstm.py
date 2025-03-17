@@ -480,7 +480,9 @@ class LSTM:
                 grad_forget_gate = grad_c * (
                     all_cell_states[t - 1, 0, idx, :]
                     if t > 0
-                    else initial_cell_state[0, idx, :] if initial_cell_state is not None else 0
+                    else initial_cell_state[0, idx, :]
+                    if initial_cell_state is not None
+                    else 0
                 )
                 grad_control_gate = grad_c * input_gate
 
@@ -520,7 +522,9 @@ class LSTM:
                 prev_h = (
                     all_hidden_states[t - 1, 0, idx, :]
                     if t > 0
-                    else initial_hidden_state[0, idx, :] if initial_hidden_state is not None else 0
+                    else initial_hidden_state[0, idx, :]
+                    if initial_hidden_state is not None
+                    else 0
                 )
                 grad_recurrence_weights[0, : self._hidden_size, :] += np.dot(
                     np.expand_dims(grad_input_activation, axis=0).T, np.expand_dims(prev_h, axis=0)
@@ -549,17 +553,22 @@ class LSTM:
                     grad_peephole_weights[0, : self._hidden_size] += grad_input_activation * (
                         all_cell_states[t - 1, 0, idx, :]
                         if t > 0
-                        else initial_cell_state[0, idx, :] if initial_cell_state is not None else 0
+                        else initial_cell_state[0, idx, :]
+                        if initial_cell_state is not None
+                        else 0
                     )
                     grad_peephole_weights[0, self._hidden_size : 2 * self._hidden_size] += (
                         grad_output_activation * all_cell_states[t, 0, idx, :]
                     )
-                    grad_peephole_weights[
-                        0, 2 * self._hidden_size : 3 * self._hidden_size
-                    ] += grad_forget_activation * (
-                        all_cell_states[t - 1, 0, idx, :]
-                        if t > 0
-                        else initial_cell_state[0, idx, :] if initial_cell_state is not None else 0
+                    grad_peephole_weights[0, 2 * self._hidden_size : 3 * self._hidden_size] += (
+                        grad_forget_activation
+                        * (
+                            all_cell_states[t - 1, 0, idx, :]
+                            if t > 0
+                            else initial_cell_state[0, idx, :]
+                            if initial_cell_state is not None
+                            else 0
+                        )
                     )
 
                 grad_c = grad_prev_c
@@ -858,7 +867,7 @@ def test_lstm_forward(sequence_length, batch_size, input_size, hidden_size):
         inputs, weights, recurrence_weights, bias, initial_hidden_state, initial_cell_state, peephole_weights
     )
 
-    for ort_out, np_out in zip(outs_ort, outs_np):
+    for ort_out, np_out in zip(outs_ort, outs_np, strict=False):
         assert np.allclose(ort_out, np_out, rtol=1e-03, atol=1e-05)
 
 
@@ -924,5 +933,5 @@ def test_lstm_backward(sequence_length, batch_size, input_size, hidden_size):
         grad_final_cell_state,
     )
 
-    for ort_out, np_out in zip(outs_ort, outs_np):
+    for ort_out, np_out in zip(outs_ort, outs_np, strict=False):
         assert np.allclose(ort_out, np_out, rtol=1e-03, atol=1e-05)

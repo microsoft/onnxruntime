@@ -308,7 +308,18 @@ export declare namespace InferenceSession {
 
   export interface QnnExecutionProviderOption extends ExecutionProviderOption {
     readonly name: 'qnn';
-    // TODO add flags
+    /**
+     * Specify a path to the QnnHtp.dll file.
+     *
+     * @default 'QnnHtp.dll'
+     */
+    backendPath?: string;
+    /**
+     * Specify whether to enable HTP FP16 precision.
+     *
+     * @default true
+     */
+    enableFp16Precision?: boolean;
   }
   export interface CoreMLExecutionProviderOption extends ExecutionProviderOption {
     readonly name: 'coreml';

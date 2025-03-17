@@ -18,7 +18,7 @@ model = onnx.load(input_model_name)
 
 def add_name(model):
     for i, node in enumerate(model.graph.node):
-        node.name = "%s_%d" % (node.op_type, i)
+        node.name = f"{node.op_type}_{i}"
 
 
 def find_input_node(model, arg):
@@ -120,7 +120,7 @@ def process_concat(model):
     # insert new shape to reshape
     for index, reshape_node_index in enumerate(new_nodes):
         shape_tensor = numpy_helper.from_array(np.asarray(new_nodes[reshape_node_index], dtype=np.int64))
-        const_node = add_const(model, "concat_shape_node_%d" % index, "concat_shape_%d" % index, shape_tensor)
+        const_node = add_const(model, f"concat_shape_node_{index}", f"concat_shape_{index}", shape_tensor)
         reshape_node = model.graph.node[reshape_node_index]
         reshape_node.input[1] = const_node.output[0]
     # delete nodes
@@ -251,13 +251,13 @@ def process_dropout(model):
         if node.op_type == "Dropout":
             new_dropout = model.graph.node.add()
             new_dropout.op_type = "TrainableDropout"
-            new_dropout.name = "TrainableDropout_%d" % index
+            new_dropout.name = f"TrainableDropout_{index}"
             # make ratio node
             ratio = np.asarray([node.attribute[0].f], dtype=np.float32)
             print(ratio.shape)
             ratio_value = numpy_helper.from_array(ratio)
             ratio_node = add_const(
-                model, "dropout_node_ratio_%d" % index, "dropout_node_ratio_%d" % index, t_value=ratio_value
+                model, f"dropout_node_ratio_{index}", f"dropout_node_ratio_{index}", t_value=ratio_value
             )
             print(ratio_node)
             new_dropout.input.extend([node.input[0], ratio_node.output[0]])

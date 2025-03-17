@@ -33,10 +33,10 @@ parameters:
 - name: QnnSdk
   displayName: QNN SDK version
   type: string
-  default: 2.28.2.241116
+  default: 2.31.0.250130
 
 jobs:
-- job: 'build'
+- job: 'BUILD_QNN_EP'
   pool: 'Onnxruntime-QNNEP-Windows-2022-CPU'
   variables:
     MsbuildArguments: '-detailedsummary -maxcpucount -consoleloggerparameters:PerformanceSummary'
@@ -50,6 +50,12 @@ jobs:
   timeoutInMinutes: 120
   workspace:
     clean: all
+  strategy:
+    matrix:
+      SHARED_LIB:
+        QnnLibKind: 'shared_lib'
+      STATIC_LIB:
+        QnnLibKind: 'static_lib'
   steps:
 
   - task: UsePythonVersion@0
@@ -72,7 +78,8 @@ jobs:
         --build_dir $(Build.BinariesDirectory)
         --cmake_generator "Visual Studio 17 2022"
         --build_java
-        --use_qnn
+        --build_shared_lib --use_vcpkg --use_vcpkg_ms_internal_asset_cache
+        --use_qnn $(QnnLibKind)
         --qnn_home $(QnnSDKRootDir)
         --use_binskim_compliant_compile_flags
         --update --parallel
@@ -87,18 +94,19 @@ jobs:
         --build_dir $(Build.BinariesDirectory) ^
         --cmake_generator "Visual Studio 17 2022" ^
         --build_java ^
-        --use_qnn ^
+        --build_shared_lib ^
+        --use_qnn $(QnnLibKind) ^
         --qnn_home $(QnnSDKRootDir) ^
         --use_binskim_compliant_compile_flags ^
         --test --enable_onnx_tests
     displayName: 'Run unit tests'
 
   - script: |
-      .\$(BuildConfig)\onnx_test_runner -j 1 -v -e qnn -i "backend_path|$(QnnSDKRootDir)\lib\x86_64-windows-msvc\QnnCpu.dll" $(Build.SourcesDirectory)\cmake\external\onnx\onnx\backend\test\data\node
+      .\$(BuildConfig)\onnx_test_runner -j 1 -e qnn -i "backend_path|$(QnnSDKRootDir)\lib\x86_64-windows-msvc\QnnCpu.dll" $(Build.SourcesDirectory)\cmake\external\onnx\onnx\backend\test\data\node
     workingDirectory: '$(Build.BinariesDirectory)\$(BuildConfig)'
     displayName: 'Run ONNX Tests'
 
   - script: |
-      .\$(BuildConfig)\onnx_test_runner -j 1 -v -e qnn -i "backend_path|$(QnnSDKRootDir)\lib\x86_64-windows-msvc\QnnCpu.dll" C:\data\float32_models
+      .\$(BuildConfig)\onnx_test_runner -j 1 -e qnn -i "backend_path|$(QnnSDKRootDir)\lib\x86_64-windows-msvc\QnnCpu.dll" C:\data\float32_models
     workingDirectory: '$(Build.BinariesDirectory)\$(BuildConfig)'
     displayName: 'Run float32 model tests'

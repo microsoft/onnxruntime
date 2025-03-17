@@ -41,10 +41,7 @@ def _parse_build_settings(args):
 
     build_settings = {}
 
-    if "build_abis" in build_settings_data:
-        build_settings["build_abis"] = build_settings_data["build_abis"]
-    else:
-        build_settings["build_abis"] = DEFAULT_BUILD_ABIS
+    build_settings["build_abis"] = build_settings_data.get("build_abis", DEFAULT_BUILD_ABIS)
 
     build_params = []
     if "build_params" in build_settings_data:
@@ -75,11 +72,15 @@ def _parse_build_settings(args):
     return build_settings
 
 
+def _is_qnn_android_build(build_settings):
+    return any(build_arg.startswith("--use_qnn") for build_arg in build_settings["build_params"])
+
+
 def _build_aar(args):
     build_settings = _parse_build_settings(args)
     build_dir = os.path.abspath(args.build_dir)
     ops_config_path = os.path.abspath(args.include_ops_by_config) if args.include_ops_by_config else None
-    qnn_android_build = "--use_qnn" in build_settings["build_params"]
+    qnn_android_build = _is_qnn_android_build(build_settings)
 
     # Setup temp environment for building
     temp_env = os.environ.copy()
@@ -92,7 +93,11 @@ def _build_aar(args):
     aar_dir = os.path.join(intermediates_dir, "aar", build_config)
     jnilibs_dir = os.path.join(intermediates_dir, "jnilibs", build_config)
     exe_dir = os.path.join(intermediates_dir, "executables", build_config)
-    base_build_command = [sys.executable, BUILD_PY] + build_settings["build_params"] + ["--config=" + build_config]
+    base_build_command = (
+        [sys.executable, BUILD_PY]
+        + build_settings["build_params"]
+        + ["--config=" + build_config, "--use_vcpkg", "--use_vcpkg_ms_internal_asset_cache"]
+    )
     header_files_path = ""
 
     if qnn_android_build:

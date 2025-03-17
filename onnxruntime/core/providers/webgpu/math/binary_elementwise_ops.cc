@@ -123,10 +123,10 @@ Status BinaryElementwise::ComputeInternal(ComputeContext& context) const {
     if (a_last_dim_divisible_by_4 || b_last_dim_divisible_by_4) {
       vectorize = true;
     } else {
-      size_t shared_dimension = 1;
+      int64_t shared_dimension = 1;
       for (size_t i = 1; i < output_shape.NumDimensions(); i++) {
-        size_t dimA = lhs_shape.NumDimensions() >= i ? lhs_shape[lhs_shape.NumDimensions() - i] : 1;
-        size_t dimB = rhs_shape.NumDimensions() >= i ? rhs_shape[rhs_shape.NumDimensions() - i] : 1;
+        int64_t dimA = lhs_shape.NumDimensions() >= i ? lhs_shape[lhs_shape.NumDimensions() - i] : 1;
+        int64_t dimB = rhs_shape.NumDimensions() >= i ? rhs_shape[rhs_shape.NumDimensions() - i] : 1;
         if (dimA == dimB) {
           shared_dimension *= dimA;
           num_shared_dimension++;
@@ -141,7 +141,7 @@ Status BinaryElementwise::ComputeInternal(ComputeContext& context) const {
     }
   }
 
-  uint32_t vec_size = gsl::narrow<uint32_t>((size + 3) / 4);
+  uint32_t vec_size = onnxruntime::narrow<uint32_t>((size + 3) / 4);
   BinaryElementwiseProgram program{kernel_name_,
                                    expression_,
                                    is_broadcast,
@@ -190,9 +190,9 @@ Status BinaryElementwise::ComputeInternal(ComputeContext& context) const {
     // Mode Vectorize broadcast
     // cache hint: "V{a_rank};{b_rank};{output_rank}"
     program
-        .AddIndices(reshaped_output_shape)
-        .AddIndices(reshaped_lhs_shape)
-        .AddIndices(reshaped_rhs_shape)
+        .AddIndices(std::move(reshaped_output_shape))
+        .AddIndices(std::move(reshaped_lhs_shape))
+        .AddIndices(std::move(reshaped_rhs_shape))
         .CacheHint("V");
   } else {
     // Mode Broadcast

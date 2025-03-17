@@ -1,7 +1,6 @@
 # Copyright (c) Microsoft Corporation. All rights reserved.
 # Licensed under the MIT License.
 
-from typing import Dict, List, Optional, Tuple
 
 import onnx
 
@@ -66,10 +65,10 @@ class _OptimizerBase(blocks.Block):
 
     def _build_optimizer_node(
         self,
-        input_names: List[str],
+        input_names: list[str],
         output_name: str,
         node_name: str,
-        node_attributes: Dict,
+        node_attributes: dict,
     ) -> str:
         """
         Build and append an optimizer node to the ONNX graph.
@@ -135,10 +134,10 @@ class SGDOptimizer(_OptimizerBase):
 class AdamWOptimizer(_OptimizerBase):
     def __init__(
         self,
-        bias_correction: Optional[bool] = True,
-        betas: Tuple[float, float] = (0.9, 0.999),
-        eps: Optional[float] = 1e-6,
-        weight_decay: Optional[float] = 0.0,
+        bias_correction: bool | None = True,
+        betas: tuple[float, float] = (0.9, 0.999),
+        eps: float | None = 1e-6,
+        weight_decay: float | None = 0.0,
     ):
         super().__init__()
 
@@ -242,7 +241,7 @@ class _Optimizer(onnxblock_module.ForwardBlock):
         learning_rate_name: str,
         params_name: str,
         gradients_name: str,
-        trainable_parameters: Tuple[List[onnx.TensorProto], List[onnx.TensorProto]],
+        trainable_parameters: tuple[list[onnx.TensorProto], list[onnx.TensorProto]],
     ) -> str:
         raise NotImplementedError("Subclasses must implement _optimizer_specific_logic method.")
 
@@ -264,7 +263,7 @@ class AdamW(_Optimizer):
         learning_rate_name: str,
         params_name: str,
         gradients_name: str,
-        trainable_parameters: Tuple[List[onnx.TensorProto], List[onnx.TensorProto]],
+        trainable_parameters: tuple[list[onnx.TensorProto], list[onnx.TensorProto]],
     ) -> str:
         onnx_model = self.base
         step_name = "step"
@@ -307,7 +306,7 @@ class SGD(_Optimizer):
         learning_rate_name: str,
         params_name: str,
         gradients_name: str,
-        trainable_parameters: Tuple[List[onnx.TensorProto], List[onnx.TensorProto]],
+        trainable_parameters: tuple[list[onnx.TensorProto], list[onnx.TensorProto]],
     ) -> str:
         onnx_model = self.base
         updated_flag_name = self._sgd(learning_rate_name, params_name, gradients_name)

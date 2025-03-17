@@ -7,7 +7,7 @@ parameters:
 - name: QNN_SDK
   displayName: QNN SDK Version
   type: string
-  default: 2.28.2.241116
+  default: 2.31.0.250130
 
 - name: ENV_SETUP_SCRIPT
   type: string
@@ -18,6 +18,11 @@ parameters:
     Extra parameters to pass to build.py. Don't put newlines in here.
   type: string
   default: ''
+
+- name: is1ES
+  displayName: 'Whether the pipeline is running in 1ES'
+  type: boolean
+  default: false
 
 jobs:
 - job: Win_py_x64_qnn_Wheels
@@ -34,6 +39,8 @@ jobs:
         PythonVersion: '3.11'
       Python312_x64:
         PythonVersion: '3.12'
+      Python313_x64:
+        PythonVersion: '3.13'
   variables:
     GRADLE_OPTS: '-Dorg.gradle.daemon=false'
     VSGenerator: 'Visual Studio 17 2022'
@@ -55,28 +62,8 @@ jobs:
         inputs:
           artifactFeeds: 'Lotus'
 
-      - task: onebranch.pipeline.tsaoptions@1
-        displayName: 'OneBranch TSAOptions'
-        inputs:
-          tsaConfigFilePath: '$(Build.SourcesDirectory)\.config\tsaoptions.json'
-          appendSourceBranchName: false
-
-      - template: download-deps.yml
-
-      - task: PythonScript@0
-        displayName: 'Update deps.txt'
-        inputs:
-          scriptPath: $(Build.SourcesDirectory)/tools/ci_build/replace_urls_in_deps.py
-          arguments: --new_dir $(Build.BinariesDirectory)/deps
-          workingDirectory: $(Build.BinariesDirectory)
-
-      - task: PowerShell@2
-        displayName: 'Install ONNX'
-        inputs:
-          filePath: '$(Build.SourcesDirectory)/tools/ci_build/github/windows/install_third_party_deps.ps1'
-          workingDirectory: '$(Build.BinariesDirectory)'
-          arguments: -cpu_arch x64 -install_prefix $(Build.BinariesDirectory)\RelWithDebInfo\installed -build_config RelWithDebInfo
-
+      - script: python -m pip install -r $(Build.SourcesDirectory)\tools\ci_build\github\linux\python\requirements.txt
+      
       - template: set-nightly-build-option-variable-step.yml
 
       - template: jobs/download_win_qnn_sdk.yml
@@ -92,10 +79,11 @@ jobs:
             --build_dir $(Build.BinariesDirectory)
             --skip_submodule_sync
             --cmake_generator "$(VSGenerator)"
+            --build_shared_lib
             --use_qnn
             --qnn_home $(QnnSDKRootDir)
             --enable_pybind
-            --parallel --update
+            --parallel --use_vcpkg --use_vcpkg_ms_internal_asset_cache --update
             $(TelemetryOption) ${{ parameters.BUILD_PY_PARAMETERS }}
           workingDirectory: '$(Build.BinariesDirectory)'
 
@@ -133,10 +121,18 @@ jobs:
           Contents: '*.whl'
           TargetFolder: '$(Build.ArtifactStagingDirectory)'
 
-      - task: PublishBuildArtifacts@1
-        displayName: 'Publish Artifact: ONNXRuntime python wheel'
-        inputs:
-          ArtifactName: onnxruntime_qnn_x64
+      - ${{ if eq(parameters.is1ES, true) }}:
+        - task: 1ES.PublishPipelineArtifact@1
+          displayName: 'Publish Artifact: ONNXRuntime python wheel'
+          inputs:
+            artifactName: onnxruntime_qnn_x64_$(PythonVersion)
+            targetPath: '$(Build.ArtifactStagingDirectory)'
+      - ${{ if eq(parameters.is1ES, false) }}:
+        - task: PublishPipelineArtifact@1
+          displayName: 'Publish Artifact: ONNXRuntime python wheel'
+          inputs:
+            artifactName: onnxruntime_qnn_x64_$(PythonVersion)
+            targetPath: '$(Build.ArtifactStagingDirectory)'
 
       - script: |
           7z x *.whl

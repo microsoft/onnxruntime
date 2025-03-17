@@ -24,7 +24,7 @@
         ],
         "macosx": [
             "--macos=MacOSX",
-            "--apple_deploy_target=11.0"
+            "--apple_deploy_target=13.3"
         ],
         "iphoneos": [
             "--ios",

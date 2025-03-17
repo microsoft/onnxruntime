@@ -116,8 +116,8 @@ Status SliceOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const 
 
   emscripten::val output = reverse_output;
   if (is_slice_required) {
-    std::vector<uint32_t> starts = GetVecUint32FromVecInt64(compute_metadata.starts_);
-    std::vector<uint32_t> steps = GetVecUint32FromVecInt64(compute_metadata.steps_);
+    std::vector<uint32_t> starts = GetNarrowedIntfromInt64<uint32_t>(compute_metadata.starts_);
+    std::vector<uint32_t> steps = GetNarrowedIntfromInt64<uint32_t>(compute_metadata.steps_);
     std::vector<uint32_t> sizes(rank);
     std::transform(compute_metadata.ends_.cbegin(), compute_metadata.ends_.cend(), compute_metadata.starts_.cbegin(),
                    sizes.begin(), [](int64_t i, int64_t j) { return SafeInt<uint32_t>(i - j); });
@@ -167,7 +167,7 @@ bool SliceOpBuilder::HasSupportedInputsImpl(const InitializedTensorSet& initiali
                                             const emscripten::val& wnn_limits, const logging::Logger& logger) const {
   const auto& input_defs = node.InputDefs();
   const auto& input = *input_defs[0];
-  const auto& op_type = node.OpType();
+  const std::string_view op_type = node.OpType();
   int32_t input_type;
   if (!GetType(input, input_type, logger))
     return false;

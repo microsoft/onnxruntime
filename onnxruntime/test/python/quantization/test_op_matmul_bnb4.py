@@ -9,7 +9,6 @@ import tempfile
 import unittest
 from importlib.util import find_spec
 from pathlib import Path
-from typing import Dict, Tuple, Union
 
 import numpy as np
 import onnx
@@ -67,7 +66,7 @@ class TestOpMatMulBnb4(unittest.TestCase):
     def tearDownClass(cls):
         cls._tmp_model_dir.cleanup()
 
-    def fill_bnb4_data(self, shape: Tuple[int, int], quant_type: int) -> np.ndarray:
+    def fill_bnb4_data(self, shape: tuple[int, int], quant_type: int) -> np.ndarray:
         rows, cols = shape
         line = np.zeros(shape)
         line = line.reshape(-1)
@@ -84,7 +83,7 @@ class TestOpMatMulBnb4(unittest.TestCase):
         line = line.reshape(cols, rows).transpose()
         return line.reshape(shape)
 
-    def input_feeds(self, n: int, name2shape: Dict[str, Union[int, Tuple[int, ...]]]) -> TestDataFeeds:
+    def input_feeds(self, n: int, name2shape: dict[str, int | tuple[int, ...]]) -> TestDataFeeds:
         input_data_list = []
         for _i in range(n):
             inputs = {}
@@ -104,7 +103,7 @@ class TestOpMatMulBnb4(unittest.TestCase):
         output_name = "output"
         initializers = []
 
-        def make_matmul(input_name, weight_shape: Union[int, Tuple[int, ...]], weight_name: str, output_name: str):
+        def make_matmul(input_name, weight_shape: int | tuple[int, ...], weight_name: str, output_name: str):
             weight_data = self.fill_bnb4_data(weight_shape, quant_type).astype(np.float32)
             initializers.append(onnx.numpy_helper.from_array(weight_data, name=weight_name))
             return onnx.helper.make_node(

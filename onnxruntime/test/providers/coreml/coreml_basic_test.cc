@@ -15,7 +15,7 @@
 #include "test/util/include/inference_session_wrapper.h"
 #include "test/util/include/test_environment.h"
 #include "test/util/include/test_utils.h"
-#include "onnx/onnx_pb.h"
+#include "core/graph/onnx_protobuf.h"
 
 #if !defined(ORT_MINIMAL_BUILD)
 // if this is a full build we need the provider test utils

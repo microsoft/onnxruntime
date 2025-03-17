@@ -208,7 +208,7 @@ def _decoder_forward_wrapper(model: BartForConditionalGeneration, decoder_config
 
             # Test the generated model with onnxruntime
             print("========== ORT inference test on Decoder ... ==========")
-            ort_inputs = {name: value.cpu().numpy() for name, value in zip(input_names, inputs)}
+            ort_inputs = {name: value.cpu().numpy() for name, value in zip(input_names, inputs, strict=False)}
             # NOTE: encoder_hidden_states is not used and deleted
             ort_inputs.pop("encoder_hidden_states")
             sess_options = SessionOptions()
@@ -216,7 +216,7 @@ def _decoder_forward_wrapper(model: BartForConditionalGeneration, decoder_config
             sess = InferenceSession(onnx_model_path, sess_options, providers=["CPUExecutionProvider"])
             out = sess.run(None, ort_inputs)
 
-            for ort_out, torch_out in zip(out, [logits, *present]):
+            for ort_out, torch_out in zip(out, [logits, *present], strict=False):
                 torch.testing.assert_close(ort_out, torch_out.cpu().numpy(), check_dtype=True, atol=1e-4, rtol=1e-2)
 
             print("========== [SUCCESS] ORT inference test on Decoder ==========")

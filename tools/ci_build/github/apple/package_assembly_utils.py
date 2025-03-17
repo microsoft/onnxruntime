@@ -7,7 +7,6 @@ import os
 import pathlib
 import re
 import shutil
-from typing import Dict, List
 
 _script_dir = pathlib.Path(__file__).parent.resolve(strict=True)
 repo_root = _script_dir.parents[3]
@@ -30,7 +29,7 @@ _template_variable_pattern = re.compile(r"@(\w+)@")  # match "@var@"
 
 
 def gen_file_from_template(
-    template_file: pathlib.Path, output_file: pathlib.Path, variable_substitutions: Dict[str, str], strict: bool = True
+    template_file: pathlib.Path, output_file: pathlib.Path, variable_substitutions: dict[str, str], strict: bool = True
 ):
     """
     Generates a file from a template file.
@@ -69,7 +68,7 @@ def gen_file_from_template(
         output.write(content)
 
 
-def filter_files(all_file_patterns: List[str], excluded_file_patterns: List[str]):
+def filter_files(all_file_patterns: list[str], excluded_file_patterns: list[str]):
     """
     Filters file paths based on inclusion and exclusion patterns
 
@@ -90,7 +89,7 @@ def filter_files(all_file_patterns: List[str], excluded_file_patterns: List[str]
     return list(set(all_files) - set(exclude_files))
 
 
-def copy_repo_relative_to_dir(patterns: List[str], dest_dir: pathlib.Path):
+def copy_repo_relative_to_dir(patterns: list[str], dest_dir: pathlib.Path):
     """
     Copies file paths relative to the repo root to a directory.
     The given paths or path patterns are relative to the repo root, and the

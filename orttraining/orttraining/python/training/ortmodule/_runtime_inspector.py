@@ -7,7 +7,6 @@ import json
 import tempfile
 from enum import IntEnum
 from logging import Logger
-from typing import Dict, List, Optional, Tuple, Union
 
 import onnx
 import torch
@@ -66,8 +65,8 @@ class MemoryOptimizationSummary:
 
     def __init__(self, saving_str="", simplified_saving_expr=None, evaluated_saving=None, freq=0):
         self.raw_symbolic_saving_str = saving_str
-        self.simplified_symbolic_saving_expr: Optional[Symbol] = simplified_saving_expr
-        self.evaluated_saving: Union[str, int, None] = evaluated_saving
+        self.simplified_symbolic_saving_expr: Symbol | None = simplified_saving_expr
+        self.evaluated_saving: str | int | None = evaluated_saving
         self.freq = freq
 
 
@@ -93,9 +92,9 @@ class MemoryObserver:
         self._is_enabled = True
 
         # Memory optimization related.
-        self.cluster_id_combination_to_saving_symbolics_map: Dict[str, MemoryOptimizationSummary] = {}
+        self.cluster_id_combination_to_saving_symbolics_map: dict[str, MemoryOptimizationSummary] = {}
         ## The value is a list of symbolic dim values parsed from the first batch.
-        self.symbolic_dim_name_to_value_map: Dict = {}
+        self.symbolic_dim_name_to_value_map: dict = {}
 
         ## Used to control only the first batch is used to collect symbolic dim values.
         self.symbolic_dim_collecting_completed = False
@@ -132,8 +131,8 @@ class MemoryObserver:
 
     def collect_symbolic_dim_values(
         self,
-        onnx_input_name_to_dynamic_axes_map: Dict[str, Dict[int, str]],
-        onnx_input_to_value_map: Dict[str, torch.Tensor],
+        onnx_input_name_to_dynamic_axes_map: dict[str, dict[int, str]],
+        onnx_input_to_value_map: dict[str, torch.Tensor],
     ):
         """Collect symbolic dim values."""
         for input_name, dynamic_axes in onnx_input_name_to_dynamic_axes_map.items():
@@ -169,7 +168,7 @@ class MemoryObserver:
             memory_optimizer_config_file_path, recompute_probe_config, False
         )
 
-        cluster_id_to_saving_symbol_map: Dict[str, MemoryOptimizationSummary] = {}
+        cluster_id_to_saving_symbol_map: dict[str, MemoryOptimizationSummary] = {}
         for cluster_id, memory_saving_stat in memory_optimization_saving_symbolics.items():
             memory_saving_symbolic = memory_saving_stat[0]
             freq = memory_saving_stat[1]
@@ -201,7 +200,6 @@ class MemoryObserver:
             _MemoryOptimizationLevel.TRANSFORMER_LAYERWISE_RECOMPUTE,
             _MemoryOptimizationLevel.TRANSFORMER_LAYERWISE_RECOMPUTE_WITH_COMPROMISE,
         ]:
-
             apply_config = []
 
             for cluster_id in self.cluster_id_combination_to_saving_symbolics_map:
@@ -229,7 +227,7 @@ class MemoryObserver:
 
                 apply_config.append(",".join(recompute_configs))
 
-            self._json_file_for_layerwise_recompute = tempfile.NamedTemporaryFile(mode="w+")
+            self._json_file_for_layerwise_recompute = tempfile.NamedTemporaryFile(mode="w+")  # noqa: SIM115
             json.dump(apply_config, self._json_file_for_layerwise_recompute)
             self._json_file_for_layerwise_recompute.flush()
             runtime_options.memory_optimizer_config_file_path = self._json_file_for_layerwise_recompute.name
@@ -283,7 +281,7 @@ class MemoryObserver:
 
     def display_memory_optimization_plans(
         self, memory_optimizer_config_file_path, details=False
-    ) -> Tuple[List[str], PTable]:
+    ) -> tuple[list[str], PTable]:
         mem_plan_count = len(self.cluster_id_combination_to_saving_symbolics_map)
 
         if mem_plan_count > 0:
@@ -387,9 +385,9 @@ class FlagAndPrintDensity(torch.autograd.Function):
     @staticmethod
     def infer_shape(
         node: onnx.NodeProto,
-        tensor_input_shapes: List[Optional[List[Union[int, str]]]],
-        tensor_input_dtypes: List[torch.onnx.TensorProtoDataType],
-    ) -> Tuple[List[Optional[List[Union[int, str]]]], List[torch.onnx.TensorProtoDataType]]:
+        tensor_input_shapes: list[list[int | str] | None],
+        tensor_input_dtypes: list[torch.onnx.TensorProtoDataType],
+    ) -> tuple[list[list[int | str] | None], list[torch.onnx.TensorProtoDataType]]:
         return tensor_input_shapes, tensor_input_dtypes
 
     @staticmethod

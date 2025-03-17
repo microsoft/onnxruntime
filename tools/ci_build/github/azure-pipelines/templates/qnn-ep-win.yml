@@ -1,5 +1,5 @@
 parameters:
-  QnnSdk: '2.28.2.241116'
+  QnnSdk: '2.31.0.250130'
   build_config: 'RelWithDebInfo'
   IsReleaseBuild: false
   DoEsrp: false
@@ -10,6 +10,8 @@ parameters:
   buildPlatform: 'x64'
   buildArch: 'x64'
   StageName: 'OnnxRuntime_QNN_Nuget_Win_x64'
+  Is1ES: true
+  PublishArchive: false
 
 stages:
 - stage: ${{ parameters.StageName }}
@@ -18,7 +20,8 @@ stages:
   - job: ${{ parameters.StageName }}
     timeoutInMinutes: 120
 
-    pool: ${{ parameters.qnn_ep_build_pool_name }}
+    pool:
+      name: ${{ parameters.qnn_ep_build_pool_name }}
     variables:
       ${{ if eq(parameters.buildArch, 'ARM64') }}:
         targetArchitecture: 'arm64'
@@ -28,127 +31,148 @@ stages:
       commonBuildArgs: '--update --compile_no_warning_as_error --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --build_shared_lib --cmake_generator "Visual Studio 17 2022" --config ${{ parameters.build_config }} --parallel --use_binskim_compliant_compile_flags ${{ parameters.buildParameter }} '
 
     steps:
-      - template: set-version-number-variables-step.yml
+    - template: set-version-number-variables-step.yml
 
-      - task: UsePythonVersion@0
-        inputs:
-          versionSpec: '3.12'
-          addToPath: true
+    - task: UsePythonVersion@0
+      inputs:
+        versionSpec: '3.12'
+        addToPath: true
 
-      - template: jobs/download_win_qnn_sdk.yml
+    - template: jobs/download_win_qnn_sdk.yml
+      parameters:
+        QnnSDKVersion: ${{ parameters.QnnSdk }}
+
+    - task: PythonScript@0
+      displayName: 'Generate project'
+      inputs:
+        scriptPath: '$(Build.SourcesDirectory)\tools\ci_build\build.py'
+        arguments: '--use_qnn --qnn_home $(QnnSDKRootDir) $(commonBuildArgs)'
+
+    - task: VSBuild@1
+      displayName: 'Build onnxruntime'
+      inputs:
+        solution: '$(Build.BinariesDirectory)\${{ parameters.build_config }}\onnxruntime.vcxproj'
+        platform: ${{ parameters.buildPlatform }}
+        configuration: ${{ parameters.build_config }}
+        msbuildArchitecture: ${{ parameters.buildArch }}
+        maximumCpuCount: true
+        logProjectEvents: true
+        workingFolder: '$(Build.BinariesDirectory)\${{ parameters.build_config }}'
+        createLogFile: true
+
+    - task: VSBuild@1
+      displayName: 'Build onnx_test_runner'
+      inputs:
+        solution: '$(Build.BinariesDirectory)\${{ parameters.build_config }}\onnx_test_runner.vcxproj'
+        platform: ${{ parameters.buildPlatform }}
+        configuration: ${{ parameters.build_config }}
+        msbuildArchitecture: ${{ parameters.buildArch }}
+        maximumCpuCount: true
+        logProjectEvents: true
+        workingFolder: '$(Build.BinariesDirectory)\${{ parameters.build_config }}'
+        createLogFile: true
+
+    - task: VSBuild@1
+      displayName: 'Build onnxruntime_perf_test'
+      inputs:
+        solution: '$(Build.BinariesDirectory)\${{ parameters.build_config }}\onnxruntime_perf_test.vcxproj'
+        platform: ${{ parameters.buildPlatform }}
+        configuration: ${{ parameters.build_config }}
+        msbuildArchitecture: ${{ parameters.buildArch }}
+        maximumCpuCount: true
+        logProjectEvents: true
+        workingFolder: '$(Build.BinariesDirectory)\${{ parameters.build_config }}'
+        createLogFile: true
+
+    - task: VSBuild@1
+      displayName: 'Build onnxruntime_test_all (to copy Qnn libs)'
+      inputs:
+        solution: '$(Build.BinariesDirectory)\${{ parameters.build_config }}\onnxruntime_test_all.vcxproj'
+        platform: ${{ parameters.buildPlatform }}
+        configuration: ${{ parameters.build_config }}
+        msbuildArchitecture: ${{ parameters.buildArch }}
+        maximumCpuCount: true
+        logProjectEvents: true
+        workingFolder: '$(Build.BinariesDirectory)\${{ parameters.build_config }}'
+        createLogFile: true
+
+    - task: CmdLine@2
+      displayName: 'Print contents of binaries directory'
+      inputs:
+        script: |
+          dir $(Build.BinariesDirectory)\${{ parameters.build_config }}\${{ parameters.build_config }}
+
+    - template: win-esrp-dll.yml
+      parameters:
+        FolderPath: '$(Build.BinariesDirectory)\${{ parameters.build_config }}\${{ parameters.build_config }}'
+        DisplayName: 'ESRP - Sign dlls'
+        DoEsrp: ${{ parameters.DoEsrp }}
+        Pattern: 'onnxruntime*.dll'
+
+    - ${{ if eq(parameters.PublishArchive, true) }}:
+      - template: c-api-artifacts-package-and-publish-steps-windows.yml
         parameters:
-          QnnSDKVersion: ${{ parameters.QnnSdk }}
+          buildConfig: ${{ parameters.build_config }}
+          artifactName: 'onnxruntime-win-${{ parameters.buildPlatform }}-qnn'
+          artifactNameNoVersionString: 'onnxruntime-win-${{ parameters.buildPlatform }}-qnn'
+          DoEsrp: ${{ parameters.DoEsrp }}
 
-      - task: PythonScript@0
-        displayName: 'Generate project'
-        inputs:
-          scriptPath: '$(Build.SourcesDirectory)\tools\ci_build\build.py'
-          arguments: '--use_qnn --qnn_home $(QnnSDKRootDir) $(commonBuildArgs)'
+    - task: MSBuild@1
+      displayName: 'Restore NuGet Packages and create project.assets.json'
+      inputs:
+        solution: '$(Build.SourcesDirectory)\csharp\OnnxRuntime.DesktopOnly.CSharp.sln'
+        platform: 'Any CPU'
+        configuration: ${{ parameters.build_config }}
+        msbuildArguments: '-t:restore -p:OrtPackageId=$(OrtPackageId)'
+        workingDirectory: '$(Build.SourcesDirectory)\csharp'
 
-      - task: VSBuild@1
-        displayName: 'Build onnxruntime'
-        inputs:
-          solution: '$(Build.BinariesDirectory)\${{ parameters.build_config }}\onnxruntime.vcxproj'
-          platform: ${{ parameters.buildPlatform }}
-          configuration: ${{ parameters.build_config }}
-          msbuildArchitecture: ${{ parameters.buildArch }}
-          maximumCpuCount: true
-          logProjectEvents: true
-          workingFolder: '$(Build.BinariesDirectory)\${{ parameters.build_config }}'
-          createLogFile: true
+    - task: MSBuild@1
+      displayName: 'Build C# bindings'
+      inputs:
+        solution: '$(Build.SourcesDirectory)\csharp\OnnxRuntime.DesktopOnly.CSharp.sln'
+        platform: 'Any CPU'
+        configuration: ${{ parameters.build_config }}
+        msbuildArguments: '-p:OnnxRuntimeBuildDirectory="$(Build.BinariesDirectory)" -p:OrtPackageId=$(OrtPackageId) -p:IsReleaseBuild=${{ parameters.IsReleaseBuild }}'
+        workingDirectory: '$(Build.SourcesDirectory)\csharp'
 
-      - task: VSBuild@1
-        displayName: 'Build onnx_test_runner'
-        inputs:
-          solution: '$(Build.BinariesDirectory)\${{ parameters.build_config }}\onnx_test_runner.vcxproj'
-          platform: ${{ parameters.buildPlatform }}
-          configuration: ${{ parameters.build_config }}
-          msbuildArchitecture: ${{ parameters.buildArch }}
-          maximumCpuCount: true
-          logProjectEvents: true
-          workingFolder: '$(Build.BinariesDirectory)\${{ parameters.build_config }}'
-          createLogFile: true
-
-      - task: VSBuild@1
-        displayName: 'Build onnxruntime_perf_test'
-        inputs:
-          solution: '$(Build.BinariesDirectory)\${{ parameters.build_config }}\onnxruntime_perf_test.vcxproj'
-          platform: ${{ parameters.buildPlatform }}
-          configuration: ${{ parameters.build_config }}
-          msbuildArchitecture: ${{ parameters.buildArch }}
-          maximumCpuCount: true
-          logProjectEvents: true
-          workingFolder: '$(Build.BinariesDirectory)\${{ parameters.build_config }}'
-          createLogFile: true
-
-      - task: VSBuild@1
-        displayName: 'Build onnxruntime_test_all (to copy Qnn libs)'
-        inputs:
-          solution: '$(Build.BinariesDirectory)\${{ parameters.build_config }}\onnxruntime_test_all.vcxproj'
-          platform: ${{ parameters.buildPlatform }}
-          configuration: ${{ parameters.build_config }}
-          msbuildArchitecture: ${{ parameters.buildArch }}
-          maximumCpuCount: true
-          logProjectEvents: true
-          workingFolder: '$(Build.BinariesDirectory)\${{ parameters.build_config }}'
-          createLogFile: true
-
+    - ${{ if eq(parameters.DoEsrp, true) }}:
       - template: win-esrp-dll.yml
         parameters:
-          FolderPath: '$(Build.BinariesDirectory)\${{ parameters.build_config }}\${{ parameters.build_config }}'
-          DisplayName: 'ESRP - Sign dlls'
+          FolderPath: '$(Build.SourcesDirectory)\csharp\src\Microsoft.ML.OnnxRuntime\bin\${{ parameters.build_config }}'
+          DisplayName: 'ESRP - Sign C# dlls'
           DoEsrp: ${{ parameters.DoEsrp }}
-          Pattern: 'onnxruntime.dll'
 
-      - task: MSBuild@1
-        displayName: 'Restore NuGet Packages and create project.assets.json'
+    - task: MSBuild@1
+      displayName: 'Build Nuget Packages'
+      inputs:
+        solution: '$(Build.SourcesDirectory)\csharp\OnnxRuntime.CSharp.proj'
+        platform: 'Any CPU'
+        configuration: ${{ parameters.build_config }}
+        msbuildArguments: '-t:CreatePackage -p:OnnxRuntimeBuildDirectory="$(Build.BinariesDirectory)" -p:OrtPackageId=$(OrtPackageId) -p:IsReleaseBuild=${{ parameters.IsReleaseBuild }} -p:TargetArchitecture=$(targetArchitecture)'
+        workingDirectory: '$(Build.SourcesDirectory)\csharp'
+
+    - task: CopyFiles@2
+      displayName: 'Copy native nuget package to: $(Build.ArtifactStagingDirectory)'
+      inputs:
+        SourceFolder: '$(Build.BinariesDirectory)\${{ parameters.build_config }}\${{ parameters.build_config }}'
+        Contents: '*.nupkg'
+        TargetFolder: '$(Build.ArtifactStagingDirectory)'
+
+    - task: CopyFiles@2
+      displayName: 'Copy native nuget symbols package to: $(Build.ArtifactStagingDirectory)'
+      inputs:
+        SourceFolder: '$(Build.BinariesDirectory)\${{ parameters.build_config }}\${{ parameters.build_config }}'
+        Contents: '*.snupkg'
+        TargetFolder: '$(Build.ArtifactStagingDirectory)'
+
+    - ${{ if eq(parameters.Is1ES, true) }}:
+      - task: 1ES.PublishPipelineArtifact@1
+        displayName: 'Publish Pipeline x64 NuGet Artifact'
         inputs:
-          solution: '$(Build.SourcesDirectory)\csharp\OnnxRuntime.DesktopOnly.CSharp.sln'
-          platform: 'Any CPU'
-          configuration: ${{ parameters.build_config }}
-          msbuildArguments: '-t:restore -p:OrtPackageId=$(OrtPackageId)'
-          workingDirectory: '$(Build.SourcesDirectory)\csharp'
-
-      - task: MSBuild@1
-        displayName: 'Build C# bindings'
-        inputs:
-          solution: '$(Build.SourcesDirectory)\csharp\OnnxRuntime.DesktopOnly.CSharp.sln'
-          platform: 'Any CPU'
-          configuration: ${{ parameters.build_config }}
-          msbuildArguments: '-p:OnnxRuntimeBuildDirectory="$(Build.BinariesDirectory)" -p:OrtPackageId=$(OrtPackageId) -p:IsReleaseBuild=${{ parameters.IsReleaseBuild }}'
-          workingDirectory: '$(Build.SourcesDirectory)\csharp'
-
-      - ${{ if eq(parameters.DoEsrp, true) }}:
-        - template: win-esrp-dll.yml
-          parameters:
-            FolderPath: '$(Build.SourcesDirectory)\csharp\src\Microsoft.ML.OnnxRuntime\bin\${{ parameters.build_config }}'
-            DisplayName: 'ESRP - Sign C# dlls'
-            DoEsrp: ${{ parameters.DoEsrp }}
-
-      - task: MSBuild@1
-        displayName: 'Build Nuget Packages'
-        inputs:
-          solution: '$(Build.SourcesDirectory)\csharp\OnnxRuntime.CSharp.proj'
-          platform: 'Any CPU'
-          configuration: ${{ parameters.build_config }}
-          msbuildArguments: '-t:CreatePackage -p:OnnxRuntimeBuildDirectory="$(Build.BinariesDirectory)" -p:OrtPackageId=$(OrtPackageId) -p:IsReleaseBuild=${{ parameters.IsReleaseBuild }} -p:TargetArchitecture=$(targetArchitecture)'
-          workingDirectory: '$(Build.SourcesDirectory)\csharp'
-
-      - task: CopyFiles@2
-        displayName: 'Copy native nuget package to: $(Build.ArtifactStagingDirectory)'
-        inputs:
-          SourceFolder: '$(Build.BinariesDirectory)\${{ parameters.build_config }}\${{ parameters.build_config }}'
-          Contents: '*.nupkg'
-          TargetFolder: '$(Build.ArtifactStagingDirectory)'
-
-      - task: CopyFiles@2
-        displayName: 'Copy native nuget symbols package to: $(Build.ArtifactStagingDirectory)'
-        inputs:
-          SourceFolder: '$(Build.BinariesDirectory)\${{ parameters.build_config }}\${{ parameters.build_config }}'
-          Contents: '*.snupkg'
-          TargetFolder: '$(Build.ArtifactStagingDirectory)'
-
-      - task: PublishPipelineArtifact@0
+          artifactName: ${{ parameters.ArtifactName }}
+          targetPath: '$(Build.ArtifactStagingDirectory)'
+    - ${{ else }}:
+      - task: PublishPipelineArtifact@1
         displayName: 'Publish Pipeline x64 NuGet Artifact'
         inputs:
           artifactName: ${{ parameters.ArtifactName }}

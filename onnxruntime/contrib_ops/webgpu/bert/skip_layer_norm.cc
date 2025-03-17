@@ -116,13 +116,13 @@ Status SkipLayerNorm<simplified>::ComputeInternal(onnxruntime::webgpu::ComputeCo
   auto* output = context.Output(0, x_shape);
   auto* input_skip_bias_sum = context.Output(3, x_shape);
 
-  size_t data_size = x_shape.Size();
+  int64_t data_size = x_shape.Size();
   if (data_size == 0) {
     return Status::OK();
   }
 
   const bool is_fp16 = x->GetElementType() == ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT16;
-  const uint32_t hidden_size = gsl::narrow<uint32_t>(x_shape[x_shape.NumDimensions() - 1]);
+  const uint32_t hidden_size = onnxruntime::narrow<uint32_t>(x_shape[x_shape.NumDimensions() - 1]);
   const int components = GetMaxComponents(hidden_size);
   const bool has_input_skip_bias_sum = input_skip_bias_sum != nullptr;
 
@@ -133,7 +133,7 @@ Status SkipLayerNorm<simplified>::ComputeInternal(onnxruntime::webgpu::ComputeCo
       .AddInputs({{skip, ProgramTensorMetadataDependency::Type, components}})
       .AddInputs({{gamma, ProgramTensorMetadataDependency::Type, components}})
       .AddOutputs({{output, ProgramTensorMetadataDependency::None, components}})
-      .SetDispatchGroupSize(gsl::narrow<uint32_t>(ceil(1.0 * data_size / hidden_size)))
+      .SetDispatchGroupSize(onnxruntime::narrow<uint32_t>(ceil(1.0 * data_size / hidden_size)))
       .AddUniformVariables({
           {static_cast<uint32_t>(components)},
       })

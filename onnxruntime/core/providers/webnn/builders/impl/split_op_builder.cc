@@ -169,13 +169,13 @@ bool SplitOpBuilder::HasSupportedOutputsImpl(const Node& node,
                                              const emscripten::val& wnn_limits,
                                              const logging::Logger& logger) const {
   const auto& output_defs = node.OutputDefs();
-  const auto& op_type = node.OpType();
+  const std::string_view op_type = node.OpType();
   int32_t output_type = 0;
 
   if (GetType(*output_defs[0], output_type, logger)) {
     // Chromium has changed the output name of split from 'output' to 'outputs',
     // to avoid breaking the existing API, we need to check both names.
-    std::string wnn_output_name = wnn_limits["split"]["output"].isUndefined() ? "outputs" : "output";
+    const std::string_view wnn_output_name = wnn_limits["split"]["output"].isUndefined() ? "outputs" : "output";
     return IsDataTypeSupportedByOp(op_type, output_type, wnn_limits, wnn_output_name, "outputs", logger);
   }
 

@@ -73,11 +73,7 @@ RCTBlobManager* blobManager = nil;
  * @param reject callback for returning an error back to react native js
  * @note when run() is called, the same modelPath must be passed into the first parameter.
  */
-RCT_EXPORT_METHOD(loadModel
-                  : (NSString*)modelPath options
-                  : (NSDictionary*)options resolver
-                  : (RCTPromiseResolveBlock)resolve rejecter
-                  : (RCTPromiseRejectBlock)reject) {
+RCT_EXPORT_METHOD(loadModel : (NSString*)modelPath options : (NSDictionary*)options resolver : (RCTPromiseResolveBlock)resolve rejecter : (RCTPromiseRejectBlock)reject) {
   @try {
     NSDictionary* resultMap = [self loadModel:modelPath options:options];
     resolve(resultMap);
@@ -95,11 +91,7 @@ RCT_EXPORT_METHOD(loadModel
  * @param reject callback for returning an error back to react native js
  * @note when run() is called, the same modelPath must be passed into the first parameter.
  */
-RCT_EXPORT_METHOD(loadModelFromBlob
-                  : (NSDictionary*)modelDataBlob options
-                  : (NSDictionary*)options resolver
-                  : (RCTPromiseResolveBlock)resolve rejecter
-                  : (RCTPromiseRejectBlock)reject) {
+RCT_EXPORT_METHOD(loadModelFromBlob : (NSDictionary*)modelDataBlob options : (NSDictionary*)options resolver : (RCTPromiseResolveBlock)resolve rejecter : (RCTPromiseRejectBlock)reject) {
   @try {
     [self checkBlobManager];
     NSString* blobId = [modelDataBlob objectForKey:@"blobId"];
@@ -121,10 +113,7 @@ RCT_EXPORT_METHOD(loadModelFromBlob
  * @param resolve callback for returning output back to react native js
  * @param reject callback for returning an error back to react native js
  */
-RCT_EXPORT_METHOD(dispose
-                  : (NSString*)key resolver
-                  : (RCTPromiseResolveBlock)resolve rejecter
-                  : (RCTPromiseRejectBlock)reject) {
+RCT_EXPORT_METHOD(dispose : (NSString*)key resolver : (RCTPromiseResolveBlock)resolve rejecter : (RCTPromiseRejectBlock)reject) {
   @try {
     [self dispose:key];
     resolve(nil);
@@ -143,13 +132,7 @@ RCT_EXPORT_METHOD(dispose
  * @param resolve callback for returning an inference result back to react native js
  * @param reject callback for returning an error back to react native js
  */
-RCT_EXPORT_METHOD(run
-                  : (NSString*)url input
-                  : (NSDictionary*)input output
-                  : (NSArray*)output options
-                  : (NSDictionary*)options resolver
-                  : (RCTPromiseResolveBlock)resolve rejecter
-                  : (RCTPromiseRejectBlock)reject) {
+RCT_EXPORT_METHOD(run : (NSString*)url input : (NSDictionary*)input output : (NSArray*)output options : (NSDictionary*)options resolver : (RCTPromiseResolveBlock)resolve rejecter : (RCTPromiseRejectBlock)reject) {
   @try {
     NSDictionary* resultMap = [self run:url input:input output:output options:options];
     resolve(resultMap);

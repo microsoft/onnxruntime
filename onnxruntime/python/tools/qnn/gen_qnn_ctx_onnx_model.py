@@ -150,9 +150,9 @@ def parse_qnn_converter_json_file(qnn_convert_json, qnn_input_tensor_dic, qnn_ou
                 qnn_tensor.offset = 0 - qnn_tensor_attribute["quant_params"]["scale_offset"]["offset"]
             qnn_output_tensor_dic[qnn_tensor_name] = qnn_tensor
 
-    assert (
-        len(qnn_input_tensor_dic) >= 1 and len(qnn_output_tensor_dic) >= 1
-    ), "Converted QNN model not valid. It should have at least 1 input & 1 output."
+    assert len(qnn_input_tensor_dic) >= 1 and len(qnn_output_tensor_dic) >= 1, (
+        "Converted QNN model not valid. It should have at least 1 input & 1 output."
+    )
 
 
 def generate_wrapper_onnx_file(
@@ -286,9 +286,9 @@ def parse_qnn_graph(qnn_graph, qnn_input_tensor_dic, qnn_output_tensor_dic):
             qnn_tensor.offset = 0 - tensor_info["quantizeParams"]["scaleOffset"]["offset"]
         qnn_output_tensor_dic[qnn_tensor.name] = qnn_tensor
 
-    assert (
-        len(qnn_input_tensor_dic) >= 1 and len(qnn_output_tensor_dic) >= 1
-    ), "Converted QNN model not valid. It should have at least 1 input & 1 output."
+    assert len(qnn_input_tensor_dic) >= 1 and len(qnn_output_tensor_dic) >= 1, (
+        "Converted QNN model not valid. It should have at least 1 input & 1 output."
+    )
 
     return graph_name
 

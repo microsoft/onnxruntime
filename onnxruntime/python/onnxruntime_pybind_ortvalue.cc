@@ -13,9 +13,6 @@
 #include "core/framework/tensor.h"
 #include "core/framework/sparse_tensor.h"
 #include "core/framework/TensorSeq.h"
-#ifdef ENABLE_TRAINING
-#include "core/dlpack/dlpack_converter.h"
-#endif
 namespace onnxruntime {
 namespace python {
 
@@ -350,7 +347,7 @@ void addOrtValueMethods(pybind11::module& m) {
         py::object obj = GetPyObjFromTensor(*ml_value, nullptr, nullptr);
 #endif
         return obj; })
-#ifdef ENABLE_TRAINING
+#if defined(ENABLE_DLPACK)
       .def("to_dlpack", [](OrtValue* ort_value) -> py::object { return py::reinterpret_steal<py::object>(ToDlpack(*ort_value)); },
            "Returns a DLPack representing the tensor. This method does not copy the pointer shape, "
            "instead, it copies the pointer value. The OrtValue must be persist until the dlpack structure "
@@ -373,7 +370,7 @@ void addOrtValueMethods(pybind11::module& m) {
       .def("push_back", [](std::vector<OrtValue>* v, const OrtValue& ortvalue) {
         v->push_back(ortvalue);
       })
-#ifdef ENABLE_TRAINING
+#if defined(ENABLE_DLPACK)
       .def("push_back", [](std::vector<OrtValue>* v, py::object dlpack_tensor, const bool is_bool_tensor) { v->push_back(FromDlpack(dlpack_tensor.ptr(), is_bool_tensor)); }, "Add a new OrtValue after being ownership was transferred from the DLPack structure.", py::arg("dlpack_tensor"), py::arg("is_bool_tensor") = false)
       .def("push_back_batch", [](std::vector<OrtValue>* v, std::vector<py::object>& torch_tensors, std::vector<int64_t>& data_ptrs, std::vector<py::object>& element_types, const std::vector<std::vector<int64_t>>& shapes, const std::vector<OrtDevice>& devices) {
             for (size_t i = 0; i < torch_tensors.size(); ++i) {
@@ -415,7 +412,7 @@ void addOrtValueMethods(pybind11::module& m) {
            "In case of a boolean tensor, method to_dlpacks returns a uint8 tensor instead of a boolean tensor. "
            "If torch consumes the dlpack structure, `.to(torch.bool)` must be applied to the torch tensor "
            "to get a boolean tensor.")
-#ifdef ENABLE_TRAINING
+#if defined(ENABLE_DLPACK)
       .def("dlpack_at", [](std::vector<OrtValue>* v, const size_t idx) { return py::reinterpret_steal<py::object>(ToDlpack(v->at(idx))); })
 #endif
       .def("element_type_at", [](std::vector<OrtValue>* v, const size_t idx) -> int32_t { return GetTensorProtoType(v->at(idx)); },
@@ -424,7 +421,7 @@ void addOrtValueMethods(pybind11::module& m) {
            "(such as onnx.TensorProto.FLOAT)."
            "Raises an exception in any other case.",
            py::arg("idx"))
-#ifdef ENABLE_TRAINING
+#if defined(ENABLE_DLPACK)
       .def("to_dlpacks", [](const std::vector<OrtValue>& v, py::object to_tensor) -> py::list {
             if (v.size() == 0)
               return py::list();
@@ -494,7 +491,7 @@ for every transferred tensor.
 #endif
       ;
 
-#ifdef ENABLE_TRAINING
+#if defined(ENABLE_DLPACK)
   m.def(
       "is_dlpack_uint8_tensor", [](py::capsule cap) -> bool {
         // case ONNX_NAMESPACE::TensorProto_DataType_BOOL:

@@ -93,39 +93,6 @@ Transpose8x8(uint8x8_t& v0, uint8x8_t& v1, uint8x8_t& v2, uint8x8_t& v3,
     v7 = vreinterpret_u8_u32(c3.val[1]);
 }
 
-MLAS_FORCEINLINE void
-Transpose4x8(float16x8_t& v0, float16x8_t& v1, float16x8_t& v2, float16x8_t& v3)
-{
-    // |v00|v01|v02|v03|v04|v05|v06|v07|
-    // |v10|v11|v12|v13|v14|v15|v16|v17|
-    // |v20|v21|v22|v23|v24|v25|v26|v27|
-    // |v30|v31|v32|v33|v34|v35|v36|v37|
-    //  =>
-    // |v00|v10|v20|v30|v04|v14|v24|v34|
-    // |v01|v11|v21|v31|v05|v15|v25|v35|
-    // |v02|v12|v22|v32|v06|v16|v26|v36|
-    // |v03|v13|v23|v33|v07|v17|v27|v37|
-    float16x8x2_t t01 = vtrnq_f16(v0, v1);
-    float16x8x2_t t23 = vtrnq_f16(v2, v3);
-
-    v0 = vreinterpretq_f16_f32(vtrn1q_f32(vreinterpretq_f32_f16(t01.val[0]), vreinterpretq_f32_f16(t23.val[0])));
-    v1 = vreinterpretq_f16_f32(vtrn1q_f32(vreinterpretq_f32_f16(t01.val[1]), vreinterpretq_f32_f16(t23.val[1])));
-    v2 = vreinterpretq_f16_f32(vtrn2q_f32(vreinterpretq_f32_f16(t01.val[0]), vreinterpretq_f32_f16(t23.val[0])));
-    v3 = vreinterpretq_f16_f32(vtrn2q_f32(vreinterpretq_f32_f16(t01.val[1]), vreinterpretq_f32_f16(t23.val[1])));
-}
-
-MLAS_FORCEINLINE void
-Transpose4x4(float16x4_t& v0, float16x4_t& v1, float16x4_t& v2, float16x4_t& v3)
-{
-    float16x4x2_t t01 = vtrn_f16(v0, v1);
-    float16x4x2_t t23 = vtrn_f16(v2, v3);
-
-    v0 = vreinterpret_f16_f32(vtrn1_f32(vreinterpret_f32_f16(t01.val[0]), vreinterpret_f32_f16(t23.val[0])));
-    v1 = vreinterpret_f16_f32(vtrn1_f32(vreinterpret_f32_f16(t01.val[1]), vreinterpret_f32_f16(t23.val[1])));
-    v2 = vreinterpret_f16_f32(vtrn2_f32(vreinterpret_f32_f16(t01.val[0]), vreinterpret_f32_f16(t23.val[0])));
-    v3 = vreinterpret_f16_f32(vtrn2_f32(vreinterpret_f32_f16(t01.val[1]), vreinterpret_f32_f16(t23.val[1])));
-}
-
 void
 HQ4BitGemmPackQuantBData_CompFp16(
     size_t N,

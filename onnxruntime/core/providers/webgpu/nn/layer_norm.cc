@@ -23,7 +23,7 @@ static size_t NormalizeAxis(int64_t axis, size_t tensor_rank) {
   if (axis < -rank && axis >= rank) {
     ORT_THROW("invalid axis: ", axis);
   }
-  return gsl::narrow<size_t>(axis < 0 ? axis + rank : axis);
+  return onnxruntime::narrow<size_t>(axis < 0 ? axis + rank : axis);
 }
 
 static std::string SumVector(std::string x, int components) {
@@ -85,18 +85,17 @@ Status LayerNorm<simplified>::ComputeInternal(onnxruntime::webgpu::ComputeContex
 
   auto* output = context.Output(0, x_shape);
 
-  size_t data_size = x_shape.Size();
-  if (data_size == 0) {
+  if (x_shape.Size() == 0) {
     return Status::OK();
   }
 
   const bool is_fp16 = x->GetElementType() == ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT16;
 
   const size_t axis = NormalizeAxis(axis_, x_shape.NumDimensions());
-  const uint32_t norm_count = gsl::narrow<uint32_t>(x_shape.SizeToDimension(axis));
+  const uint32_t norm_count = onnxruntime::narrow<uint32_t>(x_shape.SizeToDimension(axis));
   const int64_t norm_size = x_shape.SizeFromDimension(axis);
   const int components = GetMaxComponents(norm_size);
-  const uint32_t norm_size_vectorized = gsl::narrow<uint32_t>((norm_size + components - 1) / components);
+  const uint32_t norm_size_vectorized = onnxruntime::narrow<uint32_t>((norm_size + components - 1) / components);
 
   const auto scale_size = scale->Shape().Size();
   const auto bias_size = (bias) ? bias->Shape().Size() : 0;

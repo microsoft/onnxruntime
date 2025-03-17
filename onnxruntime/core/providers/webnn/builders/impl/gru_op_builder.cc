@@ -190,7 +190,7 @@ bool GruOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& initializers, c
 bool GruOpBuilder::HasSupportedInputsImpl(const InitializedTensorSet& /* initializers */, const Node& node,
                                           const emscripten::val& wnn_limits, const logging::Logger& logger) const {
   const auto& input_defs = node.InputDefs();
-  const auto& op_type = node.OpType();
+  const std::string_view op_type = node.OpType();
   int32_t input_X_type = 0;          // input data type
   int32_t input_W_type = 0;          // weight data type
   int32_t input_R_type = 0;          // recurrent weight data type
@@ -226,7 +226,7 @@ bool GruOpBuilder::HasSupportedOutputsImpl(const Node& node,
                                            const emscripten::val& wnn_limits,
                                            const logging::Logger& logger) const {
   const auto& output_defs = node.OutputDefs();
-  const auto& op_type = node.OpType();
+  const std::string_view op_type = node.OpType();
   int32_t Y_type = 0;
   int32_t Y_h_type = 0;
   bool has_Y = TensorExists(output_defs, 0);

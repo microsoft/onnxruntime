@@ -2,7 +2,7 @@ parameters:
 - name: QnnSdk
   displayName: QNN SDK Version
   type: string
-  default: 2.28.2.241116
+  default: 2.31.0.250130
 
 - name: build_config
   displayName: Build Configuration
@@ -29,108 +29,58 @@ parameters:
   displayName: Pipeline BuildId, you could find it in the URL
   type: string
   default: '0'
-
-stages:
-
-- template: templates/qnn-ep-win.yml
+resources:
+  repositories:
+  - repository: 1esPipelines
+    type: git
+    name: 1ESPipelineTemplates/1ESPipelineTemplates
+    ref: refs/tags/release
+extends:
+  # The pipeline extends the 1ES PT which will inject different SDL and compliance tasks.
+  # For non-production pipelines, use "Unofficial" as defined below.
+  # For productions pipelines, use "Official".
+  template: v1/1ES.Official.PipelineTemplate.yml@1esPipelines
   parameters:
-    qnn_ep_build_pool_name: 'Onnxruntime-QNNEP-Windows-2022-CPU'
-    QnnSdk: ${{ parameters.QnnSdk }}
-    IsReleaseBuild: ${{ parameters.IsReleaseBuild }}
-    DoEsrp: ${{ parameters.DoEsrp }}
-    ArtifactName: 'drop-nuget-qnn-x64'
-    StageName: 'OnnxRuntime_QNN_Nuget_Win_x64'
-    build_config: ${{ parameters.build_config }}
+    sdl:
+      sourceAnalysisPool:
+        name: onnxruntime-Win-CPU-2022
+        os: windows
+    stages:
 
-- template: templates/qnn-ep-win.yml
-  parameters:
-    qnn_ep_build_pool_name: 'Onnxruntime-QNNEP-Windows-2022-CPU'
-    QnnSdk: ${{ parameters.QnnSdk }}
-    IsReleaseBuild: ${{ parameters.IsReleaseBuild }}
-    DoEsrp: ${{ parameters.DoEsrp }}
-    ArtifactName: 'drop-nuget-qnn-arm64'
-    buildParameter: '--arm64'
-    buildPlatform: 'ARM64'
-    buildArch: 'ARM64'
-    StageName: 'OnnxRuntime_QNN_Nuget_Win_Arm64'
-    build_config: ${{ parameters.build_config }}
-
-- stage: NuGet_Packaging_QNN
-  pool: 'Onnxruntime-QNNEP-Windows-2022-CPU'
-  dependsOn:
-  - OnnxRuntime_QNN_Nuget_Win_x64
-  - OnnxRuntime_QNN_Nuget_Win_Arm64
-  condition: succeeded()
-  jobs:
-  - job: NuGet_Packaging_QNN
-    workspace:
-      clean: all
-    steps:
-    - task: DownloadPipelineArtifact@0
-      displayName: 'Download Pipeline Artifact - QNN NuGet x64'
-      inputs:
-        artifactName: 'drop-nuget-qnn-x64'
-        targetPath: '$(Build.BinariesDirectory)/nuget-artifact-x64'
-
-    - task: DownloadPipelineArtifact@0
-      displayName: 'Download Pipeline Artifact - QNN NuGet arm64'
-      inputs:
-        artifactName: 'drop-nuget-qnn-arm64'
-        targetPath: '$(Build.BinariesDirectory)/nuget-artifact-arm64'
-
-    - task: PowerShell@2
-      displayName: 'Bundle NuGet'
-      inputs:
-        targetType: 'inline'
-        script: |
-
-          $x64_nupkgs = (Get-ChildItem $(Build.BinariesDirectory)/nuget-artifact-x64 -Filter Microsoft.ML.OnnxRuntime.QNN*.nupkg -Recurse)
-          $nuget_package_name = $x64_nupkgs[0].Name
-          $x64_nuget_package = $x64_nupkgs[0].FullName
-
-          $nupkg_unzipped_directory = [System.IO.Path]::Combine($Env:BUILD_ARTIFACTSTAGINGDIRECTORY, 'nuget_unzip_merged', [System.IO.Path]::GetFileNameWithoutExtension($nuget_package_name))
-
-          $x64_unzip_cmd = "7z.exe x $x64_nuget_package -y -o$nupkg_unzipped_directory"
-          Invoke-Expression -Command $x64_unzip_cmd
-
-          $arm64_nupkgs = (Get-ChildItem $(Build.BinariesDirectory)/nuget-artifact-arm64 -Filter Microsoft.ML.OnnxRuntime.QNN*.nupkg -Recurse)
-          $arm64_nuget_package = $arm64_nupkgs[0].FullName
-
-          $arm64_unzip_cmd = "7z.exe x $arm64_nuget_package -y -o$nupkg_unzipped_directory"
-          Invoke-Expression -Command $arm64_unzip_cmd
-
-          $merged_nuget_path = [System.IO.Path]::Combine($Env:BUILD_ARTIFACTSTAGINGDIRECTORY, 'nuget-artifact-merged')
-          if (!(Test-Path $merged_nuget_path)) {
-              New-Item -Path $merged_nuget_path -ItemType Directory
-          }
-
-          $merged_zip = [System.IO.Path]::Combine($merged_nuget_path, 'qnn_nuget.zip')
-          $zip_cmd = "7z.exe a -r $merged_zip $nupkg_unzipped_directory/*"
-          Invoke-Expression -Command $zip_cmd
-
-          $merged_nuget = [System.IO.Path]::Combine($merged_nuget_path, $nuget_package_name)
-          move $merged_zip $merged_nuget
-        workingDirectory: $(Build.BinariesDirectory)
-
-    - template: templates/esrp_nuget.yml
+    - template: templates/qnn-ep-win.yml
       parameters:
-        DisplayName: 'ESRP - sign NuGet package'
-        FolderPath: '$(Build.ArtifactStagingDirectory)/nuget-artifact-merged'
+        qnn_ep_build_pool_name: 'Onnxruntime-QNNEP-Windows-2022-CPU'
+        QnnSdk: ${{ parameters.QnnSdk }}
+        IsReleaseBuild: ${{ parameters.IsReleaseBuild }}
+        DoEsrp: ${{ parameters.DoEsrp }}
+        ArtifactName: 'drop-nuget-qnn-x64'
+        StageName: 'OnnxRuntime_QNN_Nuget_Win_x64'
+        build_config: ${{ parameters.build_config }}
+
+    - template: templates/qnn-ep-win.yml
+      parameters:
+        qnn_ep_build_pool_name: 'Onnxruntime-QNNEP-Windows-2022-CPU'
+        QnnSdk: ${{ parameters.QnnSdk }}
+        IsReleaseBuild: ${{ parameters.IsReleaseBuild }}
+        DoEsrp: ${{ parameters.DoEsrp }}
+        ArtifactName: 'drop-nuget-qnn-arm64'
+        buildParameter: '--arm64'
+        buildPlatform: 'ARM64'
+        buildArch: 'ARM64'
+        StageName: 'OnnxRuntime_QNN_Nuget_Win_Arm64'
+        build_config: ${{ parameters.build_config }}
+
+    - template: stages/nuget-qnn-packaging-stage.yml
+      parameters:
         DoEsrp: ${{ parameters.DoEsrp }}
 
-    - task: PublishPipelineArtifact@0
-      displayName: 'Publish Pipeline NuGet Artifact'
-      inputs:
-        artifactName: 'drop-signed-nuget-qnn'
-        targetPath: '$(Build.ArtifactStagingDirectory)/nuget-artifact-merged'
-
-- template: templates/publish-nuget-steps.yml
-  parameters:
-    download_artifacts_steps:
-      - template: templates/flex-downloadPipelineArtifact.yml
-        parameters:
-          StepName: 'Download Pipeline Artifact - Signed NuGet Qnn Package'
-          ArtifactName: 'drop-signed-nuget-qnn'
-          targetPath: '$(Build.BinariesDirectory)/nuget-artifact/final-package'
-          SpecificArtifact: ${{ parameters.specificArtifact }}
-          BuildId: ${{ parameters.BuildId }}
+    - template: templates/publish-nuget-steps.yml
+      parameters:
+        download_artifacts_steps:
+        - template: templates/flex-downloadPipelineArtifact.yml
+          parameters:
+            StepName: 'Download Pipeline Artifact - Signed NuGet Qnn Package'
+            ArtifactName: 'drop-signed-nuget-qnn'
+            targetPath: '$(Build.BinariesDirectory)/nuget-artifact/final-package'
+            SpecificArtifact: ${{ parameters.specificArtifact }}
+            BuildId: ${{ parameters.BuildId }}

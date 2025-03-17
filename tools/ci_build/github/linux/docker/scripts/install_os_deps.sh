@@ -70,18 +70,18 @@ if [[ $SYS_LONG_BIT = "64" && "$GLIBC_VERSION" -gt "9" ]]; then
   tar --strip 1 -xf /tmp/azcopy/azcopy.tar.gz -C /tmp/azcopy
   cp /tmp/azcopy/azcopy /usr/bin
   echo "Installing cmake"
-  GetFile https://github.com/Kitware/CMake/releases/download/v3.30.1/cmake-3.30.1-Linux-x86_64.tar.gz /tmp/src/cmake-3.30.1-Linux-x86_64.tar.gz
-  tar -zxf /tmp/src/cmake-3.30.1-Linux-x86_64.tar.gz --strip=1 -C /usr
+  GetFile https://github.com/Kitware/CMake/releases/download/v3.31.5/cmake-3.31.5-Linux-x86_64.tar.gz /tmp/src/cmake-3.31.5-Linux-x86_64.tar.gz
+  tar -zxf /tmp/src/cmake-3.31.5-Linux-x86_64.tar.gz --strip=1 -C /usr
   echo "Installing Node.js"
   # The EOL for nodejs v18.17.1 LTS is April 2025
   GetFile https://nodejs.org/dist/v18.17.1/node-v18.17.1-linux-x64.tar.xz /tmp/src/node-v18.17.1-linux-x64.tar.xz
   tar -xf /tmp/src/node-v18.17.1-linux-x64.tar.xz --strip=1 -C /usr
 else
   echo "Installing cmake"
-  GetFile https://github.com/Kitware/CMake/releases/download/v3.30.1/cmake-3.30.1.tar.gz /tmp/src/cmake-3.30.1.tar.gz
-  tar -xf /tmp/src/cmake-3.30.1.tar.gz -C /tmp/src
+  GetFile https://github.com/Kitware/CMake/releases/download/v3.31.5/cmake-3.31.5.tar.gz /tmp/src/cmake-3.31.5.tar.gz
+  tar -xf /tmp/src/cmake-3.31.5.tar.gz -C /tmp/src
   pushd .
-  cd /tmp/src/cmake-3.30.1
+  cd /tmp/src/cmake-3.31.5
   ./bootstrap --prefix=/usr --parallel=$(getconf _NPROCESSORS_ONLN) --system-bzip2 --system-curl --system-zlib --system-expat
   make -j$(getconf _NPROCESSORS_ONLN)
   make install

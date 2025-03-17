@@ -28,7 +28,9 @@ class VitisAIExecutionProvider : public IExecutionProvider {
   ~VitisAIExecutionProvider() = default;
 
   std::vector<std::unique_ptr<ComputeCapability>> GetCapability(const onnxruntime::GraphViewer& graph_viewer,
-                                                                const IKernelLookup& /*kernel_lookup*/) const override;
+                                                                const IKernelLookup& /*kernel_lookup*/,
+                                                                const GraphOptimizerRegistry& /* graph_optimizer_registry */,
+                                                                IResourceAccountant* /* resource_accountant */) const override;
 
   int GetDeviceId() const { return 0; }
   common::Status OnRunStart(const onnxruntime::RunOptions& /*run_options*/) override;
