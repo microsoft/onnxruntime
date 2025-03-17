@@ -38,11 +38,10 @@ endif()
 
 # onnxruntime-extensions
 if (NOT onnxruntime_EXTENSIONS_OVERRIDDEN)
-  onnxruntime_fetchcontent_declare(
+  FetchContent_Declare(
     extensions
     URL ${DEP_URL_extensions}
     URL_HASH SHA1=${DEP_SHA1_extensions}
-    EXCLUDE_FROM_ALL
   )
   onnxruntime_fetchcontent_makeavailable(extensions)
 else()

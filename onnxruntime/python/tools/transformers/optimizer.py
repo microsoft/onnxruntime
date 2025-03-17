@@ -536,7 +536,7 @@ def _parse_arguments():
         "--disable_symbolic_shape_infer",
         required=False,
         action="store_true",
-        help="disable symbolic shape inference",
+        help="diable symbolic shape inference",
     )
     parser.set_defaults(disable_symbolic_shape_infer=False)
 
@@ -547,14 +547,6 @@ def _parse_arguments():
         help="convert the model to packing mode. Only available for BERT like model",
     )
     parser.set_defaults(convert_to_packing_mode=False)
-
-    parser.add_argument(
-        "--convert_attribute",
-        required=False,
-        action="store_true",
-        help="convert attributes when using a rewritten ONNX model (e.g. Dynamo-exported model from ONNX Script)",
-    )
-    parser.set_defaults(convert_attribute=False)
 
     args = parser.parse_args()
 
@@ -616,7 +608,7 @@ def main():
         else:
             logger.warning("Packing mode only supports BERT like models")
 
-    optimizer.save_model_to_file(args.output, args.use_external_data_format, convert_attribute=args.convert_attribute)
+    optimizer.save_model_to_file(args.output, args.use_external_data_format)
 
 
 if __name__ == "__main__":

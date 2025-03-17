@@ -1,5 +1,5 @@
 'use strict';
-const ort = require('onnxruntime-node');
+const ort = require('onnxruntime');
 
 // use an async context to call onnxruntime functions.
 async function main() {

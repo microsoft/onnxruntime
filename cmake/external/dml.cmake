@@ -100,11 +100,10 @@ else()
   endif()
 endif()
 
-onnxruntime_fetchcontent_declare(
+FetchContent_Declare(
     directx_headers
     URL ${DEP_URL_directx_headers}
     URL_HASH SHA1=${DEP_SHA1_directx_headers}
-    EXCLUDE_FROM_ALL
 )
 
 FetchContent_Populate(directx_headers)

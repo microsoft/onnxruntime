@@ -143,89 +143,61 @@ class FusionAttentionClip(FusionAttention):
             [1 - skip_input_index, None, None, 0, 0, 0],
         )
         if qkv_nodes is None:
-            qkv_nodes = self.model.match_parent_path(
-                normalize_node,
-                ["Add", "MatMul", "Reshape", "Transpose", "MatMul"],
-                [1, 1, 0, 0, 0],
-            )
-            if qkv_nodes is None:
-                logger.debug("fuse_attention: failed to match qkv path")
-                return
+            return
 
-        reshape_qkv, transpose_qkv, matmul_qkv = qkv_nodes[2], qkv_nodes[3], qkv_nodes[-1]
+        (_, _, reshape_qkv, transpose_qkv, _, matmul_qkv) = qkv_nodes
 
         v_nodes = self.model.match_parent_path(
             matmul_qkv, ["Reshape", "Transpose", "Reshape", "Add", "MatMul"], [1, 0, 0, 0, None]
         )
         if v_nodes is None:
-            v_nodes = self.model.match_parent_path(matmul_qkv, ["Transpose", "Reshape", "Add", "MatMul"], [1, 0, 0, 1])
-            if v_nodes is None:
-                logger.debug("fuse_attention: failed to match v path")
-                return
+            logger.debug("fuse_attention: failed to match v path")
+            return
+        (_, _, reshape_v, add_v, matmul_v) = v_nodes
 
-        add_v, matmul_v = v_nodes[-2], v_nodes[-1]
-
-        causal_mask_input_index = None
         add_mask = None
         add_mask_indices = []
-        qk_nodes = self.model.match_parent_path(
+        qk_nodes = None
+        qk_nodes_1 = self.model.match_parent_path(
             matmul_qkv,
             ["Softmax", "Reshape", "Add", "Reshape", "MatMul"],
             [0, 0, 0, None, 0],
             return_indice=add_mask_indices,
         )
-        if qk_nodes is None:
-            qk_nodes = self.model.match_parent_path(
-                matmul_qkv,
-                ["Softmax", "MatMul"],
-                [0, 0],
-            )
-            if qk_nodes is None:
-                qk_nodes = self.model.match_parent_path(matmul_qkv, ["Softmax", "Add", "Mul", "MatMul"], [0, 0, 0, 0])
-                if qk_nodes is None:
-                    qk_nodes = self.model.match_parent_path(
-                        matmul_qkv, ["Cast", "Cast", "Softmax", "Add", "Mul", "MatMul"], [0, 0, 0, 0, 0, 0]
-                    )
-                    if qk_nodes is None:
-                        logger.debug("fuse_attention: failed to match qk path")
-                        return
-                    else:
-                        add_mask = qk_nodes[3]
-                else:
-                    add_mask = qk_nodes[1]
-        else:
+        qk_nodes_2 = self.model.match_parent_path(
+            matmul_qkv,
+            ["Softmax", "MatMul"],
+            [0, 0],
+        )
+        if qk_nodes_1 is not None:
+            qk_nodes = qk_nodes_1
             assert len(add_mask_indices) == 1
             causal_mask_input_index = 1 - add_mask_indices[0]
-            add_mask = qk_nodes[2]
 
-        matmul_qk = qk_nodes[-1]
+            (_softmax_qk, _, add_mask, _, matmul_qk) = qk_nodes
+        elif qk_nodes_2 is not None:
+            qk_nodes = qk_nodes_2
+            (_softmax_qk, matmul_qk) = qk_nodes
+        else:
+            logger.debug("fuse_attention: failed to match qk path")
+            return
 
         q_nodes = self.model.match_parent_path(
             matmul_qk, ["Reshape", "Transpose", "Reshape", "Mul", "Add", "MatMul"], [0, 0, 0, 0, None, None]
         )
         if q_nodes is None:
-            q_nodes = self.model.match_parent_path(matmul_qk, ["Transpose", "Reshape", "Add", "MatMul"], [0, 0, 0, 1])
-            if q_nodes is None:
-                logger.debug("fuse_attention: failed to match q path")
-                return
-
-            reshape_q = q_nodes[1]
-        else:
-            reshape_q = q_nodes[2]
-
-        add_q, matmul_q = q_nodes[-2], q_nodes[-1]
+            logger.debug("fuse_attention: failed to match q path")
+            return
+        (_, _transpose_q, reshape_q, mul_q, add_q, matmul_q) = q_nodes
 
         k_nodes = self.model.match_parent_path(
             matmul_qk, ["Transpose", "Reshape", "Transpose", "Reshape", "Add", "MatMul"], [1, 0, 0, 0, 0, None]
         )
         if k_nodes is None:
-            k_nodes = self.model.match_parent_path(matmul_qk, ["Transpose", "Reshape", "Add", "MatMul"], [1, 0, 0, 1])
-            if k_nodes is None:
-                logger.debug("fuse_attention: failed to match k path")
-                return
+            logger.debug("fuse_attention: failed to match k path")
+            return
 
-        add_k, matmul_k = k_nodes[-2], k_nodes[-1]
-
+        (_transpose_k, _reshape_k, _, _, add_k, matmul_k) = k_nodes
         if matmul_q.input[0] != root_input or matmul_k.input[0] != root_input or matmul_v.input[0] != root_input:
             logger.debug("fuse_attention: expect to have same input to q, k and v matmul")
             return
@@ -237,31 +209,22 @@ class FusionAttentionClip(FusionAttention):
 
         attention_last_node = reshape_qkv
 
-        add_qk = ""
         if add_mask is not None:
-            # 4D Add after Q x K'
-            add_qk_nodes = self.model.match_parent_path(
+            # Here we do not match the whole subgraph since it is very complex. Instead, we just check whether a key path
+            # of computing causal mask.
+            causal_mask_nodes = self.model.match_parent_path(
                 add_mask,
-                ["Where", "Sub", "Cast", "Expand", "Unsqueeze", "Unsqueeze", "Reshape", "Reshape", "Cast"],
-                [1, 2, 1, 0, 0, 0, 0, 0, 0],
+                ["Concat", "Expand", "Unsqueeze", "Unsqueeze", "Where", "Less"],
+                [causal_mask_input_index, 0, 0, 0, 0, 0],
             )
-            if add_qk_nodes is not None:
-                add_qk = add_mask.input[1]
-            else:
-                # Here we do not match the whole subgraph since it is very complex. Instead, we just check whether a key path
-                # of computing causal mask.
-                causal_mask_nodes_1 = self.model.match_parent_path(
-                    add_mask,
-                    ["Concat", "Expand", "Unsqueeze", "Unsqueeze", "Where", "Less"],
-                    [causal_mask_input_index, 0, 0, 0, 0, 0],
-                )
+            if causal_mask_nodes is None:
                 # If the model is exported with batch_size == 1, there is no Concat node
-                causal_mask_nodes_2 = self.model.match_parent_path(
+                causal_mask_nodes = self.model.match_parent_path(
                     add_mask,
                     ["Expand", "Unsqueeze", "Unsqueeze", "Where", "Less"],
                     [causal_mask_input_index, 0, 0, 0, 0],
                 )
-                if causal_mask_nodes_1 is None and causal_mask_nodes_2 is None:
+                if causal_mask_nodes is None:
                     logger.debug("fuse_attention: failed to match causal mask subgraph")
                     return
 
@@ -277,18 +240,17 @@ class FusionAttentionClip(FusionAttention):
             hidden_size=hidden_size,
             first_input=root_input,
             output=attention_last_node.output[0],
-            add_qk_str=add_qk,
+            add_qk_str="",
             scale=None,
             causal=(add_mask is not None),
         )
         if new_node is None:
-            logger.debug("fuse_attention: failed to create fused node")
             return
 
         self.nodes_to_add.append(new_node)
         self.node_name_to_graph_name[new_node.name] = self.this_graph_name
+
         self.nodes_to_remove.extend([attention_last_node, transpose_qkv])
-        self.increase_counter(new_node.op_type)
 
         # Use prune graph to remove nodes since they are shared by all attention nodes.
         self.prune_graph = True

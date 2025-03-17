@@ -1,9 +1,8 @@
 include(FetchContent)
-onnxruntime_fetchcontent_declare(
+FetchContent_Declare(
   cutlass
   URL ${DEP_URL_cutlass}
   URL_HASH SHA1=${DEP_SHA1_cutlass}
-  EXCLUDE_FROM_ALL
 )
 
 FetchContent_GetProperties(cutlass)

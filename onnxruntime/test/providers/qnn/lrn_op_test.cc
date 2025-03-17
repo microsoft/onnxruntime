@@ -70,7 +70,6 @@ static void RunCPULRNOpTest(const TestInputDef<float>& input_def, int64_t size,
   provider_options["backend_path"] = "libQnnCpu.so";
   fp32_abs_err = 1.5e-5f;  // On linux we need slightly larger tolerance.
 #endif
-  provider_options["offload_graph_io_quantization"] = "0";
 
   RunQnnModelTest(BuildLRNTestCase(input_def, size, alpha, beta, bias),
                   provider_options,
@@ -92,7 +91,6 @@ static void RunQDQLRNOpTest(const TestInputDef<float>& input_def, int64_t size,
 #else
   provider_options["backend_path"] = "libQnnHtp.so";
 #endif
-  provider_options["offload_graph_io_quantization"] = "0";
 
   TestQDQModelAccuracy(BuildLRNTestCase(input_def, size, alpha, beta, bias),
                        BuildQDQLRNTestCase<QuantType>(input_def, size, alpha, beta, bias),

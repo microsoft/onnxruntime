@@ -453,14 +453,14 @@ export const releaseSession = (sessionId: number): void => {
   activeSessions.delete(sessionId);
 };
 
-export const prepareInputOutputTensor = async (
+export const prepareInputOutputTensor = (
   tensor: TensorMetadata | null,
   tensorHandles: number[],
   allocs: number[],
   sessionId: number,
   index: number,
   enableGraphCapture = false,
-): Promise<void> => {
+): void => {
   if (!tensor) {
     tensorHandles.push(0);
     return;
@@ -472,7 +472,6 @@ export const prepareInputOutputTensor = async (
   const dataType = tensor[0];
   const dims = tensor[1];
   const location = tensor[3];
-  let actualLocation = location;
 
   let rawData: number;
   let dataByteLength: number;
@@ -504,7 +503,7 @@ export const prepareInputOutputTensor = async (
     if (!registerMLTensor) {
       throw new Error('Tensor location "ml-tensor" is not supported without using WebNN.');
     }
-    rawData = registerMLTensor(sessionId, mlTensor, tensorDataTypeStringToEnum(dataType), dims);
+    rawData = registerMLTensor(mlTensor, tensorDataTypeStringToEnum(dataType), dims);
   } else {
     const data = tensor[2];
 
@@ -520,35 +519,10 @@ export const prepareInputOutputTensor = async (
         wasm.setValue(rawData + i * ptrSize, allocWasmString(data[i], allocs), '*');
       }
     } else {
-      const isGraphInput = wasm.jsepIsGraphInput;
-      if (dataType !== 'string' && isGraphInput) {
-        const tensorNameUTF8 = wasm._OrtGetInputName(sessionId, index);
-        const tensorName = wasm.UTF8ToString(tensorNameUTF8);
-        // Promote the tensor to 'ml-tensor' if it is a graph input.
-        if (isGraphInput(sessionId, tensorName)) {
-          const dataTypeEnum = tensorDataTypeStringToEnum(dataType);
-          dataByteLength = calculateTensorSizeInBytes(dataTypeEnum, dims)!;
-          actualLocation = 'ml-tensor';
-          const createTemporaryTensor = wasm.jsepCreateTemporaryTensor;
-          const uploadTensor = wasm.jsepUploadTensor;
-          if (!createTemporaryTensor || !uploadTensor) {
-            throw new Error('Tensor location "ml-tensor" is not supported without using WebNN.');
-          }
-          const tensorId = await createTemporaryTensor(sessionId, dataTypeEnum, dims as number[]);
-          uploadTensor(tensorId, new Uint8Array(data.buffer, data.byteOffset, data.byteLength));
-          rawData = tensorId;
-        } else {
-          dataByteLength = data.byteLength;
-          rawData = wasm._malloc(dataByteLength);
-          allocs.push(rawData);
-          wasm.HEAPU8.set(new Uint8Array(data.buffer, data.byteOffset, dataByteLength), rawData);
-        }
-      } else {
-        dataByteLength = data.byteLength;
-        rawData = wasm._malloc(dataByteLength);
-        allocs.push(rawData);
-        wasm.HEAPU8.set(new Uint8Array(data.buffer, data.byteOffset, dataByteLength), rawData);
-      }
+      dataByteLength = data.byteLength;
+      rawData = wasm._malloc(dataByteLength);
+      allocs.push(rawData);
+      wasm.HEAPU8.set(new Uint8Array(data.buffer, data.byteOffset, dataByteLength), rawData);
     }
   }
 
@@ -562,7 +536,7 @@ export const prepareInputOutputTensor = async (
       dataByteLength,
       dimsOffset,
       dims.length,
-      dataLocationStringToEnum(actualLocation),
+      dataLocationStringToEnum(location),
     );
     if (tensor === 0) {
       checkLastError(`Can't create tensor for input/output. session=${sessionId}, index=${index}.`);
@@ -614,11 +588,14 @@ export const run = async (
   const outputNamesOffset = wasm.stackAlloc(outputCount * ptrSize);
 
   try {
+    // WebNN backend needs the active session to check MLTensors with the current context.
+    wasm.jsepOnRunStart?.(sessionHandle);
+
     [runOptionsHandle, runOptionsAllocs] = setRunOptions(options);
 
     // create input tensors
     for (let i = 0; i < inputCount; i++) {
-      await prepareInputOutputTensor(
+      prepareInputOutputTensor(
         inputTensors[i],
         inputTensorHandles,
         inputOutputAllocs,
@@ -630,7 +607,7 @@ export const run = async (
 
     // create output tensors
     for (let i = 0; i < outputCount; i++) {
-      await prepareInputOutputTensor(
+      prepareInputOutputTensor(
         outputTensors[i],
         outputTensorHandles,
         inputOutputAllocs,
@@ -700,8 +677,6 @@ export const run = async (
         true,
       ]);
     }
-
-    wasm.jsepOnRunStart?.(sessionHandle);
 
     let errorCode: number;
     if (!BUILD_DEFS.DISABLE_JSEP && ioBindingState) {
@@ -831,7 +806,7 @@ export const run = async (
             // If the graph has been partitioned, the output tensor may have not been created. For this reason, we use
             // ensureTensor to get/create the MLTensor. In which case, we don't need to copy the data if a new tensor
             // has been created.
-            const mlTensor = await ensureTensor(sessionId, dataOffset, dataType, dims, false);
+            const mlTensor = await ensureTensor(dataOffset, dataType, dims, false);
 
             // do not release the tensor right now. it will be released when user calls tensor.dispose().
             keepOutputTensor = true;
@@ -866,7 +841,6 @@ export const run = async (
         if (!keepOutputTensor) {
           wasm._OrtReleaseTensor(tensor);
         }
-        wasm.jsepOnRunEnd?.(sessionHandle);
       }
     }
 

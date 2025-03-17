@@ -2,10 +2,12 @@
 // Licensed under the MIT License.
 
 import { Attribute } from './attribute';
-import * as ortFbs from './ort-schema/flatbuffers/ort-generated';
+import { onnxruntime } from './ort-schema/flatbuffers/ort-generated';
 import { onnx } from './ort-schema/protobuf/onnx';
 import { Tensor } from './tensor';
 import { LongUtil, MAX_CLIP, MIN_CLIP, ProtoUtil } from './util';
+
+import ortFbs = onnxruntime.experimental.fbs;
 
 export declare namespace Graph {
   export interface Shape {

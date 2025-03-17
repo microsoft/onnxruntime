@@ -1,5 +1,5 @@
 'use strict';
-const Tensor = require('onnxruntime-node').Tensor;
+const Tensor = require('onnxruntime').Tensor;
 
 //
 // create a [2x3x4] float tensor

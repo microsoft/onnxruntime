@@ -1,13 +1,15 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-import * as flatbuffers from 'flatbuffers';
+import { flatbuffers } from 'flatbuffers';
 
 import { Graph } from './graph';
 import { OpSet } from './opset';
-import * as ortFbs from './ort-schema/flatbuffers/ort-generated';
+import { onnxruntime } from './ort-schema/flatbuffers/ort-generated';
 import { onnx } from './ort-schema/protobuf/onnx';
 import { LongUtil } from './util';
+
+import ortFbs = onnxruntime.experimental.fbs;
 
 export class Model {
   // empty model

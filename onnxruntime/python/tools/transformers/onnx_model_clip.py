@@ -24,7 +24,6 @@ class ClipOnnxModel(BertOnnxModel):
         op_count = {}
         ops = [
             "Attention",
-            "FastGelu",
             "Gelu",
             "LayerNormalization",
             "QuickGelu",

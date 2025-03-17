@@ -25,14 +25,10 @@ namespace onnxruntime {
 namespace contrib {
 namespace cuda {
 class CUDA_MS_OP_TYPED_CLASS_NAME(1, float, GridSample);
-
 class CUDA_MS_OP_TYPED_CLASS_NAME(1, float, FastGelu);
-class CUDA_MS_OP_TYPED_CLASS_NAME(1, double, FastGelu);
 class CUDA_MS_OP_TYPED_CLASS_NAME(1, MLFloat16, FastGelu);
-class CUDA_MS_OP_TYPED_CLASS_NAME(1, BFloat16, FastGelu);
 class CUDA_MS_OP_TYPED_CLASS_NAME(1, float, Gelu);
 class CUDA_MS_OP_TYPED_CLASS_NAME(1, double, Gelu);
-class CUDA_MS_OP_TYPED_CLASS_NAME(1, BFloat16, Gelu);
 class CUDA_MS_OP_TYPED_CLASS_NAME(1, MLFloat16, Gelu);
 class CUDA_MS_OP_CLASS_NAME(1, BiasGelu);
 class CUDA_MS_OP_TYPED_CLASS_NAME(1, MLFloat16, BiasSplitGelu);
@@ -158,6 +154,7 @@ class CUDA_MS_OP_TYPED_CLASS_NAME(1, uint8_t_MLFloat16, DequantizeLinear);
 class CUDA_MS_OP_TYPED_CLASS_NAME(1, float_int8_t, QAttention);
 class CUDA_MS_OP_TYPED_CLASS_NAME(1, MLFloat16_int8_t, QAttention);
 class CUDA_MS_OP_TYPED_CLASS_NAME(1, float, FusedConv);
+class CUDA_MS_OP_TYPED_CLASS_NAME(1, BFloat16, FastGelu);
 class CUDA_MS_OP_TYPED_CLASS_NAME(1, BFloat16, TransposeMatMul);  // backward compatibility
 class CUDA_MS_OP_TYPED_CLASS_NAME(1, BFloat16, FusedMatMul);
 class CUDA_MS_OP_CLASS_NAME(1, QOrderedMatMul);
@@ -237,13 +234,10 @@ Status RegisterCudaContribKernels(KernelRegistry& kernel_registry) {
       BuildKernelCreateInfo<void>,  // default entry to avoid the list become empty after ops-reducing
       BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, float, GridSample)>,
       BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, float, FastGelu)>,
-      BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, double, FastGelu)>,
       BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, MLFloat16, FastGelu)>,
-      BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, BFloat16, FastGelu)>,
       BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, float, Gelu)>,
       BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, double, Gelu)>,
       BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, MLFloat16, Gelu)>,
-      BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, BFloat16, Gelu)>,
       BuildKernelCreateInfo<CUDA_MS_OP_CLASS_NAME(1, BiasGelu)>,
       BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, MLFloat16, BiasSplitGelu)>,
       BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, float, BiasSplitGelu)>,
@@ -368,6 +362,7 @@ Status RegisterCudaContribKernels(KernelRegistry& kernel_registry) {
       BuildKernelCreateInfo<CUDA_MS_OP_CLASS_NAME(1, UnfoldTensor)>,
       BuildKernelCreateInfo<CUDA_MS_OP_CLASS_NAME(1, DynamicTimeWarping)>,
       BuildKernelCreateInfo<CUDA_MS_OP_CLASS_NAME(1, Trilu)>,
+      BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, BFloat16, FastGelu)>,
       // TransposedMatMul is still here for backward compatibility
       BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, BFloat16, TransposeMatMul)>,  // backward compatibility
       BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, BFloat16, FusedMatMul)>,

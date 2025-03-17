@@ -1347,7 +1347,6 @@
       "concat_zero-sized.jsonc",
       "cast.jsonc",
       "conv.jsonc",
-      "conv-transpose.jsonc",
       "conv1d.jsonc",
       "conv3dncdhw.jsonc",
       "cos.jsonc",

@@ -166,7 +166,6 @@ class SymbolicShapeInference:
             "Range": self._infer_Range,
             "Reciprocal": self._pass_on_shape_and_type,
             "ReduceSum": self._infer_ReduceSum,
-            "ReduceMean": self._infer_ReduceMean,
             "ReduceProd": self._infer_ReduceProd,
             "Reshape": self._infer_Reshape,
             "Resize": self._infer_Resize,
@@ -206,7 +205,6 @@ class SymbolicShapeInference:
             "GemmFastGelu": self._infer_GemmFastGelu,
             "GemmFloat8": self._infer_GemmFloat8,
             "GroupNorm": self._infer_GroupNorm,
-            "GroupNormalization": self._infer_GroupNorm,
             "GroupQueryAttention": self._infer_GroupQueryAttention,
             "LayerNormalization": self._infer_LayerNormalization,
             "LongformerAttention": self._infer_LongformerAttention,
@@ -476,7 +474,6 @@ class SymbolicShapeInference:
             "PythonOp",
             "MultiHeadAttention",
             "GroupNorm",
-            "GroupNormalization",
             "GroupQueryAttention",
             "SparseAttention",
             "SkipGroupNorm",
@@ -1603,11 +1600,6 @@ class SymbolicShapeInference:
                         output_shape,
                     )
                 )
-
-    def _infer_ReduceMean(self, node):  # noqa: N802
-        if get_opset(self.out_mp_) >= 18:
-            # reduce mean spec 18+ is same as reduce sum spec 13+
-            self._infer_ReduceSum(node)
 
     def _infer_ReduceProd(self, node):  # noqa: N802
         axes = get_attribute(node, "axes")

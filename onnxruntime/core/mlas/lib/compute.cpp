@@ -20,7 +20,6 @@ Abstract:
 --*/
 
 #include "mlasi.h"
-#include "softmax.h"
 
 //
 // Bundles the constants for use by kernels written in assembly.
@@ -69,13 +68,12 @@ MLAS_INTERNAL_DATA const float MlasMinimumF32Value = std::numeric_limits<float>:
 // threads.
 //
 
-template <typename T>
 struct MLAS_SOFTMAX_WORK_BLOCK {
     ptrdiff_t ThreadCountN;
     bool LogSoftmax;
     bool SmoothSoftmax;
-    const T* Input;
-    T* Output;
+    const float* Input;
+    float* Output;
     size_t N;
     size_t D;
 };
@@ -246,10 +244,9 @@ Return Value:
     }
 }
 
-template <>
 void
 MLASCALL
-MlasComputeExp<float>(
+MlasComputeExp(
     const float* Input,
     float* Output,
     size_t N
@@ -281,20 +278,6 @@ Return Value:
 #else
     MlasComputeExpF32Kernel(Input, Output, N);
 #endif
-}
-
-template <>
-void MLASCALL
-MlasComputeExp<MLAS_FP16>(
-    const MLAS_FP16* Input,
-    MLAS_FP16* Output,
-    size_t N
-) {
-    const auto* dispatch = GetMlasPlatform().SoftmaxDispatch;
-    if (dispatch == nullptr || dispatch->Exp_Fp16 == nullptr) {
-        MLAS_THROW_EX(std::runtime_error, "Exp_Fp16 is not supported.");
-    }
-    dispatch->Exp_Fp16(Input, Output, N);
 }
 
 MLAS_FORCEINLINE
@@ -800,16 +783,8 @@ Return Value:
     }
 }
 
-template <typename T>
 void
 MlasComputeSoftmaxThreaded(
-    void* Context,
-    ptrdiff_t Index
-);
-
-template <>
-void
-MlasComputeSoftmaxThreaded<float>(
     void* Context,
     ptrdiff_t Index
 )
@@ -832,7 +807,7 @@ Return Value:
 
 --*/
 {
-    const auto* WorkBlock = (MLAS_SOFTMAX_WORK_BLOCK<float>*)Context;
+    const auto* WorkBlock = (MLAS_SOFTMAX_WORK_BLOCK*)Context;
 
     //
     // Partition the operation along the N dimension.
@@ -931,85 +906,11 @@ Return Value:
     }
 }
 
-template <>
-void
-MlasComputeSoftmaxThreaded<MLAS_FP16>(
-    void* Context,
-    ptrdiff_t Index
-)
-/*++
-
-Routine Description:
-
-    This routine is invoked from a worker thread to execute a segment of a
-    softmax or log softmax operation.
-
-Arguments:
-
-    Context - Supplies the pointer to the context for the threaded operation.
-
-    ThreadId - Supplies the current index of the threaded operation.
-
-Return Value:
-
-    None.
-
---*/
-{
-    const auto* WorkBlock = (MLAS_SOFTMAX_WORK_BLOCK<MLAS_FP16>*)Context;
-    size_t n;
-    size_t CountN;
-    MlasPartitionWork(Index, WorkBlock->ThreadCountN, WorkBlock->N, &n, &CountN);
-
-    const size_t D = WorkBlock->D;
-    const bool LogSoftmax = WorkBlock->LogSoftmax;
-    const bool SmoothSoftmax = WorkBlock->SmoothSoftmax;
-
-    const MLAS_FP16* Input = WorkBlock->Input + n * D;
-    MLAS_FP16* Output = WorkBlock->Output + n * D;
-
-    const auto* dispatch = GetMlasPlatform().SoftmaxDispatch;
-    if (dispatch == nullptr ||
-        dispatch->ReduceMax_Fp16 == nullptr ||
-        dispatch->SumExp_Fp16 == nullptr ||
-        (LogSoftmax && dispatch->LogSoftmax_Fp16 == nullptr) ||
-        (!LogSoftmax && dispatch->Softmax_Fp16 == nullptr)) {
-        MLAS_THROW_EX(std::runtime_error, "Lacks kernels for fp16 softmax.");
-    }
-
-    while (CountN > 0) {
-        MLAS_FP16 Maximum = dispatch->ReduceMax_Fp16(Input, D);
-        MLAS_FP16 NegativeMaximum = Maximum.Negate();
-        if (SmoothSoftmax && !NegativeMaximum.IsNegative()) {
-            NegativeMaximum = MLAS_FP16::FromBits(0);
-        }
-
-        MLAS_FP16* Temp = LogSoftmax ? nullptr : Output;
-        MLAS_FP16 Accumulation = dispatch->SumExp_Fp16(Input, Temp, D, NegativeMaximum);
-        float accumulation_fp32 = Accumulation.ToFloat();
-
-        if (SmoothSoftmax) {
-            accumulation_fp32 += expf(NegativeMaximum.ToFloat());
-        }
-
-        if (LogSoftmax) {
-            dispatch->LogSoftmax_Fp16(Input, Output, D, NegativeMaximum, MLAS_FP16(std::log(accumulation_fp32)));
-        } else {
-            dispatch->Softmax_Fp16(Output, Output, D, MLAS_FP16(accumulation_fp32));
-        }
-
-        Input += D;
-        Output += D;
-        CountN--;
-    }
-}
-
-template <typename T>
 void
 MLASCALL
 MlasComputeSoftmax(
-    const T* Input,
-    T* Output,
+    const float* Input,
+    float* Output,
     size_t N,
     size_t D,
     bool LogSoftmax,
@@ -1048,7 +949,7 @@ Return Value:
 
 --*/
 {
-    MLAS_SOFTMAX_WORK_BLOCK<T> WorkBlock;
+    MLAS_SOFTMAX_WORK_BLOCK WorkBlock;
 
     //
     // Capture the softmax parameters to the work block.
@@ -1084,31 +985,5 @@ Return Value:
 
     WorkBlock.ThreadCountN = ThreadCountN;
 
-    MlasExecuteThreaded(MlasComputeSoftmaxThreaded<T>, &WorkBlock, ThreadCountN, ThreadPool);
+    MlasExecuteThreaded(MlasComputeSoftmaxThreaded, &WorkBlock, ThreadCountN, ThreadPool);
 }
-
-template
-void
-MLASCALL
-MlasComputeSoftmax<float>(
-    const float* Input,
-    float* Output,
-    size_t N,
-    size_t D,
-    bool LogSoftmax,
-    bool SmoothSoftmax,
-    MLAS_THREADPOOL* ThreadPool
-);
-
-template
-void
-MLASCALL
-MlasComputeSoftmax<MLAS_FP16>(
-    const MLAS_FP16* Input,
-    MLAS_FP16* Output,
-    size_t N,
-    size_t D,
-    bool LogSoftmax,
-    bool SmoothSoftmax,
-    MLAS_THREADPOOL* ThreadPool
-);

@@ -291,10 +291,8 @@ const convTranspose1d = (context: ComputeContext, attributes: ConvTransposeAttri
   strides = [1].concat(strides);
   dilations = [1].concat(dilations);
   kernelShape = [1].concat(kernelShape);
-  let outputPadding = attributes.outputPadding;
-  outputPadding = [0].concat(outputPadding);
   const adjustedAttributes = getAdjustedConvTransposeAttributes(
-    { ...attributes, pads, strides, dilations, kernelShape, outputPadding },
+    { ...attributes, pads, strides, dilations, kernelShape },
     inputs,
   );
 

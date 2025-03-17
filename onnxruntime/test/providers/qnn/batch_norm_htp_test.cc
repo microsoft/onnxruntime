@@ -160,7 +160,6 @@ static void RunBatchNormQDQTest(const TestInputDef<float>& input_def,
 #else
   provider_options["backend_path"] = "libQnnHtp.so";
 #endif
-  provider_options["offload_graph_io_quantization"] = "0";
 
   // Runs model with DQ-> InstanceNorm -> Q and compares the outputs of the CPU and QNN EPs.
   TestQDQModelAccuracy(BuildBatchNormTestCase(input_def, scale_def, bias_def),
@@ -181,7 +180,6 @@ static void RunBatchNormFP16Test(const TestInputDef<float>& input_def,
 #else
   provider_options["backend_path"] = "libQnnHtp.so";
 #endif
-  provider_options["offload_graph_io_quantization"] = "0";
 
   TestInputDef<MLFloat16> input_fp16_def = ConvertToFP16InputDef(input_def);
   TestInputDef<MLFloat16> scale_fp16_def = ConvertToFP16InputDef(scale_def);
