@@ -107,23 +107,6 @@ if(onnxruntime_USE_MIMALLOC)
   FetchContent_MakeAvailable(mimalloc)
 endif()
 
-#Protobuf depends on utf8_range
-onnxruntime_fetchcontent_declare(
-    utf8_range
-    URL ${DEP_URL_utf8_range}
-    URL_HASH SHA1=${DEP_SHA1_utf8_range}
-    EXCLUDE_FROM_ALL
-    FIND_PACKAGE_ARGS NAMES utf8_range
-)
-
-set(utf8_range_ENABLE_TESTS OFF CACHE BOOL "Build test suite" FORCE)
-set(utf8_range_ENABLE_INSTALL OFF CACHE BOOL "Configure installation" FORCE)
-
-# The next line will generate an error message "fatal: not a git repository", but it is ok. It is from flatbuffers
-onnxruntime_fetchcontent_makeavailable(utf8_range)
-# protobuf's cmake/utf8_range.cmake has the following line
-include_directories(${utf8_range_SOURCE_DIR})
-
 # Download a protoc binary from Internet if needed
 if(NOT ONNX_CUSTOM_PROTOC_EXECUTABLE AND NOT onnxruntime_USE_VCPKG)
   # This part of code is only for users' convenience. The code couldn't handle all cases. Users always can manually
@@ -442,6 +425,9 @@ target_include_directories(safeint_interface INTERFACE ${safeint_SOURCE_DIR})
 
 
 # Flatbuffers
+if(onnxruntime_USE_VCPKG)
+  find_package(flatbuffers REQUIRED)
+else()
 # We do not need to build flatc for iOS or Android Cross Compile
 if (CMAKE_SYSTEM_NAME STREQUAL "iOS" OR CMAKE_SYSTEM_NAME STREQUAL "Android" OR CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
   set(FLATBUFFERS_BUILD_FLATC OFF CACHE BOOL "FLATBUFFERS_BUILD_FLATC" FORCE)
@@ -491,6 +477,7 @@ namespace std { using ::getenv; }
       target_compile_options(flatc PRIVATE /FI${CMAKE_BINARY_DIR}/gdk_cstdlib_wrapper.h)
     endif()
   endif()
+endif()
 endif()
 
 # ONNX

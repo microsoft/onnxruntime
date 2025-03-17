@@ -24,6 +24,7 @@
 
 #pragma once
 
+#include "contrib_ops/cpu/bert/attention_parameters.h"
 #include "contrib_ops/cuda/bert/utils.cuh"
 
 using namespace onnxruntime::cuda;
@@ -140,7 +141,7 @@ struct ThreadsPerValue {
 //------------------------------------------------------------
 
 template <typename T>
-inline size_t CalcDynamicBlockMemory(const DecoderMaskedMultiHeadAttentionParams& params,
+inline size_t CalcDynamicBlockMemory(const DecoderMaskedMultiHeadAttentionParameters& params,
                                      int threads_per_value, int threads_per_block) {
   // The amount of shared memory needed to store the Q*K^T values in float.
 
