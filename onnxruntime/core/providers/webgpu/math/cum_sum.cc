@@ -28,22 +28,19 @@ Status CumSumProgram::GenerateShaderCode(ShaderHelper& shader) const {
   const ShaderVariableHelper& input = shader.AddInput("input", ShaderUsage::UseUniform);
   const ShaderVariableHelper& output = shader.AddOutput("output", ShaderUsage::UseUniform);
 
-  std::string index = "i32(" + input.IndicesGet("input_indices", "uniforms.axis") + ")";
-  std::string max = GetElementAt("uniforms.input_shape", "uniforms.axis", input.Rank());
-
   shader.MainFunctionBody() << shader.GuardAgainstOutOfBoundsWorkgroupSizes("uniforms.output_size")
                             << "var input_indices = " << input.OffsetToIndices("global_idx") << ";\n"
                             << "var sum = output_indices_t(0);\n"
                             << "let first : i32 = 0;\n"
                             << "if (uniforms.reverse == 1) {\n"
-                            << "  first = " << index << ";\n"
+                            << "  first = i32(" + input.IndicesGet("input_indices", "uniforms.axis") + ");\n"
                             << "  if (uniforms.exclusive == 1) { first += 1; }\n"
                             << "}\n\n"
                             << "let last : i32 = 0;\n"
                             << "if (uniforms.reverse == 1) {\n"
-                            << "  last = " << max << ";\n"
+                            << "  last = " << GetElementAt("uniforms.input_shape", "uniforms.axis", input.Rank()) << ";\n"
                             << "} else {\n"
-                            << "  last = " << index << ";\n"
+                            << "  last = i32(" + input.IndicesGet("input_indices", "uniforms.axis") + ");\n"
                             << "  if (uniforms.exclusive == 0) { last += 1; }\n"
                             << "}\n\n"
                             << "for (var i : i32 = first; i < last; i++) {\n"
