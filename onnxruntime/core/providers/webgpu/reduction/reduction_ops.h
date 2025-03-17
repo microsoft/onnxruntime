@@ -71,9 +71,51 @@ class ReduceMax final : public ReduceKernel<true> {
   ReduceOpSpecificCode GetOpSpecificCode(const Tensor* input_tensor) const override;
 };
 
+class ReduceMin final : public ReduceKernel<true> {
+ public:
+  ReduceMin(const OpKernelInfo& info) : ReduceKernel<true>(info, "ReduceMin") {}
+  ReduceOpSpecificCode GetOpSpecificCode(const Tensor* input_tensor) const override;
+};
+
 class ReduceSum final : public ReduceKernel<true> {
  public:
   ReduceSum(const OpKernelInfo& info) : ReduceKernel<true>(info, "ReduceSum", true) {}
+  ReduceOpSpecificCode GetOpSpecificCode(const Tensor* input_tensor) const override;
+};
+
+class ReduceProd final : public ReduceKernel<true> {
+ public:
+  ReduceProd(const OpKernelInfo& info) : ReduceKernel<true>(info, "ReduceProd", true) {}
+  ReduceOpSpecificCode GetOpSpecificCode(const Tensor* input_tensor) const override;
+};
+
+class ReduceL1 final : public ReduceKernel<true> {
+ public:
+  ReduceL1(const OpKernelInfo& info) : ReduceKernel<true>(info, "ReduceL1", true) {}
+  ReduceOpSpecificCode GetOpSpecificCode(const Tensor* input_tensor) const override;
+};
+
+class ReduceL2 final : public ReduceKernel<true> {
+ public:
+  ReduceL2(const OpKernelInfo& info) : ReduceKernel<true>(info, "ReduceL2", true) {}
+  ReduceOpSpecificCode GetOpSpecificCode(const Tensor* input_tensor) const override;
+};
+
+class ReduceLogSum final : public ReduceKernel<true> {
+ public:
+  ReduceLogSum(const OpKernelInfo& info) : ReduceKernel<true>(info, "ReduceLogSum", true) {}
+  ReduceOpSpecificCode GetOpSpecificCode(const Tensor* input_tensor) const override;
+};
+
+class ReduceSumSquare final : public ReduceKernel<true> {
+ public:
+  ReduceSumSquare(const OpKernelInfo& info) : ReduceKernel<true>(info, "ReduceSumSquare", true) {}
+  ReduceOpSpecificCode GetOpSpecificCode(const Tensor* input_tensor) const override;
+};
+
+class ReduceLogSumExp final : public ReduceKernel<true> {
+ public:
+  ReduceLogSumExp(const OpKernelInfo& info) : ReduceKernel<true>(info, "ReduceLogSumExp", true) {}
   ReduceOpSpecificCode GetOpSpecificCode(const Tensor* input_tensor) const override;
 };
 
