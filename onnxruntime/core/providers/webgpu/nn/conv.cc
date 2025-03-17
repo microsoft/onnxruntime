@@ -44,7 +44,18 @@ Status Conv<is_channels_last>::ComputeInternal(ComputeContext& context) const {
   const auto& kernel_shape = kernel->Shape();
   auto channel_index = is_channels_last ? input_shape.NumDimensions() - 1 : 1;
   if (input_shape.NumDimensions() > 4 || kernel_shape.NumDimensions() > 4) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input and kernel tensors must have at most 4 dimensions");
+    // Conv3D or higher dimensions
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Only Conv2d or Conv1d are supported.");
+  } else if (input_shape.NumDimensions() == 4 || kernel_shape.NumDimensions() == 4) {
+    // Conv2D
+  } else if (input_shape.NumDimensions() == 3 || kernel_shape.NumDimensions() == 3) {
+    // Conv1D
+    auto input_shape_4d = is_channels_last ? TensorShape({input_shape[0], 1, input_shape[1], input_shape[2]}) : TensorShape({input_shape[0], input_shape[1], 1, input_shape[2]});
+    auto kernel_shape_4d = TensorShape({kernel_shape[0], kernel_shape[1], 1, kernel_shape[2]});
+    const_cast<Tensor*>(input)->Reshape(input_shape_4d);
+    const_cast<Tensor*>(kernel)->Reshape(kernel_shape_4d);
+  } else {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input and kernel tensors must have at least 3 dimensions");
   }
   // Transpose weights
   std::vector<size_t> perm = {2, 3, 1, 0};
@@ -64,14 +75,15 @@ Status Conv<is_channels_last>::ComputeInternal(ComputeContext& context) const {
   auto output_channels = kernel_shape[channel_index];
   auto output_height = output_shape[is_channels_last ? 1 : 2];
   auto output_width = output_shape[is_channels_last ? 2 : 3];
-  const Tensor* bias = has_bias ? context.Input<Tensor>(2) : nullptr;
   auto output = context.Output(0, output_shape);
   auto dim_a_outer = static_cast<uint32_t>(is_channels_last ? output_height * output_width : output_channels);
   auto dim_b_outer = static_cast<uint32_t>(is_channels_last ? output_channels : output_height * output_width);
   auto dim_inner = static_cast<uint32_t>(is_channels_last ? input_channels : kernel_height * kernel_width);
-  std::vector<const Tensor*> inputs = {input, &transposed_kernel};
+  std::vector<const Tensor*> inputs(context.InputCount());
+  inputs[0] = input;
+  inputs[1] = &transposed_kernel;
   if (has_bias) {
-    inputs.push_back(bias);
+    inputs[2] = context.Input<Tensor>(2);
   }
   Conv2dMMProgram conv2d_mm_program = CreateConv2dMMProgram(inputs, output, conv_attrs_, dim_a_outer, dim_b_outer, dim_inner, is_channels_last);
   return context.RunProgram(conv2d_mm_program);
