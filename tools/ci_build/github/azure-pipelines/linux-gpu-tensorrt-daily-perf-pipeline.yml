@@ -83,7 +83,7 @@ jobs:
 
     - name: parser
       ${{ if eq(parameters.UseTensorrtOssParser, true) }}:
-        value: --use_tensorrt_oss_parser $(parameters.UseTensorrtOssParser) }}
+        value: --use_tensorrt_oss_parser $(parameters.UseTensorrtOssParser)
 
   steps:
     - ${{ if and(eq(parameters.TrtVersion, 'BIN'), eq(parameters.UseTensorrtOssParser, false)) }}:

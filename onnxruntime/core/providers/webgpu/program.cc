@@ -206,6 +206,26 @@ ProgramVariableDataType ToProgramVariableDataType(int32_t element_type, int comp
   }
 }
 
+std::ostream& operator<<(std::ostream& os, ValidationMode mode) {
+  switch (mode) {
+    case ValidationMode::Disabled:
+      os << "Disabled";
+      break;
+    case ValidationMode::WGPUOnly:
+      os << "WGPUOnly";
+      break;
+    case ValidationMode::Basic:
+      os << "Basic";
+      break;
+    case ValidationMode::Full:
+      os << "Full";
+      break;
+    default:
+      os << "Unknown(" << static_cast<int>(mode) << ")";
+  }
+  return os;
+}
+
 namespace {
 TensorShape GetReducedShape(const TensorShape& shape, int component /* > 1 */) {
   ORT_ENFORCE(shape.NumDimensions() > 0 && shape.GetDims()[shape.NumDimensions() - 1] % component == 0,
@@ -269,7 +289,7 @@ ProgramBase::ProgramBase(std::string_view name, ProgramMetadata&& metadata)
 }
 
 ProgramBase& ProgramBase::AddInput(ProgramInput&& input) {
-  inputs_.emplace_back(input);
+  inputs_.emplace_back(std::move(input));
   return *this;
 }
 
@@ -279,22 +299,12 @@ ProgramBase& ProgramBase::AddInputs(std::initializer_list<ProgramInput> inputs) 
 }
 
 ProgramBase& ProgramBase::AddOutput(ProgramOutput&& output) {
-  outputs_.emplace_back(output);
+  outputs_.emplace_back(std::move(output));
   return *this;
 }
 
 ProgramBase& ProgramBase::AddOutputs(std::initializer_list<ProgramOutput> outputs) {
   outputs_.insert(outputs_.end(), outputs.begin(), outputs.end());
-  return *this;
-}
-
-ProgramBase& ProgramBase::AddIndices(const TensorShape& shape) {
-  indices_.emplace_back(shape);
-  return *this;
-}
-
-ProgramBase& ProgramBase::AddIndices(TensorShape&& shape) {
-  indices_.emplace_back(shape);
   return *this;
 }
 

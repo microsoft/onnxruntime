@@ -77,13 +77,23 @@ TEST(NonZeroOpTest, Scalar) {
   {
     OpTester test{kOpName, kOpVersion};
     test.AddInput<int32_t>("X", {}, {0});
+#ifdef USE_TENSORRT
+    // TensorRT follows ONNX spec where NonZero produces output shape (0, N) instead of (1, N) for scalar input
+    test.AddOutput<int64_t>("Y", {0, 0}, {});
+#else
     test.AddOutput<int64_t>("Y", {1, 0}, {});
+#endif
     test.Run(so);
   }
   {
     OpTester test{kOpName, kOpVersion};
     test.AddInput<int32_t>("X", {}, {1});
+#ifdef USE_TENSORRT
+    // TensorRT follows ONNX spec where NonZero produces output shape (0, N) instead of (1, N) for scalar input
+    test.AddOutput<int64_t>("Y", {0, 1}, {});
+#else
     test.AddOutput<int64_t>("Y", {1, 1}, {0});
+#endif
     test.Run(so);
   }
 }

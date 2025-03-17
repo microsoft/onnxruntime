@@ -297,7 +297,8 @@ TEST_F(QnnHTPBackendTests, UnaryOp_Elu) {
 // Expected val: -0.99751651287078857
 // QNN QDQ val: 6.2726154327392578 (err 7.2701320648193359)
 // CPU QDQ val: -0.99753034114837646 (err 1.3828277587890625e-05)
-TEST_F(QnnHTPBackendTests, DISABLE_UnaryOp_Elu_U16) {
+// Issue fixed in 2.30
+TEST_F(QnnHTPBackendTests, UnaryOp_Elu_U16) {
   RunQDQOpTest<uint16_t>("Elu",
                          {TestInputDef<float>({1, 2, 3}, false, GetFloatDataInRange(-10.0f, 10.0f, 6))},
                          {},

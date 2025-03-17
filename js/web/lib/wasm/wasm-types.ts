@@ -42,18 +42,6 @@ export declare namespace JSEP {
 
   export interface Module extends WebGpuModule, WebNnModule {
     /**
-     * Mount the external data file to an internal map, which will be used during session initialization.
-     *
-     * @param externalDataFilePath - specify the relative path of the external data file.
-     * @param externalDataFileData - specify the content data.
-     */
-    mountExternalData(externalDataFilePath: string, externalDataFileData: Uint8Array): void;
-    /**
-     * Unmount all external data files from the internal map.
-     */
-    unmountExternalData(): void;
-
-    /**
      * This is the entry of JSEP initialization. This function is called once when initializing ONNX Runtime per
      * backend. This function initializes Asyncify support. If name is 'webgpu', also initializes WebGPU backend and
      * registers a few callbacks that will be called in C++ code.
@@ -261,6 +249,7 @@ export declare namespace JSEP {
      * @param dataLength - specify the external data length.
      * @param builder - specify the MLGraphBuilder used for constructing the Constant.
      * @param desc - specify the MLOperandDescriptor of the Constant.
+     * @param shouldConvertInt64ToInt32 - specify whether to convert int64 to int32.
      * @returns the WebNN Constant operand for the specified external data.
      */
     jsepRegisterMLConstant(
@@ -269,6 +258,7 @@ export declare namespace JSEP {
       dataLength: number,
       builder: MLGraphBuilder,
       desc: MLOperandDescriptor,
+      shouldConvertInt64ToInt32: boolean,
     ): MLOperand;
 
     /**
@@ -291,6 +281,27 @@ export declare namespace JSEP {
      * @returns the MLTensor ID for the temporary MLTensor.
      */
     jsepCreateTemporaryTensor: (sessionId: number, dataType: DataType, shape: readonly number[]) => Promise<number>;
+    /**
+     * [exported from pre-jsep.js] Check if a session's associated WebNN Context supports int64.
+     * @param sessionId - specify the session ID.
+     * @returns whether the WebNN Context supports int64.
+     */
+    jsepIsInt64Supported: (sessionId: number) => boolean;
+  }
+}
+
+export declare namespace WebGpu {
+  export interface Module {
+    webgpuInit(setDefaultDevice: (device: GPUDevice) => void): void;
+    webgpuRegisterDevice(
+      device?: GPUDevice,
+    ): undefined | [deviceId: number, instanceHandle: number, deviceHandle: number];
+    webgpuOnCreateSession(sessionHandle: number): void;
+    webgpuOnReleaseSession(sessionHandle: number): void;
+    webgpuRegisterBuffer(buffer: GPUBuffer, sessionHandle: number, bufferHandle?: number): number;
+    webgpuUnregisterBuffer(buffer: GPUBuffer): void;
+    webgpuGetBuffer(bufferHandle: number): GPUBuffer;
+    webgpuCreateDownloader(gpuBuffer: GPUBuffer, size: number, sessionHandle: number): () => Promise<ArrayBuffer>;
   }
 }
 
@@ -358,7 +369,13 @@ export interface OrtInferenceAPIs {
     logVerbosityLevel: number,
     optimizedModelFilePath: number,
   ): number;
-  _OrtAppendExecutionProvider(sessionOptionsHandle: number, name: number): number;
+  _OrtAppendExecutionProvider(
+    sessionOptionsHandle: number,
+    name: number,
+    providerOptionsKeys: number,
+    providerOptionsValues: number,
+    numKeys: number,
+  ): Promise<number>;
   _OrtAddFreeDimensionOverride(sessionOptionsHandle: number, name: number, dim: number): number;
   _OrtAddSessionConfigEntry(sessionOptionsHandle: number, configKey: number, configValue: number): number;
   _OrtReleaseSessionOptions(sessionOptionsHandle: number): number;
@@ -373,8 +390,11 @@ export interface OrtInferenceAPIs {
 /**
  * The interface of the WebAssembly module for ONNX Runtime, compiled from C++ source code by Emscripten.
  */
-export interface OrtWasmModule extends EmscriptenModule, OrtInferenceAPIs, Partial<JSEP.Module> {
-  PTR_SIZE: number;
+export interface OrtWasmModule
+  extends EmscriptenModule,
+    OrtInferenceAPIs,
+    Partial<JSEP.Module>,
+    Partial<WebGpu.Module> {
   // #region emscripten functions
   stackSave(): number;
   stackRestore(stack: number): void;
@@ -387,7 +407,31 @@ export interface OrtWasmModule extends EmscriptenModule, OrtInferenceAPIs, Parti
   stringToUTF8(str: string, offset: number, maxBytes: number): void;
   // #endregion
 
+  // #region ORT shared
+
+  readonly PTR_SIZE: 4 | 8;
+
+  /**
+   * Mount the external data file to an internal map, which will be used during session initialization.
+   *
+   * @param externalDataFilePath - specify the relative path of the external data file.
+   * @param externalDataFileData - specify the content data.
+   */
+  mountExternalData(externalDataFilePath: string, externalDataFileData: Uint8Array): void;
+  /**
+   * Unmount all external data files from the internal map.
+   */
+  unmountExternalData(): void;
+
+  /**
+   * This function patches the WebAssembly module to support Asyncify. This function should be called at least once
+   * before any ORT API is called.
+   */
+  asyncInit?(): void;
+
+  // #endregion
+
   // #region config
-  numThreads?: number;
+  readonly numThreads?: number;
   // #endregion
 }

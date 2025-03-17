@@ -38,11 +38,6 @@ Status CreateNodeArgs(const std::vector<std::string>& names,
                       std::vector<NodeArg*>& node_args,
                       onnxruntime::Graph& graph);
 
-bool ValidateContextCacheFilePath(bool is_qnn_ctx_model,
-                                  const std::string& customer_context_cache_path,
-                                  const onnxruntime::PathString& model_pathstring,
-                                  onnxruntime::PathString& context_cache_path);
-
 Status GetEpContextFromMainNode(const onnxruntime::Node& main_context_node,
                                 const onnxruntime::PathString& ctx_onnx_model_path,
                                 QnnBackendManager* qnn_backend_manager,
@@ -67,9 +62,11 @@ Status CreateEPContextNodes(Model* model,
                             const std::string& sdk_build_version,
                             const std::vector<IExecutionProvider::FusedNodeAndGraph>& fused_nodes_and_graphs,
                             const std::unordered_map<std::string, std::unique_ptr<QnnModel>>& qnn_models,
-                            const onnxruntime::PathString& context_cache_path,
+                            const onnxruntime::PathString& context_model_path,
                             bool qnn_context_embed_mode,
                             uint64_t max_spill_fill_buffer_size,
-                            const logging::Logger& logger);
+                            const logging::Logger& logger,
+                            bool share_ep_contexts,
+                            bool stop_share_ep_contexts);
 }  // namespace qnn
 }  // namespace onnxruntime

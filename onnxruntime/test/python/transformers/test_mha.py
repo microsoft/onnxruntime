@@ -41,15 +41,15 @@ def get_provider_support_info(provider: str, use_kv_cache: bool):
 
         device_id = torch.cuda.current_device()
         device = torch.device("cuda", device_id)
-        dtype = torch.float16
+        dtypes = [torch.float16, torch.float]
     else:
         assert provider == "CPUExecutionProvider"
         formats = [InputFormats.Q_K_V_BSNH_BSNH_BSNH]
         if not use_kv_cache:
             formats.append(InputFormats.Q_K_V_BSNH_BNSH_BNSH)
         device = torch.device("cpu")
-        dtype = torch.float
-    return device, dtype, formats
+        dtypes = [torch.float]
+    return device, dtypes, formats
 
 
 def get_bias_support(format: InputFormats):
@@ -211,10 +211,11 @@ def no_kv_cache_test_cases(provider: str, comprehensive: bool):
         return
         yield
 
+    # Lengths of arrays are prime numbers since modulo (% length) is used in non comprehensive mode.
     batch_sizes = [1, 2, 3]
-    sequence_lengths = [1, 16, 127, 128, 255, 256, 383, 384, 512]
-    heads = [1, 3, 4, 16]
-    head_sizes = [8, 16, 32, 40, 64, 80, 96, 128, 160, 192, 224, 256]
+    sequence_lengths = [1, 16, 127, 128, 256, 384, 512]
+    heads = [1, 2, 3, 4, 16]
+    head_sizes = [8, 16, 32, 40, 64, 80, 96, 128, 160, 192, 256]
 
     mask_formats = [
         AttentionMaskFormat.Mask_None,
@@ -223,7 +224,7 @@ def no_kv_cache_test_cases(provider: str, comprehensive: bool):
     ]
     atten_bias_options = get_atten_bias_support()
 
-    device, dtype, formats = get_provider_support_info(provider, False)
+    device, dtypes, formats = get_provider_support_info(provider, False)
     if comprehensive:
         sequence_lengths = [*sequence_lengths, 2048]  # Large sequence length is slow and need a lot of memory
         for batch_size in batch_sizes:
@@ -239,30 +240,31 @@ def no_kv_cache_test_cases(provider: str, comprehensive: bool):
                                             broadcast_attn_bias_dim_0,
                                             broadcast_attn_bias_dim_1,
                                         ) in atten_bias_options:
-                                            config = MultiHeadAttentionConfig(
-                                                batch_size=batch_size,
-                                                sequence_length=sequence_length,
-                                                num_heads=num_heads,
-                                                head_size=head_size,
-                                                causal=causal,
-                                                past_sequence_length=0,
-                                                kv_sequence_length=sequence_length,
-                                                max_cache_sequence_length=None,
-                                                provider=provider,
-                                                device=device,
-                                                dtype=dtype,
-                                                use_kv_cache=False,
-                                                share_past_present_buffer=False,
-                                                input_format=format,
-                                                has_bias=has_bias,
-                                                mask_format=mask_format,
-                                                has_attn_bias=has_attn_bias,
-                                                broadcast_attn_bias_dim_0=broadcast_attn_bias_dim_0,
-                                                broadcast_attn_bias_dim_1=broadcast_attn_bias_dim_1,
-                                            )
-                                            yield config
+                                            for dtype in dtypes:
+                                                config = MultiHeadAttentionConfig(
+                                                    batch_size=batch_size,
+                                                    sequence_length=sequence_length,
+                                                    num_heads=num_heads,
+                                                    head_size=head_size,
+                                                    causal=causal,
+                                                    past_sequence_length=0,
+                                                    kv_sequence_length=sequence_length,
+                                                    max_cache_sequence_length=None,
+                                                    provider=provider,
+                                                    device=device,
+                                                    dtype=dtype,
+                                                    use_kv_cache=False,
+                                                    share_past_present_buffer=False,
+                                                    input_format=format,
+                                                    has_bias=has_bias,
+                                                    mask_format=mask_format,
+                                                    has_attn_bias=has_attn_bias,
+                                                    broadcast_attn_bias_dim_0=broadcast_attn_bias_dim_0,
+                                                    broadcast_attn_bias_dim_1=broadcast_attn_bias_dim_1,
+                                                )
+                                                yield config
     else:
-        test_cases = max(len(batch_sizes), len(sequence_lengths), len(heads), len(head_sizes))
+        test_cases = 2 * max(len(batch_sizes), len(sequence_lengths), len(heads), len(head_sizes))
         for i in range(test_cases):
             batch_size = batch_sizes[i % len(batch_sizes)]
             sequence_length = sequence_lengths[i % len(sequence_lengths)]
@@ -272,6 +274,7 @@ def no_kv_cache_test_cases(provider: str, comprehensive: bool):
             has_attn_bias, broadcast_attn_bias_dim_0, broadcast_attn_bias_dim_1 = atten_bias_options[
                 i % len(atten_bias_options)
             ]
+            dtype = dtypes[i % len(dtypes)]
             for format in formats:
                 for causal in get_causal_support(format):
                     for has_bias in get_bias_support(format):
@@ -304,11 +307,13 @@ def kv_cache_test_cases(provider: str, comprehensive: bool):
         return
         yield
 
+    # Lengths of arrays are prime numbers since modulo (% length) is used in non comprehensive mode.
     batch_sizes = [1, 2, 3]
-    sequence_lengths = [1, 15, 16, 255, 256, 512]
-    heads = [1, 3, 4, 16]
-    head_sizes = [8, 16, 32, 40, 64, 80, 96, 128, 160, 192, 224, 256]
-    device, dtype, formats = get_provider_support_info(provider, True)
+    sequence_lengths = [1, 15, 16, 255, 256, 384, 512]
+    heads = [1, 2, 3, 4, 16]
+    head_sizes = [8, 16, 32, 40, 64, 80, 96, 128, 160, 224, 256]
+
+    device, dtypes, formats = get_provider_support_info(provider, True)
     mask_formats = [
         AttentionMaskFormat.Mask_None,
         AttentionMaskFormat.Mask_1D_Key_SeqLen,
@@ -328,38 +333,39 @@ def kv_cache_test_cases(provider: str, comprehensive: bool):
                                 for has_past_input in [True, False]:
                                     for mask_format in mask_formats:
                                         for has_bias in get_bias_support(format):
-                                            for (
-                                                has_attn_bias,
-                                                broadcast_attn_bias_dim_0,
-                                                broadcast_attn_bias_dim_1,
-                                            ) in atten_bias_options:
-                                                sequence_length = 1 if has_past_input else past_sequence_length
-                                                past_seq_len = past_sequence_length if has_past_input else 0
-                                                config = MultiHeadAttentionConfig(
-                                                    batch_size=batch_size,
-                                                    sequence_length=sequence_length,
-                                                    num_heads=num_heads,
-                                                    head_size=head_size,
-                                                    causal=causal,
-                                                    past_sequence_length=past_seq_len,
-                                                    kv_sequence_length=sequence_length,
-                                                    max_cache_sequence_length=None,
-                                                    provider=provider,
-                                                    device=device,
-                                                    dtype=dtype,
-                                                    use_kv_cache=True,
-                                                    has_past_input=has_past_input,
-                                                    share_past_present_buffer=False,
-                                                    input_format=format,
-                                                    has_bias=has_bias,
-                                                    mask_format=mask_format,
-                                                    has_attn_bias=has_attn_bias,
-                                                    broadcast_attn_bias_dim_0=broadcast_attn_bias_dim_0,
-                                                    broadcast_attn_bias_dim_1=broadcast_attn_bias_dim_1,
-                                                )
-                                                yield config
+                                            for dtype in dtypes:
+                                                for (
+                                                    has_attn_bias,
+                                                    broadcast_attn_bias_dim_0,
+                                                    broadcast_attn_bias_dim_1,
+                                                ) in atten_bias_options:
+                                                    sequence_length = 1 if has_past_input else past_sequence_length
+                                                    past_seq_len = past_sequence_length if has_past_input else 0
+                                                    config = MultiHeadAttentionConfig(
+                                                        batch_size=batch_size,
+                                                        sequence_length=sequence_length,
+                                                        num_heads=num_heads,
+                                                        head_size=head_size,
+                                                        causal=causal,
+                                                        past_sequence_length=past_seq_len,
+                                                        kv_sequence_length=sequence_length,
+                                                        max_cache_sequence_length=None,
+                                                        provider=provider,
+                                                        device=device,
+                                                        dtype=dtype,
+                                                        use_kv_cache=True,
+                                                        has_past_input=has_past_input,
+                                                        share_past_present_buffer=False,
+                                                        input_format=format,
+                                                        has_bias=has_bias,
+                                                        mask_format=mask_format,
+                                                        has_attn_bias=has_attn_bias,
+                                                        broadcast_attn_bias_dim_0=broadcast_attn_bias_dim_0,
+                                                        broadcast_attn_bias_dim_1=broadcast_attn_bias_dim_1,
+                                                    )
+                                                    yield config
     else:
-        test_cases = max(len(batch_sizes), len(sequence_lengths), len(heads), len(head_sizes))
+        test_cases = 2 * max(len(batch_sizes), len(sequence_lengths), len(heads), len(head_sizes))
         for i in range(test_cases):
             batch_size = batch_sizes[i % len(batch_sizes)]
             past_sequence_length = sequence_lengths[i % len(sequence_lengths)]
@@ -369,6 +375,8 @@ def kv_cache_test_cases(provider: str, comprehensive: bool):
             has_attn_bias, broadcast_attn_bias_dim_0, broadcast_attn_bias_dim_1 = atten_bias_options[
                 i % len(atten_bias_options)
             ]
+            dtype = dtypes[i % len(dtypes)]
+
             for format in formats:
                 for causal in get_causal_support(format):
                     for has_past_input in [True, False]:
@@ -401,7 +409,7 @@ def kv_cache_test_cases(provider: str, comprehensive: bool):
 
 
 def lean_attention_test_cases(provider: str, comprehensive: bool):
-    if provider == "CUDAExecutionProvider" and get_compute_capability() < 80:
+    if provider != "CUDAExecutionProvider" or get_compute_capability() < 80:
         return
         yield
 
@@ -409,7 +417,7 @@ def lean_attention_test_cases(provider: str, comprehensive: bool):
     sequence_lengths = [2, 15, 16, 255, 256, 512, 1024, 2048, 4096, 8192] if comprehensive else [2, 255, 512]
     heads = [1, 4, 16] if comprehensive else [1, 4]
     head_sizes = [64, 128]
-    device, dtype, formats = get_provider_support_info(provider, True)
+    device, dtypes, formats = get_provider_support_info(provider, True)
     mask_formats = [AttentionMaskFormat.Mask_None]
 
     sequence_lengths = [*sequence_lengths, 2048]  # Large sequence length is slow and need a lot of memory
@@ -433,7 +441,7 @@ def lean_attention_test_cases(provider: str, comprehensive: bool):
                                         max_cache_sequence_length=None,
                                         provider=provider,
                                         device=device,
-                                        dtype=dtype,
+                                        dtype=dtypes[0],
                                         use_kv_cache=True,
                                         has_past_input=True,
                                         share_past_present_buffer=False,
@@ -453,7 +461,7 @@ def no_kv_cache_multi_thread_test_cases(provider: str, comprehensive: bool):
     heads = [4]
     head_sizes = [8, 16, 32, 40, 64, 80, 96, 128, 160, 192, 224, 256] if comprehensive else [32, 64]
 
-    device, dtype, formats = get_provider_support_info(provider, False)
+    device, dtypes, formats = get_provider_support_info(provider, False)
 
     for format in formats:
         for causal in get_causal_support(format):
@@ -473,7 +481,7 @@ def no_kv_cache_multi_thread_test_cases(provider: str, comprehensive: bool):
                                 max_cache_sequence_length=None,
                                 provider=provider,
                                 device=device,
-                                dtype=dtype,
+                                dtype=dtypes[0],
                                 use_kv_cache=False,
                                 share_past_present_buffer=False,
                                 input_format=format,
@@ -493,7 +501,7 @@ def kv_cache_multi_thread_test_cases(provider: str, comprehensive: bool):
     head_sizes = [8, 16, 32, 40, 64, 80, 96, 128, 160, 192, 224, 256] if comprehensive else [32, 64]
 
     sequence_length = 1
-    device, dtype, formats = get_provider_support_info(provider, True)
+    device, dtypes, formats = get_provider_support_info(provider, True)
 
     for format in formats:
         for causal in get_causal_support(format):
@@ -513,7 +521,7 @@ def kv_cache_multi_thread_test_cases(provider: str, comprehensive: bool):
                                 max_cache_sequence_length=None,
                                 provider=provider,
                                 device=device,
-                                dtype=dtype,
+                                dtype=dtypes[0],
                                 use_kv_cache=True,
                                 has_past_input=True,
                                 share_past_present_buffer=False,
