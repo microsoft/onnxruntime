@@ -36,7 +36,7 @@ Status CumSumProgram::GenerateShaderCode(ShaderHelper& shader) const {
              << "  first = " << index << ";\n"
              << "  if (uniforms.exclusive == 1) { first += 1; }\n"
              << "}\n";
-  std::string upperLimit;
+  std::stringstream upperLimit;
   upperLimit << "let last : i32 = 0;\n"
              << "if (uniforms.reverse == 1) {\n"
              << "  last = " << max << ";\n"
