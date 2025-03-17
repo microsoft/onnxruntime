@@ -65,7 +65,7 @@ jobs:
   - task: CmdLine@2
     inputs:
       script: |
-        docker run --rm \
+        docker run -e SYSTEM_COLLECTIONURI --rm \
           --privileged \
           --ipc=host \
           --network=host \
@@ -89,7 +89,7 @@ jobs:
               --rocm_home=/opt/rocm \
               --nccl_home=/opt/rocm \
               --update \
-              --parallel --use_vcpkg \
+              --parallel --use_vcpkg --use_vcpkg_ms_internal_asset_cache \
               --build_dir /build \
               --build \
               --build_wheel \

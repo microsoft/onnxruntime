@@ -746,10 +746,10 @@ std::unique_ptr<KernelRegistry> RegisterKernels() {
 
       BuildKernelCreateInfo<ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kJsExecutionProvider, kOnnxDomain, 16, 19, GridSample)>,
       BuildKernelCreateInfo<ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kJsExecutionProvider, kMSInternalNHWCDomain, 16, 19, GridSample)>,
-      // BuildKernelCreateInfo<ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kJsExecutionProvider, kOnnxDomain, 11, 12, ScatterND)>,
-      // BuildKernelCreateInfo<ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kJsExecutionProvider, kOnnxDomain, 13, 15, ScatterND)>,
-      // BuildKernelCreateInfo<ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kJsExecutionProvider, kOnnxDomain, 16, 17, ScatterND)>,
-      // BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(kJsExecutionProvider, kOnnxDomain, 18, ScatterND)>,
+      BuildKernelCreateInfo<ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kJsExecutionProvider, kOnnxDomain, 11, 12, ScatterND)>,
+      BuildKernelCreateInfo<ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kJsExecutionProvider, kOnnxDomain, 13, 15, ScatterND)>,
+      BuildKernelCreateInfo<ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kJsExecutionProvider, kOnnxDomain, 16, 17, ScatterND)>,
+      BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(kJsExecutionProvider, kOnnxDomain, 18, ScatterND)>,
   };
 
   for (auto& function_table_entry : function_table) {
@@ -790,7 +790,8 @@ std::vector<AllocatorPtr> JsExecutionProvider::CreatePreferredAllocators() {
 
 std::vector<std::unique_ptr<ComputeCapability>> JsExecutionProvider::GetCapability(
     const onnxruntime::GraphViewer& graph,
-    const IKernelLookup& kernel_lookup) const {
+    const IKernelLookup& kernel_lookup,
+    IResourceAccountant* /* resource_accountant */) const {
   InlinedVector<NodeIndex> candidates;
   // `tenative_candidates` is a subset of `candidates`.
   InlinedVector<NodeIndex> tenative_candidates;

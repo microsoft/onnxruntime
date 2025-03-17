@@ -306,7 +306,7 @@ Status ComputeInPlaceSoftmax(onnxruntime::webgpu::ComputeContext& context, Tenso
 }
 
 Status VxAttentionScoreProgram::GenerateShaderCode(ShaderHelper& shader) const {
-  shader.AddInput("probs", ShaderUsage::UseUniform | ShaderUsage::UseValueTypeAlias | ShaderUsage::UseElementTypeAlias);
+  shader.AddInput("probs", ShaderUsage::UseUniform | ShaderUsage::UseValueTypeAlias);
   shader.AddInput("v", ShaderUsage::UseUniform | ShaderUsage::UseValueTypeAlias);
   if (feed_past_value_) {
     shader.AddInput("past_value", ShaderUsage::UseUniform);
@@ -314,7 +314,7 @@ Status VxAttentionScoreProgram::GenerateShaderCode(ShaderHelper& shader) const {
   if (seqlen_k_) {
     shader.AddInput("seqlen_k", ShaderUsage::UseUniform);
   }
-  shader.AddOutput("output", ShaderUsage::UseUniform);
+  shader.AddOutput("output", ShaderUsage::UseUniform | ShaderUsage::UseValueTypeAlias);
   if (has_present_value_) {
     shader.AddOutput("present_value", ShaderUsage::UseUniform);
   }
@@ -336,7 +336,7 @@ Status VxAttentionScoreProgram::GenerateShaderCode(ShaderHelper& shader) const {
     shader.MainFunctionBody() << "let presentValueOffset = (workgroup_id.z / " << n_reps_ << ") * uniforms.N * uniforms.present_sequence_length + n;\n";
   }
 
-  shader.MainFunctionBody() << "var value = probs_element_t(0);\n"
+  shader.MainFunctionBody() << "var value = output_value_t(0);\n"
                             << "for (var w: u32 = 0u; w < uniforms.K; w += TILE_SIZE) {\n"
                             << "  if (m < uniforms.M && w + local_id.x < uniforms.K) {\n"
                             << "    tileQ[TILE_SIZE * local_id.y + local_id.x] = probs[offsetA + w + local_id.x];\n"
@@ -397,33 +397,34 @@ Status ComputeVxAttentionScore(onnxruntime::webgpu::ComputeContext& context, int
                                const Tensor* seqlen_k) {
   const bool feed_past_value = present_value != nullptr && past_value != nullptr && past_value->SizeInBytes() > 0 && !parameters.past_present_share_buffer_;
   const bool has_present_value = output_count > 1 && past_value != nullptr;
+  const int components = parameters.v_head_size_ % 4 == 0 ? 4 : (parameters.v_head_size_ % 2 == 0 ? 2 : 1);
   constexpr int tile_size = 12;
-
+  int tile_n_size = tile_size * components;
   VxAttentionScoreProgram program{"VxAttentionScore", feed_past_value, has_present_value, tile_size, parameters.is_first_prompt_, parameters.n_reps, seqlen_k, parameters.past_present_share_buffer_};
   program.AddInputs({{probs, ProgramTensorMetadataDependency::TypeAndRank},
-                     {V, ProgramTensorMetadataDependency::TypeAndRank}});
+                     {V, ProgramTensorMetadataDependency::TypeAndRank, components}});
   if (feed_past_value) {
-    program.AddInput({past_value, ProgramTensorMetadataDependency::TypeAndRank});
+    program.AddInput({past_value, ProgramTensorMetadataDependency::TypeAndRank, components});
   }
   if (seqlen_k != nullptr) {
     program.AddInput({seqlen_k, ProgramTensorMetadataDependency::TypeAndRank});
   }
-  program.AddOutputs({{output, ProgramTensorMetadataDependency::TypeAndRank}});
+  program.AddOutputs({{output, ProgramTensorMetadataDependency::TypeAndRank, components}});
   if (has_present_value) {
-    program.AddOutput({present_value, ProgramTensorMetadataDependency::TypeAndRank});
+    program.AddOutput({present_value, ProgramTensorMetadataDependency::TypeAndRank, components});
   }
 
-  program.SetDispatchGroupSize((parameters.v_head_size_ + tile_size - 1) / tile_size,
+  program.SetDispatchGroupSize((parameters.v_head_size_ + tile_n_size - 1) / tile_n_size,
                                (parameters.sequence_length_ + tile_size - 1) / tile_size,
                                parameters.batch_size_ * parameters.num_heads_)
       .CacheHint(std::to_string(tile_size), parameters.past_present_share_buffer_, feed_past_value, has_present_value, seqlen_k != nullptr, parameters.is_first_prompt_)
       .SetWorkgroupSize(tile_size, tile_size)
       .AddUniformVariables({{static_cast<uint32_t>(parameters.sequence_length_)},
                             {static_cast<uint32_t>(total_sequence_length)},
-                            {static_cast<uint32_t>(parameters.v_head_size_)},
+                            {static_cast<uint32_t>(parameters.v_head_size_ / components)},
                             {static_cast<uint32_t>(parameters.num_heads_)},
                             {static_cast<uint32_t>(parameters.head_size_)},
-                            {static_cast<uint32_t>(parameters.v_hidden_size_ * parameters.n_reps)},
+                            {static_cast<uint32_t>(parameters.v_hidden_size_ * parameters.n_reps / components)},
                             {static_cast<uint32_t>(past_sequence_length)},
                             {static_cast<uint32_t>(parameters.kv_sequence_length_)},
                             {static_cast<uint32_t>(seqlen_k == nullptr ? total_sequence_length : parameters.seqlen_present_kv_cache_)},

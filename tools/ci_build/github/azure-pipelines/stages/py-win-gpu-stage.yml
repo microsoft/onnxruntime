@@ -33,7 +33,7 @@ parameters:
    - Release
    - RelWithDebInfo
    - MinSizeRel
-   
+
 - name: use_tensorrt
   type: boolean
   default: false
@@ -85,6 +85,11 @@ stages:
           value: '--use_tensorrt --tensorrt_home="$(Agent.TempDirectory)\${{ variables.win_trt_folder }}"'
         ${{ if eq(parameters.use_tensorrt, false) }}:
           value: ''
+      - name: build_wheel_flag
+        ${{ if contains(parameters.EP_BUILD_FLAGS, 'use_cuda') }}:
+          value: '--cuda_version=${{ parameters.CudaVersion }}'
+        ${{ if contains(parameters.EP_BUILD_FLAGS, 'use_dml') }}:
+          value: ''
       steps:
 
           - checkout: self
@@ -125,7 +130,7 @@ stages:
                 --cmake_generator "$(VSGenerator)"
                 --enable_pybind
                 --enable_onnx_tests
-                --parallel 8 --use_binskim_compliant_compile_flags --update --build --msvc_toolset 14.40
+                --parallel 8 --use_vcpkg --use_vcpkg_ms_internal_asset_cache --use_binskim_compliant_compile_flags --update --build --msvc_toolset 14.40
                 $(TelemetryOption) ${{ parameters.BUILD_PY_PARAMETERS }} ${{ parameters.EP_BUILD_FLAGS }} ${{ variables.trt_build_flag }}
               workingDirectory: '$(Build.BinariesDirectory)'
 
@@ -141,7 +146,7 @@ stages:
             displayName: 'Build wheel'
             inputs:
               scriptPath: '$(Build.SourcesDirectory)\setup.py'
-              arguments: 'bdist_wheel ${{ parameters.BUILD_PY_PARAMETERS }} $(NightlyBuildOption) --wheel_name_suffix=${{ parameters.EP_NAME }}'
+              arguments: 'bdist_wheel ${{ parameters.BUILD_PY_PARAMETERS }} $(NightlyBuildOption) --wheel_name_suffix=${{ parameters.EP_NAME }} ${{ variables.build_wheel_flag }}'
               workingDirectory: '$(Build.BinariesDirectory)\${{ parameters.cmake_build_type }}\${{ parameters.cmake_build_type }}'
 
           - task: CopyFiles@2
@@ -195,7 +200,7 @@ stages:
             TMPDIR: "$(Agent.TempDirectory)"
 
         - powershell: |
-  
+
             python -m pip uninstall -y onnxruntime onnxruntime-gpu -qq
             Get-ChildItem -Path $(Build.ArtifactStagingDirectory)/*cp${{ replace(parameters.PYTHON_VERSION,'.','') }}*.whl | foreach {pip --disable-pip-version-check install --upgrade $_.fullname tabulate}
             mkdir -p $(Agent.TempDirectory)\ort_test_data

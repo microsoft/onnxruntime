@@ -10,6 +10,7 @@
 #include <iterator>
 #include <thread>
 #include <fstream>
+#include <random>
 
 #include <google/protobuf/io/zero_copy_stream_impl.h>
 #include "core/common/denormal.h"
@@ -59,7 +60,6 @@
 #include "gtest/gtest.h"
 #include "gmock/gmock.h"
 
-using namespace std;
 using namespace ONNX_NAMESPACE;
 using namespace onnxruntime::logging;
 using namespace onnxruntime::concurrency;
@@ -137,7 +137,8 @@ class FuseExecutionProvider : public IExecutionProvider {
 
   std::vector<std::unique_ptr<ComputeCapability>>
   GetCapability(const onnxruntime::GraphViewer& graph,
-                const IKernelLookup& /*kernel_lookup*/) const override {
+                const IKernelLookup& /*kernel_lookup*/,
+                IResourceAccountant* /* resource_accountant */) const override {
     // Fuse two add into one.
     std::vector<std::unique_ptr<ComputeCapability>> result;
     std::unique_ptr<IndexedSubGraph> sub_graph = std::make_unique<IndexedSubGraph>();
@@ -283,7 +284,7 @@ void RunModelWithBindingMatMul(InferenceSession& session_object,
                                ProviderType allocation_provider,
                                IExecutionProvider* gpu_provider,
                                OrtDevice* output_device) {
-  unique_ptr<IOBinding> io_binding;
+  std::unique_ptr<IOBinding> io_binding;
   Status st = session_object.NewIOBinding(&io_binding);
   ASSERT_TRUE(st.IsOK());
   auto input_allocator = io_binding->GetCPUAllocator(bind_provider_type);
@@ -358,7 +359,7 @@ void RunModelWithBindingMatMul(InferenceSession& session_object,
       (output_device && output_device->Type() == OrtDevice::GPU)) {
 #if defined(USE_CUDA) || defined(USE_ROCM)
     // in this case we need to copy the tensor from cuda to cpu
-    vector<OrtValue>& outputs = io_binding->GetOutputs();
+    std::vector<OrtValue>& outputs = io_binding->GetOutputs();
     ASSERT_EQ(1u, outputs.size());
     auto& rtensor = outputs.front().Get<Tensor>();
     auto element_type = rtensor.DataType();
@@ -438,7 +439,7 @@ TEST(InferenceSessionTests, TestModelSerialization) {
   // Load model with level 0 transform level
   // and assert that the model has Identity nodes.
   SessionOptions so;
-  const string test_model = "testdata/transform/abs-id-max.onnx";
+  const std::string test_model = "testdata/transform/abs-id-max.onnx";
   so.session_logid = "InferenceSessionTests.TestModelSerialization";
   so.graph_optimization_level = TransformerLevel::Default;
   InferenceSessionWrapper session_object_noopt{so, GetEnvironment()};
@@ -478,9 +479,9 @@ TEST(InferenceSessionTests, TestModelSerialization) {
 
   // Assert that re-feed of optimized model with default transform level results
   // in same runtime model as abs-id-max.onnx with TransformLevel-1.
-  std::ifstream model_fs_session1(so.optimized_model_filepath, ios::in | ios::binary);
+  std::ifstream model_fs_session1(so.optimized_model_filepath, std::ios::in | std::ios::binary);
   ASSERT_TRUE(model_fs_session1.good());
-  std::ifstream model_fs_session2(so_opt.optimized_model_filepath, ios::in | ios::binary);
+  std::ifstream model_fs_session2(so_opt.optimized_model_filepath, std::ios::in | std::ios::binary);
   ASSERT_TRUE(model_fs_session2.good());
   ASSERT_TRUE(model_fs_session1.tellg() == model_fs_session2.tellg());
   model_fs_session1.seekg(0, std::ifstream::beg);
@@ -499,7 +500,7 @@ TEST(InferenceSessionTests, TestModelSerialization) {
 #ifdef ORT_RUN_EXTERNAL_ONNX_TESTS
 static bool Compare(const InputDefList& f_arg, const InputDefList& s_arg) {
   if (f_arg.size() != s_arg.size()) {
-    cout << "Sizes differ: f_arg size: " << f_arg.size() << " s_arg size: " << s_arg.size() << endl;
+    std::cout << "Sizes differ: f_arg size: " << f_arg.size() << " s_arg size: " << s_arg.size() << std::endl;
     return false;
   }
 
@@ -564,9 +565,9 @@ TEST(InferenceSessionTests, ModelMetadata) {
     }
 
     auto retval = session_object.GetModelInputs();
-    cout << "weights size: " << weights.size()
-         << " inputs.size(): " << inputs.size()
-         << " from session: " << retval.second->size() << endl;
+    std::cout << "weights size: " << weights.size()
+              << " inputs.size(): " << inputs.size()
+              << " from session: " << retval.second->size() << std::endl;
     ASSERT_TRUE(retval.first.IsOK());
     ASSERT_TRUE(Compare(inputs_no_weights, *retval.second));
   }
@@ -617,7 +618,7 @@ TEST(InferenceSessionTests, CheckRunLogger) {
   bool have_log_entry_with_run_tag =
       (std::find_if(msgs.begin(), msgs.end(),
                     [&run_options](std::string msg) {
-                      return msg.find(run_options.run_tag) != string::npos;
+                      return msg.find(run_options.run_tag) != std::string::npos;
                     }) != msgs.end());
 
   ASSERT_TRUE(have_log_entry_with_run_tag);
@@ -660,18 +661,18 @@ TEST(InferenceSessionTests, CheckRunProfilerWithSessionOptions) {
 
   auto size = lines.size();
   ASSERT_TRUE(size > 1);
-  ASSERT_TRUE(lines[0].find("[") != string::npos);
-  ASSERT_TRUE(lines[1].find("model_loading_uri") != string::npos);
-  ASSERT_TRUE(lines[size - 1].find("]") != string::npos);
+  ASSERT_TRUE(lines[0].find("[") != std::string::npos);
+  ASSERT_TRUE(lines[1].find("model_loading_uri") != std::string::npos);
+  ASSERT_TRUE(lines[size - 1].find("]") != std::string::npos);
   std::vector<std::string> tags = {"pid", "dur", "ts", "ph", "X", "name", "args"};
 
   bool has_kernel_info = false;
   for (size_t i = 1; i < size - 1; ++i) {
     for (auto& s : tags) {
-      ASSERT_TRUE(lines[i].find(s) != string::npos);
-      has_kernel_info = has_kernel_info || lines[i].find("Kernel") != string::npos &&
-                                               lines[i].find("stream") != string::npos &&
-                                               lines[i].find("block_x") != string::npos;
+      ASSERT_TRUE(lines[i].find(s) != std::string::npos);
+      has_kernel_info = has_kernel_info || lines[i].find("Kernel") != std::string::npos &&
+                                               lines[i].find("stream") != std::string::npos &&
+                                               lines[i].find("block_x") != std::string::npos;
     }
   }
 
@@ -717,25 +718,25 @@ TEST(InferenceSessionTests, CheckRunProfilerWithSessionOptions2) {
 
   auto size = lines.size();
   ASSERT_TRUE(size > 1);
-  ASSERT_TRUE(lines[0].find("[") != string::npos);
-  ASSERT_TRUE(lines[1].find("model_loading_uri") != string::npos);
-  ASSERT_TRUE(lines[size - 1].find("]") != string::npos);
+  ASSERT_TRUE(lines[0].find("[") != std::string::npos);
+  ASSERT_TRUE(lines[1].find("model_loading_uri") != std::string::npos);
+  ASSERT_TRUE(lines[size - 1].find("]") != std::string::npos);
   std::vector<std::string> tags = {"pid", "dur", "ts", "ph", "X", "name", "args"};
 
   [[maybe_unused]] bool has_api_info = false;
   for (size_t i = 1; i < size - 1; ++i) {
     for (auto& s : tags) {
-      ASSERT_TRUE(lines[i].find(s) != string::npos);
+      ASSERT_TRUE(lines[i].find(s) != std::string::npos);
 #ifdef USE_CUDA
-      has_api_info = has_api_info || lines[i].find("Api") != string::npos &&
-                                         lines[i].find("cudaLaunch") != string::npos;
+      has_api_info = has_api_info || lines[i].find("Api") != std::string::npos &&
+                                         lines[i].find("cudaLaunch") != std::string::npos;
 #endif
 #ifdef USE_ROCM
-      has_api_info = has_api_info || lines[i].find("Api") != string::npos &&
-                                         lines[i].find("hipLaunch") != string::npos;
+      has_api_info = has_api_info || lines[i].find("Api") != std::string::npos &&
+                                         lines[i].find("hipLaunch") != std::string::npos;
 #endif
 #ifdef USE_WEBGPU
-      has_api_info = has_api_info || lines[i].find("Api") != string::npos;
+      has_api_info = has_api_info || lines[i].find("Api") != std::string::npos;
 #endif
     }
   }
@@ -769,17 +770,17 @@ TEST(InferenceSessionTests, CheckRunProfilerWithStartProfile) {
   int count = 0;
   while (std::getline(profile, line)) {
     if (count == 0) {
-      ASSERT_TRUE(line.find("[") != string::npos);
+      ASSERT_TRUE(line.find("[") != std::string::npos);
     } else if (count <= 3) {
       for (auto& s : tags) {
-        ASSERT_TRUE(line.find(s) != string::npos);
+        ASSERT_TRUE(line.find(s) != std::string::npos);
       }
     } else {
-      ASSERT_TRUE(line.find("]") != string::npos);
+      ASSERT_TRUE(line.find("]") != std::string::npos);
     }
 
     if (count == 1) {
-      ASSERT_TRUE(line.find("mul_1_kernel_time") != string::npos);
+      ASSERT_TRUE(line.find("mul_1_kernel_time") != std::string::npos);
     }
     count++;
   }
@@ -929,7 +930,7 @@ TEST(InferenceSessionTests, ConfigureVerbosityLevel) {
   std::copy(msgs.begin(), msgs.end(), std::ostream_iterator<std::string>(std::cout, "\n"));
   bool have_log_entry_with_vlog_session_msg =
       (std::find_if(msgs.begin(), msgs.end(),
-                    [&](std::string msg) { return msg.find("Added input argument with name") != string::npos; }) !=
+                    [&](std::string msg) { return msg.find("Added input argument with name") != std::string::npos; }) !=
        msgs.end());
 
   ASSERT_TRUE(have_log_entry_with_vlog_session_msg);
@@ -942,7 +943,8 @@ TEST(InferenceSessionTests, ConfigureVerbosityLevel) {
   // ASSERT_TRUE(have_log_entry_with_vlog_run_msg);
 
   bool has_num_streams_msg =
-      (std::find_if(msgs.begin(), msgs.end(), [&](std::string msg) { return msg.find("Number of streams") != string::npos; }) != msgs.end());
+      (std::find_if(msgs.begin(), msgs.end(), [&](std::string msg) { return msg.find("Number of streams") !=
+                                                                            std::string::npos; }) != msgs.end());
 
   ASSERT_TRUE(has_num_streams_msg);
 #endif
@@ -983,7 +985,7 @@ TEST(InferenceSessionTests, UseUserSpecifiedLoggingFunctionInSession) {
 #ifndef NDEBUG
   bool have_log_entry_with_vlog_session_msg =
       (std::find_if(log_msgs.begin(), log_msgs.end(),
-                    [&](std::string msg) { return msg.find("Added input argument with name") != string::npos; }) !=
+                    [&](std::string msg) { return msg.find("Added input argument with name") != std::string::npos; }) !=
        log_msgs.end());
   ASSERT_TRUE(have_log_entry_with_vlog_session_msg);
 #endif
@@ -996,7 +998,7 @@ TEST(InferenceSessionTests, TestWithIstream) {
 
   InferenceSession session_object{so, GetEnvironment()};
 
-  std::ifstream model_file_stream(MODEL_URI, ios::in | ios::binary);
+  std::ifstream model_file_stream(MODEL_URI, std::ios::in | std::ios::binary);
   ASSERT_TRUE(model_file_stream.good());
   ASSERT_TRUE(session_object.Load(model_file_stream).IsOK());
   ASSERT_STATUS_OK(session_object.Initialize());
@@ -1015,7 +1017,7 @@ TEST(InferenceSessionTests, TestRegisterExecutionProvider) {
   CPUExecutionProviderInfo epi;
   ASSERT_TRUE(session_object.RegisterExecutionProvider(std::make_unique<CPUExecutionProvider>(epi)).IsOK());
 
-  std::ifstream model_file_stream(MODEL_URI, ios::in | ios::binary);
+  std::ifstream model_file_stream(MODEL_URI, std::ios::in | std::ios::binary);
   ASSERT_TRUE(model_file_stream.good());
   ASSERT_TRUE(session_object.Load(model_file_stream).IsOK());
   ASSERT_STATUS_OK(session_object.Initialize());
@@ -1092,13 +1094,14 @@ TEST(InferenceSessionTests, TestIOBindingReuse) {
   std::stringstream sstr(s1);
   ASSERT_TRUE(session_object.Load(sstr).IsOK());
   ASSERT_STATUS_OK(session_object.Initialize());
-  unique_ptr<IOBinding> io_binding;
+  std::unique_ptr<IOBinding> io_binding;
   Status st = session_object.NewIOBinding(&io_binding);
   ASSERT_TRUE(st.IsOK());
 
   OrtValue ml_value1;
-  vector<float> v1{2.f};
-  CreateMLValue<float>(TestCPUExecutionProvider()->CreatePreferredAllocators()[0], {1}, v1, &ml_value1);
+  const std::vector<float> v1{2.f};
+  const int64_t shape[] = {1};
+  CreateMLValue<float>(TestCPUExecutionProvider()->CreatePreferredAllocators()[0], shape, v1, &ml_value1);
   ASSERT_STATUS_OK(io_binding->BindOutput("foo", ml_value1));
   ASSERT_TRUE(io_binding->GetOutputs().size() == 1);
   auto span = io_binding->GetOutputs()[0].Get<Tensor>().DataAsSpan<float>();
@@ -1108,8 +1111,8 @@ TEST(InferenceSessionTests, TestIOBindingReuse) {
   }
 
   OrtValue ml_value2;
-  vector<float> v2{3.f};
-  CreateMLValue<float>(TestCPUExecutionProvider()->CreatePreferredAllocators()[0], {1}, v2, &ml_value2);
+  const std::vector<float> v2{3.f};
+  CreateMLValue<float>(TestCPUExecutionProvider()->CreatePreferredAllocators()[0], shape, v2, &ml_value2);
   ASSERT_STATUS_OK(io_binding->BindOutput("foo", ml_value2));
   ASSERT_TRUE(io_binding->GetOutputs().size() == 1);
   span = io_binding->GetOutputs()[0].Get<Tensor>().DataAsSpan<float>();
@@ -1651,7 +1654,7 @@ TEST(InferenceSessionTests, Test3LayerNestedSubgraph) {
   run_options.run_tag = so.session_logid;
 
   std::vector<int64_t> dim = {1};
-  std::vector<bool> va = {false};
+  InlinedVector<bool> va = {false};
   OrtValue ml_value_x;
   CreateMLValue<bool>(TestCPUExecutionProvider()->CreatePreferredAllocators()[0], dim, va,
                       &ml_value_x);
@@ -1807,8 +1810,9 @@ TEST(InferenceSessionTests, Test2LayerNestedSubgraph) {
   OrtValue ml_value_input_0;
   CreateMLValue<float>(TestCPUExecutionProvider()->CreatePreferredAllocators()[0], dim_input_0, data_input_0,
                        &ml_value_input_0);
-  std::vector<int64_t> dim_input_1 = {1};
-  std::vector<bool> data_input_1 = {false};
+
+  const int64_t dim_input_1[] = {1};
+  const bool data_input_1[] = {false};
   OrtValue ml_value_input_1;
   CreateMLValue<bool>(TestCPUExecutionProvider()->CreatePreferredAllocators()[0], dim_input_1, data_input_1,
                       &ml_value_input_1);
@@ -2047,7 +2051,7 @@ TEST(InferenceSessionTests, TestCopyToFromDevices) {
 // It creates and registers a dummy transformer and after session initialize
 // validates that this transformer was called regardless of the graph optimization level set.
 TEST(InferenceSessionTests, TestRegisterTransformers) {
-  string model_uri = "testdata/transform/fusion/fuse-conv-bn-mul-add-unsqueeze.onnx";
+  std::string model_uri = "testdata/transform/fusion/fuse-conv-bn-mul-add-unsqueeze.onnx";
 
   for (int i = static_cast<int>(TransformerLevel::Default); i <= static_cast<int>(TransformerLevel::MaxLevel); i++) {
     SessionOptions so;
@@ -2126,7 +2130,7 @@ TEST(InferenceSessionTests, TestStrictShapeInference) {
 
   tester.AddInput("data", input_shape, input_data);
   tester.AddOutput<int64_t>("output", invalid_output_shape, output_data);
-  const std::unordered_set<string> excluded_provider_types = {
+  const std::unordered_set<std::string> excluded_provider_types = {
       kTensorrtExecutionProvider,   // Doesn't handle Unsqueeze.
       kOpenVINOExecutionProvider};  // Disabled temporarily.
 
@@ -2144,7 +2148,7 @@ TEST(InferenceSessionTests, TestStrictShapeInference) {
 #ifdef USE_CUDA
 // disable it, since we are going to enable parallel execution with cuda ep
 TEST(InferenceSessionTests, DISABLED_TestParallelExecutionWithCudaProvider) {
-  string model_uri = "testdata/transform/fusion/fuse-conv-bn-mul-add-unsqueeze.onnx";
+  std::string model_uri = "testdata/transform/fusion/fuse-conv-bn-mul-add-unsqueeze.onnx";
 
   SessionOptions so;
   so.execution_mode = ExecutionMode::ORT_PARALLEL;
@@ -2822,10 +2826,10 @@ TEST(InferenceSessionTests, InitializerSharing_EnsureSessionsUseUserAddedInitial
   std::vector<float> input_data_vec{1., 2., 3., 4., 5., 6.};
 
   auto allocator = TestCPUExecutionProvider()->CreatePreferredAllocators()[0];
-  CreateMLValue<float>(allocator, {3, 2}, input_data_vec, &val_to_share_from_allocator);
+  CreateMLValue<float>(allocator, AsSpan<int64_t>({3, 2}), input_data_vec, &val_to_share_from_allocator);
 
   OrtMemoryInfo mem_info{CPU, OrtArenaAllocator};
-  CreateMLValue<float>(std::array<int64_t, 2>{3, 2}, input_data_vec.data(), mem_info, &val_to_share);
+  CreateMLValue<float>(AsSpan<int64_t>({3, 2}), input_data_vec.data(), mem_info, &val_to_share);
 
   // create sessions to share the allocator
   SessionOptions so1;

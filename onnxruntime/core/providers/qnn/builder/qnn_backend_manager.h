@@ -227,7 +227,7 @@ class QnnBackendManager : public std::enable_shared_from_this<QnnBackendManager>
   static const std::string GetEventTypeString(QnnProfile_EventType_t eventType);
   static const std::string ExtractQnnScalarValue(const Qnn_Scalar_t& scalar);
   const char* QnnProfileErrorToString(QnnProfile_Error_t error);
-  std::string_view QnnErrorHandleToString(Qnn_ErrorHandle_t error);
+  std::string QnnErrorHandleToString(Qnn_ErrorHandle_t error);
   QnnLog_Level_t MapOrtSeverityToQNNLogLevel(logging::Severity ort_log_level);
 #ifdef _WIN32
   void LogQnnProfileEventAsTraceLogging(

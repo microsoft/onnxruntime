@@ -317,6 +317,11 @@ void BaseTester::ExecuteModel(Model& model, SessionType& session,
     ASSERT_EQ(expect_result, ExpectResult::kExpectFailure) << "Initialize failed but expected success: "
                                                            << status.ErrorMessage();
 
+    // No need to check expected failure string if empty string is given.
+    if (expected_failure_string.empty()) {
+      return;
+    }
+
     // Disable expected_failure_string checks for OpenVINO EP
     if (provider_type != kOpenVINOExecutionProvider) {
       EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr(expected_failure_string));
@@ -336,6 +341,11 @@ void BaseTester::ExecuteModel(Model& model, SessionType& session,
     } else {
       ASSERT_EQ(expect_result, ExpectResult::kExpectFailure) << "Run failed but expected success: "
                                                              << status.ErrorMessage();
+
+      // No need to check expected failure string if empty string is given.
+      if (expected_failure_string.empty()) {
+        return;
+      }
 
       // Disable expected_failure_string checks for MKL-DNN and OpenVINO EP's
       if (provider_type != kDnnlExecutionProvider &&

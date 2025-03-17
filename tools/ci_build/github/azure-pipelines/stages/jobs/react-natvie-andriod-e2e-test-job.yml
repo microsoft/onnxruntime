@@ -18,6 +18,7 @@ jobs:
   pool: 'onnxruntime-Ubuntu2204-AMD-CPU'
   variables:
     runCodesignValidationInjection: false
+    ANDROID_AVD_HOME: $(Agent.TempDirectory)
   timeoutInMinutes: 90
   steps:
   - task: UsePythonVersion@0

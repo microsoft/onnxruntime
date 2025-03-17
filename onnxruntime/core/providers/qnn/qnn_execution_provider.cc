@@ -369,6 +369,21 @@ QNNExecutionProvider::QNNExecutionProvider(const ProviderOptions& provider_optio
     rpcmem_library_ = std::make_shared<qnn::RpcMemLibrary>();
   }
 
+  dump_json_qnn_graph_ = ParseBoolOption("dump_json_qnn_graph", false, provider_options_map);
+
+  static const std::string QNN_GRAPH_DUMP_DIR = "json_qnn_graph_dir";
+  auto json_graphs_dir_pos = provider_options_map.find(QNN_GRAPH_DUMP_DIR);
+
+  if (json_graphs_dir_pos != provider_options_map.end()) {
+    json_qnn_graph_dir_ = json_graphs_dir_pos->second;
+    if (dump_json_qnn_graph_) {
+      LOGS_DEFAULT(INFO) << "JSON graphs directory: " << json_qnn_graph_dir_;
+    } else {
+      LOGS_DEFAULT(WARNING) << "Provided a directory for dumping QNN JSON graphs, "
+                            << "but did not enable dumping of QNN JSON graphs.";
+    }
+  }
+
   qnn_backend_manager_ = qnn::QnnBackendManager::Create(
       qnn::QnnBackendManagerConfig{backend_path,
                                    profiling_level_etw,
@@ -490,12 +505,6 @@ QNNExecutionProvider::GetSupportedNodes(const GraphViewer& graph_viewer,
                                         const logging::Logger& logger) const {
   std::unordered_set<const Node*> supported_nodes{};
 
-  std::unordered_set<std::string> initializer_input_lookup;
-  auto graph_initializers = graph_viewer.GetAllInitializedTensors();
-  for (auto graph_ini : graph_initializers) {
-    initializer_input_lookup.emplace(graph_ini.first);
-  }
-
   // Util function that initializes a table that maps a graph input or output name to its index.
   auto init_input_output_index_map = [](std::unordered_map<std::string, size_t>& index_map,
                                         const std::vector<const NodeArg*>& node_args) {
@@ -516,7 +525,6 @@ QNNExecutionProvider::GetSupportedNodes(const GraphViewer& graph_viewer,
                                                 qnn_backend_manager_->GetQnnBackendHandle(),
                                                 model_input_index_map,
                                                 model_output_index_map,
-                                                initializer_input_lookup,
                                                 qnn_backend_manager_->GetQnnBackendType(),
                                                 model_settings_);
 
@@ -534,7 +542,7 @@ QNNExecutionProvider::GetSupportedNodes(const GraphViewer& graph_viewer,
     Status status = qnn_node_group->IsSupported(qnn_model_wrapper, logger);
     const bool supported = status.IsOK();
 
-    constexpr auto log_severity = logging::Severity::kVERBOSE;
+    constexpr auto log_severity = logging::Severity::kINFO;
     constexpr auto log_data_type = logging::DataType::SYSTEM;
     if (logger.OutputIsEnabled(log_severity, log_data_type)) {
       LogNodeSupport(logger, log_severity, log_data_type, ORT_WHERE, *qnn_node_group, status);
@@ -646,7 +654,8 @@ static void PartitionCtxModel(const onnxruntime::GraphViewer& graph_viewer,
 
 std::vector<std::unique_ptr<ComputeCapability>>
 QNNExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_viewer,
-                                    const IKernelLookup& /*kernel_lookup*/) const {
+                                    const IKernelLookup& /*kernel_lookup*/,
+                                    IResourceAccountant* /* resource_accountant */) const {
   std::vector<std::unique_ptr<ComputeCapability>> result;
 
   if (graph_viewer.IsSubgraph()) {
@@ -874,8 +883,16 @@ Status QNNExecutionProvider::CompileFromOrtGraph(const std::vector<FusedNodeAndG
                                                                                                 QNN_HTP_GRAPH_CUSTOM_CONFIG_INIT);
     InitQnnGraphConfigs(graph_configs_builder);
 
+    std::string json_graph_filepath;
+
+    if (dump_json_qnn_graph_) {
+      namespace fs = std::filesystem;
+      fs::path path = fs::path(json_qnn_graph_dir_) / fs::path(fused_node.Name() + ".json");
+      json_graph_filepath = path.string();
+    }
+
     ORT_RETURN_IF_ERROR(qnn_model->ComposeGraph(graph_viewer, fused_node, model_settings_, logger,
-                                                graph_configs_builder.GetQnnConfigs()));
+                                                graph_configs_builder.GetQnnConfigs(), json_graph_filepath));
     ORT_RETURN_IF_ERROR(qnn_model->FinalizeGraphs(logger));
     ORT_RETURN_IF_ERROR(qnn_model->SetupQnnInputOutput(logger));
 

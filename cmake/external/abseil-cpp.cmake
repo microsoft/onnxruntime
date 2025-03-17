@@ -26,9 +26,9 @@ onnxruntime_fetchcontent_declare(
     abseil_cpp
     URL ${DEP_URL_abseil_cpp}
     URL_HASH SHA1=${DEP_SHA1_abseil_cpp}
+    EXCLUDE_FROM_ALL
     PATCH_COMMAND ${ABSL_PATCH_COMMAND}
     FIND_PACKAGE_ARGS 20240722 NAMES absl
-    EXCLUDE_FROM_ALL
 )
 
 onnxruntime_fetchcontent_makeavailable(abseil_cpp)

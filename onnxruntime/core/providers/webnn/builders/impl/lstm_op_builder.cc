@@ -201,7 +201,7 @@ bool LstmOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& initializers, 
 bool LstmOpBuilder::HasSupportedInputsImpl(const InitializedTensorSet& /* initializers */, const Node& node,
                                            const emscripten::val& wnn_limits, const logging::Logger& logger) const {
   const auto& input_defs = node.InputDefs();
-  const auto& op_type = node.OpType();
+  const std::string_view op_type = node.OpType();
   int32_t input0_type = 0;  // input data type
   int32_t input1_type = 0;  // weight data type
   int32_t input2_type = 0;  // recurrentWeight data type

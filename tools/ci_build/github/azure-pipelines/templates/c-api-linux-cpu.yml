@@ -63,10 +63,10 @@ jobs:
         script: |
           set -e -x
           mkdir -p $HOME/.onnx
-          docker run --rm --volume /data/onnx:/data/onnx:ro --volume $(Build.SourcesDirectory):/onnxruntime_src --volume $(Build.BinariesDirectory):/build \
+          docker run -e SYSTEM_COLLECTIONURI --rm --volume /data/onnx:/data/onnx:ro --volume $(Build.SourcesDirectory):/onnxruntime_src --volume $(Build.BinariesDirectory):/build \
           --volume $HOME/.onnx:/home/onnxruntimedev/.onnx -e NIGHTLY_BUILD onnxruntimecpubuildcentos8${{parameters.OnnxruntimeArch}}_packaging /bin/bash -c "python3 \
           /onnxruntime_src/tools/ci_build/build.py --enable_lto --build_java --build_nodejs --build_dir /build --config Release \
-          --skip_submodule_sync --parallel --use_vcpkg --use_binskim_compliant_compile_flags --use_vcpkg --build_shared_lib ${{ parameters.AdditionalBuildFlags }} && cd /build/Release && make install DESTDIR=/build/installed"
+          --skip_submodule_sync --parallel --use_vcpkg --use_vcpkg_ms_internal_asset_cache --use_binskim_compliant_compile_flags --use_vcpkg --use_vcpkg_ms_internal_asset_cache --build_shared_lib ${{ parameters.AdditionalBuildFlags }} && cd /build/Release && make install DESTDIR=/build/installed"
           mkdir $(Build.ArtifactStagingDirectory)/testdata
           cp $(Build.BinariesDirectory)/Release/libcustom_op_library.so* $(Build.ArtifactStagingDirectory)/testdata
           ls -al $(Build.ArtifactStagingDirectory)

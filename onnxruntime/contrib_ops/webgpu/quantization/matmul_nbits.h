@@ -39,6 +39,7 @@ class DP4AMatMulQuantizeProgram final : public Program<DP4AMatMulQuantizeProgram
  public:
   DP4AMatMulQuantizeProgram() : Program{"DP4AMatMulQuantize"} {}
   Status GenerateShaderCode(ShaderHelper& sh) const override;
+  WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES({"input_size", ProgramUniformVariableDataType::Uint32});
 };
 
 class DP4AMatMulNBitsProgram final : public Program<DP4AMatMulNBitsProgram> {

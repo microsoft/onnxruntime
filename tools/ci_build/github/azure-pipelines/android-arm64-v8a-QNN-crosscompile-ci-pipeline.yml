@@ -42,11 +42,6 @@ jobs:
     clean: all
 
   steps:
-  - task: UsePythonVersion@0
-    displayName: Use Python $(pythonVersion)
-    inputs:
-      versionSpec: $(pythonVersion)
-
   - script: |
       env | grep ANDROID
     displayName: View Android ENVs
@@ -71,7 +66,7 @@ jobs:
         --android_ndk_path $ANDROID_NDK_HOME \
         --android_abi=x86_64 \
         --android_api=31 \
-        --parallel --use_vcpkg \
+        --parallel --use_vcpkg --use_vcpkg_ms_internal_asset_cache \
         --build_shared_lib \
         --use_qnn static_lib \
         --qnn_home $(QnnSDKRootDir) \

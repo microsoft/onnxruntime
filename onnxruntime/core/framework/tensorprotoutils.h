@@ -157,6 +157,9 @@ ONNXTensorElementDataType GetTensorElementType(const ONNX_NAMESPACE::TensorProto
 template <size_t alignment>
 common::Status GetSizeInBytesFromTensorProto(const ONNX_NAMESPACE::TensorProto& tensor_proto, size_t* out);
 
+template <size_t alignment>
+Status GetSizeInBytesFromTensorTypeProto(const ONNX_NAMESPACE::TypeProto_Tensor& tensor_proto, size_t* out);
+
 /**
 Special marker used to indicate an existing memory buffer contains the TensorProto external data.
 If the 'location' field of the external data info is set to this marker, the 'offset' field should contain the

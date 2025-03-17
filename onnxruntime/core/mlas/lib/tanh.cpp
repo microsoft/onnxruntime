@@ -203,6 +203,22 @@ MlasComputeTanh<MLAS_FP16>(
 template <>
 void
 MLASCALL
+MlasComputeSoftcap<float>(
+    const float* Input,
+    float* Output,
+    size_t N,
+    float cap
+) {
+    for (size_t i = 0; i < N; i++) {
+        Output[i] = Input[i] / cap;
+        Output[i] = std::tanh(Output[i]);
+        Output[i] = Output[i] * cap;
+    }
+}
+
+template <>
+void
+MLASCALL
 MlasComputeSoftcap<MLAS_FP16>(
     const MLAS_FP16* Input,
     MLAS_FP16* Output,

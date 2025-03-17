@@ -1112,3 +1112,39 @@ MlasComputeSoftmax<MLAS_FP16>(
     bool SmoothSoftmax,
     MLAS_THREADPOOL* ThreadPool
 );
+
+template <>
+bool
+MLASCALL
+MlasGQASupported<MLAS_FP16>(
+    CBLAS_TRANSPOSE TransA,
+    CBLAS_TRANSPOSE TransB
+) {
+    if (!MlasHGemmSupported(TransA, TransB)) {
+        return false;
+    }
+
+    const auto* softmax_dispatch = GetMlasPlatform().SoftmaxDispatch;
+    if (softmax_dispatch == nullptr ||
+        softmax_dispatch->Tanh_Fp16 == nullptr ||
+        softmax_dispatch->Softcap_Fp16 == nullptr ||
+        softmax_dispatch->SumExp_Fp16 == nullptr ||
+        softmax_dispatch->Softmax_Fp16 == nullptr ||
+        softmax_dispatch->ReduceMax_Fp16 == nullptr) {
+        return false;
+    }
+
+    return true;
+}
+
+template <>
+bool
+MLASCALL
+MlasGQASupported<float>(
+    CBLAS_TRANSPOSE TransA,
+    CBLAS_TRANSPOSE TransB
+) {
+    MLAS_UNREFERENCED_PARAMETER(TransA);
+    MLAS_UNREFERENCED_PARAMETER(TransB);
+    return true;
+}

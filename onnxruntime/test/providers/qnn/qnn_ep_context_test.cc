@@ -44,9 +44,9 @@ static const std::string& GetNodeAttr(const Node& node, const std::string& attr_
 }
 
 // Create a model with FusedMatMul + Add (quantized)
-// input1 -> Add -> Q -> DQ \
-//                           FusedMatMul -> Q -> DQ -> output
-//        input2 -> Q -> DQ /
+// input1 -> Add -> Q -> DQ ----
+//                              |
+//        input2 -> Q -> DQ -> FusedMatMul -> Q -> DQ -> output
 static GetTestModelFn BuildGraphWithQAndNonQ(bool single_ep_node = true) {
   return [single_ep_node](ModelTestBuilder& builder) {
     // Creat non-quantized FusedMatMul node1
@@ -359,10 +359,10 @@ TEST_F(QnnHTPBackendTests, QnnContextBinaryGenerationNoOverWrite) {
   ASSERT_EQ(std::remove(ep_context_binary_file.c_str()), 0);
 }
 
-// Create a model with Case + Add (quantized)
-// cast_input -> Cast -> Q -> DQ \
-//                                Add -> Q -> DQ -> output
-//             input2 -> Q -> DQ /
+// Create a model with Cast + Add (quantized)
+// cast_input -> Cast -> Q -> DQ ----+
+//                                   |
+//             input2 -> Q -> DQ -> Add -> Q -> DQ -> output
 static GetTestModelFn BuildCastAddTestCase() {
   return [](ModelTestBuilder& builder) {
     // Creat Cast node int32 -> float32
@@ -391,9 +391,9 @@ static GetTestModelFn BuildCastAddTestCase() {
 }
 
 // Create a model with Add (quantized)
-// input1 -> Q -> DQ \
-//                    Add -> Q -> DQ -> output
-// input2 -> Q -> DQ /
+// input1 -> Q -> DQ ----
+//                       |
+// input2 -> Q -> DQ -> Add -> Q -> DQ -> output
 static GetTestModelFn BuildAddTestCase() {
   return [](ModelTestBuilder& builder) {
     std::vector<float> data = {0.0f, 0.0f, 1.0f, 0.0f, 1.0f, 0.0f};

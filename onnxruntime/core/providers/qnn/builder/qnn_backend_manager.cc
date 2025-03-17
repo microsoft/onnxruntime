@@ -308,7 +308,7 @@ QnnLog_Level_t QnnBackendManager::MapOrtSeverityToQNNLogLevel(logging::Severity 
   // Map ORT log severity to Qnn log level
   switch (ort_log_level) {
     case logging::Severity::kVERBOSE:
-      return QNN_LOG_LEVEL_DEBUG;
+      return QNN_LOG_LEVEL_VERBOSE;
     case logging::Severity::kINFO:
       return QNN_LOG_LEVEL_INFO;
     case logging::Severity::kWARNING:
@@ -1464,7 +1464,7 @@ const char* QnnBackendManager::QnnProfileErrorToString(QnnProfile_Error_t error)
   }
 }
 
-std::string_view QnnBackendManager::QnnErrorHandleToString(Qnn_ErrorHandle_t error) {
+std::string QnnBackendManager::QnnErrorHandleToString(Qnn_ErrorHandle_t error) {
   return utils::GetQnnErrorMessage(qnn_interface_, error);
 }
 

@@ -81,7 +81,7 @@ stages:
       inputs:
         script: |
           mkdir -p $HOME/.onnx
-          docker run -e --rm \
+          docker run -e SYSTEM_COLLECTIONURI -e --rm \
             --volume /data/onnx:/data/onnx:ro \
             --volume $(Build.SourcesDirectory):/onnxruntime_src \
             --volume $(Build.BinariesDirectory):/build \
@@ -98,7 +98,7 @@ stages:
                 --config Release --update --build \
                 --skip_submodule_sync \
                 --build_shared_lib \
-                --parallel --use_vcpkg \
+                --parallel --use_vcpkg --use_vcpkg_ms_internal_asset_cache \
                 --build_wheel \
                 --enable_onnx_tests --use_cuda --cuda_version=11.8 --cuda_home=/usr/local/cuda-11.8 --cudnn_home=/usr/local/cuda-11.8 \
                 --enable_cuda_profiling \
@@ -178,7 +178,7 @@ stages:
 
     - script: |
         mkdir -p $(GenerateImage_DIR)
-        docker run --rm --gpus all -v $PWD:/workspace \
+        docker run -e SYSTEM_COLLECTIONURI --rm --gpus all -v $PWD:/workspace \
           -v $(Build.BinariesDirectory)/Release:/Release \
           -v $(STABLE_DIFFUSION_MODEL_CACHE):/model_cache:rw \
           -v $(GenerateImage_DIR):/images:rw \
@@ -219,7 +219,7 @@ stages:
       displayName: Cache clip model
 
     - script: |
-        docker run --rm --gpus all -v $PWD:/workspace \
+        docker run -e SYSTEM_COLLECTIONURI --rm --gpus all -v $PWD:/workspace \
           -v $(CLIP_MODEL_CACHE):/model_cache:rw  \
           onnxruntimeubuntupackagestest_cuda11 \
           bash -c '
@@ -246,7 +246,7 @@ stages:
 
     # The step will execute if the gereneate image doesn't hit another test image
     - script: |
-        docker run --rm --gpus all -v $PWD:/workspace \
+        docker run -e SYSTEM_COLLECTIONURI --rm --gpus all -v $PWD:/workspace \
           -v $(CLIP_MODEL_CACHE):/model_cache:rw  \
           onnxruntimeubuntupackagestest_cuda11 \
           bash -c '
@@ -319,7 +319,7 @@ stages:
         downloadPath: $(Agent.TempDirectory)/meta_llama2_7b_hf
 
     - script: |
-        docker run --rm --gpus all -v $(Build.SourcesDirectory):/workspace \
+        docker run -e SYSTEM_COLLECTIONURI --rm --gpus all -v $(Build.SourcesDirectory):/workspace \
            -v $(Build.BinariesDirectory)/ort-artifact/:/ort-artifact \
            -v $(Agent.TempDirectory)/meta_llama2_7b_hf:/meta-llama2 \
            onnxruntimeubi8packagestest_torch \
@@ -340,7 +340,7 @@ stages:
       workingDirectory: $(Build.SourcesDirectory)
 
     - script: |
-        docker run --rm --gpus all -v $(Build.SourcesDirectory):/workspace \
+        docker run -e SYSTEM_COLLECTIONURI --rm --gpus all -v $(Build.SourcesDirectory):/workspace \
            -v $(Build.BinariesDirectory)/ort-artifact/:/ort-artifact \
            -v $(Agent.TempDirectory)/meta_llama2_7b_hf:/meta-llama2 \
            onnxruntimeubi8packagestest_torch \
@@ -361,7 +361,7 @@ stages:
       workingDirectory: $(Build.SourcesDirectory)
 
     - script: |
-        docker run --rm --gpus all -v $(Build.SourcesDirectory):/workspace \
+        docker run -e SYSTEM_COLLECTIONURI --rm --gpus all -v $(Build.SourcesDirectory):/workspace \
            -v $(Build.BinariesDirectory)/ort-artifact/:/ort-artifact \
            -v $(Agent.TempDirectory)/meta_llama2_7b_hf:/meta-llama2 \
            onnxruntimeubi8packagestest_torch \
@@ -433,7 +433,7 @@ stages:
         downloadPath: $(Agent.TempDirectory)/whisper_large_v3
 
     - script: |
-        docker run --rm --gpus all -v $(Build.SourcesDirectory):/workspace \
+        docker run -e SYSTEM_COLLECTIONURI --rm --gpus all -v $(Build.SourcesDirectory):/workspace \
            -v $(Build.BinariesDirectory)/ort-artifact/:/ort-artifact \
            -v $(Agent.TempDirectory)/whisper_large_v3:/whisper_large_v3 \
            onnxruntimepackagestest_ompffmpeg \
@@ -454,7 +454,7 @@ stages:
       workingDirectory: $(Build.SourcesDirectory)
 
     - script: |
-        docker run --rm --gpus all -v $(Build.SourcesDirectory):/workspace \
+        docker run -e SYSTEM_COLLECTIONURI --rm --gpus all -v $(Build.SourcesDirectory):/workspace \
            -v $(Build.BinariesDirectory)/ort-artifact/:/ort-artifact \
            -v $(Agent.TempDirectory)/whisper_large_v3:/whisper_large_v3 \
            onnxruntimepackagestest_ompffmpeg \

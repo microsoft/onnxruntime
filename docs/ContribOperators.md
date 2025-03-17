@@ -5253,7 +5253,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 
 <dl>
 <dt><tt>interleaved</tt> : int</dt>
-<dd>Rotate using interleaved pattern. Default value is 0 (False).</dd>
+<dd>Indicates whether the input has real and imaginary parts interleaved. Default value is 0 (False), meaning the first half of the input consists of real values and the second half consists of imaginary values.</dd>
 <dt><tt>is_packed_batching</tt> : int</dt>
 <dd>ragged batch inputs or not. Default value is 0</dd>
 <dt><tt>num_heads</tt> : int</dt>

@@ -172,7 +172,7 @@ stages:
         Repository: onnxruntimeubi8packagestest
 
     - bash: |
-        docker run --rm \
+        docker run -e SYSTEM_COLLECTIONURI --rm \
           --gpus all \
           --volume $(Build.SourcesDirectory):/onnxruntime_src \
           --volume $(Build.BinariesDirectory):/build \

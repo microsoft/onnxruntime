@@ -77,7 +77,7 @@ stages:
             BINARY_SIZE_THRESHOLD_ARGS="--threshold_size_in_bytes ${{ parameters.BinarySizeThresholdInBytes }}"
           fi
           NDK_HOME=$(realpath $ANDROID_NDK_HOME)
-          docker run --rm \
+          docker run -e SYSTEM_COLLECTIONURI --rm \
             --volume $(Build.SourcesDirectory):/onnxruntime_src \
             --volume $(Build.BinariesDirectory):/build \
             --volume $ANDROID_HOME:/android_home \
@@ -133,7 +133,7 @@ stages:
           script: |
             set -e -x
             NDK_HOME=$(realpath $ANDROID_NDK_HOME)
-            docker run --rm \
+            docker run -e SYSTEM_COLLECTIONURI --rm \
               --volume $(Build.SourcesDirectory):/onnxruntime_src \
               --volume $(Build.BinariesDirectory):/build \
               --volume $ANDROID_HOME:/android_home \

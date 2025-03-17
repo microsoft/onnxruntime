@@ -1464,8 +1464,8 @@ void
 MLASCALL
 MlasRotaryEmbedOneRow(
     const T* input,
-    const T* sin,
-    const T* cos,
+    const T* sin_data,
+    const T* cos_data,
     size_t dim,
     bool interleaved,
     T* output
@@ -1491,6 +1491,17 @@ struct MLAS_HGEMM_DATA_PARAMS {
 bool
 MLASCALL
 MlasHGemmSupported(
+    CBLAS_TRANSPOSE TransA,
+    CBLAS_TRANSPOSE TransB
+    );
+
+/**
+ * @brief Check whether mlas supports GQA kernels with the type and transpose settings.
+ */
+template <typename T>
+bool
+MLASCALL
+MlasGQASupported(
     CBLAS_TRANSPOSE TransA,
     CBLAS_TRANSPOSE TransB
     );

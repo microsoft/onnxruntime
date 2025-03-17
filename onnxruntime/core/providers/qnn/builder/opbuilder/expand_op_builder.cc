@@ -52,14 +52,14 @@ Status ExpandOpBuilder::ProcessInputs(QnnModelWrapper& qnn_model_wrapper,
 
   // Process shape input
   const auto& input_name = inputs[1].node_arg.Name();
-  bool is_initializer_input = qnn_model_wrapper.IsInitializerInput(input_name);
-  ORT_RETURN_IF_NOT(is_initializer_input, "QNN doesn't support dynamic shape.");
+  bool is_constant_input = qnn_model_wrapper.IsConstantInput(input_name);
+  ORT_RETURN_IF_NOT(is_constant_input, "QNN doesn't support dynamic shape.");
 
   std::vector<uint32_t> shape;
   ORT_RETURN_IF_NOT(qnn_model_wrapper.GetOnnxShape(inputs[1].node_arg, shape), "Cannot get shape");
   uint32_t shape_rank = shape[0];
   std::vector<uint8_t> unpacked_tensor;
-  const auto& input_tensor = qnn_model_wrapper.GetInitializerTensors().at(input_name);
+  const auto& input_tensor = qnn_model_wrapper.GetConstantTensor(input_name);
   ORT_RETURN_IF_ERROR(qnn_model_wrapper.UnpackInitializerData(*input_tensor, unpacked_tensor));
   const int64_t* shape_data_int64 = reinterpret_cast<const int64_t*>(unpacked_tensor.data());
   std::vector<uint32_t> input_shape(shape_rank, 0);

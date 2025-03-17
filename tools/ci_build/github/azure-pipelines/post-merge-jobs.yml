@@ -223,7 +223,11 @@ stages:
         BuildConfig: 'RelWithDebInfo'
         EnvSetupScript: setup_env_cuda.bat
         buildArch: x64
-        additionalBuildFlags: --enable_pybind --build_java --build_nodejs --use_cuda --cuda_home="$(Agent.TempDirectory)\v${{ parameters.CudaVersion }}" --enable_cuda_profiling --cmake_extra_defines CMAKE_CUDA_ARCHITECTURES=86
+        additionalBuildFlags: --build_wheel --build_java --build_nodejs --use_cuda --cuda_home="$(Agent.TempDirectory)\v${{ parameters.CudaVersion }}"
+          --enable_cuda_profiling --enable_transformers_tool_test
+          --use_vcpkg --use_vcpkg_ms_internal_asset_cache --cmake_extra_defines CMAKE_CUDA_ARCHITECTURES=86
+          --cmake_extra_defines onnxruntime_BUILD_UNIT_TESTS=ON
+          --cmake_extra_defines onnxruntime_ENABLE_CUDA_EP_INTERNAL_TESTS=ON
         msbuildPlatform: x64
         isX86: false
         job_name_suffix: x64_RelWithDebInfo
@@ -234,7 +238,7 @@ stages:
         OnnxruntimeTestGpuDeviceId: 1
 
 - ${{ if or(startsWith(variables['System.CollectionUri'], 'https://dev.azure.com/aiinfra/'),startsWith(variables['System.CollectionUri'], 'https://aiinfra.visualstudio.com/')) }}:
-  # The settings below is the same as Windows GPU CI pipeline's CUDA job except here we set OnnxruntimeTestGpuDeviceId to 1
+  # The settings below is the same as Windows GPU CI pipeline's TensorRT job except here we set OnnxruntimeTestGpuDeviceId to 1
   - stage: trt_multi_gpu
     dependsOn: []
     jobs:
@@ -243,7 +247,7 @@ stages:
         BuildConfig: 'RelWithDebInfo'
         EnvSetupScript: setup_env_trt.bat
         buildArch: x64
-        additionalBuildFlags: --enable_pybind --build_java --build_nodejs --use_cuda --cuda_home="$(Agent.TempDirectory)\v${{ parameters.CudaVersion }}" --enable_cuda_profiling --use_tensorrt --tensorrt_home="$(Agent.TempDirectory)\${{ variables.win_trt_folder }}" --cmake_extra_defines CMAKE_CUDA_ARCHITECTURES=86
+        additionalBuildFlags: --config RelWithDebInfo --parallel --use_binskim_compliant_compile_flags --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --build_shared_lib --update --cmake_generator "Visual Studio 17 2022" --build_wheel --enable_onnx_tests --use_tensorrt --tensorrt_home="$(Agent.TempDirectory)\${{ variables.win_trt_folder }}" --cuda_home="$(Agent.TempDirectory)\v${{ parameters.CudaVersion }}" --use_vcpkg --use_vcpkg_ms_internal_asset_cache --cmake_extra_defines CMAKE_CUDA_ARCHITECTURES=86
         msbuildPlatform: x64
         isX86: false
         job_name_suffix: x64_RelWithDebInfo
@@ -261,7 +265,7 @@ stages:
       BuildConfig: 'Debug'
       EnvSetupScript: setup_env.bat
       buildArch: x64
-      additionalBuildFlags: --disable_memleak_checker --use_mimalloc
+      additionalBuildFlags: --disable_memleak_checker --use_mimalloc --use_vcpkg --use_vcpkg_ms_internal_asset_cache
       msbuildPlatform: x64
       isX86: false
       job_name_suffix: x64_mimalloc
@@ -280,7 +284,7 @@ stages:
       BuildConfig: 'Debug'
       EnvSetupScript: setup_env.bat
       buildArch: x64
-      additionalBuildFlags: --cmake_extra_defines onnxruntime_ENABLE_MEMORY_PROFILE=ON
+      additionalBuildFlags: --use_vcpkg --use_vcpkg_ms_internal_asset_cache --cmake_extra_defines onnxruntime_ENABLE_MEMORY_PROFILE=ON
       msbuildPlatform: x64
       isX86: false
       job_name_suffix: x64_no_memory_profiling
@@ -318,7 +322,7 @@ stages:
       BuildConfig: 'Debug'
       EnvSetupScript: setup_env.bat
       buildArch: x64
-      additionalBuildFlags: --build_shared_lib --cmake_extra_defines onnxruntime_DEBUG_NODE_INPUTS_OUTPUTS=ON
+      additionalBuildFlags: --use_vcpkg --use_vcpkg_ms_internal_asset_cache --build_shared_lib --cmake_extra_defines onnxruntime_DEBUG_NODE_INPUTS_OUTPUTS=ON
       msbuildPlatform: x64
       isX86: false
       job_name_suffix: x64_debug_node_input_output
@@ -349,7 +353,7 @@ stages:
           set -e
           ln -s /data/models .
           #Build onnxruntime and run the instrumented program(unitests)
-          LLVM_PROFILE_FILE="%p.profraw" CFLAGS="-g -fprofile-instr-generate -fcoverage-mapping" CXXFLAGS="-g -fprofile-instr-generate -fcoverage-mapping" CC=clang CXX=clang++  python3 $(Build.SourcesDirectory)/tools/ci_build/build.py --build_dir=$(Build.BinariesDirectory) --config Debug --parallel --skip_submodule_sync --build_shared_lib --enable_onnx_tests --cmake_extra_defines RUN_MODELTEST_IN_DEBUG_MODE=ON
+          LLVM_PROFILE_FILE="%p.profraw" CFLAGS="-g -fprofile-instr-generate -fcoverage-mapping" CXXFLAGS="-g -fprofile-instr-generate -fcoverage-mapping" CC=clang CXX=clang++  python3 $(Build.SourcesDirectory)/tools/ci_build/build.py --build_dir=$(Build.BinariesDirectory) --config Debug --parallel --use_vcpkg --use_vcpkg_ms_internal_asset_cache --skip_submodule_sync --build_shared_lib --enable_onnx_tests --cmake_extra_defines RUN_MODELTEST_IN_DEBUG_MODE=ON
 
           cd Debug
           ./onnxruntime_mlas_test

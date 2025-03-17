@@ -61,8 +61,8 @@ jobs:
     parameters:
       Dockerfile: tools/ci_build/github/linux/docker/rocm-ci-pipeline-env.Dockerfile
       Context: tools/ci_build/github/linux/docker
-      DockerBuildArgs: "--build-arg ROCM_VERSION=$(RocmVersion)"
-      Repository: onnxruntimerocm-cibuild-rocm$(RocmVersion)
+      DockerBuildArgs: "--build-arg ROCM_VERSION=$(RocmVersion) --build-arg BUILD_UID=1004"
+      Repository: onnxruntimerocm-cibuild-rocm$(RocmVersion)new
 
   - task: Cache@2
     inputs:
@@ -81,7 +81,7 @@ jobs:
   - task: CmdLine@2
     inputs:
       script: |
-        docker run --rm \
+        docker run -e SYSTEM_COLLECTIONURI --rm \
           --security-opt seccomp=unconfined \
           --shm-size=1024m \
           --user $UID:$(id -g $USER) \
@@ -90,7 +90,7 @@ jobs:
           --volume $(CCACHE_DIR):/cache \
           -e CCACHE_DIR=/cache \
           --workdir /onnxruntime_src \
-          onnxruntimerocm-cibuild-rocm$(RocmVersion) \
+          onnxruntimerocm-cibuild-rocm$(RocmVersion)new \
           /bin/bash -c "
             set -ex; \
             env; \
@@ -161,13 +161,13 @@ jobs:
     parameters:
       Dockerfile: tools/ci_build/github/linux/docker/rocm-ci-pipeline-env.Dockerfile
       Context: tools/ci_build/github/linux/docker
-      DockerBuildArgs: "--build-arg ROCM_VERSION=$(RocmVersion)"
-      Repository: onnxruntimerocm-cibuild-rocm$(RocmVersion)
+      DockerBuildArgs: "--build-arg ROCM_VERSION=$(RocmVersion) --build-arg BUILD_UID=1004"
+      Repository: onnxruntimerocm-cibuild-rocm$(RocmVersion)new
 
   - task: CmdLine@2
     inputs:
       script: |
-        docker run --rm \
+        docker run -e SYSTEM_COLLECTIONURI --rm \
           --security-opt seccomp=unconfined \
           --shm-size=1024m \
           --device=/dev/kfd \
@@ -179,7 +179,7 @@ jobs:
           --volume $(Build.BinariesDirectory):/build \
           --volume /data/models:/build/models:ro \
           --workdir /build/Release \
-          onnxruntimerocm-cibuild-rocm$(RocmVersion) \
+          onnxruntimerocm-cibuild-rocm$(RocmVersion)new \
           /bin/bash -c "
             set -ex; \
             xargs -a /build/Release/perms.txt chmod a+x; \
@@ -197,7 +197,7 @@ jobs:
               --enable_nccl \
               --build_dir /build \
               --build_shared_lib \
-              --parallel --use_vcpkg \
+              --parallel --use_vcpkg --use_vcpkg_ms_internal_asset_cache \
               --build_wheel \
               --skip_submodule_sync \
               --test --enable_onnx_tests --enable_transformers_tool_test \
@@ -208,7 +208,7 @@ jobs:
   - task: CmdLine@2
     inputs:
       script: |-
-        docker run --rm \
+        docker run -e SYSTEM_COLLECTIONURI --rm \
           --security-opt seccomp=unconfined \
           --shm-size=1024m \
           --device=/dev/kfd \
@@ -225,10 +225,10 @@ jobs:
           -e KERNEL_EXPLORER_BATCHED_GEMM_MAX_BATCH_SIZE=8 \
           -e KERNEL_EXPLORER_TEST_USE_CUPY=0 \
           -e CUPY_CACHE_DIR=/build/Release \
-          onnxruntimerocm-cibuild-rocm$(RocmVersion) \
+          onnxruntimerocm-cibuild-rocm$(RocmVersion)new \
           /bin/bash -c "
             set -ex; \
-            python --version; \
+            python --version; id ; ls -lha /home ; \
             ls /opt/miniconda/envs/rocm-ci/lib/; \
             pytest /onnxruntime_src/onnxruntime/python/tools/kernel_explorer/ -n 4 --reruns 1 --durations=100"
       workingDirectory: $(Build.SourcesDirectory)

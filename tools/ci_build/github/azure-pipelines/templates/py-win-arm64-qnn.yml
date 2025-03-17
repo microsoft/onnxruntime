@@ -34,6 +34,9 @@ jobs:
       Python312_arm64:
         PythonVersion: '3.12.6'
         LocalPythonDir: 'C:\Python\Python312'
+      Python313_arm64:
+        PythonVersion: '3.13.2'
+        LocalPythonDir: 'C:\Python\Python313'
   variables:
     GRADLE_OPTS: '-Dorg.gradle.daemon=false'
     VSGenerator: 'Visual Studio 17 2022'
@@ -98,7 +101,7 @@ jobs:
             --use_qnn
             --qnn_home $(QnnSDKRootDir)
             --enable_pybind
-            --parallel --use_vcpkg --update
+            --parallel --use_vcpkg --use_vcpkg_ms_internal_asset_cache --update
             $(TelemetryOption) ${{ parameters.BUILD_PY_PARAMETERS }}
           workingDirectory: '$(Build.BinariesDirectory)'
 

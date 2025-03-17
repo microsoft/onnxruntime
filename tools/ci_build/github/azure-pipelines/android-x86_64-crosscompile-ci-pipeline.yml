@@ -53,6 +53,7 @@ stages:
   dependsOn: []
   variables:
     Codeql.Enabled: false
+    ANDROID_AVD_HOME: $(Agent.TempDirectory)
   jobs:
   - job: BUILD_AND_TEST_CPU
     pool: onnxruntime-Ubuntu2204-AMD-CPU
@@ -60,15 +61,6 @@ stages:
       clean: all
     timeoutInMinutes: 30
     steps:
-    # Onnx has no 3.9 python package available yet, need to use python 3.8
-    # to avoid build onnx package
-    # pythonVersion can be updated in Azure pipeline settings
-    # https://dev.azure.com/onnxruntime/onnxruntime/_build?definitionId=53
-    - task: UsePythonVersion@0
-      displayName: Use Python $(pythonVersion)
-      inputs:
-        versionSpec: $(pythonVersion)
-
     - task: JavaToolInstaller@0
       displayName: Use jdk 17
       inputs:
@@ -97,7 +89,7 @@ stages:
           --android_abi=x86_64 \
           --android_api=30 \
           --skip_submodule_sync \
-          --parallel --use_vcpkg \
+          --parallel --use_vcpkg --use_vcpkg_ms_internal_asset_cache \
           --cmake_generator=Ninja \
           --build_java
       displayName: CPU EP, Build and Test
@@ -111,6 +103,7 @@ stages:
   dependsOn: []
   condition: notIn(variables['Build.Reason'], 'IndividualCI', 'BatchedCI')
   variables:
+    ANDROID_AVD_HOME: $(Agent.TempDirectory)
     Codeql.ProjectConfigPath: .github/workflows
     Codeql.Enabled: true
     Codeql.Language: cpp
@@ -125,11 +118,6 @@ stages:
     workspace:
       clean: all
     steps:
-    - task: UsePythonVersion@0
-      displayName: Use Python $(pythonVersion)
-      inputs:
-        versionSpec: $(pythonVersion)
-
     - task: JavaToolInstaller@0
       displayName: Use jdk 17
       inputs:
@@ -158,7 +146,7 @@ stages:
         --android_abi=x86_64 \
         --android_api=29 \
         --skip_submodule_sync \
-        --parallel --use_vcpkg \
+        --parallel --use_vcpkg --use_vcpkg_ms_internal_asset_cache \
         --use_nnapi \
         --build_shared_lib \
         --cmake_generator=Ninja \
@@ -181,6 +169,8 @@ stages:
   displayName: NNAPI MAIN BUILD&TEST
   dependsOn: []
   condition: in(variables['Build.Reason'], 'IndividualCI', 'BatchedCI')
+  variables:
+    ANDROID_AVD_HOME: $(Agent.TempDirectory)
   jobs:
   - job: NNAPI_EP_MASTER
     pool: onnxruntime-Ubuntu2204-AMD-CPU
@@ -189,11 +179,6 @@ stages:
       clean: all
     condition: in(variables['Build.Reason'], 'IndividualCI', 'BatchedCI')
     steps:
-      - task: UsePythonVersion@0
-        displayName: Use Python $(pythonVersion)
-        inputs:
-          versionSpec: $(pythonVersion)
-
       - task: JavaToolInstaller@0
         displayName: Use jdk 17
         inputs:
@@ -218,7 +203,7 @@ stages:
           --android_abi=x86_64 \
           --android_api=29 \
           --skip_submodule_sync \
-          --parallel --use_vcpkg \
+          --parallel --use_vcpkg --use_vcpkg_ms_internal_asset_cache \
           --use_nnapi \
           --build_shared_lib \
           --cmake_generator=Ninja \

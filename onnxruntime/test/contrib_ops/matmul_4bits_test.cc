@@ -85,7 +85,7 @@ struct TestOptions {
   std::optional<float> output_rel_error{};
 };
 
-std::ostream& operator<<(std::ostream& os, const TestOptions& opts) {
+[[maybe_unused]] std::ostream& operator<<(std::ostream& os, const TestOptions& opts) {
   return os << "M:" << opts.M << ", N:" << opts.N << ", K:" << opts.K
             << ", block_size:" << opts.block_size
             << ", accuracy_level:" << opts.accuracy_level
@@ -327,6 +327,8 @@ void TestMatMulNBitsTyped() {
 #endif  // !defined(USE_DML) && !defined(USE_WEBGPU)
 }
 
+#if !defined(USE_OPENVINO)
+
 TEST(MatMulNBits, Float32_Accuracy0) {
   TestMatMulNBitsTyped<float, 1, 1, 16, 16, 0>();
   TestMatMulNBitsTyped<float, 1, 2, 16, 16, 0>();
@@ -460,6 +462,7 @@ TEST(MatMulNBits, Float16_Accuracy4) {
   TestMatMulNBitsTyped<MLFloat16, 100, 288, 93, 128, 4>();
   TestMatMulNBitsTyped<MLFloat16, 100, 288, 1234, 16, 4>();
 }
+#endif
 #endif
 #endif
 
