@@ -262,17 +262,6 @@ Status GroupQueryAttention<T>::ComputeInternal(OpKernelContext* context) const {
   if (fmha_buffer != nullptr) {
     data.fmha_buffer = reinterpret_cast<CudaT*>(fmha_buffer.get());
   }
-  if (k_buffer != nullptr) {
-    data.k = reinterpret_cast<CudaT*>(k_buffer.get());
-    data.v = reinterpret_cast<CudaT*>(v_buffer.get());
-  }
-  if (k_buffer != nullptr) {
-    data.k = reinterpret_cast<CudaT*>(k_buffer.get());
-    data.v = reinterpret_cast<CudaT*>(v_buffer.get());
-  }
-  if (fmha_buffer != nullptr) {
-    data.fmha_buffer = reinterpret_cast<CudaT*>(fmha_buffer.get());
-  }
   if (unpacked_qkv_buffer != nullptr) {
     data.unpacked_qkv_buffer = reinterpret_cast<CudaT*>(unpacked_qkv_buffer.get());
   }
