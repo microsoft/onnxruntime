@@ -30,7 +30,7 @@ Status CumSumProgram::GenerateShaderCode(ShaderHelper& shader) const {
 
   shader.MainFunctionBody() << shader.GuardAgainstOutOfBoundsWorkgroupSizes("uniforms.output_size")
                             << "var input_indices = " << input.OffsetToIndices("global_idx") << ";\n"
-                            << "var sum : output_indices_t = 0;\n"
+                            << "var sum : f32 = 0;\n"
                             << "var first : i32 = 0;\n"
                             << "if (uniforms.reverse == 1) {\n"
                             << "  first = i32(" + input.IndicesGet("input_indices", "uniforms.axis") + ");\n"
