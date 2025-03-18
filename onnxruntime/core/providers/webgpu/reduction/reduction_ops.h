@@ -119,5 +119,17 @@ class ReduceLogSumExp final : public ReduceKernel<true> {
   ReduceOpSpecificCode GetOpSpecificCode(const Tensor* input_tensor) const override;
 };
 
+class ArgMin final : public ReduceKernel<true> {
+  public:
+  ArgMin(const OpKernelInfo& info) : ReduceKernel<true>(info, "ArgMin", true) {}
+  ReduceOpSpecificCode GetOpSpecificCode(const Tensor* input_tensor) const override;
+ };
+
+ class ArgMax final : public ReduceKernel<true> {
+  public:
+  ArgMax(const OpKernelInfo& info) : ReduceKernel<true>(info, "ArgMax", true) {}
+  ReduceOpSpecificCode GetOpSpecificCode(const Tensor* input_tensor) const override;
+ };
+
 }  // namespace webgpu
 }  // namespace onnxruntime
