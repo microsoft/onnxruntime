@@ -132,10 +132,8 @@ Status Gemm::ComputeInternal(ComputeContext& context) const {
     program.AddInput({C, ProgramTensorMetadataDependency::Rank});
   }
 
-  constexpr size_t WORKGROUP_SIZE = 64;
-
   program.AddOutputs({{Y, ProgramTensorMetadataDependency::Type}})
-      .SetDispatchGroupSize(output_size + WORKGROUP_SIZE - 1 / WORKGROUP_SIZE)
+      .SetDispatchGroupSize((output_size + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE)
       .SetWorkgroupSize(WORKGROUP_SIZE)
       .AddUniformVariables({
           {static_cast<uint32_t>(output_size)},  // output_size
