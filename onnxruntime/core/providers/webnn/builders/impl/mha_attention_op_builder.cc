@@ -37,8 +37,6 @@ class MultiHeadAttentionOpBuilder : public BaseOpBuilder {
 /** MultiHeadAttention SubGraph.
  Abbreviatios: B is batch_size, S is sequence_length, W is hidden_size, P is past_sequence_length
                N is number of attention heads, H is head size, and W=N*H, h=Sqrt(H)
-               B and S could be symbolic. ? means it is optional.
-    MHA inputs: query, key value, past_key, past_value, seqlens_k, total_sequence_length
     Notes: If the datatype of the inputs (qkv and past kv) is float16, we cast them to float32 to ensure data precision.
 
                  query     key     value
@@ -47,19 +45,19 @@ class MultiHeadAttentionOpBuilder : public BaseOpBuilder {
                    |        |        |
           q_Transpose  k_Transpose v_Transpose (perm=0,2,1,3)
              \           /           |
-              \         /            |     past_key
-present_key<---\----Concat    <------|--------+
-               |      |              |        |
-               |  opt_k_transpose    |    seqlens_k
-               \  (0,1,3,2)          |        |
-                \    /               |        +----past_value
-                qk_MatMul            |       /
-                     |    [B=h]      |      /
-                     |   /           |     /
-                  qk_Div         ScatterND -----> present_value
+              \         /            |
+present_key<---\----Concat <---------|----past_key
+               |      |              |
+               |  opt_k_transpose    |
+               \  (0,1,3,2)          |
+                \    /               |  past_value
+                qk_MatMul            |     /
+                     |  scale        |    /
+                     |   /           |   /
+                  qk_Div           Concat------> present_value
                       |              |
                       |              /
-                     Add <----------/---------------finfo_min_mask
+                     Add <----------/---------------attention_bias
                       |            /
                     Softmax       /
                        \         /
@@ -82,10 +80,16 @@ Status MultiHeadAttentionOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_bu
   emscripten::val query_input, key_input, value_input;
 
   NodeAttrHelper helper(node);
-  uint32_t num_heads = helper.Get("num_heads", 32);
+  const uint32_t num_heads = helper.Get("num_heads", 0);
 
   query_input = model_builder.GetOperand(input_defs[0]->Name());
-  if (input_defs[0]->Type() == onnx::Utils::DataTypeUtils::ToType("float16")) {
+
+  int32_t input_query_type = 0;
+  ORT_RETURN_IF_NOT(GetType(*input_defs[0], input_query_type, logger), "Could not get input data type.");
+  int32_t output_type = 0;
+  ORT_RETURN_IF_NOT(GetType(*node.OutputDefs()[0], output_type, logger), "Could not get input data type.");
+
+  if (input_query_type == ONNX_NAMESPACE::TensorProto_DataType_FLOAT16) {
     common_options.set("label", node.Name() + "/MHA/preprocess/cast/query_input");
     query_input = model_builder.GetBuilder().call<emscripten::val>("cast", query_input, emscripten::val("float32"),
                                                                    common_options);
@@ -99,7 +103,7 @@ Status MultiHeadAttentionOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_bu
     hidden_size = SafeInt<uint32_t>(input_q_shape[2]);
     head_size = SafeInt<uint32_t>(hidden_size / num_heads);
     key_input = model_builder.GetOperand(input_defs[1]->Name());
-    if (input_defs[1]->Type() == onnx::Utils::DataTypeUtils::ToType("float16")) {
+    if (input_query_type == ONNX_NAMESPACE::TensorProto_DataType_FLOAT16) {
       common_options.set("label", node.Name() + "/MHA/preprocess/cast/key_input");
       key_input = model_builder.GetBuilder().call<emscripten::val>("cast", key_input, emscripten::val("float32"),
                                                                    common_options);
@@ -125,7 +129,7 @@ Status MultiHeadAttentionOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_bu
         k_reshape_skip = true;
       }
       value_input = model_builder.GetOperand(input_defs[2]->Name());
-      if (input_defs[2]->Type() == onnx::Utils::DataTypeUtils::ToType("float16")) {
+      if (input_query_type == ONNX_NAMESPACE::TensorProto_DataType_FLOAT16) {
         common_options.set("label", node.Name() + "/MHA/preprocess/cast/value_input");
         value_input = model_builder.GetBuilder().call<emscripten::val>("cast", value_input, emscripten::val("float32"),
                                                                        common_options);
@@ -142,7 +146,7 @@ Status MultiHeadAttentionOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_bu
   } else {  // packed QKV with shape (batch_size, kv_sequence_length, num_heads, 3, head_size)
     kv_sequence_length = SafeInt<uint32_t>(input_q_shape[2]);
     head_size = SafeInt<uint32_t>(input_q_shape[4]);
-    hidden_size = SafeInt<uint32_t>(num_heads*head_size);
+    hidden_size = SafeInt<uint32_t>(num_heads * head_size);
     k_reshape_skip = false;
     v_reshape_skip = false;
     options.set("axis", 3);
@@ -152,24 +156,24 @@ Status MultiHeadAttentionOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_bu
     value_input = output_array[2];
   }
 
-  emscripten::val attention_bias;
+  emscripten::val attention_bias = emscripten::val::undefined();
   if (input_defs[5]->Name() != "") {
     attention_bias = model_builder.GetOperand(input_defs[5]->Name());
-    if (input_defs[5]->Type() == onnx::Utils::DataTypeUtils::ToType("float16")) {
+    if (input_query_type == ONNX_NAMESPACE::TensorProto_DataType_FLOAT16) {
       common_options.set("label", node.Name() + "/MHA/preprocess/cast/attention_bias");
       attention_bias = model_builder.GetBuilder().call<emscripten::val>("cast", attention_bias,
-                                                                          emscripten::val("float32"), common_options);
+                                                                        emscripten::val("float32"), common_options);
     }
   }
 
   batch_size = SafeInt<uint32_t>(input_q_shape[0]);
   sequence_length = SafeInt<uint32_t>(input_q_shape[1]);
 
-  float scale = helper.Get("scale", static_cast<float>(1/sqrt(head_size)));
+  const float scale = helper.Get("scale", static_cast<float>(1 / sqrt(head_size)));
 
-  std::vector<uint32_t> reshape_output_shape = {batch_size, sequence_length, hidden_size};
-  std::vector<uint32_t> q_reshape_tensor_shape = {batch_size, sequence_length, num_heads, head_size};
-  std::vector<uint32_t> reshape_tensor_shape = {batch_size, kv_sequence_length, num_heads, head_size};
+  const std::vector<uint32_t> reshape_output_shape = {batch_size, sequence_length, hidden_size};
+  const std::vector<uint32_t> q_reshape_tensor_shape = {batch_size, sequence_length, num_heads, head_size};
+  const std::vector<uint32_t> reshape_tensor_shape = {batch_size, kv_sequence_length, num_heads, head_size};
 
   // query_input -> reshape(B,S,N,H) -> transpose(B,N,S,H) -> new_query
   common_options.set("label", node.Name() + "/MHA/query/reshape");
@@ -190,9 +194,9 @@ Status MultiHeadAttentionOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_bu
     options.set("label", node.Name() + "/MHA/key/transpose");
     present_key = model_builder.GetBuilder().call<emscripten::val>("transpose", present_key, options);
 
-    if (input_defs[6]->Name() != "") {
+    if (TensorExists(input_defs, 6)) {
       emscripten::val past_key_input = model_builder.GetOperand(input_defs[6]->Name());
-      if (input_defs[6]->Type() == onnx::Utils::DataTypeUtils::ToType("float16")) {
+      if (input_query_type == ONNX_NAMESPACE::TensorProto_DataType_FLOAT16) {
         common_options.set("label", node.Name() + "/MHA/preprocess/cast/past_key_input");
         past_key_input = model_builder.GetBuilder().call<emscripten::val>("cast", past_key_input,
                                                                           emscripten::val("float32"), common_options);
@@ -206,14 +210,6 @@ Status MultiHeadAttentionOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_bu
     }
   } else {
     present_key = key_input;
-  }
-  if (node.OutputDefs()[1]->Name() != "") {
-    if (node.OutputDefs()[1]->Type() == onnx::Utils::DataTypeUtils::ToType("float16")) {
-      common_options.set("label", node.Name() + "/MHA/postprocess/cast/present_key");
-      present_key = model_builder.GetBuilder().call<emscripten::val>("cast", present_key, emscripten::val("float16"),
-                                                                     common_options);
-    }
-    model_builder.AddOperand(node.OutputDefs()[1]->Name(), std::move(present_key));
   }
 
   options.set("permutation", emscripten::val::array(std::vector<uint32_t>({0, 1, 3, 2})));
@@ -229,9 +225,9 @@ Status MultiHeadAttentionOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_bu
     options.set("label", node.Name() + "/MHA/value/transpose");
     present_value = model_builder.GetBuilder().call<emscripten::val>("transpose", present_value, options);
 
-    if (input_defs[7]->Name() != "") {
+    if (TensorExists(input_defs, 7)) {
       emscripten::val past_value_input = model_builder.GetOperand(input_defs[7]->Name());
-      if (input_defs[7]->Type() == onnx::Utils::DataTypeUtils::ToType("float16")) {
+      if (input_query_type == ONNX_NAMESPACE::TensorProto_DataType_FLOAT16) {
         common_options.set("label", node.Name() + "/MHA/preprocess/cast/past_value_input");
         past_value_input = model_builder.GetBuilder().call<emscripten::val>("cast", past_value_input,
                                                                             emscripten::val("float32"), common_options);
@@ -246,18 +242,6 @@ Status MultiHeadAttentionOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_bu
   } else {
     present_value = value_input;
   }
-  if (node.OutputDefs()[2]->Name() != "") {
-    if (node.OutputDefs()[2]->Type() == onnx::Utils::DataTypeUtils::ToType("float16")) {
-      common_options.set("label", node.Name() + "/MHA/postprocess/cast/present_value");
-      present_value = model_builder.GetBuilder().call<emscripten::val>("cast", present_value,
-                                                                       emscripten::val("float16"), common_options);
-    }
-    model_builder.AddOperand(node.OutputDefs()[2]->Name(), std::move(present_value));
-  }
-
-  // common_options.set("label", node.Name() + "/MHA/qkv/matmul_1");
-  // emscripten::val matmul_output =
-  //     model_builder.GetBuilder().call<emscripten::val>("matmul", new_query, new_key, common_options);
 
   emscripten::val desc_scale = emscripten::val::object();
   ORT_RETURN_IF_NOT(SetWebnnDataType(desc_scale, ONNX_NAMESPACE::TensorProto_DataType_FLOAT), "Unsupported data type");
@@ -269,42 +253,33 @@ Status MultiHeadAttentionOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_bu
   emscripten::val scale_constant =
       model_builder.GetBuilder().call<emscripten::val>("constant", desc_scale, scale_buffer);
 
-  emscripten::val output =
-      ScaledDotProductAttention(model_builder, node, logger, new_query, new_key, present_value, scale_constant,
-                                attention_bias, reshape_output_shape);
+  emscripten::val output = ScaledDotProductAttention(model_builder, node, logger, new_query, new_key, present_value,
+                                                     scale_constant, attention_bias, reshape_output_shape);
 
-  // common_options.set("label", node.Name() + "/MHA/qkv/div");
-  // emscripten::val div_output =
-  //     model_builder.GetBuilder().call<emscripten::val>("div", matmul_output, scale_constant, common_options);
-
-  // common_options.set("label", node.Name() + "/MHA/attn_mask/softmax_input");
-  // emscripten::val softmax_input =
-  //     model_builder.GetBuilder().call<emscripten::val>("add", div_output, attention_bias, common_options);
-
-  // common_options.set("label", node.Name() + "/MHA/attn_mask/softmax_input");
-  // int32_t softmax_axis = 3;
-  // emscripten::val softmax_output =
-  //     model_builder.GetBuilder().call<emscripten::val>("softmax", softmax_input, softmax_axis, common_options);
-
-  // common_options.set("label", node.Name() + "/MHA/qkv/matmul_2");
-  // emscripten::val attn_output =
-  //     model_builder.GetBuilder().call<emscripten::val>("matmul", softmax_output, present_value, common_options);
-
-  // options.set("permutation", emscripten::val::array(std::vector<uint32_t>({0, 2, 1, 3})));
-  // options.set("label", node.Name() + "/MHA/qkv/transpose");
-  // emscripten::val transposed_attn_output =
-  //     model_builder.GetBuilder().call<emscripten::val>("transpose", attn_output, options);
-
-  // common_options.set("label", node.Name() + "/MHA/qkv/reshape");
-  // emscripten::val output = model_builder.GetBuilder().call<emscripten::val>(
-  //     "reshape", transposed_attn_output, emscripten::val::array(reshape_output_shape), common_options);
-
-  if (node.OutputDefs()[0]->Type() == onnx::Utils::DataTypeUtils::ToType("float16")) {
+  if (output_type == ONNX_NAMESPACE::TensorProto_DataType_FLOAT16) {
     common_options.set("label", node.Name() + "/MHA/postprocess/cast/output");
     output =
         model_builder.GetBuilder().call<emscripten::val>("cast", output, emscripten::val("float16"), common_options);
   }
   model_builder.AddOperand(node.OutputDefs()[0]->Name(), std::move(output));
+
+  if (TensorExists(node.OutputDefs(), 1)) {
+    if (output_type == ONNX_NAMESPACE::TensorProto_DataType_FLOAT16) {
+      common_options.set("label", node.Name() + "/MHA/postprocess/cast/present_key");
+      present_key = model_builder.GetBuilder().call<emscripten::val>("cast", present_key, emscripten::val("float16"),
+                                                                     common_options);
+    }
+    model_builder.AddOperand(node.OutputDefs()[1]->Name(), std::move(present_key));
+  }
+
+  if (TensorExists(node.OutputDefs(), 2)) {
+    if (output_type == ONNX_NAMESPACE::TensorProto_DataType_FLOAT16) {
+      common_options.set("label", node.Name() + "/MHA/postprocess/cast/present_value");
+      present_value = model_builder.GetBuilder().call<emscripten::val>("cast", present_value,
+                                                                       emscripten::val("float16"), common_options);
+    }
+    model_builder.AddOperand(node.OutputDefs()[2]->Name(), std::move(present_value));
+  }
 
   return Status::OK();
 }
@@ -316,7 +291,11 @@ bool MultiHeadAttentionOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& 
                                                     const logging::Logger& logger) const {
   const auto& input_defs = node.InputDefs();
   // const auto& op_type = node.OpType();
-  // NodeAttrHelper helper(node);
+  NodeAttrHelper helper(node);
+  const uint32_t num_heads = helper.Get("num_heads", 0);
+  if (num_heads == 0) {
+    LOGS(logger, VERBOSE) << "Attributes num_heads is required.";
+  }
 
   std::vector<int64_t> input_shape;
   if (!GetShape(*input_defs[0], input_shape, logger)) {
@@ -333,35 +312,75 @@ bool MultiHeadAttentionOpBuilder::HasSupportedInputsImpl(const InitializedTensor
   const auto& input_defs = node.InputDefs();
   const auto& op_type = node.OpType();
 
-  if (input_defs.size() < 3) {
-    LOGS(logger, VERBOSE) << op_type << " requires at least three inputs.";
+  if (TensorExists(input_defs, 3) || TensorExists(input_defs, 4) || TensorExists(input_defs, 8) ||
+      TensorExists(input_defs, 9)) {
+    LOGS(logger, VERBOSE)
+        << op_type << " does not support inputs bias, key_padding_mask, past_sequence_length, and cache_indirection.";
     return false;
   }
 
+  // int num_inputs = 0;
+  // std::vector<bool> flag_inputs;
+  std::vector<int32_t> input_types;
+  for (int i = 0; i < 10; i++) {
+    if (i == 3 || i == 4 || i == 8 || i == 9) {
+      if (TensorExists(input_defs, i)) {
+        LOGS(logger, VERBOSE)
+            << op_type << " does not support input " << i;
+        return false;
+      }
+    } else {
+      if (TensorExists(input_defs, i)) {
+        // num_inputs += 1;
+        int32_t input_type = 0;
+        if (!GetType(*input_defs[i], input_type, logger)) {
+          return false;
+        }
+        input_types.push_back(input_type);
+      }
+    }
+  }
+
+  if (!AreDataTypesSame(op_type, input_types, logger)) {
+    return false;
+  }
   return true;
 }
 
-bool MultiHeadAttentionOpBuilder::HasSupportedOutputsImpl(const Node& node,
-                                                       const emscripten::val& wnn_limits,
-                                                       const logging::Logger& logger) const {
+bool MultiHeadAttentionOpBuilder::HasSupportedOutputsImpl(const Node& node, const emscripten::val& wnn_limits,
+                                                          const logging::Logger& logger) const {
   const auto& output_defs = node.OutputDefs();
   const std::string_view op_type = node.OpType();
-  int32_t output_type = 0;
-  if (!GetType(*output_defs[0], output_type, logger)) {
+  if (TensorExists(output_defs, 3)) {
+    LOGS(logger, VERBOSE) << op_type << " does not support output qk.";
     return false;
   }
 
-  // Check if the output data type is supported by every decomposed WebNN op.
-  for (const std::string_view webnn_op_type : decomposed_op_map.at(op_type)) {
-    if (webnn_op_type == "constant")
-        continue;
-    const std::string_view webnn_output_name = webnn_op_type == "split" ? "outputs" : "output";
-    if (!IsDataTypeSupportedByWebNNOp(
-            op_type, webnn_op_type, output_type, wnn_limits, webnn_output_name, "output", logger)) {
+  bool has_present_k = TensorExists(output_defs, 1);
+  bool has_present_v = TensorExists(output_defs, 2);
+  if (has_present_k != has_present_v) {  // present_k and present_v must appear together.
+    return false;
+  }
+
+  int32_t output_type = 0;
+  if (has_present_k) {
+    int32_t present_k_type = 0;
+    int32_t present_v_type = 0;
+    if (!GetType(*output_defs[0], output_type, logger) || !GetType(*output_defs[1], present_k_type, logger) ||
+        !GetType(*output_defs[2], present_v_type, logger)) {
+      return false;
+    }
+
+    std::array<int32_t, 3> output_types{output_type, present_k_type, present_v_type};
+    if (!AreDataTypesSame(op_type, output_types, logger)) {
       return false;
     }
   }
 
+  if (output_type != ONNX_NAMESPACE::TensorProto_DataType_FLOAT &&
+      output_type != ONNX_NAMESPACE::TensorProto_DataType_FLOAT16) {
+    return false;
+  }
   return true;
 }
 

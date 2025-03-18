@@ -30,16 +30,18 @@ emscripten::val ScaledDotProductAttention(ModelBuilder& model_builder, const Nod
   emscripten::val div_output =
       model_builder.GetBuilder().call<emscripten::val>("mul", matmul_output, scale, common_options);
 
-  common_options.set("label", node.Name() + "/Attention/attn_mask/softmax_input");
-  emscripten::val softmax_input =
-      model_builder.GetBuilder().call<emscripten::val>("add", div_output, attn_mask, common_options);
+  emscripten::val softmax_input = div_output;
+  if (attn_mask != emscripten::val::undefined()) {
+    common_options.set("label", node.Name() + "/Attention/attn_mask/softmax_input");
+    softmax_input = model_builder.GetBuilder().call<emscripten::val>("add", div_output, attn_mask, common_options);
+  }
 
   common_options.set("label", node.Name() + "/Attention/attn_mask/softmax_input");
   int32_t softmax_axis = 3;
   emscripten::val softmax_output =
       model_builder.GetBuilder().call<emscripten::val>("softmax", softmax_input, softmax_axis, common_options);
 
-    // B,H,S,kv_S * B,H,kv_S,N = B,H,S,N
+  // B,H,S,kv_S * B,H,kv_S,N = B,H,S,N
   common_options.set("label", node.Name() + "/Attention/qkv/matmul_2");
   emscripten::val attn_output =
       model_builder.GetBuilder().call<emscripten::val>("matmul", softmax_output, value, common_options);
