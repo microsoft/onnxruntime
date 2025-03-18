@@ -29,18 +29,23 @@ limitations under the License.
 #include "core/providers/cuda/cu_inc/common.cuh"
 #include "core/providers/cuda/cuda_common.h"
 #include "core/providers/cuda/shared_inc/fpgeneric.h"
-#include "contrib_ops/cuda/bert/attention_softmax.h"
-#include "contrib_ops/cuda/bert/transformer_common.h"
-#include "contrib_ops/cuda/bert/tensorrt_fused_multihead_attention/mha_runner.h"
-#include "contrib_ops/cuda/bert/tensorrt_fused_multihead_attention/cross_attention/fmha_cross_attention.h"
+#include "core/platform/env_var_utils.h"
 #include "contrib_ops/cpu/bert/attention_base.h"
+#include "contrib_ops/cpu/bert/attention_common.h"
+#include "contrib_ops/cpu/bert/attention_parameters.h"
+#include "contrib_ops/cuda/bert/attention_impl.h"
+#include "contrib_ops/cuda/bert/attention_kv_cache.h"
+#include "contrib_ops/cuda/bert/attention_qk.h"
+#include "contrib_ops/cuda/bert/attention_softmax.h"
 #include "contrib_ops/cuda/bert/bert_padding.h"
-#include "contrib_ops/cuda/utils/dump_cuda_tensor.h"
 #include "contrib_ops/cuda/bert/cutlass_fmha/memory_efficient_attention.h"
 #include "contrib_ops/cuda/bert/cudnn_fmha/cudnn_flash_attention.h"
 #include "contrib_ops/cuda/bert/flash_attention/flash_api.h"
 #include "contrib_ops/cuda/bert/lean_attention/lean_api.h"
-#include "contrib_ops/cuda/bert/attention_impl.h"
+#include "contrib_ops/cuda/bert/tensorrt_fused_multihead_attention/mha_runner.h"
+#include "contrib_ops/cuda/bert/tensorrt_fused_multihead_attention/cross_attention/fmha_cross_attention.h"
+#include "contrib_ops/cuda/bert/transformer_common.h"
+#include "contrib_ops/cuda/utils/dump_cuda_tensor.h"
 
 using namespace onnxruntime::cuda;
 using namespace onnxruntime::contrib::attention_softmax_cuda;
@@ -516,7 +521,7 @@ Status EfficientAttention(
   p.key = data.k;
   p.value = data.v;
 
-  p.attn_bias = (nullptr == data.attention_bias) ? nullptr : data.attention_bias;
+  p.attn_bias = data.attention_bias;
   p.broadcast_attn_bias_dim_0 = parameters.broadcast_attn_bias_dim_0;
   p.broadcast_attn_bias_dim_1 = parameters.broadcast_attn_bias_dim_1;
 
@@ -533,7 +538,138 @@ Status EfficientAttention(
 }
 #endif
 
-template <typename T>
+template <typename T, typename QK>
+Status LaunchDecoderMaskedMultiHeadAttention(
+  const DecoderMaskedMultiHeadAttentionParameters& parameters,
+  cudaStream_t stream,
+  const int head_size) {
+
+  DUMP_STRING_INIT();
+  DUMP_STRING("DMMHA parameters...");
+  DUMP_STRING("is_mha = ", (parameters.is_mha == true));
+  DUMP_STRING("is_cross_attention = ", (parameters.is_cross_attention == true));
+  DUMP_STRING("is_packed_qkv = ", (parameters.is_packed_qkv == true));
+  DUMP_STRING("kv_data_in_flight = ", (parameters.kv_data_in_flight == true));
+
+  DUMP_STRING("Batch size = ", parameters.batch_size);
+  DUMP_STRING("Sequence length = ", parameters.sequence_length);
+  DUMP_STRING("Num heads = ", parameters.num_heads);
+  DUMP_STRING("Head size = ", parameters.head_size);
+  DUMP_STRING("Hidden size = ", parameters.hidden_size);
+
+  DUMP_STRING("Past sequence length = ", parameters.past_sequence_length);
+  DUMP_STRING("KV sequence length = ", parameters.kv_sequence_length);
+  DUMP_STRING("Total sequence length = ", parameters.total_sequence_length);
+  DUMP_STRING("Max sequence length = ", parameters.max_sequence_length);
+
+  DUMP_STRING("parameters.k is null = ", (parameters.k == nullptr));
+  DUMP_STRING("parameters.v is null = ", (parameters.v == nullptr));
+  DUMP_STRING("parameters.k_cache is null = ", (parameters.k_cache == nullptr));
+  DUMP_STRING("parameters.v_cache is null = ", (parameters.v_cache == nullptr));
+
+  DUMP_STRING("parameters.q_bias is null = ", (parameters.q_bias == nullptr));
+  DUMP_STRING("parameters.k_bias is null = ", (parameters.k_bias == nullptr));
+  DUMP_STRING("parameters.v_bias is null = ", (parameters.v_bias == nullptr));
+
+  DUMP_STRING("parameters.attention_bias is null = ", (parameters.attention_bias == nullptr));
+  DUMP_STRING("Scale = ", parameters.scale);
+  DUMP_STRING("Mask is null = ", (parameters.mask == nullptr));
+  DUMP_STRING("Mask filter value = ", parameters.mask_filter_value);
+
+  DUMP_STRING("Beam width = ", parameters.beam_width);
+  DUMP_STRING("parameters.cache_indir is null = ", (parameters.cache_indir == nullptr));
+  DUMP_STRING("parameters.out_qk is null = ", (parameters.out_qk == nullptr));
+
+  switch (head_size) {
+    case 32:
+      mmha_launch_kernel<T, QK, 32>(parameters, stream);
+      break;
+
+    case 64:
+      mmha_launch_kernel<T, QK, 64>(parameters, stream);
+      break;
+
+    case 128:
+      mmha_launch_kernel<T, QK, 128>(parameters, stream);
+      break;
+
+    default:
+      return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
+                             "Unsupported head size in DecoderMaskedMultiHeadAttention. Got head size: ",
+                             head_size);
+  }
+
+  return Status::OK();
+}
+
+template <typename T, typename QK>
+Status DecoderMaskedMultiHeadAttention(
+    cudaStream_t stream,
+    contrib::AttentionParameters& parameters,
+    AttentionData<T>& data,
+    float scale) {
+  assert(data.qkv_format == AttentionQkvFormat::Q_K_V_BSNH ||
+         data.qkv_format == AttentionQkvFormat::Q_K_V_BSNH_BNSH_BNSH);
+  assert(parameters.mask_type == AttentionMaskType::MASK_NONE ||
+         parameters.mask_type == AttentionMaskType::MASK_2D_KEY_PADDING);
+  assert(parameters.head_size == parameters.v_head_size);
+
+  DecoderMaskedMultiHeadAttentionParameters p;
+  p.is_mha = true;
+  p.is_cross_attention = (data.past_key == nullptr && data.present_key == nullptr);
+  p.is_packed_qkv = false;
+  p.kv_data_in_flight = ParseEnvironmentVariableWithDefault<bool>(attention::kDecoderMaskedAttentionLoadKVDataInFlight, false);
+
+  p.batch_size = parameters.batch_size;
+  p.sequence_length = parameters.sequence_length;
+  p.num_heads = parameters.num_heads;
+  p.head_size = parameters.head_size;
+  p.hidden_size = parameters.hidden_size;
+
+  p.past_sequence_length = parameters.past_sequence_length;
+  p.kv_sequence_length = parameters.kv_sequence_length;
+  p.total_sequence_length = p.is_cross_attention ? parameters.kv_sequence_length : parameters.total_sequence_length;
+  p.max_sequence_length = p.is_cross_attention ? parameters.kv_sequence_length : parameters.max_sequence_length;
+
+  p.q = data.q;
+  p.k = p.is_cross_attention ? nullptr : data.k;
+  p.v = p.is_cross_attention ? nullptr : data.v;
+  p.k_cache = p.is_cross_attention ? data.k : data.present_key;
+  p.v_cache = p.is_cross_attention ? data.v : data.present_value;
+
+  p.q_bias = data.q_bias;
+  p.k_bias = data.k_bias;
+  p.v_bias = data.v_bias;
+
+  p.attention_bias = const_cast<T*>(data.attention_bias);
+  p.broadcast_attn_bias_dim_0 = parameters.broadcast_attn_bias_dim_0;
+  p.broadcast_attn_bias_dim_1 = parameters.broadcast_attn_bias_dim_1;
+
+  p.scale = scale;
+  p.mask = data.mask_index;
+  p.mask_filter_value = parameters.mask_filter_value;
+
+  p.beam_width = parameters.beam_width;
+  p.cache_indir = data.cache_indirection;
+
+  p.out = data.output;
+  p.out_qk = data.output_qk;
+
+  // DecoderMaskedMultiHeadAttention(T, QK) is defined for:
+  // T = float, QK = float
+  // T = float, QK = half
+  // T = uint16_t, QK = float
+  // T = uint16_t, QK = half
+  if (std::is_same<T, float>::value) {
+    return LaunchDecoderMaskedMultiHeadAttention<float, QK>(p, stream, parameters.head_size);
+  }
+  if (std::is_same<T, half>::value) {
+    return LaunchDecoderMaskedMultiHeadAttention<uint16_t, QK>(p, stream, parameters.head_size);
+  }
+  return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "DecoderMaskedMultiHeadAttention is only implemented for float32 and float16.");
+}
+
+template <typename T, typename QK>
 Status UnfusedAttention(
     const cudaDeviceProp& device_prop,
     cublasHandle_t& cublas,
@@ -624,6 +760,15 @@ Status UnfusedAttention(
         mask_index, mask_start, data.attention_bias, broadcast_attn_bias_dim_0, broadcast_attn_bias_dim_1,
         data.scratch, scratch2, parameters.is_unidirectional));
   } else {  // no mask
+    if (nullptr != data.output_qk) {
+      int64_t qk_size = (int64_t)batch_size * num_heads * sequence_length * total_sequence_length;
+      if (std::is_same<T, QK>::value) {
+        cudaMemcpyAsync(data.output_qk, data.scratch, qk_size * sizeof(QK), cudaMemcpyDeviceToDevice, stream);
+      } else {
+        ORT_RETURN_IF_ERROR(
+          (CopyQK<T, QK>(stream, static_cast<int>(qk_size), data.scratch, reinterpret_cast<QK*>(data.output_qk))));
+      }
+    }
     ORT_RETURN_IF_ERROR(
         ComputeSoftmax<T>(
             stream, total_sequence_length, sequence_length, batch_size, num_heads,
@@ -645,10 +790,170 @@ Status UnfusedAttention(
   // Temp_output is BxNxSxH_v, transpose to output BxSxNxH_v
   Status result = LaunchTransCtx(stream, sequence_length, batch_size, v_head_size, num_heads,
                                  device_prop.maxThreadsPerBlock, false, temp_output, data.output);
+  DUMP_TENSOR_D("Attention Output", data.output, batch_size, sequence_length, num_heads, v_head_size);
   return result;
 }
 
+#ifndef USE_ROCM  // exclude the following from hipify since they are not used in ROCM EP
+
 template <typename T>
+Status ConcatPastToPresent(int batch_size, int num_heads, int qk_head_size, int v_head_size,
+                           int sequence_length, int total_sequence_length,
+                           cudaStream_t stream, int max_threads_per_block,
+                           AttentionData<T>& data) {
+  // Concat past key value to present (2xBxNxLxH), where L is kv_sequence_length and T is total_sequence_length.
+  // past_k (BxNxPxH) + k (BxNxLxH) => present_k (BxNxTxH)
+  // past_v (BxNxPxH) + v (BxNxLxH) => present_v (BxNxTxH)
+  // When there is past state, the head size for Q/K/V shall be same: H == H_v.
+
+  if (nullptr != data.present) { // Attention op
+    assert(data.qkv_format == AttentionQkvFormat::Q_K_V_BNSH ||
+           data.qkv_format == AttentionQkvFormat::Q_K_V_BNSH_QKV_BS3NH);
+
+    ORT_RETURN_IF_ERROR(
+        LaunchConcatTensorToTensor(
+            stream, total_sequence_length, sequence_length, batch_size, qk_head_size, num_heads,
+            max_threads_per_block, 2, data.past, data.k, data.present));
+
+
+
+    // Update pointers to present_k and present_v.
+    data.k = data.present;
+    data.v = data.present + batch_size * num_heads * total_sequence_length * qk_head_size;
+  } else  { // MultiHeadAttention op
+    if (nullptr != data.present_key) {
+      ORT_ENFORCE(data.qkv_format == AttentionQkvFormat::Q_K_V_BNSH ||
+                  data.qkv_format == AttentionQkvFormat::Q_K_V_BSNH_BNSH_BNSH);
+      if (nullptr != data.past_key) {
+        assert(data.past_key != data.k);
+        assert(data.past_value != data.v);
+
+        ORT_RETURN_IF_ERROR(
+            LaunchConcatTensorToTensor(stream, total_sequence_length, sequence_length,
+                                      batch_size, qk_head_size, num_heads,
+                                      max_threads_per_block, 1, data.past_key, data.k, data.present_key));
+        ORT_RETURN_IF_ERROR(
+            LaunchConcatTensorToTensor(stream, total_sequence_length, sequence_length,
+                                      batch_size, v_head_size, num_heads,
+                                      max_threads_per_block, 1, data.past_value, data.v, data.present_value));
+        // Update pointers to present_k and present_v.
+        data.k = data.present_key;
+        data.v = data.present_value;
+      } else { // nullptr == data.past_key && nullptr != data.present_key
+        if (data.k != data.present_key) {
+          int64_t k_size = (int64_t)batch_size * num_heads * total_sequence_length * qk_head_size;
+          cudaMemcpyAsync(data.present_key, data.k, k_size * sizeof(T), cudaMemcpyDeviceToDevice, stream);
+        }
+
+        if (data.v != data.present_value) {
+          int64_t v_size = (int64_t)batch_size * num_heads * total_sequence_length * v_head_size;
+          cudaMemcpyAsync(data.present_value, data.v, v_size * sizeof(T), cudaMemcpyDeviceToDevice, stream);
+        }
+      }
+    }
+  }
+
+  return CUDA_CALL(cudaGetLastError());
+}
+
+// Template Instantiation
+template Status ConcatPastToPresent<float>(int batch_size, int num_heads, int qk_head_size, int v_head_size,
+                                           int sequence_length, int total_sequence_length,
+                                           cudaStream_t stream,
+                                           int max_threads_per_block,
+                                           AttentionData<float>& data);
+
+template Status ConcatPastToPresent<half>(int batch_size, int num_heads, int qk_head_size, int v_head_size,
+                                          int sequence_length, int total_sequence_length,
+                                          cudaStream_t stream,
+                                          int max_threads_per_block,
+                                          AttentionData<half>& data);
+#endif
+
+template <typename T>
+Status PastPresentBufferShare(int batch_size, int num_heads, int qk_head_size, int v_head_size,
+                              int sequence_length, void* fused_runner,
+                              contrib::AttentionParameters& parameters,
+                              AttentionData<T>& data,
+                              cudaStream_t stream,
+                              int max_threads_per_block) {
+  ORT_ENFORCE(qk_head_size == v_head_size);
+  assert(data.fused_cross_attention_kernel == nullptr);
+  assert(nullptr == fused_runner || parameters.is_unidirectional);
+  assert(!data.use_memory_efficient_attention);
+  assert(!data.use_flash_attention);
+  assert(data.has_qkv_workspace);
+
+  bool combined_key_value = nullptr != data.present;
+  bool separate_key_value = nullptr != data.past_key && nullptr != data.present_key &&
+                            nullptr != data.past_value && nullptr != data.present_value;
+
+  // Return early if buffer sharing is not possible
+  if (!combined_key_value && !separate_key_value) {
+    return Status::OK();
+  }
+
+  if (combined_key_value) { // Attention op
+    assert(data.gemm_buffer != nullptr);
+
+    if (data.present != data.past) {
+      // For easy testing. Production should better avoid this path.
+      int64_t kv_size = 2LL * (int64_t)batch_size * num_heads * parameters.max_sequence_length * qk_head_size;
+      cudaMemcpyAsync(data.present, data.past, kv_size * sizeof(T), cudaMemcpyDeviceToDevice, stream);
+    }
+
+    // For fused causal, bias has been added to gemm_buffer.
+    const T* bias = (nullptr != fused_runner && parameters.is_unidirectional) ? nullptr : data.bias;
+
+    // append last k v to present
+    ORT_RETURN_IF_ERROR(LaunchAddBiasTransAppendKvToPresent(
+        stream, parameters.max_sequence_length, parameters.past_sequence_length, sequence_length,
+        batch_size, qk_head_size, num_heads, max_threads_per_block,
+        bias, data.gemm_buffer, data.present));
+
+    data.k = data.present;
+    data.v = data.present + batch_size * num_heads * parameters.max_sequence_length * qk_head_size;
+  } else if (data.use_decoder_masked_multihead_attention) {  // DecoderMaskedMultiHeadAttention op
+    assert(data.qkv_format == AttentionQkvFormat::Q_K_V_BSNH ||
+           data.qkv_format == AttentionQkvFormat::Q_K_V_BSNH_BNSH_BNSH);
+
+    // DecoderMaskedMultiHeadAttention kernel manages the KV caches
+    // so this case is empty
+  } else {  // MultiHeadAttention op
+    assert(data.qkv_format == AttentionQkvFormat::Q_K_V_BNSH ||
+           data.qkv_format == AttentionQkvFormat::Q_K_V_BSNH_BNSH_BNSH);
+    assert(data.seqlens_k_total);
+
+    // Using BNSH since AddBiasTranspose has already been applied
+    constexpr bool is_past_kv_bnsh_format = true;
+    constexpr bool is_new_kv_bnsh_format = true;
+    ORT_RETURN_IF_ERROR(LaunchConcatKVInPlace(
+      batch_size, num_heads, qk_head_size, parameters.max_sequence_length,
+      data.seqlens_k_total, nullptr, parameters.sequence_length, data.k, data.v, data.present_key, data.present_value,
+      is_past_kv_bnsh_format, is_new_kv_bnsh_format, stream, max_threads_per_block));
+
+    data.k = data.present_key;
+    data.v = data.present_value;
+  }
+
+  return CUDA_CALL(cudaGetLastError());
+}
+
+template Status PastPresentBufferShare<float>(int batch_size, int num_heads, int qk_head_size, int v_head_size,
+                                              int sequence_length, void* fused_runner,
+                                              contrib::AttentionParameters& parameters,
+                                              AttentionData<float>& data,
+                                              cudaStream_t stream,
+                                              int max_threads_per_block);
+
+template Status PastPresentBufferShare<half>(int batch_size, int num_heads, int qk_head_size, int v_head_size,
+                                             int sequence_length, void* fused_runner,
+                                             contrib::AttentionParameters& parameters,
+                                             AttentionData<half>& data,
+                                             cudaStream_t stream,
+                                             int max_threads_per_block);
+
+template <typename T, typename QK>
 Status QkvToContext(
     const cudaDeviceProp& device_prop,
     cublasHandle_t& cublas,
@@ -669,58 +974,36 @@ Status QkvToContext(
   // At most one fused kernel is enabled.
   assert((static_cast<int>(data.use_flash_attention) +
           static_cast<int>(data.use_memory_efficient_attention) +
+          static_cast<int>(data.use_decoder_masked_multihead_attention) +
           static_cast<int>(fused_runner != nullptr) +
           static_cast<int>(data.fused_cross_attention_kernel != nullptr) +
           static_cast<int>(data.kernel_type == AttentionKernelType::AttentionKernel_CudnnFlashAttention)) <= 1);
 
+  DUMP_STRING_INIT();
+  DUMP_STRING("Preparing Q, K, V");
   ORT_RETURN_IF_ERROR(PrepareQkv<T>(parameters, data, stream, max_threads_per_block));
 
   if (!parameters.past_present_share_buffer) {
-    ORT_RETURN_IF_ERROR(ConcatPastToPresent(batch_size, num_heads, qk_head_size, v_head_size,
+    ORT_RETURN_IF_ERROR(ConcatPastToPresent<T>(batch_size, num_heads, qk_head_size, v_head_size,
                                             sequence_length, total_sequence_length,
                                             stream, max_threads_per_block, data));
 
   } else {  // past_present_share_buffer
-    assert(qk_head_size == v_head_size);
-    assert(data.fused_cross_attention_kernel == nullptr);
-    assert(nullptr == fused_runner || parameters.is_unidirectional);
-    assert(data.gemm_buffer != nullptr);
-    assert(!data.use_memory_efficient_attention);
-    assert(!data.use_flash_attention);
-    assert(data.has_qkv_workspace);
-
-    if (nullptr != data.past_key || nullptr != data.present_key) {
-      // TODO: support this case.
-      ORT_THROW("buffer sharing for no bias case between past and present is not supported yet.");
-    }
-
-    if (data.present != data.past) {
-      // For easy testing. Production should better avoid this path.
-      int64_t kv_size = 2LL * (int64_t)batch_size * num_heads * parameters.max_sequence_length * qk_head_size;
-      cudaMemcpyAsync(data.present, data.past, kv_size * sizeof(T), cudaMemcpyDeviceToDevice, stream);
-    }
-
-    // For fused causal, bias has been added to gemm_buffer.
-    const T* bias = (nullptr != fused_runner && parameters.is_unidirectional) ? nullptr : data.bias;
-
-    // append last k v to present
-    ORT_RETURN_IF_ERROR(LaunchAddBiasTransAppendKvToPresent(
-        stream, parameters.max_sequence_length, parameters.past_sequence_length, sequence_length,
-        batch_size, qk_head_size, num_heads, max_threads_per_block,
-        bias, data.gemm_buffer, data.present));
-
-    data.k = data.present;
-    data.v = data.present + batch_size * num_heads * parameters.max_sequence_length * qk_head_size;
+    ORT_RETURN_IF_ERROR(PastPresentBufferShare<T>(batch_size, num_heads, qk_head_size, v_head_size,
+                                               sequence_length, fused_runner,
+                                               parameters, data, stream, max_threads_per_block));
   }
 
   // Q, K and V are ready now
   if (data.fused_cross_attention_kernel != nullptr) {
-    return FusedTrtCrossAttention(stream, parameters, data);
+    DUMP_STRING("FusedTrtCrossAttention");
+    return FusedTrtCrossAttention<T>(stream, parameters, data);
   }
 
   // Run TRT fused attention.
   if (nullptr != fused_runner) {
-    return FusedTrtSelfAttention(stream, parameters, data);
+    DUMP_STRING("FusedTrtSelfAttention");
+    return FusedTrtSelfAttention<T>(stream, parameters, data);
   }
 
   // For raw attention mask, the scalar 1/sqrt(H) is moved to combine with softmax computation.
@@ -728,27 +1011,37 @@ Status QkvToContext(
                                                : parameters.scale;
 #if USE_LEAN_ATTENTION
   if (data.use_lean_attention) {
-    return LeanAttention(device_prop, stream, parameters, data, scale);
+    DUMP_STRING("LeanAttention");
+    return LeanAttention<T>(device_prop, stream, parameters, data, scale);
   }
 #endif
 
 #if USE_FLASH_ATTENTION
   if (data.use_flash_attention) {
-    return FlashAttention(device_prop, stream, parameters, data, scale);
+    DUMP_STRING("FlashAttention");
+    return FlashAttention<T>(device_prop, stream, parameters, data, scale);
   }
 #endif
 
   if (data.kernel_type == AttentionKernelType::AttentionKernel_CudnnFlashAttention) {
-    return CudnnFlashAttention(cudnn, ort_stream, parameters, data, scale);
+    DUMP_STRING("CudnnFlashAttention");
+    return CudnnFlashAttention<T>(cudnn, ort_stream, parameters, data, scale);
   }
 
 #if USE_MEMORY_EFFICIENT_ATTENTION
   if (data.use_memory_efficient_attention) {
-    return EfficientAttention(device_prop, stream, parameters, data, scale);
+    DUMP_STRING("EfficientAttention");
+    return EfficientAttention<T>(device_prop, stream, parameters, data, scale);
   }
 #endif
 
-  return UnfusedAttention(device_prop, cublas, ort_stream, parameters, data, scale);
+  if (data.use_decoder_masked_multihead_attention) {
+    DUMP_STRING("DecoderMaskedMHA");
+    return DecoderMaskedMultiHeadAttention<T, QK>(stream, parameters, data, scale);
+  }
+
+  DUMP_STRING("UnfusedAttention");
+  return UnfusedAttention<T, QK>(device_prop, cublas, ort_stream, parameters, data, scale);
 }
 
 // Template Instantiation
@@ -771,6 +1064,42 @@ template Status QkvToContext<half>(
     Stream* ort_stream,
     contrib::AttentionParameters& parameters,
     AttentionData<half>& data);
+
+template Status QkvToContext<float, half>(
+    const cudaDeviceProp& device_prop,
+    cublasHandle_t& cublas,
+    cudnnHandle_t& cudnn,
+    Stream* ort_stream,
+    contrib::AttentionParameters& parameters,
+    AttentionData<float>& data);
+
+template Status QkvToContext<half, float>(
+    const cudaDeviceProp& device_prop,
+    cublasHandle_t& cublas,
+    cudnnHandle_t& cudnn,
+    Stream* ort_stream,
+    contrib::AttentionParameters& parameters,
+    AttentionData<half>& data);
+
+template Status LaunchDecoderMaskedMultiHeadAttention<float, float>(
+  const DecoderMaskedMultiHeadAttentionParameters& parameters,
+  cudaStream_t stream,
+  const int head_size);
+
+template Status LaunchDecoderMaskedMultiHeadAttention<float, half>(
+  const DecoderMaskedMultiHeadAttentionParameters& parameters,
+  cudaStream_t stream,
+  const int head_size);
+
+template Status LaunchDecoderMaskedMultiHeadAttention<uint16_t, float>(
+  const DecoderMaskedMultiHeadAttentionParameters& parameters,
+  cudaStream_t stream,
+  const int head_size);
+
+template Status LaunchDecoderMaskedMultiHeadAttention<uint16_t, half>(
+  const DecoderMaskedMultiHeadAttentionParameters& parameters,
+  cudaStream_t stream,
+  const int head_size);
 
 }  // namespace cuda
 }  // namespace contrib

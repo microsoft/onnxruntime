@@ -142,13 +142,15 @@ struct GetCapabilityForEPParams {
   std::reference_wrapper<const layout_transformation::DebugGraphFn> debug_graph_fn;
 #endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
   IResourceAccountant* resource_accountant;
+  std::reference_wrapper<const GraphOptimizerRegistry> graph_optimizer_registry;
 };
 
 auto get_capabilities = [](const IExecutionProvider& ep,
                            const GraphViewer& graph_viewer,
                            const IExecutionProvider::IKernelLookup& kernel_lookup,
-                           IResourceAccountant* resource_accountant) {
-  auto capabilities = ep.GetCapability(graph_viewer, kernel_lookup, resource_accountant);
+                           IResourceAccountant* resource_accountant,
+                           const GraphOptimizerRegistry& graph_optimizer_registry) {
+  auto capabilities = ep.GetCapability(graph_viewer, kernel_lookup, graph_optimizer_registry, resource_accountant);
 
   // In theory an EP could return an empty capability. Remove those.
   capabilities.erase(std::remove_if(capabilities.begin(), capabilities.end(),
@@ -182,10 +184,11 @@ static Status GetCapabilityForEP(const GetCapabilityForEPParams& params, const l
 
   auto& graph = params.graph.get();
   auto& capabilities = params.capabilities.get();
+  const auto& graph_optimizer_registry = params.graph_optimizer_registry.get();
 
   {
     const GraphViewer graph_viewer(graph);
-    capabilities = get_capabilities(current_ep, graph_viewer, kernel_lookup, params.resource_accountant);
+    capabilities = get_capabilities(current_ep, graph_viewer, kernel_lookup, params.resource_accountant, graph_optimizer_registry);
 
     if (capabilities.empty()) {
       return Status::OK();
@@ -223,7 +226,7 @@ static Status GetCapabilityForEP(const GetCapabilityForEPParams& params, const l
     capabilities.clear();
 
     const GraphViewer graph_viewer(graph);
-    capabilities = get_capabilities(current_ep, graph_viewer, kernel_lookup, params.resource_accountant);
+    capabilities = get_capabilities(current_ep, graph_viewer, kernel_lookup, params.resource_accountant, graph_optimizer_registry);
 
     // all nodes with an index >= first_new_node with domain of kMSInternalNHWCDomain should be in the capabilities
     InlinedHashSet<NodeIndex> new_nodes_in_capabilities;
@@ -261,6 +264,7 @@ static Status GetCapabilityForEP(const GetCapabilityForEPParams& params, const l
 static Status GetCapabilityForEPForAotInlining(const GraphViewer& graph_viewer,
                                                const KernelRegistryManager& kernel_registry_mgr,
                                                const IExecutionProvider& current_ep,
+                                               const GraphOptimizerRegistry& graph_optimizer_registry,
                                                const logging::Logger& logger,
                                                std::vector<std::unique_ptr<ComputeCapability>>& capabilities) {
   const auto& ep_type = current_ep.Type();
@@ -272,14 +276,62 @@ static Status GetCapabilityForEPForAotInlining(const GraphViewer& graph_viewer,
                                    logger};
 
   // TODO: Provide EP with a capability to look inside the functions.
-  capabilities = get_capabilities(current_ep, graph_viewer, kernel_lookup, nullptr);
+  capabilities = get_capabilities(current_ep, graph_viewer, kernel_lookup, nullptr, graph_optimizer_registry);
 
   return Status::OK();
 }
 
 /**
- * Check if a node can be placed on a specific provider.
- * Do nothing if the node is already assigned
+ * Check whether the given IndexedSubGraph is available for assigning to a specific provider.
+ *
+ */
+static bool IsIndexedSubGraphAvailableForAssignment(Graph& graph,
+                                                    const IndexedSubGraph& capability,
+                                                    GraphPartitioner::Mode mode,
+                                                    const std::string& provider_type) {
+  // The provider can run a single node in the <graph> if not using meta-defs.
+  if (capability.GetMetaDef() == nullptr && capability.nodes.size() == 1) {
+    auto* node = graph.GetNode(capability.nodes[0]);
+    if (nullptr != node && node->GetExecutionProviderType().empty()) {
+      // The node was not fused or assigned.
+      return true;
+    }
+    return false;
+  }
+
+  // if mode is kAssignOnly we want all nodes that can _potentially_ be taken by compiling EPs to be assigned,
+  // so that we aggregate the nodes covered and ensure the original nodes remain in the ORT format model by
+  // preventing level 2 and 3 optimizers from changing them. optimizers check the EP the node is assigned to
+  // and only make changes if the EP is on the optimizer's list of supported EPs. an EP that compiles nodes
+  // should never be on those lists.
+  //
+  // when the ORT format model is loaded we will process it normally with EP priority being applied for
+  // whichever EPs are enabled at the time.
+  //
+  // e.g. an Android NNAPI EP may take different/overlapping nodes to a iOS CoreML EP.
+  // We want the ORT format model to be able to be run as efficiently as possible on either platform,
+  // so we want all the nodes that either may take to be preserved. If we did not do this we would
+  // need to create one ORT format model for Android and one for iOS.
+  if (mode == GraphPartitioner::Mode::kAssignOnly) {
+    return true;
+  }
+
+  for (auto node_index : capability.nodes) {
+    const auto* node = graph.GetNode(node_index);
+    if ((nullptr == node) ||
+        (!node->GetExecutionProviderType().empty() && node->GetExecutionProviderType() != provider_type)) {
+      // The node was fused or assigned, so that the whole sub-graph will not be assigned to this <provider>
+      // The assumption is that this <provider> can only run the sub-graph as a whole unit.
+      return false;
+    }
+  }
+
+  return true;
+}
+
+/**
+ * Return a fused node or assign the nodes in the indexed subgraph to the current EP.
+ *
  * \param graph
  * \param capability
  * \param kernel_registry_mgr
@@ -298,75 +350,42 @@ static Node* PlaceNode(Graph& graph, const IndexedSubGraph& capability,
   if (nullptr == capability.GetMetaDef()) {
     TryAssignSingleNode(graph, capability, provider_type);
   } else {
-    // The <provider> can run a fused <sub_graph> in the <graph>.
+    const bool acc_enabled = capability.IsAccountingEnabled();
+    if (mode == GraphPartitioner::Mode::kNormal) {
+      std::ostringstream oss;
+      oss << provider_type << "_" << capability.GetMetaDef()->name << "_" << fused_node_unique_id++;
+      std::string node_name = oss.str();
 
-    // Check whether any node in the <sub_graph> was already assigned. If so it cannot be stolen as assignment is done
-    // in order of EP priority
-    bool sub_graph_available_for_assignment = true;
-    if (mode != GraphPartitioner::Mode::kAssignOnly) {
-      // if mode is kAssignOnly we want all nodes that can _potentially_ be taken by compiling EPs to be assigned,
-      // so that we aggregate the nodes covered and ensure the original nodes remain in the ORT format model by
-      // preventing level 2 and 3 optimizers from changing them. optimizers check the EP the node is assigned to
-      // and only make changes if the EP is on the optimizer's list of supported EPs. an EP that compiles nodes
-      // should never be on those lists.
-      //
-      // when the ORT format model is loaded we will process it normally with EP priority being applied for
-      // whichever EPs are enabled at the time.
-      //
-      // e.g. an Android NNAPI EP may take different/overlapping nodes to a iOS CoreML EP.
-      // We want the ORT format model to be able to be run as efficiently as possible on either platform,
-      // so we want all the nodes that either may take to be preserved. If we did not do this we would
-      // need to create one ORT format model for Android and one for iOS.
-      for (auto node_index : capability.nodes) {
-        const auto* node = graph.GetNode(node_index);
-        if ((nullptr == node) ||
-            (!node->GetExecutionProviderType().empty() && node->GetExecutionProviderType() != provider_type)) {
-          // The node was fused or assigned, so that the whole sub-graph will not be assigned to this <provider>
-          // The assumption is that this <provider> can only run the sub-graph as a whole unit.
-          sub_graph_available_for_assignment = false;
-          break;
-        }
-      }
-    }
-
-    if (sub_graph_available_for_assignment) {
-      const bool acc_enabled = capability.IsAccountingEnabled();
-      if (mode == GraphPartitioner::Mode::kNormal) {
-        std::ostringstream oss;
-        oss << provider_type << "_" << capability.GetMetaDef()->name << "_" << fused_node_unique_id++;
-        std::string node_name = oss.str();
-
-        Node* fused_node = nullptr;
-        if (fusion_style == IExecutionProvider::FusionStyle::Function) {
-          fused_node = &graph.FuseSubGraph(capability, node_name);
-        } else {
-          // create a fused node without copying everything to a Function body. The IndexedSubGraph will be passed
-          // through to Compile via a filtered GraphViewer.
-          fused_node = &graph.BeginFuseSubGraph(capability, node_name);
-        }
-
-        fused_node->SetExecutionProviderType(provider_type);
-        if (acc_enabled) {
-          // We account for the fused node. We operate under assumption
-          // that the fused node would use no more memory when the nodes we are fusing.
-          // and potentially less than that, and therefore, no threshold check is needed here.
-          // All threshold checks are done within the EP.
-          capability.ComputeAndAccountForNode(*fused_node);
-        }
-
-        result = fused_node;
+      Node* fused_node = nullptr;
+      if (fusion_style == IExecutionProvider::FusionStyle::Function) {
+        fused_node = &graph.FuseSubGraph(capability, node_name);
       } else {
-        // assign the nodes in the indexed subgraph to the current EP so that level 2+ optimizers will not change them.
-        // This is used when exporting an ORT format model to maintain the original nodes and re-do the fusion
-        // at runtime. The original nodes provide a fallback if fewer nodes can be fused at runtime due to device
-        // capabilities.
-        for (size_t i = 0, limit = capability.nodes.size(); i < limit; ++i) {
-          auto* node = graph.GetNode(capability.nodes[i]);
-          if (node != nullptr) {
-            node->SetExecutionProviderType(provider_type);
-            if (acc_enabled) {
-              capability.AccountForNode(i);
-            }
+        // create a fused node without copying everything to a Function body. The IndexedSubGraph will be passed
+        // through to Compile via a filtered GraphViewer.
+        fused_node = &graph.BeginFuseSubGraph(capability, node_name);
+      }
+
+      fused_node->SetExecutionProviderType(provider_type);
+      if (acc_enabled) {
+        // We account for the fused node. We operate under assumption
+        // that the fused node would use no more memory when the nodes we are fusing.
+        // and potentially less than that, and therefore, no threshold check is needed here.
+        // All threshold checks are done within the EP.
+        capability.ComputeAndAccountForNode(*fused_node);
+      }
+
+      result = fused_node;
+    } else {
+      // assign the nodes in the indexed subgraph to the current EP so that level 2+ optimizers will not change them.
+      // This is used when exporting an ORT format model to maintain the original nodes and re-do the fusion
+      // at runtime. The original nodes provide a fallback if fewer nodes can be fused at runtime due to device
+      // capabilities.
+      for (size_t i = 0, limit = capability.nodes.size(); i < limit; ++i) {
+        auto* node = graph.GetNode(capability.nodes[i]);
+        if (node != nullptr) {
+          node->SetExecutionProviderType(provider_type);
+          if (acc_enabled) {
+            capability.AccountForNode(i);
           }
         }
       }
@@ -386,7 +405,8 @@ static Status PartitionOnnxFormatModelImpl(Graph& graph, FuncManager& func_mgr,
                                            int& fused_node_unique_id,
                                            const layout_transformation::TransformLayoutFunction& transform_layout_fn,
                                            const layout_transformation::DebugGraphFn& debug_graph_fn,
-                                           const logging::Logger& logger, IResourceAccountant* resource_accountant) {
+                                           const logging::Logger& logger, IResourceAccountant* resource_accountant,
+                                           const GraphOptimizerRegistry& graph_optimizer_registry) {
   // handle testing edge case where optimizers or constant lifting results in graph with no nodes.
   // doing it here saves all providers checking for this in GetCapability
   if (graph.NumberOfNodes() == 0) {
@@ -400,7 +420,7 @@ static Status PartitionOnnxFormatModelImpl(Graph& graph, FuncManager& func_mgr,
       // we pass through the FuncManager from the top level graph
       ORT_RETURN_IF_ERROR(PartitionOnnxFormatModelImpl(*subgraph, func_mgr, kernel_registry_mgr,
                                                        fused_kernel_registry, current_ep, mode, fused_node_unique_id,
-                                                       transform_layout_fn, debug_graph_fn, logger, resource_accountant));
+                                                       transform_layout_fn, debug_graph_fn, logger, resource_accountant, graph_optimizer_registry));
     }
   }
 
@@ -424,7 +444,8 @@ static Status PartitionOnnxFormatModelImpl(Graph& graph, FuncManager& func_mgr,
       mode,
       std::cref(transform_layout_fn),
       std::cref(debug_graph_fn),
-      resource_accountant};
+      resource_accountant,
+      std::ref(graph_optimizer_registry)};
 
   ORT_RETURN_IF_ERROR(GetCapabilityForEP(get_capability_params, logger));
   if (capabilities.empty()) {
@@ -450,7 +471,30 @@ static Status PartitionOnnxFormatModelImpl(Graph& graph, FuncManager& func_mgr,
                                                          entry->sub_graph->GetMetaDef() != nullptr;
                                                 }));
   for (auto& capability : capabilities) {
-    Node* n = PlaceNode(graph, *capability->sub_graph, fusion_style, type, mode, fused_node_unique_id);
+    // The <provider> can run a fused <sub_graph> in the <graph>.
+    // Check whether any node in the <sub_graph> was already assigned. If so it cannot be stolen as assignment is done
+    // in order of EP priority
+    bool sub_graph_available_for_assignment = IsIndexedSubGraphAvailableForAssignment(graph, *capability->sub_graph, mode, type);
+
+    // If the <sub_graph> is available to be assigned to the EP and the ComputeCapability has nodes_to_optimize,
+    // run EP related optimizations and update ComputeCapability.
+    if (sub_graph_available_for_assignment && !capability->nodes_to_optimize.empty()) {
+      for (auto& optimization_cc : capability->nodes_to_optimize) {
+        if (optimization_cc->optimization_func) {
+          auto status = optimization_cc->optimization_func(graph, *optimization_cc, *capability, graph_optimizer_registry);
+          if (status != Status::OK()) {
+            return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, type, "The optimization function failed to finish.");
+          }
+          // #TODO: Handle nested optimization ComputeCapability
+        }
+      }
+    }
+
+    Node* n = nullptr;
+    if (sub_graph_available_for_assignment) {
+      n = PlaceNode(graph, *capability->sub_graph, fusion_style, type, mode, fused_node_unique_id);
+    }
+
     if (n != nullptr) {
       // searching in kernel registries, if no kernel registered for the fused_node, use compile approach
       if (!KernelRegistryManager::HasImplementationOf(kernel_registry_mgr, *n, type, logger)) {
@@ -587,6 +631,7 @@ static Status InlineNodes(Graph& graph, bool& modified_graph) {
 static Status InlineFunctionsAOTImpl(const ExecutionProviders& execution_providers,
                                      const KernelRegistryManager& kernel_registry_mgr,
                                      Graph& graph,
+                                     const GraphOptimizerRegistry& graph_optimizer_registry,
                                      const logging::Logger& logger,
                                      InlinedHashSet<std::string>& not_inlined,
                                      size_t& inlined_count) {
@@ -603,6 +648,7 @@ static Status InlineFunctionsAOTImpl(const ExecutionProviders& execution_provide
       ORT_RETURN_IF_ERROR(InlineFunctionsAOTImpl(execution_providers,
                                                  kernel_registry_mgr,
                                                  *subgraph,
+                                                 graph_optimizer_registry,
                                                  logger,
                                                  not_inlined,
                                                  inlined_count));
@@ -627,7 +673,7 @@ static Status InlineFunctionsAOTImpl(const ExecutionProviders& execution_provide
   InlinedHashSet<NodeIndex> claimed_by_ep;
   for (const auto& ep : execution_providers) {
     std::vector<std::unique_ptr<ComputeCapability>> capabilities;
-    ORT_RETURN_IF_ERROR(GetCapabilityForEPForAotInlining(graph_viewer, kernel_registry_mgr, *ep, logger,
+    ORT_RETURN_IF_ERROR(GetCapabilityForEPForAotInlining(graph_viewer, kernel_registry_mgr, *ep, graph_optimizer_registry, logger,
                                                          capabilities));
     for (auto& capability : capabilities) {
       const auto& nodes = capability->sub_graph->nodes;
@@ -667,23 +713,28 @@ static Status InlineFunctionsAOTImpl(const ExecutionProviders& execution_provide
 }
 
 // Validate the ep_context_path to make sure it is file path and check whether the file exist already
-static Status EpContextFilePathCheck(const std::string& ep_context_path,
-                                     const std::filesystem::path& model_path) {
-  std::filesystem::path context_cache_path;
+static Status GetValidatedEpContextPath(const std::filesystem::path& ep_context_path,
+                                        const std::filesystem::path& model_path,
+                                        std::filesystem::path& context_cache_path) {
   if (!ep_context_path.empty()) {
     context_cache_path = ep_context_path;
     if (!context_cache_path.has_filename()) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "context_file_path should not point to a folder.");
     }
   } else if (!model_path.empty()) {
-    context_cache_path = model_path.native() + ORT_TSTR("_ctx.onnx");
+    auto pos = model_path.native().find_last_of(ORT_TSTR("."));
+    if (pos != std::string::npos) {
+      context_cache_path = model_path.native().substr(0, pos) + ORT_TSTR("_ctx.onnx");
+    } else {
+      context_cache_path = model_path.native() + ORT_TSTR("_ctx.onnx");
+    }
   } else {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Both ep_context_path and model_path are empty.");
   }
 
   if (std::filesystem::exists(context_cache_path)) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to generate EP context model since the file '",
-                           context_cache_path, "' exist already.");
+                           context_cache_path, "' exist already. Please remove the EP context model if you want to re-generate it.");
   }
 
   return Status::OK();
@@ -714,15 +765,7 @@ static Status CreateEpContextModel(const ExecutionProviders& execution_providers
   };
 
   std::filesystem::path context_cache_path;
-  const std::filesystem::path& model_path = graph.ModelPath();
-
-  if (!ep_context_path.empty()) {
-    context_cache_path = ep_context_path;
-  } else if (!model_path.empty()) {
-    context_cache_path = model_path.native() + ORT_TSTR("_ctx.onnx");
-  } else {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Both ep_context_path and model_path are empty");
-  }
+  ORT_RETURN_IF_ERROR(GetValidatedEpContextPath(ep_context_path, graph.ModelPath(), context_cache_path));
 
   Model ep_context_model(graph.Name(), false, graph.GetModel().MetaData(),
                          graph.GetModel().ModelPath(),  // use source model path so that external initializers can find the data file path
@@ -794,6 +837,7 @@ static Status PartitionOnnxFormatModel(const PartitionParams& partition_params, 
                                        const ExecutionProviders& execution_providers,
                                        KernelRegistryManager& kernel_registry_manager,
                                        const std::optional<ResourceAccountantMap>& acc_map,
+                                       const GraphOptimizerRegistry& graph_optimizer_registry,
                                        const logging::Logger& logger) {
   bool modified_graph = false;
 
@@ -817,7 +861,7 @@ static Status PartitionOnnxFormatModel(const PartitionParams& partition_params, 
                                                        fused_kernel_registry, *ep, mode, fused_node_unique_id,
                                                        transform_layout_function,
                                                        partition_params.debug_graph_fn,
-                                                       logger, resource_accountant));
+                                                       logger, resource_accountant, graph_optimizer_registry));
     }
 
     // expand any nodes that have an ONNX function definition but no matching ORT kernel.
@@ -838,6 +882,7 @@ static Status PartitionOnnxFormatModel(const PartitionParams& partition_params, 
 static Status PartitionOrtFormatModelImpl(const PartitionParams& partition_params,
                                           KernelRegistryManager& kernel_registry_mgr,
                                           IExecutionProvider& current_ep,
+                                          const GraphOptimizerRegistry& graph_optimizer_registry,
                                           const logging::Logger& logger) {
   // handle testing edge case where optimizers or constant lifting results in graph with no nodes.
   // doing it here saves all providers checking for this in GetCapability
@@ -853,7 +898,7 @@ static Status PartitionOrtFormatModelImpl(const PartitionParams& partition_param
       PartitionParams subgraph_partition_params = partition_params;
       subgraph_partition_params.graph = std::ref(subgraph);
       ORT_RETURN_IF_ERROR(PartitionOrtFormatModelImpl(subgraph_partition_params, kernel_registry_mgr,
-                                                      current_ep, logger));
+                                                      current_ep, graph_optimizer_registry, logger));
     }
   }
 
@@ -869,7 +914,8 @@ static Status PartitionOrtFormatModelImpl(const PartitionParams& partition_param
       std::cref(partition_params.transform_layout_function),
       std::cref(partition_params.debug_graph_fn),
 #endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
-      nullptr
+      nullptr,
+      std::ref(graph_optimizer_registry)
   };
   // clang-format on
 
@@ -962,10 +1008,11 @@ static Status PartitionOrtFormatModelImpl(const PartitionParams& partition_param
 static Status PartitionOrtFormatModel(const PartitionParams& partition_params,
                                       const ExecutionProviders& execution_providers,
                                       KernelRegistryManager& kernel_registry_manager,
+                                      const GraphOptimizerRegistry& graph_optimizer_registry,
                                       const logging::Logger& logger) {
   // process full graph with each EP
   for (const auto& ep : execution_providers) {
-    ORT_RETURN_IF_ERROR(PartitionOrtFormatModelImpl(partition_params, kernel_registry_manager, *ep, logger));
+    ORT_RETURN_IF_ERROR(PartitionOrtFormatModelImpl(partition_params, kernel_registry_manager, *ep, graph_optimizer_registry, logger));
   }
 
   return Status::OK();
@@ -992,6 +1039,7 @@ Status GraphPartitioner::InlineFunctionsAOT(Model& model,
     ORT_RETURN_IF_ERROR(InlineFunctionsAOTImpl(execution_providers,
                                                kernel_registry_manager,
                                                graph,
+                                               *graph_optimizer_registry_,
                                                logger,
                                                not_inlined,
                                                inlined_count));
@@ -1048,8 +1096,7 @@ Status GraphPartitioner::Partition(Graph& graph, FuncManager& func_mgr,
       std::ref(*fused_kernel_registry),
       std::ref(fused_node_unique_id),
       std::cref(transform_layout_function),
-      std::cref(debug_graph_fn),
-  };
+      std::cref(debug_graph_fn)};
 
 #else  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
 
@@ -1068,7 +1115,8 @@ Status GraphPartitioner::Partition(Graph& graph, FuncManager& func_mgr,
     if (ep_context_enabled) {
       std::string ep_context_path = config_options.GetConfigOrDefault(kOrtSessionOptionEpContextFilePath, "");
       // Check before EP compile graphs
-      ORT_RETURN_IF_ERROR(EpContextFilePathCheck(ep_context_path, graph.ModelPath()));
+      std::filesystem::path context_cache_path;
+      ORT_RETURN_IF_ERROR(GetValidatedEpContextPath(ep_context_path, graph.ModelPath(), context_cache_path));
     }
 
     // We use this only if Resource Aware Partitioning is enabled for any of the EPs
@@ -1077,7 +1125,7 @@ Status GraphPartitioner::Partition(Graph& graph, FuncManager& func_mgr,
     ORT_RETURN_IF_ERROR(NodeStatsRecorder::CreateAccountants(config_options, graph.ModelPath(), ep_acc_map));
 
     ORT_RETURN_IF_ERROR(PartitionOnnxFormatModel(partition_params, mode, providers_, kernel_registry_mgr_,
-                                                 ep_acc_map, logger));
+                                                 ep_acc_map, *graph_optimizer_registry_, logger));
 
     if (ep_context_enabled) {
       std::string ep_context_path = config_options.GetConfigOrDefault(kOrtSessionOptionEpContextFilePath, "");
@@ -1091,7 +1139,7 @@ Status GraphPartitioner::Partition(Graph& graph, FuncManager& func_mgr,
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "ONNX models are not supported in this build.");
 #endif  //! defined(ORT_MINIMAL_BUILD)
   } else {
-    ORT_RETURN_IF_ERROR(PartitionOrtFormatModel(partition_params, providers_, kernel_registry_mgr_, logger));
+    ORT_RETURN_IF_ERROR(PartitionOrtFormatModel(partition_params, providers_, kernel_registry_mgr_, *graph_optimizer_registry_, logger));
   }
 
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)

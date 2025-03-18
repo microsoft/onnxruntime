@@ -123,7 +123,7 @@ stages:
             --skip_submodule_sync
             --cmake_generator "Visual Studio 17 2022"
             --enable_pybind
-            --enable_onnx_tests
+            --enable_onnx_tests --use_vcpkg --use_vcpkg_ms_internal_asset_cache 
             ${{ parameters.build_py_parameters }}
             --parallel --use_binskim_compliant_compile_flags --update --build
             $(TelemetryOption)
@@ -151,10 +151,11 @@ stages:
           Contents: '*.whl'
           TargetFolder: '$(Build.ArtifactStagingDirectory)'
 
-      - task: PublishBuildArtifacts@1
+      - task: 1ES.PublishPipelineArtifact@1
         displayName: 'Publish Artifact: ONNXRuntime python wheel'
         inputs:
-          ArtifactName: onnxruntime
+          artifactName: onnxruntime-win-$(PythonVersion)
+          targetPath: '$(Build.ArtifactStagingDirectory)'
 
       - script: |
           7z x *.whl
@@ -199,7 +200,9 @@ stages:
       workspace:
         clean: all
       pool:
-        vmImage: 'macOS-13'
+        name: "Azure Pipelines"
+        image: "macOS-13"
+        os: macOS
       variables:
         MACOSX_DEPLOYMENT_TARGET: '13.3'
       strategy:
@@ -251,74 +254,81 @@ stages:
           Contents: '*.whl'
           TargetFolder: '$(Build.ArtifactStagingDirectory)'
 
-      - task: PublishBuildArtifacts@1
+      - task: 1ES.PublishPipelineArtifact@1
         displayName: 'Publish Artifact: ONNXRuntime python wheel'
         inputs:
-          ArtifactName: onnxruntime
+          artifactName: onnxruntime-macos-$(PythonVersion)
+          targetPath: '$(Build.ArtifactStagingDirectory)'
 
       - template: ../templates/component-governance-component-detection-steps.yml
         parameters:
           condition: 'succeeded'
 
 
-  - ${{ if eq(parameters.enable_linux_arm, true) }}:
-    - stage: Python_Packaging_Linux_ARM
-      dependsOn: []
-      jobs:
-        - template: ../templates/py-linux.yml
-          parameters:
-            arch: 'aarch64'
-            machine_pool: 'onnxruntime-linux-ARM64-CPU-2019'
-            extra_build_arg: ${{ parameters.build_py_parameters }}
-            cmake_build_type: ${{ parameters.cmake_build_type }}
-
-  - ${{ if eq(parameters.enable_linux_cpu, true) }}:
-    - stage: Python_Packaging_Linux_CPU
-      dependsOn: []
-      jobs:
+- ${{ if eq(parameters.enable_linux_arm, true) }}:
+  - stage: Python_Packaging_Linux_ARM
+    dependsOn: []
+    jobs:
       - template: ../templates/py-linux.yml
         parameters:
-          arch: 'x86_64'
-          machine_pool: 'onnxruntime-Ubuntu2204-AMD-CPU-Large'
+          arch: 'aarch64'
+          machine_pool: 'onnxruntime-linux-ARM64-CPU-2019'
           extra_build_arg: ${{ parameters.build_py_parameters }}
           cmake_build_type: ${{ parameters.cmake_build_type }}
+          is1ES: true
 
-  - ${{ if eq(parameters.enable_windows_arm64_qnn, true) }}:
-    - stage: Python_Packaging_Windows_ARM64_QNN
-      dependsOn: []
-      jobs:
-      - template: ../templates/py-win-arm64-qnn.yml
+- ${{ if eq(parameters.enable_linux_cpu, true) }}:
+  - stage: Python_Packaging_Linux_CPU
+    dependsOn: []
+    jobs:
+    - template: ../templates/py-linux.yml
+      parameters:
+        arch: 'x86_64'
+        machine_pool: 'onnxruntime-Ubuntu2204-AMD-CPU-Large'
+        extra_build_arg: ${{ parameters.build_py_parameters }}
+        cmake_build_type: ${{ parameters.cmake_build_type }}
+        is1ES: true
+
+- ${{ if eq(parameters.enable_windows_arm64_qnn, true) }}:
+  - stage: Python_Packaging_Windows_ARM64_QNN
+    dependsOn: []
+    jobs:
+    - template: ../templates/py-win-arm64-qnn.yml
+      parameters:
+        MACHINE_POOL: 'onnxruntime-qnn-windows-vs-2022-arm64'
+        QNN_SDK: ${{ parameters.qnn_sdk_version }}
+        BUILD_PY_PARAMETERS: ${{ parameters.build_py_parameters }}
+        is1ES: true
+
+- ${{ if eq(parameters.enable_windows_arm64ec_qnn, true) }}:
+  - stage: Python_Packaging_Windows_arm64ec_QNN
+    dependsOn: []
+    jobs:
+      - template: ../templates/py-win-arm64ec-qnn.yml
         parameters:
-          MACHINE_POOL: 'onnxruntime-qnn-windows-vs-2022-arm64'
+          MACHINE_POOL: 'Onnxruntime-QNNEP-Windows-2022-CPU'
           QNN_SDK: ${{ parameters.qnn_sdk_version }}
           BUILD_PY_PARAMETERS: ${{ parameters.build_py_parameters }}
+          is1ES: true
 
-  - ${{ if eq(parameters.enable_windows_arm64ec_qnn, true) }}:
-    - stage: Python_Packaging_Windows_arm64ec_QNN
-      dependsOn: []
-      jobs:
-        - template: ../templates/py-win-arm64ec-qnn.yml
-          parameters:
-            MACHINE_POOL: 'Onnxruntime-QNNEP-Windows-2022-CPU'
-            QNN_SDK: ${{ parameters.qnn_sdk_version }}
-            BUILD_PY_PARAMETERS: ${{ parameters.build_py_parameters }}
-
-  - ${{ if eq(parameters.enable_windows_x64_qnn, true) }}:
-    - stage: Python_Packaging_Windows_x64_QNN
-      dependsOn: []
-      jobs:
-        - template: ../templates/py-win-x64-qnn.yml
-          parameters:
-            MACHINE_POOL: 'Onnxruntime-QNNEP-Windows-2022-CPU'
-            QNN_SDK: ${{ parameters.qnn_sdk_version }}
-            BUILD_PY_PARAMETERS: ${{ parameters.build_py_parameters }}
-
-  - ${{ if eq(parameters.enable_linux_x64_qnn, true) }}:
-    - stage: Python_Packaging_Linux_x64_QNN
-      dependsOn: []
-      jobs:
-      - template: ../templates/py-linux-qnn.yml
+- ${{ if eq(parameters.enable_windows_x64_qnn, true) }}:
+  - stage: Python_Packaging_Windows_x64_QNN
+    dependsOn: []
+    jobs:
+      - template: ../templates/py-win-x64-qnn.yml
         parameters:
-          machine_pool: 'onnxruntime-Ubuntu2204-AMD-CPU'
-          extra_build_arg: ${{ parameters.build_py_parameters }}
-          cmake_build_type: ${{ parameters.cmake_build_type }}
+          MACHINE_POOL: 'Onnxruntime-QNNEP-Windows-2022-CPU'
+          QNN_SDK: ${{ parameters.qnn_sdk_version }}
+          BUILD_PY_PARAMETERS: ${{ parameters.build_py_parameters }}
+          is1ES: true
+
+- ${{ if eq(parameters.enable_linux_x64_qnn, true) }}:
+  - stage: Python_Packaging_Linux_x64_QNN
+    dependsOn: []
+    jobs:
+    - template: ../templates/py-linux-qnn.yml
+      parameters:
+        machine_pool: 'onnxruntime-Ubuntu2204-AMD-CPU'
+        extra_build_arg: ${{ parameters.build_py_parameters }}
+        cmake_build_type: ${{ parameters.cmake_build_type }}
+        is1ES: true

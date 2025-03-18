@@ -332,8 +332,9 @@ bool IAllocator::CalcMemSizeForArrayWithAlignment(size_t nmemb, size_t size, siz
 
 std::vector<std::unique_ptr<ComputeCapability>> IExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_viewer,
                                                                                   const IKernelLookup& kernel_lookup,
+                                                                                  const GraphOptimizerRegistry& graph_optimizer_registry,
                                                                                   IResourceAccountant* resource_accountant) const {
-  return g_host->IExecutionProvider__GetCapability(this, graph_viewer, kernel_lookup, resource_accountant);
+  return g_host->IExecutionProvider__GetCapability(this, graph_viewer, kernel_lookup, graph_optimizer_registry, resource_accountant);
 }
 common::Status IExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& fused_nodes_and_graphs,
                                            std::vector<NodeComputeInfo>& node_compute_funcs) {

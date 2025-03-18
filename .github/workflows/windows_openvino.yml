@@ -1,0 +1,172 @@
+name: Windows OpenVINO CI Pipeline
+
+on:
+  push:
+    branches:
+      - main
+      - rel-*
+  pull_request:
+    branches:
+      - main
+      - rel-*
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  BUILD_OPENVINO_EP:
+    name: Windows OpenVINO CI Pipeline
+    runs-on: ["self-hosted", "1ES.Pool=onnxruntime-github-vs2022-mms"]
+    timeout-minutes: 240
+    env:
+      AZCOPY_AUTO_LOGIN_TYPE: MSI
+      AZCOPY_MSI_CLIENT_ID: 63b63039-6328-442f-954b-5a64d124e5b4
+      OnnxRuntimeBuildDirectory: ${{ github.workspace }}
+      DOTNET_SKIP_FIRST_TIME_EXPERIENCE: true
+      ALLOW_RELEASED_ONNX_OPSET_ONLY: '1'
+      BuildConfig: RelWithDebInfo
+      buildArch: x64
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          submodules: none
+
+      - name: Setup Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          architecture: x64 #Keep x64, because the original pipeline is for x64
+
+      - name: Locate vcvarsall and Setup Env
+        uses: ./.github/actions/locate-vcvarsall-and-setup-env
+        with:
+          architecture: x64
+
+      - name: Export GitHub Actions cache environment variables
+        uses: actions/github-script@v7
+        with:
+          script: |
+            core.exportVariable('ACTIONS_CACHE_URL', process.env.ACTIONS_CACHE_URL || '');
+            core.exportVariable('ACTIONS_RUNTIME_TOKEN', process.env.ACTIONS_RUNTIME_TOKEN || '');
+
+      - name: Download OpenVINO Toolkit v2025.0.0
+        env:
+          OpenVINOVersion: 2025.0.0
+        shell: pwsh
+        run: |
+          $Url = "https://storage.openvinotoolkit.org/repositories/openvino/packages/2025.0/windows/openvino_toolkit_windows_2025.0.0.17942.1f68be9f594_x86_64.zip"
+          $OutputPath = "$env:RUNNER_TEMP\openvino.zip"
+          $ExtractPath = "$env:RUNNER_TEMP\openvino-v$env:OpenVINOVersion"
+          $TempExtractPath = "$env:RUNNER_TEMP\openvino_temp"
+
+          # Ensure directories exist
+          if (Test-Path $ExtractPath) {
+            Remove-Item -Recurse -Force $ExtractPath
+          }
+          New-Item -ItemType Directory -Path $ExtractPath | Out-Null
+          New-Item -ItemType Directory -Path $TempExtractPath | Out-Null
+
+          # Download OpenVINO ZIP
+          Write-Output "Downloading OpenVINO"
+          Invoke-WebRequest -Uri $Url -OutFile $OutputPath
+
+          # Extract to temporary directory first
+          Write-Output "Extracting OpenVINO to a temporary directory"
+          Expand-Archive -Path $OutputPath -DestinationPath $TempExtractPath -Force
+
+          # Locate the nested subdirectory
+          $InnerFolder = Get-ChildItem -Path $TempExtractPath -Directory | Select-Object -First 1
+
+          if ($InnerFolder) {
+            Write-Output "Moving extracted files to final destination"
+            Move-Item -Path "$($InnerFolder.FullName)\*" -Destination $ExtractPath -Force
+          } else {
+            Write-Error "Extraction failed: No expected subdirectory found in $TempExtractPath."
+            Write-Error "The archive may not have extracted correctly, or its structure is different than expected."
+            exit 1
+          }
+
+          # Clean up temporary files
+          Remove-Item -Recurse -Force $TempExtractPath
+          Remove-Item -Force $OutputPath
+
+          # Confirm success
+          Write-Output "OpenVINO extracted to $ExtractPath"   
+
+      - name: Set OpenVINORootDir
+        shell: pwsh
+        # Use $GITHUB_ENV to set the variable for subsequent steps
+        run: |
+          $openVinoRootDir = Join-Path $env:RUNNER_TEMP "openvino-v2025.0.0"
+          echo "OpenVINORootDir=$openVinoRootDir" >> $env:GITHUB_ENV
+
+      - name: Print OpenVINORootDir after downloading OpenVINO
+        shell: cmd
+        run: 'echo %OpenVINORootDir%'
+
+      - name: Print contents of OpenVINO Toolkit
+        shell: cmd
+        run: 'dir %OpenVINORootDir%'
+
+      - name: Set up OpenVINO environment
+        shell: pwsh
+        run: |
+          Write-Output "Setting up OpenVINO environment variables"
+          . "$env:OpenVINORootDir\setupvars.ps1"
+
+          Write-Output "Exporting selected environment variables to pipeline"
+
+          $vars = @(
+            "INTEL_OPENVINO_DIR",
+            "OpenVINO_DIR",
+            "OpenVINOGenAI_DIR",
+            "OPENVINO_LIB_PATHS",
+            "TBB_DIR",
+            "PATH",
+            "PYTHONPATH"
+          )
+
+          foreach ($var in $vars) {
+            if (Test-Path "Env:$var") {
+              $value = [System.Environment]::GetEnvironmentVariable($var, "Process")
+              Write-Output "Setting $var=$value"
+              echo "$var=$value" >> $env:GITHUB_ENV  # Append to GITHUB_ENV
+            } else {
+              Write-Output "Warning: $var is not set."
+            }
+          }
+
+          Write-Output "Selected environment variables exported successfully"
+
+      
+
+      - name: Generate onnxruntime.sln
+        shell: pwsh
+        working-directory: ${{ runner.temp }}
+        run: |
+          python.exe ${{ github.workspace }}\tools\ci_build\build.py --config ${{ env.BuildConfig }} --build_dir build --cmake_generator "Visual Studio 17 2022" --build_shared_lib --use_openvino CPU --use_binskim_compliant_compile_flags --update --parallel
+
+      - name: Build
+        shell: pwsh
+        working-directory: ${{ runner.temp }}
+        run: |
+          python.exe ${{ github.workspace }}\tools\ci_build\build.py --config ${{ env.BuildConfig }} --build_dir build --cmake_generator "Visual Studio 17 2022" --build_shared_lib --use_openvino CPU --use_binskim_compliant_compile_flags --build --parallel
+
+
+      - name: Run unit tests
+        shell: pwsh
+        working-directory: ${{ runner.temp }}
+        run: |
+          python "${{ github.workspace }}\tools\ci_build\build.py" `
+            --config "${{ env.BuildConfig }}" `
+            --build_dir build `
+            --cmake_generator "Visual Studio 17 2022" `
+            --build_shared_lib `
+            --use_openvino CPU `
+            --use_binskim_compliant_compile_flags `
+            --test --enable_onnx_tests
