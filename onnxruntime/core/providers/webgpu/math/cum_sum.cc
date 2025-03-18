@@ -38,7 +38,7 @@ Status CumSumProgram::GenerateShaderCode(ShaderHelper& shader) const {
                             << "}\n\n"
                             << "var last : i32 = 0;\n"
                             << "if (uniforms.reverse == 1) {\n"
-                            << "  last = " << GetElementAt("uniforms.input_shape", "uniforms.axis", input.Rank()) << ";\n"
+                            << "  last = i32(" << GetElementAt("uniforms.input_shape", "uniforms.axis", input.Rank()) << ");\n"
                             << "} else {\n"
                             << "  last = i32(" + input.IndicesGet("input_indices", "uniforms.axis") + ");\n"
                             << "  if (uniforms.exclusive == 0) { last += 1; }\n"
