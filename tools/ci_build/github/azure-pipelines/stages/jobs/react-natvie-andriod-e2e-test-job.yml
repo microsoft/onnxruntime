@@ -39,12 +39,12 @@ jobs:
       jdkArchitectureOption: 'x64'
       jdkSourceOption: 'PreInstalled'
 
-  - task: NodeTool@0
+  - task: UseNode@1
     inputs:
       versionSpec: '20.x'
 
   - script: |
-      sudo apt install coreutils ninja-build nodejs npm
+      sudo apt install coreutils ninja-build npm
     displayName: Install coreutils, ninja, npm
 
   - task: DownloadPipelineArtifact@2
