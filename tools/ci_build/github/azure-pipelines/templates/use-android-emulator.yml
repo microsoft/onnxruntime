@@ -38,9 +38,10 @@ steps:
       set -e -x
       EXTRA_ARGS=""
       # if ENABLE_WEBGPU is not set,args will be empty
-      if [[ "${ENABLE_WEBGPU}" == "true" ]]; then
+      if [[ "$(ENABLE_WEBGPU)" == "true" ]]; then
         EXTRA_ARGS="-gpu host -feature Vulkan"
       fi
+      EXTRA_ARGS="-gpu host -feature Vulkan"
       python3 tools/python/run_android_emulator.py \
         --android-sdk-root $(ANDROID_SDK_ROOT) \
         --create-avd --system-image "system-images;android-31;default;x86_64" \
