@@ -286,7 +286,7 @@ WEBGPU_BINARY_KERNEL(Sub, 14, Sub, WebGpuSupportedNumberTypes())
 std::string GetPowImpl(int lhs_element_type, int /* rhs_element_type */) {
   SS(s, 1024);
   std::string round_str;
-  if (lhs_element_type == ONNX_TENSOR_ELEMENT_DATA_TYPE_INT32 || lhs_element_type == ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT32) {
+  if (lhs_element_type == ONNX_TENSOR_ELEMENT_DATA_TYPE_INT32) {
     round_str = "round";
   }
 
