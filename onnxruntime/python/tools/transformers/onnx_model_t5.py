@@ -34,7 +34,7 @@ class FusionT5Attention(FusionAttention):
             num_heads,
             attention_mask,
             use_multi_head_attention=False,
-            search_op_types=["SkipSimplifiedLayerNormalization", "Add"],
+            search_op_types=["Softmax"],
         )
         self.static_kv = 1
 
@@ -217,17 +217,17 @@ class FusionT5Attention(FusionAttention):
         self.fuse_t5_encoder(normalize_node, input_name_to_nodes, output_name_to_node)
         self.fuse_t5_decoder(normalize_node, input_name_to_nodes, output_name_to_node)
 
-    def fuse_t5_encoder(self, normalize_node, input_name_to_nodes, output_name_to_node):
-        if normalize_node.op_type != "SkipSimplifiedLayerNormalization" and normalize_node.op_type != "Add":
-            return
-
-        qkv_nodes = self.model.match_parent_path(
-            normalize_node, ["MatMul", "Reshape", "Transpose", "MatMul"], [1, 0, 0, 0], output_name_to_node
+    def fuse_t5_encoder(self, search_node, input_name_to_nodes, output_name_to_node):
+        assert search_node.op_type == "Softmax"
+        qkv_nodes = self.model.match_child_path(
+            search_node,
+            ["MatMul", "Transpose", "Reshape"],
+            edges=[(0, 0), (0, 0), (0, 0)],
+            input_name_to_nodes=input_name_to_nodes,
         )
         if qkv_nodes is None:
             return
-
-        _, reshape_qkv, transpose_qkv, matmul_qkv = qkv_nodes
+        matmul_qkv, transpose_qkv, reshape_qkv = qkv_nodes
 
         qkv_shape_nodes = self.model.match_parent_path(
             reshape_qkv,
@@ -462,11 +462,17 @@ class FusionT5Attention(FusionAttention):
                 ["Add", "Mul", "Sub", "Cast", "Unsqueeze", "Unsqueeze"],
                 [1, 1, 0, 1, 0, 0],
             )
-            if mask_nodes is None:
-                return
-            mul_node = mask_nodes[1]
-            if mask_nodes[1].op_type != "Mul":
-                return
+            if mask_nodes is not None:
+                mul_node = mask_nodes[1]
+            else:
+                mask_nodes = self.model.match_parent_path(
+                    add_qk,
+                    ["Add", "Slice", "Mul", "Sub", "Cast", "Unsqueeze", "Unsqueeze"],
+                    [1, 1, 0, 0, 1, 0, 0],
+                )
+                if mask_nodes is None:
+                    return
+                mul_node = mask_nodes[2]
 
             _, mul_val = self.model.get_constant_input(mul_node)
             if mul_val != -10000:
@@ -635,29 +641,35 @@ class FusionT5Attention(FusionAttention):
 
 class FusionRelativePositionBiasBlock(Fusion):
     def __init__(self, model: OnnxModel, max_distance: int):
-        super().__init__(model, "RelativePositionBias", ["Add", "Slice"])
+        super().__init__(model, "RelativePositionBias", ["Softmax"])
         self.max_distance = max_distance
         self.is_bidirectional = False
 
+    # pattern from transformers 4.42.0
     def fuse(self, node, input_name_to_nodes, output_name_to_node):
         # TODO: Optimization opportunity: only last dimension of relative_position_bias is used in decoder.
         # Cuda kernel can be optimized to only compute last dimension.
-        if node.op_type != "Add" and node.op_type != "Slice":
-            return
 
         compute_bias_nodes = self.model.match_parent_path(
-            node, ["Unsqueeze", "Transpose", "Gather", "Where"], [0, 0, 0, 1], output_name_to_node
+            node,
+            ["Add", "Add", "Slice", "Unsqueeze", "Transpose", "Gather", "Where"],
+            [0, 1, 0, 0, 0, 0, 1],
+            output_name_to_node,
         )
+
         if compute_bias_nodes is None:
             compute_bias_nodes = self.model.match_parent_path(
-                node, ["Unsqueeze", "Transpose", "Gather", "Add", "Where"], [0, 0, 0, 1, 1], output_name_to_node
+                node,
+                ["Add", "Add", "Slice", "Unsqueeze", "Transpose", "Gather", "Add", "Where"],
+                [0, 1, 0, 0, 0, 0, 1, 1],
+                output_name_to_node,
             )
             if compute_bias_nodes is None:
                 return
 
-        gather = compute_bias_nodes[2]
+        gather = compute_bias_nodes[5]
         where = compute_bias_nodes[-1]
-        unsqueeze = compute_bias_nodes[0]
+        unsqueeze = compute_bias_nodes[-4]
 
         compute_buckets_nodes = self.model.match_parent_path(
             where,
@@ -693,6 +705,8 @@ class FusionRelativePositionBiasBlock(Fusion):
 
         range_node = range_nodes[-1]
 
+        sub_node = range_nodes[-3]
+
         self.nodes_to_remove.append(unsqueeze)
         self.prune_graph = True
 
@@ -714,7 +728,34 @@ class FusionRelativePositionBiasBlock(Fusion):
         )
 
         self.model.add_initializer(bias_table, self.this_graph_name)
+
         inputs = [bias_table.name, range_node.input[1], range_node.input[1]]
+        range_nodes_2 = self.model.match_parent_path(sub_node, ["Unsqueeze", "Range"], [1, 0], output_name_to_node)
+        if range_nodes_2 is not None:
+            assert (
+                self.model.get_constant_value(range_nodes_2[1].input[0]) is not None
+            )  # int(self.model.get_constant_value(range_nodes_2[1].input[0])) == 0
+            inputs[1] = range_nodes_2[-1].input[1]
+        else:
+            # transformers 4.46 has new pattern for query length:
+            # https://github.com/huggingface/transformers/blob/7f5077e53682ca855afc826162b204ebf809f1f9/src/transformers/models/t5/modeling_t5.py#L1041-L1043
+            range_nodes_3 = self.model.match_parent_path(
+                sub_node, ["Cast", "Unsqueeze", "Range"], [1, 0, 0], output_name_to_node
+            )
+            if range_nodes_3 is not None:
+                # I'm not sure whether we shall use the Sub of two inputs here. Need more testing.
+                # sub_node = helper.make_node(
+                #     "Sub",
+                #     inputs=[range_nodes_3[-1].input[1], range_nodes_3[-1].input[0]],
+                #     outputs=[node_name + "_query_length"],
+                #     name=node_name + "_sub_query_length",
+                # )
+                # self.nodes_to_add.append(sub_node)
+                # self.node_name_to_graph_name[sub_node.name] = self.this_graph_name
+                # inputs[1] = sub_node.output[0]
+
+                inputs[1] = range_nodes_3[-1].input[1]
+
         outputs = [unsqueeze.output[0]]
         rpb_node = helper.make_node(
             "RelativePositionBias",
