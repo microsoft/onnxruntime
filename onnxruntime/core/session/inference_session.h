@@ -21,6 +21,7 @@
 #include "core/framework/external_data_loader_manager.h"
 #include "core/framework/kernel_registry_manager.h"
 #include "core/framework/prepacked_weights_container.h"
+#include "core/framework/resource_accountant.h"
 #include "core/framework/session_state.h"
 #include "core/framework/tuning_results.h"
 #include "core/framework/framework_provider_common.h"
@@ -29,7 +30,7 @@
 #include "core/optimizer/graph_transformer_level.h"
 #include "core/optimizer/graph_transformer_mgr.h"
 #include "core/optimizer/insert_cast_transformer.h"
-#include "core/platform/ort_mutex.h"
+#include <mutex>
 #ifdef ENABLE_LANGUAGE_INTEROP_OPS
 #include "core/language_interop_ops/language_interop_ops.h"
 #endif
@@ -45,6 +46,9 @@
 namespace ONNX_NAMESPACE {
 class ModelProto;
 }  // namespace ONNX_NAMESPACE
+
+// OrtModelEditorApi Model. Used to dynamically construct a model via C API at runtime.
+struct OrtModel;
 
 namespace onnxruntime {  // forward declarations
 class CustomRegistry;
@@ -129,7 +133,7 @@ class InferenceSession {
   using InputOutputDefMetaMap = InlinedHashMap<std::string_view, InputOutputDefMetaData>;
   static std::map<uint32_t, InferenceSession*> active_sessions_;
 #ifdef _WIN32
-  static OrtMutex active_sessions_mutex_;  // Protects access to active_sessions_
+  static std::mutex active_sessions_mutex_;  // Protects access to active_sessions_
   static onnxruntime::WindowsTelemetry::EtwInternalCallback callback_ML_ORT_provider_;
   onnxruntime::logging::EtwRegistrationManager::EtwInternalCallback callback_ETWSink_provider_;
 #endif
@@ -319,6 +323,27 @@ class InferenceSession {
    * @return OK if success.
    */
   [[nodiscard]] common::Status Load();
+
+  /**
+   * Load an OrtModel that was dynamically constructed via OrtModelEditorApi.
+   *
+   * @param graph_api_model OrtModel from OrtModelEditorApi
+   * @return OK if success.
+   */
+  [[nodiscard]] common::Status Load(const OrtModel& graph_api_model);
+
+  /**
+   * Apply updates from an OrtModel that was created via OrtModelEditorApi.
+   * This can:
+   *   - add nodes at the start and end of the model
+   *   - add initializers
+   *   - update the graph inputs/outputs
+   *
+   * @param graph_api_model OrtModel from OrtModelEditorApi
+   * @return OK if success.
+   */
+  [[nodiscard]] common::Status ApplyUpdates(const OrtModel& graph_api_model);
+
 #endif  // !defined(ORT_MINIMAL_BUILD)
 
   /**
@@ -329,6 +354,9 @@ class InferenceSession {
    * @return OK if success
    */
   [[nodiscard]] common::Status Initialize();
+
+  [[nodiscard]] common::Status SetEpDynamicOptions(gsl::span<const char* const> keys,
+                                                   gsl::span<const char* const> values);
 
   [[nodiscard]] common::Status Run(const RunOptions& run_options, gsl::span<const std::string> feed_names,
                                    gsl::span<const OrtValue> feeds, gsl::span<const std::string> output_names,
@@ -542,6 +570,33 @@ class InferenceSession {
    */
   Status AddPrePackedWeightsContainer(PrepackedWeightsContainer* prepacked_weights_container);
 
+#if !defined(ORT_MINIMAL_BUILD)
+  /**
+   * CreateNodeStats recorder and enable collection of node statistics that is useful
+   * for resource constrained partitioning and otherwise.
+   *
+   * @param node_stats_file - this file will be created at the same folder where the model file is present.
+   */
+  Status CreateNodeStatsRecorder(const std::filesystem::path& node_stats_file);
+
+  /**
+   * Returns true if collection is enabled
+   */
+  bool IsNodeStatsCollectionEnabled() const noexcept {
+    return node_stats_recorder_.has_value();
+  }
+
+  /**
+   * NodeStatsRecorder pointer. If not present, returns nullptr
+   */
+  NodeStatsRecorder* GetNodeStatsRecorder() noexcept {
+    return node_stats_recorder_.has_value() ? &*node_stats_recorder_ : nullptr;
+  }
+
+#endif
+
+  const Model& GetModel() const;
+
  protected:
 #if !defined(ORT_MINIMAL_BUILD)
 
@@ -598,6 +653,12 @@ class InferenceSession {
   /// convenience pointer to logger. should always be the same as session_state_.Logger();
   const logging::Logger* session_logger_;
 
+  // The list of execution providers.
+  // This MUST be prior to model_ in case there are values in the model that were allocated using an allocator
+  // provided by the EP. If that is the case the allocator's `free` implementation may depend on other parts of the
+  // EP instance.
+  ExecutionProviders execution_providers_;
+
   // The model served by this inference session instance.
   // Currently this has to be a shared ptr because the Model::Load method
   // returns a shared_ptr only. Ideally factory functions should always return
@@ -608,16 +669,13 @@ class InferenceSession {
   // The file path of where the model was loaded. e.g. /tmp/test_squeezenet/model.onnx
   PathString model_location_;
 
-  // The list of execution providers.
-  ExecutionProviders execution_providers_;
-
  private:
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(InferenceSession);
   void SetLoggingManager(const SessionOptions& session_options,
                          const Environment& session_env);
   void ConstructorCommon(const SessionOptions& session_options,
                          const Environment& session_env);
-
+  [[nodiscard]] common::Status HasInvalidCombinationOfExecutionProviders() const;
   [[nodiscard]] common::Status SaveModelMetadata(const onnxruntime::Model& model);
 
 #if !defined(ORT_MINIMAL_BUILD)
@@ -660,7 +718,7 @@ class InferenceSession {
 
   void InitLogger(logging::LoggingManager* logging_manager);
 
-  void TraceSessionOptions(const SessionOptions& session_options, bool captureState);
+  static void TraceSessionOptions(const SessionOptions& session_options, bool captureState, const logging::Logger& logger);
 
   [[nodiscard]] common::Status CheckShapes(const std::string& input_name, const TensorShape& input_shape,
                                            const TensorShape& expected_shape, const char* input_output_moniker) const;
@@ -687,8 +745,9 @@ class InferenceSession {
    * If we encounter an invalid request, we return an error
    * back to the user.
    */
-  [[nodiscard]] common::Status ValidateAndParseShrinkArenaString(const std::string& ort_device_list,
-                                                                 /*out*/ InlinedVector<AllocatorPtr>& arenas_to_shrink) const;
+  [[nodiscard]] common::Status ValidateAndParseShrinkArenaString(
+      const std::string& ort_device_list,
+      /*out*/ InlinedVector<AllocatorPtr>& arenas_to_shrink) const;
 
   /*
    * Performs the shrinkage of arenas requested to be shrunk by the user
@@ -697,7 +756,7 @@ class InferenceSession {
   void ShrinkMemoryArenas(gsl::span<const AllocatorPtr> arenas_to_shrink);
 
 #ifdef _WIN32
-  void LogAllSessions();
+  static void LogAllSessions();
 #endif
 
 #if !defined(ORT_MINIMAL_BUILD)
@@ -705,7 +764,8 @@ class InferenceSession {
       GraphTransformerManager& transformer_manager,
       TransformerLevel graph_optimization_level,
       MinimalBuildOptimizationHandling minimal_build_optimization_handling,
-      RecordRuntimeOptimizationProducedNodeOpSchemaFn record_runtime_optimization_produced_op_schema_fn) const;
+      RecordRuntimeOptimizationProducedNodeOpSchemaFn record_runtime_optimization_produced_op_schema_fn,
+      const logging::Logger& logger) const;
 
   common::Status TransformGraph(onnxruntime::Graph& graph, bool saving_model_in_ort_format);
 
@@ -796,10 +856,10 @@ class InferenceSession {
   // Number of concurrently running executors
   std::atomic<int> current_num_runs_ = 0;
 
-  mutable onnxruntime::OrtMutex session_mutex_;  // to ensure only one thread can invoke Load/Initialize
-  bool is_model_loaded_ = false;                 // GUARDED_BY(session_mutex_)
-  bool is_inited_ = false;                       // GUARDED_BY(session_mutex_)
-  bool is_concurrent_run_supported_ = true;      // Graph execution in Run is GUARDED_BY(session_mutex_) if false
+  mutable std::mutex session_mutex_;         // to ensure only one thread can invoke Load/Initialize
+  bool is_model_loaded_ = false;             // GUARDED_BY(session_mutex_)
+  bool is_inited_ = false;                   // GUARDED_BY(session_mutex_)
+  bool is_concurrent_run_supported_ = true;  // Graph execution in Run is GUARDED_BY(session_mutex_) if false
 
 #ifdef ENABLE_LANGUAGE_INTEROP_OPS
   InterOpDomains interop_domains_;
@@ -906,6 +966,11 @@ class InferenceSession {
   };
 
   CachedExecutionProviderForGraphReplay cached_execution_provider_for_graph_replay_;
+
+#if !defined(ORT_MINIMAL_BUILD)
+  // Enable nodestats collection
+  std::optional<NodeStatsRecorder> node_stats_recorder_;
+#endif
 };
 
 struct SessionIOBinding {

@@ -34,10 +34,6 @@ static bool EPAwareHandleResize(HandlerArgs& args) {
 
 constexpr HandlerInfo ep_aware_resize_handler = {&FirstInput, &EPAwareHandleResize};
 
-static bool HandleQLinearConcat(HandlerArgs& args) {
-  return HandleSimpleNodeWithAxis(args);
-}
-
 std::vector<size_t> QLinearConcatInputs(OptimizerCtx& ctx, api::NodeRef& node) {
   (void)ctx;
   std::vector<size_t> indices;
@@ -48,11 +44,7 @@ std::vector<size_t> QLinearConcatInputs(OptimizerCtx& ctx, api::NodeRef& node) {
   return indices;
 }
 
-constexpr HandlerInfo q_linear_concat_handler = {&QLinearConcatInputs, &HandleQLinearConcat};
-
-static bool HandleQLinearBinaryOp(HandlerArgs& args) {
-  return HandleSimpleNodeBroadcast(args);
-}
+constexpr HandlerInfo q_linear_concat_handler = {&QLinearConcatInputs, &HandleConcat};
 
 std::vector<size_t> QLinearBinaryOpInputs(OptimizerCtx&, api::NodeRef&) {
   // Inputs are: [A, A_scale, A_zero_point, B, B_scale, B_zero_point, C_scale, C_zero_point],
@@ -60,7 +52,7 @@ std::vector<size_t> QLinearBinaryOpInputs(OptimizerCtx&, api::NodeRef&) {
   return {0, 3};
 }
 
-constexpr HandlerInfo q_linear_binary_op_handler = {&QLinearBinaryOpInputs, &HandleQLinearBinaryOp};
+constexpr HandlerInfo q_linear_binary_op_handler = {&QLinearBinaryOpInputs, &HandleSimpleNodeBroadcast};
 
 static bool HandleQLinearPoolOp(HandlerArgs& args) {
   // Swap between channel first/last variants. Only works for applicable values of perm.
@@ -129,6 +121,7 @@ constexpr HandlerInfo max_pool_op_handler = {&FirstInput, &HandleMaxPool};
 
 constexpr HandlerInfo node_1_inp_handler = {&FirstInput, &HandleSimpleNode};
 constexpr HandlerInfo reduce_op_handler = {&FirstInput, &HandleReduceOps};
+constexpr HandlerInfo soft_hard_max_handler = {&FirstInput, &HandleSoftHardMax};
 constexpr HandlerInfo contrib_quantize_dequantize_linear_handler = {&FirstInput,
                                                                     &HandleContribQuantizeDequantizeLinear};
 
@@ -148,6 +141,7 @@ const HandlerMap& OrtExtendedHandlers() {
         {"com.microsoft.QLinearMul", q_linear_binary_op_handler},
         {"com.microsoft.QLinearReduceMean", reduce_op_handler},
         {"com.microsoft.QLinearSigmoid", node_1_inp_handler},
+        {"com.microsoft.QLinearSoftmax", soft_hard_max_handler},
     };
 
     return map;

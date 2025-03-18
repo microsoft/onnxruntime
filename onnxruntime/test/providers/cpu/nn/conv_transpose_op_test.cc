@@ -1,8 +1,10 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include "core/providers/xnnpack/xnnpack_init.h"
 #include "gtest/gtest.h"
 #include "test/providers/provider_test_utils.h"
+#include "test/common/tensor_op_test_utils.h"
 #include "default_providers.h"
 
 using namespace std;
@@ -28,6 +30,8 @@ void TestConvTransposeOpInitializer(const ConvTransposeOpAttributes& attributes,
                                     const vector<vector<int64_t>>& input_shapes,
                                     const std::vector<T>& expected_output,
                                     const vector<int64_t>& expected_output_shape,
+                                    float rel_error = 0.0,
+                                    float abs_error = 0.0,
                                     bool is_weight_and_bias_initializer = false,
                                     OpTester::ExpectResult expect_result = OpTester::ExpectResult::kExpectSuccess,
                                     const std::string& err_str = "",
@@ -64,7 +68,7 @@ void TestConvTransposeOpInitializer(const ConvTransposeOpAttributes& attributes,
   for (size_t i = 0; i < inputs.size(); i++) {
     test.AddInput<T>(input_names[i], input_shapes[i], inputs[i], is_initializers[i]);
   }
-  test.AddOutput<T>("Y", expected_output_shape, expected_output);
+  test.AddOutput<T>("Y", expected_output_shape, expected_output, false, rel_error, abs_error);
 
   test.Run(expect_result, err_str, excluded_provider_types);  // Disable TensorRT because weight as input is not supported
 }
@@ -78,12 +82,16 @@ void TestConvTransposeOp(const ConvTransposeOpAttributes& attributes,
                          OpTester::ExpectResult expect_result = OpTester::ExpectResult::kExpectSuccess,
                          const std::string& err_str = "",
                          const std::unordered_set<std::string>& excluded_provider_types =
-                             {kCudaNHWCExecutionProvider, kTensorrtExecutionProvider, kQnnExecutionProvider}) {
+                             {kCudaNHWCExecutionProvider, kTensorrtExecutionProvider, kQnnExecutionProvider},
+                         float rel_error = 0.0,
+                         float abs_error = 0.0) {
   std::unordered_set<std::string> extra_exclude_openvino_for_initializer_filter = excluded_provider_types;
   extra_exclude_openvino_for_initializer_filter.insert(kOpenVINOExecutionProvider);
   TestConvTransposeOpInitializer(attributes, inputs, input_shapes, expected_output, expected_output_shape,
+                                 rel_error, abs_error,
                                  true, expect_result, err_str, extra_exclude_openvino_for_initializer_filter);
   TestConvTransposeOpInitializer(attributes, inputs, input_shapes, expected_output, expected_output_shape,
+                                 rel_error, abs_error,
                                  false, expect_result, err_str, excluded_provider_types);
 }
 
@@ -121,17 +129,6 @@ TEST(ConvTransposeTest, ConvTranspose_1D) {
                                  9.4f, 22.5f, 39.6f, 30.f, 17.f};
 
   TestConvTransposeOp(attrs, {X, W}, {X_shape, W_shape}, expected_vals, Y_shape);
-}
-
-template <typename T>
-static std::vector<T> GetTypedArray(std::vector<float> inputs, [[maybe_unused]] T v = T(0.f)) {
-  if constexpr (std::is_same<T, float>::value) {
-    return inputs;
-  } else {
-    std::vector<T> inputs_fp16(inputs.size());
-    ConvertFloatToMLFloat16(inputs.data(), inputs_fp16.data(), inputs.size());
-    return inputs_fp16;
-  }
 }
 
 TYPED_TEST(ConvTransposeTest, ConvTranspose_2D_outputpadding_strides2) {
@@ -245,8 +242,22 @@ TYPED_TEST(ConvTransposeTest, ConvTranspose_2D_Bias_1) {
                                  0.07770107f, -0.09561026f, 0.13388641f, 0.30945939f, 0.14015588f,
                                  0.13079405f, -0.00488365f, -0.06758944f, 0.45621645f, 0.01566098f,
                                  0.00703105f, 0.12956856f, 0.0103332f, 0.04221053f, -0.21318194f};
+#ifdef XNNPACK_FP16_SUPPORTED
+  if constexpr (std::is_same<TypeParam, MLFloat16>::value) {
+    TestConvTransposeOp(attrs, {GetTypedArray<TypeParam>(X), GetTypedArray<TypeParam>(W), GetTypedArray<TypeParam>(B)},
+                        {X_shape, W_shape, B_shape}, GetTypedArray<TypeParam>(expected_vals), Y_shape,
+                        OpTester::ExpectResult::kExpectSuccess, "",                                       // defalut value
+                        {kCudaNHWCExecutionProvider, kTensorrtExecutionProvider, kQnnExecutionProvider},  // default value
+                        0.5, 0.5);
+  } else {
+    TestConvTransposeOp(attrs, {GetTypedArray<TypeParam>(X), GetTypedArray<TypeParam>(W), GetTypedArray<TypeParam>(B)},
+                        {X_shape, W_shape, B_shape}, GetTypedArray<TypeParam>(expected_vals), Y_shape);
+  }
+
+#else
   TestConvTransposeOp(attrs, {GetTypedArray<TypeParam>(X), GetTypedArray<TypeParam>(W), GetTypedArray<TypeParam>(B)},
                       {X_shape, W_shape, B_shape}, GetTypedArray<TypeParam>(expected_vals), Y_shape);
+#endif
 }
 
 TEST(ConvTransposeTest, ConvTranspose_2D_Bias_2) {

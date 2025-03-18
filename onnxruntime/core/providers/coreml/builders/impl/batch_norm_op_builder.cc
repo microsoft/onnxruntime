@@ -10,6 +10,10 @@
 #include "core/providers/coreml/shape_utils.h"
 #include "core/providers/shared/utils/utils.h"
 
+#ifdef __APPLE__
+#include <TargetConditionals.h>
+#endif
+
 namespace onnxruntime {
 namespace coreml {
 
@@ -24,6 +28,9 @@ class BatchNormalizationOpBuilder : public BaseOpBuilder {
 
   // BatchNormalization opset 6- has unsupported attributes
   int GetMinSupportedOpSet(const Node& /* node */) const override { return 7; }
+
+ public:
+  bool SupportsMLProgram() const override { return true; }
 };
 
 void BatchNormalizationOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder, const Node& node) const {
@@ -50,21 +57,46 @@ Status BatchNormalizationOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_bu
   const auto eps = helper.Get("epsilon", 1e-5f);
   const auto channels = scale_tensor.dims()[0];
 
-  auto* coreml_batch_norm = layer->mutable_batchnorm();
-  coreml_batch_norm->set_channels(channels);
-  coreml_batch_norm->set_epsilon(eps);
-  coreml_batch_norm->set_computemeanvar(false);
-  coreml_batch_norm->set_instancenormalization(false);
+#if defined(COREML_ENABLE_MLPROGRAM)
+  if (model_builder.CreateMLProgram()) {
+    using namespace CoreML::Specification::MILSpec;
+    // https://apple.github.io/coremltools/source/coremltools.converters.mil.mil.ops.defs.html#coremltools.converters.mil.mil.ops.defs.iOS15.normalization.batch_norm
 
-  ORT_RETURN_IF_ERROR(CreateCoreMLWeight(*coreml_batch_norm->mutable_gamma(), scale_tensor));   // scale
-  ORT_RETURN_IF_ERROR(CreateCoreMLWeight(*coreml_batch_norm->mutable_beta(), bias_tensor));     // B
-  ORT_RETURN_IF_ERROR(CreateCoreMLWeight(*coreml_batch_norm->mutable_mean(), mean_tensor));     // mean
-  ORT_RETURN_IF_ERROR(CreateCoreMLWeight(*coreml_batch_norm->mutable_variance(), var_tensor));  // var
+    std::unique_ptr<Operation> op = model_builder.CreateOperation(node, "batch_norm");
+    AddOperationInput(*op, "x", input_defs[0]->Name());
+    AddOperationInput(*op, "mean", model_builder.AddConstant(op->type(), input_defs[3]->Name() + "mean", mean_tensor));
+    AddOperationInput(*op, "variance", model_builder.AddConstant(op->type(), input_defs[4]->Name() + "variance", var_tensor));
+    AddOperationInput(*op, "gamma", model_builder.AddConstant(op->type(), input_defs[1]->Name(), scale_tensor));
+    AddOperationInput(*op, "beta", model_builder.AddConstant(op->type(), input_defs[2]->Name(), bias_tensor));
+    auto input_dtype = input_defs[0]->TypeAsProto()->tensor_type().elem_type();
+    if (input_dtype == ONNX_NAMESPACE::TensorProto_DataType_FLOAT16) {
+      MLFloat16 epsilon_fp16(eps);
+      AddOperationInput(*op, "epsilon", model_builder.AddScalarConstant(op->type(), "epsilon", epsilon_fp16));
+    } else {
+      AddOperationInput(*op, "epsilon", model_builder.AddScalarConstant(op->type(), "epsilon", eps));
+    }
 
-  *layer->mutable_input()->Add() = node.InputDefs()[0]->Name();
-  *layer->mutable_output()->Add() = node.OutputDefs()[0]->Name();
+    AddOperationOutput(*op, *node.OutputDefs()[0]);
+    model_builder.AddOperation(std::move(op));
+  } else
+#endif  // (COREML_ENABLE_MLPROGRAM)
+  {
+    auto* coreml_batch_norm = layer->mutable_batchnorm();
+    coreml_batch_norm->set_channels(channels);
+    coreml_batch_norm->set_epsilon(eps);
+    coreml_batch_norm->set_computemeanvar(false);
+    coreml_batch_norm->set_instancenormalization(false);
 
-  model_builder.AddLayer(std::move(layer));
+    ORT_RETURN_IF_ERROR(CreateCoreMLWeight(*coreml_batch_norm->mutable_gamma(), scale_tensor));   // scale
+    ORT_RETURN_IF_ERROR(CreateCoreMLWeight(*coreml_batch_norm->mutable_beta(), bias_tensor));     // B
+    ORT_RETURN_IF_ERROR(CreateCoreMLWeight(*coreml_batch_norm->mutable_mean(), mean_tensor));     // mean
+    ORT_RETURN_IF_ERROR(CreateCoreMLWeight(*coreml_batch_norm->mutable_variance(), var_tensor));  // var
+
+    *layer->mutable_input()->Add() = input_defs[0]->Name();
+    *layer->mutable_output()->Add() = node.OutputDefs()[0]->Name();
+
+    model_builder.AddLayer(std::move(layer));
+  }
   return Status::OK();
 }
 
@@ -119,6 +151,15 @@ bool BatchNormalizationOpBuilder::IsOpSupportedImpl(const Node& node, const OpBu
     return false;
   }
 
+#if defined(TARGET_OS_IOS) && defined(TARGET_CPU_X86_64) && TARGET_OS_IOS && TARGET_CPU_X86_64
+  // To Pass IOS pipeline https://dev.azure.com/onnxruntime/onnxruntime/_build?definitionId=134&_a=summary
+  auto input_dtype = input_defs[0]->TypeAsProto()->tensor_type().elem_type();
+  if (input_dtype == ONNX_NAMESPACE::TensorProto_DataType_FLOAT16 && input_params.coreml_version < 7) {
+    LOGS(logger, VERBOSE) << "float16 input is not supported on the iOS x86_64 simulator"
+                          << " due to CoreML producing invalid output.";
+    return false;
+  }
+#endif
   return true;
 }
 

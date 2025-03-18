@@ -25,8 +25,8 @@ class GemmOpBuilder : public BaseOpBuilder {
  private:
   bool IsOpSupportedImpl(const InitializedTensorSet& /* initializers */, const Node& node,
                          const WebnnDeviceType /* device_type */, const logging::Logger& logger) const override;
-  bool HasSupportedInputsImpl(const Node& node, const emscripten::val& wnn_limits,
-                              const logging::Logger& logger) const override;
+  bool HasSupportedInputsImpl(const InitializedTensorSet& /* initializers */, const Node& node,
+                              const emscripten::val& wnn_limits, const logging::Logger& logger) const override;
 };
 
 // Add operator related.
@@ -55,22 +55,20 @@ Status GemmOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
     if (a_shape.size() == 1) {
       extended_a_shape = true;
       a_shape.insert(a_shape.begin(), 1);
+      emscripten::val a_shape_arr = emscripten::val::array(GetNarrowedIntfromInt64<uint32_t>(a_shape));
       emscripten::val reshape_a_options = emscripten::val::object();
       reshape_a_options.set("label", node.Name() + "_reshape_a");
-      a = model_builder.GetBuilder().call<emscripten::val>("reshape", a,
-                                                           emscripten::val::array(GetVecUint32FromVecInt64(a_shape)),
-                                                           reshape_a_options);
+      a = model_builder.GetBuilder().call<emscripten::val>("reshape", a, a_shape_arr, reshape_a_options);
     }
     // If the second argument is 1-D, it is promoted to a matrix by appending a 1 to its dimensions.
     bool extended_b_shape = false;
     if (b_shape.size() == 1) {
       extended_b_shape = true;
       b_shape.push_back(1);
+      emscripten::val b_shape_arr = emscripten::val::array(GetNarrowedIntfromInt64<uint32_t>(b_shape));
       emscripten::val reshape_b_options = emscripten::val::object();
       reshape_b_options.set("label", node.Name() + "_reshape_b");
-      b = model_builder.GetBuilder().call<emscripten::val>("reshape", b,
-                                                           emscripten::val::array(GetVecUint32FromVecInt64(b_shape)),
-                                                           reshape_b_options);
+      b = model_builder.GetBuilder().call<emscripten::val>("reshape", b, b_shape_arr, reshape_b_options);
     }
 
     output = model_builder.GetBuilder().call<emscripten::val>("matmul", a, b, options);
@@ -113,12 +111,12 @@ Status GemmOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
     if (input_defs.size() >= 3) {
       a_zero_point = model_builder.GetOperand(node.InputDefs()[2]->Name());
     } else {
-      a_zero_point = model_builder.GetZeroConstant(ONNX_NAMESPACE::TensorProto_DataType_UINT8);
+      a_zero_point = model_builder.CreateOrGetConstant<uint8_t>(ONNX_NAMESPACE::TensorProto_DataType_UINT8, 0);
     }
     if (input_defs.size() >= 4) {
       b_zero_point = model_builder.GetOperand(node.InputDefs()[3]->Name());
     } else {
-      b_zero_point = model_builder.GetZeroConstant(ONNX_NAMESPACE::TensorProto_DataType_UINT8);
+      b_zero_point = model_builder.CreateOrGetConstant<uint8_t>(ONNX_NAMESPACE::TensorProto_DataType_UINT8, 0);
     }
     output = model_builder.GetBuilder().call<emscripten::val>("matmulInteger",
                                                               a,
@@ -215,16 +213,16 @@ bool GemmOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& /* initializer
   return true;
 }
 
-bool GemmOpBuilder::HasSupportedInputsImpl(const Node& node, const emscripten::val& wnn_limits,
-                                           const logging::Logger& logger) const {
+bool GemmOpBuilder::HasSupportedInputsImpl(const InitializedTensorSet& /* initializers */, const Node& node,
+                                           const emscripten::val& wnn_limits, const logging::Logger& logger) const {
   const auto& input_defs = node.InputDefs();
-  const auto& op_type = node.OpType();
+  const std::string_view op_type = node.OpType();
   int32_t input0_type;  // A data type
   int32_t input1_type;  // B data type
   int32_t input2_type;  // C or a_zero_point data type
   int32_t input3_type;  // b_zero_point data type
-  bool has_input2 = input_defs.size() > 2 && input_defs[2]->Exists();
-  bool has_input3 = input_defs.size() > 3 && input_defs[3]->Exists();
+  bool has_input2 = TensorExists(input_defs, 2);
+  bool has_input3 = TensorExists(input_defs, 3);
 
   if (!GetType(*input_defs[0], input0_type, logger) ||
       !GetType(*input_defs[1], input1_type, logger) ||

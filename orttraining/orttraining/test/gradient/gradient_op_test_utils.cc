@@ -139,7 +139,8 @@ void GradientOpTester::Run(int output_index_to_use_as_loss,
 
           auto reg = execution_provider->GetKernelRegistry();
           const KernelCreateInfo* kci;
-          auto st = reg->TryFindKernel(node, execution_provider->Type(), kernel_type_str_resolver, &kci);
+          auto st = reg->TryFindKernel(node, execution_provider->Type(), kernel_type_str_resolver,
+                                       DefaultLoggingManager().DefaultLogger(), &kci);
           if (!st.IsOK()) {
             // The goal here is unclear. It seems best to leave it to the Session
             // creation to figure out whether the model can be executed using some

@@ -2,7 +2,6 @@
 # Licensed under the MIT License.
 
 import unittest
-from typing import Tuple
 
 import numpy as np
 import onnxscript
@@ -23,7 +22,7 @@ def shard_tensor_per_device_mesh(X, rank, axis, device_mesh):
     if axis is None:
         return X
     shards = np.split(X, len(device_mesh), axis)
-    selected_shards = tuple(shard for device_id, shard in zip(device_mesh, shards) if device_id == rank)
+    selected_shards = tuple(shard for device_id, shard in zip(device_mesh, shards, strict=False) if device_id == rank)
     return np.concatenate(selected_shards, axis=axis)
 
 
@@ -99,12 +98,12 @@ def shard_tensor_per_spec(tensor: np.ndarray, rank: int, spec: str, device_mesh:
 class TestDistributedReshape(unittest.TestCase):
     def _check_distributed_reshape(
         self,
-        shape: Tuple[int, ...],
-        target_shape: Tuple[int, ...],
+        shape: tuple[int, ...],
+        target_shape: tuple[int, ...],
         input_device_meshes: np.ndarray,
-        input_shard_specs: Tuple[str, ...],
+        input_shard_specs: tuple[str, ...],
         output_device_meshes: np.ndarray,
-        output_shard_specs: Tuple[str, ...],
+        output_shard_specs: tuple[str, ...],
     ):
         input_device_mesh_shapes, input_device_mesh_elements = translate_all_device_meshes(input_device_meshes)
         output_device_mesh_shapes, output_device_mesh_elements = translate_all_device_meshes(output_device_meshes)
@@ -683,12 +682,12 @@ class TestDistributedReshape(unittest.TestCase):
 class TestDistributedExpand(unittest.TestCase):
     def _check_distributed_expand(
         self,
-        shape: Tuple[int, ...],
-        target_shape: Tuple[int, ...],
+        shape: tuple[int, ...],
+        target_shape: tuple[int, ...],
         input_device_meshes: np.ndarray,
-        input_shard_specs: Tuple[str, ...],
+        input_shard_specs: tuple[str, ...],
         output_device_meshes: np.ndarray,
-        output_shard_specs: Tuple[str, ...],
+        output_shard_specs: tuple[str, ...],
     ):
         assert len(input_device_meshes) == len(input_shard_specs)
         assert len(output_device_meshes) == len(output_shard_specs)
@@ -855,12 +854,12 @@ class TestDistributedExpand(unittest.TestCase):
 class TestDistributedUnsqueeze(unittest.TestCase):
     def _check_distributed_unsqueeze(
         self,
-        shape: Tuple[int, ...],
-        axes: Tuple[int, ...],
+        shape: tuple[int, ...],
+        axes: tuple[int, ...],
         input_device_meshes: np.ndarray,
-        input_shard_specs: Tuple[str, ...],
+        input_shard_specs: tuple[str, ...],
         output_device_meshes: np.ndarray,
-        output_shard_specs: Tuple[str, ...],
+        output_shard_specs: tuple[str, ...],
     ):
         assert len(input_device_meshes) == len(input_shard_specs)
         assert len(output_device_meshes) == len(output_shard_specs)
@@ -977,12 +976,12 @@ class TestDistributedUnsqueeze(unittest.TestCase):
 class TestDistributedSqueeze(unittest.TestCase):
     def _check_distributed_squeeze(
         self,
-        shape: Tuple[int, ...],
-        axes: Tuple[int, ...],
+        shape: tuple[int, ...],
+        axes: tuple[int, ...],
         input_device_meshes: np.ndarray,
-        input_shard_specs: Tuple[str, ...],
+        input_shard_specs: tuple[str, ...],
         output_device_meshes: np.ndarray,
-        output_shard_specs: Tuple[str, ...],
+        output_shard_specs: tuple[str, ...],
     ):
         assert len(input_device_meshes) == len(input_shard_specs)
         assert len(output_device_meshes) == len(output_shard_specs)
@@ -1086,12 +1085,12 @@ class TestDistributedReduce(unittest.TestCase):
         self,
         keepdims: int,
         dtype: np.dtype,
-        shape: Tuple[int, ...],
-        axes: Tuple[int, ...],
+        shape: tuple[int, ...],
+        axes: tuple[int, ...],
         input_device_meshes: np.ndarray,
-        input_shard_specs: Tuple[str, ...],
+        input_shard_specs: tuple[str, ...],
         output_device_meshes: np.ndarray,
-        output_shard_specs: Tuple[str, ...],
+        output_shard_specs: tuple[str, ...],
     ):
         assert len(input_device_meshes) == len(input_shard_specs)
         assert len(output_device_meshes) == len(output_shard_specs)
@@ -1146,6 +1145,7 @@ class TestDistributedReduce(unittest.TestCase):
         for onnx_func, np_func in zip(
             [distributed_reduce_sum_instance, distributed_reduce_max_instance, distributed_reduce_mean_instance],
             [np.sum, np.maximum.reduce, np.mean],
+            strict=False,
         ):
             data = np.random.randint(4, size=shape).astype(dtype)
             expected = np_func(data, axis=axes, keepdims=bool(keepdims))

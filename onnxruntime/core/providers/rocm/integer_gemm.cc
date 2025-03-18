@@ -1,8 +1,6 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include <hip/hip_runtime.h>
-#include <rocblas/rocblas.h>
 #include "core/providers/rocm/shared_inc/integer_gemm.h"
 
 #include "core/common/safeint.h"
@@ -27,7 +25,7 @@ Status GemmInt8(int m, int n, int k,
   hipStream_t stream = static_cast<hipStream_t>(ort_stream->GetHandle());
 
   // pad A and B to make their leading dimension be multiples of 32
-  // because rocblas_gemm_ex requires:
+  // because hipblasGemmEx requires:
   // 1. leading dimension is multiples of 4
   // 2. A, B is 32-bit aligned
 
@@ -49,21 +47,19 @@ Status GemmInt8(int m, int n, int k,
   }
 
   auto* ort_rocm_stream = dynamic_cast<RocmStream*>(ort_stream);
-  auto rocblas = ort_rocm_stream->rocblas_handle_;
+  auto hipblas = ort_rocm_stream->hipblas_handle_;
 
-  ROCBLAS_RETURN_IF_ERROR(rocblas_gemm_ex(
-      rocblas,
-      rocblas_operation_none, rocblas_operation_none,
+  HIPBLAS_RETURN_IF_ERROR(hipblasGemmEx(
+      hipblas,
+      HIPBLAS_OP_N, HIPBLAS_OP_N,
       n, m, k,
       &alpha,
-      ldb_aligned == ldb ? b : b_padded.get(), rocblas_datatype_i8_r, ldb_aligned,
-      lda_aligned == lda ? a : a_padded.get(), rocblas_datatype_i8_r, lda_aligned,
+      ldb_aligned == ldb ? b : b_padded.get(), HIP_R_8I, ldb_aligned,
+      lda_aligned == lda ? a : a_padded.get(), HIP_R_8I, lda_aligned,
       &beta,
-      c, rocblas_datatype_i32_r, ldc,
-      c, rocblas_datatype_i32_r, ldc,  // C == D
-      rocblas_datatype_i32_r,
-      rocblas_gemm_algo_standard,
-      0, 0));
+      c, HIP_R_32I, ldc,
+      HIPBLAS_COMPUTE_32I,
+      HIPBLAS_GEMM_DEFAULT));
   return Status::OK();
 }
 }  // namespace rocm

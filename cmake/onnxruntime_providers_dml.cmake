@@ -11,6 +11,9 @@
   onnxruntime_add_include_to_target(onnxruntime_providers_dml
     onnxruntime_common onnxruntime_framework onnx onnx_proto ${PROTOBUF_LIB} flatbuffers::flatbuffers Boost::mp11 safeint_interface ${WIL_TARGET}
   )
+  if(TARGET Microsoft::DirectX-Headers)
+    onnxruntime_add_include_to_target(onnxruntime_providers_dml Microsoft::DirectX-Headers)
+  endif()
   add_dependencies(onnxruntime_providers_dml ${onnxruntime_EXTERNAL_DEPENDENCIES})
   target_include_directories(onnxruntime_providers_dml PRIVATE
     ${ONNXRUNTIME_ROOT}
@@ -61,8 +64,9 @@
 
   target_link_libraries(onnxruntime_providers_dml PRIVATE delayimp.lib)
 
-  if (NOT GDK_PLATFORM)
-    set(onnxruntime_DELAYLOAD_FLAGS "${onnxruntime_DELAYLOAD_FLAGS} /DELAYLOAD:DirectML.dll /DELAYLOAD:d3d12.dll /DELAYLOAD:dxgi.dll /DELAYLOAD:dxcore.dll /DELAYLOAD:api-ms-win-core-com-l1-1-0.dll /DELAYLOAD:shlwapi.dll /DELAYLOAD:oleaut32.dll /DELAYLOAD:ext-ms-win-dxcore-l1-*.dll /ignore:4199")
+  if (onnxruntime_ENABLE_DELAY_LOADING_WIN_DLLS AND NOT GDK_PLATFORM)
+    #NOTE: the flags are only applied to onnxruntime.dll and the PYD file in our python package. Our C/C++ unit tests do not use these flags.
+    list(APPEND onnxruntime_DELAYLOAD_FLAGS "/DELAYLOAD:DirectML.dll" "/DELAYLOAD:d3d12.dll" "/DELAYLOAD:dxgi.dll" "/DELAYLOAD:dxcore.dll" "/DELAYLOAD:api-ms-win-core-com-l1-1-0.dll" "/DELAYLOAD:shlwapi.dll" "/DELAYLOAD:oleaut32.dll" "/DELAYLOAD:ext-ms-win-dxcore-l1-*.dll" "/ignore:4199")
   endif()
 
   target_compile_definitions(onnxruntime_providers_dml

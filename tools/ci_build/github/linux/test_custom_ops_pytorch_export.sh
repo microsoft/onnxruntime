@@ -5,7 +5,7 @@ pip3 install --user --upgrade pip
 pip3 install --user numpy torch pytest
 pip3 install --user /build/Release/dist/*.whl
 
-export PYTHONPATH=/onnxruntime_src/tools:/usr/local/lib/python3.8/site-packages:$PYTHONPATH
+export PYTHONPATH=/onnxruntime_src/tools:/usr/local/lib/python3.10/site-packages:$PYTHONPATH
 
 python3 -m pytest -v /onnxruntime_src/tools/test/test_custom_ops_pytorch_exporter.py || exit 1
 

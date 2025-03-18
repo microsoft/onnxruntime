@@ -6,8 +6,6 @@
 #include "migraphx_inc.h"
 #include "migraphx_call.h"
 
-#define HIP_RETURN_IF_ERROR(expr) ORT_RETURN_IF_ERROR(HIP_CALL(expr))
-
 namespace onnxruntime {
 void WaitMIGraphXNotificationOnDevice(Stream& stream, synchronize::Notification& notification);
 

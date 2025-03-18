@@ -75,7 +75,7 @@ class SAM2ImageEncoder(nn.Module):
 
         feats = [
             feat.permute(1, 2, 0).reshape(1, -1, *feat_size)
-            for feat, feat_size in zip(vision_feats[::-1], feat_sizes[::-1])
+            for feat, feat_size in zip(vision_feats[::-1], feat_sizes[::-1], strict=False)
         ][::-1]
 
         if nvtx_helper is not None:
@@ -90,6 +90,8 @@ def export_image_encoder_onnx(
     onnx_model_path: str,
     dynamic_batch_axes: bool = False,
     verbose: bool = False,
+    dynamo: bool = False,
+    clear_dynamo_metadata: bool = False,
 ):
     image = random_sam2_input_image()
 
@@ -113,17 +115,65 @@ def export_image_encoder_onnx(
         if not verbose:
             warnings.filterwarnings("ignore", category=torch.jit.TracerWarning)
             warnings.filterwarnings("ignore", category=UserWarning)
-        torch.onnx.export(
-            sam2_encoder,
-            image,
-            onnx_model_path,
-            export_params=True,
-            opset_version=17,
-            do_constant_folding=True,
-            input_names=["image"],
-            output_names=["image_features_0", "image_features_1", "image_embeddings"],
-            dynamic_axes=dynamic_axes,
-        )
+
+        if not dynamo:
+            torch.onnx.export(
+                sam2_encoder,
+                image,
+                onnx_model_path,
+                export_params=True,
+                opset_version=17,
+                do_constant_folding=True,
+                input_names=["image"],
+                output_names=["image_features_0", "image_features_1", "image_embeddings"],
+                dynamic_axes=dynamic_axes,
+            )
+        else:
+            torch._dynamo.config.capture_scalar_outputs = True
+            ep = torch.export.export(
+                sam2_encoder,
+                args=(image,),
+                strict=False,
+                dynamic_shapes=[
+                    {0: torch.export.Dim.AUTO},
+                ],
+            )
+
+            onnx_program = torch.onnx.export(
+                ep,
+                (),
+                opset_version=17,
+                input_names=["image"],
+                output_names=["image_features_0", "image_features_1", "image_embeddings"],
+                dynamo=True,
+            )
+            onnx_program.optimize()
+            onnx_program.save(onnx_model_path + ".dynamo.onnx", external_data=False)
+            import onnx
+
+            from onnxruntime.transformers.dynamo_onnx_helper import DynamoOnnxHelper
+
+            onnx_model = onnx.load_model(onnx_model_path + ".dynamo.onnx", load_external_data=True)
+            if dynamic_batch_axes:
+                # Fix labels of dynamic axes since they can't be specified during Dynamo export currently
+                onnx_model.graph.input[0].type.tensor_type.shape.dim[0].dim_param = "batch_size"
+                for i in range(3):
+                    onnx_model.graph.output[i].type.tensor_type.shape.dim[0].dim_param = "batch_size"
+
+            onnx_model_helper = DynamoOnnxHelper(onnx_model)
+            onnx_model_helper.convert_constants_to_initializers()
+            if clear_dynamo_metadata:
+                onnx_model_helper.clear_metadata()
+
+            import os
+
+            if os.path.exists(onnx_model_path):
+                os.remove(onnx_model_path)
+            if os.path.exists(onnx_model_path + ".data"):
+                os.remove(onnx_model_path + ".data")
+            onnx_model_helper.model.save_model_to_file(
+                onnx_model_path, use_external_data_format=True, all_tensors_to_one_file=True, convert_attribute=True
+            )
 
     print("encoder onnx model saved to", onnx_model_path)
 
@@ -133,7 +183,7 @@ def test_image_encoder_onnx(
     onnx_model_path: str,
     dynamic_batch_axes=False,
 ):
-    ort_session = onnxruntime.InferenceSession(onnx_model_path, providers=onnxruntime.get_available_providers())
+    ort_session = onnxruntime.InferenceSession(onnx_model_path, providers=["CPUExecutionProvider"])
 
     model_inputs = ort_session.get_inputs()
     input_names = [model_inputs[i].name for i in range(len(model_inputs))]

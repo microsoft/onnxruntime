@@ -48,7 +48,7 @@ import os
 import time
 from enum import Enum
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Union
+from typing import Any
 
 import numpy as np
 import onnx
@@ -86,7 +86,7 @@ class GenerationType(Enum):
         return self.value
 
 
-def parse_arguments(argv: Optional[List[str]] = None) -> argparse.Namespace:
+def parse_arguments(argv: list[str] | None = None) -> argparse.Namespace:
     """Parse arguments
 
     Args:
@@ -883,8 +883,8 @@ def remove_shared_initializers(
     graph2: GraphProto,
     shared_prefix: str = "shared_",
     min_elements: int = 1024,
-    signature_cache1: Optional[dict] = None,
-    signature_cache2: Optional[dict] = None,
+    signature_cache1: dict | None = None,
+    signature_cache2: dict | None = None,
 ):
     """Remove initializers with same value from two graphs.
 
@@ -1005,7 +1005,7 @@ def get_shared_initializers(encoder_model: ModelProto, decoder_model: ModelProto
 def move_initializers(
     graph: GraphProto,
     min_elements: int = 1024,
-) -> List[TensorProto]:
+) -> list[TensorProto]:
     """Remove initializers of a graph, when they have number of elements larger than a threshold.
 
     Args:
@@ -1241,35 +1241,335 @@ def find_past_seq_len_usage(subg: GraphProto):
                 output_name_to_node[output_name] = node
 
     for node in subg.node:
-        # find "Shape(past_key_self..) --> Gather(*, 2)"
+        # find "past_key_self_0 --> [Transpose(past_key_self_0) --> Reshape(past_key_self_0)] --> Shape(past_key_self_0) --> Gather(*, 2)"
+        # where [Transpose(past_key_self_0) --> Reshape(past_key_self_0)] may or may not exist
         if node.op_type == "Gather":
             if not node.input[1] or not node.input[0]:
                 continue
+
+            # Find Gather node's index value
             shape_tensor_name, shape_index_name = (node.input[0], node.input[1])
             ini_gather_indices = None
-            for tensor in subg.initializer:
-                if tensor.name == shape_index_name:
-                    ini_gather_indices = tensor
-                    break
+            if "Constant_" in shape_index_name:
+                # If shape_index_name refers to a Constant node
+                for const_node in subg.node:
+                    if const_node.op_type == "Constant" and const_node.output[0] == shape_index_name:
+                        ini_gather_indices = const_node.attribute[0].t
+                        break
+            else:
+                # If shape_index_name refers to an initializer
+                for tensor in subg.initializer:
+                    if tensor.name == shape_index_name:
+                        ini_gather_indices = tensor
+                        break
             if ini_gather_indices is None:
                 continue
             gather_indices_arr = onnx.numpy_helper.to_array(ini_gather_indices)
-            if gather_indices_arr.size == 1 and gather_indices_arr.item() == 2 and node.input[0] in output_name_to_node:
+
+            if (
+                gather_indices_arr.size == 1
+                and gather_indices_arr.item() in {1, 2}
+                and node.input[0] in output_name_to_node
+            ):
                 shape_node = output_name_to_node[shape_tensor_name]
+                if not (shape_node.op_type == "Shape" and shape_node.input[0]):
+                    continue
+
                 if (
-                    shape_node.op_type == "Shape"
-                    and shape_node.input[0]
-                    and shape_node.input[0] in graph_input_names
+                    shape_node.input[0] in graph_input_names
                     and (
                         shape_node.input[0].startswith("past_key_self_")
                         or shape_node.input[0].startswith("past_value_self_")
                     )
+                    and gather_indices_arr.item() == 2
                 ):
+                    # "past_key_self_0 --> Shape(past_key_self_0) --> Gather(*, 2)"
                     tensor_names_to_rename.add(node.output[0])
                     nodes_to_remove.append(node)
                     if len(input_name_to_nodes[shape_node.output[0]]) == 1:
                         nodes_to_remove.append(shape_node)
+                        continue
+
+                if shape_node.input[0] not in output_name_to_node:
+                    continue
+                reshape_node = output_name_to_node[shape_node.input[0]]
+                if not (reshape_node.op_type == "Reshape" and reshape_node.input[0]):
+                    continue
+                transpose_node = output_name_to_node[reshape_node.input[0]]
+                if not (transpose_node.op_type == "Transpose" and transpose_node.input[0]):
+                    continue
+
+                if (
+                    transpose_node.input[0] in graph_input_names
+                    and (
+                        transpose_node.input[0].startswith("past_key_self_")
+                        or transpose_node.input[0].startswith("past_value_self_")
+                    )
+                    and gather_indices_arr.item() == 1
+                ):
+                    # "past_key_self_0 --> Transpose(past_key_self_0) --> Reshape(past_key_self_0) --> Shape(past_key_self_0) --> Gather(*, 2)"
+                    tensor_names_to_rename.add(node.output[0])
+                    nodes_to_remove.extend([node, shape_node, reshape_node])
+                    if len(input_name_to_nodes[transpose_node.output[0]]) == 1:
+                        nodes_to_remove.append(transpose_node)
+                        continue
+
     return tensor_names_to_rename, nodes_to_remove
+
+
+def add_cache_indirection_to_mha(model: OnnxModel, past_seq_len_name: str):
+    # Add past_sequence_length and cache_indirection as inputs to all MultiHeadAttention ops and as inputs to model
+    cache_indirection_name = "cache_indirection"
+    mha_nodes = list(filter(lambda node: node.op_type == "MultiHeadAttention", model.model.graph.node))
+    for node in mha_nodes:
+        # MHA op takes the following potential inputs:
+        # query, key, value, bias, key_padding_mask, add_qk, past_key, past_value
+        while len(node.input) < 8:
+            node.input.append("")
+        node.input.append(past_seq_len_name)
+        node.input.append(cache_indirection_name)
+
+    model.model.graph.input.append(
+        onnx.helper.make_tensor_value_info(
+            cache_indirection_name, TensorProto.INT32, shape=["batch_size", "beam_width", "max_sequence_length"]
+        ),
+    )
+    model.topological_sort()
+    return model
+
+
+def add_output_qk_to_mha(model: OnnxModel, dtype: int = 0, skip_node_idxs: list[int] = []):  # noqa: B006
+    # Add output_qk as output to MultiHeadAttention ops and as outputs to model
+    output_qk_basename = "output_cross_qk"
+    output_qks = []
+    mha_nodes = list(filter(lambda node: node.op_type == "MultiHeadAttention", model.model.graph.node))
+    for idx, node in enumerate(mha_nodes):
+        # Skip MHA nodes where output_qk does not need to be added
+        if idx in skip_node_idxs:
+            continue
+
+        # Get `num_heads` attribute from MHA
+        num_heads = 0
+        for att in node.attribute:
+            if att.name == "num_heads":
+                num_heads = att.i
+                break
+
+        # Get dtype for `output_qk` based on MHA bias if not provided
+        output_qk_dtype = dtype
+        if output_qk_dtype == 0:
+            for i in model.model.graph.initializer:
+                if i.name == node.input[3]:
+                    output_qk_dtype = i.data_type
+                    break
+
+        # Get `target_sequence_length` attribute from 4D input for key if it's a constant
+        target_sequence_length = "target_sequence_length"
+        for i in model.model.graph.input:
+            if i.name == node.input[1]:
+                target_sequence_length = i.type.tensor_type.shape.dim[2].dim_value
+                break
+
+        # MHA op takes the following potential outputs:
+        # output, present_key, present_value
+        while len(node.output) < 3:
+            node.output.append("")
+
+        output_qk_name = f"{output_qk_basename}_{idx // 2}"
+        node.output.append(output_qk_name)
+        output_qks.append(
+            onnx.helper.make_tensor_value_info(
+                output_qk_name,
+                output_qk_dtype,
+                shape=["batch_size", num_heads, "sequence_length", target_sequence_length],
+            ),
+        )
+
+    model.model.graph.output.extend(output_qks)
+    model.topological_sort()
+    return model
+
+
+def fix_past_sequence_length(model: ModelProto):
+    # Modify total_sequence_length = past_sequence_length + curr_sequence_length subgraph to calculate
+    # past_sequence_length from the new `past_sequence_length` input of size 1D and type int32 instead of
+    # from `past_key_self_0` since DecoderMaskedMultiHeadAttention (DMMHA) uses buffer sharing and
+    # `past_key_self_0.shape[2] = max_sequence_length` instead of `past_key_self_0.shape[2] = past_sequence_length`
+    # when buffer sharing is enabled
+    #
+    # Before:
+    #
+    #   input_ids      past_key_self_0
+    #       |                 |
+    #     Shape             Shape
+    #       |                 |
+    #     Gather            Gather
+    #     (idx=1)           (idx=2)
+    #       |                 |    \
+    #       +--------+--------+    Unsqueeze
+    #                |
+    #               Add
+    #
+    # After:
+    #
+    #   input_ids    past_sequence_length (1D)
+    #       |                 |
+    #     Shape            Squeeze
+    #       |                 |
+    #     Gather             Cast
+    #     (idx=1)           (int64)
+    #       |                 |    \
+    #       +--------+--------+    Unsqueeze
+    #                |
+    #               Add
+
+    node = list(filter(lambda n: n.op_type == "LayerNormalization", model.model.graph.node))[0]  # noqa: RUF015
+
+    base_path = model.match_parent_path(
+        node,
+        ["Add", "Slice"],
+        [0, 1],
+    )
+    if base_path is None:
+        return
+
+    left_path = model.match_parent_path(
+        base_path[-1],
+        ["Unsqueeze", "Add", "Gather", "Shape"],
+        [2, 0, 0, 0],
+    )
+    right_path = model.match_parent_path(
+        base_path[-1],
+        ["Unsqueeze", "Gather", "Shape"],
+        [1, 0, 0],
+    )
+    long_right_path = model.match_parent_path(
+        base_path[-1],
+        ["Unsqueeze", "Gather", "Shape", "Reshape", "Transpose"],
+        [1, 0, 0, 0, 0],
+    )
+    if left_path is None or right_path is None or left_path[-2:] != right_path[-2:]:
+        return
+
+    # Remove `past_key_self_0 --> [Transpose --> Reshape] --> Shape --> Gather` connection
+    # where `Transpose --> Reshape` part may or may not exist. The OpenAI implementation of
+    # Whisper has an extra `Transpose --> Reshape` connection to remove.
+    constant_node = list(filter(lambda n: n.output[0] == left_path[-2].input[1], model.model.graph.node))[0]  # noqa: RUF015
+    model.model.graph.node.remove(left_path[-2])
+    model.model.graph.node.remove(left_path[-1])
+    model.model.graph.node.remove(constant_node)
+    if long_right_path is not None:
+        # Remove `Transpose --> Reshape` part
+        model.model.graph.node.remove(long_right_path[-2])
+        model.model.graph.node.remove(long_right_path[-1])
+
+    # Add `past_sequence_length` as model input
+    past_seq_len_name = "past_sequence_length"
+    model.model.graph.input.append(
+        onnx.helper.make_tensor_value_info(past_seq_len_name, TensorProto.INT32, shape=[1]),
+    )
+
+    # Add `past_sequence_length --> Squeeze --> Cast` connection
+    past_seq_len_int32 = "past_seq_len_int32"
+    past_seq_len_int64 = "past_seq_len_int64"
+
+    squeeze_node = onnx.helper.make_node(
+        "Squeeze",
+        inputs=[past_seq_len_name],
+        outputs=[past_seq_len_int32],
+        name=model.create_node_name("Squeeze"),
+    )
+    squeeze_output = onnx.helper.make_tensor_value_info(past_seq_len_int32, TensorProto.INT32, shape=[])
+    cast_node = onnx.helper.make_node(
+        "Cast",
+        inputs=[past_seq_len_int32],
+        outputs=[past_seq_len_int64],
+        name=model.create_node_name("Cast"),
+        to=TensorProto.INT64,
+    )
+    cast_output = onnx.helper.make_tensor_value_info(past_seq_len_int64, TensorProto.INT64, shape=[])
+
+    model.model.graph.value_info.extend([squeeze_output, cast_output])
+
+    # Add `past_seq_len_int64` as an input name to existing nodes
+    left_path[1].input[0] = past_seq_len_int64
+    right_path[0].input[0] = past_seq_len_int64
+
+    # Add new nodes to graph
+    model.model.graph.node.extend([squeeze_node, cast_node])
+    model.topological_sort()
+    return model, past_seq_len_name
+
+
+def replace_mha_with_dmmha(model: OnnxModel, past_seq_len_name: str):
+    # Add `beam_width` and `cache_indirection` as model inputs
+    beam_width = "beam_width"
+    cache_indirection = "cache_indirection"
+
+    model.model.graph.input.extend(
+        [
+            onnx.helper.make_tensor_value_info(beam_width, TensorProto.INT32, shape=[1]),
+            onnx.helper.make_tensor_value_info(
+                cache_indirection, TensorProto.INT32, shape=["batch_size", "beam_width", "max_sequence_length"]
+            ),
+        ]
+    )
+
+    # Replace all `MultiHeadAttention` nodes with `DecoderMaskedMultiHeadAttention` nodes
+    mha_nodes = list(filter(lambda node: node.op_type == "MultiHeadAttention", model.model.graph.node))
+    for idx, node in enumerate(mha_nodes):
+        # Get `num_heads` attribute from MHA
+        num_heads = 0
+        for att in node.attribute:
+            if att.name == "num_heads":
+                num_heads = att.i
+                break
+
+        # Make Q*K outputs for cross-attention layers, which happen every alternative layer
+        qk_output_name = f"output_cross_qk_{idx // 2}"
+        qk_output = onnx.helper.make_tensor_value_info(
+            qk_output_name, TensorProto.FLOAT, shape=["batch_size", num_heads, 1, "encode_sequence_length / 2"]
+        )
+        if idx % 2 == 1:
+            model.model.graph.output.append(qk_output)
+
+        # Make DMMHA node
+        dmmha_node = onnx.helper.make_node(
+            "DecoderMaskedMultiHeadAttention",
+            inputs=[
+                node.input[0],  # query
+                node.input[1],  # key
+                node.input[2],  # value
+                "",  # mask_index
+                "",  # relative_position_bias
+                node.input[6] if len(node.input) > 4 else "",  # past_key
+                node.input[7] if len(node.input) > 4 else "",  # past_value
+                past_seq_len_name,  # past_sequence_length
+                beam_width,  # beam_width
+                cache_indirection,  # cache_indirection
+                node.input[3],  # bias
+            ],
+            outputs=[
+                node.output[0],  # output
+                node.output[1] if len(node.input) > 4 else "",  # present_key
+                node.output[2] if len(node.input) > 4 else "",  # present_value
+                qk_output_name if idx % 2 == 1 else "",  # output_cross_qk
+            ],
+            name=node.name.replace("MultiHeadAttention", "DecoderMaskedMultiHeadAttention"),
+            domain="com.microsoft",
+            num_heads=num_heads,
+            output_qk=(idx % 2),
+            past_present_share_buffer=1,
+        )
+        if idx % 2 == 0:
+            # Remove empty string for output_cross_qk, which happens every alternative layer
+            dmmha_node.output.remove("")
+
+        model.model.graph.node.remove(node)
+        model.model.graph.node.extend([dmmha_node])
+
+    model.topological_sort()
+    return model
 
 
 def replace_mha_with_gqa(
@@ -1510,7 +1810,7 @@ def update_decoder_subgraph_output_cross_attention(subg: GraphProto):
     num_layers = (len(subg.output) - output_self_present_0) // 2
     input_cross_past_0 = 2 * num_layers + input_self_past_0
     past_key_cross_inputs = {subg.input[layer * 2 + input_cross_past_0].name: layer for layer in range(num_layers)}
-    print(f"    --past_key_cross_inputs={past_key_cross_inputs}")
+    print(f"    -- past_key_cross_inputs = {past_key_cross_inputs}")
 
     input_past_key_cross_0_shape = shape_of(subg.input[input_cross_past_0])
     print(f"past_key_cross_0_shape is {input_past_key_cross_0_shape}")
@@ -1579,9 +1879,9 @@ def update_decoder_subgraph_share_buffer_and_use_decoder_masked_mha(subg: ModelP
     tensor_names_to_rename, nodes_to_remove = find_past_seq_len_usage(subg)
     if len(tensor_names_to_rename) > 0:
         for name_to_rename in tensor_names_to_rename:
-            print(f"Found tensor name {name_to_rename} to be renamed to {target_squeezed_past_seq_name}")
+            print(f"Found tensor name `{name_to_rename}` to be renamed to `{target_squeezed_past_seq_name}`")
         for nr in nodes_to_remove:
-            print(f"Found node to removed: type:{nr.op_type}, name:{nr.name}")
+            print(f"Found node to remove: type = {nr.op_type}, name = {nr.name}")
 
         squeeze_node = onnx.helper.make_node(
             "Squeeze",
@@ -2585,13 +2885,13 @@ def convert_generation_model(args: argparse.Namespace, generation_type: Generati
 
 def test_torch_performance(
     args: argparse.Namespace,
-    model: Union[GPT2LMHeadModel, T5ForConditionalGeneration],
+    model: GPT2LMHeadModel | T5ForConditionalGeneration,
     input_ids: torch.Tensor,
     attention_mask: torch.Tensor,
     eos_token_id: int,
     pad_token_id: int,
-    bad_words_ids: List[List[int]],
-) -> Dict[str, Any]:
+    bad_words_ids: list[list[int]],
+) -> dict[str, Any]:
     """Test PyTorch performance of text generation.
 
     Args:
@@ -2661,7 +2961,7 @@ def create_attention_mask(input_ids, pad_token_id):
     return attention_mask
 
 
-def test_gpt_model(args: argparse.Namespace, sentences: Optional[List[str]] = None, is_greedy: bool = False):
+def test_gpt_model(args: argparse.Namespace, sentences: list[str] | None = None, is_greedy: bool = False):
     """Test GPT-2 model
 
     Args:
@@ -2872,7 +3172,7 @@ def test_gpt_model(args: argparse.Namespace, sentences: Optional[List[str]] = No
     return output
 
 
-def test_t5_model(args: argparse.Namespace, sentences: Optional[List[str]] = None):
+def test_t5_model(args: argparse.Namespace, sentences: list[str] | None = None):
     """Test T5 or MT5 model
 
     Args:
@@ -3061,7 +3361,7 @@ def test_t5_model(args: argparse.Namespace, sentences: Optional[List[str]] = Non
     return output
 
 
-def main(argv: Optional[List[str]] = None, sentences: Optional[List[str]] = None):
+def main(argv: list[str] | None = None, sentences: list[str] | None = None):
     """Main entry function
 
     Args:

@@ -5,7 +5,6 @@
 import hashlib
 import os
 from enum import Enum
-from typing import Optional
 
 import torch
 from diffusion_models import CLIP, VAE, CLIPWithProj, PipelineInfo, UNet, UNetXL
@@ -117,7 +116,7 @@ class EngineBuilder:
             model_name = model_name + "_" + "_".join(self.pipeline_info.controlnet)
 
         if hash_source:
-            model_name += "_" + hashlib.md5("\t".join(hash_source).encode("utf-8")).hexdigest()[:8]
+            model_name += "_" + hashlib.sha256("\t".join(hash_source).encode("utf-8")).hexdigest()[:8]
 
         # TODO: When we support original VAE, we shall save custom VAE to another directory.
 
@@ -275,7 +274,7 @@ class EngineBuilder:
 
 
 def get_engine_paths(
-    work_dir: str, pipeline_info: PipelineInfo, engine_type: EngineType, framework_model_dir: Optional[str] = None
+    work_dir: str, pipeline_info: PipelineInfo, engine_type: EngineType, framework_model_dir: str | None = None
 ):
     root_dir = work_dir or "."
     short_name = pipeline_info.short_name()

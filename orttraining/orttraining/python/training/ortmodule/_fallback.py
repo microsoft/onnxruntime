@@ -6,12 +6,10 @@
 import os
 from enum import IntFlag
 from logging import Logger
-from typing import Optional
 
 import torch
 
 from . import _logger, _utils
-from ._fallback_exceptions import wrap_exception  # noqa: F401
 from ._fallback_exceptions import (
     ORTModuleDeviceException,
     ORTModuleFallbackException,
@@ -19,6 +17,7 @@ from ._fallback_exceptions import (
     ORTModuleIOError,
     ORTModuleONNXModelException,
     ORTModuleTorchModelException,
+    wrap_exception,  # noqa: F401
 )
 
 
@@ -106,7 +105,7 @@ class _FallbackManager:
         self._logger = logger
 
     def handle_exception(
-        self, exception: Exception, log_level: _logger.LogLevel, override_policy: Optional[_FallbackPolicy] = None
+        self, exception: Exception, log_level: _logger.LogLevel, override_policy: _FallbackPolicy | None = None
     ) -> None:
         """Process incoming `exception` based on the selected `policy`
 

@@ -75,7 +75,8 @@ and inserts nodes to transpose tensors as needed.
 class NhwcTransformer : public GraphTransformer {
  private:
  public:
-  explicit NhwcTransformer(AllocatorPtr cpu_allocator, std::shared_ptr<KernelRegistry> cpu_kernel_registry) noexcept;
+  explicit NhwcTransformer(AllocatorPtr cpu_allocator, std::shared_ptr<KernelRegistry> cpu_kernel_registry,
+                           const logging::Logger& logger) noexcept;
 
   /**
    * @brief Usually called right after constructor, it shows whether

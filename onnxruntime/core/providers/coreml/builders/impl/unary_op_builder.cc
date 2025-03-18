@@ -16,6 +16,8 @@ class UnaryOpBuilder : public BaseOpBuilder {
   Status AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node,
                                const logging::Logger& logger) const override;
   bool SupportsMLProgram() const override { return true; }
+  bool IsOpSupportedImpl(const Node& node, const OpBuilderInputParams& input_params,
+                         const logging::Logger& logger) const override;
 };
 
 Status UnaryOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node,
@@ -32,6 +34,10 @@ Status UnaryOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const 
       coreml_op_type = "sqrt";
     } else if (op_type == "Reciprocal") {
       coreml_op_type = "inverse";
+    } else if (op_type == "Erf") {
+      coreml_op_type = "erf";
+    } else if (op_type == "Round") {
+      coreml_op_type = "round";
     } else {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                              "UnaryOpBuilder::AddToModelBuilderImpl, unexpected op: ", op_type);
@@ -40,7 +46,7 @@ Status UnaryOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const 
     std::unique_ptr<Operation> op = model_builder.CreateOperation(node, coreml_op_type);
     AddOperationInput(*op, "x", input_defs[0]->Name());
     if (op_type == "Reciprocal") {
-      float epsilon = 1e-4;  // epsilon: const T (Optional, default=1e-4)
+      float epsilon = 1e-4f;  // epsilon: const T (Optional, default=1e-4)
       auto dtype = node.InputDefs()[0]->TypeAsProto()->tensor_type().elem_type();
       if (dtype == ONNX_NAMESPACE::TensorProto_DataType_FLOAT) {
         AddOperationInput(*op, "epsilon", model_builder.AddScalarConstant(op->type(), "epsilon", epsilon));
@@ -72,6 +78,14 @@ Status UnaryOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const 
     model_builder.AddLayer(std::move(layer));
   }
   return Status::OK();
+}
+
+bool UnaryOpBuilder::IsOpSupportedImpl(const Node& node, const OpBuilderInputParams& input_params,
+                                       const logging::Logger& /*logger*/) const {
+  if (!input_params.create_mlprogram && (node.OpType() == "Erf" || node.OpType() == "Round")) {
+    return false;
+  }
+  return true;
 }
 
 void CreateUnaryOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations) {

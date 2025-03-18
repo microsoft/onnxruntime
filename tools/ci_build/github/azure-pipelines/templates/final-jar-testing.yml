@@ -26,9 +26,17 @@ stages:
       clean: all
     ${{ if eq(parameters.OS, 'MacOS') }}:
       pool:
-        vmImage: ${{ parameters.PoolName }}
-    ${{ else }}:
-      pool: ${{ parameters.PoolName }}
+        name: 'Azure Pipelines'
+        image: macOS-13
+        os: macOS
+    ${{ if eq(parameters.OS, 'Linux') }}:
+      pool:
+        name: ${{ parameters.PoolName }}
+        os: linux
+    ${{ if eq(parameters.OS, 'Windows') }}:
+      pool:
+        name: ${{ parameters.PoolName }}
+        os: windows
     variables:
     - name: runCodesignValidationInjection
       value: false
@@ -88,9 +96,6 @@ stages:
       - template: use-xcode-version.yml
 
     - template: component-governance-component-detection-steps.yml
-      parameters :
-        condition : 'succeeded'
+      parameters:
+        condition: 'succeeded'
 
-    - task: mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3
-      displayName: 'Clean Agent Directories'
-      condition: always()

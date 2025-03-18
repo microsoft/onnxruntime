@@ -7,11 +7,11 @@ import json
 import sys
 from collections import OrderedDict
 from pprint import pprint
-from typing import Any, Dict, List
+from typing import Any
 
 import onnx
 
-TuningResults = Dict[str, Any]
+TuningResults = dict[str, Any]
 
 _TUNING_RESULTS_KEY = "tuning_results"
 
@@ -32,7 +32,7 @@ def extract(model: onnx.ModelProto):
     return json.loads(tuning_results_prop.value)
 
 
-def embed(model: onnx.ModelProto, tuning_results: List[TuningResults], overwrite=False):
+def embed(model: onnx.ModelProto, tuning_results: list[TuningResults], overwrite=False):
     idx = _find_tuning_results_in_props(model.metadata_props)
     assert overwrite or idx <= 0, "the supplied onnx file already have tuning results embedded!"
 
@@ -47,7 +47,7 @@ def embed(model: onnx.ModelProto, tuning_results: List[TuningResults], overwrite
 
 class Merger:
     class EpAndValidators:
-        def __init__(self, ep: str, validators: Dict[str, str]):
+        def __init__(self, ep: str, validators: dict[str, str]):
             self.ep = ep
             self.validators = copy.deepcopy(validators)
             self.key = (ep, tuple(sorted(validators.items())))
@@ -61,7 +61,7 @@ class Merger:
     def __init__(self):
         self.ev_to_results = OrderedDict()
 
-    def merge(self, tuning_results: List[TuningResults]):
+    def merge(self, tuning_results: list[TuningResults]):
         for trs in tuning_results:
             self._merge_one(trs)
 

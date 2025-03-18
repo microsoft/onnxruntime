@@ -7,7 +7,6 @@
 # CUBLAS_WORKSPACE_CONFIG=:4096:8 python multihead_attention_op_test_data_gen.py
 
 import math
-from typing import Optional, Tuple
 
 import numpy as np
 import torch
@@ -56,12 +55,12 @@ class Attention(nn.Module):
     def forward(
         self,
         hidden_states: torch.Tensor,
-        attention_mask: Optional[torch.FloatTensor] = None,
-        encoder_hidden_states: Optional[torch.FloatTensor] = None,
-        encoder_attention_mask: Optional[torch.FloatTensor] = None,
-        past_key_value: Optional[Tuple[Tuple[torch.FloatTensor]]] = None,
-        output_attentions: Optional[bool] = False,
-    ) -> Tuple[torch.Tensor]:
+        attention_mask: torch.FloatTensor | None = None,
+        encoder_hidden_states: torch.FloatTensor | None = None,
+        encoder_attention_mask: torch.FloatTensor | None = None,
+        past_key_value: tuple[tuple[torch.FloatTensor]] | None = None,
+        output_attentions: bool | None = False,
+    ) -> tuple[torch.Tensor]:
         mixed_query_layer = self.query(hidden_states)
         if self.verbose:
             print("q", mixed_query_layer)

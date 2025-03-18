@@ -80,7 +80,7 @@ class OrtFormatModelDumper:
         outputs = [node.Outputs(i).decode() for i in range(node.OutputsLength())]
         print(
             f"{node.Index()}:{node.Name().decode()}({domain}:{optype}:{since_version}) "
-            f'inputs=[{",".join(inputs)}] outputs=[{",".join(outputs)}]'
+            f"inputs=[{','.join(inputs)}] outputs=[{','.join(outputs)}]"
         )
 
     def _dump_graph(self, graph: fbs.Graph):

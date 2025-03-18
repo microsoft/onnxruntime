@@ -85,9 +85,9 @@ Status Gemm<T>::ComputeInternal(OpKernelContext* ctx) const {
 
     if (b_shape.Size() == 1) {
       // if B is (), (1,) or (1, 1), broadcast the scalar
-      ROCBLAS_RETURN_IF_ERROR(rocblasCopyHelper(
+      HIPBLAS_RETURN_IF_ERROR(hipblasCopyHelper(
           Stream(ctx),
-          GetRocblasHandle(ctx),
+          GetHipblasHandle(ctx),
           M * N,
           b_data,
           0,
@@ -96,7 +96,7 @@ Status Gemm<T>::ComputeInternal(OpKernelContext* ctx) const {
     } else if (b_shape.NumDimensions() == 1 || b_shape[0] == 1) {
       // B is (N,) or (1, N), broadcast using Y(N,M) = 1 * B(N,1) x ones(1,M) + 0 * Y
       ORT_RETURN_IF_ERROR(tunable::blas::column_major::Gemm(
-          GetTuningContext(), ctx->GetComputeStream(), GetRocblasHandle(ctx),
+          GetTuningContext(), ctx->GetComputeStream(), GetHipblasHandle(ctx),
           tunable::blas::BlasOp::NonTrans,
           tunable::blas::BlasOp::NonTrans,
           N, M, 1,
@@ -108,7 +108,7 @@ Status Gemm<T>::ComputeInternal(OpKernelContext* ctx) const {
     } else if (b_shape.NumDimensions() == 2 && b_shape[1] == 1) {
       // B is (M, 1), broadcast using Y(N,M) = 1 * ones(N,1) x B(1,M) + 0 * Y
       ORT_RETURN_IF_ERROR(tunable::blas::column_major::Gemm(
-          GetTuningContext(), ctx->GetComputeStream(), GetRocblasHandle(ctx),
+          GetTuningContext(), ctx->GetComputeStream(), GetHipblasHandle(ctx),
           tunable::blas::BlasOp::NonTrans,
           tunable::blas::BlasOp::NonTrans,
           N, M, 1,
@@ -125,7 +125,7 @@ Status Gemm<T>::ComputeInternal(OpKernelContext* ctx) const {
 
   return tunable::blas::column_major::Gemm(
       GetTuningContext(), ctx->GetComputeStream(),
-      GetRocblasHandle(ctx),
+      GetHipblasHandle(ctx),
       trans_B_ ? BlasOp::Trans : BlasOp::NonTrans,
       trans_A_ ? BlasOp::Trans : BlasOp::NonTrans,
       N, M, K,

@@ -331,8 +331,10 @@ bool IAllocator::CalcMemSizeForArrayWithAlignment(size_t nmemb, size_t size, siz
 }
 
 std::vector<std::unique_ptr<ComputeCapability>> IExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_viewer,
-                                                                                  const IKernelLookup& kernel_lookup) const {
-  return g_host->IExecutionProvider__GetCapability(this, graph_viewer, kernel_lookup);
+                                                                                  const IKernelLookup& kernel_lookup,
+                                                                                  const GraphOptimizerRegistry& graph_optimizer_registry,
+                                                                                  IResourceAccountant* resource_accountant) const {
+  return g_host->IExecutionProvider__GetCapability(this, graph_viewer, kernel_lookup, graph_optimizer_registry, resource_accountant);
 }
 common::Status IExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& fused_nodes_and_graphs,
                                            std::vector<NodeComputeInfo>& node_compute_funcs) {
@@ -369,8 +371,9 @@ std::string GetEnvironmentVar(const std::string& var_name) {
 
 std::unordered_set<NodeIndex> GetCpuPreferredNodes(const onnxruntime::GraphViewer& graph,
                                                    const IExecutionProvider::IKernelLookup& kernel_lookup,
-                                                   gsl::span<const NodeIndex> tentative_nodes) {
-  return g_host->GetCpuPreferredNodes(graph, kernel_lookup, tentative_nodes);
+                                                   gsl::span<const NodeIndex> tentative_nodes,
+                                                   const logging::Logger& logger) {
+  return g_host->GetCpuPreferredNodes(graph, kernel_lookup, tentative_nodes, logger);
 }
 
 namespace profiling {
@@ -503,6 +506,9 @@ Status UnpackTensor(const ONNX_NAMESPACE::TensorProto& tensor, const void* raw_d
 Status UnpackInitializerData(const ONNX_NAMESPACE::TensorProto& tensor, const std::filesystem::path& model_path,
                              /*out*/ std::vector<uint8_t>& unpacked_tensor) {
   return g_host->UnpackInitializerData(tensor, model_path, unpacked_tensor);
+}
+Status UnpackInitializerData(const ONNX_NAMESPACE::TensorProto& tensor, /*out*/ std::vector<uint8_t>& unpacked_tensor) {
+  return g_host->UnpackInitializerData(tensor, std::filesystem::path(), unpacked_tensor);
 }
 
 }  // namespace utils
@@ -787,5 +793,5 @@ std::string ToUTF8String(const std::wstring& s) {
 std::wstring ToWideString(const std::string& s) {
   return g_host->ToWideString(s);
 }
-#endif
+#endif  // _WIN32
 }  // namespace onnxruntime

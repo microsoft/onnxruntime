@@ -5,6 +5,7 @@
 
 #include <algorithm>
 #include <cassert>
+#include <cstring>
 #include <iostream>
 #include <memory>
 #include <unordered_map>
@@ -1653,14 +1654,14 @@ static bool HandleSplit(HandlerArgs& args) {
 
 constexpr HandlerInfo split_handler = {&FirstInput, &HandleSplit};
 
-static bool HandleConcat(HandlerArgs& args) {
+bool HandleConcat(HandlerArgs& args) {
   return HandleSimpleNodeWithAxis(args);
 }
 
 constexpr HandlerInfo concat_handler = {&AllInputs, &HandleConcat};
 
 // Handles Softmax, Hardmax, and LogSoftmax
-static bool HandleSoftHardMax(HandlerArgs& args) {
+bool HandleSoftHardMax(HandlerArgs& args) {
   if (args.ctx.opset >= 13) {
     return HandleSimpleNodeWithAxis(args, /*default_axis*/ -1);
   }

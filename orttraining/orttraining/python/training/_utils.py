@@ -175,8 +175,8 @@ def static_vars(**kwargs):
     """
 
     def decorate(func):
-        for k in kwargs:
-            setattr(func, k, kwargs[k])
+        for k, v in kwargs.items():
+            setattr(func, k, v)
         return func
 
     return decorate

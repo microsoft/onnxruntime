@@ -16,16 +16,16 @@ from test_flash_attn_cuda import (
 import onnxruntime
 
 
-class TestGQA(unittest.TestCase):
+@unittest.skipIf(
+    (not torch.cuda.is_available())
+    or (platform.system() != "Linux")
+    or ("ROCMExecutionProvider" not in onnxruntime.get_available_providers()),
+    reason="ROCm is not available, skipping tests.",
+)
+class TestRocmGQA(unittest.TestCase):
     @parameterized.expand(gqa_no_past_flash_attention_test_cases())
     def test_gqa_no_past_flash_attention(self, _, config, local, rotary, rotary_interleaved, packed, softcap):
         config.ep = "ROCMExecutionProvider"
-        if not torch.cuda.is_available():
-            return
-        if platform.system() != "Linux":
-            return
-        if "CUDAExecutionProvider" in onnxruntime.get_available_providers():
-            return
         print("------- FLASH ATTENTION (PROMPT CASE) --------")
 
         parity_check_gqa_prompt(
@@ -52,12 +52,6 @@ class TestGQA(unittest.TestCase):
     @parameterized.expand(gqa_past_flash_attention_test_cases())
     def test_gqa_past_flash_attention(self, _, config, local, rotary, rotary_interleaved, packed, softcap):
         config.ep = "ROCMExecutionProvider"
-        if not torch.cuda.is_available():
-            return
-        if platform.system() != "Linux":
-            return
-        if "CUDAExecutionProvider" in onnxruntime.get_available_providers():
-            return
         print("------- FLASH ATTENTION (TOKEN GEN) -------")
 
         parity_check_gqa_past(

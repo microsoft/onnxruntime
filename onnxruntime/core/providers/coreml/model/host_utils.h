@@ -26,6 +26,8 @@
 //     - iOS 16 ops
 // 8 : iOS 17, macOS 14, tvOS 17, watchOS 10 (Core ML 7)
 //     - iOS 17 ops
+// 9 : iOS 18, macOS 15, tvOS 18, watchOS 11 (Core ML 8)
+//     - iOS 18 ops
 //
 // **NOTE** We use the Core ML version not the spec version.
 //
@@ -39,6 +41,7 @@
 #define API_AVAILABLE_COREML5 API_AVAILABLE(macos(12), ios(15))
 #define API_AVAILABLE_COREML6 API_AVAILABLE(macos(13), ios(16))
 #define API_AVAILABLE_COREML7 API_AVAILABLE(macos(14), ios(17))
+#define API_AVAILABLE_COREML8 API_AVAILABLE(macos(15), ios(18))
 
 // @available is used in implementation code
 // Base required OS to run CoreML Specification Version 4 (Core ML 3)
@@ -47,6 +50,7 @@
 #define HAS_COREML5_OR_LATER @available(macOS 12, iOS 15, *)
 #define HAS_COREML6_OR_LATER @available(macOS 13, iOS 16, *)
 #define HAS_COREML7_OR_LATER @available(macOS 14, iOS 17, *)
+#define HAS_COREML8_OR_LATER @available(macOS 15, iOS 18, *)
 
 #endif
 

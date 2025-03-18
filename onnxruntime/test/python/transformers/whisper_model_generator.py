@@ -4,7 +4,6 @@
 # license information.
 # --------------------------------------------------------------------------
 
-from typing import List
 
 import numpy as np
 import onnx
@@ -13,7 +12,7 @@ from onnx import TensorProto, helper, numpy_helper
 
 
 # Adapted from bert_model_generator.py
-def get_tensor_and_weight(name: str, shape: List[int], random=False, zeros=False):
+def get_tensor_and_weight(name: str, shape: list[int], random=False, zeros=False):
     low = 0.0
     high = 1.0
     total_elements = 1
@@ -22,7 +21,9 @@ def get_tensor_and_weight(name: str, shape: List[int], random=False, zeros=False
     weights = (
         [np.random.uniform(low, high) for _ in range(total_elements)]
         if random
-        else [0.0] * total_elements if zeros else [1.0] * total_elements
+        else [0.0] * total_elements
+        if zeros
+        else [1.0] * total_elements
     )
     return helper.make_tensor(name, TensorProto.FLOAT, shape, weights), weights
 
@@ -305,8 +306,8 @@ def create_whisper_encoder_attention(
         )
     else:
         next_sln_inputs = [
-            "layernorm_output_to_skiplayernorm",
             "matmul_after_attn_output",
+            "layernorm_output_to_skiplayernorm",
             "layernorm_weight",
             "layernorm_bias",
             "add_after_attn_initializer",
@@ -390,9 +391,14 @@ def create_whisper_decoder_attention(
     # before attention is fused
     inputs = [
         helper.make_tensor_value_info("input_0", TensorProto.FLOAT, ["batch_size", 1500, hidden_size]),
-        helper.make_tensor_value_info("dummy_input_int64", TensorProto.INT64, ["dummy_input_1d_int64"]),
-        helper.make_tensor_value_info("dummy_input_fp32", TensorProto.FLOAT, ["dummy_input_1d_fp32"]),
     ]
+    if not fused:
+        inputs.extend(
+            [
+                helper.make_tensor_value_info("dummy_input_int64", TensorProto.INT64, ["dummy_input_1d_int64"]),
+                helper.make_tensor_value_info("dummy_input_fp32", TensorProto.FLOAT, ["dummy_input_1d_fp32"]),
+            ]
+        )
     outputs = [
         helper.make_tensor_value_info(
             "present.0.decoder.key", TensorProto.FLOAT, ["batch_size", num_heads, 1500, head_size]
@@ -443,13 +449,12 @@ def create_whisper_decoder_attention(
                         "Attention_0_qkv_weight",
                         "Attention_0_qkv_bias",
                         "",
-                        "",
-                        "attention_add_qk_mask",
                     ],
                     ["attn_output", "present_0_decoder"],
                     "Attention_0",
                     domain="com.microsoft",
                     num_heads=num_heads,
+                    unidirectional=1,
                 ),
                 helper.make_node(
                     "Gather",
@@ -716,47 +721,38 @@ def create_whisper_decoder_attention(
         )
 
     # Create nodes that make attention mask
-    nodes.extend(
-        [
-            # "attention_mask" is (decoder_seq_len, decoder_seq_len) but is assumed to be (1, 1) for this test.
-            # There are other nodes that automatically set the attention mask size correctly but those nodes do not
-            # impact the attention fusion. Hence, this assumption is made in order to simplify the inputs for the
-            # following nodes.
-            helper.make_node(
-                "Where",
-                ["all_ones", "where_filter_constant", "dummy_input_fp32"],
-                ["where_output"],
-                "mask_filter_where",
-            ),
-            helper.make_node(
-                "Unsqueeze",
-                ["where_output", "dummy_input_int64"],
-                ["unsqueeze_mask_output_1"],
-                "unsqueeze_attn_mask_1",
-            ),
-            helper.make_node(
-                "Unsqueeze",
-                ["unsqueeze_mask_output_1", "dummy_input_int64"],
-                ["unsqueeze_mask_output_2"],
-                "unsqueeze_attn_mask_2",
-            ),
-            helper.make_node(
-                "Expand",
-                inputs=["unsqueeze_mask_output_2", "dummy_input_int64"],
-                outputs=["attention_add_qk"],
-                name="expand_mask_from_(b,1,m,m)_to_(b,n,m,m)",
-            ),
-        ]
-    )
-    if fused:
-        nodes.append(
-            helper.make_node(
-                "Concat",
-                inputs=["attention_add_qk" for _ in range(num_heads)],
-                outputs=["attention_add_qk_mask"],
-                name="Concat_0",
-                axis=1,
-            ),
+    if not fused:
+        nodes.extend(
+            [
+                # "attention_mask" is (decoder_seq_len, decoder_seq_len) but is assumed to be (1, 1) for this test.
+                # There are other nodes that automatically set the attention mask size correctly but those nodes do not
+                # impact the attention fusion. Hence, this assumption is made in order to simplify the inputs for the
+                # following nodes.
+                helper.make_node(
+                    "Where",
+                    ["all_ones", "where_filter_constant", "dummy_input_fp32"],
+                    ["where_output"],
+                    "mask_filter_where",
+                ),
+                helper.make_node(
+                    "Unsqueeze",
+                    ["where_output", "dummy_input_int64"],
+                    ["unsqueeze_mask_output_1"],
+                    "unsqueeze_attn_mask_1",
+                ),
+                helper.make_node(
+                    "Unsqueeze",
+                    ["unsqueeze_mask_output_1", "dummy_input_int64"],
+                    ["unsqueeze_mask_output_2"],
+                    "unsqueeze_attn_mask_2",
+                ),
+                helper.make_node(
+                    "Expand",
+                    inputs=["unsqueeze_mask_output_2", "dummy_input_int64"],
+                    outputs=["attention_add_qk"],
+                    name="expand_mask_from_(b,1,m,m)_to_(b,n,m,m)",
+                ),
+            ]
         )
 
     # Create final nodes to conclude attention
@@ -795,8 +791,8 @@ def create_whisper_decoder_attention(
         )
     else:
         next_sln_inputs = [
-            "layernorm_output_to_skiplayernorm",
             "matmul_after_attn_output",
+            "layernorm_output_to_skiplayernorm",
             "layernorm_weight",
             "layernorm_bias",
             "add_after_attn_initializer",
@@ -834,13 +830,6 @@ def create_whisper_decoder_attention(
         float_tensor("matmul_after_attn_initializer", [hidden_size, hidden_size]),
         float_tensor("add_after_attn_initializer", [hidden_size]),
     ]
-    # Add initializers for attention mask
-    initializers.extend(
-        [
-            numpy_helper.from_array(np.array([[1]], dtype=bool), name="all_ones"),
-            numpy_helper.from_array(np.array([1], dtype="float32"), name="where_filter_constant"),
-        ]
-    )
 
     if fused:
         initializers.extend(
@@ -854,6 +843,8 @@ def create_whisper_decoder_attention(
     else:
         initializers.extend(
             [
+                numpy_helper.from_array(np.array([[1]], dtype=bool), name="all_ones"),
+                numpy_helper.from_array(np.array([1], dtype="float32"), name="where_filter_constant"),
                 numpy_helper.from_array(np.array(num_heads, dtype="int64"), name="num_heads_int"),
                 numpy_helper.from_array(np.array([num_heads], dtype="int64"), name="num_heads"),
                 numpy_helper.from_array(np.array([head_size], dtype="int64"), name="head_size"),
@@ -1161,8 +1152,8 @@ def create_whisper_decoder_multihead_attention(
         )
     else:
         next_sln_inputs = [
-            "layernorm_output_to_skiplayernorm",
             "matmul_after_attn_output",
+            "layernorm_output_to_skiplayernorm",
             "layernorm_weight",
             "layernorm_bias",
             "add_after_attn_initializer",
@@ -1336,6 +1327,7 @@ def create_whisper_decoder_with_past_multihead_self_attention(
                     "Attention_0",
                     domain="com.microsoft",
                     num_heads=num_heads,
+                    unidirectional=1,
                 ),
             ]
         )
@@ -1588,8 +1580,8 @@ def create_whisper_decoder_with_past_multihead_self_attention(
         )
     else:
         next_sln_inputs = [
-            "layernorm_output_to_skiplayernorm",
             "matmul_after_attn_output",
+            "layernorm_output_to_skiplayernorm",
             "layernorm_weight",
             "layernorm_bias",
             "add_after_attn_initializer",
@@ -1927,8 +1919,8 @@ def create_whisper_decoder_with_past_multihead_cross_attention(
         )
     else:
         next_sln_inputs = [
-            "layernorm_output_to_skiplayernorm",
             "matmul_after_attn_output",
+            "layernorm_output_to_skiplayernorm",
             "layernorm_weight",
             "layernorm_bias",
             "add_after_attn_initializer",

@@ -10,8 +10,8 @@
 #include "core/framework/tensorprotoutils.h"
 #include "core/framework/transpose_helper.h"
 #include "core/providers/utils.h"
-#include "core/providers/xnnpack/xnnpack_init.h"
 #include "core/providers/xnnpack/detail/utils.h"
+#include "core/providers/xnnpack/xnnpack_init.h"
 
 namespace onnxruntime {
 namespace xnnpack {
@@ -22,8 +22,10 @@ Status Conv::PrePack(const Tensor& tensor, int input_idx, AllocatorPtr alloc,
                      /*out*/ PrePackedWeights* /*prepacked_weights*/) {
   is_packed = false;
   // only layout of weight input is adjusted via PrePack
-  if ((conv_type_ == OpComputeType::op_compute_type_fp32 && input_idx == 1) ||
-      (conv_type_ != OpComputeType::op_compute_type_fp32 && input_idx == 3)) {  // InputTensors::IN_W
+  const bool conv_type_is_float = (conv_type_ == OpComputeType::op_compute_type_fp32 ||
+                                   conv_type_ == OpComputeType::op_compute_type_fp16);
+  if ((conv_type_is_float && input_idx == 1) ||
+      (!conv_type_is_float && input_idx == 3)) {  // InputTensors::IN_W
     // Transpose from {M, C/group, kH, kW} to {M, kH, kW, C/group}
     auto orig_shape = tensor.Shape();
     const auto rank = orig_shape.NumDimensions();
@@ -56,7 +58,6 @@ Status Conv::PrePack(const Tensor& tensor, int input_idx, AllocatorPtr alloc,
     // we can create the kernel now
     ORT_RETURN_IF_ERROR(CreateKernel());
   }
-
   return Status::OK();
 }
 
@@ -102,6 +103,8 @@ Status Conv::Compute(OpKernelContext* context) const {
     reshape_fn = xnn_reshape_convolution2d_nhwc_qu8;
   } else if (conv_type_ == OpComputeType::op_compute_type_qs8_per_channel) {
     reshape_fn = xnn_reshape_convolution2d_nhwc_qs8_qc8w;
+  } else if (conv_type_ == OpComputeType::op_compute_type_fp16) {
+    reshape_fn = xnn_reshape_convolution2d_nhwc_f16;
   }
 
   auto status = reshape_fn(op0_.get(), N, H, W,
@@ -112,12 +115,14 @@ Status Conv::Compute(OpKernelContext* context) const {
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "xnn_reshape_convolution2d_nhwc_", OpTypeToString(conv_type_),
                            "returned ", status);
   }
-
   workspace.reset(allocator->aligned_allocate(allocator->context, XNN_ALLOCATION_ALIGNMENT, workspace_size));
 
   if (conv_type_ == OpComputeType::op_compute_type_fp32) {
     status = xnn_setup_convolution2d_nhwc_f32(op0_.get(), workspace.get(), X.Data<float>(),
                                               Y->MutableData<float>());
+  } else if (conv_type_ == OpComputeType::op_compute_type_fp16) {
+    status = xnn_setup_convolution2d_nhwc_f16(op0_.get(), workspace.get(), X.Data<MLFloat16>(),
+                                              Y->MutableData<MLFloat16>());
   } else if (conv_type_ == OpComputeType::op_compute_type_qs8) {
     status = xnn_setup_convolution2d_nhwc_qs8(op0_.get(), workspace.get(), X.Data<int8_t>(),
                                               Y->MutableData<int8_t>());
@@ -143,11 +148,17 @@ Status Conv::Compute(OpKernelContext* context) const {
 }
 
 ONNX_OPERATOR_VERSIONED_KERNEL_EX(Conv, kMSInternalNHWCDomain, 1, 10, kXnnpackExecutionProvider,
-                                  KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
+                                  KernelDefBuilder().TypeConstraint("T", {
+                                                                             DataTypeImpl::GetTensorType<float>(),
+                                                                             DataTypeImpl::GetTensorType<MLFloat16>(),
+                                                                         }),
                                   Conv);
 
 ONNX_OPERATOR_KERNEL_EX(Conv, kMSInternalNHWCDomain, 11, kXnnpackExecutionProvider,
-                        KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
+                        KernelDefBuilder().TypeConstraint("T", {
+                                                                   DataTypeImpl::GetTensorType<float>(),
+                                                                   DataTypeImpl::GetTensorType<MLFloat16>(),
+                                                               }),
                         Conv);
 
 ONNX_OPERATOR_TYPED_KERNEL_EX(

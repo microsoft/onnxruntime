@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include "core/framework/tensor.h"
+#include "core/mlas/inc/mlas.h"
 #include "core/util/math_cpuonly.h"
 #include "core/providers/common.h"
 #include "core/platform/threadpool.h"
@@ -36,52 +37,87 @@ REGISTER_KERNEL_TYPED(float)
 REGISTER_KERNEL_TYPED(double)
 REGISTER_KERNEL_TYPED(MLFloat16)
 
-// Utility to convert from MLFloat16 to float only when the input type is MLFloat16.
-template <typename T, typename Ret>
-ORT_FORCEINLINE Ret ConvertMLFloat16ToDoubleOrFloatIfNeeded(T val);
+namespace {
 
-template <>
-ORT_FORCEINLINE float ConvertMLFloat16ToDoubleOrFloatIfNeeded<MLFloat16, float>(MLFloat16 val) {
-  return val.ToFloat();
+template <typename T, typename = std::enable_if_t<std::is_same_v<T, float> || std::is_same_v<T, double>, void>>
+void ComputeJob(
+    const T* input_data,
+    const T* skip_data,
+    const T* gamma_data,
+    const T* beta_data,
+    const T* bias_data,
+    ptrdiff_t task_idx,
+    int hidden_size,
+    int64_t skip_size,
+    float epsilon,
+    bool simplified,
+    T* output_data,
+    T* skip_input_bias_add_output_data) {
+  auto offset = task_idx * hidden_size;
+  const T* p_input = input_data + offset;
+  const T* p_skip = skip_data + (offset % skip_size);
+  T* p_output = output_data + offset;
+  T* p_skip_input_bias_add_output = skip_input_bias_add_output_data == nullptr ? nullptr : skip_input_bias_add_output_data + offset;
+
+  T mean(0.0f);
+  T mean_square(0.0f);
+
+  for (decltype(hidden_size) h = 0; h < hidden_size; h++) {
+    T val = p_input[h] + p_skip[h];
+
+    if (nullptr != bias_data) {
+      val += bias_data[h];
+    }
+
+    if (nullptr != p_skip_input_bias_add_output) {
+      p_skip_input_bias_add_output[h] = val;
+    }
+
+    p_output[h] = val;
+    mean += val;
+    mean_square += val * val;
+  }
+
+  mean = mean / hidden_size;
+  if (simplified) {
+    mean_square = sqrt(mean_square / hidden_size + epsilon);
+  } else {
+    mean_square = sqrt(mean_square / hidden_size - mean * mean + epsilon);
+  }
+
+  for (decltype(hidden_size) h = 0; h < hidden_size; h++) {
+    if (simplified) {
+      p_output[h] = p_output[h] / mean_square * gamma_data[h];
+    } else if (nullptr == beta_data) {
+      p_output[h] = (p_output[h] - mean) / mean_square * gamma_data[h];
+    } else {
+      p_output[h] = (p_output[h] - mean) / mean_square * gamma_data[h] + beta_data[h];
+    }
+  }
 }
 
-template <>
-ORT_FORCEINLINE double ConvertMLFloat16ToDoubleOrFloatIfNeeded<MLFloat16, double>(MLFloat16 val) {
-  return static_cast<double>(ConvertMLFloat16ToDoubleOrFloatIfNeeded<MLFloat16, float>(val));
+void ConvertMLFloat16ToFloatIfNeeded(const Tensor& tensor, AllocatorPtr alloc, IAllocatorUniquePtr<float>& dest, bool& is_packed) {
+  if (tensor.GetElementType() == utils::ToTensorProtoElementType<MLFloat16>()) {
+    auto tensor_data_ptr = tensor.Data<MLFloat16>();
+    auto tensor_size = static_cast<size_t>(tensor.Shape().Size());
+    auto float_ptr = IAllocator::MakeUniquePtr<float>(alloc, tensor_size, true);
+
+    MlasConvertHalfToFloatBuffer(tensor_data_ptr, float_ptr.get(), tensor_size);
+    dest = std::move(float_ptr);
+    is_packed = true;
+  }
 }
 
-template <>
-ORT_FORCEINLINE constexpr float ConvertMLFloat16ToDoubleOrFloatIfNeeded<float, float>(float val) {
-  return val;
-}
-
-template <>
-ORT_FORCEINLINE constexpr double ConvertMLFloat16ToDoubleOrFloatIfNeeded<double, double>(double val) {
-  return val;
-}
-
-// Function template that only converts the input value to MLFloat16 if T is MLFloat16.
-template <typename T>
-ORT_FORCEINLINE constexpr typename std::enable_if_t<std::is_same_v<T, float> || std::is_same_v<T, double>, T>
-ConvertDoubleOrFloatToMLFloat16IfNeeded(T val) {
-  return val;
-}
-
-template <typename T>
-ORT_FORCEINLINE constexpr typename std::enable_if_t<std::is_same_v<T, MLFloat16>, T>
-ConvertDoubleOrFloatToMLFloat16IfNeeded(float val) {
-  return MLFloat16(val);
-}
-
-template <typename T>
-ORT_FORCEINLINE constexpr typename std::enable_if_t<std::is_same_v<T, MLFloat16>, T>
-ConvertDoubleOrFloatToMLFloat16IfNeeded(double val) {
-  return MLFloat16(static_cast<float>(val));
-}
+}  // namespace
 
 template <typename T, bool simplified>
 SkipLayerNorm<T, simplified>::SkipLayerNorm(const OpKernelInfo& op_kernel_info)
-    : OpKernel(op_kernel_info) {
+    : OpKernel(op_kernel_info),
+      prepacked_skip_fp32_size_(0),
+      prepacked_skip_fp32_data_(nullptr),
+      prepacked_gamma_fp32_data_(nullptr),
+      prepacked_beta_fp32_data_(nullptr),
+      prepacked_bias_fp32_data_(nullptr) {
   ORT_ENFORCE(op_kernel_info.GetAttr<float>("epsilon", &epsilon_).IsOK());
   ORT_ENFORCE(epsilon_ >= 0);
 }
@@ -89,103 +125,153 @@ SkipLayerNorm<T, simplified>::SkipLayerNorm(const OpKernelInfo& op_kernel_info)
 template <typename T, bool simplified>
 Status SkipLayerNorm<T, simplified>::Compute(OpKernelContext* p_ctx) const {
   const Tensor* input = p_ctx->Input<Tensor>(0);
-  const Tensor* skip = p_ctx->Input<Tensor>(1);
-  const Tensor* gamma = p_ctx->Input<Tensor>(2);
-  const Tensor* beta = p_ctx->Input<Tensor>(3);
-  const Tensor* bias = p_ctx->Input<Tensor>(4);
+  const Tensor* skip = prepacked_skip_fp32_data_ ? nullptr : p_ctx->Input<Tensor>(1);
+  const Tensor* gamma = prepacked_gamma_fp32_data_ ? nullptr : p_ctx->Input<Tensor>(2);
+  const Tensor* beta = simplified ? nullptr : (prepacked_beta_fp32_data_ ? nullptr : p_ctx->Input<Tensor>(3));
+  const Tensor* bias = prepacked_bias_fp32_data_ ? nullptr : p_ctx->Input<Tensor>(simplified ? 3 : 4);
   Tensor* output = p_ctx->Output(0, input->Shape());
-  // For inferencing, we support one more optional output which is the sum
-  // of the input and skip tensors
+  // For inferencing, we support one more optional output which is the sum of the input and skip tensors
   Tensor* skip_input_bias_add_output = p_ctx->Output(3, input->Shape());
 
   const auto& input_dims = input->Shape().GetDims();
   size_t input_dims_size = input_dims.size();
   int hidden_size = static_cast<int>(input_dims[input_dims_size - 1]);
 
-  ORT_RETURN_IF_ERROR(onnxruntime::contrib::skip_layer_norm_helper::CheckInputs<Tensor>(input,
-                                                                                        skip,
-                                                                                        gamma,
-                                                                                        beta,
-                                                                                        bias,
-                                                                                        hidden_size,
-                                                                                        input_dims_size));
+  ORT_RETURN_IF_ERROR(skip_layer_norm_helper::CheckPotentiallyPrepackedInputs<Tensor>(input,
+                                                                                      skip,
+                                                                                      gamma,
+                                                                                      beta,
+                                                                                      bias,
+                                                                                      hidden_size,
+                                                                                      input_dims_size,
+                                                                                      prepacked_skip_fp32_data_ != nullptr,
+                                                                                      prepacked_gamma_fp32_data_ != nullptr));
 
   int64_t task_count = input->Shape().SizeToDimension(input_dims_size - 1);
 
   const T* input_data = input->Data<T>();
-  const T* skip_data = skip->Data<T>();
-  const T* gamma_data = gamma->Data<T>();
+  const T* skip_data = skip == nullptr ? nullptr : skip->Data<T>();
+  const T* gamma_data = gamma == nullptr ? nullptr : gamma->Data<T>();
   const T* beta_data = beta == nullptr ? nullptr : beta->Data<T>();
   const T* bias_data = bias == nullptr ? nullptr : bias->Data<T>();
 
   T* output_data = output->MutableData<T>();
 
-  // For inferencing, we support one more optional output which is the sum
-  // of the input and skip tensors
-  T* skip_input_bias_add_output_data = skip_input_bias_add_output != nullptr ? skip_input_bias_add_output->MutableData<T>() : nullptr;
+  // For inferencing, we support one more optional output which is the sum of the input and skip tensors
+  T* skip_input_bias_add_output_data = skip_input_bias_add_output == nullptr ? nullptr : skip_input_bias_add_output->MutableData<T>();
+  const int64_t skip_size = skip ? skip->Shape().Size() : prepacked_skip_fp32_size_;
 
-  const auto& skip_size = skip->Shape().Size();
+  if constexpr (std::is_same_v<T, MLFloat16>) {
+    const size_t total_data_size = static_cast<size_t>(input->Shape().Size());
 
-  concurrency::ThreadPool::TryBatchParallelFor(
-      p_ctx->GetOperatorThreadPool(), static_cast<int32_t>(task_count),
-      [&](ptrdiff_t task_idx) {
-        auto offset = task_idx * hidden_size;
+    AllocatorPtr alloc;
+    ORT_RETURN_IF_ERROR(p_ctx->GetTempSpaceAllocator(&alloc));
 
-        const T* p_input = input_data + offset;
-        const T* p_skip = skip_data + (offset % skip_size);
-        T* p_output = output_data + offset;
-        T* p_skip_input_bias_add_output_data = skip_input_bias_add_output_data != nullptr ? skip_input_bias_add_output_data + offset : nullptr;
+    IAllocatorUniquePtr<float> input_fp32;
+    IAllocatorUniquePtr<float> output_fp32;
+    IAllocatorUniquePtr<float> skip_input_bias_add_output_fp32;
+    IAllocatorUniquePtr<float> skip_fp32;
+    IAllocatorUniquePtr<float> gamma_fp32;
+    IAllocatorUniquePtr<float> beta_fp32;
+    IAllocatorUniquePtr<float> bias_fp32;
 
-        using DoubleOrFloat = typename std::conditional<
-            std::is_same<T, double>::value,  // If T is double
-            double,                          // Use double
-            float                            // Otherwise, use float (covers float and MLFloat16)
-            >::type;
+    const float* input_data_f = nullptr;
+    const float* skip_data_f = nullptr;
+    const float* gamma_data_f = nullptr;
+    const float* beta_data_f = nullptr;
+    const float* bias_data_f = nullptr;
+    float* output_data_f = nullptr;
+    float* skip_input_bias_add_output_data_f = nullptr;
 
-        DoubleOrFloat mean(0.0f);
-        DoubleOrFloat mean_square(0.0f);
+    const size_t num_elems = static_cast<size_t>(hidden_size);
 
-        std::unique_ptr<DoubleOrFloat[]> output_buffer = std::make_unique<DoubleOrFloat[]>(hidden_size);
-        for (size_t h = 0; h < static_cast<size_t>(hidden_size); h++) {
-          DoubleOrFloat input_value = ConvertMLFloat16ToDoubleOrFloatIfNeeded<T, DoubleOrFloat>(p_input[h]);
-          DoubleOrFloat skip_value = ConvertMLFloat16ToDoubleOrFloatIfNeeded<T, DoubleOrFloat>(p_skip[h]);
+    input_fp32 = IAllocator::MakeUniquePtr<float>(alloc, total_data_size);
+    MlasConvertHalfToFloatBuffer(input_data, input_fp32.get(), total_data_size);
+    input_data_f = input_fp32.get();
 
-          DoubleOrFloat value = input_value + skip_value;
+    output_fp32 = IAllocator::MakeUniquePtr<float>(alloc, total_data_size);
+    output_data_f = output_fp32.get();
 
-          if (nullptr != bias_data) {
-            value += ConvertMLFloat16ToDoubleOrFloatIfNeeded<T, DoubleOrFloat>(bias_data[h]);
-          }
+    skip_input_bias_add_output_fp32 = IAllocator::MakeUniquePtr<float>(alloc, total_data_size);
+    skip_input_bias_add_output_data_f = skip_input_bias_add_output_fp32.get();
 
-          output_buffer[h] = value;
-          T converted_value = ConvertDoubleOrFloatToMLFloat16IfNeeded<T>(value);
-          if (nullptr != p_skip_input_bias_add_output_data) {
-            p_skip_input_bias_add_output_data[h] = converted_value;
-          }
+    if (skip_data) {
+      skip_fp32 = IAllocator::MakeUniquePtr<float>(alloc, static_cast<size_t>(skip_size));
+      MlasConvertHalfToFloatBuffer(skip_data, skip_fp32.get(), static_cast<size_t>(skip_size));
+      skip_data_f = skip_fp32.get();
+    } else if (prepacked_skip_fp32_data_) {
+      skip_data_f = prepacked_skip_fp32_data_.get();
+    }
 
-          mean += value;
-          mean_square += value * value;
-        }
+    if (gamma_data) {
+      gamma_fp32 = IAllocator::MakeUniquePtr<float>(alloc, num_elems);
+      MlasConvertHalfToFloatBuffer(gamma_data, gamma_fp32.get(), num_elems);
+      gamma_data_f = gamma_fp32.get();
+    } else if (prepacked_gamma_fp32_data_) {
+      gamma_data_f = prepacked_gamma_fp32_data_.get();
+    }
 
-        mean = mean / hidden_size;
-        if (simplified) {
-          mean_square = sqrt(mean_square / hidden_size + epsilon_);
-        } else {
-          mean_square = sqrt(mean_square / hidden_size - mean * mean + epsilon_);
-        }
+    if (beta_data) {
+      beta_fp32 = IAllocator::MakeUniquePtr<float>(alloc, num_elems);
+      MlasConvertHalfToFloatBuffer(beta_data, beta_fp32.get(), num_elems);
+      beta_data_f = beta_fp32.get();
+    } else if (prepacked_beta_fp32_data_) {
+      beta_data_f = prepacked_beta_fp32_data_.get();
+    }
 
-        for (size_t h = 0; h < static_cast<size_t>(hidden_size); h++) {
-          DoubleOrFloat gamma_value = ConvertMLFloat16ToDoubleOrFloatIfNeeded<T, DoubleOrFloat>(gamma_data[h]);
-          if (simplified) {
-            p_output[h] = ConvertDoubleOrFloatToMLFloat16IfNeeded<T>(output_buffer[h] / mean_square * gamma_value);
-          } else if (nullptr == beta_data) {
-            p_output[h] = ConvertDoubleOrFloatToMLFloat16IfNeeded<T>((output_buffer[h] - mean) / mean_square * gamma_value);
-          } else {
-            DoubleOrFloat beta_value = ConvertMLFloat16ToDoubleOrFloatIfNeeded<T, DoubleOrFloat>(beta_data[h]);
-            p_output[h] = ConvertDoubleOrFloatToMLFloat16IfNeeded<T>((output_buffer[h] - mean) / mean_square * gamma_value + beta_value);
-          }
-        }
-      },
-      0);
+    if (bias_data) {
+      bias_fp32 = IAllocator::MakeUniquePtr<float>(alloc, num_elems);
+      MlasConvertHalfToFloatBuffer(bias_data, bias_fp32.get(), num_elems);
+      bias_data_f = bias_fp32.get();
+    } else if (prepacked_bias_fp32_data_) {
+      bias_data_f = prepacked_bias_fp32_data_.get();
+    }
+
+    concurrency::ThreadPool::TryBatchParallelFor(
+        p_ctx->GetOperatorThreadPool(), static_cast<int32_t>(task_count),
+        [&](ptrdiff_t task_idx) {
+          ComputeJob(input_data_f, skip_data_f, gamma_data_f, beta_data_f, bias_data_f, task_idx, hidden_size, skip_size,
+                     epsilon_, simplified, output_data_f, skip_input_bias_add_output_data_f);
+        },
+        0);
+    MlasConvertFloatToHalfBuffer(output_data_f, output_data, total_data_size);
+    if (skip_input_bias_add_output_data != nullptr)
+      MlasConvertFloatToHalfBuffer(skip_input_bias_add_output_data_f, skip_input_bias_add_output_data, total_data_size);
+  } else {
+    concurrency::ThreadPool::TryBatchParallelFor(
+        p_ctx->GetOperatorThreadPool(), static_cast<int32_t>(task_count),
+        [&](ptrdiff_t task_idx) {
+          ComputeJob(input_data, skip_data, gamma_data, beta_data, bias_data, task_idx, hidden_size, skip_size,
+                     epsilon_, simplified, output_data, skip_input_bias_add_output_data);
+        },
+        0);
+  }
+
+  return Status::OK();
+}
+
+template <typename T, bool simplified>
+Status SkipLayerNorm<T, simplified>::PrePack(const Tensor& tensor, int input_idx, AllocatorPtr alloc,
+                                             bool& is_packed, PrePackedWeights* prepacked_weights) {
+  ORT_UNUSED_PARAMETER(prepacked_weights);
+  is_packed = false;
+  if (input_idx == 1) {  // skip
+    prepacked_skip_fp32_size_ = tensor.Shape().Size();
+    ConvertMLFloat16ToFloatIfNeeded(tensor, alloc, prepacked_skip_fp32_data_, is_packed);
+  } else if (input_idx == 2) {  // gamma
+    ConvertMLFloat16ToFloatIfNeeded(tensor, alloc, prepacked_gamma_fp32_data_, is_packed);
+  } else if (input_idx == 3) {
+    if constexpr (simplified) {
+      // bias
+      ConvertMLFloat16ToFloatIfNeeded(tensor, alloc, prepacked_bias_fp32_data_, is_packed);
+    } else {
+      // beta
+      ConvertMLFloat16ToFloatIfNeeded(tensor, alloc, prepacked_beta_fp32_data_, is_packed);
+    }
+  } else if (input_idx == 4) {  // bias
+    ORT_ENFORCE(!simplified, "SkipSimplifiedLayerNormalization should only has 4 inputs (input, skip, gamma, and beta). Got 5.");
+    ConvertMLFloat16ToFloatIfNeeded(tensor, alloc, prepacked_bias_fp32_data_, is_packed);
+  }
 
   return Status::OK();
 }

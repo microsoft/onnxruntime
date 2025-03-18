@@ -2,7 +2,7 @@
 # Licensed under the MIT License.
 
 """This file is used to generate test data for SGD optimizer tests in
-   orttraining/orttraining/test/training_ops/cuda/optimizer/sgd_test.cc."""
+orttraining/orttraining/test/training_ops/cuda/optimizer/sgd_test.cc."""
 
 import torch
 

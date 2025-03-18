@@ -213,6 +213,40 @@ class TestOpSoftmax(unittest.TestCase):
         self.quantize_softmax_test_qop(QuantType.QUInt8, QuantType.QUInt8)
         self.quantize_softmax_test_qdq(QuantType.QUInt8, QuantType.QUInt8)
 
+    def test_bug_fix_exclude_softmax(self):
+        """
+        Test fix to bug that happens when softmax is excluded from quantization, but
+        the quantization tool still tries to assign it a tensor range of [0.0, 1.0].
+        """
+        np.random.seed(1)
+        model_fp32_path = "softmax_fp32.onnx"
+        model_qdq_path = "softmax_bug_exclude_softmax.qdq.onnx"
+        self.construct_model_conv_softmax(
+            model_fp32_path,
+            [1, 2, 26, 42],
+            [3, 2, 3, 3],
+            [1, 3, 24, 40],
+            {"axis": -2},
+            [1, 3, 24, 40],
+            add_ms_domain_opset=False,
+        )
+        data_reader = self.input_feeds(1, {"input": [1, 2, 26, 42]})
+        data_reader.rewind()
+
+        # Bug would cause an exception during quantization.
+        quantize_static(
+            model_fp32_path,
+            model_qdq_path,
+            data_reader,
+            quant_format=QuantFormat.QDQ,
+            activation_type=QuantType.QUInt8,
+            weight_type=QuantType.QInt8,
+            nodes_to_exclude=["Softmax"],
+        )
+
+        qdq_model = onnx.load(Path(model_qdq_path))
+        self.assertIn("Softmax", {node.op_type for node in qdq_model.graph.node})
+
     def test_quantize_softmax_s8s8(self):
         self.quantize_softmax_test_qop(
             QuantType.QInt8,

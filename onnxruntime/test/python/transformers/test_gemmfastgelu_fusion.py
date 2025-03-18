@@ -6,7 +6,6 @@
 
 import os
 import unittest
-from typing import List
 
 import numpy as np
 import onnx
@@ -33,7 +32,7 @@ msdomain.domain = "com.microsoft"
 opsets = [onnxdomain, msdomain]
 
 
-def float_tensor(name: str, shape: List[int], random=False):
+def float_tensor(name: str, shape: list[int], random=False):
     low = 0.0
     high = 1.0
     total_elements = 1

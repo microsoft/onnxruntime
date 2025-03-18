@@ -81,6 +81,15 @@ bool ConvertNodeLayout(const api::NodeRef& node) {
   }
 #endif
 
+// NHWC for Resize operator is not implemented on kWebGpuExecutionProvider
+#if defined(USE_WEBGPU)
+  if (node.GetExecutionProviderType() == kWebGpuExecutionProvider) {
+    if (node.OpType() == "Resize") {
+      return false;
+    }
+  }
+#endif
+
 #if defined(USE_CUDA) && ENABLE_CUDA_NHWC_OPS
   if (node.GetExecutionProviderType() == kCudaExecutionProvider) {
     if (layout_sensitive_ops.count(node.OpType())) {
@@ -177,7 +186,11 @@ Status TransformLayoutForEP(Graph& graph, bool& modified, const IExecutionProvid
         for (size_t i = 2; i < node->Inputs().size(); i++) {
           auto constant = api_graph->GetConstant(node->Inputs()[i]);
           if (constant != nullptr && constant->Data().size() > 0) {
-            input_perms.push_back(&input_perm);
+            // Starting from opset version 18, the 'scales' and 'sizes' can be any length up to the input rank.
+            // However, our current implementation only supports the transposition of 4D tensors.
+            if (constant->NumElements() == 4) {
+              input_perms.push_back(&input_perm);
+            }
           } else {
             // TODO: Fix inconsistency. We should Transpose the non-const inputs so that the result of our changes
             // is consistent - all layout specific inputs are in NHWC format when we're done.

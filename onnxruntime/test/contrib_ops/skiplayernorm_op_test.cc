@@ -62,6 +62,8 @@ static void RunOneTest(
   auto rocm_ep = DefaultRocmExecutionProvider();
   auto dml_ep = DefaultDmlExecutionProvider();
   auto cpu_ep = DefaultCpuExecutionProvider();
+  auto webgpu_ep = DefaultWebGpuExecutionProvider();
+
   std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
   if (!use_float16) {
     OpTester test(op_type.c_str(), 1, onnxruntime::kMSDomain);
@@ -95,10 +97,14 @@ static void RunOneTest(
     if (cpu_ep != nullptr) {
       execution_providers.push_back(DefaultCpuExecutionProvider());
     }
+    if (webgpu_ep != nullptr) {
+      execution_providers.push_back(DefaultWebGpuExecutionProvider());
+    }
     test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
   } else if (HasCudaEnvironment(530 /*min_cuda_architecture*/) ||
              dml_ep != nullptr ||
-             rocm_ep != nullptr) {
+             rocm_ep != nullptr ||
+             webgpu_ep != nullptr) {
     OpTester test(op_type.c_str(), 1, onnxruntime::kMSDomain);
     test.AddInput<MLFloat16>("input", input_dims, ToFloat16(input_data));
     test.AddInput<MLFloat16>("skip", skip_dims, ToFloat16(skip_data));
@@ -132,7 +138,9 @@ static void RunOneTest(
                                 ToFloat16(sum_output_data));
     }
 
-    if (dml_ep != nullptr) {
+    if (webgpu_ep != nullptr) {
+      execution_providers.push_back(DefaultWebGpuExecutionProvider());
+    } else if (dml_ep != nullptr) {
       execution_providers.push_back(DefaultDmlExecutionProvider());
     } else if (rocm_ep != nullptr) {
       execution_providers.push_back(DefaultRocmExecutionProvider());
@@ -184,6 +192,32 @@ static void RunTest(
                epsilon, batch_size, sequence_length, hidden_size, use_float16, no_beta, simplified,
                use_token_count, broadcast_skip, no_batch_size);
   }
+}
+
+TEST(SkipLayerNormTest, SkipLayerNormPrePack) {
+  OpTester test("SkipLayerNormalization", 1, onnxruntime::kMSDomain);
+  test.AddAttribute<float>("epsilon", 1e-05f);
+
+  int batch_size = 1;
+  int sequence_length = 2;
+  int hidden_size = 2;
+  std::vector<int64_t> input_skip_output_dims = {batch_size, sequence_length, hidden_size};
+  std::vector<int64_t> gamma_beta_bias_dims = {hidden_size};
+  test.AddInput<MLFloat16>("x", input_skip_output_dims, ToFloat16({1.f, 1.f, 1.f, 1.f}));
+  test.AddInput<MLFloat16>("skip", input_skip_output_dims, ToFloat16({1.f, 1.f, 1.f, 1.f}));
+  test.AddInput<MLFloat16>("gamma", gamma_beta_bias_dims, ToFloat16({1.f, 1.f}), true);
+  test.AddInput<MLFloat16>("beta", gamma_beta_bias_dims, ToFloat16({1.f, 1.f}), true);
+  test.AddOutput<MLFloat16>("output", input_skip_output_dims, ToFloat16({
+                                                                  1.f,
+                                                                  1.f,
+                                                                  1.f,
+                                                                  1.f,
+                                                              }));
+
+  // TRT, DNNL, OpenVINO and NNAPI, CoreML don't support this combination of datatypes
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "",
+           {kTensorrtExecutionProvider, kDnnlExecutionProvider, kOpenVINOExecutionProvider,
+            kNnapiExecutionProvider, kQnnExecutionProvider});
 }
 
 TEST(SkipLayerNormTest, SkipLayerNormNullInput) {

@@ -146,10 +146,6 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                 opt.AppendExecutionProvider_Nnapi(0);
 #endif
 
-#if USE_TVM
-                opt.AppendExecutionProvider_Tvm("Vulkan -device=amd_apu");
-#endif
-
 #if USE_OPENVINO
                 opt.AppendExecutionProvider_OpenVINO();
 #endif
@@ -178,6 +174,12 @@ namespace Microsoft.ML.OnnxRuntime.Tests
 #else
                 ex = Assert.Throws<OnnxRuntimeException>(() => { opt.AppendExecutionProvider("QNN"); });
                 Assert.Contains("QNN execution provider is not supported in this build", ex.Message);
+#endif
+#if USE_COREML
+                opt.AppendExecutionProvider("CoreML");
+#else
+                ex = Assert.Throws<OnnxRuntimeException>(() => { opt.AppendExecutionProvider("CoreML"); });
+                Assert.Contains("CoreML execution provider is not supported in this build", ex.Message);
 #endif
 
                 opt.AppendExecutionProvider_CPU(1);
@@ -2041,7 +2043,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
         }
 
         // Test hangs on mobile.
-#if !(ANDROID || IOS)  
+#if !(ANDROID || IOS)
         [Fact(DisplayName = "TestModelRunAsyncTask")]
         private async Task TestModelRunAsyncTask()
         {

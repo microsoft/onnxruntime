@@ -32,8 +32,16 @@ namespace nnapi {
 
 ModelBuilder::ModelBuilder(const GraphViewer& graph_viewer, const NnApi& nnapi_handle,
                            gsl::span<const DeviceWrapper> nnapi_target_devices,
-                           TargetDeviceOption target_device_option)
-    : nnapi_(nnapi_handle), graph_viewer_(graph_viewer), nnapi_model_{std::make_unique<Model>(nnapi_handle)}, shaper_{graph_viewer}, nnapi_target_devices_(nnapi_target_devices), target_device_option_(target_device_option), nnapi_effective_feature_level_(GetNNAPIEffectiveFeatureLevel(nnapi_handle, nnapi_target_devices_)) {
+                           TargetDeviceOption target_device_option,
+                           const logging::Logger& logger)
+    : nnapi_(nnapi_handle),
+      graph_viewer_(graph_viewer),
+      nnapi_model_{std::make_unique<Model>(nnapi_handle)},
+      shaper_{graph_viewer},
+      nnapi_target_devices_(nnapi_target_devices),
+      target_device_option_(target_device_option),
+      nnapi_effective_feature_level_(GetNNAPIEffectiveFeatureLevel(nnapi_handle, nnapi_target_devices_)),
+      logger_(logger) {
   nnapi_model_->nnapi_effective_feature_level_ = nnapi_effective_feature_level_;
 }
 
@@ -136,7 +144,7 @@ const NodeUnit& ModelBuilder::GetNodeUnit(const Node* node) const {
 }
 
 void ModelBuilder::PreprocessNodeUnits() {
-  std::tie(node_unit_holder_, node_unit_map_) = QDQ::GetAllNodeUnits(graph_viewer_);
+  std::tie(node_unit_holder_, node_unit_map_) = QDQ::GetAllNodeUnits(graph_viewer_, logger_);
 }
 
 // Help to get all quantized operators' input and the NodeUnit(s) using the input

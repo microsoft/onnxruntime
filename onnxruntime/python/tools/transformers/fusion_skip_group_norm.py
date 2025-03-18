@@ -3,7 +3,6 @@
 # Licensed under the MIT License.
 # --------------------------------------------------------------------------
 from logging import getLogger
-from typing import List
 
 from fusion_base import Fusion
 from fusion_utils import NumpyHelper
@@ -26,7 +25,7 @@ class FusionSkipGroupNorm(Fusion):
         if self.shape_infer_helper is None:
             logger.warning("SkipGroupNorm fusion will be skipped since symbolic shape inference disabled or failed.")
 
-    def create_transpose_node(self, input_name: str, perm: List[int], output_name=None):
+    def create_transpose_node(self, input_name: str, perm: list[int], output_name=None):
         """Append a Transpose node after an input"""
         node_name = self.model.create_node_name("Transpose")
         if output_name is None:

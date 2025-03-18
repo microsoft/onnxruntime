@@ -144,21 +144,14 @@
         "^test_resnet50",
         "^test_shufflenet",
         "^test_squeezenet",
-        // TODO: enable these tests when integrating with ONNX 1.14 for ORT 1.15 release
-        "^test_averagepool_1d_default*",
-        "^test_averagepool_2d_ceil*",
-        "^test_averagepool_2d_default*",
-        "^test_averagepool_2d_dilations*",
-        "^test_averagepool_2d_pads_count_include_pad*",
-        "^test_averagepool_2d_pads*",
-        "^test_averagepool_2d_precomputed_pads_count_include_pad*",
-        "^test_averagepool_2d_precomputed_pads*",
-        "^test_averagepool_2d_precomputed_same_upper*",
-        "^test_averagepool_2d_precomputed_strides*",
-        "^test_averagepool_2d_same_lower*",
-        "^test_averagepool_2d_same_upper*",
-        "^test_averagepool_2d_strides*",
-        "^test_averagepool_3d_default*",
+        "^test_averagepool_3d_dilations_large_count_include_pad_is_1_ceil_mode_is_True_cpu",
+        "^test_averagepool_3d_dilations_large_count_include_pad_is_1_ceil_mode_is_False_cpu",
+        "^test_averagepool_3d_dilations_large_count_include_pad_is_0_ceil_mode_is_True_cpu",
+        "^test_averagepool_3d_dilations_large_count_include_pad_is_0_ceil_mode_is_False_cpu",
+        "^test_averagepool_3d_dilations_large_count_include_pad_is_1_ceil_mode_is_True_cuda",
+        "^test_averagepool_3d_dilations_large_count_include_pad_is_1_ceil_mode_is_False_cuda",
+        "^test_averagepool_2d_dilations_cpu",
+        "^test_averagepool_3d_dilations_small_cpu",
         "^test_constant_pad_axes*",
         "^test_constant_pad*",
         "^test_edge_pad*",
@@ -196,8 +189,7 @@
         "^test_reshape_reordered_last_dims*",
         "^test_reshape_zero_and_negative_dim*",
         "^test_reshape_zero_dim*",
-        // TODO: fialures with Windows GPU CI Pipeline that are introduced with ONNX opset 19. Need to be fixed before ORT 1.15 release.
-        "^test_averagepool_*",
+        // TODO: failures with Windows GPU CI Pipeline that are introduced with ONNX opset 19. Need to be fixed before ORT 1.15 release.
         "^test_wrap_pad_cuda",
         "^test_resize_downsample_scales_cubic_A_n0p5_exclude_outside_cuda",
         "^test_resize_downsample_scales_cubic_antialias_cuda",
@@ -306,6 +298,11 @@
         "^test_qlinearmatmul_3D_int8_float32_cuda",
         "^test_qlinearmatmul_3D_uint8_float16_cuda",
         "^test_qlinearmatmul_3D_uint8_float32_cuda",
+        // Tests that failed on CUDA 12.2.
+        "^test_Conv3d_dilated_cuda",
+        "^test_Conv3d_dilated_strided_cuda",
+        "^test_Conv3d_stride_cuda",
+        "^test_Conv3d_stride_padding_cuda",
         // Size(21) from ONNX 1.16.0 is not implemented in cuda.
         "^test_size_cuda",
         "^test_size_example_cuda",
@@ -328,7 +325,6 @@
     "current_failing_tests_DNNL": [
         "^test_range_float_type_positive_delta_expanded",
         "^test_range_int32_type_negative_delta_expanded",
-        "^test_averagepool_2d_ceil",
         "^test_maxpool_2d_ceil",
         "^test_maxpool_2d_dilations",
         "^test_maxpool_2d_uint8",
@@ -421,6 +417,7 @@
         "^test_gelu_tanh_2_expanded_cpu",
         "^test_reduce_max_bool_inputs",
         "^test_reduce_min_bool_inputs",
+        "^test_reduce_max_empty_set",   // DNNL result in "(shapes (2, 1, 4), (1, 0, 1) mismatch)". this is the same for test_reduce_min_empty_set which is already in the list
         "^test_reduce_min_empty_set",
         "^test_reduce_l1_empty_set",
         "^test_reduce_l1_empty_set_expanded",
@@ -516,6 +513,7 @@
         "^test_affine_grid_3d_align_corners_expanded",
         "^test_affine_grid_3d",
         "^test_affine_grid_3d_expanded",
+        "^test_dynamicquantizelinear_expanded_cpu",
         "^test_operator_permute2",
         "^test_operator_repeat",
         "^test_operator_repeat_dim_overflow",
@@ -672,6 +670,32 @@
         "^test_nonmaxsuppression_flipped_coordinates_cpu",
         "^test_nonmaxsuppression_center_point_box_format_cpu"
     ],
+    "current_failing_tests_WEBGPU": [
+        "^test_layer_normalization_2d_axis0_cpu",
+        "^test_layer_normalization_2d_axis1_cpu",
+        "^test_layer_normalization_2d_axis_negative_1_cpu",
+        "^test_layer_normalization_2d_axis_negative_2_cpu",
+        "^test_layer_normalization_3d_axis0_epsilon_cpu",
+        "^test_layer_normalization_3d_axis1_epsilon_cpu",
+        "^test_layer_normalization_3d_axis2_epsilon_cpu",
+        "^test_layer_normalization_3d_axis_negative_1_epsilon_cpu",
+        "^test_layer_normalization_3d_axis_negative_2_epsilon_cpu",
+        "^test_layer_normalization_3d_axis_negative_3_epsilon_cpu",
+        "^test_layer_normalization_4d_axis0_cpu",
+        "^test_layer_normalization_4d_axis1_cpu",
+        "^test_layer_normalization_4d_axis2_cpu",
+        "^test_layer_normalization_4d_axis3_cpu",
+        "^test_layer_normalization_4d_axis_negative_1_cpu",
+        "^test_layer_normalization_4d_axis_negative_2_cpu",
+        "^test_layer_normalization_4d_axis_negative_3_cpu",
+        "^test_layer_normalization_4d_axis_negative_4_cpu",
+        "^test_layer_normalization_default_axis_cpu",
+        "^test_gelu_tanh_1_expanded_cpu",
+        "^test_gelu_tanh_2_expanded_cpu",
+        "^test_dynamicquantizelinear_expanded_cpu",
+        "^test_center_crop_pad_crop_negative_axes_hwc*", // failed due to new types or shape infer with negative axis for CenterCropPad.
+        "^test_center_crop_pad_crop_negative_axes_hwc_expanded*" // failed due to new types or shape infer with negative axis for CenterCropPad.
+    ],
     "current_failing_tests_pure_DML": [
         "^test_negative_log_likelihood_loss_input_shape_is_NCd1d2d3_none_no_weight_negative_ignore_index_cpu",
         "^test_negative_log_likelihood_loss_input_shape_is_NCd1d2d3_none_no_weight_negative_ignore_index_expanded_cpu",
@@ -723,7 +747,9 @@
         "^test_reduce_prod_empty_set_cpu",
         //Bug: DML EP does not execute operators with an empty input tensor
         //TODO: Resolve as a graph implementation that returns a constant inf tensor with appropriate strides
-        "^test_reduce_min_empty_set_cpu"
+        "^test_reduce_max_empty_set_cpu",   // DNNL result in "(shapes (2, 1, 4), (1, 0, 1) mismatch)". this is the same for test_reduce_min_empty_set which is already in the list
+        "^test_reduce_min_empty_set_cpu",
+        "^test_resize_upsample_sizes_nearest_not_smaller_cpu"
     ],
     // ORT first supported opset 7, so models with nodes that require versions prior to opset 7 are not supported
     "tests_with_pre_opset7_dependencies": [

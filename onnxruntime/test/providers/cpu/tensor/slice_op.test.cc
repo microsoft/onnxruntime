@@ -5,6 +5,7 @@
 #include "gtest/gtest.h"
 #include "test/providers/provider_test_utils.h"
 #include "test/util/include/default_providers.h"
+#include "test/common/tensor_op_test_utils.h"
 
 namespace onnxruntime {
 namespace test {
@@ -264,22 +265,6 @@ TEST(SliceTest, Slice3D) {
 }
 
 template <typename T>
-static std::vector<T> GetTypedArray(std::vector<float> inputs, [[maybe_unused]] T v = T(0.f)) {
-  std::vector<T> inputs_T(inputs.size());
-  if constexpr (std::is_same<T, float>::value) {
-    return inputs;
-  } else if constexpr (std::is_integral_v<T>) {
-    for (size_t i = 0; i < inputs.size(); i++) {
-      inputs_T[i] = static_cast<T>(inputs[i]);
-    }
-    return inputs_T;
-  } else {
-    ConvertFloatToMLFloat16(inputs.data(), inputs_T.data(), inputs.size());
-    return inputs_T;
-  }
-}
-
-template <typename T>
 static void TestSlice1DIntData() {
   // static_assert(std::is_integral_v<TInt>);
   RunSliceTest<T>({6},
@@ -367,6 +352,9 @@ TEST(SliceTest, Slice1D_WithNegativeSteps_EndOutOfBounds_1) {
 }
 
 TEST(SliceTest, Slice1D_WithNegativeSteps_EndOutOfBounds_2) {
+  if (DefaultWebGpuExecutionProvider().get() != nullptr) {
+    GTEST_SKIP() << "Not covered by WebGPU test suite";
+  }
   RunSliceTest<float>({6},
                       {0.0f, 1.0f, 2.0f, 3.0f, 4.0f, 5.0f},
                       {0},
@@ -551,6 +539,9 @@ TEST(SliceTest, Slice1D_ReverseAllAxes_1) {
   if (DefaultVSINPUExecutionProvider().get() != nullptr) {
     GTEST_SKIP() << "Skipping because of the following error: Expected output shape [{4}] did not match run output shape [{0}] for output";
   }
+  if (DefaultWebGpuExecutionProvider().get() != nullptr) {
+    GTEST_SKIP() << "Not covered by WebGPU test suite";
+  }
 
   RunSliceTest<float>({4},
                       {1.0f, 2.0f, 3.0f, 4.0f},
@@ -565,6 +556,9 @@ TEST(SliceTest, Slice1D_ReverseAllAxes_1) {
 
 // With numeric_limit_min, the end value should be clamped to -1
 TEST(SliceTest, Slice1D_ReverseAllAxes_2) {
+  if (DefaultWebGpuExecutionProvider().get() != nullptr) {
+    GTEST_SKIP() << "Not covered by WebGPU test suite";
+  }
   RunSliceTest<float>({4},
                       {1.0f, 2.0f, 3.0f, 4.0f},
                       {-1},
@@ -578,6 +572,9 @@ TEST(SliceTest, Slice1D_ReverseAllAxes_2) {
 
 // giving an end value < -{dim_value} should also clamp it to -1
 TEST(SliceTest, Slice1D_ReverseAllAxes_3) {
+  if (DefaultWebGpuExecutionProvider().get() != nullptr) {
+    GTEST_SKIP() << "Not covered by WebGPU test suite";
+  }
   RunSliceTest<float>({4},
                       {1.0f, 2.0f, 3.0f, 4.0f},
                       {-1},
@@ -593,6 +590,9 @@ TEST(SliceTest, Slice2D_ReverseAllAxes) {
   // TODO: Unskip when fixed #41968513
   if (DefaultDmlExecutionProvider().get() != nullptr) {
     GTEST_SKIP() << "Skipping because of the following error: Expected output shape [{4}] did not match run output shape [{0}] for output";
+  }
+  if (DefaultWebGpuExecutionProvider().get() != nullptr) {
+    GTEST_SKIP() << "Not covered by WebGPU test suite";
   }
 
   RunSliceTest<float>({2, 2},
@@ -611,6 +611,9 @@ TEST(SliceTest, Slice2D_ReverseSubsetOfAxes_1) {
   if (DefaultDmlExecutionProvider().get() != nullptr) {
     GTEST_SKIP() << "Skipping because of the following error: MLOperatorAuthorImpl.cpp(2100): The parameter is incorrect.";
   }
+  if (DefaultWebGpuExecutionProvider().get() != nullptr) {
+    GTEST_SKIP() << "Not covered by WebGPU test suite";
+  }
 
   RunSliceTest<float>({2, 2},
                       {1.0f, 2.0f, 3.0f, 4.0f},
@@ -627,6 +630,9 @@ TEST(SliceTest, Slice2D_ReverseSubsetOfAxes_2) {
   // TODO: Unskip when fixed #41968513
   if (DefaultDmlExecutionProvider().get() != nullptr) {
     GTEST_SKIP() << "Skipping because of the following error: Expected output shape [{2,2}] did not match run output shape [{0,2}] for output";
+  }
+  if (DefaultWebGpuExecutionProvider().get() != nullptr) {
+    GTEST_SKIP() << "Not covered by WebGPU test suite";
   }
 
   RunSliceTest<float>({2, 2},
@@ -681,6 +687,9 @@ TEST(SliceTest, Slice2D_ReverseSubsetOfNegAxes_1) {
   // TODO: Unskip when fixed #41968513
   if (DefaultDmlExecutionProvider().get() != nullptr) {
     GTEST_SKIP() << "Skipping because of the following error: Expected output shape [{2,2}] did not match run output shape [{2,0}] for output";
+  }
+  if (DefaultWebGpuExecutionProvider().get() != nullptr) {
+    GTEST_SKIP() << "Not covered by WebGPU test suite";
   }
 
   RunSliceTest<float>({2, 2},

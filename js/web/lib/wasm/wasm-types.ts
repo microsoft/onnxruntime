@@ -31,6 +31,7 @@ export declare namespace JSEP {
   type ReserveTensorIdFunction = () => number;
   type ReleaseTensorIdFunction = (tensorId: number) => void;
   type EnsureTensorFunction = (
+    sessionId: number | undefined,
     tensorId: number,
     dataType: DataType,
     shape: readonly number[],
@@ -40,18 +41,6 @@ export declare namespace JSEP {
   type DownloadTensorFunction = (tensorId: number, dstBuffer: ArrayBufferView | ArrayBuffer) => Promise<undefined>;
 
   export interface Module extends WebGpuModule, WebNnModule {
-    /**
-     * Mount the external data file to an internal map, which will be used during session initialization.
-     *
-     * @param externalDataFilePath - specify the relative path of the external data file.
-     * @param externalDataFileData - specify the content data.
-     */
-    mountExternalData(externalDataFilePath: string, externalDataFileData: Uint8Array): void;
-    /**
-     * Unmount all external data files from the internal map.
-     */
-    unmountExternalData(): void;
-
     /**
      * This is the entry of JSEP initialization. This function is called once when initializing ONNX Runtime per
      * backend. This function initializes Asyncify support. If name is 'webgpu', also initializes WebGPU backend and
@@ -142,6 +131,12 @@ export declare namespace JSEP {
      */
     jsepOnRunStart: (sessionId: number) => void;
     /**
+     * [exported from pre-jsep.js] Create a session. This function will be called after _OrtCreateSession() is
+     * called.
+     * @returns
+     */
+    jsepOnCreateSession: () => void;
+    /**
      * [exported from pre-jsep.js] Release a session. This function will be called before _OrtReleaseSession() is
      * called.
      * @param sessionId - specify the session ID.
@@ -160,6 +155,13 @@ export declare namespace JSEP {
      * Disables creating MLTensors. This is used to avoid creating MLTensors for graph initializers.
      */
     shouldTransferToMLTensor: boolean;
+
+    /**
+     * [exported from pre-jsep.js] Called when InferenceSession.run finished. This function will be called after
+     * _OrtRun[WithBinding]() is called.
+     * @param sessionId - specify the session ID.
+     */
+    jsepOnRunEnd: (sessionId: number) => void;
 
     /**
      * [exported from pre-jsep.js] Register MLContext for a session.
@@ -181,13 +183,20 @@ export declare namespace JSEP {
     jsepReleaseTensorId: (tensorId: number) => void;
     /**
      * [exported from pre-jsep.js] Ensure that an MLTensor of a given type and shape exists for a MLTensor ID.
+     * @param sessionId - specify the session ID or current active session ID if undefined.
      * @param tensorId - specify the MLTensor ID.
      * @param onnxDataType - specify the data type.
      * @param shape - specify the dimensions (WebNN shape) of the tensor.
      * @param copyOld - specify whether to copy the old tensor if a new tensor was created.
      * @returns the MLTensor associated with the tensor ID.
      */
-    jsepEnsureTensor: (tensorId: number, dataType: DataType, shape: number[], copyOld: boolean) => Promise<MLTensor>;
+    jsepEnsureTensor: (
+      sessionId: number | undefined,
+      tensorId: number,
+      dataType: DataType,
+      shape: number[],
+      copyOld: boolean,
+    ) => Promise<MLTensor>;
     /**
      * [exported from pre-jsep.js] Upload data to an MLTensor.
      * @param tensorId - specify the MLTensor ID.
@@ -213,27 +222,101 @@ export declare namespace JSEP {
     ) => () => Promise<Tensor.DataTypeMap[Tensor.MLTensorDataTypes]>;
     /**
      * [exported from pre-jsep.js] Registers an external MLTensor to a session.
+     * @param sessionId - specify the session ID.
      * @param tensor - specify the MLTensor.
      * @param dataType - specify the data type.
      * @param dimensions - specify the dimensions.
      * @returns the MLTensor ID for the external MLTensor.
      */
-    jsepRegisterMLTensor: (tensor: MLTensor, onnxDataType: DataType, dimensions: readonly number[]) => number;
+    jsepRegisterMLTensor: (
+      sessionId: number,
+      tensor: MLTensor,
+      onnxDataType: DataType,
+      dimensions: readonly number[],
+    ) => number;
+
+    /**
+     * [exported from pre-jsep.js] Create an MLContext from a GPUDevice or MLContextOptions.
+     * @param optionsOrGpuDevice - specify the options or GPUDevice.
+     * @returns
+     */
+    jsepCreateMLContext(optionsOrGpuDevice?: MLContextOptions | GPUDevice): Promise<MLContext>;
+
+    /**
+     * [exported from pre-jsep.js] Register a WebNN Constant operand from external data.
+     * @param externalFilePath - specify the external file path.
+     * @param dataOffset - specify the external data offset.
+     * @param dataLength - specify the external data length.
+     * @param builder - specify the MLGraphBuilder used for constructing the Constant.
+     * @param desc - specify the MLOperandDescriptor of the Constant.
+     * @param shouldConvertInt64ToInt32 - specify whether to convert int64 to int32.
+     * @returns the WebNN Constant operand for the specified external data.
+     */
+    jsepRegisterMLConstant(
+      externalFilePath: string,
+      dataOffset: number,
+      dataLength: number,
+      builder: MLGraphBuilder,
+      desc: MLOperandDescriptor,
+      shouldConvertInt64ToInt32: boolean,
+    ): MLOperand;
+
+    /**
+     * [exported from pre-jsep.js] Register a WebNN graph input.
+     * @param inputName - specify the input name.
+     */
+    jsepRegisterGraphInput: (inputName: string) => void;
+    /**
+     * [exported from pre-jsep.js] Check if a graph input is a WebNN graph input.
+     * @param sessionId - specify the session ID.
+     * @param inputName - specify the input name.
+     * @returns whether the input is a WebNN graph input.
+     */
+    jsepIsGraphInput: (sessionId: number, inputName: string) => boolean;
+    /**
+     * [exported from pre-jsep.js] Create a temporary MLTensor for a session.
+     * @param sessionId - specify the session ID.
+     * @param dataType - specify the data type.
+     * @param shape - specify the shape.
+     * @returns the MLTensor ID for the temporary MLTensor.
+     */
+    jsepCreateTemporaryTensor: (sessionId: number, dataType: DataType, shape: readonly number[]) => Promise<number>;
+    /**
+     * [exported from pre-jsep.js] Check if a session's associated WebNN Context supports int64.
+     * @param sessionId - specify the session ID.
+     * @returns whether the WebNN Context supports int64.
+     */
+    jsepIsInt64Supported: (sessionId: number) => boolean;
+  }
+}
+
+export declare namespace WebGpu {
+  export interface Module {
+    webgpuInit(setDefaultDevice: (device: GPUDevice) => void): void;
+    webgpuRegisterDevice(
+      device?: GPUDevice,
+    ): undefined | [deviceId: number, instanceHandle: number, deviceHandle: number];
+    webgpuOnCreateSession(sessionHandle: number): void;
+    webgpuOnReleaseSession(sessionHandle: number): void;
+    webgpuRegisterBuffer(buffer: GPUBuffer, sessionHandle: number, bufferHandle?: number): number;
+    webgpuUnregisterBuffer(buffer: GPUBuffer): void;
+    webgpuGetBuffer(bufferHandle: number): GPUBuffer;
+    webgpuCreateDownloader(gpuBuffer: GPUBuffer, size: number, sessionHandle: number): () => Promise<ArrayBuffer>;
   }
 }
 
 export interface OrtInferenceAPIs {
   _OrtInit(numThreads: number, loggingLevel: number): number;
 
-  _OrtGetLastError(errorCodeOffset: number, errorMessageOffset: number): void;
+  _OrtGetLastError(errorCodeOffset: number, errorMessageOffset: number): number;
 
   _OrtCreateSession(dataOffset: number, dataLength: number, sessionOptionsHandle: number): Promise<number>;
-  _OrtReleaseSession(sessionHandle: number): void;
+  _OrtReleaseSession(sessionHandle: number): number;
   _OrtGetInputOutputCount(sessionHandle: number, inputCountOffset: number, outputCountOffset: number): number;
   _OrtGetInputName(sessionHandle: number, index: number): number;
   _OrtGetOutputName(sessionHandle: number, index: number): number;
 
-  _OrtFree(stringHandle: number): void;
+  _OrtFree(stringHandle: number): number;
 
   _OrtCreateTensor(
     dataType: number,
@@ -250,12 +333,12 @@ export interface OrtInferenceAPIs {
     dimsOffset: number,
     dimsLength: number,
   ): number;
-  _OrtReleaseTensor(tensorHandle: number): void;
+  _OrtReleaseTensor(tensorHandle: number): number;
   _OrtCreateBinding(sessionHandle: number): number;
   _OrtBindInput(bindingHandle: number, nameOffset: number, tensorHandle: number): Promise<number>;
   _OrtBindOutput(bindingHandle: number, nameOffset: number, tensorHandle: number, location: number): number;
-  _OrtClearBoundOutputs(ioBindingHandle: number): void;
-  _OrtReleaseBinding(ioBindingHandle: number): void;
+  _OrtClearBoundOutputs(ioBindingHandle: number): number;
+  _OrtReleaseBinding(ioBindingHandle: number): number;
   _OrtRunWithBinding(
     sessionHandle: number,
     ioBindingHandle: number,
@@ -286,14 +369,20 @@ export interface OrtInferenceAPIs {
     logVerbosityLevel: number,
     optimizedModelFilePath: number,
   ): number;
-  _OrtAppendExecutionProvider(sessionOptionsHandle: number, name: number): number;
+  _OrtAppendExecutionProvider(
+    sessionOptionsHandle: number,
+    name: number,
+    providerOptionsKeys: number,
+    providerOptionsValues: number,
+    numKeys: number,
+  ): Promise<number>;
   _OrtAddFreeDimensionOverride(sessionOptionsHandle: number, name: number, dim: number): number;
   _OrtAddSessionConfigEntry(sessionOptionsHandle: number, configKey: number, configValue: number): number;
-  _OrtReleaseSessionOptions(sessionOptionsHandle: number): void;
+  _OrtReleaseSessionOptions(sessionOptionsHandle: number): number;
 
   _OrtCreateRunOptions(logSeverityLevel: number, logVerbosityLevel: number, terminate: boolean, tag: number): number;
   _OrtAddRunConfigEntry(runOptionsHandle: number, configKey: number, configValue: number): number;
-  _OrtReleaseRunOptions(runOptionsHandle: number): void;
+  _OrtReleaseRunOptions(runOptionsHandle: number): number;
 
   _OrtEndProfiling(sessionHandle: number): number;
 }
@@ -301,18 +390,48 @@ export interface OrtInferenceAPIs {
 /**
  * The interface of the WebAssembly module for ONNX Runtime, compiled from C++ source code by Emscripten.
  */
-export interface OrtWasmModule extends EmscriptenModule, OrtInferenceAPIs, Partial<JSEP.Module> {
+export interface OrtWasmModule
+  extends EmscriptenModule,
+    OrtInferenceAPIs,
+    Partial<JSEP.Module>,
+    Partial<WebGpu.Module> {
   // #region emscripten functions
   stackSave(): number;
   stackRestore(stack: number): void;
   stackAlloc(size: number): number;
+  getValue(ptr: number, type: string): number;
+  setValue(ptr: number, value: number, type: string): void;
 
   UTF8ToString(offset: number, maxBytesToRead?: number): string;
   lengthBytesUTF8(str: string): number;
   stringToUTF8(str: string, offset: number, maxBytes: number): void;
   // #endregion
 
+  // #region ORT shared
+
+  readonly PTR_SIZE: 4 | 8;
+
+  /**
+   * Mount the external data file to an internal map, which will be used during session initialization.
+   *
+   * @param externalDataFilePath - specify the relative path of the external data file.
+   * @param externalDataFileData - specify the content data.
+   */
+  mountExternalData(externalDataFilePath: string, externalDataFileData: Uint8Array): void;
+  /**
+   * Unmount all external data files from the internal map.
+   */
+  unmountExternalData(): void;
+
+  /**
+   * This function patches the WebAssembly module to support Asyncify. This function should be called at least once
+   * before any ORT API is called.
+   */
+  asyncInit?(): void;
+
+  // #endregion
+
   // #region config
-  numThreads?: number;
+  readonly numThreads?: number;
   // #endregion
 }

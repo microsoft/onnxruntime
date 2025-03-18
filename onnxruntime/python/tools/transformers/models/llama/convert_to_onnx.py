@@ -427,7 +427,7 @@ def convert_to_float16(args: argparse.Namespace, old_paths: list[str], rank: int
     new_paths = [decoder_model_fp16_path, decoder_with_past_model_fp16_path, decoder_merged_model_fp16_path]
 
     logger.info("Converting to float16...")
-    for fp32_path, fp16_path in zip(old_paths, new_paths):
+    for fp32_path, fp16_path in zip(old_paths, new_paths, strict=False):
         if os.path.exists(fp32_path):
             model = OnnxModel(onnx.load_model(fp32_path, load_external_data=True))
             model.convert_float_to_float16(keep_io_types=False)
@@ -455,9 +455,8 @@ def smooth_quant(
     decoder_model_int8_path: str,
     decoder_with_past_model_int8_path: str,
 ):
-    from neural_compressor import PostTrainingQuantConfig
+    from neural_compressor import PostTrainingQuantConfig, set_workspace
     from neural_compressor import quantization as intel_quantization
-    from neural_compressor import set_workspace
     from onnx.external_data_helper import load_external_data_for_model
     from quant_kv_dataloader import QuantKVDataLoader
 
@@ -868,7 +867,7 @@ def main():
 
             # Run the optimizer script.
             logger.info("Optimizing models...")
-            for orig_path, opt_path in zip(old_paths, new_paths):
+            for orig_path, opt_path in zip(old_paths, new_paths, strict=False):
                 if os.path.exists(orig_path):
                     optimize_export(args, l_config, input_path=orig_path, output_path=opt_path, world_size=world_size)
 
@@ -913,7 +912,7 @@ def main():
                     )
 
                     logger.info("Quantizing to int8...")
-                    for fp32_path, int8_path in zip(old_paths, new_paths):
+                    for fp32_path, int8_path in zip(old_paths, new_paths, strict=False):
                         if os.path.exists(fp32_path):
                             ort_quantization.quantize_dynamic(
                                 fp32_path,
@@ -953,7 +952,7 @@ def main():
                 )
                 new_paths = [decoder_model_int4_path, decoder_with_past_model_int4_path, decoder_merged_model_int4_path]
 
-                for fp_path, int4_path in zip(old_paths, new_paths):
+                for fp_path, int4_path in zip(old_paths, new_paths, strict=False):
                     if os.path.exists(fp_path):
                         model = onnx.load_model(fp_path, load_external_data=True)
                         quant = MatMul4BitsQuantizer(

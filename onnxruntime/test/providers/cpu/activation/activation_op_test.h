@@ -105,7 +105,12 @@ class ActivationOpTest : public ::testing::Test {
     std::random_device rd;
     std::mt19937 gen(rd());
     std::uniform_real_distribution<float> dist(low, high);
+#ifdef COREML_ENABLE_MLPROGRAM
+    // please check onnxruntime/onnxruntime/core/providers/coreml/builders/helper.cc:81
+    std::vector<std::size_t> batch_size_list = {1, 2, 4, 9, 100};
+#else
     std::vector<std::size_t> batch_size_list = {1, 2, 4, 9, 100000};
+#endif
     for (auto batch_size : batch_size_list) {
       std::vector<float> vec(batch_size);
       for (size_t i = 0; i != batch_size; ++i) {

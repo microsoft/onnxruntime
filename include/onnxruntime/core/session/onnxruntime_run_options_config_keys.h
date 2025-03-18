@@ -49,8 +49,3 @@ static const char* const kOrtRunOptionsConfigQnnRpcControlLatency = "qnn.rpc_con
 // If the value is set to -1, cuda graph capture/replay is disabled in that run.
 // User are not expected to set the value to 0 as it is reserved for internal use.
 static const char* const kOrtRunOptionsConfigCudaGraphAnnotation = "gpu_graph_id";
-
-// Specify the type of workload for this run.
-// “Default”: OS determines the scheduling priority and processor performance to service this workload. [Default]
-// “Efficient”: OS treats this workload is efficiency oriented with low scheduling priority and efficient processor performance.
-static const char* const kOrtRunOptionsWorkloadType = "run.workload_type";

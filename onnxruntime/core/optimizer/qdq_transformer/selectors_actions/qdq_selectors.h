@@ -26,7 +26,7 @@ class NodeGroupSelector {
  protected:
   // base check that we have the expected number of QDQ inputs/outputs, and `node` isn't producing a graph output.
   // num_dq_inputs defaults to the number of inputs `node` has if not explicitly specified
-  bool CheckQDQNodes(const GraphViewer& graph_viewer, const Node& node,
+  bool CheckQDQNodes(const GraphViewer& graph_viewer, const Node& node, const Node* redundant_clip_node,
                      const std::vector<const Node*>& dq_nodes,
                      const std::vector<const Node*>& q_nodes,
                      int num_dq_inputs = -1,
@@ -34,7 +34,7 @@ class NodeGroupSelector {
 
  private:
   // derived classes should implement this check
-  bool virtual Check(const GraphViewer& graph_viewer, const Node& node,
+  bool virtual Check(const GraphViewer& graph_viewer, const Node& node, const Node* redundant_clip_node,
                      const std::vector<const Node*>& dq_nodes,
                      const std::vector<const Node*>& q_nodes) const = 0;
 };
@@ -53,7 +53,7 @@ class DropQDQNodeGroupSelector : public NodeGroupSelector {
       : allow_16bit_(allow_16bit), allow_4bit_(allow_4bit), allow_nonpositive_scale_(allow_nonpositive_scale) {}
 
  private:
-  bool Check(const GraphViewer& graph_viewer, const Node& node,
+  bool Check(const GraphViewer& graph_viewer, const Node& node, const Node* redundant_clip_node,
              const std::vector<const Node*>& dq_nodes,
              const std::vector<const Node*>& q_nodes) const override;
 
@@ -69,7 +69,7 @@ class DropDQNodeGroupSelector : public NodeGroupSelector {
       : allow_16bit_(allow_16bit), allow_4bit_(allow_4bit) {}
 
  private:
-  bool Check(const GraphViewer& graph_viewer, const Node& node,
+  bool Check(const GraphViewer& graph_viewer, const Node& node, const Node* redundant_clip_node,
              const std::vector<const Node*>& dq_nodes,
              const std::vector<const Node*>& q_nodes) const override;
 
@@ -84,7 +84,7 @@ class UnaryNodeGroupSelector : public NodeGroupSelector {
       : allow_16bit_(allow_16bit), allow_4bit_(allow_4bit) {}
 
  private:
-  bool Check(const GraphViewer& graph_viewer, const Node& node,
+  bool Check(const GraphViewer& graph_viewer, const Node& node, const Node* redundant_clip_node,
              const std::vector<const Node*>& dq_nodes,
              const std::vector<const Node*>& q_nodes) const override;
 
@@ -99,7 +99,7 @@ class BinaryNodeGroupSelector : public NodeGroupSelector {
       : allow_16bit_(allow_16bit), allow_4bit_(allow_4bit) {}
 
  private:
-  bool Check(const GraphViewer& graph_viewer, const Node& node,
+  bool Check(const GraphViewer& graph_viewer, const Node& node, const Node* redundant_clip_node,
              const std::vector<const Node*>& dq_nodes,
              const std::vector<const Node*>& q_nodes) const override;
 
@@ -114,7 +114,7 @@ class VariadicNodeGroupSelector : public NodeGroupSelector {
       : allow_16bit_(allow_16bit), allow_4bit_(allow_4bit) {}
 
  private:
-  bool Check(const GraphViewer& graph_viewer, const Node& node,
+  bool Check(const GraphViewer& graph_viewer, const Node& node, const Node* redundant_clip_node,
              const std::vector<const Node*>& dq_nodes,
              const std::vector<const Node*>& q_nodes) const override;
 
@@ -131,7 +131,7 @@ class SplitNodeGroupSelector : public NodeGroupSelector {
       : req_equal_quant_params_(req_equal_quant_params), allow_4bit_(allow_4bit) {}
 
  private:
-  bool Check(const GraphViewer& graph_viewer, const Node& node,
+  bool Check(const GraphViewer& graph_viewer, const Node& node, const Node* redundant_clip_node,
              const std::vector<const Node*>& dq_nodes,
              const std::vector<const Node*>& q_nodes) const override;
 
@@ -149,7 +149,7 @@ class ConvNodeGroupSelector : public NodeGroupSelector {
       : int8_allowed_(int8_allowed), allow_16bit_(allow_16bit), allow_4bit_weight_(allow_4bit_weight) {}
 
  private:
-  bool Check(const GraphViewer& graph_viewer, const Node& node,
+  bool Check(const GraphViewer& graph_viewer, const Node& node, const Node* redundant_clip_node,
              const std::vector<const Node*>& dq_nodes,
              const std::vector<const Node*>& q_nodes) const override;
 
@@ -164,7 +164,7 @@ class WhereNodeGroupSelector : public NodeGroupSelector {
       : allow_16bit_(allow_16bit), allow_4bit_(allow_4bit) {}
 
  private:
-  bool Check(const GraphViewer& graph_viewer, const Node& node,
+  bool Check(const GraphViewer& graph_viewer, const Node& node, const Node* redundant_clip_node,
              const std::vector<const Node*>& dq_nodes,
              const std::vector<const Node*>& q_nodes) const override;
 
@@ -177,7 +177,7 @@ class PadNodeGroupSelector : public NodeGroupSelector {
   PadNodeGroupSelector() = default;
 
  private:
-  bool Check(const GraphViewer& graph_viewer, const Node& node,
+  bool Check(const GraphViewer& graph_viewer, const Node& node, const Node* redundant_clip_node,
              const std::vector<const Node*>& dq_nodes,
              const std::vector<const Node*>& q_nodes) const override;
 };
@@ -197,7 +197,7 @@ class MatMulNodeGroupSelector : public NodeGroupSelector {
   }
 
  private:
-  bool Check(const GraphViewer& graph_viewer, const Node& node,
+  bool Check(const GraphViewer& graph_viewer, const Node& node, const Node* redundant_clip_node,
              const std::vector<const Node*>& dq_nodes,
              const std::vector<const Node*>& q_nodes) const override;
   bool int8_allowed_;
@@ -209,7 +209,7 @@ class MatMulNodeGroupSelector : public NodeGroupSelector {
 // Convert "1 DQ node for input B -> MatMul" to "MatMulNBits"
 class DQMatMulNodeGroupSelector : public NodeGroupSelector {
  private:
-  bool Check(const GraphViewer& graph_viewer, const Node& node,
+  bool Check(const GraphViewer& graph_viewer, const Node& node, const Node* redundant_clip_node,
              const std::vector<const Node*>& dq_nodes,
              const std::vector<const Node*>& q_nodes) const override;
 };
@@ -222,7 +222,7 @@ class GemmNodeGroupSelector : public NodeGroupSelector {
       : allow_16bit_(allow_16bit), allow_4bit_(allow_4bit) {}
 
  private:
-  bool Check(const GraphViewer& graph_viewer, const Node& node,
+  bool Check(const GraphViewer& graph_viewer, const Node& node, const Node* redundant_clip_node,
              const std::vector<const Node*>& dq_nodes,
              const std::vector<const Node*>& q_nodes) const override;
 
@@ -234,7 +234,7 @@ class GemmNodeGroupSelector : public NodeGroupSelector {
 // Output: Q node for output
 class InstanceAndLayerNormalizationNodeGroupSelector : public NodeGroupSelector {
  private:
-  bool Check(const GraphViewer& graph_viewer, const Node& node,
+  bool Check(const GraphViewer& graph_viewer, const Node& node, const Node* redundant_clip_node,
              const std::vector<const Node*>& dq_nodes,
              const std::vector<const Node*>& q_nodes) const override;
 };
@@ -246,7 +246,7 @@ class BatchNormalizationNodeGroupSelector : public NodeGroupSelector {
   BatchNormalizationNodeGroupSelector(bool int8_allowed = true) : int8_allowed_(int8_allowed) {}
 
  private:
-  bool Check(const GraphViewer& graph_viewer, const Node& node,
+  bool Check(const GraphViewer& graph_viewer, const Node& node, const Node* redundant_clip_node,
              const std::vector<const Node*>& dq_nodes,
              const std::vector<const Node*>& q_nodes) const override;
 
@@ -256,7 +256,7 @@ class BatchNormalizationNodeGroupSelector : public NodeGroupSelector {
 // 2 DQ nodes providing input -> node with bool output tensor.
 // Example: Equal, Less, Greater.
 class LogicalComparisonNodeGroupSelector : public NodeGroupSelector {
-  bool Check(const GraphViewer& graph_viewer, const Node& node,
+  bool Check(const GraphViewer& graph_viewer, const Node& node, const Node* redundant_clip_node,
              const std::vector<const Node*>& dq_nodes,
              const std::vector<const Node*>& q_nodes) const override;
 };
@@ -264,7 +264,7 @@ class LogicalComparisonNodeGroupSelector : public NodeGroupSelector {
 // TopK has 1 DQ input node and 1 Q output node.
 // Zero point and scale are constant scalars and must match
 class TopKNodeGroupSelector : public NodeGroupSelector {
-  bool Check(const GraphViewer& graph_viewer, const Node& node,
+  bool Check(const GraphViewer& graph_viewer, const Node& node, const Node* redundant_clip_node,
              const std::vector<const Node*>& dq_nodes,
              const std::vector<const Node*>& q_nodes) const override;
 };

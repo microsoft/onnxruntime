@@ -65,6 +65,11 @@ export interface GpuDataManager {
   dispose(): void;
 
   /**
+   * create session related data.
+   */
+  onCreateSession(): void;
+
+  /**
    * release session related data.
    * @param sessionId - specify the session ID.
    */
@@ -112,7 +117,7 @@ const bucketArr: number[] = [];
 /**
  * normalize the buffer size so that it fits the 128-bits (16 bytes) alignment.
  */
-const calcNormalizedBufferSize = (size: number) => Math.ceil(size / 16) * 16;
+const calcNormalizedBufferSize = (size: number) => Math.ceil(Number(size) / 16) * 16;
 
 /**
  * calculate the buffer size so that it fits into buckets.
@@ -186,8 +191,6 @@ class GpuDataManagerImpl implements GpuDataManager {
   // GPU Data ID => GPU Data ( storage buffer )
   private storageCache: Map<GpuDataId, StorageCacheValue>;
 
-  // pending buffers for uploading ( data is unmapped )
-  private buffersForUploadingPending: GPUBuffer[];
   // pending buffers for computing
   private buffersPending: GPUBuffer[];
 
@@ -200,11 +203,13 @@ class GpuDataManagerImpl implements GpuDataManager {
   // a SessionID -> GPUBuffer[] mapping.
   private capturedPendingBuffers: Map<number, GPUBuffer[]>;
 
+  // The session count.
+  private sessionCount: number;
+
   constructor(private backend: WebGpuBackend) {
     this.storageCache = new Map();
     this.freeBuffers = new Map();
     this.freeUniformBuffers = new Map();
-    this.buffersForUploadingPending = [];
     this.buffersPending = [];
     this.capturedPendingBuffers = new Map();
 
@@ -213,6 +218,8 @@ class GpuDataManagerImpl implements GpuDataManager {
       this.freeBuffers.set(key, []);
       this.freeUniformBuffers.set(key, []);
     }
+
+    this.sessionCount = 0;
   }
 
   upload(id: GpuDataId, data: Uint8Array): void {
@@ -226,7 +233,7 @@ class GpuDataManagerImpl implements GpuDataManager {
     if (!gpuDataCache) {
       throw new Error('gpu data for uploading does not exist');
     }
-    if (gpuDataCache.originalSize !== srcLength) {
+    if (Number(gpuDataCache.originalSize) !== srcLength) {
       throw new Error(`inconsistent data size. gpu data size=${gpuDataCache.originalSize}, data size=${srcLength}`);
     }
 
@@ -242,13 +249,12 @@ class GpuDataManagerImpl implements GpuDataManager {
     gpuBufferForUploading.unmap();
 
     // GPU copy
-    const commandEncoder = this.backend.getCommandEncoder();
-    this.backend.endComputePass();
+    const commandEncoder = this.backend.device.createCommandEncoder();
     commandEncoder.copyBufferToBuffer(gpuBufferForUploading, 0, gpuDataCache.gpuData.buffer, 0, size);
+    this.backend.device.queue.submit([commandEncoder.finish()]);
+    gpuBufferForUploading.destroy();
 
     LOG_DEBUG('verbose', () => `[WebGPU] GpuDataManager.upload(id=${id})`);
-
-    this.buffersForUploadingPending.push(gpuBufferForUploading);
   }
 
   memcpy(sourceId: GpuDataId, destinationId: GpuDataId): void {
@@ -288,9 +294,7 @@ class GpuDataManagerImpl implements GpuDataManager {
         LOG_DEBUG(
           'verbose',
           () =>
-            `[WebGPU] GpuDataManager.registerExternalBuffer(size=${originalSize}) => id=${
-              id
-            }, buffer is the same, skip.`,
+            `[WebGPU] GpuDataManager.registerExternalBuffer(size=${originalSize}) => id=${id}, buffer is the same, skip.`,
         );
         return id;
       } else if (this.backend.capturedCommandList.has(this.backend.currentSessionId!)) {
@@ -347,7 +351,7 @@ class GpuDataManagerImpl implements GpuDataManager {
     }
 
     const gpuData = { id: createNewGpuDataId(), type: GpuDataType.default, buffer: gpuBuffer };
-    this.storageCache.set(gpuData.id, { gpuData, originalSize: size });
+    this.storageCache.set(gpuData.id, { gpuData, originalSize: Number(size) });
 
     LOG_DEBUG('verbose', () => `[WebGPU] GpuDataManager.create(size=${size}) => id=${gpuData.id}`);
     return gpuData;
@@ -357,10 +361,16 @@ class GpuDataManagerImpl implements GpuDataManager {
     return this.storageCache.get(id)?.gpuData;
   }
 
-  release(id: GpuDataId): number {
+  release(idInput: GpuDataId): number {
+    const id = typeof idInput === 'bigint' ? Number(idInput) : idInput;
     const cachedData = this.storageCache.get(id);
     if (!cachedData) {
-      throw new Error('releasing data does not exist');
+      if (this.storageCache.size === 0) {
+        // cache was previously cleared, no need to release anything.
+        return 0;
+      } else {
+        throw new Error('releasing data does not exist');
+      }
     }
 
     LOG_DEBUG('verbose', () => `[WebGPU] GpuDataManager.release(id=${id}), gpuDataId=${cachedData.gpuData.id}`);
@@ -373,7 +383,7 @@ class GpuDataManagerImpl implements GpuDataManager {
   }
 
   async download(id: GpuDataId, getTargetBuffer: () => Uint8Array): Promise<void> {
-    const cachedData = this.storageCache.get(id);
+    const cachedData = this.storageCache.get(Number(id));
     if (!cachedData) {
       throw new Error('data does not exist');
     }
@@ -381,12 +391,6 @@ class GpuDataManagerImpl implements GpuDataManager {
   }
 
   refreshPendingBuffers(): void {
-    for (const buffer of this.buffersForUploadingPending) {
-      // upload buffer is only useful in the session creation time. So we don't need to reuse them in session running.
-      buffer.destroy();
-    }
-    this.buffersForUploadingPending = [];
-
     if (this.buffersPending.length === 0) {
       return;
     }
@@ -460,6 +464,10 @@ class GpuDataManagerImpl implements GpuDataManager {
     this.capturedPendingBuffers = new Map();
   }
 
+  onCreateSession() {
+    this.sessionCount += 1;
+  }
+
   onReleaseSession(sessionId: number) {
     // release the captured pending buffers.
     const pendingBuffers = this.capturedPendingBuffers.get(sessionId);
@@ -468,6 +476,16 @@ class GpuDataManagerImpl implements GpuDataManager {
         buffer.destroy();
       });
       this.capturedPendingBuffers.delete(sessionId);
+    }
+
+    // release the storage cache if no active sessions.
+    this.sessionCount -= 1;
+    if (this.sessionCount === 0) {
+      LOG_DEBUG('warning', () => '[WebGPU] Clearing webgpu buffer cache');
+      this.storageCache.forEach((storage) => {
+        storage.gpuData.buffer.destroy();
+      });
+      this.storageCache = new Map();
     }
   }
 }

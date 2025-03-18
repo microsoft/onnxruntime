@@ -10,7 +10,7 @@ common::Status OnnxRuntimeOpSchemaRegistry::SetBaselineAndOpsetVersionForDomain(
     const std::string& domain,
     int baseline_opset_version,
     int opset_version) {
-  std::lock_guard<OrtMutex> lock(mutex_);
+  std::lock_guard<std::mutex> lock(mutex_);
 
   auto it = domain_version_range_map_.find(domain);
   if (domain_version_range_map_.end() != it) {

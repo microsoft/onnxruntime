@@ -50,7 +50,6 @@
 #include "core/common/denormal.h"
 #include "core/common/inlined_containers_fwd.h"
 #include "core/common/spin_pause.h"
-#include "core/platform/ort_mutex.h"
 #include "core/platform/ort_spin_lock.h"
 #include "core/platform/Barrier.h"
 
@@ -219,18 +218,18 @@ class ThreadPoolProfiler {
     WAIT_REVOKE,
     MAX_EVENT
   };
-  ThreadPoolProfiler(int, const CHAR_TYPE*) {};
+  ThreadPoolProfiler(int, const CHAR_TYPE*) {}
   ~ThreadPoolProfiler() = default;
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(ThreadPoolProfiler);
-  void Start() {};
+  void Start() {}
   std::string Stop() { return "not available for minimal build"; }
-  void LogStart() {};
-  void LogEnd(ThreadPoolEvent){};
-  void LogEndAndStart(ThreadPoolEvent){};
-  void LogStartAndCoreAndBlock(std::ptrdiff_t){};
-  void LogCoreAndBlock(std::ptrdiff_t){};
-  void LogThreadId(int) {};
-  void LogRun(int) {};
+  void LogStart() {}
+  void LogEnd(ThreadPoolEvent) {}
+  void LogEndAndStart(ThreadPoolEvent) {}
+  void LogStartAndCoreAndBlock(std::ptrdiff_t) {}
+  void LogCoreAndBlock(std::ptrdiff_t) {}
+  void LogThreadId(int) {}
+  void LogRun(int) {}
   std::string DumpChildThreadStat() { return {}; }
 };
 #else
@@ -460,7 +459,7 @@ class RunQueue {
 #ifdef USE_LOCK_FREE_QUEUE
     std::lock_guard<OrtSpinLock> mtx(spin_lock_);
 #else
-    std::lock_guard<OrtMutex> lock(mutex_);
+    std::lock_guard<std::mutex> lock(mutex_);
 #endif
     unsigned back = back_.load(std::memory_order_relaxed);
     Elem& e = array_[(back - 1) & kMask];
@@ -484,7 +483,7 @@ class RunQueue {
 #ifdef USE_LOCK_FREE_QUEUE
     std::lock_guard<OrtSpinLock> mtx(spin_lock_);
 #else
-    std::lock_guard<OrtMutex> lock(mutex_);
+    std::lock_guard<std::mutex> lock(mutex_);
 #endif
     unsigned back = back_.load(std::memory_order_relaxed);
     w_idx = (back - 1) & kMask;
@@ -509,7 +508,7 @@ class RunQueue {
 #ifdef USE_LOCK_FREE_QUEUE
     std::lock_guard<OrtSpinLock> mtx(spin_lock_);
 #else
-    std::lock_guard<OrtMutex> lock(mutex_);
+    std::lock_guard<std::mutex> lock(mutex_);
 #endif
     unsigned back;
     Elem* e;
@@ -555,7 +554,7 @@ class RunQueue {
 #ifdef USE_LOCK_FREE_QUEUE
     std::lock_guard<OrtSpinLock> mtx(spin_lock_);
 #else
-    std::lock_guard<OrtMutex> lock(mutex_);
+    std::lock_guard<std::mutex> lock(mutex_);
 #endif
     Elem& e = array_[w_idx];
     ElemState s = e.state.load(std::memory_order_relaxed);
@@ -631,7 +630,7 @@ class RunQueue {
 #ifdef USE_LOCK_FREE_QUEUE
   OrtSpinLock spin_lock_;
 #else
-  OrtMutex mutex_;
+  std::mutex mutex_;
 #endif
 
   // Low log(kSize) + 1 bits in front_ and back_ contain rolling index of
@@ -695,7 +694,7 @@ class RunQueue {
 
 static std::atomic<uint32_t> next_tag{1};
 
-template <typename Environment, bool kIsHybrid>
+template <typename Environment>
 class ThreadPoolTempl : public onnxruntime::concurrency::ExtendedThreadPoolInterface {
  private:
   struct PerThread;
@@ -766,29 +765,6 @@ class ThreadPoolTempl : public onnxruntime::concurrency::ExtendedThreadPoolInter
 
   typedef std::function<void()> Task;
   typedef RunQueue<Task, Tag, 1024> Queue;
-
-  // Class for waiting w/ exponential backoff.
-  // Template argument is maximum number of spins in backoff loop.
-  template <unsigned kMaxBackoff>
-  class ThreadPoolWaiter {
-    // Current number if spins in backoff loop
-    unsigned pause_time_;
-
-   public:
-    void wait() {
-      // If kMaxBackoff is zero don't do any pausing.
-      if constexpr (kMaxBackoff == 1) {
-        onnxruntime::concurrency::SpinPause();
-      } else if constexpr (kMaxBackoff > 1) {
-        // Exponential backoff
-        unsigned pause_time = pause_time_ + 1U;
-        for (unsigned i = 0; i < pause_time; ++i) {
-          onnxruntime::concurrency::SpinPause();
-        }
-        pause_time_ = (pause_time * 2U) % kMaxBackoff;
-      }
-    }
-  };
 
   ThreadPoolTempl(const CHAR_TYPE* name, int num_threads, bool allow_spinning, Environment& env,
                   const ThreadOptions& thread_options)
@@ -931,9 +907,8 @@ class ThreadPoolTempl : public onnxruntime::concurrency::ExtendedThreadPoolInter
     // finish dispatch work.  This avoids new tasks being started
     // concurrently with us attempting to end the parallel section.
     if (ps.dispatch_q_idx != -1) {
-      ThreadPoolWaiter<4> waiter{};
       while (!ps.dispatch_done.load(std::memory_order_acquire)) {
-        waiter.wait();
+        onnxruntime::concurrency::SpinPause();
       }
     }
 
@@ -955,17 +930,15 @@ class ThreadPoolTempl : public onnxruntime::concurrency::ExtendedThreadPoolInter
 
     // Wait for the dispatch task's own work...
     if (ps.dispatch_q_idx > -1) {
-      ThreadPoolWaiter<kIsHybrid ? 0 : 1> waiter{};
       while (!ps.work_done.load(std::memory_order_acquire)) {
-        waiter.wait();
+        onnxruntime::concurrency::SpinPause();
       }
     }
 
     // ...and wait for any other tasks not revoked to finish their work
     auto tasks_to_wait_for = tasks_started - ps.tasks_revoked;
-    ThreadPoolWaiter<kIsHybrid ? 0 : 1> waiter{};
     while (ps.tasks_finished < tasks_to_wait_for) {
-      waiter.wait();
+      onnxruntime::concurrency::SpinPause();
     }
 
     // Clear status to allow the ThreadPoolParallelSection to be
@@ -1283,10 +1256,9 @@ class ThreadPoolTempl : public onnxruntime::concurrency::ExtendedThreadPoolInter
     // Increase the worker count if needed.  Each worker will pick up
     // loops to execute from the current parallel section.
     std::function<void(unsigned)> worker_fn = [&ps](unsigned par_idx) {
-      ThreadPoolWaiter<kIsHybrid ? 4 : 0> waiter{};
       while (ps.active) {
         if (ps.current_loop.load() == nullptr) {
-          waiter.wait();
+          onnxruntime::concurrency::SpinPause();
         } else {
           ps.workers_in_loop++;
           ThreadPoolLoop* work_item = ps.current_loop;
@@ -1307,9 +1279,8 @@ class ThreadPoolTempl : public onnxruntime::concurrency::ExtendedThreadPoolInter
 
     // Wait for workers to exit the loop
     ps.current_loop = 0;
-    ThreadPoolWaiter<kIsHybrid ? 1 : 4> waiter{};
     while (ps.workers_in_loop) {
-      waiter.wait();
+      onnxruntime::concurrency::SpinPause();
     }
     profiler_.LogEnd(ThreadPoolProfiler::WAIT);
   }
@@ -1468,7 +1439,7 @@ class ThreadPoolTempl : public onnxruntime::concurrency::ExtendedThreadPoolInter
       ThreadStatus seen = GetStatus();
       if (seen == ThreadStatus::Blocking ||
           seen == ThreadStatus::Blocked) {
-        std::unique_lock<OrtMutex> lk(mutex);
+        std::unique_lock<std::mutex> lk(mutex);
         // Blocking state exists only transiently during the SetBlock() method
         // while holding the lock.  We may observe it at the start of this
         // function, but after acquiring the lock then the target thread
@@ -1496,11 +1467,14 @@ class ThreadPoolTempl : public onnxruntime::concurrency::ExtendedThreadPoolInter
       status = ThreadStatus::Spinning;
     }
 
-    void SetBlocked(std::function<bool()> should_block,
+    bool SetBlocked(std::function<bool()> should_block,
                     std::function<void()> post_block) {
-      std::unique_lock<OrtMutex> lk(mutex);
-      assert(GetStatus() == ThreadStatus::Spinning);
-      status.store(ThreadStatus::Blocking, std::memory_order_relaxed);
+      std::unique_lock<std::mutex> lk(mutex);
+      auto old_status = status.exchange(ThreadStatus::Blocking, std::memory_order_seq_cst);
+      if (old_status != ThreadStatus::Spinning) {
+        // Encountered a logical error
+        return false;
+      }
       if (should_block()) {
         status.store(ThreadStatus::Blocked, std::memory_order_relaxed);
         do {
@@ -1509,12 +1483,13 @@ class ThreadPoolTempl : public onnxruntime::concurrency::ExtendedThreadPoolInter
         post_block();
       }
       status.store(ThreadStatus::Spinning, std::memory_order_relaxed);
+      return true;
     }
 
    private:
     std::atomic<ThreadStatus> status{ThreadStatus::Spinning};
-    OrtMutex mutex;
-    OrtCondVar cv;
+    std::mutex mutex;
+    std::condition_variable cv;
   };
 
   Environment& env_;
@@ -1560,30 +1535,13 @@ class ThreadPoolTempl : public onnxruntime::concurrency::ExtendedThreadPoolInter
 
     assert(td.GetStatus() == WorkerData::ThreadStatus::Spinning);
 
-    // The exact value of spin_count and steal_count are arbitrary and
-    // were experimentally determined. These numbers yielded the best
-    // performance across a range of workloads and
-    // machines. Generally, the goal of tuning spin_count is to make
-    // the number as small as possible while ensuring there is enough
-    // slack so that if each core is doing the same amount of work it
-    // won't sleep before they have all finished. The idea here is
-    // that in pipelined workloads, it won't sleep during each stage
-    // if it's done a bit faster than its neighbors, but that if there
-    // are non-equal sizes of work distributed, it won't take too long
-    // to reach sleep giving power (and thus frequency/performance) to
-    // its neighbors.  Since hybrid has P/E cores, a lower value is
-    // chosen. On hybrid systems, even with equal sized workloads
-    // distributed the compute time won't stay synced. Typically in
-    // the hybrid case the P cores finish first (and are thus waiting)
-    // which is essentially a priority inversion.
-    constexpr int pref_spin_count = kIsHybrid ? 5000 : 10000;
-    const int spin_count = allow_spinning_ ? pref_spin_count : 0;
-    constexpr int steal_count = pref_spin_count / (kIsHybrid ? 25 : 100);
+    constexpr int log2_spin = 20;
+    const int spin_count = allow_spinning_ ? (1ull << log2_spin) : 0;
+    const int steal_count = spin_count / 100;
 
     SetDenormalAsZero(set_denormal_as_zero_);
     profiler_.LogThreadId(thread_id);
 
-    ThreadPoolWaiter<kIsHybrid ? 1 : 8> waiter{};
     while (!should_exit) {
       Task t = q.PopFront();
       if (!t) {
@@ -1599,67 +1557,71 @@ class ThreadPoolTempl : public onnxruntime::concurrency::ExtendedThreadPoolInter
           if (spin_loop_status_.load(std::memory_order_relaxed) == SpinLoopStatus::kIdle) {
             break;
           }
-          waiter.wait();
+          onnxruntime::concurrency::SpinPause();
         }
 
         // Attempt to block
         if (!t) {
-          td.SetBlocked(  // Pre-block test
-              [&]() -> bool {
-                bool should_block = true;
-                // Check whether work was pushed to us while attempting to block.  We make
-                // this test while holding the per-thread status lock, and after setting
-                // our status to ThreadStatus::Blocking.
-                //
-                // This synchronizes with ThreadPool::Schedule which pushes work to the queue
-                // and then tests for ThreadStatus::Blocking/Blocked (via EnsureAwake):
-                //
-                // Main thread:                    Worker:
-                //   #1 Push work                   #A Set status blocking
-                //   #2 Read worker status          #B Check queue
-                //   #3 Wake if blocking/blocked
-                //
-                // If #A is before #2 then main sees worker blocked and wakes
-                //
-                // If #A if after #2 then #B will see #1, and we abandon blocking
-                assert(!t);
-                t = q.PopFront();
-                if (t) {
-                  should_block = false;
-                }
-
-                // No work pushed to us, continue attempting to block.  The remaining
-                // test  is to synchronize with termination requests.  If we are
-                // shutting down and all worker threads blocked without work, that's
-                // we are done.
-                if (should_block) {
-                  blocked_++;
-                  if (done_ && blocked_ == num_threads_) {
-                    should_block = false;
-                    // Almost done, but need to re-check queues.
-                    // Consider that all queues are empty and all worker threads are preempted
-                    // right after incrementing blocked_ above. Now a free-standing thread
-                    // submits work and calls destructor (which sets done_). If we don't
-                    // re-check queues, we will exit leaving the work unexecuted.
-                    if (NonEmptyQueueIndex() != -1) {
-                      // Note: we must not pop from queues before we decrement blocked_,
-                      // otherwise the following scenario is possible. Consider that instead
-                      // of checking for emptiness we popped the only element from queues.
-                      // Now other worker threads can start exiting, which is bad if the
-                      // work item submits other work. So we just check emptiness here,
-                      // which ensures that all worker threads exit at the same time.
-                      blocked_--;
-                    } else {
-                      should_exit = true;
+          if (!td.SetBlocked(  // Pre-block test
+                  [&]() -> bool {
+                    bool should_block = true;
+                    // Check whether work was pushed to us while attempting to block.  We make
+                    // this test while holding the per-thread status lock, and after setting
+                    // our status to ThreadStatus::Blocking.
+                    //
+                    // This synchronizes with ThreadPool::Schedule which pushes work to the queue
+                    // and then tests for ThreadStatus::Blocking/Blocked (via EnsureAwake):
+                    //
+                    // Main thread:                    Worker:
+                    //   #1 Push work                   #A Set status blocking
+                    //   #2 Read worker status          #B Check queue
+                    //   #3 Wake if blocking/blocked
+                    //
+                    // If #A is before #2 then main sees worker blocked and wakes
+                    //
+                    // If #A if after #2 then #B will see #1, and we abandon blocking
+                    assert(!t);
+                    t = q.PopFront();
+                    if (t) {
+                      should_block = false;
                     }
-                  }
-                }
-                return should_block;
-              },
-              // Post-block update (executed only if we blocked)
-              [&]() {
-                blocked_--;
-              });
+
+                    // No work pushed to us, continue attempting to block.  The remaining
+                    // test  is to synchronize with termination requests.  If we are
+                    // shutting down and all worker threads blocked without work, that's
+                    // we are done.
+                    if (should_block) {
+                      blocked_++;
+                      if (done_ && blocked_ == num_threads_) {
+                        should_block = false;
+                        // Almost done, but need to re-check queues.
+                        // Consider that all queues are empty and all worker threads are preempted
+                        // right after incrementing blocked_ above. Now a free-standing thread
+                        // submits work and calls destructor (which sets done_). If we don't
+                        // re-check queues, we will exit leaving the work unexecuted.
+                        if (NonEmptyQueueIndex() != -1) {
+                          // Note: we must not pop from queues before we decrement blocked_,
+                          // otherwise the following scenario is possible. Consider that instead
+                          // of checking for emptiness we popped the only element from queues.
+                          // Now other worker threads can start exiting, which is bad if the
+                          // work item submits other work. So we just check emptiness here,
+                          // which ensures that all worker threads exit at the same time.
+                          blocked_--;
+                        } else {
+                          should_exit = true;
+                        }
+                      }
+                    }
+                    return should_block;
+                  },
+                  // Post-block update (executed only if we blocked)
+                  [&]() {
+                    blocked_--;
+                  })) {
+            // Encountered a fatal logic error in SetBlocked
+            should_exit = true;
+            break;
+          }
           // Thread just unblocked.  Unless we picked up work while
           // blocking, or are exiting, then either work was pushed to
           // us, or it was pushed to an overloaded queue

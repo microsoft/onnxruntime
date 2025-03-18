@@ -11,8 +11,8 @@ import argparse
 import csv
 import statistics
 import time
+from collections.abc import Mapping
 from datetime import datetime
-from typing import List, Mapping, Optional
 
 import torch
 from image_decoder import SAM2ImageDecoder
@@ -46,6 +46,7 @@ class TestConfig:
         prefer_nhwc: bool = False,
         warm_up: int = 5,
         enable_nvtx_profile: bool = False,
+        enable_ort_profile: bool = False,
         enable_torch_profile: bool = False,
         repeats: int = 1000,
         verbose: bool = False,
@@ -74,6 +75,7 @@ class TestConfig:
         self.prefer_nhwc = prefer_nhwc
         self.warm_up = warm_up
         self.enable_nvtx_profile = enable_nvtx_profile
+        self.enable_ort_profile = enable_ort_profile
         self.enable_torch_profile = enable_torch_profile
         self.repeats = repeats
         self.verbose = verbose
@@ -84,32 +86,29 @@ class TestConfig:
     def __repr__(self):
         return f"{vars(self)}"
 
-    def shape_dict(self) -> Mapping[str, List[int]]:
+    def shape_dict(self) -> Mapping[str, list[int]]:
         if self.component == "image_encoder":
             return encoder_shape_dict(self.batch_size, self.height, self.width)
         else:
             return decoder_shape_dict(self.height, self.width, self.num_labels, self.num_points, self.num_masks)
 
-    def random_inputs(self):
+    def random_inputs(self) -> Mapping[str, torch.Tensor]:
+        dtype = self.dtype
         if self.component == "image_encoder":
-            return {
-                "image": torch.randn(
-                    self.batch_size, 3, self.height, self.width, dtype=torch.float32, device=self.device
-                )
-            }
+            return {"image": torch.randn(self.batch_size, 3, self.height, self.width, dtype=dtype, device=self.device)}
         else:
             return {
-                "image_features_0": torch.rand(1, 32, 256, 256, dtype=torch.float32, device=self.device),
-                "image_features_1": torch.rand(1, 64, 128, 128, dtype=torch.float32, device=self.device),
-                "image_embeddings": torch.rand(1, 256, 64, 64, dtype=torch.float32, device=self.device),
+                "image_features_0": torch.rand(1, 32, 256, 256, dtype=dtype, device=self.device),
+                "image_features_1": torch.rand(1, 64, 128, 128, dtype=dtype, device=self.device),
+                "image_embeddings": torch.rand(1, 256, 64, 64, dtype=dtype, device=self.device),
                 "point_coords": torch.randint(
-                    0, 1024, (self.num_labels, self.num_points, 2), dtype=torch.float32, device=self.device
+                    0, 1024, (self.num_labels, self.num_points, 2), dtype=dtype, device=self.device
                 ),
                 "point_labels": torch.randint(
                     0, 1, (self.num_labels, self.num_points), dtype=torch.int32, device=self.device
                 ),
-                "input_masks": torch.zeros(self.num_labels, 1, 256, 256, dtype=torch.float32, device=self.device),
-                "has_input_masks": torch.ones(self.num_labels, dtype=torch.float32, device=self.device),
+                "input_masks": torch.zeros(self.num_labels, 1, 256, 256, dtype=dtype, device=self.device),
+                "has_input_masks": torch.ones(self.num_labels, dtype=dtype, device=self.device),
                 "original_image_size": torch.tensor([self.height, self.width], dtype=torch.int32, device=self.device),
             }
 
@@ -286,7 +285,7 @@ def run_torch(config: TestConfig):
 
 def run_test(
     args: argparse.Namespace,
-    csv_writer: Optional[csv.DictWriter] = None,
+    csv_writer: csv.DictWriter | None = None,
 ):
     use_gpu: bool = args.use_gpu
     enable_cuda_graph: bool = args.use_cuda_graph
@@ -314,12 +313,13 @@ def run_test(
         width=args.width,
         device=device,
         use_tf32=True,
-        enable_cuda_graph=False,
+        enable_cuda_graph=enable_cuda_graph,
         dtype=dtypes[args.dtype],
         prefer_nhwc=args.prefer_nhwc,
         repeats=args.repeats,
         warm_up=args.warm_up,
         enable_nvtx_profile=args.enable_nvtx_profile,
+        enable_ort_profile=args.enable_ort_profile,
         enable_torch_profile=args.enable_torch_profile,
         torch_compile_mode=args.torch_compile_mode,
         verbose=False,
@@ -328,7 +328,7 @@ def run_test(
     if args.engine == "ort":
         sess_options = SessionOptions()
         sess_options.intra_op_num_threads = args.intra_op_num_threads
-        if config.enable_nvtx_profile:
+        if config.enable_ort_profile:
             sess_options.enable_profiling = True
             sess_options.log_severity_level = 4
             sess_options.log_verbosity_level = 0
@@ -352,6 +352,8 @@ def run_test(
             with nvtx.annotate("one_run"):
                 _ = session.infer(input_dict)
             cudart.cudaProfilerStop()
+
+        if config.enable_ort_profile:
             session.ort_session.end_profiling()
 
         if repeats == 0:
@@ -555,6 +557,14 @@ def _parse_arguments():
         default=False,
         action="store_true",
         help="Enable nvtx profiling. It will add an extra run for profiling before performance test.",
+    )
+
+    parser.add_argument(
+        "--enable_ort_profile",
+        required=False,
+        default=False,
+        action="store_true",
+        help="Enable ORT profiling.",
     )
 
     parser.add_argument(

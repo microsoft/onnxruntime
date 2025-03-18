@@ -40,9 +40,8 @@ docker run --rm -it --gpus all -v $PWD:/workspace nvcr.io/nvidia/pytorch:24.04-p
 ```
 
 #### Build onnxruntime from source
-The cuDNN in the container might not be compatible with official onnxruntime-gpu package, it is recommended to build from source instead.
+This step is optional. Please look at [install onnxruntime-gpu](https://onnxruntime.ai/docs/install/#python-installs) if you do not want to build from source.
 
-After launching the docker, you can build and install onnxruntime-gpu wheel like the following.
 ```
 export CUDACXX=/usr/local/cuda/bin/nvcc
 git config --global --add safe.directory '*'
@@ -60,9 +59,17 @@ If the GPU is not A100, change `CMAKE_CUDA_ARCHITECTURES=80` in the command line
 If your machine has less than 64GB memory, replace `--parallel` by `--parallel 4 --nvcc_threads 1 ` to avoid out of memory.
 
 #### Install required packages
+First, remove older version of opencv to avoid error like `module 'cv2.dnn' has no attribute 'DictValue'`:
+```
+pip uninstall -y $(pip list --format=freeze | grep opencv)
+rm -rf /usr/local/lib/python3.10/dist-packages/cv2/
+apt-get update
+DEBIAN_FRONTEND="noninteractive" apt-get install --yes python3-opencv
+```
+
 ```
 cd /workspace/onnxruntime/python/tools/transformers/models/stable_diffusion
-python3 -m pip install -r requirements-cuda12.txt
+python3 -m pip install -r requirements/cuda12/requirements.txt
 python3 -m pip install --upgrade polygraphy onnx-graphsurgeon --extra-index-url https://pypi.ngc.nvidia.com
 ```
 
@@ -136,15 +143,18 @@ conda activate py310
 
 ### Setup Environment (CUDA) without docker
 
-First, we need install CUDA 11.8 or 12.1, [cuDNN](https://docs.nvidia.com/deeplearning/cudnn/install-guide/index.html) 8.5 or above, and [TensorRT 8.6.1](https://docs.nvidia.com/deeplearning/tensorrt/install-guide/index.html) in the machine.
+First, we need install CUDA 11.8 or 12.x, [cuDNN](https://docs.nvidia.com/deeplearning/cudnn/install-guide/index.html), and [TensorRT](https://docs.nvidia.com/deeplearning/tensorrt/install-guide/index.html) in the machine.
+
+The verison of CuDNN can be found in https://onnxruntime.ai/docs/execution-providers/CUDA-ExecutionProvider.html#requirements.
+The version of TensorRT can be found in https://onnxruntime.ai/docs/execution-providers/TensorRT-ExecutionProvider.html#requirements.
 
 #### CUDA 11.8:
 
-In the Conda environment, install PyTorch 2.1 or above, and other required packages like the following:
+In the Conda environment, install PyTorch 2.1 up to 2.3.1, and other required packages like the following:
 ```
-pip install torch --index-url https://download.pytorch.org/whl/cu118
+pip install torch>=2.1,<2.4 --index-url https://download.pytorch.org/whl/cu118
 pip install --upgrade polygraphy onnx-graphsurgeon --extra-index-url https://pypi.ngc.nvidia.com
-pip install -r requirements-cuda11.txt
+pip install -r requirements/cuda11/requirements.txt
 ```
 
 For Windows, install nvtx like the following:
@@ -157,107 +167,95 @@ We cannot directly `pip install tensorrt` for CUDA 11. Follow https://github.com
 For Windows, pip install the tensorrt wheel in the downloaded TensorRT zip file instead. Like `pip install tensorrt-8.6.1.6.windows10.x86_64.cuda-11.8\tensorrt-8.6.1.6\python\tensorrt-8.6.1-cp310-none-win_amd64.whl`.
 
 #### CUDA 12.*:
-The official package of onnxruntime-gpu 1.16.* is built for CUDA 11.8. To use CUDA 12.*, you will need [build onnxruntime from source](https://onnxruntime.ai/docs/build/inferencing.html).
-
+The official package of onnxruntime-gpu 1.19.x is built for CUDA 12.x. You can install it and other python packages like the following:
 ```
-git clone --recursive https://github.com/Microsoft/onnxruntime.git
-cd onnxruntime
-pip install cmake
-pip install -r requirements-dev.txt
-```
-Follow [example script for A100 in Ubuntu](https://github.com/microsoft/onnxruntime/blob/26a7b63716e3125bfe35fe3663ba10d2d7322628/build_release.sh)
-or [example script for RTX 4090 in Windows](https://github.com/microsoft/onnxruntime/blob/8df5f4e0df1f3b9ceeb0f1f2561b09727ace9b37/build_trt.cmd) to build and install onnxruntime-gpu wheel.
-
-Then install other python packages like the following:
-```
-pip install torch --index-url https://download.pytorch.org/whl/cu121
+pip install onnxruntime-gpu
+pip install torch --index-url https://download.pytorch.org/whl/cu124
 pip install --upgrade polygraphy onnx-graphsurgeon --extra-index-url https://pypi.ngc.nvidia.com
-pip install -r requirements-cuda12.txt
+pip install -r requirements/cuda12/requirements.txt
 ```
 Finally, `pip install tensorrt` for Linux. For Windows, pip install the tensorrt wheel in the downloaded TensorRT zip file instead.
 
 ### Setup Environment (ROCm)
 
-It is recommended that the users run the model with ROCm 5.4 or newer and Python 3.10.
+It is recommended that the users run the model with ROCm 6.2 or newer and Python 3.10. You can follow the following to install ROCm 6.x: https://rocmdocs.amd.com/projects/install-on-linux/en/latest/install/quick-start.html
 Note that Windows is not supported for ROCm at the moment.
 
 ```
-wget https://repo.radeon.com/rocm/manylinux/rocm-rel-5.4/torch-1.12.1%2Brocm5.4-cp38-cp38-linux_x86_64.whl
-pip install torch-1.12.1+rocm5.4-cp38-cp38-linux_x86_64.whl
-pip install -r requirements-rocm.txt
+pip install -r requirements/rocm/requirements.txt
 ```
 
-AMD GPU version of PyTorch can be installed from [pytorch.org](https://pytorch.org/get-started/locally/) or [AMD Radeon repo](https://repo.radeon.com/rocm/manylinux/rocm-rel-5.4/).
+AMD GPU version of PyTorch can be installed from [pytorch.org](https://pytorch.org/get-started/locally/) or [AMD Radeon repo](https://repo.radeon.com/rocm/manylinux/rocm-rel-6.2.3/).
 
 #### Install onnxruntime-rocm
 
-Here is an example to build onnxruntime from source with Rocm 5.4.2 in Ubuntu 20.04, and install the wheel.
-
-(1) Install [ROCm 5.4.2](https://docs.amd.com/bundle/ROCm-Installation-Guide-v5.4.2/page/How_to_Install_ROCm.html). Note that the version is also used in PyTorch 2.0 ROCm package.
-
-(2) Install some tools used in build:
+One option is to install prebuilt wheel from https://repo.radeon.com/rocm/manylinux like:
 ```
-sudo apt-get update
-sudo apt-get install -y --no-install-recommends \
-        wget \
-        zip \
-        ca-certificates \
-        build-essential \
-        curl \
-        libcurl4-openssl-dev \
-        libssl-dev \
-        python3-dev
-pip install numpy packaging "wheel>=0.35.1"
-wget --quiet https://github.com/Kitware/CMake/releases/download/v3.26.3/cmake-3.26.3-linux-x86_64.tar.gz
-tar zxf cmake-3.26.3-linux-x86_64.tar.gz
-export PATH=${PWD}/cmake-3.26.3-linux-x86_64/bin:${PATH}
+wget https://repo.radeon.com/rocm/manylinux/rocm-rel-6.2.3/onnxruntime_rocm-1.18.0-cp310-cp310-linux_x86_64.whl
+pip install onnxruntime_rocm-1.18.0-cp310-cp310-linux_x86_64.whl
 ```
 
-(3) Build and Install ONNX Runtime
-```
-git clone https://github.com/microsoft/onnxruntime
-cd onnxruntime
-sh build.sh --config Release --use_rocm --rocm_home /opt/rocm --rocm_version 5.4.2 --build_wheel
-pip install build/Linux/Release/dist/*.whl
-```
-
-You can also follow the [official docs](https://onnxruntime.ai/docs/build/eps.html#amd-rocm) to build with docker.
+If you want to use latest version of onnxruntime, you can build from source with Rocm 6.x following https://onnxruntime.ai/docs/build/eps.html#amd-rocm.
+When the build is finished, you can install the wheel:`pip install build/Linux/Release/dist/*.whl`.
 
 ### Export ONNX pipeline
 This step will export stable diffusion 1.5 to ONNX model in float32 using script from diffusers.
 
-It is recommended to use PyTorch 1.12.1 or 1.13.1 in this step. Using PyTorch 2.0 will encounter issue in exporting onnx.
-
 ```
 curl https://raw.githubusercontent.com/huggingface/diffusers/v0.15.1/scripts/convert_stable_diffusion_checkpoint_to_onnx.py > convert_sd_onnx.py
-python convert_sd_onnx.py --model_path runwayml/stable-diffusion-v1-5  --output_path  ./sd_v1_5/fp32
+python convert_sd_onnx.py --model_path runwayml/stable-diffusion-v1-5  --output_path  ./sd1.5_onnx/fp32
 ```
 
 For SDXL, use optimum to export the model:
 ```
 pip install optimum diffusers onnx onnxruntime-gpu
-optimum-cli export onnx --model stabilityai/stable-diffusion-xl-base-1.0 --task stable-diffusion-xl ./sd_xl_base_onnx
+optimum-cli export onnx --model stabilityai/stable-diffusion-xl-base-1.0 --task stable-diffusion-xl ./sdxl_onnx/fp32
+```
+
+#### Stable Diffusion 3.x and Flux 1.0
+
+Stable Diffusion 3.x and Flux 1.0 requires transformers >= 4.45, and optimum > 1.23.3.
+The default opset version for T5 is 12, which does not support bfloat16. To support bfloat16, please set opset version explicitly like below example.
+
+```
+git clone https://github.com/huggingface/optimum
+cd optimum
+pip install -e .
+
+optimum-cli export onnx --model stabilityai/stable-diffusion-3-medium-diffusers ./sd3_onnx/fp32 --opset 15
+optimum-cli export onnx --model stabilityai/stable-diffusion-3.5-medium ./sd3.5_medium_onnx/fp32 --opset 15
+optimum-cli export onnx --model stabilityai/stable-diffusion-3.5-large ./sd3.5_large_onnx/fp32 --opset 15
+optimum-cli export onnx --model black-forest-labs/FLUX.1-schnell ./flux1_schnell_onnx/fp32 --opset 15
+optimum-cli export onnx --model black-forest-labs/FLUX.1-dev ./flux1_dev_onnx/fp32 --opset 15
 ```
 
 ### Optimize ONNX Pipeline
 
-Example to optimize the exported float32 ONNX models, and save to float16 models:
+Example to optimize the exported float32 ONNX models, then save to float16 models:
 ```
-python -m onnxruntime.transformers.models.stable_diffusion.optimize_pipeline -i ./sd_v1_5/fp32 -o ./sd_v1_5/fp16 --float16
+python -m onnxruntime.transformers.models.stable_diffusion.optimize_pipeline -i ./sd1.5_onnx/fp32 -o ./sd1.5_onnx/fp16 --float16
 ```
 
-In all examples below, we run the scripts in source code directory. You can get source code like the following:
+You can also run the script in source code directory like the following:
 ```
 git clone https://github.com/microsoft/onnxruntime
 cd onnxruntime/onnxruntime/python/tools/transformers/models/stable_diffusion
+
+python optimize_pipeline.py -i ./sdxl_onnx/fp32 -o ./sdxl_onnx/fp16 --float16
+python optimize_pipeline.py -i ./sd3_onnx/fp32 -o ./sd3_onnx/fp16 --float16
+python optimize_pipeline.py -i ./sd3.5_medium_onnx/fp32 -o ./sd3.5_medium_onnx/fp16 --float16
+python optimize_pipeline.py -i ./sd3.5_large_onnx/fp32 -o ./sd3.5_large_onnx/fp16 --float16
+python optimize_pipeline.py -i ./flux1_schnell_onnx/fp32 -o ./flux1_schnell_onnx/fp16 --float16 --bfloat16
+python optimize_pipeline.py -i ./flux1_dev_onnx/fp32 -o ./flux1_dev_onnx/fp16 --float16 --bfloat16
 ```
+When converting model to float16, some nodes has overflow risk and we can force those nodes to run in either float32 or bfloat16.
+Option `--bfloat16` enables the later. If an operator does not support bfloat16, it will fallback to float32.
 
 For SDXL model, it is recommended to use a machine with 48 GB or more memory to optimize.
-```
-python optimize_pipeline.py -i ./sd_xl_base_onnx -o ./sd_xl_base_fp16 --float16
-```
 
 ### Run Benchmark
+
+#### Run Benchmark with Optimum
 
 The benchmark.py script will run a warm-up prompt twice, and measure the peak GPU memory usage in these two runs, then record them as first_run_memory_MB and second_run_memory_MB. Then it will run 5 runs to get average latency (in seconds), and output the results to benchmark_result.csv.
 
@@ -272,15 +270,15 @@ Before running benchmark on PyTorch, you need to be logged in via `huggingface-c
 
 Example to benchmark the optimized pipeline of stable diffusion 1.5 with batch size 1 on CUDA EP:
 ```
-python benchmark.py -p ./sd_v1_5/fp16 -b 1 -v 1.5
+python benchmark.py -p ./sd1.5_onnx/fp16 -b 1 -v 1.5
 python benchmark.py -b 1 -v 1.5
 ```
 For the first command, '-p' specifies a directory of optimized ONNX pipeline as generated by optimize_pipeline.py.
-For the second command without '-p', we will use OnnxruntimeCudaStableDiffusionPipeline to export and optimize ONNX models for clip, unet and vae decoder.
+For the second command without '-p', we will use ORTPipelineForText2Image to export and optimize ONNX models for clip, unet and vae decoder.
 
 On ROCm EP, use the following command instead:
 ```
-python benchmark.py -p ./sd_v1_5/fp16 -b 1 --tuning --provider rocm -v 1.5
+python benchmark.py -p ./sd1.5_onnx/fp16 -b 1 --tuning --provider rocm -v 1.5
 ```
 
 For ROCm EP, you can substitute `python benchmark.py` with `python -m onnxruntime.transformers.models.stable_diffusion.benchmark` since
@@ -289,6 +287,22 @@ the installed package is built from source. For CUDA, it is recommended to run `
 For ROCm EP, the `--tuning` is mandatory because we heavily rely on tuning to find the runable kernels for ORT `OpKernel`s.
 
 The default parameters are stable diffusion version=1.5, height=512, width=512, steps=50, batch_count=5. Run `python benchmark.py --help` for more information.
+
+#### Stable Diffusion 3.x and Flux 1.0
+Example of benchmark with optimum using CUDA provider on stable diffusion 3.5 medium and Flux 1.0:
+```
+python benchmark.py -e optimum --height 1024 --width 1024 --steps 30 -b 1 -v 3.0M -p sd3_onnx/fp32
+python benchmark.py -e optimum --height 1024 --width 1024 --steps 30 -b 1 -v 3.5M -p sd3.5_medium_onnx/fp16
+python benchmark.py -e optimum --height 1024 --width 1024 --steps 30 -b 1 -v 3.5L -p sd3.5_large_onnx/fp16
+python benchmark.py -e optimum --height 1024 --width 1024 --steps 4 -b 1 -v Flux.1S -p flux1_schnell_onnx/fp16
+python benchmark.py -e optimum --height 1024 --width 1024 --steps 30 -b 1 -v Flux.1D -p flux1_dev_onnx/fp16
+```
+
+Benchmark PyTorch eager mode performance:
+```
+python benchmark.py -e torch --height 1024 --width 1024 --steps 30 -b 1 -v 3.5L
+python benchmark.py -e torch --height 1024 --width 1024 --steps 30 -b 1 -v Flux.1D
+```
 
 ### Run Benchmark with xFormers
 

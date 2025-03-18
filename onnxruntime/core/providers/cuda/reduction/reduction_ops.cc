@@ -16,17 +16,17 @@ using namespace onnxruntime::common;
 namespace onnxruntime {
 namespace cuda {
 
-#define REGISTER_KERNEL_UNTIL_VERSIONED_TYPED(name, T, end)                                \
+#define REGISTER_KERNEL_VERSIONED_RANGE_TYPED(name, T, begin, end)                         \
   ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(                                                 \
       name,                                                                                \
       kOnnxDomain,                                                                         \
-      1, end,                                                                              \
+      begin, end,                                                                          \
       T,                                                                                   \
       kCudaExecutionProvider,                                                              \
       (*KernelDefBuilder::Create()).TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
       name<T>);
 
-#define REGISTER_KERNEL_TYPED_AXES_INPUT(name, T, version)                                                                        \
+#define REGISTER_KERNEL_VERSIONED_SINCE_TYPED(name, T, version)                                                                   \
   ONNX_OPERATOR_TYPED_KERNEL_EX(                                                                                                  \
       name,                                                                                                                       \
       kOnnxDomain,                                                                                                                \
@@ -37,8 +37,13 @@ namespace cuda {
       name<T>);
 
 #define REGISTER_KERNEL_TYPED_AXES_INPUT_WITH_VERSIONED(name, T, last, cur) \
-  REGISTER_KERNEL_UNTIL_VERSIONED_TYPED(name, T, last)                      \
-  REGISTER_KERNEL_TYPED_AXES_INPUT(name, T, cur)
+  REGISTER_KERNEL_VERSIONED_RANGE_TYPED(name, T, 1, last)                   \
+  REGISTER_KERNEL_VERSIONED_SINCE_TYPED(name, T, cur)
+
+#define REGISTER_KERNEL_ARGMIN_OR_ARGMAX(name, T)        \
+  REGISTER_KERNEL_VERSIONED_RANGE_TYPED(name, T, 1, 11)  \
+  REGISTER_KERNEL_VERSIONED_RANGE_TYPED(name, T, 12, 12) \
+  REGISTER_KERNEL_VERSIONED_SINCE_TYPED(name, T, 13)
 
 // TODO ReduceKernel::ReduceKernelShared() is still used by some other training classes though it's not used here - this should be refactored.
 template <bool allow_multi_axes>
@@ -829,14 +834,13 @@ template std::unique_ptr<Tensor> ReduceCompute<MLFloat16, CUDNN_REDUCE_TENSOR_NO
 
 }  // namespace ReductionOps
 
-// CUDA ArgMax/ArgMin doesn't have OpSet12+ implementation (with select_last_index attr) yet
-REGISTER_KERNEL_UNTIL_VERSIONED_TYPED(ArgMax, MLFloat16, 11)
-REGISTER_KERNEL_UNTIL_VERSIONED_TYPED(ArgMax, float, 11)
-REGISTER_KERNEL_UNTIL_VERSIONED_TYPED(ArgMax, double, 11)
+REGISTER_KERNEL_ARGMIN_OR_ARGMAX(ArgMax, MLFloat16)
+REGISTER_KERNEL_ARGMIN_OR_ARGMAX(ArgMax, float)
+REGISTER_KERNEL_ARGMIN_OR_ARGMAX(ArgMax, double)
 
-REGISTER_KERNEL_UNTIL_VERSIONED_TYPED(ArgMin, MLFloat16, 11)
-REGISTER_KERNEL_UNTIL_VERSIONED_TYPED(ArgMin, float, 11)
-REGISTER_KERNEL_UNTIL_VERSIONED_TYPED(ArgMin, double, 11)
+REGISTER_KERNEL_ARGMIN_OR_ARGMAX(ArgMin, MLFloat16)
+REGISTER_KERNEL_ARGMIN_OR_ARGMAX(ArgMin, float)
+REGISTER_KERNEL_ARGMIN_OR_ARGMAX(ArgMin, double)
 
 REGISTER_KERNEL_TYPED_AXES_INPUT_WITH_VERSIONED(ReduceMax, MLFloat16, 17, 18)
 REGISTER_KERNEL_TYPED_AXES_INPUT_WITH_VERSIONED(ReduceMax, float, 17, 18)

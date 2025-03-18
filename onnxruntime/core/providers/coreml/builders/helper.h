@@ -25,7 +25,8 @@ namespace coreml {
 
 OpBuilderInputParams MakeOpBuilderParams(const GraphViewer& graph_viewer,
                                          int32_t coreml_version,
-                                         uint32_t coreml_flags);
+                                         bool only_allow_static_input_shapes,
+                                         bool create_mlprogram);
 
 const IOpBuilder* GetOpBuilder(const Node& node);
 
@@ -45,7 +46,7 @@ bool CheckIsConstantInitializer(const NodeArg& node_arg, const GraphViewer& grap
 
 // CoreML is more efficient running using Apple Neural Engine
 // This is to detect if the current system has Apple Neural Engine
-bool HasNeuralEngine(const logging::Logger& logger);
+bool HasNeuralEngine();
 
 }  // namespace coreml
 }  // namespace onnxruntime

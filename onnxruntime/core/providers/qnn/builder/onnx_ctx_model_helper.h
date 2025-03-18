@@ -6,12 +6,8 @@
 #include <string>
 #include <vector>
 
-#include "qnn_def.h"
-#include "core/common/logging/logging.h"
-#include "core/graph/graph_viewer.h"
-#include "core/providers/shared/utils/utils.h"
-#include "core/graph/model.h"
-#include "core/framework/execution_provider.h"
+#include "core/providers/qnn/builder/qnn_def.h"
+#include "core/providers/qnn/ort_api.h"
 
 namespace onnxruntime {
 
@@ -28,6 +24,7 @@ static const std::string EP_CACHE_CONTEXT = "ep_cache_context";
 static const std::string EP_SDK_VER = "ep_sdk_version";
 static const std::string PARTITION_NAME = "partition_name";
 static const std::string SOURCE = "source";
+static const std::string MAX_SIZE = "max_size";
 
 bool GraphHasEpContextNode(const onnxruntime::GraphViewer& graph_viewer);
 
@@ -41,21 +38,23 @@ Status CreateNodeArgs(const std::vector<std::string>& names,
                       std::vector<NodeArg*>& node_args,
                       onnxruntime::Graph& graph);
 
-bool ValidateContextCacheFilePath(bool is_qnn_ctx_model,
-                                  const std::string& customer_context_cache_path,
-                                  const onnxruntime::PathString& model_pathstring,
-                                  onnxruntime::PathString& context_cache_path);
-
 Status GetEpContextFromMainNode(const onnxruntime::Node& main_context_node,
                                 const onnxruntime::PathString& ctx_onnx_model_path,
                                 QnnBackendManager* qnn_backend_manager,
-                                QnnModelLookupTable& qnn_models);
+                                QnnModelLookupTable& qnn_models,
+                                int64_t max_spill_fill_size);
+
+Status TryGetMaxSpillFillSize(const std::vector<IExecutionProvider::FusedNodeAndGraph>& fused_nodes_and_graphs,
+                              uint32_t total_context_size,
+                              int64_t& max_spill_fill_size,
+                              std::vector<int>& main_context_pos_list);
 
 Status LoadQnnCtxFromOnnxGraph(const onnxruntime::GraphViewer& graph_viewer,
                                const onnxruntime::PathString& ctx_onnx_model_path,
                                QnnBackendManager* qnn_backend_manager,
                                QnnModelLookupTable& qnn_models,
-                               const logging::Logger& logger);
+                               const logging::Logger& logger,
+                               int64_t max_spill_fill_size);
 
 Status CreateEPContextNodes(Model* model,
                             unsigned char* buffer,
@@ -63,8 +62,11 @@ Status CreateEPContextNodes(Model* model,
                             const std::string& sdk_build_version,
                             const std::vector<IExecutionProvider::FusedNodeAndGraph>& fused_nodes_and_graphs,
                             const std::unordered_map<std::string, std::unique_ptr<QnnModel>>& qnn_models,
-                            const onnxruntime::PathString& context_cache_path,
+                            const onnxruntime::PathString& context_model_path,
                             bool qnn_context_embed_mode,
-                            const logging::Logger& logger);
+                            uint64_t max_spill_fill_buffer_size,
+                            const logging::Logger& logger,
+                            bool share_ep_contexts,
+                            bool stop_share_ep_contexts);
 }  // namespace qnn
 }  // namespace onnxruntime

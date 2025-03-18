@@ -15,7 +15,9 @@
 #endif
 
 namespace onnxruntime {
-
+namespace logging {
+class Logger;
+}
 class GraphViewer;
 class Node;
 
@@ -65,7 +67,7 @@ class SelectorManager {
 
   // Methods that finds and returns a vector of QDQ::NodeGroup in a given graph
   // Can be used in QDQ support in different EPs
-  std::vector<NodeGroup> GetQDQSelections(const GraphViewer& graph_viewer) const;
+  std::vector<NodeGroup> GetQDQSelections(const GraphViewer& graph_viewer, const logging::Logger& logger) const;
 
  private:
   Selectors qdq_selectors_;
@@ -88,7 +90,7 @@ class SelectorManager {
 // We currently have a bit of a mess with generic things like this to get all the node units being in the optimizer
 // library whereas it should be able to be used by an EP with no dependency on optimizers.
 std::pair<std::vector<std::unique_ptr<NodeUnit>>, std::unordered_map<const Node*, const NodeUnit*>>
-GetAllNodeUnits(const GraphViewer& graph_viewer);
+GetAllNodeUnits(const GraphViewer& graph_viewer, const logging::Logger& logger);
 
 }  // namespace QDQ
 }  // namespace onnxruntime

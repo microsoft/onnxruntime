@@ -43,7 +43,7 @@ onnxruntime::ROCMExecutionProviderExternalAllocatorInfo external_allocator_info{
 onnxruntime::ArenaExtendStrategy arena_extend_strategy = onnxruntime::ArenaExtendStrategy::kNextPowerOfTwo;
 #endif
 
-#ifdef ENABLE_TRAINING
+#if defined(ENABLE_DLPACK)
 
 void DlpackCapsuleDestructor(PyObject* data) {
   DLManagedTensor* dlmanaged_tensor = reinterpret_cast<DLManagedTensor*>(PyCapsule_GetPointer(data, "dltensor"));

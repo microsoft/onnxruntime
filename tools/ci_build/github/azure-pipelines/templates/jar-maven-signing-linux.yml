@@ -1,0 +1,57 @@
+parameters:
+  - name: JarFileDirectory
+    type: string
+
+steps:
+  - task: AzureKeyVault@2
+    displayName: 'Get GnuPG signing keys'
+    inputs:
+      #The value below is the name of an ADO service connection.
+      azureSubscription: 'OnnxrunTimeCodeSign_20240611'
+      KeyVaultName: 'ort-release'
+      SecretsFilter: 'java-pgp-pwd,java-pgp-key'
+      RunAsPreJob: false
+
+  - task: CmdLine@2
+    displayName: 'Sign jar files: GnuPG and sha256'
+    inputs:
+      workingDirectory: '$(Build.SourcesDirectory)'
+      script: |
+        #!/bin/bash
+        set -e
+
+        jar_file_directory='${{ parameters.JarFileDirectory }}'
+        working_directory='$(Build.SourcesDirectory)'
+        original_private_key='$(java-pgp-key)'
+        original_passphrase='$(java-pgp-pwd)'
+
+        private_key_file=$working_directory/private_key.txt
+        passphrase_file=$working_directory/passphrase.txt
+
+        echo "Generating GnuPG key files."
+        printf "%s" "$original_private_key" >$private_key_file
+        printf "%s" "$original_passphrase" >$passphrase_file
+        echo "Generated GnuPG key files."
+
+        echo "Importing GnuPG private key file."
+        gpg --batch --import $private_key_file
+        echo "Imported GnuPG private key file."
+
+        for file in $(find $jar_file_directory -type f); do
+            echo "GnuPG signing to file: $file"
+            gpg --pinentry-mode loopback --passphrase-file $passphrase_file -ab $file
+            echo "GnuPG signed to file: $file"
+        done
+
+        for file in $(find $jar_file_directory -type f); do
+            echo "Adding checksum of sha256 to file: $file"
+            sha256_value=$(sha256sum $file | awk '{print $1}')
+            echo $sha256_value" *"$(basename "$file") >$file.sha256
+            echo "Added checksum of sha256 to file: $file"
+        done
+
+        echo "GnuPG and sha256 signing to files completed."
+        echo "Deleting GnuPG key files."
+        rm -f $private_key_file
+        rm -f $passphrase_file
+        echo "Deleted GnuPG key files."

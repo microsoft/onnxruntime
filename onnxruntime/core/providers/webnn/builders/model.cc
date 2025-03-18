@@ -42,6 +42,8 @@ onnxruntime::common::Status Model::Compute(const InlinedHashMap<std::string, Onn
     emscripten::val view = emscripten::val::undefined();
     switch (tensor.tensor_info.data_type) {
       case ONNX_NAMESPACE::TensorProto_DataType_BOOL:
+      case ONNX_NAMESPACE::TensorProto_DataType_INT4:
+      case ONNX_NAMESPACE::TensorProto_DataType_UINT4:
       case ONNX_NAMESPACE::TensorProto_DataType_UINT8:
         view = emscripten::val{emscripten::typed_memory_view(num_elements,
                                                              static_cast<const uint8_t*>(tensor.buffer))};
@@ -93,6 +95,8 @@ onnxruntime::common::Status Model::Compute(const InlinedHashMap<std::string, Onn
     emscripten::val view = emscripten::val::undefined();
     switch (tensor.tensor_info.data_type) {
       case ONNX_NAMESPACE::TensorProto_DataType_BOOL:
+      case ONNX_NAMESPACE::TensorProto_DataType_INT4:
+      case ONNX_NAMESPACE::TensorProto_DataType_UINT4:
       case ONNX_NAMESPACE::TensorProto_DataType_UINT8:
         view = emscripten::val{emscripten::typed_memory_view(num_elements,
                                                              static_cast<const uint8_t*>(tensor.buffer))};
@@ -161,7 +165,7 @@ onnxruntime::common::Status Model::Dispatch(const InlinedHashMap<std::string, On
       uint32_t dim_val = SafeInt<uint32_t>(dim);
       shape.call<void>("push", dim_val);
     }
-    auto ml_tensor = jsepEnsureTensor(reinterpret_cast<intptr_t>(tensor.buffer), tensor.tensor_info.data_type, shape, true);
+    auto ml_tensor = jsepEnsureTensor(emscripten::val::undefined(), reinterpret_cast<intptr_t>(tensor.buffer), tensor.tensor_info.data_type, shape, true);
     promises.call<void>("push", ml_tensor);
   }
   for (const auto& [_, tensor] : outputs) {
@@ -170,7 +174,7 @@ onnxruntime::common::Status Model::Dispatch(const InlinedHashMap<std::string, On
       uint32_t dim_val = SafeInt<uint32_t>(dim);
       shape.call<void>("push", dim_val);
     }
-    auto ml_tensor = jsepEnsureTensor(reinterpret_cast<intptr_t>(tensor.buffer), tensor.tensor_info.data_type, shape, false);
+    auto ml_tensor = jsepEnsureTensor(emscripten::val::undefined(), reinterpret_cast<intptr_t>(tensor.buffer), tensor.tensor_info.data_type, shape, false);
     promises.call<void>("push", ml_tensor);
   }
   auto ml_tensors = emscripten::val::global("Promise").call<emscripten::val>("all", promises).await();
@@ -210,6 +214,8 @@ void Model::AllocateInputOutputBuffers() {
     const auto data_type = input_info.data_type;
     switch (data_type) {
       case ONNX_NAMESPACE::TensorProto_DataType_BOOL:
+      case ONNX_NAMESPACE::TensorProto_DataType_INT4:
+      case ONNX_NAMESPACE::TensorProto_DataType_UINT4:
       case ONNX_NAMESPACE::TensorProto_DataType_UINT8:
         wnn_inputs_.set(input, emscripten::val::global("Uint8Array").new_(num_elements));
         break;
@@ -245,6 +251,8 @@ void Model::AllocateInputOutputBuffers() {
     const auto data_type = output_info.data_type;
     switch (data_type) {
       case ONNX_NAMESPACE::TensorProto_DataType_BOOL:
+      case ONNX_NAMESPACE::TensorProto_DataType_INT4:
+      case ONNX_NAMESPACE::TensorProto_DataType_UINT4:
       case ONNX_NAMESPACE::TensorProto_DataType_UINT8:
         wnn_outputs_.set(output, emscripten::val::global("Uint8Array").new_(num_elements));
         break;

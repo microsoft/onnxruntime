@@ -156,6 +156,7 @@ std::vector<NodeUnitIODef> GetQDQIODefs(const Node& target_node, const QDQ::Node
 
 Status QDQ::NodeGroup::CanCreateNodeGroup(const GraphViewer& graph_viewer,
                                           const Node& target_node,
+                                          const Node* redundant_clip_node,
                                           gsl::span<const Node* const> dq_nodes,
                                           gsl::span<const Node* const> q_nodes) {
   // Within a QDQ node group, a target node input is the only consumer of each DQ.
@@ -174,6 +175,24 @@ Status QDQ::NodeGroup::CanCreateNodeGroup(const GraphViewer& graph_viewer,
                       "QDQ node group cannot have DQ that doesn't have a single output edge to the target node. "
                       "DQ node: ",
                       dq_node->Name(), ", target node: ", target_node.Name());
+  }
+
+  // If redundant_clip_node is present, currently we require target node has only one output edge, which is connected to
+  // the redundant_clip_node. The redundant_clip_node's output is consumed by the Q node that can be fused with itself.
+  if (redundant_clip_node) {
+    ORT_RETURN_IF_NOT(!graph_viewer.NodeProducesGraphOutput(target_node) && target_node.GetOutputEdgesCount() == 1 &&
+                          target_node.OutputEdgesBegin()->GetNode().Index() == redundant_clip_node->Index(),
+                      "QDQ node group cannot have target node with more than one output edge if there is redunant clip "
+                      "node. target node: ",
+                      target_node.Name());
+    ORT_RETURN_IF_NOT(
+        !graph_viewer.NodeProducesGraphOutput(*redundant_clip_node) && q_nodes.size() == 1 &&
+            redundant_clip_node->GetOutputEdgesCount() == 1 &&
+            redundant_clip_node->OutputEdgesBegin()->GetNode().Index() == q_nodes[0]->Index(),
+        "QDQ node group cannot have redudant clip node that doesn't have a single output edge to a Q node. "
+        "redundant clip node: ",
+        redundant_clip_node->Name());
+    return Status::OK();
   }
 
   // an output from the target node can have either Q consumers or direct consumers. it cannot have both.
@@ -228,8 +247,10 @@ Status QDQ::NodeGroup::CanCreateNodeGroup(const GraphViewer& graph_viewer,
 
   return Status::OK();
 }
+
 NodeUnit::NodeUnit(const Node& node)
     : target_node_(node),
+      redundant_clip_node_(nullptr),
       type_(Type::SingleNode),
       input_edge_count_(node.GetInputEdgesCount()) {
   InitForSingleNode();
@@ -238,11 +259,16 @@ NodeUnit::NodeUnit(const Node& node)
 NodeUnit::NodeUnit(const GraphViewer& graph_viewer, const QDQ::NodeGroup& node_group)
     : dq_nodes_{GetQDQIONodes(graph_viewer, node_group, true /* is_input */)},
       target_node_(*graph_viewer.GetNode(node_group.target_node)),
+      redundant_clip_node_(node_group.redundant_clip_node.has_value()
+                               ? graph_viewer.GetNode(node_group.redundant_clip_node.value())
+                               : nullptr),
       q_nodes_{GetQDQIONodes(graph_viewer, node_group, false /* is_input */)},
       type_(Type::QDQGroup),
       inputs_{GetQDQIODefs(target_node_, node_group, true /* is_input */)},
-      outputs_{GetQDQIODefs(target_node_, node_group, false /* is_input */)} {
-  ORT_THROW_IF_ERROR(QDQ::NodeGroup::CanCreateNodeGroup(graph_viewer, target_node_, dq_nodes_, q_nodes_));
+      outputs_{GetQDQIODefs((redundant_clip_node_ ? *redundant_clip_node_ : target_node_), node_group,
+                            false /* is_input */)} {
+  ORT_THROW_IF_ERROR(
+      QDQ::NodeGroup::CanCreateNodeGroup(graph_viewer, target_node_, redundant_clip_node_, dq_nodes_, q_nodes_));
 
   input_edge_count_ = std::accumulate(dq_nodes_.cbegin(), dq_nodes_.cend(), size_t(0),
                                       [](size_t acc, const Node* node) { return acc + node->GetInputEdgesCount(); });
@@ -253,8 +279,10 @@ NodeUnit::NodeUnit(const GraphViewer& graph_viewer, const QDQ::NodeGroup& node_g
 
   // create output edges. each target node output either goes to Q node/s or non-Q node/s.
   // ValidateNodeGroupQDQNodes ensures this.
-  auto cur_edge = target_node_.OutputEdgesBegin();
-  auto end_edge = target_node_.OutputEdgesEnd();
+  // If redundant clip node is present, the target node has only one output edge to the redundant clip node.
+  const Node& output_producer = redundant_clip_node_ ? *redundant_clip_node_ : target_node_;
+  auto cur_edge = output_producer.OutputEdgesBegin();
+  auto end_edge = output_producer.OutputEdgesEnd();
   for (; cur_edge != end_edge; ++cur_edge) {
     const Node& node = cur_edge->GetNode();
 
@@ -273,12 +301,13 @@ NodeUnit::NodeUnit(const GraphViewer& graph_viewer, const QDQ::NodeGroup& node_g
   }
 }
 
-NodeUnit::NodeUnit(gsl::span<const Node* const> dq_nodes, const Node& target_node,
+NodeUnit::NodeUnit(gsl::span<const Node* const> dq_nodes, const Node& target_node, const Node* redundant_clip_node,
                    gsl::span<const Node* const> q_nodes, Type unit_type,
                    gsl::span<const NodeUnitIODef> inputs, gsl::span<const NodeUnitIODef> outputs,
                    size_t input_edge_count, Node::EdgeSet output_edges)
     : dq_nodes_(dq_nodes.begin(), dq_nodes.end()),
       target_node_(target_node),
+      redundant_clip_node_(redundant_clip_node),
       q_nodes_(q_nodes.begin(), q_nodes.end()),
       type_(unit_type),
       inputs_(inputs.begin(), inputs.end()),
@@ -389,7 +418,12 @@ Node::EdgeConstIterator NodeUnit::OutputEdgesEnd() const {
 std::vector<const Node*> NodeUnit::GetAllNodesInGroup() const noexcept {
   std::vector<const Node*> all_nodes = dq_nodes_;
   all_nodes.push_back(&target_node_);
-  all_nodes.insert(all_nodes.end(), q_nodes_.begin(), q_nodes_.end());
+  if (redundant_clip_node_) {
+    all_nodes.push_back(redundant_clip_node_);
+  }
+  all_nodes.reserve(all_nodes.size() + q_nodes_.size());
+  for (auto& n : q_nodes_)
+    all_nodes.push_back(n);
   return all_nodes;
 }
 

@@ -1,5 +1,0 @@
-scikit-learn
-packaging==21.3
-transformers==v4.36.0
-accelerate==0.25.0
-wget

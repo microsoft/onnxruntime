@@ -4,6 +4,7 @@
 #pragma once
 
 #include <cmath>
+#include <limits>
 
 #include <cute/tensor.hpp>
 
@@ -71,7 +72,9 @@ __forceinline__ __device__ void scale_apply_exp2(Tensor<Engine0, Layout0>& tenso
     // If max is -inf, then all elements must have been -inf (possibly due to masking).
     // We don't want (-inf - (-inf)) since that would give NaN.
     // If we don't have float around M_LOG2E the multiplication is done in fp64.
-    const float max_scaled = max(mi) == -INFINITY ? 0.f : max(mi) * (Scale_max ? scale : float(M_LOG2E));
+    const float max_scaled = max(mi) == -std::numeric_limits<float>::infinity()
+                                 ? 0.f
+                                 : max(mi) * (Scale_max ? scale : float(M_LOG2E));
 #pragma unroll
     for (int ni = 0; ni < size<1>(tensor); ++ni) {
       // Instead of computing exp(x - max), we compute exp2(x * log_2(e) -
@@ -99,7 +102,7 @@ __forceinline__ __device__ void max_scale_exp2_sum(Tensor<Engine0, Layout0>& ten
     max(mi) = Allreduce<4>::run(max(mi), max_op);
     // If max is -inf, then all elements must have been -inf (possibly due to masking).
     // We don't want (-inf - (-inf)) since that would give NaN.
-    const float max_scaled = max(mi) == -INFINITY ? 0.f : max(mi) * scale;
+    const float max_scaled = max(mi) == -std::numeric_limits<float>::infinity() ? 0.f : max(mi) * scale;
     sum(mi) = 0;
 #pragma unroll
     for (int ni = 0; ni < size<1>(tensor); ++ni) {
@@ -143,7 +146,7 @@ struct Softmax {
       for (int mi = 0; mi < size(row_max); ++mi) {
         float scores_max_cur = !Check_inf
                                    ? row_max(mi)
-                                   : (row_max(mi) == -INFINITY ? 0.0f : row_max(mi));
+                                   : (row_max(mi) == -std::numeric_limits<float>::infinity() ? 0.0f : row_max(mi));
         float scores_scale = exp2f((scores_max_prev(mi) - scores_max_cur) * softmax_scale_log2);
         row_sum(mi) *= scores_scale;
 #pragma unroll
@@ -169,7 +172,9 @@ struct Softmax {
     for (int mi = 0; mi < size<0>(acc_o_rowcol); ++mi) {
       float sum = smooth_softmax ? row_sum(mi) + expf(-row_max(mi) * softmax_scale) : row_sum(mi);
       float inv_sum = (sum == 0.f || sum != sum) ? 1.f : 1.f / sum;
-      lse(mi) = (sum == 0.f || sum != sum) ? (Split ? -INFINITY : INFINITY) : row_max(mi) * softmax_scale + __logf(sum);
+      lse(mi) = (sum == 0.f || sum != sum)
+                    ? (Split ? -std::numeric_limits<float>::infinity() : std::numeric_limits<float>::infinity())
+                    : row_max(mi) * softmax_scale + __logf(sum);
       float scale = inv_sum;
 #pragma unroll
       for (int ni = 0; ni < size<1>(acc_o_rowcol); ++ni) {

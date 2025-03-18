@@ -12,7 +12,7 @@
 #include "core/providers/shared_library/provider_api.h"
 #include "core/framework/arena_extend_strategy.h"
 #include "core/framework/execution_provider.h"
-#include "core/platform/ort_mutex.h"
+#include <mutex>
 #include "core/providers/cann/cann_execution_provider_info.h"
 #include "core/providers/cann/cann_inc.h"
 #include "core/providers/cann/cann_utils.h"
@@ -55,7 +55,9 @@ class CANNExecutionProvider : public IExecutionProvider {
 
   std::vector<std::unique_ptr<ComputeCapability>> GetCapability(
       const onnxruntime::GraphViewer& graph_viewer,
-      const IKernelLookup& kernel_lookup) const override;
+      const IKernelLookup& kernel_lookup,
+      const GraphOptimizerRegistry& /* graph_optimizer_registry */,
+      IResourceAccountant* resource_accountant) const override;
 
   Status Compile(const std::vector<FusedNodeAndGraph>& fused_nodes_and_graphs,
                  std::vector<NodeComputeInfo>& node_compute_funcs) override;

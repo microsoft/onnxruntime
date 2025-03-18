@@ -27,7 +27,7 @@ limitations under the License.
 #include "core/common/logging/severity.h"
 #include "core/common/safeint.h"
 
-#include "core/platform/ort_mutex.h"
+#include <mutex>
 #include "core/framework/arena_extend_strategy.h"
 #include "core/framework/allocator.h"
 
@@ -489,7 +489,7 @@ class BFCArena : public IAllocator {
 
   std::unique_ptr<IAllocator> device_allocator_;
 
-  mutable OrtMutex lock_;
+  mutable std::mutex lock_;
 
   RegionManager region_manager_;
   std::vector<Chunk> chunks_;

@@ -3,7 +3,6 @@
 # Licensed under the MIT License.
 # --------------------------------------------------------------------------
 from logging import getLogger
-from typing import Dict
 
 from fusion_base import Fusion
 from numpy import ndarray
@@ -17,7 +16,7 @@ class FusionBiasAdd(Fusion):
     def __init__(self, model: OnnxModel):
         super().__init__(model, "BiasAdd", "Add")
 
-    def fuse(self, add_node, input_name_to_nodes: Dict, output_name_to_node: Dict):
+    def fuse(self, add_node, input_name_to_nodes: dict, output_name_to_node: dict):
         """
         Fuse Add bias and Add skip connection into BiasAdd
         """

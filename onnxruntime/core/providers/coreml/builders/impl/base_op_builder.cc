@@ -13,15 +13,6 @@ using namespace CoreML::Specification;
 namespace onnxruntime {
 namespace coreml {
 
-// Once all ops are supportted FP16, we can remove it. Before that, we keep a set of ops to
-// filter suppported ones.
-static std::set<std::string> Float16Ops = {
-    "Add", "Mul", "Sub", "Div", "Pow", "Sqrt", "Reciprocal",
-    "Sigmoid", "Tanh", "Relu", "LeakyRelu", "Concat", "GridSample", "GlobalAveragePool",
-    "Clip", "DepthToSpace", "Resize", "Slice", "Conv",
-    "ConvTranspose", "GlobalMaxPool", "Gemm", "MatMul",
-    "AveragePool", "MaxPool", "Reshape", "Split", "Transpose"};
-
 namespace {
 // TODO, move this to shared_library
 bool HasExternalInitializer(const InitializedTensorSet& initializers, const Node& node,
@@ -65,20 +56,27 @@ bool BaseOpBuilder::IsOpSupported(const Node& node, const OpBuilderInputParams& 
   }
 
   if (!HasSupportedOpSet(node, logger)) {
+    LOGS(logger, VERBOSE) << "Operator [" << node.OpType() << "] does not support this opset";
     return false;
   }
 
   if (!HasSupportedInputs(node, input_params, logger)) {
+    LOGS(logger, VERBOSE) << "Operator [" << node.OpType() << "] has unsupported inputs";
     return false;
   }
 
   // We do not support external initializers for now
   const auto& initializers = input_params.graph_viewer.GetAllInitializedTensors();
   if (HasExternalInitializer(initializers, node, logger)) {
+    LOGS(logger, VERBOSE) << "Operator [" << node.OpType() << "] has external initializers";
     return false;
   }
 
-  return IsOpSupportedImpl(node, input_params, logger);
+  if (!IsOpSupportedImpl(node, input_params, logger)) {
+    LOGS(logger, VERBOSE) << "Operator [" << node.OpType() << "] is not supported by the impl";
+    return false;
+  }
+  return true;
 }
 
 bool BaseOpBuilder::HasSupportedInputs(const Node& node, const OpBuilderInputParams& input_params,
@@ -115,13 +113,10 @@ bool BaseOpBuilder::IsInputDtypeSupport(const Node& node, size_t idx,
     return true;
   }
 
-// only support MLProgram for FP16
-#if defined(COREML_ENABLE_MLPROGRAM)
-  if (input_params.create_mlprogram && input_type == ONNX_NAMESPACE::TensorProto_DataType_FLOAT16 &&
-      Float16Ops.count(node.OpType())) {
+  // only MLProgram support FP16
+  if (input_params.create_mlprogram && input_type == ONNX_NAMESPACE::TensorProto_DataType_FLOAT16) {
     return true;
   }
-#endif
 
   LOGS(logger, VERBOSE) << "[" << node.OpType() << "] Input type: [" << input_type << "] is not currently supported";
   return false;

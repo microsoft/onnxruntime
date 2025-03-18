@@ -9,19 +9,19 @@ ARG BASEIMAGE=nvidia/cuda:11.8.0-cudnn8-devel-ubi8
 ARG TRT_VERSION=8.6.1.6-1.cuda11.8
 FROM $BASEIMAGE AS base
 ARG TRT_VERSION
-ENV PATH /usr/local/nvidia/bin:/usr/local/cuda/bin:/usr/src/tensorrt/bin:${PATH}
+ENV PATH=/usr/local/nvidia/bin:/usr/local/cuda/bin:/usr/src/tensorrt/bin:${PATH}
 
 RUN dnf install -y bash wget &&\
     dnf clean dbcache
 
 # Install python3
 RUN dnf install -y \
-    python3.8 \
-    python38-pip \
-    python38-wheel &&\
+    python3.10 \
+    python310-pip \
+    python310-wheel &&\
     cd /usr/local/bin &&\
-    ln -s /usr/bin/python3 python3.8 &&\
-    ln -s /usr/bin/pip3 pip3.8;
+    ln -s /usr/bin/python3 python3.10 &&\
+    ln -s /usr/bin/pip3 pip3.10;
 
 RUN pip3 install --upgrade pip
 RUN pip3 install setuptools>=68.2.2

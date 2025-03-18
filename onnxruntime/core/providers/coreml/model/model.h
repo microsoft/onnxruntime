@@ -11,13 +11,14 @@
 #include <gsl/gsl>
 #include "core/common/logging/logging.h"
 #include "core/common/status.h"
-#include "core/platform/ort_mutex.h"
+#include <mutex>
 
 #if defined(__OBJC__)
 @class MLMultiArray;
 #endif
 
 namespace onnxruntime {
+class CoreMLOptions;
 namespace coreml {
 
 class Execution;
@@ -53,7 +54,7 @@ class Model {
         std::unordered_map<std::string, OnnxTensorInfo>&& input_output_info,
         std::unordered_set<std::string>&& scalar_outputs,
         std::unordered_set<std::string>&& int64_outputs,
-        const logging::Logger& logger, uint32_t coreml_flags);
+        const logging::Logger& logger, const CoreMLOptions& coreml_options);
 
   ~Model();
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(Model);
@@ -73,7 +74,7 @@ class Model {
   }
 
   // Mutex for exclusive lock to this model object
-  OrtMutex& GetMutex() { return mutex_; }
+  std::mutex& GetMutex() { return mutex_; }
 
   // Input and output names in the ORT fused node's order.
   // Names may have been adjusted from the originals due to CoreML naming rules.
@@ -101,7 +102,7 @@ class Model {
   std::unordered_set<std::string> scalar_outputs_;
   std::unordered_set<std::string> int64_outputs_;
 
-  OrtMutex mutex_;
+  std::mutex mutex_;
 };
 
 }  // namespace coreml

@@ -5,7 +5,7 @@ set -ex
 export build_dir=$1
 
 # it's for manylinux image
-export PATH=/opt/python/cp38-cp38/bin:$PATH
+export PATH=/opt/python/cp310-cp310/bin:$PATH
 
 echo Run symbolic shape infer test
 pushd $build_dir/Release/

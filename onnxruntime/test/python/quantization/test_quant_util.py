@@ -145,7 +145,7 @@ class TestQuantUtil(unittest.TestCase):
 
         for onnx_type, symmetric in subtest_configs:
             with self.subTest(onnx_type=onnx_type, symmetric=symmetric):
-                _, _, zero_point, scale, data_quant = quantize_data(data_float, onnx_type, symmetric)
+                zero_point, scale, data_quant = quantize_data(data_float, onnx_type, symmetric)
                 is_signed = onnx_type == onnx.TensorProto.INT4
                 np_int_type = numpy.int8 if is_signed else numpy.uint8
                 qmin = numpy.array(-8 if is_signed else 0, dtype=np_int_type)

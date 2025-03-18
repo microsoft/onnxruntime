@@ -1,31 +1,55 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-import { DataType } from '../../../wasm-common';
 import { TensorView } from '../../tensor-view';
-import { ShapeUtil } from '../../util';
 import { createAttributeWithCacheKey } from '../attribute-with-cache-key';
-import { ComputeContext, ProgramInfo, ProgramInputTensorInfoDependency, ProgramUniform } from '../types';
+import { ComputeContext, ProgramInputTensorInfoDependency, ProgramUniform } from '../types';
+import { DataType } from '../../../wasm-common';
 
-import {
-  applyAttention,
-  AttentionAttrs,
-  AttentionMaskType,
-  AttentionParameters,
-  AttentionQkvFormat,
-} from './attention';
-import { createTensorShapeVariables, inputVariable, outputVariable, ShaderHelper, UniformsArrayType } from './common';
+import { applyAttention, AttentionMaskType, AttentionParameters, AttentionQkvFormat } from './attention';
 import { maybeTransposeToBNSHAndAddBias } from './multihead-attention';
-import { createTileProgramInfo } from './tile';
+import { createSplitProgramInfo, SplitAttributes } from './split';
 import { createTransposeProgramInfo, TransposeAttributes } from './transpose';
+import { RotaryEmbeddingAttributes, createRotaryEmbeddingProgramInfo } from './rotary-embedding';
+import { inputVariable, outputVariable, ShaderHelper, UniformsArrayType } from './common';
+export interface GroupQueryAttentionAttributes {
+  numHeads: number;
+  kvNumHeads: number;
+  scale: number;
+  softcap: number;
+  doRotary: number;
+  rotaryInterleaved: number;
+  smoothSoftmax: boolean;
+  localWindowSize: number;
+}
 
-export const validateInputs = (inputs: readonly TensorView[], attributes: AttentionAttrs): AttentionParameters => {
+export const validateInputs = (
+  inputs: readonly TensorView[],
+  attributes: GroupQueryAttentionAttributes,
+): AttentionParameters => {
+  if (attributes.doRotary && inputs.length <= 7) {
+    throw new Error('cos_cache and sin_cache inputs are required if do_rotary is specified');
+  }
   const query = inputs[0];
   const key = inputs[1];
   const value = inputs[2];
   const pastKey = inputs[3];
   const pastValue = inputs[4];
-
+  if (attributes.doRotary !== 0 && inputs.length <= 7) {
+    throw new Error('cos_cast and sin_cache are expected if do_rotary attribute is non-zero');
+  }
+  if (attributes.localWindowSize !== -1) {
+    throw new Error('Local attention is not supported');
+  }
+  if (attributes.softcap !== 0) {
+    throw new Error('Softcap is not supported');
+  }
+  if (attributes.rotaryInterleaved !== 0) {
+    throw new Error('Rotary interleaved is not supported');
+  }
+  if (attributes.smoothSoftmax) {
+    throw new Error('Smooth softmax is not supported');
+  }
   // Abbreviation and Meanings:
   //   B:    batch_size
   //   S:    sequence_length (input sequence length of query)
@@ -62,17 +86,32 @@ export const validateInputs = (inputs: readonly TensorView[], attributes: Attent
   const dmmhaPacking = false;
   const batchSize = query.dims[0];
   const sequenceLength = query.dims[1];
-  const hiddenSize =
+  let hiddenSize =
     query.dims.length === 3 ? (dmmhaPacking ? query.dims[2] / 3 : query.dims[2]) : attributes.numHeads * query.dims[4];
   let kvSequenceLength = sequenceLength;
 
   let pastSequenceLength = 0;
-  let maxSequenceLength = 0;
-  const headSize = Math.floor(hiddenSize / attributes.numHeads);
+  const packedQKV = !key || key.dims.length === 0;
+  const headSize = !packedQKV
+    ? Math.floor(hiddenSize / attributes.numHeads)
+    : Math.floor(hiddenSize / (attributes.numHeads + 2 * attributes.kvNumHeads));
+  if (packedQKV) {
+    hiddenSize = headSize * attributes.numHeads;
+  }
   const hasPastKey = pastKey && pastKey.dims.length !== 0;
   const hasPastValue = pastValue && pastValue.dims.length !== 0;
-  // TODO : this should be from attributes.
-  const isPastkvBSNH = true;
+  // Currenly the onnxruntime GQA specification only support key/value BNSH format.
+  const isPastkvBSNH =
+    hasPastKey &&
+    pastKey.dims.length === 4 &&
+    pastKey.dims[0] === batchSize &&
+    pastKey.dims[1] !== attributes.kvNumHeads &&
+    pastKey.dims[2] === attributes.kvNumHeads &&
+    pastKey.dims[3] === headSize;
+
+  if (isPastkvBSNH) {
+    throw new Error('BSNH pastKey/pastValue is not supported');
+  }
   if (hasPastKey && hasPastValue) {
     if (pastKey.dims.length !== 4) {
       throw new Error('Input "past_key" is expected to have 4 dimensions');
@@ -80,21 +119,13 @@ export const validateInputs = (inputs: readonly TensorView[], attributes: Attent
     if (pastValue.dims.length !== 4) {
       throw new Error('Input "past_value" is expected to have 4 dimensions');
     }
-    if (isPastkvBSNH) {
-      // For BSNH
-      pastSequenceLength = pastKey.dims[1];
-      maxSequenceLength = pastKey.dims[1];
-    } else {
-      // For BNSH
-      pastSequenceLength = pastKey.dims[2];
-      maxSequenceLength = pastKey.dims[2];
-    }
+    pastSequenceLength = pastKey.dims[2];
   } else if (hasPastKey || hasPastValue) {
     throw new Error('Input "past_key" and "past_value" shall be both present or both absent');
   }
 
-  let qkvFormat: AttentionQkvFormat;
-  if (key) {
+  let qkvFormat: AttentionQkvFormat = AttentionQkvFormat.qkvBNSH;
+  if (key && key.dims.length > 0) {
     if (query.dims.length !== 3) {
       throw new Error('Input "query" is expected to have 3 dimensions when key is given');
     }
@@ -109,7 +140,6 @@ export const validateInputs = (inputs: readonly TensorView[], attributes: Attent
       if (query.dims[2] % key.dims[2] !== 0) {
         throw new Error('Dimension 2 of "query" should be a multiple of "key"');
       }
-      qkvFormat = AttentionQkvFormat.qkvBSNH;
       kvSequenceLength = key.dims[1];
     } else if (key.dims.length === 5) {
       if (key.dims[2] !== attributes.numHeads || key.dims[3] !== 2 || key.dims[4] !== headSize) {
@@ -118,15 +148,12 @@ export const validateInputs = (inputs: readonly TensorView[], attributes: Attent
       if (value) {
         throw new Error('Expect "value" be none when "key" has packed kv format.');
       }
-      qkvFormat = AttentionQkvFormat.qKvBSNHxBSN2H;
       kvSequenceLength = key.dims[1];
     } else {
       // key_dims.size() == 4 (cross-attention with past_key)
       if (key.dims[1] !== attributes.numHeads || key.dims[3] !== headSize) {
         throw new Error('Expect "key" shape (batch_size, num_heads, kv_sequence_length, head_size) for past_key');
       }
-
-      qkvFormat = AttentionQkvFormat.unknown;
       kvSequenceLength = key.dims[2];
     }
   } else {
@@ -143,8 +170,8 @@ export const validateInputs = (inputs: readonly TensorView[], attributes: Attent
 
   const maskType: AttentionMaskType = AttentionMaskType.none;
   let passPastInKv = false;
-  let vHiddenSize = hiddenSize;
-  if (value) {
+  let vHiddenSize = attributes.kvNumHeads ? headSize * attributes.kvNumHeads : hiddenSize;
+  if (value && value.dims.length > 0) {
     if (value.dims.length !== 3 && value.dims.length !== 4) {
       throw new Error('Input "value" is expected to have 3 or 4 dimensions');
     }
@@ -166,7 +193,12 @@ export const validateInputs = (inputs: readonly TensorView[], attributes: Attent
       passPastInKv = true;
     }
   }
-  const totalSequenceLength = pastSequenceLength + kvSequenceLength;
+  const seqlLens = inputs.length > 4 ? inputs[5] : undefined;
+  if (seqlLens && seqlLens.dims.length !== 1 && seqlLens.dims[0] !== batchSize) {
+    throw new Error('Input "seqlens" is expected to have 1 dimension and the same dim 0 as batch_size');
+  }
+  const totalSequenceLength = -1;
+  const maxSequenceLength = -1;
   const broadcastResPosBias = false;
 
   return {
@@ -180,181 +212,107 @@ export const validateInputs = (inputs: readonly TensorView[], attributes: Attent
     hiddenSize,
     vHiddenSize,
     headSize,
-    vHeadSize: Math.floor(vHiddenSize / attributes.kvNumHeads!),
+    vHeadSize: Math.floor(vHiddenSize / attributes.kvNumHeads),
     numHeads: attributes.numHeads,
     kvNumHeads: attributes.kvNumHeads,
-    nReps: attributes.numHeads / attributes.kvNumHeads!,
+    nReps: attributes.numHeads / attributes.kvNumHeads,
     pastPresentShareBuffer: false,
     maskType,
     scale: attributes.scale,
     broadcastResPosBias,
     passPastInKv,
     qkvFormat,
-    isPastkvBSNH,
   };
 };
 
-const createConcatProgramInfo = (
-  a: TensorView,
-  b: TensorView | undefined,
-  dataType: DataType,
-  params: AttentionParameters,
-): ProgramInfo => {
-  const outputShape = [params.batchSize, params.totalSequenceLength, params.kvNumHeads!, params.headSize];
-  const component = 4;
-  const outputSize = ShapeUtil.size(outputShape) / component;
-  const presentSequenceLength = params.totalSequenceLength;
-  const output = outputVariable('present_kv', dataType, outputShape.length, component);
-  const inputA = inputVariable('new_kv', a.dataType, a.dims.length, component);
-  const inputB = b ? inputVariable('past_kv', b.dataType, b.dims.length, component) : undefined;
+const weightTransposeAttribute: TransposeAttributes = createAttributeWithCacheKey({ perm: [0, 2, 1, 3] });
 
-  const H = Math.ceil(params.headSize / component);
-  const dispatch = { x: presentSequenceLength, y: a.dims[0], z: 1 };
+const maybeTransposeToBNSH = (context: ComputeContext, input: TensorView, params: AttentionParameters) => {
+  let reshapedInput = input;
+  const numHeads = params.kvNumHeads!;
+  if (input.dims.length === 3 && params.kvSequenceLength !== 0) {
+    reshapedInput = input.reshape([params.batchSize, params.kvSequenceLength, numHeads, params.headSize]);
+    reshapedInput = context.compute(createTransposeProgramInfo(reshapedInput, weightTransposeAttribute.perm), {
+      inputs: [reshapedInput],
+      outputs: [-1],
+    })[0];
+  }
 
-  const inputDependencies: ProgramInputTensorInfoDependency[] = b ? ['rank', 'rank'] : ['rank'];
+  return reshapedInput;
+};
 
+const generatePositionIdsProgramInfo = (
+  batchSize: number,
+  sequenceLength: number,
+  seqLens: TensorView,
+  totalSeqLen: TensorView,
+) => {
+  const outputDataType = DataType.int64;
+  const inputDependencies: ProgramInputTensorInfoDependency[] = ['type', 'type'];
+  const outputShape = [batchSize * sequenceLength];
+  const outputSize = batchSize * sequenceLength;
   const programUniforms: ProgramUniform[] = [
     { type: DataType.uint32, data: outputSize },
-    { type: DataType.uint32, data: params.pastSequenceLength },
-    { type: DataType.uint32, data: params.kvSequenceLength },
-    { type: DataType.uint32, data: params.totalSequenceLength },
+    { type: DataType.uint32, data: sequenceLength },
+    { type: DataType.uint32, data: batchSize },
   ];
+  const getShaderSource = (shaderHelper: ShaderHelper) => {
+    const seqLensInputHelper = inputVariable('seq_lens', seqLens.dataType, seqLens.dims);
+    const totalSeqLenInputHelper = inputVariable('total_seq_lens', totalSeqLen.dataType, totalSeqLen.dims);
+    const positionIdsHelper = outputVariable('pos_ids', outputDataType, outputShape);
 
-  const inputs = [inputA];
-  if (inputB) {
-    programUniforms.push(
-      ...createTensorShapeVariables(a.dims),
-      ...createTensorShapeVariables(b!.dims),
-      ...createTensorShapeVariables(outputShape),
-    );
-    inputs.push(inputB);
-  } else {
-    programUniforms.push(...createTensorShapeVariables(a.dims), ...createTensorShapeVariables(outputShape));
-  }
-  const uniforms: UniformsArrayType = [
-    { name: 'output_size', type: 'u32' },
-    { name: 'past_seqlen', type: 'u32' },
-    { name: 'new_seqlen', type: 'u32' },
-    { name: 'present_seqlen', type: 'u32' },
-  ];
+    const uniforms: UniformsArrayType = [
+      { name: 'output_size', type: 'u32' },
+      { name: 'sequence_length', type: 'u32' },
+      { name: 'batch_size', type: 'u32' },
+    ];
 
-  const pastStr = `      let past_batch_stride = uniforms.past_seqlen * num_heads * H;
-        var past_head_stride = uniforms.past_seqlen * H;
-        if (is_bsnh) {
-          past_head_stride = H;
-        }
-        let in_offset = b * past_batch_stride + s * row_stride + n * past_head_stride + h;
-        present_kv[out_offset] = past_kv[in_offset];`;
-  const newStr = `      let new_batch_stride = uniforms.new_seqlen * num_heads * H;
-        let new_row_stride = num_heads * H;
-        let new_head_stride = H;
-        let in_offset = b * new_batch_stride + (s - past_seqlen) * new_row_stride + n * new_head_stride + h;
-        present_kv[out_offset] = new_kv[in_offset];`;
-  const concatStr = b
-    ? `if (s < past_seqlen) {
-        ${pastStr}
-        } else if (s < past_seqlen + uniforms.new_seqlen) {
-        ${newStr}
-        }`
-    : `if (s < past_seqlen + uniforms.new_seqlen) {
-          ${newStr}
-        }`;
-
-  // TODO: handle H * params.kvNumHeads greater than maxComputeInvocationsPerWorkgroup limit.
-  const getShaderSource = (shaderHelper: ShaderHelper) => `
-
-  ${shaderHelper.registerUniforms(uniforms).declareVariables(...inputs, output)}
-  ${shaderHelper.mainStart([H, params.kvNumHeads!, 1])}
+    return `
+  ${shaderHelper.registerUniforms(uniforms).declareVariables(seqLensInputHelper, totalSeqLenInputHelper, positionIdsHelper)}
+  ${shaderHelper.mainStart()}
     ${shaderHelper.guardAgainstOutOfBoundsWorkgroupSizes('uniforms.output_size')}
-    var indices = ${output.offsetToIndices('global_idx')};
-    let h = local_id.x;
-    let n = local_id.y;
-    let s = workgroup_id.x;
-    let b = workgroup_id.y;
-    let num_heads = ${params.kvNumHeads!}u;
-    let H = ${H}u;
-
-    let present_seqlen = uniforms.present_seqlen;
-    let present_batch_stride = present_seqlen * num_heads * H;
-    var row_stride = H;
-    let is_bsnh = ${params.isPastkvBSNH};
-
-    if (is_bsnh) {
-      row_stride = num_heads * H;
-    }
-    var present_head_stride = present_seqlen * H;
-    if (is_bsnh) {
-      present_head_stride = H;
-    }
-
-    let past_seqlen = uniforms.past_seqlen;
-
-    let out_offset = b * present_batch_stride + s * row_stride + n * present_head_stride + h;
-    ${concatStr}
-  }`;
-
+    let total_sequence_length = u32(${totalSeqLenInputHelper.getByOffset('0')});
+    let is_subsequent_prompt = uniforms.sequence_length > 1 && uniforms.sequence_length != total_sequence_length;
+    let is_first_prompt = !is_subsequent_prompt && uniforms.sequence_length == total_sequence_length;
+    let batch_idx = global_idx / uniforms.sequence_length;
+    let sequence_idx = i32(global_idx % uniforms.sequence_length);
+    var pos_id: i32 = 0;
+    let seqlen = ${seqLensInputHelper.getByOffset('batch_idx')};
+    let total_seqlen = seqlen + 1;
+    if (is_first_prompt) {
+      if (sequence_idx < total_seqlen) {
+        pos_id = sequence_idx;
+      } else {
+        pos_id = 1;
+      }
+      ${positionIdsHelper.setByOffset('global_idx', 'pos_id')}
+    } else if (is_subsequent_prompt) {
+      let past_seqlen = total_seqlen - i32(uniforms.sequence_length);
+      if (past_seqlen + sequence_idx < total_seqlen) {
+        pos_id = past_seqlen + sequence_idx;
+      } else {
+        pos_id = 1;
+      }
+      ${positionIdsHelper.setByOffset('global_idx', 'pos_id')}
+    } else if (global_idx < uniforms.batch_size) {
+      ${positionIdsHelper.setByOffset('global_idx', 'seqlen')}
+    };
+  }
+  `;
+  };
   return {
-    name: 'ConcatPastNew',
-    shaderCache: { hint: `${params.kvNumHeads!}${H}${!!b}`, inputDependencies },
+    name: 'GeneratePositionIds',
+    shaderCache: { hint: `${batchSize};${sequenceLength}`, inputDependencies },
     getRunData: () => ({
-      outputs: [{ dims: outputShape, dataType }],
-      dispatchGroup: dispatch,
+      outputs: [{ dims: outputShape, dataType: outputDataType }],
+      dispatchGroup: { x: Math.ceil(outputSize / 64 /* workgroup size */) },
       programUniforms,
     }),
     getShaderSource,
   };
 };
 
-export const parseGroupQueryAttentionAttributes = (attributes: AttentionAttrs): AttentionAttrs =>
-  createAttributeWithCacheKey({ ...attributes });
-
-const weightTransposeAttribute: TransposeAttributes = createAttributeWithCacheKey({ perm: [0, 2, 1, 3] });
-
-const maybeExpandAndTransposeToBNSH = (
-  context: ComputeContext,
-  input: TensorView,
-  pastKV: TensorView | undefined,
-  params: AttentionParameters,
-  outputIndex: number,
-) => {
-  let reshapedInput = input;
-  const numHeads = params.kvNumHeads!;
-  const nReps = params.nReps!;
-  if (input.dims.length === 3 && params.kvSequenceLength !== 0) {
-    reshapedInput = input.reshape([params.batchSize, params.kvSequenceLength, numHeads, params.headSize]);
-  }
-
-  if (pastKV) {
-    reshapedInput = context.compute(createConcatProgramInfo(reshapedInput, pastKV, reshapedInput.dataType, params), {
-      inputs: [reshapedInput, pastKV],
-      outputs: [params.isPastkvBSNH ? outputIndex : -1],
-    })[0];
-  } else {
-    reshapedInput = context.compute(createConcatProgramInfo(reshapedInput, undefined, reshapedInput.dataType, params), {
-      inputs: [reshapedInput],
-      outputs: [params.isPastkvBSNH ? outputIndex : -1],
-    })[0];
-  }
-  if (nReps !== 1) {
-    reshapedInput = context.compute(createTileProgramInfo([reshapedInput], [1, 1, 1, nReps]), {
-      inputs: [reshapedInput],
-      outputs: [-1],
-    })[0];
-    reshapedInput = reshapedInput.reshape([
-      params.batchSize,
-      params.totalSequenceLength,
-      numHeads * nReps,
-      params.headSize,
-    ]);
-  }
-
-  return context.compute(createTransposeProgramInfo(reshapedInput, weightTransposeAttribute.perm), {
-    inputs: [reshapedInput],
-    outputs: [-1],
-  })[0];
-};
-
-export const groupQueryAttention = (context: ComputeContext, attributes: AttentionAttrs): void => {
+export const groupQueryAttention = (context: ComputeContext, attributes: GroupQueryAttentionAttributes): void => {
   const params = validateInputs(context.inputs, attributes);
   if (context.inputs[0].dims.length === 5) {
     throw new Error('Packed QKV is not implemented');
@@ -364,19 +322,84 @@ export const groupQueryAttention = (context: ComputeContext, attributes: Attenti
     throw new Error('Packed KV is not implemented');
   }
 
+  const q = context.inputs[0];
+  const k = context.inputs[1] && context.inputs[1].dims.length > 0 ? context.inputs[1] : undefined;
+  const v = context.inputs[2] && context.inputs[2].dims.length > 0 ? context.inputs[2] : undefined;
+  const pastKey = context.inputs[3] && context.inputs[3].dims.length !== 0 ? context.inputs[3] : undefined;
+  const pastValue = context.inputs[4] && context.inputs[4].dims.length !== 0 ? context.inputs[4] : undefined;
+  const seqLens = context.inputs.length > 4 ? context.inputs[5] : undefined;
+  const totalSequenceLengthInput = context.inputs.length > 5 ? context.inputs[6] : undefined;
+  const kvNumHeads = params.kvNumHeads ? params.kvNumHeads : params.numHeads;
+
+  // TODO Remove explicit split operation and use indexing in Attention implementation to avoid overhead.
+
+  const splitAttributes: SplitAttributes = createAttributeWithCacheKey({
+    axis: 2,
+    numOutputs: 3,
+    splitSizes: [params.numHeads * params.headSize, kvNumHeads * params.headSize, kvNumHeads * params.headSize],
+  });
+  const [query, key, value] =
+    !k && !v
+      ? context.compute(createSplitProgramInfo([q], splitAttributes), { inputs: [q], outputs: [-1, -1, -1] })
+      : [q, k!, v!];
+  let qRotary: TensorView | undefined;
+  let kRotary: TensorView | undefined;
+  if (attributes.doRotary) {
+    const posIds = context.compute(
+      generatePositionIdsProgramInfo(params.batchSize, params.sequenceLength, seqLens!, totalSequenceLengthInput!),
+      { inputs: [seqLens!, totalSequenceLengthInput!], outputs: [-1] },
+    )[0];
+    const cosCache = context.inputs[7];
+    const sinCache = context.inputs[8];
+    const qRotaryEmbeddingAttributes: RotaryEmbeddingAttributes = createAttributeWithCacheKey({
+      interleaved: attributes.rotaryInterleaved !== 0,
+      numHeads: params.numHeads,
+      rotaryEmbeddingDim: 0,
+      scale: attributes.scale,
+    });
+    const inputs = [query, posIds, cosCache, sinCache];
+    const outputs = [-1];
+    qRotary = context.compute(createRotaryEmbeddingProgramInfo(inputs, qRotaryEmbeddingAttributes), {
+      inputs,
+      outputs,
+    })[0];
+    inputs.splice(0, 1, key);
+    const kRotaryEmbeddingAttributes: RotaryEmbeddingAttributes = createAttributeWithCacheKey({
+      interleaved: attributes.rotaryInterleaved !== 0,
+      numHeads: params.kvNumHeads!,
+      rotaryEmbeddingDim: 0,
+      scale: attributes.scale,
+    });
+    kRotary = context.compute(createRotaryEmbeddingProgramInfo(inputs, kRotaryEmbeddingAttributes), {
+      inputs,
+      outputs,
+    })[0];
+  }
   const Q = maybeTransposeToBNSHAndAddBias(
     context,
     params.batchSize,
     params.numHeads,
     params.sequenceLength,
     params.headSize,
-    context.inputs[0],
+    attributes.doRotary ? qRotary! : query,
     undefined,
     0,
   );
-  const pastKey = context.inputs[3] && context.inputs[3].dims.length !== 0 ? context.inputs[3] : undefined;
-  const pastValue = context.inputs[4] && context.inputs[4].dims.length !== 0 ? context.inputs[4] : undefined;
-  const K = maybeExpandAndTransposeToBNSH(context, context.inputs[1], pastKey, params, 1);
-  const V = maybeExpandAndTransposeToBNSH(context, context.inputs[2], pastValue, params, 2);
-  applyAttention(context, Q, K, V, undefined, undefined, undefined, undefined, undefined, params, attributes);
+  const K = maybeTransposeToBNSH(context, attributes.doRotary ? kRotary! : key, params);
+  const V = maybeTransposeToBNSH(context, value, params);
+
+  applyAttention(
+    context,
+    Q,
+    K,
+    V,
+    undefined,
+    undefined,
+    pastKey,
+    pastValue,
+    undefined,
+    params,
+    seqLens,
+    totalSequenceLengthInput,
+  );
 };

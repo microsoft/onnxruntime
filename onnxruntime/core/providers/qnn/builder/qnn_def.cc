@@ -3,6 +3,7 @@
 
 #include "core/providers/qnn/builder/qnn_def.h"
 #include "core/providers/qnn/builder/qnn_utils.h"
+#include <functional>
 #include <memory>
 #include <ostream>
 #include <cstring>
@@ -208,6 +209,22 @@ void SetQnnTensorClientBufData(Qnn_Tensor_t& qnn_tensor, void* client_buf_data) 
   ORT_THROW("QNN tensor version not supported, QNN tensor version: ", qnn_tensor.version);
 }
 
+void SetQnnTensorMemHandle(Qnn_Tensor_t& qnn_tensor, Qnn_MemHandle_t mem_handle) {
+  if (QNN_TENSOR_VERSION_1 == qnn_tensor.version) {
+    qnn_tensor.v1.memHandle = mem_handle;
+    return;
+  }
+
+#ifdef QNN_TENSOR_V2_INIT
+  if (QNN_TENSOR_VERSION_2 == qnn_tensor.version) {
+    qnn_tensor.v2.memHandle = mem_handle;
+    return;
+  }
+#endif  // QNN_TENSOR_V2_INIT
+
+  ORT_THROW("QNN tensor version not supported, QNN tensor version: ", qnn_tensor.version);
+}
+
 void SetQnnTensorQParams(Qnn_Tensor_t& qnn_tensor, const Qnn_QuantizeParams_t& quantize_params) {
   if (QNN_TENSOR_VERSION_1 == qnn_tensor.version) {
     qnn_tensor.v1.quantizeParams = quantize_params;
@@ -350,6 +367,20 @@ const Qnn_ClientBuffer_t& GetQnnTensorClientBuf(const Qnn_Tensor_t& qnn_tensor) 
   ORT_THROW("QNN tensor version not supported, QNN tensor version: ", qnn_tensor.version);
 }
 
+Qnn_MemHandle_t GetQnnTensorMemHandle(const Qnn_Tensor_t& qnn_tensor) {
+  if (QNN_TENSOR_VERSION_1 == qnn_tensor.version) {
+    return qnn_tensor.v1.memHandle;
+  }
+
+#ifdef QNN_TENSOR_V2_INIT
+  if (QNN_TENSOR_VERSION_2 == qnn_tensor.version) {
+    return qnn_tensor.v2.memHandle;
+  }
+#endif  // QNN_TENSOR_V2_INIT
+
+  ORT_THROW("QNN tensor version not supported, QNN tensor version: ", qnn_tensor.version);
+}
+
 const Qnn_QuantizeParams_t& GetQnnTensorQParams(const Qnn_Tensor_t& qnn_tensor) {
   if (QNN_TENSOR_VERSION_1 == qnn_tensor.version) {
     return qnn_tensor.v1.quantizeParams;
@@ -358,6 +389,20 @@ const Qnn_QuantizeParams_t& GetQnnTensorQParams(const Qnn_Tensor_t& qnn_tensor) 
 #ifdef QNN_TENSOR_V2_INIT
   if (QNN_TENSOR_VERSION_2 == qnn_tensor.version) {
     return qnn_tensor.v2.quantizeParams;
+  }
+#endif  // QNN_TENSOR_V2_INIT
+
+  ORT_THROW("QNN tensor version not supported, QNN tensor version: ", qnn_tensor.version);
+}
+
+uint8_t* GetQnnTensorIsDynamicDimensions(const Qnn_Tensor_t& qnn_tensor) {
+  if (QNN_TENSOR_VERSION_1 == qnn_tensor.version) {
+    return nullptr;  // not present in v1
+  }
+
+#ifdef QNN_TENSOR_V2_INIT
+  if (QNN_TENSOR_VERSION_2 == qnn_tensor.version) {
+    return qnn_tensor.v2.isDynamicDimensions;
   }
 #endif  // QNN_TENSOR_V2_INIT
 
@@ -386,6 +431,15 @@ Status CompareQnnQuantParams(const Qnn_QuantizeParams_t& qparam0, const Qnn_Quan
   }
 
   return Status::OK();
+}
+
+uint32_t CalcQnnTensorNumElems(const Qnn_Tensor_t& qnn_tensor) {
+  uint32_t* qnn_tensor_dims = GetQnnTensorDims(qnn_tensor);
+  uint32_t qnn_tensor_rank = GetQnnTensorRank(qnn_tensor);
+  return std::accumulate(qnn_tensor_dims,
+                         qnn_tensor_dims + qnn_tensor_rank,
+                         1,
+                         std::multiplies<uint32_t>());
 }
 
 bool CreateTensorInQnnGraph(const QNN_INTERFACE_VER_TYPE& qnn_interface,
@@ -422,12 +476,7 @@ bool CreateTensorInQnnGraph(const QNN_INTERFACE_VER_TYPE& qnn_interface,
       return false;
     }
     // verify size expressed by the dims matches the raw tensor size
-    auto qnn_tensor_dims = GetQnnTensorDims(qnn_tensor);
-    auto qnn_tensor_rank = GetQnnTensorRank(qnn_tensor);
-    uint32_t qnn_tensor_size = std::accumulate(qnn_tensor_dims,
-                                               qnn_tensor_dims + qnn_tensor_rank,
-                                               static_cast<uint32_t>(data_size),
-                                               std::multiplies<uint32_t>());
+    uint32_t qnn_tensor_size = CalcQnnTensorNumElems(qnn_tensor) * gsl::narrow_cast<uint32_t>(data_size);
     auto qnn_tensor_buf_size = GetQnnTensorClientBuf(qnn_tensor).dataSize;
     if (qnn_tensor_size != qnn_tensor_buf_size) {
       ss << "Data length mismatch for static tensor. node_name: " << node_name

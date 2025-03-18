@@ -12,6 +12,7 @@
 #include <condition_variable>
 #include <mutex>
 #include <map>
+#include <functional>
 
 #include "core/session/onnxruntime_cxx_api.h"
 #include "core/providers/openvino/contexts.h"
@@ -30,11 +31,13 @@ class InferRequestsQueue;
 class BasicBackend : public IBackend {
  public:
   BasicBackend(std::unique_ptr<ONNX_NAMESPACE::ModelProto>& model_proto,
-               GlobalContext& global_context,
+               SessionContext& session_context,
                const SubGraphContext& subgraph_context,
-               EPCtxHandler& ep_ctx_handle);
+               SharedContext& shared_context,
+               ptr_stream_t& model_stream);
 
   void Infer(OrtKernelContext* context) override;
+  ~BasicBackend() override = default;
   ov::CompiledModel& GetOVCompiledModel() override {
     return exe_network_.Get();
   }
@@ -43,7 +46,7 @@ class BasicBackend : public IBackend {
   void PopulateCompiledDirectory(std::string, std::string&, std::string&, bool&);
   bool ValidateSubgraph(std::map<std::string, std::shared_ptr<ov::Node>>& const_outputs_map);
   void PopulateConfigValue(ov::AnyMap& device_config);
-  void EnableCaching(ov::AnyMap& device_config);
+  void EnableCaching();
   void EnableGPUThrottling(ov::AnyMap& device_config);
   void EnableStreams();
   void SetNumThreads(ov::AnyMap& device_config);
@@ -55,14 +58,13 @@ class BasicBackend : public IBackend {
 
   void CompleteAsyncInference(Ort::KernelContext& context, std::shared_ptr<OVInferRequest> infer_request);
 
-  GlobalContext& global_context_;
+  SessionContext& session_context_;
   SubGraphContext subgraph_context_;
+  SharedContext& shared_context_;
   mutable std::mutex compute_lock_;
-  std::shared_ptr<const OVNetwork> ie_cnn_network_;
   OVExeNetwork exe_network_;
   std::map<std::string, std::shared_ptr<ov::Node>> const_outputs_map_;
   std::unique_ptr<InferRequestsQueue> inferRequestsQueue_;
-  bool is_ep_ctx_graph_{false};
 #if defined IO_BUFFER_ENABLED
   OVRemoteContextPtr remote_context_;
 #endif
@@ -73,10 +75,11 @@ class BasicBackend : public IBackend {
 
 class InferRequestsQueue {
  public:
-  InferRequestsQueue(OVExeNetwork& net, size_t nireq) {
+  InferRequestsQueue(OVExeNetwork& net, size_t nireq, std::function<void(OVInferRequestPtr)> initializer) {
     OVInferRequestPtr infer_request;
     for (size_t id = 0; id < nireq; id++) {
       infer_request = std::make_shared<OVInferRequest>(net.CreateInferRequest());
+      initializer(infer_request);
       infer_requests_.push_back(infer_request);
     }
   }
