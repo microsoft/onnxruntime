@@ -262,6 +262,10 @@ def optimize_by_fusion(
 
     optimizer.optimize(optimization_options)
 
+    import onnx
+
+    onnx.save(optimizer.model, "before_topo_sort.onnx")
+
     optimizer.topological_sort()
 
     optimizer.model.producer_name = "onnxruntime.transformers"

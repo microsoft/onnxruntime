@@ -271,9 +271,6 @@ def main():
     if args.precision == Precision.FLOAT16:
         assert args.use_gpu, "fp16 requires --use_gpu"
 
-    if args.optimize_onnx:
-        logger.warning("Graph optimization for T5 is not implemented yet.")
-
     output_paths = export_onnx_models(
         args.model_name_or_path,
         cache_dir,

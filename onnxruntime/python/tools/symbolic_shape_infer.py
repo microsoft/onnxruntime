@@ -29,7 +29,10 @@ def get_dim_from_proto(dim):
 
 def is_sequence(type_proto):
     cls_type = type_proto.WhichOneof("value")
-    assert cls_type in ["tensor_type", "sequence_type"]
+    if cls_type not in ["tensor_type", "sequence_type"]:
+        print(f"****Unknown cls_type: {cls_type}")
+        return False
+    # assert cls_type in ["tensor_type", "sequence_type"]
     return cls_type == "sequence_type"
 
 
@@ -2785,12 +2788,16 @@ class SymbolicShapeInference:
                 "Sum",
             ]:
                 vi = self.known_vi_[node.output[0]]
-                out_rank = len(get_shape_from_type_proto(vi.type))
-                in_shapes = [self._get_shape(node, i) for i in range(len(node.input))]
-                for d in range(out_rank - (2 if node.op_type in ["MatMul", "MatMulInteger", "MatMulInteger16"] else 0)):
-                    in_dims = [s[len(s) - out_rank + d] for s in in_shapes if len(s) + d >= out_rank]
-                    if len(in_dims) > 1:
-                        self._check_merged_dims(in_dims, allow_broadcast=True)
+                output_0_shape = get_shape_from_type_proto(vi.type)
+                if (output_0_shape is None):
+                    print(f"****node `{node}` first output has no vi `{vi}`")
+                else:
+                    out_rank = len(output_0_shape)
+                    in_shapes = [self._get_shape(node, i) for i in range(len(node.input))]
+                    for d in range(out_rank - (2 if node.op_type in ["MatMul", "MatMulInteger", "MatMulInteger16"] else 0)):
+                        in_dims = [s[len(s) - out_rank + d] for s in in_shapes if len(s) + d >= out_rank]
+                        if len(in_dims) > 1:
+                            self._check_merged_dims(in_dims, allow_broadcast=True)
 
             for i_o in range(len(node.output)):
                 # Special cases:

@@ -192,12 +192,15 @@ def get_tiny_t5_model_dir():
     return os.path.normpath(tiny_model_dir)
 
 
+use_tiny_model = True
+
+
 class TestBeamSearchT5(unittest.TestCase):
     """Test BeamSearch for T5 model"""
 
     def setUp(self):
         tiny_model_dir = get_tiny_t5_model_dir()
-        model_name = "tiny_t5" if os.path.exists(tiny_model_dir) else "t5-small"
+        model_name = "tiny_t5" if use_tiny_model and os.path.exists(tiny_model_dir) else "t5-small"
         self.model_name = tiny_model_dir if model_name == "tiny_t5" else "t5-small"
         self.decoder_onnx_path = os.path.join(".", "t5_onnx_models", f"{model_name}_decoder.onnx")
         self.encoder_onnx_path = os.path.join(".", "t5_onnx_models", f"{model_name}_encoder.onnx")
@@ -297,7 +300,7 @@ class TestBeamSearchT5Fp16(unittest.TestCase):
     def setUp(self):
         tiny_model_dir = get_tiny_t5_model_dir()
         tiny_model_dir = os.path.normpath(tiny_model_dir)
-        self.model_name = "tiny_t5" if os.path.exists(tiny_model_dir) else "t5-small"
+        self.model_name = "tiny_t5" if use_tiny_model and os.path.exists(tiny_model_dir) else "t5-small"
         self.model_id = tiny_model_dir if self.model_name == "tiny_t5" else "t5-small"
         self.beam_search_onnx_path = os.path.join(".", "onnx_models", f"{self.model_name}_beam_search_fp16.onnx")
         self.default_arguments = [

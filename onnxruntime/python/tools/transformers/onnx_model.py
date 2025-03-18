@@ -59,6 +59,7 @@ class OnnxModel:
             except Exception:
                 self.enable_shape_infer = False  # disable shape inference to suppress same error message.
                 print("failed in shape inference", sys.exc_info()[0])
+                logger.warning("failed in shape inference", exc_info=True)
 
         return None
 
@@ -242,10 +243,13 @@ class OnnxModel:
                 output = node.output[output_index]
                 if output in input_name_to_nodes:
                     children = list(input_name_to_nodes[output])
+                    # print("add children", children)
         else:
             for output in node.output:
                 if output in input_name_to_nodes:
                     children.extend(input_name_to_nodes[output])
+                    if not isinstance(input_name_to_nodes[output], list):
+                        print("add children", input_name_to_nodes[output])
 
         return children
 

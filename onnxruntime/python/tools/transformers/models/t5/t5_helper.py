@@ -142,7 +142,6 @@ class T5Helper:
             "SimplifiedLayerNormalization",
             "SkipSimplifiedLayerNormalization",
             "Relu",
-            "Add",
         ],
         force_fp16_logits: bool = False,
     ):
@@ -193,6 +192,18 @@ class T5Helper:
             keep_io_types = [logits_output_name]
             node_block_list = [last_matmul_node.name]
 
+        # Add node can be forced to fp32 when its majority of parents and children are in fp32.
+        input_name_to_nodes = onnx_model.input_name_to_nodes()
+        for node in onnx_model.nodes():
+            if node.op_type == "Add":
+                parents = onnx_model.get_parents(node, output_name_to_node)
+                children = onnx_model.get_children(node, input_name_to_nodes)
+                blocked_children = [child for child in children if child.op_type in op_block_list]
+                blocked_parents = [parent for parent in parents if parent.op_type in op_block_list]
+                if (len(blocked_children) + len(blocked_parents)) * 2 >= len(parents) + len(children):
+                    node_block_list.append(node.name)
+        logger.info(f"node_block_list: {node_block_list}")
+
         parameters = {
             "keep_io_types": keep_io_types,
             "op_block_list": op_block_list,
@@ -224,17 +235,18 @@ class T5Helper:
         optimization_options = None
         if is_float16:
             optimization_options = FusionOptions("t5")
-            optimization_options.enable_skip_layer_norm = False
+            # SkipLayerNormalization is faster but might bring accuracy drop since it uses fp16 accumulation.
+            optimization_options.enable_skip_layer_norm = not auto_mixed_precision
 
         m = optimize_model(
             onnx_model_path,
             model_type="t5",
             num_heads=num_attention_heads,
             hidden_size=hidden_size,
-            opt_level=2 if not use_external_data_format else 0,
+            opt_level=1,
             optimization_options=optimization_options,
-            use_gpu=False,
-            only_onnxruntime=not use_gpu,
+            use_gpu=use_gpu,
+            only_onnxruntime=False,
         )
 
         if is_float16:
