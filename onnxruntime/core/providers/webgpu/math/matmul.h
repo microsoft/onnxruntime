@@ -24,10 +24,10 @@ class MatMul final : public WebGpuKernel {
   constexpr static uint32_t MATMUL_PACKED_WORKGROUP_SIZE_Z = 1;
 };
 
-class MatMulNativeProgram final : public Program<MatMulNativeProgram> {
+class MatMulNaiveProgram final : public Program<MatMulNaiveProgram> {
  public:
-  MatMulNativeProgram(const int64_t output_size, int output_number, bool has_bias)
-      : Program{"MatMulNative"}, output_size_(output_size), output_number_(output_number), has_bias_{has_bias} {
+  MatMulNaiveProgram(const int64_t output_size, int64_t output_number, bool has_bias)
+      : Program{"MatMulNaive"}, output_size_(output_size), output_number_(output_number), has_bias_{has_bias} {
   }
 
   Status GenerateShaderCode(ShaderHelper& sh) const override;
@@ -39,7 +39,7 @@ class MatMulNativeProgram final : public Program<MatMulNativeProgram> {
 
  private:
   const int64_t output_size_;
-  const int output_number_;
+  const int64_t output_number_;
   const bool has_bias_;
 };
 

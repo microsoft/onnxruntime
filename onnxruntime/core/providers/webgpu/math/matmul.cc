@@ -29,7 +29,7 @@ ONNX_OPERATOR_KERNEL_EX(
         .TypeConstraint("T", WebGpuSupportedNumberTypes()),
     MatMul);
 
-std::string CalcResult(int components, int a_components, int output_number) {
+std::string CalcResult(int64_t components, int64_t a_components, int64_t output_number) {
   std::ostringstream oss;
   oss << "var a_data: a_value_t;\n";
   for (int i = 0; i < a_components; ++i) {
@@ -45,8 +45,7 @@ std::string CalcResult(int components, int a_components, int output_number) {
   return oss.str();
 }
 
-Status MatMulNativeProgram::GenerateShaderCode(ShaderHelper& shader) const {
-  LOGS_DEFAULT(VERBOSE) << "MatMulNativeProgram: Start generating shader code";
+Status MatMulNaiveProgram::GenerateShaderCode(ShaderHelper& shader) const {
   const auto& a = shader.AddInput("a", ShaderUsage::UseUniform | ShaderUsage::UseIndicesTypeAlias |
                                            ShaderUsage::UseValueTypeAlias | ShaderUsage::UseElementTypeAlias);
   const auto& b = shader.AddInput("b", ShaderUsage::UseUniform | ShaderUsage::UseIndicesTypeAlias |
@@ -91,17 +90,15 @@ Status MatMulNativeProgram::GenerateShaderCode(ShaderHelper& shader) const {
                             << "for (var i = 0u; i < " << output_number_ << "u; i++) {\n"
                             << "  var value = values[i];\n"
                             << process_bias << "\n"
-                            << "  let cur_indices = output_indices_t(batch, row + i, col);\n"
+                            << "  let cur_indices = output_indices_t(batch, row + i, col/ " << components << ");\n"
                             << "  let offset = " << output.IndicesToOffset("cur_indices") << ";\n"
-                            << output.SetByOffset("offset / " + std::to_string(components), "value")
+                            << output.SetByOffset("offset", "value")
                             << "}\n";
 
   return Status::OK();
 }
 
 Status MatMul::ComputeInternal(ComputeContext& context) const {
-  LOGS_DEFAULT(VERBOSE) << "Running MatMul WebGPU kernel";
-
   // calculate output shape
   MatMulComputeHelper helper;
   const auto* a = context.Input(0);
@@ -114,39 +111,33 @@ Status MatMul::ComputeInternal(ComputeContext& context) const {
   const uint32_t n = static_cast<uint32_t>(helper.N());
   const uint32_t k = static_cast<uint32_t>(helper.K());
 
-  LOGS_DEFAULT(VERBOSE) << "MatMulProgram: m: " << m;
-  LOGS_DEFAULT(VERBOSE) << "MatMulProgram: n: " << n;
-  LOGS_DEFAULT(VERBOSE) << "MatMulProgram: k: " << k;
-
   bool has_bias = context.InputCount() > 2;
-  LOGS_DEFAULT(VERBOSE) << "MatMulProgram: has_bias: " << has_bias;
 
-  if (n < 8 && k < 8) {  // call MatMulNativeProgram
+  if (n < 8 && k < 8) {  // call MatMulNaiveProgram
+    const auto components = GetMaxComponents(n);
+    const auto a_components = GetMaxComponents(k);
 
-    LOGS_DEFAULT(VERBOSE) << "Running MatMulNativeProgram";
-    const int components = GetMaxComponents(n);
-    const int a_components = GetMaxComponents(k);
-
-    const int output_number = GetMaxComponents(m);
+    const auto output_number = GetMaxComponents(m);
     uint32_t output_size = static_cast<uint32_t>(helper.OutputShape().Size() / components / output_number);
 
     const size_t output_rank = helper.OutputShape().NumDimensions();
     TensorShape outer_dims = output_rank > 2 ? helper.OutputShape().Slice(0, output_rank - 2) : TensorShape({});
     const int64_t batch_size = outer_dims.Size();
-    TensorShape output_shape_shader({batch_size, helper.M(), helper.N()});
+    TensorShape output_shape_shader({batch_size, helper.M(), helper.N() / components});
 
-    MatMulNativeProgram program{output_size, output_number, has_bias};
+    MatMulNaiveProgram program{output_size, output_number, has_bias};
+
     program
         .CacheHint(std::to_string(components), std::to_string(a_components), std::to_string(output_number))
-        .AddInputs({{a, ProgramTensorMetadataDependency::TypeAndRank,a->Shape(), a_components},
-                    {b, ProgramTensorMetadataDependency::TypeAndRank,b->Shape(), components}});
+        .AddInputs({{a, ProgramTensorMetadataDependency::TypeAndRank, a->Shape(), static_cast<int>(a_components)},
+                    {b, ProgramTensorMetadataDependency::TypeAndRank, b->Shape(), static_cast<int>(components)}});
 
     if (has_bias) {
       const auto* bias = context.Input(2);
       program.AddInput({bias, ProgramTensorMetadataDependency::Rank, 1});
     }
     program
-        .AddOutputs({{output_tensor, ProgramTensorMetadataDependency::None, output_shape_shader, components}})
+        .AddOutputs({{output_tensor, ProgramTensorMetadataDependency::None, output_shape_shader, static_cast<int>(components)}})
         .SetDispatchGroupSize(ceil(static_cast<float>(output_size) / 64))
         .AddIndices(outer_dims)
         .AddUniformVariables({{output_size}, {m}, {n}, {k}});
@@ -225,7 +216,6 @@ Status MatMul::ComputeInternal(ComputeContext& context) const {
     const auto* bias = context.Input(2);
     program.AddInput({bias, ProgramTensorMetadataDependency::Rank, 1});
   }
-
   return context.RunProgram(program);
 }
 

@@ -65,30 +65,35 @@ void MatMulProgram::MatMulReadWriteFnSource(ShaderHelper& shader,
       << "}\n\n";
 }
 
-Status MatMulProgram::MakeMatMUlPackedVec4Source(ShaderHelper& shader, const ShaderIndicesHelper& batch_dims) const {
+Status MatMulProgram::MakeMatMulPackedVec4Source(ShaderHelper& shader,
+                                                 const ShaderIndicesHelper& batch_dims,
+                                                 const InlinedVector<int64_t>& elements_per_thread,
+                                                 uint32_t workgroup_size_x,
+                                                 uint32_t workgroup_size_y) {
   // elements per thread
-  const int elements_per_thread_x = elements_per_thread_[0];
-  const int elements_per_thread_y = elements_per_thread_[1];
-  const int tile_inner = 32;
+  const auto elements_per_thread_x = elements_per_thread[0];
+  const auto elements_per_thread_y = elements_per_thread[1];
+  const decltype(elements_per_thread_x) tile_inner = 32;
 
-  const int tile_a_outer = WorkgroupSizeY() * elements_per_thread_y;
-  const int tile_b_outer = WorkgroupSizeX() * elements_per_thread_x;
-  const int tile_a_width = tile_inner;
-  const int tile_a_height = tile_a_outer;
-  const int inner_elements_size = tile_a_width / WorkgroupSizeX();
-  const int row_per_thread_b = tile_inner / WorkgroupSizeY();
+  const auto tile_a_outer = workgroup_size_y * elements_per_thread_y;
+  const auto tile_b_outer = workgroup_size_x * elements_per_thread_x;
+  const auto tile_a_width = tile_inner;
+
+  const auto tile_a_height = tile_a_outer;
+  const auto inner_elements_size = tile_a_width / workgroup_size_x;
+  const auto row_per_thread_b = tile_inner / workgroup_size_y;
 
   const std::string data_type = "a_value_t";
 
   if (!((inner_elements_size == 3 || inner_elements_size == 4) &&
-        tile_a_width % WorkgroupSizeX() == 0 &&
-        tile_inner % WorkgroupSizeY() == 0 &&
+        tile_a_width % workgroup_size_x == 0 &&
+        tile_inner % workgroup_size_y == 0 &&
         elements_per_thread_x == 4)) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                            "Invalid matrix multiplication configuration inner_elements_size: ", inner_elements_size,
                            " must be 3 or 4. tile_a_width: ", tile_a_width, " must be divisible by WorkgroupSizeX: ",
-                           WorkgroupSizeX(), ". tile_inner: ", tile_inner, " must be divisible by WorkgroupSizeY: ",
-                           WorkgroupSizeY(), ". elements_per_thread_x: ", elements_per_thread_x, " must be 4.");
+                           workgroup_size_x, ". tile_inner: ", tile_inner, " must be divisible by WorkgroupSizeY: ",
+                           workgroup_size_y, ". elements_per_thread_x: ", elements_per_thread_x, " must be 4.");
   }
 
   shader.AdditionalImplementation()
@@ -167,28 +172,31 @@ Status MatMulProgram::MakeMatMUlPackedVec4Source(ShaderHelper& shader, const Sha
   return Status::OK();
 }
 
-Status MatMulProgram::MakeMatMulPackedSource(ShaderHelper& shader, const ShaderIndicesHelper& batch_dims) const {
-  const int elements_per_thread_x = elements_per_thread_[0];
-  const int elements_per_thread_y = elements_per_thread_[1];
-  const int tile_inner = 32;
+Status MatMulProgram::MakeMatMulPackedSource(ShaderHelper& shader, const ShaderIndicesHelper& batch_dims,
+                                             const InlinedVector<int64_t>& elements_per_thread,
+                                             uint32_t workgroup_size_x,
+                                             uint32_t workgroup_size_y) {
+  const auto elements_per_thread_x = elements_per_thread[0];
+  const auto elements_per_thread_y = elements_per_thread[1];
+  const decltype(elements_per_thread_x) tile_inner = 32;
 
-  const int tile_a_outer = WorkgroupSizeY() * elements_per_thread_y;
-  const int tile_b_outer = WorkgroupSizeX() * elements_per_thread_x;
-  const int tile_a_width = tile_inner;
-  const int tile_a_height = tile_a_outer;
+  const auto tile_a_outer = workgroup_size_y * elements_per_thread_y;
+  const auto tile_b_outer = workgroup_size_x * elements_per_thread_x;
+  const auto tile_a_width = tile_inner;
+  const auto tile_a_height = tile_a_outer;
 
-  if (!(tile_a_height % WorkgroupSizeY() == 0 && tile_a_width % WorkgroupSizeX() == 0 && tile_inner % WorkgroupSizeY() == 0)) {
+  if (!(tile_a_height % workgroup_size_y == 0 && tile_a_width % workgroup_size_x == 0 && tile_inner % workgroup_size_y == 0)) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                           "tile_a_height: ", tile_a_height, " must be divisible by WorkgroupSizeY: ", WorkgroupSizeY(),
-                           ", tile_a_width: ", tile_a_width, " must be divisible by WorkgroupSizeX: ", WorkgroupSizeX(),
-                           ", tile_inner: ", tile_inner, " must be divisible by WorkgroupSizeY: ", WorkgroupSizeY());
+                           "tile_a_height: ", tile_a_height, " must be divisible by WorkgroupSizeY: ", workgroup_size_y,
+                           ", tile_a_width: ", tile_a_width, " must be divisible by WorkgroupSizeX: ", workgroup_size_x,
+                           ", tile_inner: ", tile_inner, " must be divisible by WorkgroupSizeY: ", workgroup_size_y);
   }
 
   const std::string data_type = "a_value_t";
 
-  const int row_per_thread_a = tile_a_height / WorkgroupSizeY();
-  const int col_per_thread_a = tile_a_width / WorkgroupSizeX();
-  const int row_per_thread_b = tile_inner / WorkgroupSizeY();
+  const auto row_per_thread_a = tile_a_height / workgroup_size_y;
+  const auto col_per_thread_a = tile_a_width / workgroup_size_x;
+  const auto row_per_thread_b = tile_inner / workgroup_size_y;
 
   shader.AdditionalImplementation()
       << "var<workgroup> mm_Asub: array<array<" << data_type << ", " << tile_a_width << ">, " << tile_a_height << ">;\n"
@@ -282,9 +290,9 @@ Status MatMulProgram::GenerateShaderCode(ShaderHelper& shader) const {
 
   // generate the main function
   if (is_vec4_) {
-    ORT_RETURN_IF_ERROR(MakeMatMUlPackedVec4Source(shader, batch_dims));
+    ORT_RETURN_IF_ERROR(MakeMatMulPackedVec4Source(shader, batch_dims, elements_per_thread_, WorkgroupSizeX(), WorkgroupSizeY()));
   } else {
-    ORT_RETURN_IF_ERROR(MakeMatMulPackedSource(shader, batch_dims));
+    ORT_RETURN_IF_ERROR(MakeMatMulPackedSource(shader, batch_dims, elements_per_thread_, WorkgroupSizeX(), WorkgroupSizeY()));
   }
   return Status::OK();
 }

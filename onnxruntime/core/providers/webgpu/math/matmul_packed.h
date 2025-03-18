@@ -22,14 +22,23 @@ class MatMulProgram final : public Program<MatMulProgram> {
                                           {"dim_b_outer", ProgramUniformVariableDataType::Int32},
                                           {"dim_inner", ProgramUniformVariableDataType::Int32});
 
+  static Status MakeMatMulPackedVec4Source(ShaderHelper& shader,
+                                           const ShaderIndicesHelper& batch_dims,
+                                           const InlinedVector<int64_t>& elements_per_thread,
+                                           uint32_t workgroup_size_x,
+                                           uint32_t workgroup_size_y);
+  static Status MakeMatMulPackedSource(ShaderHelper& shader,
+                                       const ShaderIndicesHelper& batch_dims,
+                                       const InlinedVector<int64_t>& elements_per_thread,
+                                       uint32_t workgroup_size_x,
+                                       uint32_t workgroup_size_y);
+
  private:
   const bool has_bias_;
   const bool is_vec4_;
   const InlinedVector<int64_t> elements_per_thread_;
 
   void MatMulReadWriteFnSource(ShaderHelper& shader, const ShaderVariableHelper& a, const ShaderVariableHelper& b, const ShaderVariableHelper& output, const ShaderIndicesHelper& batch_dims) const;
-  Status MakeMatMUlPackedVec4Source(ShaderHelper& shader, const ShaderIndicesHelper& batch_dims) const;
-  Status MakeMatMulPackedSource(ShaderHelper& shader, const ShaderIndicesHelper& batch_dims) const;
 };
 
 }  // namespace webgpu
