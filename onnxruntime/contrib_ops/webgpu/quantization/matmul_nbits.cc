@@ -569,7 +569,7 @@ Status MatMulNBitsBlockWideTileProgram::GenerateShaderCode(ShaderHelper& shader)
 
   // declare workgroup memory
   shader.AdditionalImplementation() << "\n";
-  shader.AdditionalImplementation() << "var<workgroup> a_data_wg: array<array<input_a_value_t, 8u>, tile_m>;\n";
+  shader.AdditionalImplementation() << "var<workgroup> a_data_tile: array<array<input_a_value_t, 8u>, tile_m>;\n";
   shader.AdditionalImplementation() << "\n";
 
   // main
@@ -588,7 +588,7 @@ Status MatMulNBitsBlockWideTileProgram::GenerateShaderCode(ShaderHelper& shader)
     // load `a` elements into workgroup memory, TileM x 8(block32)
     let a_row_idx = local_idx / 8u;
     let a_col_idx = local_idx % 8u;
-    a_data_wg[a_row_idx][a_col_idx] = mm_read_a(batch, row + a_row_idx, a_block_idx * 8u + a_col_idx);
+    a_data_tile[a_row_idx][a_col_idx] = mm_read_a(batch, row + a_row_idx, a_block_idx * 8u + a_col_idx);
     workgroupBarrier();
 
     let b_row = col + local_idx;
@@ -614,8 +614,8 @@ Status MatMulNBitsBlockWideTileProgram::GenerateShaderCode(ShaderHelper& shader)
                                                         zero_point, zero_point)) * scale;
 
       for (var m_idx = 0u; m_idx < tile_m; m_idx++) {
-        let a_data0 = a_data_wg[m_idx][b_idx * 2u];
-        let a_data1 = a_data_wg[m_idx][b_idx * 2u + 1u];
+        let a_data0 = a_data_tile[m_idx][b_idx * 2u];
+        let a_data1 = a_data_tile[m_idx][b_idx * 2u + 1u];
 
         results[m_idx] += f32(dot(a_data0, b_dequantized_values[0u])) +
                           f32(dot(a_data1, b_dequantized_values[1u]));
