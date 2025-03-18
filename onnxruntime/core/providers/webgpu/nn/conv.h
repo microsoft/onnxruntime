@@ -19,6 +19,7 @@ class Conv final : public WebGpuKernel {
   }
   Status ComputeInternal(ComputeContext& context) const override;
   TensorShape ComputeOutputShape(const TensorShape& input_shape, const TensorShape& weight_shape) const;
+
  private:
   ConvAttributes conv_attrs_;
 };

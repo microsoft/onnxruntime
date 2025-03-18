@@ -133,7 +133,6 @@ std::string Conv2dMMProgram::Conv2dCommonSnippet(uint32_t inner_element_size_x, 
 }
 
 Status Conv2dMMProgram::GenerateShaderCode(ShaderHelper& shader) const {
-  // TODO: support component 2, 3.
   std::stringstream declaration_functions;
   declaration_functions << "fn setOutputAtIndex(flatIndex : i32, value : " << (is_vec4_ ? "vec4<x_value_t>" : "x_value_t") << ") {\n"
                         << "  result[flatIndex] = " << (is_vec4_ ? "vec4<x_value_t>" : "x_value_t") << "(value);\n"
@@ -209,10 +208,11 @@ Conv2dMMProgram CreateConv2dMMProgram(const std::vector<const Tensor*>& inputs, 
           {strides},
           {dilations},
       };
+  const auto components = is_vec4 ? 4 : 1;
   Conv2dMMProgram program(attrs, tile_a_outer, tile_b_outer, tile_inner, fit_a_outer, fit_b_outer, fit_inner, is_channels_last_, is_vec4, has_bias, std::move(element_size), std::move(elements_per_thread));
-  program.AddInputs({{input, ProgramTensorMetadataDependency::TypeAndRank, input->Shape(), 1}, {weight, ProgramTensorMetadataDependency::TypeAndRank, weight->Shape(), 1}});
+  program.AddInputs({{input, ProgramTensorMetadataDependency::TypeAndRank, input->Shape(), components}, {weight, ProgramTensorMetadataDependency::TypeAndRank, weight->Shape(), components}});
   if (has_bias) {
-    program.AddInput({bias, ProgramTensorMetadataDependency::TypeAndRank, bias->Shape(), 1});
+    program.AddInput({bias, ProgramTensorMetadataDependency::TypeAndRank, bias->Shape(), components});
   }
   program
       .AddOutput({output, ProgramTensorMetadataDependency::TypeAndRank})
