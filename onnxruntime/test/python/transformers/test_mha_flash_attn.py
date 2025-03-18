@@ -3,24 +3,28 @@
 # Licensed under the MIT License.  See License.txt in the project root for
 # license information.
 # -------------------------------------------------------------------------
-import unittest
 import os
-from parameterized import parameterized
+import unittest
+
 import numpy
 import torch
 from bert_padding import pad_input, unpad_input
 from einops import rearrange, repeat
 from onnx import TensorProto, helper
+from parameterized import parameterized
 from test_gqa_cuda import attention_ref, has_flash_attention
+
 from onnxruntime import InferenceSession, SessionOptions
 
 torch.manual_seed(0)
 
 pipeline_mode = True  # Reduces number of tests so pipeline doesn't time out
 
+
 class Formats:
     BSNH = 0
     BNSH = 1
+
 
 class Config:
     batch_size = 0
@@ -31,9 +35,7 @@ class Config:
     head_size = 0
     ep = "CUDAExecutionProvider"
 
-    def __init__(
-        self, batch_size, sequence_length, kv_sequence_length, num_heads, kv_num_heads, head_size
-    ):
+    def __init__(self, batch_size, sequence_length, kv_sequence_length, num_heads, kv_num_heads, head_size):
         self.batch_size = batch_size
         self.sequence_length = sequence_length
         self.kv_sequence_length = kv_sequence_length
@@ -50,7 +52,7 @@ class Config:
         )
 
 
-def create_packed_multihead_attention_graph(config:Config):
+def create_packed_multihead_attention_graph(config: Config):
     nodes = [
         helper.make_node(
             "PackedMultiHeadAttention",
@@ -101,7 +103,7 @@ def create_packed_multihead_attention_graph(config:Config):
     return model.SerializeToString()
 
 
-def create_multihead_attention_graph(config:Config):
+def create_multihead_attention_graph(config: Config):
     nodes = [
         helper.make_node(
             "MultiHeadAttention",
@@ -160,6 +162,7 @@ def create_multihead_attention_graph(config:Config):
 
     model = helper.make_model(graph)
     return model.SerializeToString()
+
 
 def generate_random_padding_mask(max_seqlen, batch_size, device, mode="random"):
     assert mode in ["full", "random", "third"]
@@ -505,6 +508,7 @@ class TestMHA(unittest.TestCase):
         os.environ["ORT_DISABLE_FLASH_ATTENTION"] = "0"
         print("-------- TEST MHA ---------")
         parity_check_mha(config, False)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -44,9 +44,7 @@ class Config:
     head_size = 0
     ep = "CUDAExecutionProvider"
 
-    def __init__(
-        self, batch_size, sequence_length, kv_sequence_length, num_heads, kv_num_heads, head_size
-    ):
+    def __init__(self, batch_size, sequence_length, kv_sequence_length, num_heads, kv_num_heads, head_size):
         self.batch_size = batch_size
         self.sequence_length = sequence_length
         self.kv_sequence_length = kv_sequence_length
