@@ -26,11 +26,11 @@ ONNX_OPERATOR_KERNEL_EX(
 
 Status CumSumProgram::GenerateShaderCode(ShaderHelper& shader) const {
   const ShaderVariableHelper& input = shader.AddInput("input", ShaderUsage::UseUniform);
-  const ShaderVariableHelper& output = shader.AddOutput("output", ShaderUsage::UseUniform);
+  const ShaderVariableHelper& output = shader.AddOutput("output", ShaderUsage::UseUniform | ShaderUsage::UseIndicesTypeAlias);
 
   shader.MainFunctionBody() << shader.GuardAgainstOutOfBoundsWorkgroupSizes("uniforms.output_size")
                             << "var input_indices = " << input.OffsetToIndices("global_idx") << ";\n"
-                            << "var sum = output_indices_t(0);\n"
+                            << "var sum : output_indices_t = 0;\n"
                             << "let first : i32 = 0;\n"
                             << "if (uniforms.reverse == 1) {\n"
                             << "  first = i32(" + input.IndicesGet("input_indices", "uniforms.axis") + ");\n"
