@@ -62,22 +62,22 @@ class AdapterFormat:
         """
         self._adapter.export_adapter(file_path)
 
-    def get_format_version(self):
+    def get_format_version(self) -> int:
         return self._adapter.format_version
 
-    def set_adapter_version(self, adapter_version: int):
+    def set_adapter_version(self, adapter_version: int) -> None:
         self._adapter.adapter_version = adapter_version
 
-    def get_adapter_version(self):
+    def get_adapter_version(self) -> int:
         return self._adapter.adapter_version
 
-    def set_model_version(self, model_version: int):
+    def set_model_version(self, model_version: int) -> None:
         self._adapter.model_version = model_version
 
-    def get_model_version(self):
+    def get_model_version(self) -> int:
         return self._adapter.model_version
 
-    def set_parameters(self, params: dict[str, OrtValue]):
+    def set_parameters(self, params: dict[str, OrtValue]) -> None:
         self._adapter.parameters = {k: v._ortvalue for k, v in params.items()}
 
     def get_parameters(self) -> dict[str, OrtValue]:
@@ -177,27 +177,27 @@ class Session:
         self._sess = None
         self._enable_fallback = True
 
-    def get_session_options(self):
+    def get_session_options(self) -> onnxruntime.SessionOptions:
         "Return the session options. See :class:`onnxruntime.SessionOptions`."
         return self._sess_options
 
-    def get_inputs(self):
+    def get_inputs(self) -> Sequence[onnxruntime.NodeArg]:
         "Return the inputs metadata as a list of :class:`onnxruntime.NodeArg`."
         return self._inputs_meta
 
-    def get_outputs(self):
+    def get_outputs(self) -> Sequence[onnxruntime.NodeArg]:
         "Return the outputs metadata as a list of :class:`onnxruntime.NodeArg`."
         return self._outputs_meta
 
-    def get_overridable_initializers(self):
+    def get_overridable_initializers(self) -> Sequence[onnxruntime.NodeArg]:
         "Return the inputs (including initializers) metadata as a list of :class:`onnxruntime.NodeArg`."
         return self._overridable_initializers
 
-    def get_modelmeta(self):
+    def get_modelmeta(self) -> onnxruntime.ModelMetadata:
         "Return the metadata. See :class:`onnxruntime.ModelMetadata`."
         return self._model_meta
 
-    def get_providers(self):
+    def get_providers(self) -> Sequence[str]:
         "Return list of registered execution providers."
         return self._providers
 
@@ -205,7 +205,7 @@ class Session:
         "Return registered execution providers' configurations."
         return self._provider_options
 
-    def set_providers(self, providers=None, provider_options=None):
+    def set_providers(self, providers=None, provider_options=None) -> None:
         """
         Register the input list of execution providers. The underlying session is re-created.
 
@@ -227,13 +227,13 @@ class Session:
         # recreate the underlying C.InferenceSession
         self._reset_session(providers, provider_options)
 
-    def disable_fallback(self):
+    def disable_fallback(self) -> None:
         """
         Disable session.run() fallback mechanism.
         """
         self._enable_fallback = False
 
-    def enable_fallback(self):
+    def enable_fallback(self) -> None:
         """
         Enable session.Run() fallback mechanism. If session.Run() fails due to an internal Execution Provider failure,
         reset the Execution Providers enabled for this session.
@@ -252,7 +252,7 @@ class Session:
                 f"Required inputs ({missing_input_names}) are missing from input feed ({feed_input_names})."
             )
 
-    def run(self, output_names, input_feed, run_options=None):
+    def run(self, output_names, input_feed, run_options=None) -> Sequence[np.ndarray | SparseTensor | list | dict]:
         """
         Compute the predictions.
 
@@ -311,7 +311,7 @@ class Session:
             output_names = [output.name for output in self._outputs_meta]
         return self._sess.run_async(output_names, input_feed, callback, user_data, run_options)
 
-    def run_with_ort_values(self, output_names, input_dict_ort_values, run_options=None):
+    def run_with_ort_values(self, output_names, input_dict_ort_values, run_options=None) -> Sequence[OrtValue]:
         """
         Compute the predictions.
 
@@ -370,7 +370,7 @@ class Session:
         """
         return self._sess.get_profiling_start_time_ns
 
-    def io_binding(self):
+    def io_binding(self) -> IOBinding:
         "Return an onnxruntime.IOBinding object`."
         return IOBinding(self)
 
@@ -553,7 +553,7 @@ class InferenceSession(Session):
         self._provider_options = self._sess.get_provider_options()
         self._profiling_start_time_ns = self._sess.get_profiling_start_time_ns
 
-    def _reset_session(self, providers, provider_options):
+    def _reset_session(self, providers, provider_options) -> None:
         "release underlying session object."
         # meta data references session internal structures
         # so they must be set to None to decrement _sess reference count.
