@@ -5,6 +5,8 @@
 #include "core/providers/webgpu/shader_helper.h"
 #include "core/providers/webgpu/webgpu_supported_types.h"
 #include "core/providers/webgpu/tensor/transpose.h"
+#include "core/providers/webgpu/nn/grouped_conv.h"
+#include "core/providers/webgpu/webgpu_utils.h"
 
 namespace onnxruntime {
 namespace webgpu {
@@ -37,6 +39,7 @@ TensorShape Conv<is_channels_last>::ComputeOutputShape(const TensorShape& input_
 
 template <bool is_channels_last>
 Status Conv<is_channels_last>::ComputeInternal(ComputeContext& context) const {
+  bool has_bias = context.InputCount() > 2;
   const auto* input = context.Input<Tensor>(0);
   const auto* kernel = context.Input<Tensor>(1);
   const auto& input_shape = input->Shape();
@@ -56,6 +59,43 @@ Status Conv<is_channels_last>::ComputeInternal(ComputeContext& context) const {
   } else {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input and kernel tensors must have at least 3 dimensions");
   }
+
+  if (conv_attrs_.group > 1) {
+    std::vector<uint32_t> pads = {static_cast<uint32_t>(conv_attrs_.pads[0]), static_cast<uint32_t>(conv_attrs_.pads[1])};
+    std::vector<uint32_t> strides(conv_attrs_.strides.size());
+    std::vector<uint32_t> dilations(conv_attrs_.dilations.size());
+    auto transform_dim = [](int64_t dim) { return static_cast<int32_t>(dim); };
+    std::transform(conv_attrs_.strides.begin(), conv_attrs_.strides.end(), std::back_inserter(strides), transform_dim);
+    std::transform(conv_attrs_.dilations.begin(), conv_attrs_.dilations.end(), std::back_inserter(dilations), transform_dim);
+    std::vector<const Tensor*> inputs(context.InputCount());
+    inputs[0] = input;
+    if (is_channels_last) {
+      // Transpose weights
+      std::vector<size_t> perm = {2, 3, 1, 0};
+      TensorShape transposed_kernel_shape(kernel_shape);
+      for (size_t i = 0; i < kernel_shape.NumDimensions(); ++i) {
+        transposed_kernel_shape[i] = kernel_shape[perm[i]];
+      }
+      auto transposed_kernel = context.CreateGPUTensor(kernel->DataType(), transposed_kernel_shape);
+      ORT_RETURN_IF_ERROR(Transpose::DoTranspose(context, perm, *kernel, transposed_kernel));
+      inputs[1] = &transposed_kernel;
+    } else {
+      inputs[1] = kernel;
+    }
+    auto output_shape = ComputeOutputShape(input_shape, kernel_shape);
+    auto output_channels = output_shape[channel_index];
+    auto output_channels_per_group = output_channels / conv_attrs_.group;
+    auto components = static_cast<int>(is_channels_last && output_channels_per_group >= 4 ? GetMaxComponents(output_channels) : 1);
+    auto output_size = output_shape.Size() / components;
+    auto* output = context.Output(0, output_shape);
+    GroupedConvProgram program(conv_attrs_, has_bias, is_channels_last);
+    program.AddInputs({{inputs[0], ProgramTensorMetadataDependency::TypeAndRank, components}, {inputs[1], ProgramTensorMetadataDependency::TypeAndRank, components}})
+        .AddOutput({output, ProgramTensorMetadataDependency::TypeAndRank, components})
+        .AddUniformVariables({{static_cast<uint32_t>(output_size)}, {dilations}, {strides}, {pads}, {static_cast<uint32_t>(output_channels_per_group)}, {static_cast<uint32_t>(components)}})
+        .SetDispatchGroupSize((output_size + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE);
+    return context.RunProgram(program);
+  }
+
   // Transpose weights
   std::vector<size_t> perm = {2, 3, 1, 0};
   TensorShape transposed_kernel_shape(kernel_shape);
@@ -63,10 +103,8 @@ Status Conv<is_channels_last>::ComputeInternal(ComputeContext& context) const {
     transposed_kernel_shape[i] = kernel_shape[perm[i]];
   }
   auto transposed_kernel = context.CreateGPUTensor(kernel->DataType(), transposed_kernel_shape);
-  ORT_RETURN_IF_ERROR(Transpose::DoTranspose(context, perm, *input, transposed_kernel));
-  // Compute matmul
+  ORT_RETURN_IF_ERROR(Transpose::DoTranspose(context, perm, *kernel, transposed_kernel));
   auto output_shape = ComputeOutputShape(input->Shape(), kernel->Shape());
-  bool has_bias = context.InputCount() > 2;
   auto input_channels = input_shape[is_channels_last ? 3 : 1];
   auto kernel_height = kernel_shape[2];
   auto kernel_width = kernel_shape[3];
