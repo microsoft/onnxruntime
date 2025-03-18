@@ -82,12 +82,30 @@ Module["jsepInit"] = (name, params) => {
     Module["jsepOnCreateSession"] = (sessionId) => {
       backend["onCreateSession"](sessionId);
     };
-    Module["jsepOnReleaseSession"] = (sessionId) => {
-      backend["onReleaseSession"](sessionId);
-    };
-    Module["jsepOnRunStart"] = (sessionId) => {
-      return backend["onRunStart"](sessionId);
-    };
+    // Both WebGPU and WebNN backends use the same function to handle the start of a run and release of a session.
+
+    if (Module["jsepOnReleaseSession"]) {
+      const otherOnReleaseSession = Module["jsepOnReleaseSession"];
+      Module["jsepOnReleaseSession"] = (sessionId) => {
+        otherOnReleaseSession(sessionId);
+        backend["onReleaseSession"](sessionId);
+      };
+    } else {
+      Module["jsepOnReleaseSession"] =
+        backend["onReleaseSession"].bind(backend);
+    }
+
+    if (Module["jsepOnRunStart"]) {
+      const otherOnRunStart = Module["jsepOnRunStart"];
+      Module["jsepOnRunStart"] = (sessionId) => {
+        otherOnRunStart(sessionId);
+        return backend["onRunStart"](sessionId);
+      };
+    } else {
+      Module["jsepOnRunStart"] = (sessionId) => {
+        return backend["onRunStart"](sessionId);
+      };
+    }
 
     Module.jsepUploadExternalBuffer = (dataId, buffer) => {
       backend["upload"](dataId, buffer);
@@ -97,31 +115,51 @@ Module["jsepInit"] = (name, params) => {
     // Functions called via emscripten::val::module_property need to be assigned by name so that the minifier doesn't
     // change the name.
 
+    // As WebNN does not need flush, WebNN does not need to define jsepBackend
+    const backend = params[0];
     [
-      Module.jsepBackend,
       Module.jsepReserveTensorId,
       Module.jsepReleaseTensorId,
       Module["jsepEnsureTensor"],
       Module.jsepUploadTensor,
       Module["jsepDownloadTensor"],
-    ] = params;
+    ] = params.slice(1);
 
     // This function is called from both JS and an EM_ASM block, it needs both a minifiable name and an explicit name.
     Module["jsepReleaseTensorId"] = Module.jsepReleaseTensorId;
     Module["jsepUploadTensor"] = Module.jsepUploadTensor;
 
     // Functions called from JS also need to have explicit names.
-    const backend = Module.jsepBackend;
-    Module["jsepOnRunStart"] = (sessionId) => {
-      return backend["onRunStart"](sessionId);
-    };
+
+    // Both WebGPU and WebNN backends use the same function to handle the start of a run and release of a session.
+    if (Module["jsepOnRunStart"]) {
+      const otherOnRunStart = Module["jsepOnRunStart"];
+      Module["jsepOnRunStart"] = (sessionId) => {
+        otherOnRunStart(sessionId);
+        return backend["onRunStart"](sessionId);
+      };
+    } else {
+      Module["jsepOnRunStart"] = (sessionId) => {
+        return backend["onRunStart"](sessionId);
+      };
+    }
+
     Module["jsepOnRunEnd"] = backend["onRunEnd"].bind(backend);
     Module["jsepRegisterMLContext"] = (sessionId, mlContext) => {
       backend["registerMLContext"](sessionId, mlContext);
     };
-    Module["jsepOnReleaseSession"] = (sessionId) => {
-      backend["onReleaseSession"](sessionId);
-    };
+
+    if (Module["jsepOnReleaseSession"]) {
+      const otherOnReleaseSession = Module["jsepOnReleaseSession"];
+      Module["jsepOnReleaseSession"] = (sessionId) => {
+        otherOnReleaseSession(sessionId);
+        backend["onReleaseSession"](sessionId);
+      };
+    } else {
+      Module["jsepOnReleaseSession"] =
+        backend["onReleaseSession"].bind(backend);
+    }
+
     Module["jsepCreateMLTensorDownloader"] = (tensorId, type) => {
       return backend["createMLTensorDownloader"](tensorId, type);
     };
@@ -149,9 +187,12 @@ Module["jsepInit"] = (name, params) => {
         shouldConvertInt64ToInt32,
       );
     };
-    Module['jsepRegisterGraphInput'] = backend['registerGraphInput'].bind(backend);
-    Module['jsepIsGraphInput'] = backend['isGraphInput'].bind(backend);
-    Module['jsepCreateTemporaryTensor'] = backend['createTemporaryTensor'].bind(backend);
-    Module['jsepIsInt64Supported'] = backend['isInt64Supported'].bind(backend);
+    Module["jsepRegisterGraphInput"] =
+      backend["registerGraphInput"].bind(backend);
+    Module["jsepIsGraphInput"] = backend["isGraphInput"].bind(backend);
+
+    Module["jsepCreateTemporaryTensor"] =
+      backend["createTemporaryTensor"].bind(backend);
+    Module["jsepIsInt64Supported"] = backend["isInt64Supported"].bind(backend);
   }
 };
