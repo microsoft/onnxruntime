@@ -765,7 +765,7 @@ class OrtValue:
         )
 
     @classmethod
-    def ortvalue_from_numpy_with_onnx_type(cls, data: np.ndarray, onnx_element_type: int) -> OrtValue:
+    def ortvalue_from_numpy_with_onnx_type(cls, data: np.ndarray, /, onnx_element_type: int) -> OrtValue:
         """
         This method creates an instance of OrtValue on top of the numpy array.
         No data copy is made and the lifespan of the resulting OrtValue should never
