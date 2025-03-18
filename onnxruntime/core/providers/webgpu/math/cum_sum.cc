@@ -58,8 +58,8 @@ Status CumSum::ComputeInternal(ComputeContext& context) const {
   int64_t input_rank = input_shape.NumDimensions();
 
   const auto* axis_tensor = context.Input(1);
-  const auto* axis_data = axis_tensor->Data<int64_t>();
-  int64_t axis = axis_data[0];
+  const auto* axis_data = axis_tensor->Data<int>();
+  int axis = axis_data[0];
 
   bool valid_axis = true;
   if (axis < -input_rank || axis >= input_rank) {
