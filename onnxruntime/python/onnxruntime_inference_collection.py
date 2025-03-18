@@ -774,7 +774,7 @@ class OrtValue:
         when we want to use an ONNX data type that is not supported by numpy.
 
         :param data: numpy.ndarray.
-        :param onnx_elemenet_type: a valid onnx TensorProto::DataType enum value
+        :param onnx_element_type: a valid onnx TensorProto::DataType enum value
         """
         return cls(C.OrtValue.ortvalue_from_numpy_with_onnx_type(data, onnx_element_type), data)
 
