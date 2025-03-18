@@ -357,6 +357,5 @@ ReduceOpSpecificCode ArgMax::GetOpSpecificCode(const Tensor* input_tensor) const
   return code;
 }
 
-
 }  // namespace webgpu
 }  // namespace onnxruntime
