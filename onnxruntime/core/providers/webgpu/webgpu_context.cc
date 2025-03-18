@@ -421,31 +421,19 @@ Status WebGpuContext::Run(ComputeContext& context, const ProgramBase& program) {
 
   WriteTimestamp(num_pending_dispatches_ * 2);
 
-  uint32_t entry_index = 0;
-  std::vector<wgpu::BindGroupEntry> bind_group_entries;
+  std::vector<WGPUBuffer> bind_buffers;
+  bind_buffers.reserve(inputs.size() + outputs.size() + (uniform_buffer ? 1 : 0));
   for (const auto& input : inputs) {
-    bind_group_entries.push_back({nullptr, entry_index++, reinterpret_cast<WGPUBuffer>(const_cast<void*>(input.tensor->DataRaw()))});
+    bind_buffers.push_back(reinterpret_cast<WGPUBuffer>(const_cast<void*>(input.tensor->DataRaw())));
   }
   for (const auto& output : outputs) {
-    bind_group_entries.push_back({nullptr, entry_index++, reinterpret_cast<WGPUBuffer>(output.tensor->MutableDataRaw())});
+    bind_buffers.push_back(reinterpret_cast<WGPUBuffer>(output.tensor->MutableDataRaw()));
   }
   if (uniform_buffer) {
-    bind_group_entries.push_back({nullptr, entry_index++, uniform_buffer});
+    bind_buffers.push_back(uniform_buffer);
   }
 
-  wgpu::BindGroupDescriptor bind_group_desc{};
-  bind_group_desc.layout = program_artifact->compute_pipeline.GetBindGroupLayout(0);
-  bind_group_desc.entryCount = bind_group_entries.size();
-  bind_group_desc.entries = bind_group_entries.data();
-  bind_group_desc.label = program_artifact->name.c_str();
-
-  auto bind_group = Device().CreateBindGroup(&bind_group_desc);
-
-  // TODO support graph capture
-
-  compute_pass_encoder.SetPipeline(program_artifact->compute_pipeline);
-  compute_pass_encoder.SetBindGroup(0, bind_group);
-  compute_pass_encoder.DispatchWorkgroups(x, y, z);
+  LaunchComputePipeline(compute_pass_encoder, bind_buffers, *program_artifact, x, y, z);
 
   if (uniform_buffer) {
     buffer_mgr_->Release(uniform_buffer);

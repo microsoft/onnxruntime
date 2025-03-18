@@ -156,6 +156,32 @@ class WebGpuContext final {
       : instance_{instance}, device_{device}, validation_mode_{validation_mode}, query_type_{TimestampQueryType::None}, preserve_device_{preserve_device} {}
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(WebGpuContext);
 
+  void LaunchComputePipeline(const wgpu::ComputePassEncoder& compute_pass_encoder, const std::vector<WGPUBuffer>& bind_buffers, const ProgramArtifact& program_artifact, uint32_t x, uint32_t y, uint32_t z) {
+    uint32_t entry_index = 0;
+    std::vector<WGPUBindGroupEntry> bind_group_entries;
+    for (WGPUBuffer buffer : bind_buffers) {
+      bind_group_entries.push_back({nullptr, entry_index++, buffer, 0, WGPU_WHOLE_SIZE, nullptr, nullptr});
+    }
+
+    WGPUBindGroupLayout bind_group_layout = program_artifact.compute_pipeline.GetBindGroupLayout(0).MoveToCHandle();
+    WGPUBindGroupDescriptor bind_group_desc{};
+    bind_group_desc.layout = bind_group_layout;
+    bind_group_desc.entryCount = bind_group_entries.size();
+    bind_group_desc.entries = bind_group_entries.data();
+    bind_group_desc.label = {program_artifact.name.data(), program_artifact.name.length()};
+
+    auto bind_group = wgpuDeviceCreateBindGroup(Device().Get(), &bind_group_desc);
+
+    // TODO support graph capture
+
+    compute_pass_encoder.SetPipeline(program_artifact.compute_pipeline);
+    wgpuComputePassEncoderSetBindGroup(compute_pass_encoder.Get(), 0, bind_group, 0, nullptr);
+    compute_pass_encoder.DispatchWorkgroups(x, y, z);
+
+    wgpuBindGroupRelease(bind_group);
+    wgpuBindGroupLayoutRelease(bind_group_layout);
+  }
+
   std::vector<const char*> GetEnabledAdapterToggles() const;
   std::vector<const char*> GetEnabledDeviceToggles() const;
   std::vector<const char*> GetDisabledDeviceToggles() const;
