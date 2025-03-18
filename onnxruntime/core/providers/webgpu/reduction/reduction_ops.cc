@@ -341,8 +341,9 @@ ReduceOpSpecificCode ReduceLogSumExp::GetOpSpecificCode(const Tensor* input_tens
 
 ReduceOpSpecificCode ArgMin::GetOpSpecificCode(const Tensor* input_tensor) const {
   ORT_UNUSED_PARAMETER(input_tensor);
+  std::string op = (select_last_index_) ? "<=" : "<";
   std::string loop_header = "var best_element = first_element; var best_index = u32(0);";
-  std::string loop_body = "if (current_element <= best_element) { best_element = current_element; best_index = last_index; };";
+  std::string loop_body = "if (current_element " + op + " best_element) { best_element = current_element; best_index = last_index; };";
   std::string loop_footer = "let output_value = output_value_t(best_index);";
   ReduceOpSpecificCode code({loop_header, loop_body, loop_footer});
   return code;
@@ -350,8 +351,9 @@ ReduceOpSpecificCode ArgMin::GetOpSpecificCode(const Tensor* input_tensor) const
 
 ReduceOpSpecificCode ArgMax::GetOpSpecificCode(const Tensor* input_tensor) const {
   ORT_UNUSED_PARAMETER(input_tensor);
+  std::string op = (select_last_index_) ? ">=" : ">";
   std::string loop_header = "var best_element = first_element; var best_index = u32(0);";
-  std::string loop_body = "if (current_element >= best_element) { best_element = current_element; best_index = last_index; };";
+  std::string loop_body = "if (current_element " + op + " best_element) { best_element = current_element; best_index = last_index; };";
   std::string loop_footer = "let output_value = output_value_t(best_index);";
   ReduceOpSpecificCode code({loop_header, loop_body, loop_footer});
   return code;
