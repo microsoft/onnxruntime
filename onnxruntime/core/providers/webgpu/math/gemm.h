@@ -23,7 +23,7 @@ class GemmProgram final : public Program<GemmProgram> {
   Status GenerateShaderCode(ShaderHelper& sh) const override;
 
   WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES(
-      {"output_size", ProgramUniformVariableDataType::Uint32},
+      {"num_tile_n", ProgramUniformVariableDataType::Uint32},
       {"M", ProgramUniformVariableDataType::Uint32},
       {"N", ProgramUniformVariableDataType::Uint32},
       {"K", ProgramUniformVariableDataType::Uint32},
