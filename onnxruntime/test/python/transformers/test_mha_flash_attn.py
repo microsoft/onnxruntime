@@ -176,7 +176,7 @@ def generate_random_padding_mask(max_seqlen, batch_size, device, mode="random"):
     return padding_mask
 
 
-def generate_qkv(q, k, v, query_padding_mask=None, key_padding_mask=None, kvpacked=False, qkvpacked=False):
+def generate_packed_qkv(q, k, v, query_padding_mask=None, key_padding_mask=None):
     """
     Arguments:
         q: (batch_size, seqlen_q, nheads, d)
@@ -185,7 +185,6 @@ def generate_qkv(q, k, v, query_padding_mask=None, key_padding_mask=None, kvpack
         query_padding_mask: (batch_size, seqlen), bool
         key_padding_mask: (batch_size, seqlen), bool
     """
-    assert not (kvpacked and qkvpacked)
     batch_size, seqlen_q, nheads, d = q.shape
     _, seqlen_k, nheads_k, _ = k.shape
     assert k.shape == (batch_size, seqlen_k, nheads_k, d)
@@ -208,96 +207,37 @@ def generate_qkv(q, k, v, query_padding_mask=None, key_padding_mask=None, kvpack
             return rearrange(output_unpad, "(b s) h d -> b s h d", b=batch_size)
 
     if key_padding_mask is not None:
-        k_unpad, indices_k, cu_seqlens_k, max_seqlen_k = unpad_input(k, key_padding_mask)
+        k_unpad, _, _, _ = unpad_input(k, key_padding_mask)
         v_unpad, _, _, _ = unpad_input(v, key_padding_mask)
     else:
         k_unpad = rearrange(k, "b s h d -> (b s) h d")
         v_unpad = rearrange(v, "b s h d -> (b s) h d")
-        cu_seqlens_k = torch.arange(
-            0, (batch_size + 1) * seqlen_k, step=seqlen_k, dtype=torch.int32, device=k_unpad.device
-        )
-        max_seqlen_k = seqlen_k
 
-    if qkvpacked:
-        assert (query_padding_mask == key_padding_mask).all()
-        assert nheads == nheads_k
-        qkv_unpad = torch.stack([q_unpad, k_unpad, v_unpad], dim=1)
-        qkv = torch.stack([q, k, v], dim=2)
-        if query_padding_mask is not None:
+    assert (query_padding_mask == key_padding_mask).all()
+    assert nheads == nheads_k
+    qkv_unpad = torch.stack([q_unpad, k_unpad, v_unpad], dim=1)
+    qkv = torch.stack([q, k, v], dim=2)
+    if query_padding_mask is not None:
 
-            def dqkv_pad_fn(dqkv_unpad):
-                return pad_input(dqkv_unpad, indices_q, batch_size, seqlen_q)
+        def dqkv_pad_fn(dqkv_unpad):
+            return pad_input(dqkv_unpad, indices_q, batch_size, seqlen_q)
 
-        else:
-
-            def dqkv_pad_fn(dqkv_unpad):
-                return rearrange(dqkv_unpad, "(b s) t h d -> b s t h d", b=batch_size)
-
-        return (
-            qkv_unpad.detach().requires_grad_(),
-            cu_seqlens_q,
-            max_seqlen_q,
-            qkv.detach().requires_grad_(),
-            output_pad_fn,
-            dqkv_pad_fn,
-        )
-    elif kvpacked:
-        kv_unpad = torch.stack([k_unpad, v_unpad], dim=1)
-        kv = torch.stack([k, v], dim=2)
-        dq_pad_fn = output_pad_fn
-        if key_padding_mask is not None:
-
-            def dkv_pad_fn(dkv_unpad):
-                return pad_input(dkv_unpad, indices_k, batch_size, seqlen_k)
-
-        else:
-
-            def dkv_pad_fn(dkv_unpad):
-                return rearrange(dkv_unpad, "(b s) t h d -> b s t h d", b=batch_size)
-
-        return (
-            q_unpad.detach().requires_grad_(),
-            kv_unpad.detach().requires_grad_(),
-            cu_seqlens_q,
-            cu_seqlens_k,
-            max_seqlen_q,
-            max_seqlen_k,
-            q.detach().requires_grad_(),
-            kv.detach().requires_grad_(),
-            output_pad_fn,
-            dq_pad_fn,
-            dkv_pad_fn,
-        )
     else:
-        dq_pad_fn = output_pad_fn
-        if key_padding_mask is not None:
 
-            def dk_pad_fn(dk_unpad):
-                return pad_input(dk_unpad, indices_k, batch_size, seqlen_k)
+        def dqkv_pad_fn(dqkv_unpad):
+            return rearrange(dqkv_unpad, "(b s) t h d -> b s t h d", b=batch_size)
 
-        else:
-
-            def dk_pad_fn(dk_unpad):
-                return rearrange(dk_unpad, "(b s) h d -> b s h d", b=batch_size)
-
-        return (
-            q_unpad.detach().requires_grad_(),
-            k_unpad.detach().requires_grad_(),
-            v_unpad.detach().requires_grad_(),
-            cu_seqlens_q,
-            cu_seqlens_k,
-            max_seqlen_q,
-            max_seqlen_k,
-            q.detach().requires_grad_(),
-            k.detach().requires_grad_(),
-            v.detach().requires_grad_(),
-            output_pad_fn,
-            dq_pad_fn,
-            dk_pad_fn,
-        )
+    return (
+        qkv_unpad.detach().requires_grad_(),
+        cu_seqlens_q,
+        max_seqlen_q,
+        qkv.detach().requires_grad_(),
+        output_pad_fn,
+        dqkv_pad_fn,
+    )
 
 
-def create_inputs(config: Config, kv_packed=False, qkv_packed=True):
+def create_inputs(config: Config):
     qkv = torch.randn(
         config.batch_size,
         config.sequence_length,
@@ -308,13 +248,11 @@ def create_inputs(config: Config, kv_packed=False, qkv_packed=True):
         dtype=torch.float16,
         requires_grad=False,
     )
-    key_padding_mask = generate_random_padding_mask(
-        config.sequence_length, config.batch_size, device="cuda", mode="random"
+    padding_mask = generate_random_padding_mask(config.sequence_length, config.batch_size, device="cuda", mode="random")
+    qkv_unpad, cu_seqlens, max_seqlen, qkv, output_pad_fn, dqkv_pad_fn = generate_packed_qkv(
+        *qkv.unbind(dim=2), padding_mask, padding_mask
     )
-    qkv_unpad, cu_seqlens, max_seqlen, qkv, output_pad_fn, dqkv_pad_fn = generate_qkv(
-        *qkv.unbind(dim=2), key_padding_mask, key_padding_mask, kv_packed, qkv_packed
-    )
-    return qkv_unpad, cu_seqlens, max_seqlen, qkv, output_pad_fn, dqkv_pad_fn, key_padding_mask
+    return qkv_unpad, cu_seqlens, max_seqlen, qkv, output_pad_fn, dqkv_pad_fn, padding_mask
 
 
 def generate_token_offset(cu_seqlens, max_seqlen):
@@ -450,22 +388,22 @@ def parity_check_mha(
 
 
 def packed_mha_test_cases():
-    batches = [2] if pipeline_mode else [1, 5]
-    seqs = [1024, 1025] if pipeline_mode else [1024, 1025, 2048]
-    num_h = [1, 3] if pipeline_mode else [1, 6, 16]
-    h_sizes = [16, 256] if pipeline_mode else [32, 40, 64, 80, 96, 128, 160, 192, 224, 256]
+    batch_sizes = [2] if pipeline_mode else [1, 5]
+    sequence_lengths = [1024, 1025] if pipeline_mode else [1024, 1025, 2048]
+    num_heads = [1, 3] if pipeline_mode else [1, 6, 16]
+    head_sizes = [16, 256] if pipeline_mode else [32, 40, 64, 80, 96, 128, 160, 192, 224, 256]
 
-    for b in batches:
-        for s in seqs:
-            for n in num_h:
-                for h in h_sizes:
+    for b in batch_sizes:
+        for s in sequence_lengths:
+            for n in num_heads:
+                for h in head_sizes:
                     config = Config(b, s, s, n, n, h)
                     yield str(config), config
 
 
 def mha_test_cases():
-    batches = [2] if pipeline_mode else [1, 5]
-    seqs = (
+    batch_sizes = [2] if pipeline_mode else [1, 5]
+    sequence_lengths = (
         [(1, 128), (113, 211), (2048, 2048)]
         if pipeline_mode
         else [
@@ -481,14 +419,14 @@ def mha_test_cases():
             (2048, 2048),
         ]
     )
-    num_h = [3] if pipeline_mode else [1, 6, 16]
-    h_sizes = [64] if pipeline_mode else [32, 40, 64, 80, 96, 128, 160, 192, 224, 256]
+    num_heads = [3] if pipeline_mode else [1, 6, 16]
+    head_sizes = [64] if pipeline_mode else [32, 40, 64, 80, 96, 128, 160, 192, 224, 256]
 
-    for b in batches:
-        for s, s2 in seqs:
-            for n in num_h:
-                for h in h_sizes:
-                    config = Config(b, s, s2, n, n, h)
+    for b in batch_sizes:
+        for s, kv_sequence_length in sequence_lengths:
+            for n in num_heads:
+                for h in head_sizes:
+                    config = Config(b, s, kv_sequence_length, n, n, h)
                     yield str(config), config
 
 
