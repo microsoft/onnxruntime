@@ -32,6 +32,11 @@ void ComputeAttentionSoftcapInplace(T* scores, int sequence_length, T softcap) {
 }
 
 template <typename T>
+void ApplyAttentionBias(T* softmax_logits, const T* attention_mask, int N) {
+  MlasEltwiseAdd(softmax_logits, attention_mask, softmax_logits, N);
+}
+
+template <typename T>
 void PrepareMask(const int32_t* mask_index,
                  gsl::span<const int64_t> mask_index_dims,
                  T* mask_data,
