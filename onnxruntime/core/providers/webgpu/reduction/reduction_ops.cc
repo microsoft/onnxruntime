@@ -11,7 +11,7 @@
 namespace onnxruntime {
 namespace webgpu {
 
-#define REGISTER_REDUCE_VERSIONED_KERNEL(ReduceOp, begin, end)              \
+#define REGISTER_REDUCE_VERSIONED_KERNEL(ReduceOp, begin, end)                         \
   ONNX_OPERATOR_VERSIONED_KERNEL_EX(                                                   \
       ReduceOp,                                                                        \
       kOnnxDomain,                                                                     \
@@ -20,7 +20,7 @@ namespace webgpu {
       (*KernelDefBuilder::Create()).TypeConstraint("T", WebGpuSupportedNumberTypes()), \
       ReduceOp);
 
-#define REGISTER_REDUCE_VERSIONED_KERNEL_WITH_AXIS_IN_INPUT(ReduceOp, begin, end)                                           \
+#define REGISTER_REDUCE_VERSIONED_KERNEL_WITH_AXIS_IN_INPUT(ReduceOp, begin, end)                                             \
   ONNX_OPERATOR_VERSIONED_KERNEL_EX(                                                                                          \
       ReduceOp,                                                                                                               \
       kOnnxDomain,                                                                                                            \
@@ -29,7 +29,7 @@ namespace webgpu {
       (*KernelDefBuilder::Create()).TypeConstraint("T", WebGpuSupportedNumberTypes()).InputMemoryType(OrtMemTypeCPUInput, 1), \
       ReduceOp);
 
-#define REGISTER_REDUCE_KERNEL(ReduceOp, version)                                                                  \
+#define REGISTER_REDUCE_KERNEL(ReduceOp, version)                                                                             \
   ONNX_OPERATOR_KERNEL_EX(                                                                                                    \
       ReduceOp,                                                                                                               \
       kOnnxDomain,                                                                                                            \
