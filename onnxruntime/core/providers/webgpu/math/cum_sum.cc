@@ -47,7 +47,7 @@ Status CumSumProgram::GenerateShaderCode(ShaderHelper& shader) const {
                             << "  " << input.IndicesSet("input_indices", "uniforms.axis", "u32(i)") << ";\n"
                             << "  sum = sum + f32(" << input.GetByIndices("input_indices") << ");\n"
                             << "}\n"
-                            << output.SetByOffset("global_idx", "output_indices_t(sum)") << ";\n";
+                            << output.SetByOffset("global_idx", "output_indices_t(sum)");
 
   return Status::OK();
 }
