@@ -26,11 +26,11 @@ ONNX_OPERATOR_KERNEL_EX(
 
 Status CumSumProgram::GenerateShaderCode(ShaderHelper& shader) const {
   const ShaderVariableHelper& input = shader.AddInput("input", ShaderUsage::UseUniform);
-  const ShaderVariableHelper& output = shader.AddOutput("output", ShaderUsage::UseUniform | ShaderUsage::UseIndicesTypeAlias);
+  const ShaderVariableHelper& output = shader.AddOutput("output", ShaderUsage::UseUniform | ShaderUsage::UseValueTypeAlias);
 
   shader.MainFunctionBody() << shader.GuardAgainstOutOfBoundsWorkgroupSizes("uniforms.output_size")
                             << "var input_indices = " << input.OffsetToIndices("global_idx") << ";\n"
-                            << "var sum : f32 = 0;\n"
+                            << "var sum : output_value_t = 0;\n"
                             << "var first : i32 = 0;\n"
                             << "if (uniforms.reverse == 1) {\n"
                             << "  first = i32(" + input.IndicesGet("input_indices", "uniforms.axis") + ");\n"
@@ -45,9 +45,9 @@ Status CumSumProgram::GenerateShaderCode(ShaderHelper& shader) const {
                             << "}\n\n"
                             << "for (var i : i32 = first; i < last; i++) {\n"
                             << "  " << input.IndicesSet("input_indices", "uniforms.axis", "u32(i)") << ";\n"
-                            << "  sum = sum + f32(" << input.GetByIndices("input_indices") << ");\n"
+                            << "  sum = sum + " << input.GetByIndices("input_indices") << ";\n"
                             << "}\n"
-                            << output.SetByOffset("global_idx", "output_indices_t(sum)");
+                            << output.SetByOffset("global_idx", "sum");
 
   return Status::OK();
 }
