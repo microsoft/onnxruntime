@@ -20,7 +20,7 @@ namespace webgpu {
       (*KernelDefBuilder::Create()).TypeConstraint("T", WebGpuSupportedNumberTypes()), \
       ReduceOp);
 
-#define REGISTER_UNARY_ELEMENTWISE_VERSIONED_KERNEL_CPU_INPUT(ReduceOp, begin, end)                                           \
+#define REGISTER_UNARY_ELEMENTWISE_VERSIONED_KERNEL_WITH_AXIS_IN_INPUT(ReduceOp, begin, end)                                           \
   ONNX_OPERATOR_VERSIONED_KERNEL_EX(                                                                                          \
       ReduceOp,                                                                                                               \
       kOnnxDomain,                                                                                                            \
@@ -47,14 +47,14 @@ REGISTER_UNARY_ELEMENTWISE_VERSIONED_KERNEL(ReduceMax, 1, 10);
 REGISTER_UNARY_ELEMENTWISE_VERSIONED_KERNEL(ReduceMax, 11, 11);
 REGISTER_UNARY_ELEMENTWISE_VERSIONED_KERNEL(ReduceMax, 12, 12);
 REGISTER_UNARY_ELEMENTWISE_VERSIONED_KERNEL(ReduceMax, 13, 17);
-REGISTER_UNARY_ELEMENTWISE_VERSIONED_KERNEL_CPU_INPUT(ReduceMax, 18, 19);
+REGISTER_UNARY_ELEMENTWISE_VERSIONED_KERNEL_WITH_AXIS_IN_INPUT(ReduceMax, 18, 19);
 REGISTER_UNARY_ELEMENTWISE_KERNEL(ReduceMax, 20);
 
 REGISTER_UNARY_ELEMENTWISE_VERSIONED_KERNEL(ReduceMin, 1, 10);
 REGISTER_UNARY_ELEMENTWISE_VERSIONED_KERNEL(ReduceMin, 11, 11);
 REGISTER_UNARY_ELEMENTWISE_VERSIONED_KERNEL(ReduceMin, 12, 12);
 REGISTER_UNARY_ELEMENTWISE_VERSIONED_KERNEL(ReduceMin, 13, 17);
-REGISTER_UNARY_ELEMENTWISE_VERSIONED_KERNEL_CPU_INPUT(ReduceMin, 18, 19);
+REGISTER_UNARY_ELEMENTWISE_VERSIONED_KERNEL_WITH_AXIS_IN_INPUT(ReduceMin, 18, 19);
 REGISTER_UNARY_ELEMENTWISE_KERNEL(ReduceMin, 20);
 
 REGISTER_UNARY_ELEMENTWISE_VERSIONED_KERNEL(ReduceSum, 1, 10);
