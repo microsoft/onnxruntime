@@ -574,7 +574,7 @@ Status MatMulNBits::ComputeInternal(onnxruntime::webgpu::ComputeContext& context
     return ApplySubgroupMatrixMatMulNBits(a, b, scales, M, N, K, context, y);
   }
 
-  if (CanApplyDP4AMatrixMatMulNBits(context, accuracy_level_, block_size, batch_count, N, K, components_a, has_zero_points)) {
+  if ((M >= kMinMForTileOptimization || y->DataType() == DataTypeImpl::GetType<float>()) && CanApplyDP4AMatrixMatMulNBits(context, accuracy_level_, block_size, batch_count, N, K, components_a, has_zero_points)) {
     return ApplyDP4AMatrixMatMulNBits(a, b, scales, M, N, K, block_size, kMinMForTileOptimization, context, y);
   }
 
