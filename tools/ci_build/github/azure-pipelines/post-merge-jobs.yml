@@ -12,7 +12,7 @@ variables:
     ${{ if eq(parameters.CudaVersion, '11.8') }}:
       value: ${{ variables.win_trt_folder_cuda11 }}
     ${{ if eq(parameters.CudaVersion, '12.2') }}:
-    value: ${{ variables.win_trt_folder_cuda12 }}
+      value: ${{ variables.win_trt_folder_cuda12 }}
 
 stages:
 - ${{ if or(startsWith(variables['System.CollectionUri'], 'https://dev.azure.com/aiinfra/'),startsWith(variables['System.CollectionUri'], 'https://aiinfra.visualstudio.com/')) }}:

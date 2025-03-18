@@ -56,7 +56,7 @@ stages:
         ${{ if eq(parameters.cuda_version, '11.8') }}:
           value: ${{ variables.linux_trt_version_cuda11 }}
         ${{ if eq(parameters.cuda_version, '12.2') }}:
-        value: ${{ variables.linux_trt_version_cuda12 }}
+          value: ${{ variables.linux_trt_version_cuda12 }}
     steps:
       - checkout: self
         clean: true
