@@ -121,7 +121,7 @@ Status Gemm::ComputeInternal(ComputeContext& context) const {
   bool need_handle_matmul = K != 0;
   bool need_handle_bias = C && beta_;
 
-  GemmProgram program{transA_, transB_, alpha_, beta_, need_handle_bias, need_handle_matmul};
+  GemmProgram program{transA_, transB_, alpha_, need_handle_bias, need_handle_matmul};
 
   if (need_handle_matmul) {
     program.AddInputs({{A, ProgramTensorMetadataDependency::Type},
