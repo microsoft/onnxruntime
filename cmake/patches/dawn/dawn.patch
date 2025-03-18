@@ -48,10 +48,92 @@ index efd6491cd6..8ebc5d28b6 100644
  
  ninja
 diff --git a/third_party/emdawnwebgpu/library_webgpu.js b/third_party/emdawnwebgpu/library_webgpu.js
-index f8ef77d5c4..c38c41771e 100644
+index f8ef77d5c4..57573ef51a 100644
 --- a/third_party/emdawnwebgpu/library_webgpu.js
 +++ b/third_party/emdawnwebgpu/library_webgpu.js
-@@ -820,6 +820,61 @@ var LibraryWebGPU = {
+@@ -66,7 +66,7 @@
+         importJs${object}__deps: ['emwgpuCreate${object}'],
+         importJs${object}: (obj, parentPtr = 0) => {
+           var ptr = _emwgpuCreate${object}(parentPtr);
+-          WebGPU.Internals.jsObjects[ptr] = obj;
++          WebGPU.Internals.jsObjects.set(ptr, obj);
+           return ptr;
+         },
+       `
+@@ -94,14 +94,14 @@ var LibraryWebGPU = {
+     Internals: {
+       // Object management is consolidated into a single table that doesn't
+       // care about object type, and is keyed on the pointer address.
+-      jsObjects: [],
++      jsObjects: new Map(),
+       jsObjectInsert: (ptr, jsObject) => {
+-        WebGPU.Internals.jsObjects[ptr] = jsObject;
++        WebGPU.Internals.jsObjects.set(ptr, jsObject);
+       },
+ 
+       // Buffer unmapping callbacks are stored in a separate table to keep
+       // the jsObject table simple.
+-      bufferOnUnmaps: [],
++      bufferOnUnmaps: new Map(),
+ 
+       // Future to promise management. Note that all FutureIDs (uint64_t) are
+       // passed either as a low and high value or by pointer because they need
+@@ -109,11 +109,11 @@ var LibraryWebGPU = {
+       // unable to pass a value to a C++ function as a uint64_t. This might be
+       // possible with -sWASM_BIGINT, but I was unable to get that to work
+       // properly at the time of writing.
+-      futures: [],
++      futures: new Map(),
+       futureInsert: (futureId, promise) => {
+ #if ASYNCIFY
+-        WebGPU.Internals.futures[futureId] =
+-          new Promise((resolve) => promise.finally(() => resolve(futureId)));
++        WebGPU.Internals.futures.set(futureId,
++                                     new Promise((resolve) => promise.finally(() => resolve(futureId))));
+ #endif
+       },
+     },
+@@ -131,9 +131,9 @@ var LibraryWebGPU = {
+     getJsObject: (ptr) => {
+       if (!ptr) return undefined;
+ #if ASSERTIONS
+-      assert(ptr in WebGPU.Internals.jsObjects);
++      assert(WebGPU.Internals.jsObjects.has(ptr));
+ #endif
+-      return WebGPU.Internals.jsObjects[ptr];
++      return WebGPU.Internals.jsObjects.get(ptr);
+     },
+     {{{ gpu.makeImportJsObject('Adapter') }}}
+     {{{ gpu.makeImportJsObject('BindGroup') }}}
+@@ -593,7 +593,7 @@ var LibraryWebGPU = {
+ 
+   emwgpuDelete__sig: 'vp',
+   emwgpuDelete: (ptr) => {
+-    delete WebGPU.Internals.jsObjects[ptr];
++    WebGPU.Internals.jsObjects.delete(ptr);
+   },
+ 
+   emwgpuSetLabel__deps: ['$UTF8ToString'],
+@@ -621,14 +621,15 @@ var LibraryWebGPU = {
+     for (var i = 0; i < futureCount; ++i) {
+       // If any of the FutureIDs are not tracked, it means it must be done.
+       var futureId = {{{ gpu.makeGetU64('(futurePtr + i * 8)', 0) }}};
+-      if (!(futureId in WebGPU.Internals.futures)) {
++      var promise = WebGPU.Internals.futures.get(futureId);
++      if (promise === undefined) {
+         return futureId;
+       }
+-      promises[i] = WebGPU.Internals.futures[futureId];
++      promises[i] = promise;
+     }
+ 
+     const firstResolvedFuture = await Promise.race(promises);
+-    delete WebGPU.Internals.futures[firstResolvedFuture];
++    WebGPU.Internals.futures.delete(firstResolvedFuture);
+     return firstResolvedFuture;
+   }),
+ #else
+@@ -820,6 +821,61 @@ var LibraryWebGPU = {
      {{{ runtimeKeepalivePush() }}}
      WebGPU.Internals.futureInsert(futureId, adapter.requestDevice(desc).then((device) => {
        {{{ runtimeKeepalivePop() }}}
@@ -112,6 +194,84 @@ index f8ef77d5c4..c38c41771e 100644
 +
        WebGPU.Internals.jsObjectInsert(queuePtr, device.queue);
        WebGPU.Internals.jsObjectInsert(devicePtr, device);
+ 
+@@ -888,12 +944,12 @@ var LibraryWebGPU = {
+   emwgpuBufferDestroy__sig: 'vp',
+   emwgpuBufferDestroy: (bufferPtr) => {
+     var buffer = WebGPU.getJsObject(bufferPtr);
+-    var onUnmap = WebGPU.Internals.bufferOnUnmaps[bufferPtr];
++    var onUnmap = WebGPU.Internals.bufferOnUnmaps.get(bufferPtr);
+     if (onUnmap) {
+       for (var i = 0; i < onUnmap.length; ++i) {
+         onUnmap[i]();
+       }
+-      delete WebGPU.Internals.bufferOnUnmaps[bufferPtr];
++      WebGPU.Internals.bufferOnUnmaps.delete(bufferPtr);
+     }
+ 
+     buffer.destroy();
+@@ -922,7 +978,7 @@ var LibraryWebGPU = {
+     }
+     var data = _memalign(16, mapped.byteLength);
+     HEAPU8.set(new Uint8Array(mapped), data);
+-    WebGPU.Internals.bufferOnUnmaps[bufferPtr].push(() => _free(data));
++    WebGPU.Internals.bufferOnUnmaps.get(bufferPtr).push(() => _free(data));
+     return data;
+   },
+ 
+@@ -950,7 +1006,7 @@ var LibraryWebGPU = {
+ 
+     var data = _memalign(16, mapped.byteLength);
+     HEAPU8.fill(0, data, mapped.byteLength);
+-    WebGPU.Internals.bufferOnUnmaps[bufferPtr].push(() => {
++    WebGPU.Internals.bufferOnUnmaps.get(bufferPtr).push(() => {
+       new Uint8Array(mapped).set(HEAPU8.subarray(data, data + mapped.byteLength));
+       _free(data);
+     });
+@@ -974,7 +1030,7 @@ var LibraryWebGPU = {
+   emwgpuBufferMapAsync__sig: 'vpjjpp',
+   emwgpuBufferMapAsync: (bufferPtr, futureId, mode, offset, size) => {
+     var buffer = WebGPU.getJsObject(bufferPtr);
+-    WebGPU.Internals.bufferOnUnmaps[bufferPtr] = [];
++    WebGPU.Internals.bufferOnUnmaps.set(bufferPtr, []);
+ 
+     {{{ gpu.convertSentinelToUndefined('size', true) }}}
+ 
+@@ -993,7 +1049,7 @@ var LibraryWebGPU = {
+         0;
+       {{{ gpu.makeCheck('status') }}}
+       _emwgpuOnMapAsyncCompleted(futureId, status, {{{ gpu.passAsPointer('messagePtr') }}});
+-      delete WebGPU.Internals.bufferOnUnmaps[bufferPtr];
++      WebGPU.Internals.bufferOnUnmaps.delete(bufferPtr);
+     }));
+   },
+ 
+@@ -1001,7 +1057,7 @@ var LibraryWebGPU = {
+   emwgpuBufferUnmap: (bufferPtr) => {
+     var buffer = WebGPU.getJsObject(bufferPtr);
+ 
+-    var onUnmap = WebGPU.Internals.bufferOnUnmaps[bufferPtr];
++    var onUnmap = WebGPU.Internals.bufferOnUnmaps.get(bufferPtr);
+     if (!onUnmap) {
+       // Already unmapped
+       return;
+@@ -1010,7 +1066,7 @@ var LibraryWebGPU = {
+     for (var i = 0; i < onUnmap.length; ++i) {
+       onUnmap[i]();
+     }
+-    delete WebGPU.Internals.bufferOnUnmaps[bufferPtr]
++    WebGPU.Internals.bufferOnUnmaps.delete(bufferPtr);
+ 
+     buffer.unmap();
+   },
+@@ -1487,7 +1543,7 @@ var LibraryWebGPU = {
+     var device = WebGPU.getJsObject(devicePtr);
+     WebGPU.Internals.jsObjectInsert(bufferPtr, device.createBuffer(desc));
+     if (mappedAtCreation) {
+-      WebGPU.Internals.bufferOnUnmaps[bufferPtr] = [];
++      WebGPU.Internals.bufferOnUnmaps.set(bufferPtr, []);
+     }
+   },
  
 diff --git a/third_party/emdawnwebgpu/webgpu.cpp b/third_party/emdawnwebgpu/webgpu.cpp
 index f1c5a7d50e..16f2495712 100644
