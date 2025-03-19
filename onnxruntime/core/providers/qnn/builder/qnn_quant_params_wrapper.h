@@ -30,6 +30,11 @@ class QnnQuantParamsWrapper {
   // Construct a per-channel quantization param.
   QnnQuantParamsWrapper(gsl::span<const float> scales, gsl::span<const int32_t> offsets, int32_t axis, bool is_int4);
 
+  // Construct a blockwise quantization param.
+  QnnQuantParamsWrapper(gsl::span<const float> scales, gsl::span<const int32_t> offsets, int32_t axis, bool is_lpbq,
+                        uint32_t* block_size, uint32_t num_blocks_per_axis, uint32_t block_scale_bitwidth,
+                        uint8_t* blocks_scale_8, uint16_t* blocks_scale_16);
+
   Qnn_QuantizeParams_t& Get() { return params_; }
   const Qnn_QuantizeParams_t& Get() const { return params_; }
 
@@ -58,14 +63,25 @@ class QnnQuantParamsWrapper {
             (params_.quantizationEncoding == QNN_QUANTIZATION_ENCODING_BW_AXIS_SCALE_OFFSET));
   }
 
+  bool IsBlockwise() const {
+    return params_.encodingDefinition == QNN_DEFINITION_DEFINED &&
+           (params_.quantizationEncoding == QNN_QUANTIZATION_ENCODING_BLOCK ||
+            (params_.quantizationEncoding == QNN_QUANTIZATION_ENCODING_BLOCKWISE_EXPANSION));
+  }
+
+  bool IsLPBQ() const {
+    return params_.encodingDefinition == QNN_DEFINITION_DEFINED &&
+           (params_.quantizationEncoding == QNN_QUANTIZATION_ENCODING_BLOCKWISE_EXPANSION);
+  }
+
   // Get a copy of scales. Works for both per-tensor and per-channel.
   Status GetScales(/*out*/ std::vector<float>& scales) const;
 
-  // Handle transposing of a per-channel quantized tensor. The quantization parameter's axis
+  // Handle transposing of a per-channel or LPBQ quantized tensor. The quantization parameter's axis
   // must be transposed using the inverse permutation of the Transpose.
   template <typename IntType>
   Status HandleTranspose(gsl::span<const IntType> perm) {
-    if (!IsPerChannel()) {
+    if (!IsPerChannel() && !IsLPBQ()) {
       return Status::OK();
     }
 
@@ -79,6 +95,11 @@ class QnnQuantParamsWrapper {
                         "Axis value is out of range of the provided permutation");
       const int32_t new_axis = static_cast<int32_t>(perm[params_.bwAxisScaleOffsetEncoding.axis]);
       params_.bwAxisScaleOffsetEncoding.axis = new_axis;
+    } else if (params_.quantizationEncoding == QNN_QUANTIZATION_ENCODING_BLOCKWISE_EXPANSION) {
+      ORT_RETURN_IF_NOT(static_cast<size_t>(params_.blockwiseExpansion->axis) < perm.size(),
+                        "Axis value is out of range of the provided permutation");
+      const int32_t new_axis = static_cast<int32_t>(perm[params_.blockwiseExpansion->axis]);
+      params_.blockwiseExpansion->axis = new_axis;
     }
 
     return Status::OK();
@@ -148,6 +169,9 @@ class QnnQuantParamsWrapper {
   // - QNN_QUANTIZATION_ENCODING_AXIS_SCALE_OFFSET: array of scale/zp pairs [{scale0, zp0}, {scale1, zp1}, ...]
   // - QNN_QUANTIZATION_ENCODING_BW_AXIS_SCALE_OFFSET: parallel arrays for scales and zps [scale0, ...] [zp0, zp1, ...]
   std::unique_ptr<char[]> per_channel_data_;
+  // - QNN_QUANTIZATION_ENCODING_BLOCK: array of scale/zp pairs [{scale0, zp0}, {scale1, zp1}, ...]
+  // - QNN_QUANTIZATION_ENCODING_BLOCKWISE_EXPANSION: array of scale/zp pairs [{scale0, zp0}, {scale1, zp1}, ...]
+  std::unique_ptr<char[]> per_block_data_;
 };
 
 }  // namespace qnn

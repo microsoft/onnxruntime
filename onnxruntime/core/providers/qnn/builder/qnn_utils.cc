@@ -265,6 +265,12 @@ std::ostream& operator<<(std::ostream& out, const Qnn_QuantizationEncoding_t& en
     case QNN_QUANTIZATION_ENCODING_BW_AXIS_SCALE_OFFSET:
       out << "QNN_QUANTIZATION_ENCODING_BW_AXIS_SCALE_OFFSET";
       break;
+    case QNN_QUANTIZATION_ENCODING_BLOCK:
+      out << "QNN_QUANTIZATION_ENCODING_BLOCK";
+      break;
+    case QNN_QUANTIZATION_ENCODING_BLOCKWISE_EXPANSION:
+      out << "QNN_QUANTIZATION_ENCODING_BLOCKWISE_EXPANSION";
+      break;
     case QNN_QUANTIZATION_ENCODING_UNDEFINED:
       out << "QNN_QUANTIZATION_ENCODING_UNDEFINED";
       break;
@@ -315,6 +321,53 @@ std::ostream& operator<<(std::ostream& out, const Qnn_QuantizeParams_t& quantize
         out << quantize_params.bwAxisScaleOffsetEncoding.offsets[i] << (i == num_elems - 1 ? "" : " ");
       }
       out << (truncate ? "...)" : ")");
+    } else if (quantize_params.quantizationEncoding == QNN_QUANTIZATION_ENCODING_BLOCK) {
+      out << " blockSize=" << quantize_params.blockEncoding.blockSize;
+      size_t num_elems = sizeof(quantize_params.blockEncoding.scaleOffset);
+      bool truncate = num_elems > 20;
+      num_elems = truncate ? 20 : num_elems;
+      out << " scales=(";
+      for (size_t i = 0; i < num_elems; i++) {
+        out << quantize_params.blockEncoding.scaleOffset[i].scale << (i == num_elems - 1 ? "" : " ");
+      }
+      out << ") offsets=(";
+      for (size_t i = 0; i < num_elems; i++) {
+        out << quantize_params.blockEncoding.scaleOffset[i].offset << (i == num_elems - 1 ? "" : " ");
+      }
+      out << (truncate ? "...)" : ")");
+    } else if (quantize_params.quantizationEncoding == QNN_QUANTIZATION_ENCODING_BLOCKWISE_EXPANSION) {
+      out << " axis=" << quantize_params.blockwiseExpansion->axis;
+      uint32_t num_blocks_per_axis = quantize_params.blockwiseExpansion->numBlocksPerAxis;
+      out << " numBlocksPerAxis=" << num_blocks_per_axis;
+      out << " blockScaleBitwidth=" << quantize_params.blockwiseExpansion->blockScaleBitwidth;
+      size_t num_elems = sizeof(quantize_params.blockwiseExpansion->scaleOffsets);
+      bool truncate = num_elems > 20;
+      num_elems = truncate ? 20 : num_elems;
+      out << " scales=(";
+      for (size_t i = 0; i < num_elems; i++) {
+        out << quantize_params.blockwiseExpansion->scaleOffsets[i].scale << (i == num_elems - 1 ? "" : " ");
+      }
+      out << ") offsets=(";
+      for (size_t i = 0; i < num_elems; i++) {
+        out << quantize_params.blockwiseExpansion->scaleOffsets[i].offset << (i == num_elems - 1 ? "" : " ");
+      }
+      out << (truncate ? "...)" : ")");
+      size_t num_block_scales = num_elems * num_blocks_per_axis;
+      if (quantize_params.blockwiseExpansion->blocksScale8 != nullptr) {
+        out << " blocksScale8=(";
+        for (size_t i = 0; i < num_block_scales; i++) {
+          out << quantize_params.blockwiseExpansion->blocksScale8[i] << (i == num_block_scales - 1 ? "" : " ");
+        }
+        out << ")";
+      } else if (quantize_params.blockwiseExpansion->blocksScale16 != nullptr) {
+        out << " blocksScale16=(";
+        for (size_t i = 0; i < num_block_scales; i++) {
+          out << quantize_params.blockwiseExpansion->blocksScale16[i] << (i == num_block_scales - 1 ? "" : " ");
+        }
+        out << ")";
+      } else {
+        out << " Unsupported LPBQ scale.";
+      }
     } else {
       out << " encoding not supported.";
     }

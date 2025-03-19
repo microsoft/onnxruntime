@@ -69,6 +69,12 @@ Status SimpleOpBuilder::ExplicitOpCheck(QnnModelWrapper& qnn_model_wrapper,
     ORT_RETURN_IF_ERROR(qnn_model_wrapper.IsPerChannelQuantized(node_unit.Inputs()[0], is_per_chan_quant, quant_axis));
     ORT_RETURN_IF(is_per_chan_quant, "QNN EP does not support a standalone DQ op with per-channel quantization");
 
+    bool is_block_quant = false;
+    int64_t quant_block_axis = 0;
+    int64_t quant_block_size = 0;
+    ORT_RETURN_IF_ERROR(qnn_model_wrapper.IsBlockwiseQuantized(node_unit.Inputs()[0], is_block_quant, quant_block_axis, quant_block_size));
+    ORT_RETURN_IF(is_block_quant, "QNN EP does not support a standalone DQ op with blockwise quantization");
+
     if (qnn_model_wrapper.GetModelSettings().offload_graph_io_quantization) {
       ORT_RETURN_IF(qnn_model_wrapper.IsGraphOutput(node_unit.Outputs()[0].node_arg.Name()),
                     "QNN EP is configured to not take DQ nodes that generate a graph output.");
@@ -80,6 +86,12 @@ Status SimpleOpBuilder::ExplicitOpCheck(QnnModelWrapper& qnn_model_wrapper,
     int64_t quant_axis = 0;
     ORT_RETURN_IF_ERROR(qnn_model_wrapper.IsPerChannelQuantized(node_unit.Outputs()[0], is_per_chan_quant, quant_axis));
     ORT_RETURN_IF(is_per_chan_quant, "QNN EP does not support a standalone Q op with per-channel quantization");
+
+    bool is_block_quant = false;
+    int64_t quant_block_axis = 0;
+    int64_t quant_block_size = 0;
+    ORT_RETURN_IF_ERROR(qnn_model_wrapper.IsBlockwiseQuantized(node_unit.Outputs()[0], is_block_quant, quant_block_axis, quant_block_size));
+    ORT_RETURN_IF(is_block_quant, "QNN EP does not support a standalone Q op with blockwise quantization");
 
     if (qnn_model_wrapper.GetModelSettings().offload_graph_io_quantization) {
       ORT_RETURN_IF(qnn_model_wrapper.IsGraphInput(node_unit.Inputs()[0].node_arg.Name()),

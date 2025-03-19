@@ -491,6 +491,51 @@ Status QnnModelWrapper::IsPerChannelQuantized(const onnxruntime::NodeUnitIODef& 
   return Status::OK();
 }
 
+// Checks if a tensor in the ONNX graph is blockwise quantized.
+Status QnnModelWrapper::IsBlockwiseQuantized(const onnxruntime::NodeUnitIODef& io_def,
+                                             /*out*/ bool& is_blockwise,
+                                             /*out*/ int64_t& axis,
+                                             /*out*/ int64_t& block_size) const {
+  if (!io_def.quant_param) {
+    is_blockwise = false;
+    return Status::OK();
+  }
+
+  const std::string& scale_name = io_def.quant_param->scale.Name();
+  const auto& graph_initializers = GetInitializerTensors();
+  auto iter = graph_initializers.find(scale_name);
+  ORT_RETURN_IF(iter == graph_initializers.end(), "Unable to find initializer for scale(s): ",
+                scale_name.c_str());
+  gsl::not_null<const onnx::TensorProto*> scale_tensor_proto = iter->second;
+  TensorShape scale_shape(qnn::utils::GetInitializerShape<int64_t>(*scale_tensor_proto));
+
+  const auto* tensor_shape_proto = io_def.node_arg.Shape();
+  ORT_RETURN_IF_NOT(tensor_shape_proto != nullptr, "NULL tensor shape proto");
+  const int rank = tensor_shape_proto->dim_size();
+
+  // Check the number of scale values to determine if the tensor is blockwise.
+  // This is consistent with CPU EP's Quant/Dequant logic. We can't use the presence of an axis and a block_size
+  // because even a blocked DQ/Q op may not have an explicit axis or block_size attribute.
+  // (axis assumed to default to 1 if missing, and block_size assumed to default to 0 if missing)
+  const bool is_scalar_or_1_elem_vector = scale_shape.NumDimensions() == 0 ||
+                                          (scale_shape.NumDimensions() == 1 && scale_shape.Size() == 1);
+
+  is_blockwise = !is_scalar_or_1_elem_vector && (scale_shape.NumDimensions() == rank);
+
+  if (is_blockwise) {
+    axis = io_def.quant_param->axis.value_or(1);  // 1 is default axis for Q/DQ ops.
+    if (axis < 0) {
+      // Normalize negative axis by adding rank.
+      ORT_RETURN_IF_NOT(rank > 0, "Blockwise quantized tensor should be of rank > 0");
+
+      axis += rank;
+    }
+    block_size = io_def.quant_param->block_size.value_or(0);  // 0 is default block_size for Q/DQ ops.
+  }
+
+  return Status::OK();
+}
+
 Status QnnModelWrapper::GetTensorInfo(const NodeUnitIODef& input, TensorInfo& tensor_info) const {
   const std::string& name = input.node_arg.Name();
 
@@ -546,9 +591,10 @@ Status QnnModelWrapper::AddReshapeNode(const std::string& input_name, const std:
                                        const Qnn_DataType_t& tensor_data_type,
                                        const QnnQuantParamsWrapper& quantize_param, bool do_op_validation,
                                        bool is_for_input, bool is_for_output) {
-  // Do not allow QNN EP to insert Reshape nodes with per-channel quantization on dynamic tensors
+  // Do not allow QNN EP to insert Reshape nodes with per-channel or blockwise quantization on dynamic tensors
   // if only one quantization param is provided.
-  ORT_RETURN_IF(quantize_param.IsPerChannel(), "Do not support inserted Reshape nodes with per-channel quantization");
+  ORT_RETURN_IF(quantize_param.IsPerChannel() || quantize_param.IsBlockwise(),
+                "Do not support inserted Reshape nodes with per-channel or blockwise quantization");
   return AddReshapeNode(input_name, output_name, input_shape, output_shape, tensor_data_type, quantize_param,
                         quantize_param, do_op_validation, is_for_input, is_for_output);
 }
@@ -564,11 +610,11 @@ Status QnnModelWrapper::AddTransposeNode(NodeIndex node_index,
                                          bool do_op_validation,
                                          bool is_for_input,
                                          bool is_for_output) {
-  // Do not allow QNN EP to insert transpose nodes with per-channel quantization on dynamic tensors.
+  // Do not allow QNN EP to insert transpose nodes with per-channel or blockwise quantization on dynamic tensors.
   // We could technically support this by transposing the quantization param's axis value, but
   // we don't need this right now.
-  ORT_RETURN_IF(quantize_param.IsPerChannel(),
-                "Do not support inserted Transpose nodes with per-channel quantization");
+  ORT_RETURN_IF(quantize_param.IsPerChannel() || quantize_param.IsBlockwise(),
+                "Do not support inserted Transpose nodes with per-channel or blockwise quantization");
   // No need to add this for output nodes as it is added as output tensor for previous node
   if (is_for_input) {
     Qnn_TensorType_t tensor_type = QNN_TENSOR_TYPE_APP_WRITE;

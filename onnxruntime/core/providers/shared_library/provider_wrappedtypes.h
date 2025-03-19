@@ -946,6 +946,7 @@ struct NodeUnitIODef final {
     const NodeArg& scale;
     const NodeArg* zero_point{nullptr};
     std::optional<int64_t> axis{std::nullopt};
+    std::optional<int64_t> block_size{std::nullopt};
   };
 
   const NodeArg& node_arg;
