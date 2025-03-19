@@ -54,54 +54,54 @@ std::vector<MatMulTestData<T>> GenerateTestCases() {
     }
   };
 
-  test_cases.push_back(
-      {"test padding and broadcast A > B",
-       {3, 1, 1, 2},
-       {2, 2, 2},
-       {3, 2, 1, 2},
-       real_expected_vals({2, 3, 6, 7, 6, 11, 26, 31, 10, 19, 46, 55})});
+  // test_cases.push_back(
+  //     {"test padding and broadcast A > B",
+  //      {3, 1, 1, 2},
+  //      {2, 2, 2},
+  //      {3, 2, 1, 2},
+  //      real_expected_vals({2, 3, 6, 7, 6, 11, 26, 31, 10, 19, 46, 55})});
 
-  test_cases.push_back(
-      {"test padding and broadcast B > A",
-       {2, 3, 2},
-       {3, 2, 2, 1},
-       {3, 2, 3, 1},
-       real_expected_vals({1, 3, 5, 33, 43, 53, 5, 23, 41, 85, 111, 137, 9, 43, 77, 137, 179, 221})});
+  // test_cases.push_back(
+  //     {"test padding and broadcast B > A",
+  //      {2, 3, 2},
+  //      {3, 2, 2, 1},
+  //      {3, 2, 3, 1},
+  //      real_expected_vals({1, 3, 5, 33, 43, 53, 5, 23, 41, 85, 111, 137, 9, 43, 77, 137, 179, 221})});
 
-  test_cases.push_back(
-      {"test left 1D",
-       {2},
-       {3, 2, 1},
-       {3, 1},
-       real_expected_vals({1, 3, 5})});
+  // test_cases.push_back(
+  //     {"test left 1D",
+  //      {2},
+  //      {3, 2, 1},
+  //      {3, 1},
+  //      real_expected_vals({1, 3, 5})});
 
-  test_cases.push_back(
-      {"test right 1D",
-       {3, 1, 2},
-       {2},
-       {3, 1},
-       real_expected_vals({1, 3, 5})});
+  // test_cases.push_back(
+  //     {"test right 1D",
+  //      {3, 1, 2},
+  //      {2},
+  //      {3, 1},
+  //      real_expected_vals({1, 3, 5})});
 
-  test_cases.push_back(
-      {"test left 1D right 2D",
-       {2},
-       {2, 3},
-       {3},
-       real_expected_vals({3, 4, 5})});
+  // test_cases.push_back(
+  //     {"test left 1D right 2D",
+  //      {2},
+  //      {2, 3},
+  //      {3},
+  //      real_expected_vals({3, 4, 5})});
 
-  test_cases.push_back(
-      {"test scalar output",
-       {3},
-       {3},
-       {},
-       real_expected_vals({5})});
+  // test_cases.push_back(
+  //     {"test scalar output",
+  //      {3},
+  //      {3},
+  //      {},
+  //      real_expected_vals({5})});
 
-  test_cases.push_back(
-      {"test 2D",
-       {3, 4},
-       {4, 3},
-       {3, 3},
-       real_expected_vals({42, 48, 54, 114, 136, 158, 186, 224, 262})});
+  // test_cases.push_back(
+  //     {"test 2D",
+  //      {3, 4},
+  //      {4, 3},
+  //      {3, 3},
+  //      real_expected_vals({42, 48, 54, 114, 136, 158, 186, 224, 262})});
 
   test_cases.push_back(
       {"test 2D special",

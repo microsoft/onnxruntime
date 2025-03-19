@@ -127,6 +127,22 @@ Status MatMul::ComputeInternal(ComputeContext& context) const {
 
     MatMulNaiveProgram program{output_size, output_number, has_bias};
 
+        LOGS_DEFAULT(VERBOSE) << "MatMulNativeProgram: a_shape: " << a->Shape().ToString();
+        LOGS_DEFAULT(VERBOSE) << "MatMulNativeProgram: b_shape: " << b->Shape().ToString();
+        LOGS_DEFAULT(VERBOSE) << "MatMulNativeProgram: outputshape: " << helper.OutputShape().ToString();
+        LOGS_DEFAULT(VERBOSE) << "MatMulNativeProgram: m: " << m;
+        LOGS_DEFAULT(VERBOSE) << "MatMulNativeProgram: n: " << n;
+        LOGS_DEFAULT(VERBOSE) << "MatMulNativeProgram: k: " << k;
+        LOGS_DEFAULT(VERBOSE) << "MatMulNativeProgram: components: " << components;
+        LOGS_DEFAULT(VERBOSE) << "MatMulNativeProgram: a_components: " << a_components;
+        LOGS_DEFAULT(VERBOSE) << "MatMulNativeProgram: output_size: " << output_size;
+        LOGS_DEFAULT(VERBOSE) << "MatMulNativeProgram: output_number: " << output_number;
+        LOGS_DEFAULT(VERBOSE) << "MatMulNativeProgram: has_bias: " << has_bias;
+        LOGS_DEFAULT(VERBOSE) << "MatMulNativeProgram: output_rank: " << output_rank;
+        LOGS_DEFAULT(VERBOSE) << "MatMulNativeProgram: outer_dims: " <<  outer_dims;
+        LOGS_DEFAULT(VERBOSE) << "MatMulNativeProgram: batch_size: " << batch_size;
+        LOGS_DEFAULT(VERBOSE) << "MatMulNativeProgram: output_shape_shader: " << output_shape_shader.ToString();
+
     program
         .CacheHint(std::to_string(components), std::to_string(a_components), std::to_string(output_number))
         .AddInputs({{a, ProgramTensorMetadataDependency::TypeAndRank, static_cast<int>(a_components)},
