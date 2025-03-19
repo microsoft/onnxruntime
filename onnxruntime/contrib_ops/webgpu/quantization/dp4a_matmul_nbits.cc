@@ -283,7 +283,7 @@ Status DP4AMatMulNBitsSmallMProgram::GenerateShaderCode(ShaderHelper& shader) co
       if (col < 4)
       {
         // kidx_v - covers 16 values of k in input_a
-        scale_A[col] = scales_a[a_global*(uniforms.K/128) + k_offset/8 + col];
+        scale_A[col] = scales_a[a_global*(uniforms.K/128) + kidx_v/8 + col];
       }
     }
     // Scaled dot product of 8 packed unsigned integers.
