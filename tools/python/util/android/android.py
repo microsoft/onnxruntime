@@ -46,35 +46,35 @@ def get_sdk_tool_paths(sdk_root: str):
 
 def create_virtual_device(sdk_tool_paths: SdkToolPaths, system_image_package_name: str, avd_name: str):
     run(sdk_tool_paths.sdkmanager, "--install", system_image_package_name, input=b"y")
-    ANDROID_AVD_HOME = os.environ["ANDROID_AVD_HOME"]
+    android_avd_home = os.environ["ANDROID_AVD_HOME"]
 
-    if ANDROID_AVD_HOME is not None:
-        if not os.path.exists(ANDROID_AVD_HOME):
-            os.makedirs(ANDROID_AVD_HOME)
+    if android_avd_home is not None:
+        if not os.path.exists(android_avd_home):
+            os.makedirs(android_avd_home)
         run(
-        sdk_tool_paths.avdmanager,
-        "create",
-        "avd",
-        "--name",
-        avd_name,
-        "--package",
-        system_image_package_name,
-        "--force",
-        "--path",
-        ANDROID_AVD_HOME,
-        input=b"no",
+            sdk_tool_paths.avdmanager,
+            "create",
+            "avd",
+            "--name",
+            avd_name,
+            "--package",
+            system_image_package_name,
+            "--force",
+            "--path",
+            android_avd_home,
+            input=b"no",
         )
     else:
         run(
-        sdk_tool_paths.avdmanager,
-        "create",
-        "avd",
-        "--name",
-        avd_name,
-        "--package",
-        system_image_package_name,
-        "--force",
-        input=b"no",
+            sdk_tool_paths.avdmanager,
+            "create",
+            "avd",
+            "--name",
+            avd_name,
+            "--package",
+            system_image_package_name,
+            "--force",
+            input=b"no",
         )
 
 
