@@ -258,15 +258,21 @@ Status DP4AMatMulNBitsSmallMProgram::GenerateShaderCode(ShaderHelper& shader) co
   shader.AddOutput("output", ShaderUsage::UseUniform | ShaderUsage::UseElementTypeAlias);
 
   constexpr uint32_t tile_size_k_vec = 16;  // tile K in input_b.
+  // tile_size is the number of rows of b each workgroup process.
+  // tile_size_k_vec is the number of columns of b each workgroup process and each element is a vec4<u32>.
+  // In each workgroup, we read a block [tile_size][tile_size_k_vec] of b data and calculate the corresponding intermediate results of a * b. Then store them into inter_results.
+  // Finally, do a reduce sum in inter_results to get the final results.
   shader.AdditionalImplementation() << "const tile_size = " << tile_size_ << "u;\n"
                                     << "const tile_size_k_vec = " << tile_size_k_vec << "u;\n"
                                     << "const sub_tile_size = " << WorkgroupSizeX() / tile_size_k_vec << "u;\n";
   shader.AdditionalImplementation() << R"ADDNL_FN(
     // Shared memory
-    var<workgroup> tile_A : array<vec4<u32>, 32>;                    // 512 scalars
-    var<workgroup> scale_A : array<output_element_t, 4>;             // 4
+    // Need 2 * tile_size_k_vec (32) to store a tile_A since b is quantized as 4 bits and a is quantized as 8 bits.
+    var<workgroup> tile_A : array<vec4<u32>, 32>;
+    // Need 4 scales value since each tile_A includes 512 (4x4x32) scalars and the block_size is 128.
+    var<workgroup> scale_A : array<output_element_t, 4>;
     var<workgroup> inter_results: array<array<output_element_t, tile_size_k_vec>, tile_size>;
-    fn loadSHMA(a_global:u32, kidx_v:u32, col: u32)
+    fn loadSHMA(a_global: u32, kidx_v: u32, col: u32)
     {
       let k_offset = kidx_v + col;
       if (k_offset >= uniforms.K16) {
@@ -298,9 +304,10 @@ Status DP4AMatMulNBitsSmallMProgram::GenerateShaderCode(ShaderHelper& shader) co
   shader.MainFunctionBody() << R"MAIN_FN(
     let a_global = u32(workgroup_idx / uniforms.num_N_tile);
     let b_global_base = (workgroup_idx % uniforms.num_N_tile) * tile_size;
+    // Handle each workgroup threads as a block of [sub_tile_size][tile_size_k_vec]
     let local_col = local_idx % tile_size_k_vec;
     let local_row = local_idx / tile_size_k_vec;
-    for (var kidx_v:u32 = 0; kidx_v < uniforms.K32; kidx_v+=16)
+    for (var kidx_v:u32 = 0; kidx_v < uniforms.K32; kidx_v += 16)
     {
       // Load Phase: Populate shared memory for the workgroup.
       if (local_idx < 32)
@@ -314,6 +321,7 @@ Status DP4AMatMulNBitsSmallMProgram::GenerateShaderCode(ShaderHelper& shader) co
       var own_b = vec4<u32>(0);
       var own_b1 = vec4<u32>(0);
       let k_offset = kidx_v + local_col;
+      // calculate intermediate results into inter_results.
       for (var row_offset = 0u; row_offset < tile_size; row_offset += sub_tile_size) {
         let b_global = b_global_base + row_offset + local_row;
         if (b_global < uniforms.N && k_offset < uniforms.K32)
@@ -344,6 +352,7 @@ Status DP4AMatMulNBitsSmallMProgram::GenerateShaderCode(ShaderHelper& shader) co
     }
     workgroupBarrier();
     if (local_idx < tile_size) {
+      // Do reduce sum to get final output.
       var output_value = output_element_t(0);
       for (var b = 0u; b < tile_size_k_vec; b++) {
         output_value += inter_results[local_idx][b];
