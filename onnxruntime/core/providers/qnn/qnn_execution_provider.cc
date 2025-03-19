@@ -337,19 +337,8 @@ QNNExecutionProvider::QNNExecutionProvider(const ProviderOptions& provider_optio
     LOGS_DEFAULT(VERBOSE) << "User specified enable_htp_fp16_precision: " << enable_HTP_FP16_precision_;
   }
 
-  bool enable_htp_weight_sharing = false;
-  static const std::string QNN_HTP_WEIGHT_SHARING_ENABLED = "enable_htp_weight_sharing";
-  auto htp_weight_sharing_enabled_pos = provider_options_map.find(QNN_HTP_WEIGHT_SHARING_ENABLED);
-  if (htp_weight_sharing_enabled_pos != provider_options_map.end()) {
-    if ("1" == htp_weight_sharing_enabled_pos->second) {
-      enable_htp_weight_sharing = true;
-    } else if ("0" == htp_weight_sharing_enabled_pos->second) {
-      enable_htp_weight_sharing = false;
-    } else {
-      LOGS_DEFAULT(VERBOSE) << "Invalid enable_htp_weight_sharing: " << enable_htp_weight_sharing
-                            << " only 0 or 1 allowed. Set to 0.";
-    }
-    LOGS_DEFAULT(VERBOSE) << "User specified enable_htp_weight_sharing: " << enable_htp_weight_sharing;
+  if (qnn_context_embed_mode_ && share_ep_contexts_) {
+    LOGS_DEFAULT(ERROR) << "[EP context generation:] Weight sharing enabled conflict with EP context embed mode. Inference will not work as expected!";
   }
 
   // Add this option because this feature requires QnnSystem lib and it's no supported for Windows x86_64 platform
@@ -406,8 +395,7 @@ QNNExecutionProvider::QNNExecutionProvider(const ProviderOptions& provider_optio
                                      qnn_saver_path,
                                      device_id_,
                                      htp_arch,
-                                     soc_model,
-                                     enable_htp_weight_sharing});
+                                     soc_model});
   }
 
 #if defined(_WIN32)
@@ -669,6 +657,7 @@ static void PartitionCtxModel(const onnxruntime::GraphViewer& graph_viewer,
 std::vector<std::unique_ptr<ComputeCapability>>
 QNNExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_viewer,
                                     const IKernelLookup& /*kernel_lookup*/,
+                                    const GraphOptimizerRegistry& /* graph_optimizer_registry */,
                                     IResourceAccountant* /* resource_accountant */) const {
   std::vector<std::unique_ptr<ComputeCapability>> result;
 
@@ -700,7 +689,9 @@ QNNExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_viewer
   // It will load the QnnSystem lib if is_qnn_ctx_model=true, and
   // delay the Qnn context creation to Compile() using the cached context binary
   // or generate context cache enable, need to use use QnnSystem lib to parse the binary to get the max spill fill buffer size
-  auto rt = qnn_backend_manager_->SetupBackend(logger, is_qnn_ctx_model, context_cache_enabled_ && enable_spill_fill_buffer_);
+  auto rt = qnn_backend_manager_->SetupBackend(logger, is_qnn_ctx_model,
+                                               context_cache_enabled_ && enable_spill_fill_buffer_,
+                                               share_ep_contexts_);
   if (Status::OK() != rt) {
     LOGS(logger, ERROR) << "QNN SetupBackend failed " << rt.ErrorMessage();
     return result;
@@ -1050,7 +1041,9 @@ Status QNNExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& fused
                                                   context_model_path,
                                                   qnn_context_embed_mode_,
                                                   max_spill_fill_buffer_size,
-                                                  logger));
+                                                  logger,
+                                                  share_ep_contexts_,
+                                                  stop_share_ep_contexts_));
 
     if (share_ep_contexts_ && !stop_share_ep_contexts_ &&
         nullptr == SharedContext::GetInstance().GetSharedQnnBackendManager()) {

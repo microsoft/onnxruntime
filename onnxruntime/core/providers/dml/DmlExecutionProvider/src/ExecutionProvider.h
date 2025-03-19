@@ -13,6 +13,7 @@
 
 namespace onnxruntime {
 class IResourceAccountant;
+class GraphOptimizerRegistry;
 }
 
 namespace WRL {
@@ -93,6 +94,7 @@ namespace Dml
         GetCapability(
             const onnxruntime::GraphViewer& graph,
             const onnxruntime::IExecutionProvider::IKernelLookup& kernel_lookup,
+            const onnxruntime::GraphOptimizerRegistry& graph_optimizer_registry,
             onnxruntime::IResourceAccountant* resource_accountant,
             const onnxruntime::logging::Logger& logger) const;
 
@@ -288,6 +290,7 @@ namespace Dml
         std::vector<std::unique_ptr<onnxruntime::ComputeCapability>>
             GetCapability(const onnxruntime::GraphViewer& graph,
                 const onnxruntime::IExecutionProvider::IKernelLookup& kernel_lookup,
+                const onnxruntime::GraphOptimizerRegistry& /* graph_optimizer_registry */,
                 onnxruntime::IResourceAccountant* resource_accountant) const final override;
 
         onnxruntime::common::Status OnSessionInitializationEnd() override

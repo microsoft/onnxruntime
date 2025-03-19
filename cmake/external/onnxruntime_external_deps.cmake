@@ -107,23 +107,6 @@ if(onnxruntime_USE_MIMALLOC)
   FetchContent_MakeAvailable(mimalloc)
 endif()
 
-#Protobuf depends on utf8_range
-onnxruntime_fetchcontent_declare(
-    utf8_range
-    URL ${DEP_URL_utf8_range}
-    URL_HASH SHA1=${DEP_SHA1_utf8_range}
-    EXCLUDE_FROM_ALL
-    FIND_PACKAGE_ARGS NAMES utf8_range
-)
-
-set(utf8_range_ENABLE_TESTS OFF CACHE BOOL "Build test suite" FORCE)
-set(utf8_range_ENABLE_INSTALL OFF CACHE BOOL "Configure installation" FORCE)
-
-# The next line will generate an error message "fatal: not a git repository", but it is ok. It is from flatbuffers
-onnxruntime_fetchcontent_makeavailable(utf8_range)
-# protobuf's cmake/utf8_range.cmake has the following line
-include_directories(${utf8_range_SOURCE_DIR})
-
 # Download a protoc binary from Internet if needed
 if(NOT ONNX_CUSTOM_PROTOC_EXECUTABLE AND NOT onnxruntime_USE_VCPKG)
   # This part of code is only for users' convenience. The code couldn't handle all cases. Users always can manually
@@ -442,6 +425,9 @@ target_include_directories(safeint_interface INTERFACE ${safeint_SOURCE_DIR})
 
 
 # Flatbuffers
+if(onnxruntime_USE_VCPKG)
+  find_package(flatbuffers REQUIRED)
+else()
 # We do not need to build flatc for iOS or Android Cross Compile
 if (CMAKE_SYSTEM_NAME STREQUAL "iOS" OR CMAKE_SYSTEM_NAME STREQUAL "Android" OR CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
   set(FLATBUFFERS_BUILD_FLATC OFF CACHE BOOL "FLATBUFFERS_BUILD_FLATC" FORCE)
@@ -491,6 +477,7 @@ namespace std { using ::getenv; }
       target_compile_options(flatc PRIVATE /FI${CMAKE_BINARY_DIR}/gdk_cstdlib_wrapper.h)
     endif()
   endif()
+endif()
 endif()
 
 # ONNX
@@ -725,7 +712,29 @@ if (onnxruntime_USE_WEBGPU)
       # # if we need to apply patches in the future, we can uncomment the following line.
       #
       # The dawn.patch contains the following changes:
-      # - https://dawn-review.googlesource.com/c/dawn/+/225514
+      #
+      # - (public) CMake fix to support Emscripten v4.0.3+
+      #   This change allows Dawn to find the file "gen_struct_info.py" in the correct location.
+      #   https://dawn-review.googlesource.com/c/dawn/+/225514
+      #
+      # - (public) Fix emwgpu C++ implementation for buffer destroy
+      #   In native implementation, wgpuBufferRelease will trigger the buffer destroy (if refcount decreased to 0). But
+      #   in emwgpu implementation, the buffer destroy won't happen. This change fixes the bug.
+      #   https://dawn-review.googlesource.com/c/dawn/+/226315
+      #
+      # - (private) Allow "external" buffer in emwgpu C++ implementation
+      #   This change allows WGPUBufferImpl to destroy the buffer when the refcount decreased to 0 only for non-external
+      #   buffer.
+      #   "external buffer" means the GPUBuffer instance created in JavaScript and imported to C++ by `importJsBuffer`.
+      #
+      # - (private) Remove hard-coded CMAKE_OSX_DEPLOYMENT_TARGET in Dawn's CMake files
+      #   https://github.com/microsoft/onnxruntime/pull/23729
+      #
+      # - (private) Fix external ref count for "external" device in emwgpu C++ implementation
+      #   This change fixes the incorrect external ref count for class WGPUDeviceImpl when used with "external" device.
+      #   "external device" means the GPUDevice instance created in JavaScript and imported to C++ by `importJsDevice`.
+      #
+      #
       PATCH_COMMAND ${Patch_EXECUTABLE} --binary --ignore-whitespace -p1 < ${PROJECT_SOURCE_DIR}/patches/dawn/dawn.patch
       EXCLUDE_FROM_ALL
     )

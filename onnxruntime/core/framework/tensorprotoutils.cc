@@ -270,10 +270,15 @@ void SetRawDataInTensorProto(ONNX_NAMESPACE::TensorProto& tensor_proto, std::str
   tensor_proto.set_raw_data(std::move(param));
 }
 
-void ConvertRawDataInTensorProto(TensorProto* tensor) {
+void ConvertRawDataInTensorProto(TensorProto* tensor,
+                                 void* ext_data_buf,
+                                 size_t ext_data_len) {
   size_t element_size = 1;
   char* bytes = NULL;
   size_t num_elements = 0;
+  if (ext_data_buf && !ext_data_len) {
+    return;
+  }
   switch (tensor->data_type()) {
     case TensorProto_DataType_FLOAT:
       bytes = reinterpret_cast<char*>(tensor->mutable_float_data()->mutable_data());
@@ -336,6 +341,15 @@ void ConvertRawDataInTensorProto(TensorProto* tensor) {
   if (tensor->has_raw_data()) {
     num_elements = (tensor->raw_data().size()) / element_size;
     bytes = const_cast<char*>(tensor->mutable_raw_data()->c_str());
+  }
+
+  if (element_size == 1) {
+    return;
+  }
+  if (ext_data_buf) {
+    ORT_ENFORCE(ext_data_len % element_size == 0);
+    num_elements = ext_data_len / element_size;
+    bytes = reinterpret_cast<char*>(ext_data_buf);
   }
   for (size_t i = 0; i < num_elements; ++i) {
     char* start_byte = bytes + i * element_size;
