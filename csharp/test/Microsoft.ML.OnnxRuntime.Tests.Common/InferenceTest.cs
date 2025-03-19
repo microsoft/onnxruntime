@@ -119,7 +119,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                 // the C# symbols (such as USE_CUDA).
 
                 // The Microsoft.ML.OnnxRuntime package will use the appropriate platform bindings
-                // (ie the native Android bindings) where using the C# preprocessor symbols
+                // (ie the native Android bindings) where the C# preprocessor symbols
                 // identifying the EPs included in the build may not be available, so we use
                 // IfThrowsCheckException instead of using ifdefs.
 #if USE_CUDA
