@@ -195,8 +195,8 @@ Status ReduceKernel<allow_multi_axes>::ComputeInternal(ComputeContext& context) 
         std::vector<uint32_t> reduce_axes = {0};
         program.AddInput({input_tensor, ProgramTensorMetadataDependency::TypeAndRank})
             .AddOutput({output, ProgramTensorMetadataDependency::TypeAndRank})
-            .SetDispatchGroupSize(1)
-            .AddUniformVariables({{1}, {static_cast<uint32_t>(noop_with_empty_axes_ ? 1 : 0)}, {reduce_axes}});
+            .SetDispatchGroupSize(static_cast<uint32_t>(1))
+            .AddUniformVariables({{static_cast<uint32_t>(1)}, {static_cast<uint32_t>(noop_with_empty_axes_ ? 1 : 0)}, {reduce_axes}});
         return context.RunProgram(program);
       } else {
         // For other ops, or when axes is empty with noop_with_empty_axes_ true, just copy the input
