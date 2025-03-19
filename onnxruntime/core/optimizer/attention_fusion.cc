@@ -195,6 +195,9 @@ static NodeArg* ConvertMaskToInt32(
 }
 
 Status AttentionFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level, const logging::Logger& logger) const {
+  for (int i = 0; i < 100; i++) {
+  
+  }
   GraphViewer graph_viewer(graph);
   const auto& node_topology_list = graph_viewer.GetNodesInTopologicalOrder();
 
