@@ -736,7 +736,7 @@ struct AttentionKernel {
       if (p.window_size > 0) {
         // don't compute anything if below attention band
         if (iter_key_start + kKeysPerBlock <
-            int32_t(query_start + p.causal_diagonal_offset) - p.window_size) {
+            static_cast<int32_t>(query_start + p.causal_diagonal_offset) - p.window_size) {
           continue;
         }
       }
@@ -919,7 +919,7 @@ struct AttentionKernel {
       if (p.window_size > 0 &&
           (query_start + p.causal_diagonal_offset +
                cutlass::fast_min(
-                   int32_t(kQueriesPerBlock), int32_t(p.num_queries)) -
+                   static_cast<int32_t>(kQueriesPerBlock), static_cast<int32_t>(p.num_queries)) -
                p.window_size >=
            iter_key_start)) {
         auto query_start = blockIdx.x * kQueriesPerBlock;
@@ -938,8 +938,6 @@ struct AttentionKernel {
               }
             },
             [&](int accum_m) {});
-        // print_warp_accum<MM0::AccumLambdaIterator>(accum, lane_offset, 12,
-        // 12);
       }
 
       // Update `mi` from accum stored in registers
@@ -1087,7 +1085,7 @@ struct AttentionKernel {
           int first_key = 0;
           if (p.window_size > 0) {
             first_key = (cutlass::fast_max(
-                             int(query_start + p.causal_diagonal_offset) -
+                             static_cast<int>(query_start + p.causal_diagonal_offset) -
                                  p.window_size + 1,
                              0) /
                          kKeysPerBlock) *
