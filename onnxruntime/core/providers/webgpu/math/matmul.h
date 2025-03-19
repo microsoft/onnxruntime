@@ -27,6 +27,7 @@ namespace webgpu {
 };
 
 class MatMulNaiveProgram final : public Program<MatMulNaiveProgram> {
+class MatMulNaiveProgram final : public Program<MatMulNaiveProgram> {
  public:
   MatMulNaiveProgram(const size_t output_rank, int64_t output_number, bool has_bias)
       : Program{"MatMulNaive"}, output_rank_(output_rank), output_number_(output_number), has_bias_{has_bias} {

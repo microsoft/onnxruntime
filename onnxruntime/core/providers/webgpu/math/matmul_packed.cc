@@ -67,10 +67,11 @@ void MatMulProgram::MatMulReadWriteFnSource(ShaderHelper& shader,
 }
 
 Status MatMulProgram::MakeMatMulPackedVec4Source(ShaderHelper& shader,
-                                                 const ShaderIndicesHelper& batch_dims,
+                                                 const ShaderIndicesHelper* batch_dims,
                                                  const InlinedVector<int64_t>& elements_per_thread,
                                                  uint32_t workgroup_size_x,
-                                                 uint32_t workgroup_size_y) {
+                                                 uint32_t workgroup_size_y,
+                                                 const std::string& data_type) {
   // elements per thread
   const auto elements_per_thread_x = elements_per_thread[0];
   const auto elements_per_thread_y = elements_per_thread[1];
@@ -84,7 +85,6 @@ Status MatMulProgram::MakeMatMulPackedVec4Source(ShaderHelper& shader,
   const auto inner_elements_size = tile_a_width / workgroup_size_x;
   const auto row_per_thread_b = tile_inner / workgroup_size_y;
 
-  const std::string data_type = "a_element_t";
 
   if (!((inner_elements_size == 3 || inner_elements_size == 4) &&
         tile_a_width % workgroup_size_x == 0 &&
@@ -175,10 +175,11 @@ Status MatMulProgram::MakeMatMulPackedVec4Source(ShaderHelper& shader,
   return Status::OK();
 }
 
-Status MatMulProgram::MakeMatMulPackedSource(ShaderHelper& shader, const ShaderIndicesHelper& batch_dims,
+Status MatMulProgram::MakeMatMulPackedSource(ShaderHelper& shader, const ShaderIndicesHelper* batch_dims,
                                              const InlinedVector<int64_t>& elements_per_thread,
                                              uint32_t workgroup_size_x,
-                                             uint32_t workgroup_size_y) {
+                                             uint32_t workgroup_size_y,
+                                             const std::string& data_type) {
   const auto elements_per_thread_x = elements_per_thread[0];
   const auto elements_per_thread_y = elements_per_thread[1];
   const decltype(elements_per_thread_x) tile_inner = 32;
@@ -290,12 +291,12 @@ Status MatMulProgram::GenerateShaderCode(ShaderHelper& shader) const {
 
   // declare the read and write functions
   MatMulReadWriteFnSource(shader, a, b, output, batch_dims);
-
+  std::string data_type = "a_value_t";
   // generate the main function
   if (is_vec4_) {
-    ORT_RETURN_IF_ERROR(MakeMatMulPackedVec4Source(shader, batch_dims, elements_per_thread_, WorkgroupSizeX(), WorkgroupSizeY()));
+    ORT_RETURN_IF_ERROR(MakeMatMulPackedVec4Source(shader, &batch_dims, elements_per_thread_, WorkgroupSizeX(), WorkgroupSizeY(), data_type));
   } else {
-    ORT_RETURN_IF_ERROR(MakeMatMulPackedSource(shader, batch_dims, elements_per_thread_, WorkgroupSizeX(), WorkgroupSizeY()));
+    ORT_RETURN_IF_ERROR(MakeMatMulPackedSource(shader, &batch_dims, elements_per_thread_, WorkgroupSizeX(), WorkgroupSizeY(), data_type));
   }
   return Status::OK();
 }

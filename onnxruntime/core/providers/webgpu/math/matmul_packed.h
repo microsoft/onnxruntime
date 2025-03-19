@@ -23,15 +23,17 @@ class MatMulProgram final : public Program<MatMulProgram> {
                                           {"dim_inner", ProgramUniformVariableDataType::Int32});
 
   static Status MakeMatMulPackedVec4Source(ShaderHelper& shader,
-                                           const ShaderIndicesHelper& batch_dims,
+                                           const ShaderIndicesHelper* batch_dims,
                                            const InlinedVector<int64_t>& elements_per_thread,
                                            uint32_t workgroup_size_x,
-                                           uint32_t workgroup_size_y);
+                                           uint32_t workgroup_size_y,
+                                           const std::string& data_type);
   static Status MakeMatMulPackedSource(ShaderHelper& shader,
-                                       const ShaderIndicesHelper& batch_dims,
+                                       const ShaderIndicesHelper* batch_dims,
                                        const InlinedVector<int64_t>& elements_per_thread,
                                        uint32_t workgroup_size_x,
-                                       uint32_t workgroup_size_y);
+                                       uint32_t workgroup_size_y,
+                                       const std::string& data_type);
 
  private:
   const bool has_bias_;

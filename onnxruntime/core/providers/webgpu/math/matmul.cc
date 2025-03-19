@@ -33,11 +33,14 @@ static std::string CalcResult(int64_t components, int64_t a_components, int64_t 
   std::ostringstream oss;
   oss << "var a_data: a_value_t;\n";
   for (int i = 0; i < a_components; ++i) {
+  for (int i = 0; i < a_components; ++i) {
     oss << "let b_data" << i << " = b[(b_offset + (k + " << i << ") * uniforms.N + col) / " << components << "];\n";
   }
   for (int i = 0; i < output_number; ++i) {
+  for (int i = 0; i < output_number; ++i) {
     oss << "a_data = a[(a_offset + (row + " << i << ") * uniforms.K + k) / " << a_components << "];\n";
 
+    for (int j = 0; j < a_components; j++) {
     for (int j = 0; j < a_components; j++) {
       oss << "values[" << i << "] = fma(b_value_t(a_data" << (a_components == 1 ? "" : "[" + std::to_string(j) + "]") << "), b_data" << j << ", values[" << i << "]);\n";
     }
@@ -45,6 +48,7 @@ static std::string CalcResult(int64_t components, int64_t a_components, int64_t 
   return oss.str();
 }
 
+Status MatMulNaiveProgram::GenerateShaderCode(ShaderHelper& shader) const {
 Status MatMulNaiveProgram::GenerateShaderCode(ShaderHelper& shader) const {
   const auto& a = shader.AddInput("a", ShaderUsage::UseUniform | ShaderUsage::UseIndicesTypeAlias |
                                            ShaderUsage::UseValueTypeAlias | ShaderUsage::UseElementTypeAlias);
@@ -61,6 +65,8 @@ Status MatMulNaiveProgram::GenerateShaderCode(ShaderHelper& shader) const {
                                                       ShaderUsage::UseIndicesTypeAlias | ShaderUsage::UseValueTypeAlias);
   const auto& batch_dims = shader.AddIndices("batch_dims");
 
+  int a_components = a.NumComponents();
+  int components = b.NumComponents();  // components of N
   int a_components = a.NumComponents();
   int components = b.NumComponents();  // components of N
 
@@ -224,7 +230,7 @@ Status MatMul::ComputeInternal(ComputeContext& context) const {
   return context.RunProgram(program);
 }
 
-MatMulProgram CreateMatMulProgram(ComputeContext& context) 
+MatMulProgram CreateMatMulProgram(ComputeContext& context)
 {
   MatMulComputeHelper helper;
   const auto* a = context.Input(0);
