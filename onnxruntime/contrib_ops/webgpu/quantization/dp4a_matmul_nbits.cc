@@ -385,10 +385,10 @@ Status ApplyDP4AMatrixMatMulNBits(const Tensor* a, const Tensor* b, const Tensor
   ORT_RETURN_IF_ERROR(context.RunProgram(quantize_program));
 
   if (M < min_M_for_tile_optimization) {
-    constexpr uint32_t kTileSize = 16;
+    constexpr uint32_t kTileSize = 32;
     DP4AMatMulNBitsSmallMProgram mul_program{kTileSize};
     uint32_t num_N_tile = (N + kTileSize - 1) / kTileSize;
-    mul_program.SetWorkgroupSize(64);
+    mul_program.SetWorkgroupSize(128);
     mul_program.SetDispatchGroupSize(M * num_N_tile);
     mul_program.AddInputs({{&a_quant, ProgramTensorMetadataDependency::TypeAndRank, static_cast<int>(kVec4Components)},
                            {&a_scale, ProgramTensorMetadataDependency::TypeAndRank, 1},
