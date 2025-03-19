@@ -52,5 +52,11 @@ class BinaryElementwise : public WebGpuKernel {
   std::string expression_;
 };
 
+class GemmQuickGelu: public BinaryElementwise {
+  public:
+  GemmQuickGelu(const OpKernelInfo& info);
+};
+
+
 }  // namespace webgpu
 }  // namespace onnxruntime
