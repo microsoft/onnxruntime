@@ -147,7 +147,7 @@ Status DP4AMatMulNBitsProgram::GenerateShaderCode(ShaderHelper& shader) const {
   shader.MainFunctionBody() << R"MAIN_FN(
         // During the load phase we use all 256 threads to load 64 rows of A/B.
         // For each row we load tile_size_k_vec (2) vectorized elements, which are 32 elements of K.
-        let a_global_base = (workgroup_idx / uniforms.num_N_tile) * tile_size;
+        let a_global_base = u32(workgroup_idx / uniforms.num_N_tile) * tile_size;
         let b_global_base = (workgroup_idx % uniforms.num_N_tile) * tile_size;
         let load_AorB = u32(local_idx/128);
         let load_row = u32((local_idx%128)/2);

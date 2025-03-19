@@ -224,7 +224,7 @@ Status FlashAttentionProgram::GenerateShaderCode(ShaderHelper& shader) const {
   // Shader is designed to be dispatched as Dispatch(num_heads, new_sequence_length / workgroup_size_x, 1)
   // Each lane/thread is responsible for a single q.
   shader.MainFunctionBody() << R"MAIN_FN(
-  let head_idx = workgroup_idx / uniforms.num_seq_tile;
+  let head_idx = u32(workgroup_idx / uniforms.num_seq_tile);
   let capped_sg_id = min(sg_id, max_k_step);
   let capped_sg_size = min(sg_size, max_k_step);
 
