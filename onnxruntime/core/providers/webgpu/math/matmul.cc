@@ -77,12 +77,12 @@ Status MatMulNaiveProgram::GenerateShaderCode(ShaderHelper& shader) const {
                             << ConvertOutputBatchIndicesToInputBatchIndices("a", a, a.Rank() - 2, batch_dims.Rank(), "batch_indices")
                             << a.IndicesSet("a_indices", a.Rank() - 2, 0) << "\n"
                             << a.IndicesSet("a_indices", a.Rank() - 1, 0) << "\n"
-                            << "let a_offset = " << a.IndicesToOffset("a_indices") << ";\n"
+                            << "let a_offset = " << a.IndicesToOffset("a_indices") << "*" << a_components << ";\n"
                             << "var b_indices: b_indices_t;\n"
                             << ConvertOutputBatchIndicesToInputBatchIndices("b", b, b.Rank() - 2, batch_dims.Rank(), "batch_indices")
                             << b.IndicesSet("b_indices", b.Rank() - 2, 0) << "\n"
                             << b.IndicesSet("b_indices", b.Rank() - 1, 0) << "\n"
-                            << "let b_offset = " << b.IndicesToOffset("b_indices") << ";\n"
+                            << "let b_offset = " << b.IndicesToOffset("b_indices") <<" * " << components << ";\n"
                             << "var values: array<output_value_t, " << output_number_ << ">;\n"
                             << "for (var k: u32 = 0u; k < uniforms.K; k = k + " << a_components << ") {\n"
                             << CalcResult(components, a_components, output_number_) << "\n"
@@ -129,8 +129,8 @@ Status MatMul::ComputeInternal(ComputeContext& context) const {
 
     program
         .CacheHint(std::to_string(components), std::to_string(a_components), std::to_string(output_number))
-        .AddInputs({{a, ProgramTensorMetadataDependency::TypeAndRank, a->Shape(), static_cast<int>(a_components)},
-                    {b, ProgramTensorMetadataDependency::TypeAndRank, b->Shape(), static_cast<int>(components)}});
+        .AddInputs({{a, ProgramTensorMetadataDependency::TypeAndRank, static_cast<int>(a_components)},
+                    {b, ProgramTensorMetadataDependency::TypeAndRank, static_cast<int>(components)}});
 
     if (has_bias) {
       const auto* bias = context.Input(2);
