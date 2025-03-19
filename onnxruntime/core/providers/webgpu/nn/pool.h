@@ -44,7 +44,7 @@ class PoolProgram final : public Program<PoolProgram> {
 template <typename PoolType, bool is_nhwc>
 class Pool : public WebGpuKernel, public PoolBase {
  public:
-  Pool(const OpKernelInfo& info) : WebGpuKernel(info), PoolBase(info) {}
+  explicit Pool(const OpKernelInfo& info) : WebGpuKernel(info), PoolBase(info) {}
 
   Status ComputeInternal(ComputeContext& context) const override;
 };

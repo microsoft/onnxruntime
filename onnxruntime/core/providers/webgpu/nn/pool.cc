@@ -3,8 +3,11 @@
 // Licensed under the MIT License.
 
 #include "core/providers/webgpu/shader_helper.h"
+#include "core/providers/webgpu/string_macros.h"
 #include "core/providers/webgpu/webgpu_supported_types.h"
 #include "core/providers/webgpu/nn/pool.h"
+
+#include <vector>
 
 namespace onnxruntime {
 namespace webgpu {
@@ -15,7 +18,7 @@ std::vector<uint32_t> NarrowToU32(const TensorShapeVector& shape) {
   std::vector<uint32_t> result;
   result.reserve(shape.size());
   for (auto dim : shape) {
-    result.push_back(gsl::narrow_cast<uint32_t>(dim));
+    result.push_back(static_cast<uint32_t>(dim));
   }
   return result;
 }
@@ -78,38 +81,40 @@ Status PoolProgram::GenerateShaderCode(ShaderHelper& shader) const {
   std::string sampling_code;
   // Calculate the output value for each pooling window.
   std::string downsampling_code;
+
+  constexpr const size_t kStringInitialSize = 128;
   if (is_max_pool_) {
     std::string f16_min = "f16(-65504)";
 
-    std::stringstream f32_min_ss;
+    SS(f32_min_ss, kStringInitialSize);
     f32_min_ss << "f32(" << std::numeric_limits<float>::lowest() << ")";
-    std::string f32_min = f32_min_ss.str();
+    std::string f32_min = SS_GET(f32_min_ss);
 
-    std::stringstream var_decl_ss;
+    SS(var_decl_ss, kStringInitialSize);
     var_decl_ss << "  var value = " << (is_float16_ ? f16_min : f32_min) << ";\n";
-    var_decl_code = var_decl_ss.str();
+    var_decl_code = SS_GET(var_decl_ss);
 
     sampling_code = "      value = max(value, x_val);\n";
   } else {
-    std::stringstream var_decl_ss;
+    SS(var_decl_ss, kStringInitialSize);
     var_decl_ss << "  var value = " << (is_float16_ ? "f16(0)" : "f32(0)") << ";\n";
     if (!count_include_pad_) {
       var_decl_ss << "  var count = u32(0);\n";
     } else {
       var_decl_ss << "  var count = uniforms.kernel_size;\n";
     }
-    var_decl_code = var_decl_ss.str();
+    var_decl_code = SS_GET(var_decl_ss);
 
-    std::stringstream sampling_ss;
+    SS(sampling_ss, kStringInitialSize);
     sampling_ss << "      value += x_val;\n";
     if (!count_include_pad_) {
       sampling_ss << "      count++;\n";
     }
-    sampling_code = sampling_ss.str();
+    sampling_code = SS_GET(sampling_ss);
 
-    std::stringstream downsampling_ss;
+    SS(downsampling_ss, kStringInitialSize);
     downsampling_ss << "  value /= " << (is_float16_ ? "f16" : "f32") << "(count);\n";
-    downsampling_code = downsampling_ss.str();
+    downsampling_code = SS_GET(downsampling_ss);
   }
 
   const auto kernel_rank = kernel_shape_.size();
@@ -120,17 +125,12 @@ Status PoolProgram::GenerateShaderCode(ShaderHelper& shader) const {
   auto data_dim_end = input.Rank();
   data_dim_end = is_nhwc_ ? data_dim_end - 1 : data_dim_end;
 
-  std::stringstream d_idx_ss;
-  d_idx_ss << "j - " << data_dim_begin;
-  std::string d_idx_code = d_idx_ss.str();
-
-  // clang-format off
   auto& body = shader.MainFunctionBody();
   body << shader.GuardAgainstOutOfBoundsWorkgroupSizes("uniforms.output_size")
        << "  let y_indices = " << output.OffsetToIndices("global_idx") << ";\n"
        << "  var x_indices = y_indices;\n"
        << "  var k_indices: array<u32, " << kernel_rank << ">;\n"
-       <<    var_decl_code
+       << var_decl_code
        << "  for (var i: u32 = 0; i < uniforms.kernel_size; i++) {\n"
        << "    var offset = i;\n"
        // ---- Compute offset to indices in pooling window.
@@ -145,9 +145,10 @@ Status PoolProgram::GenerateShaderCode(ShaderHelper& shader) const {
        << "    var is_pad = false;\n"
        // ---- Compute x_indices in each data dimension
        << "    for (var j = " << data_dim_begin << "; j < " << data_dim_end << "; j++) {\n"
-       << "      x_indices[j] = y_indices[j] * " << GetElementAt("uniforms.strides", d_idx_code, kernel_rank) << ";\n"
-       << "      x_indices[j] += k_indices[" << d_idx_code << "];\n"
-       << "      x_indices[j] -= " << GetElementAt("uniforms.pads", d_idx_code, pads_rank) << ";\n"
+       << "      let d_idx = j - " << data_dim_begin << ";\n"
+       << "      x_indices[j] = y_indices[j] * " << GetElementAt("uniforms.strides", "d_idx", kernel_rank) << ";\n"
+       << "      x_indices[j] += k_indices[d_idx];\n"
+       << "      x_indices[j] -= " << GetElementAt("uniforms.pads", "d_idx", pads_rank) << ";\n"
        << "      let j_dim_len = " << input.IndicesGet("uniforms.input_shape", "j") << ";\n"
        // ------ Check if x_indices[j] is out of bounds to handle padding.
        << "      if (x_indices[j] < 0 || x_indices[j] >= j_dim_len) {\n"
@@ -157,12 +158,11 @@ Status PoolProgram::GenerateShaderCode(ShaderHelper& shader) const {
        << "    }\n"
        << "    if (!is_pad) {\n"
        << "      let x_val = " << input.GetByIndices("x_indices") << ";\n"
-       <<        sampling_code
+       << sampling_code
        << "    }\n"
        << "  }\n"
-       <<    downsampling_code
+       << downsampling_code
        << "  " << output.SetByOffset("global_idx", "value") << ";\n";
-  // clang-format on
 
   return Status::OK();
 }
