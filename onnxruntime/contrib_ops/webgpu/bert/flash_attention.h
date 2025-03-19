@@ -74,7 +74,8 @@ class AttentionQKTProgram final : public Program<AttentionQKTProgram> {
                                           {"alpha", ProgramUniformVariableDataType::Float32},
                                           {"present_sequence_length", ProgramUniformVariableDataType::Uint32},
                                           {"n_reps", ProgramUniformVariableDataType::Uint32},
-                                          {"splited_k", ProgramUniformVariableDataType::Uint32});
+                                          {"splited_k", ProgramUniformVariableDataType::Uint32},
+                                          {"num_total_seq_tile", ProgramUniformVariableDataType::Uint32});
 
  private:
   bool has_attention_bias_;
@@ -93,7 +94,8 @@ class FlashAttentionDecodeSplitKProgram final : public Program<FlashAttentionDec
                                           {"head_size_vec", ProgramUniformVariableDataType::Uint32},
                                           {"present_sequence_length", ProgramUniformVariableDataType::Uint32},
                                           {"n_reps", ProgramUniformVariableDataType::Uint32},
-                                          {"splited_k", ProgramUniformVariableDataType::Uint32});
+                                          {"splited_k", ProgramUniformVariableDataType::Uint32},
+                                          {"num_total_seq_tile", ProgramUniformVariableDataType::Uint32});
 
  private:
   int tile_size_;
@@ -109,7 +111,8 @@ class FlashAttentionDecodeReduceProgram final : public Program<FlashAttentionDec
   Status GenerateShaderCode(ShaderHelper& sh) const override;
 
   WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES({"head_size_vec", ProgramUniformVariableDataType::Uint32},
-                                          {"splited_k", ProgramUniformVariableDataType::Uint32});
+                                          {"splited_k", ProgramUniformVariableDataType::Uint32},
+                                          {"num_head_size_tile", ProgramUniformVariableDataType::Uint32});
 
  private:
   int tile_size_;
