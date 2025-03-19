@@ -3,6 +3,8 @@
 
 #include "core/providers/webgpu/math/gemm.h"
 
+#include <vector>
+
 #include "core/providers/webgpu/shader_helper.h"
 #include "core/providers/webgpu/webgpu_supported_types.h"
 
@@ -45,10 +47,10 @@ Status GemmProgram::GenerateShaderCode(ShaderHelper& shader) const {
   const ShaderVariableHelper& output = shader.AddOutput("output", ShaderUsage::UseUniform | ShaderUsage::UseValueTypeAlias);
 
   shader.MainFunctionBody() << "  var value = output_value_t(0);\n\n"
-                            << "  let tile_col_start = (workgroup_id.x % uniforms.num_tile_n) * " << TILE_SIZE << "u;\n"
-                            << "  let tile_row_start = (workgroup_id.x / uniforms.num_tile_n) * " << TILE_SIZE << "u;\n";
+                            << "  let tile_col_start = (workgroup_idx % uniforms.num_tile_n) * " << TILE_SIZE << "u;\n"
+                            << "  let tile_row_start = (workgroup_idx / uniforms.num_tile_n) * " << TILE_SIZE << "u;\n";
 
-  // When K == 0, we don't bind A and B. Because WebGPU doesn't support binding a zero-sized buffer.
+  // When A or B is empty, we don't bind A and B. Because WebGPU doesn't support binding a zero-sized buffer.
   if (need_handle_matmul_) {
     const ShaderVariableHelper& A = shader.AddInput("A", ShaderUsage::UseUniform);
     const ShaderVariableHelper& B = shader.AddInput("B", ShaderUsage::UseUniform);
@@ -179,9 +181,9 @@ Status Gemm::ComputeInternal(ComputeContext& context) const {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input tensors A and B must be 2 dimensional.");
   }
 
-  uint32_t M = gsl::narrow<uint32_t>(transA_ ? A_shape[1] : A_shape[0]);
-  uint32_t K = gsl::narrow<uint32_t>(transA_ ? A_shape[0] : A_shape[1]);
-  uint32_t N = gsl::narrow<uint32_t>(transB_ ? B_shape[0] : B_shape[1]);
+  uint32_t M = onnxruntime::narrow<uint32_t>(transA_ ? A_shape[1] : A_shape[0]);
+  uint32_t K = onnxruntime::narrow<uint32_t>(transA_ ? A_shape[0] : A_shape[1]);
+  uint32_t N = onnxruntime::narrow<uint32_t>(transB_ ? B_shape[0] : B_shape[1]);
 
   if ((transA_ ? A_shape[0] : A_shape[1]) != (transB_ ? B_shape[1] : B_shape[0])) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Inner dimensions of A and B must match.");
@@ -195,8 +197,8 @@ Status Gemm::ComputeInternal(ComputeContext& context) const {
     return Status::OK();
   }
 
-  // WebGPU doesn't support binding a zero-sized buffer, so we need to check if K == 0
-  bool need_handle_matmul = K != 0;
+  // WebGPU doesn't support binding a zero-sized buffer, so we need to check if A or B is empty.
+  bool need_handle_matmul = A_shape.Size() > 0 && B_shape.Size() > 0;
   bool need_handle_bias = C && beta_;
 
   GemmProgram program{transA_, transB_, alpha_, need_handle_bias, need_handle_matmul};
