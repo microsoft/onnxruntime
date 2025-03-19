@@ -44,8 +44,8 @@ jobs:
       versionSpec: '20.x'
 
   - script: |
-      sudo apt install coreutils ninja-build npm
-    displayName: Install coreutils, ninja, npm
+      sudo apt install coreutils ninja-build
+    displayName: Install coreutils, ninja
 
   - task: DownloadPipelineArtifact@2
     inputs:
