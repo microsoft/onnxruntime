@@ -39,7 +39,7 @@ jobs:
       jdkArchitectureOption: 'x64'
       jdkSourceOption: 'PreInstalled'
 
-  - task: UseNode@1
+  - task: NodeTool@0
     inputs:
       versionSpec: '20.x'
 
