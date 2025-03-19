@@ -93,6 +93,21 @@ std::unique_ptr<void, void (*)(void*)> WrapSharedMemoryWithUniquePtr(void* share
   return {shared_memory_raw, rpcmem_api.free};
 }
 
+void RecordAllocStats(size_t allocated_size, AllocatorStats& stats, std::mutex& stats_mutex) noexcept {
+  std::scoped_lock g{stats_mutex};
+
+  stats.num_allocs += 1;
+  stats.bytes_in_use += allocated_size;
+  stats.max_bytes_in_use = std::max(stats.bytes_in_use, stats.max_bytes_in_use);
+  stats.max_alloc_size = std::max(static_cast<int64_t>(allocated_size), stats.max_alloc_size);
+}
+
+void RecordFreeStats(size_t freed_size, AllocatorStats& stats, std::mutex& stats_mutex) noexcept {
+  std::scoped_lock g{stats_mutex};
+
+  stats.bytes_in_use -= freed_size;
+}
+
 }  // namespace
 
 OrtMemoryInfo HtpSharedMemoryAllocator::AssociatedMemoryInfo() {
@@ -143,6 +158,7 @@ void* HtpSharedMemoryAllocator::Alloc(size_t requested_size) {
     shared_memory_info.total_size = shared_memory_block_size_in_bytes;
 
     AllocationRecord allocation_record{};
+    allocation_record.requested_size = requested_size;
     allocation_record.shared_memory_info = std::move(shared_memory_info);
 
     std::scoped_lock g{allocations_mutex_};
@@ -155,6 +171,8 @@ void* HtpSharedMemoryAllocator::Alloc(size_t requested_size) {
     std::byte* allocation_header_address = GetAllocationHeaderAddress(allocation_address);
     new (allocation_header_address) AllocationHeader(this);
   }
+
+  RecordAllocStats(requested_size, stats_, stats_mutex_);
 
   shared_memory.release();
   return allocation_address;
@@ -199,8 +217,17 @@ void HtpSharedMemoryAllocator::Free(void* allocation_address) {
                              << "): " << e.what();
       }
     }
+
+    RecordFreeStats(allocation_record.requested_size, stats_, stats_mutex_);
   } catch (const std::exception& e) {
     LOGS(logger_, ERROR) << "Caught exception while freeing address (" << allocation_address << "): " << e.what();
+  }
+}
+
+void HtpSharedMemoryAllocator::GetStats(AllocatorStats* stats) {
+  if (stats != nullptr) {
+    std::scoped_lock g{stats_mutex_};
+    *stats = stats_;
   }
 }
 

@@ -25,7 +25,7 @@ class HtpSharedMemoryAllocator : public IAllocator {
 
   void* Alloc(size_t size) override;
   void Free(void* p) override;
-  // void GetStats(AllocatorStats* stats) override;  // TODO override
+  void GetStats(AllocatorStats* stats) override;
 
   struct SharedMemoryInfo {
     int fd;
@@ -54,6 +54,7 @@ class HtpSharedMemoryAllocator : public IAllocator {
   Status AddAllocationCleanUpForThisAllocator(void* allocation_address, AllocationCleanUpFn&& allocation_clean_up);
 
   struct AllocationRecord {
+    size_t requested_size;
     SharedMemoryInfo shared_memory_info;
     InlinedVector<AllocationCleanUpFn, 1> clean_up_fns;
   };
@@ -65,6 +66,9 @@ class HtpSharedMemoryAllocator : public IAllocator {
   std::shared_ptr<RpcMemLibrary> rpcmem_lib_;
 
   const logging::Logger& logger_;
+
+  AllocatorStats stats_;
+  std::mutex stats_mutex_;  // synchronize access to stats_
 };
 
 }  // namespace onnxruntime::qnn
