@@ -20,7 +20,7 @@ class ArgMaxMinOpBuilder : public BaseOpBuilder {
                                const logging::Logger& logger) const override ORT_MUST_USE_RESULT;
 
   // Operator support related.
-  bool IsOpSupportedImpl(const InitializedTensorSet& initializers, const Node& node,
+  bool IsOpSupportedImpl(const GraphViewer&, const Node& node,
                          WebnnDeviceType device_type, const logging::Logger& logger) const override;
 };
 
@@ -66,7 +66,7 @@ Status ArgMaxMinOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
 }
 
 // Operator support related.
-bool ArgMaxMinOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& /* initializers */,
+bool ArgMaxMinOpBuilder::IsOpSupportedImpl(const GraphViewer& /* initializers */,
                                            const Node& node,
                                            WebnnDeviceType device_type,
                                            const logging::Logger& logger) const {

@@ -27,7 +27,7 @@ class SqueezeUnsqueezeOpBuilder : public BaseOpBuilder {
 
   // Operator support related.
  private:
-  bool IsOpSupportedImpl(const InitializedTensorSet& initializers, const Node& node,
+  bool IsOpSupportedImpl(const GraphViewer& graph_viewer, const Node& node,
                          const WebnnDeviceType /* device_type */, const logging::Logger& logger) const override;
 };
 
@@ -121,7 +121,7 @@ Status SqueezeUnsqueezeOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_buil
 
 // Operator support related.
 
-bool SqueezeUnsqueezeOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& initializers,
+bool SqueezeUnsqueezeOpBuilder::IsOpSupportedImpl(const GraphViewer& graph_viewer,
                                                   const Node& node,
                                                   const WebnnDeviceType /* device_type */,
                                                   const logging::Logger& logger) const {
@@ -140,7 +140,8 @@ bool SqueezeUnsqueezeOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& in
   if (node.SinceVersion() >= 13) {
     const std::string axes_name = GetTensorName(input_defs, 1);
     if (!axes_name.empty()) {
-      if (!Contains(initializers, axes_name)) {
+      const auto* init = graph_viewer.GetConstantInitializer(axes_name);
+      if (!init) {
         LOGS(logger, ERROR) << "Input axes of " << op_type << " is not present and constant";
         return false;
       }
