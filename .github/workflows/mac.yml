@@ -19,7 +19,7 @@ env:
   python_version: 3.11
 
 jobs:
-  MacOS_C_API_Packaging_CPU_x86_64:
+  x86_64-Xcode14:
     runs-on: macos-13
     steps:
     - name: Checkout repository
@@ -132,46 +132,10 @@ jobs:
         import platform
         assert platform.machine() == "arm64", "This job expects to be run on an ARM64 machine."
 
-    - name: Use Xcode ${{ env.xcode_version }}
-      shell: bash
-      run: |
-        XCODE_DEVELOPER_DIR="/Applications/Xcode_${{ env.xcode_version }}.app/Contents/Developer"
-        sudo xcode-select --switch "${XCODE_DEVELOPER_DIR}"
-
-    - uses: actions/checkout@v4
-
-    - name: Build and test
-      shell: bash
-      run: |
-        python ./tools/ci_build/build.py \
-          --build_dir ./build \
-          --update \
-          --build --parallel \
-          --test \
-          --build_shared_lib \
-          --build_objc \
-          --use_coreml \
-          --use_xnnpack \
-          --use_binskim_compliant_compile_flags
-
-  ARM64-Xcode16-webgpu:
-    runs-on: macos-15
-
-    env:
-      xcode_version: 16
-
-    timeout-minutes: 60
-
-    steps:
-    - uses: actions/setup-python@v5
+    - name: Use Node.js 20.x
+      uses: actions/setup-node@v4
       with:
-        python-version: ${{ env.python_version }}
-
-    - name: Verify ARM64 machine
-      shell: python
-      run: |
-        import platform
-        assert platform.machine() == "arm64", "This job expects to be run on an ARM64 machine."
+        node-version: '20.x'
 
     - name: Use Xcode ${{ env.xcode_version }}
       shell: bash
@@ -191,7 +155,10 @@ jobs:
           --test \
           --build_shared_lib \
           --build_nodejs \
+          --build_objc \
           --use_webgpu \
+          --use_coreml \
+          --use_xnnpack \
           --use_binskim_compliant_compile_flags
 
   ARM64-Xcode16-targeting-iphonesimulator:
