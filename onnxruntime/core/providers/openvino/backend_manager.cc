@@ -331,6 +331,7 @@ static void DumpOpenVINOEPModel(const std::filesystem::path& onnx_model_path_nam
     if (dash != std::string::npos) {
       auto new_name = model_name.stem().string() + subgraph_name.substr(dash, std::string::npos);
       model_name.replace_filename(new_name);
+      model_name.replace_extension(".onnx");
     }
 
     std::fstream dump(model_name, std::ios::out | std::ios::trunc | std::ios::binary);
