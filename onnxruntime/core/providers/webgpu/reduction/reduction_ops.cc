@@ -91,6 +91,14 @@ REGISTER_REDUCE_VERSIONED_KERNEL(ReduceLogSumExp, 11, 12);
 REGISTER_REDUCE_VERSIONED_KERNEL(ReduceLogSumExp, 13, 17);
 REGISTER_REDUCE_KERNEL(ReduceLogSumExp, 18);
 
+REGISTER_REDUCE_VERSIONED_KERNEL(ArgMax, 1, 10);
+REGISTER_REDUCE_VERSIONED_KERNEL(ArgMax, 11, 12);
+REGISTER_REDUCE_KERNEL(ArgMax, 13);
+
+REGISTER_REDUCE_VERSIONED_KERNEL(ArgMin, 1, 10);
+REGISTER_REDUCE_VERSIONED_KERNEL(ArgMin, 11, 12);
+REGISTER_REDUCE_KERNEL(ArgMin, 13);
+
 Status ReduceKernelProgram::GenerateShaderCode(ShaderHelper& shader) const {
   const auto& output = shader.AddOutput("output", ShaderUsage::UseUniform | ShaderUsage::UseIndicesTypeAlias | ShaderUsage::UseValueTypeAlias);
   if (is_input_empty_) {
@@ -114,6 +122,9 @@ Status ReduceKernelProgram::GenerateShaderCode(ShaderHelper& shader) const {
       std::stringstream ss;
       std::string index = "i" + std::to_string(i);
       ss << "for (var " << index << " : u32 = 0; " << index << " < " << input.IndicesGet("uniforms.input_shape", i) << "; " << index << "++) {\n";
+      if (loop_body.find("last_index") != std::string::npos) {
+        ss << "let last_index = " + index + ";\n";
+      }
       ss << input.IndicesSet("input_indices", i, index) << ";\n";
       ss << loop_body << "\n";
       ss << "}\n";
@@ -333,6 +344,26 @@ ReduceOpSpecificCode ReduceLogSumExp::GetOpSpecificCode(const Tensor* input_tens
   std::string loop_header = "var sum_exp = f32(0);";
   std::string loop_body = "sum_exp += exp(f32(current_element));";
   std::string loop_footer = "let log_sum_exp = log(sum_exp); let output_value = output_value_t(log_sum_exp);";
+  ReduceOpSpecificCode code({loop_header, loop_body, loop_footer});
+  return code;
+}
+
+ReduceOpSpecificCode ArgMin::GetOpSpecificCode(const Tensor* input_tensor) const {
+  ORT_UNUSED_PARAMETER(input_tensor);
+  std::string op = (select_last_index_) ? "<=" : "<";
+  std::string loop_header = "var best_element = first_element; var best_index = u32(0);";
+  std::string loop_body = "if (current_element " + op + " best_element) { best_element = current_element; best_index = last_index; };";
+  std::string loop_footer = "let output_value = output_value_t(best_index);";
+  ReduceOpSpecificCode code({loop_header, loop_body, loop_footer});
+  return code;
+}
+
+ReduceOpSpecificCode ArgMax::GetOpSpecificCode(const Tensor* input_tensor) const {
+  ORT_UNUSED_PARAMETER(input_tensor);
+  std::string op = (select_last_index_) ? ">=" : ">";
+  std::string loop_header = "var best_element = first_element; var best_index = u32(0);";
+  std::string loop_body = "if (current_element " + op + " best_element) { best_element = current_element; best_index = last_index; };";
+  std::string loop_footer = "let output_value = output_value_t(best_index);";
   ReduceOpSpecificCode code({loop_header, loop_body, loop_footer});
   return code;
 }
