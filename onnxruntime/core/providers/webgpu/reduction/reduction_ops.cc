@@ -191,12 +191,13 @@ Status ReduceKernel<allow_multi_axes>::ComputeInternal(ComputeContext& context) 
         auto output = context.Output(0, input_tensor->Shape());
         // We need to run the operation even for scalar inputs for these ops
         const auto code = GetOpSpecificCode(input_tensor);
+        constexpr uint32_t output_size = 1;
+        constexpr uint32_t reduce_axes = 0;
         ReduceKernelProgram program(name_, keepdims_, noop_with_empty_axes_, input_axes, code, false);
-        std::vector<uint32_t> reduce_axes = {0};
         program.AddInput({input_tensor, ProgramTensorMetadataDependency::TypeAndRank})
             .AddOutput({output, ProgramTensorMetadataDependency::TypeAndRank})
             .SetDispatchGroupSize(1)
-            .AddUniformVariables({{1}, {static_cast<uint32_t>(noop_with_empty_axes_ ? 1 : 0)}, {reduce_axes}});
+            .AddUniformVariables({{output_size}, {static_cast<uint32_t>(noop_with_empty_axes_ ? 1 : 0)}, {reduce_axes}});
         return context.RunProgram(program);
       } else {
         // For other ops, or when axes is empty with noop_with_empty_axes_ true, just copy the input
