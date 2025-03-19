@@ -435,7 +435,10 @@ Status AttentionQKTProgram::GenerateShaderCode(ShaderHelper& shader) const {
   }
   shader.AddOutput("output", ShaderUsage::UseUniform);
   shader.AddOutput("metadata", ShaderUsage::UseUniform | ShaderUsage::UseValueTypeAlias | ShaderUsage::UseElementTypeAlias);
-
+  // Tile_Size is the number of columns of present_key each workgroup process
+  // Tile_N_Size is the number of rows of present_key each workgroup process.
+  // In each workgroup, we read a block [Tile_N_Size][Tile_Size] of present_key data and calculate the corresponding intermediate results of q * k.
+  // Accumulate the results accross the head_size and store them into inner_qk_values. Finally, do a reduce sum in inner_qk_values to get the final results.
   shader.AdditionalImplementation() << "const Tile_Size = " << tile_size_ << ";\n";
   shader.AdditionalImplementation() << "const Tile_N_Size = " << tile_size_ * tile_size_ << ";\n";
   shader.AdditionalImplementation() << R"ADDNL_FN(
@@ -488,8 +491,9 @@ var<workgroup> tile_qk: array<q_element_t, Tile_N_Size>;
       tile_qk[local_idx] = sum;
       output[output_idx] = sum;
     }
-
     workgroupBarrier();
+
+    // Calculate the max and sum in current split.
     var l_max = f32(-3.402823e+38f);
     var l_sum = f32(0);
     for (var i = 0u; i < Tile_N_Size && (total_seq_offset + i) < total_sequence_length; i++) {
@@ -549,6 +553,9 @@ Status FlashAttentionDecodeSplitKProgram::GenerateShaderCode(ShaderHelper& shade
   shader.AddInput("present_value", ShaderUsage::UseUniform | ShaderUsage::UseValueTypeAlias);
   shader.AddOutput("out_split_k", ShaderUsage::UseUniform);
 
+  // Tile_N_Size is the number of columns of qk each workgroup process.
+  // In each workgroup, we read a block [Tile_Size][Tile_Size] of present_value data and calculate the corresponding intermediate results of qk * v.
+  // Accumulate the results in current split and store them into qkv_values. Finally, do a reduce sum in qkv_values to get the results of the current split and store them into tile_output.
   shader.AdditionalImplementation() << "const Head_Size_Vec = " << head_size_vec_ << ";\n";
   shader.AdditionalImplementation() << "const Tile_Size = " << tile_size_ << ";\n";
   shader.AdditionalImplementation() << "const Tile_N_Size = " << tile_size_ * tile_size_ << ";\n";
@@ -567,6 +574,7 @@ var<workgroup> qkv_values: array<array<present_value_value_t, Tile_Size>, Tile_S
     var total_sequence_length = uniforms.total_sequence_length;
     let present_offset = (head_idx / uniforms.n_reps) * uniforms.head_size_vec * uniforms.present_sequence_length;
 
+    // Calculate the global max and sum in qk.
     var g_max = f32(-3.402823e+38f);
     for (var i = 0u; i < uniforms.splited_k; i++)
     {
@@ -581,16 +589,14 @@ var<workgroup> qkv_values: array<array<present_value_value_t, Tile_Size>, Tile_S
       g_sum += exp(f32(m_value.x) - g_max) * f32(m_value.y);
     }
 
-    var value = present_value_value_t(0);
-
     if (total_seq_offset + local_idx < total_sequence_length) {
        tile_qk[local_idx] = qk_value_t(exp(f32(qk[head_idx * total_sequence_length + total_seq_offset + local_idx]) - g_max) / g_sum);
     }
     workgroupBarrier();
 
     for (var w: u32 = 0u; w < uniforms.head_size_vec; w += Tile_Size) {
-      value = present_value_value_t(0);
-      qkv_values[local_row][local_col] = value;
+      var value = present_value_value_t(0);
+      qkv_values[local_row][local_col] = present_value_value_t(0);
       workgroupBarrier();
 
       for (var row_offset = 0u; row_offset < Tile_N_Size; row_offset += Tile_Size) {
