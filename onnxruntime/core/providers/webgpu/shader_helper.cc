@@ -180,16 +180,11 @@ Status ValidateVariableShape(const TensorShape& origin_shape,
                              bool use_override_shape,
                              const TensorShape& override_shape,
                              int num_components) {
-  ORT_UNUSED_PARAMETER(origin_shape);
-  ORT_UNUSED_PARAMETER(use_override_shape);
-  ORT_UNUSED_PARAMETER(override_shape);
-  ORT_UNUSED_PARAMETER(num_components);
-
-  // if (use_override_shape) {
-  //   // if override shape specified, assert override_size == ceil( origin_size / 4 )
-  //   ORT_RETURN_IF_NOT((origin_shape.Size() + num_components - 1) / num_components == override_shape.Size(),
-  //                     "Tensor original shape ", origin_shape, " cannot reshape to ", override_shape, " with component number ", num_components);
-  // }
+  if (use_override_shape) {
+    // if override shape specified, assert override_size == ceil( origin_size / 4 )
+    ORT_RETURN_IF_NOT((origin_shape.Size() + num_components - 1) / num_components == override_shape.Size(),
+                      "Tensor original shape ", origin_shape, " cannot reshape to ", override_shape, " with component number ", num_components);
+  }
 
   return Status::OK();
 }

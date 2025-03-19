@@ -157,7 +157,7 @@ Status Conv2dMMProgram::GenerateShaderCode(ShaderHelper& shader) const {
       << declaration_functions.str()
       << Conv2dCommonSnippet(element_size_[0], element_size_[1], element_size_[2]);
   std::string data_type = "x_value_t";
-  return is_vec4_ ? MakeMatMulPackedVec4Source(shader, WorkgroupSizeX(), WorkgroupSizeY(), elements_per_thread_, data_type) : MakeMatMulPackedSource(shader, WorkgroupSizeX(), WorkgroupSizeY(), elements_per_thread_, data_type);
+  return is_vec4_ ? MatMulProgram::MakeMatMulPackedVec4Source(shader, nullptr, elements_per_thread_, WorkgroupSizeX(), WorkgroupSizeY(), data_type) : MatMulProgram::MakeMatMulPackedSource(shader, nullptr, elements_per_thread_, WorkgroupSizeX(), WorkgroupSizeY(), data_type);
 }
 
 Conv2dMMProgram CreateConv2dMMProgram(const std::vector<const Tensor*>& inputs, Tensor* output, const ConvAttributes& attrs, uint32_t dim_a_outer, uint32_t dim_b_outer, uint32_t dim_inner, bool is_channels_last_) {

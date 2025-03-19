@@ -146,7 +146,7 @@ Status Conv<is_channels_last>::ComputeInternal(ComputeContext& context) const {
       TensorShape outer_dims = output_rank > 2 ? output_shape.Slice(0, output_rank - 2) : TensorShape({});
       const int64_t batch_size = outer_dims.Size();
       TensorShape output_shape_shader({batch_size, output_shape[1], output_shape[2]});
-      MatMulNativeProgram program(output_size, output_number, has_bias);
+      MatMulNaiveProgram program(output_size, output_number, has_bias);
       program
           .CacheHint(std::to_string(components), std::to_string(a_components), std::to_string(output_number))
           .AddInputs({{input, ProgramTensorMetadataDependency::TypeAndRank, input_reshape, int(a_components)},

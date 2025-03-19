@@ -10,7 +10,7 @@
 namespace onnxruntime {
 namespace webgpu {
 
-inline TensorShape BuildTempShapeVector(const TensorShape& shape, int64_t dim1, int64_t dim2, int components) {
+inline TensorShape BuildTempShapeVector(const TensorShape& shape, const int64_t dim1, const int64_t dim2, const int components) {
   TensorShapeVector shape_vec = shape.AsShapeVector();
   shape_vec.push_back(dim1);
   shape_vec.push_back(dim2 / components);

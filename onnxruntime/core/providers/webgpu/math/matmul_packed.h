@@ -22,6 +22,19 @@ class MatMulProgram final : public Program<MatMulProgram> {
                                           {"dim_b_outer", ProgramUniformVariableDataType::Int32},
                                           {"dim_inner", ProgramUniformVariableDataType::Int32});
 
+  static Status MakeMatMulPackedVec4Source(ShaderHelper& shader,
+                                           const ShaderIndicesHelper* batch_dims,
+                                           const InlinedVector<int64_t>& elements_per_thread,
+                                           uint32_t workgroup_size_x,
+                                           uint32_t workgroup_size_y,
+                                           const std::string& data_type);
+  static Status MakeMatMulPackedSource(ShaderHelper& shader,
+                                       const ShaderIndicesHelper* batch_dims,
+                                       const InlinedVector<int64_t>& elements_per_thread,
+                                       uint32_t workgroup_size_x,
+                                       uint32_t workgroup_size_y,
+                                       const std::string& data_type);
+
  private:
   const bool has_bias_;
   const bool is_vec4_;
@@ -29,9 +42,6 @@ class MatMulProgram final : public Program<MatMulProgram> {
 
   void MatMulReadWriteFnSource(ShaderHelper& shader, const ShaderVariableHelper& a, const ShaderVariableHelper& b, const ShaderVariableHelper& output, const ShaderIndicesHelper& batch_dims) const;
 };
-
-Status MakeMatMulPackedVec4Source(ShaderHelper& shader, uint32_t workgroup_size_x, uint32_t workgroup_size_y, const InlinedVector<int64_t>& elements_per_thread, const std::string& data_type, const ShaderIndicesHelper* batch_dims = nullptr);
-Status MakeMatMulPackedSource(ShaderHelper& shader, uint32_t workgroup_size_x, uint32_t workgroup_size_y, const InlinedVector<int64_t>& elements_per_thread, const std::string& data_type, const ShaderIndicesHelper* batch_dims = nullptr);
 
 }  // namespace webgpu
 }  // namespace onnxruntime
