@@ -62,9 +62,10 @@ std::string CanculateResult(const ShaderVariableHelper& x, const ShaderVariableH
   }
   return ss.str();
 }
+
 Status GroupedConvProgram::GenerateShaderCode(ShaderHelper& shader) const {
-  const auto& x = shader.AddInput("x", ShaderUsage::UseUniform | ShaderUsage::UseValueTypeAlias);
-  const auto& w = shader.AddInput("w", ShaderUsage::UseUniform | ShaderUsage::UseValueTypeAlias);
+  const auto& x = shader.AddInput("x", ShaderUsage::UseUniform | ShaderUsage::UseValueTypeAlias | ShaderUsage::UseIndicesTypeAlias);
+  const auto& w = shader.AddInput("w", ShaderUsage::UseUniform | ShaderUsage::UseValueTypeAlias | ShaderUsage::UseIndicesTypeAlias);
   const auto& output = shader.AddOutput("output", ShaderUsage::UseUniform | ShaderUsage::UseIndicesTypeAlias | ShaderUsage::UseValueTypeAlias);
   shader.MainFunctionBody() << shader.GuardAgainstOutOfBoundsWorkgroupSizes("uniforms.output_size")
                             << "let output_indices = " << output.OffsetToIndices("global_idx") << ";\n"
@@ -75,7 +76,7 @@ Status GroupedConvProgram::GenerateShaderCode(ShaderHelper& shader) const {
                             << "let xRCCorner: vec2<u32> = vec2<u32>(xRCCorner_x, xRCCorner_y) * uniforms.strides - uniforms.pads;\n"
                             << "let group_id = output_channel * uniforms.components / uniforms.output_channels_per_group;\n"
                             << "let in_channel_offset = group_id * " << w.IndicesGet("uniforms.w_shape", is_channels_last_ ? 2 : 1) << ";\n"
-                            << "let value: output_value_t = output_value_t(0);\n"
+                            << "var value: output_value_t = output_value_t(0);\n"
                             << CanculateResult(x, w, is_channels_last_);
   if (has_bias_) {
     const auto& b = shader.AddInput("b", ShaderUsage::UseUniform | ShaderUsage::UseValueTypeAlias);

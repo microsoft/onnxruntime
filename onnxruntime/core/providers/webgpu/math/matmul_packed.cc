@@ -104,7 +104,7 @@ Status MakeMatMulPackedVec4Source(ShaderHelper& shader, uint32_t workgroup_size_
       << "  let globalRow = i32(global_id.y) * rowPerThread;\n"
       << "  let globalCol = i32(global_id.x);\n"
       << "  let batch = i32(global_id.z);\n"
-      << (nullptr != batch_dims ? "  let batchIndices = " + batch_dims->OffsetToIndices("u32(batch)") + ");\n" : "")
+      << (nullptr != batch_dims ? "  let batchIndices = " + batch_dims->OffsetToIndices("u32(batch)") + ";\n" : "")
       << "  let globalRowStart = i32(workgroup_id.y) * " << tile_a_outer << ";\n"
       << "  let num_tiles = (uniforms.dim_inner - 1) / tileInner + 1;\n"
       << "  var kStart = 0;\n"
@@ -194,7 +194,7 @@ Status MakeMatMulPackedSource(ShaderHelper& shader, uint32_t workgroup_size_x, u
       << "const tileInner = " << tile_inner << ";\n";
 
   shader.MainFunctionBody() << " let batch = i32(global_id.z);\n"
-                            << (nullptr != batch_dims ? "  let batchIndices = " + batch_dims->OffsetToIndices("u32(batch)") + ");\n" : "")
+                            << (nullptr != batch_dims ? "  let batchIndices = " + batch_dims->OffsetToIndices("u32(batch)") + ";\n" : "")
                             << " let num_tiles = (uniforms.dim_inner - 1) / tileInner + 1;\n"
                             << " var kStart = 0;\n"
                             << " var acc: array<vec4<" << data_type << ">, rowPerThread>;\n";

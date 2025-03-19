@@ -37,9 +37,9 @@ class Conv2dMMProgram final : public Program<Conv2dMMProgram> {
       {"dim_a_outer", ProgramUniformVariableDataType::Int32},
       {"dim_b_outer", ProgramUniformVariableDataType::Int32},
       {"dim_inner", ProgramUniformVariableDataType::Int32},
-      {"pad", ProgramUniformVariableDataType::Int32},
-      {"stride", ProgramUniformVariableDataType::Int32},
-      {"dilation", ProgramUniformVariableDataType::Int32});
+      {"pads", ProgramUniformVariableDataType::Int32},
+      {"strides", ProgramUniformVariableDataType::Int32},
+      {"dilations", ProgramUniformVariableDataType::Int32});
 
  private:
   const ConvAttributes& attrs_;

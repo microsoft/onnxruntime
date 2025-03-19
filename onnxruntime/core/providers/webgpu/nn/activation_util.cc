@@ -18,7 +18,7 @@ std::string TypeSnippet(uint32_t component, std::string data_type) {
 }
 
 std::string BiasSnippet(bool has_bias) {
-  return has_bias ? "value = value + GetBiasByOutputCoords(coords);" : "";
+  return has_bias ? "value = value + getBiasByOutputCoords(coords);" : "";
 }
 
 }  // namespace webgpu

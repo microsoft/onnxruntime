@@ -13,7 +13,9 @@
 namespace onnxruntime {
 namespace webgpu {
 
-class MatMul final : public WebGpuKernel {
+ MatMulProgram CreateMatMulProgram(ComputeContext& context);
+
+ class MatMul final : public WebGpuKernel {
  public:
   MatMul(const OpKernelInfo& info) : WebGpuKernel{info} {}
 
