@@ -389,6 +389,7 @@ TEST(MatMulNBits, Float32_Accuracy4) {
   TestMatMulNBitsTyped<float, 100, 288, 16, 16, 4>();
   TestMatMulNBitsTyped<float, 100, 288, 1024, 16, 4>();
   TestMatMulNBitsTyped<float, 100, 288, 1024, 128, 4>();
+  TestMatMulNBitsTyped<float, 100, 288, 192, 64, 4>();
   TestMatMulNBitsTyped<float, 100, 288, 93, 32, 4>();
   TestMatMulNBitsTyped<float, 100, 288, 93, 128, 4>();
   TestMatMulNBitsTyped<float, 100, 288, 1234, 16, 4>();
@@ -458,6 +459,7 @@ TEST(MatMulNBits, Float16_Accuracy4) {
   TestMatMulNBitsTyped<MLFloat16, 100, 288, 16, 16, 4>();
   TestMatMulNBitsTyped<MLFloat16, 100, 288, 1024, 16, 4>();
   TestMatMulNBitsTyped<MLFloat16, 100, 288, 1024, 128, 4>();
+  TestMatMulNBitsTyped<MLFloat16, 100, 288, 192, 64, 4>();
   TestMatMulNBitsTyped<MLFloat16, 100, 288, 93, 32, 4>();
   TestMatMulNBitsTyped<MLFloat16, 100, 288, 93, 128, 4>();
   TestMatMulNBitsTyped<MLFloat16, 100, 288, 1234, 16, 4>();
