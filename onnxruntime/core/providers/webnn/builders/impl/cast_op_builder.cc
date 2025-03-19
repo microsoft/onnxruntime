@@ -56,7 +56,8 @@ Status CastOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
       operand_type = "int32";
       break;
     case ONNX_NAMESPACE::TensorProto_DataType_INT64:
-      operand_type = "int64";
+      // If int64 is not supported by current context, use int32 instead.
+      operand_type = model_builder.IsInt64Supported() ? "int64" : "int32";
       break;
     case ONNX_NAMESPACE::TensorProto_DataType_UINT32:
       operand_type = "uint32";

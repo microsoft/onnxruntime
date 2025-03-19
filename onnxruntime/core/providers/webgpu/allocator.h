@@ -25,9 +25,12 @@ class GpuBufferAllocator : public IAllocator {
   virtual void Free(void* p) override;
   void GetStats(AllocatorStats* stats) override;
 
+  void OnSessionInitializationEnd();
+
  private:
   AllocatorStats stats_;
   const WebGpuContext& context_;
+  bool session_initialized_ = false;
 };
 
 }  // namespace webgpu

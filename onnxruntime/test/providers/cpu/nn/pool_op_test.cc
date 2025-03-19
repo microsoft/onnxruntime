@@ -70,7 +70,7 @@ TEST(PoolTest, MaxPool) {
 
 // Only CUDA kernel has float 16 support
 // Disable for now, still investigating the issue with cudnn lib
-#if defined(USE_CUDA) || defined(COREML_ENABLE_MLPROGRAM)
+#if defined(USE_CUDA) || defined(USE_COREML)
 TEST(PoolTest, MaxPool_F16) {
 #if defined(USE_CUDA)
   int min_cuda_architecture = 530;
