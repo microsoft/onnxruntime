@@ -220,7 +220,7 @@ class SymbolicShapeInference:
             "PagedAttention": self._infer_PagedAttention,
             "PythonOp": self._infer_PythonOp,
             "QLinearAdd": self._infer_QLinearBinary,
-            "QLinearMul" : self._infer_QLinearBinary,
+            "QLinearMul": self._infer_QLinearBinary,
             "QuantizeLinear": self._infer_QuantizeLinear,
             "QuickGelu": self._infer_FastGelu,
             "RelativePositionBias": self._infer_RelativePositionBias,

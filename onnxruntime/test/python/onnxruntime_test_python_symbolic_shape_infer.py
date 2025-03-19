@@ -715,9 +715,7 @@ class TestSymbolicShapeInferenceForOperators(unittest.TestCase):
             helper.make_tensor_value_info("C", TensorProto.UNDEFINED, None),
         ]
 
-        graph = helper.make_graph(
-            nodes, "QLinearAdd_Test", inputs, outputs, initializers
-        )
+        graph = helper.make_graph(nodes, "QLinearAdd_Test", inputs, outputs, initializers)
         model = helper.make_model(graph)
 
         inferred = SymbolicShapeInference.infer_shapes(model, auto_merge=True)
