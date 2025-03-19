@@ -14,7 +14,7 @@ void MatMulProgram::MatMulReadWriteFnSource(ShaderHelper& shader,
                                             const ShaderVariableHelper& output,
                                             const ShaderIndicesHelper& batch_dims) const {
   int components = is_vec4_ ? 4 : 1;
-  const std::string data_type = "a_value_t";
+  const std::string data_type = "a_element_t";
   const std::string type_string = MakeTypeString(components, data_type);
 
   // Add the mm_readA function
@@ -83,7 +83,7 @@ Status MatMulProgram::MakeMatMulPackedVec4Source(ShaderHelper& shader,
   const auto inner_elements_size = tile_a_width / workgroup_size_x;
   const auto row_per_thread_b = tile_inner / workgroup_size_y;
 
-  const std::string data_type = "a_value_t";
+  const std::string data_type = "a_element_t";
 
   if (!((inner_elements_size == 3 || inner_elements_size == 4) &&
         tile_a_width % workgroup_size_x == 0 &&
@@ -167,7 +167,8 @@ Status MatMulProgram::MakeMatMulPackedVec4Source(ShaderHelper& shader,
   shader.MainFunctionBody()
       << "  for (var innerRow = 0; innerRow < rowPerThread; innerRow = innerRow + 1) {\n"
       << "    mm_write(batch, globalRow + innerRow, globalCol, acc[innerRow]);\n"
-      << "  }\n";
+      << "  }\n"
+      << "}\n";
 
   return Status::OK();
 }
@@ -192,7 +193,7 @@ Status MatMulProgram::MakeMatMulPackedSource(ShaderHelper& shader, const ShaderI
                            ", tile_inner: ", tile_inner, " must be divisible by WorkgroupSizeY: ", workgroup_size_y);
   }
 
-  const std::string data_type = "a_value_t";
+  const std::string data_type = "a_element_t";
 
   const auto row_per_thread_a = tile_a_height / workgroup_size_y;
   const auto col_per_thread_a = tile_a_width / workgroup_size_x;
@@ -276,7 +277,7 @@ Status MatMulProgram::MakeMatMulPackedSource(ShaderHelper& shader, const ShaderI
 }
 
 Status MatMulProgram::GenerateShaderCode(ShaderHelper& shader) const {
-  const auto& a = shader.AddInput("a", ShaderUsage::UseUniform | ShaderUsage::UseIndicesTypeAlias | ShaderUsage::UseValueTypeAlias);
+  const auto& a = shader.AddInput("a", ShaderUsage::UseUniform | ShaderUsage::UseIndicesTypeAlias | ShaderUsage::UseValueTypeAlias | ShaderUsage::UseElementTypeAlias);
   const auto& b = shader.AddInput("b", ShaderUsage::UseUniform | ShaderUsage::UseIndicesTypeAlias | ShaderUsage::UseValueTypeAlias);
   const auto& output = shader.AddOutput("output", ShaderUsage::UseUniform | ShaderUsage::UseIndicesTypeAlias | ShaderUsage::UseValueTypeAlias);
   const auto& batch_dims = shader.AddIndices("batch_dims", ShaderUsage::UseUniform | ShaderUsage::UseIndicesTypeAlias);
