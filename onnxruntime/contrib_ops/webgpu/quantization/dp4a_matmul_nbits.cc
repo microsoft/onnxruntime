@@ -138,8 +138,8 @@ Status DP4AMatMulNBitsProgram::GenerateShaderCode(ShaderHelper& shader) const {
   shader.MainFunctionBody() << R"MAIN_FN(
         // During the load phase we use all 256 threads to load 64 rows of A/B.
         // For each row we load tile_size_k_vec (2) vectorized elements, which are 32 elements of K.
-        let a_global_base = workgroup_id.x * tile_size;
-        let b_global_base = workgroup_id.y * tile_size;
+        let a_global_base = u32(workgroup_idx / uniforms.num_N_tile) * tile_size;
+        let b_global_base = (workgroup_idx % uniforms.num_N_tile) * tile_size;
         let load_AorB = u32(local_idx/128);
         let load_row = u32((local_idx%128)/2);
         let load_col = u32(local_idx%2);
@@ -275,11 +275,11 @@ Status ApplyDP4AMatrixMatMulNBits(const Tensor* a, const Tensor* b, const Tensor
 
   constexpr uint32_t kTileSize = 64;
   TensorShape reshaped_y_shape{1, M, N / kVec4Components};
+  uint32_t num_M_tile = (M + kTileSize - 1) / kTileSize;
+  uint32_t num_N_tile = (N + kTileSize - 1) / kTileSize;
   DP4AMatMulNBitsProgram mul_program{block_size};
   mul_program.SetWorkgroupSize(256);
-  mul_program.SetDispatchGroupSize(
-      (M + kTileSize - 1) / kTileSize,
-      (N + kTileSize - 1) / kTileSize, 1);
+  mul_program.SetDispatchGroupSize(num_M_tile * num_N_tile);
   mul_program.AddInputs({{&a_quant, ProgramTensorMetadataDependency::TypeAndRank, static_cast<int>(kVec4Components)},
                          {&a_scale, ProgramTensorMetadataDependency::TypeAndRank, 1},
                          {b, ProgramTensorMetadataDependency::TypeAndRank, static_cast<int>(kVec2Components * kU32Components)},
@@ -288,7 +288,8 @@ Status ApplyDP4AMatrixMatMulNBits(const Tensor* a, const Tensor* b, const Tensor
                             {static_cast<uint32_t>(N)},
                             {static_cast<uint32_t>(K)},
                             {static_cast<uint32_t>(K / 8)},
-                            {static_cast<uint32_t>(K / 16)}})
+                            {static_cast<uint32_t>(K / 16)},
+                            {num_N_tile}})
       .AddOutput({y, ProgramTensorMetadataDependency::TypeAndRank, reshaped_y_shape, static_cast<int>(kVec4Components)})
       .CacheHint("Block" + std::to_string(block_size));
   return context.RunProgram(mul_program);

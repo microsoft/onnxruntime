@@ -27,7 +27,8 @@ class DP4AMatMulNBitsProgram final : public Program<DP4AMatMulNBitsProgram> {
       {"N", ProgramUniformVariableDataType::Uint32},
       {"K", ProgramUniformVariableDataType::Uint32},
       {"K8", ProgramUniformVariableDataType::Uint32},
-      {"K16", ProgramUniformVariableDataType::Uint32});
+      {"K16", ProgramUniformVariableDataType::Uint32},
+      {"num_N_tile", ProgramUniformVariableDataType::Uint32});
 
  private:
   uint32_t block_size_;
