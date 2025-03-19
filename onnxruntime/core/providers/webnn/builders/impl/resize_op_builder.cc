@@ -31,7 +31,7 @@ class ResizeOpBuilder : public BaseOpBuilder {
 
   // Operator support related.
  private:
-  bool IsOpSupportedImpl(const InitializedTensorSet& initializers, const Node& node,
+  bool IsOpSupportedImpl(const GraphViewer& graph_viewer, const Node& node,
                          const WebnnDeviceType /* device_type */, const logging::Logger& logger) const override;
 
   // Resize opset 10- is very different than Resize opset 11+, with many key attributes missing.
@@ -107,7 +107,7 @@ bool GetResizeScalesAndAxes(const InitializedTensorSet& initializers,
   return true;
 }
 
-bool GetResizeSizesAndAxes(const InitializedTensorSet& initializers,
+bool GetResizeSizesAndAxes(const GraphViewer& graph_viewer,
                            const Node& node, std::vector<int64_t>& sizes,
                            std::vector<int64_t>& axes, const bool is_nhwc,
                            const gsl::span<int64_t>& input_shape,
@@ -117,14 +117,15 @@ bool GetResizeSizesAndAxes(const InitializedTensorSet& initializers,
     return false;
 
   const bool has_axes = !axes.empty();
-  const auto& sizes_tensor = *initializers.at(input_defs[3]->Name());
-  if (sizes_tensor.dims_size() != 1) {
+  const auto* sizes_init = graph_viewer.GetInitializedTensor(input_defs[3]->Name());
+  if (!sizes_init || sizes_tensor->dims_size() != 1) {
     LOGS(logger, ERROR) << "'sizes' should be a 1D tensor.";
     return false;
   }
 
-  // Number of elements of sizes tensor.
-  const auto num_of_sizes = sizes_tensor.dims()[0];
+  const auto& sizes_tensor = *size_init
+                             // Number of elements of sizes tensor.
+                             const auto num_of_sizes = sizes_tensor.dims()[0];
   if (has_axes && num_of_sizes != 2) {
     LOGS(logger, ERROR) << "When 'axes' is provided, 'sizes' should have 2 elements.";
     return false;
@@ -223,12 +224,13 @@ Status ResizeOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
   // This handles Resize-11 where 'scales' was a required input but 'sizes' were used if provided.
   bool using_sizes = !sizes_name.empty() && Contains(initializers, sizes_name);
   if (using_sizes) {
-    ORT_RETURN_IF_NOT(GetResizeSizesAndAxes(initializers, node, sizes, axes, is_nhwc, input_shape, logger),
+    ORT_RETURN_IF_NOT(GetResizeSizesAndAxes(model_builder.GetGraphViewer(), node, sizes, axes, is_nhwc,
+                                            input_shape, logger),
                       "Error getting Resize sizes");
     webnn_sizes = GetVecUint32FromVecInt64(sizes);
     options.set("sizes", emscripten::val::array(webnn_sizes));
   } else {
-    ORT_RETURN_IF_NOT(GetResizeScalesAndAxes(initializers, node, scales, axes, is_nhwc, logger),
+    ORT_RETURN_IF_NOT(GetResizeScalesAndAxes(model_builder.GetGraphViewer(), node, scales, axes, is_nhwc, logger),
                       "Error getting Resize scales");
     options.set("scales", emscripten::val::array(scales));
   }
@@ -244,7 +246,7 @@ Status ResizeOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
 
 // Operator support related.
 
-bool ResizeOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& initializers,
+bool ResizeOpBuilder::IsOpSupportedImpl(const GraphViewer& graph_viewer,
                                         const Node& node,
                                         const WebnnDeviceType /* device_type */,
                                         const logging::Logger& logger) const {
@@ -305,8 +307,8 @@ bool ResizeOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& initializers
     // Check for 'sizes' first.
     // This handles Resize-11 where 'scales' was a required input but 'sizes' were used if provided.
     // 'scales' or 'sizes' may be empty tensor.
-    bool using_sizes = !IsEmptyTensor(initializers, sizes_name);
-    bool using_scales = !using_sizes && !IsEmptyTensor(initializers, scales_name);
+    bool using_sizes = !IsEmptyTensor(graph_viewer, sizes_name);
+    bool using_scales = !using_sizes && !IsEmptyTensor(graph_viewer, scales_name);
 
     if (!using_scales && !using_sizes) {
       LOGS(logger, VERBOSE) << "Resize: only one of 'scales' and 'sizes' can be specified";
@@ -326,12 +328,12 @@ bool ResizeOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& initializers
     const bool is_nhwc = node.Domain() == kMSInternalNHWCDomain;
     if (using_sizes) {  // We are using 'sizes'.
       std::vector<int64_t> sizes;
-      if (!GetResizeSizesAndAxes(initializers, node, sizes, axes, is_nhwc, input_shape, logger)) {
+      if (!GetResizeSizesAndAxes(graph_viewer, node, sizes, axes, is_nhwc, input_shape, logger)) {
         return false;
       }
     } else {  // We are using 'scales'.
       std::vector<float> scales;
-      if (!GetResizeScalesAndAxes(initializers, node, scales, axes, is_nhwc, logger)) {
+      if (!GetResizeScalesAndAxes(graph_viewer, node, scales, axes, is_nhwc, logger)) {
         return false;
       }
     }

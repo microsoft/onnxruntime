@@ -25,9 +25,9 @@ class EinsumOpBuilder : public BaseOpBuilder {
                                const logging::Logger& logger) const override ORT_MUST_USE_RESULT;
 
   // Operator support related.
-  bool IsOpSupportedImpl(const InitializedTensorSet& /* initializers */, const Node& node,
+  bool IsOpSupportedImpl(const GraphViewer&, const Node& node,
                          const WebnnDeviceType /* device_type */, const logging::Logger& logger) const override;
-  bool HasSupportedInputsImpl(const InitializedTensorSet& /* initializers */, const Node& node,
+  bool HasSupportedInputsImpl(const GraphViewer&, const Node& node,
                               const emscripten::val& wnn_limits, const logging::Logger& logger) const override;
 };
 
@@ -695,7 +695,7 @@ Status EinsumOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
 
 // Operator support related.
 
-bool EinsumOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& /* initializers */,
+bool EinsumOpBuilder::IsOpSupportedImpl(const GraphViewer&,
                                         const Node& node,
                                         const WebnnDeviceType device_type,
                                         const logging::Logger& logger) const {
@@ -735,7 +735,7 @@ bool EinsumOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& /* initializ
   return true;
 }
 
-bool EinsumOpBuilder::HasSupportedInputsImpl(const InitializedTensorSet& /* initializers */, const Node& node,
+bool EinsumOpBuilder::HasSupportedInputsImpl(const GraphViewer&, const Node& node,
                                              const emscripten::val& wnn_limits, const logging::Logger& logger) const {
   const auto& input_defs = node.InputDefs();
 

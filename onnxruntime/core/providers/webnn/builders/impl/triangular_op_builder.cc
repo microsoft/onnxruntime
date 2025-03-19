@@ -24,7 +24,7 @@ class TriangularOpBuilder : public BaseOpBuilder {
 
   // Operator support related.
  private:
-  bool IsOpSupportedImpl(const InitializedTensorSet& initializers, const Node& node,
+  bool IsOpSupportedImpl(const GraphViewer& graph_viewer, const Node& node,
                          const WebnnDeviceType /* device_type */, const logging::Logger& logger) const override;
 };
 
@@ -69,7 +69,7 @@ Status TriangularOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
 }
 
 // Operator support related.
-bool TriangularOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& initializers,
+bool TriangularOpBuilder::IsOpSupportedImpl(const GraphViewer& graph_viewer,
                                             const Node& node,
                                             const WebnnDeviceType /* device_type */,
                                             const logging::Logger& logger) const {
@@ -87,7 +87,8 @@ bool TriangularOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& initiali
   const std::string diagonal_name = GetTensorName(input_defs, 1);
   // Inputs contain optional 'diagonal' input.
   if (!diagonal_name.empty()) {
-    if (!Contains(initializers, diagonal_name)) {
+    const auto* init = graph_viewer.GetConstantInitializer(diagonal_name);
+    if (!init) {
       LOGS(logger, VERBOSE) << "The diagonal must be a constant initializer.";
       return false;
     }

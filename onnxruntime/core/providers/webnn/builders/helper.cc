@@ -58,12 +58,12 @@ bool GetShape(const NodeArg& node_arg, std::vector<int64_t>& shape, const loggin
   return true;
 }
 
-bool IsNodeSupported(const Node& node, const GraphViewer& graph_viewer, const WebnnDeviceType device_type,
+bool IsNodeSupported(const GraphViewer& graph_viewer, const Node& node, const WebnnDeviceType device_type,
                      const emscripten::val& wnn_limits, const logging::Logger& logger) {
   const auto& op_builders = GetOpBuilders();
   if (Contains(op_builders, node.OpType())) {
     const auto* op_builder = op_builders.at(node.OpType());
-    return op_builder->IsOpSupported(graph_viewer.GetAllInitializedTensors(), node, device_type, wnn_limits, logger);
+    return op_builder->IsOpSupported(graph_viewer, node, device_type, wnn_limits, logger);
   } else {
     return false;
   }
@@ -107,7 +107,7 @@ std::unordered_set<const Node*> GetSupportedNodes(const GraphViewer& graph_viewe
   std::unordered_set<const Node*> supported_nodes;
 
   for (const auto& node : graph_viewer.Nodes()) {
-    const bool supported = IsNodeSupported(node, graph_viewer, device_type, wnn_limits, logger);
+    const bool supported = IsNodeSupported(graph_viewer, node, device_type, wnn_limits, logger);
     LOGS(logger, VERBOSE) << "Operator type: [" << node.OpType()
                           << "] index: [" << node.Index()
                           << "] name: [" << node.Name()

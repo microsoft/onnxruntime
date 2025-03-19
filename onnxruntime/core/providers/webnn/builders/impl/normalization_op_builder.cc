@@ -23,9 +23,9 @@ class NormalizationOpBuilder : public BaseOpBuilder {
 
   // Operator support related.
  private:
-  bool IsOpSupportedImpl(const InitializedTensorSet& initializers, const Node& node,
+  bool IsOpSupportedImpl(const GraphViewer& graph_viewer, const Node& node,
                          const WebnnDeviceType /* device_type */, const logging::Logger& logger) const override;
-  bool HasSupportedInputsImpl(const InitializedTensorSet& /* initializers */, const Node& node,
+  bool HasSupportedInputsImpl(const GraphViewer&, const Node& node,
                               const emscripten::val& wnn_limits, const logging::Logger& logger) const override;
   bool HasSupportedOutputsImpl(const Node& node, const emscripten::val& wnn_limits,
                                const logging::Logger& logger) const override;
@@ -226,7 +226,7 @@ Status NormalizationOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder
 
 // Operator support related.
 
-bool NormalizationOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& initializers,
+bool NormalizationOpBuilder::IsOpSupportedImpl(const GraphViewer&,
                                                const Node& node,
                                                const WebnnDeviceType /* device_type */,
                                                const logging::Logger& logger) const {
@@ -271,7 +271,7 @@ bool NormalizationOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& initi
   return true;
 }
 
-bool NormalizationOpBuilder::HasSupportedInputsImpl(const InitializedTensorSet& /* initializers */, const Node& node,
+bool NormalizationOpBuilder::HasSupportedInputsImpl(const GraphViewer&, const Node& node,
                                                     const emscripten::val& wnn_limits,
                                                     const logging::Logger& logger) const {
   const auto& input_defs = node.InputDefs();

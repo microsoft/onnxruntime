@@ -21,7 +21,7 @@ class ConcatOpBuilder : public BaseOpBuilder {
                                const logging::Logger& logger) const override ORT_MUST_USE_RESULT;
 
   // Operator support related.
-  bool HasSupportedInputsImpl(const InitializedTensorSet& /* initializers */, const Node& node,
+  bool HasSupportedInputsImpl(const GraphViewer&, const Node& node,
                               const emscripten::val& wnn_limits, const logging::Logger& logger) const override;
 };
 
@@ -55,7 +55,7 @@ Status ConcatOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
   return Status::OK();
 }
 
-bool ConcatOpBuilder::HasSupportedInputsImpl(const InitializedTensorSet& /* initializers */, const Node& node,
+bool ConcatOpBuilder::HasSupportedInputsImpl(const GraphViewer&, const Node& node,
                                              const emscripten::val& wnn_limits, const logging::Logger& logger) const {
   const auto& input_defs = node.InputDefs();
   const std::string_view op_type = node.OpType();
