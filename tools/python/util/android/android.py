@@ -46,8 +46,26 @@ def get_sdk_tool_paths(sdk_root: str):
 
 def create_virtual_device(sdk_tool_paths: SdkToolPaths, system_image_package_name: str, avd_name: str):
     run(sdk_tool_paths.sdkmanager, "--install", system_image_package_name, input=b"y")
+    ANDROID_AVD_HOME = os.environ["ANDROID_AVD_HOME"]
 
-    run(
+    if ANDROID_AVD_HOME is not None:
+        if not os.path.exists(ANDROID_AVD_HOME):
+            os.makedirs(ANDROID_AVD_HOME)
+        run(
+        sdk_tool_paths.avdmanager,
+        "create",
+        "avd",
+        "--name",
+        avd_name,
+        "--package",
+        system_image_package_name,
+        "--force",
+        "--path",
+        ANDROID_AVD_HOME,
+        input=b"no",
+        )
+    else:
+        run(
         sdk_tool_paths.avdmanager,
         "create",
         "avd",
@@ -57,7 +75,7 @@ def create_virtual_device(sdk_tool_paths: SdkToolPaths, system_image_package_nam
         system_image_package_name,
         "--force",
         input=b"no",
-    )
+        )
 
 
 _process_creationflags = subprocess.CREATE_NEW_PROCESS_GROUP if is_windows() else 0
