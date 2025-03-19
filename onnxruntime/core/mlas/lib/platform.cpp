@@ -276,6 +276,7 @@ Return Value:
     this->ComputeSoftmaxOutputF32Kernel = MlasComputeSoftmaxOutputF32Kernel;
     this->ComputeLogSoftmaxOutputF32Kernel = MlasComputeLogSoftmaxOutputF32Kernel;
     this->ReduceMaximumF32Kernel = MlasReduceMaximumF32Kernel;
+    this->BiasAddReduceMaximumF32Kernel = MlasBiasAddReduceMaximumF32Kernel;
     this->ReduceMinimumMaximumF32Kernel = MlasReduceMinimumMaximumF32Kernel;
     this->QLinearAddS8Kernel = MlasQLinearAddS8Kernel;
     this->QLinearAddU8Kernel = MlasQLinearAddU8Kernel;
@@ -673,10 +674,12 @@ Return Value:
         this->PoolFloatKernel[MlasAveragePoolingExcludePad] = MlasPoolAverageExcludePadFloatKernelLSX;
         this->PoolFloatKernel[MlasAveragePoolingIncludePad] = MlasPoolAverageIncludePadFloatKernelLSX;
         this->ReduceMaximumF32Kernel = MlasReduceMaximumF32Kernel;
+        this->BiasAddRduceMaximumF32Kernel = MlasBiasAddReduceMaximumF32Kernel;
         this->ComputeSoftmaxOutputF32Kernel = MlasComputeSoftmaxOutputF32Kernel;
         this->ComputeLogSoftmaxOutputF32Kernel = MlasComputeLogSoftmaxOutputF32Kernel;
     }else{
         this->ReduceMaximumF32Kernel = MlasReduceMaximumF32Kernel;
+        this->BiasAddRduceMaximumF32Kernel = MlasBiasAddReduceMaximumF32Kernel;
         this->ComputeSoftmaxOutputF32Kernel = MlasComputeSoftmaxOutputF32Kernel;
         this->ComputeLogSoftmaxOutputF32Kernel = MlasComputeLogSoftmaxOutputF32Kernel;
     }

@@ -966,8 +966,7 @@ Return Value:
         if (WorkBlock->AttentionBias != nullptr) {
             const float* AttentionBias = WorkBlock->AttentionBias + n * D;
 #if defined(MLAS_TARGET_AMD64) || defined(MLAS_TARGET_LARCH64)
-            // Maximum = GetMlasPlatform().ReduceMaximumF32Kernel(Input, D);
-            Maximum = MlasBiasAddReduceMaximumF32Kernel(Input, AttentionBias, D);
+            Maximum = GetMlasPlatform().BiasAddReduceMaximumF32Kernel(Input, AttentionBias, D);
 #else
             Maximum = MlasBiasAddReduceMaximumF32Kernel(Input, AttentionBias, D);
 #endif
@@ -1149,6 +1148,9 @@ Arguments:
         if this is a softmax operation.
 
     SmoothSoftmax - Supplies true if a smooth factor is used in softmax operation.
+
+    AttentionBias - Supplies attention bias which should be added to the input buffer
+        before computing the max element.
 
     ThreadPool - Supplies the thread pool object to use, else nullptr if the
         base library threading support should be used.
