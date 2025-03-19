@@ -224,5 +224,89 @@ Status MatMul::ComputeInternal(ComputeContext& context) const {
   return context.RunProgram(program);
 }
 
+MatMulProgram CreateMatMulProgram(ComputeContext& context) 
+{
+  MatMulComputeHelper helper;
+  const auto* a = context.Input(0);
+  const auto* b = context.Input(1);
+  bool has_bias = context.InputCount() > 2;
+
+
+  ORT_THROW_IF_ERROR(helper.Compute(a->Shape(), b->Shape()));
+  auto* output_tensor = context.Output(0, helper.OutputShape());
+  int64_t batchA = a->Shape().SizeToDimension(a->Shape().NumDimensions() - 2);
+  int64_t batchB = b->Shape().SizeToDimension(b->Shape().NumDimensions() - 2);
+
+  TensorShape a_shape = a->Shape();
+  TensorShape b_shape = b->Shape();
+  TensorShape output_shape = helper.OutputShape();
+
+  const int64_t m_value = output_shape[output_shape.NumDimensions() - 2];
+  // check if A is  batch of vector (bach is not 1, M is 1) and B is a matrix (batch is 1)
+  if (batchA != 1 && m_value == 1 && batchB == 1) {
+    // optimization for batched vector matrix multiplication
+    // dimensions of A: [1,`batchA`,K]
+    TensorShapeVector dims_a = {1, batchA, helper.K()};
+    // dimensions of B: [1,K,N]
+    TensorShapeVector dims_b = {1, helper.K(), helper.N()};
+
+    a_shape = TensorShape(dims_a);
+    b_shape = TensorShape(dims_b);
+    output_shape = {1, batchA, helper.N()};
+  }
+
+  // helpful dimension variables
+  TensorShape outer_dims_a = a_shape.NumDimensions() > 2
+                                 ? a_shape.Slice(0, a_shape.NumDimensions() - 2)
+                                 : TensorShape({});
+
+  TensorShape outer_dims_b = b_shape.NumDimensions() > 2
+                                 ? b_shape.Slice(0, b_shape.NumDimensions() - 2)
+                                 : TensorShape({});
+
+  TensorShape outer_dims = output_shape.NumDimensions() > 2
+                               ? output_shape.Slice(0, output_shape.NumDimensions() - 2)
+                               : TensorShape({});
+
+  const int64_t batch_size = outer_dims.Size();
+
+  // Get dimensions for matrix multiplication from TensorShape
+  const int32_t dim_a_outer = static_cast<int32_t>(a_shape[a_shape.NumDimensions() - 2]);  // M dimension
+  const int32_t dim_inner = static_cast<int32_t>(a_shape[a_shape.NumDimensions() - 1]);    // K dimension
+  const int32_t dim_b_outer = static_cast<int32_t>(b_shape[b_shape.NumDimensions() - 1]);  // N dimension
+
+  const bool is_vec4 = dim_inner % 4 == 0 && dim_b_outer % 4 == 0;
+
+  InlinedVector<int64_t> elements_per_thread = dim_a_outer <= 8
+                                                   ? InlinedVector<int64_t>({4, 1, 1})
+                                                   : InlinedVector<int64_t>({4, 4, 1});
+
+  const uint32_t dispatch_x = static_cast<uint32_t>(ceil(static_cast<float>(dim_b_outer) / MatMul::MATMUL_PACKED_WORKGROUP_SIZE_X / elements_per_thread[0]));
+  const uint32_t dispatch_y = static_cast<uint32_t>(ceil(static_cast<float>(dim_a_outer) / MatMul::MATMUL_PACKED_WORKGROUP_SIZE_Y / elements_per_thread[1]));
+  const uint32_t dispatch_z = static_cast<uint32_t>(ceil(static_cast<float>(batch_size) / MatMul::MATMUL_PACKED_WORKGROUP_SIZE_Z / elements_per_thread[2]));
+
+  const int components = is_vec4 ? 4 : 1;
+  const TensorShape a_shape_temp = BuildTempShapeVector(outer_dims_a, dim_a_outer, dim_inner, components);
+  const TensorShape b_shape_temp = BuildTempShapeVector(outer_dims_b, dim_inner, dim_b_outer, components);
+  const TensorShape output_shape_temp = TensorShape({batch_size, dim_a_outer, dim_b_outer / components});
+
+  MatMulProgram program{has_bias, is_vec4, elements_per_thread};
+  program
+      .CacheHint(absl::StrJoin(elements_per_thread, "-"), std::to_string(is_vec4))
+      .AddInputs({{a, ProgramTensorMetadataDependency::TypeAndRank, a_shape_temp, components},
+                  {b, ProgramTensorMetadataDependency::TypeAndRank, b_shape_temp, components}})
+      .AddOutputs({{output_tensor, ProgramTensorMetadataDependency::Rank, output_shape_temp, components}})
+      .AddUniformVariables({{dim_a_outer}, {dim_b_outer}, {dim_inner}})
+      .AddIndices(outer_dims)
+      .SetDispatchGroupSize(dispatch_x, dispatch_y, dispatch_z)
+      .SetWorkgroupSize(MatMul::MATMUL_PACKED_WORKGROUP_SIZE_X, MatMul::MATMUL_PACKED_WORKGROUP_SIZE_Y, MatMul::MATMUL_PACKED_WORKGROUP_SIZE_Z);
+
+  if (has_bias) {
+    const auto* bias = context.Input(2);
+    program.AddInput({bias, ProgramTensorMetadataDependency::Rank, 1});
+  }
+  return program;
+}
+
 }  // namespace webgpu
 }  // namespace onnxruntime

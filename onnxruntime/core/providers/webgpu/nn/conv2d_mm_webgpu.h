@@ -34,12 +34,12 @@ class Conv2dMMProgram final : public Program<Conv2dMMProgram> {
   Status GenerateShaderCode(ShaderHelper& sh) const override;
 
   WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES(
-      {"dim_a_outer", ProgramUniformVariableDataType::Uint32},
-      {"dim_b_outer", ProgramUniformVariableDataType::Uint32},
-      {"dim_innter", ProgramUniformVariableDataType::Uint32},
-      {"pads", ProgramUniformVariableDataType::Uint32},
-      {"strides", ProgramUniformVariableDataType::Uint32},
-      {"dilations", ProgramUniformVariableDataType::Uint32});
+      {"dim_a_outer", ProgramUniformVariableDataType::Int32},
+      {"dim_b_outer", ProgramUniformVariableDataType::Int32},
+      {"dim_inner", ProgramUniformVariableDataType::Int32},
+      {"pads", ProgramUniformVariableDataType::Int32},
+      {"strides", ProgramUniformVariableDataType::Int32},
+      {"dilations", ProgramUniformVariableDataType::Int32});
 
  private:
   const ConvAttributes& attrs_;

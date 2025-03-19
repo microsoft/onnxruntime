@@ -50,8 +50,8 @@ std::string Conv2dMMProgram::Conv2dCommonSnippet(uint32_t inner_element_size_x, 
       << "let outCol = " << row << " % outWidth;\n"
       << "let WRow = " << col << " / (i32(uniforms.w_shape[1]) * inChannels);\n"
       << "let WCol = " << col << " / inChannels % i32(uniforms.w_shape[1]);\n"
-      << "let xRow = outRow * uniforms.stride[0] + uniforms.dilation[0] * WRow - uniforms.pad[0];\n"
-      << "let xCol = outCol * uniforms.stride[1] + uniforms.dilation[1] * WCol - uniforms.pad[1];\n"
+      << "let xRow = outRow * uniforms.strides[0] + uniforms.dilations[0] * WRow - uniforms.pads[0];\n"
+      << "let xCol = outCol * uniforms.strides[1] + uniforms.dilations[1] * WCol - uniforms.pads[1];\n"
       << "let xCh = " << col << " % inChannels;\n"
       << "var resData = " << TypeSnippet(inner_element_size_x, data_type) << "(0.0);\n "
       << "// The bounds checking is always needed since we use it to pad zero for\n"
@@ -151,11 +151,12 @@ Status Conv2dMMProgram::GenerateShaderCode(ShaderHelper& shader) const {
                           << "  return bias[" << (is_channels_last_ ? "coords.w" : "coords.y") << (is_vec4_ ? "/ 4" : "") << "];\n"
                           << "}";
   }
-  shader.MainFunctionBody() << declaration_functions.str()
-                            << Conv2dCommonSnippet()
-                            << (is_vec4_ ? MakeMatMulPackedVec4Source(shader, WorkgroupSizeX(), WorkgroupSizeY(), elements_per_thread_) : MakeMatMulPackedSource(shader, WorkgroupSizeX(), WorkgroupSizeY(), elements_per_thread_));
-
-  return Status::OK();
+  shader.AdditionalImplementation()
+      << UtilFunctions("uniforms.result_stride")
+      << declaration_functions.str()
+      << Conv2dCommonSnippet(element_size_[0], element_size_[1], element_size_[2]);
+  std::string data_type = "x_value_t";
+  return is_vec4_ ? MakeMatMulPackedVec4Source(shader, WorkgroupSizeX(), WorkgroupSizeY(), elements_per_thread_, data_type) : MakeMatMulPackedSource(shader, WorkgroupSizeX(), WorkgroupSizeY(), elements_per_thread_, data_type);
 }
 
 Conv2dMMProgram CreateConv2dMMProgram(const std::vector<const Tensor*>& inputs, Tensor* output, const ConvAttributes& attrs, uint32_t dim_a_outer, uint32_t dim_b_outer, uint32_t dim_inner, bool is_channels_last_) {
@@ -192,10 +193,10 @@ Conv2dMMProgram CreateConv2dMMProgram(const std::vector<const Tensor*>& inputs, 
   bool fit_inner = dim_inner % tile_inner == 0;
   std::vector<uint32_t> element_size = {is_vec4 ? inner_element_size : 1, static_cast<uint32_t>(is_vec4 ? 4 : 1), static_cast<uint32_t>(is_vec4 ? 4 : 1)};
   std::vector<uint32_t> pads = {static_cast<uint32_t>(attrs.pads[0]), static_cast<uint32_t>(attrs.pads[1])};
-  std::vector<uint32_t> strides(attrs.strides.size());
+  std::vector<uint32_t> strides = {static_cast<uint32_t>(attrs.strides[0]), static_cast<uint32_t>(attrs.strides[1])};
   std::vector<uint32_t> dilations(attrs.dilations.size());
   auto transform_dim = [](int64_t dim) { return static_cast<int32_t>(dim); };
-  std::transform(attrs.strides.begin(), attrs.strides.end(), std::back_inserter(strides), transform_dim);
+  // std::transform(attrs.strides.begin(), attrs.strides.end(), std::back_inserter(strides), transform_dim);
   std::transform(attrs.dilations.begin(), attrs.dilations.end(), std::back_inserter(dilations), transform_dim);
   std::vector<ProgramUniformVariableValue>
       uniforms = {
