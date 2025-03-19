@@ -115,11 +115,13 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                 // to the session options.
 
                 // We can only check what EP's the package was built with for the
-                // Microsoft.ML.OnnxRuntime.Managed package because those contain the
-                // C# preprocessor directives (such as USE_CUDA). The Microsoft.ML.OnnxRuntime
-                // package will use the appropriate platform bindings (ie the native Android bindings)
-                // where using the correct ifdefs for the C# preprocessor directives are
-                // impossible, so we use IfThrowsCheckException instead of using ifdefs.
+                // Microsoft.ML.OnnxRuntime.Managed package because the managed package contains
+                // the C# symbols (such as USE_CUDA).
+
+                // The Microsoft.ML.OnnxRuntime package will use the appropriate platform bindings
+                // (ie the native Android bindings) where using the C# preprocessor symbols
+                // identifying the EPs included in the build may not be available, so we use
+                // IfThrowsCheckException instead of using ifdefs.
 #if USE_CUDA
                 opt.AppendExecutionProvider_CUDA(0);
 #endif
@@ -192,7 +194,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                     "Appending QNN EP should have succeeded or thrown an OnnRuntimeException with the expected message. ",
                     "QNN execution provider is not supported in this build");
 
-        opt.AppendExecutionProvider_CPU(1);
+                opt.AppendExecutionProvider_CPU(1);
             }
         }
 
