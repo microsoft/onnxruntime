@@ -1,5 +1,4 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
-// Copyright (c) 2023 NVIDIA Corporation.
 // Licensed under the MIT License.
 
 #include "command_args_parser.h"
@@ -29,28 +28,30 @@ namespace qnnctxgen {
 
 /*static*/ void CommandLineParser::ShowUsage() {
   printf(
-      "onnxruntime_qnn_ctx_gen [options...] model1_path,model2_path\n"
-      "Example: ./onnxruntime_qnn_ctx_gen -i \"soc_model|60 htp_graph_finalization_optimization_mode|3\" -C \"ep.context_node_name_prefix|_part1\" ./model1.onnx,./model2.onnx\n"
+      "ep_weight_sharing_ctx_gen [options...] model1_path,model2_path\n"
+      "Example: ./ep_weight_sharing_ctx_gen -i \"soc_model|60 htp_graph_finalization_optimization_mode|3\" -C \"ep.context_node_name_prefix|_part1\" ./model1.onnx,./model2.onnx\n"
       "Options:\n"
+      "\t-e [qnn|tensorrt|openvino|vitisai]: Specifies the compile based provider 'qnn','tensorrt','openvino', 'vitisai'. "
+      "Default:'qnn'.\n"
       "\t-v: Show verbose information.\n"
       "\t-C: Specify session configuration entries as key-value pairs: -C \"<key1>|<value1> <key2>|<value2>\" \n"
       "\t    Refer to onnxruntime_session_options_config_keys.h for valid keys and values. \n"
       "\t    Force ep.context_enable to 1 and ep.context_embed_mode to 0. Change ep.context_file_path is not allowed."
       "\t    [Example] -C \"ep.context_node_name_prefix|_part1\" \n"
-      "\t-i: Specify QNN EP specific runtime options as key value pairs. Different runtime options available are: \n"
+      "\t-i: Specify EP specific runtime options as key value pairs. Different runtime options available are: \n"
       "\t    [Usage]: -i '<key1>|<value1> <key2>|<value2>'\n"
       "\n"
-      "\t    [backend_path]: QNN backend path. e.g '/folderpath/libQnnHtp.so', '/winfolderpath/QnnHtp.dll'. default to HTP backend\n"
-      "\t    [vtcm_mb]: QNN VTCM size in MB. default to 0(not set).\n"
-      "\t    [htp_graph_finalization_optimization_mode]: QNN graph finalization optimization mode, options: '0', '1', '2', '3', default is '0'.\n"
-      "\t    [soc_model]: The SoC Model number. Refer to QNN SDK documentation for specific values. Defaults to '0' (unknown). \n"
-      "\t    [htp_arch]: The minimum HTP architecture. The driver will use ops compatible with this architecture. eg: '0', '68', '69', '73', '75'. Defaults to '0' (none). \n"
-      "\t    [enable_htp_fp16_precision]: Enable the HTP_FP16 precision so that the float32 model will be inferenced with fp16 precision. \n"
+      "\t    [QNN only] [backend_path]: QNN backend path. e.g '/folderpath/libQnnHtp.so', '/winfolderpath/QnnHtp.dll'. default to HTP backend\n"
+      "\t    [QNN only] [vtcm_mb]: QNN VTCM size in MB. default to 0(not set).\n"
+      "\t    [QNN only] [htp_graph_finalization_optimization_mode]: QNN graph finalization optimization mode, options: '0', '1', '2', '3', default is '0'.\n"
+      "\t    [QNN only] [soc_model]: The SoC Model number. Refer to QNN SDK documentation for specific values. Defaults to '0' (unknown). \n"
+      "\t    [QNN only] [htp_arch]: The minimum HTP architecture. The driver will use ops compatible with this architecture. eg: '0', '68', '69', '73', '75'. Defaults to '0' (none). \n"
+      "\t    [QNN only] [enable_htp_fp16_precision]: Enable the HTP_FP16 precision so that the float32 model will be inferenced with fp16 precision. \n"
       "\t    Otherwise, it will be fp32 precision. Works for float32 model for HTP backend. Defaults to '1' (with FP16 precision.). \n"
-      "\t    [enable_htp_weight_sharing]: Allows common weights across graphs to be shared and stored in a single context binary. Defaults to '1' (enabled).\n"
-      "\t    [offload_graph_io_quantization]: Offload graph input quantization and graph output dequantization to another EP (typically CPU EP). \n"
-      "\t    Defaults to '0' (QNN EP handles the graph I/O quantization and dequantization). \n"
-      "\t    [enable_htp_spill_fill_buffer]: Enable HTP spill file buffer, used while generating QNN context binary."
+      "\t    [QNN only] [enable_htp_weight_sharing]: Allows common weights across graphs to be shared and stored in a single context binary. Defaults to '1' (enabled).\n"
+      "\t    [QNN only] [offload_graph_io_quantization]: Offload graph input quantization and graph output dequantization to another EP (typically CPU EP). \n"
+      "\t    Defaults to '1' (QNN EP handles the graph I/O quantization and dequantization). \n"
+      "\t    [QNN only] [enable_htp_spill_fill_buffer]: Enable HTP spill file buffer, used while generating QNN context binary."
       "\t    [Example] -i \"vtcm_mb|8 htp_arch|73\" \n"
       "\n"
       "\t-h: help\n");
@@ -109,8 +110,22 @@ static bool ParseSessionConfigs(const std::string& configs_string,
 
 /*static*/ bool CommandLineParser::ParseArguments(TestConfig& test_config, int argc, ORTCHAR_T* argv[]) {
   int ch;
-  while ((ch = getopt(argc, argv, ORT_TSTR("o:u:i:C:vh"))) != -1) {
+  while ((ch = getopt(argc, argv, ORT_TSTR("e:o:u:i:C:vh"))) != -1) {
     switch (ch) {
+      case 'e':
+        if (!CompareCString(optarg, ORT_TSTR("qnn"))) {
+          test_config.machine_config.provider_type_name = onnxruntime::kQnnExecutionProvider;
+        } else if (!CompareCString(optarg, ORT_TSTR("openvino"))) {
+          test_config.machine_config.provider_type_name = onnxruntime::kOpenVINOExecutionProvider;
+        } else if (!CompareCString(optarg, ORT_TSTR("tensorrt"))) {
+          test_config.machine_config.provider_type_name = onnxruntime::kTensorrtExecutionProvider;
+        } else if (!CompareCString(optarg, ORT_TSTR("vitisai"))) {
+          test_config.machine_config.provider_type_name = onnxruntime::kVitisAIExecutionProvider;
+        } else {
+          fprintf(stderr, "The execution provider is not included in this tool.\n");
+          return false;
+        }
+        break;
       case 'v':
         test_config.run_config.f_verbose = true;
         break;
@@ -162,7 +177,7 @@ static bool ParseSessionConfigs(const std::string& configs_string,
  'offload_graph_io_quantization', 'enable_htp_spill_fill_buffer'])");
           }
 
-          test_config.run_config.qnn_options[key] = value;
+          test_config.run_config.provider_options[key] = value;
         }
         break;
       }

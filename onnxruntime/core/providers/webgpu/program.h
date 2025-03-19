@@ -237,6 +237,7 @@ enum class ValidationMode {
   Basic,
   Full
 };
+std::ostream& operator<<(std::ostream& os, ValidationMode mode);
 
 namespace details {
 class ProgramWrapper;

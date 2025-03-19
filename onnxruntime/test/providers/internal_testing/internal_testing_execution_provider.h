@@ -20,6 +20,7 @@ class InternalTestingExecutionProvider : public IExecutionProvider {
   std::vector<std::unique_ptr<ComputeCapability>>
   GetCapability(const onnxruntime::GraphViewer& graph_view,
                 const IKernelLookup& /*kernel_lookup*/,
+                const GraphOptimizerRegistry& /* graph_optimizer_registry */,
                 IResourceAccountant* /* resource_accountant */) const override;
 
   common::Status Compile(const std::vector<FusedNodeAndGraph>& fused_nodes,

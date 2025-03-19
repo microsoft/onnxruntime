@@ -4806,3 +4806,31 @@ TEST(CApiTest, GenerateNodeStatsFile) {
 }
 
 #endif
+
+// Test that creates a custom Cast kernel which requires type inference of the output type to work.
+// Also demonstrates overriding an ONNX operator as we register the custom op in the ONNX domain.
+TEST(CApiTest, custom_cast) {
+  std::vector<Input<float>> inputs(1);
+  auto& input = inputs[0];
+  input.name = "input";
+  input.dims = {3, 4};
+  input.values = {1.0f, 2.0f, 3.0f, 4.0f,
+                  -1.0f, -2.0f, -3.0f, -4.0f,
+                  1.0f, 2.0f, 3.0f, 4.0f};
+
+  // prepare expected inputs and outputs
+  std::vector<int64_t> expected_dims_y = {3, 4};
+  std::vector<double> expected_values_y = {1.0, 2.0, 3.0, 4.0,
+                                           -1.0, -2.0, -3.0, -4.0,
+                                           1.0, 2.0, 3.0, 4.0};
+
+  CustomCast custom_op{onnxruntime::kCpuExecutionProvider};
+
+  Ort::CustomOpDomain custom_op_domain("");  // onnx domain is empty string
+  custom_op_domain.Add(&custom_op);
+
+  // model with Cast from ONNX test data
+  TestInference<double, float>(*ort_env, TSTR("testdata/cast_float_to_double.onnx"),
+                               inputs, "output", expected_dims_y, expected_values_y, 0,
+                               custom_op_domain, nullptr);
+}

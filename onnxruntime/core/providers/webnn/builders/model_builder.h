@@ -30,6 +30,7 @@ class ModelBuilder {
   Status Compile(std::unique_ptr<Model>& model) ORT_MUST_USE_RESULT;
 
   // Accessors for members.
+  bool IsFloat16ArrayAvailable() const { return is_float16array_available_; }
   const GraphViewer& GetGraphViewer() const { return graph_viewer_; }
   InitializedTensorSet GetInitializerTensors();
 
@@ -68,6 +69,8 @@ class ModelBuilder {
  private:
   const GraphViewer& graph_viewer_;
   const logging::Logger& logger_;
+  const bool is_float16array_available_ = !emscripten::val::global("Float16Array").isUndefined() &&
+                                          emscripten::val::global("Float16Array").hasOwnProperty("from");
 
   emscripten::val wnn_context_ = emscripten::val::undefined();
   emscripten::val wnn_builder_ = emscripten::val::undefined();
@@ -172,9 +175,12 @@ const emscripten::val& ModelBuilder::CreateOrGetConstant(const int32_t& data_typ
         }
         break;
       case ONNX_NAMESPACE::TensorProto_DataType_FLOAT16:
-        buffer = emscripten::val::global("Uint16Array").new_(num_elements);
+        buffer = is_float16array_available_
+                     ? emscripten::val::global("Float16Array").new_(num_elements)
+                     : emscripten::val::global("Uint16Array").new_(num_elements);
         if (value) {
-          buffer.call<void>("fill", emscripten::val(PackFloat32ToUint16AsFloat16(value)));
+          buffer.call<void>("fill",
+                            emscripten::val(is_float16array_available_ ? value : PackFloat32ToUint16AsFloat16(value)));
         }
         break;
       case ONNX_NAMESPACE::TensorProto_DataType_FLOAT:

@@ -42,6 +42,7 @@
 #include "core/graph/model_saving_options.h"
 #include "core/optimizer/graph_transformer_utils.h"
 #include "core/optimizer/graph_transformer.h"
+#include "core/optimizer/graph_optimizer_registry.h"
 #include "core/optimizer/layout_transformation/layout_transformation.h"
 #include "core/optimizer/insert_cast_transformer.h"
 #include "core/optimizer/qdq_transformer/ensure_unique_dq_for_node_unit.h"
@@ -1278,8 +1279,13 @@ common::Status InferenceSession::TransformGraph(onnxruntime::Graph& graph, bool 
   // 6. insert cast nodes (required transformer).
   // 7. insert copy nodes (required transformer).
 
+  // Create GraphOptimizerRegistry instance for providing predefined graph optimizers and selection functions for EPs to lookup
+  auto graph_optimizer_registry = std::make_unique<GraphOptimizerRegistry>(&session_options_,
+                                                                           execution_providers_.Get(onnxruntime::kCpuExecutionProvider),
+                                                                           session_logger_);
+  GraphPartitioner partitioner(kernel_registry_manager_, execution_providers_, std::move(graph_optimizer_registry));
+
   // Run Ahead Of time function inlining
-  GraphPartitioner partitioner(kernel_registry_manager_, execution_providers_);
   if (const bool disable_aot_function_inlining =
           session_options_.config_options.GetConfigOrDefault(
               kOrtSessionOptionsDisableAheadOfTimeFunctionInlining, "0") == "1";
@@ -1682,7 +1688,7 @@ Status PartitionOrtFormatModel(onnxruntime::Graph& graph,
                                const ExecutionProviders& providers,
                                KernelRegistryManager& kernel_registry_manager,
                                SessionState& session_state,
-                               const ConfigOptions& config_options,
+                               const SessionOptions& sess_options,
                                const logging::Logger& logger) {
   layout_transformation::TransformLayoutFunction transform_layout_fn = nullptr;
 
@@ -1700,11 +1706,16 @@ Status PartitionOrtFormatModel(onnxruntime::Graph& graph,
   }
 #endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
 
-  GraphPartitioner partitioner(kernel_registry_manager, providers);
+  // Create GraphOptimizerRegistry instance for providing predefined graph optimizers and selection functions for EPs to lookup
+  auto graph_optimizer_registry = std::make_unique<GraphOptimizerRegistry>(&sess_options,
+                                                                           providers.Get(onnxruntime::kCpuExecutionProvider),
+                                                                           &logger);
+
+  GraphPartitioner partitioner(kernel_registry_manager, providers, std::move(graph_optimizer_registry));
   ORT_RETURN_IF_ERROR(partitioner.Partition(graph,
                                             session_state.GetMutableFuncMgr(),
                                             transform_layout_fn,
-                                            config_options,
+                                            sess_options.config_options,
                                             logger,
                                             GraphPartitioner::Mode::kOrtFormatLoad));
 
@@ -2147,7 +2158,7 @@ common::Status InferenceSession::Initialize() {
 #endif  // !defined(ORT_MINIMAL_BUILD)
     } else {
       ORT_RETURN_IF_ERROR_SESSIONID_(PartitionOrtFormatModel(graph, execution_providers_, kernel_registry_manager_,
-                                                             *session_state_, session_options_.config_options, *session_logger_));
+                                                             *session_state_, session_options_, *session_logger_));
 
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
       const auto& cpu_ep = *execution_providers_.Get(onnxruntime::kCpuExecutionProvider);

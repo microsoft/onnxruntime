@@ -10,6 +10,8 @@ parameters:
   buildPlatform: 'x64'
   buildArch: 'x64'
   StageName: 'OnnxRuntime_QNN_Nuget_Win_x64'
+  Is1ES: true
+  PublishArchive: false
 
 stages:
 - stage: ${{ parameters.StageName }}
@@ -107,6 +109,14 @@ stages:
         DoEsrp: ${{ parameters.DoEsrp }}
         Pattern: 'onnxruntime*.dll'
 
+    - ${{ if eq(parameters.PublishArchive, true) }}:
+      - template: c-api-artifacts-package-and-publish-steps-windows.yml
+        parameters:
+          buildConfig: ${{ parameters.build_config }}
+          artifactName: 'onnxruntime-win-${{ parameters.buildPlatform }}-qnn'
+          artifactNameNoVersionString: 'onnxruntime-win-${{ parameters.buildPlatform }}-qnn'
+          DoEsrp: ${{ parameters.DoEsrp }}
+
     - task: MSBuild@1
       displayName: 'Restore NuGet Packages and create project.assets.json'
       inputs:
@@ -155,8 +165,15 @@ stages:
         Contents: '*.snupkg'
         TargetFolder: '$(Build.ArtifactStagingDirectory)'
 
-    - task: 1ES.PublishPipelineArtifact@1
-      displayName: 'Publish Pipeline x64 NuGet Artifact'
-      inputs:
-        artifactName: ${{ parameters.ArtifactName }}
-        targetPath: '$(Build.ArtifactStagingDirectory)'
+    - ${{ if eq(parameters.Is1ES, true) }}:
+      - task: 1ES.PublishPipelineArtifact@1
+        displayName: 'Publish Pipeline x64 NuGet Artifact'
+        inputs:
+          artifactName: ${{ parameters.ArtifactName }}
+          targetPath: '$(Build.ArtifactStagingDirectory)'
+    - ${{ else }}:
+      - task: PublishPipelineArtifact@1
+        displayName: 'Publish Pipeline x64 NuGet Artifact'
+        inputs:
+          artifactName: ${{ parameters.ArtifactName }}
+          targetPath: '$(Build.ArtifactStagingDirectory)'

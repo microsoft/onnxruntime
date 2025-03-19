@@ -105,3 +105,31 @@ stages:
             onnxruntime_webgpu_external_dawn_test.exe --no_proc_table
           displayName: Run tests (onnxruntime_webgpu_external_dawn_test)
           workingDirectory: '$(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo'
+
+- stage: webgpu_minimal_build_edge
+  dependsOn: []
+  jobs:
+    - template: templates/jobs/win-ci-vs-2022-job.yml
+      parameters:
+        BuildConfig: 'RelWithDebInfo'
+        EnvSetupScript: setup_env.bat
+        buildArch: x64
+        additionalBuildFlags: >-
+          --build_shared_lib
+          --disable_exceptions
+          --disable_rtti
+          --enable_msvc_static_runtime
+          --enable_reduced_operator_type_support
+          --skip_tests
+          --use_binskim_compliant_compile_flags
+          --cmake_extra_defines onnxruntime_BUILD_UNIT_TESTS=OFF onnxruntime_DISABLE_SPARSE_TENSORS=ON onnxruntime_DISABLE_OPTIONAL_TYPE=ON
+          --minimal_build extended
+          --use_webgpu
+        msbuildPlatform: x64
+        isX86: false
+        job_name_suffix: x64_RelWithDebInfo
+        RunOnnxRuntimeTests: false
+        ORT_EP_NAME: WebGPU
+        EnablePython: false
+        WITH_CACHE: true
+        MachinePool: onnxruntime-Win2022-VS2022-webgpu-A10
