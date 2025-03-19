@@ -13,7 +13,11 @@ ONNX_OPERATOR_VERSIONED_KERNEL_EX(
     kOnnxDomain,
     11, 13,
     kWebGpuExecutionProvider,
-    (*KernelDefBuilder::Create()).TypeConstraint("T", WebGpuSupportedFloatTypes()).TypeConstraint("T2", WebGpuSupportedNumberTypes()).InputMemoryType(OrtMemTypeCPU, 1),
+    (*KernelDefBuilder::Create())
+        .TypeConstraint("T", WebGpuSupportedFloatTypes())
+        .TypeConstraint("T2", {DataTypeImpl::GetTensorType<int32_t>(),
+                               DataTypeImpl::GetTensorType<int64_t>()})
+        .InputMemoryType(OrtMemTypeCPU, 1),
     CumSum);
 
 ONNX_OPERATOR_KERNEL_EX(
@@ -21,7 +25,11 @@ ONNX_OPERATOR_KERNEL_EX(
     kOnnxDomain,
     14,
     kWebGpuExecutionProvider,
-    (*KernelDefBuilder::Create()).TypeConstraint("T", WebGpuSupportedFloatTypes()).TypeConstraint("T2", WebGpuSupportedNumberTypes()).InputMemoryType(OrtMemTypeCPU, 1),
+    (*KernelDefBuilder::Create())
+        .TypeConstraint("T", WebGpuSupportedFloatTypes())
+        .TypeConstraint("T2", {DataTypeImpl::GetTensorType<int32_t>(),
+                               DataTypeImpl::GetTensorType<int64_t>()})
+        .InputMemoryType(OrtMemTypeCPU, 1),
     CumSum);
 
 Status CumSumProgram::GenerateShaderCode(ShaderHelper& shader) const {
@@ -61,11 +69,7 @@ Status CumSum::ComputeInternal(ComputeContext& context) const {
   const auto* axis_data = axis_tensor->Data<int>();
   int64_t axis = static_cast<int64_t>(axis_data[0]);
 
-  bool valid_axis = true;
-  if (axis < -input_rank || axis >= input_rank) {
-    valid_axis = false;
-  }
-  ORT_ENFORCE(valid_axis, "Axes attribute must be within range -input_rank <= axis < input_rank.");
+  ORT_ENFORCE(-input_rank <= axis && axis < input_rank, "Axes attribute must be within range -input_rank <= axis < input_rank.");
   // Handle negative axis
   if (axis < 0) {
     axis += input_rank;
