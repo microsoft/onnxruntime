@@ -920,7 +920,7 @@ struct AttentionKernel {
           (query_start + p.causal_diagonal_offset +
                cutlass::fast_min(
                    int32_t(kQueriesPerBlock), int32_t(p.num_queries)) -
-               p.window_size >
+               p.window_size >=
            iter_key_start)) {
         auto query_start = blockIdx.x * kQueriesPerBlock;
         auto lane_offset = MM0::AccumLambdaIterator::get_lane_offset(
@@ -932,7 +932,7 @@ struct AttentionKernel {
             lane_offset,
             [&](int accum_m) { first_col = accum_m + offset; },
             [&](int accum_m, int accum_n, int idx) {
-              if (accum_n < first_col) {
+              if (accum_n <= first_col) {
                 accum[idx] =
                     -cutlass::platform::numeric_limits<accum_t>::infinity();
               }
