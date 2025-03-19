@@ -295,8 +295,8 @@ Status DP4AMatMulNBitsSmallMProgram::GenerateShaderCode(ShaderHelper& shader) co
   )ADDNL_FN";
 
   shader.MainFunctionBody() << R"MAIN_FN(
-    let a_global = workgroup_id.y;
-    let b_global_base = workgroup_id.x * tile_size;
+    let a_global = u32(workgroup_idx / uniforms.num_N_tile);
+    let b_global_base = (workgroup_idx % uniforms.num_N_tile) * tile_size;
     let idx = local_idx % tile_size_k_vec;
     let idy = local_idx / tile_size_k_vec;
     for (var kidx_v:u32 = 0; kidx_v < uniforms.K32; kidx_v+=16)
@@ -385,14 +385,14 @@ Status ApplyDP4AMatrixMatMulNBits(const Tensor* a, const Tensor* b, const Tensor
   if (M < min_M_for_tile_optimization) {
     constexpr uint32_t kTileSize = 16;
     DP4AMatMulNBitsSmallMProgram mul_program;
+    uint32_t num_N_tile = (N + kTileSize - 1) / kTileSize;
     mul_program.SetWorkgroupSize(64);
-    mul_program.SetDispatchGroupSize(
-        (N + kTileSize - 1) / kTileSize, M, 1);
+    mul_program.SetDispatchGroupSize(M * num_N_tile);
     mul_program.AddInputs({{&a_quant, ProgramTensorMetadataDependency::TypeAndRank, static_cast<int>(kVec4Components)},
                            {&a_scale, ProgramTensorMetadataDependency::TypeAndRank, 1},
                            {b, ProgramTensorMetadataDependency::TypeAndRank, static_cast<int>(kVec4Components * kU32Components)},
                            {scales, ProgramTensorMetadataDependency::TypeAndRank, 1}})
-        .AddUniformVariables({M, N, K, K / 16, K / 32, block_size})
+        .AddUniformVariables({M, N, K, K / 16, K / 32, block_size, num_N_tile})
         .AddOutput({y, ProgramTensorMetadataDependency::TypeAndRank, 4});
     return context.RunProgram(mul_program);
   }
