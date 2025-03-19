@@ -7,6 +7,39 @@
 namespace onnxruntime {
 namespace contrib {
 namespace webgpu {
+namespace {
+
+constexpr std::string_view commonFunctions = R"ADDNL_FN(
+        fn DequantizedFrom4BitsTo8Bits(in: vec2<u32>) -> vec4<u32>
+        {
+            var out = vec4<u32>(0);
+            var value_lower = vec4<i32>(unpack4xU8(in[0] & 0x0F0F0F0Fu)) - vec4<i32>(8);
+            var value_upper = vec4<i32>(unpack4xU8((in[0] >> 4) & 0x0F0F0F0Fu)) - vec4<i32>(8);
+            out[0] = pack4xI8(vec4<i32>(value_lower[0], value_upper[0], value_lower[1], value_upper[1]));
+            out[1] = pack4xI8(vec4<i32>(value_lower[2], value_upper[2], value_lower[3], value_upper[3]));
+            value_lower = vec4<i32>(unpack4xU8(in[1] & 0x0F0F0F0Fu)) - vec4<i32>(8);
+            value_upper = vec4<i32>(unpack4xU8((in[1] >> 4) & 0x0F0F0F0Fu)) - vec4<i32>(8);
+            out[2] = pack4xI8(vec4<i32>(value_lower[0], value_upper[0], value_lower[1], value_upper[1]));
+            out[3] = pack4xI8(vec4<i32>(value_lower[2], value_upper[2], value_lower[3], value_upper[3]));
+            return out;
+        }
+
+        // Scaled dot product of 8 packed unsigned integers.
+        fn SDP8AI(a1:vec4<u32>, b1:vec4<u32>, a2:vec4<u32>, b2:vec4<u32>, scale:output_element_t) -> output_element_t
+        {
+            var local_sum = dot4I8Packed(a1[0], b1[0]);
+            local_sum += dot4I8Packed(a1[1], b1[1]);
+            local_sum += dot4I8Packed(a1[2], b1[2]);
+            local_sum += dot4I8Packed(a1[3], b1[3]);
+            local_sum += dot4I8Packed(a2[0], b2[0]);
+            local_sum += dot4I8Packed(a2[1], b2[1]);
+            local_sum += dot4I8Packed(a2[2], b2[2]);
+            local_sum += dot4I8Packed(a2[3], b2[3]);
+            return output_element_t(local_sum) * scale;
+        }
+  )ADDNL_FN";
+
+}  // namespace
 
 Status DP4AMatMulQuantizeProgram::GenerateShaderCode(ShaderHelper& shader) const {
   shader.AddInput("input_a", ShaderUsage::UseUniform | ShaderUsage::UseIndicesTypeAlias | ShaderUsage::UseValueTypeAlias | ShaderUsage::UseElementTypeAlias);
@@ -65,7 +98,8 @@ Status DP4AMatMulNBitsProgram::GenerateShaderCode(ShaderHelper& shader) const {
   // this shader require A to be int8 quantized with block size 64. B is regular
   // matmulnbits input with block size 32.
 
-  shader.AdditionalImplementation() << "  const block_size = " << block_size_ << ";";
+  shader.AdditionalImplementation() << commonFunctions
+                                    << "  const block_size = " << block_size_ << ";";
 
   shader.AdditionalImplementation() << R"ADDNL_FN(
         const tile_size = 64;
@@ -105,33 +139,12 @@ Status DP4AMatMulNBitsProgram::GenerateShaderCode(ShaderHelper& shader) const {
             }
 
             let b_value = input_b[b_global*uniforms.K16+kidx_v+col];
-            var b_value_lower = vec4<i32>(unpack4xU8(b_value[0] & 0x0F0F0F0Fu)) - vec4<i32>(8);
-            var b_value_upper = vec4<i32>(unpack4xU8((b_value[0] >> 4) & 0x0F0F0F0Fu)) - vec4<i32>(8);
-            tile_B[col][row][0] = pack4xI8(vec4<i32>(b_value_lower[0], b_value_upper[0], b_value_lower[1], b_value_upper[1]));
-            tile_B[col][row][1] = pack4xI8(vec4<i32>(b_value_lower[2], b_value_upper[2], b_value_lower[3], b_value_upper[3]));
-            b_value_lower = vec4<i32>(unpack4xU8(b_value[1] & 0x0F0F0F0Fu)) - vec4<i32>(8);
-            b_value_upper = vec4<i32>(unpack4xU8((b_value[1] >> 4) & 0x0F0F0F0Fu)) - vec4<i32>(8);
-            tile_B[col][row][2] = pack4xI8(vec4<i32>(b_value_lower[0], b_value_upper[0], b_value_lower[1], b_value_upper[1]));
-            tile_B[col][row][3] = pack4xI8(vec4<i32>(b_value_lower[2], b_value_upper[2], b_value_lower[3], b_value_upper[3]));
+            tile_B[col][row] = DequantizedFrom4BitsTo8Bits(b_value);
             if (col == 0)
             {
                 // kidx_v - each kidx_v covers 16 values of k
                 scale_B[row] = scales_b[b_global*(uniforms.K/block_size) + kidx_v/(block_size/16)];
             }
-        }
-
-        // Scaled dot product of 8 packed unsigned integers.
-        fn SDP8AI(a1:vec4<u32>, b1:vec4<u32>, a2:vec4<u32>, b2:vec4<u32>, scale:output_element_t) -> output_element_t
-        {
-            var local_sum = dot4I8Packed(a1[0], b1[0]);
-            local_sum += dot4I8Packed(a1[1], b1[1]);
-            local_sum += dot4I8Packed(a1[2], b1[2]);
-            local_sum += dot4I8Packed(a1[3], b1[3]);
-            local_sum += dot4I8Packed(a2[0], b2[0]);
-            local_sum += dot4I8Packed(a2[1], b2[1]);
-            local_sum += dot4I8Packed(a2[2], b2[2]);
-            local_sum += dot4I8Packed(a2[3], b2[3]);
-            return output_element_t(local_sum) * scale;
         }
     )ADDNL_FN";
 
@@ -265,7 +278,8 @@ Status DP4AMatMulNBitsSmallMProgram::GenerateShaderCode(ShaderHelper& shader) co
   shader.AdditionalImplementation() << "const tile_size = " << tile_size_ << "u;\n"
                                     << "const tile_size_k_vec = " << tile_size_k_vec << "u;\n"
                                     << "const sub_tile_size = " << WorkgroupSizeX() / tile_size_k_vec << "u;\n";
-  shader.AdditionalImplementation() << R"ADDNL_FN(
+  shader.AdditionalImplementation() << commonFunctions
+                                    << R"ADDNL_FN(
     // Shared memory
     // Need 2 * tile_size_k_vec (32) to store a tile_A since b is quantized as 4 bits and a is quantized as 8 bits.
     var<workgroup> tile_A : array<vec4<u32>, 32>;
@@ -285,19 +299,6 @@ Status DP4AMatMulNBitsSmallMProgram::GenerateShaderCode(ShaderHelper& shader) co
         // kidx_v - covers 16 values of k in input_a
         scale_A[col] = scales_a[a_global*(uniforms.K/128) + kidx_v/8 + col];
       }
-    }
-    // Scaled dot product of 8 packed unsigned integers.
-    fn SDP8AI(a1:vec4<u32>, b1:vec4<u32>, a2:vec4<u32>, b2:vec4<u32>, scale:output_element_t) -> output_element_t
-    {
-        var local_sum = dot4I8Packed(a1[0], b1[0]);
-        local_sum += dot4I8Packed(a1[1], b1[1]);
-        local_sum += dot4I8Packed(a1[2], b1[2]);
-        local_sum += dot4I8Packed(a1[3], b1[3]);
-        local_sum += dot4I8Packed(a2[0], b2[0]);
-        local_sum += dot4I8Packed(a2[1], b2[1]);
-        local_sum += dot4I8Packed(a2[2], b2[2]);
-        local_sum += dot4I8Packed(a2[3], b2[3]);
-        return output_element_t(local_sum) * scale;
     }
   )ADDNL_FN";
 
@@ -328,22 +329,9 @@ Status DP4AMatMulNBitsSmallMProgram::GenerateShaderCode(ShaderHelper& shader) co
         {
           let b_offset = b_global * uniforms.K32 + k_offset;
           let b_value = input_b[b_offset];
-          var b_value_lower = vec4<i32>(unpack4xU8(b_value[0] & 0x0F0F0F0Fu)) - vec4<i32>(8);
-          var b_value_upper = vec4<i32>(unpack4xU8((b_value[0] >> 4) & 0x0F0F0F0Fu)) - vec4<i32>(8);
-          own_b[0] = pack4xI8(vec4<i32>(b_value_lower[0], b_value_upper[0], b_value_lower[1], b_value_upper[1]));
-          own_b[1] = pack4xI8(vec4<i32>(b_value_lower[2], b_value_upper[2], b_value_lower[3], b_value_upper[3]));
-          b_value_lower = vec4<i32>(unpack4xU8(b_value[1] & 0x0F0F0F0Fu)) - vec4<i32>(8);
-          b_value_upper = vec4<i32>(unpack4xU8((b_value[1] >> 4) & 0x0F0F0F0Fu)) - vec4<i32>(8);
-          own_b[2] = pack4xI8(vec4<i32>(b_value_lower[0], b_value_upper[0], b_value_lower[1], b_value_upper[1]));
-          own_b[3] = pack4xI8(vec4<i32>(b_value_lower[2], b_value_upper[2], b_value_lower[3], b_value_upper[3]));
-          b_value_lower = vec4<i32>(unpack4xU8(b_value[2] & 0x0F0F0F0Fu)) - vec4<i32>(8);
-          b_value_upper = vec4<i32>(unpack4xU8((b_value[2] >> 4) & 0x0F0F0F0Fu)) - vec4<i32>(8);
-          own_b1[0] = pack4xI8(vec4<i32>(b_value_lower[0], b_value_upper[0], b_value_lower[1], b_value_upper[1]));
-          own_b1[1] = pack4xI8(vec4<i32>(b_value_lower[2], b_value_upper[2], b_value_lower[3], b_value_upper[3]));
-          b_value_lower = vec4<i32>(unpack4xU8(b_value[3] & 0x0F0F0F0Fu)) - vec4<i32>(8);
-          b_value_upper = vec4<i32>(unpack4xU8((b_value[3] >> 4) & 0x0F0F0F0Fu)) - vec4<i32>(8);
-          own_b1[2] = pack4xI8(vec4<i32>(b_value_lower[0], b_value_upper[0], b_value_lower[1], b_value_upper[1]));
-          own_b1[3] = pack4xI8(vec4<i32>(b_value_lower[2], b_value_upper[2], b_value_lower[3], b_value_upper[3]));
+          own_b = DequantizedFrom4BitsTo8Bits(b_value.xy);
+          own_b1 = DequantizedFrom4BitsTo8Bits(b_value.zw);
+
           // k_offset - covers 32 values of k in input_b
           let own_scale_b = scales_b[b_global * uniforms.K / uniforms.block_size + k_offset * 32 / uniforms.block_size];
           inter_results[row_offset + local_row][local_col] += SDP8AI(own_a, own_b, own_a1, own_b1, own_scale_a * own_scale_b);
