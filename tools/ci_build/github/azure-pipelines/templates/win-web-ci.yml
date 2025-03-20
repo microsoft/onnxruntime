@@ -237,6 +237,7 @@ jobs:
           **\ort-*.wasm
         targetFolder: $(Build.SourcesDirectory)\js\web\dist
         flattenFolders: true
+        overWrite: true
       displayName: 'Binplace dist files (.wasm)'
     - task: CopyFiles@2
       inputs:
@@ -245,6 +246,7 @@ jobs:
           **\ort-*.mjs
         targetFolder: $(Build.SourcesDirectory)\js\web\dist
         flattenFolders: true
+        overWrite: true
       displayName: 'Binplace dist files (.mjs)'
     - script: |
         powershell "Get-WmiObject Win32_Process -Filter \"name = 'chrome.exe'\" | Format-List CommandLine"
