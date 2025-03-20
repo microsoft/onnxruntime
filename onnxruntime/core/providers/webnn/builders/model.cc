@@ -8,7 +8,6 @@
 #include "core/common/common.h"
 #include "core/common/inlined_containers.h"
 #include "core/common/logging/logging.h"
-#include "core/common/safeint.h"
 #include "core/graph/onnx_protobuf.h"
 #include "core/providers/common.h"
 #include "model.h"
