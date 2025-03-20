@@ -36,9 +36,9 @@ struct AllocationHeader {
 
   // Pointer to the allocating allocator instance.
   // Note: A critical assumption here is that the allocating allocator is not destroyed before the allocation is freed.
-  HtpSharedMemoryAllocator* allocator_ptr;
+  OriginalHtpSharedMemoryAllocator* allocator_ptr;
 
-  AllocationHeader(HtpSharedMemoryAllocator* allocator_ptr)
+  AllocationHeader(OriginalHtpSharedMemoryAllocator* allocator_ptr)
       : marker{kAllocationHeaderMarker},
         allocator_ptr{allocator_ptr} {
   }
@@ -110,21 +110,27 @@ void RecordFreeStats(size_t freed_size, AllocatorStats& stats, std::mutex& stats
 
 }  // namespace
 
-OrtMemoryInfo HtpSharedMemoryAllocator::AssociatedMemoryInfo() {
+OrtMemoryInfo OriginalHtpSharedMemoryAllocator::AssociatedMemoryInfo() {
   return OrtMemoryInfo{QNN_HTP_SHARED, OrtAllocatorType::OrtDeviceAllocator,
                        OrtDevice{OrtDevice::CPU, OrtDevice::MemType::QNN_HTP_SHARED, /* device_id */ 0},
                        /* id */ 0, OrtMemTypeDefault};
 }
 
-HtpSharedMemoryAllocator::HtpSharedMemoryAllocator(std::shared_ptr<RpcMemLibrary> rpcmem_lib,
-                                                   const logging::Logger* logger)
+OriginalHtpSharedMemoryAllocator::OriginalHtpSharedMemoryAllocator(std::shared_ptr<RpcMemLibrary> rpcmem_lib,
+                                                                   const logging::Logger* logger)
     : IAllocator{AssociatedMemoryInfo()},
       rpcmem_lib_{std::move(rpcmem_lib)},
       logger_(logger != nullptr ? *logger : logging::LoggingManager::DefaultLogger()) {
   ORT_ENFORCE(rpcmem_lib_ != nullptr);
 }
 
-void* HtpSharedMemoryAllocator::Alloc(size_t requested_size) {
+OriginalHtpSharedMemoryAllocator::~OriginalHtpSharedMemoryAllocator() {
+  // TEMPORARY DEBUG OUTPUT
+  LOGS_DEFAULT(WARNING) << "allocator stats:\n"
+                        << stats_.DebugString();
+}
+
+void* OriginalHtpSharedMemoryAllocator::Alloc(size_t requested_size) {
   const size_t allocation_offset = AllocationOffsetFromStartOfHeader();
   const size_t shared_memory_block_size_in_bytes = allocation_offset + requested_size;
 
@@ -178,7 +184,7 @@ void* HtpSharedMemoryAllocator::Alloc(size_t requested_size) {
   return allocation_address;
 }
 
-void HtpSharedMemoryAllocator::Free(void* allocation_address) {
+void OriginalHtpSharedMemoryAllocator::Free(void* allocation_address) {
   if (allocation_address == nullptr) {
     return;
   }
@@ -224,29 +230,29 @@ void HtpSharedMemoryAllocator::Free(void* allocation_address) {
   }
 }
 
-void HtpSharedMemoryAllocator::GetStats(AllocatorStats* stats) {
+void OriginalHtpSharedMemoryAllocator::GetStats(AllocatorStats* stats) {
   if (stats != nullptr) {
     std::scoped_lock g{stats_mutex_};
     *stats = stats_;
   }
 }
 
-Status HtpSharedMemoryAllocator::GetAllocationSharedMemoryInfo(void* allocation_address,
-                                                               SharedMemoryInfo& allocation_info) {
+Status OriginalHtpSharedMemoryAllocator::GetAllocationSharedMemoryInfo(void* allocation_address,
+                                                                       SharedMemoryInfo& allocation_info) {
   auto& allocation_header = ValidateAllocationAddressAndGetHeader(allocation_address);
   return allocation_header.allocator_ptr->GetAllocationSharedMemoryInfoForThisAllocator(allocation_address,
                                                                                         allocation_info);
 }
 
-Status HtpSharedMemoryAllocator::AddAllocationCleanUp(void* allocation_address,
-                                                      AllocationCleanUpFn&& allocation_clean_up) {
+Status OriginalHtpSharedMemoryAllocator::AddAllocationCleanUp(void* allocation_address,
+                                                              AllocationCleanUpFn&& allocation_clean_up) {
   auto& allocation_header = ValidateAllocationAddressAndGetHeader(allocation_address);
   return allocation_header.allocator_ptr->AddAllocationCleanUpForThisAllocator(allocation_address,
                                                                                std::move(allocation_clean_up));
 }
 
-Status HtpSharedMemoryAllocator::GetAllocationSharedMemoryInfoForThisAllocator(void* allocation_address,
-                                                                               SharedMemoryInfo& allocation_info) {
+Status OriginalHtpSharedMemoryAllocator::GetAllocationSharedMemoryInfoForThisAllocator(void* allocation_address,
+                                                                                       SharedMemoryInfo& allocation_info) {
   std::scoped_lock g{allocations_mutex_};
   const auto allocation_it = allocations_.find(allocation_address);
   ORT_RETURN_IF(allocation_it == allocations_.end(),
@@ -256,11 +262,199 @@ Status HtpSharedMemoryAllocator::GetAllocationSharedMemoryInfoForThisAllocator(v
   return Status::OK();
 }
 
-Status HtpSharedMemoryAllocator::AddAllocationCleanUpForThisAllocator(void* allocation_address,
-                                                                      AllocationCleanUpFn&& allocation_clean_up) {
+Status OriginalHtpSharedMemoryAllocator::AddAllocationCleanUpForThisAllocator(void* allocation_address,
+                                                                              AllocationCleanUpFn&& allocation_clean_up) {
   ORT_RETURN_IF(allocation_clean_up == nullptr, "allocation_clean_up should not be empty.");
 
   std::scoped_lock g{allocations_mutex_};
+  const auto allocation_it = allocations_.find(allocation_address);
+  ORT_RETURN_IF(allocation_it == allocations_.end(),
+                "Failed to get allocation info for address (", allocation_address, ").");
+
+  auto& clean_up_fns = allocation_it->second.clean_up_fns;
+  clean_up_fns.emplace_back(std::move(allocation_clean_up));
+  return Status::OK();
+}
+
+// DumbHtpSharedMemoryAllocator
+
+OrtMemoryInfo DumbHtpSharedMemoryAllocator::AssociatedMemoryInfo() {
+  return OrtMemoryInfo{QNN_HTP_SHARED, OrtAllocatorType::OrtDeviceAllocator,
+                       OrtDevice{OrtDevice::CPU, OrtDevice::MemType::QNN_HTP_SHARED, /* device_id */ 0},
+                       /* id */ 0, OrtMemTypeDefault};
+}
+
+DumbHtpSharedMemoryAllocator::DumbHtpSharedMemoryAllocator(std::shared_ptr<RpcMemLibrary> rpcmem_lib,
+                                                           const logging::Logger* logger)
+    : IAllocator{AssociatedMemoryInfo()},
+      rpcmem_lib_{std::move(rpcmem_lib)},
+      logger_(logger != nullptr ? *logger : logging::LoggingManager::DefaultLogger()) {
+  ORT_ENFORCE(rpcmem_lib_ != nullptr);
+
+  region_size_in_bytes_ = 1 * 1024 * 1024 * 1024;
+
+  region_base_address_ = rpcmem_lib_->Api().alloc(rpcmem::RPCMEM_HEAP_ID_SYSTEM, rpcmem::RPCMEM_DEFAULT_FLAGS,
+                                                  static_cast<int>(region_size_in_bytes_));
+
+  ORT_ENFORCE(region_base_address_ != nullptr);
+
+  ORT_ENFORCE(IsAligned(region_base_address_, AllocationAlignment()));
+
+  region_fd_ = rpcmem_lib_->Api().to_fd(region_base_address_);
+  ORT_ENFORCE(region_fd_ != -1);
+}
+
+DumbHtpSharedMemoryAllocator::~DumbHtpSharedMemoryAllocator() {
+  if (region_base_address_ != nullptr) {
+    rpcmem_lib_->Api().free(region_base_address_);
+  }
+}
+
+namespace {
+
+struct DumbHtpSharedMemoryAllocatorSharedState {
+  InlinedHashMap<const void*, DumbHtpSharedMemoryAllocator*> address_to_allocator;
+  std::mutex mutex;
+};
+
+DumbHtpSharedMemoryAllocatorSharedState& GetDumbHtpSharedMemoryAllocatorSharedState() {
+  static DumbHtpSharedMemoryAllocatorSharedState shared_state{};
+  return shared_state;
+}
+
+void RegisterDumbHtpSharedMemoryAllocatorAllocation(const void* address, DumbHtpSharedMemoryAllocator& allocator) {
+  auto& state = GetDumbHtpSharedMemoryAllocatorSharedState();
+  std::scoped_lock g{state.mutex};
+  state.address_to_allocator.emplace(address, &allocator);
+}
+
+void UnregisterDumbHtpSharedMemoryAllocatorAllocation(const void* address) {
+  auto& state = GetDumbHtpSharedMemoryAllocatorSharedState();
+  std::scoped_lock g{state.mutex};
+  state.address_to_allocator.erase(address);
+}
+
+DumbHtpSharedMemoryAllocator* GetAssociatedDumbHtpSharedMemoryAllocator(const void* address) {
+  auto& state = GetDumbHtpSharedMemoryAllocatorSharedState();
+  std::scoped_lock g{state.mutex};
+  if (auto it = state.address_to_allocator.find(address); it != state.address_to_allocator.end()) {
+    return it->second;
+  }
+  return nullptr;
+}
+
+}  // namespace
+
+void* DumbHtpSharedMemoryAllocator::Alloc(size_t requested_size) {
+  if (requested_size == 0) {
+    return nullptr;
+  }
+
+  std::unique_lock g{mutex_};
+
+  const size_t remaining_capacity = region_size_in_bytes_ - current_region_offset_;
+
+  if (remaining_capacity < requested_size) {
+    throw std::bad_alloc{};
+  }
+
+  void* allocation_address = static_cast<std::byte*>(region_base_address_) + current_region_offset_;
+
+  // store allocation record
+  {
+    SharedMemoryInfo shared_memory_info{};
+    shared_memory_info.fd = region_fd_;
+    shared_memory_info.offset = current_region_offset_;
+    shared_memory_info.total_size = region_size_in_bytes_;
+
+    AllocationRecord allocation_record{};
+    allocation_record.requested_size = requested_size;
+    allocation_record.shared_memory_info = std::move(shared_memory_info);
+
+    const bool inserted = allocations_.emplace(allocation_address, std::move(allocation_record)).second;
+    ORT_ENFORCE(inserted, "Allocation record already exists for address (", allocation_address, ").");
+  }
+
+  // increment `current_region_offset_` by `requested_size` to aligned address
+  {
+    size_t new_offset = current_region_offset_ + requested_size;
+    const size_t allocation_alignment = AllocationAlignment();
+    new_offset = (new_offset + allocation_alignment - 1) / allocation_alignment * allocation_alignment;
+    current_region_offset_ = new_offset;
+  }
+
+  g.unlock();
+
+  // register in shared state
+  RegisterDumbHtpSharedMemoryAllocatorAllocation(allocation_address, *this);
+
+  return allocation_address;
+}
+
+void DumbHtpSharedMemoryAllocator::Free(void* allocation_address) {
+  if (allocation_address == nullptr) {
+    return;
+  }
+
+  const auto allocation_node = [this, allocation_address]() {
+    std::scoped_lock g{mutex_};
+    return allocations_.extract(allocation_address);
+  }();
+
+  ORT_ENFORCE(!allocation_node.empty(), "Failed to get allocation info for address (", allocation_address, ").");
+
+  // At this point, we have a valid allocation to free.
+  // Avoid throwing exceptions as this may be running from a destructor.
+  try {
+    // clean up allocation record
+    const auto& allocation_record = allocation_node.mapped();
+    for (auto& clean_up_fn : allocation_record.clean_up_fns) {
+      // attempt to run each clean_up_fn even if exceptions are thrown
+      try {
+        clean_up_fn(allocation_address);
+      } catch (const std::exception& e) {
+        LOGS(logger_, ERROR) << "Caught exception while running clean up callback for address (" << allocation_address
+                             << "): " << e.what();
+      }
+    }
+  } catch (const std::exception& e) {
+    LOGS(logger_, ERROR) << "Caught exception while freeing address (" << allocation_address << "): " << e.what();
+  }
+
+  // unregister from shared state
+  UnregisterDumbHtpSharedMemoryAllocatorAllocation(allocation_address);
+}
+
+Status DumbHtpSharedMemoryAllocator::GetAllocationSharedMemoryInfo(void* allocation_address,
+                                                                   SharedMemoryInfo& allocation_info) {
+  auto* allocator = GetAssociatedDumbHtpSharedMemoryAllocator(allocation_address);
+  ORT_RETURN_IF(allocator == nullptr, "Failed to get associated allocator.");
+  return allocator->GetAllocationSharedMemoryInfoForThisAllocator(allocation_address, allocation_info);
+}
+
+Status DumbHtpSharedMemoryAllocator::AddAllocationCleanUp(void* allocation_address,
+                                                          AllocationCleanUpFn&& allocation_clean_up) {
+  auto* allocator = GetAssociatedDumbHtpSharedMemoryAllocator(allocation_address);
+  ORT_RETURN_IF(allocator == nullptr, "Failed to get associated allocator.");
+  return allocator->AddAllocationCleanUpForThisAllocator(allocation_address, std::move(allocation_clean_up));
+}
+
+Status DumbHtpSharedMemoryAllocator::GetAllocationSharedMemoryInfoForThisAllocator(void* allocation_address,
+                                                                                   SharedMemoryInfo& allocation_info) {
+  std::scoped_lock g{mutex_};
+  const auto allocation_it = allocations_.find(allocation_address);
+  ORT_RETURN_IF(allocation_it == allocations_.end(),
+                "Failed to get allocation info for address (", allocation_address, ").");
+
+  allocation_info = allocation_it->second.shared_memory_info;
+  return Status::OK();
+}
+
+Status DumbHtpSharedMemoryAllocator::AddAllocationCleanUpForThisAllocator(void* allocation_address,
+                                                                          AllocationCleanUpFn&& allocation_clean_up) {
+  ORT_RETURN_IF(allocation_clean_up == nullptr, "allocation_clean_up should not be empty.");
+
+  std::scoped_lock g{mutex_};
   const auto allocation_it = allocations_.find(allocation_address);
   ORT_RETURN_IF(allocation_it == allocations_.end(),
                 "Failed to get allocation info for address (", allocation_address, ").");
