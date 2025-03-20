@@ -49,17 +49,16 @@ class MIGraphXExternalAllocator : public MIGraphXAllocator {
   std::unordered_set<void*> reserved_;
 };
 
-// TODO: add a default constructor
-class HIPPinnedAllocator : public IAllocator {
+class MIGraphXPinnedAllocator final : public IAllocator {
  public:
-  HIPPinnedAllocator(int device_id, const char* name)
+  MIGraphXPinnedAllocator(const int device_id, const char* name)
       : IAllocator(
-            OrtMemoryInfo(name, OrtAllocatorType::OrtDeviceAllocator,
+            OrtMemoryInfo(name, OrtDeviceAllocator,
                           OrtDevice(OrtDevice::CPU, OrtDevice::MemType::HIP_PINNED, static_cast<OrtDevice::DeviceId>(device_id)),
                           device_id, OrtMemTypeCPUOutput)) {}
 
-  virtual void* Alloc(size_t size) override;
-  virtual void Free(void* p) override;
+  void* Alloc(size_t size) override;
+  void Free(void* p) override;
 };
 
 }  // namespace onnxruntime
