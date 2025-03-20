@@ -435,16 +435,29 @@ Status AttentionQKTProgram::GenerateShaderCode(ShaderHelper& shader) const {
   }
   shader.AddOutput("output", ShaderUsage::UseUniform);
   shader.AddOutput("metadata", ShaderUsage::UseUniform | ShaderUsage::UseValueTypeAlias | ShaderUsage::UseElementTypeAlias);
-  // Tile_Size is the number of columns of present_key each workgroup process
-  // Tile_N_Size is the number of rows of present_key each workgroup process.
-  // In each workgroup, we read a block [Tile_N_Size][Tile_Size] of present_key data and calculate the corresponding intermediate results of q * k.
-  // Accumulate the results accross the head_size and store them into inner_qk_values. Finally, do a reduce sum in inner_qk_values to get the final results.
-  shader.AdditionalImplementation() << "const Tile_Size = " << tile_size_ << ";\n";
-  shader.AdditionalImplementation() << "const Tile_N_Size = " << tile_size_ * tile_size_ << ";\n";
+  // Note that this shader adopts similar algorithm with dp4a generation shader.
+  //
+  // This algorithm works to compute dot product of k parallelly, by processing k at each step amongst tile_size_k_vec threads,
+  // and utilizing the remaining threads in the workgroup to process additional rows of |present_key| in parallel (such that the values in shared memory (tile_q) for |q| can be reused).
+  // For each load of k, the tile_size_k_vec threads also reload |present_key| tile_size/sub_tile_size times to compute partial dot products of other |present_key| rows
+  // in order to complete all tile_size |present_key| rows in this workgroup and also reusing the loaded in register values of |q|.
+  constexpr int tile_size_k_vec = 8;
+
+  // 1. Each workgroup processes one row of |q| and tile_size rows of |present_key|
+  //
+  // 2. Computation Process:
+  //    - Reads [tile_size][tile_size_k_vec] block of |present_key| data at a time
+  //    - Each thread within workgroup computes dot products of 4 A*B elements since each k represents 4 elements of |present_key|
+  //    - Stores intermediate results in shared memory (inner_qk_values)
+  //    - Iterates through columns (head_size_vec) accumulating results in inner_qk_values
+  //    - Performs final reduction sum in inner_qk_values for output
+  shader.AdditionalImplementation() << "const tile_size = " << tile_size_ << "u;\n"
+                                    << "const tile_size_k_vec = " << tile_size_k_vec << "u;\n"
+                                    << "const sub_tile_size = " << WorkgroupSizeX() / tile_size_k_vec << "u;\n";
   shader.AdditionalImplementation() << R"ADDNL_FN(
-var<workgroup> tile_q: array<q_value_t, Tile_Size>;
-var<workgroup> inner_qk_values: array<array<q_element_t, Tile_Size>, Tile_N_Size>;
-var<workgroup> tile_qk: array<q_element_t, Tile_N_Size>;
+var<workgroup> tile_q: array<q_value_t, tile_size_k_vec>;
+var<workgroup> inner_qk_values: array<array<q_element_t, tile_size_k_vec>, tile_size>;
+var<workgroup> tile_qk: array<q_element_t, tile_size>;
 )ADDNL_FN";
 
   if (has_attention_bias_) {
@@ -464,28 +477,33 @@ var<workgroup> tile_qk: array<q_element_t, Tile_N_Size>;
   }
 
   shader.MainFunctionBody() << R"MAIN_FN(
-    let total_seq_offset = (workgroup_idx % uniforms.num_total_seq_tile) * Tile_N_Size;
-    let head_idx = u32(workgroup_idx / uniforms.num_total_seq_tile);
+    let local_row = local_idx / tile_size_k_vec;
+    let local_col = local_idx % tile_size_k_vec;
+    let total_seq_offset = (workgroup_idx % uniforms.splited_k) * tile_size;
+    let head_idx = u32(workgroup_idx / uniforms.splited_k);
     let q_offset = head_idx * uniforms.head_size_vec;
     var total_sequence_length = uniforms.total_sequence_length;
     let present_offset = (head_idx / uniforms.n_reps) * uniforms.present_sequence_length * uniforms.head_size_vec;
-    for (var w: u32 = 0u; w < uniforms.head_size_vec; w += Tile_Size) {
-      if (local_idx < Tile_Size && w + local_idx < uniforms.head_size_vec) {
-        tile_q[local_idx] = q[q_offset + w + local_idx];
+    for (var k: u32 = 0u; k < uniforms.head_size_vec; k += tile_size_k_vec) {
+      if (local_idx < tile_size_k_vec && k + local_idx < uniforms.head_size_vec) {
+        tile_q[local_idx] = q[q_offset + k + local_idx];
       }
       workgroupBarrier();
-      for (var row_offset = 0u; row_offset < Tile_N_Size; row_offset += Tile_Size) {
-        if (total_seq_offset + row_offset + local_id.y < total_sequence_length && w + local_id.x < uniforms.head_size_vec) {
-          inner_qk_values[row_offset + local_id.y][local_id.x] += dot(present_key[present_offset + (total_seq_offset + row_offset + local_id.y) * uniforms.head_size_vec + w + local_id.x], tile_q[local_id.x]);
+      let q_data = tile_q[local_col];
+      for (var row_offset = 0u; row_offset < tile_size; row_offset += sub_tile_size) {
+        if (total_seq_offset + row_offset + local_row < total_sequence_length && k + local_col < uniforms.head_size_vec) {
+          inner_qk_values[row_offset + local_row][local_col] += dot(present_key[present_offset + (total_seq_offset + row_offset + local_row) * uniforms.head_size_vec + k + local_col], q_data);
         }
       }
       workgroupBarrier();
     }
-    var sum = q_element_t(0);
-    for (var i = 0u; i < Tile_Size; i++) {
-      sum += inner_qk_values[local_idx][i];
-    }
-    if ((total_seq_offset + local_idx) < total_sequence_length) {
+
+    if (local_idx < tile_size && total_seq_offset + local_idx < total_sequence_length) {
+      var sum = q_element_t(0);
+      for (var i = 0u; i < tile_size_k_vec; i++) {
+        sum += inner_qk_values[local_idx][i];
+      }
+
       let output_idx = head_idx * total_sequence_length + total_seq_offset + local_idx;
       sum = sum * q_element_t(uniforms.alpha) + loadAttentionBias(output_idx);
       tile_qk[local_idx] = sum;
@@ -496,14 +514,14 @@ var<workgroup> tile_qk: array<q_element_t, Tile_N_Size>;
     // Calculate the max and sum in current split.
     var l_max = f32(-3.402823e+38f);
     var l_sum = f32(0);
-    for (var i = 0u; i < Tile_N_Size && (total_seq_offset + i) < total_sequence_length; i++) {
+    for (var i = 0u; i < tile_size && (total_seq_offset + i) < total_sequence_length; i++) {
       l_max = max(l_max, f32(tile_qk[i]));
     }
-    for (var i = 0u; i < Tile_N_Size && (total_seq_offset + i) < total_sequence_length; i++) {
+    for (var i = 0u; i < tile_size && (total_seq_offset + i) < total_sequence_length; i++) {
       l_sum += exp(f32(tile_qk[i]) - l_max);
     }
     if (local_idx == 0u) {
-      let meta_offset = head_idx * uniforms.splited_k + workgroup_idx % uniforms.num_total_seq_tile;
+      let meta_offset = head_idx * uniforms.splited_k + workgroup_idx % uniforms.splited_k;
       metadata[meta_offset] = metadata_value_t(metadata_element_t(l_max), metadata_element_t(l_sum));
     }
 )MAIN_FN";
@@ -513,13 +531,11 @@ var<workgroup> tile_qk: array<q_element_t, Tile_N_Size>;
 
 Status ComputeAttentionQKT(onnxruntime::webgpu::ComputeContext& context, const Tensor* Q,
                            const Tensor* attention_bias, Tensor* output, Tensor* present_key, Tensor* metadata,
-                           const WebgpuAttentionParameters& parameters, int splited_k) {
+                           const WebgpuAttentionParameters& parameters, int splited_k, int tile_size) {
   const float alpha = parameters.scale_ == 0.0f ? 1.f / sqrt(static_cast<float>(parameters.head_size_))
                                                 : parameters.scale_;
 
   const bool has_attention_bias = attention_bias != nullptr;
-  constexpr int tile_size = 8;
-  constexpr int tile_n_size = 64;
   const int components = 4;
 
   AttentionQKTProgram program{"AttentionQKT", has_attention_bias, tile_size};
@@ -532,17 +548,15 @@ Status ComputeAttentionQKT(onnxruntime::webgpu::ComputeContext& context, const T
                       {metadata, ProgramTensorMetadataDependency::Rank, 2}});
 
   const uint32_t vectorized_head_size = parameters.head_size_ / components;
-  const uint32_t num_total_seq_tile = static_cast<uint32_t>((parameters.total_sequence_length_ + tile_n_size - 1) / tile_n_size);
-  program.SetDispatchGroupSize(parameters.batch_size_ * parameters.num_heads_ * num_total_seq_tile)
-      .SetWorkgroupSize(tile_size, tile_size)
+  program.SetDispatchGroupSize(parameters.batch_size_ * parameters.num_heads_ * splited_k)
+      .SetWorkgroupSize(64)
       .CacheHint(std::to_string(tile_size), has_attention_bias, components)
       .AddUniformVariables({{static_cast<uint32_t>(vectorized_head_size)},
                             {static_cast<uint32_t>(parameters.total_sequence_length_)},
                             {static_cast<float>(alpha)},
                             {static_cast<uint32_t>(parameters.is_gqa_ ? parameters.seqlen_present_kv_cache_ : parameters.total_sequence_length_)},
                             {static_cast<uint32_t>(parameters.n_reps)},
-                            {static_cast<uint32_t>(splited_k)},
-                            {num_total_seq_tile}});
+                            {static_cast<uint32_t>(splited_k)}});
 
   return context.RunProgram(program);
 }
@@ -553,24 +567,34 @@ Status FlashAttentionDecodeSplitKProgram::GenerateShaderCode(ShaderHelper& shade
   shader.AddInput("present_value", ShaderUsage::UseUniform | ShaderUsage::UseValueTypeAlias);
   shader.AddOutput("out_split_k", ShaderUsage::UseUniform);
 
-  // Tile_N_Size is the number of columns of qk each workgroup process.
-  // In each workgroup, we read a block [Tile_Size][Tile_Size] of present_value data and calculate the corresponding intermediate results of qk * v.
-  // Accumulate the results in current split and store them into qkv_values. Finally, do a reduce sum in qkv_values to get the results of the current split and store them into tile_output.
-  shader.AdditionalImplementation() << "const Head_Size_Vec = " << head_size_vec_ << ";\n";
-  shader.AdditionalImplementation() << "const Tile_Size = " << tile_size_ << ";\n";
-  shader.AdditionalImplementation() << "const Tile_N_Size = " << tile_size_ * tile_size_ << ";\n";
+  // Note that this shader adopts similar algorithm with dp4a generation shader.
+  //
+  // This algorithm works to compute dot product of k parallelly, by processing k at each step amongst tile_size_k_vec threads,
+  // and utilizing the remaining threads in the workgroup to process additional rows of |present_value| in parallel (such that the values in shared memory (tile_qk) for |qk| can be reused).
+  // For each load of k, the tile_size_k_vec threads also reload |present_value| tile_size/sub_tile_size times to compute partial dot products of other |present_value| rows
+  // in order to complete all tile_size |present_value| rows in this workgroup and also reusing the values in tile_qk.
+  //
+  // The difference with AttentionQKTProgram is that the dot products go through the rows (total_sequence_length) of |present_value| instead of columns (head_size_vec).
+  // And each workgroup only calculate current tile_size's dot products instead of iterating the whole row |total_sequence_length|.
+  // That's why this shader is a split shader. The final reduce will be done in FlashAttentionDecodeReduceProgram.
+  constexpr int tile_size_k_vec = 8;
+
+  shader.AdditionalImplementation() << "const head_size_vec = " << head_size_vec_ << "u;\n"
+                                    << "const tile_size = " << tile_size_ << "u;\n"
+                                    << "const tile_size_k_vec = " << tile_size_k_vec << "u;\n"
+                                    << "const sub_tile_size = " << WorkgroupSizeX() / tile_size_k_vec << "u;\n";
   shader.AdditionalImplementation() << R"HELPER_FN(
-var<workgroup> tile_qk: array<qk_value_t, Tile_N_Size>;
-var<workgroup> tile_output: array<present_value_value_t, Head_Size_Vec>;
-var<workgroup> qkv_values: array<array<present_value_value_t, Tile_Size>, Tile_Size>;
+var<workgroup> tile_qk: array<qk_value_t, tile_size>;
+var<workgroup> tile_output: array<present_value_value_t, head_size_vec>;
+var<workgroup> qkv_values: array<array<present_value_value_t, tile_size_k_vec>, sub_tile_size>;
 
   )HELPER_FN";
 
   shader.MainFunctionBody() << R"MAIN_FN(
-    let local_row = local_idx / Tile_Size;
-    let local_col = local_idx % Tile_Size;
-    let total_seq_offset = (workgroup_idx % uniforms.num_total_seq_tile) * Tile_N_Size;
-    let head_idx = u32(workgroup_idx / uniforms.num_total_seq_tile);
+    let local_row = local_idx / tile_size_k_vec;
+    let local_col = local_idx % tile_size_k_vec;
+    let total_seq_offset = (workgroup_idx % uniforms.splited_k) * tile_size;
+    let head_idx = u32(workgroup_idx / uniforms.splited_k);
     var total_sequence_length = uniforms.total_sequence_length;
     let present_offset = (head_idx / uniforms.n_reps) * uniforms.head_size_vec * uniforms.present_sequence_length;
 
@@ -592,33 +616,32 @@ var<workgroup> qkv_values: array<array<present_value_value_t, Tile_Size>, Tile_S
     if (total_seq_offset + local_idx < total_sequence_length) {
        tile_qk[local_idx] = qk_value_t(exp(f32(qk[head_idx * total_sequence_length + total_seq_offset + local_idx]) - g_max) / g_sum);
     }
-    workgroupBarrier();
 
-    for (var w: u32 = 0u; w < uniforms.head_size_vec; w += Tile_Size) {
+    for (var k: u32 = 0u; k < uniforms.head_size_vec; k += tile_size_k_vec) {
       var value = present_value_value_t(0);
       qkv_values[local_row][local_col] = present_value_value_t(0);
       workgroupBarrier();
 
-      for (var row_offset = 0u; row_offset < Tile_N_Size; row_offset += Tile_Size) {
-        if (total_seq_offset + row_offset + local_row < total_sequence_length && w + local_col < uniforms.head_size_vec) {
-          value += present_value[present_offset + (total_seq_offset + row_offset + local_row) * uniforms.head_size_vec + w + local_col] * tile_qk[row_offset + local_row];
+      for (var row_offset = 0u; row_offset < tile_size; row_offset += sub_tile_size) {
+        if (total_seq_offset + row_offset + local_row < total_sequence_length && k + local_col < uniforms.head_size_vec) {
+          value += present_value[present_offset + (total_seq_offset + row_offset + local_row) * uniforms.head_size_vec + k + local_col] * tile_qk[row_offset + local_row];
         }
       }
 
       qkv_values[local_row][local_col] = value;
       workgroupBarrier();
 
-      if (local_idx < Tile_Size) {
-        for (var i = 0u; i < Tile_Size; i++) {
-          tile_output[w + local_idx] += qkv_values[i][local_idx];
+      if (local_idx < tile_size_k_vec) {
+        for (var i = 0u; i < sub_tile_size; i++) {
+          tile_output[k + local_idx] += qkv_values[i][local_idx];
         }
       }
       workgroupBarrier();
     }
 
-    for (var i = local_idx; i < uniforms.head_size_vec; i += Tile_N_Size) {
-      // workgroup_idx % uniforms.num_total_seq_tile is the current split_k index
-      let out_offset = head_idx * uniforms.splited_k * uniforms.head_size_vec + (workgroup_idx % uniforms.num_total_seq_tile) * uniforms.head_size_vec + i;
+    for (var i = local_idx; i < uniforms.head_size_vec; i += workgroup_size_x) {
+      // workgroup_idx % uniforms.splited_k is the current split_k index
+      let out_offset = head_idx * uniforms.splited_k * uniforms.head_size_vec + (workgroup_idx % uniforms.splited_k) * uniforms.head_size_vec + i;
       out_split_k[out_offset] = tile_output[i];
     }
 )MAIN_FN";
@@ -632,26 +655,23 @@ Status ComputeFlashAttentionDecodeSplitK(onnxruntime::webgpu::ComputeContext& co
                                          Tensor* out_split_k,
                                          Tensor* present_value,
                                          const WebgpuAttentionParameters& parameters,
-                                         int split_k) {
+                                         int split_k,
+                                         int tile_size) {
   const int components = 4;
-  constexpr int tile_size = 8;
-  int tile_n_size = tile_size * tile_size;
   int head_size_vec = parameters.v_head_size_ / components;
   FlashAttentionDecodeSplitKProgram program{"FlashAttentionDecodeSplitK", tile_size, head_size_vec};
   program.AddInputs({{metadata, ProgramTensorMetadataDependency::TypeAndRank, 2},
                      {qk, ProgramTensorMetadataDependency::TypeAndRank},
                      {present_value, ProgramTensorMetadataDependency::TypeAndRank, components}});
   program.AddOutputs({{out_split_k, ProgramTensorMetadataDependency::TypeAndRank, components}});  // [B, N, split_k, head_size]
-  const uint32_t num_total_seq_tile = static_cast<uint32_t>((parameters.total_sequence_length_ + tile_n_size - 1) / tile_n_size);
-  program.SetDispatchGroupSize(parameters.batch_size_ * parameters.num_heads_ * num_total_seq_tile)
+  program.SetDispatchGroupSize(parameters.batch_size_ * parameters.num_heads_ * split_k)
       .CacheHint(std::to_string(tile_size))
-      .SetWorkgroupSize(tile_n_size)
+      .SetWorkgroupSize(64)
       .AddUniformVariables({{static_cast<uint32_t>(parameters.total_sequence_length_)},
                             {static_cast<uint32_t>(head_size_vec)},
                             {static_cast<uint32_t>(parameters.is_gqa_ ? parameters.seqlen_present_kv_cache_ : parameters.total_sequence_length_)},
                             {static_cast<uint32_t>(parameters.n_reps)},
-                            {static_cast<uint32_t>(split_k)},
-                            {num_total_seq_tile}});
+                            {static_cast<uint32_t>(split_k)}});
 
   return context.RunProgram(program);
 }
@@ -702,11 +722,11 @@ Status ComputeFlashAttentionDecodeReduce(onnxruntime::webgpu::ComputeContext& co
                                          int split_k) {
   const int components = 4;
   constexpr int tile_size = 8;
-  int tile_n_size = tile_size * components;
+  int tile_head_size = tile_size * components;
   FlashAttentionDecodeReduceProgram program{"FlashAttentionDecodeReduce", tile_size};
   program.AddInputs({{out_split_k, ProgramTensorMetadataDependency::TypeAndRank, components}});
   program.AddOutputs({{output, ProgramTensorMetadataDependency::TypeAndRank, components}});
-  const uint32_t num_head_size_tile = static_cast<uint32_t>((parameters.v_head_size_ + tile_n_size - 1) / tile_n_size);
+  const uint32_t num_head_size_tile = static_cast<uint32_t>((parameters.v_head_size_ + tile_head_size - 1) / tile_head_size);
   program.SetDispatchGroupSize(parameters.batch_size_ * parameters.num_heads_ * num_head_size_tile)
       .CacheHint(std::to_string(tile_size))
       .SetWorkgroupSize(tile_size * tile_size)
@@ -763,12 +783,12 @@ Status ApplyFlashAttention(const Tensor* Q, const Tensor* K, const Tensor* V, co
   const TensorShape metadata_shape(metadata_dims);
   Tensor metadata = context.CreateGPUTensor(Q->DataType(), metadata_shape);
   ORT_RETURN_IF_ERROR(ComputeAttentionQKT(context, Q, attention_bias, &qk, present_key, &metadata,
-                                          parameters, splited_k));
+                                          parameters, splited_k, tile_size));
 
   const TensorShapeVector out_split_k_dims({parameters.batch_size_, parameters.num_heads_, splited_k, parameters.head_size_});
   const TensorShape out_split_k_shape(out_split_k_dims);
   Tensor out_split_k = context.CreateGPUTensor(Q->DataType(), out_split_k_shape);
-  ORT_RETURN_IF_ERROR(ComputeFlashAttentionDecodeSplitK(context, &metadata, &qk, &out_split_k, present_value, parameters, splited_k));
+  ORT_RETURN_IF_ERROR(ComputeFlashAttentionDecodeSplitK(context, &metadata, &qk, &out_split_k, present_value, parameters, splited_k, tile_size));
   ORT_RETURN_IF_ERROR(ComputeFlashAttentionDecodeReduce(context, &out_split_k, output, parameters, splited_k));
 
   return Status::OK();
