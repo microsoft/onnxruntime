@@ -29,7 +29,6 @@ Status PoolOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
   const auto& op_type = node.OpType();
   const auto& input_defs = node.InputDefs();
 
-#if defined(COREML_ENABLE_MLPROGRAM)
   if (model_builder.CreateMLProgram()) {
     using namespace CoreML::Specification::MILSpec;
 
@@ -91,9 +90,7 @@ Status PoolOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
     AddOperationOutput(*op, *node.OutputDefs()[0]);
     model_builder.AddOperation(std::move(op));
 
-  } else
-#endif  // defined(COREML_ENABLE_MLPROGRAM)
-  {
+  } else {
     std::unique_ptr<COREML_SPEC::NeuralNetworkLayer> layer = model_builder.CreateNNLayer(node);
 
     auto* coreml_pool = layer->mutable_pooling();
