@@ -114,9 +114,9 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                 // The below tests what happens when various execution providers are added
                 // to the session options.
 
-                // We can only check what EP's the package was built with for the
-                // Microsoft.ML.OnnxRuntime.Managed package because the managed package contains
-                // the C# symbols (such as USE_CUDA).
+                // We can only check what EPs the package was built with for the
+                // Microsoft.ML.OnnxRuntime.Managed package because the managed package defines
+                // the C# preprocessor symbols (such as USE_CUDA) for the EPs that it was built with.
 
                 // The Microsoft.ML.OnnxRuntime package will use the appropriate platform bindings
                 // (ie the native Android bindings) where the C# preprocessor symbols
