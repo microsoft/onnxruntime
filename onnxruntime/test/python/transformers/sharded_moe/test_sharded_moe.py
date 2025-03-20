@@ -14,10 +14,10 @@ try:
     from mpi4py import MPI
 
     comm = MPI.COMM_WORLD
-    has_mpi = True
 except (ImportError, RuntimeError):
-    has_mpi = False
     comm = None
+
+has_mpi = comm is not None
 
 np.random.seed(3)
 
