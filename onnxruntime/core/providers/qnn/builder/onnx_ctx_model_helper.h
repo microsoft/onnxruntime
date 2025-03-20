@@ -65,6 +65,8 @@ Status CreateEPContextNodes(Model* model,
                             const onnxruntime::PathString& context_model_path,
                             bool qnn_context_embed_mode,
                             uint64_t max_spill_fill_buffer_size,
-                            const logging::Logger& logger);
+                            const logging::Logger& logger,
+                            bool share_ep_contexts,
+                            bool stop_share_ep_contexts);
 }  // namespace qnn
 }  // namespace onnxruntime

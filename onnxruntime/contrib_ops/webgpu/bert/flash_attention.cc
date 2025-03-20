@@ -97,8 +97,8 @@ Status CopyKVCache(onnxruntime::webgpu::ComputeContext& context, const WebgpuAtt
   }
   program.AddOutputs({{present_key, ProgramTensorMetadataDependency::Rank, components},
                       {present_value, ProgramTensorMetadataDependency::Rank, components}})
-      .AddIndices(valid_present_shape);
-  program.SetDispatchGroupSize(onnxruntime::narrow<uint32_t>(valid_kv_size + 63 / 64))
+      .AddIndices(std::move(valid_present_shape));
+  program.SetDispatchGroupSize(onnxruntime::narrow<uint32_t>((valid_kv_size + 63) / 64))
       .SetWorkgroupSize(64)
       .CacheHint(has_past, parameters.qkv_format_, parameters.past_present_share_buffer_)
       .AddUniformVariables({{static_cast<uint32_t>(valid_kv_size)},
@@ -224,12 +224,12 @@ Status FlashAttentionProgram::GenerateShaderCode(ShaderHelper& shader) const {
   // Shader is designed to be dispatched as Dispatch(num_heads, new_sequence_length / workgroup_size_x, 1)
   // Each lane/thread is responsible for a single q.
   shader.MainFunctionBody() << R"MAIN_FN(
-  let head_idx = workgroup_id.x;
+  let head_idx = u32(workgroup_idx / uniforms.num_seq_tile);
   let capped_sg_id = min(sg_id, max_k_step);
   let capped_sg_size = min(sg_size, max_k_step);
 
   // Load Q
-  let q_idx_global = workgroup_id.y * workgroup_size_x + local_idx;
+  let q_idx_global = (workgroup_idx % uniforms.num_seq_tile) * workgroup_size_x + local_idx;
   let valid_q = q_idx_global < uniforms.new_sequence_length;
   if (valid_q)
   {
@@ -445,7 +445,8 @@ Status ApplyFlashAttention(const Tensor* Q, const Tensor* K, const Tensor* V, co
   std::string cache_hint = std::to_string(has_attention_bias) +
                            std::to_string(parameters.head_size_) +
                            std::to_string(parameters.num_heads_);
-  program.SetDispatchGroupSize(parameters.num_heads_, (parameters.sequence_length_ + tile_size - 1) / tile_size, 1)
+  const uint32_t num_seq_tile = (parameters.sequence_length_ + tile_size - 1) / tile_size;
+  program.SetDispatchGroupSize(parameters.num_heads_ * num_seq_tile)
       .SetWorkgroupSize(tile_size)
       .CacheHint(cache_hint)
       .AddUniformVariables({{static_cast<uint32_t>(parameters.sequence_length_)},
@@ -454,7 +455,8 @@ Status ApplyFlashAttention(const Tensor* Q, const Tensor* K, const Tensor* V, co
                             {static_cast<uint32_t>(parameters.total_sequence_length_ - parameters.kv_sequence_length_)},
                             {static_cast<uint32_t>(parameters.is_gqa_ ? 1 : 0)},
                             {static_cast<uint32_t>(parameters.n_reps)},
-                            {alpha}});
+                            {alpha},
+                            {num_seq_tile}});
 
   return context.RunProgram(program);
 }
