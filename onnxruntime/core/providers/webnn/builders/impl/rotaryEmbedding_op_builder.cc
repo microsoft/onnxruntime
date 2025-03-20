@@ -89,7 +89,7 @@ Status RotaryEmbeddingOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_build
   emscripten::val wnn_builder = model_builder.GetBuilder();
 
   NodeAttrHelper helper(node);
-  const bool interleaved = gsl::narrow_cast<bool>(helper.Get("interleaved", 0));
+  const bool interleaved = static_cast<bool>(helper.Get("interleaved", 0));
   uint32_t num_heads = helper.Get("num_heads", 0);
   uint32_t rotary_embedding_dim = helper.Get("rotary_embedding_dim", 0);
 
