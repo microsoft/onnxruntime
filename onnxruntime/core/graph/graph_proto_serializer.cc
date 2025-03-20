@@ -1,6 +1,8 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include "core/common/inlined_containers.h"
+#include "core/framework/tensorprotoutils.h"
 #include "core/graph/graph_proto_serializer.h"
 
 namespace onnxruntime {
@@ -21,13 +23,13 @@ void GraphViewerToProto(const GraphViewer& graph_view,
     *(graph_proto.mutable_output()->Add()) = output_arg->ToProto();
   }
 
-  std::unordered_set<const onnxruntime::NodeArg*> value_info_ = graph_view.GetValueInfo();
+  auto value_info = graph_view.GetValueInfo();
 
   // Reserve memory for the vector to avoid reallocations
-  std::vector<const NodeArg*> value_info_sorted;
-  value_info_sorted.reserve(value_info_.size());
+  InlinedVector<const NodeArg*> value_info_sorted;
+  value_info_sorted.reserve(value_info.size());
+  value_info_sorted.assign(value_info.begin(), value_info.end());
 
-  value_info_sorted.assign(value_info_.begin(), value_info_.end());
   auto sort_predicate = [](const NodeArg* v1, const NodeArg* v2) {
     return v1->Name() < v2->Name();
   };
@@ -58,21 +60,44 @@ void GraphViewerToProto(const GraphViewer& graph_view,
   }
 
   if (include_initializer) {
-    std::unordered_set<std::string> current_scope_initializer_set;
-
-    auto& initializers = graph_view.GetAllInitializedTensors();
+    const auto& initializers = graph_view.GetAllInitializedTensors();
 
     // Sort initializers to maintain consistency in model proto created across inference requests
-    std::vector<std::string> const_inits;
-    for (auto& it : initializers) {
-      const_inits.push_back(it.first);
+    InlinedVector<InitializedTensorSet::const_iterator> const_inits;
+    const_inits.reserve(initializers.size());
+    for (auto it = initializers.cbegin(), end = initializers.cend(); it != end; ++it) {
+      const_inits.push_back(it);
     }
-    std::sort(const_inits.begin(), const_inits.end());
+    std::sort(const_inits.begin(), const_inits.end(), [](const auto& i1, const auto& i2) {
+      return i1->first < i2->first;
+    });
 
-    for (auto& it : const_inits) {
+    InlinedHashSet<std::string_view> current_scope_initializer_set;
+    current_scope_initializer_set.reserve(const_inits.size());
+
+    auto get_initializer_with_data = [&](const ONNX_NAMESPACE::TensorProto& init,
+                                         ONNX_NAMESPACE::TensorProto& dest) {
+      if (utils::HasExternalData(init)) {
+        // Other libs such as TRT currently do not understand ORT specific memory ptr
+        std::unique_ptr<ExternalDataInfo> external_data_info;
+        ORT_THROW_IF_ERROR(ExternalDataInfo::Create(init.external_data(), external_data_info));
+        if (external_data_info->GetRelPath().compare(utils::kTensorProtoMemoryAddressTag) == 0) {
+          OrtValue ort_value;
+          ORT_THROW_IF_ERROR(utils::GetExtDataFromTensorProto(Env::Default(), {}, init, ort_value));
+          constexpr const bool use_tensor_buffer_false = false;
+          dest = utils::TensorToTensorProto(ort_value.Get<Tensor>(), init.name(), use_tensor_buffer_false);
+          return;
+        }
+      }
+      dest = init;
+    };
+
+    // Handle this scope initializers
+    for (const auto& it : const_inits) {
+      const auto& [name, init] = *it;
+      current_scope_initializer_set.insert(name);
       auto* p_initializer = graph_proto.add_initializer();
-      *p_initializer = *(initializers.at(it));
-      current_scope_initializer_set.insert(it);
+      get_initializer_with_data(*init, *p_initializer);
     }
 
     // handle outer scope value which is a constant initializer
@@ -80,13 +105,15 @@ void GraphViewerToProto(const GraphViewer& graph_view,
       for (auto& node_idx : graph_view.GetNodesInTopologicalOrder(order)) {
         const auto& node = graph_view.GetNode(node_idx);
         for (const auto& input : node->InputDefs()) {
-          if (current_scope_initializer_set.find(input->Name()) != current_scope_initializer_set.end()) {
+          if (current_scope_initializer_set.count(std::string_view{input->Name()}) > 0) {
             continue;
           }
-          if (graph_view.IsConstantInitializer(input->Name(), true)) {
-            auto* p_initializer = graph_proto.add_initializer();
-            *p_initializer = *(graph_view.GetConstantInitializer(input->Name(), true));
+
+          const auto* outer_scope_init = graph_view.GetConstantInitializer(input->Name(), true);
+          if (outer_scope_init != nullptr) {
             current_scope_initializer_set.insert(input->Name());
+            auto* p_initializer = graph_proto.add_initializer();
+            get_initializer_with_data(*outer_scope_init, *p_initializer);
           }
         }
       }

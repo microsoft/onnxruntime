@@ -1425,19 +1425,17 @@ void Graph::InitializeStateFromModelFileGraphProto() {
       "Graph state to be loaded into must be empty.");
 
   // Name to NodeArg mapping of all graph initializers.
-  std::unordered_map<std::string, const NodeArg*> graph_initializers;
-
-  // Name to NodeArg mapping of all graph inputs.
-  std::unordered_map<std::string, const NodeArg*> graph_inputs;
-
-  // Name to NodeArg mapping of all graph node outputs.
-  std::unordered_map<std::string, const NodeArg*> nodes_outputs;
-
+  InlinedHashMap<std::string, const NodeArg*> graph_initializers;
+  graph_initializers.reserve(graph_proto_->initializer_size());
   for (auto& initializer : graph_proto_->initializer()) {
     auto& initializer_name = initializer.name();
     auto initializer_arg = GetNodeArg(initializer_name);
     graph_initializers.insert({initializer_name, initializer_arg});
   }
+
+  // Name to NodeArg mapping of all graph inputs.
+  InlinedHashMap<std::string, const NodeArg*> graph_inputs;
+  graph_inputs.reserve(graph_proto_->input_size());
 
   // Set graph inputs.
   // <graph_inputs_including_initializers_> contains inputs exactly specified in proto.
@@ -1453,6 +1451,9 @@ void Graph::InitializeStateFromModelFileGraphProto() {
     }
   }
 
+  // Name to NodeArg mapping of all graph node outputs.
+  InlinedHashMap<std::string, const NodeArg*> nodes_outputs;
+  nodes_outputs.reserve(graph_proto_->node_size() * 2);  // rough estimate
   for (const auto& node : Nodes()) {
     for (const auto* output_def : node.OutputDefs()) {
       nodes_outputs.insert({output_def->Name(), output_def});
