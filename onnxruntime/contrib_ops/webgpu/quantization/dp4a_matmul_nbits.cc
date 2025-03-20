@@ -269,8 +269,13 @@ Status DP4AMatMulNBitsSmallMProgram::GenerateShaderCode(ShaderHelper& shader) co
   shader.AddInput("input_b", ShaderUsage::UseUniform);
   shader.AddInput("scales_b", ShaderUsage::UseUniform);
   shader.AddOutput("output", ShaderUsage::UseUniform | ShaderUsage::UseElementTypeAlias);
+  // This algorithm works to compute dot product of k parallelly, by processing k at each step amongst tile_size_k_vec threads,
+  // and utilizing the remaining threads in the workgroup to process additional rows of b in parallel (such that the values in shared memory for A can be reused).
+  // For each load of k, the tile_size_k_vec threads also reload B tile_size/num_concurrent_b_rows times to compute partial dot products of other B rows
+  // in order to complete all tile_size b rows in this workgroup and also reusing the loaded in register values of a.
 
-  // 1. Each workgroup handles tile_size_k_vec (16) columns of matrix B at a time, iterating over the columns to compute a partial dot product.
+  // 1. Each workgroup handles tile_size_k_vec (16) * k_vectorization_in_b (32) columns (total 512) and num_concurrent_b_rows of matrix B at a time,
+  // iterating over the columns to compute a partial dot product.
   // 2. Uses vec4 vectorization where each K represents 32 elements of matrix B
   constexpr uint32_t tile_size_k_vec = 16;
 
@@ -286,6 +291,7 @@ Status DP4AMatMulNBitsSmallMProgram::GenerateShaderCode(ShaderHelper& shader) co
   //    - Performs final reduction sum in inter_results for output
   shader.AdditionalImplementation() << "const tile_size = " << tile_size_ << "u;\n"
                                     << "const tile_size_k_vec = " << tile_size_k_vec << "u;\n"
+                                    // sub_tile_size is the number of concurrent b rows processed by the workgroup.
                                     << "const sub_tile_size = " << WorkgroupSizeX() / tile_size_k_vec << "u;\n";
   shader.AdditionalImplementation() << commonFunctions
                                     << R"ADDNL_FN(
@@ -317,7 +323,7 @@ Status DP4AMatMulNBitsSmallMProgram::GenerateShaderCode(ShaderHelper& shader) co
     // Handle each workgroup threads as a block of [sub_tile_size][tile_size_k_vec]
     let local_col = local_idx % tile_size_k_vec;
     let local_row = local_idx / tile_size_k_vec;
-    for (var kidx_v:u32 = 0; kidx_v < uniforms.K32; kidx_v += 16)
+    for (var kidx_v:u32 = 0; kidx_v < uniforms.K32; kidx_v += tile_size_k_vec)
     {
       // Load Phase: Populate shared memory for the workgroup.
       if (local_idx < 32)
