@@ -46,7 +46,8 @@ using namespace ONNX_NAMESPACE;
 using namespace ::onnxruntime::logging;
 namespace {
 // Check if cycle exists in the graph after partitioning
-bool FindCycleHelper(size_t i, const std::list<size_t>* adjacency_map, bool visited[], bool* st, std::vector<size_t>& cycles) {
+bool FindCycleHelper(size_t i, gsl::span<const InlinedVector<size_t>> adjacency_map, gsl::span<bool> visited, gsl::span<bool> st,
+                     InlinedVector<size_t>& cycles) {
   if (!visited[i]) {
     visited[i] = true;
     st[i] = true;
@@ -2192,6 +2193,11 @@ SubGraphCollection_t TensorrtExecutionProvider::GetSupportedList(SubGraphCollect
           }
         }
 
+        const auto& initializers = graph_build.GetAllInitializedTensors();
+        for (const auto& [name, init] : initializers) {
+          assert(!utils::HasExternalData(*init));
+        }
+
         // Only if the newly built graph has control flow op as well as it has parent node,
         // it needs to handle outer scope values before calling graph.Resolve().
         if (has_control_flow_op && graph.ParentNode()) {
@@ -2398,7 +2404,7 @@ bool TensorrtExecutionProvider::DetectTensorRTGraphCycles(SubGraphCollection_t& 
 
     // Create adjacency list
     size_t graph_size = node_to_index_map.size();
-    std::list<size_t>* adjacency_map = new std::list<size_t>[graph_size];
+    std::vector<InlinedVector<size_t>> adjacency_map(graph_size);
     for (const auto& node : node_to_outputs_map) {
       for (auto iter = node.second.begin(); iter != node.second.end(); ++iter) {
         const auto& loc = input_to_nodes_map.find(*iter);
@@ -2413,14 +2419,14 @@ bool TensorrtExecutionProvider::DetectTensorRTGraphCycles(SubGraphCollection_t& 
     }
 
     // Check cycle in the graph
-    bool* visited = new bool[graph_size];
-    bool* st = new bool[graph_size];
+    InlinedVector<bool> visited(graph_size);
+    InlinedVector<bool> st(graph_size);
     for (size_t i = 0; i < graph_size; ++i) {
       visited[i] = false;
       st[i] = false;
     }
 
-    std::vector<size_t> cycles;
+    InlinedVector<size_t> cycles;
     bool has_cycle = false;
     for (size_t i = 0; i < graph_size; ++i) {
       if (FindCycleHelper(i, adjacency_map, visited, st, cycles)) {
@@ -2441,10 +2447,6 @@ bool TensorrtExecutionProvider::DetectTensorRTGraphCycles(SubGraphCollection_t& 
         }
       }
     }
-
-    delete[] adjacency_map;
-    delete[] visited;
-    delete[] st;
   }
   return cycle_detected;
 }
