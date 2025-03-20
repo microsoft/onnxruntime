@@ -83,11 +83,11 @@ NodeArg& MergeQkvWeights(Graph& graph,
   // Print a snippet of the merged tensor's data.
   std::cout << "Merged tensor raw_data size: " << initializer.raw_data().size() << std::endl;
   std::cout << "Merged tensor raw_data (first 64 bytes in hex): ";
-  for (size_t i = 0; i < initializer.raw_data().size() && i < 64; ++i) {
-    std::cout << std::hex << std::setw(2) << std::setfill('0')
-              << static_cast<unsigned>(static_cast<unsigned char>(initializer.raw_data()[i])) << " ";
-  }
-  std::cout << std::dec << std::endl;
+  //for (size_t i = 0; i < initializer.raw_data().size() && i < 64; ++i) {
+  //  std::cout << std::hex << std::setw(2) << std::setfill('0')
+  //            << static_cast<unsigned>(static_cast<unsigned char>(initializer.raw_data()[i])) << " ";
+ // }
+ // std::cout << std::dec << std::endl;
 
   return graph_utils::AddInitializer(graph, initializer);
 }
@@ -139,18 +139,22 @@ GraphViewer graph_viewer(graph);
     const ONNX_NAMESPACE::TensorProto* q_proj_tensor = nullptr;
     const ONNX_NAMESPACE::TensorProto* v_proj_tensor = nullptr;
 
+    const ONNX_NAMESPACE::TensorProto* cos_cache_tensor = nullptr;
+    onnxruntime::NodeArg* pos_ids_arg = nullptr;
+
 
     for (auto n = node.InputNodesBegin(); n != node.InputNodesEnd(); ++n) {
-      auto& mul_node = *graph.GetNode(n->Index());  // get mutable next node
+      auto& rotary_or_v_node = *graph.GetNode(n->Index());  // get mutable next node
 
       if ((*n).OpType() == "RotaryEmbedding") {
-        for (auto inner = mul_node.InputNodesBegin(); inner != mul_node.InputNodesEnd(); ++inner) {
+        for (auto inner = rotary_or_v_node.InputNodesBegin(); inner != rotary_or_v_node.InputNodesEnd(); ++inner) {
           std::cout << "rotary input is " << (*inner).Name() << std::endl;
           auto& mat_mul_node = *graph.GetNode(inner->Index());
           std::cout << "rotary input2 is " << mat_mul_node.Name() << std::endl;
           std::cout << "rotary input3 is " << mat_mul_node.OpType() << std::endl;
 
-          std::cout << "Tensor name I am trying to load " << mat_mul_node.InputDefs()[1]->Name() << std::endl;
+          std::cout << "Tensor1 name I am trying to load " << mat_mul_node.InputDefs()[1]->Name() << std::endl;
+          std::cout << "Tensor2 name I am trying to load " << mat_mul_node.InputDefs()[2]->Name() << std::endl;
 
           if (k_proj_tensor == nullptr && !graph.GetInitializedTensor(mat_mul_node.InputDefs()[1]->Name(), k_proj_tensor)) {
             std::cout << "Unable to load K tensor weight" << std::endl;
@@ -160,14 +164,27 @@ GraphViewer graph_viewer(graph);
             std::cout << "Unable to load Q tensor weight" << std::endl;
           }
         }
+        pos_ids_arg = rotary_or_v_node.MutableInputDefs()[1];
+
+         if (cos_cache_tensor == nullptr && !graph.GetInitializedTensor(rotary_or_v_node.InputDefs()[2]->Name(), cos_cache_tensor)) {
+          std::cout << "Unable to load cos cache tensor" << std::endl;
+        }
+
+        std::cout << "r1" << rotary_or_v_node.InputDefs()[0]->Name() << std::endl;
+        std::cout << "r2 " << rotary_or_v_node.InputDefs()[1]->Name() << std::endl;
+        std::cout << "r3 " << rotary_or_v_node.InputDefs()[2]->Name() << std::endl;
+        std::cout << "r4 " << rotary_or_v_node.InputDefs()[3]->Name() << std::endl;
+
+
+        // cos and sin
       } else if ((*n).OpType() == "MatMulNBits") {
-        if (v_proj_tensor == nullptr && !graph.GetInitializedTensor(mul_node.InputDefs()[1]->Name(), v_proj_tensor)) {
+        if (v_proj_tensor == nullptr && !graph.GetInitializedTensor(rotary_or_v_node.InputDefs()[1]->Name(), v_proj_tensor)) {
           std::cout << "Unable to load V tensor weight" << std::endl;
         }
       } 
 
-      std::cout << mul_node.Name() << std::endl;
-      std::cout << mul_node.OpType() << std::endl;
+      std::cout << rotary_or_v_node.Name() << std::endl;
+      std::cout << rotary_or_v_node.OpType() << std::endl;
     }
 
     for (auto* input_def : node.InputDefs()) {
@@ -196,9 +213,36 @@ GraphViewer graph_viewer(graph);
     }
 
     // num of heads * head size
-   int64_t hidden_size = q_proj_tensor->dims(0);
+    [[maybe_unused]]  int64_t hidden_size = q_proj_tensor->dims(0);
+    [[maybe_unused]]  int64_t q_num_heads = q_proj_tensor->dims(1);
+    [[maybe_unused]]  int64_t q_head_size = q_proj_tensor->dims(2);
+    [[maybe_unused]] int64_t k_num_heads = k_proj_tensor->dims(1);
 
-   [[maybe_unused]] onnxruntime::NodeArg& abc = MergeQkvWeights(graph, hidden_size, 24, 64, 24, q_proj_tensor, k_proj_tensor, v_proj_tensor, true);
+   
+   onnxruntime::NodeArg& fused_qkv = MergeQkvWeights(graph, hidden_size, q_num_heads, q_head_size, k_num_heads, q_proj_tensor, k_proj_tensor, v_proj_tensor, true);
+  
+          if (pos_ids_arg == nullptr) {
+     std::cout << "Position IDs argument is not available; cannot fuse GroupQueryAttention." << std::endl;
+     continue;
+   }
+
+       [[maybe_unused]] const std::array gqa_input_defs{pos_ids_arg, &fused_qkv};
+    
+    /*
+   // Now add the fused GroupQueryAttention node.
+   Node& gqa_node = graph.AddNode(graph.GenerateNodeName("GroupQueryAttention"),
+                                  "GroupQueryAttention",
+                                  "Fused GroupQueryAttention subgraphs",
+                                  gqa_input_defs,  
+                                  {},
+                                  {},
+                                  kMSDomain);
+
+     gqa_node.SetExecutionProviderType(node.GetExecutionProviderType());
+     */
+
+
+   [[maybe_unused]] int sodjsapidjad = 1;
   }
 
   return Status::OK();
