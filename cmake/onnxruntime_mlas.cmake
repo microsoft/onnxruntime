@@ -276,11 +276,6 @@ function(setup_kleidiai)
     ${MLAS_SRC_DIR}/kai_ukernel_interface.cpp
   )
   target_link_libraries(onnxruntime_mlas PRIVATE kleidiai)
-
-  if (NOT MSVC)
-    set_source_files_properties(${MLAS_SRC_DIR}/sqnbitgemm_kernel_neon_int8.cpp
-                                PROPERTIES COMPILE_FLAGS " -march=armv8.2-a+dotprod")
-  endif()
 endfunction()
 
 if (CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
