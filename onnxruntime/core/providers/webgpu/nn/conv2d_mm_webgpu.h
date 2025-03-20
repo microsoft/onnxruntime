@@ -5,7 +5,6 @@
 #include <vector>
 #include "core/common/inlined_containers.h"
 #include "core/providers/webgpu/webgpu_supported_types.h"
-#include "core/providers/cpu/nn/conv_attributes.h"
 #include "core/providers/webgpu/webgpu_kernel.h"
 #include "core/providers/webgpu/program.h"
 #include "core/framework/tensor_shape.h"
@@ -13,11 +12,9 @@
 
 namespace onnxruntime {
 namespace webgpu {
-using onnxruntime::ConvAttributes;
 class Conv2dMMProgram final : public Program<Conv2dMMProgram> {
  public:
-  Conv2dMMProgram(const ConvAttributes& attrs, uint32_t tile_a_outer, uint32_t tile_b_outer, uint32_t tile_inner, bool fit_a_outer, bool fit_b_outer, bool fit_inner, bool is_channels_last, bool is_vec4, bool has_bias, std::vector<uint32_t>&& element_size, InlinedVector<int64_t>&& elements_per_thread) : Program("Conv2dMM"),
-                                                                                                                                                                                                                                                                                                                attrs_(attrs),
+  Conv2dMMProgram(uint32_t tile_a_outer, uint32_t tile_b_outer, uint32_t tile_inner, bool fit_a_outer, bool fit_b_outer, bool fit_inner, bool is_channels_last, bool is_vec4, bool has_bias, std::vector<uint32_t>&& element_size, InlinedVector<int64_t>&& elements_per_thread) : Program("Conv2dMM"),
                                                                                                                                                                                                                                                                                                                 tile_a_outer_(tile_a_outer),
                                                                                                                                                                                                                                                                                                                 tile_b_outer_(tile_b_outer),
                                                                                                                                                                                                                                                                                                                 tile_inner_(tile_inner),
@@ -42,7 +39,6 @@ class Conv2dMMProgram final : public Program<Conv2dMMProgram> {
       {"dilations", ProgramUniformVariableDataType::Int32});
 
  private:
-  const ConvAttributes& attrs_;
   uint32_t tile_a_outer_;
   uint32_t tile_b_outer_;
   uint32_t tile_inner_;
@@ -56,7 +52,7 @@ class Conv2dMMProgram final : public Program<Conv2dMMProgram> {
   InlinedVector<int64_t> elements_per_thread_;
 };
 
-Conv2dMMProgram CreateConv2dMMProgram(const std::vector<const Tensor*>& inputs, Tensor* output, const ConvAttributes& attrs, uint32_t dim_a_outer, uint32_t dim_b_outer, uint32_t dim_inner, bool is_channels_last);
+Conv2dMMProgram CreateConv2dMMProgram(const std::vector<const Tensor*>& inputs, std::vector<uint32_t> pads, std::vector<uint32_t> strides, std::vector<uint32_t> dilations, Tensor* output, uint32_t dim_a_outer, uint32_t dim_b_outer, uint32_t dim_inner, bool is_channels_last);
 
 }  // namespace webgpu
 }  // namespace onnxruntime

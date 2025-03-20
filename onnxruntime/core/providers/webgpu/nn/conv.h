@@ -18,7 +18,7 @@ class Conv final : public WebGpuKernel {
   Conv(const OpKernelInfo& info) : WebGpuKernel(info), conv_attrs_(info) {
   }
   Status ComputeInternal(ComputeContext& context) const override;
-  TensorShape ComputeOutputShape(const TensorShape& input_shape, const TensorShape& weight_shape) const;
+  TensorShape ComputeOutputShape(const TensorShape& input_shape, const TensorShape& weight_shape, std::vector<uint32_t> pads, std::vector<uint32_t> strides, std::vector<uint32_t> dilations) const;
 
  private:
   ConvAttributes conv_attrs_;
