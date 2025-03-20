@@ -71,7 +71,7 @@ Status Conv<is_channels_last>::ComputeInternal(ComputeContext& context) const {
   std::transform(conv_attrs_.pads.begin(), conv_attrs_.pads.end(), std::back_inserter(pads), transform_dim);
   std::transform(conv_attrs_.strides.begin(), conv_attrs_.strides.end(), std::back_inserter(strides), transform_dim);
   std::transform(conv_attrs_.dilations.begin(), conv_attrs_.dilations.end(), std::back_inserter(dilations), transform_dim);
-
+  bool is_conv1d = false;
   auto channel_index = is_channels_last ? input_shape.NumDimensions() - 1 : 1;
   if (input_shape.NumDimensions() > 4 || kernel_shape.NumDimensions() > 4) {
     // Conv3D or higher dimensions
@@ -88,11 +88,14 @@ Status Conv<is_channels_last>::ComputeInternal(ComputeContext& context) const {
     pads.insert(pads.begin() + 2, 0);
     strides.insert(strides.begin(), 1);
     dilations.insert(dilations.begin(), 1);
+    is_conv1d = true;
   } else {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input and kernel tensors must have at least 3 dimensions");
   }
   auto output_shape = ComputeOutputShape(input_shape, kernel_shape, pads, strides, dilations);
-  auto* output = context.Output(0, output_shape);
+  const auto output_dims = output_shape.GetDims();
+  TensorShape output_shape_reduced = is_conv1d ? (is_channels_last ? TensorShape({output_dims[0], output_dims[2], output_dims[3]}) : TensorShape({output_dims[0], output_dims[1], output_dims[3]})) : output_shape;
+  auto* output = context.Output(0, output_shape_reduced);
   std::vector<const Tensor*> inputs(context.InputCount());
 
   if (conv_attrs_.group > 1) {
@@ -133,6 +136,7 @@ Status Conv<is_channels_last>::ComputeInternal(ComputeContext& context) const {
 
   const auto same_size = is_channels_last && input_height == output_height && input_width == output_width && conv_attrs_.pads[0] == 0 && conv_attrs_.pads[1] == 0;
   if (same_size || (kernel_height == 1 && kernel_width == 1 && conv_attrs_.pads[0] == 0 && conv_attrs_.pads[1] == 0 && conv_attrs_.strides[0] == 1 && conv_attrs_.strides[1] == 1)) {
+    Tensor transposed_kernel;
     inputs[0] = input;
     const auto batch = output_shape[0];
     TensorShape input_reshape(input_shape);
@@ -140,7 +144,6 @@ Status Conv<is_channels_last>::ComputeInternal(ComputeContext& context) const {
     TensorShape output_reshape(output_shape);
     if (is_channels_last) {
       // Transpose weights
-      Tensor transposed_kernel;
       
       ORT_RETURN_IF_ERROR(TransposeKernel(context, kernel, &transposed_kernel));
       inputs[1] = &transposed_kernel;
