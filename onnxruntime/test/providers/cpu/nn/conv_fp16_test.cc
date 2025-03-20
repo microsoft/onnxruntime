@@ -3,7 +3,7 @@
 
 #include "core/mlas/inc/mlas.h"
 
-#if defined(MLAS_F16VEC_INTRINSICS_SUPPORTED) || defined(COREML_ENABLE_MLPROGRAM) || defined(USE_XNNPACK)
+#if defined(MLAS_F16VEC_INTRINSICS_SUPPORTED) || defined(USE_COREML) || defined(USE_XNNPACK)
 
 #include "gtest/gtest.h"
 #include "test/providers/provider_test_utils.h"
@@ -30,7 +30,7 @@ struct ConvOpAndTestAttributes {
 
 /*
 Please notice that, we have predefined macros in the head of the file
-#if defined(MLAS_F16VEC_INTRINSICS_SUPPORTED) || defined(COREML_ENABLE_MLPROGRAM)
+#if defined(MLAS_F16VEC_INTRINSICS_SUPPORTED) || defined(USE_COREML)
 When we have these two macro defines, this UT will turn into green light and work.
 
 If attributes.activation is set the NhwcFusedConv contrib op is used.
