@@ -1,8 +1,8 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "core/common/inlined_containers.h"
 #include "core/providers/webgpu/math/matmul.h"
+#include "core/common/inlined_containers.h"
 #include "core/providers/cpu/tensor/utils.h"
 #include "core/providers/webgpu/shader_helper.h"
 #include "core/providers/webgpu/webgpu_supported_types.h"
@@ -29,7 +29,7 @@ ONNX_OPERATOR_KERNEL_EX(
         .TypeConstraint("T", WebGpuSupportedNumberTypes()),
     MatMul);
 
-std::string CalcResult(int64_t components, int64_t a_components, int64_t output_number) {
+static std::string CalcResult(int64_t components, int64_t a_components, int64_t output_number) {
   std::ostringstream oss;
   oss << "var a_data: a_value_t;\n";
   for (int i = 0; i < a_components; ++i) {
@@ -54,7 +54,7 @@ Status MatMulNaiveProgram::GenerateShaderCode(ShaderHelper& shader) const {
   std::string process_bias;
   if (has_bias_) {
     shader.AddInput("bias", ShaderUsage::UseUniform);
-    process_bias = "value += output_value_t(bias[row +i]);";
+    process_bias = "value += output_value_t(bias[row + i]);";
   }
 
   const auto& output = shader.AddOutput("output", ShaderUsage::UseUniform |
@@ -107,9 +107,9 @@ Status MatMul::ComputeInternal(ComputeContext& context) const {
   ORT_RETURN_IF_ERROR(helper.Compute(a->Shape(), b->Shape()));
   auto* output_tensor = context.Output(0, helper.OutputShape());
 
-  const uint32_t m = static_cast<uint32_t>(helper.M());
-  const uint32_t n = static_cast<uint32_t>(helper.N());
-  const uint32_t k = static_cast<uint32_t>(helper.K());
+  const uint32_t m = narrow<uint32_t>(helper.M());
+  const uint32_t n = narrow<uint32_t>(helper.N());
+  const uint32_t k = narrow<uint32_t>(helper.K());
 
   bool has_bias = context.InputCount() > 2;
 
@@ -204,8 +204,8 @@ Status MatMul::ComputeInternal(ComputeContext& context) const {
                                                     (MATMUL_PACKED_WORKGROUP_SIZE_Z * elements_per_thread[2]));
 
   const int components = is_vec4 ? 4 : 1;
-  const TensorShape a_shape_temp = BuildTempShapeVector(outer_dims_a, dim_a_outer, dim_inner, components);
-  const TensorShape b_shape_temp = BuildTempShapeVector(outer_dims_b, dim_inner, dim_b_outer, components);
+  const TensorShape a_shape_temp = CreateMatMulIntermediateShape(outer_dims_a, dim_a_outer, dim_inner, components);
+  const TensorShape b_shape_temp = CreateMatMulIntermediateShape(outer_dims_b, dim_inner, dim_b_outer, components);
   const TensorShape output_shape_temp = TensorShape({batch_size, dim_a_outer, dim_b_outer / components});
 
   MatMulProgram program{has_bias, is_vec4, elements_per_thread};

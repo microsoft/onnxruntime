@@ -4,6 +4,7 @@
 #include "core/providers/webgpu/math/matmul_packed.h"
 #include "core/providers/webgpu/shader_helper.h"
 #include "core/providers/webgpu/webgpu_supported_types.h"
+#include "core/providers/webgpu/webgpu_utils.h"
 
 namespace onnxruntime {
 namespace webgpu {
@@ -15,7 +16,7 @@ void MatMulProgram::MatMulReadWriteFnSource(ShaderHelper& shader,
                                             const ShaderIndicesHelper& batch_dims) const {
   int components = is_vec4_ ? 4 : 1;
   const std::string data_type = "a_element_t";
-  const std::string type_string = MakeTypeString(components, data_type);
+  const std::string type_string = MakeScalarOrVectorType(components, data_type);
 
   // Add the mm_readA function
   shader.AdditionalImplementation()

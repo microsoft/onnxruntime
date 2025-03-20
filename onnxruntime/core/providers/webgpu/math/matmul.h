@@ -18,7 +18,7 @@ class MatMul final : public WebGpuKernel {
   MatMul(const OpKernelInfo& info) : WebGpuKernel{info} {}
 
   Status ComputeInternal(ComputeContext& context) const override;
-  Status PrintGPUTensor(ComputeContext& context, const Tensor& tensor) const;
+
   constexpr static uint32_t MATMUL_PACKED_WORKGROUP_SIZE_X = 8;
   constexpr static uint32_t MATMUL_PACKED_WORKGROUP_SIZE_Y = 8;
   constexpr static uint32_t MATMUL_PACKED_WORKGROUP_SIZE_Z = 1;

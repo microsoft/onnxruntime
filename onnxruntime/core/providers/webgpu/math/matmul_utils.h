@@ -10,7 +10,9 @@
 namespace onnxruntime {
 namespace webgpu {
 
-inline TensorShape BuildTempShapeVector(const TensorShape& shape, const int64_t dim1, const int64_t dim2, const int components) {
+// Helper that creates a new TensorShape for the intermediate result of MatMul
+// The new shape is created by appending the two dimensions dim1 and dim2 / components to the original shape
+inline TensorShape CreateMatMulIntermediateShape(const TensorShape& shape, const int64_t dim1, const int64_t dim2, const int components) {
   TensorShapeVector shape_vec = shape.AsShapeVector();
   shape_vec.push_back(dim1);
   shape_vec.push_back(dim2 / components);
@@ -32,21 +34,6 @@ inline std::string ConvertOutputBatchIndicesToInputBatchIndices(const std::strin
         << "}\n";
   }
   return oss.str();
-}
-
-inline std::string MakeTypeString(int components, std::string_view data_type) {
-  switch (components) {
-    case 1:
-      return std::string{data_type};
-    case 2:
-      return MakeStringWithClassicLocale("vec2<", data_type, ">");
-    case 3:
-      return MakeStringWithClassicLocale("vec3<", data_type, ">");
-    case 4:
-      return MakeStringWithClassicLocale("vec4<", data_type, ">");
-    default:
-      ORT_THROW("Unsupported number of components: ", components);
-  }
 }
 
 }  // namespace webgpu
