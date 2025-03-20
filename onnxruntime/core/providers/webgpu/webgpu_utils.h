@@ -16,5 +16,18 @@ inline int64_t GetMaxComponents(int64_t size) {
   return 1;
 }
 
+inline std::string SumVector(std::string x, int components) {
+  switch (components) {
+    case 1:
+      return x;
+    case 2:
+      return "(" + x + ".x + " + x + ".y" + ")";
+    case 4:
+      return "(" + x + ".x + " + x + ".y + " + x + ".z + " + x + ".w" + ")";
+    default:
+      ORT_THROW("Unsupported number of components: ", components);
+  }
+}
+
 }  // namespace webgpu
 }  // namespace onnxruntime
