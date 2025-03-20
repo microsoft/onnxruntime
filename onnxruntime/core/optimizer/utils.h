@@ -101,6 +101,38 @@ bool IsSupportedDataType(const Node& node, const T& supported_data_types) {
   return true;
 }
 
+// Merge 2-D weights (q, k and v) by concatenating them row by row.
+template <typename T>
+void MergeMatMulWeights(const T* q_weight, const T* k_weight, const T* v_weight,
+                        std::vector<T>& result, int64_t row_hidden_size, int64_t col_hidden_size) {
+  const T* q = q_weight;
+  const T* k = k_weight;
+  const T* v = v_weight;
+  for (int64_t i = 0; i < row_hidden_size; i++, q += col_hidden_size, k += col_hidden_size, v += col_hidden_size) {
+    MergeWeights(q, k, v, result, col_hidden_size);
+  }
+}
+
+// Merge 1-D weights (q, k and v) by concatenating them one by one.
+template <typename T>
+void MergeWeights(const T* q, const T* k, const T* v, std::vector<T>& result, int64_t element_count) {
+  for (int64_t i = 0; i < element_count; i++) {
+    result.push_back(*q);
+    q++;
+  }
+
+  for (int64_t i = 0; i < element_count; i++) {
+    result.push_back(*k);
+    k++;
+  }
+
+  for (int64_t i = 0; i < element_count; i++) {
+    result.push_back(*v);
+    v++;
+  }
+}
+
+
 bool IsOperationDeterministic(const std::string& domain, const std::string& op);
 
 template <typename T>

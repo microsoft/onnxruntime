@@ -11,7 +11,7 @@ using namespace ONNX_NAMESPACE;
 using namespace ::onnxruntime::common;
 namespace onnxruntime {
 
-   NodeArg& MergeQkvWeights(Graph& graph,
+NodeArg& MergeQkvWeights(Graph& graph,
                          int64_t input_dim,     // For example, 3072
                          int64_t num_heads,     // Number of query heads, e.g., 24
                          int64_t head_size,     // Size per head, e.g., 64
@@ -47,22 +47,47 @@ namespace onnxruntime {
   initializer.add_dims(total_dim);
   initializer.set_data_type(data_type);
 
-  // Assume that each tensor provides its data via raw_data.
-  // Each of Q, K, and V has input_dim * (num_heads * head_size) elements.
-  // We now concatenate Q, then K, then V data.
-  std::string merged_raw;
-  merged_raw.reserve(q_tensor->raw_data().size() +
-                     k_tensor->raw_data().size() +
-                     v_tensor->raw_data().size());
-  merged_raw.append(q_tensor->raw_data());
-  merged_raw.append(k_tensor->raw_data());
-  merged_raw.append(v_tensor->raw_data());
-  initializer.set_raw_data(merged_raw);
+  // ----- Use the data() API to retrieve the tensor data -----
+  // Get the number of elements (each element is a uint8_t).
+  size_t q_elements = q_initializer.size();
+  size_t k_elements = k_initializer.size();
+  size_t v_elements = v_initializer.size();
+
+  // Get pointers to the underlying data.
+  const uint8_t* q_data = q_initializer.data<uint8_t>();
+  const uint8_t* k_data = k_initializer.data<uint8_t>();
+  const uint8_t* v_data = v_initializer.data<uint8_t>();
+
+  // Merge the data into one vector.
+  std::vector<uint8_t> merged_data;
+  size_t element_count = q_elements + k_elements + v_elements;
+  [[maybe_unused]] size_t element_count2 = input_dim * total_dim;
+
+  merged_data.reserve(element_count);
+
+  optimizer_utils::MergeMatMulWeights<uint8_t>(q_data, k_data, v_data, merged_data, input_dim, q_dim);
+
+  // Convert the merged data to a string and set it as the raw data for the merged tensor.
+  utils::SetRawDataInTensorProto(initializer, merged_data.data(), gsl::narrow<size_t>(element_count) * sizeof(uint8_t));
+
+
+  // ----- Debug printing to verify the merged data -----
+  std::cout << "Q tensor pointer (via data API): " << static_cast<const void*>(q_data) << std::endl;
+  std::cout << "K tensor pointer (via data API): " << static_cast<const void*>(k_data) << std::endl;
 
   std::cout << "Merged QKV weight tensor:" << std::endl;
   std::cout << "  Data type: " << data_type << std::endl;
   std::cout << "  Shape: (" << input_dim << ", " << total_dim << ")" << std::endl;
   std::cout << graph.ModelPath() << std::endl;
+
+  // Print a snippet of the merged tensor's data.
+  std::cout << "Merged tensor raw_data size: " << initializer.raw_data().size() << std::endl;
+  std::cout << "Merged tensor raw_data (first 64 bytes in hex): ";
+  for (size_t i = 0; i < initializer.raw_data().size() && i < 64; ++i) {
+    std::cout << std::hex << std::setw(2) << std::setfill('0')
+              << static_cast<unsigned>(static_cast<unsigned char>(initializer.raw_data()[i])) << " ";
+  }
+  std::cout << std::dec << std::endl;
 
   return graph_utils::AddInitializer(graph, initializer);
 }
@@ -171,7 +196,7 @@ GraphViewer graph_viewer(graph);
     }
 
     // num of heads * head size
-   int64_t hidden_size = q_proj_tensor->dims(1) * q_proj_tensor->dims(2);
+   int64_t hidden_size = q_proj_tensor->dims(0);
 
    [[maybe_unused]] onnxruntime::NodeArg& abc = MergeQkvWeights(graph, hidden_size, 24, 64, 24, q_proj_tensor, k_proj_tensor, v_proj_tensor, true);
   }
