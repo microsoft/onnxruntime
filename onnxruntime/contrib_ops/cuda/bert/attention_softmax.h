@@ -9,14 +9,14 @@ namespace attention_softmax_cuda {
 
 template <typename T>
 Status ComputeSoftmax(cudaStream_t stream, const int all_sequence_length, const int sequence_length,
-                      const int batch_size, const int num_heads, const T* rel_pos_bias,
+                      const int batch_size, const int num_heads, const T* attn_bias,
                       const bool broadcast_attn_bias_dim_0, const bool broadcast_attn_bias_dim_1,
                       T* input, T* output, bool causal);
 
 template <typename T>
 Status ComputeSoftmaxWithCumSeqLength(
     const T* input,
-    const T* rel_pos_bias,
+    const T* attn_bias,
     const bool broadcast_attn_bias_dim_0,
     const bool broadcast_attn_bias_dim_1,
     const int32_t* cum_seq_length,
@@ -34,7 +34,7 @@ Status ComputeSoftmaxWithMask1D(cudaStream_t stream,
                                 const int num_heads,
                                 const int* mask_index,
                                 const int* mask_start,
-                                const T* rel_pos_bias,
+                                const T* attn_bias,
                                 const bool broadcast_attn_bias_dim_0,
                                 const bool broadcast_attn_bias_dim_1,
                                 const T* input,
@@ -49,7 +49,7 @@ Status ComputeSoftmaxWithRawMask(Stream* ort_stream,
                                  const int num_heads,
                                  const int* attention_mask,
                                  const bool* key_padding_mask,
-                                 const T* rel_pos_bias,
+                                 const T* attn_bias,
                                  const bool broadcast_attn_bias_dim_0,
                                  const bool broadcast_attn_bias_dim_1,
                                  const T* input,

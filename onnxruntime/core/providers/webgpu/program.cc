@@ -289,7 +289,7 @@ ProgramBase::ProgramBase(std::string_view name, ProgramMetadata&& metadata)
 }
 
 ProgramBase& ProgramBase::AddInput(ProgramInput&& input) {
-  inputs_.emplace_back(input);
+  inputs_.emplace_back(std::move(input));
   return *this;
 }
 
@@ -299,22 +299,12 @@ ProgramBase& ProgramBase::AddInputs(std::initializer_list<ProgramInput> inputs) 
 }
 
 ProgramBase& ProgramBase::AddOutput(ProgramOutput&& output) {
-  outputs_.emplace_back(output);
+  outputs_.emplace_back(std::move(output));
   return *this;
 }
 
 ProgramBase& ProgramBase::AddOutputs(std::initializer_list<ProgramOutput> outputs) {
   outputs_.insert(outputs_.end(), outputs.begin(), outputs.end());
-  return *this;
-}
-
-ProgramBase& ProgramBase::AddIndices(const TensorShape& shape) {
-  indices_.emplace_back(shape);
-  return *this;
-}
-
-ProgramBase& ProgramBase::AddIndices(TensorShape&& shape) {
-  indices_.emplace_back(shape);
   return *this;
 }
 

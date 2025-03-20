@@ -58,7 +58,6 @@ void SqueezeOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder, const 
   }
 }
 
-#if defined(COREML_ENABLE_MLPROGRAM)
 void HandleX86ArchUnsqueezeScalarInput(ModelBuilder& model_builder,
                                        const Node& node, const logging::Logger& logger) {
   const auto& input_defs(node.InputDefs());
@@ -74,7 +73,6 @@ void HandleX86ArchUnsqueezeScalarInput(ModelBuilder& model_builder,
   AddOperationOutput(*op, *node.OutputDefs()[0]);
   model_builder.AddOperation(std::move(op));
 }
-#endif
 
 Status SqueezeOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
                                                const Node& node,
@@ -83,7 +81,7 @@ Status SqueezeOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
   auto* coreml_squeeze = layer->mutable_squeeze();
   TensorShapeVector axes;
   GetAxes(model_builder, node, axes);
-#if defined(COREML_ENABLE_MLPROGRAM)
+
   const auto& input_defs(node.InputDefs());
   if (model_builder.CreateMLProgram()) {
     using namespace CoreML::Specification::MILSpec;
@@ -105,9 +103,7 @@ Status SqueezeOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
     }
     AddOperationOutput(*op, *node.OutputDefs()[0]);
     model_builder.AddOperation(std::move(op));
-  } else  // NOLINT
-#endif
-  {
+  } else {
     if (axes.empty()) {
       coreml_squeeze->set_squeezeall(true);
     } else {
