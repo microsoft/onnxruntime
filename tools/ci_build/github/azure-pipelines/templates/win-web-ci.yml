@@ -222,6 +222,17 @@ jobs:
     displayName: 'Run ort-web tests - WebAssembly: proxy'
     condition: and(succeeded(), eq('${{ parameters.BuildConfig }}', 'Release'))
   - script: |
+      powershell "Get-WmiObject Win32_Process -Filter \"name = 'chrome.exe'\" | Format-List CommandLine"
+    displayName: 'Check active Chrome processes (before test)'
+    condition: and(succeeded(), eq(variables['Agent.Diagnostic'], 'true'))
+  - script: |
+      mkdir $(Agent.TempDirectory)\web\test\07
+      dir $(Agent.TempDirectory)\web\test\07
+      npm test --webgpu-ep -- -b=webgpu -e=chrome --user-data-dir=$(Agent.TempDirectory)\web\test\07 --chromium-flags=--enable-logging --chromium-flags=--v=1
+    workingDirectory: '$(Build.SourcesDirectory)\js\web'
+    displayName: 'Run ort-web tests - WebAssembly: proxy'
+    condition: and(succeeded(), eq('${{ parameters.BuildConfig }}', 'Release'))
+  - script: |
       npm run test:e2e -- --browser=Chrome_default
     workingDirectory: '$(Build.SourcesDirectory)\js\web'
     displayName: 'E2E package consuming test'
