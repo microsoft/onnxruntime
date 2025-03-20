@@ -92,6 +92,10 @@ class Initializer final {
     return gsl::make_span(reinterpret_cast<const uint8_t*>(data_->DataRaw()), data_->SizeInBytes());
   }
 
+  gsl::span<uint8_t> MutableDataAsByteSpan() {
+    return gsl::make_span(reinterpret_cast<uint8_t*>(data_->MutableDataRaw()), data_->SizeInBytes());
+  }
+
   gsl::span<const int64_t> dims() const {
     return data_->Shape().GetDims();
   }

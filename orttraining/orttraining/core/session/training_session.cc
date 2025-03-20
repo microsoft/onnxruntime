@@ -981,7 +981,7 @@ static Status UpdateWeightsBeforeSaving(
     }
 
     Initializer initializer{graph, *old_tensor_proto, graph.ModelPath()};
-    const auto chars_span = ReinterpretAsSpan<char>(initializer.DataAsByteSpan());
+    const auto chars_span = ReinterpretAsSpan<char>(initializer.MutableDataAsByteSpan());
     ORT_RETURN_IF_ERROR(CopyTensorDataToByteSpan(
         data_transfer_manager, src_tensor, cpu_alloc_info, chars_span));
 

@@ -32,7 +32,7 @@ bool BaseOpBuilder::IsOpSupported(const GraphViewer& graph_viewer, const Node& n
   if (!HasSupportedInputs(graph_viewer, node, wnn_limits, logger))
     return false;
 
-  if (!HasSupportedOutputs(graph_viewer, node, wnn_limits, logger))
+  if (!HasSupportedOutputs(node, wnn_limits, logger))
     return false;
 
   if (!HasSupportedOpSet(node, logger))
