@@ -32,7 +32,6 @@
         "^test_adagrad",
         "^test_adagrad_multiple",
         "^test_batchnorm_epsilon_training_mode",
-        "^test_batchnorm_example_old",
         "^test_batchnorm_example_training_mode",
         "^test_col2im_pads",  // still one wrong value coming from the backtest example
         "^test_max_int16",
