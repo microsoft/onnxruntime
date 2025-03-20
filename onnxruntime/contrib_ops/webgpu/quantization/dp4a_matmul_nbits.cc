@@ -270,11 +270,20 @@ Status DP4AMatMulNBitsSmallMProgram::GenerateShaderCode(ShaderHelper& shader) co
   shader.AddInput("scales_b", ShaderUsage::UseUniform);
   shader.AddOutput("output", ShaderUsage::UseUniform | ShaderUsage::UseElementTypeAlias);
 
-  constexpr uint32_t tile_size_k_vec = 16;  // tile K in input_b.
-  // tile_size is the number of rows of b each workgroup process.
-  // tile_size_k_vec is the number of columns of b each workgroup process and each element is a vec4<u32>.
-  // In each workgroup, we read a block [tile_size][tile_size_k_vec] of b data and calculate the corresponding intermediate results of a * b. Then store them into inter_results.
-  // Finally, do a reduce sum in inter_results to get the final results.
+  // 1. Each workgroup handles tile_size_k_vec (16) columns of matrix B at a time, iterating over the columns to compute a partial dot product.
+  // 2. Uses vec4 vectorization where each K represents 32 elements of matrix B
+  constexpr uint32_t tile_size_k_vec = 16;
+
+  // 1. Workgroup Responsibility:
+  //    - Processes one row of matrix A
+  //    - Handles tile_size rows of matrix B
+  //
+  // 2. Computation Process:
+  //    - Reads [tile_size][tile_size_k_vec] block of B data at a time
+  //    - Each thread within workgroup computes dot products of 32 A*B elements since each K represents 32 elements of matrix B
+  //    - Stores intermediate results in shared memory (inter_results)
+  //    - Iterates through columns accumulating results in inter_results
+  //    - Performs final reduction sum in inter_results for output
   shader.AdditionalImplementation() << "const tile_size = " << tile_size_ << "u;\n"
                                     << "const tile_size_k_vec = " << tile_size_k_vec << "u;\n"
                                     << "const sub_tile_size = " << WorkgroupSizeX() / tile_size_k_vec << "u;\n";
@@ -337,8 +346,9 @@ Status DP4AMatMulNBitsSmallMProgram::GenerateShaderCode(ShaderHelper& shader) co
           inter_results[row_offset + local_row][local_col] += SDP8AI(own_a, own_b, own_a1, own_b1, own_scale_a * own_scale_b);
         }
       }
+      workgroupBarrier();
     }
-    workgroupBarrier();
+
     if (local_idx < tile_size) {
       // Do reduce sum to get final output.
       var output_value = output_element_t(0);
