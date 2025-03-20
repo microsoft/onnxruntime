@@ -87,22 +87,11 @@ The tables below provide an overview of the provider options and environment var
 
 For detailed instructions on how to configure the inference session for BF16 and INT8 model on AMD Ryzen AI processors, refer to the [Ryzen AI Software documentation](https://ryzenai.docs.amd.com/en/latest/modelrun.html#)
 
-| **Runtime Variable**       | **Details**                                        |
-|----------------------------|----------------------------------------------------|
-| config_file                | Configuration file to pass certain compile-specific options. Required for BF16 models.       | 
-| xclbin                     | NPU binary file to specify NPU configuration. Required for INT8 models.                      | 
-| cache_dir                  | The path and name of the cache directory. Optional.                                          |
-| cache_key                  | The subfolder in the cache directory where the compiled model is stored. Optional.           |
-| encryptionKey              | 256-bit key used for generating an encrypted compiled model in the cache folder. Optional.   |
-
-
-| **Environment Variable**   | **Details**                                        |
-|----------------------------|----------------------------------------------------|
-| XLNX_ENABLE_CACHE          | Whether to use cache, if it is 0, it will ignore the cached executable and the model will be recompiled.|
-| XLNX_VART_FIRMWARE         | Legacy method for specifying the NPU binary file. Replaced by the xclbin provider option. Required for INT8 models. |
-| XLNX_TARGET_NAME           | DPU target name. On Adaptable SoCs, if not set, the DPU target name will be read automatically; On Windows, default value is "AMD_AIE2_Nx4_Overlay" which is the DPU target name of the IPU.                                |
-
-
+| **Provider Option**        | **Default Value**              | **Details**                              |
+|----------------------------|--------------------------------|------------------------------------------|
+| cache_dir                  | Linux: "/tmp/{user}/vaip/.cache/" <br/>   Windows: "C:\\temp\\{user}\\vaip\\.cache"        | optional, cache directory                |
+| cache_key                  | {onnx_model_md5}               | optional, cache key, used to distinguish between different models.                      |
+| log_level                  | "error"                        | Valid values are `info`, `warning`, `error` and `fatal` |
 
 ## Ryzen AI API Examples
 
