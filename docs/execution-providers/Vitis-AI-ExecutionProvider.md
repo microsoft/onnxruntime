@@ -93,6 +93,9 @@ For detailed instructions on how to configure the inference session for BF16 and
 | cache_key                  | {onnx_model_md5}               | optional, cache key, used to distinguish between different models.                      |
 | log_level                  | "error"                        | Valid values are `info`, `warning`, `error` and `fatal` |
 
+The final cache directory is `{cache_dir}/{cache_key}`.
+Please refer to the following C++ example for usage.
+
 ## Ryzen AI API Examples
 
 To leverage the C++ APIs, use the following example as a reference:
@@ -108,9 +111,10 @@ Ort::Env env(ORT_LOGGING_LEVEL_WARNING, "resnet50_pt");
 auto session_options = Ort::SessionOptions();
 
 auto options = std::unorderd_map<std::string,std::string>({});
-options["xclbin"]   = "/path/to/AMD_AIE2P_Nx4_Overlay.xclbin"; // Required. Specify full path to the appropriate NPU binary file.
-options["cache_dir"] = "/tmp/my_cache"; // Optional
-options["cache_key"] = "my_model_subfolder"; // Optional
+// optional, eg: cache path : /tmp/my_cache/abcdefg // Replace abcdefg with your model name, eg. onnx_model_md5
+options["cache_dir"] = "/tmp/my_cache";
+options["cache_key"] = "abcdefg"; // Replace abcdefg with your model name, eg. onnx_model_md5
+options["log_level"] = "info";
 
 // Create an inference session using the Vitis AI execution provider
 session_options.AppendExecutionProvider("VitisAI", options);
@@ -145,17 +149,10 @@ import onnxruntime
 # ...
 
 # Create an inference session using the Vitis AI execution provider
-providers = ['VitisAIExecutionProvider']
-provider_options = [{
-    'xclbin': '/path/to/AMD_AIE2P_Nx4_Overlay.xclbin', # Required. Specify full path to the appropriate NPU binary file.
-    'cache_dir': '/tmp/my_cache', # Optional
-    'cache_key': 'my_model_subfolder', # Optional
-}]
-session = ort.InferenceSession(
-    "resnet50.onnx",  # Replace resnet50.onnx with your model name
-    providers=providers,
-    provider_options=provider_options
-)
+session = onnxruntime.InferenceSession(
+    '[model_file].onnx',
+    providers=["VitisAIExecutionProvider"],
+    provider_options=[{"log_level": "info"}])
 
 input_shape = session.get_inputs()[0].shape
 input_name = session.get_inputs()[0].name
