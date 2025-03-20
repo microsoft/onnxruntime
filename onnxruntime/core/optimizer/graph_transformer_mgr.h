@@ -30,6 +30,9 @@ class GraphTransformerManager {
   // Apply all transformers registered for the given level on the given graph
   common::Status ApplyTransformers(Graph& graph, TransformerLevel level, const logging::Logger& logger) const;
 
+  // Get status if the graph is modified while applying the registered transformers
+  bool IsGraphModified(void) const;
+
  private:
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(GraphTransformerManager);
 
@@ -38,5 +41,6 @@ class GraphTransformerManager {
 
   InlinedHashMap<TransformerLevel, InlinedVector<std::unique_ptr<GraphTransformer>>> level_to_transformer_map_;
   InlinedHashMap<std::string, GraphTransformer*> transformers_info_;
+  mutable bool _is_graph_modified = false;
 };
 }  // namespace onnxruntime

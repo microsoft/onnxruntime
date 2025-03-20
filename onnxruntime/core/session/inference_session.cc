@@ -44,7 +44,6 @@
 #include "core/optimizer/graph_transformer.h"
 #include "core/optimizer/graph_optimizer_registry.h"
 #include "core/optimizer/layout_transformation/layout_transformation.h"
-#include "core/optimizer/fuse_initializers_transformer.h"
 #include "core/optimizer/insert_cast_transformer.h"
 #include "core/optimizer/qdq_transformer/ensure_unique_dq_for_node_unit.h"
 #include "core/optimizer/rule_based_graph_transformer.h"
@@ -1392,12 +1391,10 @@ common::Status InferenceSession::TransformGraph(onnxruntime::Graph& graph, bool 
                                                        session_options_.config_options, *session_logger_,
                                                        mode, debug_graph_fn));
 
-  // apply Level2 and higher transformers.
+  // apply Level2 and Level3 transformers.
   // we do not run Level 1 again as those transformers assume partitioning will run later to do node assignment.
-  for (int i = static_cast<int>(TransformerLevel::Level2); i <= static_cast<int>(TransformerLevel::MaxLevel); i++) {
-    ORT_RETURN_IF_ERROR_SESSIONID_(
-        graph_transformer_mgr_.ApplyTransformers(graph, static_cast<TransformerLevel>(i), *session_logger_));
-  }
+  ORT_RETURN_IF_ERROR_SESSIONID_(graph_transformer_mgr_.ApplyTransformers(graph, TransformerLevel::Level2, *session_logger_));
+  ORT_RETURN_IF_ERROR_SESSIONID_(graph_transformer_mgr_.ApplyTransformers(graph, TransformerLevel::Level3, *session_logger_));
 
   // Insert cast node/s.
   {
@@ -1426,21 +1423,16 @@ common::Status InferenceSession::TransformGraph(onnxruntime::Graph& graph, bool 
     ORT_RETURN_IF_ERROR_SESSIONID_(apply_transformer_once(copy_transformer, *session_logger_, graph));
   }
 
-  // Fuse fp16 initializers fp32 nodes to avoid cast at every inference and Re-Run the Level1+ optimizations.
+  // Apply Level4 transformers and Re-Run the Level1+ optimizations.
   // The idea behind re-runing Level1, Partitioning, Level2 and Level3 graph transforms is that, after the fusion,
   // the nodes are now in a format which might be supported by other graph transforms which were skipped before.
   // Hence, some of the transforms not applied before is now valid and can be applied to create a more optimal
   // graph for execution.
   {
-    FuseInitializersTransformer fuse_initializers_transformer_fp16_to_fp32(
-                                  "FuseFP16InitializerToFP32NodeTransformer",
-                                  DataTypeImpl::GetTensorType<MLFloat16>(),
-                                  DataTypeImpl::GetTensorType<float>(),
-                                  GetIntraOpThreadPoolToUse());
-    ORT_RETURN_IF_ERROR_SESSIONID_(apply_transformer_once(fuse_initializers_transformer_fp16_to_fp32, *session_logger_, graph));
+    ORT_RETURN_IF_ERROR_SESSIONID_(graph_transformer_mgr_.ApplyTransformers(graph, TransformerLevel::Level4, *session_logger_));
 
     // Re-Run Level1+ optimizations if graph is modified
-    if (is_graph_modified) {
+    if (graph_transformer_mgr_.IsGraphModified()) {
 
       // apply execution provider independent Level1 graph optimizations after fusion.
       ORT_RETURN_IF_ERROR_SESSIONID_(graph_transformer_mgr_.ApplyTransformers(graph, TransformerLevel::Level1, *session_logger_));
@@ -1450,12 +1442,10 @@ common::Status InferenceSession::TransformGraph(onnxruntime::Graph& graph, bool 
                                                            session_options_.config_options, *session_logger_,
                                                            mode, debug_graph_fn));
 
-      // apply Level2 and higher transformers after fusion.
+      // apply Level2 and Level3 transformers after fusion.
       // we do not run Level 1 again as those transformers assume partitioning will run later to do node assignment.
-      for (int i = static_cast<int>(TransformerLevel::Level2); i <= static_cast<int>(TransformerLevel::MaxLevel); i++) {
-        ORT_RETURN_IF_ERROR_SESSIONID_(
-            graph_transformer_mgr_.ApplyTransformers(graph, static_cast<TransformerLevel>(i), *session_logger_));
-      }
+      ORT_RETURN_IF_ERROR_SESSIONID_(graph_transformer_mgr_.ApplyTransformers(graph, TransformerLevel::Level2, *session_logger_));
+      ORT_RETURN_IF_ERROR_SESSIONID_(graph_transformer_mgr_.ApplyTransformers(graph, TransformerLevel::Level3, *session_logger_));
     }
   }
 

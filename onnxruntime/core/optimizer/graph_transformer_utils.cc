@@ -60,6 +60,7 @@
 #include "core/optimizer/not_where_fusion.h"
 #include "core/optimizer/pad_fusion.h"
 #include "core/optimizer/pre_shape_node_elimination.h"
+#include "core/optimizer/fuse_initializers_transformer.h"
 #ifdef MLAS_TARGET_AMD64_IX86
 #include "core/optimizer/qdq_transformer/avx2_weight_s8_to_u8.h"
 #endif
@@ -145,6 +146,9 @@ InlinedVector<std::unique_ptr<RewriteRule>> GenerateRewriteRules(
       break;
 
     case TransformerLevel::Level3:
+      break;
+
+    case TransformerLevel::Level4:
       break;
 
     default:
@@ -421,6 +425,17 @@ InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
 
     } break;
 
+    case TransformerLevel::Level4: {
+
+        auto fuse_initializers_transformer_fp16_to_fp32 = std::make_unique<FuseInitializersTransformer>(
+                                                          "FuseFp16InitializerToFp32NodeTransformer",
+                                                          DataTypeImpl::GetTensorType<MLFloat16>(),
+                                                          DataTypeImpl::GetTensorType<float>(),
+                                                          intra_op_thread_pool);
+        transformers.emplace_back(std::move(fuse_initializers_transformer_fp16_to_fp32));
+
+    } break;
+
     default:
       ORT_THROW("Unsupported optimization level: ", static_cast<int>(level));
   }
@@ -503,6 +518,10 @@ InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformersForMinimalB
 #endif
       }
     } break;
+
+    case TransformerLevel::Level4:
+      break;
+
     default:
       ORT_THROW("Unsupported optimization level: ", static_cast<int>(level));
   }
