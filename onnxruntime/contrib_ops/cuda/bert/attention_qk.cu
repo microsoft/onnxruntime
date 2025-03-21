@@ -29,6 +29,10 @@ Status CopyQK(cudaStream_t stream,
               const int qk_size,
               const T* input,
               QK* output) {
+  if constexpr (std::is_same<T, QK>::value) {
+    cudaMemcpyAsync(output, input, qk_size * sizeof(QK), cudaMemcpyDeviceToDevice, stream);
+    return Status::OK();
+  }
   const bool half2float = std::is_same<T, half>::value && std::is_same<QK, float>::value;
   const bool float2half = std::is_same<T, float>::value && std::is_same<QK, half>::value;
   ORT_ENFORCE(half2float || float2half);
@@ -40,6 +44,11 @@ Status CopyQK(cudaStream_t stream,
   return CUDA_CALL(cudaGetLastError());
 }
 
+template Status CopyQK<float, float>(cudaStream_t stream,
+                                     const int qk_size,
+                                     const float* input,
+                                     float* output);
+
 template Status CopyQK<float, half>(cudaStream_t stream,
                                     const int qk_size,
                                     const float* input,
@@ -49,6 +58,11 @@ template Status CopyQK<half, float>(cudaStream_t stream,
                                     const int qk_size,
                                     const half* input,
                                     float* output);
+
+template Status CopyQK<half, half>(cudaStream_t stream,
+                                   const int qk_size,
+                                   const half* input,
+                                   half* output);
 
 }  // namespace cuda
 }  // namespace contrib
