@@ -259,6 +259,16 @@ jobs:
       workingDirectory: '$(Build.SourcesDirectory)\js\web'
       displayName: 'Run ort-web tests - WebGPU EP'
       continueOnError: true # we allow WebGPU EP tests to fail for now
+    - script: |
+        dir .\dist
+      workingDirectory: '$(Build.SourcesDirectory)\js\web'
+      displayName: 'Run ort-web tests - WebGPU EP (2)'
+      continueOnError: true # we allow WebGPU EP tests to fail for now
+    - script: |
+        npm test --webgpu-ep -- model test_abs -b=webgpu --verbose
+      workingDirectory: '$(Build.SourcesDirectory)\js\web'
+      displayName: 'Run ort-web tests - WebGPU EP (3)'
+      continueOnError: true # we allow WebGPU EP tests to fail for now
 
   # === End of experimental WebGPU EP tests ===
 
