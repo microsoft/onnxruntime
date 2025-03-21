@@ -11,8 +11,8 @@
 namespace onnxruntime {
 namespace webgpu {
 
-template <bool is_channels_last>
-TensorShape Conv<is_channels_last>::ComputeOutputShape(const TensorShape& input_shape, const TensorShape& weight_shape, std::vector<uint32_t> pads, std::vector<uint32_t> strides, std::vector<uint32_t> dilations) const {
+template <bool is_channels_last, bool is_fused>
+TensorShape Conv<is_channels_last, false>::ComputeOutputShape(const TensorShape& input_shape, const TensorShape& weight_shape, std::vector<uint32_t> pads, std::vector<uint32_t> strides, std::vector<uint32_t> dilations) const {
   auto channel_index = is_channels_last ? input_shape.NumDimensions() - 1 : 1;
   auto batch_size = input_shape[0];
   auto output_channels = weight_shape[0];
@@ -116,7 +116,7 @@ Status Conv<is_channels_last>::ComputeInternal(ComputeContext& context) const {
     auto components = static_cast<int>(is_channels_last && output_channels_per_group >= 4 ? GetMaxComponents(output_channels) : 1);
     auto output_size = output_shape.Size() / components;
     GroupedConvProgram program(conv_attrs_, has_bias, is_channels_last);
-    program.AddInputs({{inputs[0], ProgramTensorMetadataDependency::TypeAndRank}, {inputs[1], ProgramTensorMetadataDependency::TypeAndRank, kernel_shape, components}})
+    program.AddInputs({{inputs[0], ProgramTensorMetadataDependency::TypeAndRank}, {inputs[1], ProgramTensorMetadataDependency::TypeAndRank, components}})
         .AddOutput({output, ProgramTensorMetadataDependency::TypeAndRank, components})
         .AddUniformVariables({{static_cast<uint32_t>(output_size)}, {dilations}, {strides}, {updated_pads}, {static_cast<uint32_t>(output_channels_per_group)}, {static_cast<uint32_t>(components)}})
         .SetDispatchGroupSize((output_size + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE);
@@ -139,9 +139,9 @@ Status Conv<is_channels_last>::ComputeInternal(ComputeContext& context) const {
     Tensor transposed_kernel;
     inputs[0] = input;
     const auto batch = output_shape[0];
-    TensorShape input_reshape(input_shape);
-    TensorShape kernel_reshape(kernel_shape);
-    TensorShape output_reshape(output_shape);
+    TensorShape input_reshape;
+    TensorShape kernel_reshape;
+    TensorShape output_reshape;
     if (is_channels_last) {
       // Transpose weights
 
