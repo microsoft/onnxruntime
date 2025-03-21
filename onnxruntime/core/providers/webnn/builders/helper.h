@@ -199,7 +199,9 @@ std::unordered_set<const Node*> GetSupportedNodes(const GraphViewer& graph_viewe
 
 // Some ONNX ops are supported by decomposed WebNN ops.
 const std::map<std::string_view, std::vector<std::string_view>> decomposed_op_map = {
-    {"GroupQueryAttention", {"add", "cast", "concat", "constant", "cumulativeSum", "div", "expand", "lesser", "matmul", "reshape", "scatterND", "softmax", "transpose", "where"}},
+    {"GroupQueryAttention",
+     {"add", "cast", "concat", "constant", "cumulativeSum", "div", "expand", "lesser", "matmul", "reshape", "scatterND",
+      "softmax", "transpose", "where"}},
     {"LRN", {"add", "averagePool2d", "div", "mul", "pad", "pow", "transpose"}},
     {"MatMulNBits", {"add", "dequantizeLinear", "matmul", "reshape", "transpose"}},
     {"RotaryEmbedding", {"add", "concat", "gather", "mul", "reshape", "split"}},
@@ -362,9 +364,9 @@ const std::map<ONNX_NAMESPACE::TensorProto_DataType, std::string_view> onnx_to_w
     {ONNX_NAMESPACE::TensorProto_DataType_UINT64, "uint64"},
 };
 
-bool AreInputDataTypesSame(const std::string_view op_type,
-                           gsl::span<const int32_t> input_types,
-                           const logging::Logger& logger);
+bool AreDataTypesSame(const std::string_view op_type,
+                      gsl::span<const int32_t> input_types,
+                      const logging::Logger& logger);
 bool IsSupportedDataType(const int32_t onnx_data_type, const emscripten::val& webnn_supported_data_types);
 bool IsDataTypeSupportedByOp(const std::string_view onnx_op_type,
                              const int32_t onnx_data_type,
