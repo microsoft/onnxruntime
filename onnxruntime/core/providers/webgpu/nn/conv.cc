@@ -63,10 +63,10 @@ Status Conv<is_channels_last>::ComputeInternal(ComputeContext& context) const {
 
   if (conv_attrs_.group > 1) {
     std::vector<uint32_t> pads = {static_cast<uint32_t>(conv_attrs_.pads[0]), static_cast<uint32_t>(conv_attrs_.pads[1])};
-    std::vector<uint32_t> strides(conv_attrs_.strides.size());
+    std::vector<uint32_t> strides = {static_cast<uint32_t>(conv_attrs_.strides[0]), static_cast<uint32_t>(conv_attrs_.strides[1])};
     std::vector<uint32_t> dilations(conv_attrs_.dilations.size());
     auto transform_dim = [](int64_t dim) { return static_cast<int32_t>(dim); };
-    std::transform(conv_attrs_.strides.begin(), conv_attrs_.strides.end(), std::back_inserter(strides), transform_dim);
+    // std::transform(conv_attrs_.strides.begin(), conv_attrs_.strides.end(), std::back_inserter(strides), transform_dim);
     std::transform(conv_attrs_.dilations.begin(), conv_attrs_.dilations.end(), std::back_inserter(dilations), transform_dim);
     std::vector<const Tensor*> inputs(context.InputCount());
     inputs[0] = input;
@@ -90,7 +90,7 @@ Status Conv<is_channels_last>::ComputeInternal(ComputeContext& context) const {
     auto output_size = output_shape.Size() / components;
     auto* output = context.Output(0, output_shape);
     GroupedConvProgram program(conv_attrs_, has_bias, is_channels_last);
-    program.AddInputs({{inputs[0], ProgramTensorMetadataDependency::TypeAndRank, components}, {inputs[1], ProgramTensorMetadataDependency::TypeAndRank, components}})
+    program.AddInputs({{inputs[1], ProgramTensorMetadataDependency::TypeAndRank, components}, {inputs[0], ProgramTensorMetadataDependency::TypeAndRank, components}})
         .AddOutput({output, ProgramTensorMetadataDependency::TypeAndRank, components})
         .AddUniformVariables({{static_cast<uint32_t>(output_size)}, {dilations}, {strides}, {pads}, {static_cast<uint32_t>(output_channels_per_group)}, {static_cast<uint32_t>(components)}})
         .SetDispatchGroupSize((output_size + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE);

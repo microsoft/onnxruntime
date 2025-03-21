@@ -63,8 +63,8 @@ std::string CanculateResult(const ShaderVariableHelper& x, const ShaderVariableH
   return ss.str();
 }
 Status GroupedConvProgram::GenerateShaderCode(ShaderHelper& shader) const {
-  const auto& x = shader.AddInput("x", ShaderUsage::UseUniform | ShaderUsage::UseValueTypeAlias);
-  const auto& w = shader.AddInput("w", ShaderUsage::UseUniform | ShaderUsage::UseValueTypeAlias);
+  const auto& w = shader.AddInput("w", ShaderUsage::UseUniform | ShaderUsage::UseValueTypeAlias | ShaderUsage::UseIndicesTypeAlias | ShaderUsage::UseShapeAndStride);
+  const auto& x = shader.AddInput("x", ShaderUsage::UseUniform | ShaderUsage::UseValueTypeAlias | ShaderUsage::UseIndicesTypeAlias | ShaderUsage::UseShapeAndStride);
   const auto& output = shader.AddOutput("output", ShaderUsage::UseUniform | ShaderUsage::UseIndicesTypeAlias | ShaderUsage::UseValueTypeAlias);
   shader.MainFunctionBody() << shader.GuardAgainstOutOfBoundsWorkgroupSizes("uniforms.output_size")
                             << "let output_indices = " << output.OffsetToIndices("global_idx") << ";\n"
