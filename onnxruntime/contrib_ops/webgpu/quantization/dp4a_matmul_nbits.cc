@@ -12,21 +12,12 @@ Status DP4AMatMulQuantizeProgram::GenerateShaderCode(ShaderHelper& shader) const
   shader.AddInput("input_a", ShaderUsage::UseUniform | ShaderUsage::UseIndicesTypeAlias | ShaderUsage::UseValueTypeAlias | ShaderUsage::UseElementTypeAlias);
   shader.AddOutput("output", ShaderUsage::UseUniform);
   shader.AddOutput("scales", ShaderUsage::UseUniform);
-  shader.AdditionalImplementation() << R"ADDNL_FN(
-        fn readInput(offset: u32) -> input_a_value_t
-        {
-            if (offset > uniforms.input_size) {
-                return input_a_value_t(0);
-            }
-            return input_a[offset];
-        }
-    )ADDNL_FN";
   shader.MainFunctionBody() << R"MAIN_FN(
         var local_a : array<vec4<input_a_element_t>, 32>;
         var max_value:vec4<input_a_element_t> = vec4<input_a_element_t>(0);
         for (var idx:u32=0;idx<32;idx+=1)
         {
-            local_a[idx] = readInput(workgroup_idx*32 + idx);
+            local_a[idx] = input_a[workgroup_idx*32 + idx];
             max_value = max(max_value, abs(local_a[idx]));
         }
         var scale = max(max_value.x, max_value.y);
@@ -147,8 +138,8 @@ Status DP4AMatMulNBitsProgram::GenerateShaderCode(ShaderHelper& shader) const {
   shader.MainFunctionBody() << R"MAIN_FN(
         // During the load phase we use all 256 threads to load 64 rows of A/B.
         // For each row we load tile_size_k_vec (2) vectorized elements, which are 32 elements of K.
-        let a_global_base = workgroup_id.x * tile_size;
-        let b_global_base = workgroup_id.y * tile_size;
+        let a_global_base = u32(workgroup_idx / uniforms.num_N_tile) * tile_size;
+        let b_global_base = (workgroup_idx % uniforms.num_N_tile) * tile_size;
         let load_AorB = u32(local_idx/128);
         let load_row = u32((local_idx%128)/2);
         let load_col = u32(local_idx%2);
@@ -279,17 +270,16 @@ Status ApplyDP4AMatrixMatMulNBits(const Tensor* a, const Tensor* b, const Tensor
   Tensor a_scale = context.CreateGPUTensor(a->DataType(), a_scales_dims);
   quantize_program.AddInputs({{a, ProgramTensorMetadataDependency::TypeAndRank, static_cast<int>(kVec4Components)}})
       .AddOutputs({{&a_quant, ProgramTensorMetadataDependency::Rank, a_quant.Shape(), 1},
-                   {&a_scale, ProgramTensorMetadataDependency::Rank, a_scale.Shape(), 1}})
-      .AddUniformVariable({static_cast<uint32_t>(M * K / kVec4Components)});
+                   {&a_scale, ProgramTensorMetadataDependency::Rank, a_scale.Shape(), 1}});
   ORT_RETURN_IF_ERROR(context.RunProgram(quantize_program));
 
   constexpr uint32_t kTileSize = 64;
   TensorShape reshaped_y_shape{1, M, N / kVec4Components};
+  uint32_t num_M_tile = (M + kTileSize - 1) / kTileSize;
+  uint32_t num_N_tile = (N + kTileSize - 1) / kTileSize;
   DP4AMatMulNBitsProgram mul_program{block_size};
   mul_program.SetWorkgroupSize(256);
-  mul_program.SetDispatchGroupSize(
-      (M + kTileSize - 1) / kTileSize,
-      (N + kTileSize - 1) / kTileSize, 1);
+  mul_program.SetDispatchGroupSize(num_M_tile * num_N_tile);
   mul_program.AddInputs({{&a_quant, ProgramTensorMetadataDependency::TypeAndRank, static_cast<int>(kVec4Components)},
                          {&a_scale, ProgramTensorMetadataDependency::TypeAndRank, 1},
                          {b, ProgramTensorMetadataDependency::TypeAndRank, static_cast<int>(kVec2Components * kU32Components)},
@@ -298,7 +288,8 @@ Status ApplyDP4AMatrixMatMulNBits(const Tensor* a, const Tensor* b, const Tensor
                             {static_cast<uint32_t>(N)},
                             {static_cast<uint32_t>(K)},
                             {static_cast<uint32_t>(K / 8)},
-                            {static_cast<uint32_t>(K / 16)}})
+                            {static_cast<uint32_t>(K / 16)},
+                            {num_N_tile}})
       .AddOutput({y, ProgramTensorMetadataDependency::TypeAndRank, reshaped_y_shape, static_cast<int>(kVec4Components)})
       .CacheHint("Block" + std::to_string(block_size));
   return context.RunProgram(mul_program);
@@ -317,7 +308,7 @@ bool CanApplyDP4AMatrixMatMulNBits(onnxruntime::webgpu::ComputeContext& context,
   bool use_dp4a = context.Device().HasFeature(wgpu::FeatureName::Subgroups) &&
                   context.AdapterInfo().backendType != wgpu::BackendType::Metal;
   return (accuracy_level == 4 && block_size % 32 == 0 &&
-          batch_count == 1 && components_k == 4 && K % 64 == 0 && N % 16 == 0 &&
+          batch_count == 1 && components_k == 4 && K % 128 == 0 && N % 16 == 0 &&
           !has_zero_points && use_dp4a);
 }
 
