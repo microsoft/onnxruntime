@@ -37,9 +37,10 @@ class MlasRoPETest : public MlasTestBase {
       input[i] = static_cast<T>(1.f * i + 1);
     }
     for (size_t i = 0; i < table_len; ++i) {
-      float theta = (float)i / 1000 * Pi;
-      sin_data[i] = (T)std::sin(theta);
-      cos_data[i] = (T)std::cos(theta);
+      // https://arxiv.org/pdf/2104.09864 section 3.4.3
+      float theta_i = static_cast<float>(pow(10000, -2.0f * i / rotary_emb_dim));
+      sin_data[i] = static_cast<T>(std::sin(theta_i));
+      cos_data[i] = static_cast<T>(std::cos(theta_i));
     }
 
     // Call the function
