@@ -2,7 +2,6 @@
 // Copyright (c) Intel Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "core/common/safeint.h"
 #include "core/optimizer/initializer.h"
 #include "core/providers/common.h"
 #include "core/providers/shared/utils/utils.h"
@@ -75,8 +74,8 @@ Status SplitOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
   // Check that the splits evenly divide.
   if (split_count > 0 && splits.empty() && input_shape[axis] % split_count != 0) {
     // Divide inputs into variable size outputs:
-    splits.insert(splits.end(), split_count - 1, narrow<uint32_t>(input_shape[axis]) / split_count);
-    splits.insert(splits.end(), narrow<uint32_t>(input_shape[axis]) % split_count);
+    splits.insert(splits.end(), split_count - 1, SafeInt<uint32_t>(input_shape[axis]) / split_count);
+    splits.insert(splits.end(), SafeInt<uint32_t>(input_shape[axis]) % split_count);
   }
 
   if (splits.empty()) {

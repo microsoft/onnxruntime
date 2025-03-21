@@ -9,7 +9,6 @@
 #include "helper.h"
 #include "op_builder_factory.h"
 
-#include "core/common/safeint.h"
 #include "core/framework/tensorprotoutils.h"
 #include "core/providers/common.h"
 #include "core/providers/shared/utils/utils.h"

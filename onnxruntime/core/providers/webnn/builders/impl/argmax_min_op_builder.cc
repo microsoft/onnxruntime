@@ -54,9 +54,9 @@ Status ArgMaxMinOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
 
   const auto& op_type = node.OpType();
   if (op_type == "ArgMax") {
-    output = model_builder.GetBuilder().call<emscripten::val>("argMax", input, narrow<uint32_t>(axis), options);
+    output = model_builder.GetBuilder().call<emscripten::val>("argMax", input, SafeInt<uint32_t>(axis).Ref(), options);
   } else if (op_type == "ArgMin") {
-    output = model_builder.GetBuilder().call<emscripten::val>("argMin", input, narrow<uint32_t>(axis), options);
+    output = model_builder.GetBuilder().call<emscripten::val>("argMin", input, SafeInt<uint32_t>(axis).Ref(), options);
   } else {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "ArgMaxMinOpBuilder, unknown op: ", op_type);
   }
