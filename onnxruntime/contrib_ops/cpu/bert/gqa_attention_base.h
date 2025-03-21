@@ -4,10 +4,11 @@
 #pragma once
 
 #include "contrib_ops/cpu/bert/attention_base.h"
+#include "contrib_ops/cpu/bert/attention_common.h"
 #include "contrib_ops/cpu/bert/attention_helper.h"
+#include "contrib_ops/cpu/bert/attention_parameters.h"
 
 #include "core/common/common.h"
-#include "contrib_ops/cpu/bert/attention_common.h"
 #include "core/common/safeint.h"
 #include "core/framework/op_kernel.h"
 
@@ -269,7 +270,8 @@ class GQAAttentionBase {
         for (size_t seq = 0; seq < sequence_length; seq++) {
           size_t seq_causal_length = past_seqlen + seq + 1;
 
-          const bool should_apply_local_window = local_window_size_ > 0 &&
+          // local_window_size does not include the current query token, while window_size includes it.
+          const bool should_apply_local_window = local_window_size_ >= 0 &&
                                                  seq_causal_length > static_cast<size_t>(local_window_size_) + 1;
 
           const size_t start_offset = should_apply_local_window ? seq_causal_length - local_window_size_ - 1 : 0;

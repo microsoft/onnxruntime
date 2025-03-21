@@ -1066,6 +1066,8 @@ def generate_vcpkg_install_options(build_dir, args):
     if args.disable_exceptions:
         folder_name_parts.append("noexception")
     if len(folder_name_parts) == 0:
+        # It's hard to tell whether we must use a custom triplet or not. The official triplets work fine for most common situations. However, if a Windows build has set msvc toolset version via args.msvc_toolset then we need to, because we need to ensure all the source code are compiled by the same MSVC toolset version otherwise we will hit link errors like "error LNK2019: unresolved external symbol __std_mismatch_4 referenced in function ..."
+        # So, to be safe we always use a custom triplet.
         folder_name = "default"
     else:
         folder_name = "_".join(folder_name_parts)
@@ -1259,7 +1261,6 @@ def generate_build_tree(
         )
 
     if args.use_vcpkg:
-        # TODO: set VCPKG_PLATFORM_TOOLSET_VERSION
         # Setup CMake flags for vcpkg
 
         # Find VCPKG's toolchain cmake file
@@ -1339,7 +1340,7 @@ def generate_build_tree(
         elif args.android:
             generate_android_triplets(build_dir, args.android_cpp_shared, args.android_api)
         elif is_windows():
-            generate_windows_triplets(build_dir)
+            generate_windows_triplets(build_dir, args.msvc_toolset)
         elif is_macOS():
             osx_target = args.apple_deploy_target
             if args.apple_deploy_target is None:
@@ -1380,7 +1381,7 @@ def generate_build_tree(
             target_arch = platform.machine()
             if args.arm64:
                 target_arch = "ARM64"
-            elif args.arm64:
+            elif args.arm64ec:
                 target_arch = "ARM64EC"
             cpu_arch = platform.architecture()[0]
             if target_arch == "AMD64":
@@ -2646,6 +2647,7 @@ def build_nuget_package(
     use_dnnl,
     use_winml,
     use_qnn,
+    use_dml,
     enable_training_apis,
     msbuild_extra_options,
 ):
@@ -2688,6 +2690,8 @@ def build_nuget_package(
         package_name = "/p:OrtPackageId=Microsoft.ML.OnnxRuntime.DNNL"
     elif use_cuda:
         package_name = "/p:OrtPackageId=Microsoft.ML.OnnxRuntime.Gpu"
+    elif use_dml:
+        package_name = "/p:OrtPackageId=Microsoft.ML.OnnxRuntime.DirectML"
     elif use_rocm:
         package_name = "/p:OrtPackageId=Microsoft.ML.OnnxRuntime.ROCm"
     elif use_qnn:
@@ -3301,6 +3305,7 @@ def main():
                 args.use_dnnl,
                 args.use_winml,
                 args.use_qnn,
+                args.use_dml,
                 args.enable_training_apis,
                 normalize_arg_list(args.msbuild_extra_options),
             )

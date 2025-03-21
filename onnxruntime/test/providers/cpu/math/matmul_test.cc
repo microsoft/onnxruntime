@@ -329,7 +329,7 @@ TEST(MathOpTest, MatMulFloatType) {
   RunMatMulTest<float>(7, false, true);
 }
 
-#if defined(USE_CUDA) || defined(USE_ROCM) || defined(COREML_ENABLE_MLPROGRAM) || defined(USE_XNNPACK)
+#if defined(USE_CUDA) || defined(USE_ROCM) || defined(USE_COREML) || defined(USE_XNNPACK)
 TEST(MathOpTest, MatMulFloat16) {
 #ifdef USE_CUDA
   int min_cuda_architecture = 530;
@@ -409,7 +409,7 @@ TEST(MathOpTest, MatMulZeroKInt32Type) {
   RunMatMulZeroKTest<int32_t>();
 }
 
-#if defined(USE_CUDA) || defined(USE_ROCM) || defined(COREML_ENABLE_MLPROGRAM) || defined(USE_XNNPACK)
+#if defined(USE_CUDA) || defined(USE_ROCM) || defined(USE_COREML) || defined(USE_XNNPACK)
 TEST(MathOpTest, MatMul_Float16) {
 #ifdef USE_CUDA
   int min_cuda_architecture = 530;

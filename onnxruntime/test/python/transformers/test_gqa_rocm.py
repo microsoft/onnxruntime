@@ -3,7 +3,7 @@ import unittest
 
 import torch
 from parameterized import parameterized
-from test_flash_attn_cuda import (
+from test_gqa_cuda import (
     Formats,
     gqa_no_past_flash_attention_test_cases,
     gqa_past_flash_attention_test_cases,
@@ -38,6 +38,7 @@ class TestRocmGQA(unittest.TestCase):
             rtol=0.001,
             atol=0.005,
         )
+
         parity_check_gqa_prompt_no_buff(
             config,
             local=local,
