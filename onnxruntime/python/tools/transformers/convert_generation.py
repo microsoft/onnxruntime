@@ -3280,7 +3280,7 @@ def test_gpt_model(
         print("-" * 50)
         # Compare the generated text instead of word IDs since ORT pads to max sequence length but Torch not.
         is_same = torch_decoded_sequences == ort_decoded_sequences
-        print("Torch and ORT result is ", "same" if is_same else "different")
+        print("Torch and ORT result is", "same" if is_same else "different")
         output["parity"] = is_same
 
     if args.torch_performance:

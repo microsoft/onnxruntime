@@ -109,7 +109,6 @@ def create_onnxruntime_session(
         else:
             sess_options.log_severity_level = 4
 
-        logger.debug(f"Create session for onnx model: {onnx_model_path}")
         if provider in [
             "DmlExecutionProvider",
             "ROCMExecutionProvider",
@@ -150,6 +149,10 @@ def create_onnxruntime_session(
             sess_options.add_session_config_entry("mlas.enable_gemm_fastmath_arm64_bfloat16", "1")
 
         session = onnxruntime.InferenceSession(onnx_model_path, sess_options, providers=providers)
+
+        logger.debug(
+            f"Created session for onnx model {onnx_model_path} with providers={providers} and session_options={sess_options}"
+        )
     except Exception:
         logger.error("Exception", exc_info=True)  # noqa: G201
 

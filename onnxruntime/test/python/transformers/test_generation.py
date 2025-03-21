@@ -198,25 +198,30 @@ use_tiny_model = True
 class TestBeamSearchT5(unittest.TestCase):
     """Test BeamSearch for T5 model with fp32 in CPU"""
 
-    def setUp(self):
+    @classmethod
+    def setUpClass(cls):
         tiny_model_dir = get_tiny_t5_model_dir()
         model_name = "tiny_t5" if use_tiny_model and os.path.exists(tiny_model_dir) else "t5-small"
-        self.model_name = tiny_model_dir if model_name == "tiny_t5" else "t5-small"
-        self.decoder_onnx_path = os.path.join(".", "t5_onnx_models", f"{model_name}_decoder.onnx")
-        self.encoder_onnx_path = os.path.join(".", "t5_onnx_models", f"{model_name}_encoder.onnx")
-        self.beam_search_onnx_path = os.path.join(".", "t5_onnx_models", f"{model_name}_beam_search.onnx")
-        self.default_arguments = [
-            f"-m {self.model_name}",
+        cls.model_name = tiny_model_dir if model_name == "tiny_t5" else "t5-small"
+        cls.decoder_onnx_path = os.path.join(".", "t5_onnx_models", f"{model_name}_decoder.onnx")
+        cls.encoder_onnx_path = os.path.join(".", "t5_onnx_models", f"{model_name}_encoder.onnx")
+        cls.beam_search_onnx_path = os.path.join(".", "t5_onnx_models", f"{model_name}_beam_search.onnx")
+        cls.default_arguments = [
+            f"-m {cls.model_name}",
             "--model_type t5",
-            f"--decoder_onnx {self.decoder_onnx_path}",
-            f"--encoder_decoder_init_onnx {self.encoder_onnx_path}",
-            f"--output {self.beam_search_onnx_path}",
+            f"--decoder_onnx {cls.decoder_onnx_path}",
+            f"--encoder_decoder_init_onnx {cls.encoder_onnx_path}",
+            f"--output {cls.beam_search_onnx_path}",
             "--output_sequences_score",
             "--repetition_penalty 2.0",
         ]
 
+        # Remove onnx files if existed for any reason.
+        cls.remove_onnx_files()
+
+        # This is in class setup so that we only export t5 model once.
         export_t5_onnx_models(
-            self.model_name,
+            cls.model_name,
             os.path.join(".", "cache_models"),
             os.path.join(".", "t5_onnx_models"),
             use_gpu=False,
@@ -230,29 +235,33 @@ class TestBeamSearchT5(unittest.TestCase):
             use_int32_inputs=True,
         )
 
-        self.sentences = [
+        cls.sentences = [
             "translate English to French: The product is released",
             "summarize: research continues to show that pets bring real health benefits to their owners. Having a dog around can lead to lower levels of stress for both adults and kids.",
         ]
 
-        if os.path.exists(self.beam_search_onnx_path):
-            os.remove(self.beam_search_onnx_path)
+    @classmethod
+    def remove_onnx_files(cls, beam_search_onnx_only: bool = False):
+        if os.path.exists(cls.beam_search_onnx_path):
+            os.remove(cls.beam_search_onnx_path)
+        if os.path.exists(cls.beam_search_onnx_path + ".data"):
+            os.remove(cls.beam_search_onnx_path + ".data")
+
+        if not beam_search_onnx_only:
+            if os.path.exists(cls.encoder_onnx_path):
+                os.remove(cls.encoder_onnx_path)
+            if os.path.exists(cls.decoder_onnx_path):
+                os.remove(cls.decoder_onnx_path)
+
+    @classmethod
+    def tearDownClass(cls):
+        cls.remove_onnx_files()
+
+    def setUp(self):
+        pass
 
     def tearDown(self):
-        self.remove_onnx_files()
-
-    def remove_onnx_files(self):
-        if os.path.exists(self.beam_search_onnx_path):
-            os.remove(self.beam_search_onnx_path)
-
-        if os.path.exists(self.decoder_onnx_path):
-            os.remove(self.decoder_onnx_path)
-
-        if os.path.exists(self.encoder_onnx_path):
-            os.remove(self.encoder_onnx_path)
-
-        if os.path.exists(self.encoder_onnx_path + ".data"):
-            os.remove(self.encoder_onnx_path + ".data")
+        self.remove_onnx_files(beam_search_onnx_only=True)
 
     def run_beam_search(self, extra_arguments: str):
         arguments = " ".join([*self.default_arguments, extra_arguments]).split()
@@ -285,34 +294,57 @@ class TestBeamSearchT5(unittest.TestCase):
         self.run_beam_search("-e")
 
 
+@unittest.skipUnless(
+    torch.cuda.is_available() and "CUDAExecutionProvider" in get_available_providers(),
+    "skip since no cuda environment.",
+)
 class TestBeamSearchT5Fp16(unittest.TestCase):
     """Test BeamSearch for T5 model with fp16 in GPU"""
 
-    def setUp(self):
+    @classmethod
+    def setUpClass(cls):
         tiny_model_dir = get_tiny_t5_model_dir()
         tiny_model_dir = os.path.normpath(tiny_model_dir)
-        self.model_name = "tiny_t5" if use_tiny_model and os.path.exists(tiny_model_dir) else "t5-small"
-        self.model_id = tiny_model_dir if self.model_name == "tiny_t5" else "t5-small"
-        self.beam_search_onnx_path = os.path.join(".", "onnx_models", f"{self.model_name}_beam_search_fp16.onnx")
-        self.default_arguments = [
-            f"-m {self.model_id}",
+        cls.model_name = "tiny_t5" if use_tiny_model and os.path.exists(tiny_model_dir) else "t5-small"
+        cls.model_id = tiny_model_dir if cls.model_name == "tiny_t5" else "t5-small"
+        cls.beam_search_onnx_path = os.path.join(".", "onnx_models", f"{cls.model_name}_beam_search_fp16.onnx")
+        cls.default_arguments = [
+            f"-m {cls.model_id}",
             "--model_type t5",
-            f"--output {self.beam_search_onnx_path}",
+            f"--output {cls.beam_search_onnx_path}",
             "--min_length 2",
             "--max_length 16",
             "--use_gpu",
             "-p fp16",
         ]
 
-        self.enable_cuda = torch.cuda.is_available() and "CUDAExecutionProvider" in get_available_providers()
-
-        self.sentences = [
+        cls.sentences = [
             "translate English to French: The product is released",
             "summarize: research continues to show that pets bring real health benefits to their owners. Having a dog around can lead to lower levels of stress for both adults and kids.",
         ]
 
-        if os.path.exists(self.beam_search_onnx_path):
-            os.remove(self.beam_search_onnx_path)
+        cls.remove_onnx_files()
+
+    @classmethod
+    def remove_onnx_files(cls):
+        model_name = cls.model_name
+        for file in [
+            f"{model_name}_beam_search_fp16.onnx",
+            f"{model_name}_encoder.onnx",
+            f"{model_name}_encoder_fp16.onnx",
+            f"{model_name}_decoder.onnx",
+            f"{model_name}_decoder_fp16.onnx",
+        ]:
+            if os.path.exists(os.path.join(".", "onnx_models", file)):
+                os.remove(os.path.join(".", "onnx_models", file))
+            if os.path.exists(os.path.join(".", "onnx_models", file + ".data")):
+                os.remove(os.path.join(".", "onnx_models", file + ".data"))
+
+    def setUp(self):
+        pass
+
+    def tearDown(self):
+        self.remove_onnx_files()
 
     def check_encoder_fusion(self):
         model_name = self.model_name
@@ -354,27 +386,7 @@ class TestBeamSearchT5Fp16(unittest.TestCase):
             self.assertIn(key, op_counters, f"Expected {key} to be in op_counters")
             self.assertEqual(op_counters[key], value, f"Expected {key} to be {value}, but got {op_counters[key]}")
 
-    def tearDown(self):
-        model_name = self.model_name
-        for file in [
-            f"{model_name}_beam_search_fp16.onnx.data",
-            f"{model_name}_decoder.onnx",
-            f"{model_name}_encoder.onnx",
-            f"{model_name}_beam_search_fp16.onnx",
-            f"{model_name}_decoder_fp16.onnx",
-            f"{model_name}_encoder_fp16.onnx",
-            f"{model_name}_encoder.onnx.data",
-            f"{model_name}_encoder_fp16.onnx.data",
-            f"{model_name}_decoder.onnx.data",
-            f"{model_name}_decoder_fp16.onnx.data",
-        ]:
-            if os.path.exists(os.path.join(".", "onnx_models", file)):
-                os.remove(os.path.join(".", "onnx_models", file))
-
     def run_beam_search(self, extra_arguments: str):
-        if not self.enable_cuda:
-            self.skipTest("Skipping test due to cuda not available")
-
         arguments = " ".join([*self.default_arguments, extra_arguments]).split()
         result = run(arguments)
         self.assertTrue(result["parity"], f"ORT and PyTorch result is different on GPU for arguments {arguments}")

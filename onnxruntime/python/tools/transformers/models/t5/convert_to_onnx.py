@@ -252,6 +252,7 @@ def export_onnx_models(
         ort_session = create_onnxruntime_session(
             output_path,
             use_gpu=use_gpu,
+            verbose=verbose,
         )
 
         with torch.no_grad():
