@@ -550,7 +550,7 @@ Status ComputeAttentionQKT(onnxruntime::webgpu::ComputeContext& context, const T
   const uint32_t vectorized_head_size = parameters.head_size_ / components;
   program.SetDispatchGroupSize(parameters.batch_size_ * parameters.num_heads_ * splited_k)
       .SetWorkgroupSize(64)
-      .CacheHint(std::to_string(tile_size), has_attention_bias, components)
+      .CacheHint(tile_size, has_attention_bias)
       .AddUniformVariables({{static_cast<uint32_t>(vectorized_head_size)},
                             {static_cast<uint32_t>(parameters.total_sequence_length_)},
                             {static_cast<float>(alpha)},
@@ -665,7 +665,7 @@ Status ComputeFlashAttentionDecodeSplitK(onnxruntime::webgpu::ComputeContext& co
                      {present_value, ProgramTensorMetadataDependency::TypeAndRank, components}});
   program.AddOutputs({{out_split_k, ProgramTensorMetadataDependency::TypeAndRank, components}});  // [B, N, split_k, head_size]
   program.SetDispatchGroupSize(parameters.batch_size_ * parameters.num_heads_ * split_k)
-      .CacheHint(std::to_string(tile_size))
+      .CacheHint(tile_size, head_size_vec)
       .SetWorkgroupSize(64)
       .AddUniformVariables({{static_cast<uint32_t>(parameters.total_sequence_length_)},
                             {static_cast<uint32_t>(head_size_vec)},
@@ -728,7 +728,7 @@ Status ComputeFlashAttentionDecodeReduce(onnxruntime::webgpu::ComputeContext& co
   program.AddOutputs({{output, ProgramTensorMetadataDependency::TypeAndRank, components}});
   const uint32_t num_head_size_tile = static_cast<uint32_t>((parameters.v_head_size_ + tile_head_size - 1) / tile_head_size);
   program.SetDispatchGroupSize(parameters.batch_size_ * parameters.num_heads_ * num_head_size_tile)
-      .CacheHint(std::to_string(tile_size))
+      .CacheHint(tile_size)
       .SetWorkgroupSize(tile_size * tile_size)
       .AddUniformVariables({{static_cast<uint32_t>(parameters.v_head_size_ / components)},
                             {static_cast<uint32_t>(split_k)},
