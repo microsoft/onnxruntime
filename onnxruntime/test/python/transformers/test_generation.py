@@ -176,14 +176,35 @@ class TestBeamSearchGpt(unittest.TestCase):
         )
 
 
+def get_tiny_t5_model_dir():
+    """Get the path to the tiny T5 model directory."""
+    # This function is used to get the path to the tiny T5 model directory.
+    # It is used in the TestBeamSearchT5 and TestBeamSearchT5Fp16 classes.
+    # The path is relative to the current file's directory.
+    tiny_model_dir = os.path.join(
+        os.path.dirname(__file__),
+        "..",
+        "..",
+        "testdata",
+        "transformers",
+        "tiny_t5",
+    )
+    return os.path.normpath(tiny_model_dir)
+
+
+use_tiny_model = True
+
+
 class TestBeamSearchT5(unittest.TestCase):
     """Test BeamSearch for T5 model"""
 
     def setUp(self):
-        self.model_name = "t5-small"
-        self.decoder_onnx_path = os.path.join(".", "onnx_models", "t5-small_decoder.onnx")
-        self.encoder_onnx_path = os.path.join(".", "onnx_models", "t5-small_encoder_decoder_init.onnx")
-        self.beam_search_onnx_path = os.path.join(".", "onnx_models", "t5_small_beam_search.onnx")
+        tiny_model_dir = get_tiny_t5_model_dir()
+        model_name = "tiny_t5" if use_tiny_model and os.path.exists(tiny_model_dir) else "t5-small"
+        self.model_name = tiny_model_dir if model_name == "tiny_t5" else "t5-small"
+        self.decoder_onnx_path = os.path.join(".", "t5_onnx_models", f"{model_name}_decoder.onnx")
+        self.encoder_onnx_path = os.path.join(".", "t5_onnx_models", f"{model_name}_encoder.onnx")
+        self.beam_search_onnx_path = os.path.join(".", "t5_onnx_models", f"{model_name}_beam_search.onnx")
         self.default_arguments = [
             f"-m {self.model_name}",
             "--model_type t5",
@@ -199,14 +220,13 @@ class TestBeamSearchT5(unittest.TestCase):
         export_t5_onnx_models(
             self.model_name,
             os.path.join(".", "cache_models"),
-            os.path.join(".", "onnx_models"),
+            os.path.join(".", "t5_onnx_models"),
             use_gpu=False,
             use_external_data_format=False,
             optimize_onnx=False,
             precision=Precision.FLOAT32,
             verbose=False,
             use_decoder_start_token=False,
-            merge_encoder_and_decoder_init=True,
             overwrite=True,
             disable_auto_mixed_precision=False,
             use_int32_inputs=True,
@@ -233,55 +253,163 @@ class TestBeamSearchT5(unittest.TestCase):
         if os.path.exists(self.encoder_onnx_path):
             os.remove(self.encoder_onnx_path)
 
-    def run_beam_search(self, extra_arguments: str, sentences=None, append_arguments=True):
-        if append_arguments:
-            arguments = " ".join([*self.default_arguments, extra_arguments]).split()
-        else:
-            arguments = extra_arguments.split()
+        if os.path.exists(self.encoder_onnx_path + ".data"):
+            os.remove(self.encoder_onnx_path + ".data")
+
+    def run_beam_search(self, extra_arguments: str):
+        arguments = " ".join([*self.default_arguments, extra_arguments]).split()
 
         # Test CPU
-        result = run(arguments, sentences=self.sentences if sentences is None else sentences)
+        result = run(arguments)
         self.assertTrue(result["parity"], f"ORT and PyTorch result is different on CPU for arguments {arguments}")
 
         # Test GPU
         if self.enable_cuda:
             if "--use_gpu" not in arguments:
                 arguments.append("--use_gpu")
-            result = run(arguments, sentences=self.sentences if sentences is None else sentences)
+            result = run(arguments)
             self.assertTrue(result["parity"], f"ORT and PyTorch result is different on GPU for arguments {arguments}")
 
         os.remove(self.beam_search_onnx_path)
 
-    @pytest.mark.slow
     def test_return_sequences(self):
         for return_sequences in [1, 2]:
             self.run_beam_search(f"--num_return_sequences {return_sequences}")
 
-    @pytest.mark.slow
     def test_early_stopping(self):
         self.run_beam_search("--early_stopping")
 
-    @pytest.mark.slow
     def test_length_penalty(self):
         for length_penalty in [0.5, 2.0]:
             self.run_beam_search(f"--length_penalty {length_penalty}")
 
-    @pytest.mark.slow
     def test_no_repeat_ngram(self):
         for ngram_size in [1, 2]:
             self.run_beam_search(f"--no_repeat_ngram_size {ngram_size}")
 
-    @pytest.mark.slow
     def test_custom_attention_mask(self):
         self.run_beam_search("--custom_attention_mask")
 
-    @pytest.mark.slow
     def test_external_data(self):
-        self.run_beam_search(
-            f"-m t5-small --model_type t5 -e --output {self.beam_search_onnx_path}",
-            sentences=None,
-            append_arguments=False,
-        )
+        self.run_beam_search("-e")
+
+
+class TestBeamSearchT5Fp16(unittest.TestCase):
+    """Test BeamSearch for T5 model with fp16 in GPU"""
+
+    def setUp(self):
+        tiny_model_dir = get_tiny_t5_model_dir()
+        tiny_model_dir = os.path.normpath(tiny_model_dir)
+        self.model_name = "tiny_t5" if use_tiny_model and os.path.exists(tiny_model_dir) else "t5-small"
+        self.model_id = tiny_model_dir if self.model_name == "tiny_t5" else "t5-small"
+        self.beam_search_onnx_path = os.path.join(".", "onnx_models", f"{self.model_name}_beam_search_fp16.onnx")
+        self.default_arguments = [
+            f"-m {self.model_id}",
+            "--model_type t5",
+            f"--output {self.beam_search_onnx_path}",
+            "--min_length 2",
+            "--max_length 16",
+            "--use_gpu",
+            "-p fp16",
+        ]
+
+        self.enable_cuda = torch.cuda.is_available() and "CUDAExecutionProvider" in get_available_providers()
+
+        self.sentences = [
+            "translate English to French: The product is released",
+            "summarize: research continues to show that pets bring real health benefits to their owners. Having a dog around can lead to lower levels of stress for both adults and kids.",
+        ]
+
+        if os.path.exists(self.beam_search_onnx_path):
+            os.remove(self.beam_search_onnx_path)
+
+    def check_encoder_fusion(self):
+        model_name = self.model_name
+        onnx_path = os.path.join(".", "onnx_models", f"{model_name}_encoder_fp16.onnx")
+
+        model = onnx.load_model(onnx_path, format=None, load_external_data=True)
+        from onnxruntime.transformers.onnx_model import OnnxModel
+
+        onnx_model = OnnxModel(model)
+        op_counters = onnx_model.get_operator_statistics()
+        print("encoder ops", op_counters)
+        expected_node_count = {
+            "RelativePositionBias": 1,
+            "SimplifiedLayerNormalization": 5 if use_tiny_model else 13,
+            "Attention": 2 if use_tiny_model else 6,
+        }
+        for key, value in expected_node_count.items():
+            self.assertIn(key, op_counters, f"Expected {key} to be in op_counters")
+            self.assertEqual(op_counters[key], value, f"Expected {key} to be {value}, but got {op_counters[key]}")
+
+    def check_decoder_fusion(self):
+        model_name = self.model_name
+        onnx_path = os.path.join(".", "onnx_models", f"{model_name}_decoder_fp16.onnx")
+
+        model = onnx.load_model(onnx_path, format=None, load_external_data=True)
+        from onnxruntime.transformers.onnx_model import OnnxModel
+
+        onnx_model = OnnxModel(model)
+        op_counters = onnx_model.get_operator_statistics()
+        print("decoder opators", op_counters)
+
+        expected_node_count = {
+            "RelativePositionBias": 1,
+            "SimplifiedLayerNormalization": 7 if use_tiny_model else 19,
+            "MultiHeadAttention": 4 if use_tiny_model else 12,
+        }
+        for key, value in expected_node_count.items():
+            self.assertIn(key, op_counters, f"Expected {key} to be in op_counters")
+            self.assertEqual(op_counters[key], value, f"Expected {key} to be {value}, but got {op_counters[key]}")
+
+    def tearDown(self):
+        model_name = self.model_name
+        for file in [
+            f"{model_name}_beam_search_fp16.onnx.data",
+            f"{model_name}_decoder.onnx",
+            f"{model_name}_encoder.onnx",
+            f"{model_name}_beam_search_fp16.onnx",
+            f"{model_name}_decoder_fp16.onnx",
+            f"{model_name}_encoder_fp16.onnx",
+            f"{model_name}_encoder.onnx.data",
+            f"{model_name}_encoder_fp16.onnx.data",
+            f"{model_name}_decoder.onnx.data",
+            f"{model_name}_decoder_fp16.onnx.data",
+        ]:
+            if os.path.exists(os.path.join(".", "onnx_models", file)):
+                os.remove(os.path.join(".", "onnx_models", file))
+
+    def run_beam_search(self, extra_arguments: str):
+        if not self.enable_cuda:
+            self.skipTest("Skipping test due to cuda not available")
+
+        arguments = " ".join([*self.default_arguments, extra_arguments]).split()
+        result = run(arguments)
+        self.assertTrue(result["parity"], f"ORT and PyTorch result is different on GPU for arguments {arguments}")
+
+        os.remove(self.beam_search_onnx_path)
+
+    def test_return_sequences(self):
+        for return_sequences in [1, 2]:
+            self.run_beam_search(f"--num_return_sequences {return_sequences}")
+
+    def test_early_stopping(self):
+        self.run_beam_search("--early_stopping")
+
+    def test_length_penalty(self):
+        for length_penalty in [0.5, 2.0]:
+            self.run_beam_search(f"--length_penalty {length_penalty}")
+
+    def test_no_repeat_ngram(self):
+        for ngram_size in [1, 2]:
+            self.run_beam_search(f"--no_repeat_ngram_size {ngram_size}")
+
+    def test_external_data(self):
+        self.run_beam_search("-e")
+
+        # Ensure fusion is done correctly.
+        self.check_encoder_fusion()
+        self.check_decoder_fusion()
 
 
 class TestBeamSearchWhisper(unittest.TestCase):
