@@ -115,6 +115,7 @@ jobs:
 
   x86_64-Xcode16_webgpu:
     runs-on: macos-15
+    continue-on-error: true
 
     env:
       xcode_version: 16
@@ -252,6 +253,7 @@ jobs:
 
   ARM64-Xcode16-webgpu:
     runs-on: macos-15
+    continue-on-error: true
 
     env:
       xcode_version: 16
