@@ -45,24 +45,47 @@ Status DP4AMatMulQuantizeProgram::GenerateShaderCode(ShaderHelper& shader) const
   shader.AddInput("input_a", ShaderUsage::UseUniform | ShaderUsage::UseIndicesTypeAlias | ShaderUsage::UseValueTypeAlias | ShaderUsage::UseElementTypeAlias);
   shader.AddOutput("output", ShaderUsage::UseUniform);
   shader.AddOutput("scales", ShaderUsage::UseUniform);
+  shader.AdditionalImplementation() << R"ADDNL_FN(
+    var<workgroup> a_values : array<array<input_a_value_t, 32>, 2>;
+
+    fn readInput(offset: u32) -> input_a_value_t
+    {
+      if (offset >= uniforms.output_size) {
+        return input_a_value_t(0);
+      }
+      return input_a[offset];
+    }
+ )ADDNL_FN";
+
   shader.MainFunctionBody() << R"MAIN_FN(
-        var local_a : array<vec4<input_a_element_t>, 32>;
-        var max_value:vec4<input_a_element_t> = vec4<input_a_element_t>(0);
-        for (var idx:u32=0;idx<32;idx+=1)
-        {
-            local_a[idx] = input_a[workgroup_idx*32 + idx];
-            max_value = max(max_value, abs(local_a[idx]));
-        }
-        var scale = max(max_value.x, max_value.y);
-        scale = max(scale, max_value.z);
-        scale = max(scale, max_value.w);
-        for (var idx:u32=0;idx<32;idx+=1)
-        {
-            output[workgroup_idx*32+idx] = pack4x8snorm(vec4<f32>(local_a[idx]/scale));
-        }
-        // 127 is the max value of signed int8 [-127,127] used by pack4x8snorm for 1.0f.
-        scales[workgroup_idx] = scale/127;
-    )MAIN_FN";
+    let local_row = local_idx / 32u;
+    let local_col = local_idx % 32u;
+    a_values[local_row][local_col] = readInput(global_idx);
+    workgroupBarrier();
+
+    if (global_idx >= uniforms.output_size) {
+      return;
+    }
+
+    var max_val = input_a_value_t(0);
+    for (var i = 0u; i < 32u; i++)
+    {
+      max_val = max(max_val, abs(a_values[local_row][i]));
+    }
+    let max_temp = max(max_val.xy, max_val.zw);
+    let scale = max(max_temp[0], max_temp[1]);
+    let norm_a = a_values[local_row][local_col]/scale;
+    output[global_idx] = pack4x8snorm(vec4<f32>(norm_a));
+    if (local_idx == 0u)
+    {
+      // 127 is the max value of signed int8 [-127,127] used by pack4x8snorm for 1.0f.
+      scales[workgroup_idx * 2] = scale/127;
+    } else if (local_idx == 32u)
+    {
+      // 127 is the max value of signed int8 [-127,127] used by pack4x8snorm for 1.0f.
+      scales[workgroup_idx * 2 + 1] = scale/127;
+    }
+)MAIN_FN";
   return Status::OK();
 }
 
@@ -386,15 +409,17 @@ Status ApplyDP4AMatrixMatMulNBits(const Tensor* a, const Tensor* b, const Tensor
 
   constexpr uint32_t kBlockSizeA = 128;
   DP4AMatMulQuantizeProgram quantize_program;
-  quantize_program.SetWorkgroupSize(1);
-  quantize_program.SetDispatchGroupSize(M * K / kBlockSizeA, 1, 1);
+  quantize_program.SetWorkgroupSize(64);
+  uint32_t tile_size = 64 * kVec4Components;
+  quantize_program.SetDispatchGroupSize((M * K + tile_size - 1) / tile_size, 1, 1);
   TensorShape a_quant_shape{1, M, K / kU32Components};
   Tensor a_quant = context.CreateGPUTensor(DataTypeImpl::GetType<uint32_t>(), a_quant_shape);
   TensorShapeVector a_scales_dims({1, 1, M, K / kBlockSizeA});
   Tensor a_scale = context.CreateGPUTensor(a->DataType(), a_scales_dims);
   quantize_program.AddInputs({{a, ProgramTensorMetadataDependency::TypeAndRank, static_cast<int>(kVec4Components)}})
       .AddOutputs({{&a_quant, ProgramTensorMetadataDependency::Rank, a_quant.Shape(), 1},
-                   {&a_scale, ProgramTensorMetadataDependency::Rank, a_scale.Shape(), 1}});
+                   {&a_scale, ProgramTensorMetadataDependency::Rank, 1}})
+      .AddUniformVariable({M * K / kU32Components});
   ORT_RETURN_IF_ERROR(context.RunProgram(quantize_program));
 
   if (M < min_M_for_tile_optimization) {
