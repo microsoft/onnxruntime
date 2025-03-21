@@ -13,30 +13,23 @@ namespace onnxruntime {
 
 NodeArg& MergeQkvWeights(Graph& graph,
                          int64_t input_dim,     // For example, 3072
-                         int64_t num_heads,     // Number of query heads, e.g., 24
-                         int64_t head_size,     // Size per head, e.g., 64
-                         int64_t kv_num_heads,  // Number of key/value heads, e.g., 24
+                         int64_t qkv_second_dim,     // Number of query heads, e.g., 24
+                         int64_t qkv_third_dim,  // Size per head, e.g., 64
                          const ONNX_NAMESPACE::TensorProto* q_tensor,
                          const ONNX_NAMESPACE::TensorProto* k_tensor,
                          const ONNX_NAMESPACE::TensorProto* v_tensor,
                          [[maybe_unused]] bool is_matmul) {
-  // Ensure valid input tensors.
   assert(nullptr != q_tensor);
   assert(nullptr != k_tensor);
   assert(nullptr != v_tensor);
 
-  // Initialize data access for Q, K, and V.
-  [[maybe_unused]] Initializer q_initializer(*q_tensor, graph.ModelPath());
-  [[maybe_unused]] Initializer k_initializer(*k_tensor, graph.ModelPath());
-  [[maybe_unused]] Initializer v_initializer(*v_tensor, graph.ModelPath());
+  Initializer q_initializer(*q_tensor, graph.ModelPath());
+  Initializer k_initializer(*k_tensor, graph.ModelPath());
+  Initializer v_initializer(*v_tensor, graph.ModelPath());
   auto data_type = q_tensor->data_type();
 
-  // Compute the flattened output dimensions:
-  // Q projection dimension = num_heads * head_size.
-  // K/V projection dimension = kv_num_heads * head_size.
-  int64_t q_dim = num_heads * head_size;      // For example, 24 * 64 = 1536.
-  int64_t kv_dim = kv_num_heads * head_size;  // For example, 24 * 64 = 1536.
-  int64_t total_dim = q_dim + 2 * kv_dim;     // 1536 + 2*1536 = 4608.
+  int64_t single_tensor_output_dim = qkv_second_dim * qkv_third_dim;  // For example, 24 * 64 = 1536.
+  int64_t total_output_dim = 3 * single_tensor_output_dim;            // Because we have 3 tensors.
 
   // Create the new merged initializer for packed QKV.
   ONNX_NAMESPACE::TensorProto initializer;
@@ -44,7 +37,7 @@ NodeArg& MergeQkvWeights(Graph& graph,
 
   // Set the shape to (input_dim, total_dim).
   initializer.add_dims(input_dim);
-  initializer.add_dims(total_dim);
+  initializer.add_dims(total_output_dim);
   initializer.set_data_type(data_type);
 
   // ----- Use the data() API to retrieve the tensor data -----
@@ -61,11 +54,11 @@ NodeArg& MergeQkvWeights(Graph& graph,
   // Merge the data into one vector.
   std::vector<uint8_t> merged_data;
   size_t element_count = q_elements + k_elements + v_elements;
-  [[maybe_unused]] size_t element_count2 = input_dim * total_dim;
+  [[maybe_unused]] size_t element_count2 = input_dim * total_output_dim;
 
   merged_data.reserve(element_count);
 
-  optimizer_utils::MergeMatMulWeights<uint8_t>(q_data, k_data, v_data, merged_data, input_dim, q_dim);
+  optimizer_utils::MergeMatMulWeights<uint8_t>(q_data, k_data, v_data, merged_data, input_dim, single_tensor_output_dim);
 
   // Convert the merged data to a string and set it as the raw data for the merged tensor.
   utils::SetRawDataInTensorProto(initializer, merged_data.data(), gsl::narrow<size_t>(element_count) * sizeof(uint8_t));
@@ -77,7 +70,7 @@ NodeArg& MergeQkvWeights(Graph& graph,
 
   std::cout << "Merged QKV weight tensor:" << std::endl;
   std::cout << "  Data type: " << data_type << std::endl;
-  std::cout << "  Shape: (" << input_dim << ", " << total_dim << ")" << std::endl;
+  std::cout << "  Shape: (" << input_dim << ", " << total_output_dim << ")" << std::endl;
   std::cout << graph.ModelPath() << std::endl;
 
   // Print a snippet of the merged tensor's data.
@@ -113,8 +106,6 @@ GraphViewer graph_viewer(graph);
 
     Node& node = *node_ptr;
 
-    std::cout << node.OpType() << std::endl;
-
     ORT_RETURN_IF_ERROR(Recurse(node, modified, graph_level, logger));
 
     if (!graph_utils::IsSupportedOptypeVersionAndDomain(node, "GroupQueryAttention", {1}, kMSDomain) ||
@@ -140,7 +131,10 @@ GraphViewer graph_viewer(graph);
     const ONNX_NAMESPACE::TensorProto* v_proj_tensor = nullptr;
 
     const ONNX_NAMESPACE::TensorProto* cos_cache_tensor = nullptr;
+    const ONNX_NAMESPACE::TensorProto* sin_cache_tensor = nullptr;
     onnxruntime::NodeArg* pos_ids_arg = nullptr;
+    onnxruntime::NodeArg* cos_cache_arg = nullptr; 
+    onnxruntime::NodeArg* sin_cache_arg = nullptr;
 
 
     for (auto n = node.InputNodesBegin(); n != node.InputNodesEnd(); ++n) {
@@ -166,8 +160,20 @@ GraphViewer graph_viewer(graph);
         }
         pos_ids_arg = rotary_or_v_node.MutableInputDefs()[1];
 
-         if (cos_cache_tensor == nullptr && !graph.GetInitializedTensor(rotary_or_v_node.InputDefs()[2]->Name(), cos_cache_tensor)) {
+        if (cos_cache_tensor == nullptr && !graph.GetInitializedTensor(rotary_or_v_node.InputDefs()[2]->Name(), cos_cache_tensor)) {
           std::cout << "Unable to load cos cache tensor" << std::endl;
+        }
+
+        if (cos_cache_arg == nullptr) {
+          cos_cache_arg = rotary_or_v_node.MutableInputDefs()[2];
+        }
+
+        if (sin_cache_arg == nullptr) {
+          sin_cache_arg = rotary_or_v_node.MutableInputDefs()[3];
+        }
+
+        if (sin_cache_tensor == nullptr && !graph.GetInitializedTensor(rotary_or_v_node.InputDefs()[3]->Name(), sin_cache_tensor)) {
+          std::cout << "Unable to load sin cache tensor" << std::endl;
         }
 
         std::cout << "r1" << rotary_or_v_node.InputDefs()[0]->Name() << std::endl;
@@ -212,23 +218,18 @@ GraphViewer graph_viewer(graph);
       std::cout << v_proj_tensor->dims(i) << " ";
     }
 
-    // num of heads * head size
-    [[maybe_unused]]  int64_t hidden_size = q_proj_tensor->dims(0);
-    [[maybe_unused]]  int64_t q_num_heads = q_proj_tensor->dims(1);
-    [[maybe_unused]]  int64_t q_head_size = q_proj_tensor->dims(2);
-    [[maybe_unused]] int64_t k_num_heads = k_proj_tensor->dims(1);
-
+    int64_t hidden_size = q_proj_tensor->dims(0);
    
-   onnxruntime::NodeArg& fused_qkv = MergeQkvWeights(graph, hidden_size, q_num_heads, q_head_size, k_num_heads, q_proj_tensor, k_proj_tensor, v_proj_tensor, true);
+   onnxruntime::NodeArg& fused_qkv = MergeQkvWeights(graph, hidden_size, q_proj_tensor->dims(1), q_proj_tensor->dims(2), q_proj_tensor, k_proj_tensor, v_proj_tensor, true);
   
           if (pos_ids_arg == nullptr) {
      std::cout << "Position IDs argument is not available; cannot fuse GroupQueryAttention." << std::endl;
      continue;
    }
 
-       [[maybe_unused]] const std::array gqa_input_defs{pos_ids_arg, &fused_qkv};
+       [[maybe_unused]] const std::array gqa_input_defs{pos_ids_arg, &fused_qkv, cos_cache_arg, sin_cache_arg};
     
-    /*
+    
    // Now add the fused GroupQueryAttention node.
    Node& gqa_node = graph.AddNode(graph.GenerateNodeName("GroupQueryAttention"),
                                   "GroupQueryAttention",
@@ -239,10 +240,15 @@ GraphViewer graph_viewer(graph);
                                   kMSDomain);
 
      gqa_node.SetExecutionProviderType(node.GetExecutionProviderType());
-     */
+     
 
 
    [[maybe_unused]] int sodjsapidjad = 1;
+       [[maybe_unused]] int sodjsapidjad2 = 1;
+
+              [[maybe_unused]] int sodjsapidjad3 = 1;
+
+
   }
 
   return Status::OK();
