@@ -4,12 +4,13 @@
 #pragma once
 
 #include "contrib_ops/cpu/bert/attention_helper.h"
+#include "contrib_ops/cpu/bert/attention_common.h"
+#include "contrib_ops/cpu/bert/attention_parameters.h"
+#include "contrib_ops/cpu/utils/dump_tensor.h"
 
 #include "core/common/common.h"
-#include "contrib_ops/cpu/bert/attention_common.h"
 #include "core/common/safeint.h"
 #include "core/framework/op_kernel.h"
-#include "contrib_ops/cpu/utils/dump_tensor.h"
 
 namespace onnxruntime {
 namespace contrib {
@@ -159,11 +160,11 @@ class SparseAttentionBase {
       int nonzero_elements = block_row_indices[(layout_index + 1) * parameters.stride_row_indices - 1];
       int dense_nonzero = (parameters.stride_row_indices * (parameters.stride_row_indices - 1)) / 2;
       layout_has_sparse[layout_index] = nonzero_elements < dense_nonzero;
-      DUMP_STRING("layout_has_sparse[", layout_index, "]=", layout_has_sparse[layout_index]);
+      DUMP_CPU_STRING("layout_has_sparse[", layout_index, "]=", layout_has_sparse[layout_index]);
     }
 
     ThreadPool::TryParallelFor(tp, loop_len, unit_cost, [&](std::ptrdiff_t begin, std::ptrdiff_t end) {
-      DUMP_STRING("batch_size=", batch_size, ",num_heads=", num_heads_, ",loop_len=", loop_len, ",begin=", begin, ",end=", end);
+      DUMP_CPU_STRING("batch_size=", batch_size, ",num_heads=", num_heads_, ",loop_len=", loop_len, ",begin=", begin, ",end=", end);
       for (std::ptrdiff_t i = begin; i != end; ++i) {
         const int batch_index = static_cast<int>(i) / num_heads_;
         const int head_index = static_cast<int>(i) % num_heads_;
@@ -199,8 +200,8 @@ class SparseAttentionBase {
           q = Q + q_input_chunk_length * i;
         }
 
-        DUMP_STRING("i=", i, ",batch_index=", batch_index, ",head_index=", head_index,
-                    ",past_seq_len=", past_seq_len, ",total_seq_len=", total_seq_len, ",packed_qkv=", packed_qkv);
+        DUMP_CPU_STRING("i=", i, ",batch_index=", batch_index, ",head_index=", head_index,
+                        ",past_seq_len=", past_seq_len, ",total_seq_len=", total_seq_len, ",packed_qkv=", packed_qkv);
         DUMP_CPU_TENSOR("Q", q, sequence_length, head_size);
         DUMP_CPU_TENSOR("K", k, total_seq_len, head_size);
 
@@ -216,7 +217,7 @@ class SparseAttentionBase {
         int layout_id = head_index % parameters.num_sparse_layout;
         bool is_sparse_layout = layout_has_sparse[layout_id];
 
-        DUMP_STRING("layout_id=", layout_id, ",is_sparse_layout=", is_sparse_layout);
+        DUMP_CPU_STRING("layout_id=", layout_id, ",is_sparse_layout=", is_sparse_layout);
 
         if (!is_sparse_layout) {  // dense
           for (int q_id = 0; q_id < sequence_length; q_id++) {
@@ -246,19 +247,19 @@ class SparseAttentionBase {
               int nonzero_blocks = end_in_col_indices - start_in_col_indices;
               has_sparse = (nonzero_blocks != row_in_sparse_layout + 1);
 
-              DUMP_STRING("q_id=", q_id,
-                          ",q_abs_position=", q_abs_position,
-                          ",sparse_block_size=", parameters.sparse_block_size,
-                          ",row_in_sparse_layout=", row_in_sparse_layout,
-                          ",start_in_col_indices=", start_in_col_indices,
-                          ",end_in_col_indices=", end_in_col_indices,
-                          ",nonzero_blocks=", nonzero_blocks,
-                          ",has_sparse=", has_sparse);
+              DUMP_CPU_STRING("q_id=", q_id,
+                              ",q_abs_position=", q_abs_position,
+                              ",sparse_block_size=", parameters.sparse_block_size,
+                              ",row_in_sparse_layout=", row_in_sparse_layout,
+                              ",start_in_col_indices=", start_in_col_indices,
+                              ",end_in_col_indices=", end_in_col_indices,
+                              ",nonzero_blocks=", nonzero_blocks,
+                              ",has_sparse=", has_sparse);
 
               // Expand attention mask for current row of q_id
               if (has_sparse) {
                 int block_aligned_length = q_abs_position / parameters.sparse_block_size * parameters.sparse_block_size + parameters.sparse_block_size;
-                DUMP_STRING("block_aligned_length=", block_aligned_length);
+                DUMP_CPU_STRING("block_aligned_length=", block_aligned_length);
 
                 std::fill_n(mask.begin(), block_aligned_length, 0);
                 for (int j = start_in_col_indices; j < end_in_col_indices; j++) {
@@ -344,7 +345,7 @@ class SparseAttentionBase {
 
     ThreadPool::TryParallelFor(
         tp, SafeInt<ptrdiff_t>(batch_size) * num_heads_, unit_cost, [&](std::ptrdiff_t begin, std::ptrdiff_t end) {
-          DUMP_STRING("batch_size=", batch_size, ",num_heads=", num_heads_, ",begin=", begin, ",end=", end);
+          DUMP_CPU_STRING("batch_size=", batch_size, ",num_heads=", num_heads_, ",begin=", begin, ",end=", end);
 
           for (std::ptrdiff_t i = begin; i != end; ++i) {
             const int batch_index = static_cast<int>(i / num_heads_);
@@ -353,8 +354,8 @@ class SparseAttentionBase {
             const size_t past_chunk_length = static_cast<size_t>(past_seq_len) * head_size;
             const int total_seq_len = total_key_lengths[batch_index];
 
-            DUMP_STRING("i=", i, ",batch_index=", batch_index, ",head_index=", head_index,
-                        ",past_seq_len=", past_seq_len, ",total_seq_len=", total_seq_len, ",packed_qkv=", packed_qkv);
+            DUMP_CPU_STRING("i=", i, ",batch_index=", batch_index, ",head_index=", head_index,
+                            ",past_seq_len=", past_seq_len, ",total_seq_len=", total_seq_len, ",packed_qkv=", packed_qkv);
 
             const T* v;
             if (packed_qkv) {

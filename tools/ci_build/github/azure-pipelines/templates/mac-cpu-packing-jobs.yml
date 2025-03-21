@@ -38,7 +38,7 @@ jobs:
     ORT_CACHE_DIR: $(Pipeline.Workspace)/ccache_ort
   pool:
     name: "Azure Pipelines"
-    image: 'macOS-13'
+    image: 'macOS-14'
     os: macOS
   timeoutInMinutes: 300
   steps:

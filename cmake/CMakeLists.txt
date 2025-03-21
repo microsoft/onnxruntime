@@ -87,6 +87,7 @@ option(onnxruntime_USE_SNPE "Build with SNPE support" OFF)
 option(onnxruntime_USE_RKNPU "Build with RKNPU support" OFF)
 option(onnxruntime_USE_DNNL "Build with DNNL support" OFF)
 option(onnxruntime_USE_JSEP "Build with JavaScript implemented kernels support" OFF)
+option(onnxruntime_USE_KLEIDIAI "Build with KleidiAI integration in MLAS" OFF)
 option(onnxruntime_BUILD_UNIT_TESTS "Build ONNXRuntime unit tests" ON)
 option(onnxruntime_BUILD_CSHARP "Build C# library" OFF)
 option(onnxruntime_BUILD_OBJC "Build Objective-C library" OFF)
@@ -831,6 +832,20 @@ else()
   endif()
 endif()
 
+if (onnxruntime_USE_KLEIDIAI AND NOT MSVC AND (
+    (onnxruntime_target_platform STREQUAL "aarch64") OR
+    (onnxruntime_target_platform STREQUAL "ARM64") OR
+    (APPLE AND CMAKE_SYSTEM_PROCESSOR STREQUAL "arm64")))
+  check_cxx_compiler_flag(-march=armv8.2-a+dotprod HAS_ARM64_DOTPROD)
+  check_cxx_compiler_flag(-march=armv8.2-a+i8mm HAS_ARM64_I8MM)
+  if (NOT HAS_ARM64_DOTPROD)
+    message(FATAL_ERROR  "The compiler doesn't support dotprod")
+  endif()
+  if (NOT HAS_ARM64_I8MM)
+    message(FATAL_ERROR  "The compiler doesn't support i8mm")
+  endif()
+endif()
+
 #names in this var must match the directory names under onnxruntime/core/providers
 #ONNXRUNTIME_PROVIDER_NAMES is the list of providers that needs to export additional symbols in the global namespace.
 #For example CUDA EP exports "OrtSessionOptionsAppendExecutionProvider_CUDA", which is a global function.
@@ -1547,32 +1562,21 @@ if (onnxruntime_USE_CUDA)
   endif()
   find_package(CUDAToolkit REQUIRED)
   if (NOT CMAKE_CUDA_ARCHITECTURES)
+    # Note that we generate SASS+PTX code for specified cuda architectures by assigning "xy"
+    # To add SASS only, assign "xy-real"
+    # To add PTX only, assign "xy-virtual"
     if (CMAKE_LIBRARY_ARCHITECTURE STREQUAL "aarch64-linux-gnu")
       # Support for Jetson/Tegra ARM devices
-      set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} -gencode=arch=compute_53,code=sm_53") # TX1, Nano
-      set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} -gencode=arch=compute_62,code=sm_62") # TX2
-      set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} -gencode=arch=compute_72,code=sm_72") # AGX Xavier, NX Xavier
-      set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} -gencode=arch=compute_87,code=sm_87") # AGX Orin, NX Orin
+      set(CMAKE_CUDA_ARCHITECTURES "53-real;62-real;72-real;87") # TX1/Nano, TX2, Xavier, Orin
     else()
       if (CMAKE_CUDA_COMPILER_VERSION VERSION_LESS 12)
         # 37, 50 still work in CUDA 11 but are marked deprecated and will be removed in future CUDA version.
-        set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} -gencode=arch=compute_37,code=sm_37") # K80
-        set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} -gencode=arch=compute_50,code=sm_50") # M series
-      endif()
-      # Note that we generate SASS code for specified cuda architectures. It does not support forward compatibility.
-      # To add PTX for future GPU architectures >= XX, append -gencode=arch=compute_XX,code=compute_XX.
-      set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} -gencode=arch=compute_52,code=sm_52") # M60
-      set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} -gencode=arch=compute_60,code=sm_60") # P series
-      set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} -gencode=arch=compute_70,code=sm_70") # V series
-      set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} -gencode=arch=compute_75,code=sm_75") # T series
-      set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} -gencode=arch=compute_80,code=sm_80") # A series
-      set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} -gencode=arch=compute_86,code=sm_86")
-      set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} -gencode=arch=compute_89,code=sm_89")
-      if (CMAKE_CUDA_COMPILER_VERSION VERSION_GREATER_EQUAL 12)
-        set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} -gencode=arch=compute_90,code=sm_90") # H series
-        if (CMAKE_CUDA_COMPILER_VERSION VERSION_GREATER_EQUAL 12.8)
-          set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} -gencode=arch=compute_120,code=sm_120") # B series
-        endif()
+        set(CMAKE_CUDA_ARCHITECTURES "37-real;50-real;52-real;60-real;70-real;75-real;80-real;86-real;89")
+      elseif (CMAKE_CUDA_COMPILER_VERSION VERSION_LESS 12.8)
+        set(CMAKE_CUDA_ARCHITECTURES "52-real;60-real;70-real;75-real;80-real;86-real;89-real;90")
+      else()
+        # https://cmake.org/cmake/help/latest/prop_tgt/CUDA_ARCHITECTURES.html
+        set(CMAKE_CUDA_ARCHITECTURES "all") # Supporting all, including latest Blackwell B series & RTX 50 series
       endif()
     endif()
   endif()

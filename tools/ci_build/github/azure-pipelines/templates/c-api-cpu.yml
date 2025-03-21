@@ -125,7 +125,7 @@ stages:
       clean: all
     pool:
       name: 'Azure Pipelines'
-      image: 'macOS-13'
+      image: 'macOS-14'
       os: 'macOS'
 
     timeoutInMinutes: 300
@@ -694,7 +694,7 @@ stages:
       inputs:
         SourceFolder: '$(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo\nuget-artifacts\onnxruntime-linux-x64-tensorrt\lib'
         Contents: |
-          libonnxruntime.so.*
+          libonnxruntime.so.1
           libonnxruntime_providers_shared.so
         TargetFolder: '$(Build.SourcesDirectory)\js\node\bin\napi-v3\linux\x64'
     - task: CopyFiles@2
@@ -709,7 +709,7 @@ stages:
       displayName: 'Copy nuget binaries to: $(Build.SourcesDirectory)\js\node\bin\napi-v3\linux\arm64\'
       inputs:
         SourceFolder: '$(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo\nuget-artifacts\onnxruntime-linux-aarch64\lib'
-        Contents: 'libonnxruntime.so.*'
+        Contents: 'libonnxruntime.so.1'
         TargetFolder: '$(Build.SourcesDirectory)\js\node\bin\napi-v3\linux\arm64'
     - task: CopyFiles@2
       displayName: 'Copy nodejs binaries to: $(Build.SourcesDirectory)\js\node\bin\napi-v3\linux\arm64\'
@@ -798,7 +798,7 @@ stages:
 
 - template: ../nuget/templates/test_macos.yml
   parameters:
-    AgentPool: macOS-13
+    AgentPool: macOS-14
     ArtifactSuffix: 'CPU'
 
 - template: ../nodejs/templates/test_win.yml
@@ -834,4 +834,4 @@ stages:
     OS: MacOS
     BuildId: ${{ parameters.BuildId }}
     SpecificArtifact: ${{ parameters.SpecificArtifact }}
-    PoolName: 'macOS-13'
+    PoolName: 'macOS-14'
