@@ -65,7 +65,8 @@ Status Conv<is_channels_last>::ComputeInternal(ComputeContext& context) const {
     Tensor transposed_kernel;
     std::vector<uint32_t> pads = {static_cast<uint32_t>(conv_attrs_.pads[0]), static_cast<uint32_t>(conv_attrs_.pads[1])};
     std::vector<uint32_t> strides = {static_cast<uint32_t>(conv_attrs_.strides[0]), static_cast<uint32_t>(conv_attrs_.strides[1])};
-    std::vector<uint32_t> dilations(conv_attrs_.dilations.size());
+    std::vector<uint32_t> dilations;
+    dilations.reserve(conv_attrs_.dilations.size());
     auto transform_dim = [](int64_t dim) { return static_cast<int32_t>(dim); };
     // std::transform(conv_attrs_.strides.begin(), conv_attrs_.strides.end(), std::back_inserter(strides), transform_dim);
     std::transform(conv_attrs_.dilations.begin(), conv_attrs_.dilations.end(), std::back_inserter(dilations), transform_dim);
