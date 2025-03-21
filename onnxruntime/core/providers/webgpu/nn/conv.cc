@@ -189,7 +189,7 @@ Status Conv<is_channels_last>::ComputeInternal(ComputeContext& context) const {
           .AddUniformVariables({{output_size}, {static_cast<uint32_t>(output_reshape[1])}, {static_cast<uint32_t>(output_reshape[2])}, {static_cast<uint32_t>(K)}});
       return context.RunProgram(program);
     } else {
-      MatMulProgram program = CreateMatMulProgram(context);
+      MatMulProgram program = CreateMatMulProgram(inputs, output);
       return context.RunProgram(program);
     }
   }
