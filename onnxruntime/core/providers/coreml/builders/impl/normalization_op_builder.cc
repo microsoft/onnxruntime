@@ -49,7 +49,6 @@ Status NormalizationOpBuilder::AddToModelBuilderImpl(
   if (node.OpType() == "GroupNormalization") {
     return AddGroupNormToModelBuilderImpl(model_builder, node, logger);
   }
-#if defined(COREML_ENABLE_MLPROGRAM)
   const auto& input_defs = node.InputDefs();
   NodeAttrHelper helper(node);
   const auto& scale_tensor = *model_builder.GetConstantInitializer(input_defs[1]->Name());
@@ -94,7 +93,6 @@ Status NormalizationOpBuilder::AddToModelBuilderImpl(
     AddOperationOutput(*op, *node.OutputDefs()[0]);
     model_builder.AddOperation(std::move(op));
   }
-#endif  // (COREML_ENABLE_MLPROGRAM)
 
   return Status::OK();
 }
@@ -103,7 +101,6 @@ Status NormalizationOpBuilder::AddGroupNormToModelBuilderImpl(
     [[maybe_unused]] ModelBuilder& model_builder,
     [[maybe_unused]] const Node& node,
     [[maybe_unused]] const logging::Logger& logger) const {
-#if defined(COREML_ENABLE_MLPROGRAM)
   const auto& input_defs = node.InputDefs();
   NodeAttrHelper helper(node);
   // Coreml hasn't supported GroupNorm yet.
@@ -184,7 +181,6 @@ Status NormalizationOpBuilder::AddGroupNormToModelBuilderImpl(
     model_builder.AddOperation(std::move(mul));
     model_builder.AddOperation(std::move(add));
   }
-#endif  // (COREML_ENABLE_MLPROGRAM)
   return Status::OK();
 }
 

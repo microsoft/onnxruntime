@@ -2,7 +2,6 @@
 // Copyright (c) Intel Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "core/common/safeint.h"
 #include "core/providers/common.h"
 #include "core/providers/shared/utils/utils.h"
 #include "core/providers/webnn/builders/helper.h"
@@ -86,7 +85,7 @@ Status SqueezeUnsqueezeOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_buil
 
   emscripten::val output = emscripten::val::undefined();
   // Use WebNN's reshape to implement Squeeze/Unsqueeze.
-  std::vector<uint32_t> new_shape = GetVecUint32FromVecInt64(input_shape);
+  std::vector<uint32_t> new_shape = GetNarrowedIntfromInt64<uint32_t>(input_shape);
   // Sort axes_data in ascending order.
   std::sort(axes_data.begin(), axes_data.end());
   if (op_type == "Squeeze") {

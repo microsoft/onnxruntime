@@ -158,6 +158,7 @@ class BaseOpBuilder : public IOpBuilder {
         {"Softmax", QNN_OP_SOFTMAX},
         {"Sqrt", QNN_OP_ELEMENT_WISE_SQUARE_ROOT},
         {"Sub", QNN_OP_ELEMENT_WISE_SUBTRACT},
+        {"Sum", QNN_OP_ELEMENT_WISE_ADD},
         {"Tanh", QNN_OP_TANH},
         {"Transpose", QNN_OP_TRANSPOSE},
         {"GridSample", QNN_OP_GRID_SAMPLE},

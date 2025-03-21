@@ -86,44 +86,48 @@ static void RunTest(
     return;
   }
 
-  OpTester test(op_type.c_str(), 1, onnxruntime::kMSDomain);
-  test.AddAttribute<int64_t>("interleaved", interleaved);
+  for (auto& ep : execution_providers) {
+    OpTester test(op_type.c_str(), 1, onnxruntime::kMSDomain);
+    test.AddAttribute<int64_t>("interleaved", interleaved);
 
-  if (rotary_embedding_dim > 0) {
-    test.AddAttribute<int64_t>("rotary_embedding_dim", rotary_embedding_dim);
-    test.AddAttribute<int64_t>("num_heads", num_heads);
-  }
+    if (rotary_embedding_dim > 0) {
+      test.AddAttribute<int64_t>("rotary_embedding_dim", rotary_embedding_dim);
+      test.AddAttribute<int64_t>("num_heads", num_heads);
+    }
 
-  if (rotary_embedding_dim > 0) {
-    test.AddAttribute<int64_t>("is_packed_batching", is_packed_batching);
-  }
+    if (rotary_embedding_dim > 0) {
+      test.AddAttribute<int64_t>("is_packed_batching", is_packed_batching);
+    }
 
-  if (tensor_type == TensorType::kFloat) {
-    test.AddInput<float>("input", input_dims, input_data);
-    test.AddInput<int64_t>("position_ids", pos_dims, position_ids);
-    test.AddInput<float>("cos_cache", cache_dims, cos_cache);
-    test.AddInput<float>("sin_cache", cache_dims, sin_cache);
-    test.AddOutput<float>("output", input_dims, output_data);
-  } else if (tensor_type == TensorType::kFloat16) {
-    test.AddInput<MLFloat16>("input", input_dims, ToFloat16(input_data));
-    test.AddInput<int64_t>("position_ids", pos_dims, position_ids);
-    test.AddInput<MLFloat16>("cos_cache", cache_dims, ToFloat16(cos_cache));
-    test.AddInput<MLFloat16>("sin_cache", cache_dims, ToFloat16(sin_cache));
-    test.AddOutput<MLFloat16>("output", input_dims, ToFloat16(output_data));
-  } else {
-    test.AddInput<BFloat16>("input", input_dims, FloatsToBFloat16s(input_data));
-    test.AddInput<int64_t>("position_ids", pos_dims, position_ids);
-    test.AddInput<BFloat16>("cos_cache", cache_dims, FloatsToBFloat16s(cos_cache));
-    test.AddInput<BFloat16>("sin_cache", cache_dims, FloatsToBFloat16s(sin_cache));
-    test.AddOutput<BFloat16>("output", input_dims, FloatsToBFloat16s(output_data));
-  }
-  if (tensor_type == TensorType::kBFloat16) {
-    test.SetOutputAbsErr("output", 0.03f);
-  } else {
-    test.SetOutputAbsErr("output", 0.002f);
-  }
+    if (tensor_type == TensorType::kFloat) {
+      test.AddInput<float>("input", input_dims, input_data);
+      test.AddInput<int64_t>("position_ids", pos_dims, position_ids);
+      test.AddInput<float>("cos_cache", cache_dims, cos_cache);
+      test.AddInput<float>("sin_cache", cache_dims, sin_cache);
+      test.AddOutput<float>("output", input_dims, output_data);
+    } else if (tensor_type == TensorType::kFloat16) {
+      test.AddInput<MLFloat16>("input", input_dims, ToFloat16(input_data));
+      test.AddInput<int64_t>("position_ids", pos_dims, position_ids);
+      test.AddInput<MLFloat16>("cos_cache", cache_dims, ToFloat16(cos_cache));
+      test.AddInput<MLFloat16>("sin_cache", cache_dims, ToFloat16(sin_cache));
+      test.AddOutput<MLFloat16>("output", input_dims, ToFloat16(output_data));
+    } else {
+      test.AddInput<BFloat16>("input", input_dims, FloatsToBFloat16s(input_data));
+      test.AddInput<int64_t>("position_ids", pos_dims, position_ids);
+      test.AddInput<BFloat16>("cos_cache", cache_dims, FloatsToBFloat16s(cos_cache));
+      test.AddInput<BFloat16>("sin_cache", cache_dims, FloatsToBFloat16s(sin_cache));
+      test.AddOutput<BFloat16>("output", input_dims, FloatsToBFloat16s(output_data));
+    }
+    if (tensor_type == TensorType::kBFloat16) {
+      test.SetOutputAbsErr("output", 0.03f);
+    } else {
+      test.SetOutputAbsErr("output", 0.002f);
+    }
 
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+    std::vector<std::unique_ptr<IExecutionProvider>> test_execution_providers;
+    test_execution_providers.push_back(std::move(ep));
+    test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &test_execution_providers);
+  }
 }
 
 static void RunTests(const std::vector<float>& input_data,

@@ -59,7 +59,7 @@ Status TriangularOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
     std::vector<uint8_t> unpacked_tensor;
     ORT_RETURN_IF_ERROR(onnxruntime::utils::UnpackInitializerData(diagonal_tensor, unpacked_tensor));
     const auto diagonal = *reinterpret_cast<int64_t*>(unpacked_tensor.data());
-    options.set("diagonal", narrow<int32_t>(diagonal));
+    options.set("diagonal", SafeInt<int32_t>(diagonal).Ref());
   }
 
   output = model_builder.GetBuilder().call<emscripten::val>("triangular", input, options);

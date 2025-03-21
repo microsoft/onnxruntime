@@ -213,7 +213,6 @@ Status ResizeOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const
     num_sizes = output_sizes.size();
   }
 
-#if defined(COREML_ENABLE_MLPROGRAM)
   if (model_builder.CreateMLProgram()) {
     using namespace CoreML::Specification::MILSpec;  // NOLINT
 
@@ -280,9 +279,7 @@ Status ResizeOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const
 
     AddOperationOutput(*op, *output_defs[0]);
     model_builder.AddOperation(std::move(op));
-  } else  // NOLINT
-#endif
-  {
+  } else {
     std::unique_ptr<COREML_SPEC::NeuralNetworkLayer> layer = model_builder.CreateNNLayer(node);
 
     auto* coreml_upsample = layer->mutable_upsample();

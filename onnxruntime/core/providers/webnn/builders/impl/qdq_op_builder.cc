@@ -2,7 +2,6 @@
 // Copyright (c) Intel Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "core/common/safeint.h"
 #include "core/optimizer/initializer.h"
 #include "core/providers/common.h"
 #include "core/providers/shared/utils/utils.h"
@@ -100,7 +99,7 @@ Status QDQOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
   if (!has_zero_point) {
     if (zero_point_shape.empty()) {
       // zero_point has the same shape as the scale tensor.
-      zero_point_shape = GetVecUint32FromVecInt64(scale_shape);
+      zero_point_shape = GetNarrowedIntfromInt64<uint32_t>(scale_shape);
     }
     // Create a zero constant with the same shape as the scale tensor.
     // The zero value has been pre-processed in the CreateOrGetConstant function,

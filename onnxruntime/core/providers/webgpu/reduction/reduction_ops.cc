@@ -11,7 +11,7 @@
 namespace onnxruntime {
 namespace webgpu {
 
-#define REGISTER_UNARY_ELEMENTWISE_VERSIONED_KERNEL(ReduceOp, begin, end)              \
+#define REGISTER_REDUCE_VERSIONED_KERNEL(ReduceOp, begin, end)                         \
   ONNX_OPERATOR_VERSIONED_KERNEL_EX(                                                   \
       ReduceOp,                                                                        \
       kOnnxDomain,                                                                     \
@@ -20,7 +20,16 @@ namespace webgpu {
       (*KernelDefBuilder::Create()).TypeConstraint("T", WebGpuSupportedNumberTypes()), \
       ReduceOp);
 
-#define REGISTER_UNARY_ELEMENTWISE_KERNEL(ReduceOp, version)                                                                  \
+#define REGISTER_REDUCE_VERSIONED_KERNEL_WITH_AXIS_IN_INPUT(ReduceOp, begin, end)                                             \
+  ONNX_OPERATOR_VERSIONED_KERNEL_EX(                                                                                          \
+      ReduceOp,                                                                                                               \
+      kOnnxDomain,                                                                                                            \
+      begin, end,                                                                                                             \
+      kWebGpuExecutionProvider,                                                                                               \
+      (*KernelDefBuilder::Create()).TypeConstraint("T", WebGpuSupportedNumberTypes()).InputMemoryType(OrtMemTypeCPUInput, 1), \
+      ReduceOp);
+
+#define REGISTER_REDUCE_KERNEL(ReduceOp, version)                                                                             \
   ONNX_OPERATOR_KERNEL_EX(                                                                                                    \
       ReduceOp,                                                                                                               \
       kOnnxDomain,                                                                                                            \
@@ -29,16 +38,79 @@ namespace webgpu {
       (*KernelDefBuilder::Create()).TypeConstraint("T", WebGpuSupportedNumberTypes()).InputMemoryType(OrtMemTypeCPUInput, 1), \
       ReduceOp);
 
-REGISTER_UNARY_ELEMENTWISE_VERSIONED_KERNEL(ReduceMean, 1, 10);
-REGISTER_UNARY_ELEMENTWISE_VERSIONED_KERNEL(ReduceMean, 11, 12);
-REGISTER_UNARY_ELEMENTWISE_VERSIONED_KERNEL(ReduceMean, 13, 17);
-REGISTER_UNARY_ELEMENTWISE_KERNEL(ReduceMean, 18);
+REGISTER_REDUCE_VERSIONED_KERNEL(ReduceMean, 1, 10);
+REGISTER_REDUCE_VERSIONED_KERNEL(ReduceMean, 11, 12);
+REGISTER_REDUCE_VERSIONED_KERNEL(ReduceMean, 13, 17);
+REGISTER_REDUCE_KERNEL(ReduceMean, 18);
+
+REGISTER_REDUCE_VERSIONED_KERNEL(ReduceMax, 1, 10);
+REGISTER_REDUCE_VERSIONED_KERNEL(ReduceMax, 11, 11);
+REGISTER_REDUCE_VERSIONED_KERNEL(ReduceMax, 12, 12);
+REGISTER_REDUCE_VERSIONED_KERNEL(ReduceMax, 13, 17);
+REGISTER_REDUCE_VERSIONED_KERNEL_WITH_AXIS_IN_INPUT(ReduceMax, 18, 19);
+REGISTER_REDUCE_KERNEL(ReduceMax, 20);
+
+REGISTER_REDUCE_VERSIONED_KERNEL(ReduceMin, 1, 10);
+REGISTER_REDUCE_VERSIONED_KERNEL(ReduceMin, 11, 11);
+REGISTER_REDUCE_VERSIONED_KERNEL(ReduceMin, 12, 12);
+REGISTER_REDUCE_VERSIONED_KERNEL(ReduceMin, 13, 17);
+REGISTER_REDUCE_VERSIONED_KERNEL_WITH_AXIS_IN_INPUT(ReduceMin, 18, 19);
+REGISTER_REDUCE_KERNEL(ReduceMin, 20);
+
+REGISTER_REDUCE_VERSIONED_KERNEL(ReduceSum, 1, 10);
+REGISTER_REDUCE_VERSIONED_KERNEL(ReduceSum, 11, 12);
+REGISTER_REDUCE_KERNEL(ReduceSum, 13);
+
+REGISTER_REDUCE_VERSIONED_KERNEL(ReduceProd, 1, 10);
+REGISTER_REDUCE_VERSIONED_KERNEL(ReduceProd, 11, 12);
+REGISTER_REDUCE_VERSIONED_KERNEL(ReduceProd, 13, 17);
+REGISTER_REDUCE_KERNEL(ReduceProd, 18);
+
+REGISTER_REDUCE_VERSIONED_KERNEL(ReduceL1, 1, 10);
+REGISTER_REDUCE_VERSIONED_KERNEL(ReduceL1, 11, 12);
+REGISTER_REDUCE_VERSIONED_KERNEL(ReduceL1, 13, 17);
+REGISTER_REDUCE_KERNEL(ReduceL1, 18);
+
+REGISTER_REDUCE_VERSIONED_KERNEL(ReduceL2, 1, 10);
+REGISTER_REDUCE_VERSIONED_KERNEL(ReduceL2, 11, 12);
+REGISTER_REDUCE_VERSIONED_KERNEL(ReduceL2, 13, 17);
+REGISTER_REDUCE_KERNEL(ReduceL2, 18);
+
+REGISTER_REDUCE_VERSIONED_KERNEL(ReduceLogSum, 1, 10);
+REGISTER_REDUCE_VERSIONED_KERNEL(ReduceLogSum, 11, 12);
+REGISTER_REDUCE_VERSIONED_KERNEL(ReduceLogSum, 13, 17);
+REGISTER_REDUCE_KERNEL(ReduceLogSum, 18);
+
+REGISTER_REDUCE_VERSIONED_KERNEL(ReduceSumSquare, 1, 10);
+REGISTER_REDUCE_VERSIONED_KERNEL(ReduceSumSquare, 11, 12);
+REGISTER_REDUCE_VERSIONED_KERNEL(ReduceSumSquare, 13, 17);
+REGISTER_REDUCE_KERNEL(ReduceSumSquare, 18);
+
+REGISTER_REDUCE_VERSIONED_KERNEL(ReduceLogSumExp, 1, 10);
+REGISTER_REDUCE_VERSIONED_KERNEL(ReduceLogSumExp, 11, 12);
+REGISTER_REDUCE_VERSIONED_KERNEL(ReduceLogSumExp, 13, 17);
+REGISTER_REDUCE_KERNEL(ReduceLogSumExp, 18);
+
+REGISTER_REDUCE_VERSIONED_KERNEL(ArgMax, 1, 10);
+REGISTER_REDUCE_VERSIONED_KERNEL(ArgMax, 11, 12);
+REGISTER_REDUCE_KERNEL(ArgMax, 13);
+
+REGISTER_REDUCE_VERSIONED_KERNEL(ArgMin, 1, 10);
+REGISTER_REDUCE_VERSIONED_KERNEL(ArgMin, 11, 12);
+REGISTER_REDUCE_KERNEL(ArgMin, 13);
 
 Status ReduceKernelProgram::GenerateShaderCode(ShaderHelper& shader) const {
-  const auto& input = shader.AddInput("input", ShaderUsage::UseUniform | ShaderUsage::UseIndicesTypeAlias | ShaderUsage::UseValueTypeAlias);
   const auto& output = shader.AddOutput("output", ShaderUsage::UseUniform | ShaderUsage::UseIndicesTypeAlias | ShaderUsage::UseValueTypeAlias);
+  if (is_input_empty_) {
+    shader.MainFunctionBody() << shader.GuardAgainstOutOfBoundsWorkgroupSizes("uniforms.output_size")
+                              << code_[0]
+                              << code_[2]
+                              << output.SetByOffset("global_idx", "output_value");
+    return Status::OK();
+  }
+  const auto& input = shader.AddInput("input", ShaderUsage::UseUniform | ShaderUsage::UseIndicesTypeAlias | ShaderUsage::UseValueTypeAlias);
   bool reduce_on_all_axes = no_op_with_empty_axes_ == false && axes_.empty();
-  std::string loop_header = code_[0];
+  std::string loop_header = code_[0].find("first_element") == std::string::npos ? code_[0] : "let first_element = " + input.GetByIndices("input_indices") + ";\n" + code_[0] + "\n";
   std::string loop_body = "let current_element: input_value_t = " + input.GetByIndices("input_indices") + ";\n" + code_[1];
   std::string loop_footer = code_[2];
   const auto input_rank = input.Rank();
@@ -50,16 +122,19 @@ Status ReduceKernelProgram::GenerateShaderCode(ShaderHelper& shader) const {
       std::stringstream ss;
       std::string index = "i" + std::to_string(i);
       ss << "for (var " << index << " : u32 = 0; " << index << " < " << input.IndicesGet("uniforms.input_shape", i) << "; " << index << "++) {\n";
+      if (loop_body.find("last_index") != std::string::npos) {
+        ss << "let last_index = " + index + ";\n";
+      }
       ss << input.IndicesSet("input_indices", i, index) << ";\n";
       ss << loop_body << "\n";
       ss << "}\n";
       loop_body = ss.str();
     } else {
       std::stringstream ss;
-      ss << loop_header << "\n";
       std::string index = "i" + std::to_string(i);
       ss << "let " << index << " = " << output.IndicesGet("output_indices", l) << ";\n";
       ss << input.IndicesSet("input_indices", i, index) << ";\n";
+      ss << loop_header << "\n";
       loop_header = ss.str();
       l++;
     }
@@ -80,6 +155,7 @@ Status ReduceKernelProgram::GenerateShaderCode(ShaderHelper& shader) const {
 template <bool allow_multi_axes>
 Status ReduceKernel<allow_multi_axes>::ComputeInternal(ComputeContext& context) const {
   const auto* input_tensor = context.Input(0);
+  ORT_RETURN_IF_ERROR(CheckInput(input_tensor));
   InlinedVector<uint32_t> input_axes;
   auto rank = input_tensor->Shape().NumDimensions();
   auto transform_axis = [rank](int64_t axis) {
@@ -95,10 +171,12 @@ Status ReduceKernel<allow_multi_axes>::ComputeInternal(ComputeContext& context) 
   if (context.InputCount() > 1) {
     ORT_ENFORCE(axes_.empty(), "Axes attribute may not be specified when axes input is also provided.");
     const Tensor* axes_tensor = context.Input<Tensor>(1);
-    auto size = static_cast<size_t>(axes_tensor->Shape()[0]);
-    const auto* data = axes_tensor->Data<int64_t>();
-    input_axes.reserve(size);
-    std::transform(data, data + size, std::back_inserter(input_axes), transform_axis);
+    if (nullptr != axes_tensor) {
+      auto size = static_cast<size_t>(axes_tensor->Shape()[0]);
+      const auto* data = axes_tensor->Data<int64_t>();
+      input_axes.reserve(size);
+      std::transform(data, data + size, std::back_inserter(input_axes), transform_axis);
+    }
   } else {
     input_axes.reserve(axes_.size());
     std::transform(axes_.begin(), axes_.end(), std::back_inserter(input_axes), transform_axis);
@@ -106,24 +184,41 @@ Status ReduceKernel<allow_multi_axes>::ComputeInternal(ComputeContext& context) 
   if (input_axes.empty()) {
     if (noop_with_empty_axes_ || rank == 0) {
       // If axes is empty and noop_with_empty_axes_ is true, it is a no-op according to the spec
-      // If input tensor is a scalar, return the input tensor as is.
-      // This is not correct for ReduceLogSum and ReduceSumSquare
-      // TODO handle these cases separately.
-      auto output = context.Output(0, input_tensor->Shape());
-      if (output->DataRaw() != input_tensor->DataRaw()) {
-        ORT_RETURN_IF_ERROR(Info().GetDataTransferManager().CopyTensor(*input_tensor, *output));
+      // If input tensor is a scalar and it's not a ReduceLogSum or ReduceSumSquare, return the input tensor as is.
+      if (rank == 0 && (name_ == "ReduceLogSum" || name_ == "ReduceSumSquare" || name_ == "ReduceL1" || name_ == "ReduceL2")) {
+        // For ReduceLogSum with scalar input, output = log(input)
+        // For ReduceSumSquare with scalar input, output = input * input
+        auto output = context.Output(0, input_tensor->Shape());
+        // We need to run the operation even for scalar inputs for these ops
+        const auto code = GetOpSpecificCode(input_tensor);
+        constexpr uint32_t output_size = 1;
+        constexpr uint32_t reduce_axes = 0;
+        ReduceKernelProgram program(name_, keepdims_, noop_with_empty_axes_, input_axes, code, false);
+        program.AddInput({input_tensor, ProgramTensorMetadataDependency::TypeAndRank})
+            .AddOutput({output, ProgramTensorMetadataDependency::TypeAndRank})
+            .SetDispatchGroupSize(1)
+            .AddUniformVariables({{output_size}, {static_cast<uint32_t>(noop_with_empty_axes_ ? 1 : 0)}, {reduce_axes}});
+        return context.RunProgram(program);
+      } else {
+        // For other ops, or when axes is empty with noop_with_empty_axes_ true, just copy the input
+        auto output = context.Output(0, input_tensor->Shape());
+        if (output->DataRaw() != input_tensor->DataRaw()) {
+          ORT_RETURN_IF_ERROR(Info().GetDataTransferManager().CopyTensor(*input_tensor, *output));
+        }
+        return Status::OK();
       }
-      return Status::OK();
     } else {
       // If axes is empty and noop_with_empty_axes_ is false, it is a reduction over all axes
       input_axes.resize(rank);
       std::iota(input_axes.begin(), input_axes.end(), 0);
     }
   }
-  const auto code = GetOpSpecificCode(input_tensor, input_axes.size());
+  const auto code = GetOpSpecificCode(input_tensor);
   // Compute output shape
   std::vector<int64_t> output_shape;
+  bool is_input_empty = false;
   for (size_t i = 0; i < input_tensor->Shape().NumDimensions(); ++i) {
+    is_input_empty |= input_tensor->Shape()[i] == 0;
     if (std::find(input_axes.begin(), input_axes.end(), i) != input_axes.end()) {
       if (keepdims_) {
         output_shape.push_back(1);
@@ -134,34 +229,144 @@ Status ReduceKernel<allow_multi_axes>::ComputeInternal(ComputeContext& context) 
   }
   TensorShape output_tensor_shape(output_shape);
   int64_t output_size = output_tensor_shape.Size();
-  ReduceKernelProgram program("ReduceMean", keepdims_, noop_with_empty_axes_, input_axes, code);
-  program.AddInput({input_tensor, ProgramTensorMetadataDependency::TypeAndRank})
+  if (output_size == 0) {
+    ORT_IGNORE_RETURN_VALUE(context.Output(0, output_tensor_shape));
+    return Status::OK();
+  }
+
+  auto input_rank = input_tensor->Shape().NumDimensions();
+  // reduce_axes element is either 1 or 0 depending on whether the axis is reduced or not
+  std::vector<uint32_t> reduce_axes;
+  reduce_axes.resize(input_rank, 0);
+  for (auto axis : input_axes) {
+    reduce_axes[axis] = 1;
+  }
+
+  ReduceKernelProgram program(name_, keepdims_, noop_with_empty_axes_, input_axes, code, is_input_empty);
+  if (!is_input_empty) {
+    program.AddInput({input_tensor, ProgramTensorMetadataDependency::TypeAndRank});
+  }
+
+  program.CacheHint(is_input_empty)
       .AddOutput({context.Output(0, output_shape), ProgramTensorMetadataDependency::TypeAndRank})
       .SetDispatchGroupSize((output_size + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE)
       .AddUniformVariables({{static_cast<uint32_t>(output_size)},
                             {static_cast<uint32_t>(noop_with_empty_axes_ ? 1 : 0)},
-                            {input_axes},
-                            {static_cast<uint32_t>(input_axes.size())}});
+                            {reduce_axes}});
 
   return context.RunProgram(program);
 }
 
-ReduceOpSpecificCode ReduceMean::GetOpSpecificCode(const Tensor* input_tensor, size_t axes_size) const {
+ReduceOpSpecificCode ReduceMean::GetOpSpecificCode(const Tensor* input_tensor) const {
   const TensorShape& input_shape = input_tensor->Shape();
   size_t input_rank = input_shape.NumDimensions();
+  std::string loop_header = "var sum = f32(0);";
+  std::string loop_body = "sum += f32(current_element);";
   std::stringstream ss;
   ss << "var size: u32 = 1;\n"
-     << "for (var i: u32 = 0; i < uniforms.axes_size; i += 1) { \n"
-     << "  let index = " << GetElementAt("uniforms.axes", "i", axes_size) << ";\n"
-     << "  size = size * " << GetElementAt("uniforms.input_shape", "index", input_rank) << ";\n"
+     << "for (var i: u32 = 0; i < " << input_rank << "; i += 1) { \n"
+     << "  let index_reduced_or_not = " << GetElementAt("uniforms.reduce_axes", "i", input_rank) << ";\n"
+     << "  if (index_reduced_or_not == 1) { \n"
+     << "    size = size * " << GetElementAt("uniforms.input_shape", "i", input_rank) << ";\n"
+     << "  }\n"
      << "}\n"
      << "let output_value = output_value_t(sum / f32(size));";
-  ReduceOpSpecificCode code({"var sum = f32(0);", "sum += f32(current_element);", ss.str()});
+  std::string loop_footer = ss.str();
+  ReduceOpSpecificCode code({loop_header, loop_body, loop_footer});
   return code;
 }
 
-Status ReduceMean::ComputeInternal(ComputeContext& ctx) const {
-  return ReduceKernel<true>::ComputeInternal(ctx);
+ReduceOpSpecificCode ReduceMax::GetOpSpecificCode(const Tensor* input_tensor) const {
+  ORT_UNUSED_PARAMETER(input_tensor);
+  std::string loop_header = "var max_element = first_element;";
+  std::string loop_body = "max_element = max(max_element, current_element);";
+  std::string loop_footer = "let output_value = output_value_t(max_element);";
+  ReduceOpSpecificCode code({loop_header, loop_body, loop_footer});
+  return code;
+}
+ReduceOpSpecificCode ReduceMin::GetOpSpecificCode(const Tensor* input_tensor) const {
+  ORT_UNUSED_PARAMETER(input_tensor);
+  std::string loop_header = "var min_element = first_element;";
+  std::string loop_body = "min_element = min(min_element, current_element);";
+  std::string loop_footer = "let output_value = output_value_t(min_element);";
+  ReduceOpSpecificCode code({loop_header, loop_body, loop_footer});
+  return code;
+}
+ReduceOpSpecificCode ReduceSum::GetOpSpecificCode(const Tensor* input_tensor) const {
+  ORT_UNUSED_PARAMETER(input_tensor);
+  std::string loop_header = "var sum = f32(0);";
+  std::string loop_body = "sum += f32(current_element);";
+  std::string loop_footer = "let output_value = output_value_t(sum);";
+  ReduceOpSpecificCode code({loop_header, loop_body, loop_footer});
+  return code;
+}
+ReduceOpSpecificCode ReduceProd::GetOpSpecificCode(const Tensor* input_tensor) const {
+  ORT_UNUSED_PARAMETER(input_tensor);
+  std::string loop_header = "var prod = f32(1);";
+  std::string loop_body = "prod *= f32(current_element);";
+  std::string loop_footer = "let output_value = output_value_t(prod);";
+  ReduceOpSpecificCode code({loop_header, loop_body, loop_footer});
+  return code;
+}
+ReduceOpSpecificCode ReduceL1::GetOpSpecificCode(const Tensor* input_tensor) const {
+  ORT_UNUSED_PARAMETER(input_tensor);
+  std::string loop_header = "var l1 = f32(0);";
+  std::string loop_body = "l1 += abs(f32(current_element));";
+  std::string loop_footer = "let output_value = output_value_t(l1);";
+  ReduceOpSpecificCode code({loop_header, loop_body, loop_footer});
+  return code;
+}
+ReduceOpSpecificCode ReduceL2::GetOpSpecificCode(const Tensor* input_tensor) const {
+  ORT_UNUSED_PARAMETER(input_tensor);
+  std::string loop_header = "var l2 = f32(0);";
+  std::string loop_body = "let t = f32(current_element); l2 += (t * t);";
+  std::string loop_footer = "l2 = sqrt(l2); let output_value = output_value_t(l2);";
+  ReduceOpSpecificCode code({loop_header, loop_body, loop_footer});
+  return code;
+}
+ReduceOpSpecificCode ReduceLogSum::GetOpSpecificCode(const Tensor* input_tensor) const {
+  ORT_UNUSED_PARAMETER(input_tensor);
+  std::string loop_header = "var sum = f32(0);";
+  std::string loop_body = "sum += f32(current_element);";
+  std::string loop_footer = "let log_sum = log(sum); let output_value = output_value_t(log_sum);";
+  ReduceOpSpecificCode code({loop_header, loop_body, loop_footer});
+  return code;
+}
+ReduceOpSpecificCode ReduceSumSquare::GetOpSpecificCode(const Tensor* input_tensor) const {
+  ORT_UNUSED_PARAMETER(input_tensor);
+  std::string loop_header = "var sum_square = f32(0);";
+  std::string loop_body = "let t = f32(current_element); sum_square += (t * t);";
+  std::string loop_footer = "let output_value = output_value_t(sum_square);";
+  ReduceOpSpecificCode code({loop_header, loop_body, loop_footer});
+  return code;
+}
+ReduceOpSpecificCode ReduceLogSumExp::GetOpSpecificCode(const Tensor* input_tensor) const {
+  ORT_UNUSED_PARAMETER(input_tensor);
+  std::string loop_header = "var sum_exp = f32(0);";
+  std::string loop_body = "sum_exp += exp(f32(current_element));";
+  std::string loop_footer = "let log_sum_exp = log(sum_exp); let output_value = output_value_t(log_sum_exp);";
+  ReduceOpSpecificCode code({loop_header, loop_body, loop_footer});
+  return code;
+}
+
+ReduceOpSpecificCode ArgMin::GetOpSpecificCode(const Tensor* input_tensor) const {
+  ORT_UNUSED_PARAMETER(input_tensor);
+  std::string op = (select_last_index_) ? "<=" : "<";
+  std::string loop_header = "var best_element = first_element; var best_index = u32(0);";
+  std::string loop_body = "if (current_element " + op + " best_element) { best_element = current_element; best_index = last_index; };";
+  std::string loop_footer = "let output_value = output_value_t(best_index);";
+  ReduceOpSpecificCode code({loop_header, loop_body, loop_footer});
+  return code;
+}
+
+ReduceOpSpecificCode ArgMax::GetOpSpecificCode(const Tensor* input_tensor) const {
+  ORT_UNUSED_PARAMETER(input_tensor);
+  std::string op = (select_last_index_) ? ">=" : ">";
+  std::string loop_header = "var best_element = first_element; var best_index = u32(0);";
+  std::string loop_body = "if (current_element " + op + " best_element) { best_element = current_element; best_index = last_index; };";
+  std::string loop_footer = "let output_value = output_value_t(best_index);";
+  ReduceOpSpecificCode code({loop_header, loop_body, loop_footer});
+  return code;
 }
 
 }  // namespace webgpu
