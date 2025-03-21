@@ -118,8 +118,14 @@ std::vector<NodeUnitIODef> GetQDQIODefs(const Node& target_node, const QDQ::Node
         axis = entry->second.i();
       }
 
+      // Get the Q or DQ block_size attribute if available.
+      std::optional<int64_t> block_size;
+      if (auto entry = node_attrs.find("block_size"); entry != node_attrs.end()) {
+        block_size = entry->second.i();
+      }
+
       // quantization scale and zp are always the input[1, 2]
-      NodeUnitIODef::QuantParam quant_param{*node_inputs[1], node_inputs.size() == 3 ? node_inputs[2] : nullptr, axis};
+      NodeUnitIODef::QuantParam quant_param{*node_inputs[1], node_inputs.size() == 3 ? node_inputs[2] : nullptr, axis, block_size};
 
       if (is_input) {
         // DQ is input to the target node, use the DstArgIndex
@@ -373,10 +379,17 @@ void NodeUnit::InitForSingleNode() {
       axis = entry->second.i();
     }
 
+    // Get the DQ block_size attribute if available.
+    std::optional<int64_t> block_size;
+    if (auto entry = node_attrs.find("block_size"); entry != node_attrs.end()) {
+      block_size = entry->second.i();
+    }
+
     inputs_.push_back(NodeUnitIODef{*input_defs[0],
                                     NodeUnitIODef::QuantParam{*input_defs[1],
                                                               input_defs.size() == 3 ? input_defs[2] : nullptr,
-                                                              axis}});
+                                                              axis,
+                                                              block_size}});
     outputs_.push_back(NodeUnitIODef{*output_defs[0], std::nullopt});
 
   } else if (qlinear_type == QLinearOpType::QuantizeLinear) {
@@ -390,11 +403,18 @@ void NodeUnit::InitForSingleNode() {
       axis = entry->second.i();
     }
 
+    // Get the Q block_size attribute if available.
+    std::optional<int64_t> block_size;
+    if (auto entry = node_attrs.find("block_size"); entry != node_attrs.end()) {
+      block_size = entry->second.i();
+    }
+
     inputs_.push_back(NodeUnitIODef{*input_defs[0], std::nullopt});
     outputs_.push_back(NodeUnitIODef{*output_defs[0],
                                      NodeUnitIODef::QuantParam{*input_defs[1],
                                                                input_defs.size() == 3 ? input_defs[2] : nullptr,
-                                                               axis}});
+                                                               axis,
+                                                               block_size}});
   } else if (IsVariadicQLinearOp(qlinear_type)) {
     size_t input_num = (input_defs.size() - 2) / 3;
     for (size_t i = 0; i < input_num; i++) {
