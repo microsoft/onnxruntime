@@ -138,23 +138,28 @@ class T5Helper:
     @staticmethod
     def auto_mixed_precision(
         onnx_model: OnnxModel,
-        op_block_list: list[str] = [  # noqa: B006
-            "SimplifiedLayerNormalization",
-            "SkipSimplifiedLayerNormalization",
-            "Relu",
-            "Add",
-        ],
+        op_block_list: list[str] | None = None,
         force_fp16_logits: bool = False,
+        use_symbolic_shape_infer: bool = True,
     ):
         """Convert model to mixed precision.
            It detects whether original model has fp16 precision weights, and set parameters for float16 conversion automatically.
         Args:
             onnx_model (OnnxModel): optimized ONNX model
-            op_block_list (List[str], optional): . Defaults to ["SimplifiedLayerNormalization", "SkipSimplifiedLayerNormalization", "Relu", "Add"]
+            op_block_list (List[str], optional): operators need to run in fp32.
             force_fp16_logits (bool, optional): force logits and last MatMul node to be in float16. Defaults to False.
+            use_symbolic_shape_infer (bool, optional): use symbolic shape inference to convert float to float16. Defaults to True.
         Returns:
             parameters(dict): a dictionary of parameters used in float16 conversion
         """
+        if op_block_list is None:
+            op_block_list = [
+                "SimplifiedLayerNormalization",
+                "SkipSimplifiedLayerNormalization",
+                "Relu",
+                "Add",
+            ]
+
         op_full_set = {node.op_type for node in onnx_model.nodes()}
         fp32_op_set = set(op_block_list)
         fp16_op_set = op_full_set.difference(fp32_op_set)
@@ -193,6 +198,33 @@ class T5Helper:
             keep_io_types = [logits_output_name]
             node_block_list = [last_matmul_node.name]
 
+        if "Add" not in op_block_list:
+            input_name_to_nodes = onnx_model.input_name_to_nodes()
+            fp32_add = 0
+            changed = True
+            add_nodes = onnx_model.get_nodes_by_op_type("Add")
+            while changed:
+                changed = False
+                for node in add_nodes:
+                    if node.name not in node_block_list:
+                        parents = onnx_model.get_parents(node, output_name_to_node)
+                        children = onnx_model.get_children(node, input_name_to_nodes)
+                        blocked_children = [
+                            child for child in children if child.op_type in op_block_list or child in node_block_list
+                        ]
+                        blocked_parents = [
+                            parent for parent in parents if parent.op_type in op_block_list or parent in node_block_list
+                        ]
+                        # If any child or parent is in fp32, we place the Add node to fp32.
+                        if (len(blocked_children) + len(blocked_parents)) > 0:
+                            node_block_list.append(node.name)
+                            fp32_add += 1
+                            changed = True
+            fp16_add = len(add_nodes) - fp32_add
+            logger.info(f"node counter of Add operator: fp32={fp32_add} fp16={fp16_add}")
+
+        logger.info(f"node_block_list: {node_block_list}")
+
         parameters = {
             "keep_io_types": keep_io_types,
             "op_block_list": op_block_list,
@@ -201,7 +233,18 @@ class T5Helper:
         }
 
         logger.info(f"auto_mixed_precision parameters: {parameters}")
-        onnx_model.convert_float_to_float16(use_symbolic_shape_infer=True, **parameters)
+        if use_symbolic_shape_infer:
+            onnx_model.convert_float_to_float16(use_symbolic_shape_infer=True, **parameters)
+        else:
+            # Workaround when symbolic shape inference fails.
+            # Need enable shape_infer_before_optimization in convert_to_onnx.py as well.
+            from float16 import convert_float_to_float16
+
+            convert_float_to_float16(
+                onnx_model.model,
+                disable_shape_infer=True,
+                **parameters,
+            )
 
         return parameters
 
@@ -224,17 +267,17 @@ class T5Helper:
         optimization_options = None
         if is_float16:
             optimization_options = FusionOptions("t5")
-            optimization_options.enable_skip_layer_norm = False
+            # SkipLayerNormalization is faster but might bring accuracy drop since it uses fp16 accumulation.
+            optimization_options.enable_skip_layer_norm = not auto_mixed_precision
 
         m = optimize_model(
             onnx_model_path,
             model_type="t5",
             num_heads=num_attention_heads,
             hidden_size=hidden_size,
-            opt_level=2 if not use_external_data_format else 0,
+            opt_level=0,
             optimization_options=optimization_options,
-            use_gpu=False,
-            only_onnxruntime=not use_gpu,
+            use_gpu=use_gpu,
         )
 
         if is_float16:

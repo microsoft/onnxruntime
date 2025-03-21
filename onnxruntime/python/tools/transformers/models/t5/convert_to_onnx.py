@@ -16,6 +16,7 @@ from benchmark_helper import (
     prepare_environment,
     setup_logger,
 )
+from onnx.shape_inference import infer_shapes_path
 from t5_helper import PRETRAINED_MT5_MODELS, PRETRAINED_T5_MODELS, T5Helper
 
 logger = logging.getLogger("")
@@ -166,6 +167,7 @@ def export_onnx_models(
     state_dict_path: str = "",
     encode_decoder_init: bool = False,
     force_fp16_io: bool = False,
+    shape_infer_before_optimization: bool = False,
 ):
     device = torch.device("cuda:0" if use_gpu else "cpu")
 
@@ -212,6 +214,16 @@ def export_onnx_models(
 
         # Optimize ONNX graph. Note that we have not implemented graph optimization for T5 yet.
         if optimize_onnx or precision != Precision.FLOAT32:
+            onnx_shape_path = None
+            if shape_infer_before_optimization:
+                onnx_shape_path = T5Helper.get_onnx_path(
+                    output_dir,
+                    model_name_or_path,
+                    suffix=filename_suffix + "_shape",
+                    new_folder=False,
+                )
+                infer_shapes_path(onnx_path, onnx_shape_path)
+
             output_path = T5Helper.get_onnx_path(
                 output_dir,
                 model_name_or_path,
@@ -222,7 +234,7 @@ def export_onnx_models(
             if overwrite or not os.path.exists(output_path):
                 logger.info(f"Optimizing model to {output_path}")
                 T5Helper.optimize_onnx(
-                    onnx_path,
+                    onnx_shape_path or onnx_path,
                     output_path,
                     precision == Precision.FLOAT16,
                     config.num_heads,
@@ -233,7 +245,7 @@ def export_onnx_models(
                     force_fp16_io=force_fp16_io,
                 )
             else:
-                logger.info(f"Skip optimizing: existed ONNX model {onnx_path}")
+                logger.info(f"Skip optimizing: existed ONNX model {output_path}")
         else:
             output_path = onnx_path
 
@@ -246,7 +258,9 @@ def export_onnx_models(
         with torch.no_grad():
             max_diff = T5Helper.verify_onnx(model, ort_session, device, use_int32_inputs)
         logger.info(f"PyTorch and OnnxRuntime results max difference = {max_diff}")
-        if max_diff > 1e-4:
+
+        # The threshold cannot apply to fp16 model, which need a larger threshold.
+        if precision == Precision.FLOAT32 and max_diff > 1e-4:
             logger.warning("PyTorch and OnnxRuntime results are NOT close")
 
         output_paths.append(output_path)
@@ -270,9 +284,6 @@ def main():
 
     if args.precision == Precision.FLOAT16:
         assert args.use_gpu, "fp16 requires --use_gpu"
-
-    if args.optimize_onnx:
-        logger.warning("Graph optimization for T5 is not implemented yet.")
 
     output_paths = export_onnx_models(
         args.model_name_or_path,

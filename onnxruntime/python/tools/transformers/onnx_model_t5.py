@@ -978,8 +978,8 @@ class T5OnnxModel(BertOnnxModel):
 
     def postprocess(self):
         # remove get_extended_attention_mask() since it generates all zeros.
-        # self.remove_extended_mask_decoder_init()
-        # self.remove_extended_mask_decoder()
-        # self.adjust_rel_pos_bis_length_input()
+        self.remove_extended_mask_decoder_init()
+        self.remove_extended_mask_decoder()
+        self.adjust_rel_pos_bis_length_input()
 
         self.prune_graph()
