@@ -62,6 +62,7 @@ Status Conv<is_channels_last>::ComputeInternal(ComputeContext& context) const {
   }
 
   if (conv_attrs_.group > 1) {
+    Tensor transposed_kernel;
     std::vector<uint32_t> pads = {static_cast<uint32_t>(conv_attrs_.pads[0]), static_cast<uint32_t>(conv_attrs_.pads[1])};
     std::vector<uint32_t> strides = {static_cast<uint32_t>(conv_attrs_.strides[0]), static_cast<uint32_t>(conv_attrs_.strides[1])};
     std::vector<uint32_t> dilations(conv_attrs_.dilations.size());
@@ -73,11 +74,13 @@ Status Conv<is_channels_last>::ComputeInternal(ComputeContext& context) const {
     if (is_channels_last) {
       // Transpose weights
       std::vector<size_t> perm = {2, 3, 1, 0};
-      TensorShape transposed_kernel_shape(kernel_shape);
+      const auto& dims = kernel_shape.GetDims();
+      TensorShapeVector transposed_kernel_shape_vector(dims.size());
       for (size_t i = 0; i < kernel_shape.NumDimensions(); ++i) {
-        transposed_kernel_shape[i] = kernel_shape[perm[i]];
+        transposed_kernel_shape_vector[i] = kernel_shape[perm[i]];
       }
-      auto transposed_kernel = context.CreateGPUTensor(kernel->DataType(), transposed_kernel_shape);
+      TensorShape transposed_kernel_shape(transposed_kernel_shape_vector);
+      transposed_kernel = context.CreateGPUTensor(kernel->DataType(), transposed_kernel_shape);
       ORT_RETURN_IF_ERROR(Transpose::DoTranspose(context, perm, *kernel, transposed_kernel));
       inputs[1] = &transposed_kernel;
     } else {
@@ -90,7 +93,7 @@ Status Conv<is_channels_last>::ComputeInternal(ComputeContext& context) const {
     auto output_size = output_shape.Size() / components;
     auto* output = context.Output(0, output_shape);
     GroupedConvProgram program(conv_attrs_, has_bias, is_channels_last);
-    program.AddInputs({{inputs[1], ProgramTensorMetadataDependency::TypeAndRank, components}, {inputs[0], ProgramTensorMetadataDependency::TypeAndRank, components}})
+    program.AddInputs({{inputs[0], ProgramTensorMetadataDependency::TypeAndRank}, {inputs[1], ProgramTensorMetadataDependency::TypeAndRank, components}})
         .AddOutput({output, ProgramTensorMetadataDependency::TypeAndRank, components})
         .AddUniformVariables({{static_cast<uint32_t>(output_size)}, {dilations}, {strides}, {pads}, {static_cast<uint32_t>(output_channels_per_group)}, {static_cast<uint32_t>(components)}})
         .SetDispatchGroupSize((output_size + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE);
