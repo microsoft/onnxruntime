@@ -52,7 +52,7 @@ std::string CanculateResult(const ShaderVariableHelper& x, const ShaderVariableH
        << "      }\n"
        << ""
        << "      let x_indices = x_indices_t(batch, input_channel, xHeight, xWidth);\n"
-       << "      let w_indices = w_indices_t(wInChannel, output_channel, wHeight, wWidth);\n"
+       << "      let w_indices = w_indices_t(output_channel, wInChannel, wHeight, wWidth);\n"
        << "      let xVal = " << x.GetByIndices("x_indices") << ";\n"
        << "      let wVal = " << w.GetByIndices("w_indices") << ";\n"
        << "      value += xVal * wVal;\n"
