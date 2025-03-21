@@ -8,20 +8,22 @@
 #include "core/providers/cpu/nn/conv_attributes.h"
 #include "core/providers/webgpu/program.h"
 #include "core/providers/webgpu/shader_helper.h"
+#include "core/providers/webgpu/nn/fuse_utils.h"
 
 namespace onnxruntime {
 namespace webgpu {
 
-template <bool is_channels_last>
-class Conv final : public WebGpuKernel {
+template <bool is_channels_last, bool is_fused = false>
+class Conv : public WebGpuKernel {
  public:
-  Conv(const OpKernelInfo& info) : WebGpuKernel(info), conv_attrs_(info) {
+  Conv(const OpKernelInfo& info) : WebGpuKernel(info), conv_attrs_(info), activation(Activation::None) {
   }
   Status ComputeInternal(ComputeContext& context) const override;
   TensorShape ComputeOutputShape(const TensorShape& input_shape, const TensorShape& weight_shape, std::vector<uint32_t> pads, std::vector<uint32_t> strides, std::vector<uint32_t> dilations) const;
 
- private:
+ protected:
   ConvAttributes conv_attrs_;
+  Activation activation_;
 };
 
 }  // namespace webgpu
