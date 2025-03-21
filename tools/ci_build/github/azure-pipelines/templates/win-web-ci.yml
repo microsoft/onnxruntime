@@ -227,7 +227,7 @@ jobs:
   - ${{ if eq(parameters.RunWebGpuTests, true) }}:
     - task: DownloadPipelineArtifact@2
       inputs:
-        patterns: '${{ parameters.BuildConfig }}_wasm_webgpu/**/*'
+        patterns: 'Debug_wasm_webgpu/**/*'
         path: $(Pipeline.Workspace)\artifacts_wasm_webgpu
       displayName: 'Download WebAssembly artifacts'
     - task: CopyFiles@2
