@@ -113,12 +113,11 @@ jobs:
       MACOSX_DEPLOYMENT_TARGET: "13.3"
       ALLOW_RELEASED_ONNX_OPSET_ONLY: "0"
 
-  x86_64-Xcode16_webgpu:
-    runs-on: macos-15
+  x86_64-Xcode14_webgpu:
+    runs-on: macos-13
     continue-on-error: true
 
     env:
-      xcode_version: 16
       MACOSX_DEPLOYMENT_TARGET: "13.3"
       ALLOW_RELEASED_ONNX_OPSET_ONLY: "0"
 
@@ -163,10 +162,11 @@ jobs:
         echo "OnnxRuntimeGitCommitHashShort=$_OnnxRuntimeGitCommitHash"
       working-directory: ${{ github.workspace }}
 
-    - name: Use Xcode ${{ env.xcode_version }}
+    - name: Use Xcode 14.3.1
       shell: bash
       run: |
-        XCODE_DEVELOPER_DIR="/Applications/Xcode_${{ env.xcode_version }}.app/Contents/Developer"
+        set -e -x
+        XCODE_DEVELOPER_DIR="/Applications/Xcode_14.3.1.app/Contents/Developer"
         sudo xcode-select --switch "${XCODE_DEVELOPER_DIR}"
 
     - name: Setup environment variables
