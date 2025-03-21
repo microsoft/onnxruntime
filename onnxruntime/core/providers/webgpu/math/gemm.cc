@@ -4,7 +4,6 @@
 #include "core/providers/webgpu/math/gemm.h"
 
 #include <vector>
-#include <absl/strings/str_join.h>
 
 #include "core/providers/webgpu/shader_helper.h"
 #include "core/providers/webgpu/webgpu_supported_types.h"
@@ -217,7 +216,7 @@ Status Gemm::ComputeInternal(ComputeContext& context) const {
   const uint32_t num_tile_n = (N + TILE_SIZE - 1) / TILE_SIZE;
   const uint32_t num_tile_m = (M + TILE_SIZE - 1) / TILE_SIZE;
 
-  program.CacheHint(absl::StrJoin(std::make_tuple(alpha_, transA_, transB_), ","))
+  program.CacheHint(alpha_, transA_, transB_)
       .AddOutputs({{Y, ProgramTensorMetadataDependency::Type}})
       .SetDispatchGroupSize(num_tile_n * num_tile_m)
       .SetWorkgroupSize(TILE_SIZE, TILE_SIZE)
