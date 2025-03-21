@@ -226,16 +226,15 @@ Status MatMul::ComputeInternal(ComputeContext& context) const {
   return context.RunProgram(program);
 }
 
-MatMulProgram CreateMatMulProgram(ComputeContext& context) 
+MatMulProgram CreateMatMulProgram(std::vector<const Tensor*>& inputs, Tensor* output)
 {
   MatMulComputeHelper helper;
-  const auto* a = context.Input(0);
-  const auto* b = context.Input(1);
-  bool has_bias = context.InputCount() > 2;
+  const auto* a = inputs[0];
+  const auto* b = inputs[1];
+  bool has_bias = inputs.size() > 2;
 
 
   ORT_THROW_IF_ERROR(helper.Compute(a->Shape(), b->Shape()));
-  auto* output_tensor = context.Output(0, helper.OutputShape());
   int64_t batchA = a->Shape().SizeToDimension(a->Shape().NumDimensions() - 2);
   int64_t batchB = b->Shape().SizeToDimension(b->Shape().NumDimensions() - 2);
 
@@ -297,14 +296,14 @@ MatMulProgram CreateMatMulProgram(ComputeContext& context)
       .CacheHint(absl::StrJoin(elements_per_thread, "-"), std::to_string(is_vec4))
       .AddInputs({{a, ProgramTensorMetadataDependency::TypeAndRank, a_shape_temp, components},
                   {b, ProgramTensorMetadataDependency::TypeAndRank, b_shape_temp, components}})
-      .AddOutputs({{output_tensor, ProgramTensorMetadataDependency::Rank, output_shape_temp, components}})
+      .AddOutputs({{output, ProgramTensorMetadataDependency::Rank, output_shape_temp, components}})
       .AddUniformVariables({{dim_a_outer}, {dim_b_outer}, {dim_inner}})
       .AddIndices(outer_dims)
       .SetDispatchGroupSize(dispatch_x, dispatch_y, dispatch_z)
       .SetWorkgroupSize(MatMul::MATMUL_PACKED_WORKGROUP_SIZE_X, MatMul::MATMUL_PACKED_WORKGROUP_SIZE_Y, MatMul::MATMUL_PACKED_WORKGROUP_SIZE_Z);
 
   if (has_bias) {
-    const auto* bias = context.Input(2);
+    const auto* bias = inputs[2];
     program.AddInput({bias, ProgramTensorMetadataDependency::Rank, 1});
   }
   return program;

@@ -144,7 +144,7 @@ Status Conv<is_channels_last>::ComputeInternal(ComputeContext& context) const {
     TensorShape output_reshape(output_shape);
     if (is_channels_last) {
       // Transpose weights
-      
+
       ORT_RETURN_IF_ERROR(TransposeKernel(context, kernel, &transposed_kernel));
       inputs[1] = &transposed_kernel;
       if (same_size) {
@@ -190,7 +190,7 @@ Status Conv<is_channels_last>::ComputeInternal(ComputeContext& context) const {
           .AddUniformVariables({{output_size}, {static_cast<uint32_t>(output_reshape[1])}, {static_cast<uint32_t>(output_reshape[2])}, {static_cast<uint32_t>(K)}});
       return context.RunProgram(program);
     } else {
-      MatMulProgram program = CreateMatMulProgram(context);
+      MatMulProgram program = CreateMatMulProgram(inputs, output);
       return context.RunProgram(program);
     }
   }
