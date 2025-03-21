@@ -28,7 +28,7 @@ class IOpBuilder {
   // Operator support related.
  public:
   // Check if an operator is supported.
-  virtual bool IsOpSupported(const InitializedTensorSet& initializers, const Node& node,
+  virtual bool IsOpSupported(const GraphViewer& graph_viewer, const Node& node,
                              const WebnnDeviceType device_type, const emscripten::val& wnn_limits,
                              const logging::Logger& logger) const = 0;
 };
