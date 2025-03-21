@@ -110,7 +110,16 @@ def create_onnxruntime_session(
             sess_options.log_severity_level = 4
 
         logger.debug(f"Create session for onnx model: {onnx_model_path}")
-        if use_gpu:
+        if provider in [
+            "DmlExecutionProvider",
+            "ROCMExecutionProvider",
+            "MIGraphXExecutionProvider",
+            "CUDAExecutionProvider",
+            "TensorrtExecutionProvider",
+            "CPUExecutionProvider",
+        ]:
+            providers = [provider]
+        elif use_gpu:
             if provider == "dml":
                 providers = ["DmlExecutionProvider", "CPUExecutionProvider"]
             elif provider == "rocm":
@@ -121,7 +130,7 @@ def create_onnxruntime_session(
                     "ROCMExecutionProvider",
                     "CPUExecutionProvider",
                 ]
-            elif provider == "cuda":
+            elif provider == "cuda" or provider is None:
                 providers = ["CUDAExecutionProvider", "CPUExecutionProvider"]
             elif provider == "tensorrt":
                 providers = [
@@ -130,7 +139,7 @@ def create_onnxruntime_session(
                     "CPUExecutionProvider",
                 ]
             else:
-                providers = ["CUDAExecutionProvider", "CPUExecutionProvider"]
+                raise RuntimeError("unkown provider: %s", provider)
         else:
             providers = ["CPUExecutionProvider"]
 
