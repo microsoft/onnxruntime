@@ -485,7 +485,9 @@ jsepDownload:_pp_")
 
   list(APPEND target_name_list  "wasm")
 
-  if (onnxruntime_ENABLE_WEBASSEMBLY_SIMD)
+  if (onnxruntime_ENABLE_WEBASSEMBLY_RELAXED_SIMD)
+    list(APPEND target_name_list  "relaxedsimd")
+  elseif (onnxruntime_ENABLE_WEBASSEMBLY_SIMD)
     list(APPEND target_name_list  "simd")
   endif()
 
