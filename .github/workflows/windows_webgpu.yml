@@ -1,0 +1,262 @@
+name: ONNX Runtime WebGPU Builds
+
+on:
+  push:
+    branches:
+      - main
+      - rel-*
+  pull_request:
+    branches:
+      - main
+      - rel-*
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  webgpu_build_x64_RelWithDebInfo:
+    runs-on: ["self-hosted", "1ES.Pool=onnxruntime-github-Win2022-GPU-A10"]
+    timeout-minutes: 300
+    env:
+      OrtPackageId: Microsoft.ML.OnnxRuntime
+      OnnxRuntimeBuildDirectory: ${{ github.workspace }}
+      DOTNET_SKIP_FIRST_TIME_EXPERIENCE: true
+      setVcvars: true
+      ALLOW_RELEASED_ONNX_OPSET_ONLY: '0'
+      DocUpdateNeeded: false
+      NVIDIA_TF32_OVERRIDE: '0'
+      ONNXRUNTIME_TEST_GPU_DEVICE_ID: '0'
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          submodules: none
+
+      - name: Setup Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          architecture: x64
+
+      - name: Locate vcvarsall and Setup Env
+        uses: ./.github/actions/locate-vcvarsall-and-setup-env
+        with:
+          architecture: x64
+
+      - name: Install python modules
+        run: python -m pip install -r tools\ci_build\github\windows\python\requirements.txt
+        shell: cmd
+        working-directory: ${{ github.workspace }}
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20.x'
+
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+          architecture: x64
+
+      - name: API Documentation Check and generate
+        run: |
+          set ORT_DOXY_SRC=${{ github.workspace }}
+          set ORT_DOXY_OUT=${{ github.workspace }}\RelWithDebInfo\RelWithDebInfo
+          mkdir %ORT_DOXY_SRC%
+          mkdir %ORT_DOXY_OUT%
+          "C:\Program Files\doxygen\bin\doxygen.exe" ${{ github.workspace }}\tools\ci_build\github\Doxyfile_csharp.cfg
+        shell: cmd
+        working-directory: ${{ github.workspace }}
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        env:
+          PROCESSOR_ARCHITECTURE: x64
+        with:
+          dotnet-version: '8.x'
+
+      - name: Use Nuget 6.x
+        uses: nuget/setup-nuget@v2
+        with:
+          nuget-version: '6.x'
+
+      - name: NuGet restore
+        run: |
+          nuget restore packages.config -ConfigFile NuGet.config -PackagesDirectory ${{ github.workspace }}\RelWithDebInfo
+        shell: cmd
+        working-directory: ${{ github.workspace }}
+
+      - name: Export GitHub Actions cache environment variables
+        uses: actions/github-script@v7
+        with:
+          script: |
+            core.exportVariable('ACTIONS_CACHE_URL', process.env.ACTIONS_CACHE_URL || '');
+            core.exportVariable('ACTIONS_RUNTIME_TOKEN', process.env.ACTIONS_RUNTIME_TOKEN || '');
+
+      - name: Build and Test
+        shell: pwsh
+        run: |
+          python.exe ${{ github.workspace }}\tools\ci_build\build.py --config RelWithDebInfo --build_dir ${{ github.workspace }} --skip_submodule_sync --build_csharp --parallel  --use_binskim_compliant_compile_flags --cmake_generator "Visual Studio 17 2022" --build_shared_lib --enable_onnx_tests --build_nodejs --use_webgpu --cmake_extra_defines onnxruntime_BUILD_UNIT_TESTS=ON onnxruntime_BUILD_DAWN_MONOLITHIC_LIBRARY=ON
+          if ($lastExitCode -ne 0) {
+            exit $lastExitCode
+          }
+          Remove-Item "${{ github.workspace }}\RelWithDebInfo" -Include "*.obj" -Recurse
+
+      - name: Validate C# native delegates
+        run: python tools\ValidateNativeDelegateAttributes.py
+        shell: cmd
+        working-directory: ${{ github.workspace }}\csharp
+        continue-on-error: true
+
+
+  webgpu_external_dawn_build_x64_RelWithDebInfo:
+    runs-on: ["self-hosted", "1ES.Pool=onnxruntime-github-Win2022-GPU-A10"]
+    timeout-minutes: 300
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          submodules: none
+
+      - name: Setup Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          architecture: x64
+
+      - name: Locate vcvarsall and Setup Env
+        uses: ./.github/actions/locate-vcvarsall-and-setup-env
+        with:
+          architecture: x64
+
+      - name: Install python modules
+        run: python -m pip install -r tools\ci_build\github\windows\python\requirements.txt
+        shell: cmd
+        working-directory: ${{ github.workspace }}
+
+      - name: Export GitHub Actions cache environment variables
+        uses: actions/github-script@v7
+        with:
+          script: |
+            core.exportVariable('ACTIONS_CACHE_URL', process.env.ACTIONS_CACHE_URL || '');
+            core.exportVariable('ACTIONS_RUNTIME_TOKEN', process.env.ACTIONS_RUNTIME_TOKEN || '');
+
+      - name: Generate onnxruntime.sln
+        shell: pwsh
+        run: |
+          python.exe ${{ github.workspace }}\tools\ci_build\build.py --config RelWithDebInfo --build_dir ${{ github.workspace }} --skip_submodule_sync --update --parallel --cmake_generator "Visual Studio 17 2022" --use_webgpu --use_external_dawn --skip_tests --target onnxruntime_webgpu_external_dawn_test
+
+      - name: Build
+        shell: pwsh
+        run: |
+          python.exe ${{ github.workspace }}\tools\ci_build\build.py --config RelWithDebInfo --build_dir ${{ github.workspace }} --skip_submodule_sync --build --parallel --cmake_generator "Visual Studio 17 2022" --use_webgpu --use_external_dawn --skip_tests --target onnxruntime_webgpu_external_dawn_test
+
+      - name: Run tests (onnxruntime_webgpu_external_dawn_test)
+        run: onnxruntime_webgpu_external_dawn_test.exe
+        shell: cmd
+        working-directory: ${{ github.workspace }}\RelWithDebInfo\RelWithDebInfo
+
+      - name: Run tests (onnxruntime_webgpu_external_dawn_test) - no_proc_table
+        run: onnxruntime_webgpu_external_dawn_test.exe --no_proc_table
+        shell: cmd
+        working-directory: ${{ github.workspace }}\RelWithDebInfo\RelWithDebInfo
+
+  webgpu_minimal_build_edge_build_x64_RelWithDebInfo:
+    runs-on: ["self-hosted", "1ES.Pool=onnxruntime-github-Win2022-GPU-A10"]
+    timeout-minutes: 300
+    env:
+        OrtPackageId: Microsoft.ML.OnnxRuntime
+        OnnxRuntimeBuildDirectory: ${{ github.workspace }}
+        DOTNET_SKIP_FIRST_TIME_EXPERIENCE: true
+        ALLOW_RELEASED_ONNX_OPSET_ONLY: '0'
+        DocUpdateNeeded: false
+        ONNXRUNTIME_TEST_GPU_DEVICE_ID: '0'
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          submodules: none
+
+      - name: Setup Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          architecture: x64
+
+      - name: Locate vcvarsall and Setup Env
+        uses: ./.github/actions/locate-vcvarsall-and-setup-env
+        with:
+          architecture: x64
+
+      - name: Install python modules
+        run: python -m pip install -r tools\ci_build\github\windows\python\requirements.txt
+        shell: cmd
+        working-directory: ${{ github.workspace }}
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20.x'
+
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+          architecture: x64
+
+      - name: API Documentation Check and generate
+        run: |
+          set ORT_DOXY_SRC=${{ github.workspace }}
+          set ORT_DOXY_OUT=${{ github.workspace }}\RelWithDebInfo\RelWithDebInfo
+          mkdir %ORT_DOXY_SRC%
+          mkdir %ORT_DOXY_OUT%
+          "C:\Program Files\doxygen\bin\doxygen.exe" ${{ github.workspace }}\tools\ci_build\github\Doxyfile_csharp.cfg
+        shell: cmd
+        working-directory: ${{ github.workspace }}
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        env:
+          PROCESSOR_ARCHITECTURE: x64
+        with:
+          dotnet-version: '8.x'
+
+      - name: Use Nuget 6.x
+        uses: nuget/setup-nuget@v2
+        with:
+          nuget-version: '6.x'
+
+      - name: NuGet restore
+        run: |
+          nuget restore packages.config -ConfigFile NuGet.config -PackagesDirectory ${{ github.workspace }}\RelWithDebInfo
+        shell: cmd
+        working-directory: ${{ github.workspace }}
+
+      - name: Export GitHub Actions cache environment variables
+        uses: actions/github-script@v7
+        with:
+          script: |
+            core.exportVariable('ACTIONS_CACHE_URL', process.env.ACTIONS_CACHE_URL || '');
+            core.exportVariable('ACTIONS_RUNTIME_TOKEN', process.env.ACTIONS_RUNTIME_TOKEN || '');
+
+      - name: Build
+        shell: pwsh
+        run: |
+          python.exe ${{ github.workspace }}\tools\ci_build\build.py --config RelWithDebInfo --build_dir ${{ github.workspace }} --skip_submodule_sync --build_csharp --parallel  --use_binskim_compliant_compile_flags --cmake_generator "Visual Studio 17 2022" --build_shared_lib --update --build --build_shared_lib --disable_exceptions --disable_rtti --enable_msvc_static_runtime --enable_reduced_operator_type_support --skip_tests --use_binskim_compliant_compile_flags --cmake_extra_defines onnxruntime_BUILD_UNIT_TESTS=OFF onnxruntime_DISABLE_SPARSE_TENSORS=ON onnxruntime_DISABLE_OPTIONAL_TYPE=ON --minimal_build extended --use_webgpu
+          if ($lastExitCode -ne 0) {
+            exit $lastExitCode
+          }
+          Remove-Item "${{ github.workspace }}\RelWithDebInfo" -Include "*.obj" -Recurse
+
+      - name: Validate C# native delegates
+        run: python tools\ValidateNativeDelegateAttributes.py
+        shell: cmd
+        working-directory: ${{ github.workspace }}\csharp

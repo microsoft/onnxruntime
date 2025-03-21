@@ -8,35 +8,48 @@ resources:
         - main
         - rel-*
     branch: main
-
+  repositories:
+  - repository: 1esPipelines
+    type: git
+    name: 1ESPipelineTemplates/1ESPipelineTemplates
+    ref: refs/tags/release
 parameters:
-  - name: isReleaseBuild
-    type: boolean
-    default: false
+- name: isReleaseBuild
+  type: boolean
+  default: false
 
 variables:
-  - name: ArtifactFeed
-    ${{ if eq(parameters.isReleaseBuild, false) }}:
-      value: ort-cuda-11-nightly
-    ${{ else }}:
-      value: onnxruntime-cuda-11
-
-stages:
-  - template: templates/publish-nuget-steps.yml
-    parameters:
-      stage_name: 'Publish_NuGet_Package_And_Report'
-      include_cpu_ep: true
-      download_artifacts_steps:
+- name: ArtifactFeed
+  ${{ if eq(parameters.isReleaseBuild, false) }}:
+    value: ort-cuda-11-nightly
+  ${{ else }}:
+    value: onnxruntime-cuda-11
+extends:
+  # The pipeline extends the 1ES PT which will inject different SDL and compliance tasks.
+  # For non-production pipelines, use "Unofficial" as defined below.
+  # For productions pipelines, use "Official".
+  template: v1/1ES.Official.PipelineTemplate.yml@1esPipelines
+  parameters:
+    sdl:
+      sourceAnalysisPool:
+        name: onnxruntime-Win-CPU-2022
+        os: windows
+    stages:
+    - template: templates/publish-nuget-steps.yml
+      parameters:
+        stage_name: 'Publish_NuGet_Package_And_Report'
+        include_cpu_ep: true
+        download_artifacts_steps:
         - download: build
           displayName: 'Download Pipeline Artifact - Signed NuGet Package'
           artifact: 'drop-signed-nuget-dml'
         - script: move "$(Pipeline.Workspace)\build\drop-signed-nuget-dml\*" $(Build.BinariesDirectory)\nuget-artifact\final-package
 
-  # Publish CUDA 11 Nuget/Java pkgs to ADO feed
-  - template: stages/nuget-cuda-publishing-stage.yml
-    parameters:
-      artifact_feed: $(ArtifactFeed)
+    # Publish CUDA 11 Nuget/Java pkgs to ADO feed
+    - template: stages/nuget-cuda-publishing-stage.yml
+      parameters:
+        artifact_feed: $(ArtifactFeed)
 
-  - template: stages/java-cuda-publishing-stage.yml
-    parameters:
-      artifact_feed: $(ArtifactFeed)
+    - template: stages/java-cuda-publishing-stage.yml
+      parameters:
+        artifact_feed: $(ArtifactFeed)

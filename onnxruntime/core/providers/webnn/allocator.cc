@@ -16,7 +16,7 @@ void* WebNNTensorAllocator::Alloc(size_t size) {
     // We don't need to transfer the tensor to an MLTensor, so we don't need to allocate an MLTensor id.
     return nullptr;
   }
-  void* p = EM_ASM_PTR({ return Module.jsepReserveTensorId(); });
+  void* p = EM_ASM_PTR({ return Module.webnnReserveTensorId(); });
   allocations_[p] = size;
   stats_.num_allocs++;
   stats_.bytes_in_use += SafeInt<int64_t>(size);
@@ -27,7 +27,7 @@ void WebNNTensorAllocator::Free(void* p) {
   if (p == nullptr) {
     return;
   }
-  EM_ASM({ Module.jsepReleaseTensorId($0); }, p);
+  EM_ASM({ Module.webnnReleaseTensorId($0); }, p);
   size_t size = allocations_[p];
   stats_.bytes_in_use -= size;
   allocations_.erase(p);

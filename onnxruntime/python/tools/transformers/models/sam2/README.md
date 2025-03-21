@@ -96,8 +96,7 @@ We can create a conda environment then run GPU benchmark like the following:
 conda create -n sam2_gpu python=3.11 -y
 conda activate sam2_gpu
 install_dir=$HOME
-profiling=true
-bash benchmark_sam2.sh $install_dir gpu $profiling
+bash benchmark_sam2.sh $install_dir gpu
 ```
 
 or create a new conda environment for CPU benchmark:
@@ -107,16 +106,28 @@ conda activate sam2_cpu
 bash benchmark_sam2.sh $HOME cpu
 ```
 
-The first parameter is a directory to clone git repositories or install CUDA/cuDNN for benchmark.
-The second parameter can be either "gpu" or "cpu", which indicates the device to run benchmark.
-The third parameter is optional. Value "true" will enable profiling after running benchmarking on GPU.
+The usage of the script like the following:
+```
+bash benchmark_sam2.sh <install_dir> <cpu_or_gpu> [profiling] [benchmarking] [nightly] [dynamo]
+```
 
-The script will automatically install required packages in current conda environment, download checkpoints, export onnx,
-and run demo, benchmark and optionally run profiling.
+| Parameter| Default  | Description |
+|----------|----------| ------------|
+| install_dir | $HOME | a directory to clone git repositories or install CUDA/cuDNN for benchmark |
+| cpu_or_gpu | gpu | the device to run benchmark. The value can be either "gpu" or "cpu" |
+| profiling | false | run gpu profiling |
+| benchmarking | true | run benchmark |
+| nightly | false | install onnxruntime nightly or official release package |
+| dynamo | false | export image encoder using dynamo or not. |
 
-* The performance test result is in sam2_gpu.csv or sam2_cpu.csv, which can be loaded into Excel.
-* The demo output is sam2_demo_fp16_gpu.png or sam2_demo_fp32_cpu.png.
-* The profiling results are in *.nsys-rep or *.json files in current directory. Use Nvidia NSight System to view the *.nsys-rep file.
+The dynamo export is experimental since graph optimization still need extra works for this model.
+
+Output files:
+* sam2_cpu_[timestamp].csv or sam2_gpu_[timestamp].csv has benchmark results. Use Excel to load the file to view it.
+* onnxruntime_image_[encoder|decoder].json has ONNX Runtime profiling results. Use `chrome://tracing` in Chrome browser to view it.
+* torch_image_[encoder|decoder].json has PyTorch profiling results. Use `chrome://tracing` in Chrome browser to view it.
+* sam2_fp16_profile_image_[encoder|decoder]_[ort|torch]_gpu.[nsys-rep|sqlite] has NVTX profiling. Use Nvidia NSight System to view it.
+* torch_image_encoder_compiled_code.txt has the compiled kernel code from Pytorch.
 
 ## Limitations
 - The exported image_decoder model does not support batch mode for now.

@@ -43,16 +43,20 @@ Status ArgMaxMinOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
 
   emscripten::val options = emscripten::val::object();
   options.set("keepDimensions", keep_dims == 1);
-  // TODO(Honry): check whether int64 output data type is supported by WebNN opSupportLimits() API.
-  options.set("outputDataType", "int64");
+  std::string output_data_type = "int64";
+  if (!model_builder.IsInt64Supported()) {
+    // Int64 is not supported by current context, use int32 instead.
+    output_data_type = "int32";
+  }
+  options.set("outputDataType", output_data_type);
   options.set("label", node.Name());
   emscripten::val output = emscripten::val::object();
 
   const auto& op_type = node.OpType();
   if (op_type == "ArgMax") {
-    output = model_builder.GetBuilder().call<emscripten::val>("argMax", input, narrow<uint32_t>(axis), options);
+    output = model_builder.GetBuilder().call<emscripten::val>("argMax", input, SafeInt<uint32_t>(axis).Ref(), options);
   } else if (op_type == "ArgMin") {
-    output = model_builder.GetBuilder().call<emscripten::val>("argMin", input, narrow<uint32_t>(axis), options);
+    output = model_builder.GetBuilder().call<emscripten::val>("argMin", input, SafeInt<uint32_t>(axis).Ref(), options);
   } else {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "ArgMaxMinOpBuilder, unknown op: ", op_type);
   }

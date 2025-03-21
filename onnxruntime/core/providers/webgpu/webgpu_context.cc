@@ -134,12 +134,18 @@ void WebGpuContext::Initialize(const WebGpuBufferCacheConfig& buffer_cache_confi
       ORT_ENFORCE(device_ != nullptr, "Failed to get a WebGPU device.");
     }
 
+    LOGS_DEFAULT(VERBOSE) << "WebGPU EP Context is created for: Instance=" << instance_.Get() << ", Device=" << device_.Get() << ".";
+
     // cache adapter info
     ORT_ENFORCE(Device().GetAdapterInfo(&adapter_info_));
     // cache device limits
     wgpu::SupportedLimits device_supported_limits;
     ORT_ENFORCE(Device().GetLimits(&device_supported_limits));
     device_limits_ = device_supported_limits.limits;
+
+#if !defined(__wasm__)
+    supports_buffer_map_extended_usages_ = device_.HasFeature(wgpu::FeatureName::BufferMapExtendedUsages);
+#endif
 
     // create buffer manager
     buffer_mgr_ = BufferManagerFactory::Create(*this,
@@ -165,7 +171,6 @@ void WebGpuContext::Initialize(const WebGpuBufferCacheConfig& buffer_cache_confi
 #if defined(ENABLE_PIX_FOR_WEBGPU_EP)
       // set pix frame generator
       pix_frame_generator_ = std::make_unique<WebGpuPIXFrameGenerator>(instance_,
-                                                                       Adapter(),
                                                                        Device());
 #else
     ORT_THROW("Support PIX capture requires extra build flags (--enable_pix_capture)");
@@ -321,9 +326,9 @@ Status WebGpuContext::Run(ComputeContext& context, const ProgramBase& program) {
       std::vector<uint32_t> dims(expected_rank);
       std::vector<uint32_t> stride(expected_rank - 1);
       for (size_t j = 0; j < expected_rank; ++j) {
-        dims[j] = gsl::narrow<uint32_t>(shape[j]);
+        dims[j] = onnxruntime::narrow<uint32_t>(shape[j]);
         if (j < expected_rank - 1) {
-          stride[j] = gsl::narrow<uint32_t>(shape.SizeFromDimension(j + 1));
+          stride[j] = onnxruntime::narrow<uint32_t>(shape.SizeFromDimension(j + 1));
         }
       }
 
@@ -491,7 +496,10 @@ std::vector<wgpu::FeatureName> WebGpuContext::GetAvailableRequiredFeatures(const
       wgpu::FeatureName::TimestampQuery,
       wgpu::FeatureName::ShaderF16,
       wgpu::FeatureName::Subgroups,
-      wgpu::FeatureName::SubgroupsF16};
+#if !defined(__wasm__)
+      wgpu::FeatureName::BufferMapExtendedUsages,
+#endif
+  };
   for (auto feature : features) {
     if (adapter.HasFeature(feature)) {
       required_features.push_back(feature);
@@ -708,45 +716,46 @@ WebGpuContext& WebGpuContextFactory::CreateContext(const WebGpuContextConfig& co
   WGPUInstance instance = config.instance;
   WGPUDevice device = config.device;
 
+  std::call_once(init_default_flag_, [
+#if !defined(__wasm__)
+                                         dawn_proc_table = config.dawn_proc_table
+#endif
+  ]() {
+  // Step.1 - setup dawn proc table (only for non-WASM build)
+
+#if !defined(__wasm__)
+    const DawnProcTable* dawn_procs = reinterpret_cast<const DawnProcTable*>(dawn_proc_table);
+#if defined(BUILD_DAWN_MONOLITHIC_LIBRARY)
+    ORT_ENFORCE(dawn_procs == nullptr, "setting DawnProcTable is not allowed when dynamically linked to webgpu_dawn.");
+#else
+#if !defined(USE_EXTERNAL_DAWN)
+    if (dawn_procs == nullptr) {
+      dawn_procs = &dawn::native::GetProcs();
+    }
+#else
+    ORT_ENFORCE(dawn_procs != nullptr, "DawnProcTable must be provided.");
+#endif
+    dawnProcSetProcs(dawn_procs);
+#endif
+#endif
+
+    // Step.2 - Create wgpu::Instance
+#if !defined(__wasm__)
+    wgpu::InstanceDescriptor instance_desc{};
+    instance_desc.capabilities.timedWaitAnyEnable = true;
+    default_instance_ = wgpu::CreateInstance(&instance_desc);
+#else
+    default_instance_ = wgpu::CreateInstance(nullptr);
+#endif
+
+    ORT_ENFORCE(default_instance_ != nullptr, "Failed to create wgpu::Instance.");
+  });
+
   if (context_id == 0) {
     // context ID is preserved for the default context. User cannot use context ID 0 as a custom context.
     ORT_ENFORCE(instance == nullptr && device == nullptr,
                 "WebGPU EP default context (contextId=0) must not have custom WebGPU instance or device.");
 
-    std::call_once(init_default_flag_, [
-#if !defined(__wasm__)
-                                           dawn_proc_table = config.dawn_proc_table
-#endif
-    ]() {
-    // Step.1 - setup dawn proc table (only for non-WASM build)
-
-#if !defined(__wasm__)
-      const DawnProcTable* dawn_procs = reinterpret_cast<const DawnProcTable*>(dawn_proc_table);
-#if defined(BUILD_DAWN_MONOLITHIC_LIBRARY)
-      ORT_ENFORCE(dawn_procs == nullptr, "setting DawnProcTable is not allowed when dynamically linked to webgpu_dawn.");
-#else
-#if !defined(USE_EXTERNAL_DAWN)
-      if (dawn_procs == nullptr) {
-        dawn_procs = &dawn::native::GetProcs();
-      }
-#else
-      ORT_ENFORCE(dawn_procs != nullptr, "DawnProcTable must be provided.");
-#endif
-      dawnProcSetProcs(dawn_procs);
-#endif
-#endif
-
-      // Step.2 - Create wgpu::Instance
-#if !defined(__wasm__)
-      wgpu::InstanceDescriptor instance_desc{};
-      instance_desc.capabilities.timedWaitAnyEnable = true;
-      default_instance_ = wgpu::CreateInstance(&instance_desc);
-#else
-      default_instance_ = wgpu::CreateInstance(nullptr);
-#endif
-
-      ORT_ENFORCE(default_instance_ != nullptr, "Failed to create wgpu::Instance.");
-    });
     instance = default_instance_.Get();
   } else {
     // for context ID > 0, user must provide custom WebGPU instance and device.
@@ -798,6 +807,10 @@ void WebGpuContextFactory::Cleanup() {
 
 void CleanupWebGpuContexts() {
   WebGpuContextFactory::Cleanup();
+}
+
+WGPUDevice GetDevice(int context_id) {
+  return WebGpuContextFactory::GetContext(context_id).Device().Get();
 }
 
 }  // namespace webgpu

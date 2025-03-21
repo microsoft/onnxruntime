@@ -258,4 +258,133 @@ void TensorrtExecutionProvider::SetAllGraphInputs(Graph& graph) const {
 
   graph.SetInputs(graph_inputs_including_initializers);
 }
+
+/**
+ *  This is the helper function for ConstantFoldingDQ graph transformer.
+ *
+ *  It selects the qualified/required DQ node to be optimized as well as provides a mapping table
+ *  to help TRT EP later include the DQ node which is filtered out by TRT parser.
+ */
+void TensorrtExecutionProvider::SelectQualifiedDQNode(const GraphViewer& graph,
+                                                      std::unordered_set<NodeIndex>& selection_node_set,
+                                                      std::unordered_map<NodeIndex, NodeIndex>& consumer_to_dq) const {
+  LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] Select qualified DQ nodes ...";
+  const std::vector<NodeIndex>& node_index = graph.GetNodesInTopologicalOrder(1 /*priority-based topological sort*/);
+  for (auto index : node_index) {
+    auto* node = graph.GetNode(index);
+    if (!node) {
+      continue;
+    }
+
+    const auto* input_def = node->InputDefs()[0];  // Get NodeArg of the initializer of the DequantizeLinear node;
+    auto data_type = input_def->TypeAsProto()->tensor_type().elem_type();
+    auto constant_initializer = graph.IsConstantInitializer(input_def->Name(), true);
+
+    // Node selection: (i.e. initializer -> DQ -> bias of X)
+    // 1. DequantizeLinear op
+    // 2. DQ node does not produce graph output, single consumer
+    // 3. The first input of DQ is constant initializer.
+    // 4. The data type of initializer is INT32, UINT16 or INT16
+    // 5. X should be Gemm, Conv or LayerNormalization ?
+    if (node->OpType() == "DequantizeLinear" &&
+        node->GetOutputEdgesCount() == 1 &&
+        (data_type == ONNX_NAMESPACE::TensorProto_DataType_INT32 || data_type == ONNX_NAMESPACE::TensorProto_DataType_INT16 || data_type == ONNX_NAMESPACE::TensorProto_DataType_UINT16) &&
+        constant_initializer) {
+      const Node& consumer_node = *node->OutputNodesBegin();
+      selection_node_set.insert(index);
+      consumer_to_dq[consumer_node.Index()] = index;
+      LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] " << consumer_node.Name() << " <- " << node->Name();
+    }
+  }
+  LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] Total " << selection_node_set.size() << " DequantizeLinear node(s) are selected.";
+}
+
+/**
+ * This function returns an optimization ComputeCapability that is limited to:
+ *  1. the DQ nodes in this individual TRT ComputeCapability
+ *  2. the DQ nodes that are qualified and selected by TRT EP
+ *
+ * It also needs to make sure the DQ nodes is a subset of the complete list of DQ nodes to optimize in original selection ComputeCapability.
+ * Finally, copy the optimization function from the original selection ComputeCapability.
+ */
+std::unique_ptr<ComputeCapability> TensorrtExecutionProvider::CreateOptimizationComputeCapability(ComputeCapability* selection_cc,
+                                                                                                  std::unordered_set<NodeIndex>& trt_selection_node_set,
+                                                                                                  ComputeCapability* trt_cc) const {
+  auto sub_graph = onnxruntime::IndexedSubGraph::Create();
+  std::unordered_set<NodeIndex> selection_node_set;
+
+  for (auto index : selection_cc->SubGraph()->Nodes()) {
+    selection_node_set.insert(index);
+  }
+
+  for (auto index : trt_cc->SubGraph()->Nodes()) {
+    if (selection_node_set.find(index) == selection_node_set.end()) {
+      continue;
+    }
+    if (trt_selection_node_set.find(index) == trt_selection_node_set.end()) {
+      continue;
+    }
+    sub_graph->Nodes().push_back(index);
+  }
+  auto compute_capability = ComputeCapability::Create(std::move(sub_graph));
+  compute_capability->copy_optimization_func(selection_cc);
+  return compute_capability;
+}
+
+/**
+ * This function helps add back the DQ nodes that are filtered out by TRT parser.
+ * The reason is the DQ nodes can be optimized and dequantized by applying ConstantFoldingDQ optimizer by ORT L2+ optimization.
+ */
+void TensorrtExecutionProvider::UpdateSupportedNodeVectorForDQ(const GraphViewer& graph,
+                                                               SubGraph_t& supported_node_vector,
+                                                               SubGraphCollection_t& supported_nodes_vector,
+                                                               std::unordered_map<NodeIndex, NodeIndex> consumer_to_dq) const {
+  if (consumer_to_dq.empty()) {
+    return;
+  }
+
+  if (!supported_node_vector.second) {
+    return;
+  }
+
+  const std::vector<NodeIndex>& node_index = graph.GetNodesInTopologicalOrder(1);
+  auto supported_nodes = supported_node_vector.first;
+  for (auto index : supported_nodes) {
+    if (consumer_to_dq.find(node_index[index]) == consumer_to_dq.end()) {
+      continue;
+    }
+
+    auto dq_node_index = consumer_to_dq[node_index[index]];
+
+    // Check if DQ node is included in one of the subgraphs
+    auto in_the_subgraph_collection = [&](NodeIndex node_idx) -> bool {
+      for (auto& node_vector : supported_nodes_vector) {
+        if (!node_vector.second) {
+          continue;
+        }
+        for (auto i : node_vector.first) {
+          if (node_index[i] == node_idx) {
+            return true;
+          }
+        }
+      }
+      return false;
+    };
+
+    // If the DQ node is already in the subgraph, do nothing.
+    if (in_the_subgraph_collection(dq_node_index)) {
+      continue;
+    }
+
+    // Find the iterator pointing to the target element
+    auto it = std::find(node_index.begin(), node_index.end(), dq_node_index);
+    if (it != node_index.end()) {
+      // Calculate the index
+      size_t idx = std::distance(node_index.begin(), it);
+      supported_node_vector.first.push_back(idx);
+      auto node = graph.GetNode(dq_node_index);
+      LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] " << node->Name() << " is included which is filtered out by TRT parser.";
+    }
+  }
+}
 }  // namespace onnxruntime
