@@ -27,7 +27,7 @@ class CumSumOpBuilder : public BaseOpBuilder {
 
   // Operator support related.
  private:
-  bool IsOpSupportedImpl(const GraphViewer&, const Node& node,
+  bool IsOpSupportedImpl(const GraphViewer& graph_viewer, const Node& node,
                          const WebnnDeviceType /* device_type */, const logging::Logger& logger) const override;
 };
 
@@ -82,8 +82,8 @@ bool CumSumOpBuilder::IsOpSupportedImpl(const GraphViewer& graph_viewer,
 
   const std::string axis_name = GetTensorName(input_defs, 1);
   // Inputs contain optional 'axis' input.
-  const auto* initializer = graph_viewer.GetConstantInitializer(axis_name);
-  if (initializer == nullptr) {
+  const auto* init = graph_viewer.GetConstantInitializer(axis_name);
+  if (init == nullptr) {
     LOGS(logger, VERBOSE) << "The axis must be a constant initializer.";
     return false;
   }

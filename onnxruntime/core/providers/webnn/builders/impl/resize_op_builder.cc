@@ -122,9 +122,9 @@ bool GetResizeSizesAndAxes(const GraphViewer& graph_viewer,
     return false;
   }
 
-  const auto& sizes_tensor = *size_init
-                             // Number of elements of sizes tensor.
-                             const auto num_of_sizes = sizes_tensor.dims()[0];
+  const auto& sizes_tensor = *size_init;
+  // Number of elements of sizes tensor.
+  const auto num_of_sizes = sizes_tensor.dims()[0];
   if (has_axes && num_of_sizes != 2) {
     LOGS(logger, ERROR) << "When 'axes' is provided, 'sizes' should have 2 elements.";
     return false;
