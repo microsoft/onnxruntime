@@ -30,7 +30,7 @@ class ResizeOpBuilder : public BaseOpBuilder {
 
   // Operator support related.
  private:
-  bool IsOpSupportedImpl(const GraphViewer& graph_viewer, const Node& node,
+  bool IsOpSupportedImpl(const GraphViewer&, const Node& node,
                          const WebnnDeviceType /* device_type */, const logging::Logger& logger) const override;
 
   // Resize opset 10- is very different than Resize opset 11+, with many key attributes missing.
@@ -117,8 +117,8 @@ bool GetResizeSizesAndAxes(const GraphViewer& graph_viewer,
 
   const bool has_axes = !axes.empty();
   const auto* sizes_init = graph_viewer.GetConstantInitializer(input_defs[3]->Name());
-  if (!sizes_init || sizes_tensor->dims_size() != 1) {
-    LOGS(logger, ERROR) << "'sizes' should be a 1D tensor.";
+  if (!sizes_init || sizes_init->dims_size() != 1) {
+    LOGS(logger, ERROR) << "'sizes' should be a 1D constant initializer tensor.";
     return false;
   }
 
