@@ -117,7 +117,7 @@ bool GetResizeSizesAndAxes(const GraphViewer& graph_viewer,
     return false;
 
   const bool has_axes = !axes.empty();
-  const auto* sizes_init = graph_viewer.GetInitializedTensor(input_defs[3]->Name());
+  const auto* sizes_init = graph_viewer.GetConstantInitializer(input_defs[3]->Name());
   if (!sizes_init || sizes_tensor->dims_size() != 1) {
     LOGS(logger, ERROR) << "'sizes' should be a 1D tensor.";
     return false;

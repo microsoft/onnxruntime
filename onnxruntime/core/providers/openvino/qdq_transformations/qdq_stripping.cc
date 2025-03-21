@@ -860,7 +860,7 @@ Status CreateModelWithStrippedQDQNodes(const GraphViewer& src_graph,
         } else {
           // Add as an initialized tensor if it does not have external data
           if (initializers_to_keep.count(input->Name())) {
-            graph_utils::AddInitializedTensor(dst_graph, *(src_graph.GetConstantInitializer(input->Name(), true)));
+            dst_graph.AddInitializedTensor(*(src_graph.GetConstantInitializer(input->Name(), true)));
           }
         }
 

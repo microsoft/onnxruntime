@@ -1238,6 +1238,42 @@ class Initializer {
   Initializer* this_ptr_;
 };
 
+class ExternalDataInfo {
+ public:
+#ifdef _WIN32
+  using OFFSET_TYPE = int64_t;
+#else
+  using OFFSET_TYPE = off_t;
+#endif
+  const PathString& GetRelPath() const {
+    return g_host->ExternalDataInfo__GetRelPath(*this);
+  }
+
+  OFFSET_TYPE GetOffset() const {
+    return g_host->ExternalDataInfo__GetOffset(*this);
+  }
+
+  size_t GetLength() const {
+    return g_host->ExternalDataInfo__GetLength(*this);
+  }
+
+  // This interface varies slightly from the original CPU
+  // where it is passing a RepeatedField with external data
+  static common::Status Create(
+      const ONNX_NAMESPACE::TensorProto& input,
+      std::unique_ptr<ExternalDataInfo>& out) {
+    return g_host->ExternalDataInfo__Create(input, out);
+  }
+
+  static void operator delete(void* p) {
+    g_host->ExternalDataInfo__operator_delete(reinterpret_cast<ExternalDataInfo*>(p));
+  }
+
+  ExternalDataInfo() = delete;
+  ExternalDataInfo(const ExternalDataInfo&) = delete;
+  void operator=(const ExternalDataInfo&) = delete;
+};
+
 struct OpKernelContext final {
   template <typename T>
   const T& RequiredInput(int index) const;

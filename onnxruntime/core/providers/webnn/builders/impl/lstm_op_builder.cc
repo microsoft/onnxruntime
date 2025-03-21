@@ -141,7 +141,7 @@ bool LstmOpBuilder::IsOpSupportedImpl(const GraphViewer& graph_viewer, const Nod
   int32_t steps = static_cast<int32_t>(input_shape[0]);
 
   if (TensorExists(input_defs, 4)) {
-    const auto* sequence_lens_init = graph_viewer.GetInitializedTensor(input_defs[4]->Name());
+    const auto* sequence_lens_init = graph_viewer.GetConstantInitializer(input_defs[4]->Name());
     if (!sequence_lens_init) {
       LOGS(logger, ERROR) << "LSTM: sequence_lens must be constant";
       return false;

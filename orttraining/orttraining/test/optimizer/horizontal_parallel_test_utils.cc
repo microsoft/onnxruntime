@@ -183,7 +183,10 @@ Status GetDataAndShapeFromTensorProto(const Graph& graph, const NodeArg* input_a
   }
 
   const ONNX_NAMESPACE::TensorProto* tensor_proto = nullptr;
-  ASSERT_TRUE(graph.GetInitializedTensor(input_arg->Name(), tensor_proto));
+  if (!graph.GetInitializedTensor(input_arg->Name(), tensor_proto)) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
+                           "Failed to get tensor proto for ", input_arg->Name());
+  }
   auto init_const = Initializer{graph, *tensor_proto, graph.ModelPath()};
   auto data_float = init_const.DataAsSpan<float>();
   data.insert(data.end(), data_float.begin(), data_float.end());

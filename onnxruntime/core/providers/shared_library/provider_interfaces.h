@@ -37,6 +37,7 @@ namespace onnxruntime {
 struct ProviderHost;
 struct ProviderHostCPU;
 
+class ExternalDataInfo;
 class PhiloxGenerator;
 using ProviderType = const std::string&;
 class RandomGenerator;
@@ -1120,6 +1121,19 @@ struct ProviderHost {
   virtual const void* Initializer__data(const Initializer&, int data_type) = 0;
   virtual void* Initializer__mutable_data_raw(Initializer&) = 0;
   virtual const void* Initializer__data_raw(const Initializer&) = 0;
+
+  // ExternalData
+#ifdef _WIN32
+  using OFFSET_TYPE = int64_t;
+#else
+  using OFFSET_TYPE = off_t;
+#endif
+  virtual Status ExternalDataInfo__Create(const ONNX_NAMESPACE::TensorProto& tensor_proto,
+                                          std::unique_ptr<ExternalDataInfo>& external_data) = 0;
+  virtual void ExternalDataInfo__operator_delete(ExternalDataInfo*) = 0;
+  virtual const PathString& ExternalDataInfo__GetRelPath(const ExternalDataInfo& p) = 0;
+  virtual OFFSET_TYPE ExternalDataInfo__GetOffset(const ExternalDataInfo& p) = 0;
+  virtual size_t ExternalDataInfo__GetLength(const ExternalDataInfo& p) = 0;
 
   // OpKernel
   virtual const Node& OpKernel__Node(const OpKernel* p) = 0;

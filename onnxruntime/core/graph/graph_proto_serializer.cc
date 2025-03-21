@@ -23,12 +23,12 @@ void GraphViewerToProto(const GraphViewer& graph_view,
     *(graph_proto.mutable_output()->Add()) = output_arg->ToProto();
   }
 
-  auto value_info = graph_view.GetValueInfo();
+  auto value_infos = graph_view.GetValueInfo();
 
   // Reserve memory for the vector to avoid reallocations
   InlinedVector<const NodeArg*> value_info_sorted;
-  value_info_sorted.reserve(value_info.size());
-  value_info_sorted.assign(value_info.begin(), value_info.end());
+  value_info_sorted.reserve(value_infos.size());
+  value_info_sorted.assign(value_infos.begin(), value_infos.end());
 
   auto sort_predicate = [](const NodeArg* v1, const NodeArg* v2) {
     return v1->Name() < v2->Name();

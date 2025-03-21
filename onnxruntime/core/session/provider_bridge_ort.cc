@@ -1459,6 +1459,23 @@ struct ProviderHostImpl : ProviderHost {
     return initializer.data_raw();
   }
 
+  // ExternalDataInfo
+  Status ExternalDataInfo__Create(const ONNX_NAMESPACE::TensorProto& tensor_proto,
+                                  std::unique_ptr<ExternalDataInfo>& external_data) override {
+    return ExternalDataInfo::Create(tensor_proto.external_data(), external_data);
+  }
+
+  void ExternalDataInfo__operator_delete(ExternalDataInfo* p) override { delete p; }
+  const PathString& ExternalDataInfo__GetRelPath(const ExternalDataInfo& p) override {
+    return p.GetRelPath();
+  }
+  ExternalDataInfo::OFFSET_TYPE ExternalDataInfo__GetOffset(const ExternalDataInfo& p) override {
+    return p.GetOffset();
+  }
+  size_t ExternalDataInfo__GetLength(const ExternalDataInfo& p) override {
+    return p.GetLength();
+  }
+
   // OpKernel (direct)
   const Node& OpKernel__Node(const OpKernel* p) override { return p->OpKernel::Node(); }
 
