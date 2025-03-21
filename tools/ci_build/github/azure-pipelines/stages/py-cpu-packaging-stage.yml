@@ -201,7 +201,7 @@ stages:
         clean: all
       pool:
         name: "Azure Pipelines"
-        image: "macOS-13"
+        image: "macOS-14"
         os: macOS
       variables:
         MACOSX_DEPLOYMENT_TARGET: '13.3'

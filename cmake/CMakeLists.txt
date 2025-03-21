@@ -87,6 +87,7 @@ option(onnxruntime_USE_SNPE "Build with SNPE support" OFF)
 option(onnxruntime_USE_RKNPU "Build with RKNPU support" OFF)
 option(onnxruntime_USE_DNNL "Build with DNNL support" OFF)
 option(onnxruntime_USE_JSEP "Build with JavaScript implemented kernels support" OFF)
+option(onnxruntime_USE_KLEIDIAI "Build with KleidiAI integration in MLAS" OFF)
 option(onnxruntime_BUILD_UNIT_TESTS "Build ONNXRuntime unit tests" ON)
 option(onnxruntime_BUILD_CSHARP "Build C# library" OFF)
 option(onnxruntime_BUILD_OBJC "Build Objective-C library" OFF)
@@ -828,6 +829,20 @@ else()
   # enable warning(s) that may not be on by default
   if (HAS_SHORTEN_64_TO_32)
     list(APPEND ORT_WARNING_FLAGS -Wshorten-64-to-32)
+  endif()
+endif()
+
+if (onnxruntime_USE_KLEIDIAI AND NOT MSVC AND (
+    (onnxruntime_target_platform STREQUAL "aarch64") OR
+    (onnxruntime_target_platform STREQUAL "ARM64") OR
+    (APPLE AND CMAKE_SYSTEM_PROCESSOR STREQUAL "arm64")))
+  check_cxx_compiler_flag(-march=armv8.2-a+dotprod HAS_ARM64_DOTPROD)
+  check_cxx_compiler_flag(-march=armv8.2-a+i8mm HAS_ARM64_I8MM)
+  if (NOT HAS_ARM64_DOTPROD)
+    message(FATAL_ERROR  "The compiler doesn't support dotprod")
+  endif()
+  if (NOT HAS_ARM64_I8MM)
+    message(FATAL_ERROR  "The compiler doesn't support i8mm")
   endif()
 endif()
 

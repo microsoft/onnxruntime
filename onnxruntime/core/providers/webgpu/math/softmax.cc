@@ -11,6 +11,7 @@
 #include "core/providers/webgpu/shader_variable.h"
 #include "core/providers/webgpu/shader_helper.h"
 #include "core/providers/webgpu/webgpu_supported_types.h"
+#include "core/providers/webgpu/webgpu_utils.h"
 namespace onnxruntime {
 namespace webgpu {
 
@@ -54,28 +55,6 @@ static std::string MaxVector(const std::string& name, int components) {
     default:
       ORT_THROW("Unsupported number of components: ", components);
   }
-}
-
-static std::string SumVector(const std::string& x, int components) {
-  switch (components) {
-    case 1:
-      return x;
-    case 2:
-      return "(" + x + ".x + " + x + ".y" + ")";
-    case 4:
-      return "(" + x + ".x + " + x + ".y + " + x + ".w + " + x + ".z" + ")";
-    default:
-      ORT_THROW("Unsupported number of components: ", components);
-  }
-}
-
-static int GetMaxComponents(int64_t size) {
-  if (size % 4 == 0) {
-    return 4;
-  } else if (size % 2 == 0) {
-    return 2;
-  }
-  return 1;
 }
 
 Status SoftmaxProgram::GenerateShaderCode(ShaderHelper& shader) const {
