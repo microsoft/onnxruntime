@@ -26,8 +26,6 @@ jobs:
     os: linux
   workspace:
     clean: all
-  pool:
-    vmImage: 'macOS-14'
   variables:
     runCodesignValidationInjection: false
     ANDROID_AVD_HOME: $(Agent.TempDirectory)
