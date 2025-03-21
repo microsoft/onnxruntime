@@ -212,7 +212,7 @@ def export_onnx_models(
         else:
             logger.info(f"Skip exporting: existed ONNX model {onnx_path}")
 
-        # Optimize ONNX graph. Note that we have not implemented graph optimization for T5 yet.
+        # Optimize ONNX graph.
         if optimize_onnx or precision != Precision.FLOAT32:
             onnx_shape_path = None
             if shape_infer_before_optimization:

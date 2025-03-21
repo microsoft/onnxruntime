@@ -196,7 +196,7 @@ use_tiny_model = True
 
 
 class TestBeamSearchT5(unittest.TestCase):
-    """Test BeamSearch for T5 model"""
+    """Test BeamSearch for T5 model with fp32 in CPU"""
 
     def setUp(self):
         tiny_model_dir = get_tiny_t5_model_dir()
@@ -214,8 +214,6 @@ class TestBeamSearchT5(unittest.TestCase):
             "--output_sequences_score",
             "--repetition_penalty 2.0",
         ]
-
-        self.enable_cuda = torch.cuda.is_available() and "CUDAExecutionProvider" in get_available_providers()
 
         export_t5_onnx_models(
             self.model_name,
@@ -262,13 +260,6 @@ class TestBeamSearchT5(unittest.TestCase):
         # Test CPU
         result = run(arguments)
         self.assertTrue(result["parity"], f"ORT and PyTorch result is different on CPU for arguments {arguments}")
-
-        # Test GPU
-        if self.enable_cuda:
-            if "--use_gpu" not in arguments:
-                arguments.append("--use_gpu")
-            result = run(arguments)
-            self.assertTrue(result["parity"], f"ORT and PyTorch result is different on GPU for arguments {arguments}")
 
         os.remove(self.beam_search_onnx_path)
 
@@ -333,6 +324,7 @@ class TestBeamSearchT5Fp16(unittest.TestCase):
         onnx_model = OnnxModel(model)
         op_counters = onnx_model.get_operator_statistics()
         print("encoder ops", op_counters)
+
         expected_node_count = {
             "RelativePositionBias": 1,
             "SimplifiedLayerNormalization": 5 if use_tiny_model else 13,
@@ -351,7 +343,7 @@ class TestBeamSearchT5Fp16(unittest.TestCase):
 
         onnx_model = OnnxModel(model)
         op_counters = onnx_model.get_operator_statistics()
-        print("decoder opators", op_counters)
+        print("decoder ops", op_counters)
 
         expected_node_count = {
             "RelativePositionBias": 1,

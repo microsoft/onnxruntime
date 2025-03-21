@@ -14,8 +14,6 @@ vocab_size = 1024
 save_directory = "tiny_t5"
 model_name = "google-t5/t5-small"
 
-model = T5ForConditionalGeneration.from_pretrained(model_name)
-
 config = T5Config.from_pretrained(model_name)
 
 config.num_heads = 2

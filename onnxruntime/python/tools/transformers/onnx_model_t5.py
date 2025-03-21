@@ -237,7 +237,7 @@ class FusionT5Attention(FusionAttention):
         )
         if qkv_nodes is None:
             return False
-        matmul_qkv, _transpose_qkv, reshape_qkv = qkv_nodes
+        matmul_qkv, _, reshape_qkv = qkv_nodes
 
         qkv_shape_nodes = self.model.match_parent_path(
             reshape_qkv,
@@ -298,7 +298,7 @@ class FusionT5Attention(FusionAttention):
                     output_name_to_node,
                 )
                 if mask_nodes is None:
-                    return
+                    return False
             mul_node = mask_nodes[2]
 
         _, mul_val = self.model.get_constant_input(mul_node)
@@ -357,7 +357,7 @@ class FusionT5Attention(FusionAttention):
         )
         if k_nodes is None:
             return False
-        _, reshape_k, matmul_k = k_nodes
+        _, _, matmul_k = k_nodes
         # todo: check reshape_k parent nodes
 
         q_nodes = self.model.match_parent_path(
@@ -368,7 +368,7 @@ class FusionT5Attention(FusionAttention):
         if q_nodes is None:
             return False
 
-        transpose_q, reshape_q, matmul_q = q_nodes
+        _, reshape_q, matmul_q = q_nodes
         # todo: check reshape_q parent nodes
 
         if matmul_q.input[0] != input_shape_node.input[0]:
@@ -690,6 +690,7 @@ class FusionRelativePositionBiasBlock(Fusion):
 
         gather = compute_bias_nodes[5]
         where = compute_bias_nodes[-1]
+        slice = compute_bias_nodes[2]
         unsqueeze = compute_bias_nodes[3]
 
         # Current fusion will not remove the node until the graph is processed.
@@ -790,10 +791,8 @@ class FusionRelativePositionBiasBlock(Fusion):
         #    Unsqueeze(axes=0)    Cast(to=int64)
         #                   \     /
         #                     Sub
-        #
-        # Founatutionally, there is still Slice to get last seq_len rows so end result is same.
-        #
-        # But need to be careful that the shape of some intermediate nodes are changed.
+        # Currently, there is still Slice to get last seq_len rows so end result is same.
+        # But need to be careful that the shape of bias tensor is changed before Slice.
         #
         # RelativePositionBias operator requires query_length == key_length so we shall pass in total_seq_len.
         # Here we get the end value of the Range node as length to pass to the RelativePositionBias node.
@@ -802,11 +801,14 @@ class FusionRelativePositionBiasBlock(Fusion):
         #       only compute seq_len rows, then we can remove the Slice after the RelativePositionBias node.
         inputs = [bias_table.name, range_node.input[1], range_node.input[1]]
 
-        outputs = [unsqueeze.output[0]]
+        # Use a new tensor name since the shape might be different as mentioned above.
+        bias_output = node_name + "_rel_pos_bias"
+        slice.input[0] = bias_output
+
         rpb_node = helper.make_node(
             "RelativePositionBias",
             inputs=inputs,
-            outputs=outputs,
+            outputs=[bias_output],
             name=node_name,
         )
         rpb_node.domain = "com.microsoft"
@@ -814,8 +816,6 @@ class FusionRelativePositionBiasBlock(Fusion):
         rpb_node.attribute.extend([helper.make_attribute("is_bidirectional", is_bidirectional)])
         self.node_name_to_graph_name[rpb_node.name] = self.this_graph_name
         self.nodes_to_add.append(rpb_node)
-
-        self.nodes_to_remove.append(unsqueeze)
         self.prune_graph = True
 
 

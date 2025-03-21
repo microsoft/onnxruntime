@@ -20,9 +20,9 @@ namespace transformers {
 
    Inputs:
       input_ids: int32 (B, 1)
-      encoder_input_ids: int32 (B, encode_sequence_length) (optional)
+      encoder_input_ids: int32 (B, encode_sequence_length) (optional for old format; removed in new format)
       encoder_attention_mask: int32 (B, encode_sequence_length)
-      encoder_hidden_states: (B, encode_sequence_length, encoder_hidden_size) (optional)
+      encoder_hidden_states: (B, encode_sequence_length, encoder_hidden_size) (optional for old format; removed in new format)
 
       past_key_self_0: (B, num_heads, past_decode_sequence_length, head_size)
       past_value_self_0: (B, num_heads, past_decode_sequence_length, head_size)
@@ -147,7 +147,8 @@ Status T5DecoderSubgraph::Validate(const std::vector<const NodeArg*>& subgraph_i
 //   decoder_feeds: input_ids, encoder_attention_mask,
 //                  present_key_self_0, present_value_self_0, ...,
 //                  present_key_cross_0, present_value_cross_0, ...
-
+//                  past_seq_len (optional), num_beams (optional), cache_indirection (optional)
+//
 // Old format:
 //   encoder feeds: encoder_input_ids, encoder_attention_mask, decoder_input_ids (with start tokens)
 //   encoder fetches: logits, encoder_hidden_states,
@@ -157,7 +158,6 @@ Status T5DecoderSubgraph::Validate(const std::vector<const NodeArg*>& subgraph_i
 //                  present_key_self_0, present_value_self_0, ...,
 //                  present_key_cross_0, present_value_cross_0, ...
 //                  past_seq_len (optional), num_beams (optional), cache_indirection (optional)
-
 Status T5DecoderSubgraph::CreateInitialFeeds(
     AllocatorPtr cpu_allocator,
     gsl::span<const int32_t> beam_next_tokens,
