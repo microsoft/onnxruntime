@@ -10,23 +10,13 @@
 #include "core/providers/cpu/math/matmul_helper.h"
 #include "core/providers/webgpu/shader_helper.h"
 #include "core/providers/webgpu/webgpu_supported_types.h"
+#include "core/providers/webgpu/webgpu_utils.h"
 
 namespace onnxruntime {
 namespace contrib {
 namespace webgpu {
 
 namespace {
-// Put it to a common place?
-uint32_t GetMaxComponents(uint32_t size) {
-  // we cannot use vec3 type since it has alignment of 16 bytes
-  if (size % 4 == 0) {
-    return 4;
-  } else if (size % 2 == 0) {
-    return 2;
-  }
-
-  return 1;
-}
 
 std::string QuantizedDataType(int components) {
   switch (components) {
