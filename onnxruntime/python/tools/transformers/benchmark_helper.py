@@ -107,14 +107,7 @@ def create_onnxruntime_session(
     else:
         sess_options.log_severity_level = 4
 
-    if provider in [
-        "DmlExecutionProvider",
-        "ROCMExecutionProvider",
-        "MIGraphXExecutionProvider",
-        "CUDAExecutionProvider",
-        "TensorrtExecutionProvider",
-        "CPUExecutionProvider",
-    ]:
+    if provider in onnxruntime.get_available_providers():
         providers = [provider]
     elif use_gpu:
         if provider == "dml":
@@ -136,7 +129,7 @@ def create_onnxruntime_session(
                 "CPUExecutionProvider",
             ]
         else:
-            raise RuntimeError("unknown provider: %s", provider)
+            raise RuntimeError(f"The execution provider is not supported: {provider}")
     else:
         providers = ["CPUExecutionProvider"]
 

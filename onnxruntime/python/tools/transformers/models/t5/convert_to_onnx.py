@@ -18,6 +18,7 @@ from benchmark_helper import (
 )
 from onnx.shape_inference import infer_shapes_path
 from t5_helper import PRETRAINED_MT5_MODELS, PRETRAINED_T5_MODELS, T5Helper
+from transformers import MT5Config, T5Config
 
 logger = logging.getLogger("")
 
@@ -182,7 +183,7 @@ def export_onnx_models(
         state_dict_path,
         encode_decoder_init=encode_decoder_init,
     )
-    config = models["decoder"].config
+    config: T5Config | MT5Config = models["decoder"].config
 
     if (not use_external_data_format) and (config.num_layers > 24):
         logger.info("Try use_external_data_format when model size > 2GB")

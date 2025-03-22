@@ -6,11 +6,12 @@
 #include "core/framework/tensorprotoutils.h"
 #include "core/framework/utils.h"
 #include "core/providers/cpu/tensor/utils.h"
-#include <gsl/gsl>
 #include "contrib_ops/cpu/transformers/subgraph_t5_decoder.h"
 #include "contrib_ops/cpu/utils/dump_tensor.h"
 #include "contrib_ops/cpu/transformers/generation_device_helper.h"
 #include "contrib_ops/cpu/transformers/sequences.h"
+#include <gsl/gsl>
+#include <memory>
 
 namespace onnxruntime {
 namespace contrib {

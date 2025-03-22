@@ -30,13 +30,13 @@ class T5EncoderDecoderInit(torch.nn.Module):
         self,
         encoder: torch.nn.Module,
         decoder: torch.nn.Module,
-        lm_head: torch.nn.Module,
+        lm_head: torch.nn.Linear,
         config: T5Config | MT5Config,
         decoder_start_token_id: int | None = None,
         output_cross_only: bool = False,
     ):
         super().__init__()
-        self.config = config
+        self.config: T5Config | MT5Config = config
         self.t5_encoder = T5Encoder(encoder, config)
         self.t5_decoder_init = T5DecoderInit(decoder, lm_head, config, decoder_start_token_id)
         self.output_cross_only = output_cross_only
@@ -45,19 +45,17 @@ class T5EncoderDecoderInit(torch.nn.Module):
         self,
         encoder_input_ids: torch.Tensor,
         encoder_attention_mask: torch.Tensor,
-        decoder_input_ids: torch.Tensor = None,
+        decoder_input_ids: torch.Tensor | None = None,
     ):
         encoder_hidden_states: torch.FloatTensor = self.t5_encoder(encoder_input_ids, encoder_attention_mask)
 
+        lm_logits, past_self, past_cross = self.t5_decoder_init(
+            decoder_input_ids, encoder_attention_mask, encoder_hidden_states
+        )
+
         if self.output_cross_only:
-            lm_logits, past_self, past_cross = self.t5_decoder_init(
-                decoder_input_ids, encoder_attention_mask, encoder_hidden_states
-            )
             return past_cross
         else:
-            lm_logits, past_self, past_cross = self.t5_decoder_init(
-                decoder_input_ids, encoder_attention_mask, encoder_hidden_states
-            )
             return lm_logits, encoder_hidden_states, past_self, past_cross
 
 
@@ -65,7 +63,7 @@ class T5EncoderDecoderInitInputs:
     def __init__(self, encoder_input_ids, encoder_attention_mask, decoder_input_ids=None):
         self.encoder_input_ids: torch.LongTensor = encoder_input_ids
         self.encoder_attention_mask: torch.LongTensor = encoder_attention_mask
-        self.decoder_input_ids: torch.LongTensor = decoder_input_ids
+        self.decoder_input_ids: torch.LongTensor | None = decoder_input_ids
 
     @staticmethod
     def create_dummy(
@@ -152,7 +150,7 @@ class T5EncoderDecoderInitHelper:
 
         input_names = ["encoder_input_ids", "encoder_attention_mask"]
 
-        # ONNX exporter might mark dimension like 'Transposepresent_value_self_1_dim_2' in shape inference.
+        # ONNX exporter might mark dimension like 'present_value_self_1_dim_2' in shape inference.
         # We use a workaround here: first use dim_param "1" for sequence_length, and later change to dim_value.
         sequence_length = "1"
         num_heads = str(model.config.num_heads)
@@ -218,8 +216,8 @@ class T5EncoderDecoderInitHelper:
             model.output_cross_only = output_cross_only
 
             # Workaround as mentioned earlier: change numeric dim_param to dim_value
-            model = onnx.load(temp_onnx_model_path)
-            for tensor in model.graph.output:
+            exported_model: onnx.ModelProto = onnx.load(temp_onnx_model_path)
+            for tensor in exported_model.graph.output:
                 for dim_proto in tensor.type.tensor_type.shape.dim:
                     if dim_proto.HasField("dim_param") and dim_proto.dim_param in [
                         sequence_length,
@@ -233,10 +231,10 @@ class T5EncoderDecoderInitHelper:
 
             if output_cross_only:
                 # Rewrite onnx graph to only keep present_[key|value]_cross_* outputs.
-                onnx_model = OnnxModel(model)
+                onnx_model = OnnxModel(exported_model)
                 output_name_to_node = onnx_model.output_name_to_node()
 
-                for output in model.graph.output:
+                for output in exported_model.graph.output:
                     if "cross" in output.name:
                         assert output.name in output_name_to_node
 
@@ -270,11 +268,11 @@ class T5EncoderDecoderInitHelper:
 
                         reshape_node.input[1] = "cross_reshape_shape"
 
-                cross_outputs = [output.name for output in model.graph.output if "cross" in output.name]
+                cross_outputs = [output.name for output in exported_model.graph.output if "cross" in output.name]
                 onnx_model.prune_graph(cross_outputs, allow_remove_graph_inputs=True)
 
             OnnxModel.save(
-                model,
+                exported_model,
                 onnx_model_path,
                 save_as_external_data=use_external_data_format,
                 all_tensors_to_one_file=True,

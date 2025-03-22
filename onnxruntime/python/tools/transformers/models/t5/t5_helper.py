@@ -67,7 +67,7 @@ class T5Helper:
         model_type: str = "t5",
         state_dict_path: str = "",
         encode_decoder_init: bool = False,
-    ) -> dict[str, torch.nn.Module]:
+    ) -> dict[str, T5EncoderDecoderInit | T5Decoder]:
         """Load model given a pretrained name or path, then build models for ONNX conversion.
 
         Args:
