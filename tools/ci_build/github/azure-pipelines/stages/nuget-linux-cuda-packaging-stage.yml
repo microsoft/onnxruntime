@@ -1,7 +1,7 @@
 parameters:
 - name: CudaVersion
   type: string
-  default: '11.8'
+  default: '12.2'
 - name: buildJava
   type: boolean
 - name: buildNodejs

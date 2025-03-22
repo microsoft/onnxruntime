@@ -76,12 +76,12 @@ variables:
 - name: ReleaseVersionSuffix
   value: ''
 - name: win_trt_version
-  value: 11.8
+  value: 12.2
 
 - name: win_trt_home
-  value: $(Agent.TempDirectory)\${{ variables.win_trt_folder_cuda11 }}
+  value: $(Agent.TempDirectory)\${{ variables.win_trt_folder_cuda12 }}
 - name: win_cuda_home
-  value: $(Agent.TempDirectory)\v11.8
+  value: $(Agent.TempDirectory)\v12.2
 
 stages:
 - template: stages/set_packaging_variables_stage.yml
@@ -110,13 +110,13 @@ stages:
 
 - template: stages/java-cuda-packaging-stage.yml
   parameters:
-    CudaVersion: 11.8
+    CudaVersion: 12.2
     SpecificArtifact: ${{ parameters.SpecificArtifact }}
     BuildId: ${{ parameters.BuildId }}
 
 - template: stages/nuget-combine-cuda-stage.yml
   parameters:
-      CudaVersion: 11.8
+      CudaVersion: 12.2
       RunOnnxRuntimeTests: ${{ parameters.RunOnnxRuntimeTests }}
       UseIncreasedTimeoutForTests: ${{ parameters.UseIncreasedTimeoutForTests }}
       win_trt_home: ${{ variables.win_trt_home }}
