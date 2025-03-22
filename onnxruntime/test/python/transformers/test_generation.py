@@ -184,6 +184,16 @@ def get_tiny_t5_model_dir():
     """Get the path to the tiny T5 model directory."""
     # This function is used to get the path to the tiny T5 model directory.
     # It is used in the TestBeamSearchT5 and TestBeamSearchT5Fp16 classes.
+
+    # Path relative to the build\Release directory, where transformers test is launched in pipeline.
+    tiny_model_dir = os.path.join(
+        "testdata",
+        "transformers",
+        "tiny_t5",
+    )
+    if os.path.exists(tiny_model_dir):
+        return os.path.normpath(tiny_model_dir)
+
     # The path is relative to the current file's directory.
     tiny_model_dir = os.path.join(
         os.path.dirname(__file__),
@@ -231,7 +241,7 @@ class TestBeamSearchT5(unittest.TestCase):
             use_gpu=False,
             use_external_data_format=False,
             optimize_onnx=False,
-            precision=Precision.FLOAT32,
+            precision=Precision.FLOAT32.value,
             verbose=False,
             use_decoder_start_token=False,
             overwrite=True,

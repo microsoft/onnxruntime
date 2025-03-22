@@ -76,9 +76,9 @@ def parse_arguments():
         "-p",
         "--precision",
         required=False,
-        type=Precision,
-        default=Precision.FLOAT32,
-        choices=[Precision.FLOAT32, Precision.FLOAT16],
+        type=str,
+        default=Precision.FLOAT32.value,
+        choices=[Precision.FLOAT32.value, Precision.FLOAT16.value],
         help="Precision of model to run. fp32 for full precision, fp16 for half precision",
     )
 
@@ -151,14 +151,14 @@ def parse_arguments():
 
 
 def export_onnx_models(
-    model_name_or_path,
-    cache_dir,
-    output_dir,
-    use_gpu,
-    use_external_data_format,
-    optimize_onnx,
-    precision,
-    verbose,
+    model_name_or_path: str,
+    cache_dir: str,
+    output_dir: str,
+    use_gpu: bool = False,
+    use_external_data_format: bool = False,
+    optimize_onnx: bool = False,
+    precision: str = Precision.FLOAT32.value,
+    verbose: bool = False,
     use_decoder_start_token: bool = False,
     overwrite: bool = False,
     disable_auto_mixed_precision: bool = False,
@@ -169,6 +169,9 @@ def export_onnx_models(
     force_fp16_io: bool = False,
     shape_infer_before_optimization: bool = False,
 ):
+    assert precision in [Precision.FLOAT32.value, Precision.FLOAT16.value], (
+        f"Invalid precision: {precision}. Use 'fp32' or 'fp16'."
+    )
     device = torch.device("cuda:0" if use_gpu else "cpu")
 
     models = T5Helper.load_model(
@@ -213,7 +216,9 @@ def export_onnx_models(
             logger.info(f"Skip exporting: existed ONNX model {onnx_path}")
 
         # Optimize ONNX graph.
-        if optimize_onnx or precision != Precision.FLOAT32:
+        # The precision shall be compared with string value. It is because the Precision enum loaded from local file
+        # (like by transformers test in CI pipeline) are not same as Precision enum from package.
+        if optimize_onnx or precision != Precision.FLOAT32.value:
             onnx_shape_path = None
             if shape_infer_before_optimization:
                 onnx_shape_path = T5Helper.get_onnx_path(
@@ -236,7 +241,7 @@ def export_onnx_models(
                 T5Helper.optimize_onnx(
                     onnx_shape_path or onnx_path,
                     output_path,
-                    precision == Precision.FLOAT16,
+                    precision == Precision.FLOAT16.value,
                     config.num_heads,
                     config.hidden_size,
                     use_external_data_format,
@@ -262,7 +267,7 @@ def export_onnx_models(
         logger.info(f"PyTorch and OnnxRuntime results max difference = {max_diff}")
 
         # The threshold cannot apply to fp16 model, which need a larger threshold.
-        if precision == Precision.FLOAT32 and max_diff > 1e-4:
+        if precision == Precision.FLOAT32.value and max_diff > 1e-4:
             logger.warning("PyTorch and OnnxRuntime results are NOT close")
 
         output_paths.append(output_path)
@@ -281,10 +286,10 @@ def main():
     output_dir = args.output if not args.output.endswith(".onnx") else os.path.dirname(args.output)
     prepare_environment(cache_dir, output_dir, args.use_gpu)
 
-    if args.precision != Precision.FLOAT32:
+    if args.precision != Precision.FLOAT32.value:
         assert args.optimize_onnx, "fp16/int8 requires --optimize_onnx"
 
-    if args.precision == Precision.FLOAT16:
+    if args.precision == Precision.FLOAT16.value:
         assert args.use_gpu, "fp16 requires --use_gpu"
 
     output_paths = export_onnx_models(

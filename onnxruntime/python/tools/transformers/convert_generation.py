@@ -172,9 +172,9 @@ def parse_arguments(argv: list[str] | None = None) -> argparse.Namespace:
         "-p",
         "--precision",
         required=False,
-        type=Precision,
-        default=Precision.FLOAT32,
-        choices=[Precision.FLOAT32, Precision.FLOAT16],
+        type=str,
+        default=Precision.FLOAT32.value,
+        choices=[Precision.FLOAT32.value, Precision.FLOAT16.value],
         help="Precision of model to run. fp32 for full precision, fp16 for half or mixed precision",
     )
 
@@ -515,7 +515,7 @@ def gpt2_to_onnx(args: argparse.Namespace):
         args.decoder_onnx,
         "--optimize_onnx",
         "--precision",
-        "fp32" if args.precision == Precision.FLOAT32 else "fp16",
+        args.precision,
         "--test_runs",
         "1",
         "--test_cases",
@@ -533,7 +533,7 @@ def gpt2_to_onnx(args: argparse.Namespace):
         arguments.extend(["--op_block_list"])
         arguments.extend(args.op_block_list)
 
-    if args.precision == Precision.FLOAT16:
+    if args.precision == Precision.FLOAT16.value:
         assert args.use_gpu, "fp16 or mixed precision model cannot run in CPU. Please add --use_gpu"
         # TODO(tianleiwu): Use auto mixed precision for fp16 conversion: arguments.append('--auto_mixed_precision')
         #       Need change cuda kernel to support a combination of fp32 logits and fp16 past state.
@@ -557,7 +557,7 @@ def t5_to_onnx(args: argparse.Namespace):
         output_dir=Path(args.output).parent,
         use_gpu=args.use_gpu,
         use_external_data_format=args.use_external_data_format,
-        optimize_onnx=(args.precision != Precision.FLOAT16),
+        optimize_onnx=(args.precision != Precision.FLOAT16.value),
         precision=args.precision,
         verbose=False,
         use_decoder_start_token=False,
@@ -566,7 +566,7 @@ def t5_to_onnx(args: argparse.Namespace):
         use_int32_inputs=True,
         model_type=args.model_type,
         encode_decoder_init=args.encode_decoder_init,
-        force_fp16_io=(args.precision == Precision.FLOAT16),  # required by BeamSearch op implementation.
+        force_fp16_io=(args.precision == Precision.FLOAT16.value),  # required by BeamSearch op implementation.
     )
 
     logger.debug(f"onnx model for encoder: {paths[0]}")
@@ -719,7 +719,7 @@ def verify_gpt2_subgraph(graph: onnx.GraphProto, precision: Precision):
         ValueError: Output name is not expected.
         ValueError: Output data type is not expected.
     """
-    is_float16 = precision == Precision.FLOAT16
+    is_float16 = precision == Precision.FLOAT16.value
 
     input_count = len(graph.input)
     layer_count = input_count - 3
@@ -775,7 +775,7 @@ def verify_t5_decoder_subgraph(graph: onnx.GraphProto, precision: Precision):
         ValueError: Output name is not expected.
         ValueError: Output data type is not expected.
     """
-    is_float16 = precision == Precision.FLOAT16
+    is_float16 = precision == Precision.FLOAT16.value
     float_type = TensorProto.FLOAT16 if is_float16 else TensorProto.FLOAT
 
     input_count = len(graph.input)
@@ -851,7 +851,7 @@ def verify_t5_encoder_decoder_init_subgraph(graph: onnx.GraphProto, precision: P
         ValueError: Output name is not expected.
         ValueError: Output data type is not expected.
     """
-    is_float16 = precision == Precision.FLOAT16
+    is_float16 = precision == Precision.FLOAT16.value
     new_format = "cross" in graph.output[0].name
 
     # Expect 3 inputs:
@@ -2511,7 +2511,7 @@ def convert_generation_model(
 
     logger.info(f"**** past_present_share_buffer={past_present_share_buffer}")
     if len(args.op_block_list) == 1 and args.op_block_list[0] == "auto":
-        if is_gpt2 and args.precision == Precision.FLOAT16:
+        if is_gpt2 and args.precision == Precision.FLOAT16.value:
             args.op_block_list = [
                 "Add",
                 "LayerNormalization",
@@ -2553,10 +2553,7 @@ def convert_generation_model(
             logger.info(f"skip convert_to_onnx since path existed: {args.decoder_onnx}")
         else:
             if not args.decoder_onnx:
-                onnx_filename = "{}_past_{}.onnx".format(
-                    args.model_name_or_path,
-                    "fp16" if args.precision == Precision.FLOAT16 else "fp32",
-                )
+                onnx_filename = f"{args.model_name_or_path}_past_{args.precision}.onnx"
                 args.decoder_onnx = Path(Path(args.output).parent, onnx_filename).as_posix()
 
             logger.info(f"Convert GPT model {args.model_name_or_path} to onnx {args.decoder_onnx} ...")
@@ -2578,7 +2575,7 @@ def convert_generation_model(
     logits_matmul_weight_padded = False
     if (
         not args.disable_pad_vocab_size
-        and args.precision == Precision.FLOAT16
+        and args.precision == Precision.FLOAT16.value
         and is_gpt2
         and (is_beamsearch or is_greedysearch or is_sampling)
     ):
@@ -2601,9 +2598,7 @@ def convert_generation_model(
     ):
         logger.info(f"Creating an initial run GPT2 decoder from {args.decoder_onnx}. ")
 
-        gpt2_init_decoder_onnx_filename = "gpt2_init_past_{}.onnx".format(
-            "fp16" if args.precision == Precision.FLOAT16 else "fp32"
-        )
+        gpt2_init_decoder_onnx_filename = f"gpt2_init_past_{args.precision}.onnx"
 
         gpt2_init_decoder_onnx_path = Path(Path(args.output).parent, gpt2_init_decoder_onnx_filename).as_posix()
 
@@ -3036,7 +3031,7 @@ def test_torch_performance(
     if args.use_gpu and not torch.cuda.is_available():
         raise RuntimeError("Please install PyTorch with Cuda for testing gpu performance.")
 
-    if args.precision == Precision.FLOAT16:
+    if args.precision == Precision.FLOAT16.value:
         model.half()
 
     device = torch.device("cuda:0" if args.use_gpu else "cpu")

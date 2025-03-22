@@ -150,10 +150,7 @@ def create_onnxruntime_session(
     try:
         session = onnxruntime.InferenceSession(onnx_model_path, sess_options, providers=providers)
     except Exception:
-        logger.error(
-            f"Failed to create session for {onnx_model_path} with providers={providers} and options {sess_options}",
-            exc_info=True,
-        )
+        logger.exception(f"Failed to create session for {onnx_model_path} with providers={providers}")
 
     return session
 
