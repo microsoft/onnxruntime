@@ -159,6 +159,7 @@ namespace perftest {
       "\t-n [Exit after session creation]: allow user to measure session creation time to measure impact of enabling any initialization optimizations.\n"
       "\t-l Provide file as binary in memory by using fopen before session creation.\n"
       "\t-R [Register custom op]: allow user to register custom op by .so or .dll file.\n"
+      "\t-w: wait for user acknowledgment before starting.\n"
       "\t-h: help\n");
 }
 #ifdef _WIN32
@@ -188,7 +189,7 @@ static bool ParseDimensionOverride(std::basic_string<ORTCHAR_T>& dim_identifier,
 
 /*static*/ bool CommandLineParser::ParseArguments(PerformanceTestConfig& test_config, int argc, ORTCHAR_T* argv[]) {
   int ch;
-  while ((ch = getopt(argc, argv, ORT_TSTR("m:e:r:t:p:x:y:c:d:o:u:i:f:F:S:T:C:AMPIDZvhsqznlR:"))) != -1) {
+  while ((ch = getopt(argc, argv, ORT_TSTR("m:e:r:t:p:x:y:c:d:o:u:i:f:F:S:T:C:AMPIDZvhsqznlR:w"))) != -1) {
     switch (ch) {
       case 'f': {
         std::basic_string<ORTCHAR_T> dim_name;
@@ -385,6 +386,9 @@ static bool ParseDimensionOverride(std::basic_string<ORTCHAR_T>& dim_identifier,
         break;
       case 'R':
         test_config.run_config.register_custom_op_path = optarg;
+        break;
+      case 'w':
+        test_config.wait = true;
         break;
       case '?':
       case 'h':

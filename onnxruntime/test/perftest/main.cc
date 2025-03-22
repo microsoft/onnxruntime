@@ -7,6 +7,7 @@
 #include "command_args_parser.h"
 #include "performance_runner.h"
 #include <google/protobuf/stubs/common.h>
+#include <iostream>
 
 using namespace onnxruntime;
 const OrtApi* g_ort = NULL;
@@ -22,6 +23,13 @@ int real_main(int argc, char* argv[]) {
     perftest::CommandLineParser::ShowUsage();
     return -1;
   }
+
+  if (test_config.wait) {
+    std::cout << "Press enter to continue.\n";
+    std::string input;
+    std::getline(std::cin, input);
+  }
+
   Ort::Env env{nullptr};
   {
     bool failed = false;

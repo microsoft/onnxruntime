@@ -72,6 +72,7 @@ struct PerformanceTestConfig {
   ModelInfo model_info;
   MachineConfig machine_config;
   RunConfig run_config;
+  bool wait{false};
 };
 
 }  // namespace perftest
