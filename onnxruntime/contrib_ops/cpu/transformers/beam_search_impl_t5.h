@@ -51,7 +51,13 @@ class BeamSearchT5 : public BeamSearchBase<T> {
         expand_buffer_int32_func_(expand_buffer_int32_func),
         expand_buffer_float_func_(expand_buffer_float_func),
         expand_buffer_float16_func_(expand_buffer_float16_func),
-        create_beam_scorer_func_(create_beam_scorer_func) {}
+        create_beam_scorer_func_(create_beam_scorer_func) {
+    // When decoder uses encoder_hidden_state, make sure the encoder outputs it.
+    if (decoder_subgraph_.UseEncoderHiddenState()) {
+      ORT_ENFORCE(encoder_subgraph_.subgraph_output_names[1] == "encoder_hidden_states");
+    }
+    ORT_ENFORCE(encoder_subgraph_.num_layers == decoder_subgraph_.num_layers);
+  }
 
 #ifdef USE_CUDA
   Status InitializeCuda(
@@ -160,7 +166,7 @@ Status BeamSearchT5<T>::Execute(const FeedsFetchesManager& encoder_feeds_fetches
       this->create_encoder_inputs_func_,
       this->add_to_feeds_func_,
       buffer,
-      decoder_input_ids,
+      decoder_input_ids,  // new format does not use decoder_input_ids in encoder, it is still initialized here when decoder_start_token_id >= 0.
       this->ort_stream_));
 
 #ifdef DEBUG_NODE_INPUTS_OUTPUTS
@@ -233,35 +239,47 @@ Status BeamSearchT5<T>::Execute(const FeedsFetchesManager& encoder_feeds_fetches
 
   std::vector<OrtValue> decoder_fetches;
 
-  if (current_length + 1 < parameters->max_length) {
+  // When encoder outputs logits (in old format), we need get the next token from logits.
+  if (current_length + 1 < parameters->max_length && encoder_subgraph_.HasLogitsOutput()) {
     ++iteration_counter;
-    ORT_RETURN_IF_ERROR(this->GenerateNextToken(encoder_fetches[0],
+    const OrtValue& logits = encoder_fetches[0];
+    ORT_RETURN_IF_ERROR(this->GenerateNextToken(logits,
                                                 beam_next_tokens,
                                                 beam_state,
                                                 cpu_state,
                                                 iteration_counter));
     ++current_length;  // Increase sequence length after a new token is generated.
+  }
 
-    ORT_RETURN_IF_ERROR(decoder_subgraph_.CreateInitialFeeds(this->cpu_allocator_,
-                                                             ReinterpretAsSpan<const int32_t>(beam_next_tokens),
-                                                             this->implicit_inputs_,
-                                                             encoder_feeds,
-                                                             encoder_fetches,
-                                                             decoder_feeds,
-                                                             this->device_copy_int32_func_,
-                                                             this->expand_buffer_int32_func_,
-                                                             this->expand_buffer_float_func_,
-                                                             this->expand_buffer_float16_func_,
-                                                             parameters->num_beams,
-                                                             this->ort_stream_,
-                                                             decoder_subgraph_.UseSequenceAsInputIds(),
-                                                             current_length,
-                                                             cpu_state.sequences,
-                                                             parameters->max_length,
-                                                             decoder_subgraph_.has_decoder_masked_attention_,
-                                                             this->cuda_device_prop_ != nullptr));
+  if (current_length < parameters->max_length) {
+    // when no logits, copy sequence (filled with start token IDs) to input_ids for decoder.
+    bool copy_sequence_to_input_ids = decoder_subgraph_.UseSequenceAsInputIds() || !encoder_subgraph_.HasLogitsOutput();
+    if (copy_sequence_to_input_ids) {
+      ORT_ENFORCE(current_length == cpu_state.sequences.GetSequenceLength());
+    }
+
+    // Generate inputs for next decoder subgraph call.
+    ORT_RETURN_IF_ERROR(decoder_subgraph_.CreateInitialFeeds(
+        this->cpu_allocator_,
+        ReinterpretAsSpan<const int32_t>(beam_next_tokens),
+        this->implicit_inputs_,
+        encoder_feeds,
+        encoder_fetches,
+        decoder_feeds,
+        this->device_copy_int32_func_,
+        this->expand_buffer_int32_func_,
+        this->expand_buffer_float_func_,
+        this->expand_buffer_float16_func_,
+        parameters->num_beams,
+        this->ort_stream_,
+        copy_sequence_to_input_ids,
+        cpu_state.sequences,
+        parameters->max_length,
+        decoder_subgraph_.has_decoder_masked_attention_,
+        this->cuda_device_prop_ != nullptr));
 
     if (decoder_subgraph_.past_present_share_buffer_) {
+      // Configure buffer sharing of past and present kv cache.
       decoder_fetches.reserve(static_cast<size_t>(decoder_subgraph_.GetFirstPresentOutputIndex()) +
                               2 * static_cast<size_t>(decoder_subgraph_.num_layers));
       decoder_fetches.resize(decoder_subgraph_.GetFirstPresentOutputIndex(), OrtValue());
@@ -299,14 +317,19 @@ Status BeamSearchT5<T>::Execute(const FeedsFetchesManager& encoder_feeds_fetches
 
   while (current_length < parameters->max_length) {
     iteration_counter++;
+
 #ifdef DEBUG_GENERATION
-    auto cur_len = std::to_string(current_length);
-    dumper->Print("***CurrentLength", cur_len, true);
+    dumper->Print(::onnxruntime::MakeString("Iteration=", iteration_counter,
+                                            ", CurrentLength=", current_length,
+                                            ", num_layers=", decoder_subgraph_.num_layers,
+                                            ", decoder_feeds=", decoder_feeds.size(),
+                                            ", start_token_id=", parameters->decoder_start_token_id));
 
     for (int i = 0; i < decoder_subgraph_.GetFirstPastInputIndex(); i++) {
       dumper->Print("decoder_feeds", i, true);
       dumper->Print("", decoder_feeds[i]);
     }
+
     for (int i = 0; i < decoder_subgraph_.num_layers; i++) {
       int self_key_idx = decoder_subgraph_.GetFirstPastInputIndex() + 2 * i;
       int self_value_idx = self_key_idx + 1;

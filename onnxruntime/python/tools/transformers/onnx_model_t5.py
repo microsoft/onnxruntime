@@ -34,13 +34,13 @@ class FusionT5Attention(FusionAttention):
             num_heads,
             attention_mask,
             use_multi_head_attention=False,
-            search_op_types=["SkipSimplifiedLayerNormalization", "Add"],
+            search_op_types=["Softmax"],
         )
         self.static_kv = 1
 
-    def create_attention_node(
+    def make_attention_node(
         self,
-        mask_index: str,
+        mask_index: str | None,
         q_matmul: NodeProto,
         k_matmul: NodeProto,
         v_matmul: NodeProto,
@@ -48,8 +48,8 @@ class FusionT5Attention(FusionAttention):
         hidden_size: int,
         input: str,
         output: str,
-        add_qk_str: str,
-        scale: float | None = None,
+        attn_bias: str | None,
+        scale: float,
     ) -> NodeProto | None:
         """Create an Attention node.
         Args:
@@ -122,14 +122,17 @@ class FusionT5Attention(FusionAttention):
             attention_node_name + "_qkv_weight",
             "",
         ]
-        if mask_index is not None:
+        if mask_index:
             attention_inputs.append(mask_index)
         else:
             attention_inputs.append("")
 
-        if add_qk_str is not None:
+        if attn_bias:
             attention_inputs.append("")  # no past
-            attention_inputs.append(add_qk_str)
+            attention_inputs.append(attn_bias)
+
+        while attention_inputs and attention_inputs[-1] == "":
+            attention_inputs.pop()
 
         attention_node = helper.make_node(
             "Attention",
@@ -153,50 +156,55 @@ class FusionT5Attention(FusionAttention):
         query: str,
         key: str,
         value: str,
-        mask_index: str,
-        res_pos_bias: str,
-        past_key: str,
-        past_value: str,
+        mask_index: str | None,
+        attn_bias: str | None,
+        past_key: str | None,
+        past_value: str | None,
         output: str,
-        present_key: str,
-        present_value: str,
+        present_key: str | None,
+        present_value: str | None,
         num_heads: int,
         hidden_size: int,
     ) -> NodeProto | None:
-        assert num_heads > 0
+        assert num_heads > 0 and hidden_size > 0 and query and key and value
 
-        if hidden_size > 0 and (hidden_size % num_heads) != 0:
+        if (hidden_size % num_heads) != 0:
             logger.debug(f"input hidden size {hidden_size} is not a multiple of num of heads {num_heads}")
             return None
 
         attention_node_name = self.model.create_node_name("MultiHeadAttention")
         attention_inputs = [
             query,
-            "" if key is None else key,  # key
-            "" if value is None else value,  # value
+            key,
+            value,
             "",  # bias
         ]
-        if mask_index is not None:
+
+        if mask_index:
             attention_inputs.append(mask_index)
         else:
             attention_inputs.append("")
 
-        if res_pos_bias is not None:
-            attention_inputs.append(res_pos_bias)
+        if attn_bias:
+            attention_inputs.append(attn_bias)
         else:
             attention_inputs.append("")
 
-        if past_key is not None:
-            assert past_value is not None
+        if past_key:
+            assert past_value
             attention_inputs.append(past_key)
             attention_inputs.append(past_value)
 
+        while attention_inputs and attention_inputs[-1] == "":
+            attention_inputs.pop()
+
         attention_outputs = [output]
-        if present_key is not None:
-            assert present_value is not None
+        if present_key:
+            assert present_value
             attention_outputs.append(present_key)
             attention_outputs.append(present_value)
 
+        print(f"{attention_inputs=}, {attention_outputs=}, {attention_node_name=}")
         attention_node = helper.make_node(
             "MultiHeadAttention",
             inputs=attention_inputs,
@@ -213,21 +221,23 @@ class FusionT5Attention(FusionAttention):
         self.increase_counter("MultiHeadAttention")
         return attention_node
 
-    def fuse(self, normalize_node, input_name_to_nodes, output_name_to_node):
-        self.fuse_t5_encoder(normalize_node, input_name_to_nodes, output_name_to_node)
-        self.fuse_t5_decoder(normalize_node, input_name_to_nodes, output_name_to_node)
-
-    def fuse_t5_encoder(self, normalize_node, input_name_to_nodes, output_name_to_node):
-        if normalize_node.op_type != "SkipSimplifiedLayerNormalization" and normalize_node.op_type != "Add":
+    def fuse(self, node, input_name_to_nodes, output_name_to_node):
+        if self.fuse_t5_encoder(node, input_name_to_nodes, output_name_to_node):
             return
 
-        qkv_nodes = self.model.match_parent_path(
-            normalize_node, ["MatMul", "Reshape", "Transpose", "MatMul"], [1, 0, 0, 0], output_name_to_node
+        self.fuse_t5_decoder(node, input_name_to_nodes, output_name_to_node)
+
+    def fuse_t5_encoder(self, softmax_node, input_name_to_nodes, output_name_to_node):
+        assert softmax_node.op_type == "Softmax"
+        qkv_nodes = self.model.match_child_path(
+            softmax_node,
+            ["MatMul", "Transpose", "Reshape"],
+            edges=[(0, 0), (0, 0), (0, 0)],
+            input_name_to_nodes=input_name_to_nodes,
         )
         if qkv_nodes is None:
-            return
-
-        _, reshape_qkv, transpose_qkv, matmul_qkv = qkv_nodes
+            return False
+        matmul_qkv, _, reshape_qkv = qkv_nodes
 
         qkv_shape_nodes = self.model.match_parent_path(
             reshape_qkv,
@@ -236,7 +246,7 @@ class FusionT5Attention(FusionAttention):
             output_name_to_node,
         )
         if qkv_shape_nodes is None:
-            return
+            return False
         input_shape_node = qkv_shape_nodes[-1]
 
         v_nodes = self.model.match_parent_path(
@@ -246,7 +256,7 @@ class FusionT5Attention(FusionAttention):
             output_name_to_node,
         )
         if v_nodes is None:
-            return
+            return False
         _, reshape_v, matmul_v = v_nodes
         # todo: check reshape_v parent nodes
 
@@ -257,7 +267,7 @@ class FusionT5Attention(FusionAttention):
             output_name_to_node,
         )
         if qk_nodes is None:
-            return
+            return False
         _, add_qk, matmul_qk = qk_nodes
 
         mask_nodes = self.model.match_parent_path(
@@ -268,7 +278,9 @@ class FusionT5Attention(FusionAttention):
         )
 
         is_pattern_for_one_graph_input = mask_nodes is None
-        if mask_nodes is None:
+        if mask_nodes is not None:
+            mul_node = mask_nodes[1]
+        else:
             # Pattern for SD3 and Flux.
             mask_nodes = self.model.match_parent_path(
                 add_qk,
@@ -276,15 +288,22 @@ class FusionT5Attention(FusionAttention):
                 [1, 1, 0, 0, 1, 0],
                 output_name_to_node,
             )
+
+            # If the model is not optimized by ORT, there might be an additional Cast node.
             if mask_nodes is None:
-                return
+                mask_nodes = self.model.match_parent_path(
+                    add_qk,
+                    ["Add", "Slice", "Mul", "Sub", "Cast", "Unsqueeze", "Unsqueeze"],
+                    [1, 1, 0, 0, 1, 0, 0],
+                    output_name_to_node,
+                )
+                if mask_nodes is None:
+                    return False
             mul_node = mask_nodes[2]
-        else:
-            mul_node = mask_nodes[1]
 
         _, mul_val = self.model.get_constant_input(mul_node)
         if mul_val is None:
-            return
+            return False
 
         if mul_val != -10000:
             self.mask_filter_value = float(mul_val)
@@ -327,7 +346,7 @@ class FusionT5Attention(FusionAttention):
                 [1, 0, 0],
             )
         if rpb_nodes is None:
-            return
+            return False
 
         res_pos_bias = rpb_nodes[-1].output[0]
 
@@ -337,8 +356,8 @@ class FusionT5Attention(FusionAttention):
             [1, 0, 0],
         )
         if k_nodes is None:
-            return
-        _, reshape_k, matmul_k = k_nodes
+            return False
+        _, _, matmul_k = k_nodes
         # todo: check reshape_k parent nodes
 
         q_nodes = self.model.match_parent_path(
@@ -347,50 +366,50 @@ class FusionT5Attention(FusionAttention):
             [0, 0, 0],
         )
         if q_nodes is None:
-            return
+            return False
 
-        transpose_q, reshape_q, matmul_q = q_nodes
+        _, reshape_q, matmul_q = q_nodes
         # todo: check reshape_q parent nodes
 
         if matmul_q.input[0] != input_shape_node.input[0]:
-            return
+            return False
 
         q_num_heads, q_hidden_size = self.get_num_heads_and_hidden_size(reshape_q)
 
-        new_node = self.create_attention_node(
+        new_node = self.make_attention_node(
             mask_index,
             matmul_q,
             matmul_k,
             matmul_v,
-            q_num_heads,
-            q_hidden_size,
-            input_shape_node.input[0],
-            reshape_qkv.output[0],
-            res_pos_bias,
-            1.0,
+            num_heads=q_num_heads,
+            hidden_size=q_hidden_size,
+            input=input_shape_node.input[0],
+            output=reshape_qkv.output[0],
+            attn_bias=res_pos_bias,
+            scale=1.0,
         )
         if new_node is None:
-            return
+            return False
 
         self.nodes_to_add.append(new_node)
         self.node_name_to_graph_name[new_node.name] = self.this_graph_name
 
         self.nodes_to_remove.append(reshape_qkv)
         self.prune_graph = True
+        return True
 
-    def fuse_t5_decoder(self, normalize_node, input_name_to_nodes, output_name_to_node):
-        if normalize_node.op_type != "SkipSimplifiedLayerNormalization" and normalize_node.op_type != "Add":
-            return
+    def fuse_t5_decoder(self, softmax_node, input_name_to_nodes, output_name_to_node):
+        assert softmax_node.op_type == "Softmax"
 
-        qkv_nodes = self.model.match_parent_path(
-            normalize_node,
-            ["MatMul", "Reshape", "Transpose", "MatMul"],
-            [1, 0, 0, 0],
+        qkv_nodes = self.model.match_child_path(
+            softmax_node,
+            ["MatMul", "Transpose", "Reshape"],
+            edges=[(0, 0), (0, 0), (0, 0)],
+            input_name_to_nodes=input_name_to_nodes,
         )
         if qkv_nodes is None:
             return
-
-        _, reshape_qkv, transpose_qkv, matmul_qkv = qkv_nodes
+        matmul_qkv, _transpose_qkv, reshape_qkv = qkv_nodes
 
         qkv_shape_nodes = self.model.match_parent_path(
             reshape_qkv,
@@ -462,11 +481,17 @@ class FusionT5Attention(FusionAttention):
                 ["Add", "Mul", "Sub", "Cast", "Unsqueeze", "Unsqueeze"],
                 [1, 1, 0, 1, 0, 0],
             )
-            if mask_nodes is None:
-                return
-            mul_node = mask_nodes[1]
-            if mask_nodes[1].op_type != "Mul":
-                return
+            if mask_nodes is not None:
+                mul_node = mask_nodes[1]
+            else:
+                mask_nodes = self.model.match_parent_path(
+                    add_qk,
+                    ["Add", "Slice", "Mul", "Sub", "Cast", "Unsqueeze", "Unsqueeze"],
+                    [1, 1, 0, 0, 1, 0, 0],
+                )
+                if mask_nodes is None:
+                    return
+                mul_node = mask_nodes[2]
 
             _, mul_val = self.model.get_constant_input(mul_node)
             if mul_val != -10000:
@@ -474,22 +499,19 @@ class FusionT5Attention(FusionAttention):
 
             mask_index = self.attention_mask.process_mask(mask_nodes[-1].input[0])
         else:
-            rpb_nodes = self.model.match_parent_path(
+            matched_path_index, _, _ = self.model.match_parent_paths(
                 add_qk,
-                ["Add", "Slice"],
-                [1, 0],
+                [
+                    (["Add", "Slice"], [1, 0]),
+                    (["Add", "RelativePositionBias"], [1, 0]),
+                ],
+                output_name_to_node,
             )
-            if rpb_nodes is not None:
-                res_pos_bias = add_qk.input[1]
-            else:
-                rpb_nodes = self.model.match_parent_path(
-                    add_qk,
-                    ["Add", "RelativePositionBias"],
-                    [1, 0],
-                )
-                if rpb_nodes is None:
-                    return
-                res_pos_bias = add_qk.input[1]
+            if matched_path_index < 0:
+                logger.debug("Skip MultiHeadAttention fusion since attention bias pattern not matched")
+                return
+
+            res_pos_bias = add_qk.input[1]
 
         key = None
         past_key = None
@@ -608,56 +630,73 @@ class FusionT5Attention(FusionAttention):
             past_key = None
             past_value = None
 
-        new_node = self.create_mha_node(
-            matmul_q.output[0],
-            key,
-            value,
-            mask_index,
-            res_pos_bias,
-            past_key,
-            past_value,
-            reshape_qkv.output[0],
-            present_key,
-            present_value,
-            q_num_heads,
-            q_hidden_size,
-        )
-        if new_node is None:
+        if not (key and value and q_num_heads > 0 and q_hidden_size > 0):
             return
 
-        self.nodes_to_add.append(new_node)
-        self.node_name_to_graph_name[new_node.name] = self.this_graph_name
+        new_node = self.create_mha_node(
+            query=matmul_q.output[0],
+            key=key,
+            value=value,
+            mask_index=mask_index,
+            attn_bias=res_pos_bias,
+            past_key=past_key,
+            past_value=past_value,
+            output=reshape_qkv.output[0],
+            present_key=present_key,
+            present_value=present_value,
+            num_heads=q_num_heads,
+            hidden_size=q_hidden_size,
+        )
 
-        self.nodes_to_remove.append(reshape_qkv)
+        if new_node:
+            self.nodes_to_add.append(new_node)
+            self.node_name_to_graph_name[new_node.name] = self.this_graph_name
 
-        self.prune_graph = True
+            # Since present_* is graph output, we need update the graph to avoid circular.
+            if present_key or present_value:
+                for graph_output in [present_key, present_value]:
+                    if not (graph_output and self.model.find_graph_output(graph_output)):
+                        print(f"{graph_output=} does not exist in graph output")
+                        return
+                    assert graph_output in output_name_to_node
+                    output_name_to_node[graph_output].output[0] = graph_output + "_copy"
+                    self.model.replace_input_of_all_nodes(graph_output, graph_output + "_copy")
+
+            self.nodes_to_remove.append(reshape_qkv)
+            self.prune_graph = False
 
 
 class FusionRelativePositionBiasBlock(Fusion):
-    def __init__(self, model: OnnxModel, max_distance: int):
-        super().__init__(model, "RelativePositionBias", ["Add", "Slice"])
-        self.max_distance = max_distance
-        self.is_bidirectional = False
+    def __init__(self, model: OnnxModel):
+        super().__init__(model, "RelativePositionBias", ["Softmax"])
 
     def fuse(self, node, input_name_to_nodes, output_name_to_node):
-        # TODO: Optimization opportunity: only last dimension of relative_position_bias is used in decoder.
-        # Cuda kernel can be optimized to only compute last dimension.
-        if node.op_type != "Add" and node.op_type != "Slice":
-            return
-
         compute_bias_nodes = self.model.match_parent_path(
-            node, ["Unsqueeze", "Transpose", "Gather", "Where"], [0, 0, 0, 1], output_name_to_node
+            node,
+            ["Add", "Add", "Slice", "Unsqueeze", "Transpose", "Gather", "Where"],
+            [0, 1, 0, 0, 0, 0, 1],
+            output_name_to_node,
         )
+
         if compute_bias_nodes is None:
             compute_bias_nodes = self.model.match_parent_path(
-                node, ["Unsqueeze", "Transpose", "Gather", "Add", "Where"], [0, 0, 0, 1, 1], output_name_to_node
+                node,
+                ["Add", "Add", "Slice", "Unsqueeze", "Transpose", "Gather", "Add", "Where"],
+                [0, 1, 0, 0, 0, 0, 1, 1],
+                output_name_to_node,
             )
             if compute_bias_nodes is None:
                 return
 
-        gather = compute_bias_nodes[2]
+        gather = compute_bias_nodes[5]
         where = compute_bias_nodes[-1]
-        unsqueeze = compute_bias_nodes[0]
+        slice = compute_bias_nodes[2]
+        unsqueeze = compute_bias_nodes[3]
+
+        # Current fusion will not remove the node until the graph is processed.
+        # This avoids to fuse it again when it is shared by multiple layers.
+        if unsqueeze in self.nodes_to_remove:
+            return
 
         compute_buckets_nodes = self.model.match_parent_path(
             where,
@@ -668,12 +707,8 @@ class FusionRelativePositionBiasBlock(Fusion):
         if compute_buckets_nodes is None:
             return
 
-        # It is possible to deduce max_distance from a Div node:
-        # The value of self.model.get_constant_value(compute_buckets_nodes[-3].input[1]) is close to
-        #   math.log(max_distance / (relative_attention_num_buckets // (4 if is_bidirectional else 2)))
-        # See https://github.com/huggingface/transformers/blob/608e163b527eaee41e650ffb9eb4c422d2679902/src/transformers/models/t5/modeling_t5.py#L397.
-        # Most t5 models use max_distance=128, so we hardcode it unitl we see a model with different value.
-        # TODO: maybe add a sanity check here.
+        # This value is to used to compute max_distance later.
+        log_max = self.model.get_constant_value(compute_buckets_nodes[-3].input[1])
 
         div = compute_buckets_nodes[-1]
 
@@ -683,21 +718,33 @@ class FusionRelativePositionBiasBlock(Fusion):
             [0, 0, 0, 1, 0, 0, 0, 0],
             output_name_to_node,
         )
+
+        is_bidirectional = False
         if range_nodes is None:
             range_nodes = self.model.match_parent_path(
                 div, ["Cast", "Abs", "Sub", "Unsqueeze", "Range"], [0, 0, 0, 0, 0], output_name_to_node
             )
-            self.is_bidirectional = True
+            is_bidirectional = True
             if range_nodes is None:
                 return
-
         range_node = range_nodes[-1]
 
-        self.nodes_to_remove.append(unsqueeze)
-        self.prune_graph = True
+        # Double check that the constant relative to max_distance and relative_attention_num_buckets.
+        # Most t5 models use max_distance=128, so we hardcode it unitl we see a model with different value.
+
+        # The log_max is the value of the following formula:
+        #   math.log(max_distance / (relative_attention_num_buckets // (4 if is_bidirectional else 2)))
+        # See https://github.com/huggingface/transformers/blob/608e163b527eaee41e650ffb9eb4c422d2679902/src/transformers/models/t5/modeling_t5.py#L397.
+        # Here is the value based on max_distance=128 and relative_attention_num_buckets=32:
+        max_distance = int(np.round(np.exp(log_max) * (32 // (4 if is_bidirectional else 2))))
+        if max_distance != 128:
+            logger.warning(
+                f"max_distance is {max_distance}, which is different from the default value 128. "
+                "Please double check the model configuration."
+            )
 
         node_name = self.model.create_node_name(
-            "RelativePositionBias", name_prefix="RelPosBias_" + ("encoder" if self.is_bidirectional else "decoder")
+            "RelativePositionBias", name_prefix="RelPosBias_" + ("encoder" if is_bidirectional else "decoder")
         )
 
         table_weight_i = self.model.get_initializer(gather.input[0])
@@ -712,22 +759,64 @@ class FusionRelativePositionBiasBlock(Fusion):
             vals=table_weight_t.tobytes(),
             raw=True,
         )
-
         self.model.add_initializer(bias_table, self.this_graph_name)
+
+        # Relative position is like the following in encoder:
+        #                seq_len
+        #                   |
+        #                Range(0, *)
+        #                /      \
+        #   Unsqueeze(axes=0)    Unsqueeze(axes=1)
+        #                \    /
+        #                  Sub
+        #                   |
+        #                  Abs
+        #
+        # Relative position is like the following in decoder:
+        #       past_seq_len   seq_len
+        #                 \    /
+        #                  Add
+        #                /      \
+        #        Range(0, *)    Range(0, *)
+        #                \    /
+        #                  Sub
+        # Note that the graph will slice the attention bias to get last seq_len rows.
+        #
+        # In new version of transformers, the pattern of decoder is changed like the following
+        #
+        #      total_seq_len    Range(start=past_seq_len, end=total_seq_len)
+        #              |              |
+        #          Range(0, *)   Unsqueeze(axes=1)
+        #              |              |
+        #    Unsqueeze(axes=0)    Cast(to=int64)
+        #                   \     /
+        #                     Sub
+        # Currently, there is still Slice to get last seq_len rows so end result is same.
+        # But need to be careful that the shape of bias tensor is changed before Slice.
+        #
+        # RelativePositionBias operator requires query_length == key_length so we shall pass in total_seq_len.
+        # Here we get the end value of the Range node as length to pass to the RelativePositionBias node.
+
+        # TODO: Optimization opportunity: change RelativePositionBias op to support query_length != key_length.
+        #       only compute seq_len rows, then we can remove the Slice after the RelativePositionBias node.
         inputs = [bias_table.name, range_node.input[1], range_node.input[1]]
-        outputs = [unsqueeze.output[0]]
+
+        # Use a new tensor name since the shape might be different as mentioned above.
+        bias_output = node_name + "_rel_pos_bias"
+        slice.input[0] = bias_output
+
         rpb_node = helper.make_node(
             "RelativePositionBias",
             inputs=inputs,
-            outputs=outputs,
+            outputs=[bias_output],
             name=node_name,
         )
         rpb_node.domain = "com.microsoft"
-        rpb_node.attribute.extend([helper.make_attribute("max_distance", self.max_distance)])
-        rpb_node.attribute.extend([helper.make_attribute("is_bidirectional", self.is_bidirectional)])
-
-        self.nodes_to_add.append(rpb_node)
+        rpb_node.attribute.extend([helper.make_attribute("max_distance", max_distance)])
+        rpb_node.attribute.extend([helper.make_attribute("is_bidirectional", is_bidirectional)])
         self.node_name_to_graph_name[rpb_node.name] = self.this_graph_name
+        self.nodes_to_add.append(rpb_node)
+        self.prune_graph = True
 
 
 class T5OnnxModel(BertOnnxModel):
@@ -744,7 +833,7 @@ class T5OnnxModel(BertOnnxModel):
         self.attention_fusion = FusionT5Attention(self, self.hidden_size, self.num_heads, self.attention_mask)
         self.layer_norm_fusion = FusionSimplifiedLayerNormalization(self)
         self.skip_layer_norm_fusion = FusionSkipSimplifiedLayerNormalization(self)
-        self.rpb_fusion = FusionRelativePositionBiasBlock(self, 128)
+        self.rpb_fusion = FusionRelativePositionBiasBlock(self)
 
     def fuse_attention(self):
         self.attention_fusion.apply()
