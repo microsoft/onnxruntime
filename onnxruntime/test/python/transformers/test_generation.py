@@ -28,6 +28,10 @@ else:
     from onnxruntime.transformers.models.whisper.convert_to_onnx import main as run_whisper
 
 
+def has_cuda_environment():
+    return torch.cuda.is_available() and "CUDAExecutionProvider" in get_available_providers()
+
+
 class TestBeamSearchGpt(unittest.TestCase):
     """Test BeamSearch for GPT-2 model"""
 
@@ -49,7 +53,7 @@ class TestBeamSearchGpt(unittest.TestCase):
             # "The selloff in tech shares deepened",
             # "Abortion rights take center stage",
         ]
-        self.enable_cuda = torch.cuda.is_available() and "CUDAExecutionProvider" in get_available_providers()
+        self.enable_cuda = has_cuda_environment()
         self.remove_onnx_files()
 
     def tearDown(self):
@@ -220,7 +224,7 @@ class TestBeamSearchT5(unittest.TestCase):
         cls.remove_onnx_files()
 
         # This is in class setup so that we only export t5 model once.
-        export_t5_onnx_models(
+        paths = export_t5_onnx_models(
             cls.model_name,
             os.path.join(".", "cache_models"),
             os.path.join(".", "t5_onnx_models"),
@@ -234,6 +238,7 @@ class TestBeamSearchT5(unittest.TestCase):
             disable_auto_mixed_precision=False,
             use_int32_inputs=True,
         )
+        assert len(paths) == 2
 
         cls.sentences = [
             "translate English to French: The product is released",
@@ -255,13 +260,15 @@ class TestBeamSearchT5(unittest.TestCase):
 
     @classmethod
     def tearDownClass(cls):
-        cls.remove_onnx_files()
+        # cls.remove_onnx_files()
+        pass
 
     def setUp(self):
         pass
 
     def tearDown(self):
-        self.remove_onnx_files(beam_search_onnx_only=True)
+        # self.remove_onnx_files(beam_search_onnx_only=True)
+        pass
 
     def run_beam_search(self, extra_arguments: str):
         arguments = " ".join([*self.default_arguments, extra_arguments]).split()
@@ -269,8 +276,6 @@ class TestBeamSearchT5(unittest.TestCase):
         # Test CPU
         result = run(arguments)
         self.assertTrue(result["parity"], f"ORT and PyTorch result is different on CPU for arguments {arguments}")
-
-        os.remove(self.beam_search_onnx_path)
 
     def test_return_sequences(self):
         for return_sequences in [1, 2]:
@@ -295,8 +300,8 @@ class TestBeamSearchT5(unittest.TestCase):
 
 
 @unittest.skipUnless(
-    torch.cuda.is_available() and "CUDAExecutionProvider" in get_available_providers(),
-    "skip since no cuda environment.",
+    has_cuda_environment(),
+    "skip since there is no cuda environment.",
 )
 class TestBeamSearchT5Fp16(unittest.TestCase):
     """Test BeamSearch for T5 model with fp16 in GPU"""
@@ -391,8 +396,6 @@ class TestBeamSearchT5Fp16(unittest.TestCase):
         result = run(arguments)
         self.assertTrue(result["parity"], f"ORT and PyTorch result is different on GPU for arguments {arguments}")
 
-        os.remove(self.beam_search_onnx_path)
-
     def test_return_sequences(self):
         for return_sequences in [1, 2]:
             self.run_beam_search(f"--num_return_sequences {return_sequences}")
@@ -426,7 +429,7 @@ class TestBeamSearchWhisper(unittest.TestCase):
         self.decoder_onnx_path = os.path.join(".", self.onnx_folder, "whisper-tiny_decoder.onnx")
         self.encoder_onnx_path = os.path.join(".", self.onnx_folder, "whisper-tiny_encoder.onnx")
         self.beam_search_onnx_path = os.path.join(".", self.onnx_folder, "whisper-tiny_beamsearch.onnx")
-        self.enable_cuda = torch.cuda.is_available() and "CUDAExecutionProvider" in get_available_providers()
+        self.enable_cuda = has_cuda_environment()
 
         self.base_arguments = [
             "-m",

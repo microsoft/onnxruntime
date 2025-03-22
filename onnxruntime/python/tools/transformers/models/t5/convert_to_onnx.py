@@ -254,6 +254,8 @@ def export_onnx_models(
             use_gpu=use_gpu,
             verbose=verbose,
         )
+        if ort_session is None:
+            break
 
         with torch.no_grad():
             max_diff = T5Helper.verify_onnx(model, ort_session, device, use_int32_inputs)
