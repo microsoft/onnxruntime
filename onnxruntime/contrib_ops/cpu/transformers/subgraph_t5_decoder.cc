@@ -181,7 +181,7 @@ Status T5DecoderSubgraph::CreateInitialFeeds(
   OrtValue input_ids;
   Tensor::InitOrtValue(DataTypeImpl::GetType<int32_t>(), input_ids_shape, allocator, input_ids);
   int32_t* input_ids_data = input_ids.GetMutable<Tensor>()->MutableData<int32_t>();
-  AllocatorPtr buffer_allocator = std::make_shared<onnxruntime::CPUAllocator>();
+  AllocatorPtr buffer_allocator = CPUAllocator::Instance();
   size_t total_size = static_cast<size_t>(cur_len) * static_cast<size_t>(batch_beam_size);
   size_t total_size_bytes = total_size * sizeof(int);
   auto seq_copy = IAllocator::MakeUniquePtr<int>(buffer_allocator, total_size_bytes, false, stream);

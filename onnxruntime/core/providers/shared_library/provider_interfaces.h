@@ -37,9 +37,11 @@ namespace onnxruntime {
 struct ProviderHost;
 struct ProviderHostCPU;
 
+class ExternalDataInfo;
 class PhiloxGenerator;
 using ProviderType = const std::string&;
 class RandomGenerator;
+class Initializer;
 class IOnnxRuntimeOpSchemaCollection;
 
 struct ModelSavingOptions;
@@ -995,6 +997,8 @@ struct ProviderHost {
   virtual const std::unordered_map<std::string, int>& Graph__DomainToVersionMap(const Graph* p) const noexcept = 0;
   virtual Status Graph__Resolve(Graph* p) = 0;
   virtual void Graph__AddInitializedTensor(Graph* p, const ONNX_NAMESPACE::TensorProto& tensor) = 0;
+  // We pass OrtValue by reference here (as opposed to the original Graph function) to avoid header inclusion
+  virtual Status Graph__AddInitializedOrtValue(Graph* p, const ONNX_NAMESPACE::TensorProto& tensor, const OrtValue& value) = 0;
   virtual Node& Graph__AddNode(Graph* p, const std::string& name, const std::string& op_type, const std::string& description, const gsl::span<NodeArg* const>& input_args, const gsl::span<NodeArg* const>& output_args, const NodeAttributes* attributes, const std::string& domain) = 0;
   virtual Node& Graph__AddNode(Graph* p, const std::string& name, const std::string& op_type, const std::string& description, const gsl::span<NodeArg* const>& input_args, const gsl::span<NodeArg* const>& output_args, NodeAttributes&& attributes, const std::string& domain) = 0;
   virtual Node& Graph__AddNode(Graph* p, const Node& other) = 0;
@@ -1088,6 +1092,48 @@ struct ProviderHost {
   virtual std::unique_ptr<ConstGraphNodes_Iterator> ConstGraphNodes__cbegin(const ConstGraphNodes* p) = 0;
   virtual std::unique_ptr<ConstGraphNodes_Iterator> ConstGraphNodes__cend(const ConstGraphNodes* p) = 0;
   virtual bool ConstGraphNodes__empty(const ConstGraphNodes* p) noexcept = 0;
+
+  // graph_util
+  virtual NodeArg& GraphUtils__AddInitializerWithExternalData(Graph& graph,
+                                                              const ONNX_NAMESPACE::TensorProto& new_initializer) = 0;
+  virtual void GraphUtils__MakeInitializerCopyIfNotExist(const Graph& src_graph, Graph& dst_graph,
+                                                         const std::string& name, bool load_in_memory) = 0;
+
+  // Initializer
+  virtual Initializer* Initializer__constructor(ONNX_NAMESPACE::TensorProto_DataType data_type,
+                                                std::string_view name,
+                                                gsl::span<const int64_t> dims) = 0;
+  virtual Initializer* Initializer__constructor(const Graph& graph, const ONNX_NAMESPACE::TensorProto& tensor_proto,
+                                                const std::filesystem::path& model_path = {},
+                                                bool check_outer_scope = false) = 0;
+
+  virtual void Initializer__destructor(Initializer*) = 0;
+  virtual void Initializer__ToProto(const Initializer&,
+                                    ONNX_NAMESPACE::TensorProto& tensor_proto) = 0;
+  virtual void Initializer__ToProtoWithOrtValue(const Initializer&,
+                                                ONNX_NAMESPACE::TensorProto& tensor_proto, OrtValue& ort_value) = 0;
+  virtual int Initializer__data_type(const Initializer&) = 0;
+  virtual const std::string& Initializer__name(const Initializer&) = 0;
+  virtual gsl::span<const int64_t> Initializer__dims(const Initializer&) = 0;
+  virtual size_t Initializer__size(const Initializer&) = 0;
+  // data<T>() template helper
+  virtual void* Initializer__mutable_data(Initializer&, int data_type) = 0;
+  virtual const void* Initializer__data(const Initializer&, int data_type) = 0;
+  virtual void* Initializer__mutable_data_raw(Initializer&) = 0;
+  virtual const void* Initializer__data_raw(const Initializer&) = 0;
+
+  // ExternalData
+#ifdef _WIN32
+  using OFFSET_TYPE = int64_t;
+#else
+  using OFFSET_TYPE = off_t;
+#endif
+  virtual Status ExternalDataInfo__Create(const ONNX_NAMESPACE::TensorProto& tensor_proto,
+                                          std::unique_ptr<ExternalDataInfo>& external_data) = 0;
+  virtual void ExternalDataInfo__operator_delete(ExternalDataInfo*) = 0;
+  virtual const PathString& ExternalDataInfo__GetRelPath(const ExternalDataInfo& p) = 0;
+  virtual OFFSET_TYPE ExternalDataInfo__GetOffset(const ExternalDataInfo& p) = 0;
+  virtual size_t ExternalDataInfo__GetLength(const ExternalDataInfo& p) = 0;
 
   // OpKernel
   virtual const Node& OpKernel__Node(const OpKernel* p) = 0;

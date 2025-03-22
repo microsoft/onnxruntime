@@ -513,6 +513,16 @@ Status UnpackInitializerData(const ONNX_NAMESPACE::TensorProto& tensor, /*out*/ 
 
 }  // namespace utils
 
+namespace graph_utils {
+NodeArg& AddInitializerWithExternalData(Graph& graph, const ONNX_NAMESPACE::TensorProto& new_initializer) {
+  return g_host->GraphUtils__AddInitializerWithExternalData(graph, new_initializer);
+}
+void MakeInitializerCopyIfNotExist(const Graph& src_graph, Graph& dst_graph, const std::string& name,
+                                   bool load_in_memory) {
+  g_host->GraphUtils__MakeInitializerCopyIfNotExist(src_graph, dst_graph, name, load_in_memory);
+}
+}  // namespace graph_utils
+
 Status NonMaxSuppressionBase::PrepareCompute(OpKernelContext* ctx, PrepareContext& pc) { return g_host_cpu.NonMaxSuppressionBase__PrepareCompute(ctx, pc); }
 Status NonMaxSuppressionBase::GetThresholdsFromInputs(const PrepareContext& pc, int64_t& max_output_boxes_per_class, float& iou_threshold, float& score_threshold) { return g_host_cpu.NonMaxSuppressionBase__GetThresholdsFromInputs(pc, max_output_boxes_per_class, iou_threshold, score_threshold); }
 

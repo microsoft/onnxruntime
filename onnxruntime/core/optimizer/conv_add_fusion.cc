@@ -62,8 +62,8 @@ Status ConvAddFusion::Apply(Graph& graph, Node& node, RewriteRuleEffect& modifie
       return Status::OK();
     }
 
-    Initializer conv_B{*conv_B_tensor_proto, graph.ModelPath()};
-    Initializer add_B{*add_B_tensor_proto, graph.ModelPath()};
+    Initializer conv_B{graph, *conv_B_tensor_proto, graph.ModelPath()};
+    Initializer add_B{graph, *add_B_tensor_proto, graph.ModelPath()};
 
     if (conv_B.size() != add_B.size()) {
       return Status::OK();
@@ -79,12 +79,14 @@ Status ConvAddFusion::Apply(Graph& graph, Node& node, RewriteRuleEffect& modifie
     auto new_name = graph.GenerateNodeArgName("ConvAddFusion_B_" + B_input_name);
     new_conv_B_tensor_proto.set_name(new_name);
 
-    NodeArg& new_conv_B_node_arg = graph_utils::AddInitializer(graph, new_conv_B_tensor_proto);
+    NodeArg& new_conv_B_node_arg = graph_utils::AddInitializerWithExternalData(graph, new_conv_B_tensor_proto);
     graph_utils::ReplaceNodeInput(node, 2, new_conv_B_node_arg);
 
   } else {
     // Create new tensor proto and update shape
-    ONNX_NAMESPACE::TensorProto new_conv_B_tensor_proto(*add_B_tensor_proto);
+    Initializer add_B{graph, *add_B_tensor_proto, graph.ModelPath()};
+    ONNX_NAMESPACE::TensorProto new_conv_B_tensor_proto;
+    add_B.ToProto(new_conv_B_tensor_proto);
     int64_t dim = conv_W_tensor_proto->dims(0);
     new_conv_B_tensor_proto.clear_dims();
     new_conv_B_tensor_proto.add_dims(dim);
@@ -92,7 +94,7 @@ Status ConvAddFusion::Apply(Graph& graph, Node& node, RewriteRuleEffect& modifie
     auto new_name = graph.GenerateNodeArgName("ConvAddFusion_Add_B_" + add_B_tensor_proto->name());
     new_conv_B_tensor_proto.set_name(new_name);
 
-    NodeArg& new_add_B_node_arg = graph_utils::AddInitializer(graph, new_conv_B_tensor_proto);
+    NodeArg& new_add_B_node_arg = graph_utils::AddInitializerWithExternalData(graph, new_conv_B_tensor_proto);
     graph_utils::AddNodeInput(node, 2, new_add_B_node_arg);
   }
 
