@@ -76,14 +76,10 @@ Status DP4AMatMulQuantizeProgram::GenerateShaderCode(ShaderHelper& shader) const
     let scale = max(max_temp[0], max_temp[1]);
     let norm_a = a_values[local_row][local_col]/scale;
     output[global_idx] = pack4x8snorm(vec4<f32>(norm_a));
-    if (local_idx == 0u)
+    if (local_col == 0u)
     {
       // 127 is the max value of signed int8 [-127,127] used by pack4x8snorm for 1.0f.
-      scales[workgroup_idx * 2] = scale/127;
-    } else if (local_idx == 32u)
-    {
-      // 127 is the max value of signed int8 [-127,127] used by pack4x8snorm for 1.0f.
-      scales[workgroup_idx * 2 + 1] = scale/127;
+      scales[workgroup_idx * 2 + local_row] = scale/127;
     }
 )MAIN_FN";
   return Status::OK();
