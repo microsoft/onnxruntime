@@ -21,16 +21,20 @@ using onnxruntime::concurrency::ThreadPool;
 namespace onnxruntime {
 namespace contrib {
 
-ONNX_OPERATOR_TYPED_KERNEL_EX(
-    SparseAttention,
-    kMSDomain,
-    1,
-    float,
-    kCpuExecutionProvider,
-    KernelDefBuilder()
-        .TypeConstraint("T", DataTypeImpl::GetTensorType<float>())
-        .TypeConstraint("M", DataTypeImpl::GetTensorType<int32_t>()),
-    SparseAttention<float>);
+#define REGISTER_KERNEL_TYPED(T)                                        \
+  ONNX_OPERATOR_TYPED_KERNEL_EX(                                        \
+      SparseAttention,                                                  \
+      kMSDomain,                                                        \
+      1,                                                                \
+      T,                                                                \
+      kCpuExecutionProvider,                                            \
+      KernelDefBuilder()                                                \
+          .TypeConstraint("T", DataTypeImpl::GetTensorType<T>())        \
+          .TypeConstraint("M", DataTypeImpl::GetTensorType<int32_t>()), \
+      SparseAttention<T>);
+
+REGISTER_KERNEL_TYPED(float)
+REGISTER_KERNEL_TYPED(MLFloat16)
 
 template <typename T>
 SparseAttention<T>::SparseAttention(const OpKernelInfo& info) : OpKernel(info), SparseAttentionBase(info) {
