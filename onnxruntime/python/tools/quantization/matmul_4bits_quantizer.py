@@ -732,8 +732,10 @@ class DefaultWeightOnlyQuantizer:
         block_size = self.config.block_size
         k_blocks = (rows + block_size - 1) // block_size
 
+        pack_size = 4 if self.config.bits == 2 else 2 if self.config.bits == 4 else 1
+
         if self.config.quant_format == QuantFormat.QOperator:
-            blob_size = block_size // 2
+            blob_size = block_size // pack_size
             padded_rows = k_blocks * block_size
             pad_len = padded_rows - rows
             if pad_len > 0:
@@ -741,14 +743,14 @@ class DefaultWeightOnlyQuantizer:
 
             # block wise quantization, each block comes from a single column
             packed = np.zeros((cols, k_blocks, blob_size), dtype="uint8")
-            zero_point = np.zeros(cols * ((k_blocks + 1) // 2), dtype="uint8")
+            zero_point = np.zeros(cols * ((k_blocks + 1) // pack_size), dtype="uint8")
             scales = np.zeros((cols * k_blocks), dtype=fp32weight.dtype)
             quantize_matmul_nbits(
                 packed, fp32weight, self.config.bits, scales, zero_point, block_size, cols, rows, self.config.is_symmetric
             )
         else:
-            packed = np.zeros((rows * cols + 1) // 2, dtype="uint8")
-            zero_point = np.zeros((cols * k_blocks + 1) // 2, dtype="uint8")
+            packed = np.zeros((rows * cols + 1) // pack_size, dtype="uint8")
+            zero_point = np.zeros((cols * k_blocks + 1) // pack_size, dtype="uint8")
             scales = np.zeros((k_blocks, cols), dtype=fp32weight.dtype)
             quantize_qdq_matmul_4bits(
                 packed, fp32weight, scales, zero_point, block_size, cols, rows, self.config.is_symmetric

@@ -22,6 +22,8 @@ Abstract:
 
 #include "mlas.h"
 #include "mlas_gemm_postprocessor.h"
+#include <string>
+#include <assert.h>
 
 /**
  * @brief Define compute types of block quantization, in order of decreasing accuracy.
@@ -96,7 +98,8 @@ MlasQNBitGemmBatch(
     MLAS_QNBIT_GEMM_COMPUTE_TYPE ComputeType,
     const MLAS_QNBIT_GEMM_DATA_PARAMS<T>* DataParams,
     void* Workspace,
-    MLAS_THREADPOOL* ThreadPool = nullptr
+    MLAS_THREADPOOL* ThreadPool = nullptr,
+    const std::string& weight_quantization_type = ""
 );
 
 /**
@@ -110,7 +113,8 @@ bool MLASCALL
 MlasIsQNBitGemmAvailable(
     size_t BlkBitWidth,
     size_t BlkLen,
-    MLAS_QNBIT_GEMM_COMPUTE_TYPE ComputeType
+    MLAS_QNBIT_GEMM_COMPUTE_TYPE ComputeType,
+    const std::string& weight_quantization_type = ""
 );
 
 /**
@@ -133,7 +137,8 @@ MlasQNBitGemmBatchWorkspaceSize(
     size_t BatchN,
     size_t BlkBitWidth,
     size_t BlkLen,
-    MLAS_QNBIT_GEMM_COMPUTE_TYPE ComputeType
+    MLAS_QNBIT_GEMM_COMPUTE_TYPE ComputeType,
+    const std::string& weight_quantization_type = ""
 );
 
 /**
@@ -155,10 +160,28 @@ MlasQNBitGemmPackQuantBDataSize(
     size_t K,
     size_t BlkBitWidth,
     size_t BlkLen,
+    MLAS_QNBIT_GEMM_COMPUTE_TYPE ComputeType,
+    const std::string& weight_quantization_type = ""
+);
+
+size_t
+QTernaryBitGemmPerGemmWorkspaceSize(
+    size_t M,
+    size_t N,
+    size_t K,
+    size_t BlkLen,
     MLAS_QNBIT_GEMM_COMPUTE_TYPE ComputeType
 );
 
-/**
+size_t
+QTernaryBitGemmPerGemmWorkspaceSize(
+    size_t M,
+    size_t N,
+    size_t K,
+    size_t BlkLen,
+    MLAS_QNBIT_GEMM_COMPUTE_TYPE ComputeType
+);
+    /**
  * @brief Packs the quantized B data in a format that the kernel expects.
  *
  * If the function is called without QuantBScale and QuantBZeroPoint,
@@ -198,4 +221,86 @@ MlasQNBitGemmPackQuantBData(
     bool has_zp_input,
     const void* QuantBZeroPoint,
     MLAS_THREADPOOL* ThreadPool
+);
+
+const std::string TQ1_0 = "TQ1_0";
+
+//constexpr size_t Q1_0_blk_size_bytes = 52;
+constexpr size_t QK_K = 256;
+
+// 1.6875 bpw
+typedef struct {
+    uint8_t qs[(QK_K - 4 * QK_K / 64) / 5];  // 5 elements per byte (3^5 = 243 < 256)
+    uint8_t qh[QK_K / 64];                   // 4 elements per byte
+    float d;
+} block_tq1_0;
+
+typedef struct {
+    float d;                   // delta
+    int8_t qs[QK_K];           // quants
+    int16_t bsums[QK_K / 16];  // sum of quants in groups of 16
+} block_q8_K;
+
+#ifndef MIN
+#define MIN(a, b) ((a) < (b) ? (a) : (b))
+#endif
+
+#ifndef MAX
+#define MAX(a, b) ((a) > (b) ? (a) : (b))
+#endif
+
+#define MM256_SET_M128I(a, b) _mm256_insertf128_si256(_mm256_castsi128_si256(b), (a), 1)
+#define GGML_FP16_TO_FP32(f) (f)
+#define GGML_FP32_TO_FP16(f) (f)
+
+void
+MlasDequantizeBlockwise_Q1_0(
+    float* dst,
+    const uint8_t* src,
+    int rows,
+    int columns
+);
+
+void
+MlasQuantizeBlockwise_Q1_0(
+    uint8_t* dst,
+    const float* src,
+    int rows,
+    int columns
+);
+
+void
+QuantizeARow_Q8_K(
+    size_t BlkLen,
+    const float* A,
+    size_t CountK,
+    std::byte* QuantA
+);
+
+void
+Quantize_Q8_K(
+    size_t BlkLen,
+    const float* A,
+    size_t M,
+    size_t K,
+    size_t lda,
+    std::byte* QuantA
+);
+
+void
+DequantizeARow_Q8_K(
+    size_t BlkLen,
+    float* A,
+    size_t CountK,
+    const std::byte* QuantA
+);
+
+void
+Dequantize_Q8_K(
+    size_t BlkLen,
+    float* A,
+    size_t M,
+    size_t K,
+    size_t lda,
+    const std::byte* QuantA
 );

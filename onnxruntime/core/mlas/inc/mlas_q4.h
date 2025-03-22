@@ -289,7 +289,6 @@ MlasBlockwiseQuantizedBufferSizes(
     size_t* q_zero_point_size_in_bytes
 );
 
-
 /**
  * @brief Blockwise 4 bits quantization, resulting elements and quantization
  *        parameters (scales, zero points) are packed into separate matrices
@@ -324,7 +323,6 @@ MlasQuantizeBlockwise(
     int leading_dimension,
     MLAS_THREADPOOL* thread_pool
     );
-
 
 /**
  * @brief Blockwise 4 bits dequantization, quantized elements and quantization

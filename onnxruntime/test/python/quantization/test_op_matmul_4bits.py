@@ -364,7 +364,7 @@ class TestOpMatMul4Bits(unittest.TestCase):
     @unittest.skipIf(
         find_spec("onnxruntime.training"), "Skip because training package doesn't has quantize_matmul_nbits"
     )
-    def test_quantize_matmul_nbits_symmetric_qdq(self, bits):
+    def test_quantize_qdq_matmul_nbits_symmetric(self, bits):
         np.random.seed(13)
 
         model_fp32_path = str(Path(self._tmp_model_dir.name).joinpath("matmul_fp32_symmetric.onnx").absolute())
@@ -376,7 +376,7 @@ class TestOpMatMul4Bits(unittest.TestCase):
     @unittest.skipIf(
         find_spec("onnxruntime.training"), "Skip because training package doesn't has quantize_matmul_nbits"
     )
-    def test_quantize_matmul_nbits_offsets_qdq(self, bits):
+    def test_quantize_qdq_matmul_nbits_offsets(self, bits):
         model_fp32_path = str(Path(self._tmp_model_dir.name).joinpath("matmul_fp32_offset.onnx").absolute())
         self.construct_model_matmul(model_fp32_path, bits, symmetric=False)
         data_reader = self.input_feeds(1, {"input": (100, 52)})

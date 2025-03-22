@@ -399,6 +399,7 @@ Return Value:
                 this->ConvDepthwiseS8U8Kernel = MlasConvDepthwiseKernelAvx2<int8_t, uint8_t>;
                 this->ComputeSumExpF32Kernel = MlasComputeSumExpF32KernelFma3;
                 this->QNBitGemmDispatch = &MlasSQNBitGemmDispatchAvx2;
+                this->QTernaryBitGemmDispatch = &MlasSQTernaryBitGemmDispatchAvx2;
                 this->CastF16ToF32Kernel = &MlasCastF16ToF32KernelAvx2;
                 this->CastF32ToF16Kernel = &MlasCastF32ToF16KernelAvx2;
 
