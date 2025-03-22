@@ -238,12 +238,12 @@ def parse_arguments(argv: list[str] | None = None) -> argparse.Namespace:
     output_group.set_defaults(disable_shared_initializers=False)
 
     output_group.add_argument(
-        "--encode_decoder_init",
+        "--encoder_decoder_init",
         required=False,
         action="store_true",
         help="Add decoder initialization to encoder for T5 model. This is legacy format that will be deprecated.",
     )
-    output_group.set_defaults(encode_decoder_init=False)
+    output_group.set_defaults(encoder_decoder_init=False)
 
     model_group = parser.add_argument_group("Beam search parameters that stored in the output model")
 
@@ -565,7 +565,7 @@ def t5_to_onnx(args: argparse.Namespace):
         disable_auto_mixed_precision=False,
         use_int32_inputs=True,
         model_type=args.model_type,
-        encode_decoder_init=args.encode_decoder_init,
+        encoder_decoder_init=args.encoder_decoder_init,
         force_fp16_io=(args.precision == Precision.FLOAT16.value),  # required by BeamSearch op implementation.
     )
 

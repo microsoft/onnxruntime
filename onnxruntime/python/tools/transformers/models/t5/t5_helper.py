@@ -66,7 +66,7 @@ class T5Helper:
         device: torch.device,
         model_type: str = "t5",
         state_dict_path: str = "",
-        encode_decoder_init: bool = False,
+        encoder_decoder_init: bool = False,
     ) -> dict[str, T5EncoderDecoderInit | T5Decoder]:
         """Load model given a pretrained name or path, then build models for ONNX conversion.
 
@@ -76,7 +76,7 @@ class T5Helper:
             device (torch.device): device to run the model
             model_type (str, optional): model type "t5" or "mt5"
             state_dict_path(str, optional): state dictionary path
-            encode_decoder_init (bool, optional): combine encoder and decoder kv cache initialization into one model.
+            encoder_decoder_init (bool, optional): combine encoder and decoder kv cache initialization into one model.
         Returns:
             Dict[str, torch.nn.Module]: mapping from name to modules for ONNX conversion.
         """
@@ -93,17 +93,17 @@ class T5Helper:
         decoder = T5Decoder(model.decoder, model.lm_head, model.config)
         decoder.eval().to(device)
 
-        encoder_decoder_init = T5EncoderDecoderInit(
+        encoder = T5EncoderDecoderInit(
             model.encoder,
             model.decoder,
             model.lm_head,
             model.config,
             decoder_start_token_id=None,
-            output_cross_only=not encode_decoder_init,
+            output_cross_only=not encoder_decoder_init,
         )
 
-        encoder_name = "encoder_decoder_init" if encode_decoder_init else "encoder"
-        return {encoder_name: encoder_decoder_init, "decoder": decoder}
+        encoder_name = "encoder_decoder_init" if encoder_decoder_init else "encoder"
+        return {encoder_name: encoder, "decoder": decoder}
 
     @staticmethod
     def export_onnx(

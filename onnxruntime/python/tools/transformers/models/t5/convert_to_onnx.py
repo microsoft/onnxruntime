@@ -139,12 +139,12 @@ def parse_arguments():
     )
 
     parser.add_argument(
-        "--encode_decoder_init",
+        "--encoder_decoder_init",
         required=False,
         action="store_true",
-        help="Combine encoder and decoder kv cache initialization into one model.",
+        help="Combine encoder and decoder kv cache initialization into one model. It is legacy format that will be deprecated.",
     )
-    parser.set_defaults(encode_decoder_init=False)
+    parser.set_defaults(encoder_decoder_init=False)
 
     args = parser.parse_args()
 
@@ -166,7 +166,7 @@ def export_onnx_models(
     use_int32_inputs: bool = True,
     model_type: str = "t5",
     state_dict_path: str = "",
-    encode_decoder_init: bool = False,
+    encoder_decoder_init: bool = False,
     force_fp16_io: bool = False,
     shape_infer_before_optimization: bool = False,
 ):
@@ -181,7 +181,7 @@ def export_onnx_models(
         device,
         model_type,
         state_dict_path,
-        encode_decoder_init=encode_decoder_init,
+        encoder_decoder_init=encoder_decoder_init,
     )
     config: T5Config | MT5Config = models["decoder"].config
 
@@ -307,7 +307,7 @@ def main():
         args.disable_auto_mixed_precision,
         not args.use_int64_inputs,
         args.model_type,
-        encode_decoder_init=args.encode_decoder_init,
+        encoder_decoder_init=args.encoder_decoder_init,
         force_fp16_io=args.force_fp16_io,
     )
 
