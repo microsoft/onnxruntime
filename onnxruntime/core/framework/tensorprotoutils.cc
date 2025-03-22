@@ -1297,6 +1297,23 @@ common::Status CreateTensorFromTensorProto(const Env& env, const std::filesystem
   return Status::OK();
 }
 
+std::unique_ptr<ONNX_NAMESPACE::TensorProto> GetTensorProtoWithDataIfInMemory(
+    const ONNX_NAMESPACE::TensorProto& tensor_proto) {
+  if (utils::HasExternalData(tensor_proto)) {
+    // Other libs such as TRT and OV currently do not understand ORT specific memory ptr
+    std::unique_ptr<ExternalDataInfo> external_data_info;
+    ORT_THROW_IF_ERROR(ExternalDataInfo::Create(tensor_proto.external_data(), external_data_info));
+    if (external_data_info->GetRelPath().compare(utils::kTensorProtoMemoryAddressTag) == 0) {
+      OrtValue ort_value;
+      ORT_THROW_IF_ERROR(utils::GetExtDataFromTensorProto(Env::Default(), {}, tensor_proto, ort_value));
+      constexpr const bool use_tensor_buffer_false = false;
+      auto result = utils::TensorToTensorProto(ort_value.Get<Tensor>(), tensor_proto.name(), use_tensor_buffer_false);
+      return std::make_unique<ONNX_NAMESPACE::TensorProto>(std::move(result));
+    }
+  }
+  return {};
+}
+
 Status TensorProtoToOrtValue(const Env& env, const std::filesystem::path& model_path,
                              const ONNX_NAMESPACE::TensorProto& tensor_proto, const MemBuffer& m, OrtValue& value) {
   return TensorProtoToOrtValueImpl(env, model_path, tensor_proto, &m, nullptr, value);

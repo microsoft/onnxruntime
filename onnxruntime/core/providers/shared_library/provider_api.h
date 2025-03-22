@@ -417,12 +417,22 @@ inline std::unique_ptr<ComputeCapability> MakeComputeCapability(const GraphViewe
   return g_host->Utils__MakeComputeCapability(graph_viewer, group, generate_metadef_name,
                                               execution_provider_name, drop_constant_initializers);
 }
+
+inline std::unique_ptr<ONNX_NAMESPACE::TensorProto> GetTensorProtoWithDataIfInMemory(
+    const ONNX_NAMESPACE::TensorProto& tensor_proto) {
+  return g_host->Utils__GetTensorProtoWithDataIfInMemory(tensor_proto);
+}
+
 }  // namespace utils
 
 namespace graph_utils {
-NodeArg& AddInitializerWithExternalData(Graph& graph, const ONNX_NAMESPACE::TensorProto& new_initializer);
-void MakeInitializerCopyIfNotExist(const Graph& src_graph, Graph& dst_graph, const std::string& name,
-                                   bool load_in_memory = false);
+inline NodeArg& AddInitializerWithExternalData(Graph& graph, const ONNX_NAMESPACE::TensorProto& new_initializer) {
+  return g_host->GraphUtils__AddInitializerWithExternalData(graph, new_initializer);
+}
+inline void MakeInitializerCopyIfNotExist(const Graph& src_graph, Graph& dst_graph, const std::string& name,
+                                          bool load_in_memory = false) {
+  g_host->GraphUtils__MakeInitializerCopyIfNotExist(src_graph, dst_graph, name, load_in_memory);
+}
 }  // namespace graph_utils
 
 namespace QDQ {

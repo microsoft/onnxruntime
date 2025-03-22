@@ -970,6 +970,10 @@ struct ProviderHost {
                                const std::function<std::string()>& generate_metadef_name,
                                const std::string& execution_provider_name,
                                bool drop_constant_initializers) = 0;
+
+  virtual inline std::unique_ptr<ONNX_NAMESPACE::TensorProto> Utils__GetTensorProtoWithDataIfInMemory(
+      const ONNX_NAMESPACE::TensorProto& tensor_proto) = 0;
+
   // Model
   virtual std::unique_ptr<Model> Model__construct(ONNX_NAMESPACE::ModelProto&& model_proto, const PathString& model_path,
                                                   const IOnnxRuntimeOpSchemaRegistryList* local_registries,

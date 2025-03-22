@@ -78,18 +78,13 @@ void GraphViewerToProto(const GraphViewer& graph_view,
     auto get_initializer_with_data = [&](const ONNX_NAMESPACE::TensorProto& init,
                                          ONNX_NAMESPACE::TensorProto& dest) {
       if (utils::HasExternalData(init)) {
-        // Other libs such as TRT currently do not understand ORT specific memory ptr
-        std::unique_ptr<ExternalDataInfo> external_data_info;
-        ORT_THROW_IF_ERROR(ExternalDataInfo::Create(init.external_data(), external_data_info));
-        if (external_data_info->GetRelPath().compare(utils::kTensorProtoMemoryAddressTag) == 0) {
-          OrtValue ort_value;
-          ORT_THROW_IF_ERROR(utils::GetExtDataFromTensorProto(Env::Default(), {}, init, ort_value));
-          constexpr const bool use_tensor_buffer_false = false;
-          dest = utils::TensorToTensorProto(ort_value.Get<Tensor>(), init.name(), use_tensor_buffer_false);
-          return;
+        auto full_init = utils::GetTensorProtoWithDataIfInMemory(init);
+        if (full_init) {
+          dest = std::move(*full_init);
+        } else {
+          dest = init;
         }
       }
-      dest = init;
     };
 
     // Handle this scope initializers

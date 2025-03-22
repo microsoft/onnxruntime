@@ -96,6 +96,16 @@ TensorShape GetTensorShapeFromTensorShapeProto(const ONNX_NAMESPACE::TensorShape
 
 TensorShape GetTensorShapeFromTensorProto(const ONNX_NAMESPACE::TensorProto& tensor_proto);
 
+/// <summary>
+/// This function checks if the tensor_proto has external data in memory.
+/// If it does, it converts it to a result with data inline, otherwise it does nothing.
+/// The function returns a unique_ptr to make it compatible with EPs code.
+/// </summary>
+/// <param name="tensor_proto">source proto</param>
+/// <returns>new tensor proto with data inline or nullptr</returns>
+std::unique_ptr<ONNX_NAMESPACE::TensorProto> GetTensorProtoWithDataIfInMemory(
+    const ONNX_NAMESPACE::TensorProto& tensor_proto);
+
 /**
  * deserialize a TensorProto into a preallocated memory buffer on CPU.
  * \param tensor_proto_path A local file path of where the 'input' was loaded from.

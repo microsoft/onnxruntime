@@ -1208,6 +1208,11 @@ struct ProviderHostImpl : ProviderHost {
                                                      execution_provider_name, drop_constant_initializers);
   }
 
+  std::unique_ptr<ONNX_NAMESPACE::TensorProto> Utils__GetTensorProtoWithDataIfInMemory(
+      const ONNX_NAMESPACE::TensorProto& tensor_proto) override {
+    return onnxruntime::utils::GetTensorProtoWithDataIfInMemory(tensor_proto);
+  }
+
   // Model (wrapped)
   std::unique_ptr<Model> Model__construct(ONNX_NAMESPACE::ModelProto&& model_proto, const PathString& model_path,
                                           const IOnnxRuntimeOpSchemaRegistryList* local_registries,
