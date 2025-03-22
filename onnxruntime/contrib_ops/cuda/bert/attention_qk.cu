@@ -38,7 +38,7 @@ Status CopyQK(cudaStream_t stream,
               const T* input,
               QK* output) {
   if constexpr (std::is_same<T, QK>::value) {
-    cudaMemcpyAsync(output, input, qk_size * sizeof(QK), cudaMemcpyDeviceToDevice, stream);
+    CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(output, input, qk_size * sizeof(QK), cudaMemcpyDeviceToDevice, stream));
     return Status::OK();
   }
   const bool half2float = std::is_same<T, half>::value && std::is_same<QK, float>::value;
