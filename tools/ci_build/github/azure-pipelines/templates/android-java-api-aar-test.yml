@@ -24,8 +24,6 @@ jobs:
   pool: 'onnxruntime-Ubuntu2204-AMD-CPU'
   workspace:
     clean: all
-  pool:
-    vmImage: 'macOS-14'
   variables:
     runCodesignValidationInjection: false
     ANDROID_AVD_HOME: $(Agent.TempDirectory)
@@ -114,4 +112,3 @@ jobs:
   - template: component-governance-component-detection-steps.yml
     parameters :
       condition : 'succeeded'
-
