@@ -9,10 +9,11 @@
 #include "core/providers/webgpu/nn/activation_util.h"
 #include "core/providers/webgpu/math/matmul_packed.h"
 #include "core/providers/webgpu/nn/conv_utils.h"
+#include "core/providers/webgpu/nn/fuse_utils.h"
 
 namespace onnxruntime {
 namespace webgpu {
-std::string Conv2dMMProgram::Conv2dCommonSnippet(uint32_t inner_element_size_x, uint32_t inner_element_size_w, uint32_t inner_element_size, std::string data_type) const {
+std::string Conv2dMMProgram::Conv2dCommonSnippet(const Activation& activation, uint32_t inner_element_size_x, uint32_t inner_element_size_w, uint32_t inner_element_size, std::string data_type) const {
   auto get_x_snippet = [](int32_t inner_element_size) -> std::string {
     switch (inner_element_size) {
       case 1:
@@ -108,7 +109,7 @@ std::string Conv2dMMProgram::Conv2dCommonSnippet(uint32_t inner_element_size_x, 
   const std::string res_type = TypeSnippet(inner_element_size, data_type);
   const std::string a_type = is_channels_last_ ? TypeSnippet(inner_element_size_x, data_type) : TypeSnippet(inner_element_size_w, data_type);
   const std::string b_type = is_channels_last_ ? TypeSnippet(inner_element_size_w, data_type) : TypeSnippet(inner_element_size_x, data_type);
-  const std::string apply_activation = "";  // TODO GetActivationSnippet(attrs, resType, data_type);
+  const std::string apply_activation = GetActivationSnippet(activation, res_type);
   std::stringstream user_code;
   user_code << "fn mm_readA(batch : i32, row : i32, colIn : i32) -> " << a_type << " {\n"
             << (is_channels_last_ ? sample_x.str() : sample_w.str())
@@ -155,12 +156,12 @@ Status Conv2dMMProgram::GenerateShaderCode(ShaderHelper& shader) const {
   shader.AdditionalImplementation()
       << UtilFunctions("uniforms.result_stride")
       << declaration_functions.str()
-      << Conv2dCommonSnippet(element_size_[0], element_size_[1], element_size_[2]);
+      << Conv2dCommonSnippet(activation_, element_size_[0], element_size_[1], element_size_[2]);
   std::string data_type = "x_value_t";
   return is_vec4_ ? MatMulProgram::MakeMatMulPackedVec4Source(shader, nullptr, elements_per_thread_, WorkgroupSizeX(), WorkgroupSizeY(), data_type) : MatMulProgram::MakeMatMulPackedSource(shader, nullptr, elements_per_thread_, WorkgroupSizeX(), WorkgroupSizeY(), data_type);
 }
 
-Conv2dMMProgram CreateConv2dMMProgram(const std::vector<const Tensor*>& inputs, std::vector<uint32_t> pads, std::vector<uint32_t> strides, std::vector<uint32_t> dilations, Tensor* output, uint32_t dim_a_outer, uint32_t dim_b_outer, uint32_t dim_inner, bool is_channels_last_) {
+Conv2dMMProgram CreateConv2dMMProgram(const Activation& activation, const std::vector<const Tensor*>& inputs, std::vector<uint32_t> pads, std::vector<uint32_t> strides, std::vector<uint32_t> dilations, Tensor* output, uint32_t dim_a_outer, uint32_t dim_b_outer, uint32_t dim_inner, bool is_channels_last_) {
   const auto* input = inputs[0];
   const auto* weight = inputs[1];
   bool has_bias = inputs.size() > 2;
@@ -197,7 +198,7 @@ Conv2dMMProgram CreateConv2dMMProgram(const std::vector<const Tensor*>& inputs, 
   bool fit_inner = dim_inner % tile_inner == 0;
   std::vector<uint32_t> element_size = {is_vec4 ? inner_element_size : 1, static_cast<uint32_t>(is_vec4 ? 4 : 1), static_cast<uint32_t>(is_vec4 ? 4 : 1)};
   const auto components = is_vec4 ? 4 : 1;
-  Conv2dMMProgram program(tile_a_outer, tile_b_outer, tile_inner, fit_a_outer, fit_b_outer, fit_inner, is_channels_last_, is_vec4, has_bias, std::move(element_size), std::move(elements_per_thread));
+  Conv2dMMProgram program(activation, tile_a_outer, tile_b_outer, tile_inner, fit_a_outer, fit_b_outer, fit_inner, is_channels_last_, is_vec4, has_bias, std::move(element_size), std::move(elements_per_thread));
   program.AddInputs({{input, ProgramTensorMetadataDependency::TypeAndRank, input->Shape(), components}, {weight, ProgramTensorMetadataDependency::TypeAndRank, weight->Shape(), components}});
   if (has_bias) {
     program.AddInput({bias, ProgramTensorMetadataDependency::TypeAndRank, bias->Shape(), components});

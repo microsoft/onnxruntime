@@ -12,7 +12,7 @@ namespace onnxruntime {
 namespace webgpu {
 
 template <bool is_channels_last, bool is_fused>
-TensorShape Conv<is_channels_last, false>::ComputeOutputShape(const TensorShape& input_shape, const TensorShape& weight_shape, std::vector<uint32_t> pads, std::vector<uint32_t> strides, std::vector<uint32_t> dilations) const {
+TensorShape Conv<is_channels_last, is_fused>::ComputeOutputShape(const TensorShape& input_shape, const TensorShape& weight_shape, std::vector<uint32_t> pads, std::vector<uint32_t> strides, std::vector<uint32_t> dilations) const {
   auto channel_index = is_channels_last ? input_shape.NumDimensions() - 1 : 1;
   auto batch_size = input_shape[0];
   auto output_channels = weight_shape[0];
@@ -55,8 +55,8 @@ Status TransposeKernel(ComputeContext& context, const Tensor* kernel, Tensor* tr
   return Transpose::DoTranspose(context, perm, *kernel, *transposed_kernel);
 }
 
-template <bool is_channels_last>
-Status Conv<is_channels_last>::ComputeInternal(ComputeContext& context) const {
+template <bool is_channels_last, bool is_fused>
+Status Conv<is_channels_last, is_fused>::ComputeInternal(ComputeContext& context) const {
   bool has_bias = context.InputCount() > 2;
   const auto* input = context.Input<Tensor>(0);
   const auto* kernel = context.Input<Tensor>(1);
@@ -115,7 +115,7 @@ Status Conv<is_channels_last>::ComputeInternal(ComputeContext& context) const {
     auto output_channels_per_group = output_channels / conv_attrs_.group;
     auto components = static_cast<int>(is_channels_last && output_channels_per_group >= 4 ? GetMaxComponents(output_channels) : 1);
     auto output_size = output_shape.Size() / components;
-    GroupedConvProgram program(conv_attrs_, has_bias, is_channels_last);
+    GroupedConvProgram program(activation_, has_bias, is_channels_last);
     program.AddInputs({{inputs[0], ProgramTensorMetadataDependency::TypeAndRank}, {inputs[1], ProgramTensorMetadataDependency::TypeAndRank, components}})
         .AddOutput({output, ProgramTensorMetadataDependency::TypeAndRank, components})
         .AddUniformVariables({{static_cast<uint32_t>(output_size)}, {dilations}, {strides}, {updated_pads}, {static_cast<uint32_t>(output_channels_per_group)}, {static_cast<uint32_t>(components)}})
@@ -174,7 +174,7 @@ Status Conv<is_channels_last>::ComputeInternal(ComputeContext& context) const {
       TensorShape outer_dims = output_rank > 2 ? output_shape.Slice(0, output_rank - 2) : TensorShape({});
       const int64_t batch_size = outer_dims.Size();
       TensorShape output_shape_shader({batch_size, output_shape[1], output_shape[2]});
-      MatMulNaiveProgram program(output_size, output_number, has_bias);
+      MatMulNaiveProgram program(activation_, output_size, output_number, has_bias);
       program
           .CacheHint(std::to_string(components), std::to_string(a_components), std::to_string(output_number))
           .AddInputs({{inputs[0], ProgramTensorMetadataDependency::TypeAndRank, input_reshape, int(a_components)},
@@ -190,7 +190,7 @@ Status Conv<is_channels_last>::ComputeInternal(ComputeContext& context) const {
           .AddUniformVariables({{output_size}, {static_cast<uint32_t>(output_reshape[1])}, {static_cast<uint32_t>(output_reshape[2])}, {static_cast<uint32_t>(K)}});
       return context.RunProgram(program);
     } else {
-      MatMulProgram program = CreateMatMulProgram(inputs, output);
+      MatMulProgram program = CreateMatMulProgram(activation_, inputs, output);
       return context.RunProgram(program);
     }
   }
@@ -205,7 +205,7 @@ Status Conv<is_channels_last>::ComputeInternal(ComputeContext& context) const {
   if (has_bias) {
     inputs[2] = context.Input<Tensor>(2);
   }
-  Conv2dMMProgram conv2d_mm_program = CreateConv2dMMProgram(inputs, pads, strides, dilations, output, dim_a_outer, dim_b_outer, dim_inner, is_channels_last);
+  Conv2dMMProgram conv2d_mm_program = CreateConv2dMMProgram(activation_, inputs, pads, strides, dilations, output, dim_a_outer, dim_b_outer, dim_inner, is_channels_last);
   return context.RunProgram(conv2d_mm_program);
 }
 
@@ -216,7 +216,7 @@ Status Conv<is_channels_last>::ComputeInternal(ComputeContext& context) const {
       VERSION_FROM,                                                                   \
       kWebGpuExecutionProvider,                                                       \
       (*KernelDefBuilder::Create()).TypeConstraint("T", WebGpuSupportedFloatTypes()), \
-      Conv<true>);                                                                    \
+      Conv<true, false>);                                                                    \
                                                                                       \
   ONNX_OPERATOR_KERNEL_EX(                                                            \
       Conv,                                                                           \
@@ -224,7 +224,7 @@ Status Conv<is_channels_last>::ComputeInternal(ComputeContext& context) const {
       VERSION_FROM,                                                                   \
       kWebGpuExecutionProvider,                                                       \
       (*KernelDefBuilder::Create()).TypeConstraint("T", WebGpuSupportedFloatTypes()), \
-      Conv<false>);
+      Conv<false, false>);
 
 #define WEBGPU_ONNX_CONV_OPERATOR_VERSIONED_KERNEL(VERSION_FROM, VERSION_TO)          \
   ONNX_OPERATOR_VERSIONED_KERNEL_EX(                                                  \
@@ -233,7 +233,7 @@ Status Conv<is_channels_last>::ComputeInternal(ComputeContext& context) const {
       VERSION_FROM, VERSION_TO,                                                       \
       kWebGpuExecutionProvider,                                                       \
       (*KernelDefBuilder::Create()).TypeConstraint("T", WebGpuSupportedFloatTypes()), \
-      Conv<false>);                                                                   \
+      Conv<false, false>);                                                                   \
                                                                                       \
   ONNX_OPERATOR_VERSIONED_KERNEL_EX(                                                  \
       Conv,                                                                           \
@@ -241,7 +241,7 @@ Status Conv<is_channels_last>::ComputeInternal(ComputeContext& context) const {
       VERSION_FROM, VERSION_TO,                                                       \
       kWebGpuExecutionProvider,                                                       \
       (*KernelDefBuilder::Create()).TypeConstraint("T", WebGpuSupportedFloatTypes()), \
-      Conv<true>);
+      Conv<true, false>);
 
 WEBGPU_ONNX_CONV_OPERATOR_VERSIONED_KERNEL(1, 10)
 WEBGPU_ONNX_CONV_OPERATOR_VERSIONED_KERNEL(11, 21)

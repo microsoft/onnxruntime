@@ -6,6 +6,7 @@
 #include "core/providers/webgpu/nn/grouped_conv.h"
 #include "core/providers/webgpu/shader_helper.h"
 #include "core/providers/webgpu/shader_variable.h"
+#include "core/providers/webgpu/nn/fuse_utils.h"
 
 namespace onnxruntime {
 namespace webgpu {
@@ -67,6 +68,7 @@ Status GroupedConvProgram::GenerateShaderCode(ShaderHelper& shader) const {
   const auto& x = shader.AddInput("x", ShaderUsage::UseUniform | ShaderUsage::UseValueTypeAlias | ShaderUsage::UseIndicesTypeAlias);
   const auto& w = shader.AddInput("w", ShaderUsage::UseUniform | ShaderUsage::UseValueTypeAlias | ShaderUsage::UseIndicesTypeAlias);
   const auto& output = shader.AddOutput("output", ShaderUsage::UseUniform | ShaderUsage::UseIndicesTypeAlias | ShaderUsage::UseValueTypeAlias);
+  std::string apply_activation = GetActivationSnippet(activation_, "output_value_t");
   shader.MainFunctionBody() << shader.GuardAgainstOutOfBoundsWorkgroupSizes("uniforms.output_size")
                             << "let output_indices = " << output.OffsetToIndices("global_idx") << ";\n"
                             << "let batch: u32 = output_indices[0];\n"
@@ -82,6 +84,7 @@ Status GroupedConvProgram::GenerateShaderCode(ShaderHelper& shader) const {
     const auto& b = shader.AddInput("b", ShaderUsage::UseUniform | ShaderUsage::UseValueTypeAlias);
     shader.MainFunctionBody() << "value += " + b.GetByIndices("output_channel") + ";\n";
   }
+  shader.MainFunctionBody() << apply_activation << "\n";
   shader.MainFunctionBody() << output.SetByOffset("global_idx", "value");
   return Status::OK();
 }

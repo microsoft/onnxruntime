@@ -13,10 +13,10 @@
 namespace onnxruntime {
 namespace webgpu {
 
-template <bool is_channels_last, bool is_fused = false>
+template <bool is_channels_last, bool is_fused>
 class Conv : public WebGpuKernel {
  public:
-  Conv(const OpKernelInfo& info) : WebGpuKernel(info), conv_attrs_(info), activation(Activation::None) {
+  Conv(const OpKernelInfo& info) : WebGpuKernel(info), conv_attrs_(info) {
   }
   Status ComputeInternal(ComputeContext& context) const override;
   TensorShape ComputeOutputShape(const TensorShape& input_shape, const TensorShape& weight_shape, std::vector<uint32_t> pads, std::vector<uint32_t> strides, std::vector<uint32_t> dilations) const;
