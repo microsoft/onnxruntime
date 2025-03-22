@@ -125,11 +125,6 @@ jobs:
         WithCache: ${{ parameters.WithCache }}
 
   - ${{ if eq(parameters.BuildWebGPU, true) }}:
-    # This step only verifies whether the build is successful.
-    # currently, we uses EMSDK 3.1.59, which is not compatible with Dawn's changes in its Emscripten fork. Closure compiler will not work for WebGPU build.
-    # Only enables in DEBUG build.
-    #
-    # TODO: when upgrading to a newer Emscripten version, we should fix this step.
     - template: build-linux-wasm-step.yml
       parameters:
         Today: $(Today)
@@ -138,31 +133,50 @@ jobs:
         ${{ else }}:
           AdditionalKey: wasm_inferencing_webgpu_exp | ${{ parameters.BuildConfig }}
         CacheDir: $(ORT_CACHE_DIR)/wasm_inferencing_webgpu
-        Arguments: '$(CommonBuildArgs) --build_dir $(Build.BinariesDirectory)/wasm_inferencing_webgpu --use_webgpu --target onnxruntime_webassembly --skip_tests'
+        Arguments: '$(CommonBuildArgs) --build_dir $(Build.BinariesDirectory)/wasm_inferencing_webgpu --use_webgpu --use_jsep --use_webnn --target onnxruntime_webassembly --skip_tests'
         DisplayName: 'Build (simd + threads + WebGPU experimental)'
         WithCache: ${{ parameters.WithCache }}
 
   - ${{ if eq(parameters.SkipPublish, false) }}:
     - script: |
-        cp $(Build.BinariesDirectory)/wasm_inferencing/${{ parameters.BuildConfig }}/ort-wasm-simd-threaded.wasm $(Build.ArtifactStagingDirectory)
-        cp $(Build.BinariesDirectory)/wasm_inferencing/${{ parameters.BuildConfig }}/ort-wasm-simd-threaded.mjs $(Build.ArtifactStagingDirectory)
+        mkdir -p $(Build.ArtifactStagingDirectory)/wasm/
+        cp $(Build.BinariesDirectory)/wasm_inferencing/${{ parameters.BuildConfig }}/ort-wasm-simd-threaded.wasm $(Build.ArtifactStagingDirectory)/wasm/
+        cp $(Build.BinariesDirectory)/wasm_inferencing/${{ parameters.BuildConfig }}/ort-wasm-simd-threaded.mjs $(Build.ArtifactStagingDirectory)/wasm/
         if [ -d $(Build.BinariesDirectory)/wasm_inferencing_jsep ]; then
-          cp $(Build.BinariesDirectory)/wasm_inferencing_jsep/${{ parameters.BuildConfig }}/ort-wasm-simd-threaded.jsep.wasm $(Build.ArtifactStagingDirectory)
-          cp $(Build.BinariesDirectory)/wasm_inferencing_jsep/${{ parameters.BuildConfig }}/ort-wasm-simd-threaded.jsep.mjs $(Build.ArtifactStagingDirectory)
+          cp $(Build.BinariesDirectory)/wasm_inferencing_jsep/${{ parameters.BuildConfig }}/ort-wasm-simd-threaded.jsep.wasm $(Build.ArtifactStagingDirectory)/wasm/
+          cp $(Build.BinariesDirectory)/wasm_inferencing_jsep/${{ parameters.BuildConfig }}/ort-wasm-simd-threaded.jsep.mjs $(Build.ArtifactStagingDirectory)/wasm/
         fi
       displayName: 'Create Artifacts'
+    - ${{ if eq(parameters.BuildWebGPU, true) }}:
+      - script: |
+          mkdir -p $(Build.ArtifactStagingDirectory)/wasm_webgpu/
+          cp $(Build.BinariesDirectory)/wasm_inferencing_webgpu/${{ parameters.BuildConfig }}/ort-wasm-simd-threaded.jsep.wasm $(Build.ArtifactStagingDirectory)/wasm_webgpu/
+          cp $(Build.BinariesDirectory)/wasm_inferencing_webgpu/${{ parameters.BuildConfig }}/ort-wasm-simd-threaded.jsep.mjs $(Build.ArtifactStagingDirectory)/wasm_webgpu/
+        displayName: 'Create Artifacts (WebGPU EP)'
     - ${{ if eq(parameters.is1ES, false) }}:
       - task: PublishPipelineArtifact@1
         displayName: 'Publish Pipeline Artifact'
         inputs:
           artifactName: '${{ parameters.BuildConfig }}_wasm'
-          targetPath: '$(Build.ArtifactStagingDirectory)'
+          targetPath: '$(Build.ArtifactStagingDirectory)/wasm'
+      - ${{ if eq(parameters.BuildWebGPU, true) }}:
+        - task: PublishPipelineArtifact@1
+          displayName: 'Publish Pipeline Artifact (WebGPU EP)'
+          inputs:
+            artifactName: '${{ parameters.BuildConfig }}_wasm_webgpu'
+            targetPath: '$(Build.ArtifactStagingDirectory)/wasm_webgpu'
     - ${{ if eq(parameters.is1ES, true) }}:
       - task: 1ES.PublishPipelineArtifact@1
         displayName: 'Publish Pipeline Artifact'
         inputs:
           artifactName: '${{ parameters.BuildConfig }}_wasm'
-          targetPath: '$(Build.ArtifactStagingDirectory)'
+          targetPath: '$(Build.ArtifactStagingDirectory)/wasm'
+      - ${{ if eq(parameters.BuildWebGPU, true) }}:
+        - task: 1ES.PublishPipelineArtifact@1
+          displayName: 'Publish Pipeline Artifact (WebGPU EP)'
+          inputs:
+            artifactName: '${{ parameters.BuildConfig }}_wasm_webgpu'
+            targetPath: '$(Build.ArtifactStagingDirectory)/wasm_webgpu'
   - task: PublishTestResults@2
     displayName: 'Publish unit test results'
     inputs:

@@ -21,9 +21,9 @@ class QDQOpBuilder : public BaseOpBuilder {
                                const logging::Logger& logger) const override ORT_MUST_USE_RESULT;
 
   // Operator support related.
-  bool IsOpSupportedImpl(const InitializedTensorSet& /* initializers */, const Node& node,
+  bool IsOpSupportedImpl(const GraphViewer&, const Node& node,
                          const WebnnDeviceType /* device_type */, const logging::Logger& logger) const override;
-  bool HasSupportedInputsImpl(const InitializedTensorSet& /* initializers */, const Node& node,
+  bool HasSupportedInputsImpl(const GraphViewer&, const Node& node,
                               const emscripten::val& wnn_limits, const logging::Logger& logger) const override;
 };
 
@@ -121,7 +121,7 @@ Status QDQOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
 }
 
 // Operator support related.
-bool QDQOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& /* initializers */,
+bool QDQOpBuilder::IsOpSupportedImpl(const GraphViewer&,
                                      const Node& node,
                                      const WebnnDeviceType /* device_type */,
                                      const logging::Logger& logger) const {
@@ -152,7 +152,7 @@ bool QDQOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& /* initializers
   return true;
 }
 
-bool QDQOpBuilder::HasSupportedInputsImpl(const InitializedTensorSet& /* initializers */, const Node& node,
+bool QDQOpBuilder::HasSupportedInputsImpl(const GraphViewer&, const Node& node,
                                           const emscripten::val& wnn_limits, const logging::Logger& logger) const {
   const auto& input_defs = node.InputDefs();
   const std::string_view op_type = node.OpType();
