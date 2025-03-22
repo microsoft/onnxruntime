@@ -24,6 +24,14 @@ __global__ void ConvertAndCopyQK(const int count, const half* input, float* outp
   }
 }
 
+template <typename T>
+__global__ void ConvertAndCopyQK(const int count, const T* input, T* output) {
+  int idx = threadIdx.x + blockIdx.x * blockDim.x;
+  if (idx < count) {
+    output[idx] = input[idx];
+  }
+}
+
 template <typename T, typename QK>
 Status CopyQK(cudaStream_t stream,
               const int qk_size,
