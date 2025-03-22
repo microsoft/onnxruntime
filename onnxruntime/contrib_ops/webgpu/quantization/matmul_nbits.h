@@ -35,6 +35,14 @@ class MatMulNBitsProgram final : public Program<MatMulNBitsProgram> {
   bool use_subgroup_;
 };
 
+class MatMulNBitsBlockWideTileProgram final : public Program<MatMulNBitsBlockWideTileProgram> {
+ public:
+  MatMulNBitsBlockWideTileProgram() : Program{"MatMulNBitsBlockWideTileProgram"} {}
+
+  Status GenerateShaderCode(ShaderHelper& sh) const override;
+  WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES({"block_size", ProgramUniformVariableDataType::Uint32});
+};
+
 class MatMulNBits final : public WebGpuKernel {
  public:
   MatMulNBits(const OpKernelInfo& info) : WebGpuKernel(info) {
