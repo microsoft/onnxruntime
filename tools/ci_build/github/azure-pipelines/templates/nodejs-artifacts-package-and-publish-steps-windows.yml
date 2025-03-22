@@ -22,7 +22,7 @@ steps:
         DoEsrp: ${{parameters.DoEsrp}}
         Pattern: '*.node'
 
-  - task: PublishPipelineArtifact@1
+  - task: 1ES.PublishPipelineArtifact@1
     inputs:
-      targetPath: '$(Build.SourcesDirectory)\js\node\bin\napi-v3\win32\${{ parameters.arch }}\onnxruntime_binding.node' 
+      targetPath: '$(Build.SourcesDirectory)\js\node\bin\napi-v3\win32\${{ parameters.arch }}'
       artifactName: '${{parameters.artifactName}}'
