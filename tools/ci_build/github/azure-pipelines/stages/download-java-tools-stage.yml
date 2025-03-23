@@ -1,3 +1,7 @@
+parameters:
+- name: is1ES
+  type: boolean
+  default: false
 stages:
 - stage: Download_Java_Tools
   dependsOn: []
@@ -18,13 +22,19 @@ stages:
           wget --tries=3 https://oss.sonatype.org/service/local/repositories/releases/content/com/google/protobuf/protobuf-java/3.21.7/protobuf-java-3.21.7.jar -P ./
           popd
         workingDirectory: '$(Agent.TempDirectory)'
-
-    - task: 1ES.PublishPipelineArtifact@1
-      displayName: 'Publish Pipeline Java Tools Artifact'
-      inputs:
-        targetPath: '$(Agent.TempDirectory)/java-tools'
-        artifact: 'onnxruntime-java-tools'
+    - ${{ if eq(parameters.is1ES, true) }}:
+      - task: 1ES.PublishPipelineArtifact@1
+        displayName: 'Publish Pipeline Java Tools Artifact'
+        inputs:
+          targetPath: '$(Agent.TempDirectory)/java-tools'
+          artifact: 'onnxruntime-java-tools'
+    - ${{ if eq(parameters.is1ES, false) }}:
+      - task: PublishPipelineArtifact@1
+        displayName: 'Publish Pipeline Java Tools Artifact'
+        inputs:
+          targetPath: '$(Agent.TempDirectory)/java-tools'
+          artifact: 'onnxruntime-java-tools'
 
     - template: ../templates/component-governance-component-detection-steps.yml
-      parameters :
-        condition : 'succeeded'
+      parameters:
+        condition: 'succeeded'
