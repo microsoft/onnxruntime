@@ -32,12 +32,17 @@ parameters:
 - name: BuildId
   type: string
 
+- name: is1ES
+  type: boolean
+  default: false
+
 stages:
 - template: nuget-linux-cuda-packaging-stage.yml
   parameters:
     CudaVersion: ${{ parameters.CudaVersion }}
     buildJava: ${{ parameters.buildJava }}
     buildNodejs: ${{ parameters.buildNodejs }}
+    is1ES: ${{ parameters.is1ES }}
 
 - template: nuget-win-cuda-packaging-stage.yml
   parameters:
@@ -47,6 +52,8 @@ stages:
     win_trt_home: ${{ parameters.win_trt_home }}
     win_cuda_home: ${{ parameters.win_cuda_home }}
     buildJava: ${{ parameters.buildJava }}
+    is1ES: ${{ parameters.is1ES }}
+
 
 - template: nuget-cuda-packaging-stage.yml
   parameters:
@@ -54,6 +61,8 @@ stages:
     IsReleaseBuild: ${{ parameters.IsReleaseBuild }}
     SpecificArtifact: ${{ parameters.SpecificArtifact }}
     BuildId: ${{ parameters.BuildId }}
+    is1ES: ${{ parameters.is1ES }}
+
 
 - template: ../nuget/templates/test_win.yml
   parameters:

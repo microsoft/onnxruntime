@@ -6,6 +6,9 @@ parameters:
   type: boolean
 - name: buildNodejs
   type: boolean
+- name: is1ES
+  type: boolean
+  default: false
 
 stages:
 - stage: Linux_C_API_Packaging_GPU
@@ -50,7 +53,7 @@ stages:
           version: '$(OnnxRuntimeVersion)'
           libraryName: 'libonnxruntime.so'
           nativeLibraryName: 'libonnxruntime4j_jni.so'
-          is1ES: true
+          is1ES: ${{ parameters.is1ES }}
 
     - template: ../templates/c-api-artifacts-package-and-publish-steps-posix.yml
       parameters:
@@ -58,6 +61,7 @@ stages:
         artifactName: 'onnxruntime-linux-x64-cuda-$(OnnxRuntimeVersion)'
         artifactNameNoVersionString: 'onnxruntime-linux-x64-cuda'
         libraryName: 'libonnxruntime.so.$(OnnxRuntimeVersion)'
+        is1ES: ${{ parameters.is1ES }}
 
     - template: ../templates/component-governance-component-detection-steps.yml
       parameters:
@@ -114,7 +118,7 @@ stages:
           version: '$(OnnxRuntimeVersion)'
           libraryName: 'libonnxruntime.so'
           nativeLibraryName: 'libonnxruntime4j_jni.so'
-          is1ES: true
+          is1ES: ${{ parameters.is1ES }}
 
     - ${{ if eq(parameters.buildNodejs, 'true') }}:
       - template: ../templates/nodejs-artifacts-package-and-publish-steps-posix.yml
@@ -129,6 +133,7 @@ stages:
         artifactName: 'onnxruntime-linux-x64-tensorrt-$(OnnxRuntimeVersion)'
         artifactNameNoVersionString: 'onnxruntime-linux-x64-tensorrt'
         libraryName: 'libonnxruntime.so.$(OnnxRuntimeVersion)'
+        is1ES: ${{ parameters.is1ES }}
 
 
     - template: ../templates/component-governance-component-detection-steps.yml

@@ -13,6 +13,10 @@ parameters:
   type: string
   default: '0'
 
+- name: is1ES
+  type: boolean
+  default: false
+
 stages:
 ######## Nuget ########
 # Win/Linux CUDA Combined packaging
@@ -207,9 +211,15 @@ stages:
     - template: ../templates/component-governance-component-detection-steps.yml
       parameters:
         condition: 'succeeded'
-
-    - task: 1ES.PublishPipelineArtifact@1
-      displayName: 'Publish Pipeline NuGet Artifact'
-      inputs:
-        artifactName: 'drop-signed-nuget-GPU'
-        targetPath: '$(Build.ArtifactStagingDirectory)'
+    - ${{ if eq(parameters.is1ES, true) }}:
+      - task: 1ES.PublishPipelineArtifact@1
+        displayName: 'Publish Pipeline NuGet Artifact'
+        inputs:
+          artifactName: 'drop-signed-nuget-GPU'
+          targetPath: '$(Build.ArtifactStagingDirectory)'
+    - ${{ if eq(parameters.is1ES, false) }}:
+      - task: PublishPipelineArtifact@1
+        displayName: 'Publish Pipeline NuGet Artifact'
+        inputs:
+          pathtoPublish: '$(Build.ArtifactStagingDirectory)'
+          artifactName: 'drop-signed-nuget-GPU'

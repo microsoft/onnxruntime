@@ -76,6 +76,9 @@ parameters:
   displayName: Specific Artifact's BuildId
   type: string
   default: '0'
+- name: is1ES
+  type: boolean
+  default: false
 
 stages:
 - stage: Windows_Packaging_${{ parameters.stage_name_suffix }}
@@ -231,6 +234,7 @@ stages:
           artifactNameNoVersionString: 'onnxruntime${{ parameters.artifact_name_suffix }}-win-${{ parameters.packageName }}'
           commitId: $(OnnxRuntimeGitCommitHash)
           DoEsrp: ${{ parameters.DoEsrp }}
+          is1ES: ${{ parameters.is1ES }}
 
       - ${{ if eq(parameters.buildNodejs, true) }}:
         - template: nodejs-artifacts-package-and-publish-steps-windows.yml

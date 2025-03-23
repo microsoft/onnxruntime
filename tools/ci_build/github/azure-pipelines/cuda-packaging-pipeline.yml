@@ -123,6 +123,7 @@ extends:
         buildNodejs: false
         SpecificArtifact: ${{ parameters.SpecificArtifact }}
         BuildId: ${{ parameters.BuildId }}
+        is1ES: true
 
     - template: stages/download-java-tools-stage.yml
       parameters:
