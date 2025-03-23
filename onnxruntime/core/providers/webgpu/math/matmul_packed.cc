@@ -122,7 +122,7 @@ Status MatMulProgram::MakeMatMulPackedVec4Source(ShaderHelper& shader,
   // Loop over shared dimension.
   shader.MainFunctionBody()
       << "  let tileRowB = localRow * " << row_per_thread_b << ";\n"
-      << "  for (var t = 0; t < num_tiles; t = t + 1) {\n";
+      << "  for (var t = 0; t < i32(num_tiles); t = t + 1) {\n";
 
   // Load one tile of A into local memory.
   shader.MainFunctionBody()
@@ -227,12 +227,12 @@ Status MatMulProgram::MakeMatMulPackedSource(ShaderHelper& shader, const ShaderI
 
   // Loop over shared dimension.
   shader.MainFunctionBody()
-      << "for (var t = 0; t < num_tiles; t = t + 1) {\n";
+      << "for (var t = 0; t < i32(num_tiles); t = t + 1) {\n";
 
   // Load one tile of A into local memory.
   shader.MainFunctionBody()
-      << "  for (var innerRow = 0; innerRow < " << row_per_thread_a << "; innerRow = innerRow + 1) {\n"
-      << "    for (var innerCol = 0; innerCol < " << col_per_thread_a << "; innerCol = innerCol + 1) {\n"
+      << "  for (var innerRow = 0; innerRow < i32(" << row_per_thread_a << "); innerRow = innerRow + 1) {\n"
+      << "    for (var innerCol = 0; innerCol < i32(" << col_per_thread_a << "); innerCol = innerCol + 1) {\n"
       << "      let inputRow = tileRowA + innerRow;\n"
       << "      let inputCol = tileColA + innerCol;\n"
       << "      mm_Asub[inputRow][inputCol] = mm_readA(batch, globalRowStart + inputRow, kStart + inputCol, batchIndices);\n"
@@ -241,8 +241,8 @@ Status MatMulProgram::MakeMatMulPackedSource(ShaderHelper& shader, const ShaderI
 
   // Load one tile of B into local memory.
   shader.MainFunctionBody()
-      << "  for (var innerRow = 0; innerRow < " << row_per_thread_b << "; innerRow = innerRow + 1) {\n"
-      << "    for (var innerCol = 0; innerCol < colPerThread; innerCol = innerCol + 1) {\n"
+      << "  for (var innerRow = 0; innerRow < i32(" << row_per_thread_b << "); innerRow = innerRow + 1) {\n"
+      << "    for (var innerCol = 0; innerCol < i32(colPerThread); innerCol = innerCol + 1) {\n"
       << "      let inputRow = tileRowB + innerRow;\n"
       << "      let inputCol = tileCol + innerCol;\n"
       << "      mm_Bsub[inputRow][inputCol] = mm_readB(batch, kStart + inputRow, globalCol + innerCol, batchIndices);\n"
@@ -255,12 +255,12 @@ Status MatMulProgram::MakeMatMulPackedSource(ShaderHelper& shader, const ShaderI
   shader.MainFunctionBody()
       << "var BCached: array<" << data_type << ", colPerThread>;\n"
       << "  for (var k = 0; k < tileInner; k = k + 1) {\n"
-      << "    for (var inner = 0; inner < colPerThread; inner = inner + 1) {\n"
+      << "    for (var inner = 0; inner < i32(colPerThread); inner = inner + 1) {\n"
       << "      BCached[inner] = mm_Bsub[k][tileCol + inner];\n"
       << "    }\n"
-      << "    for (var innerRow = 0; innerRow < rowPerThread; innerRow = innerRow + 1) {\n"
+      << "    for (var innerRow = 0; innerRow < i32(rowPerThread); innerRow = innerRow + 1) {\n"
       << "      let ACached = mm_Asub[tileRow + innerRow][k];\n"
-      << "      for (var innerCol = 0; innerCol < colPerThread; innerCol = innerCol + 1) {\n"
+      << "      for (var innerCol = 0; innerCol < i32(colPerThread); innerCol = innerCol + 1) {\n"
       << "        acc[innerRow][innerCol] = acc[innerRow][innerCol] + ACached * BCached[innerCol];\n"
       << "      }\n"
       << "    }\n"
@@ -270,8 +270,8 @@ Status MatMulProgram::MakeMatMulPackedSource(ShaderHelper& shader, const ShaderI
 
   // Write the results to the output buffer
   shader.MainFunctionBody()
-      << "for (var innerRow = 0; innerRow < rowPerThread; innerRow = innerRow + 1) {\n"
-      << "  for (var innerCol = 0; innerCol < colPerThread; innerCol = innerCol + 1) {\n"
+      << "for (var innerRow = 0; innerRow < i32(rowPerThread); innerRow = innerRow + 1) {\n"
+      << "  for (var innerCol = 0; innerCol < i32(colPerThread); innerCol = innerCol + 1) {\n"
       << "    mm_write(batch, globalRow + innerRow, globalCol + innerCol, acc[innerRow][innerCol]);\n"
       << "  }\n"
       << "}\n";

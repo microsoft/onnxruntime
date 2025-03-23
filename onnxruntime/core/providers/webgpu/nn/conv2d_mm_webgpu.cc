@@ -21,7 +21,7 @@ std::string Conv2dMMProgram::Conv2dCommonSnippet(const Activation& activation, u
       case 3:
         return "resData = vec3<x_value_t>(x[xIndex], x[xIndex + 1], x[xIndex + 2]);";
       case 4:
-        return "resData = x[xIndex / 4];\n ";
+        return "resData = x[xIndex];\n ";
       default:
         ORT_THROW("inner_element_size", inner_element_size, " is not supported.");
     }
@@ -31,7 +31,7 @@ std::string Conv2dMMProgram::Conv2dCommonSnippet(const Activation& activation, u
       case 1:
         return "return w[row * i32(uniforms.w_shape[3]) + colIn];\n";
       case 4:
-        return "return w[row * i32(uniforms.w_shape[3]) / 4 + colIn];\n";
+        return "return w[row * i32(uniforms.w_shape[3])  + colIn];\n";
       default:
         ORT_THROW("inner_element_size ", inner_element_size, " is not supported.");
     }
@@ -52,8 +52,8 @@ std::string Conv2dMMProgram::Conv2dCommonSnippet(const Activation& activation, u
       << "let outCol = " << row << " % outWidth;\n"
       << "let WRow = " << col << " / (i32(uniforms.w_shape[1]) * inChannels);\n"
       << "let WCol = " << col << " / inChannels % i32(uniforms.w_shape[1]);\n"
-      << "let xRow = outRow * uniforms.strides[0] + uniforms.dilations[0] * WRow - uniforms.pads[0];\n"
-      << "let xCol = outCol * uniforms.strides[1] + uniforms.dilations[1] * WCol - uniforms.pads[1];\n"
+      << "let xRow = outRow * i32(uniforms.strides[0]) + i32(uniforms.dilations[0]) * WRow - i32(uniforms.pads[0]);\n"
+      << "let xCol = outCol * i32(uniforms.strides[1]) + i32(uniforms.dilations[1]) * WCol - i32(uniforms.pads[1]);\n"
       << "let xCh = " << col << " % inChannels;\n"
       << "var resData = " << TypeSnippet(inner_element_size_x, data_type) << "(0.0);\n "
       << "// The bounds checking is always needed since we use it to pad zero for\n"
@@ -71,7 +71,7 @@ std::string Conv2dMMProgram::Conv2dCommonSnippet(const Activation& activation, u
                << read_x_snippet.str();
     } else {
       sample_x << "let col = colIn * " << inner_element_size_x << ";\n"
-               << "if(row < uniforms.dim_a_outer && col < uniforms.dim_inner) {\n"
+               << "if(row < i32(uniforms.dim_a_outer) && col < i32(uniforms.dim_inner)) {\n"
                << "  " << read_x_snippet.str() << "\n"
                << "}\n"
                << "return " << TypeSnippet(inner_element_size_x, data_type) << "(0.0);\n";
@@ -82,7 +82,7 @@ std::string Conv2dMMProgram::Conv2dCommonSnippet(const Activation& activation, u
                << read_x_snippet.str();
     } else {
       sample_x << "let col = colIn * " << inner_element_size_x << ";\n"
-               << "if (row < uniforms.dim_inner && col < uniforms.dim_b_outer) {\n"
+               << "if (row < i32(uniforms.dim_inner) && col < i32(uniforms.dim_b_outer)) {\n"
                << "  " << read_x_snippet.str() << "\n"
                << "}\n"
                << "return " << TypeSnippet(inner_element_size_x, data_type) << "(0.0);\n";
@@ -94,14 +94,14 @@ std::string Conv2dMMProgram::Conv2dCommonSnippet(const Activation& activation, u
       sample_w << get_w_snippet(inner_element_size_w);
     } else {
       sample_w << "let col = colIn * " << inner_element_size_w << ";\n"
-               << "if(row < uniforms.dim_inner && col < uniforms.dim_b_outer) {\n"
+               << "if(row < i32(uniforms.dim_inner) && col < i32(uniforms.dim_b_outer)) {\n"
                << "  " << get_w_snippet(inner_element_size_w) << "\n"
                << "}\n"
                << "return " << TypeSnippet(inner_element_size_w, data_type) << "(0.0);\n";
     }
   } else {
     sample_w << "let col = colIn * " << inner_element_size_w << ";\n"
-             << "if (row < uniforms.dim_inner && col < uniforms.dim_b_outer) {\n"
+             << "if (row < i32(uniforms.dim_inner) && col < i32(uniforms.dim_b_outer)) {\n"
              << "  " << get_w_snippet(inner_element_size_w) << "\n"
              << "}\n"
              << "return " << TypeSnippet(inner_element_size_w, data_type) << "(0.0);\n";
@@ -120,8 +120,8 @@ std::string Conv2dMMProgram::Conv2dCommonSnippet(const Activation& activation, u
             << "}\n"
             << "\n"
             << "fn mm_write(batch : i32, row : i32, colIn : i32, valueIn : " << res_type << ") {\n"
-            << "  let col = colIn * ${inner_element_size};\n"
-            << "  if(row < uniforms.dim_a_outer && col < uniforms.dim_b_outer) {\n"
+            << "  let col = colIn * " << inner_element_size << ";\n"
+            << "  if(row < i32(uniforms.dim_a_outer) && col < i32(uniforms.dim_b_outer)) {\n"
             << "    var value = valueIn;\n"
             << "    let outWidth = " << (is_channels_last_ ? " i32(uniforms.result_shape[2]) " : " i32(uniforms.result_shape[3]) ") << ";\n"
             << "    " << coord_res_snippet << "\n"
@@ -161,23 +161,24 @@ Status Conv2dMMProgram::GenerateShaderCode(ShaderHelper& shader) const {
   return is_vec4_ ? MatMulProgram::MakeMatMulPackedVec4Source(shader, nullptr, elements_per_thread_, WorkgroupSizeX(), WorkgroupSizeY(), data_type) : MatMulProgram::MakeMatMulPackedSource(shader, nullptr, elements_per_thread_, WorkgroupSizeX(), WorkgroupSizeY(), data_type);
 }
 
-Conv2dMMProgram CreateConv2dMMProgram(const Activation& activation, const std::vector<const Tensor*>& inputs, std::vector<uint32_t> pads, std::vector<uint32_t> strides, std::vector<uint32_t> dilations, Tensor* output, uint32_t dim_a_outer, uint32_t dim_b_outer, uint32_t dim_inner, bool is_channels_last_) {
+Conv2dMMProgram CreateConv2dMMProgram(const Activation& activation, const std::vector<const Tensor*>& inputs, const std::vector<uint32_t>& pads, const std::vector<uint32_t>& strides, const std::vector<uint32_t>& dilations, Tensor* output, uint32_t dim_a_outer, uint32_t dim_b_outer, uint32_t dim_inner, bool is_channels_last, const std::vector<TensorShape>& input_output_shapes) {
   const auto* input = inputs[0];
   const auto* weight = inputs[1];
   bool has_bias = inputs.size() > 2;
   const auto* bias = has_bias ? inputs[2] : nullptr;
-  auto in_channels = is_channels_last_ ? input->Shape()[3] : input->Shape()[1];
-  const auto& output_shape = output->Shape();
+  const auto& input_shape = input_output_shapes[0];
+  auto in_channels = is_channels_last ? input_shape[3] : input_shape[1];
+  const auto& output_shape = input_output_shapes[2];
   auto batch_size = output_shape[0];
-  const auto output_width = is_channels_last_ ? output_shape[2] : output_shape[3];
-  const auto output_height = is_channels_last_ ? output_shape[1] : output_shape[2];
-  const auto output_channels = is_channels_last_ ? output_shape[3] : output_shape[1];
+  const auto output_width = is_channels_last ? output_shape[2] : output_shape[3];
+  const auto output_height = is_channels_last ? output_shape[1] : output_shape[2];
+  const auto output_channels = is_channels_last ? output_shape[3] : output_shape[1];
   // TODO: enable vec4 for NCHW
-  const bool is_vec4 = is_channels_last_ && (in_channels % 4 == 0 || in_channels % 3 == 0) && output_channels % 4 == 0;
+  const bool is_vec4 = is_channels_last && (in_channels % 4 == 0 || in_channels % 3 == 0) && output_channels % 4 == 0;
 
   // TODO: fine tune size
-  const auto dispatch_x = is_channels_last_ ? output_channels : output_width * output_height;
-  const auto dispatch_y = is_channels_last_ ? output_width * output_height : output_channels;
+  const auto dispatch_x = is_channels_last ? output_channels : output_width * output_height;
+  const auto dispatch_y = is_channels_last ? output_width * output_height : output_channels;
   std::vector<uint32_t> workgroup_size = {8, 8, 1};
   InlinedVector<int64_t> elements_per_thread = {4, static_cast<int64_t>(dim_a_outer <= 8 ? 1 : 4), 1};
   auto intger_divide_ceil2 = [](int64_t a, int64_t b) -> int64_t { return (a + b - 1) / b; };
@@ -189,7 +190,7 @@ Conv2dMMProgram CreateConv2dMMProgram(const Activation& activation, const std::v
       static_cast<uint32_t>(intger_divide_ceil3(batch_size, workgroup_size[2], elements_per_thread[2])),
   };
 
-  uint32_t inner_element_size = is_vec4 ? (is_channels_last_ && in_channels % 4 != 0 ? 3 : 4) : 1;
+  uint32_t inner_element_size = is_vec4 ? (is_channels_last && in_channels % 4 != 0 ? 3 : 4) : 1;
   auto tile_a_outer = static_cast<uint32_t>(workgroup_size[1] * elements_per_thread[1]);
   auto tile_b_outer = static_cast<uint32_t>(workgroup_size[0] * elements_per_thread[0]);
   auto tile_inner = std::max(workgroup_size[0] * inner_element_size, workgroup_size[1]);
@@ -198,13 +199,13 @@ Conv2dMMProgram CreateConv2dMMProgram(const Activation& activation, const std::v
   bool fit_inner = dim_inner % tile_inner == 0;
   std::vector<uint32_t> element_size = {is_vec4 ? inner_element_size : 1, static_cast<uint32_t>(is_vec4 ? 4 : 1), static_cast<uint32_t>(is_vec4 ? 4 : 1)};
   const auto components = is_vec4 ? 4 : 1;
-  Conv2dMMProgram program(activation, tile_a_outer, tile_b_outer, tile_inner, fit_a_outer, fit_b_outer, fit_inner, is_channels_last_, is_vec4, has_bias, std::move(element_size), std::move(elements_per_thread));
-  program.AddInputs({{input, ProgramTensorMetadataDependency::TypeAndRank, input->Shape(), components}, {weight, ProgramTensorMetadataDependency::TypeAndRank, weight->Shape(), components}});
+  Conv2dMMProgram program(activation, tile_a_outer, tile_b_outer, tile_inner, fit_a_outer, fit_b_outer, fit_inner, is_channels_last, is_vec4, has_bias, std::move(element_size), std::move(elements_per_thread));
+  program.AddInputs({{input, ProgramTensorMetadataDependency::TypeAndRank, input_shape, components}, {weight, ProgramTensorMetadataDependency::TypeAndRank, input_output_shapes[1], components}});
   if (has_bias) {
     program.AddInput({bias, ProgramTensorMetadataDependency::TypeAndRank, bias->Shape(), components});
   }
   program
-      .AddOutput({output, ProgramTensorMetadataDependency::TypeAndRank})
+      .AddOutput({output, ProgramTensorMetadataDependency::TypeAndRank, output_shape, components})
       .SetDispatchGroupSize(dispatch[0], dispatch[1], dispatch[2])
       .AddUniformVariables({{static_cast<uint32_t>(dim_a_outer)},
                             {static_cast<uint32_t>(dim_b_outer)},
