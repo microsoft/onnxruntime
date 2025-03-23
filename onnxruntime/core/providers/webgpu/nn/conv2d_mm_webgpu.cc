@@ -168,7 +168,7 @@ Conv2dMMProgram CreateConv2dMMProgram(const Activation& activation, const std::v
   const auto* bias = has_bias ? inputs[2] : nullptr;
   const auto& input_shape = input_output_shapes[0];
   auto in_channels = is_channels_last ? input_shape[3] : input_shape[1];
-  const auto& output_shape = input_output_shapes[2];
+  const auto& output_shape = has_bias ? input_output_shapes[3] : input_output_shapes[2];
   auto batch_size = output_shape[0];
   const auto output_width = is_channels_last ? output_shape[2] : output_shape[3];
   const auto output_height = is_channels_last ? output_shape[1] : output_shape[2];
@@ -200,7 +200,7 @@ Conv2dMMProgram CreateConv2dMMProgram(const Activation& activation, const std::v
   std::vector<uint32_t> element_size = {is_vec4 ? inner_element_size : 1, static_cast<uint32_t>(is_vec4 ? 4 : 1), static_cast<uint32_t>(is_vec4 ? 4 : 1)};
   const auto components = is_vec4 ? 4 : 1;
   Conv2dMMProgram program(activation, tile_a_outer, tile_b_outer, tile_inner, fit_a_outer, fit_b_outer, fit_inner, is_channels_last, is_vec4, has_bias, std::move(element_size), std::move(elements_per_thread));
-  program.AddInputs({{input, ProgramTensorMetadataDependency::TypeAndRank, input_shape, components}, {weight, ProgramTensorMetadataDependency::TypeAndRank, input_output_shapes[1], components}});
+  program.AddInputs({{input, ProgramTensorMetadataDependency::TypeAndRank, input_shape, static_cast<int>(inner_element_size == 3 ? 1 : inner_element_size)}, {weight, ProgramTensorMetadataDependency::TypeAndRank, input_output_shapes[1], components}});
   if (has_bias) {
     program.AddInput({bias, ProgramTensorMetadataDependency::TypeAndRank, bias->Shape(), components});
   }
