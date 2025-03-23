@@ -24,9 +24,9 @@ class SliceOpBuilder : public BaseOpBuilder {
  private:
   Status AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node,
                                const logging::Logger& logger) const override ORT_MUST_USE_RESULT;
-  bool IsOpSupportedImpl(const InitializedTensorSet& initializers, const Node& node,
+  bool IsOpSupportedImpl(const GraphViewer& graph_viewer, const Node& node,
                          const WebnnDeviceType /* device_type */, const logging::Logger& logger) const override;
-  bool HasSupportedInputsImpl(const InitializedTensorSet& initializers, const Node& node,
+  bool HasSupportedInputsImpl(const GraphViewer& graph_viewer, const Node& node,
                               const emscripten::val& wnn_limits, const logging::Logger& logger) const override;
   // TODO: Support Slice opset < 10, which uses attributes for starts and ends.
   int GetMinSupportedOpSet(const Node& /* node */) const override { return 10; }
@@ -132,7 +132,7 @@ Status SliceOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const 
   return Status::OK();
 }
 
-bool SliceOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& initializers, const Node& node,
+bool SliceOpBuilder::IsOpSupportedImpl(const GraphViewer& graph_viewer, const Node& node,
                                        const WebnnDeviceType /* device_type */, const logging::Logger& logger) const {
   const auto& name = node.Name();
   const auto& op_type = node.OpType();
@@ -152,7 +152,8 @@ bool SliceOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& initializers,
   for (size_t i = 1; i < input_defs.size(); i++) {
     // Optional tensors (axes, steps) can be indicated by an empty name, just ignore it.
     const std::string input_name = GetTensorName(input_defs, i);
-    if (!input_name.empty() && !Contains(initializers, input_name)) {
+    const auto* init = graph_viewer.GetConstantInitializer(input_name);
+    if (!input_name.empty() && !init) {
       LOGS(logger, VERBOSE) << "Input [" << input_name << "] of " << op_type << " [" << name
                             << "] must be known as initializer";
       return false;
@@ -162,7 +163,7 @@ bool SliceOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& initializers,
   return true;
 }
 
-bool SliceOpBuilder::HasSupportedInputsImpl(const InitializedTensorSet& initializers, const Node& node,
+bool SliceOpBuilder::HasSupportedInputsImpl(const GraphViewer& graph_viewer, const Node& node,
                                             const emscripten::val& wnn_limits, const logging::Logger& logger) const {
   const auto& input_defs = node.InputDefs();
   const auto& input = *input_defs[0];
@@ -174,7 +175,8 @@ bool SliceOpBuilder::HasSupportedInputsImpl(const InitializedTensorSet& initiali
   // If there is step < 0, check data type support of reverse.
   if (TensorExists(input_defs, 4)) {
     std::vector<int64_t> steps;
-    if (!ReadIntArrayFrom1DTensor(*initializers.at(input_defs[4]->Name()), steps, logger))
+    const auto* init = graph_viewer.GetConstantInitializer(input_defs[4]->Name());
+    if (!init || !ReadIntArrayFrom1DTensor(*init, steps, logger))
       return false;
     if (std::any_of(steps.begin(), steps.end(), [](int64_t step) { return step < 0; })) {
       if (!IsDataTypeSupportedByWebNNOp(op_type, "reverse", input_type, wnn_limits, "input", "data", logger)) {
