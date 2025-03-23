@@ -10,7 +10,6 @@
 namespace onnxruntime {
 namespace contrib {
 namespace webgpu {
-using namespace onnxruntime::webgpu;
 using onnxruntime::webgpu::Conv;
 class FusedConv final : public Conv<false, true> {
  public:
@@ -25,7 +24,7 @@ ONNX_OPERATOR_KERNEL_EX(
     1,
     kWebGpuExecutionProvider,
     (*KernelDefBuilder::Create())
-        .TypeConstraint("T", WebGpuSupportedFloatTypes()),
+        .TypeConstraint("T", onnxruntime::webgpu::WebGpuSupportedFloatTypes()),
     FusedConv);
 
 }  // namespace webgpu
