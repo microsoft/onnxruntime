@@ -125,6 +125,8 @@ extends:
         BuildId: ${{ parameters.BuildId }}
 
     - template: stages/download-java-tools-stage.yml
+      parameters:
+        is1ES: true
 
     - template: stages/java-cuda-packaging-stage.yml
       parameters:
