@@ -222,6 +222,12 @@ Status Conv<is_channels_last, is_fused>::ComputeInternal(ComputeContext& context
   return context.RunProgram(conv2d_mm_program);
 }
 
+// Explicit template instantiation for FusedConv
+template class Conv<false, true>;
+template Status Conv<false, true>::ComputeInternal(ComputeContext& context) const;
+template TensorShape Conv<false, true>::ComputeOutputShape(const TensorShape& input_shape, const TensorShape& weight_shape, std::vector<uint32_t> pads, std::vector<uint32_t> strides, std::vector<uint32_t> dilations) const;
+
+
 #define WEBGPU_ONNX_CONV_OPERATOR_KERNEL(VERSION_FROM)                                \
   ONNX_OPERATOR_KERNEL_EX(                                                            \
       Conv,                                                                           \
