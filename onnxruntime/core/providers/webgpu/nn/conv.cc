@@ -212,7 +212,11 @@ Status Conv<is_channels_last, is_fused>::ComputeInternal(ComputeContext& context
   if (has_bias) {
     inputs[2] = context.Input<Tensor>(2);
   }
-  std::vector<TensorShape> input_output_shapes = {input_shape, kernel_shape, output_shape};
+  std::vector<TensorShape> input_output_shapes = {input_shape, kernel_shape};
+  if (has_bias) {
+    input_output_shapes.push_back(inputs[2]->Shape());
+  }
+  input_output_shapes.push_back(output_shape);
   Conv2dMMProgram conv2d_mm_program = CreateConv2dMMProgram(activation_, inputs, pads, strides, dilations, output, dim_a_outer, dim_b_outer, dim_inner, is_channels_last, input_output_shapes);
   return context.RunProgram(conv2d_mm_program);
 }
