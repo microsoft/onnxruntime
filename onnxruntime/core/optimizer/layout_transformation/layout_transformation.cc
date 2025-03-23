@@ -84,7 +84,7 @@ bool ConvertNodeLayout(const api::NodeRef& node) {
 // NHWC for Resize operator is not implemented on kWebGpuExecutionProvider
 #if defined(USE_WEBGPU)
   if (node.GetExecutionProviderType() == kWebGpuExecutionProvider) {
-    if (node.OpType() == "Resize") {
+    if (node.OpType() == "Resize" || node.OpType() == "FusedConv") {
       return false;
     }
   }
