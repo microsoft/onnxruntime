@@ -16,6 +16,9 @@ parameters:
 - name: libraryName
   type: string
   default: 'libonnxruntime.so'
+- name: is1ES
+  type: boolean
+  default: false
 
 steps:
 - task: ShellScript@2
@@ -33,8 +36,13 @@ steps:
     tarCompression: 'gz'
     archiveFile: '$(Build.ArtifactStagingDirectory)/${{parameters.artifactName}}.tgz'
     replaceExistingArchive: true
-
-- task: 1ES.PublishPipelineArtifact@1
-  inputs:
-    targetPath: '$(Build.ArtifactStagingDirectory)'
-    artifactName: '${{parameters.artifactNameNoVersionString}}'
+- ${{ if eq(parameters.is1ES, true) }}:
+  - task: 1ES.PublishPipelineArtifact@1
+    inputs:
+      targetPath: '$(Build.ArtifactStagingDirectory)'
+      artifactName: '${{parameters.artifactNameNoVersionString}}'
+- ${{ if eq(parameters.is1ES, false) }}:
+    - task: PublishPipelineArtifact@1
+      inputs:
+        targetPath: '$(Build.ArtifactStagingDirectory)'
+        artifact: '${{parameters.artifactNameNoVersionString}}'
