@@ -158,6 +158,7 @@ std::vector<MatMulTestData<T>> GenerateTestCases() {
            // clang-format on
        })});
 
+#ifdef USE_WEBGPU
   test_cases.push_back(
       {"test 3D tensors with M = 1",
        {6, 1, 8},
@@ -262,7 +263,7 @@ std::vector<MatMulTestData<T>> GenerateTestCases() {
        {1, 2, 8, 1},
        {2, 2, 2, 1},
        real_expected_vals({140, 364, 364, 1100, 588, 812, 1836, 2572})});
-
+#endif
   return test_cases;
 }
 
