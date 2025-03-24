@@ -68,7 +68,9 @@ REGISTER_KERNEL_TYPED(float)
 
 namespace transformers {
 
-constexpr const char* kBeamSearchNotSupportFp16InCpu = "BeamSearch does not support float16 model on CPU execution provider. Use float32 model or CUDA execution provider instead.";
+constexpr const char* kBeamSearchNotSupportFp16InCpu =
+    "BeamSearch does not support float16 model on CPU execution provider. "
+    "Use float32 model or CUDA execution provider instead.";
 
 void BeamSearch::Init(const OpKernelInfo& info) {
   parameters_->ParseFromAttributes(info);
