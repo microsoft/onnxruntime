@@ -61,8 +61,8 @@ OnnxRuntime EPs should follow these rules to create the EP context cache model t
   - OnnxRuntime just change the origitnal input file name by replacing ".onnx" to “_ctx.onnx” as the output file name if no ep.context_file_path provided. Otherwise just use the user provided file path.
   - ep.context_file_path is required if user loads the model from memory buffer, since there’s no way for OnnxRuntime to get the input file path for this scenario.
 - ep.context_embed_mode
-  - 1 (default): dump the EP context context content into the Onnx model.
-  - 0: dump the EP context content as a separate file. EP decides the file name and tracks the file name in EPContext node attribute ep_cache_context. The separate file should always at the same location as the dumped Onnx model file. And the file path tracked in EPContext node is a relative path to the Onnx model file. Note: subfolder is allowed.
+  - 1: dump the EP context context content into the Onnx model.
+  - 0 (default): dump the EP context content as a separate file. EP decides the file name and tracks the file name in EPContext node attribute ep_cache_context. The separate file should always at the same location as the dumped Onnx model file. And the file path tracked in EPContext node is a relative path to the Onnx model file. Note: subfolder is allowed.
 - ep.context_node_name_prefix
   - In case the user wants to add special tag inside the EPContext node name (also the partition_name attribute, and graph name), EP should provide this capability when EP creates the EPContext nodes.
   - This is useful if the user wants to glue multiple EPContext nodes from multiple models into one model and there’s risk that node name (graph name) confliction happens across models. Dependes on EP implementation. QNN EP supports multiple EPContext nodes, so user can merge and re-connect EPContext nodes from different models.
@@ -94,3 +94,97 @@ It is hard for Execution Providers to generate the partitioned graph within the 
 ```
 
 This API returns the array of pointers for EPContext nodes. Execution Provider needs to implement this interface if it has the requirement to generate the context cache model. Otherwise leave it. It is the Execution Provider's responsibility to create the EPContext nodes with its dependencies (like the context binary file if it's not embed_mode). The OnnxRuntime GraphPartitioner use this interface to get the EPContext nodes and generate the partitioned Onnx model. [code details here](https://github.com/microsoft/onnxruntime/blob/544bdd60730270f49f6a5baafdff54065f626776/onnxruntime/core/framework/graph_partitioner.cc#L646-L750)
+
+
+## EPContext with weight sharing
+
+### Weight sharing in Onnx domain
+Weight sharing in Onnx means multiple Onnx models with external weights point to the same external weight file. The Onnx models share same tensor names so that they reference to the same tensor data.
+<p align="center"><img width="50%" src="../../images/Onnx_weight_sharing.png" alt="Weight sharing across Onnx models"/></p>
+
+### Weight sharing in EP domain with EPContext
+EP weight sharing is enabled with EP pre-generated context binary/blob. It requires users to generate context binary offline AOT on Linux x86_64 or Windows x86_64 machine. The EP context binary contains multiple graphs which share the same tensors.
+<p align="center"><img width="30%" src="../../images/EP_weight_sharing.png" alt="Weight sharing in EP context binary"/></p>
+EP or the backend SDK should be able to convert and compile the graph into a way as showed above.
+1. EP or the SDK should be able to identify the identical weights from existing EP context which generated from previously compiled graph.
+2. New graphs compiled into the EP context should use the existing weight if it is identified as identical weight.
+Inside ep_ctx.bin, tensor1_1 from ep_graph1 and tensor2_1 from ep_graph2 are identical, they both point to the same data offset tensor_data1.
+
+### EPContext model generation with Weight sharing workflow
+<p align="center"><img width="90%" src="../../images/EP_weight_sharing_workflow.png" alt="Weight sharing workflow"/></p>
+Each OnnxRuntime session is associated with an ONNX model. Models that share weights are grouped together, forming a model group. Similarly, OnnxRuntime sessions that share common properties are organized into a session group. OnnxRuntime introduces session options **ep.share_ep_contexts** and **ep.stop_share_ep_contexts** to help group the sessions.
+- All OnnxRuntime sessions in the session group should have **ep.share_ep_contexts** enabled.
+- The last OnnxRuntime session has **ep.stop_share_ep_contexts** enabled to identify it is the last session.
+Note: One Onnx model can have multiple EPContext nodes according to graph partition result. Each model only has 1 EPcontext node here just to make it simple. 
+
+### Implementation guidance for EPContext model generation with weight sharing
+- The first session creates a shared workspace (e.g., EP Singleton) to share resources with other sessions.
+- The EP context binary file name is determined by the first session and placed in the shared space (e.g., EP Singleton) for use across session groups.
+- All sessions in the session group compile the graphs into the shared resource. 
+- Each session in the session group creates an EPContext ONNX model. The EP generates an EPContext node that references the EP context binary file name. The ONNX Runtime framework then dumps the EPContext ONNX model.
+- The last session (the one with **ep.stop_share_ep_contexts** enabled) in the session group generates the final EP context binary file with the name from the shared workspace.
+- The last session should clear the shared workspace. Empty shared workspace is used to identify the first session.
+
+User code example
+```
+    Ort::SessionOptions so;
+    // Set session option to dump EPContext Onnx model
+    so.AddConfigEntry(kOrtSessionOptionEpContextEnable, "1");
+    // enable ep.share_ep_contexts
+    so.AddConfigEntry(kOrtSessionOptionShareEpContexts, "1");
+
+    // Add EP, take QNN for example
+    so.AppendExecutionProvider("QNN", provider_options);
+
+	// Create the 1st session to dump the _ctx.onnx model
+    Ort::Session session1(env, "model1.onnx", so);
+	
+	// enable ep.stop_share_ep_contexts to specify this is the last session for the session group
+	so.AddConfigEntry(kOrtSessionOptionStopShareEpContexts, "1");
+	// Create the last session to dump the _ctx.onnx model and the ep_ctx.bin
+	Ort::Session session2(env, "model2.onnx", so);
+```
+
+General tool for EPContext model generation with weight sharing
+OnnxRuntime provides [ep_weight_sharing_ctx_gen](https://github.com/microsoft/onnxruntime/tree/main/onnxruntime/test/ep_weight_sharing_ctx_gen) tool to complete these steps. This tool is specific for weight sharing.
+Example command line:
+```
+./ep_weight_sharing_ctx_gen -e qnn -i "soc_model|60 htp_graph_finalization_optimization_mode|3" ./model1.onnx,./model2.onnx
+```
+It creates 2 Onnx model2 (model1_ctx.onnx, model2_ctx.onnx) and a QNN context binary file (xxx.bin).
+
+### Inference sessions from EPContext models with weight sharing
+OnnxRuntime inference session need to have resource sharing enabled (set session option ep.share_ep_contexts to 1) to use the dumped EPContext models with weight sharing enabled.
+
+Implementation guidance for inferencing from EPContext models with weight sharing:
+- Create the 1st OnnxRuntime inference session with ep.share_ep_contexts=1, loads the model1_ctx.onnx model.
+  - The session loads the model1_ctx.onnx model.
+  - The shared workplace is empty.
+  - EP loads the model_ctx.bin and deserialize the binary to get all graphs (EP_graph1, EP_graph2).
+  - EPContext node in model1_ctx.onnx specifies that it uses EP_graph1
+  - Uses EP_graph1 for the current OnnxRuntime session.
+  - Put the rest of the grpahs (EP_graph2) into the shared workplace.
+- Create OnnxRuntime 2nd inference session with ep.share_ep_contexts=1, loads the model2_ctx.onnx model.
+  - The session loads the model2_ctx.onnx model.
+  - The EPContext node in model2_ctx.onnx specifies that it uses EP_graph2.
+  - The shared workplace has Qnn_graph2.
+  - EP skips loading qnn_ctx.bin since it gets what it wants from the shared workplace.
+  - Moves EP_graph2 from the shared workplace to the current session.
+- To avoid issues while existing execution, it is recommended to destroy the sessions in reverse order.
+
+User code example
+```
+    Ort::SessionOptions so;
+    // enable ep.share_ep_contexts
+    so.AddConfigEntry(kOrtSessionOptionShareEpContexts, "1");
+
+    // Add EP, take QNN for example
+    so.AppendExecutionProvider("QNN", provider_options);
+
+	// Create sessions to load from the _ctx.onnx models with resource sharing enabled
+    Ort::Session session1(env, "model1_ctx.onnx", so);	
+	Ort::Session session2(env, "model2_ctx.onnx", so);
+	
+	session1.run(...);
+	session2.run(...);
+```
