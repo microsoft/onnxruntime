@@ -3,12 +3,12 @@ name: "MacOS CI Pipeline"
 on:
   push:
     branches:
-    - main
-    - rel-*
+      - main
+      - rel-*
   pull_request:
     branches:
-    - main
-    - rel-*
+      - main
+      - rel-*
   workflow_dispatch:
 
 concurrency:
@@ -19,182 +19,25 @@ env:
   python_version: 3.11
 
 jobs:
-  MacOS_C_API_Packaging_CPU_x86_64:
-    runs-on: macos-13
-    steps:
-    - name: Checkout repository
-      uses: actions/checkout@v4
-      with:
-        submodules: false
+  cpu:
+    uses: ./.github/workflows/macos-ci-build-and-test-workflow.yml
 
-    - name: Use Python
-      uses: actions/setup-python@v5
-      with:
-        python-version: ${{ env.python_version }}
+  coreml:
+    uses: ./.github/workflows/macos-ci-build-and-test-workflow.yml
+    with:
+      use_coreml: true
 
-    - name: Use Node.js 20.x
-      uses: actions/setup-node@v4
-      with:
-        node-version: '20.x'
+  xnnpack:
+    uses: ./.github/workflows/macos-ci-build-and-test-workflow.yml
+    with:
+      use_xnnpack: true
 
-    - name: Install Java 17
-      uses: actions/setup-java@v4
-      with:
-        distribution: 'temurin'
-        java-version: '17'
-        architecture: x64
+  webgpu:
+    uses: ./.github/workflows/macos-ci-build-and-test-workflow.yml
+    with:
+      use_webgpu: true
 
-    - name: Set version number variables for Unix
-      shell: bash
-      run: |
-        # Do not output ##vso[] commands with `set -x` or they may be parsed again and include a trailing quote.
-        set +x
-
-        _OnnxRuntimeVersion=$(head -1 ${{ github.workspace }}/VERSION_NUMBER)
-        echo "OnnxRuntimeVersion=$_OnnxRuntimeVersion"
-
-        _OnnxRuntimeGitCommitHash=$(git rev-parse HEAD)
-        echo "OnnxRuntimeGitCommitHash=$_OnnxRuntimeGitCommitHash"
-
-        _OnnxRuntimeGitCommitHash=$(git rev-parse --short=8 HEAD)
-        echo "OnnxRuntimeGitCommitHashShort=$_OnnxRuntimeGitCommitHash"
-      working-directory: ${{ github.workspace }}
-
-    - name: Use Xcode 14.3.1
-      shell: bash
-      run: |
-        set -e -x
-        XCODE_DEVELOPER_DIR="/Applications/Xcode_14.3.1.app/Contents/Developer"
-        sudo xcode-select --switch "${XCODE_DEVELOPER_DIR}"
-
-    - name: Setup environment variables
-      shell: bash
-      run: |
-        set -e -x
-        export PATH=${{ github.workspace }}/installed/bin:$PATH
-        export ONNX_ML=1
-        export CMAKE_ARGS="-DONNX_GEN_PB_TYPE_STUBS=ON -DONNX_WERROR=OFF"
-        python3 -m pip install -r '${{ github.workspace }}/tools/ci_build/github/linux/docker/scripts/requirements.txt'
-
-    - name: Export GitHub Actions cache environment variables
-      uses: actions/github-script@v7
-      with:
-        script: |
-          core.exportVariable('ACTIONS_CACHE_URL', process.env.ACTIONS_CACHE_URL || '');
-          core.exportVariable('ACTIONS_RUNTIME_TOKEN', process.env.ACTIONS_RUNTIME_TOKEN || '');
-
-    - name: Configure Build (build.py --update)
-      shell: bash
-      run: |
-        set -e -x
-        rm -rf ${{ github.workspace }}/Release
-        python3 ${{ github.workspace }}/tools/ci_build/build.py --update --build_objc --build_wheel --use_xnnpack --build_nodejs --build_java --use_coreml --use_webgpu --build_dir ${{ github.workspace }} --skip_submodule_sync --parallel --use_vcpkg --use_vcpkg_ms_internal_asset_cache --use_binskim_compliant_compile_flags --build_shared_lib --config Release --use_vcpkg --use_vcpkg_ms_internal_asset_cache
-
-    - name: Build (build.py --build)
-      shell: bash
-      run: |
-        set -e -x
-        python3 ${{ github.workspace }}/tools/ci_build/build.py --build --build_objc --build_wheel --use_xnnpack --build_nodejs --build_java --use_coreml --use_webgpu --build_dir ${{ github.workspace }} --skip_submodule_sync --parallel --use_vcpkg --use_vcpkg_ms_internal_asset_cache --use_binskim_compliant_compile_flags --build_shared_lib --config Release --use_vcpkg --use_vcpkg_ms_internal_asset_cache
-
-    - name: Install
-      shell: bash
-      run: |
-        set -e -x
-        cd ${{ github.workspace }}/Release
-        make install DESTDIR=${{ github.workspace }}/installed
-
-    - name: Running Tests (build.py --test)
-      shell: bash
-      run: |
-        set -e -x
-        python3 ${{ github.workspace }}/tools/ci_build/build.py --test --build_objc --build_wheel --use_xnnpack --build_nodejs --build_java --use_coreml --use_webgpu --build_dir ${{ github.workspace }} --skip_submodule_sync --parallel --use_binskim_compliant_compile_flags --build_shared_lib --config Release --use_vcpkg --use_vcpkg_ms_internal_asset_cache
-    timeout-minutes: 300
-    env:
-      MACOSX_DEPLOYMENT_TARGET: '13.3'
-      ALLOW_RELEASED_ONNX_OPSET_ONLY: '0'
-
-  ARM64-Xcode16:
-    runs-on: macos-15
-
-    env:
-      xcode_version: 16
-
-    timeout-minutes: 60
-
-    steps:
-    - uses: actions/setup-python@v5
-      with:
-        python-version: ${{ env.python_version }}
-
-    - name: Verify ARM64 machine
-      shell: python
-      run: |
-        import platform
-        assert platform.machine() == "arm64", "This job expects to be run on an ARM64 machine."
-
-    - name: Use Xcode ${{ env.xcode_version }}
-      shell: bash
-      run: |
-        XCODE_DEVELOPER_DIR="/Applications/Xcode_${{ env.xcode_version }}.app/Contents/Developer"
-        sudo xcode-select --switch "${XCODE_DEVELOPER_DIR}"
-
-    - uses: actions/checkout@v4
-
-    - name: Build and test
-      shell: bash
-      run: |
-        python ./tools/ci_build/build.py \
-          --build_dir ./build \
-          --update \
-          --build --parallel \
-          --test \
-          --build_shared_lib \
-          --build_objc \
-          --use_coreml \
-          --use_xnnpack \
-          --use_binskim_compliant_compile_flags
-
-  ARM64-Xcode16-webgpu:
-    runs-on: macos-15
-
-    env:
-      xcode_version: 16
-
-    timeout-minutes: 60
-
-    steps:
-    - uses: actions/setup-python@v5
-      with:
-        python-version: ${{ env.python_version }}
-
-    - name: Verify ARM64 machine
-      shell: python
-      run: |
-        import platform
-        assert platform.machine() == "arm64", "This job expects to be run on an ARM64 machine."
-
-    - name: Use Xcode ${{ env.xcode_version }}
-      shell: bash
-      run: |
-        XCODE_DEVELOPER_DIR="/Applications/Xcode_${{ env.xcode_version }}.app/Contents/Developer"
-        sudo xcode-select --switch "${XCODE_DEVELOPER_DIR}"
-
-    - uses: actions/checkout@v4
-
-    - name: Build and test
-      shell: bash
-      run: |
-        python ./tools/ci_build/build.py \
-          --build_dir ./build \
-          --update \
-          --build --parallel \
-          --test \
-          --build_shared_lib \
-          --build_nodejs \
-          --use_webgpu \
-          --use_binskim_compliant_compile_flags
-
-  ARM64-Xcode16-targeting-iphonesimulator:
+  iphone_simulator:
     runs-on: macos-15
 
     env:
@@ -207,41 +50,34 @@ jobs:
     timeout-minutes: 90
 
     steps:
-    - uses: actions/setup-python@v5
-      with:
-        python-version: ${{ env.python_version }}
+      - name: Checkout code
+        uses: actions/checkout@v4
 
-    - name: Verify ARM64 machine
-      shell: python
-      run: |
-        import platform
-        assert platform.machine() == "arm64", "This job expects to be run on an ARM64 machine."
+      - name: macOS CI pipeline prepare steps
+        uses: ./.github/actions/macos-ci-setup
+        with:
+          platform_machine: "arm64"
+          python_version: ${{ env.python_version }}
+          xcode_version: ${{ env.xcode_version }}
+          use_cache: false
 
-    - name: Use Xcode ${{ env.xcode_version }}
-      shell: bash
-      run: |
-        XCODE_DEVELOPER_DIR="/Applications/Xcode_${{ env.xcode_version }}.app/Contents/Developer"
-        sudo xcode-select --switch "${XCODE_DEVELOPER_DIR}"
-
-    - uses: actions/checkout@v4
-
-    - name: Build for iphonesimulator ${{ matrix.target_arch }}
-      shell: bash
-      run: |
-        python ./tools/ci_build/build.py \
-          --build_dir ./build \
-          --update \
-          --build --parallel \
-          --test \
-          --build_apple_framework \
-          --use_xcode \
-          --use_coreml \
-          --use_xnnpack \
-          --use_binskim_compliant_compile_flags \
-          --ios \
-          --apple_deploy_target=15.1 \
-          --apple_sysroot=iphonesimulator \
-          --osx_arch=${{ matrix.target_arch }}
+      - name: Build for iphonesimulator ${{ matrix.target_arch }}
+        shell: bash
+        run: |
+          python ./tools/ci_build/build.py \
+            --build_dir ./build \
+            --update \
+            --build --parallel \
+            --test \
+            --build_apple_framework \
+            --use_xcode \
+            --use_coreml \
+            --use_xnnpack \
+            --use_binskim_compliant_compile_flags \
+            --ios \
+            --apple_deploy_target=15.1 \
+            --apple_sysroot=iphonesimulator \
+            --osx_arch=${{ matrix.target_arch }}
 
   Objective-C-StaticAnalysis:
     runs-on: macos-14
@@ -252,45 +88,44 @@ jobs:
     timeout-minutes: 30
 
     steps:
-    - uses: actions/setup-python@v5
-      with:
-        python-version: ${{ env.python_version }}
+      - name: Checkout code
+        uses: actions/checkout@v4
 
-    - name: Use Xcode ${{ env.xcode_version }}
-      shell: bash
-      run: |
-        XCODE_DEVELOPER_DIR="/Applications/Xcode_${{ env.xcode_version }}.app/Contents/Developer"
-        sudo xcode-select --switch "${XCODE_DEVELOPER_DIR}"
+      - name: macOS CI pipeline prepare steps
+        uses: ./.github/actions/macos-ci-setup
+        with:
+          platform_machine: "arm64"
+          python_version: ${{ env.python_version }}
+          xcode_version: ${{ env.xcode_version }}
+          use_cache: false
 
-    - uses: actions/checkout@v4
+      - name: Generate compile_commands.json and ONNX protobuf files
+        shell: bash
+        run: |
+          python ./tools/ci_build/build.py \
+            --build_dir ./build \
+            --cmake_generator "Unix Makefiles" \
+            --config Debug \
+            --build_shared_lib \
+            --use_coreml \
+            --build_objc \
+            --enable_training_apis \
+            --cmake_extra_defines CMAKE_EXPORT_COMPILE_COMMANDS=ON \
+            --use_binskim_compliant_compile_flags \
+            --update \
+            --build --parallel \
+            --target onnx_proto
 
-    - name: Generate compile_commands.json and ONNX protobuf files
-      shell: bash
-      run: |
-        python ./tools/ci_build/build.py \
-          --build_dir ./build \
-          --cmake_generator "Unix Makefiles" \
-          --config Debug \
-          --build_shared_lib \
-          --use_coreml \
-          --build_objc \
-          --enable_training_apis \
-          --cmake_extra_defines CMAKE_EXPORT_COMPILE_COMMANDS=ON \
-          --use_binskim_compliant_compile_flags \
-          --update \
-          --build --parallel \
-          --target onnx_proto
+      - name: Analyze Objective-C/C++ source code
+        shell: bash
+        run: |
+          CLANG_TIDY_CHECKS="-*,clang-analyzer-*"
 
-    - name: Analyze Objective-C/C++ source code
-      shell: bash
-      run: |
-        CLANG_TIDY_CHECKS="-*,clang-analyzer-*"
-
-        "$(brew --prefix llvm@15)/bin/clang-tidy" \
-          -p=./build/Debug \
-          --checks="${CLANG_TIDY_CHECKS}" \
-          --warnings-as-errors="${CLANG_TIDY_CHECKS}" \
-          --header-filter="objectivec/include|objectivec|onnxruntime/core" \
-          ./objectivec/*.mm \
-          ./onnxruntime/core/platform/apple/logging/apple_log_sink.mm \
-          ./onnxruntime/core/providers/coreml/model/*.mm
+          "$(brew --prefix llvm@15)/bin/clang-tidy" \
+            -p=./build/Debug \
+            --checks="${CLANG_TIDY_CHECKS}" \
+            --warnings-as-errors="${CLANG_TIDY_CHECKS}" \
+            --header-filter="objectivec/include|objectivec|onnxruntime/core" \
+            ./objectivec/*.mm \
+            ./onnxruntime/core/platform/apple/logging/apple_log_sink.mm \
+            ./onnxruntime/core/providers/coreml/model/*.mm
