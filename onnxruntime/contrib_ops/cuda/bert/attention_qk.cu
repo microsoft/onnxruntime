@@ -48,11 +48,6 @@ Status CopyQK(cudaStream_t stream,
   return CUDA_CALL(cudaGetLastError());
 }
 
-template Status CopyQK<float, float>(cudaStream_t stream,
-                                     const int qk_size,
-                                     const float* input,
-                                     float* output);
-
 template Status CopyQK<float, half>(cudaStream_t stream,
                                     const int qk_size,
                                     const float* input,
@@ -63,10 +58,23 @@ template Status CopyQK<half, float>(cudaStream_t stream,
                                     const half* input,
                                     float* output);
 
-template Status CopyQK<half, half>(cudaStream_t stream,
-                                   const int qk_size,
-                                   const half* input,
-                                   half* output);
+template <>
+Status CopyQK(cudaStream_t stream,
+              const int qk_size,
+              const float* input,
+              float* output) {
+  CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(output, input, qk_size * sizeof(float), cudaMemcpyDeviceToDevice, stream));
+  return Status::OK();
+}
+
+template <>
+Status CopyQK(cudaStream_t stream,
+              const int qk_size,
+              const half* input,
+              half* output) {
+  CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(output, input, qk_size * sizeof(half), cudaMemcpyDeviceToDevice, stream));
+  return Status::OK();
+}
 
 }  // namespace cuda
 }  // namespace contrib
