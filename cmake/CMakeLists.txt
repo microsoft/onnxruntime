@@ -256,8 +256,8 @@ option(onnxruntime_USE_VITISAI_INTERFACE "Build ONNXRuntime shared lib which is 
 option(onnxruntime_USE_QNN_INTERFACE "Build ONNXRuntime shared lib which is compatible with QNN EP interface" OFF)
 
 
-if("${CMAKE_C_COMPILER_ID}" STREQUAL "GNU" AND CMAKE_C_COMPILER_VERSION VERSION_LESS 11)
-  message(FATAL_ERROR  "GCC version must be greater than or equal to 11")
+if("${CMAKE_C_COMPILER_ID}" STREQUAL "GNU" AND CMAKE_C_COMPILER_VERSION VERSION_LESS 11.1)
+  message(FATAL_ERROR  "GCC version must be greater than or equal to 11.1")
 endif()
 
 # ENABLE_TRAINING includes all training functionality
