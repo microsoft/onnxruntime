@@ -23,7 +23,7 @@ name: Linux CI
 
 on:
   push:
-    branches: [ main, 'rel-*', 'snnn/linux_ci']
+    branches: [ main, 'rel-*']
   pull_request:
     branches: [ main ]
 
@@ -115,8 +115,8 @@ jobs:
       - name: Build Docker Image
         uses: ./.github/actions/build-docker-image
         with:
-          Dockerfile: ${{ github.workspace }}/tools/ci_build/github/linux/docker/inference/x86_64/default/cpu/Dockerfile
-          Repository: 'onnxruntimecpubuildcentos8x64'
+          Dockerfile: ${{ github.workspace }}/tools/ci_build/github/linux/docker/Dockerfile.manylinux2_28_cpu
+          Repository: 'onnxruntimecpubuild'
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}  # Needed for context
 
@@ -136,7 +136,7 @@ jobs:
             -w /onnxruntime_src \
             -e ALLOW_RELEASED_ONNX_OPSET_ONLY \
             -e NIGHTLY_BUILD \
-            onnxruntimecpubuildcentos8x64 \
+            onnxruntimecpubuild \
             /bin/bash -c 'set -ex; \
               # Build with Release configuration and additional flags for release builds
               python3 tools/ci_build/build.py \
