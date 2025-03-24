@@ -30042,6 +30042,14 @@ module.exports = require("node:fs/promises");
 
 /***/ }),
 
+/***/ 8161:
+/***/ ((module) => {
+
+"use strict";
+module.exports = require("node:os");
+
+/***/ }),
+
 /***/ 6760:
 /***/ ((module) => {
 
@@ -31849,12 +31857,13 @@ const exec = __nccwpck_require__(4016);
 const github = __nccwpck_require__(6472);
 const fs = __nccwpck_require__(1455);
 const path = __nccwpck_require__(6760);
+const os = __nccwpck_require__(8161); // Import the 'os' module
 
 async function run() {
     try {
         // Get inputs
         const dockerfile = core.getInput('Dockerfile', { required: true });
-        const dockerBuildArgs = core.getInput('DockerBuildArgs');  // Defaults to "" if not provided.
+        let dockerBuildArgs = core.getInput('DockerBuildArgs');  // Defaults to "" if not provided.
         const repository = core.getInput('Repository', { required: true });
 
         const context = dockerfile.substring(0, dockerfile.lastIndexOf('/')) || '.'; // Extract directory of Dockerfile.
@@ -31909,6 +31918,11 @@ async function run() {
         } else {
           dockerCommand.push("--pull")
         }
+
+        // Get the current user ID.
+        const uid = os.userInfo().uid;
+        core.info(`Current user ID: ${uid}`);
+        dockerBuildArgs += ` --build-arg BUILD_UID=${uid}`;
 
 
         if (dockerBuildArgs) {
