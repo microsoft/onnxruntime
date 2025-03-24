@@ -44,7 +44,6 @@ async function run() {
 
         core.info(`Image: ${fullImageName}`);
         const repo_dir = process.env.GITHUB_WORKSPACE
-        const script_dir = path.join(repo_dir, "tools", "ci_build")
 
         // Copy deps.txt if it doesn't exist in the Dockerfile's context.
         const dstDepsFile = path.join(context, 'scripts', 'deps.txt');
