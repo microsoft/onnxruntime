@@ -42,7 +42,7 @@ void TestConvOp(const ConvOpAndTestAttributes& attributes,
   bool enable_webgpu = (nullptr != DefaultWebGpuExecutionProvider().get()) && !disable_webgpu;
   bool enable_cpu = (nullptr != DefaultCpuExecutionProvider().get()) && !use_float16 && !disable_cpu;
 
-  if (enable_cuda || enable_rocm || enable_cpu) {
+  if (enable_cuda || enable_rocm || enable_cpu || enable_webgpu) {
     OpTester test("FusedConv", 1, onnxruntime::kMSDomain);
     test.AddAttribute("group", attributes.group);
     test.AddAttribute("kernel_shape", attributes.kernel_shape);
