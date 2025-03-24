@@ -104,7 +104,7 @@ Weight sharing in Onnx means multiple Onnx models with external weights point to
 
 ### Weight sharing in EP domain with EPContext
 EP weight sharing is enabled with EP pre-generated context binary/blob. It requires users to generate context binary offline AOT on Linux x86_64 or Windows x86_64 machine. The EP context binary contains multiple graphs which share the same tensors.
-<p align="center"><img width="30%" src="../../images/EP_weight_sharing.png" alt="Weight sharing in EP context binary"/></p>
+<p align="center"><img width="50%" src="../../images/EP_weight_sharing.png" alt="Weight sharing in EP context binary"/></p>
 EP or the backend SDK should be able to convert and compile the graph into a way as showed above.
 1. EP or the SDK should be able to identify the identical weights from existing EP context which generated from previously compiled graph.
 2. New graphs compiled into the EP context should use the existing weight if it is identified as identical weight.
