@@ -31954,15 +31954,22 @@ async function run() {
         // Tag the image with the repository name.
         await exec.exec('docker', ['tag', fullImageName, repository]);
 
-        if (useContainerRegistry) {
-          await exec.exec("docker", ["push", fullImageName])
+        // Push only if using the container registry AND it's a push to the main branch.
+        if (useContainerRegistry && github.context.ref === 'refs/heads/main' && github.context.eventName === 'push') {
+          await exec.exec("docker", ["push", fullImageName]);
+        } else {
+          if (github.context.ref !== 'refs/heads/main' || github.context.eventName !== 'push')
+          {
+            core.info("Skipping docker push. Not a push to the main branch.")
+          }
         }
-        // Logout from Azure ACR (if we logged in)
+        // Logout from Azure ACR (if we logged in) using docker logout
         if (azLoginRan) {
+            const registryUrl = `${containerRegistry}.azurecr.io`;
             try {
-                await exec.exec('az', ['acr', 'logout', '-n', containerRegistry]);
+                await exec.exec('docker', ['logout', registryUrl]);
             } catch (error) {
-                core.warning(`Azure ACR logout failed: ${error.message}`); // Warning, not critical.
+                core.warning(`Docker logout failed: ${error.message}`); // Warning, not critical.
             }
         }
 
