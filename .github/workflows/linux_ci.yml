@@ -30,7 +30,7 @@ jobs:
         uses: ./.github/actions/build-docker-image
         with:
           Dockerfile: ${{ github.workspace }}/tools/ci_build/github/linux/docker/inference/x86_64/default/cpu/Dockerfile
-          DockerBuildArgs: "--build-arg BUILD_UID=$( id -u )  --container-registry onnxruntimebuildcache --repository onnxruntimecpubuildcentos8x64"
+          DockerBuildArgs: "--build-arg BUILD_UID=$( id -u )"
           Repository: 'onnxruntimecpubuildcentos8x64'
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}  # Needed for context
