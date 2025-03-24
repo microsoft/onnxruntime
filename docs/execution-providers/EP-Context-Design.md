@@ -136,13 +136,13 @@ User code example
     // Add EP, take QNN for example
     so.AppendExecutionProvider("QNN", provider_options);
 
-	// Create the 1st session to dump the _ctx.onnx model
+    // Create the 1st session to dump the _ctx.onnx model
     Ort::Session session1(env, "model1.onnx", so);
-	
-	// enable ep.stop_share_ep_contexts to specify this is the last session for the session group
-	so.AddConfigEntry(kOrtSessionOptionStopShareEpContexts, "1");
-	// Create the last session to dump the _ctx.onnx model and the ep_ctx.bin
-	Ort::Session session2(env, "model2.onnx", so);
+
+    // enable ep.stop_share_ep_contexts to specify this is the last session for the session group
+    so.AddConfigEntry(kOrtSessionOptionStopShareEpContexts, "1");
+    // Create the last session to dump the _ctx.onnx model and the ep_ctx.bin
+    Ort::Session session2(env, "model2.onnx", so);
 ```
 
 General tool for EPContext model generation with weight sharing
@@ -181,10 +181,10 @@ User code example
     // Add EP, take QNN for example
     so.AppendExecutionProvider("QNN", provider_options);
 
-	// Create sessions to load from the _ctx.onnx models with resource sharing enabled
+    // Create sessions to load from the _ctx.onnx models with resource sharing enabled
     Ort::Session session1(env, "model1_ctx.onnx", so);	
-	Ort::Session session2(env, "model2_ctx.onnx", so);
-	
-	session1.run(...);
-	session2.run(...);
+    Ort::Session session2(env, "model2_ctx.onnx", so);
+
+    session1.run(...);
+    session2.run(...);
 ```
