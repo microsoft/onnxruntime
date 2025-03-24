@@ -5,12 +5,13 @@ const exec = require('@actions/exec');
 const github = require('@actions/github');
 const fs = require('node:fs/promises');
 const path = require('node:path');
+const os = require('node:os'); // Import the 'os' module
 
 async function run() {
     try {
         // Get inputs
         const dockerfile = core.getInput('Dockerfile', { required: true });
-        const dockerBuildArgs = core.getInput('DockerBuildArgs');  // Defaults to "" if not provided.
+        let dockerBuildArgs = core.getInput('DockerBuildArgs');  // Defaults to "" if not provided.
         const repository = core.getInput('Repository', { required: true });
 
         const context = dockerfile.substring(0, dockerfile.lastIndexOf('/')) || '.'; // Extract directory of Dockerfile.
@@ -65,6 +66,11 @@ async function run() {
         } else {
           dockerCommand.push("--pull")
         }
+
+        // Get the current user ID.
+        const uid = os.userInfo().uid;
+        core.info(`Current user ID: ${uid}`);
+        dockerBuildArgs += ` --build-arg BUILD_UID=${uid}`;
 
 
         if (dockerBuildArgs) {
