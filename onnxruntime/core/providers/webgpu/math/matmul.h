@@ -14,9 +14,9 @@
 namespace onnxruntime {
 namespace webgpu {
 
- MatMulProgram CreateMatMulProgram(const Activation& activation, std::vector<const Tensor*>& inputs, Tensor* output);
+MatMulProgram CreateMatMulProgram(const Activation& activation, std::vector<const Tensor*>& inputs, Tensor* output);
 
- class MatMul final : public WebGpuKernel {
+class MatMul final : public WebGpuKernel {
  public:
   MatMul(const OpKernelInfo& info) : WebGpuKernel{info} {}
 

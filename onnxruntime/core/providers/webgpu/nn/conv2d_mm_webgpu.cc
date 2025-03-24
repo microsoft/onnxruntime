@@ -1,5 +1,6 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
+#include <string>
 #include <vector>
 #include <iterator>
 #include <algorithm>
@@ -158,10 +159,10 @@ Status Conv2dMMProgram::GenerateShaderCode(ShaderHelper& shader) const {
       << declaration_functions.str()
       << Conv2dCommonSnippet(activation_, element_size_[0], element_size_[1], element_size_[2]);
   std::string data_type = "x_value_t";
-  return is_vec4_ ? MatMulProgram::MakeMatMulPackedVec4Source(shader, nullptr, elements_per_thread_, WorkgroupSizeX(), WorkgroupSizeY(), data_type) : MatMulProgram::MakeMatMulPackedSource(shader, nullptr, elements_per_thread_, WorkgroupSizeX(), WorkgroupSizeY(), data_type);
+  return is_vec4_ ? MatMulProgram::MakeMatMulPackedVec4Source(shader, elements_per_thread_, WorkgroupSizeX(), WorkgroupSizeY(), data_type, /* batch_dims = */ nullptr, /* transpose_a = */ !is_channels_last_, tile_inner_) : MatMulProgram::MakeMatMulPackedSource(shader, elements_per_thread_, WorkgroupSizeX(), WorkgroupSizeY(), data_type, /* batch_dims = */ nullptr, false, tile_inner_, false, 0, sequentially_access_by_threads_);
 }
 
-Conv2dMMProgram CreateConv2dMMProgram(const Activation& activation, const std::vector<const Tensor*>& inputs, const std::vector<uint32_t>& pads, const std::vector<uint32_t>& strides, const std::vector<uint32_t>& dilations, Tensor* output, uint32_t dim_a_outer, uint32_t dim_b_outer, uint32_t dim_inner, bool is_channels_last, const std::vector<TensorShape>& input_output_shapes) {
+Conv2dMMProgram CreateConv2dMMProgram(const Activation& activation, const std::vector<const Tensor*>& inputs, const std::vector<uint32_t>& pads, const std::vector<uint32_t>& strides, const std::vector<uint32_t>& dilations, Tensor* output, uint32_t dim_a_outer, uint32_t dim_b_outer, uint32_t dim_inner, bool is_channels_last, bool sequentially_access_by_threads, const std::vector<TensorShape>& input_output_shapes) {
   const auto* input = inputs[0];
   const auto* weight = inputs[1];
   bool has_bias = inputs.size() > 2;
@@ -182,7 +183,7 @@ Conv2dMMProgram CreateConv2dMMProgram(const Activation& activation, const std::v
   std::vector<uint32_t> workgroup_size = {8, 8, 1};
   InlinedVector<int64_t> elements_per_thread = {4, static_cast<int64_t>(dim_a_outer <= 8 ? 1 : 4), 1};
   auto intger_divide_ceil2 = [](int64_t a, int64_t b) -> int64_t { return (a + b - 1) / b; };
-  auto intger_divide_ceil3 = [intger_divide_ceil2](int64_t a, int64_t b, int64_t c) -> int64_t { return intger_divide_ceil2(intger_divide_ceil2(a, b),c);};
+  auto intger_divide_ceil3 = [intger_divide_ceil2](int64_t a, int64_t b, int64_t c) -> int64_t { return intger_divide_ceil2(intger_divide_ceil2(a, b), c); };
 
   const std::vector<uint32_t> dispatch = {
       static_cast<uint32_t>(intger_divide_ceil3(dispatch_x, workgroup_size[0], elements_per_thread[0])),
@@ -199,7 +200,7 @@ Conv2dMMProgram CreateConv2dMMProgram(const Activation& activation, const std::v
   bool fit_inner = dim_inner % tile_inner == 0;
   std::vector<uint32_t> element_size = {is_vec4 ? inner_element_size : 1, static_cast<uint32_t>(is_vec4 ? 4 : 1), static_cast<uint32_t>(is_vec4 ? 4 : 1)};
   const auto components = is_vec4 ? 4 : 1;
-  Conv2dMMProgram program(activation, tile_a_outer, tile_b_outer, tile_inner, fit_a_outer, fit_b_outer, fit_inner, is_channels_last, is_vec4, has_bias, std::move(element_size), std::move(elements_per_thread));
+  Conv2dMMProgram program(activation, tile_a_outer, tile_b_outer, tile_inner, fit_a_outer, fit_b_outer, fit_inner, is_channels_last, is_vec4, has_bias, std::move(element_size), std::move(elements_per_thread), sequentially_access_by_threads);
   program.AddInputs({{input, ProgramTensorMetadataDependency::TypeAndRank, input_shape, static_cast<int>(inner_element_size == 3 ? 1 : inner_element_size)}, {weight, ProgramTensorMetadataDependency::TypeAndRank, input_output_shapes[1], components}});
   if (has_bias) {
     program.AddInput({bias, ProgramTensorMetadataDependency::TypeAndRank, bias->Shape(), components});
