@@ -30034,6 +30034,22 @@ module.exports = require("node:events");
 
 /***/ }),
 
+/***/ 1455:
+/***/ ((module) => {
+
+"use strict";
+module.exports = require("node:fs/promises");
+
+/***/ }),
+
+/***/ 6760:
+/***/ ((module) => {
+
+"use strict";
+module.exports = require("node:path");
+
+/***/ }),
+
 /***/ 7075:
 /***/ ((module) => {
 
@@ -31831,74 +31847,116 @@ var __webpack_exports__ = {};
 const core = __nccwpck_require__(4216);
 const exec = __nccwpck_require__(4016);
 const github = __nccwpck_require__(6472);
+const fs = __nccwpck_require__(1455);
+const path = __nccwpck_require__(6760);
 
 async function run() {
-  try {
-    // Get inputs
-    const dockerfile = core.getInput('Dockerfile', { required: true });
-    const dockerBuildArgs = core.getInput('DockerBuildArgs');  // Defaults to "" if not provided.
-    const repository = core.getInput('Repository', { required: true });
-
-    const context = dockerfile.substring(0, dockerfile.lastIndexOf('/')) || '.'; // Extract directory of Dockerfile. or .
-    core.info(`Dockerfile context directory: ${context}`);
-
-    // Determine if we should use the cache.  Avoid cache if it's a PR from a fork.
-    const isPullRequest = github.context.eventName === 'pull_request';
-    const isFork = isPullRequest && github.context.payload.pull_request.head.repo.fork;
-    const useCache = !isFork;
-
-    let azLoginRan = false;
-
-    if (useCache) {
-      // Log in to Azure
-      try {
-        await exec.exec('az', ['login', '--identity']);
-        azLoginRan = true;
-        await exec.exec('az', ['acr', 'login', '-n', 'onnxruntimebuildcache']);
-      } catch (error) {
-        core.setFailed(`Azure login or ACR login failed: ${error.message}`);
-        return; // Exit if login fails.  Critical error.
-      }
-    }
-
-
-    // Build arguments for get_docker_image.py
-    let scriptArgs = [
-      'tools/ci_build/get_docker_image.py',
-      '--dockerfile', dockerfile,
-      '--context', context,
-      '--docker-build-args', dockerBuildArgs,
-      '--repository', repository,
-    ];
-
-    if (useCache) {
-      scriptArgs.push('--container-registry', 'onnxruntimebuildcache');
-      scriptArgs.push('--use_imagecache');
-    }
-
-
-    // Execute the Python script.
     try {
-      await exec.exec('python3', scriptArgs);
+        // Get inputs
+        const dockerfile = core.getInput('Dockerfile', { required: true });
+        const dockerBuildArgs = core.getInput('DockerBuildArgs');  // Defaults to "" if not provided.
+        const repository = core.getInput('Repository', { required: true });
+
+        const context = dockerfile.substring(0, dockerfile.lastIndexOf('/')) || '.'; // Extract directory of Dockerfile.
+        core.info(`Dockerfile context directory: ${context}`);
+
+        // Determine if we should use the cache.  Avoid cache if it's a PR from a fork.
+        const isPullRequest = github.context.eventName === 'pull_request';
+        const isFork = isPullRequest && github.context.payload.pull_request.head.repo.fork;
+        const useCache = !isFork;
+        const containerRegistry = "onnxruntimebuildcache"; // Moved this here as it is a constant
+        const useContainerRegistry = useCache; //Simplified since they have the same condition
+
+        let azLoginRan = false;
+
+        if (useContainerRegistry) {
+            // Log in to Azure
+            try {
+                // Suppress stdout and stderr by redirecting to /dev/null (or equivalent)
+                await exec.exec('az', ['login', '--identity'], { outStream: null, errStream: null });
+                azLoginRan = true;
+                await exec.exec('az', ['acr', 'login', '-n', containerRegistry]);
+            } catch (error) {
+                core.setFailed(`Azure login or ACR login failed: ${error.message}`);
+                return; // Exit if login fails.  Critical error.
+            }
+        }
+
+        const fullImageName = useContainerRegistry
+            ? `${containerRegistry}.azurecr.io/${repository}:latest`
+            : `${repository}:latest`;
+
+        core.info(`Image: ${fullImageName}`);
+        const repo_dir = process.env.GITHUB_WORKSPACE
+        const script_dir = path.join(repo_dir, "tools", "ci_build")
+
+        // Copy deps.txt if it doesn't exist in the Dockerfile's context.
+        const dstDepsFile = path.join(context, 'scripts', 'deps.txt');
+        try {
+          await fs.access(dstDepsFile);
+          core.info("deps.txt already exists. No need to copy")
+        }
+        catch {
+          core.info(`Copying deps.txt to: ${dstDepsFile}`);
+          await fs.mkdir(path.dirname(dstDepsFile), { recursive: true }); // Ensure 'scripts' directory exists
+          await fs.copyFile(path.join(repo_dir, 'cmake', 'deps.txt'), dstDepsFile);
+        }
+        let dockerCommand = ['build'];
+        if (useContainerRegistry) {
+            dockerCommand = ["buildx", "build", "--load"];
+            dockerCommand.push('--cache-from', `type=registry,ref=${fullImageName}`);
+            dockerCommand.push('--build-arg', 'BUILDKIT_INLINE_CACHE=1');
+        } else {
+          dockerCommand.push("--pull")
+        }
+
+
+        if (dockerBuildArgs) {
+            // Split the dockerBuildArgs string into an array, handling spaces and quotes correctly.
+            const argsArray = dockerBuildArgs.split(/\s(?=(?:[^'"`]*(['"`])[^'"`]*\1)*[^'"`]*$)/).filter(Boolean);
+            for (const arg of argsArray) {
+              dockerCommand.push(arg)
+            }
+
+        }
+
+        dockerCommand.push('--tag', fullImageName);
+        dockerCommand.push('--file', dockerfile);
+        dockerCommand.push(context);
+
+
+        // Execute the Docker build command.
+        try {
+            if (useContainerRegistry) {
+                await exec.exec('docker', ["--log-level", "error", ...dockerCommand]);
+            } else {
+                await exec.exec('docker', dockerCommand);
+            }
+        } catch (error) {
+            core.setFailed(`Docker build failed: ${error.message}`);
+            return; // Exit if docker build failed.
+        }
+
+        // Tag the image with the repository name.
+        await exec.exec('docker', ['tag', fullImageName, repository]);
+
+        if (useContainerRegistry) {
+          await exec.exec("docker", ["push", fullImageName])
+        }
+        // Logout from Azure ACR (if we logged in)
+        if (azLoginRan) {
+            try {
+                await exec.exec('az', ['acr', 'logout', '-n', containerRegistry]);
+            } catch (error) {
+                core.warning(`Azure ACR logout failed: ${error.message}`); // Warning, not critical.
+            }
+        }
+
+        core.info('Docker build completed successfully.');
+
     } catch (error) {
-      core.setFailed(`Docker build failed: ${error.message}`);
-      return; // Exit if docker build failed.
+        core.setFailed(error.message);
     }
-
-    // Logout from Azure ACR (if we logged in)
-    if (azLoginRan) {
-      try {
-        await exec.exec('az', ['acr', 'logout', '-n', 'onnxruntimebuildcache']);
-      } catch (error) {
-        core.warning(`Azure ACR logout failed: ${error.message}`); // Warning, not critical.
-      }
-    }
-
-    core.info('Docker build completed successfully.');
-
-  } catch (error) {
-    core.setFailed(error.message);
-  }
 }
 
 run();
