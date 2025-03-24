@@ -71,6 +71,7 @@ class TreeEnsembleCommon : public TreeEnsembleCommonAttributes {
 
   template <typename AGG>
   void ComputeAgg(concurrency::ThreadPool* ttp, const Tensor* X, Tensor* Y, Tensor* label, const AGG& agg) const;
+  void UpdateParallelizationSettings(const OpKernelInfo& info, int& parallel_tree, int& parallel_tree_N, int& parallel_N, const std::string& attr_name) const;
 
  private:
   bool CheckIfSubtreesAreEqual(const size_t left_id, const size_t right_id, const int64_t tree_id, const InlinedVector<NODE_MODE_ONNX>& cmodes,
@@ -118,7 +119,31 @@ std::conditional_t<sizeof(T) == sizeof(uint32_t), uint32_t, uint64_t> bit_cast_i
 template <typename InputType, typename ThresholdType, typename OutputType>
 Status TreeEnsembleCommon<InputType, ThresholdType, OutputType>::Init(const OpKernelInfo& info) {
   TreeEnsembleAttributesV3<ThresholdType> attributes(info, false);
-  return Init(80, 128, 50, attributes);
+  int parallel_tree = 80;
+  int parallel_tree_N = 128;
+  int parallel_N = 50;
+  UpdateParallelizationSettings(info, parallel_tree, parallel_tree_N, parallel_N, "nodes_hitrates_as_tensor");
+  return Init(parallel_tree, parallel_tree_N, parallel_N, attributes);
+}
+
+template <typename InputType, typename ThresholdType, typename OutputType>
+void TreeEnsembleCommon<InputType, ThresholdType, OutputType>::UpdateParallelizationSettings(const OpKernelInfo& info, int& parallel_tree, int& parallel_tree_N, int& parallel_N, const std::string& attr_name) const {
+  std::vector<ThresholdType> hitrates;
+  ORT_THROW_IF_ERROR(GetVectorAttrsOrDefault(info, attr_name, hitrates));
+  if (hitrates.size() == 4) {
+    int x = (int)hitrates[0];
+    if (x == -555 || x == -556) {
+      parallel_tree = (int)hitrates[1];
+      parallel_tree_N = (int)hitrates[2];
+      parallel_N = (int)hitrates[3];
+      ORT_ENFORCE(parallel_tree >= 0, "parallel_tree<0");
+      ORT_ENFORCE(parallel_tree_N >= 0, "parallel_tree<0");
+      ORT_ENFORCE(parallel_N >= 0, "parallel_tree<0");
+      if (x == -556) {
+        printf("-- UpdateParallelizationSettings: parallel_tree=%d parallel_tree_N=%d parallel_N=%d\n", parallel_tree, parallel_tree_N, parallel_N);
+      }
+    }
+  }
 }
 
 template <typename InputType, typename ThresholdType, typename OutputType>
@@ -914,12 +939,39 @@ class TreeEnsembleCommonV5 : public TreeEnsembleCommon<IOType, ThresholdType, IO
               int parallel_tree_N,
               int parallel_N,
               const TreeEnsembleAttributesV5<ThresholdType>& attributes);
+ protected:
+  void UpdateParallelizationSettings(const OpKernelInfo& info, int& parallel_tree, int& parallel_tree_N, int& parallel_N, const std::string& attr_name) const;
+
 };
 
 template <typename IOType, typename ThresholdType>
 Status TreeEnsembleCommonV5<IOType, ThresholdType>::Init(const OpKernelInfo& info) {
   TreeEnsembleAttributesV5<ThresholdType> attributes(info);
-  return Init(80, 128, 50, attributes);
+  int parallel_tree = 80;
+  int parallel_tree_N = 128;
+  int parallel_N = 50;
+  UpdateParallelizationSettings(info, parallel_tree, parallel_tree_N, parallel_N, "nodes_as_hitrates");
+  return Init(parallel_tree, parallel_tree_N, parallel_N, attributes);
+}
+
+template <typename IOType, typename ThresholdType>
+void TreeEnsembleCommonV5<IOType, ThresholdType>::UpdateParallelizationSettings(const OpKernelInfo& info, int& parallel_tree, int& parallel_tree_N, int& parallel_N, const std::string& attr_name) const {
+  std::vector<ThresholdType> hitrates;
+  ORT_THROW_IF_ERROR(GetVectorAttrsOrDefault(info, attr_name, hitrates));
+  if (hitrates.size() == 4) {
+    int x = (int)hitrates[0];
+    if (x == -555 || x == -556) {
+      parallel_tree = (int)hitrates[1];
+      parallel_tree_N = (int)hitrates[2];
+      parallel_N = (int)hitrates[3];
+      ORT_ENFORCE(parallel_tree >= 0, "parallel_tree<0");
+      ORT_ENFORCE(parallel_tree_N >= 0, "parallel_tree<0");
+      ORT_ENFORCE(parallel_N >= 0, "parallel_tree<0");
+      if (x == -556) {
+        printf("-- UpdateParallelizationSettings: parallel_tree=%d parallel_tree_N=%d parallel_N=%d\n", parallel_tree, parallel_tree_N, parallel_N);
+      }
+    }
+  }
 }
 
 template <typename IOType, typename ThresholdType>
