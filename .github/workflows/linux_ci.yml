@@ -22,12 +22,9 @@ jobs:
         uses: actions/setup-python@v4
         with:
           python-version: '3.x'
-
-      - name: Install dependencies
-        run: python -m pip install -r requirements-dev.txt        
-        
+            
       - name: Build Docker Image
-        uses: ./.github/actions/build-docker-image  # Path to your action directory
+        uses: ./.github/actions/build-docker-image
         with:
           Dockerfile: ${{ github.workspace }}/tools/ci_build/github/linux/docker/inference/x86_64/default/cpu/Dockerfile
           DockerBuildArgs: "--build-arg BUILD_UID=$( id -u )  --container-registry onnxruntimebuildcache --repository onnxruntimecpubuildcentos8x64"
