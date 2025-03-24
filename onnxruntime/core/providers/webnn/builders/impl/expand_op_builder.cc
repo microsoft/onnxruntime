@@ -27,7 +27,7 @@ class ExpandOpBuilder : public BaseOpBuilder {
 
   // Operator support related.
  private:
-  bool IsOpSupportedImpl(const GraphViewer&, const Node& node,
+  bool IsOpSupportedImpl(const GraphViewer& graph_viewer, const Node& node,
                          const WebnnDeviceType /* device_type */, const logging::Logger& logger) const override;
 };
 
@@ -69,23 +69,21 @@ bool ExpandOpBuilder::IsOpSupportedImpl(const GraphViewer& graph_viewer,
                                         const logging::Logger& logger) const {
   const auto& input_defs = node.InputDefs();
   const auto& shape_name = input_defs[1]->Name();
-  if (!Contains(initializers, shape_name)) {
-    LOGS(logger, VERBOSE) << "The shape must be a constant initializer.";
-    return false;
-  }
 
-  std::vector<int64_t> new_shape;
   // We need a constant which can not be overriden by input
   const auto* shape_init = graph_viewer.GetConstantInitializer(shape_name);
   if (!shape_init) {
     LOGS(logger, VERBOSE) << "The shape must be a constant initializer.";
     return false;
   }
+
   const auto& shape_tensor = *shape_init;
   if (shape_tensor.data_type() != ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64) {
     LOGS(logger, VERBOSE) << "The type of tensor's element data must be INT64.";
     return false;
   }
+
+  std::vector<int64_t> new_shape;
   if (!ReadIntArrayFrom1DTensor(shape_tensor, new_shape, logger)) {
     LOGS(logger, VERBOSE) << "Cannot get shape.";
     return false;

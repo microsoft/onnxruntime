@@ -30,7 +30,7 @@ class ResizeOpBuilder : public BaseOpBuilder {
 
   // Operator support related.
  private:
-  bool IsOpSupportedImpl(const GraphViewer& graph_viewer, const Node& node,
+  bool IsOpSupportedImpl(const GraphViewer&, const Node& node,
                          const WebnnDeviceType /* device_type */, const logging::Logger& logger) const override;
 
   // Resize opset 10- is very different than Resize opset 11+, with many key attributes missing.
@@ -39,7 +39,7 @@ class ResizeOpBuilder : public BaseOpBuilder {
 };
 
 // Helper functions
-bool GetResizeScalesAndAxes(const InitializedTensorSet& initializers,
+bool GetResizeScalesAndAxes(const GraphViewer& graph_viewer,
                             const Node& node, std::vector<float>& scales,
                             std::vector<int64_t>& axes, const bool is_nhwc,
                             const logging::Logger& logger) {
@@ -48,13 +48,14 @@ bool GetResizeScalesAndAxes(const InitializedTensorSet& initializers,
     return false;
 
   const bool has_axes = !axes.empty();
-  const auto& scales_tensor = *initializers.at(input_defs[2]->Name());
-  if (scales_tensor.dims_size() != 1) {
-    LOGS(logger, ERROR) << "'scales' should be a 1D tensor.";
+  const auto* scales_init = graph_viewer.GetConstantInitializer(input_defs[2]->Name());
+  if (!scales_init || scales_init->dims_size() != 1) {
+    LOGS(logger, ERROR) << "Expecting 'scales' as a 1D constant initialized tensor.";
     return false;
   }
 
   // Number of elements of 'scales' tensor.
+  const auto& scales_tensor = *scales_init;
   const auto num_of_scales = scales_tensor.dims()[0];
 
   if (has_axes && num_of_scales != 2) {
@@ -117,14 +118,14 @@ bool GetResizeSizesAndAxes(const GraphViewer& graph_viewer,
 
   const bool has_axes = !axes.empty();
   const auto* sizes_init = graph_viewer.GetConstantInitializer(input_defs[3]->Name());
-  if (!sizes_init || sizes_tensor->dims_size() != 1) {
-    LOGS(logger, ERROR) << "'sizes' should be a 1D tensor.";
+  if (!sizes_init || sizes_init->dims_size() != 1) {
+    LOGS(logger, ERROR) << "'sizes' should be a 1D constant initializer tensor.";
     return false;
   }
 
-  const auto& sizes_tensor = *size_init
-                             // Number of elements of sizes tensor.
-                             const auto num_of_sizes = sizes_tensor.dims()[0];
+  const auto& sizes_tensor = *sizes_init;
+  // Number of elements of sizes tensor.
+  const auto num_of_sizes = sizes_tensor.dims()[0];
   if (has_axes && num_of_sizes != 2) {
     LOGS(logger, ERROR) << "When 'axes' is provided, 'sizes' should have 2 elements.";
     return false;
