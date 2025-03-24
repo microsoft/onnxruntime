@@ -31882,7 +31882,8 @@ async function run() {
             // Log in to Azure
             try {
                 // Suppress stdout and stderr by redirecting to /dev/null (or equivalent)
-                await exec.exec('az', ['login', '--identity'], { outStream: null, errStream: null });
+                // Added --output none
+                await exec.exec('az', ['login', '--identity', '--output', 'none'], { outStream: null, errStream: null });
                 azLoginRan = true;
                 await exec.exec('az', ['acr', 'login', '-n', containerRegistry]);
             } catch (error) {
