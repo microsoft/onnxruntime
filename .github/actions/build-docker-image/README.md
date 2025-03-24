@@ -36,14 +36,14 @@ This action supports caching using an Azure Container Registry (ACR) named `onnx
 
 ## Caching Behavior:
 
-*   **Enabled:** If caching is enabled (not a fork PR), the action will:
+*Enabled*: If caching is enabled (not a fork PR), the action will:
     1.  Log in to Azure using a managed identity (`az login --identity --output none`). The output of the login command is suppressed for security.
     2.  Log in to the ACR (`az acr login -n onnxruntimebuildcache`).
     3.  Use `docker buildx build --load` with `--cache-from` to utilize the cache from the ACR. Build arguments like `BUILDKIT_INLINE_CACHE=1` are automatically included.
     4.  If the workflow is triggered by a push to the `main` branch, the built image will be pushed to the ACR (`docker push`).
     5.  Log out from docker registry via `docker logout`.
 
-*   **Disabled:** If caching is disabled (a fork PR), the action will:
+-   **Disabled:** If caching is disabled (a fork PR), the action will:
     1.  Perform a regular `docker build` (without `buildx` or caching arguments).
     2.  Not push the image to ACR.
     3.  Skip Azure login and logout.
