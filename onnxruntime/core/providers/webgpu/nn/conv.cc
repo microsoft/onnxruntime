@@ -39,7 +39,7 @@ TensorShape Conv<is_channels_last, is_fused>::ComputeOutputShape(const TensorSha
 }
 
 Status TransposeKernel(ComputeContext& context, const Tensor* kernel, const TensorShape& kernel_shape, Tensor* transposed_kernel) {
-    // Transpose weights
+  // Transpose weights
   auto rank = kernel_shape.NumDimensions();
   TensorShapeVector transposed_kernel_shape_vector(rank);
   std::vector<size_t> perm = {2, 1, 0};
@@ -202,6 +202,7 @@ Status Conv<is_channels_last, is_fused>::ComputeInternal(ComputeContext& context
       return context.RunProgram(program);
     }
   }
+  const bool sequentially_access_by_threads = true;
   // Transpose weights
   Tensor transposed_kernel;
   ORT_RETURN_IF_ERROR(TransposeKernel(context, kernel, kernel_shape, &transposed_kernel));
@@ -213,12 +214,12 @@ Status Conv<is_channels_last, is_fused>::ComputeInternal(ComputeContext& context
   if (has_bias) {
     inputs[2] = context.Input<Tensor>(2);
   }
-  std::vector<TensorShape> input_output_shapes = {input_shape, kernel_shape};
+  std::vector<TensorShape> modified_input_output_shapes = {input_shape, kernel_shape};
   if (has_bias) {
-    input_output_shapes.push_back(inputs[2]->Shape());
+    modified_input_output_shapes.push_back(inputs[2]->Shape());
   }
-  input_output_shapes.push_back(output_shape);
-  Conv2dMMProgram conv2d_mm_program = CreateConv2dMMProgram(activation_, inputs, pads, strides, dilations, output, dim_a_outer, dim_b_outer, dim_inner, is_channels_last, input_output_shapes);
+  modified_input_output_shapes.push_back(output_shape);
+  Conv2dMMProgram conv2d_mm_program = CreateConv2dMMProgram(activation_, inputs, pads, strides, dilations, output, dim_a_outer, dim_b_outer, dim_inner, is_channels_last, sequentially_access_by_threads, modified_input_output_shapes);
   return context.RunProgram(conv2d_mm_program);
 }
 
@@ -227,7 +228,6 @@ template class Conv<false, true>;
 template Status Conv<false, true>::ComputeInternal(ComputeContext& context) const;
 template TensorShape Conv<false, true>::ComputeOutputShape(const TensorShape& input_shape, const TensorShape& weight_shape, std::vector<uint32_t> pads, std::vector<uint32_t> strides, std::vector<uint32_t> dilations) const;
 
-
 #define WEBGPU_ONNX_CONV_OPERATOR_KERNEL(VERSION_FROM)                                \
   ONNX_OPERATOR_KERNEL_EX(                                                            \
       Conv,                                                                           \
@@ -235,7 +235,7 @@ template TensorShape Conv<false, true>::ComputeOutputShape(const TensorShape& in
       VERSION_FROM,                                                                   \
       kWebGpuExecutionProvider,                                                       \
       (*KernelDefBuilder::Create()).TypeConstraint("T", WebGpuSupportedFloatTypes()), \
-      Conv<true, false>);                                                                    \
+      Conv<true, false>);                                                             \
                                                                                       \
   ONNX_OPERATOR_KERNEL_EX(                                                            \
       Conv,                                                                           \
@@ -252,7 +252,7 @@ template TensorShape Conv<false, true>::ComputeOutputShape(const TensorShape& in
       VERSION_FROM, VERSION_TO,                                                       \
       kWebGpuExecutionProvider,                                                       \
       (*KernelDefBuilder::Create()).TypeConstraint("T", WebGpuSupportedFloatTypes()), \
-      Conv<false, false>);                                                                   \
+      Conv<false, false>);                                                            \
                                                                                       \
   ONNX_OPERATOR_VERSIONED_KERNEL_EX(                                                  \
       Conv,                                                                           \

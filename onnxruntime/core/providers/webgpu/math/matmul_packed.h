@@ -25,17 +25,26 @@ class MatMulProgram final : public Program<MatMulProgram> {
                                           {"dim_inner", ProgramUniformVariableDataType::Int32});
 
   static Status MakeMatMulPackedVec4Source(ShaderHelper& shader,
-                                           const ShaderIndicesHelper* batch_dims,
                                            const InlinedVector<int64_t>& elements_per_thread,
                                            uint32_t workgroup_size_x,
                                            uint32_t workgroup_size_y,
-                                           const std::string& data_type);
+                                           const std::string& data_type,
+                                           const ShaderIndicesHelper* batch_dims,
+                                           bool transpose_a = false,
+                                           uint32_t tile_inner = 32,
+                                           boolean split_k = false,
+                                           uint32_t splitted_dim_inner = 32);
   static Status MakeMatMulPackedSource(ShaderHelper& shader,
-                                       const ShaderIndicesHelper* batch_dims,
                                        const InlinedVector<int64_t>& elements_per_thread,
                                        uint32_t workgroup_size_x,
                                        uint32_t workgroup_size_y,
-                                       const std::string& data_type);
+                                       const std::string& data_type,
+                                       const ShaderIndicesHelper* batch_dims,
+                                       bool transpose_a = false,
+                                       uint32_t tile_inner = 32,
+                                       boolean split_k = false,
+                                       uint32_t splitted_dim_inner = 32,
+                                       bool sequentially_access_by_threads = false);
 
  private:
   const Activation& activation_;

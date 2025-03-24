@@ -228,13 +228,11 @@ Status MatMul::ComputeInternal(ComputeContext& context) const {
   return context.RunProgram(program);
 }
 
-MatMulProgram CreateMatMulProgram(const Activation& activation, std::vector<const Tensor*>& inputs, Tensor* output)
-{
+MatMulProgram CreateMatMulProgram(const Activation& activation, std::vector<const Tensor*>& inputs, Tensor* output) {
   MatMulComputeHelper helper;
   const auto* a = inputs[0];
   const auto* b = inputs[1];
   bool has_bias = inputs.size() > 2;
-
 
   ORT_THROW_IF_ERROR(helper.Compute(a->Shape(), b->Shape()));
   int64_t batchA = a->Shape().SizeToDimension(a->Shape().NumDimensions() - 2);
