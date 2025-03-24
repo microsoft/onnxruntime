@@ -31850,8 +31850,6 @@ module.exports = parseParams
 /******/ 	
 /************************************************************************/
 var __webpack_exports__ = {};
-// index.js (or main.js - see package.json "main" field)
-
 const core = __nccwpck_require__(4216);
 const exec = __nccwpck_require__(4016);
 const github = __nccwpck_require__(6472);

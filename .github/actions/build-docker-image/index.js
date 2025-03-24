@@ -1,5 +1,3 @@
-// index.js (or main.js - see package.json "main" field)
-
 const core = require('@actions/core');
 const exec = require('@actions/exec');
 const github = require('@actions/github');
