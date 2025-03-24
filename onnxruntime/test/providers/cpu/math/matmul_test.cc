@@ -158,7 +158,6 @@ std::vector<MatMulTestData<T>> GenerateTestCases() {
            // clang-format on
        })});
 
-#ifdef USE_WEBGPU
   test_cases.push_back(
       {"test 3D tensors with M = 1",
        {6, 1, 8},
@@ -263,7 +262,7 @@ std::vector<MatMulTestData<T>> GenerateTestCases() {
        {1, 2, 8, 1},
        {2, 2, 2, 1},
        real_expected_vals({140, 364, 364, 1100, 588, 812, 1836, 2572})});
-#endif
+
   return test_cases;
 }
 
@@ -295,9 +294,7 @@ void RunMatMulTest(int32_t opset_version, bool is_a_constant, bool is_b_constant
       excluded_providers.insert(kNnapiExecutionProvider);
     }
 
-    // WebGPU: test right 1D and left 1D
-    // set of excluded test cases for WebGPU
-
+    // TODO:: Change MatMulNaive Shader to support these test cases webgpu
     std::unordered_set<std::string> webgpu_excluded_test_cases{
         "test left 1D",
         "test right 1D",
@@ -390,7 +387,7 @@ void RunMatMulZeroKTest() {
   // No special case is implemented.
   test.ConfigExcludeEps({kCoreMLExecutionProvider, kNnapiExecutionProvider,
                          kDmlExecutionProvider, kDnnlExecutionProvider, kQnnExecutionProvider,
-                         kOpenVINOExecutionProvider})
+                         kOpenVINOExecutionProvider, kWebGpuExecutionProvider})
       .Config(run_with_tunable_op)
       .RunWithConfig();
 }

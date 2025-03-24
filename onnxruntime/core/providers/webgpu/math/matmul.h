@@ -26,8 +26,8 @@ class MatMul final : public WebGpuKernel {
 
 class MatMulNaiveProgram final : public Program<MatMulNaiveProgram> {
  public:
-  MatMulNaiveProgram(const int64_t output_size, int64_t output_number, bool has_bias)
-      : Program{"MatMulNaive"}, output_size_(output_size), output_number_(output_number), has_bias_{has_bias} {
+  MatMulNaiveProgram(const size_t output_rank, int64_t output_number, bool has_bias)
+      : Program{"MatMulNaive"}, output_rank_(output_rank), output_number_(output_number), has_bias_{has_bias} {
   }
 
   Status GenerateShaderCode(ShaderHelper& sh) const override;
@@ -38,7 +38,7 @@ class MatMulNaiveProgram final : public Program<MatMulNaiveProgram> {
                                           {"K", ProgramUniformVariableDataType::Uint32});
 
  private:
-  const int64_t output_size_;
+  const size_t output_rank_;
   const int64_t output_number_;
   const bool has_bias_;
 };
