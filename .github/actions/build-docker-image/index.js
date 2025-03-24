@@ -49,7 +49,7 @@ async function run() {
         const dstDepsFile = path.join(context, 'scripts', 'deps.txt');
         try {
           await fs.access(dstDepsFile);
-          core.info("deps.txt already exists. No need to copy")
+          core.info("deps.txt already exists. No need to copy");
         }
         catch {
           core.info(`Copying deps.txt to: ${dstDepsFile}`);
@@ -62,7 +62,7 @@ async function run() {
             dockerCommand.push('--cache-from', `type=registry,ref=${fullImageName}`);
             dockerCommand.push('--build-arg', 'BUILDKIT_INLINE_CACHE=1');
         } else {
-          dockerCommand.push("--pull")
+          dockerCommand.push("--pull");
         }
 
         // Get the current user ID.
@@ -75,7 +75,7 @@ async function run() {
             // Split the dockerBuildArgs string into an array, handling spaces and quotes correctly.
             const argsArray = dockerBuildArgs.split(/\s(?=(?:[^'"`]*(['"`])[^'"`]*\1)*[^'"`]*$)/).filter(Boolean);
             for (const arg of argsArray) {
-              dockerCommand.push(arg)
+              dockerCommand.push(arg);
             }
 
         }
@@ -106,7 +106,7 @@ async function run() {
         } else {
           if (github.context.ref !== 'refs/heads/main' || github.context.eventName !== 'push')
           {
-            core.info("Skipping docker push. Not a push to the main branch.")
+            core.info("Skipping docker push. Not a push to the main branch.");
           }
         }
         // Logout from Azure ACR (if we logged in) using docker logout
