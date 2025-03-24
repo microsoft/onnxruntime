@@ -1,0 +1,17 @@
+name: 'Build Docker Image'
+description: 'Builds a Docker image and optionally pushes it to Azure Container Registry.'
+inputs:
+  Dockerfile:
+    description: 'Path to the Dockerfile.'
+    required: true
+  DockerBuildArgs:
+    description: 'Arguments to pass to docker build.'
+    required: false
+    default: ''
+  Repository:
+    description: 'The image repository name.'
+    required: true
+
+runs:
+  using: 'node20'
+  main: 'index.js'

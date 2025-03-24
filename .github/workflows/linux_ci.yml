@@ -1,0 +1,36 @@
+name: Linux CI
+
+on:
+  push:
+    branches: [ main, 'rel-*', 'snnn/linux_ci']
+  pull_request:
+    branches: [ main ]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Set up Python 3.x
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.x'
+
+      - name: Install dependencies
+        run: python -m pip install -r requirements-dev.txt        
+        
+      - name: Build Docker Image
+        uses: ./.github/actions/build-docker-image  # Path to your action directory
+        with:
+          Dockerfile: ${{ github.workspace }}/tools/ci_build/github/linux/docker/inference/x86_64/default/cpu/Dockerfile
+          DockerBuildArgs: "--build-arg BUILD_UID=$( id -u )  --container-registry onnxruntimebuildcache --repository onnxruntimecpubuildcentos8x64"
+          Repository: 'onnxruntimecpubuildcentos8x64'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}  # Needed for context
