@@ -112,7 +112,6 @@ For example, in ep_ctx.bin, tensor1_1 from ep_graph1 and tensor2_1 from ep_graph
 
 ### EPContext Model Generation with Weight Sharing Workflow
 <p align="center"><img width="90%" src="../../images/EP_weight_sharing_workflow.png" alt="Weight sharing workflow"/></p><br/>
-
 Each ONNX Runtime session is associated with an ONNX model. Models that share weights are grouped into a model group, while ONNX Runtime sessions with common properties are organized into a session group. ONNX Runtime introduces two session options: `ep.share_ep_contexts` and `ep.stop_share_ep_contexts` to facilitate session grouping.
 - All ONNX Runtime sessions within the session group should have `ep.share_ep_contexts` enabled.
 - The final ONNX Runtime session uses `ep.stop_share_ep_contexts` to indicate that it is the last session in the group.
