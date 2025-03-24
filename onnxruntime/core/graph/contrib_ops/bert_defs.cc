@@ -320,6 +320,7 @@ void BaseGroupQueryAttentionTypeAndShapeInference(ONNX_NAMESPACE::InferenceConte
           const auto& data = ParseData<int32_t>(total_sequence_length_data);
           total_sequence_length_value = static_cast<int64_t>(data[0]);
 
+          // present_sequence_length = max(past_sequence_length, total_sequence_length)
           int64_t present_sequence_length = total_sequence_length_value > past_dims[2].dim_value()
                                                 ? total_sequence_length_value
                                                 : past_dims[2].dim_value();
@@ -329,7 +330,7 @@ void BaseGroupQueryAttentionTypeAndShapeInference(ONNX_NAMESPACE::InferenceConte
             *present_shape.add_dim() = dim;
           }
 
-          // shape of present key/value is (batch_size, kv_num_heads, total_sequence_length, head_size)
+          // shape of present key/value is (batch_size, kv_num_heads, present_sequence_length, head_size)
           present_shape.mutable_dim(2)->set_dim_value(present_sequence_length);
 
           updateOutputShape(ctx, 1, present_shape);
