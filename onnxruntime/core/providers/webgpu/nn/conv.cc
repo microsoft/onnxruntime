@@ -223,9 +223,18 @@ Status Conv<is_channels_last, is_fused>::ComputeInternal(ComputeContext& context
 }
 
 // Explicit template instantiation for FusedConv
+template class Conv<false, false>;
 template class Conv<false, true>;
+template class Conv<true, false>;
+template class Conv<true, true>;
+template Status Conv<false, false>::ComputeInternal(ComputeContext& context) const;
 template Status Conv<false, true>::ComputeInternal(ComputeContext& context) const;
+template Status Conv<true, false>::ComputeInternal(ComputeContext& context) const;
+template Status Conv<true, true>::ComputeInternal(ComputeContext& context) const;
+template TensorShape Conv<false, false>::ComputeOutputShape(const TensorShape& input_shape, const TensorShape& weight_shape, std::vector<uint32_t> pads, std::vector<uint32_t> strides, std::vector<uint32_t> dilations) const;
 template TensorShape Conv<false, true>::ComputeOutputShape(const TensorShape& input_shape, const TensorShape& weight_shape, std::vector<uint32_t> pads, std::vector<uint32_t> strides, std::vector<uint32_t> dilations) const;
+template TensorShape Conv<true, false>::ComputeOutputShape(const TensorShape& input_shape, const TensorShape& weight_shape, std::vector<uint32_t> pads, std::vector<uint32_t> strides, std::vector<uint32_t> dilations) const;
+template TensorShape Conv<true, true>::ComputeOutputShape(const TensorShape& input_shape, const TensorShape& weight_shape, std::vector<uint32_t> pads, std::vector<uint32_t> strides, std::vector<uint32_t> dilations) const;
 
 #define WEBGPU_ONNX_CONV_OPERATOR_KERNEL(VERSION_FROM)                                \
   ONNX_OPERATOR_KERNEL_EX(                                                            \
