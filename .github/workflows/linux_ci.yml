@@ -33,3 +33,41 @@ jobs:
           Repository: 'onnxruntimecpubuildcentos8x64'
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}  # Needed for context
+
+      - name: Create .onnx directory
+        run: mkdir -p $HOME/.onnx
+
+      - name: Build and Test ONNX Runtime in Docker
+        env:          
+          ALLOW_RELEASED_ONNX_OPSET_ONLY: 0
+        run: |
+          docker run --rm \
+            --volume /data/onnx:/data/onnx:ro \
+            --volume /data/models:/data/models:ro \
+            --volume ${{ github.workspace }}:/onnxruntime_src \
+            --volume $HOME/.onnx:/home/onnxruntimedev/.onnx \
+            -w /onnxruntime_src \
+            -e ALLOW_RELEASED_ONNX_OPSET_ONLY \
+            -e NIGHTLY_BUILD=1 \
+            onnxruntimecpubuildcentos8x64 \
+            /bin/bash -c 'set -ex; \
+              python3 tools/ci_build/build.py \
+                --build_dir build --cmake_generator Ninja \
+                --config Debug \
+                --skip_submodule_sync \
+                --build_shared_lib \
+                --parallel \
+                --use_vcpkg --use_vcpkg_ms_internal_asset_cache \
+                --enable_onnx_tests \
+                --enable_address_sanitizer \
+                --update --build;
+              python3 /onnxruntime_src/tools/ci_build/build.py \
+                --build_dir build --cmake_generator Ninja \
+                --config Debug \
+                --skip_submodule_sync \
+                --build_shared_lib \
+                --parallel \
+                --use_vcpkg --use_vcpkg_ms_internal_asset_cache \
+                --enable_onnx_tests \
+                --enable_address_sanitizer \
+                --test;'
