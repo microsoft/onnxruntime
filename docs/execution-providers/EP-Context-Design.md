@@ -65,7 +65,7 @@ OnnxRuntime EPs should follow these rules to create the EP context cache model t
   - 0 (default): dump the EP context content as a separate file. EP decides the file name and tracks the file name in EPContext node attribute ep_cache_context. The separate file should always at the same location as the dumped Onnx model file. And the file path tracked in EPContext node is a relative path to the Onnx model file. Note: subfolder is allowed.
 - ep.context_node_name_prefix
   - In case the user wants to add special tag inside the EPContext node name (also the partition_name attribute, and graph name), EP should provide this capability when EP creates the EPContext nodes.
-  - This is useful if the user wants to glue multiple EPContext nodes from multiple models into one model and there’s risk that node name (graph name) confliction happens across models. Dependes on EP implementation. QNN EP supports multiple EPContext nodes, so user can merge and re-connect EPContext nodes from different models.
+  - This is useful if the user wants to glue multiple EPContext nodes from multiple models into one model and there’s risk that node name (graph name) confliction happens across models. Dependes on EP implementation. QNN EP supports multiple QNN contexts, so user can merge and re-connect EPContext nodes generated from different models.
 
 ## Inference from EP Context cache model workflow
 
@@ -160,15 +160,15 @@ Implementation guidance for inferencing from EPContext models with weight sharin
 - Create the 1st OnnxRuntime inference session with ep.share_ep_contexts=1, loads the model1_ctx.onnx model.
   - The session loads the model1_ctx.onnx model.
   - The shared workplace is empty.
-  - EP loads the model_ctx.bin and deserialize the binary to get all graphs (EP_graph1, EP_graph2).
+  - EP loads the ep_ctx.bin and deserialize the binary to get all graphs (EP_graph1, EP_graph2).
   - EPContext node in model1_ctx.onnx specifies that it uses EP_graph1
   - Uses EP_graph1 for the current OnnxRuntime session.
   - Put the rest of the grpahs (EP_graph2) into the shared workplace.
 - Create OnnxRuntime 2nd inference session with ep.share_ep_contexts=1, loads the model2_ctx.onnx model.
   - The session loads the model2_ctx.onnx model.
   - The EPContext node in model2_ctx.onnx specifies that it uses EP_graph2.
-  - The shared workplace has Qnn_graph2.
-  - EP skips loading qnn_ctx.bin since it gets what it wants from the shared workplace.
+  - The shared workplace has EP_graph2.
+  - EP skips loading the ep_ctx.bin since it gets what it wants from the shared workplace.
   - Moves EP_graph2 from the shared workplace to the current session.
 - To avoid issues while existing execution, it is recommended to destroy the sessions in reverse order.
 
