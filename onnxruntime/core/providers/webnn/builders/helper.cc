@@ -290,7 +290,6 @@ uint8_t PackInt8ToUint8AsNibble(int8_t value, const int32_t& data_type) {
   return (result << 4) | result;
 }
 
-
 // Convert float32 to float16 (stored as uint16)
 uint16_t PackFloat32ToUint16AsFloat16(float value) {
   uint32_t float32_bits;
