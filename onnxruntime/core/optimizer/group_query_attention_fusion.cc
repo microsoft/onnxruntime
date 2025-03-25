@@ -11,6 +11,21 @@ using namespace ONNX_NAMESPACE;
 using namespace ::onnxruntime::common;
 namespace onnxruntime {
 
+template <typename T, typename OutT>
+void Dequantize(size_t M, size_t K, size_t N, const T* input,
+                const OutT* scale, OutT* output, const T* zero_point) {
+  for (size_t m = 0; m < M; m++) {
+    for (size_t k = 0; k < K; k++) {
+      size_t index = K * m + k;
+      auto zp = zero_point ? static_cast<int32_t>(zero_point[index / 2]) : 0;
+      auto sc = static_cast<float>(scale[index]);
+      for (size_t n = 0; n < N; n++) {
+        *output++ = static_cast<OutT>(static_cast<float>(static_cast<int32_t>(*input++) - zp) * sc);
+      }
+    }
+  }
+}
+
 NodeArg& MergeQkvWeights(Graph& graph,
                          int64_t input_dim,       // For example, 3072
                          int64_t qkv_second_dim,  // Number of query heads, e.g., 24
@@ -31,6 +46,16 @@ NodeArg& MergeQkvWeights(Graph& graph,
   Initializer q_initializer(*q_tensor, graph.ModelPath());
   Initializer k_initializer(*k_tensor, graph.ModelPath());
   Initializer v_initializer(*v_tensor, graph.ModelPath());
+
+  Initializer q_scale_tensor_initializer(*q_scale_tensor, graph.ModelPath());
+  Initializer q_zero_tensor_initializer(*q_zero_point_tensor, graph.ModelPath());
+
+  Initializer k_scale_tensor_initializer(*k_scale_tensor, graph.ModelPath());
+  Initializer k_zero_tensor_initializer(*k_zero_point_tensor, graph.ModelPath());
+
+  Initializer v_scale_tensor_initializer(*v_scale_tensor, graph.ModelPath());
+  Initializer v_zero_tensor_initializer(*v_zero_point_tensor, graph.ModelPath());
+
   auto data_type = q_tensor->data_type();
 
   int64_t single_tensor_output_dim = qkv_second_dim * qkv_third_dim;  // For example, 24 * 64 = 1536.
@@ -56,14 +81,42 @@ NodeArg& MergeQkvWeights(Graph& graph,
   const uint8_t* k_data = k_initializer.data<uint8_t>();
   const uint8_t* v_data = v_initializer.data<uint8_t>();
 
+  const MLFloat16* q_scale_data = q_scale_tensor_initializer.data<MLFloat16>();
+  const uint8_t* q_zero_points_data = q_zero_tensor_initializer.data<uint8_t>();
+
+  const MLFloat16* k_scale_data = k_scale_tensor_initializer.data<MLFloat16>();
+  const uint8_t* k_zero_points_data = k_zero_tensor_initializer.data<uint8_t>();
+
+  const MLFloat16* v_scale_data = v_scale_tensor_initializer.data<MLFloat16>();
+  const uint8_t* v_zero_points_data = v_zero_tensor_initializer.data<uint8_t>();
+
+  // MLFloat16* output = new MLFloat16[3*2*2];
+
   // Merge the data into one vector.
-  std::vector<uint8_t> merged_data;
+  // std::vector<uint8_t> merged_data;
+  std::vector<MLFloat16> merged_data;
   size_t element_count = q_elements + k_elements + v_elements;
   [[maybe_unused]] size_t element_count2 = input_dim * total_output_dim;
 
   merged_data.reserve(element_count);
 
-  optimizer_utils::MergeMatMulWeights<uint8_t>(q_data, k_data, v_data, merged_data, input_dim, single_tensor_output_dim);
+  std::vector<MLFloat16> q_dequantized_data;
+  q_dequantized_data.resize(element_count);
+
+  std::vector<MLFloat16> k_dequantized_data;
+  k_dequantized_data.resize(element_count);
+
+  std::vector<MLFloat16> v_dequantized_data;
+  v_dequantized_data.resize(element_count);
+
+  // Call your templated function explicitly specifying the template arguments.
+  Dequantize<uint8_t, MLFloat16>(input_dim, qkv_second_dim, qkv_third_dim, q_data, q_scale_data, q_dequantized_data.data(), q_zero_points_data);
+  Dequantize<uint8_t, MLFloat16>(input_dim, qkv_second_dim, qkv_third_dim, k_data, k_scale_data, k_dequantized_data.data(), k_zero_points_data);
+  Dequantize<uint8_t, MLFloat16>(input_dim, qkv_second_dim, qkv_third_dim, v_data, v_scale_data, v_dequantized_data.data(), v_zero_points_data);
+
+  optimizer_utils::MergeMatMulWeights<MLFloat16>(q_dequantized_data.data(), k_dequantized_data.data(), v_dequantized_data.data(), merged_data, input_dim, single_tensor_output_dim);
+
+  // optimizer_utils::MergeMatMulWeights<uint8_t>(q_data, k_data, v_data, merged_data, input_dim, single_tensor_output_dim);
 
   // Convert the merged data to a string and set it as the raw data for the merged tensor.
   utils::SetRawDataInTensorProto(initializer, merged_data.data(), gsl::narrow<size_t>(element_count) * sizeof(uint8_t));
@@ -276,7 +329,7 @@ Status GroupQueryAttentionFusion::ApplyImpl(
     [[maybe_unused]] int sodjsapidjad = 1;
     [[maybe_unused]] int sodjsapidjad2 = 1;
 
-    [[maybe_unused]] int sodjsapidjad3 = 1;
+    [[maybe_unused]] int sodjsapidjad34 = 1;
   }
 
   return Status::OK();
