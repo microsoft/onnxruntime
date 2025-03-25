@@ -314,7 +314,7 @@ void BaseGroupQueryAttentionTypeAndShapeInference(ONNX_NAMESPACE::InferenceConte
         }
       } else if (use_max_past_present_buffer == -1) {
         const auto* total_sequence_length_data = ctx.getInputData(6);
-        if (total_sequence_length_data != nullptr) {
+        if (total_sequence_length_data != nullptr && past_dims[2].has_dim_value()) {
           int64_t total_sequence_length_value = 0;
           const auto& data = ParseData<int32_t>(total_sequence_length_data);
           total_sequence_length_value = static_cast<int64_t>(data[0]);
