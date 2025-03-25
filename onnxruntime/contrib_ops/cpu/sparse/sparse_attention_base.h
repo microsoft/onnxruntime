@@ -448,6 +448,7 @@ class SparseAttentionBase {
                        v, head_size, output_current, hidden_size,
                        MLFloat16(1.0f).val, static_cast<uint16_t>(0) /*beta*/, nullptr);
             } else {
+              (void) output_current;            // Silence gcc 9.
               size_t bytes = static_cast<size_t>(head_size) * total_seq_len * sizeof(float);
               auto v_fp32 = allocator->Alloc(bytes);
               BufferUniquePtr scratch_buffer(v_fp32, BufferDeleter(allocator));
