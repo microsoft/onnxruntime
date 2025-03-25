@@ -310,7 +310,7 @@ ORT_RUNTIME_CLASS(Node);
 ORT_RUNTIME_CLASS(Graph);
 ORT_RUNTIME_CLASS(Model);
 
-#ifdef _WIN32
+#ifdef _MSC_VER
 typedef _Return_type_success_(return == 0) OrtStatus* OrtStatusPtr;
 #else
 typedef OrtStatus* OrtStatusPtr;
@@ -3674,9 +3674,6 @@ struct OrtApi {
    *   Enable the float32 model to be inferenced with fp16 precision. Otherwise, it will be fp32 precision.
    *     - "0": With fp32 precision.
    *     - "1": Default. With fp16 precision.
-   *   "enable_htp_weight_sharing": Enable QNN weight sharing feature while compiling multiple graphs into one QNN context.
-   *     - "0": Default. Disabled.
-   *     - "1": Enabled.
    *   "offload_graph_io_quantization": Offload graph input quantization and graph output dequantization to another
    *   execution provider (typically CPU EP).
    *     - "0": Disabled. QNN EP will handle quantization and dequantization of graph I/O.

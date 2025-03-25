@@ -56,7 +56,6 @@ Status SplitOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
     return std::make_tuple(remainder, chunk_size);
   };
 
-#if defined(COREML_ENABLE_MLPROGRAM)
   if (model_builder.CreateMLProgram()) {
     using namespace CoreML::Specification::MILSpec;
     std::unique_ptr<Operation> split_op = model_builder.CreateOperation(node, "split");
@@ -95,9 +94,7 @@ Status SplitOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
     }
     model_builder.AddOperation(std::move(split_op));
 
-  } else
-#endif
-  {
+  } else {
     std::unique_ptr<COREML_SPEC::NeuralNetworkLayer> layer = model_builder.CreateNNLayer(node);
     auto* coreml_splitnd = layer->mutable_splitnd();
     coreml_splitnd->set_axis(axis);

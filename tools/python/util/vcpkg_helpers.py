@@ -139,11 +139,11 @@ def generate_triplet_for_android(
         # Valid options are dynamic and static. Libraries can ignore this setting if they do not support the preferred linkage type. In our case, we prefer to use static libs.
         f.write("set(VCPKG_LIBRARY_LINKAGE static)\n")
         if not enable_rtti:
-            f.write("set(CMAKE_ANDROID_RTTI OFF)")
+            f.write("set(CMAKE_ANDROID_RTTI OFF)\n")
         if not enable_exception:
-            f.write("set(CMAKE_ANDROID_EXCEPTIONS OFF)")
+            f.write("set(CMAKE_ANDROID_EXCEPTIONS OFF)\n")
         if use_cpp_shared:
-            f.write("set(ANDROID_STL c++_shared)")
+            f.write("set(ANDROID_STL c++_shared)\n")
 
         ldflags = []
 
@@ -429,12 +429,13 @@ def generate_vcpkg_triplets_for_emscripten(build_dir: str, emscripten_root: str)
                     add_port_configs(f, True, True)
 
 
-def generate_windows_triplets(build_dir: str) -> None:
+def generate_windows_triplets(build_dir: str, toolset_version: str) -> None:
     """
     Generate triplet files for Windows platforms.
 
     Args:
         build_dir (str): The directory to save the generated triplet files.
+        toolset_version (str, optional): The version of the platform toolset.
     """
     # Below are all the CPU ARCHs we support on Windows.
     # ARM64 is for ARM64 processes that contains traditional ARM64 code.
@@ -473,6 +474,8 @@ def generate_windows_triplets(build_dir: str) -> None:
                                 f.write(f"set(VCPKG_TARGET_ARCHITECTURE {target_abi})\n")
                                 f.write(f"set(VCPKG_CRT_LINKAGE {crt_linkage})\n")
                                 f.write("set(VCPKG_LIBRARY_LINKAGE static)\n")
+                                if toolset_version:
+                                    f.write(f"set(VCPKG_PLATFORM_TOOLSET_VERSION {toolset_version})\n")
                                 cflags = ["/MP", "/DWIN32", "/D_WINDOWS"]
                                 if enable_binskim:
                                     cflags += [

@@ -10,6 +10,7 @@
 #include "core/providers/qnn/ort_api.h"
 #include "core/providers/qnn/builder/qnn_utils.h"
 #include "core/providers/qnn/builder/qnn_model.h"
+#include "core/providers/qnn/shared_context.h"
 
 namespace onnxruntime {
 namespace qnn {
@@ -207,7 +208,9 @@ Status CreateEPContextNodes(Model* model,
                             const onnxruntime::PathString& context_model_path,
                             bool qnn_context_embed_mode,
                             uint64_t max_spill_fill_buffer_size,
-                            const logging::Logger& logger) {
+                            const logging::Logger& logger,
+                            bool share_ep_contexts,
+                            bool stop_share_ep_contexts) {
   auto& graph = model->MainGraph();
 
   using namespace ONNX_NAMESPACE;
@@ -241,6 +244,7 @@ Status CreateEPContextNodes(Model* model,
         ep_node.AddAttribute(EP_CACHE_CONTEXT, cache_payload);
       } else {
         onnxruntime::PathString context_bin_path;
+        std::string context_cache_name;
         auto pos = context_model_path.find_last_of(ORT_TSTR("."));
         if (pos != std::string::npos) {
           context_bin_path = context_model_path.substr(0, pos);
@@ -253,14 +257,36 @@ Status CreateEPContextNodes(Model* model,
           graph_name_in_file.replace(name_pos, strlen(kQnnExecutionProvider), "");
         }
         context_bin_path = context_bin_path + ToPathString(graph_name_in_file + ".bin");
-        std::string context_cache_name(std::filesystem::path(context_bin_path).filename().string());
-        std::ofstream of_stream(context_bin_path.c_str(), std::ofstream::binary);
-        if (!of_stream) {
-          LOGS(logger, ERROR) << "Failed to open create context file.";
-          return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to open context cache file.");
+        context_cache_name = std::filesystem::path(context_bin_path).filename().string();
+
+        // If generate ctx.onnx with share_ep_context enabled, all ctx.onnx should point to the same ctx.bin
+        if (share_ep_contexts) {
+          auto shared_ctx_bin_name = SharedContext::GetInstance().GetSharedCtxBinFileName();
+          if (shared_ctx_bin_name.empty()) {
+            SharedContext::GetInstance().SetSharedCtxBinFileName(context_cache_name);
+          } else {
+            context_cache_name = shared_ctx_bin_name;
+            auto model_folder_path = std::filesystem::path(context_bin_path).parent_path().string();
+            context_bin_path = ToPathString(model_folder_path + "/" + context_cache_name);
+          }
         }
-        of_stream.write(reinterpret_cast<char*>(buffer), buffer_size);
+
+        // Write the ctx.bin file for the case: 1. no share_ep_context enabled, write for every session
+        // 2. share_ep_context enabled, only write for the last session which has stop_share_ep_contexts enabled
+        if (!share_ep_contexts || (share_ep_contexts && stop_share_ep_contexts)) {
+          std::ofstream of_stream(context_bin_path.c_str(), std::ofstream::binary);
+          if (!of_stream) {
+            LOGS(logger, ERROR) << "Failed to open create context file.";
+            return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to open context cache file.");
+          }
+          of_stream.write(reinterpret_cast<char*>(buffer), buffer_size);
+        }
+
         ep_node.AddAttribute(EP_CACHE_CONTEXT, context_cache_name);
+        if (share_ep_contexts && stop_share_ep_contexts) {
+          SharedContext::GetInstance().ResetSharedCtxBinFileName();
+        }
+
         ep_node.AddAttribute(MAX_SIZE, static_cast<int64_t>(max_spill_fill_buffer_size));
       }
     } else {

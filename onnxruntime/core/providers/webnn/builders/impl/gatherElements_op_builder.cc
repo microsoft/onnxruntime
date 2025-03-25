@@ -20,7 +20,7 @@ class GatherElementsOpBuilder : public BaseOpBuilder {
                                const logging::Logger& logger) const override ORT_MUST_USE_RESULT;
 
   // Operator support related.
-  bool HasSupportedInputsImpl(const InitializedTensorSet& /* initializers */, const Node& node,
+  bool HasSupportedInputsImpl(const GraphViewer&, const Node& node,
                               const emscripten::val& wnn_limits, const logging::Logger& logger) const override;
 };
 
@@ -49,7 +49,7 @@ Status GatherElementsOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builde
 
 // Operator support related.
 
-bool GatherElementsOpBuilder::HasSupportedInputsImpl(const InitializedTensorSet& /* initializers */, const Node& node,
+bool GatherElementsOpBuilder::HasSupportedInputsImpl(const GraphViewer&, const Node& node,
                                                      const emscripten::val& wnn_limits,
                                                      const logging::Logger& logger) const {
   const auto& data = *node.InputDefs()[0];

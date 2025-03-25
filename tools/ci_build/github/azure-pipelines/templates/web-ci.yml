@@ -147,7 +147,7 @@ stages:
       ExtraBuildArgs: '--target onnxruntime_webassembly --skip_tests --enable_wasm_api_exception_catching --disable_rtti ${{ parameters.ExtraBuildArgs }}'
       PoolName: ${{ parameters.PoolName }}
       BuildJsep: ${{ parameters.BuildJsep }}
-      BuildWebGPU: false
+      BuildWebGPU: ${{ parameters.BuildWebGPU }}
       WithCache: ${{ parameters.WithCache }}
       is1ES: ${{ parameters.is1ES }}
 

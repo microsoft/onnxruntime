@@ -312,13 +312,15 @@ def chain_model(args):
     # Save WhisperBeamSearch graph and external data
     if os.path.isfile(args.beam_model_output_dir):
         logger.info(f"Overwriting {args.beam_model_output_dir} and {args.beam_model_output_dir + '.data'}")
-        os.remove(args.beam_model_output_dir)
-        os.remove(args.beam_model_output_dir + ".data")
+        if os.path.exists(args.beam_model_output_dir):
+            os.remove(args.beam_model_output_dir)
+        if os.path.exists(args.beam_model_output_dir + ".data"):
+            os.remove(args.beam_model_output_dir + ".data")
 
     onnx.save(
         beam_model,
         args.beam_model_output_dir,
-        save_as_external_data=True,
+        save_as_external_data=args.use_external_data_format,
         all_tensors_to_one_file=True,
         convert_attribute=True,
         location=f"{os.path.basename(args.beam_model_output_dir)}.data",

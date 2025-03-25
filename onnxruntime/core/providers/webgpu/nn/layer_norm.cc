@@ -4,19 +4,11 @@
 
 #include "core/providers/webgpu/shader_helper.h"
 #include "core/providers/webgpu/webgpu_supported_types.h"
+#include "core/providers/webgpu/webgpu_utils.h"
 #include "core/providers/webgpu/nn/layer_norm.h"
 
 namespace onnxruntime {
 namespace webgpu {
-
-static int GetMaxComponents(int64_t size) {
-  if (size % 4 == 0) {
-    return 4;
-  } else if (size % 2 == 0) {
-    return 2;
-  }
-  return 1;
-}
 
 static size_t NormalizeAxis(int64_t axis, size_t tensor_rank) {
   int64_t rank = static_cast<int64_t>(tensor_rank);
@@ -24,19 +16,6 @@ static size_t NormalizeAxis(int64_t axis, size_t tensor_rank) {
     ORT_THROW("invalid axis: ", axis);
   }
   return onnxruntime::narrow<size_t>(axis < 0 ? axis + rank : axis);
-}
-
-static std::string SumVector(std::string x, int components) {
-  switch (components) {
-    case 1:
-      return x;
-    case 2:
-      return "(" + x + ".x + " + x + ".y" + ")";
-    case 4:
-      return "(" + x + ".x + " + x + ".y + " + x + ".w + " + x + ".z" + ")";
-    default:
-      ORT_THROW("Unsupported number of components: ", components);
-  }
 }
 
 Status LayerNormProgram::GenerateShaderCode(ShaderHelper& shader) const {

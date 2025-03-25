@@ -22,8 +22,8 @@ _OPSET_VERSION = 1
 _registered_ops: typing.AbstractSet[str] = set()
 
 
-def _reg(symbolic_fn: typing.Callable):
-    name = f"::{symbolic_fn.__name__}"
+def _reg(symbolic_fn: typing.Callable, namespace: str = ""):
+    name = f"{namespace}::{symbolic_fn.__name__}"
     torch.onnx.register_custom_op_symbolic(name, symbolic_fn, _OPSET_VERSION)
     _registered_ops.add(name)
 
@@ -90,6 +90,26 @@ def register():
         return g.op("com.microsoft::Trilu", self, diagonal, upper_i=0).setType(self.type())
 
     _reg(tril)
+
+    @torch.onnx.symbolic_helper.parse_args("v")
+    def DynamicTimeWarping(g, self):  # noqa: N802
+        return g.op("com.microsoft::DynamicTimeWarping", self)
+
+    _reg(DynamicTimeWarping, namespace="onnxruntime")
+
+    def UnfoldTensor(g, self, dim, size, step):  # noqa: N802
+        dim = int(symbolic_helper._maybe_get_const(dim, "i"))
+        size = int(symbolic_helper._maybe_get_const(size, "i"))
+        step = int(symbolic_helper._maybe_get_const(step, "i"))
+        return g.op(
+            "com.microsoft::UnfoldTensor",
+            self,
+            dim_i=dim,
+            size_i=size,
+            step_i=step,
+        ).setType(self.type().with_sizes([None, None, None, None, size]))
+
+    _reg(UnfoldTensor, namespace="onnxruntime")
 
 
 def unregister():

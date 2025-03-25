@@ -157,11 +157,25 @@ export declare namespace JSEP {
     shouldTransferToMLTensor: boolean;
 
     /**
+     *  [exported from pre-jsep.js] Called when InferenceSession.run started. This function will be called before
+     * _OrtRun[WithBinding]() is called.
+     * @param sessionId - specify the session ID.
+     */
+    webnnOnRunStart: (sessionId: number) => void;
+    /**
+     * [exported from pre-jsep.js] Release a session. This function will be called before _OrtReleaseSession() is
+     * called.
+     * @param sessionId - specify the session ID.
+     * @returns
+     */
+    webnnOnReleaseSession: (sessionId: number) => void;
+
+    /**
      * [exported from pre-jsep.js] Called when InferenceSession.run finished. This function will be called after
      * _OrtRun[WithBinding]() is called.
      * @param sessionId - specify the session ID.
      */
-    jsepOnRunEnd: (sessionId: number) => void;
+    webnnOnRunEnd: (sessionId: number) => void;
 
     /**
      * [exported from pre-jsep.js] Register MLContext for a session.
@@ -169,18 +183,18 @@ export declare namespace JSEP {
      * @param context - specify the MLContext.
      * @returns
      */
-    jsepRegisterMLContext: (sessionId: number, context: MLContext) => void;
+    webnnRegisterMLContext: (sessionId: number, context: MLContext) => void;
     /**
      * [exported from pre-jsep.js] Reserve a MLTensor ID attached to the current session.
      * @returns the MLTensor ID.
      */
-    jsepReserveTensorId: () => number;
+    webnnReserveTensorId: () => number;
     /**
      * [exported from pre-jsep.js] Release an MLTensor ID from use and destroys underlying MLTensor if no longer in use.
      * @param tensorId - specify the MLTensor ID.
      * @returns
      */
-    jsepReleaseTensorId: (tensorId: number) => void;
+    webnnReleaseTensorId: (tensorId: number) => void;
     /**
      * [exported from pre-jsep.js] Ensure that an MLTensor of a given type and shape exists for a MLTensor ID.
      * @param sessionId - specify the session ID or current active session ID if undefined.
@@ -190,7 +204,7 @@ export declare namespace JSEP {
      * @param copyOld - specify whether to copy the old tensor if a new tensor was created.
      * @returns the MLTensor associated with the tensor ID.
      */
-    jsepEnsureTensor: (
+    webnnEnsureTensor: (
       sessionId: number | undefined,
       tensorId: number,
       dataType: DataType,
@@ -203,20 +217,20 @@ export declare namespace JSEP {
      * @param data - specify the data to upload. It can be a TensorProto::data_type or a WebNN MLOperandDataType.
      * @returns
      */
-    jsepUploadTensor: (tensorId: number, data: Uint8Array) => void;
+    webnnUploadTensor: (tensorId: number, data: Uint8Array) => void;
     /**
      * [exported from pre-jsep.js] Download data from an MLTensor.
      * @param tensorId - specify the MLTensor ID.
      * @returns the downloaded data.
      */
-    jsepDownloadTensor: (tensorId: number, dstBuffer: ArrayBufferView | ArrayBuffer) => Promise<undefined>;
+    webnnDownloadTensor: (tensorId: number, dstBuffer: ArrayBufferView | ArrayBuffer) => Promise<undefined>;
     /**
      * [exported from pre-jsep.js] Creates a downloader function to download data from an MLTensor.
      * @param tensorId - specify the MLTensor ID.
      * @param type - specify the data type.
      * @returns the downloader function.
      */
-    jsepCreateMLTensorDownloader: (
+    webnnCreateMLTensorDownloader: (
       tensorId: number,
       type: Tensor.MLTensorDataTypes,
     ) => () => Promise<Tensor.DataTypeMap[Tensor.MLTensorDataTypes]>;
@@ -228,7 +242,7 @@ export declare namespace JSEP {
      * @param dimensions - specify the dimensions.
      * @returns the MLTensor ID for the external MLTensor.
      */
-    jsepRegisterMLTensor: (
+    webnnRegisterMLTensor: (
       sessionId: number,
       tensor: MLTensor,
       onnxDataType: DataType,
@@ -240,7 +254,7 @@ export declare namespace JSEP {
      * @param optionsOrGpuDevice - specify the options or GPUDevice.
      * @returns
      */
-    jsepCreateMLContext(optionsOrGpuDevice?: MLContextOptions | GPUDevice): Promise<MLContext>;
+    webnnCreateMLContext(optionsOrGpuDevice?: MLContextOptions | GPUDevice): Promise<MLContext>;
 
     /**
      * [exported from pre-jsep.js] Register a WebNN Constant operand from external data.
@@ -249,28 +263,30 @@ export declare namespace JSEP {
      * @param dataLength - specify the external data length.
      * @param builder - specify the MLGraphBuilder used for constructing the Constant.
      * @param desc - specify the MLOperandDescriptor of the Constant.
+     * @param shouldConvertInt64ToInt32 - specify whether to convert int64 to int32.
      * @returns the WebNN Constant operand for the specified external data.
      */
-    jsepRegisterMLConstant(
+    webnnRegisterMLConstant(
       externalFilePath: string,
       dataOffset: number,
       dataLength: number,
       builder: MLGraphBuilder,
       desc: MLOperandDescriptor,
+      shouldConvertInt64ToInt32: boolean,
     ): MLOperand;
 
     /**
      * [exported from pre-jsep.js] Register a WebNN graph input.
      * @param inputName - specify the input name.
      */
-    jsepRegisterGraphInput: (inputName: string) => void;
+    webnnRegisterGraphInput: (inputName: string) => void;
     /**
      * [exported from pre-jsep.js] Check if a graph input is a WebNN graph input.
      * @param sessionId - specify the session ID.
      * @param inputName - specify the input name.
      * @returns whether the input is a WebNN graph input.
      */
-    jsepIsGraphInput: (sessionId: number, inputName: string) => boolean;
+    webnnIsGraphInput: (sessionId: number, inputName: string) => boolean;
     /**
      * [exported from pre-jsep.js] Create a temporary MLTensor for a session.
      * @param sessionId - specify the session ID.
@@ -278,7 +294,13 @@ export declare namespace JSEP {
      * @param shape - specify the shape.
      * @returns the MLTensor ID for the temporary MLTensor.
      */
-    jsepCreateTemporaryTensor: (sessionId: number, dataType: DataType, shape: readonly number[]) => Promise<number>;
+    webnnCreateTemporaryTensor: (sessionId: number, dataType: DataType, shape: readonly number[]) => Promise<number>;
+    /**
+     * [exported from pre-jsep.js] Check if a session's associated WebNN Context supports int64.
+     * @param sessionId - specify the session ID.
+     * @returns whether the WebNN Context supports int64.
+     */
+    webnnIsInt64Supported: (sessionId: number) => boolean;
   }
 }
 

@@ -2,9 +2,14 @@ name: iOS_CI_on_Mac
 
 on:
   push:
-    branches: [ main, 'rel-*']
+    branches:
+      - main
+      - rel-*
   pull_request:
-    branches: [ main ]
+    branches:
+      - main
+      - rel-*
+  workflow_dispatch:
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -15,7 +20,7 @@ jobs:
     runs-on: macos-13
     steps:
     - name: Checkout repository
-      uses: actions/checkout@v3
+      uses: actions/checkout@v4
       with:
         submodules: false
     - name: Use Xcode ${{ env.XCODE_VERSION }}

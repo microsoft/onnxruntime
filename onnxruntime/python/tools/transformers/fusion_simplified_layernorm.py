@@ -51,6 +51,7 @@ class FusionSimplifiedLayerNormalization(Fusion):
             mul_node, div_node, _sqrt_node, add_node, reduce_mean_node = sim_ln_nodes
             if not self.model.has_constant_input(div_node, 1.0):
                 return
+            node_parent = mul_node
         else:
             # Div(1, RMS) can also be represented as Reciprocal(RMS) like
             #
@@ -66,6 +67,7 @@ class FusionSimplifiedLayerNormalization(Fusion):
             #      Mul --> ReduceMean --> Add ---> Sqrt --> Reciprocal --> Mul --> Mul (node)
             #      (B=2)                  (A/B=eps)                                (A/B=scale)
             #
+            return_indice = []
             sim_ln_nodes = self.model.match_parent_path(
                 node,
                 ["Mul", "Reciprocal", "Sqrt", "Add", "ReduceMean"],
@@ -73,24 +75,50 @@ class FusionSimplifiedLayerNormalization(Fusion):
                 output_name_to_node=output_name_to_node,
                 return_indice=return_indice,
             )
-            if sim_ln_nodes is None:
-                return
-            mul_node, _reciprocal_node, _sqrt_node, add_node, reduce_mean_node = sim_ln_nodes
+            if sim_ln_nodes is not None:
+                mul_node, _reciprocal_node, _sqrt_node, add_node, reduce_mean_node = sim_ln_nodes
+                node_parent = mul_node
+            else:
+                #  (root_input) --------------------------------+
+                #       |                                       |
+                #       v                                       v
+                #      Pow --> ReduceMean --> Add ---> Sqrt --> Div --> Mul (node)
+                #      (B=2)                  (A/B=eps)                 (A/B=scale)
+                #
+                #  (root_input) --------------------------------+
+                #      | |                                      |
+                #      v v                                      v
+                #      Mul --> ReduceMean --> Add ---> Sqrt --> Div --> Mul (node)
+                #      (B=2)                  (A/B=eps)                 (A/B=scale)
+                #
+                return_indice = []
+                sim_ln_nodes = self.model.match_parent_path(
+                    node,
+                    ["Div", "Sqrt", "Add", "ReduceMean"],
+                    [None, 1, 0, None],
+                    output_name_to_node=output_name_to_node,
+                    return_indice=return_indice,
+                )
+                if sim_ln_nodes is not None:
+                    div_node, _sqrt_node, add_node, reduce_mean_node = sim_ln_nodes
+                    node_parent = div_node
+                else:
+                    return
 
-        pow_or_mul_node = self.model.get_parent(reduce_mean_node, 0, output_name_to_node)
-        if pow_or_mul_node is None or pow_or_mul_node.op_type not in ["Pow", "Mul"]:
+        reduce_mean_parent = self.model.get_parent(reduce_mean_node, 0, output_name_to_node)
+        if reduce_mean_parent is None or reduce_mean_parent.op_type not in ["Pow", "Mul"]:
             return
 
-        if pow_or_mul_node.op_type == "Pow":
-            if self.model.find_constant_input(pow_or_mul_node, 2.0) != 1:
+        if reduce_mean_parent.op_type == "Pow":
+            if self.model.find_constant_input(reduce_mean_parent, 2.0) != 1:
                 return
         else:
-            assert pow_or_mul_node.op_type == "Mul"
-            if pow_or_mul_node[0] != pow_or_mul_node[1]:
+            assert reduce_mean_parent.op_type == "Mul"
+            if reduce_mean_parent[0] != reduce_mean_parent[1]:
                 return
 
-        root_input = pow_or_mul_node.input[0]
-        if root_input != mul_node.input[0]:
+        root_input = reduce_mean_parent.input[0]
+        if root_input not in node_parent.input:
             return
 
         _i, epsilon = self.model.get_constant_input(add_node)
@@ -113,7 +141,7 @@ class FusionSimplifiedLayerNormalization(Fusion):
             return
 
         self.nodes_to_remove.extend(sim_ln_nodes)
-        self.nodes_to_remove.append(pow_or_mul_node)
+        self.nodes_to_remove.append(reduce_mean_parent)
         self.nodes_to_remove.append(node)
 
         normalize_node = helper.make_node(

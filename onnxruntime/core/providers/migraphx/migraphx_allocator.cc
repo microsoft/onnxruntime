@@ -68,7 +68,7 @@ void* MIGraphXExternalAllocator::Reserve(size_t size) {
   return p;
 }
 
-void* HIPPinnedAllocator::Alloc(size_t size) {
+void* MIGraphXPinnedAllocator::Alloc(size_t size) {
   void* p = nullptr;
   if (size > 0) {
     HIP_CALL_THROW(hipHostMalloc((void**)&p, size));
@@ -76,7 +76,7 @@ void* HIPPinnedAllocator::Alloc(size_t size) {
   return p;
 }
 
-void HIPPinnedAllocator::Free(void* p) {
+void MIGraphXPinnedAllocator::Free(void* p) {
   HIP_CALL_THROW(hipHostFree(p));
 }
 

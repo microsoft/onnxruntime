@@ -9,7 +9,6 @@
 #include "core/providers/coreml/model/model.h"
 #include "core/providers/coreml/coreml_options.h"
 
-#if defined(COREML_ENABLE_MLPROGRAM)
 // coremltools classes
 namespace MPL {
 class ModelPackage;
@@ -20,7 +19,6 @@ namespace Blob {
 class StorageWriter;
 }
 }  // namespace MILBlob
-#endif
 
 namespace onnxruntime {
 namespace coreml {
@@ -58,11 +56,7 @@ class ModelBuilder {
 
   // Returns true if we are creating an ML Program
   bool CreateMLProgram() const {
-#if defined(COREML_ENABLE_MLPROGRAM)
     return create_ml_program_;
-#else
-    return false;
-#endif
   }
 
   /*
@@ -76,7 +70,6 @@ class ModelBuilder {
   // Add layer to the Core ML NeuralNetwork model
   void AddLayer(std::unique_ptr<COREML_SPEC::NeuralNetworkLayer> layer);
 
-#if defined(COREML_ENABLE_MLPROGRAM)
   /*
    * MLProgram helpers
    */
@@ -147,7 +140,6 @@ class ModelBuilder {
 
   // add the operation to the main function
   void AddOperation(std::unique_ptr<COREML_SPEC::MILSpec::Operation> operation);
-#endif
 
   /*
    * General helpers
@@ -176,7 +168,6 @@ class ModelBuilder {
   const logging::Logger& Logger() const { return logger_; }
 
  private:
-#if defined(COREML_ENABLE_MLPROGRAM)
   template <typename T>
   std::string_view AddConstantImpl(std::string_view op_type, std::string_view value_type, gsl::span<const T> value,
                                    std::optional<gsl::span<const int64_t>> shape = std::nullopt);
@@ -190,7 +181,6 @@ class ModelBuilder {
   const std::string& AddConstantOperation(std::string_view name, COREML_SPEC::MILSpec::Value&& initializer);
   const std::string& AddTensorValueAsConstantOperation(std::string_view op_type, std::string_view value_type,
                                                        COREML_SPEC::MILSpec::Value&& input_value);
-#endif
 
   // Convert the ONNX model in graph_viewer_ to a CoreML::Specification::Model and serialize to disk.
   // We then load it using CoreML in order compile it.
@@ -237,7 +227,6 @@ class ModelBuilder {
   uint32_t name_token_{0};
   std::unordered_set<std::string> unique_names_;
 
-#if defined(COREML_ENABLE_MLPROGRAM)
   // mlprogram_main_ is the main block of the CoreML ML Program.
   // It is set in CreateModel to the CoreML Model.mlprogram.functions['main'].block_specializations['CoreML<ver>']
   // entry we create.
@@ -254,7 +243,6 @@ class ModelBuilder {
   // This means an op builder author doesn't need to be aware of the renaming.
   // https://github.com/apple/coremltools/blob/8b37641f243b1a3e81452feea311c6e30dcc9287/coremltools/converters/mil/mil/passes/defs/preprocess.py#L146-L149
   std::unordered_map<std::string, std::string> values_to_rename_;
-#endif
 };
 
 }  // namespace coreml

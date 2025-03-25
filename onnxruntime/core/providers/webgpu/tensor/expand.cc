@@ -53,7 +53,7 @@ Status Expand::ComputeInternal(ComputeContext& context) const {
           {data_size},
       });
   if (components_i != components_o) {
-    program.AddIndices(output_shape);
+    program.AddIndices(std::move(output_shape));
   }
   return context.RunProgram(program);
 }

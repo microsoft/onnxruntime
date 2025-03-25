@@ -104,12 +104,19 @@ const ShaderVariableHelper& ShaderHelper::AddOutput(const std::string& name, Sha
   return AddVariableImpl(false, name, usage, dims);
 }
 
-const ShaderIndicesHelper& ShaderHelper::AddIndices(const std::string& name, bool use_uniform) {
+const ShaderIndicesHelper& ShaderHelper::AddIndices(const std::string& name, ShaderUsage usage) {
   const size_t indices_index = indices_vars_.size();
+  ORT_ENFORCE(indices_index < program_.Indices().size(),
+              "Too many indices in the program (", program_.Indices().size(), ")");
+
+  // usage of indices should not use flag other than UseUniform and UseIndicesTypeAlias
+  ORT_ENFORCE(!(usage & ~(ShaderUsage::UseUniform | ShaderUsage::UseIndicesTypeAlias)),
+              "Invalid usage for indices variable ", name);
+
   return *indices_vars_.emplace_back(
       std::make_unique<ShaderIndicesHelper>(name,
                                             ProgramVariableDataType::InvalidType,
-                                            use_uniform ? ShaderUsage::UseUniform : ShaderUsage::None,
+                                            usage,
                                             program_.Indices()[indices_index]));
 }
 

@@ -15,7 +15,9 @@ stages:
     workspace:
       clean: all
     timeoutInMinutes: 150
-    pool: 'onnxruntime-Ubuntu2204-AMD-CPU'
+    pool:
+      name: 'onnxruntime-Ubuntu2204-AMD-CPU'
+      os: linux
     variables:
     - name: CUDA_VERSION_MAJOR
       ${{ if eq(parameters.CudaVersion, '11.8') }}:
@@ -48,6 +50,7 @@ stages:
           version: '$(OnnxRuntimeVersion)'
           libraryName: 'libonnxruntime.so'
           nativeLibraryName: 'libonnxruntime4j_jni.so'
+          is1ES: true
 
     - template: ../templates/c-api-artifacts-package-and-publish-steps-posix.yml
       parameters:
@@ -66,7 +69,9 @@ stages:
     workspace:
       clean: all
     timeoutInMinutes: 180
-    pool: 'onnxruntime-Ubuntu2204-AMD-CPU'
+    pool:
+      name: 'onnxruntime-Ubuntu2204-AMD-CPU'
+      os: linux
     variables:
     - template: ../templates/common-variables.yml
     - name: CUDA_VERSION_MAJOR
@@ -109,6 +114,7 @@ stages:
           version: '$(OnnxRuntimeVersion)'
           libraryName: 'libonnxruntime.so'
           nativeLibraryName: 'libonnxruntime4j_jni.so'
+          is1ES: true
 
     - ${{ if eq(parameters.buildNodejs, 'true') }}:
       - template: ../templates/nodejs-artifacts-package-and-publish-steps-posix.yml
@@ -138,7 +144,9 @@ stages:
     condition: succeeded()
     workspace:
       clean: all
-    pool: 'Onnxruntime-Linux-GPU'
+    pool:
+      name: 'Onnxruntime-Linux-GPU-A10'
+      os: linux
     variables:
     - template: ../templates/common-variables.yml
     - name: CUDA_VERSION_MAJOR
@@ -218,9 +226,9 @@ stages:
           /src_dir/onnxruntime-inference-examples/c_cxx/squeezenet/run_capi_application.sh -o /src_dir/onnxruntime -p /artifact_src/onnxruntime-linux-x64-gpu-$(OnnxRuntimeVersion).tgz -w /src_dir/onnxruntime-inference-examples/c_cxx/squeezenet
         workingDirectory: '$(Build.ArtifactStagingDirectory)'
 
-    - task: PublishPipelineArtifact@1
+    - task: 1ES.PublishPipelineArtifact@1
       inputs:
-        targetPath: '$(Build.ArtifactStagingDirectory)/onnxruntime-linux-x64-gpu-$(OnnxRuntimeVersion).tgz'
+        targetPath: '$(Build.ArtifactStagingDirectory)'
         artifactName: 'onnxruntime-linux-x64-gpu'
     - template: ../templates/component-governance-component-detection-steps.yml
       parameters:

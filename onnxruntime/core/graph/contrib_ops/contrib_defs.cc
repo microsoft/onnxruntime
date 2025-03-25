@@ -3361,7 +3361,8 @@ void RegisterContribSchemas() {
           OpSchema::NonDifferentiable)
       .TypeConstraint(
           "T",
-          {"tensor(int8)",
+          {"tensor(bool)",
+           "tensor(int8)",
            "tensor(int16)",
            "tensor(int32)",
            "tensor(int64)",

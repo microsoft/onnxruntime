@@ -309,12 +309,12 @@ export const createSession = async (
           if (context) {
             wasm.currentContext = context as MLContext;
           } else if (gpuDevice) {
-            wasm.currentContext = await wasm.jsepCreateMLContext!(gpuDevice);
+            wasm.currentContext = await wasm.webnnCreateMLContext!(gpuDevice);
           } else {
-            wasm.currentContext = await wasm.jsepCreateMLContext!({ deviceType, powerPreference });
+            wasm.currentContext = await wasm.webnnCreateMLContext!({ deviceType, powerPreference });
           }
         } else {
-          wasm.currentContext = await wasm.jsepCreateMLContext!();
+          wasm.currentContext = await wasm.webnnCreateMLContext!();
         }
         break;
       }
@@ -330,7 +330,7 @@ export const createSession = async (
 
     // clear current MLContext after session creation
     if (wasm.currentContext) {
-      wasm.jsepRegisterMLContext!(sessionHandle, wasm.currentContext);
+      wasm.webnnRegisterMLContext!(sessionHandle, wasm.currentContext);
       wasm.currentContext = undefined;
       wasm.shouldTransferToMLTensor = true;
     }
@@ -454,6 +454,7 @@ export const releaseSession = (sessionId: number): void => {
   }
 
   wasm.jsepOnReleaseSession?.(sessionId);
+  wasm.webnnOnReleaseSession?.(sessionId);
   wasm.webgpuOnReleaseSession?.(sessionId);
 
   inputNamesUTF8Encoded.forEach((buf) => wasm._OrtFree(buf));
@@ -520,7 +521,7 @@ export const prepareInputOutputTensor = async (
     const mlTensor = tensor[2].mlTensor as MLTensor;
     dataByteLength = calculateTensorSizeInBytes(tensorDataTypeStringToEnum(dataType), dims)!;
 
-    const registerMLTensor = wasm.jsepRegisterMLTensor;
+    const registerMLTensor = wasm.webnnRegisterMLTensor;
     if (!registerMLTensor) {
       throw new Error('Tensor location "ml-tensor" is not supported without using WebNN.');
     }
@@ -540,7 +541,7 @@ export const prepareInputOutputTensor = async (
         wasm.setValue(rawData + i * ptrSize, allocWasmString(data[i], allocs), '*');
       }
     } else {
-      const isGraphInput = wasm.jsepIsGraphInput;
+      const isGraphInput = wasm.webnnIsGraphInput;
       if (dataType !== 'string' && isGraphInput) {
         const tensorNameUTF8 = wasm._OrtGetInputName(sessionId, index);
         const tensorName = wasm.UTF8ToString(tensorNameUTF8);
@@ -549,8 +550,8 @@ export const prepareInputOutputTensor = async (
           const dataTypeEnum = tensorDataTypeStringToEnum(dataType);
           dataByteLength = calculateTensorSizeInBytes(dataTypeEnum, dims)!;
           actualLocation = 'ml-tensor';
-          const createTemporaryTensor = wasm.jsepCreateTemporaryTensor;
-          const uploadTensor = wasm.jsepUploadTensor;
+          const createTemporaryTensor = wasm.webnnCreateTemporaryTensor;
+          const uploadTensor = wasm.webnnUploadTensor;
           if (!createTemporaryTensor || !uploadTensor) {
             throw new Error('Tensor location "ml-tensor" is not supported without using WebNN.');
           }
@@ -722,6 +723,7 @@ export const run = async (
     }
 
     wasm.jsepOnRunStart?.(sessionHandle);
+    wasm.webnnOnRunStart?.(sessionHandle);
 
     let errorCode: number;
     if (!BUILD_DEFS.DISABLE_JSEP && ioBindingState) {
@@ -862,13 +864,19 @@ export const run = async (
               ]);
             }
           } else if (preferredLocation === 'ml-tensor' && size > 0) {
-            const ensureTensor = wasm.jsepEnsureTensor;
-            if (!ensureTensor) {
+            const ensureTensor = wasm.webnnEnsureTensor;
+            const isInt64Supported = wasm.webnnIsInt64Supported;
+            if (!ensureTensor || !isInt64Supported) {
               throw new Error('preferredLocation "ml-tensor" is not supported without using WebNN.');
             }
             const tensorSize = calculateTensorSizeInBytes(dataType, size);
             if (tensorSize === undefined || !isMLTensorSupportedType(type)) {
               throw new Error(`Unsupported data type: ${type}`);
+            }
+            if (type === 'int64' && !isInt64Supported(sessionId)) {
+              throw new Error(
+                `preferredLocation "ml-tensor" for int64 output is not supported by current WebNN Context.`,
+              );
             }
 
             // If the graph has been partitioned, the output tensor may have not been created. For this reason, we use
@@ -884,9 +892,9 @@ export const run = async (
               dims,
               {
                 mlTensor,
-                download: wasm.jsepCreateMLTensorDownloader!(dataOffset, type),
+                download: wasm.webnnCreateMLTensorDownloader!(dataOffset, type),
                 dispose: () => {
-                  wasm.jsepReleaseTensorId!(dataOffset);
+                  wasm.webnnReleaseTensorId!(dataOffset);
                   wasm._OrtReleaseTensor(tensor);
                 },
               },
@@ -909,7 +917,7 @@ export const run = async (
         if (!keepOutputTensor) {
           wasm._OrtReleaseTensor(tensor);
         }
-        wasm.jsepOnRunEnd?.(sessionHandle);
+        wasm.webnnOnRunEnd?.(sessionHandle);
       }
     }
 

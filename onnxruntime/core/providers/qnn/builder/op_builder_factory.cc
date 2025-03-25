@@ -47,6 +47,7 @@ OpBuilderRegistrations::OpBuilderRegistrations() {
     CreateSimpleOpBuilder("Sin", *this);
     CreateSimpleOpBuilder("Sqrt", *this);
     CreateSimpleOpBuilder("Sub", *this);
+    CreateSimpleOpBuilder("Sum", *this);
     CreateSimpleOpBuilder("Tanh", *this);
 
     CreateSimpleOpBuilder("Concat", *this);

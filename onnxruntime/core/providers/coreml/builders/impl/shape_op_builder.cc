@@ -25,7 +25,6 @@ Status ShapeOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const 
                                              const logging::Logger& /*logger*/) const {
   const auto& input_defs = node.InputDefs();
 
-#if defined(COREML_ENABLE_MLPROGRAM)
   if (model_builder.CreateMLProgram()) {
     using namespace CoreML::Specification::MILSpec;
     NodeAttrHelper node_attr_helper{node};
@@ -63,9 +62,7 @@ Status ShapeOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const 
       AddOperationOutput(*op, *node.OutputDefs()[0], output_datatype);
       model_builder.AddOperation(std::move(op));
     }
-  } else  // NOLINT
-#endif
-  {
+  } else {
     auto layer = model_builder.CreateNNLayer(node);
     layer->mutable_getshape();
     *layer->mutable_input()->Add() = input_defs[0]->Name();

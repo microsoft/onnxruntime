@@ -81,12 +81,12 @@ jobs:
       versionSpec: '20.x'
   - task: DownloadPipelineArtifact@2
     inputs:
-      patterns: '${{ parameters.BuildConfig }}_*/**/*'
-      path: $(Pipeline.Workspace)\artifacts
+      patterns: '${{ parameters.BuildConfig }}_wasm/**/*'
+      path: $(Pipeline.Workspace)\artifacts_wasm
     displayName: 'Download WebAssembly artifacts'
   - task: CopyFiles@2
     inputs:
-      sourceFolder: $(Pipeline.Workspace)\artifacts
+      sourceFolder: $(Pipeline.Workspace)\artifacts_wasm
       contents: |
         **\ort-*.wasm
       targetFolder: $(Build.SourcesDirectory)\js\web\dist
@@ -94,7 +94,7 @@ jobs:
     displayName: 'Binplace dist files (.wasm)'
   - task: CopyFiles@2
     inputs:
-      sourceFolder: $(Pipeline.Workspace)\artifacts
+      sourceFolder: $(Pipeline.Workspace)\artifacts_wasm
       contents: |
         **\ort-*.mjs
       targetFolder: $(Build.SourcesDirectory)\js\web\dist
@@ -221,6 +221,47 @@ jobs:
     workingDirectory: '$(Build.SourcesDirectory)\js\web'
     displayName: 'Run ort-web tests - WebAssembly: proxy'
     condition: and(succeeded(), eq('${{ parameters.BuildConfig }}', 'Release'))
+
+  # === Start of experimental WebGPU EP tests ===
+
+  - ${{ if eq(parameters.RunWebGpuTests, true) }}:
+    - task: DownloadPipelineArtifact@2
+      inputs:
+        patterns: '${{ parameters.BuildConfig }}_wasm_webgpu/**/*'
+        path: $(Pipeline.Workspace)\artifacts_wasm_webgpu
+      displayName: 'Download WebAssembly artifacts'
+    - task: CopyFiles@2
+      inputs:
+        sourceFolder: $(Pipeline.Workspace)\artifacts_wasm_webgpu
+        contents: |
+          **\ort-*.wasm
+        targetFolder: $(Build.SourcesDirectory)\js\web\dist
+        flattenFolders: true
+        overWrite: true
+      displayName: 'Binplace dist files (.wasm)'
+    - task: CopyFiles@2
+      inputs:
+        sourceFolder: $(Pipeline.Workspace)\artifacts_wasm_webgpu
+        contents: |
+          **\ort-*.mjs
+        targetFolder: $(Build.SourcesDirectory)\js\web\dist
+        flattenFolders: true
+        overWrite: true
+      displayName: 'Binplace dist files (.mjs)'
+    - script: |
+        powershell "Get-WmiObject Win32_Process -Filter \"name = 'chrome.exe'\" | Format-List CommandLine"
+      displayName: 'Check active Chrome processes (before test)'
+      condition: and(succeeded(), eq(variables['Agent.Diagnostic'], 'true'))
+    - script: |
+        mkdir $(Agent.TempDirectory)\web\test\07
+        dir $(Agent.TempDirectory)\web\test\07
+        npm test --webgpu-ep -- -b=webgpu -e=chrome $(webgpuCommandlineExtraFlags) --user-data-dir=$(Agent.TempDirectory)\web\test\07 --chromium-flags=--enable-logging --chromium-flags=--v=1
+      workingDirectory: '$(Build.SourcesDirectory)\js\web'
+      displayName: 'Run ort-web tests - WebGPU EP'
+      continueOnError: true # we allow WebGPU EP tests to fail for now
+
+  # === End of experimental WebGPU EP tests ===
+
   - script: |
       npm run test:e2e -- --browser=Chrome_default
     workingDirectory: '$(Build.SourcesDirectory)\js\web'
@@ -256,12 +297,13 @@ jobs:
       displayName: 'Publish Pipeline Artifact'
       condition: and(succeeded(), eq('${{ parameters.BuildConfig }}', 'Release'))
   - script: |
-      if exist 01 (echo ------------------- BEGIN 01 -------------------&&type 01\chrome_debug.log&&echo ------------------- END 01 ------------------- )
-      if exist 02 (echo ------------------- BEGIN 02 -------------------&&type 02\chrome_debug.log&&echo ------------------- END 02 ------------------- )
-      if exist 03 (echo ------------------- BEGIN 03 -------------------&&type 03\chrome_debug.log&&echo ------------------- END 03 ------------------- )
-      if exist 04 (echo ------------------- BEGIN 04 -------------------&&type 04\chrome_debug.log&&echo ------------------- END 04 ------------------- )
-      if exist 05 (echo ------------------- BEGIN 05 -------------------&&type 05\chrome_debug.log&&echo ------------------- END 05 ------------------- )
-      if exist 06 (echo ------------------- BEGIN 06 -------------------&&type 06\chrome_debug.log&&echo ------------------- END 06 ------------------- )
+      for %%i in (01 02 03 04 05 06 07) do (
+        if exist %%i (
+          echo ------------------- BEGIN %%i -------------------
+          type %%i\chrome_debug.log
+          echo ------------------- END %%i -------------------
+        )
+      )
     displayName: 'Log Chrome processes (after test)'
     workingDirectory: '$(Agent.TempDirectory)\web\test'
     condition: always()

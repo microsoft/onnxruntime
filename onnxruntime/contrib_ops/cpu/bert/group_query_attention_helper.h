@@ -6,6 +6,7 @@
 #include "core/common/common.h"
 #include "core/providers/common.h"
 #include "contrib_ops/cpu/bert/attention_common.h"
+#include "contrib_ops/cpu/bert/attention_parameters.h"
 
 namespace onnxruntime {
 namespace contrib {
@@ -288,6 +289,50 @@ Status CheckInputs(const T* query,
 
   return CheckInputs(query, key, value, past_key, past_value, cos_cache, sin_cache, parameters, num_heads, kv_num_heads, seqlens_k, total_seqlen, scale, softcap);
 }
+
+template <typename T = Tensor>
+Status CheckCustomAttentionInputs(const T* position_ids,
+                                  const T* attention_bias,
+                                  const GroupQueryAttentionParameters& parameters) {
+  if (position_ids != nullptr) {
+    const auto& pos_ids_shape = position_ids->Shape();
+    if (pos_ids_shape[0] != parameters.batch_size) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                             "position_ids dimension 0 must be equal to the batch size, got ", pos_ids_shape[0]);
+    }
+
+    if (pos_ids_shape[1] < parameters.sequence_length) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                             "position_ids dimension 1 must be atleast sequence length, got ", pos_ids_shape[1]);
+    }
+  }
+
+  if (attention_bias != nullptr) {
+    const auto& attn_bias_shape = attention_bias->Shape();
+    if ((attn_bias_shape[0] != parameters.batch_size) && (attn_bias_shape[0] != 1)) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                             "attention_bias dimension 0 must be equal to the batch size or 1, got ", attn_bias_shape[0]);
+    }
+
+    if ((attn_bias_shape[1] != parameters.num_heads) && (attn_bias_shape[1] != 1)) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                             "attention_bias dimension 1 must be equal to the num heads or 1, got ", attn_bias_shape[1]);
+    }
+
+    if (attn_bias_shape[2] != parameters.sequence_length) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                             "attention_bias dimension 2 must be equal to the sequence length, got ", attn_bias_shape[2]);
+    }
+
+    if (attn_bias_shape[3] != parameters.total_sequence_length) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                             "attention_bias dimension 3 must be equal to total_sequence_length, got ", attn_bias_shape[3]);
+    }
+  }
+
+  return Status::OK();
+}
+
 }  // namespace group_query_attention_helper
 }  // namespace contrib
 }  // namespace onnxruntime

@@ -52,7 +52,8 @@ class FlashAttentionProgram final : public Program<FlashAttentionProgram> {
                                           {"past_sequence_length", ProgramUniformVariableDataType::Uint32},
                                           {"is_gqa", ProgramUniformVariableDataType::Uint32},
                                           {"n_reps", ProgramUniformVariableDataType::Uint32},
-                                          {"alpha", ProgramUniformVariableDataType::Float32});
+                                          {"alpha", ProgramUniformVariableDataType::Float32},
+                                          {"num_seq_tile", ProgramUniformVariableDataType::Uint32});
 
  private:
   bool has_attention_bias_;
