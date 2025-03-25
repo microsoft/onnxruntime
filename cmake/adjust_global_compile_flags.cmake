@@ -195,7 +195,6 @@ if (${CMAKE_SYSTEM_NAME} MATCHES "Darwin|iOS|visionOS|tvOS")
   foreach(flags CMAKE_CXX_FLAGS CMAKE_OBJC_FLAGS CMAKE_OBJCXX_FLAGS)
     string(APPEND ${flags} " -fvisibility=hidden -fvisibility-inlines-hidden ")
   endforeach()
-  add_compile_options($<$<COMPILE_LANGUAGE:CXX>:-Wno-unsafe-buffer-usage>)
 endif()
 
 
