@@ -10,7 +10,7 @@ namespace webgpu {
 ONNX_OPERATOR_VERSIONED_KERNEL_EX(If,
                                   kOnnxDomain,
                                   1, 10,
-                                  kJsExecutionProvider,
+                                  kWebGpuExecutionProvider,
                                   (*KernelDefBuilder::Create())
                                       .InputMemoryType(OrtMemTypeCPUInput, 0)  // 'cond' needs to be on CPU
                                       .TypeConstraint("B", DataTypeImpl::GetTensorType<bool>())
@@ -21,7 +21,7 @@ ONNX_OPERATOR_VERSIONED_KERNEL_EX(If,
 ONNX_OPERATOR_VERSIONED_KERNEL_EX(If,
                                   kOnnxDomain,
                                   11, 12,
-                                  kJsExecutionProvider,
+                                  kWebGpuExecutionProvider,
                                   (*KernelDefBuilder::Create())
                                       .InputMemoryType(OrtMemTypeCPUInput, 0)  // 'cond' needs to be on CPU
                                       .TypeConstraint("B", DataTypeImpl::GetTensorType<bool>())
@@ -32,7 +32,7 @@ ONNX_OPERATOR_VERSIONED_KERNEL_EX(If,
 ONNX_OPERATOR_VERSIONED_KERNEL_EX(If,
                                   kOnnxDomain,
                                   13, 18,
-                                  kJsExecutionProvider,
+                                  kWebGpuExecutionProvider,
                                   (*KernelDefBuilder::Create())
                                       .InputMemoryType(OrtMemTypeCPUInput, 0)  // 'cond' needs to be on CPU
                                       .TypeConstraint("B", DataTypeImpl::GetTensorType<bool>())
@@ -45,7 +45,7 @@ ONNX_OPERATOR_VERSIONED_KERNEL_EX(If,
 ONNX_OPERATOR_VERSIONED_KERNEL_EX(If,
                                   kOnnxDomain,
                                   19, 20,
-                                  kJsExecutionProvider,
+                                  kWebGpuExecutionProvider,
                                   (*KernelDefBuilder::Create())
                                       .InputMemoryType(OrtMemTypeCPUInput, 0)  // 'cond' needs to be on CPU
                                       .TypeConstraint("B", DataTypeImpl::GetTensorType<bool>())
@@ -57,7 +57,7 @@ ONNX_OPERATOR_VERSIONED_KERNEL_EX(If,
 ONNX_OPERATOR_KERNEL_EX(If,
                         kOnnxDomain,
                         21,
-                        kJsExecutionProvider,
+                        kWebGpuExecutionProvider,
                         (*KernelDefBuilder::Create())
                             .InputMemoryType(OrtMemTypeCPUInput, 0)  // 'cond' needs to be on CPU
                             .TypeConstraint("B", DataTypeImpl::GetTensorType<bool>())
