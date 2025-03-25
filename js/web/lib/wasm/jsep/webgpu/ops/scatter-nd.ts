@@ -87,7 +87,6 @@ const createScatterNDProgramInfo = (inputs: readonly TensorView[], attributes: S
   const outputSize = Math.ceil(ShapeUtil.size(indicesShape) / components);
   const lastIndexDimension = indicesShape[indicesShape.length - 1];
   const numUpdatesElements = ShapeUtil.sizeFromDimension(inputShape, lastIndexDimension);
-  const numIndicesElements = ShapeUtil.size(indicesShape) / lastIndexDimension;
 
   const programUniforms: ProgramUniform[] = [
     { type: DataType.uint32, data: outputSize },
@@ -139,7 +138,7 @@ const createScatterNDProgramInfo = (inputs: readonly TensorView[], attributes: S
   var indices_end = indices_start + uniforms.last_index_dimension;
   if (${attributes.reduction === 'none'} && hasDuplicates) {
     indices_start = 0u;
-    indices_end = ${numIndicesElements};
+    indices_end = ${ShapeUtil.size(indicesShape) / lastIndexDimension};
   }
   for (var i = indices_start; i < indices_end; i++) {
     var index = i32(indices[i].x);
