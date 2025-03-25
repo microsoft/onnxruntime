@@ -78,43 +78,35 @@ const atomicReductionSnippet = (reduction: string, ptr: string, v: string, type:
   }
 };
 
-const calcDataOffsetSnippet = (data_rank: number, parallel: boolean) => {
-  return `
-      ${
-        data_rank === 1
-          ? `
-      let element_count_dim = uniforms.output_strides;
-      let dim_value = uniforms.output_shape;`
-          : `
-      let element_count_dim = uniforms.output_strides[${parallel ? 'i - indices_start' : 'i'}];
-      let dim_value = uniforms.output_shape[${parallel ? 'i - indices_start' : 'i'} + uniforms.last_index_dimension];`
+const calcDataOffsetSnippet = (dataRank: number, parallel: boolean) =>
+  `${
+    dataRank === 1
+      ? `
+    let element_count_dim = uniforms.output_strides;
+    let dim_value = uniforms.output_shape;`
+      : `
+    let element_count_dim = uniforms.output_strides[${parallel ? 'i - indices_start' : 'i'}];
+    let dim_value = uniforms.output_shape[${parallel ? 'i - indices_start' : 'i'} + uniforms.last_index_dimension];`
+  }
+    
+    if (index >= 0) {
+      if (index >= i32(dim_value)) {
+        index = i32(dim_value - 1);
       }
-      
-      if (index >= 0) {
-        if (index >= i32(dim_value)) {
-          index = i32(dim_value - 1);
-        }
+    } else {
+      if (index < -i32(dim_value)) {
+        index = 0;
       } else {
-        if (index < -i32(dim_value)) {
-          index = 0;
-        } else {
-          index += i32(dim_value);
-        }
+        index += i32(dim_value);
       }
-      data_offset += u32((u32(index) * element_count_dim));`;
-};
+    }
+    data_offset += u32((u32(index) * element_count_dim));`;
 
-const updateElementsSnippet = (
-  attributes: ScatterNDAttributes,
-  output_type_value: ReductionType,
-  parallel: boolean,
-) => {
-  return `
-      for (var i = 0u; i < uniforms.num_updates_elements; i++) {
+const updateElementsSnippet = (attributes: ScatterNDAttributes, outputTypeValue: ReductionType, parallel: boolean) =>
+  `for (var i = 0u; i < uniforms.num_updates_elements; i++) {
         let value = updates[uniforms.num_updates_elements * ${parallel ? 'global_idx' : 'idx'} + i];
-        ${atomicReductionSnippet(attributes.reduction, 'output[data_offset + i]', 'value', output_type_value)}
+        ${atomicReductionSnippet(attributes.reduction, 'output[data_offset + i]', 'value', outputTypeValue)}
       }`;
-};
 
 const createScatterNDProgramInfo = (inputs: readonly TensorView[], attributes: ScatterNDAttributes): ProgramInfo => {
   const inputShape = inputs[0].dims;
