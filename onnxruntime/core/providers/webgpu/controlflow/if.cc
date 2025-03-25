@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include "core/providers/webgpu/controlflow/if.h"
+#include "core/framework/data_types.h"
 
 namespace onnxruntime {
 namespace webgpu {
