@@ -78,6 +78,44 @@ const atomicReductionSnippet = (reduction: string, ptr: string, v: string, type:
   }
 };
 
+const calcDataOffsetSnippet = (data_rank: number, parallel: boolean) => {
+  return `
+      ${
+        data_rank === 1
+          ? `
+      let element_count_dim = uniforms.output_strides;
+      let dim_value = uniforms.output_shape;`
+          : `
+      let element_count_dim = uniforms.output_strides[${parallel ? 'i - indices_start' : 'i'}];
+      let dim_value = uniforms.output_shape[${parallel ? 'i - indices_start' : 'i'} + uniforms.last_index_dimension];`
+      }
+      
+      if (index >= 0) {
+        if (index >= i32(dim_value)) {
+          index = i32(dim_value - 1);
+        }
+      } else {
+        if (index < -i32(dim_value)) {
+          index = 0;
+        } else {
+          index += i32(dim_value);
+        }
+      }
+      data_offset += u32((u32(index) * element_count_dim));`;
+};
+
+const updateElementsSnippet = (
+  attributes: ScatterNDAttributes,
+  output_type_value: ReductionType,
+  parallel: boolean,
+) => {
+  return `
+      for (var i = 0u; i < uniforms.num_updates_elements; i++) {
+        let value = updates[uniforms.num_updates_elements * ${parallel ? 'global_idx' : 'idx'} + i];
+        ${atomicReductionSnippet(attributes.reduction, 'output[data_offset + i]', 'value', output_type_value)}
+      }`;
+};
+
 const createScatterNDProgramInfo = (inputs: readonly TensorView[], attributes: ScatterNDAttributes): ProgramInfo => {
   const inputShape = inputs[0].dims;
   const indicesShape = inputs[1].dims;
@@ -136,41 +174,11 @@ const createScatterNDProgramInfo = (inputs: readonly TensorView[], attributes: S
     // Process each index-update pair individually when duplicates exist
     for (var idx = 0u; idx < ${numIndicesElements}u; idx++) {
       var data_offset = 0u;
-      for (var j = 0u; j < uniforms.last_index_dimension; j++) {
-        var index = i32(indices[idx * uniforms.last_index_dimension + j].x);
-        ${
-          inputs[0].dims.length === 1
-            ? `
-        let element_count_dim = uniforms.output_strides;
-        let dim_value = uniforms.output_shape;`
-            : `
-        let element_count_dim = uniforms.output_strides[j];
-        let dim_value = uniforms.output_shape[j + uniforms.last_index_dimension];`
-        }
-        
-        if (index >= 0) {
-          if (index >= i32(dim_value)) {
-            index = i32(dim_value - 1);
-          }
-        } else {
-          if (index < -i32(dim_value)) {
-            index = 0;
-          } else {
-            index += i32(dim_value);
-          }
-        }
-        data_offset += u32((u32(index) * element_count_dim));
+      for (var i = 0u; i < uniforms.last_index_dimension; i++) {
+        var index = i32(indices[idx * uniforms.last_index_dimension + i].x);
+        ${calcDataOffsetSnippet(inputShape.length, false)}
       }
-      
-      for (var i = 0u; i < uniforms.num_updates_elements; i++) {
-        let value = updates[uniforms.num_updates_elements * idx + i];
-        ${atomicReductionSnippet(
-          attributes.reduction,
-          'output[data_offset + i]',
-          'value',
-          output.type.value as ReductionType,
-        )}
-      }
+      ${updateElementsSnippet(attributes, output.type.value as ReductionType, false)}
     }
     return;
   }
@@ -180,40 +188,10 @@ const createScatterNDProgramInfo = (inputs: readonly TensorView[], attributes: S
   var indices_end = indices_start + uniforms.last_index_dimension;
   for (var i = indices_start; i < indices_end; i++) {
     var index = i32(indices[i].x);
-    ${
-      inputs[0].dims.length === 1
-        ? `
-    let element_count_dim = uniforms.output_strides;
-    let dim_value = uniforms.output_shape;`
-        : `
-    let element_count_dim = uniforms.output_strides[i - indices_start];
-    let dim_value = uniforms.output_shape[i - indices_start + uniforms.last_index_dimension];`
-    }
-    if (index >= 0) {
-      if (index >= i32(dim_value)) {
-        index = i32(dim_value - 1);
-      }
-    } else {
-      if (index < -i32(dim_value)) {
-        index = 0;
-      } else {
-        index += i32(dim_value);
-      }
-    }
-    data_offset += u32((u32(index) * element_count_dim));
+    ${calcDataOffsetSnippet(inputShape.length, true)}
   }
-
-  for (var i = 0u; i < uniforms.num_updates_elements; i++) {
-    let value = updates[uniforms.num_updates_elements * global_idx + i];
-    ${atomicReductionSnippet(
-      attributes.reduction,
-      'output[data_offset + i]',
-      'value',
-      output.type.value as ReductionType,
-    )}
-  }
-
-      }`;
+  ${updateElementsSnippet(attributes, output.type.value as ReductionType, true)}
+  }`;
   };
   return {
     name: 'ScatterND',
