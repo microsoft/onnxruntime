@@ -65,6 +65,12 @@ jobs:
           java-version: '17'
           architecture: x64
 
+      - uses: actions/cache@v3
+        id: onnx-node-tests-cache
+        with:
+          path: ${{ github.workspace }}/js/test/
+          key: onnxnodetests-${{ hashFiles('js/scripts/prepare-onnx-node-tests.ts') }}
+
       - name: API Documentation Check and generate
         run: |
           set ORT_DOXY_SRC=${{ github.workspace }}
