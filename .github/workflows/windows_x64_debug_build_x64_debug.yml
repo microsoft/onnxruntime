@@ -75,6 +75,12 @@ jobs:
       run: |
         nuget restore ${{ github.workspace }}\packages.config -PackagesDirectory ${{ github.workspace }}\build\Debug -ConfigFile ${{ github.workspace }}\NuGet.config
 
+    - uses: actions/cache@v3
+      id: onnx-node-tests-cache
+      with:
+        path: ${{ github.workspace }}/js/test/
+        key: onnxnodetests-${{ hashFiles('js/scripts/prepare-onnx-node-tests.ts') }}
+
     - name: Export GitHub Actions cache environment variables
       uses: actions/github-script@v7
       with:
