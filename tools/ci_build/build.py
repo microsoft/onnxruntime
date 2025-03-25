@@ -433,6 +433,7 @@ def parse_arguments():
     platform_group = parser.add_mutually_exclusive_group()
     platform_group.add_argument("--ios", action="store_true", help="build for ios")
     platform_group.add_argument("--visionos", action="store_true", help="build for visionOS")
+    platform_group.add_argument("--tvos", action="store_true", help="build for tvOS")
     platform_group.add_argument(
         "--macos",
         choices=["MacOSX", "Catalyst"],
@@ -451,6 +452,11 @@ def parse_arguments():
         "--visionos_toolchain_file",
         default="",
         help="Path to visionos toolchain file, or cmake/onnxruntime_visionos.toolchain.cmake will be used",
+    )
+    parser.add_argument(
+        "--tvos_toolchain_file",
+        default="",
+        help="Path to tvos toolchain file, or cmake/onnxruntime_tvos.toolchain.cmake will be used",
     )
     parser.add_argument(
         "--xcode_code_signing_team_id", default="", help="The development team ID used for code signing in Xcode"
@@ -698,6 +704,7 @@ def parse_arguments():
     parser.add_argument("--armnn_home", help="Path to ArmNN home dir")
     parser.add_argument("--armnn_libs", help="Path to ArmNN libraries")
     parser.add_argument("--build_micro_benchmarks", action="store_true", help="Build ONNXRuntime micro-benchmarks.")
+    parser.add_argument("--no_kleidiai", action="store_true", help="Disable KleidiAI integration on Arm platforms.")
 
     # options to reduce binary size
     parser.add_argument(
@@ -945,7 +952,7 @@ def use_dev_mode(args):
         return False
     if args.use_armnn:
         return False
-    if (args.ios or args.visionos) and is_macOS():
+    if (args.ios or args.visionos or args.tvos) and is_macOS():
         return False
     SYSTEM_COLLECTIONURI = os.getenv("SYSTEM_COLLECTIONURI")  # noqa: N806
     if SYSTEM_COLLECTIONURI and SYSTEM_COLLECTIONURI != "https://dev.azure.com/onnxruntime/":
@@ -1060,6 +1067,8 @@ def generate_vcpkg_install_options(build_dir, args):
     if args.disable_exceptions:
         folder_name_parts.append("noexception")
     if len(folder_name_parts) == 0:
+        # It's hard to tell whether we must use a custom triplet or not. The official triplets work fine for most common situations. However, if a Windows build has set msvc toolset version via args.msvc_toolset then we need to, because we need to ensure all the source code are compiled by the same MSVC toolset version otherwise we will hit link errors like "error LNK2019: unresolved external symbol __std_mismatch_4 referenced in function ..."
+        # So, to be safe we always use a custom triplet.
         folder_name = "default"
     else:
         folder_name = "_".join(folder_name_parts)
@@ -1253,7 +1262,6 @@ def generate_build_tree(
         )
 
     if args.use_vcpkg:
-        # TODO: set VCPKG_PLATFORM_TOOLSET_VERSION
         # Setup CMake flags for vcpkg
 
         # Find VCPKG's toolchain cmake file
@@ -1333,7 +1341,7 @@ def generate_build_tree(
         elif args.android:
             generate_android_triplets(build_dir, args.android_cpp_shared, args.android_api)
         elif is_windows():
-            generate_windows_triplets(build_dir)
+            generate_windows_triplets(build_dir, args.msvc_toolset)
         elif is_macOS():
             osx_target = args.apple_deploy_target
             if args.apple_deploy_target is None:
@@ -1374,7 +1382,7 @@ def generate_build_tree(
             target_arch = platform.machine()
             if args.arm64:
                 target_arch = "ARM64"
-            elif args.arm64:
+            elif args.arm64ec:
                 target_arch = "ARM64EC"
             cpu_arch = platform.architecture()[0]
             if target_arch == "AMD64":
@@ -1621,12 +1629,14 @@ def generate_build_tree(
     if args.use_snpe:
         cmake_args += ["-Donnxruntime_USE_SNPE=ON"]
 
-    if args.macos or args.ios or args.visionos:
+    cmake_args += ["-Donnxruntime_USE_KLEIDIAI=" + ("OFF" if args.no_kleidiai else "ON")]
+
+    if args.macos or args.ios or args.visionos or args.tvos:
         # Note: Xcode CMake generator doesn't have a good support for Mac Catalyst yet.
         if args.macos == "Catalyst" and args.cmake_generator == "Xcode":
             raise BuildError("Xcode CMake generator ('--cmake_generator Xcode') doesn't support Mac Catalyst build.")
 
-        if (args.ios or args.visionos or args.macos == "MacOSX") and not args.cmake_generator == "Xcode":
+        if (args.ios or args.visionos or args.tvos or args.macos == "MacOSX") and not args.cmake_generator == "Xcode":
             raise BuildError(
                 "iOS/MacOS framework build requires use of the Xcode CMake generator ('--cmake_generator Xcode')."
             )
@@ -1685,6 +1695,16 @@ def generate_build_tree(
                     else "../cmake/onnxruntime_visionos.toolchain.cmake"
                 ),
                 "-Donnxruntime_ENABLE_CPUINFO=OFF",
+            ]
+        if args.tvos:
+            cmake_args += [
+                "-DCMAKE_SYSTEM_NAME=tvOS",
+                "-DCMAKE_TOOLCHAIN_FILE="
+                + (
+                    args.tvos_toolchain_file
+                    if args.tvos_toolchain_file
+                    else "../cmake/onnxruntime_tvos.toolchain.cmake"
+                ),
             ]
 
     if args.build_wasm:
@@ -2630,6 +2650,7 @@ def build_nuget_package(
     use_dnnl,
     use_winml,
     use_qnn,
+    use_dml,
     enable_training_apis,
     msbuild_extra_options,
 ):
@@ -2672,6 +2693,8 @@ def build_nuget_package(
         package_name = "/p:OrtPackageId=Microsoft.ML.OnnxRuntime.DNNL"
     elif use_cuda:
         package_name = "/p:OrtPackageId=Microsoft.ML.OnnxRuntime.Gpu"
+    elif use_dml:
+        package_name = "/p:OrtPackageId=Microsoft.ML.OnnxRuntime.DirectML"
     elif use_rocm:
         package_name = "/p:OrtPackageId=Microsoft.ML.OnnxRuntime.ROCm"
     elif use_qnn:
@@ -3148,7 +3171,7 @@ def main():
 
         if is_macOS():
             if (
-                not (args.ios or args.visionos)
+                not (args.ios or args.visionos or args.tvos)
                 and args.macos != "Catalyst"
                 and not args.android
                 and args.osx_arch == "arm64"
@@ -3285,6 +3308,7 @@ def main():
                 args.use_dnnl,
                 args.use_winml,
                 args.use_qnn,
+                args.use_dml,
                 args.enable_training_apis,
                 normalize_arg_list(args.msbuild_extra_options),
             )

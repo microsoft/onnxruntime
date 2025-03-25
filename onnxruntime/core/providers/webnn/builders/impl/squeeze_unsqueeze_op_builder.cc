@@ -2,7 +2,6 @@
 // Copyright (c) Intel Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "core/common/safeint.h"
 #include "core/providers/common.h"
 #include "core/providers/shared/utils/utils.h"
 #include "core/providers/webnn/builders/helper.h"
@@ -28,7 +27,7 @@ class SqueezeUnsqueezeOpBuilder : public BaseOpBuilder {
 
   // Operator support related.
  private:
-  bool IsOpSupportedImpl(const InitializedTensorSet& initializers, const Node& node,
+  bool IsOpSupportedImpl(const GraphViewer& graph_viewer, const Node& node,
                          const WebnnDeviceType /* device_type */, const logging::Logger& logger) const override;
 };
 
@@ -86,7 +85,7 @@ Status SqueezeUnsqueezeOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_buil
 
   emscripten::val output = emscripten::val::undefined();
   // Use WebNN's reshape to implement Squeeze/Unsqueeze.
-  std::vector<uint32_t> new_shape = GetVecUint32FromVecInt64(input_shape);
+  std::vector<uint32_t> new_shape = GetNarrowedIntfromInt64<uint32_t>(input_shape);
   // Sort axes_data in ascending order.
   std::sort(axes_data.begin(), axes_data.end());
   if (op_type == "Squeeze") {
@@ -122,7 +121,7 @@ Status SqueezeUnsqueezeOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_buil
 
 // Operator support related.
 
-bool SqueezeUnsqueezeOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& initializers,
+bool SqueezeUnsqueezeOpBuilder::IsOpSupportedImpl(const GraphViewer& graph_viewer,
                                                   const Node& node,
                                                   const WebnnDeviceType /* device_type */,
                                                   const logging::Logger& logger) const {
@@ -141,7 +140,8 @@ bool SqueezeUnsqueezeOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& in
   if (node.SinceVersion() >= 13) {
     const std::string axes_name = GetTensorName(input_defs, 1);
     if (!axes_name.empty()) {
-      if (!Contains(initializers, axes_name)) {
+      const auto* init = graph_viewer.GetConstantInitializer(axes_name);
+      if (!init) {
         LOGS(logger, ERROR) << "Input axes of " << op_type << " is not present and constant";
         return false;
       }
