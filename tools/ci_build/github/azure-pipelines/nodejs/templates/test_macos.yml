@@ -9,7 +9,7 @@ stages:
   - job: Nodejs_Test_MacOS_${{ parameters.StageSuffix }}
     workspace:
       clean: all
-    timeoutInMinutes: 120
+    timeoutInMinutes:  120
     pool:
       name: 'Azure Pipelines'
       image: 'macOS-14'
