@@ -27,7 +27,7 @@ class CumSumOpBuilder : public BaseOpBuilder {
 
   // Operator support related.
  private:
-  bool IsOpSupportedImpl(const InitializedTensorSet& initializers, const Node& node,
+  bool IsOpSupportedImpl(const GraphViewer& graph_viewer, const Node& node,
                          const WebnnDeviceType /* device_type */, const logging::Logger& logger) const override;
 };
 
@@ -70,7 +70,7 @@ Status CumSumOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const
 }
 
 // Operator support related.
-bool CumSumOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& initializers,
+bool CumSumOpBuilder::IsOpSupportedImpl(const GraphViewer& graph_viewer,
                                         const Node& node,
                                         WebnnDeviceType /* device_type */,
                                         const logging::Logger& logger) const {
@@ -82,7 +82,8 @@ bool CumSumOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& initializers
 
   const std::string axis_name = GetTensorName(input_defs, 1);
   // Inputs contain optional 'axis' input.
-  if (!Contains(initializers, axis_name)) {
+  const auto* init = graph_viewer.GetConstantInitializer(axis_name);
+  if (init == nullptr) {
     LOGS(logger, VERBOSE) << "The axis must be a constant initializer.";
     return false;
   }
