@@ -15,5 +15,5 @@ class If final : public onnxruntime::If {
 
   Status Compute(OpKernelContext* ctx) const override;
 };
-}  // namespace js
+}  // namespace webgpu
 }  // namespace onnxruntime

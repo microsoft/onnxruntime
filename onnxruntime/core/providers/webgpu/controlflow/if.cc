@@ -71,5 +71,5 @@ Status If::Compute(OpKernelContext* ctx) const {
   return onnxruntime::If::Compute(ctx);
 }
 
-}  // namespace js
+}  // namespace webgpu
 }  // namespace onnxruntime
