@@ -117,7 +117,7 @@ stages:
     workspace:
       clean: all
     pool:
-      vmImage: 'macOS-13'
+      vmImage: 'macOS-14'
     timeoutInMinutes: 300
     steps:
     - template: set-version-number-variables-step.yml
@@ -778,6 +778,13 @@ stages:
     SpecificArtifact: ${{ parameters.SpecificArtifact }}
     BuildId: ${{ parameters.BuildId }}
 
+- template: ../nuget/templates/test_android.yml
+  parameters:
+    AgentPool : 'onnxruntime-Win-CPU-2022'
+    ArtifactSuffix: 'CPU'
+    SpecificArtifact: ${{ parameters.SpecificArtifact }}
+    BuildId: ${{ parameters.BuildId }}
+
 - template: ../nuget/templates/test_linux.yml
   parameters:
     AgentPool : onnxruntime-Ubuntu2204-AMD-CPU
@@ -788,7 +795,7 @@ stages:
 
 - template: ../nuget/templates/test_macos.yml
   parameters:
-    AgentPool : macOS-13
+    AgentPool : macOS-14
     ArtifactSuffix: 'CPU'
 
 - template: ../nodejs/templates/test_win.yml
@@ -824,4 +831,4 @@ stages:
     OS: MacOS
     BuildId: ${{ parameters.BuildId }}
     SpecificArtifact: ${{ parameters.SpecificArtifact }}
-    PoolName: 'macOS-13'
+    PoolName: 'macOS-14'

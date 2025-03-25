@@ -66,6 +66,13 @@ class OnnxruntimeSessionHandler implements InferenceSessionHandler {
   inputNames: string[];
   outputNames: string[];
 
+  get inputMetadata(): readonly InferenceSession.ValueMetadata[] {
+    throw new Error('Getting model metadata is currently not implemented for react-native backend.');
+  }
+  get outputMetadata(): readonly InferenceSession.ValueMetadata[] {
+    throw new Error('Getting model metadata is currently not implemented for react-native backend.');
+  }
+
   constructor(pathOrBuffer: string | Uint8Array) {
     this.#inferenceSession = binding;
     this.#pathOrBuffer = pathOrBuffer;

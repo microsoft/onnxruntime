@@ -389,6 +389,7 @@ TEST(MatMulNBits, Float32_Accuracy4) {
   TestMatMulNBitsTyped<float, 100, 288, 16, 16, 4>();
   TestMatMulNBitsTyped<float, 100, 288, 1024, 16, 4>();
   TestMatMulNBitsTyped<float, 100, 288, 1024, 128, 4>();
+  TestMatMulNBitsTyped<float, 100, 288, 192, 64, 4>();
   TestMatMulNBitsTyped<float, 100, 288, 93, 32, 4>();
   TestMatMulNBitsTyped<float, 100, 288, 93, 128, 4>();
   TestMatMulNBitsTyped<float, 100, 288, 1234, 16, 4>();
@@ -458,6 +459,7 @@ TEST(MatMulNBits, Float16_Accuracy4) {
   TestMatMulNBitsTyped<MLFloat16, 100, 288, 16, 16, 4>();
   TestMatMulNBitsTyped<MLFloat16, 100, 288, 1024, 16, 4>();
   TestMatMulNBitsTyped<MLFloat16, 100, 288, 1024, 128, 4>();
+  TestMatMulNBitsTyped<MLFloat16, 100, 288, 192, 64, 4>();
   TestMatMulNBitsTyped<MLFloat16, 100, 288, 93, 32, 4>();
   TestMatMulNBitsTyped<MLFloat16, 100, 288, 93, 128, 4>();
   TestMatMulNBitsTyped<MLFloat16, 100, 288, 1234, 16, 4>();
@@ -528,8 +530,10 @@ TEST(MatMulNBits, Float16Cuda) {
       for (auto K : {16, 32, 64, 128, 256, 1024, 93, 1234}) {
         for (auto block_size : {16, 32, 64, 128}) {
           for (auto has_gidx : has_gidx_options) {
-#ifdef USE_DML
+#if defined(USE_DML)
             RunTest(M, N, K, block_size, 0, false, true, has_gidx, true, 0.04f);
+#elif defined(USE_WEBGPU)
+            RunTest(M, N, K, block_size, 0, false, true, has_gidx, true, 0.03f);
 #else
             RunTest(M, N, K, block_size, 0, false, true, has_gidx);
             RunTest(M, N, K, block_size, 0, true, true, has_gidx, false);

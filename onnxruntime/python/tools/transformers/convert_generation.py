@@ -16,19 +16,17 @@ Example 3: convert gpt2 model with beam search with mixed precision and enable S
     python convert_generation.py -m gpt2 --output gpt2_beam_search.onnx --use_gpu -p fp16 --use_sln_strict_mode
 
 Example 4: convert T5 model with beam search in two steps:
-    cd ./models/t5
-    python convert_to_onnx.py -m t5-small
-    cd ../..
-    python convert_generation.py -m t5-small --model_type t5                                    \
-        --decoder_onnx ./models/t5/onnx_models/t5-small_decoder.onnx                            \
-        --encoder_decoder_init_onnx ./models/t5/onnx_models/t5-small_encoder_decoder_init.onnx  \
-        --output ./models/t5/onnx_models/t5_small_beam_search.onnx
+    python -m models.t5.convert_to_onnx -m t5-small
+    python convert_generation.py -m t5-small --model_type t5             \
+        --decoder_onnx ./onnx_models/t5-small_decoder.onnx               \
+        --encoder_decoder_init_onnx ./onnx_models/t5-small_encoder.onnx  \
+        --output ./onnx_models/t5_small_beam_search.onnx
 
 Example 5: convert T5 model with beam search. All in one step:
-    python convert_generation.py -m t5-small --model_type t5 --output ./models/t5/onnx_models/t5_small_beam_search.onnx
+    python convert_generation.py -m t5-small --model_type t5 --output t5_small_beam_search.onnx
 
 Example 6: convert T5 model with beam search containing specific cuda optimizations. All in one step:
-    python convert_generation.py -m t5-small --model_type t5 --output ./models/t5/onnx_models/t5_small_beam_search.onnx   \
+    python convert_generation.py -m t5-small --model_type t5 --output t5_small_beam_search.onnx   \
         --use_gpu --past_present_share_buffer --use_decoder_masked_attention
 
 Example 7: convert MT5 model with external data file like mt5-base-beamsearch.onnx.data in below example.
@@ -68,11 +66,23 @@ from transformers import (
     T5Tokenizer,
 )
 
-from onnxruntime import GraphOptimizationLevel, InferenceSession, SessionOptions, get_available_providers
-from onnxruntime.transformers.models.gpt2.convert_to_onnx import main as convert_gpt2_to_onnx
+from onnxruntime import (
+    GraphOptimizationLevel,
+    InferenceSession,
+    SessionOptions,
+    get_available_providers,
+)
+from onnxruntime.transformers.models.gpt2.convert_to_onnx import (
+    main as convert_gpt2_to_onnx,
+)
 from onnxruntime.transformers.models.gpt2.gpt2_helper import PRETRAINED_GPT2_MODELS
-from onnxruntime.transformers.models.t5.convert_to_onnx import export_onnx_models as export_t5_onnx_models
-from onnxruntime.transformers.models.t5.t5_helper import PRETRAINED_MT5_MODELS, PRETRAINED_T5_MODELS
+from onnxruntime.transformers.models.t5.convert_to_onnx import (
+    export_onnx_models as export_t5_onnx_models,
+)
+from onnxruntime.transformers.models.t5.t5_helper import (
+    PRETRAINED_MT5_MODELS,
+    PRETRAINED_T5_MODELS,
+)
 
 logger = logging.getLogger("")
 
@@ -162,9 +172,9 @@ def parse_arguments(argv: list[str] | None = None) -> argparse.Namespace:
         "-p",
         "--precision",
         required=False,
-        type=Precision,
-        default=Precision.FLOAT32,
-        choices=[Precision.FLOAT32, Precision.FLOAT16],
+        type=str,
+        default=Precision.FLOAT32.value,
+        choices=[Precision.FLOAT32.value, Precision.FLOAT16.value],
         help="Precision of model to run. fp32 for full precision, fp16 for half or mixed precision",
     )
 
@@ -189,7 +199,11 @@ def parse_arguments(argv: list[str] | None = None) -> argparse.Namespace:
     output_group.set_defaults(use_external_data_format=False)
 
     output_group.add_argument(
-        "-s", "--run_shape_inference", required=False, action="store_true", help="run shape inference"
+        "-s",
+        "--run_shape_inference",
+        required=False,
+        action="store_true",
+        help="run shape inference",
     )
     output_group.set_defaults(run_shape_inference=False)
 
@@ -222,6 +236,14 @@ def parse_arguments(argv: list[str] | None = None) -> argparse.Namespace:
         "GPT2. It will increase memory usage of t5/mt5/gpt2 models.",
     )
     output_group.set_defaults(disable_shared_initializers=False)
+
+    output_group.add_argument(
+        "--encoder_decoder_init",
+        required=False,
+        action="store_true",
+        help="Add decoder initialization to encoder for T5 model. This is legacy format that will be deprecated.",
+    )
+    output_group.set_defaults(encoder_decoder_init=False)
 
     model_group = parser.add_argument_group("Beam search parameters that stored in the output model")
 
@@ -426,7 +448,10 @@ def parse_arguments(argv: list[str] | None = None) -> argparse.Namespace:
     test_group.set_defaults(use_sln_strict_mode=False)
 
     test_group.add_argument(
-        "--use_gpu", required=False, action="store_true", help="use GPU for inference. Required for fp16."
+        "--use_gpu",
+        required=False,
+        action="store_true",
+        help="use GPU for inference. Required for fp16.",
     )
     test_group.set_defaults(use_gpu=False)
 
@@ -490,7 +515,7 @@ def gpt2_to_onnx(args: argparse.Namespace):
         args.decoder_onnx,
         "--optimize_onnx",
         "--precision",
-        "fp32" if args.precision == Precision.FLOAT32 else "fp16",
+        args.precision,
         "--test_runs",
         "1",
         "--test_cases",
@@ -508,7 +533,7 @@ def gpt2_to_onnx(args: argparse.Namespace):
         arguments.extend(["--op_block_list"])
         arguments.extend(args.op_block_list)
 
-    if args.precision == Precision.FLOAT16:
+    if args.precision == Precision.FLOAT16.value:
         assert args.use_gpu, "fp16 or mixed precision model cannot run in CPU. Please add --use_gpu"
         # TODO(tianleiwu): Use auto mixed precision for fp16 conversion: arguments.append('--auto_mixed_precision')
         #       Need change cuda kernel to support a combination of fp32 logits and fp16 past state.
@@ -527,20 +552,21 @@ def t5_to_onnx(args: argparse.Namespace):
         args (argparse.Namespace): arguments parsed from command line
     """
     paths = export_t5_onnx_models(
-        args.model_name_or_path,
-        args.cache_dir,
-        Path(args.output).parent,
+        model_name_or_path=args.model_name_or_path,
+        cache_dir=args.cache_dir,
+        output_dir=Path(args.output).parent,
         use_gpu=args.use_gpu,
         use_external_data_format=args.use_external_data_format,
-        optimize_onnx=(args.precision != Precision.FLOAT16),
+        optimize_onnx=(args.precision != Precision.FLOAT16.value),
         precision=args.precision,
         verbose=False,
         use_decoder_start_token=False,
-        merge_encoder_and_decoder_init=True,
         overwrite=True,
         disable_auto_mixed_precision=False,
         use_int32_inputs=True,
         model_type=args.model_type,
+        encoder_decoder_init=args.encoder_decoder_init,
+        force_fp16_io=(args.precision == Precision.FLOAT16.value),  # required by BeamSearch op implementation.
     )
 
     logger.debug(f"onnx model for encoder: {paths[0]}")
@@ -693,7 +719,7 @@ def verify_gpt2_subgraph(graph: onnx.GraphProto, precision: Precision):
         ValueError: Output name is not expected.
         ValueError: Output data type is not expected.
     """
-    is_float16 = precision == Precision.FLOAT16
+    is_float16 = precision == Precision.FLOAT16.value
 
     input_count = len(graph.input)
     layer_count = input_count - 3
@@ -749,7 +775,7 @@ def verify_t5_decoder_subgraph(graph: onnx.GraphProto, precision: Precision):
         ValueError: Output name is not expected.
         ValueError: Output data type is not expected.
     """
-    is_float16 = precision == Precision.FLOAT16
+    is_float16 = precision == Precision.FLOAT16.value
     float_type = TensorProto.FLOAT16 if is_float16 else TensorProto.FLOAT
 
     input_count = len(graph.input)
@@ -825,15 +851,20 @@ def verify_t5_encoder_decoder_init_subgraph(graph: onnx.GraphProto, precision: P
         ValueError: Output name is not expected.
         ValueError: Output data type is not expected.
     """
-    is_float16 = precision == Precision.FLOAT16
-    layer_count = (len(graph.output) - 2) // 4
-    assert layer_count >= 1
+    is_float16 = precision == Precision.FLOAT16.value
+    new_format = "cross" in graph.output[0].name
 
     # Expect 3 inputs:
     #   encoder_input_ids:      int32 (B, encode_sequence_length)
     #   encoder_attention_mask: int32 (B, encode_sequence_length)
     #   decoder_input_ids:      int32 (B, 1)
-    expected_inputs = ["encoder_input_ids", "encoder_attention_mask", "decoder_input_ids"]
+    expected_inputs = [
+        "encoder_input_ids",
+        "encoder_attention_mask",
+        "decoder_input_ids",
+    ]
+    if new_format:
+        expected_inputs = expected_inputs[:2]
     if len(graph.input) != len(expected_inputs):
         raise ValueError(f"Number of inputs expected to be {len(expected_inputs)}. Got {len(graph.input)}")
 
@@ -846,22 +877,41 @@ def verify_t5_encoder_decoder_init_subgraph(graph: onnx.GraphProto, precision: P
         if input_type != expected_type:
             raise ValueError(f"Input {i} is expected to have onnx data type {expected_type}. Got {input_type}")
 
-    # Expected outputs:
-    #   logits:                (B, 1, vocab_size)
-    #   encoder_hidden_states: (B, encode_sequence_length, encoder_hidden_size)
-    #   present_key_self_0:    (B, num_heads, 1, head_size)
-    #   present_value_self_0:  (B, num_heads, 1, head_size)
-    #                      ... (for each self attention layer)
-    #   present_key_cross_0:   (B, num_heads, encode_sequence_length, head_size)
-    #   present_value_cross_0: (B, num_heads, encode_sequence_length, head_size)
-    #                      ... (for each cross attention layer)
-    expected_outputs = ["logits", "encoder_hidden_states"]
-    for i in range(layer_count):
-        expected_outputs.append(f"present_key_self_{i}")
-        expected_outputs.append(f"present_value_self_{i}")
-    for i in range(layer_count):
-        expected_outputs.append(f"present_key_cross_{i}")
-        expected_outputs.append(f"present_value_cross_{i}")
+    if new_format:
+        assert len(graph.output) % 2 == 0
+        layer_count = len(graph.output) // 2
+        assert layer_count >= 1
+
+        # Expected outputs:
+        #   present_key_cross_0:   (B, num_heads, encode_sequence_length, head_size)
+        #   present_value_cross_0: (B, num_heads, encode_sequence_length, head_size)
+        #                      ... (for each cross attention layer)
+        expected_outputs = []
+        for i in range(layer_count):
+            expected_outputs.append(f"present_key_cross_{i}")
+            expected_outputs.append(f"present_value_cross_{i}")
+    else:
+        logger.warning("This format is deprecated. Please export T5 encoder in new format with only cross outputs.")
+        assert (len(graph.output) - 2) % 4 == 0
+        layer_count = (len(graph.output) - 2) // 4
+        assert layer_count >= 1
+
+        # Expected outputs:
+        #   logits:                (B, 1, vocab_size)
+        #   encoder_hidden_states: (B, encode_sequence_length, encoder_hidden_size)
+        #   present_key_self_0:    (B, num_heads, 1, head_size)
+        #   present_value_self_0:  (B, num_heads, 1, head_size)
+        #                      ... (for each self attention layer)
+        #   present_key_cross_0:   (B, num_heads, encode_sequence_length, head_size)
+        #   present_value_cross_0: (B, num_heads, encode_sequence_length, head_size)
+        #                      ... (for each cross attention layer)
+        expected_outputs = ["logits", "encoder_hidden_states"]
+        for i in range(layer_count):
+            expected_outputs.append(f"present_key_self_{i}")
+            expected_outputs.append(f"present_value_self_{i}")
+        for i in range(layer_count):
+            expected_outputs.append(f"present_key_cross_{i}")
+            expected_outputs.append(f"present_value_cross_{i}")
 
     if len(graph.output) != len(expected_outputs):
         raise ValueError(f"Number of outputs expected to be {len(expected_outputs)}. Got {len(graph.output)}")
@@ -1116,6 +1166,7 @@ def update_decoder_subgraph_past_present_share_buffer(subg: GraphProto):
 
     new_nodes = []
     for node in subg.node:
+        new_node = node
         if node.op_type == "Attention":
             kwargs = kwargs_of(node)
             kwargs.update({"past_present_share_buffer": 1})
@@ -1125,8 +1176,8 @@ def update_decoder_subgraph_past_present_share_buffer(subg: GraphProto):
                 nis.extend([""])
             if len(nis) < 7:
                 nis.extend(["past_sequence_length"])
-            node = onnx.helper.make_node("Attention", nis, node.output, name=node.name, **kwargs)  # noqa: PLW2901
-        new_nodes.extend([node])
+            new_node = onnx.helper.make_node("Attention", nis, node.output, name=node.name, **kwargs)
+        new_nodes.extend([new_node])
     subg.ClearField("node")
     subg.node.extend(new_nodes)
     return subg
@@ -1152,7 +1203,9 @@ def update_decoder_subgraph_use_decoder_masked_attention(
         new_inputs.extend(
             [
                 onnx.helper.make_tensor_value_info(
-                    "cache_indirection", onnx.TensorProto.INT32, shape=["batch_size", "beam_width", "max_seq_len"]
+                    "cache_indirection",
+                    onnx.TensorProto.INT32,
+                    shape=["batch_size", "beam_width", "max_seq_len"],
                 )
             ]
         )
@@ -1203,7 +1256,11 @@ def update_decoder_subgraph_use_decoder_masked_attention(
                         nis.extend(["cache_indirection"])
 
                 node = onnx.helper.make_node(  # noqa: PLW2901
-                    "DecoderMaskedSelfAttention", nis, node.output, name=node.name, **kwargs
+                    "DecoderMaskedSelfAttention",
+                    nis,
+                    node.output,
+                    name=node.name,
+                    **kwargs,
                 )
             new_nodes.extend([node])
         subg.ClearField("node")
@@ -1573,7 +1630,11 @@ def replace_mha_with_dmmha(model: OnnxModel, past_seq_len_name: str):
 
 
 def replace_mha_with_gqa(
-    model: OnnxModel, attn_mask: str, kv_num_heads: int = 0, world_size: int = 1, window_size: int = -1
+    model: OnnxModel,
+    attn_mask: str,
+    kv_num_heads: int = 0,
+    world_size: int = 1,
+    window_size: int = -1,
 ):
     # Insert attention_mask subgraph to calculate shared inputs for all GroupQueryAttention nodes
     #
@@ -1635,7 +1696,14 @@ def replace_mha_with_gqa(
         to=TensorProto.INT32,
     )
     model.model.graph.node.extend(
-        [reduce_sum_node, sub_node, seqlen_k_cast_node, shape_node, gather_node, total_seqlen_cast_node]
+        [
+            reduce_sum_node,
+            sub_node,
+            seqlen_k_cast_node,
+            shape_node,
+            gather_node,
+            total_seqlen_cast_node,
+        ]
     )
 
     # Replace MultiHeadAttention with GroupQueryAttention
@@ -1776,14 +1844,14 @@ def replace_mha_with_gqa(
                 node.input[7],  # past_value
                 seqlen_k_cast_node.output[0],  # seqlens_k (for attention mask)
                 total_seqlen_cast_node.output[0],  # total_seq_len (for attention mask)
-                q_rotary.input[2] if q_rotary is not None else "",  # cos_cache (for rotary embeddings)
-                q_rotary.input[3] if q_rotary is not None else "",  # sin_cache (for rotary embeddings)
+                (q_rotary.input[2] if q_rotary is not None else ""),  # cos_cache (for rotary embeddings)
+                (q_rotary.input[3] if q_rotary is not None else ""),  # sin_cache (for rotary embeddings)
             ],
             outputs=node.output,
             name=node.name.replace("MultiHeadAttention", "GroupQueryAttention"),
             domain="com.microsoft",
             num_heads=num_heads // world_size,
-            kv_num_heads=num_heads // world_size if kv_num_heads == 0 else kv_num_heads // world_size,
+            kv_num_heads=(num_heads // world_size if kv_num_heads == 0 else kv_num_heads // world_size),
             local_window_size=window_size,
             do_rotary=int(q_rotary is not None and k_rotary is not None),
             rotary_interleaved=interleaved,
@@ -1831,7 +1899,9 @@ def update_decoder_subgraph_output_cross_attention(subg: GraphProto):
             node.attribute.extend([onnx.helper.make_attribute("output_qk", 1)])
 
             cross_attention = onnx.helper.make_tensor_value_info(
-                cross_attention_out_name, TensorProto.FLOAT, [batch_size_dim, num_heads_dim, 1, cross_seq_len_dim]
+                cross_attention_out_name,
+                TensorProto.FLOAT,
+                [batch_size_dim, num_heads_dim, 1, cross_seq_len_dim],
             )
             subg.output.extend([cross_attention])
     if num_layer_output_qk != num_layers:
@@ -1935,7 +2005,11 @@ def update_decoder_subgraph_share_buffer_and_use_decoder_masked_mha(subg: ModelP
             kwargs["past_present_share_buffer"] = 1
 
             node = onnx.helper.make_node(  # noqa: PLW2901
-                "DecoderMaskedMultiHeadAttention", nis, node.output, name=node.name, **kwargs
+                "DecoderMaskedMultiHeadAttention",
+                nis,
+                node.output,
+                name=node.name,
+                **kwargs,
             )
 
         if node not in nodes_to_remove:
@@ -1968,7 +2042,9 @@ def update_decoder_subgraph_share_buffer_and_use_decoder_masked_mha(subg: ModelP
         new_inputs.extend(
             [
                 onnx.helper.make_tensor_value_info(
-                    "cache_indirection", onnx.TensorProto.INT32, shape=["batch_size", "beam_width", "max_seq_len"]
+                    "cache_indirection",
+                    onnx.TensorProto.INT32,
+                    shape=["batch_size", "beam_width", "max_seq_len"],
                 )
             ]
         )
@@ -2020,7 +2096,7 @@ def pack_qkv_for_decoder_masked_mha(model_proto: ModelProto):
             matmul_node_name = onnx_model.create_node_name("MatMul", name_prefix="MatMul_QKV")
             weight = onnx.helper.make_tensor(
                 name=matmul_node_name + "_weight",
-                data_type=TensorProto.FLOAT if q_weight.data_type == 1 else TensorProto.FLOAT16,
+                data_type=(TensorProto.FLOAT if q_weight.data_type == 1 else TensorProto.FLOAT16),
                 dims=[qkv_weight.shape[0], qkv_weight.shape[1]],
                 vals=qkv_weight.flatten().tolist(),
             )
@@ -2074,12 +2150,18 @@ def update_input_shapes_for_gpt2_decoder_model(decoder_onnx_path: str, use_exter
             # Update dim_value to be 1
             shape_dim_proto.dim_value = 1
 
-    OnnxModel.save(decoder_model_proto, decoder_onnx_path, save_as_external_data=use_external_data_format)
+    OnnxModel.save(
+        decoder_model_proto,
+        decoder_onnx_path,
+        save_as_external_data=use_external_data_format,
+    )
     return True
 
 
 def generate_gpt2_init_decoder(
-    decoder_onnx_path: str, init_decoder_onnx_path: str, use_external_data_format: bool = True
+    decoder_onnx_path: str,
+    init_decoder_onnx_path: str,
+    use_external_data_format: bool = True,
 ) -> bool:
     """Generates the initial decoder GPT2 subgraph and saves it for downstream use.
        The initial decoder model will be saved to init_decoder_onnx_path.
@@ -2152,7 +2234,16 @@ def generate_gpt2_init_decoder(
         # Normalization Node is : LayerNormalization
         logits_matmul_to_residual_add_path = gpt2_init_decoder_model.match_parent_path(
             logits_matmul_node,
-            ["LayerNormalization", "Add", "Add", "MatMul", "FastGelu", "MatMul", "LayerNormalization", "Add"],
+            [
+                "LayerNormalization",
+                "Add",
+                "Add",
+                "MatMul",
+                "FastGelu",
+                "MatMul",
+                "LayerNormalization",
+                "Add",
+            ],
             [0, 0, 1, 0, 0, 0, 0, 0],
         )
 
@@ -2183,7 +2274,9 @@ def generate_gpt2_init_decoder(
     if not is_skiplayernorm_path:
         residual_add_to_attention_parent_index = 0
         residual_add_to_attention_path = gpt2_init_decoder_model.match_parent_path(
-            residual_add_node, ["Add", "Cast", "MatMul", "Attention"], [residual_add_to_attention_parent_index, 0, 0, 0]
+            residual_add_node,
+            ["Add", "Cast", "MatMul", "Attention"],
+            [residual_add_to_attention_parent_index, 0, 0, 0],
         )
 
         # Try other parent index of the residual Add node
@@ -2199,42 +2292,54 @@ def generate_gpt2_init_decoder(
         if residual_add_to_attention_path is None:
             residual_add_to_attention_parent_index = 0
             residual_add_to_attention_path = gpt2_init_decoder_model.match_parent_path(
-                residual_add_node, ["Add", "MatMul", "Attention"], [residual_add_to_attention_parent_index, 0, 0]
+                residual_add_node,
+                ["Add", "MatMul", "Attention"],
+                [residual_add_to_attention_parent_index, 0, 0],
             )
 
         # Try without the Casts before and after the MatMuls and other parent index of the residual Add node
         if residual_add_to_attention_path is None:
             residual_add_to_attention_parent_index = 1
             residual_add_to_attention_path = gpt2_init_decoder_model.match_parent_path(
-                residual_add_node, ["Add", "MatMul", "Attention"], [residual_add_to_attention_parent_index, 0, 0]
+                residual_add_node,
+                ["Add", "MatMul", "Attention"],
+                [residual_add_to_attention_parent_index, 0, 0],
             )
 
     # SkipLayerNormalization path
     else:
         residual_add_to_attention_parent_index = 0
         residual_add_to_attention_path = gpt2_init_decoder_model.match_parent_path(
-            residual_add_node, ["Cast", "MatMul", "Attention"], [residual_add_to_attention_parent_index, 0, 0]
+            residual_add_node,
+            ["Cast", "MatMul", "Attention"],
+            [residual_add_to_attention_parent_index, 0, 0],
         )
 
         # Try other parent index of the residual Add node
         if residual_add_to_attention_path is None:
             residual_add_to_attention_parent_index = 1
             residual_add_to_attention_path = gpt2_init_decoder_model.match_parent_path(
-                residual_add_node, ["Cast", "MatMul", "Attention"], [residual_add_to_attention_parent_index, 0, 0]
+                residual_add_node,
+                ["Cast", "MatMul", "Attention"],
+                [residual_add_to_attention_parent_index, 0, 0],
             )
 
         # Try without the Casts before and after the MatMuls
         if residual_add_to_attention_path is None:
             residual_add_to_attention_parent_index = 0
             residual_add_to_attention_path = gpt2_init_decoder_model.match_parent_path(
-                residual_add_node, ["MatMul", "Attention"], [residual_add_to_attention_parent_index, 0]
+                residual_add_node,
+                ["MatMul", "Attention"],
+                [residual_add_to_attention_parent_index, 0],
             )
 
         # Try without the Casts before and after the MatMuls and other parent index of the residual Add node
         if residual_add_to_attention_path is None:
             residual_add_to_attention_parent_index = 1
             residual_add_to_attention_path = gpt2_init_decoder_model.match_parent_path(
-                residual_add_node, ["MatMul", "Attention"], [residual_add_to_attention_parent_index, 0]
+                residual_add_node,
+                ["MatMul", "Attention"],
+                [residual_add_to_attention_parent_index, 0],
             )
 
     # TODO(hasesh): Are there more permutations to try before returning ?
@@ -2252,7 +2357,9 @@ def generate_gpt2_init_decoder(
     # SkipLayerNormalization path
     else:
         add_before_residual_add = gpt2_init_decoder_model.match_parent(
-            residual_add_node, "SkipLayerNormalization", residual_add_to_add_parent_index
+            residual_add_node,
+            "SkipLayerNormalization",
+            residual_add_to_add_parent_index,
         )
 
     if add_before_residual_add is None:
@@ -2342,7 +2449,11 @@ def generate_gpt2_init_decoder(
     gpt2_init_decoder_model.topological_sort()
 
     # Save the init decoder model
-    OnnxModel.save(init_decoder_model_proto, init_decoder_onnx_path, save_as_external_data=use_external_data_format)
+    OnnxModel.save(
+        init_decoder_model_proto,
+        init_decoder_onnx_path,
+        save_as_external_data=use_external_data_format,
+    )
     return True
 
 
@@ -2383,7 +2494,10 @@ def make_dim_proto_numeric_t5(model, config):
                 dim_proto.dim_value = dim_value
 
 
-def convert_generation_model(args: argparse.Namespace, generation_type: GenerationType = GenerationType.BEAMSEARCH):
+def convert_generation_model(
+    args: argparse.Namespace,
+    generation_type: GenerationType = GenerationType.BEAMSEARCH,
+):
     """Convert model according to command line arguments.
 
     Args:
@@ -2397,8 +2511,13 @@ def convert_generation_model(args: argparse.Namespace, generation_type: Generati
 
     logger.info(f"**** past_present_share_buffer={past_present_share_buffer}")
     if len(args.op_block_list) == 1 and args.op_block_list[0] == "auto":
-        if is_gpt2 and args.precision == Precision.FLOAT16:
-            args.op_block_list = ["Add", "LayerNormalization", "SkipLayerNormalization", "FastGelu"]
+        if is_gpt2 and args.precision == Precision.FLOAT16.value:
+            args.op_block_list = [
+                "Add",
+                "LayerNormalization",
+                "SkipLayerNormalization",
+                "FastGelu",
+            ]
             logger.info(f"**** Setting op_block_list to {args.op_block_list}")
             logger.info("**** use --op_block_list if you want to override the block operator list.")
         else:
@@ -2434,9 +2553,7 @@ def convert_generation_model(args: argparse.Namespace, generation_type: Generati
             logger.info(f"skip convert_to_onnx since path existed: {args.decoder_onnx}")
         else:
             if not args.decoder_onnx:
-                onnx_filename = "{}_past_{}.onnx".format(
-                    args.model_name_or_path, "fp16" if args.precision == Precision.FLOAT16 else "fp32"
-                )
+                onnx_filename = f"{args.model_name_or_path}_past_{args.precision}.onnx"
                 args.decoder_onnx = Path(Path(args.output).parent, onnx_filename).as_posix()
 
             logger.info(f"Convert GPT model {args.model_name_or_path} to onnx {args.decoder_onnx} ...")
@@ -2458,7 +2575,7 @@ def convert_generation_model(args: argparse.Namespace, generation_type: Generati
     logits_matmul_weight_padded = False
     if (
         not args.disable_pad_vocab_size
-        and args.precision == Precision.FLOAT16
+        and args.precision == Precision.FLOAT16.value
         and is_gpt2
         and (is_beamsearch or is_greedysearch or is_sampling)
     ):
@@ -2481,14 +2598,14 @@ def convert_generation_model(args: argparse.Namespace, generation_type: Generati
     ):
         logger.info(f"Creating an initial run GPT2 decoder from {args.decoder_onnx}. ")
 
-        gpt2_init_decoder_onnx_filename = "gpt2_init_past_{}.onnx".format(
-            "fp16" if args.precision == Precision.FLOAT16 else "fp32"
-        )
+        gpt2_init_decoder_onnx_filename = f"gpt2_init_past_{args.precision}.onnx"
 
         gpt2_init_decoder_onnx_path = Path(Path(args.output).parent, gpt2_init_decoder_onnx_filename).as_posix()
 
         gpt2_init_decoder_generated = generate_gpt2_init_decoder(
-            args.decoder_onnx, gpt2_init_decoder_onnx_path, args.use_external_data_format
+            args.decoder_onnx,
+            gpt2_init_decoder_onnx_path,
+            args.use_external_data_format,
         )
 
         if not gpt2_init_decoder_generated:
@@ -2672,7 +2789,8 @@ def convert_generation_model(args: argparse.Namespace, generation_type: Generati
             logger.info(f"Symbolic shape inference on {args.encoder_decoder_init_onnx}. The file will be overwritten.")
             shape_inference(args.encoder_decoder_init_onnx, args.use_external_data_format)
         encoder_model = onnx.load_model(args.encoder_decoder_init_onnx, load_external_data=True)
-        encoder_model.graph.name = f"{args.model_type} encoder and decoder init"
+        suffix = "encoder" if len(encoder_model.graph.input) == 2 else "encoder and decoder init"
+        encoder_model.graph.name = f"{args.model_type} {suffix}"
         verify_t5_encoder_decoder_init_subgraph(encoder_model.graph, args.precision)
 
         make_dim_proto_numeric_t5(encoder_model, config)
@@ -2711,14 +2829,13 @@ def convert_generation_model(args: argparse.Namespace, generation_type: Generati
             # )
             # initializers.extend(moved_initializers)
 
+        assert config.decoder_start_token_id >= 0, "decoder_start_token_id should be >= 0"
+
         node.attribute.extend(
             [
                 onnx.helper.make_attribute("encoder", encoder_model.graph),
                 onnx.helper.make_attribute("decoder", decoder_model.graph),
-                onnx.helper.make_attribute(
-                    "decoder_start_token_id",
-                    config.decoder_start_token_id if len(encoder_model.graph.input) == 3 else -1,
-                ),
+                onnx.helper.make_attribute("decoder_start_token_id", config.decoder_start_token_id),
             ]
         )
     else:
@@ -2838,7 +2955,9 @@ def convert_generation_model(args: argparse.Namespace, generation_type: Generati
 
     if args.output_sequences_scores:
         sequences_scores = onnx.helper.make_tensor_value_info(
-            "sequences_scores", TensorProto.FLOAT, ["batch_size", "num_return_sequences"]
+            "sequences_scores",
+            TensorProto.FLOAT,
+            ["batch_size", "num_return_sequences"],
         )
         graph_outputs.append(sequences_scores)
 
@@ -2852,7 +2971,7 @@ def convert_generation_model(args: argparse.Namespace, generation_type: Generati
 
     new_graph = onnx.helper.make_graph(
         [node],
-        f"{args.model_type} beam search" if not is_greedysearch else f"{args.model_type} greedy search",
+        (f"{args.model_type} beam search" if not is_greedysearch else f"{args.model_type} greedy search"),
         graph_inputs,
         graph_outputs,
         initializers,
@@ -2912,7 +3031,7 @@ def test_torch_performance(
     if args.use_gpu and not torch.cuda.is_available():
         raise RuntimeError("Please install PyTorch with Cuda for testing gpu performance.")
 
-    if args.precision == Precision.FLOAT16:
+    if args.precision == Precision.FLOAT16.value:
         model.half()
 
     device = torch.device("cuda:0" if args.use_gpu else "cpu")
@@ -2961,7 +3080,11 @@ def create_attention_mask(input_ids, pad_token_id):
     return attention_mask
 
 
-def test_gpt_model(args: argparse.Namespace, sentences: list[str] | None = None, is_greedy: bool = False):
+def test_gpt_model(
+    args: argparse.Namespace,
+    sentences: list[str] | None = None,
+    is_greedy: bool = False,
+):
     """Test GPT-2 model
 
     Args:
@@ -3152,7 +3275,7 @@ def test_gpt_model(args: argparse.Namespace, sentences: list[str] | None = None,
         print("-" * 50)
         # Compare the generated text instead of word IDs since ORT pads to max sequence length but Torch not.
         is_same = torch_decoded_sequences == ort_decoded_sequences
-        print("Torch and ORT result is ", "same" if is_same else "different")
+        print("Torch and ORT result is", "same" if is_same else "different")
         output["parity"] = is_same
 
     if args.torch_performance:
