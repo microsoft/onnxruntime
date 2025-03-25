@@ -569,18 +569,18 @@ TEST_F(QnnHTPBackendTests, UnaryOp_Softmax13_U16_NonLastAxis_LargeInput) {
 }
 
 // Check that QNN compiles DQ -> Softmax -> Q as a single unit.
-// Test that the default axis (1) for SoftMax opset < 13 does not work.
-TEST_F(QnnHTPBackendTests, UnaryOp_Softmax11_DefaultAxisFails) {
+// Test that the default axis (1) for SoftMax opset < 13 works.
+TEST_F(QnnHTPBackendTests, UnaryOp_Softmax11_DefaultAxis) {
   RunQDQOpTest<uint8_t>("Softmax",
                         {TestInputDef<float>({1, 2, 3}, false, -5.0f, 5.0f)},
                         {},  // Uses default axis of 1 for opset < 13.
                         11,
-                        ExpectedEPNodeAssignment::None);
+                        ExpectedEPNodeAssignment::All);
 }
 
 // Check that QNN compiles DQ -> Softmax -> Q as a single unit.
 // Test that setting an axis value of -1 works for Softmax opset < 13.
-TEST_F(QnnHTPBackendTests, UnaryOp_Softmax11_SetValidAxis) {
+TEST_F(QnnHTPBackendTests, UnaryOp_Softmax11_SetAxis) {
   RunQDQOpTest<uint8_t>("Softmax",
                         {TestInputDef<float>({1, 2, 3}, false, -5.0f, 5.0f)},
                         {utils::MakeAttribute("axis", static_cast<int64_t>(-1))},
@@ -611,19 +611,19 @@ TEST_F(QnnHTPBackendTests, UnaryOp_LogSoftmax13_NonLastAxis) {
 }
 
 // Check that QNN compiles DQ -> LogSoftmax -> Q as a single unit.
-// Test that the default axis (1) for LogSoftmax opset < 13 does not work.
-TEST_F(QnnHTPBackendTests, UnaryOp_LogSoftmax11_DefaultAxisFails) {
+// Test that the default axis (1) for LogSoftmax opset < 13 works.
+TEST_F(QnnHTPBackendTests, UnaryOp_LogSoftmax11_DefaultAxis) {
   std::vector<float> input_data = GetFloatDataInRange(-5.0f, 5.0f, 6);
   RunQDQOpTest<uint8_t>("LogSoftmax",
                         {TestInputDef<float>({1, 2, 3}, false, input_data)},
                         {},  // Uses default axis of 1 for opset < 13.
                         11,
-                        ExpectedEPNodeAssignment::None);
+                        ExpectedEPNodeAssignment::All);
 }
 
 // Check that QNN compiles DQ -> LogSoftmax -> Q as a single unit.
 // Test that setting an axis value of -1 works for LogSoftmax opset < 13.
-TEST_F(QnnHTPBackendTests, UnaryOp_LogSoftmax11_SetValidAxis) {
+TEST_F(QnnHTPBackendTests, UnaryOp_LogSoftmax11_SetAxis) {
   std::vector<float> input_data = GetFloatDataInRange(-5.0f, 5.0f, 6);
   RunQDQOpTest<uint8_t>("LogSoftmax",
                         {TestInputDef<float>({1, 2, 3}, false, input_data)},
