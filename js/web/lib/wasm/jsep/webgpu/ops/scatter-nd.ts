@@ -133,10 +133,9 @@ const createScatterNDProgramInfo = (inputs: readonly TensorView[], attributes: S
   var indices_start = uniforms.last_index_dimension * global_idx;
   var indices_end = indices_start + uniforms.last_index_dimension;
   if (${attributes.reduction === 'none'} && hasDuplicates) {
-    if (global_idx != 0u) {
+    if (global_idx >= ${ShapeUtil.sizeFromDimension(indicesShape, 0) / lastIndexDimension}) {
       return;
     }
-    indices_start = 0u;
   }
   for (var i = indices_start; i < indices_end; i++) {
     var index = i32(indices[i].x);
