@@ -47,6 +47,7 @@ Status DP4AMatMulQuantizeProgram::GenerateShaderCode(ShaderHelper& shader) const
   shader.AddOutput("scales", ShaderUsage::UseUniform);
   shader.AdditionalImplementation() << R"ADDNL_FN(
     var<workgroup> a_values : array<array<input_a_value_t, 32>, 2>;
+    var<workgroup> max_values : array<input_a_value_t, 4>;
 
     fn readInput(offset: u32) -> input_a_value_t
     {
@@ -59,10 +60,31 @@ Status DP4AMatMulQuantizeProgram::GenerateShaderCode(ShaderHelper& shader) const
 
   shader.MainFunctionBody() << R"MAIN_FN(
   if (sg_size == 32) {
-    let local_a = input_a[global_idx];
+    let local_a = readInput(global_idx);
     let max_val = subgroupMax(abs(local_a));
     if (global_idx >= uniforms.output_size) {
       return;
+    }
+    let max_temp = max(max_val.xy, max_val.zw);
+    let scale = max(max_temp[0], max_temp[1]);
+    let norm_a = local_a/scale;
+    output[global_idx] = pack4x8snorm(vec4<f32>(norm_a));
+    if (local_idx % 32 == 0)
+    {
+      // 127 is the max value of signed int8 [-127,127] used by pack4x8snorm for 1.0f.
+      scales[workgroup_idx * 2 + local_idx / 32] = scale/127;
+    }
+  } else if (sg_size == 16) {
+    let local_a = readInput(global_idx);
+    max_values[local_idx / 16] = subgroupMax(abs(local_a));
+    if (global_idx >= uniforms.output_size) {
+      return;
+    }
+    var max_val = input_a_value_t(0);
+    if (local_idx < 32) {
+      max_val = max(max_values[0], max_values[1]);
+    } else {
+      max_val = max(max_values[2], max_values[3]);
     }
     let max_temp = max(max_val.xy, max_val.zw);
     let scale = max(max_temp[0], max_temp[1]);
