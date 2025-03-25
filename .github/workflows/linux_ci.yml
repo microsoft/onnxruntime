@@ -126,7 +126,7 @@ jobs:
       - name: Build and Test ONNX Runtime in Docker (Release)
         env:
           ALLOW_RELEASED_ONNX_OPSET_ONLY: 0
-          NIGHTLY_BUILD: 1  # Assuming you want nightly build for both Debug and Release
+          NIGHTLY_BUILD: 1 
         run: |
           docker run --rm \
             --volume /data/onnx:/data/onnx:ro \
@@ -139,7 +139,7 @@ jobs:
             onnxruntimecpubuild \
             /bin/bash -c 'set -ex; \
               # Build with Release configuration and additional flags for release builds
-              python3 tools/ci_build/build.py \
+              PATH=/opt/python/cp310-cp310/bin:$PATH python3 tools/ci_build/build.py \
                 --build_dir build/Release --cmake_generator Ninja \
                 --config Release \
                 --skip_submodule_sync \
@@ -150,7 +150,7 @@ jobs:
                 --use_binskim_compliant_compile_flags --build_wheel --build_csharp --enable_transformers_tool_test --cmake_extra_defines onnxruntime_BUILD_BENCHMARKS=ON \
                 --update --build;
               # Run tests with Release configuration
-              python3 tools/ci_build/build.py \
+              PATH=/opt/python/cp310-cp310/bin:$PATH python3 tools/ci_build/build.py \
                 --build_dir build/Release --cmake_generator Ninja \
                 --config Release \
                 --skip_submodule_sync \
