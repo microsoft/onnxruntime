@@ -129,14 +129,14 @@ const createScatterNDProgramInfo = (inputs: readonly TensorView[], attributes: S
     }
   }
 
-  if (${attributes.reduction === 'none'} && hasDuplicates) {
-    if (global_idx >= ${ShapeUtil.sizeFromDimension(indicesShape, 0) / lastIndexDimension}) {
-      return;
-    }
-  }
-
   var data_offset = 0u;
   var indices_start = uniforms.last_index_dimension * global_idx;
+  if (${attributes.reduction === 'none'} && hasDuplicates) {
+    if (global_idx != 0u) {
+      return;
+    }
+    indices_start = 0u;
+  }
   let indices_end = indices_start + uniforms.last_index_dimension;
   for (var i = indices_start; i < indices_end; i++) {
     var index = i32(indices[i].x);
