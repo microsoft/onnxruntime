@@ -25,14 +25,14 @@ on:
   push:
     branches: [ main, 'rel-*']
   pull_request:
-    branches: [ main ]
+    branches: [ main, 'rel-*']
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
-  build-debug:  # Job for building and testing the Debug configuration
+  linux-cpu-asan-debug:  # Job for building and testing the Debug configuration
     runs-on: ["self-hosted", "1ES.Pool=onnxruntime-github-Ubuntu2204-AMD-CPU"]
     permissions:
       actions: read
@@ -48,7 +48,7 @@ jobs:
           python-version: '3.x'
 
       - name: Build Docker Image
-        uses: ./.github/actions/build-docker-image
+        uses: microsoft/onnxruntime-github-actions/build-docker-image@v0.0.1
         with:
           Dockerfile: ${{ github.workspace }}/tools/ci_build/github/linux/docker/inference/x86_64/default/cpu/Dockerfile
           Repository: 'onnxruntimecpubuildcentos8x64'
@@ -97,7 +97,7 @@ jobs:
                 --enable_address_sanitizer \
                 --test;'
 
-  build-release:  # Job for building and testing the Release configuration
+  linux-cpu-release:  # Job for building and testing the Release configuration
     runs-on: ["self-hosted", "1ES.Pool=onnxruntime-github-Ubuntu2204-AMD-CPU"]
     permissions:
       actions: read
@@ -113,7 +113,7 @@ jobs:
           python-version: '3.x'
 
       - name: Build Docker Image
-        uses: ./.github/actions/build-docker-image
+        uses: microsoft/onnxruntime-github-actions/build-docker-image@v0.0.1
         with:
           Dockerfile: ${{ github.workspace }}/tools/ci_build/github/linux/docker/Dockerfile.manylinux2_28_cpu
           Repository: 'onnxruntimecpubuild'
