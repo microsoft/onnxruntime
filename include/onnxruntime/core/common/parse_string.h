@@ -16,7 +16,7 @@ namespace onnxruntime {
 namespace detail {
 
 // Whether we will use std::from_chars() to parse to `T`.
-#if defined(_LIBCPP_VERSION)
+#if defined(_LIBCPP_VERSION) || defined(__GNUC__) && __GNUC__ < 12
 // Note: Currently (e.g., in LLVM 19), libc++'s std::from_chars() doesn't support floating point types yet.
 template <typename T>
 constexpr bool ParseWithFromChars = !std::is_same_v<bool, T> && std::is_integral_v<T>;
