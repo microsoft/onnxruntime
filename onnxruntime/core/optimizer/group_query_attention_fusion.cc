@@ -59,15 +59,7 @@ NodeArg& MergeQkvWeights(Graph& graph,
 
   int64_t single_tensor_output_dim = qkv_second_dim * qkv_third_dim; 
   int64_t total_output_dim = 3 * single_tensor_output_dim; // Because we have 3 tensors to merge.
-
-  // Create the new merged initializer for packed QKV.
-  ONNX_NAMESPACE::TensorProto initializer;
-  initializer.set_name(graph.GenerateNodeArgName("qkv_weights"));
-
-  initializer.add_dims(input_dim);
-  initializer.add_dims(total_output_dim);
-  initializer.set_data_type(data_type);
-
+  
   // ----- Use the data() API to retrieve the tensor data -----
   // Get the number of elements (each element is a uint8_t).
   size_t q_elements = q_initializer.size();
@@ -88,11 +80,17 @@ NodeArg& MergeQkvWeights(Graph& graph,
   const MLFloat16* v_scale_data = v_scale_tensor_initializer.data<MLFloat16>();
   const uint8_t* v_zero_points_data = v_zero_tensor_initializer.data<uint8_t>();
 
-  std::vector<MLFloat16> merged_qkv_data;
+  std::vector<uint8_t> merged_qkv_data;
   size_t element_count = q_elements + k_elements + v_elements;
-
   merged_qkv_data.reserve(element_count);
 
+  std::vector<MLFloat16> merged_qkv_scale_data;
+  merged_qkv_scale_data.reserve(input_dim * qkv_second_dim);
+
+  std::vector<uint8_t> merged_qkv_zero_points_data;
+  merged_qkv_zero_points_data.reserve(input_dim * qkv_second_dim / 2);
+
+    /*
   std::vector<MLFloat16> q_dequantized_data;
   q_dequantized_data.resize(element_count);
 
@@ -105,12 +103,41 @@ NodeArg& MergeQkvWeights(Graph& graph,
   DequantizePreGqaWeights<uint8_t, MLFloat16>(input_dim, qkv_second_dim, qkv_third_dim, q_data, q_scale_data, q_dequantized_data.data(), q_zero_points_data);
   DequantizePreGqaWeights<uint8_t, MLFloat16>(input_dim, qkv_second_dim, qkv_third_dim, k_data, k_scale_data, k_dequantized_data.data(), k_zero_points_data);
   DequantizePreGqaWeights<uint8_t, MLFloat16>(input_dim, qkv_second_dim, qkv_third_dim, v_data, v_scale_data, v_dequantized_data.data(), v_zero_points_data);
+  */
+  optimizer_utils::MergeMatMulWeights<uint8_t>(q_data, k_data, v_data, merged_qkv_data, input_dim, single_tensor_output_dim);
+  optimizer_utils::MergeMatMulWeights<MLFloat16>(q_scale_data, k_scale_data, v_scale_data, merged_qkv_scale_data, input_dim, qkv_second_dim);
+  optimizer_utils::MergeMatMulWeights<uint8_t>(q_zero_points_data, k_zero_points_data, v_zero_points_data, merged_qkv_zero_points_data, input_dim, qkv_second_dim / 2);
 
-  optimizer_utils::MergeMatMulWeights<MLFloat16>(q_dequantized_data.data(), k_dequantized_data.data(), v_dequantized_data.data(), merged_qkv_data, input_dim, single_tensor_output_dim);
+  ONNX_NAMESPACE::TensorProto merged_qkv_initializer;
+  merged_qkv_initializer.set_name(graph.GenerateNodeArgName("qkv_weights"));
 
-  utils::SetRawDataInTensorProto(initializer, merged_qkv_data.data(), gsl::narrow<size_t>(element_count) * sizeof(MLFloat16));
+  merged_qkv_initializer.add_dims(input_dim);
+  merged_qkv_initializer.add_dims(total_output_dim);
+  merged_qkv_initializer.set_data_type(data_type);
 
-  return graph_utils::AddInitializer(graph, initializer);
+
+  ONNX_NAMESPACE::TensorProto merged_qkv_scale_initializer;
+  merged_qkv_scale_initializer.set_name(graph.GenerateNodeArgName("qkv_weights_scale"));
+
+  merged_qkv_scale_initializer.add_dims(input_dim);
+  merged_qkv_scale_initializer.add_dims(qkv_second_dim);
+  merged_qkv_scale_initializer.set_data_type(q_scale_tensor->data_type());
+
+  ONNX_NAMESPACE::TensorProto merged_qkv_zp_initializer;
+  merged_qkv_zp_initializer.set_name(graph.GenerateNodeArgName("qkv_weights_zp"));
+
+  merged_qkv_zp_initializer.add_dims(input_dim);
+  merged_qkv_zp_initializer.add_dims(qkv_second_dim / 2);
+  merged_qkv_zp_initializer.set_data_type(data_type);
+
+  utils::SetRawDataInTensorProto(merged_qkv_initializer, merged_qkv_data.data(), gsl::narrow<size_t>(element_count) * sizeof(uint8_t));
+  utils::SetRawDataInTensorProto(merged_qkv_scale_initializer, merged_qkv_scale_data.data(), gsl::narrow<size_t>(input_dim * qkv_second_dim) * sizeof(MLFloat16));
+  utils::SetRawDataInTensorProto(merged_qkv_zp_initializer, merged_qkv_zero_points_data.data(), gsl::narrow<size_t>(input_dim * qkv_second_dim / 2) * sizeof(uint8_t));
+
+    [[maybe_unused]]  NodeArg& a1 = graph_utils::AddInitializer(graph, merged_qkv_scale_initializer);
+  [[maybe_unused]]  NodeArg& a2 = graph_utils::AddInitializer(graph, merged_qkv_zp_initializer);
+
+  return graph_utils::AddInitializer(graph, merged_qkv_initializer);
 }
 
 Status GroupQueryAttentionFusion::ApplyImpl(
