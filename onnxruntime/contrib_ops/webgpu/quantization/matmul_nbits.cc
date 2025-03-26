@@ -531,7 +531,10 @@ Status MatMulNBitsBlockWideTileProgram::GenerateShaderCode(ShaderHelper& shader)
 
   // Bock size 32, `a` component size 4, 8 `a` components per block.
   constexpr uint32_t kAComponentsForBlock32 = 8;
+
   const uint32_t workgroup_size = WorkgroupSizeX() * WorkgroupSizeY();
+  ORT_ENFORCE(tile_m_ == workgroup_size / 8, "tile_m must be workgroup_size / 8.");
+  ORT_ENFORCE(tile_n_ == workgroup_size, "tile_n must be workgroup_size.");
 
   // memory read/write helpers
   shader.AdditionalImplementation() << "fn mm_read_a(batch : u32, row : u32, col : u32) -> input_a_value_t {\n";
@@ -568,8 +571,8 @@ Status MatMulNBitsBlockWideTileProgram::GenerateShaderCode(ShaderHelper& shader)
   shader.AdditionalImplementation() << "\n";
   shader.AdditionalImplementation() << "// A block32 containing 8 components of `a`." << "\n";
   shader.AdditionalImplementation() << "const kAComponentsForBlock32 = " << kAComponentsForBlock32 << "u;\n";
-  shader.AdditionalImplementation() << "const tile_m = " << workgroup_size / 8 << "u;\n";
-  shader.AdditionalImplementation() << "const tile_n = " << workgroup_size << "u;\n";
+  shader.AdditionalImplementation() << "const tile_m = " << tile_m_ << "u;\n";
+  shader.AdditionalImplementation() << "const tile_n = " << tile_n_ << "u;\n";
 
   // declare workgroup memory
   shader.AdditionalImplementation() << "\n";
@@ -699,7 +702,7 @@ Status MatMulNBits::ComputeInternal(onnxruntime::webgpu::ComputeContext& context
     constexpr uint32_t tile_m = workgroup_size / 8;
     constexpr uint32_t tile_n = workgroup_size;
 
-    MatMulNBitsBlockWideTileProgram program{};
+    MatMulNBitsBlockWideTileProgram program{tile_m, tile_n};
     program.SetWorkgroupSize(workgroup_size);
     program.SetDispatchGroupSize((N + tile_n - 1) / tile_n,
                                  (M + tile_m - 1) / tile_m,
