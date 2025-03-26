@@ -688,7 +688,7 @@ Status MatMulNBits::ComputeInternal(onnxruntime::webgpu::ComputeContext& context
                                            components_a == 4 && components_b == 4 && M >= kMinMForTileOptimization &&
                                            context.AdapterInfo().vendor == std::string_view{"intel"};
   if (use_block_wide_tile_program) {
-    // enforce components to 1.
+    // Enforce output components to 1.
     components = 1;
 
     constexpr uint32_t workgroup_size = 128;
