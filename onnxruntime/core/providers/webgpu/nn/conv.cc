@@ -81,13 +81,13 @@ Status Conv<is_channels_last, is_fused>::ComputeInternal(ComputeContext& context
   std::transform(conv_attrs_.strides.begin(), conv_attrs_.strides.end(), std::back_inserter(strides), transform_dim);
   std::transform(conv_attrs_.dilations.begin(), conv_attrs_.dilations.end(), std::back_inserter(dilations), transform_dim);
   bool is_conv1d = false;
+  auto rank = input_shape.NumDimensions();
   auto channel_index = is_channels_last ? input_shape.NumDimensions() - 1 : 1;
-  if (input_shape.NumDimensions() > 4 || kernel_shape.NumDimensions() > 4) {
-    // Conv3D or higher dimensions
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Only Conv2d or Conv1d are supported.");
-  } else if (input_shape.NumDimensions() == 4 || kernel_shape.NumDimensions() == 4) {
+  if (rank > 4) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Only Conv1d and Conv2d are supported.");
+  } else if (rank == 4) {
     // Conv2D
-  } else if (input_shape.NumDimensions() == 3 || kernel_shape.NumDimensions() == 3) {
+  } else if (rank == 3) {
     // Conv1D
     input_shape = is_channels_last ? TensorShape({input_shape[0], 1, input_shape[1], input_shape[2]}) : TensorShape({input_shape[0], input_shape[1], 1, input_shape[2]});
     kernel_shape = TensorShape({kernel_shape[0], kernel_shape[1], 1, kernel_shape[2]});
@@ -246,7 +246,7 @@ template TensorShape Conv<true, true>::ComputeOutputShape(const TensorShape& inp
       VERSION_FROM,                                                                   \
       kWebGpuExecutionProvider,                                                       \
       (*KernelDefBuilder::Create()).TypeConstraint("T", WebGpuSupportedFloatTypes()), \
-      Conv<true, false>);                                                             \
+      Conv<true, true>);                                                             \
                                                                                       \
   ONNX_OPERATOR_KERNEL_EX(                                                            \
       Conv,                                                                           \
@@ -271,7 +271,7 @@ template TensorShape Conv<true, true>::ComputeOutputShape(const TensorShape& inp
       VERSION_FROM, VERSION_TO,                                                       \
       kWebGpuExecutionProvider,                                                       \
       (*KernelDefBuilder::Create()).TypeConstraint("T", WebGpuSupportedFloatTypes()), \
-      Conv<true, false>);
+      Conv<true, true>);
 
 WEBGPU_ONNX_CONV_OPERATOR_VERSIONED_KERNEL(1, 10)
 WEBGPU_ONNX_CONV_OPERATOR_VERSIONED_KERNEL(11, 21)
