@@ -2263,12 +2263,26 @@ class TestGQA(unittest.TestCase):
         h_sizes = [32] if pipeline_mode else [32, 40, 64, 80, 96, 128, 160, 192, 224, 256]
 
         # Only test softcap=0.0 for interactive case as per original
-        self.run_test_config(parity_check_gqa_past, Config, batches, seqs,
-                           num_h, h_sizes, pos_ids_attn_bias,
-                           additional_params={'softcap': 0.0, 'use_smooth_softmax': False})
-        self.run_test_config(parity_check_gqa_past_no_buff, Config, batches, seqs,
-                           num_h, h_sizes, pos_ids_attn_bias,
-                           additional_params={'softcap': 0.0, 'use_smooth_softmax': False})
+        self.run_test_config(
+            parity_check_gqa_past,
+            Config,
+            batches,
+            seqs,
+            num_h,
+            h_sizes,
+            pos_ids_attn_bias,
+            additional_params={"softcap": 0.0, "use_smooth_softmax": False},
+        )
+        self.run_test_config(
+            parity_check_gqa_past_no_buff,
+            Config,
+            batches,
+            seqs,
+            num_h,
+            h_sizes,
+            pos_ids_attn_bias,
+            additional_params={"softcap": 0.0, "use_smooth_softmax": False},
+        )
 
 
 if __name__ == "__main__":
