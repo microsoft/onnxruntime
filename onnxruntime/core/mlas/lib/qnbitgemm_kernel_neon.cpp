@@ -186,17 +186,76 @@ Q2BitGemmPackQuantBDataSize(
 }
 
 // Weight transform for data reuse
-void
-SQ2BitGemmPackQuantBData(
-    size_t /*N*/,
-    size_t /*K*/,
-    size_t /*BlkLen*/,
-    MLAS_QNBIT_GEMM_COMPUTE_TYPE /* ComputeType*/,
-    const std::byte* /*QuantBDataBegin*/,
-    std::byte* /*PackedQuantBDataBegin*/,
-    MLAS_THREADPOOL* /*ThreadPool*/
-)
+void SQ2BitGemmPackQuantBData(
+    size_t N,
+    size_t K,
+    size_t BlkLen,
+    MLAS_QNBIT_GEMM_COMPUTE_TYPE ComputeType,
+    const std::byte* QuantBDataBegin,
+    std::byte* PackedQuantBDataBegin,
+    MLAS_THREADPOOL* ThreadPool)
 {
+    constexpr size_t BITS = 2;                        // 2-bit quantization
+    constexpr size_t ELEMENTS_PER_BYTE = 8 / BITS;    // 4 elements per byte
+    constexpr size_t GROUP_SIZE = 32;                 // Optimal group size for cache locality
+    
+    // Validate block alignment requirements
+    assert(BlkLen % 16 == 0 && "Block length must be multiple of 16 for SIMD alignment");
+    
+    // Configure SIMD width based on compute type
+    const size_t SIMD_WIDTH = (ComputeType == SQNBIT_CompInt8) ? 32 : 16;
+
+    // Calculate parallelization parameters
+    const size_t block_count_k = (K + BlkLen - 1) / BlkLen;
+    const size_t total_iterations = N * block_count_k;
+
+    MlasTrySimpleParallel(ThreadPool, total_iterations,
+        [&](ptrdiff_t task_id) {
+            // Calculate matrix coordinates from task ID
+            const size_t n = task_id / block_count_k;
+            const size_t k_block = task_id % block_count_k;
+            
+            // Calculate data offsets for current block
+            const size_t block_bytes = BlkLen * N / ELEMENTS_PER_BYTE;
+            const size_t offset = n * block_bytes + k_block * (BlkLen / ELEMENTS_PER_BYTE);
+            
+            const std::byte* src = QuantBDataBegin + offset;
+            std::byte* dst = PackedQuantBDataBegin + offset;
+
+            // Temporary buffer for bit manipulation
+            std::vector<uint8_t> unpacked_bits(BlkLen);
+
+            // Process each SIMD-aligned sub-block
+            for (size_t subblk = 0; subblk < BlkLen; subblk += SIMD_WIDTH) {
+                // Phase 1: Bit unpacking - extract 2-bit elements
+                for (size_t i = 0; i < SIMD_WIDTH; ++i) {
+                    const size_t byte_idx = (subblk + i) / ELEMENTS_PER_BYTE;
+                    const size_t bit_pos = 2 * ((subblk + i) % ELEMENTS_PER_BYTE);
+                    unpacked_bits[i] = (static_cast<uint8_t>(src[byte_idx]) >> bit_pos) & 0x3;
+                }
+
+                // Phase 2: Group reorganization for SIMD efficiency
+                for (size_t g = 0; g < SIMD_WIDTH; g += GROUP_SIZE) {
+                    const size_t group_end = std::min(g + GROUP_SIZE, SIMD_WIDTH);
+                    
+                    // Realign elements within group
+                    for (size_t i = g; i < group_end; ++i) {
+                        // Calculate target position using matrix transformation:
+                        // (original_index % group_size) * SIMD_WIDTH/group_size + original_index/group_size
+                        const size_t new_pos = (i % GROUP_SIZE) * (SIMD_WIDTH / GROUP_SIZE) + (i / GROUP_SIZE);
+                        
+                        // Pack transformed values back into bytes
+                        const size_t dst_byte = new_pos / ELEMENTS_PER_BYTE;
+                        const size_t dst_shift = 2 * (new_pos % ELEMENTS_PER_BYTE);
+                        dst[dst_byte] |= static_cast<std::byte>(unpacked_bits[i] << dst_shift);
+                    }
+                }
+
+                // Advance pointers to next sub-block
+                src += SIMD_WIDTH / ELEMENTS_PER_BYTE;
+                dst += SIMD_WIDTH / ELEMENTS_PER_BYTE;
+            }
+        });
 }
 
 size_t
