@@ -185,7 +185,7 @@ class IStreamCommandHandleRegistry {
 
   // Get a SetDevice function.
   // This interface is currently used by TRT EP or CUDA EP only and is called in RunSince from stream execution.
-  virtual std::optional<SetDeviceFn> GetSetDeviceFn() { return std::nullopt; };
+  virtual std::optional<SetDeviceFn> GetSetDeviceFn() const { return std::nullopt; };
 };
 
 }  // namespace onnxruntime
