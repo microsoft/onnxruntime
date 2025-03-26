@@ -69,9 +69,7 @@ class FusionAttentionClip(FusionAttention):
 
         if self.num_heads > 0 and num_heads != self.num_heads:
             if self.num_heads_warning:
-                logger.warning(
-                    f"--num_heads is {self.num_heads}. Detected value is {num_heads}. Using detected value."
-                )
+                logger.warning(f"--num_heads is {self.num_heads}. Detected value is {num_heads}. Using detected value.")
                 self.num_heads_warning = False  # Do not show the warning more than once
 
         if self.hidden_size > 0 and hidden_size != self.hidden_size:
@@ -79,9 +77,7 @@ class FusionAttentionClip(FusionAttention):
                 logger.warning(
                     f"--hidden_size is {self.hidden_size}. Detected value is {hidden_size}. Using detected value."
                 )
-                self.hidden_size_warning = (
-                    False  # Do not show the warning more than once
-                )
+                self.hidden_size_warning = False  # Do not show the warning more than once
 
         return num_heads, hidden_size
 
@@ -89,9 +85,7 @@ class FusionAttentionClip(FusionAttention):
         skip_input_index = None
         node_before_layer_norm = None
         for i in [1, 0]:
-            parent = self.model.match_parent(
-                normalize_node, "SkipLayerNormalization", i
-            )
+            parent = self.model.match_parent(normalize_node, "SkipLayerNormalization", i)
             if parent is not None:
                 skip_input_index = i
                 node_before_layer_norm = parent
@@ -104,12 +98,8 @@ class FusionAttentionClip(FusionAttention):
             for i in [0, 1]:
                 node_before_layer_norm = None
 
-                node_before_layer_norm_1 = self.model.match_parent(
-                    normalize_node, "Add", i
-                )
-                node_before_layer_norm_2 = self.model.match_parent(
-                    normalize_node, "LayerNormalization", i
-                )
+                node_before_layer_norm_1 = self.model.match_parent(normalize_node, "Add", i)
+                node_before_layer_norm_2 = self.model.match_parent(normalize_node, "LayerNormalization", i)
                 if node_before_layer_norm_1 is not None:
                     #           Add -----------+
                     #            |             |
@@ -201,14 +191,10 @@ class FusionAttentionClip(FusionAttention):
                 [0, 0],
             )
             if qk_nodes is None:
-                qk_nodes = self.model.match_parent_path(
-                    matmul_qkv, ["Softmax", "Add", "Mul", "MatMul"], [0, 0, 0, 0]
-                )
+                qk_nodes = self.model.match_parent_path(matmul_qkv, ["Softmax", "Add", "Mul", "MatMul"], [0, 0, 0, 0])
                 if qk_nodes is None:
                     # If attention mask is not used, we can still match the qk path.
-                    qk_nodes = self.model.match_parent_path(
-                        matmul_qkv, ["Softmax", "Mul", "MatMul"], [0, 0, 0]
-                    )
+                    qk_nodes = self.model.match_parent_path(matmul_qkv, ["Softmax", "Mul", "MatMul"], [0, 0, 0])
                     if qk_nodes is None:
                         # Cast nodes are added in the model for fp16.
                         qk_nodes = self.model.match_parent_path(
@@ -228,8 +214,8 @@ class FusionAttentionClip(FusionAttention):
                                 return
                         else:
                             add_mask = qk_nodes[3]
-                    else:
-                        add_mask = qk_nodes[1]
+                else:
+                    add_mask = qk_nodes[1]
         else:
             assert len(add_mask_indices) == 1
             causal_mask_input_index = 1 - add_mask_indices[0]
@@ -271,14 +257,8 @@ class FusionAttentionClip(FusionAttention):
 
         add_k, matmul_k = k_nodes[-2], k_nodes[-1]
 
-        if (
-            matmul_q.input[0] != root_input
-            or matmul_k.input[0] != root_input
-            or matmul_v.input[0] != root_input
-        ):
-            logger.debug(
-                "fuse_attention: expect to have same input to q, k and v matmul"
-            )
+        if matmul_q.input[0] != root_input or matmul_k.input[0] != root_input or matmul_v.input[0] != root_input:
+            logger.debug("fuse_attention: expect to have same input to q, k and v matmul")
             return
 
         num_heads, hidden_size = self.get_num_heads_and_hidden_size(reshape_q)
