@@ -1149,7 +1149,9 @@ def attention_qkvpacked_ref(
     )
 
 
-def get_custom_attention_bias(batch_size, sequence_length, total_seq_len, seqlens_k=None, past=False, torch_type=torch.float16):
+def get_custom_attention_bias(
+    batch_size, sequence_length, total_seq_len, seqlens_k=None, past=False, torch_type=torch.float16
+):
     if past:
         assert seqlens_k is not None
         attention_bias = torch.zeros((batch_size, 1, sequence_length, total_seq_len), dtype=torch_type)
@@ -2229,12 +2231,14 @@ class TestGQA(unittest.TestCase):
         print("-------- TEST GQA NO PAST (PROMPT CASE) ---------")
         batches = [3] if pipeline_mode else [1, 3, 5]
         seqs = (
-            [(127, 127), (240, 240)] if pipeline_mode else
-            [(127, 127), (35, 35), (2000, 2000), (200, 200), (240, 240), (8000, 8000)]
+            [(127, 127), (240, 240)]
+            if pipeline_mode
+            else [(127, 127), (35, 35), (2000, 2000), (200, 200), (240, 240), (8000, 8000)]
         )
         pos_ids_attn_bias = (
-            [(False, False), (True, True)] if pipeline_mode else
-            [(False, False), (True, True), (False, True), (True, False)]
+            [(False, False), (True, True)]
+            if pipeline_mode
+            else [(False, False), (True, True), (False, True), (True, False)]
         )
         num_h = [(32, 8)] if pipeline_mode else [(6, 6), (6, 3), (9, 9), (9, 3)]
         h_sizes = [128] if pipeline_mode else [32, 40, 64, 80, 96, 128, 160, 192, 224, 256]
@@ -2252,12 +2256,12 @@ class TestGQA(unittest.TestCase):
         seqs = (
             [(1, 128)]
             if pipeline_mode
-            else[(1, 128), (1, 339), (1, 1024), (1, 5000), (1, 800), (1, 256), (1, 799), (1, 2048)]
+            else [(1, 128), (1, 339), (1, 1024), (1, 5000), (1, 800), (1, 256), (1, 799), (1, 2048)]
         )
         pos_ids_attn_bias = (
             [(False, False), (True, True)]
             if pipeline_mode
-            else[(False, False), (True, True), (False, True), (True, False)]
+            else [(False, False), (True, True), (False, True), (True, False)]
         )
         num_h = [(9, 3)] if pipeline_mode else [(6, 6), (6, 3), (9, 9), (9, 3)]
         h_sizes = [64] if pipeline_mode else [32, 40, 64, 80, 96, 128, 160, 192, 224, 256]
@@ -2273,12 +2277,12 @@ class TestGQA(unittest.TestCase):
         seqs = (
             [(256, 2048)]
             if pipeline_mode
-            else[(1, 128), (1, 339), (1, 1024), (1, 5000), (1, 800), (1, 256), (1, 799), (1, 2048)]
+            else [(1, 128), (1, 339), (1, 1024), (1, 5000), (1, 800), (1, 256), (1, 799), (1, 2048)]
         )
         pos_ids_attn_bias = (
             [(False, False), (True, True)]
             if pipeline_mode
-            else[(False, False), (True, True), (False, True), (True, False)]
+            else [(False, False), (True, True), (False, True), (True, False)]
         )
         num_h = [(32, 8)] if pipeline_mode else [(6, 6), (6, 3), (9, 9), (9, 3)]
         h_sizes = [32] if pipeline_mode else [32, 40, 64, 80, 96, 128, 160, 192, 224, 256]
