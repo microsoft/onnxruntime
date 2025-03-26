@@ -37,7 +37,9 @@ std::string Conv2dMMProgram::Conv2dCommonSnippet(const ShaderVariableHelper& x, 
         ORT_THROW("inner_element_size ", inner_element_size, " is not supported.");
     }
   };
-
+  if (data_type == "") {
+    data_type = "x_value_t";
+  }
   const std::string coord_a_snippet = is_channels_last_ ? "let coord = vec4<i32>(batch, xRow, xCol, xCh);" : "let coord = vec4<i32>(batch, xCh, xRow, xCol);";
   const std::string coord_res_snippet = is_channels_last_ ? "let coords = vec4<i32>(batch, row / outWidth, row % outWidth, col);" : "let coords = vec4<i32>(batch, row, col / outWidth, col % outWidth);";
 
