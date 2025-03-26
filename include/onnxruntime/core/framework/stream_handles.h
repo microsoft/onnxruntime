@@ -183,7 +183,7 @@ class IStreamCommandHandleRegistry {
   // This interface is currently used by TRT EP or CUDA EP only.
   virtual void RegisterSetDeviceFn(SetDeviceFn f) { ORT_UNUSED_PARAMETER(f); };
 
-  // Get a SetDevice fucntion.
+  // Get a SetDevice function.
   // This interface is currently used by TRT EP or CUDA EP only and is called in RunSince from stream execution.
   virtual std::optional<SetDeviceFn> GetSetDeviceFn() { return std::nullopt; };
 };
