@@ -54,11 +54,23 @@ class StreamCommandHandleRegistryImpl : public IStreamCommandHandleRegistry {
     create_stream_map_.insert({device_type, f});
   }
 
+  void RegisterSetDeviceFn(SetDeviceFn f) override {
+    set_device_fn_ = f;
+  }
+
+  virtual std::optional<SetDeviceFn> GetSetDeviceFn() {
+    if (set_device_fn_) {
+      return set_device_fn_;
+    }
+    return std::nullopt;
+  }
+
   StreamCommandHandleRegistryImpl() = default;
 
  private:
   InlinedHashMap<std::string, WaitNotificationFn> notification_wait_map_;
   InlinedHashMap<OrtDevice::DeviceType, CreateStreamFn> create_stream_map_;
+  SetDeviceFn set_device_fn_;
 };
 #endif
 

@@ -205,6 +205,12 @@ void RunSince(size_t stream_idx, StreamExecutionContext& ctx, SessionScope& sess
     end = std::min(end, range->stream_pc_range[stream_idx].second);
 #endif
 
+  auto set_device_fn = ctx.GetSessionState().GetStreamHandleRegistryInstance().GetSetDeviceFn();
+  if (set_device_fn.has_value()) {
+    auto device_id = ctx.GetSessionState().AcquireDeviceStreamCollection()->GetStream(stream_idx)->GetDevice().Id();
+    set_device_fn.value()(device_id);
+  }
+
   while (since < end) {
     if (!ctx.TaskStatus().IsOK()) {
       ctx.CompleteTask();

@@ -154,6 +154,8 @@ class Notification {
 // TODO: use a better way to dispatch handles.
 using CreateStreamFn = std::function<std::unique_ptr<Stream>(const OrtDevice&)>;
 
+using SetDeviceFn = std::function<void(OrtDevice::DeviceId)>;
+
 // an interface of a simple registry which hold the handles EP registered.
 // make it interface so we can pass it through shared library based execution providers
 class IStreamCommandHandleRegistry {
@@ -171,6 +173,8 @@ class IStreamCommandHandleRegistry {
                               WaitNotificationFn fn) = 0;
   // register a handle about how to create stream on given device type.
   virtual void RegisterCreateStreamFn(OrtDevice::DeviceType device_type, CreateStreamFn f) = 0;
+  virtual void RegisterSetDeviceFn(SetDeviceFn f) {};
+  virtual std::optional<SetDeviceFn> GetSetDeviceFn() {return std::nullopt;};
 };
 
 }  // namespace onnxruntime
