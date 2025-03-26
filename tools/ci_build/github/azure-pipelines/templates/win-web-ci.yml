@@ -255,7 +255,7 @@ jobs:
     - script: |
         mkdir $(Agent.TempDirectory)\web\test\07
         dir $(Agent.TempDirectory)\web\test\07
-        npm test --webgpu-ep -- -b=webgpu -e=chrome $(webgpuCommandlineExtraFlags) --user-data-dir=$(Agent.TempDirectory)\web\test\07 --chromium-flags=--enable-logging --chromium-flags=--v=1
+        npm test --webgpu-ep -- -b=webgpu --log-verbose -e=chrome $(webgpuCommandlineExtraFlags) --user-data-dir=$(Agent.TempDirectory)\web\test\07 --chromium-flags=--enable-logging --chromium-flags=--v=1
       workingDirectory: '$(Build.SourcesDirectory)\js\web'
       displayName: 'Run ort-web tests - WebGPU EP'
       continueOnError: true # we allow WebGPU EP tests to fail for now
