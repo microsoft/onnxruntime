@@ -23,8 +23,6 @@ using namespace onnxruntime;
 
 template <typename T>
 class MlasRoPETest : public MlasTestBase {
-  const float Pi = 2 * std::acos(0.0f);
-
  public:
   void Test(size_t rotary_emb_dim, bool interleaved) {
     std::vector<T> input(rotary_emb_dim);
