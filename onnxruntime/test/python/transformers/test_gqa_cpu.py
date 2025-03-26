@@ -2244,11 +2244,9 @@ class TestGQA(unittest.TestCase):
         h_sizes = [64] if pipeline_mode else [32, 40, 64, 80, 96, 128, 160, 192, 224, 256]
 
         # Test with buffer
-        self.run_test_config(parity_check_gqa_past, Config, batches, seqs,
-                           num_h, h_sizes, pos_ids_attn_bias)
+        self.run_test_config(parity_check_gqa_past, Config, batches, seqs, num_h, h_sizes, pos_ids_attn_bias)
         # Test without buffer
-        self.run_test_config(parity_check_gqa_past_no_buff, Config, batches, seqs,
-                           num_h, h_sizes, pos_ids_attn_bias)
+        self.run_test_config(parity_check_gqa_past_no_buff, Config, batches, seqs, num_h, h_sizes, pos_ids_attn_bias)
 
     def test_gqa_interactive_one_batch(self):
         print("-------- TEST GQA INTERACTIVE ---------")
