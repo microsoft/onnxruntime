@@ -37,11 +37,11 @@ steps:
   - script: |
       set -e -x
       EXTRA_ARGS=""
-      # if ENABLE_WEBGPU is not set,args will be empty
+      # if ENABLE_WEBGPU is not set,args will be empty and --emulator-extra-args=""
       if [[ "$(ENABLE_WEBGPU)" == "true" ]]; then
         EXTRA_ARGS="-gpu host -feature Vulkan"
       fi
-      EXTRA_ARGS="-gpu host -feature Vulkan"
+
       python3 tools/python/run_android_emulator.py \
         --android-sdk-root $(ANDROID_SDK_ROOT) \
         --create-avd --system-image "system-images;android-31;default;x86_64" \
@@ -60,9 +60,14 @@ steps:
   # Add -verbose to --emulator-extra-args to enable additional logging.
   - script: |
       set -e -x
+      WEBGPU_ARGS=""
+      # if ENABLE_WEBGPU is not set,args will be empty
+      if [[ "$(ENABLE_WEBGPU)" == "true" ]]; then
+        WEBGPU_ARGS="-gpu host -feature Vulkan"
+      fi
       python3 tools/python/run_android_emulator.py \
         --android-sdk-root $(ANDROID_SDK_ROOT) \
-        --start --emulator-extra-args="-partition-size 2047 -gpu host -feature Vulkan" \
+        --start --emulator-extra-args="-partition-size 2047 $WEBGPU_ARGS" \
         --emulator-pid-file $(Build.BinariesDirectory)/emulator.pid
       echo "Emulator PID:"`cat $(Build.BinariesDirectory)/emulator.pid`
     displayName: Start Android Emulator
