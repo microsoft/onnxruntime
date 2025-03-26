@@ -27,6 +27,11 @@ jobs:
       matrix:
         platform_machine: ["x86_64", "arm64"]
         build_config: ["Debug", "Release"]
+        exclude:
+          # we do not have enough resources to run all combinations
+          # Exclude x86_64 + Debug combination
+          - platform_machine: "x86_64"
+            build_config: "Debug"
         include:
           - platform_machine: "x86_64"
             runs_on: "macos-13"
@@ -34,6 +39,7 @@ jobs:
           - platform_machine: "arm64"
             runs_on: "macos-15"
             xcode_version: "16"
+      max-parallel: 1
 
     runs-on: ${{ matrix.runs_on }}
     env:
