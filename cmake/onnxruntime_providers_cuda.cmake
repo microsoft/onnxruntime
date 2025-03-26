@@ -152,13 +152,15 @@
         target_compile_options(${target} PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:-Xcompiler \"${ORT_FLAG}\">")
     endforeach()
 
+    set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} --stack_size=1048576")
+
     # CUDA 11.3+ supports parallel compilation
     # https://docs.nvidia.com/cuda/cuda-compiler-driver-nvcc/index.html#options-for-guiding-compiler-driver-threads
     if (CMAKE_CUDA_COMPILER_VERSION VERSION_GREATER_EQUAL 11.3)
       set(onnxruntime_NVCC_THREADS "1" CACHE STRING "Number of threads that NVCC can use for compilation.")
       target_compile_options(${target} PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:--threads \"${onnxruntime_NVCC_THREADS}\">")
     endif()
-    
+
     # Since CUDA 12.8, compiling diagnostics become stricter
     if (CMAKE_CUDA_COMPILER_VERSION VERSION_GREATER_EQUAL 12.8)
       target_compile_options(${target} PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:--relocatable-device-code=true>")

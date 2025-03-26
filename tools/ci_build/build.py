@@ -2038,8 +2038,12 @@ def build_targets(args, cmake_path, build_dir, configs, num_parallel_jobs, targe
             env["ANDROID_SDK_ROOT"] = args.android_sdk_path
             env["ANDROID_NDK_HOME"] = args.android_ndk_path
 
-        run_subprocess(cmd_args, env=env)
-
+        try:
+            run_subprocess(cmd_args, env=env)
+        except subprocess.CalledProcessError as e:
+            print(f"Command '{e.cmd}' returned non-zero exit status {e.returncode}.")
+            print(f"Error output: {e.stderr}")
+            sys.exit(e.returncode)
 
 def add_dir_if_exists(directory, dir_list):
     if os.path.isdir(directory):
