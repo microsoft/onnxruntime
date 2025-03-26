@@ -1799,7 +1799,7 @@ def parity_check_gqa_past(
             config.kv_sequence_length,
             seqlens_k=cache_seqlens,
             past=True,
-            torch_type=torch_type
+            torch_type=torch_type,
         )
         if config.has_attention_bias
         else None
