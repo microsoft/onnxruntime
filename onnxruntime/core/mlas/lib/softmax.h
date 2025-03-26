@@ -84,6 +84,7 @@ struct MLAS_SOFTMAX_DISPATCH {
      */
     typedef MLAS_FP16(BiasAddReduceMax_Fp16_Fn)(
         const MLAS_FP16* Input,
+        MLAS_FP16* Output,
         const MLAS_FP16* Bias,
         size_t N
     );

@@ -743,8 +743,9 @@ MLAS_FP16 ReduceMax_Kernel_Fp16(const MLAS_FP16* Input, size_t N) {
     return MLAS_FP16::FromBits(result);
 }
 
-MLAS_FP16 BiasAddReduceMax_Kernel_Fp16(const MLAS_FP16* Input, const MLAS_FP16* Bias, size_t N) {
+MLAS_FP16 BiasAddReduceMax_Kernel_Fp16(const MLAS_FP16* Input, MLAS_FP16* Output, const MLAS_FP16* Bias, size_t N) {
     const auto* input = reinterpret_cast<const _mlas_fp16_*>(Input);
+    auto* output = reinterpret_cast<_mlas_fp16_*>(Output);
     const auto* bias = reinterpret_cast<const _mlas_fp16_*>(Bias);
     auto max8 = MlasBroadcastFloat16x8((_mlas_fp16_)0xfbff);
     auto max4 = MlasBroadcastFloat16x4((_mlas_fp16_)0xfbff);
@@ -755,12 +756,18 @@ MLAS_FP16 BiasAddReduceMax_Kernel_Fp16(const MLAS_FP16* Input, const MLAS_FP16* 
         auto v2 = MlasAddFloat16(MlasLoadFloat16x8(input + 16), MlasLoadFloat16x8(bias + 16));
         auto v3 = MlasAddFloat16(MlasLoadFloat16x8(input + 24), MlasLoadFloat16x8(bias + 24));
 
+        MlasStoreFloat16x8(output, v0);
+        MlasStoreFloat16x8(output + 8, v1);
+        MlasStoreFloat16x8(output + 16, v2);
+        MlasStoreFloat16x8(output + 24, v3);
+
         v0 = MlasMaximumFloat16(v0, v1);
         v2 = MlasMaximumFloat16(v2, v3);
         v0 = MlasMaximumFloat16(v0, v2);
         max8 = MlasMaximumFloat16(max8, v0);
 
         input += 32;
+        output += 32;
         N -= 32;
     }
 
@@ -768,40 +775,51 @@ MLAS_FP16 BiasAddReduceMax_Kernel_Fp16(const MLAS_FP16* Input, const MLAS_FP16* 
         auto v0 = MlasAddFloat16(MlasLoadFloat16x8(input), MlasLoadFloat16x8(bias));
         auto v1 = MlasAddFloat16(MlasLoadFloat16x8(input + 8), MlasLoadFloat16x8(bias + 8));
 
+        MlasStoreFloat16x8(output, v0);
+        MlasStoreFloat16x8(output + 8, v1);
+
         v0 = MlasMaximumFloat16(v0, v1);
         max8 = MlasMaximumFloat16(max8, v0);
 
         input += 16;
+        output += 16;
         N -= 16;
     }
 
     if (N & 8) {
         auto v0 = MlasAddFloat16(MlasLoadFloat16x8(input), MlasLoadFloat16x8(bias));
+        MlasStoreFloat16x8(output, v0);
         max8 = MlasMaximumFloat16(max8, v0);
 
         input += 8;
+        output += 8;
         N -= 8;
     }
 
     if (N & 4) {
         auto v0 = MlasAddFloat16(MlasLoadFloat16x4(input), MlasLoadFloat16x4(bias));
+        MlasStoreFloat16x4(output, v0);
         max4 = MlasMaximumFloat16(max4, v0);
 
         input += 4;
+        output += 4;
         N -= 4;
     }
 
     if (N == 3) {
         auto v0 = MlasAddFloat16(MlasLoadPartialFloat16x4(input, 3), MlasLoadPartialFloat16x4(bias, 3));
+        MlasStorePartialFloat16x4(output, v0, 3);
         v0 = MlasReinterpretInt16AsFloat16(vset_lane_s16(static_cast<int16_t>(0xfbff), MlasReinterpretFloat16AsInt16(v0), 3));
         max4 = MlasMaximumFloat16(max4, v0);
     } else if (N == 2) {
         auto v0 = MlasAddFloat16(MlasLoadPartialFloat16x4(input, 2), MlasLoadPartialFloat16x4(bias, 2));
+        MlasStorePartialFloat16x4(output, v0, 2);
         v0 = MlasReinterpretInt16AsFloat16(vset_lane_s16(static_cast<int16_t>(0xfbff), MlasReinterpretFloat16AsInt16(v0), 3));
         v0 = MlasReinterpretInt16AsFloat16(vset_lane_s16(static_cast<int16_t>(0xfbff), MlasReinterpretFloat16AsInt16(v0), 2));
         max4 = MlasMaximumFloat16(max4, v0);
     } else if (N == 1) {
         auto v0 = MlasAddFloat16(MlasLoadPartialFloat16x4(input, 1), MlasLoadPartialFloat16x4(bias, 1));
+        MlasStorePartialFloat16x4(output, v0, 1);
         v0 = MlasReinterpretInt16AsFloat16(vset_lane_s16(static_cast<int16_t>(0xfbff), MlasReinterpretFloat16AsInt16(v0), 3));
         v0 = MlasReinterpretInt16AsFloat16(vset_lane_s16(static_cast<int16_t>(0xfbff), MlasReinterpretFloat16AsInt16(v0), 2));
         v0 = MlasReinterpretInt16AsFloat16(vset_lane_s16(static_cast<int16_t>(0xfbff), MlasReinterpretFloat16AsInt16(v0), 1));

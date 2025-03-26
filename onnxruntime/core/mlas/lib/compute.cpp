@@ -659,6 +659,7 @@ float
 MLASCALL
 MlasBiasAddReduceMaximumF32Kernel(
     const float* Input,
+    float* Output,
     const float* Bias,
     size_t N
 )
@@ -667,11 +668,14 @@ MlasBiasAddReduceMaximumF32Kernel(
 Routine Description:
 
     This routine implements the generic kernel to find the maximum value of
-    the supplied buffer after adding the values from the bias buffer.
+    the supplied buffer after adding the values from the bias buffer. Incremented
+    input values are written to the output buffer.
 
 Arguments:
 
     Input - Supplies the input buffer.
+
+    Outrput - Supplies the output buffer.
 
     Bias - Supplies the bias buffer.
 
@@ -697,18 +701,23 @@ Return Value:
             while (N >= 16) {
 
                 AddBiasInput = MlasAddFloat32x4(MlasLoadFloat32x4(Input), MlasLoadFloat32x4(Bias));
+                MlasStoreFloat32x4(Output, AddBiasInput);
                 MaximumVector0 = MlasMaximumFloat32x4(MaximumVector0, AddBiasInput);
 
                 AddBiasInput = MlasAddFloat32x4(MlasLoadFloat32x4(Input + 4), MlasLoadFloat32x4(Bias + 4));
+                MlasStoreFloat32x4(Output + 4, AddBiasInput);
                 MaximumVector1 = MlasMaximumFloat32x4(MaximumVector1, AddBiasInput);
 
                 AddBiasInput = MlasAddFloat32x4(MlasLoadFloat32x4(Input + 8), MlasLoadFloat32x4(Bias + 8));
+                MlasStoreFloat32x4(Output + 8, AddBiasInput);
                 MaximumVector2 = MlasMaximumFloat32x4(MaximumVector2, AddBiasInput);
 
                 AddBiasInput = MlasAddFloat32x4(MlasLoadFloat32x4(Input + 12), MlasLoadFloat32x4(Bias + 12));
+                MlasStoreFloat32x4(Output + 12, AddBiasInput);
                 MaximumVector3 = MlasMaximumFloat32x4(MaximumVector3, AddBiasInput);
 
                 Input += 16;
+                Output += 16;
                 Bias += 16;
                 N -= 16;
             }
@@ -720,9 +729,11 @@ Return Value:
 
         while (N >= 4) {
             AddBiasInput = MlasAddFloat32x4(MlasLoadFloat32x4(Input), MlasLoadFloat32x4(Bias));
+            MlasStoreFloat32x4(Output, AddBiasInput);
             MaximumVector0 = MlasMaximumFloat32x4(MaximumVector0, AddBiasInput);
 
             Input += 4;
+            Output += 4;
             Bias += 4;
             N -= 4;
         }
@@ -731,9 +742,12 @@ Return Value:
     }
 
     while (N > 0) {
+        float AddBiasInput = *Input + *Bias;
+        *Output = AddBiasInput;
         Maximum = std::max(Maximum, *Input + *Bias);
 
         Input += 1;
+        Output += 1;
         Bias += 1;
         N -= 1;
     }
@@ -966,10 +980,11 @@ Return Value:
         if (WorkBlock->AttentionBias != nullptr) {
             const float* AttentionBias = WorkBlock->AttentionBias + n * D;
 #if defined(MLAS_TARGET_AMD64) || defined(MLAS_TARGET_LARCH64)
-            Maximum = GetMlasPlatform().BiasAddReduceMaximumF32Kernel(Input, AttentionBias, D);
+            Maximum = GetMlasPlatform().BiasAddReduceMaximumF32Kernel(Input, Output, AttentionBias, D);
 #else
-            Maximum = MlasBiasAddReduceMaximumF32Kernel(Input, AttentionBias, D);
+            Maximum = MlasBiasAddReduceMaximumF32Kernel(Input, Output, AttentionBias, D);
 #endif
+            Input = Output;
         } else {
 #if defined(MLAS_TARGET_AMD64) || defined(MLAS_TARGET_LARCH64)
         Maximum = GetMlasPlatform().ReduceMaximumF32Kernel(Input, D);
@@ -1071,11 +1086,8 @@ Return Value:
         dispatch->ReduceMax_Fp16 == nullptr ||
         dispatch->SumExp_Fp16 == nullptr ||
         (LogSoftmax && dispatch->LogSoftmax_Fp16 == nullptr) ||
-        (!LogSoftmax && dispatch->Softmax_Fp16 == nullptr)) {
-        MLAS_THROW_EX(std::runtime_error, "Lacks kernels for fp16 softmax.");
-    }
-
-    if (WorkBlock->AttentionBias != nullptr && dispatch->BiasAddReduceMax_Fp16 == nullptr) {
+        (!LogSoftmax && dispatch->Softmax_Fp16 == nullptr) ||
+        (WorkBlock->AttentionBias != nullptr && dispatch->BiasAddReduceMax_Fp16 == nullptr)) {
         MLAS_THROW_EX(std::runtime_error, "Lacks kernels for fp16 softmax.");
     }
 
@@ -1083,7 +1095,8 @@ Return Value:
         MLAS_FP16 Maximum;
         if (WorkBlock->AttentionBias != nullptr) {
             const MLAS_FP16* AttentionBias = WorkBlock->AttentionBias + n * D;
-            Maximum = dispatch->BiasAddReduceMax_Fp16(Input, AttentionBias, D);
+            Maximum = dispatch->BiasAddReduceMax_Fp16(Input, Output, AttentionBias, D);
+            Input = Output;
         } else {
             Maximum = dispatch->ReduceMax_Fp16(Input, D);
         }

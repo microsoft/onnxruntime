@@ -624,6 +624,7 @@ typedef
 float
 (MLASCALL MLAS_BIAS_ADD_REDUCE_MAXIMUM_FLOAT_KERNEL)(
     const float* Input,
+    float* Output,
     const float* Bias,
     size_t N
     );
