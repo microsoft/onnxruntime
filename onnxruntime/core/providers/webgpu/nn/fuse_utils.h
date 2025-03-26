@@ -17,7 +17,6 @@ enum class ActivationKind {
 };
 
 using Activation = struct Activation {
-  ActivationKind activation_kind = ActivationKind::None;
   using ActivationParameters = union ActivationParameters {
     struct {
       float alpha_;

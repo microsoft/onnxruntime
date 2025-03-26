@@ -7,7 +7,6 @@ namespace onnxruntime {
 namespace webgpu {
 
 Status GetFusedActivationAttr(const OpKernelInfo& info, Activation& activation) {
-  // Convert the activation parameters from the node into a MLAS_ACTIVATION.
   activation.activation_kind_ = ActivationKind::None;
 
   std::string activation_type;
@@ -52,7 +51,7 @@ Status GetFusedActivationAttr(const OpKernelInfo& info, Activation& activation) 
 
 std::string GetActivationSnippet(const Activation& activation, std::string value_type) {
   std::string snippet;
-  switch (activation.activation_kind) {
+  switch (activation.activation_kind_) {
     case ActivationKind::Relu:
       return "value = max(value, " + value_type + "(0.0));";
     case ActivationKind::Sigmoid:

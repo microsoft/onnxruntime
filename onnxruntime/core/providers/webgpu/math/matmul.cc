@@ -92,6 +92,7 @@ Status MatMulNaiveProgram::GenerateShaderCode(ShaderHelper& shader) const {
                             << "for (var i = 0u; i < " << output_number_ << "u; i++) {\n"
                             << "  var value = values[i];\n"
                             << process_bias << "\n"
+                            << apply_activation << "\n"
                             << "  let cur_indices = output_indices_t(batch, row + i, col/ " << components << ");\n"
                             << "  let offset = " << output.IndicesToOffset("cur_indices") << ";\n"
                             << output.SetByOffset("offset", "value")
