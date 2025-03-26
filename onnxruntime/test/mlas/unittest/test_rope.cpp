@@ -16,8 +16,8 @@ Abstract:
 
 #include "test_util.h"
 #include "mlas.h"
-#include "core/mlas/lib/rotary_embedding.h"
 #include "core/framework/float16.h"
+#include "core/mlas/lib/rotary_embedding.h"
 
 using namespace onnxruntime;
 
@@ -34,7 +34,7 @@ class MlasRoPETest : public MlasTestBase {
     std::vector<T> output_ref(rotary_emb_dim), output_impl(rotary_emb_dim);
 
     for (size_t i = 0; i < rotary_emb_dim; ++i) {
-      input[i] = static_cast<T>(1.f * i + 1);
+      input[i] = static_cast<T>(i + 1.0f);
     }
     for (size_t i = 0; i < table_len; ++i) {
       // https://arxiv.org/pdf/2104.09864 section 3.4.3
@@ -53,8 +53,6 @@ class MlasRoPETest : public MlasTestBase {
           << "rotary_emb_dim=" << rotary_emb_dim << ", interleaved=" << interleaved;
     }
   }
-
- public:
 };
 
 //
@@ -80,7 +78,7 @@ class RoPEShortExecuteTest : public MlasTestFixture<MlasRoPETest<T>> {
     } else if (std::is_same<T, MLFloat16>::value) {
       test_suite_name += "fp16";
     } else {
-      test_suite_name += "unknown";
+      throw std::runtime_error("Unknown type passed to test: " + test_suite_name);
     }
 
     std::stringstream ss;
