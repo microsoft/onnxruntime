@@ -68,7 +68,10 @@ void CleanUpCtxFile(std::string context_file_path) {
   GetContextBinaryFileName(context_file_path, qnn_ctx_binary_file_name,
                            DefaultLoggingManager().DefaultLogger());
 
-  ASSERT_EQ(std::remove(qnn_ctx_binary_file_name.c_str()), 0);
+  std::filesystem::path ctx_model_path(context_file_path);
+
+  std::string qnn_ctx_binary_file_path = (ctx_model_path.remove_filename().string() + qnn_ctx_binary_file_name);
+  ASSERT_EQ(std::remove(qnn_ctx_binary_file_path.c_str()), 0);
   ASSERT_EQ(std::remove(context_file_path.c_str()), 0);
 }
 
@@ -152,7 +155,7 @@ void QnnContextBinaryMultiPartitionTestBody(bool single_ep_node = true) {
 
   const auto model_data_span = AsByteSpan(model_data.data(), model_data.size());
 
-  const std::string context_model_file = "./qnn_context_binary_multi_partition_test.onnx";
+  const std::string context_model_file = "./testdata/qnn_context_binary_multi_partition_test.onnx";
   std::remove(context_model_file.c_str());
   Ort::SessionOptions so;
   so.AddConfigEntry(kOrtSessionOptionEpContextEnable, "1");
