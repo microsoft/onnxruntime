@@ -205,6 +205,9 @@ void RunSince(size_t stream_idx, StreamExecutionContext& ctx, SessionScope& sess
     end = std::min(end, range->stream_pc_range[stream_idx].second);
 #endif
 
+  // If set_device_fn is provided, it means GPU device should be properly set to the correct device.
+  // The reasons are 1) RunSince function can be invoked from a new thread and 2) new threads default to using device 0,
+  // but the session may be tightly bound to a device > 0.
   auto set_device_fn = ctx.GetSessionState().GetStreamHandleRegistryInstance().GetSetDeviceFn();
   if (set_device_fn.has_value()) {
     auto device_id = ctx.GetSessionState().AcquireDeviceStreamCollection()->GetStream(stream_idx)->GetDevice().Id();
