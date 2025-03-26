@@ -186,11 +186,6 @@ stages:
         workingDirectory: '$(Build.BinariesDirectory)\${{ parameters.cmake_build_type }}\${{ parameters.cmake_build_type }}'
         displayName: 'Run Python Tests'
 
-      - template: ../templates/component-governance-component-detection-steps.yml
-        parameters:
-          condition: 'succeeded'
-
-
 - ${{ if eq(parameters.enable_mac_cpu, true) }}:
   - stage: Python_Packaging_MacOS
     dependsOn: []
@@ -259,11 +254,6 @@ stages:
         inputs:
           artifactName: onnxruntime-macos-$(PythonVersion)
           targetPath: '$(Build.ArtifactStagingDirectory)'
-
-      - template: ../templates/component-governance-component-detection-steps.yml
-        parameters:
-          condition: 'succeeded'
-
 
 - ${{ if eq(parameters.enable_linux_arm, true) }}:
   - stage: Python_Packaging_Linux_ARM
