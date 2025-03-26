@@ -2180,8 +2180,11 @@ class TestGQA(unittest.TestCase):
         ]
 
     def run_test_config(
-        self, test_func, config_class, batches, seqs, num_h, h_sizes, pos_ids_attn_bias, additional_params={}
+        self, test_func, config_class, batches, seqs, num_h, h_sizes, pos_ids_attn_bias, additional_params=None
     ):
+        if additional_params is None:
+            additional_params = {}
+
         random.seed(69)
         torch.manual_seed(69)
 
