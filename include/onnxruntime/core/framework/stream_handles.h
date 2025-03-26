@@ -155,9 +155,8 @@ class Notification {
 // TODO: use a better way to dispatch handles.
 using CreateStreamFn = std::function<std::unique_ptr<Stream>(const OrtDevice&)>;
 
-// This SetDevice function is used by TRT EP or CUDA EP only to handle the case
-// where inter-op parallelism is enabled.
-// ORT retrieves a thread from the thread pool to run kernels for a given session.
+// This SetDevice function is used by TRT EP or CUDA EP to handle the case where ExecutionMode::ORT_PARALLEL is enabled.
+// In that case, ORT retrieves a thread from the thread pool to run kernels for a given session.
 // Since new threads default to using device 0, but the session may be tightly bound to a device > 0,
 // ORT needs to call SetDevice function to ensure running kernels on a correct GPU device.
 using SetDeviceFn = std::function<void(OrtDevice::DeviceId)>;
@@ -182,7 +181,7 @@ class IStreamCommandHandleRegistry {
 
   // Register a SetDevice function.
   // This interface is currently used by TRT EP or CUDA EP only.
-  virtual void RegisterSetDeviceFn(SetDeviceFn f) {};
+  virtual void RegisterSetDeviceFn(SetDeviceFn f) { ORT_UNUSED_PARAMETER(f); };
 
   // Get a SetDevice fucntion.
   // This interface is currently used by TRT EP or CUDA EP only and is called in RunSince from stream execution.
