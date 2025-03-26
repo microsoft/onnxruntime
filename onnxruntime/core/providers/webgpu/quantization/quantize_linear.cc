@@ -12,66 +12,6 @@
 namespace onnxruntime {
 namespace webgpu {
 
-namespace {
-const std::vector<MLDataType>& DequantizeLinearConstraints() {
-  static std::vector<MLDataType> types{
-      DataTypeImpl::GetTensorType<int8_t>(),
-      DataTypeImpl::GetTensorType<uint8_t>(),
-      DataTypeImpl::GetTensorType<int32_t>()};
-  return types;
-}
-}  // namespace
-
-ONNX_OPERATOR_VERSIONED_KERNEL_EX(
-    DequantizeLinear,
-    kOnnxDomain,
-    10, 12,
-    kWebGpuExecutionProvider,
-    (*KernelDefBuilder::Create())
-        .TypeConstraint("T1", DequantizeLinearConstraints())
-        .TypeConstraint("T2", WebGpuSupportedFloatTypes()),
-    DequantizeLinear);
-
-ONNX_OPERATOR_VERSIONED_KERNEL_EX(
-    DequantizeLinear,
-    kOnnxDomain,
-    13, 18,
-    kWebGpuExecutionProvider,
-    (*KernelDefBuilder::Create())
-        .TypeConstraint("T1", DequantizeLinearConstraints())
-        .TypeConstraint("T2", WebGpuSupportedFloatTypes()),
-    DequantizeLinear);
-
-ONNX_OPERATOR_VERSIONED_KERNEL_EX(
-    DequantizeLinear,
-    kOnnxDomain,
-    19, 20,
-    kWebGpuExecutionProvider,
-    (*KernelDefBuilder::Create())
-        .TypeConstraint("T1", DequantizeLinearConstraints())
-        .TypeConstraint("T2", WebGpuSupportedFloatTypes()),
-    DequantizeLinear);
-
-ONNX_OPERATOR_VERSIONED_KERNEL_EX(
-    DequantizeLinear,
-    kOnnxDomain,
-    21, 22,
-    kWebGpuExecutionProvider,
-    (*KernelDefBuilder::Create())
-        .TypeConstraint("T1", DequantizeLinearConstraints())
-        .TypeConstraint("T2", WebGpuSupportedFloatTypes()),
-    DequantizeLinear);
-
-ONNX_OPERATOR_KERNEL_EX(
-    DequantizeLinear,
-    kOnnxDomain,
-    23,
-    kWebGpuExecutionProvider,
-    (*KernelDefBuilder::Create())
-        .TypeConstraint("T1", DequantizeLinearConstraints())
-        .TypeConstraint("T2", WebGpuSupportedFloatTypes()),
-    DequantizeLinear);
-
 Status DequantizeLinearProgram::GenerateShaderCode(ShaderHelper& shader) const {
   const auto& x = shader.AddInput("x", ShaderUsage::UseUniform | ShaderUsage::UseIndicesTypeAlias | ShaderUsage::UseValueTypeAlias);
   const auto& x_scale = shader.AddInput("x_scale", ShaderUsage::UseUniform | ShaderUsage::UseIndicesTypeAlias | ShaderUsage::UseValueTypeAlias);
@@ -211,6 +151,66 @@ Status DequantizeLinear::ComputeInternal(ComputeContext& context) const {
 
   return context.RunProgram(program);
 }
+
+namespace {
+  const std::vector<MLDataType>& DequantizeLinearConstraints() {
+    static std::vector<MLDataType> types{
+        DataTypeImpl::GetTensorType<int8_t>(),
+        DataTypeImpl::GetTensorType<uint8_t>(),
+        DataTypeImpl::GetTensorType<int32_t>()};
+    return types;
+  }
+  }  // namespace
+
+  ONNX_OPERATOR_VERSIONED_KERNEL_EX(
+      DequantizeLinear,
+      kOnnxDomain,
+      10, 12,
+      kWebGpuExecutionProvider,
+      (*KernelDefBuilder::Create())
+          .TypeConstraint("T1", DequantizeLinearConstraints())
+          .TypeConstraint("T2", WebGpuSupportedFloatTypes()),
+      DequantizeLinear);
+
+  ONNX_OPERATOR_VERSIONED_KERNEL_EX(
+      DequantizeLinear,
+      kOnnxDomain,
+      13, 18,
+      kWebGpuExecutionProvider,
+      (*KernelDefBuilder::Create())
+          .TypeConstraint("T1", DequantizeLinearConstraints())
+          .TypeConstraint("T2", WebGpuSupportedFloatTypes()),
+      DequantizeLinear);
+
+  ONNX_OPERATOR_VERSIONED_KERNEL_EX(
+      DequantizeLinear,
+      kOnnxDomain,
+      19, 20,
+      kWebGpuExecutionProvider,
+      (*KernelDefBuilder::Create())
+          .TypeConstraint("T1", DequantizeLinearConstraints())
+          .TypeConstraint("T2", WebGpuSupportedFloatTypes()),
+      DequantizeLinear);
+
+  ONNX_OPERATOR_VERSIONED_KERNEL_EX(
+      DequantizeLinear,
+      kOnnxDomain,
+      21, 22,
+      kWebGpuExecutionProvider,
+      (*KernelDefBuilder::Create())
+          .TypeConstraint("T1", DequantizeLinearConstraints())
+          .TypeConstraint("T2", WebGpuSupportedFloatTypes()),
+      DequantizeLinear);
+
+  ONNX_OPERATOR_KERNEL_EX(
+      DequantizeLinear,
+      kOnnxDomain,
+      23,
+      kWebGpuExecutionProvider,
+      (*KernelDefBuilder::Create())
+          .TypeConstraint("T1", DequantizeLinearConstraints())
+          .TypeConstraint("T2", WebGpuSupportedFloatTypes()),
+      DequantizeLinear);
 
 }  // namespace webgpu
 }  // namespace onnxruntime

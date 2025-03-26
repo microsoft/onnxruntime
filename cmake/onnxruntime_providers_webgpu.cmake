@@ -90,3 +90,6 @@
 
   add_dependencies(onnxruntime_providers_webgpu ${onnxruntime_EXTERNAL_DEPENDENCIES})
   set_target_properties(onnxruntime_providers_webgpu PROPERTIES FOLDER "ONNXRuntime")
+  #set_source_files_properties(onnxruntime_providers_webgpu_cc_srcs onnxruntime_webgpu_contrib_ops_cc_srcs PRIVATE COMPILE_FLAGS "-g3")
+  #set_target_properties(onnxruntime_providers_webgpu PROPERTIES COMPILE_FLAGS "-g3")
+  #set_target_properties(onnxruntime_providers_webgpu PROPERTIES COMPILE_FLAGS "-O0")
