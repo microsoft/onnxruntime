@@ -58,7 +58,7 @@ class StreamCommandHandleRegistryImpl : public IStreamCommandHandleRegistry {
     set_device_fn_ = f;
   }
 
-  virtual std::optional<SetDeviceFn> GetSetDeviceFn() {
+  std::optional<SetDeviceFn> GetSetDeviceFn() {
     if (set_device_fn_) {
       return set_device_fn_;
     }
