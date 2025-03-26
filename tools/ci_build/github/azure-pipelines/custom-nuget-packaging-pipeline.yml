@@ -151,8 +151,8 @@ extends:
               packagesToPack: '$(Build.BinariesDirectory)/${{ parameters.PackageName }}.nuspec'
               packDestination: $(Build.ArtifactStagingDirectory)\
 
-          - task: PublishBuildArtifacts@1
+          - task: 1ES.PublishPipelineArtifact@1
             displayName: 'Publish Artifact: Nuget'
             inputs:
-              pathtoPublish: '$(Build.ArtifactStagingDirectory)'
               artifactName: '${{ parameters.PackageName }}'
+              targetPath: '$(Build.ArtifactStagingDirectory)'
