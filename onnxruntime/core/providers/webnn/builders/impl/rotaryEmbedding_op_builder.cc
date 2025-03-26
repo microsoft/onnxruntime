@@ -57,9 +57,9 @@ class RotaryEmbeddingOpBuilder : public BaseOpBuilder {
 
   // Operator support related.
  private:
-  bool IsOpSupportedImpl(const InitializedTensorSet& initializers, const Node& node,
+  bool IsOpSupportedImpl(const GraphViewer&, const Node& node,
                          const WebnnDeviceType /* device_type */, const logging::Logger& logger) const override;
-  bool HasSupportedInputsImpl(const InitializedTensorSet& /* initializers */, const Node& node,
+  bool HasSupportedInputsImpl(const GraphViewer& graph_viewer, const Node& node,
                               const emscripten::val& wnn_limits, const logging::Logger& logger) const override;
   bool HasSupportedOutputsImpl(const Node& node, const emscripten::val& wnn_limits,
                                const logging::Logger& logger) const override;
@@ -286,7 +286,7 @@ Status RotaryEmbeddingOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_build
 }
 
 // Operator support related.
-bool RotaryEmbeddingOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& initializers, const Node& node,
+bool RotaryEmbeddingOpBuilder::IsOpSupportedImpl(const GraphViewer&, const Node& node,
                                                  const WebnnDeviceType /* device_type */,
                                                  const logging::Logger& logger) const {
   const auto& input_defs = node.InputDefs();
@@ -325,7 +325,7 @@ bool RotaryEmbeddingOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& ini
   return true;
 }
 
-bool RotaryEmbeddingOpBuilder::HasSupportedInputsImpl(const InitializedTensorSet& /* initializers */,
+bool RotaryEmbeddingOpBuilder::HasSupportedInputsImpl(const GraphViewer&,
                                                       const Node& node,
                                                       const emscripten::val& wnn_limits,
                                                       const logging::Logger& logger) const {

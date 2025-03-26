@@ -36,12 +36,9 @@ Subgraph::Subgraph(
   auto& subgraph_inputs = subgraph.GetInputs();
   auto& subgraph_outputs = subgraph.GetOutputs();
 
-  // inputs: input_ids, position_ids, attention_mask, past_0, past_1, ...
-  // outputs: logits, present_0, present_1, ...
   num_subgraph_inputs = static_cast<int>(subgraph_inputs.size());
   num_subgraph_outputs = static_cast<int>(subgraph_outputs.size());
 
-  // CheckSubgraph will verify inputs and outputs later.
   subgraph_input_names.reserve(num_subgraph_inputs);
   for (int i = 0; i < num_subgraph_inputs; ++i) {
     subgraph_input_names.push_back(subgraph_inputs[i]->Name());
@@ -68,10 +65,9 @@ Status Subgraph::Setup(const SessionState& session_state,
   InlinedVector<std::string_view> feed_names;
   feed_names.reserve(static_cast<size_t>(num_subgraph_inputs) + static_cast<size_t>(num_implicit_inputs));
 
-  // Use the first output (logits) to find device location.
+  // Use the first output to find device location.
   const OrtDevice& default_location = utils::FindDeviceForValue(subgraph_session_state, subgraph_output_names[0]);
 
-  // The position_ids, attention_mask, past_0, ... are created by this operator so the name doesn't matter.
   feed_names.insert(feed_names.end(), subgraph_input_names.begin(), subgraph_input_names.end());
 
   const auto& subgraph_map = subgraph_session_state.GetOrtValueNameIdxMap();
@@ -174,13 +170,15 @@ Status Subgraph::GetParameters(const ONNX_NAMESPACE::TensorShapeProto* past_shap
   }
 
   // Logits shape is like (batch_size, seq_len, vocabulary_size)
-  ORT_RETURN_IF(logits_shape->dim_size() != 3,
-                "subgraph logits output is expected to have 3 dimension, got ", logits_shape->dim_size());
+  if (logits_shape != nullptr) {
+    ORT_RETURN_IF(logits_shape->dim_size() != 3,
+                  "subgraph logits output is expected to have 3 dimension, got ", logits_shape->dim_size());
 
-  ORT_RETURN_IF(!logits_shape->dim(2).has_dim_value() || logits_shape->dim(2).dim_value() <= 0,
-                "subgraph past state dimension 2 shall have a positive value for vocabulary size");
+    ORT_RETURN_IF(!logits_shape->dim(2).has_dim_value() || logits_shape->dim(2).dim_value() <= 0,
+                  "subgraph past state dimension 2 shall have a positive value for vocabulary size");
 
-  this->vocab_size = static_cast<int>(logits_shape->dim(2).dim_value());
+    this->vocab_size = static_cast<int>(logits_shape->dim(2).dim_value());
+  }
 
   return Status::OK();
 }
