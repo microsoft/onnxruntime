@@ -2147,23 +2147,24 @@ class TestGQA(unittest.TestCase):
         # Define precision configurations
         self.precision_configs = [
             {
-                'ort_type': TensorProto.FLOAT16,
-                'torch_type': torch.float16,
-                'numpy_type': numpy.float16,
-                'rtol': 1e-2,
-                'atol': 1e-2
+                "ort_type": TensorProto.FLOAT16,
+                "torch_type": torch.float16,
+                "numpy_type": numpy.float16,
+                "rtol": 1e-2,
+                "atol": 1e-2,
             },
             {
-                'ort_type': TensorProto.FLOAT,
-                'torch_type': torch.float32,
-                'numpy_type': numpy.float32,
-                'rtol': 1e-5,
-                'atol': 1e-5
-            }
+                "ort_type": TensorProto.FLOAT,
+                "torch_type": torch.float32,
+                "numpy_type": numpy.float32,
+                "rtol": 1e-5,
+                "atol": 1e-5,
+            },
         ]
 
-    def run_test_config(self, test_func, config_class, batches, seqs, num_h, h_sizes,
-                       pos_ids_attn_bias, additional_params={}):
+    def run_test_config(
+        self, test_func, config_class, batches, seqs, num_h, h_sizes, pos_ids_attn_bias, additional_params={}
+    ):
         random.seed(69)
         torch.manual_seed(69)
 
