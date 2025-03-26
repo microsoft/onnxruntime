@@ -2,8 +2,11 @@
 // Licensed under the MIT License.
 
 #pragma once
-#include "core/providers/cpu/controlflow/if.h"
+#include <functional>
+
 #include "core/providers/webgpu/webgpu_kernel.h"
+#include "core/common/common.h"
+#include "core/providers/cpu/controlflow/if.h"
 
 namespace onnxruntime {
 namespace webgpu {
