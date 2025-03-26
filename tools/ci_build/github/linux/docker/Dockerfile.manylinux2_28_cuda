@@ -5,7 +5,7 @@
 ARG BASEIMAGE=nvidia/cuda:12.5.1-cudnn-devel-ubi8
 
 FROM $BASEIMAGE
-ARG TRT_VERSION
+ARG TRT_VERSION=10.9.0.34-1.cuda12.8
 
 #Install TensorRT only if TRT_VERSION is not empty
 RUN if [ -n "$TRT_VERSION" ]; then  \
