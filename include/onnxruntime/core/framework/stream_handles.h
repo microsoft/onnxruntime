@@ -3,6 +3,7 @@
 #pragma once
 
 #include <functional>
+#include <optional>
 #include <unordered_map>
 #include "core/framework/allocator.h"
 #include "core/framework/ortdevice.h"
