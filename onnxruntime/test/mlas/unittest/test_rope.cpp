@@ -78,7 +78,8 @@ class RoPEShortExecuteTest : public MlasTestFixture<MlasRoPETest<T>> {
     } else if (std::is_same<T, MLFloat16>::value) {
       test_suite_name += "fp16";
     } else {
-      throw std::runtime_error("Unknown type passed to test: " + test_suite_name);
+        ADD_FAILURE() << "Unknown type passed to test: " << test_suite_name;
+        return 0; // Return 0 since no test is registered
     }
 
     std::stringstream ss;

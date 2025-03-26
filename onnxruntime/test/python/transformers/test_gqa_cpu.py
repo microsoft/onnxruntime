@@ -1292,7 +1292,12 @@ def parity_check_gqa_prompt(
     )
     attention_bias = (
         get_custom_attention_bias(
-            config.batch_size, config.kv_sequence_length, config.q_sequence_length, seqlens_k=None, past=False, torch_type=torch_type
+            config.batch_size,
+            config.kv_sequence_length,
+            config.q_sequence_length,
+            seqlens_k=None,
+            past=False,
+            torch_type=torch_type
         )
         if config.has_attention_bias
         else None
@@ -1513,7 +1518,12 @@ def parity_check_gqa_prompt_no_buff(
     )
     attention_bias = (
         get_custom_attention_bias(
-            config.batch_size, config.kv_sequence_length, config.q_sequence_length, seqlens_k=None, past=False, torch_type=torch_type
+            config.batch_size,
+            config.kv_sequence_length,
+            config.q_sequence_length,
+            seqlens_k=None,
+            past=False,
+            torch_type=torch_type
         )
         if config.has_attention_bias
         else None
@@ -1784,7 +1794,12 @@ def parity_check_gqa_past(
     )
     attention_bias = (
         get_custom_attention_bias(
-            config.batch_size, config.sequence_length, config.kv_sequence_length, seqlens_k=cache_seqlens, past=True, torch_type=torch_type
+            config.batch_size,
+            config.sequence_length,
+            config.kv_sequence_length,
+            seqlens_k=cache_seqlens,
+            past=True,
+            torch_type=torch_type
         )
         if config.has_attention_bias
         else None
@@ -2169,7 +2184,9 @@ class TestGQA(unittest.TestCase):
         torch.manual_seed(69)
 
         for precision in self.precision_configs:
-            print(f"\nRunning tests with precision: {'FLOAT16' if precision['ort_type'] == TensorProto.FLOAT16 else 'FLOAT32'}")
+            print(
+                f"\nRunning tests with precision: {'FLOAT16' if precision['ort_type'] == TensorProto.FLOAT16 else 'FLOAT32'}"
+            )
             for b in batches:
                 for s, s2 in seqs:
                     for n, n2 in num_h:
@@ -2181,27 +2198,27 @@ class TestGQA(unittest.TestCase):
                                             for use_smooth_softmax in [False, True]:
                                                 for has_pos, has_attn in pos_ids_attn_bias:
                                                     if config_class == PromptConfig:
-                                                        config = config_class(b, s, s2, s + s2 + 8, n, n2, h,
-                                                                             has_pos, has_attn)
+                                                        config = config_class(
+                                                            b, s, s2, s + s2 + 8, n, n2, h, has_pos, has_attn
+                                                        )
                                                     else:  # Config
                                                         sp = random.randint(1, s2 - s) if s2 - s > 0 else 0
-                                                        config = config_class(b, s, s2, sp, n, n2, h,
-                                                                            has_pos, has_attn)
+                                                        config = config_class(b, s, s2, sp, n, n2, h, has_pos, has_attn)
 
                                                     params = {
-                                                        'config': config,
-                                                        'torch_type': precision['torch_type'],
-                                                        'numpy_type': precision['numpy_type'],
-                                                        'ort_type': precision['ort_type'],
-                                                        'rtol': precision['rtol'],
-                                                        'atol': precision['atol'],
-                                                        'local': local,
-                                                        'past_format': Formats.BNSH,
-                                                        'rotary': rotary,
-                                                        'rotary_interleaved': rotary_interleaved,
-                                                        'packed': packed,
-                                                        'softcap': softcap,
-                                                        'use_smooth_softmax': use_smooth_softmax
+                                                        "config": config,
+                                                        "torch_type": precision["torch_type"],
+                                                        "numpy_type": precision["numpy_type"],
+                                                        "ort_type": precision["ort_type"],
+                                                        "rtol": precision["rtol"],
+                                                        "atol": precision["atol"],
+                                                        "local": local,
+                                                        "past_format": Formats.BNSH,
+                                                        "rotary": rotary,
+                                                        "rotary_interleaved": rotary_interleaved,
+                                                        "packed": packed,
+                                                        "softcap": softcap,
+                                                        "use_smooth_softmax": use_smooth_softmax
                                                     }
                                                     params.update(additional_params)
 
@@ -2233,12 +2250,14 @@ class TestGQA(unittest.TestCase):
         print("-------- TEST GQA PAST (TOKEN GEN) ---------")
         batches = [1] if pipeline_mode else [1, 3, 5]
         seqs = (
-            [(1, 128)] if pipeline_mode else
-            [(1, 128), (1, 339), (1, 1024), (1, 5000), (1, 800), (1, 256), (1, 799), (1, 2048)]
+            [(1, 128)]
+            if pipeline_mode
+            else[(1, 128), (1, 339), (1, 1024), (1, 5000), (1, 800), (1, 256), (1, 799), (1, 2048)]
         )
         pos_ids_attn_bias = (
-            [(False, False), (True, True)] if pipeline_mode else
-            [(False, False), (True, True), (False, True), (True, False)]
+            [(False, False), (True, True)]
+            if pipeline_mode
+            else[(False, False), (True, True), (False, True), (True, False)]
         )
         num_h = [(9, 3)] if pipeline_mode else [(6, 6), (6, 3), (9, 9), (9, 3)]
         h_sizes = [64] if pipeline_mode else [32, 40, 64, 80, 96, 128, 160, 192, 224, 256]
@@ -2252,12 +2271,14 @@ class TestGQA(unittest.TestCase):
         print("-------- TEST GQA INTERACTIVE ---------")
         batches = [1]
         seqs = (
-            [(256, 2048)] if pipeline_mode else
-            [(1, 128), (1, 339), (1, 1024), (1, 5000), (1, 800), (1, 256), (1, 799), (1, 2048)]
+            [(256, 2048)]
+            if pipeline_mode
+            else[(1, 128), (1, 339), (1, 1024), (1, 5000), (1, 800), (1, 256), (1, 799), (1, 2048)]
         )
         pos_ids_attn_bias = (
-            [(False, False), (True, True)] if pipeline_mode else
-            [(False, False), (True, True), (False, True), (True, False)]
+            [(False, False), (True, True)]
+            if pipeline_mode
+            else[(False, False), (True, True), (False, True), (True, False)]
         )
         num_h = [(32, 8)] if pipeline_mode else [(6, 6), (6, 3), (9, 9), (9, 3)]
         h_sizes = [32] if pipeline_mode else [32, 40, 64, 80, 96, 128, 160, 192, 224, 256]
