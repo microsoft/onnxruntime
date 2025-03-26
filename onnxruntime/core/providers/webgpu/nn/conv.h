@@ -26,5 +26,7 @@ class Conv : public WebGpuKernel {
   Activation activation_;
 };
 
+Status TransposeKernel(ComputeContext& context, const Tensor* kernel, const TensorShape& kernel_shape, Tensor* transposed_kernel);
+
 }  // namespace webgpu
 }  // namespace onnxruntime

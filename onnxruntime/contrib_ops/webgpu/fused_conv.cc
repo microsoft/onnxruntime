@@ -28,24 +28,6 @@ ONNX_OPERATOR_KERNEL_EX(
         .TypeConstraint("T", onnxruntime::webgpu::WebGpuSupportedFloatTypes()),
     FusedConv<false>);
 
-ONNX_OPERATOR_KERNEL_EX(
-    FusedConv,
-    kMSInternalNHWCDomain,
-    1,
-    kWebGpuExecutionProvider,
-    (*KernelDefBuilder::Create())
-        .TypeConstraint("T", onnxruntime::webgpu::WebGpuSupportedFloatTypes()),
-    FusedConv<true>);
-
-ONNX_OPERATOR_KERNEL_EX(
-  NHWCFusedConv,
-  kMSDomain,
-  1,
-  kWebGpuExecutionProvider,
-  (*KernelDefBuilder::Create())
-      .TypeConstraint("T", onnxruntime::webgpu::WebGpuSupportedFloatTypes()),
-  FusedConv<true>);
-
 }  // namespace webgpu
 }  // namespace contrib
 }  // namespace onnxruntime

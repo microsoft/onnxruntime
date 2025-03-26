@@ -14,15 +14,15 @@
 
 namespace onnxruntime {
 namespace webgpu {
-std::string Conv2dMMProgram::Conv2dCommonSnippet(const Activation& activation, uint32_t inner_element_size_x, uint32_t inner_element_size_w, uint32_t inner_element_size, std::string data_type) const {
+std::string Conv2dMMProgram::Conv2dCommonSnippet(const ShaderVariableHelper& x, const ShaderVariableHelper& w, const Activation& activation, uint32_t inner_element_size_x, uint32_t inner_element_size_w, uint32_t inner_element_size, std::string data_type) const {
   auto get_x_snippet = [](int32_t inner_element_size) -> std::string {
     switch (inner_element_size) {
       case 1:
-        return "resData = x[xIndex];";
+        return "resData = " << x.GetByOffset("xIndex") << ";";
       case 3:
-        return "resData = vec3<x_value_t>(x[xIndex], x[xIndex + 1], x[xIndex + 2]);";
+        return "resData = vec3<x_value_t>(" << x.GetByOffset("xIndex") << ", " << x.GetByOffset("xIndex + 1") << ", " << x.GetByOffset("xIndex + 2") << ");";
       case 4:
-        return "resData = x[xIndex];\n ";
+        return "resData = " << x.GetByOffset("xIndex") << ";\n ";
       default:
         ORT_THROW("inner_element_size", inner_element_size, " is not supported.");
     }
@@ -157,7 +157,7 @@ Status Conv2dMMProgram::GenerateShaderCode(ShaderHelper& shader) const {
   shader.AdditionalImplementation()
       << UtilFunctions("uniforms.result_stride")
       << declaration_functions.str()
-      << Conv2dCommonSnippet(activation_, element_size_[0], element_size_[1], element_size_[2]);
+      << Conv2dCommonSnippet(x, w, activation_, element_size_[0], element_size_[1], element_size_[2]);
   std::string data_type = "x_value_t";
   return is_vec4_ ? MatMulProgram::MakeMatMulPackedVec4Source(shader, elements_per_thread_, WorkgroupSizeX(), WorkgroupSizeY(), data_type, /* batch_dims = */ nullptr, /* transpose_a = */ !is_channels_last_, tile_inner_) : MatMulProgram::MakeMatMulPackedSource(shader, elements_per_thread_, WorkgroupSizeX(), WorkgroupSizeY(), data_type, /* batch_dims = */ nullptr, false, tile_inner_, false, 0, sequentially_access_by_threads_);
 }

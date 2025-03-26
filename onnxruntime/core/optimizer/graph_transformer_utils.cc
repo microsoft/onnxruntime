@@ -297,18 +297,18 @@ InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
                                                                           onnxruntime::kRocmExecutionProvider,
                                                                           onnxruntime::kDmlExecutionProvider};
       const InlinedHashSet<std::string_view> cpu_rocm_acl_armnn_js_webgpu_eps = {onnxruntime::kCpuExecutionProvider,
-                                                                          onnxruntime::kRocmExecutionProvider,
-                                                                          onnxruntime::kAclExecutionProvider,
-                                                                          onnxruntime::kArmNNExecutionProvider,
-                                                                          onnxruntime::kJsExecutionProvider,
-                                                                          onnxruntime::kWebGpuExecutionProvider};
+                                                                                 onnxruntime::kRocmExecutionProvider,
+                                                                                 onnxruntime::kAclExecutionProvider,
+                                                                                 onnxruntime::kArmNNExecutionProvider,
+                                                                                 onnxruntime::kJsExecutionProvider,
+                                                                                 onnxruntime::kWebGpuExecutionProvider};
       const InlinedHashSet<std::string_view> cpu_cuda_rocm_acl_armnn_js_webgpu_eps = {onnxruntime::kCpuExecutionProvider,
-                                                                               onnxruntime::kCudaExecutionProvider,
-                                                                               onnxruntime::kRocmExecutionProvider,
-                                                                               onnxruntime::kAclExecutionProvider,
-                                                                               onnxruntime::kArmNNExecutionProvider,
-                                                                               onnxruntime::kJsExecutionProvider,
-                                                                               onnxruntime::kWebGpuExecutionProvider};
+                                                                                      onnxruntime::kCudaExecutionProvider,
+                                                                                      onnxruntime::kRocmExecutionProvider,
+                                                                                      onnxruntime::kAclExecutionProvider,
+                                                                                      onnxruntime::kArmNNExecutionProvider,
+                                                                                      onnxruntime::kJsExecutionProvider,
+                                                                                      onnxruntime::kWebGpuExecutionProvider};
       const InlinedHashSet<std::string_view> cpu_dml_acl_eps = {onnxruntime::kCpuExecutionProvider,
                                                                 onnxruntime::kDmlExecutionProvider,
                                                                 onnxruntime::kAclExecutionProvider};
