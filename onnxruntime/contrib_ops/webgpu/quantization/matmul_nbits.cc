@@ -688,13 +688,13 @@ Status MatMulNBits::ComputeInternal(onnxruntime::webgpu::ComputeContext& context
     return ApplyDP4AMatrixMatMulNBits(a, b, scales, M, N, K, block_size, kMinMForTileOptimization, context, y);
   }
 
-  // BlockWideTileProgram
+  // WideTileProgram
   // This program is optimized for Block32 prefill using Tile16x128.
   // TODO: loosen restrictions on batch_count, has_zero_points, and vendor.
-  const bool use_block_wide_tile_program = block_size == 32 && batch_count == 1 && !has_zero_points &&
+  const bool use_wide_tile_program = block_size == 32 && batch_count == 1 && !has_zero_points &&
                                            components_a == 4 && components_b == 4 && M >= kMinMForTileOptimization &&
                                            context.AdapterInfo().vendor == std::string_view{"intel"};
-  if (use_block_wide_tile_program) {
+  if (use_wide_tile_program) {
     // Enforce output components to 1.
     components = 1;
 
