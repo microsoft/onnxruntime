@@ -530,7 +530,7 @@ Status MatMulNBitsBlockWideTileProgram::GenerateShaderCode(ShaderHelper& shader)
   const auto& y = shader.AddOutput("output", ShaderUsage::UseUniform | ShaderUsage::UseValueTypeAlias | ShaderUsage::UseElementTypeAlias | ShaderUsage::UseIndicesTypeAlias);
 
   // Bock size 32, `a` component size 4, 8 `a` components per block.
-  constexpr uint32_t kAComponentSizeForBlock32 = 8;
+  constexpr uint32_t kAComponentsForBlock32 = 8;
   const uint32_t workgroup_size = WorkgroupSizeX() * WorkgroupSizeY();
 
   // memory read/write helpers
@@ -567,13 +567,13 @@ Status MatMulNBitsBlockWideTileProgram::GenerateShaderCode(ShaderHelper& shader)
   // declare const variables
   shader.AdditionalImplementation() << "\n";
   shader.AdditionalImplementation() << "// A block32 containing 8 components of `a`." << "\n";
-  shader.AdditionalImplementation() << "const kAComponentSizeForBlock32 = " << kAComponentSizeForBlock32 << "u;\n";
+  shader.AdditionalImplementation() << "const kAComponentsForBlock32 = " << kAComponentsForBlock32 << "u;\n";
   shader.AdditionalImplementation() << "const tile_m = " << workgroup_size / 8 << "u;\n";
   shader.AdditionalImplementation() << "const tile_n = " << workgroup_size << "u;\n";
 
   // declare workgroup memory
   shader.AdditionalImplementation() << "\n";
-  shader.AdditionalImplementation() << "var<workgroup> a_data_tile: array<array<input_a_value_t, kAComponentSizeForBlock32>, tile_m>;\n";
+  shader.AdditionalImplementation() << "var<workgroup> a_data_tile: array<array<input_a_value_t, kAComponentsForBlock32>, tile_m>;\n";
   shader.AdditionalImplementation() << "\n";
 
   // main
@@ -583,16 +583,16 @@ Status MatMulNBitsBlockWideTileProgram::GenerateShaderCode(ShaderHelper& shader)
   let col = workgroup_id.x * tile_n;
 
   let a_elements_per_col = uniforms.input_a_shape[2];
-  let a_blocks_per_col = (a_elements_per_col + kAComponentSizeForBlock32 - 1) / kAComponentSizeForBlock32;
+  let a_blocks_per_col = (a_elements_per_col + kAComponentsForBlock32 - 1) / kAComponentsForBlock32;
 
   // Utilizing an f32 accumulator mitigated precision loss with minimal
   // performance impact compared to an f16 accumulator.
   var results : array<f32, tile_m>;
   for (var a_block_idx = 0u; a_block_idx < a_blocks_per_col; a_block_idx++) {
-    // Load `a` elements into workgroup memory, TileM x kAComponentSizeForBlock32 (block32)
-    let a_row_idx = local_idx / kAComponentSizeForBlock32;
-    let a_col_idx = local_idx % kAComponentSizeForBlock32;
-    a_data_tile[a_row_idx][a_col_idx] = mm_read_a(batch, row + a_row_idx, a_block_idx * kAComponentSizeForBlock32 + a_col_idx);
+    // Load `a` elements into workgroup memory, TileM x kAComponentsForBlock32 (block32)
+    let a_row_idx = local_idx / kAComponentsForBlock32;
+    let a_col_idx = local_idx % kAComponentsForBlock32;
+    a_data_tile[a_row_idx][a_col_idx] = mm_read_a(batch, row + a_row_idx, a_block_idx * kAComponentsForBlock32 + a_col_idx);
     workgroupBarrier();
 
     let b_row = col + local_idx;
