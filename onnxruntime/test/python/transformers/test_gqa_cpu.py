@@ -1523,7 +1523,7 @@ def parity_check_gqa_prompt_no_buff(
             config.q_sequence_length,
             seqlens_k=None,
             past=False,
-            torch_type=torch_type
+            torch_type=torch_type,
         )
         if config.has_attention_bias
         else None
