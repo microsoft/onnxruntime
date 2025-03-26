@@ -95,6 +95,87 @@ It is hard for Execution Providers to generate the partitioned graph within the 
 
 This API returns the array of pointers for EPContext nodes. Execution Provider needs to implement this interface if it has the requirement to generate the context cache model. Otherwise leave it. It is the Execution Provider's responsibility to create the EPContext nodes with its dependencies (like the context binary file if it's not embed_mode). The OnnxRuntime GraphPartitioner use this interface to get the EPContext nodes and generate the partitioned Onnx model. [code details here](https://github.com/microsoft/onnxruntime/blob/544bdd60730270f49f6a5baafdff54065f626776/onnxruntime/core/framework/graph_partitioner.cc#L646-L750)
 
+## Usage Scenarios
+
+### EPContext Model Generation
+**Generate the EPContext model by creating session from model path:**
+```
+    Ort::SessionOptions so;
+
+    // Enable EPContext ONNX model dumping
+    so.AddConfigEntry(kOrtSessionOptionEpContextEnable, "1");
+
+    // Add the execution provider (using QNN as an example)
+    so.AppendExecutionProvider("QNN", provider_options);
+
+    // Create the session to dump the `_ctx.onnx` model
+    Ort::Session session1(env, "./model1.onnx", so);
+```
+
+**Generate the EPContext model by creating session from model in memory buffer:**
+Similar to the C API CreateSessionFromArray, the example below creates an ONNX Runtime session from a model stored in a memory array, causing the session to lose track of the model's name and path.
+To generate the EPContext model, you must specify the file path using: `ep.context_file_path`.
+```
+    // Read model file into buffer array
+    std::vector<char> buffer;
+    ReadFileToBuffer("./model1.onnx", buffer);
+
+    Ort::SessionOptions so;
+
+    // Enable EPContext ONNX model dumping
+    so.AddConfigEntry(kOrtSessionOptionEpContextEnable, "1");
+
+    // Specify the generated EPContext model file path using option ep.context_file_path
+    so.AddConfigEntry(kOrtSessionOptionEpContextFilePath, "./model_ctx.onnx");
+
+    // Add the execution provider (using QNN as an example)
+    so.AppendExecutionProvider("QNN", provider_options);
+
+
+    // Create the session to dump the `_ctx.onnx` model
+    Ort::Session session1(env, buffer.data(), buffer.size(), so);
+```
+
+**Generate the EPContext model by creating session from model in memory buffer, and model has external weights:**
+Create the session from memory array, and the model depend on external data. The session requires `session.model_external_initializers_file_folder_path` to figure out the external data location, and same with previously example, `ep.context_file_path` to set the file path for the generated EPContext model.
+```
+    // Read model file into buffer array
+    std::vector<char> buffer;
+    ReadFileToBuffer("./model1.onnx", buffer);
+
+    Ort::SessionOptions so;
+
+    // Enable EPContext ONNX model dumping
+    so.AddConfigEntry(kOrtSessionOptionEpContextEnable, "1");
+
+    // Specify the generated EPContext model file path using option ep.context_file_path
+    so.AddConfigEntry(kOrtSessionOptionEpContextFilePath, "./model_ctx.onnx");
+	
+    // Specify the external data folder path using option session.model_external_initializers_file_folder_path
+    so.AddConfigEntry(kOrtSessionOptionsModelExternalInitializersFileFolderPath, "./external_data_folder/");
+
+    // Add the execution provider (using QNN as an example)
+    so.AppendExecutionProvider("QNN", provider_options);
+
+
+    // Create the session to dump the `_ctx.onnx` model
+    Ort::Session session1(env, buffer.data(), buffer.size(), so);
+```
+Note: If there is a **subgraph fallback** on the **CPU EP** that depends on external data, the generated EPContext model **should not rely on the original external data file** used by the base model. By default, the EPContext model **embeds all external data** directly into the generated ONNX file. If you need to store weights in an external file, set `ep.context_model_external_initializers_file_name`. This option forces all initializers to be saved in the specified external file.
+
+### Inference from EPContext Model
+**Create inference session from pre-compiled EPContext model**
+```
+    Ort::SessionOptions so;
+
+    // Add EP, take QNN for example
+    so.AppendExecutionProvider("QNN", provider_options);
+
+    // Create sessions to load from the _ctx.onnx model
+    Ort::Session session1(env, "model1_ctx.onnx", so);
+
+    session1.run(...);
+```
 
 # EPContext with Weight Sharing
 
@@ -146,13 +227,13 @@ Note: A single ONNX model may contain multiple `EPContext` nodes, depending on t
     // Add the execution provider (using QNN as an example)
     so.AppendExecutionProvider("QNN", provider_options);
 
-    // Create the first session to dump the `_ctx.onnx` model
+    // Create the first session to dump the model1_ctx.onnx file
     Ort::Session session1(env, "model1.onnx", so);
 
     // Mark the last session by enabling ep.stop_share_ep_contexts
     so.AddConfigEntry(kOrtSessionOptionStopShareEpContexts, "1");
 
-    // Create the last session to dump the `_ctx.onnx` model and generate the `ep_ctx.bin`
+    // Create the last session to dump the model2_ctx.onnx file and generate the ep_ctx.bin (this file name is just an example, real name depend on EP implementation)
     Ort::Session session2(env, "model2.onnx", so);
 ```
 
