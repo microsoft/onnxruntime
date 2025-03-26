@@ -55,7 +55,7 @@ NodeArg& MergeQkvWeights(Graph& graph,
   Initializer v_scale_tensor_initializer(*v_scale_tensor, graph.ModelPath());
   Initializer v_zero_tensor_initializer(*v_zero_point_tensor, graph.ModelPath());
 
-  auto data_type = q_tensor->data_type();
+  auto data_type = q_scale_tensor->data_type();
 
   int64_t single_tensor_output_dim = qkv_second_dim * qkv_third_dim;
   int64_t total_output_dim = 3 * single_tensor_output_dim;  // Because we have 3 tensors to merge.
@@ -301,16 +301,11 @@ Status GroupQueryAttentionFusion::ApplyImpl(
 
     onnxruntime::NodeArg& qkv_initializer_node_arg = MergeQkvWeights(graph, hidden_size, q_proj_tensor->dims(1), q_proj_tensor->dims(2), q_proj_tensor, k_proj_tensor, v_proj_tensor, q_scale_tensor, q_zero_points_tensor, k_scale_tensor, k_zero_points_tensor, v_scale_tensor, v_zero_points_tensor);
 
+    // todo prob remove this
     if (pos_ids_arg == nullptr) {
       std::cout << "Position IDs argument is not available; cannot fuse GroupQueryAttention." << std::endl;
       continue;
     }
-
-    NodeAttributes node_attributes = node.GetAttributes();
-    ONNX_NAMESPACE::AttributeProto attr;
-    attr.set_name("do_rotary");
-    attr.set_i(1);
-    node_attributes["do_rotary"] = attr;
 
     // Inputs we have for mat mul are layer norm and merged/packed QKV weights.
     const std::array mmnb_input_defs{layer_norm, &qkv_initializer_node_arg};
@@ -330,7 +325,7 @@ Status GroupQueryAttentionFusion::ApplyImpl(
 
     const std::array mmnb_output_defs{&matmul_output};
 
-    NodeAttributes mmnb_node_atributes = q_node->GetAttributes();
+    [[maybe_unused]] NodeAttributes mmnb_node_atributes = q_node->GetAttributes();
     ONNX_NAMESPACE::AttributeProto mmnb_N_attr_proto;
     mmnb_N_attr_proto.set_name("N");
     mmnb_N_attr_proto.set_type(mmnb_node_atributes["N"].type());
@@ -338,12 +333,12 @@ Status GroupQueryAttentionFusion::ApplyImpl(
     mmnb_node_atributes["N"] = mmnb_N_attr_proto;
 
     // Add MatMulNBits
-    Node& mat_mul_n_bits_new_node = graph.AddNode(graph.GenerateNodeName("MatMul"),
+    [[maybe_unused]] Node& mat_mul_n_bits_new_node = graph.AddNode(graph.GenerateNodeName("MatMul"),
                                                                    "MatMul",
                                                                    "MatMul",
                                                                    mmnb_input_defs,
                                                                    mmnb_output_defs,
-                                                                   &mmnb_node_atributes,
+                                                                   {},
                                                                    kOnnxDomainAlias);
 
     mat_mul_n_bits_new_node.SetExecutionProviderType(node.GetExecutionProviderType());
@@ -358,9 +353,7 @@ Status GroupQueryAttentionFusion::ApplyImpl(
         total_seq_len,
         cos_cache_arg,
         sin_cache_arg,
-        pos_ids_arg
-    };
-
+        pos_ids_arg};
     /*
     // Now add the fused GroupQueryAttention node.
     Node& gqa_node = graph.AddNode(graph.GenerateNodeName("GroupQueryAttention"),
@@ -373,14 +366,29 @@ Status GroupQueryAttentionFusion::ApplyImpl(
 
                                    */
 
-    auto& input_defs = node.MutableInputDefs();
-    input_defs.assign(gqa_input_defs.begin(), gqa_input_defs.end());
+    // TODO: screws up definition for output
+    ORT_RETURN_IF_ERROR(graph.Resolve());
+
+    [[maybe_unused]] auto producer2 = graph.GetConsumerNodes(matmul_output.Name());
+    [[maybe_unused]] auto producer3 = graph.GetProducerNode(matmul_output.Name());
 
     graph_utils::FinalizeNodeFusion(graph, {*q_node, *k_node, *v_node, *rotary_node_1, *rotary_node_2}, mat_mul_n_bits_new_node);
 
-    //gqa_node.SetExecutionProviderType(node.GetExecutionProviderType());
+    auto& mat_mut_output_defs = mat_mul_n_bits_new_node.MutableOutputDefs();
+    mat_mut_output_defs.assign(mmnb_output_defs.begin(), mmnb_output_defs.end());
 
-    //graph_utils::FinalizeNodeFusion(graph, {*q_node, *k_node, *v_node, *rotary_node_1, *rotary_node_2}, gqa_node);
+    [[maybe_unused]] const onnxruntime::Node* producer = graph.GetProducerNode(matmul_output.Name());
+
+    // TODO: make sure attributes are applied
+    NodeAttributes node_attributes = node.GetAttributes();
+    ONNX_NAMESPACE::AttributeProto attr;
+    attr.set_name("do_rotary");
+    attr.set_i(1);
+    node_attributes["do_rotary"] = attr;
+    auto& input_defs = node.MutableInputDefs();
+    input_defs.assign(gqa_input_defs.begin(), gqa_input_defs.end());
+
+    graph_utils::FinalizeNodeFusion(graph, {node}, node);
 
     [[maybe_unused]] int sodjsapidjad = 1;
     [[maybe_unused]] int sodjsapidjad2 = 1;
