@@ -227,8 +227,6 @@ Status MatMulProgram::MakeMatMulPackedSource(ShaderHelper& shader,
                            ", tile_inner: ", tile_inner, " must be divisible by WorkgroupSizeY: ", workgroup_size_y);
   }
 
-  const std::string data_type = "a_element_t";
-
   const auto row_per_thread_a = tile_a_height / workgroup_size_y;
   const auto col_per_thread_a = tile_a_width / workgroup_size_x;
   const auto row_per_thread_b = tile_inner / workgroup_size_y;

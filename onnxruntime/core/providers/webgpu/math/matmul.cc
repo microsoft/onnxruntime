@@ -34,284 +34,284 @@ static std::string CalcResult(int64_t components, int64_t a_components, int64_t 
   std::ostringstream oss;
   oss << "var a_data: a_value_t;\n";
   for (int i = 0; i < a_components; ++i) {
-  for (int i = 0; i < a_components; ++i) {
-    oss << "let b_data" << i << " = b[(b_offset + (k + " << i << ") * uniforms.N + col) / " << components << "];\n";
-  }
-  for (int i = 0; i < output_number; ++i) {
-  for (int i = 0; i < output_number; ++i) {
-    oss << "a_data = a[(a_offset + (row + " << i << ") * uniforms.K + k) / " << a_components << "];\n";
-
-    for (int j = 0; j < a_components; j++) {
-    for (int j = 0; j < a_components; j++) {
-      oss << "values[" << i << "] = fma(b_value_t(a_data" << (a_components == 1 ? "" : "[" + std::to_string(j) + "]") << "), b_data" << j << ", values[" << i << "]);\n";
+    for (int i = 0; i < a_components; ++i) {
+      oss << "let b_data" << i << " = b[(b_offset + (k + " << i << ") * uniforms.N + col) / " << components << "];\n";
     }
-  }
-  return oss.str();
-}
+    for (int i = 0; i < output_number; ++i) {
+      for (int i = 0; i < output_number; ++i) {
+        oss << "a_data = a[(a_offset + (row + " << i << ") * uniforms.K + k) / " << a_components << "];\n";
 
-Status MatMulNaiveProgram::GenerateShaderCode(ShaderHelper& shader) const {
-Status MatMulNaiveProgram::GenerateShaderCode(ShaderHelper& shader) const {
-  const auto& a = shader.AddInput("a", ShaderUsage::UseUniform | ShaderUsage::UseIndicesTypeAlias |
-                                           ShaderUsage::UseValueTypeAlias | ShaderUsage::UseElementTypeAlias);
-  const auto& b = shader.AddInput("b", ShaderUsage::UseUniform | ShaderUsage::UseIndicesTypeAlias |
-                                           ShaderUsage::UseValueTypeAlias | ShaderUsage::UseElementTypeAlias);
+        for (int j = 0; j < a_components; j++) {
+          for (int j = 0; j < a_components; j++) {
+            oss << "values[" << i << "] = fma(b_value_t(a_data" << (a_components == 1 ? "" : "[" + std::to_string(j) + "]") << "), b_data" << j << ", values[" << i << "]);\n";
+          }
+        }
+        return oss.str();
+      }
 
-  std::string process_bias;
-  if (has_bias_) {
-    shader.AddInput("bias", ShaderUsage::UseUniform);
-    process_bias = "value += output_value_t(bias[row + i]);";
-  }
+      Status MatMulNaiveProgram::GenerateShaderCode(ShaderHelper & shader) const {
+        Status MatMulNaiveProgram::GenerateShaderCode(ShaderHelper & shader) const {
+          const auto& a = shader.AddInput("a", ShaderUsage::UseUniform | ShaderUsage::UseIndicesTypeAlias |
+                                                   ShaderUsage::UseValueTypeAlias | ShaderUsage::UseElementTypeAlias);
+          const auto& b = shader.AddInput("b", ShaderUsage::UseUniform | ShaderUsage::UseIndicesTypeAlias |
+                                                   ShaderUsage::UseValueTypeAlias | ShaderUsage::UseElementTypeAlias);
 
-  std::string apply_activation = GetActivationSnippet(activation_, "output_value_t");
-  const auto& output = shader.AddOutput("output", ShaderUsage::UseUniform |
-                                                      ShaderUsage::UseIndicesTypeAlias | ShaderUsage::UseValueTypeAlias);
-  const auto& batch_dims = shader.AddIndices("batch_dims");
+          std::string process_bias;
+          if (has_bias_) {
+            shader.AddInput("bias", ShaderUsage::UseUniform);
+            process_bias = "value += output_value_t(bias[row + i]);";
+          }
 
-  int a_components = a.NumComponents();
-  int components = b.NumComponents();  // components of N
-  int a_components = a.NumComponents();
-  int components = b.NumComponents();  // components of N
+          std::string apply_activation = GetActivationSnippet(activation_, "output_value_t");
+          const auto& output = shader.AddOutput("output", ShaderUsage::UseUniform |
+                                                              ShaderUsage::UseIndicesTypeAlias | ShaderUsage::UseValueTypeAlias);
+          const auto& batch_dims = shader.AddIndices("batch_dims");
 
-  shader.MainFunctionBody() << shader.GuardAgainstOutOfBoundsWorkgroupSizes("uniforms.output_size")
-                            << "let col = (global_idx % (uniforms.N / " << components << ")) * " << components << ";\n"
-                            << "var index1 = global_idx / (uniforms.N / " << components << ");\n"
-                            << "let stride1 = uniforms.M / " << output_number_ << ";\n"
-                            << "let row = (index1 % stride1) * " << output_number_ << ";\n"
-                            << "let batch = index1 / stride1;\n";
-  if (output_rank_ != 2) {
-    shader.MainFunctionBody() << "let batch_indices = " << batch_dims.OffsetToIndices("batch") << ";\n";
-  }
-  shader.MainFunctionBody() << "var a_indices: a_indices_t;\n"
-                            << ConvertOutputBatchIndicesToInputBatchIndices("a", a, a.Rank() - 2, batch_dims.Rank(), "batch_indices")
-                            << a.IndicesSet("a_indices", a.Rank() - 2, 0) << "\n"
-                            << a.IndicesSet("a_indices", a.Rank() - 1, 0) << "\n"
-                            << "let a_offset = " << a.IndicesToOffset("a_indices") << "*" << a_components << ";\n"
-                            << "var b_indices: b_indices_t;\n"
-                            << ConvertOutputBatchIndicesToInputBatchIndices("b", b, b.Rank() - 2, batch_dims.Rank(), "batch_indices")
-                            << b.IndicesSet("b_indices", b.Rank() - 2, 0) << "\n"
-                            << b.IndicesSet("b_indices", b.Rank() - 1, 0) << "\n"
-                            << "let b_offset = " << b.IndicesToOffset("b_indices") << " * " << components << ";\n"
-                            << "var values: array<output_value_t, " << output_number_ << ">;\n"
-                            << "for (var k: u32 = 0u; k < uniforms.K; k = k + " << a_components << ") {\n"
-                            << CalcResult(components, a_components, output_number_) << "\n"
-                            << "}\n"
-                            << "for (var i = 0u; i < " << output_number_ << "u; i++) {\n"
-                            << "  var value = values[i];\n"
-                            << process_bias << "\n"
-                            << "  let cur_indices = output_indices_t(batch, row + i, col/ " << components << ");\n"
-                            << "  let offset = " << output.IndicesToOffset("cur_indices") << ";\n"
-                            << output.SetByOffset("offset", "value")
-                            << "}\n";
+          int a_components = a.NumComponents();
+          int components = b.NumComponents();  // components of N
+          int a_components = a.NumComponents();
+          int components = b.NumComponents();  // components of N
 
-  return Status::OK();
-}
+          shader.MainFunctionBody() << shader.GuardAgainstOutOfBoundsWorkgroupSizes("uniforms.output_size")
+                                    << "let col = (global_idx % (uniforms.N / " << components << ")) * " << components << ";\n"
+                                    << "var index1 = global_idx / (uniforms.N / " << components << ");\n"
+                                    << "let stride1 = uniforms.M / " << output_number_ << ";\n"
+                                    << "let row = (index1 % stride1) * " << output_number_ << ";\n"
+                                    << "let batch = index1 / stride1;\n";
+          if (output_rank_ != 2) {
+            shader.MainFunctionBody() << "let batch_indices = " << batch_dims.OffsetToIndices("batch") << ";\n";
+          }
+          shader.MainFunctionBody() << "var a_indices: a_indices_t;\n"
+                                    << ConvertOutputBatchIndicesToInputBatchIndices("a", a, a.Rank() - 2, batch_dims.Rank(), "batch_indices")
+                                    << a.IndicesSet("a_indices", a.Rank() - 2, 0) << "\n"
+                                    << a.IndicesSet("a_indices", a.Rank() - 1, 0) << "\n"
+                                    << "let a_offset = " << a.IndicesToOffset("a_indices") << "*" << a_components << ";\n"
+                                    << "var b_indices: b_indices_t;\n"
+                                    << ConvertOutputBatchIndicesToInputBatchIndices("b", b, b.Rank() - 2, batch_dims.Rank(), "batch_indices")
+                                    << b.IndicesSet("b_indices", b.Rank() - 2, 0) << "\n"
+                                    << b.IndicesSet("b_indices", b.Rank() - 1, 0) << "\n"
+                                    << "let b_offset = " << b.IndicesToOffset("b_indices") << " * " << components << ";\n"
+                                    << "var values: array<output_value_t, " << output_number_ << ">;\n"
+                                    << "for (var k: u32 = 0u; k < uniforms.K; k = k + " << a_components << ") {\n"
+                                    << CalcResult(components, a_components, output_number_) << "\n"
+                                    << "}\n"
+                                    << "for (var i = 0u; i < " << output_number_ << "u; i++) {\n"
+                                    << "  var value = values[i];\n"
+                                    << process_bias << "\n"
+                                    << "  let cur_indices = output_indices_t(batch, row + i, col/ " << components << ");\n"
+                                    << "  let offset = " << output.IndicesToOffset("cur_indices") << ";\n"
+                                    << output.SetByOffset("offset", "value")
+                                    << "}\n";
 
-Status MatMul::ComputeInternal(ComputeContext& context) const {
-  // calculate output shape
-  MatMulComputeHelper helper;
-  const auto* a = context.Input(0);
-  const auto* b = context.Input(1);
+          return Status::OK();
+        }
 
-  ORT_RETURN_IF_ERROR(helper.Compute(a->Shape(), b->Shape()));
-  auto* output_tensor = context.Output(0, helper.OutputShape());
-  bool has_bias = context.InputCount() > 2;
+        Status MatMul::ComputeInternal(ComputeContext & context) const {
+          // calculate output shape
+          MatMulComputeHelper helper;
+          const auto* a = context.Input(0);
+          const auto* b = context.Input(1);
 
-  if (helper.N() < 8 && helper.K() < 8) {  // call MatMulNaiveProgram
+          ORT_RETURN_IF_ERROR(helper.Compute(a->Shape(), b->Shape()));
+          auto* output_tensor = context.Output(0, helper.OutputShape());
+          bool has_bias = context.InputCount() > 2;
 
-    const uint32_t m = narrow<uint32_t>(helper.M());  // left matrix first dimension
-    const uint32_t n = narrow<uint32_t>(helper.N());  // right matrix second dimension
-    const uint32_t k = narrow<uint32_t>(helper.K());  // right matrix first dimension
+          if (helper.N() < 8 && helper.K() < 8) {  // call MatMulNaiveProgram
 
-    const auto components = GetMaxComponents(n);
-    const auto a_components = GetMaxComponents(k);
+            const uint32_t m = narrow<uint32_t>(helper.M());  // left matrix first dimension
+            const uint32_t n = narrow<uint32_t>(helper.N());  // right matrix second dimension
+            const uint32_t k = narrow<uint32_t>(helper.K());  // right matrix first dimension
 
-    const auto output_number = GetMaxComponents(m);
-    uint32_t output_size = narrow<uint32_t>(helper.OutputShape().Size() / components / output_number);
+            const auto components = GetMaxComponents(n);
+            const auto a_components = GetMaxComponents(k);
 
-    const size_t output_rank = helper.OutputShape().NumDimensions();
-    TensorShape outer_dims = output_rank > 2 ? helper.OutputShape().Slice(0, output_rank - 2) : TensorShape({});
-    const int64_t batch_size = outer_dims.Size();
+            const auto output_number = GetMaxComponents(m);
+            uint32_t output_size = narrow<uint32_t>(helper.OutputShape().Size() / components / output_number);
 
-    const int64_t a_rows = a->Shape().NumDimensions() > 1 ? a->Shape()[a->Shape().NumDimensions() - 2] : 1;
-    TensorShape output_shape_shader({batch_size, a_rows, helper.N() / components});
-    Activation activation;
-    MatMulNaiveProgram program{activation, output_rank, output_number, has_bias};
+            const size_t output_rank = helper.OutputShape().NumDimensions();
+            TensorShape outer_dims = output_rank > 2 ? helper.OutputShape().Slice(0, output_rank - 2) : TensorShape({});
+            const int64_t batch_size = outer_dims.Size();
 
-    program
-        .CacheHint(std::to_string(components), std::to_string(a_components), std::to_string(output_number))
-        .AddInputs({{a, ProgramTensorMetadataDependency::TypeAndRank, a_components},
-                    {b, ProgramTensorMetadataDependency::TypeAndRank, components}});
+            const int64_t a_rows = a->Shape().NumDimensions() > 1 ? a->Shape()[a->Shape().NumDimensions() - 2] : 1;
+            TensorShape output_shape_shader({batch_size, a_rows, helper.N() / components});
+            Activation activation;
+            MatMulNaiveProgram program{activation, output_rank, output_number, has_bias};
 
-    if (has_bias) {
-      const auto* bias = context.Input(2);
-      program.AddInput({bias, ProgramTensorMetadataDependency::Rank, 1});
-    }
-    program
-        .AddOutputs({{output_tensor, ProgramTensorMetadataDependency::None, output_shape_shader, components}})
-        .SetDispatchGroupSize((output_size + 63) / 64)  // Integer ceiling division
-        .AddIndices(outer_dims)
-        .AddUniformVariables({{output_size}, {m}, {n}, {k}});
+            program
+                .CacheHint(std::to_string(components), std::to_string(a_components), std::to_string(output_number))
+                .AddInputs({{a, ProgramTensorMetadataDependency::TypeAndRank, a_components},
+                            {b, ProgramTensorMetadataDependency::TypeAndRank, components}});
 
-    return context.RunProgram(program);
-  }
+            if (has_bias) {
+              const auto* bias = context.Input(2);
+              program.AddInput({bias, ProgramTensorMetadataDependency::Rank, 1});
+            }
+            program
+                .AddOutputs({{output_tensor, ProgramTensorMetadataDependency::None, output_shape_shader, components}})
+                .SetDispatchGroupSize((output_size + 63) / 64)  // Integer ceiling division
+                .AddIndices(outer_dims)
+                .AddUniformVariables({{output_size}, {m}, {n}, {k}});
 
-  int64_t batchA = a->Shape().SizeToDimension(a->Shape().NumDimensions() - 2);
-  int64_t batchB = b->Shape().SizeToDimension(b->Shape().NumDimensions() - 2);
+            return context.RunProgram(program);
+          }
 
-  TensorShape a_shape = a->Shape();
-  TensorShape b_shape = b->Shape();
-  TensorShape output_shape = helper.OutputShape();
+          int64_t batchA = a->Shape().SizeToDimension(a->Shape().NumDimensions() - 2);
+          int64_t batchB = b->Shape().SizeToDimension(b->Shape().NumDimensions() - 2);
 
-  const int64_t dim_output_outer = output_shape[output_shape.NumDimensions() - 2];
-  // check if A is  batch of vector (bach is not 1, M is 1) and B is a matrix (batch is 1)
-  if (batchA != 1 && dim_output_outer == 1 && batchB == 1) {
-    // optimization for batched vector matrix multiplication
-    // dimensions of A: [1,`batchA`,K]
-    TensorShapeVector dims_a = {1, batchA, helper.K()};
-    // dimensions of B: [1,K,N]
-    TensorShapeVector dims_b = {1, helper.K(), helper.N()};
+          TensorShape a_shape = a->Shape();
+          TensorShape b_shape = b->Shape();
+          TensorShape output_shape = helper.OutputShape();
 
-    a_shape = TensorShape(dims_a);
-    b_shape = TensorShape(dims_b);
-    output_shape = {1, batchA, helper.N()};
-  }
+          const int64_t dim_output_outer = output_shape[output_shape.NumDimensions() - 2];
+          // check if A is  batch of vector (bach is not 1, M is 1) and B is a matrix (batch is 1)
+          if (batchA != 1 && dim_output_outer == 1 && batchB == 1) {
+            // optimization for batched vector matrix multiplication
+            // dimensions of A: [1,`batchA`,K]
+            TensorShapeVector dims_a = {1, batchA, helper.K()};
+            // dimensions of B: [1,K,N]
+            TensorShapeVector dims_b = {1, helper.K(), helper.N()};
 
-  // helpful dimension variables
-  TensorShape outer_dims_a = a_shape.NumDimensions() > 2
-                                 ? a_shape.Slice(0, a_shape.NumDimensions() - 2)
-                                 : TensorShape({});
+            a_shape = TensorShape(dims_a);
+            b_shape = TensorShape(dims_b);
+            output_shape = {1, batchA, helper.N()};
+          }
 
-  TensorShape outer_dims_b = b_shape.NumDimensions() > 2
-                                 ? b_shape.Slice(0, b_shape.NumDimensions() - 2)
-                                 : TensorShape({});
+          // helpful dimension variables
+          TensorShape outer_dims_a = a_shape.NumDimensions() > 2
+                                         ? a_shape.Slice(0, a_shape.NumDimensions() - 2)
+                                         : TensorShape({});
 
-  TensorShape outer_dims = output_shape.NumDimensions() > 2
-                               ? output_shape.Slice(0, output_shape.NumDimensions() - 2)
-                               : TensorShape({});
+          TensorShape outer_dims_b = b_shape.NumDimensions() > 2
+                                         ? b_shape.Slice(0, b_shape.NumDimensions() - 2)
+                                         : TensorShape({});
 
-  const int64_t batch_size = outer_dims.Size();
+          TensorShape outer_dims = output_shape.NumDimensions() > 2
+                                       ? output_shape.Slice(0, output_shape.NumDimensions() - 2)
+                                       : TensorShape({});
 
-  // Get dimensions for matrix multiplication from TensorShape
-  const int32_t dim_a_outer = narrow<int32_t>(a_shape[a_shape.NumDimensions() - 2]);  // left matrix second dimension
-  const int32_t dim_inner = narrow<int32_t>(a_shape[a_shape.NumDimensions() - 1]);    // left matrix first dimension
-  const int32_t dim_b_outer = narrow<int32_t>(b_shape[b_shape.NumDimensions() - 1]);  // right matrix first dimension
+          const int64_t batch_size = outer_dims.Size();
 
-  const bool is_vec4 = dim_inner % 4 == 0 && dim_b_outer % 4 == 0;
+          // Get dimensions for matrix multiplication from TensorShape
+          const int32_t dim_a_outer = narrow<int32_t>(a_shape[a_shape.NumDimensions() - 2]);  // left matrix second dimension
+          const int32_t dim_inner = narrow<int32_t>(a_shape[a_shape.NumDimensions() - 1]);    // left matrix first dimension
+          const int32_t dim_b_outer = narrow<int32_t>(b_shape[b_shape.NumDimensions() - 1]);  // right matrix first dimension
 
-  InlinedVector<int64_t> elements_per_thread = dim_a_outer <= 8
-                                                   ? InlinedVector<int64_t>({4, 1, 1})
-                                                   : InlinedVector<int64_t>({4, 4, 1});
+          const bool is_vec4 = dim_inner % 4 == 0 && dim_b_outer % 4 == 0;
 
-  const uint32_t dispatch_x = narrow<uint32_t>((dim_b_outer + MATMUL_PACKED_WORKGROUP_SIZE_X * elements_per_thread[0] - 1) /
-                                               (MATMUL_PACKED_WORKGROUP_SIZE_X * elements_per_thread[0]));
-  const uint32_t dispatch_y = narrow<uint32_t>((dim_a_outer + MATMUL_PACKED_WORKGROUP_SIZE_Y * elements_per_thread[1] - 1) /
-                                               (MATMUL_PACKED_WORKGROUP_SIZE_Y * elements_per_thread[1]));
-  const uint32_t dispatch_z = narrow<uint32_t>((static_cast<uint32_t>(batch_size) + MATMUL_PACKED_WORKGROUP_SIZE_Z * elements_per_thread[2] - 1) /
-                                               (MATMUL_PACKED_WORKGROUP_SIZE_Z * elements_per_thread[2]));
+          InlinedVector<int64_t> elements_per_thread = dim_a_outer <= 8
+                                                           ? InlinedVector<int64_t>({4, 1, 1})
+                                                           : InlinedVector<int64_t>({4, 4, 1});
 
-  const int components = is_vec4 ? 4 : 1;
-  const TensorShape a_shape_temp = CreateMatMulIntermediateShape(outer_dims_a, dim_a_outer, dim_inner, components);
-  const TensorShape b_shape_temp = CreateMatMulIntermediateShape(outer_dims_b, dim_inner, dim_b_outer, components);
-  const TensorShape output_shape_temp = TensorShape({batch_size, dim_a_outer, dim_b_outer / components});
-  Activation activation;
-  MatMulProgram program{activation, has_bias, is_vec4, elements_per_thread};
-  program
-      .CacheHint(absl::StrJoin(elements_per_thread, "-"), std::to_string(is_vec4))
-      .AddInputs({{a, ProgramTensorMetadataDependency::TypeAndRank, a_shape_temp, components},
-                  {b, ProgramTensorMetadataDependency::TypeAndRank, b_shape_temp, components}})
-      .AddOutputs({{output_tensor, ProgramTensorMetadataDependency::Rank, output_shape_temp, components}})
-      .AddUniformVariables({{dim_a_outer}, {dim_b_outer}, {dim_inner}})
-      .AddIndices(outer_dims)
-      .SetDispatchGroupSize(dispatch_x, dispatch_y, dispatch_z)
-      .SetWorkgroupSize(MATMUL_PACKED_WORKGROUP_SIZE_X, MATMUL_PACKED_WORKGROUP_SIZE_Y, MATMUL_PACKED_WORKGROUP_SIZE_Z);
+          const uint32_t dispatch_x = narrow<uint32_t>((dim_b_outer + MATMUL_PACKED_WORKGROUP_SIZE_X * elements_per_thread[0] - 1) /
+                                                       (MATMUL_PACKED_WORKGROUP_SIZE_X * elements_per_thread[0]));
+          const uint32_t dispatch_y = narrow<uint32_t>((dim_a_outer + MATMUL_PACKED_WORKGROUP_SIZE_Y * elements_per_thread[1] - 1) /
+                                                       (MATMUL_PACKED_WORKGROUP_SIZE_Y * elements_per_thread[1]));
+          const uint32_t dispatch_z = narrow<uint32_t>((static_cast<uint32_t>(batch_size) + MATMUL_PACKED_WORKGROUP_SIZE_Z * elements_per_thread[2] - 1) /
+                                                       (MATMUL_PACKED_WORKGROUP_SIZE_Z * elements_per_thread[2]));
 
-  if (has_bias) {
-    const auto* bias = context.Input(2);
-    program.AddInput({bias, ProgramTensorMetadataDependency::Rank, 1});
-  }
-  return context.RunProgram(program);
-}
+          const int components = is_vec4 ? 4 : 1;
+          const TensorShape a_shape_temp = CreateMatMulIntermediateShape(outer_dims_a, dim_a_outer, dim_inner, components);
+          const TensorShape b_shape_temp = CreateMatMulIntermediateShape(outer_dims_b, dim_inner, dim_b_outer, components);
+          const TensorShape output_shape_temp = TensorShape({batch_size, dim_a_outer, dim_b_outer / components});
+          Activation activation;
+          MatMulProgram program{activation, has_bias, is_vec4, elements_per_thread};
+          program
+              .CacheHint(absl::StrJoin(elements_per_thread, "-"), std::to_string(is_vec4))
+              .AddInputs({{a, ProgramTensorMetadataDependency::TypeAndRank, a_shape_temp, components},
+                          {b, ProgramTensorMetadataDependency::TypeAndRank, b_shape_temp, components}})
+              .AddOutputs({{output_tensor, ProgramTensorMetadataDependency::Rank, output_shape_temp, components}})
+              .AddUniformVariables({{dim_a_outer}, {dim_b_outer}, {dim_inner}})
+              .AddIndices(outer_dims)
+              .SetDispatchGroupSize(dispatch_x, dispatch_y, dispatch_z)
+              .SetWorkgroupSize(MATMUL_PACKED_WORKGROUP_SIZE_X, MATMUL_PACKED_WORKGROUP_SIZE_Y, MATMUL_PACKED_WORKGROUP_SIZE_Z);
 
-MatMulProgram CreateMatMulProgram(const Activation& activation, std::vector<const Tensor*>& inputs, Tensor* output) {
-  MatMulComputeHelper helper;
-  const auto* a = inputs[0];
-  const auto* b = inputs[1];
-  bool has_bias = inputs.size() > 2;
+          if (has_bias) {
+            const auto* bias = context.Input(2);
+            program.AddInput({bias, ProgramTensorMetadataDependency::Rank, 1});
+          }
+          return context.RunProgram(program);
+        }
 
-  ORT_THROW_IF_ERROR(helper.Compute(a->Shape(), b->Shape()));
-  int64_t batchA = a->Shape().SizeToDimension(a->Shape().NumDimensions() - 2);
-  int64_t batchB = b->Shape().SizeToDimension(b->Shape().NumDimensions() - 2);
+        MatMulProgram CreateMatMulProgram(const Activation& activation, std::vector<const Tensor*>& inputs, Tensor* output) {
+          MatMulComputeHelper helper;
+          const auto* a = inputs[0];
+          const auto* b = inputs[1];
+          bool has_bias = inputs.size() > 2;
 
-  TensorShape a_shape = a->Shape();
-  TensorShape b_shape = b->Shape();
-  TensorShape output_shape = helper.OutputShape();
+          ORT_THROW_IF_ERROR(helper.Compute(a->Shape(), b->Shape()));
+          int64_t batchA = a->Shape().SizeToDimension(a->Shape().NumDimensions() - 2);
+          int64_t batchB = b->Shape().SizeToDimension(b->Shape().NumDimensions() - 2);
 
-  const int64_t m_value = output_shape[output_shape.NumDimensions() - 2];
-  // check if A is  batch of vector (bach is not 1, M is 1) and B is a matrix (batch is 1)
-  if (batchA != 1 && m_value == 1 && batchB == 1) {
-    // optimization for batched vector matrix multiplication
-    // dimensions of A: [1,`batchA`,K]
-    TensorShapeVector dims_a = {1, batchA, helper.K()};
-    // dimensions of B: [1,K,N]
-    TensorShapeVector dims_b = {1, helper.K(), helper.N()};
+          TensorShape a_shape = a->Shape();
+          TensorShape b_shape = b->Shape();
+          TensorShape output_shape = helper.OutputShape();
 
-    a_shape = TensorShape(dims_a);
-    b_shape = TensorShape(dims_b);
-    output_shape = {1, batchA, helper.N()};
-  }
+          const int64_t m_value = output_shape[output_shape.NumDimensions() - 2];
+          // check if A is  batch of vector (bach is not 1, M is 1) and B is a matrix (batch is 1)
+          if (batchA != 1 && m_value == 1 && batchB == 1) {
+            // optimization for batched vector matrix multiplication
+            // dimensions of A: [1,`batchA`,K]
+            TensorShapeVector dims_a = {1, batchA, helper.K()};
+            // dimensions of B: [1,K,N]
+            TensorShapeVector dims_b = {1, helper.K(), helper.N()};
 
-  // helpful dimension variables
-  TensorShape outer_dims_a = a_shape.NumDimensions() > 2
-                                 ? a_shape.Slice(0, a_shape.NumDimensions() - 2)
-                                 : TensorShape({});
+            a_shape = TensorShape(dims_a);
+            b_shape = TensorShape(dims_b);
+            output_shape = {1, batchA, helper.N()};
+          }
 
-  TensorShape outer_dims_b = b_shape.NumDimensions() > 2
-                                 ? b_shape.Slice(0, b_shape.NumDimensions() - 2)
-                                 : TensorShape({});
+          // helpful dimension variables
+          TensorShape outer_dims_a = a_shape.NumDimensions() > 2
+                                         ? a_shape.Slice(0, a_shape.NumDimensions() - 2)
+                                         : TensorShape({});
 
-  TensorShape outer_dims = output_shape.NumDimensions() > 2
-                               ? output_shape.Slice(0, output_shape.NumDimensions() - 2)
-                               : TensorShape({});
+          TensorShape outer_dims_b = b_shape.NumDimensions() > 2
+                                         ? b_shape.Slice(0, b_shape.NumDimensions() - 2)
+                                         : TensorShape({});
 
-  const int64_t batch_size = outer_dims.Size();
+          TensorShape outer_dims = output_shape.NumDimensions() > 2
+                                       ? output_shape.Slice(0, output_shape.NumDimensions() - 2)
+                                       : TensorShape({});
 
-  // Get dimensions for matrix multiplication from TensorShape
-  const int32_t dim_a_outer = static_cast<int32_t>(a_shape[a_shape.NumDimensions() - 2]);  // M dimension
-  const int32_t dim_inner = static_cast<int32_t>(a_shape[a_shape.NumDimensions() - 1]);    // K dimension
-  const int32_t dim_b_outer = static_cast<int32_t>(b_shape[b_shape.NumDimensions() - 1]);  // N dimension
+          const int64_t batch_size = outer_dims.Size();
 
-  const bool is_vec4 = dim_inner % 4 == 0 && dim_b_outer % 4 == 0;
+          // Get dimensions for matrix multiplication from TensorShape
+          const int32_t dim_a_outer = static_cast<int32_t>(a_shape[a_shape.NumDimensions() - 2]);  // M dimension
+          const int32_t dim_inner = static_cast<int32_t>(a_shape[a_shape.NumDimensions() - 1]);    // K dimension
+          const int32_t dim_b_outer = static_cast<int32_t>(b_shape[b_shape.NumDimensions() - 1]);  // N dimension
 
-  InlinedVector<int64_t> elements_per_thread = dim_a_outer <= 8
-                                                   ? InlinedVector<int64_t>({4, 1, 1})
-                                                   : InlinedVector<int64_t>({4, 4, 1});
+          const bool is_vec4 = dim_inner % 4 == 0 && dim_b_outer % 4 == 0;
 
-  const uint32_t dispatch_x = static_cast<uint32_t>(ceil(static_cast<float>(dim_b_outer) / MatMul::MATMUL_PACKED_WORKGROUP_SIZE_X / elements_per_thread[0]));
-  const uint32_t dispatch_y = static_cast<uint32_t>(ceil(static_cast<float>(dim_a_outer) / MatMul::MATMUL_PACKED_WORKGROUP_SIZE_Y / elements_per_thread[1]));
-  const uint32_t dispatch_z = static_cast<uint32_t>(ceil(static_cast<float>(batch_size) / MatMul::MATMUL_PACKED_WORKGROUP_SIZE_Z / elements_per_thread[2]));
+          InlinedVector<int64_t> elements_per_thread = dim_a_outer <= 8
+                                                           ? InlinedVector<int64_t>({4, 1, 1})
+                                                           : InlinedVector<int64_t>({4, 4, 1});
 
-  const int components = is_vec4 ? 4 : 1;
-  const TensorShape a_shape_temp = BuildTempShapeVector(outer_dims_a, dim_a_outer, dim_inner, components);
-  const TensorShape b_shape_temp = BuildTempShapeVector(outer_dims_b, dim_inner, dim_b_outer, components);
-  const TensorShape output_shape_temp = TensorShape({batch_size, dim_a_outer, dim_b_outer / components});
+          const uint32_t dispatch_x = static_cast<uint32_t>(ceil(static_cast<float>(dim_b_outer) / MatMul::MATMUL_PACKED_WORKGROUP_SIZE_X / elements_per_thread[0]));
+          const uint32_t dispatch_y = static_cast<uint32_t>(ceil(static_cast<float>(dim_a_outer) / MatMul::MATMUL_PACKED_WORKGROUP_SIZE_Y / elements_per_thread[1]));
+          const uint32_t dispatch_z = static_cast<uint32_t>(ceil(static_cast<float>(batch_size) / MatMul::MATMUL_PACKED_WORKGROUP_SIZE_Z / elements_per_thread[2]));
 
-  MatMulProgram program{activation, has_bias, is_vec4, elements_per_thread};
-  program
-      .CacheHint(absl::StrJoin(elements_per_thread, "-"), std::to_string(is_vec4))
-      .AddInputs({{a, ProgramTensorMetadataDependency::TypeAndRank, a_shape_temp, components},
-                  {b, ProgramTensorMetadataDependency::TypeAndRank, b_shape_temp, components}})
-      .AddOutputs({{output, ProgramTensorMetadataDependency::Rank, output_shape_temp, components}})
-      .AddUniformVariables({{dim_a_outer}, {dim_b_outer}, {dim_inner}})
-      .AddIndices(outer_dims)
-      .SetDispatchGroupSize(dispatch_x, dispatch_y, dispatch_z)
-      .SetWorkgroupSize(MatMul::MATMUL_PACKED_WORKGROUP_SIZE_X, MatMul::MATMUL_PACKED_WORKGROUP_SIZE_Y, MatMul::MATMUL_PACKED_WORKGROUP_SIZE_Z);
+          const int components = is_vec4 ? 4 : 1;
+          const TensorShape a_shape_temp = BuildTempShapeVector(outer_dims_a, dim_a_outer, dim_inner, components);
+          const TensorShape b_shape_temp = BuildTempShapeVector(outer_dims_b, dim_inner, dim_b_outer, components);
+          const TensorShape output_shape_temp = TensorShape({batch_size, dim_a_outer, dim_b_outer / components});
 
-  if (has_bias) {
-    const auto* bias = inputs[2];
-    program.AddInput({bias, ProgramTensorMetadataDependency::Rank, 1});
-  }
-  return program;
-}
+          MatMulProgram program{activation, has_bias, is_vec4, elements_per_thread};
+          program
+              .CacheHint(absl::StrJoin(elements_per_thread, "-"), std::to_string(is_vec4))
+              .AddInputs({{a, ProgramTensorMetadataDependency::TypeAndRank, a_shape_temp, components},
+                          {b, ProgramTensorMetadataDependency::TypeAndRank, b_shape_temp, components}})
+              .AddOutputs({{output, ProgramTensorMetadataDependency::Rank, output_shape_temp, components}})
+              .AddUniformVariables({{dim_a_outer}, {dim_b_outer}, {dim_inner}})
+              .AddIndices(outer_dims)
+              .SetDispatchGroupSize(dispatch_x, dispatch_y, dispatch_z)
+              .SetWorkgroupSize(MatMul::MATMUL_PACKED_WORKGROUP_SIZE_X, MatMul::MATMUL_PACKED_WORKGROUP_SIZE_Y, MatMul::MATMUL_PACKED_WORKGROUP_SIZE_Z);
 
-}  // namespace webgpu
-}  // namespace onnxruntime
+          if (has_bias) {
+            const auto* bias = inputs[2];
+            program.AddInput({bias, ProgramTensorMetadataDependency::Rank, 1});
+          }
+          return program;
+        }
+
+      }  // namespace webgpu
+    }  // namespace onnxruntime

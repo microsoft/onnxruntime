@@ -27,7 +27,6 @@ class MatMul final : public WebGpuKernel {
 };
 
 class MatMulNaiveProgram final : public Program<MatMulNaiveProgram> {
-class MatMulNaiveProgram final : public Program<MatMulNaiveProgram> {
  public:
   MatMulNaiveProgram(const Activation& activation, const size_t output_rank, int64_t output_number, bool has_bias)
       : Program{"MatMulNaive"}, activation_(activation), output_rank_(output_rank), output_number_(output_number), has_bias_{has_bias} {
@@ -41,7 +40,7 @@ class MatMulNaiveProgram final : public Program<MatMulNaiveProgram> {
                                           {"K", ProgramUniformVariableDataType::Uint32});
 
  private:
- const Activation& activation_;
+  const Activation& activation_;
   const size_t output_rank_;
   const int64_t output_number_;
   const bool has_bias_;
