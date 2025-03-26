@@ -523,7 +523,7 @@ Status MatMulNBitsProgram::GenerateShaderCode(ShaderHelper& shader) const {
   return Status::OK();
 }
 
-Status MatMulNBitsBlockWideTileProgram::GenerateShaderCode(ShaderHelper& shader) const {
+Status MatMulNBitsWideTileProgram::GenerateShaderCode(ShaderHelper& shader) const {
   const auto& a = shader.AddInput("input_a", ShaderUsage::UseUniform | ShaderUsage::UseIndicesTypeAlias | ShaderUsage::UseValueTypeAlias);
   const auto& b = shader.AddInput("input_b", ShaderUsage::UseUniform | ShaderUsage::UseIndicesTypeAlias | ShaderUsage::UseValueTypeAlias);
   const auto& scales = shader.AddInput("scales", ShaderUsage::UseUniform);
@@ -702,7 +702,7 @@ Status MatMulNBits::ComputeInternal(onnxruntime::webgpu::ComputeContext& context
     constexpr uint32_t tile_m = workgroup_size / 8;
     constexpr uint32_t tile_n = workgroup_size;
 
-    MatMulNBitsBlockWideTileProgram program{tile_m, tile_n};
+    MatMulNBitsWideTileProgram program{tile_m, tile_n};
     program.SetWorkgroupSize(workgroup_size);
     program.SetDispatchGroupSize((N + tile_n - 1) / tile_n,
                                  (M + tile_m - 1) / tile_m,

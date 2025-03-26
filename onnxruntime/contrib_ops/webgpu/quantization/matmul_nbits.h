@@ -35,10 +35,10 @@ class MatMulNBitsProgram final : public Program<MatMulNBitsProgram> {
   bool use_subgroup_;
 };
 
-class MatMulNBitsBlockWideTileProgram final : public Program<MatMulNBitsBlockWideTileProgram> {
+class MatMulNBitsWideTileProgram final : public Program<MatMulNBitsWideTileProgram> {
  public:
-  MatMulNBitsBlockWideTileProgram(uint32_t tile_m, uint32_t tile_n)
-      : Program{"MatMulNBitsBlockWideTileProgram"}, tile_m_(tile_m), tile_n_(tile_n) {}
+  MatMulNBitsWideTileProgram(uint32_t tile_m, uint32_t tile_n)
+      : Program{"MatMulNBitsWideTileProgram"}, tile_m_(tile_m), tile_n_(tile_n) {}
 
   Status GenerateShaderCode(ShaderHelper& sh) const override;
   WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES({"block_size", ProgramUniformVariableDataType::Uint32});
