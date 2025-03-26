@@ -10,8 +10,8 @@ namespace onnxruntime {
 namespace webgpu {
 
 Status ConvTranspose2DProgram::GenerateShaderCode(ShaderHelper& shader) const {
-  const auto& w = shader.AddInput("W", ShaderUsage::UseUniform | ShaderUsage::UseIndicesTypeAlias | ShaderUsage::UseValueTypeAlias);
-  const auto& dy = shader.AddInput("dy", ShaderUsage::UseUniform | ShaderUsage::UseIndicesTypeAlias | ShaderUsage::UseValueTypeAlias);
+  const auto& w = shader.AddInput("w", ShaderUsage::UseUniform | ShaderUsage::UseIndicesTypeAlias | ShaderUsage::UseValueTypeAlias);
+  const auto& dy = shader.AddInput("dy", ShaderUsage::UseUniform | ShaderUsage::UseIndicesTypeAlias | ShaderUsage::UseValueTypeAlias | ShaderUsage::UseElementTypeAlias);
   const auto& output = shader.AddOutput("output", ShaderUsage::UseUniform | ShaderUsage::UseIndicesTypeAlias | ShaderUsage::UseValueTypeAlias);
   std::vector<const ShaderVariableHelper*> inputs = {&w, &dy};
   if (has_bias_) {
@@ -31,14 +31,14 @@ Status ConvTranspose2DProgram::GenerateShaderCode(ShaderHelper& shader) const {
            << "x_offset += 1;\n"
            << "w_offset += 1;\n";
       } else if (a_components_ == 2) {
-        ss << "let xValue = vec4<f32>(" << dy.GetByOffset("x_offset") << ", " << dy.GetByOffset("x_offset + 1") << ");\n"
-           << "let wValue = vec4<f32>(" << w.GetByOffset("w_offset") << ", " << w.GetByOffset("w_offset + 1u") << ");\n"
+        ss << "let xValue = vec4<dy_element_t>(" << dy.GetByOffset("x_offset") << ", " << dy.GetByOffset("x_offset + 1") << ");\n"
+           << "let wValue = vec4<dy_element_t>(" << w.GetByOffset("w_offset") << ", " << w.GetByOffset("w_offset + 1u") << ");\n"
            << "dotProd = dotProd + dot(xValue, wValue);\n"
            << "x_offset += 2;\n"
            << "w_offset += 2;\n";
       } else if (a_components_ == 1) {
-        ss << "let xValue = vec4<f32>(" << dy.GetByOffset("x_offset") << ", " << dy.GetByOffset("x_offset + 1u") << ", " << dy.GetByOffset("x_offset + 2u") << ", " << dy.GetByOffset("x_offset + 3u") << ");\n"
-           << "let wValue = vec4<f32>(" << w.GetByOffset("x_offset") << ", " << w.GetByOffset("x_offset + 1u") << ", " << w.GetByOffset("x_offset + 2u") << ", " << w.GetByOffset("x_offset + 3u") << ");\n"
+        ss << "let xValue = vec4<dy_element_t>(" << dy.GetByOffset("x_offset") << ", " << dy.GetByOffset("x_offset + 1u") << ", " << dy.GetByOffset("x_offset + 2u") << ", " << dy.GetByOffset("x_offset + 3u") << ");\n"
+           << "let wValue = vec4<dy_element_t>(" << w.GetByOffset("x_offset") << ", " << w.GetByOffset("x_offset + 1u") << ", " << w.GetByOffset("x_offset + 2u") << ", " << w.GetByOffset("x_offset + 3u") << ");\n"
            << "dotProd = dotProd + dot(xValue, wValue);\n"
            << "x_offset += 4;\n"
            << "w_offset += 4;\n";
@@ -68,6 +68,7 @@ Status ConvTranspose2DProgram::GenerateShaderCode(ShaderHelper& shader) const {
   auto calculate_remainder = [&]() -> std::string {
     std::stringstream ss;
     if (input_channels_remainder_ > 0) {
+      ORT_ENFORCE(pack_input_as4_, "Invalid input_channels_remainder: ", input_channels_remainder_);
       if (a_components_ == 1) {
         for (uint32_t i = 0; i < input_channels_remainder_; ++i) {
           ss << "dotProd = dotProd + " << dy.GetByOffset("x_offset + " + std::to_string(i)) << ";\n";
@@ -88,7 +89,7 @@ Status ConvTranspose2DProgram::GenerateShaderCode(ShaderHelper& shader) const {
                             << "let d1 = " << output.IndicesGet("outputIndices", channel_dim) << ";\n"
                             << "let r = " << output.IndicesGet("outputIndices", row_dim) << ";\n"
                             << "let c = " << output.IndicesGet("outputIndices", col_dim) << ";\n"
-                            << "let dyCorner = vec2<i32>(i32(r), i32(c)) - uniforms.pads;\n"
+                            << "let dyCorner = vec2<i32>(i32(r), i32(c)) - vec2<i32>(uniforms.pads);\n"
                             << "let dyRCorner = dyCorner.x;\n"
                             << "let dyCCorner = dyCorner.y;\n"
                             << "let groupId = d1 / uniforms.output_channels_per_group;\n"
@@ -105,9 +106,9 @@ Status ConvTranspose2DProgram::GenerateShaderCode(ShaderHelper& shader) const {
                             << "  if (wR % uniforms.dilations.x != 0) {\n"
                             << "    continue;\n"
                             << "  }\n"
-                            << "  let dyR = (x_value_t(dyRCorner) + x_value_t(wR)) / x_value_t(uniforms.strides[0]);\n"
+                            << "  let dyR = (dy_element_t(dyRCorner) + dy_element_t(wR)) / dy_element_t(uniforms.strides[0]);\n"
                             << "  let wRPerm = uniforms.filter_dims.x - 1 - wR / uniforms.dilations.x;\n"
-                            << "  if (dyR < 0.0 || dyR >= x_value_t(uniforms.Dy_shape[" << row_dim << "]) || fract(dyR) > 0.0 || wRPerm < 0) {\n"
+                            << "  if (dyR < 0.0 || dyR >= dy_element_t(uniforms.dy_shape[" << row_dim << "]) || fract(dyR) > 0.0 || wRPerm < 0) {\n"
                             << "    continue;\n"
                             << "  }\n"
                             << "  let idyR: u32 = u32(dyR);\n"
@@ -120,9 +121,9 @@ Status ConvTranspose2DProgram::GenerateShaderCode(ShaderHelper& shader) const {
                             << "    if (wC % uniforms.dilations.y != 0) {"
                             << "      continue;\n"
                             << "    }\n"
-                            << "    let dyC = (x_value_t(dyCCorner) + x_value_t(wC)) / x_value_t(uniforms.strides.y);\n"
+                            << "    let dyC = (dy_element_t(dyCCorner) + dy_element_t(wC)) / dy_element_t(uniforms.strides.y);\n"
                             << "    let wCPerm = uniforms.filter_dims.y - 1 - wC / uniforms.dilations.y;\n"
-                            << "    if (dyC < 0.0 || dyC >= x_value_t(uniforms.Dy_shape[" << col_dim << "]) ||\n"
+                            << "    if (dyC < 0.0 || dyC >= dy_element_t(uniforms.dy_shape[" << col_dim << "]) ||\n"
                             << "        fract(dyC) > 0.0 || wCPerm < 0) {\n"
                             << "      continue;\n"
                             << "    }\n"
@@ -144,7 +145,7 @@ Status ConvTranspose2DProgram::GenerateShaderCode(ShaderHelper& shader) const {
                             << "  }\n"
                             << "  wR = wR + uniforms.strides.x - 1;\n"
                             << "}\n"
-                            << "let value = dotProd" << (has_bias_ ? " + bias[d1 / " + std::to_string(components_) + "]" : "") << "\n"
+                            << "let value = dotProd" << (has_bias_ ? " + bias[d1 / " + std::to_string(components_) + "]" : "") << ";\n"
                             << output.SetByOffset("global_idx", "value") << "\n";
   return Status::OK();
 }
@@ -160,7 +161,7 @@ ConvTranspose2DProgram CreateConvTranspose2DProgram(const std::vector<const Tens
   auto output_channels_per_group = weight_shape[3];
   auto a_components = is_channels_last ? GetMaxComponents(input_channels_per_group) : 1;
   bool pack_input_as4 = is_channels_last && output_channels_per_group == 1 && input_channels_per_group >= 4;
-  auto input_channels_per_group_int = (input_channels_per_group / 4) * 4;
+  auto input_channels_per_group_int = pack_input_as4 ? (input_channels_per_group / 4) * 4 : (input_channels_per_group / a_components) * a_components;
   auto input_channels_remainder = input_channels_per_group - input_channels_per_group_int;
   auto components = is_channels_last ? GetMaxComponents(output_channels_per_group) : 1;
   auto b_components = is_channels_last ? (output_channels_per_group == 1 ? a_components : components) : 1;
@@ -178,7 +179,7 @@ ConvTranspose2DProgram CreateConvTranspose2DProgram(const std::vector<const Tens
   std::vector<uint32_t> effective_filter_dims = {filter_dims[0] + dilations[0] <= 1 ? 0 : filter_dims[0] * (dilations[0] - 1), filter_dims[1] + dilations[1] <= 1 ? 0 : filter_dims[1] * (dilations[1] - 1)};
   std::vector<uint32_t> local_pads = {effective_filter_dims[0] - 1 - (pads[0] + pads[1]) / 2, effective_filter_dims[1] - 1 - (pads[1] + pads[3]) / 2};
   ConvTranspose2DProgram program(is_channels_last, has_bias, components, a_components, b_components, uint32_t(input_channels_remainder), pack_input_as4);
-  program.AddInputs({{input, ProgramTensorMetadataDependency::TypeAndRank, reduced_input_shape, a_components}, {weight, ProgramTensorMetadataDependency::TypeAndRank, reduced_weight_shape, components}});
+  program.AddInputs({{input, ProgramTensorMetadataDependency::TypeAndRank, reduced_input_shape, a_components}, {weight, ProgramTensorMetadataDependency::TypeAndRank, reduced_weight_shape, b_components}});
   if (has_bias) {
     const auto* bias = inputs[2];
     const auto& bias_shape = modified_input_output_shapes[2];
@@ -187,8 +188,10 @@ ConvTranspose2DProgram CreateConvTranspose2DProgram(const std::vector<const Tens
     TensorShape reduced_bias_shape(bias_shape_vector);
     program.AddInput({bias, ProgramTensorMetadataDependency::TypeAndRank, reduced_bias_shape, components});
   }
-  program.AddOutput({output, ProgramTensorMetadataDependency::Rank, reduced_output_shape, components});
-  program.AddUniformVariables({{static_cast<uint32_t>(output_size)}, {strides}, {filter_dims}, {dilations}, {effective_filter_dims}, {pads}, {static_cast<uint32_t>(input_channels_per_group)}, {static_cast<uint32_t>(input_channels_per_group_int)}, {static_cast<uint32_t>(output_channels_per_group)}});
+  program.AddOutput({output, ProgramTensorMetadataDependency::Rank, reduced_output_shape, components})
+  .AddUniformVariables({{static_cast<uint32_t>(output_size)}, {strides}, {filter_dims}, {dilations}, {effective_filter_dims}, {local_pads}, {static_cast<uint32_t>(input_channels_per_group)}, {static_cast<uint32_t>(input_channels_per_group_int)}, {static_cast<uint32_t>(output_channels_per_group)}})
+      .SetDispatchGroupSize((output_size + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE);
+
   return program;
 }
 
