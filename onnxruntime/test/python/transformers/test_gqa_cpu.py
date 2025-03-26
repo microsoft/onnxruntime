@@ -2218,7 +2218,7 @@ class TestGQA(unittest.TestCase):
                                                         "rotary_interleaved": rotary_interleaved,
                                                         "packed": packed,
                                                         "softcap": softcap,
-                                                        "use_smooth_softmax": use_smooth_softmax
+                                                        "use_smooth_softmax": use_smooth_softmax,
                                                     }
                                                     params.update(additional_params)
 
