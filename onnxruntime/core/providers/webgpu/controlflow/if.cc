@@ -51,7 +51,7 @@ ONNX_OPERATOR_VERSIONED_KERNEL_EX(If,
                                   (*KernelDefBuilder::Create())
                                       .InputMemoryType(OrtMemTypeCPUInput, 0)  // 'cond' needs to be on CPU
                                       .TypeConstraint("B", DataTypeImpl::GetTensorType<bool>())
-                                      // Support sequence/optional tensors when all JSEP infra
+                                      // Support sequence/optional tensors when all WebGPU infra
                                       // (including tests runner) supports it
                                       .TypeConstraint("V", DataTypeImpl::AllFixedSizeTensorTypes()),
                                   If);
@@ -63,7 +63,7 @@ ONNX_OPERATOR_KERNEL_EX(If,
                         (*KernelDefBuilder::Create())
                             .InputMemoryType(OrtMemTypeCPUInput, 0)  // 'cond' needs to be on CPU
                             .TypeConstraint("B", DataTypeImpl::GetTensorType<bool>())
-                            // Support sequence/optional tensors when all JSEP infra
+                            // Support sequence/optional tensors when all WebGPU infra
                             // (including tests runner) supports it
                             .TypeConstraint("V", DataTypeImpl::AllFixedSizeTensorTypes()),
                         If);
