@@ -65,7 +65,7 @@ OnnxRuntime EPs should follow these rules to create the EP context cache model t
   - 0 (default): dump the EP context content as a separate file. EP decides the file name and tracks the file name in EPContext node attribute ep_cache_context. The separate file should always at the same location as the dumped Onnx model file. And the file path tracked in EPContext node is a relative path to the Onnx model file. Note: subfolder is allowed.
 - ep.context_node_name_prefix
   - In case the user wants to add special tag inside the EPContext node name (also the partition_name attribute, and graph name), EP should provide this capability when EP creates the EPContext nodes.
-  - This is useful if the user wants to glue multiple EPContext nodes from multiple models into one model and there’s risk that node name (graph name) confliction happens across models. Dependes on EP implementation. QNN EP supports multiple QNN contexts, so user can merge and re-connect EPContext nodes generated from different models.
+  - This is useful if the user wants to glue multiple EPContext nodes from multiple models into one model and there’s risk that node name (graph name) confliction happens across models. Depends on EP implementation. QNN EP supports multiple QNN contexts, so user can merge and re-connect EPContext nodes generated from different models.
 
 ## Inference from EP Context Cache Model Workflow
 
@@ -76,7 +76,7 @@ OnnxRuntime EPs which support loading from Onnx model with EPContext nodes shoul
     - EP should check the source node attribute from all EPContext nodes to make sure there is any EPContext node for this EP (the source node attribute matches the key required by the EP).
     - EP only partition in the EPContext nodes which has source node attribute matches the key required by the EP.
     - EP loads from the cached context inside EPContext node
-- If the context cache Onnx model is dumped with embed_mode = 1, so there is separate context binary file beside the Onnx model in the same folder. 
+- If the context cache Onnx model is dumped with embed_mode = 0, so there is separate context binary file beside the Onnx model in the same folder. 
   - OnnxRuntime EP gets the context binary file relative path from EPContext ep_cache_context node attribute.
   - If the user loads the model from a Onnx model file path, then EP should get the input model folder path, and combine it with the relative path got from step a) as the context binary file full path.
   - If the user loads the model from memory buffer, user needs to provide session option ep.context_file_path. EP gets the folder path from ep.context_file_path, and combines it with the relative path   got from step a) as the context binary file full path. 
@@ -112,7 +112,7 @@ This API returns the array of pointers for EPContext nodes. Execution Provider n
     Ort::Session session1(env, "./model1.onnx", so);
 ```
 
-**Generate the EPContext model by creating session from model in memory buffer:**
+**Generate the EPContext model by creating session from model in memory buffer:**<br/>
 Similar to the C API CreateSessionFromArray, the example below creates an ONNX Runtime session from a model stored in a memory array, causing the session to lose track of the model's name and path.
 To generate the EPContext model, you must specify the file path using: `ep.context_file_path`.
 ```
@@ -136,12 +136,12 @@ To generate the EPContext model, you must specify the file path using: `ep.conte
     Ort::Session session1(env, buffer.data(), buffer.size(), so);
 ```
 
-**Generate the EPContext model by creating session from model in memory buffer, and model has external weights:**
+**Generate the EPContext model by creating session from model in memory buffer, and model has external weights:**<br/>
 Create the session from memory array, and the model depend on external data. The session requires `session.model_external_initializers_file_folder_path` to figure out the external data location, and same with previously example, `ep.context_file_path` to set the file path for the generated EPContext model.
 ```
     // Read model file into buffer array
     std::vector<char> buffer;
-    ReadFileToBuffer("./model1.onnx", buffer);
+    ReadFileToBuffer("./model_folder/model1.onnx", buffer);
 
     Ort::SessionOptions so;
 
@@ -149,8 +149,8 @@ Create the session from memory array, and the model depend on external data. The
     so.AddConfigEntry(kOrtSessionOptionEpContextEnable, "1");
 
     // Specify the generated EPContext model file path using option ep.context_file_path
-    so.AddConfigEntry(kOrtSessionOptionEpContextFilePath, "./model_ctx.onnx");
-	
+    so.AddConfigEntry(kOrtSessionOptionEpContextFilePath, "./model_folder/model_ctx.onnx");
+
     // Specify the external data folder path using option session.model_external_initializers_file_folder_path
     so.AddConfigEntry(kOrtSessionOptionsModelExternalInitializersFileFolderPath, "./external_data_folder/");
 
@@ -164,7 +164,8 @@ Create the session from memory array, and the model depend on external data. The
 Note: If there is a **subgraph fallback** on the **CPU EP** that depends on external data, the generated EPContext model **should not rely on the original external data file** used by the base model. By default, the EPContext model **embeds all external data** directly into the generated ONNX file. If you need to store weights in an external file, set `ep.context_model_external_initializers_file_name`. This option forces all initializers to be saved in the specified external file.
 
 ### Inference from EPContext Model
-**Create inference session from pre-compiled EPContext model**
+**Create inference session from pre-compiled EPContext model:**<br/>
+Create the session from model file path. If there is external EP context binary file, the session can figure out the binary file path from the model file path.
 ```
     Ort::SessionOptions so;
 
@@ -173,6 +174,29 @@ Note: If there is a **subgraph fallback** on the **CPU EP** that depends on exte
 
     // Create sessions to load from the _ctx.onnx model
     Ort::Session session1(env, "model1_ctx.onnx", so);
+
+    session1.run(...);
+```
+
+**Create inference session from pre-compiled EPContext model in memory buffer:**<br/>
+Creating a session from a memory buffer of the model causes the session to lose track of the model's name and path. To resolve this, you must set: `ep.context_file_path`.
+- The session uses this path to identify the folder location.
+- With the EP context binary file name from the `EPContext` node, the session constructs the full path to the final EP context binary file.
+```
+    // Read model file into buffer array
+    std::vector<char> buffer;
+    ReadFileToBuffer("./model_folder/model_ctx.onnx", buffer);
+
+    Ort::SessionOptions so;
+
+    // Specify the EPContext model file path using option ep.context_file_path
+    so.AddConfigEntry(kOrtSessionOptionEpContextFilePath, "./model_path/model_ctx.onnx");
+
+    // Add EP, take QNN for example
+    so.AppendExecutionProvider("QNN", provider_options);
+
+    // Create sessions to load from the buffer
+    Ort::Session session1(env, buffer.data(), buffer.size(), so);
 
     session1.run(...);
 ```
