@@ -619,6 +619,7 @@ static constexpr ORT_STRING_VIEW provider_name_dml = ORT_TSTR("dml");
                                                    ORT_TSTR("resnet101v2"),
                                                    ORT_TSTR("resnet101v2"),
                                                    ORT_TSTR("vgg19"),
+                                                   ORT_TSTR("dequantizelinear"),
                                                    ORT_TSTR("tf_inception_resnet_v2"),
                                                    ORT_TSTR("tf_inception_v1"),
                                                    ORT_TSTR("tf_inception_v3"),
