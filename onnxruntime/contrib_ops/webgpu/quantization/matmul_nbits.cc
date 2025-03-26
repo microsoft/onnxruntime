@@ -582,7 +582,8 @@ Status MatMulNBitsBlockWideTileProgram::GenerateShaderCode(ShaderHelper& shader)
   // A block32 containing 8 elements of `a`.
   let a_blocks_per_col = (a_elements_per_col + 7u) / 8u;
 
-  // f32 accumulator
+  // Utilizing an f32 accumulator mitigated precision loss with minimal
+  // performance impact compared to an f16 accumulator.
   var results : array<f32, tile_m>;
   for (var a_block_idx = 0u; a_block_idx < a_blocks_per_col; a_block_idx++) {
     // load `a` elements into workgroup memory, TileM x 8(block32)
