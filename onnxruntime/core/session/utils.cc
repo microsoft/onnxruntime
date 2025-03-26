@@ -54,8 +54,7 @@ OrtStatus* CreateSessionAndLoadModel(_In_ const OrtSessionOptions* options,
   if (options) {
     auto ep_context_enable = options->value.config_options.GetConfigEntry(kOrtSessionOptionEpContextEnable);
     auto ep_context_file_path = options->value.config_options.GetConfigEntry(kOrtSessionOptionEpContextFilePath);
-    if (ep_context_enable.has_value() && ep_context_enable.value() == "1" && (!ep_context_file_path.has_value() ||
-        (ep_context_file_path.has_value() && ep_context_file_path.value().empty()))) {
+    if (ep_context_enable.has_value() && ep_context_enable.value() == "1" && (!ep_context_file_path.has_value() || (ep_context_file_path.has_value() && ep_context_file_path.value().empty()))) {
       return OrtApis::CreateStatus(ORT_FAIL,
                                    "CreateSessionFromArray is called with ep.context_enable enabled but an \
 empty ep.context_file_path. The system does not know where to generate the \
