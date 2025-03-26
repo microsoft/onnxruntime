@@ -247,7 +247,13 @@ Status ReduceKernel<allow_multi_axes>::ComputeInternal(ComputeContext& context) 
     program.AddInput({input_tensor, ProgramTensorMetadataDependency::TypeAndRank});
   }
 
-  program.CacheHint(is_input_empty)
+  // TODO: the ReduceKernel class is designed to use `keepdims_`, `noop_with_empty_axes_` and input axes as uniform variables,
+  //       but the current implementation does not work without them in cache key.
+  //       This is a temporary workaround to make it work. We should fix this in the future.
+  program.CacheHint(keepdims_,
+                    noop_with_empty_axes_,
+                    select_last_index_,
+                    absl::StrJoin(input_axes, ","))
       .AddOutput({context.Output(0, output_shape), ProgramTensorMetadataDependency::TypeAndRank})
       .SetDispatchGroupSize((output_size + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE)
       .AddUniformVariables({{static_cast<uint32_t>(output_size)},

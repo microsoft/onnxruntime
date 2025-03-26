@@ -9,7 +9,6 @@
 
 // The purpose of this script is to download the required binaries for the platform and architecture.
 // Currently, most of the binaries are already bundled in the package, except for the following:
-// - Linux/x64/CUDA 11
 // - Linux/x64/CUDA 12
 //
 // The CUDA binaries are not bundled because they are too large to be allowed in the npm registry. Instead, they are

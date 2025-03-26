@@ -4,7 +4,6 @@ parameters:
   type: string
   default: '12.2'
   values:
-    - 11.8
     - 12.2
 
 variables:
