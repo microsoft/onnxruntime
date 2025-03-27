@@ -1,4 +1,5 @@
-name: Reusable Linux CPU Build and Test
+# c:\src\onnxruntime\.github\workflows\reusable_linux_build.yml
+name: Reusable Linux CPU/GPU Build and Test
 
 on:
   workflow_call:
@@ -23,8 +24,18 @@ on:
         description: 'Name for the Docker image repository'
         required: true
         type: string
+      docker_build_args:
+        description: 'Arguments to pass to the docker image build command'
+        required: false
+        type: string
+        default: ''
+      execution_providers:
+        description: 'Space-separated list of execution providers to enable (passed to build.py)'
+        required: false
+        type: string
+        default: ''
       extra_build_flags:
-        description: 'Additional flags for the build.py script'
+        description: 'Additional flags for the build.py script (appended after EP flags)'
         required: false
         type: string
         default: ''
@@ -34,23 +45,33 @@ on:
         type: string
         default: ''
       python_version:
-        description: 'Python version to set up'
+        description: 'Python version to set up on the runner host'
         required: false
         type: string
-        default: '3.x' # Use a sensible default
+        default: '3.x'
+      run_tests:
+        description: 'Whether to execute the test suite after building'
+        required: false
+        type: boolean
+        default: true
+      upload_build_output:
+        description: 'Whether to upload the build output directory as an artifact (used when tests are skipped)'
+        required: false
+        type: boolean
+        default: false
     secrets:
       GH_TOKEN:
         description: 'GitHub token for accessing actions/packages'
         required: true
 
 jobs:
-  build_and_test:
+  build_test_pipeline:
     runs-on:
       - self-hosted
       - "1ES.Pool=${{ inputs.pool_name }}"
     permissions:
       contents: read
-      packages: read # Change to write when migrating to GHCR
+      packages: read
 
     steps:
       - name: Checkout code
@@ -62,15 +83,13 @@ jobs:
           python-version: ${{ inputs.python_version }}
 
       - name: Build Docker Image (${{ inputs.architecture }} / ${{ inputs.build_config }})
-        uses: microsoft/onnxruntime-github-actions/build-docker-image@v0.0.1
+        uses: microsoft/onnxruntime-github-actions/build-docker-image@7c37d4106d5c2e8ecb20de3fd41013a77d0e6365
         with:
           Dockerfile: ${{ github.workspace }}/${{ inputs.dockerfile_path }}
           Repository: ${{ inputs.docker_image_repo }}
+          DockerBuildArgs: ${{ inputs.docker_build_args }}
         env:
           GITHUB_TOKEN: ${{ secrets.GH_TOKEN }}
-
-      - name: Create .onnx directory
-        run: mkdir -p $HOME/.onnx
 
       - name: Export GitHub Actions cache environment variables
         uses: actions/github-script@v7
@@ -78,66 +97,86 @@ jobs:
           script: |
             core.exportVariable('ACTIONS_CACHE_URL', process.env.ACTIONS_CACHE_URL || '');
             core.exportVariable('ACTIONS_RUNTIME_TOKEN', process.env.ACTIONS_RUNTIME_TOKEN || '');
+      # ------------- Update Step (CMake Generation) -------------
+      - name: Generate Build Files (CMake) (${{ inputs.architecture }} / ${{ inputs.build_config }})
+        id: update_step
+        uses: microsoft/onnxruntime-github-actions/run-build-script-in-docker@7c37d4106d5c2e8ecb20de3fd41013a77d0e6365
+        with:
+          docker_image: ${{ inputs.docker_image_repo }}
+          build_config: ${{ inputs.build_config }}
+          mode: 'update'
+          execution_providers: ${{ inputs.execution_providers }} # Pass down EP list
+          extra_build_flags: ${{ inputs.extra_build_flags }}
+          python_path_prefix: ${{ inputs.python_path_prefix }}
 
-      # ------------- Main Build and Test Step -------------
-      - name: Build and Test ONNX Runtime in Docker (${{ inputs.architecture }} / ${{ inputs.build_config }})
-        id: build_test # Add an ID to potentially reference its outcome if needed, though `if: failure()` is simpler
-        env:
-          ALLOW_RELEASED_ONNX_OPSET_ONLY: 0
-          NIGHTLY_BUILD: 1
+      # ------------- Build Step (Compilation) -------------
+      - name: Build ONNX Runtime (${{ inputs.architecture }} / ${{ inputs.build_config }})
+        id: build_step
+        uses: microsoft/onnxruntime-github-actions/run-build-script-in-docker@7c37d4106d5c2e8ecb20de3fd41013a77d0e6365
+        with:
+          docker_image: ${{ inputs.docker_image_repo }}
+          build_config: ${{ inputs.build_config }}
+          mode: 'build'
+          execution_providers: ${{ inputs.execution_providers }} # Pass down EP list
+          extra_build_flags: ${{ inputs.extra_build_flags }}
+          python_path_prefix: ${{ inputs.python_path_prefix }}
+
+      # ------------- Test Step -------------
+      - name: Test ONNX Runtime (${{ inputs.architecture }} / ${{ inputs.build_config }})
+        id: test_step
+        if: inputs.run_tests == true
+        uses: microsoft/onnxruntime-github-actions/run-build-script-in-docker@7c37d4106d5c2e8ecb20de3fd41013a77d0e6365
+        with:
+          docker_image: ${{ inputs.docker_image_repo }}
+          build_config: ${{ inputs.build_config }}
+          mode: 'test'
+          execution_providers: ${{ inputs.execution_providers }} # Pass down EP list
+          extra_build_flags: ${{ inputs.extra_build_flags }}
+          python_path_prefix: ${{ inputs.python_path_prefix }}
+
+      # ------------- Prepare Artifact Step -------------
+      - name: Prepare Build Output for Upload
+        if: inputs.upload_build_output == true
+        shell: bash
         run: |
-          set -ex
-          # Construct the build command
-          BUILD_CMD="${{ inputs.python_path_prefix }} python3 tools/ci_build/build.py \
-            --build_dir build/${{ inputs.build_config }} --cmake_generator Ninja \
-            --config ${{ inputs.build_config }} \
-            --skip_submodule_sync \
-            --build_shared_lib \
-            --parallel \
-            --use_vcpkg --use_vcpkg_ms_internal_asset_cache \
-            --enable_onnx_tests \
-            ${{ inputs.extra_build_flags }}" # Add extra flags here
+          #!/bin/bash
+          set -e -x
+          BUILD_DIR="${{ github.workspace }}/build/${{ inputs.build_config }}"
+          if [ ! -d "${BUILD_DIR}" ]; then
+            echo "Error: Build directory ${BUILD_DIR} not found. Cannot prepare artifact."
+            exit 1
+          fi
+          echo "--- Cleaning build directory: ${BUILD_DIR} ---"
+          rm -rf "${BUILD_DIR}/onnxruntime" || true
+          rm -rf "${BUILD_DIR}/pybind11" || true
+          rm -rf "${BUILD_DIR}/vcpkg_installed" || true
+          rm -f "${BUILD_DIR}/models" || true
+          DEPS_DIR="${BUILD_DIR}/_deps"
+          if [ -d "${DEPS_DIR}" ]; then
+            echo "Cleaning ${DEPS_DIR}, keeping onnx-src..."
+            find "${DEPS_DIR}" -mindepth 1 ! -regex "^${DEPS_DIR}/onnx-src\(/.*\)?$" -delete
+          else
+            echo "${DEPS_DIR} does not exist, skipping deps cleanup."
+          fi
+          echo "--- Saving executable permissions ---"
+          cd "${BUILD_DIR}"
+          find . -executable -type f -printf '%p\n' > perms.txt
+          echo "--- Cleanup and permission saving complete for ${BUILD_DIR} ---"
 
-          # Execute build
-          docker run --rm \
-            --volume /data/onnx:/data/onnx:ro \
-            --volume /data/models:/data/models:ro \
-            --volume ${{ github.workspace }}:/onnxruntime_src \
-            --volume ${{ runner.temp }}:/onnxruntime_src/build \
-            --volume $HOME/.onnx:/home/onnxruntimedev/.onnx \
-            -w /onnxruntime_src \
-            -e ALLOW_RELEASED_ONNX_OPSET_ONLY \
-            -e NIGHTLY_BUILD \
-            -e ACTIONS_RUNTIME_TOKEN \
-            -e ACTIONS_CACHE_URL \
-            -e RUNNER_TEMP=/onnxruntime_src/build \
-            ${{ inputs.docker_image_repo }} \
-            /bin/bash -c "${BUILD_CMD} --update --build"
-
-          # Execute test (using the same base command but adding --test)
-          docker run --rm \
-            --volume /data/onnx:/data/onnx:ro \
-            --volume /data/models:/data/models:ro \
-            --volume ${{ github.workspace }}:/onnxruntime_src \
-            --volume ${{ runner.temp }}:/onnxruntime_src/build \
-            --volume $HOME/.onnx:/home/onnxruntimedev/.onnx \
-            -w /onnxruntime_src \
-            -e ALLOW_RELEASED_ONNX_OPSET_ONLY \
-            -e NIGHTLY_BUILD \
-            -e ACTIONS_RUNTIME_TOKEN \
-            -e ACTIONS_CACHE_URL \
-            -e RUNNER_TEMP=/onnxruntime_src/build \
-            ${{ inputs.docker_image_repo }} \
-            /bin/bash -c "${BUILD_CMD} --test"
-      # ------------- End Main Build and Test Step -------------
-
-      # ------------- Upload Log on Failure Step -------------
-      - name: Upload VCPKG Manifest Install Log on Failure
-        if: failure() # This step only runs if the previous steps (like build_test) failed
+      # ------------- Upload Build Output Step -------------
+      - name: Upload Build Output Artifact
+        if: inputs.upload_build_output == true
         uses: actions/upload-artifact@v4
         with:
-          name: vcpkg-manifest-install-log-${{ inputs.architecture }}-${{ inputs.build_config }} # Descriptive artifact name
-          # Use the exact path provided in the request
+          name: build-output-${{ inputs.architecture }}-${{ inputs.build_config }}
+          path: ${{ github.workspace }}/build/${{ inputs.build_config }}
+          if-no-files-found: error
+
+      # ------------- Upload Log on Build Failure Step -------------
+      - name: Upload VCPKG Manifest Install Log on Update or Build Failure
+        if: steps.update_step.outcome == 'failure' || steps.build_step.outcome == 'failure'
+        uses: actions/upload-artifact@v4
+        with:
+          name: vcpkg-manifest-install-log-${{ inputs.architecture }}-${{ inputs.build_config }}
           path: ${{ github.workspace }}/build/${{ inputs.build_config }}/${{ inputs.build_config }}/vcpkg-manifest-install.log
           if-no-files-found: ignore
-      # ------------- End Upload Log on Failure Step -------------
