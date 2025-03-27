@@ -1,4 +1,3 @@
-# c:\src\onnxruntime\.github\workflows\reusable_linux_build.yml
 name: Reusable Linux CPU/GPU Build and Test
 
 on:
@@ -159,7 +158,7 @@ jobs:
         run: |
           #!/bin/bash
           set -e -x
-          BUILD_DIR="${{ github.workspace }}/build/${{ inputs.build_config }}"
+          BUILD_DIR="${{ runner.temp }}/build/${{ inputs.build_config }}"
           if [ ! -d "${BUILD_DIR}" ]; then
             echo "Error: Build directory ${BUILD_DIR} not found. Cannot prepare artifact."
             exit 1
