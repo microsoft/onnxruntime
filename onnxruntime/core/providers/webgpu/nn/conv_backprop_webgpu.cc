@@ -165,16 +165,10 @@ ConvTranspose2DProgram CreateConvTranspose2DProgram(const std::vector<const Tens
   auto input_channels_remainder = input_channels_per_group - input_channels_per_group_int;
   auto components = is_channels_last ? GetMaxComponents(output_channels_per_group) : 1;
   auto b_components = is_channels_last ? (output_channels_per_group == 1 ? a_components : components) : 1;
-  auto input_shape_vector = input_shape.AsShapeVector();
-  input_shape_vector[input_shape_vector.size() - 1] /= a_components;
-  TensorShape reduced_input_shape(input_shape_vector);
-  InlinedVector<int64_t> weight_shape_vector = weight_shape.AsShapeVector();
-  weight_shape_vector[weight_shape_vector.size() - 1] /= b_components;
-  TensorShape reduced_weight_shape(weight_shape_vector);
-  InlinedVector<int64_t> output_shape_vector = output_shape.AsShapeVector();
-  output_shape_vector[output_shape_vector.size() - 1] /= components;
-  TensorShape reduced_output_shape(output_shape_vector);
-  auto output_size = output_shape.Size() / components;
+  TensorShape reduced_input_shape = ReduceShapeByComponents(input_shape, a_components);
+  TensorShape reduced_weight_shape = ReduceShapeByComponents(weight_shape, b_components);
+  TensorShape reduced_output_shape = ReduceShapeByComponents(output_shape, components);
+  auto output_size = reduced_output_shape.Size();
   std::vector<uint32_t> filter_dims = {static_cast<uint32_t>(weight_shape[is_channels_last ? 1 : 2]), static_cast<uint32_t>(weight_shape[is_channels_last ? 2 : 3])};
   std::vector<uint32_t> effective_filter_dims = {filter_dims[0] + dilations[0] <= 1 ? 0 : filter_dims[0] * (dilations[0] - 1), filter_dims[1] + dilations[1] <= 1 ? 0 : filter_dims[1] * (dilations[1] - 1)};
   std::vector<uint32_t> local_pads = {effective_filter_dims[0] - 1 - (pads[0] + pads[1]) / 2, effective_filter_dims[1] - 1 - (pads[1] + pads[3]) / 2};
@@ -183,9 +177,7 @@ ConvTranspose2DProgram CreateConvTranspose2DProgram(const std::vector<const Tens
   if (has_bias) {
     const auto* bias = inputs[2];
     const auto& bias_shape = modified_input_output_shapes[2];
-    TensorShapeVector bias_shape_vector = bias_shape.AsShapeVector();
-    bias_shape_vector[bias_shape_vector.size() - 1] /= components;
-    TensorShape reduced_bias_shape(bias_shape_vector);
+    TensorShape reduced_bias_shape = ReduceShapeByComponents(bias_shape, components);
     program.AddInput({bias, ProgramTensorMetadataDependency::TypeAndRank, reduced_bias_shape, components});
   }
   program.AddOutput({output, ProgramTensorMetadataDependency::Rank, reduced_output_shape, components})

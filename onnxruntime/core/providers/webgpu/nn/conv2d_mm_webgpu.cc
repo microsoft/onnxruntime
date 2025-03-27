@@ -11,6 +11,7 @@
 #include "core/providers/webgpu/math/matmul_packed.h"
 #include "core/providers/webgpu/nn/conv_utils.h"
 #include "core/providers/webgpu/nn/fuse_utils.h"
+#include "core/providers/webgpu/webgpu_utils.h"
 
 namespace onnxruntime {
 namespace webgpu {
@@ -184,13 +185,12 @@ Conv2dMMProgram CreateConv2dMMProgram(const Activation& activation, const std::v
   const auto dispatch_y = is_channels_last ? output_width * output_height : output_channels;
   std::vector<uint32_t> workgroup_size = {8, 8, 1};
   InlinedVector<int64_t> elements_per_thread = {4, static_cast<int64_t>(dim_a_outer <= 8 ? 1 : 4), 1};
-  auto intger_divide_ceil2 = [](int64_t a, int64_t b) -> int64_t { return (a + b - 1) / b; };
-  auto intger_divide_ceil3 = [intger_divide_ceil2](int64_t a, int64_t b, int64_t c) -> int64_t { return intger_divide_ceil2(intger_divide_ceil2(a, b), c); };
+  auto integer_ceil = [](int64_t a, int64_t b) -> int64_t { return (a + b - 1) / b; };
 
   const std::vector<uint32_t> dispatch = {
-      static_cast<uint32_t>(intger_divide_ceil3(dispatch_x, workgroup_size[0], elements_per_thread[0])),
-      static_cast<uint32_t>(intger_divide_ceil3(dispatch_y, workgroup_size[1], elements_per_thread[1])),
-      static_cast<uint32_t>(intger_divide_ceil3(batch_size, workgroup_size[2], elements_per_thread[2])),
+      static_cast<uint32_t>(integer_ceil(integer_ceil(dispatch_x, workgroup_size[0]), elements_per_thread[0])),
+      static_cast<uint32_t>(integer_ceil(integer_ceil(dispatch_y, workgroup_size[1]), elements_per_thread[1])),
+      static_cast<uint32_t>(integer_ceil(integer_ceil(batch_size, workgroup_size[2]), elements_per_thread[2])),
   };
 
   uint32_t inner_element_size = is_vec4 ? (is_channels_last && in_channels % 4 != 0 ? 3 : 4) : 1;
@@ -204,25 +204,15 @@ Conv2dMMProgram CreateConv2dMMProgram(const Activation& activation, const std::v
   const auto components = is_vec4 ? 4 : 1;
   const auto input_components = static_cast<int>(inner_element_size == 3 ? 1 : inner_element_size);
   Conv2dMMProgram program(activation, tile_a_outer, tile_b_outer, tile_inner, fit_a_outer, fit_b_outer, fit_inner, is_channels_last, is_vec4, has_bias, std::move(element_size), std::move(elements_per_thread), sequentially_access_by_threads);
-  auto input_shape_vector = input_shape.AsShapeVector();
-  input_shape_vector[input_shape_vector.size() - 1] /= input_components;
-  TensorShape reduced_input_shape(input_shape_vector);
-  const auto& weight_shape = input_output_shapes[1];
-  InlinedVector<int64_t> weight_shape_vector = weight_shape.AsShapeVector();
-  weight_shape_vector[weight_shape_vector.size() - 1] /= components;
-  TensorShape reduced_weight_shape(weight_shape_vector);
-  InlinedVector<int64_t> output_shape_vector = output_shape.AsShapeVector();
-  output_shape_vector[output_shape_vector.size() - 1] /= components;
-  TensorShape reduced_output_shape(output_shape_vector);
+  TensorShape reduced_input_shape = ReduceShapeByComponents(input_output_shapes[0], components);
+  TensorShape reduced_weight_shape = ReduceShapeByComponents(input_output_shapes[1], components);
+  TensorShape reduced_output_shape = ReduceShapeByComponents(input_output_shapes[has_bias ? 3 : 2], components);
   program.AddInputs({{input, ProgramTensorMetadataDependency::TypeAndRank, reduced_input_shape, input_components}, {weight, ProgramTensorMetadataDependency::TypeAndRank, reduced_weight_shape, components}});
   if (has_bias) {
-    const auto& bias_shape = input_output_shapes[2];
-    TensorShapeVector bias_shape_vector = bias_shape.AsShapeVector();
-    bias_shape_vector[bias_shape_vector.size() - 1] /= components;
-    TensorShape reduced_bias_shape(bias_shape_vector);
+    TensorShape reduced_bias_shape = ReduceShapeByComponents(input_output_shapes[2], components);
     program.AddInput({bias, ProgramTensorMetadataDependency::TypeAndRank, reduced_bias_shape, components});
   }
-  program
+  program.CacheHint(activation.tostring(), std::to_string(components), std::to_string(input_components), std::to_string(components))
       .AddOutput({output, ProgramTensorMetadataDependency::TypeAndRank, reduced_output_shape, components})
       .SetDispatchGroupSize(dispatch[0], dispatch[1], dispatch[2])
       .SetWorkgroupSize(workgroup_size[0], workgroup_size[1], workgroup_size[2])
