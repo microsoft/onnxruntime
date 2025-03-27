@@ -70,7 +70,7 @@ ONNX_OPERATOR_KERNEL_EX(If,
 
 Status If::Compute(OpKernelContext* ctx) const {
   // call the base CPU version.
-  return onnxruntime::If::Compute(ctx);
+  return controlflow::If::Compute(ctx);
 }
 
 }  // namespace webgpu
