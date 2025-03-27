@@ -16,9 +16,10 @@ namespace webgpu {
 template <bool is_channels_last>
 Status ConvTranspose<is_channels_last>::ComputeInternal(ComputeContext& context) const {
   const auto* input = context.Input<Tensor>(0);
-  const auto* kernel = context.Input<Tensor>(1);
+  const auto* filter = context.Input<Tensor>(1);
   TensorShape input_shape = input->Shape();
-  TensorShape filter_shape = kernel->Shape();
+  TensorShape filter_shape = filter->Shape();
+  const InlinedVector<size_t> perm = {2, 3, 0, 1};
   TensorShapeVector local_output_padding(conv_transpose_attrs_.output_padding.begin(), conv_transpose_attrs_.output_padding.end());
   ConvAttributes::ConvPadVector local_pads(conv_transpose_attrs_.pads.begin(), conv_transpose_attrs_.pads.end());
   TensorShapeVector local_dilations(conv_transpose_attrs_.dilations.begin(), conv_transpose_attrs_.dilations.end());
@@ -78,16 +79,18 @@ Status ConvTranspose<is_channels_last>::ComputeInternal(ComputeContext& context)
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input and kernel tensors must have at least 3 dimensions");
   }
   // Transpose weights
-  Tensor transposed_kernel;
-  ORT_RETURN_IF_ERROR(TransposeKernel(context, kernel, filter_shape, &transposed_kernel));
+  Tensor transposed_filter;
+  ORT_RETURN_IF_ERROR(TransposeKernel(context, filter, filter_shape, &transposed_filter, perm));
   TensorShape output_shape(output_shape_vector);
-  TensorShape transposed_kernel_shape = transposed_kernel.Shape();
-  std::vector<const Tensor*> inputs = {input, &transposed_kernel};
+  TensorShape transposed_filter_shape = transposed_filter.Shape();
+  std::vector<const Tensor*> inputs = {input, &transposed_filter};
+  std::vector<TensorShape> input_output_shapes = {input_shape, transposed_filter_shape};
   if (has_bias) {
     inputs.push_back(bias);
+    input_output_shapes.push_back(bias->Shape());
   }
   Tensor* output = context.Output(0, computed_output_shape);
-  std::vector<TensorShape> input_output_shapes = {input_shape, transposed_kernel_shape, output_shape};
+  input_output_shapes.push_back(output_shape);
   auto program = CreateConvTranspose2DProgram(inputs, pads, strides, dilations, output, is_channels_last, input_output_shapes, static_cast<uint32_t>(conv_transpose_attrs_.group));
   return context.RunProgram(program);
 }

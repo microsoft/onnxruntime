@@ -39,14 +39,10 @@ TensorShape Conv<is_channels_last, is_fused>::ComputeOutputShape(const TensorSha
   return TensorShape(output_shape);
 }
 
-Status TransposeKernel(ComputeContext& context, const Tensor* kernel, const TensorShape& kernel_shape, Tensor* transposed_kernel) {
+Status TransposeKernel(ComputeContext& context, const Tensor* kernel, const TensorShape& kernel_shape, Tensor* transposed_kernel, const InlinedVector<size_t>& perm) {
   // Transpose weights
   auto rank = kernel_shape.NumDimensions();
   TensorShapeVector transposed_kernel_shape_vector(rank);
-  std::vector<size_t> perm = {2, 1, 0};
-  if (rank == 4) {
-    perm.insert(perm.begin() + 1, 3);
-  }
   for (size_t i = 0; i < rank; ++i) {
     transposed_kernel_shape_vector[i] = kernel_shape[perm[i]];
   }
@@ -82,6 +78,7 @@ Status Conv<is_channels_last, is_fused>::ComputeInternal(ComputeContext& context
   std::transform(conv_attrs_.dilations.begin(), conv_attrs_.dilations.end(), std::back_inserter(dilations), transform_dim);
   bool is_conv1d = false;
   auto rank = input_shape.NumDimensions();
+  const InlinedVector<size_t> perm = {2, 3, 1, 0};
   auto channel_index = is_channels_last ? input_shape.NumDimensions() - 1 : 1;
   if (rank > 4) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Only Conv1d and Conv2d are supported.");
@@ -112,7 +109,7 @@ Status Conv<is_channels_last, is_fused>::ComputeInternal(ComputeContext& context
     std::vector<uint32_t> updated_pads{pads[0], pads[1]};
     inputs[0] = input;
     if (is_channels_last) {
-      ORT_RETURN_IF_ERROR(TransposeKernel(context, kernel, kernel_shape, &transposed_kernel));
+      ORT_RETURN_IF_ERROR(TransposeKernel(context, kernel, kernel_shape, &transposed_kernel, perm));
       inputs[1] = &transposed_kernel;
     } else {
       inputs[1] = kernel;
@@ -154,7 +151,7 @@ Status Conv<is_channels_last, is_fused>::ComputeInternal(ComputeContext& context
     if (is_channels_last) {
       // Transpose weights
 
-      ORT_RETURN_IF_ERROR(TransposeKernel(context, kernel, kernel_shape, &transposed_kernel));
+      ORT_RETURN_IF_ERROR(TransposeKernel(context, kernel, kernel_shape, &transposed_kernel, perm));
       inputs[1] = &transposed_kernel;
       if (same_size) {
         const auto shared_dim = input_height * input_width * input_channels;
@@ -206,7 +203,7 @@ Status Conv<is_channels_last, is_fused>::ComputeInternal(ComputeContext& context
   const bool sequentially_access_by_threads = true;
   // Transpose weights
   Tensor transposed_kernel;
-  ORT_RETURN_IF_ERROR(TransposeKernel(context, kernel, kernel_shape, &transposed_kernel));
+  ORT_RETURN_IF_ERROR(TransposeKernel(context, kernel, kernel_shape, &transposed_kernel, perm));
   auto dim_a_outer = static_cast<uint32_t>(is_channels_last ? output_height * output_width : output_channels);
   auto dim_b_outer = static_cast<uint32_t>(is_channels_last ? output_channels : output_height * output_width);
   auto dim_inner = static_cast<uint32_t>(kernel_height * kernel_width * input_channels);
