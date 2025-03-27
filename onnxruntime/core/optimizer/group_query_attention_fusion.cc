@@ -25,6 +25,15 @@ void DequantizePreGqaWeights(size_t M, size_t K, size_t N, const T* input,
   }
 }
 
+void AttackDoRotaryAttribute(Node& node) {
+  NodeAttributes& node_attributes = node.GetMutableAttributes();
+  ONNX_NAMESPACE::AttributeProto attr;
+  attr.set_name("do_rotary");
+  attr.set_i(1);
+  attr.set_type(AttributeProto_AttributeType_INT);
+  node_attributes["do_rotary"] = attr;
+}
+
 NodeArg& MergeQkvWeights(Graph& graph,
                          int64_t input_dim,       // For example, 3072
                          int64_t qkv_second_dim,  // Number of query heads, e.g., 24
@@ -318,7 +327,7 @@ Status GroupQueryAttentionFusion::ApplyImpl(
     // Ensure the shape has at least 3 dimensions
     if (shape->dim_size() > 2) {
       auto* third_dim = shape->mutable_dim(2);
-      third_dim->set_dim_value(third_dim->dim_value() * 3);
+      third_dim->set_dim_value(4608);
     }
 
     auto& matmul_output = graph.GetOrCreateNodeArg("MatMul_output", &mutable_mat_mul_tensor_proto);
@@ -379,16 +388,21 @@ Status GroupQueryAttentionFusion::ApplyImpl(
 
     [[maybe_unused]] const onnxruntime::Node* producer = graph.GetProducerNode(matmul_output.Name());
 
-    // TODO: make sure attributes are applied
-    NodeAttributes node_attributes = node.GetAttributes();
-    ONNX_NAMESPACE::AttributeProto attr;
-    attr.set_name("do_rotary");
-    attr.set_i(1);
-    node_attributes["do_rotary"] = attr;
+    AttackDoRotaryAttribute(node);
+
+    auto& gqaInputArgs = node.MutableInputArgsCount();
+    gqaInputArgs[7] = 1;
+    gqaInputArgs[8] = 1;
+    gqaInputArgs[9] = 1;
+
     auto& input_defs = node.MutableInputDefs();
     input_defs.assign(gqa_input_defs.begin(), gqa_input_defs.end());
 
-    graph_utils::FinalizeNodeFusion(graph, {node}, node);
+     [[maybe_unused]] NodeAttributes node_attributes2 = node.GetAttributes();
+
+         ORT_RETURN_IF_ERROR(graph.Resolve());
+
+    //graph_utils::FinalizeNodeFusion(graph, {node}, node);
 
     [[maybe_unused]] int sodjsapidjad = 1;
     [[maybe_unused]] int sodjsapidjad2 = 1;
