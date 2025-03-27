@@ -75,14 +75,10 @@ jobs:
           name: ${{ inputs.build_config }}_wasm
           path: ${{ github.workspace }}/artifacts_wasm
 
-      - name: Dir
-        shell: cmd
-        run: dir /s /a ${{ github.workspace }}\artifacts_wasm
-
       - name: Binplace dist files (.wasm)
         shell: cmd
         run: |
-          mkdir -p ${{ github.workspace }}\js\web\dist
+          mkdir ${{ github.workspace }}\js\web\dist
           copy ${{ github.workspace }}\artifacts_wasm\ort-*.wasm ${{ github.workspace }}\js\web\dist\
 
       - name: Binplace dist files (.mjs)
@@ -218,7 +214,7 @@ jobs:
       - name: Create artifacts directory
         if: ${{ inputs.build_config == 'Release' }}
         shell: cmd
-        run: mkdir -p ${{ github.workspace }}\artifacts_npm
+        run: mkdir ${{ github.workspace }}\artifacts_npm
 
       - name: Copy onnxruntime-common artifacts
         if: ${{ inputs.build_config == 'Release' }}
@@ -238,7 +234,7 @@ jobs:
           path: ${{ github.workspace }}\artifacts_npm
 
       - name: Log Chrome processes (after test)
-        if: always()
+        if: ${{ always() && runner.debug == '1' }}
         shell: cmd
         run: |
           for %%i in (01 02 03 04 05 06 07) do (
