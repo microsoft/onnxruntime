@@ -352,10 +352,13 @@ Status GroupQueryAttentionFusion::ApplyImpl(
 
     mat_mul_n_bits_new_node.SetExecutionProviderType(node.GetExecutionProviderType());
 
+    std::string empty_name;
+    auto& emptyNode = graph.GetOrCreateNodeArg(empty_name, nullptr);
+
     const std::array gqa_input_defs{
         &matmul_output,
-        static_cast<onnxruntime::NodeArg*>(nullptr),
-        static_cast<onnxruntime::NodeArg*>(nullptr),
+        &emptyNode,
+        &emptyNode,
         past_key_values_key_arg,
         past_key_values_value_arg,
         seqlens_k,
@@ -398,11 +401,11 @@ Status GroupQueryAttentionFusion::ApplyImpl(
     auto& input_defs = node.MutableInputDefs();
     input_defs.assign(gqa_input_defs.begin(), gqa_input_defs.end());
 
-     [[maybe_unused]] NodeAttributes node_attributes2 = node.GetAttributes();
+    [[maybe_unused]] NodeAttributes node_attributes2 = node.GetAttributes();
 
-         ORT_RETURN_IF_ERROR(graph.Resolve());
+    ORT_RETURN_IF_ERROR(graph.Resolve());
 
-    //graph_utils::FinalizeNodeFusion(graph, {node}, node);
+    // graph_utils::FinalizeNodeFusion(graph, {node}, node);
 
     [[maybe_unused]] int sodjsapidjad = 1;
     [[maybe_unused]] int sodjsapidjad2 = 1;
