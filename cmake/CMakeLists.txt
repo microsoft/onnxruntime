@@ -1231,7 +1231,7 @@ function(onnxruntime_set_compile_flags target_name)
       target_compile_definitions(${target_name} PRIVATE ${ORT_FLAG})
     endforeach()
 
-    if("${target_name}" STREQUAL "onnxruntime")
+    if(("${target_name}" STREQUAL "onnxruntime") OR ("${target_name}" STREQUAL "onnxruntime_session"))
         foreach(ORT_EXTRA_FLAG ${ORT_EXTRA_INTERFACE_FLAGS})
           target_compile_definitions(${target_name} PRIVATE ${ORT_EXTRA_FLAG})
         endforeach()
