@@ -129,8 +129,7 @@ Status MatMul::ComputeInternal(ComputeContext& context) const {
 
     const int64_t a_rows = a->Shape().NumDimensions() > 1 ? a->Shape()[a->Shape().NumDimensions() - 2] : 1;
     TensorShape output_shape_shader({batch_size, a_rows, helper.N() / components});
-    Activation activation;
-    MatMulNaiveProgram program{activation, output_rank, output_number, has_bias};
+    MatMulNaiveProgram program{activation_, output_rank, output_number, has_bias};
 
     program
         .CacheHint(std::to_string(components), std::to_string(a_components), std::to_string(output_number))
@@ -208,8 +207,7 @@ Status MatMul::ComputeInternal(ComputeContext& context) const {
   const TensorShape a_shape_temp = CreateMatMulIntermediateShape(outer_dims_a, dim_a_outer, dim_inner, components);
   const TensorShape b_shape_temp = CreateMatMulIntermediateShape(outer_dims_b, dim_inner, dim_b_outer, components);
   const TensorShape output_shape_temp = TensorShape({batch_size, dim_a_outer, dim_b_outer / components});
-  Activation activation;
-  MatMulProgram program{activation, has_bias, is_vec4, elements_per_thread};
+  MatMulProgram program{activation_, has_bias, is_vec4, elements_per_thread};
   program
       .CacheHint(absl::StrJoin(elements_per_thread, "-"), std::to_string(is_vec4))
       .AddInputs({{a, ProgramTensorMetadataDependency::TypeAndRank, a_shape_temp, components},
