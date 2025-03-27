@@ -10,8 +10,8 @@
 
 namespace onnxruntime {
 namespace webgpu {
-  // kernel shape is the spacial dims of the filter.
-  // ie. filter shape with batch and channel. kernel shape dimension is 2 less than the filter dimension
+// kernel shape is the spacial dims of the filter.
+// ie. filter shape with batch and channel. kernel shape dimension is 2 less than the filter dimension
 
 template <bool is_channels_last>
 Status ConvTranspose<is_channels_last>::ComputeInternal(ComputeContext& context) const {

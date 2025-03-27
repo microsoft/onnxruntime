@@ -246,7 +246,7 @@ template TensorShape Conv<true, true>::ComputeOutputShape(const TensorShape& inp
       VERSION_FROM,                                                                   \
       kWebGpuExecutionProvider,                                                       \
       (*KernelDefBuilder::Create()).TypeConstraint("T", WebGpuSupportedFloatTypes()), \
-      Conv<true, true>);                                                             \
+      Conv<true, true>);                                                              \
                                                                                       \
   ONNX_OPERATOR_KERNEL_EX(                                                            \
       Conv,                                                                           \
