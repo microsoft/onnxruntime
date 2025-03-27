@@ -30,10 +30,10 @@ Status CopyKVCacheProgram::GenerateShaderCode(ShaderHelper& shader) const {
   shader.AddInput("value", ShaderUsage::UseUniform);
   const auto& present_key = shader.AddOutput("present_key", ShaderUsage::UseUniform | ShaderUsage::UseIndicesTypeAlias);
   const auto& present_value = shader.AddOutput("present_value", ShaderUsage::UseUniform);
-  const auto& valid_new_present_shape = shader.AddIndices("valid_new_present_shape");
+  const auto& copy_kv_shape = shader.AddIndices("copy_kv_shape");
 
-  shader.MainFunctionBody() << shader.GuardAgainstOutOfBoundsWorkgroupSizes("uniforms.valid_new_present_size")
-                            << "  let output_indices = " << valid_new_present_shape.OffsetToIndices("global_idx") << ";\n"
+  shader.MainFunctionBody() << shader.GuardAgainstOutOfBoundsWorkgroupSizes("uniforms.copy_size")
+                            << "  let output_indices = " << copy_kv_shape.OffsetToIndices("global_idx") << ";\n"
                             << "  let head_size_id = output_indices[3];\n"
                                "  let sequence_id = output_indices[2];\n"
                                "  let num_head_id = output_indices[1];\n"
@@ -80,15 +80,16 @@ Status CopyKVCache(onnxruntime::webgpu::ComputeContext& context, const WebgpuAtt
   // parameters.kv_num_heads_ may be smaller than parameters.num_heads_ when parameters.is_gqa_ is true.
   int num_heads = parameters.is_gqa_ ? parameters.kv_num_heads_ : parameters.num_heads_;
   // Only copy the new kv data for static kv cache
-  int new_sequence_length = has_past && parameters.past_present_share_buffer_ ? parameters.kv_sequence_length_ : parameters.total_sequence_length_;
-  TensorShape valid_new_present_shape{parameters.batch_size_, num_heads, new_sequence_length, parameters.head_size_ / components};
-  int64_t valid_new_kv_size = valid_new_present_shape.Size();
+  int copy_sequence_length = has_past && parameters.past_present_share_buffer_ ? parameters.kv_sequence_length_ : parameters.total_sequence_length_;
+  TensorShape copy_kv_shape{parameters.batch_size_, num_heads, copy_sequence_length, parameters.head_size_ / components};
+  int64_t copy_size = copy_kv_shape.Size();
   CopyKVCacheProgram program{"CopyKVCache", has_past, parameters.qkv_format_ == Q_K_V_BSNH_BNSH_BNSH, parameters.past_present_share_buffer_};
   if (parameters.qkv_format_ == Q_K_V_BSNH_BNSH_BNSH) {
     program.AddInputs({{K, ProgramTensorMetadataDependency::TypeAndRank, components},
                        {V, ProgramTensorMetadataDependency::TypeAndRank, components}});
   } else {
     ORT_ENFORCE(parameters.qkv_format_ == Q_K_V_BSNH, "qkv format ", parameters.qkv_format_, " is not supported yet in CopyKVCache.");
+    // Reshape (batch_size, kv_sequence_length, kv_hidden_size) to (batch_size, kv_sequence_length, num_head, head_size)
     TensorShape reshaped_KV_shape{parameters.batch_size_, parameters.kv_sequence_length_, num_heads, parameters.head_size_ / components};
     program.AddInputs({{K, ProgramTensorMetadataDependency::TypeAndRank, reshaped_KV_shape, components},
                        {V, ProgramTensorMetadataDependency::TypeAndRank, reshaped_KV_shape, components}});
@@ -99,11 +100,11 @@ Status CopyKVCache(onnxruntime::webgpu::ComputeContext& context, const WebgpuAtt
   }
   program.AddOutputs({{present_key, ProgramTensorMetadataDependency::Rank, components},
                       {present_value, ProgramTensorMetadataDependency::Rank, components}})
-      .AddIndices(std::move(valid_new_present_shape));
-  program.SetDispatchGroupSize(static_cast<uint32_t>((valid_new_kv_size + 63) / 64))
+      .AddIndices(std::move(copy_kv_shape));
+  program.SetDispatchGroupSize(static_cast<uint32_t>((copy_size + 63) / 64))
       .SetWorkgroupSize(64)
       .CacheHint(has_past, parameters.qkv_format_, parameters.past_present_share_buffer_)
-      .AddUniformVariables({{static_cast<uint32_t>(valid_new_kv_size)},
+      .AddUniformVariables({{static_cast<uint32_t>(copy_size)},
                             // Note that when parameters.past_present_share_buffer_ is true, parameters.past_sequence_length_ will become to
                             // max_sequence_length. To get a valid past_sequence_length, we use total_sequence_length - kv_sequence_length.
                             {static_cast<uint32_t>(parameters.total_sequence_length_ - parameters.kv_sequence_length_)}});
