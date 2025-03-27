@@ -635,6 +635,7 @@ else()
           ${MLAS_SRC_DIR}/rotary_embedding_kernel_avx2.h
           ${MLAS_SRC_DIR}/rotary_embedding_kernel_avx2.cpp
           ${MLAS_SRC_DIR}/rotary_embedding_kernel_avx2_fp32.cpp
+          ${MLAS_SRC_DIR}/saturation_check.cpp
         )
         if(CMAKE_CXX_COMPILER_VERSION GREATER_EQUAL 13.1 AND NOT(APPLE))
           set(mlas_platform_srcs_avx2
@@ -708,6 +709,10 @@ endif()
             )
           set_source_files_properties(${MLAS_SRC_DIR}/qgemm_kernel_amx.cpp PROPERTIES COMPILE_FLAGS "-mavx2 -mavx512bw -mavx512dq -mavx512vl -mavx512f")
           set_source_files_properties(${MLAS_SRC_DIR}/x86_64/QgemmU8S8KernelAmx.S PROPERTIES COMPILE_FLAGS "-mavx2 -mavx512bw -mavx512dq -mavx512vl -mavx512f")
+        endif()
+
+        if(onnxruntime_ENABLE_AVX2_SATURATION_CHECKER)
+          set_source_files_properties(${MLAS_SRC_DIR}/x86_64/ConvSymKernelAvx2.S PROPERTIES COMPILE_FLAGS "-mavx2 -mfma -mf16c -DENABLE_AVX2_SATURATION_CHECKER")      
         endif()
 
         if(ONNXRUNTIME_MLAS_MULTI_ARCH)
