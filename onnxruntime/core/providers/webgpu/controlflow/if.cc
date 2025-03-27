@@ -68,10 +68,5 @@ ONNX_OPERATOR_KERNEL_EX(If,
                             .TypeConstraint("V", DataTypeImpl::AllFixedSizeTensorTypes()),
                         If);
 
-Status If::Compute(OpKernelContext* ctx) const {
-  // call the base CPU version.
-  return controlflow::If::Compute(ctx);
-}
-
 }  // namespace webgpu
 }  // namespace onnxruntime
