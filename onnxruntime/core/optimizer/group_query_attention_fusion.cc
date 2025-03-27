@@ -11,25 +11,21 @@ using namespace ::onnxruntime::common;
 namespace onnxruntime {
 
 template <typename T>
-void MergeRows(const T* weight, std::vector<T>& result, int64_t first_dim, int64_t second_dim, int64_t third_dim) {
-  // Insert row_count * col_count elements starting at weight.
-  result.insert(result.end(), weight, weight + first_dim * second_dim * third_dim);
+void MergeRows(const T* weight, std::vector<T>& result, int64_t N, int64_t blocks, int64_t block_size) {
+  result.insert(result.end(), weight, weight + N * blocks * block_size);
 }
 
 // Merge Q, K, V tensors into a single vector in the order:
 // [N rows of Q, N rows of K, N rows of V].
 template <typename T>
 void MergeMatMulWeights(const T* q_weight, const T* k_weight, const T* v_weight,
-                        std::vector<T>& result, int64_t first_dim, int64_t second_dim, int64_t third_dim) {
-  // Merge all rows of Q.
-  MergeRows(q_weight, result, first_dim, second_dim, third_dim);
-  // Merge all rows of K.
-  MergeRows(k_weight, result, first_dim, second_dim, third_dim);
-  // Merge all rows of V.
-  MergeRows(v_weight, result, first_dim, second_dim, third_dim);
+                        std::vector<T>& result, int64_t N, int64_t blocks, int64_t block_size) {
+  MergeRows(q_weight, result, N, blocks, block_size);
+  MergeRows(k_weight, result, N, blocks, block_size);
+  MergeRows(v_weight, result, N, blocks, block_size);
 }
 
-void AttackDoRotaryAttribute(Node& node) {
+void AttachDoRotaryAttribute(Node& node) {
   NodeAttributes& node_attributes = node.GetMutableAttributes();
   ONNX_NAMESPACE::AttributeProto attr;
   attr.set_name("do_rotary");
@@ -38,10 +34,23 @@ void AttackDoRotaryAttribute(Node& node) {
   node_attributes["do_rotary"] = attr;
 }
 
+NodeAttributes AttachMmnbAttributes(Node* node) {
+  NodeAttributes mmnb_node_atributes = node->GetAttributes();
+  ONNX_NAMESPACE::AttributeProto mmnb_N_attr_proto;
+
+  // N needs to be multiplied by 3.
+  mmnb_N_attr_proto.set_name("N");
+  mmnb_N_attr_proto.set_type(mmnb_node_atributes["N"].type());
+  mmnb_N_attr_proto.set_i(3 * mmnb_node_atributes["N"].i());
+  mmnb_node_atributes["N"] = mmnb_N_attr_proto;
+
+  return mmnb_node_atributes;
+}
+
 std::array<NodeArg*, 3> MergeQkvWeights(Graph& graph,
-                                        int64_t input_dim,       // For example, 3072
-                                        int64_t qkv_second_dim,  // Number of query heads, e.g., 24
-                                        int64_t qkv_third_dim,   // Size per head, e.g., 64
+                                        int64_t input_dim,   // For example, 3072
+                                        int64_t blocks,      // Number of query heads, e.g., 24
+                                        int64_t block_size,  // Size per head, e.g., 64
                                         const ONNX_NAMESPACE::TensorProto* q_tensor,
                                         const ONNX_NAMESPACE::TensorProto* k_tensor,
                                         const ONNX_NAMESPACE::TensorProto* v_tensor,
@@ -71,19 +80,25 @@ std::array<NodeArg*, 3> MergeQkvWeights(Graph& graph,
   ONNX_NAMESPACE::TensorProto qkv_b_initializer;
   qkv_b_initializer.set_name(graph.GenerateNodeArgName("qkv_B"));
   qkv_b_initializer.add_dims(3 * input_dim);
-  qkv_b_initializer.add_dims(qkv_second_dim);
-  qkv_b_initializer.add_dims(qkv_third_dim);
+  qkv_b_initializer.add_dims(blocks);
+  qkv_b_initializer.add_dims(block_size);
   qkv_b_initializer.set_data_type(q_tensor->data_type());
 
   ONNX_NAMESPACE::TensorProto qkv_scale_initializer;
   qkv_scale_initializer.set_name(graph.GenerateNodeArgName("qkv_scale"));
-  qkv_scale_initializer.add_dims(3 * input_dim);
-  qkv_scale_initializer.add_dims(qkv_second_dim);
+  // Preserve the original tensor dimensionality.
+  if (q_scale_tensor->dims().size() > 1) {
+    qkv_scale_initializer.add_dims(3 * input_dim);
+    qkv_scale_initializer.add_dims(blocks);
+  } else {
+    qkv_scale_initializer.add_dims(3 * input_dim * blocks);
+  }
+
   qkv_scale_initializer.set_data_type(q_scale_tensor->data_type());
 
   ONNX_NAMESPACE::TensorProto qkv_zp_initializer;
   qkv_zp_initializer.set_name(graph.GenerateNodeArgName("qkv_zp"));
-  qkv_zp_initializer.add_dims(3 * input_dim * qkv_second_dim / 2);
+  qkv_zp_initializer.add_dims(3 * input_dim * blocks / 2);
   qkv_zp_initializer.set_data_type(q_zero_point_tensor->data_type());
 
   size_t q_elements = q_initializer.size();
@@ -102,11 +117,11 @@ std::array<NodeArg*, 3> MergeQkvWeights(Graph& graph,
   const MLFloat16* v_scale_data = v_scale_initializer.data<MLFloat16>();
   const uint8_t* v_zero_points_data = v_zp_initializer.data<uint8_t>();
 
-  size_t scale_elements_count = 3 * input_dim * qkv_second_dim;
+  size_t scale_elements_count = 3 * input_dim * blocks;
   std::vector<MLFloat16> merged_qkv_scale;
   merged_qkv_scale.reserve(scale_elements_count);
 
-  size_t zp_elements_count = 3 * input_dim * qkv_second_dim / 2;
+  size_t zp_elements_count = 3 * input_dim * blocks / 2;
   std::vector<uint8_t> merged_qkv_zp;
   merged_qkv_zp.reserve(zp_elements_count);
 
@@ -114,9 +129,9 @@ std::array<NodeArg*, 3> MergeQkvWeights(Graph& graph,
   std::vector<uint8_t> merged_qkv_B;
   merged_qkv_B.reserve(element_count);
 
-  MergeMatMulWeights(q_data, k_data, v_data, merged_qkv_B, input_dim, qkv_second_dim, qkv_third_dim);
-  MergeMatMulWeights(q_scale_data, k_scale_data, v_scale_data, merged_qkv_scale, input_dim, qkv_second_dim, 1);
-  MergeMatMulWeights(q_zero_points_data, k_zero_points_data, v_zero_points_data, merged_qkv_zp, input_dim, qkv_second_dim / 2, 1);
+  MergeMatMulWeights(q_data, k_data, v_data, merged_qkv_B, input_dim, blocks, block_size);
+  MergeMatMulWeights(q_scale_data, k_scale_data, v_scale_data, merged_qkv_scale, input_dim, blocks, 1);
+  MergeMatMulWeights(q_zero_points_data, k_zero_points_data, v_zero_points_data, merged_qkv_zp, input_dim, blocks / 2, 1);
 
   utils::SetRawDataInTensorProto(qkv_b_initializer, merged_qkv_B.data(), gsl::narrow<size_t>(element_count) * sizeof(uint8_t));
   utils::SetRawDataInTensorProto(qkv_scale_initializer, merged_qkv_scale.data(), gsl::narrow<size_t>(scale_elements_count) * sizeof(MLFloat16));
@@ -344,12 +359,7 @@ Status GroupQueryAttentionFusion::ApplyImpl(
 
     const std::array mmnb_output_defs{&matmul_output};
 
-    NodeAttributes mmnb_node_atributes = q_node->GetAttributes();
-    ONNX_NAMESPACE::AttributeProto mmnb_N_attr_proto;
-    mmnb_N_attr_proto.set_name("N");
-    mmnb_N_attr_proto.set_type(mmnb_node_atributes["N"].type());
-    mmnb_N_attr_proto.set_i(3 * mmnb_node_atributes["N"].i());
-    mmnb_node_atributes["N"] = mmnb_N_attr_proto;
+    NodeAttributes mmnb_node_atributes = AttachMmnbAttributes(q_node);
 
     // Add MatMulNBits
     Node& mat_mul_n_bits_new_node = graph.AddNode(graph.GenerateNodeName("MatMulNBits"),
@@ -376,23 +386,9 @@ Status GroupQueryAttentionFusion::ApplyImpl(
         cos_cache_arg,
         sin_cache_arg,
         pos_ids_arg};
-    /*
-    // Now add the fused GroupQueryAttention node.
-    Node& gqa_node = graph.AddNode(graph.GenerateNodeName("GroupQueryAttention"),
-                                   "GroupQueryAttention",
-                                   "Fused GroupQueryAttention subgraphs",
-                                   gqa_input_defs,
-                                   {},
-                                   &node_attributes,
-                                   kMSDomain);
-
-                                   */
 
     // TODO: screws up definition for output
     // ORT_RETURN_IF_ERROR(graph.Resolve());
-
-    [[maybe_unused]] auto producer2 = graph.GetConsumerNodes(matmul_output.Name());
-    [[maybe_unused]] auto producer3 = graph.GetProducerNode(matmul_output.Name());
 
     graph_utils::FinalizeNodeFusion(graph, {*q_node, *k_node, *v_node, *rotary_node_1, *rotary_node_2}, mat_mul_n_bits_new_node);
 
@@ -401,7 +397,7 @@ Status GroupQueryAttentionFusion::ApplyImpl(
 
     [[maybe_unused]] const onnxruntime::Node* producer = graph.GetProducerNode(matmul_output.Name());
 
-    AttackDoRotaryAttribute(node);
+    AttachDoRotaryAttribute(node);
 
     auto& gqaInputArgs = node.MutableInputArgsCount();
     gqaInputArgs[7] = 1;
@@ -414,6 +410,8 @@ Status GroupQueryAttentionFusion::ApplyImpl(
     [[maybe_unused]] NodeAttributes node_attributes2 = node.GetAttributes();
 
     ORT_RETURN_IF_ERROR(graph.Resolve());
+
+    modified = true;
 
     [[maybe_unused]] const onnxruntime::Node* producer44 = graph.GetProducerNode(matmul_output.Name());
 
