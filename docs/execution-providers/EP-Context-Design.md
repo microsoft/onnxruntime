@@ -60,9 +60,9 @@ Atrribures:
 
 ## EP Context Cache Model Generation Workflow
 
-### EP Interface GetEpContextNodes() for Generation the EP Context Cache Model
+### EP Interface `GetEpContextNodes()` for Generating the EP Context Cache Model
 
-Generating the **partitioned graph** directly within the Execution Provider (EP) code is challenging, as the EP lacks a comprehensive view of the entire partitioned graph. To address this, ONNX Runtime introduces a new **Execution Provider interface**: `GetEpContextNodes()`.
+Generating the **partitioned graph** directly within the Execution Provider (EP) code is challenging, as the EP lacks a complete view of the entire partitioned graph. To address this, ONNX Runtime introduces a new **Execution Provider interface**: `GetEpContextNodes()`.
 
 ```cpp
 virtual const InlinedVector<const Node*> GetEpContextNodes() const {
@@ -106,7 +106,7 @@ virtual const InlinedVector<const Node*> GetEpContextNodes() const {
   - This is useful when combining multiple EPContext nodes from different models into a **single model**, where there is a risk of **node name or graph name conflicts** across models.
   - The EP should support multiple EP contexts within a single model, enabling users to **merge and interconnect EPContext nodes** generated from different models.
 
-### Usage Scenario
+### Usage Scenario Code Examples
 
 **Generate the EPContext model by creating session from model path:**
 ```
@@ -200,7 +200,7 @@ ONNX Runtime EPs that support loading models with `EPContext` nodes should follo
 
 <p align="center"><img width="60%" src="../../images/EP_context_nodes_with_different_eps.png" alt="EP Context nodes with different EPs"/></p>
 
-### Code Examples for Usage Scenario
+### Usage Scenario Code Examples
 
 **Create inference session from pre-compiled EPContext model:**<br/>
 Create the session from model file path. If there is external EP context binary file, the session can figure out the binary file path from the model file path.
