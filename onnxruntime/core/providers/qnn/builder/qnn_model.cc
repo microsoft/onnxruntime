@@ -7,6 +7,7 @@
 #include <fstream>
 #include <gsl/gsl>
 #include "QnnOpDef.h"
+#include "HTP/QnnHtpMem.h"
 
 #include "core/providers/qnn/ort_api.h"
 #include "core/providers/qnn/builder/op_builder_factory.h"
@@ -193,17 +194,19 @@ Status QnnModel::SetupQnnInputOutput(const logging::Logger& logger) {
   return Status::OK();
 }
 
-#include "HTP\QnnHtpMem.h"
-#define BUFF_ALIGNMENT 4096
-
 static Status BindQnnTensorMemoryToOrtValueMemory(const logging::Logger& logger,
                                                   QnnBackendManager& qnn_backend_manager,
                                                   const OrtMemoryInfo& ort_value_memory_info,
                                                   void* ort_value_data, uint32_t ort_value_data_size,
                                                   Qnn_ContextHandle_t qnn_context,
                                                   Qnn_Tensor_t& qnn_tensor) {
+  if (!ort_value_data) {
+    LOGS(logger, ERROR) << "Tensor raw data pointer is null!";
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Tensor raw data pointer is null!");
+  }
+
   const bool uses_shared_mem_alloc = ort_value_memory_info == HtpSharedMemoryAllocator::AssociatedMemoryInfo();
-  const bool buffer_aligned = ((uintptr_t)ort_value_data % BUFF_ALIGNMENT) == 0 && ort_value_data_size % BUFF_ALIGNMENT == 0;
+  const bool buffer_aligned = ((uintptr_t)ort_value_data % rpcmem::BUFFER_ALIGNMENT_BLOCK_SIZE) == 0 && ort_value_data_size % rpcmem::BUFFER_ALIGNMENT_BLOCK_SIZE == 0;
   const bool htp_backend = qnn_backend_manager.GetQnnBackendType() == QnnBackendType::HTP;
 
   if (uses_shared_mem_alloc || (htp_backend && buffer_aligned)) {

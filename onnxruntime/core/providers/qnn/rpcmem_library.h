@@ -24,11 +24,14 @@ constexpr uint32_t RPCMEM_DEFAULT_FLAGS = 1;
 
 constexpr int RPCMEM_HEAP_ID_SYSTEM = 25;
 
-// External flag passed to fastrpc_register_buf_attr that specifies that a buffer should be imported
+// External flag passed to fastrpc_register_buf_attr that specifies that a buffer should be copied to RPCMEM space
 constexpr int FASTRPC_ATTR_IMPORT_BUFFER = 256;
 
 // FastRPC invalid client handle
 constexpr int INVALID_CLIENT_HANDLE = -1;
+
+  // RPCMEM alignment is in 4KB blocks
+constexpr const size_t BUFFER_ALIGNMENT_BLOCK_SIZE = 4096;
  
  /**
  * Allocate a zero-copy buffer for size upto 2 GB with the FastRPC framework.
