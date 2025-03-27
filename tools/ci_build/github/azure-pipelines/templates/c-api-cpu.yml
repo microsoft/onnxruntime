@@ -3,12 +3,6 @@ parameters:
   displayName: Run Tests?
   type: boolean
   default: true
-
-- name: DoCompliance
-  displayName: Run Compliance Tasks?
-  type: boolean
-  default: true
-
 - name: DoEsrp
   displayName: Run code sign tasks? Must be true if you are doing an Onnx Runtime release.
   type: boolean
@@ -51,7 +45,12 @@ parameters:
 - name: QnnSDKVersion
   displayName: QNN SDK Version
   type: string
-  default: 2.31.0.250130
+  default: 2.32.0.250228
+
+- name: is1ES
+  displayName: Is 1ES pipeline
+  type: boolean
+  default: false
 
 stages:
 - template: linux-cpu-packaging-pipeline.yml
@@ -81,6 +80,7 @@ stages:
       enable_code_sign: ${{ parameters.DoEsrp }}
       packageName: 'onnxruntime-android'
       ReleaseVersionSuffix: $(ReleaseVersionSuffix)
+      is1ES: ${{ parameters.is1ES }}
 
 - stage: Android_Java_API_AAR_Testing_Full
   dependsOn: Android_Java_API_AAR_Packaging_Full
@@ -106,6 +106,7 @@ stages:
       packageName: 'onnxruntime-android-qnn'
       ReleaseVersionSuffix: $(ReleaseVersionSuffix)
       QnnSDKVersion: ${{ parameters.QnnSDKVersion }}
+      is1ES: ${{ parameters.is1ES }}
 
 - stage: Final_AAR_Testing_Android_QNN
   dependsOn: Android_Java_API_AAR_Packaging_QNN
@@ -123,7 +124,10 @@ stages:
     workspace:
       clean: all
     pool:
-      vmImage: 'macOS-13'
+      name: 'Azure Pipelines'
+      image: 'macOS-14'
+      os: 'macOS'
+
     timeoutInMinutes: 300
     steps:
     - template: set-version-number-variables-step.yml
@@ -152,18 +156,15 @@ stages:
           --mac_catalyst_enabled
       displayName: "Test Apple framework"
 
-    - task: PublishBuildArtifacts@1
+    - task: 1ES.PublishPipelineArtifact@1
       inputs:
-        pathtoPublish: '$(Build.BinariesDirectory)/artifacts'
+        targetPath: '$(Build.BinariesDirectory)/artifacts'
         artifactName: 'onnxruntime-ios-full-xcframework'
 
-    - template: component-governance-component-detection-steps.yml
-      parameters:
-        condition: 'succeeded'
+
 
 - template: win-ci.yml
   parameters:
-    DoCompliance: ${{ parameters.DoCompliance }}
     DoEsrp: ${{ parameters.DoEsrp }}
     stage_name_suffix: CPU_x86_${{ parameters.BuildVariant }}
     buildArch: x86
@@ -176,7 +177,6 @@ stages:
 
 - template: win-ci.yml
   parameters:
-    DoCompliance: ${{ parameters.DoCompliance }}
     DoEsrp: ${{ parameters.DoEsrp }}
     stage_name_suffix: CPU_arm64_${{ parameters.BuildVariant }}
     buildArch: x64
@@ -189,7 +189,6 @@ stages:
 
 - template: win-ci.yml
   parameters:
-    DoCompliance: ${{ parameters.DoCompliance }}
     DoEsrp: ${{ parameters.DoEsrp }}
     stage_name_suffix: CPU_x64_${{ parameters.BuildVariant }}
     buildArch: x64
@@ -282,15 +281,13 @@ stages:
         SourceFolder: '$(Build.BinariesDirectory)\java-artifact\onnxruntime-java-win-x64'
         TargetFolder: '$(Build.ArtifactStagingDirectory)'
 
-    - task: PublishPipelineArtifact@1
+    - task: 1ES.PublishPipelineArtifact@1
       displayName: 'Publish Pipeline Artifact'
       inputs:
         targetPath: '$(Build.ArtifactStagingDirectory)'
-        artifact: 'onnxruntime-java'
+        artifactName: 'onnxruntime-java'
 
-    - template: component-governance-component-detection-steps.yml
-      parameters :
-        condition : 'succeeded'
+
 
 - stage: NuGet_Packaging_CPU
   dependsOn:
@@ -312,8 +309,8 @@ stages:
       OrtPackageId: ${{ parameters.OrtNugetPackageId }}
       breakCodesignValidationInjection: ${{ parameters.DoEsrp }}
       ReleaseVersionSuffix: $[stageDependencies.Setup.Set_Variables.outputs['Set_Release_Version_Suffix.ReleaseVersionSuffix']]
-      BuildDate : $[stageDependencies.Setup.Set_Variables.outputs['Set_Build_Date.BuildDate']]
-      BuildTime : $[stageDependencies.Setup.Set_Variables.outputs['Set_Build_Time.BuildTime']]
+      BuildDate: $[stageDependencies.Setup.Set_Variables.outputs['Set_Build_Date.BuildDate']]
+      BuildTime: $[stageDependencies.Setup.Set_Variables.outputs['Set_Build_Time.BuildTime']]
 
     steps:
     - checkout: self
@@ -384,7 +381,7 @@ stages:
         BuildId: ${{ parameters.BuildId }}
 
     - script: |
-       dir
+        dir
       workingDirectory: '$(Build.BinariesDirectory)/nuget-artifact'
       displayName: 'List artifacts'
 
@@ -398,7 +395,7 @@ stages:
         filePath: $(Build.SourcesDirectory)\tools\ci_build\github\windows\extract_nuget_files.ps1
 
     - script: |
-       mklink /D /J models C:\local\models
+        mklink /D /J models C:\local\models
       workingDirectory: '$(Build.BinariesDirectory)'
       displayName: 'Create models link'
     - task: NuGetToolInstaller@0
@@ -488,7 +485,7 @@ stages:
         PlatformsSupported: 'win-x64,win-x86,linux-x64,linux-arm64,osx-x64'
         VerifyNugetSigning: false
 
-    - task: PublishPipelineArtifact@0
+    - task: 1ES.PublishPipelineArtifact@1
       displayName: 'Publish Pipeline NuGet Artifact'
       inputs:
         artifactName: 'drop-signed-nuget-CPU'
@@ -504,9 +501,7 @@ stages:
         msbuildArguments: '-t:Clean -p:OnnxRuntimeBuildDirectory="$(Build.BinariesDirectory)" -p:OrtPackageId=$(OrtPackageId)'
         workingDirectory: '$(Build.SourcesDirectory)\csharp'
 
-    - template: component-governance-component-detection-steps.yml
-      parameters :
-        condition : 'succeeded'
+
 
 
 - stage: Nodejs_Packaging
@@ -537,11 +532,11 @@ stages:
       submodules: true
 
     - script: |
-       echo.>>.gitattributes
-       echo /js/** text=auto eol=lf>>.gitattributes
-       rd /s /q js
-       git checkout -- js/**
-       git checkout -- .gitattributes
+        echo.>>.gitattributes
+        echo /js/** text=auto eol=lf>>.gitattributes
+        rd /s /q js
+        git checkout -- js/**
+        git checkout -- .gitattributes
       workingDirectory: '$(Build.SourcesDirectory)'
       displayName: 'Testing: force EOL to lf on windows for /js/**'
 
@@ -650,20 +645,20 @@ stages:
         filePath: $(Build.SourcesDirectory)\tools\ci_build\github\windows\extract_nuget_files.ps1
 
     - script: |
-       dir
+        dir
       workingDirectory: '$(Build.BinariesDirectory)/nuget-artifact'
       displayName: 'List artifacts'
 
     - script: |
-       npm ci
+        npm ci
       workingDirectory: '$(Build.SourcesDirectory)/js'
       displayName: 'Install NPM packages /js'
     - script: |
-       npm ci
+        npm ci
       workingDirectory: '$(Build.SourcesDirectory)/js/common'
       displayName: 'Install NPM packages /js/common'
     - script: |
-       npm ci
+        npm ci
       workingDirectory: '$(Build.SourcesDirectory)/js/node'
       displayName: 'Install NPM packages /js/node'
 
@@ -693,7 +688,7 @@ stages:
       inputs:
         SourceFolder: '$(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo\nuget-artifacts\onnxruntime-linux-x64-tensorrt\lib'
         Contents: |
-          libonnxruntime.so.*
+          libonnxruntime.so.1
           libonnxruntime_providers_shared.so
         TargetFolder: '$(Build.SourcesDirectory)\js\node\bin\napi-v3\linux\x64'
     - task: CopyFiles@2
@@ -708,7 +703,7 @@ stages:
       displayName: 'Copy nuget binaries to: $(Build.SourcesDirectory)\js\node\bin\napi-v3\linux\arm64\'
       inputs:
         SourceFolder: '$(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo\nuget-artifacts\onnxruntime-linux-aarch64\lib'
-        Contents: 'libonnxruntime.so.*'
+        Contents: 'libonnxruntime.so.1'
         TargetFolder: '$(Build.SourcesDirectory)\js\node\bin\napi-v3\linux\arm64'
     - task: CopyFiles@2
       displayName: 'Copy nodejs binaries to: $(Build.SourcesDirectory)\js\node\bin\napi-v3\linux\arm64\'
@@ -767,52 +762,57 @@ stages:
         Contents: 'onnxruntime-node-*.tgz'
         TargetFolder: '$(Build.ArtifactStagingDirectory)'
 
-    - task: PublishPipelineArtifact@0
+    - task: 1ES.PublishPipelineArtifact@1
       displayName: 'Publish NPM packages files'
       inputs:
         artifactName: 'NPM_packages'
         targetPath: '$(Build.ArtifactStagingDirectory)'
 
-    - template: component-governance-component-detection-steps.yml
-      parameters :
-        condition : 'succeeded'
+
 
 
 - template: ../nuget/templates/test_win.yml
   parameters:
+    AgentPool: 'onnxruntime-Win-CPU-2022'
+    Skipx86Tests: false
+    NugetPackageName: 'Microsoft.ML.OnnxRuntime'
+    ArtifactSuffix: 'CPU'
+    SpecificArtifact: ${{ parameters.SpecificArtifact }}
+    BuildId: ${{ parameters.BuildId }}
+
+- template: ../nuget/templates/test_android.yml
+  parameters:
     AgentPool : 'onnxruntime-Win-CPU-2022'
-    Skipx86Tests : false
-    NugetPackageName : 'Microsoft.ML.OnnxRuntime'
     ArtifactSuffix: 'CPU'
     SpecificArtifact: ${{ parameters.SpecificArtifact }}
     BuildId: ${{ parameters.BuildId }}
 
 - template: ../nuget/templates/test_linux.yml
   parameters:
-    AgentPool : onnxruntime-Ubuntu2204-AMD-CPU
-    NugetPackageName : 'Microsoft.ML.OnnxRuntime'
+    AgentPool: onnxruntime-Ubuntu2204-AMD-CPU
+    NugetPackageName: 'Microsoft.ML.OnnxRuntime'
     ArtifactSuffix: 'CPU'
     SpecificArtifact: ${{ parameters.SpecificArtifact }}
     BuildId: ${{ parameters.BuildId }}
 
 - template: ../nuget/templates/test_macos.yml
   parameters:
-    AgentPool : macOS-13
+    AgentPool: macOS-14
     ArtifactSuffix: 'CPU'
 
 - template: ../nodejs/templates/test_win.yml
   parameters:
-    AgentPool : 'onnxruntime-Win-CPU-2022'
-    StageSuffix : 'Win_CPU_x64'
+    AgentPool: 'onnxruntime-Win-CPU-2022'
+    StageSuffix: 'Win_CPU_x64'
 
 - template: ../nodejs/templates/test_linux.yml
   parameters:
-    AgentPool : 'Azure-Pipelines-EO-Ubuntu-2004-aiinfra'
-    StageSuffix : 'Linux_CPU_x64'
+    AgentPool: 'onnxruntime-Ubuntu2204-AMD-CPU'
+    StageSuffix: 'Linux_CPU_x64'
 
 - template: ../nodejs/templates/test_macos.yml
   parameters:
-    StageSuffix : 'macOS_CPU_x64'
+    StageSuffix: 'macOS_CPU_x64'
 
 - template: final-jar-testing.yml
   parameters:
@@ -833,4 +833,4 @@ stages:
     OS: MacOS
     BuildId: ${{ parameters.BuildId }}
     SpecificArtifact: ${{ parameters.SpecificArtifact }}
-    PoolName: 'macOS-13'
+    PoolName: 'macOS-14'

@@ -64,7 +64,6 @@ Status ClipOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
   bool has_min = min != std::numeric_limits<float>::lowest();
   bool has_max = max != std::numeric_limits<float>::max();
 
-#if defined(COREML_ENABLE_MLPROGRAM)
   if (model_builder.CreateMLProgram()) {
     using namespace CoreML::Specification::MILSpec;
 
@@ -121,9 +120,7 @@ Status ClipOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
 
     AddOperationOutput(*op, output);
     model_builder.AddOperation(std::move(op));
-  } else
-#endif  // defined(COREML_ENABLE_MLPROGRAM)
-  {
+  } else {
     // TODO: CoreML has a Clip layer for NeuralNetwork. Added in CoreML 4. We could potentially use that if available
     // to simplify.
     // https://apple.github.io/coremltools/mlmodel/Format/NeuralNetwork.html#cliplayerparams

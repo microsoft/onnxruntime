@@ -25,7 +25,6 @@ Status UnaryOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const 
   const auto& op_type(node.OpType());
   const auto& input_defs(node.InputDefs());
 
-#if defined(COREML_ENABLE_MLPROGRAM)
   if (model_builder.CreateMLProgram()) {
     using namespace CoreML::Specification::MILSpec;
 
@@ -58,9 +57,7 @@ Status UnaryOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const 
     AddOperationOutput(*op, *node.OutputDefs()[0]);
 
     model_builder.AddOperation(std::move(op));
-  } else  // NOLINT
-#endif    // defined (COREML_ENABLE_MLPROGRAM)
-  {
+  } else {
     std::unique_ptr<COREML_SPEC::NeuralNetworkLayer> layer = model_builder.CreateNNLayer(node);
 
     if (op_type == "Sqrt") {

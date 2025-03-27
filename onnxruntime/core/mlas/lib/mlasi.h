@@ -1048,7 +1048,10 @@ extern const MLAS_FPQ4GEMM_DISPATCH MlasFpQ4GemmDispatchAvx512;
 
 struct MLAS_QNBIT_GEMM_DISPATCH;
 
-extern const MLAS_QNBIT_GEMM_DISPATCH MlasSQNBitGemmDispatchNeon;
+const MLAS_QNBIT_GEMM_DISPATCH&
+GetMlasQNBitGemmDispatchNeon(
+    bool InitializeWithDotSupport
+);
 
 extern const MLAS_QNBIT_GEMM_DISPATCH MlasSQNBitGemmDispatchAvx2;
 
@@ -1074,6 +1077,10 @@ extern const MLAS_HGEMM_DISPATCH MlasHGemmDispatchNeon;
 // softmax dispatch structure
 struct MLAS_SOFTMAX_DISPATCH;
 extern const MLAS_SOFTMAX_DISPATCH MlasSoftmaxDispatchNeon;
+
+// eltwise dispatch structure
+struct MLAS_ELTWISE_DISPATCH;
+extern const MLAS_ELTWISE_DISPATCH MlasEltwiseDispatchNeon;
 
 //
 // Quantized depthwise convolution kernels.
@@ -1238,6 +1245,7 @@ struct MLAS_PLATFORM {
     const MLAS_ROPE_DISPATCH* RopeDispatch{nullptr};
     const MLAS_HGEMM_DISPATCH* HGemmDispatch{nullptr};
     const MLAS_SOFTMAX_DISPATCH* SoftmaxDispatch{nullptr};
+    const MLAS_ELTWISE_DISPATCH* EltwiseDispatch{nullptr};
 };
 
 inline

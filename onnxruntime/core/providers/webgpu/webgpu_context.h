@@ -6,7 +6,7 @@
 #include <memory>
 #include <mutex>
 
-#include <webgpu/webgpu_cpp.h>
+#include "core/providers/webgpu/webgpu_external_header.h"
 
 #include "core/common/common.h"
 #include "core/framework/library_handles.h"
@@ -32,6 +32,7 @@ struct WebGpuContextConfig {
   WGPUDevice device;
   const void* dawn_proc_table;
   ValidationMode validation_mode;
+  bool preserve_device;
 };
 
 struct WebGpuBufferCacheConfig {
@@ -143,6 +144,8 @@ class WebGpuContext final {
   Status Run(ComputeContext& context, const ProgramBase& program);
   void OnRunEnd();
 
+  bool SupportsBufferMapExtendedUsages() const { return supports_buffer_map_extended_usages_; }
+
  private:
   enum class TimestampQueryType {
     None = 0,
@@ -150,8 +153,8 @@ class WebGpuContext final {
     AtPasses
   };
 
-  WebGpuContext(WGPUInstance instance, WGPUDevice device, webgpu::ValidationMode validation_mode)
-      : instance_{instance}, device_{device}, validation_mode_{validation_mode}, query_type_{TimestampQueryType::None} {}
+  WebGpuContext(WGPUInstance instance, WGPUDevice device, webgpu::ValidationMode validation_mode, bool preserve_device)
+      : instance_{instance}, device_{device}, validation_mode_{validation_mode}, query_type_{TimestampQueryType::None}, preserve_device_{preserve_device} {}
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(WebGpuContext);
 
   std::vector<const char*> GetEnabledAdapterToggles() const;
@@ -227,10 +230,12 @@ class WebGpuContext final {
 
   uint64_t gpu_timestamp_offset_ = 0;
   bool is_profiling_ = false;
+  bool preserve_device_;
 
 #if defined(ENABLE_PIX_FOR_WEBGPU_EP)
   std::unique_ptr<WebGpuPIXFrameGenerator> pix_frame_generator_ = nullptr;
 #endif  // ENABLE_PIX_FOR_WEBGPU_EP
+  bool supports_buffer_map_extended_usages_ = false;
 };
 
 }  // namespace webgpu
