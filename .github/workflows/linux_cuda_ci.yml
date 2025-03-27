@@ -1,0 +1,30 @@
+name: Linux CUDA CI
+
+on:
+  push:
+    branches: [ main, 'rel-*', 'snnn/linux_ci2']
+  pull_request:
+    branches: [ main, 'rel-*']
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-linux-cuda-x64-release:
+    name: Build Linux CUDA x64 Release
+    uses: ./.github/workflows/reusable_linux_build.yml
+    with:
+      pool_name: "onnxruntime-github-Ubuntu2204-AMD-CPU"
+      build_config: Release
+      architecture: x64
+      dockerfile_path: tools/ci_build/github/linux/docker/Dockerfile.manylinux2_28_cuda
+      docker_build_args: '--build-arg BASEIMAGE=onnxruntimebuildcache.azurecr.io/internal/azureml/onnxruntime/build/cuda12_x64_ubi8_gcc12:20250124.1'
+      docker_image_repo: onnxruntimecuda12manylinuxbuild
+      extra_build_flags: '--use_binskim_compliant_compile_flags --build_wheel --enable_onnx_tests --cuda_version=12.2 --cuda_home=/usr/local/cuda-12.2 --cudnn_home=/usr/local/cuda-12.2 --enable_cuda_profiling --enable_pybind --build_java --cmake_extra_defines CMAKE_CUDA_ARCHITECTURES=80 onnxruntime_BUILD_UNIT_TESTS=ON onnxruntime_ENABLE_CUDA_EP_INTERNAL_TESTS=ON'
+      python_path_prefix: 'PATH=/opt/python/cp310-cp310/bin:$PATH'
+      run_tests: false
+      upload_build_output: true
+      execution_providers: 'cuda'
+    secrets:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
