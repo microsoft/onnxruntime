@@ -343,7 +343,7 @@ bool RotaryEmbeddingOpBuilder::HasSupportedInputsImpl(const GraphViewer&,
   }
 
   std::array<int32_t, 3> input_types{input_type, cos_cache_type, sin_cache_type};
-  if (!AreInputDataTypesSame(op_type, input_types, logger)) {
+  if (!AreDataTypesSame(op_type, input_types, logger)) {
     return false;
   }
 
