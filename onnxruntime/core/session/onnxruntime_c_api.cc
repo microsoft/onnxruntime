@@ -4,8 +4,11 @@
 #include <cassert>
 #include <cstring>
 #include <functional>
+#include <memory>
 #include <mutex>
 #include <sstream>
+#include <string>
+#include <utility>
 
 #include "core/common/common.h"
 #include "core/common/logging/logging.h"

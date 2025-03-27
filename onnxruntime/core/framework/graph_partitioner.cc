@@ -830,7 +830,7 @@ static Status CreateEpContextModel(const ExecutionProviders& execution_providers
       ep_context_gen_options.model_buffer_size_ptr != nullptr &&
       ep_context_gen_options.model_buffer_allocator != nullptr) {
     ORT_RETURN_IF_ERROR(ep_context_model.MainGraph().Resolve());
-    // TODO: Make this more memory efficient.
+    // TODO(adrianlizarraga): Investigate if we can make this more memory efficient.
     // May be able to use allocator to directly allocate the ModelProto to avoid a copy.
     ONNX_NAMESPACE::ModelProto model_proto = ep_context_model.ToGraphProtoWithExternalInitializers(external_ini_path,
                                                                                                    context_cache_path,
