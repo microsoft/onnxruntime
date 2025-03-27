@@ -66,14 +66,13 @@ class GatherOpBuilder : public BaseOpBuilder {
     axis = util::ReverseAxis(axis, inputs[0]->GetShape().size());
     auto op = graph_ep->GetGraph()->CreateOperation<tim::vx::ops::Gather>(axis, 0);
     auto indices_shape_proto = indices.node_arg.Shape();
-    if ( indices_shape_proto != nullptr ) {
-        if( indices_shape_proto->dim_size() ==0 ) {
-          is_scalar_indices = 1;
-        }
-       }
-       else{
-         is_scalar_indices = 1;
-       }
+    if (indices_shape_proto != nullptr) {
+      if (indices_shape_proto->dim_size() == 0) {
+        is_scalar_indices = 1;
+      }
+    } else {
+      is_scalar_indices = 1;
+    }
 
     bool is_i64_indices = inputs[1]->GetDataType() == tim::vx::DataType::INT64;
     if (!is_i64_indices) {
