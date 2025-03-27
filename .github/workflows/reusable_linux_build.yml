@@ -158,7 +158,7 @@ jobs:
         run: |
           #!/bin/bash
           set -e -x
-          BUILD_DIR="${{ runner.temp }}/build/${{ inputs.build_config }}"
+          BUILD_DIR="${{ runner.temp }}/${{ inputs.build_config }}"
           if [ ! -d "${BUILD_DIR}" ]; then
             echo "Error: Build directory ${BUILD_DIR} not found. Cannot prepare artifact."
             exit 1
@@ -186,7 +186,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: build-output-${{ inputs.architecture }}-${{ inputs.build_config }}
-          path: ${{ github.workspace }}/build/${{ inputs.build_config }}
+          path: ${{ runner.temp }}/${{ inputs.build_config }}
           if-no-files-found: error
 
       # ------------- Upload Log on Build Failure Step -------------
@@ -195,5 +195,5 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: vcpkg-manifest-install-log-${{ inputs.architecture }}-${{ inputs.build_config }}
-          path: ${{ github.workspace }}/build/${{ inputs.build_config }}/${{ inputs.build_config }}/vcpkg-manifest-install.log
+          path: ${{ runner.temp }}/${{ inputs.build_config }}/${{ inputs.build_config }}/vcpkg-manifest-install.log
           if-no-files-found: ignore
