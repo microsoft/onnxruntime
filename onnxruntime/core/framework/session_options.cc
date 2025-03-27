@@ -4,6 +4,7 @@
 #include "core/framework/session_options.h"
 #include "core/common/logging/logging.h"
 #include "core/framework/ort_value.h"
+#include "core/session/onnxruntime_session_options_config_keys.h"
 
 namespace onnxruntime {
 
@@ -95,5 +96,21 @@ void SessionOptions::AddCustomOpLibraryHandle(PathString library_name, void* lib
   this->custom_op_libs->Add(std::move(library_name), library_handle);
 }
 #endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_MINIMAL_BUILD_CUSTOM_OPS)
+
+EpContextModelGenerationOptions SessionOptions::GetEpContextGenerationOptions() const {
+  if (this->has_explicit_ep_context_gen_options) {
+    return this->ep_context_gen_options;
+  }
+
+  // Have to generate a struct from session config options.
+  EpContextModelGenerationOptions options_copy{};
+  options_copy.enable = this->config_options.GetConfigOrDefault(kOrtSessionOptionEpContextEnable, "0") == "1";
+  options_copy.model_file_path = this->config_options.GetConfigOrDefault(kOrtSessionOptionEpContextFilePath, "");
+  options_copy.external_initializers_file_path = this->config_options.GetConfigOrDefault(
+      kOrtSessionOptionsEpContextModelExternalInitializersFileName, "");
+  options_copy.external_initializer_size_threshold = 0;
+
+  return options_copy;
+}
 
 }  // namespace onnxruntime

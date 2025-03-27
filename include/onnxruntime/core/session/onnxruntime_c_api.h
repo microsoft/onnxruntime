@@ -309,6 +309,7 @@ ORT_RUNTIME_CLASS(ValueInfo);
 ORT_RUNTIME_CLASS(Node);
 ORT_RUNTIME_CLASS(Graph);
 ORT_RUNTIME_CLASS(Model);
+ORT_RUNTIME_CLASS(ModelCompilationOptions);
 
 #ifdef _MSC_VER
 typedef _Return_type_success_(return == 0) OrtStatus* OrtStatusPtr;
@@ -4866,6 +4867,31 @@ struct OrtApi {
                   _In_ const int64_t* shape, size_t shape_len,
                   ONNXTensorElementDataType type,
                   _Outptr_ OrtValue** out);
+
+  /// @}
+  /// \name OrtModelCompilationOptions
+  /// @{
+  ORT_CLASS_RELEASE(ModelCompilationOptions);
+
+  // TODO(adrianlizarraga): Add documentation comments for these functions.
+  ORT_API2_STATUS(CreateModelCompilationOptions, _In_ const OrtEnv* env, _Outptr_ OrtModelCompilationOptions** out);
+  ORT_API2_STATUS(CreateModelCompilationOptionsFromSessionOptions, _In_ const OrtEnv* env,
+                  _In_ OrtSessionOptions* session_options, _Outptr_ OrtModelCompilationOptions** out);
+  ORT_API2_STATUS(ModelCompilationOptions_SetInputModelPath, _In_ OrtModelCompilationOptions* model_compile_options,
+                  _In_ const ORTCHAR_T* input_model_path);
+  ORT_API2_STATUS(ModelCompilationOptions_SetInputModelFromBuffer, _In_ OrtModelCompilationOptions* model_compile_options,
+                  _In_ const void* input_model_data, size_t input_model_data_size);
+  ORT_API2_STATUS(ModelCompilationOptions_SetOutputModelPath, _In_ OrtModelCompilationOptions* model_compile_options,
+                  _In_ const ORTCHAR_T* output_model_path);
+  ORT_API2_STATUS(ModelCompilationOptions_SetOutputModelExternalInitializersFile,
+                  _In_ OrtModelCompilationOptions* model_compile_options,
+                  _In_ const ORTCHAR_T* external_initializers_file_path,
+                  size_t external_initializer_size_threshold);
+  ORT_API2_STATUS(ModelCompilationOptions_SetOutputModelBuffer, _In_ OrtModelCompilationOptions* model_compile_options,
+                  _Inout_ OrtAllocator* allocator, void** output_model_buffer_ptr, size_t* output_model_buffer_size_ptr);
+  ORT_API2_STATUS(ModelCompilationOptions_SetEpContextEmbedMode, _In_ OrtModelCompilationOptions* model_compile_options,
+                  bool embed_ep_context_in_model);
+  ORT_API2_STATUS(CompileModel, _In_ const OrtEnv* env, _In_ const OrtModelCompilationOptions* model_options);
 };
 
 /*

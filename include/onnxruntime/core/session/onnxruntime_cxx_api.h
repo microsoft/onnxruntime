@@ -542,6 +542,7 @@ ORT_DEFINE_RELEASE(ValueInfo);
 ORT_DEFINE_RELEASE(Node);
 ORT_DEFINE_RELEASE(Graph);
 ORT_DEFINE_RELEASE(Model);
+ORT_DEFINE_RELEASE(ModelCompilationOptions);
 
 #undef ORT_DEFINE_RELEASE
 
@@ -989,6 +990,63 @@ struct SessionOptions : detail::SessionOptionsImpl<OrtSessionOptions> {
   UnownedSessionOptions GetUnowned() const { return UnownedSessionOptions{this->p_}; }
   ConstSessionOptions GetConst() const { return ConstSessionOptions{this->p_}; }
 };
+
+/** \brief Options object used when compiling a model.
+ *
+ * Wraps ::OrtModelCompilationOptions object and methods
+ */
+struct ModelCompilationOptions;
+
+namespace detail {
+
+template <typename T>
+struct ConstModelCompilationOptionsImpl : Base<T> {
+  using B = Base<T>;
+  using B::B;
+
+  // ModelCompilationOptions Clone() const;  ///< Creates and returns a copy of this ModelCompilationOptions object. Wraps OrtApi::CloneModelCompilationOptions
+};
+
+template <typename T>
+struct ModelCompilationOptionsImpl : ConstModelCompilationOptionsImpl<T> {
+  using B = ConstModelCompilationOptionsImpl<T>;
+  using B::B;
+
+  ModelCompilationOptionsImpl& SetInputModelPath(const ORTCHAR_T* input_model_path);               ///< Wraps OrtApi::ModelCompilationOptions_SetInputModelPath
+  ModelCompilationOptionsImpl& SetInputModelFromBuffer(const void* input_model_data,
+                                                       size_t input_model_data_size);              ///< Wraps OrtApi::ModelCompilationOptions_SetInputModelFromBuffer
+  ModelCompilationOptionsImpl& SetEpContextEmbedMode(bool embed_ep_context_in_model);              ///< Wraps OrtApi::ModelCompilationOptions_SetEpContextEmbedMode
+  ModelCompilationOptionsImpl& SetOutputModelPath(const ORTCHAR_T* output_model_path);             ///< Wraps OrtApi::ModelCompilationOptions_SetOutputModelPath
+  ModelCompilationOptionsImpl& SetOutputModelExternalInitializersFile(const ORTCHAR_T* file_path,
+                                                                      size_t initializer_size_threshold);  ///< Wraps OrtApi::ModelCompilationOptions_SetOutputModelExternalInitializersFile
+  ModelCompilationOptionsImpl& SetOutputModelBuffer(OrtAllocator* allocator, void** output_model_buffer_ptr,
+                                                    size_t* output_model_buffer_size_ptr);  ///< Wraps OrtApi::ModelCompilationOptions_SetOutputModelBuffer
+};
+}  // namespace detail
+
+using UnownedModelCompilationOptions = detail::ModelCompilationOptionsImpl<detail::Unowned<OrtModelCompilationOptions>>;
+using ConstModelCompilationOptions = detail::ConstModelCompilationOptionsImpl<detail::Unowned<const OrtModelCompilationOptions>>;
+
+/** \brief Wrapper around ::OrtModelCompilationOptions
+ *
+ */
+struct ModelCompilationOptions : detail::ModelCompilationOptionsImpl<OrtModelCompilationOptions> {
+  explicit ModelCompilationOptions(std::nullptr_t) {}  ///< Create an empty ModelCompilationOptions object, must be assigned a valid one to be used.
+  ModelCompilationOptions(const Env& env);                                   ///< Wraps OrtApi::CreateModelCompilationOptions
+  ModelCompilationOptions(const Env& env, SessionOptions& session_options);  ///< Wraps OrtApi::CreateModelCompilationOptionsFromSessionOptions
+  explicit ModelCompilationOptions(OrtModelCompilationOptions* p) : ModelCompilationOptionsImpl<OrtModelCompilationOptions>{p} {}
+  UnownedModelCompilationOptions GetUnowned() const { return UnownedModelCompilationOptions{this->p_}; }
+  ConstModelCompilationOptions GetConst() const { return ConstModelCompilationOptions{this->p_}; }
+};
+
+/** \brief Compiles an input model to generate a model with EPContext nodes that execute EP-specific kernels. Wraps OrtApi::CompileModels.
+ *
+ * \param env: ORT environment object.
+ * \param model_compilation_options: Compilation options for a model.
+ * \return A Status indicating success or failure.
+ */
+Status CompileModel(const Env& env, ConstModelCompilationOptions model_compilation_options);
+Status CompileModel(const Env& env, const ModelCompilationOptions& model_compilation_options);
 
 /** \brief Wrapper around ::OrtModelMetadata
  *

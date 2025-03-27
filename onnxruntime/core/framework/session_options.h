@@ -66,6 +66,19 @@ struct FreeDimensionOverride {
   int64_t dim_value;
 };
 
+struct EpContextModelGenerationOptions {
+  bool enable = false;
+
+  std::filesystem::path model_file_path;
+  void** model_buffer_ptr;
+  size_t* model_buffer_size_ptr;
+  OrtAllocator* model_buffer_allocator;
+
+  std::filesystem::path external_initializers_file_path;
+  size_t external_initializer_size_threshold = 0;
+  bool embed_ep_context_in_model = false;
+};
+
 /**
  * Configuration information for a session.
  */
@@ -184,6 +197,10 @@ struct SessionOptions {
   // User specified logging func and param
   OrtLoggingFunction user_logging_function = nullptr;
   void* user_logging_param = nullptr;
+
+  bool has_explicit_ep_context_gen_options = false;
+  EpContextModelGenerationOptions ep_context_gen_options = {};
+  EpContextModelGenerationOptions GetEpContextGenerationOptions() const;
 };
 
 inline std::ostream& operator<<(std::ostream& os, const SessionOptions& session_options) {
