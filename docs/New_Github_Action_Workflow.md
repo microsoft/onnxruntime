@@ -23,7 +23,7 @@ To improve navigation and consistency within our GitHub Actions workflows, **all
    Place your CI pipeline YAML files in the `.github/workflows` directory of the repository.
 
 3. **Review Process:**  
-   During code reviews, verify that any new CI pipeline adheres to the naming convention before merging. This will ensure that only workflows from the main branch (with the `(CI)` prefix) appear at the top of the GitHub Actions sidebar.
+   During code reviews, verify that any new CI pipeline adheres to the naming convention before merging. If a new CI pipeline doesn’t follow the (CI) prefix pattern, it should be fixed by someone from the team. Note that while this naming convention is strongly recommended to ensure that only workflows from the main branch appear at the top of the GitHub Actions sidebar, there is no hard enforcement mechanism in place.
 
 ## Implementation Example
 
