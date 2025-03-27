@@ -8,7 +8,7 @@ To improve navigation and consistency within our GitHub Actions workflows, **all
   Prefixing CI pipelines with `(CI)` makes it straightforward to identify and filter Continuous Integration workflows, especially those that run on pull requests.
 
 - **Enhanced Navigation in the Web UI:**  
-  By standardizing the naming of CI workflows on the main branch, we ensure that only these pipelines appear prominently in the GitHub Actions sidebar. This reduces the noise from workflows in feature branches or other contexts.
+  By standardizing the naming of CI workflows on the main branch, these pipelines will be shown on top of the pipelines in the GitHub Actions sidebar, reducing the noise from workflows in feature branches.
 
 - **Consistent Naming:**  
   A uniform naming convention helps maintain clarity and consistency across our CI/CD pipelines.
