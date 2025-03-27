@@ -229,6 +229,49 @@ const getSessionInputOutputCount = (sessionHandle: number): [number, number] => 
   }
 };
 
+const getSessionInputOutputMetadata = (
+  sessionHandle: number,
+  index: number,
+): [nameOffset: number, elementType: number, dims?: Array<number | string>] => {
+  const wasm = getInstance();
+  const stack = wasm.stackSave();
+  let metadataOffset = 0;
+  try {
+    const ptrSize = wasm.PTR_SIZE;
+    const dataOffset = wasm.stackAlloc(2 * ptrSize);
+    const errorCode = wasm._OrtGetInputOutputMetadata(sessionHandle, index, dataOffset, dataOffset + ptrSize);
+    if (errorCode !== 0) {
+      checkLastError("Can't get session input/output metadata.");
+    }
+    const nameOffset = Number(wasm.getValue(dataOffset, '*'));
+    metadataOffset = Number(wasm.getValue(dataOffset + ptrSize, '*'));
+    // get element type
+    const elementType = wasm.HEAP32[metadataOffset / 4];
+    if (elementType === 0) {
+      return [nameOffset, 0]; // non-tensor
+    }
+
+    // get dims count
+    const dimsCount = wasm.HEAPU32[metadataOffset / 4 + 1];
+    // get dims
+    const dims: Array<number | string> = [];
+    for (let i = 0; i < dimsCount; i++) {
+      const symbolicDimNameOffset = Number(wasm.getValue(metadataOffset + 8 + i * ptrSize, '*'));
+      dims.push(
+        symbolicDimNameOffset !== 0
+          ? wasm.UTF8ToString(symbolicDimNameOffset)
+          : Number(wasm.getValue(metadataOffset + 8 + (i + dimsCount) * ptrSize, '*')),
+      );
+    }
+    return [nameOffset, elementType, dims];
+  } finally {
+    wasm.stackRestore(stack);
+    if (metadataOffset !== 0) {
+      wasm._OrtFree(metadataOffset);
+    }
+  }
+};
+
 /**
  * allocate the memory and memcpy the external buffer.
  *
@@ -309,12 +352,12 @@ export const createSession = async (
           if (context) {
             wasm.currentContext = context as MLContext;
           } else if (gpuDevice) {
-            wasm.currentContext = await wasm.jsepCreateMLContext!(gpuDevice);
+            wasm.currentContext = await wasm.webnnCreateMLContext!(gpuDevice);
           } else {
-            wasm.currentContext = await wasm.jsepCreateMLContext!({ deviceType, powerPreference });
+            wasm.currentContext = await wasm.webnnCreateMLContext!({ deviceType, powerPreference });
           }
         } else {
-          wasm.currentContext = await wasm.jsepCreateMLContext!();
+          wasm.currentContext = await wasm.webnnCreateMLContext!();
         }
         break;
       }
@@ -330,7 +373,7 @@ export const createSession = async (
 
     // clear current MLContext after session creation
     if (wasm.currentContext) {
-      wasm.jsepRegisterMLContext!(sessionHandle, wasm.currentContext);
+      wasm.webnnRegisterMLContext!(sessionHandle, wasm.currentContext);
       wasm.currentContext = undefined;
       wasm.shouldTransferToMLTensor = true;
     }
@@ -341,23 +384,36 @@ export const createSession = async (
 
     const inputNames = [];
     const outputNames = [];
+    const inputMetadata: InferenceSession.ValueMetadata[] = [];
+    const outputMetadata: InferenceSession.ValueMetadata[] = [];
     const outputPreferredLocations: SupportedTensorDataLocationForInputOutput[] = [];
     for (let i = 0; i < inputCount; i++) {
-      const name = wasm._OrtGetInputName(sessionHandle, i);
-      if (name === 0) {
+      const [nameOffset, elementType, shape] = getSessionInputOutputMetadata(sessionHandle, i);
+      if (nameOffset === 0) {
         checkLastError("Can't get an input name.");
       }
-      inputNamesUTF8Encoded.push(name);
-      inputNames.push(wasm.UTF8ToString(name));
+      inputNamesUTF8Encoded.push(nameOffset);
+      const name = wasm.UTF8ToString(nameOffset);
+      inputNames.push(name);
+      inputMetadata.push(
+        elementType === 0
+          ? { name, isTensor: false }
+          : { name, isTensor: true, type: tensorDataTypeEnumToString(elementType), shape: shape! },
+      );
     }
     for (let i = 0; i < outputCount; i++) {
-      const name = wasm._OrtGetOutputName(sessionHandle, i);
-      if (name === 0) {
+      const [nameOffset, elementType, shape] = getSessionInputOutputMetadata(sessionHandle, i + inputCount);
+      if (nameOffset === 0) {
         checkLastError("Can't get an output name.");
       }
-      outputNamesUTF8Encoded.push(name);
-      const nameString = wasm.UTF8ToString(name);
+      outputNamesUTF8Encoded.push(nameOffset);
+      const nameString = wasm.UTF8ToString(nameOffset);
       outputNames.push(nameString);
+      outputMetadata.push(
+        elementType === 0
+          ? { name: nameString, isTensor: false }
+          : { name: nameString, isTensor: true, type: tensorDataTypeEnumToString(elementType), shape: shape! },
+      );
 
       if (!BUILD_DEFS.DISABLE_JSEP) {
         if (enableGraphCapture && options?.preferredOutputLocation === undefined) {
@@ -403,7 +459,7 @@ export const createSession = async (
       enableGraphCapture,
       false,
     ]);
-    return [sessionHandle, inputNames, outputNames];
+    return [sessionHandle, inputNames, outputNames, inputMetadata, outputMetadata];
   } catch (e) {
     inputNamesUTF8Encoded.forEach((buf) => wasm._OrtFree(buf));
     outputNamesUTF8Encoded.forEach((buf) => wasm._OrtFree(buf));
@@ -454,6 +510,7 @@ export const releaseSession = (sessionId: number): void => {
   }
 
   wasm.jsepOnReleaseSession?.(sessionId);
+  wasm.webnnOnReleaseSession?.(sessionId);
   wasm.webgpuOnReleaseSession?.(sessionId);
 
   inputNamesUTF8Encoded.forEach((buf) => wasm._OrtFree(buf));
@@ -469,6 +526,7 @@ export const prepareInputOutputTensor = async (
   tensorHandles: number[],
   allocs: number[],
   sessionId: number,
+  tensorNameUTF8Encoded: number,
   index: number,
   enableGraphCapture = false,
 ): Promise<void> => {
@@ -520,7 +578,7 @@ export const prepareInputOutputTensor = async (
     const mlTensor = tensor[2].mlTensor as MLTensor;
     dataByteLength = calculateTensorSizeInBytes(tensorDataTypeStringToEnum(dataType), dims)!;
 
-    const registerMLTensor = wasm.jsepRegisterMLTensor;
+    const registerMLTensor = wasm.webnnRegisterMLTensor;
     if (!registerMLTensor) {
       throw new Error('Tensor location "ml-tensor" is not supported without using WebNN.');
     }
@@ -540,17 +598,16 @@ export const prepareInputOutputTensor = async (
         wasm.setValue(rawData + i * ptrSize, allocWasmString(data[i], allocs), '*');
       }
     } else {
-      const isGraphInput = wasm.jsepIsGraphInput;
+      const isGraphInput = wasm.webnnIsGraphInput;
       if (dataType !== 'string' && isGraphInput) {
-        const tensorNameUTF8 = wasm._OrtGetInputName(sessionId, index);
-        const tensorName = wasm.UTF8ToString(tensorNameUTF8);
+        const tensorName = wasm.UTF8ToString(tensorNameUTF8Encoded);
         // Promote the tensor to 'ml-tensor' if it is a graph input.
         if (isGraphInput(sessionId, tensorName)) {
           const dataTypeEnum = tensorDataTypeStringToEnum(dataType);
           dataByteLength = calculateTensorSizeInBytes(dataTypeEnum, dims)!;
           actualLocation = 'ml-tensor';
-          const createTemporaryTensor = wasm.jsepCreateTemporaryTensor;
-          const uploadTensor = wasm.jsepUploadTensor;
+          const createTemporaryTensor = wasm.webnnCreateTemporaryTensor;
+          const uploadTensor = wasm.webnnUploadTensor;
           if (!createTemporaryTensor || !uploadTensor) {
             throw new Error('Tensor location "ml-tensor" is not supported without using WebNN.');
           }
@@ -643,6 +700,7 @@ export const run = async (
         inputTensorHandles,
         inputOutputAllocs,
         sessionId,
+        inputNamesUTF8Encoded[inputIndices[i]],
         inputIndices[i],
         enableGraphCapture,
       );
@@ -655,6 +713,7 @@ export const run = async (
         outputTensorHandles,
         inputOutputAllocs,
         sessionId,
+        outputNamesUTF8Encoded[outputIndices[i]],
         inputCount + outputIndices[i],
         enableGraphCapture,
       );
@@ -722,6 +781,7 @@ export const run = async (
     }
 
     wasm.jsepOnRunStart?.(sessionHandle);
+    wasm.webnnOnRunStart?.(sessionHandle);
 
     let errorCode: number;
     if (!BUILD_DEFS.DISABLE_JSEP && ioBindingState) {
@@ -862,8 +922,8 @@ export const run = async (
               ]);
             }
           } else if (preferredLocation === 'ml-tensor' && size > 0) {
-            const ensureTensor = wasm.jsepEnsureTensor;
-            const isInt64Supported = wasm.jsepIsInt64Supported;
+            const ensureTensor = wasm.webnnEnsureTensor;
+            const isInt64Supported = wasm.webnnIsInt64Supported;
             if (!ensureTensor || !isInt64Supported) {
               throw new Error('preferredLocation "ml-tensor" is not supported without using WebNN.');
             }
@@ -890,9 +950,9 @@ export const run = async (
               dims,
               {
                 mlTensor,
-                download: wasm.jsepCreateMLTensorDownloader!(dataOffset, type),
+                download: wasm.webnnCreateMLTensorDownloader!(dataOffset, type),
                 dispose: () => {
-                  wasm.jsepReleaseTensorId!(dataOffset);
+                  wasm.webnnReleaseTensorId!(dataOffset);
                   wasm._OrtReleaseTensor(tensor);
                 },
               },
@@ -915,7 +975,7 @@ export const run = async (
         if (!keepOutputTensor) {
           wasm._OrtReleaseTensor(tensor);
         }
-        wasm.jsepOnRunEnd?.(sessionHandle);
+        wasm.webnnOnRunEnd?.(sessionHandle);
       }
     }
 

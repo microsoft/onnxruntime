@@ -2,7 +2,6 @@
 // Copyright (c) Intel Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "core/common/safeint.h"
 #include "core/framework/tensorprotoutils.h"
 #include "core/optimizer/initializer.h"
 #include "core/providers/common.h"
@@ -28,7 +27,7 @@ class ReshapeOpBuilder : public BaseOpBuilder {
 
   // Operator support related.
  private:
-  bool IsOpSupportedImpl(const InitializedTensorSet& initializers, const Node& node,
+  bool IsOpSupportedImpl(const GraphViewer& graph_viewer, const Node& node,
                          const WebnnDeviceType /* device_type */, const logging::Logger& logger) const override;
 };
 
@@ -75,7 +74,7 @@ Status ReshapeOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
 
 // Operator support related.
 
-bool ReshapeOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& initializers,
+bool ReshapeOpBuilder::IsOpSupportedImpl(const GraphViewer& graph_viewer,
                                          const Node& node,
                                          const WebnnDeviceType /* device_type */,
                                          const logging::Logger& logger) const {
@@ -86,12 +85,13 @@ bool ReshapeOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& initializer
     return false;
 
   const auto& perm_name = input_defs[1]->Name();
-  if (!Contains(initializers, perm_name)) {
+  const auto* perm_init = graph_viewer.GetConstantInitializer(perm_name);
+  if (!perm_init) {
     LOGS(logger, VERBOSE) << "New shape of reshape must be a constant initializer";
     return false;
   }
 
-  const auto& perm_tensor = *initializers.at(perm_name);
+  const auto& perm_tensor = *perm_init;
   std::vector<uint8_t> unpacked_tensor;
   auto status = onnxruntime::utils::UnpackInitializerData(perm_tensor, unpacked_tensor);
   if (!status.IsOK()) {

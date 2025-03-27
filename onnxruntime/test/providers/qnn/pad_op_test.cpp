@@ -180,7 +180,8 @@ TEST_F(QnnCPUBackendTests, Pad2dPadsNotIni) {
 // Pad reflect mode
 // Expected: contains 12 values, where each value and its corresponding value in 16-byte object <0C-00 00-00 00-00 00-00 40-01 23-05 EC-01 00-00> are an almost-equal pair
 // Actual: 16-byte object <0C-00 00-00 00-00 00-00 40-01 12-05 EC-01 00-00>, where the value pair (1.2, 0) at index #1 don't match, which is -1.2 from 1.2
-TEST_F(QnnCPUBackendTests, DISABLED_PadModeReflect) {
+// fixed by QNN 2.32
+TEST_F(QnnCPUBackendTests, PadModeReflect) {
   bool has_constant_value = false;
   RunPadOpTest(TestInputDef<float>({3, 2}, false, {1.0f, 1.2f, 2.3f, 3.4f, 4.5f, 5.6f}),
                TestInputDef<int64_t>({4}, true, {0, 1, 0, 0}),

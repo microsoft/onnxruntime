@@ -512,7 +512,7 @@ Status EfficientAttention(
     p.seqstart_q_ptr = nullptr;
     p.seqstart_k_ptr = nullptr;
   } else {
-    p.seqlen_k_ptr = const_cast<int32_t*>(reinterpret_cast<const int32_t*>(data.mask_index));
+    p.seqlen_k_ptr = reinterpret_cast<const int32_t*>(data.mask_index);
     p.seqstart_q_ptr = p.seqlen_k_ptr + parameters.batch_size;
     p.seqstart_k_ptr = p.seqlen_k_ptr + 2 * parameters.batch_size + 1;
   }
@@ -762,12 +762,8 @@ Status UnfusedAttention(
   } else {  // no mask
     if (nullptr != data.output_qk) {
       int64_t qk_size = (int64_t)batch_size * num_heads * sequence_length * total_sequence_length;
-      if (std::is_same<T, QK>::value) {
-        cudaMemcpyAsync(data.output_qk, data.scratch, qk_size * sizeof(QK), cudaMemcpyDeviceToDevice, stream);
-      } else {
-        ORT_RETURN_IF_ERROR(
-          (CopyQK<T, QK>(stream, static_cast<int>(qk_size), data.scratch, reinterpret_cast<QK*>(data.output_qk))));
-      }
+      ORT_RETURN_IF_ERROR(
+        (CopyQK<T, QK>(stream, static_cast<int>(qk_size), data.scratch, reinterpret_cast<QK*>(data.output_qk))));
     }
     ORT_RETURN_IF_ERROR(
         ComputeSoftmax<T>(

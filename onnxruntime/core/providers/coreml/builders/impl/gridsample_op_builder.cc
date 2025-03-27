@@ -42,7 +42,6 @@ class GridSampleOpBuilder : public BaseOpBuilder {
 Status GridSampleOpBuilder::AddToModelBuilderImpl([[maybe_unused]] ModelBuilder& model_builder,
                                                   [[maybe_unused]] const Node& node,
                                                   [[maybe_unused]] const logging::Logger& logger) const {
-#if defined(COREML_ENABLE_MLPROGRAM)
   using namespace CoreML::Specification::MILSpec;  // NOLINT
   // https://apple.github.io/coremltools/source/coremltools.converters.mil.mil.ops.defs.html#coremltools.converters.mil.mil.ops.defs.iOS15.image_resizing.resample
 
@@ -80,7 +79,6 @@ Status GridSampleOpBuilder::AddToModelBuilderImpl([[maybe_unused]] ModelBuilder&
   AddOperationOutput(*op, *output_defs[0]);
 
   model_builder.AddOperation(std::move(op));
-#endif
   return Status::OK();
 }
 
