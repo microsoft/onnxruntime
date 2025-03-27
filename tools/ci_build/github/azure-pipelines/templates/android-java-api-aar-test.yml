@@ -24,10 +24,6 @@ parameters:
   type: boolean
   default: true
 
-variables:
-  ${{ if eq(parameters.webGpuTest, true) }}:
-    ENABLE_WEBGPU: 'true'
-
 jobs:
 - job: Final_AAR_Testing_Android
   pool:
@@ -69,6 +65,14 @@ jobs:
 
   # skip emulator tests for qnn package as there are no arm64-v8a emulators and no qnn libraries for x86
   - ${{ if not(contains(parameters.packageName, 'qnn')) }}:
+    - script: |
+        set -e -x
+        if [[ "${{ parameters.webGpuTest }}" ]]; then
+          echo "##vso[task.setvariable variable=ENABLE_WEBGPU]true"
+        fi
+      name: webgpu_variables
+      displayName: Set WebGPU environment if needed
+
     - template: use-android-emulator.yml
       parameters:
         create: true
