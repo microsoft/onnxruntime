@@ -1,29 +1,29 @@
 # CI Pipeline Naming Convention
 
-To improve navigation and consistency within our GitHub Actions workflows, **all new CI pipelines must have names that begin with `(CI)`**. This naming convention will ensure that Continuous Integration workflows are easily identifiable in the GitHub sidebar and throughout our repository.
+To improve navigation and consistency within our GitHub Actions workflows, **all new CI pipelines that run on pull requests must have names beginning with `(CI)`**. This naming convention is designed to limit the workflows shown in the GitHub Actions web UI to those from the main branch at the top, reducing clutter from workflows in other branches.
 
 ## Rationale
 
 - **Easy Identification:**  
-  Prefixing CI pipelines with `(CI)` allows developers to quickly locate and differentiate these workflows from other GitHub Actions (such as deployments, releases, or custom scripts).
+  Prefixing CI pipelines with `(CI)` makes it straightforward to identify and filter Continuous Integration workflows, especially those that run on pull requests.
+
+- **Enhanced Navigation in the Web UI:**  
+  By standardizing the naming of CI workflows on the main branch, we ensure that only these pipelines appear prominently in the GitHub Actions sidebar. This reduces the noise from workflows in feature branches or other contexts.
 
 - **Consistent Naming:**  
-  A standardized naming scheme helps maintain order and consistency across the project’s CI/CD pipelines.
-
-- **Enhanced Navigation:**  
-  With clear naming conventions, developers can more efficiently filter and manage workflows using GitHub’s search and filtering tools.
+  A uniform naming convention helps maintain clarity and consistency across our CI/CD pipelines.
 
 ## Guidelines
 
 1. **Naming Format:**  
-   All new CI workflows must start with the prefix `(CI)`.  
+   All new CI workflows that run on pull requests must start with the prefix `(CI)`.  
    - **Example:** `(CI) Build & Test`, `(CI) Lint & Validate`, `(CI) Integration Tests`
 
 2. **Workflow File Location:**  
    Place your CI pipeline YAML files in the `.github/workflows` directory of the repository.
 
-4. **Review Process:**  
-   During code reviews, verify that any new CI pipeline adheres to the naming convention before merging.
+3. **Review Process:**  
+   During code reviews, verify that any new CI pipeline adheres to the naming convention before merging. This will ensure that only workflows from the main branch (with the `(CI)` prefix) appear at the top of the GitHub Actions sidebar.
 
 ## Implementation Example
 
