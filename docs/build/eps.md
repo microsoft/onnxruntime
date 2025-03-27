@@ -17,7 +17,7 @@ redirect_from: /docs/how-to/build/eps
 
 ## Execution Provider Shared Libraries
 
-The oneDNN, TensorRT, OpenVINO™, and CANN providers are built as shared libraries vs being statically linked into the main onnxruntime. This enables them to be loaded only when needed, and if the dependent libraries of the provider are not installed onnxruntime will still run fine, it just will not be able to use that provider. For non shared library providers, all dependencies of the provider must exist to load onnxruntime.
+The oneDNN, TensorRT, OpenVINO™, CANN, and QNN providers are built as shared libraries vs being statically linked into the main onnxruntime. This enables them to be loaded only when needed, and if the dependent libraries of the provider are not installed onnxruntime will still run fine, it just will not be able to use that provider. For non shared library providers, all dependencies of the provider must exist to load onnxruntime.
 
 ### Built files
 {: .no_toc }
@@ -109,16 +109,28 @@ See more information on the TensorRT Execution Provider [here](../execution-prov
 {: .no_toc }
 
  * Follow [instructions for CUDA execution provider](#cuda) to install CUDA and cuDNN, and setup environment variables.
- * Follow [instructions for installing TensorRT](https://docs.nvidia.com/deeplearning/tensorrt/install-guide/index.html)
-   * The TensorRT execution provider for ONNX Runtime is built and tested with TensorRT 10.0.
+ * Follow [instructions for installing TensorRT](https://docs.nvidia.com/deeplearning/tensorrt/latest/installing-tensorrt/installing.html)
+   * The TensorRT execution provider for ONNX Runtime is built and tested with TensorRT 10.8.
    * The path to TensorRT installation must be provided via the `--tensorrt_home` parameter.
-   * ONNX Runtime uses TensorRT built-in parser from `tensorrt_home` by default.
+   * ONNX Runtime uses [TensorRT built-in parser](https://developer.nvidia.com/tensorrt/download) from `tensorrt_home` by default.
    * To use open-sourced [onnx-tensorrt](https://github.com/onnx/onnx-tensorrt/tree/main) parser instead, add `--use_tensorrt_oss_parser` parameter in build commands below.
-       * The default version of open-sourced onnx-tensorrt parser is encoded in [cmake/deps.txt](https://github.com/microsoft/onnxruntime/blob/main/cmake/deps.txt).
+       * The default version of open-sourced onnx-tensorrt parser is specified in [cmake/deps.txt](https://github.com/microsoft/onnxruntime/blob/main/cmake/deps.txt).
        * To specify a different version of onnx-tensorrt parser:
          * Select the commit of [onnx-tensorrt](https://github.com/onnx/onnx-tensorrt/commits) that you preferred;
          * Run `sha1sum` command with downloaded onnx-tensorrt zip file to acquire the SHA1 hash 
          * Update [cmake/deps.txt](https://github.com/microsoft/onnxruntime/blob/main/cmake/deps.txt) with updated onnx-tensorrt commit and hash info.
+       * Please make sure TensorRT built-in parser/open-sourced onnx-tensorrt specified in [cmake/deps.txt](https://github.com/microsoft/onnxruntime/blob/main/cmake/deps.txt) are **version-matched**, if enabling `--use_tensorrt_oss_parser`. 
+         * i.e It's version-matched if assigning `tensorrt_home` with path to TensorRT-10.9 built-in binaries and onnx-tensorrt [10.9-GA branch](https://github.com/onnx/onnx-tensorrt/tree/release/10.9-GA) specified in [cmake/deps.txt](https://github.com/microsoft/onnxruntime/blob/main/cmake/deps.txt).
+
+
+### **[Note to ORT 1.21.0 open-sourced parser users]** 
+
+* ORT 1.21.0 links against onnx-tensorrt 10.8-GA, which requires upcoming onnx 1.18.
+  * Here's a temporarily fix to preview on onnx-tensorrt 10.8-GA (or newer) when building ORT 1.21.0: 
+    * Replace the [onnx line in cmake/deps.txt](https://github.com/microsoft/onnxruntime/blob/rel-1.21.0/cmake/deps.txt#L38) 
+      with `onnx;https://github.com/onnx/onnx/archive/f22a2ad78c9b8f3bd2bb402bfce2b0079570ecb6.zip;324a781c31e30306e30baff0ed7fe347b10f8e3c`  
+    * Download [this](https://github.com/microsoft/onnxruntime/blob/7b2733a526c12b5ef4475edd47fd9997ebc2b2c6/cmake/patches/onnx/onnx.patch) as raw file and save file to [cmake/patches/onnx/onnx.patch](https://github.com/microsoft/onnxruntime/blob/rel-1.21.0/cmake/patches/onnx/onnx.patch) (do not copy/paste from browser, as it might alter line break type)
+    * Build ORT 1.21.0 with trt-related flags above (including `--use_tensorrt_oss_parser`)
 
 ### Build Instructions
 {: .no_toc }
@@ -126,20 +138,20 @@ See more information on the TensorRT Execution Provider [here](../execution-prov
 #### Windows
 ```bash
 # to build with tensorrt built-in parser
-.\build.bat --cudnn_home <path to cuDNN home> --cuda_home <path to CUDA home> --use_tensorrt --tensorrt_home <path to TensorRT home> --cmake_generator "Visual Studio 17 2022"
+.\build.bat --config Release --parallel  --cmake_extra_defines 'CMAKE_CUDA_ARCHITECTURES=native' --cudnn_home <path to cuDNN home> --cuda_home <path to CUDA home> --use_tensorrt --tensorrt_home <path to TensorRT home> --cmake_generator "Visual Studio 17 2022"
 
 # to build with specific version of open-sourced onnx-tensorrt parser configured in cmake/deps.txt
-.\build.bat --cudnn_home <path to cuDNN home> --cuda_home <path to CUDA home> --use_tensorrt --tensorrt_home <path to TensorRT home> --use_tensorrt_oss_parser --cmake_generator "Visual Studio 17 2022" 
+.\build.bat --config Release --parallel  --cmake_extra_defines 'CMAKE_CUDA_ARCHITECTURES=native' --cudnn_home <path to cuDNN home> --cuda_home <path to CUDA home> --use_tensorrt --tensorrt_home <path to TensorRT home> --use_tensorrt_oss_parser --cmake_generator "Visual Studio 17 2022" 
 ```
 
 #### Linux
 
 ```bash
 # to build with tensorrt built-in parser
-./build.sh --cudnn_home <path to cuDNN e.g. /usr/lib/x86_64-linux-gnu/> --cuda_home <path to folder for CUDA e.g. /usr/local/cuda> --use_tensorrt --tensorrt_home <path to TensorRT home>
+./build.sh --config Release --parallel --cmake_extra_defines 'CMAKE_CUDA_ARCHITECTURES=native' --cudnn_home <path to cuDNN e.g. /usr/lib/x86_64-linux-gnu/> --cuda_home <path to folder for CUDA e.g. /usr/local/cuda> --use_tensorrt --tensorrt_home <path to TensorRT home>
 
 # to build with specific version of open-sourced onnx-tensorrt parser configured in cmake/deps.txt
-./build.sh  --cudnn_home <path to cuDNN e.g. /usr/lib/x86_64-linux-gnu/> --cuda_home <path to folder for CUDA e.g. /usr/local/cuda> --use_tensorrt --use_tensorrt_oss_parser --tensorrt_home <path to TensorRT home> --skip_submodule_sync
+./build.sh --config Release --parallel --cmake_extra_defines 'CMAKE_CUDA_ARCHITECTURES=native' --cudnn_home <path to cuDNN e.g. /usr/lib/x86_64-linux-gnu/> --cuda_home <path to folder for CUDA e.g. /usr/local/cuda> --use_tensorrt --use_tensorrt_oss_parser --tensorrt_home <path to TensorRT home> --skip_submodule_sync
 ```
 
 Dockerfile instructions are available [here](https://github.com/microsoft/onnxruntime/tree/main/dockerfiles#tensorrt)
@@ -164,7 +176,7 @@ These instructions are for the latest [JetPack SDK](https://developer.nvidia.com
 2. Specify the CUDA compiler, or add its location to the PATH.
 
    1. JetPack 5.x users can upgrade to the latest CUDA release without updating the JetPack version or Jetson Linux BSP (Board Support Package). 
-    
+   
       1. For JetPack 5.x users, CUDA>=11.8 and GCC>9.4 are required to be installed on and after ONNX Runtime 1.17. 
 
       2. Check [this official blog](https://developer.nvidia.com/blog/simplifying-cuda-upgrades-for-nvidia-jetson-users/) for CUDA upgrade instruction (CUDA 12.2 has been verified on JetPack 5.1.2 on Jetson Xavier NX).
@@ -198,14 +210,10 @@ These instructions are for the latest [JetPack SDK](https://developer.nvidia.com
    ```bash
    sudo apt install -y --no-install-recommends \
      build-essential software-properties-common libopenblas-dev \
-     libpython3.8-dev python3-pip python3-dev python3-setuptools python3-wheel
+     libpython3.10-dev python3-pip python3-dev python3-setuptools python3-wheel
    ```
 
-4. Cmake is needed to build ONNX Runtime. The minimum required CMake version is 3.26. This can be either installed by:
-
-   1. (Unix/Linux) Build from source. Download sources from [https://cmake.org/download/](https://cmake.org/download/)
-      and follow [https://cmake.org/install/](https://cmake.org/install/) to build from source. 
-   2. (Ubuntu) Install deb package via apt repository: e.g [https://apt.kitware.com/](https://apt.kitware.com/)
+4. Cmake is needed to build ONNX Runtime. Please check the minimum required CMake version [here](https://github.com/microsoft/onnxruntime/blob/main/cmake/CMakeLists.txt#L6). Download from https://cmake.org/download/ and add cmake executable to `PATH` to use it.
 
 5. Build the ONNX Runtime Python wheel:
 
@@ -221,7 +229,7 @@ These instructions are for the latest [JetPack SDK](https://developer.nvidia.com
 
 * By default, `onnxruntime-gpu` wheel file will be captured under `path_to/onnxruntime/build/Linux/Release/dist/` (build path can be customized by adding `--build_dir` followed by a customized path to the build command above).
 
-* Append `--skip_tests --cmake_extra_defines 'CMAKE_CUDA_ARCHITECTURES=72;87' 'onnxruntime_BUILD_UNIT_TESTS=OFF' 'onnxruntime_USE_FLASH_ATTENTION=OFF'
+* Append `--skip_tests --cmake_extra_defines 'CMAKE_CUDA_ARCHITECTURES=native' 'onnxruntime_BUILD_UNIT_TESTS=OFF' 'onnxruntime_USE_FLASH_ATTENTION=OFF'
 'onnxruntime_USE_MEMORY_EFFICIENT_ATTENTION=OFF'` to the build command to opt out optional features and reduce build time.
 
 * For a portion of Jetson devices like the Xavier series, higher power mode involves more cores (up to 6) to compute but it consumes more resource when building ONNX Runtime. Set `--parallel 1` in the build command if OOM happens and system is hanging.
@@ -356,34 +364,88 @@ See more information on the QNN execution provider [here](../execution-providers
 
 ### Prerequisites
 {: .no_toc }
-* Qualcomm AI Engine Direct SDK (Qualcomm Neural Network SDK) [Linux/Android/Windows](https://qpm.qualcomm.com/main/tools/details/qualcomm_ai_engine_direct)
+* Install the Qualcomm AI Engine Direct SDK (Qualcomm Neural Network SDK) [Linux/Android/Windows](https://qpm.qualcomm.com/main/tools/details/qualcomm_ai_engine_direct)
+
+* Install [cmake-3.28](https://cmake.org/download/) or higher.
+
+* Install Python 3.10 or higher.
+  * [Python 3.12 for Windows Arm64](https://www.python.org/ftp/python/3.12.9/python-3.12.9-arm64.exe)
+  * [Python 3.12 for Windows x86-64](https://www.python.org/ftp/python/3.12.9/python-3.12.9-amd64.exe)
+  * Note: Windows on Arm supports a x86-64 Python environment via emulation. Ensure that the Arm64 Python environment is actived for a native Arm64 ONNX Runtime build.
+
+* Checkout the source tree:
+
+   ```bash
+   git clone --recursive https://github.com/Microsoft/onnxruntime.git
+   cd onnxruntime
+   ```
+
+* Install ONNX Runtime Python dependencies.
+   ```bash
+   pip install -r requirements.txt
+   ```
+
+### Build Options
+{: .no_toc }
+
+* `--use_qnn [QNN_LIBRARY_KIND]`: Builds the QNN Execution provider. `QNN_LIBRARY_KIND` is optional and specifies whether to build the QNN Execution Provider as a shared library (default) or static library.
+  * `--use_qnn` or `--use_qnn shared_lib`: Builds the QNN Execution Provider as a shared library.
+  * `--use_qnn static_lib`: Builds QNN Execution Provider as a static library linked into ONNX Runtime. This is required for Android builds.
+* `--qnn_home QNN_SDK_PATH`: The path to the Qualcomm AI Engine Direct SDK.
+  * Example on Windows: `--qnn_home 'C:\Qualcomm\AIStack\QAIRT\2.31.0.250130'`
+  * Example on Linux: `--qnn_home /opt/qcom/aistack/qairt/2.31.0.250130`
+* `--build_wheel`: Enables Python bindings and builds Python wheel.
+* `--arm64`: Cross-compile for Arm64.
+* `--arm64ec`: Cross-compile for Arm64EC. Arm64EC code runs with native performance and is interoperable with x64 code running under emulation within the same process on a Windows on Arm device. Refer to the [Arm64EC Overview](https://learn.microsoft.com/en-us/windows/arm/arm64ec).
+
+Run `python tools/ci_build/build.py --help` for a description of all available build options.
 
 ### Build Instructions
 {: .no_toc }
 
-#### Windows (arm64 native build)
+#### Windows (native x86-64 or native Arm64)
 ```
-build.bat --arm64 --use_qnn --qnn_home=[QNN_SDK path] --build_shared_lib --cmake_generator "Visual Studio 17 2022" --skip_submodule_sync --config Release --build_dir \build\Windows
+.\build.bat --use_qnn --qnn_home [QNN_SDK_PATH] --build_shared_lib --build_wheel --cmake_generator "Visual Studio 17 2022" --config Release --parallel --skip_tests --build_dir build\Windows
 ```
 
-build python bindings 
+Notes:
+* Not all Qualcomm backends (e.g., HTP) are supported for model execution on a native x86-64 build. Refer to the [Qualcomm SDK backend documentation](https://docs.qualcomm.com/bundle/publicresource/topics/80-63442-50/backend.html) for more information.
+* Even if a Qualcomm backend does not support execution on x86-64, the QNN Execution provider may be able to [generate compiled models](../execution-providers/QNN-ExecutionProvider.md#qnn-context-binary-cache-feature) for the Qualcomm backend.
+
+#### Windows (Arm64 cross-compile target)
 ```
-build.bat --arm64 --use_qnn --qnn_home=[QNN_SDK path] --build_wheel --cmake_generator "Visual Studio 17 2022" --skip_submodule_sync --config Release --build_dir \build\Windows
+.\build.bat --arm64 --use_qnn --qnn_home [QNN_SDK_PATH] --build_shared_lib --build_wheel --cmake_generator "Visual Studio 17 2022" --config Release --parallel --build_dir build\Windows
 ```
-#### Linux (x64)
+
+#### Windows (Arm64EC cross-compile target)
 ```
-build.py --use_qnn --qnn_home=[QNN_SDK path] --build_shared_lib --skip_submodule_sync --config Release
+.\build.bat --arm64ec --use_qnn --qnn_home [QNN_SDK_PATH] --build_shared_lib --build_wheel --cmake_generator "Visual Studio 17 2022" --config Release --parallel --build_dir build\Windows
 ```
-#### Android (Cross-Compile):
+
+#### Windows (Arm64X cross-compile target)
+Use the `build_arm64x.bat` script to build Arm64X binaries. Arm64X binaries bundle both Arm64 and Arm64EC code, making Arm64X compatible with both Arm64 and Arm64EC processes on a Windows on Arm device. Refer to the [Arm64X PE files overview](https://learn.microsoft.com/en-us/windows/arm/arm64x-pe).
+
+```
+.\build_arm64x.bat --use_qnn --qnn_home [QNN_SDK_PATH] --build_shared_lib --cmake_generator "Visual Studio 17 2022" --config Release --parallel
+```
+Notes:
+* Do not specify a `--build_dir` option because `build_arm64x.bat` sets specific build directories.
+* The above command places Arm64X binaries in the `.\build\arm64ec-x\Release\Release\` directory.
+
+#### Linux (x86_64)
+```
+./build.sh --use_qnn --qnn_home [QNN_SDK_PATH] --build_shared_lib --build_wheel --config Release --parallel --skip_tests --build_dir build/Linux
+```
+
+#### Android (cross-compile):
 
 Please reference [Build OnnxRuntime For Android](android.md)
 ```
 # on Windows
-build.bat --build_shared_lib --skip_submodule_sync --android --config Release --use_qnn --qnn_home [QNN_SDK path] --android_sdk_path [android_SDK path] --android_ndk_path [android_NDK path] --android_abi arm64-v8a --android_api [api-version] --cmake_generator Ninja --build_dir build\Android
+.\build.bat --build_shared_lib --android --config Release --parallel --use_qnn static_lib --qnn_home [QNN_SDK_PATH] --android_sdk_path [android_SDK path] --android_ndk_path [android_NDK path] --android_abi arm64-v8a --android_api [api-version] --cmake_generator Ninja --build_dir build\Android
 
 # on Linux
-build.sh --build_shared_lib --skip_submodule_sync --android --config Release --use_qnn --qnn_home [QNN_SDK path] --android_sdk_path [android_SDK path] --android_ndk_path [android_NDK path] --android_abi arm64-v8a --android_api [api-version] --cmake_generator Ninja --build_dir build/Android
-
+./build.sh --build_shared_lib --android --config Release --parallel --use_qnn static_lib --qnn_home [QNN_SDK_PATH] --android_sdk_path [android_SDK path] --android_ndk_path [android_NDK path] --android_abi arm64-v8a --android_api [api-version] --cmake_generator Ninja --build_dir build/Android
 ```
 
 ---
@@ -544,8 +606,8 @@ See more information on the MIGraphX Execution Provider [here](../execution-prov
 ### Prerequisites
 {: .no_toc }
 
-* Install [ROCm](https://rocm.docs.amd.com/projects/install-on-linux/en/docs-6.0.0/)
-  * The MIGraphX execution provider for ONNX Runtime is built and tested with ROCm6.0.0
+* Install [ROCm](https://rocm.docs.amd.com/projects/install-on-linux/en/docs-6.3.1/)
+  * The MIGraphX execution provider for ONNX Runtime is built and tested with ROCm6.3.1
 * Install [MIGraphX](https://github.com/ROCmSoftwarePlatform/AMDMIGraphX)
   * The path to MIGraphX installation must be provided via the `--migraphx_home parameter`.
 
@@ -575,8 +637,8 @@ See more information on the ROCm Execution Provider [here](../execution-provider
 ### Prerequisites
 {: .no_toc }
 
-* Install [ROCm](https://rocm.docs.amd.com/projects/install-on-linux/en/docs-6.0.0/)
-  * The ROCm execution provider for ONNX Runtime is built and tested with ROCm6.0.0
+* Install [ROCm](https://rocm.docs.amd.com/projects/install-on-linux/en/docs-6.3.1/)
+  * The ROCm execution provider for ONNX Runtime is built and tested with ROCm6.3.1
 
 ### Build Instructions
 {: .no_toc }

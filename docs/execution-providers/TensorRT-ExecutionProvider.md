@@ -29,24 +29,25 @@ See [Build instructions](../build/eps.md#tensorrt).
 
 Note: Starting with version 1.19, **CUDA 12** becomes the default version when distributing ONNX Runtime GPU packages.
 
-| ONNX Runtime | TensorRT | CUDA           |
-| :----------- | :------- | :------------- |
-| main         | 10.5     | **12.x**, 11.8 |
-| 1.20         | 10.5     | **12.x**, 11.8 |
-| 1.19         | 10.2     | **12.x**, 11.8 |
-| 1.18         | 10.0     | 11.8, 12.x     |
-| 1.17         | 8.6      | 11.8, 12.x     |
-| 1.16         | 8.6      | 11.8           |
-| 1.15         | 8.6      | 11.8           |
-| 1.14         | 8.5      | 11.6           |
-| 1.12-1.13    | 8.4      | 11.4           |
-| 1.11         | 8.2      | 11.4           |
-| 1.10         | 8.0      | 11.4           |
-| 1.9          | 8.0      | 11.4           |
-| 1.7-1.8      | 7.2      | 11.0.3         |
-| 1.5-1.6      | 7.1      | 10.2           |
-| 1.2-1.4      | 7.0      | 10.1           |
-| 1.0-1.1      | 6.0      | 10.0           |
+| ONNX Runtime | TensorRT | CUDA                |
+| :----------- | :------- | :------------------ |
+| main         | 10.9     | **12.0-12.8**, 11.8 |
+| 1.21         | 10.8     | **12.0-12.8**, 11.8 |
+| 1.20         | 10.4     | **12.0-12.6**, 11.8 |
+| 1.19         | 10.2     | **12.0-12.6**, 11.8 |
+| 1.18         | 10.0     | 11.8, 12.0-12.6     |
+| 1.17         | 8.6      | 11.8, 12.0-12.6     |
+| 1.16         | 8.6      | 11.8                |
+| 1.15         | 8.6      | 11.8                |
+| 1.14         | 8.5      | 11.6                |
+| 1.12-1.13    | 8.4      | 11.4                |
+| 1.11         | 8.2      | 11.4                |
+| 1.10         | 8.0      | 11.4                |
+| 1.9          | 8.0      | 11.4                |
+| 1.7-1.8      | 7.2      | 11.0.3              |
+| 1.5-1.6      | 7.1      | 10.2                |
+| 1.2-1.4      | 7.0      | 10.1                |
+| 1.0-1.1      | 6.0      | 10.0                |
 
 For more details on CUDA/cuDNN versions, please see [CUDA EP requirements](./CUDA-ExecutionProvider.md#requirements).
 
@@ -202,6 +203,7 @@ Ort::ThrowOnError(api.GetTensorRTProviderOptionsAsString(tensorrt_options,      
 | Set minimum size for subgraphs in partitioning     | [trt_min_subgraph_size](./TensorRT-ExecutionProvider.md#trt_min_subgraph_size)             | int    |
 | Dump optimized subgraphs for debugging             | [trt_dump_subgraphs](./TensorRT-ExecutionProvider.md#trt_dump_subgraphs)                   | bool   |
 | Force sequential engine builds under multi-GPU     | [trt_force_sequential_engine_build](./TensorRT-ExecutionProvider.md#trt_force_sequential_engine_build) | bool   |
+| Exclude specific op types from running on TRT      | [trt_op_types_to_exclude](./TensorRT-ExecutionProvider.md#trt_op_types_to_exclude)         | string |
 |                                                    |                                                                                            |        |
 | **Advanced Configuration and Profiling**           |                                                                                            |        |
 | Enable sharing of context memory between subgraphs | [trt_context_memory_sharing_enable](./TensorRT-ExecutionProvider.md#trt_context_memory_sharing_enable) | bool   |
@@ -264,7 +266,7 @@ TensorRT configurations can be set by execution provider options. It's useful wh
         assert options["TensorrtExecutionProvider"].get("has_user_compute_stream", "") == "1"
     ...
     ```
-
+    
     </Details>
 
 * To take advantage of user compute stream, it is recommended to use [I/O Binding](https://onnxruntime.ai/docs/api/python/api_summary.html#data-on-device) to bind inputs and outputs to tensors in device.
@@ -417,14 +419,14 @@ TensorRT configurations can be set by execution provider options. It's useful wh
 
 
 * Description: control if sparsity can be used by TRT.
-  * Check `--sparsity` in `trtexec` command-line flags for [details](https://docs.nvidia.com/deeplearning/tensorrt/developer-guide/index.html#trtexec-flags).
+  * Check `--sparsity` in `trtexec` command-line flags for [details](https://docs.nvidia.com/deeplearning/tensorrt/latest/reference/command-line-programs.html#commonly-used-command-line-flags).
 
 ##### trt_builder_optimization_level
 
 
 * Description: set the builder optimization level.
 
-  > WARNING: levels below 3 do not guarantee good engine performance, but greatly improve build time.  Default 3, valid range [0-5]. Check `--builderOptimizationLevel` in `trtexec` command-line flags for [details](https://docs.nvidia.com/deeplearning/tensorrt/developer-guide/index.html#trtexec-flags).
+  > WARNING: levels below 3 do not guarantee good engine performance, but greatly improve build time.  Default 3, valid range [0-5]. Check `--builderOptimizationLevel` in `trtexec` command-line flags for [details](https://docs.nvidia.com/deeplearning/tensorrt/latest/reference/command-line-programs.html#commonly-used-command-line-flags).
 
 ##### trt_auxiliary_streams
 
@@ -432,7 +434,7 @@ TensorRT configurations can be set by execution provider options. It's useful wh
 * Description: set maximum number of auxiliary streams per inference stream.
   * Setting this value to 0 will lead to optimal memory usage.
   * Default -1 = heuristics.
-  * Check `--maxAuxStreams` in `trtexec` command-line flags for [details](https://docs.nvidia.com/deeplearning/tensorrt/developer-guide/index.html#trtexec-flags).
+  * Check `--maxAuxStreams` in `trtexec` command-line flags for [details](https://docs.nvidia.com/deeplearning/tensorrt/latest/reference/command-line-programs.html#commonly-used-command-line-flags).
 
 ##### trt_tactic_sources
 
@@ -468,6 +470,17 @@ TensorRT configurations can be set by execution provider options. It's useful wh
   * Engines will be generated and loaded with `sm80+` name suffix, instead of actual compute capacity.
   * Turing and former Nvidia GPU architecture and Nvidia Jetson Orin platform are not eligble to this option.
 
+
+##### trt_op_types_to_exclude
+
+
+* Description: exclude specific op types from running on TRT. (Available in ORT 1.21.0)
+  * The format is `op_type_1,op_type_2,op_type_3...`
+  * One use case is to mitigate the performance issue mentioned [below](https://onnxruntime.ai/docs/execution-providers/TensorRT-ExecutionProvider.html#known-issues), it allows users to prevent DDS ops from running on TensorRT, ensuring they are executed by CUDA EP or CPU EP instead:
+    ```bash
+    ./onnxruntime_perf_test -r 1 -e tensorrt -i "trt_op_types_to_exclude|NonMaxSuppression,NonZero,RoiAlign" /path/to/onnx/your_model.onnx
+    ```
+  * Another use case is experimenting assigning ops to CUDA EP vs TRT EP
 
 ### Environment Variables(deprecated)
 
@@ -519,11 +532,11 @@ Following environment variables can be set for TensorRT execution provider. Clic
 
 * `ORT_TENSORRT_BUILD_HEURISTICS_ENABLE`: Build engine using heuristics to reduce build time. Default 0 = false, nonzero = true.
 
-* `ORT_TENSORRT_SPARSITY_ENABLE`: Control if sparsity can be used by TRT. Default 0 = false, 1 = true. Check `--sparsity` in `trtexec` command-line flags for [details](https://docs.nvidia.com/deeplearning/tensorrt/developer-guide/index.html#trtexec-flags).
+* `ORT_TENSORRT_SPARSITY_ENABLE`: Control if sparsity can be used by TRT. Default 0 = false, 1 = true. Check `--sparsity` in `trtexec` command-line flags for [details](https://docs.nvidia.com/deeplearning/tensorrt/latest/reference/command-line-programs.html#commonly-used-command-line-flags).
 
-* `ORT_TENSORRT_BUILDER_OPTIMIZATION_LEVEL`: Set the builder optimization level. WARNING: levels below 3 do not guarantee good engine performance, but greatly improve build time.  Default 3, valid range [0-5]. Check `--builderOptimizationLevel` in `trtexec` command-line flags for [details](https://docs.nvidia.com/deeplearning/tensorrt/developer-guide/index.html#trtexec-flags).
+* `ORT_TENSORRT_BUILDER_OPTIMIZATION_LEVEL`: Set the builder optimization level. WARNING: levels below 3 do not guarantee good engine performance, but greatly improve build time.  Default 3, valid range [0-5]. Check `--builderOptimizationLevel` in `trtexec` command-line flags for [details](https://docs.nvidia.com/deeplearning/tensorrt/latest/reference/command-line-programs.html#commonly-used-command-line-flags).
 
-* `ORT_TENSORRT_AUXILIARY_STREAMS`: Set maximum number of auxiliary streams per inference stream. Setting this value to 0 will lead to optimal memory usage. Default -1 = heuristics. Check `--maxAuxStreams` in `trtexec` command-line flags for [details](https://docs.nvidia.com/deeplearning/tensorrt/developer-guide/index.html#trtexec-flags).
+* `ORT_TENSORRT_AUXILIARY_STREAMS`: Set maximum number of auxiliary streams per inference stream. Setting this value to 0 will lead to optimal memory usage. Default -1 = heuristics. Check `--maxAuxStreams` in `trtexec` command-line flags for [details](https://docs.nvidia.com/deeplearning/tensorrt/latest/reference/command-line-programs.html#commonly-used-command-line-flags).
 
 * `ORT_TENSORRT_TACTIC_SOURCES`: Specify the tactics to be used by adding (+) or removing (-) tactics from the default tactic sources (default = all available tactics) e.g. "-CUDNN,+CUBLAS" available keys: "CUBLAS", "CUBLAS_LT", "CUDNN" or "EDGE_MASK_CONVOLUTIONS".
 
@@ -791,6 +804,15 @@ sess.run(None, args)
 
 Please note that there is a constraint of using this explicit shape range feature, i.e., all the dynamic shape inputs should be provided with corresponding min/max/opt shapes.
 
+### Data-dependant shape (DDS) ops
+The DDS operations — *NonMaxSuppression*, *NonZero*, and *RoiAlign* — have output shapes that are only determined at runtime. 
+
+To ensure DDS ops are executed by TRT-EP/TRT instead of CUDA EP or CPU EP, please check the following:
+* For TensorRT < 10.7: Build ORT with [onnx-tensorrt OSS parser](https://github.com/onnx/onnx-tensorrt) and use `10.X-GA-ORT-DDS` branch.
+* For TensorRT >= 10.7: By default, DDS ops will be executed by TRT.
+* For ORT: By default, ORT relies on the TRT parser to decide if DDS ops run with TRT. However, note that ORT 1.20.1 and 1.20.2 will **not** run DDS ops with TRT due to a [known performance issue](https://onnxruntime.ai/docs/execution-providers/TensorRT-ExecutionProvider.html#known-issues).
+
+
 
 ## Samples
 
@@ -827,4 +849,7 @@ Please see [this Notebook](https://github.com/microsoft/onnxruntime/blob/main/do
 
 ## Known Issues
 - TensorRT 8.6 built-in parser and TensorRT oss parser behaves differently. Namely built-in parser cannot recognize some custom plugin ops while OSS parser can. See [EfficientNMS_TRT missing attribute class_agnostic w/ TensorRT 8.6
-](https://github.com/microsoft/onnxruntime/issues/16121). 
+](https://github.com/microsoft/onnxruntime/issues/16121).
+- There is a performance issue for TensorRT versions 10.0 to 10.5 when running models, such as Faster-RCNN, that:
+  - contain data-dependent shape (DDS) operations, like NonMaxSuppression, NonZero, and RoiAlign, and
+  - DDS ops are executed with TRT

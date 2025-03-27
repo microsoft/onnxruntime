@@ -70,7 +70,7 @@ You can download the models here:
    ```bash
    curl https://raw.githubusercontent.com/microsoft/onnxruntime-genai/main/examples/python/phi3v.py -o phi3v.py
    pip install pyreadline3
-   python phi3v.py -m gpu/gpu-int4-rtn-block-32 -p dml
+   python phi3v.py -m gpu/gpu-int4-rtn-block-32 -e dml
    ```
 
    Enter the path to an image file and a prompt. The model uses the image and prompt to give you an answer.
@@ -121,7 +121,7 @@ You can download the models here:
    ```bash
    curl https://raw.githubusercontent.com/microsoft/onnxruntime-genai/main/examples/python/phi3v.py -o phi3v.py
    pip install pyreadline3
-   python phi3v.py -m gpu/gpu-int4-rtn-block-32 -p cuda
+   python phi3v.py -m gpu/gpu-int4-rtn-block-32 -e cuda
    ```
 
    Enter the path to an image file and a prompt, and the model uses the image and prompt to give you an answer.
@@ -158,7 +158,7 @@ You can download the models here:
    ```bash
    curl https://raw.githubusercontent.com/microsoft/onnxruntime-genai/main/examples/python/phi3v.py -o phi3v.py
    pip install pyreadline3
-   python phi3v.py -m cpu_and_mobile/cpu-int4-rtn-block-32-acc-level-4 -p cpu
+   python phi3v.py -m cpu_and_mobile/cpu-int4-rtn-block-32-acc-level-4 -e cpu
    ```
 
    Enter the path to an image file and a prompt, and the model uses the image and prompt to give you an answer.

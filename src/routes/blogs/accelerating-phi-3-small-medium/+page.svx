@@ -48,9 +48,8 @@ Only execute the steps needed for your hardware.
 
 <img class="m-auto w50" src="./platform-optimization-map.png" alt="Mapping of which model to use based on hardware">
 
-Phi-3 Small 8K ONNX Models:
+Phi-3 Small 8K ONNX Model:
 - [microsoft/Phi-3-small-8k-instruct-onnx-cuda](https://huggingface.co/microsoft/Phi-3-small-8k-instruct-onnx-cuda)
-- [microsoft/Phi-3-small-128k-instruct-onnx-cuda](https://huggingface.co/microsoft/Phi-3-small-128k-instruct-onnx-cuda)
 
 Phi-3 Medium 4k ONNX Models:
 - [microsoft/Phi-3-medium-4k-instruct-onnx-cpu](https://huggingface.co/microsoft/Phi-3-medium-4k-instruct-onnx-cpu)
@@ -112,6 +111,6 @@ The ONNX Runtime models can run up to 10X faster than the PyTorch variants. The 
 
 ## Get started today
 
-To experience optimized [Phi-3](https://aka.ms/Phi-3Build2024) for yourself, you can now easily run these models using ONNX Runtime generate() [API instructions](https://aka.ms/run-phi3-med-onnx). To learn more, join us at ONNX Runtime, DML, and Phi-3 sessions at [Build](https://build.microsoft.com/en-US/sessions?search=ONNX&sortBy=relevance)!
+To experience optimized [Phi-3](https://aka.ms/Phi-3Build2024) for yourself, you can now easily run these models using ONNX Runtime generate() [API instructions](https://aka.ms/run-phi3-med-onnx). To learn more, join us at ONNX Runtime, DML, and Phi-3 sessions at [Build](https://build.microsoft.com)!
 
 

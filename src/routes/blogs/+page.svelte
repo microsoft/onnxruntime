@@ -23,6 +23,7 @@
 	import OliveCli from '../../images/blogs/olive-flow.png';
 	import QuantizeFinetune from '../../images/blogs/Quantize-finetune.jpg';
 	import MultiLoraThumbnail from '../../images/blogs/multilora.png';
+	import DeepSeekR1Thumbnail from '../../images/blogs/DeepSeek.png';
 	import ORTLogo from '../../images/ONNX-Icon.svg';
 	onMount(() => {
 		anime({
@@ -52,6 +53,15 @@
 	}
 	let featuredblog = [
 		{
+			title: 'Enhancing DeepSeek R1 performance for on-device inference with ONNX Runtime.',
+			date: '19th February, 2025',
+			blurb:
+				"Enhance your AI inferencing performance with DeepSeek R1 optimized for on-device use via ONNX Runtime! This blog explores how to efficiently run DeepSeek models across NPUs, GPUs, and CPUs, achieving up to 6.3x speed improvements over PyTorch. Learn how to convert, quantize, and fine-tune these models using the Olive framework and Azure AI Foundry.",
+			link: 'blogs/deepseek-r1-on-device',
+			image: DeepSeekR1Thumbnail,
+			imgalt: 'DeepSeek R1 On Device using ONNX Runtime Gen AI'
+		},
+		{
 			title: 'Cross-Platform Edge AI Made Easy with ONNX Runtime',
 			date: '19th November, 2024',
 			blurb:
@@ -69,6 +79,9 @@
 			image: MultiLoraThumbnail,
 			imgalt: 'Serving LoRA models separately vs with MultiLoRA'
 		},
+		
+	];
+	let blogs = [
 		{
 			title: 'Is it better to quantize before or after finetuning?',
 			date: '19th November, 2024',
@@ -77,9 +90,7 @@
 			link: 'blogs/olive-quant-ft',
 			image: QuantizeFinetune,
 			imgalt: 'Quantize or finetune first for better model performance?'
-		}
-	];
-	let blogs = [
+		},
 		{
 			title:
 				'Scribble to Erase on Goodnotes for Windows, Web, and Android, Powered by ONNX Runtime',

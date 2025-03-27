@@ -91,7 +91,8 @@ python build.py --build_java --android --android_home <path to your Android SDK>
 ### Install Python wheel
 
 ```bash
-cd build/wheel
+# Change dir to the folder containing the onnxruntime-genai wheel
+# Example for Linux: cd build/Linux/Release/wheel/
 pip install *.whl
 ```
 
