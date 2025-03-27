@@ -49,6 +49,7 @@ struct OrtTensorRTProviderOptionsV2 {
   const char* trt_profile_max_shapes{nullptr};           // Specify the range of the input shapes to build the engine with
   const char* trt_profile_opt_shapes{nullptr};           // Specify the range of the input shapes to build the engine with
   int trt_cuda_graph_enable{0};                          // Enable CUDA graph in ORT TRT
+  const char* trt_preview_features;                      // Trt preview features, features should be seperated by semicolon
 
   /*
    * Please note that there are rules for using following context model related provider options:
