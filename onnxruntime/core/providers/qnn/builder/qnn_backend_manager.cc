@@ -1861,5 +1861,17 @@ Status QnnBackendManager::GetOrRegisterContextMemHandle(Qnn_ContextHandle_t cont
   return Status::OK();
 }
 
+Status QnnBackendManager::UnregisterContextMemHandle(Qnn_ContextHandle_t context_handle, void* memory_address) {
+  const auto context_handle_record_it = context_map_.find(context_handle);
+  ORT_RETURN_IF_NOT(context_handle_record_it != context_map_.end(), "QNN context not found: ", context_handle);
+
+  auto& context_handle_record = context_handle_record_it->second;
+  auto& context_mem_handle_manager = context_handle_record->mem_handles;
+
+  ORT_RETURN_IF_ERROR(context_mem_handle_manager->Unregister(memory_address));
+
+  return Status::OK();
+}
+
 }  // namespace qnn
 }  // namespace onnxruntime

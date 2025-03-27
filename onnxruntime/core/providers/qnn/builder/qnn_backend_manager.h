@@ -140,6 +140,9 @@ class QnnBackendManager : public std::enable_shared_from_this<QnnBackendManager>
                                        Qnn_MemHandle_t& mem_handle,
                                        const bool uses_shared_mem_alloc);
 
+  // Unregisters a QNN mem handle if one exists for the given context and memory address
+  Status UnregisterContextMemHandle(Qnn_ContextHandle_t context, void* memory_address);
+
   Status ParseLoraConfig(std::string lora_config);
 
  private:
