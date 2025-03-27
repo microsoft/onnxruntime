@@ -66,7 +66,7 @@ common::Status CreateTensorRTCustomOpDomainList(std::vector<OrtCustomOpDomain*>&
 
     for (int i = 0; i < num_plugin_creator; i++) {
       auto plugin_creator = plugin_creators[i];
-      nvinfer1::AsciiChar const* plugin_name= nullptr;
+      nvinfer1::AsciiChar const* plugin_name = nullptr;
       if (std::strcmp(plugin_creators[i]->getInterfaceInfo().kind, "PLUGIN CREATOR_V1") == 0) {
 #if defined(_MSC_VER)
 #pragma warning(push)
@@ -74,7 +74,7 @@ common::Status CreateTensorRTCustomOpDomainList(std::vector<OrtCustomOpDomain*>&
 #endif
         auto plugin_creator_v1 = static_cast<nvinfer1::IPluginCreator const*>(plugin_creator);
         plugin_name = plugin_creator_v1->getPluginName();
-        LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] " << plugin_name<< ", version : " << plugin_creator_v1->getPluginVersion();
+        LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] " << plugin_name << ", version : " << plugin_creator_v1->getPluginVersion();
 #if defined(_MSC_VER)
 #pragma warning(pop)
 #endif
@@ -96,7 +96,6 @@ common::Status CreateTensorRTCustomOpDomainList(std::vector<OrtCustomOpDomain*>&
       custom_op_domain->custom_ops_.push_back(created_custom_op_list.back().get());
       registered_plugin_names.insert(plugin_name);
     }
-
 
     custom_op_domain->domain_ = "trt.plugins";
     domain_list.push_back(custom_op_domain.get());
