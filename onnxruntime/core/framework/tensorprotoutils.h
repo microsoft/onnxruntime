@@ -40,19 +40,13 @@ Status GetExternalDataInfo(const ONNX_NAMESPACE::TensorProto& tensor_proto,
                            SafeInt<size_t>& tensor_byte_size,
                            ExternalDataInfo::PrepackedInfos* prepacked_infos = nullptr);
 /**
- * This function is used to convert the endianess of Tensor data.
- * If ext_data_buf is provided, then this buffer content's endianess
- * will be changed.
+ * This function is used to convert the endianess of TensorProto data.
+ *
  * Mostly, will be used in big endian system to support the model file
  * generated on little endian system.
  * @param tensor_proto given initializer tensor
- * @param ext_data_buf optional externl data buffer
- * @param ext_data_len optional externl data buffer lengeh
- * @returns                 None
  */
-void ConvertRawDataInTensorProto(ONNX_NAMESPACE::TensorProto* tensor_proto,
-                                 void* ext_data_buf = NULL,
-                                 size_t ext_data_len = 0);
+void ConvertRawDataInTensorProto(ONNX_NAMESPACE::TensorProto* tensor_proto);
 
 /**
  * Wrapper function for set_raw_data.
@@ -102,6 +96,16 @@ TensorShape GetTensorShapeFromTensorShapeProto(const ONNX_NAMESPACE::TensorShape
 
 TensorShape GetTensorShapeFromTensorProto(const ONNX_NAMESPACE::TensorProto& tensor_proto);
 
+/// <summary>
+/// This function checks if the tensor_proto has external data in memory.
+/// If it does, it converts it to a result with data inline, otherwise it does nothing.
+/// The function returns a unique_ptr to make it compatible with EPs code.
+/// </summary>
+/// <param name="tensor_proto">source proto</param>
+/// <returns>new tensor proto with data inline or nullptr</returns>
+std::unique_ptr<ONNX_NAMESPACE::TensorProto> GetTensorProtoWithDataIfInMemory(
+    const ONNX_NAMESPACE::TensorProto& tensor_proto);
+
 /**
  * deserialize a TensorProto into a preallocated memory buffer on CPU.
  * \param tensor_proto_path A local file path of where the 'input' was loaded from.
@@ -136,6 +140,25 @@ common::Status TensorProtoToOrtValue(const Env& env, const std::filesystem::path
 common::Status TensorProtoToTensor(const Env& env, const std::filesystem::path& model_path,
                                    const ONNX_NAMESPACE::TensorProto& tensor_proto,
                                    Tensor& tensor);
+
+/**
+ * @brief Pre-allocates empty tensor and deserializes a TensorProto into it
+ * @param env
+ * @param model_path
+ * @param tensor_proto  source data
+ * @param tensor       destination empty tensor
+ * @return
+ */
+common::Status CreateTensorFromTensorProto(const Env& env, const std::filesystem::path& model_path,
+                                           const ONNX_NAMESPACE::TensorProto& tensor_proto,
+                                           Tensor& tensor);
+
+/// The threshold for small tensors. If the size of the tensor is LE to this value,
+/// The data will stay in the TensorProto. Otherwise, the data will be moved to a Tensor instance
+/// and TensorProto will contain a kTensorProtoMemoryAddressTag reference as a result of
+/// TensorToTensorProto() below. This is because shape inferencing code in onnx for
+/// like Reshape parses wheights data and it needs to be in the TensorProto.
+constexpr const size_t kSmallTensorExternalDataThreshold = 127;  // 127 bytes
 
 /**
  * @brief Creates a TensorProto from a Tensor.
@@ -173,18 +196,20 @@ address of the memory containing the data.
 */
 constexpr const ORTCHAR_T* kTensorProtoMemoryAddressTag = ORT_TSTR("*/_ORT_MEM_ADDR_/*");
 
-// Given a tensor proto with external data obtain a pointer to the data and its length.
-// The ext_data_deleter argument is updated with a callback that owns/releases the data.
-// If tensor_proto's external file path is kTensorProtoMemoryAddressTag, and
-// buffered_tensor is not null, buffered_tensor holds the real buffer pointed
-// by tensor_proto. buffered_tensor must be the owner of the buffer and deleter
-// should release the buffer when tensor_proto is released.
+/// <summary>
+/// Creates a OrtValue with a tensor on top of the external data.
+/// If tensor_proto points to a memory address, the OrtValue will be created with a tensor
+/// that does not own the memory since the memory is already owned by one of the ortvalue_initializers.
+/// </summary>
+/// <param name="env"></param>
+/// <param name="model_path">model path</param>
+/// <param name="tensor_proto">tensor proto containing external data</param>
+/// <param name="ort_value">output ort value</param>
+/// <param name="prepacked_info">optional pre-packed weight data output container</param>
+/// <returns>Status</returns>
 common::Status GetExtDataFromTensorProto(const Env& env, const std::filesystem::path& model_path,
                                          const ONNX_NAMESPACE::TensorProto& tensor_proto,
-                                         void*& ext_data_buf, SafeInt<size_t>& ext_data_len,
-                                         OrtCallback& ext_data_deleter,
-                                         Tensor* buffered_tensor = nullptr,
-                                         PrepackedWeightsForGraph* prepacked_for_graph = nullptr);
+                                         OrtValue& ort_value, PrepackedWeightsForGraph* prepacked_info = nullptr);
 
 // Given a tensor proto with external data obtain a tensor using the specified custom external data loader.
 common::Status LoadExtDataToTensorFromTensorProto(const Env& env, const std::filesystem::path& model_path,
@@ -206,6 +231,13 @@ common::Status ConstantNodeProtoToTensorProto(const ONNX_NAMESPACE::NodeProto& n
 common::Status ConstantNodeProtoToTensorProto(const ONNX_NAMESPACE::NodeProto& node,
                                               const std::filesystem::path& model_path,
                                               ONNX_NAMESPACE::TensorProto& tensor);
+
+/// <summary>
+/// Creates a new CPU based tensor and copies the data from the source tensor.
+/// </summary>
+/// <param name="src_tensor"></param>
+/// <param name="dst_tensor"></param>
+void MakeCpuTensorCopy(const Tensor& src_tensor, Tensor& dst_tensor);
 
 #if !defined(DISABLE_SPARSE_TENSORS)
 // Convert a SparseTensorProto to a dense TensorProto

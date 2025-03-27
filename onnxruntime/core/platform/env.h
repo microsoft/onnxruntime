@@ -26,7 +26,6 @@ limitations under the License.
 
 #include "core/common/common.h"
 #include "core/common/path_string.h"
-#include "core/framework/callback.h"
 #include "core/platform/env_time.h"
 #include "core/platform/telemetry.h"
 #include "core/session/onnxruntime_c_api.h"
@@ -179,7 +178,7 @@ class Env {
   virtual common::Status ReadFileIntoBuffer(_In_z_ const ORTCHAR_T* file_path, FileOffsetType offset, size_t length,
                                             gsl::span<char> buffer) const = 0;
 
-  using MappedMemoryPtr = std::unique_ptr<char[], OrtCallbackInvoker>;
+  using MappedMemoryPtr = std::unique_ptr<char[], std::function<void(void*)>>;
 
   /**
    * Maps the content of the file into memory.
