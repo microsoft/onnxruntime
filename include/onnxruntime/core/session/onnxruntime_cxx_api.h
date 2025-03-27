@@ -1012,11 +1012,11 @@ struct ModelCompilationOptionsImpl : ConstModelCompilationOptionsImpl<T> {
   using B = ConstModelCompilationOptionsImpl<T>;
   using B::B;
 
-  ModelCompilationOptionsImpl& SetInputModelPath(const ORTCHAR_T* input_model_path);               ///< Wraps OrtApi::ModelCompilationOptions_SetInputModelPath
+  ModelCompilationOptionsImpl& SetInputModelPath(const ORTCHAR_T* input_model_path);  ///< Wraps OrtApi::ModelCompilationOptions_SetInputModelPath
   ModelCompilationOptionsImpl& SetInputModelFromBuffer(const void* input_model_data,
-                                                       size_t input_model_data_size);              ///< Wraps OrtApi::ModelCompilationOptions_SetInputModelFromBuffer
-  ModelCompilationOptionsImpl& SetEpContextEmbedMode(bool embed_ep_context_in_model);              ///< Wraps OrtApi::ModelCompilationOptions_SetEpContextEmbedMode
-  ModelCompilationOptionsImpl& SetOutputModelPath(const ORTCHAR_T* output_model_path);             ///< Wraps OrtApi::ModelCompilationOptions_SetOutputModelPath
+                                                       size_t input_model_data_size);   ///< Wraps OrtApi::ModelCompilationOptions_SetInputModelFromBuffer
+  ModelCompilationOptionsImpl& SetEpContextEmbedMode(bool embed_ep_context_in_model);   ///< Wraps OrtApi::ModelCompilationOptions_SetEpContextEmbedMode
+  ModelCompilationOptionsImpl& SetOutputModelPath(const ORTCHAR_T* output_model_path);  ///< Wraps OrtApi::ModelCompilationOptions_SetOutputModelPath
   ModelCompilationOptionsImpl& SetOutputModelExternalInitializersFile(const ORTCHAR_T* file_path,
                                                                       size_t initializer_size_threshold);  ///< Wraps OrtApi::ModelCompilationOptions_SetOutputModelExternalInitializersFile
   ModelCompilationOptionsImpl& SetOutputModelBuffer(OrtAllocator* allocator, void** output_model_buffer_ptr,

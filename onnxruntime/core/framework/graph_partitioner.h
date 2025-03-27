@@ -41,7 +41,7 @@ class GraphPartitioner {
                    const ConfigOptions& config_options,
                    const logging::Logger& logger,
                    Mode mode = Mode::kNormal,
-                   EpContextModelGenerationOptions ep_context_gen_options = {},
+                   const EpContextModelGenerationOptions& ep_context_gen_options = {},
                    const layout_transformation::DebugGraphFn& debug_graph_fn = {}) const;
 
 #ifndef ORT_MINIMAL_BUILD

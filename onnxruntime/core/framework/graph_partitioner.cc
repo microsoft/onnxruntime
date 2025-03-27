@@ -1089,7 +1089,7 @@ Status GraphPartitioner::Partition(Graph& graph, FuncManager& func_mgr,
                                    const ConfigOptions& config_options,
                                    const logging::Logger& logger,
                                    Mode mode,
-                                   EpContextModelGenerationOptions ep_context_gen_options,
+                                   const EpContextModelGenerationOptions& ep_context_gen_options,
                                    const layout_transformation::DebugGraphFn& debug_graph_fn) const {
   // It is a greedy partitioning algorithm per provider preferences user provided when calling ONNX RUNTIME right now.
   // 1. Execution providers' capabilities are checked one by one.
