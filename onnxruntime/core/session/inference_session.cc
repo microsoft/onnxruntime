@@ -96,8 +96,6 @@
 using namespace ONNX_NAMESPACE;
 using namespace onnxruntime::common;
 
-extern int saturate_counter;
-
 namespace onnxruntime {
 namespace {
 template <typename T>
@@ -250,6 +248,8 @@ Status GetMinimalBuildOptimizationHandling(
 #endif  // !defined(ORT_MINIMAL_BUILD)
 
 }  // namespace
+
+extern std::atomic<int> saturation_count;
 
 std::atomic<uint32_t> InferenceSession::global_session_id_{1};
 std::map<uint32_t, InferenceSession*> InferenceSession::active_sessions_;
@@ -2841,7 +2841,7 @@ Status InferenceSession::Run(const RunOptions& run_options,
   }
 #endif
 
-  saturate_counter = 0;
+  saturation_count = 0;
 
   // As N+1 inference runs (N for memory allocation and 1 for graph capturing)
   // are needed before replaying the captured graph, here run N inference runs recursively until graph captured,
