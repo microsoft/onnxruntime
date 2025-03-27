@@ -1153,6 +1153,7 @@ Status GraphPartitioner::Partition(Graph& graph, FuncManager& func_mgr,
 #else
     ORT_UNUSED_PARAMETER(config_options);
     ORT_UNUSED_PARAMETER(logger);
+    ORT_UNUSED_PARAMETER(ep_context_gen_options);
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "ONNX models are not supported in this build.");
 #endif  //! defined(ORT_MINIMAL_BUILD)
   } else {
