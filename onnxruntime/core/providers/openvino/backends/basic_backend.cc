@@ -425,8 +425,8 @@ void BasicBackend::StartAsyncInference(Ort::KernelContext& context, OVInferReque
         }
       }
     }  // Loop subgraph original input names
-
-    if (session_context_.device_type.find("NPU") != std::string::npos) {
+    if (session_context_.device_type.find("NPU") != std::string::npos &&
+        !subgraph_context_.has_dynamic_input_shape) {
       // Set the output blob as remote blob
       auto graph_output_info = exe_network_.Get().outputs();
       auto output_idx = 0;
