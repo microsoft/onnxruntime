@@ -17,7 +17,7 @@ class If final : public WebGpuKernel {
   If(const OpKernelInfo& info) : WebGpuKernel(info), cpu_if_(info) {}
 
   Status ComputeInternal(ComputeContext& context) const override {
-    return cpu_if_.Compute(context.OpKernelContext());
+    return cpu_if_.Compute(context.KernelContext());
   }
 
  private:
