@@ -26,7 +26,7 @@ jobs:
       python_path_prefix: 'PATH=/opt/python/cp310-cp310/bin:$PATH'
       run_tests: false            # <<< Do not run tests in this job
       upload_build_output: true   # <<< Upload the build/Release directory
-      execution_providers: 'cuda tensorrt' # <<< Added tensorrt as it seems implied by flags
+      execution_providers: 'cuda'
     secrets:
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }} # Pass token for reusable workflow needs (e.g., docker build action)
 
@@ -107,6 +107,6 @@ jobs:
           docker_image: onnxruntimecuda12manylinuxbuild # Use the same image
           build_config: Release
           mode: 'test' # Set mode to test
-          execution_providers: 'cuda tensorrt' # Specify EPs needed for testing
+          execution_providers: 'cuda'
           extra_build_flags: '--use_binskim_compliant_compile_flags --cuda_version=12.2 --cuda_home=/usr/local/cuda-12.2 --cudnn_home=/usr/local/cuda-12.2 --enable_cuda_profiling --cmake_extra_defines CMAKE_CUDA_ARCHITECTURES=80 onnxruntime_BUILD_UNIT_TESTS=ON onnxruntime_ENABLE_CUDA_EP_INTERNAL_TESTS=ON'
           python_path_prefix: 'PATH=/opt/python/cp310-cp310/bin:$PATH'
