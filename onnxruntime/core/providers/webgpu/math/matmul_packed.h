@@ -52,7 +52,7 @@ class MatMulProgram final : public Program<MatMulProgram> {
   const bool is_vec4_;
   const InlinedVector<int64_t> elements_per_thread_;
 
-  void MatMulReadWriteFnSource(ShaderHelper& shader, const ShaderVariableHelper& a, const ShaderVariableHelper& b, const ShaderVariableHelper& output, const ShaderIndicesHelper& batch_dims) const;
+  void MatMulReadWriteFnSource(ShaderHelper& shader, const ShaderVariableHelper& a, const ShaderVariableHelper& b, const ShaderVariableHelper& output, const ShaderIndicesHelper& batch_dims, std::string apply_activation) const;
 };
 
 }  // namespace webgpu

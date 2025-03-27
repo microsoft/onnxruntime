@@ -13,7 +13,8 @@ void MatMulProgram::MatMulReadWriteFnSource(ShaderHelper& shader,
                                             const ShaderVariableHelper& a,
                                             const ShaderVariableHelper& b,
                                             const ShaderVariableHelper& output,
-                                            const ShaderIndicesHelper& batch_dims) const {
+                                            const ShaderIndicesHelper& batch_dims,
+                                            std::string activation_snippet) const {
   int components = is_vec4_ ? 4 : 1;
   const std::string data_type = "a_element_t";
   const std::string type_string = MakeScalarOrVectorType(components, data_type);
@@ -54,6 +55,7 @@ void MatMulProgram::MatMulReadWriteFnSource(ShaderHelper& shader,
       << "  let col = colIn * " << components << ";\n"
       << "  if (row < uniforms.dim_a_outer && col < uniforms.dim_b_outer) {\n"
       << "    var value = valueIn;\n"
+      << "    " << activation_snippet << "\n"
       << "    let coords = vec3<i32>(batch, row, colIn);\n";
 
   if (has_bias_) {
@@ -367,9 +369,9 @@ Status MatMulProgram::GenerateShaderCode(ShaderHelper& shader) const {
   if (has_bias_) {
     shader.AddInput("bias", ShaderUsage::UseUniform);
   }
-
+  std::string apply_activation = GetActivationSnippet(activation_, "output_value_t");
   // declare the read and write functions
-  MatMulReadWriteFnSource(shader, a, b, output, batch_dims);
+  MatMulReadWriteFnSource(shader, a, b, output, batch_dims, apply_activation);
   std::string data_type = "a_value_t";
   // generate the main function
   if (is_vec4_) {
