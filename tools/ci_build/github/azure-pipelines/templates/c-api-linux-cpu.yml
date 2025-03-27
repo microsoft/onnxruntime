@@ -85,6 +85,7 @@ jobs:
         version: '$(OnnxRuntimeVersion)'
         libraryName: 'libonnxruntime.so'
         nativeLibraryName: 'libonnxruntime4j_jni.so'
+        is1ES: true
 
   - template: c-api-artifacts-package-and-publish-steps-posix.yml
     parameters:

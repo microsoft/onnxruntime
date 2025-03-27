@@ -128,6 +128,10 @@ function(setup_mlas_source_for_windows)
         ${MLAS_SRC_DIR}/arm64/SymQgemmS8KernelSDot.asm
         ${MLAS_SRC_DIR}/arm64/SymQgemmS8KernelSDotLd64.asm
       )
+
+      if (onnxruntime_USE_KLEIDIAI)
+        setup_kleidiai()
+      endif()
     else()
       target_sources(onnxruntime_mlas PRIVATE
         ${MLAS_SRC_DIR}/qgemm_kernel_neon.cpp
@@ -254,6 +258,24 @@ function(setup_mlas_source_for_windows)
       ${MLAS_SRC_DIR}/i386/SgemmKernelAvx.asm
     )
   endif()
+endfunction()
+
+function(setup_kleidiai)
+  target_compile_definitions(onnxruntime_mlas PRIVATE USE_KLEIDIAI)
+
+  # Disable the KleidiAI tests
+  set(KLEIDIAI_BUILD_TESTS  OFF)
+
+  # Fetch KleidiAI sources:
+  if (NOT TARGET kleidiai)
+    onnxruntime_fetchcontent_declare(kleidiai URL ${DEP_URL_kleidiai} URL_HASH SHA1=${DEP_SHA1_kleidiai} EXCLUDE_FROM_ALL)
+  endif()
+  onnxruntime_fetchcontent_makeavailable(kleidiai)
+
+  target_sources(onnxruntime_mlas PRIVATE
+    ${MLAS_SRC_DIR}/kai_ukernel_interface.cpp
+  )
+  target_link_libraries(onnxruntime_mlas PRIVATE kleidiai)
 endfunction()
 
 if (CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
@@ -395,6 +417,9 @@ else()
           ${MLAS_SRC_DIR}/eltwise_kernel_neon.h
           ${MLAS_SRC_DIR}/eltwise_kernel_neon.cpp
         )
+        if (onnxruntime_USE_KLEIDIAI)
+          setup_kleidiai()
+        endif()
         set_source_files_properties(${MLAS_SRC_DIR}/sqnbitgemm_kernel_neon_int8.cpp
                                     PROPERTIES COMPILE_FLAGS " -march=armv8.2-a+dotprod")
         if (NOT APPLE)

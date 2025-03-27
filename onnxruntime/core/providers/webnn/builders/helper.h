@@ -171,12 +171,13 @@ inline bool ReadScalarTensorData(const onnx::TensorProto& tensor, emscripten::va
   return true;
 }
 
-inline bool IsEmptyTensor(const InitializedTensorSet& initializers, const std::string& name) {
-  if (name.empty() || !Contains(initializers, name)) {
+inline bool IsEmptyTensor(const GraphViewer& graph_viewer, const std::string& name) {
+  const auto* tensor_init = graph_viewer.GetConstantInitializer(name);
+  if (name.empty() || !tensor_init) {
     return true;
   }
 
-  const auto& tensor = *initializers.at(name);
+  const auto& tensor = *tensor_init;
   const auto dims = tensor.dims();
   // An empty tensor contains a 0 in the dimensions list.
   return std::any_of(dims.begin(), dims.end(), [](auto d) { return d == 0; });

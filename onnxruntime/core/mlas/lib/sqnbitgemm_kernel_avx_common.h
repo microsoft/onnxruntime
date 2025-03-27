@@ -11,6 +11,7 @@ Q4BitGemmPackQuantBDataSize(
     size_t N,
     size_t K,
     size_t BlkLen,
+    bool /* HasZeroPoint */,
     MLAS_QNBIT_GEMM_COMPUTE_TYPE ComputeType
 )
 {
@@ -302,22 +303,22 @@ PackQuantBDataAndBlkSum(
     size_t SubBlkLen,
     const std::byte* QuantBDataBegin,
     const float* QuantBScaleBegin,
-    bool has_zp_input,
+    bool HasZeroPoint,
     const std::byte* QuantBZPBegin,
-    PackedQuantBDataStruct<float>& packed_quant_b,
+    PackedQuantBDataStruct<float>& PackedQuantB,
     MLAS_THREADPOOL* ThreadPool
 )
 {
     if (QuantBDataBegin) {
-        PackQuantB(QuantBDataBegin, packed_quant_b.PackedQuantBData, ThreadPool, N, BlockCountK, BlkLen, SubBlkLen);
+        PackQuantB(QuantBDataBegin, PackedQuantB.PackedQuantBData, ThreadPool, N, BlockCountK, BlkLen, SubBlkLen);
     }
 
     if (QuantBScaleBegin) {
-        std::copy(QuantBScaleBegin, QuantBScaleBegin + N * BlockCountK, packed_quant_b.PackedQuantBScale);
+        std::copy(QuantBScaleBegin, QuantBScaleBegin + N * BlockCountK, PackedQuantB.PackedQuantBScale);
     }
 
-    if ((QuantBScaleBegin && !has_zp_input) || QuantBZPBegin) {
-        ComputePackBlkSum(BlkLen, SubBlkLen, N, packed_quant_b.PackedQuantBScale, QuantBZPBegin, packed_quant_b.QuantBBlkSum, ThreadPool, BlockCountK);
+    if ((QuantBScaleBegin && !HasZeroPoint) || QuantBZPBegin) {
+        ComputePackBlkSum(BlkLen, SubBlkLen, N, PackedQuantB.PackedQuantBScale, QuantBZPBegin, PackedQuantB.QuantBBlkSum, ThreadPool, BlockCountK);
     }
 }
 
@@ -331,6 +332,7 @@ Q4BitGemmPerGemmWorkspaceSize(
     size_t N,
     size_t K,
     size_t BlkLen,
+    bool /* HasZeroPoint */,
     MLAS_QNBIT_GEMM_COMPUTE_TYPE ComputeType
 )
 {
