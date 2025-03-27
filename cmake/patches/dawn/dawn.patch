@@ -34,23 +34,3 @@ index 6e8ae37593..633af91eef 100644
              -q
              "${EM_BUILD_GEN_DIR}/struct_info_webgpu.json"
              "-I=${EM_BUILD_GEN_DIR}/include"
-diff --git a/src/tint/utils/memory/aligned_storage.h b/src/tint/utils/memory/aligned_storage.h
-index c532c4fc38..7c43137e13 100644
---- a/src/tint/utils/memory/aligned_storage.h
-+++ b/src/tint/utils/memory/aligned_storage.h
-@@ -32,6 +32,8 @@
-
- #include "src/tint/utils/memory/bitcast.h"
-
-+TINT_BEGIN_DISABLE_WARNING(UNSAFE_BUFFER_USAGE);
-+
- namespace tint {
-
- /// A structure that has the same size and alignment as Entry.
-@@ -50,4 +52,6 @@ struct alignas(alignof(T)) AlignedStorage {
-
- }  // namespace tint
-
-+TINT_END_DISABLE_WARNING(UNSAFE_BUFFER_USAGE);
-+
- #endif  // SRC_TINT_UTILS_MEMORY_ALIGNED_STORAGE_H_
