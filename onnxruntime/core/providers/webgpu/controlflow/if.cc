@@ -1,7 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "if.h"
+#include "core/providers/webgpu/controlflow/if.h"
 
 using namespace ONNX_NAMESPACE;
 using namespace onnxruntime::common;
