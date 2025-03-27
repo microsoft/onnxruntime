@@ -2598,6 +2598,7 @@ ORT_API_STATUS_IMPL(OrtApis::ModelCompilationOptions_SetEpContextEmbedMode,
 ORT_API_STATUS_IMPL(OrtApis::CompileModel, _In_ const OrtEnv* env,
                     _In_ const OrtModelCompilationOptions* ort_model_options) {
   API_IMPL_BEGIN
+#if !defined(ORT_MINIMAL_BUILD)
   auto model_options = reinterpret_cast<const onnxruntime::ModelCompilationOptions*>(ort_model_options);
   ORT_C_API_RETURN_IF_ERROR(model_options->Check());
 
@@ -2623,6 +2624,11 @@ ORT_API_STATUS_IMPL(OrtApis::CompileModel, _In_ const OrtEnv* env,
   }
 
   return status;
+#else
+  ORT_UNUSED_PARAMETER(env);
+  ORT_UNUSED_PARAMETER(ort_model_options);
+  return OrtApis::CreateStatus(ORT_NOT_IMPLEMENTED, "Model compilation is not supported in a minimal build");
+#endif  // !defined(ORT_MINIMAL_BUILD)
   API_IMPL_END
 }
 
