@@ -124,6 +124,7 @@ Status BatchNormalization<is_nhwc>::ComputeInternal(ComputeContext& context) con
 
   BatchNormalizationProgram program{epsilon_, spatial_, format_, static_cast<int64_t>(components)};
   program
+      .CacheHint(epsilon_, spatial_, format_, components)
       .AddInputs({{input_tensor, ProgramTensorMetadataDependency::TypeAndRank, components},
                   {scale, ProgramTensorMetadataDependency::TypeAndRank, c_components},
                   {B, ProgramTensorMetadataDependency::TypeAndRank, c_components},
