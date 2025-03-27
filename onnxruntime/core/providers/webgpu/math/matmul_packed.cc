@@ -59,7 +59,7 @@ void MatMulProgram::MatMulReadWriteFnSource(ShaderHelper& shader,
       << "    let coords = vec3<i32>(batch, row, colIn);\n";
 
   if (has_bias_) {
-    shader.AdditionalImplementation() << "    value = value + " << type_string << "(bias[row]);\n";
+    shader.AdditionalImplementation() << "    value = value + " << (is_channels_last_ ? "bias[colIn]" : type_string + "(bias[row])") <<";\n";
   }
 
   shader.AdditionalImplementation()

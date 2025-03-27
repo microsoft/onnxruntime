@@ -14,7 +14,7 @@
 namespace onnxruntime {
 namespace webgpu {
 
-MatMulProgram CreateMatMulProgram(const Activation& activation, std::vector<const Tensor*>& inputs, Tensor* output);
+MatMulProgram CreateMatMulProgram(const Activation& activation, std::vector<const Tensor*>& inputs, Tensor* output, bool is_channels_last);
 
 class MatMul final : public WebGpuKernel {
  public:
@@ -28,8 +28,8 @@ class MatMul final : public WebGpuKernel {
 
 class MatMulNaiveProgram final : public Program<MatMulNaiveProgram> {
  public:
-  MatMulNaiveProgram(const Activation& activation, const size_t output_rank, int64_t output_number, bool has_bias)
-      : Program{"MatMulNaive"}, activation_(activation), output_rank_(output_rank), output_number_(output_number), has_bias_{has_bias} {
+  MatMulNaiveProgram(const Activation& activation, const size_t output_rank, int64_t output_number, bool has_bias, bool is_channels_last = false)
+      : Program{"MatMulNaive"}, activation_(activation), output_rank_(output_rank), output_number_(output_number), has_bias_{has_bias}, is_channels_last_(is_channels_last) {
   }
 
   Status GenerateShaderCode(ShaderHelper& sh) const override;
@@ -44,6 +44,7 @@ class MatMulNaiveProgram final : public Program<MatMulNaiveProgram> {
   const size_t output_rank_;
   const int64_t output_number_;
   const bool has_bias_;
+  const bool is_channels_last_;
 };
 
 }  // namespace webgpu

@@ -55,7 +55,7 @@ Status MatMulNaiveProgram::GenerateShaderCode(ShaderHelper& shader) const {
   std::string process_bias;
   if (has_bias_) {
     shader.AddInput("bias", ShaderUsage::UseUniform);
-    process_bias = "value += output_value_t(bias[row + i]);";
+    process_bias = is_channels_last_ ? "value += output_value_t(bias[col])" : "value += output_value_t(bias[row + i]);";
   }
 
   std::string apply_activation = GetActivationSnippet(activation_, "output_value_t");
@@ -227,7 +227,7 @@ Status MatMul::ComputeInternal(ComputeContext& context) const {
   return context.RunProgram(program);
 }
 
-MatMulProgram CreateMatMulProgram(const Activation& activation, std::vector<const Tensor*>& inputs, Tensor* output) {
+MatMulProgram CreateMatMulProgram(const Activation& activation, std::vector<const Tensor*>& inputs, Tensor* output, bool is_channels_last) {
   MatMulComputeHelper helper;
   const auto* a = inputs[0];
   const auto* b = inputs[1];
@@ -290,7 +290,7 @@ MatMulProgram CreateMatMulProgram(const Activation& activation, std::vector<cons
   const TensorShape b_shape_temp = CreateMatMulIntermediateShape(outer_dims_b, dim_inner, dim_b_outer, components);
   const TensorShape output_shape_temp = TensorShape({batch_size, dim_a_outer, dim_b_outer / components});
 
-  MatMulProgram program{activation, has_bias, is_vec4, elements_per_thread};
+  MatMulProgram program{activation, has_bias, is_vec4, elements_per_thread, is_channels_last};
   program
       .CacheHint(absl::StrJoin(elements_per_thread, "-"), std::to_string(is_vec4))
       .AddInputs({{a, ProgramTensorMetadataDependency::TypeAndRank, a_shape_temp, components},
@@ -302,8 +302,10 @@ MatMulProgram CreateMatMulProgram(const Activation& activation, std::vector<cons
       .SetWorkgroupSize(MatMul::MATMUL_PACKED_WORKGROUP_SIZE_X, MatMul::MATMUL_PACKED_WORKGROUP_SIZE_Y, MatMul::MATMUL_PACKED_WORKGROUP_SIZE_Z);
 
   if (has_bias) {
+    auto bias_components = is_channels_last ? components : 1;
     const auto* bias = inputs[2];
-    program.AddInput({bias, ProgramTensorMetadataDependency::Rank, 1});
+    TensorShape reduced_bias_shape = ReduceShapeByComponents(bias->Shape(), bias_components);
+    program.AddInput({bias, ProgramTensorMetadataDependency::Rank, bias_components});
   }
   return program;
 }
