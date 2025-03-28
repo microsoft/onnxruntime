@@ -25,10 +25,10 @@ Status LayerNormProgram::GenerateShaderCode(ShaderHelper& shader) const {
     shader.AddInput("bias", ShaderUsage::UseUniform);
   }
   shader.AddOutput("y", ShaderUsage::UseUniform);
-  if (output_count_ > 1) {
+  if (has_mean_output_) {
     shader.AddOutput("mean_output", ShaderUsage::None);
   }
-  if (output_count_ > 2) {
+  if (has_inv_std_dev_output_) {
     shader.AddOutput("inv_std_dev_output", ShaderUsage::None);
   }
 
@@ -56,10 +56,10 @@ Status LayerNormProgram::GenerateShaderCode(ShaderHelper& shader) const {
                             << "   let f32scale = f32_val_t(scale[j]);\n"
                             << "   y[j + offset] =  x_value_t((f32input" << simpl2 << ") * inv_std_dev * f32scale)" << bias << ";\n"
                             << "}\n";
-  if (output_count_ > 1) {
+  if (has_mean_output_) {
     shader.MainFunctionBody() << "mean_output[global_idx] = mean;\n";
   }
-  if (output_count_ > 2) {
+  if (has_inv_std_dev_output_) {
     shader.MainFunctionBody() << "inv_std_dev_output[global_idx] = inv_std_dev;\n";
   }
 
@@ -95,10 +95,21 @@ Status LayerNorm<simplified>::ComputeInternal(onnxruntime::webgpu::ComputeContex
                            scale_size, " and bias size of ", bias_size);
   }
 
-  const auto output_count = context.OutputCount();
-  auto* y = context.Output(0, x_shape);
+  TensorShapeVector mean_dim;
+  for (size_t i = 0; i < x_shape.NumDimensions(); ++i) {
+    if (i < axis) {
+      mean_dim.push_back(x_shape[i]);
+    } else {
+      mean_dim.push_back(1);
+    }
+  }
+  TensorShape mean_shape(mean_dim);
 
-  LayerNormProgram program{bias != nullptr, is_fp16, simplified, output_count};
+  auto* y = context.Output(0, x_shape);
+  auto* mean = context.Output(1, mean_shape);
+  auto* inv_std_dev = context.Output(2, mean_shape);
+
+  LayerNormProgram program{bias != nullptr, is_fp16, simplified, mean != nullptr, inv_std_dev != nullptr};
 
   program
       .CacheHint(simplified)
@@ -123,22 +134,10 @@ Status LayerNorm<simplified>::ComputeInternal(onnxruntime::webgpu::ComputeContex
     program.AddInput({bias, ProgramTensorMetadataDependency::Type, components});
   }
 
-  TensorShapeVector mean_dim;
-  for (size_t i = 0; i < x_shape.NumDimensions(); ++i) {
-    if (i < axis) {
-      mean_dim.push_back(x_shape[i]);
-    } else {
-      mean_dim.push_back(1);
-    }
-  }
-  TensorShape mean_shape(mean_dim);
-
-  if (output_count > 1) {
-    auto* mean = context.Output(1, mean_shape);
+  if (mean != nullptr) {
     program.AddOutputs({{mean, ProgramTensorMetadataDependency::None}});
   }
-  if (output_count > 2) {
-    auto* inv_std_dev = context.Output(2, mean_shape);
+  if (inv_std_dev != nullptr) {
     program.AddOutputs({{inv_std_dev, ProgramTensorMetadataDependency::None}});
   }
 

@@ -11,12 +11,14 @@ namespace webgpu {
 
 class LayerNormProgram final : public Program<LayerNormProgram> {
  public:
-  LayerNormProgram(bool has_bias, bool is_fp16, bool simplified, int output_count)
+  LayerNormProgram(bool has_bias, bool is_fp16, bool simplified, bool has_mean_output,
+                   bool has_inv_std_dev_output)
       : Program{"LayerNorm"},
         has_bias_{has_bias},
         is_fp16_{is_fp16},
         simplified_{simplified},
-        output_count_(output_count) {}
+        has_mean_output_{has_mean_output},
+        has_inv_std_dev_output_{has_inv_std_dev_output} {}
 
   Status GenerateShaderCode(ShaderHelper& sh) const override;
 
@@ -29,7 +31,8 @@ class LayerNormProgram final : public Program<LayerNormProgram> {
   bool has_bias_;
   bool is_fp16_;
   bool simplified_;
-  int output_count_;
+  bool has_mean_output_ = false;
+  bool has_inv_std_dev_output_ = false;
 };
 
 template <bool simplified>
