@@ -17,6 +17,13 @@ enum class ActivationKind {
 };
 
 using Activation = struct Activation {
+  std::string ToString() const {
+    std::stringstream oss;
+    oss << "ActivationKind: " << static_cast<int>(activation_kind_) << ";";
+    oss << "ActivationParams: " << activation_params_.values_[0] << ";";
+    oss << "ActivationParams: " << activation_params_.values_[1] << ";";
+    return oss.str();
+  }
   using ActivationParameters = union ActivationParameters {
     struct {
       float alpha_;

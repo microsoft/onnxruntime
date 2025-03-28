@@ -212,7 +212,7 @@ Conv2dMMProgram CreateConv2dMMProgram(const Activation& activation, const std::v
     TensorShape reduced_bias_shape = ReduceShapeByComponents(input_output_shapes[2], components);
     program.AddInput({bias, ProgramTensorMetadataDependency::TypeAndRank, reduced_bias_shape, components});
   }
-  program.CacheHint(activation.tostring(), std::to_string(components), std::to_string(input_components), std::to_string(components))
+  program.CacheHint(activation.ToString(), std::to_string(components), std::to_string(input_components), std::to_string(components))
       .AddOutput({output, ProgramTensorMetadataDependency::TypeAndRank, reduced_output_shape, components})
       .SetDispatchGroupSize(dispatch[0], dispatch[1], dispatch[2])
       .SetWorkgroupSize(workgroup_size[0], workgroup_size[1], workgroup_size[2])

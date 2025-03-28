@@ -14,7 +14,7 @@ Status ConvTranspose2DProgram::GenerateShaderCode(ShaderHelper& shader) const {
   const auto& w = shader.AddInput("w", ShaderUsage::UseUniform | ShaderUsage::UseIndicesTypeAlias | ShaderUsage::UseValueTypeAlias);
   const auto& output = shader.AddOutput("output", ShaderUsage::UseUniform | ShaderUsage::UseIndicesTypeAlias | ShaderUsage::UseValueTypeAlias);
   if (has_bias_) {
-    const auto& bias = shader.AddInput("bias");
+    shader.AddInput("bias");
   }
   auto row_dim = is_channels_last_ ? 1 : 2;
   auto col_dim = is_channels_last_ ? 2 : 3;
