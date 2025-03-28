@@ -4,6 +4,8 @@
 #include "qnn_execution_provider.h"
 
 #include <filesystem>
+#include <optional>
+#include <string_view>
 #include <unordered_set>
 
 #include "core/providers/qnn/ort_api.h"
@@ -22,20 +24,23 @@ namespace onnxruntime {
 
 constexpr const char* QNN = "QNN";
 
-static bool ParseBackendTypeName(std::string_view backend_type_name, std::string& backend_path) {
-  auto make_backend_path = [](std::string_view backend) -> std::string {
+static std::string MakeSharedLibraryPath(std::string_view name) {
 #if defined(_WIN32)
-    return MakeString("Qnn", backend, ".dll");
+  return MakeString(name, ".dll");
 #else
-    return MakeString("libQnn", backend, ".so");
+  return MakeString("lib", name, ".so");
 #endif
-  };
+}
 
+const std::string kDefaultCpuBackendPath = MakeSharedLibraryPath("QnnCpu");
+const std::string kDefaultHtpBackendPath = MakeSharedLibraryPath("QnnHtp");
+
+static bool ParseBackendTypeName(std::string_view backend_type_name, std::string& backend_path) {
   if (backend_type_name == "cpu") {
-    backend_path = make_backend_path("Cpu");
+    backend_path = kDefaultCpuBackendPath;
     return true;
   } else if (backend_type_name == "htp") {
-    backend_path = make_backend_path("Htp");
+    backend_path = kDefaultHtpBackendPath;
     return true;
   }
 
@@ -222,8 +227,9 @@ QNNExecutionProvider::QNNExecutionProvider(const ProviderOptions& provider_optio
     LOGS_DEFAULT(VERBOSE) << "User specified option - stop share EP contexts across sessions: " << stop_share_ep_contexts_;
   }
 
-  std::string backend_path;
-  {
+  const std::string backend_path = [&]() -> std::string {
+    std::optional<std::string> backend_path;
+
     static const std::string BACKEND_TYPE = "backend_type";
     static const std::string BACKEND_PATH = "backend_path";
 
@@ -235,18 +241,24 @@ QNNExecutionProvider::QNNExecutionProvider(const ProviderOptions& provider_optio
     }
 
     if (backend_type_it != provider_options_map.end()) {
-      if (ParseBackendTypeName(backend_type_it->second, backend_path)) {
-        LOGS_DEFAULT(VERBOSE) << "Backend path: " << backend_path;
+      if (std::string backend_path_from_type; ParseBackendTypeName(backend_type_it->second, backend_path_from_type)) {
+        backend_path = backend_path_from_type;
       } else {
-        LOGS_DEFAULT(ERROR) << "Failed to parse backend type.";
+        LOGS_DEFAULT(ERROR) << "Failed to parse '" << BACKEND_TYPE << "' value.";
       }
     } else if (backend_path_it != provider_options_map.end()) {
       backend_path = backend_path_it->second;
-      LOGS_DEFAULT(VERBOSE) << "Backend path: " << backend_path;
-    } else {
-      LOGS_DEFAULT(ERROR) << "No backend path provided.";
     }
-  }
+
+    if (!backend_path.has_value()) {
+      const auto& default_backend_path = kDefaultHtpBackendPath;
+      backend_path = default_backend_path;
+      LOGS_DEFAULT(WARNING) << "Unable to determine backend path from provider options. Using default.";
+    }
+
+    LOGS_DEFAULT(VERBOSE) << "Using backend path: " << *backend_path;
+    return *backend_path;
+  }();
 
   std::string profiling_file_path;
   static const std::string PROFILING_LEVEL = "profiling_level";
