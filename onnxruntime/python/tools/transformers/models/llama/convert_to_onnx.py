@@ -5,6 +5,12 @@
 # --------------------------------------------------------------------------
 from __future__ import annotations
 
+import pprint
+from onnx_diagnostic.helpers import string_type
+from onnx_diagnostic.torch_test_helper import replace_string_by_dynamic
+from onnx_diagnostic.torch_export_patches import bypass_export_some_errors
+from onnx_diagnostic.torch_export_patches.patch_inputs import convert_dynamic_axes_into_dynamic_shapes
+
 import argparse
 import logging
 import os
@@ -16,7 +22,7 @@ from itertools import chain
 
 import onnx
 import torch
-from benchmark_helper import Precision, prepare_environment, setup_logger
+from onnxruntime.transformers.benchmark_helper import Precision, prepare_environment, setup_logger
 from convert_generation import replace_mha_with_gqa
 from dist_settings import barrier, get_rank, get_size, init_dist
 from llama_inputs import get_merged_sample_with_past_kv_inputs, get_sample_inputs, get_sample_with_past_kv_inputs
@@ -141,9 +147,37 @@ def run_dynamo_export(
     )
     temp_dir = tempfile.TemporaryDirectory()
     temp_path = os.path.join(temp_dir.name, "temp.onnx")
-    torch.onnx.dynamo_export(
-        llama, input_ids, attn_mask, pos_ids, past_kv, export_options=torch.onnx.ExportOptions(dynamic_shapes=True)
-    ).save(temp_path)
+
+    input_names = ["input_ids", "attention_mask", "position_ids"]
+    output_names = [
+        "logits",
+        *list(
+            chain.from_iterable((f"present.{i}.key", f"present.{i}.value") for i in range(l_config.num_hidden_layers))
+        ),
+    ]
+    dynamic_axes = get_model_dynamic_axes(input_names, output_names)
+
+    model_args = (input_ids, attn_mask, pos_ids, past_kv)
+    model_args, model_kwargs, dynamic_shapes = convert_dynamic_axes_into_dynamic_shapes(
+        llama, args=model_args, dynamic_axes=dynamic_axes, prefix_mapping={"present": "past_key_values"}
+    )
+
+    with bypass_export_some_errors(patch_transformers=True):
+        torch.export.export(
+            llama,
+            (),
+            kwargs=model_kwargs,
+            dynamic_shapes=replace_string_by_dynamic(dynamic_shapes),
+        )
+        torch.onnx.export(
+            llama,
+            (),
+            temp_path,
+            kwargs=model_kwargs,
+            dynamic_shapes=dynamic_shapes,
+            dynamo=True,
+            verbose=args.verbose,
+        )
 
     # Check decoder_with_past_model.onnx and save all external data to one file
     onnx.checker.check_model(temp_path)
@@ -330,6 +364,7 @@ def run_torchscript_merged_export(
     temp_dir = f"./temp_{rank}"
     _prepare_dir(temp_dir)
     temp_path = os.path.join(temp_dir, "temp.onnx")
+
     torch.onnx.export(
         llama,
         args=decoder_merged_inputs,
@@ -338,9 +373,11 @@ def run_torchscript_merged_export(
         input_names=input_names,
         output_names=output_names,
         dynamic_axes=dynamic_axes,
+        dynamic_shapes=dynamic_shapes,
         opset_version=torch_export_onnx_opset_version,
         do_constant_folding=True,
         verbose=args.verbose,
+        dynamo=args.dynamo,
     )
 
     # Check decoder_merged_model.onnx and save all external data to one file
