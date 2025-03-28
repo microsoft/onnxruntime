@@ -15,7 +15,7 @@ std::string GetUniqueGraphName(const Graph& graph) {
   uint32_t hash[4] = {0, 0, 0, 0};
 
   auto hash_str = [&hash](const std::string& str) {
-    MurmurHash3::x86_128(str.data(), gsl::narrow_cast<int32_t>(str.size()), hash[0], &hash);
+    MurmurHash3::x86_128(str.data(), str.size(), hash[0], &hash);
   };
 
   // Hash all nodes' name

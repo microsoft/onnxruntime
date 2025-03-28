@@ -27,10 +27,28 @@ class DP4AMatMulNBitsProgram final : public Program<DP4AMatMulNBitsProgram> {
       {"N", ProgramUniformVariableDataType::Uint32},
       {"K", ProgramUniformVariableDataType::Uint32},
       {"K8", ProgramUniformVariableDataType::Uint32},
-      {"K16", ProgramUniformVariableDataType::Uint32});
+      {"K16", ProgramUniformVariableDataType::Uint32},
+      {"num_N_tile", ProgramUniformVariableDataType::Uint32});
 
  private:
   uint32_t block_size_;
+};
+
+class DP4AMatMulNBitsSmallMProgram final : public Program<DP4AMatMulNBitsSmallMProgram> {
+ public:
+  DP4AMatMulNBitsSmallMProgram(uint32_t tile_size) : Program{"DP4AMatMulNBitsSmallMProgram"}, tile_size_(tile_size) {}
+  Status GenerateShaderCode(ShaderHelper& sh) const override;
+  WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES(
+      {"M", ProgramUniformVariableDataType::Uint32},
+      {"N", ProgramUniformVariableDataType::Uint32},
+      {"K", ProgramUniformVariableDataType::Uint32},
+      {"K16", ProgramUniformVariableDataType::Uint32},
+      {"K32", ProgramUniformVariableDataType::Uint32},
+      {"block_size", ProgramUniformVariableDataType::Uint32},
+      {"num_N_tile", ProgramUniformVariableDataType::Uint32});
+
+ private:
+  uint32_t tile_size_;
 };
 
 Status ApplyDP4AMatrixMatMulNBits(const Tensor* a, const Tensor* b, const Tensor* scales,
@@ -38,6 +56,7 @@ Status ApplyDP4AMatrixMatMulNBits(const Tensor* a, const Tensor* b, const Tensor
                                   uint32_t N,
                                   uint32_t K,
                                   uint32_t block_size,
+                                  uint32_t min_M_for_tile_optimization,
                                   onnxruntime::webgpu::ComputeContext& context,
                                   Tensor* y);
 

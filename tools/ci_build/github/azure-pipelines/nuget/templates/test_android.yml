@@ -1,0 +1,63 @@
+parameters:
+  AgentPool : 'Win-CPU'
+  ArtifactSuffix: ''
+  SpecificArtifact: false
+  BuildId: ''
+
+stages:
+- stage: NuGet_Test_Android
+  jobs:
+  - job:  NuGet_Test_Android
+    workspace:
+      clean: all
+    pool: "${{ parameters.AgentPool }}"
+
+    variables:
+    - name: OnnxRuntimeBuildDirectory
+      value: '$(Build.BinariesDirectory)'
+
+    steps:
+      - task: NuGetToolInstaller@0
+        displayName: Use Nuget 6.10.x
+        inputs:
+          versionSpec: 6.10.x
+
+      - template: ../../templates/flex-downloadPipelineArtifact.yml
+        parameters:
+          StepName: 'Download Pipeline Artifact'
+          ArtifactName: drop-signed-nuget-${{ parameters.ArtifactSuffix }}
+          TargetPath: '$(Build.BinariesDirectory)\nuget-artifact'
+          SpecificArtifact: ${{ parameters.SpecificArtifact }}
+          BuildId: ${{ parameters.BuildId }}
+
+      - template: get-nuget-package-version-as-variable.yml
+        parameters:
+          packageFolder: '$(Build.BinariesDirectory)\nuget-artifact'
+
+      - task: PowerShell@2
+        displayName: Install MAUI workloads
+        inputs:
+          targetType: 'inline'
+          script: |
+            dotnet workload install maui maui-android android
+          workingDirectory: '$(Build.SourcesDirectory)\csharp'
+
+      - task: PowerShell@2
+        displayName: Publish Android MAUI APK
+        inputs:
+          targetType: 'inline'
+          script: |
+            dotnet nuget add source $(Build.BinariesDirectory)\nuget-artifact --name local-nuget
+            dotnet publish -c Release --property:UsePrebuiltNativePackage=true --property:CurrentOnnxRuntimeVersion=$(NuGetPackageVersionNumber) -f net8.0-android
+          workingDirectory: '$(Build.SourcesDirectory)\csharp\test\Microsoft.ML.OnnxRuntime.Tests.MAUI'
+
+      - task: PowerShell@2
+        displayName: Run BrowserStack test
+        inputs:
+          targetType: 'inline'
+          script: |
+            dotnet test
+          workingDirectory: '$(Build.SourcesDirectory)\csharp\test\Microsoft.ML.OnnxRuntime.Tests.BrowserStack.Android'
+        env:
+          BROWSERSTACK_USERNAME: $(browserstack_username)
+          BROWSERSTACK_ACCESS_KEY: $(browserstack_access_key)

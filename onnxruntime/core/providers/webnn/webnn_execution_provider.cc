@@ -10,7 +10,6 @@
 #include "core/framework/kernel_registry.h"
 #include "core/graph/graph_viewer.h"
 #include "core/session/onnxruntime_cxx_api.h"
-#include "core/common/safeint.h"
 #include "core/providers/webnn/allocator.h"
 #include "core/providers/webnn/data_transfer.h"
 #include "core/providers/partitioning_utils.h"

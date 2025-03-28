@@ -160,7 +160,3 @@ stages:
       inputs:
         artifactName: 'onnxruntime-win-x64-gpu'
         targetPath: '$(Build.ArtifactStagingDirectory)'
-
-    - template: ../templates/component-governance-component-detection-steps.yml
-      parameters:
-        condition: 'succeeded'

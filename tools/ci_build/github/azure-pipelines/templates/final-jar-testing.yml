@@ -27,7 +27,7 @@ stages:
     ${{ if eq(parameters.OS, 'MacOS') }}:
       pool:
         name: 'Azure Pipelines'
-        image: macOS-13
+        image: macOS-14
         os: macOS
     ${{ if eq(parameters.OS, 'Linux') }}:
       pool:
@@ -95,7 +95,5 @@ stages:
     - ${{ if eq(parameters['OS'], 'MacOS') }}:
       - template: use-xcode-version.yml
 
-    - template: component-governance-component-detection-steps.yml
-      parameters:
-        condition: 'succeeded'
+
 
