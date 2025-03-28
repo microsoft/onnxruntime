@@ -1,4 +1,4 @@
-# ONNXRuntime EP Conexte Model Generation with Weight Sharing
+# ONNXRuntime EP Context Model Generation with Weight Sharing
 
 [EP context with weight sharing design doc](https://onnxruntime.ai/docs/execution-providers/EP-Context-Design.html#epcontext-with-weight-sharing)
 
