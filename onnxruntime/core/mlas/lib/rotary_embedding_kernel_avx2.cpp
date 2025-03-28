@@ -288,10 +288,6 @@ RopeKernel_Avx2_fp16(
 {
     // real part and imaginary part must be paired
     assert(dim % 2 == 0);
-    //const auto* input_impl = reinterpret_cast<const float*>(input);
-    //const auto* sin_impl = reinterpret_cast<const float*>(sin_data);
-    //const auto* cos_impl = reinterpret_cast<const float*>(cos_data);
-    //auto* output_impl = reinterpret_cast<float*>(output);
 
     if (interleaved) {
         RopeKernel_Avx2_fp16_Impl<true>(input, sin_data, cos_data, dim, output);
