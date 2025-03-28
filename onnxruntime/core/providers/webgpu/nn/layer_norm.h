@@ -31,8 +31,8 @@ class LayerNormProgram final : public Program<LayerNormProgram> {
   bool has_bias_;
   bool is_fp16_;
   bool simplified_;
-  bool has_mean_output_ = false;
-  bool has_inv_std_dev_output_ = false;
+  bool has_mean_output_;
+  bool has_inv_std_dev_output_;
 };
 
 template <bool simplified>
