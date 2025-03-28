@@ -219,7 +219,10 @@ jobs:
       - name: Copy onnxruntime-common artifacts
         if: ${{ inputs.build_config == 'Release' }}
         shell: cmd
-        run: copy ${{ github.workspace }}\js\common\onnxruntime-common-*.tgz ${{ github.workspace }}\artifacts_npm\
+        run: |
+          if exist ${{ github.workspace }}\js\common\onnxruntime-common-*.tgz (
+            copy ${{ github.workspace }}\js\common\onnxruntime-common-*.tgz ${{ github.workspace }}\artifacts_npm\
+          )
 
       - name: Copy onnxruntime-web artifacts
         if: ${{ inputs.build_config == 'Release' }}
