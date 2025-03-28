@@ -36,15 +36,33 @@ const std::string kDefaultCpuBackendPath = MakeSharedLibraryPath("QnnCpu");
 const std::string kDefaultHtpBackendPath = MakeSharedLibraryPath("QnnHtp");
 
 static bool ParseBackendTypeName(std::string_view backend_type_name, std::string& backend_path) {
-  if (backend_type_name == "cpu") {
+  constexpr std::string_view
+      kCpuBackendTypeName{"cpu"},
+      kHtpBackendTypeName{"htp"};
+
+  constexpr std::array kAllowedBackendTypeNames{
+      kCpuBackendTypeName,
+      kHtpBackendTypeName,
+  };
+
+  if (backend_type_name == kCpuBackendTypeName) {
     backend_path = kDefaultCpuBackendPath;
     return true;
-  } else if (backend_type_name == "htp") {
+  } else if (backend_type_name == kHtpBackendTypeName) {
     backend_path = kDefaultHtpBackendPath;
     return true;
   }
 
-  LOGS_DEFAULT(WARNING) << "Invalid backend type name: " << backend_type_name;
+  std::ostringstream warning{};
+  warning << "Invalid backend type name: " << backend_type_name << ". Allowed backend type names: ";
+  for (size_t i = 0; i < kAllowedBackendTypeNames.size(); ++i) {
+    warning << kAllowedBackendTypeNames[i];
+    if (i + 1 < kAllowedBackendTypeNames.size()) {
+      warning << ", ";
+    }
+  }
+  LOGS_DEFAULT(WARNING) << warning.str();
+
   return false;
 }
 
