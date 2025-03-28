@@ -33,7 +33,7 @@ jobs:
       - uses: microsoft/onnxruntime-github-actions/setup-cmake@f861fd3c0d13dedcf2fae39ad7023acaad97532d
         with:
           cmake-version: '4.0.0'
-          cmake-hash: '704fc67b9efa1d65e68a516b439ce3f65f1d6388dc0794002a342d4b59cd3ea63619e674d0343a08c03e9831b053bcbb3ae7635ac42f7796b8d440deeb81b7f6'
+          cmake-hash: '8482e754bf5bf45349ba2f2184999f81f8754ed3d281e1708f1f9a3b2fcd05c3aa5368e6247930495722ffc5982aadbe489630c5716241ab1702c3cf866483cf'
           add-to-path: 'true'
           disable-terrapin: 'true'
 
