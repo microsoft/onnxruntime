@@ -30,7 +30,7 @@ constexpr int FASTRPC_ATTR_IMPORT_BUFFER = 256;
 // FastRPC invalid client handle
 constexpr int INVALID_CLIENT_HANDLE = -1;
 
-  // RPCMEM alignment is in 4KB blocks
+// RPCMEM alignment is in 4KB blocks
 constexpr const size_t BUFFER_ALIGNMENT_BLOCK_SIZE = 4096;
  
  /**
@@ -55,7 +55,7 @@ using FreeFnPtr = void (*)(void* po);
  */
 using ToFdFnPtr = int (*)(void* po);
 
-using RemoteRegisterBufAttr = void (*)(void *po, int size, int fd, int attr);
+using RemoteRegisterBufAttrFnPtr = void (*)(void *po, int size, int fd, int attr);
 }  // namespace rpcmem
 
 // RPCMEM API function pointers.
@@ -63,7 +63,7 @@ struct RpcMemApi {
   rpcmem::AllocFnPtr alloc;
   rpcmem::FreeFnPtr free;
   rpcmem::ToFdFnPtr to_fd;
-  rpcmem::RemoteRegisterBufAttr register_buff_attr;
+  rpcmem::RemoteRegisterBufAttrFnPtr register_buff_attr;
 };
 
 // Loads and provides access to the RPCMEM API functions from a dynamically loaded library.

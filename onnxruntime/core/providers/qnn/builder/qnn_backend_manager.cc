@@ -1807,7 +1807,7 @@ Status QnnBackendManager::GetOrRegisterContextMemHandle(Qnn_ContextHandle_t cont
                                                         void* memory_address,
                                                         const Qnn_Tensor_t& qnn_tensor,
                                                         Qnn_MemHandle_t& mem_handle,
-                                                        const bool uses_shared_mem_alloc) {
+                                                        bool uses_shared_mem_allocator) {
   // Multi-threading situations to consider:
   // 1) Memory allocation is being freed in another thread while we are processing `memory_address`.
   //    This implies incorrect usage as the memory is being freed while it is still in use. Let's assume this won't
@@ -1824,10 +1824,10 @@ Status QnnBackendManager::GetOrRegisterContextMemHandle(Qnn_ContextHandle_t cont
   auto& context_mem_handle_manager = context_handle_record->mem_handles;
 
   bool did_register{};
-  ORT_RETURN_IF_ERROR(context_mem_handle_manager->GetOrRegister(memory_address, uses_shared_mem_alloc, qnn_tensor,
+  ORT_RETURN_IF_ERROR(context_mem_handle_manager->GetOrRegister(memory_address, uses_shared_mem_allocator, qnn_tensor,
                                                                 mem_handle, did_register));
 
-  if (did_register && uses_shared_mem_alloc) {
+  if (did_register && uses_shared_mem_allocator) {
     HtpSharedMemoryAllocator::AllocationCleanUpFn unregister_mem_handle =
         [&logger = *logger_,
          weak_backend_manager = weak_from_this(),

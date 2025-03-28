@@ -24,7 +24,7 @@ QnnContextMemHandleManager::~QnnContextMemHandleManager() {
   Clear();
 }
 
-Status QnnContextMemHandleManager::GetOrRegister(void* memory_address, const bool uses_shared_mem_alloc, const Qnn_Tensor_t& qnn_tensor,
+Status QnnContextMemHandleManager::GetOrRegister(void* memory_address, bool uses_shared_mem_allocator, const Qnn_Tensor_t& qnn_tensor,
                                                  Qnn_MemHandle_t& qnn_mem_handle, bool& did_register) {
   const auto qnn_tensor_rank = GetQnnTensorRank(qnn_tensor);
   auto* const qnn_tensor_dims = GetQnnTensorDims(qnn_tensor);
@@ -63,8 +63,7 @@ Status QnnContextMemHandleManager::GetOrRegister(void* memory_address, const boo
     QnnMemHtp_Descriptor_t htp_mem_descriptor{};
     htp_mem_descriptor.type = QNN_HTP_MEM_SHARED_BUFFER;
 
-    // if memory is CPU buffer aligned, the buffer needs to be mapped to RPC memory space
-    if (uses_shared_mem_alloc) {
+    if (uses_shared_mem_allocator) {
       HtpSharedMemoryAllocator::SharedMemoryInfo shared_memory_info{};
       ORT_RETURN_IF_ERROR(HtpSharedMemoryAllocator::GetAllocationSharedMemoryInfo(memory_address,
                                                                                   shared_memory_info));
@@ -72,11 +71,10 @@ Status QnnContextMemHandleManager::GetOrRegister(void* memory_address, const boo
       htp_mem_descriptor.sharedBufferConfig.fd = shared_memory_info.fd;
       htp_mem_descriptor.sharedBufferConfig.offset = shared_memory_info.offset;
     } else {
-      qnn::RpcMemLibrary rpc_lib;
-      
-      rpc_lib.Api().register_buff_attr((int*)memory_address, static_cast<int>(qnn_tensor_data_size), 0, rpcmem::FASTRPC_ATTR_IMPORT_BUFFER);
-      int fd = rpc_lib.Api().to_fd(memory_address);
-      ORT_RETURN_IF_NOT(fd != rpcmem::INVALID_CLIENT_HANDLE, "Failed to register buffer to FastRPC");
+      rpc_lib_.Api().register_buff_attr(reinterpret_cast<int*>(memory_address), static_cast<int>(qnn_tensor_data_size),
+                                        0, rpcmem::FASTRPC_ATTR_IMPORT_BUFFER);
+      int fd = rpc_lib_.Api().to_fd(memory_address);
+      ORT_RETURN_IF(fd == rpcmem::INVALID_CLIENT_HANDLE, "Failed to register buffer to FastRPC");
 
       htp_mem_descriptor.size = qnn_tensor_data_size;
       htp_mem_descriptor.sharedBufferConfig.fd = fd;
@@ -103,8 +101,8 @@ Status QnnContextMemHandleManager::GetOrRegister(void* memory_address, const boo
     // by the time we need to unregister all memory handles. This happens when this->logger_ is a session logger:
     //   ~InferenceSession() -> ~Logger() -> ~QnnExecutionProvider() -> ~QnnBackendManager() ->
     //   ~QnnContextMemHandleManager() -> unregister_mem_handle() segfault
-    const auto unregister_mem_handle = [uses_shared_mem_alloc, qnn_tensor_data_size, memory_address,
-                                        &qnn_interface = this->qnn_interface_](Qnn_MemHandle_t raw_mem_handle) {
+    const auto unregister_mem_handle = [uses_shared_mem_allocator, qnn_tensor_data_size, memory_address,
+                                        &rpc_lib = this->rpc_lib_, &qnn_interface = this->qnn_interface_](Qnn_MemHandle_t raw_mem_handle) {
       LOGS_DEFAULT(VERBOSE) << "Unregistering QNN mem handle. mem_handle: " << raw_mem_handle;
 
       const auto unregister_result = qnn_interface.memDeRegister(&raw_mem_handle, 1);
@@ -113,9 +111,9 @@ Status QnnContextMemHandleManager::GetOrRegister(void* memory_address, const boo
                             << utils::GetVerboseQnnErrorMessage(qnn_interface, unregister_result);
       }
 
-      if (!uses_shared_mem_alloc) {
-        qnn::RpcMemLibrary rpc_lib;
-        rpc_lib.Api().register_buff_attr((int*)memory_address, static_cast<int>(qnn_tensor_data_size), rpcmem::INVALID_CLIENT_HANDLE, NULL);
+      if (!uses_shared_mem_allocator) {
+        rpc_lib.Api().register_buff_attr(reinterpret_cast<int*>(memory_address), static_cast<int>(qnn_tensor_data_size),
+                                         rpcmem::INVALID_CLIENT_HANDLE, 0);
         if (rpc_lib.Api().to_fd(memory_address) != rpcmem::INVALID_CLIENT_HANDLE) {
           LOGS_DEFAULT(ERROR) << "fastrpc buffer deregistration failed for memory address: " << memory_address;
         }

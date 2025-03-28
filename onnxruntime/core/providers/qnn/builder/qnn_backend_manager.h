@@ -138,7 +138,7 @@ class QnnBackendManager : public std::enable_shared_from_this<QnnBackendManager>
   Status GetOrRegisterContextMemHandle(Qnn_ContextHandle_t context, void* memory_address,
                                        const Qnn_Tensor_t& qnn_tensor,
                                        Qnn_MemHandle_t& mem_handle,
-                                       const bool uses_shared_mem_alloc);
+                                       bool uses_shared_mem_allocator);
 
   // Unregisters a QNN mem handle if one exists for the given context and memory address
   Status UnregisterContextMemHandle(Qnn_ContextHandle_t context, void* memory_address);

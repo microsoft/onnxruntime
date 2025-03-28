@@ -200,19 +200,19 @@ static Status BindQnnTensorMemoryToOrtValueMemory(const logging::Logger& logger,
                                                   void* ort_value_data, uint32_t ort_value_data_size,
                                                   Qnn_ContextHandle_t qnn_context,
                                                   Qnn_Tensor_t& qnn_tensor) {
-  if (!ort_value_data) {
-    LOGS(logger, ERROR) << "Tensor raw data pointer is null!";
-    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Tensor raw data pointer is null!");
-  }
 
-  const bool uses_shared_mem_alloc = ort_value_memory_info == HtpSharedMemoryAllocator::AssociatedMemoryInfo();
-  const bool buffer_aligned = ((uintptr_t)ort_value_data % rpcmem::BUFFER_ALIGNMENT_BLOCK_SIZE) == 0 && ort_value_data_size % rpcmem::BUFFER_ALIGNMENT_BLOCK_SIZE == 0;
-  const bool htp_backend = qnn_backend_manager.GetQnnBackendType() == QnnBackendType::HTP;
+  const bool uses_shared_mem_allocator = ort_value_memory_info == HtpSharedMemoryAllocator::AssociatedMemoryInfo();
+  const bool buffer_aligned = ((uintptr_t)ort_value_data % rpcmem::BUFFER_ALIGNMENT_BLOCK_SIZE) == 0
+                             && ort_value_data_size % rpcmem::BUFFER_ALIGNMENT_BLOCK_SIZE == 0;
+  const bool uses_htp_backend = qnn_backend_manager.GetQnnBackendType() == QnnBackendType::HTP;
 
-  if (uses_shared_mem_alloc || (htp_backend && buffer_aligned)) {
+  // if HTP backend is in use and the buffer pointer is CPU allocated and 4K aligned,
+  // the buffer needs to be mapped to RPC memory space and registered
+  if (uses_shared_mem_allocator || (uses_htp_backend && buffer_aligned)) {
+    LOGS(logger, VERBOSE) << "Setting Qnn_Tensor_t memHandle to ORT tensor shared memory.";
     Qnn_MemHandle_t qnn_mem_handle;
     ORT_RETURN_IF_ERROR(qnn_backend_manager.GetOrRegisterContextMemHandle(qnn_context, ort_value_data, qnn_tensor,
-                                                                          qnn_mem_handle, uses_shared_mem_alloc));
+                                                                          qnn_mem_handle, uses_shared_mem_allocator));
     SetQnnTensorMemType(qnn_tensor, QNN_TENSORMEMTYPE_MEMHANDLE);
     SetQnnTensorMemHandle(qnn_tensor, qnn_mem_handle);
 

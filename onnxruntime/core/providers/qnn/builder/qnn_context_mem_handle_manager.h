@@ -10,6 +10,7 @@
 #include "QnnInterface.h"
 
 #include "core/providers/qnn/ort_api.h"
+#include "core/providers/qnn/rpcmem_library.h"
 
 namespace onnxruntime::qnn {
 
@@ -27,7 +28,7 @@ class QnnContextMemHandleManager {
 
   // Gets an existing QNN mem handle or registers a new one.
   // `qnn_mem_handle` is set to the QNN mem handle and `did_register` is true if `qnn_mem_handle` was newly registered.
-  Status GetOrRegister(void* memory_address, const bool uses_shared_mem_alloc, const Qnn_Tensor_t& qnn_tensor,
+  Status GetOrRegister(void* memory_address, bool uses_shared_mem_allocator, const Qnn_Tensor_t& qnn_tensor,
                        Qnn_MemHandle_t& qnn_mem_handle, bool& did_register);
 
   Status Unregister(void* memory_address);
@@ -38,6 +39,7 @@ class QnnContextMemHandleManager {
   const QNN_INTERFACE_VER_TYPE& qnn_interface_;
   Qnn_ContextHandle_t context_;
   const logging::Logger& logger_;
+  const qnn::RpcMemLibrary rpc_lib_;
 
   // assume Qnn_MemHandle_t is a pointer and able to be wrapped with std::unique_ptr
   static_assert(std::is_pointer_v<Qnn_MemHandle_t>);
@@ -50,7 +52,7 @@ class QnnContextMemHandleManager {
     UniqueQnnMemHandle mem_handle;
   };
 
-  // shared memory address -> associated mem handle record
+  // memory address -> associated mem handle record
   InlinedHashMap<const void*, MemHandleRecord> mem_handles_;
   std::mutex mem_handles_mutex_;  // synchronize access to mem_handles_
 };
