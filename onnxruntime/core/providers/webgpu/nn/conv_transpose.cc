@@ -64,7 +64,7 @@ Status ConvTranspose<is_channels_last>::ComputeInternal(ComputeContext& context)
     TensorShapeVector filter_shape_vector = filter_shape.AsShapeVector();
     input_shape_vector.insert(input_shape_vector.begin() + (is_channels_last ? 1 : 2, 1), 1);
     output_shape_vector.insert(output_shape_vector.begin() + (is_channels_last ? 1 : 2, 1), 1);
-    filter_shape_vector.insert(filter_shape_vector.begin() + 1, 1);
+    filter_shape_vector.insert(filter_shape_vector.begin() + 2, 1);
     input_shape = TensorShape(input_shape_vector);
     filter_shape = TensorShape(filter_shape_vector);
     pads.insert(pads.begin(), 0);
