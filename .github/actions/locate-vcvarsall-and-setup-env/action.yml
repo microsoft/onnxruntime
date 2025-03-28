@@ -34,7 +34,7 @@ runs:
         # List the contents recursively (Windows equivalent of ls -lR)
         Get-ChildItem -Path '.\.github\_downloaded_actions' -Recurse
 
-    - name: Build Docker Image (${{ inputs.architecture }} / ${{ inputs.build_config }})
+    - name: Setup VCPKG
       uses: ./.github/_downloaded_actions/setup-vcpkg
       with:
         vcpkg-version: '2025.03.19'
