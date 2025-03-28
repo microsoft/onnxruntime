@@ -22,6 +22,27 @@ namespace onnxruntime {
 
 constexpr const char* QNN = "QNN";
 
+static bool ParseBackendTypeName(std::string_view backend_type_name, std::string& backend_path) {
+  auto make_backend_path = [](std::string_view backend) -> std::string {
+#if defined(_WIN32)
+    return MakeString("Qnn", backend, ".dll");
+#else
+    return MakeString("libQnn", backend, ".so");
+#endif
+  };
+
+  if (backend_type_name == "cpu") {
+    backend_path = make_backend_path("Cpu");
+    return true;
+  } else if (backend_type_name == "htp") {
+    backend_path = make_backend_path("Htp");
+    return true;
+  }
+
+  LOGS_DEFAULT(WARNING) << "Invalid backend type name: " << backend_type_name;
+  return false;
+}
+
 static void ParseProfilingLevel(std::string profiling_level_string,
                                 qnn::ProfilingLevel& profiling_level) {
   std::transform(profiling_level_string.begin(),
@@ -201,15 +222,30 @@ QNNExecutionProvider::QNNExecutionProvider(const ProviderOptions& provider_optio
     LOGS_DEFAULT(VERBOSE) << "User specified option - stop share EP contexts across sessions: " << stop_share_ep_contexts_;
   }
 
-  static const std::string BACKEND_PATH = "backend_path";
-  auto backend_path_pos = provider_options_map.find(BACKEND_PATH);
-
   std::string backend_path;
-  if (backend_path_pos != provider_options_map.end()) {
-    backend_path = backend_path_pos->second;
-    LOGS_DEFAULT(VERBOSE) << "Backend path: " << backend_path;
-  } else {
-    LOGS_DEFAULT(ERROR) << "No backend path provided.";
+  {
+    static const std::string BACKEND_TYPE = "backend_type";
+    static const std::string BACKEND_PATH = "backend_path";
+
+    auto backend_type_it = provider_options_map.find(BACKEND_TYPE);
+    auto backend_path_it = provider_options_map.find(BACKEND_PATH);
+
+    if (backend_type_it != provider_options_map.end() && backend_path_it != provider_options_map.end()) {
+      ORT_THROW("Only one of '", BACKEND_TYPE, "' and '", BACKEND_PATH, "' should be set.");
+    }
+
+    if (backend_type_it != provider_options_map.end()) {
+      if (ParseBackendTypeName(backend_type_it->second, backend_path)) {
+        LOGS_DEFAULT(VERBOSE) << "Backend path: " << backend_path;
+      } else {
+        LOGS_DEFAULT(ERROR) << "Failed to parse backend type.";
+      }
+    } else if (backend_path_it != provider_options_map.end()) {
+      backend_path = backend_path_it->second;
+      LOGS_DEFAULT(VERBOSE) << "Backend path: " << backend_path;
+    } else {
+      LOGS_DEFAULT(ERROR) << "No backend path provided.";
+    }
   }
 
   std::string profiling_file_path;
