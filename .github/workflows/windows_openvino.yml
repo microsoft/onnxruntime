@@ -12,7 +12,8 @@ on:
   workflow_dispatch:
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
+  group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.ref
+    || github.sha }}
   cancel-in-progress: true
 
 jobs:
@@ -143,7 +144,7 @@ jobs:
 
           Write-Output "Selected environment variables exported successfully"
 
-      
+
 
       - name: Generate onnxruntime.sln
         shell: pwsh
@@ -161,7 +162,7 @@ jobs:
       - name: Run unit tests
         shell: pwsh
         working-directory: ${{ runner.temp }}
-        run: |
+        run: |-
           python "${{ github.workspace }}\tools\ci_build\build.py" `
             --config "${{ env.BuildConfig }}" `
             --build_dir build `
