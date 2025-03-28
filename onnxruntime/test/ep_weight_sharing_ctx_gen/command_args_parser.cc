@@ -28,8 +28,11 @@ namespace qnnctxgen {
 
 /*static*/ void CommandLineParser::ShowUsage() {
   printf(
+      "%s",
       "ep_weight_sharing_ctx_gen [options...] model1_path,model2_path\n"
+      "\n"
       "Example: ./ep_weight_sharing_ctx_gen -i \"soc_model|60 htp_graph_finalization_optimization_mode|3\" -C \"ep.context_node_name_prefix|_part1\" ./model1.onnx,./model2.onnx\n"
+      "\n"
       "Options:\n"
       "\t-e [qnn|tensorrt|openvino|vitisai]: Specifies the compile based provider 'qnn','tensorrt','openvino', 'vitisai'. "
       "Default:'qnn'.\n"
@@ -41,7 +44,8 @@ namespace qnnctxgen {
       "\t-i: Specify EP specific runtime options as key value pairs. Different runtime options available are: \n"
       "\t    [Usage]: -i '<key1>|<value1> <key2>|<value2>'\n"
       "\n"
-      "\t    [QNN only] [backend_path]: QNN backend path. e.g '/folderpath/libQnnHtp.so', '/winfolderpath/QnnHtp.dll'. default to HTP backend\n"
+      "\t    [QNN only] [backend_type]: QNN backend type. e.g., 'cpu', or 'htp'. Mutually exclusive with 'backend_path'.\n"
+      "\t    [QNN only] [backend_path]: QNN backend path. e.g '/folderpath/libQnnHtp.so', '/winfolderpath/QnnHtp.dll'. Mutually exclusive with 'backend_type'.\n"
       "\t    [QNN only] [vtcm_mb]: QNN VTCM size in MB. default to 0(not set).\n"
       "\t    [QNN only] [htp_graph_finalization_optimization_mode]: QNN graph finalization optimization mode, options: '0', '1', '2', '3', default is '0'.\n"
       "\t    [QNN only] [soc_model]: The SoC Model number. Refer to QNN SDK documentation for specific values. Defaults to '0' (unknown). \n"
@@ -149,7 +153,8 @@ static bool ParseSessionConfigs(const std::string& configs_string,
           std::string key(token.substr(0, pos));
           std::string value(token.substr(pos + 1));
 
-          if (key == "backend_path" || key == "vtcm_mb" || key == "soc_model" || key == "htp_arch") {
+          if (key == "backend_type" || key == "backend_path" || key == "vtcm_mb" || key == "soc_model" ||
+              key == "htp_arch") {
             // no validation
           } else if (key == "htp_graph_finalization_optimization_mode") {
             std::unordered_set<std::string> supported_htp_graph_final_opt_modes = {"0", "1", "2", "3"};
@@ -171,9 +176,10 @@ static bool ParseSessionConfigs(const std::string& configs_string,
               ORT_THROW("Wrong value for " + key + ". select from: " + str);
             }
           } else {
-            ORT_THROW(R"(Wrong key type entered. Choose from options: ['backend_path', 'vtcm_mb', 'htp_performance_mode',
- 'htp_graph_finalization_optimization_mode', 'soc_model', 'htp_arch', 'enable_htp_fp16_precision',
- 'offload_graph_io_quantization', 'enable_htp_spill_fill_buffer'])");
+            ORT_THROW(
+                "Wrong key type entered. Choose from options: ['backend_type', 'backend_path', 'vtcm_mb', "
+                "'htp_performance_mode', 'htp_graph_finalization_optimization_mode', 'soc_model', 'htp_arch', "
+                "'enable_htp_fp16_precision', 'offload_graph_io_quantization', 'enable_htp_spill_fill_buffer']");
           }
 
           test_config.run_config.provider_options[key] = value;
