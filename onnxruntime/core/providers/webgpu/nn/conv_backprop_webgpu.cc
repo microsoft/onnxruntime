@@ -13,10 +13,8 @@ Status ConvTranspose2DProgram::GenerateShaderCode(ShaderHelper& shader) const {
   const auto& dy = shader.AddInput("dy", ShaderUsage::UseUniform | ShaderUsage::UseIndicesTypeAlias | ShaderUsage::UseValueTypeAlias | ShaderUsage::UseElementTypeAlias);
   const auto& w = shader.AddInput("w", ShaderUsage::UseUniform | ShaderUsage::UseIndicesTypeAlias | ShaderUsage::UseValueTypeAlias);
   const auto& output = shader.AddOutput("output", ShaderUsage::UseUniform | ShaderUsage::UseIndicesTypeAlias | ShaderUsage::UseValueTypeAlias);
-  std::vector<const ShaderVariableHelper*> inputs = {&w, &dy};
   if (has_bias_) {
     const auto& bias = shader.AddInput("bias");
-    inputs.push_back(&bias);
   }
   auto row_dim = is_channels_last_ ? 1 : 2;
   auto col_dim = is_channels_last_ ? 2 : 3;
@@ -56,10 +54,11 @@ Status ConvTranspose2DProgram::GenerateShaderCode(ShaderHelper& shader) const {
            << "dotProd = dotProd + xValue * wValue;\n";
       } else {
         for (uint32_t i = 0; i < a_components_; ++i) {
-          ss << "let w_indices = w_indices_t(u32(wRPerm), u32(wCPerm), inputChannel + " << i << ", wOutChannel);\n"
-             << "let w_offset = " << w.IndicesToOffset("w_indices") << ";\n"
-             << "let wValue = " << w.GetByOffset("w_offset") << ";\n"
-             << "dotProd = dotProd + xValue[" << i << "] * wValue;\n";
+          ss << "let w_indices" << i << " = w_indices_t(u32(wRPerm), u32(wCPerm), " << a_components_ << " * inputChannel + " << i << ", wOutChannel);\n "
+             //    << "let w_offset" << i << " = " << w.IndicesToOffset("w_indices" + std::to_string(i)) << ";\n"
+             //    << "let wValue" << i << " = " << w.GetByOffset("w_offset" + std::to_string(i)) << ";\n"
+             << "let wValue" << i << " = " << w.GetByIndices("w_indices" + std::to_string(i)) << ";\n"
+             << "dotProd = dotProd + xValue[" << i << "] * wValue" << i << ";\n";
         }
       }
     }
@@ -84,7 +83,8 @@ Status ConvTranspose2DProgram::GenerateShaderCode(ShaderHelper& shader) const {
     }
     return ss.str();
   };
-  shader.MainFunctionBody() << "let outputIndices = " << output.OffsetToIndices("global_idx * " + std::to_string(components_)) << ";\n"
+  shader.MainFunctionBody() << shader.GuardAgainstOutOfBoundsWorkgroupSizes("uniforms.output_size")
+                            << "let outputIndices = " << output.OffsetToIndices("global_idx") << ";\n"
                             << "let batch = " << output.IndicesGet("outputIndices", 0) << ";\n"
                             << "let d1 = " << output.IndicesGet("outputIndices", channel_dim) << ";\n"
                             << "let r = " << output.IndicesGet("outputIndices", row_dim) << ";\n"
@@ -138,7 +138,7 @@ Status ConvTranspose2DProgram::GenerateShaderCode(ShaderHelper& shader) const {
 
   shader.MainFunctionBody() << "    for (var d2: u32 = 0; d2 < uniforms.input_channels_per_group_int; d2 = d2 + " << (pack_input_as4_ ? 4 : a_components_) << ") {\n"
                             << "      " << calculate_result() << "\n"
-                            << "      inputChannel = inputChannel + " << (pack_input_as4_ ? 4 : a_components_) << ";\n"
+                            << "      inputChannel = inputChannel + " << (pack_input_as4_ ? 4 : 1) << ";\n"
                             << "    }\n"
                             << "    " << calculate_remainder() << "\n"
                             << "    wC = wC + uniforms.strides.y - 1;\n"
@@ -169,9 +169,9 @@ ConvTranspose2DProgram CreateConvTranspose2DProgram(const std::vector<const Tens
   TensorShape reduced_weight_shape = ReduceShapeByComponents(weight_shape, b_components);
   TensorShape reduced_output_shape = ReduceShapeByComponents(output_shape, components);
   auto output_size = reduced_output_shape.Size();
-  std::vector<uint32_t> filter_dims = {static_cast<uint32_t>(weight_shape[is_channels_last ? 1 : 2]), static_cast<uint32_t>(weight_shape[is_channels_last ? 2 : 3])};
-  std::vector<uint32_t> effective_filter_dims = {filter_dims[0] + dilations[0] <= 1 ? 0 : filter_dims[0] * (dilations[0] - 1), filter_dims[1] + dilations[1] <= 1 ? 0 : filter_dims[1] * (dilations[1] - 1)};
-  std::vector<uint32_t> local_pads = {effective_filter_dims[0] - 1 - (pads[0] + pads[1]) / 2, effective_filter_dims[1] - 1 - (pads[1] + pads[3]) / 2};
+  std::vector<uint32_t> kernel_dims = {static_cast<uint32_t>(weight_shape[is_channels_last ? 1 : 2]), static_cast<uint32_t>(weight_shape[is_channels_last ? 2 : 3])};
+  std::vector<uint32_t> effective_kernel_dims = {kernel_dims[0] + ((dilations[0] <= 1) ? 0 : (kernel_dims[0] * (dilations[0] - 1))), kernel_dims[1] + ((dilations[1] <= 1) ? 0 : (kernel_dims[1] * (dilations[1] - 1)))};
+  std::vector<uint32_t> local_pads = {effective_kernel_dims[0] - 1 - (pads[0] + pads[2]) / 2, effective_kernel_dims[1] - 1 - (pads[1] + pads[3]) / 2};
   ConvTranspose2DProgram program(is_channels_last, has_bias, components, a_components, b_components, uint32_t(input_channels_remainder), pack_input_as4);
   program.AddInputs({{input, ProgramTensorMetadataDependency::TypeAndRank, reduced_input_shape, a_components}, {weight, ProgramTensorMetadataDependency::TypeAndRank, reduced_weight_shape, b_components}});
   if (has_bias) {
@@ -181,7 +181,7 @@ ConvTranspose2DProgram CreateConvTranspose2DProgram(const std::vector<const Tens
     program.AddInput({bias, ProgramTensorMetadataDependency::TypeAndRank, reduced_bias_shape, components});
   }
   program.AddOutput({output, ProgramTensorMetadataDependency::Rank, reduced_output_shape, components})
-      .AddUniformVariables({{static_cast<uint32_t>(output_size)}, {strides}, {filter_dims}, {dilations}, {effective_filter_dims}, {local_pads}, {static_cast<uint32_t>(input_channels_per_group)}, {static_cast<uint32_t>(input_channels_per_group_int)}, {static_cast<uint32_t>(output_channels_per_group)}})
+      .AddUniformVariables({{static_cast<uint32_t>(output_size)}, {strides}, {kernel_dims}, {dilations}, {effective_kernel_dims}, {local_pads}, {static_cast<uint32_t>(input_channels_per_group)}, {static_cast<uint32_t>(input_channels_per_group_int)}, {static_cast<uint32_t>(output_channels_per_group)}})
       .SetDispatchGroupSize((output_size + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE);
 
   return program;
