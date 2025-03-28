@@ -203,7 +203,7 @@ Conv2dMMProgram CreateConv2dMMProgram(const Activation& activation, const std::v
   std::vector<uint32_t> element_size = {is_vec4 ? inner_element_size : 1, static_cast<uint32_t>(is_vec4 ? 4 : 1), static_cast<uint32_t>(is_vec4 ? 4 : 1)};
   const auto components = is_vec4 ? 4 : 1;
   const auto input_components = static_cast<int>(inner_element_size == 3 ? 1 : inner_element_size);
-  Conv2dMMProgram program(activation, tile_a_outer, tile_b_outer, tile_inner, fit_a_outer, fit_b_outer, fit_inner, is_channels_last, is_vec4, has_bias, std::move(element_size), std::move(elements_per_thread), sequentially_access_by_threads);
+  Conv2dMMProgram program(activation, tile_inner, fit_a_outer, fit_b_outer, fit_inner, is_channels_last, is_vec4, has_bias, std::move(element_size), std::move(elements_per_thread), sequentially_access_by_threads);
   TensorShape reduced_input_shape = ReduceShapeByComponents(input_output_shapes[0], components);
   TensorShape reduced_weight_shape = ReduceShapeByComponents(input_output_shapes[1], components);
   TensorShape reduced_output_shape = ReduceShapeByComponents(input_output_shapes[has_bias ? 3 : 2], components);

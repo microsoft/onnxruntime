@@ -18,7 +18,7 @@ namespace webgpu {
 
 class ConvTranspose2DProgram : public Program<ConvTranspose2DProgram> {
  public:
-  ConvTranspose2DProgram(bool is_channels_last, bool has_bias, uint32_t components, uint32_t a_components, uint32_t b_components, uint32_t input_channels_remainder, bool pack_input_as4) : Program("ConvTranspose2D"), is_channels_last_(is_channels_last), has_bias_(has_bias), components_(components), a_components_(a_components), b_components_(b_components), input_channels_remainder_(input_channels_remainder), pack_input_as4_(pack_input_as4) {
+  ConvTranspose2DProgram(bool is_channels_last, bool has_bias, uint32_t components, uint32_t a_components, uint32_t input_channels_remainder, bool pack_input_as4) : Program("ConvTranspose2D"), is_channels_last_(is_channels_last), has_bias_(has_bias), components_(components), a_components_(a_components), input_channels_remainder_(input_channels_remainder), pack_input_as4_(pack_input_as4) {
   }
 
   Status GenerateShaderCode(ShaderHelper& sh) const override;
@@ -38,7 +38,6 @@ class ConvTranspose2DProgram : public Program<ConvTranspose2DProgram> {
   bool has_bias_;
   uint32_t components_;
   uint32_t a_components_;
-  uint32_t b_components_;
   uint32_t input_channels_remainder_;
   bool pack_input_as4_;
 };
