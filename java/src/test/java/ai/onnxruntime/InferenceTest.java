@@ -2125,10 +2125,8 @@ public class InferenceTest {
           options.addXnnpack(Collections.emptyMap());
           break;
         case QNN:
-          {
-            options.addQnn(Collections.singletonMap("backend_type", "htp"));
-            break;
-          }
+          options.addQnn(Collections.singletonMap("backend_type", "cpu"));
+          break;
         case VITIS_AI:
         case RK_NPU:
         case MI_GRAPH_X:
