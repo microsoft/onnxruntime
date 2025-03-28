@@ -159,17 +159,10 @@ Status GroupQueryAttentionFusion::ApplyImpl(
 
     auto& inputs = node.MutableInputDefs();
 
-    std::cout << inputs.size() << std::endl;
-
+    // Check if this fusion is called the second time.
     if (inputs[1]->Type() == nullptr) {
-      [[maybe_unused]] int sodjsapidjadasddads = 1;
       continue;
     }
-
-    // for (auto input : inputs) {
-    // std::cout << input->Name() << std::endl;
-    // std::cout << *input->Type() << std::endl;
-    //}
 
     std::cout << "-----------------" << std::endl;
 
@@ -214,13 +207,14 @@ Status GroupQueryAttentionFusion::ApplyImpl(
             rotary_node_2 = &rotary_or_v_node;
           }
 
-          for (auto inner = rotary_or_v_node.InputNodesBegin(); inner != rotary_or_v_node.InputNodesEnd(); ++inner) {
+          for (auto topNodeIt = rotary_or_v_node.InputNodesBegin(); topNodeIt != rotary_or_v_node.InputNodesEnd(); ++topNodeIt) {
             // Some models might have input nodes that are unrelated to MatMulNBits.
-            if (inner->OpType() != "MatMulNBits") {
+            if (topNodeIt->OpType() != "MatMulNBits") {
               continue;
             }
-            std::cout << "rotary input is " << (*inner).Name() << std::endl;
-            auto& mat_mul_node = *graph.GetNode(inner->Index());
+
+            std::cout << "rotary input is " << (*topNodeIt).Name() << std::endl;
+            auto& mat_mul_node = *graph.GetNode(topNodeIt->Index());
             std::cout << "rotary input2 is " << mat_mul_node.Name() << std::endl;
             std::cout << "rotary input3 is " << mat_mul_node.OpType() << std::endl;
 
@@ -310,7 +304,6 @@ Status GroupQueryAttentionFusion::ApplyImpl(
     int64_t hidden_size = q_proj_tensor->dims(0);
 
     auto qkv_args = MergeQkvWeights(graph, hidden_size, q_proj_tensor->dims(1), q_proj_tensor->dims(2), q_proj_tensor, k_proj_tensor, v_proj_tensor, q_scale_tensor, q_zero_points_tensor, k_scale_tensor, k_zero_points_tensor, v_scale_tensor, v_zero_points_tensor);
-    // onnxruntime::NodeArg& qkv_initializer_node_arg = MergeQkvWeights(graph, hidden_size, q_proj_tensor->dims(1), q_proj_tensor->dims(2), q_proj_tensor, k_proj_tensor, v_proj_tensor, q_scale_tensor, q_zero_points_tensor, k_scale_tensor, k_zero_points_tensor, v_scale_tensor, v_zero_points_tensor);
 
     // todo prob remove this
     if (pos_ids_arg == nullptr) {
@@ -349,6 +342,16 @@ Status GroupQueryAttentionFusion::ApplyImpl(
 
     mat_mul_n_bits_new_node.SetExecutionProviderType(node.GetExecutionProviderType());
 
+    graph_utils::FinalizeNodeFusion(graph, {*q_node, *k_node, *v_node, *rotary_node_1, *rotary_node_2}, mat_mul_n_bits_new_node);
+
+    // Make sure the matmulnbits node has correct output defs
+    auto& mat_mut_output_defs = mat_mul_n_bits_new_node.MutableOutputDefs();
+    mat_mut_output_defs.assign(mmnb_output_defs.begin(), mmnb_output_defs.end());
+
+    [[maybe_unused]] const onnxruntime::Node* producer = graph.GetProducerNode(matmul_output.Name());
+
+    AttachNodeAttribute(node, "do_rotary", 1, AttributeProto_AttributeType_INT);
+
     std::string empty_name;
     auto& emptyNode = graph.GetOrCreateNodeArg(empty_name, nullptr);
 
@@ -363,18 +366,6 @@ Status GroupQueryAttentionFusion::ApplyImpl(
         cos_cache_arg,
         sin_cache_arg,
         pos_ids_arg};
-
-    // TODO: screws up definition for output
-    // ORT_RETURN_IF_ERROR(graph.Resolve());
-
-    graph_utils::FinalizeNodeFusion(graph, {*q_node, *k_node, *v_node, *rotary_node_1, *rotary_node_2}, mat_mul_n_bits_new_node);
-
-    auto& mat_mut_output_defs = mat_mul_n_bits_new_node.MutableOutputDefs();
-    mat_mut_output_defs.assign(mmnb_output_defs.begin(), mmnb_output_defs.end());
-
-    [[maybe_unused]] const onnxruntime::Node* producer = graph.GetProducerNode(matmul_output.Name());
-
-    AttachNodeAttribute(node, "do_rotary", 1, AttributeProto_AttributeType_INT);
 
     auto& gqaInputArgs = node.MutableInputArgsCount();
     gqaInputArgs[7] = 1;
