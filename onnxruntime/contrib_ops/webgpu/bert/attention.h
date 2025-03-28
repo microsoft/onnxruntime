@@ -50,7 +50,9 @@ class AttentionProbsProgram final : public Program<AttentionProbsProgram> {
                                           {"kv_sequence_length", ProgramUniformVariableDataType::Uint32},
                                           {"present_sequence_length", ProgramUniformVariableDataType::Uint32},
                                           {"n_reps", ProgramUniformVariableDataType::Uint32},
-                                          {"is_first_prompt", ProgramUniformVariableDataType::Uint32});
+                                          {"is_first_prompt", ProgramUniformVariableDataType::Uint32},
+                                          {"num_total_seq_length_tile", ProgramUniformVariableDataType::Uint32},
+                                          {"num_seq_length_tile", ProgramUniformVariableDataType::Uint32});
 
   WEBGPU_PROGRAM_DEFINE_OVERRIDABLE_CONSTANTS({"TILE_SIZE", ProgramConstantDataType::Uint32});
 
@@ -106,7 +108,9 @@ class VxAttentionScoreProgram final : public Program<VxAttentionScoreProgram> {
                                           {"kv_sequence_length", ProgramUniformVariableDataType::Uint32},
                                           {"present_sequence_length", ProgramUniformVariableDataType::Uint32},
                                           {"n_reps", ProgramUniformVariableDataType::Uint32},
-                                          {"is_first_prompt", ProgramUniformVariableDataType::Uint32});
+                                          {"is_first_prompt", ProgramUniformVariableDataType::Uint32},
+                                          {"num_head_size_tile", ProgramUniformVariableDataType::Uint32},
+                                          {"num_seq_length_tile", ProgramUniformVariableDataType::Uint32});
 
   WEBGPU_PROGRAM_DEFINE_OVERRIDABLE_CONSTANTS({"TILE_SIZE", ProgramConstantDataType::Uint32});
 
