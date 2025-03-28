@@ -432,12 +432,6 @@ void GraphEdge::RemoveGraphEdges(Graph& graph, const std::vector<GraphEdge>& edg
 
 bool IsSupportedProvider(const Node& node,
                          const InlinedHashSet<std::string_view>& compatible_providers) {
-  //std::cout << "++++++++++++" << std::endl;
-  //  for (auto& cp : compatible_providers) {
-    //std::cout << std::string(cp) << std::endl;
-  //}
-  //std::cout << "-----------------" << std::endl;
-  //std::cout << node.GetExecutionProviderType() << std::endl;
   return !(!compatible_providers.empty() &&
            compatible_providers.find(node.GetExecutionProviderType()) == compatible_providers.end());
 }
