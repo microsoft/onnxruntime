@@ -29,6 +29,14 @@ jobs:
           java-version: '17'
           architecture: x64
 
+
+      - uses: microsoft/onnxruntime-github-actions/setup-cmake@f861fd3c0d13dedcf2fae39ad7023acaad97532d
+        with:
+          cmake-version: '4.0.0'
+          cmake-hash: '704fc67b9efa1d65e68a516b439ce3f65f1d6388dc0794002a342d4b59cd3ea63619e674d0343a08c03e9831b053bcbb3ae7635ac42f7796b8d440deeb81b7f6'
+          add-to-path: 'true'
+          disable-terrapin: 'true'
+
       - name: Setup Android NDK
         uses: ./.github/actions/setup-android-ndk
         with:
