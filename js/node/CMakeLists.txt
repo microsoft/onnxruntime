@@ -96,7 +96,7 @@ endif()
 if (WIN32)
   target_link_directories(onnxruntime_binding PRIVATE ${ONNXRUNTIME_WIN_BIN_DIR})
 else()
-  target_link_directories(onnxruntime_binding PRIVATE ${ONNXRUNTIME_BUILD_DIR})
+  target_link_directories(onnxruntime_binding PRIVATE ${ONNXRUNTIME_BUILD_DIR}/Debug)
 endif()
 
 if (WIN32)
@@ -120,7 +120,7 @@ if (WIN32)
   endif()
 
 elseif (APPLE)
-  file(COPY ${ONNXRUNTIME_BUILD_DIR}/libonnxruntime.dylib
+  file(COPY ${ONNXRUNTIME_BUILD_DIR}/Debug/libonnxruntime.dylib
       DESTINATION ${dist_folder} FOLLOW_SYMLINK_CHAIN)
 elseif (UNIX)
   file(COPY ${ONNXRUNTIME_BUILD_DIR}/libonnxruntime.so
