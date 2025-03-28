@@ -1,6 +1,10 @@
-# ONNXRuntime Qnn Context Generator
+# ONNXRuntime EP Conexte Model Generation with Weight Sharing
 
-This tool provides the way to generate Onnx models that wraps QNN context binary warpt with weight sharing enabled. The options to use with the tool are listed below:
+[EP context with weight sharing design doc](https://onnxruntime.ai/docs/execution-providers/EP-Context-Design.html#epcontext-with-weight-sharing)
+
+OnnxRuntime provides the ep_weight_sharing_ctx_gen tool to automate the weight-sharing workflow. This tool handles the entire process. This tool is specifically designed for weight sharing scenarios, streamlining the EPContext model generation process.
+
+Example command line:
 
 `ep_weight_sharing_ctx_gen [options...] model_1_path,model_2_path`
 
