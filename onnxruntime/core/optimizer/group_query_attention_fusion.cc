@@ -182,10 +182,10 @@ Status GroupQueryAttentionFusion::ApplyImpl(
       continue;
     }
 
-    for (auto input : inputs) {
-      std::cout << input->Name() << std::endl;
-      std::cout << *input->Type() << std::endl;
-    }
+    //for (auto input : inputs) {
+      //std::cout << input->Name() << std::endl;
+      //std::cout << *input->Type() << std::endl;
+    //}
 
     std::cout << "-----------------" << std::endl;
 
@@ -202,10 +202,10 @@ Status GroupQueryAttentionFusion::ApplyImpl(
     onnxruntime::NodeArg* pos_ids_arg = nullptr;
     onnxruntime::NodeArg* cos_cache_arg = nullptr;
     onnxruntime::NodeArg* sin_cache_arg = nullptr;
-    onnxruntime::NodeArg* past_key_values_key_arg = nullptr;
-    onnxruntime::NodeArg* past_key_values_value_arg = nullptr;
-    onnxruntime::NodeArg* seqlens_k = nullptr;
-    onnxruntime::NodeArg* total_seq_len = nullptr;
+    onnxruntime::NodeArg* past_key_values_key_arg = node.MutableInputDefs()[3];
+    onnxruntime::NodeArg* past_key_values_value_arg = node.MutableInputDefs()[4];
+    onnxruntime::NodeArg* seqlens_k = node.MutableInputDefs()[5];
+    onnxruntime::NodeArg* total_seq_len = node.MutableInputDefs()[6];
 
     // Inputs to the newly created MatMul node
     onnxruntime::NodeArg* layer_norm = nullptr;
@@ -231,6 +231,10 @@ Status GroupQueryAttentionFusion::ApplyImpl(
           }
 
           for (auto inner = rotary_or_v_node.InputNodesBegin(); inner != rotary_or_v_node.InputNodesEnd(); ++inner) {
+            // Some models might have input nodes that are unrelated to MatMulNBits.
+              if (inner->OpType() != "MatMulNBits") {
+              continue;
+            }
             std::cout << "rotary input is " << (*inner).Name() << std::endl;
             auto& mat_mul_node = *graph.GetNode(inner->Index());
             std::cout << "rotary input2 is " << mat_mul_node.Name() << std::endl;
@@ -239,10 +243,10 @@ Status GroupQueryAttentionFusion::ApplyImpl(
             std::cout << "Tensor1 name I am trying to load " << mat_mul_node.InputDefs()[1]->Name() << std::endl;
             std::cout << "Tensor2 name I am trying to load " << mat_mul_node.InputDefs()[2]->Name() << std::endl;
 
-            if (!k_node) {
-              k_node = &mat_mul_node;
-            } else {
+            if (!q_node) {
               q_node = &mat_mul_node;
+            } else {
+              k_node = &mat_mul_node;
             }
 
             layer_norm = mat_mul_node.MutableInputDefs()[0];
@@ -300,22 +304,6 @@ Status GroupQueryAttentionFusion::ApplyImpl(
           if (v_zero_points_tensor == nullptr && !graph.GetInitializedTensor(rotary_or_v_node.InputDefs()[3]->Name(), v_zero_points_tensor)) {
             std::cout << "Unable to load V zero points tensor weight" << std::endl;
           }
-        }
-
-        if (input_def->Name() == "seqlens_k") {
-          seqlens_k = input_def;
-        } else if (input_def->Name() == "total_seq_len") {
-          total_seq_len = input_def;
-        }
-
-      } else {
-        std::cout << "Input \"" << input_def->Name() << "\" is not produced by any node (it is likely an initializer or constant)" << std::endl;
-
-        if (input_def->Name().find(".key") != std::string::npos) {
-          past_key_values_key_arg = input_def;
-
-        } else if (input_def->Name().find(".value") != std::string::npos) {
-          past_key_values_value_arg = input_def;
         }
       }
     }
