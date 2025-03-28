@@ -21,6 +21,7 @@ common::Status GraphTransformerManager::GetSteps(unsigned& steps) const {
 
 common::Status GraphTransformerManager::ApplyTransformers(Graph& graph, TransformerLevel level,
                                                           const logging::Logger& logger) const {
+  _is_graph_modified = false;
   const auto& transformers = level_to_transformer_map_.find(level);
   if (transformers == level_to_transformer_map_.end()) {
     return Status::OK();
@@ -35,6 +36,7 @@ common::Status GraphTransformerManager::ApplyTransformers(Graph& graph, Transfor
       bool modified = false;
       ORT_RETURN_IF_ERROR(transformer->Apply(graph, modified, logger));
       graph_changed = graph_changed || modified;
+      _is_graph_modified = _is_graph_modified || graph_changed;
     }
     if (!graph_changed) {
       break;
@@ -42,6 +44,10 @@ common::Status GraphTransformerManager::ApplyTransformers(Graph& graph, Transfor
   }
 
   return Status::OK();
+}
+
+bool GraphTransformerManager::IsGraphModified(void) const {
+  return _is_graph_modified;
 }
 
 common::Status GraphTransformerManager::Register(std::unique_ptr<GraphTransformer> transformer,

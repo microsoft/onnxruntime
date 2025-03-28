@@ -376,6 +376,9 @@ def get_optimization_level(level):
     if level == "extended":
         # Optimizations using custom operators, excluding NCHWc and NHWC layout optimizers
         return ort.GraphOptimizationLevel.ORT_ENABLE_EXTENDED
+    if level == "layout":
+        # NCHWc and NHWC layout optimizers
+        return ort.GraphOptimizationLevel.ORT_ENABLE_LAYOUT
     if level == "all":
         return ort.GraphOptimizationLevel.ORT_ENABLE_ALL
 
