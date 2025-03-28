@@ -52,7 +52,7 @@ namespace qnnctxgen {
       "\t    [QNN only] [enable_htp_fp16_precision]: Enable the HTP_FP16 precision so that the float32 model will be inferenced with fp16 precision. \n"
       "\t    Otherwise, it will be fp32 precision. Works for float32 model for HTP backend. Defaults to '1' (with FP16 precision.). \n"
       "\t    [QNN only] [offload_graph_io_quantization]: Offload graph input quantization and graph output dequantization to another EP (typically CPU EP). \n"
-      "\t    Defaults to '1' (QNN EP handles the graph I/O quantization and dequantization). \n"
+      "\t    Defaults to '1' (another EP (typically CPU EP) handles the graph I/O quantization and dequantization). \n"
       "\t    [QNN only] [enable_htp_spill_fill_buffer]: Enable HTP spill file buffer, used while generating QNN context binary.\n"
       "\t    [Example] -i \"vtcm_mb|8 htp_arch|73\" \n"
       "\n"
