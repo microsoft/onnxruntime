@@ -245,8 +245,9 @@ QNNExecutionProvider::QNNExecutionProvider(const ProviderOptions& provider_optio
     LOGS_DEFAULT(VERBOSE) << "User specified option - stop share EP contexts across sessions: " << stop_share_ep_contexts_;
   }
 
-  const std::string backend_path = [&]() -> std::string {
-    std::optional<std::string> backend_path;
+  std::string backend_path{};
+  {
+    std::optional<std::string> backend_path_from_options{};
 
     static const std::string BACKEND_TYPE = "backend_type";
     static const std::string BACKEND_PATH = "backend_path";
@@ -259,24 +260,25 @@ QNNExecutionProvider::QNNExecutionProvider(const ProviderOptions& provider_optio
     }
 
     if (backend_type_it != provider_options_map.end()) {
-      if (std::string backend_path_from_type; ParseBackendTypeName(backend_type_it->second, backend_path_from_type)) {
-        backend_path = backend_path_from_type;
+      if (std::string parsed_backend_path; ParseBackendTypeName(backend_type_it->second, parsed_backend_path)) {
+        backend_path_from_options = parsed_backend_path;
       } else {
         LOGS_DEFAULT(ERROR) << "Failed to parse '" << BACKEND_TYPE << "' value.";
       }
     } else if (backend_path_it != provider_options_map.end()) {
-      backend_path = backend_path_it->second;
+      backend_path_from_options = backend_path_it->second;
     }
 
-    if (!backend_path.has_value()) {
+    if (backend_path_from_options.has_value()) {
+      backend_path = *backend_path_from_options;
+    } else {
       const auto& default_backend_path = kDefaultHtpBackendPath;
       backend_path = default_backend_path;
       LOGS_DEFAULT(WARNING) << "Unable to determine backend path from provider options. Using default.";
     }
 
-    LOGS_DEFAULT(VERBOSE) << "Using backend path: " << *backend_path;
-    return *backend_path;
-  }();
+    LOGS_DEFAULT(VERBOSE) << "Using backend path: " << backend_path;
+  }
 
   std::string profiling_file_path;
   static const std::string PROFILING_LEVEL = "profiling_level";
