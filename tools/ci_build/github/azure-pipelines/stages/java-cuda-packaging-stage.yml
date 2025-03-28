@@ -79,9 +79,6 @@ stages:
         path: '$(Build.ArtifactStagingDirectory)'
         artifact: 'onnxruntime-java-gpu'
 
-    - template: ../templates/component-governance-component-detection-steps.yml
-      parameters:
-        condition: 'succeeded'
   - job: Final_Jar_Testing_Windows_GPU
     dependsOn:
       Jar_Packaging_GPU
@@ -127,10 +124,6 @@ stages:
           popd
           java -DUSE_CUDA=1 -jar junit-platform-console-standalone-1.6.2.jar -cp .;.\test;protobuf-java-3.21.7.jar;onnxruntime_gpu-$(OnnxRuntimeVersion).jar --scan-class-path --fail-if-no-tests --disable-banner
         workingDirectory: '$(Build.BinariesDirectory)\final-jar'
-
-    - template: ../templates/component-governance-component-detection-steps.yml
-      parameters:
-        condition: 'succeeded'
   - job: Final_Jar_Testing_Linux_GPU
     dependsOn:
       Jar_Packaging_GPU
@@ -182,7 +175,3 @@ stages:
           onnxruntimeubi8packagestest \
           /bin/bash /onnxruntime_src/tools/ci_build/github/linux/java_linux_final_test.sh -r /build -v $(OnnxRuntimeVersion)
       displayName: 'Test'
-
-    - template: ../templates/component-governance-component-detection-steps.yml
-      parameters:
-        condition: 'succeeded'

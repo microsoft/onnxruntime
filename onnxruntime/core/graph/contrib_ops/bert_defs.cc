@@ -312,6 +312,29 @@ void BaseGroupQueryAttentionTypeAndShapeInference(ONNX_NAMESPACE::InferenceConte
           updateOutputShape(ctx, 1, present_shape);
           updateOutputShape(ctx, 2, present_shape);
         }
+      } else if (use_max_past_present_buffer == -1) {
+        const auto* total_sequence_length_data = ctx.getInputData(6);
+        if (total_sequence_length_data != nullptr && past_dims[2].has_dim_value()) {
+          int64_t total_sequence_length_value = 0;
+          const auto& data = ParseData<int32_t>(total_sequence_length_data);
+          total_sequence_length_value = static_cast<int64_t>(data[0]);
+
+          // present_sequence_length = max(past_sequence_length, total_sequence_length)
+          int64_t present_sequence_length = total_sequence_length_value > past_dims[2].dim_value()
+                                                ? total_sequence_length_value
+                                                : past_dims[2].dim_value();
+
+          ONNX_NAMESPACE::TensorShapeProto present_shape;
+          for (auto& dim : past_dims) {
+            *present_shape.add_dim() = dim;
+          }
+
+          // shape of present key/value is (batch_size, kv_num_heads, present_sequence_length, head_size)
+          present_shape.mutable_dim(2)->set_dim_value(present_sequence_length);
+
+          updateOutputShape(ctx, 1, present_shape);
+          updateOutputShape(ctx, 2, present_shape);
+        }
       }
     }
   }

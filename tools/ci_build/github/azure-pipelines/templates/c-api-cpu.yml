@@ -161,9 +161,7 @@ stages:
         targetPath: '$(Build.BinariesDirectory)/artifacts'
         artifactName: 'onnxruntime-ios-full-xcframework'
 
-    - template: component-governance-component-detection-steps.yml
-      parameters:
-        condition: 'succeeded'
+
 
 - template: win-ci.yml
   parameters:
@@ -289,9 +287,7 @@ stages:
         targetPath: '$(Build.ArtifactStagingDirectory)'
         artifactName: 'onnxruntime-java'
 
-    - template: component-governance-component-detection-steps.yml
-      parameters:
-        condition: 'succeeded'
+
 
 - stage: NuGet_Packaging_CPU
   dependsOn:
@@ -505,9 +501,7 @@ stages:
         msbuildArguments: '-t:Clean -p:OnnxRuntimeBuildDirectory="$(Build.BinariesDirectory)" -p:OrtPackageId=$(OrtPackageId)'
         workingDirectory: '$(Build.SourcesDirectory)\csharp'
 
-    - template: component-governance-component-detection-steps.yml
-      parameters:
-        condition: 'succeeded'
+
 
 
 - stage: Nodejs_Packaging
@@ -774,9 +768,7 @@ stages:
         artifactName: 'NPM_packages'
         targetPath: '$(Build.ArtifactStagingDirectory)'
 
-    - template: component-governance-component-detection-steps.yml
-      parameters:
-        condition: 'succeeded'
+
 
 
 - template: ../nuget/templates/test_win.yml

@@ -246,10 +246,6 @@ stages:
           SourceFolder: '$(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo'
           Contents: 'custom_op_library.dll'
           TargetFolder: '$(Build.ArtifactStagingDirectory)/testdata'
-
-      - template: component-governance-component-detection-steps.yml
-        parameters :
-          condition : 'succeeded'
 - ${{ if contains(parameters.ort_build_pool_name, 'GPU') }}:
   - stage: Windows_Packaging_${{ parameters.stage_name_suffix }}_Testing
     dependsOn: Windows_Packaging_${{ parameters.stage_name_suffix }}

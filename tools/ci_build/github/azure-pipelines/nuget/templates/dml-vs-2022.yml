@@ -211,7 +211,3 @@ stages:
           inputs:
             targetPath: '$(Build.SourcesDirectory)\js\node\bin\napi-v3\win32\${{ parameters.sln_platform }}'
             artifactName: 'drop-onnxruntime-nodejs-win-${{ parameters.sln_platform }}-dml'
-
-      - template: ../../templates/component-governance-component-detection-steps.yml
-        parameters :
-          condition : 'succeeded'

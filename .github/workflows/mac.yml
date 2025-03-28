@@ -21,6 +21,12 @@ env:
 jobs:
   cpu:
     uses: ./.github/workflows/macos-ci-build-and-test-workflow.yml
+    with:
+      # Only build arm64 for CPU
+      matrix_exclude: >-
+        [
+          {"platform_machine": "x86_64"}
+        ]
 
   coreml:
     uses: ./.github/workflows/macos-ci-build-and-test-workflow.yml
@@ -31,6 +37,12 @@ jobs:
     uses: ./.github/workflows/macos-ci-build-and-test-workflow.yml
     with:
       use_xnnpack: true
+      # only build arm64/Debug for XNNPack
+      matrix_exclude: >-
+        [
+          {"platform_machine": "x86_64"},
+          {"platform_machine": "arm64", "build_config": "Release"}
+        ]
 
   webgpu:
     uses: ./.github/workflows/macos-ci-build-and-test-workflow.yml

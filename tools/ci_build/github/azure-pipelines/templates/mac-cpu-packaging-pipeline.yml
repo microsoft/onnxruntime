@@ -137,6 +137,4 @@ stages:
         artifactName: 'onnxruntime-osx'
         condition: 'succeededOrFailed()'
 
-    - template: component-governance-component-detection-steps.yml
-      parameters:
-        condition: 'succeeded'
+

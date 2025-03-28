@@ -7700,6 +7700,18 @@ TEST_F(GraphTransformationTests, GatherSliceToSplitFusion_AllSlice_GraphInput) {
                                         1, pre_graph_checker, post_graph_checker));
 }
 
+TEST_F(GraphTransformationTests, GatherSliceToSplitFusion_AllSlice_GraphInput_gh_issue_24203) {
+  // https://github.com/microsoft/onnxruntime/issues/24203
+  // This bug is manifested when the model features nameless nodes and there are more than one
+  // SliceToSplitFusion resulting in multiple Split nodes with the same name.
+  const PathString CUSTOM_OP_MODEL_URI = ORT_TSTR("testdata/gh_issue_24203.onnx");
+  SessionOptions session_options;
+  session_options.graph_optimization_level = TransformerLevel::Level2;
+  InferenceSession session(session_options, GetEnvironment());
+  ASSERT_STATUS_OK(session.Load(CUSTOM_OP_MODEL_URI));
+  ASSERT_STATUS_OK(session.Initialize());
+}
+
 TEST_F(GraphTransformationTests, GatherSliceToSplitFusion_Combined) {
   auto build_test_case = [&](ModelTestBuilder& builder) {
     auto* data_arg = builder.MakeInput<float>({{144}});

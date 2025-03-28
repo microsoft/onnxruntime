@@ -53,8 +53,4 @@ stages:
           DisableMlOps: $(DisableMlOps)
           IsReleaseBuild: $(IsReleaseBuild)
 
-    - template: ../../templates/component-governance-component-detection-steps.yml
-      parameters :
-        condition : 'always'
-
     - template: ../../templates/clean-agent-build-directory-step.yml

@@ -66,8 +66,8 @@ stages:
 
       - template: ../templates/get-docker-image-steps.yml
         parameters:
-          Dockerfile: tools/ci_build/github/linux/docker/inference/${{ parameters.arch }}/default/cuda12/Dockerfile
-          Context: tools/ci_build/github/linux/docker/inference/${{ parameters.arch }}/default/cuda12
+          Dockerfile: tools/ci_build/github/linux/docker/inference/${{ parameters.arch }}/python/cuda/Dockerfile
+          Context: tools/ci_build/github/linux/docker/inference/${{ parameters.arch }}/python/cuda
           DockerBuildArgs: "--build-arg BASEIMAGE=${{ parameters.docker_base_image }} --build-arg TRT_VERSION=${{ variables.trt_version }} --build-arg BUILD_UID=$( id -u )"
           Repository: onnxruntimecuda${{ replace(parameters.cuda_version, '.', '') }}xtrt86build${{ parameters.arch }}
 

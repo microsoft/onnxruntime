@@ -228,7 +228,3 @@ stages:
         set -e -x
         ls -R "$(Build.ArtifactStagingDirectory)"
       displayName: "List staged artifacts"
-
-    - template: ../component-governance-component-detection-steps.yml
-      parameters:
-        condition: 'succeeded'

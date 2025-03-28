@@ -141,8 +141,5 @@ jobs:
     condition: and(ne(variables['ORT_DISABLE_PYTHON_PACKAGE_LOCAL_VERSION'], 'true'), and(succeeded(), eq(variables['DRY_RUN'], '0')))
     displayName: 'Upload Rocm wheel to release repository'
 
-  - template: component-governance-component-detection-steps.yml
-    parameters:
-      condition: 'succeeded'
 
   - template: clean-agent-build-directory-step.yml

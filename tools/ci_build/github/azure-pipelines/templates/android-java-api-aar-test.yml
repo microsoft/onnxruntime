@@ -110,7 +110,3 @@ jobs:
     env:
       BROWSERSTACK_ID: $(browserstack_username)
       BROWSERSTACK_TOKEN: $(browserstack_access_key)
-
-  - template: component-governance-component-detection-steps.yml
-    parameters :
-      condition : 'succeeded'

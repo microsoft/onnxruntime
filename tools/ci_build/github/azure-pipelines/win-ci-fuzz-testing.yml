@@ -66,7 +66,3 @@ jobs:
       script: '$(Build.BinariesDirectory)\$(BuildConfig)\$(BuildConfig)\onnxruntime_security_fuzz.exe /t  /f "$(Build.BinariesDirectory)\$(BuildConfig)\$(BuildConfig)\testdata\mnist.onnx"  1 m'
       workingDirectory: $(Build.BinariesDirectory)\$(BuildConfig)\$(BuildConfig)
       failOnStderr: false # Optional
-
-  - template: templates/component-governance-component-detection-steps.yml
-    parameters :
-      condition : 'succeeded'

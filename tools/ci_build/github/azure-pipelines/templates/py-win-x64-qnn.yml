@@ -155,8 +155,4 @@ jobs:
         condition: and (succeeded(), eq(variables['Build.SourceBranch'], 'refs/heads/main'))
         inputs:
           GdnPublishTsaOnboard: false
-          GdnPublishTsaConfigFile: '$(Build.sourcesDirectory)\.gdn\.gdntsa' 
-
-      - template: component-governance-component-detection-steps.yml
-        parameters:
-          condition: 'succeeded'
+          GdnPublishTsaConfigFile: '$(Build.sourcesDirectory)\.gdn\.gdntsa'
