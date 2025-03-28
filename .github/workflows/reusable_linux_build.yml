@@ -1,0 +1,143 @@
+name: Reusable Linux CPU Build and Test
+
+on:
+  workflow_call:
+    inputs:
+      pool_name:
+        description: 'The specific 1ES pool name (e.g., onnxruntime-github-Ubuntu2204-AMD-CPU)'
+        required: true
+        type: string
+      build_config:
+        description: 'Build configuration (Debug or Release)'
+        required: true
+        type: string
+      architecture:
+        description: 'Target architecture (x64 or arm64)'
+        required: true
+        type: string
+      dockerfile_path:
+        description: 'Path to the Dockerfile relative to the workspace root'
+        required: true
+        type: string
+      docker_image_repo:
+        description: 'Name for the Docker image repository'
+        required: true
+        type: string
+      extra_build_flags:
+        description: 'Additional flags for the build.py script'
+        required: false
+        type: string
+        default: ''
+      python_path_prefix:
+        description: 'Optional prefix to add to the PATH for python command (e.g., PATH=/opt/python/cp310-cp310/bin:$PATH)'
+        required: false
+        type: string
+        default: ''
+      python_version:
+        description: 'Python version to set up'
+        required: false
+        type: string
+        default: '3.x' # Use a sensible default
+    secrets:
+      GH_TOKEN:
+        description: 'GitHub token for accessing actions/packages'
+        required: true
+
+jobs:
+  build_and_test:
+    runs-on:
+      - self-hosted
+      - "1ES.Pool=${{ inputs.pool_name }}"
+    permissions:
+      contents: read
+      packages: read # Change to write when migrating to GHCR
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python ${{ inputs.python_version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ inputs.python_version }}
+
+      - name: Build Docker Image (${{ inputs.architecture }} / ${{ inputs.build_config }})
+        uses: microsoft/onnxruntime-github-actions/build-docker-image@v0.0.1
+        with:
+          Dockerfile: ${{ github.workspace }}/${{ inputs.dockerfile_path }}
+          Repository: ${{ inputs.docker_image_repo }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GH_TOKEN }}
+
+      - name: Create .onnx directory
+        run: mkdir -p $HOME/.onnx
+
+      - name: Export GitHub Actions cache environment variables
+        uses: actions/github-script@v7
+        with:
+          script: |
+            core.exportVariable('ACTIONS_CACHE_URL', process.env.ACTIONS_CACHE_URL || '');
+            core.exportVariable('ACTIONS_RUNTIME_TOKEN', process.env.ACTIONS_RUNTIME_TOKEN || '');
+
+      # ------------- Main Build and Test Step -------------
+      - name: Build and Test ONNX Runtime in Docker (${{ inputs.architecture }} / ${{ inputs.build_config }})
+        id: build_test # Add an ID to potentially reference its outcome if needed, though `if: failure()` is simpler
+        env:
+          ALLOW_RELEASED_ONNX_OPSET_ONLY: 0
+          NIGHTLY_BUILD: 1
+        run: |
+          set -ex
+          # Construct the build command
+          BUILD_CMD="${{ inputs.python_path_prefix }} python3 tools/ci_build/build.py \
+            --build_dir build/${{ inputs.build_config }} --cmake_generator Ninja \
+            --config ${{ inputs.build_config }} \
+            --skip_submodule_sync \
+            --build_shared_lib \
+            --parallel \
+            --use_vcpkg --use_vcpkg_ms_internal_asset_cache \
+            --enable_onnx_tests \
+            ${{ inputs.extra_build_flags }}" # Add extra flags here
+
+          # Execute build
+          docker run --rm \
+            --volume /data/onnx:/data/onnx:ro \
+            --volume /data/models:/data/models:ro \
+            --volume ${{ github.workspace }}:/onnxruntime_src \
+            --volume ${{ runner.temp }}:/onnxruntime_src/build \
+            --volume $HOME/.onnx:/home/onnxruntimedev/.onnx \
+            -w /onnxruntime_src \
+            -e ALLOW_RELEASED_ONNX_OPSET_ONLY \
+            -e NIGHTLY_BUILD \
+            -e ACTIONS_RUNTIME_TOKEN \
+            -e ACTIONS_CACHE_URL \
+            -e RUNNER_TEMP=/onnxruntime_src/build \
+            ${{ inputs.docker_image_repo }} \
+            /bin/bash -c "${BUILD_CMD} --update --build"
+
+          # Execute test (using the same base command but adding --test)
+          docker run --rm \
+            --volume /data/onnx:/data/onnx:ro \
+            --volume /data/models:/data/models:ro \
+            --volume ${{ github.workspace }}:/onnxruntime_src \
+            --volume ${{ runner.temp }}:/onnxruntime_src/build \
+            --volume $HOME/.onnx:/home/onnxruntimedev/.onnx \
+            -w /onnxruntime_src \
+            -e ALLOW_RELEASED_ONNX_OPSET_ONLY \
+            -e NIGHTLY_BUILD \
+            -e ACTIONS_RUNTIME_TOKEN \
+            -e ACTIONS_CACHE_URL \
+            -e RUNNER_TEMP=/onnxruntime_src/build \
+            ${{ inputs.docker_image_repo }} \
+            /bin/bash -c "${BUILD_CMD} --test"
+      # ------------- End Main Build and Test Step -------------
+
+      # ------------- Upload Log on Failure Step -------------
+      - name: Upload VCPKG Manifest Install Log on Failure
+        if: failure() # This step only runs if the previous steps (like build_test) failed
+        uses: actions/upload-artifact@v4
+        with:
+          name: vcpkg-manifest-install-log-${{ inputs.architecture }}-${{ inputs.build_config }} # Descriptive artifact name
+          # Use the exact path provided in the request
+          path: ${{ github.workspace }}/build/${{ inputs.build_config }}/${{ inputs.build_config }}/vcpkg-manifest-install.log
+          if-no-files-found: ignore
+      # ------------- End Upload Log on Failure Step -------------
