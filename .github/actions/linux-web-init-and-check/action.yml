@@ -43,7 +43,7 @@ runs:
       shell: bash
       working-directory: ${{ github.workspace }}/js
 
-    - name: Clang-format
+    - name: Format code
       run: npm run format
       shell: bash
       working-directory: ${{ github.workspace }}/js
