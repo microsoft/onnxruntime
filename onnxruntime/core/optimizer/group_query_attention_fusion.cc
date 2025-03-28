@@ -177,6 +177,11 @@ Status GroupQueryAttentionFusion::ApplyImpl(
 
     std::cout << inputs.size() << std::endl;
 
+    if (inputs[1]->Type() == nullptr) {
+      [[maybe_unused]] int sodjsapidjadasddads = 1;
+      continue;
+    }
+
     for (auto input : inputs) {
       std::cout << input->Name() << std::endl;
       std::cout << *input->Type() << std::endl;
@@ -355,7 +360,7 @@ Status GroupQueryAttentionFusion::ApplyImpl(
       third_dim->set_dim_value(3 * hidden_size);
     }
 
-    auto& matmul_output = graph.GetOrCreateNodeArg("MatMul_output", &mutable_mat_mul_tensor_proto);
+    auto& matmul_output = graph.GetOrCreateNodeArg(graph.GenerateNodeArgName("MatMul_output"), &mutable_mat_mul_tensor_proto);
 
     const std::array mmnb_output_defs{&matmul_output};
 
