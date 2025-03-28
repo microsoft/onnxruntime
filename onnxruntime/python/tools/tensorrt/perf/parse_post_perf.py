@@ -17,15 +17,11 @@ from azure.kusto.data import KustoConnectionStringBuilder
 from azure.kusto.data.data_format import DataFormat
 from azure.kusto.ingest import IngestionProperties, QueuedIngestClient, ReportLevel
 
-# Constants, replace with actual values
-MODEL = "llama-2.0"
-DEVICE_ID = "Samsung Galaxy S24"
-
 # Configure logging
 LOG_FORMAT = "%(asctime)s - %(levelname)s - %(message)s"
 logging.basicConfig(level=logging.INFO, format=LOG_FORMAT)
 
-def parse_mobile_perf(log_data: str, csv_filename: str):
+def parse_mobile_perf(log_data: str, model: str, device_id: str, ep: str, commit_id: str, csv_filename: str):
     """
     Parse log data and save metrics to a CSV file.
 
@@ -34,8 +30,10 @@ def parse_mobile_perf(log_data: str, csv_filename: str):
         csv_filename (str): The filename to save the parsed metrics.
     """
     metrics = {
-        "Model": MODEL,
-        "DeviceId": DEVICE_ID,
+        "Model": model,
+        "DeviceId": device_id,
+        "Ep": ep,
+        "CommitId": commit_id,
         "TTFTAvgTimeSec": None,
         "TTFTAvgTokenPerSec": None,
         "TokenGenerationAvgTimeSec": None,
@@ -95,7 +93,7 @@ def parse_mobile_perf(log_data: str, csv_filename: str):
 
     save_to_csv(metrics, csv_filename)
     
-def save_to_csv(metrics: dict, csv_filename: str):
+def save_to_csv(metrics: dict, csv_filename: str) -> None:
     try:
         with open(csv_filename, mode="w", newline="") as file:
             writer = csv.writer(file)
@@ -103,7 +101,8 @@ def save_to_csv(metrics: dict, csv_filename: str):
             writer.writerow(metrics.values())
         logging.info(f"Metrics saved to {csv_filename}")
     except IOError as e:
-        logging.error(f"Failed to save metrics to {csv_filename}: {e}")
+        logging.error(f"Failed to save metrics to {csv_filename}: {e}, abort.")
+        sys.exit(1)
 
 def post_to_db(csv_file: str, kusto_table: str, kusto_conn: str, kusto_db: str):
     """
@@ -140,53 +139,34 @@ if __name__ == "__main__":
     parser.add_argument('--kusto-table', required=True, help='Kusto table name')
     parser.add_argument('--kusto-conn', required=True, help='Kusto connection string')
     parser.add_argument('--kusto-db', required=True, help='Kusto database name')
-    parser.add_argument('--upload-csv', help='CSV file to upload to DB')
-    parser.add_argument('--output-csv', default='data.csv', help='CSV file to save parsed metrics')
-    # Mobile perf data
+    # Post mobile perf data
     parser.add_argument('--parse-mobile-perf', action='store_true', 
                         help='Parse mobile perf data and post to DB')
     parser.add_argument('--log-file', help='Path to log file containing performance data')
+    parser.add_argument('--model', help='Testing model')
+    parser.add_argument('--device-id', help='The local mobile device id')
+    parser.add_argument('--commit-id', help='The ORT commit id')
+    parser.add_argument('--ep', help='The execution provider running on devices')
+    parser.add_argument('--output-csv', default='data.csv', help='CSV file to save parsed metrics')
+    # Post csv data
+    parser.add_argument('--upload-csv', help='CSV file to upload to DB')
+    
     args = parser.parse_args()
 
     if args.parse_mobile_perf:
-        log_data = """
-        Batch size: 1, prompt tokens: 2, tokens to generate: 128
-        Prompt processing (time to first token):
-               avg (us):       140607
-               avg (tokens/s): 14.224
-               p50 (us):       141764
-               stddev (us):    7045.29
-               n:              5 * 2 token(s)
-        Token generation:
-               avg (us):       185163
-               avg (tokens/s): 5.40064
-               p50 (us):       191207
-               stddev (us):    40530.6
-               n:              635 * 1 token(s)
-        Token sampling:
-               avg (us):       70.8335
-               avg (tokens/s): 14117.6
-               p50 (us):       61.146
-               stddev (us):    28.0707
-               n:              640 * 1 token(s)
-        E2E generation (entire generation loop):
-               avg (ms):       23665.5
-               p50 (ms):       23663.7
-               stddev (ms):    155.755
-               n:              5
-        Peak working set size (bytes): 2864254976
-        """
-        if args.log_file:
-            try:
-                with open(args.log_file, 'r') as f:
-                    log_data = f.read()
-                logging.info(f"Read mobile perf log from {args.log_file}")
-            except IOError as e:
-                logging.error(f"Failed to read log file {args.log_file}: {e}")
-                sys.exit(1)
-        
+        for arg in [args.log_file, args.model, args.device_id, args.ep, args.commit_id]:
+            if arg is None:
+                raise ValueError(f"Missing required parameter {arg} for parsing mobile perf data")
+        log_data = ""
+        try:
+            with open(args.log_file, 'r') as f:
+                log_data = f.read()
+            logging.info(f"Read mobile perf log from {args.log_file}")
+        except IOError as e:
+            logging.error(f"Failed to read log file {args.log_file}: {e}")
+            sys.exit(1)
         # Parse the mobile perf data for further upload
-        parse_mobile_perf(log_data, args.output_csv)
+        parse_mobile_perf(log_data, args.model, args.device_id, args.ep, args.commit_id, args.output_csv)
         post_to_db(args.output_csv, args.kusto_table, args.kusto_conn, args.kusto_db)
     elif args.upload_csv:
         # Upload an existing CSV to the database
