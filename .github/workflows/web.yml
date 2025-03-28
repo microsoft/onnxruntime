@@ -1,4 +1,4 @@
-name: ONNX Runtime Web CI Pipeline
+name: Web CI Pipeline
 
 on:
   push:
@@ -16,7 +16,7 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  Precheck_and_extract_commit:
+  precheck:
     runs-on: ubuntu-latest
     outputs:
       commit_sha: ${{ steps.extract_commit.outputs.commit_sha }}
@@ -34,8 +34,8 @@ jobs:
         run: echo "commit_sha=${{ github.sha }}" >> $GITHUB_OUTPUT
         shell: bash
 
-  Build_wasm_Debug:
-    needs: Precheck_and_extract_commit
+  wasm_Debug:
+    needs: precheck
     uses: ./.github/workflows/linux-wasm-ci-build-and-test-workflow.yml
     with:
       build_config: Debug
@@ -43,8 +43,8 @@ jobs:
       build_jsep: true
       build_webgpu: true
 
-  Build_wasm_Release:
-    needs: Precheck_and_extract_commit
+  wasm_Release:
+    needs: precheck
     uses: ./.github/workflows/linux-wasm-ci-build-and-test-workflow.yml
     with:
       build_config: Release
@@ -52,26 +52,20 @@ jobs:
       build_jsep: true
       build_webgpu: true
 
-  Build_web_Debug:
+  web_Debug:
     needs:
-      - Precheck_and_extract_commit
-      - Build_wasm_Debug
+      - precheck
+      - wasm_Debug
     uses: ./.github/workflows/windows-web-ci-workflow.yml
     with:
-      commit_override: ${{ needs.Precheck_and_extract_commit.outputs.commit_sha }}
+      commit_override: ${{ needs.precheck.outputs.commit_sha }}
       build_config: Debug
-      npm_packaging_mode: dev
-      package_name: NPM_packages
-      run_webgpu_tests: true
 
-  Build_web_Release:
+  web_Release:
     needs:
-      - Precheck_and_extract_commit
-      - Build_wasm_Release
+      - precheck
+      - wasm_Release
     uses: ./.github/workflows/windows-web-ci-workflow.yml
     with:
-      commit_override: ${{ needs.Precheck_and_extract_commit.outputs.commit_sha }}
+      commit_override: ${{ needs.precheck.outputs.commit_sha }}
       build_config: Release
-      npm_packaging_mode: prod
-      package_name: NPM_packages
-      run_webgpu_tests: true
