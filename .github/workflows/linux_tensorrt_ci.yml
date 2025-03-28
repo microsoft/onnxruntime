@@ -2,7 +2,7 @@ name: Linux TensorRT CI
 
 on:
   push:
-    branches: [ main, 'rel-*', 'snnn/linux_ci3']
+    branches: [ main, 'rel-*']
   pull_request:
     branches: [ main, 'rel-*']
 
@@ -104,7 +104,7 @@ jobs:
         id: test_step
         uses: ./.github/_downloaded_actions/run-build-script-in-docker # Use downloaded action
         with:
-          docker_image: onnxruntimecuda12manylinuxbuild # Use the same image
+          docker_image: onnxruntimetensorrt86gpubuild # Use the same image
           build_config: Release
           mode: 'test' # Set mode to test
           execution_providers: 'cuda tensorrt'
