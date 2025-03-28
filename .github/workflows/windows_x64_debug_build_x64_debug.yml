@@ -2,7 +2,7 @@ name: windows_x64_debug
 
 on:
   push:
-    branches: [ main, 'rel-*', 'snnn/linux_ci3']
+    branches: [ main, 'rel-*', 'snnn/linux_ci2']
   pull_request:
     branches: [ main ]
 
