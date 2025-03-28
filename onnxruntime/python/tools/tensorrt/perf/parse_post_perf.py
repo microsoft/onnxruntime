@@ -10,9 +10,9 @@ import argparse
 import csv
 import datetime
 import logging
-import os
-import pandas as pd
 import sys
+
+import pandas as pd
 from azure.kusto.data import KustoConnectionStringBuilder
 from azure.kusto.data.data_format import DataFormat
 from azure.kusto.ingest import IngestionProperties, QueuedIngestClient, ReportLevel
@@ -20,6 +20,7 @@ from azure.kusto.ingest import IngestionProperties, QueuedIngestClient, ReportLe
 # Configure logging
 LOG_FORMAT = "%(asctime)s - %(levelname)s - %(message)s"
 logging.basicConfig(level=logging.INFO, format=LOG_FORMAT)
+
 
 def parse_mobile_perf(log_data: str, model: str, device_id: str, ep: str, commit_id: str, csv_filename: str):
     """
@@ -41,14 +42,14 @@ def parse_mobile_perf(log_data: str, model: str, device_id: str, ep: str, commit
         "TokenSamplingAvgTimeSec": None,
         "TokenSamplingAvgTokenPerSec": None,
         "E2EGenerationAvgTimeSec": None,
-        "PeakMemoryMB": None
+        "PeakMemoryMB": None,
     }
 
     current_section = None
 
     for line in log_data.split("\n"):
         line = line.strip()
-    
+
         if "Prompt processing" in line:
             current_section = "TTFT"
         elif "Token generation" in line:
@@ -92,7 +93,8 @@ def parse_mobile_perf(log_data: str, model: str, device_id: str, ep: str, commit
             metrics[key] = f"{metrics[key]:.8f}"
 
     save_to_csv(metrics, csv_filename)
-    
+
+
 def save_to_csv(metrics: dict, csv_filename: str) -> None:
     try:
         with open(csv_filename, mode="w", newline="") as file:
@@ -100,9 +102,10 @@ def save_to_csv(metrics: dict, csv_filename: str) -> None:
             writer.writerow(metrics.keys())
             writer.writerow(metrics.values())
         logging.info(f"Metrics saved to {csv_filename}")
-    except IOError as e:
+    except OSError as e:
         logging.error(f"Failed to save metrics to {csv_filename}: {e}, abort.")
         sys.exit(1)
+
 
 def post_to_db(csv_file: str, kusto_table: str, kusto_conn: str, kusto_db: str):
     """
@@ -118,7 +121,7 @@ def post_to_db(csv_file: str, kusto_table: str, kusto_conn: str, kusto_db: str):
         table = pd.read_csv(csv_file)
         upload_time = datetime.datetime.now(tz=datetime.timezone.utc).replace(microsecond=0).isoformat()
         table["UploadTime"] = upload_time
-        
+
         kcsb_ingest = KustoConnectionStringBuilder.with_az_cli_authentication(kusto_conn)
         ingest_client = QueuedIngestClient(kcsb_ingest)
 
@@ -134,23 +137,23 @@ def post_to_db(csv_file: str, kusto_table: str, kusto_conn: str, kusto_db: str):
     except Exception as e:
         logging.error(f"Failed to upload data to Kusto DB: {e}")
 
+
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description='Parse and post perf data to DB')
-    parser.add_argument('--kusto-table', required=True, help='Kusto table name')
-    parser.add_argument('--kusto-conn', required=True, help='Kusto connection string')
-    parser.add_argument('--kusto-db', required=True, help='Kusto database name')
+    parser = argparse.ArgumentParser(description="Parse and post perf data to DB")
+    parser.add_argument("--kusto-table", required=True, help="Kusto table name")
+    parser.add_argument("--kusto-conn", required=True, help="Kusto connection string")
+    parser.add_argument("--kusto-db", required=True, help="Kusto database name")
     # Post mobile perf data
-    parser.add_argument('--parse-mobile-perf', action='store_true', 
-                        help='Parse mobile perf data and post to DB')
-    parser.add_argument('--log-file', help='Path to log file containing performance data')
-    parser.add_argument('--model', help='Testing model')
-    parser.add_argument('--device-id', help='The local mobile device id')
-    parser.add_argument('--commit-id', help='The ORT commit id')
-    parser.add_argument('--ep', help='The execution provider running on devices')
-    parser.add_argument('--output-csv', default='data.csv', help='CSV file to save parsed metrics')
+    parser.add_argument("--parse-mobile-perf", action="store_true", help="Parse mobile perf data and post to DB")
+    parser.add_argument("--log-file", help="Path to log file containing performance data")
+    parser.add_argument("--model", help="Testing model")
+    parser.add_argument("--device-id", help="The local mobile device id")
+    parser.add_argument("--commit-id", help="The ORT commit id")
+    parser.add_argument("--ep", help="The execution provider running on devices")
+    parser.add_argument("--output-csv", default="data.csv", help="CSV file to save parsed metrics")
     # Post csv data
-    parser.add_argument('--upload-csv', help='CSV file to upload to DB')
-    
+    parser.add_argument("--upload-csv", help="CSV file to upload to DB")
+
     args = parser.parse_args()
 
     if args.parse_mobile_perf:
@@ -159,10 +162,10 @@ if __name__ == "__main__":
                 raise ValueError(f"Missing required parameter {arg} for parsing mobile perf data")
         log_data = ""
         try:
-            with open(args.log_file, 'r') as f:
+            with open(args.log_file) as f:
                 log_data = f.read()
             logging.info(f"Read mobile perf log from {args.log_file}")
-        except IOError as e:
+        except OSError as e:
             logging.error(f"Failed to read log file {args.log_file}: {e}")
             sys.exit(1)
         # Parse the mobile perf data for further upload
