@@ -206,13 +206,17 @@ void RunSince(size_t stream_idx, StreamExecutionContext& ctx, SessionScope& sess
 #endif
 
 #ifdef ORT_ENABLE_STREAM
-  // If set_device_fn is provided, it means GPU device should be properly set to the correct device.
-  // The reasons are 1) RunSince function can be invoked from a new thread and 2) new threads default to using device 0,
-  // but the session may be tightly bound to a device > 0.
-  auto set_device_fn = ctx.GetSessionState().GetStreamHandleRegistryInstance().GetSetDeviceFn();
-  if (set_device_fn.has_value()) {
-    auto device_id = ctx.GetSessionState().AcquireDeviceStreamCollection()->GetStream(stream_idx)->GetDevice().Id();
-    set_device_fn.value()(device_id);
+  // If the device stream has corresponding SetDevice function registered, it means GPU device should be properly set to the correct device.
+  // The reason SetDevice should be called here is:
+  //  - RunSince function can be invoked from a new thread
+  //  - new threads default to using device 0, but the session may be tightly bound to a device > 0.
+  auto device_stream = ctx.GetDeviceStream(stream_idx);
+  if (device_stream) {
+    auto set_device_fn = ctx.GetSessionState().GetStreamHandleRegistryInstance().GetSetDeviceFn(device_stream->GetDevice().Type());
+    if (set_device_fn.has_value()) {
+      auto device_id = device_stream->GetDevice().Id();
+      set_device_fn.value()(device_id);
+    }
   }
 #endif
 
