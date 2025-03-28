@@ -164,8 +164,42 @@ OVExeNetwork OVCore::ImportModel(std::shared_ptr<std::istringstream> model_strea
 }
 #endif
 
-std::vector<std::string> OVCore::GetAvailableDevices() {
-  auto available_devices = core.get_available_devices();
+std::vector<std::string> OVCore::GetAvailableDevices() const {
+  std::vector<std::string> available_devices = core.get_available_devices();
+  return available_devices;
+}
+
+std::vector<std::string> OVCore::GetAvailableDevices(const std::string& device_type) const {
+  std::vector<std::string> available_devices;
+  std::vector<std::string> devicesIDs;
+  // Uses logic from OpenVINO to only return available devices of the specified type (e.g. CPU, NPU or GPU)
+  try {
+    devicesIDs = core.get_property(device_type, ov::available_devices);
+  } catch (const ov::Exception&) {
+    // plugin is not created by e.g. invalid env
+    // Empty device list will be returned
+  } catch (const std::runtime_error&) {
+    // plugin is not created by e.g. invalid env
+    // Empty device list will be returned
+  } catch (const std::exception& ex) {
+    ORT_THROW("[ERROR] [OpenVINO] An exception is thrown while trying to create the ",
+              device_type,
+              " device: ",
+              ex.what());
+  } catch (...) {
+    ORT_THROW("[ERROR] [OpenVINO] Unknown exception is thrown while trying to create the ",
+              device_type,
+              " device");
+  }
+
+  if (devicesIDs.size() > 1) {
+    for (const auto& deviceID : devicesIDs) {
+      available_devices.push_back(device_type + '.' + deviceID);
+    }
+  } else if (!devicesIDs.empty()) {
+    available_devices.push_back(device_type);
+  }
+
   return available_devices;
 }
 
