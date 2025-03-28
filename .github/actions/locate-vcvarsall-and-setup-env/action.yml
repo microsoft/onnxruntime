@@ -12,7 +12,7 @@ outputs:
 runs:
   using: "composite"
   steps:
-    - name: Download ORT Actions Asset (v0.0.3) # <-- Adjust version as needed
+    - name: Download ORT Actions Asset (v0.0.3)
       uses: dsaltares/fetch-gh-release-asset@1.1.0 # Action to download assets
       with:
         repo: 'microsoft/onnxruntime-github-actions'    # The repo containing the actions
@@ -20,7 +20,6 @@ runs:
         file: 'onnxruntime-actions-v0.0.3.zip'           # The asset filename (matches release workflow output)
         target: 'onnxruntime-actions.zip'                # Local filename to save as
       env:
-        # Use default token for public repos, provide PAT for private if necessary
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
     - name: Unzip ORT Actions (Windows)
