@@ -16,8 +16,8 @@ Options:
         -i: Specify EP specific runtime options as key value pairs. Different runtime options available are:
             [Usage]: -i '<key1>|<value1> <key2>|<value2>'
 
-            [QNN only] [backend_type]: QNN backend type. e.g., 'cpu', or 'htp'. Mutually exclusive with 'backend_path'.
-            [QNN only] [backend_path]: QNN backend path. e.g '/folderpath/libQnnHtp.so', '/winfolderpath/QnnHtp.dll'. Mutually exclusive with 'backend_type'.
+            [QNN only] [backend_type]: QNN backend type. E.g., 'cpu', 'htp'. Mutually exclusive with 'backend_path'.
+            [QNN only] [backend_path]: QNN backend path. E.g., '/folderpath/libQnnHtp.so', '/winfolderpath/QnnHtp.dll'. Mutually exclusive with 'backend_type'.
             [QNN only] [vtcm_mb]: QNN VTCM size in MB. default to 0(not set).
             [QNN only] [htp_graph_finalization_optimization_mode]: QNN graph finalization optimization mode, options: '0', '1', '2', '3', default is '0'.
             [QNN only] [soc_model]: The SoC Model number. Refer to QNN SDK documentation for specific values. Defaults to '0' (unknown).

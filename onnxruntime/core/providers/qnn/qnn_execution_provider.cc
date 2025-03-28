@@ -33,23 +33,36 @@ static std::string MakeSharedLibraryPath(std::string_view name) {
 }
 
 const std::string kDefaultCpuBackendPath = MakeSharedLibraryPath("QnnCpu");
+const std::string kDefaultGpuBackendPath = MakeSharedLibraryPath("QnnGpu");
 const std::string kDefaultHtpBackendPath = MakeSharedLibraryPath("QnnHtp");
+const std::string kDefaultSaverBackendPath = MakeSharedLibraryPath("QnnSaver");
 
 static bool ParseBackendTypeName(std::string_view backend_type_name, std::string& backend_path) {
-  constexpr std::string_view
-      kCpuBackendTypeName{"cpu"},
-      kHtpBackendTypeName{"htp"};
+  constexpr std::string_view kCpuBackendTypeName{"cpu"};
+  constexpr std::string_view kGpuBackendTypeName{"gpu"};
+  constexpr std::string_view kHtpBackendTypeName{"htp"};
+  constexpr std::string_view kSaverBackendTypeName{"saver"};
 
   constexpr std::array kAllowedBackendTypeNames{
       kCpuBackendTypeName,
+      kGpuBackendTypeName,
       kHtpBackendTypeName,
+      kSaverBackendTypeName,
   };
 
+  std::optional<std::string> associated_backend_path{};
   if (backend_type_name == kCpuBackendTypeName) {
-    backend_path = kDefaultCpuBackendPath;
-    return true;
+    associated_backend_path = kDefaultCpuBackendPath;
+  } else if (backend_type_name == kGpuBackendTypeName) {
+    associated_backend_path = kDefaultGpuBackendPath;
   } else if (backend_type_name == kHtpBackendTypeName) {
-    backend_path = kDefaultHtpBackendPath;
+    associated_backend_path = kDefaultHtpBackendPath;
+  } else if (backend_type_name == kSaverBackendTypeName) {
+    associated_backend_path = kDefaultSaverBackendPath;
+  }
+
+  if (associated_backend_path.has_value()) {
+    backend_path = std::move(*associated_backend_path);
     return true;
   }
 
@@ -62,7 +75,6 @@ static bool ParseBackendTypeName(std::string_view backend_type_name, std::string
     }
   }
   LOGS_DEFAULT(WARNING) << warning.str();
-
   return false;
 }
 
@@ -270,7 +282,7 @@ QNNExecutionProvider::QNNExecutionProvider(const ProviderOptions& provider_optio
     }
 
     if (backend_path_from_options.has_value()) {
-      backend_path = *backend_path_from_options;
+      backend_path = std::move(*backend_path_from_options);
     } else {
       const auto& default_backend_path = kDefaultHtpBackendPath;
       backend_path = default_backend_path;

@@ -310,7 +310,7 @@ export declare namespace InferenceSession {
   export interface QnnExecutionProviderOption extends ExecutionProviderOption {
     readonly name: 'qnn';
     /**
-     * Specify the QNN backend type. Options: 'cpu' or 'htp'.
+     * Specify the QNN backend type. E.g., 'cpu' or 'htp'.
      * Mutually exclusive with `backendPath`.
      *
      * @default 'htp'

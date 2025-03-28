@@ -3650,8 +3650,10 @@ struct OrtApi {
    *      name. E.g., given backend type "htp", on Windows, the backend path would be "QnnHtp.dll", and on other
    *      platforms, it would be "libQnnHtp.so". Mutually exclusive with "backend_path".
    *      Available options:
-   *      - "htp": Default.
    *      - "cpu"
+   *      - "gpu"
+   *      - "htp": Default.
+   *      - "saver"
    *   "backend_path": File path to QNN backend library. Mutually exclusive with "backend_type".
    *   "profiling_level": QNN profiling level.
    *      Available options:
