@@ -2126,10 +2126,7 @@ public class InferenceTest {
           break;
         case QNN:
           {
-            String backendPath = OS.WINDOWS.isCurrentOs() ? "/QnnCpu.dll" : "/libQnnCpu.so";
-            options.addQnn(
-                Collections.singletonMap(
-                    "backend_path", TestHelpers.getResourcePath(backendPath).toString()));
+            options.addQnn(Collections.singletonMap("backend_type", "htp"));
             break;
           }
         case VITIS_AI:
