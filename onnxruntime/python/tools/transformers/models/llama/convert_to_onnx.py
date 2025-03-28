@@ -5,12 +5,6 @@
 # --------------------------------------------------------------------------
 from __future__ import annotations
 
-import pprint
-from onnx_diagnostic.helpers import string_type
-from onnx_diagnostic.torch_test_helper import replace_string_by_dynamic
-from onnx_diagnostic.torch_export_patches import bypass_export_some_errors
-from onnx_diagnostic.torch_export_patches.patch_inputs import convert_dynamic_axes_into_dynamic_shapes
-
 import argparse
 import logging
 import os
@@ -23,7 +17,7 @@ from itertools import chain
 import onnx
 import torch
 from onnxruntime.transformers.benchmark_helper import Precision, prepare_environment, setup_logger
-from convert_generation import replace_mha_with_gqa
+from onnxruntime.transformers.convert_generation import replace_mha_with_gqa
 from dist_settings import barrier, get_rank, get_size, init_dist
 from llama_inputs import get_merged_sample_with_past_kv_inputs, get_sample_inputs, get_sample_with_past_kv_inputs
 from llama_parity import main as parity_check
@@ -35,6 +29,13 @@ from transformers import AutoConfig, AutoModelForCausalLM
 
 from onnxruntime import quantization as ort_quantization
 from onnxruntime.quantization.matmul_4bits_quantizer import MatMul4BitsQuantizer
+
+# to patch transformers before exporting for transformers >= 4.45
+from onnxruntime.transformers.models.torch_export_patches import bypass_export_some_errors
+from onnxruntime.transformers.models.torch_export_patches.patch_inputs import (
+    convert_dynamic_axes_into_dynamic_shapes,
+)
+
 
 torch_export_onnx_opset_version = 14
 logger = logging.getLogger("")
@@ -163,12 +164,6 @@ def run_dynamo_export(
     )
 
     with bypass_export_some_errors(patch_transformers=True):
-        torch.export.export(
-            llama,
-            (),
-            kwargs=model_kwargs,
-            dynamic_shapes=replace_string_by_dynamic(dynamic_shapes),
-        )
         torch.onnx.export(
             llama,
             (),
