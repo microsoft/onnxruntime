@@ -12,16 +12,9 @@ namespace onnxruntime {
 namespace webgpu {
 
 // Use the CPU implementation for the logic
-class If final : public WebGpuKernel {
+class If final : public onnxruntime::If {
  public:
-  If(const OpKernelInfo& info) : WebGpuKernel(info), cpu_if_(info) {}
-
-  Status ComputeInternal(ComputeContext& context) const override {
-    return cpu_if_.Compute(&(context.KernelContext()));
-  }
-
- private:
-  onnxruntime::If cpu_if_;
+  If(const OpKernelInfo& info) : onnxruntime::If(info) {}
 };
 
 }  // namespace webgpu
