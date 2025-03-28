@@ -5,14 +5,15 @@ This tool provides the way to generate Onnx models that wraps QNN context binary
 ```
 ep_weight_sharing_ctx_gen [options...] model1_path,model2_path
 
-Example: ./ep_weight_sharing_ctx_gen -i "soc_model|60 htp_graph_finalization_optimization_mode|3" -C "ep.context_node_name_prefix|_part1" ./model1.onnx,./model2.onnx
+Example: ./ep_weight_sharing_ctx_gen -e qnn -i "soc_model|60 htp_graph_finalization_optimization_mode|3" -C "ep.context_node_name_prefix|_part1" ./model1.onnx,./model2.onnx
 
 Options:
-        -e [qnn|tensorrt|openvino|vitisai]: Specifies the compile based provider 'qnn','tensorrt','openvino', 'vitisai'. Default:'qnn'.
+        -e [qnn|tensorrt|openvino|vitisai]: Specifies the compile based provider 'qnn', 'tensorrt', 'openvino', 'vitisai'. Default: 'qnn'.
         -v: Show verbose information.
         -C: Specify session configuration entries as key-value pairs: -C "<key1>|<value1> <key2>|<value2>"
             Refer to onnxruntime_session_options_config_keys.h for valid keys and values.
-            Force ep.context_enable to 1 and ep.context_embed_mode to 0. Change ep.context_file_path is not allowed.        [Example] -C "ep.context_node_name_prefix|_part1"
+            Force ep.context_enable to 1 and ep.context_embed_mode to 0. Change ep.context_file_path is not allowed.
+            [Example] -C "ep.context_node_name_prefix|_part1"
         -i: Specify EP specific runtime options as key value pairs. Different runtime options available are:
             [Usage]: -i '<key1>|<value1> <key2>|<value2>'
 
@@ -26,7 +27,8 @@ Options:
             Otherwise, it will be fp32 precision. Works for float32 model for HTP backend. Defaults to '1' (with FP16 precision.).
             [QNN only] [offload_graph_io_quantization]: Offload graph input quantization and graph output dequantization to another EP (typically CPU EP).
             Defaults to '1' (QNN EP handles the graph I/O quantization and dequantization).
-            [QNN only] [enable_htp_spill_fill_buffer]: Enable HTP spill file buffer, used while generating QNN context binary.      [Example] -i "vtcm_mb|8 htp_arch|73"
+            [QNN only] [enable_htp_spill_fill_buffer]: Enable HTP spill file buffer, used while generating QNN context binary.
+            [Example] -i "vtcm_mb|8 htp_arch|73"
 
         -h: help
 ```
