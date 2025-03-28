@@ -3646,7 +3646,9 @@ struct OrtApi {
    *       that should be used to add it.
    *
    * QNN supported keys:
-   *   "backend_type": Type of QNN backend. Mutually exclusive with "backend_path".
+   *   "backend_type": Type of QNN backend. Specifies a backend path that is the associated QNN backend library file
+   *      name. E.g., given backend type "htp", on Windows, the backend path would be "QnnHtp.dll", and on other
+   *      platforms, it would be "libQnnHtp.so". Mutually exclusive with "backend_path".
    *      Available options:
    *      - "htp": Default.
    *      - "cpu"
