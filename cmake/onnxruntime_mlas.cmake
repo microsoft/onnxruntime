@@ -287,6 +287,12 @@ if (CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
       ${mlas_platform_srcs}
       ${MLAS_SRC_DIR}/qgemm_kernel_wasmsimd.cpp
     )
+    if (onnxruntime_ENABLE_WEBASSEMBLY_RELAXED_SIMD)
+      set(mlas_platform_srcs
+        ${mlas_platform_srcs}
+        ${MLAS_SRC_DIR}/qgemm_kernel_wasmrelaxedsimd.cpp
+      )
+    endif()
   else()
     file(GLOB_RECURSE mlas_platform_srcs
       "${MLAS_SRC_DIR}/scalar/*.cpp"
