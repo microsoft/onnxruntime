@@ -70,8 +70,9 @@ jobs:
       - "1ES.Pool=${{ inputs.pool_name }}"
     permissions:
       contents: read
-      packages: read
-
+      packages: write
+      attestations: write
+      id-token: write
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -100,7 +101,7 @@ jobs:
           ls -lR ./.github/_downloaded_actions # Verify structure
 
       - name: Build Docker Image (${{ inputs.architecture }} / ${{ inputs.build_config }})
-        uses: microsoft/onnxruntime-github-actions/build-docker-image@bb6b16e409684ffd0f46b35e8e217ce6ed72097c
+        uses: microsoft/onnxruntime-github-actions/build-docker-image@2cf46f409099e5a27977bbece1c89f3d6dca6a1b
         id: build_docker_image_step
         with:
           dockerfile: ${{ github.workspace }}/${{ inputs.dockerfile_path }}
