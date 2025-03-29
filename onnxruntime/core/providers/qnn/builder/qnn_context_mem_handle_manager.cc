@@ -24,7 +24,7 @@ QnnContextMemHandleManager::~QnnContextMemHandleManager() {
   Clear();
 }
 
-Status QnnContextMemHandleManager::GetOrRegister(void* shared_memory_address, const Qnn_Tensor_t& qnn_tensor,
+Status QnnContextMemHandleManager::GetOrRegister(void* memory_address, const bool uses_shared_mem_alloc, const Qnn_Tensor_t& qnn_tensor,
                                                  Qnn_MemHandle_t& qnn_mem_handle, bool& did_register) {
   const auto qnn_tensor_rank = GetQnnTensorRank(qnn_tensor);
   auto* const qnn_tensor_dims = GetQnnTensorDims(qnn_tensor);
@@ -37,7 +37,7 @@ Status QnnContextMemHandleManager::GetOrRegister(void* shared_memory_address, co
     std::scoped_lock g{mem_handles_mutex_};
 
     // find existing mem handle
-    if (const auto mem_handles_it = mem_handles_.find(shared_memory_address);
+    if (const auto mem_handles_it = mem_handles_.find(memory_address);
         mem_handles_it != mem_handles_.end()) {
       const auto& mem_handle_record = mem_handles_it->second;
 
@@ -53,10 +53,6 @@ Status QnnContextMemHandleManager::GetOrRegister(void* shared_memory_address, co
     }
 
     // register a new mem handle
-    HtpSharedMemoryAllocator::SharedMemoryInfo shared_memory_info{};
-    ORT_RETURN_IF_ERROR(HtpSharedMemoryAllocator::GetAllocationSharedMemoryInfo(shared_memory_address,
-                                                                                shared_memory_info));
-
     Qnn_MemDescriptor_t mem_descriptor = QNN_MEM_DESCRIPTOR_INIT;
     mem_descriptor.memShape.dimSize = qnn_tensor_dims;
     mem_descriptor.memShape.numDim = qnn_tensor_rank;
@@ -66,16 +62,33 @@ Status QnnContextMemHandleManager::GetOrRegister(void* shared_memory_address, co
 
     QnnMemHtp_Descriptor_t htp_mem_descriptor{};
     htp_mem_descriptor.type = QNN_HTP_MEM_SHARED_BUFFER;
-    htp_mem_descriptor.size = shared_memory_info.total_size;
-    htp_mem_descriptor.sharedBufferConfig.fd = shared_memory_info.fd;
-    htp_mem_descriptor.sharedBufferConfig.offset = shared_memory_info.offset;
+
+    // if memory is CPU buffer aligned, the buffer needs to be mapped to RPC memory space
+    if (uses_shared_mem_alloc) {
+      HtpSharedMemoryAllocator::SharedMemoryInfo shared_memory_info{};
+      ORT_RETURN_IF_ERROR(HtpSharedMemoryAllocator::GetAllocationSharedMemoryInfo(memory_address,
+                                                                                  shared_memory_info));
+      htp_mem_descriptor.size = shared_memory_info.total_size;
+      htp_mem_descriptor.sharedBufferConfig.fd = shared_memory_info.fd;
+      htp_mem_descriptor.sharedBufferConfig.offset = shared_memory_info.offset;
+    } else {
+      qnn::RpcMemLibrary rpc_lib;
+      
+      rpc_lib.Api().register_buff_attr((int*)memory_address, static_cast<int>(qnn_tensor_data_size), 0, rpcmem::FASTRPC_ATTR_IMPORT_BUFFER);
+      int fd = rpc_lib.Api().to_fd(memory_address);
+      ORT_RETURN_IF_NOT(fd != rpcmem::INVALID_CLIENT_HANDLE, "Failed to register buffer to FastRPC");
+
+      htp_mem_descriptor.size = qnn_tensor_data_size;
+      htp_mem_descriptor.sharedBufferConfig.fd = fd;
+      htp_mem_descriptor.sharedBufferConfig.offset = 0;
+    }
 
     mem_descriptor.customInfo = &htp_mem_descriptor;
 
     LOGS(logger_, VERBOSE) << "Registering QNN mem handle for context: " << context_
-                           << ", shared memory (address: " << shared_memory_address
-                           << ", offset: " << shared_memory_info.offset
-                           << ", fd: " << shared_memory_info.fd
+                           << ", memory (address: " << memory_address
+                           << ", offset: " << htp_mem_descriptor.sharedBufferConfig.offset
+                           << ", fd: " << htp_mem_descriptor.sharedBufferConfig.fd
                            << ")";
 
     Qnn_MemHandle_t raw_mem_handle{};
@@ -90,7 +103,8 @@ Status QnnContextMemHandleManager::GetOrRegister(void* shared_memory_address, co
     // by the time we need to unregister all memory handles. This happens when this->logger_ is a session logger:
     //   ~InferenceSession() -> ~Logger() -> ~QnnExecutionProvider() -> ~QnnBackendManager() ->
     //   ~QnnContextMemHandleManager() -> unregister_mem_handle() segfault
-    const auto unregister_mem_handle = [&qnn_interface = this->qnn_interface_](Qnn_MemHandle_t raw_mem_handle) {
+    const auto unregister_mem_handle = [uses_shared_mem_alloc, qnn_tensor_data_size, memory_address,
+                                        &qnn_interface = this->qnn_interface_](Qnn_MemHandle_t raw_mem_handle) {
       LOGS_DEFAULT(VERBOSE) << "Unregistering QNN mem handle. mem_handle: " << raw_mem_handle;
 
       const auto unregister_result = qnn_interface.memDeRegister(&raw_mem_handle, 1);
@@ -98,11 +112,20 @@ Status QnnContextMemHandleManager::GetOrRegister(void* shared_memory_address, co
         LOGS_DEFAULT(ERROR) << "qnn_interface.memDeRegister() failed: "
                             << utils::GetVerboseQnnErrorMessage(qnn_interface, unregister_result);
       }
+
+      if (!uses_shared_mem_alloc) {
+        qnn::RpcMemLibrary rpc_lib;
+        rpc_lib.Api().register_buff_attr((int*)memory_address, static_cast<int>(qnn_tensor_data_size), rpcmem::INVALID_CLIENT_HANDLE, NULL);
+        if (rpc_lib.Api().to_fd(memory_address) != rpcmem::INVALID_CLIENT_HANDLE) {
+          LOGS_DEFAULT(ERROR) << "fastrpc buffer deregistration failed for memory address: " << memory_address;
+        }
+      }
+
     };
 
     UniqueQnnMemHandle mem_handle(raw_mem_handle, unregister_mem_handle);
     MemHandleRecord mem_handle_record{qnn_tensor_data_size, std::move(mem_handle)};
-    mem_handles_.emplace(shared_memory_address, std::move(mem_handle_record));
+    mem_handles_.emplace(memory_address, std::move(mem_handle_record));
 
     qnn_mem_handle = raw_mem_handle;
     did_register = true;
@@ -110,12 +133,11 @@ Status QnnContextMemHandleManager::GetOrRegister(void* shared_memory_address, co
   }
 }
 
-Status QnnContextMemHandleManager::Unregister(void* shared_memory_address) {
+Status QnnContextMemHandleManager::Unregister(void* memory_address) {
   std::scoped_lock g{mem_handles_mutex_};
-
-  auto mem_handles_it = mem_handles_.find(shared_memory_address);
+  auto mem_handles_it = mem_handles_.find(memory_address);
   ORT_RETURN_IF_NOT(mem_handles_it != mem_handles_.end(),
-                    "No mem handle found for address (", shared_memory_address, ").");
+                    "No mem handle found for address (", memory_address, ").");
 
   mem_handles_.erase(mem_handles_it);
 

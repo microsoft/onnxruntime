@@ -27,10 +27,10 @@ class QnnContextMemHandleManager {
 
   // Gets an existing QNN mem handle or registers a new one.
   // `qnn_mem_handle` is set to the QNN mem handle and `did_register` is true if `qnn_mem_handle` was newly registered.
-  Status GetOrRegister(void* shared_memory_address, const Qnn_Tensor_t& qnn_tensor,
+  Status GetOrRegister(void* memory_address, const bool uses_shared_mem_alloc, const Qnn_Tensor_t& qnn_tensor,
                        Qnn_MemHandle_t& qnn_mem_handle, bool& did_register);
 
-  Status Unregister(void* shared_memory_address);
+  Status Unregister(void* memory_address);
 
   void Clear();
 

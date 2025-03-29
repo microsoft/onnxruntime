@@ -1804,14 +1804,15 @@ Status QnnBackendManager::AddQnnContextHandle(Qnn_ContextHandle_t raw_context_ha
 }
 
 Status QnnBackendManager::GetOrRegisterContextMemHandle(Qnn_ContextHandle_t context_handle,
-                                                        void* shared_memory_address,
+                                                        void* memory_address,
                                                         const Qnn_Tensor_t& qnn_tensor,
-                                                        Qnn_MemHandle_t& mem_handle) {
+                                                        Qnn_MemHandle_t& mem_handle,
+                                                        const bool uses_shared_mem_alloc) {
   // Multi-threading situations to consider:
-  // 1) Shared memory allocation is being freed in another thread while we are processing `shared_memory_address`.
+  // 1) Memory allocation is being freed in another thread while we are processing `memory_address`.
   //    This implies incorrect usage as the memory is being freed while it is still in use. Let's assume this won't
   //    happen.
-  // 2) The shared memory allocation clean up function is being run from another thread while the
+  // 2) The memory allocation clean up function is being run from another thread while the
   //    QnnContextHandleRecord or QnnBackendManager objects are being destroyed.
   //    Usage of weak_ptrs from the clean up function should ensure that those objects are only accessed while they are
   //    in scope.
@@ -1823,15 +1824,15 @@ Status QnnBackendManager::GetOrRegisterContextMemHandle(Qnn_ContextHandle_t cont
   auto& context_mem_handle_manager = context_handle_record->mem_handles;
 
   bool did_register{};
-  ORT_RETURN_IF_ERROR(context_mem_handle_manager->GetOrRegister(shared_memory_address, qnn_tensor,
+  ORT_RETURN_IF_ERROR(context_mem_handle_manager->GetOrRegister(memory_address, uses_shared_mem_alloc, qnn_tensor,
                                                                 mem_handle, did_register));
 
-  if (did_register) {
+  if (did_register && uses_shared_mem_alloc) {
     HtpSharedMemoryAllocator::AllocationCleanUpFn unregister_mem_handle =
         [&logger = *logger_,
          weak_backend_manager = weak_from_this(),
          weak_context_handle_record = std::weak_ptr{context_handle_record}](
-            void* shared_memory_address) {
+            void* memory_address) {
           // Lock QnnBackendManager shared_ptr to ensure that QNN interface is still valid.
           auto backend_manager = weak_backend_manager.lock();
           if (!backend_manager) {
@@ -1846,14 +1847,14 @@ Status QnnBackendManager::GetOrRegisterContextMemHandle(Qnn_ContextHandle_t cont
 
           auto& context_mem_handle_manager = context_handle_record->mem_handles;
 
-          auto unregister_status = context_mem_handle_manager->Unregister(shared_memory_address);
+          auto unregister_status = context_mem_handle_manager->Unregister(memory_address);
           if (!unregister_status.IsOK()) {
             LOGS(logger, ERROR) << "Failed to unregister shared memory mem handle for address: "
-                                << shared_memory_address << ", error: " << unregister_status.ErrorMessage();
+                                << memory_address << ", error: " << unregister_status.ErrorMessage();
           }
         };
 
-    ORT_RETURN_IF_ERROR(HtpSharedMemoryAllocator::AddAllocationCleanUp(shared_memory_address,
+    ORT_RETURN_IF_ERROR(HtpSharedMemoryAllocator::AddAllocationCleanUp(memory_address,
                                                                        std::move(unregister_mem_handle)));
   }
 
