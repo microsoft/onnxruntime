@@ -43,8 +43,6 @@ class Conv2dMMProgram final : public Program<Conv2dMMProgram> {
 
  private:
   const Activation& activation_;
-  uint32_t tile_a_outer_;
-  uint32_t tile_b_outer_;
   uint32_t tile_inner_;
   bool fit_a_outer_;
   bool fit_b_outer_;

@@ -170,7 +170,7 @@ ConvTranspose2DProgram CreateConvTranspose2DProgram(const std::vector<const Tens
   TensorShape reduced_output_shape = ReduceShapeByComponents(output_shape, components);
   auto output_size = reduced_output_shape.Size();
   std::vector<uint32_t> kernel_dims = {static_cast<uint32_t>(weight_shape[0]), static_cast<uint32_t>(weight_shape[1])};
-  std::vector<uint32_t> effective_kernel_dims = {kernel_dims[0] + ((dilations[0] <= 1) ? 0 : (kernel_dims[0] * (dilations[0] - 1))), kernel_dims[1] + ((dilations[1] <= 1) ? 0 : (kernel_dims[1] * (dilations[1] - 1)))};
+  std::vector<uint32_t> effective_kernel_dims = {kernel_dims[0] + ((dilations[0] <= 1) ? 0 : ((kernel_dims[0] - 1) * (dilations[0] - 1))), kernel_dims[1] + ((dilations[1] <= 1) ? 0 : ((kernel_dims[1] - 1) * (dilations[1] - 1)))};
   std::vector<uint32_t> local_pads = {effective_kernel_dims[0] - 1 - pads[0], effective_kernel_dims[1] - 1 - pads[1]};
   ConvTranspose2DProgram program(is_channels_last, has_bias, components, a_components, uint32_t(input_channels_remainder), pack_input_as4);
   program.AddInputs({{input, ProgramTensorMetadataDependency::TypeAndRank, reduced_input_shape, a_components}, {weight, ProgramTensorMetadataDependency::TypeAndRank, reduced_weight_shape, b_components}});

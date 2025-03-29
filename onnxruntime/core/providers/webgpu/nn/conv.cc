@@ -11,34 +11,6 @@
 namespace onnxruntime {
 namespace webgpu {
 
-template <bool is_channels_last, bool is_fused>
-TensorShape Conv<is_channels_last, is_fused>::ComputeOutputShape(const TensorShape& input_shape, const TensorShape& weight_shape, std::vector<uint32_t> pads, std::vector<uint32_t> strides, std::vector<uint32_t> dilations) const {
-  auto channel_index = is_channels_last ? input_shape.NumDimensions() - 1 : 1;
-  auto batch_size = input_shape[0];
-  auto output_channels = weight_shape[0];
-  auto kernel_spatial_shape = weight_shape.Slice(2);
-  TensorShape dilated_kernel_spatial_shape(kernel_spatial_shape);  // dilated kernel shape
-  for (size_t i = 0; i < dilated_kernel_spatial_shape.NumDimensions(); ++i) {
-    dilated_kernel_spatial_shape[i] = kernel_spatial_shape[i] + (kernel_spatial_shape[i] - 1) * (dilations[i] - 1);
-  }
-  TensorShape input_spacial_shape = input_shape.Slice(is_channels_last ? 1 : 2, is_channels_last ? 3 : 4);
-  TensorShapeVector input_spacial_shape_vector = input_spacial_shape.AsShapeVector();
-  TensorShape input_spacial_shape_with_pads(input_spacial_shape_vector);
-  for (size_t i = 0; i < input_spacial_shape_with_pads.NumDimensions(); ++i) {
-    input_spacial_shape_with_pads[i] = input_spacial_shape[i] + pads[i] + pads[i + input_spacial_shape_with_pads.NumDimensions()];
-  }
-  std::vector<int64_t> output_dims(dilated_kernel_spatial_shape.NumDimensions() + 2);
-  output_dims[0] = batch_size;
-  output_dims[channel_index] = output_channels;
-  size_t j = is_channels_last ? 1 : 2;
-  for (size_t i = 0; i < dilated_kernel_spatial_shape.NumDimensions(); ++i, ++j) {
-    output_dims[j] = static_cast<int64_t>((input_spacial_shape_with_pads[i] - dilated_kernel_spatial_shape[i] + strides[i]) / strides[i]);
-  }
-  TensorShape output_shape(output_dims);
-
-  return TensorShape(output_shape);
-}
-
 Status TransposeKernel(ComputeContext& context, const Tensor* kernel, const TensorShape& kernel_shape, Tensor* transposed_kernel, const InlinedVector<size_t>& perm) {
   // Transpose weights
   auto rank = kernel_shape.NumDimensions();
@@ -69,25 +41,55 @@ Status Conv<is_channels_last, is_fused>::ComputeInternal(ComputeContext& context
   TensorShape kernel_shape = kernel->Shape();
   bool is_input_reshaped = false;
   bool is_kernel_reshaped = false;
+  ConvAttributes::ConvPadVector local_pads(conv_attrs_.pads.begin(), conv_attrs_.pads.end());
+  TensorShapeVector local_dilations(conv_attrs_.dilations.begin(), conv_attrs_.dilations.end());
+  TensorShapeVector local_strides(conv_attrs_.strides.begin(), conv_attrs_.strides.end());
+  TensorShapeVector kernel_spacial_shape_vector;
+  ORT_RETURN_IF_ERROR(conv_attrs_.ComputeKernelShape(kernel_shape, kernel_spacial_shape_vector, false));
+  if (local_pads.empty()) {
+    local_pads.resize(kernel_spacial_shape_vector.size() * 2, 0);
+  }
+  if (local_dilations.empty()) {
+    local_dilations.resize(kernel_spacial_shape_vector.size(), 1);
+  }
+  if (local_strides.empty()) {
+    local_strides.resize(kernel_spacial_shape_vector.size(), 1);
+  }
+  TensorShapeVector input_shape_vector = input_shape.AsShapeVector();
+  auto batch = input_shape[0];
+  TensorShapeVector output_shape_vector = {batch};
+  TensorShape input_spacial_shape = is_channels_last ? TensorShape(TensorShapeVector(std::next(input_shape_vector.begin()), std::prev(input_shape_vector.end()))) : input_shape.Slice(2);
+  ORT_RETURN_IF_ERROR(conv_attrs_.InferPadsAndOutputShape(input_spacial_shape, kernel_spacial_shape_vector, local_strides, local_dilations, local_pads, output_shape_vector));
+  auto output_channels = kernel_shape[0];
+  if (is_channels_last) {
+    output_shape_vector.push_back(output_channels);
+  } else {
+    output_shape_vector.insert(output_shape_vector.begin() + 1, output_channels);
+  }
+  auto output_shape = TensorShape(output_shape_vector);
+  auto* output = context.Output(0, output_shape);
   std::vector<uint32_t> strides;
   std::vector<uint32_t> pads;
   std::vector<uint32_t> dilations;
   auto transform_dim = [](int64_t dim) { return static_cast<int32_t>(dim); };
-  std::transform(conv_attrs_.pads.begin(), conv_attrs_.pads.end(), std::back_inserter(pads), transform_dim);
-  std::transform(conv_attrs_.strides.begin(), conv_attrs_.strides.end(), std::back_inserter(strides), transform_dim);
-  std::transform(conv_attrs_.dilations.begin(), conv_attrs_.dilations.end(), std::back_inserter(dilations), transform_dim);
+  std::transform(local_pads.begin(), local_pads.end(), std::back_inserter(pads), transform_dim);
+  std::transform(local_strides.begin(), local_strides.end(), std::back_inserter(strides), transform_dim);
+  std::transform(local_dilations.begin(), local_dilations.end(), std::back_inserter(dilations), transform_dim);
   bool is_conv1d = false;
   auto rank = input_shape.NumDimensions();
   const InlinedVector<size_t> perm = {2, 3, 1, 0};
-  auto channel_index = is_channels_last ? input_shape.NumDimensions() - 1 : 1;
   if (rank > 4) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Only Conv1d and Conv2d are supported.");
   } else if (rank == 4) {
     // Conv2D
   } else if (rank == 3) {
     // Conv1D
-    input_shape = is_channels_last ? TensorShape({input_shape[0], 1, input_shape[1], input_shape[2]}) : TensorShape({input_shape[0], input_shape[1], 1, input_shape[2]});
-    kernel_shape = TensorShape({kernel_shape[0], kernel_shape[1], 1, kernel_shape[2]});
+    TensorShapeVector kernel_shape_vector = kernel_shape.AsShapeVector();
+    input_shape_vector.insert(input_shape_vector.begin() + (is_channels_last ? 1 : 2, 1), 1);
+    output_shape_vector.insert(output_shape_vector.begin() + (is_channels_last ? 1 : 2, 1), 1);
+    kernel_shape_vector.insert(kernel_shape_vector.begin() + 2, 1);
+    input_shape = TensorShape(input_shape_vector);
+    kernel_shape = TensorShape(kernel_shape_vector);
     is_input_reshaped = true;
     is_kernel_reshaped = true;
     pads.insert(pads.begin(), 0);
@@ -98,15 +100,13 @@ Status Conv<is_channels_last, is_fused>::ComputeInternal(ComputeContext& context
   } else {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input and kernel tensors must have at least 3 dimensions");
   }
-  auto output_shape = ComputeOutputShape(input_shape, kernel_shape, pads, strides, dilations);
-  const auto output_dims = output_shape.GetDims();
-  TensorShape output_shape_reduced = is_conv1d ? (is_channels_last ? TensorShape({output_dims[0], output_dims[2], output_dims[3]}) : TensorShape({output_dims[0], output_dims[1], output_dims[3]})) : output_shape;
-  auto* output = context.Output(0, output_shape_reduced);
   std::vector<const Tensor*> inputs(context.InputCount());
-
+  uint32_t auto_pad_adjust = conv_attrs_.auto_pad == AutoPadType::SAME_LOWER ? 1 : 0;
+  auto pad0 = conv_attrs_.auto_pad == AutoPadType::NOTSET ? pads[0] : (pads[0] + pads[2] + auto_pad_adjust) / 2;
+  auto pad1 = conv_attrs_.auto_pad == AutoPadType::NOTSET ? pads[1] : (pads[1] + pads[3] + auto_pad_adjust) / 2;
+  std::vector<uint32_t> updated_pads{pad0, pad1};
   if (conv_attrs_.group > 1) {
     Tensor transposed_kernel;
-    std::vector<uint32_t> updated_pads{pads[0], pads[1]};
     inputs[0] = input;
     if (is_channels_last) {
       ORT_RETURN_IF_ERROR(TransposeKernel(context, kernel, kernel_shape, &transposed_kernel, perm));
@@ -117,7 +117,6 @@ Status Conv<is_channels_last, is_fused>::ComputeInternal(ComputeContext& context
     if (has_bias) {
       inputs[2] = context.Input(2);
     }
-    auto output_channels = output_shape[channel_index];
     auto output_channels_per_group = output_channels / conv_attrs_.group;
     auto components = static_cast<int>(is_channels_last && output_channels_per_group >= 4 ? GetMaxComponents(output_channels) : 1);
     auto output_size = output_shape.Size() / components;
@@ -136,15 +135,13 @@ Status Conv<is_channels_last, is_fused>::ComputeInternal(ComputeContext& context
   const auto input_channels = input_shape[is_channels_last ? 3 : 1];
   const auto kernel_height = kernel_shape[2];
   const auto kernel_width = kernel_shape[3];
-  const auto output_height = output_shape[is_channels_last ? 1 : 2];
-  const auto output_width = output_shape[is_channels_last ? 2 : 3];
-  const auto output_channels = kernel_shape[is_channels_last ? 3 : 1];
+  const auto output_height = output_shape_vector[is_channels_last ? 1 : 2];
+  const auto output_width = output_shape_vector[is_channels_last ? 2 : 3];
 
   const auto same_size = is_channels_last && input_height == kernel_height && input_width == kernel_width && pads[0] == 0 && pads[1] == 0;
   if (same_size || (kernel_height == 1 && kernel_width == 1 && pads[0] == 0 && pads[1] == 0 && strides[0] == 1 && strides[1] == 1)) {
     Tensor transposed_kernel;
     inputs[0] = input;
-    const auto batch = output_shape[0];
     TensorShape input_reshape;
     TensorShape kernel_reshape;
     TensorShape matmul_output_shape;
@@ -217,7 +214,7 @@ Status Conv<is_channels_last, is_fused>::ComputeInternal(ComputeContext& context
   if (has_bias) {
     modified_input_output_shapes.push_back(inputs[2]->Shape());
   }
-  modified_input_output_shapes.push_back(output_shape);
+  modified_input_output_shapes.push_back(TensorShape(output_shape_vector));
   Conv2dMMProgram conv2d_mm_program = CreateConv2dMMProgram(activation_, inputs, pads, strides, dilations, output, dim_a_outer, dim_b_outer, dim_inner, is_channels_last, sequentially_access_by_threads, modified_input_output_shapes);
   return context.RunProgram(conv2d_mm_program);
 }
@@ -231,10 +228,6 @@ template Status Conv<false, false>::ComputeInternal(ComputeContext& context) con
 template Status Conv<false, true>::ComputeInternal(ComputeContext& context) const;
 template Status Conv<true, false>::ComputeInternal(ComputeContext& context) const;
 template Status Conv<true, true>::ComputeInternal(ComputeContext& context) const;
-template TensorShape Conv<false, false>::ComputeOutputShape(const TensorShape& input_shape, const TensorShape& weight_shape, std::vector<uint32_t> pads, std::vector<uint32_t> strides, std::vector<uint32_t> dilations) const;
-template TensorShape Conv<false, true>::ComputeOutputShape(const TensorShape& input_shape, const TensorShape& weight_shape, std::vector<uint32_t> pads, std::vector<uint32_t> strides, std::vector<uint32_t> dilations) const;
-template TensorShape Conv<true, false>::ComputeOutputShape(const TensorShape& input_shape, const TensorShape& weight_shape, std::vector<uint32_t> pads, std::vector<uint32_t> strides, std::vector<uint32_t> dilations) const;
-template TensorShape Conv<true, true>::ComputeOutputShape(const TensorShape& input_shape, const TensorShape& weight_shape, std::vector<uint32_t> pads, std::vector<uint32_t> strides, std::vector<uint32_t> dilations) const;
 
 #define WEBGPU_ONNX_CONV_OPERATOR_KERNEL(VERSION_FROM)                                \
   ONNX_OPERATOR_KERNEL_EX(                                                            \
