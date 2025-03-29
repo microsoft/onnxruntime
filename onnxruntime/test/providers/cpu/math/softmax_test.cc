@@ -423,7 +423,7 @@ TEST(SoftmaxOperator, GH15949_regression_test) {
 
   // disable TRT as it does not support axis=0 as used by the model
   // TODO: Fix the Softmax operator of WebGPU EP.
-  tester.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kWebGpuExecutionProvider});
+  tester.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
 }
 
 }  // namespace test

@@ -14,7 +14,7 @@ namespace webgpu {
 class Softmax final : public WebGpuKernel {
  public:
   Softmax(const OpKernelInfo& info) : WebGpuKernel{info} {
-    int opset_ = info.node().SinceVersion();
+    opset_ = info.node().SinceVersion();
     int64_t axis;
     Status status = info.GetAttr<int64_t>("axis", &axis);
 
@@ -33,6 +33,7 @@ class Softmax final : public WebGpuKernel {
 
  private:
   int64_t axis_;
+  int opset_;
 };
 
 class SoftmaxProgram final : public Program<SoftmaxProgram> {
