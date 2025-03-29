@@ -4,6 +4,8 @@
 #include "qnn_execution_provider.h"
 
 #include <filesystem>
+#include <optional>
+#include <string_view>
 #include <unordered_set>
 
 #include "core/providers/qnn/ort_api.h"
@@ -21,6 +23,60 @@
 namespace onnxruntime {
 
 constexpr const char* QNN = "QNN";
+
+static std::string MakeSharedLibraryPath(std::string_view name) {
+#if defined(_WIN32)
+  return MakeString(name, ".dll");
+#else
+  return MakeString("lib", name, ".so");
+#endif
+}
+
+const std::string kDefaultCpuBackendPath = MakeSharedLibraryPath("QnnCpu");
+const std::string kDefaultGpuBackendPath = MakeSharedLibraryPath("QnnGpu");
+const std::string kDefaultHtpBackendPath = MakeSharedLibraryPath("QnnHtp");
+const std::string kDefaultSaverBackendPath = MakeSharedLibraryPath("QnnSaver");
+
+static bool ParseBackendTypeName(std::string_view backend_type_name, std::string& backend_path) {
+  constexpr std::string_view kCpuBackendTypeName{"cpu"};
+  constexpr std::string_view kGpuBackendTypeName{"gpu"};
+  constexpr std::string_view kHtpBackendTypeName{"htp"};
+  constexpr std::string_view kSaverBackendTypeName{"saver"};
+
+  constexpr std::array kAllowedBackendTypeNames{
+      kCpuBackendTypeName,
+      kGpuBackendTypeName,
+      kHtpBackendTypeName,
+      kSaverBackendTypeName,
+  };
+
+  std::optional<std::string> associated_backend_path{};
+  if (backend_type_name == kCpuBackendTypeName) {
+    associated_backend_path = kDefaultCpuBackendPath;
+  } else if (backend_type_name == kGpuBackendTypeName) {
+    associated_backend_path = kDefaultGpuBackendPath;
+  } else if (backend_type_name == kHtpBackendTypeName) {
+    associated_backend_path = kDefaultHtpBackendPath;
+  } else if (backend_type_name == kSaverBackendTypeName) {
+    associated_backend_path = kDefaultSaverBackendPath;
+  }
+
+  if (associated_backend_path.has_value()) {
+    backend_path = std::move(*associated_backend_path);
+    return true;
+  }
+
+  std::ostringstream warning{};
+  warning << "Invalid backend type name: " << backend_type_name << ". Allowed backend type names: ";
+  for (size_t i = 0; i < kAllowedBackendTypeNames.size(); ++i) {
+    warning << kAllowedBackendTypeNames[i];
+    if (i + 1 < kAllowedBackendTypeNames.size()) {
+      warning << ", ";
+    }
+  }
+  LOGS_DEFAULT(WARNING) << warning.str();
+  return false;
+}
 
 static void ParseProfilingLevel(std::string profiling_level_string,
                                 qnn::ProfilingLevel& profiling_level) {
@@ -201,15 +257,39 @@ QNNExecutionProvider::QNNExecutionProvider(const ProviderOptions& provider_optio
     LOGS_DEFAULT(VERBOSE) << "User specified option - stop share EP contexts across sessions: " << stop_share_ep_contexts_;
   }
 
-  static const std::string BACKEND_PATH = "backend_path";
-  auto backend_path_pos = provider_options_map.find(BACKEND_PATH);
+  std::string backend_path{};
+  {
+    std::optional<std::string> backend_path_from_options{};
 
-  std::string backend_path;
-  if (backend_path_pos != provider_options_map.end()) {
-    backend_path = backend_path_pos->second;
-    LOGS_DEFAULT(VERBOSE) << "Backend path: " << backend_path;
-  } else {
-    LOGS_DEFAULT(ERROR) << "No backend path provided.";
+    static const std::string BACKEND_TYPE = "backend_type";
+    static const std::string BACKEND_PATH = "backend_path";
+
+    auto backend_type_it = provider_options_map.find(BACKEND_TYPE);
+    auto backend_path_it = provider_options_map.find(BACKEND_PATH);
+
+    if (backend_type_it != provider_options_map.end() && backend_path_it != provider_options_map.end()) {
+      ORT_THROW("Only one of '", BACKEND_TYPE, "' and '", BACKEND_PATH, "' should be set.");
+    }
+
+    if (backend_type_it != provider_options_map.end()) {
+      if (std::string parsed_backend_path; ParseBackendTypeName(backend_type_it->second, parsed_backend_path)) {
+        backend_path_from_options = parsed_backend_path;
+      } else {
+        LOGS_DEFAULT(ERROR) << "Failed to parse '" << BACKEND_TYPE << "' value.";
+      }
+    } else if (backend_path_it != provider_options_map.end()) {
+      backend_path_from_options = backend_path_it->second;
+    }
+
+    if (backend_path_from_options.has_value()) {
+      backend_path = std::move(*backend_path_from_options);
+    } else {
+      const auto& default_backend_path = kDefaultHtpBackendPath;
+      backend_path = default_backend_path;
+      LOGS_DEFAULT(WARNING) << "Unable to determine backend path from provider options. Using default.";
+    }
+
+    LOGS_DEFAULT(VERBOSE) << "Using backend path: " << backend_path;
   }
 
   std::string profiling_file_path;

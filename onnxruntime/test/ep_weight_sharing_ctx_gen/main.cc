@@ -138,12 +138,6 @@ int real_main(int argc, char* argv[]) {
       std::string provider_name_ = test_config.machine_config.provider_type_name;
       if (provider_name_ == onnxruntime::kQnnExecutionProvider) {
 #ifdef USE_QNN
-#if defined(_WIN32)
-        provider_options["backend_path"] = "QnnHtp.dll";
-#else
-        provider_options["backend_path"] = "libQnnHtp.so";
-#endif
-
         so.AppendExecutionProvider("QNN", provider_options);
 #else
         ORT_THROW("QNN is not supported in this build\n");

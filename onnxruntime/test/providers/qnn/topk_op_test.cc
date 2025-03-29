@@ -43,11 +43,7 @@ static void RunTopKTestOnCPU(const TestInputDef<DataType>& input_def,
                              int opset = 19) {
   ProviderOptions provider_options;
 
-#if defined(_WIN32)
-  provider_options["backend_path"] = "QnnCpu.dll";
-#else
-  provider_options["backend_path"] = "libQnnCpu.so";
-#endif
+  provider_options["backend_type"] = "cpu";
 
   RunQnnModelTest(BuildTopKTestCase<DataType>(input_def, k_def, attrs),
                   provider_options,
@@ -149,11 +145,7 @@ static void RunQDQTopKTestOnHTP(const TestInputDef<float>& input_def,
                                 bool use_contrib_qdq = false) {
   ProviderOptions provider_options;
 
-#if defined(_WIN32)
-  provider_options["backend_path"] = "QnnHtp.dll";
-#else
-  provider_options["backend_path"] = "libQnnHtp.so";
-#endif
+  provider_options["backend_type"] = "htp";
   provider_options["offload_graph_io_quantization"] = "0";
 
   auto f32_model_builder = BuildTopKTestCase<float>(input_def, k_def, attrs);

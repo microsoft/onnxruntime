@@ -24,12 +24,7 @@ static void RunClipTest(const TestInputDef<DataType>& input_def,
                         int opset = 13,
                         bool enable_fp16_precision = true) {
   ProviderOptions provider_options;
-
-#if defined(_WIN32)
-  provider_options["backend_path"] = on_cpu_backend ? "QnnCpu.dll" : "QnnHtp.dll";
-#else
-  provider_options["backend_path"] = on_cpu_backend ? "libQnnCpu.so" : "libQnnHtp.so";
-#endif
+  provider_options["backend_type"] = on_cpu_backend ? "cpu" : "htp";
 
   if (!on_cpu_backend && enable_fp16_precision) {
     provider_options["enable_htp_fp16_precision"] = "1";
@@ -111,12 +106,7 @@ static void RunQDQClipTestOnHTP(const TestInputDef<float>& input_def,
                                 int opset = 13,
                                 bool use_contrib_qdq = false) {
   ProviderOptions provider_options;
-
-#if defined(_WIN32)
-  provider_options["backend_path"] = "QnnHtp.dll";
-#else
-  provider_options["backend_path"] = "libQnnHtp.so";
-#endif
+  provider_options["backend_type"] = "htp";
   provider_options["offload_graph_io_quantization"] = "0";
 
   auto f32_model_builder = BuildOpTestCase<float, float>("Clip", {input_def}, {min_max_defs}, {});
@@ -200,12 +190,7 @@ TEST_F(QnnHTPBackendTests, Clip_U8_Rank5) {
   };
 
   ProviderOptions provider_options;
-
-#if defined(_WIN32)
-  provider_options["backend_path"] = "QnnHtp.dll";
-#else
-  provider_options["backend_path"] = "libQnnHtp.so";
-#endif
+  provider_options["backend_type"] = "htp";
   provider_options["offload_graph_io_quantization"] = "0";
 
   RunQnnModelTest(model_fn,
@@ -217,12 +202,7 @@ TEST_F(QnnHTPBackendTests, Clip_U8_Rank5) {
 // Test FP16 Clip with min (FP16)
 TEST_F(QnnHTPBackendTests, Clip_FP16) {
   ProviderOptions provider_options;
-
-#if defined(_WIN32)
-  provider_options["backend_path"] = "QnnHtp.dll";
-#else
-  provider_options["backend_path"] = "libQnnHtp.so";
-#endif
+  provider_options["backend_type"] = "htp";
 
   auto f32_input = TestInputDef<float>({1, 3, 2, 2}, false,
                                        {-10.0f, -8.0f, -3.5f, 2.2f,

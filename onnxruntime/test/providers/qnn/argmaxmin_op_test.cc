@@ -44,11 +44,7 @@ static void RunCPUArgMxxOpTest(const std::string& op_type, TestInputDef<float> i
                                int opset = 13) {
   ProviderOptions provider_options;
 
-#if defined(_WIN32)
-  provider_options["backend_path"] = "QnnCpu.dll";
-#else
-  provider_options["backend_path"] = "libQnnCpu.so";
-#endif
+  provider_options["backend_type"] = "cpu";
 
   RunQnnModelTest(BuildOpTestCase<float>(op_type, {input_def}, {}, attrs),
                   provider_options,
@@ -65,11 +61,7 @@ static void RunQDQArgMxxOpTest(const std::string& op_type, TestInputDef<float> i
                                int opset = 13) {
   ProviderOptions provider_options;
 
-#if defined(_WIN32)
-  provider_options["backend_path"] = "QnnHtp.dll";
-#else
-  provider_options["backend_path"] = "libQnnHtp.so";
-#endif
+  provider_options["backend_type"] = "htp";
   provider_options["offload_graph_io_quantization"] = "0";
 
   TestQDQModelAccuracy(BuildOpTestCase<float>(op_type, {input_def}, {}, attrs),   // baseline float32 model

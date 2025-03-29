@@ -103,19 +103,7 @@ static void RunPadOpTest(const TestInputDef<float>& data_def,
                          bool enable_fp16_precision = false,
                          float f32_abs_err = 1e-5f) {
   ProviderOptions provider_options;
-  if (use_htp) {
-#if defined(_WIN32)
-    provider_options["backend_path"] = "QnnHtp.dll";
-#else
-    provider_options["backend_path"] = "libQnnHtp.so";
-#endif
-  } else {
-#if defined(_WIN32)
-    provider_options["backend_path"] = "QnnCpu.dll";
-#else
-    provider_options["backend_path"] = "libQnnCpu.so";
-#endif
-  }
+  provider_options["backend_type"] = use_htp ? "htp" : "cpu";
   provider_options["offload_graph_io_quantization"] = "0";
 
   if (enable_fp16_precision) {
@@ -140,11 +128,7 @@ static void RunQDQPadOpTest(const TestInputDef<float>& data_def,
                             bool constant_value_quantized = true,
                             int opset = 18) {
   ProviderOptions provider_options;
-#if defined(_WIN32)
-  provider_options["backend_path"] = "QnnHtp.dll";
-#else
-  provider_options["backend_path"] = "libQnnHtp.so";
-#endif
+  provider_options["backend_type"] = "htp";
   provider_options["offload_graph_io_quantization"] = "0";
 
   TestQDQModelAccuracy(BuildPadTestCase(data_def, pads_def, constant_value_def, attrs),

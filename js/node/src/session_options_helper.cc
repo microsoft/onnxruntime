@@ -83,6 +83,14 @@ void ParseExecutionProviders(const Napi::Array epList, Ort::SessionOptions& sess
 #endif
 #ifdef USE_QNN
       if (name == "qnn") {
+        Napi::Value backend_type = obj.Get("backendType");
+        if (!backend_type.IsUndefined()) {
+          if (backend_type.IsString()) {
+            qnn_options["backend_type"] = backend_type.As<Napi::String>().Utf8Value();
+          } else {
+            ORT_NAPI_THROW_TYPEERROR(epList.Env(), "Invalid argument: backendType must be a string.");
+          }
+        }
         Napi::Value backend_path = obj.Get("backendPath");
         if (!backend_path.IsUndefined()) {
           if (backend_path.IsString()) {
@@ -136,11 +144,6 @@ void ParseExecutionProviders(const Napi::Array epList, Ort::SessionOptions& sess
 #endif
 #ifdef USE_QNN
     } else if (name == "qnn") {
-      // Ensure that the backend_path option are set to default values if not provided.
-      if (qnn_options.find("backend_path") == qnn_options.end()) {
-        qnn_options["backend_path"] = "QnnHtp.dll";
-      }
-
       sessionOptions.AppendExecutionProvider("QNN", qnn_options);
 #endif
     } else {
