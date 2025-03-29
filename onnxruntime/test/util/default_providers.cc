@@ -303,10 +303,6 @@ std::unique_ptr<IExecutionProvider> DefaultWebGpuExecutionProvider() {
   ORT_ENFORCE(config_options.AddConfigEntry(webgpu::options::kStorageBufferCacheMode,
                                             webgpu::options::kBufferCacheMode_Disabled)
                   .IsOK());
-  // Disable device auto collect
-  ORT_ENFORCE(config_options.AddConfigEntry(webgpu::options::kPreserveDevice,
-                                            webgpu::options::kPreserveDevice_ON)
-                  .IsOK());
   return WebGpuProviderFactoryCreator::Create(config_options)->CreateProvider();
 #else
   return nullptr;

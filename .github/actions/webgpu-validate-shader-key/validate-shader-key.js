@@ -11,10 +11,12 @@ const readline = require("readline");
 
 const shaderMap = new Map();
 
+const regexStartingProgram =
+  /onnxruntime::webgpu::WebGpuContext::Run.+Starting program \"(?<key>.+)\"/;
 const regexShaderStart =
-  /^===\ WebGPU\ Shader\ code\ \[.+?Key=\"(?<key>.+)\"]\ Start\ ===$/;
+  /^===\ WebGPU\ Shader\ code\ \[.+?(Key=\"(?<key>.+)\")?]\ Start\ ===$/;
 const regexShaderEnd =
-  /^===\ WebGPU\ Shader\ code\ \[.+?Key=\"(?<key>.+)\"]\ End\ ===$/;
+  /^===\ WebGPU\ Shader\ code\ \[.+?(Key=\"(?<key>.+)\")?]\ End\ ===$/;
 
 async function processVerboseLog() {
   const rl = readline.createInterface({
@@ -22,10 +24,17 @@ async function processVerboseLog() {
     crlfDelay: Infinity,
   });
 
+  let lastProgramKey = null;
   let currentShaderKey = null;
   let currentShaderCode = null;
 
   for await (const line of rl) {
+    const startingProgram = regexStartingProgram.exec(line);
+    if (startingProgram) {
+      lastProgramKey = startingProgram.groups.key;
+      continue;
+    }
+
     const resultStart = regexShaderStart.exec(line);
     if (resultStart) {
       if (currentShaderKey) {
@@ -34,7 +43,13 @@ async function processVerboseLog() {
         );
       }
 
-      currentShaderKey = resultStart.groups.key;
+      const key = resultStart.groups.key;
+      if (key && key !== lastProgramKey) {
+        throw new Error(
+          `Found incorrect shader key from log. Expected "${lastProgramKey}", but got "${key}".`
+        );
+      }
+      currentShaderKey = key;
       currentShaderCode = "";
       continue;
     }
@@ -45,9 +60,12 @@ async function processVerboseLog() {
         throw new Error(
           `Found unexpected shader end for key "${resultEnd.groups.key}".`
         );
-      } else if (currentShaderKey !== resultEnd.groups.key) {
+      }
+
+      const key = resultEnd.groups.key;
+      if (key && (key !== lastProgramKey || key !== currentShaderKey)) {
         throw new Error(
-          `Found inconsistent shader key. Expected "${currentShaderKey}", but got "${resultEnd.groups.key}".`
+          `Found incorrect shader key from log. Expected "${lastProgramKey}"/"${currentShaderKey}", but got "${key}".`
         );
       }
 
@@ -87,7 +105,7 @@ ${currentShaderCode}
   }
 
   console.log(
-    `All shader code is consistent. Total ${shaderMap.size} shader code found.`
+    `All shader code is consistent. Total ${shaderMap.size} shader keys found.`
   );
 }
 
