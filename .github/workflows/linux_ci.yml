@@ -1,23 +1,21 @@
-# This workflow builds and tests the ONNX Runtime for Linux in both Debug and Release configurations.
-# It uses a Docker container to provide a consistent build environment.
+# This workflow builds and tests the ONNX Runtime for Linux on multiple architectures and configurations.
+# It leverages a reusable workflow (`reusable_linux_build.yml`) to handle the core build and test logic
+# within Docker containers, ensuring a consistent environment.
 #
-# The workflow consists of two jobs:
-#   - build-debug: Builds and tests the Debug configuration.
-#     - Uses the 'Debug' build configuration.
-#     - Enables AddressSanitizer for memory error detection.
-#     - Builds and runs tests.
-#   - build-release: Builds and tests the Release configuration.
-#     - Uses the 'Release' build configuration.
-#     - Includes additional flags for release builds:
-#       - --use_binskim_compliant_compile_flags
-#       - --build_wheel
-#       - --build_csharp
-#       - --enable_transformers_tool_test
-#       - --cmake_extra_defines onnxruntime_BUILD_BENCHMARKS=ON
-#     - Builds and runs tests.
+# The workflow consists of five parallel jobs targeting different combinations:
+#   - build-linux-x64-debug: Builds/tests Debug config on Linux x64 (AMD CPU pool), enables AddressSanitizer.
+#   - build-linux-x64-release: Builds/tests Release config on Linux x64 (AMD CPU pool), includes wheel/nuget/benchmark flags.
+#   - orttraining-linux-ci-pipeline: Builds/tests Release config with Training enabled (--enable_training) on Linux x64 (AMD CPU pool).
+#   - build-linux-arm64-debug: Builds/tests Debug config on Linux arm64 (ARM CPU pool); ASan is disabled due to excessive runtime. Includes wheel build.
+#   - build-linux-arm64-release: Builds/tests Release config on Linux arm64 (ARM CPU pool), includes wheel/benchmark flags.
 #
-# The two jobs run in parallel to reduce the overall build time.
-# Both jobs use the same Docker image, built in a separate step.
+# Each job calls the reusable workflow, passing specific parameters:
+#   - target architecture (x64 or arm64)
+#   - build configuration (Debug or Release)
+#   - runner pool name
+#   - path to the appropriate Dockerfile
+#   - Docker image name for caching/use
+#   - configuration-specific build flags (e.g., --enable_address_sanitizer, --enable_training, --build_wheel)
 
 name: Linux CI
 
@@ -32,131 +30,74 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  linux-cpu-asan-debug:  # Job for building and testing the Debug configuration
-    runs-on: ["self-hosted", "1ES.Pool=onnxruntime-github-Ubuntu2204-AMD-CPU"]
-    permissions:
-      actions: read
-      contents: read
+  # --- x64 Builds ---
+  build-linux-x64-debug:
+    name: Build Linux x64 Debug (ASan)
+    uses: ./.github/workflows/reusable_linux_build.yml
+    with:
+      pool_name: "onnxruntime-github-Ubuntu2204-AMD-CPU"
+      build_config: Debug
+      architecture: x64
+      dockerfile_path: tools/ci_build/github/linux/docker/inference/x86_64/default/cpu/Dockerfile
+      docker_image_repo: onnxruntimecpubuildcix64
+      extra_build_flags: '--enable_address_sanitizer'
+      # python_path_prefix: '' # Default empty string is fine, no prefix needed
+    secrets:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v3
+  build-linux-x64-release:
+    name: Build Linux x64 Release
+    uses: ./.github/workflows/reusable_linux_build.yml
+    with:
+      pool_name: "onnxruntime-github-Ubuntu2204-AMD-CPU"
+      build_config: Release
+      architecture: x64
+      dockerfile_path: tools/ci_build/github/linux/docker/Dockerfile.manylinux2_28_cpu
+      docker_image_repo: onnxruntimecpubuildpythonx64
+      extra_build_flags: '--use_binskim_compliant_compile_flags --build_wheel --build_nuget --enable_transformers_tool_test --cmake_extra_defines onnxruntime_BUILD_BENCHMARKS=ON'
+      python_path_prefix: 'PATH=/opt/python/cp310-cp310/bin:$PATH' # $ needs escaping in single quotes
+    secrets:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Set up Python 3.x
-        uses: actions/setup-python@v4
-        with:
-          python-version: '3.x'
+  orttraining-linux-ci-pipeline:
+    name: Build Linux x64 Release with training
+    uses: ./.github/workflows/reusable_linux_build.yml
+    with:
+      pool_name: "onnxruntime-github-Ubuntu2204-AMD-CPU"
+      build_config: Release
+      architecture: x64
+      dockerfile_path: tools/ci_build/github/linux/docker/Dockerfile.manylinux2_28_cpu
+      docker_image_repo: onnxruntimecpubuildpythonx64 # Shares image with standard x64 release
+      extra_build_flags: '--enable_training --use_binskim_compliant_compile_flags --build_wheel --build_nuget --enable_transformers_tool_test --cmake_extra_defines onnxruntime_BUILD_BENCHMARKS=ON'
+      python_path_prefix: 'PATH=/opt/python/cp310-cp310/bin:$PATH' # $ needs escaping in single quotes
+    secrets:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Build Docker Image
-        uses: microsoft/onnxruntime-github-actions/build-docker-image@v0.0.1
-        with:
-          Dockerfile: ${{ github.workspace }}/tools/ci_build/github/linux/docker/inference/x86_64/default/cpu/Dockerfile
-          Repository: 'onnxruntimecpubuildcentos8x64'
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}  # Needed for context
+  # --- arm64 Builds ---
+  build-linux-arm64-debug:
+    name: Build Linux arm64 Debug
+    uses: ./.github/workflows/reusable_linux_build.yml
+    with:
+      pool_name: "onnxruntime-github-Ubuntu2204-ARM-CPU"
+      build_config: Debug
+      architecture: arm64
+      dockerfile_path: tools/ci_build/github/linux/docker/inference/aarch64/default/cpu/Dockerfile
+      docker_image_repo: onnxruntimecpubuildciaarch64
+      # ASan disabled due to excessive runtime (>4hr). Includes wheel build for basic checks.
+      extra_build_flags: '--use_binskim_compliant_compile_flags --build_shared_lib'
+    secrets:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Create .onnx directory
-        run: mkdir -p $HOME/.onnx
-
-      # Build and Test ONNX Runtime in Docker (Debug)
-      - name: Build and Test ONNX Runtime in Docker (Debug)
-        env:
-          ALLOW_RELEASED_ONNX_OPSET_ONLY: 0
-          NIGHTLY_BUILD: 1  # Assuming you want nightly build for both Debug and Release
-        run: |
-          docker run --rm \
-            --volume /data/onnx:/data/onnx:ro \
-            --volume /data/models:/data/models:ro \
-            --volume ${{ github.workspace }}:/onnxruntime_src \
-            --volume $HOME/.onnx:/home/onnxruntimedev/.onnx \
-            -w /onnxruntime_src \
-            -e ALLOW_RELEASED_ONNX_OPSET_ONLY \
-            -e NIGHTLY_BUILD \
-            onnxruntimecpubuildcentos8x64 \
-            /bin/bash -c 'set -ex; \
-              # Build with Debug configuration and AddressSanitizer enabled
-              python3 tools/ci_build/build.py \
-                --build_dir build/Debug --cmake_generator Ninja \
-                --config Debug \
-                --skip_submodule_sync \
-                --build_shared_lib \
-                --parallel \
-                --use_vcpkg --use_vcpkg_ms_internal_asset_cache \
-                --enable_onnx_tests \
-                --enable_address_sanitizer \
-                --update --build;
-              # Run tests with Debug configuration
-              python3 tools/ci_build/build.py \
-                --build_dir build/Debug --cmake_generator Ninja \
-                --config Debug \
-                --skip_submodule_sync \
-                --build_shared_lib \
-                --parallel \
-                --use_vcpkg --use_vcpkg_ms_internal_asset_cache \
-                --enable_onnx_tests \
-                --enable_address_sanitizer \
-                --test;'
-
-  linux-cpu-release:  # Job for building and testing the Release configuration
-    runs-on: ["self-hosted", "1ES.Pool=onnxruntime-github-Ubuntu2204-AMD-CPU"]
-    permissions:
-      actions: read
-      contents: read
-
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v3
-
-      - name: Set up Python 3.x
-        uses: actions/setup-python@v4
-        with:
-          python-version: '3.x'
-
-      - name: Build Docker Image
-        uses: microsoft/onnxruntime-github-actions/build-docker-image@v0.0.1
-        with:
-          Dockerfile: ${{ github.workspace }}/tools/ci_build/github/linux/docker/Dockerfile.manylinux2_28_cpu
-          Repository: 'onnxruntimecpubuild'
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}  # Needed for context
-
-      - name: Create .onnx directory
-        run: mkdir -p $HOME/.onnx
-      # Build and Test ONNX Runtime in Docker (Release)
-      - name: Build and Test ONNX Runtime in Docker (Release)
-        env:
-          ALLOW_RELEASED_ONNX_OPSET_ONLY: 0
-          NIGHTLY_BUILD: 1 
-        run: |
-          docker run --rm \
-            --volume /data/onnx:/data/onnx:ro \
-            --volume /data/models:/data/models:ro \
-            --volume ${{ github.workspace }}:/onnxruntime_src \
-            --volume $HOME/.onnx:/home/onnxruntimedev/.onnx \
-            -w /onnxruntime_src \
-            -e ALLOW_RELEASED_ONNX_OPSET_ONLY \
-            -e NIGHTLY_BUILD \
-            onnxruntimecpubuild \
-            /bin/bash -c 'set -ex; \
-              # Build with Release configuration and additional flags for release builds
-              PATH=/opt/python/cp310-cp310/bin:$PATH python3 tools/ci_build/build.py \
-                --build_dir build/Release --cmake_generator Ninja \
-                --config Release \
-                --skip_submodule_sync \
-                --build_shared_lib \
-                --parallel \
-                --use_vcpkg --use_vcpkg_ms_internal_asset_cache \
-                --enable_onnx_tests \
-                --use_binskim_compliant_compile_flags --build_wheel --build_csharp --enable_transformers_tool_test --cmake_extra_defines onnxruntime_BUILD_BENCHMARKS=ON \
-                --update --build;
-              # Run tests with Release configuration
-              PATH=/opt/python/cp310-cp310/bin:$PATH python3 tools/ci_build/build.py \
-                --build_dir build/Release --cmake_generator Ninja \
-                --config Release \
-                --skip_submodule_sync \
-                --build_shared_lib \
-                --parallel \
-                --use_vcpkg --use_vcpkg_ms_internal_asset_cache \
-                --enable_onnx_tests \
-                --use_binskim_compliant_compile_flags --build_wheel --build_csharp --enable_transformers_tool_test --cmake_extra_defines onnxruntime_BUILD_BENCHMARKS=ON \
-                --test;'
+  build-linux-arm64-release:
+    name: Build Linux arm64 Release
+    uses: ./.github/workflows/reusable_linux_build.yml
+    with:
+      pool_name: "onnxruntime-github-Ubuntu2204-ARM-CPU"
+      build_config: Release
+      architecture: arm64
+      dockerfile_path: tools/ci_build/github/linux/docker/inference/aarch64/python/cpu/Dockerfile
+      docker_image_repo: onnxruntimecpubuildpythonaarch64
+      extra_build_flags: '--use_binskim_compliant_compile_flags --build_wheel --cmake_extra_defines onnxruntime_BUILD_BENCHMARKS=ON'
+      python_path_prefix: 'PATH=/opt/python/cp310-cp310/bin:$PATH' # $ needs escaping in single quotes
+    secrets:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

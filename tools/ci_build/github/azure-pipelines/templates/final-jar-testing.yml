@@ -95,7 +95,5 @@ stages:
     - ${{ if eq(parameters['OS'], 'MacOS') }}:
       - template: use-xcode-version.yml
 
-    - template: component-governance-component-detection-steps.yml
-      parameters:
-        condition: 'succeeded'
+
 

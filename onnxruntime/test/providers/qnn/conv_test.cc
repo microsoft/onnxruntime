@@ -371,7 +371,8 @@ static void RunHTPConvOpPerChannelTest(const std::string& conv_op_type, const Te
 // Check that QNN compiles DQ -> Conv -> Q as a single unit.
 // Tests bias as a dynamic input.
 // TODO: Segfaults when calling graphFinalize(). v2.13
-TEST_F(QnnCPUBackendTests, DISABLED_Convf32_dynamic_bias) {
+// fixed by QNN 2.32
+TEST_F(QnnCPUBackendTests, Convf32_dynamic_bias) {
   RunCPUConvOpTest("Conv",
                    TestInputDef<float>({1, 1, 3, 3}, false, 0.0f, 10.0f),  // Random dynamic input
                    TestInputDef<float>({2, 1, 2, 2}, true, 0.0f, 1.0f),    // Random static weights
@@ -499,7 +500,8 @@ TEST_F(QnnCPUBackendTests, Convf32_AutoPadLower) {
 // Tests ConvTranspose's auto_pad value "SAME_LOWER" (compares to CPU EP).
 // 2.31 Exception from qnn_interface.graphAddNode
 // unknown file: error: SEH exception with code 0xc0000005 thrown in the test body
-TEST_F(QnnCPUBackendTests, DISABLED_ConvTransposef32_AutoPadLower) {
+// fixed by QNN 2.32
+TEST_F(QnnCPUBackendTests, ConvTransposef32_AutoPadLower) {
   RunCPUConvOpTest("ConvTranspose",
                    TestInputDef<float>({1, 1, 3, 3}, false, -3.0f, 3.0f),  // Random dynamic input
                    TestInputDef<float>({1, 2, 2, 2}, false, -1.0f, 1.0f),  // Random dynamic weights
@@ -516,7 +518,8 @@ TEST_F(QnnCPUBackendTests, DISABLED_ConvTransposef32_AutoPadLower) {
 // Exception from graphFinalize
 // Exception thrown at 0x00007FFFB7651630 (QnnCpu.dll) in onnxruntime_test_all.exe:
 // 0xC0000005: Access violation reading location 0x0000000000000000.
-TEST_F(QnnCPUBackendTests, DISABLED_ConvTranspose3D_f32_AutoPadLower) {
+// fixed by QNN 2.32
+TEST_F(QnnCPUBackendTests, ConvTranspose3D_f32_AutoPadLower) {
   RunCPUConvOpTest("ConvTranspose",
                    TestInputDef<float>({1, 1, 3, 3, 3}, false, -3.0f, 3.0f),  // Random dynamic input
                    TestInputDef<float>({1, 2, 2, 2, 2}, false, -1.0f, 1.0f),  // Random dynamic weights
@@ -642,7 +645,8 @@ TEST_F(QnnCPUBackendTests, ConvTranspose1Df32_StaticWeights_DefaultBias) {
 // Test 1D ConvTranspose with dynamic weights (implemented in QNN EP as 2D convolution with height of 1).
 // 2.31 Exception from qnn_interface.graphAddNode
 // unknown file: error: SEH exception with code 0xc0000005 thrown in the test body
-TEST_F(QnnCPUBackendTests, DISABLED_ConvTranspose1Df32_DynamicWeights_DefaultBias) {
+// fixed by QNN 2.32
+TEST_F(QnnCPUBackendTests, ConvTranspose1Df32_DynamicWeights_DefaultBias) {
   std::vector<float> input_data = {0.0f, 1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f, 7.0f};
   RunCPUConvOpTest("ConvTranspose",
                    TestInputDef<float>({1, 2, 4}, false, input_data),                // Dynamic input
