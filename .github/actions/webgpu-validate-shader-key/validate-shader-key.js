@@ -43,8 +43,13 @@ async function processVerboseLog() {
         );
       }
 
-      const key = resultStart.groups.key;
-      if (key && key !== lastProgramKey) {
+      const key = resultStart.groups.key ?? lastProgramKey;
+      if (!key) {
+        throw new Error(
+          'No shader key is found in the log. Please use debug build or enable verbose logging in session options in release build.'
+        );
+      }
+      if (lastProgramKey && key !== lastProgramKey) {
         throw new Error(
           `Found incorrect shader key from log. Expected "${lastProgramKey}", but got "${key}".`
         );
@@ -62,10 +67,15 @@ async function processVerboseLog() {
         );
       }
 
-      const key = resultEnd.groups.key;
-      if (key && (key !== lastProgramKey || key !== currentShaderKey)) {
+      const key = resultEnd.groups.key ?? lastProgramKey;
+      if (!key) {
         throw new Error(
-          `Found incorrect shader key from log. Expected "${lastProgramKey}"/"${currentShaderKey}", but got "${key}".`
+          'No shader key is found in the log. Please use debug build or enable verbose logging in session options in release build.'
+        );
+      }
+      if (lastProgramKey && key !== lastProgramKey) {
+        throw new Error(
+          `Found incorrect shader key from log. Expected "${lastProgramKey}", but got "${key}".`
         );
       }
 
