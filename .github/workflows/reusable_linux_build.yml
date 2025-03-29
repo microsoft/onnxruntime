@@ -100,11 +100,14 @@ jobs:
           ls -lR ./.github/_downloaded_actions # Verify structure
 
       - name: Build Docker Image (${{ inputs.architecture }} / ${{ inputs.build_config }})
-        uses: ./.github/_downloaded_actions/build-docker-image
+        uses: microsoft/onnxruntime-github-actions/build-docker-image@bb6b16e409684ffd0f46b35e8e217ce6ed72097c
+        id: build_docker_image_step
         with:
-          Dockerfile: ${{ github.workspace }}/${{ inputs.dockerfile_path }}
-          Repository: ${{ inputs.docker_image_repo }}
-          DockerBuildArgs: ${{ inputs.docker_build_args }}
+          dockerfile: ${{ github.workspace }}/${{ inputs.dockerfile_path }}
+          image-name: ghcr.io/microsoft/onnxruntime/${{ inputs.docker_image_repo }}
+          build-args: ${{ inputs.docker_build_args }}
+          push: true
+          azure-container-registry-name: onnxruntimebuildcache
         env:
           GITHUB_TOKEN: ${{ secrets.GH_TOKEN }}
 
@@ -119,7 +122,7 @@ jobs:
         id: update_step
         uses: ./.github/_downloaded_actions/run-build-script-in-docker
         with:
-          docker_image: ${{ inputs.docker_image_repo }}
+          docker_image: ${{ steps.build_docker_image_step.outputs.full-image-name }}
           build_config: ${{ inputs.build_config }}
           mode: 'update'
           execution_providers: ${{ inputs.execution_providers }} # Pass down EP list
@@ -131,7 +134,7 @@ jobs:
         id: build_step
         uses: ./.github/_downloaded_actions/run-build-script-in-docker
         with:
-          docker_image: ${{ inputs.docker_image_repo }}
+          docker_image: ${{ steps.build_docker_image_step.outputs.full-image-name }}
           build_config: ${{ inputs.build_config }}
           mode: 'build'
           execution_providers: ${{ inputs.execution_providers }} # Pass down EP list
@@ -144,7 +147,7 @@ jobs:
         if: inputs.run_tests == true
         uses: ./.github/_downloaded_actions/run-build-script-in-docker
         with:
-          docker_image: ${{ inputs.docker_image_repo }}
+          docker_image: ${{ steps.build_docker_image_step.outputs.full-image-name }}
           build_config: ${{ inputs.build_config }}
           mode: 'test'
           execution_providers: ${{ inputs.execution_providers }} # Pass down EP list
