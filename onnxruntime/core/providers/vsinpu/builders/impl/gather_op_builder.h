@@ -59,21 +59,33 @@ class GatherOpBuilder : public BaseOpBuilder {
                      std::vector<std::shared_ptr<tim::vx::Tensor>>& outputs,
                      const NodeUnit& node_unit) override {
     LOGS_DEFAULT(VERBOSE) << "Creating Gather Op.";
+    auto indices = node_unit.Inputs()[1];
+    int8_t is_scalar_indices = 0;
     NodeAttrHelper helper(node_unit.GetNode());
     auto axis = helper.Get("axis", 0);
     axis = util::ReverseAxis(axis, inputs[0]->GetShape().size());
     auto op = graph_ep->GetGraph()->CreateOperation<tim::vx::ops::Gather>(axis, 0);
+    auto indices_shape_proto = indices.node_arg.Shape();
+    if (indices_shape_proto != nullptr) {
+      if (indices_shape_proto->dim_size() == 0) {
+        is_scalar_indices = 1;
+      }
+    } else {
+      is_scalar_indices = 1;
+    }
 
     bool is_i64_indices = inputs[1]->GetDataType() == tim::vx::DataType::INT64;
     if (!is_i64_indices) {
+      inputs[1]->SetScalar(is_scalar_indices);
       (*op).BindInputs(inputs).BindOutputs(outputs);
     } else {
       std::vector<int64_t> origin_data(inputs[1]->GetSpec().GetElementNum());
       inputs[1]->CopyDataFromTensor(origin_data.data());
       std::vector<int32_t> transformed_data(origin_data.begin(), origin_data.end());
-      tim::vx::TensorSpec ts = inputs[1]->GetSpec().SetAttribute(tim::vx::TensorAttribute::INPUT);
+      tim::vx::TensorSpec ts = inputs[1]->GetSpec();
       ts.SetDataType(tim::vx::DataType::INT32);
       auto transformed_indices = graph_ep->GetGraph()->CreateTensor(ts, transformed_data.data());
+      transformed_indices->SetScalar(is_scalar_indices);
       (*op).BindInput(inputs[0]).BindInput(transformed_indices).BindOutput(outputs[0]);
     }
     graph_ep->GetOps().push_back(std::move(op));
