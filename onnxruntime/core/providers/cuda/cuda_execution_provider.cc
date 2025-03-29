@@ -420,8 +420,6 @@ Status CUDAExecutionProvider::Sync() const {
 }
 
 Status CUDAExecutionProvider::OnRunStart(const onnxruntime::RunOptions& run_options) {
-  // always set CUDA device when session::Run() in case it runs in a worker thread
-  CUDA_RETURN_IF_ERROR(cudaSetDevice(GetDeviceId()));
   CudaGraphAnnotation_t cuda_graph_annotation_id = GetPerThreadContext().GetCudaGraphAnnotationId(run_options);
   if (IsGraphCaptureEnabled() && !GetPerThreadContext().IsGraphCaptured(cuda_graph_annotation_id) &&
       GetPerThreadContext().IsGraphCaptureAllowed(cuda_graph_annotation_id)) {
