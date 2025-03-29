@@ -6,6 +6,7 @@ on:
     branches:
       - main
       - rel-*
+      - 'snnn/ci'
   pull_request:
     branches:
       - main
@@ -30,7 +31,7 @@ jobs:
           architecture: x64
 
 
-      - uses: microsoft/onnxruntime-github-actions/setup-cmake@0c8c2ab4b6ca3be3c8287a0e0549038ecca38d7d
+      - uses: microsoft/onnxruntime-github-actions/setup-cmake@bb6b16e409684ffd0f46b35e8e217ce6ed72097c
         with:
           cmake-version: '4.0.0'
           cmake-hash: '8482e754bf5bf45349ba2f2184999f81f8754ed3d281e1708f1f9a3b2fcd05c3aa5368e6247930495722ffc5982aadbe489630c5716241ab1702c3cf866483cf'
