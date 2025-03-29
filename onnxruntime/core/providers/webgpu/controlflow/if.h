@@ -2,7 +2,6 @@
 // Licensed under the MIT License.
 
 #pragma once
-#include <functional>
 
 #include "core/providers/webgpu/webgpu_kernel.h"
 #include "core/common/common.h"
