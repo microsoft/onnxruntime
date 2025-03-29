@@ -164,6 +164,11 @@ jobs:
           .\onnxruntime_test_all.exe 2>.\onnxruntime_test_all_stderr.log
         working-directory: ${{ github.workspace }}\Debug\Debug
 
+      - name: Check log file
+        shell: cmd
+        run: |
+          dir ${{ github.workspace }}\Debug\Debug\onnxruntime_test_all_stderr.log
+
       - name: Validate shader keys
         continue-on-error: true
         uses: ./.github/actions/webgpu-validate-shader-key
