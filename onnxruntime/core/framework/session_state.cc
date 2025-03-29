@@ -1127,7 +1127,7 @@ Status SessionState::CreateSubgraphSessionState() {
       if (!ep.empty() &&
           ep != kCpuExecutionProvider && ep != kCudaExecutionProvider &&
           ep != kRocmExecutionProvider && ep != kDmlExecutionProvider &&
-          ep != kJsExecutionProvider) {
+          ep != kJsExecutionProvider && ep != kWebGpuExecutionProvider) {
         // SessionState is only used when ORT is executing the subgraph. If a non-ORT EP has taken the control flow
         // node containing the subgraph it will create whatever state it needs internally.
         continue;
