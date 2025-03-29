@@ -988,18 +988,6 @@ def number_of_nvcc_threads(args):
             if available_memory > 60 * 1024 * 1024 * 1024:
                 # When available memory is large enough, chance of OOM is small.
                 nvcc_threads = 4
-            else:
-                # NVCC need a lot of memory to compile 8 flash attention cu files in Linux or 4 cutlass fmha cu files in Windows.
-                # Here we select number of threads to ensure each thread has enough memory (>= 4 GB). For example,
-                # Standard_NC4as_T4_v3 has 4 CPUs and 28 GB memory. When parallel=4 and nvcc_threads=2,
-                # total nvcc threads is 4 * 2, which is barely able to build in 28 GB memory so we will use nvcc_threads=1.
-                memory_per_thread = 4 * 1024 * 1024 * 1024
-                fmha_cu_files = 4 if is_windows() else 16
-                fmha_parallel_jobs = min(fmha_cu_files, number_of_parallel_jobs(args))
-                nvcc_threads = max(1, int(available_memory / (memory_per_thread * fmha_parallel_jobs)))
-                print(
-                    f"nvcc_threads={nvcc_threads} to ensure memory per thread >= 4GB for available_memory={available_memory} and fmha_parallel_jobs={fmha_parallel_jobs}"
-                )
     except ImportError:
         print(
             "Failed to import psutil. Please `pip install psutil` for better estimation of nvcc threads. Use nvcc_threads=1"
