@@ -101,7 +101,7 @@ jobs:
           ls -lR ./.github/_downloaded_actions # Verify structure
 
       - name: Build Docker Image (${{ inputs.architecture }} / ${{ inputs.build_config }})
-        uses: microsoft/onnxruntime-github-actions/build-docker-image@2cf46f409099e5a27977bbece1c89f3d6dca6a1b
+        uses: microsoft/onnxruntime-github-actions/build-docker-image@fe4bffdebbaf16477883ba661ecfeeeb5703c85a
         id: build_docker_image_step
         with:
           dockerfile: ${{ github.workspace }}/${{ inputs.dockerfile_path }}
