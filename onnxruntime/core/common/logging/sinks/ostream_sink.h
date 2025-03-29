@@ -39,6 +39,8 @@ class WOStreamSink : public ISink {
  protected:
   WOStreamSink(std::wostream& stream, bool flush)
       : stream_{&stream}, flush_{flush} {
+    // Set the locale to UTF-8 to ensure proper handling of wide characters
+    stream.imbue(std::locale(".UTF-8", std::locale::ctype));
   }
 
  public:
