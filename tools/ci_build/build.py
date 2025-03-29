@@ -1060,10 +1060,12 @@ def generate_vcpkg_install_options(build_dir, args):
     folder_name_parts = []
     if args.enable_address_sanitizer:
         folder_name_parts.append("asan")
-    if args.use_binskim_compliant_compile_flags and not args.android:
+    if args.use_binskim_compliant_compile_flags and not args.android and not args.build_wasm:
         folder_name_parts.append("binskim")
     if args.disable_rtti:
         folder_name_parts.append("nortti")
+    if args.build_wasm and not args.disable_wasm_exception_catching and not args.disable_exceptions:
+        folder_name_parts.append("exception_catching")
     if args.disable_exceptions:
         folder_name_parts.append("noexception")
     if len(folder_name_parts) == 0:
