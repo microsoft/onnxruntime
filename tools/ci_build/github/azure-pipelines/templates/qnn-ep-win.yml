@@ -1,5 +1,5 @@
 parameters:
-  QnnSdk: '2.31.0.250130'
+  QnnSdk: '2.32.0.250228'
   build_config: 'RelWithDebInfo'
   IsReleaseBuild: false
   DoEsrp: false
@@ -10,7 +10,6 @@ parameters:
   buildPlatform: 'x64'
   buildArch: 'x64'
   StageName: 'OnnxRuntime_QNN_Nuget_Win_x64'
-  Is1ES: true
   PublishArchive: false
 
 stages:
@@ -165,15 +164,8 @@ stages:
         Contents: '*.snupkg'
         TargetFolder: '$(Build.ArtifactStagingDirectory)'
 
-    - ${{ if eq(parameters.Is1ES, true) }}:
-      - task: 1ES.PublishPipelineArtifact@1
-        displayName: 'Publish Pipeline x64 NuGet Artifact'
-        inputs:
-          artifactName: ${{ parameters.ArtifactName }}
-          targetPath: '$(Build.ArtifactStagingDirectory)'
-    - ${{ else }}:
-      - task: PublishPipelineArtifact@1
-        displayName: 'Publish Pipeline x64 NuGet Artifact'
-        inputs:
-          artifactName: ${{ parameters.ArtifactName }}
-          targetPath: '$(Build.ArtifactStagingDirectory)'
+    - task: 1ES.PublishPipelineArtifact@1
+      displayName: 'Publish Pipeline x64 NuGet Artifact'
+      inputs:
+        artifactName: ${{ parameters.ArtifactName }}
+        targetPath: '$(Build.ArtifactStagingDirectory)'

@@ -10,7 +10,6 @@ parameters:
   type: string
   default: 10.9_cuda12.8_cudnn9
   values:
-  - 10.9_cuda11.8_cudnn8
   - 10.9_cuda12.8_cudnn9
   - BIN
 
@@ -191,9 +190,5 @@ jobs:
       inputs:
         pathtoPublish: '$(Build.SourcesDirectory)/Artifact'
         artifactName: 'result-$(Build.BuildNumber)'
-
-    - template: templates/component-governance-component-detection-steps.yml
-      parameters :
-        condition : 'succeeded'
 
     - template: templates/clean-agent-build-directory-step.yml
