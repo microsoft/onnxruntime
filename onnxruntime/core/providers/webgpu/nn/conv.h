@@ -24,8 +24,8 @@ class Conv : public WebGpuKernel {
   Status ComputeInternal(ComputeContext& context) const override;
 
  protected:
-  ConvAttributes conv_attrs_;
-  Activation activation_;
+ Activation activation_;
+ ConvAttributes conv_attrs_;
 };
 
 Status TransposeKernel(ComputeContext& context, const Tensor* kernel, const TensorShape& kernel_shape, Tensor* transposed_kernel, const InlinedVector<size_t>& perm);
