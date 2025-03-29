@@ -31,12 +31,9 @@
     "current_failing_tests": [
         "^test_adagrad",
         "^test_adagrad_multiple",
-        "^test_batchnorm_epsilon_old",
         "^test_batchnorm_epsilon_training_mode",
-        "^test_batchnorm_example_old",
         "^test_batchnorm_example_training_mode",
         "^test_col2im_pads",  // still one wrong value coming from the backtest example
-        "^test_gathernd_example_int32_batch_dim1",
         "^test_max_int16",
         "^test_max_int8",
         "^test_max_uint16",
@@ -52,8 +49,6 @@
         "^test_pow_types_float32_uint64",
         "^test_gradient_of_add_and_mul",
         "^test_gradient_of_add",
-        "^test_batchnorm_example_training_mode",
-        "^test_batchnorm_epsilon_training_mode",
         "^test_MaxPool2d_stride_padding_dilation_cpu", // result approximation error; need to be updated in ONNX
         "^test_maxunpool_export_with_output_shape", // result mismatch
         "^test_resize_downsample_scales_cubic_align_corners", // results mismatch with onnx tests
