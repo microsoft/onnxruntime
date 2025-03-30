@@ -154,6 +154,10 @@ static OpBuilderRegistrations CreateOpBuilderRegistrations() {
     CreateMaxMinOpBuilder("Min", op_registrations);
   }
 
+  { // MultiHeadAttention
+    CreateMultiHeadAttentionOpBuilder("MultiHeadAttention", op_registrations);
+  }
+
   {  // Normalization
     CreateNormalizationOpBuilder("BatchNormalization", op_registrations);
     CreateNormalizationOpBuilder("InstanceNormalization", op_registrations);
