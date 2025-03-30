@@ -55,7 +55,7 @@ std::string GetActivationSnippet(const Activation& activation, std::string value
     return base_type + "(" + std::to_string(value) + ")";
   };
   auto value_type_cast = [base_type_cast, value_type](float f) -> std::string {
-      return value_type + "(" + base_type_cast(f) + ")";
+    return value_type + "(" + base_type_cast(f) + ")";
   };
   switch (activation.activation_kind_) {
     case ActivationKind::Relu:
