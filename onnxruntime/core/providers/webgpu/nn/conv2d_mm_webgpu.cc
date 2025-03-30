@@ -146,7 +146,7 @@ Status Conv2dMMProgram::GenerateShaderCode(ShaderHelper& shader) const {
                         << "  let flatIndex = getOutputIndexFromCoords(vec4<i32>(d0, d1, d2, d3));\n"
                         << "  setOutputAtIndex(flatIndex " << (is_vec4_ ? "/ 4" : "") << ", value);\n"
                         << "}\n";
-  const auto& x = shader.AddInput("x", ShaderUsage::UseUniform | ShaderUsage::UseShapeAndStride | ShaderUsage::UseIndicesTypeAlias | ShaderUsage::UseValueTypeAlias);
+  const auto& x = shader.AddInput("x", ShaderUsage::UseUniform | ShaderUsage::UseShapeAndStride | ShaderUsage::UseIndicesTypeAlias | ShaderUsage::UseValueTypeAlias | ShaderUsage::UseElementTypeAlias);
   const auto& w = shader.AddInput("w", ShaderUsage::UseUniform | ShaderUsage::UseShapeAndStride | ShaderUsage::UseIndicesTypeAlias | ShaderUsage::UseValueTypeAlias);
   std::vector<const ShaderVariableHelper*> inputs = {&x, &w};
   ORT_IGNORE_RETURN_VALUE(shader.AddOutput("result", ShaderUsage::UseUniform | ShaderUsage::UseShapeAndStride | ShaderUsage::UseIndicesTypeAlias));
@@ -161,7 +161,7 @@ Status Conv2dMMProgram::GenerateShaderCode(ShaderHelper& shader) const {
       << UtilFunctions("uniforms.result_stride")
       << declaration_functions.str()
       << Conv2dCommonSnippet(x, w, activation_, element_size_[0], element_size_[1], element_size_[2]);
-  std::string data_type = "x_value_t";
+  std::string data_type = "x_element_t";
   return is_vec4_ ? MatMulProgram::MakeMatMulPackedVec4Source(shader, elements_per_thread_, WorkgroupSizeX(), WorkgroupSizeY(), data_type, /* batch_dims = */ nullptr, /* transpose_a = */ !is_channels_last_, tile_inner_) : MatMulProgram::MakeMatMulPackedSource(shader, elements_per_thread_, WorkgroupSizeX(), WorkgroupSizeY(), data_type, /* batch_dims = */ nullptr, false, tile_inner_, false, 0, sequentially_access_by_threads_);
 }
 
@@ -178,7 +178,7 @@ Conv2dMMProgram CreateConv2dMMProgram(const Activation& activation, const std::v
   const auto output_height = is_channels_last ? output_shape[1] : output_shape[2];
   const auto output_channels = is_channels_last ? output_shape[3] : output_shape[1];
   // TODO: enable vec4 for NCHW
-  const bool is_vec4 = is_channels_last && (in_channels % 4 == 0 || in_channels % 3 == 0) && output_channels % 4 == 0;
+  const bool is_vec4 = is_channels_last && (in_channels % 4 == 0) && output_channels % 4 == 0;
 
   // TODO: fine tune size
   const auto dispatch_x = is_channels_last ? output_channels : output_width * output_height;

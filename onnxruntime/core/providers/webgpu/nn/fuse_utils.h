@@ -43,7 +43,7 @@ using Activation = struct Activation {
 };
 
 Status GetFusedActivationAttr(const OpKernelInfo& info, Activation& activation);
-std::string GetActivationSnippet(const Activation& activation, std::string value_type);
+std::string GetActivationSnippet(const Activation& activation, std::string value_type, std::string base_type = "f32");
 // Status AppendActivationUniformsData(const Activation& activation, std::vector<ProgramUniformVariableValue>& variables);
 // Status AppendActivationUniforms(const Activation& activation, std::vector<float>& data);
 

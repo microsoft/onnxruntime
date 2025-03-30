@@ -37,6 +37,7 @@ Status Conv<is_channels_last, is_fused>::ComputeInternal(ComputeContext& context
   bool has_bias = context.InputCount() > 2;
   const auto* input = context.Input<Tensor>(0);
   const auto* kernel = context.Input<Tensor>(1);
+  const auto* bias = has_bias ? context.Input<Tensor>(2) : nullptr;
   TensorShape input_shape = input->Shape();
   TensorShape kernel_shape = kernel->Shape();
   ConvAttributes::ConvPadVector local_pads(conv_attrs_.pads.begin(), conv_attrs_.pads.end());
@@ -94,22 +95,23 @@ Status Conv<is_channels_last, is_fused>::ComputeInternal(ComputeContext& context
   } else {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input and kernel tensors must have at least 3 dimensions");
   }
-  std::vector<const Tensor*> inputs(context.InputCount());
+  std::vector<const Tensor*> inputs(has_bias ? 3 : 2);
+  inputs[0] = input;
+  inputs[1] = kernel;
+  if (has_bias) {
+    inputs[2] = bias;
+  }
   uint32_t auto_pad_adjust = conv_attrs_.auto_pad == AutoPadType::SAME_LOWER ? 1 : 0;
   auto pad0 = conv_attrs_.auto_pad == AutoPadType::NOTSET ? pads[0] : (pads[0] + pads[2] + auto_pad_adjust) / 2;
   auto pad1 = conv_attrs_.auto_pad == AutoPadType::NOTSET ? pads[1] : (pads[1] + pads[3] + auto_pad_adjust) / 2;
   std::vector<uint32_t> updated_pads{pad0, pad1};
   if (conv_attrs_.group > 1) {
     Tensor transposed_kernel;
-    inputs[0] = input;
     if (is_channels_last) {
       ORT_RETURN_IF_ERROR(TransposeKernel(context, kernel, kernel_shape, &transposed_kernel, perm));
       inputs[1] = &transposed_kernel;
     } else {
       inputs[1] = kernel;
-    }
-    if (has_bias) {
-      inputs[2] = context.Input(2);
     }
     auto output_channels_per_group = output_channels / conv_attrs_.group;
     auto components = static_cast<int>(is_channels_last && output_channels_per_group >= 4 ? GetMaxComponents(output_channels) : 1);
@@ -136,7 +138,6 @@ Status Conv<is_channels_last, is_fused>::ComputeInternal(ComputeContext& context
   const auto same_size = is_channels_last && input_height == kernel_height && input_width == kernel_width && pads[0] == 0 && pads[1] == 0;
   if (same_size || (kernel_height == 1 && kernel_width == 1 && pads[0] == 0 && pads[1] == 0 && strides[0] == 1 && strides[1] == 1)) {
     Tensor transposed_kernel;
-    inputs[0] = input;
     TensorShape input_reshape;
     TensorShape kernel_reshape;
     TensorShape matmul_output_shape;
@@ -156,7 +157,6 @@ Status Conv<is_channels_last, is_fused>::ComputeInternal(ComputeContext& context
         matmul_output_shape = TensorShape({batch, output_height * output_width, output_channels});
       }
     } else {
-      inputs[1] = kernel;
       input_reshape = TensorShape({batch, input_channels, input_height * input_width});
       kernel_reshape = TensorShape({1, output_channels, input_channels});
       matmul_output_shape = TensorShape({batch, output_channels, output_height * output_width});
@@ -178,7 +178,6 @@ Status Conv<is_channels_last, is_fused>::ComputeInternal(ComputeContext& context
           .AddInputs({{inputs[0], ProgramTensorMetadataDependency::TypeAndRank, input_reshape, int(a_components)},
                       {inputs[1], ProgramTensorMetadataDependency::TypeAndRank, kernel_reshape, int(components)}});
       if (has_bias) {
-        const auto* bias = context.Input(2);
         program.AddInput({bias, ProgramTensorMetadataDependency::Rank, 1});
       }
       program
@@ -199,15 +198,11 @@ Status Conv<is_channels_last, is_fused>::ComputeInternal(ComputeContext& context
   auto dim_a_outer = static_cast<uint32_t>(is_channels_last ? output_height * output_width : output_channels);
   auto dim_b_outer = static_cast<uint32_t>(is_channels_last ? output_channels : output_height * output_width);
   auto dim_inner = static_cast<uint32_t>(kernel_height * kernel_width * input_channels);
-  inputs[0] = input;
   inputs[1] = &transposed_kernel;
-  if (has_bias) {
-    inputs[2] = context.Input<Tensor>(2);
-  }
   TensorShape transposed_kernel_shape = transposed_kernel.Shape();
   std::vector<TensorShape> modified_input_output_shapes = {input_shape, transposed_kernel_shape};
   if (has_bias) {
-    modified_input_output_shapes.push_back(inputs[2]->Shape());
+    modified_input_output_shapes.push_back(bias->Shape());
   }
   modified_input_output_shapes.push_back(TensorShape(output_shape_vector));
   Conv2dMMProgram conv2d_mm_program = CreateConv2dMMProgram(activation_, inputs, pads, strides, dilations, output, dim_a_outer, dim_b_outer, dim_inner, is_channels_last, sequentially_access_by_threads, modified_input_output_shapes);

@@ -49,19 +49,25 @@ Status GetFusedActivationAttr(const OpKernelInfo& info, Activation& activation) 
   return Status::OK();
 }
 
-std::string GetActivationSnippet(const Activation& activation, std::string value_type) {
+std::string GetActivationSnippet(const Activation& activation, std::string value_type, std::string base_type) {
   std::string snippet;
+  auto base_type_cast = [base_type](float value) -> std::string {
+    return base_type + "(" + std::to_string(value) + ")";
+  };
+  auto value_type_cast = [base_type_cast, value_type](float f) -> std::string {
+      return value_type + "(" + base_type_cast(f) + ")";
+  };
   switch (activation.activation_kind_) {
     case ActivationKind::Relu:
-      return "value = max(value, " + value_type + "(0.0));";
+      return "value = max(value, " + value_type_cast(0.0) + ");";
     case ActivationKind::Sigmoid:
-      return "value = " + value_type + "(1.0 ) / (" + value_type + "(1.0) + exp(-value));";
+      return "value = " + value_type_cast(1.0) + " / (" + value_type_cast(1.0) + "exp(-value));";
     case ActivationKind::Clip:
-      return "value = clamp(value, " + std::to_string(activation.activation_params_.Clip.minimum_) + ", " + std::to_string(activation.activation_params_.Clip.maximum_) + ");";
+      return "value = clamp(value, " + value_type_cast(activation.activation_params_.Clip.minimum_) + ", " + value_type_cast(activation.activation_params_.Clip.maximum_) + ");";
     case ActivationKind::HardSigmoid:
-      return "value = clamp(" + std::to_string(activation.activation_params_.HardSigmoid.alpha_) + " * value + " + std::to_string(activation.activation_params_.HardSigmoid.beta_) + ", 0.0" + ", 1.0" + ");";
+      return "value = clamp(" + value_type_cast(activation.activation_params_.HardSigmoid.alpha_) + " * value + " + value_type_cast(activation.activation_params_.HardSigmoid.beta_) + ", 0.0" + ", 1.0" + ");";
     case ActivationKind::LeakyRelu:
-      return "value = value > 0.0" + std::string(" ? value : ") + std::to_string(activation.activation_params_.LeakyRelu.alpha_) + " * value;";
+      return "value = select(" + base_type_cast(activation.activation_params_.LeakyRelu.alpha_) + " * value, value, value >= " + value_type_cast(0.0) + ");";
     case ActivationKind::Tanh:
       return "value = tanh(value);";
     default:

@@ -24,7 +24,7 @@ void MatMulProgram::MatMulReadWriteFnSource(ShaderHelper& shader,
       << "fn mm_readA(batch: i32, row: i32, colIn: i32, batch_indices: batch_dims_indices_t) -> " << type_string << " {\n"
       << "    var value = " << type_string << "(0.0);\n"
       << "    let col = colIn * " << components << ";\n"
-      << "    if(row < uniforms.dim_a_outer && col < uniforms.dim_inner) {\n"
+      << "    if(row < i32(uniforms.dim_a_outer) && col < i32(uniforms.dim_inner)) {\n"
       << "        var a_indices: a_indices_t;\n"
       << ConvertOutputBatchIndicesToInputBatchIndices("a", a, a.Rank() - 2, batch_dims.Rank(), "batch_indices")
       << a.IndicesSet("a_indices", a.Rank() - 2, "u32(row)") << "\n"
@@ -39,7 +39,7 @@ void MatMulProgram::MatMulReadWriteFnSource(ShaderHelper& shader,
       << "fn mm_readB(batch: i32, row: i32, colIn: i32, batch_indices: batch_dims_indices_t) -> " << type_string << " {\n"
       << "    var value = " << type_string << "(0.0);\n"
       << "    let col = colIn * " << components << ";\n"
-      << "    if(row < uniforms.dim_inner && col < uniforms.dim_b_outer) {\n"
+      << "    if(row < i32(uniforms.dim_inner) && col < i32(uniforms.dim_b_outer)) {\n"
       << "        var b_indices: b_indices_t;\n"
       << ConvertOutputBatchIndicesToInputBatchIndices("b", b, b.Rank() - 2, batch_dims.Rank(), "batch_indices")
       << b.IndicesSet("b_indices", b.Rank() - 2, "u32(row)") << "\n"
@@ -53,7 +53,7 @@ void MatMulProgram::MatMulReadWriteFnSource(ShaderHelper& shader,
   shader.AdditionalImplementation()
       << "fn mm_write(batch: i32, row: i32, colIn: i32, valueIn: " << type_string << ") {\n"
       << "  let col = colIn * " << components << ";\n"
-      << "  if (row < uniforms.dim_a_outer && col < uniforms.dim_b_outer) {\n"
+      << "  if (row < i32(uniforms.dim_a_outer) && col < i32(uniforms.dim_b_outer)) {\n"
       << "    var value = valueIn;\n"
       << "    " << activation_snippet << "\n"
       << "    let coords = vec3<i32>(batch, row, colIn);\n";
@@ -146,7 +146,7 @@ Status MatMulProgram::MakeMatMulPackedVec4Source(ShaderHelper& shader,
       << "    for (var innerRow = 0; innerRow < " << row_per_thread_b << "; innerRow = innerRow + 1) {\n"
       << "      let inputRow = tileRowB + innerRow;\n"
       << "      let inputCol = tileCol;\n"
-      << "      mm_Bsub[inputRow][inputCol] = mm_readB(batch, kStart + inputRow, globalCol" << (nullptr != batch_dims ? ", batchIndices" : "") << ";\n"
+      << "      mm_Bsub[inputRow][inputCol] = mm_readB(batch, kStart + inputRow, globalCol" << (nullptr != batch_dims ? ", batchIndices" : "") << ");\n"
       << "    }\n"
       << "    kStart = kStart + tileInner;\n"
       << "    workgroupBarrier();\n";
@@ -371,7 +371,7 @@ Status MatMulProgram::GenerateShaderCode(ShaderHelper& shader) const {
   std::string apply_activation = GetActivationSnippet(activation_, "output_value_t");
   // declare the read and write functions
   MatMulReadWriteFnSource(shader, a, b, output, batch_dims, apply_activation);
-  std::string data_type = "a_value_t";
+  std::string data_type = "a_element_t";
   // generate the main function
   if (is_vec4_) {
     ORT_RETURN_IF_ERROR(MakeMatMulPackedVec4Source(shader, elements_per_thread_, WorkgroupSizeX(), WorkgroupSizeY(), data_type, &batch_dims));
