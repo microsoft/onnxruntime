@@ -16,7 +16,7 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  x64_RelWithDebInfo:
+  webgpu_build_x64_RelWithDebInfo:
     runs-on: ["self-hosted", "1ES.Pool=onnxruntime-github-Win2022-GPU-A10"]
     timeout-minutes: 300
     env:
@@ -137,7 +137,7 @@ jobs:
         working-directory: ${{ github.workspace }}\csharp
         continue-on-error: true
 
-  external_dawn_x64_RelWithDebInfo:
+  webgpu_external_dawn_build_x64_RelWithDebInfo:
     runs-on: ["self-hosted", "1ES.Pool=onnxruntime-github-Win2022-GPU-A10"]
     timeout-minutes: 300
     steps:
@@ -190,7 +190,7 @@ jobs:
         shell: cmd
         working-directory: ${{ github.workspace }}\RelWithDebInfo\RelWithDebInfo
 
-  minimal_build_edge_x64_RelWithDebInfo:
+  webgpu_minimal_build_edge_build_x64_RelWithDebInfo:
     runs-on: ["self-hosted", "1ES.Pool=onnxruntime-github-Win2022-GPU-A10"]
     timeout-minutes: 300
     env:
