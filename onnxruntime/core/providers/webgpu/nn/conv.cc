@@ -39,8 +39,6 @@ Status Conv<is_channels_last, is_fused>::ComputeInternal(ComputeContext& context
   const auto* kernel = context.Input<Tensor>(1);
   TensorShape input_shape = input->Shape();
   TensorShape kernel_shape = kernel->Shape();
-  bool is_input_reshaped = false;
-  bool is_kernel_reshaped = false;
   ConvAttributes::ConvPadVector local_pads(conv_attrs_.pads.begin(), conv_attrs_.pads.end());
   TensorShapeVector local_dilations(conv_attrs_.dilations.begin(), conv_attrs_.dilations.end());
   TensorShapeVector local_strides(conv_attrs_.strides.begin(), conv_attrs_.strides.end());
@@ -75,7 +73,6 @@ Status Conv<is_channels_last, is_fused>::ComputeInternal(ComputeContext& context
   std::transform(local_pads.begin(), local_pads.end(), std::back_inserter(pads), transform_dim);
   std::transform(local_strides.begin(), local_strides.end(), std::back_inserter(strides), transform_dim);
   std::transform(local_dilations.begin(), local_dilations.end(), std::back_inserter(dilations), transform_dim);
-  bool is_conv1d = false;
   auto rank = input_shape.NumDimensions();
   const InlinedVector<size_t> perm = {2, 3, 1, 0};
   if (rank > 4) {
@@ -85,18 +82,15 @@ Status Conv<is_channels_last, is_fused>::ComputeInternal(ComputeContext& context
   } else if (rank == 3) {
     // Conv1D
     TensorShapeVector kernel_shape_vector = kernel_shape.AsShapeVector();
-    input_shape_vector.insert(input_shape_vector.begin() + (is_channels_last ? 1 : 2, 1), 1);
-    output_shape_vector.insert(output_shape_vector.begin() + (is_channels_last ? 1 : 2, 1), 1);
+    input_shape_vector.insert(input_shape_vector.begin() + (is_channels_last ? 1 : 2), 1, 1);
+    output_shape_vector.insert(output_shape_vector.begin() + (is_channels_last ? 1 : 2), 1, 1);
     kernel_shape_vector.insert(kernel_shape_vector.begin() + 2, 1);
     input_shape = TensorShape(input_shape_vector);
     kernel_shape = TensorShape(kernel_shape_vector);
-    is_input_reshaped = true;
-    is_kernel_reshaped = true;
     pads.insert(pads.begin(), 0);
     pads.insert(pads.begin() + 2, 0);
     strides.insert(strides.begin(), 1);
     dilations.insert(dilations.begin(), 1);
-    is_conv1d = true;
   } else {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input and kernel tensors must have at least 3 dimensions");
   }
@@ -225,10 +219,6 @@ template class Conv<false, false>;
 template class Conv<false, true>;
 template class Conv<true, false>;
 template class Conv<true, true>;
-template Status Conv<false, false>::ComputeInternal(ComputeContext& context) const;
-template Status Conv<false, true>::ComputeInternal(ComputeContext& context) const;
-template Status Conv<true, false>::ComputeInternal(ComputeContext& context) const;
-template Status Conv<true, true>::ComputeInternal(ComputeContext& context) const;
 
 #define WEBGPU_ONNX_CONV_OPERATOR_KERNEL(VERSION_FROM)                                \
   ONNX_OPERATOR_KERNEL_EX(                                                            \
