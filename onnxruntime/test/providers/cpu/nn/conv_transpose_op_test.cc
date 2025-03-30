@@ -610,8 +610,7 @@ TEST(ConvTransposeTest, ConvTranspose_onnx_group) {
   vector<int64_t> W_shape = {16, 2, 1, 1};
   vector<int64_t> Y_shape = {1, 8, 1, 1};
   vector<float> expected_vals = {28.f, 34.f, 252.f, 274.f, 732.f, 770.f, 1468.f, 1522.f};
-  TestConvTransposeOp(attrs, {X, W}, {X_shape, W_shape}, expected_vals, Y_shape,
-                      OpTester::ExpectResult::kExpectSuccess, "", {kWebGpuExecutionProvider});
+  TestConvTransposeOp(attrs, {X, W}, {X_shape, W_shape}, expected_vals, Y_shape);
 }
 
 TEST(ConvTransposeTest, ConvTranspose_2D_Dilation_1) {

@@ -43,20 +43,17 @@ Status ConvTranspose2DProgram::GenerateShaderCode(ShaderHelper& shader) const {
       }
     } else {
       if (is_channels_last_) {
-        ss << "let dy_offset = " << dy.IndicesToOffset("dy_indices_t(batch, idyR, idyC, inputChannel)") << ";\n"
-           << "let xValue = " << dy.GetByOffset("dy_offset") << ";\n";
+        ss << "let xValue = " << dy.GetByIndices("dy_indices_t(batch, idyR, idyC, inputChannel / " + std::to_string(a_components_)) << ");\n";
       } else {
         ss << "let xValue = " << dy.GetByIndices("dy_indices_t(batch, inputChannel, idyR, idyC)") << ";\n";
       }
       if (a_components_ == 1) {
-        ss << "let w_offset = " << w.IndicesToOffset("w_indices_t(u32(wRPerm), u32(wCPerm), inputChannel, wOutChannel)") << ";\n"
-           << "let wValue = " << w.GetByOffset("w_offset") << ";\n"
+        ss << "let wValue = " << w.GetByIndices("w_indices_t(u32(wRPerm), u32(wCPerm), inputChannel, wOutChannel)") << ";\n"
            << "dotProd = dotProd + xValue * wValue;\n";
       } else {
         for (uint32_t i = 0; i < a_components_; ++i) {
-          ss << "let w_indices" << i << " = w_indices_t(u32(wRPerm), u32(wCPerm), " << a_components_ << " * inputChannel + " << i << ", wOutChannel);\n "
-             //    << "let w_offset" << i << " = " << w.IndicesToOffset("w_indices" + std::to_string(i)) << ";\n"
-             //    << "let wValue" << i << " = " << w.GetByOffset("w_offset" + std::to_string(i)) << ";\n"
+          ss << "let w_indices" << i << " = w_indices_t(u32(wRPerm), u32(wCPerm), inputChannel + d2 + " << i << ", wOutChannel);\n "
+             << "let w_offset" << i << " = " << w.IndicesToOffset("w_indices" + std::to_string(i)) << ";\n"
              << "let wValue" << i << " = " << w.GetByIndices("w_indices" + std::to_string(i)) << ";\n"
              << "dotProd = dotProd + xValue[" << i << "] * wValue" << i << ";\n";
         }
@@ -92,8 +89,8 @@ Status ConvTranspose2DProgram::GenerateShaderCode(ShaderHelper& shader) const {
                             << "let dyCorner = vec2<i32>(i32(r), i32(c)) - vec2<i32>(uniforms.pads);\n"
                             << "let dyRCorner = dyCorner.x;\n"
                             << "let dyCCorner = dyCorner.y;\n"
-                            << "let groupId = d1 / uniforms.output_channels_per_group;\n"
-                            << "let wOutChannel = d1 - groupId * uniforms.output_channels_per_group;\n"
+                            << "let groupId = d1 / (uniforms.output_channels_per_group / " << components_ << ");\n"
+                            << "let wOutChannel = d1 - groupId * (uniforms.output_channels_per_group / " << components_ << ");\n"
                             << "// Convolve dy(?, ?, d2) with w(:, :, d1, d2) to compute dx(xR, xC, d1).\n"
                             << "// ? = to be determined. : = across all values in that axis.\n"
                             << "var dotProd = output_value_t(0.0);\n"
@@ -164,7 +161,7 @@ ConvTranspose2DProgram CreateConvTranspose2DProgram(const std::vector<const Tens
   auto input_channels_per_group_int = pack_input_as4 ? (input_channels_per_group / 4) * 4 : (input_channels_per_group / a_components) * a_components;
   auto input_channels_remainder = input_channels_per_group - input_channels_per_group_int;
   auto components = is_channels_last ? GetMaxComponents(output_channels_per_group) : 1;
-  auto b_components = is_channels_last ? (output_channels_per_group == 1 ? a_components : components) : 1;
+  auto b_components = components;  // is_channels_last ? (output_channels_per_group == 1 ? a_components : components) : 1;
   TensorShape reduced_input_shape = ReduceShapeByComponents(input_shape, a_components);
   TensorShape reduced_weight_shape = ReduceShapeByComponents(weight_shape, b_components);
   TensorShape reduced_output_shape = ReduceShapeByComponents(output_shape, components);
