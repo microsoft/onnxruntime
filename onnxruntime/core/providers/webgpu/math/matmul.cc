@@ -133,7 +133,7 @@ Status MatMul::ComputeInternal(ComputeContext& context) const {
     MatMulNaiveProgram program{activation, output_rank, output_number, has_bias};
 
     program
-        .CacheHint(std::to_string(components), std::to_string(a_components), std::to_string(output_number))
+        .CacheHint(activation.ToString(), std::to_string(components), std::to_string(a_components), std::to_string(output_number))
         .AddInputs({{a, ProgramTensorMetadataDependency::TypeAndRank, a_components},
                     {b, ProgramTensorMetadataDependency::TypeAndRank, components}});
 
@@ -211,7 +211,7 @@ Status MatMul::ComputeInternal(ComputeContext& context) const {
   Activation activation;
   MatMulProgram program{activation, has_bias, is_vec4, elements_per_thread};
   program
-      .CacheHint(absl::StrJoin(elements_per_thread, "-"), std::to_string(is_vec4))
+      .CacheHint(activation.ToString(), absl::StrJoin(elements_per_thread, "-"), std::to_string(is_vec4))
       .AddInputs({{a, ProgramTensorMetadataDependency::TypeAndRank, a_shape_temp, components},
                   {b, ProgramTensorMetadataDependency::TypeAndRank, b_shape_temp, components}})
       .AddOutputs({{output_tensor, ProgramTensorMetadataDependency::Rank, output_shape_temp, components}})
@@ -292,7 +292,7 @@ MatMulProgram CreateMatMulProgram(const Activation& activation, std::vector<cons
 
   MatMulProgram program{activation, has_bias, is_vec4, elements_per_thread, is_channels_last};
   program
-      .CacheHint(absl::StrJoin(elements_per_thread, "-"), std::to_string(is_vec4))
+      .CacheHint(activation.ToString(), absl::StrJoin(elements_per_thread, "-"), std::to_string(is_vec4))
       .AddInputs({{a, ProgramTensorMetadataDependency::TypeAndRank, a_shape_temp, components},
                   {b, ProgramTensorMetadataDependency::TypeAndRank, b_shape_temp, components}})
       .AddOutputs({{output, ProgramTensorMetadataDependency::Rank, output_shape_temp, components}})

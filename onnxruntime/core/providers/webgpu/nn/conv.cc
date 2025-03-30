@@ -121,7 +121,8 @@ Status Conv<is_channels_last, is_fused>::ComputeInternal(ComputeContext& context
     auto components = static_cast<int>(is_channels_last && output_channels_per_group >= 4 ? GetMaxComponents(output_channels) : 1);
     auto output_size = output_shape.Size() / components;
     GroupedConvProgram program(activation_, has_bias, is_channels_last);
-    program.AddInputs({{inputs[0], ProgramTensorMetadataDependency::TypeAndRank}, {inputs[1], ProgramTensorMetadataDependency::TypeAndRank, components}})
+    program.CacheHint(activation_.ToString())
+         .AddInputs({{inputs[0], ProgramTensorMetadataDependency::TypeAndRank}, {inputs[1], ProgramTensorMetadataDependency::TypeAndRank, components}})
         .AddOutput({output, ProgramTensorMetadataDependency::TypeAndRank, components})
         .AddUniformVariables({{static_cast<uint32_t>(output_size)}, {dilations}, {strides}, {updated_pads}, {static_cast<uint32_t>(output_channels_per_group)}, {static_cast<uint32_t>(components)}})
         .SetDispatchGroupSize((output_size + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE);
