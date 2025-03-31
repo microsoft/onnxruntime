@@ -1,18 +1,21 @@
 import contextlib
 import pprint
-from typing import Any, Callable, Dict
+from collections.abs import Callable
+from typing import Any
+
 from .onnx_export_serialization import (
-    flatten_with_keys_dynamic_cache,
     flatten_dynamic_cache,
-    unflatten_dynamic_cache,
     flatten_mamba_cache,
+    flatten_with_keys_dynamic_cache,
     flatten_with_keys_mamba_cache,
+    unflatten_dynamic_cache,
     unflatten_mamba_cache,
 )
-from onnxruntime.transformers.models.torch_export_patches.patches import patch_transformers as patch_transformers_list
+
+from .patches import patch_transformers as patch_transformers_list
 
 
-def patch_module(mod, verbose: int = 0) -> Dict[type, Dict[type, Callable]]:
+def patch_module(mod, verbose: int = 0) -> dict[type, dict[type, Callable]]:
     """
     Applies all patches defined in classes prefixed by ``patched_``
     ``cls._PATCHED_CLASS_`` defines the class to patch,
@@ -42,7 +45,7 @@ def patch_module(mod, verbose: int = 0) -> Dict[type, Dict[type, Callable]]:
     return res
 
 
-def unpatch_module(mod, info: Dict[type, Dict[type, Callable]], verbose: int = 0):
+def unpatch_module(mod, info: dict[type, dict[type, Callable]], verbose: int = 0):
     """Reverts modification made by :func:`patch_module`."""
     to_patch = []
     for k in dir(mod):
@@ -65,11 +68,11 @@ def unpatch_module(mod, info: Dict[type, Dict[type, Callable]], verbose: int = 0
                 setattr(original, n, v)
 
 
-def _register_cache_serialization(verbose: int = 0) -> Dict[str, bool]:
+def _register_cache_serialization(verbose: int = 0) -> dict[str, bool]:
     # Cache serialization: to be moved into appropriate packages
+    import packaging.version as pv
     import torch
     import transformers
-    import packaging.version as pv
 
     try:
         from transformers.cache_utils import DynamicCache
@@ -108,10 +111,7 @@ def _register_cache_serialization(verbose: int = 0) -> Dict[str, bool]:
     # torch.fx._pytree.register_pytree_flatten_spec(
     #           DynamicCache, _flatten_dynamic_cache_for_fx)
     # so we remove it anyway
-    if (
-        DynamicCache in torch.fx._pytree.SUPPORTED_NODES
-        and pv.Version(transformers.__version__) >= pv.Version("2.7")
-    ):
+    if DynamicCache in torch.fx._pytree.SUPPORTED_NODES and pv.Version(transformers.__version__) >= pv.Version("2.7"):
         if verbose:
             print("[_register_cache_serialization] DynamicCache is unregistered first.")
         _unregister(DynamicCache)
@@ -131,9 +131,7 @@ def _register_cache_serialization(verbose: int = 0) -> Dict[str, bool]:
             serialized_type_name=f"{DynamicCache.__module__}.{DynamicCache.__name__}",
             flatten_with_keys_fn=flatten_with_keys_dynamic_cache,
         )
-        torch.fx._pytree.register_pytree_flatten_spec(
-            DynamicCache, lambda x, _: [x.key_cache, x.value_cache]
-        )
+        torch.fx._pytree.register_pytree_flatten_spec(DynamicCache, lambda x, _: [x.key_cache, x.value_cache])
 
         # check
         from .cache_helper import make_dynamic_cache
@@ -174,7 +172,7 @@ def _unregister(cls: type, verbose: int = 0):
         print(f"[_unregister_cache_serialization] unregistered {cls.__name__}")
 
 
-def _unregister_cache_serialization(undo: Dict[str, bool], verbose: int = 0):
+def _unregister_cache_serialization(undo: dict[str, bool], verbose: int = 0):
 
     if undo.get("MambaCache", False):
         from transformers.cache_utils import MambaCache
@@ -192,9 +190,7 @@ def _unregister_cache_serialization(undo: Dict[str, bool], verbose: int = 0):
 
 
 @contextlib.contextmanager
-def register_additional_serialization_functions(
-    patch_transformers: bool = False, verbose: int = 0
-) -> Callable:
+def register_additional_serialization_functions(patch_transformers: bool = False, verbose: int = 0) -> Callable:
     """The necessary modifications to run the fx Graph."""
     fct_callable = replacement_before_exporting if patch_transformers else (lambda x: x)
     done = _register_cache_serialization(verbose=verbose)
@@ -294,10 +290,7 @@ def bypass_export_some_errors(
         import torch.jit
 
         if verbose:
-            print(
-                "[bypass_export_some_errors] replace torch.jit.isinstance, "
-                "torch._dynamo.mark_static_address"
-            )
+            print("[bypass_export_some_errors] replace torch.jit.isinstance, torch._dynamo.mark_static_address")
 
         ########
         # caches
@@ -317,7 +310,7 @@ def bypass_export_some_errors(
             if verbose:
                 print("[bypass_export_some_errors] patch sympy")
 
-            sympy.core.numbers.IntegerConstant.name = lambda self: f"IntCst{str(self)}"
+            sympy.core.numbers.IntegerConstant.name = lambda self: f"IntCst{self!s}"
 
         ###############
         # patch pytorch
@@ -325,10 +318,10 @@ def bypass_export_some_errors(
 
         if patch_torch:
             from .patches.patch_torch import (
-                patched_infer_size,
-                patched__broadcast_shapes,
                 _catch_produce_guards_and_solve_constraints,
                 patch__check_input_constraints_for_graph,
+                patched__broadcast_shapes,
+                patched_infer_size,
             )
 
             if verbose:
@@ -355,12 +348,8 @@ def bypass_export_some_errors(
         if catch_constraints:
             if verbose:
                 print("[bypass_export_some_errors] modifies shape constraints")
-            f_produce_guards_and_solve_constraints = (
-                torch._export.non_strict_utils.produce_guards_and_solve_constraints
-            )
-            f__check_input_constraints_for_graph = (
-                torch._export.utils._check_input_constraints_for_graph
-            )
+            f_produce_guards_and_solve_constraints = torch._export.non_strict_utils.produce_guards_and_solve_constraints
+            f__check_input_constraints_for_graph = torch._export.utils._check_input_constraints_for_graph
             torch._export.non_strict_utils.produce_guards_and_solve_constraints = (
                 lambda *args, **kwargs: _catch_produce_guards_and_solve_constraints(
                     f_produce_guards_and_solve_constraints, *args, verbose=verbose, **kwargs
@@ -374,9 +363,7 @@ def bypass_export_some_errors(
 
         if stop_if_static:
             if verbose:
-                print(
-                    "[bypass_export_some_errors] assert when a dynamic dimension turns static"
-                )
+                print("[bypass_export_some_errors] assert when a dynamic dimension turns static")
 
             from torch.fx.experimental.symbolic_shapes import ShapeEnv
             from .patches.patch_torch import patched_ShapeEnv
@@ -448,9 +435,7 @@ def bypass_export_some_errors(
                 torch._export.non_strict_utils.produce_guards_and_solve_constraints = (
                     f_produce_guards_and_solve_constraints
                 )
-                torch._export.utils._check_input_constraints_for_graph = (
-                    f__check_input_constraints_for_graph
-                )
+                torch._export.utils._check_input_constraints_for_graph = f__check_input_constraints_for_graph
                 if verbose:
                     print("[bypass_export_some_errors] restored shape constraints")
 

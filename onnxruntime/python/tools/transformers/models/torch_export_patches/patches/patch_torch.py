@@ -1,16 +1,17 @@
 import inspect
 import os
-from typing import Any, Callable, Dict, List, Sequence, Tuple, Union
+from collections.abc import Callable, Sequence
+from typing import Any
 import torch
 from torch._subclasses.fake_tensor import FakeTensorMode
 
 
 def _catch_produce_guards_and_solve_constraints(
     previous_function: Callable,
-    fake_mode: "FakeTensorMode",  # noqa: F821
-    gm: "torch.fx.GraphModule",  # noqa: F821
+    fake_mode: "FakeTensorMode",
+    gm: "torch.fx.GraphModule",
     dynamic_shapes: Union[Dict[str, Any], Tuple[Any], List[Any], None],
-    equalities_inputs: "EqualityConstraint",  # noqa: F821
+    equalities_inputs: "EqualityConstraint",
     original_signature: inspect.Signature,
     _is_torch_jit_trace: bool = False,
     verbose: int = 0,
@@ -114,12 +115,11 @@ def patched_infer_size(a, b):
 def patched__broadcast_shapes(*_shapes):
     """Patches ``torch._refs._broadcast_shapes``."""
     from functools import reduce
+
     from torch._prims_common import IntLike
     from torch.fx.experimental.symbolic_shapes import guard_size_oblivious
 
-    shapes = tuple(
-        (x,) if isinstance(x, IntLike) else x for x in filter(lambda x: x is not None, _shapes)
-    )
+    shapes = tuple((x,) if isinstance(x, IntLike) else x for x in filter(lambda x: x is not None, _shapes))
 
     # Short-circuits on no input
     if len(shapes) == 0:
@@ -138,9 +138,7 @@ def patched__broadcast_shapes(*_shapes):
         for idx in range(-1, -1 - len(shape), -1):
             if guard_size_oblivious(common_shape[idx] == 1):
                 if shape[idx] < 0:
-                    raise ValueError(
-                        "Attempting to broadcast a dimension with negative length!"
-                    )
+                    raise ValueError("Attempting to broadcast a dimension with negative length!")
                 common_shape[idx] = shape[idx]
             elif guard_size_oblivious(shape[idx] != 1):
                 common_shape[idx] = torch.sym_max(common_shape[idx], shape[idx])
@@ -151,7 +149,10 @@ def patched__broadcast_shapes(*_shapes):
 class patched_ShapeEnv:
 
     def _set_replacement(
-        self, a: "sympy.Symbol", tgt: "sympy.Expr", msg: str  # noqa: F821
+        self,
+        a: "sympy.Symbol",  # noqa: F821
+        tgt: "sympy.Expr",  # noqa: F821
+        msg: str,
     ) -> None:
         """
         Adds or updates a replacement for a symbol.
@@ -164,16 +165,15 @@ class patched_ShapeEnv:
             return
 
         import sympy
-        from torch._logging import structured
-        from torch.utils._traceback import CapturedTraceback
-        from torch._logging import trace_structured
         from torch._guards import TracingContext
-        from torch.utils._sympy.functions import FloorToInt, CeilToInt
-        from torch.utils._sympy.solve import try_solve
+        from torch._logging import structured, trace_structured
         from torch.fx.experimental.symbolic_shapes import (
-            _is_supported_equivalence,
             ValueRanges,
+            _is_supported_equivalence,
         )
+        from torch.utils._sympy.functions import CeilToInt, FloorToInt
+        from torch.utils._sympy.solve import try_solve
+        from torch.utils._traceback import CapturedTraceback
 
         # Precondition: a == tgt
         assert isinstance(a, sympy.Symbol)
@@ -219,14 +219,10 @@ class patched_ShapeEnv:
                     # and then requantize the bound to integers when we are
                     # done.
                     rat_b_bound = self.bound_sympy(r[1])
-                    b_bound = ValueRanges(
-                        CeilToInt(rat_b_bound.lower), FloorToInt(rat_b_bound.upper)
-                    )
+                    b_bound = ValueRanges(CeilToInt(rat_b_bound.lower), FloorToInt(rat_b_bound.upper))
                     self._update_var_to_range(b, b_bound, self.var_to_range_sloc[a])
                     tgt_bound = self.bound_sympy(tgt)
-                    assert tgt_bound.issubset(
-                        src_bound
-                    ), f"{tgt_bound=} not a subset of {src_bound=}"
+                    assert tgt_bound.issubset(src_bound), f"{tgt_bound=} not a subset of {src_bound=}"
 
             # TODO: Should we propagate size-like-ness?
             #
@@ -279,8 +275,7 @@ class patched_ShapeEnv:
                 src_bound_so = self.bound_sympy(a, size_oblivious=True)
                 if not tgt_bound_so.issubset(src_bound_so):
                     self.log.debug(
-                        "skipped set_replacement %s = %s (%s) "
-                        "[%s not subset of %s (size-oblivious conditions)]",
+                        "skipped set_replacement %s = %s (%s) [%s not subset of %s (size-oblivious conditions)]",
                         a,
                         tgt,
                         msg,
@@ -301,9 +296,7 @@ class patched_ShapeEnv:
                     "sources": [s.name() for s in self.var_to_sources.get(a, [])],
                     "value": repr(tgt),
                     "reason": msg,
-                    "stack": structured.from_traceback(
-                        CapturedTraceback.extract(skip=1).summary()
-                    ),
+                    "stack": structured.from_traceback(CapturedTraceback.extract(skip=1).summary()),
                     "user_stack": (structured.from_traceback(user_tb) if user_tb else None),
                 },
             )
@@ -314,8 +307,7 @@ class patched_ShapeEnv:
             #     )
             #     self.log.debug("SPECIALIZATION", stack_info=True)
         assert msg != "range_refined_to_singleton", (
-            f"A dynamic dimension becomes static! "
-            f"a={a!r}, tgt={tgt!r}, msg={msg!r}, tgt_bound={tgt_bound}"
+            f"A dynamic dimension becomes static! a={a!r}, tgt={tgt!r}, msg={msg!r}, tgt_bound={tgt_bound}"
         )
         # log.info("set_replacement %s = %s (%s) %s", a, tgt, msg, tgt_bound)
         self.replacements[a] = tgt

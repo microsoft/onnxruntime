@@ -1,11 +1,11 @@
 import inspect
 import sys
 from dataclasses import dataclass
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any
 import torch
 import transformers
 import transformers.modeling_attn_mask_utils
-from transformers.cache_utils import StaticCache, Cache, DynamicCache
+from transformers.cache_utils import Cache, DynamicCache, StaticCache
 
 
 def _patch_make_causal_mask(
@@ -13,7 +13,7 @@ def _patch_make_causal_mask(
     dtype: torch.dtype,
     device: torch.device,
     past_key_values_length: int = 0,
-    sliding_window: Optional[int] = None,
+    sliding_window: int | None = None,
 ):
     """Patched method."""
     bsz, tgt_len = input_ids_shape
@@ -61,12 +61,10 @@ if sys.version_info[:2] <= (3, 11):
             dtype: torch.dtype,
             device: torch.device,
             past_key_values_length: int = 0,
-            sliding_window: Optional[int] = None,
+            sliding_window: int | None = None,
         ):
             """Patched method."""
-            return _patch_make_causal_mask(
-                input_ids_shape, dtype, device, past_key_values_length, sliding_window
-            )
+            return _patch_make_causal_mask(input_ids_shape, dtype, device, past_key_values_length, sliding_window)
 
 else:
 
@@ -87,12 +85,10 @@ else:
             dtype: torch.dtype,
             device: torch.device,
             past_key_values_length: int = 0,
-            sliding_window: Optional[int] = None,
+            sliding_window: int | None = None,
         ):
             """Patched method."""
-            return _patch_make_causal_mask(
-                input_ids_shape, dtype, device, past_key_values_length, sliding_window
-            )
+            return _patch_make_causal_mask(input_ids_shape, dtype, device, past_key_values_length, sliding_window)
 
 
 class patched_DynamicCache:
@@ -104,7 +100,7 @@ class patched_DynamicCache:
     _PATCHES_ = ["reorder_cache", "update", "crop", "from_batch_splits", "get_seq_length"]
     _PATCHED_CLASS_ = transformers.cache_utils.DynamicCache
 
-    def get_seq_length(self, layer_idx: Optional[int] = 0) -> int:
+    def get_seq_length(self, layer_idx: int | None = 0) -> int:
         """Returns the sequence length of the cached states.
         A layer index can be optionally passed."""
         # TODO: deprecate this function in favor of `cache_position`
@@ -122,21 +118,17 @@ class patched_DynamicCache:
         for layer_idx in range(len(self.key_cache)):
             if self.key_cache[layer_idx].numel():
                 device = self.key_cache[layer_idx].device
-                self.key_cache[layer_idx] = self.key_cache[layer_idx].index_select(
-                    0, beam_idx.to(device)
-                )
+                self.key_cache[layer_idx] = self.key_cache[layer_idx].index_select(0, beam_idx.to(device))
             if self.value_cache[layer_idx].numel():
                 device = self.value_cache[layer_idx].device
-                self.value_cache[layer_idx] = self.value_cache[layer_idx].index_select(
-                    0, beam_idx.to(device)
-                )
+                self.value_cache[layer_idx] = self.value_cache[layer_idx].index_select(0, beam_idx.to(device))
 
     def update(
         self,
         key_states: torch.Tensor,
         value_states: torch.Tensor,
         layer_idx: int,
-        cache_kwargs: Optional[Dict[str, Any]] = None,
+        cache_kwargs: Dict[str, Any] | None = None,
     ) -> Tuple[torch.Tensor, torch.Tensor]:
         """
         Updates the cache with the new `key_states`
@@ -169,19 +161,13 @@ class patched_DynamicCache:
                     self.value_cache.append(torch.tensor([]))
                 self.key_cache.append(key_states)
                 self.value_cache.append(value_states)
-            elif not self.key_cache[
-                layer_idx
-            ].numel():  # prefers not t.numel() to len(t) == 0 to export the model
+            elif not self.key_cache[layer_idx].numel():  # prefers not t.numel() to len(t) == 0 to export the model
                 # fills previously skipped layers; checking for tensor causes errors
                 self.key_cache[layer_idx] = key_states
                 self.value_cache[layer_idx] = value_states
             else:
-                self.key_cache[layer_idx] = torch.cat(
-                    [self.key_cache[layer_idx], key_states], dim=-2
-                )
-                self.value_cache[layer_idx] = torch.cat(
-                    [self.value_cache[layer_idx], value_states], dim=-2
-                )
+                self.key_cache[layer_idx] = torch.cat([self.key_cache[layer_idx], key_states], dim=-2)
+                self.value_cache[layer_idx] = torch.cat([self.value_cache[layer_idx], value_states], dim=-2)
 
         return self.key_cache[layer_idx], self.value_cache[layer_idx]
 
@@ -211,14 +197,8 @@ class patched_DynamicCache:
         `generation.utils`"""
         cache = cls()
         for idx in range(len(splits[0])):
-            key_cache = [
-                current.key_cache[idx] for current in splits if current.key_cache[idx].numel()
-            ]
-            value_cache = [
-                current.value_cache[idx]
-                for current in splits
-                if current.value_cache[idx].numel()
-            ]
+            key_cache = [current.key_cache[idx] for current in splits if current.key_cache[idx].numel()]
+            value_cache = [current.value_cache[idx] for current in splits if current.value_cache[idx].numel()]
             if key_cache != []:
                 layer_keys = torch.cat(key_cache, dim=0)
                 layer_values = torch.cat(value_cache, dim=0)
@@ -242,9 +222,9 @@ class patched_GenerationMixin:
     def _cache_dependant_input_preparation(
         self,
         input_ids: torch.LongTensor,
-        inputs_embeds: Optional[torch.FloatTensor],
-        cache_position: Optional[torch.LongTensor],
-    ) -> Tuple[torch.FloatTensor, torch.LongTensor]:
+        inputs_embeds: torch.FloatTensor | None,
+        cache_position: torch.LongTensor | None,
+    ) -> tuple[torch.FloatTensor, torch.LongTensor]:
         """
         Generic cache-dependent input preparation
         The code is put in a separate function to allow granular unit testing
@@ -286,8 +266,8 @@ class patched_GenerationMixin:
     def _cache_dependant_input_preparation_exporting(
         self,
         input_ids: torch.LongTensor,
-        inputs_embeds: Optional[torch.FloatTensor],
-        cache_position: Optional[torch.LongTensor],
+        inputs_embeds: torch.FloatTensor | None,
+        cache_position: torch.LongTensor | None,
     ) -> Tuple[torch.FloatTensor, torch.LongTensor]:
         """
         This method implements method ``_cache_dependant_input_preparation``
@@ -348,10 +328,10 @@ class patched_GenerationMixin:
     def prepare_inputs_for_generation(
         self,
         input_ids: torch.LongTensor,
-        past_key_values: Optional[Cache] = None,
-        attention_mask: Optional[torch.LongTensor] = None,
-        inputs_embeds: Optional[torch.FloatTensor] = None,
-        cache_position: Optional[torch.LongTensor] = None,
+        past_key_values: Cache | None = None,
+        attention_mask: torch.LongTensor | None = None,
+        inputs_embeds: torch.FloatTensor | None = None,
+        cache_position: torch.LongTensor | None = None,
         **kwargs,
     ):
         """
@@ -386,9 +366,7 @@ class patched_GenerationMixin:
         # 2. Generic cache-dependent input preparation
         if past_key_values is not None:
             model_inputs["past_key_values"] = past_key_values
-            inputs_embeds, input_ids = self._cache_dependant_input_preparation(
-                input_ids, inputs_embeds, cache_position
-            )
+            inputs_embeds, input_ids = self._cache_dependant_input_preparation(input_ids, inputs_embeds, cache_position)
 
         # 3. Prepare base model inputs
         input_ids_key = "decoder_input_ids" if self.config.is_encoder_decoder else "input_ids"
@@ -400,28 +378,18 @@ class patched_GenerationMixin:
                 model_inputs["inputs_embeds"] = inputs_embeds
             else:
                 # `clone` calls in this function ensure a consistent stride. See #32227
-                model_inputs[input_ids_key] = input_ids.clone(
-                    memory_format=torch.contiguous_format
-                )
+                model_inputs[input_ids_key] = input_ids.clone(memory_format=torch.contiguous_format)
                 model_inputs["inputs_embeds"] = None
         else:
-            model_inputs[input_ids_key] = input_ids.clone(
-                memory_format=torch.contiguous_format
-            )
+            model_inputs[input_ids_key] = input_ids.clone(memory_format=torch.contiguous_format)
 
         # 4. Create missing `position_ids` on the fly
         encoder_attention_mask = attention_mask if self.config.is_encoder_decoder else None
         attention_mask = (
-            kwargs.pop("decoder_attention_mask", None)
-            if self.config.is_encoder_decoder
-            else attention_mask
+            kwargs.pop("decoder_attention_mask", None) if self.config.is_encoder_decoder else attention_mask
         )
-        attention_mask_key = (
-            "decoder_attention_mask" if self.config.is_encoder_decoder else "attention_mask"
-        )
-        position_ids_key = (
-            "decoder_position_ids" if self.config.is_encoder_decoder else "position_ids"
-        )
+        attention_mask_key = "decoder_attention_mask" if self.config.is_encoder_decoder else "attention_mask"
+        position_ids_key = "decoder_position_ids" if self.config.is_encoder_decoder else "position_ids"
         if (
             attention_mask is not None
             and kwargs.get(position_ids_key) is None
@@ -429,9 +397,7 @@ class patched_GenerationMixin:
         ):
             position_ids = attention_mask.long().cumsum(-1) - 1
             position_ids.masked_fill_(attention_mask == 0, 1)
-            kwargs[position_ids_key] = (
-                position_ids  # placed in kwargs for further processing (see below)
-            )
+            kwargs[position_ids_key] = position_ids  # placed in kwargs for further processing (see below)
 
         # 5. Slice model inputs if it's an input
         # that should have the same length as `input_ids`

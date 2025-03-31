@@ -1,30 +1,24 @@
 import inspect
-from typing import Any, Dict, Optional, Tuple
+from typing import Any
 import torch
 import transformers
 from onnxruntime.transformers.models.torch_export_patches import make_dynamic_cache, string_type
 
 
 def _process_cache(k: str, v):
-    assert k != "position_ids" or isinstance(
-        k, torch.Tensor
-    ), f"Unexpected type for parameter {k!r} {string_type(v, with_shape=True)}"
-    if (
-        isinstance(v, list)
-        and all(isinstance(i, tuple) for i in v)
-        and set(len(t) for t in v) == {2}
-    ):
+    assert k != "position_ids" or isinstance(k, torch.Tensor), (
+        f"Unexpected type for parameter {k!r} {string_type(v, with_shape=True)}"
+    )
+    if isinstance(v, list) and all(isinstance(i, tuple) for i in v) and set(len(t) for t in v) == {2}:
         # A dynamicCache
         cache = make_dynamic_cache(v)
         return cache
     if isinstance(v, torch.Tensor):
         return v
-    raise NotImplementedError(
-        f"Unable to process parameter {k!r} with v={string_type(v,with_shape=True)}"
-    )
+    raise NotImplementedError(f"Unable to process parameter {k!r} with v={string_type(v,with_shape=True)}")
 
 
-def _make_shape(subset: Dict, cls: type, value: Any) -> Any:
+def _make_shape(subset: dict, cls: type, value: Any) -> Any:
     if cls is transformers.cache_utils.DynamicCache:
         assert subset, "DynamicCache cannot be empty"
         values = set(map(str, subset.values()))
@@ -38,20 +32,17 @@ def _make_shape(subset: Dict, cls: type, value: Any) -> Any:
             break
         new_shape = [[axes for i in range(cache_length)], [axes for i in range(cache_length)]]
         return new_shape
-    raise NotImplementedError(
-        f"_make_shape not implemented for cls={cls}, "
-        f"subset={subset}, value={string_type(value)}"
-    )
+    raise NotImplementedError(f"_make_shape not implemented for cls={cls}, subset={subset}, value={string_type(value)}")
 
 
 def convert_dynamic_axes_into_dynamic_shapes(
     model: torch.nn.Module,
-    args: Optional[Tuple[Any, ...]] = None,
-    kwargs: Optional[Dict[str, Any]] = None,
-    dynamic_axes: Optional[Dict[str, Dict[int, str]]] = None,
-    prefix_mapping: Optional[Dict[str, str]] = None,
+    args: tuple[Any, ...] | None = None,
+    kwargs: dict[str, Any] | None = None,
+    dynamic_axes: dict[str, dict[int, str]] | None = None,
+    prefix_mapping: dict[str, str] | None = None,
     verbose: int = 0,
-) -> Tuple[Tuple[Any, ...], Dict[str, Any], Dict[str, Any]]:
+) -> tuple[tuple[Any, ...], dict[str, Any], dict[str, Any]]:
     """
     Converts the input from an export to something :func:`torch.export.export` can handle.
 
@@ -73,9 +64,7 @@ def convert_dynamic_axes_into_dynamic_shapes(
             f"{model if plus else model.__class__.__name__}"
         )
         pars = inspect.signature(model.forward).parameters
-        assert len(pars) >= len(
-            args
-        ), f"Length mismatch, len(args)={len(args)}, pars={list(pars)}"
+        assert len(pars) >= len(args), f"Length mismatch, len(args)={len(args)}, pars={list(pars)}"
 
         for i, p in enumerate(pars):
             if i < plus:
@@ -84,8 +73,8 @@ def convert_dynamic_axes_into_dynamic_shapes(
                 break
             if verbose:
                 print(
-                    f"[convert_dynamic_axes_into_dynamic_shapes] mapping args[{i-plus}] "
-                    f"to {p!r} ({string_type(args[i-plus])})"
+                    f"[convert_dynamic_axes_into_dynamic_shapes] mapping args[{i - plus}] "
+                    f"to {p!r} ({string_type(args[i - plus])})"
                 )
             new_kwargs[p] = args[i - plus]
 
@@ -113,10 +102,7 @@ def convert_dynamic_axes_into_dynamic_shapes(
                     )
                 changes[k] = type(updated_kwargs[k])
                 continue
-        raise NotImplementedError(
-            f"Unexpected type {type(v)} for parameter {k!r} "
-            f"({string_type(v, with_shape=True)})"
-        )
+        raise NotImplementedError(f"Unexpected type {type(v)} for parameter {k!r} ({string_type(v, with_shape=True)})")
 
     # process dynamic axes
     if changes:
@@ -131,20 +117,12 @@ def convert_dynamic_axes_into_dynamic_shapes(
                 prefix = k.split(".")[0]
                 if prefix in done:
                     continue
-                args_prefix = (
-                    prefix_mapping[prefix]
-                    if prefix_mapping and prefix in prefix_mapping
-                    else prefix
-                )
+                args_prefix = prefix_mapping[prefix] if prefix_mapping and prefix in prefix_mapping else prefix
                 if args_prefix in updated_kwargs and args_prefix in changes:
                     # A cache.
                     cls = changes[args_prefix]
                     dynamic_shapes[args_prefix] = _make_shape(
-                        {
-                            _: __
-                            for _, __ in dynamic_axes.items()
-                            if _.startswith(f"{prefix}.")
-                        },
+                        {_: __ for _, __ in dynamic_axes.items() if _.startswith(f"{prefix}.")},
                         cls,
                         updated_kwargs[args_prefix],
                     )

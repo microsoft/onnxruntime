@@ -1,4 +1,3 @@
-from typing import List, Tuple
 import packaging.version as pv
 import torch
 import transformers
@@ -34,7 +33,7 @@ def is_cache_dynamic_registered(fast: bool = False) -> bool:
 if pv.Version(transformers.__version__) > pv.Version("4.49.99999"):
 
     def make_dynamic_cache(
-        key_value_pairs: List[Tuple[torch.Tensor, torch.Tensor]],
+        key_value_pairs: list[tuple[torch.Tensor, torch.Tensor]],
     ) -> transformers.cache_utils.DynamicCache:
         """
         Creates an instance of :class:`transformers.cache_utils.DynamicCache`.
@@ -48,7 +47,7 @@ if pv.Version(transformers.__version__) > pv.Version("4.49.99999"):
 else:
 
     def make_dynamic_cache(
-        key_value_pairs: List[Tuple[torch.Tensor, torch.Tensor]],
+        key_value_pairs: list[tuple[torch.Tensor, torch.Tensor]],
     ) -> transformers.cache_utils.DynamicCache:
         """
         Creates an instance of :class:`transformers.cache_utils.DynamicCache`.
