@@ -71,6 +71,39 @@ void CopyRawDataToRepeatedField(const ONNX_NAMESPACE::TensorProto& tensor_proto,
   }
 }
 
+template <>
+void CopyRawDataToRepeatedField<int64_t, int32_t>(const ONNX_NAMESPACE::TensorProto& tensor_proto,
+                                                 google::protobuf::RepeatedField<int32_t>& repeated_field) {
+  const auto& raw_data = tensor_proto.raw_data();
+  const int64_t* data = reinterpret_cast<const int64_t*>(raw_data.data());
+  const int64_t* data_end = data + (raw_data.size() / sizeof(int64_t));
+
+  repeated_field.Reserve(narrow<int>(data_end - data));
+
+  for (; data != data_end; ++data) {
+    try {
+      repeated_field.AddAlreadyReserved(narrow<int32_t>(*data));
+    } catch (const std::exception& e) {
+      ORT_THROW("Error converting int64 to int32: ", e.what(),
+                ". Value (", *data, ") exceeds int32 range.");
+    }
+  }
+}
+
+void CopyInt64DataToInt32(const ONNX_NAMESPACE::TensorProto& tensor_proto, MILSpec::TensorValue tensor_value) {
+  const int num_entries = tensor_proto.int64_data_size();
+  auto& int32_out = *tensor_value.mutable_ints()->mutable_values();
+  int32_out.Reserve(num_entries);
+  for (int i = 0; i < num_entries; ++i) {
+    try {
+      int32_out.AddAlreadyReserved(narrow<int32_t>(tensor_proto.int64_data(i)));
+    } catch (const std::exception& e) {
+      ORT_THROW("Error converting int64 to int32: ", e.what(),
+                ". Value (", tensor_proto.int64_data(i), ") exceeds int32 range.");
+    }
+  }
+}
+
 // copy T data from the TensorProto.int32_t field to TensorValue.bytes
 template <typename T>
 void CopyInt32DataToBytes(const ONNX_NAMESPACE::TensorProto& tensor_proto, MILSpec::TensorValue tensor_value) {
@@ -143,18 +176,13 @@ void CopyOnnxTensorToCoreMLTensor(const ONNX_NAMESPACE::TensorProto& tensor_prot
       break;
     }
     case ONNX_NAMESPACE::TensorProto_DataType_INT64: {
-      // enable when this is proven to not be the case
-      ORT_THROW(
-          "INT64 is unexpected as CoreML uses 32-bit int for indices. "
-          "Most likely an initializer that should have been skipped was not.");
-      //// from: int64_data/raw, to: longints
-      // if (has_raw_data) {
-      //   CopyRawDataToRepeatedField<int64_t>(tensor_proto, *tensor_value.mutable_longints()->mutable_values());
-
-      //} else {
-      //  tensor_value.mutable_longints()->mutable_values()->CopyFrom(tensor_proto.int64_data());
-      //}
-      // break;
+      // from: int64_data/raw, to: int32 using narrow
+      if (has_raw_data) {
+        CopyRawDataToRepeatedField<int64_t, int32_t>(tensor_proto, *tensor_value.mutable_ints()->mutable_values());
+      } else {
+        CopyInt64DataToInt32(tensor_proto, tensor_value);
+      }
+      break;
     }
     case ONNX_NAMESPACE::TensorProto_DataType_FLOAT16: {
       // from: int32_data/raw, to: bytes

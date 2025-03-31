@@ -376,7 +376,7 @@ void AddOperationOutput(COREML_SPEC::MILSpec::Operation& op, const NodeArg& outp
   MILSpec::ValueType& value = *output_arg.mutable_type();
   MILSpec::TensorType& tensor_type = *value.mutable_tensortype();
 
-  auto elem_type = override_element_type ? *override_element_type
+  auto elem_type = output.TypeAsProto()->tensor_type().elem_type() == ONNX_NAMESPACE::TensorProto_DataType_INT64 ? ONNX_NAMESPACE::TensorProto_DataType_INT32
                                          : output.TypeAsProto()->tensor_type().elem_type();
 
   SetTensorTypeInfo(tensor_type, OnnxDataTypeToMILSpec(elem_type), output.Shape(), /*convert_scalar*/ true);
