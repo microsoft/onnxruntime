@@ -136,7 +136,7 @@ def _register_cache_serialization(verbose: int = 0) -> Dict[str, bool]:
         )
 
         # check
-        from ..cache_helpers import make_dynamic_cache
+        from .cache_helper import make_dynamic_cache
 
         cache = make_dynamic_cache([(torch.rand((4, 4, 4)), torch.rand((4, 4, 4)))])
         values, spec = torch.utils._pytree.tree_flatten(cache)
