@@ -34,8 +34,6 @@ from transformers import AutoConfig, AutoModelForCausalLM
 from onnxruntime import quantization as ort_quantization
 from onnxruntime.quantization.matmul_4bits_quantizer import MatMul4BitsQuantizer
 
-
-
 torch_export_onnx_opset_version = 14
 logger = logging.getLogger("")
 init_dist()
