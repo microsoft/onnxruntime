@@ -15,7 +15,7 @@ template <bool is_channels_last>
 class FusedConv final : public Conv<is_channels_last, true> {
  public:
   FusedConv(const OpKernelInfo& info) : Conv<is_channels_last, true>(info) {
-    ORT_ENFORCE(GetFusedActivationAttr(info, activation_).IsOK());
+    ORT_ENFORCE(GetFusedActivationAttr(info, Conv<is_channels_last, true>::activation_).IsOK());
   }
 };
 
