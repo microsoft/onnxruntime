@@ -142,7 +142,7 @@ Status Conv2dMMProgram::GenerateShaderCode(ShaderHelper& shader) const {
   declaration_functions << "fn setOutputAtIndex(flatIndex : i32, value : " << (is_vec4_ ? "vec4<x_element_t>" : "x_element_t") << ") {\n"
                         << "  result[flatIndex] = " << (is_vec4_ ? "vec4<x_element_t>" : "x_element_t") << "(value);\n"
                         << "}\n"
-                        << "fn setOutputAtCoords(d0 : i32, d1 : i32, d2 : i32, d3 : i32, value : " << (is_vec4_ ? "vec4<x_element_t>" : "x_element_") << "){\n"
+                        << "fn setOutputAtCoords(d0 : i32, d1 : i32, d2 : i32, d3 : i32, value : " << (is_vec4_ ? "vec4<x_element_t>" : "x_element_t") << "){\n"
                         << "  let flatIndex = getOutputIndexFromCoords(vec4<i32>(d0, d1, d2, d3));\n"
                         << "  setOutputAtIndex(flatIndex " << (is_vec4_ ? "/ 4" : "") << ", value);\n"
                         << "}\n";
