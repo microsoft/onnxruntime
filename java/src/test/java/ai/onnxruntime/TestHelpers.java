@@ -27,7 +27,7 @@ import java.util.logging.Logger;
 import java.util.regex.Pattern;
 import org.junit.jupiter.api.Assertions;
 
-/** Test helpers for manipulating primitive arrays. */
+/** Test helpers. */
 public class TestHelpers {
 
   private static final Pattern LOAD_PATTERN = Pattern.compile("[,\\[\\] ]");
@@ -468,5 +468,31 @@ public class TestHelpers {
       this.string = string;
       this.tensor = tensor;
     }
+  }
+
+  // Gets an OrtEnvironment instance to use in tests.
+  // Reads a numeric log level from the ORT_JAVA_TEST_LOG_LEVEL environment variable and passes that
+  // to OrtEnvironment.getEnvironment().
+  public static OrtEnvironment getOrtEnvironment() {
+    String logLevelEnvironmentVariableName = "ORT_JAVA_TEST_LOG_LEVEL";
+    String logLevelString = System.getenv(logLevelEnvironmentVariableName);
+
+    if (logLevelString == null || logLevelString.isEmpty()) {
+      return OrtEnvironment.getEnvironment();
+    }
+
+    OrtLoggingLevel logLevel = OrtLoggingLevel.ORT_LOGGING_LEVEL_WARNING;
+
+    try {
+      int logLevelInt = Integer.parseInt(logLevelString);
+      logLevel = OrtLoggingLevel.mapFromInt(logLevelInt);
+    } catch (NumberFormatException e) {
+      System.err.println(
+          String.format(
+              "Failed to parse environment variable %s value ('%s') as an integer. It will be ignored.",
+              logLevelEnvironmentVariableName, logLevelString));
+    }
+
+    return OrtEnvironment.getEnvironment(logLevel);
   }
 }

@@ -1,0 +1,51 @@
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
+
+namespace onnxruntime.adapters;
+
+// Tensor
+enum TensorDataType : int32 {
+  UNDEFINED = 0,
+  FLOAT = 1,
+  UINT8 = 2,
+  INT8 = 3,
+  UINT16 = 4,
+  INT16 = 5,
+  INT32 = 6,
+  INT64 = 7,
+  STRING = 8,
+  BOOL = 9,
+  FLOAT16 = 10,
+  DOUBLE = 11,
+  UINT32 = 12,
+  UINT64 = 13,
+  COMPLEX64 = 14,
+  COMPLEX128 = 15,
+  BFLOAT16 = 16,
+  FLOAT8E4M3FN = 17,
+  FLOAT8E4M3FNUZ = 18,
+  FLOAT8E5M2 = 19,
+  FLOAT8E5M2FNUZ = 20,
+}
+
+// For simplicity, we will have only have one data field
+// - raw_data for all primitive types.
+// We do not foresee strings as parameters.
+table Parameter {
+  name:string;
+
+  dims:[int64];
+  data_type:TensorDataType;
+
+  raw_data:[uint8] (force_align : 8);
+}
+
+table Adapter {
+  format_version:int;
+  adapter_version:int;
+  model_version:int;
+  parameters:[Parameter];
+}
+
+root_type Adapter;
+file_identifier "TORT";

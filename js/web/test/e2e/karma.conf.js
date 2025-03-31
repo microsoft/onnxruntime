@@ -58,6 +58,10 @@ if (ENABLE_SHARED_ARRAY_BUFFER) {
   flags.push('--enable-features=SharedArrayBuffer');
 }
 
+// In Node.js v16 and below, 'localhost' is using IPv4, so need to listen to '0.0.0.0'
+// In Node.js v17+, 'localhost' is using IPv6, so need to listen to '::'
+const listenAddress = Number.parseInt(process.versions.node.split('.')[0]) >= 17 ? '::' : '0.0.0.0';
+
 module.exports = function (config) {
   config.set({
     frameworks: ['mocha'],
@@ -78,9 +82,11 @@ module.exports = function (config) {
     browserDisconnectTolerance: 0,
     browserSocketTimeout: 60000,
     hostname: 'localhost',
+    listenAddress,
     browsers: [],
     customLaunchers: {
       Chrome_default: { base: 'Chrome', flags, chromeDataDir: USER_DATA },
+      Chrome_headless: { base: 'Chrome', flags: ['--headless', ...flags], chromeDataDir: USER_DATA },
       Chrome_no_threads: {
         base: 'Chrome',
         chromeDataDir: USER_DATA,

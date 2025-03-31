@@ -1,8 +1,9 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
-
+#include "core/graph/constants.h"
 #include "gtest/gtest.h"
 #include "test/providers/provider_test_utils.h"
+
 using namespace std;
 namespace onnxruntime {
 namespace test {
@@ -28,7 +29,8 @@ void TestConvOp(const ConvOpAndTestAttributes& attributes,
                 optional<float> epsilon = optional<float>(),
                 OpTester::ExpectResult expect_result = OpTester::ExpectResult::kExpectSuccess,
                 const std::string& err_str = "",
-                int opset = 7) {
+                int opset = 7,
+                bool exclude_cuda_nhwc = false) {
   OpTester test("Conv", opset);
   test.AddAttribute("group", attributes.group);
   test.AddAttribute("kernel_shape", attributes.kernel_shape);
@@ -64,6 +66,12 @@ void TestConvOp(const ConvOpAndTestAttributes& attributes,
   std::unordered_set<std::string> excluded_providers(attributes.excluded_providers);
   // Disable TensorRT because weight as input is not supported
   excluded_providers.insert(kTensorrtExecutionProvider);
+
+  if (exclude_cuda_nhwc) {
+#ifdef ENABLE_CUDA_NHWC_OPS
+    excluded_providers.insert(kCudaNHWCExecutionProvider);
+#endif
+  }
 
   // QNN SDK 2.10.0 has a bug that breaks support for dynamic bias inputs.
   excluded_providers.insert(kQnnExecutionProvider);
@@ -197,10 +205,15 @@ TEST(ConvTest, Conv1D_Bias) {
   // as TF32 has a 10 bit mantissa.
   float epsilon = 1.1e-5f;
 
-  TestConvOp(attrs, {X, W, B}, {X_shape, W_shape, B_shape}, expected_vals, Y_shape, false, epsilon);
+  // This case is not supported by cuDNN frontend, and the fallback (legacy code) requires weight to 4D tensor for NHWC.
+  constexpr bool exclude_cuda_nhwc = true;
+
+  TestConvOp(attrs, {X, W, B}, {X_shape, W_shape, B_shape}, expected_vals, Y_shape, false, epsilon,
+             OpTester::ExpectResult::kExpectSuccess, "", 10, exclude_cuda_nhwc);
 
   // CoreML EP requires weight to be an initializer
-  TestConvOp(attrs, {X, W, B}, {X_shape, W_shape, B_shape}, expected_vals, Y_shape, true, epsilon);
+  TestConvOp(attrs, {X, W, B}, {X_shape, W_shape, B_shape}, expected_vals, Y_shape, true, epsilon,
+             OpTester::ExpectResult::kExpectSuccess, "", 10, exclude_cuda_nhwc);
 }
 
 // Conv47

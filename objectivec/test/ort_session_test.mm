@@ -223,6 +223,28 @@ NS_ASSUME_NONNULL_BEGIN
   ORTAssertNullableResultSuccessful(session, err);
 }
 
+- (void)testAppendCoreMLEP_v2 {
+  NSError* err = nil;
+  ORTSessionOptions* sessionOptions = [ORTSessionTest makeSessionOptions];
+  NSDictionary* provider_options = @{@"EnableOnSubgraphs" : @"1"};  // set an arbitrary option
+
+  BOOL appendResult = [sessionOptions appendCoreMLExecutionProviderWithOptionsV2:provider_options
+                                                                           error:&err];
+
+  if (!ORTIsCoreMLExecutionProviderAvailable()) {
+    ORTAssertBoolResultUnsuccessful(appendResult, err);
+    return;
+  }
+
+  ORTAssertBoolResultSuccessful(appendResult, err);
+
+  ORTSession* session = [[ORTSession alloc] initWithEnv:self.ortEnv
+                                              modelPath:[ORTSessionTest getAddModelPath]
+                                         sessionOptions:sessionOptions
+                                                  error:&err];
+  ORTAssertNullableResultSuccessful(session, err);
+}
+
 - (void)testAppendXnnpackEP {
   NSError* err = nil;
   ORTSessionOptions* sessionOptions = [ORTSessionTest makeSessionOptions];

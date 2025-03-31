@@ -39,7 +39,6 @@ void* OVRTAllocator::Alloc(size_t size) {
   } catch (const ov::Exception& e) {
     ORT_THROW(std::string("Alloc failed: ") + e.what());
   }
-  return nullptr;
 }
 
 void OVRTAllocator::Free(void* p) {

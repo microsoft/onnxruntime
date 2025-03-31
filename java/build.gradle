@@ -50,8 +50,8 @@ mavenSettings {
 }
 
 java {
-	sourceCompatibility = JavaVersion.VERSION_1_8
-	targetCompatibility = JavaVersion.VERSION_1_8
+	sourceCompatibility = JavaVersion.VERSION_17
+	targetCompatibility = JavaVersion.VERSION_17
 }
 
 // This jar tasks serves as a CMAKE signaling
@@ -199,7 +199,19 @@ test {
 	if (cmakeBuildDir != null) {
 		workingDir cmakeBuildDir
 	}
-	systemProperties System.getProperties().subMap(['USE_CUDA', 'USE_ROCM', 'USE_TENSORRT', 'USE_DNNL', 'USE_OPENVINO', 'USE_COREML', 'USE_DML', 'JAVA_FULL_TEST', 'ENABLE_TRAINING_APIS'])
+	systemProperties System.getProperties().subMap([
+		'ENABLE_TRAINING_APIS',
+		'JAVA_FULL_TEST',
+		'USE_COREML',
+		'USE_CUDA',
+		'USE_DML',
+		'USE_DNNL',
+		'USE_OPENVINO',
+		'USE_ROCM',
+		'USE_TENSORRT',
+		'USE_QNN',
+		'USE_XNNPACK',
+		])
 	testLogging {
 		events "passed", "skipped", "failed"
 		showStandardStreams = true

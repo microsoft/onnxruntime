@@ -5,7 +5,7 @@
 #include "OnnxPrediction.h"
 #include "onnxruntime_session_options_config_keys.h"
 #include "src/libfuzzer/libfuzzer_macro.h"
-#include "onnx/onnx_pb.h"
+#include "core/graph/onnx_protobuf.h"
 
 #include <type_traits>
 

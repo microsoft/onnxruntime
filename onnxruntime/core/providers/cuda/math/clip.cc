@@ -59,33 +59,11 @@ Status Clip_6<T>::ComputeInternal(OpKernelContext* ctx) const {
   return Status::OK();
 }
 
-namespace clip_internal {
-template <typename T>
-struct LowMax {
-  constexpr static T low() {
-    return std::numeric_limits<T>::lowest();
-  }
-  constexpr static T max() {
-    return std::numeric_limits<T>::max();
-  }
-};
-
-template <>
-struct LowMax<MLFloat16> {
-  static MLFloat16 low() {
-    return MLFloat16::FromBits(math::floatToHalf(std::numeric_limits<float>::lowest()));
-  }
-  static MLFloat16 max() {
-    return MLFloat16::FromBits(math::floatToHalf(std::numeric_limits<float>::max()));
-  }
-};
-}  // namespace clip_internal
-
 template <typename T>
 struct Clip::ComputeImpl {
   void operator()(cudaStream_t stream, const Tensor* X, const Tensor* min, const Tensor* max, Tensor* Y) const {
-    auto min_default = clip_internal::LowMax<T>::low();
-    auto max_default = clip_internal::LowMax<T>::max();
+    constexpr T min_default = std::numeric_limits<T>::lowest();
+    constexpr T max_default = std::numeric_limits<T>::max();
 
     const T* min_data = nullptr;
     const T* max_data = nullptr;

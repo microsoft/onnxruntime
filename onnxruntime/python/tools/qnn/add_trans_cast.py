@@ -126,9 +126,9 @@ def parse_qnn_json_file(qnn_json_file_path, qnn_input_output_tensor_dic):
                 qnn_tensor.dim = qnn_tensor_attribute["dims"]
                 qnn_input_output_tensor_dic[qnn_tensor_name] = qnn_tensor
 
-    assert (
-        len(qnn_input_output_tensor_dic) > 1
-    ), "Converted QNN model not valid. It should have at least 1 input & 1 output."
+    assert len(qnn_input_output_tensor_dic) > 1, (
+        "Converted QNN model not valid. It should have at least 1 input & 1 output."
+    )
 
 
 def compare_onnx_shape_with_qnn_shape(onnx_dims, qnn_dims):

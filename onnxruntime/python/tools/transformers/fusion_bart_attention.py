@@ -82,14 +82,11 @@ class FusionBartAttention(FusionAttention):
         matmul_qk,
         add_q,
     ):
-        reshape_qkv_2_path = self.model.match_parent_path(
-            reshape_qkv_2, ["Concat", "Slice", "Gather", "Shape"], [1, 0, 0, 0]
+        reshape_qkv_path = self.model.match_parent_path(
+            reshape_qkv_2, ["Concat", "Slice", "Shape", "Transpose"], [1, 0, 0, 0]
         )
-        if reshape_qkv_2_path is None:
+        if reshape_qkv_path is None or reshape_qkv_path[-1].input[0] != matmul_qkv.output[0]:
             return False
-        else:
-            if reshape_qkv_2_path[-1].input[0] != matmul_qkv.output[0]:
-                return False
 
         matmul_qk_path_1 = self.model.match_parent_path(
             matmul_qk, ["Mul", "Pow", "Cast", "Div", "Gather", "Shape"], [0, 1, 0, 0, 0, 0]
@@ -201,8 +198,8 @@ class FusionBartAttention(FusionAttention):
                 root_input = output
                 break
 
-        graph_input_names = set([node.name for node in self.model.graph().input])
-        graph_output_names = set([node.name for node in self.model.graph().output])
+        graph_input_names = {node.name for node in self.model.graph().input}
+        graph_output_names = {node.name for node in self.model.graph().output}
 
         v_nodes = self.model.match_parent_path(
             matmul_qkv,
@@ -348,7 +345,7 @@ class FusionBartAttention(FusionAttention):
             ["Transpose", "Reshape", "Transpose", "Reshape", "Add", "MatMul"],
             [1, 0, 0, 0, 0, 1],
         )
-        k_nodes_with_bias_openai = self.model.match_parent_path(
+        k_nodes_no_bias_openai = self.model.match_parent_path(
             matmul_qk,
             ["Mul", "Transpose", "Reshape", "MatMul"],
             [1, 0, 0, 0],
@@ -381,9 +378,9 @@ class FusionBartAttention(FusionAttention):
         if k_nodes_with_bias is not None:
             _, reshape_k_2, transpose_k_1, reshape_k_1, add_k, matmul_k = k_nodes_with_bias
             k_nodes = k_nodes_with_bias
-        elif k_nodes_with_bias_openai is not None:
-            mul_k, transpose_k_1, reshape_k_1, matmul_k = k_nodes_with_bias_openai
-            k_nodes = k_nodes_with_bias_openai
+        elif k_nodes_no_bias_openai is not None:
+            mul_k, transpose_k_1, reshape_k_1, matmul_k = k_nodes_no_bias_openai
+            k_nodes = k_nodes_no_bias_openai
             present_k = matmul_k.output[0]
 
             # Find the child path to access the correct present_k values
@@ -403,7 +400,7 @@ class FusionBartAttention(FusionAttention):
             #             \              /
             #               -> Concat <-
             #                    |
-            #                    |--> Reshape -> Transpose -> Present_K
+            #                    +--> Reshape -> Transpose -> Present_K
             concat_path = self.model.match_child_path(matmul_k, ["Concat", "Reshape", "Transpose"])
             if reshape_path is not None:
                 (_, transpose_matmul_k) = reshape_path
@@ -455,7 +452,7 @@ class FusionBartAttention(FusionAttention):
         past_k = past_k if past_k in graph_input_names else ""
         present_k = present_k if present_k in graph_output_names else ""
 
-        if k_nodes in (k_nodes_with_bias_openai, k_nodes_no_bias, k_nodes_no_bias_with_past_self_attn):
+        if k_nodes in (k_nodes_no_bias_openai, k_nodes_no_bias, k_nodes_no_bias_with_past_self_attn):
             # Create empty Add node for attention graph
             bias_dim = self.model.get_initializer(add_v.input[0]).dims[0]
             empty_bias_name = "empty_bias"
@@ -473,7 +470,7 @@ class FusionBartAttention(FusionAttention):
 
         if (
             model_impl_openai
-            and not past_k
+            and not bool(past_k)
             and not self.check_runtime_shape_path_openai(
                 reshape_qkv_2,
                 matmul_qkv,
@@ -485,7 +482,7 @@ class FusionBartAttention(FusionAttention):
             return
         elif (
             not model_impl_openai
-            and not past_k
+            and not bool(past_k)
             and not self.check_runtime_shape_path(
                 reshape_qkv_2,
                 reshape_qkv_1,
@@ -497,7 +494,7 @@ class FusionBartAttention(FusionAttention):
         ):
             return
 
-        three_root_inputs = past_k and past_v and matmul_k is None and "matmul_v" not in locals()
+        three_root_inputs = bool(past_k) and bool(past_v) and matmul_k is None and "matmul_v" not in locals()
         one_root_input = (
             not three_root_inputs
             and matmul_k.input[0] == root_input
@@ -520,13 +517,13 @@ class FusionBartAttention(FusionAttention):
         encoder_attention = one_root_input and qk_nodes == qk_nodes_1
         decoder_attention = one_root_input and qk_nodes in (qk_nodes_2, qk_nodes_2_openai)
         decoder_attention_with_past = (
-            (encoder_attention if not model_impl_openai else decoder_attention) and past_k and past_v
+            (encoder_attention if not model_impl_openai else decoder_attention) and bool(past_k) and bool(past_v)
         )
         decoder_cross_attention = two_root_inputs and qk_nodes == qk_nodes_1
         decoder_cross_attention_with_past = three_root_inputs and qk_nodes == qk_nodes_1
 
         # For decoder_attention, the attention mask needs to be included in the attention node
-        mask_index = None
+        mask_index, mask_nodes = None, []
         if decoder_attention:
             mask_nodes_bart = self.model.match_parent_path(
                 add_qk,
@@ -540,8 +537,10 @@ class FusionBartAttention(FusionAttention):
             )
             if mask_nodes_whisper is not None:
                 mask_index = mask_nodes_whisper[0].output[-1]
+                mask_nodes = mask_nodes_whisper
             elif mask_nodes_bart is not None:
                 mask_index = mask_nodes_bart[0].output[-1]
+                mask_nodes = mask_nodes_bart
 
         if (
             encoder_attention
@@ -564,15 +563,16 @@ class FusionBartAttention(FusionAttention):
                 # value whereas attention supports concatenated past key and past value.
                 new_node = (
                     self.create_multihead_attention_node(
-                        matmul_q,
-                        matmul_k if decoder_cross_attention or decoder_attention_with_past else past_k,
-                        matmul_v if decoder_cross_attention or decoder_attention_with_past else past_v,
-                        add_q,
-                        add_k if decoder_cross_attention or decoder_attention_with_past else None,
-                        add_v if decoder_cross_attention or decoder_attention_with_past else None,
-                        num_heads,
-                        hidden_size,
-                        attention_last_node.output[0],
+                        q_matmul=matmul_q,
+                        k_matmul=matmul_k if decoder_cross_attention or decoder_attention_with_past else past_k,
+                        v_matmul=matmul_v if decoder_cross_attention or decoder_attention_with_past else past_v,
+                        q_add=add_q,
+                        k_add=add_k if decoder_cross_attention or decoder_attention_with_past else None,
+                        v_add=add_v if decoder_cross_attention or decoder_attention_with_past else None,
+                        num_heads=num_heads,
+                        hidden_size=hidden_size,
+                        output=attention_last_node.output[0],
+                        unidirectional=decoder_attention_with_past,
                         past_k=past_k if decoder_attention_with_past else "",
                         past_v=past_v if decoder_attention_with_past else "",
                         present_k=present_k,
@@ -586,23 +586,27 @@ class FusionBartAttention(FusionAttention):
                 # Temporarily set multihead attention flag to false
                 use_multi_head_attention_ground_truth = self.use_multi_head_attention
                 self.use_multi_head_attention = False
+                add_qk_str = mask_index if decoder_attention and mask_index else ""
                 new_node = self.create_attention_node(
-                    None,
-                    matmul_q,
-                    matmul_k,
-                    matmul_v,
-                    add_q,
-                    add_k,
-                    add_v,
-                    num_heads,
-                    hidden_size,
-                    root_input,
-                    attention_last_node.output[0],
-                    add_qk_str=mask_index if decoder_attention else None,
+                    mask_index=None,
+                    q_matmul=matmul_q,
+                    k_matmul=matmul_k,
+                    v_matmul=matmul_v,
+                    q_add=add_q,
+                    k_add=add_k,
+                    v_add=add_v,
+                    num_heads=num_heads,
+                    hidden_size=hidden_size,
+                    first_input=root_input,
+                    output=attention_last_node.output[0],
+                    add_qk_str=(
+                        None if len(mask_nodes) > 1 else add_qk_str
+                    ),  # deprecate and use is_unidirectional attr instead for Whisper
                     past_k=past_k,
                     past_v=past_v,
                     present_k=present_k,
                     present_v=present_v,
+                    causal=decoder_attention,
                 )
                 self.use_multi_head_attention = use_multi_head_attention_ground_truth
             if new_node is None:

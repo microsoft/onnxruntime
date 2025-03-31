@@ -17,15 +17,24 @@ namespace onnxruntime {
 void AttentionKernelOptions::Initialize(int value, bool use_build_flag, bool check_cudnn_version) {
   if (value > 0) {
     use_flash_attention_ = (value & static_cast<int>(AttentionBackend::FLASH_ATTENTION)) > 0;
+#if USE_LEAN_ATTENTION
+    use_lean_attention_ = (value & static_cast<int>(AttentionBackend::LEAN_ATTENTION)) > 0;
+#endif
     use_efficient_attention_ = (value & static_cast<int>(AttentionBackend::EFFICIENT_ATTENTION)) > 0;
     use_trt_fused_attention_ = (value & static_cast<int>(AttentionBackend::TRT_FUSED_ATTENTION)) > 0;
     use_cudnn_flash_attention_ = (value & static_cast<int>(AttentionBackend::CUDNN_FLASH_ATTENTION)) > 0;
+
     use_unfused_ = (value & static_cast<int>(AttentionBackend::MATH)) > 0;
     use_trt_flash_attention_ = (value & static_cast<int>(AttentionBackend::TRT_FLASH_ATTENTION)) > 0;
     use_trt_cross_attention_ = (value & static_cast<int>(AttentionBackend::TRT_CROSS_ATTENTION)) > 0;
     use_trt_causal_attention_ = (value & static_cast<int>(AttentionBackend::TRT_CAUSAL_ATTENTION)) > 0;
+
+    use_decoder_attention_ = (value & static_cast<int>(AttentionBackend::DECODER_ATTENTION)) > 0;
   } else {
     use_flash_attention_ = !ParseEnvironmentVariableWithDefault<bool>(kDisableFlashAttention, false);
+#if USE_LEAN_ATTENTION
+    use_lean_attention_ = ParseEnvironmentVariableWithDefault<bool>(kEnableLeanAttention, false);
+#endif
     use_efficient_attention_ = !ParseEnvironmentVariableWithDefault<bool>(kDisableMemoryEfficientAttention, false);
     use_trt_fused_attention_ = !ParseEnvironmentVariableWithDefault<bool>(kDisableFusedSelfAttention, false);
     use_cudnn_flash_attention_ = ParseEnvironmentVariableWithDefault<bool>(kEnableCudnnFlashAttention, false);
@@ -34,6 +43,8 @@ void AttentionKernelOptions::Initialize(int value, bool use_build_flag, bool che
     use_trt_flash_attention_ = !ParseEnvironmentVariableWithDefault<bool>(kDisableTrtFlashAttention, false);
     use_trt_cross_attention_ = !ParseEnvironmentVariableWithDefault<bool>(kDisableFusedCrossAttention, false);
     use_trt_causal_attention_ = ParseEnvironmentVariableWithDefault<bool>(kEnableFusedCausalAttention, false);
+
+    use_decoder_attention_ = !ParseEnvironmentVariableWithDefault<bool>(kDisableDecoderAttention, false);
   }
 
   enable_kernel_debug_info_ = ParseEnvironmentVariableWithDefault<bool>(kEnableAttentionKernelDebugInfo, false);
@@ -61,6 +72,10 @@ void AttentionKernelOptions::Initialize(int value, bool use_build_flag, bool che
     use_flash_attention_ = false;
 #endif
 
+#ifndef USE_LEAN_ATTENTION
+    use_lean_attention_ = false;
+#endif
+
 #ifndef USE_MEMORY_EFFICIENT_ATTENTION
     use_efficient_attention_ = false;
 #endif
@@ -81,12 +96,16 @@ void AttentionKernelOptions::Print() const {
   std::stringstream sstream;
   sstream << "AttentionKernelOptions:";
   sstream << " FLASH_ATTENTION=" << int(use_flash_attention_);
+#if USE_LEAN_ATTENTION
+  sstream << " LEAN_ATTENTION=" << int(use_lean_attention_);
+#endif
   sstream << " EFFICIENT_ATTENTION=" << int(use_efficient_attention_);
   sstream << " TRT_FUSED_ATTENTION=" << int(use_trt_fused_attention_);
   sstream << " CUDNN_FLASH_ATTENTION=" << int(use_cudnn_flash_attention_);
   sstream << " TRT_FLASH_ATTENTION=" << int(use_trt_flash_attention_);
   sstream << " TRT_CROSS_ATTENTION=" << int(use_trt_cross_attention_);
   sstream << " TRT_CAUSAL_ATTENTION=" << int(use_trt_causal_attention_);
+  sstream << " DECODER_ATTENTION=" << int(use_decoder_attention_);
   sstream << " MATH=" << int(use_unfused_);
 
   if (!use_unfused_) {
@@ -131,6 +150,10 @@ void AttentionKernelDebugInfo::Print(const char* operator_name,
   sstream << " SdpaKernel=";
   if (use_flash_attention.has_value() && use_flash_attention.value()) {
     sstream << "FLASH_ATTENTION";
+#if USE_LEAN_ATTENTION
+  } else if (use_lean_attention.has_value() && use_lean_attention.value()) {
+    sstream << "LEAN_ATTENTION";
+#endif
   } else if (use_efficient_attention.has_value() && use_efficient_attention.value()) {
     sstream << "EFFICIENT_ATTENTION";
   } else if (use_trt_fused_attention.has_value() && use_trt_fused_attention.value()) {
@@ -143,6 +166,8 @@ void AttentionKernelDebugInfo::Print(const char* operator_name,
     sstream << "TRT_CROSS_ATTENTION";
   } else if (use_trt_causal_attention.has_value() && use_trt_causal_attention.value()) {
     sstream << "TRT_CAUSAL_ATTENTION";
+  } else if (use_decoder_attention.has_value() && use_decoder_attention.value()) {
+    sstream << "DECODER_ATTENTION";
   } else {
     sstream << "MATH";
   }

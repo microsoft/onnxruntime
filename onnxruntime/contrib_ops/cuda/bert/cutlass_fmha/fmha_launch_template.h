@@ -10,7 +10,7 @@
 #endif
 
 #include "contrib_ops/cuda/bert/cutlass_fmha/memory_efficient_attention.h"
-#include "41_fused_multi_head_attention/kernel_forward.h"
+#include "contrib_ops/cuda/bert/cutlass_fmha/kernel_forward.h"
 
 namespace onnxruntime {
 namespace contrib {
@@ -222,6 +222,9 @@ void LaunchCutlassFmha(const MemoryEfficientAttentionParams& params) {
     }
 
     p.use_smooth_softmax = params.use_smooth_softmax;
+
+    // local_windows_size in GQA does not include current query token, while windows_size in this kernel includes it.
+    p.window_size = params.local_window_size + 1;
   }
 
   auto kernel_fn = attention_kernel_batched_impl<Attention>;

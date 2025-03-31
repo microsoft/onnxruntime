@@ -54,7 +54,8 @@ namespace Dml
         const auto kernelLookup = onnxruntime::KernelLookup(
             providerType,
             gsl::make_span(&registry, 1),
-            kernelTypeStrResolver);
+            kernelTypeStrResolver,
+            logger);
 
         onnxruntime::GraphViewer graphViewer(graph);
         const auto& nodeTopologyList = graphViewer.GetNodesInTopologicalOrder();

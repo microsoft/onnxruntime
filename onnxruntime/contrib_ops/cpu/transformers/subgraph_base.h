@@ -31,6 +31,7 @@ class Subgraph {
   const GraphViewer& subgraph;    // The subgraph
 
   int num_implicit_inputs;
+  std::vector<bool> used_implicit_inputs;
 
   int num_subgraph_inputs;   // Same as subgraph_input_names.size(), keep it for convenience.
   int num_subgraph_outputs;  // Same as subgraph_output_names.size()

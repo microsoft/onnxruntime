@@ -9,7 +9,6 @@ import tempfile
 import unittest
 from importlib.util import find_spec
 from pathlib import Path
-from typing import Dict, Tuple, Union
 
 import numpy as np
 import onnx
@@ -28,7 +27,7 @@ class TestOpMatMul4Bits(unittest.TestCase):
     def tearDownClass(cls):
         cls._tmp_model_dir.cleanup()
 
-    def fill_int4_data(self, shape: Union[int, Tuple[int, ...]], symmetric: bool) -> np.ndarray:
+    def fill_int4_data(self, shape: int | tuple[int, ...], symmetric: bool) -> np.ndarray:
         line = np.zeros(shape)
         line = line.reshape(-1)
 
@@ -54,7 +53,7 @@ class TestOpMatMul4Bits(unittest.TestCase):
     def input_feeds(
         self,
         n: int,
-        name2shape: Dict[str, Union[int, Tuple[int, ...]]],
+        name2shape: dict[str, int | tuple[int, ...]],
         low: int = -1,
         high: int = 2,
         dtype: type = np.float32,
@@ -79,7 +78,7 @@ class TestOpMatMul4Bits(unittest.TestCase):
         initializers = []
 
         def make_matmul(
-            input_name, weight_shape: Union[int, Tuple[int, ...]], weight_name: str, output_name: str, node_name: str
+            input_name, weight_shape: int | tuple[int, ...], weight_name: str, output_name: str, node_name: str
         ):
             weight_data = self.fill_int4_data(weight_shape, symmetric).astype(np.float32)
             initializers.append(onnx.numpy_helper.from_array(weight_data, name=weight_name))
@@ -137,7 +136,7 @@ class TestOpMatMul4Bits(unittest.TestCase):
         initializers = []
 
         def make_gather(
-            indices_name, data_shape: Union[int, Tuple[int, ...]], data_name: str, output_name: str, node_name: str
+            indices_name, data_shape: int | tuple[int, ...], data_name: str, output_name: str, node_name: str
         ):
             weight_data = self.fill_int4_data(data_shape, symmetric).astype(
                 np.float32 if tdata == TensorProto.FLOAT else np.float16
@@ -184,8 +183,8 @@ class TestOpMatMul4Bits(unittest.TestCase):
         block_size: int,
         is_symmetric: bool,
         quant_format: quant_utils.QuantFormat = quant_utils.QuantFormat.QOperator,
-        op_types_to_quantize: Tuple[str, ...] = ("MatMul",),
-        quant_axes: Tuple[Tuple[str, int], ...] = (("MatMul", 0), ("Gather", 1)),
+        op_types_to_quantize: tuple[str, ...] = ("MatMul",),
+        quant_axes: tuple[tuple[str, int], ...] = (("MatMul", 0), ("Gather", 1)),
         rtol: float = 0.01,
         atol: float = 0.05,
     ):

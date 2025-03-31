@@ -40,6 +40,8 @@ int OnnxRuntimeTensorToNumpyType(const DataTypeImpl* tensor_type);
 
 MLDataType NumpyTypeToOnnxRuntimeTensorType(int numpy_type);
 
+MLDataType OnnxTypeToOnnxRuntimeTensorType(int onnx_element_type);
+
 using MemCpyFunc = void (*)(void*, const void*, size_t);
 
 using DataTransferAlternative = std::variant<const DataTransferManager*, MemCpyFunc>;

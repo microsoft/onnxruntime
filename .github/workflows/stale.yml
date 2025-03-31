@@ -8,7 +8,7 @@ on:
 
 jobs:
   close-stale-issues:
-    runs-on: ubuntu-latest
+    runs-on: ["self-hosted", "1ES.Pool=onnxruntime-github-Ubuntu2204-AMD-CPU"]
     permissions:
       issues: write
       pull-requests: write

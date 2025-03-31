@@ -1,0 +1,78 @@
+parameters:
+  - name: JarFileDirectory
+    type: string
+
+steps:
+  - task: AzureKeyVault@2
+    displayName: 'Get GnuPG signing keys'
+    inputs:
+      azureSubscription: 'OnnxrunTimeCodeSign_20240611'
+      KeyVaultName: 'ort-release'
+      SecretsFilter: 'java-pgp-pwd,java-pgp-key'
+      RunAsPreJob: false
+
+  - task: PowerShell@2
+    displayName: 'Sign jar files: GnuPG and sha256'
+    inputs:
+      targetType: 'inline'
+      pwsh: true
+      workingDirectory: '$(Build.SourcesDirectory)'
+      script: |
+        $jar_file_directory = '${{ parameters.JarFileDirectory }}'
+        $working_directory = '$(Build.SourcesDirectory)'
+
+        $original_passphrase='$(java-pgp-pwd)'
+        $original_private_key='$(java-pgp-key)'
+
+        $gpg_exe_path = "C:\Program Files (x86)\gnupg\bin\gpg.exe"
+
+        $passphrase_file = Join-Path -Path $working_directory -ChildPath "passphrase.txt"
+        $private_key_file = Join-Path -Path $working_directory -ChildPath "private_key.txt"
+
+        Write-Host "Generating GnuPG key files."
+        Out-File -FilePath $passphrase_file -InputObject $original_passphrase -NoNewline -Encoding ascii
+        Out-File -FilePath $private_key_file -InputObject $original_private_key -NoNewline -Encoding ascii
+        Write-Host "Generated GnuPG key files."
+
+        Write-Host "Importing GnuPG private key file."
+        & $gpg_exe_path --batch --import $private_key_file
+        if ($lastExitCode -ne 0) {
+            Write-Host -Object "GnuPG importing private key command failed. Exitcode: $exitCode"
+            exit $lastExitCode
+        }
+        Write-Host "Imported GnuPG private key file."
+
+        $targeting_original_files = Get-ChildItem $jar_file_directory -Recurse -Force -File -Name
+        foreach ($file in $targeting_original_files) {
+            $file_path = Join-Path $jar_file_directory -ChildPath $file
+            Write-Host "GnuPG signing to file: "$file_path
+            & $gpg_exe_path --pinentry-mode loopback --passphrase-file $passphrase_file -ab $file_path
+            if ($lastExitCode -ne 0) {
+                Write-Host -Object "GnuPG signing file command failed. Exitcode: $exitCode"
+                exit $lastExitCode
+            }
+            Write-Host "GnuPG signed to file: "$file_path
+        }
+
+        $PSDefaultParameterValues['Out-File:Encoding'] = 'utf8NoBOM'
+        $sha256sum_exe_path = "C:\Program Files\Git\usr\bin\sha256sum.exe"
+        $targeting_asc_files = Get-ChildItem $jar_file_directory -Recurse -Force -File -Name
+        $original_location = Get-Location
+        Set-Location $jar_file_directory
+        foreach ($file in $targeting_asc_files) {
+            Write-Host "Adding checksum of sha256 to file: "$file
+            $file_path_sha256 = $file + ".sha256"
+            & $sha256sum_exe_path $file  1>$file_path_sha256
+            if ($lastExitCode -ne 0) {
+                Write-Host -Object "sha256sum command failed. Exitcode: $exitCode"
+                exit $lastExitCode
+            }
+            Write-Host "Added checksum of sha256 to file: "$file
+        }
+        Set-Location $original_location
+
+        Write-Host "GnuPG and sha256 signing to files completed."
+        Write-Host "Deleting GnuPG key files."
+        Remove-Item -Path $passphrase_file
+        Remove-Item -Path $private_key_file
+        Write-Host "Deleted GnuPG key files."

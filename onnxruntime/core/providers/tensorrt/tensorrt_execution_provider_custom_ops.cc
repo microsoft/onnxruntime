@@ -28,8 +28,8 @@ extern TensorrtLogger& GetTensorrtLogger(bool verbose);
 common::Status CreateTensorRTCustomOpDomainList(std::vector<OrtCustomOpDomain*>& domain_list, const std::string extra_plugin_lib_paths) {
   static std::unique_ptr<OrtCustomOpDomain> custom_op_domain = std::make_unique<OrtCustomOpDomain>();
   static std::vector<std::unique_ptr<TensorRTCustomOp>> created_custom_op_list;
-  static OrtMutex mutex;
-  std::lock_guard<OrtMutex> lock(mutex);
+  static std::mutex mutex;
+  std::lock_guard<std::mutex> lock(mutex);
   if (custom_op_domain->domain_ != "" && custom_op_domain->custom_ops_.size() > 0) {
     domain_list.push_back(custom_op_domain.get());
     return Status::OK();

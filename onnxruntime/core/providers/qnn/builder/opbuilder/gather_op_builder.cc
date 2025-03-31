@@ -2,14 +2,10 @@
 // Licensed under the MIT License.
 
 #include <cassert>
-#include "core/providers/common.h"
-#include "core/providers/shared/utils/utils.h"
+#include "core/providers/qnn/builder/opbuilder/base_op_builder.h"
 #include "core/providers/qnn/builder/qnn_model_wrapper.h"
 #include "core/providers/qnn/builder/op_builder_factory.h"
 #include "core/providers/qnn/builder/qnn_utils.h"
-#include "core/common/safeint.h"
-
-#include "base_op_builder.h"
 
 namespace onnxruntime {
 namespace qnn {
@@ -126,22 +122,9 @@ static Status ProcessIndicesInput(QnnModelWrapper& qnn_model_wrapper,
                                   std::vector<std::string>& input_names,
                                   bool do_op_validation) {
   const auto& input_name = indices_input.node_arg.Name();
-  if (qnn_model_wrapper.IsQnnTensorWrapperExist(input_name)) {
-    LOGS(logger, VERBOSE) << "Tensor already added, skip it: " << input_name;
-    input_names.push_back(input_name);
-    return Status::OK();
-  }
 
   TensorInfo indices_info = {};
   ORT_RETURN_IF_ERROR(qnn_model_wrapper.GetTensorInfo(indices_input, indices_info));
-
-  const bool is_npu_backend = IsNpuBackend(qnn_model_wrapper.GetQnnBackendType());
-  const bool is_graph_input = qnn_model_wrapper.IsGraphInput(input_name);
-  ORT_RETURN_IF(is_npu_backend &&
-                    (indices_info.qnn_data_type == QNN_DATATYPE_INT_64) &&
-                    !(indices_info.is_initializer || is_graph_input),
-                "HTP backend doesn't support a Gather* op with a dynamic int64 input activation ",
-                "unless it is a graph input.");
 
   std::vector<uint8_t> qnn_indices_bytes;
 
@@ -165,27 +148,22 @@ static Status ProcessIndicesInput(QnnModelWrapper& qnn_model_wrapper,
 
   Qnn_TensorType_t tensor_type = qnn_model_wrapper.GetTensorType(input_name);
   std::vector<uint32_t> cast_output_shape(indices_info.shape);
-  QnnTensorWrapper input_tensorwrapper(input_name, tensor_type, indices_info.qnn_data_type, QnnQuantParamsWrapper(),
-                                       std::move(indices_info.shape), std::move(qnn_indices_bytes));
-  ORT_RETURN_IF_NOT(qnn_model_wrapper.AddTensorWrapper(std::move(input_tensorwrapper)), "Failed to add tensor.");
+  if (qnn_model_wrapper.IsQnnTensorWrapperExist(input_name)) {
+    LOGS(logger, VERBOSE) << "Tensor already added, skip it: " << input_name;
+  } else {
+    QnnTensorWrapper input_tensorwrapper(input_name, tensor_type, indices_info.qnn_data_type, QnnQuantParamsWrapper(),
+                                         std::move(indices_info.shape), std::move(qnn_indices_bytes));
+    ORT_RETURN_IF_NOT(qnn_model_wrapper.AddTensorWrapper(std::move(input_tensorwrapper)), "Failed to add tensor.");
+  }
 
   // Insert QNN Cast op to convert dynamic indices from int64 to int32.
   std::string indices_input_name(input_name);
   if (indices_info.qnn_data_type == QNN_DATATYPE_INT_64) {
     assert(!indices_info.is_initializer);
 
-    indices_input_name = input_name + "_ort_qnn_ep_cast";
-    QnnTensorWrapper cast_output(indices_input_name, QNN_TENSOR_TYPE_NATIVE, QNN_DATATYPE_INT_32,
-                                 QnnQuantParamsWrapper(), std::move(cast_output_shape));
-    ORT_RETURN_IF_NOT(qnn_model_wrapper.AddTensorWrapper(std::move(cast_output)), "Failed to add tensor.");
-    ORT_RETURN_IF_NOT(qnn_model_wrapper.CreateQnnNode(indices_input_name,
-                                                      QNN_OP_PACKAGE_NAME_QTI_AISW,
-                                                      "Cast",
-                                                      {input_name},
-                                                      {indices_input_name},
-                                                      {},
-                                                      do_op_validation),
-                      "Failed to add node.");
+    ORT_RETURN_IF_ERROR(qnn_model_wrapper.AddInt64CastNode(input_name, indices_input_name,
+                                                           std::move(cast_output_shape),
+                                                           do_op_validation));
   }
 
   input_names.push_back(indices_input_name);

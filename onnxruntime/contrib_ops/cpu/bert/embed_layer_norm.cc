@@ -86,6 +86,11 @@ Status EmbedLayerNorm<T>::Compute(OpKernelContext* context) const {
     std::atomic_bool failed{false};
 
     int n = batch_size * sequence_length;
+
+    // Put epsilon into local variable here to avoid the need to capture 'this' in the TryBatchParallelFor() lambda.
+    // Using the copy capture default (=) to implicitly capture 'this' is deprecated.
+    const float epsilon_value = epsilon();
+
     concurrency::ThreadPool::TryBatchParallelFor(
 #if __cplusplus >= 202002L
         context->GetOperatorThreadPool(), n, [=, this, &failed](ptrdiff_t index) {
@@ -147,7 +152,7 @@ Status EmbedLayerNorm<T>::Compute(OpKernelContext* context) const {
             y[i] = a;
             sum += a * a;
           }
-          T e = sqrt(sum / hidden_size + static_cast<T>(epsilon()));
+          T e = sqrt(sum / hidden_size + static_cast<T>(epsilon_value));
           for (int i = 0; i < hidden_size; i++) {
             y[i] = y[i] / e * gamma_data[i] + beta_data[i];
           }

@@ -116,9 +116,9 @@ struct RandomAccessStream
       ABI::Windows::Storage::Streams::IInputStream,
       ABI::Windows::Storage::Streams::IOutputStream,
       ABI::Windows::Foundation::IClosable> {
-  InspectableClass(L"WinMLTest.RandomAccessStream", BaseTrust)
+ InspectableClass(L"WinMLTest.RandomAccessStream", BaseTrust)
 
-    private : Microsoft::WRL::ComPtr<ABI::Windows::Storage::Streams::IBuffer> buffer_ = nullptr;
+   private : Microsoft::WRL::ComPtr<ABI::Windows::Storage::Streams::IBuffer> buffer_ = nullptr;
   UINT64 position_ = 0;
 
  public:
@@ -266,8 +266,8 @@ struct BufferBackedRandomAccessStreamReferenceOpenReadAsync
       Microsoft::WRL::RuntimeClassFlags<Microsoft::WRL::WinRtClassicComMix | Microsoft::WRL::InhibitRoOriginateError>,
       __FIAsyncOperation_1_Windows__CStorage__CStreams__CIRandomAccessStreamWithContentType,
       ABI::Windows::Foundation::IAsyncInfo> {
-  InspectableClass(L"WinMLTest.BufferBackedRandomAccessStreamReferenceOpenReadAsync", BaseTrust) public
-    : Microsoft::WRL::ComPtr<ABI::Windows::Storage::Streams::IRandomAccessStreamWithContentType> ras_;
+ InspectableClass(L"WinMLTest.BufferBackedRandomAccessStreamReferenceOpenReadAsync", BaseTrust) public
+   : Microsoft::WRL::ComPtr<ABI::Windows::Storage::Streams::IRandomAccessStreamWithContentType> ras_;
   Microsoft::WRL::ComPtr<ABI::Windows::Foundation::IAsyncOperationCompletedHandler<
     ABI::Windows::Storage::Streams::IRandomAccessStreamWithContentType*>>
     completed_handler_;

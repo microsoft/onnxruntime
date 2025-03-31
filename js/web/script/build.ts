@@ -27,7 +27,8 @@ const args = minimist(process.argv.slice(2));
  * --bundle-mode=node
  *   Build a single ort-web bundle for nodejs.
  */
-const BUNDLE_MODE: 'prod' | 'dev' | 'perf' | 'node' = args['bundle-mode'] || 'prod';
+const BUNDLE_MODE: 'prod' | 'dev' | 'perf' | 'node' =
+  process.env.npm_config_bundle_mode || args['bundle-mode'] || 'prod';
 
 /**
  * --debug
@@ -41,7 +42,21 @@ const BUNDLE_MODE: 'prod' | 'dev' | 'perf' | 'node' = args['bundle-mode'] || 'pr
  *  Enable debug mode. In this mode, esbuild metafile feature will be enabled. Full bundle analysis will be saved to a
  * file as JSON.
  */
-const DEBUG = args.debug; // boolean|'verbose'|'save'
+const DEBUG = process.env.npm_config_debug || args.debug; // boolean|'verbose'|'save'
+
+/**
+ * --webgpu-ep
+ * --no-webgpu-ep (default)
+ * --webgpu-ep=runtime
+ *
+ * Enable or disable the use of WebGPU EP. If enabled, the WebGPU EP will be used. If disabled, the WebGPU backend will
+ * be used with JSEP.
+ *
+ * If set to "runtime", it will be determined at runtime based on the value of `globalThis.WEBGPU_EP`.
+ *
+ * (temporary) This flag is used to test the WebGPU EP integration. It will be removed in the future.
+ */
+const USE_WEBGPU_EP = process.env.npm_config_webgpu_ep ?? args['webgpu-ep'] ?? false;
 
 /**
  * Root folder of the source code: `<ORT_ROOT>/js/`
@@ -56,7 +71,8 @@ const DEFAULT_DEFINE = {
   'BUILD_DEFS.DISABLE_JSEP': 'false',
   'BUILD_DEFS.DISABLE_WASM': 'false',
   'BUILD_DEFS.DISABLE_WASM_PROXY': 'false',
-  'BUILD_DEFS.DISABLE_DYNAMIC_IMPORT': 'false',
+  'BUILD_DEFS.ENABLE_BUNDLE_WASM_JS': 'false',
+  'BUILD_DEFS.USE_WEBGPU_EP': USE_WEBGPU_EP === 'runtime' ? 'globalThis.WEBGPU_EP' : JSON.stringify(!!USE_WEBGPU_EP),
 
   'BUILD_DEFS.IS_ESM': 'false',
   'BUILD_DEFS.ESM_IMPORT_META_URL': 'undefined',
@@ -115,53 +131,54 @@ async function minifyWasmModuleJsForBrowser(filepath: string): Promise<string> {
     const TIME_TAG = `BUILD:terserMinify:${filepath}`;
     console.time(TIME_TAG);
 
-    const contents = await fs.readFile(filepath, { encoding: 'utf-8' });
+    let contents = await fs.readFile(filepath, { encoding: 'utf-8' });
 
-    // Find the first and the only occurrence of minified function implementation of "_emscripten_thread_set_strongref":
-    // ```js
-    // _emscripten_thread_set_strongref: (thread) => {
-    //   if (ENVIRONMENT_IS_NODE) {
-    //     PThread.pthreads[thread].ref();
-    //   }
-    // }
+    // Replace the following line to create worker:
+    // ```
+    // new Worker(new URL(import.meta.url), ...
+    // ```
+    // with:
+    // ```
+    // new Worker((() => {
+    //                      const URL2 = URL;
+    //                      return import.meta.url > 'file:' && import.meta.url < 'file;'
+    //                        ? new URL2(BUILD_DEFS.BUNDLE_FILENAME, import.meta.url)
+    //                        : new URL(import.meta.url);
+    //                    })(), ...
     // ```
     //
-    // It is minified to: (example)
-    // ```js
-    // function Pb(a){D&&N[a>>>0].ref()}
-    // ```
+    // NOTE: this is a workaround for some bundlers that does not support runtime import.meta.url.
+    //
+    // Check more details in the comment of `isEsmImportMetaUrlHardcodedAsFileUri()` and `getScriptSrc()` in file `lib/wasm/wasm-utils-import.ts`.
 
-    // The following code will look for the function name and mark the function call as pure, so that Terser will
-    // minify the code correctly.
-
-    const markedAsPure = [];
-    // First, try if we are working on the original (not minified) source file. This is when we are working with the
-    // debug build.
-    const isOriginal = contents.includes('PThread.pthreads[thread].ref()');
-    if (isOriginal) {
-      markedAsPure.push('PThread.pthreads[thread].ref');
-    } else {
-      // If it is not the original source file, we need to find the minified function call.
-      const matches = [...contents.matchAll(/\{[_a-zA-Z][_a-zA-Z0-9]*&&([_a-zA-Z][_a-zA-Z0-9]*\[.+?]\.ref)\(\)}/g)];
-      if (matches.length !== 1) {
-        throw new Error(
-          `Unexpected number of matches for minified "PThread.pthreads[thread].ref()" in "${filepath}": ${
-            matches.length
-          }.`,
-        );
-      }
-      // matches[0] is the first and the only match.
-      // matches[0][0] is the full matched string and matches[0][1] is the first capturing group.
-      markedAsPure.push(matches[0][1]);
+    // First, check if there is exactly one occurrence of "new Worker(new URL(import.meta.url)".
+    const matches = [...contents.matchAll(/new Worker\(new URL\(import\.meta\.url\),/g)];
+    if (matches.length !== 1) {
+      throw new Error(
+        `Unexpected number of matches for "new Worker(new URL(import.meta.url)" in "${filepath}": ${matches.length}.`,
+      );
     }
 
+    // Replace the only occurrence.
+    contents = contents.replace(
+      /new Worker\(new URL\(import\.meta\.url\),/,
+      `new Worker((() => {
+                            const URL2 = URL;
+                            return (import.meta.url > 'file:' && import.meta.url < 'file;')
+                              ? new URL2(BUILD_DEFS.BUNDLE_FILENAME, import.meta.url)
+                              : new URL(import.meta.url);
+                         })(),`,
+    );
+
+    // Use terser to minify the code with special configurations:
+    // - use `global_defs` to define `process` and `globalThis.process` as `undefined`, so terser can tree-shake the
+    //   Node.js specific code.
     const terser = await import('terser');
     const result = await terser.minify(contents, {
       module: true,
       compress: {
         passes: 2,
         global_defs: { process: undefined, 'globalThis.process': undefined },
-        pure_funcs: markedAsPure,
       },
     });
 
@@ -265,14 +282,17 @@ async function buildOrt({
   const external = isNode
     ? ['onnxruntime-common']
     : ['node:fs/promises', 'node:fs', 'node:os', 'module', 'worker_threads'];
+  const bundleFilename = `${outputName}${isProduction ? '.min' : ''}.${format === 'esm' ? 'mjs' : 'js'}`;
   const plugins: esbuild.Plugin[] = [];
-  const defineOverride: Record<string, string> = {};
+  const defineOverride: Record<string, string> = {
+    'BUILD_DEFS.BUNDLE_FILENAME': JSON.stringify(bundleFilename),
+  };
   if (!isNode) {
     defineOverride.process = 'undefined';
     defineOverride['globalThis.process'] = 'undefined';
   }
 
-  if (define['BUILD_DEFS.DISABLE_DYNAMIC_IMPORT'] === 'true') {
+  if (define['BUILD_DEFS.ENABLE_BUNDLE_WASM_JS'] === 'true') {
     plugins.push({
       name: 'emscripten-mjs-handler',
       setup(build: esbuild.PluginBuild) {
@@ -285,7 +305,7 @@ async function buildOrt({
 
   await buildBundle({
     entryPoints: ['web/lib/index.ts'],
-    outfile: `web/dist/${outputName}${isProduction ? '.min' : ''}.${format === 'esm' ? 'mjs' : 'js'}`,
+    outfile: `web/dist/${bundleFilename}`,
     platform,
     format,
     globalName: 'ort',
@@ -585,20 +605,20 @@ async function main() {
       isProduction: true,
       outputName: 'ort.all.bundle',
       format: 'esm',
-      define: { ...DEFAULT_DEFINE, 'BUILD_DEFS.DISABLE_DYNAMIC_IMPORT': 'true' },
+      define: { ...DEFAULT_DEFINE, 'BUILD_DEFS.ENABLE_BUNDLE_WASM_JS': 'true' },
     });
 
     // ort[.min].[m]js
     await addAllWebBuildTasks({
       outputName: 'ort',
-      define: { ...DEFAULT_DEFINE, 'BUILD_DEFS.DISABLE_JSEP': 'true' },
+      define: { ...DEFAULT_DEFINE, 'BUILD_DEFS.DISABLE_WEBGL': 'true' },
     });
     // ort.bundle.min.mjs
     await buildOrt({
       isProduction: true,
       outputName: 'ort.bundle',
       format: 'esm',
-      define: { ...DEFAULT_DEFINE, 'BUILD_DEFS.DISABLE_JSEP': 'true', 'BUILD_DEFS.DISABLE_DYNAMIC_IMPORT': 'true' },
+      define: { ...DEFAULT_DEFINE, 'BUILD_DEFS.DISABLE_WEBGL': 'true', 'BUILD_DEFS.ENABLE_BUNDLE_WASM_JS': 'true' },
     });
 
     // ort.webgpu[.min].[m]js
@@ -611,12 +631,19 @@ async function main() {
       isProduction: true,
       outputName: 'ort.webgpu.bundle',
       format: 'esm',
-      define: { ...DEFAULT_DEFINE, 'BUILD_DEFS.DISABLE_WEBGL': 'true', 'BUILD_DEFS.DISABLE_DYNAMIC_IMPORT': 'true' },
+      define: { ...DEFAULT_DEFINE, 'BUILD_DEFS.DISABLE_WEBGL': 'true', 'BUILD_DEFS.ENABLE_BUNDLE_WASM_JS': 'true' },
     });
 
     // ort.wasm[.min].[m]js
     await addAllWebBuildTasks({
       outputName: 'ort.wasm',
+      define: { ...DEFAULT_DEFINE, 'BUILD_DEFS.DISABLE_JSEP': 'true', 'BUILD_DEFS.DISABLE_WEBGL': 'true' },
+    });
+    // ort.wasm.bundle.min.mjs
+    await buildOrt({
+      isProduction: true,
+      outputName: 'ort.wasm.bundle',
+      format: 'esm',
       define: { ...DEFAULT_DEFINE, 'BUILD_DEFS.DISABLE_JSEP': 'true', 'BUILD_DEFS.DISABLE_WEBGL': 'true' },
     });
     // ort.webgl[.min].[m]js

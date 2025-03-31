@@ -11,9 +11,9 @@ import io
 import logging
 import os
 from collections import OrderedDict
+from collections.abc import Mapping, Sequence
 from functools import partial
 from hashlib import md5 as hash_fn
-from typing import Mapping, Sequence
 
 import onnx
 import torch
@@ -213,8 +213,8 @@ class PostExportProcessedModelInfo:
             # Create the buffers for the inputs that are either parameters or buffers in the original module.
             # For user inputs, fill with None for now, and will be filled dynamically during the forward run.
 
-            parameter_names = {k: v for k, v in self._flattened_module.named_parameters()}
-            buffer_names = {k: v for k, v in self._flattened_module.named_buffers()}
+            parameter_names = dict(self._flattened_module.named_parameters())
+            buffer_names = dict(self._flattened_module.named_buffers())
 
             for input_name in self.onnx_graph_input_names:
                 if input_name in parameter_names:
@@ -577,12 +577,12 @@ class GraphTransitionManager:
             # Model may have unused params dropped after export, so we only check those inputs existing in onnx graph.
 
             onnx_graph_input_requires_grads = []
-            parameter_names = {k: v for k, v in flatten_module.named_parameters()}
+            parameter_names = dict(flatten_module.named_parameters())
             for input_name in exported_model_info.onnx_graph_input_names:
                 if input_name in exported_model_info.onnx_graph_input_names_user_defined:
-                    assert (
-                        input_name in model_info_for_export.onnx_graph_input_data_accessor_user_defined
-                    ), f"{input_name} model_info_for_export.onnx_graph_input_data_accessor_user_defined"
+                    assert input_name in model_info_for_export.onnx_graph_input_data_accessor_user_defined, (
+                        f"{input_name} model_info_for_export.onnx_graph_input_data_accessor_user_defined"
+                    )
                     # We assume the data accessor should be the same as the one used for the previous export, because
                     # there is args and kwargs schema check during export check phase.
                     if model_info_for_export.onnx_graph_input_data_accessor_user_defined[input_name](
@@ -736,7 +736,6 @@ class GraphTransitionManager:
         runtime_inspector: RuntimeInspector,
         logger: logging.Logger,
     ) -> tuple[onnx.ModelProto, ORTModelInputOutputSchemaType, list[str], list[str]]:
-
         # Add hooks to check the sparsity of the embedding and label inputs during the export.
         embedding_hook_handles = GraphTransitionManager._add_check_embedding_sparsity_hook(
             enable_embedding_sparse_optimizer, device, logger, runtime_inspector, flattened_module
@@ -867,8 +866,9 @@ class GraphTransitionManager:
         assert model_info_for_export.export_mode is not None, "Please use a concrete instance of ExecutionManager"
 
         try:
-            with torch.no_grad(), stage3_export_context(
-                enable_zero_stage3_support, stage3_param_handle, flattened_module
+            with (
+                torch.no_grad(),
+                stage3_export_context(enable_zero_stage3_support, stage3_param_handle, flattened_module),
             ):
                 required_export_kwargs = {
                     "input_names": model_info_for_export.onnx_graph_input_names,  # did not contains parameters as its input yet

@@ -9,13 +9,7 @@ steps:
     testRunTitle: 'Unit Test Run'
   condition: succeededOrFailed()
 
-- template: component-governance-component-detection-steps.yml
-  parameters :
-    condition : 'succeeded'
 
-- task: mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3
-  displayName: 'Clean Agent Directories'
-  condition: always()
 
 - script: |
     if which docker >/dev/null; then

@@ -133,7 +133,7 @@ struct GemmFloat8Params : tunable::OpParams {
     return MakeString(BlasOpToString(opa), BlasOpToString(opb), "_", m, "_", n, "_", k);
   }
 
-  rocblas_handle handle;
+  hipblasHandle_t handle;
   BlasOp opa;
   BlasOp opb;
   int64_t m;

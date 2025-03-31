@@ -1,0 +1,88 @@
+name: 'Locate vcvarsall and Setup Environment'
+description: 'Locates vcvarsall.bat, sets up the environment, and handles PATH updates.'
+inputs:
+  architecture:
+    description: 'Target architecture (x64 or x86)'
+    required: true
+    default: 'x64'
+outputs:
+  vcvarsall_path:
+    description: "Path to vcvarsall.bat"
+    value: ${{ steps.find-vcvarsall.outputs.vcvarsall_path }}
+runs:
+  using: "composite"
+  steps:
+    - name: Download ORT Actions Asset (v0.0.3)
+      uses: dsaltares/fetch-gh-release-asset@1.1.0 # Action to download assets
+      with:
+        repo: 'microsoft/onnxruntime-github-actions'    # The repo containing the actions
+        version: 'tags/v0.0.3'                           # The specific tag/version to use
+        file: 'onnxruntime-actions-v0.0.3.zip'           # The asset filename (matches release workflow output)
+        target: 'onnxruntime-actions.zip'                # Local filename to save as
+
+    - name: Unzip ORT Actions (Windows)
+      shell: pwsh
+      run: |
+        # Create a directory to hold them (-Force acts like -p, creates parents if needed)
+        New-Item -Path '.\.github\_downloaded_actions' -ItemType Directory -Force
+        # Unzip the archive to the target directory
+        Expand-Archive -Path '.\onnxruntime-actions.zip' -DestinationPath '.\.github\_downloaded_actions' -Force
+        Write-Host "Unzipped contents:"
+        # List the contents recursively (Windows equivalent of ls -lR)
+        Get-ChildItem -Path '.\.github\_downloaded_actions' -Recurse
+
+    - name: Setup VCPKG
+      uses: ./.github/_downloaded_actions/setup-vcpkg
+      with:
+        vcpkg-version: '2025.03.19'
+        vcpkg-hash: '17e96169cd3f266c4716fcdc1bb728e6a64f103941ece463a2834d50694eba4fb48f30135503fd466402afa139abc847ef630733c442595d1c34979f261b0114'
+
+    - name: Find vcvarsall.bat
+      id: find-vcvarsall
+      shell: python  # Use Python shell
+      run: |
+        import os
+        import subprocess
+
+        vswhere_path = os.path.join(os.environ["ProgramFiles(x86)"], "Microsoft Visual Studio", "Installer", "vswhere.exe")
+
+        try:
+            process = subprocess.run([vswhere_path, "-latest", "-property", "installationPath"], capture_output=True, text=True, check=True)
+            vs_install_path = process.stdout.strip()
+            vcvarsall_path = os.path.join(vs_install_path, "VC", "Auxiliary", "Build", "vcvarsall.bat")
+
+            if os.path.exists(vcvarsall_path):
+                print(f"vcvarsall found at: {vcvarsall_path}")
+                # Use GITHUB_OUTPUT environment variable
+                with open(os.environ['GITHUB_OUTPUT'], 'a') as f:
+                    f.write(f"vcvarsall_path={vcvarsall_path}\n")
+            else:
+                print(f"vcvarsall.bat not found at expected path: {vcvarsall_path}")
+                # Use 'exit(1)' for Python to properly signal failure to GitHub Actions
+                exit(1)
+
+
+        except subprocess.CalledProcessError as e:
+            print(f"Error running vswhere.exe: {e}")
+            print(f"vswhere output: {e.stdout}")
+            print(f"vswhere stderr: {e.stderr}")
+            exit(1) # Exit with a non-zero code on error
+        except FileNotFoundError:
+            print(f"vswhere.exe not found at: {vswhere_path}")
+            exit(1)
+
+
+    - name: Setup Environment
+      shell: cmd
+      run: |
+        REM Get initial environment variables
+        set > initial_env.txt
+
+        REM Call vcvarsall.bat using the output from the previous step
+        call "${{ steps.find-vcvarsall.outputs.vcvarsall_path }}" ${{ inputs.architecture }}
+
+        REM Get environment variables after calling vcvarsall.bat
+        set > final_env.txt
+
+        REM Call the Python script to update the GitHub Actions environment
+        python ${{ github.action_path }}\update_environment.py

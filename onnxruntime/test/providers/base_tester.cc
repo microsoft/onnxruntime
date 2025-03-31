@@ -174,7 +174,7 @@ static std::unique_ptr<SparseTensor> MakeSparseTensor(MLDataType data_type, cons
   return p_tensor;
 }
 
-void BaseTester::CopyDataToTensor(gsl::span<const gsl::byte> data, Tensor& dst) {
+void BaseTester::CopyDataToTensor(gsl::span<const std::byte> data, Tensor& dst) {
   ORT_ENFORCE(dst.SizeInBytes() >= data.size_bytes(), "Not enough space in the destination tensor");
   memcpy(dst.MutableDataRaw(), data.data(), data.size_bytes());
 }
@@ -203,7 +203,7 @@ void BaseTester::AddSparseCooTensorData(std::vector<Data>& data,
                                         MLDataType data_type,
                                         const char* name,
                                         gsl::span<const int64_t> dims,
-                                        gsl::span<const gsl::byte> values,
+                                        gsl::span<const std::byte> values,
                                         gsl::span<const int64_t> indices,
                                         const ValidateOutputParams& check_params,
                                         const std::vector<std::string>* dim_params) {
@@ -247,7 +247,7 @@ void BaseTester::AddSparseCsrTensorData(std::vector<Data>& data,
                                         MLDataType data_type,
                                         const char* name,
                                         gsl::span<const int64_t> dims,
-                                        gsl::span<const gsl::byte> values,
+                                        gsl::span<const std::byte> values,
                                         gsl::span<const int64_t> inner_indices,
                                         gsl::span<const int64_t> outer_indices,
                                         const ValidateOutputParams& check_params,
@@ -317,6 +317,11 @@ void BaseTester::ExecuteModel(Model& model, SessionType& session,
     ASSERT_EQ(expect_result, ExpectResult::kExpectFailure) << "Initialize failed but expected success: "
                                                            << status.ErrorMessage();
 
+    // No need to check expected failure string if empty string is given.
+    if (expected_failure_string.empty()) {
+      return;
+    }
+
     // Disable expected_failure_string checks for OpenVINO EP
     if (provider_type != kOpenVINOExecutionProvider) {
       EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr(expected_failure_string));
@@ -336,6 +341,11 @@ void BaseTester::ExecuteModel(Model& model, SessionType& session,
     } else {
       ASSERT_EQ(expect_result, ExpectResult::kExpectFailure) << "Run failed but expected success: "
                                                              << status.ErrorMessage();
+
+      // No need to check expected failure string if empty string is given.
+      if (expected_failure_string.empty()) {
+        return;
+      }
 
       // Disable expected_failure_string checks for MKL-DNN and OpenVINO EP's
       if (provider_type != kDnnlExecutionProvider &&
@@ -420,6 +430,7 @@ bool SetEpsForAllNodes(Graph& graph,
       continue;
 
     bool found = false;
+    const auto& logger = DefaultLoggingManager().DefaultLogger();
 
     for (const auto& ep : execution_providers) {
       auto provider_type = ep->Type();
@@ -438,7 +449,8 @@ bool SetEpsForAllNodes(Graph& graph,
       }
 
       // Check the EP has an impl for the node from builtin registry.
-      if (KernelRegistry::HasImplementationOf(*ep->GetKernelRegistry(), node, ep->Type(), kernel_type_str_resolver)) {
+      if (KernelRegistry::HasImplementationOf(*ep->GetKernelRegistry(), node, ep->Type(), kernel_type_str_resolver,
+                                              logger)) {
         found = true;
         break;
       }
@@ -451,6 +463,7 @@ bool SetEpsForAllNodes(Graph& graph,
                                                              std::string_view(kMSInternalNHWCDomain),
                                                              node.SinceVersion(),
                                                              type_constraint_map,
+                                                             logger,
                                                              &kci);
         if (status.IsOK() && kci != nullptr) {
           found = true;
@@ -463,7 +476,7 @@ bool SetEpsForAllNodes(Graph& graph,
           std::any_of(custom_registries->cbegin(), custom_registries->cend(),
                       [&](auto reg) {
                         return KernelRegistry::HasImplementationOf(*reg->GetKernelRegistry(), node, ep->Type(),
-                                                                   kernel_type_str_resolver);
+                                                                   kernel_type_str_resolver, logger);
                       })) {
         found = true;
         break;
@@ -524,7 +537,7 @@ void BaseTester::Run(ExpectResult expect_result, const std::string& expected_fai
   SessionOptions so;
   so.use_per_session_threads = false;
   so.session_logid = test_name_;
-  so.session_log_verbosity_level = 1;
+  so.session_log_verbosity_level = 0;
   so.execution_mode = execution_mode;
   so.use_deterministic_compute = use_determinism_;
   so.graph_optimization_level = TransformerLevel::Default;  // 'Default' == off
@@ -657,6 +670,7 @@ void BaseTester::RunWithConfig(size_t* number_of_pre_packed_weights_counter,
           kQnnExecutionProvider,
           kSnpeExecutionProvider,
           kXnnpackExecutionProvider,
+          kWebGpuExecutionProvider,
       };
 
       // need to special case any synthetic EP names in the exclude list
@@ -712,6 +726,8 @@ void BaseTester::RunWithConfig(size_t* number_of_pre_packed_weights_counter,
           execution_provider = DefaultXnnpackExecutionProvider();
         else if (provider_type == onnxruntime::kDmlExecutionProvider)
           execution_provider = DefaultDmlExecutionProvider();
+        else if (provider_type == onnxruntime::kWebGpuExecutionProvider)
+          execution_provider = DefaultWebGpuExecutionProvider();
 
         // skip if execution provider is disabled
         if (execution_provider == nullptr)

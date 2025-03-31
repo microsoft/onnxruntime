@@ -1,5 +1,5 @@
 #pragma once
-#include "sqnbitgemm.h"
+#include "qnbitgemm.h"
 #include "sqnbitgemm_q8_block.h"
 
 //
@@ -7,16 +7,17 @@
 //
 
 static size_t
-SQ4BitGemmPackQuantBDataSize(
+Q4BitGemmPackQuantBDataSize(
     size_t N,
     size_t K,
     size_t BlkLen,
-    MLAS_SQNBIT_GEMM_COMPUTE_TYPE ComputeType
+    bool /* HasZeroPoint */,
+    MLAS_QNBIT_GEMM_COMPUTE_TYPE ComputeType
 )
 {
     constexpr size_t BlkBitWidth = 4;
     const size_t BlockCountK = MlasDivRoundup(K, BlkLen);
-    if (ComputeType == CompInt8) {
+    if (ComputeType == SQNBIT_CompInt8) {
         size_t PackedQuantBDataSize = N * BlockCountK * MlasQNBitBlkDataSizeInBytes(BlkBitWidth, BlkLen);
         const size_t ScaleSize = N * BlockCountK * sizeof(float);
         size_t BlkSumSize = MlasDivRoundup(N, 16) * BlockCountK * 16 * sizeof(float);
@@ -39,7 +40,7 @@ SQ4BitGemmPackQuantBData(
     size_t N,
     size_t K,
     size_t BlkLen,
-    MLAS_SQNBIT_GEMM_COMPUTE_TYPE /* ComputeType*/,
+    MLAS_QNBIT_GEMM_COMPUTE_TYPE /* ComputeType*/,
     const std::byte* QuantBDataBegin,
     std::byte* PackedQuantBDataBegin,
     MLAS_THREADPOOL* ThreadPool
@@ -302,22 +303,22 @@ PackQuantBDataAndBlkSum(
     size_t SubBlkLen,
     const std::byte* QuantBDataBegin,
     const float* QuantBScaleBegin,
-    bool has_zp_input,
+    bool HasZeroPoint,
     const std::byte* QuantBZPBegin,
-    PackedQuantBDataStruct& packed_quant_b,
+    PackedQuantBDataStruct<float>& PackedQuantB,
     MLAS_THREADPOOL* ThreadPool
 )
 {
     if (QuantBDataBegin) {
-        PackQuantB(QuantBDataBegin, packed_quant_b.PackedQuantBData, ThreadPool, N, BlockCountK, BlkLen, SubBlkLen);
+        PackQuantB(QuantBDataBegin, PackedQuantB.PackedQuantBData, ThreadPool, N, BlockCountK, BlkLen, SubBlkLen);
     }
 
     if (QuantBScaleBegin) {
-        std::copy(QuantBScaleBegin, QuantBScaleBegin + N * BlockCountK, packed_quant_b.PackedQuantBScale);
+        std::copy(QuantBScaleBegin, QuantBScaleBegin + N * BlockCountK, PackedQuantB.PackedQuantBScale);
     }
 
-    if ((QuantBScaleBegin && !has_zp_input) || QuantBZPBegin) {
-        ComputePackBlkSum(BlkLen, SubBlkLen, N, packed_quant_b.PackedQuantBScale, QuantBZPBegin, packed_quant_b.QuantBBlkSum, ThreadPool, BlockCountK);
+    if ((QuantBScaleBegin && !HasZeroPoint) || QuantBZPBegin) {
+        ComputePackBlkSum(BlkLen, SubBlkLen, N, PackedQuantB.PackedQuantBScale, QuantBZPBegin, PackedQuantB.QuantBBlkSum, ThreadPool, BlockCountK);
     }
 }
 
@@ -326,18 +327,19 @@ PackQuantBDataAndBlkSum(
 //
 
 static size_t
-SQ4BitGemmPerGemmWorkspaceSize(
+Q4BitGemmPerGemmWorkspaceSize(
     size_t M,
     size_t N,
     size_t K,
     size_t BlkLen,
-    MLAS_SQNBIT_GEMM_COMPUTE_TYPE ComputeType
+    bool /* HasZeroPoint */,
+    MLAS_QNBIT_GEMM_COMPUTE_TYPE ComputeType
 )
 {
     MLAS_UNREFERENCED_PARAMETER(N);
 
     switch(ComputeType) {
-        case CompInt8: {
+        case SQNBIT_CompInt8: {
             // workspace buffer is used for block quantization of A to int8
             const size_t BlockCountK = MlasDivRoundup(K, BlkLen);
             // QuantData + Scale + BlkSum
@@ -351,15 +353,15 @@ SQ4BitGemmPerGemmWorkspaceSize(
 }
 
 static size_t
-SQ4BitGemmPerGemmWorkspaceAlignment(
+Q4BitGemmPerGemmWorkspaceAlignment(
     size_t BlkLen,
-    MLAS_SQNBIT_GEMM_COMPUTE_TYPE ComputeType
+    MLAS_QNBIT_GEMM_COMPUTE_TYPE ComputeType
 )
 {
     MLAS_UNREFERENCED_PARAMETER(BlkLen);
 
     switch (ComputeType) {
-        case CompInt8: {
+        case SQNBIT_CompInt8: {
             return Q8BlkAlignment();
         }
         default: {

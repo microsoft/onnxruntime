@@ -4,7 +4,7 @@
 
 #pragma once
 
-#include "core/platform/ort_mutex.h"
+#include <mutex>
 #include "core/providers/cann/cann_inc.h"
 #include "core/providers/cann/cann_call.h"
 #include "core/providers/cann/cann_execution_provider.h"

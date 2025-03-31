@@ -17,13 +17,14 @@ import numpy as np
 from helper import get_name
 
 import onnxruntime as onnxrt
+from onnxruntime.capi import _pybind_state as C
 from onnxruntime.capi.onnxruntime_pybind11_state import Fail, OrtValueVector, RunOptions
 
 # handle change from python 3.8 and on where loading a dll from the current directory needs to be explicitly allowed.
 if platform.system() == "Windows" and sys.version_info.major >= 3 and sys.version_info.minor >= 8:  # noqa: YTT204
     os.add_dll_directory(os.getcwd())
 
-available_providers = [provider for provider in onnxrt.get_available_providers()]
+available_providers = list(onnxrt.get_available_providers())
 
 # TVM EP doesn't support:
 # * calling Run() on different threads using the same session object
@@ -85,7 +86,7 @@ class TestInferenceSession(unittest.TestCase):
         if result != 0:
             error_str = ctypes.c_char_p()
             cuda_lib.cuGetErrorString(result, ctypes.byref(error_str))
-            print("cuDeviceGetCount failed with error code %d: %s" % (result, error_str.value.decode()))
+            print(f"cuDeviceGetCount failed with error code {result}: {error_str.value.decode()}")
             return -1
         return num_device.value
 
@@ -183,7 +184,7 @@ class TestInferenceSession(unittest.TestCase):
             so.add_session_config_entry(
                 "session.optimized_model_external_initializers_file_name", external_initializers_file
             )
-            so.add_session_config_entry("session.optimized_model_external_initializers_min_size_in_bytes", "100")
+            so.add_session_config_entry("session.optimized_model_external_initializers_min_size_in_bytes", "20")
             onnxrt.InferenceSession(get_name("model_with_orig_ext_data.onnx"), sess_options=so)
             self.assertTrue(os.path.isfile(so.optimized_model_filepath))
             self.assertTrue(os.path.isfile(os.path.join(directory, external_initializers_file)))
@@ -213,14 +214,10 @@ class TestInferenceSession(unittest.TestCase):
             "session.optimized_model_external_initializers_file_name", external_initializers_file
         )
 
-        # TODO(anyone): Set this to 100 will cause test error since some tensor below the threshold
-        # still refers to the original external data file. We shall fix this issue so that the
-        # optimized model only refers to one external data file.
-        so.add_session_config_entry("session.optimized_model_external_initializers_min_size_in_bytes", "10")
+        so.add_session_config_entry("session.optimized_model_external_initializers_min_size_in_bytes", "100")
         session1 = onnxrt.InferenceSession(get_name("model_with_orig_ext_data.onnx"), sess_options=so)
         del session1
         self.assertTrue(os.path.isfile(optimized_model_filepath))
-        self.assertTrue(os.path.isfile(external_initializers_file))
 
         so2 = onnxrt.SessionOptions()
         so2.log_severity_level = 1
@@ -240,7 +237,6 @@ class TestInferenceSession(unittest.TestCase):
 
         # Remove model 1 to make sure optimized model 2 can be loaded independently from model 1
         os.remove(optimized_model_filepath)
-        os.remove(external_initializers_file)
 
         session3 = onnxrt.InferenceSession(optimized_model_filepath_2, sess_options=onnxrt.SessionOptions())
         del session3
@@ -329,8 +325,6 @@ class TestInferenceSession(unittest.TestCase):
             self.assertEqual(option["trt_force_sequential_engine_build"], "1")
             self.assertEqual(option["user_compute_stream"], "1")
             self.assertEqual(option["has_user_compute_stream"], "1")
-
-            from onnxruntime.capi import _pybind_state as C
 
             session_options = C.get_default_session_options()
 
@@ -1389,6 +1383,15 @@ class TestInferenceSession(unittest.TestCase):
         # The constructed OrtValue should still be valid after being used in a session
         self.assertTrue(np.array_equal(ortvalue1.numpy(), numpy_arr_input))
 
+        # test ort_value creation on top of the bytes
+        float_tensor_data_type = 1  # TensorProto_DataType_FLOAT
+        ort_value_with_type = onnxrt.OrtValue.ortvalue_from_numpy_with_onnx_type(
+            numpy_arr_input, float_tensor_data_type
+        )
+        self.assertTrue(ort_value_with_type.is_tensor())
+        self.assertEqual(float_tensor_data_type, ort_value_with_type.element_type())
+        self.assertEqual([3, 2], ort_value_with_type.shape())
+
         if "CUDAExecutionProvider" in onnxrt.get_available_providers():
             ortvalue2 = onnxrt.OrtValue.ortvalue_from_numpy(numpy_arr_input, "cuda", 0)
             self.assertEqual(ortvalue2.device_name(), "cuda")
@@ -1416,6 +1419,31 @@ class TestInferenceSession(unittest.TestCase):
                 upstreams_onnxrt = {"input": ort_val}
                 outs = session.run(output_names=["output"], input_feed=upstreams_onnxrt)[0]
                 self.assertTrue(np.allclose(inps, outs))
+
+    @unittest.skipIf(not hasattr(C.OrtValue, "from_dlpack"), "dlpack not enabled in this build")
+    def test_ort_value_dlpack(self):
+        # Tests originally from orttraining/orttraining/test/python/orttraining_test_ortvalue.py testOrtValueDlPack_float32
+        numpy_arr_input = np.array([[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]], dtype=np.float32)
+        ortvalue = onnxrt.OrtValue.ortvalue_from_numpy(numpy_arr_input)
+        self.assertEqual(numpy_arr_input.shape, tuple(ortvalue.shape()))
+        ptr = ortvalue._ortvalue.data_ptr()
+
+        dlp = ortvalue._ortvalue.to_dlpack()
+        self.assertFalse(C.is_dlpack_uint8_tensor(dlp))
+        ortvalue2 = C.OrtValue.from_dlpack(dlp, False)
+        self.assertEqual(ptr, ortvalue2.data_ptr())
+        new_array = ortvalue2.numpy()
+        np.testing.assert_equal(numpy_arr_input, new_array)
+
+        dlp = ortvalue._ortvalue.__dlpack__()
+        self.assertFalse(C.is_dlpack_uint8_tensor(dlp))
+        ortvalue2 = C.OrtValue.from_dlpack(dlp, False)
+        self.assertEqual(ptr, ortvalue2.data_ptr())
+        new_array = ortvalue2.numpy()
+        np.testing.assert_equal(numpy_arr_input, new_array)
+
+        device = ortvalue._ortvalue.__dlpack_device__()
+        self.assertEqual((1, 0), device)
 
     def test_sparse_tensor_coo_format(self):
         cpu_device = onnxrt.OrtDevice.make("cpu", 0)
@@ -1690,8 +1718,6 @@ class TestInferenceSession(unittest.TestCase):
         check_failure([("a", {1: 2})], [{3: 4}])
 
     def test_register_custom_e_ps_library(self):
-        from onnxruntime.capi import _pybind_state as C
-
         available_eps = C.get_available_providers()
         # skip amd gpu build
         if "ROCMExecutionProvider" in available_eps:
@@ -1823,6 +1849,91 @@ class TestInferenceSession(unittest.TestCase):
             device0_session.run(output_names=["Plus214_Output_0"], input_feed=image)
             device1_session.run(output_names=["Plus214_Output_0"], input_feed=image)
             device0_session.run(output_names=["Plus214_Output_0"], input_feed=image)
+
+    def test_adater_export_read(self):
+        adapter_version = 1
+        model_version = 1
+        file_path = pathlib.Path(os.path.realpath(__file__)).parent
+        file_path = str(file_path / "test_adapter.onnx_adapter")
+
+        float_data_type = 1
+        int64_data_type = 7
+        val = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+        param_1 = np.array(val).astype(np.float32).reshape(5, 2)
+        param_2 = np.array(val).astype(np.int64).reshape(2, 5)
+
+        ort_val_1 = onnxrt.OrtValue.ortvalue_from_numpy_with_onnx_type(param_1, float_data_type)
+        ort_val_2 = onnxrt.OrtValue.ortvalue_from_numpy_with_onnx_type(param_2, int64_data_type)
+
+        params = {"param_1": ort_val_1, "param_2": ort_val_2}
+
+        adapter_format = onnxrt.AdapterFormat()
+        adapter_format.set_adapter_version(adapter_version)
+        adapter_format.set_model_version(model_version)
+        adapter_format.set_parameters(params)
+
+        adapter_format.export_adapter(file_path)
+
+        adapter_format_read = onnxrt.AdapterFormat.read_adapter(file_path)
+        os.remove(file_path)
+
+        self.assertEqual(adapter_version, adapter_format_read.get_adapter_version())
+        self.assertEqual(model_version, adapter_format_read.get_model_version())
+
+        actual_params = adapter_format_read.get_parameters()
+        self.assertCountEqual(params, actual_params)
+        for key, value in actual_params.items():
+            self.assertIn(key, params)
+            expected_val = params.get(key)
+            self.assertTrue(value.is_tensor())
+            self.assertEqual(expected_val.element_type(), value.element_type())
+            self.assertEqual(expected_val.shape(), value.shape())
+            np.testing.assert_allclose(expected_val.numpy(), value.numpy())
+
+    def test_run_with_adapter(self):
+        model_path = get_name("lora/two_params_lora_model.onnx")
+        file_path = os.getcwd() + "/" + get_name("lora/two_params_lora_model.onnx_adapter")
+        adapter_path = os.path.abspath(file_path)
+
+        expected_output = np.array(
+            [
+                [154.0, 176.0, 198.0, 220.0],
+                [154.0, 176.0, 198.0, 220.0],
+                [154.0, 176.0, 198.0, 220.0],
+                [154.0, 176.0, 198.0, 220.0],
+            ],
+            dtype=np.float32,
+        )
+
+        adapter = onnxrt.LoraAdapter()
+        adapter.Load(adapter_path)
+
+        run_options = onnxrt.RunOptions()
+        run_options.add_active_adapter(adapter)
+        session = onnxrt.InferenceSession(model_path)
+
+        inputs = {"input_x": np.ones((4, 4), dtype=np.float32)}
+
+        outputs = session.run(None, inputs, run_options)
+        self.assertEqual(len(outputs), 1)
+        self.assertTrue(np.allclose(outputs[0], expected_output))
+
+    def test_run_base_model(self):
+        model_path = get_name("lora/two_params_lora_model.onnx")
+
+        expected_output = np.array(
+            [[28.0, 32.0, 36.0, 40.0], [28.0, 32.0, 36.0, 40.0], [28.0, 32.0, 36.0, 40.0], [28.0, 32.0, 36.0, 40.0]],
+            dtype=np.float32,
+        )
+
+        run_options = onnxrt.RunOptions()
+        session = onnxrt.InferenceSession(model_path)
+
+        inputs = {"input_x": np.ones((4, 4), dtype=np.float32)}
+
+        outputs = session.run(None, inputs, run_options)
+        self.assertEqual(len(outputs), 1)
+        self.assertTrue(np.allclose(outputs[0], expected_output))
 
 
 if __name__ == "__main__":

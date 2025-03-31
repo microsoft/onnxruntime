@@ -4,7 +4,7 @@
 # --------------------------------------------------------------------------
 
 import os
-from typing import Callable
+from collections.abc import Callable
 
 import torch
 import torch.onnx.symbolic_helper as sym_help
@@ -608,7 +608,7 @@ def einsum_internal(g, equation, tensor_list):
     # contraction_labels = [k], contraction_axes = [2] for the example.
     batched_axes = []
     matmul_output_axes = []
-    contraction_axes = [axis for axis in range(out_size, perm_size)]
+    contraction_axes = list(range(out_size, perm_size))
     for axis in range(out_size):
         label = result_labels[axis]
         if label in lhs_labels and label in rhs_labels:

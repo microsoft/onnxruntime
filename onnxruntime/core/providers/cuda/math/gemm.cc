@@ -137,6 +137,16 @@ Status Gemm<T>::ComputeDefault(OpKernelContext* ctx, int M, int N, int K) const 
     }
   }
 
+  if (K == 0) {
+    if (beta_ == 0 || B == nullptr) {
+      // When we have (M, 0, N) then the output should be filled out with zeros
+      // unless we have a bias
+      Fill<CudaT>(Stream(ctx), reinterpret_cast<CudaT*>(Y->MutableData<T>()), CudaT(0.f),
+                  Y->Shape().Size());
+    }
+    return Status::OK();
+  }
+
   CudaT alpha = ToCudaType<T>::FromFloat(alpha_);
   CudaT beta = ToCudaType<T>::FromFloat(beta_);
   // Gemm, note that CUDA assumes col-major, so Y(N,M) = alpha * op(W) x op(X) + beta * Y

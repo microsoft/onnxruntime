@@ -30,9 +30,17 @@ ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
     KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
     ConvTranspose<float>);
 
-ONNX_CPU_OPERATOR_KERNEL(
+ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
     ConvTranspose,
     11,
+    21,
+    KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
+    ConvTranspose<float>);
+
+// Opset 22 starts to support bfloat16
+ONNX_CPU_OPERATOR_KERNEL(
+    ConvTranspose,
+    22,
     KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
     ConvTranspose<float>);
 

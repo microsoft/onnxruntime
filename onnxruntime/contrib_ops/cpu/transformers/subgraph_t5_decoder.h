@@ -45,21 +45,18 @@ class T5DecoderSubgraph : public Subgraph {
       int num_beam,
       Stream* stream,
       bool use_sequence_as_input_ids,
-      int cur_len,
       transformers::Sequences& sequences,
       int past_present_share_buffer_max_seq_len = -1,
-      bool need_cache_indir = false);
+      bool need_cache_indir = false,
+      bool use_cuda = false);
 
   Status Validate(const std::vector<const NodeArg*>& subgraph_inputs,
                   const std::vector<const NodeArg*>& subgraph_outputs) override;
 
-  void SetPastInputIndex(bool has_hidden_state) {
+  void SetPastInputIndex(bool has_hidden_state, bool has_encoder_input_ids) {
     has_hidden_state_ = has_hidden_state;
-    if (!has_hidden_state_) {
-      first_past_input_index_ = 2;
-    } else {
-      first_past_input_index_ = 3;
-    }
+    has_encoder_input_ids_ = has_encoder_input_ids;
+    first_past_input_index_ = 2 + has_hidden_state_ + has_encoder_input_ids_;
   }
 
   int GetFirstPastInputIndex() const {
@@ -74,10 +71,15 @@ class T5DecoderSubgraph : public Subgraph {
     return use_sequence_as_input_ids_;
   }
 
+  inline bool UseEncoderHiddenState() const {
+    return has_hidden_state_;
+  }
+
  protected:
   int first_past_input_index_;
   int first_present_output_index_;
   bool has_hidden_state_;
+  bool has_encoder_input_ids_;
   bool use_sequence_as_input_ids_;
 };
 

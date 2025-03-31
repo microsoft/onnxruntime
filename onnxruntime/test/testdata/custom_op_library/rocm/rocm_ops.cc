@@ -28,7 +28,7 @@ void KernelOne(const Ort::Custom::RocmContext& rocm_ctx,
   auto input_shape = X.Shape();
   CUSTOM_ENFORCE(rocm_ctx.hip_stream, "failed to fetch hip stream");
   CUSTOM_ENFORCE(rocm_ctx.miopen_handle, "failed to fetch miopen handle");
-  CUSTOM_ENFORCE(rocm_ctx.rblas_handle, "failed to fetch rocblas handle");
+  CUSTOM_ENFORCE(rocm_ctx.blas_handle, "failed to fetch rocblas handle");
   auto z_raw = Z.Allocate(input_shape);
   rocm_add(Z.NumberOfElement(), z_raw, X.Data(), Y.Data(), rocm_ctx.hip_stream);
 }

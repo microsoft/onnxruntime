@@ -324,7 +324,7 @@ Status Conv<T, NHWC>::UpdateState(OpKernelContext* context, bool bias_expected) 
 
 template <typename T, bool NHWC>
 Status Conv<T, NHWC>::ComputeInternal(OpKernelContext* context) const {
-  std::lock_guard<OrtMutex> lock(s_.mutex);
+  std::lock_guard<std::mutex> lock(s_.mutex);
   ORT_RETURN_IF_ERROR(UpdateState(context));
   if (s_.Y->Shape().Size() == 0) {
     return Status::OK();

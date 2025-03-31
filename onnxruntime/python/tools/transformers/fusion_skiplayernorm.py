@@ -59,6 +59,13 @@ class FusionSkipLayerNormalization(Fusion):
 
         if hasattr(self, "shape_infer_helper"):
             if self.shape_infer_helper is not None:
+                if (
+                    self.shape_infer_helper.get_edge_shape(add.input[0])
+                    and len(self.shape_infer_helper.get_edge_shape(add.input[0])) != 3
+                ):
+                    logger.debug("skip SkipLayerNormalization fusion since shape of input %s is not 3D", add.input[0])
+                    return
+
                 # TODO(tianleiwu): support broadcasting Skip shape (1, sequence_length, hidden_size) or (sequence_length, hidden_size)
                 if not self.shape_infer_helper.compare_shape(add.input[0], add.input[1]):
                     logger.debug(

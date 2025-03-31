@@ -91,8 +91,8 @@ class OnnxruntimeEngine
   STDMETHOD(CreateTensorValueFromExternalD3DResource)
   (ID3D12Resource* resource, const int64_t* shape, size_t count, winml::TensorKind kind, _Out_ IValue** out) override;
   STDMETHOD(CreateTensorValueFromExternalBuffer)
-  (void* data, size_t size_in_bytes, const int64_t* shape, size_t count, winml::TensorKind kind, _Out_ IValue** out
-  ) override;
+  (void* data, size_t size_in_bytes, const int64_t* shape, size_t count, winml::TensorKind kind, _Out_ IValue** out)
+    override;
   STDMETHOD(CreateStringTensorValueFromDataWithCopy)
   (const char* const* data, size_t num_elements, const int64_t* shape, size_t count, _Out_ IValue** out) override;
   STDMETHOD(CreateNullValue)

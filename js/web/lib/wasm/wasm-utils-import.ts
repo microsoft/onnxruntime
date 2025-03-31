@@ -5,30 +5,107 @@ import type { OrtWasmModule } from './wasm-types';
 import { isNode } from './wasm-utils-env';
 
 /**
- * The classic script source URL. This is not always available in non ESModule environments.
- *
- * In Node.js, this is undefined.
- */
-export const scriptSrc =
-  // if Nodejs, return undefined
-  isNode
-    ? undefined
-    : // if It's ESM, use import.meta.url
-      (BUILD_DEFS.ESM_IMPORT_META_URL ??
-      // use `document.currentScript.src` if available
-      (typeof document !== 'undefined'
-        ? (document.currentScript as HTMLScriptElement)?.src
-        : // use `self.location.href` if available
-          typeof self !== 'undefined'
-          ? self.location?.href
-          : undefined));
-
-/**
  * The origin of the current location.
  *
  * In Node.js, this is undefined.
  */
 const origin = isNode || typeof location === 'undefined' ? undefined : location.origin;
+
+/**
+ * Some bundlers (eg. Webpack) will rewrite `import.meta.url` to a file URL at compile time.
+ *
+ * This function checks if `import.meta.url` starts with `file:`, but using the `>` and `<` operators instead of
+ * `startsWith` function so that code minimizers can remove the dead code correctly.
+ *
+ * For example, if we use terser to minify the following code:
+ * ```js
+ * if ("file://hard-coded-filename".startsWith("file:")) {
+ *   console.log(1)
+ * } else {
+ *   console.log(2)
+ * }
+ *
+ * if ("file://hard-coded-filename" > "file:" && "file://hard-coded-filename" < "file;") {
+ *   console.log(3)
+ * } else {
+ *   console.log(4)
+ * }
+ * ```
+ *
+ * The minified code will be:
+ * ```js
+ * "file://hard-coded-filename".startsWith("file:")?console.log(1):console.log(2),console.log(3);
+ * ```
+ *
+ * (use Terser 5.39.0 with default options, https://try.terser.org/)
+ *
+ * @returns true if the import.meta.url is hardcoded as a file URI.
+ */
+export const isEsmImportMetaUrlHardcodedAsFileUri =
+  BUILD_DEFS.IS_ESM && BUILD_DEFS.ESM_IMPORT_META_URL! > 'file:' && BUILD_DEFS.ESM_IMPORT_META_URL! < 'file;';
+
+const getScriptSrc = (): string | undefined => {
+  // if Nodejs, return undefined
+  if (isNode) {
+    return undefined;
+  }
+  // if It's ESM, use import.meta.url
+  if (BUILD_DEFS.IS_ESM) {
+    // For ESM, if the import.meta.url is a file URL, this usually means the bundler rewrites `import.meta.url` to
+    // the file path at compile time. In this case, this file path cannot be used to determine the runtime URL.
+    //
+    // We need to use the URL constructor like this:
+    // ```js
+    // new URL('actual-bundle-name.js', import.meta.url).href
+    // ```
+    // So that bundler can preprocess the URL correctly.
+    if (isEsmImportMetaUrlHardcodedAsFileUri) {
+      // if the rewritten URL is a relative path, we need to use the origin to resolve the URL.
+
+      // The following is a workaround for Vite.
+      //
+      // Vite uses a bundler(rollup/rolldown) that does not rewrite `import.meta.url` to a file URL. So in theory, this
+      // code path should not be executed in Vite. However, the bundler does not know it and it still try to load the
+      // following pattern:
+      // - `return new URL('filename', import.meta.url).href`
+      //
+      // By replacing the pattern above with the following code, we can skip the resource loading behavior:
+      // - `const URL2 = URL; return new URL2('filename', import.meta.url).href;`
+      //
+      // And it still works in Webpack.
+      const URL2 = URL;
+      return new URL(new URL2(BUILD_DEFS.BUNDLE_FILENAME, BUILD_DEFS.ESM_IMPORT_META_URL).href, origin).href;
+    }
+
+    return BUILD_DEFS.ESM_IMPORT_META_URL;
+  }
+
+  return typeof document !== 'undefined'
+    ? (document.currentScript as HTMLScriptElement)?.src
+    : // use `self.location.href` if available
+      typeof self !== 'undefined'
+      ? self.location?.href
+      : undefined;
+};
+
+/**
+ * The classic script source URL. This is not always available in non ESModule environments.
+ *
+ * In Node.js, this is undefined.
+ */
+export const scriptSrc = getScriptSrc();
+
+/**
+ * Infer the wasm path prefix from the script source URL.
+ *
+ * @returns The inferred wasm path prefix, or undefined if the script source URL is not available or is a blob URL.
+ */
+export const inferWasmPathPrefixFromScriptSrc = (): string | undefined => {
+  if (scriptSrc && !scriptSrc.startsWith('blob:')) {
+    return scriptSrc.substring(0, scriptSrc.lastIndexOf('/') + 1);
+  }
+  return undefined;
+};
 
 /**
  * Check if the given filename with prefix is from the same origin.
@@ -132,7 +209,7 @@ export const importProxyWorker = async (): Promise<[undefined | string, Worker]>
  * This is only available in ESM and when embedding is not disabled.
  */
 const embeddedWasmModule: EmscriptenModuleFactory<OrtWasmModule> | undefined =
-  BUILD_DEFS.IS_ESM && BUILD_DEFS.DISABLE_DYNAMIC_IMPORT
+  BUILD_DEFS.IS_ESM && BUILD_DEFS.ENABLE_BUNDLE_WASM_JS
     ? // eslint-disable-next-line @typescript-eslint/no-require-imports, @typescript-eslint/no-var-requires
       require(
         !BUILD_DEFS.DISABLE_JSEP
@@ -145,7 +222,7 @@ const embeddedWasmModule: EmscriptenModuleFactory<OrtWasmModule> | undefined =
  * Import the WebAssembly module.
  *
  * This function will perform the following steps:
- * 1. If BUILD_DEFS.DISABLE_DYNAMIC_IMPORT is true, use the embedded module.
+ * 1. If the embedded module exists and no custom URL is specified, use the embedded module.
  * 2. If a preload is needed, it will preload the module and return the object URL.
  * 3. Otherwise, it will perform a dynamic import of the module.
  *
@@ -158,8 +235,8 @@ export const importWasmModule = async (
   prefixOverride: string | undefined,
   isMultiThreaded: boolean,
 ): Promise<[undefined | string, EmscriptenModuleFactory<OrtWasmModule>]> => {
-  if (BUILD_DEFS.DISABLE_DYNAMIC_IMPORT) {
-    return [undefined, embeddedWasmModule!];
+  if (!urlOverride && !prefixOverride && embeddedWasmModule && scriptSrc && isSameOrigin(scriptSrc)) {
+    return [undefined, embeddedWasmModule];
   } else {
     const wasmModuleFilename = !BUILD_DEFS.DISABLE_JSEP
       ? 'ort-wasm-simd-threaded.jsep.mjs'

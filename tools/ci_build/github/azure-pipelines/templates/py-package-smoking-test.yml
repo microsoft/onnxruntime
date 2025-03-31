@@ -9,9 +9,13 @@ parameters:
 - name: machine_pool
   type: object
 
-- name: python_arch
+- name: ep
   type: string
-  default: 'x64'
+  default: 'cpu'
+
+- name: arch
+  type: string
+  default: 'x86_64'
 
 jobs:
 - job: ${{ parameters.job_name }}
@@ -22,16 +26,14 @@ jobs:
     ${{ parameters.machine_pool }}
   strategy:
     matrix:
-      Python38:
-        PythonVersion: '3.8'
-      Python39:
-        PythonVersion: '3.9'
       Python310:
         PythonVersion: '3.10'
       Python311:
         PythonVersion: '3.11'
       Python312:
         PythonVersion: '3.12'
+      Python313:
+        PythonVersion: '3.13'
   steps:
   - checkout: none
 
@@ -39,10 +41,9 @@ jobs:
     displayName: 'Use Python'
     inputs:
       versionSpec: $(PythonVersion)
-      architecture: ${{ parameters.python_arch }}
 
   - download: build   # pipeline resource identifier.
-    artifact: 'onnxruntime'
+    artifact: 'onnxruntime-${{ parameters.arch }}-${{ parameters.ep }}'
 
   - task: Bash@3
     inputs:
@@ -53,12 +54,9 @@ jobs:
         FILE_NAME="${files[0]}"
         FILE_NAME=$(basename $FILE_NAME)
         PYTHON_PACKAGE_NAME=$(echo "$FILE_NAME" | cut -f 1 -d '-')
-        python3 -m pip install --find-links "$(Pipeline.Workspace)/build/onnxruntime" $PYTHON_PACKAGE_NAME
+        python3 -m pip install --find-links "$(Pipeline.Workspace)/build/onnxruntime-${{ parameters.arch }}-${{ parameters.ep }}" $PYTHON_PACKAGE_NAME
         python3 -m pip show $PYTHON_PACKAGE_NAME
         python3 -c "import onnxruntime as ort; print(ort.__version__)"
-      workingDirectory: $(Pipeline.Workspace)/build/onnxruntime
+      workingDirectory: $(Pipeline.Workspace)/build/onnxruntime-${{ parameters.arch }}-${{ parameters.ep }}
     displayName: Test Package Installation
 
-  - task: mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3
-    displayName: 'Clean Agent Directories'
-    condition: always()

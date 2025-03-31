@@ -67,13 +67,13 @@ if(onnxruntime_target_platform STREQUAL "ARM64EC")
         link_directories("$ENV{VCINSTALLDIR}/Tools/MSVC/$ENV{VCToolsVersion}/lib/ARM64EC")
         link_directories("$ENV{VCINSTALLDIR}/Tools/MSVC/$ENV{VCToolsVersion}/ATLMFC/lib/ARM64EC")
         link_libraries(softintrin.lib)
-        add_compile_options("/bigobj")
+        add_compile_options("$<$<NOT:$<COMPILE_LANGUAGE:ASM_MARMASM>>:/bigobj>")
     endif()
 endif()
 
 if(onnxruntime_target_platform STREQUAL "ARM64")
     if (MSVC)
-        add_compile_options("/bigobj")
+        add_compile_options("$<$<NOT:$<COMPILE_LANGUAGE:ASM_MARMASM>>:/bigobj>")
     endif()
 endif()
 
@@ -127,9 +127,9 @@ if (MSVC)
     endif()
 endif()
 
-onnxruntime_add_include_to_target(onnxruntime_common date::date ${WIL_TARGET})
+onnxruntime_add_include_to_target(onnxruntime_common date::date ${WIL_TARGET} Eigen3::Eigen)
 target_include_directories(onnxruntime_common
-    PRIVATE ${CMAKE_CURRENT_BINARY_DIR} ${ONNXRUNTIME_ROOT} ${eigen_INCLUDE_DIRS}
+    PRIVATE ${CMAKE_CURRENT_BINARY_DIR} ${ONNXRUNTIME_ROOT}
     # propagate include directories of dependencies that are part of public interface
     PUBLIC
         ${OPTIONAL_LITE_INCLUDE_DIR})

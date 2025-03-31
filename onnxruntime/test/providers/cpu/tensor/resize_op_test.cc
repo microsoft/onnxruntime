@@ -10,6 +10,13 @@
 namespace onnxruntime {
 namespace test {
 
+template <typename T>
+class ResizeOpTest : public ::testing::Test {
+};
+
+using ResizeOpTestTypes = ::testing::Types<float, MLFloat16>;
+TYPED_TEST_SUITE(ResizeOpTest, ResizeOpTestTypes);
+
 TEST(ResizeOpTest, ResizeOpLinearDownSampleTest_tf_crop_and_resize) {
   // TODO: Unskip when fixed #41968513
   if (DefaultDmlExecutionProvider().get() != nullptr) {
@@ -100,11 +107,11 @@ TEST(ResizeOpTest, NhwcResizeOpLinearDownSampleTest_tf_crop_and_resize_with_extr
                           10.0f, 10.0f, 10.0f};
 
   test.AddOutput<float>("Y", {N, static_cast<int64_t>(H * scales[1]), static_cast<int64_t>(W * scales[2]), C}, Y);
-  // CUDA: result mismatch due to not implementing NHWC support
+  // CUDA | WEBGPU: result mismatch due to not implementing NHWC support
   // TensorRT: results mismatch
   // ROCm: results mismatch
   test.Run(OpTester::ExpectResult::kExpectSuccess, "",
-           {kCudaExecutionProvider, kCudaNHWCExecutionProvider, kTensorrtExecutionProvider, kRocmExecutionProvider});
+           {kCudaExecutionProvider, kCudaNHWCExecutionProvider, kTensorrtExecutionProvider, kRocmExecutionProvider, kWebGpuExecutionProvider});
 }
 
 TEST(ResizeOpTest, NhwcResizeOpLinearDownSampleTest_tf_crop_and_resize_with_extrapolation_uint8) {
@@ -226,26 +233,26 @@ TEST(ResizeOpTest, NhwcResizeOpLinearDownSampleTest_tf_crop_and_resize_without_e
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kDmlExecutionProvider});
 }
 
-TEST(ResizeOpTest, ResizeOpLinearDownSampleTest_4DBilinear) {
+TYPED_TEST(ResizeOpTest, ResizeOpLinearDownSampleTest_4DBilinear) {
   auto run_test = [](bool scales_in_initializer) {
     OpTester test("Resize", 13);
-    std::vector<float> roi{};
+    std::vector<TypeParam> roi{};
     std::vector<float> scales{1.0f, 1.0f, 0.6f, 0.6f};
 
     test.AddAttribute("mode", "linear");
 
     constexpr int64_t N = 1, C = 1, H = 2, W = 4;
-    std::vector<float> X = {
-        1.0f, 2.0f, 3.0f, 4.0f,
-        5.0f, 6.0f, 7.0f, 8.0f};
+    std::vector<TypeParam> X = {
+        TypeParam(1.0f), TypeParam(2.0f), TypeParam(3.0f), TypeParam(4.0f),
+        TypeParam(5.0f), TypeParam(6.0f), TypeParam(7.0f), TypeParam(8.0f)};
 
-    test.AddInput<float>("X", {N, C, H, W}, X);
-    test.AddInput<float>("roi", {0}, roi);
+    test.AddInput<TypeParam>("X", {N, C, H, W}, X);
+    test.AddInput<TypeParam>("roi", {0}, roi);
     test.AddInput<float>("scales", {4}, scales, scales_in_initializer);
 
-    std::vector<float> Y = {2.66666651f, 4.3333331f};
+    std::vector<TypeParam> Y = {TypeParam(2.66666651f), TypeParam(4.3333331f)};
 
-    test.AddOutput<float>("Y", {N, C, static_cast<int64_t>(H * scales[2]), static_cast<int64_t>(W * scales[3])}, Y);
+    test.AddOutput<TypeParam>("Y", {N, C, static_cast<int64_t>(H * scales[2]), static_cast<int64_t>(W * scales[3])}, Y);
     // QNN: result diff
     // TRT: Segmentation fault in A100
     std::unordered_set<std::string> excluded_providers({kQnnExecutionProvider});
@@ -275,10 +282,10 @@ TEST(ResizeOpTest, NhwcResizeOpLinearDownSampleTest_4DBilinear) {
   std::vector<float> Y = {2.66666651f, 4.3333331f};
 
   test.AddOutput<float>("Y", {N, static_cast<int64_t>(H * scales[1]), static_cast<int64_t>(W * scales[2]), C}, Y);
-  // CUDA: result mismatch due to not implementing NHWC support
+  // CUDA | WEBGPU: result mismatch due to not implementing NHWC support
   // ROCm: results mismatch
   // TRT: Segmentation fault in A100
-  std::unordered_set<std::string> excluded_providers({kCudaExecutionProvider, kCudaNHWCExecutionProvider, kRocmExecutionProvider});
+  std::unordered_set<std::string> excluded_providers({kCudaExecutionProvider, kCudaNHWCExecutionProvider, kRocmExecutionProvider, kWebGpuExecutionProvider});
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", ExcludeTrtOnA100(excluded_providers));
 }
 
@@ -2027,6 +2034,8 @@ void TestAntialiasing(std::map<std::string, std::string> attributes,
   excluded_eps.insert(kTensorrtExecutionProvider);
   // Test is flaky on kCudaNHWCExecutionProvider
   excluded_eps.insert(kCudaNHWCExecutionProvider);
+  // Not implementing Antialias support on kWebGpuExecutionProvider
+  excluded_eps.insert(kWebGpuExecutionProvider);
 
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", excluded_eps);
 }
@@ -2466,7 +2475,7 @@ TEST(ResizeOpTest, Antialias_Large_half_pixel) {
   // DML implementation is equivalent to resize with variable input window size while ORT using a convolution approach.
   // Absolute error is for ORT CPU.
   test.AddOutput<float>("Y", output_shape, Y, false, /*rel_error*/ 0.0f, /*abs_error*/ 0.12f);
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kQnnExecutionProvider});
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kQnnExecutionProvider, kWebGpuExecutionProvider});
 }
 
 // Test without anti-aliasing for better comparison with DirectML

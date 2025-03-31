@@ -23,7 +23,7 @@ import org.junit.jupiter.api.condition.EnabledIfSystemProperty;
 @EnabledIfSystemProperty(named = "ENABLE_TRAINING_APIS", matches = "1")
 public class TrainingTest {
 
-  private static final OrtEnvironment env = OrtEnvironment.getEnvironment();
+  private static final OrtEnvironment env = TestHelpers.getOrtEnvironment();
 
   @Test
   public void testLoadCheckpoint() throws OrtException {

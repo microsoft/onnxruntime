@@ -9,7 +9,7 @@
 #include "test/optimizer/qdq_test_utils.h"
 #include "test/providers/qnn/qnn_test_utils.h"
 
-#include "onnx/onnx_pb.h"
+#include "core/graph/onnx_protobuf.h"
 
 #include "gtest/gtest.h"
 
@@ -49,13 +49,17 @@ static GetTestModelFn BuildCastTestCase(const std::vector<int64_t>& shape,
 template <typename InputType>
 static void RunCastOpTest(const std::vector<int64_t>& shape, ONNX_NAMESPACE::TensorProto_DataType dst_type,
                           ExpectedEPNodeAssignment expected_ep_assignment,
-                          bool use_htp) {
+                          bool use_htp,
+                          bool enable_fp16_precision = true) {
   ProviderOptions provider_options;
-#if defined(_WIN32)
-  provider_options["backend_path"] = use_htp ? "QnnHtp.dll" : "QnnCpu.dll";
-#else
-  provider_options["backend_path"] = use_htp ? "libQnnHtp.so" : "libQnnCpu.so";
-#endif
+  provider_options["backend_type"] = use_htp ? "htp" : "cpu";
+  provider_options["offload_graph_io_quantization"] = "0";
+
+  if (use_htp && enable_fp16_precision) {
+    provider_options["enable_htp_fp16_precision"] = "1";
+  } else {
+    provider_options["enable_htp_fp16_precision"] = "0";
+  }
 
   RunQnnModelTest(BuildCastTestCase<InputType>(shape, dst_type),
                   provider_options,
@@ -93,19 +97,19 @@ TEST_F(QnnCPUBackendTests, TestCastFloatToInt32) {
 // Cast int32_t to float on HTP
 TEST_F(QnnHTPBackendTests, TestCastInt32ToFloatHTP) {
   RunCastOpTest<int32_t>({3, 3}, ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT, ExpectedEPNodeAssignment::All,
-                         true);
+                         true, false);
 }
 
 // Cast uint8_t to float on HTP
 TEST_F(QnnHTPBackendTests, TestCastUInt8ToFloatHTP) {
   RunCastOpTest<uint8_t>({3, 3}, ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT, ExpectedEPNodeAssignment::All,
-                         true);
+                         true, false);
 }
 
 // Cast float to int32_t on HTP
 TEST_F(QnnHTPBackendTests, TestCastFloatToInt32HTP) {
   RunCastOpTest<float>({3, 3}, ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT32, ExpectedEPNodeAssignment::All,
-                       true);
+                       true, false);
 }
 
 // Cast int64_t to int32_t on HTP

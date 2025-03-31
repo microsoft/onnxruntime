@@ -11,7 +11,9 @@ stages:
     workspace:
       clean: all
     pool:
-      vmImage: 'macOS-13'
+      name: 'Azure Pipelines'
+      image: 'macOS-14'
+      os: 'macOS'
 
     variables:
     - name: OnnxRuntimeBuildDirectory
@@ -50,9 +52,5 @@ stages:
           DisableContribOps: $(DisableContribOps)
           DisableMlOps: $(DisableMlOps)
           IsReleaseBuild: $(IsReleaseBuild)
-
-    - template: ../../templates/component-governance-component-detection-steps.yml
-      parameters :
-        condition : 'always'
 
     - template: ../../templates/clean-agent-build-directory-step.yml

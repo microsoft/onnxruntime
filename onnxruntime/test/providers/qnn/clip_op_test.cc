@@ -8,7 +8,7 @@
 #include "test/providers/qnn/qnn_test_utils.h"
 #include "core/graph/node_attr_utils.h"
 
-#include "onnx/onnx_pb.h"
+#include "core/graph/onnx_protobuf.h"
 #include "gtest/gtest.h"
 
 namespace onnxruntime {
@@ -21,14 +21,16 @@ static void RunClipTest(const TestInputDef<DataType>& input_def,
                         const std::vector<TestInputDef<DataType>>& min_max_defs,
                         ExpectedEPNodeAssignment expected_ep_assignment,
                         bool on_cpu_backend = true,
-                        int opset = 13) {
+                        int opset = 13,
+                        bool enable_fp16_precision = true) {
   ProviderOptions provider_options;
+  provider_options["backend_type"] = on_cpu_backend ? "cpu" : "htp";
 
-#if defined(_WIN32)
-  provider_options["backend_path"] = on_cpu_backend ? "QnnCpu.dll" : "QnnHtp.dll";
-#else
-  provider_options["backend_path"] = on_cpu_backend ? "libQnnCpu.so" : "libQnnHtp.so";
-#endif
+  if (!on_cpu_backend && enable_fp16_precision) {
+    provider_options["enable_htp_fp16_precision"] = "1";
+  } else {
+    provider_options["enable_htp_fp16_precision"] = "0";
+  }
 
   RunQnnModelTest(BuildOpTestCase<DataType, DataType>("Clip", {input_def}, min_max_defs, {}),
                   provider_options,
@@ -80,7 +82,9 @@ TEST_F(QnnHTPBackendTests, Clip_f32) {
                      {TestInputDef<float>({}, true, {-5.0f}),
                       TestInputDef<float>({}, true, {5.0f})},
                      ExpectedEPNodeAssignment::All,
-                     on_cpu_backend);
+                     on_cpu_backend,
+                     13,
+                     false);
 }
 
 // Test Clip with int32 on HTP
@@ -102,12 +106,8 @@ static void RunQDQClipTestOnHTP(const TestInputDef<float>& input_def,
                                 int opset = 13,
                                 bool use_contrib_qdq = false) {
   ProviderOptions provider_options;
-
-#if defined(_WIN32)
-  provider_options["backend_path"] = "QnnHtp.dll";
-#else
-  provider_options["backend_path"] = "libQnnHtp.so";
-#endif
+  provider_options["backend_type"] = "htp";
+  provider_options["offload_graph_io_quantization"] = "0";
 
   auto f32_model_builder = BuildOpTestCase<float, float>("Clip", {input_def}, {min_max_defs}, {});
   auto qdq_model_builder = BuildQDQOpTestCase<QType, float>("Clip", {input_def}, {min_max_defs}, {},
@@ -190,12 +190,8 @@ TEST_F(QnnHTPBackendTests, Clip_U8_Rank5) {
   };
 
   ProviderOptions provider_options;
-
-#if defined(_WIN32)
-  provider_options["backend_path"] = "QnnHtp.dll";
-#else
-  provider_options["backend_path"] = "libQnnHtp.so";
-#endif
+  provider_options["backend_type"] = "htp";
+  provider_options["offload_graph_io_quantization"] = "0";
 
   RunQnnModelTest(model_fn,
                   provider_options,
@@ -206,12 +202,7 @@ TEST_F(QnnHTPBackendTests, Clip_U8_Rank5) {
 // Test FP16 Clip with min (FP16)
 TEST_F(QnnHTPBackendTests, Clip_FP16) {
   ProviderOptions provider_options;
-
-#if defined(_WIN32)
-  provider_options["backend_path"] = "QnnHtp.dll";
-#else
-  provider_options["backend_path"] = "libQnnHtp.so";
-#endif
+  provider_options["backend_type"] = "htp";
 
   auto f32_input = TestInputDef<float>({1, 3, 2, 2}, false,
                                        {-10.0f, -8.0f, -3.5f, 2.2f,

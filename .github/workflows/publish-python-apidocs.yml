@@ -9,7 +9,7 @@ on:
       - onnxruntime/python/**
       - docs/python/**
   schedule:
-    - cron: '0 0 1 * *'
+    - cron: '0 0 1,15 * *'
   workflow_dispatch:
 
 concurrency:
@@ -22,7 +22,7 @@ permissions:
 jobs:
   build:
     name: Generate Python API docs
-    runs-on: ubuntu-latest
+    runs-on: ["self-hosted", "1ES.Pool=onnxruntime-github-Ubuntu2204-AMD-CPU"]
     steps:
       - uses: actions/checkout@v4
       - name: Install tools
@@ -32,10 +32,10 @@ jobs:
           sudo apt-get install graphviz
       - name: Install dependencies
         run: |
-          python3 -m pip install --upgrade pip
+          python3 -m pip install --user --upgrade pip
           cd docs/python
-          python3 -m pip install -r requirements.txt
-          python3 -m pip install --pre onnxruntime-training -f https://download.onnxruntime.ai/onnxruntime_nightly_cpu.html
+          python3 -m pip install --user -r requirements.txt
+          python3 -m pip install --user --pre onnxruntime-training -f https://download.onnxruntime.ai/onnxruntime_nightly_cpu.html
           python3 -m pip list
       - name: Generate Python docs with Sphinx
         run: |

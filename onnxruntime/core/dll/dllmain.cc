@@ -13,7 +13,7 @@
 #pragma GCC diagnostic pop
 #endif
 
-// dllmain.cpp : Defines the entry point for the DLL application.
+// dllmain.cc : Defines the entry point for the DLL application.
 BOOL APIENTRY DllMain(HMODULE /*hModule*/,
                       DWORD ul_reason_for_call,
                       LPVOID /*lpReserved*/

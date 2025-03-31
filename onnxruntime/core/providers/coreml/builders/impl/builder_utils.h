@@ -41,13 +41,15 @@ Status CreateCoreMLWeight(CoreML::Specification::WeightParams& weight, const ONN
 // Copy the float array to a coreml weight
 void CreateCoreMLWeight(CoreML::Specification::WeightParams& weight, gsl::span<const float> data);
 
+// Copy the MLFloat16 array to a coreml weight
+void CreateCoreMLWeight(CoreML::Specification::WeightParams& weight, gsl::span<const MLFloat16> data);
+
 // Copy the int32_t array to a coreml weight
 void CreateCoreMLWeight(CoreML::Specification::WeightParams& weight, gsl::span<const int32_t> data);
 
 // Copy the int64_t array to a coreml weight
 void CreateCoreMLWeight(CoreML::Specification::WeightParams& weight, gsl::span<const int64_t> data);
 
-#if defined(COREML_ENABLE_MLPROGRAM)
 //
 // MLProgram utils
 //
@@ -171,6 +173,5 @@ void AddOperationOutput(COREML_SPEC::MILSpec::Operation& op, const NodeArg& outp
 /// <param name="num_spatial_dims">Number of spatial dims in input. Generally rank - 2 (ignore N and C dims).</param>
 void AddPadTypeAndPads(COREML_SPEC::MILSpec::Operation& op, ModelBuilder& model_builder, std::string_view op_type,
                        const NodeAttrHelper& helper, int num_spatial_dims);
-#endif  // defined(COREML_ENABLE_MLPROGRAM)
 }  // namespace coreml
 }  // namespace onnxruntime

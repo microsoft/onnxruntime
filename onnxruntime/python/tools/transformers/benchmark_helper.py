@@ -16,7 +16,7 @@ from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
 from enum import Enum
 from time import sleep
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 import coloredlogs
 import numpy
@@ -88,61 +88,62 @@ def create_onnxruntime_session(
     enable_mlas_gemm_fastmath_arm64_bfloat16=False,
     provider_options={},  # map execution provider name to its option  # noqa: B006
 ):
+    sess_options = onnxruntime.SessionOptions()
+
+    if enable_all_optimization:
+        sess_options.graph_optimization_level = onnxruntime.GraphOptimizationLevel.ORT_ENABLE_ALL
+    else:
+        sess_options.graph_optimization_level = onnxruntime.GraphOptimizationLevel.ORT_ENABLE_BASIC
+
+    if enable_profiling:
+        sess_options.enable_profiling = True
+
+    if num_threads > 0:
+        sess_options.intra_op_num_threads = num_threads
+        logger.debug(f"Session option: intra_op_num_threads={sess_options.intra_op_num_threads}")
+
+    if verbose:
+        sess_options.log_severity_level = 0
+    else:
+        sess_options.log_severity_level = 4
+
+    if provider in onnxruntime.get_available_providers():
+        providers = [provider]
+    elif use_gpu:
+        if provider == "dml":
+            providers = ["DmlExecutionProvider", "CPUExecutionProvider"]
+        elif provider == "rocm":
+            providers = ["ROCMExecutionProvider", "CPUExecutionProvider"]
+        elif provider == "migraphx":
+            providers = [
+                "MIGraphXExecutionProvider",
+                "ROCMExecutionProvider",
+                "CPUExecutionProvider",
+            ]
+        elif provider == "cuda" or provider is None:
+            providers = ["CUDAExecutionProvider", "CPUExecutionProvider"]
+        elif provider == "tensorrt":
+            providers = [
+                "TensorrtExecutionProvider",
+                "CUDAExecutionProvider",
+                "CPUExecutionProvider",
+            ]
+        else:
+            raise RuntimeError(f"The execution provider is not supported: {provider}")
+    else:
+        providers = ["CPUExecutionProvider"]
+
+    if provider_options:
+        providers = [(name, provider_options[name]) if name in provider_options else name for name in providers]
+
+    if enable_mlas_gemm_fastmath_arm64_bfloat16:
+        sess_options.add_session_config_entry("mlas.enable_gemm_fastmath_arm64_bfloat16", "1")
+
     session = None
     try:
-        sess_options = onnxruntime.SessionOptions()
-
-        if enable_all_optimization:
-            sess_options.graph_optimization_level = onnxruntime.GraphOptimizationLevel.ORT_ENABLE_ALL
-        else:
-            sess_options.graph_optimization_level = onnxruntime.GraphOptimizationLevel.ORT_ENABLE_BASIC
-
-        if enable_profiling:
-            sess_options.enable_profiling = True
-
-        if num_threads > 0:
-            sess_options.intra_op_num_threads = num_threads
-            logger.debug(f"Session option: intra_op_num_threads={sess_options.intra_op_num_threads}")
-
-        if verbose:
-            sess_options.log_severity_level = 0
-        else:
-            sess_options.log_severity_level = 4
-
-        logger.debug(f"Create session for onnx model: {onnx_model_path}")
-        if use_gpu:
-            if provider == "dml":
-                providers = ["DmlExecutionProvider", "CPUExecutionProvider"]
-            elif provider == "rocm":
-                providers = ["ROCMExecutionProvider", "CPUExecutionProvider"]
-            elif provider == "migraphx":
-                providers = [
-                    "MIGraphXExecutionProvider",
-                    "ROCMExecutionProvider",
-                    "CPUExecutionProvider",
-                ]
-            elif provider == "cuda":
-                providers = ["CUDAExecutionProvider", "CPUExecutionProvider"]
-            elif provider == "tensorrt":
-                providers = [
-                    "TensorrtExecutionProvider",
-                    "CUDAExecutionProvider",
-                    "CPUExecutionProvider",
-                ]
-            else:
-                providers = ["CUDAExecutionProvider", "CPUExecutionProvider"]
-        else:
-            providers = ["CPUExecutionProvider"]
-
-        if provider_options:
-            providers = [(name, provider_options[name]) if name in provider_options else name for name in providers]
-
-        if enable_mlas_gemm_fastmath_arm64_bfloat16:
-            sess_options.add_session_config_entry("mlas.enable_gemm_fastmath_arm64_bfloat16", "1")
-
         session = onnxruntime.InferenceSession(onnx_model_path, sess_options, providers=providers)
     except Exception:
-        logger.error("Exception", exc_info=True)  # noqa: G201
+        logger.exception(f"Failed to create session for {onnx_model_path} with providers={providers}")
 
     return session
 
@@ -167,9 +168,9 @@ def prepare_environment(cache_dir, output_dir, use_gpu, provider=None):
 
     if use_gpu:
         if provider == "dml":
-            assert (
-                "DmlExecutionProvider" in onnxruntime.get_available_providers()
-            ), "Please install onnxruntime-directml package to test GPU inference."
+            assert "DmlExecutionProvider" in onnxruntime.get_available_providers(), (
+                "Please install onnxruntime-directml package to test GPU inference."
+            )
 
         else:
             assert not set(onnxruntime.get_available_providers()).isdisjoint(
@@ -405,7 +406,7 @@ def set_random_seed(seed=123):
     # torch.backends.cudnn.deterministic = True
 
 
-def get_gpu_info() -> Optional[List[Dict[str, Any]]]:
+def get_gpu_info() -> list[dict[str, Any]] | None:
     from py3nvml.py3nvml import (
         NVMLError,
         nvmlDeviceGetCount,
@@ -459,7 +460,7 @@ class MemoryMonitor(ABC):
         return max_usage
 
     @abstractmethod
-    def measure_gpu_usage(self) -> Optional[List[Dict[str, Any]]]:
+    def measure_gpu_usage(self) -> list[dict[str, Any]] | None:
         raise NotImplementedError()
 
 
@@ -467,7 +468,7 @@ class CudaMemoryMonitor(MemoryMonitor):
     def __init__(self, keep_measuring=True):
         super().__init__(keep_measuring)
 
-    def measure_gpu_usage(self) -> Optional[List[Dict[str, Any]]]:
+    def measure_gpu_usage(self) -> list[dict[str, Any]] | None:
         from py3nvml.py3nvml import (
             NVMLError,
             nvmlDeviceGetCount,

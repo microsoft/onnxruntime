@@ -987,6 +987,32 @@ TEST(CApiTest, SparseTensorFillSparseTensorFormatAPI) {
   }
 }
 
+TEST(CApi, TestResize) {
+  std::vector<Ort::Value> values;
+  values.resize(10);
+
+  std::vector<Ort::Status> sts;
+  sts.resize(5);
+
+  std::vector<Ort::CustomOpDomain> domains;
+  domains.resize(5);
+
+  std::vector<Ort::TensorTypeAndShapeInfo> type_and_shape;
+  type_and_shape.resize(5);
+
+  std::vector<Ort::SequenceTypeInfo> seq_type_info;
+  seq_type_info.resize(5);
+
+  std::vector<Ort::MapTypeInfo> map_type_info;
+  map_type_info.resize(5);
+
+  std::vector<Ort::TypeInfo> type_info;
+  type_info.resize(5);
+
+  std::vector<Ort::OpAttr> op_attr;
+  op_attr.resize(5);
+}
+
 TEST(CApiTest, SparseTensorFillSparseFormatStringsAPI) {
   auto allocator = Ort::AllocatorWithDefaultOptions();
   Ort::MemoryInfo info("Cpu", OrtDeviceAllocator, 0, OrtMemTypeDefault);

@@ -43,14 +43,12 @@ static const char* const kOrtRunOptionsConfigQnnPerfModePostRun = "qnn.htp_perf_
 // Set RPC control latency for QNN HTP backend
 static const char* const kOrtRunOptionsConfigQnnRpcControlLatency = "qnn.rpc_control_latency";
 
+// Set QNN Lora Config File for apply Lora in QNN context binary
+static const char* const kOrtRunOptionsConfigQnnLoraConfig = "qnn.lora_config";
+
 // Set graph annotation id for CUDA EP. Use with enable_cuda_graph=true.
 // The value should be an integer. If the value is not set, the default value is 0 and
 // ORT session only captures one cuda graph before another capture is requested.
 // If the value is set to -1, cuda graph capture/replay is disabled in that run.
 // User are not expected to set the value to 0 as it is reserved for internal use.
 static const char* const kOrtRunOptionsConfigCudaGraphAnnotation = "gpu_graph_id";
-
-// Specify the type of workload for this run.
-// “Default”: OS determines the scheduling priority and processor performance to service this workload. [Default]
-// “Efficient”: OS treats this workload is efficiency oriented with low scheduling priority and efficient processor performance.
-static const char* const kOrtRunOptionsWorkloadType = "run.workload_type";

@@ -126,8 +126,8 @@ TEST(QuantizeLinearMatmulOpTest, QLinearMatMul3D_S8S8) {
 }
 
 TEST(QuantizeLinearMatmulOpTest, QLinearMatMul2D_U8U8) {
-  auto run_test = [](bool only_t1_not_initializer) {
-    OpTester test("QLinearMatMul", 10);
+  auto run_test = [](bool only_t1_not_initializer, int opset_version) {
+    OpTester test("QLinearMatMul", opset_version);
     test.AddInput<uint8_t>("T1", {2, 4},
                            {208, 236, 0, 238,
                             3, 214, 255, 29});
@@ -155,10 +155,12 @@ TEST(QuantizeLinearMatmulOpTest, QLinearMatMul2D_U8U8) {
     test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kOpenVINOExecutionProvider});
   };
 
-  run_test(false);
+  run_test(false, 10);
+  run_test(false, 21);
 
   // NNAPI will require all inputs except T1 to be initializers
-  run_test(true);
+  run_test(true, 10);
+  run_test(true, 21);
 }
 
 TEST(QuantizeLinearMatmulOpTest, QLinearMatMul2D_U8S8) {
@@ -197,8 +199,8 @@ TEST(QuantizeLinearMatmulOpTest, QLinearMatMul2D_U8S8) {
 }
 
 TEST(QuantizeLinearMatmulOpTest, QLinearMatMul2D_S8S8) {
-  auto run_test = [](bool only_t1_not_initializer) {
-    OpTester test("QLinearMatMul", 10);
+  auto run_test = [](bool only_t1_not_initializer, int opset_version) {
+    OpTester test("QLinearMatMul", opset_version);
     test.AddInput<int8_t>("T1", {2, 4},
                           {80, -2, -128, 110,
                            -125, 86, 127, -99});
@@ -225,10 +227,12 @@ TEST(QuantizeLinearMatmulOpTest, QLinearMatMul2D_S8S8) {
     test.Run();
   };
 
-  run_test(false);
+  run_test(false, 10);
+  run_test(false, 21);
 
   // NNAPI will require all inputs except T1 to be initializers
-  run_test(true);
+  run_test(true, 10);
+  run_test(true, 21);
 }
 
 static void QLinearMatMul2DTest(bool only_t1_not_initializer) {

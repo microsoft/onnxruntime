@@ -7,7 +7,7 @@
 #include "core/providers/custom_op_context.h"
 #include <hip/hip_runtime.h>
 #include <miopen/miopen.h>
-#include <rocblas/rocblas.h>
+#include <hipblas/hipblas.h>
 
 namespace Ort {
 
@@ -16,7 +16,7 @@ namespace Custom {
 struct RocmContext : public CustomOpContext {
   hipStream_t hip_stream = {};
   miopenHandle_t miopen_handle = {};
-  rocblas_handle rblas_handle = {};
+  hipblasHandle_t blas_handle = {};
 
   void Init(const OrtKernelContext& kernel_ctx) {
     const auto& ort_api = Ort::GetApi();
@@ -40,11 +40,11 @@ struct RocmContext : public CustomOpContext {
 
     resource = {};
     status = ort_api.KernelContext_GetResource(
-        &kernel_ctx, ORT_ROCM_RESOURCE_VERSION, RocmResource::rocblas_handle_t, &resource);
+        &kernel_ctx, ORT_ROCM_RESOURCE_VERSION, RocmResource::hipblas_handle_t, &resource);
     if (status) {
-      ORT_CXX_API_THROW("failed to fetch rocblas handle", OrtErrorCode::ORT_RUNTIME_EXCEPTION);
+      ORT_CXX_API_THROW("failed to fetch hipblas handle", OrtErrorCode::ORT_RUNTIME_EXCEPTION);
     }
-    rblas_handle = reinterpret_cast<rocblas_handle>(resource);
+    blas_handle = reinterpret_cast<hipblasHandle_t>(resource);
   }
 };
 

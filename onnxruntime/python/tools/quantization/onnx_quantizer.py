@@ -942,7 +942,7 @@ class ONNXQuantizer(BaseQuantizer):
                 self.model.model.producer_name == "onnx-quantizer" and scale_init is not None
             ):
                 # axis is not specified so scale_init must be a scalar.
-                assert onnx.numpy_helper.to_array(scale_init).size == 1
+                assert scale_init is None or onnx.numpy_helper.to_array(scale_init).size == 1
 
             dqlinear_name = value_name + "_DequantizeLinear"
             dqlinear_node = self.model.find_node_by_name(dqlinear_name, self.new_nodes, self.model.graph())

@@ -2,12 +2,17 @@
 // Licensed under the MIT License.
 
 #include "allocator_adapters.h"
+#include "core/framework/error_code_helper.h"
 #include "core/session/inference_session.h"
 #include "core/session/ort_env.h"
 #include "core/session/ort_apis.h"
-#include "core/framework/error_code_helper.h"
 
 namespace onnxruntime {
+
+namespace {
+constexpr uint32_t kOrtAllocatorReserveMinVersion = 18;
+}  // namespace
+
 OrtAllocatorImplWrappingIAllocator::OrtAllocatorImplWrappingIAllocator(onnxruntime::AllocatorPtr&& i_allocator)
     : i_allocator_(std::move(i_allocator)) {
   OrtAllocator::version = ORT_API_VERSION;
@@ -17,7 +22,7 @@ OrtAllocatorImplWrappingIAllocator::OrtAllocatorImplWrappingIAllocator(onnxrunti
       [](OrtAllocator* this_, void* p) { static_cast<OrtAllocatorImplWrappingIAllocator*>(this_)->Free(p); };
   OrtAllocator::Info =
       [](const OrtAllocator* this_) { return static_cast<const OrtAllocatorImplWrappingIAllocator*>(this_)->Info(); };
-  if (OrtAllocator::version >= 18) {
+  if (OrtAllocator::version >= kOrtAllocatorReserveMinVersion) {
     OrtAllocator::Reserve =
         [](OrtAllocator* this_, size_t size) { return static_cast<OrtAllocatorImplWrappingIAllocator*>(this_)->Reserve(size); };
   }
@@ -51,7 +56,7 @@ void* IAllocatorImplWrappingOrtAllocator::Alloc(size_t size) {
 }
 
 void* IAllocatorImplWrappingOrtAllocator::Reserve(size_t size) {
-  if (ort_allocator_->version >= 18 && ort_allocator_->Reserve) {
+  if (ort_allocator_->version >= kOrtAllocatorReserveMinVersion && ort_allocator_->Reserve) {
     return ort_allocator_->Reserve(ort_allocator_, size);
   }
 

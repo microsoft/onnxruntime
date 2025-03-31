@@ -37,13 +37,15 @@ LearningModelSession::LearningModelSession(_winml::IEngine* engine)
 }
 
 LearningModelSession::LearningModelSession(winml::LearningModel const& model) try
-  : LearningModelSession(model, make<LearningModelDevice>(LearningModelDeviceKind::Default)) {}
+  : LearningModelSession(model, make<LearningModelDevice>(LearningModelDeviceKind::Default)) {
+}
 WINML_CATCH_ALL
 
 LearningModelSession::LearningModelSession(
   winml::LearningModel const& model, winml::LearningModelDevice const& deviceToRunOn
 ) try
-  : LearningModelSession(model, deviceToRunOn, nullptr) {}
+  : LearningModelSession(model, deviceToRunOn, nullptr) {
+}
 WINML_CATCH_ALL
 
 LearningModelSession::LearningModelSession(

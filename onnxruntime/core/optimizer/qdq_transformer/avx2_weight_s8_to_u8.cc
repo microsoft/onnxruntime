@@ -36,7 +36,7 @@ static inline bool MatchesOpSinceVersion(
   return std::find(versions.begin(), versions.end(), node.SinceVersion()) != versions.end();
 }
 
-static bool TryConvertDynamicQuantizeLSTM(Node& op_node, Graph& graph) {
+static bool TryConvertDynamicQuantizeLSTM(Node& op_node, Graph& graph, const logging::Logger& logger) {
   constexpr size_t w_idx = 1;
   constexpr size_t w_zp_idx = 9;
   constexpr size_t r_idx = 2;
@@ -60,7 +60,7 @@ static bool TryConvertDynamicQuantizeLSTM(Node& op_node, Graph& graph) {
   if (!graph_utils::NodeArgIsConstant(graph, *input_defs[r_idx]) ||
       !graph.GetInitializedTensor(input_defs[r_idx]->Name(), r_tensor_proto) ||
       r_tensor_proto->data_type() != ONNX_NAMESPACE::TensorProto_DataType_INT8) {
-    LOGS_DEFAULT(WARNING) << "Unable transforming DynamicQuantizeLSTM operator,"
+    LOGS(logger, WARNING) << "Unable transforming DynamicQuantizeLSTM operator,"
                           << " cannot locate recurrence tensor of const int8 type,"
                           << " int8 overflow might impact precision !";
     return false;
@@ -86,7 +86,7 @@ static bool TryConvertDynamicQuantizeLSTM(Node& op_node, Graph& graph) {
     if (!graph_utils::NodeArgIsConstant(graph, *input_defs[r_zp_idx]) ||
         !graph.GetInitializedTensor(input_defs[r_zp_idx]->Name(), r_zp_tensor_proto) ||
         r_zp_tensor_proto->data_type() != ONNX_NAMESPACE::TensorProto_DataType_INT8) {
-      LOGS_DEFAULT(WARNING) << "Unable transforming DynamicQuantizeLSTM operator,"
+      LOGS(logger, WARNING) << "Unable transforming DynamicQuantizeLSTM operator,"
                             << " unable to locate recurrence tensor or its zero point value,"
                             << " int8 overflow might impact precision !";
       return false;
@@ -171,7 +171,7 @@ Status Avx2WeightS8ToU8Transformer::ApplyImpl(Graph& graph, bool& modified, int 
     if (graph_utils::IsSupportedOptypeVersionAndDomain(
             op_node, "DynamicQuantizeLSTM", {1}, kMSDomain)) {
       // This one has two set of quantized arguments
-      modified |= TryConvertDynamicQuantizeLSTM(op_node, graph);
+      modified |= TryConvertDynamicQuantizeLSTM(op_node, graph, logger);
       continue;  // go on to next operator node
     }
 

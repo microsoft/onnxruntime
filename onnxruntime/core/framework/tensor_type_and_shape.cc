@@ -49,10 +49,27 @@ ORT_API_STATUS_IMPL(OrtApis::SetTensorElementType, _Inout_ OrtTensorTypeAndShape
   API_IMPL_END
 }
 
-ORT_API_STATUS_IMPL(OrtApis::SetDimensions, OrtTensorTypeAndShapeInfo* this_ptr,
+ORT_API_STATUS_IMPL(OrtApis::SetDimensions, OrtTensorTypeAndShapeInfo* info,
                     _In_ const int64_t* dim_values, size_t dim_count) {
   API_IMPL_BEGIN
-  this_ptr->shape = onnxruntime::TensorShape(dim_values, dim_count);
+  if (std::any_of(dim_values, dim_values + dim_count, [](int64_t v) { return v < -1; })) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "dim_values must be -1 (symbolic dimension) or larger.");
+  }
+
+  auto num_dims = std::max(dim_count, info->dim_params.size());
+
+  // make shape and dim_values consistent
+  info->dim_params.resize(num_dims, "");
+
+  onnxruntime::TensorShapeVector dims;
+  dims.resize(num_dims, -1);
+
+  for (size_t idx = 0; idx < dim_count; ++idx) {
+    dims[idx] = dim_values[idx];
+  }
+
+  info->shape = onnxruntime::TensorShape(dims);
+
   return nullptr;
   API_IMPL_END
 }
@@ -88,10 +105,22 @@ ORT_API_STATUS_IMPL(OrtApis::GetSymbolicDimensions,
 ORT_API_STATUS_IMPL(OrtApis::SetSymbolicDimensions,
                     _In_ struct OrtTensorTypeAndShapeInfo* info,
                     _In_ const char** names, _In_ size_t dim_params_length) {
-  info->dim_params.clear();
-  for (size_t idx = 0; idx < dim_params_length; ++idx) {
-    info->dim_params.push_back(names[idx]);
+  auto num_dims = std::max(info->shape.NumDimensions(), dim_params_length);
+
+  // make shape and dim_values consistent
+  if (num_dims > info->shape.NumDimensions()) {
+    auto dim_values = info->shape.AsShapeVector();
+    dim_values.resize(num_dims, -1);
+    info->shape = onnxruntime::TensorShape(dim_values);
   }
+
+  info->dim_params.clear();
+  info->dim_params.resize(num_dims, "");
+
+  for (size_t idx = 0; idx < dim_params_length; ++idx) {
+    info->dim_params[idx] = names[idx];
+  }
+
   return nullptr;
 }
 

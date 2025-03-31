@@ -26,4 +26,3 @@ export * from './tensor-factory.js';
 export * from './trace.js';
 export * from './onnx-model.js';
 export * from './onnx-value.js';
-export * from './training-session.js';

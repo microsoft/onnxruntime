@@ -9,20 +9,6 @@ if(NOT onnxruntime_BUILD_SHARED_LIB)
     message(FATAL_ERROR "The Objective-C API requires onnxruntime_BUILD_SHARED_LIB to be enabled.")
 endif()
 
-check_language(OBJC)
-if(CMAKE_OBJC_COMPILER)
-    enable_language(OBJC)
-else()
-    message(FATAL_ERROR "Objective-C is not supported.")
-endif()
-
-check_language(OBJCXX)
-if(CMAKE_OBJCXX_COMPILER)
-    enable_language(OBJCXX)
-else()
-    message(FATAL_ERROR "Objective-C++ is not supported.")
-endif()
-
 add_compile_options(
     "$<$<COMPILE_LANGUAGE:OBJC,OBJCXX>:-Wall>"
     "$<$<COMPILE_LANGUAGE:OBJC,OBJCXX>:-Wextra>")

@@ -44,7 +44,7 @@ export default class App extends React.PureComponent<{}, State> {
         // test creating session with path
         console.log('Creating with path');
         const pathSession: InferenceSession = await InferenceSession.create(modelPath);
-        pathSession.release();
+        void pathSession.release();
 
         // and with bytes
         console.log('Creating with bytes');
@@ -100,7 +100,7 @@ export default class App extends React.PureComponent<{}, State> {
     }
   };
 
-  render(): JSX.Element {
+  render(): React.JSX.Element {
     const { output, imagePath } = this.state;
 
     return (

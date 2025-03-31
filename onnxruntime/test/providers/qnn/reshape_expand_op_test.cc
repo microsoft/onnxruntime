@@ -8,7 +8,7 @@
 #include "test/providers/qnn/qnn_test_utils.h"
 #include "core/graph/node_attr_utils.h"
 
-#include "onnx/onnx_pb.h"
+#include "core/graph/onnx_protobuf.h"
 #include "gtest/gtest.h"
 
 namespace onnxruntime {
@@ -25,11 +25,8 @@ static void RunReshapeExpandTestOnCPU(const std::string& op_type,
                                       int opset = 19) {
   ProviderOptions provider_options;
 
-#if defined(_WIN32)
-  provider_options["backend_path"] = "QnnCpu.dll";
-#else
-  provider_options["backend_path"] = "libQnnCpu.so";
-#endif
+  provider_options["backend_type"] = "cpu";
+  provider_options["offload_graph_io_quantization"] = "0";
 
   RunQnnModelTest(BuildOpTestCase<DataType, int64_t>(op_type, {input_def}, {shape_def}, attrs),
                   provider_options,
@@ -156,11 +153,8 @@ static void RunReshapeExpandTestOnHTP(const std::string& op_type,
                                       int opset = 19) {
   ProviderOptions provider_options;
 
-#if defined(_WIN32)
-  provider_options["backend_path"] = "QnnHtp.dll";
-#else
-  provider_options["backend_path"] = "libQnnHtp.so";
-#endif
+  provider_options["backend_type"] = "htp";
+  provider_options["offload_graph_io_quantization"] = "0";
 
   RunQnnModelTest(BuildOpTestCase<DataType, int64_t>(op_type, {input_def}, {shape_def}, attrs),
                   provider_options,
@@ -180,11 +174,8 @@ static void RunQDQReshapeExpandTestOnHTP(const std::string& op_type,
                                          bool use_contrib_qdq = false) {
   ProviderOptions provider_options;
 
-#if defined(_WIN32)
-  provider_options["backend_path"] = "QnnHtp.dll";
-#else
-  provider_options["backend_path"] = "libQnnHtp.so";
-#endif
+  provider_options["backend_type"] = "htp";
+  provider_options["offload_graph_io_quantization"] = "0";
 
   auto f32_model_builder = BuildOpTestCase<float, int64_t>(op_type, {input_def}, {shape_def}, attrs);
   auto qdq_model_builder = BuildQDQReshapeExpandTestCase<QType>(op_type, input_def, shape_def, attrs, use_contrib_qdq);

@@ -157,7 +157,7 @@ Status Softmax<T>::ComputeInternal(OpKernelContext* ctx) const {
     // Perform the transpose
     ORT_RETURN_IF_ERROR(Transpose::DoTranspose(GetDeviceProp(),
                                                Stream(ctx),
-                                               GetRocblasHandle(ctx),
+                                               GetHipblasHandle(ctx),
                                                permutation, *X, *temp_input));
     transposed_input = std::move(temp_input);
 
@@ -199,7 +199,7 @@ Status Softmax<T>::ComputeInternal(OpKernelContext* ctx) const {
     // Perform the transpose to get the axes back to the original ordering
     ORT_RETURN_IF_ERROR(Transpose::DoTranspose(GetDeviceProp(),
                                                Stream(ctx),
-                                               GetRocblasHandle(ctx),
+                                               GetHipblasHandle(ctx),
                                                permutation, *intermediate_output, *Y));
   }
 

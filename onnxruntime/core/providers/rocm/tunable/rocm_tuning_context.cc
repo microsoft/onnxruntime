@@ -42,26 +42,6 @@ static Status ValidateRocBlasVersion(const std::string& value) {
   return Status::OK();
 }
 
-std::string RocmTuningResultsValidator::GetDeviceModel() const {
-  return ep_->GetDeviceProp().name;
-}
-
-Status RocmTuningResultsValidator::ValidateDeviceModel(const std::string& value) const {
-  auto current = GetDeviceModel();
-  ORT_RETURN_IF(current != value, "Device model mismatch: tuning results produced with device ", value,
-                ", onnxruntime currently run with device ", current);
-  return Status::OK();
-}
-
-RocmTuningResultsValidator::RocmTuningResultsValidator(ROCMExecutionProvider* ep) : ep_{ep} {
-  RegisterValidator("HIP_VERSION", GetHipVersion, ValidateHipVersion);
-  RegisterValidator("ROCBLAS_VERSION", GetRocBlasVersion, ValidateRocBlasVersion);
-  RegisterValidator(
-      "DEVICE_MODEL",
-      [this]() { return GetDeviceModel(); },
-      [this](const std::string& value) { return ValidateDeviceModel(value); });
-}
-
 std::string RocmTuningResultsValidator::GetOrtBuildConfig() const {
   std::ostringstream oss;
 #ifdef USE_COMPOSABLE_KERNEL
@@ -85,6 +65,26 @@ std::string RocmTuningResultsValidator::GetOrtBuildConfig() const {
   oss << "USE_HIPBLASLT=" << 0 << "|";
 #endif
   return oss.str();
+}
+
+std::string RocmTuningResultsValidator::GetDeviceModel() const {
+  return ep_->GetDeviceProp().name;
+}
+
+Status RocmTuningResultsValidator::ValidateDeviceModel(const std::string& value) const {
+  auto current = GetDeviceModel();
+  ORT_RETURN_IF(current != value, "Device model mismatch: tuning results produced with device ", value,
+                ", onnxruntime currently run with device ", current);
+  return Status::OK();
+}
+
+RocmTuningResultsValidator::RocmTuningResultsValidator(ROCMExecutionProvider* ep) : ep_{ep} {
+  RegisterValidator("HIP_VERSION", GetHipVersion, ValidateHipVersion);
+  RegisterValidator("ROCBLAS_VERSION", GetRocBlasVersion, ValidateRocBlasVersion);
+  RegisterValidator(
+      "DEVICE_MODEL",
+      [this]() { return GetDeviceModel(); },
+      [this](const std::string& value) { return ValidateDeviceModel(value); });
 }
 
 RocmTuningContext::RocmTuningContext(ROCMExecutionProvider* ep, TunableOpInfo* info)

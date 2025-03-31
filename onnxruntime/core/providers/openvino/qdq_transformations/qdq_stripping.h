@@ -5,14 +5,20 @@
 
 #include <memory>
 #include "core/providers/shared_library/provider_api.h"
+#include "core/providers/openvino/contexts.h"
 
 namespace onnxruntime {
 namespace openvino_ep {
 
+using sw = SharedContext::SharedWeights;
+
 // Creates a new model without the DQ/Q operators in the src graph as per pre-defined rulesets
 Status CreateModelWithStrippedQDQNodes(const GraphViewer& src_graph,
                                        const logging::Logger& logger,
-                                       /*out*/ std::unique_ptr<onnxruntime::Model>& model);
+                                       bool enable_ovep_weight_sharing,
+                                       /*out*/ std::unique_ptr<onnxruntime::Model>& model,
+                                       /*out*/ sw& shared_weights);
 
+bool dumpMetaDataMapToBinary(const sw::Metadata::Map& shared_weights, const std::string& filename);
 }  // namespace openvino_ep
 }  // namespace onnxruntime

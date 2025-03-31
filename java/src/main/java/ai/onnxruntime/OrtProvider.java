@@ -40,7 +40,11 @@ public enum OrtProvider {
   /** The XNNPACK execution provider. */
   XNNPACK("XnnpackExecutionProvider"),
   /** The Azure remote endpoint execution provider. */
-  AZURE("AzureExecutionProvider");
+  AZURE("AzureExecutionProvider"),
+  /** The QNN execution provider. */
+  QNN("QNNExecutionProvider"),
+  /** The WebGPU execution provider */
+  WEBGPU("WebGpuExecutionProvider");
 
   private static final Map<String, OrtProvider> valueMap = new HashMap<>(values().length);
 

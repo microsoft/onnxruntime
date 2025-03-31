@@ -126,6 +126,18 @@ JNIEXPORT void JNICALL Java_ai_onnxruntime_OrtSession_00024RunOptions_addRunConf
 
 /*
  * Class:     ai_onnxruntime_OrtSession_RunOptions
+ * Method:    addActiveLoraAdapter
+ * Signature: (JJJ)V
+ */
+JNIEXPORT void JNICALL Java_ai_onnxruntime_OrtSession_00024RunOptions_addActiveLoraAdapter
+    (JNIEnv * jniEnv, jobject jobj, jlong apiHandle, jlong nativeHandle, jlong loraHandle) {
+  (void) jobj; // Required JNI parameters not needed by functions which don't need to access their host object.
+  const OrtApi* api = (const OrtApi*) apiHandle;
+  checkOrtStatus(jniEnv, api, api->RunOptionsAddActiveLoraAdapter((OrtRunOptions*) nativeHandle, (OrtLoraAdapter*) loraHandle));
+}
+
+/*
+ * Class:     ai_onnxruntime_OrtSession_RunOptions
  * Method:    setTerminate
  * Signature: (JJZ)V
  */

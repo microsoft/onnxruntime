@@ -12,7 +12,8 @@ Abstract:
 
     This module implements the float/quantized n-bit integer matrix
     multiplication kernels for ARM NEON specific to
-    MLAS_SQNBIT_GEMM_COMPUTE_TYPE CompFp32.
+    input type T1 as float32 and
+    MLAS_QNBIT_GEMM_COMPUTE_TYPE SQNBIT_CompFp32.
 
 --*/
 
@@ -20,8 +21,8 @@ Abstract:
 
 #include <cassert>
 
-#include "sqnbitgemm.h"
-#include "sqnbitgemm_kernel_neon.h"
+#include "qnbitgemm.h"
+#include "qnbitgemm_kernel_neon.h"
 
 namespace sqnbitgemm_neon
 {
@@ -30,7 +31,7 @@ namespace
 {
 
 //
-// CompFp32 kernel implementation.
+// SQNBIT_CompFp32 kernel implementation.
 //
 
 MLAS_FORCEINLINE void
@@ -607,7 +608,7 @@ Q4BitBlkDequantBForSgemm_CompFp32_Impl(
 }  // namespace
 
 void
-Q4BitBlkDequantBForSgemm_CompFp32(
+SQ4BitBlkDequantBForSgemm_CompFp32(
     size_t BlkLen,
     float* FpData,
     const std::byte* QuantBData,

@@ -5,9 +5,11 @@
 #include "core/session/onnxruntime_c_api.h"
 #include "core/session/ort_apis.h"
 #include "core/framework/error_code_helper.h"
+
 #if defined(_MSC_VER) && !defined(__clang__)
 #pragma warning(disable : 26409)
 #endif
+
 ORT_API_STATUS_IMPL(OrtApis::CreateRunOptions, _Outptr_ OrtRunOptions** out) {
   API_IMPL_BEGIN
   *out = new OrtRunOptions();
@@ -59,4 +61,13 @@ ORT_API_STATUS_IMPL(OrtApis::RunOptionsUnsetTerminate, _Inout_ OrtRunOptions* op
 ORT_API_STATUS_IMPL(OrtApis::AddRunConfigEntry, _Inout_ OrtRunOptions* options,
                     _In_z_ const char* config_key, _In_z_ const char* config_value) {
   return onnxruntime::ToOrtStatus(options->config_options.AddConfigEntry(config_key, config_value));
+}
+
+ORT_API_STATUS_IMPL(OrtApis::RunOptionsAddActiveLoraAdapter, _Inout_ OrtRunOptions* options,
+                    const _In_ OrtLoraAdapter* adapter) {
+  API_IMPL_BEGIN
+  auto* lora_adapter = reinterpret_cast<const onnxruntime::lora::LoraAdapter*>(adapter);
+  options->active_adapters.push_back(lora_adapter);
+  return nullptr;
+  API_IMPL_END
 }

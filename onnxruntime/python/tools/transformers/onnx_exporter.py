@@ -392,11 +392,13 @@ def validate_and_optimize_onnx(
             False,
             output_names,
         )
-    if optimize_info == OptimizerInfo.NOOPT:
+    if optimize_info.name == OptimizerInfo.NOOPT.name:
         return onnx_model_path, is_valid_onnx_model, config.vocab_size
 
     if (
-        optimize_info == OptimizerInfo.BYSCRIPT or precision == Precision.FLOAT16 or precision == Precision.INT8
+        optimize_info.name == OptimizerInfo.BYSCRIPT.name
+        or precision == Precision.FLOAT16
+        or precision == Precision.INT8
     ):  # Use script (optimizer.py) to optimize
         optimized_model_path = get_onnx_file_path(
             onnx_dir,
@@ -439,7 +441,7 @@ def validate_and_optimize_onnx(
             QuantizeHelper.quantize_onnx_model(onnx_model_path, onnx_model_path, use_external_data_format)
             logger.info(f"Finished quantizing model: {onnx_model_path}")
 
-    if optimize_info == OptimizerInfo.BYORT:  # Use OnnxRuntime to optimize
+    if optimize_info.name == OptimizerInfo.BYORT.name:  # Use OnnxRuntime to optimize
         if is_valid_onnx_model:
             ort_model_path = add_filename_suffix(onnx_model_path, "_ort")
             optimize_onnx_model_by_ort(
@@ -492,7 +494,7 @@ def export_onnx_model_from_pt(
         example_inputs = image_processor(data, return_tensors="pt")
     else:
         tokenizer = AutoTokenizer.from_pretrained(model_name, cache_dir=cache_dir)
-        max_input_size = tokenizer.max_model_input_sizes.get(model_name, 1024)
+        max_input_size = tokenizer.model_max_length
         example_inputs = tokenizer.encode_plus("This is a sample input", return_tensors="pt")
 
     example_inputs = filter_inputs(example_inputs, input_names)
@@ -596,7 +598,7 @@ def export_onnx_model_from_tf(
     # Fix "Using pad_token, but it is not set yet" error.
     if tokenizer.pad_token is None:
         tokenizer.add_special_tokens({"pad_token": "[PAD]"})
-    max_input_size = tokenizer.max_model_input_sizes.get(model_name, 1024)
+    max_input_size = tokenizer.model_max_length
 
     config, model = load_tf_model(model_name, model_class, cache_dir, config_modifier)
     model.resize_token_embeddings(len(tokenizer))

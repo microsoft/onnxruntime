@@ -40,7 +40,7 @@ stages:
     steps:
     - task: UsePythonVersion@0
       inputs:
-        versionSpec: '3.8'
+        versionSpec: '3.12'
         addToPath: true
         architecture: x64
 
@@ -117,9 +117,5 @@ stages:
           enabled: false
           env:
             PACKAGENAME: ${{ parameters.NugetPackageName }}
-
-    - template: ../../templates/component-governance-component-detection-steps.yml
-      parameters :
-        condition : 'always'
 
     - template: ../../templates/clean-agent-build-directory-step.yml

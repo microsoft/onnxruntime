@@ -1,7 +1,7 @@
 parameters:
 - name: CudaVersion
   type: string
-  default: '11.8'
+  default: '12.2'
 - name: buildJava
   type: boolean
 - name: buildNodejs
@@ -15,7 +15,9 @@ stages:
     workspace:
       clean: all
     timeoutInMinutes: 150
-    pool: 'onnxruntime-Ubuntu2204-AMD-CPU'
+    pool:
+      name: 'onnxruntime-Ubuntu2204-AMD-CPU'
+      os: linux
     variables:
     - name: CUDA_VERSION_MAJOR
       ${{ if eq(parameters.CudaVersion, '11.8') }}:
@@ -48,6 +50,7 @@ stages:
           version: '$(OnnxRuntimeVersion)'
           libraryName: 'libonnxruntime.so'
           nativeLibraryName: 'libonnxruntime4j_jni.so'
+          is1ES: true
 
     - template: ../templates/c-api-artifacts-package-and-publish-steps-posix.yml
       parameters:
@@ -56,9 +59,6 @@ stages:
         artifactNameNoVersionString: 'onnxruntime-linux-x64-cuda'
         libraryName: 'libonnxruntime.so.$(OnnxRuntimeVersion)'
 
-    - template: ../templates/component-governance-component-detection-steps.yml
-      parameters:
-        condition: 'succeeded'
     - template: ../templates/clean-agent-build-directory-step.yml
   # Linux CUDA with TensorRT Packaging
   - job: Linux_C_API_Packaging_TensorRT
@@ -66,8 +66,11 @@ stages:
     workspace:
       clean: all
     timeoutInMinutes: 180
-    pool: 'onnxruntime-Ubuntu2204-AMD-CPU'
+    pool:
+      name: 'onnxruntime-Ubuntu2204-AMD-CPU'
+      os: linux
     variables:
+    - template: ../templates/common-variables.yml
     - name: CUDA_VERSION_MAJOR
       ${{ if eq(parameters.CudaVersion, '11.8') }}:
         value: '11'
@@ -75,12 +78,11 @@ stages:
         value: '12'
     - name: CUDA_VERSION
       value: ${{ parameters.CudaVersion }}
-
     - name: linux_trt_version
       ${{ if eq(parameters.CudaVersion, '11.8') }}:
-        value: 10.3.0.26-1.cuda11.8
+        value: ${{ variables.linux_trt_version_cuda11 }}
       ${{ if eq(parameters.CudaVersion, '12.2') }}:
-        value: 10.3.0.26-1.cuda12.5
+        value: ${{ variables.linux_trt_version_cuda12 }}
     steps:
     - checkout: self
       clean: true
@@ -109,6 +111,7 @@ stages:
           version: '$(OnnxRuntimeVersion)'
           libraryName: 'libonnxruntime.so'
           nativeLibraryName: 'libonnxruntime4j_jni.so'
+          is1ES: true
 
     - ${{ if eq(parameters.buildNodejs, 'true') }}:
       - template: ../templates/nodejs-artifacts-package-and-publish-steps-posix.yml
@@ -124,10 +127,6 @@ stages:
         artifactNameNoVersionString: 'onnxruntime-linux-x64-tensorrt'
         libraryName: 'libonnxruntime.so.$(OnnxRuntimeVersion)'
 
-
-    - template: ../templates/component-governance-component-detection-steps.yml
-      parameters:
-        condition: 'succeeded'
     - template: ../templates/clean-agent-build-directory-step.yml
   # Linux CUDA Combined Testing and Publishing
 - stage: Linux_Packaging_combined_CUDA
@@ -138,8 +137,11 @@ stages:
     condition: succeeded()
     workspace:
       clean: all
-    pool: 'Onnxruntime-Linux-GPU'
+    pool:
+      name: 'Onnxruntime-Linux-GPU-A10'
+      os: linux
     variables:
+    - template: ../templates/common-variables.yml
     - name: CUDA_VERSION_MAJOR
       ${{ if eq(parameters.CudaVersion, '11.8') }}:
         value: '11'
@@ -147,18 +149,15 @@ stages:
         value: '12'
     - name: linux_trt_version
       ${{ if eq(parameters.CudaVersion, '11.8') }}:
-        value: 10.3.0.26-1.cuda11.8
+        value: ${{ variables.linux_trt_version_cuda11 }}
       ${{ if eq(parameters.CudaVersion, '12.2') }}:
-        value: 10.3.0.26-1.cuda12.5
+        value: ${{ variables.linux_trt_version_cuda12 }}
     steps:
     - checkout: self                           # due to checkout multiple repos, the root directory is $(Build.SourcesDirectory)/onnxruntime
       submodules: false
     - checkout: onnxruntime-inference-examples # due to checkout multiple repos, the root directory is $(Build.SourcesDirectory)/onnxruntime-inference-examples
       submodules: false
 
-    - task: mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3
-      displayName: 'Clean Agent Directories'
-      condition: always()
 
     - template: ../templates/get-docker-image-steps.yml
       parameters:
@@ -167,7 +166,6 @@ stages:
         Context: $(Build.SourcesDirectory)/onnxruntime/tools/ci_build/github/linux/docker/inference/x86_64/default/cuda${{ variables.CUDA_VERSION_MAJOR }}
         DockerBuildArgs: "--build-arg TRT_VERSION=${{ variables.linux_trt_version }} --build-arg BUILD_UID=$( id -u )"
         Repository: onnxruntimecuda${{ variables.CUDA_VERSION_MAJOR }}xtrt86build
-        UpdateDepsTxt: false
 
     - template: ../templates/set-version-number-variables-step.yml
       parameters:
@@ -216,15 +214,12 @@ stages:
       displayName: 'Test C API application for GPU package'
       inputs:
         script: |
-          docker run --gpus all -e CFLAGS="-Wp,-D_FORTIFY_SOURCE=2 -Wp,-D_GLIBCXX_ASSERTIONS -fstack-protector-strong -fstack-clash-protection -fcf-protection -O3 -Wl,--strip-all" -e CXXFLAGS="-Wp,-D_FORTIFY_SOURCE=2 -Wp,-D_GLIBCXX_ASSERTIONS -fstack-protector-strong -fstack-clash-protection -fcf-protection -O3 -Wl,--strip-all" -e NVIDIA_VISIBLE_DEVICES=all --rm --volume /data/models:/data/models --volume $(Build.SourcesDirectory):/src_dir \
+          docker run -e SYSTEM_COLLECTIONURI --gpus all -e CFLAGS="-Wp,-D_FORTIFY_SOURCE=2 -Wp,-D_GLIBCXX_ASSERTIONS -fstack-protector-strong -fstack-clash-protection -fcf-protection -O3 -Wl,--strip-all" -e CXXFLAGS="-Wp,-D_FORTIFY_SOURCE=2 -Wp,-D_GLIBCXX_ASSERTIONS -fstack-protector-strong -fstack-clash-protection -fcf-protection -O3 -Wl,--strip-all" -e NVIDIA_VISIBLE_DEVICES=all --rm --volume /data/models:/data/models --volume $(Build.SourcesDirectory):/src_dir \
           --volume $(Build.ArtifactStagingDirectory):/artifact_src -e NIGHTLY_BUILD onnxruntimecuda${{ variables.CUDA_VERSION_MAJOR }}xtrt86build \
           /src_dir/onnxruntime-inference-examples/c_cxx/squeezenet/run_capi_application.sh -o /src_dir/onnxruntime -p /artifact_src/onnxruntime-linux-x64-gpu-$(OnnxRuntimeVersion).tgz -w /src_dir/onnxruntime-inference-examples/c_cxx/squeezenet
         workingDirectory: '$(Build.ArtifactStagingDirectory)'
 
-    - task: PublishPipelineArtifact@1
+    - task: 1ES.PublishPipelineArtifact@1
       inputs:
-        targetPath: '$(Build.ArtifactStagingDirectory)/onnxruntime-linux-x64-gpu-$(OnnxRuntimeVersion).tgz'
+        targetPath: '$(Build.ArtifactStagingDirectory)'
         artifactName: 'onnxruntime-linux-x64-gpu'
-    - template: ../templates/component-governance-component-detection-steps.yml
-      parameters:
-        condition: 'succeeded'

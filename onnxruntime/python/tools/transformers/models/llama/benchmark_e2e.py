@@ -259,14 +259,16 @@ def get_args():
         help="Use when GroupQueryAttention (GQA) is in ONNX model",
     )
 
-    parser.add_argument(
-        "--anomaly-filtering",
-        default=False,
-        action="store_true",
-        help="Use this flag to filter anomaly accelerator times for tokens generated. \
+    (
+        parser.add_argument(
+            "--anomaly-filtering",
+            default=False,
+            action="store_true",
+            help="Use this flag to filter anomaly accelerator times for tokens generated. \
               This may give more accurate latency and throughput metrics for tokens generated. \
               Wall-clock metrics are still reported with anomaly times though.",
-    ),
+        ),
+    )
 
     parser.add_argument(
         "-b",

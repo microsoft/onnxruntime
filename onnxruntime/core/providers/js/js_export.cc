@@ -6,8 +6,8 @@
 #include "core/framework/op_kernel.h"
 
 const void* JsepOutput(void* context, int index, const void* data) {
-  const uint32_t* data_offset = reinterpret_cast<const uint32_t*>(data);
-  uint32_t dim = *data_offset++;
+  const uintptr_t* data_offset = reinterpret_cast<const uintptr_t*>(data);
+  uintptr_t dim = *data_offset++;
   size_t dim_size = static_cast<size_t>(dim);
   std::vector<int64_t> dims(dim_size);
   for (size_t i = 0; i < dim_size; i++) {
