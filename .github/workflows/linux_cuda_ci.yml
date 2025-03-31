@@ -1,0 +1,112 @@
+name: Linux CUDA CI
+
+on:
+  push:
+    branches: [ main, 'rel-*']
+  pull_request:
+    branches: [ main, 'rel-*']
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-linux-cuda-x64-release:
+    name: Build Linux CUDA x64 Release
+    # This job runs on a CPU node using the reusable build workflow
+    uses: ./.github/workflows/reusable_linux_build.yml
+    with:
+      pool_name: "onnxruntime-github-Ubuntu2204-AMD-CPU" # Build pool
+      build_config: Release
+      architecture: x64
+      dockerfile_path: tools/ci_build/github/linux/docker/Dockerfile.manylinux2_28_cuda
+      docker_build_args: '--build-arg BASEIMAGE=onnxruntimebuildcache.azurecr.io/internal/azureml/onnxruntime/build/cuda12_x64_ubi8_gcc12:20250124.1'
+      docker_image_repo: onnxruntimecuda12manylinuxbuild
+      extra_build_flags: '--use_binskim_compliant_compile_flags --build_wheel --cuda_version=12.2 --cuda_home=/usr/local/cuda-12.2 --cudnn_home=/usr/local/cuda-12.2 --enable_cuda_profiling --build_java --cmake_extra_defines CMAKE_CUDA_ARCHITECTURES=80 onnxruntime_BUILD_UNIT_TESTS=ON onnxruntime_ENABLE_CUDA_EP_INTERNAL_TESTS=ON'
+      python_path_prefix: 'PATH=/opt/python/cp310-cp310/bin:$PATH'
+      run_tests: false            # <<< Do not run tests in this job
+      upload_build_output: true   # <<< Upload the build/Release directory
+      execution_providers: 'cuda'
+    secrets:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }} # Pass token for reusable workflow needs (e.g., docker build action)
+
+  test-linux-cuda-x64-release:
+    name: Test Linux CUDA x64 Release
+    needs: build-linux-cuda-x64-release
+    runs-on:
+      - self-hosted
+      - "1ES.Pool=Onnxruntime-github-Linux-GPU-A100-WUS3"
+    permissions:
+      contents: read
+      packages: read
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Download ORT Actions Asset (v0.0.2)
+        uses: dsaltares/fetch-gh-release-asset@1.1.0
+        with:
+          repo: 'microsoft/onnxruntime-github-actions'
+          version: 'tags/v0.0.2'
+          file: 'onnxruntime-actions-v0.0.2.zip'
+          target: 'onnxruntime-actions.zip'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Unzip ORT Actions
+        run: |
+          mkdir -p ./.github/_downloaded_actions
+          unzip -q onnxruntime-actions.zip -d ./.github/_downloaded_actions
+          echo "Unzipped contents:"
+          ls -lR ./.github/_downloaded_actions
+
+      # --- Build the Docker image needed for testing ---
+      - name: Build Docker Image for Testing
+        uses: ./.github/_downloaded_actions/build-docker-image # Use downloaded action
+        with:
+          Dockerfile: tools/ci_build/github/linux/docker/Dockerfile.manylinux2_28_cuda
+          Repository: onnxruntimecuda12manylinuxbuild
+          DockerBuildArgs: '--build-arg BASEIMAGE=onnxruntimebuildcache.azurecr.io/internal/azureml/onnxruntime/build/cuda12_x64_ubi8_gcc12:20250124.1'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }} # Pass token to action
+
+      # --- Download Build Artifact to Runner Temp Directory ---
+      - name: Download Build Artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: build-output-x64-Release # Must match the upload name
+          path: ${{ runner.temp }}/Release # Download contents into temp dir structure
+
+      # --- Restore Permissions in the Temp Directory ---
+      - name: Restore Executable Permissions
+        if: success() # Only run if download succeeded
+        working-directory: ${{ runner.temp }}/Release
+        run: |
+          if [ -f perms.txt ]; then
+            echo "Restoring executable permissions in ${{ runner.temp }}/Release ..."
+            while IFS= read -r file; do
+              # Check relative path existence within the current directory
+              if [ -f "$file" ]; then
+                chmod +x "$file"
+              else
+                echo "Warning: File '$file' listed in perms.txt not found."
+              fi
+            done < perms.txt
+            echo "Permissions restored."
+          else
+            echo "Warning: perms.txt not found in artifact."
+          fi
+
+      # --- Run Tests using the downloaded build ---
+      # The run-build-script-in-docker action mounts ${{ runner.temp }} to /onnxruntime_src/build
+      # So build.py --build_dir build/Release inside the container correctly finds the artifacts.
+      - name: Test ONNX Runtime
+        id: test_step
+        uses: ./.github/_downloaded_actions/run-build-script-in-docker # Use downloaded action
+        with:
+          docker_image: onnxruntimecuda12manylinuxbuild # Use the same image
+          build_config: Release
+          mode: 'test' # Set mode to test
+          execution_providers: 'cuda'
+          extra_build_flags: '--use_binskim_compliant_compile_flags --cuda_version=12.2 --cuda_home=/usr/local/cuda-12.2 --cudnn_home=/usr/local/cuda-12.2 --enable_cuda_profiling --cmake_extra_defines CMAKE_CUDA_ARCHITECTURES=80 onnxruntime_BUILD_UNIT_TESTS=ON onnxruntime_ENABLE_CUDA_EP_INTERNAL_TESTS=ON'
+          python_path_prefix: 'PATH=/opt/python/cp310-cp310/bin:$PATH'
