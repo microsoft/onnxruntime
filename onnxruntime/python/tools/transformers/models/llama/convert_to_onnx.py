@@ -16,7 +16,6 @@ from itertools import chain
 
 import onnx
 import torch
-
 from benchmark_helper import Precision, prepare_environment, setup_logger
 from convert_generation import replace_mha_with_gqa
 from dist_settings import barrier, get_rank, get_size, init_dist
