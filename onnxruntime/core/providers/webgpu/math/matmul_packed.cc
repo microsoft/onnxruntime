@@ -362,13 +362,13 @@ Status MatMulProgram::MakeMatMulPackedSource(ShaderHelper& shader,
 Status MatMulProgram::GenerateShaderCode(ShaderHelper& shader) const {
   const auto& a = shader.AddInput("a", ShaderUsage::UseUniform | ShaderUsage::UseIndicesTypeAlias | ShaderUsage::UseValueTypeAlias | ShaderUsage::UseElementTypeAlias);
   const auto& b = shader.AddInput("b", ShaderUsage::UseUniform | ShaderUsage::UseIndicesTypeAlias | ShaderUsage::UseValueTypeAlias);
-  const auto& output = shader.AddOutput("output", ShaderUsage::UseUniform | ShaderUsage::UseIndicesTypeAlias | ShaderUsage::UseValueTypeAlias);
+  const auto& output = shader.AddOutput("output", ShaderUsage::UseUniform | ShaderUsage::UseIndicesTypeAlias | ShaderUsage::UseValueTypeAlias | ShaderUsage::UseElementTypeAlias);
   const auto& batch_dims = shader.AddIndices("batch_dims", ShaderUsage::UseUniform | ShaderUsage::UseIndicesTypeAlias);
 
   if (has_bias_) {
     shader.AddInput("bias", ShaderUsage::UseUniform);
   }
-  std::string apply_activation = GetActivationSnippet(activation_, "output_value_t");
+  std::string apply_activation = GetActivationSnippet(activation_, "output_value_t", "output_element_t");
   // declare the read and write functions
   MatMulReadWriteFnSource(shader, a, b, output, batch_dims, apply_activation);
   std::string data_type = "a_element_t";

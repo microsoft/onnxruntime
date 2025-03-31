@@ -58,9 +58,9 @@ Status MatMulNaiveProgram::GenerateShaderCode(ShaderHelper& shader) const {
     process_bias = is_channels_last_ ? "value += output_value_t(bias[col])" : "value += output_value_t(bias[row + i]);";
   }
 
-  std::string apply_activation = GetActivationSnippet(activation_, "output_value_t");
+  std::string apply_activation = GetActivationSnippet(activation_, "output_value_t", "output_element_t");
   const auto& output = shader.AddOutput("output", ShaderUsage::UseUniform |
-                                                      ShaderUsage::UseIndicesTypeAlias | ShaderUsage::UseValueTypeAlias);
+                                                      ShaderUsage::UseIndicesTypeAlias | ShaderUsage::UseValueTypeAlias | ShaderUsage::UseElementTypeAlias);
   const auto& batch_dims = shader.AddIndices("batch_dims");
 
   int a_components = a.NumComponents();

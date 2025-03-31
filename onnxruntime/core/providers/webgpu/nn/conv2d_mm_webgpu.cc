@@ -15,7 +15,7 @@
 
 namespace onnxruntime {
 namespace webgpu {
-std::string Conv2dMMProgram::Conv2dCommonSnippet(const ShaderVariableHelper& x, const ShaderVariableHelper& w, const Activation& activation, uint32_t inner_element_size_x, uint32_t inner_element_size_w, uint32_t inner_element_size, std::string data_type) const {
+std::string Conv2dMMProgram::Conv2dCommonSnippet(const ShaderVariableHelper& x, const ShaderVariableHelper& w, const Activation& activation, std::string data_type, uint32_t inner_element_size_x, uint32_t inner_element_size_w, uint32_t inner_element_size) const {
   auto get_x_snippet = [&](int32_t inner_element_size) -> std::string {
     switch (inner_element_size) {
       case 1:
@@ -38,9 +38,6 @@ std::string Conv2dMMProgram::Conv2dCommonSnippet(const ShaderVariableHelper& x, 
         ORT_THROW("inner_element_size ", inner_element_size, " is not supported.");
     }
   };
-  if (data_type == "") {
-    data_type = "x_element_t";
-  }
   const std::string coord_a_snippet = is_channels_last_ ? "let coord = vec4<i32>(batch, xRow, xCol, xCh);" : "let coord = vec4<i32>(batch, xCh, xRow, xCol);";
   const std::string coord_res_snippet = is_channels_last_ ? "let coords = vec4<i32>(batch, row / outWidth, row % outWidth, col);" : "let coords = vec4<i32>(batch, row, col / outWidth, col % outWidth);";
 
@@ -113,7 +110,7 @@ std::string Conv2dMMProgram::Conv2dCommonSnippet(const ShaderVariableHelper& x, 
   const std::string res_type = TypeSnippet(inner_element_size, data_type);
   const std::string a_type = is_channels_last_ ? TypeSnippet(inner_element_size_x, data_type) : TypeSnippet(inner_element_size_w, data_type);
   const std::string b_type = is_channels_last_ ? TypeSnippet(inner_element_size_w, data_type) : TypeSnippet(inner_element_size_x, data_type);
-  const std::string apply_activation = GetActivationSnippet(activation, res_type);
+  const std::string apply_activation = GetActivationSnippet(activation, res_type, data_type);
   std::stringstream user_code;
   user_code << "fn mm_readA(batch : i32, row : i32, colIn : i32) -> " << a_type << " {\n"
             << (is_channels_last_ ? sample_x.str() : sample_w.str())
@@ -160,7 +157,7 @@ Status Conv2dMMProgram::GenerateShaderCode(ShaderHelper& shader) const {
   shader.AdditionalImplementation()
       << UtilFunctions("uniforms.result_stride")
       << declaration_functions.str()
-      << Conv2dCommonSnippet(x, w, activation_, element_size_[0], element_size_[1], element_size_[2]);
+      << Conv2dCommonSnippet(x, w, activation_, "x_element_t", element_size_[0], element_size_[1], element_size_[2]);
   std::string data_type = "x_element_t";
   return is_vec4_ ? MatMulProgram::MakeMatMulPackedVec4Source(shader, elements_per_thread_, WorkgroupSizeX(), WorkgroupSizeY(), data_type, /* batch_dims = */ nullptr, /* transpose_a = */ !is_channels_last_, tile_inner_) : MatMulProgram::MakeMatMulPackedSource(shader, elements_per_thread_, WorkgroupSizeX(), WorkgroupSizeY(), data_type, /* batch_dims = */ nullptr, false, tile_inner_, false, 0, sequentially_access_by_threads_);
 }
