@@ -33,9 +33,9 @@ void WriteBufferData(std::ostream& os, const ShaderVariableHelper& input,
     } else if (i == 0) {
       os << "  if (output_number == 0u) { " << buffer_write << " }\n";
     } else if (i == outputs.size() - 1) {
-      os << "  } else { " << buffer_write << " }\n";
+      os << "  else { " << buffer_write << " }\n";
     } else {
-      os << "  } else if (output_number == " << i << "u) { " << buffer_write << " }\n";
+      os << "  else if (output_number == " << i << "u) { " << buffer_write << " }\n";
     }
   }
   os << "}\n";
