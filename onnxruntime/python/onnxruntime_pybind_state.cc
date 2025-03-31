@@ -831,8 +831,6 @@ std::unique_ptr<IExecutionProvider> CreateExecutionProviderInstance(
             if (!option.second.empty()) {
               preview_features = option.second;
               params.trt_preview_features = preview_features.c_str();
-            } else {
-              ORT_THROW("[ERROR] [TensorRT] The value for the key 'trt_preview_features' should be a semi-colon seperated string i.e. 'preview_features'.\n");
             }
           } else {
             ORT_THROW("Invalid TensorRT EP option: ", option.first);

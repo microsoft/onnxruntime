@@ -1288,7 +1288,7 @@ std::vector<nvinfer1::PreviewFeature> ParseTrtPreviewFeatures(const std::string&
   std::vector<nvinfer1::PreviewFeature> previewFeatures;
   previewFeatures.reserve(featureNames.size());
   for (auto featureName : featureNames) {
-      if (featureName == "aliasedPluginIO1003") {
+      if (featureName == "ALIASED_PLUGIN_IO_10_03") {
         previewFeatures.push_back(nvinfer1::PreviewFeature::kALIASED_PLUGIN_IO_10_03);
       } else {
           throw std::invalid_argument(std::string("Unknown preview feature: ") + featureName);
