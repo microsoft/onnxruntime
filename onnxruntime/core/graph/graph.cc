@@ -1268,6 +1268,10 @@ Graph::Graph(const Model& owning_model,
 #endif
   }
 
+  if (owning_model_.IsCancellationFlagSet()) {
+    ORT_THROW("Graph loading canceled due to user request.");
+  }
+
   // Remove constant nodes as they're replaced with initializers above.
   const gsl::not_null<RepeatedPtrField<NodeProto>*> graph_mutable_nodes{graph_proto_->mutable_node()};
   graph_mutable_nodes->erase(
@@ -1300,6 +1304,9 @@ Graph::Graph(const Model& owning_model,
       delete graph_proto_->mutable_sparse_initializer()->ReleaseCleared();
     }
 #endif
+    if (owning_model_.IsCancellationFlagSet()) {
+      ORT_THROW("Graph loading canceled due to user request.");
+    }
   }
 #endif
 
@@ -1363,6 +1370,10 @@ Graph::Graph(const Model& owning_model,
                                << "or with the tool onnxruntime/tools/python/remove_initializer_from_input.py.";
       }
     }
+  }
+
+  if (owning_model_.IsCancellationFlagSet()) {
+    ORT_THROW("Graph loading canceled due to user request.");
   }
 
   for (auto& graph_output : graph_proto_->output()) {

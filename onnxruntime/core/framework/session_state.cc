@@ -585,6 +585,8 @@ Status SessionState::PrepackConstantInitializedTensors(
                     constant_initialized_tensors.erase(ort_value_idx);
                   }
                 }
+                ORT_RETURN_IF(sess_options_.IsLoadCancellationFlagSet(),
+                              "Weight pre-packing was canceled due to user request.");
               }
               // stop searching in 2 cases:
               // 1. value is not from OuterScope
@@ -1527,6 +1529,9 @@ Status SessionState::FinalizeSessionStateImpl(const std::basic_string<PATH_CHAR_
                                               Logger(),
                                               p_seq_exec_plan_);
   ORT_RETURN_IF_ERROR(status);
+
+  ORT_RETURN_IF(session_options.IsLoadCancellationFlagSet(),
+                "SessionState finalize is canceled due to user request");
 
   // Record the allocation plan
 

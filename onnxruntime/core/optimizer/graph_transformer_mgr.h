@@ -24,6 +24,16 @@ class GraphTransformerManager {
   // Get the maximum number of graph transformation steps
   common::Status GetSteps(unsigned& steps) const;
 
+  // Set the cancellation flag ptr from session_options
+  void SetLoadCancellationFlagRef(const bool& load_cancellation_flag) {
+    load_cancellation_flag_ = &load_cancellation_flag;
+  }
+
+  // Get the cancellation flag ptr
+  bool IsLoadCancellationFlagSet() const noexcept {
+    return load_cancellation_flag_ && *load_cancellation_flag_;
+  }
+
   // Register a transformer with a level.
   common::Status Register(std::unique_ptr<GraphTransformer> transformer, TransformerLevel level);
 
@@ -38,5 +48,6 @@ class GraphTransformerManager {
 
   InlinedHashMap<TransformerLevel, InlinedVector<std::unique_ptr<GraphTransformer>>> level_to_transformer_map_;
   InlinedHashMap<std::string, GraphTransformer*> transformers_info_;
+  const bool* load_cancellation_flag_ = nullptr;
 };
 }  // namespace onnxruntime

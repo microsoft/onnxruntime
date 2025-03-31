@@ -7,6 +7,7 @@
 #include <algorithm>
 #include <cfloat>
 #include <functional>
+#include <future>
 #include <iterator>
 #include <thread>
 #include <fstream>
@@ -496,6 +497,59 @@ TEST(InferenceSessionTests, TestModelSerialization) {
   InferenceSession session_object_emptyValidation{so_opt, GetEnvironment()};
   ASSERT_TRUE(session_object_emptyValidation.Load(test_model).IsOK());
   ASSERT_TRUE(session_object_emptyValidation.Initialize().IsOK());
+}
+
+TEST(InferenceSessionTests, TestLoadCancellation) {
+  SessionOptions so;
+  so.session_logid = "InferenceSessionTests.TestLoadCancellation";
+
+  {
+    // Explicit cancel during load, small model is fine
+    const PathString model_uri = ORT_TSTR("testdata/constant_floats.onnx");
+    InferenceSession session_object{so, GetEnvironment()};
+    *so.load_cancellation_flag = true;
+    ASSERT_FALSE(session_object.Load(model_uri).IsOK());
+  }
+  {
+    // Explicit cancel during initialize, small model is fine
+    const PathString model_uri = ORT_TSTR("testdata/constant_floats.onnx");
+    *so.load_cancellation_flag = false;
+    InferenceSession session_object{so, GetEnvironment()};
+    ASSERT_STATUS_OK(session_object.Load(model_uri));
+    *so.load_cancellation_flag = true;
+    ASSERT_FALSE(session_object.Initialize().IsOK());
+  }
+
+  {
+    // Large model that takes time to load
+    const PathString test_model = ORT_TSTR("testdata/transformers/tiny_gpt2_beamsearch.onnx");
+    auto terminator = [&so]() {
+      std::this_thread::sleep_for(std::chrono::milliseconds(2000));
+      *so.load_cancellation_flag = true;
+      return;
+    };
+
+    std::packaged_task<void()> task{terminator};
+    std::future<void> terminator_result = task.get_future();
+    std::thread terminator_thread{std::move(task)};
+
+    bool terminated = false;
+    try {
+      InferenceSession session_object{
+          so, GetEnvironment(), test_model};
+
+    } catch (const std::exception& ex) {
+      std::string m{ex.what()};
+      terminated = m.find("user request") != std::string::npos;
+    }
+    // done with the thread
+    terminator_thread.join();
+
+    // call get to propagate any exception
+    terminator_result.get();
+
+    ASSERT_TRUE(terminated);
+  }
 }
 
 #ifdef ORT_RUN_EXTERNAL_ONNX_TESTS

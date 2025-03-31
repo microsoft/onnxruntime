@@ -38,9 +38,13 @@ struct ModelOptions {
   // be returned.
   bool strict_shape_type_inference;
 
-  ModelOptions(bool allow_released_opsets_only, bool strict_shape_type_inference)
+  const bool* load_cancellation_flag = nullptr;
+
+  ModelOptions(bool allow_released_opsets_only, bool strict_shape_type_inference,
+               const bool* load_cancellation_flag = nullptr)
       : allow_released_opsets_only(allow_released_opsets_only),
-        strict_shape_type_inference(strict_shape_type_inference) {}
+        strict_shape_type_inference(strict_shape_type_inference),
+        load_cancellation_flag(load_cancellation_flag) {}
 
   ModelOptions() : ModelOptions(true, false) {}
 };
@@ -142,6 +146,11 @@ class Model {
   const std::string GraphDocString() const;
 
   const NodeHashMap<std::string, std::unique_ptr<FunctionTemplate>>& GetModelLocalFunctionTemplates() const;
+
+  // Check for load cancellation.
+  bool IsCancellationFlagSet() const noexcept {
+    return load_cancellation_flag_ && *load_cancellation_flag_;
+  }
 
 #else
   // Get model's IR version.
@@ -343,5 +352,9 @@ class Model {
 
   // Main graph of the model.
   std::unique_ptr<Graph> graph_;
+
+#if !defined(ORT_MINIMAL_BUILD)
+  const bool* load_cancellation_flag_ = nullptr;
+#endif  // !defined(ORT_MINIMAL_BUILD)
 };
 }  // namespace onnxruntime

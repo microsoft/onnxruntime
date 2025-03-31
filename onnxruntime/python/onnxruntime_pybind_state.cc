@@ -1748,6 +1748,12 @@ Applies to session load, initialization, etc. Default is 0.)pbdoc")
             options->value.execution_mode = execution_mode;
           },
           R"pbdoc(Sets the execution mode. Default is sequential.)pbdoc")
+      .def(
+          "set_load_cancellation_flag",
+          [](const PySessionOptions* options, bool value) -> void {
+            *options->value.load_cancellation_flag = value;
+          },
+          R"pbdoc(Request inference session load cancellation)pbdoc")
       .def_property(
           "execution_order",
           [](const PySessionOptions* options) -> ExecutionOrder { return options->value.execution_order; },

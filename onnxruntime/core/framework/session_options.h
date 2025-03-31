@@ -181,6 +181,17 @@ struct SessionOptions {
   void AddCustomOpLibraryHandle(PathString library_name, void* library_handle);
 #endif
 
+  // Load cancellation flag is necessary to be within shared memory as session_options are
+  std::shared_ptr<bool> load_cancellation_flag = std::make_shared<bool>(false);
+
+  bool IsLoadCancellationFlagSet() const noexcept {
+    return *load_cancellation_flag;
+  }
+
+  const bool& GetLoadCancellationFlagRef() const noexcept {
+    return *load_cancellation_flag;
+  }
+
   // User specified logging func and param
   OrtLoggingFunction user_logging_function = nullptr;
   void* user_logging_param = nullptr;

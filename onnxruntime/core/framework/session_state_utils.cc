@@ -378,6 +378,10 @@ common::Status SaveInitializedTensors(
 
   // 3. create weight tensors based on weights buffer
   for (const auto& entry : id_to_initialized_tensor) {
+    // We check for cancelleation for every initializer since mapping from disk can be costly
+    ORT_RETURN_IF(session_options.IsLoadCancellationFlagSet(),
+                  "Saving session state weights is canceled due to user request.");
+
     int ort_value_index = entry.first;
     const std::string& name = entry.second->name();
 

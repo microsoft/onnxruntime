@@ -41,6 +41,10 @@ class GraphPartitioner {
                    Mode mode = Mode::kNormal,
                    const layout_transformation::DebugGraphFn& debug_graph_fn = {}) const;
 
+  bool IsLoadCancellationFlagSet() const noexcept {
+    return graph_optimizer_registry_->GetSessionOptions().IsLoadCancellationFlagSet();
+  }
+
 #ifndef ORT_MINIMAL_BUILD
   /// <summary>
   // Ahead of Time Function inlining. The main purpose of the function is to inline as many

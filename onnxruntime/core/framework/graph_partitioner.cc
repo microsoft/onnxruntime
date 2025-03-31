@@ -413,6 +413,8 @@ static Status PartitionOnnxFormatModelImpl(Graph& graph, FuncManager& func_mgr,
     return Status::OK();
   }
 
+  const volatile auto& load_cancellaton_flag = graph_optimizer_registry.GetLoadCancellationFlagRef();
+
   // recurse into nested graphs first to partition bottom up.
   for (auto& node : graph.Nodes()) {
     for (auto& entry : node.GetAttributeNameToMutableSubgraphMap()) {
@@ -506,6 +508,7 @@ static Status PartitionOnnxFormatModelImpl(Graph& graph, FuncManager& func_mgr,
         capabilities_to_complete_fuse.push_back(std::move(capability));
       }
     }
+    ORT_RETURN_IF(load_cancellaton_flag, "Graph partitioning is canceled due to user request.");
   }
 
   // NOTE: if mode_ is kAssignOnly, nodes_to_compile will be empty at this point due to logic in PlaceNode
@@ -561,6 +564,7 @@ static Status PartitionOnnxFormatModelImpl(Graph& graph, FuncManager& func_mgr,
         graph.FinalizeFuseSubGraph(indexed_sub_graph, *node);
       }
     }
+    ORT_RETURN_IF(load_cancellaton_flag, "Graph partitioning is canceled due to user request.");
   }
 
   if (!nodes_to_complete_fuse.empty()) {
@@ -641,6 +645,8 @@ static Status InlineFunctionsAOTImpl(const ExecutionProviders& execution_provide
     return Status::OK();
   }
 
+  const volatile bool& load_cancellation_flag = graph_optimizer_registry.GetLoadCancellationFlagRef();
+
   for (auto& node : graph.Nodes()) {
     for (auto& entry : node.GetAttributeNameToMutableSubgraphMap()) {
       Graph* subgraph = entry.second;
@@ -689,6 +695,7 @@ static Status InlineFunctionsAOTImpl(const ExecutionProviders& execution_provide
         }
       }
     }
+    ORT_RETURN_IF(load_cancellation_flag, "AOT inlining is canceled due to user request.");
   }
 
   // TODO: Insert version check. We need to collect all the versions
@@ -701,6 +708,7 @@ static Status InlineFunctionsAOTImpl(const ExecutionProviders& execution_provide
       if (claimed_by_ep.count(node_index) == 0) {
         ORT_RETURN_IF_ERROR(graph.InlineFunction(*node));
         ++inlined_count;
+        ORT_RETURN_IF(load_cancellation_flag, "AOT inlining is canceled due to user request.");
       } else {
         // OpType is the same as function name.
         auto function_id = function_utils::GetFunctionIdentifier(node->Domain(), node->OpType());
@@ -1032,6 +1040,8 @@ Status GraphPartitioner::InlineFunctionsAOT(Model& model,
     return Status::OK();
   }
 
+  ORT_RETURN_IF(IsLoadCancellationFlagSet(), "AOT inlining is canceled due to user request.");
+
   auto& graph = model.MainGraph();
   InlinedHashSet<std::string> not_inlined;
   do {
@@ -1048,6 +1058,7 @@ Status GraphPartitioner::InlineFunctionsAOT(Model& model,
       break;
     }
 
+    ORT_RETURN_IF(IsLoadCancellationFlagSet(), "AOT inlining is canceled due to user request.");
     ORT_RETURN_IF_ERROR(graph.Resolve());
   } while (true);
 
@@ -1081,6 +1092,9 @@ Status GraphPartitioner::Partition(Graph& graph, FuncManager& func_mgr,
   if (providers_.Empty()) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "No provider specified.");
   }
+
+  const volatile auto& load_cancellaton_flag = graph_optimizer_registry_->GetLoadCancellationFlagRef();
+  ORT_RETURN_IF(load_cancellaton_flag, "Graph partitioning is canceled due user request.");
 
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
   // fused_kernel_registry is preparing the kernels created on the fly for fused sub graph.

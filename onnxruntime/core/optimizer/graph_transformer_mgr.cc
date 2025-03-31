@@ -35,6 +35,8 @@ common::Status GraphTransformerManager::ApplyTransformers(Graph& graph, Transfor
       bool modified = false;
       ORT_RETURN_IF_ERROR(transformer->Apply(graph, modified, logger));
       graph_changed = graph_changed || modified;
+      ORT_RETURN_IF(IsLoadCancellationFlagSet(),
+                    "Graph transformation canceled due to user request.");
     }
     if (!graph_changed) {
       break;

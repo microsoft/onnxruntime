@@ -4898,6 +4898,18 @@ struct OrtApi {
                   _In_ const int64_t* shape, size_t shape_len,
                   ONNXTensorElementDataType type,
                   _Outptr_ OrtValue** out);
+
+  /** \brief changes the setting of the session to cancel loading
+   *
+   * \param[in] options options instance that was passed to the session at creation time.
+   * \param[in] is_cancel setting this to true after model loading process was initiated will
+   *            cancel the loading process within some reasonable time frame.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   */
+  ORT_API2_STATUS(SessionOptionsSetLoadCancellationFlag, _Inout_ OrtSessionOptions* options,
+                  _In_ bool is_cancel);
 };
 
 /*
