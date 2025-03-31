@@ -24,7 +24,7 @@ int32_t GetDataElement(const T1* data_ptr, int64_t data_idx) {
 
 template <>
 int32_t GetDataElement<uint8_t>(const uint8_t* data_ptr, int64_t data_idx) {
-  const uint8_t data_val_u8 = static_cast<const uint8_t>(data_ptr[data_idx >> 1]);
+  const uint8_t data_val_u8 = data_ptr[data_idx >> 1];
   // Weights are stored as (nibble2)(nibble1) in uint8_t.
   auto data_val = static_cast<int32_t>((data_idx & 1) ? ((data_val_u8 >> 4) & 0x0F) : (data_val_u8 & 0x0F));
   return data_val;
