@@ -14,14 +14,15 @@ runs:
   using: "composite"
   steps:
     - name: Validate shader keys (chromium log)
-      if: ${{ inputs.is_chromium_log }}
+      # GitHub Actions treats all inputs as strings even if it's specified as a boolean.
+      if: ${{ inputs.is_chromium_log == 'true' }}
       shell: cmd
       run: |
         node parse-chromium-debug-log.js < "${{ inputs.log_file_path }}" | node validate-shader-key.js
       working-directory: ${{ github.action_path }}
 
     - name: Validate shader keys (native log)
-      if: ${{ !inputs.is_chromium_log }}
+      if: ${{ !inputs.is_chromium_log != 'true' }}
       shell: cmd
       run: |
         node validate-shader-key.js < "${{ inputs.log_file_path }}"
