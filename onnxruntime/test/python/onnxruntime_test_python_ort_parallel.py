@@ -51,18 +51,20 @@ class TestParallelRun(unittest.TestCase):
         if "TensorrtExecutionProvider" in onnxrt.get_available_providers():
             cuda_lib = self.load_cuda_lib()
             device_cnt = self.cuda_device_count(cuda_lib)
+            assert device_cnt > 0
             print(f"Number of GPUs available: {device_cnt}")
             self.run_inference_with_parallel_execution_mode("TensorrtExecutionProvider", device_cnt)
         elif "CUDAExecutionProvider" in onnxrt.get_available_providers():
             cuda_lib = self.load_cuda_lib()
             device_cnt = self.cuda_device_count(cuda_lib)
+            assert device_cnt > 0
             print(f"Number of GPUs available: {device_cnt}")
             self.run_inference_with_parallel_execution_mode("CUDAExecutionProvider", device_cnt)
 
     def load_cuda_lib(self):
         cuda_lib = None
         if sys.platform == "win32":
-            cuda_lib = "cuda.dll"
+            cuda_lib = "nvcuda.dll"
         elif sys.platform == "linux":
             cuda_lib = "libcuda.so"
         elif sys.platform == "darwin":
