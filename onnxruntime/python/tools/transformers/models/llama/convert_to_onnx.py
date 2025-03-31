@@ -16,8 +16,12 @@ from itertools import chain
 
 import onnx
 import torch
-from onnxruntime.transformers.benchmark_helper import Precision, prepare_environment, setup_logger
-from onnxruntime.transformers.convert_generation import replace_mha_with_gqa
+# to patch transformers before exporting for transformers >= 4.45
+from models.torch_export_patches import bypass_export_some_errors
+from models.torch_export_patches.patch_inputs import convert_dynamic_axes_into_dynamic_shapes
+
+from benchmark_helper import Precision, prepare_environment, setup_logger
+from convert_generation import replace_mha_with_gqa
 from dist_settings import barrier, get_rank, get_size, init_dist
 from llama_inputs import get_merged_sample_with_past_kv_inputs, get_sample_inputs, get_sample_with_past_kv_inputs
 from llama_parity import main as parity_check
@@ -30,11 +34,6 @@ from transformers import AutoConfig, AutoModelForCausalLM
 from onnxruntime import quantization as ort_quantization
 from onnxruntime.quantization.matmul_4bits_quantizer import MatMul4BitsQuantizer
 
-# to patch transformers before exporting for transformers >= 4.45
-from onnxruntime.transformers.models.torch_export_patches import bypass_export_some_errors
-from onnxruntime.transformers.models.torch_export_patches.patch_inputs import (
-    convert_dynamic_axes_into_dynamic_shapes,
-)
 
 
 torch_export_onnx_opset_version = 14

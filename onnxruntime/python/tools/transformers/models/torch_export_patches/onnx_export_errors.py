@@ -68,6 +68,8 @@ def unpatch_module(mod, info: Dict[type, Dict[type, Callable]], verbose: int = 0
 def _register_cache_serialization(verbose: int = 0) -> Dict[str, bool]:
     # Cache serialization: to be moved into appropriate packages
     import torch
+    import transformers
+    import packaging.version as pv
 
     try:
         from transformers.cache_utils import DynamicCache
@@ -100,7 +102,20 @@ def _register_cache_serialization(verbose: int = 0) -> Dict[str, bool]:
             flatten_with_keys_fn=flatten_with_keys_mamba_cache,
         )
 
-    # DynamicCache
+    # DynamicCache serialization is different in transformers and does not
+    # play way with torch.export.export.
+    # This is caused by this line:
+    # torch.fx._pytree.register_pytree_flatten_spec(
+    #           DynamicCache, _flatten_dynamic_cache_for_fx)
+    # so we remove it anyway
+    if (
+        DynamicCache in torch.fx._pytree.SUPPORTED_NODES
+        and pv.Version(transformers.__version__) >= pv.Version("2.7")
+    ):
+        if verbose:
+            print("[_register_cache_serialization] DynamicCache is unregistered first.")
+        _unregister(DynamicCache)
+        
     unregistered_dynamic_cache = True
     if DynamicCache is not None and DynamicCache in torch.utils._pytree.SUPPORTED_NODES:
         if verbose > 1:
