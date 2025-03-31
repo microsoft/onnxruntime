@@ -21,7 +21,7 @@ std::string Conv2dMMProgram::Conv2dCommonSnippet(const ShaderVariableHelper& x, 
       case 1:
         return "resData = " + x.GetByOffset("xIndex") + ";";
       case 3:
-        return "resData = vec3<x_value_t>(" + x.GetByOffset("xIndex") + ", " + x.GetByOffset("xIndex + 1") + ", " + x.GetByOffset("xIndex + 2") + ");";
+        return "resData = vec3<x_element_t>(" + x.GetByOffset("xIndex") + ", " + x.GetByOffset("xIndex + 1") + ", " + x.GetByOffset("xIndex + 2") + ");";
       case 4:
         return "resData = " + x.GetByOffset("xIndex") + ";\n ";
       default:
@@ -39,7 +39,7 @@ std::string Conv2dMMProgram::Conv2dCommonSnippet(const ShaderVariableHelper& x, 
     }
   };
   if (data_type == "") {
-    data_type = "x_value_t";
+    data_type = "x_element_t";
   }
   const std::string coord_a_snippet = is_channels_last_ ? "let coord = vec4<i32>(batch, xRow, xCol, xCh);" : "let coord = vec4<i32>(batch, xCh, xRow, xCol);";
   const std::string coord_res_snippet = is_channels_last_ ? "let coords = vec4<i32>(batch, row / outWidth, row % outWidth, col);" : "let coords = vec4<i32>(batch, row, col / outWidth, col % outWidth);";
@@ -139,10 +139,10 @@ std::string Conv2dMMProgram::Conv2dCommonSnippet(const ShaderVariableHelper& x, 
 
 Status Conv2dMMProgram::GenerateShaderCode(ShaderHelper& shader) const {
   std::stringstream declaration_functions;
-  declaration_functions << "fn setOutputAtIndex(flatIndex : i32, value : " << (is_vec4_ ? "vec4<x_value_t>" : "x_value_t") << ") {\n"
-                        << "  result[flatIndex] = " << (is_vec4_ ? "vec4<x_value_t>" : "x_value_t") << "(value);\n"
+  declaration_functions << "fn setOutputAtIndex(flatIndex : i32, value : " << (is_vec4_ ? "vec4<x_element_t>" : "x_element_t") << ") {\n"
+                        << "  result[flatIndex] = " << (is_vec4_ ? "vec4<x_element_t>" : "x_element_t") << "(value);\n"
                         << "}\n"
-                        << "fn setOutputAtCoords(d0 : i32, d1 : i32, d2 : i32, d3 : i32, value : x_value_t) {\n"
+                        << "fn setOutputAtCoords(d0 : i32, d1 : i32, d2 : i32, d3 : i32, value : " << (is_vec4_ ? "vec4<x_element_t>" : "x_element_") << "){\n"
                         << "  let flatIndex = getOutputIndexFromCoords(vec4<i32>(d0, d1, d2, d3));\n"
                         << "  setOutputAtIndex(flatIndex " << (is_vec4_ ? "/ 4" : "") << ", value);\n"
                         << "}\n";
