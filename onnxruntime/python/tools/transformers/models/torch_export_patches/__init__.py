@@ -1,4 +1,4 @@
-from typing import Any, List, Tuple
+from typing import Any
 import packaging.version as pv
 import torch
 import transformers
@@ -35,9 +35,9 @@ def string_type(anything, **args):
 if pv.Version(transformers.__version__) > pv.Version("4.49.99999"):
 
     def make_dynamic_cache(
-        key_value_pairs: List[Tuple[torch.Tensor, torch.Tensor]],
+        key_value_pairs: list[tuple[torch.Tensor, torch.Tensor]],
     ) -> transformers.cache_utils.DynamicCache:
-        '''
+        """
         Creates an instance of :class:`transformers.cache_utils.DynamicCache`.
         This version is valid for ``transformers >= 4.50``.
 
@@ -61,15 +61,15 @@ if pv.Version(transformers.__version__) > pv.Version("4.49.99999"):
                 ]
             )
             print(string_type(past_key_values, with_shape=True))
-        '''
+        """
         return transformers.cache_utils.DynamicCache(key_value_pairs)
 
 else:
 
     def make_dynamic_cache(
-        key_value_pairs: List[Tuple[torch.Tensor, torch.Tensor]],
+        key_value_pairs: list[tuple[torch.Tensor, torch.Tensor]],
     ) -> transformers.cache_utils.DynamicCache:
-        '''
+        """
         Creates an instance of :class:`transformers.cache_utils.DynamicCache`.
         This version is valid for ``transformers < 4.50``.
 
@@ -93,7 +93,7 @@ else:
                 ]
             )
             print(string_type(past_key_values, with_shape=True))
-        '''
+        """
         cache = transformers.cache_utils.DynamicCache(len(key_value_pairs))
         for i, (key, value) in enumerate(key_value_pairs):
             cache.update(key, value, i)

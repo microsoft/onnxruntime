@@ -16,9 +16,6 @@ from itertools import chain
 
 import onnx
 import torch
-# to patch transformers before exporting for transformers >= 4.45
-from models.torch_export_patches import bypass_export_some_errors
-from models.torch_export_patches.patch_inputs import convert_dynamic_axes_into_dynamic_shapes
 
 from benchmark_helper import Precision, prepare_environment, setup_logger
 from convert_generation import replace_mha_with_gqa
@@ -26,6 +23,10 @@ from dist_settings import barrier, get_rank, get_size, init_dist
 from llama_inputs import get_merged_sample_with_past_kv_inputs, get_sample_inputs, get_sample_with_past_kv_inputs
 from llama_parity import main as parity_check
 from llama_torch import setup_torch_model
+
+# to patch transformers before exporting for transformers >= 4.45
+from models.torch_export_patches import bypass_export_some_errors
+from models.torch_export_patches.patch_inputs import convert_dynamic_axes_into_dynamic_shapes
 from onnx_model import OnnxModel
 from optimizer import optimize_model
 from packaging import version

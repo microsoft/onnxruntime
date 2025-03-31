@@ -10,7 +10,7 @@ def _catch_produce_guards_and_solve_constraints(
     previous_function: Callable,
     fake_mode: "FakeTensorMode",
     gm: "torch.fx.GraphModule",
-    dynamic_shapes: Union[Dict[str, Any], Tuple[Any], List[Any], None],
+    dynamic_shapes: dict[str, Any] | tuple[Any] | list[Any] | None,
     equalities_inputs: "EqualityConstraint",
     original_signature: inspect.Signature,
     _is_torch_jit_trace: bool = False,
@@ -131,7 +131,7 @@ def patched__broadcast_shapes(*_shapes):
         assert isinstance(shape, Sequence)
 
     # Computes common shape
-    common_shape = [  # List[Union[int, torch.SymInt]]
+    common_shape = [  # list[Union[int, torch.SymInt]]
         1,
     ] * reduce(max, (len(shape) for shape in shapes))
     for _arg_idx, shape in enumerate(shapes):

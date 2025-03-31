@@ -15,7 +15,7 @@ def _process_cache(k: str, v):
         return cache
     if isinstance(v, torch.Tensor):
         return v
-    raise NotImplementedError(f"Unable to process parameter {k!r} with v={string_type(v,with_shape=True)}")
+    raise NotImplementedError(f"Unable to process parameter {k!r} with v={string_type(v, with_shape=True)}")
 
 
 def _make_shape(subset: dict, cls: type, value: Any) -> Any:
@@ -23,8 +23,7 @@ def _make_shape(subset: dict, cls: type, value: Any) -> Any:
         assert subset, "DynamicCache cannot be empty"
         values = set(map(str, subset.values()))
         assert len(values) == 1, (
-            f"Inconsistencies in subset={subset}, found={values}, "
-            f"it cannot be a {cls}, value={string_type(value)}"
+            f"Inconsistencies in subset={subset}, found={values}, it cannot be a {cls}, value={string_type(value)}"
         )
         cache_length = len(value.key_cache)
         for v in subset.values():

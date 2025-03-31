@@ -115,7 +115,7 @@ def _register_cache_serialization(verbose: int = 0) -> dict[str, bool]:
         if verbose:
             print("[_register_cache_serialization] DynamicCache is unregistered first.")
         _unregister(DynamicCache)
-        
+
     unregistered_dynamic_cache = True
     if DynamicCache is not None and DynamicCache in torch.utils._pytree.SUPPORTED_NODES:
         if verbose > 1:
@@ -173,7 +173,6 @@ def _unregister(cls: type, verbose: int = 0):
 
 
 def _unregister_cache_serialization(undo: dict[str, bool], verbose: int = 0):
-
     if undo.get("MambaCache", False):
         from transformers.cache_utils import MambaCache
 

@@ -106,8 +106,7 @@ class patched_DynamicCache:
         # TODO: deprecate this function in favor of `cache_position`
         is_empty_layer = (
             len(self.key_cache) == 0  # no cache in any layer
-            or len(self.key_cache)
-            <= layer_idx  # skipped `layer_idx` and hasn't run a layer with cache after it
+            or len(self.key_cache) <= layer_idx  # skipped `layer_idx` and hasn't run a layer with cache after it
             or self.key_cache[layer_idx].numel() == 0  # the layer has no cache
         )
         layer_seq_length = self.key_cache[layer_idx].shape[-2] if not is_empty_layer else 0
@@ -128,7 +127,7 @@ class patched_DynamicCache:
         key_states: torch.Tensor,
         value_states: torch.Tensor,
         layer_idx: int,
-        cache_kwargs: Dict[str, Any] | None = None,
+        cache_kwargs: dict[str, Any] | None = None,
     ) -> Tuple[torch.Tensor, torch.Tensor]:
         """
         Updates the cache with the new `key_states`
@@ -191,7 +190,7 @@ class patched_DynamicCache:
                 self.value_cache[idx] = self.value_cache[idx][..., :max_length, :]
 
     @classmethod
-    def from_batch_splits(cls, splits: List[DynamicCache]) -> DynamicCache:
+    def from_batch_splits(cls, splits: list[DynamicCache]) -> DynamicCache:
         """This is the opposite of the above `batch_split()` method.
         This will be used by `stack_model_outputs` in
         `generation.utils`"""
@@ -246,9 +245,7 @@ class patched_GenerationMixin:
         The current implementation does not rely on ``self`` and could be
         a class method. It is left as a standard method to be easily rewritten.
         """
-        return self._cache_dependant_input_preparation_exporting(
-            input_ids, inputs_embeds, cache_position
-        )
+        return self._cache_dependant_input_preparation_exporting(input_ids, inputs_embeds, cache_position)
         """
         if inputs_embeds is not None and input_ids.shape[1] == 0:  # Exception 4
             inputs_embeds = inputs_embeds[:, -cache_position.shape[0] :]
@@ -268,7 +265,7 @@ class patched_GenerationMixin:
         input_ids: torch.LongTensor,
         inputs_embeds: torch.FloatTensor | None,
         cache_position: torch.LongTensor | None,
-    ) -> Tuple[torch.FloatTensor, torch.LongTensor]:
+    ) -> tuple[torch.FloatTensor, torch.LongTensor]:
         """
         This method implements method ``_cache_dependant_input_preparation``
         with :func:`torch.cond` to make it exportable with :func:`torch.export.export`.
@@ -359,9 +356,7 @@ class patched_GenerationMixin:
         # `generate` and letting it create `cache_position`)
         elif cache_position is None:
             past_length = past_key_values[0][0].shape[2] if past_key_values is not None else 0
-            cache_position = torch.arange(
-                past_length, input_ids.shape[1], dtype=torch.long, device=input_ids.device
-            )
+            cache_position = torch.arange(past_length, input_ids.shape[1], dtype=torch.long, device=input_ids.device)
 
         # 2. Generic cache-dependent input preparation
         if past_key_values is not None:

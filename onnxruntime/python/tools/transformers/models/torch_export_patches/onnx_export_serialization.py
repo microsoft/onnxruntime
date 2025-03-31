@@ -99,11 +99,7 @@ def flatten_dynamic_cache(
     dynamic_cache: transformers.cache_utils.DynamicCache,
 ) -> tuple[list[Any], torch.utils._pytree.Context]:
     """Serializes a :class:`transformers.cache_utils.DynamicCache` with python objects."""
-    flat = [
-        (k, getattr(dynamic_cache, k))
-        for k in ["key_cache", "value_cache"]
-        if hasattr(dynamic_cache, k)
-    ]
+    flat = [(k, getattr(dynamic_cache, k)) for k in ["key_cache", "value_cache"] if hasattr(dynamic_cache, k)]
     return [f[1] for f in flat], [f[0] for f in flat]
 
 
@@ -129,7 +125,7 @@ def unflatten_dynamic_cache(
     from transformers.cache_utils import DynamicCache
 
     cache = DynamicCache()
-    values = dict(zip(context, values))
+    values = dict(zip(context, values, strict=False))
     for k, v in values.items():
         setattr(cache, k, v)
     return cache
