@@ -201,8 +201,8 @@ Status GatherBlockQuantized<T1, Tind>::CopyDataAndDequantize(const T1* data_ptr,
         zp_val = static_cast<int32_t>(zero_points_ptr ? zero_points_ptr[scale_idx] : 8);
       } else {
         zp_val = static_cast<int32_t>(zero_points_ptr
-          ? zero_points_ptr[scale_idx >> 1].GetElem(narrow<size_t>(scale_idx & 1))
-          : 0);
+                                          ? zero_points_ptr[scale_idx >> 1].GetElem(narrow<size_t>(scale_idx & 1))
+                                          : 0);
       }
 
       output_ptr[output_idx] = static_cast<T2>(static_cast<float>(data_val - zp_val) * scale_val);
