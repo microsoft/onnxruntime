@@ -595,7 +595,7 @@ e.g.
 ### Linux
 {: .no_toc }
 
-Currently Linux support is only enabled for AMD Adapable SoCs.  Please refer to the guidance [here](../execution-providers/Vitis-AI-ExecutionProvider.md#amd-adaptable-soc-installation) for SoC targets.
+Currently Linux support is only enabled for AMD Adapable SoCs.  Please refer to the guidance [here](../execution-providers/Vitis-AI-ExecutionProvider.md#installation-for-amd-adaptable-socs) for SoC targets.
 
 ---
 
