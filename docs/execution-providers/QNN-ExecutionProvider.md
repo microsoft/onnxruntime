@@ -55,7 +55,9 @@ The QNN Execution Provider supports a number of configuration options. These pro
 |`"backend_type"`|Description|
 |---|-----|
 |'cpu'|Enable CPU backend. Useful for integration testing. The CPU backend is a reference implementation of QNN operators.|
+|'gpu'|Enable GPU backend.|
 |'htp'|Enable HTP backend. Offloads compute to NPU. Default.|
+|'saver'|Enable Saver backend.|
 
 |`"backend_path"`|Description|
 |---|-----|
