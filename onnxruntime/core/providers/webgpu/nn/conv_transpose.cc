@@ -57,7 +57,6 @@ Status ConvTranspose<is_channels_last>::ComputeInternal(ComputeContext& context)
 
   bool has_bias = context.InputCount() > 2;
   const auto* bias = has_bias ? context.Input<Tensor>(2) : nullptr;
-  bool is_convtranspose1d = false;
   if (input_shape.NumDimensions() == 3 && filter_shape.NumDimensions() == 3) {
     // ConvTranspose1D
     TensorShapeVector input_shape_vector = input_shape.AsShapeVector();
@@ -71,7 +70,6 @@ Status ConvTranspose<is_channels_last>::ComputeInternal(ComputeContext& context)
     pads.insert(pads.begin() + 2, 0);
     strides.insert(strides.begin(), 1);
     dilations.insert(dilations.begin(), 1);
-    is_convtranspose1d = true;
   }
   if (input_shape.NumDimensions() > 4 || filter_shape.NumDimensions() > 4) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Only Conv2d or Conv1d are supported.");
