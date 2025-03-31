@@ -44,7 +44,7 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Download ORT Actions Asset (v0.0.2)
-        uses: dsaltares/fetch-gh-release-asset@1.1.0
+        uses: dsaltares/fetch-gh-release-asset@1.1.2
         with:
           repo: 'microsoft/onnxruntime-github-actions'
           version: 'tags/v0.0.2'
