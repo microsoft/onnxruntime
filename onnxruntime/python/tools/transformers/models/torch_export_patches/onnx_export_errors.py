@@ -1,6 +1,6 @@
 import contextlib
 import pprint
-from collections.abs import Callable
+from collections.abc import Callable
 from typing import Any
 
 from .onnx_export_serialization import (
