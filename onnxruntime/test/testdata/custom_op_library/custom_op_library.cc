@@ -36,9 +36,11 @@ OrtStatus* ORT_API_CALL RegisterCustomOps(OrtSessionOptions* options, const OrtA
     Ort::CustomOpDomain domain_v2{"v2"};
     Cpu::RegisterOps(domain_v2);
 
+#ifdef USE_CUDA_MINIMAL
     Cuda::RegisterOps(domain);
     Cuda::RegisterOps(domain_v2);
-
+#endif
+    
     Rocm::RegisterOps(domain);
     Rocm::RegisterOps(domain_v2);
 
