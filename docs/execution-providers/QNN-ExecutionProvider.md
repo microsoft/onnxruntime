@@ -62,7 +62,7 @@ The QNN Execution Provider supports a number of configuration options. These pro
 |`"backend_path"`|Description|
 |---|-----|
 |'libQnnCpu.so' or 'QnnCpu.dll'|Enable CPU backend. See `backend_type` 'cpu'.|
-|'libQnnHtp.so' or 'QnnHtp.dll'|Enable HTP backend. See `backend_type` 'npu'.|
+|'libQnnHtp.so' or 'QnnHtp.dll'|Enable HTP backend. See `backend_type` 'htp'.|
 
 **Note:** `backend_path` is an alternative to `backend_type`. At most one of the two should be specified.
 `backend_path` requires a platform-specific path (e.g., `libQnnCpu.so` vs. `QnnCpu.dll`) but also allows one to specify an arbitrary path.
