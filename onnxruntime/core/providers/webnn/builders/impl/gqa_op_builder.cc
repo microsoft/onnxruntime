@@ -3,7 +3,6 @@
 // Licensed under the MIT License.
 
 #include "onnx/defs/data_type_utils.h"
-#include "core/optimizer/initializer.h"
 #include "core/providers/common.h"
 #include "core/providers/shared/utils/utils.h"
 #include "core/providers/webnn/builders/helper.h"
@@ -191,35 +190,25 @@ Status GroupQueryAttentionOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_b
   auto left = generate_indices(batch_size, kv_num_heads, qkv_sequence_length);
   auto right = repeat_sequence(qkv_sequence_length, kv_num_heads, batch_size);
 
-  ORT_RETURN_IF_NOT(SetWebnnDataType(common_desc, ONNX_NAMESPACE::TensorProto_DataType_INT32), "Unsupported data type");
-  emscripten::val dims_left =
-      emscripten::val::array(std::vector<uint32_t>({batch_size * qkv_sequence_length * kv_num_heads, 2}));
-  common_desc.set("dimensions", dims_left);
-  common_desc.set("shape", dims_left);
-  emscripten::val left_buffer = emscripten::val::global("Int32Array").new_(emscripten::val::array(left));
-  emscripten::val left_constant =
-      model_builder.GetBuilder().call<emscripten::val>("constant", common_desc, left_buffer);
+  std::string left_name = "webnn_GQA_left_constant_of_scatter_indices_" + std::to_string(batch_size) + "_" +
+                          std::to_string(qkv_sequence_length) + "_" + std::to_string(kv_num_heads) + "_2";
+  emscripten::val left_constant = model_builder.CreateOrGetConstant<int32_t>(
+      ONNX_NAMESPACE::TensorProto_DataType_INT32, left_name, left,
+      std::vector<uint32_t>({batch_size * qkv_sequence_length * kv_num_heads, 2}));
 
-  emscripten::val dims_right =
-      emscripten::val::array(std::vector<uint32_t>({batch_size * qkv_sequence_length * kv_num_heads, 1}));
-  common_desc.set("dimensions", dims_right);
-  common_desc.set("shape", dims_right);
-  emscripten::val right_buffer = emscripten::val::global("Int32Array").new_(emscripten::val::array(right));
-  emscripten::val right_constant =
-      model_builder.GetBuilder().call<emscripten::val>("constant", common_desc, right_buffer);
+  std::string right_name = "webnn_GQA_right_constant_of_scatter_indices_" + std::to_string(batch_size) + "_" +
+                           std::to_string(qkv_sequence_length) + "_" + std::to_string(kv_num_heads) + "_1";
+  emscripten::val right_constant = model_builder.CreateOrGetConstant<int32_t>(
+      ONNX_NAMESPACE::TensorProto_DataType_INT32, right_name, right,
+      std::vector<uint32_t>({batch_size * qkv_sequence_length * kv_num_heads, 1}));
 
   // The prefilling and decoding stages require different index construction for ScatterND operations.
   // Similar to other EPs like CPU and DirectML, when qkv_sequence_length > 1, the key and value are scattered to the
   // beginning of kv cache.
   std::vector<uint8_t> first_condition({(qkv_sequence_length > 1)});
-  ORT_RETURN_IF_NOT(SetWebnnDataType(common_desc, ONNX_NAMESPACE::TensorProto_DataType_UINT8), "Unsupported data type");
-  emscripten::val dims_condition = emscripten::val::array(std::vector<uint32_t>({1}));
-  common_desc.set("dimensions", dims_condition);
-  common_desc.set("shape", dims_condition);
-  emscripten::val first_condition_buffer =
-      emscripten::val::global("Uint8Array").new_(emscripten::val::array(first_condition));
-  emscripten::val condition_constant =
-      model_builder.GetBuilder().call<emscripten::val>("constant", common_desc, first_condition_buffer);
+  std::string condition_name = "webnn_GQA_condition_constant_for_where_1";
+  emscripten::val condition_constant = model_builder.CreateOrGetConstant<uint8_t>(
+      ONNX_NAMESPACE::TensorProto_DataType_UINT8, condition_name, first_condition, std::vector<uint32_t>({1}));
 
   emscripten::val value_zero_constant =
       model_builder.CreateOrGetConstant<int>(ONNX_NAMESPACE::TensorProto_DataType_INT32, 0, {1});
@@ -309,15 +298,12 @@ Status GroupQueryAttentionOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_b
   */
   const std::vector<int32_t> mask_shape_ones_shape(batch_size * num_heads * qkv_sequence_length * past_sequence_length,
                                                    1);
-  ORT_RETURN_IF_NOT(SetWebnnDataType(common_desc, ONNX_NAMESPACE::TensorProto_DataType_INT32), "Unsupported data type");
-  emscripten::val dims_mask_shape =
-      emscripten::val::array(std::vector<uint32_t>({batch_size, num_heads, qkv_sequence_length, past_sequence_length}));
-  common_desc.set("dimensions", dims_mask_shape);
-  common_desc.set("shape", dims_mask_shape);
-  emscripten::val mask_shape_ones_shape_buffer =
-      emscripten::val::global("Int32Array").new_(emscripten::val::array(mask_shape_ones_shape));
-  emscripten::val mask_shape_ones_shape_constant =
-      model_builder.GetBuilder().call<emscripten::val>("constant", common_desc, mask_shape_ones_shape_buffer);
+  std::string mask_shape_ones_shape_name = "webnn_GQA_left_constant_of_scatter_indices_" + std::to_string(batch_size) +
+                                           "_" + std::to_string(num_heads) + "_" + std::to_string(qkv_sequence_length) +
+                                           "_" + std::to_string(past_sequence_length);
+  emscripten::val mask_shape_ones_shape_constant = model_builder.CreateOrGetConstant<int32_t>(
+      ONNX_NAMESPACE::TensorProto_DataType_INT32, mask_shape_ones_shape_name, mask_shape_ones_shape,
+      std::vector<uint32_t>({batch_size, num_heads, qkv_sequence_length, past_sequence_length}));
 
   emscripten::val cumsum_options = emscripten::val::object();
   cumsum_options.set("label", node.Name() + "_range_of_mask_shape");
@@ -330,13 +316,11 @@ Status GroupQueryAttentionOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_b
   std::vector<int32_t> pre_neq_right_data_range(qkv_sequence_length);
   std::iota(pre_neq_right_data_range.begin(), pre_neq_right_data_range.end(), 1);
 
-  emscripten::val dims_pre_neq_right_data_range = emscripten::val::array(std::vector<uint32_t>({qkv_sequence_length}));
-  common_desc.set("dimensions", dims_pre_neq_right_data_range);
-  common_desc.set("shape", dims_pre_neq_right_data_range);
-  emscripten::val pre_neq_right_data_range_buffer =
-      emscripten::val::global("Int32Array").new_(emscripten::val::array(pre_neq_right_data_range));
-  emscripten::val pre_neq_right_data_range_constant =
-      model_builder.GetBuilder().call<emscripten::val>("constant", common_desc, pre_neq_right_data_range_buffer);
+  std::string pre_neq_right_data_range_name =
+      "webnn_GQA_left_constant_of_scatter_indices_" + std::to_string(qkv_sequence_length);
+  emscripten::val pre_neq_right_data_range_constant = model_builder.CreateOrGetConstant<int32_t>(
+      ONNX_NAMESPACE::TensorProto_DataType_INT32, pre_neq_right_data_range_name, pre_neq_right_data_range,
+      std::vector<uint32_t>({qkv_sequence_length}));
 
   common_options.set("label", node.Name() + "_/GQA/attn_mask/add");
   emscripten::val pre_neq_right = model_builder.GetBuilder().call<emscripten::val>(
@@ -464,7 +448,7 @@ bool GroupQueryAttentionOpBuilder::HasSupportedInputsImpl(const GraphViewer&, co
         LOGS(logger, VERBOSE) << op_type << " requires input " << i;
         return false;
       }
-    } else {  // cos_cache and sin_cache) are not supported
+    } else {  // cos_cache and sin_cache are not supported
       if (TensorExists(input_defs, i)) {
         LOGS(logger, VERBOSE) << op_type << " does not support input " << i;
         return false;
