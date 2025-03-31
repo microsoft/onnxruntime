@@ -98,7 +98,7 @@ jobs:
         run: npm ci
         working-directory: ${{ github.workspace }}/js/web
 
-      - uses: actions/cache@v3
+      - uses: actions/cache@v4
         id: onnx-node-tests-cache
         with:
           path: ${{ github.workspace }}/js/test/
