@@ -11,7 +11,7 @@ def _catch_produce_guards_and_solve_constraints(
     fake_mode: "FakeTensorMode",
     gm: "torch.fx.GraphModule",
     dynamic_shapes: dict[str, Any] | tuple[Any] | list[Any] | None,
-    equalities_inputs: "EqualityConstraint",
+    equalities_inputs: "EqualityConstraint",  # noqa: F821
     original_signature: inspect.Signature,
     _is_torch_jit_trace: bool = False,
     verbose: int = 0,

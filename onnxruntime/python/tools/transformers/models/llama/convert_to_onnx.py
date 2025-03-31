@@ -366,7 +366,6 @@ def run_torchscript_merged_export(
         input_names=input_names,
         output_names=output_names,
         dynamic_axes=dynamic_axes,
-        dynamic_shapes=dynamic_shapes,
         opset_version=torch_export_onnx_opset_version,
         do_constant_folding=True,
         verbose=args.verbose,

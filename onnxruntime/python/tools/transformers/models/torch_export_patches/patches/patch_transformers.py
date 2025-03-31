@@ -128,7 +128,7 @@ class patched_DynamicCache:
         value_states: torch.Tensor,
         layer_idx: int,
         cache_kwargs: dict[str, Any] | None = None,
-    ) -> Tuple[torch.Tensor, torch.Tensor]:
+    ) -> tuple[torch.Tensor, torch.Tensor]:
         """
         Updates the cache with the new `key_states`
         and `value_states` for the layer `layer_idx`.
