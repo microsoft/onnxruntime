@@ -11,7 +11,6 @@ from .onnx_export_serialization import (
     unflatten_dynamic_cache,
     unflatten_mamba_cache,
 )
-
 from .patches import patch_transformers as patch_transformers_list
 
 
@@ -365,6 +364,7 @@ def bypass_export_some_errors(
                 print("[bypass_export_some_errors] assert when a dynamic dimension turns static")
 
             from torch.fx.experimental.symbolic_shapes import ShapeEnv
+
             from .patches.patch_torch import patched_ShapeEnv
 
             f_shape_env__set_replacement = ShapeEnv._set_replacement
@@ -397,7 +397,6 @@ def bypass_export_some_errors(
                 print("[bypass_export_some_errors] remove patches")
 
             if patch_sympy:
-
                 # tracked by https://github.com/pytorch/pytorch/issues/143494
                 if f_sympy_name:
                     sympy.core.numbers.IntegerConstant.name = f_sympy_name

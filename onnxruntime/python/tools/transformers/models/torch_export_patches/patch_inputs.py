@@ -1,7 +1,9 @@
 import inspect
 from typing import Any
+
 import torch
 import transformers
+
 from onnxruntime.transformers.models.torch_export_patches import make_dynamic_cache, string_type
 
 
@@ -9,7 +11,7 @@ def _process_cache(k: str, v):
     assert k != "position_ids" or isinstance(k, torch.Tensor), (
         f"Unexpected type for parameter {k!r} {string_type(v, with_shape=True)}"
     )
-    if isinstance(v, list) and all(isinstance(i, tuple) for i in v) and set(len(t) for t in v) == {2}:
+    if isinstance(v, list) and all(isinstance(i, tuple) for i in v) and {len(t) for t in v} == {2}:
         # A dynamicCache
         cache = make_dynamic_cache(v)
         return cache

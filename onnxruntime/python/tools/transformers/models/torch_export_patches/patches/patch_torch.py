@@ -2,6 +2,7 @@ import inspect
 import os
 from collections.abc import Callable, Sequence
 from typing import Any
+
 import torch
 from torch._subclasses.fake_tensor import FakeTensorMode
 
@@ -147,7 +148,6 @@ def patched__broadcast_shapes(*_shapes):
 
 
 class patched_ShapeEnv:
-
     def _set_replacement(
         self,
         a: "sympy.Symbol",  # noqa: F821
