@@ -82,7 +82,7 @@ jobs:
           python-version: ${{ inputs.python_version }}
 
       - name: Download ORT Actions Asset (v0.0.2) # <-- Adjust version as needed
-        uses: dsaltares/fetch-gh-release-asset@1.1.0 # Action to download assets
+        uses: dsaltares/fetch-gh-release-asset@1.1.2 # Action to download assets
         with:
           repo: 'microsoft/onnxruntime-github-actions'   # The repo containing the actions
           version: 'tags/v0.0.2'                          # The specific tag/version to use
