@@ -39,7 +39,7 @@ class QnnContextMemHandleManager {
   const QNN_INTERFACE_VER_TYPE& qnn_interface_;
   Qnn_ContextHandle_t context_;
   const logging::Logger& logger_;
-  const qnn::RpcMemLibrary rpc_lib_;
+  std::unique_ptr<qnn::RpcMemLibrary> rpc_lib_;
 
   // assume Qnn_MemHandle_t is a pointer and able to be wrapped with std::unique_ptr
   static_assert(std::is_pointer_v<Qnn_MemHandle_t>);

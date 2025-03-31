@@ -22,6 +22,7 @@ QnnContextMemHandleManager::QnnContextMemHandleManager(const QNN_INTERFACE_VER_T
 
 QnnContextMemHandleManager::~QnnContextMemHandleManager() {
   Clear();
+  rpc_lib_.reset();
 }
 
 Status QnnContextMemHandleManager::GetOrRegister(void* memory_address, bool uses_shared_mem_allocator, const Qnn_Tensor_t& qnn_tensor,
@@ -71,9 +72,13 @@ Status QnnContextMemHandleManager::GetOrRegister(void* memory_address, bool uses
       htp_mem_descriptor.sharedBufferConfig.fd = shared_memory_info.fd;
       htp_mem_descriptor.sharedBufferConfig.offset = shared_memory_info.offset;
     } else {
-      rpc_lib_.Api().register_buff_attr(reinterpret_cast<int*>(memory_address), static_cast<int>(qnn_tensor_data_size),
+      if (!rpc_lib_) {
+        rpc_lib_ = std::make_unique<qnn::RpcMemLibrary>();
+      }
+
+      rpc_lib_->Api().register_buff_attr(reinterpret_cast<int*>(memory_address), static_cast<int>(qnn_tensor_data_size),
                                         0, rpcmem::FASTRPC_ATTR_IMPORT_BUFFER);
-      int fd = rpc_lib_.Api().to_fd(memory_address);
+      int fd = rpc_lib_->Api().to_fd(memory_address);
       ORT_RETURN_IF(fd == rpcmem::INVALID_CLIENT_HANDLE, "Failed to register buffer to FastRPC");
 
       htp_mem_descriptor.size = qnn_tensor_data_size;
@@ -112,9 +117,9 @@ Status QnnContextMemHandleManager::GetOrRegister(void* memory_address, bool uses
       }
 
       if (!uses_shared_mem_allocator) {
-        rpc_lib.Api().register_buff_attr(reinterpret_cast<int*>(memory_address), static_cast<int>(qnn_tensor_data_size),
+        rpc_lib->Api().register_buff_attr(reinterpret_cast<int*>(memory_address), static_cast<int>(qnn_tensor_data_size),
                                          rpcmem::INVALID_CLIENT_HANDLE, 0);
-        if (rpc_lib.Api().to_fd(memory_address) != rpcmem::INVALID_CLIENT_HANDLE) {
+        if (rpc_lib->Api().to_fd(memory_address) != rpcmem::INVALID_CLIENT_HANDLE) {
           LOGS_DEFAULT(ERROR) << "fastrpc buffer deregistration failed for memory address: " << memory_address;
         }
       }
