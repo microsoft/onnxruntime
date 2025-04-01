@@ -478,22 +478,24 @@ var<workgroup> tile_qk: array<q_element_t, tile_size>;
   }
 
   shader.MainFunctionBody() << R"MAIN_FN(
-    let local_row = local_idx / tile_size_k_vec;
+    let local_row = u32(local_idx / tile_size_k_vec);
     let local_col = local_idx % tile_size_k_vec;
     let total_seq_offset = (workgroup_idx % uniforms.splited_k) * tile_size;
     let head_idx = u32(workgroup_idx / uniforms.splited_k);
     let q_offset = head_idx * uniforms.head_size_vec;
     var total_sequence_length = uniforms.total_sequence_length;
-    let present_offset = (head_idx / uniforms.n_reps) * uniforms.present_sequence_length * uniforms.head_size_vec;
+    let present_offset = u32(head_idx / uniforms.n_reps) * uniforms.present_sequence_length * uniforms.head_size_vec;
     for (var k: u32 = 0u; k < uniforms.head_size_vec; k += tile_size_k_vec) {
       if (local_idx < tile_size_k_vec && k + local_idx < uniforms.head_size_vec) {
         tile_q[local_idx] = q[q_offset + k + local_idx];
       }
       workgroupBarrier();
       let q_data = tile_q[local_col];
-      for (var row_offset = 0u; row_offset < tile_size; row_offset += sub_tile_size) {
-        if (total_seq_offset + row_offset + local_row < total_sequence_length && k + local_col < uniforms.head_size_vec) {
-          inner_qk_values[row_offset + local_row][local_col] += dot(present_key[present_offset + (total_seq_offset + row_offset + local_row) * uniforms.head_size_vec + k + local_col], q_data);
+      if (k + local_col < uniforms.head_size_vec) {
+        for (var row_offset = 0u; row_offset < tile_size; row_offset += sub_tile_size) {
+          if (total_seq_offset + row_offset + local_row < total_sequence_length) {
+            inner_qk_values[row_offset + local_row][local_col] += dot(present_key[present_offset + (total_seq_offset + row_offset + local_row) * uniforms.head_size_vec + k + local_col], q_data);
+          }
         }
       }
       workgroupBarrier();
@@ -549,12 +551,13 @@ Status ComputeAttentionQKT(onnxruntime::webgpu::ComputeContext& context, const T
                       {metadata, ProgramTensorMetadataDependency::Rank, 2}});
 
   const uint32_t vectorized_head_size = parameters.head_size_ / components;
-  program.SetDispatchGroupSize(parameters.batch_size_ * parameters.num_heads_ * splited_k)
+  program.SetDispatchGroupSize(parameters.num_heads_ * splited_k)
       .SetWorkgroupSize(64)
       .CacheHint(tile_size, has_attention_bias)
       .AddUniformVariables({{static_cast<uint32_t>(vectorized_head_size)},
                             {static_cast<uint32_t>(parameters.total_sequence_length_)},
                             {static_cast<float>(alpha)},
+                            // Get the present_sequence_length. We can't always use parameters.seqlen_present_kv_cache_ because it's zero when parameters.is_gqa_ is false.
                             {static_cast<uint32_t>(parameters.is_gqa_ ? parameters.seqlen_present_kv_cache_ : parameters.total_sequence_length_)},
                             {static_cast<uint32_t>(parameters.n_reps)},
                             {static_cast<uint32_t>(splited_k)}});
@@ -591,6 +594,9 @@ var<workgroup> qkv_values: array<array<present_value_value_t, tile_size_k_vec>, 
 
   )HELPER_FN";
 
+  // TODO: Ideally, there should only be two shaders FlashAttentionDecodeSplitK and FlashAttentionDecodeReduce, which can also reduce the intermediate memory.
+  // The computeQKT can be merged into split shader and do the final softmax adjustment in the reduce shader. However, some issues are met that when
+  // the total sequence length exceeds some value, the result will become garbage. Since it can't be resolved in a short time, leave it as TODO to fix it in future.
   shader.MainFunctionBody() << R"MAIN_FN(
     let local_row = local_idx / tile_size_k_vec;
     let local_col = local_idx % tile_size_k_vec;
@@ -623,9 +629,11 @@ var<workgroup> qkv_values: array<array<present_value_value_t, tile_size_k_vec>, 
       qkv_values[local_row][local_col] = present_value_value_t(0);
       workgroupBarrier();
 
-      for (var row_offset = 0u; row_offset < tile_size; row_offset += sub_tile_size) {
-        if (total_seq_offset + row_offset + local_row < total_sequence_length && k + local_col < uniforms.head_size_vec) {
-          value += present_value[present_offset + (total_seq_offset + row_offset + local_row) * uniforms.head_size_vec + k + local_col] * tile_qk[row_offset + local_row];
+      if (k + local_col < uniforms.head_size_vec) {
+        for (var row_offset = 0u; row_offset < tile_size; row_offset += sub_tile_size) {
+          if (total_seq_offset + row_offset + local_row < total_sequence_length) {
+            value += present_value[present_offset + (total_seq_offset + row_offset + local_row) * uniforms.head_size_vec + k + local_col] * tile_qk[row_offset + local_row];
+          }
         }
       }
 
@@ -665,7 +673,7 @@ Status ComputeFlashAttentionDecodeSplitK(onnxruntime::webgpu::ComputeContext& co
                      {qk, ProgramTensorMetadataDependency::TypeAndRank},
                      {present_value, ProgramTensorMetadataDependency::TypeAndRank, components}});
   program.AddOutputs({{out_split_k, ProgramTensorMetadataDependency::TypeAndRank, components}});  // [B, N, split_k, head_size]
-  program.SetDispatchGroupSize(parameters.batch_size_ * parameters.num_heads_ * split_k)
+  program.SetDispatchGroupSize(parameters.num_heads_ * split_k)
       .CacheHint(tile_size, head_size_vec)
       .SetWorkgroupSize(64)
       .AddUniformVariables({{static_cast<uint32_t>(parameters.total_sequence_length_)},
@@ -728,7 +736,7 @@ Status ComputeFlashAttentionDecodeReduce(onnxruntime::webgpu::ComputeContext& co
   program.AddInputs({{out_split_k, ProgramTensorMetadataDependency::TypeAndRank, components}});
   program.AddOutputs({{output, ProgramTensorMetadataDependency::TypeAndRank, components}});
   const uint32_t num_head_size_tile = static_cast<uint32_t>((parameters.v_head_size_ + tile_head_size - 1) / tile_head_size);
-  program.SetDispatchGroupSize(parameters.batch_size_ * parameters.num_heads_ * num_head_size_tile)
+  program.SetDispatchGroupSize(parameters.num_heads_ * num_head_size_tile)
       .CacheHint(tile_size)
       .SetWorkgroupSize(tile_size * tile_size)
       .AddUniformVariables({{static_cast<uint32_t>(parameters.v_head_size_ / components)},
@@ -781,6 +789,7 @@ Status ApplyFlashAttention(const Tensor* Q, const Tensor* K, const Tensor* V, co
   Tensor qk = context.CreateGPUTensor(Q->DataType(), qk_shape);
   constexpr int tile_size = 64;
   const int splited_k = (parameters.total_sequence_length_ + tile_size - 1) / tile_size;
+  // The metadata is used to store the max and sum of each tile.
   const TensorShapeVector metadata_dims({parameters.batch_size_, parameters.num_heads_,
                                          splited_k, 2});
   const TensorShape metadata_shape(metadata_dims);
@@ -791,6 +800,7 @@ Status ApplyFlashAttention(const Tensor* Q, const Tensor* K, const Tensor* V, co
   const TensorShapeVector out_split_k_dims({parameters.batch_size_, parameters.num_heads_, splited_k, parameters.head_size_});
   const TensorShape out_split_k_shape(out_split_k_dims);
   Tensor out_split_k = context.CreateGPUTensor(Q->DataType(), out_split_k_shape);
+  // The |K| letter in XXXSplitK means the shared dimension K which is |total_sequence_length| when doing matrix multiply between qk and v.
   ORT_RETURN_IF_ERROR(ComputeFlashAttentionDecodeSplitK(context, &metadata, &qk, &out_split_k, present_value, parameters, splited_k, tile_size));
   ORT_RETURN_IF_ERROR(ComputeFlashAttentionDecodeReduce(context, &out_split_k, output, parameters, splited_k));
 
