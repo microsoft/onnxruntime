@@ -4,7 +4,8 @@ from typing import Any
 import torch
 import transformers
 
-from onnxruntime.transformers.models.torch_export_patches import make_dynamic_cache, string_type
+from . import string_type
+from .cache_helper import make_dynamic_cache
 
 
 def _process_cache(k: str, v):

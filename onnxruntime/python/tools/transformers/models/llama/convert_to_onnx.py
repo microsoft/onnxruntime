@@ -368,7 +368,7 @@ def run_torchscript_merged_export(
         opset_version=torch_export_onnx_opset_version,
         do_constant_folding=True,
         verbose=args.verbose,
-        dynamo=args.dynamo,
+        dynamo=False,
     )
 
     # Check decoder_merged_model.onnx and save all external data to one file
@@ -890,9 +890,6 @@ def main():
                 decoder_merged_model_fp32_opt_path,
             ]
 
-            if args.use_dynamo_export:
-                continue
-
             # Run the optimizer script.
             logger.info("Optimizing models...")
             for orig_path, opt_path in zip(old_paths, new_paths, strict=False):
@@ -997,9 +994,6 @@ def main():
                         logger.info(f"The ONNX model at {fp_path} has been quantized to int4 and saved at {int4_path}!")
                         remove_existing_model(fp_path)
         barrier()
-
-    if args.use_dynamo_export:
-        return
 
     logger.info("Verifying parity on all ONNX models created")
 
