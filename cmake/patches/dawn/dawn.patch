@@ -34,3 +34,24 @@ index 6e8ae37593..633af91eef 100644
              -q
              "${EM_BUILD_GEN_DIR}/struct_info_webgpu.json"
              "-I=${EM_BUILD_GEN_DIR}/include"
+diff --git a/src/tint/utils/memory/aligned_storage.h b/src/tint/utils/memory/aligned_storage.h
+index c532c4fc38..19c950af4c 100644
+--- a/src/tint/utils/memory/aligned_storage.h
++++ b/src/tint/utils/memory/aligned_storage.h
+@@ -31,6 +31,9 @@
+ #include <cstddef>
+
+ #include "src/tint/utils/memory/bitcast.h"
++#include "src/tint/utils/macros/compiler.h"
++
++TINT_BEGIN_DISABLE_WARNING(UNSAFE_BUFFER_USAGE);
+
+ namespace tint {
+
+@@ -50,4 +53,6 @@ struct alignas(alignof(T)) AlignedStorage {
+
+ }  // namespace tint
+
++TINT_END_DISABLE_WARNING(UNSAFE_BUFFER_USAGE);
++
+ #endif  // SRC_TINT_UTILS_MEMORY_ALIGNED_STORAGE_H_
