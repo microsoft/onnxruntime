@@ -25,7 +25,7 @@ class SplitOpBuilder : public BaseOpBuilder {
 
   // Operator support related.
  private:
-  bool IsOpSupportedImpl(const InitializedTensorSet& initializers, const Node& node,
+  bool IsOpSupportedImpl(const GraphViewer& graph_viewer, const Node& node,
                          const WebnnDeviceType /* device_type */, const logging::Logger& logger) const override;
   bool HasSupportedOutputsImpl(const Node& node, const emscripten::val& wnn_limits,
                                const logging::Logger& logger) const override;
@@ -94,7 +94,7 @@ Status SplitOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
 
 // Operator support related.
 
-bool SplitOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& initializers,
+bool SplitOpBuilder::IsOpSupportedImpl(const GraphViewer& graph_viewer,
                                        const Node& node,
                                        const WebnnDeviceType /* device_type */,
                                        const logging::Logger& logger) const {
@@ -114,12 +114,13 @@ bool SplitOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& initializers,
   const std::string split_name = GetTensorName(input_defs, 1);
   // Inputs contain optional 'split' input.
   if (!split_name.empty()) {
-    if (!Contains(initializers, split_name)) {
+    const auto* split_init = graph_viewer.GetConstantInitializer(split_name);
+    if (!split_init) {
       LOGS(logger, VERBOSE) << "The split must be a constant initializer.";
       return false;
     }
     // Values should be >= 0. Sum of the values must be equal to the dim value at 'axis' specified.
-    const auto& split_tensor = *initializers.at(input_defs[1]->Name());
+    const auto& split_tensor = *split_init;
     if (split_tensor.data_type() != ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64) {
       LOGS(logger, VERBOSE) << "The type of tensor's element data must be INT64.";
       return false;
