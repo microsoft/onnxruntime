@@ -41,7 +41,7 @@ jobs:
       build_config: Debug
       extra_build_args: "--enable_wasm_profiling"
       build_jsep: true
-      build_webgpu: true
+      build_webgpu: false
 
   wasm_Release:
     needs: precheck
@@ -50,7 +50,7 @@ jobs:
       build_config: Release
       extra_build_args: "--target onnxruntime_webassembly --skip_tests --enable_wasm_api_exception_catching --disable_rtti"
       build_jsep: true
-      build_webgpu: true
+      build_webgpu: false
 
   web_Debug:
     needs:
