@@ -54,8 +54,8 @@ jobs:
         run: |
           set -ex
           cd ${{ github.workspace }}/cmake/external/emsdk
-          ./emsdk install 4.0.4
-          ./emsdk activate 4.0.4
+          ./emsdk install 4.0.3
+          ./emsdk activate 4.0.3
 
       - name: Build and test (browser) (simd + threads)
         run: |
