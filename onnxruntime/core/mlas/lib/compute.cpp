@@ -675,7 +675,7 @@ Arguments:
 
     Input - Supplies the input buffer.
 
-    Outrput - Supplies the output buffer.
+    Output - Supplies the output buffer.
 
     Bias - Supplies the bias buffer.
 
@@ -976,6 +976,7 @@ Return Value:
         // Find the maximum value for the row.
         //
 
+        const float* CurrentInput = Input;
         float Maximum;
         if (WorkBlock->AttentionBias != nullptr) {
             const float* AttentionBias = WorkBlock->AttentionBias + n * D;
@@ -984,7 +985,7 @@ Return Value:
 #else
             Maximum = MlasBiasAddReduceMaximumF32Kernel(Input, Output, AttentionBias, D);
 #endif
-            Input = Output;
+            CurrentInput = Output;
         } else {
 #if defined(MLAS_TARGET_AMD64) || defined(MLAS_TARGET_LARCH64)
         Maximum = GetMlasPlatform().ReduceMaximumF32Kernel(Input, D);
@@ -1004,9 +1005,9 @@ Return Value:
         //
         float* Temp = LogSoftmax ? nullptr : Output;
 #if defined(MLAS_TARGET_AMD64)
-        float Accumulation = GetMlasPlatform().ComputeSumExpF32Kernel(Input, Temp, D, &NegativeMaximum);
+        float Accumulation = GetMlasPlatform().ComputeSumExpF32Kernel(CurrentInput, Temp, D, &NegativeMaximum);
 #else
-        float Accumulation = MlasComputeSumExpF32Kernel(Input, Temp, D, &NegativeMaximum);
+        float Accumulation = MlasComputeSumExpF32Kernel(CurrentInput, Temp, D, &NegativeMaximum);
 #endif
 
         if (SmoothSoftmax) {
@@ -1020,9 +1021,9 @@ Return Value:
             float Parameters[] = {NegativeMaximum, std::log(Accumulation)};
 
 #if defined(MLAS_TARGET_AMD64) || defined(MLAS_TARGET_LARCH64)
-            GetMlasPlatform().ComputeLogSoftmaxOutputF32Kernel(Input, Output, D, Parameters);
+            GetMlasPlatform().ComputeLogSoftmaxOutputF32Kernel(CurrentInput, Output, D, Parameters);
 #else
-            MlasComputeLogSoftmaxOutputF32Kernel(Input, Output, D, Parameters);
+            MlasComputeLogSoftmaxOutputF32Kernel(CurrentInput, Output, D, Parameters);
 #endif
 
         } else {

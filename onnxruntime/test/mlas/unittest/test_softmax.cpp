@@ -127,14 +127,17 @@ template <bool Threaded>
 class MlasSoftmaxTest : public MlasTestBase {
  private:
   MatrixGuardBuffer<float> BufferInput;
+  MatrixGuardBuffer<float> BufferAttentionBias;
   MatrixGuardBuffer<float> BufferOutput;
   MatrixGuardBuffer<float> BufferOutputReference;
   MatrixGuardBuffer<MLAS_FP16> BufferInputFp16;
+  MatrixGuardBuffer<MLAS_FP16> BufferAttentionBiasFp16;
   MatrixGuardBuffer<MLAS_FP16> BufferOutputFp16;
   MLAS_THREADPOOL* threadpool_;
 
   void Test(size_t N, size_t D, float MinimumValue, float MaximumValue) {
     float* Input = BufferInput.GetBuffer(N * D);
+    float* AttentionBias = BufferAttentionBias.GetBuffer(N * D);
     float* Output = BufferOutput.GetBuffer(N * D);
     float* OutputReference = BufferOutputReference.GetBuffer(N * D);
 
@@ -143,17 +146,26 @@ class MlasSoftmaxTest : public MlasTestBase {
 
     for (size_t nd = 0; nd < N * D; nd++) {
       Input[nd] = distribution(generator);
+      AttentionBias[nd] = distribution(generator);
     }
 
-    Test(Input, Output, OutputReference, N, D, false, true);
-    Test(Input, Output, OutputReference, N, D, true, true);
-    Test(Input, Output, OutputReference, N, D, false, false);
-    Test(Input, Output, OutputReference, N, D, true, false);
+    for (const bool LogSoftmax : {false, false}) {
+      for (const bool SmoothSoftmax : {false, true}) {
+        for (const bool UseAttentionBias: {false, true}) {
+          Test(Input, Output, OutputReference, N, D, LogSoftmax, SmoothSoftmax, UseAttentionBias ? AttentionBias : nullptr);
+        }
+      }
+    }
   }
 
-  void Test(const float* Input, float* Output, float* OutputReference, size_t N, size_t D, bool LogSoftmax, bool SmoothSoftmax) {
-    MlasComputeSoftmax(Input, Output, N, D, LogSoftmax, SmoothSoftmax, threadpool_);
-    ReferenceSoftmax(Input, OutputReference, N, D, LogSoftmax, SmoothSoftmax);
+  void Test(const float* Input, float* Output, float* OutputReference, size_t N, size_t D, bool LogSoftmax, bool SmoothSoftmax, const float* AttentionBias = nullptr) {
+    if (AttentionBias != nullptr) {
+      MlasComputeSoftmax(Input, Output, N, D, LogSoftmax, SmoothSoftmax, threadpool_);
+    } else {
+      MlasComputeSoftmax(Input, Output, N, D, LogSoftmax, SmoothSoftmax, AttentionBias, threadpool_);
+    }
+
+    ReferenceSoftmax(Input, OutputReference, N, D, LogSoftmax, SmoothSoftmax, AttentionBias);
 
     constexpr float AbsoluteTolerance = 1e-6f;
     constexpr float RelativeTolerance = 1e-6f;
@@ -224,12 +236,17 @@ class MlasSoftmaxTest : public MlasTestBase {
   }
 #endif  // defined(MLAS_F16VEC_INTRINSICS_SUPPORTED) && defined(MLAS_TARGET_ARM64)
 
-  void ReferenceSoftmax(const float* Input, float* Output, size_t N, size_t D, bool LogSoftmax, bool SmoothSoftmax) {
+  void ReferenceSoftmax(const float* Input, float* Output, size_t N, size_t D, bool LogSoftmax, bool SmoothSoftmax, const float* AttentionBias) {
     for (size_t n = 0; n < N; n++) {
       float MaximumValue = std::numeric_limits<float>::lowest();
 
       for (size_t d = 0; d < D; d++) {
-        MaximumValue = (std::max)(MaximumValue, Input[d]);
+        float ModifiedInputValue = Input[d];
+        if (AttentionBias != nullptr) {
+          ModifiedInputValue += AttentionBias[d];
+        }
+        MaximumValue = (std::max)(MaximumValue, ModifiedInputValue);
+        Output[d] = ModifiedInputValue;
       }
 
       if (SmoothSoftmax && MaximumValue < 0.0f) {
@@ -239,9 +256,8 @@ class MlasSoftmaxTest : public MlasTestBase {
       double Sum = 0.0;
 
       for (size_t d = 0; d < D; d++) {
-        double e = std::exp(double(Input[d]) - double(MaximumValue));
+        double e = std::exp(double(Output[d]) - double(MaximumValue));
         Sum += e;
-        Output[d] = float(e);
       }
 
       if (SmoothSoftmax) {
@@ -250,16 +266,15 @@ class MlasSoftmaxTest : public MlasTestBase {
 
       if (LogSoftmax) {
         float Scale = float(std::log(Sum));
-
         for (size_t d = 0; d < D; d++) {
-          Output[d] = Input[d] - MaximumValue - Scale;
+          Output[d] = Output[d] - MaximumValue - Scale;
         }
 
       } else {
         float Scale = float(Sum);
 
         for (size_t d = 0; d < D; d++) {
-          Output[d] /= Scale;
+          Output[d] = (std::exp(double(Output[d]) - double(MaximumValue))) / Scale;
         }
       }
 
