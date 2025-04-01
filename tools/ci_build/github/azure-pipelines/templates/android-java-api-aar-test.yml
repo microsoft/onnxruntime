@@ -24,14 +24,11 @@ parameters:
   type: boolean
   default: true
 
-variables:
-  ${{ if eq(parameters.webGpuTest, true) }}:
-    ENABLE_WEBGPU: 'true'
-
 jobs:
 - job: Final_AAR_Testing_Android
   pool:
-    name: 'onnxruntime-Ubuntu2204-AMD-CPU'
+    #name: 'onnxruntime-Ubuntu2204-AMD-CPU'
+    name: 'Onnxruntime-Linux-GPU-A10'
     os: linux
   workspace:
     clean: all
@@ -69,6 +66,14 @@ jobs:
 
   # skip emulator tests for qnn package as there are no arm64-v8a emulators and no qnn libraries for x86
   - ${{ if not(contains(parameters.packageName, 'qnn')) }}:
+    - script: |
+        set -e -x
+        if [[ "${{ parameters.webGpuTest }}" ]]; then
+          echo "##vso[task.setvariable variable=ENABLE_WEBGPU]true"
+        fi
+      name: webgpu_variables
+      displayName: Set WebGPU environment if needed
+
     - template: use-android-emulator.yml
       parameters:
         create: true
@@ -112,7 +117,7 @@ jobs:
         --app_path "debug/app-debug.apk" \
         --test_path "androidTest/debug/app-debug-androidTest.apk" \
         --devices "Samsung Galaxy S23-13.0" "Google Pixel 3-9.0" \
-        --build_tag "${{ parameters.packageName }}"
+        --build_tag "${{ parameters.packageName }}"gi
 
     displayName: Run E2E tests using Browserstack
     workingDirectory: $(Build.BinariesDirectory)/android_test/android/app/build/outputs/apk
