@@ -47,28 +47,11 @@ jobs:
       packages: read
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Download ORT Actions Asset (v0.0.2)
-        uses: dsaltares/fetch-gh-release-asset@1.1.0
-        with:
-          repo: 'microsoft/onnxruntime-github-actions'
-          version: 'tags/v0.0.2'
-          file: 'onnxruntime-actions-v0.0.2.zip'
-          target: 'onnxruntime-actions.zip'
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Unzip ORT Actions
-        run: |
-          mkdir -p ./.github/_downloaded_actions
-          unzip -q onnxruntime-actions.zip -d ./.github/_downloaded_actions
-          echo "Unzipped contents:"
-          ls -lR ./.github/_downloaded_actions
+        uses: actions/checkout@v4    
 
       # --- Build the Docker image needed for testing ---
       - name: Build Docker Image for Testing
-        uses: ./.github/_downloaded_actions/build-docker-image # Use downloaded action
+        uses: microsoft/onnxruntime-github-actions/build-docker-image@af070907dd468259efe9524c50045789e82b4721
         with:
           Dockerfile: tools/ci_build/github/linux/docker/Dockerfile.manylinux2_28_cuda
           Repository: onnxruntimetensorrt86gpubuild
@@ -108,7 +91,7 @@ jobs:
       # So build.py --build_dir build/Release inside the container correctly finds the artifacts.
       - name: Test ONNX Runtime
         id: test_step
-        uses: ./.github/_downloaded_actions/run-build-script-in-docker # Use downloaded action
+        uses: microsoft/onnxruntime-github-actions/run-build-script-in-docker@af070907dd468259efe9524c50045789e82b4721
         with:
           docker_image: onnxruntimetensorrt86gpubuild # Use the same image
           build_config: Release
