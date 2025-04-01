@@ -12,10 +12,12 @@ from parameterized import parameterized
 from parity_utilities import find_transformers_source
 
 if find_transformers_source():
+    from dynamo_onnx_helper import DynamoOnnxHelper
     from fusion_options import FusionOptions
     from onnx_model import OnnxModel
     from optimizer import optimize_model
 else:
+    from onnxruntime.transformers.dynamo_onnx_helper import DynamoOnnxHelper
     from onnxruntime.transformers.fusion_options import FusionOptions
     from onnxruntime.transformers.onnx_model import OnnxModel
     from onnxruntime.transformers.optimizer import optimize_model
@@ -163,24 +165,41 @@ class TestFusion(unittest.TestCase):
                 f=os.path.join(os.path.dirname(__file__), "export.onnx"),
                 dynamo=True,
             )
-        return onnx_program.model_proto
+        return onnx_program.model_proto  # type: ignore
 
     def tearDown(self):
-        path = os.path.join(os.path.dirname(__file__), "export.onnx")
-        if os.path.exists(path):
-            os.remove(path)
-            os.remove(path + ".data")
+        paths = [
+            os.path.join(os.path.dirname(__file__), "export.onnx"),
+            os.path.join(os.path.dirname(__file__), "export.onnx.data"),
+        ]
+        for path in paths:
+            if os.path.exists(path):
+                os.remove(path)
 
     @parameterized.expand(
         [
             (torch.float32, "gemma3-vision-attention_fp32.onnx"),
-            # (torch.float16, "gemma3-vision-attention_fp16.onnx"),
+            (torch.float16, "gemma3-vision-attention_fp16.onnx"),
         ]
     )
     def test_gemma3_vision_attention(self, dtype, model_name):
         model = Gemma3VSIGLIPAttentionAndLayerNorm().eval().to(dtype)
         inputs = (torch.randn(1, 2, 20, dtype=dtype),)
         original_model = self.export(model, inputs)
+
+        if dtype == torch.float16:
+            # The initializers in fp16 model are folded because they are too small.
+            # optimizer needs it to be converted to initializers to match the patterns.
+            onnx_model_wrapper = DynamoOnnxHelper(original_model)
+            onnx_model_wrapper.convert_constants_to_initializers()
+            original_model = os.path.join(os.path.dirname(__file__), "export.onnx")
+            self.tearDown()
+            onnx_model_wrapper.model.save_model_to_file(
+                original_model,
+                use_external_data_format=True,
+                all_tensors_to_one_file=True,
+                convert_attribute=True,
+            )  # convert_attribute = True needed because of ONNX/ORT rewriter
 
         options = FusionOptions("clip")
         optimized_model = optimize_model(
@@ -191,7 +210,6 @@ class TestFusion(unittest.TestCase):
             optimization_options=options,
             opt_level=0,
         )
-        # onnx.save(optimized_model.model, model_name)
         self.verify_fusion(optimized_model, model_name)
 
 
