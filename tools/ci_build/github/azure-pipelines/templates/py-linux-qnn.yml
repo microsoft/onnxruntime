@@ -103,6 +103,3 @@ jobs:
         targetPath: '$(Build.BinariesDirectory)/dist'
         artifactName: onnxruntime-linux-qnn-x64
 
-  - template: component-governance-component-detection-steps.yml
-    parameters:
-      condition: 'succeeded'

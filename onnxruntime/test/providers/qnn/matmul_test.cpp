@@ -31,19 +31,7 @@ static void RunMatMulOpTest(bool is_htp_backend, const std::vector<int64_t>& sha
                             ExpectedEPNodeAssignment expected_ep_assignment = ExpectedEPNodeAssignment::All,
                             int opset = 18, float f32_abs_err = 1e-4f) {
   ProviderOptions provider_options;
-  if (is_htp_backend) {
-#if defined(_WIN32)
-    provider_options["backend_path"] = "QnnHtp.dll";
-#else
-    provider_options["backend_path"] = "libQnnHtp.so";
-#endif
-  } else {
-#if defined(_WIN32)
-    provider_options["backend_path"] = "QnnCpu.dll";
-#else
-    provider_options["backend_path"] = "libQnnCpu.so";
-#endif
-  }
+  provider_options["backend_type"] = is_htp_backend ? "htp" : "cpu";
   provider_options["offload_graph_io_quantization"] = "0";
 
   RunQnnModelTest(BuildMatMulOpTestCase(
@@ -139,11 +127,7 @@ static void RunQDQMatMulOpTest(const std::vector<int64_t>& shape_0, const std::v
                                int opset = 21, bool use_contrib_qdq = false,
                                QDQTolerance tolerance = QDQTolerance()) {
   ProviderOptions provider_options;
-#if defined(_WIN32)
-  provider_options["backend_path"] = "QnnHtp.dll";
-#else
-  provider_options["backend_path"] = "libQnnHtp.so";
-#endif
+  provider_options["backend_type"] = "htp";
   provider_options["offload_graph_io_quantization"] = "0";
 
   TestInputDef<float> input0_def(
@@ -170,11 +154,7 @@ static void RunQDQPerChannelMatMulOpTest(
     ExpectedEPNodeAssignment expected_ep_assignment = ExpectedEPNodeAssignment::All, int opset = 21,
     bool use_contrib_qdq = false, bool enable_fp16_precision = true) {
   ProviderOptions provider_options;
-#if defined(_WIN32)
-  provider_options["backend_path"] = "QnnHtp.dll";
-#else
-  provider_options["backend_path"] = "libQnnHtp.so";
-#endif
+  provider_options["backend_type"] = "htp";
   provider_options["offload_graph_io_quantization"] = "0";
 
   if (enable_fp16_precision) {
@@ -314,11 +294,7 @@ TEST_F(QnnHTPBackendTests, MatMulOp_QDQ) {
 // Got specific shapes and input ranges (quant params) from customer model.
 TEST_F(QnnHTPBackendTests, MatMulOp_QDQ_Regression_uint16_dynamic_inputs) {
   ProviderOptions provider_options;
-#if defined(_WIN32)
-  provider_options["backend_path"] = "QnnHtp.dll";
-#else
-  provider_options["backend_path"] = "libQnnHtp.so";
-#endif
+  provider_options["backend_type"] = "htp";
   provider_options["offload_graph_io_quantization"] = "0";
 
   // Test with rank 4 inputs
