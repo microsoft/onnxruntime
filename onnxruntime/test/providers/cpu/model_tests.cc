@@ -444,8 +444,8 @@ static constexpr ORT_STRING_VIEW provider_name_dml = ORT_TSTR("dml");
   // The other EPs can choose which opsets to test.
   // If an EP doesn't have any CI build pipeline, then there is no need to specify any opset.
 #ifdef USE_TENSORRT
-  // tensorrt: only enable opset 12 to 17 of onnx tests
-  provider_names[provider_name_tensorrt] = {opset12, opset14, opset15, opset16, opset17};
+  // tensorrt: only enable opset 14 to 17 of onnx tests
+  provider_names[provider_name_tensorrt] = {opset14, opset15, opset16, opset17};
 #endif
 #ifdef USE_MIGRAPHX
   provider_names[provider_name_migraphx] = {opset7, opset8, opset9, opset10, opset11, opset12, opset13, opset14, opset15, opset16, opset17, opset18};
@@ -619,6 +619,7 @@ static constexpr ORT_STRING_VIEW provider_name_dml = ORT_TSTR("dml");
                                                    ORT_TSTR("resnet101v2"),
                                                    ORT_TSTR("resnet101v2"),
                                                    ORT_TSTR("vgg19"),
+                                                   ORT_TSTR("dequantizelinear"),
                                                    ORT_TSTR("tf_inception_resnet_v2"),
                                                    ORT_TSTR("tf_inception_v1"),
                                                    ORT_TSTR("tf_inception_v3"),

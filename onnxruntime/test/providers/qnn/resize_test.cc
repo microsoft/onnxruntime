@@ -122,11 +122,7 @@ static void RunCPUResizeOpTest(const TestInputDef<float>& input_def, const std::
                                ExpectedEPNodeAssignment expected_ep_assignment,
                                int opset = 19) {
   ProviderOptions provider_options;
-#if defined(_WIN32)
-  provider_options["backend_path"] = "QnnCpu.dll";
-#else
-  provider_options["backend_path"] = "libQnnCpu.so";
-#endif
+  provider_options["backend_type"] = "cpu";
   provider_options["offload_graph_io_quantization"] = "0";
 
   RunQnnModelTest(GetResizeModelBuilder(input_def, sizes_data, mode, coordinate_transformation_mode, nearest_mode),
@@ -141,11 +137,7 @@ static void RunCPUResizeOpTestWithScales(const TestInputDef<float>& input_def, c
                                          ExpectedEPNodeAssignment expected_ep_assignment,
                                          int opset = 19) {
   ProviderOptions provider_options;
-#if defined(_WIN32)
-  provider_options["backend_path"] = "QnnCpu.dll";
-#else
-  provider_options["backend_path"] = "libQnnCpu.so";
-#endif
+  provider_options["backend_type"] = "cpu";
   provider_options["offload_graph_io_quantization"] = "0";
 
   RunQnnModelTest(GetResizeModelBuilderWithScales(input_def, scales_data, mode, coordinate_transformation_mode, nearest_mode),
@@ -163,11 +155,7 @@ static void RunQDQResizeOpTest(const TestInputDef<float>& input_def,
                                int opset = 19,
                                QDQTolerance tolerance = QDQTolerance()) {
   ProviderOptions provider_options;
-#if defined(_WIN32)
-  provider_options["backend_path"] = "QnnHtp.dll";
-#else
-  provider_options["backend_path"] = "libQnnHtp.so";
-#endif
+  provider_options["backend_type"] = "htp";
   provider_options["offload_graph_io_quantization"] = "0";
 
   TestQDQModelAccuracy(GetResizeModelBuilder(input_def, sizes_data, mode, coordinate_transformation_mode, nearest_mode),
@@ -271,14 +259,20 @@ TEST_F(QnnCPUBackendTests, ResizeDownsampleNearestAlignCorners_rpf) {
 // Cpu tests that use the "linear" mode.
 //
 
-TEST_F(QnnCPUBackendTests, Resize2xLinearHalfPixel) {
+// accuracy issue since QNN 2.31
+// Expected: contains 240 values, where each value and its corresponding value in 16-byte object <F0-00 00-00 00-00 00-00 40-01 57-DD 45-01 00-00> are an almost-equal pair
+// Actual: 16-byte object <F0-00 00-00 00-00 00-00 40-01 39-DD 45-01 00-00>, where the value pair (-10, -10.5084743) at index #0 don't match, which is -0.508474 from -10
+TEST_F(QnnCPUBackendTests, DISABLED_Resize2xLinearHalfPixel) {
   std::vector<float> input_data = GetFloatDataInRange(-10.0f, 10.0f, 60);
   RunCPUResizeOpTest(TestInputDef<float>({1, 3, 4, 5}, false, input_data),
                      {1, 3, 8, 10}, "linear", "half_pixel", "",
                      ExpectedEPNodeAssignment::All);
 }
 
-TEST_F(QnnCPUBackendTests, Resize2xLinearHalfPixel_scales) {
+// accuracy issue since QNN 2.31
+// Expected: contains 240 values, where each value and its corresponding value in 16-byte object <F0-00 00-00 00-00 00-00 40-01 57-4B C9-02 00-00> are an almost-equal pair
+// Actual: 16-byte object <F0-00 00-00 00-00 00-00 40-01 39-4B C9-02 00-00>, where the value pair (-10, -10.5084743) at index #0 don't match, which is -0.508474 from -10
+TEST_F(QnnCPUBackendTests, DISABLED_Resize2xLinearHalfPixel_scales) {
   std::vector<float> input_data = GetFloatDataInRange(-10.0f, 10.0f, 60);
   RunCPUResizeOpTestWithScales(TestInputDef<float>({1, 3, 4, 5}, false, input_data),
                                {1.0f, 1.0f, 2.0f, 2.0f}, "linear", "half_pixel", "",
