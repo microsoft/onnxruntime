@@ -32,14 +32,22 @@ class MlasTransposeTest : public MlasTestBase {
   }
 
  public:
+  MlasTransposeTest() : threadpool_(Threaded ? GetMlasThreadPool() : nullptr) {}
+
   static const char* GetTestSuiteName() {
-    static const std::string suite_name = std::string("Transpose_Type:") +
-                                          typeid(ElementType).name() +
+    static const std::string suite_name = std::string("Transpose_") +
+                                          GetTypeString() +
                                           std::string(Threaded ? "_Threaded" : "_SingleThread");
     return suite_name.c_str();
   }
 
-  MlasTransposeTest() : threadpool_(Threaded ? GetMlasThreadPool() : nullptr) {}
+  static const std::string GetTypeString() {
+    if(std::is_same<ElementType, float>::value) return std::string("FP32");
+    if(std::is_same<ElementType, uint32_t>::value) return std::string("U32");
+    if(std::is_same<ElementType, uint16_t>::value) return std::string("U16");
+    if(std::is_same<ElementType, uint8_t>::value) return std::string("U8");
+    return std::string("unknown");
+  }
 
   void ExecuteShort(void) override {
     for (size_t m = 1; m <= 32; m++) {
