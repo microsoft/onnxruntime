@@ -438,7 +438,7 @@ Status FlashAttentionDecodeQKTProgram::GenerateShaderCode(ShaderHelper& shader) 
   shader.AddOutput("metadata", ShaderUsage::UseUniform | ShaderUsage::UseValueTypeAlias | ShaderUsage::UseElementTypeAlias);
   // Note that this shader adopts similar algorithm with dp4a generation shader.
   //
-  // This algorithm works to compute dot product of k parallelly, by processing k at each step amongst tile_size_k_vec threads,
+  // This algorithm works to compute dot product of k with q parallelly, by processing k at each step amongst tile_size_k_vec threads,
   // and utilizing the remaining threads in the workgroup to process additional rows of |present_key| in parallel (such that the values in shared memory (tile_q) for |q| can be reused).
   // For each load of k, the tile_size_k_vec threads also reload |present_key| tile_size/sub_tile_size times to compute partial dot products of other |present_key| rows
   // in order to complete all tile_size |present_key| rows in this workgroup and also reusing the loaded in register values of |q|.
@@ -573,9 +573,9 @@ Status FlashAttentionDecodeSplitVxProgram::GenerateShaderCode(ShaderHelper& shad
 
   // Note that this shader adopts similar algorithm with dp4a generation shader.
   //
-  // This algorithm works to compute dot product of k parallelly, by processing k at each step amongst tile_size_k_vec threads,
+  // This algorithm works to compute dot product of v with qk parallelly, by processing v at each step amongst tile_size_k_vec threads,
   // and utilizing the remaining threads in the workgroup to process additional rows of |present_value| in parallel (such that the values in shared memory (tile_qk) for |qk| can be reused).
-  // For each load of k, the tile_size_k_vec threads also reload |present_value| tile_size/sub_tile_size times to compute partial dot products of other |present_value| rows
+  // For each load of v, the tile_size_k_vec threads also reload |present_value| tile_size/sub_tile_size times to compute partial dot products of other |present_value| rows
   // in order to complete all tile_size |present_value| rows in this workgroup and also reusing the values in tile_qk.
   //
   // The difference with FlashAttentionDecodeQKTProgram is that the dot products go through the rows (total_sequence_length) of |present_value| instead of columns (head_size_vec).
