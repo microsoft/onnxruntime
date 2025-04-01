@@ -307,6 +307,3 @@ jobs:
     displayName: 'Log Chrome processes (after test)'
     workingDirectory: '$(Agent.TempDirectory)\web\test'
     condition: always()
-  - template: component-governance-component-detection-steps.yml
-    parameters:
-      condition: 'succeeded'
