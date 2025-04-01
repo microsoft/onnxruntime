@@ -61,10 +61,10 @@ class FlashAttentionProgram final : public Program<FlashAttentionProgram> {
   int qkv_num_heads_;
 };
 
-class AttentionQKTProgram final : public Program<AttentionQKTProgram> {
+class FlashAttentionDecodeQKTProgram final : public Program<FlashAttentionDecodeQKTProgram> {
  public:
-  AttentionQKTProgram(const std::string& kernel_name,
-                      bool has_attention_bias, int tile_size)
+  FlashAttentionDecodeQKTProgram(const std::string& kernel_name,
+                                 bool has_attention_bias, uint32_t tile_size)
       : Program{kernel_name}, has_attention_bias_(has_attention_bias), tile_size_(tile_size) {
   }
 
@@ -75,16 +75,16 @@ class AttentionQKTProgram final : public Program<AttentionQKTProgram> {
                                           {"alpha", ProgramUniformVariableDataType::Float32},
                                           {"present_sequence_length", ProgramUniformVariableDataType::Uint32},
                                           {"n_reps", ProgramUniformVariableDataType::Uint32},
-                                          {"splited_k", ProgramUniformVariableDataType::Uint32});
+                                          {"num_total_seq_length_tile", ProgramUniformVariableDataType::Uint32});
 
  private:
   bool has_attention_bias_;
-  int tile_size_;
+  uint32_t tile_size_;
 };
 
-class FlashAttentionDecodeSplitKProgram final : public Program<FlashAttentionDecodeSplitKProgram> {
+class FlashAttentionDecodeSplitVxProgram final : public Program<FlashAttentionDecodeSplitVxProgram> {
  public:
-  FlashAttentionDecodeSplitKProgram(const std::string& kernel_name, int tile_size, int head_size_vec)
+  FlashAttentionDecodeSplitVxProgram(const std::string& kernel_name, uint32_t tile_size, int head_size_vec)
       : Program{kernel_name}, tile_size_(tile_size), head_size_vec_(head_size_vec) {
   }
 
@@ -94,27 +94,27 @@ class FlashAttentionDecodeSplitKProgram final : public Program<FlashAttentionDec
                                           {"head_size_vec", ProgramUniformVariableDataType::Uint32},
                                           {"present_sequence_length", ProgramUniformVariableDataType::Uint32},
                                           {"n_reps", ProgramUniformVariableDataType::Uint32},
-                                          {"splited_k", ProgramUniformVariableDataType::Uint32});
+                                          {"num_total_seq_length_tile", ProgramUniformVariableDataType::Uint32});
 
  private:
-  int tile_size_;
+  uint32_t tile_size_;
   int head_size_vec_;
 };
 
-class FlashAttentionDecodeReduceProgram final : public Program<FlashAttentionDecodeReduceProgram> {
+class FlashAttentionDecodeVxReduceProgram final : public Program<FlashAttentionDecodeVxReduceProgram> {
  public:
-  FlashAttentionDecodeReduceProgram(const std::string& kernel_name, int tile_size)
+  FlashAttentionDecodeVxReduceProgram(const std::string& kernel_name, uint32_t tile_size)
       : Program{kernel_name}, tile_size_(tile_size) {
   }
 
   Status GenerateShaderCode(ShaderHelper& sh) const override;
 
   WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES({"head_size_vec", ProgramUniformVariableDataType::Uint32},
-                                          {"splited_k", ProgramUniformVariableDataType::Uint32},
+                                          {"num_total_seq_length_tile", ProgramUniformVariableDataType::Uint32},
                                           {"num_head_size_tile", ProgramUniformVariableDataType::Uint32});
 
  private:
-  int tile_size_;
+  uint32_t tile_size_;
 };
 
 Status ApplyFlashAttention(const Tensor* Q, const Tensor* K, const Tensor* V, const Tensor* attention_bias,
