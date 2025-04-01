@@ -557,7 +557,6 @@ MlasTranspose8xNVector(
 
 template <typename ElementType>
 void
-MLASCALL
 MlasTransposeThreaded(
     void* Context,
     ptrdiff_t ThreadId
@@ -582,7 +581,6 @@ Return Value:
 
 template<>
 void
-MLASCALL
 MlasTransposeThreaded<uint32_t>(
     void* Context,
     ptrdiff_t ThreadId
@@ -686,7 +684,6 @@ MlasTransposeThreaded<uint32_t>(
 
 template<>
 void
-MLASCALL
 MlasTransposeThreaded<uint16_t>(
     void* Context,
     ptrdiff_t ThreadId
@@ -789,7 +786,6 @@ MlasTransposeThreaded<uint16_t>(
 
 template<>
 void
-MLASCALL
 MlasTransposeThreaded<uint8_t>(
     void* Context,
     ptrdiff_t ThreadId
