@@ -169,6 +169,7 @@ def run_dynamo_export(
             dynamic_shapes=dynamic_shapes,
             dynamo=True,
             verbose=args.verbose,
+            optimize=True,
         )
 
     # Check decoder_with_past_model.onnx and save all external data to one file
