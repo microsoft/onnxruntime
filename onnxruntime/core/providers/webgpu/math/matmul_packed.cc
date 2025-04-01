@@ -55,12 +55,13 @@ void MatMulProgram::MatMulReadWriteFnSource(ShaderHelper& shader,
       << "  let col = colIn * " << components << ";\n"
       << "  if (row < i32(uniforms.dim_a_outer) && col < i32(uniforms.dim_b_outer)) {\n"
       << "    var value = valueIn;\n"
-      << "    " << activation_snippet << "\n"
       << "    let coords = vec3<i32>(batch, row, colIn);\n";
 
   if (has_bias_) {
     shader.AdditionalImplementation() << "    value = value + " << (is_channels_last_ ? "bias[colIn]" : type_string + "(bias[row])") << ";\n";
   }
+
+  shader.AdditionalImplementation() << "    " << activation_snippet << "\n";
 
   shader.AdditionalImplementation()
       << output.SetByIndices("vec3<u32>(coords)", "value") << "\n"

@@ -101,6 +101,11 @@ Status Conv<is_channels_last, is_fused>::ComputeInternal(ComputeContext& context
   if (has_bias) {
     inputs[2] = bias;
   }
+  std::vector<TensorShape> modified_input_output_shapes = {input_shape, kernel_shape};
+  if (has_bias) {
+    modified_input_output_shapes.push_back(bias->Shape());
+  }
+  modified_input_output_shapes.push_back(TensorShape(output_shape_vector));
   uint32_t auto_pad_adjust = conv_attrs_.auto_pad == AutoPadType::SAME_LOWER ? 1 : 0;
   auto pad0 = conv_attrs_.auto_pad == AutoPadType::NOTSET ? pads[0] : (pads[0] + pads[2] + auto_pad_adjust) / 2;
   auto pad1 = conv_attrs_.auto_pad == AutoPadType::NOTSET ? pads[1] : (pads[1] + pads[3] + auto_pad_adjust) / 2;
@@ -110,20 +115,23 @@ Status Conv<is_channels_last, is_fused>::ComputeInternal(ComputeContext& context
     if (is_channels_last) {
       ORT_RETURN_IF_ERROR(TransposeKernel(context, kernel, kernel_shape, &transposed_kernel, perm));
       inputs[1] = &transposed_kernel;
-    } else {
-      inputs[1] = kernel;
+      modified_input_output_shapes[1] = transposed_kernel.Shape();
     }
     auto output_channels_per_group = output_channels / conv_attrs_.group;
     auto components = static_cast<int>(is_channels_last && output_channels_per_group >= 4 ? GetMaxComponents(output_channels) : 1);
     auto output_size = output_shape.Size() / components;
     GroupedConvProgram program(activation_, has_bias, is_channels_last);
+    auto reduced_kernel_shape = ReduceShapeByComponents(modified_input_output_shapes[1], components);
+    auto reduced_output_shape = ReduceShapeByComponents(modified_input_output_shapes[has_bias ? 3 : 2], components);
     program.CacheHint(activation_.ToString())
-        .AddInputs({{inputs[0], ProgramTensorMetadataDependency::TypeAndRank}, {inputs[1], ProgramTensorMetadataDependency::TypeAndRank, components}})
-        .AddOutput({output, ProgramTensorMetadataDependency::TypeAndRank, components})
+        .AddInput({inputs[0], ProgramTensorMetadataDependency::TypeAndRank, modified_input_output_shapes[0], 1})
+        .AddInput({inputs[1], ProgramTensorMetadataDependency::TypeAndRank, reduced_kernel_shape, components})
+        .AddOutput({output, ProgramTensorMetadataDependency::TypeAndRank, reduced_output_shape, components})
         .AddUniformVariables({{static_cast<uint32_t>(output_size)}, {dilations}, {strides}, {updated_pads}, {static_cast<uint32_t>(output_channels_per_group)}, {static_cast<uint32_t>(components)}})
         .SetDispatchGroupSize((output_size + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE);
     if (has_bias) {
-      program.AddInput({inputs[2], ProgramTensorMetadataDependency::TypeAndRank, components});
+      auto reduced_bias_shape = ReduceShapeByComponents(modified_input_output_shapes[2], components);
+      program.AddInput({inputs[2], ProgramTensorMetadataDependency::TypeAndRank, reduced_bias_shape, components});
     }
     return context.RunProgram(program);
   }
@@ -200,11 +208,7 @@ Status Conv<is_channels_last, is_fused>::ComputeInternal(ComputeContext& context
   auto dim_inner = static_cast<uint32_t>(kernel_height * kernel_width * input_channels);
   inputs[1] = &transposed_kernel;
   TensorShape transposed_kernel_shape = transposed_kernel.Shape();
-  std::vector<TensorShape> modified_input_output_shapes = {input_shape, transposed_kernel_shape};
-  if (has_bias) {
-    modified_input_output_shapes.push_back(bias->Shape());
-  }
-  modified_input_output_shapes.push_back(TensorShape(output_shape_vector));
+  modified_input_output_shapes[1] = transposed_kernel.Shape();
   Conv2dMMProgram conv2d_mm_program = CreateConv2dMMProgram(activation_, inputs, pads, strides, dilations, output, dim_a_outer, dim_b_outer, dim_inner, is_channels_last, sequentially_access_by_threads, modified_input_output_shapes);
   return context.RunProgram(conv2d_mm_program);
 }

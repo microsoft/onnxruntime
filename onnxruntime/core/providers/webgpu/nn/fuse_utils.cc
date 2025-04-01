@@ -61,7 +61,7 @@ std::string GetActivationSnippet(const Activation& activation, std::string value
     case ActivationKind::Relu:
       return "value = max(value, " + value_type_cast(0.0) + ");";
     case ActivationKind::Sigmoid:
-      return "value = " + value_type_cast(1.0) + " / (" + value_type_cast(1.0) + "exp(-value));";
+      return "value = " + value_type_cast(1.0) + " / (" + value_type_cast(1.0) + " + exp(-value));";
     case ActivationKind::Clip:
       return "value = clamp(value, " + value_type_cast(activation.activation_params_.Clip.minimum_) + ", " + value_type_cast(activation.activation_params_.Clip.maximum_) + ");";
     case ActivationKind::HardSigmoid:
