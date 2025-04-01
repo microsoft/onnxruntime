@@ -10,23 +10,13 @@
 #include "core/providers/cpu/math/matmul_helper.h"
 #include "core/providers/webgpu/shader_helper.h"
 #include "core/providers/webgpu/webgpu_supported_types.h"
+#include "core/providers/webgpu/webgpu_utils.h"
 
 namespace onnxruntime {
 namespace contrib {
 namespace webgpu {
 
 namespace {
-// Put it to a common place?
-uint32_t GetMaxComponents(uint32_t size) {
-  // we cannot use vec3 type since it has alignment of 16 bytes
-  if (size % 4 == 0) {
-    return 4;
-  } else if (size % 2 == 0) {
-    return 2;
-  }
-
-  return 1;
-}
 
 std::string QuantizedDataType(int components) {
   switch (components) {
@@ -574,9 +564,9 @@ Status MatMulNBits::ComputeInternal(onnxruntime::webgpu::ComputeContext& context
     return ApplySubgroupMatrixMatMulNBits(a, b, scales, M, N, K, context, y);
   }
 
-  if (M >= kMinMForTileOptimization &&
-      CanApplyDP4AMatrixMatMulNBits(context, accuracy_level_, block_size, batch_count, N, K, components_a, has_zero_points)) {
-    return ApplyDP4AMatrixMatMulNBits(a, b, scales, M, N, K, block_size, context, y);
+  // On FP32 only GPUs, integer math is faster than FP32 therefore always use DP4A independent of length of M.
+  if ((M >= kMinMForTileOptimization || y->DataType() == DataTypeImpl::GetType<float>()) && CanApplyDP4AMatrixMatMulNBits(context, accuracy_level_, block_size, batch_count, N, K, components_a, has_zero_points)) {
+    return ApplyDP4AMatrixMatMulNBits(a, b, scales, M, N, K, block_size, kMinMForTileOptimization, context, y);
   }
 
   // TODO: Support output_number > 1. Some cases are failed when output_number > 1.

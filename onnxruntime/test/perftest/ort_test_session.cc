@@ -199,11 +199,12 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
     std::string option_string = performance_test_config.run_config.ep_runtime_config_string;
 #endif
     ParseSessionConfigs(option_string, provider_options,
-                        {"backend_path", "profiling_file_path", "profiling_level", "rpc_control_latency",
-                         "vtcm_mb", "soc_model", "device_id", "htp_performance_mode", "qnn_saver_path",
-                         "htp_graph_finalization_optimization_mode", "qnn_context_priority", "htp_arch",
-                         "enable_htp_fp16_precision", "offload_graph_io_quantization", "enable_htp_spill_fill_buffer",
-                         "enable_htp_shared_memory_allocator", "dump_json_qnn_graph", "json_qnn_graph_dir"});
+                        {"backend_type", "backend_path", "profiling_file_path", "profiling_level",
+                         "rpc_control_latency", "vtcm_mb", "soc_model", "device_id", "htp_performance_mode",
+                         "qnn_saver_path", "htp_graph_finalization_optimization_mode", "qnn_context_priority",
+                         "htp_arch", "enable_htp_fp16_precision", "offload_graph_io_quantization",
+                         "enable_htp_spill_fill_buffer", "enable_htp_shared_memory_allocator", "dump_json_qnn_graph",
+                         "json_qnn_graph_dir"});
     for (const auto& provider_option : provider_options) {
       const std::string& key = provider_option.first;
       const std::string& value = provider_option.second;
@@ -216,7 +217,8 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
         if (supported_profiling_level.find(value) == supported_profiling_level.end()) {
           ORT_THROW("Supported profiling_level: off, basic, detailed");
         }
-      } else if (key == "rpc_control_latency" || key == "vtcm_mb" || key == "soc_model" || key == "device_id") {
+      } else if (key == "backend_type" || key == "rpc_control_latency" || key == "vtcm_mb" || key == "soc_model" ||
+                 key == "device_id") {
         // no validation
       } else if (key == "htp_performance_mode") {
         std::set<std::string> supported_htp_perf_mode = {"burst", "balanced", "default", "high_performance",
