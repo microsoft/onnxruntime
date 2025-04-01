@@ -70,7 +70,7 @@ jobs:
           xcode_version: ${{ env.xcode_version }}
           use_cache: true
 
-      - uses: actions/cache@v3
+      - uses: actions/cache@v4
         id: onnx-node-tests-cache
         with:
           path: ${{ github.workspace }}/js/test/

@@ -80,7 +80,7 @@ jobs:
       - name: Set up Python ${{ inputs.python_version }}
         uses: actions/setup-python@v5
         with:
-          python-version: ${{ inputs.python_version }}     
+          python-version: ${{ inputs.python_version }}
 
       - name: Build Docker Image (${{ inputs.architecture }} / ${{ inputs.build_config }})
         uses: microsoft/onnxruntime-github-actions/build-docker-image@af070907dd468259efe9524c50045789e82b4721

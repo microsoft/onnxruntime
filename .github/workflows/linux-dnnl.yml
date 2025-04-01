@@ -4,7 +4,7 @@
 # This file is very similar to linux_ci.yml, but much simpler
 
 
-name: Linux CI
+name: Linux DNNL CI
 
 on:
   push:

@@ -161,7 +161,7 @@ class WebGpuContext final {
   std::vector<const char*> GetEnabledDeviceToggles() const;
   std::vector<const char*> GetDisabledDeviceToggles() const;
   std::vector<wgpu::FeatureName> GetAvailableRequiredFeatures(const wgpu::Adapter& adapter) const;
-  wgpu::RequiredLimits GetRequiredLimits(const wgpu::Adapter& adapter) const;
+  wgpu::Limits GetRequiredLimits(const wgpu::Adapter& adapter) const;
   void WriteTimestamp(uint32_t query_index);
 
   struct PendingKernelInfo {
