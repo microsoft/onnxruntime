@@ -364,6 +364,15 @@ const std::map<ONNX_NAMESPACE::TensorProto_DataType, std::string_view> onnx_to_w
     {ONNX_NAMESPACE::TensorProto_DataType_UINT64, "uint64"},
 };
 
+// This array contains the input/output data types of a WebNN graph that are allowed to be fallback to int32.
+constexpr std::array<ONNX_NAMESPACE::TensorProto_DataType, 5> supported_fallback_integer_data_types = {
+    ONNX_NAMESPACE::TensorProto_DataType_BOOL,
+    ONNX_NAMESPACE::TensorProto_DataType_INT8,
+    ONNX_NAMESPACE::TensorProto_DataType_UINT8,
+    ONNX_NAMESPACE::TensorProto_DataType_UINT32,
+    ONNX_NAMESPACE::TensorProto_DataType_INT64,
+};
+
 bool AreDataTypesSame(const std::string_view op_type,
                       gsl::span<const int32_t> input_types,
                       const logging::Logger& logger);

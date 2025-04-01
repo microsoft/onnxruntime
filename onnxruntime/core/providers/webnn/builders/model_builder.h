@@ -89,6 +89,9 @@ class ModelBuilder {
   InlinedHashMap<std::string, emscripten::val> wnn_operands_;
   std::vector<std::string> input_names_;
   std::vector<std::string> output_names_;
+  // The output names which need to be casted to int32.
+  std::vector<std::string> cast_required_output_names_;
+  std::vector<std::vector<uint8_t>> unpacked_tensors_;
 
   InlinedHashMap<std::string, OnnxTensorInfo> input_output_info_;
 
