@@ -1,6 +1,12 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include <functional>
+#include <memory>
+#include <string>
+#include <utility>
+#include <vector>
+
 #include "core/providers/qnn/builder/opbuilder/base_op_builder.h"
 #include "core/providers/qnn/builder/qnn_utils.h"
 #include "core/providers/qnn/builder/qnn_model_wrapper.h"
@@ -45,8 +51,7 @@ std::vector<uint32_t> FlattenShapeFromAxis(std::vector<uint32_t>& input_shape, i
     output_shape.push_back(1);  // Additional batch included
   }
   output_shape.push_back(
-    std::accumulate(input_shape.begin() + axis, input_shape.end(), 1, std::multiplies<uint32_t>())
-  );
+      std::accumulate(input_shape.begin() + axis, input_shape.end(), 1, std::multiplies<uint32_t>()));
 
   return output_shape;
 }
@@ -88,21 +93,21 @@ Status SoftmaxOpBuilder::ProcessInputs(QnnModelWrapper& qnn_model_wrapper,
   ORT_RETURN_IF(input_info.is_initializer, "QNN EP does not support (Log)Softmax with an initializer input, ",
                 "which should be optimized away by the ORT optimizer");
 
-  /*
-  For Onnx Softmax with opset < 13, its behavior is to flatten the input starting from the axis, and perform
-  softmax operation along the axis dimension, then reshape back to the original input shape.
-  QNN EP is able to support arbitrary axis attribute by wrapping reshapes around the operator.
-
-  Here provides an example:
-  Given an input with shape=(3, 4, 5) and axis=1. Its behavior is to reshape the input to (3, 20), perform softmax,
-  and then reshape back to (3, 4, 5).
-
-  When axis equals 0, the reshape output shape includes an additional batch of size 1 as the first dimension.
-  Here provides an example:
-  Given an input with shape=(3, 4, 5) and axis=0. Its behavior is to reshape the input to (1, 60), perform softmax,
-  and then reshape back to (3, 4, 5).
-  */
   if (opset_version < 13) {
+    /*
+    For Onnx Softmax with opset < 13, its behavior is to flatten the input starting from the axis, and perform
+    softmax operation along the axis dimension, then reshape back to the original input shape.
+    QNN EP is able to support arbitrary axis attribute by wrapping reshapes around the operator.
+
+    Here provides an example:
+    Given an input with shape=(3, 4, 5) and axis=1. Its behavior is to reshape the input to (3, 20), perform softmax,
+    and then reshape back to (3, 4, 5).
+
+    When axis equals 0, the reshape output shape includes an additional batch of size 1 as the first dimension.
+    Here provides an example:
+    Given an input with shape=(3, 4, 5) and axis=0. Its behavior is to reshape the input to (1, 60), perform softmax,
+    and then reshape back to (3, 4, 5).
+    */
     std::string reshape_output_name = input_name + "_ort_qnn_ep_reshape";
     std::vector<uint32_t> reshape_output_shape = FlattenShapeFromAxis(input_info.shape, axis);
 
@@ -119,13 +124,12 @@ Status SoftmaxOpBuilder::ProcessInputs(QnnModelWrapper& qnn_model_wrapper,
                                                          is_graph_input,
                                                          false));
     input_names.push_back(reshape_output_name);
-  }
-  /*
-  For Onnx Softmax with opset >= 13, the QNN HTP backend only supports the axis attribute that refers to the last
-  input dimension.
-  QNN EP is able to support arbitrary axis attribute by wrapping transposes around the operator.
-  */
-  else if (is_npu_backend && axis != static_cast<int32_t>(input_rank) - 1) {
+  } else if (is_npu_backend && axis != static_cast<int32_t>(input_rank) - 1) {
+    /*
+    For Onnx Softmax with opset >= 13, the QNN HTP backend only supports the axis attribute that refers to the last
+    input dimension.
+    QNN EP is able to support arbitrary axis attribute by wrapping transposes around the operator.
+    */
     std::string transpose_output_name = input_name + "_ort_qnn_ep_transpose";
     std::vector<uint32_t> transpose_perm = GetTransposePermToUseLastAxis(static_cast<uint32_t>(input_rank),
                                                                          static_cast<uint32_t>(axis));
@@ -149,9 +153,8 @@ Status SoftmaxOpBuilder::ProcessInputs(QnnModelWrapper& qnn_model_wrapper,
                                                            is_graph_input,
                                                            false));
     input_names.push_back(transpose_output_name);
-  }
-  // Process the input as normal.
-  else {
+  } else {
+    // Process the input as normal.
     return ProcessInput(qnn_model_wrapper, inputs[0], logger, input_names);
   }
 
@@ -213,8 +216,7 @@ Status SoftmaxOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_
                                                          do_op_validation,
                                                          false,
                                                          is_graph_output));
-  }
-  else if (is_npu_backend && axis != static_cast<int32_t>(output_rank) - 1) {
+  } else if (is_npu_backend && axis != static_cast<int32_t>(output_rank) - 1) {
     std::string transpose_input_name = orig_output_name + "_ort_qnn_ep_transpose";
 
     std::vector<uint32_t> transpose_input_shape = output_info.shape;
@@ -255,8 +257,7 @@ Status SoftmaxOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_
                                                            do_op_validation,
                                                            false,
                                                            is_graph_output));
-  }
-  else {
+  } else {
     QnnParamWrapper axis_param(node_unit.Index(), node_unit.Name(), QNN_OP_SOFTMAX_PARAM_AXIS, axis_qnn_scalar);
     std::vector<std::string> param_tensor_names;
     param_tensor_names.push_back(axis_param.GetParamTensorName());
