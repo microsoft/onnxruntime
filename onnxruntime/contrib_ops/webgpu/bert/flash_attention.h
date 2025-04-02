@@ -70,8 +70,8 @@ class FlashAttentionProgram final : public Program<FlashAttentionProgram> {
 class FlashAttentionDecodeQKTProgram final : public Program<FlashAttentionDecodeQKTProgram> {
  public:
   FlashAttentionDecodeQKTProgram(const std::string& kernel_name,
-                                 bool has_attention_bias, uint32_t tile_size)
-      : Program{kernel_name}, has_attention_bias_(has_attention_bias), tile_size_(tile_size) {
+                                 bool has_attention_bias, uint32_t tile_size, int head_size_vec)
+      : Program{kernel_name}, has_attention_bias_(has_attention_bias), tile_size_(tile_size), head_size_vec_(head_size_vec) {
   }
 
   Status GenerateShaderCode(ShaderHelper& sh) const override;
@@ -88,6 +88,7 @@ class FlashAttentionDecodeQKTProgram final : public Program<FlashAttentionDecode
  private:
   bool has_attention_bias_;
   uint32_t tile_size_;
+  int head_size_vec_;
 };
 
 class FlashAttentionDecodeSplitVxProgram final : public Program<FlashAttentionDecodeSplitVxProgram> {
