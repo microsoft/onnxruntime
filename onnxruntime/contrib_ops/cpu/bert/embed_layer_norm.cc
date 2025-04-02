@@ -92,9 +92,6 @@ Status EmbedLayerNorm<T>::Compute(OpKernelContext* context) const {
     const float epsilon_value = epsilon();
 
     concurrency::ThreadPool::TryBatchParallelFor(
-#if __cplusplus >= 202002L
-        context->GetOperatorThreadPool(), n, [=, this, &failed](ptrdiff_t index) {
-#else
 #ifdef __GNUC__
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wdeprecated"
@@ -102,7 +99,6 @@ Status EmbedLayerNorm<T>::Compute(OpKernelContext* context) const {
         context->GetOperatorThreadPool(), n, [=, &failed](ptrdiff_t index) {
 #ifdef __GNUC__
 #pragma GCC diagnostic pop
-#endif
 #endif
           int word_col_index = input_ids_data[index];
           if (word_col_index < 0 || word_col_index >= word_embedding_length) {
