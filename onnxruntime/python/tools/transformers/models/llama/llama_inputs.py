@@ -249,6 +249,7 @@ def flatten_past_kv_inputs(past_key_values: list[tuple[torch.Tensor, torch.Tenso
             past_kv[f"past_key_values.{i}.value"] = past_v.detach().cpu().numpy()
     return past_kv
 
+
 # Format PyTorch inputs to ONNX Runtime inputs
 def convert_inputs_for_ort(
     pt_inputs: dict,
