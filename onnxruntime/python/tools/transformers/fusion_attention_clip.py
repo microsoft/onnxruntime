@@ -192,7 +192,9 @@ class FusionAttentionClip(FusionAttention):
             )
             if qk_nodes is None:
                 qk_nodes = self.model.match_parent_path(matmul_qkv, ["Softmax", "Add", "Mul", "MatMul"], [0, 0, 0, 0])
-                if qk_nodes is None:
+                if qk_nodes is not None:
+                    add_mask = qk_nodes[1]
+                else:
                     # If attention mask is not used, we can still match the qk path.
                     qk_nodes = self.model.match_parent_path(matmul_qkv, ["Softmax", "Mul", "MatMul"], [0, 0, 0])
                     if qk_nodes is None:
@@ -202,7 +204,9 @@ class FusionAttentionClip(FusionAttention):
                             ["Cast", "Cast", "Softmax", "Add", "Mul", "MatMul"],
                             [0, 0, 0, 0, 0, 0],
                         )
-                        if qk_nodes is None:
+                        if qk_nodes is not None:
+                            add_mask = qk_nodes[3]
+                        else:
                             # If attention mask is not used, we can still match the qk path.
                             qk_nodes = self.model.match_parent_path(
                                 matmul_qkv,
@@ -212,10 +216,6 @@ class FusionAttentionClip(FusionAttention):
                             if qk_nodes is None:
                                 logger.debug("fuse_attention: failed to match qk path")
                                 return
-                        else:
-                            add_mask = qk_nodes[3]
-                else:
-                    add_mask = qk_nodes[1]
         else:
             assert len(add_mask_indices) == 1
             causal_mask_input_index = 1 - add_mask_indices[0]
