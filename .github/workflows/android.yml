@@ -31,7 +31,7 @@ jobs:
           architecture: x64
 
 
-      - uses: microsoft/onnxruntime-github-actions/setup-cmake@af070907dd468259efe9524c50045789e82b4721
+      - uses: microsoft/onnxruntime-github-actions/setup-build-tools@4dedcff0728f2cd7931acb5efc34afbce33f8480
         with:
           cmake-version: '4.0.0'
           cmake-hash: '8482e754bf5bf45349ba2f2184999f81f8754ed3d281e1708f1f9a3b2fcd05c3aa5368e6247930495722ffc5982aadbe489630c5716241ab1702c3cf866483cf'

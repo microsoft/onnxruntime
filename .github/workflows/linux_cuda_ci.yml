@@ -49,7 +49,7 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - uses: microsoft/onnxruntime-github-actions/build-docker-image@af070907dd468259efe9524c50045789e82b4721
+      - uses: microsoft/onnxruntime-github-actions/build-docker-image@4dedcff0728f2cd7931acb5efc34afbce33f8480
         with:
           Dockerfile: tools/ci_build/github/linux/docker/Dockerfile.manylinux2_28_cuda
           Repository: onnxruntimecuda12manylinuxbuild
@@ -89,7 +89,7 @@ jobs:
       # So build.py --build_dir build/Release inside the container correctly finds the artifacts.
       - name: Test ONNX Runtime
         id: test_step
-        uses: microsoft/onnxruntime-github-actions/run-build-script-in-docker@af070907dd468259efe9524c50045789e82b4721
+        uses: microsoft/onnxruntime-github-actions/run-build-script-in-docker@4dedcff0728f2cd7931acb5efc34afbce33f8480
         with:
           docker_image: onnxruntimecuda12manylinuxbuild # Use the same image
           build_config: Release

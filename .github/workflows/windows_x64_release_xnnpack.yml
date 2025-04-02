@@ -2,7 +2,7 @@ name: windows_x64_release_xnnpack
 
 on:
   push:
-    branches: [ main, 'rel-*']
+    branches: [ main, 'rel-*', 'snnn/ci']
   pull_request:
     branches: [ main ]
 
@@ -26,7 +26,21 @@ jobs:
       with:
         python-version: '3.12'
         architecture: x64
+    - name: Setup VCPKG
+      uses: microsoft/onnxruntime-github-actions/setup-build-tools@4dedcff0728f2cd7931acb5efc34afbce33f8480
+      with:
+        vcpkg-version: '2025.03.19'
+        vcpkg-hash: '17e96169cd3f266c4716fcdc1bb728e6a64f103941ece463a2834d50694eba4fb48f30135503fd466402afa139abc847ef630733c442595d1c34979f261b0114'
+        cmake-version: '4.0.0'
+        cmake-hash: '704fc67b9efa1d65e68a516b439ce3f65f1d6388dc0794002a342d4b59cd3ea63619e674d0343a08c03e9831b053bcbb3ae7635ac42f7796b8d440deeb81b7f6'
+        add-cmake-to-path: 'true'
+        disable-terrapin: 'false'
 
+    - name: Verify vcpkg setup
+      shell: pwsh # Use powershell to easily access env var
+      run: |
+          Write-Host "VCPKG_INSTALLATION_ROOT is set to: $env:VCPKG_INSTALLATION_ROOT"
+          & "$env:VCPKG_INSTALLATION_ROOT/vcpkg" version
     - name: Locate vcvarsall and Setup Env
       uses: ./.github/actions/locate-vcvarsall-and-setup-env
       with:

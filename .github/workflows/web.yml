@@ -5,6 +5,7 @@ on:
     branches:
       - main
       - rel-*
+      - snnn/ci
   pull_request:
     branches:
       - main
