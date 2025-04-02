@@ -179,6 +179,9 @@ Status Conv<is_channels_last, is_fused>::ComputeInternal(ComputeContext& context
       matmul_input_reshapes.push_back(kernel_reshape);
       matmul_input_reshapes.push_back(input_reshape);
     }
+    if (has_bias) {
+      matmul_inputs.push_back(bias);
+    }
     auto N = matmul_output_shape[2];
     auto matmul_first_input_numdims = matmul_input_reshapes[0].NumDimensions();
     auto K = matmul_input_reshapes[0].GetDims()[matmul_first_input_numdims - 1];
