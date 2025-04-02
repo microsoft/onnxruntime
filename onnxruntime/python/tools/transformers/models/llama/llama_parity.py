@@ -74,7 +74,7 @@ def get_inputs(args: argparse.Namespace, config: AutoConfig):
     return inputs
 
 
-def torch_deepcopy(value: Any) -> Any:
+def torch_deepcopy(value):
     if isinstance(value, (int, float, str)):
         return value
     if isinstance(value, tuple):
@@ -90,9 +90,7 @@ def torch_deepcopy(value: Any) -> Any:
     if hasattr(value, "clone"):
         return value.clone()
     if isinstance(value, transformers.cache_utils.DynamicCache):
-        return make_dynamic_cache(
-            torch_deepcopy(list(zip(value.key_cache, value.value_cache)))
-        )
+        return make_dynamic_cache(torch_deepcopy(list(zip(value.key_cache, value.value_cache, strict=False))))
     # We should have a code using serialization, deserialization assuming a model
     # cannot be exported without them.
     raise NotImplementedError(f"torch_deepcopy not implemented for type {type(value)}")

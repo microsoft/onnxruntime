@@ -313,6 +313,9 @@ def bypass_export_some_errors(
         ###############
         # patch pytorch
         ###############
+        # the linter gets confused if not initialized
+        f_jit_isinstance = f_mark_static_address = f_infer_size = ShapeEnv = None
+        f_shape_env__set_replacement = revert_patches_info = None
 
         if patch_torch:
             from .patches.patch_torch import (

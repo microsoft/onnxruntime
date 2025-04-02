@@ -126,7 +126,7 @@ def run_dynamo_export(
     config.capture_scalar_outputs = True
 
     # Dummy values for export
-    batch_size, sequence_length, past_sequence_length = 2, 8, 0
+    batch_size, sequence_length, past_sequence_length = 2, 8, 3
     device = llama.device if args.model_name == "Llama-2-70b-hf" else torch.device("cpu")
 
     temp_name = args.model_name.lower().replace("-", "").replace("_", "")
