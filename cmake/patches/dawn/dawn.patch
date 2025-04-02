@@ -20,13 +20,11 @@ index 5bfac41dcc..71a153daaa 100644
    // Injection constructor used when we already have a backing Buffer.
    WGPUBufferImpl(const EventSource* source, WGPUBufferMapState mapState);
 +  ~WGPUBufferImpl();
-
    void Destroy();
    const void* GetConstMappedRange(size_t offset, size_t size);
 @@ -1361,6 +1362,12 @@ WGPUBufferImpl::WGPUBufferImpl(const EventSource* source,
        RefCountedWithExternalCount(kImportedFromJS),
        mMapState(mapState) {}
-
 +WGPUBufferImpl::~WGPUBufferImpl() {
 +  if (!IsImported()) {
 +    Destroy();
