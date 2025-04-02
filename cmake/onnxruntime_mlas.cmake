@@ -717,8 +717,8 @@ endif()
           set_source_files_properties(${MLAS_SRC_DIR}/x86_64/QgemmU8S8KernelAmx.S PROPERTIES COMPILE_FLAGS "-mavx2 -mavx512bw -mavx512dq -mavx512vl -mavx512f")
         endif()
 
-        if(onnxruntime_ENABLE_AVX2_SATURATION_CHECKER)
-          set_source_files_properties(${MLAS_SRC_DIR}/x86_64/ConvSymKernelAvx2.S PROPERTIES COMPILE_FLAGS "-mavx2 -mfma -mf16c -DENABLE_AVX2_SATURATION_CHECKER")      
+        if(onnxruntime_ENABLE_CONVSYMKERNELAVX2_SAT_CHECKER)
+          set_source_files_properties(${MLAS_SRC_DIR}/x86_64/ConvSymKernelAvx2.S PROPERTIES COMPILE_FLAGS "-mavx2 -mfma -mf16c -DENABLE_CONVSYMKERNELAVX2_SAT_CHECKER")
         endif()
 
         if(ONNXRUNTIME_MLAS_MULTI_ARCH)

@@ -125,13 +125,13 @@ Implicit Arguments:
 
         .macro MultiplyAccumulateRowAvx2 Vec1Reg, Vec2Reg
 
-#if defined(ENABLE_AVX2_SATURATION_CHECKER)
+#if defined(ENABLE_CONVSYMKERNELAVX2_SAT_CHECKER)
         CheckSaturation
 #endif
         vpmaddubsw ymm3,ymm2,ymm0
         vpmaddwd ymm3,ymm3,ymm12
         vpaddd \Vec1Reg\(),\Vec1Reg\(),ymm3
-#if defined(ENABLE_AVX2_SATURATION_CHECKER)
+#if defined(ENABLE_CONVSYMKERNELAVX2_SAT_CHECKER)
         CheckSaturation
 #endif
         vpmaddubsw ymm2,ymm2,ymm1
