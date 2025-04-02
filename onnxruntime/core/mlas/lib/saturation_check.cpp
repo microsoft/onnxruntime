@@ -77,8 +77,10 @@ extern "C" void CheckForSaturationBeforeMul(const __m256i* unsigned_ptr, const _
 #endif
 
 #if 1
+
+int saturate_counter = 0;
+
 extern "C" void CheckForSaturationBeforeMul(const __m256i* unsigned_ptr, const __m256i* signed_ptr) {
-    static int counter = 0;
 
     // Load data from memory
     __m256i unsigned_data = _mm256_loadu_si256(unsigned_ptr);
@@ -118,9 +120,9 @@ extern "C" void CheckForSaturationBeforeMul(const __m256i* unsigned_ptr, const _
     //std::cout << std::endl;
 
     // Log a warning if saturation is detected
-    if (saturation_detected && counter < 5) {
+    if (saturation_detected && saturate_counter < 2) {
         std::cerr << "[WARNING] Saturation detected in _mm256_maddubs_epi16 operation!" << std::endl;
-        counter++;
+        saturate_counter++;
     }
 
 }

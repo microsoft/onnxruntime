@@ -96,6 +96,8 @@
 using namespace ONNX_NAMESPACE;
 using namespace onnxruntime::common;
 
+extern int saturate_counter;
+
 namespace onnxruntime {
 namespace {
 template <typename T>
@@ -2860,6 +2862,8 @@ Status InferenceSession::Run(const RunOptions& run_options,
     node_stats_recorder_->ResetPerRunNameDeduper();
   }
 #endif
+
+  saturate_counter = 0;
 
   // As N+1 inference runs (N for memory allocation and 1 for graph capturing)
   // are needed before replaying the captured graph, here run N inference runs recursively until graph captured,
