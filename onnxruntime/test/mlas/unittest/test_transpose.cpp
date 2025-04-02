@@ -42,10 +42,10 @@ class MlasTransposeTest : public MlasTestBase {
   }
 
   static const std::string GetTypeString() {
-    if(std::is_same<ElementType, float>::value) return std::string("FP32");
-    if(std::is_same<ElementType, uint32_t>::value) return std::string("U32");
-    if(std::is_same<ElementType, uint16_t>::value) return std::string("U16");
-    if(std::is_same<ElementType, uint8_t>::value) return std::string("U8");
+    if (std::is_same<ElementType, float>::value) return std::string("FP32");
+    if (std::is_same<ElementType, uint32_t>::value) return std::string("U32");
+    if (std::is_same<ElementType, uint16_t>::value) return std::string("U16");
+    if (std::is_same<ElementType, uint8_t>::value) return std::string("U8");
     return std::string("unknown");
   }
 
