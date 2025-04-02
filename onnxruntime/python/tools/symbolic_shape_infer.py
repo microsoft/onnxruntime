@@ -219,6 +219,8 @@ class SymbolicShapeInference:
             "PackedMultiHeadAttention": self._infer_PackedMultiHeadAttention,
             "PagedAttention": self._infer_PagedAttention,
             "PythonOp": self._infer_PythonOp,
+            "QLinearAdd": self._infer_QLinearBinary,
+            "QLinearMul": self._infer_QLinearBinary,
             "QuantizeLinear": self._infer_QuantizeLinear,
             "QuickGelu": self._infer_FastGelu,
             "RelativePositionBias": self._infer_RelativePositionBias,
@@ -490,6 +492,8 @@ class SymbolicShapeInference:
             "SkipSimplifiedLayerNormalization",
             "SparseAttention",
             "SkipGroupNorm",
+            "QLinearAdd",
+            "QLinearMul",
         ]
 
         if not skip_infer:
@@ -1039,6 +1043,20 @@ class SymbolicShapeInference:
 
         vi = self.known_vi_[node.output[0]]
         vi.CopyFrom(helper.make_tensor_value_info(node.output[0], output_dtype, output_shape))
+
+    def _infer_QLinearBinary(self, node):  # noqa: N802
+        # Get the output data type from the first input to QLinearAdd / QLinearMul.
+        output_dtype = self.known_vi_[node.input[0]].type.tensor_type.elem_type
+
+        # The inputs are first and fourth operands respectively.
+        input_1_shape = self._get_shape(node, 0)
+        input_2_shape = self._get_shape(node, 3)
+
+        # Compute the broadcasted shape
+        new_shape = self._broadcast_shapes(input_1_shape, input_2_shape)
+
+        vi = self.known_vi_[node.output[0]]
+        vi.CopyFrom(helper.make_tensor_value_info(node.output[0], output_dtype, new_shape))
 
     def _infer_Einsum(self, node):  # noqa: N802
         # ref:https://github.com/onnx/onnx/blob/623dfaa0151b2e4ce49779c3ec31cbd78c592b80/onnx/defs/math/defs.cc#L3275

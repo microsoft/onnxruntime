@@ -17,11 +17,13 @@ parameters:
 - name: QnnSDKVersion
   displayName: QNN SDK Version
   type: string
-  default: '2.31.0.250130'
+  default: '2.32.0.250228'
 
 jobs:
 - job: Final_AAR_Testing_Android
-  pool: 'onnxruntime-Ubuntu2204-AMD-CPU'
+  pool:
+    name: 'onnxruntime-Ubuntu2204-AMD-CPU'
+    os: linux
   workspace:
     clean: all
   variables:
@@ -108,8 +110,3 @@ jobs:
     env:
       BROWSERSTACK_ID: $(browserstack_username)
       BROWSERSTACK_TOKEN: $(browserstack_access_key)
-
-  - template: component-governance-component-detection-steps.yml
-    parameters :
-      condition : 'succeeded'
-

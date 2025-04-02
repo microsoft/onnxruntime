@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include "core/providers/webgpu/shader_helper.h"
+#include "core/providers/webgpu/webgpu_utils.h"
 #include "core/providers/webgpu/webgpu_supported_types.h"
 #include "contrib_ops/webgpu/bert/bias_add.h"
 #include "contrib_ops/webgpu/webgpu_contrib_kernels.h"
@@ -32,15 +33,6 @@ Status BiasAddProgram::GenerateShaderCode(ShaderHelper& shader) const {
                             << output.SetByOffset("global_idx", "value");
 
   return Status::OK();
-}
-
-static int64_t GetMaxComponents(int64_t size) {
-  if (size % 4 == 0) {
-    return 4;
-  } else if (size % 2 == 0) {
-    return 2;
-  }
-  return 1;
 }
 
 Status BiasAdd::ComputeInternal(onnxruntime::webgpu::ComputeContext& context) const {
