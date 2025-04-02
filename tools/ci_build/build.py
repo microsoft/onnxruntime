@@ -2438,6 +2438,8 @@ def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs):
             if args.use_cuda:
                 log.info("Testing CUDA Graph feature")
                 run_subprocess([sys.executable, "onnxruntime_test_python_cudagraph.py"], cwd=cwd, dll_path=dll_path)
+                log.info("Testing running inference concurrently")
+                run_subprocess([sys.executable, "onnxruntime_test_python_ort_parallel.py"], cwd=cwd, dll_path=dll_path)
 
             if args.use_dml:
                 log.info("Testing DML Graph feature")
