@@ -108,7 +108,7 @@ Status MatMul::ComputeInternal(ComputeContext& context) const {
   const auto* b = context.Input(1);
 
   ORT_RETURN_IF_ERROR(helper.Compute(a->Shape(), b->Shape()));
-  auto* output = context.Output(0, helper.OutputShape());
+  auto* output_tensor = context.Output(0, helper.OutputShape());
   bool has_bias = context.InputCount() > 2;
 
   if (helper.N() < 8 && helper.K() < 8) {  // call MatMulNaiveProgram
@@ -142,7 +142,7 @@ Status MatMul::ComputeInternal(ComputeContext& context) const {
       program.AddInput({bias, ProgramTensorMetadataDependency::Rank, 1});
     }
     program
-        .AddOutputs({{output, ProgramTensorMetadataDependency::None, output_shape_shader, components}})
+        .AddOutputs({{output_tensor, ProgramTensorMetadataDependency::None, output_shape_shader, components}})
         .SetDispatchGroupSize((output_size + 63) / 64)  // Integer ceiling division
         .AddIndices(outer_dims)
         .AddUniformVariables({{output_size}, {m}, {n}, {k}});
@@ -157,30 +157,30 @@ Status MatMul::ComputeInternal(ComputeContext& context) const {
     const auto* bias = context.Input(2);
     inputs.push_back(bias);
   }
-  auto program = CreateMatMulProgram(Activation(), inputs, output, false);
+  auto program = CreateMatMulProgram(Activation(), inputs, output_tensor, false);
 
   return context.RunProgram(program);
 }
 
-MatMulProgram CreateMatMulProgram(const Activation& activation, std::vector<const Tensor*>& inputs, Tensor* output, bool is_channels_last,
+MatMulProgram CreateMatMulProgram(const Activation& activation, std::vector<const Tensor*>& inputs, Tensor* output_tensor, bool is_channels_last,
                                   const TensorShape& input_a_reshape,
                                   const TensorShape& input_b_reshape) {
-  MatMulComputeHelper helper;
   const auto* a = inputs[0];
   const auto* b = inputs[1];
   bool has_bias = inputs.size() > 2;
   TensorShape a_shape = input_a_reshape.NumDimensions() > 0 ? input_a_reshape : a->Shape();
   TensorShape b_shape = input_b_reshape.NumDimensions() > 0 ? input_b_reshape : b->Shape();
 
+  MatMulComputeHelper helper;
   ORT_THROW_IF_ERROR(helper.Compute(a_shape, b_shape));
   int64_t batchA = a_shape.SizeToDimension(a_shape.NumDimensions() - 2);
   int64_t batchB = b_shape.SizeToDimension(b_shape.NumDimensions() - 2);
 
   TensorShape output_shape = helper.OutputShape();
 
-  const int64_t m_value = output_shape[output_shape.NumDimensions() - 2];
+  const int64_t dim_output_outer = output_shape[output_shape.NumDimensions() - 2];
   // check if A is  batch of vector (bach is not 1, M is 1) and B is a matrix (batch is 1)
-  if (batchA != 1 && m_value == 1 && batchB == 1) {
+  if (batchA != 1 && dim_output_outer == 1 && batchB == 1) {
     // optimization for batched vector matrix multiplication
     // dimensions of A: [1,`batchA`,K]
     TensorShapeVector dims_a = {1, batchA, helper.K()};
@@ -208,9 +208,9 @@ MatMulProgram CreateMatMulProgram(const Activation& activation, std::vector<cons
   const int64_t batch_size = outer_dims.Size();
 
   // Get dimensions for matrix multiplication from TensorShape
-  const uint32_t dim_a_outer = static_cast<uint32_t>(a_shape[a_shape.NumDimensions() - 2]);  // M dimension
-  const uint32_t dim_inner = static_cast<uint32_t>(a_shape[a_shape.NumDimensions() - 1]);    // K dimension
-  const uint32_t dim_b_outer = static_cast<uint32_t>(b_shape[b_shape.NumDimensions() - 1]);  // N dimension
+  const uint32_t dim_a_outer = narrow<uint32_t>(a_shape[a_shape.NumDimensions() - 2]);  // left matrix second dimension
+  const uint32_t dim_inner = narrow<uint32_t>(a_shape[a_shape.NumDimensions() - 1]);    // left matrix first dimension
+  const uint32_t dim_b_outer = narrow<uint32_t>(b_shape[b_shape.NumDimensions() - 1]);  // right matrix first dimension
 
   const bool is_vec4 = dim_inner % 4 == 0 && dim_b_outer % 4 == 0;
 
@@ -218,9 +218,12 @@ MatMulProgram CreateMatMulProgram(const Activation& activation, std::vector<cons
                                                    ? InlinedVector<int64_t>({4, 1, 1})
                                                    : InlinedVector<int64_t>({4, 4, 1});
 
-  const uint32_t dispatch_x = static_cast<uint32_t>(ceil(static_cast<float>(dim_b_outer) / MatMul::MATMUL_PACKED_WORKGROUP_SIZE_X / elements_per_thread[0]));
-  const uint32_t dispatch_y = static_cast<uint32_t>(ceil(static_cast<float>(dim_a_outer) / MatMul::MATMUL_PACKED_WORKGROUP_SIZE_Y / elements_per_thread[1]));
-  const uint32_t dispatch_z = static_cast<uint32_t>(ceil(static_cast<float>(batch_size) / MatMul::MATMUL_PACKED_WORKGROUP_SIZE_Z / elements_per_thread[2]));
+  const uint32_t dispatch_x = narrow<uint32_t>((dim_b_outer + MatMul::MATMUL_PACKED_WORKGROUP_SIZE_X * elements_per_thread[0] - 1) /
+                                               (MatMul::MATMUL_PACKED_WORKGROUP_SIZE_X * elements_per_thread[0]));
+  const uint32_t dispatch_y = narrow<uint32_t>((dim_a_outer + MatMul::MATMUL_PACKED_WORKGROUP_SIZE_Y * elements_per_thread[1] - 1) /
+                                               (MatMul::MATMUL_PACKED_WORKGROUP_SIZE_Y * elements_per_thread[1]));
+  const uint32_t dispatch_z = narrow<uint32_t>((static_cast<uint32_t>(batch_size) + MatMul::MATMUL_PACKED_WORKGROUP_SIZE_Z * elements_per_thread[2] - 1) /
+                                               (MatMul::MATMUL_PACKED_WORKGROUP_SIZE_Z * elements_per_thread[2]));
 
   const int components = is_vec4 ? 4 : 1;
   const TensorShape a_shape_temp = CreateMatMulIntermediateShape(outer_dims_a, dim_a_outer, dim_inner, components);
@@ -232,7 +235,7 @@ MatMulProgram CreateMatMulProgram(const Activation& activation, std::vector<cons
       .CacheHint(activation.ToString(), absl::StrJoin(elements_per_thread, "-"), std::to_string(is_vec4))
       .AddInputs({{a, ProgramTensorMetadataDependency::TypeAndRank, a_shape_temp, components},
                   {b, ProgramTensorMetadataDependency::TypeAndRank, b_shape_temp, components}})
-      .AddOutputs({{output, ProgramTensorMetadataDependency::Rank, output_shape_temp, components}})
+      .AddOutputs({{output_tensor, ProgramTensorMetadataDependency::Rank, output_shape_temp, components}})
       .AddUniformVariables({{dim_a_outer}, {dim_b_outer}, {dim_inner}})
       .AddIndices(outer_dims)
       .SetDispatchGroupSize(dispatch_x, dispatch_y, dispatch_z)

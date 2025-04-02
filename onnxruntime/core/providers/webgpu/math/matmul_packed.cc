@@ -139,7 +139,6 @@ Status MatMulProgram::MakeMatMulPackedVec4Source(ShaderHelper& shader,
       << "      let inputRow = tileRow + innerRow;\n"
       << "      let inputCol = tileCol;\n"
       << "      " << write_data_to_sub_a_vec4_snippet
-      << "      mm_Asub[inputRow][inputCol] = mm_readA(batch, globalRow + innerRow, kStart / innerElementSize + inputCol" << (nullptr != batch_dims ? ", batchIndices" : "") << ");\n"
       << "    }\n";
 
   // Load one tile of B into local memory.
