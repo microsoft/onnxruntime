@@ -3510,7 +3510,7 @@ Status TensorrtExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphView
   // Create function state
   // TODO: remove default capture
   NodeComputeInfo compute_info;
-  compute_info.create_state_func = [=](ComputeContext* context, FunctionState* state) {
+  compute_info.create_state_func = [=, this](ComputeContext* context, FunctionState* state) {
     std::unique_ptr<TensorrtFuncState> p = std::make_unique<TensorrtFuncState>();
     // translate tactic sources string to nvinfer1::TacticSources
     nvinfer1::TacticSources tactics = 0;
@@ -3537,7 +3537,7 @@ Status TensorrtExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphView
   };
 
   // Create compute function
-  compute_info.compute_func = [this](FunctionState state, const OrtApi* api, OrtKernelContext* context) {
+  compute_info.compute_func = [=, this](FunctionState state, const OrtApi* api, OrtKernelContext* context) {
     // The GPU device is set again here to handle multithreading scenarios.
     // Consider the following:
     // Users can create multiple threads to initialize separate inference sessions on different devices (not just the default device 0)
@@ -4197,7 +4197,7 @@ Status TensorrtExecutionProvider::CreateNodeComputeInfoFromPrecompiledEngine(con
   // Create function state
   // TODO: remove default capture
   NodeComputeInfo compute_info;
-  compute_info.create_state_func = [=](ComputeContext* context, FunctionState* state) {
+  compute_info.create_state_func = [=, this](ComputeContext* context, FunctionState* state) {
     std::unique_ptr<TensorrtShortFuncState> p = std::make_unique<TensorrtShortFuncState>();
     *p = {context->allocate_func,
           context->release_func,
@@ -4220,7 +4220,7 @@ Status TensorrtExecutionProvider::CreateNodeComputeInfoFromPrecompiledEngine(con
   };
 
   // Create compute function
-  compute_info.compute_func = [this](FunctionState state, const OrtApi* api, OrtKernelContext* context) {
+  compute_info.compute_func = [=, this](FunctionState state, const OrtApi* api, OrtKernelContext* context) {
     // The GPU device is set again here to handle multithreading scenarios.
     // Consider the following:
     // Users can create multiple threads to initialize separate inference sessions on different devices (not just the default device 0)

@@ -102,7 +102,14 @@ static void BM_ThreadPoolSimpleParallelFor(benchmark::State& state) {
   for (auto _ : state) {
     for (int j = 0; j < 100; j++) {
       ThreadPool::TrySimpleParallelFor(tp.get(), len, [&](size_t) {
+#ifdef __GNUC__
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wvolatile"
         for (volatile size_t x = 0; x < body; x++) {
+#pragma GCC diagnostic pop
+#else
+		for (volatile size_t x = 0; x < body; x++) {
+#endif
         }
       });
     }

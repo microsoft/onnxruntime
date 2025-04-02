@@ -136,7 +136,7 @@ struct TreeNodeElement {
 
   inline NODE_MODE_ORT mode() const { return NODE_MODE_ORT(flags & 0xF); }
   inline bool is_not_leaf() const { return !(flags & NODE_MODE_ORT::LEAF); }
-  inline bool is_missing_track_true() const { return flags & MissingTrack::kTrue; }
+  inline bool is_missing_track_true() const { return static_cast<int>(flags) & static_cast<int>(MissingTrack::kTrue);}
 };
 
 template <typename InputType, typename ThresholdType, typename OutputType>
