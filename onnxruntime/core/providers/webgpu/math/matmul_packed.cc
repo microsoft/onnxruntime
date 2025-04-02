@@ -210,7 +210,6 @@ Status MatMulProgram::MakeMatMulPackedSource(ShaderHelper& shader,
                                              bool split_k,
                                              uint32_t splitted_dim_inner,
                                              bool sequentially_access_by_threads) {
-  ORT_UNUSED_PARAMETER(transpose_a);
   ORT_UNUSED_PARAMETER(split_k);
   ORT_UNUSED_PARAMETER(splitted_dim_inner);
 

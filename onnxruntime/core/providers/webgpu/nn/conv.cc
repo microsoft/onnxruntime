@@ -149,6 +149,8 @@ Status Conv<is_channels_last, is_fused>::ComputeInternal(ComputeContext& context
     TensorShape input_reshape;
     TensorShape kernel_reshape;
     TensorShape matmul_output_shape;
+    std::vector<const Tensor*> matmul_inputs;
+    std::vector<TensorShape> matmul_input_reshapes;
     if (is_channels_last) {
       // Transpose weights
 
@@ -164,13 +166,22 @@ Status Conv<is_channels_last, is_fused>::ComputeInternal(ComputeContext& context
         kernel_reshape = TensorShape({1, input_channels, output_channels});
         matmul_output_shape = TensorShape({batch, output_height * output_width, output_channels});
       }
+      matmul_inputs.push_back(input);
+      matmul_inputs.push_back(&transposed_kernel);
+      matmul_input_reshapes.push_back(input_reshape);
+      matmul_input_reshapes.push_back(kernel_reshape);
     } else {
       input_reshape = TensorShape({batch, input_channels, input_height * input_width});
       kernel_reshape = TensorShape({1, output_channels, input_channels});
       matmul_output_shape = TensorShape({batch, output_channels, output_height * output_width});
+      matmul_inputs.push_back(kernel);
+      matmul_inputs.push_back(input);
+      matmul_input_reshapes.push_back(kernel_reshape);
+      matmul_input_reshapes.push_back(input_reshape);
     }
     auto N = matmul_output_shape[2];
-    auto K = input_reshape[input_reshape.NumDimensions() - 1];
+    auto matmul_first_input_numdims = matmul_input_reshapes[0].NumDimensions();
+    auto K = matmul_input_reshape[0].GetDim(matmul_first_input_numdims - 1);
     if (N < 8 && K < 8) {
       const auto components = GetMaxComponents(N);
       const auto a_components = GetMaxComponents(K);
@@ -179,23 +190,22 @@ Status Conv<is_channels_last, is_fused>::ComputeInternal(ComputeContext& context
       const size_t output_rank = matmul_output_shape.NumDimensions();
       TensorShape outer_dims = output_rank > 2 ? matmul_output_shape.Slice(0, output_rank - 2) : TensorShape({});
       const int64_t batch_size = outer_dims.Size();
-      TensorShape output_shape_shader({batch_size, matmul_output_shape[1], matmul_output_shape[2]});
       MatMulNaiveProgram program(activation_, output_rank, output_number, has_bias);
       program
           .CacheHint(std::to_string(components), std::to_string(a_components), std::to_string(output_number))
-          .AddInputs({{inputs[0], ProgramTensorMetadataDependency::TypeAndRank, input_reshape, int(a_components)},
-                      {inputs[1], ProgramTensorMetadataDependency::TypeAndRank, kernel_reshape, int(components)}});
+          .AddInputs({{matmul_inputs[0], ProgramTensorMetadataDependency::TypeAndRank, ReduceShapeByComponents(matmul_inputs_reshapes[0], a_components), int(a_components)},
+                      {matmul_inputs[1], ProgramTensorMetadataDependency::TypeAndRank, ReduceShapeByComponents(matmul_input_reshapes[1], components), int(components)}});
       if (has_bias) {
-        program.AddInput({bias, ProgramTensorMetadataDependency::Rank, 1});
+        program.AddInput({bias, ProgramTensorMetadataDependency::Rank, bias->Shape(), components});
       }
       program
-          .AddOutputs({{output, ProgramTensorMetadataDependency::None, output_shape_shader, int(components)}})
+          .AddOutputs({{output, ProgramTensorMetadataDependency::None, ReduceShapeByComponents(matmul_output_shape, components), int(components)}})
           .SetDispatchGroupSize(static_cast<uint32_t>((output_size + 63) / 64))
           .AddIndices(outer_dims)
           .AddUniformVariables({{output_size}, {static_cast<uint32_t>(matmul_output_shape[1])}, {static_cast<uint32_t>(matmul_output_shape[2])}, {static_cast<uint32_t>(K)}});
       return context.RunProgram(program);
     } else {
-      MatMulProgram program = CreateMatMulProgram(activation_, inputs, output, is_channels_last);
+      MatMulProgram program = CreateMatMulProgram(activation_, matmul_inputs, output, is_channels_last, matmul_input_reshapes[0], matmul_input_reshapes[1], matmul_output_shape);
       return context.RunProgram(program);
     }
   }
