@@ -151,7 +151,7 @@ Status Conv2dMMProgram::GenerateShaderCode(ShaderHelper& shader) const {
     const auto& bias = shader.AddInput("bias", ShaderUsage::UseUniform | ShaderUsage::UseIndicesTypeAlias | ShaderUsage::UseValueTypeAlias | ShaderUsage::UseElementTypeAlias);
     inputs.push_back(&bias);
     declaration_functions << "fn getBiasByOutputCoords(coords : vec4<i32>) -> bias_value_t {" << "\n"
-                          << "  return bias[" << (is_channels_last_ ? "coords.w" : "coords.y")  << "];\n"
+                          << "  return bias[" << (is_channels_last_ ? "coords.w" : "coords.y") << "];\n"
                           << "}";
   }
   shader.AdditionalImplementation()
@@ -209,7 +209,12 @@ Conv2dMMProgram CreateConv2dMMProgram(const Activation& activation, const std::v
     TensorShape reduced_bias_shape = ReduceShapeByComponents(input_output_shapes[2], components);
     program.AddInput({bias, ProgramTensorMetadataDependency::TypeAndRank, reduced_bias_shape, components});
   }
-  program.CacheHint(activation.ToString(), std::to_string(inner_element_size), std::to_string(is_vec4), std::to_string(fit_a_outer), std::to_string(fit_b_outer), std::to_string(fit_inner), std::to_string(tile_a_outer), std::to_string(tile_a_outer), std::to_string(tile_inner) , std::to_string(components))
+  const auto stringify = [](const std::vector<uint32_t>& vec) -> std::string {
+    std::ostringstream oss;
+    std::transform(vec.begin(), vec.end(), std::ostream_iterator<std::string>(oss, ","), [](uint32_t i) { return std::to_string(i); });
+    return oss.str();
+  };
+  program.CacheHint(activation.ToString(), stringify({inner_element_size, static_cast<uint32_t>(is_vec4 ? 1 : 0), fit_a_outer, fit_b_outer, fit_inner, tile_a_outer, tile_a_outer, tile_inner, static_cast<uint32_t>(components)}))
       .AddOutput({output, ProgramTensorMetadataDependency::TypeAndRank, reduced_output_shape, components})
       .SetDispatchGroupSize(dispatch[0], dispatch[1], dispatch[2])
       .SetWorkgroupSize(workgroup_size[0], workgroup_size[1], workgroup_size[2])
