@@ -59,7 +59,7 @@ The QNN Execution Provider supports a number of configuration options. These pro
 
 |`"profiling_level"`|Description|
 |---|---|
-|'off'||
+|'off'|default.|
 |'basic'||
 |'detailed'||
 
@@ -82,7 +82,7 @@ Alternatively to setting profiling_level at compile time, profiling can be enabl
 |---|---|
 |'burst'||
 |'balanced'||
-|'default'||
+|'default'|default.|
 |'high_performance'||
 |'high_power_saver'||
 |'low_balanced'||
@@ -376,7 +376,7 @@ Available session configurations include:
 The above snippet only specifies the `backend_path` provider option. Refer to the [Configuration options section](./QNN-ExecutionProvider.md#configuration-options) for a list of all available QNN EP provider options.
 
 ## QNN context binary cache feature
-There's a QNN context which contains QNN graphs after converting, compiling, filnalizing the model. QNN can serialize the context into binary file, so that user can use it for futher inference direclty (without the QDQ model) to improve the model loading cost.
+There's a QNN context which contains QNN graphs after converting, compiling, finalizing the model. QNN can serialize the context into binary file, so that user can use it for futher inference directly (without the QDQ model) to improve the model loading cost.
 The QNN Execution Provider supports a number of session options to configure this.
 
 ### Dump QNN context binary

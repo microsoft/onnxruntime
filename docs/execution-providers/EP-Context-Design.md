@@ -27,10 +27,10 @@ To support this optimization, ONNX Runtime introduced a **contributor operator**
 
 ## EPContext Op Schema
 
-Op domain: com.microsoft
-Node inputs & outputs: variadic
-Domain: com.microsoft
-Atrribures:
+Op domain: com.microsoft<br/>
+Node inputs & outputs: variadic<br/>
+
+Attributes table below:<br/>
 
 |Attributes           |Data type|Description                                                                                               |
 |---------------------|---------|----------------------------------------------------------------------------------------------------------|
@@ -83,6 +83,9 @@ virtual const InlinedVector<const Node*> GetEpContextNodes() const {
 - **Ownership**
   - The **Execution Provider (EP)** is responsible for **creating the EPContext node** along with its dependencies.
   - The **ONNX Runtime framework** is responsible for **generating the EP context ONNX model** using the `EPContext` node list provided by the EP.
+
+- **Lifetime**
+  - The lifetime of EPContext nodes begins at least when the EP calls compile and ends when the EP is destroyed.
 
 - **ep.context_enable**
   - ONNX Runtime creates the EP context cache model if `ep.context_enable = 1`.
@@ -247,7 +250,7 @@ In ONNX, weight sharing refers to multiple ONNX models with external weights poi
 
 ## Weight Sharing in EP Domain with EPContext
 EP weight sharing is enabled using a pre-generated EP context binary/blob.
-To do this, users must **generate the context binary offline** (AOT).
+To do this, users must **generate the context binary offline** (Ahead Of Time).
 - Some EPs require specific platforms, such as **Linux x86_64** and/or **Windows x86_64**. Please refer to the specific EP page for details.
 - The EP context binary contains **multiple graphs** that share the **same tensors**.
 
