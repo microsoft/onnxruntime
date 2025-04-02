@@ -163,9 +163,9 @@ Status MatMul::ComputeInternal(ComputeContext& context) const {
 }
 
 MatMulProgram CreateMatMulProgram(const Activation& activation, std::vector<const Tensor*>& inputs, Tensor* output, bool is_channels_last,
-  const TensorShape& input_a_reshape,
-  const TensorShape& input_b_reshape,
-  const TensorShape& output_reshape) {
+                                  const TensorShape& input_a_reshape,
+                                  const TensorShape& input_b_reshape,
+                                  const TensorShape& output_reshape) {
   MatMulComputeHelper helper;
   const auto* a = inputs[0];
   const auto* b = inputs[1];
