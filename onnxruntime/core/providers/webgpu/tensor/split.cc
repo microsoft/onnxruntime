@@ -29,20 +29,16 @@ void WriteBufferData(std::ostream& os, const ShaderVariableHelper& input,
   for (size_t i = 0; i < outputs.size(); ++i) {
     const auto buffer_write = outputs[i]->SetByIndices("indices", input.GetByOffset("global_idx"));
     if (outputs.size() == 1) {
-      os << buffer_write;
+      os << buffer_write << "\n";
     } else if (i == 0) {
-      os << "  if (output_number == 0u) {\n"
-         << "    " << buffer_write << "\n";
+      os << "  if (output_number == 0u) { " << buffer_write << " }\n";
     } else if (i == outputs.size() - 1) {
-      os << "  } else {\n"
-         << "    " << buffer_write << "\n";
+      os << "  else { " << buffer_write << " }\n";
     } else {
-      os << "  } else if (output_number == " << i << "u) {\n"
-         << "    " << buffer_write << "\n";
+      os << "  else if (output_number == " << i << "u) { " << buffer_write << " }\n";
     }
   }
-  os << "  }\n"
-     << "}\n";
+  os << "}\n";
 }
 
 }  // namespace
@@ -68,7 +64,7 @@ Status SplitProgram::GenerateShaderCode(ShaderHelper& shader) const {
                             << "  var index = " << input.IndicesGet("indices", axis_) << ";\n"
                             << "  let output_number = calculate_output_index(index);\n"
                             << "  if (output_number != 0u) {\n"
-                            << "    index -= uniforms.sizes_in_split_axis[output_number - 1u];\n"
+                            << "    index -= " << GetElementAt("uniforms.sizes_in_split_axis", "output_number - 1u", output_count) << ";\n"
                             << "    " << input.IndicesSet("indices", axis_, "index") << "\n"
                             << "  }\n"
                             << "  write_buffer_data(output_number, global_idx, indices);\n";

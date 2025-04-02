@@ -65,7 +65,7 @@ jobs:
           java-version: '17'
           architecture: x64
 
-      - uses: actions/cache@v3
+      - uses: actions/cache@v4
         id: onnx-node-tests-cache
         with:
           path: ${{ github.workspace }}/js/test/
