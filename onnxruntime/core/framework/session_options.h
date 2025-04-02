@@ -8,6 +8,7 @@
 #include <iostream>
 #include <codecvt>
 #include <filesystem>
+#include <functional>
 #include <gsl/gsl>
 #include "core/common/inlined_containers.h"
 #include "core/framework/config_options.h"
@@ -65,6 +66,8 @@ struct FreeDimensionOverride {
   FreeDimensionOverrideType dim_identifier_type;
   int64_t dim_value;
 };
+
+using LoadCancellationFn = std::function<bool()>;
 
 /**
  * Configuration information for a session.
@@ -181,20 +184,21 @@ struct SessionOptions {
   void AddCustomOpLibraryHandle(PathString library_name, void* library_handle);
 #endif
 
+  // User specified logging func and param
+  OrtLoggingFunction user_logging_function = nullptr;
+  void* user_logging_param = nullptr;
+
   // Load cancellation flag is necessary to be within shared memory as session_options are
-  std::shared_ptr<bool> load_cancellation_flag = std::make_shared<bool>(false);
+  // copied internally and the flag needs to be accessible across all copies.
+  std::shared_ptr<std::atomic_bool> load_cancellation_flag = std::make_shared<std::atomic_bool>(false);
+
+  void SetLoadCancellationFlag(bool value) noexcept {
+    *load_cancellation_flag = value;
+  }
 
   bool IsLoadCancellationFlagSet() const noexcept {
     return *load_cancellation_flag;
   }
-
-  const bool& GetLoadCancellationFlagRef() const noexcept {
-    return *load_cancellation_flag;
-  }
-
-  // User specified logging func and param
-  OrtLoggingFunction user_logging_function = nullptr;
-  void* user_logging_param = nullptr;
 };
 
 inline std::ostream& operator<<(std::ostream& os, const SessionOptions& session_options) {

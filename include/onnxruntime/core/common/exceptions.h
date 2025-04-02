@@ -11,6 +11,7 @@
 #include <vector>
 
 #include "core/common/common.h"
+#include "core/common/status.h"
 #include "core/common/code_location.h"
 
 namespace onnxruntime {
@@ -32,6 +33,13 @@ class OnnxRuntimeException : public std::exception {
       : OnnxRuntimeException(location, nullptr, msg) {
   }
 
+  OnnxRuntimeException(const CodeLocation& location,
+                       const std::string& message,
+                       onnxruntime::common::StatusCategory category,
+                       onnxruntime::common::StatusCode code) noexcept
+      : OnnxRuntimeException(location, nullptr, message, category, code) {
+  }
+
   /**
      Create a new exception that captures the location it was thrown from.
      @param location Location in the source code the exception is being thrown from
@@ -39,8 +47,10 @@ class OnnxRuntimeException : public std::exception {
      e.g. "tensor.Size() == input.Size()". May be nullptr.
      @param msg Message containing additional information about the exception cause.
   */
-  OnnxRuntimeException(const CodeLocation& location, const char* failed_condition, const std::string& msg)
-      : location_{location} {
+  OnnxRuntimeException(const CodeLocation& location, const char* failed_condition, const std::string& msg,
+                       onnxruntime::common::StatusCategory category = common::ONNXRUNTIME,
+                       common::StatusCode code = common::FAIL)
+      : location_{location}, category_(category), code_(code) {
     std::ostringstream ss;
 
     ss << location.ToString(CodeLocation::kFilenameAndPath);  // output full path in case just the filename is ambiguous
@@ -58,6 +68,14 @@ class OnnxRuntimeException : public std::exception {
     what_ = ss.str();
   }
 
+  onnxruntime::common::StatusCategory Category() const noexcept {
+    return category_;
+  }
+
+  onnxruntime::common::StatusCode Code() const noexcept {
+    return code_;
+  }
+
   const char* what() const noexcept override {
     return what_.c_str();
   }
@@ -66,6 +84,8 @@ class OnnxRuntimeException : public std::exception {
   const CodeLocation location_;
   const std::vector<std::string> stacktrace_;
   std::string what_;
+  onnxruntime::common::StatusCategory category_;
+  onnxruntime::common::StatusCode code_;
 };
 
 }  // namespace onnxruntime

@@ -56,16 +56,6 @@ class GraphOptimizerRegistry {
   const onnxruntime::SessionOptions& GetSessionOptions() const { return *session_options_; }
 
   /**
-   * Get Load Cancellation Flag.
-   * This flag is used to cancel the loading of the model if it takes too long.
-   * It is set to true when the user cancels the loading process.
-   * The flag is shared across all threads, so it is read-only
-   */
-  const bool& GetLoadCancellationFlagRef() const {
-    return session_options_->GetLoadCancellationFlagRef();
-  }
-
-  /**
    * Get Logger.
    */
   const logging::Logger* GetLogger() const { return logger_; }

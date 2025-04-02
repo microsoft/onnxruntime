@@ -1268,8 +1268,8 @@ Graph::Graph(const Model& owning_model,
 #endif
   }
 
-  if (owning_model_.IsCancellationFlagSet()) {
-    ORT_THROW("Graph loading canceled due to user request.");
+  if (owning_model_.IsLoadCancellationFlagSet()) {
+    ORT_THROW_STATUS(ONNXRUNTIME, MODEL_LOAD_CANCELED, "Graph loading canceled due to user request.");
   }
 
   // Remove constant nodes as they're replaced with initializers above.
@@ -1304,9 +1304,6 @@ Graph::Graph(const Model& owning_model,
       delete graph_proto_->mutable_sparse_initializer()->ReleaseCleared();
     }
 #endif
-    if (owning_model_.IsCancellationFlagSet()) {
-      ORT_THROW("Graph loading canceled due to user request.");
-    }
   }
 #endif
 
@@ -1372,8 +1369,8 @@ Graph::Graph(const Model& owning_model,
     }
   }
 
-  if (owning_model_.IsCancellationFlagSet()) {
-    ORT_THROW("Graph loading canceled due to user request.");
+  if (owning_model_.IsLoadCancellationFlagSet()) {
+    ORT_THROW_STATUS(ONNXRUNTIME, MODEL_LOAD_CANCELED, "Graph loading canceled due to user request.");
   }
 
   for (auto& graph_output : graph_proto_->output()) {

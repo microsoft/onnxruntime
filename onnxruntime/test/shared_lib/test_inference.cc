@@ -4686,9 +4686,8 @@ TEST(CApiTest, RequestLoadCancellation) {
   bool terminated = false;
   try {
     Ort::Session session(env, model_path, session_options);
-  } catch (const std::exception& ex) {
-    std::string m{ex.what()};
-    terminated = m.find("user request") != std::string::npos;
+  } catch (const Ort::Exception& ex) {
+    terminated = OrtErrorCode::ORT_MODEL_LOAD_CANCELED == ex.GetOrtErrorCode();
   }
   // done with the thread
   terminator_thread.join();

@@ -162,6 +162,11 @@ void LogRuntimeError(uint32_t session_id, const common::Status& status, const ch
 #define ORT_THROW(...) \
   throw ::onnxruntime::OnnxRuntimeException(ORT_WHERE_WITH_STACK, ::onnxruntime::MakeString(__VA_ARGS__))
 
+#define ORT_THROW_STATUS(category, code, ...)                                       \
+  throw ::onnxruntime::OnnxRuntimeException(ORT_WHERE_WITH_STACK,                   \
+                                            ::onnxruntime::MakeString(__VA_ARGS__), \
+                                            ::onnxruntime::common::category,        \
+                                            ::onnxruntime::common::code)
 // Just in order to mark things as not implemented. Do not use in final code.
 #define ORT_NOT_IMPLEMENTED(...) \
   throw ::onnxruntime::NotImplementedException(::onnxruntime::MakeString(__VA_ARGS__))

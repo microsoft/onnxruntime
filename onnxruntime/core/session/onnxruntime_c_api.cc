@@ -729,6 +729,11 @@ ORT_API_STATUS_IMPL(OrtApis::CreateSession, _In_ const OrtEnv* env, _In_ const O
 
     *out = reinterpret_cast<OrtSession*>(sess.release());
   }
+  ORT_CATCH(const OnnxRuntimeException& e) {
+    ORT_HANDLE_EXCEPTION([&]() {
+      status = CreateStatus(static_cast<OrtErrorCode>(e.Code()), e.what());
+    });
+  }
   ORT_CATCH(const std::exception& e) {
     ORT_HANDLE_EXCEPTION([&]() {
       status = OrtApis::CreateStatus(ORT_FAIL, e.what());
@@ -751,6 +756,11 @@ ORT_API_STATUS_IMPL(OrtApis::CreateSessionFromArray, _In_ const OrtEnv* env, _In
     ORT_API_RETURN_IF_ERROR(InitializeSession(options, *sess));
 
     *out = reinterpret_cast<OrtSession*>(sess.release());
+  }
+  ORT_CATCH(const OnnxRuntimeException& e) {
+    ORT_HANDLE_EXCEPTION([&]() {
+      status = CreateStatus(static_cast<OrtErrorCode>(e.Code()), e.what());
+    });
   }
   ORT_CATCH(const std::exception& e) {
     ORT_HANDLE_EXCEPTION([&]() {
