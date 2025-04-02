@@ -83,7 +83,7 @@ Status MatMulProgram::MakeMatMulPackedVec4Source(ShaderHelper& shader,
   ORT_UNUSED_PARAMETER(splitted_dim_inner);
   std::string write_data_to_sub_a_vec4_snippet =
       transpose_a ? std::string("mm_Asub[inputRow][inputCol] = mm_readA(batch, kStart + inputRow, globalRowStart / innerElementSize + inputCol") + (batch_dims ? ", batchIndices" : "") + ");\n"
-                  : std::string("mm_Asub[inputRow][inputCol] = mm_readA(batch, globalRowStart + inputRow, kStart / innerElementSize + inputCol") + (batch_dims ? ", batchIndices" : "") + ");\n";
+                  : std::string("mm_Asub[inputRow][inputCol] = mm_readA(batch, globalRow + innerRow, kStart / innerElementSize + inputCol") + (batch_dims ? ", batchIndices" : "") + ");\n";
   // elements per thread
   const auto elements_per_thread_x = elements_per_thread[0];
   const auto elements_per_thread_y = elements_per_thread[1];

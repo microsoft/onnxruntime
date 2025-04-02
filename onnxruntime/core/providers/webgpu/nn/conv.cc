@@ -123,7 +123,7 @@ Status Conv<is_channels_last, is_fused>::ComputeInternal(ComputeContext& context
     GroupedConvProgram program(activation_, has_bias, is_channels_last);
     auto reduced_kernel_shape = ReduceShapeByComponents(modified_input_output_shapes[1], components);
     auto reduced_output_shape = ReduceShapeByComponents(modified_input_output_shapes[has_bias ? 3 : 2], components);
-    program.CacheHint(activation_.ToString())
+    program.CacheHint(activation_.ToString(), std::to_string(components), std::to_string(is_channels_last))
         .AddInput({inputs[0], ProgramTensorMetadataDependency::TypeAndRank, modified_input_output_shapes[0], 1})
         .AddInput({inputs[1], ProgramTensorMetadataDependency::TypeAndRank, reduced_kernel_shape, components})
         .AddOutput({output, ProgramTensorMetadataDependency::TypeAndRank, reduced_output_shape, components})

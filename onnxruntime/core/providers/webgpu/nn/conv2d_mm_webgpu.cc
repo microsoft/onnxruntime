@@ -38,8 +38,8 @@ std::string Conv2dMMProgram::Conv2dCommonSnippet(const ShaderVariableHelper& x, 
         ORT_THROW("inner_element_size ", inner_element_size, " is not supported.");
     }
   };
-  const std::string coord_a_snippet = is_channels_last_ ? "let coord = vec4<i32>(batch, xRow, xCol, xCh);" : "let coord = vec4<i32>(batch, xCh, xRow, xCol);";
-  const std::string coord_res_snippet = is_channels_last_ ? "let coords = vec4<i32>(batch, row / outWidth, row % outWidth, col);" : "let coords = vec4<i32>(batch, row, col / outWidth, col % outWidth);";
+  const std::string coord_a_snippet = is_channels_last_ ? "let coord = vec4<i32>(batch, xRow, xCol, xCh / " + std::to_string(inner_element_size_x == 3 ? 4 : inner_element_size_x) + ");" : "let coord = vec4<i32>(batch, xCh, xRow, xCol);";
+  const std::string coord_res_snippet = is_channels_last_ ? "let coords = vec4<i32>(batch, row / outWidth, row % outWidth, col / " + std::to_string(inner_element_size) + ");" : "let coords = vec4<i32>(batch, row, col / outWidth, col % outWidth);";
 
   const std::string xHeight = is_channels_last_ ? "i32(uniforms.x_shape[1])" : "i32(uniforms.x_shape[2])";
   const std::string xWidth = is_channels_last_ ? "i32(uniforms.x_shape[2])" : "i32(uniforms.x_shape[3])";
@@ -141,17 +141,17 @@ Status Conv2dMMProgram::GenerateShaderCode(ShaderHelper& shader) const {
                         << "}\n"
                         << "fn setOutputAtCoords(d0 : i32, d1 : i32, d2 : i32, d3 : i32, value : " << (is_vec4_ ? "vec4<x_element_t>" : "x_element_t") << "){\n"
                         << "  let flatIndex = getOutputIndexFromCoords(vec4<i32>(d0, d1, d2, d3));\n"
-                        << "  setOutputAtIndex(flatIndex " << (is_vec4_ ? "/ 4" : "") << ", value);\n"
+                        << "  setOutputAtIndex(flatIndex, value);\n"
                         << "}\n";
   const auto& x = shader.AddInput("x", ShaderUsage::UseUniform | ShaderUsage::UseShapeAndStride | ShaderUsage::UseIndicesTypeAlias | ShaderUsage::UseValueTypeAlias | ShaderUsage::UseElementTypeAlias);
   const auto& w = shader.AddInput("w", ShaderUsage::UseUniform | ShaderUsage::UseShapeAndStride | ShaderUsage::UseIndicesTypeAlias | ShaderUsage::UseValueTypeAlias);
   std::vector<const ShaderVariableHelper*> inputs = {&x, &w};
   ORT_IGNORE_RETURN_VALUE(shader.AddOutput("result", ShaderUsage::UseUniform | ShaderUsage::UseShapeAndStride | ShaderUsage::UseIndicesTypeAlias));
   if (has_bias_) {
-    const auto& bias = shader.AddInput("bias", ShaderUsage::UseUniform | ShaderUsage::UseIndicesTypeAlias);
+    const auto& bias = shader.AddInput("bias", ShaderUsage::UseUniform | ShaderUsage::UseIndicesTypeAlias | ShaderUsage::UseValueTypeAlias | ShaderUsage::UseElementTypeAlias);
     inputs.push_back(&bias);
-    declaration_functions << "fn getBiasByOutputCoords(coords : vec4<i32>) -> x_value_t {" << "\n"
-                          << "  return bias[" << (is_channels_last_ ? "coords.w" : "coords.y") << (is_vec4_ ? "/ 4" : "") << "];\n"
+    declaration_functions << "fn getBiasByOutputCoords(coords : vec4<i32>) -> bias_value_t {" << "\n"
+                          << "  return bias[" << (is_channels_last_ ? "coords.w" : "coords.y")  << "];\n"
                           << "}";
   }
   shader.AdditionalImplementation()
@@ -175,7 +175,7 @@ Conv2dMMProgram CreateConv2dMMProgram(const Activation& activation, const std::v
   const auto output_height = is_channels_last ? output_shape[1] : output_shape[2];
   const auto output_channels = is_channels_last ? output_shape[3] : output_shape[1];
   // TODO: enable vec4 for NCHW
-  const bool is_vec4 = is_channels_last && (in_channels % 4 == 0) && output_channels % 4 == 0;
+  const bool is_vec4 = is_channels_last && (in_channels % 4 == 0 || in_channels % 3 == 0) && output_channels % 4 == 0;
 
   // TODO: fine tune size
   const auto dispatch_x = is_channels_last ? output_channels : output_width * output_height;
@@ -201,7 +201,7 @@ Conv2dMMProgram CreateConv2dMMProgram(const Activation& activation, const std::v
   const auto components = is_vec4 ? 4 : 1;
   const auto input_components = static_cast<int>(inner_element_size == 3 ? 1 : inner_element_size);
   Conv2dMMProgram program(activation, tile_inner, fit_a_outer, fit_b_outer, fit_inner, is_channels_last, is_vec4, has_bias, std::move(element_size), std::move(elements_per_thread), sequentially_access_by_threads);
-  TensorShape reduced_input_shape = ReduceShapeByComponents(input_output_shapes[0], components);
+  TensorShape reduced_input_shape = ReduceShapeByComponents(input_output_shapes[0], input_components);
   TensorShape reduced_weight_shape = ReduceShapeByComponents(input_output_shapes[1], components);
   TensorShape reduced_output_shape = ReduceShapeByComponents(input_output_shapes[has_bias ? 3 : 2], components);
   program.AddInputs({{input, ProgramTensorMetadataDependency::TypeAndRank, reduced_input_shape, input_components}, {weight, ProgramTensorMetadataDependency::TypeAndRank, reduced_weight_shape, components}});
@@ -209,7 +209,7 @@ Conv2dMMProgram CreateConv2dMMProgram(const Activation& activation, const std::v
     TensorShape reduced_bias_shape = ReduceShapeByComponents(input_output_shapes[2], components);
     program.AddInput({bias, ProgramTensorMetadataDependency::TypeAndRank, reduced_bias_shape, components});
   }
-  program.CacheHint(activation.ToString(), std::to_string(components), std::to_string(input_components), std::to_string(components))
+  program.CacheHint(activation.ToString(), std::to_string(inner_element_size), std::to_string(is_vec4), std::to_string(fit_a_outer), std::to_string(fit_b_outer), std::to_string(fit_inner), std::to_string(tile_a_outer), std::to_string(tile_a_outer), std::to_string(tile_inner) , std::to_string(components))
       .AddOutput({output, ProgramTensorMetadataDependency::TypeAndRank, reduced_output_shape, components})
       .SetDispatchGroupSize(dispatch[0], dispatch[1], dispatch[2])
       .SetWorkgroupSize(workgroup_size[0], workgroup_size[1], workgroup_size[2])
