@@ -28,7 +28,7 @@ jobs:
         architecture: x64
 
     - name: Setup VCPKG
-      uses: microsoft/onnxruntime-github-actions/setup-build-tools@4dedcff0728f2cd7931acb5efc34afbce33f8480
+      uses: microsoft/onnxruntime-github-actions/setup-build-tools@559392a58a5ffb65f81852eaa6dba88b898660da
       with:
         vcpkg-version: '2025.03.19'
         vcpkg-hash: '17e96169cd3f266c4716fcdc1bb728e6a64f103941ece463a2834d50694eba4fb48f30135503fd466402afa139abc847ef630733c442595d1c34979f261b0114'
