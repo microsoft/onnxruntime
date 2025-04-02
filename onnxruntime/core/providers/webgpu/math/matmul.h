@@ -16,8 +16,7 @@ namespace webgpu {
 
 MatMulProgram CreateMatMulProgram(const Activation& activation, std::vector<const Tensor*>& inputs, Tensor* output, bool is_channels_last,
                                   const TensorShape& input_a_reshape = TensorShape(),
-                                  const TensorShape& input_b_reshape = TensorShape(),
-                                  const TensorShape& output_reshape = TensorShape());
+                                  const TensorShape& input_b_reshape = TensorShape());
 
 class MatMul final : public WebGpuKernel {
  public:

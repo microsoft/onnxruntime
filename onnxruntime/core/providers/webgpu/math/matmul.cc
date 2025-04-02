@@ -157,15 +157,14 @@ Status MatMul::ComputeInternal(ComputeContext& context) const {
     const auto* bias = context.Input(2);
     inputs.push_back(bias);
   }
-  auto program = CreateMatMulProgram(Activation(), inputs, output, false());
+  auto program = CreateMatMulProgram(Activation(), inputs, output, false);
 
   return context.RunProgram(program);
 }
 
 MatMulProgram CreateMatMulProgram(const Activation& activation, std::vector<const Tensor*>& inputs, Tensor* output, bool is_channels_last,
                                   const TensorShape& input_a_reshape,
-                                  const TensorShape& input_b_reshape,
-                                  const TensorShape& output_reshape) {
+                                  const TensorShape& input_b_reshape) {
   MatMulComputeHelper helper;
   const auto* a = inputs[0];
   const auto* b = inputs[1];
@@ -173,7 +172,7 @@ MatMulProgram CreateMatMulProgram(const Activation& activation, std::vector<cons
   TensorShape a_shape = input_a_reshape.NumDimensions() > 0 ? input_a_reshape : a->Shape();
   TensorShape b_shape = input_b_reshape.NumDimensions() > 0 ? input_b_reshape : b->Shape();
 
-  ORT_THROW_IF_ERROR(helper.Compute(a_shape, b_shape()));
+  ORT_THROW_IF_ERROR(helper.Compute(a_shape, b_shape));
   int64_t batchA = a_shape.SizeToDimension(a_shape.NumDimensions() - 2);
   int64_t batchB = b_shape.SizeToDimension(b_shape.NumDimensions() - 2);
 

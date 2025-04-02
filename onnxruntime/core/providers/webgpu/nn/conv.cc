@@ -181,7 +181,7 @@ Status Conv<is_channels_last, is_fused>::ComputeInternal(ComputeContext& context
     }
     auto N = matmul_output_shape[2];
     auto matmul_first_input_numdims = matmul_input_reshapes[0].NumDimensions();
-    auto K = matmul_input_reshape[0].GetDim(matmul_first_input_numdims - 1);
+    auto K = matmul_input_reshapes[0].GetDims()[matmul_first_input_numdims - 1];
     if (N < 8 && K < 8) {
       const auto components = GetMaxComponents(N);
       const auto a_components = GetMaxComponents(K);
@@ -189,11 +189,10 @@ Status Conv<is_channels_last, is_fused>::ComputeInternal(ComputeContext& context
       uint32_t output_size = static_cast<uint32_t>(output_shape.Size() / components / output_number);
       const size_t output_rank = matmul_output_shape.NumDimensions();
       TensorShape outer_dims = output_rank > 2 ? matmul_output_shape.Slice(0, output_rank - 2) : TensorShape({});
-      const int64_t batch_size = outer_dims.Size();
       MatMulNaiveProgram program(activation_, output_rank, output_number, has_bias);
       program
           .CacheHint(std::to_string(components), std::to_string(a_components), std::to_string(output_number))
-          .AddInputs({{matmul_inputs[0], ProgramTensorMetadataDependency::TypeAndRank, ReduceShapeByComponents(matmul_inputs_reshapes[0], a_components), int(a_components)},
+          .AddInputs({{matmul_inputs[0], ProgramTensorMetadataDependency::TypeAndRank, ReduceShapeByComponents(matmul_input_reshapes[0], a_components), int(a_components)},
                       {matmul_inputs[1], ProgramTensorMetadataDependency::TypeAndRank, ReduceShapeByComponents(matmul_input_reshapes[1], components), int(components)}});
       if (has_bias) {
         program.AddInput({bias, ProgramTensorMetadataDependency::Rank, bias->Shape(), components});
@@ -205,7 +204,7 @@ Status Conv<is_channels_last, is_fused>::ComputeInternal(ComputeContext& context
           .AddUniformVariables({{output_size}, {static_cast<uint32_t>(matmul_output_shape[1])}, {static_cast<uint32_t>(matmul_output_shape[2])}, {static_cast<uint32_t>(K)}});
       return context.RunProgram(program);
     } else {
-      MatMulProgram program = CreateMatMulProgram(activation_, matmul_inputs, output, is_channels_last, matmul_input_reshapes[0], matmul_input_reshapes[1], matmul_output_shape);
+      MatMulProgram program = CreateMatMulProgram(activation_, matmul_inputs, output, is_channels_last, matmul_input_reshapes[0], matmul_input_reshapes[1]);
       return context.RunProgram(program);
     }
   }
