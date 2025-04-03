@@ -70,10 +70,10 @@ virtual const InlinedVector<const Node*> GetEpContextNodes() const {
 }
 ```
 
-- This API returns an **array of pointers** to EPContext nodes.  
+- This API returns an **array of pointers** to `EPContext` nodes.  
 - Execution Providers should implement this interface if they need to **generate the context cache model**. Otherwise, they can leave it unimplemented.  
-- It is the **EP's responsibility** to create the EPContext nodes along with their dependencies (e.g., the context binary file if `embed_mode = 0`).  
-- The **ONNX Runtime GraphPartitioner** uses this interface to retrieve the EPContext nodes and generate the **partitioned ONNX model**.
+- It is the **EP's responsibility** to create the `EPContext` nodes along with their dependencies (e.g., the context binary file if `embed_mode = 0`).  
+- The **ONNX Runtime GraphPartitioner** uses this interface to retrieve the `EPContext` nodes and generate the **partitioned ONNX model**.
 [EP context model generation code details here](https://github.com/microsoft/onnxruntime/blob/544bdd60730270f49f6a5baafdff54065f626776/onnxruntime/core/framework/graph_partitioner.cc#L646-L750)
 
 
@@ -85,7 +85,7 @@ virtual const InlinedVector<const Node*> GetEpContextNodes() const {
   - The **ONNX Runtime framework** is responsible for **generating the EP context ONNX model** using the `EPContext` node list provided by the EP.
 
 - **Lifetime**
-  - The lifetime of EPContext nodes begins at least when the EP calls compile and ends when the EP is destroyed.
+  - The lifetime of `EPContext` nodes begins at least when the EP calls compile and ends when the EP is destroyed.
 
 - **ep.context_enable**
   - ONNX Runtime creates the EP context cache model if `ep.context_enable = 1`.
