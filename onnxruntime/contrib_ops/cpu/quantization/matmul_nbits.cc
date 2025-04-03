@@ -730,7 +730,7 @@ Status MatMulNBits<T1>::Compute(OpKernelContext* ctx) const {
 
   // If B, scale, zp are prepacked, it would have been removed from the context
   const Tensor* b = ctx->Input<Tensor>(InputIndex::B);
-  const Tensor* scales = ctx->Input<Tensor>(InputIndex::scales);
+  const Tensor* scales = scales_are_packed_ ? nullptr : ctx->Input<Tensor>(InputIndex::scales);
   const Tensor* zero_points = ctx->Input<Tensor>(InputIndex::zero_points);
   return ComputeBUnpacked(a, b, scales, zero_points, reorder_idx, bias, y, allocator, thread_pool, helper);
 }
