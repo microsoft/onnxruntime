@@ -229,7 +229,7 @@ Status FlashAttentionProgram::GenerateShaderCode(ShaderHelper& shader) const {
   // Each lane/thread is responsible for a single q.
   shader.MainFunctionBody() << R"MAIN_FN(
   let head_idx = u32(workgroup_idx / uniforms.num_seq_tile);
-  let capped_sg_id = min(sg_id, max_k_step);
+  let capped_sg_id = min(sg_id, max_k_step - 1u);
   let capped_sg_size = min(sg_size, max_k_step);
 
   // Load Q
@@ -426,7 +426,7 @@ Status FlashAttentionProgram::GenerateShaderCode(ShaderHelper& shader) const {
     {
       for (var i:u32 = 0; i < half_qkv_head_size_vec; i++)
       {
-          var val = select(vec4<q_element_t>(0), v_tile[capped_sg_id][i], k_start + capped_sg_id < seq_causal_length);
+          var val = v_tile[capped_sg_id][i];
           var sum = subgroupShuffle(val, 0) * qk_1[0];
           sum += subgroupShuffle(val, 1) * qk_1[1];
           sum += subgroupShuffle(val, 2) * qk_1[2];
@@ -436,6 +436,17 @@ Status FlashAttentionProgram::GenerateShaderCode(ShaderHelper& shader) const {
           sum += subgroupShuffle(val, 6) * qk_2[2];
           sum += subgroupShuffle(val, 7) * qk_2[3];
           o_tile[i] = o_tile[i] * o_ratio + sum;
+
+          val = v_tile[capped_sg_id][half_qkv_head_size_vec + i];
+          sum = subgroupShuffle(val, 0) * qk_1[0];
+          sum += subgroupShuffle(val, 1) * qk_1[1];
+          sum += subgroupShuffle(val, 2) * qk_1[2];
+          sum += subgroupShuffle(val, 3) * qk_1[3];
+          sum += subgroupShuffle(val, 4) * qk_2[0];
+          sum += subgroupShuffle(val, 5) * qk_2[1];
+          sum += subgroupShuffle(val, 6) * qk_2[2];
+          sum += subgroupShuffle(val, 7) * qk_2[3];
+          o_tile_r[local_idx][i] = o_tile_r[local_idx][i] * o_ratio + sum;
       }
     }
   }
