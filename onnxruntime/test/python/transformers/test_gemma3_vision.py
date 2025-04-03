@@ -164,6 +164,7 @@ class TestFusion(unittest.TestCase):
                 args=inputs,
                 f=os.path.join(os.path.dirname(__file__), "export.onnx"),
                 dynamo=True,
+                optimize=True,
             )
         return onnx_program.model_proto  # type: ignore
 

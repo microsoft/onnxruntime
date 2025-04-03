@@ -82,6 +82,7 @@ class TestGeluFusions(unittest.TestCase):
             input_names=["input"],
             output_names=["output"],
             dynamo=dynamo,
+            optimize=True,  # Only meaningful when dynamo is True
         )
         optimizer = optimize_model(onnx_path, "bert")
         # optimizer.save_model_to_file(f"{operator}_{source}_opt.onnx")
