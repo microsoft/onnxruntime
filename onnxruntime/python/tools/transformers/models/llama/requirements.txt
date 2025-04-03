@@ -1,3 +1,5 @@
+onnxscript>=0.2.3
+optree
 optimum>=1.14.1
 transformers==4.48.0
 torch>=2.2.0
