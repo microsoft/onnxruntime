@@ -5,7 +5,7 @@
 # Dockerfile to run ONNXRuntime with TensorRT integration
 
 # Build base image with required system packages
-FROM nvidia/cuda:12.6.3-cudnn-devel-ubuntu22.04 AS base
+FROM nvidia/cuda:12.8.0-cudnn-devel-ubuntu22.04 AS base
 
 # The local directory into which to build and install CMAKE
 ARG ONNXRUNTIME_LOCAL_CODE_DIR=/code
@@ -31,7 +31,7 @@ RUN pip install --upgrade pip
 RUN pip install setuptools>=68.2.2 psutil
 
 # Install TensorRT
-RUN TRT_VERSION="10.8.0.43-1+cuda12.8" &&\
+RUN TRT_VERSION="10.9.0.34-1+cuda12.8" &&\
     apt-key adv --fetch-keys https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2004/x86_64/7fa2af80.pub &&\
     apt-get update &&\
     apt-get install -y \
