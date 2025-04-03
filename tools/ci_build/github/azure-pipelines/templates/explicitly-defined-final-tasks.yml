@@ -9,9 +9,6 @@ steps:
     testRunTitle: 'Unit Test Run'
   condition: succeededOrFailed()
 
-- template: component-governance-component-detection-steps.yml
-  parameters :
-    condition : 'succeeded'
 
 - script: docker system df && docker system prune -a -f && docker system df
   displayName: Clean docker images

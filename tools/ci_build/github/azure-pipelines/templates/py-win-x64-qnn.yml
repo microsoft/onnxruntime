@@ -7,7 +7,7 @@ parameters:
 - name: QNN_SDK
   displayName: QNN SDK Version
   type: string
-  default: 2.31.0.250130
+  default: 2.32.0.250228
 
 - name: ENV_SETUP_SCRIPT
   type: string
@@ -155,8 +155,4 @@ jobs:
         condition: and (succeeded(), eq(variables['Build.SourceBranch'], 'refs/heads/main'))
         inputs:
           GdnPublishTsaOnboard: false
-          GdnPublishTsaConfigFile: '$(Build.sourcesDirectory)\.gdn\.gdntsa' 
-
-      - template: component-governance-component-detection-steps.yml
-        parameters:
-          condition: 'succeeded'
+          GdnPublishTsaConfigFile: '$(Build.sourcesDirectory)\.gdn\.gdntsa'

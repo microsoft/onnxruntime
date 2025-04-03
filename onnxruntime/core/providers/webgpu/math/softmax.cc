@@ -156,7 +156,9 @@ Status Softmax::ComputeInternal(ComputeContext& context) const {
 
   // normalize axis
   size_t axis = static_cast<size_t>(HandleNegativeAxis(axis_, input_rank));
-  bool is_transpose_required = axis < input_rank - 1;
+  // The `axis` attribute of the opset lower than version 13 describes the axis of the inputs when coerced to 2D,
+  // the 0th axis most likely describes the batch_size, so transpose is not required on old opset versions.
+  bool is_transpose_required = axis < input_rank - 1 && opset_ >= 13;
 
   TensorShape transposed_input_shape;
   Tensor transposed_input_tensor;
@@ -179,7 +181,9 @@ Status Softmax::ComputeInternal(ComputeContext& context) const {
     intermediate_output = context.CreateGPUTensor(output_tensor->DataType(), transposed_input_shape);
   }
 
-  const int64_t cols = is_transpose_required ? transposed_input_shape[input_rank - 1] : input_shape[input_rank - 1];
+  // The `axis` attribute of the opset lower than version 13 separates input tensor's dimensions into two parts,
+  // one part is treated as batch size, and the other part is performed by Softmax.
+  const int64_t cols = is_transpose_required ? transposed_input_shape[input_rank - 1] : (opset_ >= 13 ? input_shape[input_rank - 1] : input_shape.SizeFromDimension(axis));
   const int64_t rows = input_shape.Size() / cols;
   const int64_t components = GetMaxComponents(cols);
   const auto packed_cols = cols / components;
