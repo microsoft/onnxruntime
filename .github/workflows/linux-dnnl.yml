@@ -8,7 +8,7 @@ name: Linux DNNL CI
 
 on:
   push:
-    branches: [ main, 'rel-*', 'snnn/ci']
+    branches: [ main, 'rel-*']
   pull_request:
     branches: [ main, 'rel-*']
 
