@@ -714,10 +714,10 @@ Status MatMulNBits::ComputeInternal(onnxruntime::webgpu::ComputeContext& context
     TensorShape reshaped_y_shape{batch_count, M, N / components};
 
     program
-        .AddInputs({{a, ProgramTensorMetadataDependency::TypeAndRank, reshaped_a_shape, gsl::narrow<int>(components_a)},
-                    {b, ProgramTensorMetadataDependency::TypeAndRank, reshaped_b_shape, gsl::narrow<int>(components_b * 4)},
+        .AddInputs({{a, ProgramTensorMetadataDependency::TypeAndRank, reshaped_a_shape, onnxruntime::narrow<int>(components_a)},
+                    {b, ProgramTensorMetadataDependency::TypeAndRank, reshaped_b_shape, onnxruntime::narrow<int>(components_b * 4)},
                     {scales, ProgramTensorMetadataDependency::None}})
-        .AddOutput({y, ProgramTensorMetadataDependency::TypeAndRank, reshaped_y_shape, gsl::narrow<int>(components)})
+        .AddOutput({y, ProgramTensorMetadataDependency::TypeAndRank, reshaped_y_shape, onnxruntime::narrow<int>(components)})
         .AddUniformVariable({block_size});
     return context.RunProgram(program);
   }
