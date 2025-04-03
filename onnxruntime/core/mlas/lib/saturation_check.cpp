@@ -25,6 +25,12 @@ namespace onnxruntime
 
 std::atomic<int> saturation_count{0};
 
+void
+reset_saturation_count()
+{
+    saturation_count = 0;
+}
+
 }
 
 extern "C" void

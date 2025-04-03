@@ -2863,7 +2863,7 @@ Status InferenceSession::Run(const RunOptions& run_options,
   }
 #endif
 
-  saturation_count = 0;
+  reset_saturation_count();
 
   // As N+1 inference runs (N for memory allocation and 1 for graph capturing)
   // are needed before replaying the captured graph, here run N inference runs recursively until graph captured,
