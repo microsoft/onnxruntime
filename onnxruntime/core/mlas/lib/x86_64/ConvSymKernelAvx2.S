@@ -23,7 +23,7 @@ Abstract:
 
         .intel_syntax noprefix
 
-        .extern CheckForSaturationBeforeMul  # Declare external function
+        .extern CheckSaturationForVPMADDUBSW
 
         .macro CheckSaturation
 
@@ -61,7 +61,7 @@ Abstract:
     lea rdi, [rsp+64]
     lea rsi, [rsp]
 
-    call    CheckForSaturationBeforeMul  # Call the C++ function
+    call    CheckSaturationForVPMADDUBSW  # Call the C++ function
 
     # Restore XMM registers
     vmovdqu  ymm0, [rsp]
