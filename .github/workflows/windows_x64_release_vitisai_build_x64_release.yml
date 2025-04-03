@@ -106,7 +106,7 @@ jobs:
           exit $LASTEXITCODE
         }
         Get-ChildItem -Path dist/*.whl | foreach {pip --disable-pip-version-check install --upgrade $_.fullname}
-      working-directory:  "${{ github.workspace }}\\build\\RelWithDebInfo\\RelWithDebInfo"   
+      working-directory:  "${{ github.workspace }}\\build\\RelWithDebInfo\\RelWithDebInfo"
     env:
       OrtPackageId: Microsoft.ML.OnnxRuntime
       OnnxRuntimeBuildDirectory: ${{ github.workspace }}\build
