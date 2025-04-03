@@ -101,7 +101,7 @@ Status SqueezeOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
       // coreml supports negative axes
       AddOperationInput(*op, "axes", model_builder.AddConstant(op->type(), "axes", AsSpan(axes)));
     }
-    AddOperationOutput(*op, *node.OutputDefs()[0]);
+    AddOperationOutput(*op, *node.OutputDefs()[0], std::nullopt, logger);
     model_builder.AddOperation(std::move(op));
   } else {
     if (axes.empty()) {

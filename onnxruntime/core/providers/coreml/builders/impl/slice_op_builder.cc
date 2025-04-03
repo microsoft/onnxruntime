@@ -173,7 +173,7 @@ Status SliceOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const 
     AddOperationInput(*op, "begin_mask", begin_mask);
     AddOperationInput(*op, "end_mask", end_mask);
 
-    AddOperationOutput(*op, *output_defs[0], output_datatype);
+    AddOperationOutput(*op, *output_defs[0], output_datatype, std::reference_wrapper<const logging::Logger>(logger));
 
     model_builder.AddOperation(std::move(op));
 

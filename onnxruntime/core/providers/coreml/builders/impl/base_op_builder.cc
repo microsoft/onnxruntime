@@ -40,6 +40,7 @@ bool HasExternalInitializer(const InitializedTensorSet& initializers, const Node
 
 Status BaseOpBuilder::AddToModelBuilder(ModelBuilder& model_builder, const Node& node,
                                         const logging::Logger& logger) const {
+  LOGS(logger, VERBOSE) << "ADDING: Operator name: [" << node.Name() << "] type: [" << node.OpType() << "]";
   Status status = AddToModelBuilderImpl(model_builder, node, logger);
 
   if (status.IsOK()) {

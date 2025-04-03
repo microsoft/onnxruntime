@@ -129,8 +129,10 @@ bool SoftmaxOpBuilder::IsOpSupportedImpl(const Node& node, const OpBuilderInputP
                                          const logging::Logger& logger) const {
   const auto& input_defs = node.InputDefs();
   std::vector<int64_t> input_shape;
-  if (!GetStaticShape(*input_defs[0], input_shape, logger))
+  if (!GetStaticShape(*input_defs[0], input_shape, logger)) {
+    LOGS(logger, VERBOSE) << "Failed to get static shape for input.";
     return false;
+  }
 
   const TensorShape shape(input_shape);
   if (shape.Size() == 0) {

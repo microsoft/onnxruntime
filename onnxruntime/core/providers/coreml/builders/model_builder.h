@@ -178,7 +178,8 @@ class ModelBuilder {
   void SanitizeNames();
 
   // add Value as a const operation. return value name in case sanitization changed it
-  const std::string& AddConstantOperation(std::string_view name, COREML_SPEC::MILSpec::Value&& initializer);
+  const std::string& AddConstantOperation(std::string_view name, COREML_SPEC::MILSpec::Value&& initializer,
+    std::optional<std::reference_wrapper<const logging::Logger>> logger = std::nullopt);
   const std::string& AddTensorValueAsConstantOperation(std::string_view op_type, std::string_view value_type,
                                                        COREML_SPEC::MILSpec::Value&& input_value);
 

@@ -23,7 +23,7 @@ class ArgMaxOpBuilder : public BaseOpBuilder {
 
 Status ArgMaxOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
                                               const Node& node,
-                                              const logging::Logger& /* logger */) const {
+                                              const logging::Logger&  logger ) const {
   std::unique_ptr<COREML_SPEC::NeuralNetworkLayer> layer = model_builder.CreateNNLayer(node);
   const auto& graph_viewer = model_builder.GetGraphViewer();
 
@@ -43,7 +43,7 @@ Status ArgMaxOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
 
     int32_t output_datatype = ONNX_NAMESPACE::TensorProto_DataType_INT32;
     // the output of ArgMax must be int32
-    AddOperationOutput(*op, *node.OutputDefs()[0], output_datatype);
+    AddOperationOutput(*op, *node.OutputDefs()[0], output_datatype, std::reference_wrapper<const logging::Logger>(logger));
     model_builder.AddOperation(std::move(op));
   } else {
     auto* coreml_argmax = layer->mutable_argmax();

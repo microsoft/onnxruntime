@@ -127,7 +127,8 @@ bool ShapeOpBuilder::HasSupportedInputsImpl(const Node& node,
   if (input_params.create_mlprogram) {
     if ((input_type == ONNX_NAMESPACE::TensorProto_DataType_INT32 ||
          input_type == ONNX_NAMESPACE::TensorProto_DataType_FLOAT ||
-         input_type == ONNX_NAMESPACE::TensorProto_DataType_FLOAT16)) {
+         input_type == ONNX_NAMESPACE::TensorProto_DataType_FLOAT16 ||
+         input_type == ONNX_NAMESPACE::TensorProto_DataType_INT64)) {
       return true;
     } else {
       LOGS(logger, VERBOSE) << "[" << node.OpType()

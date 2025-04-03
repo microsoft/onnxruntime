@@ -41,7 +41,7 @@ Status ConcatOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
     AddOperationVariadicInput(*op, "values", input_names);
     AddOperationInput(*op, "axis", model_builder.AddScalarConstant(op->type(), "axis", *axis));
     AddOperationInput(*op, "interleave", model_builder.AddScalarConstant(op->type(), "interleave", interleave));
-    AddOperationOutput(*op, *node.OutputDefs()[0]);
+    AddOperationOutput(*op, *node.OutputDefs()[0], std::nullopt, std::reference_wrapper<const logging::Logger>(logger));
     model_builder.AddOperation(std::move(op));
   } else  // NOLINT
   {

@@ -69,7 +69,7 @@ Status CastOpBuilder::AddToModelBuilderImpl([[maybe_unused]] ModelBuilder& model
     if (op_type == "cast") {
       AddOperationInput(*op, "dtype", model_builder.AddScalarConstant(op->type(), "dtype", std::string(to_dtype)));
     }
-    AddOperationOutput(*op, *node.OutputDefs()[0], cast_to_type);
+    AddOperationOutput(*op, *node.OutputDefs()[0], cast_to_type, logger);
     model_builder.AddOperation(std::move(op));
   }
 
@@ -143,7 +143,7 @@ bool CastOpBuilder::HasSupportedInputsImpl(const Node& node, [[maybe_unused]] co
          output_type == ONNX_NAMESPACE::TensorProto_DataType_FLOAT16)) {
       return true;
     } else {
-      LOGS(logger, VERBOSE) << "[" << node.OpType()
+      LOGS(logger, VERBOSE) << "[" << node.OpType() << " " << node.Name()
                             << "] Input type: [" << input_type
                             << "] is not supported.";
       return false;

@@ -95,8 +95,9 @@ bool ReshapeOpBuilder::IsOpSupportedImpl(const Node& node, const OpBuilderInputP
   }
 
   std::vector<int64_t> input_shape;
-  if (!GetStaticShape(*input_defs[0], input_shape, logger))
-    return false;
+  if (!GetStaticShape(*input_defs[0], input_shape, logger)) {
+    LOGS(logger, VERBOSE) << "Failed to get static shape for input for reshape";
+    return false;}
 
   if (input_shape.empty()) {
     LOGS(logger, VERBOSE) << "Reshape does not support empty input shape";

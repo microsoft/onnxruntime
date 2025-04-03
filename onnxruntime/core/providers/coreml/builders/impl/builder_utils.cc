@@ -368,7 +368,8 @@ void AddIntermediateOperationOutput(COREML_SPEC::MILSpec::Operation& op, std::st
 }
 
 void AddOperationOutput(COREML_SPEC::MILSpec::Operation& op, const NodeArg& output,
-                        std::optional<int32_t> override_element_type) {
+                        std::optional<int32_t> override_element_type,
+                        std::optional<std::reference_wrapper<const logging::Logger>> logger) {
   auto& outputs = *op.mutable_outputs();
   auto& output_arg = *outputs.Add();
   output_arg.set_name(output.Name());
@@ -377,7 +378,18 @@ void AddOperationOutput(COREML_SPEC::MILSpec::Operation& op, const NodeArg& outp
   MILSpec::TensorType& tensor_type = *value.mutable_tensortype();
 
   auto elem_type = output.TypeAsProto()->tensor_type().elem_type() == ONNX_NAMESPACE::TensorProto_DataType_INT64 ? ONNX_NAMESPACE::TensorProto_DataType_INT32
+  // auto elem_type = override_element_type ? *override_element_type
                                          : output.TypeAsProto()->tensor_type().elem_type();
+
+  if (logger.has_value() && output.TypeAsProto()->tensor_type().elem_type() == ONNX_NAMESPACE::TensorProto_DataType_INT64) {
+    LOGS(logger.value().get(), VERBOSE) << "Warning: output " << output.Name()
+                             << " has type int64 but CoreML only supports int32. Converting to int32.";
+    LOGS(logger.value().get(), VERBOSE) << "Setting COREML Tensor type: " << MILSpec::DataType_Name(tensor_type.datatype());
+  } else if (logger.has_value()) {
+    LOGS(logger.value().get(), VERBOSE) << "Output " << output.Name()
+                             << " has type " << ONNX_NAMESPACE::TensorProto_DataType_Name(elem_type);
+    LOGS(logger.value().get(), VERBOSE) << "Setting COREML Tensor type and did not convert: " << MILSpec::DataType_Name(tensor_type.datatype());
+  }
 
   SetTensorTypeInfo(tensor_type, OnnxDataTypeToMILSpec(elem_type), output.Shape(), /*convert_scalar*/ true);
 }

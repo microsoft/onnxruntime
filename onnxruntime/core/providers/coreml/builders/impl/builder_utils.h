@@ -161,7 +161,8 @@ void AddIntermediateOperationOutput(COREML_SPEC::MILSpec::Operation& op, std::st
 ///   the original ONNX node has type int64.
 /// </param>
 void AddOperationOutput(COREML_SPEC::MILSpec::Operation& op, const NodeArg& output,
-                        std::optional<int32_t> override_element_type = std::nullopt);
+                        std::optional<int32_t> override_element_type = std::nullopt,
+                        std::optional<std::reference_wrapper<const logging::Logger>> logger = std::nullopt);
 
 /// <summary>
 /// Add pad_type and pad values.
