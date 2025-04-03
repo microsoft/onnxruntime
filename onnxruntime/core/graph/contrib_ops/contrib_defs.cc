@@ -3602,7 +3602,7 @@ GatherBlockQuantized is a Gather with data quantized. It is similar to Gather (h
       .Input(2, "scales", "quantization scale", "T2")
       .Input(3, "zero_points", "quantization zero points", "T1", OpSchema::Optional)
       .Output(0, "output", "Dequantized output tensor of rank q + (r - 1).", "T2")
-      .TypeConstraint("T1", {"tensor(int4)", "tensor(uint4)"}, "Constrain quantized types.")
+      .TypeConstraint("T1", {"tensor(int4)", "tensor(uint4)", "tensor(uint8)"}, "Constrain quantized types.")
       .TypeConstraint("T2", {"tensor(float)", "tensor(float16)", "tensor(bfloat16)"}, "Constrain dequantized types.")
       .TypeConstraint("Tind", {"tensor(int32)", "tensor(int64)"}, "Constrain indices to integer types.")
       .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
@@ -3641,10 +3641,11 @@ GatherBlockQuantized is a Gather with data quantized. It is similar to Gather (h
           fail_shape_inference("scales must have the same rank as data");
         }
 
+        uint32_t components = ctx.getInputType(0)->tensor_type().elem_type() == onnx::TensorProto_DataType_UINT8 ? 2 : 1;
         for (int i = 0; i < r; ++i) {
           if (!data_shape.dim(i).has_dim_value() ||
               !scales_shape.dim(i).has_dim_value() ||
-              (i == quantize_axis && (data_shape.dim(i).dim_value() + block_size - 1) / block_size != scales_shape.dim(i).dim_value()) ||
+              (i == quantize_axis && (data_shape.dim(i).dim_value() * components + block_size - 1) / block_size != scales_shape.dim(i).dim_value()) ||
               (i != quantize_axis && data_shape.dim(i).dim_value() != scales_shape.dim(i).dim_value())) {
             fail_shape_inference("data shape and scales shape do not match");
           }
@@ -3680,7 +3681,7 @@ GatherBlockQuantized is a Gather with data quantized. It is similar to Gather (h
                   ? data_shape.dim(i)
               : (i >= gather_axis && i < gather_axis + q)
                   ? indices_shape.dim(i - gather_axis)
-                  : data_shape.dim(i - q + 1);
+                  : data_shape.dim(i - q + 1) * components;
         }
       });
 
