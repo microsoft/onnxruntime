@@ -78,6 +78,9 @@ constexpr static const std::string_view ELEMENT_TYPE_ARRAY[] = {
     "u32",   // Uint8x4
     "u32",   // Uint8x8
     "u32",   // Uint8x16
+    "i32",   // Int8x4
+    "i32",   // Int8x8
+    "i32",   // Int8x16
 };
 constexpr static const auto ELEMENT_TYPE = details::_to_std_array(ELEMENT_TYPE_ARRAY);
 

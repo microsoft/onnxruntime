@@ -143,6 +143,10 @@ int NumberOfComponents(ProgramVariableDataType type) {
 ProgramVariableDataType ToProgramVariableDataType(int32_t element_type, int component /* = 1 */) {
   if (component == 1) {
     switch (element_type) {
+      case ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT8:
+        return ProgramVariableDataType::Uint8x4;  // shader needs to be aware that only 1 value is valid
+      case ONNX_TENSOR_ELEMENT_DATA_TYPE_INT8:
+        return ProgramVariableDataType::Int8x4;  // shader needs to be aware that only 1 value is valid
       case ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT:
         return ProgramVariableDataType::Float32;
       case ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT16:

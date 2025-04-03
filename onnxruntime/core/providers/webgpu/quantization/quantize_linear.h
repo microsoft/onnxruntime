@@ -14,19 +14,19 @@ class DequantizeLinearProgram final : public Program<DequantizeLinearProgram> {
                           const bool packed, const bool issigned, const bool per_layer,
                           const bool per_axis, const int components,
                           const int input_component, bool has_zeropoint) : Program<DequantizeLinearProgram>{"DequantizeLinear"},
-                                                       axis_{axis},
-                                                       block_size_{block_size},
-                                                       packed_{packed},
-                                                       signed_{issigned},
-                                                       per_layer_{per_layer},
-                                                       per_axis_{per_axis},
-                                                       components_{components},
-                                                       input_component_{input_component},
-                                                       has_zeropoint_{has_zeropoint} {}
+                                                                           axis_{axis},
+                                                                           block_size_{block_size},
+                                                                           packed_{packed},
+                                                                           signed_{issigned},
+                                                                           per_layer_{per_layer},
+                                                                           per_axis_{per_axis},
+                                                                           components_{components},
+                                                                           input_component_{input_component},
+                                                                           has_zeropoint_{has_zeropoint} {}
 
   Status GenerateShaderCode(ShaderHelper& sh) const override;
 
-  WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES({"axis", ProgramUniformVariableDataType::Int32},
+  WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES({"axis", ProgramUniformVariableDataType::Uint32},
                                           {"block_size", ProgramUniformVariableDataType::Uint32},
                                           {"output_size", ProgramUniformVariableDataType::Uint32});
 

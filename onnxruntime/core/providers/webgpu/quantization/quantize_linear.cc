@@ -13,7 +13,7 @@ namespace onnxruntime {
 namespace webgpu {
 
 Status DequantizeLinearProgram::GenerateShaderCode(ShaderHelper& shader) const {
-  const auto& x = shader.AddInput("input", ShaderUsage::UseUniform | ShaderUsage::UseIndicesTypeAlias | ShaderUsage::UseValueTypeAlias);
+  const auto& x = shader.AddInput("input", ShaderUsage::UseUniform | ShaderUsage::UseIndicesTypeAlias | ShaderUsage::UseElementTypeAlias);
   const auto& scale = shader.AddInput("scale", ShaderUsage::UseUniform | ShaderUsage::UseIndicesTypeAlias | ShaderUsage::UseValueTypeAlias);
   const auto& output = shader.AddOutput("output", ShaderUsage::UseUniform | ShaderUsage::UseShapeAndStride | ShaderUsage::UseValueTypeAlias);
 
@@ -22,18 +22,26 @@ Status DequantizeLinearProgram::GenerateShaderCode(ShaderHelper& shader) const {
       << shader.GuardAgainstOutOfBoundsWorkgroupSizes("uniforms.output_size")
       << "let output_indices = " << output.OffsetToIndices("global_idx") << ";\n";
 
-  // Set x input
+  // Get x input
   if (packed_) {
     std::string unpack = (signed_) ? "unpack4xI8(x)" : "unpack4xU8(x)";
-    shader.MainFunctionBody()
-        << "let x = " << x.GetByOffset("global_idx") << ";\n"
-        << "let x_value = " << unpack << ";\n";
+    if (output.NumComponents() == 1) {
+      shader.MainFunctionBody()
+          << "let x = " << x.GetByOffset("global_idx / 4") << ";\n"
+          << "let x_vec = " << unpack << ";\n"
+          << "let x_value = x_vec[global_idx % 4];\n";
+    } else {
+      shader.MainFunctionBody()
+          << "let x = " << x.GetByOffset("global_idx") << ";\n"
+          << "let x_vec = " << unpack << ";\n"
+          << "let x_value = x_vec;\n";
+    }
   } else {
     shader.MainFunctionBody()
         << "let x_value = " << x.GetByOffset("global_idx") << ";\n";
   }
 
-  // Set scale input
+  // Get scaler
   if (per_layer_) {
     // scale input is a scalar ()
     shader.MainFunctionBody()
@@ -51,9 +59,9 @@ Status DequantizeLinearProgram::GenerateShaderCode(ShaderHelper& shader) const {
         << "let scale_value = " << scale.GetByIndices("scale_indices") << ";\n";
   }
 
-  // Set zero-point input
+  // Get zero-point
   if (has_zeropoint_) {
-    const auto& zero_point = shader.AddInput("zero_point", ShaderUsage::UseUniform | ShaderUsage::UseIndicesTypeAlias | ShaderUsage::UseValueTypeAlias);
+    const auto& zero_point = shader.AddInput("zero_point", ShaderUsage::UseUniform | ShaderUsage::UseIndicesTypeAlias);
 
     std::string unpack = (signed_) ? "unpack4xI8(zero_point_input)" : "unpack4xU8(zero_point_input)";
     if (per_layer_) {
@@ -87,7 +95,7 @@ Status DequantizeLinearProgram::GenerateShaderCode(ShaderHelper& shader) const {
             << "let zero_point_offset = " << scale.GetByIndices("scale_indices") << ";\n"
             << "let zero_point_input = " << zero_point.GetByOffset("zero_point_offset / 4") << ";\n"
             << "let zero_point_vec = " << unpack << ";\n"
-            << "let zero_point_value = zp_vec[zero_point_offset % 4];\n";
+            << "let zero_point_value = zero_point_vec[zero_point_offset % 4];\n";
       } else {
         shader.MainFunctionBody()
             << "let zero_point_value = " << zero_point.GetByIndices("scale_indices") << ";\n";
@@ -95,23 +103,24 @@ Status DequantizeLinearProgram::GenerateShaderCode(ShaderHelper& shader) const {
     }
   } else {
     shader.MainFunctionBody()
-        << "let zero_point_value = input_value_t(0);\n";
+        << "let zero_point_value = input_element_t(0);\n";
   }
 
   // compute and write output
   shader.MainFunctionBody()
-      << output.SetByOffset("global_idx", "output_value_t(x_value - zero_point_value) * scale_value");
+      << output.SetByOffset("global_idx", "(output_value_t(x_value) - scale_value_t(zero_point_value)) * scale_value");
 
   return Status::OK();
 }
 
 Status DequantizeLinear::ComputeInternal(ComputeContext& context) const {
   const auto* x = context.Input(0);
-  const auto x_shape = x->Shape();
-  int64_t x_size = x_shape.Size();
   const auto* x_scale = context.Input(1);
   const auto* x_zeropoint = context.Input(2);
+  const auto x_shape = x->Shape();
+  int64_t x_size = x_shape.Size();
   auto* output_tensor = context.Output(0, x_shape);
+  int64_t x_scale_rank = x_scale->Shape().NumDimensions();
 
   bool packed = x->GetElementType() == ONNX_TENSOR_ELEMENT_DATA_TYPE_INT8 || x->GetElementType() == ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT8;
   bool is_signed = x->GetElementType() == ONNX_TENSOR_ELEMENT_DATA_TYPE_INT8;
@@ -121,8 +130,6 @@ Status DequantizeLinear::ComputeInternal(ComputeContext& context) const {
   if (max_components != 4) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "DequantizeLinear: components must be 4, but got ", max_components);
   }
-
-  int64_t x_scale_rank = x_scale->Shape().NumDimensions() ;
 
   // scaler - single scaler for all elements
   bool per_layer = x_scale_rank == 0 || (x_scale_rank == 1 && x_scale->Shape()[0] == 1);
@@ -134,21 +141,18 @@ Status DequantizeLinear::ComputeInternal(ComputeContext& context) const {
   int components = use_components ? max_components : 1;
   int input_component = use_components && !packed ? max_components : 1;
 
-
-  uint32_t vec_size = onnxruntime::narrow<uint32_t>((x_size + max_components - 1) / max_components);
   DequantizeLinearProgram program{axis_, block_size_, packed, is_signed, per_layer,
                                   per_axis, components, input_component, x_zeropoint != nullptr};
 
   program
-      .AddInputs({{x, ProgramTensorMetadataDependency::TypeAndRank, max_components}})
+      .AddInputs({{x, ProgramTensorMetadataDependency::TypeAndRank, input_component}})
       .AddInputs({{x_scale, ProgramTensorMetadataDependency::TypeAndRank}})
-      .AddOutput({output_tensor, ProgramTensorMetadataDependency::None, max_components})
-      .SetDispatchGroupSize((vec_size + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE)
+      .AddOutput({output_tensor, ProgramTensorMetadataDependency::None, components})
+      .SetDispatchGroupSize((x_size / components + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE)
       .AddUniformVariables({{static_cast<uint32_t>(axis)}})
       .AddUniformVariables({{static_cast<uint32_t>(block_size_)}})
-      .AddUniformVariables({{static_cast<uint32_t>(vec_size)}})
+      .AddUniformVariables({{static_cast<uint32_t>(x_size / components)}})
       .CacheHint(std::to_string(axis), std::to_string(is_signed), std::to_string(per_layer), std::to_string(per_axis), std::to_string(block_size_));
-
 
   if (x_zeropoint != nullptr) {
     program.AddInputs({{x_zeropoint, ProgramTensorMetadataDependency::TypeAndRank}});
@@ -158,64 +162,62 @@ Status DequantizeLinear::ComputeInternal(ComputeContext& context) const {
 }
 
 namespace {
-  const std::vector<MLDataType>& DequantizeLinearConstraints() {
-    static std::vector<MLDataType> types{
-        DataTypeImpl::GetTensorType<int8_t>(),
-        DataTypeImpl::GetTensorType<uint8_t>(),
-        DataTypeImpl::GetTensorType<int32_t>()};
-    return types;
-  }
-  }  // namespace
+const std::vector<MLDataType>& DequantizeLinearConstraints() {
+  static std::vector<MLDataType> types{
+      DataTypeImpl::GetTensorType<int8_t>(),
+      DataTypeImpl::GetTensorType<uint8_t>(),
+      DataTypeImpl::GetTensorType<int32_t>()};
+  return types;
+}
+}  // namespace
 
-  ONNX_OPERATOR_VERSIONED_KERNEL_EX(
-      DequantizeLinear,
-      kOnnxDomain,
-      10, 12,
-      kWebGpuExecutionProvider,
-      (*KernelDefBuilder::Create())
-          .TypeConstraint("T1", DequantizeLinearConstraints())
-          .TypeConstraint("T2", WebGpuSupportedFloatTypes()),
-      DequantizeLinear);
+ONNX_OPERATOR_VERSIONED_KERNEL_EX(
+    DequantizeLinear,
+    kOnnxDomain,
+    10, 12,
+    kWebGpuExecutionProvider,
+    (*KernelDefBuilder::Create())
+        .TypeConstraint("T", DequantizeLinearConstraints()),
+    DequantizeLinear);
 
-  ONNX_OPERATOR_VERSIONED_KERNEL_EX(
-      DequantizeLinear,
-      kOnnxDomain,
-      13, 18,
-      kWebGpuExecutionProvider,
-      (*KernelDefBuilder::Create())
-          .TypeConstraint("T1", DequantizeLinearConstraints())
-          .TypeConstraint("T2", WebGpuSupportedFloatTypes()),
-      DequantizeLinear);
+ONNX_OPERATOR_VERSIONED_KERNEL_EX(
+    DequantizeLinear,
+    kOnnxDomain,
+    13, 18,
+    kWebGpuExecutionProvider,
+    (*KernelDefBuilder::Create())
+        .TypeConstraint("T", DequantizeLinearConstraints()),
+    DequantizeLinear);
 
-  ONNX_OPERATOR_VERSIONED_KERNEL_EX(
-      DequantizeLinear,
-      kOnnxDomain,
-      19, 20,
-      kWebGpuExecutionProvider,
-      (*KernelDefBuilder::Create())
-          .TypeConstraint("T1", DequantizeLinearConstraints())
-          .TypeConstraint("T2", WebGpuSupportedFloatTypes()),
-      DequantizeLinear);
+ONNX_OPERATOR_VERSIONED_KERNEL_EX(
+    DequantizeLinear,
+    kOnnxDomain,
+    19, 20,
+    kWebGpuExecutionProvider,
+    (*KernelDefBuilder::Create())
+        .TypeConstraint("T1", DequantizeLinearConstraints())
+        .TypeConstraint("T2", WebGpuSupportedFloatTypes()),
+    DequantizeLinear);
 
-  ONNX_OPERATOR_VERSIONED_KERNEL_EX(
-      DequantizeLinear,
-      kOnnxDomain,
-      21, 22,
-      kWebGpuExecutionProvider,
-      (*KernelDefBuilder::Create())
-          .TypeConstraint("T1", DequantizeLinearConstraints())
-          .TypeConstraint("T2", WebGpuSupportedFloatTypes()),
-      DequantizeLinear);
+ONNX_OPERATOR_VERSIONED_KERNEL_EX(
+    DequantizeLinear,
+    kOnnxDomain,
+    21, 22,
+    kWebGpuExecutionProvider,
+    (*KernelDefBuilder::Create())
+        .TypeConstraint("T1", DequantizeLinearConstraints())
+        .TypeConstraint("T2", WebGpuSupportedFloatTypes()),
+    DequantizeLinear);
 
-  ONNX_OPERATOR_KERNEL_EX(
-      DequantizeLinear,
-      kOnnxDomain,
-      23,
-      kWebGpuExecutionProvider,
-      (*KernelDefBuilder::Create())
-          .TypeConstraint("T1", DequantizeLinearConstraints())
-          .TypeConstraint("T2", WebGpuSupportedFloatTypes()),
-      DequantizeLinear);
+ONNX_OPERATOR_KERNEL_EX(
+    DequantizeLinear,
+    kOnnxDomain,
+    23,
+    kWebGpuExecutionProvider,
+    (*KernelDefBuilder::Create())
+        .TypeConstraint("T1", DequantizeLinearConstraints())
+        .TypeConstraint("T2", WebGpuSupportedFloatTypes()),
+    DequantizeLinear);
 
 }  // namespace webgpu
 }  // namespace onnxruntime

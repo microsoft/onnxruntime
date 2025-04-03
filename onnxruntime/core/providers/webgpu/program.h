@@ -198,7 +198,9 @@ enum class ProgramVariableDataType {
   Uint8x4,
   Uint8x8,
   Uint8x16,
-  Int8x4
+  Int8x4,
+  Int8x8,
+  Int8x16,
 };
 #ifndef NDEBUG
 std::ostream& operator<<(std::ostream& os, ProgramVariableDataType);
