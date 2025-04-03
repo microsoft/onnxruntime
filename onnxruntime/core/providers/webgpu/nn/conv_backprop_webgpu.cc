@@ -127,8 +127,8 @@ Status ConvTranspose2DProgram::GenerateShaderCode(ShaderHelper& shader) const {
                             << "    let idyC: u32 = u32(dyC);\n"
                             << "    var inputChannel = groupId * uniforms.input_channels_per_group;\n";
   if (pack_input_as4_) {
-    shader.MainFunctionBody() << "    let dy_indices = dy_indices_t(batch, idyR, idyC, inputChannels);\n"
-                              << "    let w_indices = w_indices_t(u32(wRPerm), u32(wCPerm, inputChannel, wOutChannel);\n"
+    shader.MainFunctionBody() << "    let dy_indices = dy_indices_t(batch, idyR, idyC, inputChannel);\n"
+                              << "    let w_indices = w_indices_t(u32(wRPerm), u32(wCPerm), inputChannel, wOutChannel);\n"
                               << "    var x_offset = " << dy.IndicesToOffset("dy_indices") << ";\n"
                               << "    var w_offset = " << w.IndicesToOffset("w_indices") << ";\n";
   }
@@ -158,10 +158,10 @@ ConvTranspose2DProgram CreateConvTranspose2DProgram(const std::vector<const Tens
   auto output_channels_per_group = weight_shape[3];
   auto a_components = is_channels_last ? GetMaxComponents(input_channels_per_group) : 1;
   bool pack_input_as4 = is_channels_last && output_channels_per_group == 1 && input_channels_per_group >= 4;
-  auto input_channels_per_group_int = pack_input_as4 ? (input_channels_per_group / 4) * 4 : (input_channels_per_group / a_components) * a_components;
+  auto input_channels_per_group_int = pack_input_as4 ? ((input_channels_per_group + 3) / 4) * 4 : (input_channels_per_group / a_components) * a_components;
   auto input_channels_remainder = input_channels_per_group - input_channels_per_group_int;
   auto components = is_channels_last ? GetMaxComponents(output_channels_per_group) : 1;
-  auto b_components = components;  // is_channels_last ? (output_channels_per_group == 1 ? a_components : components) : 1;
+  auto b_components = is_channels_last ? (output_channels_per_group == 1 ? a_components : components) : 1;
   TensorShape reduced_input_shape = ReduceShapeByComponents(input_shape, a_components);
   TensorShape reduced_weight_shape = ReduceShapeByComponents(weight_shape, b_components);
   TensorShape reduced_output_shape = ReduceShapeByComponents(output_shape, components);
