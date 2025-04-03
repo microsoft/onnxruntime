@@ -1,0 +1,62 @@
+# .github/workflows/linux_openvino_ci.yml
+name: Linux OpenVINO CI using Reusable Workflow
+
+on:
+  push:
+    branches: [ main, 'rel-*' ]
+  pull_request:
+    branches: [ main, 'rel-*' ]
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  packages: write # Needed if the reusable workflow pushes images
+  attestations: write # Optional: for artifact attestations if enabled
+  id-token: write # Optional: may be needed for OIDC authentication (e.g., ACR)
+
+jobs:
+  build_test_openvino:
+    name: Build and Test OpenVINO EP (Ubuntu 22.04, Py3.10)
+    # Call the reusable workflow
+    uses: ./.github/workflows/reusable_linux_build.yml
+    with:
+      # Runner Pool: Use a standard CPU pool
+      pool_name: "onnxruntime-github-Ubuntu2204-AMD-CPU"
+
+      # Build Configuration: Typically Release for specific EPs
+      build_config: Release
+
+      # Architecture:
+      architecture: x64
+
+      # Dockerfile: Point to the specific OpenVINO Dockerfile
+      dockerfile_path: tools/ci_build/github/linux/docker/Dockerfile.ubuntu_openvino
+
+      # Docker Image Name: Give it a descriptive repo name for caching/identification
+      docker_image_repo: onnxruntimeopenvinobuild
+
+      # Docker Build Args: Pass necessary versions and info to the Dockerfile build
+      docker_build_args: '--build-arg PYTHON_VERSION=3.10 --build-arg OPENVINO_VERSION=2025.0.0 --build-arg UBUNTU_VERSION=22.04'
+
+      # Execution Providers: Specify 'openvino' for the reusable workflow's build command construction
+      execution_providers: 'openvino'
+
+      # Extra Build Flags: Pass the specific flags needed by build.py *inside* the container
+      # This includes the specific --use_openvino variant and other flags from your original command.
+      # Also explicitly add --build_shared_lib as seen in the original docker run command analysis.
+      extra_build_flags: '--use_openvino CPU --enable_generic_interface --build_wheel --build_shared_lib'
+
+      # Python Path Prefix: Set the correct Python 3.10 path inside the manylinux container
+      # (Adjust if the base image in Dockerfile.ubuntu_openvino uses a different path structure)
+      python_path_prefix: 'PATH=/opt/python/cp310-cp310/bin:$PATH'
+
+      run_tests: true
+      upload_build_output: false
+
+    # Secrets: Pass the necessary GitHub token
+    secrets:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
