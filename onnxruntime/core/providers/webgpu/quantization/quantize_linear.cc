@@ -17,7 +17,6 @@ Status DequantizeLinearProgram::GenerateShaderCode(ShaderHelper& shader) const {
   const auto& scale = shader.AddInput("scale", ShaderUsage::UseUniform | ShaderUsage::UseIndicesTypeAlias | ShaderUsage::UseValueTypeAlias);
   const auto& output = shader.AddOutput("output", ShaderUsage::UseUniform | ShaderUsage::UseShapeAndStride | ShaderUsage::UseValueTypeAlias);
 
-  shader.AdditionalImplementation() << "";
   shader.MainFunctionBody()
       << shader.GuardAgainstOutOfBoundsWorkgroupSizes("uniforms.output_size")
       << "let output_indices = " << output.OffsetToIndices("global_idx") << ";\n";
@@ -141,8 +140,7 @@ Status DequantizeLinear::ComputeInternal(ComputeContext& context) const {
   int components = use_components ? max_components : 1;
   int input_component = use_components && !packed ? max_components : 1;
 
-  DequantizeLinearProgram program{axis_, block_size_, packed, is_signed, per_layer,
-                                  per_axis, components, input_component, x_zeropoint != nullptr};
+  DequantizeLinearProgram program{packed, is_signed, per_layer, per_axis, x_zeropoint != nullptr};
 
   program
       .AddInputs({{x, ProgramTensorMetadataDependency::TypeAndRank, input_component}})
