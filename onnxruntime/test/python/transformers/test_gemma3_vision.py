@@ -162,7 +162,7 @@ class TestFusion(unittest.TestCase):
             onnx_program = torch.onnx.export(
                 model,
                 args=inputs,
-                f=os.path.join(os.path.dirname(__file__), "export.onnx"),
+                # f=os.path.join(os.path.dirname(__file__), "export.onnx"),
                 dynamo=True,
                 optimize=True,
             )
@@ -188,23 +188,21 @@ class TestFusion(unittest.TestCase):
         inputs = (torch.randn(1, 2, 20, dtype=dtype),)
         original_model = self.export(model, inputs)
 
-        if dtype == torch.float16:
-            # The initializers in fp16 model are folded because they are too small.
-            # optimizer needs it to be converted to initializers to match the patterns.
-            onnx_model_wrapper = DynamoOnnxHelper(original_model)
-            onnx_model_wrapper.convert_constants_to_initializers()
-            original_model = os.path.join(os.path.dirname(__file__), "export.onnx")
-            self.tearDown()
-            onnx_model_wrapper.model.save_model_to_file(
-                original_model,
-                use_external_data_format=True,
-                all_tensors_to_one_file=True,
-                convert_attribute=True,
-            )  # convert_attribute = True needed because of ONNX/ORT rewriter
+        # TODO(titaiwang): Upstream these processings to onnxscript pass
+        onnx_model_wrapper = DynamoOnnxHelper(original_model)
+        onnx_model_wrapper.convert_constants_to_initializers()
+        onnx_model_wrapper.clear_metadata()
+        model_path = os.path.join(os.path.dirname(__file__), "export.onnx")
+        onnx_model_wrapper.model.save_model_to_file(
+            model_path,
+            use_external_data_format=True,
+            all_tensors_to_one_file=True,
+            convert_attribute=True,
+        )
 
         options = FusionOptions("clip")
         optimized_model = optimize_model(
-            original_model,
+            model_path,
             model_type="clip",
             num_heads=2,
             hidden_size=20,
