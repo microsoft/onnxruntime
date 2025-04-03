@@ -36,6 +36,7 @@ RUN mkdir -p ${TEMP_DIR} && \
     mkdir -p /opt/intel && \
     mv ${OV_FOLDER_NAME} ${INTEL_OPENVINO_DIR} && \
     ln -s ${INTEL_OPENVINO_DIR} /opt/intel/openvino && sed -i 's/almalinux8.8/almalinux8.10/g' ${INTEL_OPENVINO_DIR}/install_dependencies/install_openvino_dependencies.sh && \
+    sed -i 's/cmake[0-9]\?\s//g' install_openvino_dependencies.sh && \
     # Run OpenVINO dependency installer script
     ${INTEL_OPENVINO_DIR}/install_dependencies/install_openvino_dependencies.sh -y && \
     # Clean up installer files
