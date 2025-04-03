@@ -25,13 +25,13 @@ class GraphTransformerManager {
   common::Status GetSteps(unsigned& steps) const;
 
   // Set the cancellation flag ptr from session_options
-  void SetLoadCancellationFn(LoadCancellationFn load_cancellation_fn) {
-    load_cancellation_fn_ = std::move(load_cancellation_fn);
+  void SetLoadCancellationFn(CheckLoadCancellationFn check_load_cancellation_fn) {
+    check_load_cancellation_fn_ = std::move(check_load_cancellation_fn);
   }
 
   // Get the cancellation flag ptr
   bool IsLoadCancellationFlagSet() const noexcept {
-    return load_cancellation_fn_ && load_cancellation_fn_();
+    return check_load_cancellation_fn_ && check_load_cancellation_fn_();
   }
 
   // Register a transformer with a level.
@@ -48,6 +48,6 @@ class GraphTransformerManager {
 
   InlinedHashMap<TransformerLevel, InlinedVector<std::unique_ptr<GraphTransformer>>> level_to_transformer_map_;
   InlinedHashMap<std::string, GraphTransformer*> transformers_info_;
-  LoadCancellationFn load_cancellation_fn_;
+  CheckLoadCancellationFn check_load_cancellation_fn_;
 };
 }  // namespace onnxruntime

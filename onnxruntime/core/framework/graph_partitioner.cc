@@ -56,7 +56,7 @@ namespace {
 // contains some common parameters used by the partitioning helper functions
 struct PartitionParams {
   std::reference_wrapper<Graph> graph;
-  std::reference_wrapper<const LoadCancellationFn> load_cancellation_fn;
+  std::reference_wrapper<const CheckLoadCancellationFn> check_load_cancellation_fn;
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
   std::reference_wrapper<FuncManager> func_mgr;
   std::reference_wrapper<KernelRegistry> fused_kernel_registry;
@@ -144,7 +144,7 @@ struct GetCapabilityForEPParams {
 #endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
   IResourceAccountant* resource_accountant;
   std::reference_wrapper<const GraphOptimizerRegistry> graph_optimizer_registry;
-  std::reference_wrapper<const LoadCancellationFn> load_cancellation_fn;
+  std::reference_wrapper<const CheckLoadCancellationFn> check_load_cancellation_fn;
 };
 
 auto get_capabilities = [](const IExecutionProvider& ep,
@@ -192,7 +192,7 @@ static Status GetCapabilityForEP(const GetCapabilityForEPParams& params, const l
     const GraphViewer graph_viewer(graph);
     capabilities = get_capabilities(current_ep, graph_viewer, kernel_lookup, params.resource_accountant,
                                     graph_optimizer_registry);
-    if (params.load_cancellation_fn()) {
+    if (params.check_load_cancellation_fn()) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, MODEL_LOAD_CANCELED,
                              "Graph partitioning was canceled by user request");
     }
@@ -216,7 +216,7 @@ static Status GetCapabilityForEP(const GetCapabilityForEPParams& params, const l
     // Perform layout transformation on the specific EP assigned graph
     bool modified = false;
     ORT_RETURN_IF_ERROR(params.transform_layout(graph, modified, current_ep, params.debug_graph_fn));
-    if (params.load_cancellation_fn()) {
+    if (params.check_load_cancellation_fn()) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, MODEL_LOAD_CANCELED,
                              "GetCapabilities was canceled by user request");
     }
@@ -239,7 +239,7 @@ static Status GetCapabilityForEP(const GetCapabilityForEPParams& params, const l
     const GraphViewer graph_viewer(graph);
     capabilities = get_capabilities(current_ep, graph_viewer, kernel_lookup, params.resource_accountant,
                                     graph_optimizer_registry);
-    if (params.load_cancellation_fn()) {
+    if (params.check_load_cancellation_fn()) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, MODEL_LOAD_CANCELED,
                              "GetCapabilities was canceled by user request");
     }
@@ -421,7 +421,7 @@ static Status PartitionOnnxFormatModelImpl(Graph& graph, FuncManager& func_mgr,
                                            int& fused_node_unique_id,
                                            const layout_transformation::TransformLayoutFunction& transform_layout_fn,
                                            const layout_transformation::DebugGraphFn& debug_graph_fn,
-                                           const LoadCancellationFn& load_cancellation_fn,
+                                           const CheckLoadCancellationFn& check_load_cancellation_fn,
                                            const logging::Logger& logger, IResourceAccountant* resource_accountant,
                                            const GraphOptimizerRegistry& graph_optimizer_registry) {
   // handle testing edge case where optimizers or constant lifting results in graph with no nodes.
@@ -438,7 +438,7 @@ static Status PartitionOnnxFormatModelImpl(Graph& graph, FuncManager& func_mgr,
       ORT_RETURN_IF_ERROR(PartitionOnnxFormatModelImpl(*subgraph, func_mgr, kernel_registry_mgr,
                                                        fused_kernel_registry, current_ep, mode, fused_node_unique_id,
                                                        transform_layout_fn, debug_graph_fn,
-                                                       load_cancellation_fn,
+                                                       check_load_cancellation_fn,
                                                        logger, resource_accountant,
                                                        graph_optimizer_registry));
     }
@@ -466,7 +466,7 @@ static Status PartitionOnnxFormatModelImpl(Graph& graph, FuncManager& func_mgr,
       std::cref(debug_graph_fn),
       resource_accountant,
       std::ref(graph_optimizer_registry),
-      std::cref(load_cancellation_fn)};
+      std::cref(check_load_cancellation_fn)};
 
   ORT_RETURN_IF_ERROR(GetCapabilityForEP(get_capability_params, logger));
   if (capabilities.empty()) {
@@ -553,7 +553,7 @@ static Status PartitionOnnxFormatModelImpl(Graph& graph, FuncManager& func_mgr,
       }
 
       ORT_RETURN_IF_ERROR(current_ep.Compile(nodes_and_viewers, node_compute_funcs));
-      ORT_RETURN_IF(load_cancellation_fn(),
+      ORT_RETURN_IF(check_load_cancellation_fn(),
                     "Graph partitioning is canceled due to user request.");
 
       if (node_compute_funcs.size() != nodes_to_compile.size()) {
@@ -656,7 +656,7 @@ static Status InlineFunctionsAOTImpl(const ExecutionProviders& execution_provide
                                      Graph& graph,
                                      const GraphOptimizerRegistry& graph_optimizer_registry,
                                      const logging::Logger& logger,
-                                     const LoadCancellationFn& load_cancellation_fn,
+                                     const CheckLoadCancellationFn& check_load_cancellation_fn,
                                      InlinedHashSet<std::string>& not_inlined,
                                      size_t& inlined_count) {
   // handle testing edge case where optimizers or constant lifting results in graph with no nodes.
@@ -674,7 +674,7 @@ static Status InlineFunctionsAOTImpl(const ExecutionProviders& execution_provide
                                                  *subgraph,
                                                  graph_optimizer_registry,
                                                  logger,
-                                                 load_cancellation_fn,
+                                                 check_load_cancellation_fn,
                                                  not_inlined,
                                                  inlined_count));
     }
@@ -701,7 +701,7 @@ static Status InlineFunctionsAOTImpl(const ExecutionProviders& execution_provide
     ORT_RETURN_IF_ERROR(GetCapabilityForEPForAotInlining(graph_viewer, kernel_registry_mgr, *ep,
                                                          graph_optimizer_registry, logger,
                                                          capabilities));
-    if (load_cancellation_fn()) {
+    if (check_load_cancellation_fn()) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, MODEL_LOAD_CANCELED, "AOT inlining is canceled due to user request.");
     }
 
@@ -737,7 +737,7 @@ static Status InlineFunctionsAOTImpl(const ExecutionProviders& execution_provide
         ORT_IGNORE_RETURN_VALUE(not_inlined.insert(std::move(function_id)));
       }
     }
-    if (load_cancellation_fn()) {
+    if (check_load_cancellation_fn()) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, MODEL_LOAD_CANCELED, "AOT inlining is canceled due to user request.");
     }
   }
@@ -879,7 +879,7 @@ static Status PartitionOnnxFormatModel(const PartitionParams& partition_params, 
   auto& fused_kernel_registry = partition_params.fused_kernel_registry.get();
   auto& fused_node_unique_id = partition_params.fused_node_unique_id.get();
   const auto& transform_layout_function = partition_params.transform_layout_function;
-  const LoadCancellationFn& load_cancellation_fn = partition_params.load_cancellation_fn;
+  const CheckLoadCancellationFn& check_load_cancellation_fn = partition_params.check_load_cancellation_fn;
 
   do {
     // process full graph with each EP
@@ -895,7 +895,7 @@ static Status PartitionOnnxFormatModel(const PartitionParams& partition_params, 
                                                        fused_kernel_registry, *ep, mode, fused_node_unique_id,
                                                        transform_layout_function,
                                                        partition_params.debug_graph_fn,
-                                                       load_cancellation_fn,
+                                                       check_load_cancellation_fn,
                                                        logger, resource_accountant, graph_optimizer_registry));
     }
 
@@ -951,7 +951,7 @@ static Status PartitionOrtFormatModelImpl(const PartitionParams& partition_param
 #endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
       nullptr,
       std::ref(graph_optimizer_registry),
-      partition_params.load_cancellation_fn
+      partition_params.check_load_cancellation_fn
   };
   // clang-format on
 
@@ -1008,7 +1008,7 @@ static Status PartitionOrtFormatModelImpl(const PartitionParams& partition_param
     std::vector<NodeComputeInfo> single_node_compute_func;
     ORT_RETURN_IF_ERROR(current_ep.Compile({IExecutionProvider::FusedNodeAndGraph{node, *compilation_entry.viewer}},
                                            single_node_compute_func));
-    if (partition_params.load_cancellation_fn()) {
+    if (partition_params.check_load_cancellation_fn()) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, MODEL_LOAD_CANCELED, "Graph partitioning is canceled due to user request.");
     }
 
@@ -1071,7 +1071,7 @@ Status GraphPartitioner::InlineFunctionsAOT(Model& model,
     return Status::OK();
   }
 
-  auto load_cancellation_fn = [this]() -> bool { return IsLoadCancellationFlagSet(); };
+  auto check_load_cancellation_fn = [this]() -> bool { return IsLoadCancellationFlagSet(); };
 
   auto& graph = model.MainGraph();
   InlinedHashSet<std::string> not_inlined;
@@ -1082,7 +1082,7 @@ Status GraphPartitioner::InlineFunctionsAOT(Model& model,
                                                graph,
                                                *graph_optimizer_registry_,
                                                logger,
-                                               load_cancellation_fn,
+                                               check_load_cancellation_fn,
                                                not_inlined,
                                                inlined_count));
 
@@ -1123,7 +1123,7 @@ Status GraphPartitioner::Partition(Graph& graph, FuncManager& func_mgr,
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "No provider specified.");
   }
 
-  LoadCancellationFn load_cancellation_fn = [this]() -> bool { return IsLoadCancellationFlagSet(); };
+  CheckLoadCancellationFn check_load_cancellation_fn = [this]() -> bool { return IsLoadCancellationFlagSet(); };
 
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
   // fused_kernel_registry is preparing the kernels created on the fly for fused sub graph.
@@ -1135,7 +1135,7 @@ Status GraphPartitioner::Partition(Graph& graph, FuncManager& func_mgr,
 
   PartitionParams partition_params{
       std::ref(graph),
-      std::cref(load_cancellation_fn),
+      std::cref(check_load_cancellation_fn),
       std::ref(func_mgr),
       std::ref(*fused_kernel_registry),
       std::ref(fused_node_unique_id),
@@ -1149,7 +1149,7 @@ Status GraphPartitioner::Partition(Graph& graph, FuncManager& func_mgr,
   ORT_UNUSED_PARAMETER(debug_graph_fn);
   PartitionParams partition_params{
       std::ref(graph),
-      std::cref(load_cancellation_fn),
+      std::cref(check_load_cancellation_fn),
   };
 
 #endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)

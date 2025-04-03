@@ -162,7 +162,7 @@ void LogRuntimeError(uint32_t session_id, const common::Status& status, const ch
 #define ORT_THROW(...) \
   throw ::onnxruntime::OnnxRuntimeException(ORT_WHERE_WITH_STACK, ::onnxruntime::MakeString(__VA_ARGS__))
 
-#define ORT_THROW_STATUS(category, code, ...)                                       \
+#define ORT_THROW_WITH_CATEGORY_AND_CODE(category, code, ...)                       \
   throw ::onnxruntime::OnnxRuntimeException(ORT_WHERE_WITH_STACK,                   \
                                             ::onnxruntime::MakeString(__VA_ARGS__), \
                                             ::onnxruntime::common::category,        \
@@ -242,7 +242,10 @@ void LogRuntimeError(uint32_t session_id, const common::Status& status, const ch
     auto _status = (expr);                                                                                    \
     if ((!_status.IsOK())) {                                                                                  \
       ::onnxruntime::LogRuntimeError(0, _status, __FILE__, static_cast<const char*>(__FUNCTION__), __LINE__); \
-      ORT_THROW(_status);                                                                                     \
+      throw ::onnxruntime::OnnxRuntimeException(ORT_WHERE_WITH_STACK,                                         \
+                                                _status.ToString(),                                           \
+                                                _status.Category(),                                           \
+                                                static_cast<common::StatusCode>(_status.Code()));             \
     }                                                                                                         \
   } while (0)
 

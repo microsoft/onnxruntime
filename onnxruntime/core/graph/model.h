@@ -39,13 +39,13 @@ struct ModelOptions {
   // be returned.
   bool strict_shape_type_inference;
 
-  LoadCancellationFn load_cancellation_fn;
+  CheckLoadCancellationFn check_load_cancellation_fn;
 
   ModelOptions(bool allow_released_opsets_only, bool strict_shape_type_inference,
-               LoadCancellationFn load_cancellation_fn)
+               CheckLoadCancellationFn check_load_cancellation_fn)
       : allow_released_opsets_only(allow_released_opsets_only),
         strict_shape_type_inference(strict_shape_type_inference),
-        load_cancellation_fn(std::move(load_cancellation_fn)) {}
+        check_load_cancellation_fn(std::move(check_load_cancellation_fn)) {}
 
   ModelOptions(bool allow_released_opsets_only, bool strict_shape_type_inference)
       : allow_released_opsets_only(allow_released_opsets_only),
@@ -113,7 +113,7 @@ class Model {
 
   // Check for load cancellation.
   bool IsLoadCancellationFlagSet() const noexcept {
-    return load_cancellation_fn_ && load_cancellation_fn_();
+    return check_load_cancellation_fn_ && check_load_cancellation_fn_();
   }
 
 #if !defined(ORT_MINIMAL_BUILD)
@@ -358,6 +358,6 @@ class Model {
   // Main graph of the model.
   std::unique_ptr<Graph> graph_;
 
-  LoadCancellationFn load_cancellation_fn_;
+  CheckLoadCancellationFn check_load_cancellation_fn_;
 };
 }  // namespace onnxruntime

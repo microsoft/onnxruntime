@@ -1269,7 +1269,7 @@ Graph::Graph(const Model& owning_model,
   }
 
   if (owning_model_.IsLoadCancellationFlagSet()) {
-    ORT_THROW_STATUS(ONNXRUNTIME, MODEL_LOAD_CANCELED, "Graph loading canceled due to user request.");
+    ORT_THROW_WITH_CATEGORY_AND_CODE(ONNXRUNTIME, MODEL_LOAD_CANCELED, "Graph loading canceled due to user request.");
   }
 
   // Remove constant nodes as they're replaced with initializers above.
@@ -1370,7 +1370,7 @@ Graph::Graph(const Model& owning_model,
   }
 
   if (owning_model_.IsLoadCancellationFlagSet()) {
-    ORT_THROW_STATUS(ONNXRUNTIME, MODEL_LOAD_CANCELED, "Graph loading canceled due to user request.");
+    ORT_THROW_WITH_CATEGORY_AND_CODE(ONNXRUNTIME, MODEL_LOAD_CANCELED, "Graph loading canceled due to user request.");
   }
 
   for (auto& graph_output : graph_proto_->output()) {

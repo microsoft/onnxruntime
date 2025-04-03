@@ -383,7 +383,7 @@ void InferenceSession::ConstructorCommon(const SessionOptions& session_options,
 #if !defined(ORT_MINIMAL_BUILD)
   // Update the number of steps for the graph transformer manager using the "finalized" session options
   ORT_THROW_IF_ERROR(graph_transformer_mgr_.SetSteps(session_options_.max_num_graph_transformation_steps));
-  graph_transformer_mgr_.SetLoadCancellationFn(this->load_cancellation_fn_);
+  graph_transformer_mgr_.SetLoadCancellationFn(this->check_load_cancellation_fn_);
 #endif
 
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
@@ -1011,7 +1011,7 @@ common::Status InferenceSession::LoadOnnxModel(const PathString& model_uri) {
     return onnxruntime::Model::Load(model_location_, model, HasLocalSchema() ? &custom_schema_registries_ : nullptr,
                                     *session_logger_,
                                     ModelOptions(true, strict_shape_type_inference,
-                                                 load_cancellation_fn_));
+                                                 check_load_cancellation_fn_));
   };
 
   common::Status st = LoadWithLoader(loader, "model_loading_uri");
@@ -1105,7 +1105,7 @@ common::Status InferenceSession::Load(const void* model_data, int model_data_len
     return onnxruntime::Model::Load(std::move(model_proto), model_location_, model,
                                     HasLocalSchema() ? &custom_schema_registries_ : nullptr, *session_logger_,
                                     ModelOptions(true, strict_shape_type_inference,
-                                                 load_cancellation_fn_));
+                                                 check_load_cancellation_fn_));
   };
 
   return LoadWithLoader(loader, "model_loading_array");
@@ -1144,7 +1144,7 @@ common::Status InferenceSession::LoadOnnxModel(ModelProto model_proto) {
     return onnxruntime::Model::Load(std::move(model_proto), model_location_, model,
                                     HasLocalSchema() ? &custom_schema_registries_ : nullptr, *session_logger_,
                                     ModelOptions(true, strict_shape_type_inference,
-                                                 load_cancellation_fn_));
+                                                 check_load_cancellation_fn_));
   };
 
   return LoadWithLoader(loader, "model_loading_proto");
@@ -1178,7 +1178,7 @@ common::Status InferenceSession::Load(std::istream& model_istream, bool allow_re
                                                  kOrtSessionOptionsConfigStrictShapeTypeInference, "0") == "1";
     ModelOptions model_opts(allow_released_opsets_only,
                             strict_shape_type_inference,
-                            load_cancellation_fn_);
+                            check_load_cancellation_fn_);
 
     std::string external_data_folder_path = session_options_.config_options.GetConfigOrDefault(
         kOrtSessionOptionsModelExternalInitializersFileFolderPath, "");
@@ -1218,7 +1218,7 @@ common::Status InferenceSession::Load() {
     return Model::Load(std::move(this->model_proto_), model_location_, model,
                        HasLocalSchema() ? &custom_schema_registries_ : nullptr, *session_logger_,
                        ModelOptions(allow_released_opsets_only, strict_shape_type_inference,
-                                    load_cancellation_fn_));
+                                    check_load_cancellation_fn_));
   };
 
   return LoadWithLoader(loader, "model_loading_from_saved_proto");
@@ -1247,7 +1247,7 @@ common::Status InferenceSession::Load(const OrtModel& model_editor_api_model) {
   ORT_RETURN_IF_ERROR(Model::LoadFromModelEditorApiModel(model_editor_api_model,
                                                          HasLocalSchema() ? &custom_schema_registries_ : nullptr,
                                                          ModelOptions(true, strict_shape_type_inference,
-                                                                      load_cancellation_fn_),
+                                                                      check_load_cancellation_fn_),
                                                          *session_logger_, tmp_model));
 
   model_ = std::move(tmp_model);
@@ -1292,7 +1292,7 @@ common::Status InferenceSession::TransformGraph(onnxruntime::Graph& graph, bool 
                                                                            execution_providers_.Get(onnxruntime::kCpuExecutionProvider),
                                                                            session_logger_);
   GraphPartitioner partitioner(kernel_registry_manager_, execution_providers_, std::move(graph_optimizer_registry),
-                               load_cancellation_fn_);
+                               check_load_cancellation_fn_);
 
   // Run Ahead Of time function inlining
   if (const bool disable_aot_function_inlining =

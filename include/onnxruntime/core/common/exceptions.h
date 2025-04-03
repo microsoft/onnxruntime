@@ -33,11 +33,32 @@ class OnnxRuntimeException : public std::exception {
       : OnnxRuntimeException(location, nullptr, msg) {
   }
 
+  /**
+     Create a new exception that captures the location it was thrown from.
+     @param location Location in the source code the exception is being thrown from
+     @param msg Message containing additional information about the exception cause.
+     @param category Error category
+     @param code Error code
+  */
+
   OnnxRuntimeException(const CodeLocation& location,
                        const std::string& message,
-                       onnxruntime::common::StatusCategory category,
-                       onnxruntime::common::StatusCode code) noexcept
+                       common::StatusCategory category,
+                       common::StatusCode code) noexcept
       : OnnxRuntimeException(location, nullptr, message, category, code) {
+  }
+
+  /**
+     Create a new exception that captures the location it was thrown from.
+     The instance will be created with ONNXRUNTIME category and FAIL code.
+     @param location Location in the source code the exception is being thrown from
+     @param failed_condition Optional string containing the condition that failed.
+     e.g. "tensor.Size() == input.Size()". May be nullptr.
+     @param msg Message containing additional information about the exception cause.
+  */
+  OnnxRuntimeException(const CodeLocation& location, const char* failed_condition, const std::string& msg) noexcept
+      : OnnxRuntimeException(location, failed_condition, msg,
+                             common::StatusCategory::ONNXRUNTIME, common::StatusCode::FAIL) {
   }
 
   /**
@@ -46,10 +67,12 @@ class OnnxRuntimeException : public std::exception {
      @param failed_condition Optional string containing the condition that failed.
      e.g. "tensor.Size() == input.Size()". May be nullptr.
      @param msg Message containing additional information about the exception cause.
+     @param category Error category
+     @param code Error code
   */
   OnnxRuntimeException(const CodeLocation& location, const char* failed_condition, const std::string& msg,
-                       onnxruntime::common::StatusCategory category = common::ONNXRUNTIME,
-                       common::StatusCode code = common::FAIL)
+                       onnxruntime::common::StatusCategory category,
+                       common::StatusCode code)
       : location_{location}, category_(category), code_(code) {
     std::ostringstream ss;
 
@@ -68,11 +91,11 @@ class OnnxRuntimeException : public std::exception {
     what_ = ss.str();
   }
 
-  onnxruntime::common::StatusCategory Category() const noexcept {
+  common::StatusCategory Category() const noexcept {
     return category_;
   }
 
-  onnxruntime::common::StatusCode Code() const noexcept {
+  common::StatusCode Code() const noexcept {
     return code_;
   }
 
@@ -84,8 +107,8 @@ class OnnxRuntimeException : public std::exception {
   const CodeLocation location_;
   const std::vector<std::string> stacktrace_;
   std::string what_;
-  onnxruntime::common::StatusCategory category_;
-  onnxruntime::common::StatusCode code_;
+  common::StatusCategory category_;
+  common::StatusCode code_;
 };
 
 }  // namespace onnxruntime

@@ -67,7 +67,7 @@ struct FreeDimensionOverride {
   int64_t dim_value;
 };
 
-using LoadCancellationFn = std::function<bool()>;
+using CheckLoadCancellationFn = std::function<bool()>;
 
 /**
  * Configuration information for a session.

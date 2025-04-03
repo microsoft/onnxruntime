@@ -500,68 +500,26 @@ TEST(InferenceSessionTests, TestModelSerialization) {
 }
 
 TEST(InferenceSessionTests, RequestLoadCancellation) {
-  //{
-  //  // Explicit cancel during load, small model is fine
-  // SessionOptions so;
-  // so.session_logid = "InferenceSessionTests.TestLoadCancellation";
-  //
-  //  const PathString model_uri = ORT_TSTR("testdata/constant_floats.onnx");
-  //  InferenceSession session_object{so, GetEnvironment()};
-  //  *so.load_cancellation_flag = true;
-  //  ASSERT_FALSE(session_object.Load(model_uri).IsOK());
-  //}
-  //{
-  //  // Explicit cancel during initialize, small model is fine
-  //  const PathString model_uri = ORT_TSTR("testdata/constant_floats.onnx");
-  //  SessionOptions so;
-  //  so.session_logid = "InferenceSessionTests.TestLoadCancellation";
-  //  *so.load_cancellation_flag = false;
-  //  InferenceSession session_object{so, GetEnvironment()};
-  //  ASSERT_STATUS_OK(session_object.Load(model_uri));
-  //  *so.load_cancellation_flag = true;
-  //  ASSERT_FALSE(session_object.Initialize().IsOK());
-  //}
-
   {
-    // Large model that takes time to load
+    // Explicit cancel during load, small model is fine
     SessionOptions so;
     so.session_logid = "InferenceSessionTests.TestLoadCancellation";
 
-    const PathString test_model = ORT_TSTR("testdata/transformers/tiny_gpt2_beamsearch.onnx");
-    auto terminator = [&so]() {
-      LOGS_DEFAULT(WARNING) << "Setting Cancellation flag";
-      so.SetLoadCancellationFlag(true);
-    };
-
-    std::packaged_task<void()> task{terminator};
-    std::future<void> terminator_result = task.get_future();
-    std::thread terminator_thread{std::move(task)};
-
-    bool terminated = false;
-    try {
-      InferenceSession session_object{so, GetEnvironment(), test_model};
-      auto status = session_object.Load();
-      if (!status.IsOK()) {
-        ASSERT_EQ(common::StatusCode::MODEL_LOAD_CANCELED, status.Code());
-        terminated = true;
-      } else {
-        status = session_object.Initialize();
-        ASSERT_FALSE(status.IsOK());
-        ASSERT_EQ(common::StatusCode::MODEL_LOAD_CANCELED, status.Code());
-        terminated = true;
-      }
-    } catch (const OnnxRuntimeException& ex) {
-      terminated = ex.Code() == common::StatusCode::MODEL_LOAD_CANCELED;
-    } catch (const std::exception& ex) {
-      ASSERT_FALSE(true) << "Unexpected exception: " << ex.what();
-    }
-    // done with the thread
-    terminator_thread.join();
-
-    // call get to propagate any exception
-    terminator_result.get();
-
-    ASSERT_TRUE(terminated);
+    const PathString model_uri = ORT_TSTR("testdata/constant_floats.onnx");
+    InferenceSession session_object{so, GetEnvironment()};
+    *so.load_cancellation_flag = true;
+    ASSERT_FALSE(session_object.Load(model_uri).IsOK());
+  }
+  {
+    // Explicit cancel during initialize, small model is fine
+    const PathString model_uri = ORT_TSTR("testdata/constant_floats.onnx");
+    SessionOptions so;
+    so.session_logid = "InferenceSessionTests.TestLoadCancellation";
+    *so.load_cancellation_flag = false;
+    InferenceSession session_object{so, GetEnvironment()};
+    ASSERT_STATUS_OK(session_object.Load(model_uri));
+    *so.load_cancellation_flag = true;
+    ASSERT_FALSE(session_object.Initialize().IsOK());
   }
 }
 
