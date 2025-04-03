@@ -70,8 +70,9 @@ jobs:
       - "1ES.Pool=${{ inputs.pool_name }}"
     permissions:
       contents: read
-      packages: read
-
+      packages: write
+      attestations: write
+      id-token: write
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -81,30 +82,15 @@ jobs:
         with:
           python-version: ${{ inputs.python_version }}
 
-      - name: Download ORT Actions Asset (v0.0.2) # <-- Adjust version as needed
-        uses: dsaltares/fetch-gh-release-asset@1.1.0 # Action to download assets
-        with:
-          repo: 'microsoft/onnxruntime-github-actions'   # The repo containing the actions
-          version: 'tags/v0.0.2'                          # The specific tag/version to use
-          file: 'onnxruntime-actions-v0.0.2.zip'         # The asset filename (matches release workflow output)
-          target: 'onnxruntime-actions.zip'             # Local filename to save as
-        env:
-          # Use default token for public repos, provide PAT for private if necessary
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Unzip ORT Actions
-        run: |
-          mkdir -p ./.github/_downloaded_actions # Create a directory to hold them
-          unzip onnxruntime-actions.zip -d ./.github/_downloaded_actions
-          echo "Unzipped contents:"
-          ls -lR ./.github/_downloaded_actions # Verify structure
-
       - name: Build Docker Image (${{ inputs.architecture }} / ${{ inputs.build_config }})
-        uses: ./.github/_downloaded_actions/build-docker-image
+        uses: microsoft/onnxruntime-github-actions/build-docker-image@v0.0.5
+        id: build_docker_image_step
         with:
-          Dockerfile: ${{ github.workspace }}/${{ inputs.dockerfile_path }}
-          Repository: ${{ inputs.docker_image_repo }}
-          DockerBuildArgs: ${{ inputs.docker_build_args }}
+          dockerfile: ${{ github.workspace }}/${{ inputs.dockerfile_path }}
+          image-name: ghcr.io/microsoft/onnxruntime/${{ inputs.docker_image_repo }}
+          build-args: ${{ inputs.docker_build_args }}
+          push: true
+          azure-container-registry-name: onnxruntimebuildcache
         env:
           GITHUB_TOKEN: ${{ secrets.GH_TOKEN }}
 
@@ -117,9 +103,9 @@ jobs:
       # ------------- Update Step (CMake Generation) -------------
       - name: Generate Build Files (CMake) (${{ inputs.architecture }} / ${{ inputs.build_config }})
         id: update_step
-        uses: ./.github/_downloaded_actions/run-build-script-in-docker
+        uses: microsoft/onnxruntime-github-actions/run-build-script-in-docker@v0.0.5
         with:
-          docker_image: ${{ inputs.docker_image_repo }}
+          docker_image: ${{ steps.build_docker_image_step.outputs.full-image-name }}
           build_config: ${{ inputs.build_config }}
           mode: 'update'
           execution_providers: ${{ inputs.execution_providers }} # Pass down EP list
@@ -129,9 +115,9 @@ jobs:
       # ------------- Build Step (Compilation) -------------
       - name: Build ONNX Runtime (${{ inputs.architecture }} / ${{ inputs.build_config }})
         id: build_step
-        uses: ./.github/_downloaded_actions/run-build-script-in-docker
+        uses: microsoft/onnxruntime-github-actions/run-build-script-in-docker@v0.0.5
         with:
-          docker_image: ${{ inputs.docker_image_repo }}
+          docker_image: ${{ steps.build_docker_image_step.outputs.full-image-name }}
           build_config: ${{ inputs.build_config }}
           mode: 'build'
           execution_providers: ${{ inputs.execution_providers }} # Pass down EP list
@@ -142,9 +128,9 @@ jobs:
       - name: Test ONNX Runtime (${{ inputs.architecture }} / ${{ inputs.build_config }})
         id: test_step
         if: inputs.run_tests == true
-        uses: ./.github/_downloaded_actions/run-build-script-in-docker
+        uses: microsoft/onnxruntime-github-actions/run-build-script-in-docker@v0.0.5
         with:
-          docker_image: ${{ inputs.docker_image_repo }}
+          docker_image: ${{ steps.build_docker_image_step.outputs.full-image-name }}
           build_config: ${{ inputs.build_config }}
           mode: 'test'
           execution_providers: ${{ inputs.execution_providers }} # Pass down EP list
