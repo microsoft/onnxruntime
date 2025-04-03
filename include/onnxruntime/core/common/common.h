@@ -97,6 +97,15 @@ void LogRuntimeError(uint32_t session_id, const common::Status& status, const ch
 
 #ifdef ORT_NO_EXCEPTIONS
 
+#define ORT_THROW_FROM_STATUS(status)                \
+  do {                                               \
+    ::onnxruntime::PrintFinalMessage(                \
+        ::onnxruntime::OnnxRuntimeException(         \
+            ORT_WHERE_WITH_STACK, status.ToString()) \
+            .what());                                \
+    abort();                                         \
+  } while (false)
+
 #define ORT_TRY if (true)
 #define ORT_CATCH(x) else if (false)
 #define ORT_RETHROW
@@ -149,6 +158,10 @@ void LogRuntimeError(uint32_t session_id, const common::Status& status, const ch
   } while (false)
 
 #else
+
+#define ORT_THROW_FROM_STATUS(status)                                                                   \
+  throw ::onnxruntime::OnnxRuntimeException(ORT_WHERE_WITH_STACK, status.ToString(), status.Category(), \
+                                            static_cast<::onnxruntime::common::StatusCode>(status.Code()))
 
 #define ORT_TRY try
 #define ORT_CATCH(x) catch (x)
@@ -242,10 +255,7 @@ void LogRuntimeError(uint32_t session_id, const common::Status& status, const ch
     auto _status = (expr);                                                                                    \
     if ((!_status.IsOK())) {                                                                                  \
       ::onnxruntime::LogRuntimeError(0, _status, __FILE__, static_cast<const char*>(__FUNCTION__), __LINE__); \
-      throw ::onnxruntime::OnnxRuntimeException(ORT_WHERE_WITH_STACK,                                         \
-                                                _status.ToString(),                                           \
-                                                _status.Category(),                                           \
-                                                static_cast<common::StatusCode>(_status.Code()));             \
+      ORT_THROW_FROM_STATUS(_status);                                                                         \
     }                                                                                                         \
   } while (0)
 
