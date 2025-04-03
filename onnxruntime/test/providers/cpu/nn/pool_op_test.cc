@@ -645,9 +645,8 @@ TEST(PoolTest, MaxPool_10_Dilation_Ceil1_2d) {
   test.AddInput<float>("X", x_dims, x_vals);
   test.AddOutput<float>("Y", expected_dims, expected_vals);
 
-  // TODO: Enable the case for WebGPU once ceil is supported.
   test.Run(OpTester::ExpectResult::kExpectSuccess, "",
-           {kTensorrtExecutionProvider, kAclExecutionProvider, kWebGpuExecutionProvider});
+           {kTensorrtExecutionProvider, kAclExecutionProvider});
 }
 
 TEST(PoolTest, MaxPool_10_DilationPadding_3d) {
@@ -1006,9 +1005,8 @@ TEST(PoolTest, AveragePool_10_ceil1_2d) {
   test.AddInput<float>("X", x_dims, x_vals);
   test.AddOutput<float>("Y", expected_dims, expected_vals);
 
-  // TODO: Enable the case for WebGPU once ceil is supported.
   test.Run(OpTester::ExpectResult::kExpectSuccess, "",
-           {kTensorrtExecutionProvider, kAclExecutionProvider, kWebGpuExecutionProvider});
+           {kTensorrtExecutionProvider, kAclExecutionProvider});
 }
 
 TEST(PoolTest, AveragePool_19_dilation_2d) {
