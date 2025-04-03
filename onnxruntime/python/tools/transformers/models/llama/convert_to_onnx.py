@@ -25,7 +25,7 @@ from llama_torch import setup_torch_model
 
 # to patch transformers before exporting for transformers >= 4.45
 from models.torch_export_patches import bypass_export_some_errors
-from models.torch_export_patches.patch_inputs import convert_dynamic_axes_into_dynamic_shapes
+from models.torch_export_patches.patch_inputs import convert_dynamic_axes_into_dynamic_shapes, replace_dynamic_shapes
 from onnx_model import OnnxModel
 from optimizer import optimize_model
 from packaging import version
@@ -159,6 +159,18 @@ def run_dynamo_export(
     model_args, model_kwargs, dynamic_shapes = convert_dynamic_axes_into_dynamic_shapes(
         llama, args=model_args, dynamic_axes=dynamic_axes, prefix_mapping={"present": "past_key_values"}
     )
+
+    if version.Version(torch.__version__) < version.Version("2.7"):
+        # strings are not allowed with torch 2.6, so we replace them by DYNAMIC
+        # {'input_ids': {0: 'batch_size', 1: 'sequence_length'}, 
+        #  'attention_mask': {0: 'batch_size', 1: 'sequence_length'}, 
+        #  'position_ids': {0: 'batch_size', 1: 'sequence_length'}, 
+        #  'past_key_values': [[{0: 'batch_size', 2: 'sequence_length'}], [{0: 'batch_size', 2: 'sequence_length'}]]}
+        dynamic_shapes = replace_dynamic_shapes(
+            dynamic_shapes,
+            dict(batch_size=torch.export.Dim("batch_size")),
+            default_value=torch.export.Dim.DYNAMIC,
+        )
 
     with bypass_export_some_errors(patch_transformers=True):
         torch.onnx.export(

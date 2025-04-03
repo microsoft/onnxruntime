@@ -146,3 +146,21 @@ def convert_dynamic_axes_into_dynamic_shapes(
             )
 
     return (), updated_kwargs, dynamic_shapes
+
+
+def replace_dynamic_shapes(ds, mapping, default_value):
+    if isinstance(ds, dict) and all(isinstance(k, int) for k in ds):
+        new_ds = {}
+        for k, v in ds.items():
+            if isinstance(v, str):
+                new_ds[k] = mapping.get(v, default_value)
+            else:
+                new_ds[k] = v
+        return new_ds
+    if isinstance(ds, tuple):
+        return tuple(replace_dynamic_shapes(d, mapping, default_value) for d in ds)
+    if isinstance(ds, list):
+        return [replace_dynamic_shapes(d, mapping, default_value) for d in ds]
+    if isinstance(ds, dict):
+        return {k: replace_dynamic_shapes(v, mapping, default_value) for k,v in ds.items()}
+    return ds
