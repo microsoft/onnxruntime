@@ -32,7 +32,7 @@ jobs:
 
       execution_providers: 'openvino'
 
-      extra_build_flags: '--use_openvino CPU --enable_generic_interface --build_wheel --build_shared_lib'
+      extra_build_flags: '--use_openvino CPU --enable_generic_interface --build_shared_lib'
 
       # Python Path Prefix: Set the correct Python 3.10 path inside the manylinux container
       # (Adjust if the base image in Dockerfile.ubuntu_openvino uses a different path structure)
