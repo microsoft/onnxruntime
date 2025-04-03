@@ -723,7 +723,7 @@ Status MatMulNBits<T1>::Compute(OpKernelContext* ctx) const {
         return ComputeBPacked(a, nullptr, nullptr, bias, y, allocator, thread_pool, helper);
       }
 #endif
-      const Tensor* scales = ctx->Input<Tensor>(InputIndex::scales);
+      const Tensor* scales = scales_are_packed_ ? nullptr : ctx->Input<Tensor>(InputIndex::scales);
       const Tensor* zero_points = ctx->Input<Tensor>(InputIndex::zero_points);
       return ComputeBPacked(a, scales, zero_points, bias, y, allocator, thread_pool, helper);
     }
