@@ -52,10 +52,13 @@ jobs:
       # --- Build the Docker image needed for testing ---
       - name: Build Docker Image for Testing
         uses: microsoft/onnxruntime-github-actions/build-docker-image@v0.0.5
+        id: build_docker_image_step
         with:
-          Dockerfile: tools/ci_build/github/linux/docker/Dockerfile.manylinux2_28_cuda
-          Repository: onnxruntimetensorrt86gpubuild
-          DockerBuildArgs: '--build-arg BASEIMAGE=onnxruntimebuildcache.azurecr.io/internal/azureml/onnxruntime/build/cuda12_x64_ubi8_gcc12:20250124.1 --build-arg TRT_VERSION=10.9.0.34-1.cuda12.8 --network=host'
+          dockerfile: ${{ github.workspace }}/tools/ci_build/github/linux/docker/Dockerfile.manylinux2_28_cuda
+          image-name: ghcr.io/microsoft/onnxruntime/onnxruntimetensorrt86gpubuild
+          build-args: '--build-arg BASEIMAGE=onnxruntimebuildcache.azurecr.io/internal/azureml/onnxruntime/build/cuda12_x64_ubi8_gcc12:20250124.1 --build-arg TRT_VERSION=10.9.0.34-1.cuda12.8 --network=host'
+          push: true
+          azure-container-registry-name: onnxruntimebuildcache
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }} # Pass token to action
 
@@ -93,7 +96,7 @@ jobs:
         id: test_step
         uses: microsoft/onnxruntime-github-actions/run-build-script-in-docker@v0.0.5
         with:
-          docker_image: onnxruntimetensorrt86gpubuild # Use the same image
+          docker_image: ${{ steps.build_docker_image_step.outputs.full-image-name }}
           build_config: Release
           mode: 'test' # Set mode to test
           execution_providers: 'cuda tensorrt'

@@ -50,10 +50,13 @@ jobs:
         uses: actions/checkout@v4
 
       - uses: microsoft/onnxruntime-github-actions/build-docker-image@v0.0.5
+        id: build_docker_image_step
         with:
-          Dockerfile: tools/ci_build/github/linux/docker/Dockerfile.manylinux2_28_cuda
-          Repository: onnxruntimecuda12manylinuxbuild
-          DockerBuildArgs: '--build-arg BASEIMAGE=onnxruntimebuildcache.azurecr.io/internal/azureml/onnxruntime/build/cuda12_x64_ubi8_gcc12:20250124.1'
+          dockerfile: ${{ github.workspace }}/tools/ci_build/github/linux/docker/Dockerfile.manylinux2_28_cuda
+          image-name: ghcr.io/microsoft/onnxruntime/onnxruntimecuda12manylinuxbuild
+          build-args: '--build-arg BASEIMAGE=onnxruntimebuildcache.azurecr.io/internal/azureml/onnxruntime/build/cuda12_x64_ubi8_gcc12:20250124.1'
+          push: true
+          azure-container-registry-name: onnxruntimebuildcache
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }} # Pass token to action
 
@@ -91,7 +94,7 @@ jobs:
         id: test_step
         uses: microsoft/onnxruntime-github-actions/run-build-script-in-docker@v0.0.5
         with:
-          docker_image: onnxruntimecuda12manylinuxbuild # Use the same image
+          docker_image: ${{ steps.build_docker_image_step.outputs.full-image-name }}
           build_config: Release
           mode: 'test' # Set mode to test
           execution_providers: 'cuda'
