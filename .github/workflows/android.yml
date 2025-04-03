@@ -35,9 +35,9 @@ jobs:
         with:
           vcpkg-version: '2025.03.19'
           vcpkg-hash: '17e96169cd3f266c4716fcdc1bb728e6a64f103941ece463a2834d50694eba4fb48f30135503fd466402afa139abc847ef630733c442595d1c34979f261b0114'
-          cmake-version: '4.0.0'
-          cmake-hash: '8482e754bf5bf45349ba2f2184999f81f8754ed3d281e1708f1f9a3b2fcd05c3aa5368e6247930495722ffc5982aadbe489630c5716241ab1702c3cf866483cf'
-          add-to-path: 'true'
+          cmake-version: '3.31.6'
+          cmake-hash: '42395e20b10a8e9ef3e33014f9a4eed08d46ab952e02d2c1bbc8f6133eca0d7719fb75680f9bbff6552f20fcd1b73d86860f7f39388d631f98fb6f622b37cf04'
+          add-cmake-to-path: 'true'
           disable-terrapin: 'true'
 
       - name: Setup Android NDK

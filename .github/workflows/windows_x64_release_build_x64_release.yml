@@ -32,8 +32,8 @@ jobs:
       with:
         vcpkg-version: '2025.03.19'
         vcpkg-hash: '17e96169cd3f266c4716fcdc1bb728e6a64f103941ece463a2834d50694eba4fb48f30135503fd466402afa139abc847ef630733c442595d1c34979f261b0114'
-        cmake-version: '4.0.0'
-        cmake-hash: '704fc67b9efa1d65e68a516b439ce3f65f1d6388dc0794002a342d4b59cd3ea63619e674d0343a08c03e9831b053bcbb3ae7635ac42f7796b8d440deeb81b7f6'
+        cmake-version: '3.31.6'
+        cmake-hash: '0f1584e8666cf4a65ec514bd02afe281caabf1d45d2c963f3151c41484f457386aa03273ab25776a670be02725354ce0b46f3a5121857416da37366342a833a0'
         add-cmake-to-path: 'true'
         disable-terrapin: 'false'
 
