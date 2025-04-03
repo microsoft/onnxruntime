@@ -50,6 +50,9 @@ Status ConvTranspose2DProgram::GenerateShaderCode(ShaderHelper& shader) const {
       if (a_components_ == 1) {
         ss << "let wValue = " << w.GetByIndices("w_indices_t(u32(wRPerm), u32(wCPerm), inputChannel, wOutChannel)") << ";\n"
            << "dotProd = dotProd + xValue * wValue;\n";
+      } else if (a_components_ == b_components_ && components_ == 1) {
+        ss << "let wValue = " << w.GetByIndices("w_indices_t(u32(wRPerm), u32(wCPerm), inputChannel, wOutChannel)") << ";\n"
+           << "dotProd = dotProd + dot(xValue, wValue);\n";
       } else {
         for (uint32_t i = 0; i < a_components_; ++i) {
           ss << "let w_indices" << i << " = w_indices_t(u32(wRPerm), u32(wCPerm), inputChannel + d2 + " << i << ", wOutChannel);\n "
@@ -169,7 +172,7 @@ ConvTranspose2DProgram CreateConvTranspose2DProgram(const std::vector<const Tens
   std::vector<uint32_t> kernel_dims = {static_cast<uint32_t>(weight_shape[0]), static_cast<uint32_t>(weight_shape[1])};
   std::vector<uint32_t> effective_kernel_dims = {kernel_dims[0] + ((dilations[0] <= 1) ? 0 : ((kernel_dims[0] - 1) * (dilations[0] - 1))), kernel_dims[1] + ((dilations[1] <= 1) ? 0 : ((kernel_dims[1] - 1) * (dilations[1] - 1)))};
   std::vector<uint32_t> local_pads = {effective_kernel_dims[0] - 1 - pads[0], effective_kernel_dims[1] - 1 - pads[1]};
-  ConvTranspose2DProgram program(is_channels_last, has_bias, components, a_components, uint32_t(input_channels_remainder), pack_input_as4);
+  ConvTranspose2DProgram program(is_channels_last, has_bias, components, a_components, b_components, uint32_t(input_channels_remainder), pack_input_as4);
   program.AddInputs({{input, ProgramTensorMetadataDependency::TypeAndRank, reduced_input_shape, a_components}, {weight, ProgramTensorMetadataDependency::TypeAndRank, reduced_weight_shape, b_components}});
   if (has_bias) {
     const auto* bias = inputs[2];
