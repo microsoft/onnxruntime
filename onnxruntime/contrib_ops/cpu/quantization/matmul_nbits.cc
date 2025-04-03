@@ -328,7 +328,7 @@ Status MatMulNBits<T1>::ComputeBPacked(const Tensor* a,
     workspace = IAllocator::MakeUniquePtr<std::byte>(allocator, workspace_size, true);
   }
 
-  bool bpacked_with_scale_zp = false;
+  bool bpacked_with_scale_zp = scales == nullptr;
 #ifdef MLAS_TARGET_AMD64_IX86
   if (compute_type_ == SQNBIT_CompInt8) {
     bpacked_with_scale_zp = true;
@@ -412,7 +412,7 @@ Status MatMulNBits<MLFloat16>::ComputeBPacked(const Tensor* a,
   size_t c_size = static_cast<size_t>(y->Shape().Size());
   std::vector<float> c_v(c_size);
 
-  bool bpacked_with_scale_zp = false;
+  bool bpacked_with_scale_zp = scales == nullptr;
 #ifdef MLAS_TARGET_AMD64_IX86
   if (compute_type_ == SQNBIT_CompInt8) {
     bpacked_with_scale_zp = true;
