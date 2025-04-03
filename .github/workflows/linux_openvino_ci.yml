@@ -24,17 +24,11 @@ jobs:
     uses: ./.github/workflows/reusable_linux_build.yml
     with:
       pool_name: "onnxruntime-github-Ubuntu2204-AMD-CPU"
-
       build_config: Release
-
       # Architecture:
       architecture: x64
-
       dockerfile_path: tools/ci_build/github/linux/docker/inference/x86_64/python/openvino/Dockerfile
-
       docker_image_repo: onnxruntimeopenvino
-
-      docker_build_args: '--build-arg OPENVINO_VERSION=2025.0.0'
 
       execution_providers: 'openvino'
 

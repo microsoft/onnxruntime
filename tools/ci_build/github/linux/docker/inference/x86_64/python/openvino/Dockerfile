@@ -2,9 +2,6 @@
 ARG BASEIMAGE="onnxruntimebuildcache.azurecr.io/internal/azureml/onnxruntime/build/cpu_x64_ubi8_gcc14:20250124.1"
 FROM ${BASEIMAGE}
 
-# Define ARGs for versions and build user/uid
-ARG OPENVINO_VERSION=2024.3.0
-
 ARG BUILD_UID=1000
 ARG BUILD_USER=onnxruntimedev
 
@@ -27,8 +24,8 @@ RUN dnf install -y --nodocs \
     && rm -rf /var/cache/dnf
 
 # --- OpenVINO Toolkit Installation (RHEL/UBI8 method) ---
-ENV INTEL_OPENVINO_DIR=/opt/intel/openvino_${OPENVINO_VERSION}
-ARG OPENVINO_PACKAGE_URL=https://storage.openvinotoolkit.org/repositories/openvino/packages/2024.3/linux/l_openvino_toolkit_rhel8_2024.3.0.16041.1e3b88e4e3f_x86_64.tgz
+ENV INTEL_OPENVINO_DIR=/opt/intel/openvino_2025.0.0
+ARG OPENVINO_PACKAGE_URL=https://storage.openvinotoolkit.org/repositories/openvino/packages/2025.0/linux/openvino_toolkit_rhel8_2025.0.0.17942.1f68be9f594_x86_64.tgz
 ARG TEMP_DIR=/tmp/openvino_installer
 
 RUN mkdir -p ${TEMP_DIR} && \
