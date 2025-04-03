@@ -48,6 +48,9 @@ void RunGatherBlockQuantized(const std::vector<T1>& data,
 
     std::vector<std::unique_ptr<IExecutionProvider>> eps;
     eps.push_back(DefaultCpuExecutionProvider());
+    #ifdef USE_WEBGPU
+    eps.push_back(DefaultWebGpuExecutionProvider());
+    #endif
     test.Run(expect_result, "", {}, nullptr, &eps);
   };
 
