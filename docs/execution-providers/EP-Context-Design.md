@@ -100,7 +100,7 @@ virtual const InlinedVector<const Node*> GetEpContextNodes() const {
   - `1`: Embeds the EP context content directly into the ONNX model.
   - `0` (default): Dumps the EP context content into a **separate file** (EP context binary file).
     - There should be a single EP context binary, even if multiple partitioned subgraphs exist. If the EP cannot achieve this in the short term, please note it on the EP webpage. In such cases, users will need to determine the necessary files for production deployment by iterating through all primary `EPContext` nodes (nodes with `embed_mode=1`) and extracting the file paths from the **node attribute** `ep_cache_context`.
-    - The EP context binary file name should be [model_name]_[ep].bin. 
+    - The EP context binary file name should be `[model_name]_[ep].bin`. 
     - The EP records the context binary file name in the **EPContext node attribute** `ep_cache_context`.  
     - The context binary file must be located in the **same directory** as the dumped ONNX model file.  
     - The file path recorded in the EPContext node is a **relative path** to the ONNX model file.  
@@ -287,7 +287,7 @@ Note: A single ONNX model may contain multiple `EPContext` nodes, depending on t
 <br/>    The last session clears the shared workspace. An empty shared workspace indicates that the next session to run is the first session.
 - Number of Files Generated:
 <br/>    For N source models that share weights, a total of N+1 files should be generated.
-<br/>    The generated files are `model1_ctx.onnx`, ..., `modeln_ctx.onnx`, `[model1_name]_[ep].bin`.
+<br/>    The generated files are `model1_ctx.onnx`, `...`, `modeln_ctx.onnx`, `[model1_name]_[ep].bin`.
 
 ### User Code Example
 ```
