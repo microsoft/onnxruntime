@@ -169,8 +169,6 @@ Status PoolProgram::GenerateShaderCode(ShaderHelper& shader) const {
 
 template <typename PoolType, bool is_nhwc>
 Status Pool<PoolType, is_nhwc>::ComputeInternal(ComputeContext& context) const {
-  // TODO: support 'ceil' mode.
-  ORT_RETURN_IF_NOT(pool_attrs_.ceil_mode == 0, "Using ceil is not supported yet.");
   // TODO: support 'column major' storage_order.
   ORT_RETURN_IF_NOT(pool_attrs_.storage_order == 0, "Using column major storage_order is not supported yet.");
 
