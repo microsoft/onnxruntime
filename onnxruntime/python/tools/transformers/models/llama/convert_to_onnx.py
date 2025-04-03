@@ -162,27 +162,68 @@ def run_dynamo_export(
 
     if version.Version(torch.__version__) < version.Version("2.7"):
         # strings are not allowed with torch 2.6, so we replace them by DYNAMIC
-        # {'input_ids': {0: 'batch_size', 1: 'sequence_length'}, 
-        #  'attention_mask': {0: 'batch_size', 1: 'sequence_length'}, 
-        #  'position_ids': {0: 'batch_size', 1: 'sequence_length'}, 
-        #  'past_key_values': [[{0: 'batch_size', 2: 'sequence_length'}], [{0: 'batch_size', 2: 'sequence_length'}]]}
         dynamic_shapes = replace_dynamic_shapes(
             dynamic_shapes,
             dict(batch_size=torch.export.Dim("batch_size")),
             default_value=torch.export.Dim.DYNAMIC,
         )
 
-    with bypass_export_some_errors(patch_transformers=True):
-        torch.onnx.export(
-            llama,
-            (),
-            temp_path,
-            kwargs=model_kwargs,
-            dynamic_shapes=dynamic_shapes,
-            dynamo=True,
-            verbose=args.verbose,
-            optimize=True,
+    if version.Version(torch.__version__) < version.Version("2.7"):
+        # This section is only needed for torch==2.6. The workaround implemented here
+        # to fix bugs is not necessary with torch>=2.7.
+        # - strings are not allowed with torch 2.6, so we replace them by DYNAMIC
+        # - TypePromotion was fixed in torch==2.7
+        from onnxscript import opset18 as op
+
+        dynamic_shapes = replace_dynamic_shapes(
+            dynamic_shapes,
+            dict(batch_size=torch.export.Dim("batch_size")),
+            default_value=torch.export.Dim.DYNAMIC,
         )
+
+        # TypePromotion cannot fix a type issue after the conversion.
+        # We insert an additional CastLike when the exporter
+        def custom_aten_ge(self, other):
+            if isinstance(other, (int, float)):
+                return op.GreaterOrEqual(self, op.CastLike(other, self))
+            return op.GreaterOrEqual(self, other)
+
+        with bypass_export_some_errors(patch_transformers=True):
+            # ONNX pass TypePromotion crashes for torch 2.6.
+            # It can be bypassed by exporting first into an exported program.
+            # We then need to apply run_decompositions() before onnx conversion starts.
+            ep = torch.export.export(
+                llama,
+                (),
+                kwargs=model_kwargs,
+                dynamic_shapes=dynamic_shapes,
+                strict=False,
+            )
+            ep = ep.run_decompositions()
+            torch.onnx.export(
+                ep,
+                (),
+                temp_path,
+                kwargs=model_kwargs,
+                dynamic_shapes=dynamic_shapes,
+                dynamo=True,
+                verbose=args.verbose,
+                optimize=True,
+                custom_translation_table={torch.ops.aten.ge.Scalar: custom_aten_ge},
+            )
+    else:
+
+        with bypass_export_some_errors(patch_transformers=True):
+            torch.onnx.export(
+                llama,
+                (),
+                temp_path,
+                kwargs=model_kwargs,
+                dynamic_shapes=dynamic_shapes,
+                dynamo=True,
+                verbose=args.verbose,
+                optimize=True,
+            )
 
     # Check decoder_with_past_model.onnx and save all external data to one file
     onnx.checker.check_model(temp_path)

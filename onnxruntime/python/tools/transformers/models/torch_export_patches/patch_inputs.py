@@ -162,5 +162,5 @@ def replace_dynamic_shapes(ds, mapping, default_value):
     if isinstance(ds, list):
         return [replace_dynamic_shapes(d, mapping, default_value) for d in ds]
     if isinstance(ds, dict):
-        return {k: replace_dynamic_shapes(v, mapping, default_value) for k,v in ds.items()}
+        return {k: replace_dynamic_shapes(v, mapping, default_value) for k, v in ds.items()}
     return ds
