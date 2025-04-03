@@ -193,6 +193,7 @@ function(setup_mlas_source_for_windows)
       ${MLAS_SRC_DIR}/rotary_embedding_kernel_avx2.h
       ${MLAS_SRC_DIR}/rotary_embedding_kernel_avx2.cpp
       ${MLAS_SRC_DIR}/rotary_embedding_kernel_avx2.cpp
+      ${MLAS_SRC_DIR}/saturation_check.cpp
       ${MLAS_SRC_DIR}/qgemm_kernel_amx.cpp
       ${MLAS_SRC_DIR}/qgemm_kernel_avx2.cpp
       ${MLAS_SRC_DIR}/qgemm_kernel_sse.cpp
@@ -238,6 +239,10 @@ function(setup_mlas_source_for_windows)
       ${MLAS_SRC_DIR}/amd64/TanhKernelFma3.asm
       ${MLAS_SRC_DIR}/amd64/ErfKernelFma3.asm
     )
+
+    if(onnxruntime_ENABLE_CONVSYMKERNELAVX2_SAT_CHECKER)
+      set_source_files_properties(${MLAS_SRC_DIR}/amd64/ConvSymKernelAvx2.asm PROPERTIES COMPILE_FLAGS "-DENABLE_CONVSYMKERNELAVX2_SAT_CHECKER")
+    endif()
 
     if(MSVC_VERSION GREATER_EQUAL 1933)
       target_sources(onnxruntime_mlas PRIVATE
