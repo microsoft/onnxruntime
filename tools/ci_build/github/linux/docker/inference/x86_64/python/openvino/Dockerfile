@@ -75,13 +75,6 @@ ENV OpenVINO_DIR=${INTEL_OPENVINO_DIR}/runtime/cmake
 ENV PKG_CONFIG_PATH=${INTEL_OPENVINO_DIR}/runtime/lib/intel64/pkgconfig${PKG_CONFIG_PATH:+:${PKG_CONFIG_PATH}}
 ENV OpenVINORootDir=${INTEL_OPENVINO_DIR}
 
-# --- Python Dependencies for ORT Build ---
-# Copy requirements file from the ORT source tree (assuming standard location)
-COPY tools/ci_build/github/linux/docker/scripts/requirements.txt /tmp/requirements.txt
-# Install using the specific pip for the desired Python version
-RUN /opt/python/cp310-cp310/bin/python -m pip install --no-cache-dir -r /tmp/requirements.txt && \
-    rm /tmp/requirements.txt
-
 # --- Build User Setup ---
 # Create the user with the specified UID and add to the 'video' group for GPU access.
 # Also add to 'users' group which is common practice.
