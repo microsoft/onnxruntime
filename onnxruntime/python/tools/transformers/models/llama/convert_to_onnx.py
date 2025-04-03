@@ -161,14 +161,6 @@ def run_dynamo_export(
     )
 
     if version.Version(torch.__version__) < version.Version("2.7"):
-        # strings are not allowed with torch 2.6, so we replace them by DYNAMIC
-        dynamic_shapes = replace_dynamic_shapes(
-            dynamic_shapes,
-            dict(batch_size=torch.export.Dim("batch_size")),
-            default_value=torch.export.Dim.DYNAMIC,
-        )
-
-    if version.Version(torch.__version__) < version.Version("2.7"):
         # This section is only needed for torch==2.6. The workaround implemented here
         # to fix bugs is not necessary with torch>=2.7.
         # - strings are not allowed with torch 2.6, so we replace them by DYNAMIC
