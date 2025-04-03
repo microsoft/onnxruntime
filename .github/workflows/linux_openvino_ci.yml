@@ -1,5 +1,4 @@
-# .github/workflows/linux_openvino_ci.yml
-name: Linux OpenVINO CI using Reusable Workflow
+name: Linux OpenVINO CI
 
 on:
   push:
@@ -35,15 +34,10 @@ jobs:
 
       docker_image_repo: onnxruntimeopenvino
 
-      # Docker Build Args: Pass necessary versions and info to the Dockerfile build
-      docker_build_args: '--build-arg OPENVINO_VERSION=2025.0.0 '
+      docker_build_args: '--build-arg OPENVINO_VERSION=2025.0.0'
 
-      # Execution Providers: Specify 'openvino' for the reusable workflow's build command construction
       execution_providers: 'openvino'
 
-      # Extra Build Flags: Pass the specific flags needed by build.py *inside* the container
-      # This includes the specific --use_openvino variant and other flags from your original command.
-      # Also explicitly add --build_shared_lib as seen in the original docker run command analysis.
       extra_build_flags: '--use_openvino CPU --enable_generic_interface --build_wheel --build_shared_lib'
 
       # Python Path Prefix: Set the correct Python 3.10 path inside the manylinux container

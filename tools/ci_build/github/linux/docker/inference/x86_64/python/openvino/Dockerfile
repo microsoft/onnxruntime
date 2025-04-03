@@ -76,7 +76,7 @@ ENV ngraph_DIR=${INTEL_OPENVINO_DIR}/runtime/cmake
 ENV OpenVINO_DIR=${INTEL_OPENVINO_DIR}/runtime/cmake
 # INTEL_OPENVINO_DIR is already set above
 ENV PKG_CONFIG_PATH=${INTEL_OPENVINO_DIR}/runtime/lib/intel64/pkgconfig${PKG_CONFIG_PATH:+:${PKG_CONFIG_PATH}}
-ENV OpenVINORootDir=${INTEL_OPENVINO_DIR} # Add this for convenience if build scripts expect it
+ENV OpenVINORootDir=${INTEL_OPENVINO_DIR}
 
 # --- Python Dependencies for ORT Build ---
 # Copy requirements file from the ORT source tree (assuming standard location)
