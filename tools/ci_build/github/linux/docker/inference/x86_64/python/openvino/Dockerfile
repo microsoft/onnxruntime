@@ -32,7 +32,7 @@ RUN mkdir -p ${TEMP_DIR} && \
     cd ${TEMP_DIR} && \
     wget -O openvino_toolkit.tgz ${OPENVINO_PACKAGE_URL} && \
     tar -xzf openvino_toolkit.tgz && \
-    OV_FOLDER_NAME=$(ls -d l_openvino_toolkit_rhel8_*) && \
+    OV_FOLDER_NAME=$(ls -d openvino_toolkit_rhel8_*) && \
     mkdir -p /opt/intel && \
     mv ${OV_FOLDER_NAME} ${INTEL_OPENVINO_DIR} && \
     ln -s ${INTEL_OPENVINO_DIR} /opt/intel/openvino && \
@@ -65,9 +65,7 @@ RUN dnf install -y --nodocs \
 # Set environment variables based on the Intel Dockerfile
 ENV LD_LIBRARY_PATH=${INTEL_OPENVINO_DIR}/runtime/3rdparty/hddl/lib:${INTEL_OPENVINO_DIR}/runtime/3rdparty/tbb/lib:${INTEL_OPENVINO_DIR}/runtime/lib/intel64:${INTEL_OPENVINO_DIR}/tools/compile_tool:${INTEL_OPENVINO_DIR}/extras/opencv/lib${LD_LIBRARY_PATH:+:${LD_LIBRARY_PATH}}
 ENV OpenCV_DIR=${INTEL_OPENVINO_DIR}/extras/opencv/cmake
-# Base image likely sets PATH, append OpenVINO bin if needed (setupvars usually does this)
-# ENV PATH=${INTEL_OPENVINO_DIR}/runtime/bin/intel64:${PATH}
-ENV PYTHONPATH=${INTEL_OPENVINO_DIR}/python:${INTEL_OPENVINO_DIR}/python/python3:${INTEL_OPENVINO_DIR}/extras/opencv/python${PYTHONPATH:+:${PYTHONPATH}}
+ENV PATH=${INTEL_OPENVINO_DIR}/runtime/bin/intel64:${PATH}
 ENV TBB_DIR=${INTEL_OPENVINO_DIR}/runtime/3rdparty/tbb/cmake
 ENV ngraph_DIR=${INTEL_OPENVINO_DIR}/runtime/cmake
 ENV OpenVINO_DIR=${INTEL_OPENVINO_DIR}/runtime/cmake
