@@ -102,6 +102,9 @@ constexpr std::string_view ProgramVariableDataTypeName[] = {
     "u8x4",    // Uint8x4
     "u8x8",    // Uint8x8
     "u8x16",   // Uint8x16
+    "i8x4",    // Int8x4
+    "i8x8",    // Int8x8
+    "i8x16",   // Int8x16
 };
 std::ostream& operator<<(std::ostream& os, ProgramVariableDataType type) {
   os << ProgramVariableDataTypeName[std::underlying_type<decltype(type)>::type(type)];
