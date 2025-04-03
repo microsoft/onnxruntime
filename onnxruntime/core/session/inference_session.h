@@ -58,6 +58,8 @@ class IExecutionProvider;
 class IOBinding;
 struct Notification;
 
+void reset_saturation_count();
+
 #ifdef ENABLE_TRAINING
 struct PartialGraphExecutionState;
 using OrtValueCache = InlinedHashMap<std::string, OrtValue>;
