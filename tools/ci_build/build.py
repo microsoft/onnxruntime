@@ -1284,7 +1284,11 @@ def generate_build_tree(
             vcpkg_installation_root = os.path.join(os.path.abspath(build_dir), "vcpkg")
             if not os.path.exists(vcpkg_installation_root):
                 run_subprocess(["git", "clone", "https://github.com/microsoft/vcpkg.git", "--recursive"], cwd=build_dir)
-                run_subprocess(["git", "checkout", "2025.03.19"], cwd=build_dir)
+                run_subprocess(["git", "checkout", "2025.03.19"], cwd=os.path.join(build_dir, 'vcpkg'))
+                if is_windows():
+                    run_subprocess(["bootstrap-vcpkg.bat"], cwd=os.path.join(build_dir, 'vcpkg'))
+                else:
+                    run_subprocess(["bash", "bootstrap-vcpkg.sh"], cwd=os.path.join(build_dir, 'vcpkg'))
         vcpkg_toolchain_path = Path(vcpkg_installation_root) / "scripts" / "buildsystems" / "vcpkg.cmake"
 
         if args.build_wasm:
