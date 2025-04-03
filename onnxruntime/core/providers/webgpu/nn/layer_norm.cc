@@ -74,10 +74,6 @@ Status LayerNorm<simplified>::ComputeInternal(onnxruntime::webgpu::ComputeContex
 
   const auto x_shape = x->Shape();
 
-  if (x_shape.Size() == 0) {
-    return Status::OK();
-  }
-
   const bool is_fp16 = x->GetElementType() == ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT16;
 
   const size_t axis = NormalizeAxis(axis_, x_shape.NumDimensions());
@@ -108,6 +104,10 @@ Status LayerNorm<simplified>::ComputeInternal(onnxruntime::webgpu::ComputeContex
   auto* y = context.Output(0, x_shape);
   auto* mean = context.Output(1, mean_shape);
   auto* inv_std_dev = context.Output(2, mean_shape);
+
+  if (x_shape.Size() == 0) {
+    return Status::OK();
+  }
 
   LayerNormProgram program{bias != nullptr, is_fp16, simplified, mean != nullptr, inv_std_dev != nullptr};
 

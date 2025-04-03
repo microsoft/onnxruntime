@@ -32,11 +32,6 @@ source "$LOCAL_DIR/install_shared_deps.sh"
 
 cd /tmp/src
 
-if ! [ -x "$(command -v protoc)" ]; then
-# shellcheck disable=SC1091
-  source "$PARENT_DIR/install_protobuf.sh"
-fi
-
 export ONNX_ML=1
 export CMAKE_ARGS="-DONNX_GEN_PB_TYPE_STUBS=OFF -DONNX_WERROR=OFF"
 
