@@ -35,14 +35,9 @@ RUN mkdir -p ${TEMP_DIR} && \
     OV_FOLDER_NAME=$(ls -d openvino_toolkit_rhel8_*) && \
     mkdir -p /opt/intel && \
     mv ${OV_FOLDER_NAME} ${INTEL_OPENVINO_DIR} && \
-    ln -s ${INTEL_OPENVINO_DIR} /opt/intel/openvino && sed -i 's/almalinux8.8/almalinux8.10/g' ${INTEL_OPENVINO_DIR}/install_dependencies/install_openvino_dependencies.sh && \
-    sed -i 's/cmake[0-9]\?\s//g' install_openvino_dependencies.sh && \
-    # Run OpenVINO dependency installer script
-    ${INTEL_OPENVINO_DIR}/install_dependencies/install_openvino_dependencies.sh -y && \
+    ln -s ${INTEL_OPENVINO_DIR} /opt/intel/openvino && \
     # Clean up installer files
-    cd / && rm -rf ${TEMP_DIR} && \
-    # Clean dnf cache again after dependency script runs
-    dnf clean all && rm -rf /var/cache/dnf
+    cd / && rm -rf ${TEMP_DIR}
 
 # --- Intel GPU Driver Installation (RHEL/UBI8 method) ---
 # Using dnf install instead of rpm -ivh to handle dependencies better.
