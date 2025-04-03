@@ -61,7 +61,7 @@ Abstract:
         lea rdi, [rsp+64]
         lea rsi, [rsp]
 
-        call    CheckSaturationForVPMADDUBSW  # Call the C++ function
+        call    CheckSaturationForVPMADDUBSW
 
         # Restore YMM registers
         vmovdqu  ymm0, [rsp]
