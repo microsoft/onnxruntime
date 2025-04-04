@@ -97,15 +97,6 @@ void LogRuntimeError(uint32_t session_id, const common::Status& status, const ch
 
 #ifdef ORT_NO_EXCEPTIONS
 
-#define ORT_THROW_FROM_STATUS(status)                \
-  do {                                               \
-    ::onnxruntime::PrintFinalMessage(                \
-        ::onnxruntime::OnnxRuntimeException(         \
-            ORT_WHERE_WITH_STACK, status.ToString()) \
-            .what());                                \
-    abort();                                         \
-  } while (false)
-
 #define ORT_TRY if (true)
 #define ORT_CATCH(x) else if (false)
 #define ORT_RETHROW
@@ -157,11 +148,27 @@ void LogRuntimeError(uint32_t session_id, const common::Status& status, const ch
     abort();                                                                                       \
   } while (false)
 
-#else
+#define ORT_THROW_FROM_STATUS(status)                \
+  do {                                               \
+    ::onnxruntime::PrintFinalMessage(                \
+        ::onnxruntime::OnnxRuntimeException(         \
+            ORT_WHERE_WITH_STACK, status.ToString()) \
+            .what());                                \
+    abort();                                         \
+  } while (false)
 
-#define ORT_THROW_FROM_STATUS(status)                                                                   \
-  throw ::onnxruntime::OnnxRuntimeException(ORT_WHERE_WITH_STACK, status.ToString(), status.Category(), \
-                                            static_cast<::onnxruntime::common::StatusCode>(status.Code()))
+#define ORT_THROW_WITH_CATEGORY_AND_CODE(category, code, ...)                       \
+  do {                                                                              \
+    ::onnxruntime::PrintFinalMessage(                                               \
+        ::onnxruntime::OnnxRuntimeException(ORT_WHERE_WITH_STACK,                   \
+                                            ::onnxruntime::MakeString(__VA_ARGS__), \
+                                            ::onnxruntime::common::category,        \
+                                            ::onnxruntime::common::code)            \
+            .what());                                                               \
+    abort();                                                                        \
+  } while (false)
+
+#else
 
 #define ORT_TRY try
 #define ORT_CATCH(x) catch (x)
@@ -175,11 +182,6 @@ void LogRuntimeError(uint32_t session_id, const common::Status& status, const ch
 #define ORT_THROW(...) \
   throw ::onnxruntime::OnnxRuntimeException(ORT_WHERE_WITH_STACK, ::onnxruntime::MakeString(__VA_ARGS__))
 
-#define ORT_THROW_WITH_CATEGORY_AND_CODE(category, code, ...)                       \
-  throw ::onnxruntime::OnnxRuntimeException(ORT_WHERE_WITH_STACK,                   \
-                                            ::onnxruntime::MakeString(__VA_ARGS__), \
-                                            ::onnxruntime::common::category,        \
-                                            ::onnxruntime::common::code)
 // Just in order to mark things as not implemented. Do not use in final code.
 #define ORT_NOT_IMPLEMENTED(...) \
   throw ::onnxruntime::NotImplementedException(::onnxruntime::MakeString(__VA_ARGS__))
@@ -197,6 +199,16 @@ void LogRuntimeError(uint32_t session_id, const common::Status& status, const ch
 
 #define ORT_THROW_EX(ex, ...) \
   throw ex(__VA_ARGS__)
+
+#define ORT_THROW_FROM_STATUS(status)                                                                   \
+  throw ::onnxruntime::OnnxRuntimeException(ORT_WHERE_WITH_STACK, status.ToString(), status.Category(), \
+                                            static_cast<::onnxruntime::common::StatusCode>(status.Code()))
+
+#define ORT_THROW_WITH_CATEGORY_AND_CODE(category, code, ...)                       \
+  throw ::onnxruntime::OnnxRuntimeException(ORT_WHERE_WITH_STACK,                   \
+                                            ::onnxruntime::MakeString(__VA_ARGS__), \
+                                            ::onnxruntime::common::category,        \
+                                            ::onnxruntime::common::code)
 
 #endif
 

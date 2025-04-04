@@ -71,7 +71,7 @@ class OnnxRuntimeException : public std::exception {
      @param code Error code
   */
   OnnxRuntimeException(const CodeLocation& location, const char* failed_condition, const std::string& msg,
-                       onnxruntime::common::StatusCategory category,
+                       common::StatusCategory category,
                        common::StatusCode code)
       : location_{location}, category_(category), code_(code) {
     std::ostringstream ss;
