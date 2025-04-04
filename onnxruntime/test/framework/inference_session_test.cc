@@ -507,7 +507,7 @@ TEST(InferenceSessionTests, RequestLoadCancellation) {
 
     const PathString model_uri = ORT_TSTR("testdata/constant_floats.onnx");
     InferenceSession session_object{so, GetEnvironment()};
-    *so.load_cancellation_flag = true;
+    so.SetLoadCancellationFlag(true);
     ASSERT_FALSE(session_object.Load(model_uri).IsOK());
   }
   {
@@ -515,10 +515,10 @@ TEST(InferenceSessionTests, RequestLoadCancellation) {
     const PathString model_uri = ORT_TSTR("testdata/constant_floats.onnx");
     SessionOptions so;
     so.session_logid = "InferenceSessionTests.TestLoadCancellation";
-    *so.load_cancellation_flag = false;
+    so.SetLoadCancellationFlag(false);
     InferenceSession session_object{so, GetEnvironment()};
     ASSERT_STATUS_OK(session_object.Load(model_uri));
-    *so.load_cancellation_flag = true;
+    so.SetLoadCancellationFlag(true);
     ASSERT_FALSE(session_object.Initialize().IsOK());
   }
 }
