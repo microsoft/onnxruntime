@@ -188,10 +188,6 @@ struct SessionOptions {
   OrtLoggingFunction user_logging_function = nullptr;
   void* user_logging_param = nullptr;
 
-  // Load cancellation flag is necessary to be within shared memory as session_options are
-  // copied internally and the flag needs to be accessible across all copies.
-  const std::shared_ptr<std::atomic_bool> load_cancellation_flag = std::make_shared<std::atomic_bool>(false);
-
   void SetLoadCancellationFlag(bool value) noexcept {
     *load_cancellation_flag = value;
   }
@@ -199,6 +195,11 @@ struct SessionOptions {
   bool IsLoadCancellationFlagSet() const noexcept {
     return *load_cancellation_flag;
   }
+
+ private:
+  // Load cancellation flag is necessary to be within shared memory as session_options are
+  // copied internally and the flag needs to be accessible across all copies.
+  std::shared_ptr<std::atomic_bool> load_cancellation_flag = std::make_shared<std::atomic_bool>(false);
 };
 
 inline std::ostream& operator<<(std::ostream& os, const SessionOptions& session_options) {
