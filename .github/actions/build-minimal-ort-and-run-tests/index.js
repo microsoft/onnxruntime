@@ -115,8 +115,8 @@ async function main() {
              core.info(`Found artifact '${artifactName}' with ID: ${artifactIdToDownload}`);
 
              core.info(`Downloading artifact ID ${artifactIdToDownload} to ${testDataDownloadDir}...`);
-             const downloadResponse = await artifactClient.downloadArtifact(artifactIdToDownload, testDataDownloadDir, {
-                 createArtifactFolder: false // Download directly into the target dir
+             const downloadResponse = await artifactClient.downloadArtifact(artifactIdToDownload, {
+                path: testDataDownloadDir
              });
              core.info(`Artifact download finished. Path: ${downloadResponse.downloadPath}`);
 
@@ -172,8 +172,6 @@ async function main() {
                 await runCommand(testRunnerPath, [standardOnnxTestDataDir]);
             } else {
                 core.warning(`Directory ${standardOnnxTestDataDir} not found or accessible on the runner. Skipping these tests.`);
-                // To make it fail, uncomment the next line:
-                // throw new Error(`Required test data directory not found: ${standardOnnxTestDataDir}`);
             }
             core.endGroup();
         } else {
