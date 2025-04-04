@@ -413,10 +413,10 @@ def generate_vcpkg_triplets_for_emscripten(build_dir: str, emscripten_root: str)
     # Note: Exceptions are generally required/enabled for Emscripten builds in ORT.
     # Minimal build concept might not apply directly here or needs specific flags.
     # Sticking to original logic for now.
-    enable_exception = True # Usually True for Emscripten
     enable_minimal_build = False # Assume False for Emscripten unless specified otherwise
-
-    for enable_rtti in [True, False]:
+    for enable_exception in [True, False]:
+     for enable_wasm_exception_catching in [True, False]:
+      for enable_rtti in [True, False]:
         for enable_asan in [True, False]:
             for target_abi in ["wasm32", "wasm64"]:
                 folder_name_parts = []
@@ -424,7 +424,10 @@ def generate_vcpkg_triplets_for_emscripten(build_dir: str, emscripten_root: str)
                     folder_name_parts.append("asan")
                 if not enable_rtti:
                     folder_name_parts.append("nortti")
-                # No 'minimal' or 'noexception' part added for emscripten folder structure
+                if not enable_exception:
+                    folder_name_parts.append("noexception")
+                elif enable_wasm_exception_catching:
+                    folder_name_parts.append("exception_catching")
 
                 folder_name = "default" if len(folder_name_parts) == 0 else "_".join(folder_name_parts)
                 os_name = "emscripten"
@@ -451,9 +454,10 @@ def generate_vcpkg_triplets_for_emscripten(build_dir: str, emscripten_root: str)
                         "-fdata-sections",
                         "-msimd128",
                         "-pthread",
-                        "-Wno-pthreads-mem-growth",
-                        "-sDISABLE_EXCEPTION_CATCHING=0", # Exceptions enabled here
+                        "-Wno-pthreads-mem-growth"
                     ]
+                    if enable_wasm_exception_catching:
+                        cflags.append("-sDISABLE_EXCEPTION_CATCHING=0")
                     if enable_asan:
                         cflags += ["-fsanitize=address"]
                         ldflags += ["-fsanitize=address"]
@@ -465,9 +469,7 @@ def generate_vcpkg_triplets_for_emscripten(build_dir: str, emscripten_root: str)
 
                     # RTTI flag for Emscripten
                     if not enable_rtti:
-                       cflags.append("-DEMSCRIPTEN_HAS_UNBOUND_TYPE_NAMES=0")
                        cflags.append("-fno-rtti")
-
 
                     cxxflags = cflags.copy()
 
