@@ -29,7 +29,8 @@ Pre-built packages and Docker images are published for OpenVINO™ Execution Pro
 ONNX Runtime OpenVINO™ Execution Provider is compatible with three lastest releases of OpenVINO™.
 
 |ONNX Runtime|OpenVINO™|Notes|
-|---|---|---|
+|---|---|---| 
+|1.21.0|2025.0|[Details](https://github.com/intel/onnxruntime/releases/tag/v5.6)|
 |1.20.0|2024.4|[Details](https://github.com/intel/onnxruntime/releases/tag/v5.5)|
 |1.19.0|2024.3|[Details](https://github.com/intel/onnxruntime/releases/tag/v5.4)|
 |1.18.0|2024.1|[Details](https://github.com/intel/onnxruntime/releases/tag/v5.3)|
@@ -233,37 +234,13 @@ Refer to [Configuration Options](#configuration-options) for more information ab
 The OpenVINO Execution Provider (OVEP) in ONNX Runtime supports EP-Weight Sharing, enabling models to efficiently share weights across multiple inference sessions. This feature enhances the execution of Large Language Models (LLMs) with prefill and KV cache, reducing memory consumption and improving performance when running multiple inferences.
 
 With EP-Weight Sharing, prefill and KV cache models can now reuse the same set of weights, minimizing redundancy and optimizing inference. Additionally, this ensures that EP Context nodes are still created even when the model undergoes subgraph partitioning. 
-For EP-Context-Design details, please see the [EP-Context-Design](..\execution-providers\EP-Context-Design.md#background)
 
 These changes enable weight sharing between two models using the session context option: ep.share_ep_contexts.
 Refer to [Session Options](https://github.com/microsoft/onnxruntime/blob/5068ab9b190c549b546241aa7ffbe5007868f595/include/onnxruntime/core/session/onnxruntime_session_options_config_keys.h#L319) for more details on configuring this runtime option.
 
-### OVEP supports EP-Weights-Sharing with QDQ stripping
-The OpenVINO Execution Provider (OVEP) supports EP-Weight Sharing with QDQ Stripping, allowing models to share weights efficiently while optimizing quantized models. 
-Refer to [Configuration Options](#configuration-options) for more information about using these runtime options.
- To enable this feature, run the perf_test application with the QDQ optimizer enabled:
-``` 
-   enable_qdq_optimizer|True
-```
-Additionally, it complies with the ORT session config keys
-```
-  Ort::SessionOptions session_options;
-
-      // Share EP related resources across sessions
-      // "0": disable
-      // "1": enable
-
-  session_options.AddConfigEntry(kOrtSessionOptionShareEpContexts, "1");
-
-  sess = onnxruntime.InferenceSession(<path_to_model_file>, session_options)
-```
-After running inference, verify the following files are generated successfully:
-* EP context model
-* weightless blobs 
-* metadata.bin
-
  ### OVEP suppports CreateSessionFromArray API
  The OpenVINO Execution Provider (OVEP) in ONNX Runtime supports creating sessions from memory using the CreateSessionFromArray API. This allows loading models directly from memory buffers instead of file paths. The CreateSessionFromArray loads the model in memory then creates a session from the in-memory byte array.
+ 
  Note:
  Use the -l argument when running the inference with perf_test using CreateSessionFromArray API.
 
@@ -284,19 +261,19 @@ The session configuration options are passed to SessionOptionsAppendExecutionPro
 
 ```
 std::unordered_map<std::string, std::string> options;
-options["device_type"] = "GPU";
-options["precision"] = "FP32";
+options[device_type] = "GPU";
+options[precision] = "FP32";
 options[num_of_threads] = "8";
 options[num_streams] = "8";
 options[cache_dir] = "";
 options[context] = "0x123456ff";
-options[enable_opencl_throttling] = "false";
 options[enable_qdq_optimizer] = "True";
-session_options.AppendExecutionProvider_OpenVINO_V2("OpenVINO", options);
+session_options.AppendExecutionProvider_OpenVINO_V2(options);
 ```
 
 ### C/C++ Legacy API 
-Note: This api is no longer officially supported. Users are requested to move to V2 API.
+Note: This api is no longer officially supported. Users are requested to move to V2 API. 
+
 The session configuration options are passed to SessionOptionsAppendExecutionProvider_OpenVINO() API as shown in an example below for GPU device type:
 
 ```
