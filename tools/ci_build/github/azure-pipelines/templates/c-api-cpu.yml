@@ -182,10 +182,10 @@ stages:
     buildArch: x64
     msbuildPlatform: arm64
     packageName: arm64
-    buildparameter: --build_nodejs --arm64 ${{ parameters.AdditionalBuildFlags }}  ${{ parameters.AdditionalWinBuildFlags}}
+    buildparameter: --arm64 ${{ parameters.AdditionalBuildFlags }}  ${{ parameters.AdditionalWinBuildFlags}}
     runTests: false
     buildJava: false
-    buildNodejs: true
+    buildNodejs: false
 
 - template: win-ci.yml
   parameters:
@@ -194,10 +194,10 @@ stages:
     buildArch: x64
     msbuildPlatform: x64
     packageName: x64
-    buildparameter: --build_java --build_nodejs ${{ parameters.AdditionalBuildFlags }}  ${{ parameters.AdditionalWinBuildFlags}}
+    buildparameter: --build_java ${{ parameters.AdditionalBuildFlags }}  ${{ parameters.AdditionalWinBuildFlags}}
     runTests: ${{ parameters.RunOnnxRuntimeTests }}
     buildJava: true
-    buildNodejs: true
+    buildNodejs: false
 
 - stage: Jar_Packaging
   dependsOn:
@@ -506,14 +506,11 @@ stages:
 
 - stage: Nodejs_Packaging
   dependsOn:
-  - Windows_CI_GPU_DML_Dev
-  - Windows_CI_GPU_DML_Dev_arm64
+  - Windows_Nodejs_Packaging_x64
+  - Windows_Nodejs_Packaging_arm64
+  - Linux_Nodejs_Packaging_x64
   - Linux_C_API_Packaging_CPU
-  - Linux_C_API_Packaging_GPU
   - MacOS_C_API_Package_Publish
-  - Windows_Packaging_CPU_x86_${{ parameters.BuildVariant }}
-  - Windows_Packaging_CPU_x64_${{ parameters.BuildVariant }}
-  - Windows_Packaging_CPU_arm64_${{ parameters.BuildVariant }}
   condition: succeeded()
   jobs:
   - job: Nodejs_Packaging
@@ -544,74 +541,78 @@ stages:
     # Node.js binding artifacts preparation
     #
     # This stage prepares Node.js binding artifacts for publishing. The artifacts support the following platforms:
-    #  - Windows x64 with DML support
-    #  - Windows arm64 with DML support
-    #  - Linux x64 with TensorRT support
+    #  - Windows x64 (CPU, DML, WebGPU)
+    #  - Windows arm64 (CPU, DML, WebGPU)
+    #  - Linux x64 (CPU, CUDA, TensorRT, WebGPU)
     #  - Linux arm64 (CPU only)
-    #  - macOS x64 (CPU only)
-    #  - macOS arm64 (CPU only)
+    #  - macOS x64 (CPU, CoreML, WebGPU)
+    #  - macOS arm64 (CPU, CoreML, WebGPU)
     #
-    # ORT Node.js binding artifacts contain 2 parts:
-    #  1. ONNX Runtime native shared libraries and their dependencies
-    #     - Windows (x64, arm64):
-    #       - onnxruntime.dll
-    #       - DirectML.dll
-    #     - Linux (x64, arm64):
-    #       - libonnxruntime.so{.version}
-    #       - libonnxruntime_providers_shared.so
-    #       - libonnxruntime_providers_{provider}.so
-    #     - macOS (x64, arm64):
-    #       - libonnxruntime.dylib
-    #  2. ONNX Runtime Node.js binding
-    #     - onnxruntime_binding.node
+    # File manifest:
+    #  - Windows x64 (CPU, DML, WebGPU):
+    #    dependency: Windows_Nodejs_Packaging_x64 (drop-onnxruntime-nodejs-win-x64)
+    #    files:
+    #      - onnxruntime_binding.node
+    #      - onnxruntime.dll
+    #      - DirectML.dll
+    #      - dxil.dll
+    #      - dxcompiler.dll
     #
-    # For windows platform, the artifact is named as 'onnxruntime-nodejs-win-x64-dml' for x64, and
-    # 'onnxruntime-nodejs-win-arm64-dml' for arm64. Each artifact contains both (1) and (2).
+    #  - Windows arm64 (CPU, DML, WebGPU):
+    #    dependency: Windows_Nodejs_Packaging_arm64 (drop-onnxruntime-nodejs-win-arm64)
+    #    files:
+    #      - onnxruntime_binding.node
+    #      - onnxruntime.dll
+    #      - DirectML.dll
+    #      - dxil.dll
+    #      - dxcompiler.dll
     #
-    # For Linux and macOS platforms, (1) and (2) are packed into separate artifacts.
-    # The following artifacts contain (1):
-    #  - onnxruntime-osx
-    #  - onnxruntime-linux-x64-tensorrt
-    #  - onnxruntime-linux-aarch64
-    # The following artifacts contain (2):
-    #  - drop-onnxruntime-nodejs-linux-x64-tensorrt
-    #  - drop-onnxruntime-nodejs-linux-aarch64
-    #  - drop-onnxruntime-nodejs-osx-x86_64
-    #  - drop-onnxruntime-nodejs-osx-arm64
+    #  - Linux x64 (CPU, CUDA, TensorRT, WebGPU):
+    #    dependency: Linux_Nodejs_Packaging_x64 (drop-onnxruntime-nodejs-linux-x64)
+    #    files:
+    #      - onnxruntime_binding.node
+    #      - libonnxruntime.so.1
+    #      - libonnxruntime_providers_shared.so
+    #      - libonnxruntime_providers_cuda.so
+    #      - libonnxruntime_providers_tensorrt.so
     #
-    # All binary artifacts will eventually be put into folder before packaging 'onnxruntime-node':
+    #  - Linux arm64 (CPU only):
+    #    dependency: Linux_C_API_Packaging_CPU_aarch64 (drop-onnxruntime-nodejs-linux-aarch64)
+    #    files:
+    #      - onnxruntime_binding.node
+    #      - libonnxruntime.so.1
+    #
+    #  - macOS x64 (CPU, CoreML, WebGPU):
+    #    dependency: MacOS_C_API_Packaging_CPU_x86_64 (drop-onnxruntime-nodejs-osx-x86_64)
+    #    files:
+    #      - onnxruntime_binding.node
+    #      - libonnxruntime.{version}.dylib
+    #
+    #  - macOS arm64 (CPU, CoreML, WebGPU):
+    #    dependency: MacOS_C_API_Packaging_CPU_arm64 (drop-onnxruntime-nodejs-osx-arm64)
+    #    files:
+    #      - onnxruntime_binding.node
+    #      - libonnxruntime.{version}.dylib
+    #
+    # The following files will be excluded from the further packaging because they are too large to be included in the
+    # NPM package:
+    #  - linux/x64/libonnxruntime_providers_cuda.so
+    #
+    # Rest binary artifacts will eventually be put into folder before packaging 'onnxruntime-node':
     #  $(Build.SourcesDirectory)\js\node\bin\napi-v3\{os}\{cpu_arch}\
     #
     # {os} is one of 'win32', 'darwin', 'linux' and {cpu_arch} is one of 'x64', 'arm64'.
 
     - task: DownloadPipelineArtifact@0
-      displayName: 'Download Pipeline Artifact - NuGet (OSX)'
-      inputs:
-        artifactName: 'onnxruntime-osx'
-        targetPath: '$(Build.BinariesDirectory)/nuget-artifact'
-
-    - task: DownloadPipelineArtifact@0
-      displayName: 'Download Pipeline Artifact - NuGet (Linux x64)'
-      inputs:
-        artifactName: 'onnxruntime-linux-x64-tensorrt'
-        targetPath: '$(Build.BinariesDirectory)/nuget-artifact'
-
-    - task: DownloadPipelineArtifact@0
-      displayName: 'Download Pipeline Artifact - NuGet (Linux aarch64)'
-      inputs:
-        artifactName: 'onnxruntime-linux-aarch64'
-        targetPath: '$(Build.BinariesDirectory)/nuget-artifact'
-
-    - task: DownloadPipelineArtifact@0
       displayName: 'Download Pipeline Artifact - Nodejs (Win x64)'
       inputs:
-        artifactName: 'drop-onnxruntime-nodejs-win-x64-dml'
+        artifactName: 'drop-onnxruntime-nodejs-win-x64'
         targetPath: '$(Build.BinariesDirectory)/nodejs-artifacts/win32/x64/'
 
     - task: DownloadPipelineArtifact@0
       displayName: 'Download Pipeline Artifact - Nodejs (Win ARM64)'
       inputs:
-        artifactName: 'drop-onnxruntime-nodejs-win-arm64-dml'
+        artifactName: 'drop-onnxruntime-nodejs-win-arm64'
         targetPath: '$(Build.BinariesDirectory)/nodejs-artifacts/win32/arm64/'
 
     - task: DownloadPipelineArtifact@0
@@ -629,7 +630,7 @@ stages:
     - task: DownloadPipelineArtifact@0
       displayName: 'Download Pipeline Artifact - Nodejs (Linux x64)'
       inputs:
-        artifactName: 'drop-onnxruntime-nodejs-linux-x64-tensorrt'
+        artifactName: 'drop-onnxruntime-nodejs-linux-x64'
         targetPath: '$(Build.BinariesDirectory)/nodejs-artifacts/linux/x64/'
 
     - task: DownloadPipelineArtifact@0
@@ -638,15 +639,9 @@ stages:
         artifactName: 'drop-onnxruntime-nodejs-linux-aarch64'
         targetPath: '$(Build.BinariesDirectory)/nodejs-artifacts/linux/arm64/'
 
-    - task: PowerShell@2
-      displayName: 'PowerShell Script'
-      inputs:
-        targetType: filePath
-        filePath: $(Build.SourcesDirectory)\tools\ci_build\github\windows\extract_nuget_files.ps1
-
     - script: |
-        dir
-      workingDirectory: '$(Build.BinariesDirectory)/nuget-artifact'
+        dir /S
+      workingDirectory: '$(Build.BinariesDirectory)/nodejs-artifacts'
       displayName: 'List artifacts'
 
     - script: |
@@ -684,60 +679,42 @@ stages:
 
     # Node.js binding linux/x64
     - task: CopyFiles@2
-      displayName: 'Copy nuget binaries to: $(Build.SourcesDirectory)\js\node\bin\napi-v3\linux\x64\'
-      inputs:
-        SourceFolder: '$(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo\nuget-artifacts\onnxruntime-linux-x64-tensorrt\lib'
-        Contents: |
-          libonnxruntime.so.1
-          libonnxruntime_providers_shared.so
-        TargetFolder: '$(Build.SourcesDirectory)\js\node\bin\napi-v3\linux\x64'
-    - task: CopyFiles@2
       displayName: 'Copy nodejs binaries to: $(Build.SourcesDirectory)\js\node\bin\napi-v3\linux\x64\'
       inputs:
         SourceFolder: '$(Build.BinariesDirectory)\nodejs-artifacts\linux\x64'
-        Contents: '*.node'
+        Contents: |
+          libonnxruntime.so.1
+          *.node
         TargetFolder: '$(Build.SourcesDirectory)\js\node\bin\napi-v3\linux\x64'
 
     # Node.js binding linux/arm64
     - task: CopyFiles@2
-      displayName: 'Copy nuget binaries to: $(Build.SourcesDirectory)\js\node\bin\napi-v3\linux\arm64\'
-      inputs:
-        SourceFolder: '$(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo\nuget-artifacts\onnxruntime-linux-aarch64\lib'
-        Contents: 'libonnxruntime.so.1'
-        TargetFolder: '$(Build.SourcesDirectory)\js\node\bin\napi-v3\linux\arm64'
-    - task: CopyFiles@2
       displayName: 'Copy nodejs binaries to: $(Build.SourcesDirectory)\js\node\bin\napi-v3\linux\arm64\'
       inputs:
         SourceFolder: '$(Build.BinariesDirectory)\nodejs-artifacts\linux\arm64'
-        Contents: '*.node'
+        Contents: |
+          libonnxruntime.so.1
+          *.node
         TargetFolder: '$(Build.SourcesDirectory)\js\node\bin\napi-v3\linux\arm64'
 
     # Node.js binding darwin/x64
     - task: CopyFiles@2
-      displayName: 'Copy nuget binaries to: $(Build.SourcesDirectory)\js\node\bin\napi-v3\darwin\x64\'
-      inputs:
-        SourceFolder: '$(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo\nuget-artifacts\onnxruntime-osx-x86_64\lib'
-        Contents: 'libonnxruntime.*.dylib'
-        TargetFolder: '$(Build.SourcesDirectory)\js\node\bin\napi-v3\darwin\x64'
-    - task: CopyFiles@2
       displayName: 'Copy nodejs binaries to: $(Build.SourcesDirectory)\js\node\bin\napi-v3\darwin\x64\'
       inputs:
         SourceFolder: '$(Build.BinariesDirectory)\nodejs-artifacts\darwin\x64'
-        Contents: '*.node'
+        Contents: |
+          libonnxruntime.*.dylib
+          *.node
         TargetFolder: '$(Build.SourcesDirectory)\js\node\bin\napi-v3\darwin\x64'
 
     # Node.js binding darwin/arm64
     - task: CopyFiles@2
-      displayName: 'Copy nuget binaries to: $(Build.SourcesDirectory)\js\node\bin\napi-v3\darwin\arm64\'
-      inputs:
-        SourceFolder: '$(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo\nuget-artifacts\onnxruntime-osx-arm64\lib'
-        Contents: 'libonnxruntime.*.dylib'
-        TargetFolder: '$(Build.SourcesDirectory)\js\node\bin\napi-v3\darwin\arm64'
-    - task: CopyFiles@2
       displayName: 'Copy nodejs binaries to: $(Build.SourcesDirectory)\js\node\bin\napi-v3\darwin\arm64\'
       inputs:
         SourceFolder: '$(Build.BinariesDirectory)\nodejs-artifacts\darwin\arm64'
-        Contents: '*.node'
+        Contents: |
+          libonnxruntime.*.dylib
+          *.node
         TargetFolder: '$(Build.SourcesDirectory)\js\node\bin\napi-v3\darwin\arm64'
 
     - task: PowerShell@2
