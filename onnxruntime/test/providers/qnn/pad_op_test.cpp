@@ -103,19 +103,7 @@ static void RunPadOpTest(const TestInputDef<float>& data_def,
                          bool enable_fp16_precision = false,
                          float f32_abs_err = 1e-5f) {
   ProviderOptions provider_options;
-  if (use_htp) {
-#if defined(_WIN32)
-    provider_options["backend_path"] = "QnnHtp.dll";
-#else
-    provider_options["backend_path"] = "libQnnHtp.so";
-#endif
-  } else {
-#if defined(_WIN32)
-    provider_options["backend_path"] = "QnnCpu.dll";
-#else
-    provider_options["backend_path"] = "libQnnCpu.so";
-#endif
-  }
+  provider_options["backend_type"] = use_htp ? "htp" : "cpu";
   provider_options["offload_graph_io_quantization"] = "0";
 
   if (enable_fp16_precision) {
@@ -140,11 +128,7 @@ static void RunQDQPadOpTest(const TestInputDef<float>& data_def,
                             bool constant_value_quantized = true,
                             int opset = 18) {
   ProviderOptions provider_options;
-#if defined(_WIN32)
-  provider_options["backend_path"] = "QnnHtp.dll";
-#else
-  provider_options["backend_path"] = "libQnnHtp.so";
-#endif
+  provider_options["backend_type"] = "htp";
   provider_options["offload_graph_io_quantization"] = "0";
 
   TestQDQModelAccuracy(BuildPadTestCase(data_def, pads_def, constant_value_def, attrs),
@@ -180,7 +164,8 @@ TEST_F(QnnCPUBackendTests, Pad2dPadsNotIni) {
 // Pad reflect mode
 // Expected: contains 12 values, where each value and its corresponding value in 16-byte object <0C-00 00-00 00-00 00-00 40-01 23-05 EC-01 00-00> are an almost-equal pair
 // Actual: 16-byte object <0C-00 00-00 00-00 00-00 40-01 12-05 EC-01 00-00>, where the value pair (1.2, 0) at index #1 don't match, which is -1.2 from 1.2
-TEST_F(QnnCPUBackendTests, DISABLED_PadModeReflect) {
+// fixed by QNN 2.32
+TEST_F(QnnCPUBackendTests, PadModeReflect) {
   bool has_constant_value = false;
   RunPadOpTest(TestInputDef<float>({3, 2}, false, {1.0f, 1.2f, 2.3f, 3.4f, 4.5f, 5.6f}),
                TestInputDef<int64_t>({4}, true, {0, 1, 0, 0}),

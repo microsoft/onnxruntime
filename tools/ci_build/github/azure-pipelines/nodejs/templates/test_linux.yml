@@ -19,4 +19,7 @@ stages:
     - name: OnnxRuntimeBuildDirectory
       value: '$(Build.BinariesDirectory)'
     steps:
+    - task: NodeTool@0
+      inputs:
+        versionSpec: '20.x'
     - template: test.yml

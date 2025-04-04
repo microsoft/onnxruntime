@@ -996,8 +996,13 @@ extern const MLAS_GEMM_QUANT_DISPATCH MlasGemmS8S8DispatchSdot;
 extern const MLAS_GEMM_QUANT_DISPATCH MlasGemmU8X8DispatchUmmla;
 extern const MLAS_GEMM_QUANT_DISPATCH MlasGemmS8S8DispatchSmmla;
 extern const MLAS_GEMM_QUANT_DISPATCH MlasGemmU8X8DispatchWasmSimd;
+extern const MLAS_GEMM_QUANT_DISPATCH MlasGemmU8X8DispatchWasmRelaxedSimd;
 extern const MLAS_GEMM_QUANT_DISPATCH MlasGemmQuantDispatchDefault;
 extern const MLAS_GEMM_QUANT_DISPATCH MlasGemm8X8DispatchPOWER10;
+
+#if defined(MLAS_TARGET_WASM_RELAXED_SIMD)
+extern bool HasUSDot();
+#endif
 
 //
 // Symmetric quantized qgemm dispatch structure

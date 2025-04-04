@@ -526,7 +526,7 @@ std::unique_ptr<IExecutionProvider> CreateExecutionProviderInstance(
       // and TRT EP instance, so it won't be released.)
       std::string calibration_table, cache_path, cache_prefix, timing_cache_path, lib_path, trt_tactic_sources,
           trt_extra_plugin_lib_paths, min_profile, max_profile, opt_profile, ep_context_file_path,
-          onnx_model_folder_path, trt_op_types_to_exclude;
+          onnx_model_folder_path, trt_op_types_to_exclude, preview_features;
       auto it = provider_options_map.find(type);
       if (it != provider_options_map.end()) {
         OrtTensorRTProviderOptionsV2 params;
@@ -827,6 +827,11 @@ std::unique_ptr<IExecutionProvider> CreateExecutionProviderInstance(
           } else if (option.first == "trt_op_types_to_exclude") {
             trt_op_types_to_exclude = option.second;
             params.trt_op_types_to_exclude = trt_op_types_to_exclude.c_str();
+          } else if (option.first == "trt_preview_features") {
+            if (!option.second.empty()) {
+              preview_features = option.second;
+              params.trt_preview_features = preview_features.c_str();
+            }
           } else {
             ORT_THROW("Invalid TensorRT EP option: ", option.first);
           }

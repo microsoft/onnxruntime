@@ -50,7 +50,6 @@ parameters:
   type: string
   default: '12.2'
   values:
-  - 11.8
   - 12.2
 
 variables:
@@ -92,6 +91,8 @@ extends:
       sourceAnalysisPool:
         name: onnxruntime-Win-CPU-2022
         os: windows
+      componentgovernance:
+        ignoreDirectories: $(Build.SourcesDirectory)/onnxruntime-inference-examples
       sourceRepositoriesToScan:
         exclude:
         - repository: onnxruntime-inference-examples

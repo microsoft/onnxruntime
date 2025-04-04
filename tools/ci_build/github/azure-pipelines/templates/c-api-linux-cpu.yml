@@ -85,6 +85,7 @@ jobs:
         version: '$(OnnxRuntimeVersion)'
         libraryName: 'libonnxruntime.so'
         nativeLibraryName: 'libonnxruntime4j_jni.so'
+        is1ES: true
 
   - template: c-api-artifacts-package-and-publish-steps-posix.yml
     parameters:
@@ -99,8 +100,3 @@ jobs:
         arch: '${{parameters.OnnxruntimeNodejsBindingArch}}'
         os: 'linux'
         artifactName: 'drop-onnxruntime-nodejs-linux-${{parameters.OnnxruntimeArch}}'
-
-  - ${{ if not(eq(parameters.OnnxruntimeNodejsBindingArch, 'arm64')) }}:
-    - template: component-governance-component-detection-steps.yml
-      parameters:
-        condition: 'succeeded'
