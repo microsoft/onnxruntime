@@ -290,18 +290,6 @@ DumbHtpSharedMemoryAllocator::DumbHtpSharedMemoryAllocator(std::shared_ptr<RpcMe
       rpcmem_lib_{std::move(rpcmem_lib)},
       logger_(logger != nullptr ? *logger : logging::LoggingManager::DefaultLogger()) {
   ORT_ENFORCE(rpcmem_lib_ != nullptr);
-
-  region_size_in_bytes_ = 1 * 1024 * 1024 * 1024;
-
-  region_base_address_ = rpcmem_lib_->Api().alloc(rpcmem::RPCMEM_HEAP_ID_SYSTEM, rpcmem::RPCMEM_DEFAULT_FLAGS,
-                                                  static_cast<int>(region_size_in_bytes_));
-
-  ORT_ENFORCE(region_base_address_ != nullptr);
-
-  ORT_ENFORCE(IsAligned(region_base_address_, AllocationAlignment()));
-
-  region_fd_ = rpcmem_lib_->Api().to_fd(region_base_address_);
-  ORT_ENFORCE(region_fd_ != -1);
 }
 
 DumbHtpSharedMemoryAllocator::~DumbHtpSharedMemoryAllocator() {
@@ -351,6 +339,10 @@ void* DumbHtpSharedMemoryAllocator::Alloc(size_t requested_size) {
   }
 
   std::unique_lock g{mutex_};
+
+  if (region_base_address_ == nullptr) {
+    InitializeRegion();
+  }
 
   const size_t remaining_capacity = region_size_in_bytes_ - current_region_offset_;
 
@@ -462,6 +454,22 @@ Status DumbHtpSharedMemoryAllocator::AddAllocationCleanUpForThisAllocator(void* 
   auto& clean_up_fns = allocation_it->second.clean_up_fns;
   clean_up_fns.emplace_back(std::move(allocation_clean_up));
   return Status::OK();
+}
+
+void DumbHtpSharedMemoryAllocator::InitializeRegion() {
+  ORT_ENFORCE(region_base_address_ == nullptr);
+
+  region_size_in_bytes_ = size_t{4} * 1024 * 1024 * 1024;
+
+  region_base_address_ = rpcmem_lib_->Api().alloc2(rpcmem::RPCMEM_HEAP_ID_SYSTEM, rpcmem::RPCMEM_DEFAULT_FLAGS,
+                                                   region_size_in_bytes_);
+
+  ORT_ENFORCE(region_base_address_ != nullptr);
+
+  ORT_ENFORCE(IsAligned(region_base_address_, AllocationAlignment()));
+
+  region_fd_ = rpcmem_lib_->Api().to_fd(region_base_address_);
+  ORT_ENFORCE(region_fd_ != -1);
 }
 
 }  // namespace onnxruntime::qnn

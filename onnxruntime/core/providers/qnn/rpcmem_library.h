@@ -35,6 +35,15 @@ constexpr int RPCMEM_HEAP_ID_SYSTEM = 25;
 using AllocFnPtr = void* (*)(int heapid, uint32_t flags, int size);
 
 /**
+ * Allocate a zero-copy buffer with the FastRPC framework.
+ * @param[in] heapid  Heap ID to use for memory allocation.
+ * @param[in] flags   ION flags to use for memory allocation.
+ * @param[in] size    Buffer size to allocate.
+ * @return            Pointer to the buffer on success; NULL on failure.
+ */
+using Alloc2FnPtr = void* (*)(int heapid, uint32_t flags, size_t size);
+
+/**
  * Free a buffer and ignore invalid buffers.
  */
 using FreeFnPtr = void (*)(void* po);
@@ -51,6 +60,7 @@ using ToFdFnPtr = int (*)(void* po);
 // RPCMEM API function pointers.
 struct RpcMemApi {
   rpcmem::AllocFnPtr alloc;
+  rpcmem::Alloc2FnPtr alloc2;
   rpcmem::FreeFnPtr free;
   rpcmem::ToFdFnPtr to_fd;
 };
