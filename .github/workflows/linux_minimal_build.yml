@@ -17,7 +17,6 @@ concurrency:
   cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 env:
-  # Map ADO Build.SourcesDirectory
   BUILD_SOURCES_DIRECTORY: ${{ github.workspace }}
 
 jobs:
@@ -35,17 +34,6 @@ jobs:
         with:
           submodules: false
 
-      - name: Get Docker Image using Action
-        uses: microsoft/onnxruntime-github-actions/build-docker-image@v0.0.5
-        id: build_docker_image_step
-        with:
-          dockerfile: ${{ github.workspace }}/tools/ci_build/github/linux/docker/inference/x86_64/default/cpu/Dockerfile
-          image-name: ghcr.io/microsoft/onnxruntime/onnxruntimecpubuildcix64
-          push: true
-          azure-container-registry-name: onnxruntimebuildcache
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
       - name: Export GitHub Actions cache environment variables
         uses: actions/github-script@v7
         with:
@@ -53,31 +41,28 @@ jobs:
             core.exportVariable('ACTIONS_CACHE_URL', process.env.ACTIONS_CACHE_URL || '');
             core.exportVariable('ACTIONS_RUNTIME_TOKEN', process.env.ACTIONS_RUNTIME_TOKEN || '');
 
-      - name: Run Build 1 (Using custom script)
+      - uses: microsoft/onnxruntime-github-actions/setup-build-tools@v0.0.5
+        with:
+          vcpkg-version: '2025.03.19'
+          vcpkg-hash: '17e96169cd3f266c4716fcdc1bb728e6a64f103941ece463a2834d50694eba4fb48f30135503fd466402afa139abc847ef630733c442595d1c34979f261b0114'
+          cmake-version: '3.31.6'
+          cmake-hash: '42395e20b10a8e9ef3e33014f9a4eed08d46ab952e02d2c1bbc8f6133eca0d7719fb75680f9bbff6552f20fcd1b73d86860f7f39388d631f98fb6f622b37cf04'
+          add-cmake-to-path: 'true'
+          disable-terrapin: 'true'
+
+      - name: Prepare
         shell: bash
         run: |
           set -e -x
           # Create the host directory where test data will be placed by the container script
           mkdir -p ${{ runner.temp }}/.test_data
-          # Create build output directory (e.g., /build/1)
-          mkdir -p ${{ runner.temp }}/1
-          docker run --rm \
-            --volume ${{ env.BUILD_SOURCES_DIRECTORY }}:/onnxruntime_src \
-            --volume ${{ runner.temp }}:/build \
-            -e ACTIONS_CACHE_URL \
-            -e ACTIONS_RUNTIME_TOKEN \
-            -e ALLOW_RELEASED_ONNX_OPSET_ONLY=1 \
-            -e NIGHTLY_BUILD=1 \
-            -e BUILD_BUILDNUMBER=${{ github.run_id }} \
-            ${{ steps.build_docker_image_step.outputs.full-image-name }} \
-            /bin/bash -c " \
-              set -e -x; \
-              mkdir -p /home/onnxruntimedev; \
-              # Script generates build artifacts in /build/1 and test data in /home/onnxruntimedev/.test_data (linked to /build/.test_data)
-              /onnxruntime_src/tools/ci_build/github/linux/ort_minimal/build_full_ort_and_create_ort_files.sh /build/1; \
-            "
-          ls -lha ${{ runner.temp }}/.test_data
+          cd .github/actions/build-and-prep-ort-files
+          npm ci
+          npm run build
         working-directory: ${{ env.BUILD_SOURCES_DIRECTORY }}
+
+      - name: Build Full ORT and Prepare Test Files
+        uses: ./.github/actions/build-and-prep-ort-files
 
       - name: Upload Test Data Artifact
         uses: actions/upload-artifact@v4

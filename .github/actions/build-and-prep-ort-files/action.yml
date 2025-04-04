@@ -1,0 +1,5 @@
+name: 'Build Full ORT and Prepare Test Files'
+description: 'Installs requirements, builds full ORT wheel, installs it, and generates ORT format models and config files for minimal build tests in $RUNNER_TEMP.'
+runs:
+  using: 'node20'
+  main: 'dist/index.js'
