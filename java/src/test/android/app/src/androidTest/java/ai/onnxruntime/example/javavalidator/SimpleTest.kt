@@ -82,9 +82,7 @@ class SimpleTest {
 
                 OrtProvider.QNN -> {
                     if (OrtEnvironment.getAvailableProviders().contains(OrtProvider.QNN)) {
-                        // Since this is running in an Android environment, we use the .so library
-                        val qnnLibrary = "libQnnHtp.so"
-                        val providerOptions = Collections.singletonMap("backend_path", qnnLibrary)
+                        val providerOptions = Collections.singletonMap("backend_type", "htp")
                         opts.addQnn(providerOptions)
                     } else {
                         Log.println(Log.INFO, TAG, "NO QNN EP available, skip the test")
