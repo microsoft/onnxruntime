@@ -3628,9 +3628,6 @@ GatherBlockQuantized is a Gather with data quantized. It is similar to Gather (h
         if (gather_axis < -r || gather_axis >= r) {
           fail_shape_inference("gather_axis must be in [-r, r-1]");
         }
-        if ((ctx.getInputType(0)->tensor_type().elem_type() == onnx::TensorProto_DataType_UINT8) && gather_axis != 0) {
-          fail_shape_inference("gather_axis must be 0, for uint8 data");
-        }
         if (quantize_axis < -r || quantize_axis >= r) {
           fail_shape_inference("quantize_axis must be in [-r, r-1]");
         }
@@ -3640,6 +3637,10 @@ GatherBlockQuantized is a Gather with data quantized. It is similar to Gather (h
 
         gather_axis = (gather_axis + r) % r;
         quantize_axis = (quantize_axis + r) % r;
+
+        if ((ctx.getInputType(0)->tensor_type().elem_type() == onnx::TensorProto_DataType_UINT8) && gather_axis != 0) {
+          fail_shape_inference("gather_axis must be 0, for uint8 data");
+        }
 
         if (scales_shape.dim_size() != r) {
           fail_shape_inference("scales must have the same rank as data");
