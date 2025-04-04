@@ -379,7 +379,7 @@ jobs:
 
       - name: Prepare Build Output for Upload
         shell: bash
-        run: touch ${runner.temp}/include_no_operators.config
+        run: touch $RUNNER_TEMP/include_no_operators.config
 
       - name: Run Build 6a (Using Action)
         uses: microsoft/onnxruntime-github-actions/run-build-script-in-docker@v0.0.5
@@ -445,7 +445,7 @@ jobs:
             core.exportVariable('ACTIONS_RUNTIME_TOKEN', process.env.ACTIONS_RUNTIME_TOKEN || '');
       - name: Prepare Build Output for Upload
         shell: bash
-        run: touch ${runner.temp}/include_no_operators.config
+        run: touch $RUNNER_TEMP/include_no_operators.config
       - name: Run Build 6b (Using Action)
         uses: microsoft/onnxruntime-github-actions/run-build-script-in-docker@v0.0.5
         with:
@@ -514,7 +514,7 @@ jobs:
             core.exportVariable('ACTIONS_RUNTIME_TOKEN', process.env.ACTIONS_RUNTIME_TOKEN || '');
       - name: Prepare Build Output for Upload
         shell: bash
-        run: touch ${runner.temp}/include_no_operators.config
+        run: touch $RUNNER_TEMP/include_no_operators.config
       - name: Run Build 6c (Using Action)
         uses: microsoft/onnxruntime-github-actions/run-build-script-in-docker@v0.0.5
         with:
