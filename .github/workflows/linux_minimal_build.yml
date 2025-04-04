@@ -102,13 +102,27 @@ jobs:
             core.exportVariable('ACTIONS_CACHE_URL', process.env.ACTIONS_CACHE_URL || '');
             core.exportVariable('ACTIONS_RUNTIME_TOKEN', process.env.ACTIONS_RUNTIME_TOKEN || '');
 
-      - name: Run Build 2 (Using Action)
+      - name: Run Build 2
+        uses: microsoft/onnxruntime-github-actions/run-build-script-in-docker@v0.0.5
+        with:
+          docker_image: ${{ steps.build_docker_image_step.outputs.full-image-name }}
+          build_config: Debug # From original --config Debug
+          mode: 'update'
+          extra_build_flags: >-
+            --cmake_generator Ninja
+            --use_binskim_compliant_compile_flags
+            --skip_tests
+            --minimal_build
+            --disable_exceptions
+            --enable_training_ops
+
+
+      - name: Run Build 2
         uses: microsoft/onnxruntime-github-actions/run-build-script-in-docker@v0.0.5
         with:
           docker_image: ${{ steps.build_docker_image_step.outputs.full-image-name }}
           build_config: Debug # From original --config Debug
           mode: 'build'
-          python_path_prefix: 'PATH=/opt/python/cp310-cp310/bin:$PATH' # Assuming manylinux
           extra_build_flags: >-
             --cmake_generator Ninja
             --use_binskim_compliant_compile_flags
@@ -311,14 +325,25 @@ jobs:
         with:
           docker_image: ${{ steps.build_docker_image_step.outputs.full-image-name }}
           build_config: Debug # From original --config Debug
-          mode: 'build'
-          python_path_prefix: 'PATH=/opt/python/cp310-cp310/bin:$PATH' # Assuming manylinux
+          mode: 'update'
           extra_build_flags: >-
             --cmake_generator Ninja
             --build_shared_lib
             --use_binskim_compliant_compile_flags
             --minimal_build extended
-            # Assuming tests should be run if --skip_tests is not specified
+
+      - name: Run Build 5 (Using Action)
+        uses: microsoft/onnxruntime-github-actions/run-build-script-in-docker@v0.0.5
+        with:
+          docker_image: ${{ steps.build_docker_image_step.outputs.full-image-name }}
+          build_config: Debug # From original --config Debug
+          mode: 'build'
+          extra_build_flags: >-
+            --cmake_generator Ninja
+            --build_shared_lib
+            --use_binskim_compliant_compile_flags
+            --minimal_build extended
+
 
   # Job 6a: Regular build with python and all optional features disabled.
   build_regular_no_optional:
@@ -352,13 +377,31 @@ jobs:
             core.exportVariable('ACTIONS_CACHE_URL', process.env.ACTIONS_CACHE_URL || '');
             core.exportVariable('ACTIONS_RUNTIME_TOKEN', process.env.ACTIONS_RUNTIME_TOKEN || '');
 
+      - name: Prepare Build Output for Upload
+        shell: bash
+        run: touch ${runner.temp}/include_no_operators.config
+
+      - name: Run Build 6a (Using Action)
+        uses: microsoft/onnxruntime-github-actions/run-build-script-in-docker@v0.0.5
+        with:
+          docker_image: ${{ steps.build_docker_image_step.outputs.full-image-name }}
+          build_config: MinSizeRel # From original --config MinSizeRel
+          mode: 'update'
+          extra_build_flags: >-
+            --cmake_generator Ninja
+            --build_wheel
+            --use_binskim_compliant_compile_flags
+            --skip_tests
+            --disable_ml_ops
+            --disable_types sparsetensor float8 optional
+            --include_ops_by_config /build/include_no_operators.config
+            --cmake_extra_defines onnxruntime_BUILD_UNIT_TESTS=OFF
       - name: Run Build 6a (Using Action)
         uses: microsoft/onnxruntime-github-actions/run-build-script-in-docker@v0.0.5
         with:
           docker_image: ${{ steps.build_docker_image_step.outputs.full-image-name }}
           build_config: MinSizeRel # From original --config MinSizeRel
           mode: 'build'
-          python_path_prefix: 'PATH=/opt/python/cp310-cp310/bin:$PATH' # Assuming manylinux
           extra_build_flags: >-
             --cmake_generator Ninja
             --build_wheel
@@ -400,14 +443,32 @@ jobs:
           script: |
             core.exportVariable('ACTIONS_CACHE_URL', process.env.ACTIONS_CACHE_URL || '');
             core.exportVariable('ACTIONS_RUNTIME_TOKEN', process.env.ACTIONS_RUNTIME_TOKEN || '');
-
+      - name: Prepare Build Output for Upload
+        shell: bash
+        run: touch ${runner.temp}/include_no_operators.config
+      - name: Run Build 6b (Using Action)
+        uses: microsoft/onnxruntime-github-actions/run-build-script-in-docker@v0.0.5
+        with:
+          docker_image: ${{ steps.build_docker_image_step.outputs.full-image-name }}
+          build_config: MinSizeRel # From original --config MinSizeRel
+          mode: 'update'
+          extra_build_flags: >-
+            --cmake_generator Ninja
+            --use_binskim_compliant_compile_flags
+            --minimal_build
+            --disable_exceptions
+            --disable_ml_ops
+            --skip_tests
+            --enable_reduced_operator_type_support
+            --disable_types sparsetensor optional float8
+            --include_ops_by_config /build/include_no_operators.config
+            --cmake_extra_defines onnxruntime_BUILD_UNIT_TESTS=OFF
       - name: Run Build 6b (Using Action)
         uses: microsoft/onnxruntime-github-actions/run-build-script-in-docker@v0.0.5
         with:
           docker_image: ${{ steps.build_docker_image_step.outputs.full-image-name }}
           build_config: MinSizeRel # From original --config MinSizeRel
           mode: 'build'
-          python_path_prefix: 'PATH=/opt/python/cp310-cp310/bin:$PATH' # Assuming manylinux
           extra_build_flags: >-
             --cmake_generator Ninja
             --use_binskim_compliant_compile_flags
@@ -451,14 +512,32 @@ jobs:
           script: |
             core.exportVariable('ACTIONS_CACHE_URL', process.env.ACTIONS_CACHE_URL || '');
             core.exportVariable('ACTIONS_RUNTIME_TOKEN', process.env.ACTIONS_RUNTIME_TOKEN || '');
-
+      - name: Prepare Build Output for Upload
+        shell: bash
+        run: touch ${runner.temp}/include_no_operators.config
+      - name: Run Build 6c (Using Action)
+        uses: microsoft/onnxruntime-github-actions/run-build-script-in-docker@v0.0.5
+        with:
+          docker_image: ${{ steps.build_docker_image_step.outputs.full-image-name }}
+          build_config: MinSizeRel # From original --config MinSizeRel
+          mode: 'update'
+          extra_build_flags: >-
+            --cmake_generator Ninja
+            --use_binskim_compliant_compile_flags
+            --minimal_build extended
+            --disable_exceptions
+            --disable_ml_ops
+            --skip_tests
+            --enable_reduced_operator_type_support
+            --disable_types sparsetensor optional float8
+            --include_ops_by_config /build/include_no_operators.config
+            --cmake_extra_defines onnxruntime_BUILD_UNIT_TESTS=OFF
       - name: Run Build 6c (Using Action)
         uses: microsoft/onnxruntime-github-actions/run-build-script-in-docker@v0.0.5
         with:
           docker_image: ${{ steps.build_docker_image_step.outputs.full-image-name }}
           build_config: MinSizeRel # From original --config MinSizeRel
           mode: 'build'
-          python_path_prefix: 'PATH=/opt/python/cp310-cp310/bin:$PATH' # Assuming manylinux
           extra_build_flags: >-
             --cmake_generator Ninja
             --use_binskim_compliant_compile_flags
