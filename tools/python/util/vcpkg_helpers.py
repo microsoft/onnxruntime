@@ -19,18 +19,20 @@ def add_port_configs(f, has_exception: bool, is_emscripten: bool, enable_minimal
         enable_minimal_build (bool): Flag indicating if ONNX minimal build is enabled.
     """
     f.write(
-        r"""if(PORT MATCHES "onnx")
-    list(APPEND VCPKG_CMAKE_CONFIGURE_OPTIONS
-        "-DONNX_DISABLE_STATIC_REGISTRATION=ON"
-    )
-endif()
-if(PORT MATCHES "benchmark")
+        r"""if(PORT MATCHES "benchmark")
     list(APPEND VCPKG_CMAKE_CONFIGURE_OPTIONS
         "-DBENCHMARK_ENABLE_WERROR=OFF"
     )
 endif()
-"""
+""")
+    f.write(
+        r"""if(PORT MATCHES "date")
+    list(APPEND VCPKG_CMAKE_CONFIGURE_OPTIONS
+        "-DENABLE_DATE_TESTING=OFF"
+        "-DUSE_SYSTEM_TZ_DB=ON"
     )
+endif()
+""")
     if is_emscripten:
         f.write(
             r"""if(PORT MATCHES "gtest")
@@ -43,7 +45,11 @@ endif()
 
     # Add ONNX specific flags based on exception and minimal build settings
     f.write(r"""if(PORT MATCHES "onnx")""") # Start ONNX-specific block
-
+    f.write(r"""
+    list(APPEND VCPKG_CMAKE_CONFIGURE_OPTIONS
+        "-DONNX_DISABLE_STATIC_REGISTRATION=ON"
+    )
+    """)
     if not has_exception:
         # From the ORT CMake logic: onnxruntime_DISABLE_EXCEPTIONS requires onnxruntime_MINIMAL_BUILD.
         # While we add the flag here based on has_exception, the calling build script
