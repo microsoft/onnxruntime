@@ -196,7 +196,6 @@ struct SessionOptions {
     return *load_cancellation_flag;
   }
 
- private:
   // Load cancellation flag is necessary to be within shared memory as session_options are
   // copied internally and the flag needs to be accessible across all copies.
   std::shared_ptr<std::atomic_bool> load_cancellation_flag = std::make_shared<std::atomic_bool>(false);
