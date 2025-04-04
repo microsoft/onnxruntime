@@ -274,15 +274,12 @@ Status GroupQueryAttentionFusion::ApplyImpl(
     const TensorProto* v_scale_tensor = nullptr;
     const TensorProto* v_zero_points_tensor = nullptr;
 
-    onnxruntime::NodeArg* cos_cache_arg = nullptr;
-    onnxruntime::NodeArg* sin_cache_arg = nullptr;
-    onnxruntime::NodeArg* past_key_values_key_arg = node.MutableInputDefs()[3];
-    onnxruntime::NodeArg* past_key_values_value_arg = node.MutableInputDefs()[4];
-    onnxruntime::NodeArg* seqlens_k = node.MutableInputDefs()[5];
-    onnxruntime::NodeArg* total_seq_len = node.MutableInputDefs()[6];
-
-    // The input to the newly created MatMul or MatMulNBits node.
-    onnxruntime::NodeArg* layer_norm = nullptr;
+    NodeArg* cos_cache_arg = nullptr;
+    NodeArg* sin_cache_arg = nullptr;
+    NodeArg* past_key_values_key_arg = node.MutableInputDefs()[3];
+    NodeArg* past_key_values_value_arg = node.MutableInputDefs()[4];
+    NodeArg* seqlens_k = node.MutableInputDefs()[5];
+    NodeArg* total_seq_len = node.MutableInputDefs()[6];
 
     bool quantization_used = false;
 
@@ -317,9 +314,6 @@ Status GroupQueryAttentionFusion::ApplyImpl(
           } else {
             k_node = &mat_mul_or_nbits_node;
           }
-
-          // The first input is always layer norm.
-          layer_norm = mat_mul_or_nbits_node.MutableInputDefs()[0];
         }
 
         if (cos_cache_arg == nullptr) {
@@ -357,6 +351,9 @@ Status GroupQueryAttentionFusion::ApplyImpl(
       continue;
     }
 
+    // The input to the newly created MatMul or MatMulNBits node.
+    NodeArg* layer_norm = q_node->MutableInputDefs()[0];
+
     const onnx::TypeProto* layer_norm_tensor_proto = layer_norm->TypeAsProto();
     onnx::TypeProto mutable_mat_mul_tensor_proto = *layer_norm_tensor_proto;
     auto* tensor_type = mutable_mat_mul_tensor_proto.mutable_tensor_type();
@@ -368,10 +365,13 @@ Status GroupQueryAttentionFusion::ApplyImpl(
     int64_t q_hidden_size = num_heads * head_size;
     int64_t kv_hidden_size = kv_num_heads * head_size;
 
-    // Ensure the shape has at least 3 dimensions
+    // Ensure the output shape has at least 3 dimensions [batch_size, sequence_length, hidden_size]
     if (mat_mul_or_nbits_output_shape->dim_size() > 2) {
       auto* third_dim = mat_mul_or_nbits_output_shape->mutable_dim(2);
       third_dim->set_dim_value(q_hidden_size + 2 * kv_hidden_size);
+    } else {
+      DEBUG_LOG("The newly created node does not follow output def shape of [batch_size, sequence_length, hidden_size]");
+      continue;
     }
 
     auto& matmul_or_nbits_output = graph.GetOrCreateNodeArg(graph.GenerateNodeArgName("MatMul_output"), &mutable_mat_mul_tensor_proto);
@@ -407,6 +407,7 @@ Status GroupQueryAttentionFusion::ApplyImpl(
           v_scale_tensor,
           v_zero_points_tensor);
 
+      // If the zero points tensor was present.
       if (qkv_args.size() == 3) {
         const std::array mmnb_input_defs = {layer_norm, qkv_args[0], qkv_args[1], qkv_args[2]};
 
@@ -437,19 +438,19 @@ Status GroupQueryAttentionFusion::ApplyImpl(
 
     graph_utils::FinalizeNodeFusion(graph, {*q_node, *k_node, *v_node, *rotary_node_1, *rotary_node_2}, *mat_mul_or_n_bits_new_node);
 
-    // Make sure the MatMul or MatMulNBits node has the correct output defs since the FinalizeMethod could overwrite it.
+    // Make sure the MatMul or MatMulNBits node has the correct output defs since the FinalizeNodeFusion method could overwrite it.
     auto& mat_mut_output_defs = mat_mul_or_n_bits_new_node->MutableOutputDefs();
     mat_mut_output_defs.assign(mmnb_output_defs.begin(), mmnb_output_defs.end());
 
     AttachNodeAttribute(node, "do_rotary", 1, AttributeProto_AttributeType_INT);
 
     std::string empty_name;
-    auto& emptyNode = graph.GetOrCreateNodeArg(empty_name, nullptr);
+    auto& empty_node = graph.GetOrCreateNodeArg(empty_name, nullptr);
 
     const std::array gqa_input_defs{
         &matmul_or_nbits_output,
-        &emptyNode,
-        &emptyNode,
+        &empty_node,
+        &empty_node,
         past_key_values_key_arg,
         past_key_values_value_arg,
         seqlens_k,
@@ -457,10 +458,11 @@ Status GroupQueryAttentionFusion::ApplyImpl(
         cos_cache_arg,
         sin_cache_arg};
 
-    auto& gqaInputArgs = node.MutableInputArgsCount();
-    gqaInputArgs[7] = 1;
-    gqaInputArgs[8] = 1;
+    auto& gqa_input_args = node.MutableInputArgsCount();
+    gqa_input_args[7] = 1;
+    gqa_input_args[8] = 1;
 
+    // Switch GQA input defs from unfused into the fused form. 
     auto& input_defs = node.MutableInputDefs();
     input_defs.assign(gqa_input_defs.begin(), gqa_input_defs.end());
 
