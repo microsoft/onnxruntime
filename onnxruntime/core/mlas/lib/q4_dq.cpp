@@ -402,7 +402,7 @@ template <
 struct BlockwiseQuantizer {
     // To support other qbits, need to add bit packing code for
     // storing to dst and zero points
-    static_assert(qbits == 4, "Only 4b block quantization is supported!");
+    static_assert(qbits == 4 || qbits == 8, "Only 4b and 8b block quantization is supported!");
 
     using QuantBlk = std::conditional_t<Columnwise, Shape2D<block_size, 1>, Shape2D<1, block_size>>;
     using ThreadBlk = Shape2D<QuantBlk::kRow * BitsTraits<qbits, false>::kPackSize, QuantBlk::kColumn>;
@@ -422,9 +422,15 @@ struct BlockwiseQuantizer {
         int meta_cols;
         quantizeMetaShape(rows, columns, meta_rows, meta_cols);
 
-        // quantized matrix is stored in column major, packed by column
-        q_rows = (meta_rows * QuantBlk::kRow * qbits + 7) / 8;
-        q_cols = meta_cols * QuantBlk::kColumn;
+        if constexpr (Columnwise) {
+            // quantized matrix is stored in column major, packed by column
+            q_rows = (meta_rows * QuantBlk::kRow * qbits + 7) / 8;
+            q_cols = meta_cols * QuantBlk::kColumn;
+        } else {
+            // quantized matrix is stored in row major, packed by row
+            q_rows = meta_rows * QuantBlk::kRow;
+            q_cols = (meta_cols * QuantBlk::kColumn * qbits + 7) / 8;
+        }
     }
 
     static MLAS_FORCEINLINE void quantizedBufferSizes(
@@ -440,8 +446,12 @@ struct BlockwiseQuantizer {
         scale_num_elements = meta_rows * meta_cols;
 
         if (zero_point_bytes) {
-            // this works for qbits == 4 but may need to be updated for other qbits values
-            *zero_point_bytes = ((meta_rows * qbits + 7) / 8) * meta_cols;
+            // this works for qbits == 4 or 8 but may need to be updated for other qbits values
+            if constexpr (Columnwise) {
+                *zero_point_bytes = ((meta_rows * qbits + 7) / 8) * meta_cols;
+            } else {
+                *zero_point_bytes = ((meta_cols * qbits + 7) / 8) * meta_rows;
+            }
         }
     }
 
