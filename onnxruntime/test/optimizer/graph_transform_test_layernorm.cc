@@ -580,7 +580,7 @@ TEST_F(GraphTransformationTests, SimplifiedLayerNormWithCastsFusionTestCudaEp) {
   }
 }
 
-static void TestGQAFusion(const std::basic_string<ORTCHAR_T>& file_path, logging::Logger* logger) {
+static void TestGQAFusion(const std::basic_string<ORTCHAR_T>& file_path, int matmulnbits_count, int matmul_count, logging::Logger* logger) {
   std::shared_ptr<Model> p_model;
   ASSERT_TRUE(Model::Load(file_path, p_model, nullptr, *logger).IsOK());
   Graph& graph = p_model->MainGraph();
@@ -592,7 +592,8 @@ static void TestGQAFusion(const std::basic_string<ORTCHAR_T>& file_path, logging
 
   std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
   ASSERT_TRUE(op_to_count["com.microsoft.RotaryEmbedding"] == 0);
-  ASSERT_TRUE(op_to_count["com.microsoft.MatMulNBits"] == 1);
+  ASSERT_TRUE(op_to_count["com.microsoft.MatMulNBits"] == matmulnbits_count);
+  ASSERT_TRUE(op_to_count["MatMul"] == matmul_count);
   ASSERT_TRUE(op_to_count["com.microsoft.GroupQueryAttention"] == 1);
 }
 
@@ -638,7 +639,9 @@ TEST_F(GraphTransformationTests, SkipLayerNormFusionTest) {
 }
 
 TEST_F(GraphTransformationTests, GroupQueryAttentionFusionTest) {
-  TestGQAFusion(MODEL_FOLDER "fusion/gqa_fusion.onnx", logger_.get());
+  TestGQAFusion(MODEL_FOLDER "fusion/gqa_fusion_quantized.onnx", 1, 0, logger_.get());
+  TestGQAFusion(MODEL_FOLDER "fusion/gqa_fusion.onnx", 0, 1, logger_.get());
+  TestGQAFusion(MODEL_FOLDER "fusion/gqa_fusion_dequantized_different_head_sizes.onnx", 1, 0, logger_.get());
  }
 
 TEST_F(GraphTransformationTests, SkipLayerNormFusionWithCastTest) {

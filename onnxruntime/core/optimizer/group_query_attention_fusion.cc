@@ -16,7 +16,7 @@ void MergeRows(const T* weight, std::vector<T>& result, int64_t N, int64_t block
 }
 
 // Merge Q, K, V tensors into a single vector in the order:
-// [N rows of Q, N rows of K, N rows of V].
+// [N rows of Q, M rows of K, M rows of V].
 template <typename T>
 void MergeMatMulWeights(const T* q_weight, const T* k_weight, const T* v_weight,
                         std::vector<T>& result, int64_t q_hidden_size, int64_t kv_hidden_size, int64_t blocks, int64_t block_size) {
@@ -74,46 +74,55 @@ static NodeArg& MergeQkvWeightsForMatMul(Graph& graph, int64_t q_hidden_size,
   return qkv_b_arg;
 }
 
+static std::vector<NodeArg*> MergeQkvWeightsForMatMulNBits(
+    Graph& graph,
+    int64_t q_hidden_size,
+    int64_t kv_hidden_size,
+    int64_t blocks,
+    int64_t block_size,
+    const ONNX_NAMESPACE::TensorProto* q_tensor,
+    const ONNX_NAMESPACE::TensorProto* k_tensor,
+    const ONNX_NAMESPACE::TensorProto* v_tensor,
+    const ONNX_NAMESPACE::TensorProto* q_scale_tensor,
+    const ONNX_NAMESPACE::TensorProto* q_zero_point_tensor,
+    const ONNX_NAMESPACE::TensorProto* k_scale_tensor,
+    const ONNX_NAMESPACE::TensorProto* k_zero_point_tensor,
+    const ONNX_NAMESPACE::TensorProto* v_scale_tensor,
+    const ONNX_NAMESPACE::TensorProto* v_zero_point_tensor) {
+  // Required tensors must exist.
+  assert(q_tensor != nullptr);
+  assert(k_tensor != nullptr);
+  assert(v_tensor != nullptr);
+  assert(q_scale_tensor != nullptr);
+  assert(k_scale_tensor != nullptr);
+  assert(v_scale_tensor != nullptr);
 
-static std::array<NodeArg*, 3> MergeQkvWeightsForMatMulNBits(Graph& graph,
-                                               int64_t q_hidden_size,
-                                               int64_t kv_hidden_size,
-                                               int64_t blocks,
-                                               int64_t block_size,
-                                               const ONNX_NAMESPACE::TensorProto* q_tensor,
-                                               const ONNX_NAMESPACE::TensorProto* k_tensor,
-                                               const ONNX_NAMESPACE::TensorProto* v_tensor,
-                                               const ONNX_NAMESPACE::TensorProto* q_scale_tensor,
-                                               const ONNX_NAMESPACE::TensorProto* q_zero_point_tensor,
-                                               const ONNX_NAMESPACE::TensorProto* k_scale_tensor,
-                                               const ONNX_NAMESPACE::TensorProto* k_zero_point_tensor,
-                                               const ONNX_NAMESPACE::TensorProto* v_scale_tensor,
-                                               const ONNX_NAMESPACE::TensorProto* v_zero_point_tensor) {
-  assert(nullptr != q_tensor);
-  assert(nullptr != k_tensor);
-  assert(nullptr != v_tensor);
-  assert(nullptr != q_scale_tensor);
-  assert(nullptr != k_scale_tensor);
-  assert(nullptr != v_scale_tensor);
-  assert(nullptr != q_zero_point_tensor);
-  assert(nullptr != k_zero_point_tensor);
-  assert(nullptr != v_zero_point_tensor);
+  // Determine if all zero-point tensors exist.
+  bool has_zero_points = (q_zero_point_tensor != nullptr &&
+                          k_zero_point_tensor != nullptr &&
+                          v_zero_point_tensor != nullptr);
 
+  // Create initializers for Q, K, V and scale tensors.
   Initializer q_initializer(*q_tensor, graph.ModelPath());
   Initializer k_initializer(*k_tensor, graph.ModelPath());
   Initializer v_initializer(*v_tensor, graph.ModelPath());
 
   Initializer q_scale_initializer(*q_scale_tensor, graph.ModelPath());
-  Initializer q_zp_initializer(*q_zero_point_tensor, graph.ModelPath());
-
   Initializer k_scale_initializer(*k_scale_tensor, graph.ModelPath());
-  Initializer k_zp_initializer(*k_zero_point_tensor, graph.ModelPath());
-
   Initializer v_scale_initializer(*v_scale_tensor, graph.ModelPath());
-  Initializer v_zp_initializer(*v_zero_point_tensor, graph.ModelPath());
+
+  // Retrieve raw data pointers for bias and scale.
+  const uint8_t* q_data = q_initializer.data<uint8_t>();
+  const uint8_t* k_data = k_initializer.data<uint8_t>();
+  const uint8_t* v_data = v_initializer.data<uint8_t>();
+
+  const MLFloat16* q_scale_data = q_scale_initializer.data<MLFloat16>();
+  const MLFloat16* k_scale_data = k_scale_initializer.data<MLFloat16>();
+  const MLFloat16* v_scale_data = v_scale_initializer.data<MLFloat16>();
 
   int64_t output_hidden_size = q_hidden_size + 2 * kv_hidden_size;
 
+  // Create QKV bias initializer.
   ONNX_NAMESPACE::TensorProto qkv_b_initializer;
   qkv_b_initializer.set_name(graph.GenerateNodeArgName("qkv_B"));
   qkv_b_initializer.add_dims(output_hidden_size);
@@ -121,36 +130,18 @@ static std::array<NodeArg*, 3> MergeQkvWeightsForMatMulNBits(Graph& graph,
   qkv_b_initializer.add_dims(block_size);
   qkv_b_initializer.set_data_type(q_tensor->data_type());
 
+  // Create QKV scale initializer.
   ONNX_NAMESPACE::TensorProto qkv_scale_initializer;
   qkv_scale_initializer.set_name(graph.GenerateNodeArgName("qkv_scale"));
-  // Preserve the original tensor dimensionality.
   if (q_scale_tensor->dims().size() > 1) {
     qkv_scale_initializer.add_dims(output_hidden_size);
     qkv_scale_initializer.add_dims(blocks);
   } else {
     qkv_scale_initializer.add_dims(output_hidden_size * blocks);
   }
-
   qkv_scale_initializer.set_data_type(q_scale_tensor->data_type());
 
-  ONNX_NAMESPACE::TensorProto qkv_zp_initializer;
-  qkv_zp_initializer.set_name(graph.GenerateNodeArgName("qkv_zp"));
-
-  // The number of zp elements is half of the scale elements size.
-  qkv_zp_initializer.add_dims(output_hidden_size * blocks / 2);
-  qkv_zp_initializer.set_data_type(q_zero_point_tensor->data_type());
-
-  const uint8_t* q_data = q_initializer.data<uint8_t>();
-  const uint8_t* k_data = k_initializer.data<uint8_t>();
-  const uint8_t* v_data = v_initializer.data<uint8_t>();
-
-  const MLFloat16* q_scale_data = q_scale_initializer.data<MLFloat16>();
-  const uint8_t* q_zero_points_data = q_zp_initializer.data<uint8_t>();
-  const MLFloat16* k_scale_data = k_scale_initializer.data<MLFloat16>();
-  const uint8_t* k_zero_points_data = k_zp_initializer.data<uint8_t>();
-  const MLFloat16* v_scale_data = v_scale_initializer.data<MLFloat16>();
-  const uint8_t* v_zero_points_data = v_zp_initializer.data<uint8_t>();
-
+  // Prepare merged data containers.
   size_t b_element_count = output_hidden_size * blocks * block_size;
   std::vector<uint8_t> merged_qkv_B;
   merged_qkv_B.reserve(b_element_count);
@@ -159,27 +150,51 @@ static std::array<NodeArg*, 3> MergeQkvWeightsForMatMulNBits(Graph& graph,
   std::vector<MLFloat16> merged_qkv_scale;
   merged_qkv_scale.reserve(scale_elements_count);
 
-  size_t zp_elements_count = output_hidden_size * blocks / 2;
-  std::vector<uint8_t> merged_qkv_zp;
-  merged_qkv_zp.reserve(zp_elements_count);
-
-
+  // Merge bias and scale tensors.
   MergeMatMulWeights(q_data, k_data, v_data, merged_qkv_B, q_hidden_size, kv_hidden_size, blocks, block_size);
   MergeMatMulWeights(q_scale_data, k_scale_data, v_scale_data, merged_qkv_scale, q_hidden_size, kv_hidden_size, blocks, 1);
-  MergeMatMulWeights(q_zero_points_data, k_zero_points_data, v_zero_points_data, merged_qkv_zp, q_hidden_size, kv_hidden_size, blocks / 2, 1);
 
   utils::SetRawDataInTensorProto(qkv_b_initializer, merged_qkv_B.data(), b_element_count * sizeof(uint8_t));
   utils::SetRawDataInTensorProto(qkv_scale_initializer, merged_qkv_scale.data(), scale_elements_count * sizeof(MLFloat16));
-  utils::SetRawDataInTensorProto(qkv_zp_initializer, merged_qkv_zp.data(), zp_elements_count * sizeof(uint8_t));
 
   NodeArg& qkv_b_arg = graph_utils::AddInitializer(graph, qkv_b_initializer);
   NodeArg& qkv_scale_arg = graph_utils::AddInitializer(graph, qkv_scale_initializer);
-  NodeArg& qkv_zp_arg = graph_utils::AddInitializer(graph, qkv_zp_initializer);
 
-  std::array new_tensor_node_args = {&qkv_b_arg, &qkv_scale_arg, &qkv_zp_arg};
+  std::vector<NodeArg*> new_tensor_node_args;
+  new_tensor_node_args.push_back(&qkv_b_arg);
+  new_tensor_node_args.push_back(&qkv_scale_arg);
+
+  // Group all zero-point operations into one block.
+  if (has_zero_points) {
+    Initializer q_zp_initializer(*q_zero_point_tensor, graph.ModelPath());
+    Initializer k_zp_initializer(*k_zero_point_tensor, graph.ModelPath());
+    Initializer v_zp_initializer(*v_zero_point_tensor, graph.ModelPath());
+
+    const uint8_t* q_zero_points_data = q_zp_initializer.data<uint8_t>();
+    const uint8_t* k_zero_points_data = k_zp_initializer.data<uint8_t>();
+    const uint8_t* v_zero_points_data = v_zp_initializer.data<uint8_t>();
+
+    ONNX_NAMESPACE::TensorProto qkv_zp_initializer;
+    qkv_zp_initializer.set_name(graph.GenerateNodeArgName("qkv_zp"));
+    qkv_zp_initializer.add_dims(output_hidden_size * blocks / 2);
+    qkv_zp_initializer.set_data_type(q_zero_point_tensor->data_type());
+
+    size_t zp_elements_count = output_hidden_size * blocks / 2;
+    std::vector<uint8_t> merged_qkv_zp;
+    merged_qkv_zp.reserve(zp_elements_count);
+
+    MergeMatMulWeights(q_zero_points_data, k_zero_points_data, v_zero_points_data,
+                       merged_qkv_zp, q_hidden_size, kv_hidden_size, blocks / 2, 1);
+
+    utils::SetRawDataInTensorProto(qkv_zp_initializer, merged_qkv_zp.data(), zp_elements_count * sizeof(uint8_t));
+
+    NodeArg& qkv_zp_arg = graph_utils::AddInitializer(graph, qkv_zp_initializer);
+    new_tensor_node_args.push_back(&qkv_zp_arg);
+  }
 
   return new_tensor_node_args;
 }
+
 
 
 Status GroupQueryAttentionFusion::ApplyImpl(
@@ -313,7 +328,7 @@ Status GroupQueryAttentionFusion::ApplyImpl(
       std::cout << "Unable to load Q scale tensor weight" << std::endl;
     }
 
-    if (matMulType == "MatMulNBits" && q_zero_points_tensor == nullptr && !graph.GetInitializedTensor(q_node->InputDefs()[3]->Name(), q_zero_points_tensor)) {
+    if (matMulType == "MatMulNBits" && q_zero_points_tensor == nullptr && q_node->InputDefs().size() > 3 && !graph.GetInitializedTensor(q_node->InputDefs()[3]->Name(), q_zero_points_tensor)) {
       std::cout << "Unable to load Q zero points tensor weight" << std::endl;
     }
 
@@ -325,7 +340,7 @@ Status GroupQueryAttentionFusion::ApplyImpl(
       std::cout << "Unable to load K scale tensor weight" << std::endl;
     }
 
-    if (matMulType == "MatMulNBits" && k_zero_points_tensor == nullptr && !graph.GetInitializedTensor(k_node->InputDefs()[3]->Name(), k_zero_points_tensor)) {
+    if (matMulType == "MatMulNBits" && k_zero_points_tensor == nullptr && k_node->InputDefs().size() > 3 && !graph.GetInitializedTensor(k_node->InputDefs()[3]->Name(), k_zero_points_tensor)) {
       std::cout << "Unable to load K zero points tensor weight" << std::endl;
     }
 
@@ -337,7 +352,7 @@ Status GroupQueryAttentionFusion::ApplyImpl(
       std::cout << "Unable to load V scale tensor weight" << std::endl;
     }
 
-    if (matMulType == "MatMulNBits" && v_zero_points_tensor == nullptr && !graph.GetInitializedTensor(v_node->InputDefs()[3]->Name(), v_zero_points_tensor)) {
+    if (matMulType == "MatMulNBits" && v_zero_points_tensor == nullptr && v_node->InputDefs().size() > 3 && !graph.GetInitializedTensor(v_node->InputDefs()[3]->Name(), v_zero_points_tensor)) {
       std::cout << "Unable to load V zero points tensor weight" << std::endl;
     }
 
@@ -398,6 +413,8 @@ Status GroupQueryAttentionFusion::ApplyImpl(
                                                     &q_node->GetAttributes(),
                                                     kOnnxDomainAlias);
     } else {
+      std::cout << "came hereee1" << std::endl;
+
       auto qkv_args = MergeQkvWeightsForMatMulNBits(
           graph,
           q_hidden_size,
@@ -413,17 +430,32 @@ Status GroupQueryAttentionFusion::ApplyImpl(
           k_zero_points_tensor,
           v_scale_tensor,
           v_zero_points_tensor);
-      const std::array mmnb_input_defs{layer_norm, qkv_args[0], qkv_args[1], qkv_args[2]};
 
-      mat_mul_n_bits_new_node = &graph.AddNode(graph.GenerateNodeName("MatMulNBits"),
-                                                    "MatMulNBits",
-                                                    "MatMulNBits fusion node",
-                                                    mmnb_input_defs,
-                                                    mmnb_output_defs,
-                                                    &q_node->GetAttributes(),
-                                                    kMSDomain);
+      if (qkv_args.size() == 3) {
+        const std::array mmnb_input_defs = {layer_norm, qkv_args[0], qkv_args[1], qkv_args[2]};
 
-     AttachNodeAttribute(*mat_mul_n_bits_new_node, "N", 3 * mat_mul_n_bits_new_node->GetAttributes().at("N").i(), AttributeProto_AttributeType_INT);
+        mat_mul_n_bits_new_node = &graph.AddNode(graph.GenerateNodeName("MatMulNBits"),
+                                                 "MatMulNBits",
+                                                 "MatMulNBits fusion node",
+                                                 mmnb_input_defs,
+                                                 mmnb_output_defs,
+                                                 &q_node->GetAttributes(),
+                                                 kMSDomain);
+
+      } else {
+        const std::array mmnb_input_defs = {layer_norm, qkv_args[0], qkv_args[1]};
+
+        mat_mul_n_bits_new_node = &graph.AddNode(graph.GenerateNodeName("MatMulNBits"),
+                                                 "MatMulNBits",
+                                                 "MatMulNBits fusion node",
+                                                 mmnb_input_defs,
+                                                 mmnb_output_defs,
+                                                 &q_node->GetAttributes(),
+                                                 kMSDomain);
+      }
+     
+      //3 * mat_mul_n_bits_new_node->GetAttributes().at("N").i()
+      AttachNodeAttribute(*mat_mul_n_bits_new_node, "N", q_hidden_size + 2 * kv_hidden_size, AttributeProto_AttributeType_INT);
 
     }
 
@@ -464,6 +496,7 @@ Status GroupQueryAttentionFusion::ApplyImpl(
 
     [[maybe_unused]] NodeAttributes node_attributes2 = node.GetAttributes();
 
+    // todo prob remove
     ORT_RETURN_IF_ERROR(graph.Resolve());
 
     modified = true;
