@@ -207,6 +207,7 @@ class WebGpuContext final {
 
   webgpu::ValidationMode validation_mode_;
 
+  wgpu::Queue device_queue_;
   wgpu::AdapterInfo adapter_info_;
   wgpu::Limits device_limits_;
   std::unordered_set<wgpu::FeatureName> device_features_;
