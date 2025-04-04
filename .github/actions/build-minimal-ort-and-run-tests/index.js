@@ -1,6 +1,6 @@
 const core = require('@actions/core');
 const exec = require('@actions/exec');
-const artifact = require('@actions/artifact');
+const {DefaultArtifactClient} = require('@actions/artifact')
 const fs = require('fs').promises;
 const path = require('path');
 const os = require('os');
@@ -99,7 +99,7 @@ async function main() {
     core.info(`Test Data Download Directory: ${testDataDownloadDir}`);
     core.info(`Reduced Ops Config File Path: ${fullReducedOpsConfigFile}`);
 
-    const artifactClient = artifact.create();
+    const artifactClient = new DefaultArtifactClient();
 
     try {
         // --- Download Test Data ---
