@@ -189,7 +189,7 @@ jobs:
       - name: Build Full ORT and Prepare Test Files
         uses: ./.github/actions/build-minimal-ort-and-run-tests
         with:
-          reduced-ops-config-file: ${{ runner.temp }}/.test_data/required_ops.ort_models.config
+          reduced-ops-config-file: required_ops.ort_models.config
           enable-custom-ops: 'true'
           binary-size-report-name-prefix: "3a"
 
@@ -240,7 +240,7 @@ jobs:
       - name: Build Full ORT and Prepare Test Files
         uses: ./.github/actions/build-minimal-ort-and-run-tests
         with:
-          reduced-ops-config-file: ${{ runner.temp }}/.test_data/required_ops_and_types.ort_models.config
+          reduced-ops-config-file: required_ops_and_types.ort_models.config
           enable-type-reduction: 'true'
           binary-size-report-name-prefix: "3b"
 
@@ -291,12 +291,12 @@ jobs:
       - name: gen config
         shell: bash
         run: |
-          printf "%s\n%s\n"  "!globally_allowed_types;bool,float,int8_t,uint8_t"  "!no_ops_specified_means_all_ops_are_required"  > ${{ runner.temp }}/.test_data/globally_allowed_types.config 
+          printf "%s\n%s\n"  "!globally_allowed_types;bool,float,int8_t,uint8_t"  "!no_ops_specified_means_all_ops_are_required"  > ${{ runner.temp }}/.test_data/globally_allowed_types.config
 
       - name: Build Full ORT and Prepare Test Files
         uses: ./.github/actions/build-minimal-ort-and-run-tests
         with:
-          reduced-ops-config-file: ${{ runner.temp }}/.test_data/globally_allowed_types.config
+          reduced-ops-config-file: globally_allowed_types.config
           enable-type-reduction: 'true'
           skip-model-tests: 'true'
           binary-size-report-name-prefix: "4"
