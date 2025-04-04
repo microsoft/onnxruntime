@@ -7,12 +7,11 @@
 #include "core/optimizer/utils.h"
 
 using namespace ONNX_NAMESPACE;
-using namespace ::onnxruntime::common;
 namespace onnxruntime {
 
 static void AttachNodeAttribute(Node& node, const std::string& attribute_name, int64_t attribute_value, AttributeProto_AttributeType attribute_type) {
   NodeAttributes& node_attributes = node.GetMutableAttributes();
-  ONNX_NAMESPACE::AttributeProto attr;
+  AttributeProto attr;
   attr.set_name(attribute_name);
   attr.set_i(attribute_value);
   attr.set_type(attribute_type);
@@ -22,9 +21,9 @@ static void AttachNodeAttribute(Node& node, const std::string& attribute_name, i
 static NodeArg& MergeQkvWeightsForMatMul(Graph& graph,
                                          int64_t q_hidden_size,
                                          int64_t kv_hidden_size,
-                                         const ONNX_NAMESPACE::TensorProto* q_tensor,
-                                         const ONNX_NAMESPACE::TensorProto* k_tensor,
-                                         const ONNX_NAMESPACE::TensorProto* v_tensor) {
+                                         const TensorProto* q_tensor,
+                                         const TensorProto* k_tensor,
+                                         const TensorProto* v_tensor) {
   assert(nullptr != q_tensor);
   assert(nullptr != k_tensor);
   assert(nullptr != v_tensor);
@@ -37,7 +36,7 @@ static NodeArg& MergeQkvWeightsForMatMul(Graph& graph,
 
   int64_t output_hidden_size = q_hidden_size + 2 * kv_hidden_size;
 
-  ONNX_NAMESPACE::TensorProto qkv_b_initializer;
+  TensorProto qkv_b_initializer;
   qkv_b_initializer.set_name(graph.GenerateNodeArgName("qkv_B"));
   qkv_b_initializer.add_dims(input_hidden_size);
   qkv_b_initializer.add_dims(output_hidden_size);
@@ -63,15 +62,15 @@ static std::vector<NodeArg*> MergeQkvWeightsForMatMulNBits(
     int64_t kv_hidden_size,
     int64_t blocks,
     int64_t block_size,
-    const ONNX_NAMESPACE::TensorProto* q_tensor,
-    const ONNX_NAMESPACE::TensorProto* k_tensor,
-    const ONNX_NAMESPACE::TensorProto* v_tensor,
-    const ONNX_NAMESPACE::TensorProto* q_scale_tensor,
-    const ONNX_NAMESPACE::TensorProto* q_zero_point_tensor,
-    const ONNX_NAMESPACE::TensorProto* k_scale_tensor,
-    const ONNX_NAMESPACE::TensorProto* k_zero_point_tensor,
-    const ONNX_NAMESPACE::TensorProto* v_scale_tensor,
-    const ONNX_NAMESPACE::TensorProto* v_zero_point_tensor) {
+    const TensorProto* q_tensor,
+    const TensorProto* k_tensor,
+    const TensorProto* v_tensor,
+    const TensorProto* q_scale_tensor,
+    const TensorProto* q_zero_point_tensor,
+    const TensorProto* k_scale_tensor,
+    const TensorProto* k_zero_point_tensor,
+    const TensorProto* v_scale_tensor,
+    const TensorProto* v_zero_point_tensor) {
 
   // B and scale tensors are required.
   assert(q_tensor != nullptr);
@@ -94,7 +93,6 @@ static std::vector<NodeArg*> MergeQkvWeightsForMatMulNBits(
   Initializer k_scale_initializer(*k_scale_tensor, graph.ModelPath());
   Initializer v_scale_initializer(*v_scale_tensor, graph.ModelPath());
 
-  // Retrieve raw data pointers for bias and scale.
   const uint8_t* q_data = q_initializer.data<uint8_t>();
   const uint8_t* k_data = k_initializer.data<uint8_t>();
   const uint8_t* v_data = v_initializer.data<uint8_t>();
@@ -105,14 +103,14 @@ static std::vector<NodeArg*> MergeQkvWeightsForMatMulNBits(
 
   int64_t output_hidden_size = q_hidden_size + 2 * kv_hidden_size;
 
-  ONNX_NAMESPACE::TensorProto qkv_b_initializer;
+  TensorProto qkv_b_initializer;
   qkv_b_initializer.set_name(graph.GenerateNodeArgName("qkv_B"));
   qkv_b_initializer.add_dims(output_hidden_size);
   qkv_b_initializer.add_dims(blocks);
   qkv_b_initializer.add_dims(block_size);
   qkv_b_initializer.set_data_type(q_tensor->data_type());
 
-  ONNX_NAMESPACE::TensorProto qkv_scale_initializer;
+  TensorProto qkv_scale_initializer;
   qkv_scale_initializer.set_name(graph.GenerateNodeArgName("qkv_scale"));
 
   // Preserve scale tensor shape (the dimenson is either 1 or 2).
@@ -152,7 +150,7 @@ static std::vector<NodeArg*> MergeQkvWeightsForMatMulNBits(
     const uint8_t* k_zero_points_data = k_zp_initializer.data<uint8_t>();
     const uint8_t* v_zero_points_data = v_zp_initializer.data<uint8_t>();
 
-    ONNX_NAMESPACE::TensorProto qkv_zp_initializer;
+    TensorProto qkv_zp_initializer;
     size_t zp_elements_count = output_hidden_size * blocks / 2;
 
     qkv_zp_initializer.set_name(graph.GenerateNodeArgName("qkv_zp"));
@@ -182,11 +180,6 @@ Status GroupQueryAttentionFusion::ApplyImpl(
   GraphViewer graph_viewer(graph);
   const auto& node_topology_list = graph_viewer.GetNodesInTopologicalOrder();
 
-  // TODO: Remove later
-  for (const auto& ep : GetCompatibleExecutionProviders()) {
-    std::cout << std::string(ep) << std::endl;
-  }
-
   for (auto node_index : node_topology_list) {
     auto* node_ptr = graph.GetNode(node_index);
     if (node_ptr == nullptr)
@@ -201,24 +194,25 @@ Status GroupQueryAttentionFusion::ApplyImpl(
       continue;
     }
 
-    auto& inputs = node.MutableInputDefs();
+    const auto& gqa_node_attrs = node.GetAttributes();
+    const auto do_rotary_attr_it = gqa_node_attrs.find("do_rotary");
 
-    // Check if this fusion is called the second time.
-    if (inputs[1]->Type() == nullptr) {
+    // Check if GQA is already fused.
+    if (do_rotary_attr_it != gqa_node_attrs.end() && do_rotary_attr_it->second.i() == 1) {
       continue;
     }
-
+  
     std::cout << "-----------------" << std::endl;
 
-    const ONNX_NAMESPACE::TensorProto* k_proj_tensor = nullptr;
-    const ONNX_NAMESPACE::TensorProto* k_scale_tensor = nullptr;
-    const ONNX_NAMESPACE::TensorProto* k_zero_points_tensor = nullptr;
-    const ONNX_NAMESPACE::TensorProto* q_proj_tensor = nullptr;
-    const ONNX_NAMESPACE::TensorProto* q_scale_tensor = nullptr;
-    const ONNX_NAMESPACE::TensorProto* q_zero_points_tensor = nullptr;
-    const ONNX_NAMESPACE::TensorProto* v_proj_tensor = nullptr;
-    const ONNX_NAMESPACE::TensorProto* v_scale_tensor = nullptr;
-    const ONNX_NAMESPACE::TensorProto* v_zero_points_tensor = nullptr;
+    const TensorProto* k_proj_tensor = nullptr;
+    const TensorProto* k_scale_tensor = nullptr;
+    const TensorProto* k_zero_points_tensor = nullptr;
+    const TensorProto* q_proj_tensor = nullptr;
+    const TensorProto* q_scale_tensor = nullptr;
+    const TensorProto* q_zero_points_tensor = nullptr;
+    const TensorProto* v_proj_tensor = nullptr;
+    const TensorProto* v_scale_tensor = nullptr;
+    const TensorProto* v_zero_points_tensor = nullptr;
 
     onnxruntime::NodeArg* pos_ids_arg = nullptr;
     onnxruntime::NodeArg* cos_cache_arg = nullptr;

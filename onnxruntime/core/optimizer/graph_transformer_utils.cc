@@ -283,10 +283,7 @@ InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
       const bool enable_gelu_approximation =
           session_options.config_options.GetConfigOrDefault(kOrtSessionOptionsEnableGeluApproximation, "0") == "1";
 
-      // TOOD: remove DML execution provider, keeping it here now only for easier testing
-      const InlinedHashSet<std::string_view> cuda_eps = {onnxruntime::kCudaExecutionProvider
-                                                             //onnxruntime::kDmlExecutionProvider                           
-      };
+      const InlinedHashSet<std::string_view> cuda_eps = {onnxruntime::kCudaExecutionProvider};
     
       const InlinedHashSet<std::string_view> cuda_rocm_eps = {onnxruntime::kCudaExecutionProvider,
                                                               onnxruntime::kRocmExecutionProvider};
