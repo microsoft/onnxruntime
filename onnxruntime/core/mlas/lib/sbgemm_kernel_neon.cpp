@@ -21,6 +21,11 @@ Abstract:
 #include "mlasi.h"
 #include "sbgemm.h"
 
+#ifdef USE_KLEIDIAI
+#include "kai/ukernels/matmul/pack/kai_rhs_pack_kxn_bf16p2vlx2b_f32_x32_sme.h"
+#include "kai/ukernels/matmul/matmul_clamp_fp32_bf16p_bf16p/kai_matmul_clamp_f32_bf16p2vlx2_bf16p2vlx2_2vlx2vl_sme2_mopa.h"
+#endif
+
 struct MLAS_SBGEMM_KERNEL_NEON {
     static constexpr bool PackNeeded = true;
     static constexpr size_t KernelMaxM = 8;  // max # rows the vectorized kernel can process
@@ -316,21 +321,35 @@ MlasSBGemmConvertPackB(
     const auto* dispatch = MlasSBGemmGetDispatch();
     if (dispatch == nullptr) return;
 
-    const auto PackedN = dispatch->PackedN;
+#ifdef USE_KLEIDIAI
+    if (MLAS_CPUIDINFO::GetCPUIDInfo().HasArm_SME()) {
+        const std::vector<float> bias(CountN);
 
-    const size_t AlignedN = (CountN + PackedN - 1) & ~(PackedN - 1);
+        const size_t nr = kai_get_nr_matmul_clamp_f32_bf16p2vlx2_bf16p2vlx2_2vlx2vl_sme2_mopa();
+        const size_t kr = kai_get_kr_matmul_clamp_f32_bf16p2vlx2_bf16p2vlx2_2vlx2vl_sme2_mopa();
+        const size_t sr = kai_get_sr_matmul_clamp_f32_bf16p2vlx2_bf16p2vlx2_2vlx2vl_sme2_mopa();
 
-    //
-    // Step through each slice of matrix B along the K dimension.
-    //
-    size_t K_block_size;
-    constexpr MLAS_SBGEMM_STRIDES Strides = KernelType::Strides;
+        kai_run_rhs_pack_kxn_bf16p2vlx2b_f32_x32_sme(1, CountN, CountK, nr, kr, sr,
+            ldb * sizeof(float), B, bias.data(), nullptr, PackedB, 0, nullptr);
+    } else
+#endif
+    {
+        const auto PackedN = dispatch->PackedN;
 
-    for (size_t k = 0; k < CountK; k += K_block_size) {
-        K_block_size = std::min(CountK - k, Strides.K);
+        const size_t AlignedN = (CountN + PackedN - 1) & ~(PackedN - 1);
 
-        MlasSBGemmConvertCopyPackB((bfloat16_t*)PackedB, B + k * ldb, ldb, CountN, K_block_size);
-        PackedB = (bfloat16_t*)PackedB + AlignedN * K_block_size;
+        //
+        // Step through each slice of matrix B along the K dimension.
+        //
+        size_t K_block_size;
+        constexpr MLAS_SBGEMM_STRIDES Strides = KernelType::Strides;
+
+        for (size_t k = 0; k < CountK; k += K_block_size) {
+            K_block_size = std::min(CountK - k, Strides.K);
+
+            MlasSBGemmConvertCopyPackB((bfloat16_t*)PackedB, B + k * ldb, ldb, CountN, K_block_size);
+            PackedB = (bfloat16_t*)PackedB + AlignedN * K_block_size;
+        }
     }
 }
 

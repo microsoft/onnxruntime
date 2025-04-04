@@ -17,6 +17,12 @@ Abstract:
 
 #include "mlasi.h"
 
+#ifdef USE_KLEIDIAI
+#include "kai/ukernels/matmul/pack/kai_rhs_pack_kxn_f32p2vlx1biasf32_f32_f32_sme.h"
+#include "kai/ukernels/matmul/pack/kai_lhs_pack_f32p2vlx1_f32_sme.h"
+#include "kai/ukernels/matmul/matmul_clamp_f32_f32p_f32p/kai_matmul_clamp_f32_f32p2vlx1_f32p2vlx1biasf32_sme2_mopa.h"
+#endif
+
 //
 // Define the number of rows from matrix A to transpose to a local buffer.
 //
@@ -25,6 +31,16 @@ Abstract:
 //
 
 #define MLAS_SGEMM_TRANSA_ROWS              12
+
+#ifdef USE_KLEIDIAI
+bool UseKleidiAISgemm(
+    CBLAS_TRANSPOSE TransA,
+    CBLAS_TRANSPOSE TransB
+    )
+{
+    return TransA == CblasNoTrans && TransB == CblasNoTrans && MLAS_CPUIDINFO::GetCPUIDInfo().HasArm_SME();
+}
+#endif
 
 //
 // Define the parameters to execute segments of a SGEMM operation on worker
@@ -1323,6 +1339,7 @@ Return Value:
 void
 MlasSgemmPackedOperation(
     CBLAS_TRANSPOSE TransA,
+    CBLAS_TRANSPOSE TransB,
     size_t M,
     size_t RangeStartN,
     size_t RangeCountN,
@@ -1346,6 +1363,8 @@ Routine Description:
 Arguments:
 
     TransA - Supplies the transpose operation for matrix A.
+
+    TransB - Supplies the transpose operation for matrix B.
 
     M - Supplies the number of rows of matrix A and matrix C.
 
@@ -1380,77 +1399,97 @@ Return Value:
 
 --*/
 {
-    float PanelA[MLAS_SGEMM_TRANSA_ROWS * MLAS_SGEMM_PACKED_STRIDEK];
+#ifndef USE_KLEIDIAI
+    MLAS_UNREFERENCED_PARAMETER(TransB);
+#endif
 
-    //
-    // Step through each slice of matrix B along the N dimension.
-    //
+#ifdef USE_KLEIDIAI
+    if (UseKleidiAISgemm(TransA, TransB)) {
+        const size_t dst_stride = ldc * sizeof(float);
 
-    size_t CountN;
+        const size_t rhs_packed_offset =
+            kai_get_rhs_packed_offset_matmul_clamp_f32_f32p2vlx1_f32p2vlx1biasf32_sme2_mopa(RangeStartN, K);
+        const void* rhs_ptr = reinterpret_cast<const void*>(
+                reinterpret_cast<const char *>(PackedB) + rhs_packed_offset);
 
-    for (size_t n = 0; n < RangeCountN; n += CountN) {
-
-        const size_t SliceStartN = RangeStartN + n;
-
-        CountN = std::min(RangeCountN - n, size_t(MLAS_SGEMM_PACKED_STRIDEN));
+        kai_run_matmul_clamp_f32_f32p2vlx1_f32p2vlx1biasf32_sme2_mopa(M, RangeCountN, K,
+            A, rhs_ptr, C, dst_stride, sizeof(float),
+            -std::numeric_limits<float>::max(), std::numeric_limits<float>::max());
+    } else
+#endif
+    {
+        float PanelA[MLAS_SGEMM_TRANSA_ROWS * MLAS_SGEMM_PACKED_STRIDEK];
 
         //
-        // Multiply the output matrix by beta as needed.
+        // Step through each slice of matrix B along the N dimension.
         //
 
-        if (beta != 0.0f && beta != 1.0f) {
-            MlasSgemmMultiplyBeta(C + n, M, CountN, ldc, beta);
-        }
+        size_t CountN;
 
-        //
-        // Step through each slice of matrix B along the K dimension.
-        //
+        for (size_t n = 0; n < RangeCountN; n += CountN) {
 
-        size_t CountK;
-        bool ZeroMode = (beta == 0.0f);
+            const size_t SliceStartN = RangeStartN + n;
 
-        for (size_t k = 0; k < K; k += CountK) {
-
-            CountK = std::min(K - k, size_t(MLAS_SGEMM_PACKED_STRIDEK));
+            CountN = std::min(RangeCountN - n, size_t(MLAS_SGEMM_PACKED_STRIDEN));
 
             //
-            // Step through each slice of matrix A along the M dimension.
+            // Multiply the output matrix by beta as needed.
             //
 
-            const float* pb = (const float*)PackedB + AlignedN * k + CountK * SliceStartN;
-            float* c = C + n;
-
-            if (TransA == CblasNoTrans) {
-
-                MlasSgemmKernelLoop(A + k, pb, c, CountK, M, CountN, lda, ldc, alpha, ZeroMode);
-
-            } else {
-
-                const float* a = A + k * lda;
-                size_t RowsRemaining = M;
-
-                while (RowsRemaining > 0) {
-
-                    //
-                    // Transpose elements from matrix A into a local buffer.
-                    //
-
-                    size_t RowsTransposed = std::min(RowsRemaining, size_t(MLAS_SGEMM_TRANSA_ROWS));
-
-                    MlasSgemmTransposeA(PanelA, a, lda, RowsTransposed, CountK);
-
-                    RowsRemaining -= RowsTransposed;
-                    a += RowsTransposed;
-
-                    //
-                    // Step through the rows of the local buffer.
-                    //
-
-                    c = MlasSgemmKernelLoop(PanelA, pb, c, CountK, RowsTransposed, CountN, CountK, ldc, alpha, ZeroMode);
-                }
+            if (beta != 0.0f && beta != 1.0f) {
+                MlasSgemmMultiplyBeta(C + n, M, CountN, ldc, beta);
             }
 
-            ZeroMode = false;
+            //
+            // Step through each slice of matrix B along the K dimension.
+            //
+
+            size_t CountK;
+            bool ZeroMode = (beta == 0.0f);
+
+            for (size_t k = 0; k < K; k += CountK) {
+
+                CountK = std::min(K - k, size_t(MLAS_SGEMM_PACKED_STRIDEK));
+
+                //
+                // Step through each slice of matrix A along the M dimension.
+                //
+
+                const float* pb = (const float*)PackedB + AlignedN * k + CountK * SliceStartN;
+                float* c = C + n;
+
+                if (TransA == CblasNoTrans) {
+
+                    MlasSgemmKernelLoop(A + k, pb, c, CountK, M, CountN, lda, ldc, alpha, ZeroMode);
+
+                } else {
+
+                    const float* a = A + k * lda;
+                    size_t RowsRemaining = M;
+
+                    while (RowsRemaining > 0) {
+
+                        //
+                        // Transpose elements from matrix A into a local buffer.
+                        //
+
+                        size_t RowsTransposed = std::min(RowsRemaining, size_t(MLAS_SGEMM_TRANSA_ROWS));
+
+                        MlasSgemmTransposeA(PanelA, a, lda, RowsTransposed, CountK);
+
+                        RowsRemaining -= RowsTransposed;
+                        a += RowsTransposed;
+
+                        //
+                        // Step through the rows of the local buffer.
+                        //
+
+                        c = MlasSgemmKernelLoop(PanelA, pb, c, CountK, RowsTransposed, CountN, CountK, ldc, alpha, ZeroMode);
+                    }
+                }
+
+                ZeroMode = false;
+            }
         }
     }
 }
@@ -1497,7 +1536,6 @@ Return Value:
 
 --*/
 {
-
     const ptrdiff_t ThreadIdM = ThreadId / ThreadCountN;
     const ptrdiff_t ThreadIdN = ThreadId % ThreadCountN;
 
@@ -1508,23 +1546,43 @@ Return Value:
     size_t RangeStartM;
     size_t RangeCountM;
 
-    MlasPartitionWork(ThreadIdM, ThreadCountM, M, &RangeStartM, &RangeCountM);
+#ifdef USE_KLEIDIAI
+    if (UseKleidiAISgemm(TransA, TransB)) {
+        const size_t m_step = kai_get_m_step_matmul_clamp_f32_f32p2vlx1_f32p2vlx1biasf32_sme2_mopa();
+        const size_t BlockedM = (M + m_step - 1) / m_step;
+
+        MlasPartitionWork(ThreadIdM, ThreadCountM, BlockedM, &RangeStartM, &RangeCountM);
+
+        RangeStartM *= m_step;
+        RangeCountM *= m_step;
+        RangeCountM = std::min(RangeCountM, M - RangeStartM);
+    } else
+#endif
+    {
+        MlasPartitionWork(ThreadIdM, ThreadCountM, M, &RangeStartM, &RangeCountM);
+    }
 
     //
     // Partition the operation along the N dimension.
     //
 
+    size_t n_step = MLAS_SGEMM_STRIDEN_THREAD_ALIGN;
+#ifdef USE_KLEIDIAI
+    if (UseKleidiAISgemm(TransA, TransB)) {
+        n_step = kai_get_n_step_matmul_clamp_f32_f32p2vlx1_f32p2vlx1biasf32_sme2_mopa();
+    }
+#endif
     size_t RangeStartN;
     size_t RangeCountN;
 
-    const size_t BlockedN = (N + MLAS_SGEMM_STRIDEN_THREAD_ALIGN - 1) /
-        MLAS_SGEMM_STRIDEN_THREAD_ALIGN;
+    const size_t BlockedN = (N + n_step - 1) /
+        n_step;
 
     MlasPartitionWork(ThreadIdN, ThreadCountN, BlockedN, &RangeStartN,
         &RangeCountN);
 
-    RangeStartN *= MLAS_SGEMM_STRIDEN_THREAD_ALIGN;
-    RangeCountN *= MLAS_SGEMM_STRIDEN_THREAD_ALIGN;
+    RangeStartN *= n_step;
+    RangeCountN *= n_step;
 
     RangeCountN = std::min(N - RangeStartN, RangeCountN);
 
@@ -1539,8 +1597,15 @@ Return Value:
     float* C = DataParams->C + RangeStartM * ldc + RangeStartN;
 
     if (DataParams->BIsPacked) {
-
-        MlasSgemmPackedOperation(TransA, RangeCountM, RangeStartN, RangeCountN,
+#ifdef USE_KLEIDIAI
+        if (UseKleidiAISgemm(TransA, TransB)) {
+            const size_t lhs_packed_offset =
+                kai_get_lhs_packed_offset_matmul_clamp_f32_f32p2vlx1_f32p2vlx1biasf32_sme2_mopa(RangeStartM, K);
+            A = reinterpret_cast<const float *>(
+                reinterpret_cast<const std::byte *>(DataParams->A) + lhs_packed_offset);
+        }
+#endif
+        MlasSgemmPackedOperation(TransA, TransB, RangeCountM, RangeStartN, RangeCountN,
             K, DataParams->alpha, A, lda, DataParams->B,
             BlockedN * MLAS_SGEMM_STRIDEN_THREAD_ALIGN, DataParams->beta, C, ldc);
 
@@ -1572,6 +1637,58 @@ MlasGemmBatch(
     MLAS_THREADPOOL* ThreadPool
     )
 {
+    if (M == 0 || N == 0 || K == 0) {
+        return;
+    }
+
+    std::vector<MLAS_SGEMM_DATA_PARAMS> PackedData;
+#ifdef USE_KLEIDIAI
+    size_t LhsPackedStride = 0;
+    std::vector<std::byte> LhsPacked;
+    std::byte *LhsPackedData = nullptr;
+
+    size_t RhsPackedStride = 0;
+    std::vector<std::byte> RhsPacked;
+    std::byte *RhsPackedData = nullptr;
+    if (UseKleidiAISgemm(TransA, TransB)) {
+        const size_t mr = kai_get_mr_matmul_clamp_f32_f32p2vlx1_f32p2vlx1biasf32_sme2_mopa();
+        const size_t kr = kai_get_kr_matmul_clamp_f32_f32p2vlx1_f32p2vlx1biasf32_sme2_mopa();
+        const size_t sr = kai_get_sr_matmul_clamp_f32_f32p2vlx1_f32p2vlx1biasf32_sme2_mopa();
+
+        PackedData.resize(BatchSize);
+        LhsPackedStride = kai_get_lhs_packed_size_lhs_pack_f32p2vlx1_f32_sme(M, K, mr, kr, sr);
+        LhsPacked.resize(LhsPackedStride * BatchSize);
+        LhsPackedData = LhsPacked.data();
+        MlasTrySimpleParallel(ThreadPool, BatchSize, [&](ptrdiff_t gemm_idx) {
+            const MLAS_SGEMM_DATA_PARAMS* Params = &(Data[gemm_idx]);
+            std::byte *LhsPackedPtr = &(LhsPackedData[LhsPackedStride * gemm_idx]);
+
+            kai_run_lhs_pack_f32p2vlx1_f32_sme(M, K, mr, kr, sr, 0,
+                Params->A, Params->lda * sizeof(float), LhsPackedPtr);
+
+            MLAS_SGEMM_DATA_PARAMS* PackedParams = &(PackedData[gemm_idx]);
+            *PackedParams = *Params;
+            PackedParams->A = reinterpret_cast<const float *>(LhsPackedPtr);
+        });
+
+        if (!Data[0].BIsPacked) {
+            RhsPackedStride = MlasGemmPackBSize(TransA, TransB, N, K);
+            RhsPacked.resize(RhsPackedStride * BatchSize);
+            RhsPackedData = RhsPacked.data();
+
+            MlasTrySimpleParallel(ThreadPool, BatchSize, [&](ptrdiff_t gemm_idx) {
+                MLAS_SGEMM_DATA_PARAMS* PackedParams = &(PackedData[gemm_idx]);
+                std::byte *RhsPackedPtr = &(RhsPackedData[RhsPackedStride * gemm_idx]);
+                MlasGemmPackB(TransA, TransB, N, K, reinterpret_cast<const float *>(PackedParams->B),
+                PackedParams->ldb, RhsPackedPtr);
+
+                PackedParams->B = reinterpret_cast<const float *>(RhsPackedPtr);
+                PackedParams->ldb = 0;
+                PackedParams->BIsPacked = true;
+            });
+        }
+    }
+#endif
 
     //
     // Compute the number of target threads given the complexity of the SGEMM
@@ -1626,8 +1743,9 @@ MlasGemmBatch(
     {
         ptrdiff_t GemmIdx = tid / ThreadsPerGemm;
         ptrdiff_t ThreadIdx = tid % ThreadsPerGemm;
+        const MLAS_SGEMM_DATA_PARAMS *Params = PackedData.empty()? &(Data[GemmIdx]) : &(PackedData[GemmIdx]);
         MlasSgemmThreaded(ThreadCountM, ThreadCountN,
-            TransA, TransB, M, N, K, &(Data[GemmIdx]), ThreadIdx);
+            TransA, TransB, M, N, K, Params, ThreadIdx);
     });
 }
 #if defined(_MSC_VER) && !defined(__clang__)
@@ -1637,6 +1755,8 @@ MlasGemmBatch(
 size_t
 MLASCALL
 MlasGemmPackBSize(
+    CBLAS_TRANSPOSE TransA,
+    CBLAS_TRANSPOSE TransB,
     size_t N,
     size_t K
     )
@@ -1648,6 +1768,10 @@ Routine Description:
 
 Arguments:
 
+    TransA - Supplies the transpose operation on A matrix
+
+    TransB - Supplies the transpose operation on B matrix
+
     N - Supplies the number of columns of matrix B.
 
     K - Supplies the number of rows of matrix B.
@@ -1658,14 +1782,26 @@ Return Value:
 
 --*/
 {
+#ifndef USE_KLEIDIAI
+    MLAS_UNREFERENCED_PARAMETER(TransA);
+    MLAS_UNREFERENCED_PARAMETER(TransB);
+#endif
     //
     // Compute the number of bytes required to hold the packed buffer.
     //
 
-    const size_t AlignedN =
-        (N + MLAS_SGEMM_STRIDEN_THREAD_ALIGN - 1) & ~(MLAS_SGEMM_STRIDEN_THREAD_ALIGN - 1);
+    size_t BytesRequired;
+#ifdef USE_KLEIDIAI
+    if (UseKleidiAISgemm(TransA, TransB)) {
+        BytesRequired = kai_get_rhs_packed_size_rhs_pack_kxn_f32p2vlx1biasf32_f32_f32_sme(N, K);
+    } else
+#endif
+    {
+        const size_t AlignedN =
+            (N + MLAS_SGEMM_STRIDEN_THREAD_ALIGN - 1) & ~(MLAS_SGEMM_STRIDEN_THREAD_ALIGN - 1);
+        BytesRequired = AlignedN * K * sizeof(float);
+    }
 
-    const size_t BytesRequired = AlignedN * K * sizeof(float);
     const size_t BufferAlignment = MlasGetPreferredBufferAlignment();
     const size_t AlignedBytesRequired = (BytesRequired + BufferAlignment - 1) &
         ~(BufferAlignment - 1);
@@ -1676,6 +1812,7 @@ Return Value:
 void
 MLASCALL
 MlasGemmPackB(
+    CBLAS_TRANSPOSE TransA,
     CBLAS_TRANSPOSE TransB,
     size_t N,
     size_t K,
@@ -1693,6 +1830,8 @@ Routine Description:
     from MlasGetPreferredBufferAlignment().
 
 Arguments:
+
+    TransA - Supplies the transpose operation for matrix A.
 
     TransB - Supplies the transpose operation for matrix B.
 
@@ -1712,25 +1851,42 @@ Return Value:
 
 --*/
 {
-    const size_t AlignedN =
-        (N + MLAS_SGEMM_STRIDEN_THREAD_ALIGN - 1) & ~(MLAS_SGEMM_STRIDEN_THREAD_ALIGN - 1);
+#ifndef USE_KLEIDIAI
+    MLAS_UNREFERENCED_PARAMETER(TransA);
+#endif
 
-    //
-    // Step through each slice of matrix B along the K dimension.
-    //
+#ifdef USE_KLEIDIAI
+    if (UseKleidiAISgemm(TransA, TransB)) {
+        const std::vector<float> bias(N);
 
-    size_t CountK;
+        const size_t nr = kai_get_nr_matmul_clamp_f32_f32p2vlx1_f32p2vlx1biasf32_sme2_mopa();
+        const size_t kr = kai_get_kr_matmul_clamp_f32_f32p2vlx1_f32p2vlx1biasf32_sme2_mopa();
+        const size_t sr = kai_get_sr_matmul_clamp_f32_f32p2vlx1_f32p2vlx1biasf32_sme2_mopa();
+        kai_run_rhs_pack_kxn_f32p2vlx1biasf32_f32_f32_sme(1, N, K, nr, kr, sr,
+            ldb * sizeof(float), B, bias.data(), nullptr, PackedB, 0, nullptr);
+    } else
+#endif
+    {
+        const size_t AlignedN =
+            (N + MLAS_SGEMM_STRIDEN_THREAD_ALIGN - 1) & ~(MLAS_SGEMM_STRIDEN_THREAD_ALIGN - 1);
 
-    for (size_t k = 0; k < K; k += CountK) {
+        //
+        // Step through each slice of matrix B along the K dimension.
+        //
 
-        CountK = std::min(K - k, size_t(MLAS_SGEMM_PACKED_STRIDEK));
+        size_t CountK;
 
-        if (TransB == CblasNoTrans) {
-            MlasSgemmCopyPackB((float*)PackedB, B + k * ldb, ldb, N, CountK);
-        } else {
-            MlasSgemmTransposePackB((float*)PackedB, B + k, ldb, N, CountK);
+        for (size_t k = 0; k < K; k += CountK) {
+
+            CountK = std::min(K - k, size_t(MLAS_SGEMM_PACKED_STRIDEK));
+
+            if (TransB == CblasNoTrans) {
+                MlasSgemmCopyPackB((float*)PackedB, B + k * ldb, ldb, N, CountK);
+            } else {
+                MlasSgemmTransposePackB((float*)PackedB, B + k, ldb, N, CountK);
+            }
+
+            PackedB = (float*)PackedB + AlignedN * CountK;
         }
-
-        PackedB = (float*)PackedB + AlignedN * CountK;
     }
 }

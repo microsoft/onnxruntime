@@ -39,6 +39,12 @@ Abstract:
 
 #include "mlasi.h"
 
+#ifdef USE_KLEIDIAI
+#include "kai/ukernels/matmul/pack/kai_rhs_pack_kxn_bf16p2vlx2b_f32_x32_sme.h"
+#include "kai/ukernels/matmul/pack/kai_lhs_pack_bf16p2vlx2_f32_sme.h"
+#include "kai/ukernels/matmul/matmul_clamp_fp32_bf16p_bf16p/kai_matmul_clamp_f32_bf16p2vlx2_bf16p2vlx2_2vlx2vl_sme2_mopa.h"
+#endif
+
 /**
  * @brief Define the default striding parameters for
  *        the bfloat16 precision gemm operation
@@ -223,7 +229,21 @@ MlasSBGemmOperation(const ptrdiff_t ThreadCountM, const ptrdiff_t ThreadCountN, 
     size_t RangeStartM;
     size_t RangeCountM;
 
-    MlasPartitionWork(ThreadIdM, ThreadCountM, M, &RangeStartM, &RangeCountM);
+#ifdef USE_KLEIDIAI
+    if (MLAS_CPUIDINFO::GetCPUIDInfo().HasArm_SME()) {
+        const size_t m_step = kai_get_m_step_matmul_clamp_f32_bf16p2vlx2_bf16p2vlx2_2vlx2vl_sme2_mopa();
+        const size_t BlockedM = (M + m_step - 1) / m_step;
+
+        MlasPartitionWork(ThreadIdM, ThreadCountM, BlockedM, &RangeStartM, &RangeCountM);
+
+        RangeStartM *= m_step;
+        RangeCountM *= m_step;
+        RangeCountM = std::min(RangeCountM, M - RangeStartM);
+    } else
+#endif
+    {
+        MlasPartitionWork(ThreadIdM, ThreadCountM, M, &RangeStartM, &RangeCountM);
+    }
 
     //
     // Partition the operation along the N dimension.
@@ -231,34 +251,65 @@ MlasSBGemmOperation(const ptrdiff_t ThreadCountM, const ptrdiff_t ThreadCountN, 
     size_t RangeStartN;
     size_t RangeCountN;
 
-    const size_t BlockedN =
-        (N + MLAS_SGEMM_STRIDEN_THREAD_ALIGN - 1) / MLAS_SGEMM_STRIDEN_THREAD_ALIGN;
-
+    size_t n_step = MLAS_SGEMM_STRIDEN_THREAD_ALIGN;
+#ifdef USE_KLEIDIAI
+    if (MLAS_CPUIDINFO::GetCPUIDInfo().HasArm_SME()) {
+        n_step = kai_get_n_step_matmul_clamp_f32_bf16p2vlx2_bf16p2vlx2_2vlx2vl_sme2_mopa();
+    }
+#endif
+    const size_t BlockedN = (N + n_step - 1) / n_step;
     MlasPartitionWork(ThreadIdN, ThreadCountN, BlockedN, &RangeStartN, &RangeCountN);
 
-    RangeStartN *= MLAS_SGEMM_STRIDEN_THREAD_ALIGN;
-    RangeCountN *= MLAS_SGEMM_STRIDEN_THREAD_ALIGN;
-
-    RangeCountN = std::min(N - RangeStartN, RangeCountN);
+    RangeStartN *= n_step;
+    RangeCountN *= n_step;
+    RangeCountN = std::min(RangeCountN, N - RangeStartN);
 
     //
     // Dispatch the partitioned operation.
     //
-    const size_t lda = DataParams->lda;
     const size_t ldc = DataParams->ldc;
-    const float* A = (const float*)DataParams->A + RangeStartM * lda;
     float* C = DataParams->C + RangeStartM * ldc + RangeStartN;
     const float* bias = DataParams->Bias;
 
-    if (!DataParams->BIsfp32) {
-        MlasSBGemmPackedOperation<KernelType>(
-            RangeCountM, RangeStartN, RangeCountN, BlockedN * MLAS_SGEMM_STRIDEN_THREAD_ALIGN, K, A,
-            lda, DataParams->B, C, ldc, bias, (void*)DataParams->OutputProcessor
-        );
-    } else {
-        const size_t ldb = DataParams->ldb;
-        const float* B = (const float*)DataParams->B + RangeStartN;
-        MlasSBGemmNonPackedOperation<KernelType>(RangeCountM, RangeCountN, K, A, lda, B, ldb, C, ldc, bias, (void*)DataParams->OutputProcessor);
+#ifdef USE_KLEIDIAI
+    if (MLAS_CPUIDINFO::GetCPUIDInfo().HasArm_SME()) {
+        const size_t lhs_offset = kai_get_lhs_packed_offset_matmul_clamp_f32_bf16p2vlx2_bf16p2vlx2_2vlx2vl_sme2_mopa(
+            RangeStartM, K);
+        const void* A = reinterpret_cast<const void*>(reinterpret_cast<const uint8_t*>(DataParams->A) + lhs_offset);
+
+
+        const size_t rhs_offset = kai_get_rhs_packed_offset_matmul_clamp_f32_bf16p2vlx2_bf16p2vlx2_2vlx2vl_sme2_mopa(
+            RangeStartN, K);
+        const void* B = reinterpret_cast<const void*>(reinterpret_cast<const uint8_t*>(DataParams->B) + rhs_offset);
+
+        const size_t dst_stride = ldc * sizeof(float);
+        kai_run_matmul_clamp_f32_bf16p2vlx2_bf16p2vlx2_2vlx2vl_sme2_mopa(RangeCountM, RangeCountN, K,
+            A, B, C, dst_stride, sizeof(float),
+            -std::numeric_limits<float>::max(), std::numeric_limits<float>::max());
+
+        if (bias != nullptr) {
+            for (size_t m = 0; m < RangeCountM; m++) {
+                for (size_t n = 0; n < RangeCountN; n++) {
+                    C[m * ldc + n] += bias[n];
+                }
+            }
+        }
+    } else
+#endif
+    {
+        const size_t lda = DataParams->lda;
+        const float* A = (const float*)DataParams->A + RangeStartM * lda;
+
+        if (!DataParams->BIsfp32) {
+            MlasSBGemmPackedOperation<KernelType>(
+                RangeCountM, RangeStartN, RangeCountN, BlockedN * MLAS_SGEMM_STRIDEN_THREAD_ALIGN, K, A,
+                lda, DataParams->B, C, ldc, bias, (void*)DataParams->OutputProcessor
+            );
+        } else {
+            const size_t ldb = DataParams->ldb;
+            const float* B = (const float*)DataParams->B + RangeStartN;
+            MlasSBGemmNonPackedOperation<KernelType>(RangeCountM, RangeCountN, K, A, lda, B, ldb, C, ldc, bias, (void*)DataParams->OutputProcessor);
+        }
     }
 }
 
@@ -306,13 +357,22 @@ MlasSBGemmPackBSize(size_t N, size_t K)
     const auto* dispatch = MlasSBGemmGetDispatch();
     if (dispatch == nullptr) return 0;
 
-    const auto padding = dispatch->BufOverRead;
-    const auto PackedK = dispatch->PackedK;
-    const auto PackedN = dispatch->PackedN;
+    size_t BytesRequired;
+#ifdef USE_KLEIDIAI
+    if (MLAS_CPUIDINFO::GetCPUIDInfo().HasArm_SME()) {
+        BytesRequired = kai_get_rhs_packed_size_rhs_pack_kxn_bf16p2vlx2b_f32_x32_sme(N, K);
+    } else
+#endif
+    {
+        const auto padding = dispatch->BufOverRead;
+        const auto PackedK = dispatch->PackedK;
+        const auto PackedN = dispatch->PackedN;
 
-    const size_t AlignedK = (K + PackedK - 1) & ~(PackedK - 1);
-    const size_t AlignedN = (N + PackedN - 1) & ~(PackedN - 1);
-    const size_t BytesRequired = AlignedN * AlignedK * sizeof(bfloat16_t) + padding;
+        const size_t AlignedK = (K + PackedK - 1) & ~(PackedK - 1);
+        const size_t AlignedN = (N + PackedN - 1) & ~(PackedN - 1);
+        BytesRequired = AlignedN * AlignedK * sizeof(bfloat16_t) + padding;
+    }
+
     const size_t BufferAlignment = MlasGetPreferredBufferAlignment();
     const size_t AlignedBytesRequired =
         (BytesRequired + BufferAlignment - 1) & ~(BufferAlignment - 1);
@@ -334,6 +394,49 @@ MlasSBGemmBatch(const size_t M, const size_t N, const size_t K, const size_t Bat
 {
     const MLAS_SBGEMM_DISPATCH* dispatch = MlasSBGemmGetDispatch();
     if (dispatch == nullptr) return;
+
+    std::vector<MLAS_SBGEMM_DATA_PARAMS> PackedData;
+#ifdef USE_KLEIDIAI
+    if (MLAS_CPUIDINFO::GetCPUIDInfo().HasArm_SME()) {
+        const size_t mr = kai_get_mr_matmul_clamp_f32_bf16p2vlx2_bf16p2vlx2_2vlx2vl_sme2_mopa();
+        const size_t kr = kai_get_kr_matmul_clamp_f32_bf16p2vlx2_bf16p2vlx2_2vlx2vl_sme2_mopa();
+        const size_t sr = kai_get_sr_matmul_clamp_f32_bf16p2vlx2_bf16p2vlx2_2vlx2vl_sme2_mopa();
+
+        const size_t LhsPackedStride = kai_get_lhs_packed_size_lhs_pack_bf16p2vlx2_f32_sme(M, K, mr, kr, sr);
+        PackedData.resize(BatchN);
+        std::vector<std::byte> LhsPacked(LhsPackedStride * BatchN);
+        std::byte *LhsPackedData = LhsPacked.data();
+        MlasTrySimpleParallel(ThreadPool, BatchN, [&](ptrdiff_t gemm_idx) {
+            const MLAS_SBGEMM_DATA_PARAMS* Params = &(Data[gemm_idx]);
+            std::byte *LhsPackedPtr = &(LhsPackedData[LhsPackedStride * gemm_idx]);
+
+            kai_run_lhs_pack_bf16p2vlx2_f32_sme(M, K, mr, kr, sr, 0,
+                Params->A, Params->lda * sizeof(float), LhsPackedPtr);
+
+            MLAS_SBGEMM_DATA_PARAMS* PackedParams = &(PackedData[gemm_idx]);
+            *PackedParams = *Params;
+            PackedParams->A = LhsPackedPtr;
+        });
+
+        size_t RhsPackedStride = 0;
+        std::vector<std::byte> RhsPacked;
+        std::byte *RhsPackedData = nullptr;
+        if (Data[0].ldb != 0) {
+            RhsPackedStride = kai_get_rhs_packed_size_rhs_pack_kxn_bf16p2vlx2b_f32_x32_sme(N, K);
+            RhsPacked.resize(RhsPackedStride * BatchN);
+            RhsPackedData = RhsPacked.data();
+
+            MlasTrySimpleParallel(ThreadPool, BatchN, [&](ptrdiff_t gemm_idx) {
+                MLAS_SBGEMM_DATA_PARAMS* PackedParams = &(PackedData[gemm_idx]);
+                std::byte *RhsPackedPtr = &(RhsPackedData[RhsPackedStride * gemm_idx]);
+                MlasSBGemmConvertPackB(N, K, reinterpret_cast<const float *>(PackedParams->B), PackedParams->ldb, RhsPackedPtr);
+
+                PackedParams->B = RhsPackedPtr;
+                PackedParams->ldb = 0;
+            });
+        }
+    }
+#endif
 
     MLAS_SBGEMM_OPERATION* operation = dispatch->Operation;
 
@@ -392,7 +495,9 @@ MlasSBGemmBatch(const size_t M, const size_t N, const size_t K, const size_t Bat
         ThreadPool, ThreadsPerGemm * static_cast<ptrdiff_t>(BatchN), [=](ptrdiff_t tid) {
             ptrdiff_t GemmIdx = tid / ThreadsPerGemm;
             ptrdiff_t ThreadIdx = tid % ThreadsPerGemm;
-            operation(ThreadCountM, ThreadCountN, M, N, K, &(Data[GemmIdx]), ThreadIdx);
+
+            const MLAS_SBGEMM_DATA_PARAMS &Params = (PackedData.empty() ? Data : PackedData.data())[GemmIdx];
+            operation(ThreadCountM, ThreadCountN, M, N, K, &Params, ThreadIdx);
         }
     );
 }

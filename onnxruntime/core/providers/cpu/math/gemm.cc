@@ -102,6 +102,7 @@ ONNX_CPU_OPERATOR_TYPED_KERNEL(
 
 bool GemmPackBFp32(AllocatorPtr& alloc,
                    const Tensor& tensor_b,
+                   bool trans_a,
                    bool trans_b,
                    IAllocatorUniquePtr<void>& packed_b,
                    size_t& packed_b_size,
@@ -116,7 +117,7 @@ bool GemmPackBFp32(AllocatorPtr& alloc,
   const size_t K = trans_b ? static_cast<size_t>(b_shape[1]) : static_cast<size_t>(b_shape[0]);
   const size_t N = trans_b ? static_cast<size_t>(b_shape[0]) : static_cast<size_t>(b_shape[1]);
 
-  packed_b_size = MlasGemmPackBSize(N, K);
+  packed_b_size = MlasGemmPackBSize(trans_a ? CblasTrans : CblasNoTrans, trans_b ? CblasTrans : CblasNoTrans, N, K);
   if (packed_b_size == 0) {
     return false;
   }
@@ -129,7 +130,8 @@ bool GemmPackBFp32(AllocatorPtr& alloc,
   // if and when we try to cache this pre-packed buffer for sharing between sessions.
   memset(packed_b_data, 0, packed_b_size);
 
-  MlasGemmPackB(trans_b ? CblasTrans : CblasNoTrans,
+  MlasGemmPackB(trans_a ? CblasTrans : CblasNoTrans,
+                trans_b ? CblasTrans : CblasNoTrans,
                 N,
                 K,
                 tensor_b.Data<float>(),
@@ -263,7 +265,7 @@ Status Gemm<float>::PrePack(const Tensor& tensor, int input_idx,
   // only pack Matrix B
   if (input_idx == 1) {
     size_t packed_b_size;
-    is_packed = GemmPackBFp32(alloc, tensor, trans_B_ != CblasNoTrans, packed_b_, packed_b_size, b_shape_);
+    is_packed = GemmPackBFp32(alloc, tensor, trans_A_ != CblasNoTrans, trans_B_ != CblasNoTrans, packed_b_, packed_b_size, b_shape_);
     bool share_prepacked_weights = (prepacked_weights != nullptr);
     if (is_packed && share_prepacked_weights) {
       prepacked_weights->buffers_.push_back(std::move(packed_b_));

@@ -194,7 +194,7 @@ bool DeepCpuGruOp::TryPackInputWeights(const Tensor& weights, AllocatorPtr& allo
   const size_t N = static_cast<size_t>(shape[1]);
   const size_t K = static_cast<size_t>(shape[2]);
 
-  const size_t packed_weights_size = MlasGemmPackBSize(N, K);
+  const size_t packed_weights_size = MlasGemmPackBSize(CblasNoTrans, CblasTrans, N, K);
   if (packed_weights_size == 0) {
     return false;
   }
@@ -215,7 +215,7 @@ bool DeepCpuGruOp::TryPackInputWeights(const Tensor& weights, AllocatorPtr& allo
   const size_t N_x_K = N * K;
   const auto* weights_data = weights.Data<float>();
   for (int64_t dir = 0; dir < num_directions; ++dir) {
-    MlasGemmPackB(CblasTrans, N, K, weights_data, K, packed_weights_data);
+    MlasGemmPackB(CblasNoTrans, CblasTrans, N, K, weights_data, K, packed_weights_data);
     weights_data += N_x_K;
     packed_weights_data += packed_weights_size;
   }
@@ -244,12 +244,12 @@ bool DeepCpuGruOp::TryPackRecurrentWeights(const Tensor& weights, AllocatorPtr& 
   const auto hidden_size_x_2 = N - hidden_size_;
 
   // We are making two packed buffers, one for ZR weights and another for H weights.
-  const size_t ZR_packed_size = MlasGemmPackBSize(narrow<size_t>(hidden_size_x_2), narrow<size_t>(K));
+  const size_t ZR_packed_size = MlasGemmPackBSize(CblasNoTrans, CblasTrans, narrow<size_t>(hidden_size_x_2), narrow<size_t>(K));
   if (ZR_packed_size == 0) {
     return false;
   }
 
-  const size_t H_packed_size = MlasGemmPackBSize(narrow<size_t>(hidden_size_), narrow<size_t>(K));
+  const size_t H_packed_size = MlasGemmPackBSize(CblasNoTrans, CblasTrans, narrow<size_t>(hidden_size_), narrow<size_t>(K));
   if (H_packed_size == 0) {
     return false;
   }
@@ -275,18 +275,18 @@ bool DeepCpuGruOp::TryPackRecurrentWeights(const Tensor& weights, AllocatorPtr& 
   const auto hidden_2_step = hidden_size_x_2 * K;
   const auto hidden_1_step = hidden_size_ * K;  // square
   const auto* weights_data = weights.Data<float>();
-  MlasGemmPackB(CblasTrans, narrow<size_t>(hidden_size_x_2), narrow<size_t>(K), weights_data, narrow<size_t>(K), buffer_ZR);
+  MlasGemmPackB(CblasNoTrans, CblasTrans, narrow<size_t>(hidden_size_x_2), narrow<size_t>(K), weights_data, narrow<size_t>(K), buffer_ZR);
   weights_data += hidden_2_step;
-  MlasGemmPackB(CblasTrans, narrow<size_t>(hidden_size_), narrow<size_t>(K), weights_data, narrow<size_t>(K), buffer_H);
+  MlasGemmPackB(CblasNoTrans, CblasTrans, narrow<size_t>(hidden_size_), narrow<size_t>(K), weights_data, narrow<size_t>(K), buffer_H);
 
   if (num_directions == 2) {
     weights_data += hidden_1_step;
     buffer_ZR = static_cast<uint8_t*>(buffer_ZR) + ZR_packed_size;
-    MlasGemmPackB(CblasTrans, narrow<size_t>(hidden_size_x_2), narrow<size_t>(K), weights_data, narrow<size_t>(K), buffer_ZR);
+    MlasGemmPackB(CblasNoTrans, CblasTrans, narrow<size_t>(hidden_size_x_2), narrow<size_t>(K), weights_data, narrow<size_t>(K), buffer_ZR);
 
     weights_data += hidden_2_step;
     buffer_H = static_cast<uint8_t*>(buffer_H) + H_packed_size;
-    MlasGemmPackB(CblasTrans, narrow<size_t>(hidden_size_), narrow<size_t>(K), weights_data, narrow<size_t>(K), buffer_H);
+    MlasGemmPackB(CblasNoTrans, CblasTrans, narrow<size_t>(hidden_size_), narrow<size_t>(K), weights_data, narrow<size_t>(K), buffer_H);
   }
 
   return true;
