@@ -196,9 +196,7 @@ Status GatherBlockQuantized<T1, Tind>::CopyDataAndDequantize(const T1* data_ptr,
       int32_t zp_val;
       if constexpr (std::is_same_v<T1, uint8_t>) {
         // The default zero point for uint8 weights as stored by MatMulNBits op is 8.
-        // Both zero_points and data are of the same type T1 - when T1 is uint8_t, the
-        // zero_point can hence be accessed via simple indexing of zero_points_ptr.
-        zp_val = static_cast<int32_t>(zero_points_ptr ? zero_points_ptr[scale_idx] : 8);
+        zp_val = 8;
       } else {
         zp_val = static_cast<int32_t>(zero_points_ptr
                                           ? zero_points_ptr[scale_idx >> 1].GetElem(narrow<size_t>(scale_idx & 1))
