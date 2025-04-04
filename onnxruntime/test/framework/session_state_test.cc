@@ -503,8 +503,9 @@ void LoadWithResourceAwarePartitioning(const ORTCHAR_T* model_path,
   layout_transformation::DebugGraphFn debug_graph_fn;
   ASSERT_STATUS_OK(
       partitioner.Partition(graph, session_state.GetMutableFuncMgr(), transform_layout_fn,
-                            sess_options.config_options, default_logger,
-                            GraphPartitioner::Mode::kNormal, debug_graph_fn));
+                            sess_options.config_options, default_logger, GraphPartitioner::Mode::kNormal,
+                            EpContextModelGenerationOptions{},
+                            debug_graph_fn));
 
   verifier_fn(graph);
 }
