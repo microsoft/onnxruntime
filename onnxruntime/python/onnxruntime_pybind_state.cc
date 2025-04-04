@@ -1755,8 +1755,8 @@ Applies to session load, initialization, etc. Default is 0.)pbdoc")
           R"pbdoc(Sets the execution mode. Default is sequential.)pbdoc")
       .def(
           "set_load_cancellation_flag",
-          [](const PySessionOptions* options, bool value) -> void {
-            *options->value.load_cancellation_flag = value;
+          [](PySessionOptions* options, bool value) -> void {
+            options->value.SetLoadCancellationFlag(value);
           },
           R"pbdoc(Request inference session load cancellation)pbdoc")
       .def_property(
