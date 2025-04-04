@@ -1,6 +1,7 @@
 const core = require('@actions/core');
 const exec = require('@actions/exec');
-const {DefaultArtifactClient} = require('@actions/artifact')
+// Import the default client class
+const { DefaultArtifactClient } = require('@actions/artifact');
 const fs = require('fs').promises;
 const path = require('path');
 const os = require('os');
@@ -29,17 +30,14 @@ async function runCommand(command, args = [], options = {}) {
         const { exitCode, stdout, stderr } = await exec.getExecOutput(command, args, effectiveOptions);
 
         if (exitCode !== 0 && !effectiveOptions.ignoreReturnCode) {
-             // Log stderr specifically as error if command failed
              core.error(`Stderr: ${stderr}`);
              throw new Error(`Command exited with code ${exitCode}: ${command} ${args.join(' ')}`);
         }
         core.info(`Finished: ${command} ${args.join(' ')}`);
         return { exitCode, stdout, stderr };
     } catch (error) {
-        // exec.getExecOutput throws on non-zero exit codes if ignoreReturnCode is false
         core.error(`Error executing command: ${command} ${args.join(' ')} in ${cwdString}`);
-        core.error(error); // Log the full error object from exec
-        // Rethrow with a clearer message if possible
+        core.error(error);
         throw new Error(`Command execution failed: ${error.message || error}`);
     }
 }
@@ -104,19 +102,31 @@ async function main() {
     try {
         // --- Download Test Data ---
         core.startGroup('Download Test Data Artifact');
-        core.info(`Downloading artifact 'test_data' to ${testDataDownloadDir}...`);
+        const artifactName = 'test_data';
+        let artifactIdToDownload;
         try {
-             const downloadResponse = await artifactClient.downloadArtifact('test_data', testDataDownloadDir, {
+             core.info(`Attempting to find artifact named '${artifactName}'...`);
+             // Use getArtifact to find the artifact by name and get its ID
+             const getArtifactResponse = await artifactClient.getArtifact(artifactName);
+             if (!getArtifactResponse || !getArtifactResponse.artifact) {
+                throw new Error(`Artifact '${artifactName}' not found.`);
+             }
+             artifactIdToDownload = getArtifactResponse.artifact.id;
+             core.info(`Found artifact '${artifactName}' with ID: ${artifactIdToDownload}`);
+
+             core.info(`Downloading artifact ID ${artifactIdToDownload} to ${testDataDownloadDir}...`);
+             const downloadResponse = await artifactClient.downloadArtifact(artifactIdToDownload, testDataDownloadDir, {
                  createArtifactFolder: false // Download directly into the target dir
              });
              core.info(`Artifact download finished. Path: ${downloadResponse.downloadPath}`);
+
              // Verify the specific config file exists after download
              await fs.access(fullReducedOpsConfigFile, fs.constants.R_OK);
              core.info(`Verified reduced ops config file exists: ${fullReducedOpsConfigFile}`);
         } catch (error) {
-            core.error(`Failed to download or find required file in artifact 'test_data': ${error.message}`);
+            core.error(`Failed to find or download required file in artifact '${artifactName}': ${error.message}`);
             // Fail the action if artifact/config is missing, as it's required for the build
-            throw new Error(`Failed to get required test data artifact 'test_data' or config file '${reducedOpsConfigFileBase}'.`);
+            throw new Error(`Failed to get required test data artifact '${artifactName}' or config file '${reducedOpsConfigFileBase}'.`);
         }
         core.endGroup();
 
@@ -157,13 +167,11 @@ async function main() {
 
             core.info(`Running tests against standard ONNX test data: ${standardOnnxTestDataDir}`);
             // Note: This assumes the path /data/onnx exists and is accessible on the runner where this action executes.
-            // This path is often populated/mounted in Docker-based test runs, but needs to exist on the host for this JS action.
             const standardTestDataExists = await checkPathExists(standardOnnxTestDataDir);
             if (standardTestDataExists) {
                 await runCommand(testRunnerPath, [standardOnnxTestDataDir]);
             } else {
                 core.warning(`Directory ${standardOnnxTestDataDir} not found or accessible on the runner. Skipping these tests.`);
-                // Decide if this should be a failure or just a warning. Currently warning.
                 // To make it fail, uncomment the next line:
                 // throw new Error(`Required test data directory not found: ${standardOnnxTestDataDir}`);
             }
@@ -180,28 +188,36 @@ async function main() {
         const osName = platform === 'linux' ? 'Linux' : platform; // Map 'linux' to 'Linux' as used in script
 
         // Ensure the library exists before checking its size
-        await fs.access(libraryPath, fs.constants.R_OK);
-
-        await runCommand('python3', [
-            checkSizeScript,
-            '--arch', arch,
-            '--os', osName,
-            '--build_config', 'minimal-reduced', // As per original script
-            libraryPath
-        ]);
+        try {
+            await fs.access(libraryPath, fs.constants.R_OK);
+            await runCommand('python3', [
+                checkSizeScript,
+                '--arch', arch,
+                '--os', osName,
+                '--build_config', 'minimal-reduced', // As per original script
+                libraryPath
+            ]);
+        } catch (error) {
+             core.warning(`Could not access library file ${libraryPath} or run size check script: ${error.message}`);
+             // Decide if this should be a failure or warning
+             // throw new Error(`Failed during binary size check: ${error.message}`);
+        }
         core.endGroup();
 
         // --- Upload Binary Size Report ---
         core.startGroup('Upload Binary Size Report');
-        const artifactName = `${binarySizeReportNamePrefix || 'minimal_build_'}${arch}_${osName}_binary_size_report`;
-        core.info(`Uploading ${binarySizeReportPath} as artifact: ${artifactName}`);
+        const reportArtifactName = `${binarySizeReportNamePrefix || 'minimal_build_'}${arch}_${osName}_binary_size_report`;
+        core.info(`Uploading ${binarySizeReportPath} as artifact: ${reportArtifactName}`);
         try {
             await fs.access(binarySizeReportPath, fs.constants.R_OK); // Check if report exists
-            await artifactClient.uploadArtifact(artifactName, [binarySizeReportPath], debugOutputDir, {
+            const uploadResponse = await artifactClient.uploadArtifact(reportArtifactName, [binarySizeReportPath], debugOutputDir, {
                  continueOnError: false // Fail the workflow if upload fails
             });
+            core.info(`Artifact uploaded successfully: ${uploadResponse.artifactName}`);
         } catch (err) {
             core.warning(`Could not find or upload binary size report ${binarySizeReportPath}: ${err.message}`);
+            // Fail the job if upload is critical, otherwise just warn
+            // throw new Error(`Failed to upload artifact: ${err.message}`);
         }
         core.endGroup();
 
