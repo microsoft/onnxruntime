@@ -114,7 +114,7 @@ Status InstanceNormOpBuilder::ProcessInputs(QnnModelWrapper& qnn_model_wrapper,
     };
 
     if (!input0_info.is_initializer) {
-      ORT_RETURN_IF(input0_info.quant_param.IsPerChannel(),
+      ORT_RETURN_IF(input0_info.quant_param.IsPerChannel() || input0_info.quant_param.IsBlockwise(),
                     "Non-constant InstanceNormalization inputs only support per-tensor quantization");
 
       // Add Reshape node to transform 1D input to 2D (i.e., set height to 1).

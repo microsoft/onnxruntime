@@ -272,6 +272,12 @@ class QnnModelWrapper {
                                /*out*/ bool& is_per_channel,
                                /*out*/ int64_t& axis) const;
 
+  // Checks if a tensor in the ONNX graph is blockwise quantized.
+  Status IsBlockwiseQuantized(const onnxruntime::NodeUnitIODef& io_def,
+                              /*out*/ bool& is_blockwise,
+                              /*out*/ int64_t& axis,
+                              /*out*/ int64_t& block_size) const;
+
  private:
   bool CreateQnnInputOutputTensors(const std::string& qnn_node_name,
                                    const std::vector<std::string>& names,
