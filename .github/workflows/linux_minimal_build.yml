@@ -56,11 +56,11 @@ jobs:
       - name: Run Build 1 (Using custom script)
         shell: bash
         run: |
+          set -e -x
           # Create the host directory where test data will be placed by the container script
           mkdir -p ${{ runner.temp }}/.test_data
           # Create build output directory (e.g., /build/1)
           mkdir -p ${{ runner.temp }}/1
-
           docker run --rm \
             --volume ${{ env.BUILD_SOURCES_DIRECTORY }}:/onnxruntime_src \
             --volume ${{ runner.temp }}:/build \
@@ -73,10 +73,10 @@ jobs:
             /bin/bash -c " \
               set -e -x; \
               mkdir -p /home/onnxruntimedev; \
-              ln -sf /build/.test_data /home/onnxruntimedev/.test_data; \
               # Script generates build artifacts in /build/1 and test data in /home/onnxruntimedev/.test_data (linked to /build/.test_data)
               /onnxruntime_src/tools/ci_build/github/linux/ort_minimal/build_full_ort_and_create_ort_files.sh /build/1; \
             "
+          ls -lha ${{ runner.temp }}/.test_data
         working-directory: ${{ env.BUILD_SOURCES_DIRECTORY }}
 
       - name: Upload Test Data Artifact
@@ -393,8 +393,6 @@ jobs:
             --build_shared_lib
             --use_binskim_compliant_compile_flags
             --minimal_build extended
-            # Assuming tests should be run if --skip_tests is not specified
-
 
   # Job 6a: Regular build with python and all optional features disabled.
   build_regular_no_optional:
