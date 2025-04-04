@@ -641,7 +641,7 @@ TEST_F(GraphTransformationTests, SkipLayerNormFusionTest) {
 TEST_F(GraphTransformationTests, GroupQueryAttentionFusionTest) {
   TestGQAFusion(MODEL_FOLDER "fusion/gqa_fusion_quantized.onnx", 1, 0, logger_.get());
   TestGQAFusion(MODEL_FOLDER "fusion/gqa_fusion.onnx", 0, 1, logger_.get());
-  TestGQAFusion(MODEL_FOLDER "fusion/gqa_fusion_dequantized_different_head_sizes.onnx", 1, 0, logger_.get());
+  TestGQAFusion(MODEL_FOLDER "fusion/gqa_fusion_quantized_different_head_sizes.onnx", 1, 0, logger_.get());
  }
 
 TEST_F(GraphTransformationTests, SkipLayerNormFusionWithCastTest) {
