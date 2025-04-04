@@ -51,7 +51,7 @@ jobs:
 
       # --- Build the Docker image needed for testing ---
       - name: Build Docker Image for Testing
-        uses: microsoft/onnxruntime-github-actions/build-docker-image@v0.0.5
+        uses: microsoft/onnxruntime-github-actions/build-docker-image@c03b932b1c596ddb46e854fbec3b9899c824b7a2
         id: build_docker_image_step
         with:
           dockerfile: ${{ github.workspace }}/tools/ci_build/github/linux/docker/Dockerfile.manylinux2_28_cuda
@@ -94,7 +94,7 @@ jobs:
       # So build.py --build_dir build/Release inside the container correctly finds the artifacts.
       - name: Test ONNX Runtime
         id: test_step
-        uses: microsoft/onnxruntime-github-actions/run-build-script-in-docker@v0.0.5
+        uses: microsoft/onnxruntime-github-actions/run-build-script-in-docker@c03b932b1c596ddb46e854fbec3b9899c824b7a2
         with:
           docker_image: ${{ steps.build_docker_image_step.outputs.full-image-name }}
           build_config: Release
