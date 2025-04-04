@@ -64,6 +64,8 @@ jobs:
           docker run --rm \
             --volume ${{ env.BUILD_SOURCES_DIRECTORY }}:/onnxruntime_src \
             --volume ${{ runner.temp }}:/build \
+            -e ACTIONS_CACHE_URL \
+            -e ACTIONS_RUNTIME_TOKEN \
             -e ALLOW_RELEASED_ONNX_OPSET_ONLY=1 \
             -e NIGHTLY_BUILD=1 \
             -e BUILD_BUILDNUMBER=${{ github.run_id }} \
