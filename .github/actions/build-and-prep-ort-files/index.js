@@ -87,7 +87,7 @@ async function main() {
         throw new Error("Required environment variables RUNNER_TEMP or GITHUB_WORKSPACE not set.");
     }
 
-    const testDataDir = path.join(buildDir, '.test_data');
+    const testDataDir = path.join(buildDir, 'minimal_build_test_data');
     const customOpsTestDataDir = path.join(testDataDir, 'custom_ops_model');
     const debugOutputDir = path.join(buildDir, 'Debug'); // Assuming Debug config based on original script
     const wheelDir = path.join(debugOutputDir, 'dist'); // Directory containing the built wheel

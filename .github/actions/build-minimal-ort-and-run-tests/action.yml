@@ -1,0 +1,25 @@
+name: 'Build Minimal ORT and Run Tests'
+description: 'Downloads test_data artifact, builds minimal ORT based on config, runs tests, and uploads binary size report.'
+inputs:
+  reduced-ops-config-file:
+    description: 'Path (relative to downloaded test_data artifact) to the reduced Ops config file (e.g., required_ops.ort_models.config).'
+    required: true
+  enable-type-reduction:
+    description: 'Build with type reduction enabled.'
+    required: false
+    default: 'false' # String 'false' for getBooleanInput
+  enable-custom-ops:
+    description: 'Build with custom op support enabled.'
+    required: false
+    default: 'false' # String 'false' for getBooleanInput
+  skip-model-tests:
+    description: 'Skip running the E2E model tests with onnx_test_runner.'
+    required: false
+    default: 'false' # String 'false' for getBooleanInput
+  binary-size-report-name-prefix:
+    description: 'Optional prefix for the uploaded binary size artifact name.'
+    required: false
+    default: ''
+runs:
+  using: 'node20'
+  main: 'dist/index.js'

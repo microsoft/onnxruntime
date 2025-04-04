@@ -68,7 +68,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: test_data
-          path: ${{ runner.temp }}/.test_data/
+          path: ${{ runner.temp }}/minimal_build_test_data/
           if-no-files-found: error # Fail if test data wasn't generated
 
   # Job 2: Build minimal onnxruntime [exceptions DISABLED, type reduction DISABLED, training ops ENABLED]
@@ -153,23 +153,6 @@ jobs:
         with:
           submodules: false
 
-      - name: Download Test Data Artifact
-        uses: actions/download-artifact@v4
-        with:
-          name: test_data
-          path: ${{ runner.temp }}/.test_data/
-
-      - name: Get Docker Image using Action
-        uses: microsoft/onnxruntime-github-actions/build-docker-image@v0.0.5
-        id: build_docker_image_step
-        with:
-          dockerfile: ${{ github.workspace }}/tools/ci_build/github/linux/docker/inference/x86_64/default/cpu/Dockerfile
-          image-name: ghcr.io/microsoft/onnxruntime/onnxruntimecpubuildcix64
-          push: true
-          azure-container-registry-name: onnxruntimebuildcache
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
       - name: Export GitHub Actions cache environment variables
         uses: actions/github-script@v7
         with:
@@ -177,23 +160,32 @@ jobs:
             core.exportVariable('ACTIONS_CACHE_URL', process.env.ACTIONS_CACHE_URL || '');
             core.exportVariable('ACTIONS_RUNTIME_TOKEN', process.env.ACTIONS_RUNTIME_TOKEN || '');
 
-      - name: Run Build 3a (Using custom script)
+      - uses: microsoft/onnxruntime-github-actions/setup-build-tools@v0.0.5
+        with:
+          vcpkg-version: '2025.03.19'
+          vcpkg-hash: '17e96169cd3f266c4716fcdc1bb728e6a64f103941ece463a2834d50694eba4fb48f30135503fd466402afa139abc847ef630733c442595d1c34979f261b0114'
+          cmake-version: '3.31.6'
+          cmake-hash: '42395e20b10a8e9ef3e33014f9a4eed08d46ab952e02d2c1bbc8f6133eca0d7719fb75680f9bbff6552f20fcd1b73d86860f7f39388d631f98fb6f622b37cf04'
+          add-cmake-to-path: 'true'
+          disable-terrapin: 'true'
+
+      - name: Prepare
         shell: bash
         run: |
-          # Create the target dir for build output inside the runner's temp dir first
-          mkdir -p ${{ runner.temp }}/3a
-          docker run --rm \
-            --volume ${{ env.BUILD_SOURCES_DIRECTORY }}:/onnxruntime_src \
-            --volume ${{ runner.temp }}:/build \
-            -e ALLOW_RELEASED_ONNX_OPSET_ONLY=1 \
-            -e NIGHTLY_BUILD=1 \
-            -e BUILD_BUILDNUMBER=${{ github.run_id }} \
-            ${{ steps.build_docker_image_step.outputs.full-image-name }} \
-            /bin/bash /onnxruntime_src/tools/ci_build/github/linux/ort_minimal/build_minimal_ort_and_run_tests.sh \
-              --build-directory /build/3a \
-              --reduced-ops-config /build/.test_data/required_ops.ort_models.config \
-              --enable-custom-ops
+          set -e -x
+          # Create the host directory where test data will be placed by the container script
+          mkdir -p ${{ runner.temp }}/.test_data
+          cd .github/actions/build-minimal-ort-and-run-tests
+          npm ci
+          npm run build
         working-directory: ${{ env.BUILD_SOURCES_DIRECTORY }}
+
+      - name: Build Full ORT and Prepare Test Files
+        uses: ./.github/actions/build-minimal-ort-and-run-tests
+        with:
+          reduced-ops-config-file: ${{ runner.temp }}/.test_data/required_ops.ort_models.config
+          enable-custom-ops: 'true'
+          binary-size-report-name-prefix: "3a"
 
   # Job 3b: Build minimal onnxruntime [exceptions ENABLED, type reduction ENABLED] and run tests
   build_minimal_type_reduction:
@@ -210,23 +202,6 @@ jobs:
         with:
           submodules: false
 
-      - name: Download Test Data Artifact
-        uses: actions/download-artifact@v4
-        with:
-          name: test_data
-          path: ${{ runner.temp }}/.test_data/
-
-      - name: Get Docker Image using Action
-        uses: microsoft/onnxruntime-github-actions/build-docker-image@v0.0.5
-        id: build_docker_image_step
-        with:
-          dockerfile: ${{ github.workspace }}/tools/ci_build/github/linux/docker/inference/x86_64/default/cpu/Dockerfile
-          image-name: ghcr.io/microsoft/onnxruntime/onnxruntimecpubuildcix64
-          push: true
-          azure-container-registry-name: onnxruntimebuildcache
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
       - name: Export GitHub Actions cache environment variables
         uses: actions/github-script@v7
         with:
@@ -234,23 +209,32 @@ jobs:
             core.exportVariable('ACTIONS_CACHE_URL', process.env.ACTIONS_CACHE_URL || '');
             core.exportVariable('ACTIONS_RUNTIME_TOKEN', process.env.ACTIONS_RUNTIME_TOKEN || '');
 
-      - name: Run Build 3b (Using custom script)
+      - uses: microsoft/onnxruntime-github-actions/setup-build-tools@v0.0.5
+        with:
+          vcpkg-version: '2025.03.19'
+          vcpkg-hash: '17e96169cd3f266c4716fcdc1bb728e6a64f103941ece463a2834d50694eba4fb48f30135503fd466402afa139abc847ef630733c442595d1c34979f261b0114'
+          cmake-version: '3.31.6'
+          cmake-hash: '42395e20b10a8e9ef3e33014f9a4eed08d46ab952e02d2c1bbc8f6133eca0d7719fb75680f9bbff6552f20fcd1b73d86860f7f39388d631f98fb6f622b37cf04'
+          add-cmake-to-path: 'true'
+          disable-terrapin: 'true'
+
+      - name: Prepare
         shell: bash
         run: |
-          # Create the target dir for build output inside the runner's temp dir first
-          mkdir -p ${{ runner.temp }}/3b
-          docker run --rm \
-            --volume ${{ env.BUILD_SOURCES_DIRECTORY }}:/onnxruntime_src \
-            --volume ${{ runner.temp }}:/build \
-            -e ALLOW_RELEASED_ONNX_OPSET_ONLY=1 \
-            -e NIGHTLY_BUILD=1 \
-            -e BUILD_BUILDNUMBER=${{ github.run_id }} \
-            ${{ steps.build_docker_image_step.outputs.full-image-name }} \
-            /bin/bash /onnxruntime_src/tools/ci_build/github/linux/ort_minimal/build_minimal_ort_and_run_tests.sh \
-              --build-directory /build/3b \
-              --reduced-ops-config /build/.test_data/required_ops_and_types.ort_models.config \
-              --enable-type-reduction
+          set -e -x
+          # Create the host directory where test data will be placed by the container script
+          mkdir -p ${{ runner.temp }}/.test_data
+          cd .github/actions/build-minimal-ort-and-run-tests
+          npm ci
+          npm run build
         working-directory: ${{ env.BUILD_SOURCES_DIRECTORY }}
+
+      - name: Build Full ORT and Prepare Test Files
+        uses: ./.github/actions/build-minimal-ort-and-run-tests
+        with:
+          reduced-ops-config-file: ${{ runner.temp }}/.test_data/required_ops_and_types.ort_models.config
+          enable-type-reduction: 'true'
+          binary-size-report-name-prefix: "3b"
 
   # Job 4: Build minimal onnxruntime [exceptions ENABLED, type reduction ENABLED (globally allowed types)] and run tests
   build_minimal_globally_allowed_types:
@@ -267,23 +251,6 @@ jobs:
         with:
           submodules: false
 
-      - name: Download Test Data Artifact
-        uses: actions/download-artifact@v4
-        with:
-          name: test_data
-          path: ${{ runner.temp }}/.test_data/
-
-      - name: Get Docker Image using Action
-        uses: microsoft/onnxruntime-github-actions/build-docker-image@v0.0.5
-        id: build_docker_image_step
-        with:
-          dockerfile: ${{ github.workspace }}/tools/ci_build/github/linux/docker/inference/x86_64/default/cpu/Dockerfile
-          image-name: ghcr.io/microsoft/onnxruntime/onnxruntimecpubuildcix64
-          push: true
-          azure-container-registry-name: onnxruntimebuildcache
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
       - name: Export GitHub Actions cache environment variables
         uses: actions/github-script@v7
         with:
@@ -291,30 +258,38 @@ jobs:
             core.exportVariable('ACTIONS_CACHE_URL', process.env.ACTIONS_CACHE_URL || '');
             core.exportVariable('ACTIONS_RUNTIME_TOKEN', process.env.ACTIONS_RUNTIME_TOKEN || '');
 
-      - name: Run Build 4 (Using custom script)
+      - uses: microsoft/onnxruntime-github-actions/setup-build-tools@v0.0.5
+        with:
+          vcpkg-version: '2025.03.19'
+          vcpkg-hash: '17e96169cd3f266c4716fcdc1bb728e6a64f103941ece463a2834d50694eba4fb48f30135503fd466402afa139abc847ef630733c442595d1c34979f261b0114'
+          cmake-version: '3.31.6'
+          cmake-hash: '42395e20b10a8e9ef3e33014f9a4eed08d46ab952e02d2c1bbc8f6133eca0d7719fb75680f9bbff6552f20fcd1b73d86860f7f39388d631f98fb6f622b37cf04'
+          add-cmake-to-path: 'true'
+          disable-terrapin: 'true'
+
+      - name: Prepare
         shell: bash
         run: |
-          # Create the target dir for build output inside the runner's temp dir first
-          mkdir -p ${{ runner.temp }}/4
-          docker run --rm \
-            --volume ${{ env.BUILD_SOURCES_DIRECTORY }}:/onnxruntime_src \
-            --volume ${{ runner.temp }}:/build \
-            -e ALLOW_RELEASED_ONNX_OPSET_ONLY=1 \
-            -e NIGHTLY_BUILD=1 \
-            -e BUILD_BUILDNUMBER=${{ github.run_id }} \
-            ${{ steps.build_docker_image_step.outputs.full-image-name }} \
-            /bin/bash -c " \
-              printf \"%s\\n%s\\n\" \
-                \"!globally_allowed_types;bool,float,int8_t,uint8_t\" \
-                \"!no_ops_specified_means_all_ops_are_required\" \
-                > /build/.test_data/globally_allowed_types.config && \
-              /onnxruntime_src/tools/ci_build/github/linux/ort_minimal/build_minimal_ort_and_run_tests.sh \
-                --build-directory /build/4 \
-                --reduced-ops-config /build/.test_data/globally_allowed_types.config \
-                --enable-type-reduction \
-                --skip-model-tests \
-            "
+          set -e -x
+          # Create the host directory where test data will be placed by the container script
+          mkdir -p ${{ runner.temp }}/.test_data
+          cd .github/actions/build-minimal-ort-and-run-tests
+          npm ci
+          npm run build
         working-directory: ${{ env.BUILD_SOURCES_DIRECTORY }}
+
+      - name: gen config
+        shell: bash
+        run: |
+          printf "%s\n%s\n"  "!globally_allowed_types;bool,float,int8_t,uint8_t"  "!no_ops_specified_means_all_ops_are_required"  > ${{ runner.temp }}/.test_data/globally_allowed_types.config 
+
+      - name: Build Full ORT and Prepare Test Files
+        uses: ./.github/actions/build-minimal-ort-and-run-tests
+        with:
+          reduced-ops-config-file: ${{ runner.temp }}/.test_data/globally_allowed_types.config
+          enable-type-reduction: 'true'
+          skip-model-tests: 'true'
+          binary-size-report-name-prefix: "4"
 
   # Job 5: Build extended minimal onnxruntime and run tests
   build_extended_minimal:
