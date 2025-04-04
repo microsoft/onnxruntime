@@ -65,7 +65,6 @@ jobs:
   # Job 2: Build minimal onnxruntime [exceptions DISABLED, type reduction DISABLED, training ops ENABLED]
   build_minimal_exceptions_disabled:
     name: 2. Build Minimal (Exceptions Disabled)
-    needs: build_full_ort # Depends on Job 1 for test data
     runs-on: ["self-hosted", "1ES.Pool=onnxruntime-github-Ubuntu2204-AMD-CPU"]
     permissions: # Permissions needed for build-docker-image
       contents: read
@@ -79,15 +78,6 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 20
-      - name: Download Test Data Artifact
-        uses: actions/download-artifact@v4
-        with:
-          name: test_data
-          path: ${{ runner.temp }}/.test_data/
-      - name: gen config
-        shell: bash
-        run: |
-          ls -lha ${{ runner.temp }}/.test_data
 
       - name: Get Docker Image using Action
         uses: microsoft/onnxruntime-github-actions/build-docker-image@8ed5ba8648f6065d0a90d75d9785e79b3462ac52
@@ -217,7 +207,6 @@ jobs:
   # Job 4: Build minimal onnxruntime [exceptions ENABLED, type reduction ENABLED (globally allowed types)] and run tests
   build_minimal_globally_allowed_types:
     name: 4. Build Minimal (Globally Allowed Types)
-    needs: build_full_ort # Depends on Job 1 for test data
     runs-on: ["self-hosted", "1ES.Pool=onnxruntime-github-Ubuntu2204-AMD-CPU"]
     permissions: # Permissions needed for build-docker-image
       contents: read
@@ -264,7 +253,6 @@ jobs:
   # Job 5: Build extended minimal onnxruntime and run tests
   build_extended_minimal:
     name: 5. Build Extended Minimal
-    needs: build_full_ort # Depends on Job 1 for test data
     runs-on: ["self-hosted", "1ES.Pool=onnxruntime-github-Ubuntu2204-AMD-CPU"]
     permissions: # Permissions needed for build-docker-image
       contents: read
@@ -278,11 +266,6 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 20
-      - name: Download Test Data Artifact
-        uses: actions/download-artifact@v4
-        with:
-          name: test_data
-          path: ${{ runner.temp }}/.test_data/
 
       - name: Get Docker Image using Action
         uses: microsoft/onnxruntime-github-actions/build-docker-image@8ed5ba8648f6065d0a90d75d9785e79b3462ac52
@@ -329,7 +312,6 @@ jobs:
   # Job 6a: Regular build with python and all optional features disabled.
   build_regular_no_optional:
     name: 6a. Build Regular (No Optional Features)
-    needs: build_full_ort # Depends on Job 1 for test data
     runs-on: ["self-hosted", "1ES.Pool=onnxruntime-github-Ubuntu2204-AMD-CPU"]
     permissions: # Permissions needed for build-docker-image
       contents: read
@@ -366,11 +348,13 @@ jobs:
           script: |
             core.exportVariable('ACTIONS_CACHE_URL', process.env.ACTIONS_CACHE_URL || '');
             core.exportVariable('ACTIONS_RUNTIME_TOKEN', process.env.ACTIONS_RUNTIME_TOKEN || '');
-      - name: Download Test Data Artifact
-        uses: actions/download-artifact@v4
-        with:
-          name: test_data
-          path: ${{ runner.temp }}/.test_data/
+
+      - name: gen config
+        shell: bash
+        run: |
+          mkdir -p ${{ runner.temp }}/.test_data
+          touch ${{ runner.temp }}/.test_data/include_no_operators.config
+
       - name: Run Build 6a (Update)
         uses: microsoft/onnxruntime-github-actions/run-build-script-in-docker@8ed5ba8648f6065d0a90d75d9785e79b3462ac52
         with:
@@ -406,7 +390,6 @@ jobs:
   # Job 6b: Minimal build with all optional features disabled.
   build_minimal_no_optional:
     name: 6b. Build Minimal (No Optional Features)
-    needs: build_full_ort # Depends on Job 1 for test data
     runs-on: ["self-hosted", "1ES.Pool=onnxruntime-github-Ubuntu2204-AMD-CPU"]
     permissions: # Permissions needed for build-docker-image
       contents: read
@@ -420,11 +403,11 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 20
-      - name: Download Test Data Artifact
-        uses: actions/download-artifact@v4
-        with:
-          name: test_data
-          path: ${{ runner.temp }}/.test_data/
+      - name: gen config
+        shell: bash
+        run: |
+          mkdir -p ${{ runner.temp }}/.test_data
+          touch ${{ runner.temp }}/.test_data/include_no_operators.config
 
       - name: Get Docker Image using Action
         uses: microsoft/onnxruntime-github-actions/build-docker-image@8ed5ba8648f6065d0a90d75d9785e79b3462ac52
@@ -487,7 +470,6 @@ jobs:
   # Job 6c: Extended minimal build with all optional features disabled.
   build_extended_minimal_no_optional:
     name: 6c. Build Extended Minimal (No Optional Features)
-    needs: build_full_ort # Depends on Job 1 for test data
     runs-on: ["self-hosted", "1ES.Pool=onnxruntime-github-Ubuntu2204-AMD-CPU"]
     permissions: # Permissions needed for build-docker-image
       contents: read
@@ -501,11 +483,11 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 20
-      - name: Download Test Data Artifact
-        uses: actions/download-artifact@v4
-        with:
-          name: test_data
-          path: ${{ runner.temp }}/.test_data/
+      - name: gen config
+        shell: bash
+        run: |
+          mkdir -p ${{ runner.temp }}/.test_data
+          touch ${{ runner.temp }}/.test_data/include_no_operators.config
 
       - name: Get Docker Image using Action
         uses: microsoft/onnxruntime-github-actions/build-docker-image@8ed5ba8648f6065d0a90d75d9785e79b3462ac52
