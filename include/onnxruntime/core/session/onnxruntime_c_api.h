@@ -348,6 +348,7 @@ typedef enum GraphOptimizationLevel {
   ORT_DISABLE_ALL = 0,
   ORT_ENABLE_BASIC = 1,
   ORT_ENABLE_EXTENDED = 2,
+  ORT_ENABLE_LAYOUT = 3,
   ORT_ENABLE_ALL = 99
 } GraphOptimizationLevel;
 
