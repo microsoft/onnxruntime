@@ -9,16 +9,20 @@
 #include "core/providers/webgpu/math/matmul_utils.h"
 #include "core/providers/webgpu/math/matmul_packed.h"
 #include "core/providers/webgpu/webgpu_utils.h"
+#include "core/providers/webgpu/nn/fuse_utils.h"
 
 namespace onnxruntime {
 namespace webgpu {
+
+MatMulProgram CreateMatMulProgram(const Activation& activation, std::vector<const Tensor*>& inputs, Tensor* output, bool is_channels_last,
+                                  const TensorShape& input_a_reshape = TensorShape(),
+                                  const TensorShape& input_b_reshape = TensorShape());
 
 class MatMul final : public WebGpuKernel {
  public:
   MatMul(const OpKernelInfo& info) : WebGpuKernel{info} {}
 
   Status ComputeInternal(ComputeContext& context) const override;
-
   constexpr static uint32_t MATMUL_PACKED_WORKGROUP_SIZE_X = 8;
   constexpr static uint32_t MATMUL_PACKED_WORKGROUP_SIZE_Y = 8;
   constexpr static uint32_t MATMUL_PACKED_WORKGROUP_SIZE_Z = 1;
@@ -26,8 +30,8 @@ class MatMul final : public WebGpuKernel {
 
 class MatMulNaiveProgram final : public Program<MatMulNaiveProgram> {
  public:
-  MatMulNaiveProgram(const size_t output_rank, int64_t output_number, bool has_bias)
-      : Program{"MatMulNaive"}, output_rank_(output_rank), output_number_(output_number), has_bias_{has_bias} {
+  MatMulNaiveProgram(const Activation& activation, const size_t output_rank, int64_t output_number, bool has_bias, bool is_channels_last = false)
+      : Program{"MatMulNaive"}, activation_(activation), output_rank_(output_rank), output_number_(output_number), has_bias_{has_bias}, is_channels_last_(is_channels_last) {
   }
 
   Status GenerateShaderCode(ShaderHelper& sh) const override;
@@ -38,9 +42,11 @@ class MatMulNaiveProgram final : public Program<MatMulNaiveProgram> {
                                           {"K", ProgramUniformVariableDataType::Uint32});
 
  private:
+  const Activation& activation_;
   const size_t output_rank_;
   const int64_t output_number_;
   const bool has_bias_;
+  const bool is_channels_last_;
 };
 
 }  // namespace webgpu
