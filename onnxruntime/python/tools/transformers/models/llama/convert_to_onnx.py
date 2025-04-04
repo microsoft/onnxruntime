@@ -22,6 +22,10 @@ from dist_settings import barrier, get_rank, get_size, init_dist
 from llama_inputs import get_merged_sample_with_past_kv_inputs, get_sample_inputs, get_sample_with_past_kv_inputs
 from llama_parity import main as parity_check
 from llama_torch import setup_torch_model
+
+# to patch transformers before exporting for transformers >= 4.45
+from models.torch_export_patches import bypass_export_some_errors
+from models.torch_export_patches.patch_inputs import convert_dynamic_axes_into_dynamic_shapes, replace_dynamic_shapes
 from onnx_model import OnnxModel
 from optimizer import optimize_model
 from packaging import version
@@ -122,7 +126,7 @@ def run_dynamo_export(
     config.capture_scalar_outputs = True
 
     # Dummy values for export
-    batch_size, sequence_length, past_sequence_length = 2, 8, 0
+    batch_size, sequence_length, past_sequence_length = 2, 8, 3
     device = llama.device if args.model_name == "Llama-2-70b-hf" else torch.device("cpu")
 
     temp_name = args.model_name.lower().replace("-", "").replace("_", "")
@@ -141,9 +145,76 @@ def run_dynamo_export(
     )
     temp_dir = tempfile.TemporaryDirectory()
     temp_path = os.path.join(temp_dir.name, "temp.onnx")
-    torch.onnx.dynamo_export(
-        llama, input_ids, attn_mask, pos_ids, past_kv, export_options=torch.onnx.ExportOptions(dynamic_shapes=True)
-    ).save(temp_path)
+
+    input_names = ["input_ids", "attention_mask", "position_ids"]
+    output_names = [
+        "logits",
+        *list(
+            chain.from_iterable((f"present.{i}.key", f"present.{i}.value") for i in range(l_config.num_hidden_layers))
+        ),
+    ]
+    dynamic_axes = get_model_dynamic_axes(input_names, output_names)
+
+    model_args = (input_ids, attn_mask, pos_ids, past_kv)
+    model_args, model_kwargs, dynamic_shapes = convert_dynamic_axes_into_dynamic_shapes(
+        llama, args=model_args, dynamic_axes=dynamic_axes, prefix_mapping={"present": "past_key_values"}
+    )
+
+    if version.Version(torch.__version__) < version.Version("2.7"):
+        # This section is only needed for torch==2.6. The workaround implemented here
+        # to fix bugs is not necessary with torch>=2.7.
+        # - strings are not allowed with torch 2.6, so we replace them by DYNAMIC
+        # - TypePromotion was fixed in torch==2.7
+        from onnxscript import opset18 as op
+
+        dynamic_shapes = replace_dynamic_shapes(
+            dynamic_shapes,
+            dict(batch_size=torch.export.Dim("batch_size")),
+            default_value=torch.export.Dim.DYNAMIC,
+        )
+
+        # TypePromotion cannot fix a type issue after the conversion.
+        # We insert an additional CastLike when the exporter
+        def custom_aten_ge(self, other):
+            if isinstance(other, (int, float)):
+                return op.GreaterOrEqual(self, op.CastLike(other, self))
+            return op.GreaterOrEqual(self, other)
+
+        with bypass_export_some_errors(patch_transformers=True):
+            # ONNX pass TypePromotion crashes for torch 2.6.
+            # It can be bypassed by exporting first into an exported program.
+            # We then need to apply run_decompositions() before onnx conversion starts.
+            ep = torch.export.export(
+                llama,
+                (),
+                kwargs=model_kwargs,
+                dynamic_shapes=dynamic_shapes,
+                strict=False,
+            )
+            ep = ep.run_decompositions()
+            torch.onnx.export(
+                ep,
+                (),
+                temp_path,
+                kwargs=model_kwargs,
+                dynamic_shapes=dynamic_shapes,
+                dynamo=True,
+                verbose=args.verbose,
+                optimize=True,
+                custom_translation_table={torch.ops.aten.ge.Scalar: custom_aten_ge},
+            )
+    else:
+        with bypass_export_some_errors(patch_transformers=True):
+            torch.onnx.export(
+                llama,
+                (),
+                temp_path,
+                kwargs=model_kwargs,
+                dynamic_shapes=dynamic_shapes,
+                dynamo=True,
+                verbose=args.verbose,
+                optimize=True,
+            )
 
     # Check decoder_with_past_model.onnx and save all external data to one file
     onnx.checker.check_model(temp_path)
@@ -330,6 +401,7 @@ def run_torchscript_merged_export(
     temp_dir = f"./temp_{rank}"
     _prepare_dir(temp_dir)
     temp_path = os.path.join(temp_dir, "temp.onnx")
+
     torch.onnx.export(
         llama,
         args=decoder_merged_inputs,
@@ -341,6 +413,7 @@ def run_torchscript_merged_export(
         opset_version=torch_export_onnx_opset_version,
         do_constant_folding=True,
         verbose=args.verbose,
+        dynamo=False,
     )
 
     # Check decoder_merged_model.onnx and save all external data to one file
@@ -862,9 +935,6 @@ def main():
                 decoder_merged_model_fp32_opt_path,
             ]
 
-            if args.use_dynamo_export:
-                continue
-
             # Run the optimizer script.
             logger.info("Optimizing models...")
             for orig_path, opt_path in zip(old_paths, new_paths, strict=False):
@@ -969,9 +1039,6 @@ def main():
                         logger.info(f"The ONNX model at {fp_path} has been quantized to int4 and saved at {int4_path}!")
                         remove_existing_model(fp_path)
         barrier()
-
-    if args.use_dynamo_export:
-        return
 
     logger.info("Verifying parity on all ONNX models created")
 
