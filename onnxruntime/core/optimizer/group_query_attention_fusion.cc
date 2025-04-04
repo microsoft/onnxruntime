@@ -34,6 +34,42 @@ static void AttachNodeAttribute(Node& node, const std::string& attribute_name, i
   node_attributes[attribute_name] = attr;
 }
 
+static NodeArg& MergeQkvWeights2(Graph& graph,
+                                               const ONNX_NAMESPACE::TensorProto* q_tensor,
+                                               const ONNX_NAMESPACE::TensorProto* k_tensor,
+                                               const ONNX_NAMESPACE::TensorProto* v_tensor) {
+  assert(nullptr != q_tensor);
+  assert(nullptr != k_tensor);
+  assert(nullptr != v_tensor);
+
+  Initializer q_initializer(*q_tensor, graph.ModelPath());
+  Initializer k_initializer(*k_tensor, graph.ModelPath());
+  Initializer v_initializer(*v_tensor, graph.ModelPath());
+
+  ONNX_NAMESPACE::TensorProto qkv_b_initializer;
+  qkv_b_initializer.set_name(graph.GenerateNodeArgName("qkv_B"));
+  qkv_b_initializer.add_dims(2304);
+  qkv_b_initializer.add_dims(4096);
+  qkv_b_initializer.set_data_type(q_tensor->data_type());
+
+  const MLFloat16* q_data = q_initializer.data<MLFloat16>();
+  const MLFloat16* k_data = k_initializer.data<MLFloat16>();
+  const MLFloat16* v_data = v_initializer.data<MLFloat16>();
+
+  size_t b_element_count = 2304 * 4096;
+  std::vector<MLFloat16> merged_qkv_B;
+  merged_qkv_B.reserve(b_element_count);
+
+  optimizer_utils::MergeMatMulWeights(q_data, k_data, v_data, merged_qkv_B, 2304, 2048, 1024);
+
+  utils::SetRawDataInTensorProto(qkv_b_initializer, merged_qkv_B.data(), b_element_count * sizeof(MLFloat16));
+
+  NodeArg& qkv_b_arg = graph_utils::AddInitializer(graph, qkv_b_initializer);
+
+  return qkv_b_arg;
+}
+
+/*
 static std::array<NodeArg*, 3> MergeQkvWeights(Graph& graph,
                                                int64_t hidden_dim,
                                                int64_t blocks,
@@ -129,6 +165,7 @@ static std::array<NodeArg*, 3> MergeQkvWeights(Graph& graph,
 
   return new_tensor_node_args;
 }
+*/
 
 Status GroupQueryAttentionFusion::ApplyImpl(
     Graph& graph,
@@ -187,6 +224,8 @@ Status GroupQueryAttentionFusion::ApplyImpl(
     // Inputs to the newly created MatMul node
     onnxruntime::NodeArg* layer_norm = nullptr;
 
+    std::string matMulType = "";
+
     Node* rotary_node_1 = nullptr;
     Node* rotary_node_2 = nullptr;
     Node* q_node = nullptr;
@@ -208,18 +247,20 @@ Status GroupQueryAttentionFusion::ApplyImpl(
           }
 
           for (auto topNodeIt = rotary_or_v_node.InputNodesBegin(); topNodeIt != rotary_or_v_node.InputNodesEnd(); ++topNodeIt) {
-            // Some models might have input nodes that are unrelated to MatMulNBits.
-            if (topNodeIt->OpType() != "MatMulNBits") {
+            // Some models might have input nodes that are unrelated to MatMulNBits or MatMul.
+            if (topNodeIt->OpType() != "MatMulNBits" && topNodeIt->OpType() != "MatMul") {
               continue;
             }
+
+            matMulType = topNodeIt->OpType();
 
             std::cout << "rotary input is " << (*topNodeIt).Name() << std::endl;
             auto& mat_mul_node = *graph.GetNode(topNodeIt->Index());
             std::cout << "rotary input2 is " << mat_mul_node.Name() << std::endl;
             std::cout << "rotary input3 is " << mat_mul_node.OpType() << std::endl;
 
-            std::cout << "Tensor1 name I am trying to load " << mat_mul_node.InputDefs()[1]->Name() << std::endl;
-            std::cout << "Tensor2 name I am trying to load " << mat_mul_node.InputDefs()[2]->Name() << std::endl;
+            // std::cout << "Tensor1 name I am trying to load " << mat_mul_node.InputDefs()[1]->Name() << std::endl;
+            // std::cout << "Tensor2 name I am trying to load " << mat_mul_node.InputDefs()[2]->Name() << std::endl;
 
             if (!q_node) {
               q_node = &mat_mul_node;
@@ -228,34 +269,6 @@ Status GroupQueryAttentionFusion::ApplyImpl(
             }
 
             layer_norm = mat_mul_node.MutableInputDefs()[0];
-
-            for (auto input_of_mat_mul_node : mat_mul_node.MutableInputDefs()) {
-              std::cout << "input of mat mul node " << input_of_mat_mul_node->Name() << std::endl;
-            }
-
-            if (k_proj_tensor == nullptr && !graph.GetInitializedTensor(mat_mul_node.InputDefs()[1]->Name(), k_proj_tensor)) {
-              std::cout << "Unable to load K tensor weight" << std::endl;
-            }
-
-            if (k_scale_tensor == nullptr && !graph.GetInitializedTensor(mat_mul_node.InputDefs()[2]->Name(), k_scale_tensor)) {
-              std::cout << "Unable to load K scale tensor weight" << std::endl;
-            }
-
-            if (k_zero_points_tensor == nullptr && !graph.GetInitializedTensor(mat_mul_node.InputDefs()[3]->Name(), k_zero_points_tensor)) {
-              std::cout << "Unable to load K zero points tensor weight" << std::endl;
-            }
-
-            if (q_proj_tensor == nullptr && !graph.GetInitializedTensor(mat_mul_node.InputDefs()[1]->Name(), q_proj_tensor)) {
-              std::cout << "Unable to load Q tensor weight" << std::endl;
-            }
-
-            if (q_scale_tensor == nullptr && !graph.GetInitializedTensor(mat_mul_node.InputDefs()[2]->Name(), q_scale_tensor)) {
-              std::cout << "Unable to load Q scale tensor weight" << std::endl;
-            }
-
-            if (q_zero_points_tensor == nullptr && !graph.GetInitializedTensor(mat_mul_node.InputDefs()[3]->Name(), q_zero_points_tensor)) {
-              std::cout << "Unable to load Q zero points tensor weight" << std::endl;
-            }
           }
 
           pos_ids_arg = rotary_or_v_node.MutableInputDefs()[1];
@@ -269,21 +282,48 @@ Status GroupQueryAttentionFusion::ApplyImpl(
           }
 
           // cos and sin
-        } else if (rotary_or_v_node.OpType() == "MatMulNBits") {
+        } else if (rotary_or_v_node.OpType() == "MatMulNBits" || rotary_or_v_node.OpType() == "MatMul") {
           v_node = &rotary_or_v_node;
-          if (v_proj_tensor == nullptr && !graph.GetInitializedTensor(rotary_or_v_node.InputDefs()[1]->Name(), v_proj_tensor)) {
-            std::cout << "Unable to load V tensor weight" << std::endl;
-          }
-
-          if (v_scale_tensor == nullptr && !graph.GetInitializedTensor(rotary_or_v_node.InputDefs()[2]->Name(), v_scale_tensor)) {
-            std::cout << "Unable to load V scale tensor weight" << std::endl;
-          }
-
-          if (v_zero_points_tensor == nullptr && !graph.GetInitializedTensor(rotary_or_v_node.InputDefs()[3]->Name(), v_zero_points_tensor)) {
-            std::cout << "Unable to load V zero points tensor weight" << std::endl;
-          }
         }
       }
+    }
+   
+        // extract tesnors here
+
+    if (q_proj_tensor == nullptr && !graph.GetInitializedTensor(q_node->InputDefs()[1]->Name(), q_proj_tensor)) {
+      std::cout << "Unable to load Q tensor weight" << std::endl;
+    }
+
+    if (matMulType == "MatMulNBits" && q_scale_tensor == nullptr && !graph.GetInitializedTensor(q_node->InputDefs()[2]->Name(), q_scale_tensor)) {
+      std::cout << "Unable to load Q scale tensor weight" << std::endl;
+    }
+
+    if (matMulType == "MatMulNBits" && q_zero_points_tensor == nullptr && !graph.GetInitializedTensor(q_node->InputDefs()[3]->Name(), q_zero_points_tensor)) {
+      std::cout << "Unable to load Q zero points tensor weight" << std::endl;
+    }
+
+    if (k_proj_tensor == nullptr && !graph.GetInitializedTensor(k_node->InputDefs()[1]->Name(), k_proj_tensor)) {
+      std::cout << "Unable to load K tensor weight" << std::endl;
+    }
+
+    if (matMulType == "MatMulNBits" && k_scale_tensor == nullptr && !graph.GetInitializedTensor(k_node->InputDefs()[2]->Name(), k_scale_tensor)) {
+      std::cout << "Unable to load K scale tensor weight" << std::endl;
+    }
+
+    if (matMulType == "MatMulNBits" && k_zero_points_tensor == nullptr && !graph.GetInitializedTensor(k_node->InputDefs()[3]->Name(), k_zero_points_tensor)) {
+      std::cout << "Unable to load K zero points tensor weight" << std::endl;
+    }
+
+    if (v_proj_tensor == nullptr && !graph.GetInitializedTensor(v_node->InputDefs()[1]->Name(), v_proj_tensor)) {
+      std::cout << "Unable to load V tensor weight" << std::endl;
+    }
+
+    if (matMulType == "MatMulNBits" && v_scale_tensor == nullptr && !graph.GetInitializedTensor(v_node->InputDefs()[2]->Name(), v_scale_tensor)) {
+      std::cout << "Unable to load V scale tensor weight" << std::endl;
+    }
+
+    if (matMulType == "MatMulNBits" && v_zero_points_tensor == nullptr && !graph.GetInitializedTensor(v_node->InputDefs()[3]->Name(), v_zero_points_tensor)) {
+      std::cout << "Unable to load V zero points tensor weight" << std::endl;
     }
 
     std::cout << "K tensor Dimensions: ";
@@ -301,9 +341,12 @@ Status GroupQueryAttentionFusion::ApplyImpl(
       std::cout << v_proj_tensor->dims(i) << " ";
     }
 
-    int64_t hidden_size = q_proj_tensor->dims(0);
+    [[maybe_unused]] int64_t hidden_size = q_proj_tensor->dims(0);
 
-    auto qkv_args = MergeQkvWeights(graph, hidden_size, q_proj_tensor->dims(1), q_proj_tensor->dims(2), q_proj_tensor, k_proj_tensor, v_proj_tensor, q_scale_tensor, q_zero_points_tensor, k_scale_tensor, k_zero_points_tensor, v_scale_tensor, v_zero_points_tensor);
+    //optimizer_utils::MergeMatMulWeights(q)
+
+    [[maybe_unused]]auto& aa = MergeQkvWeights2(graph, q_proj_tensor, k_proj_tensor, v_proj_tensor);
+    //auto qkv_args = MergeQkvWeights(graph, hidden_size, q_proj_tensor->dims(1), q_proj_tensor->dims(2), q_proj_tensor, k_proj_tensor, v_proj_tensor, q_scale_tensor, q_zero_points_tensor, k_scale_tensor, k_zero_points_tensor, v_scale_tensor, v_zero_points_tensor);
 
     // todo prob remove this
     if (pos_ids_arg == nullptr) {
@@ -312,7 +355,8 @@ Status GroupQueryAttentionFusion::ApplyImpl(
     }
 
     // Inputs we have for mat mul are layer norm and merged/packed QKV weights.
-    const std::array mmnb_input_defs{layer_norm, qkv_args[0], qkv_args[1], qkv_args[2]};
+    //const std::array mmnb_input_defs{layer_norm, qkv_args[0], qkv_args[1], qkv_args[2]};
+    const std::array mmnb_input_defs2{layer_norm, &aa};
 
     const onnx::TypeProto* layer_norm_tensor_proto = layer_norm->TypeAsProto();
     onnx::TypeProto mutable_mat_mul_tensor_proto = *layer_norm_tensor_proto;
@@ -322,23 +366,35 @@ Status GroupQueryAttentionFusion::ApplyImpl(
     // Ensure the shape has at least 3 dimensions
     if (shape->dim_size() > 2) {
       auto* third_dim = shape->mutable_dim(2);
-      third_dim->set_dim_value(3 * hidden_size);
+      //third_dim->set_dim_value(3 * hidden_size);
+      third_dim->set_dim_value(4096);
     }
 
+    //auto& matmul_output = graph.GetOrCreateNodeArg(graph.GenerateNodeArgName("MatMul_output"), &mutable_mat_mul_tensor_proto);
     auto& matmul_output = graph.GetOrCreateNodeArg(graph.GenerateNodeArgName("MatMul_output"), &mutable_mat_mul_tensor_proto);
 
     const std::array mmnb_output_defs{&matmul_output};
 
     // Add MatMulNBits
+    /*
     Node& mat_mul_n_bits_new_node = graph.AddNode(graph.GenerateNodeName("MatMulNBits"),
                                                   "MatMulNBits",
                                                   "MatMulNBits fusion node",
-                                                  mmnb_input_defs,
+                                                  mmnb_input_defs2,
                                                   mmnb_output_defs,
                                                   &q_node->GetAttributes(),
                                                   kMSDomain);
+                                                  */
 
-    AttachNodeAttribute(mat_mul_n_bits_new_node, "N", 3 * mat_mul_n_bits_new_node.GetAttributes().at("N").i(), AttributeProto_AttributeType_INT);
+        Node& mat_mul_n_bits_new_node = graph.AddNode(graph.GenerateNodeName("MatMul"),
+                                                  "MatMul",
+                                                  "MatMul fusion node",
+                                                  mmnb_input_defs2,
+                                                  mmnb_output_defs,
+                                                  &q_node->GetAttributes(),
+                                                  kOnnxDomainAlias);
+
+    //AttachNodeAttribute(mat_mul_n_bits_new_node, "N", 3 * mat_mul_n_bits_new_node.GetAttributes().at("N").i(), AttributeProto_AttributeType_INT);
 
     mat_mul_n_bits_new_node.SetExecutionProviderType(node.GetExecutionProviderType());
 
