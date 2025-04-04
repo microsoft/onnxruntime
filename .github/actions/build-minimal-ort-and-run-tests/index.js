@@ -133,7 +133,7 @@ async function main() {
         // --- Install Python Requirements ---
         core.startGroup('Install Python Requirements');
         const requirementsPath = path.join(workspaceDir, 'tools/ci_build/github/linux/python/requirements.txt');
-        await runCommand('python3', ['-m', 'pip', 'install', '-r', requirementsPath], { cwd: workspaceDir });
+        await runCommand('python3', ['-m', 'pip', 'install', '--user','-r', requirementsPath], { cwd: workspaceDir });
         core.endGroup();
 
         // --- Build Minimal ORT ---
