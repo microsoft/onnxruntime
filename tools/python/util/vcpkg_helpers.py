@@ -7,8 +7,11 @@ from pathlib import Path
 
 # The compiler flags(CFLAGS/CXXFLAGS/LDFLAGS) settings in this file must be consistent with the cmake code in "cmake/adjust_global_compile_flags.cmake" so that all the statically linked code were compiled by the same set of compile flags.
 
+
 # This is a way to add customizations to the official VCPKG ports.
-def add_port_configs(f, has_exception: bool, is_emscripten: bool, enable_minimal_build: bool) -> None: # Added enable_minimal_build
+def add_port_configs(
+    f, has_exception: bool, is_emscripten: bool, enable_minimal_build: bool
+) -> None:  # Added enable_minimal_build
     """
     Add port-specific configurations to the triplet file.
 
@@ -24,7 +27,8 @@ def add_port_configs(f, has_exception: bool, is_emscripten: bool, enable_minimal
         "-DBENCHMARK_ENABLE_WERROR=OFF"
     )
 endif()
-""")
+"""
+    )
     f.write(
         r"""if(PORT MATCHES "date")
     list(APPEND VCPKG_CMAKE_CONFIGURE_OPTIONS
@@ -33,7 +37,8 @@ endif()
         "-DUSE_SYSTEM_TZ_DB=ON"
     )
 endif()
-""")
+"""
+    )
     if is_emscripten:
         f.write(
             r"""if(PORT MATCHES "gtest")
@@ -45,7 +50,7 @@ endif()
         )
 
     # Add ONNX specific flags based on exception and minimal build settings
-    f.write(r"""if(PORT MATCHES "onnx")""") # Start ONNX-specific block
+    f.write(r"""if(PORT MATCHES "onnx")""")  # Start ONNX-specific block
     f.write(r"""
     list(APPEND VCPKG_CMAKE_CONFIGURE_OPTIONS
         "-DONNX_DISABLE_STATIC_REGISTRATION=ON"
@@ -96,7 +101,7 @@ def generate_triplet_for_android(
     enable_rtti: bool,
     enable_exception: bool,
     enable_asan: bool,
-    enable_minimal_build: bool, # Added
+    enable_minimal_build: bool,  # Added
     use_cpp_shared: bool,
     android_api_level: int,
 ) -> None:
@@ -120,8 +125,8 @@ def generate_triplet_for_android(
         folder_name_parts.append("nortti")
     if not enable_exception:
         folder_name_parts.append("noexception")
-    if enable_minimal_build: # Added
-        folder_name_parts.append("minimal") # Added
+    if enable_minimal_build:  # Added
+        folder_name_parts.append("minimal")  # Added
 
     folder_name = "default" if len(folder_name_parts) == 0 else "_".join(folder_name_parts)
 
@@ -217,7 +222,7 @@ def generate_triplet_for_android(
         if ldflags:
             f.write(f'set(VCPKG_LINKER_FLAGS "{" ".join(ldflags)}")\n')
         f.write("list(APPEND VCPKG_CMAKE_CONFIGURE_OPTIONS -DCMAKE_CXX_STANDARD=17)\n")
-        add_port_configs(f, enable_exception, False, enable_minimal_build) # Pass enable_minimal_build
+        add_port_configs(f, enable_exception, False, enable_minimal_build)  # Pass enable_minimal_build
 
 
 def generate_android_triplets(build_dir: str, use_cpp_shared: bool, android_api_level: int) -> None:
@@ -231,7 +236,7 @@ def generate_android_triplets(build_dir: str, use_cpp_shared: bool, android_api_
     for enable_asan in [True, False]:
         for enable_rtti in [True, False]:
             for enable_exception in [True, False]:
-                for enable_minimal_build in [True, False]: # Added loop
+                for enable_minimal_build in [True, False]:  # Added loop
                     # ORT Constraint: If exceptions are disabled, minimal build must be enabled
                     # The triplet can be generated, but ORT build should not *use* the invalid combo
                     # if not enable_exception and not enable_minimal_build:
@@ -243,7 +248,7 @@ def generate_android_triplets(build_dir: str, use_cpp_shared: bool, android_api_
                             enable_rtti,
                             enable_exception,
                             enable_asan,
-                            enable_minimal_build, # Added
+                            enable_minimal_build,  # Added
                             use_cpp_shared,
                             android_api_level,
                         )
@@ -256,7 +261,7 @@ def generate_triplet_for_posix_platform(
     enable_exception: bool,
     enable_binskim: bool,
     enable_asan: bool,
-    enable_minimal_build: bool, # Added
+    enable_minimal_build: bool,  # Added
     crt_linkage: str,
     target_abi: str,
     osx_deployment_target: str,
@@ -285,8 +290,8 @@ def generate_triplet_for_posix_platform(
         folder_name_parts.append("nortti")
     if not enable_exception:
         folder_name_parts.append("noexception")
-    if enable_minimal_build: # Added
-        folder_name_parts.append("minimal") # Added
+    if enable_minimal_build:  # Added
+        folder_name_parts.append("minimal")  # Added
 
     folder_name = "default" if len(folder_name_parts) == 0 else "_".join(folder_name_parts)
 
@@ -396,7 +401,7 @@ def generate_triplet_for_posix_platform(
             f.write("list(APPEND VCPKG_CMAKE_CONFIGURE_OPTIONS -DCMAKE_CXX_STANDARD=20)\n")
         else:
             f.write("list(APPEND VCPKG_CMAKE_CONFIGURE_OPTIONS -DCMAKE_CXX_STANDARD=17)\n")
-        add_port_configs(f, enable_exception, False, enable_minimal_build) # Pass enable_minimal_build
+        add_port_configs(f, enable_exception, False, enable_minimal_build)  # Pass enable_minimal_build
 
 
 # Emscripten doesn't typically use the same minimal build concept for ONNX,
@@ -413,84 +418,84 @@ def generate_vcpkg_triplets_for_emscripten(build_dir: str, emscripten_root: str)
     # Note: Exceptions are generally required/enabled for Emscripten builds in ORT.
     # Minimal build concept might not apply directly here or needs specific flags.
     # Sticking to original logic for now.
-    enable_minimal_build = False # Assume False for Emscripten unless specified otherwise
+    enable_minimal_build = False  # Assume False for Emscripten unless specified otherwise
     for enable_exception in [True, False]:
-     for enable_wasm_exception_catching in [True, False]:
-      for enable_rtti in [True, False]:
-        for enable_asan in [True, False]:
-            for target_abi in ["wasm32", "wasm64"]:
-                folder_name_parts = []
-                if enable_asan:
-                    folder_name_parts.append("asan")
-                if not enable_rtti:
-                    folder_name_parts.append("nortti")
-                if not enable_exception:
-                    folder_name_parts.append("noexception")
-                elif enable_wasm_exception_catching:
-                    folder_name_parts.append("exception_catching")
+        for enable_wasm_exception_catching in [True, False]:
+            for enable_rtti in [True, False]:
+                for enable_asan in [True, False]:
+                    for target_abi in ["wasm32", "wasm64"]:
+                        folder_name_parts = []
+                        if enable_asan:
+                            folder_name_parts.append("asan")
+                        if not enable_rtti:
+                            folder_name_parts.append("nortti")
+                        if not enable_exception:
+                            folder_name_parts.append("noexception")
+                        elif enable_wasm_exception_catching:
+                            folder_name_parts.append("exception_catching")
 
-                folder_name = "default" if len(folder_name_parts) == 0 else "_".join(folder_name_parts)
-                os_name = "emscripten"
-                file_name = f"{target_abi}-{os_name}.cmake"
-                dest_path = Path(build_dir) / folder_name / file_name
-                os.makedirs(dest_path.parent, exist_ok=True)
-                with open(dest_path, "w", encoding="utf-8") as f:
-                    add_copyright_header(f)
-                    f.write(r"""
+                        folder_name = "default" if len(folder_name_parts) == 0 else "_".join(folder_name_parts)
+                        os_name = "emscripten"
+                        file_name = f"{target_abi}-{os_name}.cmake"
+                        dest_path = Path(build_dir) / folder_name / file_name
+                        os.makedirs(dest_path.parent, exist_ok=True)
+                        with open(dest_path, "w", encoding="utf-8") as f:
+                            add_copyright_header(f)
+                            f.write(r"""
     set(VCPKG_CRT_LINKAGE dynamic)
     set(VCPKG_LIBRARY_LINKAGE static)
     set(VCPKG_CMAKE_SYSTEM_NAME Emscripten)
     """)
-                    f.write(f"set(VCPKG_TARGET_ARCHITECTURE {target_abi})\n")
-                    emscripten_root_path_cmake_path = emscripten_root.replace("\\", "/")
-                    f.write(f'set(EMSCRIPTEN_ROOT_PATH "{emscripten_root_path_cmake_path}")\n')
-                    vcpkg_toolchain_file = (Path(build_dir) / "emsdk_vcpkg_toolchain.cmake").absolute()
-                    vcpkg_toolchain_file_cmake_path = str(vcpkg_toolchain_file).replace("\\", "/")
-                    f.write(f'set(VCPKG_CHAINLOAD_TOOLCHAIN_FILE "{vcpkg_toolchain_file_cmake_path}")\n')
-                    cflags_release = ["-DNDEBUG", "-O3", "-pthread"]
-                    ldflags = []
-                    cflags = [
-                        "-ffunction-sections",
-                        "-fdata-sections",
-                        "-msimd128",
-                        "-pthread",
-                        "-Wno-pthreads-mem-growth"
-                    ]
-                    if enable_wasm_exception_catching:
-                        cflags.append("-sDISABLE_EXCEPTION_CATCHING=0")
-                    if enable_asan:
-                        cflags += ["-fsanitize=address"]
-                        ldflags += ["-fsanitize=address"]
-                    if target_abi == "wasm64":
-                        cflags.append("-sMEMORY64")
-                        ldflags.append("-sMEMORY64")
-                    if len(ldflags) >= 1:
-                        f.write('set(VCPKG_LINKER_FLAGS "{}")\n'.format(" ".join(ldflags)))
+                            f.write(f"set(VCPKG_TARGET_ARCHITECTURE {target_abi})\n")
+                            emscripten_root_path_cmake_path = emscripten_root.replace("\\", "/")
+                            f.write(f'set(EMSCRIPTEN_ROOT_PATH "{emscripten_root_path_cmake_path}")\n')
+                            vcpkg_toolchain_file = (Path(build_dir) / "emsdk_vcpkg_toolchain.cmake").absolute()
+                            vcpkg_toolchain_file_cmake_path = str(vcpkg_toolchain_file).replace("\\", "/")
+                            f.write(f'set(VCPKG_CHAINLOAD_TOOLCHAIN_FILE "{vcpkg_toolchain_file_cmake_path}")\n')
+                            cflags_release = ["-DNDEBUG", "-O3", "-pthread"]
+                            ldflags = []
+                            cflags = [
+                                "-ffunction-sections",
+                                "-fdata-sections",
+                                "-msimd128",
+                                "-pthread",
+                                "-Wno-pthreads-mem-growth",
+                            ]
+                            if enable_wasm_exception_catching:
+                                cflags.append("-sDISABLE_EXCEPTION_CATCHING=0")
+                            if enable_asan:
+                                cflags += ["-fsanitize=address"]
+                                ldflags += ["-fsanitize=address"]
+                            if target_abi == "wasm64":
+                                cflags.append("-sMEMORY64")
+                                ldflags.append("-sMEMORY64")
+                            if len(ldflags) >= 1:
+                                f.write('set(VCPKG_LINKER_FLAGS "{}")\n'.format(" ".join(ldflags)))
 
-                    # RTTI flag for Emscripten
-                    if not enable_rtti:
-                       cflags.append("-fno-rtti")
+                            # RTTI flag for Emscripten
+                            if not enable_rtti:
+                                cflags.append("-fno-rtti")
 
-                    cxxflags = cflags.copy()
+                            cxxflags = cflags.copy()
 
-                    # Exception flag for Emscripten (note: -fno-exceptions conflicts with -sDISABLE_EXCEPTION_CATCHING=0)
-                    # We keep exceptions enabled based on the cflags setting above.
+                            # Exception flag for Emscripten (note: -fno-exceptions conflicts with -sDISABLE_EXCEPTION_CATCHING=0)
+                            # We keep exceptions enabled based on the cflags setting above.
 
-                    if cflags:
-                        f.write(f'set(VCPKG_C_FLAGS "{" ".join(cflags)}")\n')
-                    if cxxflags:
-                        f.write(f'set(VCPKG_CXX_FLAGS "{" ".join(cxxflags)}")\n')
-                    if cflags_release:
-                        # Note: Combining release flags with base flags, check if this is desired behavior
-                        combined_release_flags = cflags_release + cflags
-                        f.write(f'set(VCPKG_C_FLAGS_RELEASE "{" ".join(combined_release_flags)}")\n')
-                        f.write(f'set(VCPKG_CXX_FLAGS_RELEASE "{" ".join(combined_release_flags)}")\n')
-                        f.write(f'set(VCPKG_C_FLAGS_RELWITHDEBINFO "{" ".join(combined_release_flags)}")\n')
-                        f.write(f'set(VCPKG_CXX_FLAGS_RELWITHDEBINFO "{" ".join(combined_release_flags)}")\n')
+                            if cflags:
+                                f.write(f'set(VCPKG_C_FLAGS "{" ".join(cflags)}")\n')
+                            if cxxflags:
+                                f.write(f'set(VCPKG_CXX_FLAGS "{" ".join(cxxflags)}")\n')
+                            if cflags_release:
+                                # Note: Combining release flags with base flags, check if this is desired behavior
+                                combined_release_flags = cflags_release + cflags
+                                f.write(f'set(VCPKG_C_FLAGS_RELEASE "{" ".join(combined_release_flags)}")\n')
+                                f.write(f'set(VCPKG_CXX_FLAGS_RELEASE "{" ".join(combined_release_flags)}")\n')
+                                f.write(f'set(VCPKG_C_FLAGS_RELWITHDEBINFO "{" ".join(combined_release_flags)}")\n')
+                                f.write(f'set(VCPKG_CXX_FLAGS_RELWITHDEBINFO "{" ".join(combined_release_flags)}")\n')
 
-                    # Pass True for has_exception because Emscripten build enables it via CFLAGS
-                    # Pass False for enable_minimal_build unless specifically needed for Emscripten
-                    add_port_configs(f, enable_exception, True, enable_minimal_build)
+                            # Pass True for has_exception because Emscripten build enables it via CFLAGS
+                            # Pass False for enable_minimal_build unless specifically needed for Emscripten
+                            add_port_configs(f, enable_exception, True, enable_minimal_build)
 
 
 def generate_windows_triplets(build_dir: str, toolset_version: str) -> None:
@@ -512,7 +517,7 @@ def generate_windows_triplets(build_dir: str, toolset_version: str) -> None:
         for enable_exception in [True, False]:
             for enable_binskim in [True, False]:
                 for enable_asan in [True, False]:
-                    for enable_minimal_build in [True, False]: # Added loop
+                    for enable_minimal_build in [True, False]:  # Added loop
                         for crt_linkage in crt_linkages:
                             # Address Sanitizer libs do not have a Qspectre version. So they two cannot be both enabled.
                             if enable_asan and enable_binskim:
@@ -531,8 +536,8 @@ def generate_windows_triplets(build_dir: str, toolset_version: str) -> None:
                                     folder_name_parts.append("nortti")
                                 if not enable_exception:
                                     folder_name_parts.append("noexception")
-                                if enable_minimal_build: # Added
-                                    folder_name_parts.append("minimal") # Added
+                                if enable_minimal_build:  # Added
+                                    folder_name_parts.append("minimal")  # Added
 
                                 folder_name = "default" if len(folder_name_parts) == 0 else "_".join(folder_name_parts)
                                 file_name_parts = [target_abi, "windows", "static"]
@@ -581,7 +586,9 @@ def generate_windows_triplets(build_dir: str, toolset_version: str) -> None:
                                     )
                                     if ldflags:
                                         f.write(f'set(VCPKG_LINKER_FLAGS "{" ".join(ldflags)}")\n')
-                                    add_port_configs(f, enable_exception, False, enable_minimal_build) # Pass enable_minimal_build
+                                    add_port_configs(
+                                        f, enable_exception, False, enable_minimal_build
+                                    )  # Pass enable_minimal_build
 
 
 def generate_linux_triplets(build_dir: str) -> None:
@@ -596,7 +603,7 @@ def generate_linux_triplets(build_dir: str) -> None:
         for enable_exception in [True, False]:
             for enable_binskim in [True, False]:
                 for enable_asan in [True, False]:
-                    for enable_minimal_build in [True, False]: # Added loop
+                    for enable_minimal_build in [True, False]:  # Added loop
                         if enable_asan and enable_binskim:
                             continue
                         # ORT Constraint: If exceptions are disabled, minimal build must be enabled
@@ -610,7 +617,7 @@ def generate_linux_triplets(build_dir: str) -> None:
                                 enable_exception,
                                 enable_binskim,
                                 enable_asan,
-                                enable_minimal_build, # Added
+                                enable_minimal_build,  # Added
                                 "dynamic",
                                 target_abi,
                                 None,
@@ -630,7 +637,7 @@ def generate_macos_triplets(build_dir: str, osx_deployment_target: str) -> None:
         for enable_exception in [True, False]:
             for enable_binskim in [True, False]:
                 for enable_asan in [True, False]:
-                    for enable_minimal_build in [True, False]: # Added loop
+                    for enable_minimal_build in [True, False]:  # Added loop
                         if enable_asan and enable_binskim:
                             continue
                         # ORT Constraint: If exceptions are disabled, minimal build must be enabled
@@ -644,7 +651,7 @@ def generate_macos_triplets(build_dir: str, osx_deployment_target: str) -> None:
                                 enable_exception,
                                 enable_binskim,
                                 enable_asan,
-                                enable_minimal_build, # Added
+                                enable_minimal_build,  # Added
                                 "dynamic",
                                 target_abi,
                                 osx_deployment_target,
