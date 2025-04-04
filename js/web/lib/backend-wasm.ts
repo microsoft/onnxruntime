@@ -18,7 +18,7 @@ export const initializeFlags = (): void => {
   }
 
   const simd = env.wasm.simd;
-  if (typeof simd !== 'boolean' && simd !== undefined && simd !== 'relaxed') {
+  if (typeof simd !== 'boolean' && simd !== undefined && simd !== 'fixed' && simd !== 'relaxed') {
     // eslint-disable-next-line no-console
     console.warn(
       `Property "env.wasm.simd" is set to unknown value "${simd}". Reset it to \`false\` and ignore SIMD feature checking.`,

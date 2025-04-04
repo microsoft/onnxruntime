@@ -45,8 +45,8 @@ export declare namespace Env {
      *
      * ONNX Runtime will perform feature detection based on the value of this property. Specifically, when the value is
      * set to:
-     * - `undefined` or `true`: will check availability of Fixed-width SIMD.
-     * - `relaxed`: will check availability of Relaxed SIMD.
+     * - `undefined`, `true` or `"fixed"`: will check availability of Fixed-width SIMD.
+     * - `"relaxed"`: will check availability of Relaxed SIMD.
      * - `false`: will not perform SIMD feature checking.
      *
      * Setting this property does not make ONNX Runtime to switch to the corresponding runtime automatically. User need
@@ -56,7 +56,7 @@ export declare namespace Env {
      *
      * @defaultValue `true`
      */
-    simd?: boolean | 'relaxed';
+    simd?: boolean | 'fixed' | 'relaxed';
 
     /**
      * set or get a boolean value indicating whether to enable trace.
