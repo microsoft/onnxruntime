@@ -22,7 +22,7 @@ runs:
       working-directory: ${{ github.action_path }}
 
     - name: Validate shader keys (native log)
-      if: ${{ !inputs.is_chromium_log != 'true' }}
+      if: ${{ inputs.is_chromium_log != 'true' }}
       shell: cmd
       run: |
         node validate-shader-key.js < "${{ inputs.log_file_path }}"

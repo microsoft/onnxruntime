@@ -34,7 +34,7 @@ stages:
       PoolName: 'onnxruntime-Ubuntu2204-AMD-CPU'
       ArtifactNamePrefix: ${{ parameters.ArtifactNamePrefix }}
       PackageJava: ${{ parameters.PackageJava }}
-      PackageNodeJS: ${{ parameters.PackageNodeJS }}
+      PackageNodeJS: false
 
   - template: c-api-linux-cpu.yml
     parameters:

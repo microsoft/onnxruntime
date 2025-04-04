@@ -32,9 +32,7 @@ stages:
       parameters:
         Dockerfile: tools/ci_build/github/linux/docker/inference/x86_64/default/cuda${{ variables.CUDA_VERSION_MAJOR }}/Dockerfile
         Context: tools/ci_build/github/linux/docker/inference/x86_64/default/cuda${{ variables.CUDA_VERSION_MAJOR }}
-        DockerBuildArgs: "
-        --build-arg BUILD_UID=$( id -u )
-        "
+        DockerBuildArgs: " --build-arg BUILD_UID=$( id -u )"
         Repository: onnxruntimecuda${{ variables.CUDA_VERSION_MAJOR }}build
 
     - script: $(Build.SourcesDirectory)/tools/ci_build/github/linux/build_cuda_c_api_package.sh
@@ -112,13 +110,6 @@ stages:
           libraryName: 'libonnxruntime.so'
           nativeLibraryName: 'libonnxruntime4j_jni.so'
           is1ES: true
-
-    - ${{ if eq(parameters.buildNodejs, 'true') }}:
-      - template: ../templates/nodejs-artifacts-package-and-publish-steps-posix.yml
-        parameters:
-          arch: 'x64'
-          os: 'linux'
-          artifactName: 'drop-onnxruntime-nodejs-linux-x64-tensorrt'
 
     - template: ../templates/c-api-artifacts-package-and-publish-steps-posix.yml
       parameters:

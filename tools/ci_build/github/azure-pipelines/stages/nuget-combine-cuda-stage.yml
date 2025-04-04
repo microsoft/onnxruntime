@@ -39,6 +39,11 @@ stages:
     buildJava: ${{ parameters.buildJava }}
     buildNodejs: ${{ parameters.buildNodejs }}
 
+- ${{ if eq(parameters.buildNodejs, 'true') }}:
+  - template: nodejs-linux-packaging-stage.yml
+    parameters:
+      CudaVersion: ${{ parameters.CudaVersion }}
+
 - template: nuget-win-cuda-packaging-stage.yml
   parameters:
     RunOnnxRuntimeTests: ${{ parameters.RunOnnxRuntimeTests }}
