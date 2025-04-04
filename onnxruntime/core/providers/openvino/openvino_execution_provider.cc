@@ -58,57 +58,6 @@ OpenVINOExecutionProvider::OpenVINOExecutionProvider(const ProviderInfo& info, s
       shared_context_{shared_context},
       ep_ctx_handle_{session_context_.openvino_sdk_version, *GetLogger()} {
   InitProviderOrtApi();
-
-  // to check if target device is available
-  // using OVCore capability GetAvailableDevices to fetch list of devices plugged in
-  if (info.cache_dir.empty()) {
-    bool all_devices_found = false;
-    // Checking for device_type configuration
-    if (info.device_type != "") {
-      std::vector<std::string> devices_to_check;
-      if (info.device_type.find("HETERO:") == 0 ||
-          info.device_type.find("MULTI:") == 0 ||
-          info.device_type.find("BATCH:") == 0 ||
-          info.device_type.find("AUTO:") == 0) {
-        auto delimit = info.device_type.find(":");
-        const auto& devices = info.device_type.substr(delimit + 1);
-        devices_to_check = split(devices, ',');
-      } else {
-        devices_to_check.push_back(info.device_type);
-      }
-
-      // Re-initialize before loop
-      all_devices_found = true;
-      for (const auto& device : devices_to_check) {
-        bool device_found = false;
-        std::string device_prefix = device;
-        int device_idx = 0;
-        // Get the index and remove the index from device_prefix
-        if (auto delimit = device_prefix.find("."); delimit != std::string::npos) {
-          try {
-            device_idx = std::stoi(device_prefix.substr(delimit + 1));
-          } catch (std::exception& ex) {
-            ORT_THROW("[ERROR] [OpenVINO] Wrong index in specified device - " + device + " :", ex.what());
-          }
-          device_prefix = device_prefix.substr(0, delimit);
-        }
-        std::vector<std::string> available_devices = OVCore::Get()->GetAvailableDevices(device_prefix);
-        // If idx is 0, maybe index is not set (e.g. GPU)
-        // Then the device is found if we have at least one device of the type
-        if (device_idx == 0 && available_devices.size() >= 1) {
-            device_found = true;
-        } else {
-          // Find full device (e.g GPU.1) in the list
-          if (std::find(std::begin(available_devices), std::end(available_devices), device) != std::end(available_devices))
-            device_found = true;
-        }
-        all_devices_found = all_devices_found && device_found;
-      }
-    }
-    if (!all_devices_found) {
-      ORT_THROW("[ERROR] [OpenVINO] Specified device - " + info.device_type + " is not available");
-    }
-  }
 }
 
 OpenVINOExecutionProvider::~OpenVINOExecutionProvider() {

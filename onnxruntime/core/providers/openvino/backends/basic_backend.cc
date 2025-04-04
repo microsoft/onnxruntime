@@ -284,7 +284,7 @@ void BasicBackend::PopulateConfigValue(ov::AnyMap& device_config) {
       //// Parse to get the device mode (e.g., "AUTO:CPU,GPU" -> "AUTO")
       std::unordered_set<std::string> supported_mode = {"AUTO", "HETERO", "MULTI"};
       auto device_mode = find_device_type_mode(session_context_.device_type);
-      ORT_ENFORCE(supported_mode.find(device_mode)!=supported_mode.end(), " Invalid device mode is passed : " , session_context_.device_type);
+      ORT_ENFORCE(supported_mode.find(device_mode) != supported_mode.end(), " Invalid device mode is passed : ", session_context_.device_type);
       // Parse individual devices (e.g., "AUTO:CPU,GPU" -> ["CPU", "GPU"])
       auto individual_devices = parse_individual_devices(session_context_.device_type);
       if (!device_mode.empty()) individual_devices.emplace_back(device_mode);

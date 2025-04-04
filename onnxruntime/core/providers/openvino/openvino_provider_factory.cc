@@ -18,7 +18,6 @@
 namespace onnxruntime {
 namespace openvino_ep {
 void ParseConfigOptions(ProviderInfo& pi) {
-
   if (pi.config_options == nullptr)
     return;
 
@@ -58,23 +57,29 @@ bool ParseBooleanOption(const ProviderOptions& provider_options, std::string opt
   return false;
 }
 
-std::string ParseDeviceType(std::shared_ptr<OVCore> ov_core, const ProviderOptions& provider_options, std::string option_name) {
-  // This function normally does not check if the selected device is available, but does some sanity checks
-  // Only if the device is not standard, then availability is checked.
-  // Availability is checked for the selected device in the OpenVINOExecutionProvider constructor
-
+std::string ParseDeviceType(std::shared_ptr<OVCore> ov_core, const ProviderOptions& provider_options) {
+  std::set<std::string> supported_device_types = {"CPU", "GPU", "NPU"};
+  std::set<std::string> supported_device_modes = {"AUTO", "HETERO", "MULTI"};
   std::vector<std::string> devices_to_check;
   std::string selected_device;
-  if (provider_options.contains(option_name)) {
-    selected_device = provider_options.at(option_name);
-    // If we have multiple device configuration, we need to check all of them
-    if ((selected_device.find("HETERO:") == 0) ||
-        (selected_device.find("MULTI:") == 0) ||
-        (selected_device.find("BATCH:") == 0) ||
-        (selected_device.find("AUTO:") == 0)) {
-      auto delimit = selected_device.find(":");
-      const auto& devices = selected_device.substr(delimit + 1);
-      devices_to_check = split(devices, ',');
+  std::vector<std::string> luid_list;
+  std::string device_mode = "";
+  std::map<std::string, std::string> ov_luid_map;
+
+  if (provider_options.contains("device_type")) {
+    selected_device = provider_options.at("device_type");
+    std::erase(selected_device, ' ');
+    if (selected_device == "AUTO") return selected_device;
+
+    if (auto delimit = selected_device.find(":"); delimit != std::string::npos) {
+      device_mode = selected_device.substr(0, delimit);
+      if (supported_device_modes.contains(device_mode)) {
+        const auto& devices = selected_device.substr(delimit + 1);
+        devices_to_check = split(devices, ',');
+        ORT_ENFORCE(devices_to_check.size() > 0, "Modes should have devices listed based on priority");
+      } else {
+        ORT_THROW("[ERROR] [OpenVINO] Invalid device_type is selected. Supported modes are AUTO/HETERO/MULTI");
+      }
     } else {
       devices_to_check.push_back(selected_device);
     }
@@ -102,9 +107,18 @@ std::string ParseDeviceType(std::shared_ptr<OVCore> ov_core, const ProviderOptio
 #endif
   }
 
-  // Devices considered to be supported by default
-  std::unordered_set<std::string> supported_device_types = {"CPU", "GPU", "NPU"};
+  // Get the LUID passed from the provider option in a comma separated string list
+  // Compare each of the LUID's against the LUID obtained using ov property and map with the right device
+  if (provider_options.contains("device_luid")) {
+    std::string luid_str = provider_options.at("device_luid");
+    std::erase(luid_str, ' ');
+    luid_list = split(luid_str, ',');
+  }
+
+  bool all_devices_found = true;
+
   for (auto device : devices_to_check) {
+    bool device_found = false;
     // Check deprecated device format (CPU_FP32, GPU.0_FP16, etc.) and remove the suffix in place
     // Suffix will be parsed in ParsePrecision
     if (auto delimit = device.find("_"); delimit != std::string::npos) {
@@ -113,26 +127,57 @@ std::string ParseDeviceType(std::shared_ptr<OVCore> ov_core, const ProviderOptio
     // Just the device name without .0, .1, etc. suffix
     auto device_prefix = device;
     // Check if device index is appended (.0, .1, etc.), if so, remove it
-    if (auto delimit = device_prefix.find("."); delimit != std::string::npos) {
+    if (auto delimit = device_prefix.find("."); delimit != std::string::npos)
       device_prefix = device_prefix.substr(0, delimit);
-      if (device_prefix == "CPU")
-        ORT_THROW("[ERROR] [OpenVINO] CPU device is only supported without index, CPU.x is illegal.\n");
-    }
-    // Only device is not supported by default (some exotic device), check if it's available
-    if (!supported_device_types.contains(device_prefix)) {
-      std::vector<std::string> available_devices = ov_core->GetAvailableDevices();
-      // Here we need to find the full device name (with .idx, but without _precision)
-      if (std::find(std::begin(available_devices), std::end(available_devices), device) == std::end(available_devices)) {
-        ORT_THROW(
-            "[ERROR] [OpenVINO] You have selected wrong configuration value for the key 'device_type'. "
-            "Select from 'CPU', 'GPU', 'NPU', 'GPU.x' where x = 0,1,2 and so on or from"
-            " HETERO/MULTI/AUTO/BATCH options available. \n");
+    if (supported_device_types.contains(device_prefix)) {
+      try {
+        std::vector<std::string> available_devices = ov_core->GetAvailableDevices(device_prefix);
+        // Here we need to find the full device name (with .idx, but without _precision)
+        if (std::find(std::begin(available_devices), std::end(available_devices), device) != std::end(available_devices))
+          device_found = true;
+        if (device_prefix != "CPU" && luid_list.size() > 0) {
+          for (auto dev : available_devices) {
+            ov::device::LUID ov_luid = OVCore::Get()->core.get_property(dev, ov::device::luid);
+            std::stringstream ov_luid_str;
+            ov_luid_str << ov_luid;
+            ov_luid_map.emplace(ov_luid_str.str(), dev);
+          }
+        }
+      } catch (const char* msg) {
+        ORT_THROW(msg);
       }
     }
+    all_devices_found = all_devices_found && device_found;
   }
-  // All devices have passed the check, return selected device
-  LOGS_DEFAULT(INFO) << "[OpenVINO-EP] Choosing Device: " << selected_device;
-  return selected_device;
+  if (luid_list.size() > 0) {
+    std::string ov_luid_devices;
+    for (auto luid_str : luid_list) {
+      if (ov_luid_map.contains(luid_str)) {
+        if (!ov_luid_devices.empty()) ov_luid_devices = ov_luid_devices + ",";
+        ov_luid_devices = ov_luid_devices + ov_luid_map.at(luid_str);
+      } else {
+        ORT_THROW("Invalid device_luid is set");
+      }
+    }
+    if (!device_mode.empty()) {
+      selected_device = device_mode + ":" + ov_luid_devices;
+      for (auto dev_str : devices_to_check) {
+        auto default_dev = split(dev_str, '.')[0];
+        if (ov_luid_devices.find(default_dev) == std::string::npos)
+          selected_device = selected_device + "," + dev_str;
+      }
+    } else {
+      selected_device = ov_luid_devices;
+    }
+  }
+  // If invalid device is chosen error is thrown
+  if (!all_devices_found)
+    ORT_THROW(
+        "[ERROR] [OpenVINO] You have selected wrong configuration value for the key 'device_type'. "
+        "Select from 'CPU', 'GPU', 'NPU', 'GPU.x' where x = 0,1,2 and so on or from"
+        " HETERO/MULTI/AUTO/BATCH options available. \n");
+  else
+    return selected_device;
 }
 
 void ParseProviderOptions([[maybe_unused]] ProviderInfo& result, [[maybe_unused]] const ProviderOptions& config_options) {}
@@ -175,12 +220,22 @@ struct OpenVINO_Provider : Provider {
     ProviderInfo pi;
     pi.config_options = config_options;
 
+    // Lambda function to check for invalid keys and throw an error
+    auto validateKeys = [&]() {
+      for (const auto& pair : provider_options) {
+        if (pi.valid_provider_keys.find(pair.first) == pi.valid_provider_keys.end()) {
+          ORT_THROW("Invalid provider_option key: " + pair.first);
+        }
+      }
+    };
+    validateKeys();
+
     std::string bool_flag = "";
 
     // Minor optimization: we'll hold an OVCore reference to ensure we don't create a new core between ParseDeviceType and
     // (potential) SharedContext creation.
     auto ov_core = OVCore::Get();
-    pi.device_type = ParseDeviceType(ov_core, provider_options, "device_type");
+    pi.device_type = ParseDeviceType(ov_core, provider_options);
 
     if (provider_options.contains("device_id")) {
       std::string dev_id = provider_options.at("device_id").data();
@@ -303,12 +358,15 @@ struct OpenVINO_Provider : Provider {
                               << "Executing with num_streams=1";
       }
     }
-    pi.enable_opencl_throttling = ParseBooleanOption(provider_options, "enable_opencl_throttling");
+    try {
+      pi.enable_opencl_throttling = ParseBooleanOption(provider_options, "enable_opencl_throttling");
 
-    pi.enable_qdq_optimizer = ParseBooleanOption(provider_options, "enable_qdq_optimizer");
+      pi.enable_qdq_optimizer = ParseBooleanOption(provider_options, "enable_qdq_optimizer");
 
-    pi.disable_dynamic_shapes = ParseBooleanOption(provider_options, "disable_dynamic_shapes");
-
+      pi.disable_dynamic_shapes = ParseBooleanOption(provider_options, "disable_dynamic_shapes");
+    } catch (std::string msg) {
+      ORT_THROW(msg);
+    }
     // Always true for NPU plugin or when passed .
     if (pi.device_type.find("NPU") != std::string::npos) {
       pi.disable_dynamic_shapes = true;

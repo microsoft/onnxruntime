@@ -386,7 +386,7 @@ static bool CheckQRuleSet(const NodeUnit& node_unit,
   } else if (op_type == "Add") {
     // Add keeps all Qs
     return true;
-  }  else {
+  } else {
     // Keep Q of an unsupported Op only if the target that succeeds it is a supported Op in this list
     return IsNextTargetNodeOfQValid(q_node, &target_node, src_graph, {"Conv", "Add", "MatMul"}, false);
   }
