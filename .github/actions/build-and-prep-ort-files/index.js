@@ -48,33 +48,6 @@ async function runCommand(command, args = [], options = {}) {
 }
 
 /**
- * Finds the first file in a directory matching a regex pattern.
- * @param {string} dir Directory path.
- * @param {RegExp} pattern Regex pattern to match.
- * @returns {Promise<string|null>} Full path to the matched file or null.
- */
-async function findFirstFile(dir, pattern) {
-    try {
-        const files = await fs.readdir(dir);
-        for (const file of files) {
-            if (pattern.test(file)) {
-                return path.join(dir, file);
-            }
-        }
-        core.info(`No file matching pattern ${pattern} found in ${dir}.`);
-        return null; // No file found
-    } catch (error) {
-        if (error.code === 'ENOENT') {
-            core.warning(`Directory not found when searching for pattern ${pattern}: ${dir}`);
-            return null;
-        }
-        // Log other fs errors before rethrowing
-        core.error(`Error reading directory ${dir}: ${error}`);
-        throw error;
-    }
-}
-
-/**
  * Main function for the GitHub Action.
  */
 async function main() {
@@ -89,7 +62,7 @@ async function main() {
 
     const testDataDir = path.join(buildDir, 'minimal_build_test_data');
     const customOpsTestDataDir = path.join(testDataDir, 'custom_ops_model');
-    const debugOutputDir = path.join(buildDir, 'Debug'); // Assuming Debug config based on original script
+    const debugOutputDir = path.join(buildDir, 'Debug');
     const wheelDir = path.join(debugOutputDir, 'dist'); // Directory containing the built wheel
 
     core.info(`Using Build Directory (RUNNER_TEMP): ${buildDir}`);
