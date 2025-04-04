@@ -29,6 +29,7 @@ endif()
         r"""if(PORT MATCHES "date")
     list(APPEND VCPKG_CMAKE_CONFIGURE_OPTIONS
         "-DENABLE_DATE_TESTING=OFF"
+        "-DBUILD_TZ_LIB=OFF"
         "-DUSE_SYSTEM_TZ_DB=ON"
     )
 endif()
