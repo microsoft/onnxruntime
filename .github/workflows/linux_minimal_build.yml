@@ -43,7 +43,7 @@ jobs:
             core.exportVariable('ACTIONS_CACHE_URL', process.env.ACTIONS_CACHE_URL || '');
             core.exportVariable('ACTIONS_RUNTIME_TOKEN', process.env.ACTIONS_RUNTIME_TOKEN || '');
 
-      - uses: microsoft/onnxruntime-github-actions/setup-build-tools@c03b932b1c596ddb46e854fbec3b9899c824b7a2
+      - uses: microsoft/onnxruntime-github-actions/setup-build-tools@901790c8e93bd04e7d876ed496b325d5feabb2de
         with:
           vcpkg-version: '2025.03.19'
           vcpkg-hash: '17e96169cd3f266c4716fcdc1bb728e6a64f103941ece463a2834d50694eba4fb48f30135503fd466402afa139abc847ef630733c442595d1c34979f261b0114'
@@ -53,7 +53,7 @@ jobs:
           disable-terrapin: 'true'
 
       - name: Build Full ORT and Prepare Test Files
-        uses: microsoft/onnxruntime-github-actions/build-and-prep-ort-files@c03b932b1c596ddb46e854fbec3b9899c824b7a2
+        uses: microsoft/onnxruntime-github-actions/build-and-prep-ort-files@901790c8e93bd04e7d876ed496b325d5feabb2de
 
       - name: Upload Test Data Artifact
         uses: actions/upload-artifact@v4
@@ -86,7 +86,7 @@ jobs:
           path: ${{ runner.temp }}/.test_data/
 
       - name: Get Docker Image using Action
-        uses: microsoft/onnxruntime-github-actions/build-docker-image@c03b932b1c596ddb46e854fbec3b9899c824b7a2
+        uses: microsoft/onnxruntime-github-actions/build-docker-image@901790c8e93bd04e7d876ed496b325d5feabb2de
         id: build_docker_image_step
         with:
           dockerfile: ${{ github.workspace }}/tools/ci_build/github/linux/docker/inference/x86_64/default/cpu/Dockerfile
@@ -104,7 +104,7 @@ jobs:
             core.exportVariable('ACTIONS_RUNTIME_TOKEN', process.env.ACTIONS_RUNTIME_TOKEN || '');
 
       - name: Run Build 2 (Update)
-        uses: microsoft/onnxruntime-github-actions/run-build-script-in-docker@c03b932b1c596ddb46e854fbec3b9899c824b7a2
+        uses: microsoft/onnxruntime-github-actions/run-build-script-in-docker@901790c8e93bd04e7d876ed496b325d5feabb2de
         with:
           docker_image: ${{ steps.build_docker_image_step.outputs.full-image-name }}
           build_config: Debug # From original --config Debug
@@ -118,7 +118,7 @@ jobs:
             --enable_training_ops
 
       - name: Run Build 2 (Build)
-        uses: microsoft/onnxruntime-github-actions/run-build-script-in-docker@c03b932b1c596ddb46e854fbec3b9899c824b7a2
+        uses: microsoft/onnxruntime-github-actions/run-build-script-in-docker@901790c8e93bd04e7d876ed496b325d5feabb2de
         with:
           docker_image: ${{ steps.build_docker_image_step.outputs.full-image-name }}
           build_config: Debug # From original --config Debug
@@ -155,7 +155,7 @@ jobs:
             core.exportVariable('ACTIONS_CACHE_URL', process.env.ACTIONS_CACHE_URL || '');
             core.exportVariable('ACTIONS_RUNTIME_TOKEN', process.env.ACTIONS_RUNTIME_TOKEN || '');
 
-      - uses: microsoft/onnxruntime-github-actions/setup-build-tools@c03b932b1c596ddb46e854fbec3b9899c824b7a2
+      - uses: microsoft/onnxruntime-github-actions/setup-build-tools@901790c8e93bd04e7d876ed496b325d5feabb2de
         with:
           vcpkg-version: '2025.03.19'
           vcpkg-hash: '17e96169cd3f266c4716fcdc1bb728e6a64f103941ece463a2834d50694eba4fb48f30135503fd466402afa139abc847ef630733c442595d1c34979f261b0114'
@@ -165,7 +165,7 @@ jobs:
           disable-terrapin: 'true'
 
       - name: Build Full ORT and Prepare Test Files
-        uses: microsoft/onnxruntime-github-actions/build-minimal-ort-and-run-tests@c03b932b1c596ddb46e854fbec3b9899c824b7a2
+        uses: microsoft/onnxruntime-github-actions/build-minimal-ort-and-run-tests@901790c8e93bd04e7d876ed496b325d5feabb2de
         with:
           reduced-ops-config-file: required_ops.ort_models.config
           enable-custom-ops: 'true'
@@ -195,7 +195,7 @@ jobs:
             core.exportVariable('ACTIONS_CACHE_URL', process.env.ACTIONS_CACHE_URL || '');
             core.exportVariable('ACTIONS_RUNTIME_TOKEN', process.env.ACTIONS_RUNTIME_TOKEN || '');
 
-      - uses: microsoft/onnxruntime-github-actions/setup-build-tools@c03b932b1c596ddb46e854fbec3b9899c824b7a2
+      - uses: microsoft/onnxruntime-github-actions/setup-build-tools@901790c8e93bd04e7d876ed496b325d5feabb2de
         with:
           vcpkg-version: '2025.03.19'
           vcpkg-hash: '17e96169cd3f266c4716fcdc1bb728e6a64f103941ece463a2834d50694eba4fb48f30135503fd466402afa139abc847ef630733c442595d1c34979f261b0114'
@@ -204,7 +204,7 @@ jobs:
           add-cmake-to-path: 'true'
           disable-terrapin: 'true'
       - name: Build Full ORT and Prepare Test Files
-        uses: microsoft/onnxruntime-github-actions/build-minimal-ort-and-run-tests@c03b932b1c596ddb46e854fbec3b9899c824b7a2
+        uses: microsoft/onnxruntime-github-actions/build-minimal-ort-and-run-tests@901790c8e93bd04e7d876ed496b325d5feabb2de
         with:
           reduced-ops-config-file: required_ops_and_types.ort_models.config
           enable-type-reduction: 'true'
@@ -234,7 +234,7 @@ jobs:
             core.exportVariable('ACTIONS_CACHE_URL', process.env.ACTIONS_CACHE_URL || '');
             core.exportVariable('ACTIONS_RUNTIME_TOKEN', process.env.ACTIONS_RUNTIME_TOKEN || '');
 
-      - uses: microsoft/onnxruntime-github-actions/setup-build-tools@c03b932b1c596ddb46e854fbec3b9899c824b7a2
+      - uses: microsoft/onnxruntime-github-actions/setup-build-tools@901790c8e93bd04e7d876ed496b325d5feabb2de
         with:
           vcpkg-version: '2025.03.19'
           vcpkg-hash: '17e96169cd3f266c4716fcdc1bb728e6a64f103941ece463a2834d50694eba4fb48f30135503fd466402afa139abc847ef630733c442595d1c34979f261b0114'
@@ -249,7 +249,7 @@ jobs:
           printf "%s\n%s\n"  "!globally_allowed_types;bool,float,int8_t,uint8_t"  "!no_ops_specified_means_all_ops_are_required"  > ${{ runner.temp }}/.test_data/globally_allowed_types.config
 
       - name: Build Full ORT and Prepare Test Files
-        uses: microsoft/onnxruntime-github-actions/build-minimal-ort-and-run-tests@c03b932b1c596ddb46e854fbec3b9899c824b7a2
+        uses: microsoft/onnxruntime-github-actions/build-minimal-ort-and-run-tests@901790c8e93bd04e7d876ed496b325d5feabb2de
         with:
           reduced-ops-config-file: globally_allowed_types.config
           enable-type-reduction: 'true'
@@ -280,7 +280,7 @@ jobs:
           path: ${{ runner.temp }}/.test_data/
 
       - name: Get Docker Image using Action
-        uses: microsoft/onnxruntime-github-actions/build-docker-image@c03b932b1c596ddb46e854fbec3b9899c824b7a2
+        uses: microsoft/onnxruntime-github-actions/build-docker-image@901790c8e93bd04e7d876ed496b325d5feabb2de
         id: build_docker_image_step
         with:
           dockerfile: ${{ github.workspace }}/tools/ci_build/github/linux/docker/inference/x86_64/default/cpu/Dockerfile
@@ -298,7 +298,7 @@ jobs:
             core.exportVariable('ACTIONS_RUNTIME_TOKEN', process.env.ACTIONS_RUNTIME_TOKEN || '');
 
       - name: Run Build 5 (Update)
-        uses: microsoft/onnxruntime-github-actions/run-build-script-in-docker@c03b932b1c596ddb46e854fbec3b9899c824b7a2
+        uses: microsoft/onnxruntime-github-actions/run-build-script-in-docker@901790c8e93bd04e7d876ed496b325d5feabb2de
         with:
           docker_image: ${{ steps.build_docker_image_step.outputs.full-image-name }}
           build_config: Debug # From original --config Debug
@@ -310,7 +310,7 @@ jobs:
             --minimal_build extended
 
       - name: Run Build 5 (Build)
-        uses: microsoft/onnxruntime-github-actions/run-build-script-in-docker@c03b932b1c596ddb46e854fbec3b9899c824b7a2
+        uses: microsoft/onnxruntime-github-actions/run-build-script-in-docker@901790c8e93bd04e7d876ed496b325d5feabb2de
         with:
           docker_image: ${{ steps.build_docker_image_step.outputs.full-image-name }}
           build_config: Debug # From original --config Debug
@@ -345,7 +345,7 @@ jobs:
           path: ${{ runner.temp }}/.test_data/
 
       - name: Get Docker Image using Action
-        uses: microsoft/onnxruntime-github-actions/build-docker-image@c03b932b1c596ddb46e854fbec3b9899c824b7a2
+        uses: microsoft/onnxruntime-github-actions/build-docker-image@901790c8e93bd04e7d876ed496b325d5feabb2de
         id: build_docker_image_step
         with:
           dockerfile: ${{ github.workspace }}/tools/ci_build/github/linux/docker/inference/x86_64/default/cpu/Dockerfile
@@ -363,7 +363,7 @@ jobs:
             core.exportVariable('ACTIONS_RUNTIME_TOKEN', process.env.ACTIONS_RUNTIME_TOKEN || '');
 
       - name: Run Build 6a (Update)
-        uses: microsoft/onnxruntime-github-actions/run-build-script-in-docker@c03b932b1c596ddb46e854fbec3b9899c824b7a2
+        uses: microsoft/onnxruntime-github-actions/run-build-script-in-docker@901790c8e93bd04e7d876ed496b325d5feabb2de
         with:
           docker_image: ${{ steps.build_docker_image_step.outputs.full-image-name }}
           build_config: MinSizeRel # From original --config MinSizeRel
@@ -379,7 +379,7 @@ jobs:
             --cmake_extra_defines onnxruntime_BUILD_UNIT_TESTS=OFF
 
       - name: Run Build 6a (Build)
-        uses: microsoft/onnxruntime-github-actions/run-build-script-in-docker@c03b932b1c596ddb46e854fbec3b9899c824b7a2
+        uses: microsoft/onnxruntime-github-actions/run-build-script-in-docker@901790c8e93bd04e7d876ed496b325d5feabb2de
         with:
           docker_image: ${{ steps.build_docker_image_step.outputs.full-image-name }}
           build_config: MinSizeRel # From original --config MinSizeRel
@@ -418,7 +418,7 @@ jobs:
           path: ${{ runner.temp }}/.test_data/
 
       - name: Get Docker Image using Action
-        uses: microsoft/onnxruntime-github-actions/build-docker-image@c03b932b1c596ddb46e854fbec3b9899c824b7a2
+        uses: microsoft/onnxruntime-github-actions/build-docker-image@901790c8e93bd04e7d876ed496b325d5feabb2de
         id: build_docker_image_step
         with:
           dockerfile: ${{ github.workspace }}/tools/ci_build/github/linux/docker/inference/x86_64/default/cpu/Dockerfile
@@ -436,7 +436,7 @@ jobs:
             core.exportVariable('ACTIONS_RUNTIME_TOKEN', process.env.ACTIONS_RUNTIME_TOKEN || '');
 
       - name: Run Build 6b (Update)
-        uses: microsoft/onnxruntime-github-actions/run-build-script-in-docker@c03b932b1c596ddb46e854fbec3b9899c824b7a2
+        uses: microsoft/onnxruntime-github-actions/run-build-script-in-docker@901790c8e93bd04e7d876ed496b325d5feabb2de
         with:
           docker_image: ${{ steps.build_docker_image_step.outputs.full-image-name }}
           build_config: MinSizeRel # From original --config MinSizeRel
@@ -454,7 +454,7 @@ jobs:
             --cmake_extra_defines onnxruntime_BUILD_UNIT_TESTS=OFF
 
       - name: Run Build 6b (Build)
-        uses: microsoft/onnxruntime-github-actions/run-build-script-in-docker@c03b932b1c596ddb46e854fbec3b9899c824b7a2
+        uses: microsoft/onnxruntime-github-actions/run-build-script-in-docker@901790c8e93bd04e7d876ed496b325d5feabb2de
         with:
           docker_image: ${{ steps.build_docker_image_step.outputs.full-image-name }}
           build_config: MinSizeRel # From original --config MinSizeRel
@@ -495,7 +495,7 @@ jobs:
           path: ${{ runner.temp }}/.test_data/
 
       - name: Get Docker Image using Action
-        uses: microsoft/onnxruntime-github-actions/build-docker-image@c03b932b1c596ddb46e854fbec3b9899c824b7a2
+        uses: microsoft/onnxruntime-github-actions/build-docker-image@901790c8e93bd04e7d876ed496b325d5feabb2de
         id: build_docker_image_step
         with:
           dockerfile: ${{ github.workspace }}/tools/ci_build/github/linux/docker/inference/x86_64/default/cpu/Dockerfile
@@ -513,7 +513,7 @@ jobs:
             core.exportVariable('ACTIONS_RUNTIME_TOKEN', process.env.ACTIONS_RUNTIME_TOKEN || '');
 
       - name: Run Build 6c (Update)
-        uses: microsoft/onnxruntime-github-actions/run-build-script-in-docker@c03b932b1c596ddb46e854fbec3b9899c824b7a2
+        uses: microsoft/onnxruntime-github-actions/run-build-script-in-docker@901790c8e93bd04e7d876ed496b325d5feabb2de
         with:
           docker_image: ${{ steps.build_docker_image_step.outputs.full-image-name }}
           build_config: MinSizeRel # From original --config MinSizeRel
@@ -531,7 +531,7 @@ jobs:
             --cmake_extra_defines onnxruntime_BUILD_UNIT_TESTS=OFF
 
       - name: Run Build 6c (Build)
-        uses: microsoft/onnxruntime-github-actions/run-build-script-in-docker@c03b932b1c596ddb46e854fbec3b9899c824b7a2
+        uses: microsoft/onnxruntime-github-actions/run-build-script-in-docker@901790c8e93bd04e7d876ed496b325d5feabb2de
         with:
           docker_image: ${{ steps.build_docker_image_step.outputs.full-image-name }}
           build_config: MinSizeRel # From original --config MinSizeRel
@@ -573,7 +573,7 @@ jobs:
           path: ${{ runner.temp }}/.test_data/
 
       - name: Get Docker Image using Action
-        uses: microsoft/onnxruntime-github-actions/build-docker-image@c03b932b1c596ddb46e854fbec3b9899c824b7a2
+        uses: microsoft/onnxruntime-github-actions/build-docker-image@901790c8e93bd04e7d876ed496b325d5feabb2de
         id: build_docker_image_step
         with:
           dockerfile: ${{ github.workspace }}/tools/ci_build/github/linux/docker/inference/x86_64/default/cpu/Dockerfile
