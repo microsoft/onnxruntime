@@ -8,21 +8,26 @@ const os = require('os');
  * Executes a command and logs its output. Throws an error if the command fails.
  * @param {string} command The command to execute.
  * @param {string[]} [args] Command arguments.
- * @param {exec.ExecOptions} [options] Execution options.
+ * @param {exec.ExecOptions} [options] Execution options, including 'cwd' for working directory.
  * @returns {Promise<{exitCode: number, stdout: string, stderr: string}>} Command output.
  */
 async function runCommand(command, args = [], options = {}) {
+    // Default working directory is the workspace root unless overridden
+    const defaultCwd = process.env.GITHUB_WORKSPACE;
     const effectiveOptions = {
-        cwd: process.env.GITHUB_WORKSPACE, // Default working directory
+        cwd: defaultCwd, // Apply default
         ignoreReturnCode: false, // Throw error on failure by default
         silent: false, // Show command output by default
         listeners: {
             stdout: (data) => { core.info(data.toString().trim()); },
             stderr: (data) => { core.warning(data.toString().trim()); } // Log stderr as warning by default
         },
-        ...options
+        ...options // Apply overrides from caller (like cwd)
     };
-    core.info(`Executing: ${command} ${args.map(arg => arg.includes(' ') ? `"${arg}"` : arg).join(' ')}`); // Basic quoting for display
+
+    const cwdString = effectiveOptions.cwd === defaultCwd ? 'default workspace' : effectiveOptions.cwd;
+    core.info(`Executing in ${cwdString}: ${command} ${args.map(arg => arg.includes(' ') ? `"${arg}"` : arg).join(' ')}`); // Basic quoting for display
+
     try {
         const { exitCode, stdout, stderr } = await exec.getExecOutput(command, args, effectiveOptions);
 
@@ -35,7 +40,7 @@ async function runCommand(command, args = [], options = {}) {
         return { exitCode, stdout, stderr };
     } catch (error) {
         // exec.getExecOutput throws on non-zero exit codes if ignoreReturnCode is false
-        core.error(`Error executing command: ${command} ${args.join(' ')}`);
+        core.error(`Error executing command: ${command} ${args.join(' ')} in ${cwdString}`);
         core.error(error); // Log the full error object from exec
         // Rethrow with a clearer message if possible
         throw new Error(`Command execution failed: ${error.message || error}`);
@@ -92,7 +97,6 @@ async function main() {
     core.info(`Derived Test Data Directory: ${testDataDir}`);
     core.info(`Wheel Directory: ${wheelDir}`);
 
-
     try { // Wrap main logic in try/catch for core.setFailed
         // Ensure necessary directories exist
         await fs.mkdir(testDataDir, { recursive: true });
@@ -104,13 +108,15 @@ async function main() {
         // --- Step 1: Install Python Requirements ---
         core.startGroup('Install Python Requirements');
         const requirementsPath = path.join(workspaceDir, 'tools/ci_build/github/linux/python/requirements.txt');
-        await runCommand('python3', ['-m', 'pip', 'install', '--user', '-r', requirementsPath]);
+        // Run this in the workspace directory as it reads a file from there
+        await runCommand('python3', ['-m', 'pip', 'install', '--user', '-r', requirementsPath], { cwd: workspaceDir });
         core.endGroup();
 
         // --- Step 2: Validate Operator Registrations ---
         core.startGroup('Validate Operator Registrations');
         const validatorScript = path.join(workspaceDir, 'tools/ci_build/op_registration_validator.py');
-        await runCommand('python3', [validatorScript]);
+        // Run this in the workspace directory as it likely operates on source files
+        await runCommand('python3', [validatorScript], { cwd: workspaceDir });
         core.endGroup();
 
         // --- Step 3: Run Full ORT Build ---
@@ -132,13 +138,13 @@ async function main() {
             '--use_nnapi',
             '--use_coreml'
         ];
-        await runCommand('python3', buildArgs);
+        // Run build from the workspace directory
+        await runCommand('python3', buildArgs, { cwd: workspaceDir });
         core.endGroup();
 
         // --- Step 4: Install the ORT Python Wheel ---
         core.startGroup('Install ORT Python Wheel');
-        // Use --find-links to let pip find the correct wheel in the directory
-        // Assuming the package name built is 'onnxruntime'
+        // We can run pip from anywhere, it doesn't need a specific CWD here
         await runCommand('python3', [
             '-m', 'pip', 'install',
             '--user', // Keep installing as user
@@ -147,16 +153,28 @@ async function main() {
         ]);
         core.endGroup();
 
+        // --- Set CWD for subsequent python scripts ---
+        // Reason: After installing the 'onnxruntime' wheel, running python scripts
+        // from the workspace root might cause Python to import the local 'onnxruntime'
+        // source directory instead of the newly installed package. Changing the CWD
+        // to a neutral location like '/tmp' prevents this import conflict.
+        const pythonScriptCwd = '/tmp';
+        await fs.mkdir(pythonScriptCwd, { recursive: true }); // Ensure /tmp exists
+        core.info(`Setting CWD for subsequent Python scripts to: ${pythonScriptCwd}`);
+
+
         // --- Step 5: Convert E2E ONNX models to ORT format ---
         core.startGroup('Convert E2E ONNX models to ORT format (Tool)');
         const e2eTestDataPath = path.join(workspaceDir, 'onnxruntime/test/testdata/ort_minimal_e2e_test_data');
         const convertScript = path.join(workspaceDir, 'tools/python/convert_onnx_models_to_ort.py');
-        await runCommand('python3', [convertScript, e2eTestDataPath]);
+        // Pass absolute paths and change CWD
+        await runCommand('python3', [convertScript, e2eTestDataPath], { cwd: pythonScriptCwd });
         core.endGroup();
 
         // --- Step 6: Convert again using installed package tool ---
         core.startGroup('Convert E2E ONNX models to ORT format (Installed Package)');
-        await runCommand('python3', ['-m', 'onnxruntime.tools.convert_onnx_models_to_ort', e2eTestDataPath]);
+        // Pass absolute paths and change CWD
+        await runCommand('python3', ['-m', 'onnxruntime.tools.convert_onnx_models_to_ort', e2eTestDataPath], { cwd: pythonScriptCwd });
         core.endGroup();
 
         // --- Step 7: Create required ops config files ---
@@ -166,11 +184,12 @@ async function main() {
         const requiredOpsConfig = path.join(testDataDir, 'required_ops.ort_models.config');
         const requiredOpsTypesConfig = path.join(testDataDir, 'required_ops_and_types.ort_models.config');
 
+        // Pass absolute paths and change CWD
         // Config without type reduction
-        await runCommand('python3', [createConfigScript, '--format', 'ORT', testDataRoot, requiredOpsConfig]);
+        await runCommand('python3', [createConfigScript, '--format', 'ORT', testDataRoot, requiredOpsConfig], { cwd: pythonScriptCwd });
 
         // Config with type reduction
-        await runCommand('python3', [createConfigScript, '--format', 'ORT', '--enable_type_reduction', testDataRoot, requiredOpsTypesConfig]);
+        await runCommand('python3', [createConfigScript, '--format', 'ORT', '--enable_type_reduction', testDataRoot, requiredOpsTypesConfig], { cwd: pythonScriptCwd });
         core.endGroup();
 
         // --- Step 8: Append standalone invoker ops ---
@@ -213,9 +232,10 @@ async function main() {
 
 
         // Run conversion, checking if library exists first
+        // Pass absolute paths and change CWD
         try {
             await fs.access(customOpLibrary, fs.constants.R_OK);
-            await runCommand('python3', [convertScript, '--custom_op_library', customOpLibrary, customOpsTestDataDir]);
+            await runCommand('python3', [convertScript, '--custom_op_library', customOpLibrary, customOpsTestDataDir], { cwd: pythonScriptCwd });
         } catch (err) {
             // Log as warning if library doesn't exist or isn't readable
             core.warning(`Custom op library ${customOpLibrary} not found or not readable. Skipping custom op conversion test. Error: ${err.message}`);
