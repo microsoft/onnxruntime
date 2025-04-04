@@ -9,10 +9,6 @@ ARG BUILD_USER=onnxruntimedev
 USER root
 WORKDIR /
 
-# Install essential tools if potentially missing from the base image, and OpenVINO dependencies
-# Using dnf as it's the standard package manager for UBI8/RHEL8+
-# Added wget, tar for OpenVINO download/extract, git for potential source operations if needed later.
-# Added numactl-libs (provides libnuma) and ocl-icd (provides libOpenCL) similar to original apt installs.
 RUN dnf install -y --nodocs \
         wget \
         tar \
@@ -23,7 +19,6 @@ RUN dnf install -y --nodocs \
     && dnf clean all \
     && rm -rf /var/cache/dnf
 
-# --- OpenVINO Toolkit Installation (RHEL/UBI8 method) ---
 ENV INTEL_OPENVINO_DIR=/opt/intel/openvino_2025.0.0
 ARG OPENVINO_PACKAGE_URL=https://storage.openvinotoolkit.org/repositories/openvino/packages/2025.0/linux/openvino_toolkit_rhel8_2025.0.0.17942.1f68be9f594_x86_64.tgz
 ARG TEMP_DIR=/tmp/openvino_installer
@@ -39,12 +34,6 @@ RUN mkdir -p ${TEMP_DIR} && \
     # Clean up installer files
     cd / && rm -rf ${TEMP_DIR}
 
-# --- Intel GPU Driver Installation (RHEL/UBI8 method) ---
-# Using dnf install instead of rpm -ivh to handle dependencies better.
-# Using versions from the Intel Dockerfile example. Adjust URLs/versions if needed.
-# Assuming needed repositories (like Intel graphics) might be pre-configured or accessible.
-# Added libedit as it was in the Intel Dockerfile example before GPU driver install.
-# Added ocl-icd again here just in case install_dependencies didn't cover the specific version needed by drivers.
 RUN dnf install -y --nodocs \
         libedit \
         ocl-icd \
@@ -58,14 +47,12 @@ RUN dnf install -y --nodocs \
     && rm -rf /var/cache/dnf
 
 # --- Environment Setup ---
-# Set environment variables based on the Intel Dockerfile
 ENV LD_LIBRARY_PATH=${INTEL_OPENVINO_DIR}/runtime/3rdparty/hddl/lib:${INTEL_OPENVINO_DIR}/runtime/3rdparty/tbb/lib:${INTEL_OPENVINO_DIR}/runtime/lib/intel64:${INTEL_OPENVINO_DIR}/tools/compile_tool:${INTEL_OPENVINO_DIR}/extras/opencv/lib${LD_LIBRARY_PATH:+:${LD_LIBRARY_PATH}}
 ENV OpenCV_DIR=${INTEL_OPENVINO_DIR}/extras/opencv/cmake
 ENV PATH=${INTEL_OPENVINO_DIR}/runtime/bin/intel64:${PATH}
 ENV TBB_DIR=${INTEL_OPENVINO_DIR}/runtime/3rdparty/tbb/cmake
 ENV ngraph_DIR=${INTEL_OPENVINO_DIR}/runtime/cmake
 ENV OpenVINO_DIR=${INTEL_OPENVINO_DIR}/runtime/cmake
-# INTEL_OPENVINO_DIR is already set above
 ENV PKG_CONFIG_PATH=${INTEL_OPENVINO_DIR}/runtime/lib/intel64/pkgconfig${PKG_CONFIG_PATH:+:${PKG_CONFIG_PATH}}
 ENV OpenVINORootDir=${INTEL_OPENVINO_DIR}
 
