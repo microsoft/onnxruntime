@@ -250,6 +250,8 @@ Status GetMinimalBuildOptimizationHandling(
 
 }  // namespace
 
+extern std::atomic<int> saturation_count;
+
 std::atomic<uint32_t> InferenceSession::global_session_id_{1};
 std::map<uint32_t, InferenceSession*> InferenceSession::active_sessions_;
 #ifdef _WIN32
@@ -2841,6 +2843,8 @@ Status InferenceSession::Run(const RunOptions& run_options,
     node_stats_recorder_->ResetPerRunNameDeduper();
   }
 #endif
+
+  reset_saturation_count();
 
   // As N+1 inference runs (N for memory allocation and 1 for graph capturing)
   // are needed before replaying the captured graph, here run N inference runs recursively until graph captured,
