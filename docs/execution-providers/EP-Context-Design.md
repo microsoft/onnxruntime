@@ -112,7 +112,7 @@ virtual const InlinedVector<const Node*> GetEpContextNodes() const {
   - The EP should support multiple EP contexts within a single model, enabling users to **merge and interconnect EPContext nodes** generated from different models.
 
 - **Source model with external data**
-<br/>    When the source model relies on an external data file, ONNX uses a relative path to locate that file. Therefore, the external data file must reside in the same directory as the source model. However, newly generated models should not depend on the original source files. This approach is driven by several considerations:
+<br/>    When the source model relies on an external data file, ONNX uses a relative path to locate that file. Therefore, the external data file must reside in the same directory as the source model. However, newly generated models **should not depend** on any original source files. This approach is driven by several considerations:
   - All newly generated files should be located in the same directory.
   - There's no guarantee that the output files will be generated in the same directory as the source files.
   - The `EPContext` design allows a model to be partitioned by multiple EPs, each compiling its own `EPContext` nodes. A unified and standardized process helps avoid data duplication.
