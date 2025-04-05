@@ -211,6 +211,7 @@ test {
 		'USE_TENSORRT',
 		'USE_QNN',
 		'USE_XNNPACK',
+		'USE_WEBGPU',
 		])
 	testLogging {
 		events "passed", "skipped", "failed"
