@@ -521,8 +521,8 @@ def generate_windows_triplets(build_dir: str, toolset_version: str) -> None:
                             if enable_asan and enable_binskim:
                                 continue
                             # ORT Constraint: If exceptions are disabled, minimal build must be enabled
-                            # if not enable_exception and not enable_minimal_build:
-                            #     continue # Optionally skip generating the invalid combo for ORT
+                            if not enable_exception and not enable_minimal_build:
+                                continue
 
                             for target_abi in target_abis:
                                 folder_name_parts = []
@@ -638,8 +638,8 @@ def generate_macos_triplets(build_dir: str, osx_deployment_target: str) -> None:
                         if enable_asan and enable_binskim:
                             continue
                         # ORT Constraint: If exceptions are disabled, minimal build must be enabled
-                        # if not enable_exception and not enable_minimal_build:
-                        #     continue # Optionally skip generating the invalid combo for ORT
+                        if not enable_exception and not enable_minimal_build:
+                            continue
                         for target_abi in target_abis:
                             generate_triplet_for_posix_platform(
                                 build_dir,
