@@ -181,6 +181,8 @@ ConvTranspose2DProgram CreateConvTranspose2DProgram(const std::vector<const Tens
     program.AddInput({bias, ProgramTensorMetadataDependency::TypeAndRank, reduced_bias_shape, components});
   }
   program.AddOutput({output, ProgramTensorMetadataDependency::Rank, reduced_output_shape, components})
+      .CacheHint(std::to_string(input_channels_remainder) + "-" + std::to_string(pack_input_as4) + std::to_string(components) +
+                 "-" + std::to_string(b_components) + "-" + std::to_string(a_components) + "-" + std::to_string(is_channels_last ? 1 : 0))
       .AddUniformVariables({{static_cast<uint32_t>(output_size)}, {strides}, {kernel_dims}, {dilations}, {effective_kernel_dims}, {local_pads}, {static_cast<uint32_t>(input_channels_per_group_int)}, {static_cast<uint32_t>(input_channels_per_group)}, {static_cast<uint32_t>(output_channels_per_group)}})
       .SetDispatchGroupSize((output_size + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE);
 
