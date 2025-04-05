@@ -1069,6 +1069,8 @@ def generate_vcpkg_install_options(build_dir, args):
         folder_name_parts.append("exception_catching")
     if args.disable_exceptions:
         folder_name_parts.append("noexception")
+    if args.minimal_build is not None: #TODO: currently wasm minimal_build build is not handled
+        folder_name_parts.append("minimal")
     if len(folder_name_parts) == 0:
         # It's hard to tell whether we must use a custom triplet or not. The official triplets work fine for most common situations. However, if a Windows build has set msvc toolset version via args.msvc_toolset then we need to, because we need to ensure all the source code are compiled by the same MSVC toolset version otherwise we will hit link errors like "error LNK2019: unresolved external symbol __std_mismatch_4 referenced in function ..."
         # So, to be safe we always use a custom triplet.
@@ -1243,7 +1245,8 @@ def generate_build_tree(
         "-Donnxruntime_DISABLE_OPTIONAL_TYPE=" + ("ON" if disable_optional_type else "OFF"),
         "-Donnxruntime_CUDA_MINIMAL=" + ("ON" if args.enable_cuda_minimal_build else "OFF"),
     ]
-
+    if args.minimal_build is not None:
+        add_default_definition(cmake_extra_defines, "ONNX_MINIMAL_BUILD", "ON")
     if args.rv64:
         add_default_definition(cmake_extra_defines, "onnxruntime_CROSS_COMPILING", "ON")
         if not args.riscv_toolchain_root:
