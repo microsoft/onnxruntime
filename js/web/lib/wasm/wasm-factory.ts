@@ -64,6 +64,34 @@ const isSimdSupported = (): boolean => {
   }
 };
 
+const isRelaxedSimdSupported = (): boolean => {
+  try {
+    // Test for WebAssembly Relaxed SIMD capability (for both browsers and Node.js)
+    // This typed array is a WebAssembly program containing Relaxed SIMD instructions.
+
+    // The binary data is generated from the following code by wat2wasm:
+    // (module
+    //   (func (result v128)
+    //      i32.const 1
+    //      i8x16.splat
+    //      i32.const 2
+    //      i8x16.splat
+    //      i32.const 3
+    //      i8x16.splat
+    //      i32x4.relaxed_dot_i8x16_i7x16_add_s
+    //   )
+    //  )
+    return WebAssembly.validate(
+      new Uint8Array([
+        0, 97, 115, 109, 1, 0, 0, 0, 1, 5, 1, 96, 0, 1, 123, 3, 2, 1, 0, 10, 19, 1, 17, 0, 65, 1, 253, 15, 65, 2, 253,
+        15, 65, 3, 253, 15, 253, 147, 2, 11,
+      ]),
+    );
+  } catch (e) {
+    return false;
+  }
+};
+
 export const initializeWebAssembly = async (flags: Env.WebAssemblyFlags): Promise<void> => {
   if (initialized) {
     return Promise.resolve();
@@ -82,7 +110,14 @@ export const initializeWebAssembly = async (flags: Env.WebAssemblyFlags): Promis
   let numThreads = flags.numThreads!;
 
   // ensure SIMD is supported
-  if (!isSimdSupported()) {
+  if (flags.simd === false) {
+    // skip SIMD feature checking as it is disabled explicitly by user
+  } else if (flags.simd === 'relaxed') {
+    // check if relaxed SIMD is supported
+    if (!isRelaxedSimdSupported()) {
+      throw new Error('Relaxed WebAssembly SIMD is not supported in the current environment.');
+    }
+  } else if (!isSimdSupported()) {
     throw new Error('WebAssembly SIMD is not supported in the current environment.');
   }
 

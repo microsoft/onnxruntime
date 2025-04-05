@@ -17,12 +17,13 @@ export const initializeFlags = (): void => {
     env.wasm.initTimeout = 0;
   }
 
-  if (env.wasm.simd === false) {
+  const simd = env.wasm.simd;
+  if (typeof simd !== 'boolean' && simd !== undefined && simd !== 'fixed' && simd !== 'relaxed') {
     // eslint-disable-next-line no-console
     console.warn(
-      'Deprecated property "env.wasm.simd" is set to false. ' +
-        'non-SIMD build is no longer provided, and this setting will be ignored.',
+      `Property "env.wasm.simd" is set to unknown value "${simd}". Reset it to \`false\` and ignore SIMD feature checking.`,
     );
+    env.wasm.simd = false;
   }
 
   if (typeof env.wasm.proxy !== 'boolean') {
