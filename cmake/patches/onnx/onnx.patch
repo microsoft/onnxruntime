@@ -1,8 +1,53 @@
-﻿diff --git a/CMakeLists.txt b/CMakeLists.txt
-index 6d7ca846..69aa622f 100644
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+index d15d97ed..bdacac99 100644
 --- a/CMakeLists.txt
 +++ b/CMakeLists.txt
-@@ -499,6 +499,7 @@ if (MSVC)
+@@ -27,6 +27,7 @@ option(ONNX_USE_LITE_PROTO "Use lite protobuf instead of full." OFF)
+ option(ONNX_DISABLE_EXCEPTIONS "Disable exception handling." OFF)
+ option(ONNX_DISABLE_STATIC_REGISTRATION "Disable static registration for onnx operator schemas." OFF)
+ option(ONNX_USE_UNITY_BUILD "Enable Unity (Jumbo) build for" OFF)
++option(ONNX_MINIMAL_BUILD "Build only essential ONNX components" OFF)
+ 
+ if(NOT DEFINED ONNX_ML)
+   if(DEFINED ENV{ONNX_ML})
+@@ -457,14 +458,28 @@ relative_protobuf_generate_cpp(gen_onnx_data_proto
+ list(APPEND ONNX_PROTO_SRCS ${__tmp_srcs})
+ list(APPEND ONNX_PROTO_HDRS ${__tmp_hdrs})
+ 
+-file(GLOB_RECURSE __tmp_srcs "${ONNX_ROOT}/onnx/*.h" "${ONNX_ROOT}/onnx/*.cc")
+-file(GLOB_RECURSE onnx_gtests_src "${ONNX_ROOT}/onnx/test/cpp/*.h"
+-    "${ONNX_ROOT}/onnx/test/cpp/*.cc"
+-    "${ONNX_ROOT}/onnx/backend/test/cpp/*.cc"
+-    "${ONNX_ROOT}/onnx/backend/test/cpp/*.h")
+-list(REMOVE_ITEM __tmp_srcs "${ONNX_ROOT}/onnx/cpp2py_export.cc")
+-list(REMOVE_ITEM __tmp_srcs ${onnx_gtests_src})
+-list(APPEND ONNX_SRCS ${__tmp_srcs})
++if(ONNX_MINIMAL_BUILD)
++    message(STATUS "Configuring ONNX minimal build")
++    set(ONNX_SRCS
++      "${ONNX_ROOT}/onnx/common/common.h"
++      "${ONNX_ROOT}/onnx/defs/data_type_utils.h"
++      "${ONNX_ROOT}/onnx/defs/data_type_utils.cc"
++    )
++    # Ensure ONNX_ML is treated as ON for minimal build consistency with ORT's file
++    set(ONNX_ML ON CACHE BOOL "Enable traditional ML API." FORCE)
++    # Minimal build doesn't need Python or tests
++    set(ONNX_BUILD_PYTHON OFF CACHE BOOL "Build Python binaries" FORCE)
++    set(ONNX_BUILD_TESTS OFF CACHE BOOL "Build ONNX C++ APIs Tests" FORCE)
++else()
++    file(GLOB_RECURSE __tmp_srcs "${ONNX_ROOT}/onnx/*.h" "${ONNX_ROOT}/onnx/*.cc")
++    file(GLOB_RECURSE onnx_gtests_src "${ONNX_ROOT}/onnx/test/cpp/*.h"
++        "${ONNX_ROOT}/onnx/test/cpp/*.cc"
++        "${ONNX_ROOT}/onnx/backend/test/cpp/*.cc"
++        "${ONNX_ROOT}/onnx/backend/test/cpp/*.h")
++    list(REMOVE_ITEM __tmp_srcs "${ONNX_ROOT}/onnx/cpp2py_export.cc")
++    list(REMOVE_ITEM __tmp_srcs ${onnx_gtests_src})
++    list(APPEND ONNX_SRCS ${__tmp_srcs})
++endif()
+ 
+ add_library(onnx_proto ${ONNX_PROTO_SRCS} ${ONNX_PROTO_HDRS})
+ add_dependencies(onnx_proto gen_onnx_operators_proto gen_onnx_data_proto)
+@@ -496,6 +511,7 @@ if (MSVC)
    endif()
  else()
    # On non-Windows, hide all symbols we don't need
@@ -10,7 +55,7 @@ index 6d7ca846..69aa622f 100644
    set(ONNX_API_DEFINE "-DONNX_API=__attribute__\(\(__visibility__\(\"default\"\)\)\)")
    set_target_properties(onnx_proto PROPERTIES CXX_VISIBILITY_PRESET hidden)
    set_target_properties(onnx_proto PROPERTIES VISIBILITY_INLINES_HIDDEN 1)
-@@ -653,20 +654,9 @@ endif()
+@@ -631,20 +647,9 @@ endif()
  if(MSVC)
    target_compile_options(onnx_proto
                           PRIVATE /MP
@@ -36,15 +81,15 @@ index b847798e..a6c31904 100644
 --- a/onnx/common/file_utils.h
 +++ b/onnx/common/file_utils.h
 @@ -6,7 +6,6 @@
-
+ 
  #pragma once
-
+ 
 -#include <filesystem>
  #include <fstream>
  #include <string>
-
+ 
 @@ -17,8 +16,7 @@ namespace ONNX_NAMESPACE {
-
+ 
  template <typename T>
  void LoadProtoFromPath(const std::string proto_path, T& proto) {
 -  std::filesystem::path proto_u8_path = std::filesystem::u8path(proto_path);
@@ -60,7 +105,7 @@ index 0aab3e26..398ac2d6 100644
 @@ -47,10 +47,28 @@
  #define ONNX_API ONNX_IMPORT
  #endif
-
+ 
 +#if defined(__GNUC__)
 +#pragma GCC diagnostic push
 +
@@ -80,7 +125,7 @@ index 0aab3e26..398ac2d6 100644
  #else
  #include "onnx/onnx.pb.h"
  #endif
-
+ 
 +#if defined(__GNUC__)
 +#pragma GCC diagnostic pop
 +#endif
