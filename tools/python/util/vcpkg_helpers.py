@@ -413,9 +413,6 @@ def generate_vcpkg_triplets_for_emscripten(build_dir: str, emscripten_root: str)
         build_dir (str): The directory to save the generated triplet files.
         emscripten_root (str): The root path of Emscripten.
     """
-    # Note: Exceptions are generally required/enabled for Emscripten builds in ORT.
-    # Minimal build concept might not apply directly here or needs specific flags.
-    # Sticking to original logic for now.
     enable_minimal_build = False  # Assume False for Emscripten unless specified otherwise
     for enable_exception in [True, False]:
         for enable_wasm_exception_catching in [True, False]:
@@ -470,11 +467,9 @@ def generate_vcpkg_triplets_for_emscripten(build_dir: str, emscripten_root: str)
                             if len(ldflags) >= 1:
                                 f.write('set(VCPKG_LINKER_FLAGS "{}")\n'.format(" ".join(ldflags)))
 
-                            # RTTI flag for Emscripten
-                            if not enable_rtti:
-                                cflags.append("-fno-rtti")
-
                             cxxflags = cflags.copy()
+                            if not enable_rtti:
+                                cxxflags.append("-fno-rtti")
 
                             # Exception flag for Emscripten (note: -fno-exceptions conflicts with -sDISABLE_EXCEPTION_CATCHING=0)
                             # We keep exceptions enabled based on the cflags setting above.
