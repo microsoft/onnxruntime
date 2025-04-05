@@ -11,7 +11,7 @@ from pathlib import Path
 # This is a way to add customizations to the official VCPKG ports.
 def add_port_configs(
     f, has_exception: bool, is_emscripten: bool, enable_minimal_build: bool
-) -> None:  # Added enable_minimal_build
+) -> None:
     """
     Add port-specific configurations to the triplet file.
 
@@ -101,7 +101,7 @@ def generate_triplet_for_android(
     enable_rtti: bool,
     enable_exception: bool,
     enable_asan: bool,
-    enable_minimal_build: bool,  # Added
+    enable_minimal_build: bool,
     use_cpp_shared: bool,
     android_api_level: int,
 ) -> None:
@@ -125,8 +125,8 @@ def generate_triplet_for_android(
         folder_name_parts.append("nortti")
     if not enable_exception:
         folder_name_parts.append("noexception")
-    if enable_minimal_build:  # Added
-        folder_name_parts.append("minimal")  # Added
+    if enable_minimal_build:
+        folder_name_parts.append("minimal")
 
     folder_name = "default" if len(folder_name_parts) == 0 else "_".join(folder_name_parts)
 
@@ -236,11 +236,9 @@ def generate_android_triplets(build_dir: str, use_cpp_shared: bool, android_api_
     for enable_asan in [True, False]:
         for enable_rtti in [True, False]:
             for enable_exception in [True, False]:
-                for enable_minimal_build in [True, False]:  # Added loop
-                    # ORT Constraint: If exceptions are disabled, minimal build must be enabled
-                    # The triplet can be generated, but ORT build should not *use* the invalid combo
-                    # if not enable_exception and not enable_minimal_build:
-                    #     continue # Optionally skip generating the invalid combo for ORT
+                for enable_minimal_build in [True, False]:
+                    if not enable_exception and not enable_minimal_build:
+                         continue
                     for target_abi in target_abis:
                         generate_triplet_for_android(
                             build_dir,
@@ -248,7 +246,7 @@ def generate_android_triplets(build_dir: str, use_cpp_shared: bool, android_api_
                             enable_rtti,
                             enable_exception,
                             enable_asan,
-                            enable_minimal_build,  # Added
+                            enable_minimal_build,
                             use_cpp_shared,
                             android_api_level,
                         )
@@ -261,7 +259,7 @@ def generate_triplet_for_posix_platform(
     enable_exception: bool,
     enable_binskim: bool,
     enable_asan: bool,
-    enable_minimal_build: bool,  # Added
+    enable_minimal_build: bool,
     crt_linkage: str,
     target_abi: str,
     osx_deployment_target: str,
@@ -290,8 +288,8 @@ def generate_triplet_for_posix_platform(
         folder_name_parts.append("nortti")
     if not enable_exception:
         folder_name_parts.append("noexception")
-    if enable_minimal_build:  # Added
-        folder_name_parts.append("minimal")  # Added
+    if enable_minimal_build:
+        folder_name_parts.append("minimal")
 
     folder_name = "default" if len(folder_name_parts) == 0 else "_".join(folder_name_parts)
 
@@ -517,7 +515,7 @@ def generate_windows_triplets(build_dir: str, toolset_version: str) -> None:
         for enable_exception in [True, False]:
             for enable_binskim in [True, False]:
                 for enable_asan in [True, False]:
-                    for enable_minimal_build in [True, False]:  # Added loop
+                    for enable_minimal_build in [True, False]:
                         for crt_linkage in crt_linkages:
                             # Address Sanitizer libs do not have a Qspectre version. So they two cannot be both enabled.
                             if enable_asan and enable_binskim:
@@ -536,8 +534,8 @@ def generate_windows_triplets(build_dir: str, toolset_version: str) -> None:
                                     folder_name_parts.append("nortti")
                                 if not enable_exception:
                                     folder_name_parts.append("noexception")
-                                if enable_minimal_build:  # Added
-                                    folder_name_parts.append("minimal")  # Added
+                                if enable_minimal_build:
+                                    folder_name_parts.append("minimal")
 
                                 folder_name = "default" if len(folder_name_parts) == 0 else "_".join(folder_name_parts)
                                 file_name_parts = [target_abi, "windows", "static"]
@@ -603,12 +601,11 @@ def generate_linux_triplets(build_dir: str) -> None:
         for enable_exception in [True, False]:
             for enable_binskim in [True, False]:
                 for enable_asan in [True, False]:
-                    for enable_minimal_build in [True, False]:  # Added loop
+                    for enable_minimal_build in [True, False]:
                         if enable_asan and enable_binskim:
                             continue
-                        # ORT Constraint: If exceptions are disabled, minimal build must be enabled
-                        # if not enable_exception and not enable_minimal_build:
-                        #     continue # Optionally skip generating the invalid combo for ORT
+                        if not enable_exception and not enable_minimal_build:
+                            continue
                         for target_abi in target_abis:
                             generate_triplet_for_posix_platform(
                                 build_dir,
@@ -617,7 +614,7 @@ def generate_linux_triplets(build_dir: str) -> None:
                                 enable_exception,
                                 enable_binskim,
                                 enable_asan,
-                                enable_minimal_build,  # Added
+                                enable_minimal_build,
                                 "dynamic",
                                 target_abi,
                                 None,
@@ -637,7 +634,7 @@ def generate_macos_triplets(build_dir: str, osx_deployment_target: str) -> None:
         for enable_exception in [True, False]:
             for enable_binskim in [True, False]:
                 for enable_asan in [True, False]:
-                    for enable_minimal_build in [True, False]:  # Added loop
+                    for enable_minimal_build in [True, False]:
                         if enable_asan and enable_binskim:
                             continue
                         # ORT Constraint: If exceptions are disabled, minimal build must be enabled
@@ -651,7 +648,7 @@ def generate_macos_triplets(build_dir: str, osx_deployment_target: str) -> None:
                                 enable_exception,
                                 enable_binskim,
                                 enable_asan,
-                                enable_minimal_build,  # Added
+                                enable_minimal_build,
                                 "dynamic",
                                 target_abi,
                                 osx_deployment_target,
