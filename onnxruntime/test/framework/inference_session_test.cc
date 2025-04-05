@@ -7,6 +7,7 @@
 #include <algorithm>
 #include <cfloat>
 #include <functional>
+#include <future>
 #include <iterator>
 #include <thread>
 #include <fstream>
@@ -496,6 +497,30 @@ TEST(InferenceSessionTests, TestModelSerialization) {
   InferenceSession session_object_emptyValidation{so_opt, GetEnvironment()};
   ASSERT_TRUE(session_object_emptyValidation.Load(test_model).IsOK());
   ASSERT_TRUE(session_object_emptyValidation.Initialize().IsOK());
+}
+
+TEST(InferenceSessionTests, RequestLoadCancellation) {
+  {
+    // Explicit cancel during load, small model is fine
+    SessionOptions so;
+    so.session_logid = "InferenceSessionTests.TestLoadCancellation";
+
+    const PathString model_uri = ORT_TSTR("testdata/constant_floats.onnx");
+    InferenceSession session_object{so, GetEnvironment()};
+    so.SetLoadCancellationFlag(true);
+    ASSERT_FALSE(session_object.Load(model_uri).IsOK());
+  }
+  {
+    // Explicit cancel during initialize, small model is fine
+    const PathString model_uri = ORT_TSTR("testdata/constant_floats.onnx");
+    SessionOptions so;
+    so.session_logid = "InferenceSessionTests.TestLoadCancellation";
+    so.SetLoadCancellationFlag(false);
+    InferenceSession session_object{so, GetEnvironment()};
+    ASSERT_STATUS_OK(session_object.Load(model_uri));
+    so.SetLoadCancellationFlag(true);
+    ASSERT_FALSE(session_object.Initialize().IsOK());
+  }
 }
 
 #ifdef ORT_RUN_EXTERNAL_ONNX_TESTS

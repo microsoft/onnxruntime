@@ -748,6 +748,12 @@ inline SessionOptionsImpl<T>& SessionOptionsImpl<T>::SetExecutionMode(ExecutionM
 }
 
 template <typename T>
+inline SessionOptionsImpl<T>& SessionOptionsImpl<T>::SetLoadCancellationFlag(bool value) {
+  ThrowOnError(GetApi().SessionOptionsSetLoadCancellationFlag(this->p_, value));
+  return *this;
+}
+
+template <typename T>
 inline SessionOptionsImpl<T>& SessionOptionsImpl<T>::SetLogId(const char* logid) {
   ThrowOnError(GetApi().SetSessionLogId(this->p_, logid));
   return *this;

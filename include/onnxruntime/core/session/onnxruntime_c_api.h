@@ -255,6 +255,7 @@ typedef enum OrtErrorCode {
   ORT_NOT_IMPLEMENTED,
   ORT_INVALID_GRAPH,
   ORT_EP_FAIL,
+  ORT_MODEL_LOAD_CANCELED,
 } OrtErrorCode;
 
 typedef enum OrtOpAttrType {
@@ -4898,6 +4899,24 @@ struct OrtApi {
                   _In_ const int64_t* shape, size_t shape_len,
                   ONNXTensorElementDataType type,
                   _Outptr_ OrtValue** out);
+
+  /** \brief sets load cancellation flag to abort session loading process.
+   *
+   * \param[in] options instance that was passed to the session at creation time.
+   * \param[in] cancel setting this to true after model loading process was initiated will
+   *            attempt to cancel the loading process. If cancellation is successful, CreateSession()
+   *            CreateSessionFromArray() or any other session creation API that take session options as an
+   *            argument will return an OrtStatus indicating that session loading was canceled at user request,
+   *            error code ORT_MODEL_LOAD_CANCELED.
+   *            The APIs above would not return any valid Session instance. This is the best case effort and the result
+   *            is not guaranteed. The session may have already been created and initialized
+   *            before the cancellation request was issued.
+   *
+   * \snippet{doc} snippets.dox OrtStatus
+   *
+   */
+  ORT_API2_STATUS(SessionOptionsSetLoadCancellationFlag, _Inout_ OrtSessionOptions* options,
+                  _In_ bool cancel);
 };
 
 /*
