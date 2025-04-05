@@ -137,6 +137,23 @@ static void QNBitGemmArgs(benchmark::internal::Benchmark* b) {
 BENCHMARK(QNBITGEMM<float, 4>)->Apply(QNBitGemmArgs<float>)->UseRealTime();
 BENCHMARK(QNBITGEMM<MLAS_FP16, 4>)->Apply(QNBitGemmArgs<MLAS_FP16>)->UseRealTime();
 
+const char* ComputeTypeToString(MLAS_QNBIT_GEMM_COMPUTE_TYPE type) {
+  switch (type) {
+    case SQNBIT_CompFp32:
+      return "SQNBIT_CompFp32";
+    case HQNBIT_CompFp16:
+      return "HQNBIT_CompFp16";
+    case BHQNBIT_CompBf16:
+      return "BHQNBIT_CompBf16";
+    case SQNBIT_CompInt8:
+      return "SQNBIT_CompInt8";
+    case HQNBIT_CompInt8:
+      return "HQNBIT_CompInt8";
+    default:
+      return "Unknown";
+  }
+}
+
 // This test gets benchmark arguments from environment variables.
 template <typename AType, size_t BlkBitWidth>
 void QNBITGEMM_ENV(benchmark::State& state) {
@@ -160,7 +177,7 @@ void QNBITGEMM_ENV(benchmark::State& state) {
   s << "BlkBitWidth:" << BlkBitWidth << "/BlkLen:" << BlkLen
     << "/M:" << M << "/N:" << N << "/K:" << K
     << "/Threads:" << Threads << "/Symmetric:" << Symmetric << "/HasBias:" << HasBias
-    << "/ComputeType:" << ComputeType;
+    << "/ComputeType:" << ComputeTypeToString(MLAS_QNBIT_GEMM_COMPUTE_TYPE(static_cast<MLAS_QNBIT_GEMM_COMPUTE_TYPE>(ComputeType)));
   state.SetLabel(s.str());
 }
 
