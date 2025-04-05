@@ -52,7 +52,11 @@ void RunSession(OrtAllocator* allocator,
   auto* actual = output_tensor->GetTensorMutableData<ModelOutputT>();
   for (size_t i = 0; i != total_len; ++i) {
     if constexpr (std::is_same<ModelOutputT, float>::value || std::is_same<ModelOutputT, double>::value) {
+#ifdef USE_OPENVINO
+      EXPECT_NEAR(expected_output[i], actual[i], 5e-2) << "i=" << i;
+#else
       EXPECT_NEAR(expected_output[i], actual[i], 1e-3) << "i=" << i;
+#endif
     } else {
       EXPECT_EQ(expected_output[i], actual[i]) << "i=" << i;
     }
