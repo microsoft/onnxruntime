@@ -56,7 +56,7 @@ Attributes table below:<br/>
 |ep.context_embed_mode      |Used **only for context model generation**.<br/>**1**: Dumps the **EP context content directly into the ONNX model**, stored inside the `ep_cache_context` node attribute.<br/>**0 (default)**: Dumps the **EP context content into a separate file** and stores the **file name** in the ONNX model.<br/>The **file path** is tracked in the `ep_cache_context` node attribute.|
 |ep.context_node_name_prefix|Used **only for context model generation**.<br/>Specifies the **prefix for the `EPContext` node name** (also used as the `partition_name` attribute and internal graph name).<br/>Ensures **uniqueness across nodes** when multiple `EPContext` nodes are combined into a **single model**, preventing naming conflicts.<br/>The EP can also apply this prefix to the **`ep_graph` name** inside the converted EP context binary.|
 |session.model_external_initializers_file_folder_path|This is not specific to the **EPContext** design. Generally, for models with external data, when loading the model from a **memory buffer**, the session loses track of the model's name and path, making it unable to locate the external data file. Use this configuration to specify the **folder path** for the external data files.<br/>All external data files should be placed within the **same folder**.|
-|ep.context_model_external_initializers_file_name|This configuration is used when some nodes are partitioned on the **CPU EP** and those nodes have **external initializers**. When generating the **EP context model**, the new model **should not rely on the old external data file** used by the source ONNX model.<br/>Use this setting when **dumping the EP context model** with an external initializers file.<br/>If specified, all initializers will be placed inside the **external data file**.<br/>Otherwise, all initializers will be embedded inside the **generated ONNX file**.<br/>By default, this option is **not set**, meaning all initializers will be included within the ONNX file.|
+|ep.context_model_external_initializers_file_name|Used **only for context model generation**.<br/>This configuration is used when some nodes are partitioned on the **CPU EP** and those nodes have **external initializers**. When generating the **EP context model**, the new model **should not rely on the old external data file** used by the source ONNX model.<br/>Use this setting when **dumping the EP context model** with an external initializers file.<br/>If specified, all initializers will be placed inside the **external data file**.<br/>Otherwise, all initializers will be embedded inside the **generated ONNX file**.<br/>By default, this option is **not set**, meaning all initializers will be included within the ONNX file.|
 
 ## EP Context Cache Model Generation Workflow
 
@@ -110,6 +110,15 @@ virtual const InlinedVector<const Node*> GetEpContextNodes() const {
   - If the user wants to add a **custom prefix** to the EPContext node name (also applied to the `partition_name` attribute and graph name), the EP should provide this capability when generating EPContext nodes.
   - This is useful when combining multiple EPContext nodes from different models into a **single model**, where there is a risk of **node name or graph name conflicts** across models.
   - The EP should support multiple EP contexts within a single model, enabling users to **merge and interconnect EPContext nodes** generated from different models.
+
+- **Source model with external data**
+<br/>    When the source model relies on an external data file, ONNX uses a relative path to locate that file. Therefore, the external data file must reside in the same directory as the source model. However, newly generated models should not depend on the original source files. This approach is driven by several considerations:
+  - All newly generated files should be located in the same directory.
+  - There's no guarantee that the output files will be generated in the same directory as the source files.
+  - The `EPContext` design allows a model to be partitioned by multiple EPs, each compiling its own `EPContext` nodes. A unified and standardized process helps avoid data duplication.
+  - Some EPs may need to copy weights from the source into their context binaries to satisfy specific data layout requirements.
+  - For subgraphs that fall back to the ONNX Runtime CPU EP, all weight data will, by default, be embedded directly into the newly generated `[model_name]_ctx.onnx` model. If `ep.context_model_external_initializers_file_name` is set, then all weight data will instead be saved to the specified external initializers file.
+
 
 ### Usage Scenario Code Examples
 
