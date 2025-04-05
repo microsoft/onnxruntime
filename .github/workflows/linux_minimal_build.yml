@@ -354,7 +354,7 @@ jobs:
             --skip_tests
             --disable_ml_ops
             --disable_types sparsetensor float8 optional
-            --include_ops_by_config /build/.test_data/include_no_operators.config
+            --include_ops_by_config /onnxruntime_src/build/.test_data/include_no_operators.config
             --cmake_extra_defines onnxruntime_BUILD_UNIT_TESTS=OFF
 
       - name: Run Build 6a (Build)
@@ -370,7 +370,7 @@ jobs:
             --skip_tests
             --disable_ml_ops
             --disable_types sparsetensor float8 optional
-            --include_ops_by_config /build/.test_data/include_no_operators.config
+            --include_ops_by_config /onnxruntime_src/build/.test_data/include_no_operators.config
             --cmake_extra_defines onnxruntime_BUILD_UNIT_TESTS=OFF
 
   # Job 6b: Minimal build with all optional features disabled.
@@ -426,7 +426,7 @@ jobs:
             --skip_tests
             --enable_reduced_operator_type_support
             --disable_types sparsetensor optional float8
-            --include_ops_by_config /build/.test_data/include_no_operators.config
+            --include_ops_by_config /onnxruntime_src/build/.test_data/include_no_operators.config
             --cmake_extra_defines onnxruntime_BUILD_UNIT_TESTS=OFF
 
       - name: Run Build 6b (Build)
@@ -444,7 +444,7 @@ jobs:
             --skip_tests
             --enable_reduced_operator_type_support
             --disable_types sparsetensor optional float8
-            --include_ops_by_config /build/.test_data/include_no_operators.config
+            --include_ops_by_config /onnxruntime_src/build/.test_data/include_no_operators.config
             --cmake_extra_defines onnxruntime_BUILD_UNIT_TESTS=OFF
 
   # Job 6c: Extended minimal build with all optional features disabled.
@@ -505,7 +505,7 @@ jobs:
             --skip_tests
             --enable_reduced_operator_type_support
             --disable_types sparsetensor optional float8
-            --include_ops_by_config /build/.test_data/include_no_operators.config
+            --include_ops_by_config /onnxruntime_src/build/.test_data/include_no_operators.config
             --cmake_extra_defines onnxruntime_BUILD_UNIT_TESTS=OFF
 
       - name: Run Build 6c (Build)
@@ -523,7 +523,7 @@ jobs:
             --skip_tests
             --enable_reduced_operator_type_support
             --disable_types sparsetensor optional float8
-            --include_ops_by_config /build/.test_data/include_no_operators.config
+            --include_ops_by_config /onnxruntime_src/build/.test_data/include_no_operators.config
             --cmake_extra_defines onnxruntime_BUILD_UNIT_TESTS=OFF
 
   # Job 7: Extended minimal build with NNAPI EP for Android(arm64-v8a) and skip tests.
