@@ -168,6 +168,12 @@ Status ValidateVariableDataType(int32_t element_type, ProgramVariableDataType va
                             var_type == ProgramVariableDataType::Uint8x16,
                         "Unexpected program variable type ", int(var_type), " for uint8 tensor");
       break;
+    case ONNX_TENSOR_ELEMENT_DATA_TYPE_INT8:
+      ORT_RETURN_IF_NOT(var_type == ProgramVariableDataType::Int8x4 ||
+                            var_type == ProgramVariableDataType::Int8x8 ||
+                            var_type == ProgramVariableDataType::Int8x16,
+                        "Unexpected program variable type ", int(var_type), " for int8 tensor");
+      break;
     default:
       ORT_RETURN_IF(true, "Unsupported data type: ", element_type);
       // todo: add int4/uint4
