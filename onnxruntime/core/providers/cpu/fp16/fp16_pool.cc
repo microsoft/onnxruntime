@@ -156,7 +156,8 @@ Status PoolFp16::Compute(OpKernelContext* context) const {
           Xdata,
           static_cast<MLFloat16*>(transpose_input_buffer.get()),
           static_cast<size_t>(C),
-          static_cast<size_t>(input_image_size));
+          static_cast<size_t>(input_image_size),
+          thread_pool);
       input_data = static_cast<MLFloat16*>(transpose_input_buffer.get());
       output_data = static_cast<MLFloat16*>(transpose_output_buffer.get());
     }
@@ -206,7 +207,8 @@ Status PoolFp16::Compute(OpKernelContext* context) const {
           output_data,
           Ydata,
           static_cast<size_t>(output_image_size),
-          static_cast<size_t>(C));
+          static_cast<size_t>(C),
+          thread_pool);
     }
     Xdata += input_image_size * C;
     Ydata += output_image_size * C;
