@@ -9,9 +9,7 @@ from pathlib import Path
 
 
 # This is a way to add customizations to the official VCPKG ports.
-def add_port_configs(
-    f, has_exception: bool, is_emscripten: bool, enable_minimal_build: bool
-) -> None:
+def add_port_configs(f, has_exception: bool, is_emscripten: bool, enable_minimal_build: bool) -> None:
     """
     Add port-specific configurations to the triplet file.
 
@@ -238,7 +236,7 @@ def generate_android_triplets(build_dir: str, use_cpp_shared: bool, android_api_
             for enable_exception in [True, False]:
                 for enable_minimal_build in [True, False]:
                     if not enable_exception and not enable_minimal_build:
-                         continue
+                        continue
                     for target_abi in target_abis:
                         generate_triplet_for_android(
                             build_dir,
