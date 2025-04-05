@@ -1,0 +1,47 @@
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
+
+#pragma once
+
+#include "core/providers/webgpu/webgpu_kernel.h"
+#include "core/providers/webgpu/program.h"
+
+namespace onnxruntime {
+namespace webgpu {
+
+class ComputeChannelScaleShiftProgram final : public Program<ComputeChannelScaleShiftProgram> {
+ public:
+  ComputeChannelScaleShiftProgram(int components) : Program{"ComputeChannelScaleShift"}, components_(components) {}
+
+  Status GenerateShaderCode(ShaderHelper& sh) const override;
+
+  WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES({"output_size", ProgramUniformVariableDataType::Uint32}, {"epsilon", ProgramUniformVariableDataType::Float32});
+  int components_;
+};
+
+class InstanceNormProgram final : public Program<InstanceNormProgram> {
+ public:
+  InstanceNormProgram() : Program{"InstanceNorm"} {}
+
+  Status GenerateShaderCode(ShaderHelper& sh) const override;
+
+  WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES({"output_size", ProgramUniformVariableDataType::Uint32});
+
+ private:
+};
+
+template <bool is_nhwc>
+class InstanceNorm final : public WebGpuKernel {
+ public:
+  InstanceNorm(const OpKernelInfo& info) : WebGpuKernel(info) {
+    epsilon_ = info.GetAttrOrDefault<float>("epsilon", 1e-5f);
+  }
+  Status ComputeChannelScaleAndShift(ComputeContext& context, const Tensor* input, const Tensor* scale, const Tensor* bias, float epsilon, Tensor* output) const;
+  Status ComputeInternal(ComputeContext& context) const override;
+
+ private:
+  float epsilon_;
+};
+
+}  // namespace webgpu
+}  // namespace onnxruntime
