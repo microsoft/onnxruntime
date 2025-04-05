@@ -1282,6 +1282,22 @@ TensorrtExecutionProvider::PerThreadContext& TensorrtExecutionProvider::GetPerTh
   return *context;
 }
 
+std::vector<nvinfer1::PreviewFeature> ParseTrtPreviewFeatures(const std::string& str) {
+  std::vector<std::string> featureNames{SplitToStringVec(str, ',')};
+
+  std::vector<nvinfer1::PreviewFeature> previewFeatures;
+  previewFeatures.reserve(featureNames.size());
+  for (auto featureName : featureNames) {
+    if (featureName == "ALIASED_PLUGIN_IO_10_03") {
+      previewFeatures.push_back(nvinfer1::PreviewFeature::kALIASED_PLUGIN_IO_10_03);
+    } else {
+      throw std::invalid_argument(std::string("Unkown or unsupported preview feature: ") + featureName);
+    }
+  }
+
+  return previewFeatures;
+}
+
 TensorrtExecutionProvider::TensorrtExecutionProvider(const TensorrtExecutionProviderInfo& info)
     : IExecutionProvider{onnxruntime::kTensorrtExecutionProvider,
                          OrtDevice(OrtDevice::GPU, OrtDevice::MemType::DEFAULT,
@@ -1380,6 +1396,7 @@ TensorrtExecutionProvider::TensorrtExecutionProvider(const TensorrtExecutionProv
     cuda_graph_enable_ = info.cuda_graph_enable;
     engine_hw_compatible_ = info.engine_hw_compatible;
     op_types_to_exclude_ = info.op_types_to_exclude;
+    preview_features_ = ParseTrtPreviewFeatures(info.preview_features);
   } else {
     try {
       const std::string max_partition_iterations_env = onnxruntime::GetEnvironmentVar(tensorrt_env_vars::kMaxPartitionIterations);
@@ -3186,6 +3203,11 @@ Status TensorrtExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphView
     LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] Tactic sources are limited using " << tactic_sources_;
   }
 
+  // Set preview feature flags
+  for (auto feature : preview_features_) {
+    trt_config->setPreviewFeature(feature, true);
+  }
+
   // Build TRT engine (if needed) and load TRT engine if:
   //   (1) Graph has no dynamic shape input
   //   (2) All the dynamic shape inputs have associated explicit profiles specified by user
@@ -3526,7 +3548,8 @@ Status TensorrtExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphView
           context_memory_sharing_enable_, &max_ctx_mem_size_, dynamic_range_map, engine_decryption_enable_,
           engine_decryption_, engine_encryption_, timing_cache_enable_, global_cache_path_, force_timing_cache_match_,
           detailed_build_log_, build_heuristics_enable_, sparsity_enable_, builder_optimization_level_,
-          auxiliary_streams_, !tactic_sources_.empty(), tactics, cuda_graph_enable_, cache_prefix_, cache_suffix, engine_hw_compatible_};
+          auxiliary_streams_, !tactic_sources_.empty(), tactics, cuda_graph_enable_, cache_prefix_, cache_suffix, engine_hw_compatible_,
+          preview_features_};
     *state = p.release();
     return 0;
   };
@@ -3807,6 +3830,11 @@ Status TensorrtExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphView
         LOGS_DEFAULT(INFO) << "[TensorRT EP] Re-generate engine with hardware compatibility enabled.";
       }
 #endif
+
+      // Set preview feature flags
+      for (auto feature : trt_state->preview_features) {
+        trt_config->setPreviewFeature(feature, true);
+      }
 
       // Build engine
       std::unique_ptr<nvinfer1::IHostMemory> serialized_engine;

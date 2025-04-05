@@ -143,28 +143,10 @@ conda activate py310
 
 ### Setup Environment (CUDA) without docker
 
-First, we need install CUDA 11.8 or 12.x, [cuDNN](https://docs.nvidia.com/deeplearning/cudnn/install-guide/index.html), and [TensorRT](https://docs.nvidia.com/deeplearning/tensorrt/install-guide/index.html) in the machine.
+First, we need install CUDA 12.x, [cuDNN](https://docs.nvidia.com/deeplearning/cudnn/install-guide/index.html), and [TensorRT](https://docs.nvidia.com/deeplearning/tensorrt/install-guide/index.html) in the machine.
 
 The verison of CuDNN can be found in https://onnxruntime.ai/docs/execution-providers/CUDA-ExecutionProvider.html#requirements.
 The version of TensorRT can be found in https://onnxruntime.ai/docs/execution-providers/TensorRT-ExecutionProvider.html#requirements.
-
-#### CUDA 11.8:
-
-In the Conda environment, install PyTorch 2.1 up to 2.3.1, and other required packages like the following:
-```
-pip install torch>=2.1,<2.4 --index-url https://download.pytorch.org/whl/cu118
-pip install --upgrade polygraphy onnx-graphsurgeon --extra-index-url https://pypi.ngc.nvidia.com
-pip install -r requirements/cuda11/requirements.txt
-```
-
-For Windows, install nvtx like the following:
-```
-conda install -c conda-forge nvtx
-```
-
-We cannot directly `pip install tensorrt` for CUDA 11. Follow https://github.com/NVIDIA/TensorRT/issues/2773 to install TensorRT for CUDA 11 in Linux.
-
-For Windows, pip install the tensorrt wheel in the downloaded TensorRT zip file instead. Like `pip install tensorrt-8.6.1.6.windows10.x86_64.cuda-11.8\tensorrt-8.6.1.6\python\tensorrt-8.6.1-cp310-none-win_amd64.whl`.
 
 #### CUDA 12.*:
 The official package of onnxruntime-gpu 1.19.x is built for CUDA 12.x. You can install it and other python packages like the following:

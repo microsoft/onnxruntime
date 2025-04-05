@@ -222,8 +222,11 @@ function(AddTest)
       else()
         set(TEST_NODE_FLAGS)
 
+        if (onnxruntime_ENABLE_WEBASSEMBLY_RELAXED_SIMD)
+          message(WARNING "Use system `node` to test Wasm relaxed SIMD. Please make sure to install node v21 or newer.")
+          set(NODE_EXECUTABLE node)
         # prefer Node from emsdk so the version is more deterministic
-        if (DEFINED ENV{EMSDK_NODE})
+        elseif (DEFINED ENV{EMSDK_NODE})
           set(NODE_EXECUTABLE $ENV{EMSDK_NODE})
         else()
           message(WARNING "EMSDK_NODE environment variable was not set. Falling back to system `node`.")
@@ -1843,7 +1846,7 @@ endif()
 
 # limit to only test on windows first, due to a runtime path issue on linux
 if (NOT onnxruntime_MINIMAL_BUILD AND NOT onnxruntime_EXTENDED_MINIMAL_BUILD
-                                  AND NOT ${CMAKE_SYSTEM_NAME} MATCHES "Darwin|iOS|visionOS"
+                                  AND NOT ${CMAKE_SYSTEM_NAME} MATCHES "Darwin|iOS|visionOS|tvOS"
                                   AND NOT CMAKE_SYSTEM_NAME STREQUAL "Android"
                                   AND NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten"
                                   AND NOT onnxruntime_USE_ROCM)

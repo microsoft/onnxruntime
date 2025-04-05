@@ -17,12 +17,12 @@ jobs:
 
     steps:
     - name: Checkout repository
-      uses: actions/checkout@v3
+      uses: actions/checkout@v4
       with:
         submodules: false
 
     - name: Setup Python
-      uses: actions/setup-python@v4
+      uses: actions/setup-python@v5
       with:
         python-version: '3.12'
         architecture: x86  # x86 Python
@@ -37,13 +37,13 @@ jobs:
       run: python -m pip install -r "${{ github.workspace }}\tools\ci_build\github\windows\python\requirements.txt"
 
     - name: Setup Node.js
-      uses: actions/setup-node@v3
+      uses: actions/setup-node@v4
       with:
         node-version: '20.x'
         architecture: x86 #Add architecture
 
     - name: Setup Java
-      uses: actions/setup-java@v3
+      uses: actions/setup-java@v4
       with:
         distribution: 'temurin'
         java-version: '17'
@@ -60,14 +60,14 @@ jobs:
       working-directory: ${{ github.workspace }}
 
     - name: Use .NET 8.x
-      uses: actions/setup-dotnet@v3
+      uses: actions/setup-dotnet@v4
       with:
         dotnet-version: '8.x'
       env:
         PROCESSOR_ARCHITECTURE: x86  # x86 .NET
 
     - name: Use Nuget 6.x
-      uses: nuget/setup-nuget@v1
+      uses: nuget/setup-nuget@v2
       with:
         nuget-version: '6.x'
 

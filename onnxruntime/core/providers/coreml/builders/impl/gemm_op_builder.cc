@@ -33,7 +33,6 @@ void GemmOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder, const Nod
   const auto& input_defs(node.InputDefs());
   const bool is_gemm = op == "Gemm";
 
-#if defined(COREML_ENABLE_MLPROGRAM)
   if (model_builder.CreateMLProgram()) {
     // we have to transpose the weight input of Gemm if transB is false, and potentially override the bias shape
     if (is_gemm) {
@@ -58,9 +57,7 @@ void GemmOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder, const Nod
         }
       }
     }
-  } else
-#endif  // defined(COREML_ENABLE_MLPROGRAM)
-  {
+  } else {
     // We have already embedded the weights (matrix B and C(if any)) into the coreml layer
     // No need to copy them later to reduce memory consumption
     model_builder.AddInitializerToSkip(input_defs[1]->Name());
@@ -123,7 +120,6 @@ Status GemmOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
   const auto K = transB ? b1 : b0;
   const auto N = transB ? b0 : b1;
   // we already checked it and dtype must be existed.
-#if defined(COREML_ENABLE_MLPROGRAM)
   auto input_dtype = a.TypeAsProto()->tensor_type().elem_type();
   if (model_builder.CreateMLProgram()) {
     using namespace CoreML::Specification::MILSpec;
@@ -207,9 +203,7 @@ Status GemmOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
       AddOperationOutput(*matmul_op, *node.OutputDefs()[0]);
       model_builder.AddOperation(std::move(matmul_op));
     }
-  } else
-#endif  // defined(COREML_ENABLE_MLPROGRAM)
-  {
+  } else {
     auto* coreml_inner_product = layer->mutable_innerproduct();
 
     *layer->mutable_input()->Add() = a.Name();

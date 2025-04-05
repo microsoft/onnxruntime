@@ -273,7 +273,8 @@ Status GatherSliceToSplitFusion::ApplyImpl(Graph& graph, bool& modified, int gra
     split_initializer_proto.add_dims(static_cast<int64_t>(split_values.size()));
     split_initializer_proto.mutable_int64_data()->Add(split_values.begin(), split_values.end());
     NodeArg* split_initializer_arg = &graph_utils::AddInitializer(graph, split_initializer_proto);
-    Node& split_node = graph.AddNode(nodes_to_fuse[0].get().Name() + "/GatherSliceToSplitFusion/", "Split", "Split for Fused Gather nodes",
+    const auto split_node_name = graph.GenerateNodeName(nodes_to_fuse[0].get().Name() + "/GatherSliceToSplitFusion");
+    Node& split_node = graph.AddNode(split_node_name, "Split", "Split for Fused Gather nodes",
                                      {graph.GetNodeArg(node_arg->Name()), split_initializer_arg}, split_outputs);
     split_node.AddAttribute("axis", axis);
     split_node.SetExecutionProviderType(nodes_to_fuse[0].get().GetExecutionProviderType());

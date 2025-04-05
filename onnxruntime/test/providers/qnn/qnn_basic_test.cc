@@ -222,6 +222,29 @@ TEST(QnnEP, TestDisableCPUFallback_ConflictingConfig) {
   }
 }
 
+TEST(QnnEP, TestInvalidSpecificationOfBothBackendTypeAndBackendPath) {
+  onnxruntime::ProviderOptions provider_options{};
+  provider_options["backend_type"] = "cpu";
+#if defined(_WIN32)
+  provider_options["backend_path"] = "QnnCpu.dll";
+#else
+  provider_options["backend_path"] = "libQnnCpu.so";
+#endif
+
+  Ort::SessionOptions so{};
+  so.AppendExecutionProvider("QNN", provider_options);
+
+  const ORTCHAR_T* ort_model_path = ORT_MODEL_FOLDER "constant_floats.onnx";
+
+  try {
+    Ort::Session session(*ort_env, ort_model_path, so);
+    FAIL();
+  } catch (const Ort::Exception& e) {
+    ASSERT_EQ(e.GetOrtErrorCode(), ORT_FAIL);
+    ASSERT_THAT(e.what(), testing::HasSubstr("Only one of 'backend_type' and 'backend_path' should be set."));
+  }
+}
+
 // Conv node `Conv` is not supported: GetFileLength for conv_qdq_external_ini.bin failed:open file conv_qdq_external_ini.bin fail,
 // errcode = 2 - The system cannot find the file specified.
 TEST_F(QnnHTPBackendTests, TestConvWithExternalData) {
