@@ -70,7 +70,7 @@ class BufferManager {
   void RefreshPendingBuffers();
 
  private:
-  IBufferCacheManager& GetCacheManager(WGPUBufferUsage usage) const;
+  IBufferCacheManager& GetCacheManager(wgpu::BufferUsage usage) const;
   IBufferCacheManager& GetCacheManager(WGPUBuffer buffer) const;
 
   WebGpuContext& context_;
