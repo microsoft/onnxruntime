@@ -47,9 +47,7 @@ def parse_mobile_perf(log_data: str, model: str, device_id: str, ep: str, commit
 
     current_section = None
 
-    for line in log_data.split("\n"):
-        line = line.strip()
-
+    for line in log_data.split("\n").strip():
         if "Prompt processing" in line:
             current_section = "TTFT"
         elif "Token generation" in line:
@@ -88,7 +86,7 @@ def parse_mobile_perf(log_data: str, model: str, device_id: str, ep: str, commit
             value = float(line.split(":")[1].strip()) / (1024 * 1024)
             metrics["PeakMemoryMB"] = value
 
-    for key in metrics:
+    for key in metrics.items():
         if metrics[key] is not None and isinstance(metrics[key], (int, float)):
             metrics[key] = f"{metrics[key]:.8f}"
 
