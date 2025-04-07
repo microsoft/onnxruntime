@@ -9,9 +9,7 @@ redirect_from: /docs/execution-providers/community-maintained/Vitis-AI-Execution
 # Vitis AI Execution Provider
 {: .no_toc }
 
-[Vitis AI](https://github.com/Xilinx/Vitis-AI) is AMD's development stack for hardware-accelerated AI inference on AMD platforms, including Ryzen AI, AMD Adaptable SoCs and Alveo Data Center Acceleration Cards. It consists of optimized IP, tools, libraries, models, and example designs. 
-
-This release of the Vitis AI Execution Provider enables acceleration of Neural Network model inference targeting AMD Ryzen AI and Adaptable SoCs and Ryzen AI.
+[Vitis AI](https://github.com/Xilinx/Vitis-AI) is AMD's development stack for hardware-accelerated AI inference on AMD platforms, including Ryzen AI, AMD Adaptable SoCs and Alveo Data Center Acceleration Cards. 
 
 
 ## Contents
@@ -24,138 +22,30 @@ This release of the Vitis AI Execution Provider enables acceleration of Neural N
 
 The following table lists AMD targets that are supported by the Vitis AI ONNX Runtime Execution Provider.
 
-| **Architecture**   							    | **Family**                                                 | **Supported Targets**                                      | **Supported OS**                                           |
+| **Architecture**                                  | **Family**                                                 | **Supported Targets**                                      | **Supported OS**                                           |
 |---------------------------------------------------|------------------------------------------------------------|------------------------------------------------------------|------------------------------------------------------------|
-| AMD64							                    | Ryzen AI                                                   | AMD Ryzen 7040U, 7040HS                                    | Windows                                                    |
-| Arm® Cortex®-A53   				                | Zynq UltraScale+ MPSoC                                     | ZCU102, ZCU104, KV260                                      | Linux                                                      |
-| Arm® Cortex®-A72				                    | Versal AI Core / Premium                                   | VCK190                                                     | Linux                                                      |
-| Arm® Cortex®-A72						            | Versal AI Edge                                             | VEK280                                                     | Linux                                                      |
+| AMD64                                             | Ryzen AI                                                   | AMD Ryzen processors with NPUs                    | Windows                                                    |
+| Arm® Cortex®-A53                                  | Zynq UltraScale+ MPSoC                                     | ZCU102, ZCU104, KV260                                      | Linux                                                      |
+| Arm® Cortex®-A72                                  | Versal AI Core / Premium                                   | VCK190                                                     | Linux                                                      |
+| Arm® Cortex®-A72                                  | Versal AI Edge                                             | VEK280                                                     | Linux                                                      |
 
+For a complete list of AMD Ryzen processors with NPUs, refer to the [processor specifications](https://www.amd.com/en/products/specifications/processors.html) page (look for the “AMD Ryzen AI” column towards the right side of the table, and select “Available” from the pull-down menu).
 
 AMD Adaptable SoC developers can also leverage the Vitis AI ONNX Runtime Execution Provider to support custom (chip-down) designs.
 
-## Ryzen AI Demo
-A [demonstration](https://github.com/amd/RyzenAI-SW/tree/main/demo/cloud-to-client) is available that showcases one potential application of AMD's XDNA technology.  New users are encouraged to test it out.
+## Installation
 
-## Install
+### Installation for AMD Ryzen AI processors
 
-### AMD Adaptable SoC Installation
+To enable the Vitis AI ONNX Runtime Execution Provider in Microsoft Windows targeting the AMD Ryzen AI processors, developers must install the Ryzen AI Software. Detailed instructions on how to download and install the Ryzen AI Software can be found here: https://ryzenai.docs.amd.com/en/latest/inst.html
+
+For complete examples targeting AMD Ryzen AI processors, developers should refer to the [RyzenAI-SW Github repository](https://github.com/amd/RyzenAI-SW/tree/main).
+
+### Installation for AMD Adaptable SoCs
+
 For AMD Adaptable SoC targets, a pre-built package is provided to deploy ONNX models on embedded Linux.  Users should refer to the standard Vitis AI [Target Setup Instructions](https://xilinx.github.io/Vitis-AI/3.5/html/docs/workflow.html) to enable Vitis AI on the target.  Once Vitis AI has been enabled on the target, the developer can refer to [this section](https://docs.xilinx.com/r/en-US/ug1414-vitis-ai/Programming-with-VOE) of the Vitis AI documentation for installation and API details.
 
-For more complete examples, developers should refer to [ONNX Runtime Vitis AI Execution Provider examples](https://github.com/Xilinx/Vitis-AI/tree/master/examples/vai_library/samples_onnx).
-
-### Ryzen AI Installation
-
-To enable the Vitis AI ONNX Runtime Execution Provider in Microsoft Windows, a .zip archive is provided.
-
-The developers can refer to the installation section of [Ryzen AI Documentation](https://ryzenai.docs.amd.com/en/latest/inst.html) for more detailed instruction.
-
-The contents of this archive are as follows:
-
-```
-ryzen-ai-sw-1.0.zip
-├── env.yaml
-├── install.bat
-├── quicktest
-│   ├── image_0.png
-│   ├── quicktest.py
-│   ├── quicktest_random.py
-│   ├── README.md
-│   ├── requirements.txt
-│   └── test_model.onnx
-├── requirements_ryzenai_voe.txt
-├── vai_q_onnx-1.16.0+be3c70b-py2.py3-none-any.whl
-└── voe-4.0-win_amd64
-    ├── 1x4.xclbin
-    ├── 4x4.xclbin
-    ├── aieml_gemm_asr.json
-    ├── aieml_gemm_asr_qdq.json
-    ├── aieml_gemm_asr_qdq.xclbin
-    ├── aieml_gemm_asr.xclbin
-    ├── aieml_gemm_vm_phx_4x4_bf16.json
-    ├── aieml_gemm_vm_phx_4x4_bf16.xclbin
-    ├── aieml_gemm_vm_phx_4x4.json
-    ├── aieml_gemm_vm_phx_4x4.xclbin
-    ├── flexml_vaiep
-    │   ├── binary-modules
-    │   │   └── ResNet.flexml
-    │   │       ├── 0
-    │   │       │   ├── ctrl_pkt0.bin
-    │   │       │   ├── ctrlPktPatch.json
-    │   │       │   ├── ctrl_pkts.xclbin
-    │   │       │   ├── flexmlrt-hsi.json
-    │   │       │   ├── ml_txn.bin
-    │   │       │   └── wts32.txt
-    │   │       ├── flexml_bm.signature
-    │   │       ├── libflexml_usermodel.dll
-    │   │       └── partition-info.json
-    │   ├── demo
-    │   │   ├── imagenet-classes.txt
-    │   │   ├── requirements.txt
-    │   │   ├── setup.bat
-    │   │   ├── test-single-image.py
-    │   │   ├── utils
-    │   │   │   ├── image_utils.py
-    │   │   │   ├── __init__.py
-    │   │   │   └── onnx.py
-    │   │   └── YellowLabradorLooking_new.jpg
-    │   ├── lib
-    │   │   └── flexmlrt.dll
-    │   ├── onnx-models
-    │   │   └── resnet50_v1_3_vaiq.onnx
-    │   └── README.md
-    ├── installer.py
-    ├── onnxruntime_vitisai-1.15.1-cp39-cp39-win_amd64.whl
-    ├── vaip_config.json
-    ├── voe-0.1.0-cp39-cp39-win_amd64
-    │   ├── onnxruntime.dll
-    │   └── onnxruntime_vitisai_ep.dll
-    └── voe-0.1.0-cp39-cp39-win_amd64.whl
-```
-
-**_NOTE:_** Ryzen AI Linux support is not enabled in this release.
-
-Both C++ and Python APIs are supported.  The following instructions assume that you have already installed ONNX Runtime on your Windows RyzenAI target.  The steps to install the Vitis AI ONNX Runtime Engine are as follows:
-
-**1. Verify Pre-requisites:**
-
-- Visual Studio = 2019
-- cmake (version >= 3.26)
-- python (version >= 3.9) (Python 3.9.13 64bit recommended)
-- AMD IPU driver = 10.1109.8.100 installed
-
-**2. Prepare the files for installation:**
-
-- Download the [Ryzen AI Software Package](https://account.amd.com/en/forms/downloads/ryzen-ai-software-platform-xef.html?filename=ryzen-ai-sw-1.0.zip).  
-- Unzip `ryzen-ai-sw-1.0.zip`.
-- Enter the `voe-4.0-win_amd64` ONNX runtime folder.
-
-**3. Install the C++ Libraries:**
-
-**_NOTE:_** This is an optional step which is only required if you intend to use the C++ APIs.
-
-- Copy the DLL files from the `voe-0.1.0-cp39-cp39-win_amd64` subdirectory of the extracted archive to `C:\Program Files\onnxruntime\bin`, (ie `copy voe-0.1.0-cp39-cp39-win_amd64\*.dll C:\Program Files\onnxruntime\bin`).  This will install the Vitis AI ONNX Runtime Engine libraries.  
-
-**4. Set the XLNX_VART_FIRMWARE environmental variable:**
-
-**_IMPORTANT:_** If you do not execute this step, the IPU will not be loaded with the required executable file.  By default the search path used will be `C:\Windows\System32\AMD` and this path may already contain an xclbin that was stored during the IPU driver installation.  Do not use this path to store the Execution Provider xclbin file.  Execute the following command, replacing `[path_to_xclbin]` with the target path containing the xclbin:
-
-```
-set XLNX_VART_FIRMWARE=C:\[path_to_xclbin]\1x4.xclbin
-```
-
-**4. Install the Python Modules:**
-
-- From the Python prompt, execute the following command, replacing `[version]` with the appropriate release version number as determined through the files extracted from the .zip archive.
-	
-```
-pip install voe-[version]-cp39-cp39-win_amd64.whl
-```
-
-**4. Run the ResNet50 example:**
-
-- Leverage the scripts in the `quicktest` folder to test your installation.  
-
+For complete examples targeting AMD Adaptable SoCs, developers should refer to the [ONNX Runtime Vitis AI Execution Provider examples](https://github.com/Xilinx/Vitis-AI/tree/master/examples/vai_library/samples_onnx).
 
 ## Build
 To build the Ryzen AI Vitis AI ONNX Runtime Execution Provider from source, please refer to the [Build Instructions](../build/eps.md#amd-vitis-ai).  
@@ -163,64 +53,75 @@ To build the Ryzen AI Vitis AI ONNX Runtime Execution Provider from source, plea
 
 ## Quantization
 
-AMD Ryzen AI and Adaptable SoC targets employ INT8 quantization for inference.  The benefits of INT8 quantization include reduced power consumption and memory utilization.
+Quantization is the process of mapping high-precision weights/activations to a lower precision format while maintaining model accuracy. This technique enhances the computational and memory efficiency of the model for deployment on NPU devices. It can be applied post-training, allowing existing models to be optimized without the need for retraining.
 
-The current release of the Vitis AI Execution Provider ingests quantized ONNX models with INT8 datatypes.  No support is provided for direct deployment of models with alternative datatypes, including FP32.  Quantization of Ryzen AI models can be accomplished with either the Vitis AI Quantizer, or Olive.  For AMD Adapable SoCs, the user must leverage the Vitis AI Quantizer.
+The Vitis AI EP supports input models quantized to either INT8 or BF16 format.
+ 
+Quantization of Ryzen AI models can be accomplished with either the AMD Quark quantizer, the Vitis AI Quantizer, or Olive.
+
+### AMD Quark
+
+AMD Quark is a comprehensive cross-platform deep learning toolkit designed to simplify and enhance the quantization of deep learning models. Supporting both PyTorch and ONNX models, Quark empowers developers to optimize their models for deployment on a wide range of hardware backends, achieving significant performance gains without compromising accuracy.
+
+Refer to the [AMD Quark documentation for Ryzen AI](https://quark.docs.amd.com/latest/supported_accelerators/ryzenai/index.html) for complete details. 
 
 ### Vitis AI Quantizer
- 
-[Pytorch](https://hub.docker.com/r/amdih/ryzen-ai-pytorch), [Tensorflow 2.x](https://hub.docker.com/r/amdih/ryzen-ai-tensorflow2) and [Tensorflow 1.x](https://hub.docker.com/r/amdih/ryzen-ai-tensorflow) dockers are avaialable to support quantization of PyTorch and TensorFlow models.  To support the Vitis AI ONNX Runtime Execution Provider, an option is provided in the Vitis AI Quantizer to export a quantized model in ONNX format, post quantization.
 
-**ONNX Quantizer python wheel** is available to parse and quantize ONNX models, enabling an end-to-end ONNX model -> ONNX Runtime workflow which is provided in the [Ryzen AI Software Package](https://account.amd.com/en/forms/downloads/ryzen-ai-software-platform-xef.html?filename=ryzen-ai-sw-1.0.zip) as well.  Also, in a future release, the Vitis AI ONNX Runtime Execution Provider will support on-the-fly quantization, enabling direct deployment of FP32 ONNX models.
+The Vitis AI Quantizer supports quantization of PyTorch, TensorFlow and ONNX models. 
 
-See [Model Quantization](https://xilinx.github.io/Vitis-AI/3.5/html/docs/workflow-model-development.html#model-quantization) for details.
+[Pytorch](https://hub.docker.com/r/amdih/ryzen-ai-pytorch), [Tensorflow 2.x](https://hub.docker.com/r/amdih/ryzen-ai-tensorflow2) and [Tensorflow 1.x](https://hub.docker.com/r/amdih/ryzen-ai-tensorflow) dockers are available to support quantization of PyTorch and TensorFlow models.  To support the Vitis AI ONNX Runtime Execution Provider, an option is provided in the Vitis AI Quantizer to export a quantized model in ONNX format, post quantization.
+
+Refer to the [Vitis AI documentation about quantizing models](https://docs.amd.com/r/en-US/ug1414-vitis-ai/Quantizing-the-Model?tocId=ZTjzDvS7TsL_16iLW7O6ig) for complete details.
 
 ### Olive
 
-Experimental support for Microsoft Olive is enabled in this release.  The Vitis AI Quantizer has been integrated as a plugin into Olive and will be upstreamed.  Once this is complete, users can refer to the example(s) provided in the [Olive Vitis AI Example Directory](https://github.com/microsoft/Olive/tree/main/examples/resnet).
+Experimental support for Microsoft Olive is also enabled.  The Vitis AI Quantizer has been integrated as a plugin into Olive and will be upstreamed.  Once this is complete, users can refer to the example(s) provided in the [Olive Vitis AI Example Directory](https://github.com/microsoft/Olive/tree/main/examples/resnet).
 
 ## Runtime Options
 
-The Vitis AI ONNX Runtime integrates a compiler that compiles the model graph and weights as a micro-coded executable.  This executable is deployed on the target accelerator (Ryzen AI IPU or Vitis AI DPU).
+The Vitis AI ONNX Runtime integrates a compiler that compiles the model graph and weights as a micro-coded executable.  This executable is deployed on the target accelerator (Ryzen AI NPU or Vitis AI DPU).
 
 The model is compiled when the ONNX Runtime session is started, and compilation must complete prior to the first inference pass.  The length of time required for compilation varies, but may take a few minutes to complete.  Once the model has been compiled, the model executable is cached and for subsequent inference runs, the cached executable model can optionally be used (details below).
 
-Several runtime variables can be set to configure the inference session as listed in the table below.  The `config file` variable is not optional and must be set to point to the location of the configuration file.  The `cacheDir` and `cacheKey` variables are optional.  An example illustrating the usage of all three variables can be found in the C++ [Ryzen AI API Example](#ryzen-ai-api-examples).
+The tables below provide an overview of the provider options and environment variables which can be used to configure the inference session. 
 
-| **Runtime Variable**   | **Default Value**           | **Details**                          |
-|----------------------------|--------------------------------|------------------------------------------|
-| config_file                | ""                             | required,  the configuration file path, the configuration file `vaip_config.json` is contained in the `voe-[version]-win_amd64.zip`.       |
-| cacheDir                   | Linux: "/tmp/{user}/vaip/.cache/" <br/>   Windows: "C:\\temp\\{user}\\vaip\\.cache"        | optional, cache directory                |
-| cacheKey                   | {onnx_model_md5}               | optional, cache key, used to distinguish between different models.                      |
+For detailed instructions on how to configure the inference session for BF16 and INT8 model on AMD Ryzen AI processors, refer to the [Ryzen AI Software documentation](https://ryzenai.docs.amd.com/en/latest/modelrun.html#)
 
-The final cache directory is `{cacheDir}/{cacheKey}`.
-Please refer to the following C++ example for usage.
+| **Runtime Variable**       | **Details**                                        |
+|----------------------------|----------------------------------------------------|
+| config_file                | Configuration file to pass certain compile-specific options. Required for BF16 models.       | 
+| xclbin                     | NPU binary file to specify NPU configuration. Required for INT8 models.                      | 
+| cache_dir                  | The path and name of the cache directory. Optional.                                          |
+| cache_key                  | The subfolder in the cache directory where the compiled model is stored. Optional.           |
+| encryptionKey              | 256-bit key used for generating an encrypted compiled model in the cache folder. Optional.   |
 
-In addition, environment variables can be set in order to customize the Vitis AI Execution provider.
 
-| **Environment Variable**   | **Default Value** | **Details**                                    |
-|----------------------------|----------------------|----------------------------------------------------|
-| XLNX_VART_FIRMWARE         | ""                   | Configures the path location for the xclbin executable file that runs on the IPU.  It is essential to configure this variable.|
-| XLNX_ENABLE_CACHE          | 1                    | Whether to use cache, if it is 0, it will ignore the cached executable and the model will be recompiled.|
-| XLNX_TARGET_NAME           | ""                   | DPU target name. On Adaptable SoCs, if not set, the DPU target name will be read automatically; On Windows, default value is "AMD_AIE2_Nx4_Overlay" which is the DPU target name of the IPU.                                |
+| **Environment Variable**   | **Details**                                        |
+|----------------------------|----------------------------------------------------|
+| XLNX_ENABLE_CACHE          | Whether to use cache, if it is 0, it will ignore the cached executable and the model will be recompiled.|
+| XLNX_VART_FIRMWARE         | Legacy method for specifying the NPU binary file. Replaced by the xclbin provider option. Required for INT8 models. |
+| XLNX_TARGET_NAME           | DPU target name. On Adaptable SoCs, if not set, the DPU target name will be read automatically; On Windows, default value is "AMD_AIE2_Nx4_Overlay" which is the DPU target name of the IPU.                                |
+
+
 
 ## Ryzen AI API Examples
+
 To leverage the C++ APIs, use the following example as a reference:
+
 ```c++
 // ...
 #include <experimental_onnxruntime_cxx_api.h>
 // include user header files
 // ...
 
-auto onnx_model_path = "resnet50_pt.onnx"
+auto onnx_model_path = "resnet50.onnx" // Replace resnet50.onnx with your model name
 Ort::Env env(ORT_LOGGING_LEVEL_WARNING, "resnet50_pt");
 auto session_options = Ort::SessionOptions();
 
 auto options = std::unorderd_map<std::string,std::string>({});
-options["config_file"] = "/etc/vaip_config.json";
-// optional, eg: cache path : /tmp/my_cache/abcdefg // Replace abcdefg with your model name, eg. onnx_model_md5
-options["cacheDir"] = "/tmp/my_cache";
-options["cacheKey"] = "abcdefg"; // Replace abcdefg with your model name, eg. onnx_model_md5
+options["xclbin"]   = "/path/to/AMD_AIE2P_Nx4_Overlay.xclbin"; // Required. Specify full path to the appropriate NPU binary file.
+options["cache_dir"] = "/tmp/my_cache"; // Optional
+options["cache_key"] = "my_model_subfolder"; // Optional
 
 // Create an inference session using the Vitis AI execution provider
 session_options.AppendExecutionProvider("VitisAI", options);
@@ -244,6 +145,7 @@ auto output_tensors = session.Run(session.GetInputNames(), input_tensors,
 ```
 
 To leverage the Python APIs, use the following example as a reference:
+
 ```python
 import onnxruntime
 
@@ -254,10 +156,17 @@ import onnxruntime
 # ...
 
 # Create an inference session using the Vitis AI execution provider
-session = onnxruntime.InferenceSession(
-    '[model_file].onnx',
-    providers=["VitisAIExecutionProvider"],
-    provider_options=[{"config_file":"/etc/vaip_config.json"}])
+providers = ['VitisAIExecutionProvider']
+provider_options = [{
+    'xclbin': '/path/to/AMD_AIE2P_Nx4_Overlay.xclbin', # Required. Specify full path to the appropriate NPU binary file.
+    'cache_dir': '/tmp/my_cache', # Optional
+    'cache_key': 'my_model_subfolder', # Optional
+}]
+session = ort.InferenceSession(
+    "resnet50.onnx",  # Replace resnet50.onnx with your model name
+    providers=providers,
+    provider_options=provider_options
+)
 
 input_shape = session.get_inputs()[0].shape
 input_name = session.get_inputs()[0].name
@@ -267,3 +176,7 @@ input_data = [...]
 result = session.run([], {input_name: input_data})
 
 ```
+
+For complete examples targeting AMD Ryzen AI processors, developers should refer to the [RyzenAI-SW Github repository](https://github.com/amd/RyzenAI-SW/tree/main).
+
+For complete examples targeting AMD Adaptable SoCs, developers should refer to the [ONNX Runtime Vitis AI Execution Provider examples](https://github.com/Xilinx/Vitis-AI/tree/master/examples/vai_library/samples_onnx).
