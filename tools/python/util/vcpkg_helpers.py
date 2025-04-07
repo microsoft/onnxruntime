@@ -9,9 +9,7 @@ from pathlib import Path
 
 
 # This is a way to add customizations to the official VCPKG ports.
-def add_port_configs(
-    f, has_exception: bool, is_emscripten: bool, enable_minimal_build: bool
-) -> None:
+def add_port_configs(f, has_exception: bool, is_emscripten: bool, enable_minimal_build: bool) -> None:
     """
     Add port-specific configurations to the triplet file.
 
@@ -238,7 +236,7 @@ def generate_android_triplets(build_dir: str, use_cpp_shared: bool, android_api_
             for enable_exception in [True, False]:
                 for enable_minimal_build in [True, False]:
                     if not enable_exception and not enable_minimal_build:
-                         continue
+                        continue
                     for target_abi in target_abis:
                         generate_triplet_for_android(
                             build_dir,
@@ -413,9 +411,6 @@ def generate_vcpkg_triplets_for_emscripten(build_dir: str, emscripten_root: str)
         build_dir (str): The directory to save the generated triplet files.
         emscripten_root (str): The root path of Emscripten.
     """
-    # Note: Exceptions are generally required/enabled for Emscripten builds in ORT.
-    # Minimal build concept might not apply directly here or needs specific flags.
-    # Sticking to original logic for now.
     enable_minimal_build = False  # Assume False for Emscripten unless specified otherwise
     for enable_exception in [True, False]:
         for enable_wasm_exception_catching in [True, False]:
@@ -470,11 +465,9 @@ def generate_vcpkg_triplets_for_emscripten(build_dir: str, emscripten_root: str)
                             if len(ldflags) >= 1:
                                 f.write('set(VCPKG_LINKER_FLAGS "{}")\n'.format(" ".join(ldflags)))
 
-                            # RTTI flag for Emscripten
-                            if not enable_rtti:
-                                cflags.append("-fno-rtti")
-
                             cxxflags = cflags.copy()
+                            if not enable_rtti:
+                                cxxflags.append("-fno-rtti")
 
                             # Exception flag for Emscripten (note: -fno-exceptions conflicts with -sDISABLE_EXCEPTION_CATCHING=0)
                             # We keep exceptions enabled based on the cflags setting above.
@@ -521,8 +514,8 @@ def generate_windows_triplets(build_dir: str, toolset_version: str) -> None:
                             if enable_asan and enable_binskim:
                                 continue
                             # ORT Constraint: If exceptions are disabled, minimal build must be enabled
-                            # if not enable_exception and not enable_minimal_build:
-                            #     continue # Optionally skip generating the invalid combo for ORT
+                            if not enable_exception and not enable_minimal_build:
+                                continue
 
                             for target_abi in target_abis:
                                 folder_name_parts = []
@@ -638,8 +631,8 @@ def generate_macos_triplets(build_dir: str, osx_deployment_target: str) -> None:
                         if enable_asan and enable_binskim:
                             continue
                         # ORT Constraint: If exceptions are disabled, minimal build must be enabled
-                        # if not enable_exception and not enable_minimal_build:
-                        #     continue # Optionally skip generating the invalid combo for ORT
+                        if not enable_exception and not enable_minimal_build:
+                            continue
                         for target_abi in target_abis:
                             generate_triplet_for_posix_platform(
                                 build_dir,

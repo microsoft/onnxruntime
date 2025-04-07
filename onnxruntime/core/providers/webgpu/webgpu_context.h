@@ -145,8 +145,6 @@ class WebGpuContext final {
   Status Run(ComputeContext& context, const ProgramBase& program);
   void OnRunEnd();
 
-  bool SupportsBufferMapExtendedUsages() const { return supports_buffer_map_extended_usages_; }
-
  private:
   enum class TimestampQueryType {
     None = 0,
@@ -207,6 +205,7 @@ class WebGpuContext final {
 
   webgpu::ValidationMode validation_mode_;
 
+  wgpu::Queue device_queue_;
   wgpu::AdapterInfo adapter_info_;
   wgpu::Limits device_limits_;
   std::unordered_set<wgpu::FeatureName> device_features_;
@@ -237,7 +236,6 @@ class WebGpuContext final {
 #if defined(ENABLE_PIX_FOR_WEBGPU_EP)
   std::unique_ptr<WebGpuPIXFrameGenerator> pix_frame_generator_ = nullptr;
 #endif  // ENABLE_PIX_FOR_WEBGPU_EP
-  bool supports_buffer_map_extended_usages_ = false;
 };
 
 }  // namespace webgpu

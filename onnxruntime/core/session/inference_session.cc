@@ -153,7 +153,7 @@ static bool HasMemcpyNodes(const Graph& graph) {
   return false;
 }
 
-static bool AreAllComputeNodesAssignedToCudaOrJsOrDmlEp(const Graph& graph) {
+static bool AreAllComputeNodesAssignedToCudaOrJsOrDmlEpWebGpuEp(const Graph& graph) {
   bool nodes_on_cpu_and_cuda_and_js_and_dml_eps_only = true;
 
   for (const auto& node : graph.Nodes()) {
@@ -164,6 +164,7 @@ static bool AreAllComputeNodesAssignedToCudaOrJsOrDmlEp(const Graph& graph) {
         !(node_provider == kCudaExecutionProvider ||
           node_provider == kRocmExecutionProvider ||
           node_provider == kJsExecutionProvider ||
+          node_provider == kWebGpuExecutionProvider ||
           node_provider == kDmlExecutionProvider) &&
         node_provider != kCpuExecutionProvider) {
       nodes_on_cpu_and_cuda_and_js_and_dml_eps_only = false;
@@ -2041,6 +2042,7 @@ common::Status InferenceSession::Initialize() {
           onnxruntime::kCudaExecutionProvider,
           onnxruntime::kRocmExecutionProvider,
           onnxruntime::kJsExecutionProvider,
+          onnxruntime::kWebGpuExecutionProvider,
           onnxruntime::kDmlExecutionProvider};
 
       for (auto& it : graph_support_ep_list) {
@@ -2063,12 +2065,13 @@ common::Status InferenceSession::Initialize() {
           if (strcmp(target_ep->Type().c_str(), onnxruntime::kCudaExecutionProvider) == 0 ||
               strcmp(target_ep->Type().c_str(), onnxruntime::kRocmExecutionProvider) == 0 ||
               strcmp(target_ep->Type().c_str(), onnxruntime::kJsExecutionProvider) == 0 ||
+              strcmp(target_ep->Type().c_str(), onnxruntime::kWebGpuExecutionProvider) == 0 ||
               strcmp(target_ep->Type().c_str(), onnxruntime::kDmlExecutionProvider) == 0) {
             // Ensure that all nodes have been partitioned to CUDA/JS or CPU EP && there are no memcpy nodes
             // The reasoning behind this logic is that certain shape nodes will be forced onto CPU
             // and as long as there are no memcpy nodes this is confirmation that no compute nodes have been placed on the CPU EP
             // which is all we care about.
-            if (!AreAllComputeNodesAssignedToCudaOrJsOrDmlEp(graph)) {
+            if (!AreAllComputeNodesAssignedToCudaOrJsOrDmlEpWebGpuEp(graph)) {
               LOGS(*session_logger_, ERROR) << "This session cannot use the graph capture feature as requested by the user "
                                             << " as all compute graph nodes have not been partitioned to the "
                                             << target_ep->Type();
