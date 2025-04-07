@@ -272,8 +272,9 @@ bool IsMLTensorSupported() {
   return is_supported;
 }
 
-// Convert int8 to uint4/int4 (stored as uint8)
-uint8_t PackInt8ToUint8AsNibble(int8_t value, const int32_t& data_type) {
+// Convert int8 to uint4/int4 (stored as uint8), used for creating WebNN Constant
+// with same value in both high and low nibbles for uint4/int4 data type.
+uint8_t PackInt8ToUint8DoubledNibbles(int8_t value, const int32_t& data_type) {
   if (data_type == ONNX_NAMESPACE::TensorProto_DataType_UINT4) {
     if (value < 0 || value > 15) {
       ORT_THROW("Value cannot be safely converted to uint4.");

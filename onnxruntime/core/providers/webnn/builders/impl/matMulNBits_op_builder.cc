@@ -128,7 +128,7 @@ Status MatMulNBitsBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
   emscripten::val dq_reshaped =
       model_builder.GetBuilder().call<emscripten::val>("reshape", dq, new_dq_shape_array, options);
 
-  // Transpose reshaped DequantizedLinear to [K, N]
+  // Transpose reshaped DequantizeLinear to [K, N]
   options.set("label", node.Name() + "_transpose_dequantizeLinear");
   emscripten::val dq_transposed = model_builder.GetBuilder().call<emscripten::val>("transpose", dq_reshaped, options);
 
@@ -136,7 +136,7 @@ Status MatMulNBitsBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
   options.set("label", node.Name() + "_matmul");
   emscripten::val output = model_builder.GetBuilder().call<emscripten::val>("matmul", input, dq_transposed, options);
 
-  // Add output with bias if it presents
+  // Add output with bias if present
   if (TensorExists(input_defs, 5)) {
     emscripten::val bias = model_builder.GetOperand(input_defs[5]->Name());
     options.set("label", node.Name() + "_add_bias");

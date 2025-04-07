@@ -194,7 +194,7 @@ Status ModelBuilder::RegisterConstant(const onnx::TensorProto& tensor, emscripte
       desc.set("dataType", emscripten::val("int32"));
     }
 
-    // Wasm memory grow will cause all array buffers reallocation, which will be treated as detached
+    // Wasm memory growth will cause all array buffers reallocation, which will be treated as detached
     // buffers in JS side. Simply create a copy to fix it.
     view = view.call<emscripten::val>("slice");
     operand = wnn_builder.call<emscripten::val>("constant", desc, view["buffer"]);
@@ -385,7 +385,7 @@ Status ModelBuilder::AddOperandFromPersistMemoryBuffer(
   desc.set("dimensions", emscripten::val::array(shape));
   desc.set("shape", emscripten::val::array(shape));
   emscripten::val operand = emscripten::val::object();
-  // Wasm memory grow will cause all array buffers reallocation, which will be treated as detached
+  // Wasm memory growth will cause all array buffers reallocation, which will be treated as detached
   // buffers in JS side. Simply create a copy to fix it.
   view = view.call<emscripten::val>("slice");
   operand = wnn_builder_.call<emscripten::val>("constant", desc, view["buffer"]);
