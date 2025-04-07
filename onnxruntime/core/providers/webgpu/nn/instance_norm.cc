@@ -79,6 +79,7 @@ Status InstanceNorm<is_nhwc>::ComputeChannelScaleAndShift(ComputeContext& contex
       .SetDispatchGroupSize((output_size + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE);
   return context.RunProgram(program);
 }
+
 Status InstanceNormProgram::GenerateShaderCode(ShaderHelper& shader) const {
   const auto& input = shader.AddInput("input", ShaderUsage::UseUniform | ShaderUsage::UseIndicesTypeAlias);
   const auto& channel_scale_shift = shader.AddInput("channel_scale_shift", ShaderUsage::UseUniform | ShaderUsage::UseIndicesTypeAlias);
@@ -89,13 +90,30 @@ Status InstanceNormProgram::GenerateShaderCode(ShaderHelper& shader) const {
                             << "let channel = outputIndices[1];\n"
                             << "let channel_scale_shift_indices = channel_scale_shift_indices_t(batch, channel);\n"
                             << "let channel_scale_shift = " << channel_scale_shift.GetByIndices("channel_scale_shift_indices") << ";\n"
-                            << "let channel_scale = channel_scale_shift.x;\n"
-                            << "let channel_shift = channel_scale_shift.y;\n"
-                            << "let hight = uniforms.x_shape[2];\n"
-                            << "let input_indices = input_indices_t(batch, channel, height);\n"
-                            << "let value = " << input.GetByIndices("input_indices") << ";\n"
-                            << "let output_value = value * output_t(channel_scale) + output_t(channel_shift);\n"
-                            << output.SetByIndices("outputIndices", "output_value") << "\n";
+                            << "let value = " << input.GetByOffset("global_idx") << ";\n"
+                            << "let output_value = value * output_t(channel_scale_sift.x) + output_t(channel_scale_shift.y);\n"
+                            << output.SetByOffset("global_idx", "output_value") << ";\n";
+  return Status::OK();
+}
+
+Status InstanceNormProgramNHWC::GenerateShaderCode(ShaderHelper& shader) const {
+  const auto& input = shader.AddInput("input", ShaderUsage::UseUniform | ShaderUsage::UseIndicesTypeAlias);
+  const auto& channel_scale_shift = shader.AddInput("channel_scale_shift", ShaderUsage::UseUniform | ShaderUsage::UseIndicesTypeAlias);
+  const auto& output = shader.AddOutput("output", ShaderUsage::UseUniform | ShaderUsage::UseIndicesTypeAlias);
+  shader.MainFunctionBody() << shader.GuardAgainstOutOfBoundsWorkgroupSizes("uniforms.output_size")
+                            << "let current_image_number = (global_idx / uniforms.H) / uniforms.C);\n"
+                            << "let current_channel_number = (global_idx / uniforms.H) % uniforms.C;\n"
+                            << "let scale_offset = (current_image_number * uniforms.C + current_channel_number) / uniforms.components;\n"
+                            << "var scale : input_value_t;\n"
+                            << "var shift : input_value_t;\n"
+                            << "for (var i : u32 = 0; i < uniforms.components; ++i) {\n"
+                            << "  let scale_sift =  " << channel_scale_shift.GetByOffset("scale_offset + i") << ";\n"
+                            << "  scale[i] = input_element_t(scale_sift.x);\n"
+                            << "  shift[i] = input_element_t(scale_sift.y);\n"
+                            << "}\n"
+                            << "let input_value = " << input.GetByOffset("global_idx") << ";\n"
+                            << "let output_value = fma(input_value, scale, shift);\n"
+                            << output.SetByOffset("global_idx", "output_value") << ";\n";
   return Status::OK();
 }
 
@@ -146,27 +164,37 @@ Status InstanceNorm<is_nhwc>::ComputeInternal(ComputeContext& context) const {
   ORT_RETURN_IF_ERROR(ComputeChannelScaleAndShift(context, input, scale, bias, epsilon_, &channel_scale_shift));
   const auto output_shape(input_shape);
   Tensor* output = context.Output(0, output_shape);
-  const auto components = GetMaxComponents(spatial_size);
+  const auto components = is_nhwc ? GetMaxComponents(channels) : GetMaxComponents(spatial_size);
   TensorShapeVector output_shape_vector(input_shape_vector);
   output_shape_vector[rank - 1] /= components;
   input_shape_vector[rank - 1] /= components;
   TensorShape reduced_input_shape(input_shape_vector);
   TensorShape reduced_output_shape(output_shape_vector);
-  InstanceNormProgram program;
   TensorShape channel_scale_shift_shape = channel_scale_shift.Shape();
   TensorShapeVector channel_scale_shift_shape_vector = channel_scale_shift_shape.AsShapeVector();
   TensorShapeVector reduced_channel_scale_shift_shape_vector = channel_scale_shift_shape_vector;
   reduced_channel_scale_shift_shape_vector[rank - 1] /= 2;
   TensorShape reduced_channel_scale_shift_shape(reduced_channel_scale_shift_shape_vector);
   auto output_size = output_shape.Size() / components;
-  program
-      .CacheHint(epsilon_, is_nhwc, components)
-      .AddInputs({{input, ProgramTensorMetadataDependency::TypeAndRank, reduced_input_shape, components},
-                  {&channel_scale_shift, ProgramTensorMetadataDependency::TypeAndRank, reduced_channel_scale_shift_shape, 2}})
-      .AddOutput({output, ProgramTensorMetadataDependency::TypeAndRank, reduced_output_shape, components})
-      .SetDispatchGroupSize((output_size + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE)
-      .AddUniformVariables({{static_cast<uint32_t>(output_size)}});
-  return context.RunProgram(program);
+  if (is_nhwc) {
+    InstanceNormProgramNHWC program(components);
+    program.CacheHint(epsilon_, is_nhwc, components)
+        .AddInputs({{input, ProgramTensorMetadataDependency::TypeAndRank, reduced_input_shape, components},
+                     {&channel_scale_shift, ProgramTensorMetadataDependency::TypeAndRank, reduced_channel_scale_shift_shape, 2}})
+        .AddOutput({output, ProgramTensorMetadataDependency::TypeAndRank, reduced_output_shape, components})
+        .SetDispatchGroupSize((output_size + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE);
+      program.AddUniformVariables({static_cast<uint32_t>(output_size), static_cast<uint32_t>(components), static_cast<uint32_t>(channels), static_cast<uint32_t>(spatial_size)});
+    return context.RunProgram(program);
+  } else {
+    InstanceNormProgram program;
+    program.CacheHint(epsilon_, is_nhwc, components)
+        .AddInputs({{input, ProgramTensorMetadataDependency::TypeAndRank, reduced_input_shape, components},
+                     {&channel_scale_shift, ProgramTensorMetadataDependency::TypeAndRank, reduced_channel_scale_shift_shape, 2}})
+        .AddOutput({output, ProgramTensorMetadataDependency::TypeAndRank, reduced_output_shape, components})
+        .SetDispatchGroupSize((output_size + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE);
+    program.AddUniformVariable({static_cast<uint32_t>(output_size)});
+    return context.RunProgram(program);
+  }
 }
 
 #define WEBGPU_INSTANCE_NORM_VERSIONED_KERNEL(start, end, domain, is_nhwc) \

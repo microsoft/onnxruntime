@@ -26,8 +26,18 @@ class InstanceNormProgram final : public Program<InstanceNormProgram> {
   Status GenerateShaderCode(ShaderHelper& sh) const override;
 
   WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES({"output_size", ProgramUniformVariableDataType::Uint32});
+};
+
+class InstanceNormProgramNHWC final : public Program<InstanceNormProgramNHWC> {
+ public:
+  InstanceNormProgramNHWC(int components) : Program{"InstanceNormNHWC"}, components_(components) {}
+
+  Status GenerateShaderCode(ShaderHelper& sh) const override;
+
+  WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES({"output_size", ProgramUniformVariableDataType::Uint32}, {"components", ProgramUniformVariableDataType::Uint32}, {"C", ProgramUniformVariableDataType::Uint32}, {"H", ProgramUniformVariableDataType::Uint32});
 
  private:
+  int components_;
 };
 
 template <bool is_nhwc>
