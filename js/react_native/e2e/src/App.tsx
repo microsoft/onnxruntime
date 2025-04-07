@@ -8,7 +8,7 @@ import { Image, Text, TextInput, View } from 'react-native';
 import { InferenceSession, Tensor } from 'onnxruntime-react-native';
 import MNIST, { MNISTInput, MNISTOutput, MNISTResult, } from './mnist-data-handler';
 import { Buffer } from 'buffer';
-import { readFile } from 'react-native-fs';
+import { readFile } from '@dr.pogodin/react-native-fs';
 
 interface State {
   session:

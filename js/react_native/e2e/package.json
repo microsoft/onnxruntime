@@ -11,9 +11,9 @@
     "test": "jest"
   },
   "dependencies": {
+    "@dr.pogodin/react-native-fs": "^2.32.1",
     "react": "^18.2.0",
-    "react-native": "^0.73.11",
-    "react-native-fs": "^2.20.0"
+    "react-native": "^0.73.11"
   },
   "devDependencies": {
     "@babel/core": "^7.20.0",
