@@ -117,7 +117,8 @@ class DumbHtpSharedMemoryAllocator : public IAllocator {
 
   Status AddAllocationCleanUpForThisAllocator(void* allocation_address, AllocationCleanUpFn&& allocation_clean_up);
 
-  void InitializeRegion();
+  bool AllocFromRegion(size_t requested_size,
+                       void*& allocation_address, SharedMemoryInfo& shared_memory_info);
 
   struct AllocationRecord {
     size_t requested_size;
@@ -134,11 +135,16 @@ class DumbHtpSharedMemoryAllocator : public IAllocator {
 
   const logging::Logger& logger_;
 
-  // one way incremental allocation across a region
+  // one way incremental allocation across regions
 
-  size_t region_size_in_bytes_{0};
-  void* region_base_address_{nullptr};
-  int region_fd_{-1};
+  struct RegionRecord {
+    void* base_address;
+    int fd;
+  };
+
+  std::vector<RegionRecord> regions_;
+
+  const size_t region_size_in_bytes_{size_t{256} * 1024 * 1024};
 
   size_t current_region_offset_{0};
 };

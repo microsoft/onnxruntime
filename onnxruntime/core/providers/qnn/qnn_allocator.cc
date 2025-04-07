@@ -293,8 +293,8 @@ DumbHtpSharedMemoryAllocator::DumbHtpSharedMemoryAllocator(std::shared_ptr<RpcMe
 }
 
 DumbHtpSharedMemoryAllocator::~DumbHtpSharedMemoryAllocator() {
-  if (region_base_address_ != nullptr) {
-    rpcmem_lib_->Api().free(region_base_address_);
+  for (auto& region : regions_) {
+    rpcmem_lib_->Api().free(region.base_address);
   }
 }
 
@@ -340,40 +340,20 @@ void* DumbHtpSharedMemoryAllocator::Alloc(size_t requested_size) {
 
   std::unique_lock g{mutex_};
 
-  if (region_base_address_ == nullptr) {
-    InitializeRegion();
-  }
+  void* allocation_address{};
+  SharedMemoryInfo shared_memory_info{};
 
-  const size_t remaining_capacity = region_size_in_bytes_ - current_region_offset_;
-
-  if (remaining_capacity < requested_size) {
+  if (!AllocFromRegion(requested_size, allocation_address, shared_memory_info)) {
     throw std::bad_alloc{};
   }
 
-  void* allocation_address = static_cast<std::byte*>(region_base_address_) + current_region_offset_;
-
   // store allocation record
-  {
-    SharedMemoryInfo shared_memory_info{};
-    shared_memory_info.fd = region_fd_;
-    shared_memory_info.offset = current_region_offset_;
-    shared_memory_info.total_size = region_size_in_bytes_;
+  AllocationRecord allocation_record{};
+  allocation_record.requested_size = requested_size;
+  allocation_record.shared_memory_info = std::move(shared_memory_info);
 
-    AllocationRecord allocation_record{};
-    allocation_record.requested_size = requested_size;
-    allocation_record.shared_memory_info = std::move(shared_memory_info);
-
-    const bool inserted = allocations_.emplace(allocation_address, std::move(allocation_record)).second;
-    ORT_ENFORCE(inserted, "Allocation record already exists for address (", allocation_address, ").");
-  }
-
-  // increment `current_region_offset_` by `requested_size` to aligned address
-  {
-    size_t new_offset = current_region_offset_ + requested_size;
-    const size_t allocation_alignment = AllocationAlignment();
-    new_offset = (new_offset + allocation_alignment - 1) / allocation_alignment * allocation_alignment;
-    current_region_offset_ = new_offset;
-  }
+  const bool inserted = allocations_.emplace(allocation_address, std::move(allocation_record)).second;
+  ORT_ENFORCE(inserted, "Allocation record already exists for address (", allocation_address, ").");
 
   g.unlock();
 
@@ -456,20 +436,60 @@ Status DumbHtpSharedMemoryAllocator::AddAllocationCleanUpForThisAllocator(void* 
   return Status::OK();
 }
 
-void DumbHtpSharedMemoryAllocator::InitializeRegion() {
-  ORT_ENFORCE(region_base_address_ == nullptr);
+bool DumbHtpSharedMemoryAllocator::AllocFromRegion(size_t requested_size,
+                                                   void*& allocation_address_out,
+                                                   SharedMemoryInfo& shared_memory_info_out) {
+  if (requested_size > region_size_in_bytes_) {
+    return false;
+  }
 
-  region_size_in_bytes_ = size_t{4} * 1024 * 1024 * 1024;
+  // add new region if needed
+  if (regions_.empty() || requested_size > region_size_in_bytes_ - current_region_offset_) {
+    RegionRecord new_region{};
 
-  region_base_address_ = rpcmem_lib_->Api().alloc2(rpcmem::RPCMEM_HEAP_ID_SYSTEM, rpcmem::RPCMEM_DEFAULT_FLAGS,
-                                                   region_size_in_bytes_);
+    new_region.base_address = rpcmem_lib_->Api().alloc(rpcmem::RPCMEM_HEAP_ID_SYSTEM, rpcmem::RPCMEM_DEFAULT_FLAGS,
+                                                       static_cast<int>(region_size_in_bytes_));
+    if (new_region.base_address == nullptr) {
+      LOGS(logger_, WARNING) << "rpcmem_alloc() failed.";
+      return false;
+    }
 
-  ORT_ENFORCE(region_base_address_ != nullptr);
+    new_region.fd = rpcmem_lib_->Api().to_fd(new_region.base_address);
+    if (new_region.fd == -1) {
+      LOGS(logger_, WARNING) << "rpcmem_to_fd() failed.";
+      return false;
+    }
 
-  ORT_ENFORCE(IsAligned(region_base_address_, AllocationAlignment()));
+    regions_.emplace_back(std::move(new_region));
+    current_region_offset_ = 0;
+  }
 
-  region_fd_ = rpcmem_lib_->Api().to_fd(region_base_address_);
-  ORT_ENFORCE(region_fd_ != -1);
+  const RegionRecord& curr_region = regions_.back();
+
+  void* allocation_address = static_cast<std::byte*>(curr_region.base_address) + current_region_offset_;
+
+  SharedMemoryInfo shared_memory_info{};
+  shared_memory_info.fd = curr_region.fd;
+  shared_memory_info.offset = current_region_offset_;
+  shared_memory_info.total_size = region_size_in_bytes_;
+
+  // increment `current_region_offset_` by `requested_size` to aligned address
+  {
+    size_t new_offset = current_region_offset_ + requested_size;
+    const size_t allocation_alignment = AllocationAlignment();
+    new_offset = (new_offset + allocation_alignment - 1) / allocation_alignment * allocation_alignment;
+    current_region_offset_ = new_offset;
+  }
+
+  allocation_address_out = allocation_address;
+  shared_memory_info_out = std::move(shared_memory_info);
+
+  LOGS(logger_, VERBOSE) << "Allocating from regions_[" << regions_.size() - 1 << "]:"
+                         << " address: " << allocation_address_out
+                         << ", fd: " << shared_memory_info_out.fd
+                         << ", offset: " << shared_memory_info_out.offset;
+
+  return true;
 }
 
 }  // namespace onnxruntime::qnn
