@@ -410,6 +410,13 @@ struct BlockwiseQuantizer {
 
     static
     MLAS_FORCEINLINE
+    int GetElem(int val, int idx)
+    {
+        return (val >> (qbits * idx)) & ((1 << qbits) - 1);
+    }
+
+    static
+    MLAS_FORCEINLINE
     void quantizeMetaShape(int rows, int columns, int& meta_rows, int& meta_cols)
     {
         meta_rows = (rows + QuantBlk::kRow - 1) / QuantBlk::kRow;
@@ -538,17 +545,15 @@ struct BlockwiseQuantizer {
                 for (int32_t j = c; j < c_end; ++j) {
                     const int32_t meta_c = j / QuantBlk::kColumn;
                     for (int32_t i = r; i < r_end; i += kPackSize) {
-                        for (int l = 0; l < kPackSize; l++) {
-                            if (i + l < r_end) {
-                                const int32_t meta_r = (i + l) / QuantBlk::kRow;
-                                const float scale = static_cast<float>(scales[meta_c * row_blks + meta_r]);
-                                const float reciprocal_scale = scale ? 1.0f / scale : 0.0f;
-                                const int8_t zp = zp_bytes[meta_r % kPackSize];
+                        for (int l = 0; l < kPackSize && i + l < r_end; l++) {
+                            const int32_t meta_r = (i + l) / QuantBlk::kRow;
+                            const float scale = static_cast<float>(scales[meta_c * row_blks + meta_r]);
+                            const float reciprocal_scale = scale ? 1.0f / scale : 0.0f;
+                            const int8_t zp = zp_bytes[meta_r % kPackSize];
 
-                                const float v = static_cast<float>(src[(i + l) * leadingDimension + j]);
-                                vi[l] = (uint8_t)std::clamp(roundf(v * reciprocal_scale + zp),
-                                                            0.0f, BitsTraits<qbits, false>::kMaxFp);
-                            }
+                            const float v = static_cast<float>(src[(i + l) * leadingDimension + j]);
+                            vi[l] = (uint8_t)std::clamp(roundf(v * reciprocal_scale + zp),
+                                                        0.0f, BitsTraits<qbits, false>::kMaxFp);
                         }
 
                         if constexpr (qbits == 8) {
@@ -594,6 +599,7 @@ struct BlockwiseQuantizer {
 
         int q_rows, q_cols;
         quantizedShape(rows, columns, q_rows, q_cols);
+        constexpr int32_t kPackSize = BitsTraits<qbits, false>::kPackSize;
 
         MlasTryBatchParallel(
             thread_pool, total_thrd_blks,
@@ -610,38 +616,23 @@ struct BlockwiseQuantizer {
                 for (int32_t j = c; j < c_end; ++j) {
                     const int32_t meta_col = j / QuantBlk::kColumn;
 
-                    // !! 4b specific code
-                    // the whole loop is 4b specific due to sub 8 bit packing
-                    // and unpacking. We can potentially make this qbits generic
-                    // by wraping the packing/unpacking code like cutlass::Array
-                    for (int32_t i = r; i < r_end; i += 2) {
+                    for (int32_t i = r; i < r_end; ++i) {
                         const int32_t meta_row = i / QuantBlk::kRow;
-
-                        const float scale0 =
-                            static_cast<float>(scales[meta_col * row_blks + meta_row]);
-
+                        const float scale = static_cast<float>(scales[meta_col * row_blks + meta_row]);
                         const int zp_pair =
-                            (zero_points == nullptr)
-                                ? 0x88
-                                : zero_points[meta_col * ((row_blks + 1) / 2) + meta_row / 2];
-                        const int zp0 = (meta_row & 1) ? (zp_pair >> 4) : (zp_pair & 0xf);
+                            zero_points
+                            ? zero_points[meta_col * ((row_blks + kPackSize - 1) / kPackSize) + meta_row / kPackSize]
+                            : 0;
+                        const int vi_pair = weights[j * q_rows + i / kPackSize];
 
-                        const uint8_t vi0 = weights[j * q_rows + i / 2] & 0xf;
-                        const float v0 = (static_cast<float>(vi0) - zp0) * scale0;
+                        const int zp =
+                            zero_points
+                                ? GetElem(zp_pair, meta_row % kPackSize)
+                                : BitsTraits<qbits, false>::kMid;
+                        const int vi = GetElem(vi_pair, i % kPackSize);
+                        const float v = (vi - zp) * scale;
+                        dst[j * rows + i] = static_cast<ElementT>(v);
 
-                        dst[j * rows + i] = static_cast<ElementT>(v0);
-                        if ((i + 1) < r_end) {
-                            float scale1 = scale0;
-                            int zp1 = zp0;
-                            if constexpr (QuantBlk::kRow == 1) {
-                                scale1 =
-                                    static_cast<float>(scales[meta_col * row_blks + meta_row + 1]);
-                                zp1 = (zp_pair >> 4) & 0xf;
-                            }
-                            const uint8_t vi1 = weights[j * q_rows + i / 2] >> 4;
-                            const float v1 = (static_cast<float>(vi1) - zp1) * scale1;
-                            dst[j * rows + (i + 1)] = static_cast<ElementT>(v1);
-                        }
                     }
                 }
             });
