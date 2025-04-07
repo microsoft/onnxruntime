@@ -358,9 +358,9 @@ Status GroupQueryAttentionFusion::ApplyImpl(
     NodeArg* layer_norm = q_node->MutableInputDefs()[0];
 
     const onnx::TypeProto* layer_norm_tensor_proto = layer_norm->TypeAsProto();
-    onnx::TypeProto mutable_mat_mul_tensor_proto = *layer_norm_tensor_proto;
-    auto* tensor_type = mutable_mat_mul_tensor_proto.mutable_tensor_type();
-    auto* mat_mul_or_nbits_output_shape = tensor_type->mutable_shape();
+    onnx::TypeProto mutable_matmul_or_nbits_tensor_proto = *layer_norm_tensor_proto;
+    auto* matmul_or_nbits_tensor_type = mutable_matmul_or_nbits_tensor_proto.mutable_tensor_type();
+    auto* matmul_or_nbits_output_shape = matmul_or_nbits_tensor_type->mutable_shape();
 
     int64_t head_size = past_key_values_key_arg->Shape()->dim(3).dim_value();
     int64_t num_heads = node.GetAttributes().at("num_heads").i();
@@ -370,15 +370,15 @@ Status GroupQueryAttentionFusion::ApplyImpl(
     int64_t output_hidden_size = q_hidden_size + 2 * kv_hidden_size;
 
     // Ensure the output shape has at least 3 dimensions [batch_size, sequence_length, hidden_size]
-    if (mat_mul_or_nbits_output_shape->dim_size() > 2) {
-      auto* third_dim = mat_mul_or_nbits_output_shape->mutable_dim(2);
+    if (matmul_or_nbits_output_shape->dim_size() > 2) {
+      auto* third_dim = matmul_or_nbits_output_shape->mutable_dim(2);
       third_dim->set_dim_value(output_hidden_size);
     } else {
       DEBUG_LOG("The newly created node does not follow output def shape of [batch_size, sequence_length, hidden_size]");
       continue;
     }
 
-    auto& matmul_or_nbits_output = graph.GetOrCreateNodeArg(graph.GenerateNodeArgName("MatMul_output"), &mutable_mat_mul_tensor_proto);
+    auto& matmul_or_nbits_output = graph.GetOrCreateNodeArg(graph.GenerateNodeArgName("MatMul_output"), &mutable_matmul_or_nbits_tensor_proto);
     const std::array mmnb_output_defs{&matmul_or_nbits_output};
 
     Node* mat_mul_or_n_bits_new_node = nullptr;
@@ -449,12 +449,12 @@ Status GroupQueryAttentionFusion::ApplyImpl(
     AttachNodeAttribute(node, "do_rotary", 1, AttributeProto_AttributeType_INT);
 
     std::string empty_name;
-    auto& empty_node = graph.GetOrCreateNodeArg(empty_name, nullptr);
+    auto& empty_node_arg = graph.GetOrCreateNodeArg(empty_name, nullptr);
 
     const std::array gqa_input_defs{
         &matmul_or_nbits_output,
-        &empty_node,
-        &empty_node,
+        &empty_node_arg,
+        &empty_node_arg,
         past_key_values_key_arg,
         past_key_values_value_arg,
         seqlens_k,
