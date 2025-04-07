@@ -148,8 +148,10 @@ const emscripten::val& ModelBuilder::CreateOrGetConstant(const int32_t& data_typ
     name = name_stream.str();
   }
 
-  // If the operand does not exist, create it.
-  if (wnn_operands_.find(name) == wnn_operands_.end()) {
+  auto result = wnn_operands_.find(name);
+  if (result != wnn_operands_.end()) {
+    return result->second;
+  } else {  // If the operand does not exist, create it.
     emscripten::val desc = emscripten::val::object();
     desc.set("shape", dims);
     desc.set("dimensions", dims);
@@ -225,12 +227,12 @@ const emscripten::val& ModelBuilder::CreateOrGetConstant(const int32_t& data_typ
     }
 
     const emscripten::val constant = wnn_builder_.call<emscripten::val>("constant", desc, buffer);
-    wnn_operands_.insert(std::make_pair(name, constant));
+    auto insert_result = wnn_operands_.insert(std::make_pair(name, constant));
+    return insert_result.first->second;
   }
-
-  return wnn_operands_.at(name);
 }
 
+// Create or retrieve a WebNN constant MLOperand with the specified name, value, data type, and shape.
 template <typename T>
 const emscripten::val& ModelBuilder::CreateOrGetConstant(const int32_t& data_type, std::string name,
                                                          std::vector<T> value, const std::vector<uint32_t>& shape) {
@@ -239,8 +241,10 @@ const emscripten::val& ModelBuilder::CreateOrGetConstant(const int32_t& data_typ
     dims = emscripten::val::array(shape);
   }
 
-  // If the operand does not exist, create it.
-  if (wnn_operands_.find(name) == wnn_operands_.end()) {
+  auto result = wnn_operands_.find(name);
+  if (result != wnn_operands_.end()) {
+    return result->second;
+  } else {  // If the operand does not exist, create it.
     emscripten::val desc = emscripten::val::object();
     desc.set("shape", dims);
     desc.set("dimensions", dims);
@@ -281,10 +285,9 @@ const emscripten::val& ModelBuilder::CreateOrGetConstant(const int32_t& data_typ
     }
 
     const emscripten::val constant = wnn_builder_.call<emscripten::val>("constant", desc, buffer);
-    wnn_operands_.insert(std::make_pair(name, constant));
+    auto insert_result = wnn_operands_.insert(std::make_pair(name, constant));
+    return insert_result.first->second;
   }
-
-  return wnn_operands_.at(name);
 }
 }  // namespace webnn
 }  // namespace onnxruntime

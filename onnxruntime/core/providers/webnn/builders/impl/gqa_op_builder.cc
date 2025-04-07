@@ -119,7 +119,7 @@ Status GroupQueryAttentionOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_b
   const uint32_t past_sequence_length = SafeInt<uint32_t>(input_past_k_shape[2]);
   const uint32_t group_size = SafeInt<uint32_t>(num_heads / kv_num_heads);
 
-  const float scale_value = helper.Get("scale", 1 / static_cast<float>(sqrt(head_size)));
+  const float scale_value = helper.Get("scale", 1 / sqrt(static_cast<float>(head_size)));
 
   const std::vector<uint32_t> reshape_output_shape = {batch_size, qkv_sequence_length, qkv_hidden_size};
   const std::vector<uint32_t> scatter_indices_shape = {batch_size, qkv_sequence_length, kv_num_heads, 3};
