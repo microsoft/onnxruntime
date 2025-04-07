@@ -8,6 +8,7 @@
 #include <fstream>
 #include <sstream>
 #include <utility>
+#include <optional>
 
 #include "openvino/openvino.hpp"
 #include "openvino/runtime/intel_npu/properties.hpp"
@@ -36,6 +37,8 @@ typedef std::shared_ptr<OVTensor> OVTensorPtr;
 typedef ov::intel_gpu::ocl::ClContext* OVRemoteContextPtr;
 typedef ov::RemoteContext OVRemoteContext;
 #endif
+
+std::optional<bool> queryOVProperty(const std::string& property, const std::string& device_type);
 
 template <typename T>
 class WeakSingleton {

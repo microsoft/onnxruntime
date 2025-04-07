@@ -46,6 +46,17 @@ void printDebugInfo(const ov::CompiledModel& obj) {
 }
 #endif
 
+// Function to check if a given OV property is enabled
+std::optional<bool> queryOVProperty(const std::string& property, const std::string& device_type) {
+  try {
+      // Get the property value
+      auto supported_properties = OVCore::Get()->core.get_property(device_type, ov::supported_properties);
+      return std::find(supported_properties.begin(), supported_properties.end(), property) != supported_properties.end();
+  } catch (const std::exception&) {
+      return std::nullopt; // Property not found or invalid
+  }
+}
+
 std::shared_ptr<OVNetwork> OVCore::ReadModel(std::string&& model, const std::string& model_path) {
   try {
     std::istringstream modelStringStream(std::move(model));
