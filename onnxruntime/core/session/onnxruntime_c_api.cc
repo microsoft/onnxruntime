@@ -724,22 +724,11 @@ ORT_API_STATUS_IMPL(OrtApis::CreateSession, _In_ const OrtEnv* env, _In_ const O
                     _In_ const OrtSessionOptions* options, _Outptr_ OrtSession** out) {
   API_IMPL_BEGIN
   std::unique_ptr<onnxruntime::InferenceSession> sess;
-  OrtStatus* status = nullptr;
   *out = nullptr;
-
-  ORT_TRY {
-    ORT_API_RETURN_IF_ERROR(CreateSessionAndLoadModel(options, env, model_path, nullptr, 0, sess));
-    ORT_API_RETURN_IF_ERROR(InitializeSession(options, *sess));
-
-    *out = reinterpret_cast<OrtSession*>(sess.release());
-  }
-  ORT_CATCH(const std::exception& e) {
-    ORT_HANDLE_EXCEPTION([&]() {
-      status = OrtApis::CreateStatus(ORT_FAIL, e.what());
-    });
-  }
-
-  return status;
+  ORT_API_RETURN_IF_ERROR(CreateSessionAndLoadModel(options, env, model_path, nullptr, 0, sess));
+  ORT_API_RETURN_IF_ERROR(InitializeSession(options, *sess));
+  *out = reinterpret_cast<OrtSession*>(sess.release());
+  return nullptr;
   API_IMPL_END
 }
 
@@ -747,22 +736,10 @@ ORT_API_STATUS_IMPL(OrtApis::CreateSessionFromArray, _In_ const OrtEnv* env, _In
                     size_t model_data_length, _In_ const OrtSessionOptions* options, _Outptr_ OrtSession** out) {
   API_IMPL_BEGIN
   std::unique_ptr<onnxruntime::InferenceSession> sess;
-  OrtStatus* status = nullptr;
-  *out = nullptr;
-
-  ORT_TRY {
-    ORT_API_RETURN_IF_ERROR(CreateSessionAndLoadModel(options, env, nullptr, model_data, model_data_length, sess));
-    ORT_API_RETURN_IF_ERROR(InitializeSession(options, *sess));
-
-    *out = reinterpret_cast<OrtSession*>(sess.release());
-  }
-  ORT_CATCH(const std::exception& e) {
-    ORT_HANDLE_EXCEPTION([&]() {
-      status = OrtApis::CreateStatus(ORT_FAIL, e.what());
-    });
-  }
-
-  return status;
+  ORT_API_RETURN_IF_ERROR(CreateSessionAndLoadModel(options, env, nullptr, model_data, model_data_length, sess));
+  ORT_API_RETURN_IF_ERROR(InitializeSession(options, *sess));
+  *out = reinterpret_cast<OrtSession*>(sess.release());
+  return nullptr;
   API_IMPL_END
 }
 
@@ -3030,7 +3007,7 @@ static constexpr OrtApi ort_api_1_to_22 = {
     &OrtApis::GetModelEditorApi,
 
     &OrtApis::CreateTensorWithDataAndDeleterAsOrtValue,
-
+    &OrtApis::SessionOptionsSetLoadCancellationFlag,
     &OrtApis::ReleaseModelCompilationOptions,
     &OrtApis::CreateModelCompilationOptions,
     &OrtApis::CreateModelCompilationOptionsFromSessionOptions,

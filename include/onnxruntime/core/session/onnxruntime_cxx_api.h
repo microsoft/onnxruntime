@@ -929,6 +929,8 @@ struct SessionOptionsImpl : ConstSessionOptionsImpl<T> {
 
   SessionOptionsImpl& SetExecutionMode(ExecutionMode execution_mode);  ///< Wraps OrtApi::SetSessionExecutionMode
 
+  SessionOptionsImpl& SetLoadCancellationFlag(bool value);  ///< Wraps OrtApi::SessionOptionsSetLoadCancellationFlag
+
   SessionOptionsImpl& SetLogId(const char* logid);     ///< Wraps OrtApi::SetSessionLogId
   SessionOptionsImpl& SetLogSeverityLevel(int level);  ///< Wraps OrtApi::SetSessionLogSeverityLevel
 

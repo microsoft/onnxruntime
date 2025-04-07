@@ -266,6 +266,7 @@ void RegisterCudaStreamHandles(IStreamCommandHandleRegistry& stream_handle_regis
                                                                 ep_info](const OrtDevice& device) {
       return std::make_unique<CudaStream>(external_stream, device, cpu_allocator, release_cpu_buffer_on_cuda_stream, false, external_cudnn_handle, external_cublas_handle, ep_info);
     });
+  stream_handle_registry.RegisterSetDeviceFn(device_type, [](OrtDevice::DeviceId id) { CUDA_CALL_THROW(cudaSetDevice(id)); });
 }
 
 }  // namespace onnxruntime

@@ -168,9 +168,9 @@ Status Pad::ComputeInternal(ComputeContext& context) const {
 
   PadProgram program{mode_, dim_value_zero, is_float16};
   if (!dim_value_zero) {
-    program.AddInput({input_tensor, ProgramTensorMetadataDependency::TypeAndRank});
+    program.AddInput({input_tensor, ProgramTensorMetadataDependency::Rank});
   }
-  program.AddOutput({output_tensor, ProgramTensorMetadataDependency::Rank})
+  program.AddOutput({output_tensor, ProgramTensorMetadataDependency::TypeAndRank})
       .SetDispatchGroupSize((output_size + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE)
       .CacheHint(std::to_string(static_cast<int>(mode_)), dim_value_zero)
       .AddUniformVariables({{gsl::span<const int32_t>(lower_pads.data(), lower_pads.size())}, {output_size}, {value_uint32}});
