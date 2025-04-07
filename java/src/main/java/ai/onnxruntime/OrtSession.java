@@ -1342,7 +1342,7 @@ public class OrtSession implements AutoCloseable {
     /**
      * Adds WebGPU as an execution backend.
      *
-     * @param providerOptions Configuration options for the CoreML backend. Refer to the WebGPU
+     * @param providerOptions Configuration options for the WebGPU backend. Refer to the WebGPU
      *     provider's documentation.
      * @throws OrtException If there was an error in native code.
      */
