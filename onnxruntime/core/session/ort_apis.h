@@ -549,4 +549,7 @@ ORT_API_STATUS_IMPL(CreateTensorWithDataAndDeleterAsOrtValue, _In_ OrtAllocator*
                     ONNXTensorElementDataType type,
                     _Outptr_ OrtValue** out);
 
+ORT_API_STATUS_IMPL(SessionOptionsSetLoadCancellationFlag, _Inout_ OrtSessionOptions* options,
+                    _In_ bool is_cancel);
+
 }  // namespace OrtApis

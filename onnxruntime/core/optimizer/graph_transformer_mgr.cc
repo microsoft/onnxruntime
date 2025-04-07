@@ -27,6 +27,9 @@ common::Status GraphTransformerManager::ApplyTransformers(Graph& graph, Transfor
   }
 
   for (unsigned step = 0; step < steps_; ++step) {
+    if (IsLoadCancellationFlagSet()) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, MODEL_LOAD_CANCELED, "Graph transformation canceled due to user request.");
+    }
     bool graph_changed = false;
     for (const auto& transformer : transformers->second) {
       if (step > 0 && transformer->ShouldOnlyApplyOnce())

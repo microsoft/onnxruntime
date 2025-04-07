@@ -340,3 +340,11 @@ ORT_API_STATUS_IMPL(OrtApis::SetDeterministicCompute, _Inout_ OrtSessionOptions*
   return nullptr;
   API_IMPL_END
 }
+
+ORT_API_STATUS_IMPL(OrtApis::SessionOptionsSetLoadCancellationFlag, _Inout_ OrtSessionOptions* options,
+                    _In_ bool is_cancel) {
+  API_IMPL_BEGIN
+  options->value.SetLoadCancellationFlag(is_cancel);
+  return nullptr;
+  API_IMPL_END
+}
