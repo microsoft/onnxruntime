@@ -192,7 +192,7 @@ function(setup_mlas_source_for_windows)
       ${mlas_platform_srcs_avx2}
       ${MLAS_SRC_DIR}/rotary_embedding_kernel_avx2.h
       ${MLAS_SRC_DIR}/rotary_embedding_kernel_avx2.cpp
-      ${MLAS_SRC_DIR}/rotary_embedding_kernel_avx2_fp32.cpp
+      ${MLAS_SRC_DIR}/rotary_embedding_kernel_avx2.cpp
       ${MLAS_SRC_DIR}/qgemm_kernel_amx.cpp
       ${MLAS_SRC_DIR}/qgemm_kernel_avx2.cpp
       ${MLAS_SRC_DIR}/qgemm_kernel_sse.cpp
@@ -287,6 +287,12 @@ if (CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
       ${mlas_platform_srcs}
       ${MLAS_SRC_DIR}/qgemm_kernel_wasmsimd.cpp
     )
+    if (onnxruntime_ENABLE_WEBASSEMBLY_RELAXED_SIMD)
+      set(mlas_platform_srcs
+        ${mlas_platform_srcs}
+        ${MLAS_SRC_DIR}/qgemm_kernel_wasmrelaxedsimd.cpp
+      )
+    endif()
   else()
     file(GLOB_RECURSE mlas_platform_srcs
       "${MLAS_SRC_DIR}/scalar/*.cpp"
@@ -634,7 +640,7 @@ else()
           ${MLAS_SRC_DIR}/sqnbitgemm_kernel_avx2.cpp
           ${MLAS_SRC_DIR}/rotary_embedding_kernel_avx2.h
           ${MLAS_SRC_DIR}/rotary_embedding_kernel_avx2.cpp
-          ${MLAS_SRC_DIR}/rotary_embedding_kernel_avx2_fp32.cpp
+          ${MLAS_SRC_DIR}/rotary_embedding_kernel_avx2.cpp
         )
         if(CMAKE_CXX_COMPILER_VERSION GREATER_EQUAL 13.1 AND NOT(APPLE))
           set(mlas_platform_srcs_avx2

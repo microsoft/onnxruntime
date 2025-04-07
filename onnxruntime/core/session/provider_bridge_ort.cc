@@ -1636,7 +1636,7 @@ struct ProviderHostImpl : ProviderHost {
   }
 #endif
 
-  void MurmurHash3__x86_128(const void* key, int len, uint32_t seed, void* out) override {
+  void MurmurHash3__x86_128(const void* key, size_t len, uint32_t seed, void* out) override {
     MurmurHash3::x86_128(key, len, seed, out);
   }
 
@@ -1944,6 +1944,7 @@ OrtTensorRTProviderOptionsV2 OrtTensorRTProviderOptionsToOrtTensorRTProviderOpti
   trt_options_converted.trt_ep_context_embed_mode = 0;
   trt_options_converted.trt_engine_cache_prefix = "";
   trt_options_converted.trt_engine_hw_compatible = 0;
+  trt_options_converted.trt_preview_features = "";
 
   return trt_options_converted;
 }
@@ -2609,6 +2610,7 @@ ORT_API(void, OrtApis::ReleaseTensorRTProviderOptions, _Frees_ptr_opt_ OrtTensor
     delete[] ptr->trt_ep_context_file_path;
     delete[] ptr->trt_onnx_model_folder_path;
     delete[] ptr->trt_op_types_to_exclude;
+    delete[] ptr->trt_preview_features;
   }
 
   std::unique_ptr<OrtTensorRTProviderOptionsV2> p(ptr);

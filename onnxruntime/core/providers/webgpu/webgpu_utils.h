@@ -1,8 +1,11 @@
+// Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
 #pragma once
 
 #include <cstdint>
+#include "core/common/common.h"
+#include "core/framework/tensor_shape.h"
 
 namespace onnxruntime {
 namespace webgpu {
@@ -28,6 +31,23 @@ inline std::string SumVector(std::string x, int components) {
       ORT_THROW("Unsupported number of components: ", components);
   }
 }
+
+inline std::string MakeScalarOrVectorType(int components, std::string_view data_type) {
+  switch (components) {
+    case 1:
+      return std::string{data_type};
+    case 2:
+      return MakeStringWithClassicLocale("vec2<", data_type, ">");
+    case 3:
+      return MakeStringWithClassicLocale("vec3<", data_type, ">");
+    case 4:
+      return MakeStringWithClassicLocale("vec4<", data_type, ">");
+    default:
+      ORT_THROW("Unsupported number of components: ", components);
+  }
+}
+
+TensorShape ReduceShapeByComponents(const TensorShape& shape, int64_t components);
 
 }  // namespace webgpu
 }  // namespace onnxruntime

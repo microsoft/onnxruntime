@@ -37,25 +37,16 @@ Status CopyQK(cudaStream_t stream,
               const int qk_size,
               const T* input,
               QK* output) {
-  if constexpr (std::is_same<T, QK>::value) {
-    CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(output, input, qk_size * sizeof(QK), cudaMemcpyDeviceToDevice, stream));
-    return Status::OK();
-  }
-  const bool half2float = std::is_same<T, half>::value && std::is_same<QK, float>::value;
-  const bool float2half = std::is_same<T, float>::value && std::is_same<QK, half>::value;
-  ORT_ENFORCE(half2float || float2half);
+  constexpr const bool half2float = std::is_same<T, half>::value && std::is_same<QK, float>::value;
+  constexpr const bool float2half = std::is_same<T, float>::value && std::is_same<QK, half>::value;
+  static_assert(half2float || float2half, "This function supports either <float,half> or <half,float>");
 
-  int block_size = 256;
+  constexpr const int block_size = 256;
   int num_blocks = (qk_size + block_size - 1) / block_size;
   ConvertAndCopyQK<<<num_blocks, block_size, 0, stream>>>(qk_size, input, output);
 
   return CUDA_CALL(cudaGetLastError());
 }
-
-template Status CopyQK<float, float>(cudaStream_t stream,
-                                     const int qk_size,
-                                     const float* input,
-                                     float* output);
 
 template Status CopyQK<float, half>(cudaStream_t stream,
                                     const int qk_size,
@@ -67,10 +58,23 @@ template Status CopyQK<half, float>(cudaStream_t stream,
                                     const half* input,
                                     float* output);
 
-template Status CopyQK<half, half>(cudaStream_t stream,
-                                   const int qk_size,
-                                   const half* input,
-                                   half* output);
+template <>
+Status CopyQK(cudaStream_t stream,
+              const int qk_size,
+              const float* input,
+              float* output) {
+  CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(output, input, qk_size * sizeof(float), cudaMemcpyDeviceToDevice, stream));
+  return Status::OK();
+}
+
+template <>
+Status CopyQK(cudaStream_t stream,
+              const int qk_size,
+              const half* input,
+              half* output) {
+  CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(output, input, qk_size * sizeof(half), cudaMemcpyDeviceToDevice, stream));
+  return Status::OK();
+}
 
 }  // namespace cuda
 }  // namespace contrib

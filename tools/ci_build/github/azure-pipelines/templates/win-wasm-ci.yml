@@ -154,6 +154,3 @@ jobs:
       searchFolder: '$(Build.BinariesDirectory)'
       testRunTitle: 'Unit Test Run'
     condition: and(succeededOrFailed(), eq('${{ parameters.BuildConfig }}', 'Debug'))
-  - template: component-governance-component-detection-steps.yml
-    parameters :
-      condition : 'succeeded'
