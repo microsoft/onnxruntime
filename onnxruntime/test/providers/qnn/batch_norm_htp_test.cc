@@ -155,11 +155,7 @@ static void RunBatchNormQDQTest(const TestInputDef<float>& input_def,
                                 ExpectedEPNodeAssignment expected_ep_assignment,
                                 QDQTolerance tolerance = QDQTolerance()) {
   ProviderOptions provider_options;
-#if defined(_WIN32)
-  provider_options["backend_path"] = "QnnHtp.dll";
-#else
-  provider_options["backend_path"] = "libQnnHtp.so";
-#endif
+  provider_options["backend_type"] = "htp";
   provider_options["offload_graph_io_quantization"] = "0";
 
   // Runs model with DQ-> InstanceNorm -> Q and compares the outputs of the CPU and QNN EPs.
@@ -176,11 +172,7 @@ static void RunBatchNormFP16Test(const TestInputDef<float>& input_def,
                                  const TestInputDef<float>& bias_def,
                                  ExpectedEPNodeAssignment expected_ep_assignment) {
   ProviderOptions provider_options;
-#if defined(_WIN32)
-  provider_options["backend_path"] = "QnnHtp.dll";
-#else
-  provider_options["backend_path"] = "libQnnHtp.so";
-#endif
+  provider_options["backend_type"] = "htp";
   provider_options["offload_graph_io_quantization"] = "0";
 
   TestInputDef<MLFloat16> input_fp16_def = ConvertToFP16InputDef(input_def);
@@ -277,12 +269,7 @@ TEST_F(QnnHTPBackendTests, BatchNorm_FP16) {
 TEST_F(QnnHTPBackendTests, BatchNorm_FP32_as_FP16) {
   ProviderOptions provider_options;
 
-#if defined(_WIN32)
-  provider_options["backend_path"] = "QnnHtp.dll";
-#else
-  provider_options["backend_path"] = "libQnnHtp.so";
-#endif
-
+  provider_options["backend_type"] = "htp";
   provider_options["enable_htp_fp16_precision"] = "1";
 
   constexpr int64_t num_channels = 2;

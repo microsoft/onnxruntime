@@ -110,7 +110,7 @@ void WebGpuContext::Initialize(const WebGpuBufferCacheConfig& buffer_cache_confi
         device_desc.requiredFeatures = required_features.data();
         device_desc.requiredFeatureCount = required_features.size();
       }
-      wgpu::RequiredLimits required_limits = GetRequiredLimits(adapter);
+      wgpu::Limits required_limits = GetRequiredLimits(adapter);
       device_desc.requiredLimits = &required_limits;
 
       // TODO: revise temporary error handling
@@ -136,12 +136,18 @@ void WebGpuContext::Initialize(const WebGpuBufferCacheConfig& buffer_cache_confi
 
     LOGS_DEFAULT(VERBOSE) << "WebGPU EP Context is created for: Instance=" << instance_.Get() << ", Device=" << device_.Get() << ".";
 
+    // cache device queue
+    device_queue_ = device_.GetQueue();
     // cache adapter info
     ORT_ENFORCE(Device().GetAdapterInfo(&adapter_info_));
     // cache device limits
-    wgpu::SupportedLimits device_supported_limits;
-    ORT_ENFORCE(Device().GetLimits(&device_supported_limits));
-    device_limits_ = device_supported_limits.limits;
+    ORT_ENFORCE(Device().GetLimits(&device_limits_));
+    // cache device features
+    wgpu::SupportedFeatures supported_features;
+    Device().GetFeatures(&supported_features);
+    for (size_t i = 0; i < supported_features.featureCount; i++) {
+      device_features_.insert(supported_features.features[i]);
+    }
 
 #if !defined(__wasm__)
     supports_buffer_map_extended_usages_ = device_.HasFeature(wgpu::FeatureName::BufferMapExtendedUsages);
@@ -400,7 +406,7 @@ Status WebGpuContext::Run(ComputeContext& context, const ProgramBase& program) {
     }
 
     uniform_buffer = buffer_mgr_->Create(uniform_buffer_total_size, wgpu::BufferUsage::CopyDst | wgpu::BufferUsage::Uniform);
-    device_.GetQueue().WriteBuffer(uniform_buffer, 0, uniform_data_buffer.data(), uniform_buffer_total_size);
+    device_queue_.WriteBuffer(uniform_buffer, 0, uniform_data_buffer.data(), uniform_buffer_total_size);
   }
 
   const auto& compute_pass_encoder = GetComputePassEncoder();
@@ -508,20 +514,20 @@ std::vector<wgpu::FeatureName> WebGpuContext::GetAvailableRequiredFeatures(const
   return required_features;
 }
 
-wgpu::RequiredLimits WebGpuContext::GetRequiredLimits(const wgpu::Adapter& adapter) const {
-  wgpu::RequiredLimits required_limits{};
-  wgpu::SupportedLimits adapter_limits;
+wgpu::Limits WebGpuContext::GetRequiredLimits(const wgpu::Adapter& adapter) const {
+  wgpu::Limits required_limits{};
+  wgpu::Limits adapter_limits;
   ORT_ENFORCE(adapter.GetLimits(&adapter_limits));
 
-  required_limits.limits.maxBindGroups = adapter_limits.limits.maxBindGroups;
-  required_limits.limits.maxComputeWorkgroupStorageSize = adapter_limits.limits.maxComputeWorkgroupStorageSize;
-  required_limits.limits.maxComputeWorkgroupsPerDimension = adapter_limits.limits.maxComputeWorkgroupsPerDimension;
-  required_limits.limits.maxStorageBufferBindingSize = adapter_limits.limits.maxStorageBufferBindingSize;
-  required_limits.limits.maxBufferSize = adapter_limits.limits.maxBufferSize;
-  required_limits.limits.maxComputeInvocationsPerWorkgroup = adapter_limits.limits.maxComputeInvocationsPerWorkgroup;
-  required_limits.limits.maxComputeWorkgroupSizeX = adapter_limits.limits.maxComputeWorkgroupSizeX;
-  required_limits.limits.maxComputeWorkgroupSizeY = adapter_limits.limits.maxComputeWorkgroupSizeY;
-  required_limits.limits.maxComputeWorkgroupSizeZ = adapter_limits.limits.maxComputeWorkgroupSizeZ;
+  required_limits.maxBindGroups = adapter_limits.maxBindGroups;
+  required_limits.maxComputeWorkgroupStorageSize = adapter_limits.maxComputeWorkgroupStorageSize;
+  required_limits.maxComputeWorkgroupsPerDimension = adapter_limits.maxComputeWorkgroupsPerDimension;
+  required_limits.maxStorageBufferBindingSize = adapter_limits.maxStorageBufferBindingSize;
+  required_limits.maxBufferSize = adapter_limits.maxBufferSize;
+  required_limits.maxComputeInvocationsPerWorkgroup = adapter_limits.maxComputeInvocationsPerWorkgroup;
+  required_limits.maxComputeWorkgroupSizeX = adapter_limits.maxComputeWorkgroupSizeX;
+  required_limits.maxComputeWorkgroupSizeY = adapter_limits.maxComputeWorkgroupSizeY;
+  required_limits.maxComputeWorkgroupSizeZ = adapter_limits.maxComputeWorkgroupSizeZ;
 
   return required_limits;
 }
@@ -692,7 +698,7 @@ void WebGpuContext::Flush() {
   }
 
   auto command_buffer = current_command_encoder_.Finish();
-  Device().GetQueue().Submit(1, &command_buffer);
+  device_queue_.Submit(1, &command_buffer);
   BufferManager().RefreshPendingBuffers();
   current_command_encoder_ = nullptr;
   num_pending_dispatches_ = 0;
@@ -740,13 +746,9 @@ WebGpuContext& WebGpuContextFactory::CreateContext(const WebGpuContextConfig& co
 #endif
 
     // Step.2 - Create wgpu::Instance
-#if !defined(__wasm__)
     wgpu::InstanceDescriptor instance_desc{};
     instance_desc.capabilities.timedWaitAnyEnable = true;
     default_instance_ = wgpu::CreateInstance(&instance_desc);
-#else
-    default_instance_ = wgpu::CreateInstance(nullptr);
-#endif
 
     ORT_ENFORCE(default_instance_ != nullptr, "Failed to create wgpu::Instance.");
   });
