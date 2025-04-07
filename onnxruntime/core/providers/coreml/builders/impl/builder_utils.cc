@@ -263,7 +263,7 @@ MILSpec::DataType OnnxDataTypeToMILSpec(int onnx_type) {
     case ONNX_NAMESPACE::TensorProto_DataType_INT32:
       return MILSpec::DataType::INT32;
     case ONNX_NAMESPACE::TensorProto_DataType_INT64:
-      return MILSpec::DataType::INT64;
+      return MILSpec::DataType::INT32;
 
     case ONNX_NAMESPACE::TensorProto_DataType_UINT8:
       return MILSpec::DataType::UINT8;

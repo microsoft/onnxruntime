@@ -205,7 +205,7 @@ void CopyOnnxTensorToCoreMLTensor(const ONNX_NAMESPACE::TensorProto& tensor_prot
       if (has_raw_data) {
         CopyRawDataToRepeatedField<int64_t, int32_t>(tensor_proto, *tensor_value.mutable_ints()->mutable_values());
         LOGS(logger, VERBOSE) << "ORT tensor has: " << tensor_proto.raw_data().size() / sizeof(int64_t)
-                                   << " int63 values";
+                                   << " int64 values";
         const auto& raw_data = tensor_proto.raw_data();
         const int64_t* data = reinterpret_cast<const int64_t*>(raw_data.data());
         const int64_t* data_end = data + (raw_data.size() / sizeof(int64_t));
@@ -1035,6 +1035,12 @@ Status ModelBuilder::RegisterModelInputs() {
 Status ModelBuilder::ProcessNodes() {
   for (const auto node_idx : graph_viewer_.GetNodesInTopologicalOrder()) {
     const auto& node = *graph_viewer_.GetNode(node_idx);
+    if (node.Name().find("Concat") != std::string::npos) {
+      LOGS(logger_, VERBOSE) << "Concat node " << node.Name() << " added in ProcessNodes";
+    for (const auto* input : node.InputDefs()) {
+      LOGS(logger_, VERBOSE) << "input name " << input->Name() ;
+    }
+    }
     if (const auto* op_builder = GetOpBuilder(node)) {
       ORT_RETURN_IF_ERROR(op_builder->AddToModelBuilder(*this, node, logger_));
     } else {

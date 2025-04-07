@@ -35,7 +35,12 @@ Status ConcatOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
 
     std::unique_ptr<Operation> op = model_builder.CreateOperation(node, "concat");
     std::vector<std::string_view> input_names;
+    LOGS(logger, VERBOSE) << "IN CONCAT BUILDER FOR " << node.Name();
     for (const auto* input : node.InputDefs()) {
+      LOGS(logger, VERBOSE) << "input name " << input->Name() ;
+      // for (const auto& dim : input->Shape()->dim()) {
+      //   LOGS(logger, VERBOSE) << "input dim " << dim;
+      // }
       input_names.emplace_back(input->Name());
     }
     AddOperationVariadicInput(*op, "values", input_names);
