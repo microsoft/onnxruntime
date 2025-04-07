@@ -813,7 +813,7 @@ bool CanApplyFlashAttention(const Tensor* bias, const Tensor* present_key, const
          !parameters.is_packed_qkv_ &&
          parameters.head_size_ == parameters.v_head_size_ &&
          bias == nullptr &&
-         context.Device().HasFeature(wgpu::FeatureName::Subgroups) &&
+         context.HasFeature(wgpu::FeatureName::Subgroups) &&
          present_key != nullptr && present_value != nullptr && present_key->SizeInBytes() > 0 &&
          present_value->SizeInBytes() > 0 && parameters.head_size_ % 4 == 0;
 }
