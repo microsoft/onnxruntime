@@ -615,10 +615,11 @@ export const prepareInputOutputTensor = async (
       }
     } else {
       const isGraphInput = wasm.webnnIsGraphInput;
-      if (dataType !== 'string' && isGraphInput) {
+      const isGraphOutput = wasm.webnnIsGraphOutput;
+      if (dataType !== 'string' && isGraphInput && isGraphOutput) {
         const tensorName = wasm.UTF8ToString(tensorNameUTF8Encoded);
         // Promote the tensor to 'ml-tensor' if it is a graph input.
-        if (isGraphInput(sessionId, tensorName)) {
+        if (isGraphInput(sessionId, tensorName) || isGraphOutput(sessionId, tensorName)) {
           const dataTypeEnum = tensorDataTypeStringToEnum(dataType);
           dataByteLength = calculateTensorSizeInBytes(dataTypeEnum, dims)!;
           actualLocation = 'ml-tensor';
