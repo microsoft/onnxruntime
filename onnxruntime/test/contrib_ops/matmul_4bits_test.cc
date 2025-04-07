@@ -126,7 +126,7 @@ void RunTest(const TestOptions& opts,
                                             q_rows, q_cols);
 
   size_t q_data_size_in_bytes, q_scale_size, q_zp_size_in_bytes;
-  MlasBlockwiseQuantizedBufferSizes(QBits, static_cast<int>(opts.block_size), /* columnwise */ true,
+  MlasBlockwiseQuantizedBufferSizes<QBits>(static_cast<int>(opts.block_size), /* columnwise */ true,
                                     static_cast<int>(K), static_cast<int>(N),
                                     q_data_size_in_bytes, q_scale_size, &q_zp_size_in_bytes);
 

@@ -53,7 +53,7 @@ class MlasBlockwiseQdqTest : public MlasTestBase {
     MlasBlockwiseQuantizedShape<float, 4>(block_size, columnwise, rows, columns, q_rows, q_cols);
 
     size_t q_data_size_in_bytes, q_scale_size, q_zp_size_in_bytes;
-    MlasBlockwiseQuantizedBufferSizes(4, block_size, columnwise, rows, columns,
+    MlasBlockwiseQuantizedBufferSizes<4>(block_size, columnwise, rows, columns,
                                       q_data_size_in_bytes, q_scale_size, &q_zp_size_in_bytes);
 
     uint8_t* elements = InputElements.GetBuffer(q_data_size_in_bytes, true);
