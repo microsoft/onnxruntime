@@ -104,7 +104,7 @@ bool IsSupportedDataType(const Node& node, const T& supported_data_types) {
 // Merge 2-D weights (q, k and v) by concatenating them row by row.
 template <typename T>
 void MergeMatMulWeightsByRow(const T* q_weight, const T* k_weight, const T* v_weight,
-                        std::vector<T>& result, int64_t row_hidden_size, int64_t q_col_hidden_size, int64_t kv_col_hidden_size) {
+                             std::vector<T>& result, int64_t row_hidden_size, int64_t q_col_hidden_size, int64_t kv_col_hidden_size) {
   const T* q = q_weight;
   const T* k = k_weight;
   const T* v = v_weight;
@@ -136,7 +136,7 @@ void MergeWeights1d(const T* q, const T* k, const T* v, std::vector<T>& result, 
 // [N rows of Q, M rows of K, M rows of V].
 template <typename T>
 void MergeMatMulWeightsByBlocks(const T* q_weight, const T* k_weight, const T* v_weight,
-                        std::vector<T>& result, int64_t q_hidden_size, int64_t kv_hidden_size, int64_t blocks, int64_t block_size) {
+                                std::vector<T>& result, int64_t q_hidden_size, int64_t kv_hidden_size, int64_t blocks, int64_t block_size) {
   AppendBlocks(q_weight, result, q_hidden_size, blocks, block_size);
   AppendBlocks(k_weight, result, kv_hidden_size, blocks, block_size);
   AppendBlocks(v_weight, result, kv_hidden_size, blocks, block_size);
