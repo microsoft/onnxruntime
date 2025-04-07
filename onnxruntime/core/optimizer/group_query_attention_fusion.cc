@@ -140,7 +140,7 @@ static std::vector<NodeArg*> MergeQkvWeightsForMatMulNBits(
   NodeArg& qkv_b_arg = graph_utils::AddInitializer(graph, qkv_b_initializer);
   NodeArg& qkv_scale_arg = graph_utils::AddInitializer(graph, qkv_scale_initializer);
 
-  std::vector<NodeArg*> new_tensor_node_args = {&qkv_b_arg, &qkv_scale_arg};
+  std::vector<NodeArg*> result_node_args = {&qkv_b_arg, &qkv_scale_arg};
 
   if (has_zero_points) {
     Initializer q_zp_initializer(*q_zero_point_tensor, graph.ModelPath());
@@ -152,6 +152,8 @@ static std::vector<NodeArg*> MergeQkvWeightsForMatMulNBits(
     const uint8_t* v_zero_points_data = v_zp_initializer.data<uint8_t>();
 
     TensorProto qkv_zp_initializer;
+
+    // We use 4 bit quantization, hence dividing by 2 since we need 1/2 of the bytes.
     size_t zp_elements_count = output_hidden_size * blocks / 2;
 
     qkv_zp_initializer.set_name(graph.GenerateNodeArgName("qkv_zp"));
@@ -167,10 +169,10 @@ static std::vector<NodeArg*> MergeQkvWeightsForMatMulNBits(
     utils::SetRawDataInTensorProto(qkv_zp_initializer, merged_qkv_zp.data(), zp_elements_count * sizeof(uint8_t));
 
     NodeArg& qkv_zp_arg = graph_utils::AddInitializer(graph, qkv_zp_initializer);
-    new_tensor_node_args.push_back(&qkv_zp_arg);
+    result_node_args.push_back(&qkv_zp_arg);
   }
 
-  return new_tensor_node_args;
+  return result_node_args;
 }
 
 static bool LoadQKVProjectionTensors(Graph& graph,
@@ -329,7 +331,8 @@ Status GroupQueryAttentionFusion::ApplyImpl(
     }
 
     if (CheckIfAnyOfRequiredGQANodesDoesNotExist(rotary_node_1, rotary_node_2, q_node, k_node, v_node)) {
-      DEBUG_LOG("Some of the required pre-GQA nodes required for fusion were not retrieved");
+      // Some of the required pre-GQA nodes required for fusion were not retrieved,
+      // this can be expected if the model has extra nodes in between MatMuls and rotary embeddings.
       continue;
     }
 
@@ -364,11 +367,12 @@ Status GroupQueryAttentionFusion::ApplyImpl(
     int64_t kv_num_heads = node.GetAttributes().at("kv_num_heads").i();
     int64_t q_hidden_size = num_heads * head_size;
     int64_t kv_hidden_size = kv_num_heads * head_size;
+    int64_t output_hidden_size = q_hidden_size + 2 * kv_hidden_size;
 
     // Ensure the output shape has at least 3 dimensions [batch_size, sequence_length, hidden_size]
     if (mat_mul_or_nbits_output_shape->dim_size() > 2) {
       auto* third_dim = mat_mul_or_nbits_output_shape->mutable_dim(2);
-      third_dim->set_dim_value(q_hidden_size + 2 * kv_hidden_size);
+      third_dim->set_dim_value(output_hidden_size);
     } else {
       DEBUG_LOG("The newly created node does not follow output def shape of [batch_size, sequence_length, hidden_size]");
       continue;
@@ -431,7 +435,7 @@ Status GroupQueryAttentionFusion::ApplyImpl(
                                                     kMSDomain);
       }
 
-      AttachNodeAttribute(*mat_mul_or_n_bits_new_node, "N", q_hidden_size + 2 * kv_hidden_size, AttributeProto_AttributeType_INT);
+      AttachNodeAttribute(*mat_mul_or_n_bits_new_node, "N", output_hidden_size, AttributeProto_AttributeType_INT);
     }
 
     mat_mul_or_n_bits_new_node->SetExecutionProviderType(node.GetExecutionProviderType());
@@ -462,12 +466,9 @@ Status GroupQueryAttentionFusion::ApplyImpl(
     gqa_input_args[7] = 1;
     gqa_input_args[8] = 1;
 
-    // Switch GQA input defs from unfused into the fused form. 
-    auto& input_defs = node.MutableInputDefs();
-    input_defs.assign(gqa_input_defs.begin(), gqa_input_defs.end());
-
-    // todo prob remove
-    ORT_RETURN_IF_ERROR(graph.Resolve());
+    // Switch GQA input defs from unfused into the fused form.
+    auto& gqa_node_input_defs = node.MutableInputDefs();
+    gqa_node_input_defs.assign(gqa_input_defs.begin(), gqa_input_defs.end());
 
     modified = true;
   }
