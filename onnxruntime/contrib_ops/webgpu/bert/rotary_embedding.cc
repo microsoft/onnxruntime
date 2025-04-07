@@ -100,7 +100,7 @@ Status RotaryEmbedding::ComputeInternal(onnxruntime::webgpu::ComputeContext& con
 
   program
       .CacheHint(interleaved_)
-      .AddInputs({{input, ProgramTensorMetadataDependency::Rank},
+      .AddInputs({{input, ProgramTensorMetadataDependency::TypeAndRank},
                   {position_ids, ProgramTensorMetadataDependency::Rank},
                   {cos_cache, ProgramTensorMetadataDependency::Rank},
                   {sin_cache, ProgramTensorMetadataDependency::Rank}})

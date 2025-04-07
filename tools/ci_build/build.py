@@ -513,6 +513,7 @@ def parse_arguments():
     parser.add_argument("--emsdk_version", default="4.0.4", help="Specify version of emsdk")
 
     parser.add_argument("--enable_wasm_simd", action="store_true", help="Enable WebAssembly SIMD")
+    parser.add_argument("--enable_wasm_relaxed_simd", action="store_true", help="Enable WebAssembly Relaxed SIMD")
     parser.add_argument("--enable_wasm_threads", action="store_true", help="Enable WebAssembly multi-threads support")
 
     parser.add_argument(
@@ -704,6 +705,7 @@ def parse_arguments():
     parser.add_argument("--armnn_home", help="Path to ArmNN home dir")
     parser.add_argument("--armnn_libs", help="Path to ArmNN libraries")
     parser.add_argument("--build_micro_benchmarks", action="store_true", help="Build ONNXRuntime micro-benchmarks.")
+    parser.add_argument("--no_kleidiai", action="store_true", help="Disable KleidiAI integration on Arm platforms.")
 
     # options to reduce binary size
     parser.add_argument(
@@ -1281,7 +1283,10 @@ def generate_build_tree(
             # Fallback to checkout vcpkg from github
             vcpkg_installation_root = os.path.join(os.path.abspath(build_dir), "vcpkg")
             if not os.path.exists(vcpkg_installation_root):
-                run_subprocess(["git", "clone", "https://github.com/microsoft/vcpkg.git", "--recursive"], cwd=build_dir)
+                run_subprocess(
+                    ["git", "clone", "-b", "2025.03.19", "https://github.com/microsoft/vcpkg.git", "--recursive"],
+                    cwd=build_dir,
+                )
         vcpkg_toolchain_path = Path(vcpkg_installation_root) / "scripts" / "buildsystems" / "vcpkg.cmake"
 
         if args.build_wasm:
@@ -1433,6 +1438,12 @@ def generate_build_tree(
         cmake_args.append("-Donnxruntime_DNNL_ACL_ROOT=" + args.dnnl_acl_root)
     if args.build_wasm:
         cmake_args.append("-Donnxruntime_ENABLE_WEBASSEMBLY_SIMD=" + ("ON" if args.enable_wasm_simd else "OFF"))
+        if args.enable_wasm_relaxed_simd:
+            if not args.enable_wasm_simd:
+                raise BuildError(
+                    "Wasm Relaxed SIMD (--enable_wasm_relaxed_simd) is only available with Wasm SIMD (--enable_wasm_simd)."
+                )
+            cmake_args += ["-Donnxruntime_ENABLE_WEBASSEMBLY_RELAXED_SIMD=ON"]
     if args.use_migraphx:
         cmake_args.append("-Donnxruntime_MIGRAPHX_HOME=" + migraphx_home)
     if args.use_rocm:
@@ -1627,6 +1638,8 @@ def generate_build_tree(
 
     if args.use_snpe:
         cmake_args += ["-Donnxruntime_USE_SNPE=ON"]
+
+    cmake_args += ["-Donnxruntime_USE_KLEIDIAI=" + ("OFF" if args.no_kleidiai else "ON")]
 
     if args.macos or args.ios or args.visionos or args.tvos:
         # Note: Xcode CMake generator doesn't have a good support for Mac Catalyst yet.
@@ -2428,6 +2441,8 @@ def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs):
             if args.use_cuda:
                 log.info("Testing CUDA Graph feature")
                 run_subprocess([sys.executable, "onnxruntime_test_python_cudagraph.py"], cwd=cwd, dll_path=dll_path)
+                log.info("Testing running inference concurrently")
+                run_subprocess([sys.executable, "onnxruntime_test_python_ort_parallel.py"], cwd=cwd, dll_path=dll_path)
 
             if args.use_dml:
                 log.info("Testing DML Graph feature")

@@ -119,6 +119,7 @@ struct Tensorrt_Provider : Provider {
     info.onnx_bytestream = options.trt_onnx_bytestream;
     info.onnx_bytestream_size = options.trt_onnx_bytestream_size;
     info.op_types_to_exclude = options.trt_op_types_to_exclude == nullptr ? "" : options.trt_op_types_to_exclude;
+    info.preview_features = options.trt_preview_features == nullptr ? "" : options.trt_preview_features;
 
     return std::make_shared<TensorrtProviderFactory>(info);
   }
