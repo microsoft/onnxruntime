@@ -144,10 +144,11 @@ Status FlashAttentionProgram::GenerateShaderCode(ShaderHelper& shader) const {
   const min_value : q_element_t = q_element_t(-65504.0);
 
   // Default SHM usage limit is 16KB in Dawn.
-  var<workgroup> k_tile : array<array<q_value_t, qkv_head_size_vec>, max_k_step>; // 96 * 2 * 16 = 3KB.
-  var<workgroup> v_tile : array<array<q_value_t, qkv_head_size_vec>, max_k_step>; // 96 * 2 * 16 = 3KB.
+  var<workgroup> k_tile : array<array<q_value_t, qkv_head_size_vec>, max_k_step>; // vec4<f16> * qkv_head_size_vec * max_k_step = 8 * (128/4) * 16 = 4KB. 128 is head_size for phi4.
+  var<workgroup> v_tile : array<array<q_value_t, qkv_head_size_vec>, max_k_step>; // vec4<f16> * qkv_head_size_vec * max_k_step = 8 * (128/4) * 16 = 4KB. 128 is head_size for phi4.
 
-  var<workgroup> o_tile_r : array<array<q_value_t, half_qkv_head_size_vec>, workgroup_size_x>; // 48 * 2 * 64 = 6KB.
+  // Move half of o_tile from private memory into workgroup memory to reduce register pressure. Note that register spill was observed on Qualcomm if whole o_tile is on private memory.
+  var<workgroup> o_tile_r : array<array<q_value_t, half_qkv_head_size_vec>, workgroup_size_x>; // vec4<f16> * half_qkv_head_size_vec * workgroup_size_x = 8 * (128/4/2) * 64 = 8KB.
 
   // Private memory per lane.
   var<private> q_tile : array<q_value_t, qkv_head_size_vec>;
@@ -504,7 +505,7 @@ bool CanApplyFlashAttention(const Tensor* bias, const Tensor* present_key, const
          parameters.sequence_length_ > 1 &&
          context.HasFeature(wgpu::FeatureName::Subgroups) &&
          present_key != nullptr && present_value != nullptr && present_key->SizeInBytes() > 0 &&
-         present_value->SizeInBytes() > 0 && parameters.head_size_ % 4 == 0;
+         present_value->SizeInBytes() > 0 && parameters.head_size_ % 8 == 0;
 }
 
 }  // namespace webgpu
