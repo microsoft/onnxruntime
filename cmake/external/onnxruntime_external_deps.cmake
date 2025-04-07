@@ -719,6 +719,11 @@ if (onnxruntime_USE_WEBGPU)
       # - (private) Remove hard-coded CMAKE_OSX_DEPLOYMENT_TARGET in Dawn's CMake files
       #   https://github.com/microsoft/onnxruntime/pull/23729
       #
+	  # - (private) Reduce unsafe buffer usage warning in aligned_storage.h
+      #   https://github.com/microsoft/onnxruntime/pull/24308
+      #   The patch disables the UNSAFE_BUFFER_USAGE warning around the AlignedStorage struct in aligned_storage.h. This is done
+      #   by using TINT_BEGIN_DISABLE_WARNING and TINT_END_DISABLE_WARNING macros, which helps in warnings related to unsafe buffer usage
+      #   usage when compiling the code, making the build process cleaner and faster.
       #
       PATCH_COMMAND ${Patch_EXECUTABLE} --binary --ignore-whitespace -p1 < ${PROJECT_SOURCE_DIR}/patches/dawn/dawn.patch
       EXCLUDE_FROM_ALL

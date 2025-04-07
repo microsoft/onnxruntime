@@ -66,12 +66,15 @@ jobs:
   # skip emulator tests for qnn package as there are no arm64-v8a emulators and no qnn libraries for x86
   # skip emulator tests for webgpu package as software rendering with swiftshader does not work without host GPU
   - script: |
-        set -e -x
+        set -e
         if [[ "${{ parameters.packageName }}" == *"qnn"*  || "${{ parameters.enableWebGpu }}" == "true" ]]; then
           echo "##vso[task.setvariable variable=useEmulator]false"
+          echo "WebGPU is enabled or it's a  QNN package. Emulator tests will be skipped."
         else
           echo "##vso[task.setvariable variable=useEmulator]true"
+          echo "Emulator tests will be executed."
         fi
+
     displayName: Determine if emulator tests should be skipped
 
   - ${{ if eq(variables['useEmulator'], 'true')}}:

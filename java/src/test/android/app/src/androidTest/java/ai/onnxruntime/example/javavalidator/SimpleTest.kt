@@ -97,7 +97,8 @@ class SimpleTest {
 
                 OrtProvider.WEBGPU -> {
                     if (OrtEnvironment.getAvailableProviders().contains(OrtProvider.WEBGPU)) {
-                        opts.addWebGPU()
+                        val providerOptions = Collections.emptyMap<String, String>()
+                        opts.addWebGPU(providerOptions)
                     } else {
                         Log.println(Log.INFO, TAG, "NO WEBGPU EP available, skip the test")
                         return
