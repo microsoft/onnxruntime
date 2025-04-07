@@ -30,7 +30,7 @@ class IGemmRunner {
   virtual ~IGemmRunner() = default;
 
   virtual TensorShape GetOutputShape(const onnxruntime::TensorShape& x, const onnxruntime::TensorShape& w) const = 0;
-
+  virtual size_t GetWorkspaceSize() const = 0;
   virtual void Run(const onnxruntime::Tensor* x,
                    const onnxruntime::Tensor* w,
                    onnxruntime::Tensor* y,
@@ -49,7 +49,7 @@ class GemmRunner: public IGemmRunner {
 
   TensorShape GetOutputShape(const onnxruntime::TensorShape& x, const onnxruntime::TensorShape& w) const override;
 
-  size_t GetWorkspaceSize() const;
+  size_t GetWorkspaceSize() const override;
 
   void Run(const onnxruntime::Tensor* x,
            const onnxruntime::Tensor* w,

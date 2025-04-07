@@ -125,7 +125,9 @@ Status MatMul<T>::ComputeInternal(OpKernelContext* ctx) const {
 #ifndef DISABLE_CONTRIB_OPS
     if (left_X->Shape().NumDimensions() == 3 && right_X->Shape().NumDimensions() == 2 && !(trans_batch_a_ || trans_batch_b_)) {
       if (std::is_same<T, MLFloat16>::value || std::is_same<T, BFloat16>::value || std::is_same<T, float>::value) {
-        printf("use gemm runner\n");
+#ifndef NDEBUG
+        std::cout << "MatMul op with parameters: M=" << helper.M() << ", N=" << helper.N() << ", K=" << helper.K() << std::endl;
+#endif
         if (gemm_runner_ == nullptr) {
           std::lock_guard<std::mutex> lock(gemm_runner_mutex_);
           if (gemm_runner_ == nullptr) {
@@ -134,11 +136,14 @@ Status MatMul<T>::ComputeInternal(OpKernelContext* ctx) const {
           }
         }
 
-        void* workspace = nullptr;
+        AllocatorPtr allocator;
+        ORT_RETURN_IF_ERROR(ctx->GetTempSpaceAllocator(&allocator));
+        IAllocatorUniquePtr<void> workspace = IAllocator::MakeUniquePtr<void>(allocator, gemm_runner_->GetWorkspaceSize(), false, ctx->GetComputeStream());
+
         cudaStream_t stream = this->Stream(ctx);
         cublasHandle_t cublas_handle = GetCublasHandle(ctx);
         cublasLtHandle_t cublasLt_handle = CublasLtHandle();
-        gemm_runner_->Run(left_X, right_X, Y, workspace, stream, cublas_handle, cublasLt_handle);
+        gemm_runner_->Run(left_X, right_X, Y, workspace.get(), stream, cublas_handle, cublasLt_handle);
         return Status::OK();
       }
     }

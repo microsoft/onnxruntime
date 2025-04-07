@@ -72,6 +72,10 @@ class GemmIdCore {
   {
   }
 
+  bool IsInitialized() const {
+    return n >= 0 && k >= 0;
+  }
+
   bool operator==(GemmIdCore const& id) const {
     return isEqual(id);
   }
@@ -191,7 +195,7 @@ class GemmPluginProfiler {
   */
 
   void profileTactics(RunnerPtr const& runner, nvinfer1::DataType const& type, GemmDims const& dims,
-                      GemmIdType const& gemmId, bool hasCudaKernel = false);
+                      GemmIdType const& gemmId, bool hasCudaKernel = false, bool rounded = false);
 
   void setSelectionTactics(MNKProfileMapPtr const& map) {
     mMNKProfileMap = map;
@@ -206,6 +210,8 @@ class GemmPluginProfiler {
   }
 
   std::optional<Config> getBestConfig(int m, GemmIdType const& gemmId) const;
+
+  std::optional<Config> tryGetBestConfig(int m, GemmIdType const& gemmId, bool round) const;
 
   virtual int getMaxProfileM() const;
 

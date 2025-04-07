@@ -30,6 +30,13 @@
  #pragma warning(disable : 4514)  // Unreferenced inline function removed (similar to -Wunused-local-typedefs)
  #endif
 
+// Macro to print function name and parameters
+#ifndef NDEBUG
+#define PRINT_FUNCTION_PARAMS(func, m, n, k) std::cout << "Function: " << #func << " called with parameters: m=" << m << ", n=" << n << ", k=" << k << std::endl
+#else
+#define PRINT_FUNCTION_PARAMS(func, m, n, k)
+#endif
+
 #include "contrib_ops/cuda/llm/gemm_profiler.h"
 #include "contrib_ops/cuda/llm/common/cublasMMWrapper.h"
 #include "contrib_ops/cuda/llm/cutlass_extensions/gemm_configs.h"
@@ -128,8 +135,9 @@ void GemmPluginProfiler<Config, RunnerPtr, GemmIdType, GemmIdHashType>::initTmpD
 }
 
 template <typename Config, typename RunnerPtr, typename GemmIdType, typename GemmIdHashType>
-void GemmPluginProfiler<Config, RunnerPtr, GemmIdType, GemmIdHashType>::profileTactics(RunnerPtr const& runner,
-                                                                                       nvinfer1::DataType const& type, GemmDims const& dims, GemmIdType const& gemmId, bool hasCudaKernel) {
+void GemmPluginProfiler<Config, RunnerPtr, GemmIdType, GemmIdHashType>::profileTactics(
+    RunnerPtr const& runner,
+    nvinfer1::DataType const& type, GemmDims const& dims, GemmIdType const& gemmId, bool hasCudaKernel, bool rounded) {
   writer_lock lock(mMNKProfileMap->mutex);
 
   if (!dims.isInitialized()) {
@@ -139,7 +147,7 @@ void GemmPluginProfiler<Config, RunnerPtr, GemmIdType, GemmIdHashType>::profileT
   mRunner = runner;
   mType = type;
 
-  int const maxM = std::min(nextPowerOfTwo(dims.maxM), getMaxProfileM());
+  int const maxM = rounded ? std::min(nextPowerOfTwo(dims.maxM), getMaxProfileM()) : dims.maxM;
   computeTmpSize(maxM, dims.n, dims.k);
 
   if (!mMNKProfileMap->existsMProfileMap(gemmId)) {
@@ -155,6 +163,8 @@ void GemmPluginProfiler<Config, RunnerPtr, GemmIdType, GemmIdHashType>::profileT
   bool isAllocated{false};
 
   auto profileTactics = [&mProfileMap, &isAllocated, this](int m, int n, int k) {
+    PRINT_FUNCTION_PARAMS("profileTactics", m, n, k);
+
     if (mProfileMap->count(m) == 0) {
       if (!isAllocated) {
         // Allocate tmp data to run GEMMs
@@ -184,26 +194,27 @@ void GemmPluginProfiler<Config, RunnerPtr, GemmIdType, GemmIdHashType>::profileT
 
   common::check_cuda_error(cudaStreamCreate(&mStream));
 
-  int const startMinMRounded = nextPowerOfTwo(dims.minM);
+  // int const startMinMRounded = nextPowerOfTwo(dims.minM);
 
-  if (hasCudaKernel) {
-    // Profile tactics for finer granularity of M if CUDA kernel is enabled
-    int minM = dims.minM;
-    for (int m = std::max(1, minM); m < std::min(16, maxM); m += 1) {
-      profileTactics(m, dims.n, dims.k);
-    }
+  // if (hasCudaKernel) {
+  //   // Profile tactics for finer granularity of M if CUDA kernel is enabled
+  //   int minM = dims.minM;
+  //   for (int m = std::max(1, minM); m < std::min(16, maxM); m += 1) {
+  //     profileTactics(m, dims.n, dims.k);
+  //   }
 
-    for (int m = 16; m < maxM; m *= 2) {
-      profileTactics(m, dims.n, dims.k);
-    }
-  } else {
-    // Profile tactics for CUTLASS kernel only
-    for (int m = std::max(1, startMinMRounded); m < maxM; m *= 2) {
-      profileTactics(m, dims.n, dims.k);
-    }
-  }
+  //   for (int m = 16; m < maxM; m *= 2) {
+  //     profileTactics(m, dims.n, dims.k);
+  //   }
+  // } else {
+  //   // Profile tactics for CUTLASS kernel only
+  //   for (int m = std::max(1, startMinMRounded); m < maxM; m *= 2) {
+  //     profileTactics(m, dims.n, dims.k);
+  //   }
+  // }
+  // profileTactics(maxM, dims.n, dims.k);
 
-  profileTactics(maxM, dims.n, dims.k);
+  profileTactics(dims.maxM, dims.n, dims.k);
 
   if (isAllocated) {
     // Free tmp data
@@ -215,6 +226,7 @@ void GemmPluginProfiler<Config, RunnerPtr, GemmIdType, GemmIdHashType>::profileT
 template <typename Config, typename RunnerPtr, typename GemmIdType, typename GemmIdHashType>
 std::optional<Config> GemmPluginProfiler<Config, RunnerPtr, GemmIdType, GemmIdHashType>::getBestConfig(
     int m, GemmIdType const& gemmId) const {
+  PRINT_FUNCTION_PARAMS("GemmPluginProfiler::getBestConfig", m, gemmId.n, gemmId.k);
   reader_lock lock(mMNKProfileMap->mutex);
 
   if (mSkip) {
@@ -238,6 +250,27 @@ std::optional<Config> GemmPluginProfiler<Config, RunnerPtr, GemmIdType, GemmIdHa
 }
 
 template <typename Config, typename RunnerPtr, typename GemmIdType, typename GemmIdHashType>
+std::optional<Config> GemmPluginProfiler<Config, RunnerPtr, GemmIdType, GemmIdHashType>::tryGetBestConfig(
+    int m, GemmIdType const& gemmId, bool rounded) const {
+  PRINT_FUNCTION_PARAMS("GemmPluginProfiler::tryGetBestConfig", m, gemmId.n, gemmId.k);
+  reader_lock lock(mMNKProfileMap->mutex);
+
+  if (!mMNKProfileMap->existsMProfileMap(gemmId)) {
+    return std::nullopt;
+  }
+
+  int mRounded = rounded ? std::min(std::max(1, nextPowerOfTwo(m)), getMaxProfileM()) : m;
+  if (mMNKProfileMap->getMProfileMap(gemmId)->count(m) > 0) {
+    return mMNKProfileMap->getMProfileMap(gemmId)->at(m);
+  } else if (mMNKProfileMap->getMProfileMap(gemmId)->count(mRounded) > 0) {
+    return mMNKProfileMap->getMProfileMap(gemmId)->at(mRounded);
+  } else {
+    return std::nullopt;
+  }
+}
+
+
+template <typename Config, typename RunnerPtr, typename GemmIdType, typename GemmIdHashType>
 void GemmPluginProfiler<Config, RunnerPtr, GemmIdType, GemmIdHashType>::allocateTmpData() {
   TLLM_CHECK_WITH_INFO(mTmpWorkspaceSizeInBytes > 0, "tmpWorkspaceSizeInBytes must be larger than 0");
   auto const status = cudaMalloc(&mWorkspaceTmp, mTmpWorkspaceSizeInBytes);
@@ -254,6 +287,7 @@ template <typename Config, typename RunnerPtr, typename GemmIdType, typename Gem
 std::optional<Config> GemmPluginProfiler<Config, RunnerPtr, GemmIdType, GemmIdHashType>::profileTacticsForProblem(
     int m, int n, int k, std::vector<Config> const& tactics) {
   TLLM_LOG_DEBUG(__PRETTY_FUNCTION__);
+  PRINT_FUNCTION_PARAMS("GemmPluginProfiler::profileTacticsForProblem", m, n, k);
 
   float bestTime = std::numeric_limits<float>::max();
   Config bestConfig;
@@ -305,6 +339,8 @@ std::optional<Config> GemmPluginProfiler<Config, RunnerPtr, GemmIdType, GemmIdHa
 template <typename Config, typename RunnerPtr, typename GemmIdType, typename GemmIdHashType>
 float GemmPluginProfiler<Config, RunnerPtr, GemmIdType, GemmIdHashType>::profileTacticForProblem(
     int m, int n, int k, Config const& tactic) {
+  PRINT_FUNCTION_PARAMS("GemmPluginProfiler::profileTacticForProblem", m, n, k);
+
   constexpr int warmup = 5;
   constexpr int runs = 10;
 

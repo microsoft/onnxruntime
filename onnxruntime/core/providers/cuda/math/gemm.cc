@@ -151,7 +151,9 @@ Status Gemm<T>::ComputeDefault(OpKernelContext* ctx, int M, int N, int K) const 
   if (GetTuningContext()->IsTunableOpEnabled()) {
     if (beta_ == 0 || B == nullptr){
       if (std::is_same<T, MLFloat16>::value || std::is_same<T, BFloat16>::value || std::is_same<T, float>::value) {
-        printf("use gemm runner\n");
+#ifndef NDEBUG
+        std::cout << "Gemm op with parameters: M=" << M << ", N=" << N << ", K=" << K << std::endl;
+#endif
         if (gemm_runner_ == nullptr) {
           std::lock_guard<std::mutex> lock(gemm_runner_mutex_);
           if (gemm_runner_ == nullptr){
@@ -160,11 +162,15 @@ Status Gemm<T>::ComputeDefault(OpKernelContext* ctx, int M, int N, int K) const 
           }
         }
 
-        void* workspace = nullptr;
+        AllocatorPtr allocator;
+        ORT_RETURN_IF_ERROR(ctx->GetTempSpaceAllocator(&allocator));
+        IAllocatorUniquePtr<void> workspace = IAllocator::MakeUniquePtr<void>(allocator, gemm_runner_->GetWorkspaceSize(), false, ctx->GetComputeStream());
+
+
         cudaStream_t stream = this->Stream(ctx);
         cublasHandle_t cublas_handle = GetCublasHandle(ctx);
         cublasLtHandle_t cublasLt_handle = CublasLtHandle();
-        gemm_runner_->Run(X, W, Y, workspace, stream, cublas_handle, cublasLt_handle);
+        gemm_runner_->Run(X, W, Y, workspace.get(), stream, cublas_handle, cublasLt_handle);
         return Status::OK();
       }
     }

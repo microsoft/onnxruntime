@@ -336,6 +336,8 @@ void GemmRunner::Impl::Initialize(int pad_lda, int pad_ldb, int pad_ldc, bool tr
   plugin_profiler_ = std::make_shared<CublasLtGemmPluginProfiler>();
   plugin_profiler_->setOutputType(output_dtype_);
   plugin_profiler_->setPadLd(pad_lda_, pad_ldb_, pad_ldc_);
+  plugin_profiler_->setTranspose(transA_, transB_);
+  //plugin_profiler_ = gemmPluginProfileManager.createGemmPluginProfiler(/* inference */ true, /* skip */ true);
 }
 
 cudaDataType_t GetOutputCublasType(int out_type) {
@@ -429,29 +431,10 @@ void GemmRunner::Impl::Run(const onnxruntime::Tensor* X, const onnxruntime::Tens
   cudaDataType_t output_cublas_type = GetOutputCublasType(Y->GetElementType());
   auto input_type = SetGemmConfig(cublas_wrapper_, X->GetElementType(), output_cublas_type);
 
-  if (gemm_id.n == 0) {  // not configured yet.
+  if (!gemm_id.IsInitialized()) {
     const TensorShape& min_x = X->Shape();
     const TensorShape& max_x = X->Shape();
     Configure(min_x, max_x, W->Shape());
-  }
-
-  plugin_profiler_ = gemmPluginProfileManager.createGemmPluginProfiler(/* inference */ true, /* skip */ true);
-  plugin_profiler_->setTranspose(transA_, transB_);
-
-  plugin_profiler_->setOutputType(output_dtype_);
-
-  plugin_profiler_->setPadLd(pad_lda_, pad_ldb_, pad_ldc_);
-
-  gemm_id = GemmIdCublas(profile_dims.n, profile_dims.k, input_type, transA_, transB_, output_dtype_);
-
-  plugin_profiler_->profileTactics(cublas_wrapper_, input_type, profile_dims, gemm_id);
-
-  std::string mnkStr = "MNK={" + std::to_string(M) + ", " + std::to_string(N) + ", " + std::to_string(K) + "}";
-  {
-    std::string const activationStr = "GEMM layer's activation before GEMM with " + mnkStr;
-    TLLM_CHECK_DEBUG_WITH_INFO(
-        onnxruntime::llm::runtime::utils::tensorHasInvalid(M, K, input_type, X->DataRaw(), stream, activationStr) == false,
-        "Found invalid number (NaN or Inf) in " + activationStr);
   }
 
   bool cudaKernelFinished = false;
@@ -487,21 +470,46 @@ void GemmRunner::Impl::Run(const onnxruntime::Tensor* X, const onnxruntime::Tens
     cudaKernelFinished = onnxruntime::llm::kernels::cuda_core_gemm::cudaCoreGemmDispatcher(params, stream);
   }
 
+#ifndef NDEBUG
+  std::string mnkStr = "MNK={" + std::to_string(M) + ", " + std::to_string(N) + ", " + std::to_string(K) + "}";
+#endif
+
   if (!cudaKernelFinished) {
-    auto bestTactic = plugin_profiler_->getBestConfig(M, gemm_id);
-    runGemm(M, N, K, transA_, transB_, pad_lda_, pad_ldb_, pad_ldc_, input_type, cublas_wrapper_,
+
+    gemm_id = GemmIdCublas(profile_dims.n, profile_dims.k, input_type, transA_, transB_, output_dtype_);
+    constexpr bool rounded = false;
+    auto bestTactic = plugin_profiler_->tryGetBestConfig(M, gemm_id, rounded);
+    if (bestTactic == std::nullopt) {
+      // If no tactic is found, profile the tactics
+      plugin_profiler_->profileTactics(cublas_wrapper_, input_type, profile_dims, gemm_id, true, rounded);
+      // bestTactic = plugin_profiler_->getBestConfig(M, gemm_id);
+      bestTactic = plugin_profiler_->tryGetBestConfig(M, gemm_id, rounded);
+    }
+
+    #ifndef NDEBUG
+    {
+      std::string const activationStr = "GEMM layer's activation before GEMM with " + mnkStr;
+      TLLM_CHECK_DEBUG_WITH_INFO(
+          onnxruntime::llm::runtime::utils::tensorHasInvalid(M, K, input_type, X->DataRaw(), stream, activationStr) == false,
+          "Found invalid number (NaN or Inf) in " + activationStr);
+    }
+#endif
+
+  runGemm(M, N, K, transA_, transB_, pad_lda_, pad_ldb_, pad_ldc_, input_type, cublas_wrapper_,
             X->DataRaw(),
             W->DataRaw(),
             alpha_,
             Y->MutableDataRaw(), bestTactic, workspace, stream);
   }
 
+#ifndef NDEBUG
   {
     std::string const outputStr = "GEMM layer's output after GEMM with " + mnkStr;
     TLLM_CHECK_DEBUG_WITH_INFO(
         onnxruntime::llm::runtime::utils::tensorHasInvalid(M, N + pad_ldc_, input_type, Y->MutableDataRaw(), stream, outputStr) == false,
         "Found invalid number (NaN or Inf) in " + outputStr);
   }
+#endif
 }
 
 }  // namespace onnxruntime::llm
