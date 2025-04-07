@@ -68,6 +68,7 @@ constexpr GraphOptimizationLevelInfo kGraphOptimizationLevelInfos[]{
     {ORTGraphOptimizationLevelNone, ORT_DISABLE_ALL},
     {ORTGraphOptimizationLevelBasic, ORT_ENABLE_BASIC},
     {ORTGraphOptimizationLevelExtended, ORT_ENABLE_EXTENDED},
+    {ORTGraphOptimizationLevelLayout, ORT_ENABLE_LAYOUT},
     {ORTGraphOptimizationLevelAll, ORT_ENABLE_ALL},
 };
 

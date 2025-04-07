@@ -1279,6 +1279,10 @@ common::Status InferenceSession::TransformGraph(onnxruntime::Graph& graph, bool 
   // 5. run level 2+ optimizations. level 2 and 3 optimizations use contrib ops.
   // 6. insert cast nodes (required transformer).
   // 7. insert copy nodes (required transformer).
+  // 8. fuse initializers.
+  //    - 8a. run level 1 optimizations again. these only use ONNX operators.
+  //    - 8b. partition nodes based on EP capabilities again. EPs may fuse nodes during this process.
+  //    - 8c. run level 2+ optimizations again. level 2 and 3 optimizations use contrib ops.
 
   // Create GraphOptimizerRegistry instance for providing predefined graph optimizers and selection functions for EPs to lookup
   auto graph_optimizer_registry = std::make_unique<GraphOptimizerRegistry>(&session_options_,
@@ -1297,10 +1301,11 @@ common::Status InferenceSession::TransformGraph(onnxruntime::Graph& graph, bool 
                                                                   *session_logger_));
   }
 
-  auto apply_transformer_once = [](const GraphTransformer& transformer, const logging::Logger& logger,
+  bool is_graph_modified = false;
+  auto apply_transformer_once = [&is_graph_modified](const GraphTransformer& transformer, const logging::Logger& logger,
                                    Graph& graph) {
-    bool modified = false;
-    return transformer.Apply(graph, modified, logger);
+    is_graph_modified = false;
+    return transformer.Apply(graph, is_graph_modified, logger);
   };
 
   // ensure potential QDQ node units have unique DQ nodes
@@ -1387,21 +1392,23 @@ common::Status InferenceSession::TransformGraph(onnxruntime::Graph& graph, bool 
                                                        session_options_.config_options, *session_logger_,
                                                        mode, debug_graph_fn));
 
-  // apply Level2 and higher transformers.
+  // apply Level2 and Level3 transformers.
   // we do not run Level 1 again as those transformers assume partitioning will run later to do node assignment.
-  for (int i = static_cast<int>(TransformerLevel::Level2); i <= static_cast<int>(TransformerLevel::MaxLevel); i++) {
-    ORT_RETURN_IF_ERROR_SESSIONID_(
-        graph_transformer_mgr_.ApplyTransformers(graph, static_cast<TransformerLevel>(i), *session_logger_));
-  }
+  ORT_RETURN_IF_ERROR_SESSIONID_(graph_transformer_mgr_.ApplyTransformers(graph, TransformerLevel::Level2, *session_logger_));
+  ORT_RETURN_IF_ERROR_SESSIONID_(graph_transformer_mgr_.ApplyTransformers(graph, TransformerLevel::Level3, *session_logger_));
 
   // Insert cast node/s.
   {
     const InlinedVector<gsl::not_null<const KernelRegistry*>> kernel_regs =
         kernel_registry_manager_.GetKernelRegistriesByProviderType(kCpuExecutionProvider);
+
     const KernelRegistry* cpu_regs = nullptr;
     if (!kernel_regs.empty()) {
-      cpu_regs = kernel_regs[0];
+      // NOTE: This assumes that CPU kernels are always at the n-1 index of kernel registries vector as per the design
+      //       of GetKernelRegistriesByProviderType function.
+      cpu_regs = kernel_regs[kernel_regs.size()-1];
     }
+
     InsertCastTransformer insert_cast_transformer{"CastFloat16Transformer", cpu_regs};
     ORT_RETURN_IF_ERROR_SESSIONID_(apply_transformer_once(insert_cast_transformer, *session_logger_, graph));
   }
@@ -1416,6 +1423,34 @@ common::Status InferenceSession::TransformGraph(onnxruntime::Graph& graph, bool 
     MemcpyTransformer copy_transformer{provider_types, kernel_registry_manager_};
     ORT_RETURN_IF_ERROR_SESSIONID_(apply_transformer_once(copy_transformer, *session_logger_, graph));
   }
+
+  // Apply Level4 transformers and Re-Run the Level1+ optimizations.
+  // The idea behind re-runing Level1, Partitioning, Level2 and Level3 graph transforms is that, after the fusion,
+  // the nodes are now in a format which might be supported by other graph transforms which were skipped before.
+  // Hence, some of the transforms not applied before is now valid and can be applied to create a more optimal
+  // graph for execution.
+  {
+    ORT_RETURN_IF_ERROR_SESSIONID_(graph_transformer_mgr_.ApplyTransformers(graph, TransformerLevel::Level4, *session_logger_));
+
+    // Re-Run Level1+ optimizations if graph is modified
+    if (graph_transformer_mgr_.IsGraphModified()) {
+
+      // apply execution provider independent Level1 graph optimizations after fusion.
+      ORT_RETURN_IF_ERROR_SESSIONID_(graph_transformer_mgr_.ApplyTransformers(graph, TransformerLevel::Level1, *session_logger_));
+
+      // Do partitioning based on execution providers' capabilities after fusion.
+      ORT_RETURN_IF_ERROR_SESSIONID_(partitioner.Partition(graph, session_state_->GetMutableFuncMgr(), transform_layout_fn,
+                                                           session_options_.config_options, *session_logger_,
+                                                           mode, debug_graph_fn));
+
+      // apply Level2 and Level3 transformers after fusion.
+      // we do not run Level 1 again as those transformers assume partitioning will run later to do node assignment.
+      ORT_RETURN_IF_ERROR_SESSIONID_(graph_transformer_mgr_.ApplyTransformers(graph, TransformerLevel::Level2, *session_logger_));
+      ORT_RETURN_IF_ERROR_SESSIONID_(graph_transformer_mgr_.ApplyTransformers(graph, TransformerLevel::Level3, *session_logger_));
+    }
+  }
+
+
 
 #ifdef ENABLE_TRAINING
   // Enable memory optimizations.
