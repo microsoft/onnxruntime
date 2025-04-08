@@ -865,13 +865,15 @@ def generate_build_tree(
     # if args.use_jsep and args.use_webgpu:
     #     raise BuildError("JSEP (--use_jsep) and WebGPU (--use_webgpu) cannot be enabled at the same time.")
 
-    if args.use_external_dawn and not args.use_webgpu:
-        raise BuildError("External Dawn (--use_external_dawn) must be enabled with WebGPU (--use_webgpu).")
+    if not args.use_webgpu:
+        if args.use_external_dawn:
+            raise BuildError("External Dawn (--use_external_dawn) must be enabled with WebGPU (--use_webgpu).")
 
-    if args.enable_pix_capture and (not args.use_webgpu or not is_windows()):
-        raise BuildError(
-            "Enable PIX Capture (--enable_pix_capture) must be enabled with WebGPU (--use_webgpu) on Windows"
-        )
+        if is_windows():
+          if args.enable_pix_capture:
+            raise BuildError(
+                "Enable PIX Capture (--enable_pix_capture) must be enabled with WebGPU (--use_webgpu) on Windows"
+            )
 
     if args.use_snpe:
         cmake_args += ["-Donnxruntime_USE_SNPE=ON"]
