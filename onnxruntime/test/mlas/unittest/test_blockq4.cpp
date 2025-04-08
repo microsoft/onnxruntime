@@ -19,46 +19,57 @@ Abstract:
 #include "test_util.h"
 #include "mlas_q4.h"
 
+template <int qbits>
+int GetElem(int v, int idx) {
+  return (v >> (qbits * idx)) & ((1 << qbits) - 1);
+}
+
+template <typename T, int qbits>
 class MlasBlockwiseQdqTest : public MlasTestBase {
  private:
-  MatrixGuardBuffer<float> FpBuf;
-  MatrixGuardBuffer<float> FpBuf2;
+  MatrixGuardBuffer<T> FpBuf;
+  MatrixGuardBuffer<T> FpBuf2;
   MatrixGuardBuffer<uint8_t> InputElements;
-  MatrixGuardBuffer<float> InputScales;
+  MatrixGuardBuffer<T> InputScales;
   MatrixGuardBuffer<uint8_t> InputOffsets;
   MatrixGuardBuffer<uint8_t> OutputElements;
-  MatrixGuardBuffer<float> OutputScales;
+  MatrixGuardBuffer<T> OutputScales;
   MatrixGuardBuffer<uint8_t> OutputOffsets;
   MatrixGuardBuffer<uint8_t> QDQOutputElements;
-  MatrixGuardBuffer<float> QDQOutputScales;
+  MatrixGuardBuffer<T> QDQOutputScales;
   MatrixGuardBuffer<uint8_t> QDQOutputOffsets;
   MatrixGuardBuffer<uint8_t> QDQTransposedOutputElements;
-  MatrixGuardBuffer<float> QDQTransposedOutputScales;
+  MatrixGuardBuffer<T> QDQTransposedOutputScales;
   MatrixGuardBuffer<uint8_t> QDQTransposedOutputOffsets;
 
   void Test(int rows, int columns, int block_size, bool columnwise, bool symmetric) {
-    float* dequant_buf = FpBuf.GetBuffer(rows * columns, true);
-    float* transposed = FpBuf2.GetBuffer(rows * columns, true);
+    T* dequant_buf = FpBuf.GetBuffer(rows * columns, true);
+    T* transposed = FpBuf2.GetBuffer(rows * columns, true);
     size_t scale_size = (rows + block_size - 1) / block_size * columns;
-    size_t zp_size = (scale_size + 1) / 2;
+    size_t zp_size = (scale_size + 1) / 2; // 4bit specific
+    constexpr int packSize = 8 / qbits;
 
     MLAS_THREADPOOL* threadpool_ptr = GetMlasThreadPool();
 
     int meta_rows;
     int meta_cols;
-    MlasBlockwiseQuantMetaShape<float, 4>(block_size, columnwise, rows, columns, meta_rows, meta_cols);
+    MlasBlockwiseQuantMetaShape<T, qbits>(block_size, columnwise, rows, columns, meta_rows, meta_cols);
 
     int q_rows;
     int q_cols;
-    MlasBlockwiseQuantizedShape<float, 4>(block_size, columnwise, rows, columns, q_rows, q_cols);
+    MlasBlockwiseQuantizedShape<T, qbits>(block_size, columnwise, rows, columns, q_rows, q_cols);
 
     size_t q_data_size_in_bytes, q_scale_size, q_zp_size_in_bytes;
-    MlasBlockwiseQuantizedBufferSizes<4>(block_size, columnwise, rows, columns,
+    MlasBlockwiseQuantizedBufferSizes<qbits>(block_size, columnwise, rows, columns,
                                       q_data_size_in_bytes, q_scale_size, &q_zp_size_in_bytes);
 
     uint8_t* elements = InputElements.GetBuffer(q_data_size_in_bytes, true);
-    uint8_t* qdq_weights = QDQOutputElements.GetBuffer((rows * columns + 1) / 2, true);
-    uint8_t* qdq_weights_T = QDQTransposedOutputElements.GetBuffer(q_data_size_in_bytes, true);
+    uint8_t* qdq_weights;
+    uint8_t* qdq_weights_T;
+    if constexpr (qbits == 4) {
+      qdq_weights = QDQOutputElements.GetBuffer((rows * columns + packSize - 1) / packSize, true);
+      qdq_weights_T = QDQTransposedOutputElements.GetBuffer(q_data_size_in_bytes, true);
+    }
 
     int v = 7;
     for (int c = 0; c < columns; c++) {
@@ -84,12 +95,19 @@ class MlasBlockwiseQdqTest : public MlasTestBase {
       }
     }
 
-    float* scales = InputScales.GetBuffer(q_scale_size);
-    float* qdq_scales = QDQOutputScales.GetBuffer(scale_size);
-    float* qdq_scales_T = QDQTransposedOutputScales.GetBuffer(q_scale_size);
+    T* scales = InputScales.GetBuffer(q_scale_size);
     uint8_t* zp = symmetric ? nullptr : InputOffsets.GetBuffer(q_zp_size_in_bytes, true);
-    uint8_t* qdq_zp = symmetric ? nullptr : QDQOutputOffsets.GetBuffer(zp_size, true);
-    uint8_t* qdq_zp_T = symmetric ? nullptr : QDQTransposedOutputOffsets.GetBuffer(q_zp_size_in_bytes, true);
+    T* qdq_scales;
+    T* qdq_scales_T;
+    uint8_t* qdq_zp;
+    uint8_t* qdq_zp_T;
+    if constexpr (qbits == 4) {
+      qdq_scales = QDQOutputScales.GetBuffer(scale_size);
+      qdq_scales_T = QDQTransposedOutputScales.GetBuffer(q_scale_size);
+      qdq_zp = symmetric ? nullptr : QDQOutputOffsets.GetBuffer(zp_size, true);
+      qdq_zp_T = symmetric ? nullptr : QDQTransposedOutputOffsets.GetBuffer(q_zp_size_in_bytes, true);
+    }
+
     if (zp) {
       for (int c = 0; c < meta_cols; c++) {
         for (int r = 0; r < meta_rows; r += 2) {
@@ -114,56 +132,51 @@ class MlasBlockwiseQdqTest : public MlasTestBase {
       }
     }
 
-    MlasDequantizeBlockwise<float, 4>(dequant_buf, elements, scales, zp, block_size,
+    MlasDequantizeBlockwise<T, qbits>(dequant_buf, elements, scales, zp, block_size,
                                       columnwise, rows, columns, threadpool_ptr);
 
     MlasTranspose(dequant_buf, transposed, columns, rows, threadpool_ptr);
 
     uint8_t* o_elements = OutputElements.GetBuffer(q_rows * q_cols, true);
-    float* o_scales = OutputScales.GetBuffer(meta_rows * meta_cols);
-    uint8_t* o_zp = symmetric ? nullptr : OutputOffsets.GetBuffer(((meta_rows + 1) / 2) * meta_cols, true);
+    T* o_scales = OutputScales.GetBuffer(meta_rows * meta_cols);
+    uint8_t* o_zp = symmetric
+      ? nullptr
+      : OutputOffsets.GetBuffer(((meta_rows + packSize - 1) / packSize) * meta_cols, true);
 
-    MlasQuantizeBlockwise<float, 4>(o_elements, o_scales, o_zp, transposed, block_size,
+    MlasQuantizeBlockwise<T, qbits>(o_elements, o_scales, o_zp, transposed, block_size,
                                     columnwise, rows, columns, columns, threadpool_ptr);
 
-    if (columnwise) {
-      bool signed_quant = MlasQDQQuantizeBlockwise<float, 4>(
-          transposed, qdq_scales, qdq_zp, qdq_weights,
-          true, rows, columns, block_size, threadpool_ptr);
-
-      ASSERT_EQ(symmetric, signed_quant) << "symmetric quantization should be signed";
-
-      if (symmetric) {
-        MlasQDQTransposeBlockwiseQuantized<float, 4, true>(
-            qdq_weights, qdq_scales, qdq_zp, qdq_weights_T, qdq_scales_T, qdq_zp_T,
+    if constexpr (qbits == 4) {
+      if (columnwise) {
+        bool signed_quant = MlasQDQQuantizeBlockwise<T, qbits>(
+            transposed, qdq_scales, qdq_zp, qdq_weights,
             true, rows, columns, block_size, threadpool_ptr);
 
-      } else {
-        MlasQDQTransposeBlockwiseQuantized<float, 4, false>(
-            qdq_weights, qdq_scales, qdq_zp, qdq_weights_T, qdq_scales_T, qdq_zp_T,
-            true, rows, columns, block_size, threadpool_ptr);
+        ASSERT_EQ(symmetric, signed_quant) << "symmetric quantization should be signed";
+
+        if (symmetric) {
+          MlasQDQTransposeBlockwiseQuantized<T, qbits, true>(
+              qdq_weights, qdq_scales, qdq_zp, qdq_weights_T, qdq_scales_T, qdq_zp_T,
+              true, rows, columns, block_size, threadpool_ptr);
+
+        } else {
+          MlasQDQTransposeBlockwiseQuantized<T, qbits, false>(
+              qdq_weights, qdq_scales, qdq_zp, qdq_weights_T, qdq_scales_T, qdq_zp_T,
+              true, rows, columns, block_size, threadpool_ptr);
+        }
       }
     }
 
     for (int c = 0; c < columns; c++) {
-      for (int r = 0; r < rows; r += 2) {
-        int idx = c * q_rows + r / 2;
-        ASSERT_EQ(o_elements[idx] & 0xf, elements[idx] & 0xf)
-            << ", index=[" << r << "x" << c << "], shape=[" << rows << "x" << columns
-            << "] block: " << block_size << ", symmetric: " << symmetric << ", columnwise: " << columnwise;
-        if (columnwise) {
-          ASSERT_EQ(qdq_weights_T[idx] & 0xf, elements[idx] & 0xf)
-              << ", index=[" << r << "x" << c << "], shape=[" << rows << "x" << columns
+      for (int r = 0; r < rows; r += packSize) {
+        int idx = c * q_rows + r / packSize;
+        for (int l = 0; l < packSize && l + r < rows; ++l) {
+          ASSERT_EQ(GetElem<qbits>(o_elements[idx], l), GetElem<qbits>(elements[idx], l))
+              << ", index=[" << r+l << "x" << c << "], shape=[" << rows << "x" << columns
               << "] block: " << block_size << ", symmetric: " << symmetric << ", columnwise: " << columnwise;
-        }
-
-        if (r + 1 < rows) {
-          ASSERT_EQ(o_elements[idx] >> 4, elements[idx] >> 4)
-              << ", index=[" << r + 1 << "x" << c << "], shape=[" << rows << "x" << columns
-              << "] block: " << block_size << ", symmetric: " << symmetric << ", columnwise: " << columnwise;
-          if (columnwise) {
-            ASSERT_EQ(qdq_weights_T[idx] >> 4, elements[idx] >> 4)
-                << ", index=[" << r + 1 << "x" << c << "], shape=[" << rows << "x" << columns
+          if (columnwise && qbits == 4) {
+            ASSERT_EQ(GetElem<qbits>(qdq_weights_T[idx], l), GetElem<qbits>(elements[idx], l))
+                << ", index=[" << r+l << "x" << c << "], shape=[" << rows << "x" << columns
                 << "] block: " << block_size << ", symmetric: " << symmetric << ", columnwise: " << columnwise;
           }
         }
@@ -177,7 +190,7 @@ class MlasBlockwiseQdqTest : public MlasTestBase {
             << ", index=" << r << "x" << c << ", shape=[" << rows << "x" << columns
             << "] block: " << block_size << ", symmetric: " << symmetric << ", columnwise: " << columnwise;
 
-        if (columnwise) {
+        if (columnwise && qbits == 4) {
           ASSERT_EQ(qdq_scales_T[idx], scales[idx])
               << ", index=" << r << "x" << c << ", shape=[" << rows << "x" << columns
               << "] block: " << block_size << ", symmetric: " << symmetric << ", columnwise: " << columnwise;
@@ -187,23 +200,15 @@ class MlasBlockwiseQdqTest : public MlasTestBase {
 
     if (symmetric) return;
     for (int c = 0; c < meta_cols; c++) {
-      for (int r = 0; r < meta_rows; r += 2) {
-        int idx = c * ((meta_rows + 1) / 2) + r / 2;
-        ASSERT_EQ(o_zp[idx] & 0xf, zp[idx] & 0xf)
-            << ", index=" << r << "x" << c << ", shape=[" << rows << "x" << columns
-            << "] block: " << block_size << ", symmetric: " << symmetric << ", columnwise: " << columnwise;
-        if (columnwise) {
-          ASSERT_EQ(qdq_zp_T[idx] & 0xf, zp[idx] & 0xf)
-              << ", index=" << r << "x" << c << ", shape=[" << rows << "x" << columns
+      for (int r = 0; r < meta_rows; r += packSize) {
+        int idx = c * ((meta_rows + packSize - 1) / packSize) + r / packSize;
+        for (int l = 0; l < packSize && r+l < meta_rows; ++l) {
+          ASSERT_EQ(GetElem<qbits>(o_zp[idx], l), GetElem<qbits>(zp[idx], l))
+              << ", index=" << r+l << "x" << c << ", shape=[" << rows << "x" << columns
               << "] block: " << block_size << ", symmetric: " << symmetric << ", columnwise: " << columnwise;
-        }
-        if (r + 1 < meta_rows) {
-          ASSERT_EQ(o_zp[idx] >> 4, zp[idx] >> 4)
-              << ", index=" << r + 1 << "x" << c << ", shape=[" << rows << "x" << columns
-              << "] block: " << block_size << ", symmetric: " << symmetric << ", columnwise: " << columnwise;
-          if (columnwise) {
-            ASSERT_EQ(qdq_zp_T[idx] >> 4, zp[idx] >> 4)
-                << ", index=" << r + 1 << "x" << c << ", shape=[" << rows << "x" << columns
+          if (columnwise && qbits == 4) {
+            ASSERT_EQ(GetElem<qbits>(qdq_zp_T[idx], l), GetElem<qbits>(zp[idx], l))
+                << ", index=" << r+l << "x" << c << ", shape=[" << rows << "x" << columns
                 << "] block: " << block_size << ", symmetric: " << symmetric << ", columnwise: " << columnwise;
           }
         }
@@ -263,7 +268,7 @@ class MlasBlockwiseQdqTest : public MlasTestBase {
 static UNUSED_VARIABLE bool added_to_main = AddTestRegister([](bool is_short_execute) {
   size_t count = 0;
   if (is_short_execute) {
-    count += MlasDirectShortExecuteTests<MlasBlockwiseQdqTest>::RegisterShortExecute();
+    count += MlasDirectShortExecuteTests<MlasBlockwiseQdqTest<float, 4>>::RegisterShortExecute();
   }
   return count;
 });
