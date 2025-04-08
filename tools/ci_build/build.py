@@ -1115,7 +1115,6 @@ def generate_build_tree(
         # The values set here are purely for security and compliance purposes. ONNX Runtime should work fine without these flags.
         if (
             (args.use_binskim_compliant_compile_flags or args.enable_address_sanitizer)
-            and not args.ios
             and not args.android
         ):
             if is_windows() and not args.build_wasm:
