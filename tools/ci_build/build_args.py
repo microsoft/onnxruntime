@@ -380,9 +380,9 @@ def add_gdk_args(parser: argparse.ArgumentParser) -> None:
     """Adds arguments for GDK (Xbox) platform builds."""
     parser.add_argument("--use_gdk", action="store_true", help="Build with the GDK toolchain.")
     default_gdk_edition = ""
-    gdk_latest_env = os.environ.get("GameDKLatest", "")
+    gdk_latest_env = os.environ.get("GameDKLatest", "")   # noqa: SIM112
     if gdk_latest_env:
-        try:
+        try:    # noqa: SIM105
             # Use os.path.basename for potentially cleaner extraction of the last component
             default_gdk_edition = os.path.basename(os.path.normpath(gdk_latest_env))
         except Exception: # Catch potential errors during path manipulation
