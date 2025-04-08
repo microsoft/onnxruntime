@@ -127,9 +127,10 @@ def add_core_build_args(parser):
         "--build_apple_framework", action="store_true", help="Build a macOS/iOS framework for ONNXRuntime."
     )
     parser.add_argument("--enable_lto", action="store_true", help="Enable Link Time Optimization (LTO).")
-    parser.add_argument("--use_cache", action="store_true", help="Use compiler cache in CI (e.g., ccache/sccache).")
-    parser.add_argument("--use_avx512", action="store_true", help="Enable AVX512 instructions (if target supports it).") # CPU optimization
-
+    parser.add_argument("--use_cache", action="store_true", help="Use ccache in CI")
+    parser.add_argument(
+         "--use_binskim_compliant_compile_flags", action="store_true", help="[MS Internal] Use preset compile flags for BinSkim compliance."
+    )
 
 def add_cmake_build_config_args(parser):
     """Adds arguments related to CMake and general build system configuration."""
@@ -431,10 +432,6 @@ def add_windows_specific_args(parser):
         help="[Windows cross-compiling] Create ARM64X Binary.",
     )
 
-    # Debugging / Compliance
-    parser.add_argument(
-         "--use_binskim_compliant_compile_flags", action="store_true", help="Use preset compile flags for BinSkim compliance."
-    )
     parser.add_argument(
         "--disable_memleak_checker",
         action="store_true",
@@ -442,7 +439,6 @@ def add_windows_specific_args(parser):
     )
     parser.add_argument("--enable_pix_capture", action="store_true", help="Enable Pix support for GPU debugging (requires D3D12).")
 
-    # Other Windows Features
     parser.add_argument("--enable_wcos", action="store_true", help="Build for Windows Core OS.")
 
 
