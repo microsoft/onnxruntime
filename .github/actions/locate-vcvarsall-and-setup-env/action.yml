@@ -12,30 +12,22 @@ outputs:
 runs:
   using: "composite"
   steps:
-    - name: Download ORT Actions Asset (v0.0.3)
-      uses: dsaltares/fetch-gh-release-asset@1.1.0 # Action to download assets
-      with:
-        repo: 'microsoft/onnxruntime-github-actions'    # The repo containing the actions
-        version: 'tags/v0.0.3'                           # The specific tag/version to use
-        file: 'onnxruntime-actions-v0.0.3.zip'           # The asset filename (matches release workflow output)
-        target: 'onnxruntime-actions.zip'                # Local filename to save as
-
-    - name: Unzip ORT Actions (Windows)
-      shell: pwsh
-      run: |
-        # Create a directory to hold them (-Force acts like -p, creates parents if needed)
-        New-Item -Path '.\.github\_downloaded_actions' -ItemType Directory -Force
-        # Unzip the archive to the target directory
-        Expand-Archive -Path '.\onnxruntime-actions.zip' -DestinationPath '.\.github\_downloaded_actions' -Force
-        Write-Host "Unzipped contents:"
-        # List the contents recursively (Windows equivalent of ls -lR)
-        Get-ChildItem -Path '.\.github\_downloaded_actions' -Recurse
 
     - name: Setup VCPKG
-      uses: ./.github/_downloaded_actions/setup-vcpkg
+      uses: microsoft/onnxruntime-github-actions/setup-build-tools@v0.0.5
       with:
         vcpkg-version: '2025.03.19'
         vcpkg-hash: '17e96169cd3f266c4716fcdc1bb728e6a64f103941ece463a2834d50694eba4fb48f30135503fd466402afa139abc847ef630733c442595d1c34979f261b0114'
+        cmake-version: '3.31.6'
+        cmake-hash: '0f1584e8666cf4a65ec514bd02afe281caabf1d45d2c963f3151c41484f457386aa03273ab25776a670be02725354ce0b46f3a5121857416da37366342a833a0'
+        add-cmake-to-path: 'true'
+        disable-terrapin: 'false'
+
+    - name: Verify vcpkg setup
+      shell: pwsh # Use powershell to easily access env var
+      run: |
+          Write-Host "VCPKG_INSTALLATION_ROOT is set to: $env:VCPKG_INSTALLATION_ROOT"
+          & "$env:VCPKG_INSTALLATION_ROOT/vcpkg" version
 
     - name: Find vcvarsall.bat
       id: find-vcvarsall

@@ -781,6 +781,10 @@ class InferenceSession {
   // the session options are released after the individual operators are destroyed.
   SessionOptions session_options_;
 
+  CheckLoadCancellationFn check_load_cancellation_fn_ = [this]() {
+    return session_options_.IsLoadCancellationFlagSet();
+  };
+
   /// Logging manager if provided.
   logging::LoggingManager* logging_manager_;
 
