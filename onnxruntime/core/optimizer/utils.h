@@ -4,10 +4,10 @@
 #pragma once
 
 #if !defined(ORT_MINIMAL_BUILD)
+#include <vector>
 #include "core/graph/onnx_protobuf.h"
 #include "core/graph/graph.h"
 #include "core/common/inlined_containers.h"
-#include <vector>
 #endif  // !#if !defined(ORT_MINIMAL_BUILD)
 
 namespace onnxruntime {
