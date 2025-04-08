@@ -22,6 +22,7 @@ def _str_to_bool(s: str) -> bool:
             raise ValueError(f"Invalid boolean value: {s!r}. Use 'true' or 'false'.")
     return False
 
+
 # --- Argument Verification Helpers ---
 def _qnn_verify_library_kind(library_kind: str) -> str:
     """Verifies the library kind for the QNN Execution Provider."""
@@ -380,7 +381,7 @@ def add_gdk_args(parser: argparse.ArgumentParser) -> None:
     default_gdk_edition = ""
     gdk_latest_env = os.environ.get("GameDKLatest", "")  # noqa: SIM112
     if gdk_latest_env:
-        try:  # noqa: SIM105
+        try:
             default_gdk_edition = os.path.basename(os.path.normpath(gdk_latest_env))
         except Exception as e:
             warnings.warn(f"Failed to determine GDK edition from GameDKLatest env var: {e}")
@@ -787,6 +788,7 @@ def is_cross_compiling(args: argparse.Namespace) -> bool:
             getattr(args, "use_gdk", False),  # GDK args added conditionally
         ]
     )
+
 
 # --- Main Argument Parsing Function ---
 def parse_arguments() -> argparse.Namespace:

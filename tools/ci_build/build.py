@@ -29,7 +29,7 @@ REPO_DIR = os.path.normpath(os.path.join(SCRIPT_DIR, "..", ".."))
 
 sys.path.insert(0, os.path.join(REPO_DIR, "tools", "python"))
 import util.android as android  # noqa: E402
-from build_args import parse_arguments, is_cross_compiling  # noqa: E402
+from build_args import is_cross_compiling, parse_arguments  # noqa: E402
 from util import (  # noqa: E402
     generate_android_triplets,
     generate_linux_triplets,
@@ -373,46 +373,48 @@ def generate_build_tree(
     disable_optional_type = "optional" in types_to_disable
     disable_sparse_tensors = "sparsetensor" in types_to_disable
     if is_windows():
-      cmake_args += [
-        "-Donnxruntime_USE_DML=" + ("ON" if args.use_dml else "OFF"),
-        "-Donnxruntime_USE_WINML=" + ("ON" if args.use_winml else "OFF"),
-        "-Donnxruntime_USE_TELEMETRY=" + ("ON" if args.use_telemetry else "OFF"),
-        "-Donnxruntime_ENABLE_PIX_FOR_WEBGPU_EP=" + ("ON" if args.enable_pix_capture else "OFF"),
-      ]
-      if args.winml_root_namespace_override:
-          cmake_args.append("-Donnxruntime_WINML_NAMESPACE_OVERRIDE=" + args.winml_root_namespace_override)
-      if args.disable_memleak_checker or args.enable_address_sanitizer:
-          cmake_args.append("-Donnxruntime_ENABLE_MEMLEAK_CHECKER=OFF")
-      else:
-          cmake_args.append("-Donnxruntime_ENABLE_MEMLEAK_CHECKER=ON")
-
-      if args.use_winml:
-        cmake_args.append("-Donnxruntime_BUILD_WINML_TESTS=" + ("OFF" if args.skip_winml_tests else "ON"))
-      if args.dml_path:
-          cmake_args += [
-            "-Donnxruntime_USE_CUSTOM_DIRECTML=ON",
-            "-Ddml_INCLUDE_DIR=" + os.path.join(args.dml_path, "include"),
-            "-Ddml_LIB_DIR=" + os.path.join(args.dml_path, "lib"),
-        ]
-
-      if args.dml_external_project:
         cmake_args += [
-            "-Donnxruntime_USE_CUSTOM_DIRECTML=ON",
-            "-Ddml_EXTERNAL_PROJECT=ON",
+            "-Donnxruntime_USE_DML=" + ("ON" if args.use_dml else "OFF"),
+            "-Donnxruntime_USE_WINML=" + ("ON" if args.use_winml else "OFF"),
+            "-Donnxruntime_USE_TELEMETRY=" + ("ON" if args.use_telemetry else "OFF"),
+            "-Donnxruntime_ENABLE_PIX_FOR_WEBGPU_EP=" + ("ON" if args.enable_pix_capture else "OFF"),
         ]
+        if args.winml_root_namespace_override:
+            cmake_args.append("-Donnxruntime_WINML_NAMESPACE_OVERRIDE=" + args.winml_root_namespace_override)
+        if args.disable_memleak_checker or args.enable_address_sanitizer:
+            cmake_args.append("-Donnxruntime_ENABLE_MEMLEAK_CHECKER=OFF")
+        else:
+            cmake_args.append("-Donnxruntime_ENABLE_MEMLEAK_CHECKER=ON")
 
-      if args.use_gdk:
-        cmake_args += [
-            "-DCMAKE_TOOLCHAIN_FILE=" + os.path.join(source_dir, "cmake", "gdk_toolchain.cmake"),
-            "-DGDK_EDITION=" + args.gdk_edition,
-            "-DGDK_PLATFORM=" + args.gdk_platform,
-            "-Donnxruntime_BUILD_UNIT_TESTS=OFF",  # gtest doesn't build for GDK
-        ]
-      if args.use_dml and not (args.dml_path or args.dml_external_project):
-          raise BuildError("You must set dml_path or dml_external_project when building with the GDK.")
+        if args.use_winml:
+            cmake_args.append("-Donnxruntime_BUILD_WINML_TESTS=" + ("OFF" if args.skip_winml_tests else "ON"))
+        if args.dml_path:
+            cmake_args += [
+                "-Donnxruntime_USE_CUSTOM_DIRECTML=ON",
+                "-Ddml_INCLUDE_DIR=" + os.path.join(args.dml_path, "include"),
+                "-Ddml_LIB_DIR=" + os.path.join(args.dml_path, "lib"),
+            ]
+
+        if args.dml_external_project:
+            cmake_args += [
+                "-Donnxruntime_USE_CUSTOM_DIRECTML=ON",
+                "-Ddml_EXTERNAL_PROJECT=ON",
+            ]
+
+        if args.use_gdk:
+            cmake_args += [
+                "-DCMAKE_TOOLCHAIN_FILE=" + os.path.join(source_dir, "cmake", "gdk_toolchain.cmake"),
+                "-DGDK_EDITION=" + args.gdk_edition,
+                "-DGDK_PLATFORM=" + args.gdk_platform,
+                "-Donnxruntime_BUILD_UNIT_TESTS=OFF",  # gtest doesn't build for GDK
+            ]
+        if args.use_dml and not (args.dml_path or args.dml_external_project):
+            raise BuildError("You must set dml_path or dml_external_project when building with the GDK.")
     elif not is_macOS():
-        cmake_args.append("-Donnxruntime_ENABLE_EXTERNAL_CUSTOM_OP_SCHEMAS="
-        + ("ON" if args.enable_external_custom_op_schemas else "OFF"))
+        cmake_args.append(
+            "-Donnxruntime_ENABLE_EXTERNAL_CUSTOM_OP_SCHEMAS="
+            + ("ON" if args.enable_external_custom_op_schemas else "OFF")
+        )
     cmake_args += [
         "-Donnxruntime_RUN_ONNX_TESTS=" + ("ON" if args.enable_onnx_tests else "OFF"),
         "-Donnxruntime_GENERATE_TEST_REPORTS=ON",
@@ -871,10 +873,10 @@ def generate_build_tree(
             raise BuildError("External Dawn (--use_external_dawn) must be enabled with WebGPU (--use_webgpu).")
 
         if is_windows():
-          if args.enable_pix_capture:
-            raise BuildError(
-                "Enable PIX Capture (--enable_pix_capture) must be enabled with WebGPU (--use_webgpu) on Windows"
-            )
+            if args.enable_pix_capture:
+                raise BuildError(
+                    "Enable PIX Capture (--enable_pix_capture) must be enabled with WebGPU (--use_webgpu) on Windows"
+                )
 
     if args.use_snpe:
         cmake_args += ["-Donnxruntime_USE_SNPE=ON"]
@@ -1113,10 +1115,7 @@ def generate_build_tree(
                     cflags += [f"/MP{njobs}"]
         # Setup default values for cflags/cxxflags/ldflags.
         # The values set here are purely for security and compliance purposes. ONNX Runtime should work fine without these flags.
-        if (
-            (args.use_binskim_compliant_compile_flags or args.enable_address_sanitizer)
-            and not args.android
-        ):
+        if (args.use_binskim_compliant_compile_flags or args.enable_address_sanitizer) and not args.android:
             if is_windows() and not args.build_wasm:
                 cflags += ["/guard:cf", "/DWIN32", "/D_WINDOWS"]
                 if not args.use_gdk:
