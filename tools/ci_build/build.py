@@ -2269,7 +2269,7 @@ def main():
         args.test = False
 
     # GDK builds don't support testing
-    if args.use_gdk:
+    if is_windows() and args.use_gdk:
         args.test = False
 
     # enable_training is a higher level flag that enables all training functionality.
