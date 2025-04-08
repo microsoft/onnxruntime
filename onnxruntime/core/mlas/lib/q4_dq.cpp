@@ -488,7 +488,9 @@ struct BlockwiseQuantizer {
         MlasTryBatchParallel(
             thread_pool, total_thrd_blks,
             [&](ptrdiff_t block_idx) {
-                uint8_t zp_bytes[kPackSize] = {(uint8_t)BitsTraits<qbits, false>::kMid}, vi[kPackSize] = {0};
+                uint8_t zp_bytes[kPackSize], vi[kPackSize];
+                std::fill_n(zp_bytes, kPackSize, (uint8_t)BitsTraits<qbits, false>::kMid);
+                std::fill_n(vi, kPackSize, 0);
 
                 const int32_t r_blk_idx = static_cast<int32_t>(block_idx / thrd_col_blks);
                 const int32_t c_blk_idx = static_cast<int32_t>(block_idx % thrd_col_blks);
