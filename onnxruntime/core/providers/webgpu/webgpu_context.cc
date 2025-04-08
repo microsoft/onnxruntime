@@ -136,6 +136,8 @@ void WebGpuContext::Initialize(const WebGpuBufferCacheConfig& buffer_cache_confi
 
     LOGS_DEFAULT(VERBOSE) << "WebGPU EP Context is created for: Instance=" << instance_.Get() << ", Device=" << device_.Get() << ".";
 
+    // cache device queue
+    device_queue_ = device_.GetQueue();
     // cache adapter info
     ORT_ENFORCE(Device().GetAdapterInfo(&adapter_info_));
     // cache device limits
@@ -146,10 +148,6 @@ void WebGpuContext::Initialize(const WebGpuBufferCacheConfig& buffer_cache_confi
     for (size_t i = 0; i < supported_features.featureCount; i++) {
       device_features_.insert(supported_features.features[i]);
     }
-
-#if !defined(__wasm__)
-    supports_buffer_map_extended_usages_ = device_.HasFeature(wgpu::FeatureName::BufferMapExtendedUsages);
-#endif
 
     // create buffer manager
     buffer_mgr_ = BufferManagerFactory::Create(*this,
@@ -404,7 +402,7 @@ Status WebGpuContext::Run(ComputeContext& context, const ProgramBase& program) {
     }
 
     uniform_buffer = buffer_mgr_->Create(uniform_buffer_total_size, wgpu::BufferUsage::CopyDst | wgpu::BufferUsage::Uniform);
-    device_.GetQueue().WriteBuffer(uniform_buffer, 0, uniform_data_buffer.data(), uniform_buffer_total_size);
+    device_queue_.WriteBuffer(uniform_buffer, 0, uniform_data_buffer.data(), uniform_buffer_total_size);
   }
 
   const auto& compute_pass_encoder = GetComputePassEncoder();
@@ -696,7 +694,7 @@ void WebGpuContext::Flush() {
   }
 
   auto command_buffer = current_command_encoder_.Finish();
-  Device().GetQueue().Submit(1, &command_buffer);
+  device_queue_.Submit(1, &command_buffer);
   BufferManager().RefreshPendingBuffers();
   current_command_encoder_ = nullptr;
   num_pending_dispatches_ = 0;
