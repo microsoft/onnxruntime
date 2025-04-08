@@ -535,9 +535,8 @@ set(VCPKG_CMAKE_SYSTEM_NAME Emscripten)
             f.write(f'set(VCPKG_C_FLAGS_RELEASE "{" ".join(c_combined_release_flags)}")\n')
             f.write(f'set(VCPKG_CXX_FLAGS_RELEASE "{" ".join(cxx_combined_release_flags)}")\n')
 
-            # For RelWithDebInfo, add -g
-            c_rel_with_deb_info_flags = c_combined_release_flags + ["-g"]
-            cxx_rel_with_deb_info_flags = cxx_combined_release_flags + ["-g"]
+            c_rel_with_deb_info_flags = [*c_combined_release_flags, "-g"]
+            cxx_rel_with_deb_info_flags = [*cxx_combined_release_flags, "-g"]
             f.write(f'set(VCPKG_C_FLAGS_RELWITHDEBINFO "{" ".join(c_rel_with_deb_info_flags)}")\n')
             f.write(f'set(VCPKG_CXX_FLAGS_RELWITHDEBINFO "{" ".join(cxx_rel_with_deb_info_flags)}")\n')
 
