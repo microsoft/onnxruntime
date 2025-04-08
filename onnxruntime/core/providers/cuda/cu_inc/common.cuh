@@ -441,6 +441,9 @@ __device__ __inline__ T _Sign(T a) { return _Signum(a, std::is_signed<T>()); }
 template <>
 __device__ __inline__ half _Sign(half a) { return _Signum(a, std::true_type()); }
 
+template <>
+__device__ __inline__ BFloat16 _Sign(BFloat16 a) { return _Signum(static_cast<float>(a), std::true_type()); }
+
 template <typename T>
 __device__ __inline__ T _Normcdf(T a);
 

@@ -105,6 +105,8 @@ using ModelMetaData = std::unordered_map<std::string, std::string>;
 using IOnnxRuntimeOpSchemaCollectionPtr = std::shared_ptr<IOnnxRuntimeOpSchemaCollection>;
 using IOnnxRuntimeOpSchemaRegistryList = std::list<IOnnxRuntimeOpSchemaCollectionPtr>;
 using InitializedTensorSet = std::unordered_map<std::string, const ONNX_NAMESPACE::TensorProto*>;
+using KeyValueConfig = std::unordered_map<std::string, std::string>;
+using SelectionFunc = std::function<std::vector<std::unique_ptr<ComputeCapability>>(const GraphViewer&, const KeyValueConfig&, const GraphOptimizerRegistry&)>;
 
 struct Node__NodeIterator {
   virtual ~Node__NodeIterator() {}
@@ -150,6 +152,10 @@ struct ConstGraphNodes_Iterator {
 #endif
 struct ProviderHost {
   virtual const OrtApiBase* OrtGetApiBase() = 0;
+
+  virtual Status GetOptimizerByName(const std::string& name,
+                                    const GraphOptimizerRegistry& graph_optimizer_registry,
+                                    SelectionFunc& selection_func) = 0;
 
   virtual void* HeapAllocate(size_t size) = 0;
   virtual void HeapFree(void*) = 0;
@@ -253,6 +259,7 @@ struct ProviderHost {
   // IExecutionProvider
   virtual std::vector<std::unique_ptr<ComputeCapability>> IExecutionProvider__GetCapability(const IExecutionProvider* p, const onnxruntime::GraphViewer& graph_viewer,
                                                                                             const IExecutionProvider::IKernelLookup& kernel_lookup,
+                                                                                            const GraphOptimizerRegistry& graph_optimizer_registry,
                                                                                             IResourceAccountant* resource_accountant) = 0;
 
   virtual common::Status IExecutionProvider__Compile(IExecutionProvider* p, const std::vector<IExecutionProvider::FusedNodeAndGraph>& fused_nodes_and_graphs, std::vector<NodeComputeInfo>& node_compute_funcs) = 0;
@@ -604,6 +611,8 @@ struct ProviderHost {
   virtual int FunctionProto__metadata_props_size(const ONNX_NAMESPACE::FunctionProto* p) = 0;
   virtual ONNX_NAMESPACE::StringStringEntryProto* FunctionProto__add_metadata_props(ONNX_NAMESPACE::FunctionProto* p) = 0;
 
+  virtual void InferShapes(const std::string& m, const std::string& save_path) = 0;
+  virtual void InferShapes(ONNX_NAMESPACE::ModelProto& m) = 0;
   virtual void RegisterSchema(const std::string& domain, const OrtCustomOp* op) = 0;
   virtual void DeregisterSchema(const std::string& domain, const std::string& op_type, int version) = 0;
   virtual const ONNX_NAMESPACE::OpSchema* GetSchema(const std::string& name, const int maxInclusiveVersion, const std::string& domain) = 0;
@@ -627,6 +636,8 @@ struct ProviderHost {
   virtual std::unique_ptr<ComputeCapability> ComputeCapability__construct(std::unique_ptr<IndexedSubGraph> t_sub_graph) = 0;
   virtual void ComputeCapability__operator_delete(ComputeCapability* p) = 0;
   virtual std::unique_ptr<IndexedSubGraph>& ComputeCapability__SubGraph(ComputeCapability* p) = 0;
+  virtual void ComputeCapability__copy_optimization_func(ComputeCapability* p, ComputeCapability* selection_cc) = 0;
+  virtual void ComputeCapability__add_nodes_to_optimize(ComputeCapability* p, std::unique_ptr<ComputeCapability> optimization_cc) = 0;
 
   // DataTransferManager
   virtual Status DataTransferManager__CopyTensor(const DataTransferManager* p, const Tensor& src, Tensor& dst) = 0;
@@ -1001,6 +1012,7 @@ struct ProviderHost {
   virtual const Graph* Graph__ParentGraph(const Graph* p) const = 0;
   virtual Graph* Graph__MutableParentGraph(Graph* p) = 0;
   virtual const std::string& Graph__Name(const Graph* p) const noexcept = 0;
+  virtual void Graph__SetName(Graph* p, const std::string& name) const noexcept = 0;
   virtual const std::filesystem::path& Graph__ModelPath(const Graph* p) const = 0;
   virtual const std::vector<const NodeArg*>& Graph__GetInputsIncludingInitializers(const Graph* p) const noexcept = 0;
   virtual bool Graph__IsSubgraph(const Graph* p) = 0;
@@ -1279,7 +1291,7 @@ struct ProviderHost {
   virtual std::unique_ptr<Model> cann__CreateModel(const GraphViewer& graph_viewer, const logging::Logger& logger) = 0;
 #endif
 
-  virtual void MurmurHash3__x86_128(const void* key, int len, uint32_t seed, void* out) = 0;
+  virtual void MurmurHash3__x86_128(const void* key, size_t len, uint32_t seed, void* out) = 0;
 
 #ifdef _WIN32
   virtual std::string ToUTF8String(const std::wstring& s) = 0;

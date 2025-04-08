@@ -12,10 +12,14 @@ parameters:
   displayName: 'NPM packages publish configuration'
   type: string
   default: 'dev'
-
+- name: is1ES
+  type: boolean
+  default: false
 jobs:
 - job: ReactNative_CI_Android
-  pool: 'onnxruntime-Ubuntu2204-AMD-CPU'
+  pool:
+    name: onnxruntime-Ubuntu2204-AMD-CPU
+    os: linux
   variables:
     runCodesignValidationInjection: false
     ANDROID_AVD_HOME: $(Agent.TempDirectory)
@@ -40,9 +44,8 @@ jobs:
       versionSpec: '20.x'
 
   - script: |
-      sudo apt install coreutils ninja-build nodejs npm yarn
-      npm install --global yarn
-    displayName: Install coreutils, ninja, npm, and yarn
+      sudo apt install ninja-build
+    displayName: Install ninja
 
   - task: DownloadPipelineArtifact@2
     inputs:
@@ -58,44 +61,7 @@ jobs:
       targetFolder: $(Build.SourcesDirectory)/js/react_native/android/libs
     displayName: Copy Android package to React Native directory
 
-  - script: |
-      npm ci
-    workingDirectory: '$(Build.SourcesDirectory)/js'
-    displayName: npm ci js
-
-  - script: |
-      npm ci
-    workingDirectory: '$(Build.SourcesDirectory)/js/common'
-    displayName: npm ci js/common
-
-  - script: |
-      yarn
-    workingDirectory: '$(Build.SourcesDirectory)/js/react_native'
-    displayName: yarn js/react_native
-
-  - task: PowerShell@2
-    inputs:
-      filePath: '$(Build.SourcesDirectory)/tools/ci_build/github/js/pack-npm-packages.ps1'
-      arguments: '"-dev.$(Get-Date -Format yyyyMMdd)-$(git rev-parse --short HEAD)" $(Build.SourcesDirectory) react_native'
-      workingDirectory: '$(Build.SourcesDirectory)'
-      errorActionPreference: stop
-    env:
-      ORT_JS_PACK_MODE: e2e
-    displayName: Pack NPM packages
-
-  - script: |
-      mv $(Build.SourcesDirectory)/js/common/onnxruntime-common*.tgz onnxruntime-common.tgz
-      yarn add --no-lockfile file:./onnxruntime-common.tgz
-      mv $(Build.SourcesDirectory)/js/react_native/onnxruntime-react-native*.tgz onnxruntime-react-native.tgz
-      yarn add --no-lockfile file:./onnxruntime-react-native.tgz
-      yarn
-    workingDirectory: '$(Build.SourcesDirectory)/js/react_native/e2e'
-    displayName: Bootstrap Android and iOS e2e tests
-
-  - script: |
-      yarn add --dev jest-junit
-    workingDirectory: '$(Build.SourcesDirectory)/js/react_native/e2e'
-    displayName: install jest junit reporter js/react_native/e2e
+  - template: steps/react-native-bootstrap-steps.yml
 
   - script: |
       keytool -genkey -v -keystore debug.keystore -alias androiddebugkey -storepass android \
@@ -109,15 +75,6 @@ jobs:
       contents: onnxruntime-*.aar
       targetFolder: $(Build.SourcesDirectory)/js/react_native/e2e/android/app/libs
     displayName: Copy Android package to Android e2e test directory
-
-  - script: |
-      yarn global add detox-cli
-      echo "Path: $PATH"
-      echo "##vso[task.prependpath]$(yarn global bin)"
-      echo "Updated PATH: $PATH"
-      echo "Detox bin directory: $(yarn global bin)"
-      ls $(yarn global bin)
-    displayName: Install detox cli tools and prepend to PATH
 
   - script: |
       detox build --configuration android.emu.release
@@ -196,17 +153,30 @@ jobs:
       targetFolder: $(Build.ArtifactStagingDirectory)
     displayName: Create Artifacts onnxruntime-react-native
 
-  - task: PublishPipelineArtifact@1
-    inputs:
-      artifact: android_e2e_test_logs_$(Build.BuildId)_$(Build.BuildNumber)_$(System.JobAttempt)
-      targetPath: '$(Build.SourcesDirectory)/js/react_native/e2e/artifacts'
-    condition: succeededOrFailed()
-    displayName: Publish React Native Detox E2E test logs
+  - ${{ if eq(parameters.is1ES, true) }}:
+    - task: 1ES.PublishPipelineArtifact@1
+      inputs:
+        artifact: android_e2e_test_logs_$(Build.BuildId)_$(Build.BuildNumber)_$(System.JobAttempt)
+        targetPath: '$(Build.SourcesDirectory)/js/react_native/e2e/artifacts'
+      condition: succeededOrFailed()
+      displayName: Publish React Native Detox E2E test logs
+    - task: 1ES.PublishPipelineArtifact@1
+      inputs:
+        artifactName: '${{parameters.PackageName}}'
+        targetPath: '$(Build.ArtifactStagingDirectory)'
+      displayName: Publish Pipeline Artifact
 
-  - task: PublishPipelineArtifact@0
-    inputs:
-      artifactName: '${{parameters.PackageName}}'
-      targetPath: '$(Build.ArtifactStagingDirectory)'
-    displayName: Publish Pipeline Artifact
+  - ${{ if eq(parameters.is1ES, false) }}:
+    - task: PublishPipelineArtifact@1
+      inputs:
+        artifact: android_e2e_test_logs_$(Build.BuildId)_$(Build.BuildNumber)_$(System.JobAttempt)
+        targetPath: '$(Build.SourcesDirectory)/js/react_native/e2e/artifacts'
+      condition: succeededOrFailed()
+      displayName: Publish React Native Detox E2E test logs
+    - task: PublishPipelineArtifact@1
+      inputs:
+        artifactName: '${{parameters.PackageName}}'
+        targetPath: '$(Build.ArtifactStagingDirectory)'
+      displayName: Publish Pipeline Artifact
 
   - template: ../../templates/explicitly-defined-final-tasks.yml

@@ -2,7 +2,6 @@
 // Copyright (c) Intel Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "core/common/safeint.h"
 #include "core/optimizer/initializer.h"
 #include "core/providers/common.h"
 #include "core/providers/shared/utils/utils.h"
@@ -23,9 +22,9 @@ class NormalizationOpBuilder : public BaseOpBuilder {
 
   // Operator support related.
  private:
-  bool IsOpSupportedImpl(const InitializedTensorSet& initializers, const Node& node,
+  bool IsOpSupportedImpl(const GraphViewer&, const Node& node,
                          const WebnnDeviceType /* device_type */, const logging::Logger& logger) const override;
-  bool HasSupportedInputsImpl(const InitializedTensorSet& /* initializers */, const Node& node,
+  bool HasSupportedInputsImpl(const GraphViewer&, const Node& node,
                               const emscripten::val& wnn_limits, const logging::Logger& logger) const override;
   bool HasSupportedOutputsImpl(const Node& node, const emscripten::val& wnn_limits,
                                const logging::Logger& logger) const override;
@@ -208,7 +207,7 @@ Status NormalizationOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder
     output = model_builder.GetBuilder().call<emscripten::val>("instanceNormalization", input, options);
     // Reshape back to the original output shape for 3D input.
     if (input_shape.size() != 4) {
-      std::vector<uint32_t> output_shape = GetVecUint32FromVecInt64(input_shape);
+      std::vector<uint32_t> output_shape = GetNarrowedIntfromInt64<uint32_t>(input_shape);
       emscripten::val reshape_output_options = emscripten::val::object();
       reshape_output_options.set("label", node.Name() + "reshape_output");
       output = model_builder.GetBuilder().call<emscripten::val>("reshape",
@@ -226,7 +225,7 @@ Status NormalizationOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder
 
 // Operator support related.
 
-bool NormalizationOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& initializers,
+bool NormalizationOpBuilder::IsOpSupportedImpl(const GraphViewer&,
                                                const Node& node,
                                                const WebnnDeviceType /* device_type */,
                                                const logging::Logger& logger) const {
@@ -271,7 +270,7 @@ bool NormalizationOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& initi
   return true;
 }
 
-bool NormalizationOpBuilder::HasSupportedInputsImpl(const InitializedTensorSet& /* initializers */, const Node& node,
+bool NormalizationOpBuilder::HasSupportedInputsImpl(const GraphViewer&, const Node& node,
                                                     const emscripten::val& wnn_limits,
                                                     const logging::Logger& logger) const {
   const auto& input_defs = node.InputDefs();

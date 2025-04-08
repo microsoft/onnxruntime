@@ -197,7 +197,10 @@ enum class ProgramVariableDataType {
   Boolx4,
   Uint8x4,
   Uint8x8,
-  Uint8x16
+  Uint8x16,
+  Int8x4,
+  Int8x8,
+  Int8x16,
 };
 #ifndef NDEBUG
 std::ostream& operator<<(std::ostream& os, ProgramVariableDataType);
@@ -237,6 +240,7 @@ enum class ValidationMode {
   Basic,
   Full
 };
+std::ostream& operator<<(std::ostream& os, ValidationMode mode);
 
 namespace details {
 class ProgramWrapper;
@@ -270,9 +274,11 @@ class ProgramBase {
   // add multiple program outputs
   ProgramBase& AddOutputs(std::initializer_list<ProgramOutput> outputs);
   // add a program variable for indices
-  ProgramBase& AddIndices(const TensorShape& shape);
-  // add a program variable for indices
-  ProgramBase& AddIndices(TensorShape&& shape);
+  template <typename... Args>
+  ProgramBase& AddIndices(Args&&... args) {
+    indices_.emplace_back(std::forward<Args>(args)...);
+    return *this;
+  }
 
   // set the size of dispatch groups. Y and Z are 1 if not specified.
   ProgramBase& SetDispatchGroupSize(uint32_t x);

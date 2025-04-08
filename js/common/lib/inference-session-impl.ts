@@ -225,5 +225,13 @@ export class InferenceSession implements InferenceSessionInterface {
     return this.handler.outputNames;
   }
 
+  get inputMetadata(): readonly InferenceSessionInterface.ValueMetadata[] {
+    return this.handler.inputMetadata;
+  }
+
+  get outputMetadata(): readonly InferenceSessionInterface.ValueMetadata[] {
+    return this.handler.outputMetadata;
+  }
+
   private handler: InferenceSessionHandler;
 }

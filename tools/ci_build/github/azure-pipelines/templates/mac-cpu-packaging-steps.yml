@@ -83,8 +83,10 @@ steps:
   displayName: 'Copy libcustom_op_library.dylib to ArtifactStagingDirectory'
   condition: and(succeeded(), eq('${{ parameters.MacosArch }}', 'x86_64'))
 
-- publish: '$(Build.ArtifactStagingDirectory)'
-  artifact: 'onnxruntime-osx-${{ parameters.MacosArch }}'
+- task: 1ES.PublishPipelineArtifact@1
+  inputs:
+    targetPath: '$(Build.ArtifactStagingDirectory)'
+    artifactName: 'onnxruntime-osx-${{ parameters.MacosArch }}'
 
 - ${{ if eq(parameters.BuildJava, true) }}:
     - template: java-api-artifacts-package-and-publish-steps-posix.yml
@@ -95,6 +97,7 @@ steps:
           version: '$(OnnxRuntimeVersion)'
           libraryName: 'libonnxruntime.dylib'
           nativeLibraryName: 'libonnxruntime4j_jni.dylib'
+          is1ES: true
 
 - ${{ if eq(parameters.BuildNodejs, true) }}:
     - template: nodejs-artifacts-package-and-publish-steps-posix.yml

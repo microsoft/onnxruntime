@@ -35,7 +35,10 @@ if (CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
     set(CMAKE_CXX_FLAGS_DEBUG "-g2")
   endif()
 
-  if (onnxruntime_ENABLE_WEBASSEMBLY_SIMD)
+  if (onnxruntime_ENABLE_WEBASSEMBLY_RELAXED_SIMD)
+    string(APPEND CMAKE_C_FLAGS " -msimd128 -mrelaxed-simd")
+    string(APPEND CMAKE_CXX_FLAGS " -msimd128 -mrelaxed-simd")
+  elseif (onnxruntime_ENABLE_WEBASSEMBLY_SIMD)
     string(APPEND CMAKE_C_FLAGS " -msimd128")
     string(APPEND CMAKE_CXX_FLAGS " -msimd128")
   endif()
@@ -99,10 +102,21 @@ if (onnxruntime_ENABLE_LTO)
     include(CheckIPOSupported)
     check_ipo_supported(RESULT ipo_enabled OUTPUT ipo_output)
     if (NOT ipo_enabled)
-      message(WARNING "IPO is not supported by this compiler")
+      message(WARNING "Interprocedural optimization (IPO) is not supported by this compiler. ${ipo_output}")
       set(onnxruntime_ENABLE_LTO OFF)
     else()
       set(CMAKE_INTERPROCEDURAL_OPTIMIZATION ON)
+
+      # See https://cmake.org/cmake/help/latest/policy/CMP0069.html.
+      #
+      # "The OLD behavior for this policy is to add IPO flags only for Intel compiler on Linux.
+      # The NEW behavior for this policy is to add IPO flags for the current compiler or produce an error if CMake does
+      # not know the flags."
+      #
+      # CMake versions 3.8 and lower use the OLD behavior. This project requires CMake version > 3.8.
+      # However, some dependencies may specify a lower required CMake version and default to the OLD behavior.
+      # Ensure that CMake also uses the NEW behavior for such dependencies.
+      set(CMAKE_POLICY_DEFAULT_CMP0069 NEW)
     endif()
 endif()
 
@@ -178,9 +192,9 @@ if (onnxruntime_CROSS_COMPILING)
   endif()
 endif()
 
-# Mark symbols to be invisible, for macOS/iOS/visionOS target only
+# Mark symbols to be invisible, for macOS/iOS/visionOS/tvOS target only
 # Due to many dependencies have different symbol visibility settings, set global compile flags here.
-if (${CMAKE_SYSTEM_NAME} MATCHES "Darwin|iOS|visionOS")
+if (${CMAKE_SYSTEM_NAME} MATCHES "Darwin|iOS|visionOS|tvOS")
   foreach(flags CMAKE_CXX_FLAGS CMAKE_OBJC_FLAGS CMAKE_OBJCXX_FLAGS)
     string(APPEND ${flags} " -fvisibility=hidden -fvisibility-inlines-hidden")
   endforeach()
