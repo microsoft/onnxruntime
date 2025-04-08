@@ -372,7 +372,13 @@ def generate_build_tree(
     disable_float8_types = args.android or ("float8" in types_to_disable)
     disable_optional_type = "optional" in types_to_disable
     disable_sparse_tensors = "sparsetensor" in types_to_disable
-
+    if is_windows():
+      cmake_args += [
+        "-Donnxruntime_USE_DML=" + ("ON" if args.use_dml else "OFF"),
+        "-Donnxruntime_USE_WINML=" + ("ON" if args.use_winml else "OFF"),
+      ]
+      if args.use_winml:
+        cmake_args.append("-Donnxruntime_BUILD_WINML_TESTS=" + ("OFF" if args.skip_winml_tests else "ON"))
     cmake_args += [
         "-Donnxruntime_RUN_ONNX_TESTS=" + ("ON" if args.enable_onnx_tests else "OFF"),
         "-Donnxruntime_GENERATE_TEST_REPORTS=ON",
@@ -419,8 +425,6 @@ def generate_build_tree(
             else "OFF"
         ),
         "-Donnxruntime_REDUCED_OPS_BUILD=" + ("ON" if is_reduced_ops_build(args) else "OFF"),
-        "-Donnxruntime_USE_DML=" + ("ON" if args.use_dml else "OFF"),
-        "-Donnxruntime_USE_WINML=" + ("ON" if args.use_winml else "OFF"),
         "-Donnxruntime_BUILD_MS_EXPERIMENTAL_OPS=" + ("ON" if args.ms_experimental else "OFF"),
         "-Donnxruntime_USE_TELEMETRY=" + ("ON" if args.use_telemetry else "OFF"),
         "-Donnxruntime_ENABLE_LTO=" + ("ON" if args.enable_lto else "OFF"),
@@ -661,8 +665,7 @@ def generate_build_tree(
                 cmake_args.append("-DCMAKE_HIP_COMPILER_LAUNCHER=ccache")
     if args.external_graph_transformer_path:
         cmake_args.append("-Donnxruntime_EXTERNAL_TRANSFORMER_SRC_PATH=" + args.external_graph_transformer_path)
-    if args.use_winml:
-        cmake_args.append("-Donnxruntime_BUILD_WINML_TESTS=" + ("OFF" if args.skip_winml_tests else "ON"))
+
     if args.use_dnnl:
         cmake_args.append("-Donnxruntime_DNNL_GPU_RUNTIME=" + args.dnnl_gpu_runtime)
         cmake_args.append("-Donnxruntime_DNNL_OPENCL_ROOT=" + args.dnnl_opencl_root)
@@ -2544,9 +2547,9 @@ def main():
                 args.use_openvino,
                 args.use_tensorrt,
                 args.use_dnnl,
-                args.use_winml,
+                getattr(args, "use_winml", False),
                 args.use_qnn,
-                args.use_dml,
+                getattr(args, "use_dml", False),
                 args.enable_training_apis,
                 normalize_arg_list(args.msbuild_extra_options),
             )

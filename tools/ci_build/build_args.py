@@ -398,6 +398,7 @@ def add_windows_specific_args(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--msvc_toolset", help="MSVC toolset version (e.g., 14.11). Avoid [14.36, 14.39].")
     parser.add_argument("--windows_sdk_version", help="Windows SDK version (e.g., 10.0.19041.0).")
     parser.add_argument("--enable_msvc_static_runtime", action="store_true", help="Statically link MSVC runtimes.")
+    parser.add_argument("--use_telemetry", action="store_true", help="Enable telemetry (official builds only).")
 
     # Cross-compilation targets hosted on Windows
     parser.add_argument(
@@ -757,7 +758,6 @@ def add_other_feature_args(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "--enable_msinternal", action="store_true", help="[MS Internal] Enable Microsoft internal build features."
     )
-    parser.add_argument("--use_telemetry", action="store_true", help="Enable telemetry (official builds only).")
     parser.add_argument(
         "--use_triton_kernel", action="store_true", help="Use Triton compiled kernels (requires Triton)."
     )
