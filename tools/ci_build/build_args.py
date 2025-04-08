@@ -19,7 +19,6 @@ def _str_to_bool(s):
 
 
 # --- Argument Verification Helpers ---
-# (Keep _qnn_verify_library_kind and _openvino_verify_device_type as before)
 def _qnn_verify_library_kind(library_kind):
     """Verifies the library kind for the QNN Execution Provider."""
     choices = ["shared_lib", "static_lib"]
@@ -341,7 +340,6 @@ def add_apple_args(parser):
 
 def add_webassembly_args(parser):
     """Adds arguments for WebAssembly (WASM) platform builds."""
-    # (Keep WASM args as before)
     parser.add_argument("--build_wasm", action="store_true", help="Build for WebAssembly.")
     parser.add_argument("--build_wasm_static_lib", action="store_true", help="Build WebAssembly static library.")
     parser.add_argument("--emsdk_version", default="4.0.4", help="Specify version of emsdk.")
@@ -440,7 +438,15 @@ def add_windows_specific_args(parser):
     parser.add_argument("--enable_pix_capture", action="store_true", help="Enable Pix support for GPU debugging (requires D3D12).")
 
     parser.add_argument("--enable_wcos", action="store_true", help="Build for Windows Core OS.")
-
+    # --- Xbox --
+    add_gdk_args(parser)
+    # --- WinML ---
+    winml_group = parser.add_argument_group('WinML API (Windows)')
+    winml_group.add_argument("--use_winml", action="store_true", help="Enable WinML API (Windows).")
+    winml_group.add_argument(
+        "--winml_root_namespace_override", type=str, help="Override the namespace WinML builds into."
+    )
+    # Note: --skip_winml_tests is handled in add_testing_args
 
 def add_linux_specific_args(parser):
     """Adds arguments specific to Linux builds."""
@@ -458,8 +464,6 @@ def add_linux_specific_args(parser):
 
 def add_dependency_args(parser):
     """Adds arguments related to external dependencies."""
-    parser.add_argument("--use_preinstalled_eigen", action="store_true", help="Use pre-installed Eigen library.")
-    parser.add_argument("--eigen_path", help="Path to pre-installed Eigen.")
     parser.add_argument("--use_full_protobuf", action="store_true", help="Use the full (non-lite) protobuf library.")
     parser.add_argument("--use_mimalloc", action="store_true", help="Use mimalloc memory allocator.")
     parser.add_argument("--external_graph_transformer_path", type=str, help="Path to external graph transformer directory.")
@@ -481,7 +485,6 @@ def add_extension_args(parser):
 
 def add_size_reduction_args(parser):
     """Adds arguments for reducing the binary size."""
-    # (Keep size reduction args as before)
     parser.add_argument(
         "--minimal_build",
         default=None,
@@ -641,23 +644,16 @@ def add_execution_provider_args(parser):
     trt_group.add_argument("--use_tensorrt_oss_parser", action="store_true", help="Use TensorRT OSS ONNX parser.")
     trt_group.add_argument("--tensorrt_home", help="Path to TensorRT installation directory.")
 
-    # --- DirectML ---
-    dml_group = parser.add_argument_group('DirectML Execution Provider (Windows)')
-    dml_group.add_argument("--use_dml", action="store_true", help="Enable DirectML EP (Windows).")
-    dml_group.add_argument(
-        "--dml_path", type=str, default="", help="Path to custom DirectML SDK."
-    )
-    dml_group.add_argument(
-        "--dml_external_project", action="store_true", help="Build DirectML as an external project."
-    )
-
-    # --- WinML ---
-    winml_group = parser.add_argument_group('WinML Execution Provider (Windows)')
-    winml_group.add_argument("--use_winml", action="store_true", help="Enable WinML EP (Windows).")
-    winml_group.add_argument(
-        "--winml_root_namespace_override", type=str, help="Override the namespace WinML builds into."
-    )
-    # Note: --skip_winml_tests is handled in add_testing_args
+    if is_windows():
+        # --- DirectML ---
+        dml_group = parser.add_argument_group('DirectML Execution Provider (Windows)')
+        dml_group.add_argument("--use_dml", action="store_true", help="Enable DirectML EP (Windows).")
+        dml_group.add_argument(
+            "--dml_path", type=str, default="", help="Path to custom DirectML SDK."
+        )
+        dml_group.add_argument(
+            "--dml_external_project", action="store_true", help="Build DirectML as an external project."
+        )
 
     # --- NNAPI ---
     nnapi_group = parser.add_argument_group('NNAPI Execution Provider (Android)')
@@ -804,7 +800,6 @@ def parse_arguments():
     add_cross_compile_args(parser) # Non-Windows cross-compile args
     add_android_args(parser)
     add_webassembly_args(parser)
-    add_gdk_args(parser)
     add_dependency_args(parser)
     add_extension_args(parser)
     add_size_reduction_args(parser)
@@ -889,12 +884,13 @@ def parse_arguments():
     if args.disable_exceptions and args.minimal_build is None:
          parser.error("--disable_exceptions requires --minimal_build to be specified.")
 
-    # Validation: Apple framework requires an Apple platform
-    if args.build_apple_framework and not any([args.ios, args.macos, args.visionos, args.tvos]):
-        parser.error("--build_apple_framework requires --ios, --macos, --visionos, or --tvos to be specified.")
+    if is_macOS():
+        # Validation: Apple framework requires an Apple platform
+        if args.build_apple_framework and not any([args.ios, args.macos, args.visionos, args.tvos]):
+            parser.error("--build_apple_framework requires --ios, --macos, --visionos, or --tvos to be specified.")
 
-    # Validation: macOS target requires --build_apple_framework
-    if args.macos and not args.build_apple_framework:
-        parser.error("--macos target requires --build_apple_framework.")
+        # Validation: macOS target requires --build_apple_framework
+        if args.macos and not args.build_apple_framework:
+            parser.error("--macos target requires --build_apple_framework.")
 
     return args

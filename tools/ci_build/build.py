@@ -774,9 +774,6 @@ def generate_build_tree(
         nvml_stub_path = cuda_home + "/lib64/stubs"
         cmake_args += ["-DCUDA_CUDA_LIBRARY=" + nvml_stub_path]
 
-    if args.use_preinstalled_eigen:
-        cmake_args += ["-Donnxruntime_USE_PREINSTALLED_EIGEN=ON", "-Deigen_SOURCE_PATH=" + args.eigen_path]
-
     if args.nnapi_min_api:
         cmake_args += ["-Donnxruntime_NNAPI_MIN_API=" + str(args.nnapi_min_api)]
 
