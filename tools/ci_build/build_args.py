@@ -11,7 +11,6 @@ from util import (
 )
 
 
-# Using match/case (Python 3.10+) and type hints
 def _str_to_bool(s: str) -> bool:
     """Convert string to bool (in argparse context) using match/case."""
     match s.lower():
@@ -69,7 +68,6 @@ def _openvino_verify_device_type(device_read: str) -> str:
                     print(f"Invalid device '{dev}' found in Hetero/Multi/Auto specification.")
                     break
 
-    # Inner function type hint: -> None is sufficient as it doesn't return a value before exiting.
     def invalid_hetero_build() -> None:
         print("\nIf trying to build Hetero/Multi/Auto, specify the supported devices along with it.\n")
         print("Specify the keyword HETERO or MULTI or AUTO followed by a colon and comma-separated devices ")
@@ -383,10 +381,9 @@ def add_gdk_args(parser: argparse.ArgumentParser) -> None:
     gdk_latest_env = os.environ.get("GameDKLatest", "")  # noqa: SIM112
     if gdk_latest_env:
         try:  # noqa: SIM105
-            # Use os.path.basename for potentially cleaner extraction of the last component
             default_gdk_edition = os.path.basename(os.path.normpath(gdk_latest_env))
-        except Exception:  # Catch potential errors during path manipulation
-            pass  # Handle cases where path might be weird or invalid
+        except Exception:
+            pass
     parser.add_argument(
         "--gdk_edition",
         default=default_gdk_edition,
@@ -440,9 +437,7 @@ def add_windows_specific_args(parser: argparse.ArgumentParser) -> None:
 
     parser.add_argument("--enable_wcos", action="store_true", help="Build for Windows Core OS.")
 
-    # --- Xbox --- (Moved GDK args here as it's Windows-based dev)
-    gdk_group = parser.add_argument_group("GDK (Xbox) Platform (Windows Dev)")
-    add_gdk_args(gdk_group)  # Add GDK args to this specific group
+    add_gdk_args(parser)
 
     # --- WinML ---
     winml_group = parser.add_argument_group("WinML API (Windows)")
@@ -450,7 +445,6 @@ def add_windows_specific_args(parser: argparse.ArgumentParser) -> None:
     winml_group.add_argument(
         "--winml_root_namespace_override", type=str, help="Override the namespace WinML builds into."
     )
-    # Note: --skip_winml_tests is handled in add_testing_args
 
 
 def add_linux_specific_args(parser: argparse.ArgumentParser) -> None:
