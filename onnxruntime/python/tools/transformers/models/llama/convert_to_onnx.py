@@ -24,7 +24,6 @@ from llama_parity import main as parity_check
 from llama_torch import setup_torch_model
 
 # to patch transformers before exporting for transformers >= 4.45
-from models.torch_export_patches import bypass_export_some_errors
 from models.torch_export_patches.patch_inputs import convert_dynamic_axes_into_dynamic_shapes
 from onnx_model import OnnxModel
 from optimizer import optimize_model
@@ -160,17 +159,16 @@ def run_dynamo_export(
         llama, args=model_args, dynamic_axes=dynamic_axes, prefix_mapping={"present": "past_key_values"}
     )
 
-    with bypass_export_some_errors(patch_transformers=True):
-        torch.onnx.export(
-            llama,
-            (),
-            temp_path,
-            kwargs=model_kwargs,
-            dynamic_shapes=dynamic_shapes,
-            dynamo=True,
-            verbose=args.verbose,
-            optimize=True,
-        )
+    torch.onnx.export(
+        llama,
+        (),
+        temp_path,
+        kwargs=model_kwargs,
+        dynamic_shapes=dynamic_shapes,
+        dynamo=True,
+        verbose=args.verbose,
+        optimize=True,
+    )
 
     # Check decoder_with_past_model.onnx and save all external data to one file
     onnx.checker.check_model(temp_path)
