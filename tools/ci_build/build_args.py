@@ -1,11 +1,11 @@
 # Copyright (c) Microsoft Corporation. All rights reserved.
 # Licensed under the MIT License.import argparse
+import argparse
 import os
 import platform
 import shlex
 import sys
 import warnings
-import argparse
 
 from util import (
     is_macOS,
@@ -238,6 +238,7 @@ def add_documentation_args(parser: argparse.ArgumentParser) -> None:
         help="Generate operator/type docs. Use '--gen_doc validate' to check against /docs.",
     )
 
+
 def add_cross_compile_args(parser: argparse.ArgumentParser) -> None:
     """Adds arguments for cross-compiling to non-Windows target CPU architectures."""
     parser.add_argument(
@@ -433,13 +434,19 @@ def add_windows_specific_args(parser: argparse.ArgumentParser) -> None:
         "--enable_pix_capture", action="store_true", help="Enable Pix support for GPU debugging (requires D3D12)."
     )
 
-    parser.add_argument("--enable_wcos", action="store_true", help="Build for Windows Core OS. Link to Windows umbrella libraries instead of kernel32.lib.")
+    parser.add_argument(
+        "--enable_wcos",
+        action="store_true",
+        help="Build for Windows Core OS. Link to Windows umbrella libraries instead of kernel32.lib.",
+    )
 
     add_gdk_args(parser)
 
     # --- WinML ---
     winml_group = parser.add_argument_group("WinML API (Windows)")
-    winml_group.add_argument("--use_winml", action="store_true", help="Enable WinML API (Windows). Requires --enable_wcos.")
+    winml_group.add_argument(
+        "--use_winml", action="store_true", help="Enable WinML API (Windows). Requires --enable_wcos."
+    )
     winml_group.add_argument(
         "--winml_root_namespace_override", type=str, help="Override the namespace WinML builds into."
     )
@@ -894,26 +901,30 @@ def parse_arguments() -> argparse.Namespace:
     if args.disable_exceptions and args.minimal_build is None:
         parser.error("--disable_exceptions requires --minimal_build to be specified.")
     if is_windows():
-      if getattr(args, "use_winml", False) and not getattr(args, "enable_wcos", False):
-        parser.error("--use_winml requires --enable_wcos to be specified.")
-      if hasattr(args, "msvc_toolset") and args.msvc_toolset:
-        try:
-            # Extract major.minor version parts (e.g., "14.36")
-            version_parts = args.msvc_toolset.split('.')
-            if len(version_parts) >= 2:
-                major = int(version_parts[0])
-                minor = int(version_parts[1])
-                # Check known problematic range based on previous script comments/help text
-                # Refined check: >= 14.36 and <= 14.39
-                # Help text now says >= 14.40 is required, so check < 14.40
-                if major == 14 and minor < 40:
-                     # You could make this an error or just a warning
-                     # parser.error(f"MSVC toolset version {args.msvc_toolset} is not supported. Use 14.40 or higher.")
-                     warnings.warn(f"Specified MSVC toolset version {args.msvc_toolset} might have compatibility issues. Version 14.40 or higher is recommended.")
+        if getattr(args, "use_winml", False) and not getattr(args, "enable_wcos", False):
+            parser.error("--use_winml requires --enable_wcos to be specified.")
+        if hasattr(args, "msvc_toolset") and args.msvc_toolset:
+            try:
+                # Extract major.minor version parts (e.g., "14.36")
+                version_parts = args.msvc_toolset.split(".")
+                if len(version_parts) >= 2:
+                    major = int(version_parts[0])
+                    minor = int(version_parts[1])
+                    # Check known problematic range based on previous script comments/help text
+                    # Refined check: >= 14.36 and <= 14.39
+                    # Help text now says >= 14.40 is required, so check < 14.40
+                    if major == 14 and minor < 40:
+                        # You could make this an error or just a warning
+                        # parser.error(f"MSVC toolset version {args.msvc_toolset} is not supported. Use 14.40 or higher.")
+                        warnings.warn(
+                            f"Specified MSVC toolset version {args.msvc_toolset} might have compatibility issues. Version 14.40 or higher is recommended."
+                        )
 
-        except (ValueError, IndexError):
-             warnings.warn(f"Could not parse MSVC toolset version: {args.msvc_toolset}. Skipping compatibility check.")
-    
+            except (ValueError, IndexError):
+                warnings.warn(
+                    f"Could not parse MSVC toolset version: {args.msvc_toolset}. Skipping compatibility check."
+                )
+
     elif is_macOS():
         if getattr(args, "build_apple_framework", False) and not any(
             [
