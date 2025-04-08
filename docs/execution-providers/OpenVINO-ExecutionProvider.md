@@ -230,7 +230,22 @@ Refer to [Configuration Options](#configuration-options) for more information ab
  
 ## Configuration Options
 
-OpenVINO™ Execution Provider can be configured with certain options at runtime that control the behavior of the EP. These options can be set as key-value pairs as below:-
+### Onnxruntime Graph level Optimization
+OpenVINO™ backend performs hardware, dependent as well as independent optimizations on the graph to infer it on the target hardware with best possible performance. In most cases it has been observed that passing the ONNX input graph as is without explicit optimizations would lead to best possible optimizations at kernel level by OpenVINO™. For this reason, it is advised to turn off high level optimizations performed by ONNX Runtime for OpenVINO™ Execution Provider. This can be done using SessionOptions() as shown below:-
+
+* #### Python API
+   ```
+   options = onnxruntime.SessionOptions()
+   options.graph_optimization_level = onnxruntime.GraphOptimizationLevel.ORT_DISABLE_ALL
+   sess = onnxruntime.InferenceSession(<path_to_model_file>, options)
+   ```
+
+* #### C/C++ API
+   ```
+   SessionOptions::SetGraphOptimizationLevel(ORT_DISABLE_ALL);
+   ```
+
+OpenVINO™ Execution Provider can be configured with provider options during session creation that controls the behavior of the EP. These options can be set as key-value pairs as below:-
 
 ### Python API
 Key-Value pairs for config options can be set using InferenceSession API as follow:-
@@ -247,11 +262,11 @@ The session configuration options are passed to SessionOptionsAppendExecutionPro
 std::unordered_map<std::string, std::string> options;
 options["device_type"] = "GPU";
 options["precision"] = "FP32";
-options[num_of_threads] = "8";
-options[num_streams] = "8";
-options[cache_dir] = "";
-options[context] = "0x123456ff";
-options[enable_opencl_throttling] = "false";
+options["num_of_threads"] = "8";
+options["num_streams"] = "8";
+options["cache_dir"] = "";
+options["context"] = "0x123456ff";
+options["enable_opencl_throttling"] = "false";
 session_options.AppendExecutionProvider("OpenVINO", options);
 ```
 
@@ -268,35 +283,20 @@ options.enable_opencl_throttling = false;
 SessionOptions.AppendExecutionProvider_OpenVINO(session_options, &options);
 ```
 
-### Onnxruntime Graph level Optimization
-OpenVINO™ backend performs hardware, dependent as well as independent optimizations on the graph to infer it on the target hardware with best possible performance. In most cases it has been observed that passing the ONNX input graph as is without explicit optimizations would lead to best possible optimizations at kernel level by OpenVINO™. For this reason, it is advised to turn off high level optimizations performed by ONNX Runtime for OpenVINO™ Execution Provider. This can be done using SessionOptions() as shown below:-
-
-* #### Python API
-   ```
-   options = onnxruntime.SessionOptions()
-   options.graph_optimization_level = onnxruntime.GraphOptimizationLevel.ORT_DISABLE_ALL
-   sess = onnxruntime.InferenceSession(<path_to_model_file>, options)
-   ```
-
-* #### C/C++ API
-   ```
-   SessionOptions::SetGraphOptimizationLevel(ORT_DISABLE_ALL);
-   ```
-
 ## Summary of options
 
 The following table lists all the available configuration options for API 2.0 and the Key-Value pairs to set them:
 
-| **Key** | **Key type** | **Allowable Values** | **Value type** | **Description** |
-| --- | --- | --- | --- | --- |
-| device_type | string | CPU, NPU, GPU, GPU.0, GPU.1 based on the avaialable GPUs, NPU, Any valid Hetero combination, Any valid Multi or Auto devices combination | string | Overrides the accelerator hardware type with these values at runtime. If this option is not explicitly set, default hardware specified during build is used. |
-| precision | string | FP32, FP16, ACCURACY based on the device_type chosen | string | Supported precisions for HW {CPU:FP32, GPU:[FP32, FP16, ACCURACY], NPU:FP16}. Default precision for HW for optimized performance {CPU:FP32, GPU:FP16, NPU:FP16}. To execute model with the default input precision, select ACCURACY precision type. |
-| num_of_threads | string | Any unsigned positive number other than 0 | size_t | Overrides the accelerator default value of number of threads with this value at runtime. If this option is not explicitly set, default value of 8 during build time will be used for inference. |
-| num_streams | string | Any unsigned positive number other than 0 | size_t | Overrides the accelerator default streams with this value at runtime. If this option is not explicitly set, default value of 1, performance for latency is used during build time will be used for inference. |
-| cache_dir | string | Any valid string path on the hardware target | string | Explicitly specify the path to save and load the blobs enabling model caching feature.|
-| context | string | OpenCL Context | void* | This option is only available when OpenVINO EP is built with OpenCL flags enabled. It takes in the remote context i.e the cl_context address as a void pointer.|
-| enable_opencl_throttling | string | True/False | boolean | This option enables OpenCL queue throttling for GPU devices (reduces CPU utilization when using GPU). |
-| enable_qdq_optimizer | string | True/False | boolean | This option enables QDQ Optimization to improve model performance and accuracy on NPU. |
+| **Key (string type)** | **Allowable Values (string type)** | **Value mapping type** | **Description** |
+| --- | --- | --- | --- |
+| device_type | CPU, NPU, GPU, GPU.0, GPU.1 based on the avaialable GPUs, NPU, Any valid Hetero combination, Any valid Multi or Auto devices combination | string | Overrides the accelerator hardware type with these values at runtime. If this option is not explicitly set, default hardware specified during build is used. |
+| precision | FP32, FP16, ACCURACY based on the device_type chosen | string | Supported precisions for HW {CPU:FP32, GPU:[FP32, FP16, ACCURACY], NPU:FP16}. Default precision for HW for optimized performance {CPU:FP32, GPU:FP16, NPU:FP16}. To execute model with the default input precision, select ACCURACY precision type. |
+| num_of_threads | Any unsigned positive number other than 0 | size_t | Overrides the accelerator default value of number of threads with this value at runtime. If this option is not explicitly set, default value of 8 during build time will be used for inference. |
+| num_streams | Any unsigned positive number other than 0 | size_t | Overrides the accelerator default streams with this value at runtime. If this option is not explicitly set, default value of 1, performance for latency is used during build time will be used for inference. |
+| cache_dir | Any valid string path on the hardware target | string | Explicitly specify the path to save and load the blobs enabling model caching feature.|
+| context | OpenCL Context | void* | This option is only available when OpenVINO EP is built with OpenCL flags enabled. It takes in the remote context i.e the cl_context address as a void pointer.|
+| enable_opencl_throttling | true/false | boolean | This option enables OpenCL queue throttling for GPU devices (reduces CPU utilization when using GPU). If this option is not explicitly set, default value of "false" will be used. |
+| enable_qdq_optimizer | true/false | boolean | This option enables QDQ Optimization to improve model performance and accuracy on NPU. If this option is not explicitly set, default value of "false" will be used. |
 
 
 Valid Hetero or Multi or Auto Device combinations:
@@ -309,7 +309,7 @@ Example:
 HETERO:GPU,CPU  AUTO:GPU,CPU  MULTI:GPU,CPU
 
 Deprecated device_type option :
-CPU_FP32, GPU_FP32, GPU_FP16 as still supported. It will be deprectaed in the future release. Kindly upgrade to latest device_type and precision option.
+CPU_FP32, GPU_FP32, GPU_FP16 as still supported. It will be deprecated in the future release. Kindly upgrade to latest device_type and precision option.
 
 ## Support Coverage
 
