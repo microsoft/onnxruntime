@@ -4,22 +4,27 @@ import platform
 import shlex
 import sys
 import warnings
+from typing import List # Keep List for Python < 3.9 compatibility if needed, otherwise list[str] is fine for 3.9+
 
 from util import (
     is_macOS,
     is_windows,
 )
 
-
-def _str_to_bool(s):
-    """Convert string to bool (in argparse context)."""
-    if s.lower() not in ["true", "false"]:
-        raise ValueError(f"Need bool; got {s!r}")
-    return {"true": True, "false": False}[s.lower()]
+# Using match/case (Python 3.10+) and type hints
+def _str_to_bool(s: str) -> bool:
+    """Convert string to bool (in argparse context) using match/case."""
+    match s.lower():
+        case "true":
+            return True
+        case "false":
+            return False
+        case _:
+            raise ValueError(f"Invalid boolean value: {s!r}. Use 'true' or 'false'.")
 
 
 # --- Argument Verification Helpers ---
-def _qnn_verify_library_kind(library_kind):
+def _qnn_verify_library_kind(library_kind: str) -> str:
     """Verifies the library kind for the QNN Execution Provider."""
     choices = ["shared_lib", "static_lib"]
     if library_kind not in choices:
@@ -31,7 +36,7 @@ def _qnn_verify_library_kind(library_kind):
     return library_kind
 
 
-def _openvino_verify_device_type(device_read):
+def _openvino_verify_device_type(device_read: str) -> str:
     """Verifies the device type string for the OpenVINO Execution Provider."""
     choices = ["CPU", "GPU", "NPU"]
     choices1 = [
@@ -64,7 +69,8 @@ def _openvino_verify_device_type(device_read):
                     print(f"Invalid device '{dev}' found in Hetero/Multi/Auto specification.")
                     break
 
-    def invalid_hetero_build():
+    # Inner function type hint: -> None is sufficient as it doesn't return a value before exiting.
+    def invalid_hetero_build() -> None:
         print("\nIf trying to build Hetero/Multi/Auto, specify the supported devices along with it.\n")
         print("Specify the keyword HETERO or MULTI or AUTO followed by a colon and comma-separated devices ")
         print("in the order of priority you want to build (e.g., HETERO:GPU,CPU).\n")
@@ -92,7 +98,7 @@ def _openvino_verify_device_type(device_read):
 # --- Argument Grouping Functions ---
 
 
-def add_core_build_args(parser):
+def add_core_build_args(parser: argparse.ArgumentParser) -> None:
     """Adds core build process arguments."""
     parser.add_argument("--build_dir", required=True, help="Path to the build directory.")
     parser.add_argument(
@@ -134,7 +140,7 @@ def add_core_build_args(parser):
     )
 
 
-def add_cmake_build_config_args(parser):
+def add_cmake_build_config_args(parser: argparse.ArgumentParser) -> None:
     """Adds arguments related to CMake and general build system configuration."""
     parser.add_argument(
         "--cmake_extra_defines",
@@ -166,7 +172,7 @@ def add_cmake_build_config_args(parser):
     parser.add_argument("--skip_submodule_sync", action="store_true", help="Skip 'git submodule update'.")
 
 
-def add_testing_args(parser):
+def add_testing_args(parser: argparse.ArgumentParser) -> None:
     """Adds arguments related to running tests."""
     parser.add_argument("--test", action="store_true", help="Run unit tests.")
     parser.add_argument("--skip_tests", action="store_true", help="Skip all tests.")
@@ -196,7 +202,7 @@ def add_testing_args(parser):
     parser.add_argument("--code_coverage", action="store_true", help="Generate code coverage report (Android only).")
 
 
-def add_training_args(parser):
+def add_training_args(parser: argparse.ArgumentParser) -> None:
     """Adds arguments related to ONNX Runtime Training."""
     parser.add_argument(
         "--enable_training",
@@ -213,19 +219,19 @@ def add_training_args(parser):
     )
 
 
-def add_general_profiling_args(parser):
+def add_general_profiling_args(parser: argparse.ArgumentParser) -> None:
     """Adds arguments related to general (non-EP specific) profiling."""
     parser.add_argument("--enable_memory_profile", action="store_true", help="Enable memory profiling.")
 
 
-def add_debugging_sanitizer_args(parser):
+def add_debugging_sanitizer_args(parser: argparse.ArgumentParser) -> None:
     """Adds arguments related to debugging, sanitizers, and compliance."""
     parser.add_argument(
         "--enable_address_sanitizer", action="store_true", help="Enable Address Sanitizer (ASan) (Linux/macOS/Windows)."
     )
 
 
-def add_documentation_args(parser):
+def add_documentation_args(parser: argparse.ArgumentParser) -> None:
     """Adds arguments related to documentation generation."""
     parser.add_argument(
         "--gen_doc",
@@ -237,7 +243,7 @@ def add_documentation_args(parser):
     parser.add_argument("--gen-api-doc", action="store_true", help="Generate API documentation for PyTorch frontend.")
 
 
-def add_cross_compile_args(parser):
+def add_cross_compile_args(parser: argparse.ArgumentParser) -> None:
     """Adds arguments for cross-compiling to non-Windows target CPU architectures."""
     parser.add_argument(
         "--rv64",
@@ -258,7 +264,7 @@ def add_cross_compile_args(parser):
     )
 
 
-def add_android_args(parser):
+def add_android_args(parser: argparse.ArgumentParser) -> None:
     """Adds arguments for Android platform builds."""
     parser.add_argument("--android", action="store_true", help="Build for Android.")
     parser.add_argument(
@@ -284,7 +290,7 @@ def add_android_args(parser):
     )
 
 
-def add_apple_args(parser):
+def add_apple_args(parser: argparse.ArgumentParser) -> None:
     """Adds arguments for Apple platform builds (iOS, macOS, visionOS, tvOS)."""
     platform_group = parser.add_mutually_exclusive_group()
     platform_group.add_argument("--ios", action="store_true", help="Build for iOS.")
@@ -336,7 +342,7 @@ def add_apple_args(parser):
     )
 
 
-def add_webassembly_args(parser):
+def add_webassembly_args(parser: argparse.ArgumentParser) -> None:
     """Adds arguments for WebAssembly (WASM) platform builds."""
     parser.add_argument("--build_wasm", action="store_true", help="Build for WebAssembly.")
     parser.add_argument("--build_wasm_static_lib", action="store_true", help="Build WebAssembly static library.")
@@ -370,16 +376,17 @@ def add_webassembly_args(parser):
     )
 
 
-def add_gdk_args(parser):
+def add_gdk_args(parser: argparse.ArgumentParser) -> None:
     """Adds arguments for GDK (Xbox) platform builds."""
     parser.add_argument("--use_gdk", action="store_true", help="Build with the GDK toolchain.")
     default_gdk_edition = ""
     gdk_latest_env = os.environ.get("GameDKLatest", "")
     if gdk_latest_env:
         try:
-            default_gdk_edition = os.path.normpath(gdk_latest_env).split(os.sep)[-1]
-        except IndexError:
-            pass  # Handle cases where path might be weird
+            # Use os.path.basename for potentially cleaner extraction of the last component
+            default_gdk_edition = os.path.basename(os.path.normpath(gdk_latest_env))
+        except Exception: # Catch potential errors during path manipulation
+            pass  # Handle cases where path might be weird or invalid
     parser.add_argument(
         "--gdk_edition",
         default=default_gdk_edition,
@@ -388,7 +395,7 @@ def add_gdk_args(parser):
     parser.add_argument("--gdk_platform", default="Scarlett", help="GDK target platform (e.g., Scarlett, XboxOne).")
 
 
-def add_windows_specific_args(parser):
+def add_windows_specific_args(parser: argparse.ArgumentParser) -> None:
     """Adds arguments specific to Windows builds or Windows cross-compilation."""
     # Build tools / config
     parser.add_argument("--msvc_toolset", help="MSVC toolset version (e.g., 14.11). Avoid [14.36, 14.39].")
@@ -432,8 +439,11 @@ def add_windows_specific_args(parser):
     )
 
     parser.add_argument("--enable_wcos", action="store_true", help="Build for Windows Core OS.")
-    # --- Xbox --
-    add_gdk_args(parser)
+
+    # --- Xbox --- (Moved GDK args here as it's Windows-based dev)
+    gdk_group = parser.add_argument_group("GDK (Xbox) Platform (Windows Dev)")
+    add_gdk_args(gdk_group) # Add GDK args to this specific group
+
     # --- WinML ---
     winml_group = parser.add_argument_group('WinML API (Windows)')
     winml_group.add_argument("--use_winml", action="store_true", help="Enable WinML API (Windows).")
@@ -442,7 +452,7 @@ def add_windows_specific_args(parser):
     )
     # Note: --skip_winml_tests is handled in add_testing_args
 
-def add_linux_specific_args(parser):
+def add_linux_specific_args(parser: argparse.ArgumentParser) -> None:
     """Adds arguments specific to Linux builds."""
     parser.add_argument(
         "--allow_running_as_root",
@@ -456,7 +466,7 @@ def add_linux_specific_args(parser):
     )
 
 
-def add_dependency_args(parser):
+def add_dependency_args(parser: argparse.ArgumentParser) -> None:
     """Adds arguments related to external dependencies."""
     parser.add_argument("--use_full_protobuf", action="store_true", help="Use the full (non-lite) protobuf library.")
     parser.add_argument("--use_mimalloc", action="store_true", help="Use mimalloc memory allocator.")
@@ -465,7 +475,7 @@ def add_dependency_args(parser):
     )
 
 
-def add_extension_args(parser):
+def add_extension_args(parser: argparse.ArgumentParser) -> None:
     """Adds arguments related to ONNX Runtime Extensions."""
     parser.add_argument(
         "--use_extensions",
@@ -479,7 +489,7 @@ def add_extension_args(parser):
     )
 
 
-def add_size_reduction_args(parser):
+def add_size_reduction_args(parser: argparse.ArgumentParser) -> None:
     """Adds arguments for reducing the binary size."""
     parser.add_argument(
         "--minimal_build",
@@ -517,7 +527,7 @@ def add_size_reduction_args(parser):
     )
 
 
-def add_python_binding_args(parser):
+def add_python_binding_args(parser: argparse.ArgumentParser) -> None:
     """Adds arguments for Python bindings."""
     parser.add_argument("--enable_pybind", action="store_true", help="Enable Python bindings.")
     parser.add_argument("--build_wheel", action="store_true", help="Build Python wheel package.")
@@ -528,7 +538,7 @@ def add_python_binding_args(parser):
     parser.add_argument("--skip-keras-test", action="store_true", help="Skip Keras-related tests.")
 
 
-def add_csharp_binding_args(parser):
+def add_csharp_binding_args(parser: argparse.ArgumentParser) -> None:
     """Adds arguments for C# bindings."""
     parser.add_argument(
         "--build_csharp",
@@ -548,23 +558,23 @@ def add_csharp_binding_args(parser):
     )
 
 
-def add_java_binding_args(parser):
+def add_java_binding_args(parser: argparse.ArgumentParser) -> None:
     """Adds arguments for Java bindings."""
     parser.add_argument("--build_java", action="store_true", help="Build Java bindings.")
 
 
-def add_nodejs_binding_args(parser):
+def add_nodejs_binding_args(parser: argparse.ArgumentParser) -> None:
     """Adds arguments for Node.js bindings."""
     parser.add_argument("--build_nodejs", action="store_true", help="Build Node.js binding and NPM package.")
     # Note: --skip_nodejs_tests is handled in add_testing_args
 
 
-def add_objc_binding_args(parser):
+def add_objc_binding_args(parser: argparse.ArgumentParser) -> None:
     """Adds arguments for Objective-C bindings."""
     parser.add_argument("--build_objc", action="store_true", help="Build Objective-C binding.")
 
 
-def add_execution_provider_args(parser):
+def add_execution_provider_args(parser: argparse.ArgumentParser) -> None:
     """Adds arguments for enabling various Execution Providers (EPs)."""
     # --- CUDA ---
     cuda_group = parser.add_argument_group("CUDA Execution Provider")
@@ -745,7 +755,7 @@ def add_execution_provider_args(parser):
     azure_group.add_argument("--use_azure", action="store_true", help="Enable Azure EP.")
 
 
-def add_other_feature_args(parser):
+def add_other_feature_args(parser: argparse.ArgumentParser) -> None:
     """Adds arguments for other miscellaneous features."""
     parser.add_argument("--enable_lazy_tensor", action="store_true", help="Enable ORT backend for PyTorch LazyTensor.")
     parser.add_argument("--ms_experimental", action="store_true", help="Build Microsoft experimental operators.")
@@ -767,12 +777,12 @@ def add_other_feature_args(parser):
 # --- Main Argument Parsing Function ---
 
 
-def parse_arguments():
+def parse_arguments() -> argparse.Namespace:
     """Parses command line arguments for the ONNX Runtime build."""
 
     class Parser(argparse.ArgumentParser):
         # override argument file line parsing behavior - allow multiple arguments per line and handle quotes
-        def convert_arg_line_to_args(self, arg_line):
+        def convert_arg_line_to_args(self, arg_line: str) -> list[str]: # Use list[str] for Python 3.9+
             return shlex.split(arg_line)
 
     parser = Parser(
@@ -823,11 +833,11 @@ def parse_arguments():
         add_windows_specific_args(parser)
     elif is_macOS():
         add_apple_args(parser)
-    else:
+    else: # Assuming Linux or other non-Windows, non-macOS Unix-like
         add_linux_specific_args(parser)
 
     # --- Parse Arguments ---
-    args = parser.parse_args()
+    args: argparse.Namespace = parser.parse_args()
 
     # --- Post-processing and Defaults ---
 
@@ -845,7 +855,9 @@ def parse_arguments():
         args.enable_wasm_exception_throwing_override = True
 
     # Set default CMake generator if not specified
-    if args.cmake_generator is None:
+    # Check if cmake_generator attribute exists (it might if --use_xcode was used)
+    # before checking if it's None.
+    if not hasattr(args, 'cmake_generator') or args.cmake_generator is None:
         if is_windows():
             # Default to Ninja for WASM on Windows for potential speedup, VS otherwise
             args.cmake_generator = "Ninja" if args.build_wasm else "Visual Studio 17 2022"
@@ -857,21 +869,21 @@ def parse_arguments():
 
     # Default behavior (update/build/test) if no action flags are specified
     # Determine if it's a cross-compiled build (approximated by checking common cross-compile flags)
-    # Note: Flags like args.x86, args.arm* are now added conditionally only on Windows,
-    # but the check here will still work correctly as those attributes won't exist or will be False otherwise.
     is_cross_compiling = any(
         [
-            args.x86 if hasattr(args, "x86") else False,
-            args.arm if hasattr(args, "arm") else False,
-            args.arm64 if hasattr(args, "arm64") else False,
-            args.arm64ec if hasattr(args, "arm64ec") else False,
+            # Check existence before accessing for conditionally added args
+            getattr(args, "x86", False),
+            getattr(args, "arm", False),
+            getattr(args, "arm64", False),
+            getattr(args, "arm64ec", False),
             args.rv64,  # General cross-compile arg
             args.android,
-            args.ios,
-            args.visionos,
-            args.tvos,
+            # Check existence for macOS/Apple specific args
+            getattr(args, "ios", False),
+            getattr(args, "visionos", False),
+            getattr(args, "tvos", False),
             args.build_wasm,
-            args.use_gdk,
+            getattr(args, "use_gdk", False), # GDK args added conditionally
         ]
     )
 
@@ -890,13 +902,14 @@ def parse_arguments():
     if args.disable_exceptions and args.minimal_build is None:
         parser.error("--disable_exceptions requires --minimal_build to be specified.")
 
+    # Validation: Apple specific (only if running on macOS and args exist)
     if is_macOS():
-        # Validation: Apple framework requires an Apple platform
-        if args.build_apple_framework and not any([args.ios, args.macos, args.visionos, args.tvos]):
+        if getattr(args, "build_apple_framework", False) and not any(
+            [getattr(args, "ios", False), getattr(args, "macos", None),
+             getattr(args, "visionos", False), getattr(args, "tvos", False)]):
             parser.error("--build_apple_framework requires --ios, --macos, --visionos, or --tvos to be specified.")
 
-        # Validation: macOS target requires --build_apple_framework
-        if args.macos and not args.build_apple_framework:
+        if getattr(args, "macos", None) and not getattr(args, "build_apple_framework", False):
             parser.error("--macos target requires --build_apple_framework.")
 
     return args
