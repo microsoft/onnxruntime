@@ -1069,9 +1069,9 @@ def generate_vcpkg_install_options(build_dir, args):
         folder_name_parts.append("exception_catching")
     if args.disable_exceptions:
         folder_name_parts.append("noexception")
-    if args.minimal_build is not None:  # TODO: currently wasm minimal_build build is not handled
+    if args.minimal_build is not None:
         folder_name_parts.append("minimal")
-    if len(folder_name_parts) == 0:
+    if args.build_wasm or len(folder_name_parts) == 0:
         # It's hard to tell whether we must use a custom triplet or not. The official triplets work fine for most common situations. However, if a Windows build has set msvc toolset version via args.msvc_toolset then we need to, because we need to ensure all the source code are compiled by the same MSVC toolset version otherwise we will hit link errors like "error LNK2019: unresolved external symbol __std_mismatch_4 referenced in function ..."
         # So, to be safe we always use a custom triplet.
         folder_name = "default"
