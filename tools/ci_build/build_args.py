@@ -769,9 +769,26 @@ def add_other_feature_args(parser: argparse.ArgumentParser) -> None:
     )
 
 
+def is_cross_compiling(args: argparse.Namespace) -> bool:
+    return any(
+        [
+            # Check existence before accessing for conditionally added args
+            getattr(args, "x86", False),
+            getattr(args, "arm", False),
+            getattr(args, "arm64", False),
+            getattr(args, "arm64ec", False),
+            args.rv64,  # General cross-compile arg
+            args.android,
+            # Check existence for macOS/Apple specific args
+            getattr(args, "ios", False),
+            getattr(args, "visionos", False),
+            getattr(args, "tvos", False),
+            args.build_wasm,
+            getattr(args, "use_gdk", False),  # GDK args added conditionally
+        ]
+    )
+
 # --- Main Argument Parsing Function ---
-
-
 def parse_arguments() -> argparse.Namespace:
     """Parses command line arguments for the ONNX Runtime build."""
 
@@ -864,31 +881,14 @@ def parse_arguments() -> argparse.Namespace:
 
     # Default behavior (update/build/test) if no action flags are specified
     # Determine if it's a cross-compiled build (approximated by checking common cross-compile flags)
-    is_cross_compiling = any(
-        [
-            # Check existence before accessing for conditionally added args
-            getattr(args, "x86", False),
-            getattr(args, "arm", False),
-            getattr(args, "arm64", False),
-            getattr(args, "arm64ec", False),
-            args.rv64,  # General cross-compile arg
-            args.android,
-            # Check existence for macOS/Apple specific args
-            getattr(args, "ios", False),
-            getattr(args, "visionos", False),
-            getattr(args, "tvos", False),
-            args.build_wasm,
-            getattr(args, "use_gdk", False),  # GDK args added conditionally
-        ]
-    )
 
     if not (args.update or args.build or args.test or args.clean):
         args.update = True
         args.build = True
         # Only default to running tests for native builds if tests aren't explicitly skipped
-        if not is_cross_compiling and not args.skip_tests:
+        if not is_cross_compiling(args) and not args.skip_tests:
             args.test = True
-        elif is_cross_compiling:
+        elif is_cross_compiling(args):
             print(
                 "Cross-compiling build detected: Defaulting to --update --build. Specify --test explicitly to run tests."
             )

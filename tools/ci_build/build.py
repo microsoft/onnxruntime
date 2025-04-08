@@ -29,7 +29,7 @@ REPO_DIR = os.path.normpath(os.path.join(SCRIPT_DIR, "..", ".."))
 
 sys.path.insert(0, os.path.join(REPO_DIR, "tools", "python"))
 import util.android as android  # noqa: E402
-from build_args import parse_arguments  # noqa: E402
+from build_args import parse_arguments, is_cross_compiling  # noqa: E402
 from util import (  # noqa: E402
     generate_android_triplets,
     generate_linux_triplets,
@@ -2175,7 +2175,6 @@ def main():
                 )
 
     cmake_extra_defines = normalize_arg_list(args.cmake_extra_defines)
-    cross_compiling = args.arm or args.arm64 or args.arm64ec or args.android
 
     if args.enable_address_sanitizer:
         # Disable ONNX Runtime's builtin memory checker
@@ -2195,7 +2194,8 @@ def main():
         log.debug("Defaulting to running update, build [and test for native builds].")
         args.update = True
         args.build = True
-        if cross_compiling:
+        if is_cross_compiling(args):
+            # In most cases, tests are disabled
             args.test = args.android_abi == "x86_64" or args.android_abi == "arm64-v8a"
         else:
             args.test = True
