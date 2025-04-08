@@ -388,6 +388,28 @@ def generate_build_tree(
 
       if args.use_winml:
         cmake_args.append("-Donnxruntime_BUILD_WINML_TESTS=" + ("OFF" if args.skip_winml_tests else "ON"))
+      if args.dml_path:
+          cmake_args += [
+            "-Donnxruntime_USE_CUSTOM_DIRECTML=ON",
+            "-Ddml_INCLUDE_DIR=" + os.path.join(args.dml_path, "include"),
+            "-Ddml_LIB_DIR=" + os.path.join(args.dml_path, "lib"),
+        ]
+
+      if args.dml_external_project:
+        cmake_args += [
+            "-Donnxruntime_USE_CUSTOM_DIRECTML=ON",
+            "-Ddml_EXTERNAL_PROJECT=ON",
+        ]
+
+      if args.use_gdk:
+        cmake_args += [
+            "-DCMAKE_TOOLCHAIN_FILE=" + os.path.join(source_dir, "cmake", "gdk_toolchain.cmake"),
+            "-DGDK_EDITION=" + args.gdk_edition,
+            "-DGDK_PLATFORM=" + args.gdk_platform,
+            "-Donnxruntime_BUILD_UNIT_TESTS=OFF",  # gtest doesn't build for GDK
+        ]
+      if args.use_dml and not (args.dml_path or args.dml_external_project):
+          raise BuildError("You must set dml_path or dml_external_project when building with the GDK.")
     elif not is_macOS():
         cmake_args.append("-Donnxruntime_ENABLE_EXTERNAL_CUSTOM_OP_SCHEMAS="
         + ("ON" if args.enable_external_custom_op_schemas else "OFF"))
@@ -807,29 +829,6 @@ def generate_build_tree(
 
         if args.android_cpp_shared:
             cmake_args += ["-DANDROID_STL=c++_shared"]
-
-    if args.dml_path:
-        cmake_args += [
-            "-Donnxruntime_USE_CUSTOM_DIRECTML=ON",
-            "-Ddml_INCLUDE_DIR=" + os.path.join(args.dml_path, "include"),
-            "-Ddml_LIB_DIR=" + os.path.join(args.dml_path, "lib"),
-        ]
-
-    if args.dml_external_project:
-        cmake_args += [
-            "-Donnxruntime_USE_CUSTOM_DIRECTML=ON",
-            "-Ddml_EXTERNAL_PROJECT=ON",
-        ]
-
-    if args.use_gdk:
-        cmake_args += [
-            "-DCMAKE_TOOLCHAIN_FILE=" + os.path.join(source_dir, "cmake", "gdk_toolchain.cmake"),
-            "-DGDK_EDITION=" + args.gdk_edition,
-            "-DGDK_PLATFORM=" + args.gdk_platform,
-            "-Donnxruntime_BUILD_UNIT_TESTS=OFF",  # gtest doesn't build for GDK
-        ]
-        if args.use_dml and not (args.dml_path or args.dml_external_project):
-            raise BuildError("You must set dml_path or dml_external_project when building with the GDK.")
 
     if is_macOS() and not args.android:
         add_default_definition(cmake_extra_defines, "CMAKE_OSX_ARCHITECTURES", args.osx_arch)
