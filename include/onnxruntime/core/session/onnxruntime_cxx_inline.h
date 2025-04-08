@@ -630,6 +630,7 @@ inline RunOptions& RunOptions::AddActiveLoraAdapter(const LoraAdapter& adapter) 
   return *this;
 }
 
+#if !defined(ORT_MINIMAL_BUILD)
 namespace detail {
 
 template <typename T>
@@ -698,6 +699,7 @@ inline Status CompileModel(const Env& env, ConstModelCompilationOptions model_co
 inline Status CompileModel(const Env& env, const ModelCompilationOptions& model_compilation_options) {
   return Ort::Status(GetCompileApi().CompileModel(env, model_compilation_options));
 }
+#endif  // !defined(ORT_MINIMAL_BUILD)
 
 namespace detail {
 

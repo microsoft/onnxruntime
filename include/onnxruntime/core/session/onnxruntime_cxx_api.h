@@ -559,7 +559,9 @@ ORT_DEFINE_RELEASE(ValueInfo);
 ORT_DEFINE_RELEASE(Node);
 ORT_DEFINE_RELEASE(Graph);
 ORT_DEFINE_RELEASE(Model);
+#if !defined(ORT_MINIMAL_BUILD)
 ORT_DEFINE_RELEASE_FROM_API_STRUCT(ModelCompilationOptions, GetCompileApi);
+#endif  // !defined(ORT_MINIMAL_BUILD)
 
 #undef ORT_DEFINE_RELEASE
 
@@ -1010,6 +1012,7 @@ struct SessionOptions : detail::SessionOptionsImpl<OrtSessionOptions> {
   ConstSessionOptions GetConst() const { return ConstSessionOptions{this->p_}; }
 };
 
+#if !defined(ORT_MINIMAL_BUILD)
 /** \brief Options object used when compiling a model.
  *
  * Wraps ::OrtModelCompilationOptions object and methods
@@ -1066,6 +1069,7 @@ struct ModelCompilationOptions : detail::ModelCompilationOptionsImpl<OrtModelCom
  */
 Status CompileModel(const Env& env, ConstModelCompilationOptions model_compilation_options);
 Status CompileModel(const Env& env, const ModelCompilationOptions& model_compilation_options);
+#endif  // !defined(ORT_MINIMAL_BUILD)
 
 /** \brief Wrapper around ::OrtModelMetadata
  *
