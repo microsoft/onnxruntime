@@ -344,7 +344,6 @@ def generate_build_tree(
     cuda_home,
     cudnn_home,
     rocm_home,
-    mpi_home,
     nccl_home,
     tensorrt_home,
     migraphx_home,
@@ -481,7 +480,6 @@ def generate_build_tree(
         "-Donnxruntime_BUILD_BENCHMARKS=" + ("ON" if args.build_micro_benchmarks else "OFF"),
         "-Donnxruntime_USE_ROCM=" + ("ON" if args.use_rocm else "OFF"),
         "-Donnxruntime_GCOV_COVERAGE=" + ("ON" if args.code_coverage else "OFF"),
-        "-Donnxruntime_USE_MPI=" + ("ON" if args.use_mpi else "OFF"),
         "-Donnxruntime_ENABLE_MEMORY_PROFILE=" + ("ON" if args.enable_memory_profile else "OFF"),
         "-Donnxruntime_ENABLE_CUDA_LINE_NUMBER_INFO=" + ("ON" if args.enable_cuda_line_info else "OFF"),
         "-Donnxruntime_USE_CUDA_NHWC_OPS=" + ("ON" if args.use_cuda and not args.disable_cuda_nhwc_ops else "OFF"),
@@ -760,14 +758,6 @@ def generate_build_tree(
 
     if armnn_libs and os.path.exists(armnn_libs):
         cmake_args += ["-Donnxruntime_ARMNN_LIBS=" + armnn_libs]
-
-    if mpi_home and os.path.exists(mpi_home):
-        if args.use_mpi:
-            cmake_args += ["-Donnxruntime_MPI_HOME=" + mpi_home]
-        else:
-            log.warning(
-                "mpi_home is supplied but use_mpi is set to false. Build will continue without linking MPI libraries."
-            )
 
     if nccl_home and os.path.exists(nccl_home):
         cmake_args += ["-Donnxruntime_NCCL_HOME=" + nccl_home]
@@ -2193,9 +2183,6 @@ def main():
     ):
         args.test = False
 
-    if args.skip_tests:
-        args.test = False
-
     if args.use_tensorrt:
         args.use_cuda = True
 
@@ -2254,9 +2241,6 @@ def main():
     if args.code_coverage and not args.android:
         raise BuildError("Using --code_coverage requires --android")
 
-    if args.gen_api_doc and len(args.config) != 1:
-        raise BuildError("Using --get-api-doc requires a single build config")
-
     # Disabling unit tests for GPU on nuget creation
     if args.use_openvino and args.use_openvino != "CPU" and args.build_nuget:
         args.test = False
@@ -2287,7 +2271,6 @@ def main():
     if args.use_cuda:
         cuda_home, cudnn_home = setup_cuda_vars(args)
 
-    mpi_home = args.mpi_home
     nccl_home = args.nccl_home
 
     snpe_root = args.snpe_root
@@ -2445,7 +2428,6 @@ def main():
             cuda_home,
             cudnn_home,
             rocm_home,
-            mpi_home,
             nccl_home,
             tensorrt_home,
             migraphx_home,

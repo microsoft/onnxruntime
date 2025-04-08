@@ -1,9 +1,11 @@
-import argparse
+# Copyright (c) Microsoft Corporation. All rights reserved.
+# Licensed under the MIT License.import argparse
 import os
 import platform
 import shlex
 import sys
 import warnings
+import argparse
 
 from util import (
     is_macOS,
@@ -124,7 +126,7 @@ def add_core_build_args(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "--compile_no_warning_as_error",
         action="store_true",
-        help="Prevent warnings from being treated as errors during compile.",
+        help="Prevent warnings from being treated as errors during compile. Only works for cmake targets that honor the COMPILE_WARNING_AS_ERROR property",
     )
     parser.add_argument("--build_shared_lib", action="store_true", help="Build a shared library for ONNXRuntime.")
     parser.add_argument(
@@ -183,7 +185,7 @@ def add_testing_args(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "--enable_onnx_tests",
         action="store_true",
-        help="Run onnx_test_runner against test data.",
+        help="Run onnx_test_runner against test data. Only used in ONNX Runtime's CI pipelines",
     )
     parser.add_argument("--path_to_protoc_exe", help="Path to protoc executable.")
     parser.add_argument("--fuzz_testing", action="store_true", help="Enable Fuzz testing.")
@@ -211,11 +213,7 @@ def add_training_args(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--enable_training_apis", action="store_true", help="Enable ORT Training APIs.")
     parser.add_argument("--enable_training_ops", action="store_true", help="Enable training ops in inference graph.")
     parser.add_argument("--enable_nccl", action="store_true", help="Enable NCCL for distributed training.")
-    parser.add_argument("--mpi_home", help="Path to MPI installation directory.")
     parser.add_argument("--nccl_home", help="Path to NCCL installation directory.")
-    parser.add_argument(
-        "--use_mpi", nargs="?", default=False, const=True, type=_str_to_bool, help="Enable MPI (Default: False)."
-    )
 
 
 def add_general_profiling_args(parser: argparse.ArgumentParser) -> None:
@@ -239,8 +237,6 @@ def add_documentation_args(parser: argparse.ArgumentParser) -> None:
         type=str,
         help="Generate operator/type docs. Use '--gen_doc validate' to check against /docs.",
     )
-    parser.add_argument("--gen-api-doc", action="store_true", help="Generate API documentation for PyTorch frontend.")
-
 
 def add_cross_compile_args(parser: argparse.ArgumentParser) -> None:
     """Adds arguments for cross-compiling to non-Windows target CPU architectures."""
@@ -396,7 +392,7 @@ def add_gdk_args(parser: argparse.ArgumentParser) -> None:
 def add_windows_specific_args(parser: argparse.ArgumentParser) -> None:
     """Adds arguments specific to Windows builds or Windows cross-compilation."""
     # Build tools / config
-    parser.add_argument("--msvc_toolset", help="MSVC toolset version (e.g., 14.11). Avoid [14.36, 14.39].")
+    parser.add_argument("--msvc_toolset", help="MSVC toolset version (e.g., 14.11). Must be >=14.40")
     parser.add_argument("--windows_sdk_version", help="Windows SDK version (e.g., 10.0.19041.0).")
     parser.add_argument("--enable_msvc_static_runtime", action="store_true", help="Statically link MSVC runtimes.")
     parser.add_argument("--use_telemetry", action="store_true", help="Enable telemetry (official builds only).")
@@ -437,13 +433,13 @@ def add_windows_specific_args(parser: argparse.ArgumentParser) -> None:
         "--enable_pix_capture", action="store_true", help="Enable Pix support for GPU debugging (requires D3D12)."
     )
 
-    parser.add_argument("--enable_wcos", action="store_true", help="Build for Windows Core OS.")
+    parser.add_argument("--enable_wcos", action="store_true", help="Build for Windows Core OS. Link to Windows umbrella libraries instead of kernel32.lib.")
 
     add_gdk_args(parser)
 
     # --- WinML ---
     winml_group = parser.add_argument_group("WinML API (Windows)")
-    winml_group.add_argument("--use_winml", action="store_true", help="Enable WinML API (Windows).")
+    winml_group.add_argument("--use_winml", action="store_true", help="Enable WinML API (Windows). Requires --enable_wcos.")
     winml_group.add_argument(
         "--winml_root_namespace_override", type=str, help="Override the namespace WinML builds into."
     )
@@ -897,9 +893,28 @@ def parse_arguments() -> argparse.Namespace:
     # Validation: Minimal build requires disabling exceptions
     if args.disable_exceptions and args.minimal_build is None:
         parser.error("--disable_exceptions requires --minimal_build to be specified.")
+    if is_windows():
+      if getattr(args, "use_winml", False) and not getattr(args, "enable_wcos", False):
+        parser.error("--use_winml requires --enable_wcos to be specified.")
+      if hasattr(args, "msvc_toolset") and args.msvc_toolset:
+        try:
+            # Extract major.minor version parts (e.g., "14.36")
+            version_parts = args.msvc_toolset.split('.')
+            if len(version_parts) >= 2:
+                major = int(version_parts[0])
+                minor = int(version_parts[1])
+                # Check known problematic range based on previous script comments/help text
+                # Refined check: >= 14.36 and <= 14.39
+                # Help text now says >= 14.40 is required, so check < 14.40
+                if major == 14 and minor < 40:
+                     # You could make this an error or just a warning
+                     # parser.error(f"MSVC toolset version {args.msvc_toolset} is not supported. Use 14.40 or higher.")
+                     warnings.warn(f"Specified MSVC toolset version {args.msvc_toolset} might have compatibility issues. Version 14.40 or higher is recommended.")
 
-    # Validation: Apple specific (only if running on macOS and args exist)
-    if is_macOS():
+        except (ValueError, IndexError):
+             warnings.warn(f"Could not parse MSVC toolset version: {args.msvc_toolset}. Skipping compatibility check.")
+    
+    elif is_macOS():
         if getattr(args, "build_apple_framework", False) and not any(
             [
                 getattr(args, "ios", False),
