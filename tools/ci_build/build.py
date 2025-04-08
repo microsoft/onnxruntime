@@ -2445,9 +2445,6 @@ def main():
         if args.use_rocm and args.rocm_version is None:
             args.rocm_version = ""
 
-        if args.enable_external_custom_op_schemas and not is_linux():
-            raise BuildError("Registering external custom op schemas is only supported on Linux.")
-
         generate_build_tree(
             cmake_path,
             source_dir,
