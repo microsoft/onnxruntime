@@ -748,7 +748,8 @@ static Status InlineFunctionsAOTImpl(const ExecutionProviders& execution_provide
 // Validate the ep_context_path to make sure it is file path and check whether the file exist already
 static Status GetValidatedEpContextPath(const std::filesystem::path& ep_context_path,
                                         const std::filesystem::path& model_path,
-                                        std::filesystem::path& context_cache_path) {
+                                        std::filesystem::path& context_cache_path,
+                                        bool allow_overwrite_output_model = false) {
   if (!ep_context_path.empty()) {
     context_cache_path = ep_context_path;
     if (!context_cache_path.has_filename()) {
@@ -765,7 +766,7 @@ static Status GetValidatedEpContextPath(const std::filesystem::path& ep_context_
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Both ep_context_path and model_path are empty.");
   }
 
-  if (std::filesystem::exists(context_cache_path)) {
+  if (std::filesystem::exists(context_cache_path) && !allow_overwrite_output_model) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to generate EP context model since the file '",
                            context_cache_path, "' exist already. Please remove the EP context model if you want to re-generate it.");
   }
@@ -783,7 +784,7 @@ static Status CreateEpContextModel(const ExecutionProviders& execution_providers
     all_ep_context_nodes.insert(all_ep_context_nodes.begin(), ep_context_nodes.begin(), ep_context_nodes.end());
   }
 
-  if (all_ep_context_nodes.size() < 1) {
+  if (all_ep_context_nodes.size() < 1 && !ep_context_gen_options.always_generate) {
     return Status::OK();
   }
 
@@ -799,7 +800,8 @@ static Status CreateEpContextModel(const ExecutionProviders& execution_providers
   std::filesystem::path context_cache_path;
   ORT_RETURN_IF_ERROR(GetValidatedEpContextPath(ep_context_gen_options.model_file_path,
                                                 graph.ModelPath(),
-                                                context_cache_path));
+                                                context_cache_path,
+                                                ep_context_gen_options.always_generate));
 
   Model ep_context_model(graph.Name(), false, graph.GetModel().MetaData(),
                          graph.GetModel().ModelPath(),  // use source model path so that external initializers can find the data file path
@@ -1181,7 +1183,7 @@ Status GraphPartitioner::Partition(Graph& graph, FuncManager& func_mgr,
       // Check before EP compile graphs
       std::filesystem::path context_cache_path;
       ORT_RETURN_IF_ERROR(GetValidatedEpContextPath(ep_context_gen_options.model_file_path, graph.ModelPath(),
-                                                    context_cache_path));
+                                                    context_cache_path, ep_context_gen_options.always_generate));
     }
 
     // We use this only if Resource Aware Partitioning is enabled for any of the EPs

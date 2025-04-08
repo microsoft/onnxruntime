@@ -45,6 +45,7 @@ ORT_API_STATUS_IMPL(OrtCompileAPI::CreateModelCompilationOptions, _In_ const Ort
   OrtSessionOptions* session_options = model_comp_options->GetSessionOptions();
   session_options->value.has_explicit_ep_context_gen_options = true;
   session_options->value.ep_context_gen_options.enable = true;
+  session_options->value.ep_context_gen_options.always_generate = true;
   ORT_C_API_RETURN_IF_ERROR(session_options->value.config_options.AddConfigEntry(kOrtSessionOptionEpContextEnable, "1"));
   *out = reinterpret_cast<OrtModelCompilationOptions*>(model_comp_options.release());
 
@@ -70,6 +71,7 @@ ORT_API_STATUS_IMPL(OrtCompileAPI::CreateModelCompilationOptionsFromSessionOptio
   session_options->value.has_explicit_ep_context_gen_options = true;
   session_options->value.ep_context_gen_options = session_options->value.GetEpContextGenerationOptions();
   session_options->value.ep_context_gen_options.enable = true;
+  session_options->value.ep_context_gen_options.always_generate = true;
   ORT_C_API_RETURN_IF_ERROR(session_options->value.config_options.AddConfigEntry(kOrtSessionOptionEpContextEnable, "1"));
   *out = reinterpret_cast<OrtModelCompilationOptions*>(model_comp_options.release());
   return nullptr;
