@@ -20,7 +20,7 @@ def _str_to_bool(s: str) -> bool:
             return False
         case _:
             raise ValueError(f"Invalid boolean value: {s!r}. Use 'true' or 'false'.")
-
+    return False
 
 # --- Argument Verification Helpers ---
 def _qnn_verify_library_kind(library_kind: str) -> str:
@@ -382,8 +382,8 @@ def add_gdk_args(parser: argparse.ArgumentParser) -> None:
     if gdk_latest_env:
         try:  # noqa: SIM105
             default_gdk_edition = os.path.basename(os.path.normpath(gdk_latest_env))
-        except Exception:
-            pass
+        except Exception as e:
+            warnings.warn(f"Failed to determine GDK edition from GameDKLatest env var: {e}")
     parser.add_argument(
         "--gdk_edition",
         default=default_gdk_edition,
