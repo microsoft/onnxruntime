@@ -883,8 +883,7 @@ def parse_arguments() -> argparse.Namespace:
 
     # Default behavior (update/build/test) if no action flags are specified
     # Determine if it's a cross-compiled build (approximated by checking common cross-compile flags)
-
-    if not (args.update or args.build or args.test or args.clean):
+    if not (args.update or args.build or args.test or args.clean or args.gen_doc):
         args.update = True
         args.build = True
         # Only default to running tests for native builds if tests aren't explicitly skipped
@@ -913,5 +912,4 @@ def parse_arguments() -> argparse.Namespace:
 
         if getattr(args, "macos", None) and not getattr(args, "build_apple_framework", False):
             parser.error("--macos target requires --build_apple_framework.")
-
     return args
