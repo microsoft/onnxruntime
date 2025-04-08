@@ -798,7 +798,7 @@ static Status CreateEpContextModel(const ExecutionProviders& execution_providers
   };
 
   std::filesystem::path context_cache_path;
-  ORT_RETURN_IF_ERROR(GetValidatedEpContextPath(ep_context_gen_options.model_file_path,
+  ORT_RETURN_IF_ERROR(GetValidatedEpContextPath(ep_context_gen_options.output_model_file_path,
                                                 graph.ModelPath(),
                                                 context_cache_path,
                                                 ep_context_gen_options.always_generate));
@@ -851,8 +851,8 @@ static Status CreateEpContextModel(const ExecutionProviders& execution_providers
     }
   }
 
-  size_t ini_size_threshold = ep_context_gen_options.external_initializer_size_threshold;
-  std::filesystem::path external_ini_path = ep_context_gen_options.external_initializers_file_path;
+  size_t ini_size_threshold = ep_context_gen_options.output_external_initializer_size_threshold;
+  std::filesystem::path external_ini_path = ep_context_gen_options.output_external_initializers_file_path;
   if (external_ini_path.empty()) {
     // Set the threshold to the max so all initializers are forced into the Onnx file
     ini_size_threshold = SIZE_MAX;
@@ -861,9 +861,9 @@ static Status CreateEpContextModel(const ExecutionProviders& execution_providers
 
   ModelSavingOptions model_saving_options{ini_size_threshold};
 
-  if (ep_context_gen_options.model_buffer_ptr != nullptr &&
-      ep_context_gen_options.model_buffer_size_ptr != nullptr &&
-      ep_context_gen_options.model_buffer_allocator != nullptr) {
+  if (ep_context_gen_options.output_model_buffer_ptr != nullptr &&
+      ep_context_gen_options.output_model_buffer_size_ptr != nullptr &&
+      ep_context_gen_options.output_model_buffer_allocator != nullptr) {
     ORT_RETURN_IF_ERROR(ep_context_model.MainGraph().Resolve());
     // TODO(adrianlizarraga): Investigate if we can make this more memory efficient.
     // May be able to use allocator to directly allocate the ModelProto to avoid a copy.
@@ -874,12 +874,12 @@ static Status CreateEpContextModel(const ExecutionProviders& execution_providers
     ORT_RETURN_IF(buffer_size > static_cast<size_t>(std::numeric_limits<int>::max()),
                   "Cannot serialize ONNX ModelProto larger than 2GB");
 
-    OrtAllocator* allocator = ep_context_gen_options.model_buffer_allocator;
+    OrtAllocator* allocator = ep_context_gen_options.output_model_buffer_allocator;
     void* buffer = allocator->Alloc(allocator, buffer_size);
     model_proto.SerializeToArray(buffer, static_cast<int>(buffer_size));
 
-    *ep_context_gen_options.model_buffer_size_ptr = buffer_size;
-    *ep_context_gen_options.model_buffer_ptr = buffer;
+    *ep_context_gen_options.output_model_buffer_size_ptr = buffer_size;
+    *ep_context_gen_options.output_model_buffer_ptr = buffer;
   } else {
     ORT_RETURN_IF_ERROR(Model::SaveWithExternalInitializers(ep_context_model, context_cache_path,
                                                             external_ini_path, model_saving_options));
@@ -1179,10 +1179,10 @@ Status GraphPartitioner::Partition(Graph& graph, FuncManager& func_mgr,
 
   if (mode == Mode::kNormal || mode == Mode::kAssignOnly) {
 #if !defined(ORT_MINIMAL_BUILD)
-    if (ep_context_gen_options.enable && ep_context_gen_options.model_buffer_ptr == nullptr) {
+    if (ep_context_gen_options.enable && ep_context_gen_options.output_model_buffer_ptr == nullptr) {
       // Check before EP compile graphs
       std::filesystem::path context_cache_path;
-      ORT_RETURN_IF_ERROR(GetValidatedEpContextPath(ep_context_gen_options.model_file_path, graph.ModelPath(),
+      ORT_RETURN_IF_ERROR(GetValidatedEpContextPath(ep_context_gen_options.output_model_file_path, graph.ModelPath(),
                                                     context_cache_path, ep_context_gen_options.always_generate));
     }
 

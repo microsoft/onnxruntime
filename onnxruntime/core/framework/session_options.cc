@@ -105,10 +105,10 @@ EpContextModelGenerationOptions SessionOptions::GetEpContextGenerationOptions() 
   // Have to generate a struct from session config options.
   EpContextModelGenerationOptions options_copy{};
   options_copy.enable = this->config_options.GetConfigOrDefault(kOrtSessionOptionEpContextEnable, "0") == "1";
-  options_copy.model_file_path = this->config_options.GetConfigOrDefault(kOrtSessionOptionEpContextFilePath, "");
-  options_copy.external_initializers_file_path = this->config_options.GetConfigOrDefault(
+  options_copy.output_model_file_path = this->config_options.GetConfigOrDefault(kOrtSessionOptionEpContextFilePath, "");
+  options_copy.output_external_initializers_file_path = this->config_options.GetConfigOrDefault(
       kOrtSessionOptionsEpContextModelExternalInitializersFileName, "");
-  options_copy.external_initializer_size_threshold = 0;
+  options_copy.output_external_initializer_size_threshold = 0;
   options_copy.embed_ep_context_in_model = this->config_options.GetConfigOrDefault(
                                                kOrtSessionOptionEpContextEmbedMode, "0") == "1";
 

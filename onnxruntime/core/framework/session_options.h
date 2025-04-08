@@ -73,13 +73,13 @@ struct EpContextModelGenerationOptions {
   bool enable = false;
   bool always_generate = false;  // true if should always save an output model, even if no EpContext nodes.
 
-  std::string model_file_path;
-  void** model_buffer_ptr;
-  size_t* model_buffer_size_ptr;
-  OrtAllocator* model_buffer_allocator;
+  std::string output_model_file_path;
+  void** output_model_buffer_ptr;
+  size_t* output_model_buffer_size_ptr;
+  OrtAllocator* output_model_buffer_allocator;
 
-  std::string external_initializers_file_path;
-  size_t external_initializer_size_threshold = 0;
+  std::string output_external_initializers_file_path;
+  size_t output_external_initializer_size_threshold = 0;
   bool embed_ep_context_in_model = false;
 };
 

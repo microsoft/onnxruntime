@@ -136,10 +136,10 @@ ORT_API_STATUS_IMPL(OrtCompileAPI::ModelCompilationOptions_SetOutputModelPath,
   }
 
   OrtSessionOptions* session_options = model_options->GetSessionOptions();
-  session_options->value.ep_context_gen_options.model_file_path = std::move(model_path);
+  session_options->value.ep_context_gen_options.output_model_file_path = std::move(model_path);
   ORT_C_API_RETURN_IF_ERROR(session_options->value.config_options.AddConfigEntry(
       kOrtSessionOptionEpContextFilePath,
-      session_options->value.ep_context_gen_options.model_file_path.c_str()));
+      session_options->value.ep_context_gen_options.output_model_file_path.c_str()));
   return nullptr;
   API_IMPL_END
 }
@@ -157,11 +157,11 @@ ORT_API_STATUS_IMPL(OrtCompileAPI::ModelCompilationOptions_SetOutputModelExterna
   auto model_options = reinterpret_cast<onnxruntime::ModelCompilationOptions*>(model_compile_options);
 
   OrtSessionOptions* session_options = model_options->GetSessionOptions();
-  session_options->value.ep_context_gen_options.external_initializers_file_path = std::move(initializers_file_path);
-  session_options->value.ep_context_gen_options.external_initializer_size_threshold = external_initializer_size_threshold;
+  session_options->value.ep_context_gen_options.output_external_initializers_file_path = std::move(initializers_file_path);
+  session_options->value.ep_context_gen_options.output_external_initializer_size_threshold = external_initializer_size_threshold;
   ORT_C_API_RETURN_IF_ERROR(session_options->value.config_options.AddConfigEntry(
       kOrtSessionOptionsEpContextModelExternalInitializersFileName,
-      session_options->value.ep_context_gen_options.external_initializers_file_path.c_str()));
+      session_options->value.ep_context_gen_options.output_external_initializers_file_path.c_str()));
   return nullptr;
   API_IMPL_END
 }
@@ -186,9 +186,9 @@ ORT_API_STATUS_IMPL(OrtCompileAPI::ModelCompilationOptions_SetOutputModelBuffer,
   }
 
   OrtSessionOptions* session_options = model_options->GetSessionOptions();
-  session_options->value.ep_context_gen_options.model_buffer_ptr = output_model_data_ptr;
-  session_options->value.ep_context_gen_options.model_buffer_size_ptr = output_model_data_size_ptr;
-  session_options->value.ep_context_gen_options.model_buffer_allocator = allocator;
+  session_options->value.ep_context_gen_options.output_model_buffer_ptr = output_model_data_ptr;
+  session_options->value.ep_context_gen_options.output_model_buffer_size_ptr = output_model_data_size_ptr;
+  session_options->value.ep_context_gen_options.output_model_buffer_allocator = allocator;
   return nullptr;
   API_IMPL_END
 }

@@ -16,10 +16,10 @@ void ModelCompilationOptions::ResetInputModelSettings() {
 Status ModelCompilationOptions::ResetOutputModelSettings() {
   OrtSessionOptions* session_options = GetSessionOptions();
   EpContextModelGenerationOptions& ep_context_gen_options = session_options->value.ep_context_gen_options;
-  ep_context_gen_options.model_file_path = "";
-  ep_context_gen_options.model_buffer_ptr = nullptr;
-  ep_context_gen_options.model_buffer_size_ptr = nullptr;
-  ep_context_gen_options.model_buffer_allocator = nullptr;
+  ep_context_gen_options.output_model_file_path = "";
+  ep_context_gen_options.output_model_buffer_ptr = nullptr;
+  ep_context_gen_options.output_model_buffer_size_ptr = nullptr;
+  ep_context_gen_options.output_model_buffer_allocator = nullptr;
   return session_options->value.config_options.AddConfigEntry(kOrtSessionOptionEpContextFilePath, "");
 }
 
@@ -53,8 +53,8 @@ Status ModelCompilationOptions::CheckOutputModelSettings() const {
   const OrtSessionOptions* session_options = GetSessionOptions();
   const EpContextModelGenerationOptions& ep_context_gen_options = session_options->value.ep_context_gen_options;
 
-  const bool explicit_writes_to_file = !ep_context_gen_options.model_file_path.empty();
-  const bool writes_to_buffer = ep_context_gen_options.model_buffer_ptr != nullptr;
+  const bool explicit_writes_to_file = !ep_context_gen_options.output_model_file_path.empty();
+  const bool writes_to_buffer = ep_context_gen_options.output_model_buffer_ptr != nullptr;
 
   if (!explicit_writes_to_file && !writes_to_buffer) {
     // User did not specify an output file or an output buffer. We default to generating an output file
@@ -67,12 +67,12 @@ Status ModelCompilationOptions::CheckOutputModelSettings() const {
                            "Output model to compile must be saved either to a file or to a buffer, but not both.");
   }
 
-  if (writes_to_buffer && ep_context_gen_options.model_buffer_size_ptr == nullptr) {
+  if (writes_to_buffer && ep_context_gen_options.output_model_buffer_size_ptr == nullptr) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                            "Invalid buffer configuration for output model: size pointer is null");
   }
 
-  if (writes_to_buffer && ep_context_gen_options.model_buffer_allocator == nullptr) {
+  if (writes_to_buffer && ep_context_gen_options.output_model_buffer_allocator == nullptr) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                            "Invalid buffer configuration for output model: allocator is null");
   }
