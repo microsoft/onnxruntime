@@ -881,7 +881,7 @@ def generate_build_tree(
 
     cmake_args += ["-Donnxruntime_USE_KLEIDIAI=" + ("OFF" if args.no_kleidiai else "ON")]
 
-    if args.macos or args.ios or args.visionos or args.tvos:
+    if is_macOS() and (args.macos or args.ios or args.visionos or args.tvos):
         # Note: Xcode CMake generator doesn't have a good support for Mac Catalyst yet.
         if args.macos == "Catalyst" and args.cmake_generator == "Xcode":
             raise BuildError("Xcode CMake generator ('--cmake_generator Xcode') doesn't support Mac Catalyst build.")
@@ -1037,7 +1037,7 @@ def generate_build_tree(
         add_default_definition(cmake_extra_defines, "onnxruntime_USE_LOCK_FREE_QUEUE", "ON")
 
     if is_windows():
-        if not args.ios and not args.android and not args.build_wasm:
+        if not args.android and not args.build_wasm:
             if args.use_cache:
                 add_default_definition(
                     cmake_extra_defines,
