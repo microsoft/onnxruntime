@@ -4,7 +4,6 @@
 # Licensed under the MIT License.
 from __future__ import annotations
 
-import argparse
 import contextlib
 import json
 import os
@@ -14,8 +13,8 @@ import shlex
 import shutil
 import subprocess
 import sys
-import warnings
 from pathlib import Path
+
 
 def version_to_tuple(version: str) -> tuple:
     v = []
@@ -29,10 +28,8 @@ SCRIPT_DIR = os.path.dirname(os.path.realpath(__file__))
 REPO_DIR = os.path.normpath(os.path.join(SCRIPT_DIR, "..", ".."))
 
 sys.path.insert(0, os.path.join(REPO_DIR, "tools", "python"))
-from build_args import parse_arguments
-
-
 import util.android as android  # noqa: E402
+from build_args import parse_arguments  # noqa: E402
 from util import (  # noqa: E402
     generate_android_triplets,
     generate_linux_triplets,
