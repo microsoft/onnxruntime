@@ -1102,7 +1102,7 @@ def generate_build_tree(
         cxxflags = None
         ldflags = None
         cudaflags = []
-        if is_windows() and not args.ios and not args.android and not args.build_wasm:
+        if is_windows() and not args.android and not args.build_wasm:
             njobs = number_of_parallel_jobs(args)
             if args.use_cuda:
                 cudaflags.append("-allow-unsupported-compiler")
@@ -1614,7 +1614,7 @@ def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs):
         if args.android:
             run_android_tests(args, source_dir, build_dir, config, cwd)
             continue
-        elif args.ios:
+        elif is_macOS() and args.ios:
             run_ios_tests(args, source_dir, config, cwd)
             continue
         dll_path_list = []
