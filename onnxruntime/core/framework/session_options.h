@@ -72,12 +72,12 @@ using CheckLoadCancellationFn = std::function<bool()>;
 struct EpContextModelGenerationOptions {
   bool enable = false;
 
-  std::filesystem::path model_file_path;
+  std::string model_file_path;
   void** model_buffer_ptr;
   size_t* model_buffer_size_ptr;
   OrtAllocator* model_buffer_allocator;
 
-  std::filesystem::path external_initializers_file_path;
+  std::string external_initializers_file_path;
   size_t external_initializer_size_threshold = 0;
   bool embed_ep_context_in_model = false;
 };
@@ -213,6 +213,11 @@ struct SessionOptions {
   // copied internally and the flag needs to be accessible across all copies.
   std::shared_ptr<std::atomic_bool> load_cancellation_flag = std::make_shared<std::atomic_bool>(false);
 
+  // Options for generating compile EPContext models were previously stored in session_option.configs as
+  // string key/value pairs. To support more advanced options, such as setting input/output buffers, we
+  // now have to store EPContext options in a struct of type EpContextModelGenerationOptions.
+  // The function GetEpContextGenerationOptions() handles conversion of string key/value pairs to the new
+  // struct type.
   bool has_explicit_ep_context_gen_options = false;
   EpContextModelGenerationOptions ep_context_gen_options = {};
   EpContextModelGenerationOptions GetEpContextGenerationOptions() const;

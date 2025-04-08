@@ -8,16 +8,15 @@ OrtSessionOptions* ModelCompilationOptions::GetSessionOptions() const {
 }
 
 void ModelCompilationOptions::ResetInputModelSettings() {
-  input_model_path = std::filesystem::path();
+  input_model_path = "";
   input_model_data = nullptr;
   input_model_data_size = 0;
 }
 
 Status ModelCompilationOptions::ResetOutputModelSettings() {
-  output_model_path = "";
   OrtSessionOptions* session_options = GetSessionOptions();
   EpContextModelGenerationOptions& ep_context_gen_options = session_options->value.ep_context_gen_options;
-  ep_context_gen_options.model_file_path = std::filesystem::path();
+  ep_context_gen_options.model_file_path = "";
   ep_context_gen_options.model_buffer_ptr = nullptr;
   ep_context_gen_options.model_buffer_size_ptr = nullptr;
   ep_context_gen_options.model_buffer_allocator = nullptr;

@@ -109,6 +109,8 @@ EpContextModelGenerationOptions SessionOptions::GetEpContextGenerationOptions() 
   options_copy.external_initializers_file_path = this->config_options.GetConfigOrDefault(
       kOrtSessionOptionsEpContextModelExternalInitializersFileName, "");
   options_copy.external_initializer_size_threshold = 0;
+  options_copy.embed_ep_context_in_model = this->config_options.GetConfigOrDefault(
+                                               kOrtSessionOptionEpContextEmbedMode, "0") == "1";
 
   return options_copy;
 }

@@ -19,11 +19,9 @@ struct ModelCompilationOptions {
   const OrtEnv* env = nullptr;
   std::unique_ptr<OrtSessionOptions> session_options_ = nullptr;
   OrtSessionOptions* session_options_override_ = nullptr;
-  std::filesystem::path input_model_path;
+  std::string input_model_path;
   const void* input_model_data = nullptr;
   size_t input_model_data_size;
-  std::string output_model_path;
-  std::string output_external_initializers_file_path;
 
   OrtSessionOptions* GetSessionOptions() const;
   void ResetInputModelSettings();
