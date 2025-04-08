@@ -400,92 +400,154 @@ def generate_triplet_for_posix_platform(
         add_port_configs(f, enable_exception, False, enable_minimal_build)  # Pass enable_minimal_build
 
 
-# Emscripten doesn't typically use the same minimal build concept for ONNX,
-# as its build is heavily customized already. Keeping it separate for now.
-# If minimal build *is* needed for Emscripten, this function would need modification similar to others.
-def generate_vcpkg_triplets_for_emscripten(build_dir: str, emscripten_root: str) -> None:
+def generate_vcpkg_triplets_for_emscripten(
+    build_dir: str,
+    emscripten_root: str,
+    # Parameters defining the specific build configuration
+    enable_rtti: bool,
+    enable_wasm_exception_catching: bool, # Controls -sDISABLE_EXCEPTION_CATCHING=...
+    enable_minimal_onnx_build: bool,      # Controls ONNX port setting AND C++ exceptions (-fno-exceptions)
+    enable_asan: bool,
+) -> None:
     """
-    Generate triplet files for Emscripten (WASM).
+    Generate triplet files for Emscripten (WASM) for wasm32 and wasm64.
+    Places files in the 'default' subdirectory.
+    Configures flags based on passed parameters.
+
+    Derives C++ exception support based on the minimal build flag:
+    - If enable_minimal_onnx_build=True, C++ exceptions are disabled (-fno-exceptions).
+    - If enable_minimal_onnx_build=False, C++ exceptions are assumed enabled (-fexceptions).
+
+    This supports three main effective EH scenarios depending on the combination of
+    'enable_minimal_onnx_build' and 'enable_wasm_exception_catching':
+    1. No EH (-fno-exceptions, -sDISABLE_EXCEPTION_CATCHING=1):
+       Set enable_minimal_onnx_build=True, enable_wasm_exception_catching=False
+    2. Full EH (-fexceptions, -sDISABLE_EXCEPTION_CATCHING=0):
+       Set enable_minimal_onnx_build=False, enable_wasm_exception_catching=True
+    3. Throw Only EH (-fexceptions, -sDISABLE_EXCEPTION_CATCHING=1):
+       Set enable_minimal_onnx_build=False, enable_wasm_exception_catching=False
 
     Args:
         build_dir (str): The directory to save the generated triplet files.
         emscripten_root (str): The root path of Emscripten.
+        enable_rtti (bool): Flag indicating if RTTI is enabled for dependencies.
+        enable_wasm_exception_catching (bool): Flag indicating if the Emscripten runtime
+                                             exception catching mechanism should be enabled
+                                             (controls -sDISABLE_EXCEPTION_CATCHING=...).
+        enable_minimal_onnx_build (bool): Flag controlling if the ONNX dependency
+                                        should be built with DONNX_MINIMAL_BUILD=ON.
+                                        Also implicitly controls C++ exceptions for
+                                        dependencies (True => -fno-exceptions).
+        enable_asan (bool): Flag indicating if AddressSanitizer is enabled for dependencies.
     """
-    enable_minimal_build = False  # Assume False for Emscripten unless specified otherwise
-    for enable_exception in [True, False]:
-        for enable_wasm_exception_catching in [True, False]:
-            for enable_rtti in [True, False]:
-                for enable_asan in [True, False]:
-                    for target_abi in ["wasm32", "wasm64"]:
-                        folder_name_parts = []
-                        if enable_asan:
-                            folder_name_parts.append("asan")
-                        if not enable_rtti:
-                            folder_name_parts.append("nortti")
-                        if not enable_exception:
-                            folder_name_parts.append("noexception")
-                        elif enable_wasm_exception_catching:
-                            folder_name_parts.append("exception_catching")
+    # Always place generated files in the 'default' folder for Emscripten
+    folder_name = "default"
 
-                        folder_name = "default" if len(folder_name_parts) == 0 else "_".join(folder_name_parts)
-                        os_name = "emscripten"
-                        file_name = f"{target_abi}-{os_name}.cmake"
-                        dest_path = Path(build_dir) / folder_name / file_name
-                        os.makedirs(dest_path.parent, exist_ok=True)
-                        with open(dest_path, "w", encoding="utf-8") as f:
-                            add_copyright_header(f)
-                            f.write(r"""
-    set(VCPKG_CRT_LINKAGE dynamic)
-    set(VCPKG_LIBRARY_LINKAGE static)
-    set(VCPKG_CMAKE_SYSTEM_NAME Emscripten)
-    """)
-                            f.write(f"set(VCPKG_TARGET_ARCHITECTURE {target_abi})\n")
-                            emscripten_root_path_cmake_path = emscripten_root.replace("\\", "/")
-                            f.write(f'set(EMSCRIPTEN_ROOT_PATH "{emscripten_root_path_cmake_path}")\n')
-                            vcpkg_toolchain_file = (Path(build_dir) / "emsdk_vcpkg_toolchain.cmake").absolute()
-                            vcpkg_toolchain_file_cmake_path = str(vcpkg_toolchain_file).replace("\\", "/")
-                            f.write(f'set(VCPKG_CHAINLOAD_TOOLCHAIN_FILE "{vcpkg_toolchain_file_cmake_path}")\n')
-                            cflags_release = ["-DNDEBUG", "-O3", "-pthread"]
-                            ldflags = []
-                            cflags = [
-                                "-ffunction-sections",
-                                "-fdata-sections",
-                                "-msimd128",
-                                "-pthread",
-                                "-Wno-pthreads-mem-growth",
-                            ]
-                            if enable_wasm_exception_catching:
-                                cflags.append("-sDISABLE_EXCEPTION_CATCHING=0")
-                            if enable_asan:
-                                cflags += ["-fsanitize=address"]
-                                ldflags += ["-fsanitize=address"]
-                            if target_abi == "wasm64":
-                                cflags.append("-sMEMORY64")
-                                ldflags.append("-sMEMORY64")
-                            if len(ldflags) >= 1:
-                                f.write('set(VCPKG_LINKER_FLAGS "{}")\n'.format(" ".join(ldflags)))
+    # Derive C++ exception enablement from the minimal build flag
+    cpp_exceptions_enabled = not enable_minimal_onnx_build
 
-                            cxxflags = cflags.copy()
-                            if not enable_rtti:
-                                cxxflags.append("-fno-rtti")
+    for target_abi in ["wasm32", "wasm64"]:
+        os_name = "emscripten"
+        file_name = f"{target_abi}-{os_name}.cmake"
+        dest_path = Path(build_dir) / folder_name / file_name
+        os.makedirs(dest_path.parent, exist_ok=True)
 
-                            # TODO: Exception flag for Emscripten (note: -fno-exceptions conflicts with -sDISABLE_EXCEPTION_CATCHING=0)                            
+        with open(dest_path, "w", encoding="utf-8") as f:
+            add_copyright_header(f)
+            f.write(r"""
+set(VCPKG_CRT_LINKAGE dynamic)
+set(VCPKG_LIBRARY_LINKAGE static)
+set(VCPKG_CMAKE_SYSTEM_NAME Emscripten)
+""")
+            f.write(f"set(VCPKG_TARGET_ARCHITECTURE {target_abi})\n")
+            emscripten_root_path_cmake_path = emscripten_root.replace("\\", "/")
+            f.write(f'set(EMSCRIPTEN_ROOT_PATH "{emscripten_root_path_cmake_path}")\n')
 
-                            if cflags:
-                                f.write(f'set(VCPKG_C_FLAGS "{" ".join(cflags)}")\n')
-                            if cxxflags:
-                                f.write(f'set(VCPKG_CXX_FLAGS "{" ".join(cxxflags)}")\n')
-                            if cflags_release:
-                                # Note: Combining release flags with base flags, check if this is desired behavior
-                                combined_release_flags = cflags_release + cflags
-                                f.write(f'set(VCPKG_C_FLAGS_RELEASE "{" ".join(combined_release_flags)}")\n')
-                                f.write(f'set(VCPKG_CXX_FLAGS_RELEASE "{" ".join(combined_release_flags)}")\n')
-                                f.write(f'set(VCPKG_C_FLAGS_RELWITHDEBINFO "{" ".join(combined_release_flags)}")\n')
-                                f.write(f'set(VCPKG_CXX_FLAGS_RELWITHDEBINFO "{" ".join(combined_release_flags)}")\n')
+            # Define the path to the intermediate toolchain file used by vcpkg for wasm
+            vcpkg_toolchain_file = (Path(build_dir) / "emsdk_vcpkg_toolchain.cmake").absolute()
+            vcpkg_toolchain_file_cmake_path = str(vcpkg_toolchain_file).replace("\\", "/")
+            f.write(f'set(VCPKG_CHAINLOAD_TOOLCHAIN_FILE "{vcpkg_toolchain_file_cmake_path}")\n')
 
-                            # Pass True for has_exception because Emscripten build enables it via CFLAGS
-                            # Pass False for enable_minimal_build unless specifically needed for Emscripten
-                            add_port_configs(f, enable_exception, True, enable_minimal_build)
+            # --- Configure Flags based on Parameters ---
+            cflags_release = ["-DNDEBUG", "-O3", "-pthread"]
+            ldflags = [] # Initialize linker flags list
+            # Base flags applicable to both C and C++
+            base_flags = [
+                "-ffunction-sections",
+                "-fdata-sections",
+                "-msimd128",
+                "-pthread",
+                "-Wno-pthreads-mem-growth",
+            ]
+
+            # ASan (apply to Base, Linker)
+            if enable_asan:
+                asan_flag = "-fsanitize=address"
+                base_flags.append(asan_flag)
+                ldflags.append(asan_flag) # Add to linker flags
+
+            # Wasm Exception Catching Runtime (-s flag, apply to Base and Linker flags)
+            exception_catching_flag = ""
+            if enable_wasm_exception_catching:
+                exception_catching_flag = "-sDISABLE_EXCEPTION_CATCHING=0"
+            else:
+                exception_catching_flag = "-sDISABLE_EXCEPTION_CATCHING=1"
+
+            base_flags.append(exception_catching_flag) # Add to base C/C++ flags
+            ldflags.append(exception_catching_flag)    # Add to linker flags
+
+            # Wasm64 Memory (apply to Base, Linker)
+            if target_abi == "wasm64":
+                memory_flag = "-sMEMORY64"
+                base_flags.append(memory_flag)
+                ldflags.append(memory_flag) # Add to linker flags
+
+            # --- C Flags ---
+            # VCPKG_C_FLAGS applies only base flags
+            f.write(f'set(VCPKG_C_FLAGS "{" ".join(base_flags)}")\n')
+
+            # --- CXX Flags ---
+            # Start with base flags
+            cxxflags = list(base_flags) # Create a copy
+
+            # C++ RTTI Compiler Flag
+            if not enable_rtti:
+                cxxflags.append("-fno-rtti")
+
+            # C++ Exceptions Compiler Flag (Derived from enable_minimal_onnx_build)
+            if not cpp_exceptions_enabled: # i.e., if enable_minimal_onnx_build is True
+                cxxflags.append("-fno-exceptions")
+            # If cpp_exceptions_enabled=True, we assume -fexceptions is the default
+            # or handled by the Emscripten toolchain/CMake settings elsewhere.
+
+            f.write(f'set(VCPKG_CXX_FLAGS "{" ".join(cxxflags)}")\n')
+
+            # --- Linker Flags ---
+            # Apply Linker flags (now includes exception and memory flags explicitly)
+            if len(ldflags) >= 1:
+                f.write('set(VCPKG_LINKER_FLAGS "{}")\n'.format(" ".join(ldflags)))
+
+            # --- Release / RelWithDebInfo Flags ---
+            # Combine base flags with release-specific flags
+            c_combined_release_flags = cflags_release + base_flags
+            cxx_combined_release_flags = cflags_release + cxxflags # Use the derived cxxflags
+
+            f.write(f'set(VCPKG_C_FLAGS_RELEASE "{" ".join(c_combined_release_flags)}")\n')
+            f.write(f'set(VCPKG_CXX_FLAGS_RELEASE "{" ".join(cxx_combined_release_flags)}")\n')
+
+            # For RelWithDebInfo, add -g
+            c_rel_with_deb_info_flags = c_combined_release_flags + ["-g"]
+            cxx_rel_with_deb_info_flags = cxx_combined_release_flags + ["-g"]
+            f.write(f'set(VCPKG_C_FLAGS_RELWITHDEBINFO "{" ".join(c_rel_with_deb_info_flags)}")\n')
+            f.write(f'set(VCPKG_CXX_FLAGS_RELWITHDEBINFO "{" ".join(cxx_rel_with_deb_info_flags)}")\n')
+
+
+            # --- Add Port Specific Configs ---
+            # Pass the derived C++ exception status and the original minimal build flag
+            add_port_configs(f,
+                             has_exception=cpp_exceptions_enabled, # Derived value
+                             is_emscripten=True,
+                             enable_minimal_build=enable_minimal_onnx_build) # Original parameter
 
 
 def generate_windows_triplets(build_dir: str, toolset_version: str) -> None:
