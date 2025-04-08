@@ -4,12 +4,12 @@ import platform
 import shlex
 import sys
 import warnings
-from typing import List # Keep List for Python < 3.9 compatibility if needed, otherwise list[str] is fine for 3.9+
 
 from util import (
     is_macOS,
     is_windows,
 )
+
 
 # Using match/case (Python 3.10+) and type hints
 def _str_to_bool(s: str) -> bool:
@@ -380,12 +380,12 @@ def add_gdk_args(parser: argparse.ArgumentParser) -> None:
     """Adds arguments for GDK (Xbox) platform builds."""
     parser.add_argument("--use_gdk", action="store_true", help="Build with the GDK toolchain.")
     default_gdk_edition = ""
-    gdk_latest_env = os.environ.get("GameDKLatest", "")   # noqa: SIM112
+    gdk_latest_env = os.environ.get("GameDKLatest", "")  # noqa: SIM112
     if gdk_latest_env:
-        try:    # noqa: SIM105
+        try:  # noqa: SIM105
             # Use os.path.basename for potentially cleaner extraction of the last component
             default_gdk_edition = os.path.basename(os.path.normpath(gdk_latest_env))
-        except Exception: # Catch potential errors during path manipulation
+        except Exception:  # Catch potential errors during path manipulation
             pass  # Handle cases where path might be weird or invalid
     parser.add_argument(
         "--gdk_edition",
@@ -442,15 +442,16 @@ def add_windows_specific_args(parser: argparse.ArgumentParser) -> None:
 
     # --- Xbox --- (Moved GDK args here as it's Windows-based dev)
     gdk_group = parser.add_argument_group("GDK (Xbox) Platform (Windows Dev)")
-    add_gdk_args(gdk_group) # Add GDK args to this specific group
+    add_gdk_args(gdk_group)  # Add GDK args to this specific group
 
     # --- WinML ---
-    winml_group = parser.add_argument_group('WinML API (Windows)')
+    winml_group = parser.add_argument_group("WinML API (Windows)")
     winml_group.add_argument("--use_winml", action="store_true", help="Enable WinML API (Windows).")
     winml_group.add_argument(
         "--winml_root_namespace_override", type=str, help="Override the namespace WinML builds into."
     )
     # Note: --skip_winml_tests is handled in add_testing_args
+
 
 def add_linux_specific_args(parser: argparse.ArgumentParser) -> None:
     """Adds arguments specific to Linux builds."""
@@ -782,7 +783,7 @@ def parse_arguments() -> argparse.Namespace:
 
     class Parser(argparse.ArgumentParser):
         # override argument file line parsing behavior - allow multiple arguments per line and handle quotes
-        def convert_arg_line_to_args(self, arg_line: str) -> list[str]: # Use list[str] for Python 3.9+
+        def convert_arg_line_to_args(self, arg_line: str) -> list[str]:  # Use list[str] for Python 3.9+
             return shlex.split(arg_line)
 
     parser = Parser(
@@ -833,7 +834,7 @@ def parse_arguments() -> argparse.Namespace:
         add_windows_specific_args(parser)
     elif is_macOS():
         add_apple_args(parser)
-    else: # Assuming Linux or other non-Windows, non-macOS Unix-like
+    else:  # Assuming Linux or other non-Windows, non-macOS Unix-like
         add_linux_specific_args(parser)
 
     # --- Parse Arguments ---
@@ -857,7 +858,7 @@ def parse_arguments() -> argparse.Namespace:
     # Set default CMake generator if not specified
     # Check if cmake_generator attribute exists (it might if --use_xcode was used)
     # before checking if it's None.
-    if not hasattr(args, 'cmake_generator') or args.cmake_generator is None:
+    if not hasattr(args, "cmake_generator") or args.cmake_generator is None:
         if is_windows():
             # Default to Ninja for WASM on Windows for potential speedup, VS otherwise
             args.cmake_generator = "Ninja" if args.build_wasm else "Visual Studio 17 2022"
@@ -883,7 +884,7 @@ def parse_arguments() -> argparse.Namespace:
             getattr(args, "visionos", False),
             getattr(args, "tvos", False),
             args.build_wasm,
-            getattr(args, "use_gdk", False), # GDK args added conditionally
+            getattr(args, "use_gdk", False),  # GDK args added conditionally
         ]
     )
 
@@ -905,8 +906,13 @@ def parse_arguments() -> argparse.Namespace:
     # Validation: Apple specific (only if running on macOS and args exist)
     if is_macOS():
         if getattr(args, "build_apple_framework", False) and not any(
-            [getattr(args, "ios", False), getattr(args, "macos", None),
-             getattr(args, "visionos", False), getattr(args, "tvos", False)]):
+            [
+                getattr(args, "ios", False),
+                getattr(args, "macos", None),
+                getattr(args, "visionos", False),
+                getattr(args, "tvos", False),
+            ]
+        ):
             parser.error("--build_apple_framework requires --ios, --macos, --visionos, or --tvos to be specified.")
 
         if getattr(args, "macos", None) and not getattr(args, "build_apple_framework", False):
