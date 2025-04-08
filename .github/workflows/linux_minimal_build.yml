@@ -283,7 +283,7 @@ jobs:
         uses: microsoft/onnxruntime-github-actions/run-build-script-in-docker@4fa24ea7a6521ed14e4335cae10f0979e224474e
         with:
           docker_image: ${{ steps.build_docker_image_step.outputs.full-image-name }}
-          build_config: Debug # From original --config Debug
+          build_config: Debug
           mode: 'update'
           extra_build_flags: >-
             --cmake_generator Ninja
@@ -295,8 +295,19 @@ jobs:
         uses: microsoft/onnxruntime-github-actions/run-build-script-in-docker@4fa24ea7a6521ed14e4335cae10f0979e224474e
         with:
           docker_image: ${{ steps.build_docker_image_step.outputs.full-image-name }}
-          build_config: Debug # From original --config Debug
+          build_config: Debug
           mode: 'build'
+          extra_build_flags: >-
+            --cmake_generator Ninja
+            --build_shared_lib
+            --use_binskim_compliant_compile_flags
+            --minimal_build extended
+      - name: Run Build 5 (Test)
+        uses: microsoft/onnxruntime-github-actions/run-build-script-in-docker@4fa24ea7a6521ed14e4335cae10f0979e224474e
+        with:
+          docker_image: ${{ steps.build_docker_image_step.outputs.full-image-name }}
+          build_config: Debug
+          mode: 'test'
           extra_build_flags: >-
             --cmake_generator Ninja
             --build_shared_lib
@@ -345,7 +356,7 @@ jobs:
         uses: microsoft/onnxruntime-github-actions/run-build-script-in-docker@4fa24ea7a6521ed14e4335cae10f0979e224474e
         with:
           docker_image: ${{ steps.build_docker_image_step.outputs.full-image-name }}
-          build_config: MinSizeRel # From original --config MinSizeRel
+          build_config: MinSizeRel
           mode: 'update'
           extra_build_flags: >-
             --cmake_generator Ninja
@@ -361,8 +372,25 @@ jobs:
         uses: microsoft/onnxruntime-github-actions/run-build-script-in-docker@4fa24ea7a6521ed14e4335cae10f0979e224474e
         with:
           docker_image: ${{ steps.build_docker_image_step.outputs.full-image-name }}
-          build_config: MinSizeRel # From original --config MinSizeRel
+          build_config: MinSizeRel
           mode: 'build'
+          extra_build_flags: >-
+            --cmake_generator Ninja
+            --build_wheel
+            --use_binskim_compliant_compile_flags
+            --skip_tests
+            --disable_ml_ops
+            --disable_types sparsetensor float8 optional
+            --include_ops_by_config /onnxruntime_src/build/.test_data/include_no_operators.config
+            --cmake_extra_defines onnxruntime_BUILD_UNIT_TESTS=OFF
+
+
+      - name: Run Build 6a (Test)
+        uses: microsoft/onnxruntime-github-actions/run-build-script-in-docker@4fa24ea7a6521ed14e4335cae10f0979e224474e
+        with:
+          docker_image: ${{ steps.build_docker_image_step.outputs.full-image-name }}
+          build_config: MinSizeRel
+          mode: 'test'
           extra_build_flags: >-
             --cmake_generator Ninja
             --build_wheel
