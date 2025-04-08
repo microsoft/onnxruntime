@@ -2480,8 +2480,9 @@ def main():
     if args.clean:
         clean_targets(cmake_path, build_dir, configs)
 
-    # if using DML, perform initial nuget package restore
-    setup_dml_build(args, cmake_path, build_dir, configs)
+    if is_windows():
+        # if using DML, perform initial nuget package restore
+        setup_dml_build(args, cmake_path, build_dir, configs)
 
     if args.build:
         if args.parallel < 0:
