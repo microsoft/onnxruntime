@@ -2166,7 +2166,7 @@ def main():
     if args.android and args.use_vcpkg and args.android_ndk_path is not None and os.path.exists(args.android_ndk_path):
         os.environ["ANDROID_NDK_HOME"] = args.android_ndk_path
 
-    if not is_windows():
+    if not is_windows() and not is_macOS():
         if not args.allow_running_as_root:
             is_root_user = os.geteuid() == 0
             if is_root_user:
