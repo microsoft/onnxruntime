@@ -379,6 +379,8 @@ def generate_build_tree(
         "-Donnxruntime_USE_TELEMETRY=" + ("ON" if args.use_telemetry else "OFF"),
         "-Donnxruntime_ENABLE_PIX_FOR_WEBGPU_EP=" + ("ON" if args.enable_pix_capture else "OFF"),
       ]
+      if args.winml_root_namespace_override:
+          cmake_args.append("-Donnxruntime_WINML_NAMESPACE_OVERRIDE=" + args.winml_root_namespace_override)
       if args.disable_memleak_checker or args.enable_address_sanitizer:
           cmake_args.append("-Donnxruntime_ENABLE_MEMLEAK_CHECKER=OFF")
       else:
@@ -755,8 +757,6 @@ def generate_build_tree(
     if cann_home and os.path.exists(cann_home):
         cmake_args += ["-Donnxruntime_CANN_HOME=" + cann_home]
 
-    if args.winml_root_namespace_override:
-        cmake_args += ["-Donnxruntime_WINML_NAMESPACE_OVERRIDE=" + args.winml_root_namespace_override]
     if args.use_openvino:
         cmake_args += [
             "-Donnxruntime_USE_OPENVINO=ON",
