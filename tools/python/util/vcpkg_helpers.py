@@ -469,8 +469,7 @@ def generate_vcpkg_triplets_for_emscripten(build_dir: str, emscripten_root: str)
                             if not enable_rtti:
                                 cxxflags.append("-fno-rtti")
 
-                            # Exception flag for Emscripten (note: -fno-exceptions conflicts with -sDISABLE_EXCEPTION_CATCHING=0)
-                            # We keep exceptions enabled based on the cflags setting above.
+                            # TODO: Exception flag for Emscripten (note: -fno-exceptions conflicts with -sDISABLE_EXCEPTION_CATCHING=0)                            
 
                             if cflags:
                                 f.write(f'set(VCPKG_C_FLAGS "{" ".join(cflags)}")\n')
