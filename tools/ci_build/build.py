@@ -2549,14 +2549,6 @@ def main():
             # documentation generation as a separate task post-build
             generate_documentation(source_dir, build_dir, configs, args.gen_doc == "validate")
 
-    if args.gen_api_doc and (args.build or args.test):
-        print("Generating Python doc for ORTModule...")
-        docbuild_dir = os.path.join(source_dir, "tools", "doc")
-        run_subprocess(
-            ["bash", "builddoc.sh", os.path.dirname(sys.executable), source_dir, build_dir, args.config[0]],
-            cwd=docbuild_dir,
-        )
-
     log.info("Build complete")
 
 
