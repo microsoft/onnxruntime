@@ -12,7 +12,7 @@ namespace onnxruntime {
 */
 class GroupQueryAttentionFusion : public GraphTransformer {
  public:
-  GroupQueryAttentionFusion(const InlinedHashSet<std::string_view>& compatible_execution_providers = {}) noexcept
+  explicit GroupQueryAttentionFusion(const InlinedHashSet<std::string_view>& compatible_execution_providers = {}) noexcept
       : GraphTransformer("GroupQueryAttentionFusion", compatible_execution_providers) {
   }
 
