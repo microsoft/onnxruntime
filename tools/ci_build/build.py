@@ -1346,7 +1346,14 @@ def generate_build_tree(
             add_default_definition(
                 cmake_extra_defines, "VCPKG_CHAINLOAD_TOOLCHAIN_FILE", str(empty_toolchain_file.absolute())
             )
-            generate_vcpkg_triplets_for_emscripten(build_dir, emscripten_root_path, not args.disable_rtti, not args.disable_wasm_exception_catching, args.minimal_build is not None, args.enable_address_sanitizer)
+            generate_vcpkg_triplets_for_emscripten(
+                build_dir,
+                emscripten_root_path,
+                not args.disable_rtti,
+                not args.disable_wasm_exception_catching,
+                args.minimal_build is not None,
+                args.enable_address_sanitizer,
+            )
         elif args.android:
             generate_android_triplets(build_dir, args.android_cpp_shared, args.android_api)
         elif is_windows():

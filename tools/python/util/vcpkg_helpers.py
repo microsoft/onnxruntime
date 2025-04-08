@@ -405,8 +405,8 @@ def generate_vcpkg_triplets_for_emscripten(
     emscripten_root: str,
     # Parameters defining the specific build configuration
     enable_rtti: bool,
-    enable_wasm_exception_catching: bool, # Controls -sDISABLE_EXCEPTION_CATCHING=...
-    enable_minimal_onnx_build: bool,      # Controls ONNX port setting AND C++ exceptions (-fno-exceptions)
+    enable_wasm_exception_catching: bool,  # Controls -sDISABLE_EXCEPTION_CATCHING=...
+    enable_minimal_onnx_build: bool,  # Controls ONNX port setting AND C++ exceptions (-fno-exceptions)
     enable_asan: bool,
 ) -> None:
     """
@@ -470,7 +470,7 @@ set(VCPKG_CMAKE_SYSTEM_NAME Emscripten)
 
             # --- Configure Flags based on Parameters ---
             cflags_release = ["-DNDEBUG", "-O3", "-pthread"]
-            ldflags = [] # Initialize linker flags list
+            ldflags = []  # Initialize linker flags list
             # Base flags applicable to both C and C++
             base_flags = [
                 "-ffunction-sections",
@@ -484,7 +484,7 @@ set(VCPKG_CMAKE_SYSTEM_NAME Emscripten)
             if enable_asan:
                 asan_flag = "-fsanitize=address"
                 base_flags.append(asan_flag)
-                ldflags.append(asan_flag) # Add to linker flags
+                ldflags.append(asan_flag)  # Add to linker flags
 
             # Wasm Exception Catching Runtime (-s flag, apply to Base and Linker flags)
             exception_catching_flag = ""
@@ -493,14 +493,14 @@ set(VCPKG_CMAKE_SYSTEM_NAME Emscripten)
             else:
                 exception_catching_flag = "-sDISABLE_EXCEPTION_CATCHING=1"
 
-            base_flags.append(exception_catching_flag) # Add to base C/C++ flags
-            ldflags.append(exception_catching_flag)    # Add to linker flags
+            base_flags.append(exception_catching_flag)  # Add to base C/C++ flags
+            ldflags.append(exception_catching_flag)  # Add to linker flags
 
             # Wasm64 Memory (apply to Base, Linker)
             if target_abi == "wasm64":
                 memory_flag = "-sMEMORY64"
                 base_flags.append(memory_flag)
-                ldflags.append(memory_flag) # Add to linker flags
+                ldflags.append(memory_flag)  # Add to linker flags
 
             # --- C Flags ---
             # VCPKG_C_FLAGS applies only base flags
@@ -508,14 +508,14 @@ set(VCPKG_CMAKE_SYSTEM_NAME Emscripten)
 
             # --- CXX Flags ---
             # Start with base flags
-            cxxflags = list(base_flags) # Create a copy
+            cxxflags = list(base_flags)  # Create a copy
 
             # C++ RTTI Compiler Flag
             if not enable_rtti:
                 cxxflags.append("-fno-rtti")
 
             # C++ Exceptions Compiler Flag (Derived from enable_minimal_onnx_build)
-            if not cpp_exceptions_enabled: # i.e., if enable_minimal_onnx_build is True
+            if not cpp_exceptions_enabled:  # i.e., if enable_minimal_onnx_build is True
                 cxxflags.append("-fno-exceptions")
             # If cpp_exceptions_enabled=True, we assume -fexceptions is the default
             # or handled by the Emscripten toolchain/CMake settings elsewhere.
@@ -530,7 +530,7 @@ set(VCPKG_CMAKE_SYSTEM_NAME Emscripten)
             # --- Release / RelWithDebInfo Flags ---
             # Combine base flags with release-specific flags
             c_combined_release_flags = cflags_release + base_flags
-            cxx_combined_release_flags = cflags_release + cxxflags # Use the derived cxxflags
+            cxx_combined_release_flags = cflags_release + cxxflags  # Use the derived cxxflags
 
             f.write(f'set(VCPKG_C_FLAGS_RELEASE "{" ".join(c_combined_release_flags)}")\n')
             f.write(f'set(VCPKG_CXX_FLAGS_RELEASE "{" ".join(cxx_combined_release_flags)}")\n')
@@ -541,13 +541,14 @@ set(VCPKG_CMAKE_SYSTEM_NAME Emscripten)
             f.write(f'set(VCPKG_C_FLAGS_RELWITHDEBINFO "{" ".join(c_rel_with_deb_info_flags)}")\n')
             f.write(f'set(VCPKG_CXX_FLAGS_RELWITHDEBINFO "{" ".join(cxx_rel_with_deb_info_flags)}")\n')
 
-
             # --- Add Port Specific Configs ---
             # Pass the derived C++ exception status and the original minimal build flag
-            add_port_configs(f,
-                             has_exception=cpp_exceptions_enabled, # Derived value
-                             is_emscripten=True,
-                             enable_minimal_build=enable_minimal_onnx_build) # Original parameter
+            add_port_configs(
+                f,
+                has_exception=cpp_exceptions_enabled,  # Derived value
+                is_emscripten=True,
+                enable_minimal_build=enable_minimal_onnx_build,
+            )  # Original parameter
 
 
 def generate_windows_triplets(build_dir: str, toolset_version: str) -> None:
