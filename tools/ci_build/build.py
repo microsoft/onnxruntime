@@ -408,8 +408,8 @@ def generate_build_tree(
                 "-DGDK_PLATFORM=" + args.gdk_platform,
                 "-Donnxruntime_BUILD_UNIT_TESTS=OFF",  # gtest doesn't build for GDK
             ]
-        if args.use_dml and not (args.dml_path or args.dml_external_project):
-            raise BuildError("You must set dml_path or dml_external_project when building with the GDK.")
+            if args.use_dml and not (args.dml_path or args.dml_external_project):
+                raise BuildError("You must set dml_path or dml_external_project when building with the GDK.")
     elif not is_macOS():
         cmake_args.append(
             "-Donnxruntime_ENABLE_EXTERNAL_CUSTOM_OP_SCHEMAS="
