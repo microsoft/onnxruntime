@@ -378,6 +378,11 @@ def generate_build_tree(
         "-Donnxruntime_USE_WINML=" + ("ON" if args.use_winml else "OFF"),
         "-Donnxruntime_USE_TELEMETRY=" + ("ON" if args.use_telemetry else "OFF"),
       ]
+      if args.disable_memleak_checker or args.enable_address_sanitizer:
+          cmake_args.append("-Donnxruntime_ENABLE_MEMLEAK_CHECKER=OFF")
+      else:
+          cmake_args.append("-Donnxruntime_ENABLE_MEMLEAK_CHECKER=ON")
+
       if args.use_winml:
         cmake_args.append("-Donnxruntime_BUILD_WINML_TESTS=" + ("OFF" if args.skip_winml_tests else "ON"))
     cmake_args += [
@@ -2178,10 +2183,6 @@ def main():
                 )
 
     cmake_extra_defines = normalize_arg_list(args.cmake_extra_defines)
-
-    if args.enable_address_sanitizer:
-        # Disable ONNX Runtime's builtin memory checker
-        args.disable_memleak_checker = True
 
     # When this flag is enabled, it is possible ONNXRuntime shared library is build separately, expecting some compatible EP
     # shared lib being build in a seperate process. So we skip the testing if none of the primary EPs are built with ONNXRuntime
