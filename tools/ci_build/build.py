@@ -29,7 +29,7 @@ REPO_DIR = os.path.normpath(os.path.join(SCRIPT_DIR, "..", ".."))
 
 sys.path.insert(0, os.path.join(REPO_DIR, "tools", "python"))
 import util.android as android  # noqa: E402
-from build_args import is_cross_compiling, parse_arguments  # noqa: E402
+from build_args import parse_arguments  # noqa: E402
 from util import (  # noqa: E402
     generate_android_triplets,
     generate_linux_triplets,
@@ -2192,7 +2192,7 @@ def main():
         args.use_tensorrt or args.use_openvino or args.use_vitisai or (args.use_qnn and args.use_qnn != "static_lib")
     ):
         args.test = False
-    
+
     if args.skip_tests:
         args.test = False
 
