@@ -19,8 +19,8 @@ permissions:
 
 jobs:
   build_test_openvino:
-    name: Build and Test OpenVINO EP (Ubuntu 22.04, Py3.12)
-    # Call the reusable workflow
+    name: Build and Test OpenVINO EP (AlamLinux8, Py3.12)
+    # Use the reusable workflow as the other Linux CI pipelines
     uses: ./.github/workflows/reusable_linux_build.yml
     with:
       pool_name: "onnxruntime-github-Ubuntu2204-AMD-CPU"
