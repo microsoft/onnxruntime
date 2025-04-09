@@ -43,6 +43,9 @@ class ModelBuilder {
 
   void AddOperand(const std::string& name, const emscripten::val& operand);
 
+  // Register a WebNN constant operand using the provided tensor and descriptor information.
+  Status RegisterConstant(const onnx::TensorProto& tensor, emscripten::val& operand,
+                          emscripten::val& desc, const logging::Logger& logger);
   template <typename T>
   const emscripten::val& CreateOrGetConstant(const int32_t& data_type, T value,
                                              const std::vector<uint32_t>& shape = {});
@@ -83,7 +86,6 @@ class ModelBuilder {
   InlinedHashMap<std::string, emscripten::val> wnn_operands_;
   std::vector<std::string> input_names_;
   std::vector<std::string> output_names_;
-  std::vector<std::vector<uint8_t>> unpacked_tensors_;
 
   InlinedHashMap<std::string, OnnxTensorInfo> input_output_info_;
 
@@ -161,7 +163,7 @@ const emscripten::val& ModelBuilder::CreateOrGetConstant(const int32_t& data_typ
         num_elements = (num_elements + 1) / 2;
         buffer = emscripten::val::global("Uint8Array").new_(num_elements);
         if (value) {
-          buffer.call<void>("fill", emscripten::val(PackInt8ToUint8AsNibble(value, data_type)));
+          buffer.call<void>("fill", emscripten::val(PackInt8ToUint8DoubledNibbles(value, data_type)));
         }
         break;
       case ONNX_NAMESPACE::TensorProto_DataType_BOOL:
