@@ -330,6 +330,7 @@ stages:
               python3 -m pip install --upgrade pip ; \
               pushd models/llama ; \
               python3 -m pip install -r requirements.txt ; \
+              pip3 install --pre torch torchvision torchaudio --index-url https://download.pytorch.org/whl/nightly/cu126 ; \
               popd ; \
               python3 -m pip install /ort-artifact/*.whl ; \
               python3 -m models.llama.convert_to_onnx -m meta-llama/Llama-2-7b-hf --input /meta-llama2 --output llama2-7b-fp16 --precision fp16 --execution_provider cuda --small_gp;\
