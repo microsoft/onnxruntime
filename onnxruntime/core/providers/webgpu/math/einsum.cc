@@ -154,9 +154,9 @@ EinsumTerm EinsumEquation::ProcessTerm(
       } else {
         ORT_THROW("Ellipsis must be specified in the LHS");
       }
-      // Add '0', '1', '2', '3', '4', etc to represent ellipsis dimensions.
+      // Add '_0', '_1', '_2', '_3', '_4', etc to represent ellipsis dimensions.
       for (size_t j = 0; j < ellipsis_dims.size(); ++j) {
-        std::string symbol_j(1, static_cast<char>('0' + j));
+        std::string symbol_j = "_" + std::to_string(j);
         einsum_term.symbol_to_indices[symbol_j].push_back(i + j);
         AddSymbol(symbol_j, static_cast<int>(dims[next_dim++]), index);
       }
@@ -195,6 +195,7 @@ Status EinsumProgram::GenerateShaderCode(ShaderHelper& shader) const {
   std::vector<std::string> reduce_ops_loop_footers;
   std::vector<std::string> reduce_op_compute;
   bool is_reduce_ops_without_loop = parsed_equation_.symbol_to_info_.size() == parsed_equation_.rhs_.symbol_to_indices.size();
+  bool is_reduce_op_added_once = false;
 
   for (const auto& pair : parsed_equation_.symbol_to_info_) {
     const std::string& symbol = pair.first;
@@ -248,13 +249,17 @@ Status EinsumProgram::GenerateShaderCode(ShaderHelper& shader) const {
               symbol));
         }
 
-        reduce_op_compute.push_back("prod *= " +
-                                    inputs[rhs_term_index].get().GetByIndices("input" + std::to_string(rhs_term_index) + "Indices") + ";");
+        if (parsed_equation_.lhs_.size() > 1 || !is_reduce_op_added_once) {
+          reduce_op_compute.push_back("prod *= " +
+            inputs[rhs_term_index].get().GetByIndices("input" + std::to_string(rhs_term_index) + "Indices") + ";");
+          is_reduce_op_added_once = true;
+        }
+
         rhs_term_index++;
       }
 
       reduce_ops_loop_headers.push_back("for(var " + symbol + ": u32 = 0; " +
-                                        symbol + " <  " + std::to_string(info.dim_value) +
+                                        symbol + " < " + std::to_string(info.dim_value) +
                                         "; " + symbol + "++) {");
       reduce_ops_loop_footers.push_back("}");
     }
@@ -269,7 +274,7 @@ Status EinsumProgram::GenerateShaderCode(ShaderHelper& shader) const {
     for (size_t i = 1; i < inputs.size(); ++i) {
       sum_statement += " * " + inputs[i].get().GetByIndices("input" + std::to_string(i) + "Indices");
     }
-    
+
     sum_statement += ";";
 
     reduce_ops.push_back(sum_statement);
