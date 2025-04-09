@@ -103,6 +103,13 @@ void AllocatorDefaultFree(void* p) {
 
 #endif  // USE_MIMALLOC
 
+size_t GetAlignmentForDevice(const OrtDevice& ort_device) {
+  if (ort_device.MemType() == OrtDevice::MemType::QNN_HTP_SHARED) {
+    return kAlloc4KAlignment;
+  }
+  return kAllocAlignment;
+}
+
 void* CPUAllocator::Alloc(size_t size) {
   return AllocatorDefaultAlloc(size);
 }

@@ -57,6 +57,7 @@ constexpr const char* WEBGPU_BUFFER = "WebGPU_Buffer";
 constexpr const char* WEBNN_TENSOR = "WebNN_Tensor";
 
 constexpr size_t kAllocAlignment = 256;
+constexpr const size_t kAlloc4KAlignment = 4096;
 
 class IAllocator;
 class Stream;
@@ -270,4 +271,7 @@ using AllocatorMap = std::map<OrtDevice, AllocatorPtr>;
 
 void* AllocatorDefaultAlloc(size_t size);
 void AllocatorDefaultFree(void* p);
+
+size_t GetAlignmentForDevice(const OrtDevice&);
+
 }  // namespace onnxruntime
