@@ -17,16 +17,19 @@ Status ToStatus(const OrtStatus* ort_status, common::StatusCategory category = c
 
 #ifndef ORT_NO_EXCEPTIONS
 #define API_IMPL_BEGIN try {
-#define API_IMPL_END                                                \
-  }                                                                 \
-  catch (const onnxruntime::NotImplementedException& ex) {          \
-    return OrtApis::CreateStatus(ORT_NOT_IMPLEMENTED, ex.what());   \
-  }                                                                 \
-  catch (const std::exception& ex) {                                \
-    return OrtApis::CreateStatus(ORT_RUNTIME_EXCEPTION, ex.what()); \
-  }                                                                 \
-  catch (...) {                                                     \
-    return OrtApis::CreateStatus(ORT_FAIL, "Unknown Exception");    \
+#define API_IMPL_END                                                               \
+  }                                                                                \
+  catch (const onnxruntime::OnnxRuntimeException& ex) {                            \
+    return OrtApis::CreateStatus(static_cast<OrtErrorCode>(ex.Code()), ex.what()); \
+  }                                                                                \
+  catch (const onnxruntime::NotImplementedException& ex) {                         \
+    return OrtApis::CreateStatus(ORT_NOT_IMPLEMENTED, ex.what());                  \
+  }                                                                                \
+  catch (const std::exception& ex) {                                               \
+    return OrtApis::CreateStatus(ORT_RUNTIME_EXCEPTION, ex.what());                \
+  }                                                                                \
+  catch (...) {                                                                    \
+    return OrtApis::CreateStatus(ORT_FAIL, "Unknown Exception");                   \
   }
 
 #else
