@@ -39,7 +39,7 @@ jobs:
         build_config: ["Debug", "Release"]
         exclude: ${{ fromJSON(inputs.matrix_exclude) }}
 
-    runs-on: ${{ matrix.platform_machine == 'x86_64' && 'macos-13' || 'macos-15' }}
+    runs-on: ${{ matrix.platform_machine == 'x86_64' && 'macos-15-large' || 'macos-15' }}
     env:
       build_flags: >
         --build_dir ./build
