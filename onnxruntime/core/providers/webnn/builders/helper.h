@@ -200,6 +200,7 @@ std::unordered_set<const Node*> GetSupportedNodes(const GraphViewer& graph_viewe
 // Some ONNX ops are supported by decomposed WebNN ops.
 const std::map<std::string_view, std::vector<std::string_view>> decomposed_op_map = {
     {"LRN", {"add", "averagePool2d", "div", "mul", "pad", "pow", "transpose"}},
+    {"MatMulNBits", {"add", "dequantizeLinear", "matmul", "reshape", "transpose"}},
     {"RotaryEmbedding", {"add", "concat", "gather", "mul", "reshape", "split"}},
     {"SimplifiedLayerNormalization", {"add", "div", "mul", "pow", "reduceMean", "sqrt"}},
     {"SkipSimplifiedLayerNormalization", {"add", "div", "mul", "pow", "reduceMean", "sqrt"}},
@@ -386,7 +387,7 @@ bool SetWebnnDataType(emscripten::val& desc, const int32_t data_type);
 
 bool IsMLTensorSupported();
 
-uint8_t PackInt8ToUint8AsNibble(int8_t value, const int32_t& data_type);
+uint8_t PackInt8ToUint8DoubledNibbles(int8_t value, const int32_t& data_type);
 uint16_t PackFloat32ToUint16AsFloat16(float value);
 
 }  // namespace webnn
