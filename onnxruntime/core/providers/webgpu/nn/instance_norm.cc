@@ -100,13 +100,13 @@ Status InstanceNormProgramNHWC::GenerateShaderCode(ShaderHelper& shader) const {
   const auto& input = shader.AddInput("input", ShaderUsage::UseUniform | ShaderUsage::UseIndicesTypeAlias | ShaderUsage::UseValueTypeAlias | ShaderUsage::UseElementTypeAlias);
   const auto& channel_scale_shift = shader.AddInput("channel_scale_shift", ShaderUsage::UseUniform | ShaderUsage::UseIndicesTypeAlias);
   const auto& output = shader.AddOutput("output", ShaderUsage::UseUniform | ShaderUsage::UseIndicesTypeAlias | ShaderUsage::UseValueTypeAlias);
-  shader.MainFunctionBody() // << shader.GuardAgainstOutOfBoundsWorkgroupSizes("uniforms.output_size")
-                            << "let current_image_number = global_idx / (uniforms.C * uniforms.H);\n"
-                            << "let current_channel_number = global_idx % uniforms.C;\n"
-                            << "let scale_offset = (current_image_number * uniforms.C + current_channel_number);\n"
-                            << "var scale : input_value_t;\n"
-                            << "var shift : input_value_t;\n"
-                            << "let input_value = " << input.GetByOffset("global_idx") << ";\n";
+  shader.MainFunctionBody()  // << shader.GuardAgainstOutOfBoundsWorkgroupSizes("uniforms.output_size")
+      << "let current_image_number = global_idx / (uniforms.C * uniforms.H);\n"
+      << "let current_channel_number = global_idx % uniforms.C;\n"
+      << "let scale_offset = (current_image_number * uniforms.C + current_channel_number);\n"
+      << "var scale : input_value_t;\n"
+      << "var shift : input_value_t;\n"
+      << "let input_value = " << input.GetByOffset("global_idx") << ";\n";
   if (components_ > 1) {
     shader.MainFunctionBody() << "for (var i : u32 = 0; i < uniforms.components; i = i + 1) {\n"
                               << "  let scale_sift =  " << channel_scale_shift.GetByOffset("scale_offset + i") << ";\n"
