@@ -143,15 +143,22 @@ Status FlashAttentionProgram::GenerateShaderCode(ShaderHelper& shader) const {
   const max_k_step: u32 = 16u;
   const vec_factor: u32 = 4u;
   const qkv_head_size_vec: u32 = qkv_head_size / vec_factor;
+  const half_qkv_head_size_vec = qkv_head_size_vec / 2u;
   const min_value : q_element_t = q_element_t(-65504.0);
 
   // Default SHM usage limit is 16KB in Dawn.
-  var<workgroup> k_tile : array<array<q_value_t, qkv_head_size_vec>, max_k_step>; // 96 * 2 * 16 = 3KB.
-  var<workgroup> v_tile : array<array<q_value_t, qkv_head_size_vec>, max_k_step>; // 96 * 2 * 16 = 3KB.
+  // vec4<f16> * qkv_head_size_vec * max_k_step = 8 * (128/4) * 16 = 4KB. 128 is head_size for phi4.
+  var<workgroup> k_tile : array<array<q_value_t, qkv_head_size_vec>, max_k_step>;
+  var<workgroup> v_tile : array<array<q_value_t, qkv_head_size_vec>, max_k_step>;
+
+  // Move half of o_tile from private memory into workgroup memory to reduce register pressure.
+  // Note that register spill was observed on Qualcomm if whole o_tile is on private memory.
+  // vec4<f16> * half_qkv_head_size_vec * workgroup_size_x = 8 * (128/4/2) * 64 = 8KB.
+  var<workgroup> o_tile_r : array<array<q_value_t, half_qkv_head_size_vec>, workgroup_size_x>;
 
   // Private memory per lane.
   var<private> q_tile : array<q_value_t, qkv_head_size_vec>;
-  var<private> o_tile : array<q_value_t, qkv_head_size_vec>;
+  var<private> o_tile : array<q_value_t, half_qkv_head_size_vec>;
   fn loadq(q_idx_global : u32, head_idx: u32)
   {
       // Stored as float16[batch_size,sequence_length,3072] the inputs as per onnx MHA
@@ -186,13 +193,14 @@ Status FlashAttentionProgram::GenerateShaderCode(ShaderHelper& shader) const {
           v_tile[slot][idx%qkv_head_size_vec] = val;
       }
   }
-  fn writeo(o_idx_global: u32, head_idx: u32)
+  fn writeo(o_idx_global: u32, head_idx: u32, local_idx: u32)
   {
       // Stored as float16[batch_size,sequence_length,3072]
       let offset = o_idx_global * num_heads * qkv_head_size_vec + head_idx * qkv_head_size_vec;
-      for (var idx:u32 = 0; idx < qkv_head_size_vec; idx ++)
+      for (var idx:u32 = 0; idx < half_qkv_head_size_vec; idx ++)
       {
           output[offset+idx] = o_tile[idx];
+          output[offset+idx+half_qkv_head_size_vec] = o_tile_r[local_idx][idx];
       }
   }
 )HELPER_FN";
@@ -228,7 +236,7 @@ Status FlashAttentionProgram::GenerateShaderCode(ShaderHelper& shader) const {
   // Each lane/thread is responsible for a single q.
   shader.MainFunctionBody() << R"MAIN_FN(
   let head_idx = u32(workgroup_idx / uniforms.num_seq_tile);
-  let capped_sg_id = min(sg_id, max_k_step);
+  let capped_sg_id = min(sg_id, max_k_step - 1u);
   let capped_sg_size = min(sg_size, max_k_step);
 
   // Load Q
@@ -380,7 +388,7 @@ Status FlashAttentionProgram::GenerateShaderCode(ShaderHelper& shader) const {
     let o_ratio = dleft / d;
 
     if (sg_size > 8) {
-      for (var i:u32 = 0; i < qkv_head_size_vec; i++)
+      for (var i:u32 = 0; i < half_qkv_head_size_vec; i++)
       {
           var val = v_tile[capped_sg_id][i];
           var sum = subgroupShuffle(val, 0) * qk_1[0];
@@ -400,13 +408,32 @@ Status FlashAttentionProgram::GenerateShaderCode(ShaderHelper& shader) const {
           sum += subgroupShuffle(val, 14) * qk_4[2];
           sum += subgroupShuffle(val, 15) * qk_4[3];
           o_tile[i] = o_tile[i] * o_ratio + sum;
+
+          val = v_tile[capped_sg_id][half_qkv_head_size_vec + i];
+          sum = subgroupShuffle(val, 0) * qk_1[0];
+          sum += subgroupShuffle(val, 1) * qk_1[1];
+          sum += subgroupShuffle(val, 2) * qk_1[2];
+          sum += subgroupShuffle(val, 3) * qk_1[3];
+          sum += subgroupShuffle(val, 4) * qk_2[0];
+          sum += subgroupShuffle(val, 5) * qk_2[1];
+          sum += subgroupShuffle(val, 6) * qk_2[2];
+          sum += subgroupShuffle(val, 7) * qk_2[3];
+          sum += subgroupShuffle(val, 8) * qk_3[0];
+          sum += subgroupShuffle(val, 9) * qk_3[1];
+          sum += subgroupShuffle(val, 10) * qk_3[2];
+          sum += subgroupShuffle(val, 11) * qk_3[3];
+          sum += subgroupShuffle(val, 12) * qk_4[0];
+          sum += subgroupShuffle(val, 13) * qk_4[1];
+          sum += subgroupShuffle(val, 14) * qk_4[2];
+          sum += subgroupShuffle(val, 15) * qk_4[3];
+          o_tile_r[local_idx][i] = o_tile_r[local_idx][i] * o_ratio + sum;
       }
     }
     else
     {
-      for (var i:u32 = 0; i < qkv_head_size_vec; i++)
+      for (var i:u32 = 0; i < half_qkv_head_size_vec; i++)
       {
-          var val = select(vec4<q_element_t>(0), v_tile[capped_sg_id][i], k_start + capped_sg_id < seq_causal_length);
+          var val = v_tile[capped_sg_id][i];
           var sum = subgroupShuffle(val, 0) * qk_1[0];
           sum += subgroupShuffle(val, 1) * qk_1[1];
           sum += subgroupShuffle(val, 2) * qk_1[2];
@@ -416,12 +443,23 @@ Status FlashAttentionProgram::GenerateShaderCode(ShaderHelper& shader) const {
           sum += subgroupShuffle(val, 6) * qk_2[2];
           sum += subgroupShuffle(val, 7) * qk_2[3];
           o_tile[i] = o_tile[i] * o_ratio + sum;
+
+          val = v_tile[capped_sg_id][half_qkv_head_size_vec + i];
+          sum = subgroupShuffle(val, 0) * qk_1[0];
+          sum += subgroupShuffle(val, 1) * qk_1[1];
+          sum += subgroupShuffle(val, 2) * qk_1[2];
+          sum += subgroupShuffle(val, 3) * qk_1[3];
+          sum += subgroupShuffle(val, 4) * qk_2[0];
+          sum += subgroupShuffle(val, 5) * qk_2[1];
+          sum += subgroupShuffle(val, 6) * qk_2[2];
+          sum += subgroupShuffle(val, 7) * qk_2[3];
+          o_tile_r[local_idx][i] = o_tile_r[local_idx][i] * o_ratio + sum;
       }
     }
   }
 
   if (valid_q) {
-    writeo(q_idx_global, head_idx);
+    writeo(q_idx_global, head_idx, local_idx);
   }
 )MAIN_FN";
 
@@ -821,7 +859,7 @@ bool CanApplyFlashAttention(const Tensor* bias, const Tensor* present_key, const
          bias == nullptr &&
          context.HasFeature(wgpu::FeatureName::Subgroups) &&
          present_key != nullptr && present_value != nullptr && present_key->SizeInBytes() > 0 &&
-         present_value->SizeInBytes() > 0 && parameters.head_size_ % 4 == 0;
+         present_value->SizeInBytes() > 0 && parameters.head_size_ % 8 == 0;
 }
 
 }  // namespace webgpu
