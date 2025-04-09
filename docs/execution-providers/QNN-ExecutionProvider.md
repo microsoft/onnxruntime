@@ -52,7 +52,7 @@ OnnxRuntime QNN Execution Provider is a supported runtime in [Qualcomm AI Hub](h
 ## Configuration Options
 The QNN Execution Provider supports a number of configuration options. These provider options are specified as key-value string pairs.
 
-### Session Options
+### EP Provider Options
 |`"backend_path"`|Description|
 |---|-----|
 |'libQnnCpu.so' or 'QnnCpu.dll'|Enable CPU backend. Useful for integration testing. CPU backend is a reference implementation of QNN operators|
@@ -581,7 +581,7 @@ After the override, the model works like this:
 - Op5’s output is converted from u16 to u8. Op6 consumes the u8 type.
 
 ## LoRAv2 support
-Currently, only pre-compiled models with EPContext nodes are supported. The  example script for reference [gen_qnn_ctx_onnx_model.py](https://github.com/microsoft/onnxruntime/blob/main/onnxruntime/python/tools/qnn/gen_qnn_ctx_onnx_model.py). After applying the model LoRAv2 using the QNN SDK, a main qnn context binary and several adapter binary sections will be generated. We use the LoRAv2 config and place it into RunOptions for inference.
+Currently, only pre-compiled models with EPContext nodes are supported. The  example script for reference [gen_qnn_ctx_onnx_model.py](https://github.com/microsoft/onnxruntime/blob/main/onnxruntime/python/tools/qnn/gen_qnn_ctx_onnx_model.py). After applying the model LoRAv2 using the [QNN SDK](https://docs.qualcomm.com/bundle/publicresource/topics/80-63442-50/tutorials.html#lora-(low-rank-adaptation)), a main qnn context binary and several adapter binary sections will be generated. We use the LoRAv2 config and place it into RunOptions for inference.
 
 * The format of the LoRAv2 config:
   * graph name: QNN graph in QNN pre-built context binary.
