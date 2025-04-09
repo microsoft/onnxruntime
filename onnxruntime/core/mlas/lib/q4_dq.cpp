@@ -483,11 +483,11 @@ struct BlockwiseQuantizer {
 
         int q_rows, q_cols;
         quantizedShape(rows, columns, q_rows, q_cols);
-        constexpr int kPackSize = BitsTraits<qbits, false>::kPackSize;
 
         MlasTryBatchParallel(
             thread_pool, total_thrd_blks,
             [&](ptrdiff_t block_idx) {
+                constexpr int kPackSize = BitsTraits<qbits, false>::kPackSize;
                 uint8_t zp_bytes[kPackSize], vi[kPackSize];
                 std::fill_n(zp_bytes, kPackSize, (uint8_t)BitsTraits<qbits, false>::kMid);
                 std::fill_n(vi, kPackSize, 0);
@@ -551,7 +551,7 @@ struct BlockwiseQuantizer {
                             const int32_t meta_r = (i + l) / QuantBlk::kRow;
                             const float scale = static_cast<float>(scales[meta_c * row_blks + meta_r]);
                             const float reciprocal_scale = scale ? 1.0f / scale : 0.0f;
-                            const int8_t zp = zp_bytes[meta_r % kPackSize];
+                            const int32_t zp = zp_bytes[meta_r % kPackSize];
 
                             const float v = static_cast<float>(src[(i + l) * leadingDimension + j]);
                             vi[l] = (uint8_t)std::clamp(roundf(v * reciprocal_scale + zp),

@@ -37,7 +37,7 @@ class MlasBlockwiseQdqTest : public MlasTestBase {
  private:
   std::random_device rd;
   std::mt19937 gen{rd()};
-  std::uniform_int_distribution<uint8_t> dist_int{0, 255};
+  std::uniform_int_distribution<int> dist_int{0, (1 << qbits) - 1};
   MatrixGuardBuffer<T> FpBuf;
   MatrixGuardBuffer<T> FpBuf2;
   MatrixGuardBuffer<uint8_t> InputElements;
@@ -52,6 +52,36 @@ class MlasBlockwiseQdqTest : public MlasTestBase {
   MatrixGuardBuffer<uint8_t> QDQTransposedOutputElements;
   MatrixGuardBuffer<T> QDQTransposedOutputScales;
   MatrixGuardBuffer<uint8_t> QDQTransposedOutputOffsets;
+
+  void SetValue(uint8_t *arr, int rows, int cols, int q_rows, int block_size, bool columnwise) {
+    constexpr int packSize = 8 / qbits;
+    for (int c = 0; c < cols; c++) {
+      for (int r = 0; r < rows; r += packSize) {
+        int idx = c * q_rows + r / packSize;
+        for (int l = 0; l < packSize && r + l < rows; ++l) {
+          int v;
+          if (columnwise) {
+            if (r % block_size == 0) {
+              v = 0;
+            } else if (r % block_size == 1) {
+              v = (1 << qbits) - 1;
+            } else {
+              v = dist_int(gen);
+            }
+          } else {
+            if (c % block_size == 0) {
+              v = 0;
+            } else if (c % block_size == 1) {
+              v = (1 << qbits) - 1;
+            } else {
+              v = dist_int(gen);
+            }
+          }
+          arr[idx] = (uint8_t)SetElem<qbits>(arr[idx], l, v);
+        }
+      }
+    }
+  }
 
   void Test(int rows, int columns, int block_size, bool columnwise, bool symmetric) {
     constexpr int packSize = 8 / qbits;
@@ -82,22 +112,7 @@ class MlasBlockwiseQdqTest : public MlasTestBase {
       qdq_weights_T = QDQTransposedOutputElements.GetBuffer(q_data_size_in_bytes, true);
     }
 
-    int v = (1 << (qbits - 1)) - 1;
-    constexpr int base = 1 << qbits, step = qbits == 2 ? 3 : qbits == 4 ? 5 : 13;
-    for (int c = 0; c < columns; c++) {
-      for (int r = 0; r < rows; r += packSize) {
-        int idx = c * q_rows + r / packSize;
-        for (int l = 0; l < packSize && r + l < rows; ++l) {
-          uint8_t v0 = static_cast<uint8_t>(v);
-          v = (v + step) % base;
-          if (v == 11 || v == 7 || v == 3) {
-            // making the cycle base - 3 instead of base, avoiding same values in a row
-            v = (v + step) % base;
-          }
-          elements[idx] = (uint8_t)SetElem<qbits>(elements[idx], l, v0);
-        }
-      }
-    }
+    SetValue(elements, rows, columns, q_rows, block_size, columnwise);
 
     T* scales = InputScales.GetBuffer(q_scale_size);
     uint8_t* zp = symmetric ? nullptr : InputOffsets.GetBuffer(q_zp_size_in_bytes, true);
@@ -117,23 +132,17 @@ class MlasBlockwiseQdqTest : public MlasTestBase {
         for (int r = 0; r < meta_rows; r += packSize) {
           int idx = c * ((meta_rows + packSize - 1) / packSize) + r / packSize;
           for (int l = 0; l < packSize && r + l < meta_rows; ++l) {
-            uint8_t v0 = static_cast<uint8_t>(v);
-            v = (v + step) % base;
-            if (v == 11 || v == 7 || v == 3) {
-              // making the cycle base - 3 instead of base, avoiding same values in a row
-              v = (v + step) % base;
-            }
-           zp[idx] = (uint8_t)SetElem<qbits>(zp[idx], l, v0);
+           zp[idx] = (uint8_t)SetElem<qbits>(zp[idx], l, dist_int(gen));
           }
         }
       }
     }
 
-    std::cout << "before dequant: " << (elements[0] & ((1 << qbits) - 1)) << " " << scales[0] << " " << (zp ? (zp[0] & ((1 << qbits) - 1)) : 0) << std::endl;
+    // std::cout << "before dequant: " << (elements[0] & ((1 << qbits) - 1)) << " " << scales[0] << " " << (zp ? (zp[0] & ((1 << qbits) - 1)) : 0) << std::endl;
     MlasDequantizeBlockwise<T, qbits>(dequant_buf, elements, scales, zp, block_size,
                                       columnwise, rows, columns, threadpool_ptr);
 
-    std::cout << "after dequant: " << dequant_buf[0] << " " << scales[0] << " " << (zp ? (zp[0] & ((1 << qbits) - 1)) : 0) << std::endl;
+    // std::cout << "after dequant: " << dequant_buf[0] << " " << scales[0] << " " << (zp ? (zp[0] & ((1 << qbits) - 1)) : 0) << std::endl;
 
     MlasTranspose(dequant_buf, transposed, columns, rows, threadpool_ptr);
 
@@ -146,7 +155,7 @@ class MlasBlockwiseQdqTest : public MlasTestBase {
     MlasQuantizeBlockwise<T, qbits>(o_elements, o_scales, o_zp, transposed, block_size,
                                     columnwise, rows, columns, columns, threadpool_ptr);
 
-    std::cout << "after quant: " << (o_elements[0] & ((1 << qbits) - 1)) << " " << o_scales[0] << " " << (o_zp ? (o_zp[0] & ((1 << qbits) - 1)) : 0) << std::endl;
+    // std::cout << "after quant: " << (o_elements[0] & ((1 << qbits) - 1)) << " " << o_scales[0] << " " << (o_zp ? (o_zp[0] & ((1 << qbits) - 1)) : 0) << std::endl;
 
     if constexpr (qbits == 4) {
       if (columnwise) {
@@ -227,41 +236,41 @@ class MlasBlockwiseQdqTest : public MlasTestBase {
   void ExecuteShort(void) override {
     Test(20, 1, 32, true, false);
     Test(20, 1, 32, true, true);
-    // Test(1, 20, 32, false, false);
-    // Test(1, 20, 32, false, true);
-    // Test(52, 1, 32, true, false);
-    // Test(52, 1, 32, true, true);
-    // Test(1, 52, 32, false, false);
-    // Test(1, 52, 32, false, true);
-    // Test(20, 3, 32, true, false);
-    // Test(20, 3, 32, true, true);
-    // Test(3, 20, 32, false, false);
-    // Test(3, 20, 32, false, true);
-    // Test(52, 3, 32, true, false);
-    // Test(52, 3, 32, true, true);
-    // Test(3, 52, 32, false, false);
-    // Test(3, 52, 32, false, true);
-    // Test(52, 3, 64, true, false);
-    // Test(52, 3, 64, true, true);
-    // Test(3, 52, 64, false, false);
-    // Test(3, 52, 64, false, true);
-    // Test(32 * 9 + 17, 41, 32, true, false);
-    // Test(32 * 9 + 17, 41, 32, true, true);
-    // Test(41, 32 * 9 + 17, 32, false, false);
-    // Test(41, 32 * 9 + 17, 32, false, true);
-    // Test(32 * 9 + 17, 41, 64, true, false);
-    // Test(32 * 9 + 17, 41, 64, true, true);
-    // Test(41, 32 * 9 + 17, 64, false, false);
-    // Test(41, 32 * 9 + 17, 64, false, true);
-    // Test(32 * 15 + 17, 63, 128, true, false);
-    // Test(32 * 15 + 17, 63, 128, true, true);
-    // Test(63, 32 * 15 + 17, 128, false, false);
-    // Test(63, 32 * 15 + 17, 128, false, true);
+    Test(1, 20, 32, false, false);
+    Test(1, 20, 32, false, true);
+    Test(52, 1, 32, true, false);
+    Test(52, 1, 32, true, true);
+    Test(1, 52, 32, false, false);
+    Test(1, 52, 32, false, true);
+    Test(20, 3, 32, true, false);
+    Test(20, 3, 32, true, true);
+    Test(3, 20, 32, false, false);
+    Test(3, 20, 32, false, true);
+    Test(52, 3, 32, true, false);
+    Test(52, 3, 32, true, true);
+    Test(3, 52, 32, false, false);
+    Test(3, 52, 32, false, true);
+    Test(52, 3, 64, true, false);
+    Test(52, 3, 64, true, true);
+    Test(3, 52, 64, false, false);
+    Test(3, 52, 64, false, true);
+    Test(32 * 9 + 17, 41, 32, true, false);
+    Test(32 * 9 + 17, 41, 32, true, true);
+    Test(41, 32 * 9 + 17, 32, false, false);
+    Test(41, 32 * 9 + 17, 32, false, true);
+    Test(32 * 9 + 17, 41, 64, true, false);
+    Test(32 * 9 + 17, 41, 64, true, true);
+    Test(41, 32 * 9 + 17, 64, false, false);
+    Test(41, 32 * 9 + 17, 64, false, true);
+    Test(32 * 15 + 17, 63, 128, true, false);
+    Test(32 * 15 + 17, 63, 128, true, true);
+    Test(63, 32 * 15 + 17, 128, false, false);
+    Test(63, 32 * 15 + 17, 128, false, true);
 
-    // Test(256, 256, 32, true, false);
-    // Test(256, 256, 32, true, true);
-    // Test(256, 256, 32, false, false);
-    // Test(256, 256, 32, false, true);
+    Test(256, 256, 32, true, false);
+    Test(256, 256, 32, true, true);
+    Test(256, 256, 32, false, false);
+    Test(256, 256, 32, false, true);
   }
 
   MlasBlockwiseQdqTest() = default;
@@ -270,7 +279,7 @@ class MlasBlockwiseQdqTest : public MlasTestBase {
 static UNUSED_VARIABLE bool added_to_main = AddTestRegister([](bool is_short_execute) {
   size_t count = 0;
   if (is_short_execute) {
-    // count += MlasDirectShortExecuteTests<MlasBlockwiseQdqTest<float, 2>>::RegisterShortExecute();
+    count += MlasDirectShortExecuteTests<MlasBlockwiseQdqTest<float, 2>>::RegisterShortExecute();
     count += MlasDirectShortExecuteTests<MlasBlockwiseQdqTest<float, 4>>::RegisterShortExecute();
     count += MlasDirectShortExecuteTests<MlasBlockwiseQdqTest<float, 8>>::RegisterShortExecute();
   }
