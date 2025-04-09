@@ -71,7 +71,7 @@ Status ComputeChannelScaleAndShift(ComputeContext& context, const Tensor* input,
   TensorShape reduced_output_shape(reduced_output_shape_vector);
   *output = context.CreateGPUTensor(input->DataType(), output_shape);
   ComputeChannelScaleShiftProgram program = ComputeChannelScaleShiftProgram(components, epsilon);
-  program.CacheHint(components)
+  program.CacheHint(components, units_of_work)
       .AddInputs({{input, ProgramTensorMetadataDependency::TypeAndRank, reduced_input_shape, components},
                   {scale, ProgramTensorMetadataDependency::TypeAndRank},
                   {bias, ProgramTensorMetadataDependency::TypeAndRank}})
@@ -100,13 +100,13 @@ Status InstanceNormProgramNHWC::GenerateShaderCode(ShaderHelper& shader) const {
   const auto& input = shader.AddInput("input", ShaderUsage::UseUniform | ShaderUsage::UseIndicesTypeAlias | ShaderUsage::UseValueTypeAlias | ShaderUsage::UseElementTypeAlias);
   const auto& channel_scale_shift = shader.AddInput("channel_scale_shift", ShaderUsage::UseUniform | ShaderUsage::UseIndicesTypeAlias);
   const auto& output = shader.AddOutput("output", ShaderUsage::UseUniform | ShaderUsage::UseIndicesTypeAlias | ShaderUsage::UseValueTypeAlias);
-  shader.MainFunctionBody()  << shader.GuardAgainstOutOfBoundsWorkgroupSizes("uniforms.output_size")
-      << "let current_image_number = global_idx / (uniforms.C * uniforms.H);\n"
-      << "let current_channel_number = global_idx % uniforms.C;\n"
-      << "let scale_offset = (current_image_number * uniforms.C + current_channel_number);\n"
-      << "var scale : input_value_t;\n"
-      << "var shift : input_value_t;\n"
-      << "let input_value = " << input.GetByOffset("global_idx") << ";\n";
+  shader.MainFunctionBody() << shader.GuardAgainstOutOfBoundsWorkgroupSizes("uniforms.output_size")
+                            << "let current_image_number = global_idx / (uniforms.C * uniforms.H);\n"
+                            << "let current_channel_number = global_idx % uniforms.C;\n"
+                            << "let scale_offset = (current_image_number * uniforms.C + current_channel_number);\n"
+                            << "var scale : input_value_t;\n"
+                            << "var shift : input_value_t;\n"
+                            << "let input_value = " << input.GetByOffset("global_idx") << ";\n";
   if (components_ > 1) {
     shader.MainFunctionBody() << "for (var i : u32 = 0; i < uniforms.components; i = i + 1) {\n"
                               << "  let scale_sift =  " << channel_scale_shift.GetByOffset("scale_offset + i") << ";\n"
@@ -169,7 +169,7 @@ Status InstanceNorm<true>::ComputeInternal(ComputeContext& context) const {
   InstanceNormProgramNHWC program(components);
   TensorShapeVector channel_scale_shift_shape_vector = {batch_size, channels, 1};
   TensorShape reduced_channel_scale_shift_shape(channel_scale_shift_shape_vector);
-  program.CacheHint(true, components)
+  program.CacheHint(components)
       .AddInputs({{input, ProgramTensorMetadataDependency::TypeAndRank, components},
                   {&channel_scale_shift, ProgramTensorMetadataDependency::TypeAndRank, reduced_channel_scale_shift_shape, 2}})
       .AddOutput({output, ProgramTensorMetadataDependency::TypeAndRank, components})
@@ -199,7 +199,7 @@ Status InstanceNorm<false>::ComputeInternal(ComputeContext& context) const {
   TensorShape modified_output_shape(modified_input_shape_vector);
   auto output_size = (modified_output_shape.Size() + components - 1) / components;
   InstanceNormProgram program;
-  program.CacheHint(false, components)
+  program
       .AddInputs({{input, ProgramTensorMetadataDependency::TypeAndRank, modified_input_shape, components},
                   {&channel_scale_shift, ProgramTensorMetadataDependency::TypeAndRank, channel_scale_shift.Shape(), 2}})
       .AddOutput({output, ProgramTensorMetadataDependency::TypeAndRank, modified_output_shape, components})
