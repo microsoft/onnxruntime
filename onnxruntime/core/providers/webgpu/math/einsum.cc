@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include "core/providers/webgpu/math/einsum.h"
+#include <algorithm>
 #include <regex>
 #include <vector>
 #include "core/providers/webgpu/shader_helper.h"
@@ -10,37 +11,25 @@
 namespace onnxruntime {
 namespace webgpu {
 
-#define WEBGPU_EINSUM_VERSIONED_KERNEL(start, end)           \
-  ONNX_OPERATOR_VERSIONED_KERNEL_EX(                         \
-      Einsum,                                                \
-      kOnnxDomain,                                          \
-      start,                                                \
-      end,                                                  \
-      kWebGpuExecutionProvider,                             \
-      (*KernelDefBuilder::Create())                         \
-          .TypeConstraint("T", WebGpuSupportedNumberTypes()),\
+#define WEBGPU_EINSUM_TYPED_KERNEL_DECL(version)                      \
+  ONNX_OPERATOR_TYPED_KERNEL_EX(                                      \
+      Einsum,                                                         \
+      kOnnxDomain,                                                    \
+      version,                                                        \
+      float,                                                          \
+      kWebGpuExecutionProvider,                                       \
+      (*KernelDefBuilder::Create())                                   \
+          .TypeConstraint("T", DataTypeImpl::GetTensorType<float>()), \
       Einsum);
 
-#define WEBGPU_EINSUM_KERNEL(version)                        \
-  ONNX_OPERATOR_KERNEL_EX(                                   \
-      Einsum,                                               \
-      kOnnxDomain,                                          \
-      version,                                              \
-      kWebGpuExecutionProvider,                             \
-      (*KernelDefBuilder::Create())                         \
-          .TypeConstraint("T", WebGpuSupportedNumberTypes()),\
-      Einsum);
+WEBGPU_EINSUM_TYPED_KERNEL_DECL(12);
 
-WEBGPU_EINSUM_VERSIONED_KERNEL(12, 12)
-WEBGPU_EINSUM_KERNEL(13)
+// Regular expressions for equation parsing.
+static const std::regex symbol_pattern("[a-zA-Z]|\\.\\.\\.");
+static const std::regex term_pattern("([a-zA-Z]|\\.\\.\\.)+");
+static const std::regex lhs_pattern("(([a-zA-Z]|\\.\\.\\.)+,)*([a-zA-Z]|\\.\\.\\.)+");
 
-namespace {
-const std::regex symbol_pattern("[a-zA-Z]|\\.\\.\\.");
-const std::regex term_pattern("([a-zA-Z]|\\.\\.\\.)+");
-const std::regex lhs_pattern("(([a-zA-Z]|\\.\\.\\.)+,)*([a-zA-Z]|\\.\\.\\.)+");
-}  // namespace
-
-Einsum::EinsumEquation::EinsumEquation(const std::vector<const Tensor*>& inputs, const std::string& equation) {
+EinsumEquation::EinsumEquation(const std::vector<const Tensor*>& inputs, const std::string& equation) {
   std::string lhs, rhs;
   size_t arrow_pos = equation.find("->");
   if (arrow_pos != std::string::npos) {
@@ -55,7 +44,7 @@ Einsum::EinsumEquation::EinsumEquation(const std::vector<const Tensor*>& inputs,
     ORT_THROW("Invalid LHS term");
   }
 
-  // Parse LHS terms
+  // Parse LHS terms.
   std::string::size_type pos = 0;
   std::string::size_type find;
   int input_idx = 0;
@@ -76,7 +65,7 @@ Einsum::EinsumEquation::EinsumEquation(const std::vector<const Tensor*>& inputs,
   auto dims = inputs[input_idx]->Shape().GetDims();
   lhs_.push_back(ProcessTerm(last_term, true, dims, input_idx));
 
-  // Initialize RHS if not specified
+  // Initialize RHS if not specified.
   if (rhs.empty()) {
     for (const auto& pair : symbol_to_info_) {
       if (pair.second.count == 1 || pair.first == "...") {
@@ -89,7 +78,7 @@ Einsum::EinsumEquation::EinsumEquation(const std::vector<const Tensor*>& inputs,
     }
   }
 
-  // Compute output dims
+  // Compute output dims.
   std::sregex_iterator it(rhs.begin(), rhs.end(), symbol_pattern);
   std::sregex_iterator end;
   for (; it != end; ++it) {
@@ -108,7 +97,7 @@ Einsum::EinsumEquation::EinsumEquation(const std::vector<const Tensor*>& inputs,
   rhs_ = ProcessTerm(rhs, false, output_dims);
 }
 
-void Einsum::EinsumEquation::AddSymbol(const std::string& symbol, int dim_value, int input_index) {
+void EinsumEquation::AddSymbol(const std::string& symbol, int dim_value, int input_index) {
   auto it = symbol_to_info_.find(symbol);
   if (it != symbol_to_info_.end()) {
     if (it->second.dim_value != dim_value && it->second.count != 1) {
@@ -125,10 +114,10 @@ void Einsum::EinsumEquation::AddSymbol(const std::string& symbol, int dim_value,
   }
 }
 
-Einsum::EinsumTerm Einsum::EinsumEquation::ProcessTerm(
+EinsumTerm EinsumEquation::ProcessTerm(
     const std::string& term,
     bool is_input,
-    const std::vector<int64_t>& dims,
+    gsl::span<const int64_t> dims,
     int index) {
   EinsumTerm einsum_term;
   einsum_term.input_index = index;
@@ -148,7 +137,9 @@ Einsum::EinsumTerm Einsum::EinsumEquation::ProcessTerm(
         ORT_THROW("Only one ellipsis is allowed per input term");
       }
       ellipsis = true;
-      int64_t ellipsis_dim_length = rank - std::distance(std::sregex_iterator(term.begin(), term.end(), symbol_pattern)) + 1;
+      std::sregex_iterator symbol_it(term.begin(), term.end(), symbol_pattern);
+      std::sregex_iterator symbol_end;
+      int64_t ellipsis_dim_length = rank - std::distance(symbol_it, symbol_end) + 1;
       if (ellipsis_dim_length < 0) {
         ORT_THROW("Ellipsis out of bounds");
       }
@@ -163,7 +154,7 @@ Einsum::EinsumTerm Einsum::EinsumEquation::ProcessTerm(
       } else {
         ORT_THROW("Ellipsis must be specified in the LHS");
       }
-      // Add '0', '1', '2', '3', '4', etc to represent ellipsis dimensions
+      // Add '0', '1', '2', '3', '4', etc to represent ellipsis dimensions.
       for (size_t j = 0; j < ellipsis_dims.size(); ++j) {
         std::string symbol_j(1, static_cast<char>('0' + j));
         einsum_term.symbol_to_indices[symbol_j].push_back(i + j);
@@ -178,74 +169,155 @@ Einsum::EinsumTerm Einsum::EinsumEquation::ProcessTerm(
 }
 
 Status EinsumProgram::GenerateShaderCode(ShaderHelper& shader) const {
-  // Parse equation and prepare equation parser
-  EinsumEquation equation(shader.GetInputs(), equation_);
+  // Add inputs and output.
+  const ShaderVariableHelper& input0 = shader.AddInput(
+      "input0",
+      ShaderUsage::UseUniform);
 
-  // Add all input tensors
-  std::vector<ShaderVariableHelper> inputs;
-  for (size_t i = 0; i < shader.GetInputs().size(); ++i) {
-    inputs.push_back(shader.AddInput("input" + std::to_string(i), ShaderUsage::UseUniform));
+  std::vector<std::reference_wrapper<const ShaderVariableHelper>> inputs;
+  inputs.push_back(input0);
+
+  for (size_t i = 1; i < input_count_; ++i) {
+    inputs.push_back(
+        shader.AddInput("input" + std::to_string(i),
+                        ShaderUsage::UseUniform));
   }
 
   const ShaderVariableHelper& output = shader.AddOutput("output", ShaderUsage::UseUniform | ShaderUsage::UseValueTypeAlias);
 
-  // Initialize output indices
-  shader.MainFunctionBody() << "  var outputIndices = " << output.offsetToIndices("global_idx") << ";\n";
+  // Helper variables for shader generation.
+  std::vector<std::string> idx_copy;
+  std::string init_prod = "var prod = 1.0;";
+  std::string init_sum = "var sum = 0.0;";
+  std::string update_sum = "sum += prod;";
+  std::vector<std::string> reduce_ops_set_indices;
+  std::vector<std::string> reduce_ops_loop_headers;
+  std::vector<std::string> reduce_ops_loop_footers;
+  std::vector<std::string> reduce_op_compute;
+  bool is_reduce_ops_without_loop = parsed_equation_.symbol_to_info_.size() == parsed_equation_.rhs_.symbol_to_indices.size();
 
-  // Initialize variables for input indices
-  for (size_t i = 0; i < inputs.size(); ++i) {
-    shader.MainFunctionBody() << "  var input" << i << "Indices: " << inputs[i].type.indices << ";\n";
-  }
+  for (const auto& pair : parsed_equation_.symbol_to_info_) {
+    const std::string& symbol = pair.first;
+    const SymbolInfo& info = pair.second;
 
-  // Copy output indices to input indices for direct mapped dimensions
-  for (const auto& symbol : equation.rhs_.symbol_to_indices) {
-    const auto& outputIndex = symbol.second[0];
-    for (const auto& term : equation.lhs_) {
-      if (auto it = term.symbol_to_indices.find(symbol.first); it != term.symbol_to_indices.end()) {
-        for (const auto& inputIndex : it->second) {
-          shader.MainFunctionBody() << "  input" << term.input_index << "Indices[" << inputIndex << "] = outputIndices[" << outputIndex << "];\n";
-        }
-      }
-    }
-  }
-
-  // Initialize reduction operations
-  shader.MainFunctionBody() << "  var sum = output_value_t(0);\n";
-
-  // Generate loops for reduced dimensions
-  for (const auto& symbol_info : equation.symbol_to_info_) {
-    if (!equation.rhs_.symbol_to_indices.contains(symbol_info.first)) {
-      shader.MainFunctionBody() << "  for (var " << symbol_info.first << ": u32 = 0; "
-                               << symbol_info.first << " < " << symbol_info.second.dim_value << "; "
-                               << symbol_info.first << "++) {\n";
-      // Set indices for reduced dimensions
-      for (const auto& input_idx : symbol_info.second.input_indices) {
-        const auto& term = equation.lhs_[input_idx];
-        if (auto it = term.symbol_to_indices.find(symbol_info.first); it != term.symbol_to_indices.end()) {
-          for (const auto& idx : it->second) {
-            shader.MainFunctionBody() << "    input" << input_idx << "Indices[" << idx << "] = " << symbol_info.first << ";\n";
+    if (parsed_equation_.rhs_.symbol_to_indices.contains(symbol)) {
+      // Process output dimensions.
+      auto rhs_indices = parsed_equation_.rhs_.symbol_to_indices.find(symbol);
+      if (rhs_indices != parsed_equation_.rhs_.symbol_to_indices.end() && !rhs_indices->second.empty()) {
+        int output_index = rhs_indices->second[0];
+        int lhs_term_index = 0;
+        for (const auto& term : parsed_equation_.lhs_) {
+          if (std::find(info.input_indices.begin(), info.input_indices.end(), lhs_term_index) == info.input_indices.end()) {
+            lhs_term_index++;
+            continue;
           }
+
+          auto it = term.symbol_to_indices.find(symbol);
+          if (it == term.symbol_to_indices.end()) {
+            ORT_THROW("Invalid symbol error");
+          }
+
+          for (auto input_index : it->second) {
+            idx_copy.push_back(inputs[lhs_term_index].get().IndicesSet(
+                "input" + std::to_string(lhs_term_index) + "Indices",
+                std::to_string(input_index),
+                output.IndicesGet("outputIndices", std::to_string(output_index))));
+          }
+
+          lhs_term_index++;
         }
       }
+    } else {
+      // Process reduction dimensions.
+      int rhs_term_index = 0;
+      for (const auto& term : parsed_equation_.lhs_) {
+        if (std::find(info.input_indices.begin(), info.input_indices.end(), rhs_term_index) == info.input_indices.end()) {
+          rhs_term_index++;
+          continue;
+        }
+
+        auto it = term.symbol_to_indices.find(symbol);
+        if (it == term.symbol_to_indices.end()) {
+          ORT_THROW("Invalid symbol error");
+        }
+
+        for (auto input_index : it->second) {
+          reduce_ops_set_indices.push_back(inputs[rhs_term_index].get().IndicesSet(
+              "input" + std::to_string(rhs_term_index) + "Indices",
+              std::to_string(input_index),
+              symbol));
+        }
+
+        reduce_op_compute.push_back("prod *= " + inputs[rhs_term_index].get().GetByIndices("input" + std::to_string(rhs_term_index) + "Indices") + ";");
+        rhs_term_index++;
+      }
+      reduce_ops_loop_headers.push_back("for(var " + symbol + ": u32 = 0; " +
+                                        symbol + " < uniforms." + symbol + "_max; " + symbol + "++) {");
+      reduce_ops_loop_footers.push_back("}");
     }
   }
 
-  // Compute product of inputs
-  shader.MainFunctionBody() << "  var prod = output_value_t(1);\n";
-  for (size_t i = 0; i < inputs.size(); ++i) {
-    shader.MainFunctionBody() << "  prod *= " << inputs[i].getByIndices("input" + std::to_string(i) + "Indices") << ";\n";
-  }
-  shader.MainFunctionBody() << "  sum += prod;\n";
+  std::vector<std::string> reduce_ops = idx_copy;
 
-  // Close reduction loops
-  for (const auto& symbol_info : equation.symbol_to_info_) {
-    if (!equation.rhs_.symbol_to_indices.contains(symbol_info.first)) {
-      shader.MainFunctionBody() << "  }\n";
+  // Generate shader code based on reduction type.
+  if (is_reduce_ops_without_loop) {
+    // Direct multiplication without reduction loops.
+    std::string sum_statement = "let sum = " + inputs[0].get().GetByIndices("input0Indices");
+    for (size_t i = 1; i < inputs.size(); ++i) {
+      sum_statement += " * " + inputs[i].get().GetByIndices("input" + std::to_string(i) + "Indices");
+    }
+
+    reduce_ops.push_back(sum_statement);
+  } else {
+    // Reduction operation with loops.
+    reduce_ops.push_back(init_sum);
+    for (const auto& header : reduce_ops_loop_headers) {
+      reduce_ops.push_back(header);
+    }
+    for (const auto& set_idx : reduce_ops_set_indices) {
+      reduce_ops.push_back(set_idx);
+    }
+    reduce_ops.push_back(init_prod);
+    for (const auto& compute : reduce_op_compute) {
+      reduce_ops.push_back(compute);
+    }
+    reduce_ops.push_back(update_sum);
+    for (const auto& footer : reduce_ops_loop_footers) {
+      reduce_ops.push_back(footer);
     }
   }
 
-  // Write output
-  shader.MainFunctionBody() << "  " << output.setByOffset("global_idx", "sum") << ";\n";
+  shader.MainFunctionBody() << shader.GuardAgainstOutOfBoundsWorkgroupSizes("uniforms.output_size");
+  shader.MainFunctionBody() << "var outputIndices = " << output.OffsetToIndices("global_idx") << ";\n";
+
+  // Define input indices with appropriate types.
+  for (size_t i = 0; i < input_count_; i++) {
+    const auto& input = inputs[i].get();
+    int rank = input.Rank();
+
+    // Construct WGSL type string based on rank.
+    std::string indices_type;
+    if (rank < 2) {
+      indices_type = "u32";
+    } else if (rank <= 4) {
+      indices_type = "vec" + std::to_string(rank) + "<u32>";
+    } else {
+      indices_type = "array<u32, " + std::to_string(rank) + ">";
+    }
+
+    shader.MainFunctionBody()
+        << "var input" << i << "Indices: " << indices_type << ";\n";
+  }
+
+  // Add reduce operations.
+  for (const auto& op : reduce_ops) {
+    shader.MainFunctionBody() << op << "\n";
+  }
+
+  // Set output value.
+  shader.MainFunctionBody()
+      << output.SetByOffset("global_idx", "sum")
+      << "\n";
 
   return Status::OK();
 }
@@ -262,22 +334,31 @@ Status Einsum::ComputeInternal(ComputeContext& context) const {
 
   EinsumEquation equation(input_tensors, equation_);
   const std::vector<int64_t>& output_dims = equation.output_dims;
-  int64_t output_size = std::accumulate(output_dims.begin(), output_dims.end(), static_cast<int64_t>(1), std::multiplies<int64_t>());
-
   Tensor* Y = context.Output(0, output_dims);
+  int64_t output_size = Y->Shape().Size();
   if (output_size == 0) {
     return Status::OK();
   }
 
-  EinsumProgram program{equation_};
+  // Create program with input count and the parsed equation.
+  EinsumProgram program{context.InputCount(), equation};
 
   for (size_t i = 0; i < input_tensors.size(); ++i) {
-    program.AddInput({input_tensors[i], ProgramTensorMetadataDependency::Type});
+    program.AddInput({input_tensors[i], ProgramTensorMetadataDependency::TypeAndRank});
   }
 
-  program.SetDispatchGroupSize(static_cast<uint32_t>((output_size + 63) / 64))
-      .AddOutput({Y, ProgramTensorMetadataDependency::Type})
-      .AddUniformVariables({{static_cast<uint32_t>(output_size)}});  // output_size
+  // Add uniforms for symbol dimensions.
+  for (const auto& symbol_info : equation.symbol_to_info_) {
+    if (!equation.rhs_.symbol_to_indices.contains(symbol_info.first)) {
+      program.AddUniformVariables({static_cast<uint32_t>(symbol_info.second.dim_value)});
+    }
+  }
+
+  // Add output and base uniforms.
+  program.CacheHint(equation_)
+      .SetDispatchGroupSize(static_cast<uint32_t>((output_size + 63) / 64))
+      .AddOutput({Y, ProgramTensorMetadataDependency::TypeAndRank})
+      .AddUniformVariables({static_cast<uint32_t>(output_size)});
 
   return context.RunProgram(program);
 }
