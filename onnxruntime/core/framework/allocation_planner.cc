@@ -8,6 +8,7 @@
 #include <sstream>
 #include <ctime>
 #include <iomanip>
+#include <iterator>
 #include "core/common/exceptions.h"
 #include "core/common/inlined_containers.h"
 #include "core/common/safeint.h"
@@ -876,12 +877,50 @@ class PlannerImpl {
 
         auto outputs = pnode->OutputDefs();
         auto num_outputs = outputs.size();
+        const bool cpu_provider = exec_provider->Type() == kCpuExecutionProvider;
         for (size_t i = 0; i < num_outputs; ++i) {
           auto* node_output = outputs[i];
           if (!node_output->Exists()) continue;
           OrtValueIndex index = Index(node_output->Name());
           ProcessDef(index, node_output);
-          plan_.SetLocation(static_cast<size_t>(index), exec_provider->GetOrtDeviceByMemType(p_kernel_def->OutputMemoryType(i)));
+          OrtDevice output_device = exec_provider->GetOrtDeviceByMemType(p_kernel_def->OutputMemoryType(i));
+          if (cpu_provider) {
+            // DRAFT. XXX. Consider other approches and make device lookup more efficient.
+            // The consumers are expected to be on a CPU based provider
+            // but they may have different allocator requirement. If they do have the same downstream CPU based device
+            // that is different from the output_device above, we can ask this node to allocate its
+            // output using the destination allocator so the consumer does not incur an extra copy
+            // if the default CPU allocator does not match alignment requirements.
+            const auto& output_name = node_output->Name();
+            const auto consumers = graph_viewer_.GetConsumerNodes(output_name);
+            if (!consumers.empty()) {
+              InlinedHashSet<OrtDevice> consumer_devices;
+              for (const auto* consumer_node : consumers) {
+                const auto* consumer_ep = execution_providers_.Get(*consumer_node);
+                ORT_ENFORCE(utils::ProviderIsCpuBased(consumer_ep->Type()));
+                const KernelCreateInfo& kinfo = GetKernelCreateInfo(kernel_create_info_map_, consumer_node->Index());
+                const auto* consumer_kernel_def = kinfo.kernel_def.get();
+                const auto input_defs = consumer_node->InputDefs();
+                // Find out the index for this input
+                auto hit = std::find_if(input_defs.cbegin(), input_defs.cend(),
+                                        [node_output](const NodeArg* arg) { return node_output->Name() == arg->Name(); });
+                ORT_ENFORCE(hit != input_defs.cend(), "Output not found among consumer inputs");
+                ptrdiff_t input_index = std::distance(input_defs.cbegin(), hit);
+                OrtDevice input_device = consumer_ep->GetOrtDeviceByMemType(consumer_kernel_def->InputMemoryType(narrow<size_t>(input_index)));
+                consumer_devices.insert(input_device);
+              }
+              // All outputs are on the same CPU device
+              if (consumer_devices.size() == 1) {
+                plan_.SetLocation(static_cast<size_t>(index), *consumer_devices.cbegin());
+              } else {
+                plan_.SetLocation(static_cast<size_t>(index), output_device);
+              }
+            } else {
+              plan_.SetLocation(static_cast<size_t>(index), output_device);
+            }
+          } else {
+            plan_.SetLocation(static_cast<size_t>(index), output_device);
+          }
         }
       }
     }

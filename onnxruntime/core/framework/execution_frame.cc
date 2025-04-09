@@ -529,8 +529,10 @@ Status ExecutionFrame::AllocateMLValueTensorSelfOwnBufferHelper(OrtValue& ort_va
     return Status(ONNXRUNTIME, FAIL, "Trying to allocate memory for unused optional inputs/outputs");
   }
 
+  const size_t alignment = GetAlignmentForDevice(location);
+
   size_t size = 0;
-  ORT_RETURN_IF_ERROR(Tensor::CalculateTensorStorageSize(element_type, shape, kAllocAlignment, size));
+  ORT_RETURN_IF_ERROR(Tensor::CalculateTensorStorageSize(element_type, shape, alignment, size));
 
   // Lazily get the allocator only if needed.
   AllocatorPtr alloc = nullptr;
