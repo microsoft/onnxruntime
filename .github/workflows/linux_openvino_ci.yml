@@ -19,13 +19,13 @@ permissions:
 
 jobs:
   build_test_openvino:
-    name: Build and Test OpenVINO EP (Ubuntu 22.04, Py3.10)
+    name: Build and Test OpenVINO EP (Ubuntu 22.04, Py3.12)
     # Call the reusable workflow
     uses: ./.github/workflows/reusable_linux_build.yml
     with:
       pool_name: "onnxruntime-github-Ubuntu2204-AMD-CPU"
       build_config: Release
-      # Architecture:
+      # Architecture: OpenVino only supports Intel X64
       architecture: x64
       dockerfile_path: tools/ci_build/github/linux/docker/inference/x86_64/python/openvino/Dockerfile
       docker_image_repo: onnxruntimeopenvino
@@ -34,9 +34,8 @@ jobs:
 
       extra_build_flags: '--use_openvino CPU --enable_generic_interface --build_shared_lib'
 
-      # Python Path Prefix: Set the correct Python 3.10 path inside the manylinux container
-      # (Adjust if the base image in Dockerfile.ubuntu_openvino uses a different path structure)
-      python_path_prefix: 'PATH=/opt/python/cp310-cp310/bin:$PATH'
+      # Python Path Prefix: Set the correct Python 3.12 path inside the manylinux container
+      python_path_prefix: 'PATH=/opt/python/cp312-cp312/bin:$PATH'
 
       run_tests: true
       upload_build_output: false
