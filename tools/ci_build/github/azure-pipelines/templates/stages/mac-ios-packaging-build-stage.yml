@@ -23,8 +23,8 @@ stages:
       # Note: Keep the Xcode version and iOS simulator version compatible.
       # Check the table here to see what iOS simulator versions are supported by a particular Xcode version:
       # https://developer.apple.com/support/xcode/
-      xcodeVersion: "14.3.1"
-      iosSimulatorRuntimeVersion: "16.4"
+      xcodeVersion: "15.3.0"
+      iosSimulatorRuntimeVersion: "17.4"
       ${{ if eq(parameters.packageVariant, 'Full') }}:
         buildSettingsFile: "tools/ci_build/github/apple/default_full_apple_framework_build_settings.json"
         cPodName: onnxruntime-c
@@ -228,7 +228,3 @@ stages:
         set -e -x
         ls -R "$(Build.ArtifactStagingDirectory)"
       displayName: "List staged artifacts"
-
-    - template: ../component-governance-component-detection-steps.yml
-      parameters:
-        condition: 'succeeded'

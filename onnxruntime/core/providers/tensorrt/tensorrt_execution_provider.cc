@@ -1282,6 +1282,22 @@ TensorrtExecutionProvider::PerThreadContext& TensorrtExecutionProvider::GetPerTh
   return *context;
 }
 
+std::vector<nvinfer1::PreviewFeature> ParseTrtPreviewFeatures(const std::string& str) {
+  std::vector<std::string> featureNames{SplitToStringVec(str, ',')};
+
+  std::vector<nvinfer1::PreviewFeature> previewFeatures;
+  previewFeatures.reserve(featureNames.size());
+  for (auto featureName : featureNames) {
+    if (featureName == "ALIASED_PLUGIN_IO_10_03") {
+      previewFeatures.push_back(nvinfer1::PreviewFeature::kALIASED_PLUGIN_IO_10_03);
+    } else {
+      throw std::invalid_argument(std::string("Unkown or unsupported preview feature: ") + featureName);
+    }
+  }
+
+  return previewFeatures;
+}
+
 TensorrtExecutionProvider::TensorrtExecutionProvider(const TensorrtExecutionProviderInfo& info)
     : IExecutionProvider{onnxruntime::kTensorrtExecutionProvider,
                          OrtDevice(OrtDevice::GPU, OrtDevice::MemType::DEFAULT,
@@ -1380,6 +1396,7 @@ TensorrtExecutionProvider::TensorrtExecutionProvider(const TensorrtExecutionProv
     cuda_graph_enable_ = info.cuda_graph_enable;
     engine_hw_compatible_ = info.engine_hw_compatible;
     op_types_to_exclude_ = info.op_types_to_exclude;
+    preview_features_ = ParseTrtPreviewFeatures(info.preview_features);
   } else {
     try {
       const std::string max_partition_iterations_env = onnxruntime::GetEnvironmentVar(tensorrt_env_vars::kMaxPartitionIterations);
@@ -2279,8 +2296,9 @@ SubGraphCollection_t TensorrtExecutionProvider::GetSupportedList(SubGraphCollect
         auto network_flags = 0;
 #if NV_TENSORRT_MAJOR > 8
         network_flags |= fp16_enable_ || int8_enable_ ? 0 : 1U << static_cast<uint32_t>(nvinfer1::NetworkDefinitionCreationFlag::kSTRONGLY_TYPED);
-#endif
+#else
         network_flags |= 1U << static_cast<uint32_t>(nvinfer1::NetworkDefinitionCreationFlag::kEXPLICIT_BATCH);
+#endif
 
         auto trt_network = std::unique_ptr<nvinfer1::INetworkDefinition>(trt_builder->createNetworkV2(network_flags));
         auto trt_parser = tensorrt_ptr::unique_pointer<nvonnxparser::IParser>(nvonnxparser::createParser(*trt_network, trt_logger));
@@ -2459,6 +2477,7 @@ bool TensorrtExecutionProvider::DetectTensorRTGraphCycles(SubGraphCollection_t& 
 std::vector<std::unique_ptr<ComputeCapability>>
 TensorrtExecutionProvider::GetCapability(const GraphViewer& graph,
                                          const IKernelLookup& /*kernel_lookup*/,
+                                         const GraphOptimizerRegistry& graph_optimizer_registry,
                                          IResourceAccountant* /* resource_accountant */) const {
   // Construct subgraph capability from node list
   std::vector<std::unique_ptr<ComputeCapability>> result;
@@ -2664,11 +2683,61 @@ TensorrtExecutionProvider::GetCapability(const GraphViewer& graph,
     }
   }
 
+  /**
+   * Enable EP related L2+ graph optimizations:
+   *
+   * 1. Calls provider bridge API to lookup pre-defined optimizer by name and get selection function.
+   *    - Example: g_host->GetOptimizerByName(optimizer_name, graph_optimizer_registry, selection_func)
+   * 2. Executes the selection function to obtain the selection ComputeCapability.
+   *    - ComputeCapability.optimize_func would be set by the optimizer to the function that does the optimization.
+   * 3. Uses the selection ComputeCapability to create the optimization ComputeCapability.
+   * 4. Returns the final ComputeCapability, with nodes_to_optimize set to the optimization ComputeCapability.
+   *
+   * Current available optimizations:
+   *   - (ConstantFoldingDQ) constant folding on DQ nodes, i.e. dequantize INT32, UINT16, INT16 constant to FP32.
+   */
+
+  SelectionFunc selection_func;
+  std::vector<std::unique_ptr<ComputeCapability>> selection_cc;
+
+  // Prepare for ConstantFoldingDQ optimizer
+  // Note: The NodeIndex here is the node index in the graph, not the index in node vector in supported_nodes_vector.
+  std::unordered_set<NodeIndex> trt_selection_node_set;     // The qualified dq nodes selected by TRT EP
+  std::unordered_map<NodeIndex, NodeIndex> consumer_to_dq;  // consumer node -> dq node
+
+  if (dla_enable_) {
+    std::string optimizer_name = "ConstantFoldingDQ";
+    const std::unordered_map<std::string, std::string> key_value_config;
+    auto status = g_host->GetOptimizerByName(optimizer_name, graph_optimizer_registry, selection_func);
+    if (status == Status::OK()) {
+      if (selection_func) {
+        selection_cc = selection_func(graph, key_value_config, graph_optimizer_registry);
+        SelectQualifiedDQNode(graph, trt_selection_node_set, consumer_to_dq);
+      }
+    } else {
+      LOGS_DEFAULT(WARNING) << "[TensorRT EP] Can't get optimizer " << optimizer_name;
+    }
+  }
+
+  // Create ComputeCapability
   int number_of_trt_nodes = 0, subgraph_index = 0;
-  for (const auto& group : supported_nodes_vector) {
+  for (auto& group : supported_nodes_vector) {
     if (!group.first.empty()) {
+      if (!selection_cc.empty()) {
+        // Include DQ nodes that are filtered out by TRT parser
+        UpdateSupportedNodeVectorForDQ(graph, group, supported_nodes_vector, consumer_to_dq);
+      }
+
       std::unique_ptr<IndexedSubGraph> sub_graph = GetSubGraph(group, graph, model_hash, subgraph_index);
-      result.push_back(ComputeCapability::Create(std::move(sub_graph)));
+      auto compute_capability = ComputeCapability::Create(std::move(sub_graph));
+
+      // add optimization ComputeCapability to node_to_optimize
+      for (auto& cc : selection_cc) {
+        std::unique_ptr<ComputeCapability> optimization_cc = CreateOptimizationComputeCapability(cc.get(), trt_selection_node_set, compute_capability.get());
+        compute_capability->add_nodes_to_optimize(std::move(optimization_cc));
+      }
+
+      result.push_back(std::move(compute_capability));
       number_of_trt_nodes += static_cast<int>(group.first.size());
       subgraph_index++;
     }
@@ -2839,8 +2908,9 @@ Status TensorrtExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphView
   auto network_flags = 0;
 #if NV_TENSORRT_MAJOR > 8
   network_flags |= fp16_enable_ || int8_enable_ ? 0 : 1U << static_cast<uint32_t>(nvinfer1::NetworkDefinitionCreationFlag::kSTRONGLY_TYPED);
-#endif
+#else
   network_flags |= 1U << static_cast<uint32_t>(nvinfer1::NetworkDefinitionCreationFlag::kEXPLICIT_BATCH);
+#endif
   auto trt_network = std::unique_ptr<nvinfer1::INetworkDefinition>(trt_builder->createNetworkV2(network_flags));
   auto trt_config = std::unique_ptr<nvinfer1::IBuilderConfig>(trt_builder->createBuilderConfig());
   auto trt_parser = tensorrt_ptr::unique_pointer<nvonnxparser::IParser>(nvonnxparser::createParser(*trt_network, trt_logger));
@@ -3133,6 +3203,11 @@ Status TensorrtExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphView
     tactics |= GetTacticSourceFromString(tactic_sources_);
     trt_config->setTacticSources(tactics);
     LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] Tactic sources are limited using " << tactic_sources_;
+  }
+
+  // Set preview feature flags
+  for (auto feature : preview_features_) {
+    trt_config->setPreviewFeature(feature, true);
   }
 
   // Build TRT engine (if needed) and load TRT engine if:
@@ -3475,7 +3550,8 @@ Status TensorrtExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphView
           context_memory_sharing_enable_, &max_ctx_mem_size_, dynamic_range_map, engine_decryption_enable_,
           engine_decryption_, engine_encryption_, timing_cache_enable_, global_cache_path_, force_timing_cache_match_,
           detailed_build_log_, build_heuristics_enable_, sparsity_enable_, builder_optimization_level_,
-          auxiliary_streams_, !tactic_sources_.empty(), tactics, cuda_graph_enable_, cache_prefix_, cache_suffix, engine_hw_compatible_};
+          auxiliary_streams_, !tactic_sources_.empty(), tactics, cuda_graph_enable_, cache_prefix_, cache_suffix, engine_hw_compatible_,
+          preview_features_};
     *state = p.release();
     return 0;
   };
@@ -3756,6 +3832,11 @@ Status TensorrtExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphView
         LOGS_DEFAULT(INFO) << "[TensorRT EP] Re-generate engine with hardware compatibility enabled.";
       }
 #endif
+
+      // Set preview feature flags
+      for (auto feature : trt_state->preview_features) {
+        trt_config->setPreviewFeature(feature, true);
+      }
 
       // Build engine
       std::unique_ptr<nvinfer1::IHostMemory> serialized_engine;

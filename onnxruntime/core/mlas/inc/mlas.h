@@ -63,7 +63,10 @@ Abstract:
 #endif
 #if defined(__wasm__)
 #define MLAS_TARGET_WASM
-#if defined(__wasm_simd128__)
+#if defined(__wasm_relaxed_simd__)
+#define MLAS_TARGET_WASM_RELAXED_SIMD
+#define MLAS_TARGET_WASM_SIMD
+#elif defined(__wasm_simd128__)
 #define MLAS_TARGET_WASM_SIMD
 #else
 #define MLAS_TARGET_WASM_SCALAR
@@ -1028,6 +1031,16 @@ MlasComputeSoftcap(
     T* Output,
     size_t N,
     T cap
+    );
+
+template <typename T>
+void
+MLASCALL
+MlasEltwiseAdd(
+    const T* left,
+    const T* right,
+    T* output,
+    size_t N
     );
 
 template<typename T>

@@ -4,6 +4,7 @@
 // This is the Onnxruntime side of the bridge to allow providers to be built as a DLL
 // It implements onnxruntime::ProviderHost
 
+#include <optional>
 #include "core/common/inlined_containers.h"
 #include "core/common/path_string.h"
 #include "core/framework/allocator_utils.h"
@@ -35,12 +36,14 @@
 #include "core/graph/graph_proto_serializer.h"
 #include "core/framework/murmurhash3.h"
 #include "core/framework/model_metadef_id_generator.h"
+#include "core/optimizer/graph_optimizer_registry.h"
 #include "core/optimizer/qdq_transformer/selectors_actions/qdq_selectors.h"
 #include "core/optimizer/qdq_transformer/selectors_actions/shared/utils.h"
 
 #include "core/session/onnxruntime_c_api.h"
 #include "core/common/string_helper.h"
 #include <utility>
+#include "onnx/shape_inference/implementation.h"
 
 #ifdef ENABLE_TRAINING
 #ifdef ENABLE_TRAINING_TORCH_INTEROP
@@ -237,6 +240,21 @@ common::Status LoadDynamicLibraryFromProvider(onnxruntime::PathString library_na
 struct ProviderHostImpl : ProviderHost {
   const OrtApiBase* OrtGetApiBase() override { return ::OrtGetApiBase(); }
 
+  Status GetOptimizerByName(const std::string& name,
+                            const GraphOptimizerRegistry& graph_optimizer_registry,
+                            SelectionFunc& selection_func) override {
+    std::string optimizer_name(name);
+
+    auto func = graph_optimizer_registry.GetSelectionFunc(optimizer_name);
+
+    if (func.has_value()) {
+      selection_func = func.value();
+    } else {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to get optimizer " + optimizer_name);
+    }
+    return Status::OK();
+  };
+
   void* HeapAllocate(size_t size) override { return new uint8_t[size]; }
   void HeapFree(void* p) override { delete[] reinterpret_cast<uint8_t*>(p); }
 
@@ -360,8 +378,9 @@ struct ProviderHostImpl : ProviderHost {
   std::vector<std::unique_ptr<ComputeCapability>> IExecutionProvider__GetCapability(
       const IExecutionProvider* p, const onnxruntime::GraphViewer& graph_viewer,
       const IExecutionProvider::IKernelLookup& kernel_lookup,
+      const GraphOptimizerRegistry& graph_optimizer_registry,
       IResourceAccountant* resource_accountant) override {
-    return p->IExecutionProvider::GetCapability(graph_viewer, kernel_lookup, resource_accountant);
+    return p->IExecutionProvider::GetCapability(graph_viewer, kernel_lookup, graph_optimizer_registry, resource_accountant);
   }
 
   common::Status IExecutionProvider__Compile(IExecutionProvider* p, const std::vector<IExecutionProvider::FusedNodeAndGraph>& fused_nodes_and_graphs, std::vector<NodeComputeInfo>& node_compute_funcs) override {
@@ -753,6 +772,12 @@ struct ProviderHostImpl : ProviderHost {
   int FunctionProto__metadata_props_size(const ONNX_NAMESPACE::FunctionProto* p) override { return p->metadata_props_size(); }
   ONNX_NAMESPACE::StringStringEntryProto* FunctionProto__add_metadata_props(ONNX_NAMESPACE::FunctionProto* p) override { return p->add_metadata_props(); }
 
+  void InferShapes(const std::string& m, const std::string& save_path) override {
+    return ONNX_NAMESPACE::shape_inference::InferShapes(m, save_path);
+  }
+  void InferShapes(ONNX_NAMESPACE::ModelProto& m) override {
+    return ONNX_NAMESPACE::shape_inference::InferShapes(m);
+  }
   void RegisterSchema(const std::string& domain, const OrtCustomOp* op) override {
     auto& domain_instance = ONNX_NAMESPACE::OpSchemaRegistry::DomainToVersionRange::Instance();
     const auto& domain_to_version_map = domain_instance.Map();
@@ -797,6 +822,8 @@ struct ProviderHostImpl : ProviderHost {
   std::unique_ptr<ComputeCapability> ComputeCapability__construct(std::unique_ptr<IndexedSubGraph> t_sub_graph) override { return std::make_unique<ComputeCapability>(std::move(t_sub_graph)); }
   void ComputeCapability__operator_delete(ComputeCapability* p) override { delete p; }
   std::unique_ptr<IndexedSubGraph>& ComputeCapability__SubGraph(ComputeCapability* p) override { return p->sub_graph; }
+  void ComputeCapability__copy_optimization_func(ComputeCapability* p, ComputeCapability* selection_cc) override { p->optimization_func = selection_cc->optimization_func; }
+  void ComputeCapability__add_nodes_to_optimize(ComputeCapability* p, std::unique_ptr<ComputeCapability> optimization_cc) override { p->nodes_to_optimize.push_back(std::move(optimization_cc)); }
 
   // DataTransferManager (wrapped)
   Status DataTransferManager__CopyTensor(const DataTransferManager* p, const Tensor& src, Tensor& dst) override { return p->CopyTensor(src, dst); }
@@ -1248,6 +1275,7 @@ struct ProviderHostImpl : ProviderHost {
   const Graph* Graph__ParentGraph(const Graph* p) const override { return p->ParentGraph(); }
   Graph* Graph__MutableParentGraph(Graph* p) override { return p->MutableParentGraph(); }
   const std::string& Graph__Name(const Graph* p) const noexcept override { return p->Name(); }
+  void Graph__SetName(Graph* p, const std::string& name) const noexcept override { return p->SetName(name); }
   const std::filesystem::path& Graph__ModelPath(const Graph* p) const override { return p->ModelPath(); }
   const std::vector<const NodeArg*>& Graph__GetInputsIncludingInitializers(const Graph* p) const noexcept override { return p->GetInputsIncludingInitializers(); }
   bool Graph__IsSubgraph(const Graph* p) override { return p->IsSubgraph(); }
@@ -1616,7 +1644,7 @@ struct ProviderHostImpl : ProviderHost {
   }
 #endif
 
-  void MurmurHash3__x86_128(const void* key, int len, uint32_t seed, void* out) override {
+  void MurmurHash3__x86_128(const void* key, size_t len, uint32_t seed, void* out) override {
     MurmurHash3::x86_128(key, len, seed, out);
   }
 
@@ -1631,6 +1659,7 @@ struct ProviderHostImpl : ProviderHost {
   Status LoadDynamicLibrary(onnxruntime::PathString library_name) override { return LoadDynamicLibraryFromProvider(library_name); };
 #endif
 } provider_host_;
+
 #if defined(_MSC_VER) && !defined(__clang__)
 #pragma warning(pop)
 #endif
@@ -1923,6 +1952,7 @@ OrtTensorRTProviderOptionsV2 OrtTensorRTProviderOptionsToOrtTensorRTProviderOpti
   trt_options_converted.trt_ep_context_embed_mode = 0;
   trt_options_converted.trt_engine_cache_prefix = "";
   trt_options_converted.trt_engine_hw_compatible = 0;
+  trt_options_converted.trt_preview_features = "";
 
   return trt_options_converted;
 }
@@ -1998,10 +2028,14 @@ std::shared_ptr<IExecutionProviderFactory> QNNProviderFactoryCreator::Create(con
 std::shared_ptr<IExecutionProviderFactory> OpenVINOProviderFactoryCreator::Create(
     const ProviderOptions* provider_options_map, const SessionOptions* session_options) {
   // Append session options applicable for EP to EP Provider options.
-  std::pair<const ProviderOptions*, const ConfigOptions&> config_buffer = {provider_options_map,
-                                                                           session_options->config_options};
-  const void* obj = reinterpret_cast<const void*>(&config_buffer);
-  return s_library_openvino.Get().CreateExecutionProviderFactory(obj);
+  const ConfigOptions* config_options = nullptr;
+  if (session_options != nullptr) {
+    config_options = &session_options->config_options;
+  }
+
+  std::array<const void*, 2> configs_array = {provider_options_map, config_options};
+  const void* arg = reinterpret_cast<const void*>(&configs_array);
+  return s_library_openvino.Get().CreateExecutionProviderFactory(arg);
 }
 
 std::shared_ptr<IExecutionProviderFactory> DnnlProviderFactoryCreator::Create(const OrtDnnlProviderOptions* dnnl_options) {
@@ -2584,6 +2618,7 @@ ORT_API(void, OrtApis::ReleaseTensorRTProviderOptions, _Frees_ptr_opt_ OrtTensor
     delete[] ptr->trt_ep_context_file_path;
     delete[] ptr->trt_onnx_model_folder_path;
     delete[] ptr->trt_op_types_to_exclude;
+    delete[] ptr->trt_preview_features;
   }
 
   std::unique_ptr<OrtTensorRTProviderOptionsV2> p(ptr);

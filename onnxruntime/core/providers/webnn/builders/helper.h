@@ -82,13 +82,14 @@ inline std::string GetTensorName(const ConstPointerContainer<std::vector<NodeArg
   return (input_defs.size() > index) ? std::string(input_defs[index]->Name()) : "";
 }
 
-inline std::vector<uint32_t> GetVecUint32FromVecInt64(gsl::span<const int64_t> int64_vec) {
-  std::vector<uint32_t> uint32_vec;
-  uint32_vec.reserve(int64_vec.size());
+template <typename T>
+inline std::vector<T> GetNarrowedIntfromInt64(gsl::span<const int64_t> int64_vec) {
+  std::vector<T> vec;
+  vec.reserve(int64_vec.size());
   std::transform(int64_vec.begin(), int64_vec.end(),
-                 std::back_inserter(uint32_vec),
-                 [](int64_t val) -> uint32_t { return SafeInt<uint32_t>(val); });
-  return uint32_vec;
+                 std::back_inserter(vec),
+                 [](int64_t val) -> T { return SafeInt<T>(val); });
+  return vec;
 }
 
 template <typename T>
@@ -170,12 +171,13 @@ inline bool ReadScalarTensorData(const onnx::TensorProto& tensor, emscripten::va
   return true;
 }
 
-inline bool IsEmptyTensor(const InitializedTensorSet& initializers, const std::string& name) {
-  if (name.empty() || !Contains(initializers, name)) {
+inline bool IsEmptyTensor(const GraphViewer& graph_viewer, const std::string& name) {
+  const auto* tensor_init = graph_viewer.GetConstantInitializer(name);
+  if (name.empty() || !tensor_init) {
     return true;
   }
 
-  const auto& tensor = *initializers.at(name);
+  const auto& tensor = *tensor_init;
   const auto dims = tensor.dims();
   // An empty tensor contains a 0 in the dimensions list.
   return std::any_of(dims.begin(), dims.end(), [](auto d) { return d == 0; });

@@ -7,7 +7,7 @@ parameters:
 - name: QNN_SDK
   displayName: QNN SDK Version
   type: string
-  default: 2.31.0.250130
+  default: 2.32.0.250228
 
 - name: ENV_SETUP_SCRIPT
   type: string
@@ -18,6 +18,11 @@ parameters:
     Extra parameters to pass to build.py. Don't put newlines in here.
   type: string
   default: ''
+
+- name: is1ES
+  displayName: 'Whether the pipeline is running in 1ES'
+  type: boolean
+  default: false
 
 jobs:
 - job: Win_py_x64_qnn_Wheels
@@ -116,10 +121,18 @@ jobs:
           Contents: '*.whl'
           TargetFolder: '$(Build.ArtifactStagingDirectory)'
 
-      - task: PublishBuildArtifacts@1
-        displayName: 'Publish Artifact: ONNXRuntime python wheel'
-        inputs:
-          ArtifactName: onnxruntime_qnn_x64
+      - ${{ if eq(parameters.is1ES, true) }}:
+        - task: 1ES.PublishPipelineArtifact@1
+          displayName: 'Publish Artifact: ONNXRuntime python wheel'
+          inputs:
+            artifactName: onnxruntime_qnn_x64_$(PythonVersion)
+            targetPath: '$(Build.ArtifactStagingDirectory)'
+      - ${{ if eq(parameters.is1ES, false) }}:
+        - task: PublishPipelineArtifact@1
+          displayName: 'Publish Artifact: ONNXRuntime python wheel'
+          inputs:
+            artifactName: onnxruntime_qnn_x64_$(PythonVersion)
+            targetPath: '$(Build.ArtifactStagingDirectory)'
 
       - script: |
           7z x *.whl
@@ -142,8 +155,4 @@ jobs:
         condition: and (succeeded(), eq(variables['Build.SourceBranch'], 'refs/heads/main'))
         inputs:
           GdnPublishTsaOnboard: false
-          GdnPublishTsaConfigFile: '$(Build.sourcesDirectory)\.gdn\.gdntsa' 
-
-      - template: component-governance-component-detection-steps.yml
-        parameters:
-          condition: 'succeeded'
+          GdnPublishTsaConfigFile: '$(Build.sourcesDirectory)\.gdn\.gdntsa'

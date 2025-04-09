@@ -1,7 +1,7 @@
 parameters:
   AgentPool: 'onnxruntime-Ubuntu2204-AMD-CPU'
   ArtifactSuffix: ''
-  NugetPackageName : ''
+  NugetPackageName: ''
   StageSuffix: 'CPU'
   # More Suffix is used to differentiate testing for GPU and GPU-Windows/GPU-Linux packages
   MoreSuffix: ''
@@ -20,7 +20,9 @@ stages:
     workspace:
       clean: all
     timeoutInMinutes: 120
-    pool: ${{ parameters.AgentPool }}
+    pool:
+      name: ${{ parameters.AgentPool }}
+      os: 'linux'
 
     variables:
     - template: ../../templates/common-variables.yml
@@ -91,27 +93,23 @@ stages:
               "
         displayName: 'Run Package Test'
     - ${{ else }}:
-        - task: CmdLine@2
-          displayName: 'Create symlink for test models'
-          inputs:
-            script: |
-              ln -sf /data/models $(Build.BinariesDirectory)
-        - task: Bash@3
-          displayName: 'Run Package Test'
-          inputs:
-            targetType: filePath
-            filePath: '$(Build.SourcesDirectory)/csharp/test/Microsoft.ML.OnnxRuntime.EndToEndTests/runtest.sh'
-            arguments: '$(Build.BinariesDirectory)/nuget-artifact $(NuGetPackageVersionNumber)'
-            workingDirectory: $(Build.BinariesDirectory)
-          env:
-            OnnxRuntimeBuildDirectory: $(Build.BinariesDirectory)
-            DisableContribOps: $(DisableContribOps)
-            DisableMlOps: $(DisableMlOps)
-            IsReleaseBuild: $(IsReleaseBuild)
-            PACKAGENAME: ${{ parameters.NugetPackageName }}
-
-    - template: ../../templates/component-governance-component-detection-steps.yml
-      parameters:
-        condition: 'always'
+      - task: CmdLine@2
+        displayName: 'Create symlink for test models'
+        inputs:
+          script: |
+            ln -sf /data/models $(Build.BinariesDirectory)
+      - task: Bash@3
+        displayName: 'Run Package Test'
+        inputs:
+          targetType: filePath
+          filePath: '$(Build.SourcesDirectory)/csharp/test/Microsoft.ML.OnnxRuntime.EndToEndTests/runtest.sh'
+          arguments: '$(Build.BinariesDirectory)/nuget-artifact $(NuGetPackageVersionNumber)'
+          workingDirectory: $(Build.BinariesDirectory)
+        env:
+          OnnxRuntimeBuildDirectory: $(Build.BinariesDirectory)
+          DisableContribOps: $(DisableContribOps)
+          DisableMlOps: $(DisableMlOps)
+          IsReleaseBuild: $(IsReleaseBuild)
+          PACKAGENAME: ${{ parameters.NugetPackageName }}
 
     - template: ../../templates/clean-agent-build-directory-step.yml

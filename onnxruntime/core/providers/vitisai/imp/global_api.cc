@@ -49,6 +49,8 @@ struct OrtVitisAIEpAPI {
       const std::string& model_path, const onnxruntime::Graph& graph, const onnxruntime::ProviderOptions& options);
   std::vector<std::unique_ptr<vaip_core::ExecutionProvider>>* (*compile_onnx_model_vitisai_ep_with_error_handling)(
       const std::string& model_path, const onnxruntime::Graph& graph, const onnxruntime::ProviderOptions& options, void* status, vaip_core::error_report_func func);
+  std::vector<std::unique_ptr<vaip_core::ExecutionProvider>>* (*compile_onnx_model_vitisai_ep_v3)(
+      const std::filesystem::path& model_path, const onnxruntime::Graph& graph, const onnxruntime::ProviderOptions& options, void* status, vaip_core::error_report_func func);
   uint32_t (*vaip_get_version)();
   void (*create_ep_context_nodes)(
       const std::vector<std::unique_ptr<vaip_core::ExecutionProvider>>& eps,
@@ -82,7 +84,8 @@ struct OrtVitisAIEpAPI {
     ORT_THROW_IF_ERROR(env.GetSymbolFromLibrary(handle_, "initialize_onnxruntime_vitisai_ep", (void**)&initialize_onnxruntime_vitisai_ep));
     auto status1 = env.GetSymbolFromLibrary(handle_, "compile_onnx_model_vitisai_ep_with_error_handling", (void**)&compile_onnx_model_vitisai_ep_with_error_handling);
     auto status2 = env.GetSymbolFromLibrary(handle_, "compile_onnx_model_vitisai_ep_with_options", (void**)&compile_onnx_model_with_options);
-    if ((!status1.IsOK()) && (!status2.IsOK())) {
+    auto status3 = env.GetSymbolFromLibrary(handle_, "compile_onnx_model_vitisai_ep_v3", (void**)&compile_onnx_model_vitisai_ep_v3);
+    if ((!status1.IsOK()) && (!status2.IsOK()) && (!status3.IsOK())) {
       ::onnxruntime::LogRuntimeError(0, status2, __FILE__, static_cast<const char*>(__FUNCTION__), __LINE__);
       ORT_THROW(status2);
     }
@@ -129,17 +132,25 @@ void change_status_with_error(void* status_ptr, int error_code, const char* erro
 
 vaip_core::DllSafe<std::vector<std::unique_ptr<vaip_core::ExecutionProvider>>> compile_onnx_model(
     const onnxruntime::GraphViewer& graph_viewer, const onnxruntime::logging::Logger& logger, const onnxruntime::ProviderOptions& options) {
-  auto model_path = graph_viewer.ModelPath().string();
-  if (s_library_vitisaiep.compile_onnx_model_vitisai_ep_with_error_handling) {
+  auto model_path = graph_viewer.ModelPath();
+  if (s_library_vitisaiep.compile_onnx_model_vitisai_ep_v3) {
     Status status = Status::OK();
     auto status_ptr = reinterpret_cast<void*>(&status);
-    auto ret = vaip_core::DllSafe(s_library_vitisaiep.compile_onnx_model_vitisai_ep_with_error_handling(model_path, graph_viewer.GetGraph(), options, status_ptr, change_status_with_error));
+    auto ret = vaip_core::DllSafe(s_library_vitisaiep.compile_onnx_model_vitisai_ep_v3(model_path, graph_viewer.GetGraph(), options, status_ptr, change_status_with_error));
+    if (!status.IsOK()) {
+      ORT_THROW(status);
+    }
+    return ret;
+  } else if (s_library_vitisaiep.compile_onnx_model_vitisai_ep_with_error_handling) {
+    Status status = Status::OK();
+    auto status_ptr = reinterpret_cast<void*>(&status);
+    auto ret = vaip_core::DllSafe(s_library_vitisaiep.compile_onnx_model_vitisai_ep_with_error_handling(model_path.u8string(), graph_viewer.GetGraph(), options, status_ptr, change_status_with_error));
     if (!status.IsOK()) {
       ORT_THROW(status);
     }
     return ret;
   } else {
-    return vaip_core::DllSafe(s_library_vitisaiep.compile_onnx_model_with_options(model_path, graph_viewer.GetGraph(), options));
+    return vaip_core::DllSafe(s_library_vitisaiep.compile_onnx_model_with_options(model_path.u8string(), graph_viewer.GetGraph(), options));
   }
 }
 
@@ -349,10 +360,19 @@ vaip_core::OrtApiForVaip* create_org_api_hook() {
   };
   the_global_api.graph_nodes_unsafe = [](const Graph& graph) -> auto { return vaip_core::DllSafe(graph.Nodes()); };
   the_global_api.graph_get_name = [](const Graph& graph) -> const std::string& { return graph.Name(); };
+  the_global_api.graph_set_name = [](Graph& graph, const char* name) -> void { return graph.SetName(std::string(name)); };
   the_global_api.graph_reverse_dfs_from = [](const Graph& graph, gsl::span<const Node* const> from,
                                              const auto& enter, const auto& leave, const auto& stop) {
     graph.ReverseDFSFrom(from, enter, leave, nullptr, stop);
   };
+
+  the_global_api.graph_infer_shapes_from_filepath = [](const std::string& m, const std::string& save_path) -> auto { return Provider_GetHost()->InferShapes(m, save_path); };
+  the_global_api.graph_to_graph_proto = [](const Graph& graph) -> ONNX_NAMESPACE::GraphProto* {
+    return graph.ToGraphProto().release();
+  };
+  the_global_api.graph_proto_delete = [](ONNX_NAMESPACE::GraphProto* p) { delete p; };
+  the_global_api.graph_infer_shapes = [](ONNX_NAMESPACE::ModelProto& m) -> auto { return Provider_GetHost()->InferShapes(m); };
+
   // node
   the_global_api.node_get_inputs_unsafe = vaip::node_get_inputs;
   the_global_api.node_get_output_node_args_unsafe = vaip::node_get_output_node_args;

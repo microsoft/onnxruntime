@@ -28,7 +28,7 @@ int ModelMetadefIdGenerator::GenerateId(const onnxruntime::GraphViewer& graph_vi
   // hash the bytes in the Graph instance. we can't just use the address as a new Graph instance may use
   // the same memory (unit tests prove this can occur). the raw bytes of the Graph instance should be a unique
   // fingerprint for the instance that can use used as the key to the hash of the model path/contents.
-  MurmurHash3::x86_128(&main_graph, gsl::narrow_cast<int32_t>(sizeof(Graph)), instance_hash[0], &instance_hash);
+  MurmurHash3::x86_128(&main_graph, sizeof(Graph), instance_hash[0], &instance_hash);
   HashValue graph_instance_hash = instance_hash[0] | (uint64_t(instance_hash[1]) << 32);
 
   // if we've already hashed this main graph instance use the cached value
@@ -42,10 +42,10 @@ int ModelMetadefIdGenerator::GenerateId(const onnxruntime::GraphViewer& graph_vi
     // this may not be available if the model was loaded from a stream or in-memory bytes
     const auto model_path_str = main_graph.ModelPath().string();
     if (!model_path_str.empty()) {
-      MurmurHash3::x86_128(model_path_str.data(), gsl::narrow_cast<int32_t>(model_path_str.size()), hash[0], &hash);
+      MurmurHash3::x86_128(model_path_str.data(), model_path_str.size(), hash[0], &hash);
     } else {
       auto hash_str = [&hash](const std::string& str) {
-        MurmurHash3::x86_128(str.data(), gsl::narrow_cast<int32_t>(str.size()), hash[0], &hash);
+        MurmurHash3::x86_128(str.data(), str.size(), hash[0], &hash);
       };
 
       // fingerprint the main graph by hashing graph inputs and the ordered outputs from each node

@@ -1,7 +1,7 @@
 parameters:
 - name: CudaVersion
   type: string
-  default: '11.8'
+  default: '12.2'
 - name: buildJava
   type: boolean
 - name: buildNodejs
@@ -15,7 +15,9 @@ stages:
     workspace:
       clean: all
     timeoutInMinutes: 150
-    pool: 'onnxruntime-Ubuntu2204-AMD-CPU'
+    pool:
+      name: 'onnxruntime-Ubuntu2204-AMD-CPU'
+      os: linux
     variables:
     - name: CUDA_VERSION_MAJOR
       ${{ if eq(parameters.CudaVersion, '11.8') }}:
@@ -30,9 +32,7 @@ stages:
       parameters:
         Dockerfile: tools/ci_build/github/linux/docker/inference/x86_64/default/cuda${{ variables.CUDA_VERSION_MAJOR }}/Dockerfile
         Context: tools/ci_build/github/linux/docker/inference/x86_64/default/cuda${{ variables.CUDA_VERSION_MAJOR }}
-        DockerBuildArgs: "
-        --build-arg BUILD_UID=$( id -u )
-        "
+        DockerBuildArgs: " --build-arg BUILD_UID=$( id -u )"
         Repository: onnxruntimecuda${{ variables.CUDA_VERSION_MAJOR }}build
 
     - script: $(Build.SourcesDirectory)/tools/ci_build/github/linux/build_cuda_c_api_package.sh
@@ -48,6 +48,7 @@ stages:
           version: '$(OnnxRuntimeVersion)'
           libraryName: 'libonnxruntime.so'
           nativeLibraryName: 'libonnxruntime4j_jni.so'
+          is1ES: true
 
     - template: ../templates/c-api-artifacts-package-and-publish-steps-posix.yml
       parameters:
@@ -56,9 +57,6 @@ stages:
         artifactNameNoVersionString: 'onnxruntime-linux-x64-cuda'
         libraryName: 'libonnxruntime.so.$(OnnxRuntimeVersion)'
 
-    - template: ../templates/component-governance-component-detection-steps.yml
-      parameters:
-        condition: 'succeeded'
     - template: ../templates/clean-agent-build-directory-step.yml
   # Linux CUDA with TensorRT Packaging
   - job: Linux_C_API_Packaging_TensorRT
@@ -66,7 +64,9 @@ stages:
     workspace:
       clean: all
     timeoutInMinutes: 180
-    pool: 'onnxruntime-Ubuntu2204-AMD-CPU'
+    pool:
+      name: 'onnxruntime-Ubuntu2204-AMD-CPU'
+      os: linux
     variables:
     - template: ../templates/common-variables.yml
     - name: CUDA_VERSION_MAJOR
@@ -109,13 +109,7 @@ stages:
           version: '$(OnnxRuntimeVersion)'
           libraryName: 'libonnxruntime.so'
           nativeLibraryName: 'libonnxruntime4j_jni.so'
-
-    - ${{ if eq(parameters.buildNodejs, 'true') }}:
-      - template: ../templates/nodejs-artifacts-package-and-publish-steps-posix.yml
-        parameters:
-          arch: 'x64'
-          os: 'linux'
-          artifactName: 'drop-onnxruntime-nodejs-linux-x64-tensorrt'
+          is1ES: true
 
     - template: ../templates/c-api-artifacts-package-and-publish-steps-posix.yml
       parameters:
@@ -124,10 +118,6 @@ stages:
         artifactNameNoVersionString: 'onnxruntime-linux-x64-tensorrt'
         libraryName: 'libonnxruntime.so.$(OnnxRuntimeVersion)'
 
-
-    - template: ../templates/component-governance-component-detection-steps.yml
-      parameters:
-        condition: 'succeeded'
     - template: ../templates/clean-agent-build-directory-step.yml
   # Linux CUDA Combined Testing and Publishing
 - stage: Linux_Packaging_combined_CUDA
@@ -138,7 +128,9 @@ stages:
     condition: succeeded()
     workspace:
       clean: all
-    pool: 'Onnxruntime-Linux-GPU'
+    pool:
+      name: 'Onnxruntime-Linux-GPU-A10'
+      os: linux
     variables:
     - template: ../templates/common-variables.yml
     - name: CUDA_VERSION_MAJOR
@@ -218,10 +210,7 @@ stages:
           /src_dir/onnxruntime-inference-examples/c_cxx/squeezenet/run_capi_application.sh -o /src_dir/onnxruntime -p /artifact_src/onnxruntime-linux-x64-gpu-$(OnnxRuntimeVersion).tgz -w /src_dir/onnxruntime-inference-examples/c_cxx/squeezenet
         workingDirectory: '$(Build.ArtifactStagingDirectory)'
 
-    - task: PublishPipelineArtifact@1
+    - task: 1ES.PublishPipelineArtifact@1
       inputs:
-        targetPath: '$(Build.ArtifactStagingDirectory)/onnxruntime-linux-x64-gpu-$(OnnxRuntimeVersion).tgz'
+        targetPath: '$(Build.ArtifactStagingDirectory)'
         artifactName: 'onnxruntime-linux-x64-gpu'
-    - template: ../templates/component-governance-component-detection-steps.yml
-      parameters:
-        condition: 'succeeded'
