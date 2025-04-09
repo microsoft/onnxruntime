@@ -149,6 +149,10 @@ static OpBuilderRegistrations CreateOpBuilderRegistrations() {
     CreateLstmOpBuilder("LSTM", op_registrations);
   }
 
+  {  // MatMulNBits
+    CreateMatMulNBitsOpBuilder("MatMulNBits", op_registrations);
+  }
+
   {  // Max/Min
     CreateMaxMinOpBuilder("Max", op_registrations);
     CreateMaxMinOpBuilder("Min", op_registrations);
