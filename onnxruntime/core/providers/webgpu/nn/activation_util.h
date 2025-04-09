@@ -4,6 +4,7 @@
 #pragma once
 
 #include <string>
+#include <cinttypes>
 
 namespace onnxruntime {
 namespace webgpu {
