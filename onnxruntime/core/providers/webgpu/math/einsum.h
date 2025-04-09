@@ -44,9 +44,7 @@ class EinsumProgram final : public Program<EinsumProgram> {
 
   Status GenerateShaderCode(ShaderHelper& sh) const override;
 
-  // TODO: add uniform variables dynamically.
   WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES(
-      {"j_max", ProgramUniformVariableDataType::Uint32},
       {"output_size", ProgramUniformVariableDataType::Uint32});
 
  private:

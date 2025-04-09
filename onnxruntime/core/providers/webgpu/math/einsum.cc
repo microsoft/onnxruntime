@@ -248,11 +248,14 @@ Status EinsumProgram::GenerateShaderCode(ShaderHelper& shader) const {
               symbol));
         }
 
-        reduce_op_compute.push_back("prod *= " + inputs[rhs_term_index].get().GetByIndices("input" + std::to_string(rhs_term_index) + "Indices") + ";");
+        reduce_op_compute.push_back("prod *= " +
+                                    inputs[rhs_term_index].get().GetByIndices("input" + std::to_string(rhs_term_index) + "Indices") + ";");
         rhs_term_index++;
       }
+
       reduce_ops_loop_headers.push_back("for(var " + symbol + ": u32 = 0; " +
-                                        symbol + " < uniforms." + symbol + "_max; " + symbol + "++) {");
+                                        symbol + " <  " + std::to_string(info.dim_value) +
+                                        "; " + symbol + "++) {");
       reduce_ops_loop_footers.push_back("}");
     }
   }
@@ -266,6 +269,8 @@ Status EinsumProgram::GenerateShaderCode(ShaderHelper& shader) const {
     for (size_t i = 1; i < inputs.size(); ++i) {
       sum_statement += " * " + inputs[i].get().GetByIndices("input" + std::to_string(i) + "Indices");
     }
+    
+    sum_statement += ";";
 
     reduce_ops.push_back(sum_statement);
   } else {
@@ -345,13 +350,6 @@ Status Einsum::ComputeInternal(ComputeContext& context) const {
 
   for (size_t i = 0; i < input_tensors.size(); ++i) {
     program.AddInput({input_tensors[i], ProgramTensorMetadataDependency::TypeAndRank});
-  }
-
-  // Add uniforms for symbol dimensions.
-  for (const auto& symbol_info : equation.symbol_to_info_) {
-    if (!equation.rhs_.symbol_to_indices.contains(symbol_info.first)) {
-      program.AddUniformVariables({static_cast<uint32_t>(symbol_info.second.dim_value)});
-    }
   }
 
   // Add output and base uniforms.
