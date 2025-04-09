@@ -100,7 +100,7 @@ Status InstanceNormProgramNHWC::GenerateShaderCode(ShaderHelper& shader) const {
   const auto& input = shader.AddInput("input", ShaderUsage::UseUniform | ShaderUsage::UseIndicesTypeAlias | ShaderUsage::UseValueTypeAlias | ShaderUsage::UseElementTypeAlias);
   const auto& channel_scale_shift = shader.AddInput("channel_scale_shift", ShaderUsage::UseUniform | ShaderUsage::UseIndicesTypeAlias);
   const auto& output = shader.AddOutput("output", ShaderUsage::UseUniform | ShaderUsage::UseIndicesTypeAlias | ShaderUsage::UseValueTypeAlias);
-  shader.MainFunctionBody()  // << shader.GuardAgainstOutOfBoundsWorkgroupSizes("uniforms.output_size")
+  shader.MainFunctionBody()  << shader.GuardAgainstOutOfBoundsWorkgroupSizes("uniforms.output_size")
       << "let current_image_number = global_idx / (uniforms.C * uniforms.H);\n"
       << "let current_channel_number = global_idx % uniforms.C;\n"
       << "let scale_offset = (current_image_number * uniforms.C + current_channel_number);\n"
