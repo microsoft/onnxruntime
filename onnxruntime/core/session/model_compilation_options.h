@@ -14,16 +14,13 @@
 
 namespace onnxruntime {
 
-// TODO(adrianlizarraga): Clean up: add constructors, member public/private access, etc.
 struct ModelCompilationOptions {
   const OrtEnv* env = nullptr;
-  std::unique_ptr<OrtSessionOptions> session_options_ = nullptr;
-  OrtSessionOptions* session_options_override_ = nullptr;
+  OrtSessionOptions* session_options = nullptr;
   std::string input_model_path;
   const void* input_model_data = nullptr;
   size_t input_model_data_size;
 
-  OrtSessionOptions* GetSessionOptions() const;
   void ResetInputModelSettings();
   Status ResetOutputModelSettings();
   Status CheckInputModelSettings() const;

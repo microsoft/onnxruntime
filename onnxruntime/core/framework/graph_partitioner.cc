@@ -784,7 +784,10 @@ static Status CreateEpContextModel(const ExecutionProviders& execution_providers
     all_ep_context_nodes.insert(all_ep_context_nodes.begin(), ep_context_nodes.begin(), ep_context_nodes.end());
   }
 
-  if (all_ep_context_nodes.size() < 1 && !ep_context_gen_options.always_generate) {
+  if (all_ep_context_nodes.size() < 1) {
+    ORT_RETURN_IF(ep_context_gen_options.error_if_no_compiled_nodes,
+                  "Compiled model does not contain any EPContext nodes. "
+                  "Check that the session EPs support compilation and can execute at least one model subgraph.");
     return Status::OK();
   }
 
@@ -801,7 +804,7 @@ static Status CreateEpContextModel(const ExecutionProviders& execution_providers
   ORT_RETURN_IF_ERROR(GetValidatedEpContextPath(ep_context_gen_options.output_model_file_path,
                                                 graph.ModelPath(),
                                                 context_cache_path,
-                                                ep_context_gen_options.always_generate));
+                                                ep_context_gen_options.overwrite_existing_output_file));
 
   Model ep_context_model(graph.Name(), false, graph.GetModel().MetaData(),
                          graph.GetModel().ModelPath(),  // use source model path so that external initializers can find the data file path
@@ -1183,7 +1186,8 @@ Status GraphPartitioner::Partition(Graph& graph, FuncManager& func_mgr,
       // Check before EP compile graphs
       std::filesystem::path context_cache_path;
       ORT_RETURN_IF_ERROR(GetValidatedEpContextPath(ep_context_gen_options.output_model_file_path, graph.ModelPath(),
-                                                    context_cache_path, ep_context_gen_options.always_generate));
+                                                    context_cache_path,
+                                                    ep_context_gen_options.overwrite_existing_output_file));
     }
 
     // We use this only if Resource Aware Partitioning is enabled for any of the EPs

@@ -1054,7 +1054,6 @@ using ConstModelCompilationOptions = detail::ConstModelCompilationOptionsImpl<de
  */
 struct ModelCompilationOptions : detail::ModelCompilationOptionsImpl<OrtModelCompilationOptions> {
   explicit ModelCompilationOptions(std::nullptr_t) {}                        ///< Create an empty ModelCompilationOptions object, must be assigned a valid one to be used.
-  explicit ModelCompilationOptions(const Env& env);                          ///< Wraps OrtApi::CreateModelCompilationOptions
   ModelCompilationOptions(const Env& env, SessionOptions& session_options);  ///< Wraps OrtApi::CreateModelCompilationOptionsFromSessionOptions
   explicit ModelCompilationOptions(OrtModelCompilationOptions* p) : ModelCompilationOptionsImpl<OrtModelCompilationOptions>{p} {}
   UnownedModelCompilationOptions GetUnowned() const { return UnownedModelCompilationOptions{this->p_}; }

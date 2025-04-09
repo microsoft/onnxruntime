@@ -5452,20 +5452,6 @@ struct OrtCompileApi {
   /// @{
   ORT_CLASS_RELEASE(ModelCompilationOptions);
 
-  /** \brief Creates an OrtModelCompilationOptions object.
-   *
-   * An OrtModelCompilationOptions object contains the settings used to generate a compiled ONNX model.
-   *
-   * ReleaseOrtModelCompilationsOptions must be called to free the OrtModelCompilationOptions after calling CompileModel.
-   *
-   * \param[in] env OrtEnv object.
-   * \param[out] out The created OrtModelCompilationOptions instance.
-   * \snippet{doc} snippets.dox OrtStatus Return Value
-   *
-   * \since Version 1.22.
-   */
-  ORT_API2_STATUS(CreateModelCompilationOptions, _In_ const OrtEnv* env, _Outptr_ OrtModelCompilationOptions** out);
-
   /** \brief Creates an OrtModelCompilationOptions object from an existing OrtSessionOptions object.
    *
    * An OrtModelCompilationOptions object contains the settings used to generate a compiled ONNX model.

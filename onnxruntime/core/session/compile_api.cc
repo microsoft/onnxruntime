@@ -31,29 +31,6 @@ ORT_API(void, OrtCompileAPI::ReleaseModelCompilationOptions,
   delete reinterpret_cast<onnxruntime::ModelCompilationOptions*>(ort_model_compile_options);
 }
 
-ORT_API_STATUS_IMPL(OrtCompileAPI::CreateModelCompilationOptions, _In_ const OrtEnv* env,
-                    _Outptr_ OrtModelCompilationOptions** out) {
-  API_IMPL_BEGIN
-  if (env == nullptr) {
-    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "The env argument must be a non-null pointer");
-  }
-
-  auto model_compile_options = std::make_unique<onnxruntime::ModelCompilationOptions>();
-  model_compile_options->env = env;
-  model_compile_options->session_options_ = std::make_unique<OrtSessionOptions>();
-
-  OrtSessionOptions* session_options = model_compile_options->GetSessionOptions();
-  session_options->value.has_explicit_ep_context_gen_options = true;
-  session_options->value.ep_context_gen_options.enable = true;
-  session_options->value.ep_context_gen_options.always_generate = true;
-  ORT_C_API_RETURN_IF_ERROR(session_options->value.config_options.AddConfigEntry(
-      kOrtSessionOptionEpContextEnable, "1"));
-  *out = reinterpret_cast<OrtModelCompilationOptions*>(model_compile_options.release());
-
-  return nullptr;
-  API_IMPL_END
-}
-
 ORT_API_STATUS_IMPL(OrtCompileAPI::CreateModelCompilationOptionsFromSessionOptions, _In_ const OrtEnv* env,
                     _In_ OrtSessionOptions* session_options, _Outptr_ OrtModelCompilationOptions** out) {
   API_IMPL_BEGIN
@@ -66,13 +43,13 @@ ORT_API_STATUS_IMPL(OrtCompileAPI::CreateModelCompilationOptionsFromSessionOptio
   }
 
   auto model_compile_options = std::make_unique<onnxruntime::ModelCompilationOptions>();
-  model_compile_options->session_options_.reset(nullptr);
-  model_compile_options->session_options_override_ = session_options;
+  model_compile_options->session_options = session_options;
 
   session_options->value.has_explicit_ep_context_gen_options = true;
   session_options->value.ep_context_gen_options = session_options->value.GetEpContextGenerationOptions();
   session_options->value.ep_context_gen_options.enable = true;
-  session_options->value.ep_context_gen_options.always_generate = true;
+  session_options->value.ep_context_gen_options.overwrite_existing_output_file = true;
+  session_options->value.ep_context_gen_options.error_if_no_compiled_nodes = true;
   ORT_C_API_RETURN_IF_ERROR(session_options->value.config_options.AddConfigEntry(kOrtSessionOptionEpContextEnable, "1"));
   *out = reinterpret_cast<OrtModelCompilationOptions*>(model_compile_options.release());
   return nullptr;
@@ -136,7 +113,7 @@ ORT_API_STATUS_IMPL(OrtCompileAPI::ModelCompilationOptions_SetOutputModelPath,
     return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "Invalid output model path: path is empty");
   }
 
-  OrtSessionOptions* session_options = model_compile_options->GetSessionOptions();
+  OrtSessionOptions* session_options = model_compile_options->session_options;
   session_options->value.ep_context_gen_options.output_model_file_path = std::move(model_path);
   ORT_C_API_RETURN_IF_ERROR(session_options->value.config_options.AddConfigEntry(
       kOrtSessionOptionEpContextFilePath,
@@ -157,7 +134,7 @@ ORT_API_STATUS_IMPL(OrtCompileAPI::ModelCompilationOptions_SetOutputModelExterna
 
   auto model_compile_options = reinterpret_cast<onnxruntime::ModelCompilationOptions*>(ort_model_compile_options);
 
-  OrtSessionOptions* session_options = model_compile_options->GetSessionOptions();
+  OrtSessionOptions* session_options = model_compile_options->session_options;
   session_options->value.ep_context_gen_options.output_external_initializers_file_path = std::move(initializers_file_path);
   session_options->value.ep_context_gen_options.output_external_initializer_size_threshold = external_initializer_size_threshold;
   ORT_C_API_RETURN_IF_ERROR(session_options->value.config_options.AddConfigEntry(
@@ -186,7 +163,7 @@ ORT_API_STATUS_IMPL(OrtCompileAPI::ModelCompilationOptions_SetOutputModelBuffer,
     return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "Invalid allocator for output model buffer: allocator pointer is null");
   }
 
-  OrtSessionOptions* session_options = model_compile_options->GetSessionOptions();
+  OrtSessionOptions* session_options = model_compile_options->session_options;
   session_options->value.ep_context_gen_options.output_model_buffer_ptr = output_model_data_ptr;
   session_options->value.ep_context_gen_options.output_model_buffer_size_ptr = output_model_data_size_ptr;
   session_options->value.ep_context_gen_options.output_model_buffer_allocator = allocator;
@@ -199,7 +176,7 @@ ORT_API_STATUS_IMPL(OrtCompileAPI::ModelCompilationOptions_SetEpContextEmbedMode
                     bool embed_ep_context_in_model) {
   API_IMPL_BEGIN
   auto model_compile_options = reinterpret_cast<onnxruntime::ModelCompilationOptions*>(ort_model_compile_options);
-  OrtSessionOptions* session_options = model_compile_options->GetSessionOptions();
+  OrtSessionOptions* session_options = model_compile_options->session_options;
   ORT_C_API_RETURN_IF_ERROR(session_options->value.config_options.AddConfigEntry(kOrtSessionOptionEpContextEmbedMode,
                                                                                  embed_ep_context_in_model ? "1" : "0"));
   session_options->value.ep_context_gen_options.embed_ep_context_in_model = embed_ep_context_in_model;
@@ -219,15 +196,15 @@ ORT_API_STATUS_IMPL(OrtCompileAPI::CompileModel, _In_ const OrtEnv* env,
   ORT_TRY {
     if (!model_compile_options->input_model_path.empty()) {
       PathString input_model_path = ToPathString(model_compile_options->input_model_path);
-      ORT_API_RETURN_IF_ERROR(CreateSessionAndLoadModel(model_compile_options->GetSessionOptions(), env,
+      ORT_API_RETURN_IF_ERROR(CreateSessionAndLoadModel(model_compile_options->session_options, env,
                                                         input_model_path.c_str(),
                                                         nullptr, 0, session));
     } else {
-      ORT_API_RETURN_IF_ERROR(CreateSessionAndLoadModel(model_compile_options->GetSessionOptions(), env, nullptr,
+      ORT_API_RETURN_IF_ERROR(CreateSessionAndLoadModel(model_compile_options->session_options, env, nullptr,
                                                         model_compile_options->input_model_data,
                                                         model_compile_options->input_model_data_size, session));
     }
-    ORT_API_RETURN_IF_ERROR(InitializeSession(model_compile_options->GetSessionOptions(), *session));
+    ORT_API_RETURN_IF_ERROR(InitializeSession(model_compile_options->session_options, *session));
   }
   ORT_CATCH(const std::exception& e) {
     ORT_HANDLE_EXCEPTION([&]() {
@@ -244,7 +221,6 @@ static constexpr OrtCompileApi ort_compile_api = {
     // and no functions can be removed (the implementation needs to change to return an error).
 
     &OrtCompileAPI::ReleaseModelCompilationOptions,
-    &OrtCompileAPI::CreateModelCompilationOptions,
     &OrtCompileAPI::CreateModelCompilationOptionsFromSessionOptions,
     &OrtCompileAPI::ModelCompilationOptions_SetInputModelPath,
     &OrtCompileAPI::ModelCompilationOptions_SetInputModelFromBuffer,
@@ -256,7 +232,7 @@ static constexpr OrtCompileApi ort_compile_api = {
 };
 
 // checks that we don't violate the rule that the functions must remain in the slots they were originally assigned
-static_assert(offsetof(OrtCompileApi, CompileModel) / sizeof(void*) == 9,
+static_assert(offsetof(OrtCompileApi, CompileModel) / sizeof(void*) == 8,
               "Size of version 22 Api cannot change");  // initial version in ORT 1.22
 
 ORT_API(const OrtCompileApi*, OrtCompileAPI::GetCompileApi) {

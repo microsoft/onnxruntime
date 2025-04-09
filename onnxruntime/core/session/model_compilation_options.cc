@@ -3,10 +3,6 @@
 #include "core/session/model_compilation_options.h"
 
 namespace onnxruntime {
-OrtSessionOptions* ModelCompilationOptions::GetSessionOptions() const {
-  return session_options_ ? session_options_.get() : session_options_override_;
-}
-
 void ModelCompilationOptions::ResetInputModelSettings() {
   input_model_path = "";
   input_model_data = nullptr;
@@ -14,7 +10,6 @@ void ModelCompilationOptions::ResetInputModelSettings() {
 }
 
 Status ModelCompilationOptions::ResetOutputModelSettings() {
-  OrtSessionOptions* session_options = GetSessionOptions();
   EpContextModelGenerationOptions& ep_context_gen_options = session_options->value.ep_context_gen_options;
   ep_context_gen_options.output_model_file_path = "";
   ep_context_gen_options.output_model_buffer_ptr = nullptr;
@@ -50,7 +45,6 @@ Status ModelCompilationOptions::CheckInputModelSettings() const {
 }
 
 Status ModelCompilationOptions::CheckOutputModelSettings() const {
-  const OrtSessionOptions* session_options = GetSessionOptions();
   const EpContextModelGenerationOptions& ep_context_gen_options = session_options->value.ep_context_gen_options;
 
   const bool explicit_writes_to_file = !ep_context_gen_options.output_model_file_path.empty();
@@ -81,8 +75,8 @@ Status ModelCompilationOptions::CheckOutputModelSettings() const {
 }
 
 Status ModelCompilationOptions::Check() const {
-  ORT_ENFORCE(GetSessionOptions() != nullptr);
-  ORT_ENFORCE(GetSessionOptions()->value.ep_context_gen_options.enable);
+  ORT_ENFORCE(session_options != nullptr);
+  ORT_ENFORCE(session_options->value.ep_context_gen_options.enable);
   ORT_RETURN_IF_ERROR(CheckInputModelSettings());
   ORT_RETURN_IF_ERROR(CheckOutputModelSettings());
   return Status::OK();

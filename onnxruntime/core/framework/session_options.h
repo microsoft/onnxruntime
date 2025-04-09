@@ -71,16 +71,17 @@ using CheckLoadCancellationFn = std::function<bool()>;
 
 struct EpContextModelGenerationOptions {
   bool enable = false;
-  bool always_generate = false;  // true if should always save an output model, even if no EpContext nodes.
+  bool overwrite_existing_output_file = false;
+  bool error_if_no_compiled_nodes = false;
+  bool embed_ep_context_in_model = false;
 
   std::string output_model_file_path;
-  void** output_model_buffer_ptr;
-  size_t* output_model_buffer_size_ptr;
-  OrtAllocator* output_model_buffer_allocator;
+  void** output_model_buffer_ptr = nullptr;
+  size_t* output_model_buffer_size_ptr = nullptr;
+  OrtAllocator* output_model_buffer_allocator = nullptr;
 
   std::string output_external_initializers_file_path;
   size_t output_external_initializer_size_threshold = 0;
-  bool embed_ep_context_in_model = false;
 };
 
 /**
