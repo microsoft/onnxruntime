@@ -11,12 +11,12 @@ namespace webgpu {
 
 class ComputeChannelScaleShiftProgram final : public Program<ComputeChannelScaleShiftProgram> {
  public:
-  ComputeChannelScaleShiftProgram(int components) : Program{"ComputeChannelScaleShift"}, components_(components) {}
+  ComputeChannelScaleShiftProgram(int components, float epsilon) : Program{"ComputeChannelScaleShift"}, components_(components), epsilon_(epsilon) {}
 
   Status GenerateShaderCode(ShaderHelper& sh) const override;
 
-  WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES({"output_size", ProgramUniformVariableDataType::Uint32}, {"epsilon", ProgramUniformVariableDataType::Float32});
   int components_;
+  float epsilon_;
 };
 
 class InstanceNormProgram final : public Program<InstanceNormProgram> {
@@ -46,12 +46,12 @@ class InstanceNorm final : public WebGpuKernel {
   InstanceNorm(const OpKernelInfo& info) : WebGpuKernel(info) {
     epsilon_ = info.GetAttrOrDefault<float>("epsilon", 1e-5f);
   }
-  Status ComputeChannelScaleAndShift(ComputeContext& context, const Tensor* input, const Tensor* scale, const Tensor* bias, float epsilon, Tensor* output) const;
   Status ComputeInternal(ComputeContext& context) const override;
 
  private:
   float epsilon_;
 };
+Status ComputeChannelScaleAndShift(ComputeContext& context, const Tensor* input, const Tensor* scale, const Tensor* bias, float epsilon, Tensor* output);
 
 }  // namespace webgpu
 }  // namespace onnxruntime
