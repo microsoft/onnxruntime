@@ -1564,11 +1564,11 @@ struct OrtRunOptions final {
 };
 
 struct OrtSessionOptions final {
-  const std::unordered_map<std::string, std::string>& GetConfigOptions() const {
+  const std::unordered_map<std::string, std::string>& GetConfigOptionsMap() const {
     return onnxruntime::g_host->SessionOptions__GetConfigOptionsMap(this);
   }
 
-  const onnxruntime::ConfigOptions& GetConfigs() const {
+  const onnxruntime::ConfigOptions& GetConfigOptions() const {
     return onnxruntime::g_host->SessionOptions__GetConfigOptions(this);
   }
 

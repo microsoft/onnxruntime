@@ -1025,8 +1025,6 @@ template <typename T>
 struct ConstModelCompilationOptionsImpl : Base<T> {
   using B = Base<T>;
   using B::B;
-
-  // ModelCompilationOptions Clone() const;  ///< Creates and returns a copy of this ModelCompilationOptions object. Wraps OrtApi::CloneModelCompilationOptions
 };
 
 template <typename T>
@@ -1053,8 +1051,9 @@ using ConstModelCompilationOptions = detail::ConstModelCompilationOptionsImpl<de
  *
  */
 struct ModelCompilationOptions : detail::ModelCompilationOptionsImpl<OrtModelCompilationOptions> {
-  explicit ModelCompilationOptions(std::nullptr_t) {}                        ///< Create an empty ModelCompilationOptions object, must be assigned a valid one to be used.
-  ModelCompilationOptions(const Env& env, SessionOptions& session_options);  ///< Wraps OrtApi::CreateModelCompilationOptionsFromSessionOptions
+  explicit ModelCompilationOptions(std::nullptr_t) {}                              ///< Create an empty ModelCompilationOptions object, must be assigned a valid one to be used.
+  ModelCompilationOptions(const Env& env, const SessionOptions& session_options);  ///< Wraps OrtApi::CreateModelCompilationOptionsFromSessionOptions
+  ModelCompilationOptions(const Env& env, ConstSessionOptions session_options);    ///< Wraps OrtApi::CreateModelCompilationOptionsFromSessionOptions
   explicit ModelCompilationOptions(OrtModelCompilationOptions* p) : ModelCompilationOptionsImpl<OrtModelCompilationOptions>{p} {}
   UnownedModelCompilationOptions GetUnowned() const { return UnownedModelCompilationOptions{this->p_}; }
   ConstModelCompilationOptions GetConst() const { return ConstModelCompilationOptions{this->p_}; }

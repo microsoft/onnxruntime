@@ -20,7 +20,7 @@ struct QNNProviderFactory : IExecutionProviderFactory {
   std::unique_ptr<IExecutionProvider> CreateProvider(const OrtSessionOptions* session_options,
                                                      const OrtLogger* logger) override {
     ORT_UNUSED_PARAMETER(logger);
-    const ConfigOptions& config_options = session_options->GetConfigs();
+    const ConfigOptions& config_options = session_options->GetConfigOptions();
     std::unordered_map<std::string, std::string> provider_options = config_options.GetConfigsMapWithPrefix("QNN:");
     return std::make_unique<QNNExecutionProvider>(provider_options, &config_options);
   }

@@ -684,7 +684,11 @@ inline ModelCompilationOptionsImpl<T>& ModelCompilationOptionsImpl<T>::SetEpCont
 }
 }  // namespace detail
 
-inline ModelCompilationOptions::ModelCompilationOptions(const Env& env, SessionOptions& session_options) {
+inline ModelCompilationOptions::ModelCompilationOptions(const Env& env, const SessionOptions& session_options) {
+  ThrowOnError(GetCompileApi().CreateModelCompilationOptionsFromSessionOptions(env, session_options, &this->p_));
+}
+
+inline ModelCompilationOptions::ModelCompilationOptions(const Env& env, ConstSessionOptions session_options) {
   ThrowOnError(GetCompileApi().CreateModelCompilationOptionsFromSessionOptions(env, session_options, &this->p_));
 }
 
