@@ -51,12 +51,21 @@ OnnxRuntime QNN Execution Provider is a supported runtime in [Qualcomm AI Hub](h
 
 ## Configuration Options
 The QNN Execution Provider supports a number of configuration options. These provider options are specified as key-value string pairs.
-
 ### EP Provider Options
+|`"backend_type"`|Description|
+|---|-----|
+|'cpu'|Enable CPU backend. Useful for integration testing. The CPU backend is a reference implementation of QNN operators.|
+|'gpu'|Enable GPU backend.|
+|'htp'|Enable HTP backend. Offloads compute to NPU. Default.|
+|'saver'|Enable Saver backend.|
+
 |`"backend_path"`|Description|
 |---|-----|
-|'libQnnCpu.so' or 'QnnCpu.dll'|Enable CPU backend. Useful for integration testing. CPU backend is a reference implementation of QNN operators|
-|'libQnnHtp.so' or 'QnnHtp.dll'|Enable HTP backend. Offloads compute to NPU.|
+|'libQnnCpu.so' or 'QnnCpu.dll'|Enable CPU backend. See `backend_type` 'cpu'.|
+|'libQnnHtp.so' or 'QnnHtp.dll'|Enable HTP backend. See `backend_type` 'htp'.|
+
+**Note:** `backend_path` is an alternative to `backend_type`. At most one of the two should be specified.
+`backend_path` requires a platform-specific path (e.g., `libQnnCpu.so` vs. `QnnCpu.dll`) but also allows one to specify an arbitrary path.
 
 |`"profiling_level"`|Description|
 |---|---|
