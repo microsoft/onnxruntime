@@ -105,7 +105,10 @@ constexpr std::string_view ProgramVariableDataTypeName[] = {
     "i8x4",    // Int8x4
     "i8x8",    // Int8x8
     "i8x16",   // Int8x16
+    "u8x8",    // Uint4x8
+    "i8x8",    // Int4x8
 };
+
 std::ostream& operator<<(std::ostream& os, ProgramVariableDataType type) {
   os << ProgramVariableDataTypeName[std::underlying_type<decltype(type)>::type(type)];
   return os;
@@ -120,6 +123,8 @@ int NumberOfComponents(ProgramVariableDataType type) {
     case ProgramVariableDataType::Int64:
     case ProgramVariableDataType::Uint64:
     case ProgramVariableDataType::Float16:
+    case ProgramVariableDataType::Uint4x8:
+    case ProgramVariableDataType::Int4x8:
       return 1;
     case ProgramVariableDataType::Float32x2:
     case ProgramVariableDataType::Int32x2:
@@ -162,6 +167,10 @@ ProgramVariableDataType ToProgramVariableDataType(int32_t element_type, int comp
         return ProgramVariableDataType::Int64;
       case ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT64:
         return ProgramVariableDataType::Uint64;
+      case ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT4:
+        return ProgramVariableDataType::Uint4x8;
+      case ONNX_TENSOR_ELEMENT_DATA_TYPE_INT4:
+        return ProgramVariableDataType::Int4x8;
       default:
         return ProgramVariableDataType::InvalidType;
     }
