@@ -52,6 +52,21 @@ Status ConfigOptions::AddConfigEntry(const char* config_key, const char* config_
   return Status::OK();
 }
 
+std::unordered_map<std::string, std::string> ConfigOptions::GetConfigsMapWithPrefix(const std::string& key_prefix,
+                                                                                    bool remove_key_prefix) const noexcept {
+  std::unordered_map<std::string, std::string> result;
+  for (const auto& [key, value] : configurations) {
+    if (key.rfind(key_prefix, 0) == 0) {
+      if (remove_key_prefix) {
+        result[key.substr(key_prefix.size())] = value;
+      } else {
+        result[key] = value;
+      }
+    }
+  }
+  return result;
+}
+
 std::ostream& operator<<(std::ostream& os, const ConfigOptions& config_options) {
   for (const auto& [key, value] : config_options.configurations) {
     os << "  " << key << ": " << value;

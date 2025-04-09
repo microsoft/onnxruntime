@@ -16,7 +16,7 @@ namespace onnxruntime {
 
 struct ModelCompilationOptions {
   const OrtEnv* env = nullptr;
-  OrtSessionOptions* session_options = nullptr;
+  std::unique_ptr<OrtSessionOptions> session_options = nullptr;
   std::string input_model_path;
   const void* input_model_data = nullptr;
   size_t input_model_data_size;

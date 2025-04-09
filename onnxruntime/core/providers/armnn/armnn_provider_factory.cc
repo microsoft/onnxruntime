@@ -13,6 +13,10 @@ struct ArmNNProviderFactory : IExecutionProviderFactory {
   ArmNNProviderFactory(bool create_arena) : create_arena_(create_arena) {}
   ~ArmNNProviderFactory() override {}
   std::unique_ptr<IExecutionProvider> CreateProvider() override;
+  std::unique_ptr<IExecutionProvider> CreateProvider(const OrtSessionOptions* /*session_options*/,
+                                                     const OrtLogger* /*logger*/) override {
+    return CreateProvider();
+  }
 
  private:
   bool create_arena_;

@@ -41,6 +41,10 @@ struct CUDAProviderFactory : IExecutionProviderFactory {
   ~CUDAProviderFactory() override {}
 
   std::unique_ptr<IExecutionProvider> CreateProvider() override;
+  std::unique_ptr<IExecutionProvider> CreateProvider(const OrtSessionOptions* /*session_options*/,
+                                                     const OrtLogger* /*logger*/) override {
+    return CreateProvider();
+  }
 
  private:
   CUDAExecutionProviderInfo info_;

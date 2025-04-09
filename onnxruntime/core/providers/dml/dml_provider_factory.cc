@@ -62,6 +62,10 @@ struct DMLProviderFactory : IExecutionProviderFactory {
   ~DMLProviderFactory() override {}
 
   std::unique_ptr<IExecutionProvider> CreateProvider() override;
+  std::unique_ptr<IExecutionProvider> CreateProvider(const OrtSessionOptions* /*session_options*/,
+                                                     const OrtLogger* /*logger*/) override {
+    return CreateProvider();
+  }
 
   void SetMetacommandsEnabled(bool metacommands_enabled);
 

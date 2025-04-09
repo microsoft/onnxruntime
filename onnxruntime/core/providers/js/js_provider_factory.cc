@@ -17,6 +17,10 @@ struct JsProviderFactory : IExecutionProviderFactory {
   std::unique_ptr<IExecutionProvider> CreateProvider() override {
     return std::make_unique<JsExecutionProvider>(info_, session_options_);
   }
+  std::unique_ptr<IExecutionProvider> CreateProvider(const OrtSessionOptions* /*session_options*/,
+                                                     const OrtLogger* /*logger*/) override {
+    return CreateProvider();
+  }
 
  private:
   JsExecutionProviderInfo info_;

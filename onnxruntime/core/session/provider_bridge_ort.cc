@@ -805,11 +805,18 @@ struct ProviderHostImpl : ProviderHost {
     return p->GetConfigOrDefault(config_key, default_value);
   }
 
+  std::unordered_map<std::string, std::string> ConfigOptions__GetConfigsMapWithPrefix(const ConfigOptions* p,
+                                                                                      const std::string& key_prefix,
+                                                                                      bool remove_key_prefix) override {
+    return p->GetConfigsMapWithPrefix(key_prefix, remove_key_prefix);
+  }
+
   // OrtRunOptions (wrapped)
   const ConfigOptions& RunOptions__GetConfigOptions(const RunOptions* p) override { return p->config_options; }
 
   // OrtSessionOptions (wrapped)
   const std::unordered_map<std::string, std::string>& SessionOptions__GetConfigOptionsMap(const OrtSessionOptions* p) override { return p->value.config_options.configurations; }
+  const ConfigOptions& SessionOptions__GetConfigOptions(const OrtSessionOptions* p) override { return p->value.config_options; }
   bool SessionOptions__GetEnableProfiling(const OrtSessionOptions* p) override { return p->value.enable_profiling; };
   // ComputeCapability (wrapped)
   std::unique_ptr<ComputeCapability> ComputeCapability__construct(std::unique_ptr<IndexedSubGraph> t_sub_graph) override { return std::make_unique<ComputeCapability>(std::move(t_sub_graph)); }

@@ -305,7 +305,7 @@ TEST_F(QnnHTPBackendTests, CompileApi_FromSessionOptions_InputModelFromPath) {
 
   // Compile the model.
   Ort::Status status = Ort::CompileModel(*ort_env, compile_options);
-  ASSERT_TRUE(status.IsOK());
+  ASSERT_TRUE(status.IsOK()) << status.GetErrorMessage();
 
   // Make sure the compiled model was generated and has the expected number of EPContext nodes.
   ASSERT_TRUE(std::filesystem::exists(output_model_file));
@@ -344,7 +344,7 @@ TEST_F(QnnHTPBackendTests, CompileApi_FromSessionOptions_InputModelAsBuffer_Embe
 
   // Compile the model.
   Ort::Status status = Ort::CompileModel(*ort_env, compile_options);
-  ASSERT_TRUE(status.IsOK());
+  ASSERT_TRUE(status.IsOK()) << status.GetErrorMessage();
 
   // Make sure the compiled model was generated and has the expected number of EPContext nodes.
   ASSERT_TRUE(std::filesystem::exists(output_model_file));
@@ -385,7 +385,7 @@ TEST_F(QnnHTPBackendTests, CompileApi_FromSessionOptions_OutputModelBuffer) {
 
   // Compile the model.
   Ort::Status status = Ort::CompileModel(*ort_env, compile_options);
-  ASSERT_TRUE(status.IsOK());
+  ASSERT_TRUE(status.IsOK()) << status.GetErrorMessage();
 
   // Make sure the compiled model was saved to the buffer.
   ASSERT_TRUE(output_model_buffer != nullptr);
@@ -435,7 +435,7 @@ TEST_F(QnnHTPBackendTests, CompileApi_FromSessionOptions_OutputModelBuffer_Outpu
 
   // Compile the model.
   Ort::Status status = Ort::CompileModel(*ort_env, compile_options);
-  ASSERT_TRUE(status.IsOK());
+  ASSERT_TRUE(status.IsOK()) << status.GetErrorMessage();
 
   // Make sure the compiled model was saved to the buffer.
   ASSERT_TRUE(output_model_buffer != nullptr);

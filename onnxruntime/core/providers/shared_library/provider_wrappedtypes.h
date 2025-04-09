@@ -518,6 +518,10 @@ struct ConfigOptions final {
     return g_host->ConfigOptions__GetConfigOrDefault(this, config_key, default_value);
   }
 
+  std::unordered_map<std::string, std::string> GetConfigsMapWithPrefix(const std::string& key_prefix, bool remove_key_prefix = true) const {
+    return g_host->ConfigOptions__GetConfigsMapWithPrefix(this, key_prefix, remove_key_prefix);
+  }
+
   PROVIDER_DISALLOW_ALL(ConfigOptions)
 };
 
@@ -1563,6 +1567,11 @@ struct OrtSessionOptions final {
   const std::unordered_map<std::string, std::string>& GetConfigOptions() const {
     return onnxruntime::g_host->SessionOptions__GetConfigOptionsMap(this);
   }
+
+  const onnxruntime::ConfigOptions& GetConfigs() const {
+    return onnxruntime::g_host->SessionOptions__GetConfigOptions(this);
+  }
+
   bool GetEnableProfiling() const {
     return onnxruntime::g_host->SessionOptions__GetEnableProfiling(this);
   }

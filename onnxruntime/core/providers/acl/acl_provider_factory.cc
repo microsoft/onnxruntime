@@ -15,6 +15,10 @@ struct ACLProviderFactory : IExecutionProviderFactory {
   ACLProviderFactory(bool enable_fast_math) : enable_fast_math_(enable_fast_math) {}
   ~ACLProviderFactory() override {}
   std::unique_ptr<IExecutionProvider> CreateProvider() override;
+  std::unique_ptr<IExecutionProvider> CreateProvider(const OrtSessionOptions* /*session_options*/,
+                                                     const OrtLogger* /*logger*/) override {
+    return CreateProvider();
+  }
 
  private:
   bool enable_fast_math_;

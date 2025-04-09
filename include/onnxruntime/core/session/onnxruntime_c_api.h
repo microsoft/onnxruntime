@@ -5438,7 +5438,7 @@ struct OrtModelEditorApi {
 /**
  * \brief The OrtCompileApi struct provides functions to compile ONNX models.
  *
- * \since Version 1.21.
+ * \since Version 1.22.
  */
 struct OrtCompileApi {
   // Model compilation requires a full build. We return nullptr from GetCompileApi if this is a minimal
@@ -5467,7 +5467,7 @@ struct OrtCompileApi {
    * \since Version 1.22.
    */
   ORT_API2_STATUS(CreateModelCompilationOptionsFromSessionOptions, _In_ const OrtEnv* env,
-                  _In_ OrtSessionOptions* session_options, _Outptr_ OrtModelCompilationOptions** out);
+                  _In_ const OrtSessionOptions* session_options, _Outptr_ OrtModelCompilationOptions** out);
 
   /** \brief Sets the file path to the input ONNX model to compile.
    *

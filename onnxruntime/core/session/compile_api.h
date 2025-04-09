@@ -11,9 +11,8 @@ namespace OrtCompileAPI {
 ORT_API(const OrtCompileApi*, GetCompileApi);
 
 ORT_API(void, ReleaseModelCompilationOptions, _Frees_ptr_opt_ OrtModelCompilationOptions*);
-ORT_API_STATUS_IMPL(CreateModelCompilationOptions, _In_ const OrtEnv* env, _Outptr_ OrtModelCompilationOptions** out);
 ORT_API_STATUS_IMPL(CreateModelCompilationOptionsFromSessionOptions, _In_ const OrtEnv* env,
-                    _In_ OrtSessionOptions* session_options, _Outptr_ OrtModelCompilationOptions** out);
+                    _In_ const OrtSessionOptions* session_options, _Outptr_ OrtModelCompilationOptions** out);
 ORT_API_STATUS_IMPL(ModelCompilationOptions_SetInputModelPath, _In_ OrtModelCompilationOptions* model_compile_options,
                     _In_ const ORTCHAR_T* input_model_path);
 ORT_API_STATUS_IMPL(ModelCompilationOptions_SetInputModelFromBuffer, _In_ OrtModelCompilationOptions* model_compile_options,

@@ -24,6 +24,10 @@ struct MIGraphXProviderFactory : IExecutionProviderFactory {
   ~MIGraphXProviderFactory() override {}
 
   std::unique_ptr<IExecutionProvider> CreateProvider() override;
+  std::unique_ptr<IExecutionProvider> CreateProvider(const OrtSessionOptions* /*session_options*/,
+                                                     const OrtLogger* /*logger*/) override {
+    return CreateProvider();
+  }
 
  private:
   MIGraphXExecutionProviderInfo info_;
