@@ -328,7 +328,7 @@ struct BitsTraits {
     static constexpr float halfRange = static_cast<float>(kMid - kMin);
 
     // number of qbit elements to pack into whole bytes
-    static constexpr int kPackSize = (qbits == 8) ? 1 : (qbits == 4) ? 2 : (qbits == 2) ? 4 : 0;
+    static constexpr int kPackSize = (qbits == 8) ? 1 : ((qbits == 4) ? 2 : ((qbits == 2) ? 4 : 0));
     static_assert(kPackSize != 0, "Packing to whole bytes not supported for this qbits!");
 };
 
@@ -634,7 +634,6 @@ struct BlockwiseQuantizer {
                         const int vi = GetElem(vi_pair, i % kPackSize);
                         const float v = (vi - zp) * scale;
                         dst[j * rows + i] = ElementT(v);
-
                     }
                 }
             });
