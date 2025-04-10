@@ -273,5 +273,6 @@ void* AllocatorDefaultAlloc(size_t size);
 void AllocatorDefaultFree(void* p);
 
 size_t GetAlignmentForDevice(const OrtDevice&);
+bool IsCpuDeviceWithAllocator(const OrtDevice&);
 
 }  // namespace onnxruntime

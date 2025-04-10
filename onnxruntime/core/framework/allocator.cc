@@ -103,13 +103,6 @@ void AllocatorDefaultFree(void* p) {
 
 #endif  // USE_MIMALLOC
 
-size_t GetAlignmentForDevice(const OrtDevice& ort_device) {
-  if (ort_device.MemType() == OrtDevice::MemType::QNN_HTP_SHARED) {
-    return kAlloc4KAlignment;
-  }
-  return kAllocAlignment;
-}
-
 void* CPUAllocator::Alloc(size_t size) {
   return AllocatorDefaultAlloc(size);
 }
@@ -133,6 +126,23 @@ void* AllocateBufferWithOptions(IAllocator& alloc, size_t size, bool use_reserve
   }
   return alloc.Alloc(size);
 }
+
+size_t GetAlignmentForDevice(const OrtDevice& ort_device) {
+  if (ort_device.MemType() == OrtDevice::MemType::QNN_HTP_SHARED) {
+    return kAlloc4KAlignment;
+  }
+  return kAllocAlignment;
+}
+
+bool IsCpuDeviceWithAllocator(const OrtDevice& ort_device) {
+  if (ort_device.Type() == OrtDevice::CPU) {
+    auto mem_type = ort_device.MemType();
+    return mem_type == OrtDevice::MemType::DEFAULT ||
+           mem_type == OrtDevice::MemType::QNN_HTP_SHARED;
+  }
+  return false;
+}
+
 }  // namespace onnxruntime
 
 std::ostream& operator<<(std::ostream& out, const OrtMemoryInfo& info) { return (out << info.ToString()); }
