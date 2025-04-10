@@ -203,7 +203,7 @@ bool CanApplySubgroupMatrixMatMulNBits(onnxruntime::webgpu::ComputeContext& cont
                                        uint32_t K,
                                        bool has_zero_points) {
 #if !defined(__wasm__)
-  const bool has_subgroup_matrix = context.Device().HasFeature(wgpu::FeatureName::ChromiumExperimentalSubgroupMatrix);
+  const bool has_subgroup_matrix = context.HasFeature(wgpu::FeatureName::ChromiumExperimentalSubgroupMatrix);
 #else
   const bool has_subgroup_matrix = false;
 #endif
