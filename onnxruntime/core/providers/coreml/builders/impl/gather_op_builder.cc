@@ -30,17 +30,28 @@ int64_t GetAxisAttribute(const Node& node) {
 }  // namespace
 
 Status GatherOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node,
-                                              const logging::Logger& /*logger*/) const {
+                                              const logging::Logger& logger) const {
   if (model_builder.CreateMLProgram()) {
     using namespace CoreML::Specification::MILSpec;  // NOLINT
     std::unique_ptr<Operation> op = model_builder.CreateOperation(node, "gather");
 
-    NodeAttrHelper helper(node);
-    size_t indices_vector = 1;
-    if (node.InputDefs()[1]->Shape() != nullptr) {
-      indices_vector = node.InputDefs()[1]->Shape()->dim_size();
+    std::optional<int32_t> output_datatype;
+
+    int32_t input_type;
+    ORT_RETURN_IF_NOT(GetType(*node.InputDefs()[0], input_type, logger), "Failed to get input type");
+
+    if (input_type == ONNX_NAMESPACE::TensorProto_DataType_INT64) {
+      output_datatype = ONNX_NAMESPACE::TensorProto_DataType_INT32;
     }
-    auto indices = helper.Get("indices", std::vector<int64_t>(indices_vector, 0));
+
+    NodeAttrHelper helper(node);
+    size_t indices_elem_count = 1;
+    if (node.InputDefs()[1]->Shape() != nullptr) {
+      for (int i = 0; i < node.InputDefs()[1]->Shape()->dim_size(); ++i) {
+        indices_elem_count *= node.InputDefs()[1]->Shape()->dim(i).dim_value();
+      }
+    }
+    auto indices = helper.Get("indices", std::vector<int64_t>(indices_elem_count, 0));
 
     const auto axis = GetAxisAttribute(node);
     // coreml docs claims validate_indices is optional but in practice it is required
@@ -50,7 +61,7 @@ Status GatherOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const
     AddOperationInput(*op, "indices", model_builder.AddConstant(op->type(), "indices", indices)); // indices
     AddOperationInput(*op, "axis", model_builder.AddScalarConstant(op->type(), "axis", axis));
     AddOperationInput(*op, "validate_indices", model_builder.AddScalarConstant(op->type(), "validate_indices", validate_indices));
-    AddOperationOutput(*op, *node.OutputDefs()[0]); // output
+    AddOperationOutput(*op, *node.OutputDefs()[0], output_datatype); // output
     model_builder.AddOperation(std::move(op));
   } else {
   auto layer = model_builder.CreateNNLayer(node);
