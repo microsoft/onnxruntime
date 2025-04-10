@@ -51,8 +51,10 @@ class MlasBlockwiseQdqTest : public MlasTestBase {
   MatrixGuardBuffer<uint8_t> QDQTransposedOutputElements;
   MatrixGuardBuffer<T> QDQTransposedOutputScales;
   MatrixGuardBuffer<uint8_t> QDQTransposedOutputOffsets;
-  constexpr static float err_ = qbits == 8 ? 1e-2f : qbits == 4 ? 6e-2f : 2e-1f;
-  constexpr static float rel_ = qbits == 8 ? 5e-2f : qbits == 4 ? 2e-1f : 5e-1f;
+  constexpr static float err_ = qbits == 8 ? 1e-2f : qbits == 4 ? 6e-2f
+                                                                : 2e-1f;
+  constexpr static float rel_ = qbits == 8 ? 5e-2f : qbits == 4 ? 2e-1f
+                                                                : 5e-1f;
 
   bool FloatEqual(T a, T b, float err = err_, float rel = rel_) {
     float va = static_cast<float>(a);
@@ -83,9 +85,9 @@ class MlasBlockwiseQdqTest : public MlasTestBase {
 
     size_t q_data_size_in_bytes, q_scale_size, q_zp_size_in_bytes;
     MlasBlockwiseQuantizedBufferSizes<qbits>(block_size, columnwise, rows, columns,
-                                      q_data_size_in_bytes, q_scale_size, &q_zp_size_in_bytes);
+                                             q_data_size_in_bytes, q_scale_size, &q_zp_size_in_bytes);
 
-    uint8_t* elements = InputElements.GetBuffer(q_data_size_in_bytes, true); // after quantize
+    uint8_t* elements = InputElements.GetBuffer(q_data_size_in_bytes, true);  // after quantize
     uint8_t* qdq_weights;
     uint8_t* qdq_weights_T;
     if constexpr (qbits == 4) {

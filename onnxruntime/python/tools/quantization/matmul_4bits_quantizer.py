@@ -18,7 +18,7 @@ import onnx
 from onnx.onnx_pb import GraphProto, ModelProto, NodeProto, TensorProto
 from packaging import version
 
-from onnxruntime.capi._pybind_state import quantize_matmul_4bits, quantize_qdq_matmul_4bits, quantize_matmul_8bits
+from onnxruntime.capi._pybind_state import quantize_matmul_4bits, quantize_matmul_8bits, quantize_qdq_matmul_4bits
 
 from .calibrate import CalibrationDataReader
 from .onnx_model import ONNXModel
@@ -726,7 +726,7 @@ class DefaultWeightOnlyQuantizer:
         """4b/8b quantize fp32 weight to int4 using C++ kernels."""
 
         qbits = self.config.bits
-        kPack = 8 // qbits
+        kpack = 8 // qbits
         if len(fp32weight.shape) != 2:
             raise ValueError("Current int4 block quantization only supports 2D tensors!")
         rows, cols = fp32weight.shape
@@ -735,7 +735,7 @@ class DefaultWeightOnlyQuantizer:
         k_blocks = (rows + block_size - 1) // block_size
 
         if self.config.quant_format == QuantFormat.QOperator:
-            blob_size = (block_size + kPack - 1) // kPack
+            blob_size = (block_size + kpack - 1) // kpack
             padded_rows = k_blocks * block_size
             pad_len = padded_rows - rows
             if pad_len > 0:
@@ -743,7 +743,7 @@ class DefaultWeightOnlyQuantizer:
 
             # block wise quantization, each block comes from a single column
             packed = np.zeros((cols, k_blocks, blob_size), dtype="uint8")
-            zero_point = np.zeros(cols * ((k_blocks + kPack - 1) // kPack), dtype="uint8")
+            zero_point = np.zeros(cols * ((k_blocks + kpack - 1) // kpack), dtype="uint8")
             scales = np.zeros((cols * k_blocks), dtype=fp32weight.dtype)
             if qbits == 8:
                 quantize_matmul_8bits(
@@ -791,11 +791,9 @@ class DefaultWeightOnlyQuantizer:
             b_quant = onnx.numpy_helper.from_array(packed, b_tensor.name + f"_Q{bits}")
             scales_tensor = onnx.numpy_helper.from_array(scales, b_tensor.name + "_scales")
         else:
-            b_quant = onnx.helper.make_tensor(b_tensor.name + f"_DQ_Q{bits}",
-                                              qtype,
-                                              b_ndarray.shape,
-                                              packed.tobytes(),
-                                              True)
+            b_quant = onnx.helper.make_tensor(
+                b_tensor.name + f"_DQ_Q{bits}", qtype, b_ndarray.shape, packed.tobytes(), True
+            )
             scales_tensor = onnx.numpy_helper.from_array(scales, b_tensor.name + "_DQ_scales")
 
         for input in b_graph.input:

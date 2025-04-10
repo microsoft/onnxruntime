@@ -8090,8 +8090,8 @@ TEST_F(GraphTransformationTests, MatMulNBitsBiasFusion) {
 
       size_t q_data_size_in_bytes, q_scale_size, q_zp_size_in_bytes;
       MlasBlockwiseQuantizedBufferSizes<qbits>(block_size, /* columnwise */ true,
-                                        K, N,
-                                        q_data_size_in_bytes, q_scale_size, &q_zp_size_in_bytes);
+                                               K, N,
+                                               q_data_size_in_bytes, q_scale_size, &q_zp_size_in_bytes);
 
       auto* A = builder.MakeInput<float>(std::vector{M, K}, "A");
 

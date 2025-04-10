@@ -247,8 +247,8 @@ class MlasSQNBitGemmTest : public MlasTestBase {
     {
       size_t QuantBDataSizeInBytes, QuantBScaleSize, QuantBZeroPointSizeInBytes;
       MlasBlockwiseQuantizedBufferSizes<BlkBitWidth>(BlkLen, /* columnwise */ true,
-                                        static_cast<int>(K), static_cast<int>(N),
-                                        QuantBDataSizeInBytes, QuantBScaleSize, &QuantBZeroPointSizeInBytes);
+                                                     static_cast<int>(K), static_cast<int>(N),
+                                                     QuantBDataSizeInBytes, QuantBScaleSize, &QuantBZeroPointSizeInBytes);
 
       QuantBData = BufferQuantBData.GetBuffer(QuantBDataSizeInBytes);
       QuantBScale = BufferQuantBScale.GetBuffer(QuantBScaleSize);
