@@ -690,8 +690,8 @@ Status MatMulNBits::ComputeInternal(onnxruntime::webgpu::ComputeContext& context
 
   // WideTileProgram
   // This program is optimized for Block32 prefill using Tile16x128.
-  // TODO: loosen restrictions on batch_count, has_zero_points, and vendor.
-  const bool use_wide_tile_program = block_size == 32 && batch_count == 1 && !has_zero_points &&
+  // TODO: loosen restrictions on has_zero_points and vendor.
+  const bool use_wide_tile_program = block_size == 32 && !has_zero_points &&
                                      components_a == 4 && components_b == 4 && M >= kMinMForTileOptimization &&
                                      context.AdapterInfo().vendor == std::string_view{"intel"};
   if (use_wide_tile_program) {
