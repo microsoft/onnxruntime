@@ -18,9 +18,9 @@ Status ComputeChannelScaleShiftProgram::GenerateShaderCode(ShaderHelper& shader)
   const auto& bias = shader.AddInput("bias", ShaderUsage::UseUniform | ShaderUsage::UseIndicesTypeAlias);
   const ShaderVariableHelper& output = shader.AddOutput("output", ShaderUsage::UseUniform | ShaderUsage::UseIndicesTypeAlias | ShaderUsage::UseValueTypeAlias);
 
-  shader.AdditionalImplementation() << "var<workgroup> workgroup_shared_sum : array<x_value_t, " << static_cast<int>(WORKGROUP_SIZE) << ">;\n"
-                                    << "var<workgroup> workgroup_shared_squared_sum : array<x_value_t, " << static_cast<int>(WORKGROUP_SIZE) << ">;\n"
-                                    << "const workgroup_size = " << static_cast<int>(WORKGROUP_SIZE) << ";\n";
+  shader.AdditionalImplementation() << "var<workgroup> workgroup_shared_sum : array<x_value_t, " << workgroup_size_ << ">;\n"
+                                    << "var<workgroup> workgroup_shared_squared_sum : array<x_value_t, " << workgroup_size_ << ">;\n"
+                                    << "const workgroup_size = " << workgroup_size_ << ";\n";
   shader.MainFunctionBody() << "  let batch = workgroup_idx / uniforms.x_shape[1];\n"
                             << "  let channel = workgroup_idx % uniforms.x_shape[1];\n"
                             << "  let hight = uniforms.x_shape[2];\n"
@@ -62,7 +62,7 @@ Status ComputeChannelScaleAndShift(ComputeContext& context, const Tensor* input,
   const auto spatial_size = input->Shape().SizeFromDimension(2);
   const auto components = GetMaxComponents(spatial_size);
   auto units_of_work = batch_size * channels;
-  auto workgroup_size = units_of_work == 1 ? WORKGROUP_SIZE : 256;
+  auto workgroup_size = units_of_work == 1 ? static_cast<int>(WORKGROUP_SIZE) : static_cast<int>(256);
   TensorShapeVector reduce_input_shape_vector = {batch_size, channels, spatial_size / components};
   TensorShapeVector output_shape_vector = {batch_size, channels, 2};
   TensorShapeVector reduced_output_shape_vector = {batch_size, channels, 1};
@@ -70,7 +70,7 @@ Status ComputeChannelScaleAndShift(ComputeContext& context, const Tensor* input,
   TensorShape output_shape(output_shape_vector);
   TensorShape reduced_output_shape(reduced_output_shape_vector);
   *output = context.CreateGPUTensor(input->DataType(), output_shape);
-  ComputeChannelScaleShiftProgram program = ComputeChannelScaleShiftProgram(components, epsilon);
+  ComputeChannelScaleShiftProgram program = ComputeChannelScaleShiftProgram(components, epsilon, workgroup_size);
   program.CacheHint(components, units_of_work)
       .AddInputs({{input, ProgramTensorMetadataDependency::TypeAndRank, reduced_input_shape, components},
                   {scale, ProgramTensorMetadataDependency::TypeAndRank},

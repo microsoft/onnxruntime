@@ -11,12 +11,13 @@ namespace webgpu {
 
 class ComputeChannelScaleShiftProgram final : public Program<ComputeChannelScaleShiftProgram> {
  public:
-  ComputeChannelScaleShiftProgram(int components, float epsilon) : Program{"ComputeChannelScaleShift"}, components_(components), epsilon_(epsilon) {}
+  ComputeChannelScaleShiftProgram(int components, float epsilon, int workgroup_size) : Program{"ComputeChannelScaleShift"}, components_(components), epsilon_(epsilon), workgroup_size_(workgroup_size) {}
 
   Status GenerateShaderCode(ShaderHelper& sh) const override;
 
   int components_;
   float epsilon_;
+  int workgroup_size_;
 };
 
 class InstanceNormProgram final : public Program<InstanceNormProgram> {
