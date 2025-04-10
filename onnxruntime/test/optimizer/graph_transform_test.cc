@@ -2952,7 +2952,7 @@ TEST_F(GraphTransformationTests, GH24341) {
   std::shared_ptr<Model> p_model;
   ASSERT_STATUS_OK(Model::Load(model_uri, p_model, nullptr, *logger_));
   Graph& graph = p_model->MainGraph();
-  std::map<std::string, int> op_to_count1 = CountOpsInGraph(graph);
+  std::map<std::string, int> orig_op_to_count = CountOpsInGraph(graph);
   onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
   ASSERT_STATUS_OK(graph_transformation_mgr.Register(
       std::make_unique<MatmulTransposeFusion>(), TransformerLevel::Level1));
