@@ -31,38 +31,27 @@ class MultiHeadAttentionOpBuilder : public BaseOpBuilder {
 };
 
 /** MultiHeadAttention SubGraph.
- Abbreviatios: B is batch_size, S is sequence_length, W is hidden_size, P is past_sequence_length
-               N is number of attention heads, H is head size, and W=N*H, h=Sqrt(H)
+ Abbreviatios: B is batch_size, S is sequence_length, W is hidden_size
+               N is number of attention heads, H is head size
     Notes: If the datatype of the inputs (qkv and past kv) is float16, we cast them to float32 to ensure data precision.
 
-                 query     key     value
-                   |        |        |
-           q_Reshape   k_Reshape   v_Reshape  (shape=B,S,H,N)
-                   |        |        |
-          q_Transpose  k_Transpose v_Transpose (perm=0,2,1,3)
-             \           /           |
-              \         /            |
-present_key<---\----Concat <---------|----past_key
-               |      |              |
-               |  opt_k_transpose    |
-               \  (0,1,3,2)          |
-                \    /               |  past_value
-                qk_MatMul            |     /
-                     |  scale        |    /
-                     |   /           |   /
-                  qk_Div           Concat------> present_value
-                      |              |
-                      |              /
-                     Add <----------/---------------attention_bias
-                      |            /
-                    Softmax       /
-                       \         /
-                        \       /
-                      qkv_MatMul
-                             |
-                          Transpose (perm=0,2,1,3)
-                             |
-                          Reshape---(shape=B,P,W)
+         query       key              value
+           |          |                 |
+        Reshape    Reshape           Reshape  (shape=B,S,H,N)
+           |          |                 |
+       Transpose  Transpose         Transpose  (perm=0,2,1,3)
+            \         |  past_key       |
+             \        |  /              |
+present_key<--\-----Concat              |  past_value
+               \      |                 |   /
+               |      |               Concat----> present_value
+               |      |                 |
+               |  k_Transpose           |       attention_bias
+               |   (0,1,3,2)            |          /
+               |      |                 |         /
+            +---------------------------------------+
+            |        ScaledDotProductAttention      |
+            +---------------------------------------+
                              |
                            output
 */
