@@ -4,11 +4,6 @@ import packaging.version as pv
 import torch
 import transformers
 
-from .onnx_export_errors import (
-    bypass_export_some_errors,
-    register_additional_serialization_functions,
-)
-
 
 def is_torchdynamo_exporting() -> bool:
     "Tells if torch is exporting a model."

@@ -25,7 +25,7 @@ from llama_inputs import (
     verify_ort_inputs,
 )
 from llama_torch import setup_torch_model
-from models.torch_export_patches.cache_helper import make_dynamic_cache
+from models.torch_export_helpers.cache_helper import make_dynamic_cache
 from transformers import AutoConfig
 
 import onnxruntime as ort
