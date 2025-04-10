@@ -143,7 +143,6 @@ Status FlashAttentionProgram::GenerateShaderCode(ShaderHelper& shader) const {
   const max_k_step: u32 = 16u;
   const vec_factor: u32 = 4u;
   const qkv_head_size_vec: u32 = qkv_head_size / vec_factor;
-  const half_qkv_head_size_vec = qkv_head_size_vec / 2u;
   const min_value : q_element_t = q_element_t(-65504.0);
 
   // Default SHM usage limit is 16KB in Dawn.
@@ -151,14 +150,8 @@ Status FlashAttentionProgram::GenerateShaderCode(ShaderHelper& shader) const {
   var<workgroup> k_tile : array<array<q_value_t, qkv_head_size_vec>, max_k_step>;
   var<workgroup> v_tile : array<array<q_value_t, qkv_head_size_vec>, max_k_step>;
 
-  // Move half of o_tile from private memory into workgroup memory to reduce register pressure.
-  // Note that register spill was observed on Qualcomm if whole o_tile is on private memory.
-  // vec4<f16> * half_qkv_head_size_vec * workgroup_size_x = 8 * (128/4/2) * 64 = 8KB.
-  var<workgroup> o_tile_r : array<array<q_value_t, half_qkv_head_size_vec>, workgroup_size_x>;
-
   // Private memory per lane.
   var<private> q_tile : array<q_value_t, qkv_head_size_vec>;
-  var<private> o_tile : array<q_value_t, half_qkv_head_size_vec>;
   fn loadq(q_idx_global : u32, head_idx: u32)
   {
       // Stored as float16[batch_size,sequence_length,3072] the inputs as per onnx MHA
@@ -193,6 +186,19 @@ Status FlashAttentionProgram::GenerateShaderCode(ShaderHelper& shader) const {
           v_tile[slot][idx%qkv_head_size_vec] = val;
       }
   }
+)HELPER_FN";
+
+  if (is_qualcomm_) {
+    shader.AdditionalImplementation() << R"HELPER_FN(
+  const half_qkv_head_size_vec = qkv_head_size_vec / 2u;
+
+  // Move half of o_tile from private memory into workgroup memory to reduce register pressure.
+  // Note that register spill was observed on Qualcomm if whole o_tile is on private memory.
+  // vec4<f16> * half_qkv_head_size_vec * workgroup_size_x = 8 * (128/4/2) * 64 = 8KB.
+  var<workgroup> o_tile_r : array<array<q_value_t, half_qkv_head_size_vec>, workgroup_size_x>;
+
+  // Private memory per lane.
+  var<private> o_tile : array<q_value_t, half_qkv_head_size_vec>;
   fn writeo(o_idx_global: u32, head_idx: u32, local_idx: u32)
   {
       // Stored as float16[batch_size,sequence_length,3072]
@@ -203,7 +209,22 @@ Status FlashAttentionProgram::GenerateShaderCode(ShaderHelper& shader) const {
           output[offset+idx+half_qkv_head_size_vec] = o_tile_r[local_idx][idx];
       }
   }
-)HELPER_FN";
+    )HELPER_FN";
+  } else {
+    shader.AdditionalImplementation() << R"HELPER_FN(
+  // Private memory per lane.
+  var<private> o_tile : array<q_value_t, qkv_head_size_vec>;
+  fn writeo(o_idx_global: u32, head_idx: u32)
+  {
+      // Stored as float16[batch_size,sequence_length,3072]
+      let offset = o_idx_global * num_heads * qkv_head_size_vec + head_idx * qkv_head_size_vec;
+      for (var idx:u32 = 0; idx < qkv_head_size_vec; idx ++)
+      {
+          output[offset+idx] = o_tile[idx];
+      }
+  }
+    )HELPER_FN";
+  }
 
   if (has_attention_bias_) {
     shader.AdditionalImplementation() << R"HELPER_FN(
@@ -387,6 +408,10 @@ Status FlashAttentionProgram::GenerateShaderCode(ShaderHelper& shader) const {
     previous_denom = d;
     let o_ratio = dleft / d;
 
+)MAIN_FN";
+
+  if (is_qualcomm_) {
+    shader.MainFunctionBody() << R"MAIN_FN(
     if (sg_size > 8) {
       for (var i:u32 = 0; i < half_qkv_head_size_vec; i++)
       {
@@ -462,6 +487,54 @@ Status FlashAttentionProgram::GenerateShaderCode(ShaderHelper& shader) const {
     writeo(q_idx_global, head_idx, local_idx);
   }
 )MAIN_FN";
+  } else {
+    shader.MainFunctionBody() << R"MAIN_FN(
+    if (sg_size > 8) {
+      for (var i:u32 = 0; i < qkv_head_size_vec; i++)
+      {
+          var val = v_tile[capped_sg_id][i];
+          var sum = subgroupShuffle(val, 0) * qk_1[0];
+          sum += subgroupShuffle(val, 1) * qk_1[1];
+          sum += subgroupShuffle(val, 2) * qk_1[2];
+          sum += subgroupShuffle(val, 3) * qk_1[3];
+          sum += subgroupShuffle(val, 4) * qk_2[0];
+          sum += subgroupShuffle(val, 5) * qk_2[1];
+          sum += subgroupShuffle(val, 6) * qk_2[2];
+          sum += subgroupShuffle(val, 7) * qk_2[3];
+          sum += subgroupShuffle(val, 8) * qk_3[0];
+          sum += subgroupShuffle(val, 9) * qk_3[1];
+          sum += subgroupShuffle(val, 10) * qk_3[2];
+          sum += subgroupShuffle(val, 11) * qk_3[3];
+          sum += subgroupShuffle(val, 12) * qk_4[0];
+          sum += subgroupShuffle(val, 13) * qk_4[1];
+          sum += subgroupShuffle(val, 14) * qk_4[2];
+          sum += subgroupShuffle(val, 15) * qk_4[3];
+          o_tile[i] = o_tile[i] * o_ratio + sum;
+      }
+    }
+    else
+    {
+      for (var i:u32 = 0; i < qkv_head_size_vec; i++)
+      {
+          var val = select(vec4<q_element_t>(0), v_tile[capped_sg_id][i], k_start + capped_sg_id < seq_causal_length);
+          var sum = subgroupShuffle(val, 0) * qk_1[0];
+          sum += subgroupShuffle(val, 1) * qk_1[1];
+          sum += subgroupShuffle(val, 2) * qk_1[2];
+          sum += subgroupShuffle(val, 3) * qk_1[3];
+          sum += subgroupShuffle(val, 4) * qk_2[0];
+          sum += subgroupShuffle(val, 5) * qk_2[1];
+          sum += subgroupShuffle(val, 6) * qk_2[2];
+          sum += subgroupShuffle(val, 7) * qk_2[3];
+          o_tile[i] = o_tile[i] * o_ratio + sum;
+      }
+    }
+  }
+
+  if (valid_q) {
+    writeo(q_idx_global, head_idx);
+  }
+)MAIN_FN";
+  }
 
   return Status::OK();
 }
@@ -799,7 +872,8 @@ Status ApplyFlashAttention(const Tensor* Q, const Tensor* K, const Tensor* V, co
   if (parameters.sequence_length_ > 1) {
     const uint32_t tile_size = 64;
     bool has_attention_bias = attention_bias != nullptr;
-    FlashAttentionProgram program{"FlashAttention", has_attention_bias, parameters.head_size_, parameters.num_heads_};
+    bool is_qualcomm = context.AdapterInfo().vendor == std::string_view{"qualcomm"};
+    FlashAttentionProgram program{"FlashAttention", has_attention_bias, is_qualcomm, parameters.head_size_, parameters.num_heads_};
     program.AddInputs({{Q, ProgramTensorMetadataDependency::TypeAndRank, 4},
                        {present_key, ProgramTensorMetadataDependency::TypeAndRank, 4},
                        {present_value, ProgramTensorMetadataDependency::TypeAndRank, 4}});
@@ -809,13 +883,10 @@ Status ApplyFlashAttention(const Tensor* Q, const Tensor* K, const Tensor* V, co
     program.AddOutputs({{output, ProgramTensorMetadataDependency::TypeAndRank, 4}});
     const float alpha = parameters.scale_ == 0.0f ? 1.f / sqrt(static_cast<float>(parameters.head_size_))
                                                   : parameters.scale_;
-    std::string cache_hint = std::to_string(has_attention_bias) +
-                             std::to_string(parameters.head_size_) +
-                             std::to_string(parameters.num_heads_);
     const uint32_t num_seq_tile = (parameters.sequence_length_ + tile_size - 1) / tile_size;
     program.SetDispatchGroupSize(parameters.num_heads_ * num_seq_tile)
         .SetWorkgroupSize(tile_size)
-        .CacheHint(cache_hint)
+        .CacheHint(has_attention_bias, parameters.head_size_, parameters.num_heads_, is_qualcomm)
         .AddUniformVariables({{static_cast<uint32_t>(parameters.sequence_length_)},
                               {static_cast<uint32_t>(parameters.total_sequence_length_)},
                               {static_cast<uint32_t>(parameters.past_present_share_buffer_ ? parameters.past_sequence_length_ : parameters.total_sequence_length_)},
@@ -859,7 +930,8 @@ bool CanApplyFlashAttention(const Tensor* bias, const Tensor* present_key, const
          bias == nullptr &&
          context.HasFeature(wgpu::FeatureName::Subgroups) &&
          present_key != nullptr && present_value != nullptr && present_key->SizeInBytes() > 0 &&
-         present_value->SizeInBytes() > 0 && parameters.head_size_ % 8 == 0;
+         present_value->SizeInBytes() > 0 &&
+         (context.AdapterInfo().vendor == std::string_view{"qualcomm"} && parameters.head_size_ % 8 == 0 || parameters.head_size_ % 4 == 0);
 }
 
 }  // namespace webgpu
