@@ -40,16 +40,9 @@ Status GatherOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const
     int32_t input_type;
     ORT_RETURN_IF_NOT(GetType(*node.InputDefs()[0], input_type, logger), "Failed to get input type");
 
+    if (input_type == ONNX_NAMESPACE::TensorProto_DataType_INT64) {
       output_datatype = ONNX_NAMESPACE::TensorProto_DataType_INT32;
-
-    NodeAttrHelper helper(node);
-    size_t indices_elem_count = 1;
-    if (node.InputDefs()[1]->Shape() != nullptr) {
-      for (int i = 0; i < node.InputDefs()[1]->Shape()->dim_size(); ++i) {
-        indices_elem_count *= node.InputDefs()[1]->Shape()->dim(i).dim_value();
-      }
     }
-    auto indices = helper.Get("indices", std::vector<int64_t>(indices_elem_count, 0));
 
     const auto axis = GetAxisAttribute(node);
     // coreml docs claims validate_indices is optional but in practice it is required

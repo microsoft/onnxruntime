@@ -71,6 +71,29 @@ void CopyRawDataToRepeatedField(const ONNX_NAMESPACE::TensorProto& tensor_proto,
   }
 }
 
+template <>
+void CopyRawDataToRepeatedField<int64_t, int32_t>(const ONNX_NAMESPACE::TensorProto& tensor_proto,
+                                                 google::protobuf::RepeatedField<int32_t>& repeated_field) {
+  const auto& raw_data = tensor_proto.raw_data();
+  const int64_t* data = reinterpret_cast<const int64_t*>(raw_data.data());
+  const size_t element_count = raw_data.size() / sizeof(int64_t);
+
+  // Reserve space to avoid multiple reallocations
+  repeated_field.Reserve(narrow<int>(element_count));
+
+  // Use std::transform with proper iterators
+  std::transform(data, data + element_count,
+                 google::protobuf::RepeatedFieldBackInserter(&repeated_field),
+                 [](int64_t v) {
+                   try {
+                     return narrow<int32_t>(v);
+                   } catch (const std::exception& e) {
+                     ORT_THROW("Error converting int64 to int32: ", e.what(),
+                               ". Value (", v, ") exceeds int32 range.");
+                   }
+                 });
+}
+
 // copy T data from the TensorProto.int32_t field to TensorValue.bytes
 template <typename T>
 void CopyInt32DataToBytes(const ONNX_NAMESPACE::TensorProto& tensor_proto, MILSpec::TensorValue tensor_value) {
@@ -144,17 +167,19 @@ void CopyOnnxTensorToCoreMLTensor(const ONNX_NAMESPACE::TensorProto& tensor_prot
     }
     case ONNX_NAMESPACE::TensorProto_DataType_INT64: {
       // enable when this is proven to not be the case
-      ORT_THROW(
-          "INT64 is unexpected as CoreML uses 32-bit int for indices. "
-          "Most likely an initializer that should have been skipped was not.");
+      // ORT_THROW(
+      //     "INT64 is unexpected as CoreML uses 32-bit int for indices. "
+      //     "Most likely an initializer that should have been skipped was not.");
       //// from: int64_data/raw, to: longints
-      // if (has_raw_data) {
-      //   CopyRawDataToRepeatedField<int64_t>(tensor_proto, *tensor_value.mutable_longints()->mutable_values());
+      if (has_raw_data) {
+        CopyRawDataToRepeatedField<int64_t, int32_t>(tensor_proto, *tensor_value.mutable_ints()->mutable_values());
 
-      //} else {
-      //  tensor_value.mutable_longints()->mutable_values()->CopyFrom(tensor_proto.int64_data());
-      //}
-      // break;
+      } else {
+        ORT_THROW(
+            "INT64 is unexpected as CoreML uses 32-bit int for indices. "
+            "We're in the no raw data case for int64" + tensor_proto.name());
+      }
+      break;
     }
     case ONNX_NAMESPACE::TensorProto_DataType_FLOAT16: {
       // from: int32_data/raw, to: bytes
@@ -356,7 +381,12 @@ MILSpec::Value OnnxTensorToCoreMLTensor(const ONNX_NAMESPACE::TensorProto& tenso
   // populate ValueType with tensor data type, dims and rank
   MILSpec::ValueType& value_type = *value.mutable_type();
   MILSpec::TensorType& tensor_type = *value_type.mutable_tensortype();
-  tensor_type.set_datatype(OnnxDataTypeToMILSpec(tensor_proto.data_type()));
+  MILSpec::DataType data_type = OnnxDataTypeToMILSpec(tensor_proto.data_type());
+  MILSpec::DataType converted_data_type = data_type == MILSpec::DataType::INT64
+                                             ? MILSpec::DataType::INT32
+                                             : data_type;
+  tensor_type.set_datatype(converted_data_type);
+
 
   tensor_type.set_rank(tensor_proto.dims().size());
   for (const auto& dim : tensor_proto.dims()) {
