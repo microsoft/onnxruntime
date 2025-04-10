@@ -33,10 +33,8 @@ struct ConfigOptions {
   // Add a config pair (config_key, config_value) to this instance of ConfigOptions
   Status AddConfigEntry(const char* config_key, const char* config_value) noexcept;
 
-  // Gets a new map of configs whose keys start with the given prefix. Can be used to get configurations
-  // namespaced for a specific EP (e.g., all "MyEP:*" keys).
-  std::unordered_map<std::string, std::string> GetConfigsMapWithPrefix(const std::string& key_prefix,
-                                                                       bool remove_key_prefix = true) const noexcept;
+  // Gets a constant reference the map of all configurations.
+  const std::unordered_map<std::string, std::string>& GetConfigOptionsMap() const noexcept;
 
   friend std::ostream& operator<<(std::ostream& os, const ConfigOptions& config_options);
 };

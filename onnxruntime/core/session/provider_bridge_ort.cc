@@ -805,10 +805,8 @@ struct ProviderHostImpl : ProviderHost {
     return p->GetConfigOrDefault(config_key, default_value);
   }
 
-  std::unordered_map<std::string, std::string> ConfigOptions__GetConfigsMapWithPrefix(const ConfigOptions* p,
-                                                                                      const std::string& key_prefix,
-                                                                                      bool remove_key_prefix) override {
-    return p->GetConfigsMapWithPrefix(key_prefix, remove_key_prefix);
+  const std::unordered_map<std::string, std::string>& ConfigOptions__GetConfigOptionsMap(const ConfigOptions* p) override {
+    return p->GetConfigOptionsMap();
   }
 
   // OrtRunOptions (wrapped)

@@ -624,9 +624,7 @@ struct ProviderHost {
   virtual std::optional<std::string> ConfigOptions__GetConfigEntry(const ConfigOptions* p, const std::string& config_key) = 0;
   virtual std::string ConfigOptions__GetConfigOrDefault(const ConfigOptions* p, const std::string& config_key,
                                                         const std::string& default_value) = 0;
-  virtual std::unordered_map<std::string, std::string> ConfigOptions__GetConfigsMapWithPrefix(const ConfigOptions* p,
-                                                                                              const std::string& key_prefix,
-                                                                                              bool remove_key_prefix) = 0;
+  virtual const std::unordered_map<std::string, std::string>& ConfigOptions__GetConfigOptionsMap(const ConfigOptions* p) = 0;
 
   // OrtRunOptions
   virtual const ConfigOptions& RunOptions__GetConfigOptions(const RunOptions* p) = 0;

@@ -21,7 +21,18 @@ struct QNNProviderFactory : IExecutionProviderFactory {
                                                      const OrtLogger* logger) override {
     ORT_UNUSED_PARAMETER(logger);
     const ConfigOptions& config_options = session_options->GetConfigOptions();
-    std::unordered_map<std::string, std::string> provider_options = config_options.GetConfigsMapWithPrefix("QNN:");
+    const std::unordered_map<std::string, std::string>& config_options_map = config_options.GetConfigOptionsMap();
+
+    // The implementation of the SessionOptionsAppendExecutionProvider C API function automatically adds EP options to
+    // the session option configurations with the key prefix "EP_NAME:".
+    // We extract those EP options and pass them to QNN EP as separate "provider options".
+    std::unordered_map<std::string, std::string> provider_options;
+    const std::string key_prefix = "QNN:";
+    for (const auto& [key, value] : config_options_map) {
+      if (key.rfind(key_prefix, 0) == 0) {
+        provider_options[key.substr(key_prefix.size())] = value;
+      }
+    }
     return std::make_unique<QNNExecutionProvider>(provider_options, &config_options);
   }
 

@@ -518,8 +518,8 @@ struct ConfigOptions final {
     return g_host->ConfigOptions__GetConfigOrDefault(this, config_key, default_value);
   }
 
-  std::unordered_map<std::string, std::string> GetConfigsMapWithPrefix(const std::string& key_prefix, bool remove_key_prefix = true) const {
-    return g_host->ConfigOptions__GetConfigsMapWithPrefix(this, key_prefix, remove_key_prefix);
+  const std::unordered_map<std::string, std::string>& GetConfigOptionsMap() const {
+    return g_host->ConfigOptions__GetConfigOptionsMap(this);
   }
 
   PROVIDER_DISALLOW_ALL(ConfigOptions)
