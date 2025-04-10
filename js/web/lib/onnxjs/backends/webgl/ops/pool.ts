@@ -47,11 +47,6 @@ export const parseAveragePoolAttributes: OperatorInitialization<AveragePoolAttri
   const strides = node.attributes.getInts('strides', []);
   const pads = node.attributes.getInts('pads', []);
 
-  // TODO: support attribute 'ceil_mode'
-  if (ceilMode !== 0) {
-    throw new Error('using ceil() in shape computation is not yet supported for AveragePool');
-  }
-
   return createAttributeWithCacheKey({ autoPad, ceilMode, countIncludePad, kernelShape, strides, pads });
 };
 
