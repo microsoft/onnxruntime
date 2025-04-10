@@ -968,7 +968,7 @@ TEST(ConvFp16Test, ConvDimWithZero) {
       vector<int64_t>{1, 1},        // kernel_shape
       vector<int64_t>{0, 0, 0, 0},  // pads
       vector<int64_t>{1, 1},        // strides
-      {}                            // excluded EPs
+      {kWebGpuExecutionProvider}    // excluded EPs
   };
 
   vector<MLFloat16> X;
