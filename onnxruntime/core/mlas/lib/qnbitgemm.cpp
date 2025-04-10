@@ -960,10 +960,13 @@ MlasQNBitGemmBatch(
         const size_t BlockedM = MlasDivRoundup(M, StrideM);
         const size_t max_nc = MlasDivRoundup(N * BlockedM, ThreadsPerGemm);
         if (max_nc < nc) {
+            size_t n_step = MLAS_QGEMM_STRIDEN_THREAD_ALIGN;
 #ifdef USE_KLEIDIAI
-            const size_t n_step = GetKleidiAIGemmStrategy().GetNStep();
-#else
-            const size_t n_step = MLAS_QGEMM_STRIDEN_THREAD_ALIGN;
+            if (ComputeType == SQNBIT_CompInt8 &&
+                GetMlasPlatform().QNBitGemmDispatch->UsePacked_CompInt8 &&
+                GetMlasPlatform().QNBitGemmDispatch->UsePacked_CompInt8(K, BlkLen, has_zp_input)) {
+                n_step = GetKleidiAIGemmStrategy().GetNStep();
+            }
 #endif
             nc = std::min(
                 nc, MlasDivRoundup(max_nc, n_step) * n_step
