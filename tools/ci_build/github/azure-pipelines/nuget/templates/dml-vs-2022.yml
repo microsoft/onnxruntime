@@ -91,11 +91,12 @@ stages:
           arguments: ${{ parameters.BuildArch }}
           modifyEnvironment: true
 
+      - script: |
+           @echo ##vso[task.setvariable variable=ProtocDirectory]$(Build.BinariesDirectory)\RelWithDebInfo\vcpkg_installed\x64-windows\tools\protobuf
+
       - powershell: |
             python tools\ci_build\build.py ${{ parameters.BuildCommand }} --use_binskim_compliant_compile_flags --parallel --use_vcpkg --use_vcpkg_ms_internal_asset_cache --build_csharp --build --update --config $(BuildConfig) --build_nuget --msbuild_extra_options IncludeMobileTargets=false ${{ variables.build_py_lto_flag }}
 
-      - script: |
-           @echo ##vso[task.setvariable variable=ProtocDirectory]$(Build.BinariesDirectory)\RelWithDebInfo\vcpkg_installed\x64-windows\tools\protobuf
 
       # The Configuration variable is required to build C#
       - script: |
