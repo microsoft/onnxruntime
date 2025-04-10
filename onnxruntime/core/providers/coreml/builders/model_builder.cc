@@ -73,7 +73,7 @@ void CopyRawDataToRepeatedField(const ONNX_NAMESPACE::TensorProto& tensor_proto,
 
 template <>
 void CopyRawDataToRepeatedField<int64_t, int32_t>(const ONNX_NAMESPACE::TensorProto& tensor_proto,
-                                                 google::protobuf::RepeatedField<int32_t>& repeated_field) {
+                                                  google::protobuf::RepeatedField<int32_t>& repeated_field) {
   const auto& raw_data = tensor_proto.raw_data();
   const int64_t* data = reinterpret_cast<const int64_t*>(raw_data.data());
   const size_t element_count = raw_data.size() / sizeof(int64_t);
@@ -393,10 +393,9 @@ MILSpec::Value OnnxTensorToCoreMLTensor(const ONNX_NAMESPACE::TensorProto& tenso
   MILSpec::TensorType& tensor_type = *value_type.mutable_tensortype();
   MILSpec::DataType data_type = OnnxDataTypeToMILSpec(tensor_proto.data_type());
   MILSpec::DataType converted_data_type = data_type == MILSpec::DataType::INT64
-                                             ? MILSpec::DataType::INT32
-                                             : data_type;
+                                              ? MILSpec::DataType::INT32
+                                              : data_type;
   tensor_type.set_datatype(converted_data_type);
-
 
   tensor_type.set_rank(tensor_proto.dims().size());
   for (const auto& dim : tensor_proto.dims()) {
