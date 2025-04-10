@@ -35,64 +35,60 @@ Status GatherBlockQuantizedProgram::GenerateShaderCode(ShaderHelper& shader) con
         << "let indices_indices = " << output.IndicesGet("output_indices", "uniforms.gather_axis") << ";\n";
   }
   shader.MainFunctionBody()
-    << "var data_indices = input_indices_t(0);\n"
-    << "for (var i: u32 = 0; i < uniforms.gather_axis; i++) {\n"
-    << "  let index = " << output.IndicesGet("output_indices", "i") << ";\n"
-    << x.IndicesSet("data_indices", "i", "index") << ";\n};\n";
+      << "var data_indices = input_indices_t(0);\n"
+      << "for (var i: u32 = 0; i < uniforms.gather_axis; i++) {\n"
+      << "  let index = " << output.IndicesGet("output_indices", "i") << ";\n"
+      << x.IndicesSet("data_indices", "i", "index") << ";\n};\n";
 
   shader.MainFunctionBody()
-    << "var index_from_indices = " << indices.GetByIndices("indices_indices") << ";\n"
-    << "if (index_from_indices < 0) {\n"
-    << "  index_from_indices += " << x_shape_[gather_axis_] << ";}\n"
-    << x.IndicesSet("data_indices", "uniforms.gather_axis", "u32(index_from_indices)") << ";\n"
-    << "for (var i = uniforms.gather_axis + 1; i < ${outputShape.length}; i++) {";
-#if 0
-          let index = ${output.indicesGet('output_indices', `i + ${indicesShape.length} - 1`)};
-          ${data.indicesSet('data_indices', 'i', 'index')};
-        }
-        let data_offset = ${data.indicesToOffset('data_indices')};
-        let data_index = data_offset % 8;
-        // Convert 4-bit packed data to 8-bit packed data.
-        let packed_4bit_quantized_data = ${data.getByOffset('data_offset / 8')};
-        let packed_8bit_quantized_data = (packed_4bit_quantized_data >> (4 * (data_index % 2))) & 0x0f0f0f0f;
-        let quantized_data_vec = ${isSigned ? 'unpack4xI8' : 'unpack4xU8'}(u32(packed_8bit_quantized_data));
-        let quantized_data = quantized_data_vec[data_index / 2];
-        var scale_indices = data_indices;
-        let quantize_axis_index = ${scales.indicesGet('data_indices', 'uniforms.quantize_axis')} / uniforms.block_size;
-        ${scales.indicesSet('scale_indices', 'uniforms.quantize_axis', 'quantize_axis_index')};
-        var scale = ${scales.getByIndices('scale_indices')};
-        ${(() => {
-          if (!zeroPoint) {
-            return 'var zero_point = 0';
-          } else {
-            return `
-              let zero_point_indices = scale_indices;
-              let zero_point_offset = ${zeroPoint.indicesToOffset('zero_point_indices')};
-              let zero_point_index = zero_point_offset % 8;
-              let packed_4bit_zero_points = ${zeroPoint.getByOffset('zero_point_offset / 8')};
-              let packed_8bit_zero_points = (packed_4bit_zero_points >> (4 * (zero_point_index % 2))) & 0x0f0f0f0f;
-              let zero_point_vec = ${isSigned ? 'unpack4xI8' : 'unpack4xU8'}(u32(packed_8bit_zero_points));
-              let zero_point = zero_point_vec[zero_point_index / 2];`;
-          }
-        })()};
-        let dequantized_data = ${tensorTypeToWsglValueType(outputType)}(quantized_data - zero_point) * scale;
-        ${output.setByOffset('global_idx', 'dequantized_data')};
+      << "var index_from_indices = " << indices.GetByIndices("indices_indices") << ";\n"
+      << "if (index_from_indices < 0) {\n"
+      << "  index_from_indices += " << x_shape_[gather_axis_] << ";}\n"
+      << x.IndicesSet("data_indices", "uniforms.gather_axis", "u32(index_from_indices)") << ";\n"
+      << "for (var i = uniforms.gather_axis + 1; i < " << output_shape_.NumDimensions() << "; i++) {\n"
+      << "  let index = " << output.IndicesGet("output_indices", "i + " + std::to_string(indices_rank_ - 1)) << ";\n"
+      << x.IndicesSet("data_indices", "i", "index") << ";\n};\n";
 
-#endif
-  // Get zero-point
-  if (has_zeropoint_) {
+  const std::string unpack = (signed_) ? "unpack4xI8" : "unpack4xU8";
+
+  shader.MainFunctionBody()
+      << "let data_offset = " << x.IndicesToOffset("data_indices") << ";\n"
+      << "let data_index = data_offset % 8;\n"
+      << "let packed_4bit_quantized_data = " << x.GetByOffset("data_offset / 8") << ";\n"
+      << "let packed_8bit_quantized_data = (packed_4bit_quantized_data >> (4 * (data_index % 2))) & 0x0f0f0f0f;\n"
+      << "let quantized_data_vec = " << unpack << "(u32(packed_8bit_quantized_data));\n"
+      << "let quantized_data = quantized_data_vec[data_index / 2];\n"
+      << "var scale_indices = data_indices;\n"
+      << "let quantize_axis_index = " << scales.IndicesGet("data_indices", "uniforms.quantize_axis") << "/ uniforms.block_size;\n"
+      << scales.IndicesSet("scale_indices", "uniforms.quantize_axis", "quantize_axis_index") << ";\n"
+      << "var scale = " << scales.GetByIndices("scale_indices") << ";\n";
+
+  if (!has_zeropoint_) {
+    shader.MainFunctionBody()
+        << "var zero_point = 0\n;";
+  } else {
     const auto& zero_point = shader.AddInput("zero_point", ShaderUsage::UseUniform | ShaderUsage::UseIndicesTypeAlias);
+    shader.MainFunctionBody()
+        << "let zero_point_indices = scale_indices;\n"
+        << "let zero_point_offset = " << zero_point.IndicesToOffset("zero_point_indices") << ";\n"
+        << "let zero_point_index = zero_point_offset % 8;\n"
+        << "let packed_4bit_zero_points = " << zero_point.GetByOffset("zero_point_offset / 8") << ";\n"
+        << "let packed_8bit_zero_points = (packed_4bit_zero_points >> (4 * (zero_point_index % 2))) & 0x0f0f0f0f;\n"
+        << "let zero_point_vec = " << unpack << "(u32(packed_8bit_zero_points));\n"
+        << "let zero_point = zero_point_vec[zero_point_index / 2];\n";
   }
-
+  shader.MainFunctionBody()
+      << "let dequantized_data = output_element_t(quantized_data - zero_point) * scale;\n"
+      << output.SetByOffset("global_idx", "dequantized_data") << ";\n";
   return Status::OK();
 }
 
 TensorShapeVector splice(TensorShapeVector vec, size_t start, size_t deleteCount, const TensorShapeVector toInsert = {}) {
   TensorShapeVector new_vec;
   for (size_t i = 0; i < vec.size(); i++) {
-        if (i >= start && i < start + deleteCount) {
-            new_vec.push_back(vec[i]);
-        }
+    if (i >= start && i < start + deleteCount) {
+      new_vec.push_back(vec[i]);
+    }
   }
   new_vec.insert(new_vec.end(), toInsert.begin(), toInsert.end());
   return new_vec;
