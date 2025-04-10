@@ -625,6 +625,21 @@ typedef struct OrtMIGraphXProviderOptions {
   bool migraphx_exhaustive_tune;                     // migraphx tuned compile  Default = false
 } OrtMIGraphXProviderOptions;
 
+
+typedef struct OrtAMDGPUProviderOptions {
+  int device_id;                                     // hip device id.
+  int migraphx_fp16_enable;                          // MIGraphX FP16 precision. Default 0 = false, nonzero = true
+  int migraphx_fp8_enable;                           // MIGraphX FP8 precision. Default 0 = false, nonzero = true
+  int migraphx_int8_enable;                          // MIGraphX INT8 precision. Default 0 = false, nonzero = true
+  int migraphx_use_native_calibration_table;         // MIGraphx INT8 cal table. Default 0 = false, noznero = true
+  const char* migraphx_int8_calibration_table_name;  // MIGraphx INT8 calibration table name
+  const char* migraphx_cache_dir;                    // MIGraphX model cache directory
+  int migraphx_exhaustive_tune;                      // migraphx tuned compile  Default = false
+  size_t migraphx_mem_limit;
+  int migraphx_arena_extend_strategy;
+
+} OrtAMDGPUProviderOptions;
+
 /** \brief OpenVINO Provider Options
  *  \brief This Struct is frozen since ORT 1.13.0. Its maintained part of Legacy API for compatibility.
  *  \brief For latest OpenVINO Provider Options update to the ProviderOptions map.
@@ -4782,6 +4797,9 @@ struct OrtApi {
    */
   ORT_API2_STATUS(SetEpDynamicOptions, _Inout_ OrtSession* sess, _In_reads_(kv_len) const char* const* keys,
                   _In_reads_(kv_len) const char* const* values, _In_ size_t kv_len);
+
+  ORT_API2_STATUS(SessionOptionsAppendExecutionProvider_AMDGPU,
+                  _In_ OrtSessionOptions* options, _In_ const OrtAMDGPUProviderOptions* amdgpu_options);
 };
 
 /*

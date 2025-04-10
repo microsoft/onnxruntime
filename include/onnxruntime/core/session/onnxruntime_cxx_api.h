@@ -927,6 +927,7 @@ struct SessionOptionsImpl : ConstSessionOptionsImpl<T> {
   SessionOptionsImpl& AppendExecutionProvider_TensorRT(const OrtTensorRTProviderOptions& provider_options);       ///< Wraps OrtApi::SessionOptionsAppendExecutionProvider_TensorRT
   SessionOptionsImpl& AppendExecutionProvider_TensorRT_V2(const OrtTensorRTProviderOptionsV2& provider_options);  ///< Wraps OrtApi::SessionOptionsAppendExecutionProvider_TensorRT
   SessionOptionsImpl& AppendExecutionProvider_MIGraphX(const OrtMIGraphXProviderOptions& provider_options);       ///< Wraps OrtApi::SessionOptionsAppendExecutionProvider_MIGraphX
+  SessionOptionsImpl& AppendExecutionProvider_AMDGPU(const OrtAMDGPUProviderOptions& provider_options);           ///< Wraps OrtApi::SessionOptionsAppendExecutionProvider_AMDGPU
   ///< Wraps OrtApi::SessionOptionsAppendExecutionProvider_CANN
   SessionOptionsImpl& AppendExecutionProvider_CANN(const OrtCANNProviderOptions& provider_options);
   ///< Wraps OrtApi::SessionOptionsAppendExecutionProvider_Dnnl

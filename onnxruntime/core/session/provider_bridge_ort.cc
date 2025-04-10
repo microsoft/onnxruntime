@@ -1778,7 +1778,7 @@ static ProviderLibrary s_library_tensorrt(LIBRARY_PREFIX ORT_TSTR("onnxruntime_p
                                           false
 #endif
 );
-static ProviderLibrary s_library_migraphx(LIBRARY_PREFIX ORT_TSTR("onnxruntime_providers_migraphx") LIBRARY_EXTENSION);
+static ProviderLibrary s_library_migraphx(LIBRARY_PREFIX ORT_TSTR("onnxruntime_providers_amd_gpu") LIBRARY_EXTENSION);
 
 // QNN EP can be built either as a static library or a shared library. Can safely define s_library_qnn even if static.
 static ProviderLibrary s_library_qnn(LIBRARY_PREFIX ORT_TSTR("onnxruntime_providers_qnn") LIBRARY_EXTENSION);
@@ -2231,6 +2231,19 @@ ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider_MIGraphX, _In
   auto factory = onnxruntime::MIGraphXProviderFactoryCreator::Create(migraphx_options);
   if (!factory) {
     return OrtApis::CreateStatus(ORT_FAIL, "SessionOptionsAppendExecutionProvider_MIGraphX: Failed to load shared library");
+  }
+
+  options->provider_factories.push_back(factory);
+  return nullptr;
+  API_IMPL_END
+}
+
+ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider_AMDGPU, _In_ OrtSessionOptions* options, _In_ const OrtAMDGPUProviderOptions* amdgpu_options) {
+  API_IMPL_BEGIN
+  OrtMIGraphXProviderOptions* migraphx_options = (OrtMIGraphXProviderOptions*)amdgpu_options;
+  auto factory = onnxruntime::MIGraphXProviderFactoryCreator::Create(migraphx_options);
+  if (!factory) {
+    return OrtApis::CreateStatus(ORT_FAIL, "SessionOptionsAppendExecutionProvider_AMDGPU: Failed to load shared library");
   }
 
   options->provider_factories.push_back(factory);
