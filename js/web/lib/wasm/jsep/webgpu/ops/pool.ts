@@ -391,10 +391,6 @@ export const parseAveragePoolAttributes = (attributes: Record<string, unknown>):
   const countIncludePad = (attributes.count_include_pad as number) === 0 ? false : true;
 
   const attr = parsePoolCommonAttributes(attributes);
-  // TODO: support attribute 'ceil_mode'
-  if (attr.ceilMode !== 0) {
-    throw new Error('using ceil() in shape computation is not yet supported for AveragePool');
-  }
   const averagePoolAttributes = { countIncludePad, ...attr, cacheKey: '' };
   return { ...averagePoolAttributes, cacheKey: createAveragePoolShaderKeyFromAttributes(averagePoolAttributes) };
 };
