@@ -2,10 +2,6 @@
 // Copyright (c) Intel Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "core/common/safeint.h"
-#include "onnx/defs/data_type_utils.h"
-#include "core/optimizer/initializer.h"
-#include "core/providers/common.h"
 #include "core/providers/shared/utils/utils.h"
 #include "core/providers/webnn/builders/helper.h"
 #include "core/providers/webnn/builders/model_builder.h"
@@ -26,10 +22,10 @@ class MultiHeadAttentionOpBuilder : public BaseOpBuilder {
 
   // Operator support related.
  private:
-  bool IsOpSupportedImpl(const InitializedTensorSet& initializers, const Node& node,
-                         const WebnnDeviceType /* device_type */, const logging::Logger& logger) const override;
-  bool HasSupportedInputsImpl(const InitializedTensorSet& /* initializers */, const Node& node,
-                              const emscripten::val& wnn_limits, const logging::Logger& logger) const override;
+  bool IsOpSupportedImpl(const GraphViewer&, const Node& node, const WebnnDeviceType /* device_type */,
+                         const logging::Logger& logger) const override;
+  bool HasSupportedInputsImpl(const GraphViewer&, const Node& node, const emscripten::val& wnn_limits,
+                              const logging::Logger& logger) const override;
   bool HasSupportedOutputsImpl(const Node& node, const emscripten::val& wnn_limits,
                                const logging::Logger& logger) const override;
 };
@@ -90,7 +86,7 @@ Status MultiHeadAttentionOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_bu
   ORT_RETURN_IF_NOT(GetType(*node.OutputDefs()[0], output_type, logger), "Could not get input data type.");
 
   if (input_query_type == ONNX_NAMESPACE::TensorProto_DataType_FLOAT16) {
-    common_options.set("label", node.Name() + "/MHA/preprocess/cast/query_input");
+    common_options.set("label", node.Name() + "_/MHA/preprocess/cast/query_input");
     query_input = model_builder.GetBuilder().call<emscripten::val>("cast", query_input, emscripten::val("float32"),
                                                                    common_options);
   }
@@ -104,7 +100,7 @@ Status MultiHeadAttentionOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_bu
     head_size = SafeInt<uint32_t>(hidden_size / num_heads);
     key_input = model_builder.GetOperand(input_defs[1]->Name());
     if (input_query_type == ONNX_NAMESPACE::TensorProto_DataType_FLOAT16) {
-      common_options.set("label", node.Name() + "/MHA/preprocess/cast/key_input");
+      common_options.set("label", node.Name() + "_/MHA/preprocess/cast/key_input");
       key_input = model_builder.GetBuilder().call<emscripten::val>("cast", key_input, emscripten::val("float32"),
                                                                    common_options);
     }
@@ -130,7 +126,7 @@ Status MultiHeadAttentionOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_bu
       }
       value_input = model_builder.GetOperand(input_defs[2]->Name());
       if (input_query_type == ONNX_NAMESPACE::TensorProto_DataType_FLOAT16) {
-        common_options.set("label", node.Name() + "/MHA/preprocess/cast/value_input");
+        common_options.set("label", node.Name() + "_/MHA/preprocess/cast/value_input");
         value_input = model_builder.GetBuilder().call<emscripten::val>("cast", value_input, emscripten::val("float32"),
                                                                        common_options);
       }
@@ -157,10 +153,10 @@ Status MultiHeadAttentionOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_bu
   }
 
   emscripten::val attention_bias = emscripten::val::undefined();
-  if (input_defs[5]->Name() != "") {
+  if (!TensorExists(input_defs, 5)) {
     attention_bias = model_builder.GetOperand(input_defs[5]->Name());
     if (input_query_type == ONNX_NAMESPACE::TensorProto_DataType_FLOAT16) {
-      common_options.set("label", node.Name() + "/MHA/preprocess/cast/attention_bias");
+      common_options.set("label", node.Name() + "_/MHA/preprocess/cast/attention_bias");
       attention_bias = model_builder.GetBuilder().call<emscripten::val>("cast", attention_bias,
                                                                         emscripten::val("float32"), common_options);
     }
@@ -169,40 +165,40 @@ Status MultiHeadAttentionOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_bu
   batch_size = SafeInt<uint32_t>(input_q_shape[0]);
   sequence_length = SafeInt<uint32_t>(input_q_shape[1]);
 
-  const float scale = helper.Get("scale", static_cast<float>(1 / sqrt(head_size)));
+  const float scale_value = helper.Get("scale", 1 / sqrt(static_cast<float>(head_size)));
 
   const std::vector<uint32_t> reshape_output_shape = {batch_size, sequence_length, hidden_size};
   const std::vector<uint32_t> q_reshape_tensor_shape = {batch_size, sequence_length, num_heads, head_size};
   const std::vector<uint32_t> reshape_tensor_shape = {batch_size, kv_sequence_length, num_heads, head_size};
 
   // query_input -> reshape(B,S,N,H) -> transpose(B,N,S,H) -> new_query
-  common_options.set("label", node.Name() + "/MHA/query/reshape");
+  common_options.set("label", node.Name() + "_/MHA/query/reshape");
   emscripten::val reshaped_query = model_builder.GetBuilder().call<emscripten::val>(
       "reshape", query_input, emscripten::val::array(q_reshape_tensor_shape), common_options);
 
   options.set("permutation", emscripten::val::array(std::vector<uint32_t>({0, 2, 1, 3})));
-  options.set("label", node.Name() + "/MHA/query/transpose");
+  options.set("label", node.Name() + "_/MHA/query/transpose");
   emscripten::val new_query = model_builder.GetBuilder().call<emscripten::val>("transpose", reshaped_query, options);
 
   emscripten::val present_key, present_value;
   if (!k_reshape_skip) {
-    common_options.set("label", node.Name() + "/MHA/key/reshape_1");
+    common_options.set("label", node.Name() + "_/MHA/key/reshape_1");
     present_key = model_builder.GetBuilder().call<emscripten::val>(
         "reshape", key_input, emscripten::val::array(reshape_tensor_shape), common_options);
 
     options.set("permutation", emscripten::val::array(std::vector<uint32_t>({0, 2, 1, 3})));
-    options.set("label", node.Name() + "/MHA/key/transpose");
+    options.set("label", node.Name() + "_/MHA/key/transpose");
     present_key = model_builder.GetBuilder().call<emscripten::val>("transpose", present_key, options);
 
     if (TensorExists(input_defs, 6)) {
       emscripten::val past_key_input = model_builder.GetOperand(input_defs[6]->Name());
       if (input_query_type == ONNX_NAMESPACE::TensorProto_DataType_FLOAT16) {
-        common_options.set("label", node.Name() + "/MHA/preprocess/cast/past_key_input");
+        common_options.set("label", node.Name() + "_/MHA/preprocess/cast/past_key_input");
         past_key_input = model_builder.GetBuilder().call<emscripten::val>("cast", past_key_input,
                                                                           emscripten::val("float32"), common_options);
       }
 
-      common_options.set("label", node.Name() + "/MHA/key/concat");
+      common_options.set("label", node.Name() + "_/MHA/key/concat");
       std::vector<emscripten::val> inputs({past_key_input, present_key});
       uint32_t axis = 2;
       present_key = model_builder.GetBuilder().call<emscripten::val>("concat", emscripten::val::array(inputs), axis,
@@ -213,27 +209,27 @@ Status MultiHeadAttentionOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_bu
   }
 
   options.set("permutation", emscripten::val::array(std::vector<uint32_t>({0, 1, 3, 2})));
-  options.set("label", node.Name() + "/MHA/key/transpose");
+  options.set("label", node.Name() + "_/MHA/key/transpose");
   emscripten::val new_key = model_builder.GetBuilder().call<emscripten::val>("transpose", present_key, options);
 
   if (!v_reshape_skip) {
-    common_options.set("label", node.Name() + "/MHA/value/reshape_1");
+    common_options.set("label", node.Name() + "_/MHA/value/reshape_1");
     present_value = model_builder.GetBuilder().call<emscripten::val>(
         "reshape", value_input, emscripten::val::array(reshape_tensor_shape), common_options);
 
     options.set("permutation", emscripten::val::array(std::vector<uint32_t>({0, 2, 1, 3})));
-    options.set("label", node.Name() + "/MHA/value/transpose");
+    options.set("label", node.Name() + "_/MHA/value/transpose");
     present_value = model_builder.GetBuilder().call<emscripten::val>("transpose", present_value, options);
 
     if (TensorExists(input_defs, 7)) {
       emscripten::val past_value_input = model_builder.GetOperand(input_defs[7]->Name());
       if (input_query_type == ONNX_NAMESPACE::TensorProto_DataType_FLOAT16) {
-        common_options.set("label", node.Name() + "/MHA/preprocess/cast/past_value_input");
+        common_options.set("label", node.Name() + "_/MHA/preprocess/cast/past_value_input");
         past_value_input = model_builder.GetBuilder().call<emscripten::val>("cast", past_value_input,
                                                                             emscripten::val("float32"), common_options);
       }
 
-      common_options.set("label", node.Name() + "/MHA/value/concat");
+      common_options.set("label", node.Name() + "_/MHA/value/concat");
       std::vector<emscripten::val> inputs({past_value_input, present_value});
       uint32_t axis = 2;
       present_value = model_builder.GetBuilder().call<emscripten::val>("concat", emscripten::val::array(inputs), axis,
@@ -243,21 +239,14 @@ Status MultiHeadAttentionOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_bu
     present_value = value_input;
   }
 
-  emscripten::val desc_scale = emscripten::val::object();
-  ORT_RETURN_IF_NOT(SetWebnnDataType(desc_scale, ONNX_NAMESPACE::TensorProto_DataType_FLOAT), "Unsupported data type");
-  emscripten::val dims_scale = emscripten::val::array(std::vector<uint32_t>({1}));
-  desc_scale.set("dimensions", dims_scale);
-  desc_scale.set("shape", dims_scale);
-  emscripten::val scale_buffer =
-      emscripten::val::global("Float32Array").new_(emscripten::val::array(std::vector<float>({scale})));
   emscripten::val scale_constant =
-      model_builder.GetBuilder().call<emscripten::val>("constant", desc_scale, scale_buffer);
+      model_builder.CreateOrGetConstant<float>(ONNX_NAMESPACE::TensorProto_DataType_FLOAT, scale_value, {1});
 
   emscripten::val output = ScaledDotProductAttention(model_builder, node, logger, new_query, new_key, present_value,
                                                      scale_constant, attention_bias, reshape_output_shape);
 
   if (output_type == ONNX_NAMESPACE::TensorProto_DataType_FLOAT16) {
-    common_options.set("label", node.Name() + "/MHA/postprocess/cast/output");
+    common_options.set("label", node.Name() + "_/MHA/postprocess/cast/output");
     output =
         model_builder.GetBuilder().call<emscripten::val>("cast", output, emscripten::val("float16"), common_options);
   }
@@ -265,7 +254,7 @@ Status MultiHeadAttentionOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_bu
 
   if (TensorExists(node.OutputDefs(), 1)) {
     if (output_type == ONNX_NAMESPACE::TensorProto_DataType_FLOAT16) {
-      common_options.set("label", node.Name() + "/MHA/postprocess/cast/present_key");
+      common_options.set("label", node.Name() + "_/MHA/postprocess/cast/present_key");
       present_key = model_builder.GetBuilder().call<emscripten::val>("cast", present_key, emscripten::val("float16"),
                                                                      common_options);
     }
@@ -274,7 +263,7 @@ Status MultiHeadAttentionOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_bu
 
   if (TensorExists(node.OutputDefs(), 2)) {
     if (output_type == ONNX_NAMESPACE::TensorProto_DataType_FLOAT16) {
-      common_options.set("label", node.Name() + "/MHA/postprocess/cast/present_value");
+      common_options.set("label", node.Name() + "_/MHA/postprocess/cast/present_value");
       present_value = model_builder.GetBuilder().call<emscripten::val>("cast", present_value,
                                                                        emscripten::val("float16"), common_options);
     }
@@ -286,7 +275,7 @@ Status MultiHeadAttentionOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_bu
 
 // Operator support related.
 
-bool MultiHeadAttentionOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& initializers, const Node& node,
+bool MultiHeadAttentionOpBuilder::IsOpSupportedImpl(const GraphViewer& graph_viewer, const Node& node,
                                                     const WebnnDeviceType /* device_type */,
                                                     const logging::Logger& logger) const {
   const auto& input_defs = node.InputDefs();
@@ -306,8 +295,8 @@ bool MultiHeadAttentionOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& 
   return true;
 }
 
-bool MultiHeadAttentionOpBuilder::HasSupportedInputsImpl(const InitializedTensorSet& /* initializers */,
-                                                         const Node& node, const emscripten::val& wnn_limits,
+bool MultiHeadAttentionOpBuilder::HasSupportedInputsImpl(const GraphViewer&, const Node& node,
+                                                         const emscripten::val& wnn_limits,
                                                          const logging::Logger& logger) const {
   const auto& input_defs = node.InputDefs();
   const auto& op_type = node.OpType();
@@ -325,8 +314,7 @@ bool MultiHeadAttentionOpBuilder::HasSupportedInputsImpl(const InitializedTensor
   for (int i = 0; i < 10; i++) {
     if (i == 3 || i == 4 || i == 8 || i == 9) {
       if (TensorExists(input_defs, i)) {
-        LOGS(logger, VERBOSE)
-            << op_type << " does not support input " << i;
+        LOGS(logger, VERBOSE) << op_type << " does not support input " << i;
         return false;
       }
     } else {

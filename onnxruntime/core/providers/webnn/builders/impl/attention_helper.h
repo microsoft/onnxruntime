@@ -2,6 +2,8 @@
 // Copyright (c) Intel Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#pragma once
+
 namespace onnxruntime {
 namespace webnn {
 /*
@@ -26,7 +28,7 @@ namespace webnn {
                                  |
                                output
 */
-emscripten::val ScaledDotProductAttention(ModelBuilder& model_builder, const Node& node, const logging::Logger& logger,
+inline emscripten::val ScaledDotProductAttention(ModelBuilder& model_builder, const Node& node, const logging::Logger& logger,
                                           emscripten::val query, emscripten::val key, emscripten::val value,
                                           emscripten::val scale, emscripten::val attn_mask,
                                           std::vector<uint32_t> reshape_output_shape) {
