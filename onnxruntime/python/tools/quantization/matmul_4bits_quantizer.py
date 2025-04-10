@@ -18,7 +18,7 @@ import onnx
 from onnx.onnx_pb import GraphProto, ModelProto, NodeProto, TensorProto
 from packaging import version
 
-from onnxruntime.capi._pybind_state import quantize_matmul_4bits, quantize_qdq_matmul_4bits
+from onnxruntime.capi._pybind_state import quantize_matmul_4bits, quantize_qdq_matmul_4bits, quantize_matmul_8bits
 
 from .calibrate import CalibrationDataReader
 from .onnx_model import ONNXModel
