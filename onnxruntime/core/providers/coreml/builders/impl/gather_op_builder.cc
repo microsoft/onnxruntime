@@ -40,9 +40,7 @@ Status GatherOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const
     int32_t input_type;
     ORT_RETURN_IF_NOT(GetType(*node.InputDefs()[0], input_type, logger), "Failed to get input type");
 
-    if (input_type == ONNX_NAMESPACE::TensorProto_DataType_INT64) {
       output_datatype = ONNX_NAMESPACE::TensorProto_DataType_INT32;
-    }
 
     NodeAttrHelper helper(node);
     size_t indices_elem_count = 1;
@@ -58,7 +56,7 @@ Status GatherOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const
     const auto validate_indices = false;
     AddOperationInput(*op, "x", node.InputDefs()[0]->Name()); // data
     // AddOperationInput(*op, "indices", node.InputDefs()[1]->Name()); // indices
-    AddOperationInput(*op, "indices", model_builder.AddConstant(op->type(), "indices", indices)); // indices
+    AddOperationInput(*op, "indices", node.InputDefs()[1]->Name()); // indices
     AddOperationInput(*op, "axis", model_builder.AddScalarConstant(op->type(), "axis", axis));
     AddOperationInput(*op, "validate_indices", model_builder.AddScalarConstant(op->type(), "validate_indices", validate_indices));
     AddOperationOutput(*op, *node.OutputDefs()[0], output_datatype); // output
