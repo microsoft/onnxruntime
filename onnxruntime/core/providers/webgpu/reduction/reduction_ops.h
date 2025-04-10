@@ -8,6 +8,9 @@
 #include "core/providers/cpu/reduction/reduction_kernel_base.h"
 #include "core/providers/webgpu/program.h"
 #include "core/providers/webgpu/shader_helper.h"
+#include <string>
+#include <unordered_map>
+
 namespace onnxruntime {
 namespace webgpu {
 // reduceOpSpecificCode is a 3-element array of strings that represent the op specific code for the reduce operation.
@@ -30,6 +33,32 @@ class ReduceKernelProgram final : public Program<ReduceKernelProgram> {
   InlinedVector<uint32_t> axes_;
   ReduceOpSpecificCode code_;
   bool is_input_empty_;
+};
+
+enum class ReduceOpType {
+  Max,
+  Min,
+  Mean,
+  Sum,
+  Prod,
+  SumSquare,
+  LogSumExp,
+  L1,
+  L2,
+  LogSum,
+};
+
+ReduceOpType StringToReduceOp(std::string name);
+
+class ReduceSharedProgram final : public Program<ReduceSharedProgram> {
+ public:
+  ReduceSharedProgram(std::string name, uint32_t worgroup_size) : Program(name), reduce_op_type_(StringToReduceOp(name)), workgroup_size_(worgroup_size) {}
+  Status GenerateShaderCode(ShaderHelper& wgpuShaderModuleAddRef) const override;
+  WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES({"reduceSize", ProgramUniformVariableDataType::Uint32});
+
+ private:
+  ReduceOpType reduce_op_type_;
+  uint32_t workgroup_size_;
 };
 
 template <bool allow_multi_axes = true>
