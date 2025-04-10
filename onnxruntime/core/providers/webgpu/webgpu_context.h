@@ -156,6 +156,11 @@ class WebGpuContext final {
       : instance_{instance}, device_{device}, validation_mode_{validation_mode}, query_type_{TimestampQueryType::None}, preserve_device_{preserve_device} {}
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(WebGpuContext);
 
+  void LaunchComputePipeline(const wgpu::ComputePassEncoder& compute_pass_encoder,
+                             const std::vector<WGPUBuffer>& bind_buffers,
+                             const ProgramArtifact& program_artifact,
+                             uint32_t x, uint32_t y, uint32_t z);
+
   std::vector<const char*> GetEnabledAdapterToggles() const;
   std::vector<const char*> GetEnabledDeviceToggles() const;
   std::vector<const char*> GetDisabledDeviceToggles() const;
