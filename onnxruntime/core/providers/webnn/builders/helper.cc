@@ -121,15 +121,15 @@ std::unordered_set<const Node*> GetSupportedNodes(const GraphViewer& graph_viewe
   return supported_nodes;
 }
 
-bool AreInputDataTypesSame(const std::string_view op_type,
-                           gsl::span<const int32_t> input_types,
-                           const logging::Logger& logger) {
-  for (size_t i = 1; i < input_types.size(); i++) {
-    if (input_types[0] != input_types[i]) {
+bool AreDataTypesSame(const std::string_view op_type,
+                      gsl::span<const int32_t> data_types,
+                      const logging::Logger& logger) {
+  for (size_t i = 1; i < data_types.size(); i++) {
+    if (data_types[0] != data_types[i]) {
       LOGS(logger, VERBOSE) << "[" << op_type
-                            << "] Input data types should be the same, but ["
-                            << input_types[0] << "] does not match "
-                            << input_types[i] << "].";
+                            << "] data types should be the same, but ["
+                            << data_types[0] << "] does not match "
+                            << data_types[i] << "].";
       return false;
     }
   }
@@ -272,22 +272,23 @@ bool IsMLTensorSupported() {
   return is_supported;
 }
 
-// Convert int8 to uint4/int4 (stored as uint8)
-uint8_t PackInt8ToUint8AsNibble(int8_t value, const int32_t& data_type) {
-  uint8_t result = 0;
+// Convert int8 to uint4/int4 (stored as uint8), used for creating WebNN Constant
+// with same value in both high and low nibbles for uint4/int4 data type.
+uint8_t PackInt8ToUint8DoubledNibbles(int8_t value, const int32_t& data_type) {
   if (data_type == ONNX_NAMESPACE::TensorProto_DataType_UINT4) {
     if (value < 0 || value > 15) {
       ORT_THROW("Value cannot be safely converted to uint4.");
     }
-    result |= (static_cast<uint8_t>(value) << 4);
   } else {
     if (value < -8 || value > 7) {
       ORT_THROW("Value cannot be safely converted to int4.");
     }
-    result |= (value << 4);
   }
 
-  return result;
+  // Explicit conversion + truncate to lower 4 bits
+  const uint8_t result = static_cast<uint8_t>(value) & 0x0F;
+  // Duplicate the 4-bit value to both high and low nibbles
+  return (result << 4) | result;
 }
 
 // Convert float32 to float16 (stored as uint16)
