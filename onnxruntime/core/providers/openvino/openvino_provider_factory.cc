@@ -180,7 +180,7 @@ struct OpenVINOProviderFactory : IExecutionProviderFactory {
   }
   std::unique_ptr<IExecutionProvider> CreateProvider(const OrtSessionOptions* /*session_options*/,
                                                      const OrtLogger* /*logger*/) override {
-    // TODO: Construct a ProviderInfo object from the session options.
+    // TODO(adrianlizarraga): Construct a ProviderInfo object from the session options.
     return CreateProvider();
   }
 
