@@ -36,6 +36,7 @@ void CreateGatherOpBuilder(const std::string& op_type, OpBuilderRegistrations& o
 void CreateGatherElementsOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
 void CreateGatherNDOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
 void CreateGemmOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
+void CreateGroupQueryAttentionOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
 void CreateGruOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
 void CreateLogicalOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
 void CreateLRNOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
