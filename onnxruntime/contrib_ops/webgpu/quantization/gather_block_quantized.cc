@@ -78,19 +78,23 @@ Status GatherBlockQuantizedProgram::GenerateShaderCode(ShaderHelper& shader) con
         << "let zero_point = zero_point_vec[zero_point_index / 2];\n";
   }
   shader.MainFunctionBody()
-      << "let dequantized_data = output_element_t(quantized_data - zero_point) * scale;\n"
+      << "let dequantized_data = output_value_t(quantized_data - zero_point) * scale;\n"
       << output.SetByOffset("global_idx", "dequantized_data") << ";\n";
   return Status::OK();
 }
 
 TensorShapeVector splice(TensorShapeVector vec, size_t start, size_t deleteCount, const TensorShapeVector toInsert = {}) {
   TensorShapeVector new_vec;
+
   for (size_t i = 0; i < vec.size(); i++) {
-    if (i >= start && i < start + deleteCount) {
+    if (i < start) {
+      new_vec.push_back(vec[i]);
+    } else if (i == start) {
+      new_vec.insert(new_vec.end(), toInsert.begin(), toInsert.end());
+    } else if (i >= start + deleteCount) {
       new_vec.push_back(vec[i]);
     }
   }
-  new_vec.insert(new_vec.end(), toInsert.begin(), toInsert.end());
   return new_vec;
 }
 
@@ -98,7 +102,7 @@ Status GatherBlockQuantized::ComputeInternal(ComputeContext& context) const {
   const auto* x = context.Input(0);
   const auto* indices = context.Input(1);
   const auto* scales = context.Input(2);
-  const auto* zero_points = context.Input(2);
+  const auto* zero_points = context.Input(3);
 
   const auto x_shape = x->Shape();
   int64_t x_size = x_shape.Size();
