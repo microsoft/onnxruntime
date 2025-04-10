@@ -115,6 +115,10 @@ static OpBuilderRegistrations CreateOpBuilderRegistrations() {
     CreateGatherNDOpBuilder("GatherND", op_registrations);
   }
 
+  {  // GroupQueryAttention
+    CreateGroupQueryAttentionOpBuilder("GroupQueryAttention", op_registrations);
+  }
+
   {  // Flatten
     CreateFlattenOpBuilder("Flatten", op_registrations);
   }
