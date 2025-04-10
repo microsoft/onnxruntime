@@ -76,7 +76,7 @@ std::string ParseDeviceType(std::shared_ptr<OVCore> ov_core, const ProviderOptio
       if (supported_device_modes.contains(device_mode)) {
         const auto& devices = selected_device.substr(delimit + 1);
         devices_to_check = split(devices, ',');
-        ORT_ENFORCE(devices_to_check.size() > 0, "Modes should have devices listed based on priority");
+        ORT_ENFORCE(devices_to_check.size() > 0, "Mode AUTO/HETERO/MULTI should have devices listed based on priority");
       } else {
         ORT_THROW("[ERROR] [OpenVINO] Invalid device_type is selected. Supported modes are AUTO/HETERO/MULTI");
       }
@@ -153,16 +153,24 @@ std::string ParseDeviceType(std::shared_ptr<OVCore> ov_core, const ProviderOptio
     std::string ov_luid_devices;
     for (auto luid_str : luid_list) {
       if (ov_luid_map.contains(luid_str)) {
-        if (!ov_luid_devices.empty()) ov_luid_devices = ov_luid_devices + ",";
-        ov_luid_devices = ov_luid_devices + ov_luid_map.at(luid_str);
+        std::string ov_dev = ov_luid_map.at(luid_str);
+        std::string ov_dev_strip = split(ov_dev, '.')[0];
+        if (std::find(std::begin(devices_to_check), std::end(devices_to_check), ov_dev) != std::end(devices_to_check) ||
+            std::find(std::begin(devices_to_check), std::end(devices_to_check), ov_dev_strip) != std::end(devices_to_check)) {
+          if (!ov_luid_devices.empty()) ov_luid_devices = ov_luid_devices + ",";
+          ov_luid_devices = ov_luid_devices + ov_dev;
+        } else {
+          ORT_THROW(" LUID : ", ov_dev, " does not match with device_type : ", selected_device);
+        }
       } else {
-        ORT_THROW("Invalid device_luid is set");
+        ORT_THROW(provider_options.at("device_luid"), " does not exist for the selected device_type : ", selected_device);
       }
     }
     if (!device_mode.empty()) {
       selected_device = device_mode + ":" + ov_luid_devices;
       for (auto dev_str : devices_to_check) {
         auto default_dev = split(dev_str, '.')[0];
+
         if (ov_luid_devices.find(default_dev) == std::string::npos)
           selected_device = selected_device + "," + dev_str;
       }
@@ -171,13 +179,15 @@ std::string ParseDeviceType(std::shared_ptr<OVCore> ov_core, const ProviderOptio
     }
   }
   // If invalid device is chosen error is thrown
-  if (!all_devices_found)
+  if (!all_devices_found) {
     ORT_THROW(
         "[ERROR] [OpenVINO] You have selected wrong configuration value for the key 'device_type'. "
         "Select from 'CPU', 'GPU', 'NPU', 'GPU.x' where x = 0,1,2 and so on or from"
         " HETERO/MULTI/AUTO/BATCH options available. \n");
-  else
+  } else {
+    LOGS_DEFAULT(INFO) << "[OpenVINO-EP] Choosing Device: " << selected_device;
     return selected_device;
+  }
 }
 
 void ParseProviderOptions([[maybe_unused]] ProviderInfo& result, [[maybe_unused]] const ProviderOptions& config_options) {}
