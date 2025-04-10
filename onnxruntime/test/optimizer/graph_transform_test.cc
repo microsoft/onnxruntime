@@ -2946,6 +2946,15 @@ TEST_F(GraphTransformationTests, TransposeMatmulTransBatchNoFusion) {
   }
 }
 
+TEST_F(GraphTransformationTests, GH24341) {
+  const auto* model_path = TSTR("testdata/gh_issue_24341.onnx");
+
+  Ort::SessionOptions session_options{};
+  // Just check if the model loads fine without a segmentation fault
+  // in the default CPU EP
+  EXPECT_NO_THROW(Ort::Session session(*ort_env, model_path, session_options));
+}
+
 TEST_F(GraphTransformationTests, Gemm_LeakyRelu_Fusion) {
   constexpr const ORTCHAR_T* model_uri = MODEL_FOLDER "gemm_activation_fusion/gemm_activation_fusion.onnx";
 
