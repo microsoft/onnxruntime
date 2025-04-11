@@ -30,7 +30,7 @@ struct OrtInstanceData {
   // Get the global Ort::Env
   static const Ort::Env* OrtEnv() { return ortEnv.get(); }
   // Get the default Ort::RunOptions
-  static Ort::RunOptions* OrtDefaultRunOptions() { return ortDefaultRunOptions_.get(); }
+  static Ort::RunOptions* OrtDefaultRunOptions() { return ortDefaultRunOptions.get(); }
 
   ~OrtInstanceData();
 
@@ -43,7 +43,7 @@ struct OrtInstanceData {
 
   // ORT env (global singleton)
   static std::unique_ptr<Ort::Env> ortEnv;
-  static std::unique_ptr<Ort::RunOptions> ortDefaultRunOptions_;
+  static std::unique_ptr<Ort::RunOptions> ortDefaultRunOptions;
   static std::mutex ortEnvMutex;
   static std::atomic<uint64_t> ortEnvRefCount;
   static std::atomic<bool> ortEnvDestroyed;

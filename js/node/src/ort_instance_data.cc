@@ -6,6 +6,7 @@
 #include "onnxruntime_cxx_api.h"
 
 std::unique_ptr<Ort::Env> OrtInstanceData::ortEnv;
+std::unique_ptr<Ort::RunOptions> OrtInstanceData::ortDefaultRunOptions;
 std::mutex OrtInstanceData::ortEnvMutex;
 std::atomic<uint64_t> OrtInstanceData::ortEnvRefCount;
 std::atomic<bool> OrtInstanceData::ortEnvDestroyed;
@@ -18,7 +19,7 @@ OrtInstanceData::~OrtInstanceData() {
   if (--ortEnvRefCount == 0) {
     std::lock_guard<std::mutex> lock(ortEnvMutex);
     if (ortEnv) {
-      ortDefaultRunOptions_.reset(nullptr);
+      ortDefaultRunOptions.reset(nullptr);
       ortEnv.reset();
       ortEnvDestroyed = true;
     }
@@ -43,7 +44,7 @@ void OrtInstanceData::InitOrt(Napi::Env env, int log_level, Napi::Function tenso
     if (!ortEnv) {
       ORT_NAPI_THROW_ERROR_IF(ortEnvDestroyed, env, "OrtEnv already destroyed.");
       ortEnv.reset(new Ort::Env{OrtLoggingLevel(log_level), "onnxruntime-node"});
-      ortDefaultRunOptions_.reset(new Ort::RunOptions{});
+      ortDefaultRunOptions.reset(new Ort::RunOptions{});
     }
   }
 }
