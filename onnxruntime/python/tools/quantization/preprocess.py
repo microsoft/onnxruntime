@@ -53,11 +53,11 @@ Essentially this tool performs the following three (skippable) steps:
         " reduce the effectiveness of quantization, as a tensor with unknown"
         " shape can not be quantized.",
     )
+
     parser.add_argument(
-        "--skip_symbolic_shape",
-        type=bool,
-        default=False,
-        help="Skip symbolic shape inference. Symbolic shape inference is most"
+        "--enable_symbolic_shape",
+        action="store_true",
+        help="Enable symbolic shape inference. Symbolic shape inference is most"
         " effective with transformer based models. Skipping all shape"
         " inferences may reduce the effectiveness of quantization, as a tensor"
         " with unknown shape can not be quantized.",
@@ -114,7 +114,7 @@ Essentially this tool performs the following three (skippable) steps:
 
 if __name__ == "__main__":
     args = parse_arguments()
-    if args.skip_optimization and args.skip_onnx_shape and args.skip_symbolic_shape:
+    if args.skip_optimization and args.skip_onnx_shape and not args.enable_symbolic_shape:
         logger.error("Skipping all three steps, nothing to be done. Quitting...")
         sys.exit()
 
@@ -129,7 +129,7 @@ if __name__ == "__main__":
         args.output,
         args.skip_optimization,
         args.skip_onnx_shape,
-        args.skip_symbolic_shape,
+        args.enable_symbolic_shape,
         args.auto_merge,
         args.int_max,
         args.guess_output_rank,
