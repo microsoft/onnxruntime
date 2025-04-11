@@ -39,7 +39,7 @@ Abstract:
 
 #include "mlasi.h"
 
-#ifdef USE_KLEIDIAI
+#if defined(USE_KLEIDIAI) && !defined(_MSVC_LANG)
 #include "kai/ukernels/matmul/pack/kai_rhs_pack_kxn_bf16p2vlx2b_f32_x32_sme.h"
 #include "kai/ukernels/matmul/pack/kai_lhs_pack_bf16p2vlx2_f32_sme.h"
 #include "kai/ukernels/matmul/matmul_clamp_fp32_bf16p_bf16p/kai_matmul_clamp_f32_bf16p2vlx2_bf16p2vlx2_2vlx2vl_sme2_mopa.h"
@@ -229,7 +229,7 @@ MlasSBGemmOperation(const ptrdiff_t ThreadCountM, const ptrdiff_t ThreadCountN, 
     size_t RangeStartM;
     size_t RangeCountM;
 
-#ifdef USE_KLEIDIAI
+#if defined(USE_KLEIDIAI) && !defined(_MSVC_LANG)
     if (MLAS_CPUIDINFO::GetCPUIDInfo().HasArm_SME()) {
         const size_t m_step = kai_get_m_step_matmul_clamp_f32_bf16p2vlx2_bf16p2vlx2_2vlx2vl_sme2_mopa();
         const size_t BlockedM = (M + m_step - 1) / m_step;
@@ -252,7 +252,7 @@ MlasSBGemmOperation(const ptrdiff_t ThreadCountM, const ptrdiff_t ThreadCountN, 
     size_t RangeCountN;
 
     size_t n_step = MLAS_SGEMM_STRIDEN_THREAD_ALIGN;
-#ifdef USE_KLEIDIAI
+#if defined(USE_KLEIDIAI) && !defined(_MSVC_LANG)
     if (MLAS_CPUIDINFO::GetCPUIDInfo().HasArm_SME()) {
         n_step = kai_get_n_step_matmul_clamp_f32_bf16p2vlx2_bf16p2vlx2_2vlx2vl_sme2_mopa();
     }
@@ -271,7 +271,7 @@ MlasSBGemmOperation(const ptrdiff_t ThreadCountM, const ptrdiff_t ThreadCountN, 
     float* C = DataParams->C + RangeStartM * ldc + RangeStartN;
     const float* bias = DataParams->Bias;
 
-#ifdef USE_KLEIDIAI
+#if defined(USE_KLEIDIAI) && !defined(_MSVC_LANG)
     if (MLAS_CPUIDINFO::GetCPUIDInfo().HasArm_SME()) {
         const size_t lhs_offset = kai_get_lhs_packed_offset_matmul_clamp_f32_bf16p2vlx2_bf16p2vlx2_2vlx2vl_sme2_mopa(
             RangeStartM, K);
@@ -358,7 +358,7 @@ MlasSBGemmPackBSize(size_t N, size_t K)
     if (dispatch == nullptr) return 0;
 
     size_t BytesRequired;
-#ifdef USE_KLEIDIAI
+#if defined(USE_KLEIDIAI) && !defined(_MSVC_LANG)
     if (MLAS_CPUIDINFO::GetCPUIDInfo().HasArm_SME()) {
         BytesRequired = kai_get_rhs_packed_size_rhs_pack_kxn_bf16p2vlx2b_f32_x32_sme(N, K);
     } else
@@ -396,7 +396,7 @@ MlasSBGemmBatch(const size_t M, const size_t N, const size_t K, const size_t Bat
     if (dispatch == nullptr) return;
 
     std::vector<MLAS_SBGEMM_DATA_PARAMS> PackedData;
-#ifdef USE_KLEIDIAI
+#if defined(USE_KLEIDIAI) && !defined(_MSVC_LANG)
     if (MLAS_CPUIDINFO::GetCPUIDInfo().HasArm_SME()) {
         const size_t mr = kai_get_mr_matmul_clamp_f32_bf16p2vlx2_bf16p2vlx2_2vlx2vl_sme2_mopa();
         const size_t kr = kai_get_kr_matmul_clamp_f32_bf16p2vlx2_bf16p2vlx2_2vlx2vl_sme2_mopa();

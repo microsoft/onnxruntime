@@ -31,12 +31,12 @@ void SGEMM(benchmark::State& state, bool pack_b, bool trans_a, bool trans_b, flo
 
   if (pack_b) {
     size_t pack_b_size = MlasGemmPackBSize(
-      trans_a ? CblasTrans : CblasNoTrans,
-      CblasNoTrans, N, K);
+        trans_a ? CblasTrans : CblasNoTrans,
+        CblasNoTrans, N, K);
     std::vector<float> B_packed(pack_b_size);
     MlasGemmPackB(
-      trans_a ? CblasTrans : CblasNoTrans,
-      CblasNoTrans, N, K, B.data(), N, B_packed.data());
+        trans_a ? CblasTrans : CblasNoTrans,
+        CblasNoTrans, N, K, B.data(), N, B_packed.data());
 
     MlasGemm(
         trans_a ? CblasTrans : CblasNoTrans,

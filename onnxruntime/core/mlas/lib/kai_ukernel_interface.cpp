@@ -13,12 +13,15 @@
 #include "kai/ukernels/matmul/matmul_clamp_f32_qai8dxp_qsi4c32p/kai_matmul_clamp_f32_qai8dxp1x4_qsi4c32p4x4_1x4_neon_dotprod.h"
 #include "kai/ukernels/matmul/matmul_clamp_f32_qai8dxp_qsi4c32p/kai_matmul_clamp_f32_qai8dxp4x4_qsi4c32p4x4_16x4_neon_dotprod.h"
 #include "kai/ukernels/matmul/matmul_clamp_f32_qai8dxp_qsi4c32p/kai_matmul_clamp_f32_qai8dxp1x8_qsi4c32p4x8_1x4x32_neon_dotprod.h"
-#include "kai/ukernels/matmul/matmul_clamp_f32_qsi8d32p_qsi4c32p/kai_matmul_clamp_f32_qsi8d32p1vlx4_qsi4c32p4vlx4_1vlx4vl_sme2_mopa.h"
 #include "kai/ukernels/matmul/matmul_clamp_f32_qai8dxp_qsi4c32p/kai_matmul_clamp_f32_qai8dxp4x8_qsi4c32p4x8_16x4x32_neon_i8mm.h"
 #include "kai/ukernels/matmul/pack/kai_rhs_pack_nxk_qsi4c32p_qsu4c32s1s0.h"
 #include "kai/ukernels/matmul/pack/kai_rhs_pack_nxk_qsi4c32ps1s0scalef16_qsu4c32s16s0_neon.h"
 #include "kai/ukernels/matmul/pack/kai_lhs_quant_pack_qai8dxp_f32.h"
 #include "kai/ukernels/matmul/pack/kai_lhs_quant_pack_qsi8d32p_f32_neon.h"
+
+#ifndef _MSVC_LANG
+#include "kai/ukernels/matmul/matmul_clamp_f32_qsi8d32p_qsi4c32p/kai_matmul_clamp_f32_qsi8d32p1vlx4_qsi4c32p4vlx4_1vlx4vl_sme2_mopa.h"
+#endif
 
 const kai_matmul_clamp_f32_qai8dxp_qsi4c32p_ukernel kai_matmul_clamp_f32_qai8dxp1x4_qsi4c32p4x4_1x4_neon_dotprod =
     {kai_get_m_step_matmul_clamp_f32_qai8dxp1x4_qsi4c32p4x4_1x4_neon_dotprod,
@@ -72,6 +75,7 @@ const kai_matmul_clamp_f32_qai8dxp_qsi4c32p_ukernel kai_matmul_clamp_f32_qai8dxp
       kai_get_dst_size_matmul_clamp_f32_qai8dxp4x8_qsi4c32p4x8_16x4x32_neon_i8mm,
       kai_run_matmul_clamp_f32_qai8dxp4x8_qsi4c32p4x8_16x4x32_neon_i8mm};
 
+#ifndef _MSVC_LANG
 const kai_matmul_clamp_f32_qsi8d32p_qsi4c32p_ukernel kai_matmul_clamp_f32_qsi8d32p1vlx4_qsi4c32p4vlx4_1vlx4vl_sme2_mopa =
     {kai_get_m_step_matmul_clamp_f32_qsi8d32p1vlx4_qsi4c32p4vlx4_1vlx4vl_sme2_mopa,
       kai_get_n_step_matmul_clamp_f32_qsi8d32p1vlx4_qsi4c32p4vlx4_1vlx4vl_sme2_mopa,
@@ -84,6 +88,7 @@ const kai_matmul_clamp_f32_qsi8d32p_qsi4c32p_ukernel kai_matmul_clamp_f32_qsi8d3
       kai_get_dst_offset_matmul_clamp_f32_qsi8d32p1vlx4_qsi4c32p4vlx4_1vlx4vl_sme2_mopa,
       kai_get_dst_size_matmul_clamp_f32_qsi8d32p1vlx4_qsi4c32p4vlx4_1vlx4vl_sme2_mopa,
       kai_run_matmul_clamp_f32_qsi8d32p1vlx4_qsi4c32p4vlx4_1vlx4vl_sme2_mopa};
+#endif
 
 class KaiQai8dxpQsi4c32pStrategy: public KleidiAIQ4BitGemmStrategy {
     const kai_matmul_clamp_f32_qai8dxp_qsi4c32p_ukernel ukernel;
@@ -228,8 +233,8 @@ public:
         const size_t scales_len = N * BlockCountK;
         std::vector<uint8_t> rhs(scales_len * (PackedBlkLen / 2 + 2));
         for (size_t i = 0; i < scales_len; i++) {
-            uint16_t *scale = reinterpret_cast<uint16_t *>(&rhs[i * BlockBytes]);
-            *scale = kai_cast_f16_f32(QuantBScale[i / BlkRatio]);
+            MLAS_FP16 *scale = reinterpret_cast<MLAS_FP16 *>(&rhs[i * BlockBytes]);
+            *scale = MLAS_FP16(QuantBScale[i / BlkRatio]);
 
             uint8_t block[PackedBlkLen];
             for (size_t j = 0; j < PackedBlkLen / 2; j++) {
@@ -312,13 +317,18 @@ const KaiQai8dxpQsi4c32pStrategy kai_matmul_clamp_f32_qai8dxp1x8_qsi4c32p4x8_1x4
 const KaiQai8dxpQsi4c32pStrategy kai_matmul_clamp_f32_qai8dxp4x8_qsi4c32p4x8_16x4x32_neon_i8mm_strategy
     (kai_matmul_clamp_f32_qai8dxp4x8_qsi4c32p4x8_16x4x32_neon_i8mm);
 
+#ifndef _MSVC_LANG
 const KaiQsi8d32pQsi4c32pStrategy kai_matmul_clamp_f32_qsi8d32p1vlx4_qsi4c32p4vlx4_1vlx4vl_sme2_mopa_strategy
     (kai_matmul_clamp_f32_qsi8d32p1vlx4_qsi4c32p4vlx4_1vlx4vl_sme2_mopa);
+#endif
 
 const KleidiAIQ4BitGemmStrategy& GetKleidiAIGemmStrategy() {
+#ifndef _MSVC_LANG
     if (MLAS_CPUIDINFO::GetCPUIDInfo().HasArm_SME()) {
         return kai_matmul_clamp_f32_qsi8d32p1vlx4_qsi4c32p4vlx4_1vlx4vl_sme2_mopa_strategy;
-    } else if (MLAS_CPUIDINFO::GetCPUIDInfo().HasArmNeon_I8MM()) {
+    }
+#endif
+    if (MLAS_CPUIDINFO::GetCPUIDInfo().HasArmNeon_I8MM()) {
         return kai_matmul_clamp_f32_qai8dxp4x8_qsi4c32p4x8_16x4x32_neon_i8mm_strategy;
     } else {
         return kai_matmul_clamp_f32_qai8dxp4x4_qsi4c32p4x4_16x4_neon_dotprod_strategy;
@@ -326,9 +336,12 @@ const KleidiAIQ4BitGemmStrategy& GetKleidiAIGemmStrategy() {
 }
 
 const KleidiAIQ4BitGemmStrategy& GetKleidiAIGemvStrategy() {
+#ifndef _MSVC_LANG
     if (MLAS_CPUIDINFO::GetCPUIDInfo().HasArm_SME()) {
         return kai_matmul_clamp_f32_qsi8d32p1vlx4_qsi4c32p4vlx4_1vlx4vl_sme2_mopa_strategy;
-    } else if (MLAS_CPUIDINFO::GetCPUIDInfo().HasArmNeon_I8MM()) {
+    }
+#endif
+    if (MLAS_CPUIDINFO::GetCPUIDInfo().HasArmNeon_I8MM()) {
         return kai_matmul_clamp_f32_qai8dxp1x8_qsi4c32p4x8_1x4x32_neon_dotprod_strategy;
     } else {
         return kai_matmul_clamp_f32_qai8dxp1x4_qsi4c32p4x4_1x4_neon_dotprod_strategy;

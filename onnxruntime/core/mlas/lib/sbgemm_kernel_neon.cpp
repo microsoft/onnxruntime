@@ -21,7 +21,7 @@ Abstract:
 #include "mlasi.h"
 #include "sbgemm.h"
 
-#ifdef USE_KLEIDIAI
+#if defined(USE_KLEIDIAI) && !defined(_MSVC_LANG)
 #include "kai/ukernels/matmul/pack/kai_rhs_pack_kxn_bf16p2vlx2b_f32_x32_sme.h"
 #include "kai/ukernels/matmul/matmul_clamp_fp32_bf16p_bf16p/kai_matmul_clamp_f32_bf16p2vlx2_bf16p2vlx2_2vlx2vl_sme2_mopa.h"
 #endif
@@ -321,7 +321,7 @@ MlasSBGemmConvertPackB(
     const auto* dispatch = MlasSBGemmGetDispatch();
     if (dispatch == nullptr) return;
 
-#ifdef USE_KLEIDIAI
+#if defined(USE_KLEIDIAI) && !defined(_MSVC_LANG)
     if (MLAS_CPUIDINFO::GetCPUIDInfo().HasArm_SME()) {
         const std::vector<float> bias(CountN);
 

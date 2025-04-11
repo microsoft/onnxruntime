@@ -17,7 +17,7 @@ Abstract:
 
 #include "mlasi.h"
 
-#ifdef USE_KLEIDIAI
+#if defined(USE_KLEIDIAI) && !defined(_MSVC_LANG)
 #include "kai/ukernels/matmul/pack/kai_rhs_pack_kxn_f32p2vlx1biasf32_f32_f32_sme.h"
 #include "kai/ukernels/matmul/pack/kai_lhs_pack_f32p2vlx1_f32_sme.h"
 #include "kai/ukernels/matmul/matmul_clamp_f32_f32p_f32p/kai_matmul_clamp_f32_f32p2vlx1_f32p2vlx1biasf32_sme2_mopa.h"
@@ -32,7 +32,7 @@ Abstract:
 
 #define MLAS_SGEMM_TRANSA_ROWS              12
 
-#ifdef USE_KLEIDIAI
+#if defined(USE_KLEIDIAI) && !defined(_MSVC_LANG)
 bool UseKleidiAISgemm(
     CBLAS_TRANSPOSE TransA,
     CBLAS_TRANSPOSE TransB
@@ -1399,11 +1399,11 @@ Return Value:
 
 --*/
 {
-#ifndef USE_KLEIDIAI
+#if !(defined(USE_KLEIDIAI) && !defined(_MSVC_LANG))
     MLAS_UNREFERENCED_PARAMETER(TransB);
 #endif
 
-#ifdef USE_KLEIDIAI
+#if defined(USE_KLEIDIAI) && !defined(_MSVC_LANG)
     if (UseKleidiAISgemm(TransA, TransB)) {
         const size_t dst_stride = ldc * sizeof(float);
 
@@ -1546,7 +1546,7 @@ Return Value:
     size_t RangeStartM;
     size_t RangeCountM;
 
-#ifdef USE_KLEIDIAI
+#if defined(USE_KLEIDIAI) && !defined(_MSVC_LANG)
     if (UseKleidiAISgemm(TransA, TransB)) {
         const size_t m_step = kai_get_m_step_matmul_clamp_f32_f32p2vlx1_f32p2vlx1biasf32_sme2_mopa();
         const size_t BlockedM = (M + m_step - 1) / m_step;
@@ -1567,7 +1567,7 @@ Return Value:
     //
 
     size_t n_step = MLAS_SGEMM_STRIDEN_THREAD_ALIGN;
-#ifdef USE_KLEIDIAI
+#if defined(USE_KLEIDIAI) && !defined(_MSVC_LANG)
     if (UseKleidiAISgemm(TransA, TransB)) {
         n_step = kai_get_n_step_matmul_clamp_f32_f32p2vlx1_f32p2vlx1biasf32_sme2_mopa();
     }
@@ -1597,7 +1597,7 @@ Return Value:
     float* C = DataParams->C + RangeStartM * ldc + RangeStartN;
 
     if (DataParams->BIsPacked) {
-#ifdef USE_KLEIDIAI
+#if defined(USE_KLEIDIAI) && !defined(_MSVC_LANG)
         if (UseKleidiAISgemm(TransA, TransB)) {
             const size_t lhs_packed_offset =
                 kai_get_lhs_packed_offset_matmul_clamp_f32_f32p2vlx1_f32p2vlx1biasf32_sme2_mopa(RangeStartM, K);
@@ -1642,7 +1642,7 @@ MlasGemmBatch(
     }
 
     std::vector<MLAS_SGEMM_DATA_PARAMS> PackedData;
-#ifdef USE_KLEIDIAI
+#if defined(USE_KLEIDIAI) && !defined(_MSVC_LANG)
     size_t LhsPackedStride = 0;
     std::vector<std::byte> LhsPacked;
     std::byte *LhsPackedData = nullptr;
@@ -1782,7 +1782,7 @@ Return Value:
 
 --*/
 {
-#ifndef USE_KLEIDIAI
+#if !(defined(USE_KLEIDIAI) && !defined(_MSVC_LANG))
     MLAS_UNREFERENCED_PARAMETER(TransA);
     MLAS_UNREFERENCED_PARAMETER(TransB);
 #endif
@@ -1791,7 +1791,7 @@ Return Value:
     //
 
     size_t BytesRequired;
-#ifdef USE_KLEIDIAI
+#if defined(USE_KLEIDIAI) && !defined(_MSVC_LANG)
     if (UseKleidiAISgemm(TransA, TransB)) {
         BytesRequired = kai_get_rhs_packed_size_rhs_pack_kxn_f32p2vlx1biasf32_f32_f32_sme(N, K);
     } else
@@ -1851,11 +1851,11 @@ Return Value:
 
 --*/
 {
-#ifndef USE_KLEIDIAI
+#if !(defined(USE_KLEIDIAI) && !defined(_MSVC_LANG))
     MLAS_UNREFERENCED_PARAMETER(TransA);
 #endif
 
-#ifdef USE_KLEIDIAI
+#if defined(USE_KLEIDIAI) && !defined(_MSVC_LANG)
     if (UseKleidiAISgemm(TransA, TransB)) {
         const std::vector<float> bias(N);
 
