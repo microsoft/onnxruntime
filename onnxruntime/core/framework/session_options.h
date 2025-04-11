@@ -70,6 +70,11 @@ struct FreeDimensionOverride {
 using CheckLoadCancellationFn = std::function<bool()>;
 
 struct EpContextModelGenerationOptions {
+  EpContextModelGenerationOptions() = default;
+
+  // Initializes from string key/value pairs in session config options.
+  explicit EpContextModelGenerationOptions(const ConfigOptions& config_options);
+
   bool enable = false;
   bool overwrite_existing_output_file = false;
   bool error_if_no_compiled_nodes = false;

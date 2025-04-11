@@ -1017,46 +1017,26 @@ struct SessionOptions : detail::SessionOptionsImpl<OrtSessionOptions> {
  *
  * Wraps ::OrtModelCompilationOptions object and methods
  */
-struct ModelCompilationOptions;
+struct ModelCompilationOptions : detail::Base<OrtModelCompilationOptions> {
+  using Base = detail::Base<OrtModelCompilationOptions>;
+  using Base::Base;
 
-namespace detail {
+  explicit ModelCompilationOptions(std::nullptr_t) {}              ///< Create an empty ModelCompilationOptions object, must be assigned a valid one to be used.
+  explicit ModelCompilationOptions(OrtModelCompilationOptions* p)  ///< Takes ownership of an OrtModelCompilationOptions
+      : detail::Base<OrtModelCompilationOptions>{p} {}
 
-template <typename T>
-struct ConstModelCompilationOptionsImpl : Base<T> {
-  using B = Base<T>;
-  using B::B;
-};
-
-template <typename T>
-struct ModelCompilationOptionsImpl : ConstModelCompilationOptionsImpl<T> {
-  using B = ConstModelCompilationOptionsImpl<T>;
-  using B::B;
-
-  ModelCompilationOptionsImpl& SetInputModelPath(const ORTCHAR_T* input_model_path);  ///< Wraps OrtApi::ModelCompilationOptions_SetInputModelPath
-  ModelCompilationOptionsImpl& SetInputModelFromBuffer(const void* input_model_data,
-                                                       size_t input_model_data_size);   ///< Wraps OrtApi::ModelCompilationOptions_SetInputModelFromBuffer
-  ModelCompilationOptionsImpl& SetEpContextEmbedMode(bool embed_ep_context_in_model);   ///< Wraps OrtApi::ModelCompilationOptions_SetEpContextEmbedMode
-  ModelCompilationOptionsImpl& SetOutputModelPath(const ORTCHAR_T* output_model_path);  ///< Wraps OrtApi::ModelCompilationOptions_SetOutputModelPath
-  ModelCompilationOptionsImpl& SetOutputModelExternalInitializersFile(const ORTCHAR_T* file_path,
-                                                                      size_t initializer_size_threshold);  ///< Wraps OrtApi::ModelCompilationOptions_SetOutputModelExternalInitializersFile
-  ModelCompilationOptionsImpl& SetOutputModelBuffer(OrtAllocator* allocator, void** output_model_buffer_ptr,
-                                                    size_t* output_model_buffer_size_ptr);  ///< Wraps OrtApi::ModelCompilationOptions_SetOutputModelBuffer
-};
-}  // namespace detail
-
-using UnownedModelCompilationOptions = detail::ModelCompilationOptionsImpl<detail::Unowned<OrtModelCompilationOptions>>;
-using ConstModelCompilationOptions = detail::ConstModelCompilationOptionsImpl<detail::Unowned<const OrtModelCompilationOptions>>;
-
-/** \brief Wrapper around ::OrtModelCompilationOptions
- *
- */
-struct ModelCompilationOptions : detail::ModelCompilationOptionsImpl<OrtModelCompilationOptions> {
-  explicit ModelCompilationOptions(std::nullptr_t) {}                              ///< Create an empty ModelCompilationOptions object, must be assigned a valid one to be used.
   ModelCompilationOptions(const Env& env, const SessionOptions& session_options);  ///< Wraps OrtApi::CreateModelCompilationOptionsFromSessionOptions
   ModelCompilationOptions(const Env& env, ConstSessionOptions session_options);    ///< Wraps OrtApi::CreateModelCompilationOptionsFromSessionOptions
-  explicit ModelCompilationOptions(OrtModelCompilationOptions* p) : ModelCompilationOptionsImpl<OrtModelCompilationOptions>{p} {}
-  UnownedModelCompilationOptions GetUnowned() const { return UnownedModelCompilationOptions{this->p_}; }
-  ConstModelCompilationOptions GetConst() const { return ConstModelCompilationOptions{this->p_}; }
+
+  ModelCompilationOptions& SetInputModelPath(const ORTCHAR_T* input_model_path);  ///< Wraps OrtApi::ModelCompilationOptions_SetInputModelPath
+  ModelCompilationOptions& SetInputModelFromBuffer(const void* input_model_data,
+                                                   size_t input_model_data_size);   ///< Wraps OrtApi::ModelCompilationOptions_SetInputModelFromBuffer
+  ModelCompilationOptions& SetEpContextEmbedMode(bool embed_ep_context_in_model);   ///< Wraps OrtApi::ModelCompilationOptions_SetEpContextEmbedMode
+  ModelCompilationOptions& SetOutputModelPath(const ORTCHAR_T* output_model_path);  ///< Wraps OrtApi::ModelCompilationOptions_SetOutputModelPath
+  ModelCompilationOptions& SetOutputModelExternalInitializersFile(const ORTCHAR_T* file_path,
+                                                                  size_t initializer_size_threshold);  ///< Wraps OrtApi::ModelCompilationOptions_SetOutputModelExternalInitializersFile
+  ModelCompilationOptions& SetOutputModelBuffer(OrtAllocator* allocator, void** output_model_buffer_ptr,
+                                                size_t* output_model_buffer_size_ptr);  ///< Wraps OrtApi::ModelCompilationOptions_SetOutputModelBuffer
 };
 
 /** \brief Compiles an input model to generate a model with EPContext nodes that execute EP-specific kernels. Wraps OrtApi::CompileModels.
@@ -1065,7 +1045,6 @@ struct ModelCompilationOptions : detail::ModelCompilationOptionsImpl<OrtModelCom
  * \param model_compilation_options: Compilation options for a model.
  * \return A Status indicating success or failure.
  */
-Status CompileModel(const Env& env, ConstModelCompilationOptions model_compilation_options);
 Status CompileModel(const Env& env, const ModelCompilationOptions& model_compilation_options);
 #endif  // !defined(ORT_MINIMAL_BUILD)
 

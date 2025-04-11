@@ -97,22 +97,21 @@ void SessionOptions::AddCustomOpLibraryHandle(PathString library_name, void* lib
 }
 #endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_MINIMAL_BUILD_CUSTOM_OPS)
 
+EpContextModelGenerationOptions::EpContextModelGenerationOptions(const ConfigOptions& config_options) {
+  enable = config_options.GetConfigOrDefault(kOrtSessionOptionEpContextEnable, "0") == "1";
+  output_model_file_path = config_options.GetConfigOrDefault(kOrtSessionOptionEpContextFilePath, "");
+  output_external_initializers_file_path = config_options.GetConfigOrDefault(
+      kOrtSessionOptionsEpContextModelExternalInitializersFileName, "");
+  output_external_initializer_size_threshold = 0;
+  embed_ep_context_in_model = config_options.GetConfigOrDefault(kOrtSessionOptionEpContextEmbedMode, "0") == "1";
+}
+
 EpContextModelGenerationOptions SessionOptions::GetEpContextGenerationOptions() const {
   if (this->has_explicit_ep_context_gen_options) {
     return this->ep_context_gen_options;
   }
 
-  // Have to generate a struct from session config options.
-  EpContextModelGenerationOptions options{};
-  options.enable = this->config_options.GetConfigOrDefault(kOrtSessionOptionEpContextEnable, "0") == "1";
-  options.output_model_file_path = this->config_options.GetConfigOrDefault(kOrtSessionOptionEpContextFilePath, "");
-  options.output_external_initializers_file_path = this->config_options.GetConfigOrDefault(
-      kOrtSessionOptionsEpContextModelExternalInitializersFileName, "");
-  options.output_external_initializer_size_threshold = 0;
-  options.embed_ep_context_in_model = this->config_options.GetConfigOrDefault(
-                                          kOrtSessionOptionEpContextEmbedMode, "0") == "1";
-
-  return options;
+  return EpContextModelGenerationOptions(this->config_options);
 }
 
 }  // namespace onnxruntime
