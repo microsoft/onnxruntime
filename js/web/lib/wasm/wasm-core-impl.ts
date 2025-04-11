@@ -177,6 +177,7 @@ type SupportedTensorDataLocationForInputOutput =
   | 'cpu-pinned'
   | 'gpu-buffer'
   | 'ml-tensor'
+  // Use 'ml-tensor' during inference, but output a tensor located on the CPU.
   | 'ml-tensor-cpu-output';
 
 type IOBindingState = {
