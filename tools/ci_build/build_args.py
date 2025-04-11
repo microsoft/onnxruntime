@@ -139,7 +139,11 @@ def add_core_build_args(parser: argparse.ArgumentParser) -> None:
         action="store_true",
         help="[MS Internal] Use preset compile flags for BinSkim compliance.",
     )
-
+    parser.add_argument(
+        "--nightly_build",
+        action=argparse.BooleanOptionalAction,
+        help="Indicate that this is a nightly build (influences package naming/metadata). Defaults to False.",
+    )
 
 def add_cmake_build_config_args(parser: argparse.ArgumentParser) -> None:
     """Adds arguments related to CMake and general build system configuration."""

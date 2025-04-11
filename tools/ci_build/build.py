@@ -1892,8 +1892,29 @@ def build_nuget_package(
     use_qnn,
     use_dml,
     enable_training_apis,
-    msbuild_extra_options,
+    is_nightly_build,
+    msbuild_extra_options, # Expected to be a list of strings like ["key1=value1", "key2=value2"]
 ):
+    """
+    Builds the C# bindings and creates the relevant NuGet package.
+
+    Args:
+        cmake_path: Path to cmake executable.
+        source_dir: Path to the repository root.
+        build_dir: Path to the build output directory.
+        configs: A list or set of build configurations (e.g., ["Release", "Debug"]).
+        use_cuda: Boolean flag for CUDA EP.
+        use_rocm: Boolean flag for ROCm EP.
+        use_openvino: String indicating OpenVINO device, or None.
+        use_tensorrt: Boolean flag for TensorRT EP.
+        use_dnnl: Boolean flag for DNNL EP.
+        use_winml: Boolean flag for WinML.
+        use_qnn: String indicating QNN library kind ('shared_lib', 'static_lib'), or None.
+        use_dml: Boolean flag for DirectML EP.
+        enable_training_apis: Boolean flag for Training APIs.
+        msbuild_extra_options: List of additional MSBuild options (key=value strings).
+        is_nightly_build: Boolean flag indicating if this is a nightly build.
+    """
     if not (is_windows() or is_linux()):
         raise BuildError(
             "Currently csharp builds and nuget package creation is only supported on Windows and Linux platforms."
@@ -1901,30 +1922,31 @@ def build_nuget_package(
 
     csharp_build_dir = os.path.join(source_dir, "csharp")
 
-    # in most cases we don't want/need to include the MAUI mobile targets, as doing so means the mobile workloads
+    # In most cases we don't want/need to include the MAUI mobile targets, as doing so means the mobile workloads
     # must be installed on the machine.
-    # they are only included in the Microsoft.ML.OnnxRuntime nuget package
+    # They are only included in the Microsoft.ML.OnnxRuntime nuget package.
     sln = "OnnxRuntime.DesktopOnly.CSharp.sln"
     have_exclude_mobile_targets_option = "IncludeMobileTargets=false" in msbuild_extra_options
 
-    # derive package name and execution provider based on the build args
+    # --- Derive package name and execution provider based on the build args ---
     target_name = "/t:CreatePackage"
     execution_provider = "/p:ExecutionProvider=None"
     package_name = "/p:OrtPackageId=Microsoft.ML.OnnxRuntime"
-    enable_training_tests = "/p:TrainingEnabledNativeBuild=false"
+    enable_training_tests = "/p:TrainingEnabledNativeBuild=false" # Used for test project, not directly for packing
 
     if enable_training_apis:
         enable_training_tests = "/p:TrainingEnabledNativeBuild=true"
         if use_cuda:
             package_name = "/p:OrtPackageId=Microsoft.ML.OnnxRuntime.Training.Gpu"
+        # Add elif use_rocm here if a separate ROCm training package exists
         else:
             package_name = "/p:OrtPackageId=Microsoft.ML.OnnxRuntime.Training"
     elif use_winml:
         package_name = "/p:OrtPackageId=Microsoft.AI.MachineLearning"
-        target_name = "/t:CreateWindowsAIPackage"
+        target_name = "/t:CreateWindowsAIPackage" # Specific target for WinML packaging
     elif use_openvino:
         execution_provider = "/p:ExecutionProvider=openvino"
-        package_name = "/p:OrtPackageId=Intel.ML.OnnxRuntime.OpenVino"
+        package_name = "/p:OrtPackageId=Intel.ML.OnnxRuntime.OpenVino" # Assuming Intel's package ID
     elif use_tensorrt:
         execution_provider = "/p:ExecutionProvider=tensorrt"
         package_name = "/p:OrtPackageId=Microsoft.ML.OnnxRuntime.TensorRT"
@@ -1932,10 +1954,13 @@ def build_nuget_package(
         execution_provider = "/p:ExecutionProvider=dnnl"
         package_name = "/p:OrtPackageId=Microsoft.ML.OnnxRuntime.DNNL"
     elif use_cuda:
+        # execution_provider remains None for the main GPU package
         package_name = "/p:OrtPackageId=Microsoft.ML.OnnxRuntime.Gpu"
     elif use_dml:
+        # execution_provider remains None for DirectML package
         package_name = "/p:OrtPackageId=Microsoft.ML.OnnxRuntime.DirectML"
     elif use_rocm:
+        # execution_provider remains None for ROCm package
         package_name = "/p:OrtPackageId=Microsoft.ML.OnnxRuntime.ROCm"
     elif use_qnn:
         if use_qnn != "shared_lib":
@@ -1943,96 +1968,114 @@ def build_nuget_package(
         execution_provider = "/p:ExecutionProvider=qnn"
         package_name = "/p:OrtPackageId=Microsoft.ML.OnnxRuntime.QNN"
     elif any("OrtPackageId=" in x for x in msbuild_extra_options):
+        # Allow overriding package ID via extra options
         pass
     else:
-        # we currently only allow building with mobile targets on Windows.
-        # it should be possible to allow building with android targets on Linux but that requires updating the
-        # csproj to separate the inclusion of ios and android targets.
+        # Default CPU package: check if we should include mobile targets
+        # We currently only allow building with mobile targets on Windows.
         if is_windows() and have_exclude_mobile_targets_option is False:
-            # use the sln that include the mobile targets
+            # Use the sln that includes the mobile targets
             sln = "OnnxRuntime.CSharp.sln"
 
-    # explicitly exclude mobile targets in this case
+    # Explicitly exclude mobile targets if not using the full CSharp.sln
     if sln != "OnnxRuntime.CSharp.sln" and have_exclude_mobile_targets_option is False:
         msbuild_extra_options.append("IncludeMobileTargets=false")
 
-    # expand extra_options to add prefix
-    extra_options = ["/p:" + option for option in msbuild_extra_options]
+    # Expand extra_options to add the /p: prefix needed by MSBuild/dotnet build
+    base_msbuild_extra_options = ["/p:" + option for option in msbuild_extra_options]
 
-    # we have to use msbuild directly if including Xamarin targets as dotnet only supports MAUI (.net6)
+    # We have to use msbuild directly if including Xamarin targets (in OnnxRuntime.CSharp.sln)
+    # as dotnet CLI only supports MAUI (.NET 6+) mobile workloads.
     use_dotnet = sln != "OnnxRuntime.CSharp.sln"
 
-    # build csharp bindings and create nuget package for each config
+    # Build C# bindings and create NuGet package for each specified configuration
     for config in configs:
+        log.info(f"Starting NuGet pack for configuration: {config}")
         configuration = "/p:Configuration=" + config
-        extra_options += [configuration, "/p:Platform=Any CPU"]
-        if use_dotnet:
-            cmd_args = ["dotnet", "restore", sln, "--configfile", "NuGet.CSharp.config", *extra_options]
-        else:
-            cmd_args = ["msbuild", sln, "/t:restore", "/p:RestoreConfigFile=NuGet.CSharp.config", *extra_options]
+        # Combine base options with config-specific options for this iteration
+        current_config_msbuild_options = base_msbuild_extra_options + [configuration, "/p:Platform=Any CPU"]
 
-        # set build directory based on build_dir arg
+        # --- Restore Step ---
+        # Restore packages for the solution
+        if use_dotnet:
+            cmd_args_restore = ["dotnet", "restore", sln, "--configfile", "NuGet.CSharp.config", *current_config_msbuild_options]
+        else:
+            # Use MSBuild directly for restore if dealing with older project formats or full solution
+            cmd_args_restore = ["msbuild", sln, "/t:restore", "/p:RestoreConfigFile=NuGet.CSharp.config", *current_config_msbuild_options]
+        run_subprocess(cmd_args_restore, cwd=csharp_build_dir)
+
+
+        # --- Determine native build directory ---
+        # This is where the C++ build placed the native binaries (onnxruntime.dll, etc.)
         native_dir = os.path.normpath(os.path.join(source_dir, build_dir))
         ort_build_dir = "/p:OnnxRuntimeBuildDirectory=" + native_dir
 
-        run_subprocess(cmd_args, cwd=csharp_build_dir)
 
-        if not use_winml:
-            cmd_args = ["dotnet"] if use_dotnet else []
-            cmd_args += [
-                "msbuild",
-                sln,
-                package_name,
-                ort_build_dir,
-                enable_training_tests,
-                *extra_options,
-            ]
-
-            run_subprocess(cmd_args, cwd=csharp_build_dir)
-        else:
+        # --- Intermediate build steps (if required by specific package types like WinML) ---
+        if use_winml:
+            log.info("Running intermediate build step for WinML Interop project...")
             winml_interop_dir = os.path.join(source_dir, "csharp", "src", "Microsoft.AI.MachineLearning.Interop")
             winml_interop_project = os.path.join(winml_interop_dir, "Microsoft.AI.MachineLearning.Interop.csproj")
             winml_interop_project = os.path.normpath(winml_interop_project)
-            cmd_args = [
-                "dotnet",
-                "msbuild",
-                winml_interop_project,
-                configuration,
-                "/p:Platform=Any CPU",
-                ort_build_dir,
-                "-restore",
-            ]
-            run_subprocess(cmd_args, cwd=csharp_build_dir)
+            # WinML Interop project needs to be built before the final packaging step
+            cmd_args_winml_build = [
+                 "dotnet", "msbuild", winml_interop_project,
+                 *current_config_msbuild_options, # Pass config-specific options
+                 ort_build_dir, # Pass native build dir needed by the project
+                 "-restore", # Often needed if not covered by sln restore
+             ]
+            run_subprocess(cmd_args_winml_build, cwd=csharp_build_dir)
+        # Add any other necessary intermediate build steps here if they exist
 
+
+        # --- Final Pack Step for OnnxRuntime.CSharp.proj ---
+        log.info("Running final NuGet packaging step...")
+        # Determine path to nuget.exe if needed (primarily for older projects or direct invocation)
         if is_windows():
             if not use_winml:
-                # user needs to make sure nuget is installed and added to the path variable
+                # Assume nuget.exe is in PATH for standard packages if needed by the project system
                 nuget_exe = "nuget.exe"
             else:
-                # this path is setup by cmake/nuget_helpers.cmake for MSVC on Windows
-                nuget_exe = os.path.normpath(os.path.join(native_dir, config, "nuget_exe", "src", "nuget.exe"))
+                # For WinML, cmake might place nuget.exe in the build output
+                nuget_exe_path_in_build = os.path.normpath(os.path.join(native_dir, config, "nuget_exe", "src", "nuget.exe"))
+                if os.path.exists(nuget_exe_path_in_build):
+                     nuget_exe = nuget_exe_path_in_build
+                else:
+                     log.warning("nuget.exe not found in build directory for WinML, assuming it's in PATH.")
+                     nuget_exe = "nuget.exe" # Fallback to PATH
         else:
-            # `dotnet pack` is used on Linux
-            nuget_exe = "NugetExe_not_set"
-
+             # On Linux, dotnet pack (invoked via msbuild target) is preferred and doesn't usually need nuget.exe path
+             nuget_exe = "NugetExe_not_set"
         nuget_exe_arg = '/p:NugetExe="' + nuget_exe + '"'
 
-        cmd_args = ["dotnet"] if use_dotnet else []
-        cmd_args += [
+
+        # Set the IsReleaseBuild property based on the nightly build flag
+        # Use the simplified one-liner: sets true for non-nightly, false for nightly
+        release_build_flag = f"/p:IsReleaseBuild={str(not is_nightly_build).lower()}"
+
+
+        # Combine all options for the final pack command
+        # Start with config-specific options and add the release flag
+        final_pack_options = current_config_msbuild_options + [release_build_flag]
+
+
+        # Construct the command arguments for the final packaging step
+        cmd_args_pack = ["dotnet"] if use_dotnet else [] # Use 'dotnet msbuild' or 'msbuild'
+        cmd_args_pack += [
             "msbuild",
-            "OnnxRuntime.CSharp.proj",
-            target_name,
-            package_name,
-            execution_provider,
-            ort_build_dir,
-            nuget_exe_arg,
-            *extra_options,
+            "OnnxRuntime.CSharp.proj",  # Target the specific C# project responsible for packaging
+            target_name,                # The MSBuild target to execute (e.g., /t:CreatePackage)
+            package_name,               # Pass the derived package ID (e.g., /p:OrtPackageId=...)
+            execution_provider,         # Pass the EP info if needed (e.g., /p:ExecutionProvider=...)
+            ort_build_dir,              # Pass native build directory location
+            nuget_exe_arg,              # Pass nuget.exe path (might be ignored by modern SDK-style projects)
+            *final_pack_options,        # Pass combined options including Configuration and IsReleaseBuild
         ]
 
-        run_subprocess(cmd_args, cwd=csharp_build_dir)
+        # Execute the final packaging command
+        run_subprocess(cmd_args_pack, cwd=csharp_build_dir)
 
-        log.info(f"nuget package was created in the {config} build output directory.")
-
+        log.info(f"NuGet package creation complete for {config}. Package should be in the output directory within {csharp_build_dir}.")
 
 def run_csharp_tests(
     source_dir,
@@ -2475,10 +2518,11 @@ def main():
     # fail unexpectedly. Similar, if your packaging step forgot to copy a file into the package, we don't know it
     # either.
     if args.build:
+        # Determine if it's a nightly build based on ENV var OR the command line flag
+        is_nightly = bool(os.getenv("NIGHTLY_BUILD") == "1") or args.nightly_build
         # TODO: find asan DLL and copy it to onnxruntime/capi folder when args.enable_address_sanitizer is True and
         #  the target OS is Windows
         if args.build_wheel:
-            nightly_build = bool(os.getenv("NIGHTLY_BUILD") == "1")
             default_training_package_device = bool(os.getenv("DEFAULT_TRAINING_PACKAGE_DEVICE") == "1")
             build_python_wheel(
                 source_dir,
@@ -2502,7 +2546,7 @@ def main():
                 args.use_qnn,
                 args.wheel_name_suffix,
                 args.enable_training,
-                nightly_build=nightly_build,
+                nightly_build=is_nightly,
                 default_training_package_device=default_training_package_device,
                 use_ninja=(args.cmake_generator == "Ninja"),
                 enable_training_apis=args.enable_training_apis,
@@ -2524,6 +2568,7 @@ def main():
                 args.use_qnn,
                 getattr(args, "use_dml", False),
                 args.enable_training_apis,
+                is_nightly_build=is_nightly,
                 normalize_arg_list(args.msbuild_extra_options),
             )
 

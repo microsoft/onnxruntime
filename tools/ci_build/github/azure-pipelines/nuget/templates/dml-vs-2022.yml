@@ -95,8 +95,32 @@ stages:
            @echo ##vso[task.setvariable variable=ProtocDirectory]$(Build.BinariesDirectory)\RelWithDebInfo\vcpkg_installed\x64-windows\tools\protobuf
 
       - powershell: |
-            python tools\ci_build\build.py ${{ parameters.BuildCommand }} --use_binskim_compliant_compile_flags --parallel --use_vcpkg --use_vcpkg_ms_internal_asset_cache --build_csharp --build --update --config $(BuildConfig) --build_nuget --msbuild_extra_options IncludeMobileTargets=false ${{ variables.build_py_lto_flag }}
-
+          $buildArgs = @(
+            "${{ parameters.BuildCommand }}",
+            "--use_binskim_compliant_compile_flags",
+            "--parallel",
+            "--use_vcpkg",
+            "--use_vcpkg_ms_internal_asset_cache",
+            "--build_csharp",
+            "--build",
+            "--update",
+            "--config", "$(BuildConfig)",
+            "--build_nuget",
+            "--msbuild_extra_options", "IncludeMobileTargets=false"
+          )
+          if ("${{ variables.build_py_lto_flag }}") {
+            $buildArgs += "${{ variables.build_py_lto_flag }}"
+          }
+          # Conditionally add --nightly_build based on IsReleaseBuild parameter
+          if ("${{ parameters.IsReleaseBuild }}" -eq $false) {
+            Write-Host "IsReleaseBuild is false, adding --nightly_build flag."
+            $buildArgs += "--nightly_build"
+          } else {
+            Write-Host "IsReleaseBuild is true, not adding --nightly_build flag (will use default --no-nightly_build)."
+            # No flag needed here, relies on build.py default
+          }
+          python tools\ci_build\build.py $buildArgs
+        displayName: 'Build ORT Core, C#, NuGet'
 
       # The Configuration variable is required to build C#
       - script: |
@@ -134,7 +158,7 @@ stages:
         - script: |
            ${{ parameters.NuPackScript }}
           workingDirectory: '$(Build.SourcesDirectory)\csharp'
-          displayName: 'Create NuGet Package'
+          displayName: 'Post Build Script After Creating NuGet Package'
           failOnStderr: true
 
         - task: 1ES.PublishPipelineArtifact@1
