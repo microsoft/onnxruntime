@@ -38,8 +38,9 @@ std::vector<AllocatorPtr> CPUExecutionProvider::CreatePreferredAllocators() {
                                         DEFAULT_CPU_ALLOCATOR_DEVICE_ID, create_arena};
 
   // We do not want arena for this, as it would not respect alignment.
+  constexpr const bool use_arena_false = false;
   AllocatorCreationInfo device_info_cpu_aligned_4k{[](int) { return std::make_unique<CPUAllocatorAligned4K>(); },
-                                                   DEFAULT_CPU_ALLOCATOR_DEVICE_ID};
+                                                   DEFAULT_CPU_ALLOCATOR_DEVICE_ID, use_arena_false};
 
   result.push_back(CreateAllocator(device_info_cpu));
   result.push_back(CreateAllocator(device_info_cpu_aligned_4k));
