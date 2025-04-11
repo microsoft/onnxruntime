@@ -6,7 +6,7 @@
 #include "core/providers/webnn/builders/helper.h"
 #include "core/providers/webnn/builders/model_builder.h"
 #include "core/providers/webnn/builders/op_builder_factory.h"
-#include "cmath"
+#include <cmath>
 
 #include "base_op_builder.h"
 #include "attention_helper.h"
@@ -61,6 +61,9 @@ Status MultiHeadAttentionOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_bu
   const auto& input_defs = node.InputDefs();
   emscripten::val common_options = emscripten::val::object();
   emscripten::val options = emscripten::val::object();
+  emscripten::val transpose_options = emscripten::val::object();
+  emscripten::val split_options = emscripten::val::object();
+
   bool k_reshape_skip, v_reshape_skip;
   emscripten::val query_input, key_input, value_input;
 
@@ -101,8 +104,9 @@ Status MultiHeadAttentionOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_bu
       kv_sequence_length = SafeInt<uint32_t>(input_k_shape[1]);
       k_reshape_skip = false;
       v_reshape_skip = false;
-      options.set("axis", 3);
-      emscripten::val output_array = model_builder.GetBuilder().call<emscripten::val>("split", key_input, 2, options);
+      split_options.set("axis", 3);
+      split_options.set("label", node.Name() + "_/MHA/key/split");
+      emscripten::val output_array = model_builder.GetBuilder().call<emscripten::val>("split", key_input, 2, split_options);
       key_input = output_array[0];
       value_input = output_array[1];
     } else {
@@ -134,8 +138,9 @@ Status MultiHeadAttentionOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_bu
     hidden_size = SafeInt<uint32_t>(num_heads * head_size);
     k_reshape_skip = false;
     v_reshape_skip = false;
-    options.set("axis", 3);
-    emscripten::val output_array = model_builder.GetBuilder().call<emscripten::val>("split", query_input, 3, options);
+    split_options.set("axis", 3);
+    split_options.set("label", node.Name() + "_/MHA/query/split");
+    emscripten::val output_array = model_builder.GetBuilder().call<emscripten::val>("split", query_input, 3, split_options);
     query_input = output_array[0];
     key_input = output_array[1];
     value_input = output_array[2];
@@ -165,9 +170,9 @@ Status MultiHeadAttentionOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_bu
   emscripten::val reshaped_query = model_builder.GetBuilder().call<emscripten::val>(
       "reshape", query_input, emscripten::val::array(q_reshape_tensor_shape), common_options);
 
-  options.set("permutation", emscripten::val::array(std::vector<uint32_t>({0, 2, 1, 3})));
-  options.set("label", node.Name() + "_/MHA/query/transpose");
-  emscripten::val new_query = model_builder.GetBuilder().call<emscripten::val>("transpose", reshaped_query, options);
+  transpose_options.set("permutation", emscripten::val::array(std::vector<uint32_t>({0, 2, 1, 3})));
+  transpose_options.set("label", node.Name() + "_/MHA/query/transpose");
+  emscripten::val new_query = model_builder.GetBuilder().call<emscripten::val>("transpose", reshaped_query, transpose_options);
 
   emscripten::val present_key, present_value;
   if (!k_reshape_skip) {
@@ -175,9 +180,8 @@ Status MultiHeadAttentionOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_bu
     present_key = model_builder.GetBuilder().call<emscripten::val>(
         "reshape", key_input, emscripten::val::array(reshape_tensor_shape), common_options);
 
-    options.set("permutation", emscripten::val::array(std::vector<uint32_t>({0, 2, 1, 3})));
-    options.set("label", node.Name() + "_/MHA/key/transpose");
-    present_key = model_builder.GetBuilder().call<emscripten::val>("transpose", present_key, options);
+    transpose_options.set("label", node.Name() + "_/MHA/key/transpose");
+    present_key = model_builder.GetBuilder().call<emscripten::val>("transpose", present_key, transpose_options);
 
     if (TensorExists(input_defs, 6)) {
       emscripten::val past_key_input = model_builder.GetOperand(input_defs[6]->Name());
@@ -197,18 +201,18 @@ Status MultiHeadAttentionOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_bu
     present_key = key_input;
   }
 
-  options.set("permutation", emscripten::val::array(std::vector<uint32_t>({0, 1, 3, 2})));
-  options.set("label", node.Name() + "_/MHA/key/transpose");
-  emscripten::val new_key = model_builder.GetBuilder().call<emscripten::val>("transpose", present_key, options);
+  transpose_options.set("permutation", emscripten::val::array(std::vector<uint32_t>({0, 1, 3, 2})));
+  transpose_options.set("label", node.Name() + "_/MHA/key/transpose");
+  emscripten::val new_key = model_builder.GetBuilder().call<emscripten::val>("transpose", present_key, transpose_options);
 
   if (!v_reshape_skip) {
     common_options.set("label", node.Name() + "_/MHA/value/reshape_1");
     present_value = model_builder.GetBuilder().call<emscripten::val>(
         "reshape", value_input, emscripten::val::array(reshape_tensor_shape), common_options);
 
-    options.set("permutation", emscripten::val::array(std::vector<uint32_t>({0, 2, 1, 3})));
-    options.set("label", node.Name() + "_/MHA/value/transpose");
-    present_value = model_builder.GetBuilder().call<emscripten::val>("transpose", present_value, options);
+    transpose_options.set("permutation", emscripten::val::array(std::vector<uint32_t>({0, 2, 1, 3})));
+    transpose_options.set("label", node.Name() + "_/MHA/value/transpose");
+    present_value = model_builder.GetBuilder().call<emscripten::val>("transpose", present_value, transpose_options);
 
     if (TensorExists(input_defs, 7)) {
       emscripten::val past_value_input = model_builder.GetOperand(input_defs[7]->Name());
@@ -268,7 +272,6 @@ bool MultiHeadAttentionOpBuilder::IsOpSupportedImpl(const GraphViewer& graph_vie
                                                     const WebnnDeviceType /* device_type */,
                                                     const logging::Logger& logger) const {
   const auto& input_defs = node.InputDefs();
-  // const auto& op_type = node.OpType();
   NodeAttrHelper helper(node);
   const uint32_t num_heads = helper.Get("num_heads", 0);
   if (num_heads == 0) {
@@ -297,8 +300,6 @@ bool MultiHeadAttentionOpBuilder::HasSupportedInputsImpl(const GraphViewer&, con
     return false;
   }
 
-  // int num_inputs = 0;
-  // std::vector<bool> flag_inputs;
   std::vector<int32_t> input_types;
   for (int i = 0; i < 10; i++) {
     if (i == 3 || i == 4 || i == 8 || i == 9) {
@@ -308,7 +309,6 @@ bool MultiHeadAttentionOpBuilder::HasSupportedInputsImpl(const GraphViewer&, con
       }
     } else {
       if (TensorExists(input_defs, i)) {
-        // num_inputs += 1;
         int32_t input_type = 0;
         if (!GetType(*input_defs[i], input_type, logger)) {
           return false;
