@@ -72,9 +72,9 @@ void AllocatorDefaultFree(void* p) {
 }
 
 #else
-void* AllocatorDefaultAlloc(size_t size) {
-  const size_t alignment = MlasGetPreferredBufferAlignment();
-  if (size <= 0) return nullptr;
+
+void* AllocatorDefaultAllocAligned(size_t size, size_t alignment) {
+  if (size == 0) return nullptr;
   size += MLAS_SYMM_QGEMM_BUF_OVERRUN;
   void* p;
 #if _MSC_VER
@@ -91,6 +91,11 @@ void* AllocatorDefaultAlloc(size_t size) {
     ORT_THROW_EX(std::bad_alloc);
 #endif
   return p;
+}
+
+void* AllocatorDefaultAlloc(size_t size) {
+  const size_t alignment = MlasGetPreferredBufferAlignment();
+  return AllocatorDefaultAllocAligned(size, alignment);
 }
 
 void AllocatorDefaultFree(void* p) {
@@ -111,6 +116,14 @@ void CPUAllocator::Free(void* p) {
   AllocatorDefaultFree(p);
 }
 
+void* CPUAllocatorAligned4K::Alloc(size_t size) {
+  return AllocatorDefaultAllocAligned(size, kAlloc4KAlignment);
+}
+
+void CPUAllocatorAligned4K::Free(void* p) {
+  AllocatorDefaultFree(p);
+}
+
 void* AllocateBufferWithOptions(IAllocator& alloc, size_t size, bool use_reserve, Stream* stream, WaitNotificationFn wait_fn) {
   if (use_reserve)
     return alloc.Reserve(size);
@@ -128,7 +141,9 @@ void* AllocateBufferWithOptions(IAllocator& alloc, size_t size, bool use_reserve
 }
 
 size_t GetAlignmentForDevice(const OrtDevice& ort_device) {
-  if (ort_device.MemType() == OrtDevice::MemType::QNN_HTP_SHARED) {
+  auto mem_type = ort_device.MemType();
+  if (mem_type == OrtDevice::MemType::QNN_HTP_SHARED ||
+      mem_type == OrtDevice::MemType::CPU_ALIGNED_4K) {
     return kAlloc4KAlignment;
   }
   return kAllocAlignment;
@@ -138,9 +153,19 @@ bool IsCpuDeviceWithAllocator(const OrtDevice& ort_device) {
   if (ort_device.Type() == OrtDevice::CPU) {
     auto mem_type = ort_device.MemType();
     return mem_type == OrtDevice::MemType::DEFAULT ||
+           mem_type == OrtDevice::MemType::CPU_ALIGNED_4K ||
            mem_type == OrtDevice::MemType::QNN_HTP_SHARED;
   }
   return false;
+}
+
+size_t GetAlignmentForCpuBasedExecutionProvider(std::string_view provider_type) {
+  if (provider_type == kQnnExecutionProvider ||
+      provider_type == kOpenVINOExecutionProvider ||
+      provider_type == kVitisAIExecutionProvider) {
+    return kAlloc4KAlignment;
+  }
+  return kAllocAlignment;
 }
 
 }  // namespace onnxruntime
@@ -184,6 +209,11 @@ ORT_API_STATUS_IMPL(OrtApis::CreateMemoryInfo, _In_ const char* name1, enum OrtA
     *out = new OrtMemoryInfo(
         onnxruntime::QNN_HTP_SHARED, type,
         OrtDevice(OrtDevice::CPU, OrtDevice::MemType::QNN_HTP_SHARED, static_cast<OrtDevice::DeviceId>(id1)),
+        id1, mem_type1);
+  } else if (strcmp(name1, onnxruntime::CPU_ALIGNED_4K) == 0) {
+    *out = new OrtMemoryInfo(
+        onnxruntime::CPU_ALIGNED_4K, type,
+        OrtDevice(OrtDevice::CPU, OrtDevice::MemType::CPU_ALIGNED_4K, static_cast<OrtDevice::DeviceId>(id1)),
         id1, mem_type1);
   } else {
     return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "Specified device is not supported.");

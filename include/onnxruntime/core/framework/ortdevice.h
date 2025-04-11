@@ -26,6 +26,7 @@ struct OrtDevice {
     static const MemoryType HIP_PINNED = 2;
     static const MemoryType CANN_PINNED = 3;
     static const MemoryType QNN_HTP_SHARED = 4;
+    static const MemoryType CPU_ALIGNED_4K = 5;
   };
 
   constexpr OrtDevice(DeviceType device_type_, MemoryType memory_type_, DeviceId device_id_)
