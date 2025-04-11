@@ -38,6 +38,7 @@ enum AttentionQkvFormat {
   QKV_BSN3H,             // for TRT fused attention, qkv are packed
   QKV_BS3NH,             // for DecoderMaskedMultiHeadAttention, qkv are packed
   QKV_TN3H,              // for TRT fused attention, qkv are packed and paddings are removed
+  QKV_T3NH,              // for paged attention, qkv are packed and paddings are removed // TODO(aciddelgado): is this what we want? not directly supported by kernel.
 };
 
 enum AttentionKernelType {

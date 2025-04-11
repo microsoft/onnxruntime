@@ -149,6 +149,11 @@ size_t get_softmax_lse_size(size_t seqlen, size_t batch_size, size_t num_heads) 
   return bytes;
 }
 
+size_t get_softmax_lse_size(size_t token_count, size_t num_heads) {
+  size_t bytes = sizeof(float) * token_count * num_heads;
+  return bytes;
+}
+
 size_t get_softmax_lse_accum_size(size_t num_splits, size_t batch_size, size_t num_heads, size_t seqlen_q) {
   size_t bytes = sizeof(float) * num_splits * batch_size * seqlen_q * num_heads;
   return bytes;
@@ -335,6 +340,8 @@ Status mha_fwd(const cudaDeviceProp& dprops,
   run_mha_fwd(params, stream);
   return Status::OK();
 }
+
+// TODO(aciddelgado): Baiju wants this https://github.com/Dao-AILab/flash-attention/pull/824
 
 Status mha_varlen_fwd(const cudaDeviceProp& dprops,
                       cudaStream_t stream,

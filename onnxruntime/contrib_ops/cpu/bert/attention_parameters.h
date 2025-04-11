@@ -102,6 +102,21 @@ struct GroupQueryAttentionParameters : AttentionParameters {
   int* zero_ptr;
 };
 
+// Parameters deduced from node attributes and inputs/outputs.
+struct PagedAttentionParameters : AttentionParameters {
+  int token_count;              // number of tokens in packed query
+  int kv_num_heads;
+  int kv_hidden_size;
+  int block_size;               // block size for kv cache
+  int max_num_blocks_per_seq;   // max number of blocks per sequence for kv cache
+  int num_blocks;               // number of blocks in kv cache
+  int rotary_dim;               // rotary embedding dimension
+  int local_window_size;        // The window size excludes current token. It only includes tokens on the left side.
+  bool is_packed_qkv;
+  bool rotary_interleaved;
+  float softcap;
+};
+
 // Parameters for sparse attention.
 struct SparseAttentionParameters : AttentionParameters {
   int kv_hidden_size;              // hidden size of key or value
