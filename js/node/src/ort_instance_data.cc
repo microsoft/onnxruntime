@@ -4,7 +4,6 @@
 #include "common.h"
 #include "ort_instance_data.h"
 #include "onnxruntime_cxx_api.h"
-#include <Windows.h>
 
 std::unique_ptr<Ort::Env> OrtInstanceData::ortEnv;
 std::mutex OrtInstanceData::ortEnvMutex;

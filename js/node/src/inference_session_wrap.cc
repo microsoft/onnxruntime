@@ -52,6 +52,7 @@ Napi::Value InferenceSessionWrap::InitOrtOnce(const Napi::CallbackInfo& info) {
   Napi::Function tensorConstructor = info[1].As<Napi::Function>();
 
   OrtInstanceData::InitOrt(env, log_level, tensorConstructor);
+  defaultRunOptions_.reset(new Ort::RunOptions{});
 
   return env.Undefined();
 }
@@ -70,7 +71,6 @@ Napi::Value InferenceSessionWrap::LoadModel(const Napi::CallbackInfo& info) {
   ORT_NAPI_THROW_TYPEERROR_IF(argsLength == 0, env, "Expect argument: model file path or buffer.");
 
   try {
-    defaultRunOptions_.reset(new Ort::RunOptions{});
     Ort::SessionOptions sessionOptions;
 
     if (argsLength == 2 && info[0].IsString() && info[1].IsObject()) {
