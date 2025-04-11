@@ -16,22 +16,12 @@ struct MyProviderFactory : IExecutionProviderFactory {
   ~MyProviderFactory() override {}
 
   std::unique_ptr<IExecutionProvider> CreateProvider() override;
-  std::unique_ptr<IExecutionProvider> CreateProvider(const OrtSessionOptions* session_options,
-                                                     const OrtLogger* logger) override;
 
  private:
   MyProviderInfo info_;
 };
 
 std::unique_ptr<IExecutionProvider> MyProviderFactory::CreateProvider() {
-  std::cout << "My EP provider created, with device id: " << info_.device_id << ", some_option: " << info_.some_config << std::endl;
-  return std::make_unique<MyExecutionProvider>(info_);
-}
-
-std::unique_ptr<IExecutionProvider> MyProviderFactory::CreateProvider(const OrtSessionOptions* session_options,
-                                                                      const OrtLogger* logger) {
-  ORT_UNUSED_PARAMETER(session_options);
-  ORT_UNUSED_PARAMETER(logger);
   std::cout << "My EP provider created, with device id: " << info_.device_id << ", some_option: " << info_.some_config << std::endl;
   return std::make_unique<MyExecutionProvider>(info_);
 }

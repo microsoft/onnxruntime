@@ -16,8 +16,8 @@ struct CpuProviderFactory : IExecutionProviderFactory {
   CpuProviderFactory(bool create_arena) : create_arena_(create_arena) {}
   ~CpuProviderFactory() override = default;
   std::unique_ptr<IExecutionProvider> CreateProvider() override;
-  std::unique_ptr<IExecutionProvider> CreateProvider(const OrtSessionOptions* session_options,
-                                                     const OrtLogger* logger) override;
+  std::unique_ptr<IExecutionProvider> CreateProvider(const OrtSessionOptions& session_options,
+                                                     const OrtLogger& session_logger) override;
 
  private:
   bool create_arena_;
@@ -29,12 +29,14 @@ std::unique_ptr<IExecutionProvider> CpuProviderFactory::CreateProvider() {
   return std::make_unique<CPUExecutionProvider>(info);
 }
 
-std::unique_ptr<IExecutionProvider> CpuProviderFactory::CreateProvider(const OrtSessionOptions* session_options,
-                                                                       const OrtLogger* logger) {
-  ORT_UNUSED_PARAMETER(logger);
+std::unique_ptr<IExecutionProvider> CpuProviderFactory::CreateProvider(const OrtSessionOptions& session_options,
+                                                                       const OrtLogger& session_logger) {
   CPUExecutionProviderInfo info;
-  info.create_arena = session_options->value.enable_cpu_mem_arena;
-  return std::make_unique<CPUExecutionProvider>(info);
+  info.create_arena = session_options.value.enable_cpu_mem_arena;
+
+  auto cpu_ep = std::make_unique<CPUExecutionProvider>(info);
+  cpu_ep->SetLogger(reinterpret_cast<const logging::Logger*>(&session_logger));
+  return cpu_ep;
 }
 
 std::shared_ptr<IExecutionProviderFactory> CPUProviderFactoryCreator::Create(int use_arena) {

@@ -375,10 +375,9 @@ struct ProviderHostImpl : ProviderHost {
   bool IAllocator__CalcMemSizeForArrayWithAlignment(size_t nmemb, size_t size, size_t alignment, size_t* out) override { return IAllocator::CalcMemSizeForArrayWithAlignment(nmemb, size, alignment, out); }
 
   // IExecutionProviderFactory
-  std::unique_ptr<IExecutionProvider> IExecutionProviderFactory__CreateProvider(IExecutionProviderFactory* p,
-                                                                                const OrtSessionOptions* session_options,
-                                                                                const OrtLogger* logger) override {
-    return p->IExecutionProviderFactory::CreateProvider(session_options, logger);
+  std::unique_ptr<IExecutionProvider> IExecutionProviderFactory__CreateProvider(
+      IExecutionProviderFactory* p, const OrtSessionOptions& session_options, const OrtLogger& session_logger) override {
+    return p->IExecutionProviderFactory::CreateProvider(session_options, session_logger);
   }
 
   // IExecutionProvider (direct)

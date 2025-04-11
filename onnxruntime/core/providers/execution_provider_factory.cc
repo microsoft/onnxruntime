@@ -5,8 +5,8 @@
 #include "core/framework/execution_provider.h"
 
 namespace onnxruntime {
-std::unique_ptr<IExecutionProvider> IExecutionProviderFactory::CreateProvider(const OrtSessionOptions* /*session_options*/,
-                                                                              const OrtLogger* /*logger*/) {
+std::unique_ptr<IExecutionProvider> IExecutionProviderFactory::CreateProvider(
+    const OrtSessionOptions& /*session_options*/, const OrtLogger& /*session_logger*/) {
   return CreateProvider();
 }
 }  // namespace onnxruntime

@@ -17,10 +17,9 @@ struct QNNProviderFactory : IExecutionProviderFactory {
     return std::make_unique<QNNExecutionProvider>(provider_options_map_, config_options_);
   }
 
-  std::unique_ptr<IExecutionProvider> CreateProvider(const OrtSessionOptions* session_options,
-                                                     const OrtLogger* logger) override {
-    ORT_UNUSED_PARAMETER(logger);
-    const ConfigOptions& config_options = session_options->GetConfigOptions();
+  std::unique_ptr<IExecutionProvider> CreateProvider(const OrtSessionOptions& session_options,
+                                                     const OrtLogger& session_logger) override {
+    const ConfigOptions& config_options = session_options.GetConfigOptions();
     const std::unordered_map<std::string, std::string>& config_options_map = config_options.GetConfigOptionsMap();
 
     // The implementation of the SessionOptionsAppendExecutionProvider C API function automatically adds EP options to
@@ -33,7 +32,10 @@ struct QNNProviderFactory : IExecutionProviderFactory {
         provider_options[key.substr(key_prefix.size())] = value;
       }
     }
-    return std::make_unique<QNNExecutionProvider>(provider_options, &config_options);
+
+    auto qnn_ep = std::make_unique<QNNExecutionProvider>(provider_options, &config_options);
+    qnn_ep->SetLogger(reinterpret_cast<const logging::Logger*>(&session_logger));
+    return qnn_ep;
   }
 
  private:

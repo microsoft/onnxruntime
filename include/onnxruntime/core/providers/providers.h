@@ -23,10 +23,10 @@ struct IExecutionProviderFactory {
   ///
   /// This version of CreateProvider() is used by InferenceSession when registering EPs.
   /// </summary>
-  /// <param name="session_options"></param>
-  /// <param name="logger"></param>
-  /// <returns></returns>
-  virtual std::unique_ptr<IExecutionProvider> CreateProvider(const OrtSessionOptions* session_options,
-                                                             const OrtLogger* logger);
+  /// <param name="session_options">Options for the session in which the IExecutionProvider is used</param>
+  /// <param name="session_logger">Session logger that should be used by the IExecutionProvider.</param>
+  /// <returns>An IExecutionProvider</returns>
+  virtual std::unique_ptr<IExecutionProvider> CreateProvider(const OrtSessionOptions& session_options,
+                                                             const OrtLogger& session_logger);
 };
 }  // namespace onnxruntime
