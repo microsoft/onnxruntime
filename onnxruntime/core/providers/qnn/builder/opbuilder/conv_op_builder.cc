@@ -111,7 +111,7 @@ Status ConvOpBuilder::IsOpSupported(QnnModelWrapper& qnn_model_wrapper,
     }
   }
 
-  // Validate that weight is signed type for per-channel quantization (required by QNN docs).
+  // Validate that weight is signed type for per-channel and blockwise quantization (required by QNN docs).
   if (is_npu_backend) {
     const auto& input_1 = inputs[1];  // weight
     bool is_per_axis_quant = false;
@@ -133,6 +133,21 @@ Status ConvOpBuilder::IsOpSupported(QnnModelWrapper& qnn_model_wrapper,
       } else {
         ORT_RETURN_IF_NOT(quant_axis == 0, "Conv's input[1] must be use axis == 0 for per-channel quantization");
       }
+    }
+
+    bool is_block_quant = false;
+    int64_t quant_block_axis = 0;
+    int64_t quant_block_size = 0;
+    ORT_RETURN_IF_ERROR(qnn_model_wrapper.IsBlockwiseQuantized(input_1, is_block_quant, quant_block_axis, quant_block_size));
+
+    if (is_block_quant) {
+      int32_t elem_data_type = 0;
+      ORT_RETURN_IF_ERROR(utils::GetOnnxTensorElemDataType(input_1.node_arg, elem_data_type));
+
+      const bool is_signed_type = (elem_data_type == ONNX_NAMESPACE::TensorProto_DataType_INT4) ||
+                                  (elem_data_type == ONNX_NAMESPACE::TensorProto_DataType_INT8) ||
+                                  (elem_data_type == ONNX_NAMESPACE::TensorProto_DataType_INT16);
+      ORT_RETURN_IF_NOT(is_signed_type, "Conv weights must be of a signed quantized type if quantized blockwise");
     }
   }
 
@@ -237,10 +252,17 @@ Status ConvOpBuilder::ProcessConv2D3DInputs(QnnModelWrapper& qnn_model_wrapper,
         std::vector<size_t> perm_inv(perm.size());
         ORT_RETURN_IF_ERROR(utils::InvertPerm<size_t>(perm, perm_inv));
         ORT_RETURN_IF_ERROR(input_info.quant_param.HandleTranspose<size_t>(perm_inv));
+      } else if (input_info.quant_param.IsLPBQ()) {  // Transpose quantization parameter's axis if this is using LPBQ quantization.
+        // Only Conv2d supports LPBQ.
+        ORT_RETURN_IF((conv_type != OnnxConvType::kConv) || is_3d, "Apply LPBQ only on Conv2d");
+        const std::vector<size_t> perm = nchw2hwcn_perm;
+        std::vector<size_t> perm_inv(perm.size());
+        ORT_RETURN_IF_ERROR(utils::InvertPerm<size_t>(perm, perm_inv));
+        ORT_RETURN_IF_ERROR(input_info.quant_param.HandleTranspose<size_t>(perm_inv));
       }
     } else {
       // Add transpose node above weight input.
-      ORT_RETURN_IF(input_info.quant_param.IsPerChannel(),
+      ORT_RETURN_IF(input_info.quant_param.IsPerChannel() || input_info.quant_param.IsBlockwise(),
                     "Non-constant Conv inputs only support per-tensor quantization");
       bool is_graph_input = qnn_model_wrapper.IsGraphInput(input1_name);
       LOGS(logger, VERBOSE) << "Add HWCN Transpose node after input: " << input1_name;
@@ -350,7 +372,7 @@ Status ConvOpBuilder::ProcessConv1DInputs(QnnModelWrapper& qnn_model_wrapper,
       };
 
       if (!input0_info.is_initializer) {
-        ORT_RETURN_IF(input0_info.quant_param.IsPerChannel(),
+        ORT_RETURN_IF(input0_info.quant_param.IsPerChannel() || input0_info.quant_param.IsBlockwise(),
                       "Non-constant Conv inputs only support per-tensor quantization");
 
         // Add Reshape node to transform 1D input to 2D (i.e., set height to 1).
@@ -465,7 +487,7 @@ Status ConvOpBuilder::ProcessConv1DInputs(QnnModelWrapper& qnn_model_wrapper,
       }
     } else {
       // Dynamic weight: Add nodes to reshape to 2D, and then transpose.
-      ORT_RETURN_IF(input_info.quant_param.IsPerChannel(),
+      ORT_RETURN_IF(input_info.quant_param.IsPerChannel() || input_info.quant_param.IsBlockwise(),
                     "Non-constant Conv inputs only support per-tensor quantization");
 
       bool is_graph_input = qnn_model_wrapper.IsGraphInput(input1_name);
