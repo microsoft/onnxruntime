@@ -117,9 +117,18 @@ namespace DmlGraphFusionHelper
         // The tensor may be stored as raw data or in typed fields.
         if (initializer->data_location() == onnx::TensorProto_DataLocation_EXTERNAL)
         {
-            THROW_IF_NOT_OK(onnxruntime::utils::UnpackInitializerData(*initializer, graph.ModelPath(), unpackedExternalTensor));
-            tensorPtr = reinterpret_cast<std::byte*>(unpackedExternalTensor.data());
-            tensorByteSize = unpackedExternalTensor.size();
+            std::basic_string<ORTCHAR_T> external_file_path;
+            onnxruntime::FileOffsetType file_offset;
+            SafeInt<size_t> tensor_byte_size;
+            THROW_IF_NOT_OK(onnxruntime::utils::GetExternalDataInfo(*initializer,  graph.ModelPath(), external_file_path, file_offset, tensor_byte_size));
+            if (external_file_path == onnxruntime::utils::kTensorProtoMemoryAddressTag) {
+                tensorPtr = reinterpret_cast<std::byte*>(file_offset);
+                tensorByteSize = tensor_byte_size;
+            } else {
+                THROW_IF_NOT_OK(onnxruntime::utils::UnpackInitializerData(*initializer, graph.ModelPath(), unpackedExternalTensor));
+                tensorPtr = reinterpret_cast<std::byte*>(unpackedExternalTensor.data());
+                tensorByteSize = unpackedExternalTensor.size();
+            }
         }
         else if (initializer->has_raw_data())
         {
