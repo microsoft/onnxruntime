@@ -5460,7 +5460,7 @@ struct OrtCompileApi {
    * ReleaseOrtModelCompilationsOptions must be called to free the OrtModelCompilationOptions after calling CompileModel.
    *
    * \param[in] env OrtEnv object.
-   * \param[in] session_options The OrtSesstionOptions instance from which to create the OrtModelCompilationOptions.
+   * \param[in] session_options The OrtSessionOptions instance from which to create the OrtModelCompilationOptions.
    * \param[out] out The created OrtModelCompilationOptions instance.
    * \snippet{doc} snippets.dox OrtStatus Return Value
    *
@@ -5538,13 +5538,15 @@ struct OrtCompileApi {
    * \since Version 1.22.
    */
   ORT_API2_STATUS(ModelCompilationOptions_SetOutputModelBuffer, _In_ OrtModelCompilationOptions* model_compile_options,
-                  _Inout_ OrtAllocator* allocator, void** output_model_buffer_ptr, size_t* output_model_buffer_size_ptr);
+                  _Inout_ OrtAllocator* allocator, _Outptr_ void** output_model_buffer_ptr, _Out_ size_t* output_model_buffer_size_ptr);
 
   /** \brief Enables or disables the embedding of EPContext binary data into the `ep_cache_context` attribute. Defaults to false.
    *
    * If enabled, the `ep_cache_context` attribute of EPContext nodes will contain the context binary data.
    * If disabled, the `ep_cache_context` attribute of EPContext nodes will contain the path to the file containing the
    * context binary data.
+   *
+   * See \href https://onnxruntime.ai/docs/execution-providers/EP-Context-Design.html for EPContext details.
    *
    * \param[in] model_compile_options The OrtModelCompilationOptions instance.
    * \param[in] embed_ep_context_in_model True to embed EPContext binary data into the EPContext node `ep_cache_context` attribute.
