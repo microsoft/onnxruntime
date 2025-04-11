@@ -20,10 +20,6 @@ struct NnapiProviderFactory : IExecutionProviderFactory {
   ~NnapiProviderFactory() override {}
 
   std::unique_ptr<IExecutionProvider> CreateProvider() override;
-  std::unique_ptr<IExecutionProvider> CreateProvider(const OrtSessionOptions* /*session_options*/,
-                                                     const OrtLogger* /*logger*/) override {
-    return CreateProvider();
-  }
 
  private:
   const uint32_t nnapi_flags_;

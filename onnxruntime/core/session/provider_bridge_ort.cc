@@ -26,6 +26,7 @@
 #include "core/graph/model.h"
 #include "core/platform/env.h"
 #include "core/providers/common.h"
+#include "core/providers/providers.h"
 #include "core/session/inference_session.h"
 #include "core/session/abi_session_options_impl.h"
 #include "core/session/ort_apis.h"
@@ -372,6 +373,13 @@ struct ProviderHostImpl : ProviderHost {
 
   // IAllocator (direct)
   bool IAllocator__CalcMemSizeForArrayWithAlignment(size_t nmemb, size_t size, size_t alignment, size_t* out) override { return IAllocator::CalcMemSizeForArrayWithAlignment(nmemb, size, alignment, out); }
+
+  // IExecutionProviderFactory
+  std::unique_ptr<IExecutionProvider> IExecutionProviderFactory__CreateProvider(IExecutionProviderFactory* p,
+                                                                                const OrtSessionOptions* session_options,
+                                                                                const OrtLogger* logger) override {
+    return p->IExecutionProviderFactory::CreateProvider(session_options, logger);
+  }
 
   // IExecutionProvider (direct)
   std::vector<std::unique_ptr<ComputeCapability>> IExecutionProvider__GetCapability(

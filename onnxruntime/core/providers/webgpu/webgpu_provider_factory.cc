@@ -24,10 +24,6 @@ struct WebGpuProviderFactory : IExecutionProviderFactory {
   std::unique_ptr<IExecutionProvider> CreateProvider() override {
     return std::make_unique<WebGpuExecutionProvider>(context_id_, context_, std::move(config_));
   }
-  std::unique_ptr<IExecutionProvider> CreateProvider(const OrtSessionOptions* /*session_options*/,
-                                                     const OrtLogger* /*logger*/) override {
-    return CreateProvider();
-  }
 
  private:
   int context_id_;

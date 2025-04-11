@@ -17,10 +17,6 @@ struct XnnpackProviderFactory : IExecutionProviderFactory {
   std::unique_ptr<IExecutionProvider> CreateProvider() override {
     return std::make_unique<XnnpackExecutionProvider>(info_);
   }
-  std::unique_ptr<IExecutionProvider> CreateProvider(const OrtSessionOptions* /*session_options*/,
-                                                     const OrtLogger* /*logger*/) override {
-    return CreateProvider();
-  }
 
  private:
   XnnpackExecutionProviderInfo info_;

@@ -12,10 +12,6 @@ struct AzureProviderFactory : public IExecutionProviderFactory {
   std::unique_ptr<IExecutionProvider> CreateProvider() override {
     return std::make_unique<AzureExecutionProvider>(config_);
   };
-  std::unique_ptr<IExecutionProvider> CreateProvider(const OrtSessionOptions* /*session_options*/,
-                                                     const OrtLogger* /*logger*/) override {
-    return CreateProvider();
-  }
 
   std::unordered_map<std::string, std::string> config_;
 };

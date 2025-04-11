@@ -21,10 +21,6 @@ struct DnnlProviderFactory : IExecutionProviderFactory {
   ~DnnlProviderFactory() override {}
 
   std::unique_ptr<IExecutionProvider> CreateProvider() override;
-  std::unique_ptr<IExecutionProvider> CreateProvider(const OrtSessionOptions* /*session_options*/,
-                                                     const OrtLogger* /*logger*/) override {
-    return CreateProvider();
-  }
 
  private:
   DnnlExecutionProviderInfo info_;

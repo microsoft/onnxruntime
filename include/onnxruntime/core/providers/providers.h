@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #pragma once
+#include <memory>
 
 struct OrtSessionOptions;
 struct OrtLogger;
@@ -14,11 +15,11 @@ struct IExecutionProviderFactory {
   virtual std::unique_ptr<IExecutionProvider> CreateProvider() = 0;
 
   /// <summary>
-  /// Creates an IExecutionProvider instance. Allows using session-level options such as
-  /// session configs (string key/value pairs), graph optimization level, etc. to initialize the EP.
+  /// Creates an IExecutionProvider instance. Enables initialization of an EP instance using session-level options
+  /// such as session configs (string key/value pairs), graph optimization level, etc.
   ///
-  /// An IExecutionProviderFactory that does not need to extract information from the session options should return
-  /// the result from the above CreateProvider() function.
+  /// The default implementation ignores the arguments and calls the above CreateProvider() function,
+  /// which does not take in any arguments.
   ///
   /// This version of CreateProvider() is used by InferenceSession when registering EPs.
   /// </summary>
@@ -26,6 +27,6 @@ struct IExecutionProviderFactory {
   /// <param name="logger"></param>
   /// <returns></returns>
   virtual std::unique_ptr<IExecutionProvider> CreateProvider(const OrtSessionOptions* session_options,
-                                                             const OrtLogger* logger) = 0;
+                                                             const OrtLogger* logger);
 };
 }  // namespace onnxruntime

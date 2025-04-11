@@ -15,10 +15,6 @@ struct WebNNProviderFactory : IExecutionProviderFactory {
   ~WebNNProviderFactory() override {}
 
   std::unique_ptr<IExecutionProvider> CreateProvider() override;
-  std::unique_ptr<IExecutionProvider> CreateProvider(const OrtSessionOptions* /*session_options*/,
-                                                     const OrtLogger* /*logger*/) override {
-    return CreateProvider();
-  }
 
   std::string webnn_device_flags_;
 };

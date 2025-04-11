@@ -18,10 +18,6 @@ struct SNPEProviderFactory : IExecutionProviderFactory {
   std::unique_ptr<IExecutionProvider> CreateProvider() override {
     return std::make_unique<SNPEExecutionProvider>(provider_options_map_);
   }
-  std::unique_ptr<IExecutionProvider> CreateProvider(const OrtSessionOptions* /*session_options*/,
-                                                     const OrtLogger* /*logger*/) override {
-    return CreateProvider();
-  }
 
  private:
   ProviderOptions provider_options_map_;

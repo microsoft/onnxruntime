@@ -256,6 +256,10 @@ struct ProviderHost {
   // IAllocator
   virtual bool IAllocator__CalcMemSizeForArrayWithAlignment(size_t nmemb, size_t size, size_t alignment, size_t* out) = 0;
 
+  // IExecutionProviderFactory
+  virtual std::unique_ptr<IExecutionProvider> IExecutionProviderFactory__CreateProvider(IExecutionProviderFactory* p,
+                                                                                        const OrtSessionOptions* session_options,
+                                                                                        const OrtLogger* logger) = 0;
   // IExecutionProvider
   virtual std::vector<std::unique_ptr<ComputeCapability>> IExecutionProvider__GetCapability(const IExecutionProvider* p, const onnxruntime::GraphViewer& graph_viewer,
                                                                                             const IExecutionProvider::IKernelLookup& kernel_lookup,

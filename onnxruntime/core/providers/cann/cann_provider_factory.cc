@@ -22,10 +22,6 @@ struct CANNProviderFactory : IExecutionProviderFactory {
   ~CANNProviderFactory() override {}
 
   std::unique_ptr<IExecutionProvider> CreateProvider() override;
-  std::unique_ptr<IExecutionProvider> CreateProvider(const OrtSessionOptions* /*session_options*/,
-                                                     const OrtLogger* /*logger*/) override {
-    return CreateProvider();
-  }
 
  private:
   CANNExecutionProviderInfo info_;
