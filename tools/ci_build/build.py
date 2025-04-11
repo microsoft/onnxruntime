@@ -2569,7 +2569,7 @@ def main():
                 getattr(args, "use_dml", False),
                 args.enable_training_apis,
                 is_nightly_build=is_nightly,
-                normalize_arg_list(args.msbuild_extra_options),
+                normalize_arg_list(args.msbuild_extra_options)
             )
 
     if args.test and args.build_nuget:
