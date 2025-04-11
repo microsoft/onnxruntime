@@ -5565,7 +5565,7 @@ struct OrtCompileApi {
    * include weights for compiled subgraphs.
    *
    * If disabled, the `ep_cache_context` attribute of EPContext nodes will contain the path to the file containing the
-   * context binary data. The path is set by the execution provider creating a give EPContext node.
+   * context binary data. The path is set by the execution provider creating the EPContext node.
    *
    * See \href https://onnxruntime.ai/docs/execution-providers/EP-Context-Design.html for EPContext details.
    *
