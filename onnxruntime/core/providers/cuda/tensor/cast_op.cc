@@ -124,7 +124,7 @@ Status Cast<SrcT>::ComputeInternal(OpKernelContext* context) const {
   Tensor* Y = context->Output(0, shape);
   const auto* x_data = reinterpret_cast<const CudaSrcT*>(X->Data<SrcT>());
   size_t count = shape.Size();
-
+#ifndef USE_CUDA_MINMAL
   switch (to_) {
     CASE(TensorProto_DataType_FLOAT16, MLFloat16)
     CASE(TensorProto_DataType_BFLOAT16, BFloat16)
@@ -151,6 +151,9 @@ Status Cast<SrcT>::ComputeInternal(OpKernelContext* context) const {
     default:
       return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Unexpected 'to' argument value: ", to_);
   }
+#else
+  return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Cuda cast ops in this build are not supported for dtype: ", to_);
+#endif
   return Status::OK();
 }
 
