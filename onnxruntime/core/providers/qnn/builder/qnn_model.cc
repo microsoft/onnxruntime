@@ -7,6 +7,7 @@
 #include <fstream>
 #include <gsl/gsl>
 #include "QnnOpDef.h"
+#include "HTP/QnnHtpMem.h"
 
 #include "core/providers/qnn/ort_api.h"
 #include "core/providers/qnn/builder/op_builder_factory.h"
@@ -199,20 +200,41 @@ static Status BindQnnTensorMemoryToOrtValueMemory(const logging::Logger& logger,
                                                   void* ort_value_data, uint32_t ort_value_data_size,
                                                   Qnn_ContextHandle_t qnn_context,
                                                   Qnn_Tensor_t& qnn_tensor) {
-  // either set qnn_tensor memHandle or clientBuf
-  const bool uses_shared_memory = ort_value_memory_info == HtpSharedMemoryAllocator::AssociatedMemoryInfo();
 
-  if (!uses_shared_memory) {
+  const bool uses_shared_mem_allocator = ort_value_memory_info == HtpSharedMemoryAllocator::AssociatedMemoryInfo();
+  const bool buffer_aligned = ((uintptr_t)ort_value_data % rpcmem::BUFFER_ALIGNMENT_BLOCK_SIZE) == 0
+                             && ort_value_data_size % rpcmem::BUFFER_ALIGNMENT_BLOCK_SIZE == 0;
+  const bool uses_htp_backend = qnn_backend_manager.GetQnnBackendType() == QnnBackendType::HTP;
+
+  // if HTP backend is in use and the buffer pointer is CPU allocated and 4K aligned,
+  // the buffer needs to be mapped to RPC memory space and registered
+  if (uses_shared_mem_allocator || (uses_htp_backend && buffer_aligned)) {
+    LOGS(logger, VERBOSE) << "Setting Qnn_Tensor_t memHandle to ORT tensor shared memory.";
+    Qnn_MemHandle_t qnn_mem_handle;
+    ORT_RETURN_IF_ERROR(qnn_backend_manager.GetOrRegisterContextMemHandle(qnn_context, ort_value_data, qnn_tensor,
+                                                                          qnn_mem_handle, uses_shared_mem_allocator));
+    SetQnnTensorMemType(qnn_tensor, QNN_TENSORMEMTYPE_MEMHANDLE);
+    SetQnnTensorMemHandle(qnn_tensor, qnn_mem_handle);
+
+  } else {
     LOGS(logger, VERBOSE) << "Setting Qnn_Tensor_t clientBuf to ORT tensor memory.";
     SetQnnTensorMemType(qnn_tensor, QNN_TENSORMEMTYPE_RAW);
     SetQnnTensorClientBuf(qnn_tensor, ort_value_data, ort_value_data_size);
-  } else {
-    LOGS(logger, VERBOSE) << "Setting Qnn_Tensor_t memHandle to ORT tensor shared memory.";
-    Qnn_MemHandle_t qnn_mem_handle{};
-    ORT_RETURN_IF_ERROR(qnn_backend_manager.GetOrRegisterContextMemHandle(qnn_context, ort_value_data, qnn_tensor,
-                                                                          qnn_mem_handle));
-    SetQnnTensorMemType(qnn_tensor, QNN_TENSORMEMTYPE_MEMHANDLE);
-    SetQnnTensorMemHandle(qnn_tensor, qnn_mem_handle);
+  }
+
+  return Status::OK();
+}
+
+static Status UnregisterQnnTensorMemory(QnnBackendManager& qnn_backend_manager,
+                                        const OrtMemoryInfo& ort_value_memory_info,
+                                        void* ort_value_data, uint32_t ort_value_data_size,
+                                        Qnn_ContextHandle_t qnn_context) {
+  const bool uses_shared_mem_alloc = ort_value_memory_info == HtpSharedMemoryAllocator::AssociatedMemoryInfo();
+  const bool buffer_aligned = ((uintptr_t)ort_value_data % rpcmem::BUFFER_ALIGNMENT_BLOCK_SIZE) == 0 && ort_value_data_size % rpcmem::BUFFER_ALIGNMENT_BLOCK_SIZE == 0;
+  const bool htp_backend = qnn_backend_manager.GetQnnBackendType() == QnnBackendType::HTP;
+
+  if (!uses_shared_mem_alloc && htp_backend && buffer_aligned) {
+    ORT_RETURN_IF_ERROR(qnn_backend_manager.UnregisterContextMemHandle(qnn_context, ort_value_data));
   }
 
   return Status::OK();
@@ -317,6 +339,30 @@ Status QnnModel::ExecuteGraph(const Ort::KernelContext& context,
   if (QNN_GRAPH_NO_ERROR != execute_status) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "QNN graph execute error. Error code: ", execute_status);
   }
+
+  for (const auto& qnn_input_info : qnn_input_infos_) {
+    auto ort_input_tensor = context.GetInput(qnn_input_info.ort_index);
+
+    ORT_RETURN_IF_ERROR(UnregisterQnnTensorMemory(
+        *qnn_backend_manager_,
+        *static_cast<const OrtMemoryInfo*>(ort_input_tensor.GetTensorMemoryInfo()),
+        const_cast<void*>(ort_input_tensor.GetTensorRawData()), qnn_input_info.tensor_byte_size,
+        graph_info_->GraphContext()));
+  }
+
+  for (auto& qnn_output_info : qnn_output_infos_) {
+    const std::string& model_output_name = qnn_output_info.tensor_wrapper->GetName();
+    const auto& ort_output_info = GetOutputInfo(model_output_name);
+    const std::vector<int64_t>& output_shape = ort_output_info->shape_;
+    auto ort_output_tensor = context.GetOutput(qnn_output_info.ort_index, output_shape.data(), output_shape.size());
+
+    ORT_RETURN_IF_ERROR(UnregisterQnnTensorMemory(
+        *qnn_backend_manager_,
+        *static_cast<const OrtMemoryInfo*>(ort_output_tensor.GetTensorMemoryInfo()),
+        const_cast<void*>(ort_output_tensor.GetTensorRawData()), qnn_output_info.tensor_byte_size,
+        graph_info_->GraphContext()));
+  }
+
 
   return Status::OK();
 }
