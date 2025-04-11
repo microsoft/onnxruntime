@@ -44,6 +44,7 @@
 #include "core/session/onnxruntime_c_api.h"
 #include "core/common/string_helper.h"
 #include <utility>
+#include "onnx/shape_inference/implementation.h"
 
 #ifdef ENABLE_TRAINING
 #ifdef ENABLE_TRAINING_TORCH_INTEROP
@@ -778,6 +779,12 @@ struct ProviderHostImpl : ProviderHost {
   int FunctionProto__metadata_props_size(const ONNX_NAMESPACE::FunctionProto* p) override { return p->metadata_props_size(); }
   ONNX_NAMESPACE::StringStringEntryProto* FunctionProto__add_metadata_props(ONNX_NAMESPACE::FunctionProto* p) override { return p->add_metadata_props(); }
 
+  void InferShapes(const std::string& m, const std::string& save_path) override {
+    return ONNX_NAMESPACE::shape_inference::InferShapes(m, save_path);
+  }
+  void InferShapes(ONNX_NAMESPACE::ModelProto& m) override {
+    return ONNX_NAMESPACE::shape_inference::InferShapes(m);
+  }
   void RegisterSchema(const std::string& domain, const OrtCustomOp* op) override {
     auto& domain_instance = ONNX_NAMESPACE::OpSchemaRegistry::DomainToVersionRange::Instance();
     const auto& domain_to_version_map = domain_instance.Map();
@@ -1280,6 +1287,7 @@ struct ProviderHostImpl : ProviderHost {
   const Graph* Graph__ParentGraph(const Graph* p) const override { return p->ParentGraph(); }
   Graph* Graph__MutableParentGraph(Graph* p) override { return p->MutableParentGraph(); }
   const std::string& Graph__Name(const Graph* p) const noexcept override { return p->Name(); }
+  void Graph__SetName(Graph* p, const std::string& name) const noexcept override { return p->SetName(name); }
   const std::filesystem::path& Graph__ModelPath(const Graph* p) const override { return p->ModelPath(); }
   const std::vector<const NodeArg*>& Graph__GetInputsIncludingInitializers(const Graph* p) const noexcept override { return p->GetInputsIncludingInitializers(); }
   bool Graph__IsSubgraph(const Graph* p) override { return p->IsSubgraph(); }

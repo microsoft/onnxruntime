@@ -169,7 +169,7 @@ ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider,
   } else {
     ORT_UNUSED_PARAMETER(options);
     status = OrtApis::CreateStatus(ORT_INVALID_ARGUMENT,
-                                   "Unknown provider name. Currently supported values are 'OPENVINO', 'SNPE', 'XNNPACK', 'QNN', 'WEBNN' ,'CoreML', and 'AZURE'");
+                                   "Unknown provider name. Currently supported values are 'DML', 'QNN', 'OpenVINO', 'SNPE', 'XNNPACK', 'WEBNN', 'WebGPU', 'AZURE', 'JS', 'VitisAI', and 'CoreML'");
   }
 
   return status;
