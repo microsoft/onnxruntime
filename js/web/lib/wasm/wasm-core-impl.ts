@@ -172,12 +172,7 @@ export const initEp = async (env: Env, epName: string): Promise<void> => {
 /**
  * valid data locations for input/output tensors.
  */
-type SupportedTensorDataLocationForInputOutput =
-  | 'cpu'
-  | 'cpu-pinned'
-  | 'gpu-buffer'
-  | 'ml-tensor'
-  | 'ml-tensor-cpu-output';
+type SupportedTensorDataLocationForInputOutput = 'cpu' | 'cpu-pinned' | 'gpu-buffer' | 'ml-tensor';
 
 type IOBindingState = {
   /**
@@ -392,6 +387,8 @@ export const createSession = async (
     const inputMetadata: InferenceSession.ValueMetadata[] = [];
     const outputMetadata: InferenceSession.ValueMetadata[] = [];
     const outputPreferredLocations: SupportedTensorDataLocationForInputOutput[] = [];
+    const outputPreferredLocationsEncoded: number[] = [];
+    let forceIoBinding = false;
     for (let i = 0; i < inputCount; i++) {
       const [nameOffset, elementType, shape] = getSessionInputOutputMetadata(sessionHandle, i);
       if (nameOffset === 0) {
@@ -423,6 +420,7 @@ export const createSession = async (
       if (!BUILD_DEFS.DISABLE_JSEP) {
         if (enableGraphCapture && options?.preferredOutputLocation === undefined) {
           outputPreferredLocations.push('gpu-buffer');
+          outputPreferredLocationsEncoded.push(dataLocationStringToEnum('gpu-buffer'));
           continue;
         }
         const location =
@@ -431,7 +429,10 @@ export const createSession = async (
             : (options?.preferredOutputLocation?.[nameString] ?? 'cpu');
         const isGraphOutput = wasm.webnnIsGraphOutput;
         if (location === 'cpu' && isGraphOutput && isGraphOutput(sessionHandle, nameString)) {
-          outputPreferredLocations.push('ml-tensor-cpu-output');
+          outputPreferredLocations.push('cpu');
+          // If the output is a WebNN graph output, we convert it to a ml-tensor.
+          outputPreferredLocationsEncoded.push(dataLocationStringToEnum('ml-tensor'));
+          forceIoBinding = true;
           continue;
         }
         if (location !== 'cpu' && location !== 'cpu-pinned' && location !== 'gpu-buffer' && location !== 'ml-tensor') {
@@ -443,6 +444,7 @@ export const createSession = async (
           );
         }
         outputPreferredLocations.push(location);
+        outputPreferredLocationsEncoded.push(dataLocationStringToEnum(location));
       }
     }
 
@@ -450,7 +452,7 @@ export const createSession = async (
     let bindingState: IOBindingState | null = null;
     if (
       !BUILD_DEFS.DISABLE_JSEP &&
-      outputPreferredLocations.some((l) => l === 'gpu-buffer' || l === 'ml-tensor' || l === 'ml-tensor-cpu-output')
+      (forceIoBinding || outputPreferredLocations.some((l) => l === 'gpu-buffer' || l === 'ml-tensor'))
     ) {
       ioBindingHandle = wasm._OrtCreateBinding(sessionHandle);
       if (ioBindingHandle === 0) {
@@ -460,10 +462,7 @@ export const createSession = async (
       bindingState = {
         handle: ioBindingHandle,
         outputPreferredLocations,
-        outputPreferredLocationsEncoded: outputPreferredLocations
-          // 'ml-tensor-cpu-output' is treated as 'ml-tensor' for the purpose of IO binding.
-          .map((l) => (l === 'ml-tensor-cpu-output' ? 'ml-tensor' : l))
-          .map((l) => dataLocationStringToEnum(l)),
+        outputPreferredLocationsEncoded,
       };
     }
 
@@ -872,7 +871,8 @@ export const run = async (
         type = tensorDataTypeEnumToString(dataType);
 
         const preferredLocation = ioBindingState?.outputPreferredLocations[outputIndices[i]];
-
+        const isGraphOutput = wasm.webnnIsGraphOutput;
+        const tensorName = wasm.UTF8ToString(outputNamesUTF8Encoded[outputIndices[i]]);
         if (type === 'string') {
           if (preferredLocation === 'gpu-buffer' || preferredLocation === 'ml-tensor') {
             throw new Error('String tensor is not supported on GPU.');
@@ -976,7 +976,8 @@ export const run = async (
               },
               'ml-tensor',
             ]);
-          } else if (preferredLocation === 'ml-tensor-cpu-output' && size > 0) {
+          } else if (isGraphOutput && preferredLocation === 'cpu' && size > 0 && isGraphOutput(sessionId, tensorName)) {
+            // ml-tensor has been used for graph output, but cpu was requested. Downloading data from ml-tensor.
             const data = wasm.webnnCreateMLTensorDownloader!(dataOffset, type as Tensor.MLTensorDataTypes)();
             const index = output.length;
             // Delay the data download and releasing the tensor until we can wait for all output tensors to be downloaded.
