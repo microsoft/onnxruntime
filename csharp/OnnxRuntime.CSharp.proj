@@ -162,6 +162,11 @@ CMake creates a target to this project
              Properties="NuSpecName=NativeGpuLinuxNuget.nuspec;OrtPackageId=Microsoft.ML.OnnxRuntime.Gpu.Linux"
              Targets ="CreateNativePackage" />
   </Target>
+  <Target Name="CreateAllAmdGpuPackages" AfterTargets="CreatePackage" Condition="'$(OrtPackageId)' == 'Microsoft.ML.OnnxRuntime.AmdGpu'">
+    <MSBuild Projects ="$(MSBuildProjectFullPath)"
+             Properties="NuSpecName=NativeAmdGpuWinNuget.nuspec;OrtPackageId=Microsoft.ML.OnnxRuntime.AmdGpu.Windows"
+             Targets ="CreateNativePackage" />
+  </Target>
 
   <ItemGroup>
     <LicenseFile Include="$(OnnxRuntimeSourceDirectory)\LICENSE"/>

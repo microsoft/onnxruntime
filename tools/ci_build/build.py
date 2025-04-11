@@ -2399,6 +2399,7 @@ def build_nuget_package(
     use_dnnl,
     use_winml,
     use_qnn,
+    use_migraphx,
     enable_training_apis,
     msbuild_extra_options,
 ):
@@ -2448,6 +2449,8 @@ def build_nuget_package(
             raise BuildError("Currently NuGet packages with QNN require QNN EP to be built as a shared library.")
         execution_provider = "/p:ExecutionProvider=qnn"
         package_name = "/p:OrtPackageId=Microsoft.ML.OnnxRuntime.QNN"
+    elif use_migraphx:
+        package_name = "/p:OrtPackageId=Microsoft.ML.OnnxRuntime.AmdGpu"
     elif any("OrtPackageId=" in x for x in msbuild_extra_options):
         pass
     else:
@@ -3034,6 +3037,7 @@ def main():
                 args.use_dnnl,
                 args.use_winml,
                 args.use_qnn,
+                args.use_migraphx,
                 args.enable_training_apis,
                 normalize_arg_list(args.msbuild_extra_options),
             )

@@ -44,7 +44,9 @@ def get_package_name(os, cpu_arch, ep, is_training_package):
 def is_this_file_needed(ep, filename, package_name):
     if package_name == "Microsoft.ML.OnnxRuntime.Gpu":
         return False
-    return (ep != "cuda" or "cuda" in filename) and (ep != "tensorrt" or "cuda" not in filename)
+    if package_name == "Microsoft.ML.OnnxRuntime.AmdGpu":
+        return False
+    return (ep != "cuda" or "cuda" in filename) and (ep != "tensorrt" or "cuda" not in filename) and (ep != "amd_gpu" or "amd_gpu" not in filename)
 
 
 # nuget_artifacts_dir: the directory with uncompressed C API tarball/zip files
@@ -64,7 +66,7 @@ def generate_file_list_for_ep(nuget_artifacts_dir, ep, files_list, include_pdbs,
                     if (
                         child_file.suffix in suffixes
                         and is_this_file_needed(ep, child_file.name, package_name)
-                        and package_name != "Microsoft.ML.OnnxRuntime.Gpu.Linux"
+                        and package_name not in ["Microsoft.ML.OnnxRuntime.Gpu.Linux", "Microsoft.ML.OnnxRuntime.AmdGpu"]
                     ):
                         files_list.append(
                             '<file src="' + str(child_file) + f'" target="runtimes/win-{cpu_arch}/native"/>'
@@ -95,6 +97,7 @@ def generate_file_list_for_ep(nuget_artifacts_dir, ep, files_list, include_pdbs,
                         child_file.suffix == ".so"
                         and is_this_file_needed(ep, child_file.name, package_name)
                         and package_name != "Microsoft.ML.OnnxRuntime.Gpu.Windows"
+                        and package_name != "Microsoft.ML.OnnxRuntime.AmdGpu"
                     ):
                         files_list.append(
                             '<file src="' + str(child_file) + f'" target="runtimes/linux-{cpu_arch}/native"/>'
@@ -184,6 +187,8 @@ def generate_description(line_list, package_name):
         description = "This package contains Windows native shared library artifacts for ONNX Runtime with CUDA."
     elif "Intel.ML.OnnxRuntime" in package_name:
         description = "This package contains native shared library artifacts for ONNX Runtime with OpenVINO."
+    elif "Microsoft.ML.OnnxRuntime.AmdGpu" in package_name:
+        description = "This package contains native shared library artifacts for ONNX Runtime with the AMD GPU Provider."
     elif "Microsoft.ML.OnnxRuntime" in package_name:  # This is a Microsoft.ML.OnnxRuntime.* package
         description = (
             "This package contains native shared library artifacts for all supported platforms of ONNX Runtime."
@@ -224,6 +229,8 @@ def add_common_dependencies(xml_text, package_name, version):
     if package_name == "Microsoft.ML.OnnxRuntime.Gpu":
         xml_text.append('<dependency id="Microsoft.ML.OnnxRuntime.Gpu.Windows"' + ' version="' + version + '"/>')
         xml_text.append('<dependency id="Microsoft.ML.OnnxRuntime.Gpu.Linux"' + ' version="' + version + '"/>')
+    if package_name == "Microsoft.ML.OnnxRuntime.AmdGpu":
+        xml_text.append('<dependency id="Microsoft.ML.OnnxRuntime.AmdGpu"' + ' version="' + version + '"/>')
 
 
 def generate_dependencies(xml_text, package_name, version):
@@ -358,6 +365,8 @@ def generate_files(line_list, args):
     is_windowsai_package = args.package_name == "Microsoft.AI.MachineLearning"
     is_snpe_package = args.package_name == "Microsoft.ML.OnnxRuntime.Snpe"
     is_qnn_package = args.package_name == "Microsoft.ML.OnnxRuntime.QNN"
+    is_amd_gpu_package = args.package_name == "Microsoft.ML.OnnxRuntime.AmdGpu"
+    is_amd_gpu_win_sub_package = args.package_name == "Microsoft.ML.OnnxRuntime.AmdGpu"
     is_training_package = args.package_name in [
         "Microsoft.ML.OnnxRuntime.Training",
         "Microsoft.ML.OnnxRuntime.Training.Gpu",
@@ -383,6 +392,7 @@ def generate_files(line_list, args):
             "openvino_ep_shared_lib": "onnxruntime_providers_openvino.dll",
             "cuda_ep_shared_lib": "onnxruntime_providers_cuda.dll",
             "qnn_ep_shared_lib": "onnxruntime_providers_qnn.dll",
+            "amd_gpu_ep_shared_lib": "onnxruntime_providers_amd_gpu.dll",
             "onnxruntime_perf_test": "onnxruntime_perf_test.exe",
             "onnx_test_runner": "onnx_test_runner.exe",
         }
@@ -420,7 +430,7 @@ def generate_files(line_list, args):
     include_dir = f"{build_dir}\\native\\include"
 
     # Sub.Gpu packages do not include the onnxruntime headers
-    if args.package_name != "Microsoft.ML.OnnxRuntime.Gpu":
+    if args.package_name != "Microsoft.ML.OnnxRuntime.Gpu" and args.package_name != "Microsoft.ML.OnnxRuntime.AmdGpu":
         files_list.append(
             "<file src="
             + '"'
@@ -592,6 +602,8 @@ def generate_files(line_list, args):
                 ep_list = ["tensorrt", "cuda", None]
             elif is_rocm_gpu_package:
                 ep_list = ["rocm", None]
+            elif is_amd_gpu_package or is_amd_gpu_win_sub_package:
+                ep_list = ["amd_gpu", None]
             else:
                 ep_list = [None]
             for ep in ep_list:
@@ -796,8 +808,26 @@ def generate_files(line_list, args):
             + '\\native" />'
         )
 
+    if args.execution_provider == "amd_gpu" or (is_amd_gpu_win_sub_package and not is_ado_packaging_build):
+        files_list.append(
+            "<file src="
+            + '"'
+            + os.path.join(args.native_build_path, nuget_dependencies["providers_shared_lib"])
+            + runtimes_target
+            + args.target_architecture
+            + '\\native" />'
+        )
+        files_list.append(
+            "<file src="
+            + '"'
+            + os.path.join(args.native_build_path, nuget_dependencies["amd_gpu_ep_shared_lib"])
+            + runtimes_target
+            + args.target_architecture
+            + '\\native" />'
+        )
+
     # process all other library dependencies
-    if is_cpu_package or is_cuda_gpu_package or is_dml_package or is_mklml_package:
+    if is_cpu_package or is_cuda_gpu_package or is_amd_gpu_package or is_dml_package or is_mklml_package:
         # Process dnnl dependency
         if os.path.exists(os.path.join(args.native_build_path, nuget_dependencies["dnnl"])):
             files_list.append(
@@ -900,6 +930,7 @@ def generate_files(line_list, args):
         or is_cuda_gpu_linux_sub_package
         or is_cuda_gpu_win_sub_package
         or is_rocm_gpu_package
+        or is_amd_gpu_package
         or is_dml_package
         or is_mklml_package
         or is_snpe_package
