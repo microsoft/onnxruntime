@@ -1307,7 +1307,7 @@ class TestInferenceSession(unittest.TestCase):
 
     def test_register_custom_ops_library(self):
         if sys.platform.startswith("win"):
-            shared_library = "custom_op_library.dll"
+            shared_library = os.path.abspath("custom_op_library.dll")
             if not os.path.exists(shared_library):
                 raise FileNotFoundError(f"Unable to find '{shared_library}'")
 
@@ -1724,7 +1724,7 @@ class TestInferenceSession(unittest.TestCase):
             return
 
         if sys.platform.startswith("win"):
-            shared_library = "test_execution_provider.dll"
+            shared_library = os.path.abspath("test_execution_provider.dll")
 
         elif sys.platform.startswith("darwin"):
             # exclude for macos

@@ -1992,7 +1992,7 @@ ProviderOptions OrtOpenVINOProviderOptionsToOrtOpenVINOProviderOptionsV2(const O
     ov_options_converted_map["context"] = context_string.str();
   }
 
-  ov_options_converted_map["enable_opencl_throttling"] = legacy_ov_options->enable_opencl_throttling;
+  ov_options_converted_map["enable_opencl_throttling"] = legacy_ov_options->enable_opencl_throttling == 0 ? "true" : "false";
 
   if (legacy_ov_options->enable_dynamic_shapes) {
     ov_options_converted_map["disable_dynamic_shapes"] = "false";
