@@ -300,6 +300,7 @@ Status ModelBuilder::RegisterModelInputOutput(const NodeArg& node_arg, bool is_i
     emscripten::val::module_property("webnnRegisterGraphInput")(name);
     input_names_.push_back(name);
   } else {
+    emscripten::val::module_property("webnnRegisterGraphOutput")(name);
     output_names_.push_back(name);
   }
 

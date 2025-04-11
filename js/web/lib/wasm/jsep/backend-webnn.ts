@@ -80,10 +80,19 @@ export class WebNNBackend {
    */
   private sessionGraphInputs: Map<number, string[]> = new Map();
   /**
+   * Maps from session id to list of graph outputs.
+   */
+  private sessionGraphOutputs: Map<number, string[]> = new Map();
+  /**
    * Temporary graph inputs for the current session.
    * These inputs will be registered when the session is created.
    */
   private temporaryGraphInputs: string[] = [];
+  /**
+   * Temporary graph outputs for the current session.
+   * These outputs will be registered when the session is created.
+   */
+  private temporaryGraphOutputs: string[] = [];
   /**
    * Temporary tensors for the current session.
    */
@@ -167,10 +176,15 @@ export class WebNNBackend {
       this.sessionGraphInputs.set(sessionId, this.temporaryGraphInputs);
       this.temporaryGraphInputs = [];
     }
+    if (this.temporaryGraphOutputs.length > 0) {
+      this.sessionGraphOutputs.set(sessionId, this.temporaryGraphOutputs);
+      this.temporaryGraphOutputs = [];
+    }
   }
 
   public onReleaseSession(sessionId: number): void {
     this.sessionGraphInputs.delete(sessionId);
+    this.sessionGraphOutputs.delete(sessionId);
     const mlContext = this.mlContextBySessionId.get(sessionId)!;
     if (!mlContext) {
       // Current session is not a WebNN session.
@@ -363,12 +377,24 @@ export class WebNNBackend {
     this.temporaryGraphInputs.push(inputName);
   }
 
+  public registerGraphOutput(outputName: string): void {
+    this.temporaryGraphOutputs.push(outputName);
+  }
+
   public isGraphInput(sessionId: number, inputName: string): boolean {
     const inputNames = this.sessionGraphInputs.get(sessionId);
     if (!inputNames) {
       return false;
     }
     return inputNames.includes(inputName);
+  }
+
+  public isGraphOutput(sessionId: number, outputName: string): boolean {
+    const outputNames = this.sessionGraphOutputs.get(sessionId);
+    if (!outputNames) {
+      return false;
+    }
+    return outputNames.includes(outputName);
   }
 
   public isInt64Supported(sessionId: number): boolean {
