@@ -11,7 +11,9 @@ import os
 import time
 
 import numpy as np
+import packaging.version as pv
 import torch
+import transformers
 from benchmark_helper import setup_logger
 from dist_settings import get_rank, get_size
 from llama_inputs import (
@@ -23,6 +25,8 @@ from llama_inputs import (
     verify_ort_inputs,
 )
 from llama_torch import setup_torch_model
+from models.torch_export_helpers import torch_deepcopy
+from models.torch_export_helpers.cache_helper import make_dynamic_cache
 from transformers import AutoConfig
 
 import onnxruntime as ort
@@ -92,11 +96,18 @@ def verify_parity(
 
     inputs = get_inputs(args, config)
 
+    if "past_key_values" in inputs and pv.Version(transformers.__version__) >= pv.Version("4.45"):
+        # Using DynamicCache
+        inputs["past_key_values"] = make_dynamic_cache(inputs["past_key_values"])
+
     # Run inference with PyTorch
     if args.execution_provider != "cpu":
         torch.cuda.synchronize()
     start_time = time.time()
-    pt_outputs = py_model(**inputs).logits.detach().cpu().numpy()
+    # If there is a cache in the inputs, we need to make a copy as the model modify them inplace.
+    # DynamicCache inherits from torch.nn.Module in some version of transformers.
+    # We need to make the copy manually.
+    pt_outputs = py_model(**torch_deepcopy(inputs)).logits.detach().cpu().numpy()
     if args.execution_provider != "cpu":
         torch.cuda.synchronize()
     end_time = time.time()
