@@ -12,6 +12,7 @@
 #include "core/session/onnxruntime_c_api.h"
 #include "core/session/ort_apis.h"
 #include "core/session/ort_env.h"
+#include "core/session/onnxruntime_session_options_config_keys.h"
 
 using namespace onnxruntime;
 
@@ -48,6 +49,18 @@ OrtStatus* CreateSessionAndLoadModel(_In_ const OrtSessionOptions* options,
   const Env& os_env = Env::Default();  // OS environment (!= ORT environment)
   bool load_config_from_model =
       os_env.GetEnvironmentVar(inference_session_utils::kOrtLoadConfigFromModelEnvVar) == "1";
+
+  // If ep.context_enable is set, then ep.context_file_path is expected, otherwise ORT don't know where to generate the _ctx.onnx file
+  if (options && model_path == nullptr) {
+    auto ep_context_enable = options->value.config_options.GetConfigEntry(kOrtSessionOptionEpContextEnable);
+    auto ep_context_file_path = options->value.config_options.GetConfigEntry(kOrtSessionOptionEpContextFilePath);
+    if (ep_context_enable.has_value() && ep_context_enable.value() == "1" && (!ep_context_file_path.has_value() || (ep_context_file_path.has_value() && ep_context_file_path.value().empty()))) {
+      return OrtApis::CreateStatus(ORT_FAIL,
+                                   "CreateSessionFromArray is called with ep.context_enable enabled but an \
+empty ep.context_file_path. The system does not know where to generate the \
+EP context model. Please specify a valid ep.context_file_path.");
+    }
+  }
 
   if (load_config_from_model) {
 #if !defined(ORT_MINIMAL_BUILD)
