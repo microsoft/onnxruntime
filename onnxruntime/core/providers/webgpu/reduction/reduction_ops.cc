@@ -100,7 +100,7 @@ REGISTER_REDUCE_VERSIONED_KERNEL(ArgMin, 1, 10);
 REGISTER_REDUCE_VERSIONED_KERNEL(ArgMin, 11, 12);
 REGISTER_REDUCE_KERNEL(ArgMin, 13);
 
-std::unordered_map<std::string, ReduceOpType> reduceOpTypes = {
+std::unordered_map<std::string, ReduceOpType> reduce_op_types = {
     {"ReduceMax", ReduceOpType::Max},
     {"ReduceMin", ReduceOpType::Min},
     {"ReduceMean", ReduceOpType::Mean},
@@ -120,7 +120,7 @@ std::unordered_map<ReduceOpType, std::string> reduce_op_code_map = {
     {ReduceOpType::Sum, "bestValue + candidate"},
     {ReduceOpType::Prod, "bestValue * candidate"},
     {ReduceOpType::SumSquare, "bestValue + candidate * candidate"},
-    {ReduceOpType::LogSumExp, "bestValue + exp(candidate)"},
+    {ReduceOpType::LogSumExp, "bestValue + output_value_t(exp(f32(candidate)))"},
     {ReduceOpType::L1, "bestValue + abs(candidate)"},
     {ReduceOpType::L2, "bestValue + candidate * candidate"},
     {ReduceOpType::LogSum, "bestValue + candidate"},
@@ -159,15 +159,15 @@ std::unordered_map<ReduceOpType, std::string> reduce_op_output_values_map = {
     {ReduceOpType::Sum, "bestValue"},
     {ReduceOpType::Prod, "bestValue"},
     {ReduceOpType::SumSquare, "bestValue"},
-    {ReduceOpType::LogSumExp, "log(bestValue)"},
+    {ReduceOpType::LogSumExp, "log(f32(bestValue))"},
     {ReduceOpType::L1, "bestValue"},
-    {ReduceOpType::L2, "sqrt(bestValue)"},
-    {ReduceOpType::LogSum, "log(bestValue)"},
+    {ReduceOpType::L2, "sqrt(f32(bestValue))"},
+    {ReduceOpType::LogSum, "log(f32(bestValue))"},
 };
 
 ReduceOpType StringToReduceOp(std::string name) {
-  ORT_ENFORCE(reduceOpTypes.find(name) != reduceOpTypes.end(), "Unsupported reduction op type: ", name);
-  return reduceOpTypes[name];
+  ORT_ENFORCE(reduce_op_types.find(name) != reduce_op_types.end(), "Unsupported reduction op type: ", name);
+  return reduce_op_types[name];
 }
 
 Status ReduceKernelProgram::GenerateShaderCode(ShaderHelper& shader) const {
@@ -227,16 +227,16 @@ Status ReduceSharedProgram::GenerateShaderCode(ShaderHelper& shader) const {
   const auto& input = shader.AddInput("_A", ShaderUsage::UseUniform | ShaderUsage::UseIndicesTypeAlias | ShaderUsage::UseValueTypeAlias | ShaderUsage::UseElementTypeAlias);
   const auto& output = shader.AddOutput("output", ShaderUsage::UseUniform | ShaderUsage::UseIndicesTypeAlias | ShaderUsage::UseValueTypeAlias | ShaderUsage::UseElementTypeAlias);
   shader.AdditionalImplementation()
-      << "var<workgroup> aBestValues : array<f32, " << workgroup_size_ << ">;\n\n"
+      << "var<workgroup> aBestValues : array<output_value_t, " << workgroup_size_ << ">;\n\n"
       << "fn DIV_CEIL(a : u32, b : u32) -> u32 {\n"
       << "  return ((a - 1u) / b + 1u);\n"
       << "}\n";
   shader.MainFunctionBody() << "let outputIndex = global_idx / " << workgroup_size_ << ";\n"
                             << "let offset = outputIndex * uniforms.reduceSize;\n"
-                            << "var bestValue : _A_value_t = " << reduce_op_init_values_map[reduce_op_type_] << ";\n"
+                            << "var bestValue = output_value_t(" << reduce_op_init_values_map[reduce_op_type_] << ");\n"
                             << "let length = uniforms.reduceSize;\n"
                             << "for (var k = local_idx; k < length; k += " << workgroup_size_ << ") {\n"
-                            << "  let candidate = " << input.GetByOffset("offset + k") << ";\n"
+                            << "  let candidate = output_value_t(" << input.GetByOffset("offset + k") << ");\n"
                             << "  bestValue = " << reduce_op_code_map[reduce_op_type_] << ";\n"
                             << "}\n"
                             << "aBestValues[local_idx] = bestValue;\n"
@@ -349,7 +349,7 @@ Status ReduceKernel<allow_multi_axes>::ComputeInternal(ComputeContext& context) 
     return Status::OK();
   }
 
-  bool use_naive_reduction = reduce_size < 32 && output_size > 1024;
+  bool use_naive_reduction = name_ == "ArgMin" || name_ == "ArgMax" || (reduce_size < 32 && output_size > 1024);
 
   if (use_naive_reduction) {
     const auto code = GetOpSpecificCode(input_tensor);
