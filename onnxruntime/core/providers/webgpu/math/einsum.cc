@@ -68,8 +68,8 @@ EinsumEquation::EinsumEquation(const std::vector<const Tensor*>& inputs, const s
   // Initialize RHS if not specified.
   if (rhs.empty()) {
     for (const auto& pair : symbol_to_info_) {
-      if (pair.second.count == 1 || pair.first == "...") {
-        rhs += pair.first;
+      if (pair.second.count == 1 || pair.first == "..." || pair.first.starts_with("_")) {
+        rhs += pair.first.starts_with("_") ? "..." : pair.first;
       }
     }
   } else {
