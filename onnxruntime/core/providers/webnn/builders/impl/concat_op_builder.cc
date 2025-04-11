@@ -70,7 +70,7 @@ bool ConcatOpBuilder::HasSupportedInputsImpl(const GraphViewer&, const Node& nod
     }
 
     std::array<int32_t, 2> input_types{input0_type, input_type};
-    if (!AreInputDataTypesSame(op_type, input_types, logger)) {
+    if (!AreDataTypesSame(op_type, input_types, logger)) {
       return false;
     }
   }

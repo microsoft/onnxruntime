@@ -406,7 +406,7 @@ bool ConvOpBuilder::HasSupportedInputsImpl(const GraphViewer&, const Node& node,
   if (has_input3) {
     input_types.push_back(input3_type);
   }
-  if (!AreInputDataTypesSame(op_type, input_types, logger)) {
+  if (!AreDataTypesSame(op_type, input_types, logger)) {
     return false;
   }
 
