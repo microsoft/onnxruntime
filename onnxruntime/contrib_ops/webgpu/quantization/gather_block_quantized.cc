@@ -115,6 +115,7 @@ Status GatherBlockQuantized::ComputeInternal(ComputeContext& context) const {
   int quantize_axis = (quantize_axis_ >= 0) ? quantize_axis_ : quantize_axis_ + x_rank;
 
   TensorShape output_shape = splice(x_shape.AsShapeVector(), gather_axis, 1, indices->Shape().AsShapeVector());
+  size_t output_size = output_shape.Size();
   auto* output_tensor = context.Output(0, output_shape);
 
   GatherBlockQuantizedProgram program{is_signed, indices_rank, gather_axis, zero_points != nullptr, x_shape, output_shape};
@@ -124,7 +125,7 @@ Status GatherBlockQuantized::ComputeInternal(ComputeContext& context) const {
       .AddInputs({{indices, ProgramTensorMetadataDependency::TypeAndRank}})
       .AddInputs({{scales, ProgramTensorMetadataDependency::TypeAndRank}})
       .AddOutput({output_tensor, ProgramTensorMetadataDependency::None})
-      .SetDispatchGroupSize((x_size + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE)
+      .SetDispatchGroupSize((output_size + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE)
       .AddUniformVariables({{static_cast<uint32_t>(x_size)}})
       .AddUniformVariables({{static_cast<uint32_t>(quantize_axis)}})
       .AddUniformVariables({{static_cast<uint32_t>(gather_axis)}})
