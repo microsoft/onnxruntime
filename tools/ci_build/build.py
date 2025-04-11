@@ -1893,7 +1893,7 @@ def build_nuget_package(
     use_dml,
     enable_training_apis,
     is_nightly_build,
-    msbuild_extra_options, # Expected to be a list of strings like ["key1=value1", "key2=value2"]
+    msbuild_extra_options,
 ):
     """
     Builds the C# bindings and creates the relevant NuGet package.
@@ -2568,7 +2568,7 @@ def main():
                 args.use_qnn,
                 getattr(args, "use_dml", False),
                 args.enable_training_apis,
-                is_nightly_build=is_nightly,
+                is_nightly,
                 normalize_arg_list(args.msbuild_extra_options)
             )
 
