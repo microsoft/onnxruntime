@@ -197,6 +197,8 @@ InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
   InlinedVector<std::unique_ptr<GraphTransformer>> transformers;
   const bool disable_quant_qdq =
       session_options.config_options.GetConfigOrDefault(kOrtSessionOptionsDisableQuantQDQ, "0") == "1";
+  const bool quantize_initializer_for_dq_node =
+      session_options.config_options.GetConfigOrDefault(kOrtSessionOptionsDequantizeInitializerForDQNode, "1") == "1";
 #ifndef DISABLE_CONTRIB_OPS
   const InlinedHashSet<std::string_view> cpu_ep = {onnxruntime::kCpuExecutionProvider};
   const InlinedHashSet<std::string_view> cpu_acl_eps = {onnxruntime::kCpuExecutionProvider,
@@ -233,7 +235,9 @@ InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
       const InlinedHashSet<std::string_view> no_limit_empty_ep_list = {};
       transformers.emplace_back(std::make_unique<ConstantSharing>(no_limit_empty_ep_list, excluded_initializers));
       transformers.emplace_back(std::make_unique<CommonSubexpressionElimination>());
-      transformers.emplace_back(std::make_unique<ConstantFolding>(cpu_execution_provider, !disable_quant_qdq,
+      transformers.emplace_back(std::make_unique<ConstantFolding>(cpu_execution_provider,
+                                                                  !disable_quant_qdq,
+                                                                  quantize_initializer_for_dq_node,
                                                                   session_options.config_options));
       transformers.emplace_back(std::make_unique<MatMulAddFusion>());
       transformers.emplace_back(std::make_unique<ReshapeFusion>());
@@ -245,7 +249,7 @@ InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
 
       if (!disable_quant_qdq) {
         transformers.emplace_back(std::make_unique<QDQPropagationTransformer>());
-        transformers.emplace_back(std::make_unique<WeightBiasQuantization>());
+        //transformers.emplace_back(std::make_unique<WeightBiasQuantization>());
 
         // EnsureUniqueDQForNodeUnit is actually a required graph transformation. The unique DQ per QDQ node unit input
         // condition that it ensures is important for the partitioning that happens after Level1 optimizers are run.
