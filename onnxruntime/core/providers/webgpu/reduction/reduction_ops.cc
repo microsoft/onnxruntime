@@ -413,7 +413,6 @@ Status ReduceKernel<allow_multi_axes>::ComputeInternal(ComputeContext& context) 
       ORT_RETURN_IF_ERROR(context.RunProgram(transpose_program));
       input_tensor = &input_transpose;
     }
-    Tensor output = context.CreateGPUTensor(input_tensor->DataType(), output_shape);
     auto workgroup_size = output_size == 1 ? static_cast<uint32_t>(256) : static_cast<uint32_t>(WORKGROUP_SIZE);
     ReduceSharedProgram program(name_, workgroup_size);
     program.CacheHint(keepdims_,
@@ -421,8 +420,8 @@ Status ReduceKernel<allow_multi_axes>::ComputeInternal(ComputeContext& context) 
                       select_last_index_,
                       absl::StrJoin(input_axes, ","))
         .AddInput({input_tensor, ProgramTensorMetadataDependency::TypeAndRank})
-        .AddOutput({&output, ProgramTensorMetadataDependency::TypeAndRank})
-        .SetDispatchGroupSize((static_cast<uint32_t>(output_size) + workgroup_size - 1) / workgroup_size)
+        .AddOutput({context.Output(0, output_shape), ProgramTensorMetadataDependency::TypeAndRank})
+        .SetDispatchGroupSize(static_cast<uint32_t>(output_size))
         .AddUniformVariable({static_cast<uint32_t>(reduce_size)});
     return context.RunProgram(program);
   }
