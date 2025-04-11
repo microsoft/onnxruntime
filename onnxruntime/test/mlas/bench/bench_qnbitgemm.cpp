@@ -31,8 +31,8 @@ void RunQNBitGemmBenchmark(size_t BlkLen,
   }
 
   size_t QuantBDataSizeInBytes, QuantBScaleSize, QuantBZeroPointSizeInBytes;
-  MlasBlockwiseQuantizedBufferSizes(
-      BlkBitWidth, static_cast<int>(BlkLen), /* columnwise */ true,
+  MlasBlockwiseQuantizedBufferSizes<BlkBitWidth>(
+      static_cast<int>(BlkLen), /* columnwise */ true,
       static_cast<int>(K), static_cast<int>(N),
       QuantBDataSizeInBytes, QuantBScaleSize, &QuantBZeroPointSizeInBytes);
 
