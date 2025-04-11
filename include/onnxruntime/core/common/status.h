@@ -43,7 +43,8 @@ enum StatusCode {
   MODEL_LOADED = 8,
   NOT_IMPLEMENTED = 9,
   INVALID_GRAPH = 10,
-  EP_FAIL = 11
+  EP_FAIL = 11,
+  MODEL_LOAD_CANCELED = 12,
 };
 
 constexpr const char* StatusCodeToString(StatusCode status) noexcept {
@@ -72,6 +73,8 @@ constexpr const char* StatusCodeToString(StatusCode status) noexcept {
       return "INVALID_GRAPH";
     case StatusCode::EP_FAIL:
       return "EP_FAIL";
+    case StatusCode::MODEL_LOAD_CANCELED:
+      return "MODEL_LOAD_CANCELED";
     default:
       return "GENERAL ERROR";
   }
@@ -104,6 +107,8 @@ constexpr HRESULT StatusCodeToHRESULT(StatusCode status) noexcept {
       return HRESULT_FROM_WIN32(ERROR_FILE_CORRUPT);
     case StatusCode::EP_FAIL:
       return HRESULT_FROM_WIN32(ERROR_INTERNAL_ERROR);
+    case StatusCode::MODEL_LOAD_CANCELED:
+      return HRESULT_FROM_WIN32(ERROR_CANCELLED);
     default:
       return E_FAIL;
   }

@@ -421,12 +421,12 @@ select from 'TF8', 'TF16', 'UINT8', 'FLOAT', 'ITENSOR'. \n)");
               "Select from 'gpu', or 'npu' \n");
         }
       } else if (key == "performance_preference") {
-        std::set<std::string> ov_supported_values = {"default", "high_performance", "minimal_power"};
+        std::set<std::string> ov_supported_values = {"default", "high_performance", "minimum_power"};
         if (ov_supported_values.find(value) != ov_supported_values.end()) {
         } else {
           ORT_THROW(
               "[ERROR] [DML] You have selected a wrong configuration value for the key 'performance_preference'. "
-              "Select from 'default', 'high_performance' or 'minimal_power' \n");
+              "Select from 'default', 'high_performance' or 'minimum_power' \n");
         }
       } else if (key == "disable_metacommands") {
         std::set<std::string> ov_supported_values = {"true", "True", "false", "False"};
