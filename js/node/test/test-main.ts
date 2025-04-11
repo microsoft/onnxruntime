@@ -21,6 +21,7 @@ require('./unittests/lib/tensor');
 // E2E tests
 require('./e2e/simple-e2e-tests');
 require('./e2e/inference-session-run');
+require('./e2e/worker-test');
 
 // Test ONNX spec tests
 import { run as runTestRunner } from './test-runner';

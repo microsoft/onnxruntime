@@ -5,17 +5,11 @@
 
 #include "common.h"
 #include "inference_session_wrap.h"
+#include "ort_instance_data.h"
 #include "run_options_helper.h"
 #include "session_options_helper.h"
 #include "tensor_helper.h"
 #include <string>
-
-Napi::FunctionReference InferenceSessionWrap::wrappedSessionConstructor;
-Napi::FunctionReference InferenceSessionWrap::ortTensorConstructor;
-
-Napi::FunctionReference& InferenceSessionWrap::GetTensorConstructor() {
-  return InferenceSessionWrap::ortTensorConstructor;
-}
 
 Napi::Object InferenceSessionWrap::Init(Napi::Env env, Napi::Object exports) {
   // create ONNX runtime env
@@ -37,8 +31,8 @@ Napi::Object InferenceSessionWrap::Init(Napi::Env env, Napi::Object exports) {
        InstanceAccessor("inputMetadata", &InferenceSessionWrap::GetMetadata, nullptr, napi_default, reinterpret_cast<void*>(true)),
        InstanceAccessor("outputMetadata", &InferenceSessionWrap::GetMetadata, nullptr, napi_default, reinterpret_cast<void*>(false))});
 
-  wrappedSessionConstructor = Napi::Persistent(func);
-  wrappedSessionConstructor.SuppressDestruct();
+  OrtInstanceData::Create(env, func);
+
   exports.Set("InferenceSession", func);
 
   Napi::Function listSupportedBackends = Napi::Function::New(env, InferenceSessionWrap::ListSupportedBackends);
@@ -55,16 +49,9 @@ Napi::Value InferenceSessionWrap::InitOrtOnce(const Napi::CallbackInfo& info) {
   Napi::HandleScope scope(env);
 
   int log_level = info[0].As<Napi::Number>().Int32Value();
-
-  Ort::Env* ortEnv = env.GetInstanceData<Ort::Env>();
-  if (ortEnv == nullptr) {
-    ortEnv = new Ort::Env{OrtLoggingLevel(log_level), "onnxruntime-node"};
-    env.SetInstanceData(ortEnv);
-  }
-
   Napi::Function tensorConstructor = info[1].As<Napi::Function>();
-  ortTensorConstructor = Napi::Persistent(tensorConstructor);
-  ortTensorConstructor.SuppressDestruct();
+
+  OrtInstanceData::InitOrt(env, log_level, tensorConstructor);
 
   return env.Undefined();
 }
@@ -90,7 +77,7 @@ Napi::Value InferenceSessionWrap::LoadModel(const Napi::CallbackInfo& info) {
       Napi::String value = info[0].As<Napi::String>();
 
       ParseSessionOptions(info[1].As<Napi::Object>(), sessionOptions);
-      this->session_.reset(new Ort::Session(*env.GetInstanceData<Ort::Env>(),
+      this->session_.reset(new Ort::Session(*OrtInstanceData::OrtEnv(),
 #ifdef _WIN32
                                             reinterpret_cast<const wchar_t*>(value.Utf16Value().c_str()),
 #else
@@ -105,7 +92,7 @@ Napi::Value InferenceSessionWrap::LoadModel(const Napi::CallbackInfo& info) {
       int64_t bytesLength = info[2].As<Napi::Number>().Int64Value();
 
       ParseSessionOptions(info[3].As<Napi::Object>(), sessionOptions);
-      this->session_.reset(new Ort::Session(*env.GetInstanceData<Ort::Env>(),
+      this->session_.reset(new Ort::Session(*OrtInstanceData::OrtEnv(),
                                             reinterpret_cast<char*>(buffer) + bytesOffset, bytesLength,
                                             sessionOptions));
     } else {
