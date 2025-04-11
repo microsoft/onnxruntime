@@ -25,6 +25,14 @@
 
 using namespace onnxruntime;
 
+namespace onnxruntime {
+// Constants for the maximum string lengths of provider options keys and values. The maximum lengths are related
+// to the limits for session config options because we add provider options to the session configs map.
+static constexpr size_t kMaxSessionConfigsEpPrefixLength = 64;  // prefix for new key would be "ep.<EP_NAME>."
+static constexpr size_t kMaxProviderOptionKeyLength = ConfigOptions::kMaxKeyLength - kMaxSessionConfigsEpPrefixLength;
+static constexpr size_t kMaxProviderOptionValueLength = ConfigOptions::kMaxValueLength;
+}  // namespace onnxruntime
+
 namespace {
 
 OrtStatus* ParseProviderOptions(_In_reads_(num_keys) const char* const* provider_options_keys,
@@ -37,21 +45,20 @@ OrtStatus* ParseProviderOptions(_In_reads_(num_keys) const char* const* provider
       return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "Provider options key/value cannot be empty");
     }
 
-    // Need to be able to add provider options to session_option's ConfigOptions map, which
-    // has restrictions on the key/value string lengths.
+    // Check that provider options keys and values are within the allowed maximum lengths.
     const size_t key_length = strlen(provider_options_keys[i]);
-    if (key_length > ConfigOptions::kMaxKeyLength) {
+    if (key_length > kMaxProviderOptionKeyLength) {
       std::ostringstream error_builder;
       error_builder << "Provider option key length is " << key_length << " but the limit is "
-                    << ConfigOptions::kMaxKeyLength << ". Provider option key: " << provider_options_keys[i];
+                    << kMaxProviderOptionKeyLength << ". Provider option key: " << provider_options_keys[i];
       return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, error_builder.str().c_str());
     }
 
     const size_t value_length = strlen(provider_options_values[i]);
-    if (value_length > ConfigOptions::kMaxValueLength) {
+    if (value_length > kMaxProviderOptionValueLength) {
       std::ostringstream error_builder;
       error_builder << "Provider option value length is " << value_length << " but the limit is "
-                    << ConfigOptions::kMaxValueLength << ". Provider option key: " << provider_options_keys[i];
+                    << kMaxProviderOptionValueLength << ". Provider option key: " << provider_options_keys[i];
       return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, error_builder.str().c_str());
     }
 
@@ -101,62 +108,49 @@ ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider,
                                  (std::string(provider_name) + " execution provider is not supported in this build. ").c_str());
   };
 
-  auto add_provider_options_to_session_configs = [&options, &provider_options, &provider_name]() {
-    for (const auto& [key, value] : provider_options) {
-      if (value.size() > ConfigOptions::kMaxValueLength) {
-        LOGS_DEFAULT(WARNING) << "Can't add provider option to session configurations: "
-                              << "value's string length (" << value.size() << ") "
-                              << "exceeds limit (" << ConfigOptions::kMaxValueLength << "). "
-                              << "Key contents: " << key << " Value contents: " << value;
-        continue;
-      }
-
-      std::ostringstream new_key_builder;
-      new_key_builder << "ep." << provider_name << "." << key;
-      const std::string new_key = new_key_builder.str();
-      if (new_key.size() > ConfigOptions::kMaxKeyLength) {
-        LOGS_DEFAULT(WARNING) << "Can't add provider option to session configurations: "
-                              << "New key's string length (" << new_key.size() << ") "
-                              << "exceeds limit (" << ConfigOptions::kMaxKeyLength << "). "
-                              << "Original key contents: " << key << " New key contents: " << new_key;
-        continue;
-      }
-
-      ORT_ENFORCE(options->value.config_options.AddConfigEntry(new_key_builder.str().c_str(), value.c_str()).IsOK());
+  // Add provider options to the session config options.
+  // Use a new key with the format: "ep.<EP_NAME>.<PROVIDER_OPTION_KEY>"
+  for (const auto& [key, value] : provider_options) {
+    std::ostringstream new_key_builder;
+    new_key_builder << "ep." << provider_name << "." << key;
+    const std::string new_key = new_key_builder.str();
+    if (new_key.size() > ConfigOptions::kMaxKeyLength) {
+      LOGS_DEFAULT(WARNING) << "Can't add provider option to session configurations: "
+                            << "New key's string length (" << new_key.size() << ") "
+                            << "exceeds limit (" << ConfigOptions::kMaxKeyLength << "). "
+                            << "Original key contents: " << key << " New key contents: " << new_key;
+      continue;
     }
-  };
+
+    ORT_ENFORCE(options->value.config_options.AddConfigEntry(new_key.c_str(), value.c_str()).IsOK());
+  }
 
   if (strcmp(provider_name, "DML") == 0) {
 #if defined(USE_DML)
-    add_provider_options_to_session_configs();
     options->provider_factories.push_back(DMLProviderFactoryCreator::CreateFromProviderOptions(options->value.config_options, provider_options));
 #else
     status = create_not_supported_status();
 #endif
   } else if (strcmp(provider_name, "QNN") == 0) {
 #if defined(USE_QNN)
-    add_provider_options_to_session_configs();
     options->provider_factories.push_back(QNNProviderFactoryCreator::Create(provider_options, &(options->value)));
 #else
     status = create_not_supported_status();
 #endif
   } else if (strcmp(provider_name, "OpenVINO") == 0) {
 #if defined(USE_OPENVINO)
-    add_provider_options_to_session_configs();
     options->provider_factories.push_back(OpenVINOProviderFactoryCreator::Create(&provider_options, &(options->value)));
 #else
     status = create_not_supported_status();
 #endif
   } else if (strcmp(provider_name, "SNPE") == 0) {
 #if defined(USE_SNPE)
-    add_provider_options_to_session_configs();
     options->provider_factories.push_back(SNPEProviderFactoryCreator::Create(provider_options));
 #else
     status = create_not_supported_status();
 #endif
   } else if (strcmp(provider_name, "XNNPACK") == 0) {
 #if defined(USE_XNNPACK)
-    add_provider_options_to_session_configs();
     options->provider_factories.push_back(XnnpackProviderFactoryCreator::Create(provider_options, &(options->value)));
 #else
     status = create_not_supported_status();
@@ -165,21 +159,18 @@ ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider,
 #if defined(USE_WEBNN)
     std::string deviceType = options->value.config_options.GetConfigOrDefault("deviceType", "cpu");
     provider_options["deviceType"] = deviceType;
-    add_provider_options_to_session_configs();
     options->provider_factories.push_back(WebNNProviderFactoryCreator::Create(provider_options));
 #else
     status = create_not_supported_status();
 #endif
   } else if (strcmp(provider_name, "WebGPU") == 0) {
 #if defined(USE_WEBGPU)
-    add_provider_options_to_session_configs();
     options->provider_factories.push_back(WebGpuProviderFactoryCreator::Create(options->value.config_options));
 #else
     status = create_not_supported_status();
 #endif
   } else if (strcmp(provider_name, "AZURE") == 0) {
 #if defined(USE_AZURE)
-    add_provider_options_to_session_configs();
     options->provider_factories.push_back(AzureProviderFactoryCreator::Create(provider_options));
 #else
     status = create_not_supported_status();
@@ -190,28 +181,24 @@ ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider,
     if (options->value.config_options.TryGetConfigEntry("preferredLayout", preferred_layout)) {
       provider_options["preferred_layout"] = preferred_layout;
     }
-    add_provider_options_to_session_configs();
     options->provider_factories.push_back(JsProviderFactoryCreator::Create(provider_options, &(options->value)));
 #else
     status = create_not_supported_status();
 #endif
   } else if (strcmp(provider_name, "VitisAI") == 0) {
 #ifdef USE_VITISAI
-    add_provider_options_to_session_configs();
     status = OrtApis::SessionOptionsAppendExecutionProvider_VitisAI(options, provider_options_keys, provider_options_values, num_keys);
 #else
     status = create_not_supported_status();
 #endif
   } else if (strcmp(provider_name, "CoreML") == 0) {
 #if defined(USE_COREML)
-    add_provider_options_to_session_configs();
     options->provider_factories.push_back(CoreMLProviderFactoryCreator::Create(provider_options));
 #else
     status = create_not_supported_status();
 #endif
   } else {
     ORT_UNUSED_PARAMETER(options);
-    ORT_UNUSED_PARAMETER(add_provider_options_to_session_configs);
     status = OrtApis::CreateStatus(ORT_INVALID_ARGUMENT,
                                    "Unknown provider name. Currently supported values are 'DML', 'QNN', 'OpenVINO', 'SNPE', 'XNNPACK', 'WEBNN', 'WebGPU', 'AZURE', 'JS', 'VitisAI', and 'CoreML'");
   }
