@@ -97,12 +97,16 @@ OrtStatus* CreateSessionAndLoadModel(_In_ const OrtSessionOptions* options,
 OrtStatus* InitializeSession(_In_ const OrtSessionOptions* options,
                              _In_ onnxruntime::InferenceSession& sess,
                              _Inout_opt_ OrtPrepackedWeightsContainer* prepacked_weights_container) {
+  const logging::Logger* session_logger = sess.GetLogger();
+  ORT_ENFORCE(session_logger != nullptr,
+              "Session logger is invalid, but should have been initialized during session construction.");
+
   // we need to disable mem pattern if DML is one of the providers since DML doesn't have the concept of
   // byte addressable memory
   std::vector<std::unique_ptr<IExecutionProvider>> provider_list;
   if (options) {
     for (auto& factory : options->provider_factories) {
-      auto provider = factory->CreateProvider();
+      auto provider = factory->CreateProvider(*options, *reinterpret_cast<const OrtLogger*>(session_logger));
       provider_list.push_back(std::move(provider));
     }
   }

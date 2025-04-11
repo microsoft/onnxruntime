@@ -196,6 +196,258 @@ void QnnContextBinaryMultiPartitionTestBody(bool single_ep_node = true) {
   CleanUpCtxFile(context_model_file);
 }
 
+// Helper struct that represents a test model.
+struct TestModel {
+  std::unique_ptr<onnxruntime::Model> model;
+  std::unique_ptr<ModelTestBuilder> builder;
+
+  std::string Serialize() const {
+    std::string model_data;
+    model->ToProto().SerializeToString(&model_data);
+    return model_data;
+  }
+
+  Status Save(const ORTCHAR_T* path) const {
+    return onnxruntime::Model::Save(*model, PathString(path));
+  }
+};
+
+// Create a test model from a function that programmatically builds a graph.
+static void CreateTestModel(test::GetTestModelFn graph_builder,
+                            int onnx_opset_version,
+                            logging::Severity log_severity,
+                            TestModel& test_model) {
+  auto& logging_manager = DefaultLoggingManager();
+  logging_manager.SetDefaultLoggerSeverity(log_severity);
+  const std::unordered_map<std::string, int> domain_to_version = {{"", onnx_opset_version}, {kMSDomain, 1}};
+
+  test_model.model = std::make_unique<onnxruntime::Model>("QNN_EP_TestModel", false, ModelMetaData(), PathString(),
+                                                          IOnnxRuntimeOpSchemaRegistryList(), domain_to_version,
+                                                          std::vector<ONNX_NAMESPACE::FunctionProto>{}, logging_manager.DefaultLogger());
+  test_model.builder = std::make_unique<ModelTestBuilder>(test_model.model->MainGraph());
+  graph_builder(*test_model.builder);
+  test_model.builder->SetGraphOutputs();
+  ASSERT_STATUS_OK(test_model.model->MainGraph().Resolve());
+}
+
+// Helper that checks that a compiled model has the expected number of EPContext nodes.
+static void CheckEpContextNodeCounts(const onnxruntime::Model& ep_ctx_model,
+                                     int expected_ep_context_node_count,
+                                     int expected_other_node_count) {
+  int ep_context_node_count = 0;
+  int non_ep_context_node_count = 0;
+  auto& ctx_graph = ep_ctx_model.MainGraph();
+  for (auto& node : ctx_graph.Nodes()) {
+    if (node.OpType() == "EPContext") {
+      ++ep_context_node_count;
+      // validate the fix for the partition issue relate to QDQ model
+      ASSERT_EQ(node.InputDefs().size(), 1);
+    } else {
+      ++non_ep_context_node_count;
+    }
+  }
+
+  EXPECT_EQ(ep_context_node_count, expected_ep_context_node_count);
+  EXPECT_EQ(non_ep_context_node_count, expected_other_node_count);
+}
+
+// Helper to check that a compiled model (stored as a file) has the expected number of EPContext nodes.
+static void CheckEpContextNodeCounts(const ORTCHAR_T* model_path,
+                                     int expected_ep_context_node_count,
+                                     int expected_other_node_count) {
+  std::shared_ptr<Model> ep_ctx_model;
+  ASSERT_STATUS_OK(Model::Load(ToPathString(model_path), ep_ctx_model, nullptr, DefaultLoggingManager().DefaultLogger()));
+  CheckEpContextNodeCounts(*ep_ctx_model, expected_ep_context_node_count, expected_other_node_count);
+}
+
+// Helper to check that a compiled model (stored in a buffer) has the expected number of EPContext nodes.
+static void CheckEpContextNodeCounts(void* model_buffer, size_t model_buffer_size,
+                                     int expected_ep_context_node_count,
+                                     int expected_other_node_count) {
+  std::shared_ptr<Model> ep_ctx_model;
+  const ORTCHAR_T* output_model_path = ORT_TSTR("tmp_output_ctx_model.onnx");
+  ASSERT_STATUS_OK(onnxruntime::Model::LoadFromBytes(static_cast<int>(model_buffer_size),
+                                                     model_buffer, output_model_path, ep_ctx_model,
+                                                     nullptr, DefaultLoggingManager().DefaultLogger()));
+  CheckEpContextNodeCounts(*ep_ctx_model, expected_ep_context_node_count, expected_other_node_count);
+  std::filesystem::remove(output_model_path);
+}
+
+// Test using the CompileModel() API with settings:
+//   - input model file
+//   - output model file
+TEST_F(QnnHTPBackendTests, CompileApi_FromSessionOptions_InputModelFromPath) {
+  const ORTCHAR_T* input_model_file = ORT_TSTR("./compileapi_fromsessionoptions_inputmodelfrompath.onnx");
+  const ORTCHAR_T* output_model_file = ORT_TSTR("./qnn_context_binary_multi_partition_test.onnx");
+  std::filesystem::remove(input_model_file);
+  std::filesystem::remove(output_model_file);
+
+  // Create a test model and save it to a file.
+  TestModel test_model;
+  CreateTestModel(BuildGraphWithQAndNonQ(false), 21, logging::Severity::kERROR, test_model);
+  ASSERT_STATUS_OK(test_model.Save(input_model_file));
+
+  // Initialize session options with QNN EP
+  Ort::SessionOptions so;
+  ProviderOptions provider_options;
+#if defined(_WIN32)
+  provider_options["backend_path"] = "QnnHtp.dll";
+#else
+  provider_options["backend_path"] = "libQnnHtp.so";
+#endif
+  provider_options["offload_graph_io_quantization"] = "0";
+  so.AppendExecutionProvider("QNN", provider_options);
+
+  // Create model compilation options from the session options.
+  Ort::ModelCompilationOptions compile_options(*ort_env, so);
+  compile_options.SetInputModelPath(input_model_file);
+  compile_options.SetOutputModelPath(output_model_file);
+
+  // Compile the model.
+  Ort::Status status = Ort::CompileModel(*ort_env, compile_options);
+  ASSERT_TRUE(status.IsOK()) << status.GetErrorMessage();
+
+  // Make sure the compiled model was generated and has the expected number of EPContext nodes.
+  ASSERT_TRUE(std::filesystem::exists(output_model_file));
+  CheckEpContextNodeCounts(output_model_file, 2, 2);
+}
+
+// Test using the CompileModel() API with settings:
+//   - input model from buffer
+//   - output model file
+//   - EPContext nodes in output model use embedded binary blobs.
+TEST_F(QnnHTPBackendTests, CompileApi_FromSessionOptions_InputModelAsBuffer_Embedded) {
+  // Create a test model and serialize it to a buffer.
+  TestModel test_model;
+  CreateTestModel(BuildGraphWithQAndNonQ(false), 21, logging::Severity::kERROR, test_model);
+  std::string model_data = test_model.Serialize();
+
+  const ORTCHAR_T* output_model_file = ORT_TSTR("./qnn_context_binary_multi_partition_test.onnx");
+  std::filesystem::remove(output_model_file);
+
+  // Initialize session options with QNN EP
+  Ort::SessionOptions so;
+  ProviderOptions provider_options;
+#if defined(_WIN32)
+  provider_options["backend_path"] = "QnnHtp.dll";
+#else
+  provider_options["backend_path"] = "libQnnHtp.so";
+#endif
+  provider_options["offload_graph_io_quantization"] = "0";
+  so.AppendExecutionProvider("QNN", provider_options);
+
+  // Create model compilation options from the session options.
+  Ort::ModelCompilationOptions compile_options(*ort_env, so);
+  compile_options.SetInputModelFromBuffer(reinterpret_cast<const void*>(model_data.data()), model_data.size());
+  compile_options.SetOutputModelPath(output_model_file);
+  compile_options.SetEpContextEmbedMode(true);
+
+  // Compile the model.
+  Ort::Status status = Ort::CompileModel(*ort_env, compile_options);
+  ASSERT_TRUE(status.IsOK()) << status.GetErrorMessage();
+
+  // Make sure the compiled model was generated and has the expected number of EPContext nodes.
+  ASSERT_TRUE(std::filesystem::exists(output_model_file));
+  CheckEpContextNodeCounts(output_model_file, 2, 2);
+}
+
+// Test using the CompileModel() API with settings:
+//   - input model from file
+//   - save output model to a buffer
+TEST_F(QnnHTPBackendTests, CompileApi_FromSessionOptions_OutputModelBuffer) {
+  const ORTCHAR_T* input_model_file = ORT_TSTR("./compileapi_fromsessionoptions_inputmodelfrompath.onnx");
+  std::filesystem::remove(input_model_file);
+
+  // Create a test model and save it to a file.
+  TestModel test_model;
+  CreateTestModel(BuildGraphWithQAndNonQ(false), 21, logging::Severity::kERROR, test_model);
+  ASSERT_STATUS_OK(test_model.Save(input_model_file));
+
+  // Initialize session options with QNN EP
+  Ort::SessionOptions so;
+  ProviderOptions provider_options;
+#if defined(_WIN32)
+  provider_options["backend_path"] = "QnnHtp.dll";
+#else
+  provider_options["backend_path"] = "libQnnHtp.so";
+#endif
+  provider_options["offload_graph_io_quantization"] = "0";
+  so.AppendExecutionProvider("QNN", provider_options);
+
+  // Create model compilation options from the session options. Output model is stored in a buffer.
+  Ort::ModelCompilationOptions compile_options(*ort_env, so);
+  compile_options.SetInputModelPath(input_model_file);
+
+  Ort::AllocatorWithDefaultOptions allocator;
+  void* output_model_buffer = nullptr;
+  size_t output_model_buffer_size = 0;
+  compile_options.SetOutputModelBuffer(allocator, &output_model_buffer, &output_model_buffer_size);
+
+  // Compile the model.
+  Ort::Status status = Ort::CompileModel(*ort_env, compile_options);
+  ASSERT_TRUE(status.IsOK()) << status.GetErrorMessage();
+
+  // Make sure the compiled model was saved to the buffer.
+  ASSERT_TRUE(output_model_buffer != nullptr);
+  ASSERT_TRUE(output_model_buffer_size > 0);
+
+  // Check that the compiled model has the expected number of EPContext nodes.
+  CheckEpContextNodeCounts(output_model_buffer, output_model_buffer_size, 2, 2);
+}
+
+// Test using the CompileModel() API with settings:
+//   - input model from file
+//   - save output model to a buffer
+//   - save initializers (used by CPU EP) to external file.
+//   - EPContext nodes in output model use embedded binary blobs.
+TEST_F(QnnHTPBackendTests, CompileApi_FromSessionOptions_OutputModelBuffer_OutputInitializersFile) {
+  const ORTCHAR_T* input_model_file = ORT_TSTR("./compileapi_fromsessionoptions_outputmodelbuffer_initializers.onnx");
+  const ORTCHAR_T* output_initializers_file = ORT_TSTR("./compileapi_initializers.bin");
+  std::filesystem::remove(input_model_file);
+  std::filesystem::remove(output_initializers_file);
+
+  // Create a test model and save it to a file.
+  TestModel test_model;
+  CreateTestModel(BuildGraphWithQAndNonQ(false), 21, logging::Severity::kERROR, test_model);
+  ASSERT_STATUS_OK(test_model.Save(input_model_file));
+
+  // Initialize session options with QNN EP
+  Ort::SessionOptions so;
+  ProviderOptions provider_options;
+#if defined(_WIN32)
+  provider_options["backend_path"] = "QnnHtp.dll";
+#else
+  provider_options["backend_path"] = "libQnnHtp.so";
+#endif
+  provider_options["offload_graph_io_quantization"] = "0";
+  so.AppendExecutionProvider("QNN", provider_options);
+
+  // Create model compilation options from the session options. Output model is stored in a buffer.
+  Ort::ModelCompilationOptions compile_options(*ort_env, so);
+  compile_options.SetInputModelPath(input_model_file);
+
+  Ort::AllocatorWithDefaultOptions allocator;
+  void* output_model_buffer = nullptr;
+  size_t output_model_buffer_size = 0;
+  compile_options.SetOutputModelBuffer(allocator, &output_model_buffer, &output_model_buffer_size);
+  compile_options.SetOutputModelExternalInitializersFile(output_initializers_file, 0);
+  compile_options.SetEpContextEmbedMode(true);
+
+  // Compile the model.
+  Ort::Status status = Ort::CompileModel(*ort_env, compile_options);
+  ASSERT_TRUE(status.IsOK()) << status.GetErrorMessage();
+
+  // Make sure the compiled model was saved to the buffer.
+  ASSERT_TRUE(output_model_buffer != nullptr);
+  ASSERT_TRUE(output_model_buffer_size > 0);
+
+  // Make sure that the initializers were saved to an external file.
+  ASSERT_TRUE(std::filesystem::exists(output_initializers_file));
+
+  // Check that the compiled model has the expected number of EPContext nodes.
+  CheckEpContextNodeCounts(output_model_buffer, output_model_buffer_size, 2, 2);
+}
+
 // Test that models with 1 non-quantized FusedMatMul node and 1 quantized Add node can still generate the context binary
 // The generated Onnx model has 1 FusedMatMul node and 1 EPContext node
 TEST_F(QnnHTPBackendTests, QnnContextBinaryMultiPartitionSupport1) {

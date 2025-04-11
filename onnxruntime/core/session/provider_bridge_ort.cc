@@ -26,6 +26,7 @@
 #include "core/graph/model.h"
 #include "core/platform/env.h"
 #include "core/providers/common.h"
+#include "core/providers/providers.h"
 #include "core/session/inference_session.h"
 #include "core/session/abi_session_options_impl.h"
 #include "core/session/ort_apis.h"
@@ -373,6 +374,12 @@ struct ProviderHostImpl : ProviderHost {
 
   // IAllocator (direct)
   bool IAllocator__CalcMemSizeForArrayWithAlignment(size_t nmemb, size_t size, size_t alignment, size_t* out) override { return IAllocator::CalcMemSizeForArrayWithAlignment(nmemb, size, alignment, out); }
+
+  // IExecutionProviderFactory
+  std::unique_ptr<IExecutionProvider> IExecutionProviderFactory__CreateProvider(
+      IExecutionProviderFactory* p, const OrtSessionOptions& session_options, const OrtLogger& session_logger) override {
+    return p->IExecutionProviderFactory::CreateProvider(session_options, session_logger);
+  }
 
   // IExecutionProvider (direct)
   std::vector<std::unique_ptr<ComputeCapability>> IExecutionProvider__GetCapability(
@@ -812,11 +819,16 @@ struct ProviderHostImpl : ProviderHost {
     return p->GetConfigOrDefault(config_key, default_value);
   }
 
+  const std::unordered_map<std::string, std::string>& ConfigOptions__GetConfigOptionsMap(const ConfigOptions* p) override {
+    return p->GetConfigOptionsMap();
+  }
+
   // OrtRunOptions (wrapped)
   const ConfigOptions& RunOptions__GetConfigOptions(const RunOptions* p) override { return p->config_options; }
 
   // OrtSessionOptions (wrapped)
   const std::unordered_map<std::string, std::string>& SessionOptions__GetConfigOptionsMap(const OrtSessionOptions* p) override { return p->value.config_options.configurations; }
+  const ConfigOptions& SessionOptions__GetConfigOptions(const OrtSessionOptions* p) override { return p->value.config_options; }
   bool SessionOptions__GetEnableProfiling(const OrtSessionOptions* p) override { return p->value.enable_profiling; };
   // ComputeCapability (wrapped)
   std::unique_ptr<ComputeCapability> ComputeCapability__construct(std::unique_ptr<IndexedSubGraph> t_sub_graph) override { return std::make_unique<ComputeCapability>(std::move(t_sub_graph)); }

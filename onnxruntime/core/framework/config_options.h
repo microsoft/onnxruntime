@@ -33,6 +33,11 @@ struct ConfigOptions {
   // Add a config pair (config_key, config_value) to this instance of ConfigOptions
   Status AddConfigEntry(const char* config_key, const char* config_value) noexcept;
 
+  // Gets a constant reference the map of all configurations.
+  const std::unordered_map<std::string, std::string>& GetConfigOptionsMap() const noexcept;
+
+  size_t GetMaxValueStringLength() const;
+
   friend std::ostream& operator<<(std::ostream& os, const ConfigOptions& config_options);
 };
 

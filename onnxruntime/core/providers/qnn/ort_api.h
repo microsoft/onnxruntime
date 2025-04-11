@@ -43,6 +43,7 @@
 #include "core/optimizer/qdq_transformer/selectors_actions/shared/utils.h"
 #include "core/providers/common.h"
 #include "core/providers/partitioning_utils.h"
+#include "core/session/abi_session_options_impl.h"
 #include "core/session/onnxruntime_cxx_api.h"
 #else
 // Includes when building QNN EP as a shared library
