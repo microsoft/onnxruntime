@@ -52,13 +52,12 @@ Napi::Value InferenceSessionWrap::InitOrtOnce(const Napi::CallbackInfo& info) {
   Napi::Function tensorConstructor = info[1].As<Napi::Function>();
 
   OrtInstanceData::InitOrt(env, log_level, tensorConstructor);
-  defaultRunOptions_.reset(new Ort::RunOptions{});
 
   return env.Undefined();
 }
 
 InferenceSessionWrap::InferenceSessionWrap(const Napi::CallbackInfo& info)
-    : Napi::ObjectWrap<InferenceSessionWrap>(info), initialized_(false), disposed_(false), session_(nullptr), defaultRunOptions_(nullptr) {}
+    : Napi::ObjectWrap<InferenceSessionWrap>(info), initialized_(false), disposed_(false), session_(nullptr) {}
 
 Napi::Value InferenceSessionWrap::LoadModel(const Napi::CallbackInfo& info) {
   Napi::Env env = info.Env();
@@ -212,7 +211,7 @@ Napi::Value InferenceSessionWrap::Run(const Napi::CallbackInfo& info) {
       ParseRunOptions(info[2].As<Napi::Object>(), runOptions);
     }
     if (preferredOutputLocations_.size() == 0) {
-      session_->Run(runOptions == nullptr ? *defaultRunOptions_.get() : runOptions,
+      session_->Run(runOptions == nullptr ? *OrtInstanceData::OrtDefaultRunOptions() : runOptions,
                     inputIndex == 0 ? nullptr : &inputNames_cstr[0], inputIndex == 0 ? nullptr : &inputValues[0],
                     inputIndex, outputIndex == 0 ? nullptr : &outputNames_cstr[0],
                     outputIndex == 0 ? nullptr : &outputValues[0], outputIndex);
@@ -241,7 +240,7 @@ Napi::Value InferenceSessionWrap::Run(const Napi::CallbackInfo& info) {
         }
       }
 
-      session_->Run(runOptions == nullptr ? *defaultRunOptions_.get() : runOptions, *ioBinding_);
+      session_->Run(runOptions == nullptr ? *OrtInstanceData::OrtDefaultRunOptions() : runOptions, *ioBinding_);
 
       auto outputs = ioBinding_->GetOutputValues();
       ORT_NAPI_THROW_ERROR_IF(outputs.size() != outputIndex, env, "Output count mismatch.");
@@ -265,8 +264,6 @@ Napi::Value InferenceSessionWrap::Dispose(const Napi::CallbackInfo& info) {
   ORT_NAPI_THROW_ERROR_IF(this->disposed_, env, "Session already disposed.");
 
   this->ioBinding_.reset(nullptr);
-
-  this->defaultRunOptions_.reset(nullptr);
   this->session_.reset(nullptr);
 
   this->disposed_ = true;

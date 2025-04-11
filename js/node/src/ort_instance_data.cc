@@ -18,6 +18,7 @@ OrtInstanceData::~OrtInstanceData() {
   if (--ortEnvRefCount == 0) {
     std::lock_guard<std::mutex> lock(ortEnvMutex);
     if (ortEnv) {
+      ortDefaultRunOptions_.reset(nullptr);
       ortEnv.reset();
       ortEnvDestroyed = true;
     }
@@ -42,6 +43,7 @@ void OrtInstanceData::InitOrt(Napi::Env env, int log_level, Napi::Function tenso
     if (!ortEnv) {
       ORT_NAPI_THROW_ERROR_IF(ortEnvDestroyed, env, "OrtEnv already destroyed.");
       ortEnv.reset(new Ort::Env{OrtLoggingLevel(log_level), "onnxruntime-node"});
+      ortDefaultRunOptions_.reset(new Ort::RunOptions{});
     }
   }
 }
