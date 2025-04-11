@@ -882,24 +882,20 @@ class PlannerImpl {
           if (!node_output->Exists()) continue;
           OrtValueIndex index = Index(node_output->Name());
           ProcessDef(index, node_output);
-
           OrtDevice output_device = exec_provider->GetOrtDeviceByMemType(p_kernel_def->OutputMemoryType(i));
-          if (!IsCpuDeviceWithAllocator(output_device)) {
-            // If the output device is not CPU, just set what is returned.
-            plan_.SetLocation(static_cast<size_t>(index), output_device);
-            continue;
-          }
 
-          // No need to override
-          if (output_device.Type() == OrtDevice::CPU &&
-              output_device.MemType() == OrtDevice::MemType::QNN_HTP_SHARED) {
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
+          if (!IsCpuDeviceWithAllocator(output_device) ||
+              (output_device.Type() == OrtDevice::CPU &&
+               output_device.MemType() == OrtDevice::MemType::QNN_HTP_SHARED)) {
+            // If the output device is not CPU, just set what is returned.
             plan_.SetLocation(static_cast<size_t>(index), output_device);
             continue;
           }
 
           const auto& output_name = node_output->Name();
           const auto consumers = graph_viewer_.GetConsumerNodes(output_name);
-          if (consumers.size() != 1) {
+          if (consumers.size() != 1 || consumers[0] == nullptr) {
             plan_.SetLocation(static_cast<size_t>(index), output_device);
             continue;
           }
@@ -926,6 +922,9 @@ class PlannerImpl {
               consumer_kernel_def->InputMemoryType(narrow<size_t>(input_index)));
           plan_.SetLocation(static_cast<size_t>(index), input_device);
         }
+#else
+          plan_.SetLocation(static_cast<size_t>(index), output_device);
+#endif
       }
     }
 
@@ -1601,7 +1600,7 @@ class PlannerImpl {
 #ifdef ENABLE_STRIDED_TENSORS
           if (is_strided_tensor) AllocPlan(current).is_strided_tensor = true;
 #else
-          ORT_ENFORCE(!is_strided_tensor, "Strided tensor is not supported in non-training build for now.");
+            ORT_ENFORCE(!is_strided_tensor, "Strided tensor is not supported in non-training build for now.");
 #endif  // ENABLE_STRIDED_TENSORS
 #if !defined(ORT_MINIMAL_BUILD) && defined(ORT_MEMORY_PROFILE)
           InplaceReuse(reused, current);
@@ -1967,327 +1966,327 @@ class PlannerImpl {
 
 #else
 
-  void PartitionIntoStreams(const ExecutionProviders& execution_providers,
-                            const PathString& partition_config_file) {
-    auto partitioner = IGraphPartitioner::CreateGraphPartitioner(logger_, partition_config_file);
-    auto status = partitioner->PartitionGraph(graph_viewer_, execution_providers, stream_nodes_,
-                                              context_->GetExecutionOrder());
-    ORT_ENFORCE(status.IsOK(), status.ErrorMessage());
-    plan_.node_stream_map_.resize(SafeInt<size_t>(graph_viewer_.MaxNodeIndex()) + 1);
-    for (size_t i = 0; i < stream_nodes_.size(); ++i) {
-      for (auto node_index : stream_nodes_[i]) {
-        plan_.node_stream_map_[node_index] = i;
+    void PartitionIntoStreams(const ExecutionProviders& execution_providers,
+                              const PathString& partition_config_file) {
+      auto partitioner = IGraphPartitioner::CreateGraphPartitioner(logger_, partition_config_file);
+      auto status = partitioner->PartitionGraph(graph_viewer_, execution_providers, stream_nodes_,
+                                                context_->GetExecutionOrder());
+      ORT_ENFORCE(status.IsOK(), status.ErrorMessage());
+      plan_.node_stream_map_.resize(SafeInt<size_t>(graph_viewer_.MaxNodeIndex()) + 1);
+      for (size_t i = 0; i < stream_nodes_.size(); ++i) {
+        for (auto node_index : stream_nodes_[i]) {
+          plan_.node_stream_map_[node_index] = i;
+        }
       }
-    }
-    num_logic_streams_ = stream_nodes_.size();
-  }
-
-  // build each logic streams
-  Status BuildExecutionPlan(const ExecutionProviders& execution_providers,
-                            const IStreamCommandHandleRegistry& stream_handle_registry) {
-    // 1. create logic stream instance
-    auto& execution_plan = plan_.execution_plan;
-    execution_plan.reserve(num_logic_streams_);
-    for (size_t i = 0; i < num_logic_streams_; ++i) {
-      if (!stream_nodes_[i].empty()) {
-        // get device from first node
-        auto& node_index = stream_nodes_[i][0];
-        auto* node = graph_viewer_.GetNode(node_index);
-        onnxruntime::ProviderType exec_provider_name = node->GetExecutionProviderType();
-        const IExecutionProvider* ep = execution_providers.Get(exec_provider_name);
-        ORT_ENFORCE(ep);
-        auto node_device_mem_location = ep->GetOrtDeviceByMemType(OrtMemType::OrtMemTypeDefault);
-        execution_plan.emplace_back(std::make_unique<SequentialExecutionPlan::LogicStream>(node_device_mem_location));
-      } else {
-        execution_plan.emplace_back(nullptr);
-      }
-    }
-    // 2. Determining following things:
-    //    a. which node needs to generate the notification
-    //    b. which node needs to trigger downstream
-#ifdef ENABLE_TRAINING
-    // We will leverage the topological order for the training scenario.
-    // The nodes before yieldOp in topo-order will be executed in RunForward() and nodes after will be executed in RunBackward()
-    // This partition may not be exactly the same as forward model/gradient model, for example, some nodes in gradient model are
-    // before yieldOp thus will be executed in RunForward()
-    // But the final result is still correct, as long as all the nodes will be executed in either RunForward() or RunBackward()
-    // and no dependency conflict during the execution.
-    const std::vector<NodeIndex>& topo_sort = graph_viewer_.GetNodesInTopologicalOrder(context_->GetExecutionOrder());
-    plan_.node_index_2_toposort_index.reserve(topo_sort.size());
-    size_t yieldOp_index_in_toposort = topo_sort.size();
-    for (size_t i = 0; i < topo_sort.size(); i++) {
-      plan_.node_index_2_toposort_index[topo_sort[i]] = i;
-      const Node* node = graph_viewer_.GetNode(topo_sort[i]);
-      if (node->OpType() == "YieldOp") {
-        ORT_ENFORCE(yieldOp_index_in_toposort == topo_sort.size(), "Two YieldOp in the graph");
-        yieldOp_index_in_toposort = i;
-      }
+      num_logic_streams_ = stream_nodes_.size();
     }
 
-    auto AreNodesSeparatedByYield = [&](NodeIndex producer, NodeIndex consumer) {
-      size_t producer_topoindex = plan_.node_index_2_toposort_index[producer];
-      size_t consumer_topoindex = plan_.node_index_2_toposort_index[consumer];
-      return producer_topoindex < yieldOp_index_in_toposort && yieldOp_index_in_toposort < consumer_topoindex;
-    };
-#endif
-    size_t num_trigger_points = 0;
-    InlinedHashMap<NodeIndex, size_t> node_to_trigger_points;
-    InlinedHashMap<NodeIndex, NotificationIndex> node_to_notification;
-    std::map<NodeIndex, std::map<NodeIndex, WaitNotificationFn>> node_to_wait;
-    for (size_t i = 0; i < num_logic_streams_; ++i) {
-      for (auto node_index : stream_nodes_[i]) {
-        auto* node = graph_viewer_.GetNode(node_index);
-        for (auto it = node->OutputNodesBegin(); it != node->OutputNodesEnd(); ++it) {
-          // if the output node is not in the same stream, generate a trigger point
-          if (plan_.node_stream_map_[it->Index()] != i
+    // build each logic streams
+    Status BuildExecutionPlan(const ExecutionProviders& execution_providers,
+                              const IStreamCommandHandleRegistry& stream_handle_registry) {
+      // 1. create logic stream instance
+      auto& execution_plan = plan_.execution_plan;
+      execution_plan.reserve(num_logic_streams_);
+      for (size_t i = 0; i < num_logic_streams_; ++i) {
+        if (!stream_nodes_[i].empty()) {
+          // get device from first node
+          auto& node_index = stream_nodes_[i][0];
+          auto* node = graph_viewer_.GetNode(node_index);
+          onnxruntime::ProviderType exec_provider_name = node->GetExecutionProviderType();
+          const IExecutionProvider* ep = execution_providers.Get(exec_provider_name);
+          ORT_ENFORCE(ep);
+          auto node_device_mem_location = ep->GetOrtDeviceByMemType(OrtMemType::OrtMemTypeDefault);
+          execution_plan.emplace_back(std::make_unique<SequentialExecutionPlan::LogicStream>(node_device_mem_location));
+        } else {
+          execution_plan.emplace_back(nullptr);
+        }
+      }
+      // 2. Determining following things:
+      //    a. which node needs to generate the notification
+      //    b. which node needs to trigger downstream
 #ifdef ENABLE_TRAINING
-              // Do not insert Barrier/TriggerDownStream step if the producer and consumer are in different sides of yieldOp
-              // As in this case producer will surely be ready before the consumer is running.
-              && !AreNodesSeparatedByYield(node_index, it->Index())
+      // We will leverage the topological order for the training scenario.
+      // The nodes before yieldOp in topo-order will be executed in RunForward() and nodes after will be executed in RunBackward()
+      // This partition may not be exactly the same as forward model/gradient model, for example, some nodes in gradient model are
+      // before yieldOp thus will be executed in RunForward()
+      // But the final result is still correct, as long as all the nodes will be executed in either RunForward() or RunBackward()
+      // and no dependency conflict during the execution.
+      const std::vector<NodeIndex>& topo_sort = graph_viewer_.GetNodesInTopologicalOrder(context_->GetExecutionOrder());
+      plan_.node_index_2_toposort_index.reserve(topo_sort.size());
+      size_t yieldOp_index_in_toposort = topo_sort.size();
+      for (size_t i = 0; i < topo_sort.size(); i++) {
+        plan_.node_index_2_toposort_index[topo_sort[i]] = i;
+        const Node* node = graph_viewer_.GetNode(topo_sort[i]);
+        if (node->OpType() == "YieldOp") {
+          ORT_ENFORCE(yieldOp_index_in_toposort == topo_sort.size(), "Two YieldOp in the graph");
+          yieldOp_index_in_toposort = i;
+        }
+      }
+
+      auto AreNodesSeparatedByYield = [&](NodeIndex producer, NodeIndex consumer) {
+        size_t producer_topoindex = plan_.node_index_2_toposort_index[producer];
+        size_t consumer_topoindex = plan_.node_index_2_toposort_index[consumer];
+        return producer_topoindex < yieldOp_index_in_toposort && yieldOp_index_in_toposort < consumer_topoindex;
+      };
 #endif
-          ) {
-            node_to_trigger_points[node_index] = num_trigger_points++;
-            break;
+      size_t num_trigger_points = 0;
+      InlinedHashMap<NodeIndex, size_t> node_to_trigger_points;
+      InlinedHashMap<NodeIndex, NotificationIndex> node_to_notification;
+      std::map<NodeIndex, std::map<NodeIndex, WaitNotificationFn>> node_to_wait;
+      for (size_t i = 0; i < num_logic_streams_; ++i) {
+        for (auto node_index : stream_nodes_[i]) {
+          auto* node = graph_viewer_.GetNode(node_index);
+          for (auto it = node->OutputNodesBegin(); it != node->OutputNodesEnd(); ++it) {
+            // if the output node is not in the same stream, generate a trigger point
+            if (plan_.node_stream_map_[it->Index()] != i
+#ifdef ENABLE_TRAINING
+                // Do not insert Barrier/TriggerDownStream step if the producer and consumer are in different sides of yieldOp
+                // As in this case producer will surely be ready before the consumer is running.
+                && !AreNodesSeparatedByYield(node_index, it->Index())
+#endif
+            ) {
+              node_to_trigger_points[node_index] = num_trigger_points++;
+              break;
+            }
           }
         }
       }
-    }
-    for (size_t i = 0; i < num_logic_streams_; ++i) {
-      for (auto node_index : stream_nodes_[i]) {
-        auto* node = graph_viewer_.GetNode(node_index);
-        auto stream_device = execution_plan[i]->device_.Type();
-        // Neither trigger ActivateNotification/WaitOnEPStep for Shape op (whose output is ready for all the EPs), nor
-        // upstream is on CPU device (As currently we never invoke RegisterWaitFn(CPU, ...) for all kinds of EP, thus no wait_handle can be retrieved for this case)
-        if (node->OpType() != "Shape" && stream_device != OrtDevice::CPU) {
-          for (auto it = node->OutputNodesBegin(); it != node->OutputNodesEnd(); ++it) {
-            bool output_consumed_in_subgraph = true;
-            for (auto* output : node->OutputDefs()) {
-              if (output->Exists()) {
-                if (std::find(it->InputDefs().begin(), it->InputDefs().end(), output) != it->InputDefs().end()) {
-                  output_consumed_in_subgraph = false;  // output directly consumed in current graph
-                  OrtValueIndex output_arg_idx;
-                  ORT_THROW_IF_ERROR(ort_value_name_idx_map_.GetIdx(output->Name(), output_arg_idx));
-                  // there are two cases we need notification:
-                  // 1. the consumer is not in the same stream
-                  // 2. the consumer is in the same stream(non-cpu device), but it consumes a CPU tensor from an non-shape op.
-                  //    for example, a resize cuda kernel consumer a tensor from MemCpyToHost cuda kernel on the same stream.
-                  //    in this case, the FIFO can't guarantee the cpu tensor is ready when resize kernel is launching
-                  OrtDevice::DeviceType output_arg_device = AllocPlan(output_arg_idx).location.Type();
-                  WaitNotificationFn wait_handle = stream_handle_registry.GetWaitHandle(stream_device, output_arg_device);
-                  if ((plan_.node_stream_map_[it->Index()] != i || output_arg_device == OrtDevice::CPU) && wait_handle != nullptr) {
+      for (size_t i = 0; i < num_logic_streams_; ++i) {
+        for (auto node_index : stream_nodes_[i]) {
+          auto* node = graph_viewer_.GetNode(node_index);
+          auto stream_device = execution_plan[i]->device_.Type();
+          // Neither trigger ActivateNotification/WaitOnEPStep for Shape op (whose output is ready for all the EPs), nor
+          // upstream is on CPU device (As currently we never invoke RegisterWaitFn(CPU, ...) for all kinds of EP, thus no wait_handle can be retrieved for this case)
+          if (node->OpType() != "Shape" && stream_device != OrtDevice::CPU) {
+            for (auto it = node->OutputNodesBegin(); it != node->OutputNodesEnd(); ++it) {
+              bool output_consumed_in_subgraph = true;
+              for (auto* output : node->OutputDefs()) {
+                if (output->Exists()) {
+                  if (std::find(it->InputDefs().begin(), it->InputDefs().end(), output) != it->InputDefs().end()) {
+                    output_consumed_in_subgraph = false;  // output directly consumed in current graph
+                    OrtValueIndex output_arg_idx;
+                    ORT_THROW_IF_ERROR(ort_value_name_idx_map_.GetIdx(output->Name(), output_arg_idx));
+                    // there are two cases we need notification:
+                    // 1. the consumer is not in the same stream
+                    // 2. the consumer is in the same stream(non-cpu device), but it consumes a CPU tensor from an non-shape op.
+                    //    for example, a resize cuda kernel consumer a tensor from MemCpyToHost cuda kernel on the same stream.
+                    //    in this case, the FIFO can't guarantee the cpu tensor is ready when resize kernel is launching
+                    OrtDevice::DeviceType output_arg_device = AllocPlan(output_arg_idx).location.Type();
+                    WaitNotificationFn wait_handle = stream_handle_registry.GetWaitHandle(stream_device, output_arg_device);
+                    if ((plan_.node_stream_map_[it->Index()] != i || output_arg_device == OrtDevice::CPU) && wait_handle != nullptr) {
+                      if (node_to_notification.find(node_index) == node_to_notification.end()) {
+                        node_to_notification[node_index] = plan_.notification_owners.size();
+                        plan_.notification_owners.push_back(i);
+                      }
+                      // if node_index is already in the map, it will NOT be overwritten by insert()
+                      node_to_wait[it->Index()].insert({node_index, wait_handle});
+                    }
+                  }
+                }
+              }
+              if (output_consumed_in_subgraph) {
+                const auto downstream = plan_.node_stream_map_[it->Index()];
+                if (downstream != i) {
+                  auto downstream_device = execution_plan[downstream]->device_.Type();
+                  WaitNotificationFn wait_handle = stream_handle_registry.GetWaitHandle(stream_device, downstream_device);
+                  if (wait_handle) {
                     if (node_to_notification.find(node_index) == node_to_notification.end()) {
                       node_to_notification[node_index] = plan_.notification_owners.size();
                       plan_.notification_owners.push_back(i);
                     }
-                    // if node_index is already in the map, it will NOT be overwritten by insert()
                     node_to_wait[it->Index()].insert({node_index, wait_handle});
                   }
                 }
               }
             }
-            if (output_consumed_in_subgraph) {
-              const auto downstream = plan_.node_stream_map_[it->Index()];
-              if (downstream != i) {
-                auto downstream_device = execution_plan[downstream]->device_.Type();
-                WaitNotificationFn wait_handle = stream_handle_registry.GetWaitHandle(stream_device, downstream_device);
-                if (wait_handle) {
-                  if (node_to_notification.find(node_index) == node_to_notification.end()) {
-                    node_to_notification[node_index] = plan_.notification_owners.size();
-                    plan_.notification_owners.push_back(i);
-                  }
-                  node_to_wait[it->Index()].insert({node_index, wait_handle});
-                }
-              }
+          }
+        }
+      }
+
+      // 3. Check the nodes in each logical stream, confirm it aligned with the device in the logic stream;
+      for (size_t i = 0; i < num_logic_streams_; ++i) {
+        std::set<const IExecutionProvider*> providers;
+        for (auto node_index : stream_nodes_[i]) {
+          auto* node = graph_viewer_.GetNode(node_index);
+          onnxruntime::ProviderType exec_provider_name = node->GetExecutionProviderType();
+          const IExecutionProvider* ep = execution_providers.Get(exec_provider_name);
+          auto node_device_mem_location = ep->GetOrtDeviceByMemType(OrtMemType::OrtMemTypeDefault);
+          ORT_ENFORCE(execution_plan[plan_.node_stream_map_[node_index]]->device_.Type() == node_device_mem_location.Type());
+        }
+      }
+
+      // 4. add commands to logic queue
+      for (size_t i = 0; i < num_logic_streams_; ++i) {
+        for (size_t j = 0; j < stream_nodes_[i].size(); ++j) {
+          auto node_index = stream_nodes_[i][j];
+          if (j > 0) {
+            // add dependency for current logic stream
+            dependence_graph_[node_index].insert(stream_nodes_[i][j - 1]);
+          }
+          auto* node = graph_viewer_.GetNode(node_index);
+          std::unordered_set<NodeIndex> visited;  // TODO(leca): See the bug description in PlannerTest.MultiStreamMultiOutput. Can remove this variable once this bug is fixed
+          for (auto it = node->InputNodesBegin(); it != node->InputNodesEnd(); ++it) {
+            if (visited.find(it->Index()) != visited.end()) {
+              continue;
+            }
+            visited.insert(it->Index());
+            //  check whether we need to add barrier
+            if (std::find(stream_nodes_[i].begin(), stream_nodes_[i].end(), it->Index()) == stream_nodes_[i].end()
+#ifdef ENABLE_TRAINING
+                && !AreNodesSeparatedByYield(it->Index(), node_index)
+#endif
+            ) {
+              // find the trigger_point_id
+              auto trigger_point_it = node_to_trigger_points.find(it->Index());
+              ORT_ENFORCE(trigger_point_it != node_to_trigger_points.end());
+              size_t trigger_point_index = trigger_point_it->second;
+              // push a barrier
+              size_t barrier_id = plan_.num_barriers++;
+              plan_.downstream_map[trigger_point_index].push_back({i,
+                                                                   static_cast<int>(execution_plan[i]->steps_.size())});
+              execution_plan[i]->steps_.emplace_back(std::make_unique<BarrierStep>(barrier_id, node_index));
             }
           }
-        }
-      }
-    }
 
-    // 3. Check the nodes in each logical stream, confirm it aligned with the device in the logic stream;
-    for (size_t i = 0; i < num_logic_streams_; ++i) {
-      std::set<const IExecutionProvider*> providers;
-      for (auto node_index : stream_nodes_[i]) {
-        auto* node = graph_viewer_.GetNode(node_index);
-        onnxruntime::ProviderType exec_provider_name = node->GetExecutionProviderType();
-        const IExecutionProvider* ep = execution_providers.Get(exec_provider_name);
-        auto node_device_mem_location = ep->GetOrtDeviceByMemType(OrtMemType::OrtMemTypeDefault);
-        ORT_ENFORCE(execution_plan[plan_.node_stream_map_[node_index]]->device_.Type() == node_device_mem_location.Type());
-      }
-    }
-
-    // 4. add commands to logic queue
-    for (size_t i = 0; i < num_logic_streams_; ++i) {
-      for (size_t j = 0; j < stream_nodes_[i].size(); ++j) {
-        auto node_index = stream_nodes_[i][j];
-        if (j > 0) {
-          // add dependency for current logic stream
-          dependence_graph_[node_index].insert(stream_nodes_[i][j - 1]);
-        }
-        auto* node = graph_viewer_.GetNode(node_index);
-        std::unordered_set<NodeIndex> visited;  // TODO(leca): See the bug description in PlannerTest.MultiStreamMultiOutput. Can remove this variable once this bug is fixed
-        for (auto it = node->InputNodesBegin(); it != node->InputNodesEnd(); ++it) {
-          if (visited.find(it->Index()) != visited.end()) {
-            continue;
+          auto wait_it = node_to_wait.find(node_index);
+          if (wait_it != node_to_wait.end()) {
+            for (auto wait_param : wait_it->second) {
+              execution_plan[i]->steps_.emplace_back(std::make_unique<WaitOnEPStep>(wait_param.second,
+                                                                                    node_to_notification[wait_param.first], node_index));
+            }
           }
-          visited.insert(it->Index());
-          //  check whether we need to add barrier
-          if (std::find(stream_nodes_[i].begin(), stream_nodes_[i].end(), it->Index()) == stream_nodes_[i].end()
-#ifdef ENABLE_TRAINING
-              && !AreNodesSeparatedByYield(it->Index(), node_index)
-#endif
-          ) {
-            // find the trigger_point_id
-            auto trigger_point_it = node_to_trigger_points.find(it->Index());
-            ORT_ENFORCE(trigger_point_it != node_to_trigger_points.end());
-            size_t trigger_point_index = trigger_point_it->second;
-            // push a barrier
-            size_t barrier_id = plan_.num_barriers++;
-            plan_.downstream_map[trigger_point_index].push_back({i,
-                                                                 static_cast<int>(execution_plan[i]->steps_.size())});
-            execution_plan[i]->steps_.emplace_back(std::make_unique<BarrierStep>(barrier_id, node_index));
-          }
-        }
 
-        auto wait_it = node_to_wait.find(node_index);
-        if (wait_it != node_to_wait.end()) {
-          for (auto wait_param : wait_it->second) {
-            execution_plan[i]->steps_.emplace_back(std::make_unique<WaitOnEPStep>(wait_param.second,
-                                                                                  node_to_notification[wait_param.first], node_index));
+          for (auto it = node->OutputNodesBegin(); it != node->OutputNodesEnd(); ++it) {
+            // add dependency for model graph
+            dependence_graph_[it->Index()].insert(node_index);
           }
-        }
-
-        for (auto it = node->OutputNodesBegin(); it != node->OutputNodesEnd(); ++it) {
-          // add dependency for model graph
-          dependence_graph_[it->Index()].insert(node_index);
-        }
 // push launch kernel command
 #if defined(ORT_MINIMAL_BUILD)
-        execution_plan[i]->steps_.emplace_back(std::make_unique<LaunchKernelStep>(node_index));
+          execution_plan[i]->steps_.emplace_back(std::make_unique<LaunchKernelStep>(node_index));
 #else
-        execution_plan[i]->steps_.emplace_back(std::make_unique<LaunchKernelStep>(node_index, graph_viewer_.GetNode(node_index)->Name()));
+          execution_plan[i]->steps_.emplace_back(std::make_unique<LaunchKernelStep>(node_index, graph_viewer_.GetNode(node_index)->Name()));
 #endif
-        // check if any notification generated by this node, if yes, push a activate
-        auto notification_it = node_to_notification.find(node_index);
-        if (notification_it != node_to_notification.end()) {
-          NotificationIndex notification_index = notification_it->second;
-          execution_plan[i]->steps_.emplace_back(std::make_unique<ActivateNotificationStep>(notification_index, node_index));
-        }
-        // check if any trigger point generated by this node, if yes, push a trigger
-        auto trigger_point_it = node_to_trigger_points.find(node_index);
-        if (trigger_point_it != node_to_trigger_points.end()) {
-          // notify downstreams
-          execution_plan[i]->steps_.emplace_back(std::make_unique<TriggerDownstreamStep>(trigger_point_it->second, node_index));
-        }
-      }
-    }
-
-    for (auto node_index : graph_viewer_.GetNodesInTopologicalOrder(context_->GetExecutionOrder())) {
-      auto* node = graph_viewer_.GetNode(node_index);
-      const auto& output_defs = node->OutputDefs();
-      for (size_t output_idx_local = 0; output_idx_local < output_defs.size(); ++output_idx_local) {
-        const auto& node_output = output_defs[output_idx_local];
-        if (!node_output->Exists()) continue;
-        OrtValueIndex output_idx_global;
-        ORT_THROW_IF_ERROR(ort_value_name_idx_map_.GetIdx(node_output->Name(), output_idx_global));
-        plan_.value_to_stream_map[output_idx_global] = plan_.node_stream_map_[node_index];
-        value_node_map_[output_idx_global] = node_index;
-      }
-    }
-#ifdef ENABLE_TRAINING
-    // 5. build the node_execution_order_in_training
-    //  the training memory optimization rely on a stable order how kernel get launched to calculate memory pattern
-    //  so we limit training scenario to run with single stream and single thread mode
-    //  the code below will simulate the execution and get the stable execution order
-    InlinedVector<int> execution_offsets(num_logic_streams_, -1);
-    InlinedHashSet<OrtValueIndex> produced_values;
-
-    for (auto graph_input : graph_viewer_.GetInputs()) {
-      OrtValueIndex index = Index(graph_input->Name());
-      produced_values.insert(index);
-    }
-
-    for (auto out_scope_arg : graph_viewer_.GetOuterScopeNodeArgNames()) {
-      OrtValueIndex index = Index(out_scope_arg);
-      produced_values.insert(index);
-    }
-
-    for (const auto& pair : graph_viewer_.GetAllInitializedTensors()) {
-      const auto& initializer_name = pair.first;
-      OrtValueIndex index = Index(initializer_name);
-      produced_values.insert(index);
-    }
-
-    InlinedHashSet<OrtValueIndex> producable_values;
-    for (auto node_index : graph_viewer_.GetNodesInTopologicalOrder(context_->GetExecutionOrder())) {
-      auto* node = graph_viewer_.GetNode(node_index);
-      // add the output to produce nodes list
-      for (auto* output_def : node->OutputDefs()) {
-        if (!output_def->Exists())
-          continue;
-        OrtValueIndex index = Index(output_def->Name());
-        producable_values.insert(index);
-      }
-    }
-
-    std::function<void(size_t, int)> process_stream;
-    process_stream = [&](size_t i, int node_offset) {
-      if (node_offset > execution_offsets[i])
-        return;
-      while (execution_offsets[i] < static_cast<int>(stream_nodes_[i].size())) {
-        if (execution_offsets[i] == -1) {
-          execution_offsets[i]++;
-          continue;
-        }
-        NodeIndex node_index = stream_nodes_[i][execution_offsets[i]];
-        auto* node = graph_viewer_.GetNode(node_index);
-        // check whether the node is ready:
-        bool input_ready = true;
-        for (auto* input_def : node->InputDefs()) {
-          if (!input_def->Exists())
-            continue;
-          OrtValueIndex index = Index(input_def->Name());
-          if (produced_values.find(index) == produced_values.end() &&
-              producable_values.find(index) != producable_values.end()) {
-            input_ready = false;
-            break;
+          // check if any notification generated by this node, if yes, push a activate
+          auto notification_it = node_to_notification.find(node_index);
+          if (notification_it != node_to_notification.end()) {
+            NotificationIndex notification_index = notification_it->second;
+            execution_plan[i]->steps_.emplace_back(std::make_unique<ActivateNotificationStep>(notification_index, node_index));
+          }
+          // check if any trigger point generated by this node, if yes, push a trigger
+          auto trigger_point_it = node_to_trigger_points.find(node_index);
+          if (trigger_point_it != node_to_trigger_points.end()) {
+            // notify downstreams
+            execution_plan[i]->steps_.emplace_back(std::make_unique<TriggerDownstreamStep>(trigger_point_it->second, node_index));
           }
         }
-        if (!input_ready)
-          break;
-        // trace the execution of this node
-        plan_.node_execution_order_in_training.push_back(node_index);
+      }
+
+      for (auto node_index : graph_viewer_.GetNodesInTopologicalOrder(context_->GetExecutionOrder())) {
+        auto* node = graph_viewer_.GetNode(node_index);
+        const auto& output_defs = node->OutputDefs();
+        for (size_t output_idx_local = 0; output_idx_local < output_defs.size(); ++output_idx_local) {
+          const auto& node_output = output_defs[output_idx_local];
+          if (!node_output->Exists()) continue;
+          OrtValueIndex output_idx_global;
+          ORT_THROW_IF_ERROR(ort_value_name_idx_map_.GetIdx(node_output->Name(), output_idx_global));
+          plan_.value_to_stream_map[output_idx_global] = plan_.node_stream_map_[node_index];
+          value_node_map_[output_idx_global] = node_index;
+        }
+      }
+#ifdef ENABLE_TRAINING
+      // 5. build the node_execution_order_in_training
+      //  the training memory optimization rely on a stable order how kernel get launched to calculate memory pattern
+      //  so we limit training scenario to run with single stream and single thread mode
+      //  the code below will simulate the execution and get the stable execution order
+      InlinedVector<int> execution_offsets(num_logic_streams_, -1);
+      InlinedHashSet<OrtValueIndex> produced_values;
+
+      for (auto graph_input : graph_viewer_.GetInputs()) {
+        OrtValueIndex index = Index(graph_input->Name());
+        produced_values.insert(index);
+      }
+
+      for (auto out_scope_arg : graph_viewer_.GetOuterScopeNodeArgNames()) {
+        OrtValueIndex index = Index(out_scope_arg);
+        produced_values.insert(index);
+      }
+
+      for (const auto& pair : graph_viewer_.GetAllInitializedTensors()) {
+        const auto& initializer_name = pair.first;
+        OrtValueIndex index = Index(initializer_name);
+        produced_values.insert(index);
+      }
+
+      InlinedHashSet<OrtValueIndex> producable_values;
+      for (auto node_index : graph_viewer_.GetNodesInTopologicalOrder(context_->GetExecutionOrder())) {
+        auto* node = graph_viewer_.GetNode(node_index);
         // add the output to produce nodes list
         for (auto* output_def : node->OutputDefs()) {
           if (!output_def->Exists())
             continue;
           OrtValueIndex index = Index(output_def->Name());
-          produced_values.insert(index);
+          producable_values.insert(index);
         }
-        // trigger downstream
-        for (auto it = node->OutputNodesBegin(); it != node->OutputNodesEnd(); ++it) {
-          auto stream_idx = plan_.node_stream_map_[it->Index()];
-          if (stream_idx != i) {
-            auto node_it = std::find(stream_nodes_[stream_idx].begin(), stream_nodes_[stream_idx].end(), it->Index());
-            int offset = static_cast<int>(std::distance(stream_nodes_[stream_idx].begin(), node_it));
-            process_stream(stream_idx, offset);
-          }
-        }
-        // move_to_next
-        execution_offsets[i]++;
       }
-    };
 
-    auto num_of_nodes = graph_viewer_.GetNodesInTopologicalOrder(context_->GetExecutionOrder()).size();
-    plan_.node_execution_order_in_training.reserve(num_of_nodes);
-    for (size_t i = 0; i < stream_nodes_.size(); ++i) {
-      process_stream(i, -1);
-    }
-    ORT_ENFORCE(plan_.node_execution_order_in_training.size() == num_of_nodes);
+      std::function<void(size_t, int)> process_stream;
+      process_stream = [&](size_t i, int node_offset) {
+        if (node_offset > execution_offsets[i])
+          return;
+        while (execution_offsets[i] < static_cast<int>(stream_nodes_[i].size())) {
+          if (execution_offsets[i] == -1) {
+            execution_offsets[i]++;
+            continue;
+          }
+          NodeIndex node_index = stream_nodes_[i][execution_offsets[i]];
+          auto* node = graph_viewer_.GetNode(node_index);
+          // check whether the node is ready:
+          bool input_ready = true;
+          for (auto* input_def : node->InputDefs()) {
+            if (!input_def->Exists())
+              continue;
+            OrtValueIndex index = Index(input_def->Name());
+            if (produced_values.find(index) == produced_values.end() &&
+                producable_values.find(index) != producable_values.end()) {
+              input_ready = false;
+              break;
+            }
+          }
+          if (!input_ready)
+            break;
+          // trace the execution of this node
+          plan_.node_execution_order_in_training.push_back(node_index);
+          // add the output to produce nodes list
+          for (auto* output_def : node->OutputDefs()) {
+            if (!output_def->Exists())
+              continue;
+            OrtValueIndex index = Index(output_def->Name());
+            produced_values.insert(index);
+          }
+          // trigger downstream
+          for (auto it = node->OutputNodesBegin(); it != node->OutputNodesEnd(); ++it) {
+            auto stream_idx = plan_.node_stream_map_[it->Index()];
+            if (stream_idx != i) {
+              auto node_it = std::find(stream_nodes_[stream_idx].begin(), stream_nodes_[stream_idx].end(), it->Index());
+              int offset = static_cast<int>(std::distance(stream_nodes_[stream_idx].begin(), node_it));
+              process_stream(stream_idx, offset);
+            }
+          }
+          // move_to_next
+          execution_offsets[i]++;
+        }
+      };
+
+      auto num_of_nodes = graph_viewer_.GetNodesInTopologicalOrder(context_->GetExecutionOrder()).size();
+      plan_.node_execution_order_in_training.reserve(num_of_nodes);
+      for (size_t i = 0; i < stream_nodes_.size(); ++i) {
+        process_stream(i, -1);
+      }
+      ORT_ENFORCE(plan_.node_execution_order_in_training.size() == num_of_nodes);
 #endif
 
-    return Status::OK();
-  }
+      return Status::OK();
+    }
 #endif
 
   static bool IsNonTensor(const onnxruntime::NodeArg& nodearg) {
@@ -2351,7 +2350,7 @@ Status PlannerImpl::CreatePlan(
 #ifdef ORT_ENABLE_STREAM
   ORT_RETURN_IF_ERROR(BuildExecutionPlan(execution_providers_, stream_handle_registry));
 #else
-  ORT_RETURN_IF_ERROR(BuildExecutionPlan(execution_providers_));
+    ORT_RETURN_IF_ERROR(BuildExecutionPlan(execution_providers_));
 #endif
 
   // determine sharing/reuse among ml-values
