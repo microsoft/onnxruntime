@@ -229,7 +229,7 @@ Status ReduceSharedProgram::GenerateShaderCode(ShaderHelper& shader) const {
   shader.AdditionalImplementation()
       << "var<workgroup> aBestValues : array<f32, " << workgroup_size_ << ">;\n\n"
       << "fn DIV_CEIL(a : u32, b : u32) -> u32 {\n"
-      <<    "return ((a - 1u) / b + 1u);\n"
+      << "  return ((a - 1u) / b + 1u);\n"
       << "}\n";
   shader.MainFunctionBody() << "let outputIndex = global_idx / " << workgroup_size_ << ";\n"
                             << "let offset = outputIndex * uniforms.reduceSize;\n"
@@ -349,7 +349,7 @@ Status ReduceKernel<allow_multi_axes>::ComputeInternal(ComputeContext& context) 
     return Status::OK();
   }
 
-  bool use_naive_reduction = false;//reduce_size < 32 && output_size > 1024;
+  bool use_naive_reduction = reduce_size < 32 && output_size > 1024;
 
   if (use_naive_reduction) {
     const auto code = GetOpSpecificCode(input_tensor);
