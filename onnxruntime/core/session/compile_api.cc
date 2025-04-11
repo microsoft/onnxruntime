@@ -113,7 +113,7 @@ ORT_API_STATUS_IMPL(OrtCompileAPI::ModelCompilationOptions_SetOutputModelPath,
 
   ep_context_gen_options.output_model_file_path = std::move(model_path);
 
-  if (ep_context_gen_options.output_model_file_path.size() <= config_options.GetMaxValueStringLength()) {
+  if (ep_context_gen_options.output_model_file_path.size() <= ConfigOptions::kMaxValueLength) {
     // A few things to note:
     //   - ORT core now uses session_options.ep_context_gen_options to read EPContext model configurations.
     //     It previously used session_options.config_options.

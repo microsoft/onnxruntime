@@ -23,7 +23,7 @@ OrtSessionOptions::OrtSessionOptions(const OrtSessionOptions& other)
     : value(other.value), custom_op_domains_(other.custom_op_domains_), provider_factories(other.provider_factories) {
 }
 
-const onnxruntime::ConfigOptions& OrtSessionOptions::GetConfigOptions() const {
+const onnxruntime::ConfigOptions& OrtSessionOptions::GetConfigOptions() const noexcept {
   return value.config_options;
 }
 

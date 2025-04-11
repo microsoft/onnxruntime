@@ -15,6 +15,11 @@ namespace onnxruntime {
  * Provides infrastructure to add/get config entries
  */
 struct ConfigOptions {
+  // Maximum key/value string lengths specified in
+  // core/session/onnxruntime_session_options_config_keys.h
+  static constexpr size_t kMaxKeyLength = 1024;
+  static constexpr size_t kMaxValueLength = 2048;
+
   std::unordered_map<std::string, std::string> configurations;
 
   // Gets the config string associated with the given config_key.
@@ -35,8 +40,6 @@ struct ConfigOptions {
 
   // Gets a constant reference the map of all configurations.
   const std::unordered_map<std::string, std::string>& GetConfigOptionsMap() const noexcept;
-
-  size_t GetMaxValueStringLength() const;
 
   friend std::ostream& operator<<(std::ostream& os, const ConfigOptions& config_options);
 };
