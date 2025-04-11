@@ -96,32 +96,59 @@ stages:
 
       - powershell: |
           $buildArgs = @(
-            "${{ parameters.BuildCommand }}",
-            "--use_binskim_compliant_compile_flags",
-            "--parallel",
-            "--use_vcpkg",
-            "--use_vcpkg_ms_internal_asset_cache",
-            "--build_csharp",
-            "--build",
-            "--update",
-            "--config", "$(BuildConfig)",
-            "--build_nuget",
-            "--cmake_generator",
-            "Visual Studio 17 2022",
-            "--msbuild_extra_options", "IncludeMobileTargets=false"
+              "--use_binskim_compliant_compile_flags",
+              "--parallel",
+              "--use_vcpkg",
+              "--use_vcpkg_ms_internal_asset_cache",
+              "--build_csharp",
+              "--build",
+              "--update",
+              "--config", "$(BuildConfig)",
+              "--build_nuget",
+              "--cmake_generator", "Visual Studio 17 2022",
+              "--msbuild_extra_options", "IncludeMobileTargets=false"
           )
-          if ("${{ variables.build_py_lto_flag }}") {
-            $buildArgs += "${{ variables.build_py_lto_flag }}"
+
+          # Get the BuildCommand parameter string
+          $buildCommandString = "${{ parameters.BuildCommand }}"
+
+          # Check if BuildCommand is not empty or just whitespace
+          if ($buildCommandString.Trim()) {
+              Write-Host "Processing arguments from BuildCommand parameter: $buildCommandString"
+              # Split the string by spaces, removing empty entries (handles multiple spaces)
+              # This array will contain each part of BuildCommand as a separate element
+              $splitBuildCommandArgs = $buildCommandString.Split(' ', [System.StringSplitOptions]::RemoveEmptyEntries)
+              # Add the split arguments to the main argument list
+              $buildArgs += $splitBuildCommandArgs
+          } else {
+              Write-Host "BuildCommand parameter is empty."
           }
+
+          # Conditionally add the LTO flag if the variable is set
+          if ("${{ variables.build_py_lto_flag }}") {
+              $buildArgs += "${{ variables.build_py_lto_flag }}"
+          }
+
           # Conditionally add --nightly_build based on IsReleaseBuild parameter
           if ("${{ parameters.IsReleaseBuild }}" -eq $false) {
-            Write-Host "IsReleaseBuild is false, adding --nightly_build flag."
-            $buildArgs += "--nightly_build"
+              Write-Host "IsReleaseBuild is false, adding --nightly_build flag."
+              $buildArgs += "--nightly_build"
           } else {
-            Write-Host "IsReleaseBuild is true, not adding --nightly_build flag (will use default --no-nightly_build)."
-            # No flag needed here, relies on build.py default
+              Write-Host "IsReleaseBuild is true, not adding --nightly_build flag (relying on build.py default)."
+              # No flag needed here for release, relies on build.py default behavior
           }
+
+          # Log the final command being executed
+          Write-Host "Executing: python tools\ci_build\build.py $($buildArgs -join ' ')"
+
+          # Execute the build script with the assembled arguments
           python tools\ci_build\build.py $buildArgs
+
+          # Check the exit code of the python script and fail the task if it's non-zero
+          if ($LASTEXITCODE -ne 0) {
+              Write-Error "build.py script failed with exit code $LASTEXITCODE"
+              exit $LASTEXITCODE
+          }
         displayName: 'Build ORT Core, C#, NuGet'
 
       # The Configuration variable is required to build C#
