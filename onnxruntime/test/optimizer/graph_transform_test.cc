@@ -2204,6 +2204,10 @@ TEST_F(GraphTransformationTests, FuseCudaConvAddReluIdentity) {
   for (auto& node : p_model->MainGraph().Nodes()) {
     node.SetExecutionProviderType(kJsExecutionProvider);
   }
+#elif defined(USE_WEBGPU)
+  for (auto& node : p_model->MainGraph().Nodes()) {
+    node.SetExecutionProviderType(kWebGpuExecutionProvider);
+  }
 #else
   for (auto& node : p_model->MainGraph().Nodes()) {
     node.SetExecutionProviderType(kCpuExecutionProvider);
@@ -2231,6 +2235,10 @@ TEST_F(GraphTransformationTests, FuseCudaConvAdd) {
 #if defined(USE_JSEP)
   for (auto& node : p_model->MainGraph().Nodes()) {
     node.SetExecutionProviderType(kJsExecutionProvider);
+  }
+#elif defined(USE_WEBGPU)
+  for (auto& node : p_model->MainGraph().Nodes()) {
+    node.SetExecutionProviderType(kWebGpuExecutionProvider);
   }
 #else
   for (auto& node : p_model->MainGraph().Nodes()) {
@@ -2330,6 +2338,10 @@ TEST_F(GraphTransformationTests, FuseConvActivation) {
     for (auto& node : p_model->MainGraph().Nodes()) {
       node.SetExecutionProviderType(kJsExecutionProvider);
     }
+#elif defined(USE_WEBGPU)
+    for (auto& node : p_model->MainGraph().Nodes()) {
+      node.SetExecutionProviderType(kWebGpuExecutionProvider);
+    }
 #else
     for (auto& node : p_model->MainGraph().Nodes()) {
       node.SetExecutionProviderType(kCpuExecutionProvider);
@@ -2347,6 +2359,13 @@ TEST_F(GraphTransformationTests, FuseConvActivation) {
 #if defined(USE_JSEP)
     std::set<std::string> js_supported = {"Relu", "Clip", "Sigmoid", "Tanh", "LeakyRelu"};
     if (js_supported.find(model.second) == js_supported.end()) {
+      ASSERT_EQ(op_to_count_before_fusion[model.second], op_to_count_after_fusion[model.second]);
+    } else {
+      ASSERT_TRUE(op_to_count_after_fusion[model.second] == 0);
+    }
+#elif defined(USE_WEBGPU)
+    std::set<std::string> webgpu_supported = {"Relu", "Clip", "Sigmoid", "Tanh", "LeakyRelu", "HardSigmoid"};
+    if (webgpu_supported.find(model.second) == webgpu_supported.end()) {
       ASSERT_EQ(op_to_count_before_fusion[model.second], op_to_count_after_fusion[model.second]);
     } else {
       ASSERT_TRUE(op_to_count_after_fusion[model.second] == 0);
@@ -7698,6 +7717,18 @@ TEST_F(GraphTransformationTests, GatherSliceToSplitFusion_AllSlice_GraphInput) {
   std::unique_ptr<GraphTransformer> transformer = std::make_unique<GatherSliceToSplitFusion>();
   ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, 18, *logger_, std::move(transformer), TransformerLevel::Level1,
                                         1, pre_graph_checker, post_graph_checker));
+}
+
+TEST_F(GraphTransformationTests, GatherSliceToSplitFusion_AllSlice_GraphInput_gh_issue_24203) {
+  // https://github.com/microsoft/onnxruntime/issues/24203
+  // This bug is manifested when the model features nameless nodes and there are more than one
+  // SliceToSplitFusion resulting in multiple Split nodes with the same name.
+  const PathString CUSTOM_OP_MODEL_URI = ORT_TSTR("testdata/gh_issue_24203.onnx");
+  SessionOptions session_options;
+  session_options.graph_optimization_level = TransformerLevel::Level2;
+  InferenceSession session(session_options, GetEnvironment());
+  ASSERT_STATUS_OK(session.Load(CUSTOM_OP_MODEL_URI));
+  ASSERT_STATUS_OK(session.Initialize());
 }
 
 TEST_F(GraphTransformationTests, GatherSliceToSplitFusion_Combined) {

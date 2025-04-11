@@ -302,7 +302,7 @@ bool NormalizationOpBuilder::HasSupportedInputsImpl(const GraphViewer&, const No
   if (has_input4) {
     input_types.push_back(input4_type);
   }
-  if (!AreInputDataTypesSame(op_type, input_types, logger)) {
+  if (!AreDataTypesSame(op_type, input_types, logger)) {
     return false;
   }
 

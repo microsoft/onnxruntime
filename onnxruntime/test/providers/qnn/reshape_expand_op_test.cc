@@ -25,11 +25,7 @@ static void RunReshapeExpandTestOnCPU(const std::string& op_type,
                                       int opset = 19) {
   ProviderOptions provider_options;
 
-#if defined(_WIN32)
-  provider_options["backend_path"] = "QnnCpu.dll";
-#else
-  provider_options["backend_path"] = "libQnnCpu.so";
-#endif
+  provider_options["backend_type"] = "cpu";
   provider_options["offload_graph_io_quantization"] = "0";
 
   RunQnnModelTest(BuildOpTestCase<DataType, int64_t>(op_type, {input_def}, {shape_def}, attrs),
@@ -157,11 +153,7 @@ static void RunReshapeExpandTestOnHTP(const std::string& op_type,
                                       int opset = 19) {
   ProviderOptions provider_options;
 
-#if defined(_WIN32)
-  provider_options["backend_path"] = "QnnHtp.dll";
-#else
-  provider_options["backend_path"] = "libQnnHtp.so";
-#endif
+  provider_options["backend_type"] = "htp";
   provider_options["offload_graph_io_quantization"] = "0";
 
   RunQnnModelTest(BuildOpTestCase<DataType, int64_t>(op_type, {input_def}, {shape_def}, attrs),
@@ -182,11 +174,7 @@ static void RunQDQReshapeExpandTestOnHTP(const std::string& op_type,
                                          bool use_contrib_qdq = false) {
   ProviderOptions provider_options;
 
-#if defined(_WIN32)
-  provider_options["backend_path"] = "QnnHtp.dll";
-#else
-  provider_options["backend_path"] = "libQnnHtp.so";
-#endif
+  provider_options["backend_type"] = "htp";
   provider_options["offload_graph_io_quantization"] = "0";
 
   auto f32_model_builder = BuildOpTestCase<float, int64_t>(op_type, {input_def}, {shape_def}, attrs);
@@ -244,6 +232,17 @@ TEST_F(QnnHTPBackendTests, Reshape_4D_int32) {
   std::vector<int32_t> input_data = {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11};
   RunReshapeExpandTestOnHTP<int32_t>("Reshape",
                                      TestInputDef<int32_t>({1, 3, 2, 2}, false, input_data),
+                                     TestInputDef<int64_t>({3}, true, {1, 1, 12}),
+                                     {},  // Attributes
+                                     ExpectedEPNodeAssignment::All,
+                                     19);  // Opset
+}
+
+// Test that int64 Reshape runs on HTP backend.
+TEST_F(QnnHTPBackendTests, Reshape_4D_int64) {
+  std::vector<int64_t> input_data = {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11};
+  RunReshapeExpandTestOnHTP<int64_t>("Reshape",
+                                     TestInputDef<int64_t>({1, 3, 2, 2}, false, input_data),
                                      TestInputDef<int64_t>({3}, true, {1, 1, 12}),
                                      {},  // Attributes
                                      ExpectedEPNodeAssignment::All,

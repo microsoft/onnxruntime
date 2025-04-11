@@ -623,9 +623,7 @@ if (onnxruntime_USE_WEBGPU)
   set(DAWN_ENABLE_NULL OFF CACHE BOOL "" FORCE)
   set(DAWN_FETCH_DEPENDENCIES ON CACHE BOOL "" FORCE)
   set(DAWN_BUILD_TESTS OFF CACHE BOOL "" FORCE)
-  if (CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
-    set(DAWN_EMSCRIPTEN_TOOLCHAIN "${REPO_ROOT}/cmake/external/emsdk/upstream/emscripten" CACHE STRING "" FORCE)
-  else()
+  if (NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
     if (onnxruntime_BUILD_DAWN_MONOLITHIC_LIBRARY)
       set(DAWN_BUILD_MONOLITHIC_LIBRARY ON CACHE BOOL "" FORCE)
       set(DAWN_ENABLE_INSTALL ON CACHE BOOL "" FORCE)
@@ -713,27 +711,19 @@ if (onnxruntime_USE_WEBGPU)
       #
       # The dawn.patch contains the following changes:
       #
-      # - (public) CMake fix to support Emscripten v4.0.3+
-      #   This change allows Dawn to find the file "gen_struct_info.py" in the correct location.
-      #   https://dawn-review.googlesource.com/c/dawn/+/225514
-      #
-      # - (public) Fix emwgpu C++ implementation for buffer destroy
+      # - (private) Allow WGPUBufferImpl class to destroy the buffer in the destructor
       #   In native implementation, wgpuBufferRelease will trigger the buffer destroy (if refcount decreased to 0). But
-      #   in emwgpu implementation, the buffer destroy won't happen. This change fixes the bug.
-      #   https://dawn-review.googlesource.com/c/dawn/+/226315
-      #
-      # - (private) Allow "external" buffer in emwgpu C++ implementation
-      #   This change allows WGPUBufferImpl to destroy the buffer when the refcount decreased to 0 only for non-external
-      #   buffer.
-      #   "external buffer" means the GPUBuffer instance created in JavaScript and imported to C++ by `importJsBuffer`.
+      #   in emwgpu implementation, the buffer destroy won't happen. This change adds a destructor to the buffer class
+      #   to destroy the buffer when the refcount is 0 for non-external buffers.
       #
       # - (private) Remove hard-coded CMAKE_OSX_DEPLOYMENT_TARGET in Dawn's CMake files
       #   https://github.com/microsoft/onnxruntime/pull/23729
       #
-      # - (private) Fix external ref count for "external" device in emwgpu C++ implementation
-      #   This change fixes the incorrect external ref count for class WGPUDeviceImpl when used with "external" device.
-      #   "external device" means the GPUDevice instance created in JavaScript and imported to C++ by `importJsDevice`.
-      #
+      # - (private) Reduce unsafe buffer usage warning in aligned_storage.h
+      #   https://github.com/microsoft/onnxruntime/pull/24308
+      #   The patch disables the UNSAFE_BUFFER_USAGE warning around the AlignedStorage struct in aligned_storage.h. This is done
+      #   by using TINT_BEGIN_DISABLE_WARNING and TINT_END_DISABLE_WARNING macros, which helps in warnings related to unsafe buffer usage
+      #   usage when compiling the code, making the build process cleaner and faster.
       #
       PATCH_COMMAND ${Patch_EXECUTABLE} --binary --ignore-whitespace -p1 < ${PROJECT_SOURCE_DIR}/patches/dawn/dawn.patch
       EXCLUDE_FROM_ALL

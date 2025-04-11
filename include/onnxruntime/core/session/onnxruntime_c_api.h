@@ -255,6 +255,7 @@ typedef enum OrtErrorCode {
   ORT_NOT_IMPLEMENTED,
   ORT_INVALID_GRAPH,
   ORT_EP_FAIL,
+  ORT_MODEL_LOAD_CANCELED,
 } OrtErrorCode;
 
 typedef enum OrtOpAttrType {
@@ -3646,45 +3647,77 @@ struct OrtApi {
    *       that should be used to add it.
    *
    * QNN supported keys:
-   *   "backend_path": file path to QNN backend library.
-   *   "profiling_level": QNN profiling level, options: "off", "basic", "detailed". Default to off.
+   *   "backend_type": Type of QNN backend. Specifies a backend path that is the associated QNN backend library file
+   *      name. E.g., given backend type "htp", on Windows, the backend path would be "QnnHtp.dll", and on other
+   *      platforms, it would be "libQnnHtp.so". Mutually exclusive with "backend_path".
+   *      Available options:
+   *      - "cpu"
+   *      - "gpu"
+   *      - "htp": Default.
+   *      - "saver"
+   *   "backend_path": File path to QNN backend library. Mutually exclusive with "backend_type".
+   *   "profiling_level": QNN profiling level.
+   *      Available options:
+   *      - "off": Default.
+   *      - "basic"
+   *      - "detailed"
    *   "profiling_file_path": QNN profiling file path if ETW not enabled.
    *   "rpc_control_latency": QNN RPC control latency.
    *   "vtcm_mb": QNN VTCM size in MB. default to 0(not set).
-   *   "htp_performance_mode": QNN performance mode, options: "burst", "balanced", "default", "high_performance",
-   *   "high_power_saver", "low_balanced", "extreme_power_saver", "low_power_saver", "power_saver", "sustained_high_performance". Default to "default".
+   *   "htp_performance_mode": QNN performance mode.
+   *      Available options:
+   *      - "burst"
+   *      - "balanced"
+   *      - "default": Default.
+   *      - "high_performance"
+   *      - "high_power_saver"
+   *      - "low_balanced"
+   *      - "extreme_power_saver"
+   *      - "low_power_saver"
+   *      - "power_saver"
+   *      - "sustained_high_performance"
    *   "qnn_saver_path": File path to the QNN Saver backend library. If specified, QNN Saver will be enabled and will
-   *   dump QNN API calls to disk for replay/debugging. QNN Saver produces incorrect model inference results and
-   *   may alter model/EP partitioning. Use only for debugging.
-   *   "qnn_context_priority": QNN context priority, options: "low", "normal", "normal_high", "high". Default to "normal".
-   *   "htp_graph_finalization_optimization_mode": Set the optimization mode for graph finalization on the HTP backend. Available options:
-   *     - "0": Default.
-   *     - "1": Faster preparation time, less optimal graph.
-   *     - "2": Longer preparation time, more optimal graph.
-   *     - "3": Longest preparation time, most likely even more optimal graph. See QNN SDK documentation for specific details.
-   *   "soc_model": The SoC model number. Refer to the QNN SDK documentation for valid values. Defaults to "0" (unknown).
-   *   "htp_arch": The minimum HTP architecture the driver will use to select compatible QNN operators. Available options:
-   *     - "0": Default (none).
-   *     - "68"
-   *     - "69"
-   *     - "73"
-   *     - "75"
+   *      dump QNN API calls to disk for replay/debugging. QNN Saver produces incorrect model inference results and
+   *      may alter model/EP partitioning. Use only for debugging.
+   *   "qnn_context_priority": QNN context priority.
+   *      Available options:
+   *      - "low"
+   *      - "normal": Default.
+   *      - "normal_high"
+   *      - "high"
+   *   "htp_graph_finalization_optimization_mode": Set the optimization mode for graph finalization on the HTP backend.
+   *      Available options:
+   *      - "0": Default.
+   *      - "1": Faster preparation time, less optimal graph.
+   *      - "2": Longer preparation time, more optimal graph.
+   *      - "3": Longest preparation time, most likely even more optimal graph. See QNN SDK documentation for specific
+   *        details.
+   *   "soc_model": The SoC model number. Refer to the QNN SDK documentation for valid values.
+   *      Defaults to "0" (unknown).
+   *   "htp_arch": The minimum HTP architecture the driver will use to select compatible QNN operators.
+   *      Available options:
+   *      - "0": Default (none).
+   *      - "68"
+   *      - "69"
+   *      - "73"
+   *      - "75"
    *   "device_id": The ID of the device to use when setting 'htp_arch'. Defaults to "0" (for single device).
    *   "enable_htp_fp16_precision": Used for float32 model for HTP backend.
-   *   Enable the float32 model to be inferenced with fp16 precision. Otherwise, it will be fp32 precision.
+   *      Enable the float32 model to be inferenced with fp16 precision. Otherwise, it will be fp32 precision.
    *     - "0": With fp32 precision.
    *     - "1": Default. With fp16 precision.
    *   "offload_graph_io_quantization": Offload graph input quantization and graph output dequantization to another
-   *   execution provider (typically CPU EP).
-   *     - "0": Disabled. QNN EP will handle quantization and dequantization of graph I/O.
-   *     - "1": Enabled. This is the default value.
-   *   "enable_htp_spill_fill_buffer": Enable HTP spill fill buffer setting. The flag is used while generating context binary.
-   *     - "0": Default. Disabled.
-   *     - "1": Enabled.
+   *      execution provider (typically CPU EP).
+   *      - "0": Disabled. QNN EP will handle quantization and dequantization of graph I/O.
+   *      - "1": Enabled. This is the default value.
+   *   "enable_htp_spill_fill_buffer": Enable HTP spill fill buffer setting. The flag is used while generating context
+   *      binary.
+   *      - "0": Default. Disabled.
+   *      - "1": Enabled.
    *   "enable_htp_shared_memory_allocator": Enable the QNN HTP shared memory allocator. Requires libcdsprpc.so/dll to
-   *   be available.
-   *     - "0": Default. Disabled.
-   *     - "1": Enabled.
+   *      be available.
+   *      - "0": Default. Disabled.
+   *      - "1": Enabled.
    *   "dump_json_qnn_graph": Set to "1" to dump QNN graphs generated by QNN EP as JSON files. Each graph partition
    *      assigned to QNN EP is dumped to a separate file.
    *   "json_qnn_graph_dir": Directory in which to dump QNN JSON graphs. If not specified, QNN graphs are dumped in the
@@ -3692,18 +3725,18 @@ struct OrtApi {
    *
    * SNPE supported keys:
    *   "runtime": SNPE runtime engine, options: "CPU", "CPU_FLOAT32", "GPU", "GPU_FLOAT32_16_HYBRID", "GPU_FLOAT16",
-   *   "DSP", "DSP_FIXED8_TF", "AIP_FIXED_TF", "AIP_FIXED8_TF".
-   *   Mapping to SNPE Runtime_t definition: CPU, CPU_FLOAT32 => zdl::DlSystem::Runtime_t::CPU;
-   *   GPU, GPU_FLOAT32_16_HYBRID => zdl::DlSystem::Runtime_t::GPU;
-   *   GPU_FLOAT16 => zdl::DlSystem::Runtime_t::GPU_FLOAT16;
-   *   DSP, DSP_FIXED8_TF => zdl::DlSystem::Runtime_t::DSP.
-   *   AIP_FIXED_TF, AIP_FIXED8_TF => zdl::DlSystem::Runtime_t::AIP_FIXED_TF.
+   *      "DSP", "DSP_FIXED8_TF", "AIP_FIXED_TF", "AIP_FIXED8_TF".
+   *      Mapping to SNPE Runtime_t definition:
+   *        CPU, CPU_FLOAT32 => zdl::DlSystem::Runtime_t::CPU;
+   *        GPU, GPU_FLOAT32_16_HYBRID => zdl::DlSystem::Runtime_t::GPU;
+   *        GPU_FLOAT16 => zdl::DlSystem::Runtime_t::GPU_FLOAT16;
+   *        DSP, DSP_FIXED8_TF => zdl::DlSystem::Runtime_t::DSP.
+   *        AIP_FIXED_TF, AIP_FIXED8_TF => zdl::DlSystem::Runtime_t::AIP_FIXED_TF.
    *   "priority": execution priority, options: "low", "normal".
    *   "buffer_type": ITensor or user buffers, options: "ITENSOR", user buffer with different types - "TF8", "TF16", "UINT8", "FLOAT".
    *   "ITENSOR" -- default, ITensor which is float only.
    *   "TF8" -- quantized model required, "FLOAT" -- for both quantized or non-quantized model
    *   "enable_init_cache": enable SNPE init caching feature, set to 1 to enabled it. Disabled by default.
-   *   If SNPE is not available (due to a non Snpe enabled build or its dependencies not being installed), this function will fail.
    *
    * XNNPACK supported keys:
    *   "intra_op_num_threads": number of thread-pool size to use for XNNPACK execution provider.
@@ -4866,6 +4899,24 @@ struct OrtApi {
                   _In_ const int64_t* shape, size_t shape_len,
                   ONNXTensorElementDataType type,
                   _Outptr_ OrtValue** out);
+
+  /** \brief sets load cancellation flag to abort session loading process.
+   *
+   * \param[in] options instance that was passed to the session at creation time.
+   * \param[in] cancel setting this to true after model loading process was initiated will
+   *            attempt to cancel the loading process. If cancellation is successful, CreateSession()
+   *            CreateSessionFromArray() or any other session creation API that take session options as an
+   *            argument will return an OrtStatus indicating that session loading was canceled at user request,
+   *            error code ORT_MODEL_LOAD_CANCELED.
+   *            The APIs above would not return any valid Session instance. This is the best case effort and the result
+   *            is not guaranteed. The session may have already been created and initialized
+   *            before the cancellation request was issued.
+   *
+   * \snippet{doc} snippets.dox OrtStatus
+   *
+   */
+  ORT_API2_STATUS(SessionOptionsSetLoadCancellationFlag, _Inout_ OrtSessionOptions* options,
+                  _In_ bool cancel);
 };
 
 /*

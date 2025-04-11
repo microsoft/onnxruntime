@@ -54,11 +54,24 @@ class StreamCommandHandleRegistryImpl : public IStreamCommandHandleRegistry {
     create_stream_map_.insert({device_type, f});
   }
 
+  void RegisterSetDeviceFn(const OrtDevice::DeviceType device_type, SetDeviceFn f) override {
+    set_device_map_.insert({device_type, f});
+  }
+
+  std::optional<SetDeviceFn> GetSetDeviceFn(const OrtDevice::DeviceType device_type) const override {
+    auto it = set_device_map_.find(device_type);
+    if (it != set_device_map_.end()) {
+      return it->second;
+    }
+    return std::nullopt;
+  }
+
   StreamCommandHandleRegistryImpl() = default;
 
  private:
   InlinedHashMap<std::string, WaitNotificationFn> notification_wait_map_;
   InlinedHashMap<OrtDevice::DeviceType, CreateStreamFn> create_stream_map_;
+  InlinedHashMap<OrtDevice::DeviceType, SetDeviceFn> set_device_map_;
 };
 #endif
 
@@ -409,6 +422,10 @@ Status SessionState::PrepackConstantInitializedTensors(
   auto prepacked_constant_weights = [this, &constant_initializers_use_count, &initializers_to_share_map](
                                         bool should_cache_prepacked_weights_for_shared_initializers) -> Status {
     for (auto& node : GetGraphViewer().Nodes()) {
+      if (sess_options_.IsLoadCancellationFlagSet()) {
+        return ORT_MAKE_STATUS(ONNXRUNTIME, MODEL_LOAD_CANCELED,
+                               "Weight pre-packing was canceled due to user request.");
+      }
       auto kernel = GetMutableKernel(node.Index());
       int input_idx = 0;
       for (auto& input_def : node.InputDefs()) {
@@ -1127,7 +1144,7 @@ Status SessionState::CreateSubgraphSessionState() {
       if (!ep.empty() &&
           ep != kCpuExecutionProvider && ep != kCudaExecutionProvider &&
           ep != kRocmExecutionProvider && ep != kDmlExecutionProvider &&
-          ep != kJsExecutionProvider) {
+          ep != kJsExecutionProvider && ep != kWebGpuExecutionProvider) {
         // SessionState is only used when ORT is executing the subgraph. If a non-ORT EP has taken the control flow
         // node containing the subgraph it will create whatever state it needs internally.
         continue;
@@ -1527,6 +1544,11 @@ Status SessionState::FinalizeSessionStateImpl(const std::basic_string<PATH_CHAR_
                                               Logger(),
                                               p_seq_exec_plan_);
   ORT_RETURN_IF_ERROR(status);
+
+  if (session_options.IsLoadCancellationFlagSet()) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, MODEL_LOAD_CANCELED,
+                           "SessionState finalize is canceled due to user request");
+  }
 
   // Record the allocation plan
 

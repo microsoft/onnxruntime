@@ -1,7 +1,6 @@
 
 parameters:
   DoDebugBuild: 'true' # Unused. Use BuildConfigurations instead.
-  DoCompliance: 'false'
   BuildCommand: ''
   StageName: 'Windows_CI_Dev'
   DoNugetPack:  'false'
@@ -94,11 +93,11 @@ stages:
 
       - ${{ if notIn(parameters['sln_platform'], 'Win32', 'x64') }}:
         - powershell: |
-            python tools\ci_build\build.py ${{ parameters.BuildCommand }} --use_binskim_compliant_compile_flags --parallel --build_csharp --build --update --config $(BuildConfig) --build_nuget --msbuild_extra_options IncludeMobileTargets=false ${{ variables.build_py_lto_flag }}
+            python tools\ci_build\build.py ${{ parameters.BuildCommand }} --use_binskim_compliant_compile_flags --parallel --build_csharp --build --update --config $(BuildConfig) --msbuild_extra_options IncludeMobileTargets=false ${{ variables.build_py_lto_flag }}
 
       - ${{ else }}:
         - powershell: |
-            python tools\ci_build\build.py ${{ parameters.BuildCommand }} --use_binskim_compliant_compile_flags --parallel --use_vcpkg --use_vcpkg_ms_internal_asset_cache --build_csharp --build --update --config $(BuildConfig) --build_nuget --msbuild_extra_options IncludeMobileTargets=false ${{ variables.build_py_lto_flag }}
+            python tools\ci_build\build.py ${{ parameters.BuildCommand }} --use_binskim_compliant_compile_flags --parallel --use_vcpkg --use_vcpkg_ms_internal_asset_cache --build_csharp --build --update --config $(BuildConfig) --msbuild_extra_options IncludeMobileTargets=false ${{ variables.build_py_lto_flag }}
 
       - ${{ if notIn(parameters['sln_platform'], 'Win32', 'x64') }}:
         # Use cross-compiled protoc
@@ -144,7 +143,7 @@ stages:
           displayName: 'Create NuGet Package'
           failOnStderr: true
 
-        - task: PublishPipelineArtifact@0
+        - task: 1ES.PublishPipelineArtifact@1
           displayName: 'Publish Pipeline Artifact: ${{ parameters.ArtifactName }}'
           inputs:
             artifactName: ${{ parameters.ArtifactName }}
@@ -182,7 +181,7 @@ stages:
           workingDirectory: '$(Build.SourcesDirectory)\js\node'
           displayName: 'Create NPM Package'
 
-        - task: PublishPipelineArtifact@0
+        - task: 1ES.PublishPipelineArtifact@1
           displayName: 'Publish Pipeline Artifact: ${{ parameters.ArtifactName }}'
           inputs:
             artifactName: ${{ parameters.ArtifactName }}
@@ -208,17 +207,7 @@ stages:
             DisplayName: 'ESRP - Sign Node.js binding binaries'
             DoEsrp: ${{ parameters.DoEsrp }}
             Pattern: '*.node'
-        - task: PublishPipelineArtifact@1
+        - task: 1ES.PublishPipelineArtifact@1
           inputs:
             targetPath: '$(Build.SourcesDirectory)\js\node\bin\napi-v3\win32\${{ parameters.sln_platform }}'
             artifactName: 'drop-onnxruntime-nodejs-win-${{ parameters.sln_platform }}-dml'
-
-
-      - ${{ if eq(parameters['DoCompliance'], 'true') }}:
-        - template: ../../templates/compliance.yml
-          parameters :
-            msbuildPlatform: ${{ parameters.sln_platform }}
-
-      - template: ../../templates/component-governance-component-detection-steps.yml
-        parameters :
-          condition : 'succeeded'
