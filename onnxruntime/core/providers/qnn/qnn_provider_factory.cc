@@ -25,7 +25,7 @@ struct QNNProviderFactory : IExecutionProviderFactory {
     const std::unordered_map<std::string, std::string>& config_options_map = config_options.GetConfigOptionsMap();
 
     // The implementation of the SessionOptionsAppendExecutionProvider C API function automatically adds EP options to
-    // the session option configurations with the key prefix "EP_NAME:".
+    // the session option configurations with the key prefix "ep.EP_NAME.".
     // We extract those EP options and pass them to QNN EP as separate "provider options".
     std::unordered_map<std::string, std::string> provider_options = provider_options_map_;
     const std::string key_prefix = "ep.QNN.";
