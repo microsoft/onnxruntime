@@ -106,6 +106,8 @@ stages:
             "--update",
             "--config", "$(BuildConfig)",
             "--build_nuget",
+            "--cmake_generator",
+            "'Visual Studio 17 2022'",
             "--msbuild_extra_options", "IncludeMobileTargets=false"
           )
           if ("${{ variables.build_py_lto_flag }}") {
