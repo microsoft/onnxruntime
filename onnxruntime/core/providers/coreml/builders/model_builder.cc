@@ -182,7 +182,8 @@ void CopyOnnxTensorToCoreMLTensor(const ONNX_NAMESPACE::TensorProto& tensor_prot
     }
     case ONNX_NAMESPACE::TensorProto_DataType_INT64: {
       // from: int64_data/raw, to: ints (use narrow to convert to int32)
-      // CoreML uses int32
+      // CoreML tensors have a longints field, but the CoreML op definitions only use int32,
+      // so we convert any int64 to int32
       if (has_raw_data) {
         CopyRawDataToRepeatedField<int64_t, int32_t>(tensor_proto, *tensor_value.mutable_ints()->mutable_values());
 
