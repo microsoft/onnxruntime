@@ -192,7 +192,7 @@ inline bool ReadDynamicRange(const std::string file_name,
                              std::unordered_map<std::string,
                                                 float>& dynamic_range_map) {
   std::ifstream infile(file_name, std::ios::binary | std::ios::in);
-  if (!infile) {
+  if (!infile.good()) {
     return false;
   }
 
