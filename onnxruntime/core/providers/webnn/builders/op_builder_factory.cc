@@ -162,7 +162,7 @@ static OpBuilderRegistrations CreateOpBuilderRegistrations() {
     CreateMaxMinOpBuilder("Min", op_registrations);
   }
 
-  { // MultiHeadAttention
+  {  // MultiHeadAttention
     CreateMultiHeadAttentionOpBuilder("MultiHeadAttention", op_registrations);
   }
 
