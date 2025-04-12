@@ -1578,7 +1578,6 @@ namespace Windows::AI::MachineLearning::Adapter
         {
             std::basic_string<ORTCHAR_T> externalFilePath;
             onnxruntime::FileOffsetType fileOffset;
-            SafeInt<size_t> tensorByteSize;
             SafeInt<size_t> safeTensorByteSize;
             THROW_IF_NOT_OK(onnxruntime::utils::GetExternalDataInfo(*impl,  modelPath, /*out*/ externalFilePath, /*out*/ fileOffset, /*out*/ safeTensorByteSize));
             if (externalFilePath == onnxruntime::utils::kTensorProtoMemoryAddressTag)
