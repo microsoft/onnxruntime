@@ -622,17 +622,17 @@ JNIEXPORT void JNICALL Java_ai_onnxruntime_OrtSession_00024SessionOptions_addTvm
 
 /*
  * Class:     ai_onnxruntime_OrtSession_SessionOptions
- * Method:    addMIGraphX
+ * Method:    addAMDGPU
  * Signature: (JJI)V
  */
-JNIEXPORT void JNICALL Java_ai_onnxruntime_OrtSession_00024SessionOptions_addMIGraphX
+JNIEXPORT void JNICALL Java_ai_onnxruntime_OrtSession_00024SessionOptions_addAMDGPU
   (JNIEnv * jniEnv, jobject jobj, jlong apiHandle, jlong handle, jint deviceNum) {
     (void)jobj;
-  #ifdef USE_MIGRAPHX
-    checkOrtStatus(jniEnv,(const OrtApi*)apiHandle,OrtSessionOptionsAppendExecutionProvider_MIGraphX((OrtSessionOptions*) handle, deviceNum));
+  #ifdef USE_AMDGPU
+    checkOrtStatus(jniEnv,(const OrtApi*)apiHandle,OrtSessionOptionsAppendExecutionProvider_AMDGPU((OrtSessionOptions*) handle, deviceNum));
   #else
-    (void)apiHandle;(void)handle;(void)deviceNum; // Parameters used when MIGraphX is defined.
-    throwOrtException(jniEnv,convertErrorCode(ORT_INVALID_ARGUMENT),"This binary was not compiled with MIGraphX support.");
+    (void)apiHandle;(void)handle;(void)deviceNum; // Parameters used when AMDGPU is defined.
+    throwOrtException(jniEnv,convertErrorCode(ORT_INVALID_ARGUMENT),"This binary was not compiled with AMDGPU support.");
   #endif
 }
 

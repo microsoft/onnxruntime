@@ -172,8 +172,8 @@ def optimize_by_onnxruntime(
             providers = ["DmlExecutionProvider"]
         elif provider == "rocm":
             providers = ["ROCMExecutionProvider"]
-        elif provider == "migraphx":
-            providers = ["MIGraphXExecutionProvider", "ROCMExecutionProvider"]
+        elif provider == "migraphx" or provider == "amdgpu":
+            providers = ["AMDGPUExecutionProvider", "ROCMExecutionProvider"]
         elif provider == "cuda":
             providers = ["CUDAExecutionProvider"]
         elif provider == "tensorrt":

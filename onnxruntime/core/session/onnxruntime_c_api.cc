@@ -2717,7 +2717,7 @@ static constexpr OrtApi ort_api_1_to_21 = {
     &OrtApis::UpdateCUDAProviderOptions,
     &OrtApis::GetCUDAProviderOptionsAsString,
     &OrtApis::ReleaseCUDAProviderOptions,
-    &OrtApis::SessionOptionsAppendExecutionProvider_MIGraphX,
+    &OrtApis::SessionOptionsAppendExecutionProvider_AMDGPU,
     // End of Version 11 - DO NOT MODIFY ABOVE (see above text for more information)
 
     &OrtApis::AddExternalInitializers,
@@ -2812,7 +2812,6 @@ static constexpr OrtApi ort_api_1_to_21 = {
 
     &OrtApis::SetEpDynamicOptions,
     // End of Version 20 - DO NOT MODIFY ABOVE (see above text for more information)
-    &OrtApis::SessionOptionsAppendExecutionProvider_AMDGPU,
 };
 
 // OrtApiBase can never change as there is no way to know what version of OrtApiBase is returned by OrtGetApiBase.
@@ -2836,7 +2835,7 @@ static_assert(offsetof(OrtApi, GetCurrentGpuDeviceId) / sizeof(void*) == 161, "S
 static_assert(offsetof(OrtApi, CreateSessionFromArrayWithPrepackedWeightsContainer) / sizeof(void*) == 169, "Size of version 8 API cannot change");
 static_assert(offsetof(OrtApi, GetSparseTensorIndices) / sizeof(void*) == 191, "Size of version 9 API cannot change");
 static_assert(offsetof(OrtApi, SynchronizeBoundOutputs) / sizeof(void*) == 203, "Size of version 10 API cannot change");
-static_assert(offsetof(OrtApi, SessionOptionsAppendExecutionProvider_MIGraphX) / sizeof(void*) == 209, "Size of version 11 API cannot change");
+static_assert(offsetof(OrtApi, SessionOptionsAppendExecutionProvider_AMDGPU) / sizeof(void*) == 209, "Size of version 11 API cannot change");
 static_assert(offsetof(OrtApi, ReleaseKernelInfo) / sizeof(void*) == 218, "Size of version 12 API cannot change");
 static_assert(offsetof(OrtApi, ReleaseCANNProviderOptions) / sizeof(void*) == 224, "Size of version 13 API cannot change");
 static_assert(offsetof(OrtApi, GetSessionConfigEntry) / sizeof(void*) == 238, "Size of version 14 API cannot change");

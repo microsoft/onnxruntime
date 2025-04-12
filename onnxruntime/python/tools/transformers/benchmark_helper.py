@@ -115,9 +115,9 @@ def create_onnxruntime_session(
                 providers = ["DmlExecutionProvider", "CPUExecutionProvider"]
             elif provider == "rocm":
                 providers = ["ROCMExecutionProvider", "CPUExecutionProvider"]
-            elif provider == "migraphx":
+            elif provider == "migraphx" or provider == "amdgpu":
                 providers = [
-                    "MIGraphXExecutionProvider",
+                    "AMDGPUExecutionProvider",
                     "ROCMExecutionProvider",
                     "CPUExecutionProvider",
                 ]

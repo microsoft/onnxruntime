@@ -9,7 +9,7 @@
 #include "test/util/include/scoped_env_vars.h"
 #include "test/contrib_ops/attention_op_test_helper.h"
 
-#if defined(USE_ROCM) && defined(USE_COMPOSABLE_KERNEL) && !defined(USE_MIGRAPHX)
+#if defined(USE_ROCM) && defined(USE_COMPOSABLE_KERNEL) && !defined(USE_AMDGPU)
 #define DISABLE_ROCM false
 #else
 #define DISABLE_ROCM true

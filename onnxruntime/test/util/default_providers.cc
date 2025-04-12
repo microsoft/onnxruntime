@@ -70,28 +70,28 @@ std::unique_ptr<IExecutionProvider> TensorrtExecutionProviderWithOptions(const O
   return nullptr;
 }
 
-std::unique_ptr<IExecutionProvider> DefaultMIGraphXExecutionProvider() {
-#ifdef USE_MIGRAPHX
-  OrtMIGraphXProviderOptions params{
+std::unique_ptr<IExecutionProvider> DefaultAMDGPUExecutionProvider() {
+#ifdef USE_AMDGPU
+  OrtAMDGPUProviderOptions params{
+      0,
       0,
       0,
       0,
       0,
       nullptr,
+      nullptr,
       1,
-      "./compiled_model.mxr",
-      1,
-      "./compiled_model.mxr",
-      1};
-  return MIGraphXProviderFactoryCreator::Create(&params)->CreateProvider();
+      SIZE_MAX,
+      0};
+  return AMDGPUProviderFactoryCreator::Create(&params)->CreateProvider();
 #else
   return nullptr;
 #endif
 }
 
-std::unique_ptr<IExecutionProvider> MIGraphXExecutionProviderWithOptions(const OrtMIGraphXProviderOptions* params) {
-#ifdef USE_MIGRAPHX
-  if (auto factory = MIGraphXProviderFactoryCreator::Create(params))
+std::unique_ptr<IExecutionProvider> AMDGPUExecutionProviderWithOptions(const OrtAMDGPUProviderOptions* params) {
+#ifdef USE_AMDGPU
+  if (auto factory = AMDGPUProviderFactoryCreator::Create(params))
     return factory->CreateProvider();
 #else
   ORT_UNUSED_PARAMETER(params);

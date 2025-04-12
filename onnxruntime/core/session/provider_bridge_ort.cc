@@ -96,7 +96,7 @@ using EtwRegistrationManager_EtwInternalCallback = EtwRegistrationManager::EtwIn
 #include "core/providers/cann/cann_provider_factory_creator.h"
 #include "core/providers/rocm/rocm_provider_factory_creator.h"
 #include "core/providers/dnnl/dnnl_provider_factory_creator.h"
-#include "core/providers/migraphx/migraphx_provider_factory_creator.h"
+#include "core/providers/amdgpu/amdgpu_provider_factory_creator.h"
 #include "core/providers/openvino/openvino_provider_factory_creator.h"
 #include "core/providers/tensorrt/tensorrt_provider_factory_creator.h"
 #include "core/providers/vitisai/vitisai_provider_factory_creator.h"
@@ -106,7 +106,7 @@ using EtwRegistrationManager_EtwInternalCallback = EtwRegistrationManager::EtwIn
 #include "core/providers/cann/cann_provider_factory.h"
 #include "core/providers/rocm/rocm_provider_factory.h"
 #include "core/providers/dnnl/dnnl_provider_factory.h"
-#include "core/providers/migraphx/migraphx_provider_factory.h"
+#include "core/providers/amdgpu/amdgpu_provider_factory.h"
 #include "core/providers/openvino/openvino_provider_factory.h"
 #include "core/providers/tensorrt/tensorrt_provider_factory.h"
 #include "core/providers/tensorrt/tensorrt_provider_options.h"
@@ -147,8 +147,8 @@ ProviderInfo_Dnnl& GetProviderInfo_Dnnl();
 ProviderInfo_ROCM* TryGetProviderInfo_ROCM();
 ProviderInfo_ROCM& GetProviderInfo_ROCM();
 ProviderHostCPU& GetProviderHostCPU();
-ProviderInfo_MIGraphX* TryGetProviderInfo_MIGraphX();
-ProviderInfo_MIGraphX& GetProviderInfo_MIGraphX();
+ProviderInfo_AMDGPU* TryGetProviderInfo_AMDGPU();
+ProviderInfo_AMDGPU& GetProviderInfo_AMDGPU();
 ONNX_NAMESPACE::OpSchema CreateSchema(const std::string& domain, const std::vector<const OrtCustomOp*>& ops);
 struct TensorShapeProto_Dimension_Iterator_Impl : TensorShapeProto_Dimension_Iterator {
   TensorShapeProto_Dimension_Iterator_Impl(google::protobuf::internal::RepeatedPtrIterator<const onnx::TensorShapeProto_Dimension>&& v) : v_{std::move(v)} {}
@@ -270,9 +270,9 @@ struct ProviderHostImpl : ProviderHost {
   Status CudaCall_false(int retCode, const char* exprString, const char* libName, int successCode, const char* msg, const char* file, const int line) override { return GetProviderInfo_CUDA().CudaCall_false(retCode, exprString, libName, successCode, msg, file, line); }
   void CudaCall_true(int retCode, const char* exprString, const char* libName, int successCode, const char* msg, const char* file, const int line) override { GetProviderInfo_CUDA().CudaCall_true(retCode, exprString, libName, successCode, msg, file, line); }
 
-#ifdef USE_MIGRAPHX
-  std::unique_ptr<IAllocator> CreateMIGraphXAllocator(int16_t device_id, const char* name) override { return GetProviderInfo_MIGraphX().CreateMIGraphXAllocator(device_id, name); }
-  std::unique_ptr<IAllocator> CreateMIGraphXPinnedAllocator(int16_t device_id, const char* name) override { return GetProviderInfo_MIGraphX().CreateMIGraphXPinnedAllocator(device_id, name); }
+#ifdef USE_AMDGPU
+  std::unique_ptr<IAllocator> CreateAMDGPUAllocator(int16_t device_id, const char* name) override { return GetProviderInfo_AMDGPU().CreateAMDGPUAllocator(device_id, name); }
+  std::unique_ptr<IAllocator> CreateAMDGPUPinnedAllocator(int16_t device_id, const char* name) override { return GetProviderInfo_AMDGPU().CreateAMDGPUPinnedAllocator(device_id, name); }
 #endif
 
 #ifdef USE_ROCM
@@ -1778,7 +1778,7 @@ static ProviderLibrary s_library_tensorrt(LIBRARY_PREFIX ORT_TSTR("onnxruntime_p
                                           false
 #endif
 );
-static ProviderLibrary s_library_migraphx(LIBRARY_PREFIX ORT_TSTR("onnxruntime_providers_amd_gpu") LIBRARY_EXTENSION);
+static ProviderLibrary s_library_amdgpu(LIBRARY_PREFIX ORT_TSTR("onnxruntime_providers_amdgpu") LIBRARY_EXTENSION);
 
 // QNN EP can be built either as a static library or a shared library. Can safely define s_library_qnn even if static.
 static ProviderLibrary s_library_qnn(LIBRARY_PREFIX ORT_TSTR("onnxruntime_providers_qnn") LIBRARY_EXTENSION);
@@ -1793,7 +1793,7 @@ void UnloadSharedProviders() {
   s_library_cann.Unload();
   s_library_rocm.Unload();
   s_library_shared.Unload();
-  s_library_migraphx.Unload();
+  s_library_amdgpu.Unload();
   s_library_qnn.Unload();
 }
 
@@ -1859,8 +1859,8 @@ std::shared_ptr<IExecutionProviderFactory> DnnlProviderFactoryCreator::Create(in
   return s_library_dnnl.Get().CreateExecutionProviderFactory(use_arena);
 }
 
-std::shared_ptr<IExecutionProviderFactory> MIGraphXProviderFactoryCreator::Create(int device_id) {
-  return s_library_migraphx.Get().CreateExecutionProviderFactory(device_id);
+std::shared_ptr<IExecutionProviderFactory> AMDGPUProviderFactoryCreator::Create(int device_id) {
+  return s_library_amdgpu.Get().CreateExecutionProviderFactory(device_id);
 }
 
 // Adapter to convert the legacy OrtTensorRTProviderOptions to the latest OrtTensorRTProviderOptionsV2
@@ -1924,8 +1924,8 @@ std::shared_ptr<IExecutionProviderFactory> TensorrtProviderFactoryCreator::Creat
   return s_library_tensorrt.Get().CreateExecutionProviderFactory(provider_options);
 }
 
-std::shared_ptr<IExecutionProviderFactory> MIGraphXProviderFactoryCreator::Create(const OrtMIGraphXProviderOptions* provider_options) {
-  return s_library_migraphx.Get().CreateExecutionProviderFactory(provider_options);
+std::shared_ptr<IExecutionProviderFactory> AMDGPUProviderFactoryCreator::Create(const OrtAMDGPUProviderOptions* provider_options) {
+  return s_library_amdgpu.Get().CreateExecutionProviderFactory(provider_options);
 }
 
 // Adapter to convert the legacy OrtOpenVINOProviderOptions to ProviderOptions
@@ -2084,18 +2084,18 @@ ProviderInfo_ROCM& GetProviderInfo_ROCM() {
   ORT_THROW("ROCM Provider not available, can't get interface for it");
 }
 
-ProviderInfo_MIGraphX* TryGetProviderInfo_MIGraphX() try {
-  return reinterpret_cast<ProviderInfo_MIGraphX*>(s_library_migraphx.Get().GetInfo());
+ProviderInfo_AMDGPU* TryGetProviderInfo_AMDGPU() try {
+  return reinterpret_cast<ProviderInfo_AMDGPU*>(s_library_amdgpu.Get().GetInfo());
 } catch (const std::exception& exception) {
   LOGS_DEFAULT(ERROR) << exception.what();
   return nullptr;
 }
 
-ProviderInfo_MIGraphX& GetProviderInfo_MIGraphX() {
-  if (auto* info = TryGetProviderInfo_MIGraphX())
+ProviderInfo_AMDGPU& GetProviderInfo_AMDGPU() {
+  if (auto* info = TryGetProviderInfo_AMDGPU())
     return *info;
 
-  ORT_THROW("MIGraphX Provider not available, can't get interface for it");
+  ORT_THROW("AMDGPU Provider not available, can't get interface for it");
 }
 
 void CopyGpuToCpu(
@@ -2207,11 +2207,11 @@ ORT_API_STATUS_IMPL(OrtSessionOptionsAppendExecutionProvider_Tensorrt, _In_ OrtS
   API_IMPL_END
 }
 
-ORT_API_STATUS_IMPL(OrtSessionOptionsAppendExecutionProvider_MIGraphX, _In_ OrtSessionOptions* options, int device_id) {
+ORT_API_STATUS_IMPL(OrtSessionOptionsAppendExecutionProvider_AMDGPU, _In_ OrtSessionOptions* options, int device_id) {
   API_IMPL_BEGIN
-  auto factory = onnxruntime::MIGraphXProviderFactoryCreator::Create(device_id);
+  auto factory = onnxruntime::AMDGPUProviderFactoryCreator::Create(device_id);
   if (!factory) {
-    return OrtApis::CreateStatus(ORT_FAIL, "OrtSessionOptionsAppendExecutionProvider_MIGraphX: Failed to load shared library");
+    return OrtApis::CreateStatus(ORT_FAIL, "OrtSessionOptionsAppendExecutionProvider_AMDGPU: Failed to load shared library");
   }
 
   options->provider_factories.push_back(factory);
@@ -2226,23 +2226,10 @@ ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider_TensorRT, _In
   API_IMPL_END
 }
 
-ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider_MIGraphX, _In_ OrtSessionOptions* options, _In_ const OrtMIGraphXProviderOptions* migraphx_options) {
-  API_IMPL_BEGIN
-  auto factory = onnxruntime::MIGraphXProviderFactoryCreator::Create(migraphx_options);
-  if (!factory) {
-    return OrtApis::CreateStatus(ORT_FAIL, "SessionOptionsAppendExecutionProvider_MIGraphX: Failed to load shared library");
-  }
-
-  options->provider_factories.push_back(factory);
-  return nullptr;
-  API_IMPL_END
-}
-
 ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider_AMDGPU, _In_ OrtSessionOptions* options, _In_ const OrtAMDGPUProviderOptions* amdgpu_options) {
   API_IMPL_BEGIN
-  OrtMIGraphXProviderOptions* migraphx_options = (OrtMIGraphXProviderOptions*)amdgpu_options;
-  auto factory = onnxruntime::MIGraphXProviderFactoryCreator::Create(migraphx_options);
-  if (!factory) {
+  const auto factory = onnxruntime::AMDGPUProviderFactoryCreator::Create(amdgpu_options);
+  if (factory == nullptr) {
     return OrtApis::CreateStatus(ORT_FAIL, "SessionOptionsAppendExecutionProvider_AMDGPU: Failed to load shared library");
   }
 

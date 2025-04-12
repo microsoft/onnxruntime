@@ -610,7 +610,8 @@ def parse_arguments():
     parser.add_argument("--use_tensorrt_oss_parser", action="store_true", help="Use TensorRT OSS parser")
     parser.add_argument("--tensorrt_home", help="Path to TensorRT installation dir")
     parser.add_argument("--test_all_timeout", default="10800", help="Set timeout for onnxruntime_test_all")
-    parser.add_argument("--use_migraphx", action="store_true", help="Build with MIGraphX")
+    parser.add_argument("--use_migraphx", action="store_true", help="Build with AMDGPU (deprecated)")
+    parser.add_argument("--use_amdgpu", action="store_true", help="Build with AMDGPU")
     parser.add_argument("--migraphx_home", help="Path to MIGraphX installation dir")
     parser.add_argument("--use_full_protobuf", action="store_true", help="Use the full protobuf library")
 
@@ -1054,8 +1055,8 @@ def generate_build_tree(
         "-Donnxruntime_USE_OPENVINO_INTERFACE=" + ("ON" if args.enable_generic_interface else "OFF"),
         "-Donnxruntime_USE_VITISAI_INTERFACE=" + ("ON" if args.enable_generic_interface else "OFF"),
         "-Donnxruntime_USE_QNN_INTERFACE=" + ("ON" if args.enable_generic_interface else "OFF"),
-        # set vars for migraphx
-        "-Donnxruntime_USE_MIGRAPHX=" + ("ON" if args.use_migraphx else "OFF"),
+        # set vars for amdgpu
+        "-Donnxruntime_USE_AMDGPU=" + ("ON" if args.use_amdgpu or args.use_migraphx else "OFF"),
         "-Donnxruntime_DISABLE_CONTRIB_OPS=" + ("ON" if args.disable_contrib_ops else "OFF"),
         "-Donnxruntime_DISABLE_ML_OPS=" + ("ON" if args.disable_ml_ops else "OFF"),
         "-Donnxruntime_DISABLE_RTTI="
@@ -1216,7 +1217,7 @@ def generate_build_tree(
         cmake_args.append("-Donnxruntime_DNNL_ACL_ROOT=" + args.dnnl_acl_root)
     if args.build_wasm:
         cmake_args.append("-Donnxruntime_ENABLE_WEBASSEMBLY_SIMD=" + ("ON" if args.enable_wasm_simd else "OFF"))
-    if args.use_migraphx:
+    if args.use_migraphx or args.use_amdgpu:
         cmake_args.append("-Donnxruntime_MIGRAPHX_HOME=" + migraphx_home)
     if args.use_cuda:
         nvcc_threads = number_of_nvcc_threads(args)
@@ -1891,7 +1892,7 @@ def setup_tensorrt_vars(args):
 def setup_migraphx_vars(args):
     migraphx_home = None
 
-    if args.use_migraphx:
+    if args.use_migraphx or args.use_amdgpu:
         print(f"migraphx_home = {args.migraphx_home}")
         migraphx_home = args.migraphx_home or os.getenv("MIGRAPHX_HOME") or None
 
@@ -2310,7 +2311,7 @@ def build_python_wheel(
     use_cuda,
     cuda_version,
     use_rocm,
-    use_migraphx,
+    use_amdgpu,
     rocm_version,
     use_dnnl,
     use_tensorrt,
@@ -2361,10 +2362,10 @@ def build_python_wheel(
             args.append("--use_rocm")
             if rocm_version:
                 args.append(f"--rocm_version={rocm_version}")
-            if use_migraphx:
-                args.append("--use_migraphx")
-        elif use_migraphx:
-            args.append("--use_migraphx")
+            if use_amdgpu:
+                args.append("--use_amdgpu")
+        elif use_amdgpu:
+            args.append("--use_amdgpu")
         elif use_openvino:
             args.append("--use_openvino")
         elif use_dnnl:
@@ -2399,7 +2400,7 @@ def build_nuget_package(
     use_dnnl,
     use_winml,
     use_qnn,
-    use_migraphx,
+    use_amdgpu,
     enable_training_apis,
     msbuild_extra_options,
 ):
@@ -2449,7 +2450,7 @@ def build_nuget_package(
             raise BuildError("Currently NuGet packages with QNN require QNN EP to be built as a shared library.")
         execution_provider = "/p:ExecutionProvider=qnn"
         package_name = "/p:OrtPackageId=Microsoft.ML.OnnxRuntime.QNN"
-    elif use_migraphx:
+    elif use_amdgpu:
         package_name = "/p:OrtPackageId=Microsoft.ML.OnnxRuntime.AmdGpu"
     elif any("OrtPackageId=" in x for x in msbuild_extra_options):
         pass
@@ -2766,6 +2767,9 @@ def main():
         args.enable_training_apis = True
         args.enable_training_ops = True
 
+    if args.use_migraphx:
+        warnings.warn("The use of --use_migraphx is deprecated. Please use --use_amdgpu instead.", UserWarning)
+
     configs = set(args.config)
 
     # setup paths and directories
@@ -3003,7 +3007,7 @@ def main():
                 args.use_cuda,
                 args.cuda_version,
                 args.use_rocm,
-                args.use_migraphx,
+                args.use_amdgpu or args.use_migraphx,
                 args.rocm_version,
                 args.use_dnnl,
                 args.use_tensorrt,
@@ -3037,7 +3041,7 @@ def main():
                 args.use_dnnl,
                 args.use_winml,
                 args.use_qnn,
-                args.use_migraphx,
+                args.use_amdgpu or args.use_migraphx,
                 args.enable_training_apis,
                 normalize_arg_list(args.msbuild_extra_options),
             )

@@ -788,7 +788,7 @@ def main():
         logger.error("fp16 is for GPU only")
         return
 
-    if args.precision == Precision.INT8 and args.use_gpu and args.provider not in ["migraphx", "rocm"]:
+    if args.precision == Precision.INT8 and args.use_gpu and args.provider not in ["amdgpu", "rocm"]:
         logger.error("int8 is for CPU only")
         return
 

@@ -9,29 +9,29 @@
 
 namespace onnxruntime {
 
-class MIGraphXAllocator : public IAllocator {
+class AMDGPUAllocator : public IAllocator {
  public:
-  MIGraphXAllocator(int device_id, const char* name)
+  AMDGPUAllocator(const int device_id, const char* name)
       : IAllocator(
-            OrtMemoryInfo(name, OrtAllocatorType::OrtDeviceAllocator,
+            OrtMemoryInfo(name, OrtDeviceAllocator,
                           OrtDevice(OrtDevice::GPU, OrtDevice::MemType::DEFAULT, static_cast<OrtDevice::DeviceId>(device_id)),
                           device_id, OrtMemTypeDefault)) {}
 
-  virtual void* Alloc(size_t size) override;
-  virtual void Free(void* p) override;
+  void* Alloc(size_t size) override;
+  void Free(void* p) override;
 
  private:
   void CheckDevice() const;
 };
 
-class MIGraphXExternalAllocator : public MIGraphXAllocator {
+class AMDGPUExternalAllocator final : public AMDGPUAllocator {
   typedef void* (*ExternalAlloc)(size_t size);
   typedef void (*ExternalFree)(void* p);
   typedef void (*ExternalEmptyCache)();
 
  public:
-  MIGraphXExternalAllocator(OrtDevice::DeviceId device_id, const char* name, void* alloc, void* free, void* empty_cache)
-      : MIGraphXAllocator(device_id, name) {
+  AMDGPUExternalAllocator(const OrtDevice::DeviceId device_id, const char* name, void* alloc, void* free, void* empty_cache)
+      : AMDGPUAllocator(device_id, name) {
     alloc_ = reinterpret_cast<ExternalAlloc>(alloc);
     free_ = reinterpret_cast<ExternalFree>(free);
     empty_cache_ = reinterpret_cast<ExternalEmptyCache>(empty_cache);
@@ -49,17 +49,16 @@ class MIGraphXExternalAllocator : public MIGraphXAllocator {
   std::unordered_set<void*> reserved_;
 };
 
-// TODO: add a default constructor
-class HIPPinnedAllocator : public IAllocator {
+class AMDGPUPinnedAllocator final : public IAllocator {
  public:
-  HIPPinnedAllocator(int device_id, const char* name)
+  AMDGPUPinnedAllocator(const int device_id, const char* name)
       : IAllocator(
-            OrtMemoryInfo(name, OrtAllocatorType::OrtDeviceAllocator,
+            OrtMemoryInfo(name, OrtDeviceAllocator,
                           OrtDevice(OrtDevice::CPU, OrtDevice::MemType::HIP_PINNED, static_cast<OrtDevice::DeviceId>(device_id)),
                           device_id, OrtMemTypeCPUOutput)) {}
 
-  virtual void* Alloc(size_t size) override;
-  virtual void Free(void* p) override;
+  void* Alloc(size_t size) override;
+  void Free(void* p) override;
 };
 
 }  // namespace onnxruntime

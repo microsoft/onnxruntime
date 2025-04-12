@@ -353,13 +353,13 @@ std::unique_ptr<IDataTransfer> CreateGPUDataTransfer() {
 }
 #endif
 
-#ifdef USE_MIGRAPHX
-std::unique_ptr<IAllocator> CreateMIGraphXAllocator(int16_t device_id, const char* name) {
-  return g_host->CreateMIGraphXAllocator(device_id, name);
+#ifdef USE_AMDGPU
+std::unique_ptr<IAllocator> CreateAMDGPUAllocator(int16_t device_id, const char* name) {
+  return g_host->CreateAMDGPUAllocator(device_id, name);
 }
 
-std::unique_ptr<IAllocator> CreateMIGraphXPinnedAllocator(int16_t device_id, const char* name) {
-  return g_host->CreateMIGraphXPinnedAllocator(device_id, name);
+std::unique_ptr<IAllocator> CreateAMDGPUPinnedAllocator(int16_t device_id, const char* name) {
+  return g_host->CreateAMDGPUPinnedAllocator(device_id, name);
 }
 #endif
 

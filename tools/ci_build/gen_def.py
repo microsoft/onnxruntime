@@ -72,7 +72,7 @@ with open(args.output_source, "w") as file:
             "winml",
             "cuda",
             "rocm",
-            "migraphx",
+            "amdgpu",
             "qnn",
             "snpe",
             "xnnpack",

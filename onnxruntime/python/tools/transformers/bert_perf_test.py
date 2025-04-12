@@ -82,9 +82,9 @@ def create_session(
             execution_providers = ["DmlExecutionProvider", "CPUExecutionProvider"]
         elif provider == "rocm":
             execution_providers = ["ROCMExecutionProvider", "CPUExecutionProvider"]
-        elif provider == "migraphx":
+        elif provider == "migraphx" or provider == "amdgpu":
             execution_providers = [
-                "MIGraphXExecutionProvider",
+                "AMDGPUExecutionProvider",
                 "ROCMExecutionProvider",
                 "CPUExecutionProvider",
             ]
@@ -128,8 +128,8 @@ def create_session(
             assert "DmlExecutionProvider" in session.get_providers()
         elif provider == "rocm":
             assert "ROCMExecutionProvider" in session.get_providers()
-        elif provider == "migraphx":
-            assert "MIGraphXExecutionProvider" in session.get_providers()
+        elif provider == "migraphx" or provider == "amdgpu":
+            assert "AMDGPUExecutionProvider" in session.get_providers()
             assert "ROCMExecutionProvider" in session.get_providers()
         elif provider == "cuda":
             assert "CUDAExecutionProvider" in session.get_providers()

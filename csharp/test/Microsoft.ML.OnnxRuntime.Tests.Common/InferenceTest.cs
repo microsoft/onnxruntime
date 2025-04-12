@@ -138,7 +138,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                 opt.AppendExecutionProvider_Dnnl(0);
 #endif
 
-#if USE_MIGRAPHX
+#if USE_AMDGPU
                 opt.AppendExecutionProvider_MIGraphX(0);
 #endif
 

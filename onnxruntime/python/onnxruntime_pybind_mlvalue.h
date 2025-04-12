@@ -91,6 +91,18 @@ const std::unordered_map<OrtDevice::DeviceType, MemCpyFunc>* GetDmlToHostMemCpyF
 
 #endif
 
+#ifdef USE_AMDGPU
+
+void CpuToAMDGPUMemCpy(void* dst, const void* src, size_t num_bytes);
+
+void AMDGPUToCpuMemCpy(void* dst, const void* src, size_t num_bytes);
+
+const std::unordered_map<OrtDevice::DeviceType, MemCpyFunc>* GetAMDGPUToHostMemCpyFunction();
+
+AllocatorPtr GetAMDGPUAllocator(OrtDevice::DeviceId id);
+
+#endif
+
 #ifdef USE_CANN
 
 void CpuToCannMemCpy(void* dst, const void* src, size_t num_bytes);

@@ -926,7 +926,6 @@ struct SessionOptionsImpl : ConstSessionOptionsImpl<T> {
   SessionOptionsImpl& AppendExecutionProvider_OpenVINO_V2(const std::unordered_map<std::string, std::string>& provider_options = {});
   SessionOptionsImpl& AppendExecutionProvider_TensorRT(const OrtTensorRTProviderOptions& provider_options);       ///< Wraps OrtApi::SessionOptionsAppendExecutionProvider_TensorRT
   SessionOptionsImpl& AppendExecutionProvider_TensorRT_V2(const OrtTensorRTProviderOptionsV2& provider_options);  ///< Wraps OrtApi::SessionOptionsAppendExecutionProvider_TensorRT
-  SessionOptionsImpl& AppendExecutionProvider_MIGraphX(const OrtMIGraphXProviderOptions& provider_options);       ///< Wraps OrtApi::SessionOptionsAppendExecutionProvider_MIGraphX
   SessionOptionsImpl& AppendExecutionProvider_AMDGPU(const OrtAMDGPUProviderOptions& provider_options);           ///< Wraps OrtApi::SessionOptionsAppendExecutionProvider_AMDGPU
   ///< Wraps OrtApi::SessionOptionsAppendExecutionProvider_CANN
   SessionOptionsImpl& AppendExecutionProvider_CANN(const OrtCANNProviderOptions& provider_options);
@@ -954,6 +953,10 @@ struct SessionOptionsImpl : ConstSessionOptionsImpl<T> {
 
 using UnownedSessionOptions = detail::SessionOptionsImpl<detail::Unowned<OrtSessionOptions>>;
 using ConstSessionOptions = detail::ConstSessionOptionsImpl<detail::Unowned<const OrtSessionOptions>>;
+
+/** \brief Legacy definition, for backward compatibility with existing C++ code.
+ */
+#define AppendExecutionProvider_MIGraphX AppendExecutionProvider_AMDGPU
 
 /** \brief Wrapper around ::OrtSessionOptions
  *

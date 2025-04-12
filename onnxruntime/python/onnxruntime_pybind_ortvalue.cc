@@ -34,6 +34,8 @@ std::unique_ptr<OrtValue> OrtValueFromShapeAndType(const std::vector<int64_t>& s
       throw std::runtime_error("The provided device id doesn't match any available GPUs on the machine.");
     }
     allocator = GetCudaAllocator(device.Id());
+#elif USE_AMDGPU
+    allocator = GetAMDGPUAllocator(device.Id());
 #else
     throw std::runtime_error(
         "Can't allocate memory on the CUDA device using this package of OnnxRuntime. "
@@ -96,6 +98,11 @@ void addOrtValueMethods(pybind11::module& m) {
       // Likewise, there is no need to specify the name (as the name was previously used to lookup the def list)
       // TODO: Add check to ensure that string arrays are not passed - we currently don't support string tensors in CUDA
       CreateGenericMLValue(nullptr, GetRocmAllocator(device.Id()), "", array_on_cpu, ml_value.get(), true, false, CpuToRocmMemCpy);
+#elif USE_AMDGPU
+      // InputDeflist is null because OrtValue creation is not tied to a specific model
+      // Likewise, there is no need to specify the name (as the name was previously used to lookup the def list)
+      // TODO: Add check to ensure that string arrays are not passed - we currently don't support string tensors in AMDGPU
+      CreateGenericMLValue(nullptr, GetAMDGPUAllocator(device.Id()), "", array_on_cpu, ml_value.get(), true, false, CpuToAMDGPUMemCpy);
 #else
           throw std::runtime_error(
               "Can't allocate memory on the CUDA device using this package of OnnxRuntime. "
@@ -170,6 +177,12 @@ void addOrtValueMethods(pybind11::module& m) {
               values_type,
               *(ml_value->GetMutable<Tensor>()),
               CpuToRocmMemCpy);
+#elif USE_AMDGPU
+          onnxruntime::python::CopyDataToTensor(
+              py_values,
+              values_type,
+              *(ml_value->GetMutable<Tensor>()),
+              CpuToAMDGPUMemCpy);
 #else
           throw std::runtime_error(
               "Unsupported GPU device: Cannot find the supported GPU device.");
@@ -346,6 +359,8 @@ void addOrtValueMethods(pybind11::module& m) {
         py::object obj = GetPyObjFromTensor(*ml_value, nullptr, GetCannToHostMemCpyFunction());
 #elif USE_DML
         py::object obj = GetPyObjFromTensor(*ml_value, nullptr, GetDmlToHostMemCpyFunction());
+#elif USE_AMDGPU
+        py::object obj = GetPyObjFromTensor(*ml_value, nullptr, GetAMDGPUToHostMemCpyFunction());
 #else
         py::object obj = GetPyObjFromTensor(*ml_value, nullptr, nullptr);
 #endif

@@ -151,7 +151,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                     using (var inputOrtValues = new DisposableListTest<DisposableTestPair<OrtValue>>(session.InputMetadata.Count))
                     using (var outputOrtValues = new DisposableListTest<DisposableTestPair<OrtValue>>(session.OutputMetadata.Count))
                     {
-                        
+
                         foreach (var name in inputMeta.Keys)
                         {
                             Assert.Equal(typeof(float), inputMeta[name].ElementType);
@@ -159,7 +159,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                             var tensor = SystemNumericsTensors.Tensor.Create<float>(inputData, inputMeta[name].Dimensions.Select(x => (nint) x).ToArray());
                             inputOrtValues.Add(new DisposableTestPair<OrtValue>(name, OrtValue.CreateTensorValueFromSystemNumericsTensorObject<float>(tensor)));
                         }
-                        
+
                         // Run inference with named inputs and outputs created with in Run()
                         using (var results = session.Run(runOptions, inputOrtValues.Select(x => x.Key).ToList(), inputOrtValues.Select(x => x.Value).ToList(), new List<string>(["softmaxout_1"])))  // results is an IDisposableReadOnlyCollection<OrtValue> container
                         {
@@ -224,7 +224,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
 
                 inputOrtValues.Add(new DisposableTestPair<OrtValue>("data_0", OrtValue.CreateTensorValueFromSystemNumericsTensorObject<float>(tensor)));
                 outputOrtValues.Add(new DisposableTestPair<OrtValue>("softmaxout_1", OrtValue.CreateTensorValueFromSystemNumericsTensorObject(outputTensor)));
-                
+
                 var ex = Assert.Throws<OnnxRuntimeException>(() => session.Run(runOptions, ["data_0"], [inputOrtValues[0].Value], ["softmaxout_1"], [outputOrtValues[0].Value]));
             }
 
@@ -1584,8 +1584,8 @@ namespace Microsoft.ML.OnnxRuntime.Tests
 #if USE_TENSORRT
             ,"OrtSessionOptionsAppendExecutionProvider_Tensorrt"
 #endif
-#if USE_MIGRAPHX
-            ,"OrtSessionOptionsAppendExecutionProvider_MIGraphX"
+#if USE_AMDGPU
+            ,"OrtSessionOptionsAppendExecutionProvider_AMDGPU"
 #endif
 #if USE_NNAPI
             ,"OrtSessionOptionsAppendExecutionProvider_Nnapi"

@@ -2,16 +2,16 @@
 // Licensed under the MIT License.
 
 #include "core/providers/shared_library/provider_api.h"
-#include "migraphx_call.h"
-#include "migraphx_allocator.h"
+#include "amdgpu_call.h"
+#include "amdgpu_allocator.h"
 #include "core/common/status.h"
 #include "core/framework/float16.h"
 #include "core/common/status.h"
-#include "gpu_data_transfer.h"
+#include "amdgpu_data_transfer.h"
 
 namespace onnxruntime {
 
-void MIGraphXAllocator::CheckDevice() const {
+void AMDGPUAllocator::CheckDevice() const {
 #ifndef NDEBUG
   // check device to match at debug build
   // if it's expected to change, call hipSetDevice instead of the check
@@ -23,7 +23,7 @@ void MIGraphXAllocator::CheckDevice() const {
 #endif
 }
 
-void* MIGraphXAllocator::Alloc(size_t size) {
+void* AMDGPUAllocator::Alloc(size_t size) {
   CheckDevice();
   void* p = nullptr;
   if (size > 0) {
@@ -32,12 +32,12 @@ void* MIGraphXAllocator::Alloc(size_t size) {
   return p;
 }
 
-void MIGraphXAllocator::Free(void* p) {
+void AMDGPUAllocator::Free(void* p) {
   CheckDevice();
   (void)hipFree(p);  // do not throw error since it's OK for hipFree to fail during shutdown
 }
 
-void* MIGraphXExternalAllocator::Alloc(size_t size) {
+void* AMDGPUExternalAllocator::Alloc(size_t size) {
   void* p = nullptr;
   if (size > 0) {
     p = alloc_(size);
@@ -49,7 +49,7 @@ void* MIGraphXExternalAllocator::Alloc(size_t size) {
   return p;
 }
 
-void MIGraphXExternalAllocator::Free(void* p) {
+void AMDGPUExternalAllocator::Free(void* p) {
   free_(p);
   std::lock_guard<std::mutex> lock(lock_);
   auto it = reserved_.find(p);
@@ -59,7 +59,7 @@ void MIGraphXExternalAllocator::Free(void* p) {
   }
 }
 
-void* MIGraphXExternalAllocator::Reserve(size_t size) {
+void* AMDGPUExternalAllocator::Reserve(size_t size) {
   void* p = Alloc(size);
   if (!p) return nullptr;
   std::lock_guard<std::mutex> lock(lock_);
@@ -68,7 +68,7 @@ void* MIGraphXExternalAllocator::Reserve(size_t size) {
   return p;
 }
 
-void* HIPPinnedAllocator::Alloc(size_t size) {
+void* AMDGPUPinnedAllocator::Alloc(size_t size) {
   void* p = nullptr;
   if (size > 0) {
     HIP_CALL_THROW(hipHostMalloc((void**)&p, size));
@@ -76,7 +76,7 @@ void* HIPPinnedAllocator::Alloc(size_t size) {
   return p;
 }
 
-void HIPPinnedAllocator::Free(void* p) {
+void AMDGPUPinnedAllocator::Free(void* p) {
   HIP_CALL_THROW(hipHostFree(p));
 }
 

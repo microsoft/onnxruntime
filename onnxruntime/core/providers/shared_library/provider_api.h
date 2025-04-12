@@ -296,7 +296,8 @@ constexpr const char* kOpenVINOExecutionProvider = "OpenVINOExecutionProvider";
 constexpr const char* kVitisAIExecutionProvider = "VitisAIExecutionProvider";
 constexpr const char* kRocmExecutionProvider = "ROCMExecutionProvider";
 constexpr const char* kTensorrtExecutionProvider = "TensorrtExecutionProvider";
-constexpr const char* kMIGraphXExecutionProvider = "AMDGPUExecutionProvider";
+constexpr const char* kMIGraphXExecutionProvider = "MIGraphXExecutionProvider";
+constexpr const char* kAMDGPUExecutionProvider = "AMDGPUExecutionProvider";
 constexpr const char* kQnnExecutionProvider = "QNNExecutionProvider";
 constexpr const char* kCpuExecutionProvider = "CPUExecutionProvider";
 constexpr const char* kAzureExecutionProvider = "AzureExecutionProvider";
@@ -310,8 +311,8 @@ std::unique_ptr<IAllocator> CreateCPUAllocator(const OrtMemoryInfo& memory_info)
 std::unique_ptr<IAllocator> CreateCUDAAllocator(int16_t device_id, const char* name);
 std::unique_ptr<IAllocator> CreateCUDAPinnedAllocator(const char* name);
 
-std::unique_ptr<IAllocator> CreateMIGraphXAllocator(int16_t device_id, const char* name);
-std::unique_ptr<IAllocator> CreateMIGraphXPinnedAllocator(int16_t device_id, const char* name);
+std::unique_ptr<IAllocator> CreateAMDGPUAllocator(int16_t device_id, const char* name);
+std::unique_ptr<IAllocator> CreateAMDGPUPinnedAllocator(int16_t device_id, const char* name);
 
 std::unique_ptr<IAllocator> CreateROCMAllocator(int16_t device_id, const char* name);
 std::unique_ptr<IAllocator> CreateROCMPinnedAllocator(const char* name);

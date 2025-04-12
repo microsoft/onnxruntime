@@ -218,7 +218,7 @@ void TransformerMemcpyImpl::ProcessDefs(onnxruntime::Node& node,
   auto node_provider_type = node.GetExecutionProviderType();
   if ((node_provider_type == provider_) ||
       (node_provider_type == kCudaExecutionProvider && kTensorrtExecutionProvider == provider_) ||
-      (node_provider_type == kRocmExecutionProvider && kMIGraphXExecutionProvider == provider_)) {
+      (node_provider_type == kRocmExecutionProvider && kAMDGPUExecutionProvider == provider_)) {
     provider_nodes_.insert(&node);
     // note KernelCreateInfo might be nullptr for custom kernel
     const KernelCreateInfo* kci = nullptr;
@@ -266,7 +266,7 @@ void TransformerMemcpyImpl::ProcessDefs(onnxruntime::Node& node,
         provider_output_defs_.insert(arg);
     }
   } else if (node_provider_type != kCudaExecutionProvider && node_provider_type != kTensorrtExecutionProvider &&
-             node_provider_type != kRocmExecutionProvider && node_provider_type != kMIGraphXExecutionProvider) {
+             node_provider_type != kRocmExecutionProvider && node_provider_type != kAMDGPUExecutionProvider) {
     for (const auto* arg : node.InputDefs()) {
       if (arg->Exists())
         non_provider_input_defs_.insert(arg);
@@ -307,7 +307,7 @@ void TransformerMemcpyImpl::BuildDefsMapping(const onnxruntime::NodeArg* arg,
     auto node_provider_type = it.GetExecutionProviderType();
     if ((node_provider_type == provider_) ||
         (node_provider_type == kCudaExecutionProvider && kTensorrtExecutionProvider == provider_) ||
-        (node_provider_type == kRocmExecutionProvider && kMIGraphXExecutionProvider == provider_)) {
+        (node_provider_type == kRocmExecutionProvider && kAMDGPUExecutionProvider == provider_)) {
       const KernelCreateInfo* kci = nullptr;
       ORT_IGNORE_RETURN_VALUE(kernel_registries.SearchKernelRegistry(it, logger, &kci));
       if (arg_input_index != -1) {

@@ -231,9 +231,9 @@ TEST_P(ModelTest, Run) {
         ASSERT_ORT_STATUS_OK(OrtApis::UpdateCUDAProviderOptions(cuda_options, keys.data(), values.data(), 2));
 
         ortso.AppendExecutionProvider_CUDA_V2(*cuda_options);
-      } else if (provider_name == "migraphx") {
-        OrtMIGraphXProviderOptions ep_options;
-        ortso.AppendExecutionProvider_MIGraphX(ep_options);
+      } else if (provider_name == "amdgpu") {
+        OrtAMDGPUProviderOptions ep_options;
+        ortso.AppendExecutionProvider_AMDGPU(ep_options);
       } else if (provider_name == "openvino") {
         OrtOpenVINOProviderOptions ep_options;
         ortso.AppendExecutionProvider_OpenVINO(ep_options);
@@ -408,8 +408,8 @@ static constexpr ORT_STRING_VIEW opset18 = ORT_TSTR("opset18");
 
 static constexpr ORT_STRING_VIEW provider_name_cpu = ORT_TSTR("cpu");
 static constexpr ORT_STRING_VIEW provider_name_tensorrt = ORT_TSTR("tensorrt");
-#ifdef USE_MIGRAPHX
-static constexpr ORT_STRING_VIEW provider_name_migraphx = ORT_TSTR("migraphx");
+#ifdef USE_AMDGPU
+static constexpr ORT_STRING_VIEW provider_name_amdgpu = ORT_TSTR("amdgpu");
 #endif
 static constexpr ORT_STRING_VIEW provider_name_openvino = ORT_TSTR("openvino");
 static constexpr ORT_STRING_VIEW provider_name_cuda = ORT_TSTR("cuda");
@@ -447,8 +447,8 @@ static constexpr ORT_STRING_VIEW provider_name_dml = ORT_TSTR("dml");
   // tensorrt: only enable opset 12 to 17 of onnx tests
   provider_names[provider_name_tensorrt] = {opset12, opset14, opset15, opset16, opset17};
 #endif
-#ifdef USE_MIGRAPHX
-  provider_names[provider_name_migraphx] = {opset7, opset8, opset9, opset10, opset11, opset12, opset13, opset14, opset15, opset16, opset17, opset18};
+#ifdef USE_AMDGPU
+  provider_names[provider_name_amdgpu] = {opset7, opset8, opset9, opset10, opset11, opset12, opset13, opset14, opset15, opset16, opset17, opset18};
 #endif
 #ifdef USE_OPENVINO
   provider_names[provider_name_openvino] = {};

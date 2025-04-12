@@ -116,6 +116,11 @@ OrtMemoryInfo GetMemoryInfoPerDeviceType(const OrtDevice& ort_device) {
     mem_info = GetCudaAllocator(ort_device.Id())->Info();
   }
 #endif
+#if USE_AMDGPU
+  else if (ort_device.Type() == OrtDevice::GPU) {
+    mem_info = GetAMDGPUAllocator(ort_device.Id())->Info();
+  }
+#endif
   else {
     ORT_THROW("Unsupported OrtDevice type: ", ort_device.Type());
   }
@@ -191,6 +196,37 @@ std::unique_ptr<IDataTransfer> GetGPUDataTransfer() {
   return GetProviderInfo_CUDA().CreateGPUDataTransfer();
 }
 
+#endif
+
+#ifdef USE_AMDGPU
+void CpuToAMDGPUMemCpy(void* dst, const void* src, size_t num_bytes) {
+  GetProviderInfo_AMDGPU().AMDGPUMemcpy_HostToDevice(dst, src, num_bytes);
+}
+
+void AMDGPUToCpuMemCpy(void* dst, const void* src, size_t num_bytes) {
+  GetProviderInfo_AMDGPU().AMDGPUMemcpy_DeviceToHost(dst, src, num_bytes);
+}
+
+const std::unordered_map<OrtDevice::DeviceType, MemCpyFunc>* GetAMDGPUToHostMemCpyFunction() {
+  static std::unordered_map<OrtDevice::DeviceType, MemCpyFunc> map{
+      {OrtDevice::GPU, AMDGPUToCpuMemCpy}};
+
+  return &map;
+}
+
+AllocatorPtr GetAMDGPUAllocator(OrtDevice::DeviceId id) {
+  // Current approach is not thread-safe, but there are some bigger infra pieces to put together in order to make
+  // multi-threaded AMDGPU allocation work we need to maintain a per-thread AMDGPU allocator
+
+  static auto* id_to_allocator_map = new std::unordered_map<OrtDevice::DeviceId, AllocatorPtr>();
+
+  if (id_to_allocator_map->find(id) == id_to_allocator_map->end()) {
+    // TODO: Expose knobs so that users can set fields associated with OrtArenaCfg so that we can pass it to the following method
+    id_to_allocator_map->insert({id, GetProviderInfo_AMDGPU().CreateAMDGPUAllocator(id, gpu_mem_limit, arena_extend_strategy, migx_external_allocator_info, nullptr)});
+  }
+
+  return (*id_to_allocator_map)[id];
+}
 #endif
 
 #ifdef USE_DML

@@ -6,7 +6,7 @@
 #include "core/providers/rocm/gpu_data_transfer.h"
 #include "core/providers/rocm/rocm_common.h"
 
-// If you make change below, please also update onnxruntime/core/providers/migraphx/gpu_data_transfer.cc
+// If you make change below, please also update onnxruntime/core/providers/amdgpu/amdgpu_data_transfer.cc
 namespace onnxruntime {
 
 bool GPUDataTransfer::CanCopy(const OrtDevice& src_device, const OrtDevice& dst_device) const {

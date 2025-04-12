@@ -608,37 +608,28 @@ typedef struct OrtTensorRTProviderOptions {
   // For non-string field, need to create a new separate api to handle it.
 } OrtTensorRTProviderOptions;
 
-/** \brief MIGraphX Provider Options
+/** \brief AMDGPU Provider Options
  *
- * \see OrtApi::SessionOptionsAppendExecutionProvider_MIGraphX
+ * \see OrtApi::SessionOptionsAppendExecutionProvider_AMDGPU
  */
-typedef struct OrtMIGraphXProviderOptions {
-  int device_id;                                     // hip device id.
-  int migraphx_fp16_enable;                          // MIGraphX FP16 precision. Default 0 = false, nonzero = true
-  int migraphx_int8_enable;                          // MIGraphX INT8 precision. Default 0 = false, nonzero = true
-  int migraphx_use_native_calibration_table;         // MIGraphx INT8 cal table. Default 0 = false, noznero = true
-  const char* migraphx_int8_calibration_table_name;  // MIGraphx INT8 calibration table name
-  int migraphx_save_compiled_model;                  // migraphx save compiled model. Default 0 = false, noznero = true
-  const char* migraphx_save_model_path;              // migraphx model path name
-  int migraphx_load_compiled_model;                  // migraphx int8 cal table. Default 0 = false, noznero = true
-  const char* migraphx_load_model_path;              // migraphx model path name
-  bool migraphx_exhaustive_tune;                     // migraphx tuned compile  Default = false
-} OrtMIGraphXProviderOptions;
-
-
 typedef struct OrtAMDGPUProviderOptions {
   int device_id;                                     // hip device id.
-  int migraphx_fp16_enable;                          // MIGraphX FP16 precision. Default 0 = false, nonzero = true
-  int migraphx_fp8_enable;                           // MIGraphX FP8 precision. Default 0 = false, nonzero = true
-  int migraphx_int8_enable;                          // MIGraphX INT8 precision. Default 0 = false, nonzero = true
-  int migraphx_use_native_calibration_table;         // MIGraphx INT8 cal table. Default 0 = false, noznero = true
-  const char* migraphx_int8_calibration_table_name;  // MIGraphx INT8 calibration table name
-  const char* migraphx_cache_dir;                    // MIGraphX model cache directory
-  int migraphx_exhaustive_tune;                      // migraphx tuned compile  Default = false
-  size_t migraphx_mem_limit;
-  int migraphx_arena_extend_strategy;
+  int amdgpu_fp16_enable;                          // MIGraphX FP16 precision. Default 0 = false, nonzero = true
+  int amdgpu_fp8_enable;                           // MIGraphX FP8 precision. Default 0 = false, nonzero = true
+  int amdgpu_int8_enable;                          // MIGraphX INT8 precision. Default 0 = false, nonzero = true
+  int amdgpu_use_native_calibration_table;         // MIGraphx INT8 cal table. Default 0 = false, noznero = true
+  const char* amdgpu_int8_calibration_table_name;  // MIGraphx INT8 calibration table name
+  const char* amdgpu_cache_dir;                    // MIGraphX model cache directory
+  int amdgpu_exhaustive_tune;                     // amdgpu tuned compile  Default = false
+  size_t amdgpu_mem_limit;
+  int amdgpu_arena_extend_strategy;
 
 } OrtAMDGPUProviderOptions;
+
+/** \brief MIGraphX Provider Options (legacy support)
+ */
+#define OrtMIGraphXProviderOptions OrtAMDGPUProviderOptions
+#define SessionOptionsAppendExecutionProvider_MIGraphX SessionOptionsAppendExecutionProvider_AMDGPU
 
 /** \brief OpenVINO Provider Options
  *  \brief This Struct is frozen since ORT 1.13.0. Its maintained part of Legacy API for compatibility.
@@ -3508,19 +3499,19 @@ struct OrtApi {
 
   /// @}
 
-  /** \brief Append MIGraphX provider to session options
+  /** \brief Append AMDGPU provider to session options (deprecated)
    *
-   * If MIGraphX is not available (due to a non MIGraphX enabled build, or if MIGraphX is not installed on the system), this function will return failure.
+   * If MIGraphX is not available (due to a non AMDGPU enabled build, or if AMDGPU is not installed on the system), this function will return failure.
    *
    * \param[in] options
-   * \param[in] migraphx_options
+   * \param[in] amdgpu_options
    *
    * \snippet{doc} snippets.dox OrtStatus Return Value
    *
    * \since Version 1.11.
    */
-  ORT_API2_STATUS(SessionOptionsAppendExecutionProvider_MIGraphX,
-                  _In_ OrtSessionOptions* options, _In_ const OrtMIGraphXProviderOptions* migraphx_options);
+  ORT_API2_STATUS(SessionOptionsAppendExecutionProvider_AMDGPU,
+                  _In_ OrtSessionOptions* options, _In_ const OrtAMDGPUProviderOptions* amdgpu_options);
 
   /** \brief Replace initialized Tensors with external data with the data provided in initializers.
    *
@@ -4797,9 +4788,6 @@ struct OrtApi {
    */
   ORT_API2_STATUS(SetEpDynamicOptions, _Inout_ OrtSession* sess, _In_reads_(kv_len) const char* const* keys,
                   _In_reads_(kv_len) const char* const* values, _In_ size_t kv_len);
-
-  ORT_API2_STATUS(SessionOptionsAppendExecutionProvider_AMDGPU,
-                  _In_ OrtSessionOptions* options, _In_ const OrtAMDGPUProviderOptions* amdgpu_options);
 };
 
 /*
@@ -4933,14 +4921,14 @@ ORT_API_STATUS(OrtSessionOptionsAppendExecutionProvider_CUDA, _In_ OrtSessionOpt
 ORT_API_STATUS(OrtSessionOptionsAppendExecutionProvider_ROCM, _In_ OrtSessionOptions* options, int device_id);
 
 /*
- * This is the old way to add the MIGraphX provider to the session, please use
- * SessionOptionsAppendExecutionProvider_MIGraphX above to access the latest functionality
+ * This is the old way to add the AMDGPU provider to the session, please use
+ * SessionOptionsAppendExecutionProvider_AMDGPU above to access the latest functionality
  * This function always exists, but will only succeed if Onnxruntime was built with
- * HIP support and the MIGraphX provider shared library exists
+ * HIP support and the AMDGPU provider shared library exists
  *
  * \param device_id HIP device id, starts from zero.
  */
-ORT_API_STATUS(OrtSessionOptionsAppendExecutionProvider_MIGraphX, _In_ OrtSessionOptions* options, int device_id);
+ORT_API_STATUS(OrtSessionOptionsAppendExecutionProvider_AMDGPU, _In_ OrtSessionOptions* options, int device_id);
 
 /*
  * This is the old way to add the oneDNN provider to the session, please use

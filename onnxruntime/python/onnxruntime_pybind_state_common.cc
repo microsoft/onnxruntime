@@ -43,6 +43,15 @@ onnxruntime::ROCMExecutionProviderExternalAllocatorInfo external_allocator_info{
 onnxruntime::ArenaExtendStrategy arena_extend_strategy = onnxruntime::ArenaExtendStrategy::kNextPowerOfTwo;
 #endif
 
+#if defined(USE_ROCM) || defined(USE_AMDGPU)
+// TODO remove deprecated global config
+onnxruntime::ArenaExtendStrategy arena_extend_strategy = onnxruntime::ArenaExtendStrategy::kNextPowerOfTwo;
+#endif
+
+#ifdef USE_AMDGPU
+onnxruntime::AMDGPUExecutionProviderExternalAllocatorInfo migx_external_allocator_info{};
+#endif
+
 #ifdef ENABLE_TRAINING
 
 void DlpackCapsuleDestructor(PyObject* data) {

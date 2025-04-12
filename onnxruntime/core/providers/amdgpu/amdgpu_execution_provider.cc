@@ -12,14 +12,16 @@
 #include "core/session/onnxruntime_cxx_api.h"
 #include "core/common/safeint.h"
 #include "core/common/logging/severity.h"
-#include "migraphx_execution_provider.h"
-#include "migraphx_execution_provider_utils.h"
-#include "migraphx_allocator.h"
-#include "gpu_data_transfer.h"
-#include "migraphx_inc.h"
+#include "core/providers/amdgpu/amdgpu_execution_provider.h"
+#include "core/providers/amdgpu/amdgpu_execution_provider_info.h"
+#include "core/providers/amdgpu/amdgpu_execution_provider_utils.h"
+#include "core/providers/amdgpu/amdgpu_allocator.h"
+#include "core/providers/amdgpu/amdgpu_data_transfer.h"
+#include "core/providers/amdgpu/amdgpu_inc.h"
 #include <hip/hip_version.h>
+#include "core/providers/amdgpu/amdgpu_call.h"
 
-#include "migraphx_stream_handle.h"
+#include "core/providers/amdgpu/amdgpu_stream_handle.h"
 
 #if defined(_MSC_VER)
 #pragma warning(disable : 4244 4245)
@@ -62,7 +64,7 @@ ONNX_OPERATOR_KERNEL_EX(
     MemcpyFromHost,
     kOnnxDomain,
     1,
-    kMIGraphXExecutionProvider,
+    kAMDGPUExecutionProvider,
     (*KernelDefBuilder::Create())
         .InputMemoryType(OrtMemTypeCPUInput, 0)
         .TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorTypes()),
@@ -72,14 +74,14 @@ ONNX_OPERATOR_KERNEL_EX(
     MemcpyToHost,
     kOnnxDomain,
     1,
-    kMIGraphXExecutionProvider,
+    kAMDGPUExecutionProvider,
     (*KernelDefBuilder::Create())
         .OutputMemoryType(OrtMemTypeCPUOutput, 0)
         .TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorTypes()),
     Memcpy);
 
-class ONNX_OPERATOR_KERNEL_CLASS_NAME(kMIGraphXExecutionProvider, kOnnxDomain, 1, MemcpyFromHost);
-class ONNX_OPERATOR_KERNEL_CLASS_NAME(kMIGraphXExecutionProvider, kOnnxDomain, 1, MemcpyToHost);
+class ONNX_OPERATOR_KERNEL_CLASS_NAME(kAMDGPUExecutionProvider, kOnnxDomain, 1, MemcpyFromHost);
+class ONNX_OPERATOR_KERNEL_CLASS_NAME(kAMDGPUExecutionProvider, kOnnxDomain, 1, MemcpyToHost);
 
 static std::shared_ptr<KernelRegistry> s_kernel_registry;
 
@@ -87,8 +89,8 @@ void InitializeRegistry() {
   s_kernel_registry = KernelRegistry::Create();
 
   static const BuildKernelCreateInfoFn function_table[] = {
-      BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(kMIGraphXExecutionProvider, kOnnxDomain, 1, MemcpyFromHost)>,
-      BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(kMIGraphXExecutionProvider, kOnnxDomain, 1, MemcpyToHost)>,
+      BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(kAMDGPUExecutionProvider, kOnnxDomain, 1, MemcpyFromHost)>,
+      BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(kAMDGPUExecutionProvider, kOnnxDomain, 1, MemcpyToHost)>,
   };
 
   for (auto& function_table_entry : function_table) {
@@ -100,129 +102,183 @@ void DeleteRegistry() {
   s_kernel_registry.reset();
 }
 
-std::shared_ptr<KernelRegistry> MIGraphXExecutionProvider::GetKernelRegistry() const {
+std::shared_ptr<KernelRegistry> AMDGPUExecutionProvider::GetKernelRegistry() const {
   return s_kernel_registry;
 }
 
-MIGraphXExecutionProvider::MIGraphXExecutionProvider(const MIGraphXExecutionProviderInfo& info)
-    : IExecutionProvider{onnxruntime::kMIGraphXExecutionProvider, OrtDevice(OrtDevice::GPU, OrtDevice::MemType::DEFAULT, info.device_id)}, info_(info) {
+AMDGPUExecutionProvider::AMDGPUExecutionProvider(const AMDGPUExecutionProviderInfo& info)
+    : IExecutionProvider{kAMDGPUExecutionProvider, OrtDevice(OrtDevice::GPU, OrtDevice::MemType::DEFAULT, info.device_id)},
+      device_id_{info.device_id},
+      fp16_enable_{info.fp16_enable},
+      fp8_enable_{info.fp8_enable},
+      int8_enable_{info.int8_enable},
+      model_cache_path_{info.model_cache_dir},
+      exhaustive_tune_{info.exhaustive_tune},
+      metadef_id_generator_{ModelMetadefIdGenerator::Create()}
+{
   InitProviderOrtApi();
+
   // Set GPU device to be used
-  HIP_CALL_THROW(hipSetDevice(info_.device_id));
+  HIP_CALL_THROW(hipSetDevice(device_id_));
   t_ = migraphx::target(info.target_device.c_str());
 
-  // whether fp16 is enable
-  const std::string fp16_enable_env = onnxruntime::GetEnvironmentVar(migraphx_env_vars::kFP16Enable);
+#if HIP_VERSION_MAJOR < 6 || (HIP_VERSION_MAJOR == 6 && HIP_VERSION_MINOR < 4)
+  if (fp8_enable_)
+      LOGS_DEFAULT(info) << "MIGraphX: FP8 Quantization requires ROCm 6.4 or greater";
+  fp8_enable_ = false;
+#endif
+
+  // whether fp16 is enabled
+  const auto fp16_enable_env = GetEnvironmentVar(amdgpu_env_vars::kFP16Enable);
   if (!fp16_enable_env.empty()) {
-    fp16_enable_ = (std::stoi(fp16_enable_env) == 0 ? false : true);
+    fp16_enable_ = std::stoi(fp16_enable_env) != 0;
+    LOGS_DEFAULT(INFO) << "\n" << amdgpu_env_vars::kFP16Enable << ": " << fp16_enable_;
+  }
+
+#if HIP_VERSION_MAJOR > 6 || (HIP_VERSION_MAJOR == 6 && HIP_VERSION_MINOR >= 4)
+  // whether fp8 quantization is enabled
+  const auto fp8_enable_env = GetEnvironmentVar(amdgpu_env_vars::kFP8Enable);
+  if (!fp8_enable_env.empty()) {
+    fp8_enable_ = std::stoi(fp8_enable_env) != 0;
+    LOGS_DEFAULT(INFO) << "\n" << amdgpu_env_vars::kFP8Enable << ": " << fp8_enable_;
+#endif
   }
 
   // whether int8 is enabled
-  const std::string int8_enable_env = onnxruntime::GetEnvironmentVar(migraphx_env_vars::kINT8Enable);
+  const auto int8_enable_env = GetEnvironmentVar(amdgpu_env_vars::kINT8Enable);
   if (!int8_enable_env.empty()) {
-    int8_enable_ = (std::stoi(int8_enable_env) == 0 ? false : true);
+    int8_enable_ = std::stoi(int8_enable_env) != 0;
+    LOGS_DEFAULT(INFO) << "\n" << amdgpu_env_vars::kINT8Enable << ": " << int8_enable_;
   }
 
-  if (int8_enable_) {
-    const std::string int8_calibration_cache_name_env =
-        onnxruntime::GetEnvironmentVar(migraphx_env_vars::kINT8CalibrationTableName);
-    if (!int8_calibration_cache_name_env.empty()) {
-      int8_calibration_cache_name_ = int8_calibration_cache_name_env;
-    }
-
-    const std::string cache_path = onnxruntime::GetEnvironmentVar(migraphx_env_vars::kCachePath);
-    if (!cache_path.empty()) {
-      calibration_cache_path_ = cache_path;
-    }
-
-    const std::string int8_use_native_migraphx_calibration_table_env =
-        onnxruntime::GetEnvironmentVar(migraphx_env_vars::kINT8UseNativeMIGraphXCalibrationTable);
-    if (!int8_use_native_migraphx_calibration_table_env.empty()) {
-      int8_use_native_migraphx_calibration_table_ =
-          (std::stoi(int8_use_native_migraphx_calibration_table_env) == 0 ? false : true);
-    }
-  }
-
-  if (int8_enable_) {
-    int8_calibration_cache_available_ = !int8_calibration_cache_name_.empty();
-  }
-
-  // Load INT8 calibration table
-  std::unordered_map<std::string, float> dynamic_range_map;
-  if (int8_enable_ && int8_calibration_cache_available_) {
-    const std::string calibration_cache_path = GetCachePath(calibration_cache_path_, int8_calibration_cache_name_);
-    if (!ReadDynamicRange(calibration_cache_path, int8_use_native_migraphx_calibration_table_, dynamic_range_map)) {
-      throw std::runtime_error("Failed to read INT8 calibration table " + calibration_cache_path);
-    }
-  }
-
-  // Save/load migraphx compiled models
-  const std::string save_comp_model_env = onnxruntime::GetEnvironmentVar(migraphx_env_vars::kSaveCompiledModel);
-  if (!save_comp_model_env.empty()) {
-    save_compiled_model_ = (std::stoi(save_comp_model_env) == 0 ? false : true);
-  }
-
-  const std::string save_model_path_env = onnxruntime::GetEnvironmentVar(migraphx_env_vars::kSavedModelPath);
-
-  if (save_compiled_model_ && !save_model_path_env.empty()) {
-    save_compiled_path_ = save_model_path_env;
-  }
-
-  const std::string load_comp_model_env = onnxruntime::GetEnvironmentVar(migraphx_env_vars::kLoadCompiledModel);
-  if (!load_comp_model_env.empty()) {
-    load_compiled_model_ = (std::stoi(load_comp_model_env) == 0 ? false : true);
-  }
-
-  const std::string load_model_path_env = onnxruntime::GetEnvironmentVar(migraphx_env_vars::kLoadModelPath);
-  if (load_compiled_model_ && !load_model_path_env.empty()) {
-    load_compiled_path_ = load_model_path_env;
+  // Save/load amdgpu compiled models
+  const auto model_cache_path_env = GetEnvironmentVar(amdgpu_env_vars::kModelCachePath);
+  if (!model_cache_path_env.empty()) {
+    model_cache_path_ = GetEnvironmentVar(amdgpu_env_vars::kModelCachePath);
+    LOGS_DEFAULT(INFO) << "\n" << amdgpu_env_vars::kModelCachePath << ": " << model_cache_path_;
   }
 
   // dump unsupported ops
-  const std::string dump_model_ops_env = onnxruntime::GetEnvironmentVar(migraphx_env_vars::dumpModelOps);
+  const auto dump_model_ops_env = GetEnvironmentVar(amdgpu_env_vars::kDumpModelOps);
   if (!dump_model_ops_env.empty()) {
-    dump_model_ops_ = (std::stoi(dump_model_ops_env) == 0 ? false : true);
+    dump_model_ops_ = std::stoi(dump_model_ops_env) != 0;
+    LOGS_DEFAULT(INFO) << "\n" << amdgpu_env_vars::kDumpModelOps << ": " << dump_model_ops_;
   }
 
   // Allow for exhaustive tune during compile
-  const std::string exhaustive_tune_env = onnxruntime::GetEnvironmentVar(migraphx_env_vars::kExhaustiveTune);
+  const auto exhaustive_tune_env = GetEnvironmentVar(amdgpu_env_vars::kExhaustiveTune);
   if (!exhaustive_tune_env.empty()) {
-    exhaustive_tune_ = (std::stoi(exhaustive_tune_env) == 0 ? false : true);
+    exhaustive_tune_ = std::stoi(exhaustive_tune_env) != 0;
+    LOGS_DEFAULT(INFO) << "\n" << amdgpu_env_vars::kExhaustiveTune << ": " << exhaustive_tune_;
   }
 
-  metadef_id_generator_ = ModelMetadefIdGenerator::Create();
+  if (int8_enable_ and fp8_enable_) {
+    LOGS_DEFAULT(ERROR) << "MIGraphX: FP8 and INT8 Quantization Mutually exclusive. Ignoring both Quantization flags";
+  } else {
+    const auto int8_calibration_cache_name_env
+      = GetEnvironmentVar(amdgpu_env_vars::kINT8CalibrationTableName);
+    if (!int8_calibration_cache_name_env.empty()) {
+      int8_calibration_cache_name_ = int8_calibration_cache_name_env;
+      LOGS_DEFAULT(INFO) << "\n" << amdgpu_env_vars::kINT8CalibrationTableName << ": " << int8_calibration_cache_name_env;
+    } else {
+      int8_calibration_cache_name_ = info.int8_calibration_table_name;
+    }
 
-  LOGS_DEFAULT(VERBOSE) << "[MIGraphX EP] MIGraphX provider options: "
-                        << "device_id: " << info_.device_id
-                        << ", migraphx_fp16_enable: " << fp16_enable_
-                        << ", migraphx_int8_enable: " << int8_enable_
-                        << ", migraphx_int8_enable: " << int8_enable_
-                        << ", dump_model_ops: " << dump_model_ops_
-                        << ", exhaustive_tune: " << exhaustive_tune_
-                        << ", migraphx_int8_calibration_cache_name: " << int8_calibration_cache_name_
-                        << ", int8_calibration_cache_available: " << int8_calibration_cache_available_
-                        << ", use_native_migraphx_calibration_table: " << int8_use_native_migraphx_calibration_table_
-                        << ", migraphx_save_compiled_model: " << save_compiled_model_
-                        << ", migraphx_save_compiled_model_path: " << save_compiled_path_
-                        << ", migraphx_load_compiled_model: " << load_compiled_model_
-                        << ", migraphx_load_compiled_model_path: " << load_compiled_path_;
+    const auto cache_path_env = GetEnvironmentVar(amdgpu_env_vars::kCachePath);
+    if (!cache_path_env.empty()) {
+      calibration_cache_path_ = cache_path_env;
+      LOGS_DEFAULT(INFO) << "\n" << amdgpu_env_vars::kCachePath << ": " << cache_path_env;
+    } else {
+      calibration_cache_path_ = info.int8_calibration_cache_path;
+    }
+
+    const auto int8_use_native_amdgpu_calibration_table_env
+      = GetEnvironmentVar(amdgpu_env_vars::kINT8UseNativeAMDGPUCalibrationTable);
+    if (!int8_use_native_amdgpu_calibration_table_env.empty()) {
+      int8_use_native_amdgpu_calibration_table_ =
+          std::stoi(int8_use_native_amdgpu_calibration_table_env) != 0;
+      LOGS_DEFAULT(INFO) << "\n" << amdgpu_env_vars::kINT8UseNativeAMDGPUCalibrationTable << ": "
+                         << int8_use_native_amdgpu_calibration_table_env;
+    } else {
+      int8_use_native_amdgpu_calibration_table_ = info.int8_use_native_calibration_table;
+    }
+
+    int8_calibration_cache_available_ = !int8_calibration_cache_name_.empty();
+
+    // Load INT8 calibration table
+    std::unordered_map<std::string, float> dynamic_range_map;
+    if (int8_calibration_cache_available_) {
+      const auto calibration_cache_path = GetCachePath(calibration_cache_path_, int8_calibration_cache_name_);
+      if (!ReadDynamicRange(calibration_cache_path, int8_use_native_amdgpu_calibration_table_, dynamic_range_map)) {
+        throw std::runtime_error("Session Failed to read INT8 calibration table " + calibration_cache_path.string());
+      }
+    }
+  }
+
+  LOGS_DEFAULT(INFO) << "[AMDGPU EP] provider options: "
+                     << "\n " << amdgpu_provider_option::kDeviceId << ": " << device_id_
+                     << "\n " << amdgpu_provider_option::kFp16Enable << ": " << fp16_enable_
+                     << "\n " << amdgpu_provider_option::kFp8Enable << ": " << fp8_enable_
+                     << "\n " << amdgpu_provider_option::kInt8Enable << ": " << int8_enable_
+                     << "\n dump_model_ops: " << dump_model_ops_
+                     << "\n " << amdgpu_provider_option::kExhaustiveTune << ": " << exhaustive_tune_
+                     << "\n " << amdgpu_provider_option::kInt8CalibTable << ": " << int8_calibration_cache_name_
+                     << "\n int8_calibration_cache_available: " << int8_calibration_cache_available_
+                     << "\n " << amdgpu_provider_option::kInt8UseNativeCalibTable << ": " << int8_use_native_amdgpu_calibration_table_
+                     << "\n " << amdgpu_provider_option::kModelCacheDir << ": " << model_cache_path_;
 }
 
-MIGraphXExecutionProvider::~MIGraphXExecutionProvider() {
+AllocatorPtr AMDGPUExecutionProvider::CreateAMDGPUAllocator(OrtDevice::DeviceId device_id,
+                                                            size_t migx_mem_limit,
+                                                            ArenaExtendStrategy arena_extend_strategy,
+                                                            AMDGPUExecutionProviderExternalAllocatorInfo
+                                                                    external_allocator_info,
+                                                            const OrtArenaCfg* default_memory_arena_cfg) {
+  if (external_allocator_info.UseExternalAllocator()) {
+    AllocatorCreationInfo default_memory_info(
+        [external_allocator_info](OrtDevice::DeviceId id) {
+          return std::make_unique<AMDGPUExternalAllocator>(id, HIP,
+                                                             external_allocator_info.alloc,
+                                                             external_allocator_info.free,
+                                                             external_allocator_info.empty_cache);
+        },
+        device_id,
+        false);
+
+    return CreateAllocator(default_memory_info);
+  } else {
+    AllocatorCreationInfo default_memory_info(
+        [](OrtDevice::DeviceId id) {
+          return std::make_unique<AMDGPUAllocator>(id, HIP);
+        },
+        device_id,
+        true,
+        {default_memory_arena_cfg ? *default_memory_arena_cfg
+                                  : OrtArenaCfg(migx_mem_limit, static_cast<int>(arena_extend_strategy),
+                                                -1, -1, -1, -1L)},
+        // make it stream aware
+        true,
+        // enable cross stream sharing?
+        false);
+
+    // ROCM malloc/free is expensive so always use an arena
+    return CreateAllocator(default_memory_info);
+  }
 }
 
-std::vector<AllocatorPtr> MIGraphXExecutionProvider::CreatePreferredAllocators() {
-  AllocatorCreationInfo default_memory_info(
-      [](OrtDevice::DeviceId device_id) { return CreateMIGraphXAllocator(device_id, onnxruntime::CUDA); }, info_.device_id);
-  AllocatorCreationInfo pinned_allocator_info(
+std::vector<AllocatorPtr> AMDGPUExecutionProvider::CreatePreferredAllocators() {
+  const AllocatorCreationInfo default_memory_info(
       [](OrtDevice::DeviceId device_id) {
-        return CreateMIGraphXPinnedAllocator(device_id, onnxruntime::CUDA_PINNED);
-      },
-      0);
-  return std::vector<AllocatorPtr>{CreateAllocator(default_memory_info), CreateAllocator(pinned_allocator_info)};
+         return std::make_unique<AMDGPUAllocator>(device_id, CUDA);
+      }, device_id_);
+  const AllocatorCreationInfo pinned_allocator_info(
+      [](OrtDevice::DeviceId device_id) {
+        return std::make_unique<AMDGPUPinnedAllocator>(device_id, CUDA_PINNED);
+      }, device_id_);
+  return {CreateAllocator(default_memory_info), CreateAllocator(pinned_allocator_info)};
 }
 
-std::unique_ptr<onnxruntime::IDataTransfer> MIGraphXExecutionProvider::GetDataTransfer() const {
+std::unique_ptr<onnxruntime::IDataTransfer> AMDGPUExecutionProvider::GetDataTransfer() const {
   return std::make_unique<onnxruntime::GPUDataTransfer>();
 }
 
@@ -235,11 +291,17 @@ static bool IsTypeSupported(const NodeArg* node_arg) {
   switch (type_proto->tensor_type().elem_type()) {
     case ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT16:
     case ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT:
+    case ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT8E4M3FN:
+    case ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT8E4M3FNUZ:
+    case ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT8E5M2:
+    case ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT8E5M2FNUZ:
     case ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_DOUBLE:
+    case ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT4:
     case ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT8:
     case ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT16:
     case ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT32:
     case ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT64:
+    case ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_UINT4:
     case ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_UINT8:
     case ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_UINT16:
     case ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_UINT32:
@@ -251,7 +313,7 @@ static bool IsTypeSupported(const NodeArg* node_arg) {
   }
 }
 
-static bool getMIGraphXType(ONNXTensorElementDataType type,
+static bool getAMDGPUType(ONNXTensorElementDataType type,
                             migraphx_shape_datatype_t& mgx_type) {
   mgx_type = migraphx_shape_float_type;
   switch (type) {
@@ -264,6 +326,21 @@ static bool getMIGraphXType(ONNXTensorElementDataType type,
     case ONNX_TENSOR_ELEMENT_DATA_TYPE_DOUBLE:
       mgx_type = migraphx_shape_double_type;
       break;
+    case ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT8E4M3FNUZ:
+      mgx_type = migraphx_shape_fp8e4m3fnuz_type;
+      break;
+    case ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT8E4M3FN:
+      mgx_type = migraphx_shape_fp8e4m3fn_type;
+      break;
+    case ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT8E5M2:
+      mgx_type = migraphx_shape_fp8e5m2_type;
+      break;
+    case ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT8E5M2FNUZ:
+      mgx_type = migraphx_shape_fp8e5m2fnuz_type;
+      break;
+    case ONNX_TENSOR_ELEMENT_DATA_TYPE_INT4:
+      mgx_type = migraphx_shape_int8_type;
+      break;
     case ONNX_TENSOR_ELEMENT_DATA_TYPE_INT8:
       mgx_type = migraphx_shape_int8_type;
       break;
@@ -275,6 +352,9 @@ static bool getMIGraphXType(ONNXTensorElementDataType type,
       break;
     case ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64:
       mgx_type = migraphx_shape_int64_type;
+      break;
+    case ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT4:
+      mgx_type = migraphx_shape_uint8_type;
       break;
     case ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT8:
       mgx_type = migraphx_shape_uint8_type;
@@ -336,7 +416,7 @@ static bool IsUnsupportedOpMode(const onnxruntime::GraphViewer& graph_viewer, co
       return true;
     }
   } else if (optype == "Expand") {
-    // MIGraphX only supports constant shape input values
+    // AMDGPU only supports constant shape input values
     if (!canEvalNodeArgument(graph_viewer, node, {1}, input_nodes)) {
       return true;
     }
@@ -346,7 +426,7 @@ static bool IsUnsupportedOpMode(const onnxruntime::GraphViewer& graph_viewer, co
       return true;
     }
 
-    // ceil_mode and dilations attrs are not supported in MIGraphX
+    // ceil_mode and dilations attrs are not supported in AMDGPU
     const auto& attributes = node->GetAttributes();
     auto dila_attr = attributes.find("dilations");
     if (dila_attr != attributes.end()) {
@@ -462,7 +542,7 @@ static bool IsUnsupportedOpMode(const onnxruntime::GraphViewer& graph_viewer, co
       return true;
     }
   } else if (optype == "Slice") {
-    // MIGraphX does not properly handle the situation where any
+    // AMDGPU does not properly handle the situation where any
     // value of the "starts" attribute is higher than a corresponding
     // value in the "ends"
     auto arg_num = node->InputDefs().size();
@@ -634,7 +714,7 @@ static bool IsNodeSupported(const std::set<std::string>& op_set,
   return true;
 }
 
-std::unique_ptr<IndexedSubGraph> MIGraphXExecutionProvider::GetSubGraph(const std::vector<std::size_t>& graph_nodes_index, const GraphViewer& graph) const {
+std::unique_ptr<IndexedSubGraph> AMDGPUExecutionProvider::GetSubGraph(const std::vector<std::size_t>& graph_nodes_index, const GraphViewer& graph) const {
   std::unordered_set<size_t> node_set;
   node_set.reserve(graph_nodes_index.size());
   for (const auto& index : graph_nodes_index) {
@@ -758,7 +838,7 @@ std::unique_ptr<IndexedSubGraph> MIGraphXExecutionProvider::GetSubGraph(const st
       output_names.push_back(name);
   }
 
-  // Generate unique kernel name for MIGraphX subgraph
+  // Generate unique kernel name for AMDGPU subgraph
   uint64_t model_hash = 0;
   int id = metadef_id_generator_->GenerateId(graph, model_hash);
   std::string subgraph_id = std::to_string(model_hash) + "_" + std::to_string(id);
@@ -842,6 +922,7 @@ GetUnsupportedNodeIndices(const GraphViewer& graph_viewer,
                                                     "Greater",
                                                     "GreaterOrEqual",
                                                     "GroupNormalization",
+                                                    "GroupNorm",
                                                     "GroupQueryAttention",
                                                     "HardSigmoid",
                                                     "HardSwish",
@@ -872,6 +953,7 @@ GetUnsupportedNodeIndices(const GraphViewer& graph_viewer,
                                                     "Multinomial",
                                                     "Neg",
                                                     "NegativeLogLikelihoodLoss",
+                                                    "NhwcConv",
                                                     "NonMaxSuppression",
                                                     "NonZero",
                                                     "Not",
@@ -907,6 +989,7 @@ GetUnsupportedNodeIndices(const GraphViewer& graph_viewer,
                                                     "ReverseSequence",
                                                     "RNN",
                                                     "Roialign",
+                                                    "RotaryEmbedding",
                                                     "Round",
                                                     "Scatter",
                                                     "ScatterElements",
@@ -991,7 +1074,7 @@ GetPartitionedSubgraphs(const std::vector<NodeIndex>& topological_order,
 }
 
 std::vector<std::unique_ptr<ComputeCapability>>
-MIGraphXExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_viewer,
+AMDGPUExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_viewer,
                                          const IKernelLookup& /*kernel_lookup*/) const {
   std::vector<std::unique_ptr<ComputeCapability>> result;
   auto model = graph_viewer.CreateModel(*GetLogger());
@@ -1024,7 +1107,7 @@ MIGraphXExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_v
     if (dump_model_ops_) {
       LOGS_DEFAULT(INFO) << "============= Unsupported nodes ====================";
       for (auto idx : unsupported_nodes) {
-        LOGS_DEFAULT(INFO) << graph_viewer.GetNode(idx)->OpType() << std::endl;
+        LOGS_DEFAULT(INFO) << graph_viewer.GetNode(idx)->OpType();
       }
       LOGS_DEFAULT(INFO) << "************* Unsupported nodes ********************";
     }
@@ -1094,39 +1177,143 @@ bool get_input_output_names(const GraphViewer& graph,
 
 // Attempt to load a model and catch any exceptions on load fail.
 // Useful to default to EP to trigger the compile if file doesn't exist or loading fails.
-bool load_precompiled_model(migraphx::program& prog, bool load_enable, std::string path) {
+bool load_precompiled_model(migraphx::program& prog, const std::filesystem::path& path)
   try {
-    if (load_enable) {
-      LOGS_DEFAULT(INFO) << "Attempting to load model at:" << path;
-      prog = migraphx::load(path.c_str());
+    if (!path.empty() && exists(path)) {
+      LOGS_DEFAULT(INFO) << "Attempting to load model at:" << path.string();
+      prog = migraphx::load(path.string().c_str());
       LOGS_DEFAULT(INFO) << "load model : Success";
       return true;
-    } else {
-      return false;
     }
+    return false;
   } catch (...) {
     return false;
   }
-  return false;
-}
 
-void save_compiled_model(migraphx::program& prog, bool save_enable, std::string out_path) {
-  if (save_enable) {
-    LOGS_DEFAULT(INFO) << "Model Save at " << out_path << ": Begin" << std::endl;
+void save_compiled_model(const migraphx::program& prog, const std::filesystem::path& path) {
+  if (!path.empty()) {
+    LOGS_DEFAULT(INFO) << "Model Save at " << path << ": Begin";
     migraphx::file_options fo;
     fo.set_file_format("msgpack");
-    migraphx::save(prog, out_path.c_str(), fo);
-    LOGS_DEFAULT(INFO) << "Model Save: Complete" << std::endl;
+    save(prog, path.string().c_str(), fo);
+    LOGS_DEFAULT(INFO) << "Model Save: Complete";
   }
 }
 
-Status MIGraphXExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& fused_nodes,
+// Order matters here especially if the program uses mixed quantization
+// Calibrate on full precision for int8/fp8 and then quantize down to fp16
+void calibrate_and_quantize(migraphx::program& prog,
+                            const migraphx::target& t,
+                            const migraphx::program_parameters quant_params,
+                            bool fp16_enable,
+                            bool int8_enable,
+                            bool fp8_enable,
+                            bool int8_calibration_cache_available,
+                            std::unordered_map<std::string, float>& dynamic_range_map) {
+  // Read in the calibration data and map it to an migraphx paramater map for the calibration ops
+  if ((int8_enable xor fp8_enable) && int8_calibration_cache_available) {
+    LOGS_DEFAULT(WARNING) << "Quantizing input program";
+
+    auto param_shapes = prog.get_parameter_shapes();
+
+    // Add all calibration data read in from int8 table
+    for (auto& [cal_key, cal_val] : dynamic_range_map) {
+      auto cal_val_shape = migraphx::shape(migraphx_shape_float_type);
+      quant_params.add(cal_key.c_str(), migraphx::argument(cal_val_shape, static_cast<void*>(std::move(&cal_val))));
+    }
+
+    // perform static quantization on the programs
+    if (int8_enable) {
+      LOGS_DEFAULT(WARNING) << "Quantizing input program to int8";
+      migraphx::quantize_int8_options quant_opts;
+      quant_opts.add_calibration_data(quant_params);
+      // specify thing we want to int8 quantize
+      quant_opts.add_op_name("convolution");
+      quant_opts.add_op_name("dot");
+      migraphx::quantize_int8(prog, t, quant_opts);
+      LOGS_DEFAULT(WARNING) << "Quantizing int8: Complete";
+    } else if (fp8_enable) {
+#if HIP_VERSION_MAJOR > 6 || (HIP_VERSION_MAJOR == 6 && HIP_VERSION_MINOR >= 4)
+      LOGS_DEFAULT(WARNING) << "Quantizing input program to fp8";
+      migraphx::quantize_fp8_options quant_opts;
+      quant_opts.add_calibration_data(quant_params);
+      migraphx::quantize_fp8(prog, t, quant_opts);
+      LOGS_DEFAULT(WARNING) << "Quantizing fp8: Complete";
+#endif
+    }
+  }
+
+  if (fp16_enable) {
+    LOGS_DEFAULT(WARNING) << "Quantizing input program to fp16";
+    migraphx::quantize_fp16(prog);
+    LOGS_DEFAULT(WARNING) << "Quantizing fp16: Complete";
+  }
+}
+
+void compile_program(migraphx::program& prog,
+                     const migraphx::target& t,
+                     bool exhaustive_tune) {
+  LOGS_DEFAULT(WARNING) << "Model Compile: Begin";
+  migraphx::compile_options co;
+  co.set_fast_math(false);
+  co.set_exhaustive_tune_flag(exhaustive_tune);
+  prog.compile(t, co);
+  LOGS_DEFAULT(WARNING) << "Model Compile: Complete";
+}
+
+std::string to_hex(const uint64_t v) {
+  std::array<char, sizeof v << 1> s{};
+  auto [ptr, _] = std::to_chars(s.data(), s.data() + s.size(), v, 16);
+  return std::string{s.data(), ptr};
+}
+
+template <typename T> std::string make_hash(T v) {
+  std::array<std::uint32_t, 4> temp{};
+  MurmurHash3::x86_128(v.data(), gsl::narrow_cast<int32_t>(v.size()), temp[0], temp.data());
+  return to_hex(temp[0] | static_cast<uint64_t>(temp[1]) << 32);
+}
+
+template <> std::string make_hash(const char* v) {
+  return make_hash(std::string_view{v});
+}
+
+constexpr std::uint64_t MIGraphX_Version =
+  ((MIGRAPHX_VERSION_MAJOR << 16) | (MIGRAPHX_VERSION_MINOR << 8) | MIGRAPHX_VERSION_PATCH);
+
+Status AMDGPUExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& fused_nodes,
                                           std::vector<NodeComputeInfo>& node_compute_funcs) {
   migraphx::onnx_options options;
   bool no_input_shape = false;
   for (const auto& fused_node_graph : fused_nodes) {
     const GraphViewer& graph_body_viewer = fused_node_graph.filtered_graph;
     const Node& fused_node = fused_node_graph.fused_node;
+
+    std::filesystem::path model_cache_file;
+    auto mxr_filename_prefix = to_hex(MIGraphX_Version) + "-" + GenerateGraphId(graph_body_viewer) + "-";
+
+    // Get model input names (only first layer)
+    const Graph* cur_graph = &graph_body_viewer.GetGraph();
+    while (cur_graph->IsSubgraph()) {
+      cur_graph = cur_graph->ParentGraph();
+    }
+    const Graph& main_graph = *cur_graph;
+    const auto& input_tensor = main_graph.GetInputs();
+    for (auto i : input_tensor) {
+      session_input_names.insert(i->Name());
+    }
+
+    // empty cache path means the MXR caching is disabled - always compile
+    if (!model_cache_path_.empty()) {
+      std::vector<std::int64_t> input_shapes;
+      for (std::size_t i = 0; i < session_input_names.size(); ++i) {
+        auto tensor_shape = input_tensor[i]->Shape();
+        for (int j = 1; j < tensor_shape->dim_size(); ++j) {
+          input_shapes.push_back(tensor_shape->dim(j).dim_value());
+        }
+      }
+      model_cache_file = model_cache_path_ / (mxr_filename_prefix + make_hash(input_shapes) + ".mxr");
+    }
+
     // map parameter input name to index
     std::unordered_map<std::string, std::size_t> input_name_index;
     const auto& input_defs = fused_node.InputDefs();
@@ -1157,48 +1344,20 @@ Status MIGraphXExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& 
     migraphx::program prog;
 
     if (!no_input_shape) {
-      if (!load_precompiled_model(prog, load_compiled_model_, std::string{load_compiled_path_})) {
+      if (!load_precompiled_model(prog, model_cache_file)) {
         LOGS_DEFAULT(INFO) << "No input shapes detected quantizing model";
+#ifndef ENABLE_TRAINING_CORE
+#ifdef HAVE_MIGRAPHX_API_ONNX_OPTIONS_SET_EXTERNAL_DATA_PATH
+        options.set_external_data_path(model_path_.parent_path().string());
+#endif
+#endif
         prog = migraphx::parse_onnx_buffer(onnx_string_buffer, options);
+        migraphx::program_parameters quant_params;
 
-        // Read in the calibration data and map it to an migraphx paramater map for the calibration ops
-        if (int8_enable_ && int8_calibration_cache_available_) {
-          LOGS_DEFAULT(INFO) << "Quantizing input program to int8" << std::endl;
-          migraphx::quantize_int8_options quant_opts;
-          migraphx::program_parameters quant_params;
-
-          auto param_shapes = prog.get_parameter_shapes();
-
-          // Add all calibration data read in from int8 table
-          for (auto& [cal_key, cal_val] : dynamic_range_map_) {
-            auto cal_val_shape = migraphx::shape(migraphx_shape_float_type);
-            quant_params.add(cal_key.c_str(), migraphx::argument(cal_val_shape, static_cast<void*>(std::move(&cal_val))));
-          }
-          quant_opts.add_calibration_data(quant_params);
-
-          // specify thing we want to int8 quantize
-          quant_opts.add_op_name("convolution");
-          quant_opts.add_op_name("dot");
-
-          // perform static quantization on the programs
-          migraphx::quantize_int8(prog, t_, quant_opts);
-          LOGS_DEFAULT(INFO) << "Quantizing input program to int8: Complete" << std::endl;
-        }
-
-        if (fp16_enable_) {
-          LOGS_DEFAULT(INFO) << "Quantizing input program to fp16" << std::endl;
-          migraphx::quantize_fp16(prog);
-          LOGS_DEFAULT(INFO) << "Quantizing input program to fp16: Complete" << std::endl;
-        }
-
-        migraphx::compile_options co;
-        co.set_fast_math(false);
-        co.set_exhaustive_tune_flag(exhaustive_tune_);
-        LOGS_DEFAULT(INFO) << "Model Compile: Begin" << std::endl;
-        prog.compile(t_, co);
-        LOGS_DEFAULT(INFO) << "Model Compile: Complete" << std::endl;
-
-        save_compiled_model(prog, save_compiled_model_, save_compiled_path_);
+        calibrate_and_quantize(prog, t_, quant_params, fp16_enable_, int8_enable_,
+                               fp8_enable_, int8_calibration_cache_available_, dynamic_range_map_);
+        compile_program(prog, t_, exhaustive_tune_);
+        save_compiled_model(prog, model_cache_file);
       }
 
       auto prog_output_shapes = prog.get_output_shapes();
@@ -1216,25 +1375,23 @@ Status MIGraphXExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& 
     map_no_input_shape_[fused_node.Name()] = no_input_shape;
     NodeComputeInfo compute_info;
     compute_info.create_state_func = [=](ComputeContext* context, FunctionState* state) {
-      std::unique_ptr<MIGraphXFuncState> p = std::make_unique<MIGraphXFuncState>();
+      auto p = std::make_unique<AMDGPUFuncState>();
       *p = {context->allocate_func, context->release_func, context->allocator_handle, map_progs_[context->node_name],
             map_onnx_string_[context->node_name], options, t_, map_input_index_[context->node_name], &mgx_mu_,
-            map_no_input_shape_[context->node_name], fp16_enable_, int8_enable_,
-            int8_calibration_cache_available_, dynamic_range_map_,
-            save_compiled_model_, save_compiled_path_,
-            load_compiled_model_, load_compiled_path_, dump_model_ops_};
+            map_no_input_shape_[context->node_name], fp16_enable_, fp8_enable_, int8_enable_,
+            int8_calibration_cache_available_, dynamic_range_map_, model_cache_path_.string(), dump_model_ops_};
       *state = p.release();
       return 0;
     };
 
     compute_info.release_state_func = [](FunctionState state) {
       if (state)
-        delete static_cast<MIGraphXFuncState*>(state);
+        delete static_cast<AMDGPUFuncState*>(state);
     };
 
-    compute_info.compute_func = [this](FunctionState state, const OrtApi* api, OrtKernelContext* context) {
+    compute_info.compute_func = [this, mxr_filename_prefix](FunctionState state, const OrtApi* api, OrtKernelContext* context) {
       Ort::KernelContext ctx(context);
-      MIGraphXFuncState* mgx_state = reinterpret_cast<MIGraphXFuncState*>(state);
+      auto* mgx_state = static_cast<AMDGPUFuncState*>(state);
 
       std::unordered_map<std::string, std::size_t>& map_input_name_index = mgx_state->input_name_indexes;
       std::unordered_map<std::string, float>& map_dynamic_range = mgx_state->dynamic_range_map;
@@ -1244,6 +1401,7 @@ Status MIGraphXExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& 
       migraphx::onnx_options& cmp_options = mgx_state->options;
       bool& no_input_shape = mgx_state->no_input_shape;
       bool fp16_enable = mgx_state->fp16_enable;
+      bool fp8_enable = mgx_state->fp8_enable;
       bool int8_enable = mgx_state->int8_enable;
       bool int8_calibration_cache_available = mgx_state->int8_calibration_cache_available;
 
@@ -1251,8 +1409,10 @@ Status MIGraphXExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& 
       // from input data
       bool input_shape_match = true;
       migraphx::program_parameter_shapes param_shapes;
+      std::vector<std::int64_t> input_shapes;
+
       if (no_input_shape) {
-        LOGS_DEFAULT(VERBOSE) << "Missing input shape setting input parameters again" << std::endl;
+        LOGS_DEFAULT(VERBOSE) << "Missing input shape setting input parameters again";
         for (auto& it : map_input_name_index) {
           auto& name = it.first;
           auto& index = it.second;
@@ -1264,7 +1424,7 @@ Status MIGraphXExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& 
           input_shape_match = false;
         }
       } else {
-        LOGS_DEFAULT(VERBOSE) << "Assigning inputs, and parameters from compiled model" << std::endl;
+        LOGS_DEFAULT(VERBOSE) << "Assigning inputs, and parameters from compiled model";
         param_shapes = prog.get_parameter_shapes();
         auto prog_output_shapes = prog.get_output_shapes();
 
@@ -1290,33 +1450,34 @@ Status MIGraphXExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& 
                 cmp_options.set_input_parameter_shape(name, ort_lens);
                 input_shape_match = false;
               }
+              input_shapes.insert(input_shapes.end(), tensor_shape.begin(), tensor_shape.end());
             }
           }
         }
       }
 
-      // input shapes are different, needs to re-parse onnx and
+      // input shapes are different, needs to reparse onnx and
       // re-compile the program
       if (!input_shape_match) {
-        if (!load_precompiled_model(prog, load_compiled_model_, std::string{load_compiled_path_})) {
-          LOGS_DEFAULT(VERBOSE) << "Input shape mismatch detected. Recompiling" << std::endl;
+        std::filesystem::path model_cache_file;
+        // empty cache path means the MXR caching is disabled - always compile
+        if (!model_cache_path_.empty()) {
+          model_cache_file = mgx_state->model_cache_dir / (mxr_filename_prefix + make_hash(input_shapes) + ".mxr");
+        }
+        if (!load_precompiled_model(prog, model_cache_file)) {
+          LOGS_DEFAULT(VERBOSE) << "Input shape mismatch detected. Recompiling";
 #ifndef ENABLE_TRAINING_CORE
-#if HIP_VERSION_MAJOR > 6 || (HIP_VERSION_MAJOR == 6 && HIP_VERSION_MINOR >= 2)
-          cmp_options.set_external_data_path(model_path_.has_parent_path() ? model_path_.parent_path().string() : std::filesystem::current_path().string());
+#ifdef HAVE_MIGRAPHX_API_ONNX_OPTIONS_SET_EXTERNAL_DATA_PATH
+          cmp_options.set_external_data_path(model_path_.parent_path().string());
 #endif
 #endif
           prog = migraphx::parse_onnx_buffer(onnx_string, cmp_options);
+          migraphx::program_parameters quant_params;
 
-          // Read in the calibration data and map it to an migraphx paramater map for the calibration ops
-          if (int8_enable && int8_calibration_cache_available) {
-            LOGS_DEFAULT(INFO) << "Quantize Int8: Begin" << std::endl;
-            migraphx::quantize_int8_options quant_opts;
-            migraphx::program_parameters quant_params;
-
-            auto param_shapes = prog.get_parameter_shapes();
-
+          if ((int8_enable xor fp8_enable) and int8_calibration_cache_available) {
+            auto local_param_shapes = prog.get_parameter_shapes();
             // Add input parameter data and the values they're set to
-            for (auto&& name : param_shapes.names()) {
+            for (auto&& name : local_param_shapes.names()) {
               if (map_input_name_index.count(name) > 0) {
                 auto input_tensor = ctx.GetInput(map_input_name_index[name]);
                 auto tensor_info = input_tensor.GetTensorTypeAndShapeInfo();
@@ -1324,44 +1485,20 @@ Status MIGraphXExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& 
                 const auto tensor_type = tensor_info.GetElementType();
 
                 migraphx_shape_datatype_t mgx_type;
-                getMIGraphXType(tensor_type, mgx_type);
-                auto mgx_s = param_shapes[name];
+                getAMDGPUType(tensor_type, mgx_type);
+                auto mgx_s = local_param_shapes[name];
 
                 if (mgx_type != mgx_s.type()) {
-                  LOGS_DEFAULT(FATAL) << "MIGraphX: param type mismatch";
+                  LOGS_DEFAULT(FATAL) << "AMDGPU: param type mismatch";
                 }
-                quant_params.add(name, migraphx::argument(param_shapes[name], const_cast<void*>(input_tensor.GetTensorRawData())));
+                quant_params.add(name, migraphx::argument(local_param_shapes[name], const_cast<void*>(input_tensor.GetTensorRawData())));
               }
             }
-
-            // Add all calibration data read in from int8 table
-            for (auto& [cal_key, cal_val] : map_dynamic_range) {
-              auto cal_val_shape = migraphx::shape(migraphx_shape_float_type);
-              quant_params.add(cal_key.c_str(), migraphx::argument(cal_val_shape, static_cast<void*>(std::move(&cal_val))));
-            }
-            quant_opts.add_calibration_data(quant_params);
-            // specify thing we want to int8 quantize
-            quant_opts.add_op_name("convolution");
-            quant_opts.add_op_name("dot");
-
-            // perform static quantization on the programs
-            migraphx::quantize_int8(prog, t, quant_opts);
-            LOGS_DEFAULT(INFO) << "Quantize Int8: Completed" << std::endl;
           }
-
-          if (fp16_enable) {
-            LOGS_DEFAULT(INFO) << "Quantize fp16: Begin" << std::endl;
-            migraphx::quantize_fp16(prog);
-            LOGS_DEFAULT(INFO) << "Quantize fp16: Completed" << std::endl;
-          }
-
-          LOGS_DEFAULT(INFO) << "Model Compile: Begin" << std::endl;
-          migraphx::compile_options co;
-          co.set_fast_math(false);
-          co.set_exhaustive_tune_flag(exhaustive_tune_);
-          prog.compile(t, co);
-
-          save_compiled_model(prog, mgx_state->save_compiled_mode, mgx_state->save_compiled_path);
+          calibrate_and_quantize(prog, t, quant_params, fp16_enable, int8_enable,
+                                 fp8_enable, int8_calibration_cache_available, map_dynamic_range);
+          compile_program(prog, t, exhaustive_tune_);
+          save_compiled_model(prog, model_cache_file);
         }
 
         mgx_state->prog = prog;
@@ -1375,21 +1512,21 @@ Status MIGraphXExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& 
       if (param_shapes.size() > 0) {
         for (auto&& name : param_shapes.names()) {
           if (map_input_name_index.count(name) > 0) {
-            LOGS_DEFAULT(INFO) << "Setting parameters for:" << name << std::endl;
+            LOGS_DEFAULT(INFO) << "Setting parameters for:" << name;
             auto input_tensor = ctx.GetInput(map_input_name_index[name]);
             auto tensor_info = input_tensor.GetTensorTypeAndShapeInfo();
             const auto tensor_shape = tensor_info.GetShape();
             const auto tensor_type = tensor_info.GetElementType();
 
             migraphx_shape_datatype_t mgx_type;
-            getMIGraphXType(tensor_type, mgx_type);
+            getAMDGPUType(tensor_type, mgx_type);
             auto mgx_s = param_shapes[name];
 
             if (mgx_type != mgx_s.type()) {
-              LOGS_DEFAULT(FATAL) << "MIGraphX: param type mismatch";
+              LOGS_DEFAULT(FATAL) << "AMDGPU: param type mismatch";
             }
 
-            LOGS_DEFAULT(INFO) << "Writing Raw tensor data " << std::endl;
+            LOGS_DEFAULT(INFO) << "Writing Raw tensor data ";
             m.add(name, migraphx::argument(param_shapes[name],
                                            const_cast<void*>(input_tensor.GetTensorRawData())));
           }
@@ -1450,7 +1587,7 @@ Status MIGraphXExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& 
                                                static_cast<hipStream_t>(rocm_stream)));
           }
         }
-      };
+      }
 
       return Status::OK();
     };
@@ -1460,19 +1597,19 @@ Status MIGraphXExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& 
   return Status::OK();
 }
 
-void MIGraphXExecutionProvider::RegisterStreamHandlers(IStreamCommandHandleRegistry& stream_handle_registry,
+void AMDGPUExecutionProvider::RegisterStreamHandlers(IStreamCommandHandleRegistry& stream_handle_registry,
                                                        AllocatorMap& allocators) const {
   auto allocator = allocators[GetOrtDeviceByMemType(OrtMemTypeCPU)];
-  RegisterMIGraphXStreamHandles(stream_handle_registry, OrtDevice::GPU, allocator, true, stream_, false /*TODO:external_stream_*/);
+  RegisterAMDGPUStreamHandles(stream_handle_registry, OrtDevice::GPU, allocator, true, stream_, false /*TODO:external_stream_*/);
 }
 
-OrtDevice MIGraphXExecutionProvider::GetOrtDeviceByMemType(OrtMemType mem_type) const {
+OrtDevice AMDGPUExecutionProvider::GetOrtDeviceByMemType(OrtMemType mem_type) const {
   if (mem_type == OrtMemTypeCPUInput) return OrtDevice();
   if (mem_type == OrtMemTypeCPUOutput) return OrtDevice(OrtDevice::CPU, OrtDevice::MemType::HIP_PINNED, 0 /*CPU device id always be 0*/);
   return default_device_;
 }
 
-Status MIGraphXExecutionProvider::Sync() const {
+Status AMDGPUExecutionProvider::Sync() const {
   HIP_CALL_THROW(hipStreamSynchronize(static_cast<hipStream_t>(nullptr)));
 
   auto status = hipStreamQuery(stream_);
@@ -1482,11 +1619,11 @@ Status MIGraphXExecutionProvider::Sync() const {
   return Status::OK();
 }
 
-Status MIGraphXExecutionProvider::OnRunStart(const onnxruntime::RunOptions& /*run_options*/) {
+Status AMDGPUExecutionProvider::OnRunStart(const onnxruntime::RunOptions& /*run_options*/) {
   return Status::OK();
 }
 
-Status MIGraphXExecutionProvider::OnRunEnd(bool /*sync_stream*/, const onnxruntime::RunOptions& /*run_options*/) {
+Status AMDGPUExecutionProvider::OnRunEnd(bool /*sync_stream*/, const onnxruntime::RunOptions& /*run_options*/) {
   auto status = hipStreamQuery(stream_);
 
   if (status != hipSuccess) {

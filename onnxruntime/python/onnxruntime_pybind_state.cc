@@ -843,24 +843,22 @@ std::unique_ptr<IExecutionProvider> CreateExecutionProviderInstance(
                           << "https://onnxruntime.ai/docs/execution-providers/"
                           << "TensorRT-ExecutionProvider.html#requirements to ensure all dependencies are met.";
 #endif
-  } else if (type == kMIGraphXExecutionProvider) {
-#ifdef USE_MIGRAPHX
+  } else if (type == kAMDGPUExecutionProvider || type == kMIGraphXExecutionProvider) {
+#ifdef USE_AMDGPU
     std::string calibration_table;
     std::string save_model_path;
     std::string load_model_path;
     auto it = provider_options_map.find(type);
     if (it != provider_options_map.end()) {
-      OrtMIGraphXProviderOptions params{
+      OrtAMDGPUProviderOptions params{
+          0,
           0,
           0,
           0,
           0,
           nullptr,
-          1,
-          "./compiled_model.mxr",
-          1,
-          "./compiled_model.mxr",
-          1};
+          nullptr,
+          0};
       for (auto option : it->second) {
         if (option.first == "device_id") {
           if (!option.second.empty()) {
@@ -868,105 +866,67 @@ std::unique_ptr<IExecutionProvider> CreateExecutionProviderInstance(
           } else {
             ORT_THROW("[ERROR] [MIGraphX] The value for the key 'device_id' should be a number i.e. '0'.\n");
           }
-        } else if (option.first == "migraphx_fp16_enable") {
+        } else if (option.first == "amdgpu_fp16_enable") {
           if (option.second == "True" || option.second == "true") {
-            params.migraphx_fp16_enable = true;
+            params.amdgpu_fp16_enable = true;
           } else if (option.second == "False" || option.second == "false") {
-            params.migraphx_fp16_enable = false;
+            params.amdgpu_fp16_enable = false;
           } else {
             ORT_THROW(
-                "[ERROR] [MIGraphX] The value for the key 'trt_fp16_enable' should be"
+                "[ERROR] [MIGraphX] The value for the key 'amdgpu_fp16_enable' should be"
                 " 'True' or 'False'. Default value is 'False'.\n");
           }
-        } else if (option.first == "migraphx_int8_enable") {
+        } else if (option.first == "amdgpu_int8_enable") {
           if (option.second == "True" || option.second == "true") {
-            params.migraphx_int8_enable = true;
+            params.amdgpu_int8_enable = true;
           } else if (option.second == "False" || option.second == "false") {
-            params.migraphx_int8_enable = false;
+            params.amdgpu_int8_enable = false;
           } else {
             ORT_THROW(
-                "[ERROR] [MIGraphX] The value for the key 'migx_int8_enable' should be"
+                "[ERROR] [MIGraphX] The value for the key 'amdgpu_int8_enable' should be"
                 " 'True' or 'False'. Default value is 'False'.\n");
           }
-        } else if (option.first == "migraphx_int8_calibration_table_name") {
+        } else if (option.first == "amdgpu_int8_calibration_table_name") {
           if (!option.second.empty()) {
             calibration_table = option.second;
-            params.migraphx_int8_calibration_table_name = calibration_table.c_str();
+            params.amdgpu_int8_calibration_table_name = calibration_table.c_str();
           } else {
             ORT_THROW(
-                "[ERROR] [MIGraphX] The value for the key 'migx_int8_calibration_table_name' should be a "
+                "[ERROR] [MIGraphX] The value for the key 'amdgpu_int8_calibration_table_name' should be a "
                 "file name i.e. 'cal_table'.\n");
           }
-        } else if (option.first == "migraphx_use_native_calibration_table") {
+        } else if (option.first == "amdgpu_use_native_calibration_table") {
           if (option.second == "True" || option.second == "true") {
-            params.migraphx_use_native_calibration_table = true;
+            params.amdgpu_use_native_calibration_table = true;
           } else if (option.second == "False" || option.second == "false") {
-            params.migraphx_use_native_calibration_table = false;
+            params.amdgpu_use_native_calibration_table = false;
           } else {
             ORT_THROW(
-                "[ERROR] [MIGraphX] The value for the key 'migx_int8_use_native_calibration_table' should be"
+                "[ERROR] [MIGraphX] The value for the key 'amdgpu_use_native_calibration_table' should be"
                 " 'True' or 'False'. Default value is 'False'.\n");
           }
-        } else if (option.first == "migraphx_save_compiled_model") {
+        } else if (option.first == "amdgpu_exhaustive_tune") {
           if (option.second == "True" || option.second == "true") {
-            params.migraphx_fp16_enable = true;
+            params.amdgpu_exhaustive_tune = true;
           } else if (option.second == "False" || option.second == "false") {
-            params.migraphx_fp16_enable = false;
+            params.amdgpu_exhaustive_tune = false;
           } else {
             ORT_THROW(
-                "[ERROR] [MIGraphX] The value for the key 'migx_save_compiled_model' should be"
-                " 'True' or 'False'. Default value is 'False'.\n");
-          }
-        } else if (option.first == "migraphx_save_model_path") {
-          if (!option.second.empty()) {
-            save_model_path = option.second;
-            params.migraphx_save_model_path = save_model_path.c_str();
-          } else {
-            ORT_THROW(
-                "[ERROR] [MIGraphX] The value for the key 'migx_save_model_name' should be a "
-                "file name i.e. 'compiled_model.mxr'.\n");
-          }
-        } else if (option.first == "migraphx_load_compiled_model") {
-          if (option.second == "True" || option.second == "true") {
-            params.migraphx_fp16_enable = true;
-          } else if (option.second == "False" || option.second == "false") {
-            params.migraphx_fp16_enable = false;
-          } else {
-            ORT_THROW(
-                "[ERROR] [MIGraphX] The value for the key 'migx_load_compiled_model' should be"
-                " 'True' or 'False'. Default value is 'False'.\n");
-          }
-        } else if (option.first == "migraphx_load_model_path") {
-          if (!option.second.empty()) {
-            load_model_path = option.second;
-            params.migraphx_load_model_path = load_model_path.c_str();
-          } else {
-            ORT_THROW(
-                "[ERROR] [MIGraphX] The value for the key 'migx_load_model_name' should be a "
-                "file name i.e. 'compiled_model.mxr'.\n");
-          }
-        } else if (option.first == "migraphx_exhaustive_tune") {
-          if (option.second == "True" || option.second == "true") {
-            params.migraphx_exhaustive_tune = true;
-          } else if (option.second == "False" || option.second == "false") {
-            params.migraphx_exhaustive_tune = false;
-          } else {
-            ORT_THROW(
-                "[ERROR] [MIGraphX] The value for the key 'migraphx_exhaustive_tune' should be"
+                "[ERROR] [MIGraphX] The value for the key 'amdgpu_exhaustive_tune' should be"
                 " 'True' or 'False'. Default value is 'False'.\n");
           }
         } else {
-          ORT_THROW("Invalid MIGraphX EP option: ", option.first);
+          ORT_THROW("Invalid AMDGPU EP option: ", option.first);
         }
       }
-      if (std::shared_ptr<IExecutionProviderFactory> migraphx_provider_factory =
-              onnxruntime::MIGraphXProviderFactoryCreator::Create(&params)) {
-        return migraphx_provider_factory->CreateProvider();
+      if (std::shared_ptr<IExecutionProviderFactory> amdgpu_provider_factory =
+              onnxruntime::AMDGPUProviderFactoryCreator::Create(&params)) {
+        return amdgpu_provider_factory->CreateProvider();
       }
     } else {
-      if (std::shared_ptr<IExecutionProviderFactory> migraphx_provider_factory =
-              onnxruntime::MIGraphXProviderFactoryCreator::Create(cuda_device_id)) {
-        return migraphx_provider_factory->CreateProvider();
+      if (std::shared_ptr<IExecutionProviderFactory> amdgpu_provider_factory =
+              onnxruntime::AMDGPUProviderFactoryCreator::Create(cuda_device_id)) {
+        return amdgpu_provider_factory->CreateProvider();
       }
     }
 #endif

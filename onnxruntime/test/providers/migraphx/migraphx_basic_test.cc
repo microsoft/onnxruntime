@@ -7,7 +7,7 @@
 #include "gtest/gtest.h"
 #include "test/util/include/default_providers.h"
 #include "test/util/include/scoped_env_vars.h"
-#include "core/providers/migraphx/migraphx_execution_provider_utils.h"
+#include "core/providers/amdgpu/amdgpu_execution_provider_utils.h"
 #include <string>
 #include <thread>
 
@@ -113,8 +113,8 @@ void CreateBaseModel(onnxruntime::Model& model, std::vector<int> dims) {
   ASSERT_TRUE(status.IsOK());
 }
 
-TEST(MIGraphXExecutionProviderTest, GraphInputName) {
-  std::string graph_name = "migraphx_util_test";
+TEST(AMDGPUExecutionProviderTest, GraphInputName) {
+  std::string graph_name = "amdgpu_util_test";
   onnxruntime::Model model(graph_name, false, DefaultLoggingManager().DefaultLogger());
   std::vector<int> dims = {1, 3, 2};
 
@@ -126,8 +126,8 @@ TEST(MIGraphXExecutionProviderTest, GraphInputName) {
   ASSERT_EQ(IsGraphInput(gv, "X"), true);
 }
 
-TEST(MIGraphXExecutionProviderTest, GraphInitializer) {
-  std::string graph_name = "migraphx_util_test";
+TEST(AMDGPUExecutionProviderTest, GraphInitializer) {
+  std::string graph_name = "amdgpu_util_test";
   onnxruntime::Model model(graph_name, false, DefaultLoggingManager().DefaultLogger());
   std::vector<int> dims = {1, 3, 2};
 
@@ -139,8 +139,8 @@ TEST(MIGraphXExecutionProviderTest, GraphInitializer) {
   ASSERT_EQ(IsGraphInitializer(gv, "Ini"), true);
 }
 
-TEST(MIGraphXExecutionProviderTest, NodeInputNum) {
-  std::string graph_name = "migraphx_util_test";
+TEST(AMDGPUExecutionProviderTest, NodeInputNum) {
+  std::string graph_name = "amdgpu_util_test";
   onnxruntime::Model model(graph_name, false, DefaultLoggingManager().DefaultLogger());
   std::vector<int> dims = {1, 3, 2};
 
@@ -157,8 +157,8 @@ TEST(MIGraphXExecutionProviderTest, NodeInputNum) {
   ASSERT_EQ(getNodeInputNum(*node1), 1);
 }
 
-TEST(MIGraphXExecutionProviderTest, IsNodeInput) {
-  std::string graph_name = "migraphx_util_test";
+TEST(AMDGPUExecutionProviderTest, IsNodeInput) {
+  std::string graph_name = "amdgpu_util_test";
   onnxruntime::Model model(graph_name, false, DefaultLoggingManager().DefaultLogger());
   std::vector<int> dims = {1, 3, 2};
 
@@ -172,8 +172,8 @@ TEST(MIGraphXExecutionProviderTest, IsNodeInput) {
   ASSERT_EQ(isInputNode(node2, "M"), true);
 }
 
-TEST(MIGraphXExecutionProviderTest, canEvalArgument) {
-  std::string graph_name = "migraphx_util_test";
+TEST(AMDGPUExecutionProviderTest, canEvalArgument) {
+  std::string graph_name = "amdgpu_util_test";
   onnxruntime::Model model(graph_name, false, DefaultLoggingManager().DefaultLogger());
   std::vector<int> dims = {1, 3, 2};
 

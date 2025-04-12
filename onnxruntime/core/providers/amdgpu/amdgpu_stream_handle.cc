@@ -2,16 +2,16 @@
 // Licensed under the MIT License.
 
 #include <core/providers/rocm/rocm_resource.h>
-#include "migraphx_stream_handle.h"
+#include "amdgpu_stream_handle.h"
 
 namespace onnxruntime {
 
-struct MIGraphXNotification : public synchronize::Notification {
-  MIGraphXNotification(Stream& s) : Notification(s) {
+struct AMDGPUNotification : public synchronize::Notification {
+  AMDGPUNotification(Stream& s) : Notification(s) {
     HIP_CALL_THROW(hipEventCreateWithFlags(&event_, hipEventDisableTiming));
   }
 
-  ~MIGraphXNotification() {
+  ~AMDGPUNotification() {
     if (event_)
       HIP_CALL_THROW(hipEventDestroy(event_));
   }
@@ -23,7 +23,7 @@ struct MIGraphXNotification : public synchronize::Notification {
 
   void wait_on_device(Stream& device_stream) {
     ORT_ENFORCE(device_stream.GetDevice().Type() == OrtDevice::GPU, "Unexpected device:", device_stream.GetDevice().ToString());
-    // launch a wait command to the migraphx stream
+    // launch a wait command to the amdgpu stream
     HIP_CALL_THROW(hipStreamWaitEvent(static_cast<hipStream_t>(device_stream.GetHandle()), event_, 0));
   };
 
@@ -35,16 +35,16 @@ struct MIGraphXNotification : public synchronize::Notification {
   hipEvent_t event_;
 };
 
-MIGraphXStream::MIGraphXStream(hipStream_t stream,
+AMDGPUStream::AMDGPUStream(hipStream_t stream,
                                const OrtDevice& device,
                                AllocatorPtr cpu_allocator,
-                               bool release_cpu_buffer_on_migraphx_stream)
+                               bool release_cpu_buffer_on_amdgpu_stream)
     : Stream(stream, device),
       cpu_allocator_(cpu_allocator),
-      release_cpu_buffer_on_migraphx_stream_(release_cpu_buffer_on_migraphx_stream) {
+      release_cpu_buffer_on_amdgpu_stream_(release_cpu_buffer_on_amdgpu_stream) {
 }
 
-MIGraphXStream::~MIGraphXStream() {
+AMDGPUStream::~AMDGPUStream() {
   ORT_IGNORE_RETURN_VALUE(CleanUpOnRunEnd());
   if (own_stream_) {
     auto* handle = GetHandle();
@@ -53,16 +53,16 @@ MIGraphXStream::~MIGraphXStream() {
   }
 }
 
-std::unique_ptr<synchronize::Notification> MIGraphXStream::CreateNotification(size_t /*num_consumers*/) {
-  return std::make_unique<MIGraphXNotification>(*this);
+std::unique_ptr<synchronize::Notification> AMDGPUStream::CreateNotification(size_t /*num_consumers*/) {
+  return std::make_unique<AMDGPUNotification>(*this);
 }
 
-void MIGraphXStream::Flush() {
+void AMDGPUStream::Flush() {
   if (own_stream_)
     HIP_CALL_THROW(hipStreamSynchronize(static_cast<hipStream_t>(GetHandle())));
 }
 
-void MIGraphXStream::EnqueDeferredCPUBuffer(void* cpu_buffer) {
+void AMDGPUStream::EnqueDeferredCPUBuffer(void* cpu_buffer) {
   // stream is per thread, so don't need lock
   deferred_cpu_buffers_.push_back(cpu_buffer);
 }
@@ -73,7 +73,7 @@ struct CpuBuffersInfo {
   // It's used to enqueue their release after
   // associated GPU kernels in a MIGraphX stream.
 
-  // This is a CPU allocator in MIGraphX EP.
+  // This is a CPU allocator in AMDGPU EP.
   // It must be the one used to allocate the
   // following pointers.
   AllocatorPtr allocator;
@@ -97,12 +97,12 @@ static void ReleaseCpuBufferCallback(void* raw_info) {
   }
 }
 
-Status MIGraphXStream::CleanUpOnRunEnd() {
+Status AMDGPUStream::CleanUpOnRunEnd() {
   if (deferred_cpu_buffers_.empty())
     return Status::OK();
   // Release the ownership of cpu_buffers_info so that the underlying
   // object will keep alive until the end of ReleaseCpuBufferCallback.
-  if (release_cpu_buffer_on_migraphx_stream_ && cpu_allocator_->Info().alloc_type == OrtArenaAllocator) {
+  if (release_cpu_buffer_on_amdgpu_stream_ && cpu_allocator_->Info().alloc_type == OrtArenaAllocator) {
     std::unique_ptr<CpuBuffersInfo> cpu_buffers_info = std::make_unique<CpuBuffersInfo>();
     cpu_buffers_info->allocator = cpu_allocator_;
     cpu_buffers_info->buffers = std::make_unique<void*[]>(deferred_cpu_buffers_.size());
@@ -122,7 +122,7 @@ Status MIGraphXStream::CleanUpOnRunEnd() {
   return Status::OK();
 }
 
-void* MIGraphXStream::GetResource(int version, int id) const {
+void* AMDGPUStream::GetResource(int version, int id) const {
   ORT_ENFORCE(version <= ORT_ROCM_RESOURCE_VERSION, "resource version unsupported!");
   void* resource{};
   switch (id) {
@@ -135,36 +135,36 @@ void* MIGraphXStream::GetResource(int version, int id) const {
 }
 
 // CPU Stream command handles
-void WaitMIGraphXNotificationOnDevice(Stream& stream, synchronize::Notification& notification) {
-  static_cast<MIGraphXNotification*>(&notification)->wait_on_device(stream);
+void WaitAMDGPUNotificationOnDevice(Stream& stream, synchronize::Notification& notification) {
+  static_cast<AMDGPUNotification*>(&notification)->wait_on_device(stream);
 }
 
-void WaitMIGraphXNotificationOnHost(Stream& /*stream*/, synchronize::Notification& notification) {
-  static_cast<MIGraphXNotification*>(&notification)->wait_on_host();
+void WaitAMDGPUNotificationOnHost(Stream& /*stream*/, synchronize::Notification& notification) {
+  static_cast<AMDGPUNotification*>(&notification)->wait_on_host();
 }
 
-void RegisterMIGraphXStreamHandles(IStreamCommandHandleRegistry& stream_handle_registry,
+void RegisterAMDGPUStreamHandles(IStreamCommandHandleRegistry& stream_handle_registry,
                                    const OrtDevice::DeviceType device_type,
                                    AllocatorPtr cpu_allocator,
-                                   bool release_cpu_buffer_on_migraphx_stream,
+                                   bool release_cpu_buffer_on_amdgpu_stream,
                                    hipStream_t external_stream,
                                    bool use_existing_stream) {
-  // wait migraphx notification on migraphx ep
-  stream_handle_registry.RegisterWaitFn(device_type, device_type, WaitMIGraphXNotificationOnDevice);
-  // wait migraphx notification on cpu ep
-  stream_handle_registry.RegisterWaitFn(device_type, OrtDevice::CPU, WaitMIGraphXNotificationOnHost);
+  // wait amdgpu notification on amdgpu ep
+  stream_handle_registry.RegisterWaitFn(device_type, device_type, WaitAMDGPUNotificationOnDevice);
+  // wait amdgpu notification on cpu ep
+  stream_handle_registry.RegisterWaitFn(device_type, OrtDevice::CPU, WaitAMDGPUNotificationOnHost);
   if (!use_existing_stream)
-    stream_handle_registry.RegisterCreateStreamFn(device_type, [cpu_allocator, release_cpu_buffer_on_migraphx_stream](const OrtDevice& device) {
+    stream_handle_registry.RegisterCreateStreamFn(device_type, [cpu_allocator, release_cpu_buffer_on_amdgpu_stream](const OrtDevice& device) {
       HIP_CALL_THROW(hipSetDevice(device.Id()));
       hipStream_t stream = nullptr;
       HIP_CALL_THROW(hipStreamCreateWithFlags(&stream, hipStreamNonBlocking));
-      return std::make_unique<MIGraphXStream>(stream, device, cpu_allocator, release_cpu_buffer_on_migraphx_stream);
+      return std::make_unique<AMDGPUStream>(stream, device, cpu_allocator, release_cpu_buffer_on_amdgpu_stream);
     });
   else
     stream_handle_registry.RegisterCreateStreamFn(device_type, [cpu_allocator,
-                                                                release_cpu_buffer_on_migraphx_stream,
+                                                                release_cpu_buffer_on_amdgpu_stream,
                                                                 external_stream](const OrtDevice& device) {
-      return std::make_unique<MIGraphXStream>(external_stream, device, cpu_allocator, release_cpu_buffer_on_migraphx_stream);
+      return std::make_unique<AMDGPUStream>(external_stream, device, cpu_allocator, release_cpu_buffer_on_amdgpu_stream);
     });
 }
 

@@ -333,7 +333,7 @@ namespace Microsoft.ML.OnnxRuntime
 #if __MOBILE__
             throw new NotSupportedException($"The MIGraphX Execution Provider is not supported in this build");
 #else
-            NativeApiStatus.VerifySuccess(NativeMethods.OrtSessionOptionsAppendExecutionProvider_MIGraphX(handle, deviceId));
+            NativeApiStatus.VerifySuccess(NativeMethods.OrtSessionOptionsAppendExecutionProvider_AMDGPU(handle, deviceId));
 #endif
         }
 

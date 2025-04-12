@@ -9,7 +9,7 @@
 // The functions are typically implemented in
 // onnxruntime/core/providers/<provider name>/<provider name>_provider_factory.cc.
 //
-// For execution providers that are built as separate libraries (CUDA, TensorRT, ROCm, MIGraphX, DNNL, OpenVINO)
+// For execution providers that are built as separate libraries (CUDA, TensorRT, ROCm, AMDGPU, DNNL, OpenVINO)
 // the functions are implemented in provider_bridge_ort.cc.
 
 #include "core/providers/cpu/cpu_provider_factory_creator.h"
@@ -38,8 +38,8 @@
 #include "core/providers/dnnl/dnnl_provider_factory_creator.h"
 #endif
 
-#if defined(USE_MIGRAPHX)
-#include "core/providers/migraphx/migraphx_provider_factory_creator.h"
+#if defined(USE_AMDGPU)
+#include "core/providers/amdgpu/amdgpu_provider_factory_creator.h"
 #endif
 
 #if defined(USE_NNAPI)

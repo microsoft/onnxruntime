@@ -34,6 +34,7 @@ PROVIDERS = {
     "cuda": "CUDAExecutionProvider",
     "rocm": "ROCMExecutionProvider",
     "migraphx": "MIGraphXExecutionProvider",
+    "amdgpu": "AMDGPUExecutionProvider",
     "tensorrt": "TensorrtExecutionProvider",
 }
 

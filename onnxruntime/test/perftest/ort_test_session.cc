@@ -511,11 +511,11 @@ select from 'TF8', 'TF16', 'UINT8', 'FLOAT', 'ITENSOR'. \n)");
 #else
     ORT_THROW("ROCM is not supported in this build\n");
 #endif
-  } else if (provider_name_ == onnxruntime::kMIGraphXExecutionProvider) {
-#ifdef USE_MIGRAPHX
-    Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_MIGraphX(session_options, 0));
+  } else if (provider_name_ == onnxruntime::kAMDGPUExecutionProvider) {
+#ifdef USE_AMDGPU
+    Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_AMDGPU(session_options, 0));
 #else
-    ORT_THROW("MIGraphX is not supported in this build\n");
+    ORT_THROW("AMDGPU is not supported in this build\n");
 #endif
   } else if (provider_name_ == onnxruntime::kXnnpackExecutionProvider) {
 #ifdef USE_XNNPACK

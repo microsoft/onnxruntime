@@ -2,8 +2,8 @@
 // Licensed under the MIT License.
 
 #include "core/providers/shared_library/provider_api.h"
-#include "core/providers/migraphx/gpu_data_transfer.h"
-#include "core/providers/migraphx/migraphx_call.h"
+#include "core/providers/amdgpu/amdgpu_data_transfer.h"
+#include "core/providers/amdgpu/amdgpu_call.h"
 
 // If you make change below, please also update onnxruntime/core/providers/rocm/gpu_data_transfer.cc
 

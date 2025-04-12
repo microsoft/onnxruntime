@@ -598,9 +598,9 @@ if(onnxruntime_USE_DNNL)
   list(APPEND onnxruntime_test_providers_dependencies onnxruntime_providers_dnnl)
 endif()
 
-if(onnxruntime_USE_MIGRAPHX)
+if(onnxruntime_USE_AMDGPU)
   list(APPEND onnxruntime_test_framework_libs onnxruntime_providers_amd_gpu)
-  list(APPEND onnxruntime_test_providers_dependencies onnxruntime_providers_migraphx onnxruntime_providers_shared)
+  list(APPEND onnxruntime_test_providers_dependencies onnxruntime_providers_amdgpu onnxruntime_providers_shared)
 endif()
 
 if(onnxruntime_USE_ROCM)
@@ -620,7 +620,7 @@ if(onnxruntime_USE_ARMNN)
 endif()
 
 set(ONNXRUNTIME_TEST_STATIC_PROVIDER_LIBS
-    # CUDA, ROCM, TENSORRT, MIGRAPHX, DNNL, and OpenVINO are dynamically loaded at runtime.
+    # CUDA, ROCM, TENSORRT, AMDGPU, DNNL, and OpenVINO are dynamically loaded at runtime.
     # QNN EP can be built as either a dynamic and static libs.
     ${PROVIDERS_NNAPI}
     ${PROVIDERS_VSINPU}
@@ -674,11 +674,11 @@ if(onnxruntime_USE_TENSORRT)
   list(APPEND onnxruntime_test_providers_libs ${TENSORRT_LIBRARY_INFER})
 endif()
 
-if(onnxruntime_USE_MIGRAPHX)
-  list(APPEND onnxruntime_test_framework_src_patterns  ${TEST_SRC_DIR}/providers/migraphx/*)
+if(onnxruntime_USE_AMDGPU)
+  list(APPEND onnxruntime_test_framework_src_patterns  ${TEST_SRC_DIR}/providers/amdgpu/*)
   list(APPEND onnxruntime_test_framework_src_patterns  "${ONNXRUNTIME_ROOT}/core/providers/migraphx/migraphx_execution_provider_utils.h")
-  list(APPEND onnxruntime_test_framework_libs onnxruntime_providers_migraphx)
-  list(APPEND onnxruntime_test_providers_dependencies onnxruntime_providers_migraphx onnxruntime_providers_shared)
+  list(APPEND onnxruntime_test_framework_libs onnxruntime_providers_amdgpu)
+  list(APPEND onnxruntime_test_providers_dependencies onnxruntime_providers_amdgpu onnxruntime_providers_shared)
 endif()
 
 if(onnxruntime_USE_NNAPI_BUILTIN)

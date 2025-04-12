@@ -24,7 +24,7 @@ struct OrtStatus {
   char msg[1];  // a null-terminated string
 };
 
-#define BACKEND_DEVICE BACKEND_PROC BACKEND_DNNL BACKEND_OPENVINO BACKEND_OPENBLAS BACKEND_MIGRAPHX BACKEND_ACL BACKEND_ARMNN BACKEND_DML BACKEND_CANN BACKEND_WEBGPU
+#define BACKEND_DEVICE BACKEND_PROC BACKEND_DNNL BACKEND_OPENVINO BACKEND_OPENBLAS BACKEND_AMDGPU BACKEND_ACL BACKEND_ARMNN BACKEND_DML BACKEND_CANN BACKEND_WEBGPU
 #include "core/session/onnxruntime_cxx_api.h"
 #include "core/providers/providers.h"
 #include "core/providers/provider_factory_creators.h"
@@ -42,10 +42,10 @@ struct OrtStatus {
 #define BACKEND_DNNL ""
 #endif
 
-#if USE_MIGRAPHX
-#define BACKEND_MIGRAPHX "-MIGRAPHX"
+#ifdef USE_AMDGPU
+#define BACKEND_AMDGPU "-AMDGPU"
 #else
-#define BACKEND_MIGRAPHX ""
+#define BACKEND_AMDGPU ""
 #endif
 
 #ifdef USE_OPENVINO
@@ -122,8 +122,8 @@ struct OrtStatus {
 #ifdef USE_TENSORRT
 #include "core/providers/tensorrt/tensorrt_provider_factory.h"
 #endif
-#ifdef USE_MIGRAPHX
-#include "core/providers/migraphx/migraphx_provider_factory.h"
+#ifdef USE_AMDGPU
+#include "core/providers/amdgpu/amdgpu_provider_factory.h"
 #endif
 #ifdef USE_OPENVINO
 #include "core/providers/openvino/openvino_provider_factory.h"
@@ -195,6 +195,25 @@ extern onnxruntime::ROCMExecutionProviderExternalAllocatorInfo external_allocato
 extern onnxruntime::ArenaExtendStrategy arena_extend_strategy;
 }  // namespace python
 }  // namespace onnxruntime
+#endif
+
+#if defined(USE_ROCM) || defined(USE_AMDGPU)
+namespace onnxruntime {
+namespace python {
+extern onnxruntime::ArenaExtendStrategy arena_extend_strategy;
+}  // namespace python
+}  // namespace onnxruntime
+#endif
+
+#ifdef USE_AMDGPU
+namespace onnxruntime {
+ProviderInfo_AMDGPU* TryGetProviderInfo_AMDGPU();
+ProviderInfo_AMDGPU& GetProviderInfo_AMDGPU();
+namespace python {
+extern onnxruntime::AMDGPUExecutionProviderExternalAllocatorInfo migx_external_allocator_info;
+}  // namespace python
+}  // namespace onnxruntime
+
 #endif
 
 #include "core/providers/dnnl/dnnl_provider_factory.h"
@@ -431,8 +450,8 @@ void DlpackCapsuleDestructor(PyObject* data);
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Tensorrt(const OrtTensorRTProviderOptions* params);
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Tensorrt(const OrtTensorRTProviderOptionsV2* params);
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Tensorrt(int device_id);
-std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_MIGraphX(const OrtMIGraphXProviderOptions* params);
-std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_MIGraphX(int device_id);
+std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_AMDGPU(const OrtAMDGPUProviderOptions* params);
+std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_AMDGPU(int device_id);
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Cuda(const OrtCUDAProviderOptions* params);
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Dnnl(const OrtDnnlProviderOptions* params);
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_ACL(bool enable_fast_math);
