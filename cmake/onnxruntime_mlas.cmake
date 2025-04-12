@@ -46,6 +46,7 @@ onnxruntime_add_static_library(onnxruntime_mlas
   ${MLAS_SRC_DIR}/rotary_embedding.h
   ${MLAS_SRC_DIR}/rotary_embedding.cpp
   ${MLAS_SRC_DIR}/softmax.h
+  ${MLAS_SRC_DIR}/saturation_check.cpp
 )
 
 target_sources(onnxruntime_mlas PRIVATE
@@ -193,7 +194,6 @@ function(setup_mlas_source_for_windows)
       ${MLAS_SRC_DIR}/rotary_embedding_kernel_avx2.h
       ${MLAS_SRC_DIR}/rotary_embedding_kernel_avx2.cpp
       ${MLAS_SRC_DIR}/rotary_embedding_kernel_avx2.cpp
-      ${MLAS_SRC_DIR}/saturation_check.cpp
       ${MLAS_SRC_DIR}/qgemm_kernel_amx.cpp
       ${MLAS_SRC_DIR}/qgemm_kernel_avx2.cpp
       ${MLAS_SRC_DIR}/qgemm_kernel_sse.cpp
@@ -642,11 +642,11 @@ else()
           ${MLAS_SRC_DIR}/x86_64/ErfKernelFma3.S
           ${MLAS_SRC_DIR}/intrinsics/avx2/qladd_avx2.cpp
           ${MLAS_SRC_DIR}/intrinsics/avx2/qdwconv_avx2.cpp
+          ${MLAS_SRC_DIR}/intrinsics/avx2/saturation_check_avx2.cpp
           ${MLAS_SRC_DIR}/sqnbitgemm_kernel_avx2.cpp
           ${MLAS_SRC_DIR}/rotary_embedding_kernel_avx2.h
           ${MLAS_SRC_DIR}/rotary_embedding_kernel_avx2.cpp
           ${MLAS_SRC_DIR}/rotary_embedding_kernel_avx2.cpp
-          ${MLAS_SRC_DIR}/saturation_check.cpp
         )
         if(CMAKE_CXX_COMPILER_VERSION GREATER_EQUAL 13.1 AND NOT(APPLE))
           set(mlas_platform_srcs_avx2
