@@ -1,3 +1,10 @@
+# Copyright (c) Microsoft Corporation. All rights reserved.
+# Licensed under the MIT License.
+
+# This code is used to generate the test cases for the
+# TEST(ResizeOpTest, NoAntialias_AlignCorners_Cubic_Floor_NHWC)
+# in onnxruntime/test/providers/cpu/tensor/resize_op_test.cc
+
 import torch
 import torch.nn.functional as F
 
