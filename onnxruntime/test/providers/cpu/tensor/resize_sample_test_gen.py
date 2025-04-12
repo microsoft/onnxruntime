@@ -2,11 +2,17 @@ import torch
 import torch.nn.functional as F
 
 # Define input tensor
-input_tensor = torch.tensor([
-    [[1, 2], [3, 4], [5, 6], [7, 8]],
-    [[9, 10], [11, 12], [13, 14], [15, 16]],
-    [[17, 18], [19, 20], [21, 22], [23, 24]]
-]).unsqueeze(0).to(torch.float32)  # Convert to float32
+input_tensor = (
+    torch.tensor(
+        [
+            [[1, 2], [3, 4], [5, 6], [7, 8]],
+            [[9, 10], [11, 12], [13, 14], [15, 16]],
+            [[17, 18], [19, 20], [21, 22], [23, 24]],
+        ]
+    )
+    .unsqueeze(0)
+    .to(torch.float32)
+)  # Convert to float32
 
 # Define output shape
 output_shape = (1, 6, 8, 2)
