@@ -611,6 +611,11 @@ if (onnxruntime_MINIMAL_BUILD)
   set(onnxruntime_ENABLE_MODEL_EDITOR_API OFF)
 endif()
 
+if (onnxruntime_USE_WINML AND onnxruntime_ENABLE_MODEL_EDITOR_API)
+  message(WARNING "onnxruntime_ENABLE_MODEL_EDITOR_API is not supported in WinML build.")
+  set(onnxruntime_ENABLE_MODEL_EDITOR_API OFF)
+endif()
+
 set(REPO_ROOT ${PROJECT_SOURCE_DIR}/..)
 set(ONNXRUNTIME_ROOT ${PROJECT_SOURCE_DIR}/../onnxruntime)
 set(ORTTRAINING_ROOT ${PROJECT_SOURCE_DIR}/../orttraining)
