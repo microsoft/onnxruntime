@@ -2336,6 +2336,7 @@ ORT_API(void, OrtApis::ReleaseValueInfo, _Frees_ptr_opt_ OrtValueInfo* value_inf
   delete value_info;
 }
 
+#if !defined(DISABLE_MODEL_EDITOR_API)
 ORT_API(void, OrtApis::ReleaseNode, _Frees_ptr_opt_ OrtNode* node) {
   delete node;
 }
@@ -2347,6 +2348,21 @@ ORT_API(void, OrtApis::ReleaseGraph, _Frees_ptr_opt_ OrtGraph* graph) {
 ORT_API(void, OrtApis::ReleaseModel, _Frees_ptr_opt_ OrtModel* model) {
   delete model;
 }
+#else
+// it shouldn't be possible to create these if the model editor api is disabled,
+// and if you can't create them you can't release them.
+ORT_API(void, OrtApis::ReleaseNode, _Frees_ptr_opt_ OrtNode* /*node*/) {
+  assert(false);
+}
+
+ORT_API(void, OrtApis::ReleaseGraph, _Frees_ptr_opt_ OrtGraph* /*graph*/) {
+  assert(false);
+}
+
+ORT_API(void, OrtApis::ReleaseModel, _Frees_ptr_opt_ OrtModel* /*model*/) {
+  assert(false);
+}
+#endif
 
 ORT_API_STATUS_IMPL(OrtApis::GetValueInfoName, _In_ const OrtValueInfo* value_info,
                     _Out_ const char** name) {
