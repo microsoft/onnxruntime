@@ -21,8 +21,8 @@ output_shape = (1, 6, 8, 2)
 output_tensor = F.interpolate(
     input_tensor.permute(0, 3, 1, 2),  # Convert to NHWC to NCHW for PyTorch
     size=(6, 8),  # Note: PyTorch expects size in (height, width) format
-    mode='bicubic',  # Use bicubic instead of cubic
-    align_corners=True
+    mode="bicubic",  # Use bicubic instead of cubic
+    align_corners=True,
 ).permute(0, 2, 3, 1)  # Convert back to NHWC
 
 # Print output tensor
