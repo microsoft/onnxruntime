@@ -1,3 +1,10 @@
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
+
+#pragma once
+
+#if !defined(DISABLE_MODEL_EDITOR_API)
+
 namespace OrtModelEditorAPI {
 
 // implementation that returns the API struct
@@ -63,3 +70,5 @@ ORT_API_STATUS_IMPL(FinalizeModelEditorSession, _In_ OrtSession* session, _In_ c
                     _Inout_ OrtPrepackedWeightsContainer* prepacked_weights_container);
 
 }  // namespace OrtModelEditorAPI
+
+#endif  // !defined(DISABLE_MODEL_EDITOR_API)

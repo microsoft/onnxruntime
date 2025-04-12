@@ -255,6 +255,9 @@ option(onnxruntime_USE_OPENVINO_INTERFACE "Build ONNXRuntime shared lib which is
 option(onnxruntime_USE_VITISAI_INTERFACE "Build ONNXRuntime shared lib which is compatible with Vitis-AI EP interface" OFF)
 option(onnxruntime_USE_QNN_INTERFACE "Build ONNXRuntime shared lib which is compatible with QNN EP interface" OFF)
 
+# model editing api. by default disabled in minimal build. also disabled by winml due to a clash between their OrtModel
+# type the the ORT OrtModel type (which is also used in the EP API).
+option(onnxruntime_ENABLE_MODEL_EDITOR_API "Enable model editing API" ON)
 
 if("${CMAKE_C_COMPILER_ID}" STREQUAL "GNU" AND CMAKE_C_COMPILER_VERSION VERSION_LESS 11.1)
   message(FATAL_ERROR  "GCC version must be greater than or equal to 11.1")
@@ -598,6 +601,14 @@ endif()
 # 'extended' implies minimal.
 if (onnxruntime_EXTENDED_MINIMAL_BUILD AND NOT onnxruntime_MINIMAL_BUILD)
   set(onnxruntime_MINIMAL_BUILD ON)
+endif()
+
+if (onnxruntime_MINIMAL_BUILD)
+  if (onnxruntime_ENABLE_MODEL_EDITOR_API)
+    # STATUS as the user most likely did not explicitly enable this
+    message(STATUS "onnxruntime_ENABLE_MODEL_EDITOR_API is not supported in minimal build.")
+  endif()
+  set(onnxruntime_ENABLE_MODEL_EDITOR_API OFF)
 endif()
 
 set(REPO_ROOT ${PROJECT_SOURCE_DIR}/..)
@@ -963,11 +974,10 @@ if (onnxruntime_USE_JSEP)
     list(APPEND ONNXRUNTIME_PROVIDER_NAMES js)
 endif()
 if (onnxruntime_USE_QNN OR onnxruntime_USE_QNN_INTERFACE)
-    
     if(onnxruntime_USE_QNN)
         list(APPEND ORT_PROVIDER_FLAGS -DUSE_QNN=1)
     else()
-        list(APPEND ORT_EXTRA_INTERFACE_FLAGS -DUSE_QNN=1) 
+        list(APPEND ORT_EXTRA_INTERFACE_FLAGS -DUSE_QNN=1)
     endif()
 
     list(APPEND ONNXRUNTIME_PROVIDER_NAMES qnn)

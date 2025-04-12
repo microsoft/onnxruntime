@@ -1225,57 +1225,6 @@ common::Status InferenceSession::Load() {
   return LoadWithLoader(loader, "model_loading_from_saved_proto");
 }
 
-common::Status InferenceSession::Load(const OrtModel& model_editor_api_model) {
-  std::lock_guard<std::mutex> l(session_mutex_);
-
-  if (is_model_loaded_) {  // already loaded
-    Status status(common::ONNXRUNTIME, common::MODEL_LOADED, "This session already contains a loaded model.");
-    LOGS(*session_logger_, ERROR) << status.ErrorMessage();
-    return status;
-  }
-
-  if (is_inited_) {
-    Status status(common::ONNXRUNTIME, common::MODEL_LOADED, "This session has already been initialized.");
-    LOGS(*session_logger_, ERROR) << status.ErrorMessage();
-    return status;
-  }
-
-  const bool strict_shape_type_inference = session_options_.config_options.GetConfigOrDefault(
-                                               kOrtSessionOptionsConfigStrictShapeTypeInference, "0") == "1";
-
-  // need to go from unique_ptr to shared_ptr when moving into model_
-  std::unique_ptr<Model> tmp_model;
-  ORT_RETURN_IF_ERROR(Model::LoadFromModelEditorApiModel(model_editor_api_model,
-                                                         HasLocalSchema() ? &custom_schema_registries_ : nullptr,
-                                                         ModelOptions(true, strict_shape_type_inference,
-                                                                      check_load_cancellation_fn_),
-                                                         *session_logger_, tmp_model));
-
-  model_ = std::move(tmp_model);
-
-  is_model_loaded_ = true;
-
-  return Status::OK();
-}
-
-common::Status InferenceSession::ApplyUpdates(const OrtModel& model_editor_api_model) {
-  std::lock_guard<std::mutex> l(session_mutex_);
-
-  if (!is_model_loaded_) {
-    Status status(common::ONNXRUNTIME, common::MODEL_LOADED, "This session does not contain a loaded model.");
-    LOGS(*session_logger_, ERROR) << status.ErrorMessage();
-    return status;
-  }
-
-  if (is_inited_) {
-    Status status(common::ONNXRUNTIME, common::MODEL_LOADED, "This session has already been initialized.");
-    LOGS(*session_logger_, ERROR) << status.ErrorMessage();
-    return status;
-  }
-
-  return model_->MainGraph().UpdateUsingModelEditorApiModel(model_editor_api_model);
-}
-
 common::Status InferenceSession::TransformGraph(onnxruntime::Graph& graph, bool saving_model_in_ort_format) {
   // The transformer order:
   // 1. Ensure we inline as many functions as possible. We refer to it as Ahead Of Time (AOT) function inlining.
@@ -1443,6 +1392,59 @@ common::Status InferenceSession::TransformGraph(onnxruntime::Graph& graph, bool 
   return Status::OK();
 }
 #endif  // !defined(ORT_MINIMAL_BUILD)
+
+#if !defined(DISABLE_MODEL_EDITOR_API)
+common::Status InferenceSession::Load(const OrtModel& model_editor_api_model) {
+  std::lock_guard<std::mutex> l(session_mutex_);
+
+  if (is_model_loaded_) {  // already loaded
+    Status status(common::ONNXRUNTIME, common::MODEL_LOADED, "This session already contains a loaded model.");
+    LOGS(*session_logger_, ERROR) << status.ErrorMessage();
+    return status;
+  }
+
+  if (is_inited_) {
+    Status status(common::ONNXRUNTIME, common::MODEL_LOADED, "This session has already been initialized.");
+    LOGS(*session_logger_, ERROR) << status.ErrorMessage();
+    return status;
+  }
+
+  const bool strict_shape_type_inference = session_options_.config_options.GetConfigOrDefault(
+                                               kOrtSessionOptionsConfigStrictShapeTypeInference, "0") == "1";
+
+  // need to go from unique_ptr to shared_ptr when moving into model_
+  std::unique_ptr<Model> tmp_model;
+  ORT_RETURN_IF_ERROR(Model::LoadFromModelEditorApiModel(model_editor_api_model,
+                                                         HasLocalSchema() ? &custom_schema_registries_ : nullptr,
+                                                         ModelOptions(true, strict_shape_type_inference,
+                                                                      check_load_cancellation_fn_),
+                                                         *session_logger_, tmp_model));
+
+  model_ = std::move(tmp_model);
+
+  is_model_loaded_ = true;
+
+  return Status::OK();
+}
+
+common::Status InferenceSession::ApplyUpdates(const OrtModel& model_editor_api_model) {
+  std::lock_guard<std::mutex> l(session_mutex_);
+
+  if (!is_model_loaded_) {
+    Status status(common::ONNXRUNTIME, common::MODEL_LOADED, "This session does not contain a loaded model.");
+    LOGS(*session_logger_, ERROR) << status.ErrorMessage();
+    return status;
+  }
+
+  if (is_inited_) {
+    Status status(common::ONNXRUNTIME, common::MODEL_LOADED, "This session has already been initialized.");
+    LOGS(*session_logger_, ERROR) << status.ErrorMessage();
+    return status;
+  }
+
+  return model_->MainGraph().UpdateUsingModelEditorApiModel(model_editor_api_model);
+}
+#endif  // !defined(DISABLE_MODEL_EDITOR_API)
 
 static Status LoadOrtModelBytes(const PathString& model_uri,
                                 gsl::span<const uint8_t>& bytes,

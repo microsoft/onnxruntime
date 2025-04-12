@@ -357,3 +357,7 @@ endif()
 if (onnxruntime_USE_EXTENSIONS)
     include_directories(${REPO_ROOT}/include/onnxruntime/core/session)
 endif()
+
+if (NOT onnxruntime_ENABLE_MODEL_EDITOR_API)
+    add_compile_definitions(DISABLE_MODEL_EDITOR_API)
+endif()

@@ -2381,10 +2381,10 @@ ORT_API(const OrtTrainingApi*, OrtApis::GetTrainingApi, uint32_t version) {
 }
 
 ORT_API(const OrtModelEditorApi*, OrtApis::GetModelEditorApi) {
-#if !defined(ORT_MINIMAL_BUILD)
+#if !defined(DISABLE_MODEL_EDITOR_API)
   return OrtModelEditorAPI::GetModelEditorApi();
 #else
-  fprintf(stderr, "The Model Editor API is not supported in a minimal build.\n");
+  fprintf(stderr, "The Model Editor API is not supported in this build.\n");
   return nullptr;
 #endif
 }

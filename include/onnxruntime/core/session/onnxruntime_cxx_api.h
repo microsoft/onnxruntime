@@ -1229,7 +1229,7 @@ struct Session : detail::SessionImpl<OrtSession> {
   Session(const Env& env, const void* model_data, size_t model_data_length, const SessionOptions& options,
           OrtPrepackedWeightsContainer* prepacked_weights_container);
 
-#if !defined(ORT_MINIMAL_BUILD)
+#if !defined(DISABLE_MODEL_EDITOR_API)
   /// Wraps OrtModelEditorApi::CreateSessionFromModel
   Session(const Env& env, const Model& model, const SessionOptions& options);
 
@@ -1239,7 +1239,7 @@ struct Session : detail::SessionImpl<OrtSession> {
   /// Wraps OrtModelEditorApi::CreateModelEditorSession
   static Session CreateModelEditorSession(const Env& env, const void* model_data, size_t model_data_length,
                                           const SessionOptions& options);
-#endif  // !defined(ORT_MINIMAL_BUILD)
+#endif  // !defined(DISABLE_MODEL_EDITOR_API)
 
   ConstSession GetConst() const { return ConstSession{this->p_}; }
   UnownedSession GetUnowned() const { return UnownedSession{this->p_}; }
@@ -1420,13 +1420,13 @@ struct TypeInfo : detail::TypeInfoImpl<OrtTypeInfo> {
   explicit TypeInfo(std::nullptr_t) {}
   explicit TypeInfo(OrtTypeInfo* p) : TypeInfoImpl<OrtTypeInfo>{p} {}  ///< C API Interop
 
-#if !defined(ORT_MINIMAL_BUILD)
+#if !defined(DISABLE_MODEL_EDITOR_API)
   static TypeInfo CreateTensorInfo(ConstTensorTypeAndShapeInfo tensor_info);
   static TypeInfo CreateSparseTensorInfo(ConstTensorTypeAndShapeInfo sparse_tensor_info);
   static TypeInfo CreateSequenceTypeInfo(ConstTypeInfo sequence_type);
   static TypeInfo CreateMapTypeInfo(ONNXTensorElementDataType key_type, ConstTypeInfo value_type);
   static TypeInfo CreateOptionalTypeInfo(ConstTypeInfo contained_type);
-#endif  // !defined(ORT_MINIMAL_BUILD)
+#endif  // !defined(DISABLE_MODEL_EDITOR_API)
 
   ConstTypeInfo GetConst() const { return ConstTypeInfo{this->p_}; }
 };
@@ -2602,7 +2602,7 @@ struct Node : detail::NodeImpl<OrtNode> {
   explicit Node(std::nullptr_t) {}                     ///< No instance is created
   explicit Node(OrtNode* p) : NodeImpl<OrtNode>{p} {}  ///< Take ownership of a pointer created by C API
 
-#if !defined(ORT_MINIMAL_BUILD)
+#if !defined(DISABLE_MODEL_EDITOR_API)
   Node(const std::string& operator_name, const std::string& operator_domain,
        const std::string& node_name,
        const std::vector<std::string>& input_names,
@@ -2624,7 +2624,7 @@ struct Node : detail::NodeImpl<OrtNode> {
                    const std::vector<std::string>& output_names,
                    std::vector<OpAttr>& attributes,
                    OrtNode*& node);
-#endif  // !defined(ORT_MINIMAL_BUILD)
+#endif  // !defined(DISABLE_MODEL_EDITOR_API)
 };
 
 namespace detail {
@@ -2633,12 +2633,13 @@ struct GraphImpl : Ort::detail::Base<T> {
   using B = Ort::detail::Base<T>;
   using B::B;
 
-#if !defined(ORT_MINIMAL_BUILD)
+#if !defined(DISABLE_MODEL_EDITOR_API)
   void SetInputs(std::vector<ValueInfo>& inputs);
   void SetOutputs(std::vector<ValueInfo>& outputs);
   void AddInitializer(const std::string& name, Value& initializer, bool data_is_external);  // Graph takes ownership of Value
   void AddNode(Node& node);                                                                 // Graph takes ownership of Node
-#endif                                                                                      // !defined(ORT_MINIMAL_BUILD)
+
+#endif  // !defined(DISABLE_MODEL_EDITOR_API)
 };
 }  // namespace detail
 
@@ -2648,7 +2649,7 @@ struct GraphImpl : Ort::detail::Base<T> {
 struct Graph : detail::GraphImpl<OrtGraph> {
   explicit Graph(std::nullptr_t) {}                        ///< No instance is created
   explicit Graph(OrtGraph* p) : GraphImpl<OrtGraph>{p} {}  ///< Take ownership of a pointer created by C API
-#if !defined(ORT_MINIMAL_BUILD)
+#if !defined(DISABLE_MODEL_EDITOR_API)
   Graph();
 #endif
 };
@@ -2659,7 +2660,7 @@ struct ModelImpl : Ort::detail::Base<T> {
   using B = Ort::detail::Base<T>;
   using B::B;
 
-#if !defined(ORT_MINIMAL_BUILD)
+#if !defined(DISABLE_MODEL_EDITOR_API)
   void AddGraph(Graph& graph);
 #endif
 };
@@ -2677,7 +2678,7 @@ struct Model : detail::ModelImpl<OrtModel> {
   explicit Model(std::nullptr_t) {}                        ///< No instance is created
   explicit Model(OrtModel* p) : ModelImpl<OrtModel>{p} {}  ///< Take ownership of a pointer created by C API
 
-#if !defined(ORT_MINIMAL_BUILD)
+#if !defined(DISABLE_MODEL_EDITOR_API)
   explicit Model(const std::vector<DomainOpsetPair>& opsets);
 #endif
 

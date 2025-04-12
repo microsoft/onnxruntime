@@ -753,7 +753,9 @@ Status Model::Load(int fd, const PathString& model_path, std::shared_ptr<Model>&
 
   return Status::OK();
 }
+#endif  // !defined(ORT_MINIMAL_BUILD)
 
+#if !defined(DISABLE_MODEL_EDITOR_API)
 // static
 common::Status Model::LoadFromModelEditorApiModel(const OrtModel& model_editor_api_model,
                                                   const IOnnxRuntimeOpSchemaRegistryList* local_registries,
@@ -783,7 +785,9 @@ common::Status Model::LoadFromModelEditorApiModel(const OrtModel& model_editor_a
 
   return Status::OK();
 }
+#endif  // !defined(DISABLE_MODEL_EDITOR_API)
 
+#if !defined(ORT_MINIMAL_BUILD)
 Status Model::Save(Model& model, int p_fd) {
   if (p_fd < 0) {
     return Status(ONNXRUNTIME, INVALID_ARGUMENT, "<p_fd> is less than 0.");
