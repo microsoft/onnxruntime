@@ -2292,6 +2292,7 @@ TEST(ResizeOpTest, Antialias_NHWCBicubic_ExcludeOutside) {
 TEST(ResizeOpTest, NoAntialias_AlignCorners_Cubic_Floor_NCHW) {
   std::vector<float> X(24);
   std::iota(X.begin(), X.end(), 1.0f);
+  // clang-format off
   std::vector<float> Y = {
        1.0f, 1.34111f, 1.80029f, 2.32945f, 2.67055f, 3.19971f, 3.65889f,     4.0f,
      2.264f, 2.60511f, 3.06429f, 3.59345f, 3.93455f, 4.46371f, 4.92289f,   5.264f,
@@ -2307,21 +2308,22 @@ TEST(ResizeOpTest, NoAntialias_AlignCorners_Cubic_Floor_NCHW) {
     19.736f, 20.0771f, 20.5363f, 21.0654f, 21.4066f, 21.9357f, 22.3949f,  22.736f,
       21.0f, 21.3411f, 21.8003f, 22.3295f, 22.6706f, 23.1997f, 23.6589f,    24.0f,
   };
+  // clang-format on
   TestAntialiasing(
-    {{"antialias", "0"},
-     {"coordinate_transformation_mode", "align_corners"},
-     {"cubic_coeff_a", "-0.75"},
-     {"exclude_outside", "0"},
-     {"extrapolation_value", "0"},
-     {"mode", "cubic"},
-     {"nearest_mode", "floor"}},
-    {1, 2, 3, 4}, X, {1, 2, 6, 8}, Y
-  );
+      {{"antialias", "0"},
+       {"coordinate_transformation_mode", "align_corners"},
+       {"cubic_coeff_a", "-0.75"},
+       {"exclude_outside", "0"},
+       {"extrapolation_value", "0"},
+       {"mode", "cubic"},
+       {"nearest_mode", "floor"}},
+      {1, 2, 3, 4}, X, {1, 2, 6, 8}, Y);
 }
 
 TEST(ResizeOpTest, NoAntialias_AlignCorners_Cubic_Floor_NHWC) {
   std::vector<float> X(24);
   std::iota(X.begin(), X.end(), 1.0f);
+  // clang-format off
   std::vector<float> Y = {
      1.0000f,  2.0000f,
      1.6822f,  2.6822f,
@@ -2377,16 +2379,16 @@ TEST(ResizeOpTest, NoAntialias_AlignCorners_Cubic_Floor_NHWC) {
     22.3178f, 23.3178f,
     23.0000f, 24.0000f,
   };
+  // clang-format on
   TestAntialiasing(
-    {{"antialias", "0"},
-     {"coordinate_transformation_mode", "align_corners"},
-     {"cubic_coeff_a", "-0.75"},
-     {"exclude_outside", "0"},
-     {"extrapolation_value", "0"},
-     {"mode", "cubic"},
-     {"nearest_mode", "floor"}},
-    {1, 3, 4, 2}, X, {1, 6, 8, 2}, Y
-  );
+      {{"antialias", "0"},
+       {"coordinate_transformation_mode", "align_corners"},
+       {"cubic_coeff_a", "-0.75"},
+       {"exclude_outside", "0"},
+       {"extrapolation_value", "0"},
+       {"mode", "cubic"},
+       {"nearest_mode", "floor"}},
+      {1, 3, 4, 2}, X, {1, 6, 8, 2}, Y);
 }
 
 TEST(ResizeOpTest, Antialias_Linear_AlignCorners) {
