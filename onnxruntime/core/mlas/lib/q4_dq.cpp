@@ -387,6 +387,7 @@ range2scale(float min, float max, ScaleT& scale)
 
 
 /**
+ * TODO(fajin): use int4/8 for symmetric quantization so the (vq - zp) operation in MatMulNBits can be saved.
  * @brief Blockwise quantization methods. Source is row major. Dest, scale and zp are column major.
  *        Always quantize to unsigned int.
  * @tparam ElementT       source data type, e.g. fp32/fp16
