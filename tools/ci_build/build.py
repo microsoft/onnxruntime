@@ -1896,10 +1896,8 @@ def build_nuget_package(
     msbuild_extra_options, # Expected to be a list of strings like ["key1=value1", "key2=value2"]
     is_nightly_build: bool = False, # Added parameter
 ):
-    """
-    Builds the C# bindings and creates the relevant NuGet package.
-    Restores original conditional logic for intermediate build step.
-    """
+    msbuild_extra_options = msbuild_extra_options or []
+
     if not (is_windows() or is_linux()):
         raise BuildError(
             "Currently csharp builds and nuget package creation is only supported on Windows and Linux platforms."
