@@ -158,6 +158,20 @@ inline const OrtModelEditorApi& GetModelEditorApi() {
   return *api;
 }
 
+/// <summary>
+/// This returns a reference to the ORT C Compile API. Used if compiling a model at runtime.
+/// </summary>
+/// <returns>ORT C Compile API reference</returns>
+inline const OrtCompileApi& GetCompileApi() {
+  auto* api = GetApi().GetCompileApi();
+  if (api == nullptr) {
+    // minimal build
+    ORT_CXX_API_THROW("Compile API is not available in this build", ORT_FAIL);
+  }
+
+  return *api;
+}
+
 /** \brief IEEE 754 half-precision floating point data type
  *
  * \details This struct is used for converting float to float16 and back
@@ -517,6 +531,9 @@ namespace detail {
 #define ORT_DEFINE_RELEASE(NAME) \
   inline void OrtRelease(Ort##NAME* ptr) { GetApi().Release##NAME(ptr); }
 
+#define ORT_DEFINE_RELEASE_FROM_API_STRUCT(NAME, API_GETTER) \
+  inline void OrtRelease(Ort##NAME* ptr) { API_GETTER().Release##NAME(ptr); }
+
 ORT_DEFINE_RELEASE(Allocator);
 ORT_DEFINE_RELEASE(MemoryInfo);
 ORT_DEFINE_RELEASE(CustomOpDomain);
@@ -542,6 +559,9 @@ ORT_DEFINE_RELEASE(ValueInfo);
 ORT_DEFINE_RELEASE(Node);
 ORT_DEFINE_RELEASE(Graph);
 ORT_DEFINE_RELEASE(Model);
+#if !defined(ORT_MINIMAL_BUILD)
+ORT_DEFINE_RELEASE_FROM_API_STRUCT(ModelCompilationOptions, GetCompileApi);
+#endif  // !defined(ORT_MINIMAL_BUILD)
 
 #undef ORT_DEFINE_RELEASE
 
@@ -991,6 +1011,42 @@ struct SessionOptions : detail::SessionOptionsImpl<OrtSessionOptions> {
   UnownedSessionOptions GetUnowned() const { return UnownedSessionOptions{this->p_}; }
   ConstSessionOptions GetConst() const { return ConstSessionOptions{this->p_}; }
 };
+
+#if !defined(ORT_MINIMAL_BUILD)
+/** \brief Options object used when compiling a model.
+ *
+ * Wraps ::OrtModelCompilationOptions object and methods
+ */
+struct ModelCompilationOptions : detail::Base<OrtModelCompilationOptions> {
+  using Base = detail::Base<OrtModelCompilationOptions>;
+  using Base::Base;
+
+  explicit ModelCompilationOptions(std::nullptr_t) {}              ///< Create an empty ModelCompilationOptions object, must be assigned a valid one to be used.
+  explicit ModelCompilationOptions(OrtModelCompilationOptions* p)  ///< Takes ownership of an OrtModelCompilationOptions
+      : detail::Base<OrtModelCompilationOptions>{p} {}
+
+  ModelCompilationOptions(const Env& env, const SessionOptions& session_options);  ///< Wraps OrtApi::CreateModelCompilationOptionsFromSessionOptions
+  ModelCompilationOptions(const Env& env, ConstSessionOptions session_options);    ///< Wraps OrtApi::CreateModelCompilationOptionsFromSessionOptions
+
+  ModelCompilationOptions& SetInputModelPath(const ORTCHAR_T* input_model_path);  ///< Wraps OrtApi::ModelCompilationOptions_SetInputModelPath
+  ModelCompilationOptions& SetInputModelFromBuffer(const void* input_model_data,
+                                                   size_t input_model_data_size);   ///< Wraps OrtApi::ModelCompilationOptions_SetInputModelFromBuffer
+  ModelCompilationOptions& SetEpContextEmbedMode(bool embed_ep_context_in_model);   ///< Wraps OrtApi::ModelCompilationOptions_SetEpContextEmbedMode
+  ModelCompilationOptions& SetOutputModelPath(const ORTCHAR_T* output_model_path);  ///< Wraps OrtApi::ModelCompilationOptions_SetOutputModelPath
+  ModelCompilationOptions& SetOutputModelExternalInitializersFile(const ORTCHAR_T* file_path,
+                                                                  size_t initializer_size_threshold);  ///< Wraps OrtApi::ModelCompilationOptions_SetOutputModelExternalInitializersFile
+  ModelCompilationOptions& SetOutputModelBuffer(OrtAllocator* allocator, void** output_model_buffer_ptr,
+                                                size_t* output_model_buffer_size_ptr);  ///< Wraps OrtApi::ModelCompilationOptions_SetOutputModelBuffer
+};
+
+/** \brief Compiles an input model to generate a model with EPContext nodes that execute EP-specific kernels. Wraps OrtApi::CompileModels.
+ *
+ * \param env: ORT environment object.
+ * \param model_compilation_options: Compilation options for a model.
+ * \return A Status indicating success or failure.
+ */
+Status CompileModel(const Env& env, const ModelCompilationOptions& model_compilation_options);
+#endif  // !defined(ORT_MINIMAL_BUILD)
 
 /** \brief Wrapper around ::OrtModelMetadata
  *
