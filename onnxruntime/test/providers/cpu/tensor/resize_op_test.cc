@@ -2381,6 +2381,7 @@ TEST(ResizeOpTest, NoAntialias_AlignCorners_Cubic_Floor_NHWC) {
     23.0000f, 24.0000f,
   };
   // clang-format on
+  InlinedVector<std::string_view> excluded_eps = {kCudaExecutionProvider};
   TestAntialiasing(
       {{"antialias", "0"},
        {"coordinate_transformation_mode", "align_corners"},
@@ -2390,7 +2391,7 @@ TEST(ResizeOpTest, NoAntialias_AlignCorners_Cubic_Floor_NHWC) {
        {"mode", "cubic"},
        {"nearest_mode", "floor"}},
       // FIXME: Fix error on kCudaExecutionProvider
-      {1, 3, 4, 2}, X, {1, 6, 8, 2}, Y, {kCudaExecutionProvider});
+      {1, 3, 4, 2}, X, {1, 6, 8, 2}, Y, excluded_eps);
 }
 
 TEST(ResizeOpTest, Antialias_Linear_AlignCorners) {
