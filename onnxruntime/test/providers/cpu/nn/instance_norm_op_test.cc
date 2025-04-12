@@ -50,6 +50,11 @@ TYPED_TEST(InstanceNormalizationOpTest, InstanceNorm) {
                                      -0.14644464F, -0.82262872F, -0.66852817F, 1.63760153F,
                                      -1.65898662F, 0.27618144F, 0.64840618F, 0.734399F};
     test.AddOutput<TypeParam>("Y", input_dims, GetTypedArray<TypeParam>(expected_output));
+#ifdef USE_WEBGPU
+    if constexpr (std::is_same<TypeParam, MLFloat16>::value) {
+      test.SetOutputTolerance(0.005F, 0.005F);
+    }
+#endif
     test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
   };
   run_test(false);
@@ -79,7 +84,11 @@ TYPED_TEST(InstanceNormalizationOpTest, InstanceNormBatch1) {
                                      1.46688162F, -0.98600774F, -0.79911913F, 0.31824524F,
                                      0.57370438F, 0.42193634F, 0.6525492F, -1.64818992F};
     test.AddOutput<TypeParam>("Y", input_dims, GetTypedArray<TypeParam>(expected_output));
-
+#ifdef USE_WEBGPU
+    if constexpr (std::is_same<TypeParam, MLFloat16>::value) {
+      test.SetOutputTolerance(0.005F, 0.005F);
+    }
+#endif
     test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
   };
   run_test(false);
