@@ -1959,6 +1959,9 @@ def build_nuget_package(
     elif use_dml:
         # execution_provider remains None for DirectML package
         package_name = "/p:OrtPackageId=Microsoft.ML.OnnxRuntime.DirectML"
+        if is_windows() and have_exclude_mobile_targets_option is False:
+            # Use the sln that includes the mobile targets
+            sln = "OnnxRuntime.CSharp.sln"
     elif use_rocm:
         # execution_provider remains None for ROCm package
         package_name = "/p:OrtPackageId=Microsoft.ML.OnnxRuntime.ROCm"
