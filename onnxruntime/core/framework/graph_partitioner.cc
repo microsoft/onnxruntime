@@ -748,7 +748,8 @@ static Status InlineFunctionsAOTImpl(const ExecutionProviders& execution_provide
 // Validate the ep_context_path to make sure it is file path and check whether the file exist already
 static Status GetValidatedEpContextPath(const std::filesystem::path& ep_context_path,
                                         const std::filesystem::path& model_path,
-                                        std::filesystem::path& context_cache_path) {
+                                        std::filesystem::path& context_cache_path,
+                                        bool allow_overwrite_output_model = false) {
   if (!ep_context_path.empty()) {
     context_cache_path = ep_context_path;
     if (!context_cache_path.has_filename()) {
@@ -765,7 +766,7 @@ static Status GetValidatedEpContextPath(const std::filesystem::path& ep_context_
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Both ep_context_path and model_path are empty.");
   }
 
-  if (std::filesystem::exists(context_cache_path)) {
+  if (std::filesystem::exists(context_cache_path) && !allow_overwrite_output_model) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to generate EP context model since the file '",
                            context_cache_path, "' exist already. Please remove the EP context model if you want to re-generate it.");
   }
@@ -775,8 +776,7 @@ static Status GetValidatedEpContextPath(const std::filesystem::path& ep_context_
 
 static Status CreateEpContextModel(const ExecutionProviders& execution_providers,
                                    const Graph& graph,
-                                   const std::filesystem::path& ep_context_path,
-                                   const std::filesystem::path& ep_context_ext_ini_path,
+                                   const EpContextModelGenerationOptions& ep_context_gen_options,
                                    const logging::Logger& logger) {
   InlinedVector<const Node*> all_ep_context_nodes;
   for (const auto& ep : execution_providers) {
@@ -785,6 +785,9 @@ static Status CreateEpContextModel(const ExecutionProviders& execution_providers
   }
 
   if (all_ep_context_nodes.size() < 1) {
+    ORT_RETURN_IF(ep_context_gen_options.error_if_no_compiled_nodes,
+                  "Compiled model does not contain any EPContext nodes. "
+                  "Check that the session EPs support compilation and can execute at least one model subgraph.");
     return Status::OK();
   }
 
@@ -798,7 +801,10 @@ static Status CreateEpContextModel(const ExecutionProviders& execution_providers
   };
 
   std::filesystem::path context_cache_path;
-  ORT_RETURN_IF_ERROR(GetValidatedEpContextPath(ep_context_path, graph.ModelPath(), context_cache_path));
+  ORT_RETURN_IF_ERROR(GetValidatedEpContextPath(ep_context_gen_options.output_model_file_path,
+                                                graph.ModelPath(),
+                                                context_cache_path,
+                                                ep_context_gen_options.overwrite_existing_output_file));
 
   Model ep_context_model(graph.Name(), false, graph.GetModel().MetaData(),
                          graph.GetModel().ModelPath(),  // use source model path so that external initializers can find the data file path
@@ -848,20 +854,39 @@ static Status CreateEpContextModel(const ExecutionProviders& execution_providers
     }
   }
 
-  size_t ini_size_threshold = 0;
-  std::filesystem::path external_ini_path;
-  if (ep_context_ext_ini_path.empty()) {
+  size_t ini_size_threshold = ep_context_gen_options.output_external_initializer_size_threshold;
+  std::filesystem::path external_ini_path = ep_context_gen_options.output_external_initializers_file_path;
+  if (external_ini_path.empty()) {
     // Set the threshold to the max so all initializers are forced into the Onnx file
     ini_size_threshold = SIZE_MAX;
     external_ini_path = "./model_ext_ini.bin";
-  } else {
-    // Set the theshold to 0 so all initializers are forced into the external file
-    ini_size_threshold = 0;
-    external_ini_path = ep_context_ext_ini_path;
   }
+
   ModelSavingOptions model_saving_options{ini_size_threshold};
-  ORT_RETURN_IF_ERROR(Model::SaveWithExternalInitializers(ep_context_model, context_cache_path,
-                                                          external_ini_path, model_saving_options));
+
+  if (ep_context_gen_options.output_model_buffer_ptr != nullptr &&
+      ep_context_gen_options.output_model_buffer_size_ptr != nullptr &&
+      ep_context_gen_options.output_model_buffer_allocator != nullptr) {
+    ORT_RETURN_IF_ERROR(ep_context_model.MainGraph().Resolve());
+    // TODO(adrianlizarraga): Investigate if we can make this more memory efficient.
+    // May be able to use allocator to directly allocate the ModelProto to avoid a copy.
+    ONNX_NAMESPACE::ModelProto model_proto = ep_context_model.ToGraphProtoWithExternalInitializers(external_ini_path,
+                                                                                                   context_cache_path,
+                                                                                                   model_saving_options);
+    size_t buffer_size = model_proto.ByteSizeLong();
+    ORT_RETURN_IF(buffer_size > static_cast<size_t>(std::numeric_limits<int>::max()),
+                  "Cannot serialize ONNX ModelProto larger than 2GB");
+
+    OrtAllocator* allocator = ep_context_gen_options.output_model_buffer_allocator;
+    void* buffer = allocator->Alloc(allocator, buffer_size);
+    model_proto.SerializeToArray(buffer, static_cast<int>(buffer_size));
+
+    *ep_context_gen_options.output_model_buffer_size_ptr = buffer_size;
+    *ep_context_gen_options.output_model_buffer_ptr = buffer;
+  } else {
+    ORT_RETURN_IF_ERROR(Model::SaveWithExternalInitializers(ep_context_model, context_cache_path,
+                                                            external_ini_path, model_saving_options));
+  }
 
   return Status::OK();
 }
@@ -1110,6 +1135,7 @@ Status GraphPartitioner::Partition(Graph& graph, FuncManager& func_mgr,
                                    const ConfigOptions& config_options,
                                    const logging::Logger& logger,
                                    Mode mode,
+                                   const EpContextModelGenerationOptions& ep_context_gen_options,
                                    const layout_transformation::DebugGraphFn& debug_graph_fn) const {
   // It is a greedy partitioning algorithm per provider preferences user provided when calling ONNX RUNTIME right now.
   // 1. Execution providers' capabilities are checked one by one.
@@ -1156,12 +1182,12 @@ Status GraphPartitioner::Partition(Graph& graph, FuncManager& func_mgr,
 
   if (mode == Mode::kNormal || mode == Mode::kAssignOnly) {
 #if !defined(ORT_MINIMAL_BUILD)
-    bool ep_context_enabled = config_options.GetConfigOrDefault(kOrtSessionOptionEpContextEnable, "0") == "1";
-    if (ep_context_enabled) {
-      std::string ep_context_path = config_options.GetConfigOrDefault(kOrtSessionOptionEpContextFilePath, "");
+    if (ep_context_gen_options.enable && ep_context_gen_options.output_model_buffer_ptr == nullptr) {
       // Check before EP compile graphs
       std::filesystem::path context_cache_path;
-      ORT_RETURN_IF_ERROR(GetValidatedEpContextPath(ep_context_path, graph.ModelPath(), context_cache_path));
+      ORT_RETURN_IF_ERROR(GetValidatedEpContextPath(ep_context_gen_options.output_model_file_path, graph.ModelPath(),
+                                                    context_cache_path,
+                                                    ep_context_gen_options.overwrite_existing_output_file));
     }
 
     // We use this only if Resource Aware Partitioning is enabled for any of the EPs
@@ -1172,15 +1198,13 @@ Status GraphPartitioner::Partition(Graph& graph, FuncManager& func_mgr,
     ORT_RETURN_IF_ERROR(PartitionOnnxFormatModel(partition_params, mode, providers_, kernel_registry_mgr_,
                                                  ep_acc_map, *graph_optimizer_registry_, logger));
 
-    if (ep_context_enabled) {
-      std::string ep_context_path = config_options.GetConfigOrDefault(kOrtSessionOptionEpContextFilePath, "");
-      std::string external_ini_file_name = config_options.GetConfigOrDefault(
-          kOrtSessionOptionsEpContextModelExternalInitializersFileName, "");
-      ORT_RETURN_IF_ERROR(CreateEpContextModel(providers_, graph, ep_context_path, external_ini_file_name, logger));
+    if (ep_context_gen_options.enable) {
+      ORT_RETURN_IF_ERROR(CreateEpContextModel(providers_, graph, ep_context_gen_options, logger));
     }
 #else
     ORT_UNUSED_PARAMETER(config_options);
     ORT_UNUSED_PARAMETER(logger);
+    ORT_UNUSED_PARAMETER(ep_context_gen_options);
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "ONNX models are not supported in this build.");
 #endif  //! defined(ORT_MINIMAL_BUILD)
   } else {

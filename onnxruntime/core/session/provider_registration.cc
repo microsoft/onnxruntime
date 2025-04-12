@@ -1,6 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include <sstream>
 #include <string>
 
 #include "core/common/common.h"
@@ -24,6 +25,14 @@
 
 using namespace onnxruntime;
 
+namespace onnxruntime {
+// Constants for the maximum string lengths of provider options keys and values. The maximum lengths are related
+// to the limits for session config options because we add provider options to the session configs map.
+static constexpr size_t kMaxSessionConfigsEpPrefixLength = 64;  // prefix for new key would be "ep.<EP_NAME>."
+static constexpr size_t kMaxProviderOptionKeyLength = ConfigOptions::kMaxKeyLength - kMaxSessionConfigsEpPrefixLength;
+static constexpr size_t kMaxProviderOptionValueLength = ConfigOptions::kMaxValueLength;
+}  // namespace onnxruntime
+
 namespace {
 
 OrtStatus* ParseProviderOptions(_In_reads_(num_keys) const char* const* provider_options_keys,
@@ -36,12 +45,21 @@ OrtStatus* ParseProviderOptions(_In_reads_(num_keys) const char* const* provider
       return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "Provider options key/value cannot be empty");
     }
 
-    // arbitrary length to validate the key/value. adjust if/when needed.
-    // TODO: are any other input validation checks required here (and in the other functions that process
-    // provider options)?
-    if (strlen(provider_options_keys[i]) > 1024 || strlen(provider_options_values[i]) > 1024) {
-      return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT,
-                                   "Maximum string length for a provider options key/value is 1024.");
+    // Check that provider options keys and values are within the allowed maximum lengths.
+    const size_t key_length = strlen(provider_options_keys[i]);
+    if (key_length > kMaxProviderOptionKeyLength) {
+      std::ostringstream error_builder;
+      error_builder << "Provider option key length is " << key_length << " but the limit is "
+                    << kMaxProviderOptionKeyLength << ". Provider option key: " << provider_options_keys[i];
+      return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, error_builder.str().c_str());
+    }
+
+    const size_t value_length = strlen(provider_options_values[i]);
+    if (value_length > kMaxProviderOptionValueLength) {
+      std::ostringstream error_builder;
+      error_builder << "Provider option value length is " << value_length << " but the limit is "
+                    << kMaxProviderOptionValueLength << ". Provider option key: " << provider_options_keys[i];
+      return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, error_builder.str().c_str());
     }
 
     provider_options[provider_options_keys[i]] = provider_options_values[i];
@@ -90,8 +108,21 @@ ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider,
                                  (std::string(provider_name) + " execution provider is not supported in this build. ").c_str());
   };
 
-  for (const auto& config_pair : provider_options) {
-    ORT_THROW_IF_ERROR(options->value.config_options.AddConfigEntry((std::string(provider_name) + ":" + config_pair.first).c_str(), config_pair.second.c_str()));
+  // Add provider options to the session config options.
+  // Use a new key with the format: "ep.<EP_NAME>.<PROVIDER_OPTION_KEY>"
+  for (const auto& [key, value] : provider_options) {
+    std::ostringstream new_key_builder;
+    new_key_builder << "ep." << provider_name << "." << key;
+    const std::string new_key = new_key_builder.str();
+    if (new_key.size() > ConfigOptions::kMaxKeyLength) {
+      LOGS_DEFAULT(WARNING) << "Can't add provider option to session configurations: "
+                            << "New key's string length (" << new_key.size() << ") "
+                            << "exceeds limit (" << ConfigOptions::kMaxKeyLength << "). "
+                            << "Original key contents: " << key << " New key contents: " << new_key;
+      continue;
+    }
+
+    ORT_ENFORCE(options->value.config_options.AddConfigEntry(new_key.c_str(), value.c_str()).IsOK());
   }
 
   if (strcmp(provider_name, "DML") == 0) {

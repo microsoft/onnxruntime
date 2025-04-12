@@ -20,7 +20,11 @@ OrtSessionOptions& OrtSessionOptions::operator=(const OrtSessionOptions&) {
   ORT_THROW("not implemented");
 }
 OrtSessionOptions::OrtSessionOptions(const OrtSessionOptions& other)
-    : value(other.value), provider_factories(other.provider_factories) {
+    : value(other.value), custom_op_domains_(other.custom_op_domains_), provider_factories(other.provider_factories) {
+}
+
+const onnxruntime::ConfigOptions& OrtSessionOptions::GetConfigOptions() const noexcept {
+  return value.config_options;
 }
 
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_MINIMAL_BUILD_CUSTOM_OPS)
