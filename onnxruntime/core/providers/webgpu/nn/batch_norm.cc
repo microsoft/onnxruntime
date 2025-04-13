@@ -51,8 +51,7 @@ Status BatchNormalizationProgram::GenerateShaderCode(ShaderHelper& shader) const
   const ShaderVariableHelper& output = shader.AddOutput("output", ShaderUsage::UseUniform | ShaderUsage::UseIndicesTypeAlias);
 
   shader.MainFunctionBody() << shader.GuardAgainstOutOfBoundsWorkgroupSizes("uniforms.output_size")
-                            << "  let idx = global_idx * " << components_ << ";\n"
-                            << "  var outputIndices = " << output.OffsetToIndices("idx") << ";\n";
+                            << "  var outputIndices = " << output.OffsetToIndices("global_idx") << ";\n";
   if (spatial_) {
     if (input_tensor.Rank() == 1) {
       shader.MainFunctionBody() << "  let cOffset = 0u;\n";
