@@ -1333,9 +1333,11 @@ Status Upsample<T>::BaseCompute(OpKernelContext* context,
       const int64_t output_width = is_2D ? output_dims[1] : (is_nchw ? output_dims[3] : output_dims[2]);
       const float height_scale = is_2D ? scales[0] : (is_nchw ? scales[2] : scales[1]);
       const float width_scale = is_2D ? scales[1] : (is_nchw ? scales[3] : scales[2]);
-      const bool upscaling = height_scale >= 1.0f || width_scale >= 1.0f;
+      const bool upscaling = height_scale >= 1.0f && width_scale >= 1.0f;
 
-      if (antialias_ || (!antialias_ && upscaling)) {
+      // Antialiasing has no effect during image upsampling, so the antialiasing logic can be reused as-is.
+      // TODO: Benchmark whether is_nchw with upscaling should use ResizeBiCubicAntiAlias or ResizeBiCubic.
+      if (antialias_ || (!is_nchw && upscaling)) {
         if (!is_nchw) {
           NhwcResizeBiCubicAntiAlias(batch_size, num_channels, input_height, input_width, output_height, output_width,
                                      height_scale, width_scale, cubic_coeff_a_, use_extrapolation_,
