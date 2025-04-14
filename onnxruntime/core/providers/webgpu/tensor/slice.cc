@@ -234,10 +234,10 @@ Status Slice::ComputeInternal(ComputeContext& context) const {
   // Reorder inputs in order of axis
   std::vector<int32_t> signs_reordered;
   std::vector<uint32_t> steps_reordered, starts_reordered, ends_reordered;
-  signs_reordered.resize(input_rank, 0);
-  steps_reordered.resize(input_rank, 1);
-  starts_reordered.resize(input_rank, 0);
-  ends_reordered.resize(input_rank, 0);
+  signs_reordered.resize(static_cast<size_t>(input_rank), 0);
+  steps_reordered.resize(static_cast<size_t>(input_rank), 1);
+  starts_reordered.resize(static_cast<size_t>(input_rank), 0);
+  ends_reordered.resize(static_cast<size_t>(input_rank), 0);
   for (unsigned int i = 0; i < input_rank; i++) {
     int32_t dim = axes[i];
     signs_reordered[dim] = signs[i];
