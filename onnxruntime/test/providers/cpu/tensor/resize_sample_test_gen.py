@@ -19,18 +19,16 @@ input_tensor = (
     )
     .unsqueeze(0)
     .to(torch.float32)
-)  # Convert to float32
+)
 
-# Define output shape
 output_shape = (1, 6, 8, 2)
 
 # Apply resize operation
 output_tensor = F.interpolate(
     input_tensor.permute(0, 3, 1, 2),  # Convert to NHWC to NCHW for PyTorch
     size=(6, 8),  # Note: PyTorch expects size in (height, width) format
-    mode="bicubic",  # Use bicubic instead of cubic
+    mode="bicubic",  # bicubic is the same as cubic in ONNX
     align_corners=True,
 ).permute(0, 2, 3, 1)  # Convert back to NHWC
 
-# Print output tensor
 print(output_tensor)
