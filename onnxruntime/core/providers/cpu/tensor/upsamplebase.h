@@ -443,10 +443,10 @@ class UpsampleBase {
       if (scales.size() == 2) {
         is_supported = true;
       } else if (scales.size() == 4) {
-        const bool outer_scales_one = (scales[0] == 1.0f && scales[1] == 1.0f);
+        const bool outermost_scales_one = (scales[0] == 1.0f && scales[1] == 1.0f);
         const bool outer_and_innermost_scale_one = (scales[0] == 1.0f && scales[3] == 1.0f);
         is_supported =
-            outer_scales_one ||
+            outermost_scales_one ||
             (antialias_ && outer_and_innermost_scale_one) ||
             (!antialias_ && outer_and_innermost_scale_one && scales[1] >= 1.0f && scales[2] >= 1.0f);
       }
