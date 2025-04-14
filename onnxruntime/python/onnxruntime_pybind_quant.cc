@@ -6,6 +6,7 @@
 #include <pybind11/functional.h>
 
 #include "core/mlas/inc/mlas_q4.h"
+#include "core/mlas/inc/mlas_qnbit.h"
 #include "contrib_ops/cpu/quantization/dequantize_blockwise_bnb4.h"
 #include "core/util/thread_utils.h"
 
@@ -64,6 +65,33 @@ void QuantizeMatMul4BitsBlockwise(
       N,
       N,
       tp.get());
+}
+
+void
+QuantizeMatMulNBits(
+    const std::string& quant_type_name,
+    py::array_t<uint8_t> dst,               // shape: [ N, block_per_K, block_blob_size ]
+    py::array_t<float> src,                 // shape: [K, N]
+    int32_t N,
+    int32_t K) {
+  OrtThreadPoolParams to;
+  auto tp = concurrency::CreateThreadPool(&onnxruntime::Env::Default(), to,
+                                          concurrency::ThreadPoolType::INTRA_OP);
+
+  py::buffer_info dst_buf = dst.request();
+  py::buffer_info src_buf = src.request();
+
+  return MlasLowBitQuantize(
+      reinterpret_cast<const float*>(src_buf.ptr),
+      N,
+      K,
+      quant_type_name,
+      reinterpret_cast<uint8_t*>(dst_buf.ptr),
+      tp.get());
+}
+
+size_t QuantizeMatMulNBitsQuerySize(const size_t N, const size_t K, const std::string& quant_type_name) {
+  return MlasLowBitQuantizeSizeInByte(N, K, quant_type_name);
 }
 
 template <typename T>
@@ -132,6 +160,8 @@ void CreateQuantPybindModule(py::module& m) {
   m.def("quantize_matmul_bnb4", &QuantizeMatMulBnb4Blockwise<MLFloat16>);
   m.def("quantize_qdq_matmul_4bits", &QuantizeQDQMatMul4BitsBlockwise<float>);
   m.def("quantize_qdq_matmul_4bits", &QuantizeQDQMatMul4BitsBlockwise<MLFloat16>);
+  m.def("quantize_matmul_nbits", &QuantizeMatMulNBits);
+  m.def("quantize_matmul_nbits_query_quant_size", &QuantizeMatMulNBitsQuerySize);
 }
 
 }  // namespace python

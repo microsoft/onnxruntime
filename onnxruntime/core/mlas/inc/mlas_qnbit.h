@@ -22,6 +22,8 @@ Abstract:
 
 #include "mlas.h"
 #include "mlas_gemm_postprocessor.h"
+#include <vector>
+#include <string>
 
 /**
  * @brief Define compute types of block quantization, in order of decreasing accuracy.
@@ -221,3 +223,41 @@ MlasQNBitGemmScalesPacked(
     MLAS_QNBIT_GEMM_COMPUTE_TYPE ComputeType,
     bool HasZeroPoint
 );
+
+void
+vec_dot_q2_K_q8_K();
+
+void MLASCALL
+MlasLowBitQGemmBatch(
+    const size_t M,
+    const size_t N,
+    const size_t K,
+    const size_t BatchN,
+    const void* a_quant_data,
+    const std::string& a_quant_type_name,
+    const uint8_t* b_quant_data,
+    const std::string& b_quant_type_name,
+    float* c_data,
+    MLAS_THREADPOOL* ThreadPool
+);
+
+void MLASCALL
+MlasLowBitQuantize(const float* data, const size_t N, const size_t K, const std::string& quant_type_name, uint8_t* quant_data, MLAS_THREADPOOL* ThreadPool = nullptr);
+
+void MLASCALL
+MlasLowBitDequantize(const uint8_t* quant_data, const size_t N, const size_t K, const std::string& quant_type_name, float* dequant_data, MLAS_THREADPOOL* ThreadPool=nullptr);
+
+bool MLASCALL
+MlasLowBitCanQuantize(const std::string& quant_type_name);
+
+bool MLASCALL
+MlasLowBitCanDequantize(const std::string& quant_type_name);
+
+size_t MLASCALL
+MlasLowBitQuantizeSizeInByte(const size_t N, const size_t K, const std::string& quant_type_name);
+
+size_t MLASCALL
+MlasLowBitDequantizeDataCount(const size_t N, const size_t K, const std::string& quant_type_name);
+
+//void MLASCALL
+//MLasInitLlama();

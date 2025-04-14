@@ -95,8 +95,9 @@ class MatMulNBits final : public OpKernel {
       : OpKernel(info),
         K_{narrow<size_t>(info.GetAttr<int64_t>("K"))},
         N_{narrow<size_t>(info.GetAttr<int64_t>("N"))},
-        block_size_{narrow<size_t>(info.GetAttr<int64_t>("block_size"))},
-        nbits_{narrow<size_t>(info.GetAttr<int64_t>("bits"))},
+        b_quant_type_name_(info.GetAttrOrDefault<std::string>("b_quant_type_name", "")),
+        block_size_{narrow<size_t>(info.GetAttrOrDefault<int64_t>("block_size", 0))},
+        nbits_{narrow<size_t>(info.GetAttrOrDefault<int64_t>("bits", 0))},
         has_g_idx_{info.GetInputCount() > InputIndex::g_idx && info.node().InputDefs()[InputIndex::g_idx]->Exists()},
         has_bias_{info.GetInputCount() > InputIndex::bias && info.node().InputDefs()[InputIndex::bias]->Exists()},
         compute_type_{GetComputeType<T1>(nbits_, block_size_, info.GetAttr<int64_t>("accuracy_level"))} {
@@ -111,7 +112,7 @@ class MatMulNBits final : public OpKernel {
       has_unquantized_zero_point_ = type != ONNX_NAMESPACE::TensorProto_DataType_UINT8;
     }
 
-    ORT_ENFORCE(nbits_ == 4,
+    ORT_ENFORCE(nbits_ == 4 || !b_quant_type_name_.empty(),
                 "Only 4b quantization is supported for MatMulNBits op, additional bits support is planned.");
     const Tensor* tensor_zero_point = nullptr;
     has_zp_input_ = info.TryGetConstantInput(InputIndex::zero_points, &tensor_zero_point);
@@ -129,6 +130,7 @@ class MatMulNBits final : public OpKernel {
  private:
   const size_t K_;
   const size_t N_;
+  std::string b_quant_type_name_;
   const size_t block_size_;
   const size_t nbits_;
   const bool has_g_idx_;
@@ -172,6 +174,10 @@ template <typename T1>
 Status MatMulNBits<T1>::PrePack(const Tensor& tensor, int input_idx, /*out*/ AllocatorPtr alloc,
                                 /*out*/ bool& is_packed,
                                 /*out*/ PrePackedWeights* prepacked_weights) {
+  if (!b_quant_type_name_.empty()) {
+    return Status::OK();
+  }
+
   ORT_UNUSED_PARAMETER(prepacked_weights);
   is_packed = false;
   if (has_g_idx_ || has_unquantized_zero_point_) {
@@ -670,20 +676,45 @@ Status MatMulNBits<MLFloat16>::ComputeBUnpacked(const Tensor* a,
   return Status::OK();
 }
 
+Status ComputeByQuantTypeName(
+  OpKernelContext* ctx,
+  const Tensor* a,
+  concurrency::ThreadPool* thread_pool,
+  const MatMulComputeHelper& helper,
+  Tensor* y,
+  const std::string& b_type_name) {
+  const Tensor* b = ctx->Input<Tensor>(InputIndex::B);
+  //const Tensor* bias = ctx->Input<Tensor>(InputIndex::bias);
+  float* y_data = y->MutableData<float>();
+
+  const size_t batch_count = helper.OutputOffsets().size();
+  const size_t M = static_cast<size_t>(helper.M());
+  const size_t N = static_cast<size_t>(helper.N());
+  const size_t K = static_cast<size_t>(helper.K());
+  //const size_t lda = helper.Lda(false);
+
+  const void* a_data = reinterpret_cast<const void*>(a->Data<float>());
+  const uint8_t* b_data = b->Data<uint8_t>();
+  MlasLowBitQGemmBatch(M, N, K, batch_count, a_data, "", b_data, b_type_name, y_data, thread_pool);
+  return Status::OK();
+}
+
 template <typename T1>
 Status MatMulNBits<T1>::Compute(OpKernelContext* ctx) const {
   concurrency::ThreadPool* thread_pool = ctx->GetOperatorThreadPool();
   const Tensor* a = ctx->Input<Tensor>(InputIndex::A);
+  TensorShape b_shape({static_cast<int64_t>(N_), static_cast<int64_t>(K_)});
+  MatMulComputeHelper helper;
+  ORT_RETURN_IF_ERROR(helper.Compute(a->Shape(), b_shape, false, true));
+  Tensor* y = ctx->Output(0, helper.OutputShape());
+
+  if (!b_quant_type_name_.empty()) {
+    return ComputeByQuantTypeName(ctx, a, thread_pool, helper, y, b_quant_type_name_);
+  }
   const Tensor* scales = scales_are_packed_ ? nullptr : ctx->Input<Tensor>(InputIndex::scales);
   const Tensor* zero_points = ctx->Input<Tensor>(InputIndex::zero_points);
   const Tensor* reorder_idx = ctx->Input<Tensor>(InputIndex::g_idx);
   const Tensor* bias = ctx->Input<Tensor>(InputIndex::bias);
-
-  TensorShape b_shape({static_cast<int64_t>(N_), static_cast<int64_t>(K_)});
-  MatMulComputeHelper helper;
-  ORT_RETURN_IF_ERROR(helper.Compute(a->Shape(), b_shape, false, true));
-
-  Tensor* y = ctx->Output(0, helper.OutputShape());
 
   // Bail out early if the output is going to be empty
   if (y->Shape().Size() == 0) {

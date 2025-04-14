@@ -18,7 +18,12 @@ import onnx
 from onnx.onnx_pb import GraphProto, ModelProto, NodeProto, TensorProto
 from packaging import version
 
-from onnxruntime.capi._pybind_state import quantize_matmul_4bits, quantize_qdq_matmul_4bits
+from onnxruntime.capi._pybind_state import (
+    quantize_matmul_4bits,
+    quantize_qdq_matmul_4bits,
+    quantize_matmul_nbits_query_quant_size,
+    quantize_matmul_nbits,
+)
 
 from .calibrate import CalibrationDataReader
 from .onnx_model import ONNXModel
@@ -180,6 +185,23 @@ class HQQWeightOnlyQuantConfig(WeightOnlyQuantConfig):
         self.block_size = block_size
         self.bits = bits
         self.axis = axis
+
+
+class LlamaCppQuantConfig(WeightOnlyQuantConfig):
+    def __init__(
+        self,
+        quant_type_name: str = "llama.cpp.q4_0",
+        quant_format=QuantFormat.QOperator,
+        op_types_to_quantize: tuple[str, ...] | None = None,
+        quant_axes: tuple[tuple[str, int], ...] | None = None,
+    ):
+        super().__init__(
+            algorithm="llama.cpp",
+            quant_format=quant_format,
+            op_types_to_quantize=op_types_to_quantize,
+            quant_axes=quant_axes,
+        )
+        self.quant_type_name = quant_type_name
 
 
 class DefaultWeightOnlyQuantConfig(WeightOnlyQuantConfig):
@@ -717,6 +739,107 @@ def get_initializer(name, graph_path: list[GraphProto]) -> tuple[TensorProto, Gr
     return None, None
 
 
+class LlamaCppQuantizer:
+    def __init__(self, config: LlamaCppQuantConfig):
+        self.config = config
+
+    def llama_cpp_block_quant(self, fp32weight: npt.ArrayLike) -> np.ndarray:
+        """4b quantize fp32 weight to int4 using C++ kernels."""
+
+        if len(fp32weight.shape) != 2:
+            raise ValueError("Current int4 block quantization only supports 2D tensors!")
+        rows, cols = fp32weight.shape
+
+        assert self.config.quant_format == QuantFormat.QOperator, "QDQ format is not supported"
+
+        # block wise quantization, each block comes from a single column
+        quant_size_in_bytes = quantize_matmul_nbits_query_quant_size(cols, rows, self.config.quant_type_name)
+        packed = np.zeros((quant_size_in_bytes, ), dtype="uint8")
+        quantize_matmul_nbits(self.config.quant_type_name, packed, fp32weight, cols, rows)
+
+        return packed
+
+    def quantize_matmul(self, node: NodeProto, graph_stack: list[GraphProto]) -> list[NodeProto]:
+        """
+        Quantize weight B of MatMul node to int4.
+        Currently only support 2D constant matrix and axis 0 blockwise quantization.
+        """
+        qtype = TensorProto.UINT4
+        input_b = node.input[1]
+        b_tensor, b_graph = get_initializer(input_b, graph_stack)
+        if b_tensor is None:
+            logger.info("MatMul doesn't have const weight. Skip to quantize")
+            return [node]  # only care about constant weight
+
+        b_ndarray = onnx.numpy_helper.to_array(b_tensor)
+        if len(b_ndarray.shape) != 2:
+            logger.info("MatMul weight is not 2D. Skip to quantize")
+            return [node]  # can only process 2-D matrix
+
+        packed = self.llama_cpp_block_quant(b_ndarray)
+
+        assert self.config.quant_format == QuantFormat.QOperator, "QDQ format is not supported"
+        b_quant = onnx.numpy_helper.from_array(packed, b_tensor.name + "_Q4")
+
+        for input in b_graph.input:
+            if input.name == input_b:
+                b_graph.input.remove(input)
+                break
+
+        b_graph.initializer.extend([b_quant])
+
+        output_nodes = []
+
+        if self.config.quant_format == QuantFormat.QOperator:
+            input_names = [node.input[0], b_quant.name]
+            kwargs = {}
+            rows, cols = b_ndarray.shape
+            kwargs["K"] = rows
+            kwargs["N"] = cols
+            kwargs["N"] = cols
+            kwargs["b_quant_type_name"] = self.config.quant_type_name
+
+            matmul_q4_node = onnx.helper.make_node(
+                "MatMulNBits",
+                inputs=input_names,
+                outputs=[node.output[0]],
+                name=node.name + "_Q4" if node.name else "",
+                domain="com.microsoft",
+                **kwargs,
+            )
+
+            output_nodes.append(matmul_q4_node)
+
+        return output_nodes
+
+    def quantize(self, node: NodeProto, graph_stack: list[GraphProto]) -> list[NodeProto]:
+        """
+        Target node:        QOperator node:            QDQ nodes:
+        MatMul              MatMulNBits                DeQuantizeLinear -> MatMul
+        Gather              GatherBlockQuantized       Gather, Gather, Gather (optional) -> DequantizeLinear
+        If the node is target node with fp32 or fp16 const weight, quantize the weight to int4 and
+        return the new nodes.
+        If QOperator format, return the corresponding QOperator nodes.
+        If QDQ format, return the corresdponging QDQ nodes.
+        Gather (quantized data) + Gather (scales) + Gather (optional, zero points) -> DequantizeLinear is
+        not supported yet because Gather does not support int4 data.
+        """
+        logger.info(f"start to quantize {node.name} ...")
+
+        if node.op_type == "MatMul":
+            results = self.quantize_matmul(node, graph_stack)
+        elif node.op_type == "Gather":
+            # results = self.quantize_gather(node, graph_stack)
+            logger.error(f"Unsupported operator {node.op_type} for weight only quantization. Skip quantization.")
+        else:
+            logger.error(f"Unsupported operator {node.op_type} for weight only quantization. Skip quantization.")
+            results = [node]
+
+        logger.info(f"complete quantization of {node.name} ...")
+
+        return results
+
+
 class DefaultWeightOnlyQuantizer:
     def __init__(self, config: DefaultWeightOnlyQuantConfig):
         self.config = config
@@ -1127,6 +1250,8 @@ class MatMul4BitsQuantizer:
             self.node_quantizer = DefaultWeightOnlyQuantizer(self.algo_config)
         elif algo_config.algorithm == "nvidia_awq":
             self.node_quantizer = NVAWQWeightOnlyQuantizer(self.algo_config)
+        elif algo_config.algorithm == "llama.cpp":
+            self.node_quantizer = LlamaCppQuantizer(self.algo_config)
 
     def _process_subgraph(self, graph_stack: list[GraphProto]):
         new_nodes = []
@@ -1245,7 +1370,7 @@ class MatMul4BitsQuantizer:
         logger.info(f"complete quantization of model with {algorithm} algorithm.")
 
     def process(self):
-        if self.algo_config.algorithm in ["HQQ", "DEFAULT"]:
+        if self.algo_config.algorithm in ["HQQ", "DEFAULT", "llama.cpp"]:
             # use a stack to keep track of sub-graphs
             graph_stack = [self.model.graph()]
 
@@ -1471,6 +1596,13 @@ if __name__ == "__main__":
             cache_dir=args.cache_dir,
             calibration_method=calibration_method,
         )
+    elif args.quant_method == "llama.cpp":
+        quant_config = WeightOnlyQuantConfig(
+            algorithm="llama.cpp",
+            quant_format=QuantFormat.QOperator,
+            op_types_to_quantize=op_types_to_quantize,
+            quant_axes=quant_axes)
+
     else:
         raise ValueError(f"Unsupported quantization method: {args.quant_method}")
 

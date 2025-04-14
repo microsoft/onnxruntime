@@ -888,6 +888,7 @@ if (USE_ROCM)
     # The following unit test takes about 40 minutes.
     list(REMOVE_ITEM all_tests
       "${TEST_SRC_DIR}/contrib_ops/matmul_4bits_test.cc"
+      "${TEST_SRC_DIR}/contrib_ops/matmul_qbits_test.cc"
     )
 endif()
 
@@ -1478,7 +1479,7 @@ if (NOT onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
     endif()
     target_include_directories(onnxruntime_mlas_test PRIVATE ${ONNXRUNTIME_ROOT}/core/mlas/inc ${ONNXRUNTIME_ROOT}
             ${CMAKE_CURRENT_BINARY_DIR})
-    target_link_libraries(onnxruntime_mlas_test PRIVATE GTest::gtest GTest::gmock ${ONNXRUNTIME_MLAS_LIBS} onnxruntime_common)
+    target_link_libraries(onnxruntime_mlas_test PRIVATE GTest::gtest GTest::gmock ${ONNXRUNTIME_MLAS_LIBS} onnxruntime_common ggml)
     if (CPUINFO_SUPPORTED AND NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
       target_link_libraries(onnxruntime_mlas_test PRIVATE cpuinfo)
     endif()

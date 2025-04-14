@@ -67,7 +67,8 @@ class TestOpMatMul4Bits(unittest.TestCase):
         dr = TestDataFeeds(input_data_list)
         return dr
 
-    def construct_model_matmul(self, output_model_path: str, symmetric: bool) -> None:
+    def construct_model_matmul(self, output_model_path: str, symmetric: bool,
+                               in_features: int = 52, out_features: int = 288) -> None:
         #      (input)
         #         |
         #       MatMul
@@ -89,8 +90,6 @@ class TestOpMatMul4Bits(unittest.TestCase):
                 node_name,
             )
 
-        in_features = 52
-        out_features = 288
         # make MatMul node
         matmul_node = make_matmul(
             input_name,
@@ -387,6 +386,95 @@ class TestOpMatMul4Bits(unittest.TestCase):
         data_reader = self.input_feeds(1, {"input": (100, 52)})
         self.quant_test_with_algo("HQQ", model_fp32_path, data_reader, 32, False)
 
+
+    def test_quantize_matmul_llama_cpp_phi_35_mini_4k_instruct(self):
+        from onnxruntime.quantization import (
+            matmul_4bits_quantizer,
+            quant_utils,
+            quantize
+        )
+        from pathlib import Path
+
+        model_fp32_path="C:/LiqunWA/example-models/Phi-3.5/phi-3.5-mini-4k-instruct-fp32-cpu/model.onnx"
+        model_q4_0_path="C:/LiqunWA/example-models/Phi-3.5/phi-3.5-mini-4k-instruct-lamma_cpp_q4_0-cpu/model.onnx"
+
+        model = quant_utils.load_model_with_shape_infer(Path(model_fp32_path))
+        algo_config = matmul_4bits_quantizer.LlamaCppQuantConfig(
+            quant_type_name="q4_0",
+            quant_format=quant_utils.QuantFormat.QOperator,
+            op_types_to_quantize=("MatMul",),
+        )
+        quant = matmul_4bits_quantizer.MatMul4BitsQuantizer(
+            model=model,
+            algo_config=algo_config,
+        )
+
+        quant.process()
+        quant.model.save_model_to_file(model_q4_0_path, True) # save data to external file
+
+    def llama_cpp_quant_test(
+        self,
+        model_fp32_path: str,
+        data_reader: TestDataFeeds,
+        quant_type_name="q4_0",
+        quant_format: quant_utils.QuantFormat = quant_utils.QuantFormat.QOperator,
+        op_types_to_quantize: tuple[str, ...] = ("MatMul",),
+        quant_axes: tuple[tuple[str, int], ...] = (("MatMul", 0), ("Gather", 1)),
+        rtol: float = 0.01,
+        atol: float = 0.05,
+    ):
+        use_qdq = quant_format == quant_utils.QuantFormat.QDQ
+        name_prefix = "QDQ" if use_qdq else "QOperator"
+        model_out_path = str(
+            Path(self._tmp_model_dir.name).joinpath(f"{name_prefix}_{quant_type_name}.onnx").absolute()
+        )
+
+        # Quantize fp32 model to int4 model
+        from onnxruntime.quantization import matmul_4bits_quantizer
+
+        model = quant_utils.load_model_with_shape_infer(Path(model_fp32_path))
+        algo_config = matmul_4bits_quantizer.LlamaCppQuantConfig(
+            quant_type_name=quant_type_name,
+            quant_format=quant_utils.QuantFormat.QOperator,
+            op_types_to_quantize=("MatMul",),
+        )
+        quant = matmul_4bits_quantizer.MatMul4BitsQuantizer(
+            model=model,
+            algo_config=algo_config,
+        )
+
+        quant.process()
+        quant.model.save_model_to_file(model_out_path, True) # save data to external file
+
+        if "Gather" in op_types_to_quantize:
+            quant_nodes = {"GatherBlockQuantized": 1}
+        else:
+            quant_nodes = {"DequantizeLinear": 1, "MatMul": 1} if use_qdq else {"MatMulNBits": 1}
+        check_op_type_count(self, model_out_path, **quant_nodes)
+
+        data_reader.rewind()
+
+        try:
+            check_model_correctness(self, model_fp32_path, model_out_path, data_reader.get_next(), rtol, atol)
+        except Exception as exception:
+            if "4b quantization not yet supported on this hardware platform!" in exception.args[0]:
+                # Currently we don't have int4 quantization support on all platforms, has to tolerate this exception
+                pass
+            else:
+                raise exception
+
+    def test_quantize_matmul_llama_cpp_q4_0(self):
+
+        np.random.seed(13)
+        model_fp32_path = str(Path(self._tmp_model_dir.name).joinpath("matmul_fp32_symmetric.onnx").absolute())
+        self.construct_model_matmul(model_fp32_path, symmetric=True, in_features=256, out_features=1)
+        data_reader = self.input_feeds(1, {"input": (1, 256)})
+
+        self.llama_cpp_quant_test(
+            model_fp32_path=model_fp32_path,
+            data_reader=data_reader,
+            quant_type_name="q4_0",
+            )
 
 if __name__ == "__main__":
     unittest.main()

@@ -3459,8 +3459,9 @@ Input zero_points is stored as uint8_t or same as type(A). It has the same packi
       .SetDoc(MatMulNBits_ver1_doc)
       .Attr("K", "size of each input feature", AttributeProto::INT)
       .Attr("N", "size of each output feature", AttributeProto::INT)
-      .Attr("bits", "number of bits used for weight quantization (default 4)", AttributeProto::INT)
-      .Attr("block_size", "number of groupsize used for weight quantization,(default 128). It needs to be a power of 2 and not smaller than 16.", AttributeProto::INT)
+      .Attr("bits", "number of bits used for weight quantization (default 4)", AttributeProto::INT, OPTIONAL_VALUE)
+      .Attr("b_quant_type_name", "(Optional) weight by quatize type name strings", AttributeProto::STRING, OPTIONAL_VALUE)
+      .Attr("block_size", "number of groupsize used for weight quantization,(default 128). It needs to be a power of 2 and not smaller than 16.", AttributeProto::INT, OPTIONAL_VALUE)
       .Attr("accuracy_level",
             "The minimum accuracy level of input A, can be: 0(unset), 1(fp32), 2(fp16), 3(bf16), or 4(int8) "
             "(default unset). It is used to control how input A is quantized or downcast internally while "
@@ -3470,7 +3471,7 @@ Input zero_points is stored as uint8_t or same as type(A). It has the same packi
             AttributeProto::INT, static_cast<int64_t>(0))
       .Input(0, "A", "The input tensor, not quantized", "T1")
       .Input(1, "B", "1 or 2 dimensional data blob", "T2")
-      .Input(2, "scales", "quantization scale", "T1")
+      .Input(2, "scales", "quantization scale", "T1", OpSchema::Optional)
       .Input(3, "zero_points", "quantization zero points", "T3", OpSchema::Optional)
       .Input(4, "g_idx", "group_idx", "T4", OpSchema::Optional)
       .Input(5, "bias", "Bias to add to result. It should have shape [N].", "T1", OpSchema::Optional)
