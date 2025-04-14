@@ -20,28 +20,11 @@ def get_pipeline_names():
         "Windows ARM64 QNN CI Pipeline",
         "Windows x64 QNN CI Pipeline",
         "Windows GPU Doc Gen CI Pipeline",
-        "ONNX Runtime Web CI Pipeline",
         "Win_TRT_Minimal_CUDA_Test_CI",
         # linux
-        "Linux CPU CI Pipeline",
-        "Linux CPU Minimal Build E2E CI Pipeline",
-        "Linux GPU CI Pipeline",
-        "Linux GPU TensorRT CI Pipeline",
-        "Linux OpenVINO CI Pipeline",
         "Linux QNN CI Pipeline",
-        # checks
-        "onnxruntime-binary-size-checks-ci-pipeline",
         # big models
         "Big Models",
-        # android
-        "Linux Android Emulator QNN CI Pipeline",
-        # not currently required, but running these like internal PRs.
-        "Android CI Pipeline",
-        "iOS CI Pipeline",
-        "ONNX Runtime React Native CI Pipeline",
-        "Linux DNNL CI Pipeline",
-        "Linux MIGraphX CI Pipeline",
-        "Linux ROCm CI Pipeline",
     ]
 
     return pipelines
