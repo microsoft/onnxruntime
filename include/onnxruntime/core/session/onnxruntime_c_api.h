@@ -5590,7 +5590,7 @@ struct OrtCompileApi {
   /** \brief Compiles an input ONNX model with the given compilation options.
    *
    * \param[in] env OrtEnv object.
-   * \param[in] model_compile_options The compilation options that defines compilation options for a model.
+   * \param[in] model_options The compilation options that defines compilation options for a model.
    *
    * \snippet{doc} snippets.dox OrtStatus Return Value
    *
