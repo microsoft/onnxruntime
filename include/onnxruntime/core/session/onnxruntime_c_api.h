@@ -4893,6 +4893,7 @@ struct OrtApi {
    * \param[in] shape Dimensions of the Tensor. All values should be > 0.
    * \param[in] shape_len Number of dimensions in the shape array.
    * \param[in] type Data type of the Tensor.
+   * \param[out] out Newly created ::OrtValue. Must be freed with OrtApi::ReleaseValue
    *
    * \snippet{doc} snippets.dox OrtStatus Return Value
    *
