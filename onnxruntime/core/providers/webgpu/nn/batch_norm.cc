@@ -57,7 +57,7 @@ Status BatchNormalizationProgram::GenerateShaderCode(ShaderHelper& shader) const
       shader.MainFunctionBody() << "  let cOffset = 0u;\n";
     } else {
       if (format_ == DataLayout::NHWC) {
-        shader.MainFunctionBody() << "  let cOffset = outputIndices[" << input_tensor.Rank() - 1 << "] / " << components_ << ";\n";
+        shader.MainFunctionBody() << "  let cOffset = outputIndices[" << input_tensor.Rank() - 1 << "];\n";
       } else {
         shader.MainFunctionBody() << "  let cOffset = outputIndices[1];\n";
       }
@@ -121,7 +121,7 @@ Status BatchNormalization<is_nhwc>::ComputeInternal(ComputeContext& context) con
 
   ORT_RETURN_IF_ERROR(BatchNormHelper::ValidateInputs(input_tensor, scale, B, input_mean, input_var, spatial_ == 1, format_ == DataLayout::NHWC));
 
-  BatchNormalizationProgram program{epsilon_, spatial_, format_, static_cast<int64_t>(components)};
+  BatchNormalizationProgram program{epsilon_, spatial_, format_};
   program
       .CacheHint(epsilon_, spatial_, format_, components)
       .AddInputs({{input_tensor, ProgramTensorMetadataDependency::TypeAndRank, components},
