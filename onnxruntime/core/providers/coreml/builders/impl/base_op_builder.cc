@@ -110,7 +110,8 @@ bool BaseOpBuilder::IsInputDtypeSupport(const Node& node, size_t idx,
   }
 
   // float is supported
-  if (input_type == ONNX_NAMESPACE::TensorProto_DataType_FLOAT) {
+  // if (input_type == ONNX_NAMESPACE::TensorProto_DataType_FLOAT ) {
+  if (input_type == ONNX_NAMESPACE::TensorProto_DataType_FLOAT || input_type == ONNX_NAMESPACE::TensorProto_DataType_INT64) {
     return true;
   }
 

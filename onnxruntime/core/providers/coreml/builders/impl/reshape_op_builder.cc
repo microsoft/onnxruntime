@@ -99,9 +99,10 @@ bool ReshapeOpBuilder::IsOpSupportedImpl(const Node& node, const OpBuilderInputP
   }
 
   std::vector<int64_t> input_shape;
+  // first input must be fixed rank OR (first input has variadic rank AND shape only contains positive integers)
+  // as per docs, 0 is considered an illegal shape element if the input is variadic
   if (!GetStaticShape(*input_defs[0], input_shape, logger) && !AllPositiveShape(new_shape)) {
-    // first input must be fixed rank OR (first input has variadic rank AND shape only contains positive integers)
-    LOGS(logger, VERBOSE) << "RESHAPE failing static shape check for input 0" << node.Name();
+    LOGS(logger, VERBOSE) << "RESHAPE failing static shape check for input 0" << node.Name() << " input shape: " << Shape2String(new_shape);
     return false;
   }
 
