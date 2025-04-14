@@ -371,8 +371,16 @@ Status QnnBackendManager::InitializeQnnLog(const logging::Logger& logger) {
 QnnLog_Level_t QnnBackendManager::MapOrtSeverityToQNNLogLevel(logging::Severity ort_log_level) {
   // Map ORT log severity to Qnn log level
   switch (ort_log_level) {
-    case logging::Severity::kVERBOSE:
-      return QNN_LOG_LEVEL_VERBOSE;
+    case logging::Severity::kVERBOSE: {
+      switch ((GetQnnBackendType())) {
+        case QnnBackendType::GPU:
+          // Currently GPU needs this log level to work.
+          // This switch will be removed once this is resolved.
+          return QNN_LOG_LEVEL_DEBUG;
+        default:
+          return QNN_LOG_LEVEL_VERBOSE;
+      }
+    }
     case logging::Severity::kINFO:
       return QNN_LOG_LEVEL_INFO;
     case logging::Severity::kWARNING:
