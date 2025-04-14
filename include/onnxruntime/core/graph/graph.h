@@ -1438,6 +1438,7 @@ class Graph {  // NOLINT(clang-analyzer-optin.performance.Padding): preserve exi
                                   const OrtFormatLoadOptions& load_options,
                                   const logging::Logger& logger, std::unique_ptr<Graph>& graph);
 
+#if !defined(DISABLE_MODEL_EDITOR_API)
   static Status LoadFromModelEditorApiModel(const OrtGraph& api_graph,
                                             const Model& owning_model,
                                             const std::unordered_map<std::string, int>& domain_to_version,
@@ -1447,6 +1448,7 @@ class Graph {  // NOLINT(clang-analyzer-optin.performance.Padding): preserve exi
                                             std::unique_ptr<Graph>& graph);
 
   Status UpdateUsingModelEditorApiModel(const OrtModel& api_model);
+#endif
 
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
   const RuntimeOptimizationRecordContainer& RuntimeOptimizations() const {

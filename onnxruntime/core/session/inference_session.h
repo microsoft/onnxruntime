@@ -323,7 +323,9 @@ class InferenceSession {
    * @return OK if success.
    */
   [[nodiscard]] common::Status Load();
+#endif
 
+#if !defined(DISABLE_MODEL_EDITOR_API)
   /**
    * Load an OrtModel that was dynamically constructed via OrtModelEditorApi.
    *
@@ -343,8 +345,7 @@ class InferenceSession {
    * @return OK if success.
    */
   [[nodiscard]] common::Status ApplyUpdates(const OrtModel& graph_api_model);
-
-#endif  // !defined(ORT_MINIMAL_BUILD)
+#endif  // !defined(DISABLE_MODEL_EDITOR_API)
 
   /**
    * Initializes a previously loaded ONNX model. Initialization includes but is not

@@ -1,6 +1,8 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#if !defined(DISABLE_MODEL_EDITOR_API)
+
 #include <gsl/gsl>
 
 #include "gtest/gtest.h"
@@ -699,3 +701,5 @@ TEST(ModelEditorAPITest, CreateTypeInfo) {
 
   api.ReleaseTypeInfo(base_tensor_type_info);
 }
+
+#endif  // defined(DISABLE_MODEL_EDITOR_API)

@@ -294,12 +294,6 @@ class Model {
                              const logging::Logger& logger,
                              const ModelOptions& options = {});
 
-  static common::Status LoadFromModelEditorApiModel(const OrtModel& graph_api_model,
-                                                    const IOnnxRuntimeOpSchemaRegistryList* local_registries,
-                                                    const ModelOptions& options,
-                                                    const logging::Logger& logger,
-                                                    std::unique_ptr<Model>& model);
-
   common::Status SaveToOrtFormat(flatbuffers::FlatBufferBuilder& builder,
                                  flatbuffers::Offset<onnxruntime::fbs::Model>& model) const;
 
@@ -311,6 +305,14 @@ class Model {
   void RemoveLocalFunctionsProtos(const InlinedHashSet<std::string>& retained);
 
 #endif  // !defined(ORT_MINIMAL_BUILD)
+
+#if !defined(DISABLE_MODEL_EDITOR_API)
+  static common::Status LoadFromModelEditorApiModel(const OrtModel& graph_api_model,
+                                                    const IOnnxRuntimeOpSchemaRegistryList* local_registries,
+                                                    const ModelOptions& options,
+                                                    const logging::Logger& logger,
+                                                    std::unique_ptr<Model>& model);
+#endif
 
   static common::Status LoadFromOrtFormat(const onnxruntime::fbs::Model& fbs_model,
 #if !defined(ORT_MINIMAL_BUILD)

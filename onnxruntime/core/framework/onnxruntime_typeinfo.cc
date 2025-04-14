@@ -95,7 +95,7 @@ ORT_API_STATUS_IMPL(OrtApis::GetDenotationFromTypeInfo, _In_ const OrtTypeInfo* 
   API_IMPL_END
 }
 
-#if !defined(ORT_MINIMAL_BUILD)
+#if !defined(DISABLE_MODEL_EDITOR_API)
 ORT_API_STATUS_IMPL(OrtModelEditorAPI::CreateTensorTypeInfo, _In_ const OrtTensorTypeAndShapeInfo* tensor_info,
                     _Out_ OrtTypeInfo** type_info) {
   API_IMPL_BEGIN
@@ -148,7 +148,7 @@ ORT_API_STATUS_IMPL(OrtModelEditorAPI::CreateOptionalTypeInfo, _In_ const OrtTyp
   return nullptr;
   API_IMPL_END
 }
-#endif  // !defined(ORT_MINIMAL_BUILD)
+#endif  // !defined(DISABLE_MODEL_EDITOR_API)
 
 ORT_API(void, OrtApis::ReleaseTypeInfo, _Frees_ptr_opt_ OrtTypeInfo* ptr) {
   std::unique_ptr<OrtTypeInfo> p(ptr);

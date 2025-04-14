@@ -387,6 +387,9 @@ def generate_build_tree(
 
         if args.use_winml:
             cmake_args.append("-Donnxruntime_BUILD_WINML_TESTS=" + ("OFF" if args.skip_winml_tests else "ON"))
+            # Model Editor API has an OrtModel which clashes with the WinML OrtModel.
+            # Disable Model Editor API to avoid this issue.
+            cmake_args.append("-Donnxruntime_ENABLE_MODEL_EDITOR_API=OFF")
         if args.dml_path:
             cmake_args += [
                 "-Donnxruntime_USE_CUSTOM_DIRECTML=ON",

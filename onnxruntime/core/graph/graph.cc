@@ -5744,7 +5744,7 @@ common::Status Graph::LoadFromOrtFormat(const onnxruntime::fbs::Graph& fbs_graph
   return Status::OK();
 }
 
-#if !defined(ORT_MINIMAL_BUILD)
+#if !defined(DISABLE_MODEL_EDITOR_API)
 namespace {
 ValueInfoProto OrtValueInfoToOnnx(const OrtValueInfo& vi) {
   // the model builder API checks that the OrtValueInfo has a complete and valid OrtTypeInfo instance and that the
@@ -5946,5 +5946,5 @@ Status Graph::UpdateUsingModelEditorApiModel(const OrtModel& api_model) {
   return LoadFromModelEditorApiModel(*api_model.graph, /*updating_existing_graph*/ true);
 }
 
-#endif  // !defined(ORT_MINIMAL_BUILD)
+#endif  // !defined(DISABLE_MODEL_EDITOR_API)
 }  // namespace onnxruntime

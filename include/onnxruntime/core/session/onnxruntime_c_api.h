@@ -4841,33 +4841,33 @@ struct OrtApi {
   ORT_CLASS_RELEASE(ValueInfo);
 
   /** \brief Release an OrtNode if it was not added to an OrtGraph.
-   * \since Version 1.21.
+   * \since Version 1.22.
    */
   ORT_CLASS_RELEASE(Node);
 
   /** \brief Release an OrtGraph.
    * \snippet{doc} snippets.dox OrtStatus Return Value
-   * \since Version 1.21.
+   * \since Version 1.22.
    */
   ORT_CLASS_RELEASE(Graph);
 
   /** \brief Release an OrtModel.
    * \snippet{doc} snippets.dox OrtStatus Return Value
-   * \since Version 1.21.
+   * \since Version 1.22.
    */
   ORT_CLASS_RELEASE(Model);
 
   /** \brief Get the value name from an OrtValueInfo instance.
    * \param[in] value_info The OrtValueInfo instance.
    * \snippet{doc} snippets.dox OrtStatus Return Value
-   * \since Version 1.21.
+   * \since Version 1.22.
    */
   ORT_API2_STATUS(GetValueInfoName, _In_ const OrtValueInfo* value_info, _Out_ const char** name);
 
   /** \brief Get the type information from an OrtValueInfo instance.
    * \param[in] value_info The OrtValueInfo instance.
    * \snippet{doc} snippets.dox OrtStatus Return Value
-   * \since Version 1.21.
+   * \since Version 1.22.
    */
   ORT_API2_STATUS(GetValueInfoTypeInfo, _In_ const OrtValueInfo* value_info, _Outptr_ const OrtTypeInfo** type_info);
 
@@ -4877,7 +4877,7 @@ struct OrtApi {
    *
    * \return Model Editor API struct
    *
-   * \since Version 1.21.
+   * \since Version 1.22.
    */
   const OrtModelEditorApi*(ORT_API_CALL* GetModelEditorApi)();
 
@@ -4896,7 +4896,7 @@ struct OrtApi {
    *
    * \snippet{doc} snippets.dox OrtStatus Return Value
    *
-   * \since Version 1.21.
+   * \since Version 1.22.
    */
   ORT_API2_STATUS(CreateTensorWithDataAndDeleterAsOrtValue, _In_ OrtAllocator* deleter,
                   _In_ void* p_data, size_t p_data_len,
@@ -4918,6 +4918,7 @@ struct OrtApi {
    *
    * \snippet{doc} snippets.dox OrtStatus
    *
+   * \since Version 1.22.
    */
   ORT_API2_STATUS(SessionOptionsSetLoadCancellationFlag, _Inout_ OrtSessionOptions* options,
                   _In_ bool cancel);

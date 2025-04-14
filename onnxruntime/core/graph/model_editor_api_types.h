@@ -1,6 +1,8 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#pragma once
+
 #include "core/common/inlined_containers_fwd.h"
 #include "core/framework/ort_value.h"
 #include "core/framework/onnxruntime_typeinfo.h"
@@ -9,11 +11,13 @@
 // ORT C interface types for OrtGraphApi can't be in a namespace.
 // We need to define them here so onnxruntime::Model can be created from OrtModel.
 
+// OrtValueInfo isn't model editing specific so can be used if Model Editor API is disabled.
 struct OrtValueInfo {
   std::string name;
   std::unique_ptr<OrtTypeInfo> type_info;
 };
 
+#if !defined(DISABLE_MODEL_EDITOR_API)
 struct OrtOpAttr {
   ONNX_NAMESPACE::AttributeProto attr_proto;
 };
@@ -45,3 +49,5 @@ struct OrtModel {
   std::unique_ptr<OrtGraph> graph;
   std::unordered_map<std::string, int> domain_to_version;
 };
+
+#endif  // !defined(DISABLE_MODEL_EDITOR_API)
