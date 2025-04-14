@@ -385,7 +385,6 @@ Status ReduceKernel<allow_multi_axes>::ComputeInternal(ComputeContext& context) 
     Tensor input_transpose;
     if (!are_axes_innermost) {
       InlinedVector<size_t> perm;
-      perm.reserve(rank);
       for (size_t i = 0; i < rank; ++i) {
         if (reduce_axes[i] == 0) {
           perm.push_back(static_cast<size_t>(i));
@@ -418,6 +417,7 @@ Status ReduceKernel<allow_multi_axes>::ComputeInternal(ComputeContext& context) 
     program.CacheHint(keepdims_,
                       noop_with_empty_axes_,
                       select_last_index_,
+                      workgroup_size,
                       absl::StrJoin(input_axes, ","))
         .AddInput({input_tensor, ProgramTensorMetadataDependency::TypeAndRank})
         .AddOutput({context.Output(0, output_shape), ProgramTensorMetadataDependency::TypeAndRank})
