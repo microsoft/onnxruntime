@@ -422,6 +422,7 @@ Status ReduceKernel<allow_multi_axes>::ComputeInternal(ComputeContext& context) 
         .AddInput({input_tensor, ProgramTensorMetadataDependency::TypeAndRank})
         .AddOutput({context.Output(0, output_shape), ProgramTensorMetadataDependency::TypeAndRank})
         .SetDispatchGroupSize(static_cast<uint32_t>(output_size))
+        .SetWorkgroupSize(workgroup_size)
         .AddUniformVariable({static_cast<uint32_t>(reduce_size)});
     return context.RunProgram(program);
   }
