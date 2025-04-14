@@ -3655,73 +3655,73 @@ struct OrtApi {
    *      name. E.g., given backend type "htp", on Windows, the backend path would be "QnnHtp.dll", and on other
    *      platforms, it would be "libQnnHtp.so". Mutually exclusive with "backend_path".
    *      Available options:
-   *      - "cpu"
-   *      - "gpu"
-   *      - "htp": Default.
-   *      - "saver"
+   *      -# "cpu"
+   *      -# "gpu"
+   *      -# "htp": Default.
+   *      -# "saver"
    *   "backend_path": File path to QNN backend library. Mutually exclusive with "backend_type".
    *   "profiling_level": QNN profiling level.
    *      Available options:
-   *      - "off": Default.
-   *      - "basic"
-   *      - "detailed"
+   *      -# "off": Default.
+   *      -# "basic"
+   *      -# "detailed"
    *   "profiling_file_path": QNN profiling file path if ETW not enabled.
    *   "rpc_control_latency": QNN RPC control latency.
    *   "vtcm_mb": QNN VTCM size in MB. default to 0(not set).
    *   "htp_performance_mode": QNN performance mode.
    *      Available options:
-   *      - "burst"
-   *      - "balanced"
-   *      - "default": Default.
-   *      - "high_performance"
-   *      - "high_power_saver"
-   *      - "low_balanced"
-   *      - "extreme_power_saver"
-   *      - "low_power_saver"
-   *      - "power_saver"
-   *      - "sustained_high_performance"
+   *      -# "burst"
+   *      -# "balanced"
+   *      -# "default": Default.
+   *      -# "high_performance"
+   *      -# "high_power_saver"
+   *      -# "low_balanced"
+   *      -# "extreme_power_saver"
+   *      -# "low_power_saver"
+   *      -# "power_saver"
+   *      -# "sustained_high_performance"
    *   "qnn_saver_path": File path to the QNN Saver backend library. If specified, QNN Saver will be enabled and will
    *      dump QNN API calls to disk for replay/debugging. QNN Saver produces incorrect model inference results and
    *      may alter model/EP partitioning. Use only for debugging.
    *   "qnn_context_priority": QNN context priority.
    *      Available options:
-   *      - "low"
-   *      - "normal": Default.
-   *      - "normal_high"
-   *      - "high"
+   *      -# "low"
+   *      -# "normal": Default.
+   *      -# "normal_high"
+   *      -# "high"
    *   "htp_graph_finalization_optimization_mode": Set the optimization mode for graph finalization on the HTP backend.
    *      Available options:
-   *      - "0": Default.
-   *      - "1": Faster preparation time, less optimal graph.
-   *      - "2": Longer preparation time, more optimal graph.
-   *      - "3": Longest preparation time, most likely even more optimal graph. See QNN SDK documentation for specific
+   *      -# "0": Default.
+   *      -# "1": Faster preparation time, less optimal graph.
+   *      -# "2": Longer preparation time, more optimal graph.
+   *      -# "3": Longest preparation time, most likely even more optimal graph. See QNN SDK documentation for specific
    *        details.
    *   "soc_model": The SoC model number. Refer to the QNN SDK documentation for valid values.
    *      Defaults to "0" (unknown).
    *   "htp_arch": The minimum HTP architecture the driver will use to select compatible QNN operators.
    *      Available options:
-   *      - "0": Default (none).
-   *      - "68"
-   *      - "69"
-   *      - "73"
-   *      - "75"
+   *      -# "0": Default (none).
+   *      -# "68"
+   *      -# "69"
+   *      -# "73"
+   *      -# "75"
    *   "device_id": The ID of the device to use when setting 'htp_arch'. Defaults to "0" (for single device).
    *   "enable_htp_fp16_precision": Used for float32 model for HTP backend.
    *      Enable the float32 model to be inferenced with fp16 precision. Otherwise, it will be fp32 precision.
-   *     - "0": With fp32 precision.
-   *     - "1": Default. With fp16 precision.
+   *      -# "0": With fp32 precision.
+   *      -# "1": Default. With fp16 precision.
    *   "offload_graph_io_quantization": Offload graph input quantization and graph output dequantization to another
    *      execution provider (typically CPU EP).
-   *      - "0": Disabled. QNN EP will handle quantization and dequantization of graph I/O.
-   *      - "1": Enabled. This is the default value.
+   *      -# "0": Disabled. QNN EP will handle quantization and dequantization of graph I/O.
+   *      -# "1": Enabled. This is the default value.
    *   "enable_htp_spill_fill_buffer": Enable HTP spill fill buffer setting. The flag is used while generating context
    *      binary.
-   *      - "0": Default. Disabled.
-   *      - "1": Enabled.
+   *      -# "0": Default. Disabled.
+   *      -# "1": Enabled.
    *   "enable_htp_shared_memory_allocator": Enable the QNN HTP shared memory allocator. Requires libcdsprpc.so/dll to
    *      be available.
-   *      - "0": Default. Disabled.
-   *      - "1": Enabled.
+   *      -# "0": Default. Disabled.
+   *      -# "1": Enabled.
    *   "dump_json_qnn_graph": Set to "1" to dump QNN graphs generated by QNN EP as JSON files. Each graph partition
    *      assigned to QNN EP is dumped to a separate file.
    *   "json_qnn_graph_dir": Directory in which to dump QNN JSON graphs. If not specified, QNN graphs are dumped in the
