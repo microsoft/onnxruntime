@@ -76,6 +76,9 @@ void printPerformanceCounts(const std::vector<OVProfilingInfo>& performanceMap,
 
 void printPerformanceCounts(OVInferRequestPtr request, std::ostream& stream, std::string deviceName);
 
+// Returns the location string from the first external initializer nodes found or nullopt if none found
+std::optional<std::string> GetExternalWeightFilename(const GraphViewer& graph);
+
 }  // namespace backend_utils
 }  // namespace openvino_ep
 }  // namespace onnxruntime
