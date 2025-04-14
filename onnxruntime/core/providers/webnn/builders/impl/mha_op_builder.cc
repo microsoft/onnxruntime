@@ -89,7 +89,7 @@ Status MultiHeadAttentionOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_bu
   const auto q_rank = input_q_shape.size();
   if (q_rank == 3) {  // Query with shape (batch_size, sequence_length, hidden_size)
     hidden_size = SafeInt<uint32_t>(input_q_shape[2]);
-    head_size = SafeInt<uint32_t>(hidden_size / num_heads);
+    head_size = hidden_size / num_heads;
     key_input = model_builder.GetOperand(input_defs[1]->Name());
     if (input_query_type == ONNX_NAMESPACE::TensorProto_DataType_FLOAT16) {
       common_options.set("label", node.Name() + "_/MHA/preprocess/cast/key_input");
@@ -106,7 +106,8 @@ Status MultiHeadAttentionOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_bu
       v_reshape_skip = false;
       split_options.set("axis", 3);
       split_options.set("label", node.Name() + "_/MHA/key/split");
-      emscripten::val output_array = model_builder.GetBuilder().call<emscripten::val>("split", key_input, 2, split_options);
+      emscripten::val output_array =
+          model_builder.GetBuilder().call<emscripten::val>("split", key_input, 2, split_options);
       key_input = output_array[0];
       value_input = output_array[1];
     } else {
@@ -135,12 +136,13 @@ Status MultiHeadAttentionOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_bu
   } else {  // packed QKV with shape (batch_size, kv_sequence_length, num_heads, 3, head_size)
     kv_sequence_length = SafeInt<uint32_t>(input_q_shape[2]);
     head_size = SafeInt<uint32_t>(input_q_shape[4]);
-    hidden_size = SafeInt<uint32_t>(num_heads * head_size);
+    hidden_size = num_heads * head_size;
     k_reshape_skip = false;
     v_reshape_skip = false;
     split_options.set("axis", 3);
     split_options.set("label", node.Name() + "_/MHA/query/split");
-    emscripten::val output_array = model_builder.GetBuilder().call<emscripten::val>("split", query_input, 3, split_options);
+    emscripten::val output_array =
+        model_builder.GetBuilder().call<emscripten::val>("split", query_input, 3, split_options);
     query_input = output_array[0];
     key_input = output_array[1];
     value_input = output_array[2];
@@ -172,7 +174,8 @@ Status MultiHeadAttentionOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_bu
 
   transpose_options.set("permutation", emscripten::val::array(std::vector<uint32_t>({0, 2, 1, 3})));
   transpose_options.set("label", node.Name() + "_/MHA/query/transpose");
-  emscripten::val new_query = model_builder.GetBuilder().call<emscripten::val>("transpose", reshaped_query, transpose_options);
+  emscripten::val new_query =
+      model_builder.GetBuilder().call<emscripten::val>("transpose", reshaped_query, transpose_options);
 
   emscripten::val present_key, present_value;
   if (!k_reshape_skip) {
@@ -203,7 +206,8 @@ Status MultiHeadAttentionOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_bu
 
   transpose_options.set("permutation", emscripten::val::array(std::vector<uint32_t>({0, 1, 3, 2})));
   transpose_options.set("label", node.Name() + "_/MHA/key/transpose");
-  emscripten::val new_key = model_builder.GetBuilder().call<emscripten::val>("transpose", present_key, transpose_options);
+  emscripten::val new_key =
+      model_builder.GetBuilder().call<emscripten::val>("transpose", present_key, transpose_options);
 
   if (!v_reshape_skip) {
     common_options.set("label", node.Name() + "_/MHA/value/reshape_1");
@@ -293,18 +297,13 @@ bool MultiHeadAttentionOpBuilder::HasSupportedInputsImpl(const GraphViewer&, con
   const auto& input_defs = node.InputDefs();
   const auto& op_type = node.OpType();
 
-  if (TensorExists(input_defs, 3) || TensorExists(input_defs, 4) || TensorExists(input_defs, 8) ||
-      TensorExists(input_defs, 9)) {
-    LOGS(logger, VERBOSE)
-        << op_type << " does not support inputs bias, key_padding_mask, past_sequence_length, and cache_indirection.";
-    return false;
-  }
-
   std::vector<int32_t> input_types;
   for (int i = 0; i < 10; i++) {
     if (i == 3 || i == 4 || i == 8 || i == 9) {
       if (TensorExists(input_defs, i)) {
-        LOGS(logger, VERBOSE) << op_type << " does not support input " << i;
+        LOGS(logger, VERBOSE)
+            << op_type << " does not support input " << i
+            << ", as it does not support inputs bias, key_padding_mask, past_sequence_length, or cache_indirection.";
         return false;
       }
     } else {
