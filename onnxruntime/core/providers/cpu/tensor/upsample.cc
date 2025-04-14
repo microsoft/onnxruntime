@@ -1336,7 +1336,7 @@ Status Upsample<T>::BaseCompute(OpKernelContext* context,
       const bool upscaling = height_scale >= 1.0f && width_scale >= 1.0f;
 
       // Antialiasing has no effect during image upsampling, so the antialiasing logic can be reused as-is.
-      // TODO: Benchmark whether is_nchw with upscaling should use ResizeBiCubicAntiAlias or ResizeBiCubic.
+      // TODO(yilyu): Benchmark whether is_nchw with upscaling should use ResizeBiCubicAntiAlias or ResizeBiCubic.
       if (antialias_ || (!is_nchw && upscaling)) {
         if (!is_nchw) {
           NhwcResizeBiCubicAntiAlias(batch_size, num_channels, input_height, input_width, output_height, output_width,
