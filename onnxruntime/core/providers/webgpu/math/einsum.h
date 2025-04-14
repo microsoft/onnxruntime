@@ -3,9 +3,9 @@
 
 #pragma once
 
-#include "core/providers/webgpu/webgpu_kernel.h"
-#include "core/providers/webgpu/shader_helper.h"
 #include "core/providers/webgpu/program.h"
+#include "core/providers/webgpu/shader_helper.h"
+#include "core/providers/webgpu/webgpu_kernel.h"
 
 namespace onnxruntime {
 namespace webgpu {
@@ -32,20 +32,20 @@ class EinsumEquation {
   bool has_ellipsis_{false};
   std::vector<int64_t> ellipsis_dims_;
   void AddSymbol(const std::string& symbol, int dim_value, int input_index);
-  EinsumTerm ProcessTerm(const std::string& term, bool is_input, gsl::span<const int64_t> dims, int index = -1);
+  EinsumTerm ProcessTerm(const std::string& term,
+                         bool is_input,
+                         gsl::span<const int64_t> dims,
+                         int index = -1);
 };
 
 class EinsumProgram final : public Program<EinsumProgram> {
  public:
   EinsumProgram(int input_count, const EinsumEquation& parsed_equation)
-      : Program{"Einsum"},
-        input_count_(input_count),
-        parsed_equation_{parsed_equation} {}
+      : Program{"Einsum"}, input_count_(input_count), parsed_equation_{parsed_equation} {}
 
   Status GenerateShaderCode(ShaderHelper& sh) const override;
 
-  WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES(
-      {"output_size", ProgramUniformVariableDataType::Uint32});
+  WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES({"output_size", ProgramUniformVariableDataType::Uint32});
 
  private:
   int input_count_;
