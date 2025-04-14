@@ -130,7 +130,7 @@ TEST(InstanceNormalizationOpTest, InstanceNormBatch2) {
 }
 
 // Only CUDA and ROCm kernels have float 16 support
-#if defined(USE_CUDA) || defined(USE_ROCM) || defined(USE_COREML)
+#if defined(USE_CUDA) || defined(USE_ROCM) || defined(USE_COREML) || defined(USE_WEBGPU)
 
 TEST(InstanceNormalizationOpTest, InstanceNormBatch1_fp16) {
   OpTester test("InstanceNormalization");
@@ -167,7 +167,9 @@ TEST(InstanceNormalizationOpTest, InstanceNormBatch1_fp16) {
   test.AddInput<MLFloat16>("scale", {3}, scale_fp16);
   test.AddInput<MLFloat16>("B", {3}, B_fp16);
   test.AddOutput<MLFloat16>("Y", input_dims, expected_output_fp16);
-
+#ifdef USE_WEBGPU
+  test.SetOutputTolerance(0.005F, 0.005F);
+#endif
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
 }
 
@@ -214,7 +216,9 @@ TEST(InstanceNormalizationOpTest, InstanceNormBatch2_fp16) {
   test.AddInput<MLFloat16>("scale", {3}, scale_fp16);
   test.AddInput<MLFloat16>("B", {3}, B_fp16);
   test.AddOutput<MLFloat16>("Y", input_dims, expected_output_fp16);
-
+  #ifdef USE_WEBGPU
+  test.SetOutputTolerance(0.005F, 0.005F);
+#endif
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
 }
 
