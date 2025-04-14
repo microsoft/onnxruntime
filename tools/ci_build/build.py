@@ -1893,8 +1893,8 @@ def build_nuget_package(
     use_qnn,
     use_dml,
     enable_training_apis,
-    msbuild_extra_options, # Expected to be a list of strings like ["key1=value1", "key2=value2"]
-    is_nightly_build: bool = False, # Added parameter
+    is_nightly_build,
+    msbuild_extra_options,
 ):
     msbuild_extra_options = msbuild_extra_options or []
 
@@ -1907,15 +1907,13 @@ def build_nuget_package(
     sln = "OnnxRuntime.DesktopOnly.CSharp.sln"
     have_exclude_mobile_targets_option = "IncludeMobileTargets=false" in msbuild_extra_options
 
-    # --- Derive package name and execution provider based on the build args ---
     target_name = "/t:CreatePackage"
     execution_provider = "/p:ExecutionProvider=None"
     package_name = "/p:OrtPackageId=Microsoft.ML.OnnxRuntime"
-    # enable_training_tests seems test related, removing from build logic
-    # enable_training_tests = "/p:TrainingEnabledNativeBuild=false"
+    enable_training_tests = "/p:TrainingEnabledNativeBuild=false"
 
     if enable_training_apis:
-        # enable_training_tests = "/p:TrainingEnabledNativeBuild=true"
+        enable_training_tests = "/p:TrainingEnabledNativeBuild=true"
         if use_cuda:
             package_name = "/p:OrtPackageId=Microsoft.ML.OnnxRuntime.Training.Gpu"
         else:
@@ -1923,7 +1921,6 @@ def build_nuget_package(
     elif use_winml:
         package_name = "/p:OrtPackageId=Microsoft.AI.MachineLearning"
         target_name = "/t:CreateWindowsAIPackage"
-    # ... (rest of package/EP determination logic - same as before) ...
     elif use_openvino:
         execution_provider = "/p:ExecutionProvider=openvino"
         package_name = "/p:OrtPackageId=Intel.ML.OnnxRuntime.OpenVino"
@@ -1949,7 +1946,6 @@ def build_nuget_package(
     else:
         if is_windows() and have_exclude_mobile_targets_option is False:
             sln = "OnnxRuntime.CSharp.sln"
-    # --- End Original logic ---
 
     if sln != "OnnxRuntime.CSharp.sln" and have_exclude_mobile_targets_option is False:
         msbuild_extra_options.append("IncludeMobileTargets=false")
@@ -1980,9 +1976,8 @@ def build_nuget_package(
             cmd_args_build_sln += [
                 "msbuild",
                 sln,
-                # package_name, # Incorrect arg from original
                 ort_build_dir,
-                # enable_training_tests, # Incorrect arg from original
+                enable_training_tests,
                 *current_config_msbuild_options,
             ]
             run_subprocess(cmd_args_build_sln, cwd=csharp_build_dir)
@@ -1997,9 +1992,10 @@ def build_nuget_package(
                 "dotnet",
                 "msbuild",
                 winml_interop_project,
+                package_name,
                 ort_build_dir,
-                "-restore", # Keep restore for safety, though SLN restore might cover it
-                *current_config_msbuild_options, # Pass config/platform/etc.
+                "-restore"
+                *current_config_msbuild_options, 
             ]
             run_subprocess(cmd_args_winml_interop, cwd=csharp_build_dir)
 
