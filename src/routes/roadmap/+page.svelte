@@ -2,7 +2,7 @@
 	let description =
 		'ONNX Runtime Release Roadmap - find the latest release information for ONNX Runtime.';
 	let keywords =
-		'onnx runtime, onnx runtime roadmap, onnx runtime release, onnx runtime 1.20, onnx runtime 1.21, onnx runtime 1.20.1';
+		'onnx runtime, onnx runtime roadmap, onnx runtime release, onnx runtime 1.21, onnx runtime 1.22, onnx runtime 1.23';
 </script>
 
 <svelte:head>
@@ -24,6 +24,8 @@
 	</p>
 	<div class="flex justify-center my-4">
 		<div class="stats stats-vertical md:stats-horizontal shadow rounded-sm">
+
+
 			<div class="stat">
 				<div class="stat-figure">
 					<svg
@@ -40,10 +42,9 @@
 					>
 				</div>
 				<div class="stat-title">Previous release</div>
-				<div class="stat-value text-success">1.20.0</div>
-				<div class="stat-desc">Release date: 11/1/2024</div>
+				<div class="stat-value text-success">1.21.0</div>
+				<div class="stat-desc">Release date: Feb 2025</div>
 			</div>
-
 			<div class="stat">
 				<div class="stat-figure text-secondary">
 					<svg
@@ -61,11 +62,10 @@
 						/></svg
 					>
 				</div>
-				<div class="font-bold underline">In-Progress Release</div>
-				<div class="stat-value text-warning">1.20.1</div>
-				<div class="stat-desc">Release date: 11/20/2024</div>
+				<div class="font-bold underline">Current Release</div>
+				<div class="stat-value text-warning">1.22.0</div>
+				<div class="stat-desc">Release date: May 2025</div>
 			</div>
-
 			<div class="stat">
 				<div class="stat-figure text-primary">
 					<svg
@@ -85,8 +85,8 @@
 					</svg>
 				</div>
 				<div class="stat-title">Next release</div>
-				<div class="stat-value text-primary">1.21</div>
-				<div class="stat-desc">Release date: Feb. 2025</div>
+				<div class="stat-value text-primary">1.23</div>
+				<div class="stat-desc">Release date: Aug 2025</div>
 			</div>
 		</div>
 	</div>
@@ -94,44 +94,17 @@
 	<h2 class="text-xl font-bold mt-2">Announcements</h2>
 	<ul class="list-disc ml-8">
 		<li>
-			<strong>The onnxruntime-gpu v1.10.0 will be removed from PyPI.</strong> We have hit our PyPI project
-			size limit for onnxruntime-gpu, so we will be removing our oldest package version to free up the
-			necessary space.
-		</li>
-		<li>
-			<strong>ONNX Runtime v1.20.0 is now officially released.</strong> For release notes, assets,
-			and more, visit our
-			<a
-				href="https://github.com/microsoft/onnxruntime/releases/tag/v1.20.0"
-				class="text-blue-600 underline">GitHub Releases page</a
-			>.
+			There will be <strong>breaking</strong> API changes in this release. We'll keep you posted!
 		</li>
 	</ul>
 
-	<h2 class="text-xl font-bold mt-2">Versioning Updates</h2>
+	<h2 class="text-xl font-bold mt-2">Major Updates in 1.22</h2>
 	<p class="font-thin">
-		We are planning to upgrade ONNX Runtime support for the following (where the first value is the
-		highest version previously supported and the second value is the version support that will be
-		added in ORT 1.20.1):
+		The current release (1.22.0) includes the following key features and updates:
 	</p>
 	<ul class="list-disc ml-8">
-		<li>QNN SDK 2.27 --> 2.28</li>
-		<li>DirectML 1.15.2 --> 1.16</li>
-		<li>ONNX 1.17 support will be included in a future release.</li>
-	</ul>
-
-	<h2 class="text-xl font-bold mt-2">Major Updates</h2>
-	<p class="font-thin">
-		In addition to various bug fixes and performance improvements, ORT 1.20.1 will include the
-		following updates:
-	</p>
-	<ul class="list-disc ml-8">
-		<li>
-			CPU FP16 implementation fixes for the following kernels: LayerNormalization,
-			SimplifiedLayerNormalization, SkipLayerNormalization, SkipSimplifiedLayerNormalization.
-		</li>
-		<li>Python quantization tool updates.</li>
-		<li>New QNN SDK version support.</li>
+		<li><strong>ORT API changes</strong> - Improved API interface for better usability</li>
+		<li><strong>New WebGPU Execution Provider</strong> - Enhanced support for web-based ML workloads</li>
 	</ul>
 
 	<h2 class="text-xl font-bold mt-2">Feature Requests</h2>
@@ -163,154 +136,203 @@
 		<em>Note: All timelines and features listed on this page are subject to change.</em>
 	</p>
 	<div class="divider" />
-	<h2 class="text-xl font-bold mt-2">ONNX Runtime 1.20.1</h2>
+	<h2 class="text-xl font-bold mt-2">ONNX Runtime 1.21</h2>
 	<p class="font-thin">
-		<strong>Tentative release date:</strong> 11/20/2024
+		<strong>Release date:</strong> February 2025
 	</p>
 
 	<div class="join join-vertical w-full p-2">
 		<!-- Announcements Section -->
 		<div class="collapse collapse-arrow join-item border-base-300 border">
-			<input type="checkbox" name="announcements" />
+			<input type="checkbox" name="announcements-1.21" />
 			<div class="collapse-title text-xl font-bold">Announcements</div>
 			<div class="collapse-content">
+				<p class="font-thin">No large announcements of note this release! We've made a lot of small refinements to streamline your ONNX Runtime experience.</p>
+			</div>
+		</div>
+
+		<!-- GenAI & Advanced Model Features -->
+		<div class="collapse collapse-arrow join-item border-base-300 border">
+			<input type="checkbox" name="genai-1.21" />
+			<div class="collapse-title text-xl font-bold">GenAI & Advanced Model Features</div>
+			<div class="collapse-content">
+				<h3 class="text-lg font-semibold">Enhanced Decoding & Pipeline Support</h3>
 				<ul class="list-disc ml-8">
-					<li>
-						<strong>The onnxruntime-gpu v1.10.0 will be removed from PyPI.</strong> We have hit our PyPI
-						project size limit for onnxruntime-gpu, so we will be removing our oldest package version
-						to free up the necessary space.
-					</li>
+					<li>Added "chat mode" support for CPU, GPU, and WebGPU.</li>
+					<li>Provided support for decoder model pipelines.</li>
+					<li>Added support for Java API for MultiLoRA.</li>
+				</ul>
+				<h3 class="text-lg font-semibold">API & Compatibility Updates</h3>
+				<ul class="list-disc ml-8">
+					<li>Chat mode introduced breaking changes in the API (see migration guide).</li>
+				</ul>
+				<h3 class="text-lg font-semibold">Bug Fixes for Model Output</h3>
+				<ul class="list-disc ml-8">
+					<li>Fixed Phi series garbage output issues with long prompts.</li>
+					<li>Resolved gibberish issues with top_k on CPU.</li>
 				</ul>
 			</div>
 		</div>
 
-		<!-- Build System & Packages Section -->
+		<!-- Core & Execution Optimizations -->
 		<div class="collapse collapse-arrow join-item border-base-300 border">
-			<input type="checkbox" name="build" />
-			<div class="collapse-title text-xl font-bold">Build System & Packages</div>
-			<div class="collapse-content">
-				<p class="font-thin">No features planned for 1.20.1. Stay tuned for 1.21 features.</p>
-			</div>
-		</div>
-
-		<!-- Core Section -->
-		<div class="collapse collapse-arrow join-item border-base-300 border">
-			<input type="checkbox" name="core" />
-			<div class="collapse-title text-xl font-bold">Core</div>
-			<div class="collapse-content">
-				<p class="font-thin">No features planned for 1.20.1. Stay tuned for 1.21 features.</p>
-			</div>
-		</div>
-
-		<!-- Performance Section -->
-		<div class="collapse collapse-arrow join-item border-base-300 border">
-			<input type="checkbox" name="performance" />
-			<div class="collapse-title text-xl font-bold">Performance</div>
-			<div class="collapse-content">
-				<p class="font-thin">No features planned for 1.20.1. Stay tuned for 1.21 features.</p>
-			</div>
-		</div>
-
-		<!-- Quantization Section -->
-		<div class="collapse collapse-arrow join-item border-base-300 border">
-			<input type="checkbox" name="quantization" />
-			<div class="collapse-title text-xl font-bold">Quantization</div>
+			<input type="checkbox" name="core-1.21" />
+			<div class="collapse-title text-xl font-bold">Core Refinements</div>
 			<div class="collapse-content">
 				<ul class="list-disc ml-8">
-					<li>
-						Introduce get_int_qdq_config() helper to get QDQ configurations (<a
-							href="https://github.com/microsoft/onnxruntime/pull/22677"
-							class="text-blue-600 underline">#22677</a
-						>).
-					</li>
-					<li>
-						Update QDQ Pad, Slice, Softmax (<a
-							href="https://github.com/microsoft/onnxruntime/pull/22676"
-							class="text-blue-600 underline">#22676</a
-						>).
-					</li>
-					<li>
-						Handle input models with pre-quantized weights (<a
-							href="https://github.com/microsoft/onnxruntime/pull/22633"
-							class="text-blue-600 underline">#22633</a
-						>).
-					</li>
-					<li>
-						Prevent int32 quantized bias from clipping by adjusting the weight's scale (<a
-							href="https://github.com/microsoft/onnxruntime/pull/22020"
-							class="text-blue-600 underline">#22020</a
-						>).
-					</li>
+					<li>Reduced default logger usage for improved efficiency (<a href="https://github.com/microsoft/onnxruntime/pull/23030" class="text-blue-600 underline">#23030</a>).</li>
+					<li>Fixed a visibility issue in threadpool (<a href="https://github.com/microsoft/onnxruntime/pull/23098" class="text-blue-600 underline">#23098</a>).</li>
 				</ul>
 			</div>
 		</div>
 
-		<!-- EPs Section -->
+		<!-- Execution Providers Section -->
 		<div class="collapse collapse-arrow join-item border-base-300 border">
-			<input type="checkbox" name="eps" />
-			<div class="collapse-title text-xl font-bold">EPs</div>
+			<input type="checkbox" name="eps-1.21" />
+			<div class="collapse-title text-xl font-bold">Execution Provider (EP) Updates</div>
 			<div class="collapse-content">
-				<h3 class="text-lg font-semibold">CPU</h3>
+				<h3 class="text-lg font-semibold">General</h3>
 				<ul class="list-disc ml-8">
-					<li>
-						Fix CPU FP16 implementations for the following kernels: LayerNormalization,
-						SimplifiedLayerNormalization, SkipLayerNormalization, SkipSimplifiedLayerNormalization.
+					<li>Removed TVM EP from the source tree (<a href="https://github.com/microsoft/onnxruntime/pull/22827" class="text-blue-600 underline">#22827</a>).</li>
+					<li>Marked NNAPI EP for deprecation (following Google's deprecation of NNAPI).</li>
+					<li>Fixed a DLL delay loading issue that impacts WebGPU EP and DirectML EP's usability on Windows (<a href="https://github.com/microsoft/onnxruntime/pull/23111" class="text-blue-600 underline">#23111</a>, <a href="https://github.com/microsoft/onnxruntime/pull/23227" class="text-blue-600 underline">#23227</a>)</li>
+				</ul>
+				
+				<h3 class="text-lg font-semibold">TensorRT EP</h3>
+				<ul class="list-disc ml-8">
+					<li>Added support for TensorRT 10.8.</li>
+					<li>onnx-tensorrt open-source parser user: please check documentation for requirements.</li>
+					<li>Assigned DDS ops (NMS, RoiAlign, NonZero) to TensorRT by default.</li>
+					<li>Introduced option trt_op_types_to_exclude to exclude specific ops from TensorRT assignment.</li>
+				</ul>
+				
+				<h3 class="text-lg font-semibold">CUDA EP</h3>
+				<ul class="list-disc ml-8">
+					<li>Added a python API preload_dlls to coexist with PyTorch.</li>
+					<li>Miscellaneous enhancements for Flux model inference.</li>
+				</ul>
+				
+				<h3 class="text-lg font-semibold">QNN EP</h3>
+				<ul class="list-disc ml-8">
+					<li>Introduced QNN shared memory support.</li>
+					<li>Improved performance for AI Hub models.</li>
+					<li>Added support for QAIRT/QNN SDK 2.31.</li>
+					<li>Added Python 3.13 package.</li>
+					<li>QNN EP is now built as a shared library/DLL by default. To retain previous build behavior, use build option --use_qnn static_lib.</li>
+				</ul>
+				
+				<h3 class="text-lg font-semibold">DirectML EP</h3>
+				<ul class="list-disc ml-8">
+					<li>Updated DirectML version from 1.15.2 to 1.15.4 (<a href="https://github.com/microsoft/onnxruntime/pull/22635" class="text-blue-600 underline">#22635</a>).</li>
+				</ul>
+				
+				<h3 class="text-lg font-semibold">OpenVINO EP</h3>
+				<ul class="list-disc ml-8">
+					<li>Introduced OpenVINO EP Weights Sharing feature.</li>
+					<li>Added support for various contrib Ops in OVEP:
+						<ul class="list-disc ml-8">
+							<li>SkipLayerNormalization, MatMulNBits, FusedGemm, FusedConv, EmbedLayerNormalization, BiasGelu, Attention, DynamicQuantizeMatMul, FusedMatMul, QuickGelu, SkipSimplifiedLayerNormalization</li>
+						</ul>
 					</li>
 				</ul>
-				<h3 class="text-lg font-semibold">QNN</h3>
+				
+				<h3 class="text-lg font-semibold">VitisAI EP</h3>
 				<ul class="list-disc ml-8">
-					<li>QNN SDK 2.28.x support.</li>
-				</ul>
-				<h3 class="text-lg font-semibold">DirectML</h3>
-				<ul class="list-disc ml-8">
-					<li>DirectML 1.16 support.</li>
+					<li>Miscellaneous bug fixes and improvements.</li>
 				</ul>
 			</div>
 		</div>
 
-		<!-- Mobile Section -->
+		<!-- Mobile Platform Enhancements -->
 		<div class="collapse collapse-arrow join-item border-base-300 border">
-			<input type="checkbox" name="mobile" />
-			<div class="collapse-title text-xl font-bold">Mobile</div>
+			<input type="checkbox" name="mobile-1.21" />
+			<div class="collapse-title text-xl font-bold">Mobile Platform Enhancements</div>
 			<div class="collapse-content">
-				<p class="font-thin">No features planned for 1.20.1. Stay tuned for 1.21 features.</p>
+				<h3 class="text-lg font-semibold">CoreML Updates</h3>
+				<ul class="list-disc ml-8">
+					<li>Added support for caching generated CoreML models.</li>
+				</ul>
 			</div>
 		</div>
 
-		<!-- Web Section -->
+		<!-- Extensions & Tokenizer -->
 		<div class="collapse collapse-arrow join-item border-base-300 border">
-			<input type="checkbox" name="web" />
+			<input type="checkbox" name="extensions-1.21" />
+			<div class="collapse-title text-xl font-bold">Extensions & Tokenizer Improvements</div>
+			<div class="collapse-content">
+				<h3 class="text-lg font-semibold">Expanded Tokenizer Support</h3>
+				<ul class="list-disc ml-8">
+					<li>Now supports more tokenizer models, including ChatGLM, Baichuan2, Phi-4, etc.</li>
+					<li>Added full Phi-4 pre/post-processing support for text, vision, and audio.</li>
+					<li>Introduced RegEx pattern loading from tokenizer.json.</li>
+				</ul>
+				
+				<h3 class="text-lg font-semibold">Image Codec Enhancements</h3>
+				<ul class="list-disc ml-8">
+					<li>ImageCodec now links to native APIs if available; otherwise, falls back to built-in libraries.</li>
+				</ul>
+				
+				<h3 class="text-lg font-semibold">Unified Tokenizer API</h3>
+				<ul class="list-disc ml-8">
+					<li>Introduced a new tokenizer op schema to unify the tokenizer codebase.</li>
+					<li>Added support for loading tokenizer data from a memory blob in the C API.</li>
+				</ul>
+			</div>
+		</div>
+
+		<!-- Infrastructure & Build -->
+		<div class="collapse collapse-arrow join-item border-base-300 border">
+			<input type="checkbox" name="build-1.21" />
+			<div class="collapse-title text-xl font-bold">Infrastructure & Build Improvements</div>
+			<div class="collapse-content">
+				<h3 class="text-lg font-semibold">CMake File Changes</h3>
+				<ul class="list-disc ml-8">
+					<li>CMake Version: Increased the minimum required CMake version from 3.26 to 3.28. Added support for CMake 4.0.</li>
+					<li>Python Version: Increased the minimum required Python version from 3.8 to 3.10 for building ONNX Runtime from source.</li>
+					<li>Improved VCPKG support</li>
+					<li>Added options for WebGPU EP:
+						<ul class="list-disc ml-8">
+							<li>onnxruntime_USE_EXTERNAL_DAWN</li>
+							<li>onnxruntime_CUSTOM_DAWN_SRC_PATH</li>
+							<li>onnxruntime_BUILD_DAWN_MONOLITHIC_LIBRARY</li>
+							<li>onnxruntime_ENABLE_PIX_FOR_WEBGPU_EP</li>
+							<li>onnxruntime_ENABLE_DAWN_BACKEND_VULKAN</li>
+							<li>onnxruntime_ENABLE_DAWN_BACKEND_D3D12</li>
+						</ul>
+					</li>
+					<li>Added cmake option onnxruntime_BUILD_QNN_EP_STATIC_LIB for building with QNN EP as a static library.</li>
+					<li>Removed cmake option onnxruntime_USE_PREINSTALLED_EIGEN.</li>
+					<li>Fixed a build issue with Visual Studio 2022 17.3 (<a href="https://github.com/microsoft/onnxruntime/pull/23911" class="text-blue-600 underline">#23911</a>)</li>
+				</ul>
+				
+				<h3 class="text-lg font-semibold">Modernized Build Tools</h3>
+				<ul class="list-disc ml-8">
+					<li>Now using VCPKG for most package builds.</li>
+					<li>Upgraded Gradle from 7.x to 8.x.</li>
+					<li>Updated JDK from 11 to 17.</li>
+					<li>Enabled onnxruntime_USE_CUDA_NHWC_OPS by default for CUDA builds.</li>
+					<li>Added support for WASM64 (build from source; no package published).</li>
+				</ul>
+				
+				<h3 class="text-lg font-semibold">Dependency Cleanup</h3>
+				<ul class="list-disc ml-8">
+					<li>Removed Google's nsync from dependencies.</li>
+				</ul>
+				
+				<h3 class="text-lg font-semibold">Others</h3>
+				<ul class="list-disc ml-8">
+					<li>Updated Node.js installation script to support network proxy usage (<a href="https://github.com/microsoft/onnxruntime/pull/23231" class="text-blue-600 underline">#23231</a>)</li>
+				</ul>
+			</div>
+		</div>
+
+		<!-- Web -->
+		<div class="collapse collapse-arrow join-item border-base-300 border">
+			<input type="checkbox" name="web-1.21" />
 			<div class="collapse-title text-xl font-bold">Web</div>
 			<div class="collapse-content">
-				<p class="font-thin">No features planned for 1.20.1. Stay tuned for 1.21 features.</p>
-			</div>
-		</div>
-
-		<!-- generate() API Section -->
-		<div class="collapse collapse-arrow join-item border-base-300 border">
-			<input type="checkbox" name="generate" />
-			<div class="collapse-title text-xl font-bold">generate() API</div>
-			<div class="collapse-content">
-				<p class="font-thin">No features planned for 1.20.1. Stay tuned for 1.21 features.</p>
-			</div>
-		</div>
-
-		<!-- Extensions Section -->
-		<div class="collapse collapse-arrow join-item border-base-300 border">
-			<input type="checkbox" name="extensions" />
-			<div class="collapse-title text-xl font-bold">Extensions</div>
-			<div class="collapse-content">
-				<p class="font-thin">No features planned for 1.20.1. Stay tuned for 1.21 features.</p>
-			</div>
-		</div>
-
-		<!-- Olive Section -->
-		<div class="collapse collapse-arrow join-item border-base-300 border">
-			<input type="checkbox" name="olive" />
-			<div class="collapse-title text-xl font-bold">Olive</div>
-			<div class="collapse-content">
-				<p class="font-thin">No features planned for 1.20.1. Stay tuned for 1.21 features.</p>
+				<p class="font-thin">No updates of note.</p>
 			</div>
 		</div>
 	</div>
-</div>
+</div> <!-- Closing the main container div -->
