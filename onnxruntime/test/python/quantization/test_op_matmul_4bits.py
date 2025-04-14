@@ -390,3 +390,4 @@ class TestOpMatMul4Bits(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+    # TODO(fajin): add 8bit quantization test after enabling kenrels
