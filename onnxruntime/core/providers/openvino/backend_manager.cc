@@ -83,22 +83,23 @@ BackendManager::BackendManager(SessionContext& session_context,
   }
   std::string device_type = session_context_.device_type;
 
-  auto& sw = shared_context_.shared_weights;
-  if (session_context_.so_share_ep_contexts) {
-    std::filesystem::path weight_filename = session_context_.onnx_model_path_name.parent_path();
-    if (sw.external_weight_filename.empty() && !sw.metadata.empty()) {
-      // Reasonable assumption that all metadata entries have the same external file location
-      sw.external_weight_filename = sw.metadata.begin()->second.location;
-    }
-    weight_filename /= sw.external_weight_filename;
-    std::ifstream weight_file(weight_filename);
+  // Check if model is using external weights
+  if (auto filename = backend_utils::GetExternalWeightFilename(subgraph)) {
+    std::filesystem::path weights_filepath = session_context_.onnx_model_path_name.parent_path() / filename.value();
 
-    if (weight_file) {
-      if (!sw.mapped_weights) {
-        sw.mapped_weights = std::make_unique<SharedContext::SharedWeights::WeightsFile>(weight_filename);
-      }
-      backend_utils::CreateOVTensors(session_context_.device_type, sw.metadata, *sw.mapped_weights);
+    // Initialize external weights with fully qualified path
+    if (!std::filesystem::exists(weights_filepath)) {
+      ORT_THROW("Error: Failed to locate weight file at ", weights_filepath.string());
     }
+
+    external_weights_.emplace(weights_filepath);
+  }
+
+  if (session_context_.so_share_ep_contexts) {
+    ORT_ENFORCE(external_weights_.has_value(), "Expected external weight object to be valid");
+    backend_utils::CreateOVTensors(session_context_.device_type,
+                                   shared_context_.shared_weights.metadata,
+                                   external_weights_.value());
   }
 
   if (ModelHasSymbolicInputDims(subgraph)) {

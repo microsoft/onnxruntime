@@ -4,6 +4,7 @@
 #include <sstream>
 #include <fstream>
 #include <utility>
+#include <string>
 
 #include <filesystem>
 #include <stdexcept>
@@ -20,22 +21,7 @@ using Exception = ov::Exception;
 namespace onnxruntime {
 namespace openvino_ep {
 
-SharedContext::SharedWeights::WeightsFile::WeightsFile(std::filesystem::path filename) : file_(filename, std::ios::in | std::ios::binary) {
-  try {
-    file_.exceptions(std::ifstream::failbit | std::ifstream::badbit);
-    weights_size_ = file_.seekg(0, std::ios::end).tellg();
-  } catch (std::ifstream::failure& e) {
-    ORT_THROW("Error: Failed to open weight file at ", filename.string(), " ", e.what());
-  }
-}
-
-void SharedContext::SharedWeights::WeightsFile::load_weights(size_t file_offset, void* data, size_t size) {
-  ORT_ENFORCE(file_offset < weights_size_ && size <= weights_size_ && (file_offset <= weights_size_ - size), "Error: File offset is out of bounds.");
-  file_.seekg(file_offset);
-  file_.read(reinterpret_cast<char*>(data), size);
-}
-
-std::ostream& operator<<(std::ostream& stream, const SharedContext::SharedWeights::Metadata::Map& metadata) {
+std::ostream& operator<<(std::ostream& stream, const Metadata::Map& metadata) {
   try {
     stream << metadata.size();
 
@@ -69,14 +55,14 @@ std::ostream& operator<<(std::ostream& stream, const SharedContext::SharedWeight
   return stream;
 }
 
-std::istream& operator>>(std::istream& stream, SharedContext::SharedWeights::Metadata::Map& metadata) {
+std::istream& operator>>(std::istream& stream, Metadata::Map& metadata) {
   size_t map_size{0};
   try {
     stream >> map_size;
 
     while (!stream.eof()) {
-      SharedContext::SharedWeights::Metadata::Key key;
-      SharedContext::SharedWeights::Metadata::Value value;
+      Metadata::Key key;
+      Metadata::Value value;
       stream >> key.name;
       stream >> value.location;
       stream >> value.data_offset;
@@ -399,8 +385,19 @@ ov::element::Type GetOpenVINOElementType(ONNX_NAMESPACE::TensorProto_DataType dt
 
 // Function to handle tensor creation from external data
 void CreateOVTensors(const std::string& device_name,
-                     SharedContext::SharedWeights::Metadata::Map& metadata_map,
-                     SharedContext::SharedWeights::WeightsFile& weights) {
+                     Metadata::Map& metadata_map,
+                     std::filesystem::path& weights_filepath) {
+  // File is guaranteed to exist at this point
+  std::ifstream file(weights_filepath, std::ios::in | std::ios::binary);
+  file.exceptions(std::ifstream::failbit | std::ifstream::badbit);
+  size_t weights_size = std::filesystem::file_size(weights_filepath);
+
+  const auto load_weights = [&file, weights_size](size_t file_offset, void* data, size_t size) {
+    ORT_ENFORCE(file_offset < weights_size && size <= weights_size && (file_offset <= weights_size - size), "Error: File offset is out of bounds.");
+    file.seekg(file_offset);
+    file.read(reinterpret_cast<char*>(data), size);
+  };
+
   for (auto& [key, value] : metadata_map) {
     if (value.tensor) continue;
 
@@ -416,18 +413,18 @@ void CreateOVTensors(const std::string& device_name,
       auto&& remote_tensor = npu_context.create_l0_host_tensor(ov_elementType, value.dimensions, ov::intel_npu::TensorType::INPUT);
 
       // Copy data to remote tensor
-      weights.load_weights(value.data_offset, remote_tensor.get(), value.size);
+      load_weights(value.data_offset, remote_tensor.get(), value.size);
       value.tensor = std::make_shared<ov::Tensor>(remote_tensor);
     } else {
       // Use vanilla tensors
       value.tensor = std::make_shared<ov::Tensor>(ov_elementType, value.dimensions);
-      weights.load_weights(value.data_offset, value.tensor->data(), value.size);
+      load_weights(value.data_offset, value.tensor->data(), value.size);
     }
     ORT_ENFORCE(value.tensor->get_byte_size() == value.size, "Unexpected tensor size mismatch");
   }
 }
 
-void DestroyOVTensors(SharedContext::SharedWeights::Metadata::Map& metadata_map) {
+void DestroyOVTensors(Metadata::Map& metadata_map) {
   for (auto& [key, value] : metadata_map) {
     if (value.tensor) {
       value.tensor.reset();
