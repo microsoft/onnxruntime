@@ -4,6 +4,7 @@
 #include <algorithm>
 #include <atomic>
 #include <fstream>
+#include <future>
 #include <iostream>
 #include <memory>
 #include <mutex>
@@ -4667,6 +4668,21 @@ TEST(CApiTest, RunBaseLoraModel) {
   for (size_t i = 0; i < elements; ++i) {
     EXPECT_NEAR(expected_output[i], data[i], 0.06);
   }
+}
+
+TEST(CApiTest, RequestLoadCancellation) {
+  constexpr const ORTCHAR_T* model_path = ORT_TSTR("testdata/transformers/tiny_gpt2_beamsearch.onnx");
+  Ort::Env env(ORT_LOGGING_LEVEL_WARNING);
+  Ort::SessionOptions session_options;
+  session_options.SetLoadCancellationFlag(true);
+
+  bool terminated = false;
+  try {
+    Ort::Session session(env, model_path, session_options);
+  } catch (const Ort::Exception& ex) {
+    terminated = OrtErrorCode::ORT_MODEL_LOAD_CANCELED == ex.GetOrtErrorCode();
+  }
+  ASSERT_TRUE(terminated);
 }
 
 struct MockGQA : public OrtCustomOp {
