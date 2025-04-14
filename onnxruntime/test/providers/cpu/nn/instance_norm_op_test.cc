@@ -216,7 +216,7 @@ TEST(InstanceNormalizationOpTest, InstanceNormBatch2_fp16) {
   test.AddInput<MLFloat16>("scale", {3}, scale_fp16);
   test.AddInput<MLFloat16>("B", {3}, B_fp16);
   test.AddOutput<MLFloat16>("Y", input_dims, expected_output_fp16);
-  #ifdef USE_WEBGPU
+#ifdef USE_WEBGPU
   test.SetOutputTolerance(0.005F, 0.005F);
 #endif
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
