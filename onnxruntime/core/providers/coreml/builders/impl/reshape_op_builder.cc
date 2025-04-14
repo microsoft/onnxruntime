@@ -75,6 +75,10 @@ Status ReshapeOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
   return Status::OK();
 }
 
+bool AllPositiveShape(gsl::span<const int64_t> shape) {
+  return std::all_of(shape.begin(), shape.end(), [](int64_t dim) { return dim > 0; });
+}
+
 bool ReshapeOpBuilder::IsOpSupportedImpl(const Node& node, const OpBuilderInputParams& input_params,
                                          const logging::Logger& logger) const {
   const auto& input_defs = node.InputDefs();
@@ -95,8 +99,11 @@ bool ReshapeOpBuilder::IsOpSupportedImpl(const Node& node, const OpBuilderInputP
   }
 
   std::vector<int64_t> input_shape;
-  if (!GetStaticShape(*input_defs[0], input_shape, logger))
+  if (!GetStaticShape(*input_defs[0], input_shape, logger) && !AllPositiveShape(new_shape)) {
+    // first input must be fixed rank OR (first input has variadic rank AND shape only contains positive integers)
+    LOGS(logger, VERBOSE) << "RESHAPE failing static shape check for input 0" << node.Name();
     return false;
+  }
 
   if (input_shape.empty()) {
     LOGS(logger, VERBOSE) << "Reshape does not support empty input shape";

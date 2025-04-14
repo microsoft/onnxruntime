@@ -79,11 +79,11 @@ bool IsInputSupported(const Node& node, const NodeArg& input, const OpBuilderInp
     // See this issue, https://github.com/apple/coremltools/issues/1003
     // https://developer.apple.com/metal/Metal-Feature-Set-Tables.pdf has maximum texture widths which may be the
     // root cause.
-    if (dim > 16384) {
-      LOGS(logger, WARNING) << "CoreML does not support input dim > 16384. Input:" << input_name
-                            << ", shape: " << Shape2String(shape);
-      return false;
-    }
+    // if (dim > 16384) {
+    //   LOGS(logger, WARNING) << "CoreML does not support input dim > 16384. Input:" << input_name
+    //                         << ", shape: " << Shape2String(shape);
+    //   return false;
+    // }
 
     if (dim == 0 && !allow_empty_input) {
       LOGS(logger, WARNING) << "CoreML does not support shapes with dimension values of 0. Input:" << input_name
