@@ -423,7 +423,8 @@ static Status PartitionOnnxFormatModelImpl(Graph& graph, FuncManager& func_mgr,
                                            const layout_transformation::DebugGraphFn& debug_graph_fn,
                                            const CheckLoadCancellationFn& check_load_cancellation_fn,
                                            const logging::Logger& logger, IResourceAccountant* resource_accountant,
-                                           const GraphOptimizerRegistry& graph_optimizer_registry) {
+                                           const GraphOptimizerRegistry& graph_optimizer_registry,
+                                           bool disable_ep_compile) {
   // handle testing edge case where optimizers or constant lifting results in graph with no nodes.
   // doing it here saves all providers checking for this in GetCapability
   if (graph.NumberOfNodes() == 0) {
@@ -440,7 +441,7 @@ static Status PartitionOnnxFormatModelImpl(Graph& graph, FuncManager& func_mgr,
                                                        transform_layout_fn, debug_graph_fn,
                                                        check_load_cancellation_fn,
                                                        logger, resource_accountant,
-                                                       graph_optimizer_registry));
+                                                       graph_optimizer_registry, disable_ep_compile));
     }
   }
 
@@ -529,6 +530,16 @@ static Status PartitionOnnxFormatModelImpl(Graph& graph, FuncManager& func_mgr,
     }
   }
 
+  // Helper function that returns true if any of the nodes assigned to a compiling EP is not already compiled.
+  auto graph_viewer_has_non_compiled_node = [](const GraphViewer& graph_viewer) -> bool {
+    for (const auto& node : graph_viewer.Nodes()) {
+      if (node.OpType() != "EPContext") {
+        return true;
+      }
+    }
+    return false;
+  };
+
   // NOTE: if mode_ is kAssignOnly, nodes_to_compile will be empty at this point due to logic in PlaceNode
   // even with single node, EP might still want to compile it.
   // for example, it want to JIT an optimized kernel for LSTM with a given shape.
@@ -548,7 +559,14 @@ static Status PartitionOnnxFormatModelImpl(Graph& graph, FuncManager& func_mgr,
       for (size_t j = 0, end = nodes_to_compile.size(); j < end; j++) {
         auto* node = nodes_to_compile[j];
         const auto& cur_capability = *capabilities_to_compile[j];
-        viewers.push_back(std::make_unique<GraphViewer>(graph, *cur_capability.sub_graph));
+        auto graph_viewer = std::make_unique<GraphViewer>(graph, *cur_capability.sub_graph);
+
+        if (disable_ep_compile && graph_viewer_has_non_compiled_node(*graph_viewer)) {
+          return ORT_MAKE_STATUS(ONNXRUNTIME, MODEL_REQUIRES_COMPILATION, "User disabled EP compilation but EP '",
+                                 type, "' needs to compile one or more nodes.");
+        }
+
+        viewers.push_back(std::move(graph_viewer));
         nodes_and_viewers.push_back(IExecutionProvider::FusedNodeAndGraph{*node, *viewers.back()});
       }
 
@@ -896,7 +914,7 @@ static Status PartitionOnnxFormatModel(const PartitionParams& partition_params, 
                                        KernelRegistryManager& kernel_registry_manager,
                                        const std::optional<ResourceAccountantMap>& acc_map,
                                        const GraphOptimizerRegistry& graph_optimizer_registry,
-                                       const logging::Logger& logger) {
+                                       const logging::Logger& logger, bool disable_ep_compile) {
   bool modified_graph = false;
 
   auto& graph = partition_params.graph.get();
@@ -921,7 +939,8 @@ static Status PartitionOnnxFormatModel(const PartitionParams& partition_params, 
                                                        transform_layout_function,
                                                        partition_params.debug_graph_fn,
                                                        check_load_cancellation_fn,
-                                                       logger, resource_accountant, graph_optimizer_registry));
+                                                       logger, resource_accountant, graph_optimizer_registry,
+                                                       disable_ep_compile));
     }
 
     // expand any nodes that have an ONNX function definition but no matching ORT kernel.
@@ -1195,8 +1214,9 @@ Status GraphPartitioner::Partition(Graph& graph, FuncManager& func_mgr,
     std::optional<ResourceAccountantMap> ep_acc_map;
     ORT_RETURN_IF_ERROR(NodeStatsRecorder::CreateAccountants(config_options, graph.ModelPath(), ep_acc_map));
 
+    bool disable_ep_compile = config_options.GetConfigOrDefault(kOrtSessionOptionsDisableEpCompile, "0") == "1";
     ORT_RETURN_IF_ERROR(PartitionOnnxFormatModel(partition_params, mode, providers_, kernel_registry_mgr_,
-                                                 ep_acc_map, *graph_optimizer_registry_, logger));
+                                                 ep_acc_map, *graph_optimizer_registry_, logger, disable_ep_compile));
 
     if (ep_context_gen_options.enable) {
       ORT_RETURN_IF_ERROR(CreateEpContextModel(providers_, graph, ep_context_gen_options, logger));

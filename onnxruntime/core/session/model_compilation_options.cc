@@ -77,6 +77,8 @@ Status ModelCompilationOptions::CheckOutputModelSettings() const {
 Status ModelCompilationOptions::Check() const {
   ORT_ENFORCE(session_options != nullptr);
   ORT_ENFORCE(session_options->value.ep_context_gen_options.enable);
+  ORT_ENFORCE(session_options->value.config_options.GetConfigOrDefault(kOrtSessionOptionsDisableEpCompile, "0") == "0");
+
   ORT_RETURN_IF_ERROR(CheckInputModelSettings());
   ORT_RETURN_IF_ERROR(CheckOutputModelSettings());
   return Status::OK();

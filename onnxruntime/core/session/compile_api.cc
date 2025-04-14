@@ -47,6 +47,8 @@ ORT_API_STATUS_IMPL(OrtCompileAPI::CreateModelCompilationOptionsFromSessionOptio
   model_compile_options->session_options->value.ep_context_gen_options.error_if_no_compiled_nodes = true;
   ORT_API_RETURN_IF_STATUS_NOT_OK(model_compile_options->session_options->value.config_options.AddConfigEntry(
       kOrtSessionOptionEpContextEnable, "1"));
+  ORT_API_RETURN_IF_STATUS_NOT_OK(model_compile_options->session_options->value.config_options.AddConfigEntry(
+      kOrtSessionOptionsDisableEpCompile, "0"));
   *out = reinterpret_cast<OrtModelCompilationOptions*>(model_compile_options.release());
   return nullptr;
   API_IMPL_END
