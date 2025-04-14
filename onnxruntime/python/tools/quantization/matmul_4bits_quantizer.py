@@ -35,6 +35,7 @@ class WeightOnlyQuantConfig:
         quant_format: QuantFormat,
         op_types_to_quantize: tuple[str, ...] | None = None,
         quant_axes: tuple[tuple[str, int], ...] | None = None,
+        customized_weight_config: dict | None = None,
     ):
         """This is the Base class for Weight Only blockwise quantization Configuration.
 
@@ -48,11 +49,15 @@ class WeightOnlyQuantConfig:
                 set of operator types to quantize. Default {MatMul}
             quant_axes (dict[str, int], optional):
                 op:axis, which axis to quantize for an op. Default {MatMul: 0, Gather: 1}
+            customized_weight_config:
+                customized weight config for nodes if needed.
+                If both customized_weight_config and nodes_to_exclude are set, nodes_to_exclude overwrites customized_weight_config.
         """
         self.algorithm = algorithm
         self.quant_format = quant_format
         self.op_types_to_quantize = set(op_types_to_quantize) if op_types_to_quantize else {"MatMul"}
         self.quant_axes = dict(quant_axes) if quant_axes else {"MatMul": 0, "Gather": 1}
+        self.customized_weight_config = customized_weight_config
 
 
 class RTNWeightOnlyQuantConfig(WeightOnlyQuantConfig):
@@ -61,6 +66,7 @@ class RTNWeightOnlyQuantConfig(WeightOnlyQuantConfig):
         ratios=None,
         quant_format=QuantFormat.QOperator,
         op_types_to_quantize: tuple[str, ...] | None = None,
+        customized_weight_config: dict | None = None,
     ):
         """
         This is a class for round-to-nearest (RTN) algorithm Weight Only Quant Configuration.
@@ -84,6 +90,7 @@ class RTNWeightOnlyQuantConfig(WeightOnlyQuantConfig):
             algorithm="RTN",
             quant_format=quant_format,
             op_types_to_quantize=op_types_to_quantize,
+            customized_weight_config=customized_weight_config,
         )
         self.ratios = ratios
 
@@ -1201,14 +1208,21 @@ class MatMul4BitsQuantizer:
     def _generate_q4_node_config(self):
         """Generate weight only quant configuration for nodes."""
         q4_node_config = {}
-        template_config_q4 = {
-            "bits": 4,
-            "group_size": self.block_size,
-            "scheme": "sym" if self.is_symmetric else "asym",
-        }
         for node in self.model.model.graph.node:
             if node.op_type in ["MatMul"]:
                 if not all(self.model.get_initializer(i) is None for i in node.input):
+                    template_config_q4 = {
+                        "bits": 4,
+                        "group_size": self.block_size,
+                        "scheme": "sym" if self.is_symmetric else "asym",
+                    }
+                    if (
+                        self.algo_config.customized_weight_config
+                        and node.name in self.algo_config.customized_weight_config
+                    ):
+                        for key, value in self.algo_config.customized_weight_config[node.name].items():
+                            if key in template_config_q4:
+                                template_config_q4[key] = value
                     q4_node_config[node.name] = template_config_q4
         return q4_node_config
 
