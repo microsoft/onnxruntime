@@ -46,13 +46,11 @@ MlasAlignAddress(void* addr, const size_t alignment)
     return addr;
 }
 
-template <typename T>
+template <typename T, int BlkBitWidth>
 struct PackedQuantBDataStruct {
     PackedQuantBDataStruct(void* PackedQuantBWorkspace, size_t N, size_t BlockCountK, size_t BlkLen)
         : QuantBWorkspace_(PackedQuantBWorkspace), N_(N), BlockCountK_(BlockCountK), BlkLen_(BlkLen)
     {
-      // TODO: duplicate code from Q4BitGemmPackQuantBDataSize
-        constexpr size_t BlkBitWidth = 4;
         const size_t PackedQuantBDataSize = N * BlockCountK * MlasQNBitBlkDataSizeInBytes(BlkBitWidth, BlkLen);
         size_t BlkSumSize = MlasDivRoundup(N, 16) * BlockCountK * 16 * sizeof(T);
 #if defined(MLAS_TARGET_AMD64_IX86)
@@ -104,6 +102,17 @@ struct MLAS_QNBIT_GEMM_DISPATCH {
 
     Q4BitGemmPackQuantBDataSize_Fn* Q4BitGemmPackQuantBDataSize = nullptr;
 
+    /** Gets size of packed quantized B data containing 8-bit integers. See MlasQNBitGemmPackQuantBDataSize(). */
+    typedef size_t(Q8BitGemmPackQuantBDataSize_Fn)(
+        size_t N,
+        size_t K,
+        size_t BlkLen,
+        bool HasZeroPoint,
+        MLAS_QNBIT_GEMM_COMPUTE_TYPE ComputeType
+    );
+
+    Q8BitGemmPackQuantBDataSize_Fn* Q8BitGemmPackQuantBDataSize = nullptr;
+
     /** Packs quantized B data containing 4-bit integers. See MlasQNBitGemmPackQuantBData(). */
     typedef void(Q4BitGemmPackQuantBData_Fn)(
         size_t N,
@@ -127,11 +136,26 @@ struct MLAS_QNBIT_GEMM_DISPATCH {
         const float* QuantBScaleBegin,
         bool HasZeroPoint,
         const std::byte* QuantBZPBegin,
-        PackedQuantBDataStruct<float>& PackedQuantB,
+        PackedQuantBDataStruct<float, 4>& PackedQuantB,
         MLAS_THREADPOOL* ThreadPool
     );
 
     SQ4BitGemmPackQuantBDataAndSumBlk_Fn* SQ4BitGemmPackQuantBDataAndBlkSum = nullptr;
+
+    typedef void(SQ8BitGemmPackQuantBDataAndSumBlk_Fn)(
+        size_t N,
+        size_t K,
+        size_t BlkLen,
+        MLAS_QNBIT_GEMM_COMPUTE_TYPE ComputeType,
+        const std::byte* QuantBDataBegin,
+        const float* QuantBScaleBegin,
+        bool HasZeroPoint,
+        const std::byte* QuantBZPBegin,
+        PackedQuantBDataStruct<float, 4>& PackedQuantB,
+        MLAS_THREADPOOL* ThreadPool
+    );
+
+    SQ8BitGemmPackQuantBDataAndSumBlk_Fn* SQ8BitGemmPackQuantBDataAndBlkSum = nullptr;
 
     //
     // Workspace size calculation function prototypes.

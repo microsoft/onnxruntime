@@ -319,7 +319,7 @@ SQ4BitGemmPackQuantBDataAndBlkSum512vnni(
     const float* QuantBScaleBegin,
     bool HasZeroPoint,
     const std::byte* QuantBZPBegin,
-    PackedQuantBDataStruct<float>& PackedQuantB,
+    PackedQuantBDataStruct<float, 4>& PackedQuantB,
     MLAS_THREADPOOL* ThreadPool
 )
 {
@@ -341,7 +341,8 @@ SQ4BitGemmPackQuantBDataAndBlkSum512vnni(
 const MLAS_QNBIT_GEMM_DISPATCH MlasSQNBitGemmDispatchAvx512vnni = []() {
     MLAS_QNBIT_GEMM_DISPATCH d;
 
-    d.Q4BitGemmPackQuantBDataSize = Q4BitGemmPackQuantBDataSize;
+    d.Q4BitGemmPackQuantBDataSize = QNBitGemmPackQuantBDataSize<4>;
+    d.Q8BitGemmPackQuantBDataSize = QNBitGemmPackQuantBDataSize<8>;
     d.SQ4BitGemmPackQuantBData = SQ4BitGemmPackQuantBData;
     d.SQ4BitGemmPackQuantBDataAndBlkSum = SQ4BitGemmPackQuantBDataAndBlkSum512vnni;
 
