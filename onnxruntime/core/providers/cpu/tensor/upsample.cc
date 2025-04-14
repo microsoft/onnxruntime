@@ -1335,9 +1335,7 @@ Status Upsample<T>::BaseCompute(OpKernelContext* context,
       const float width_scale = is_2D ? scales[1] : (is_nchw ? scales[3] : scales[2]);
       const bool upscaling = height_scale >= 1.0f && width_scale >= 1.0f;
 
-      // Antialiasing has no effect during image upsampling, so the antialiasing logic can be reused as-is.
-      // TODO(yilyu): Benchmark whether is_nchw with upscaling should use ResizeBiCubicAntiAlias or ResizeBiCubic.
-      if (antialias_ || (!is_nchw && upscaling)) {
+      if (antialias_) {
         if (!is_nchw) {
           NhwcResizeBiCubicAntiAlias(batch_size, num_channels, input_height, input_width, output_height, output_width,
                                      height_scale, width_scale, cubic_coeff_a_, use_extrapolation_,
@@ -1351,6 +1349,14 @@ Status Upsample<T>::BaseCompute(OpKernelContext* context,
                                  Y->MutableData<T>(), alloc, get_original_coordinate_,
                                  output_height * output_width * num_channels > 64 ? context->GetOperatorThreadPool() : nullptr);
         }
+      } else if (!is_nchw && upscaling) {
+        // Antialiasing has no effect during image upsampling, so the antialiasing logic can be reused as-is.
+        // TODO(yilyu): Benchmark whether is_nchw with upscaling should use ResizeBiCubicAntiAlias or ResizeBiCubic.
+        NhwcResizeBiCubicAntiAlias(batch_size, num_channels, input_height, input_width, output_height, output_width,
+                                   height_scale, width_scale, cubic_coeff_a_, use_extrapolation_,
+                                   extrapolation_value_, exclude_outside_, roi, X,
+                                   Y->MutableData<T>(), alloc, get_original_coordinate_,
+                                   output_height * output_width * num_channels > 64 ? context->GetOperatorThreadPool() : nullptr);
       } else {
         ResizeBiCubic(batch_size, num_channels, input_height, input_width, output_height, output_width,
                       height_scale, width_scale, cubic_coeff_a_, use_extrapolation_,
