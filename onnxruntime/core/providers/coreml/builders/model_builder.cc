@@ -77,7 +77,6 @@ void CopyRawDataToRepeatedField<int64_t, int32_t>(const ONNX_NAMESPACE::TensorPr
   const auto& raw_data = tensor_proto.raw_data();
   const int64_t* data = reinterpret_cast<const int64_t*>(raw_data.data());
   const size_t element_count = raw_data.size() / sizeof(int64_t);
-  const std::string tensor_name = tensor_proto.name();
 
   // Reserve space to avoid multiple reallocations
   repeated_field.Reserve(narrow<int>(element_count));
@@ -85,13 +84,8 @@ void CopyRawDataToRepeatedField<int64_t, int32_t>(const ONNX_NAMESPACE::TensorPr
   // Use std::transform with proper iterators
   std::transform(data, data + element_count,
                  google::protobuf::RepeatedFieldBackInserter(&repeated_field),
-                 [&tensor_name](int64_t v) {
-                   try {
-                     return narrow<int32_t>(v);
-                   } catch (const std::exception& e) {
-                     ORT_THROW("Error converting int64 to int32 for tensor ", tensor_name, ": ", e.what(),
-                               ". Value (", v, ") exceeds int32 range.");
-                   }
+                 [](int64_t v) {
+                   return narrow<int32_t>(v);
                  });
 }
 
@@ -100,12 +94,7 @@ void CopyInt64DataToInt32(const ONNX_NAMESPACE::TensorProto& tensor_proto, MILSp
   auto& int32_out = *tensor_value.mutable_ints()->mutable_values();
   int32_out.Reserve(num_entries);
   for (int i = 0; i < num_entries; ++i) {
-    try {
-      int32_out.AddAlreadyReserved(narrow<int32_t>(tensor_proto.int64_data(i)));
-    } catch (const std::exception& e) {
-      ORT_THROW("Error converting int64 to int32: ", e.what(),
-                ". Value (", tensor_proto.int64_data(i), ") exceeds int32 range.");
-    }
+    int32_out.AddAlreadyReserved(narrow<int32_t>(tensor_proto.int64_data(i)));
   }
 }
 
