@@ -1,4 +1,5 @@
 torch>=1.13.0
+ninja
 transformers==4.48.0
 openai-whisper>=20231117,<=20240927
 ffmpeg-python
