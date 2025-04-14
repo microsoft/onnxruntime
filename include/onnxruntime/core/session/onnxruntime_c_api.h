@@ -4859,6 +4859,7 @@ struct OrtApi {
 
   /** \brief Get the value name from an OrtValueInfo instance.
    * \param[in] value_info The OrtValueInfo instance.
+   * \param[out] name The name of the OrtValueInfo
    * \snippet{doc} snippets.dox OrtStatus Return Value
    * \since Version 1.21.
    */
@@ -4866,6 +4867,7 @@ struct OrtApi {
 
   /** \brief Get the type information from an OrtValueInfo instance.
    * \param[in] value_info The OrtValueInfo instance.
+   * \param[out] type_info The type info of the OrtValueInfo
    * \snippet{doc} snippets.dox OrtStatus Return Value
    * \since Version 1.21.
    */
