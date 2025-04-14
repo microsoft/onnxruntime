@@ -4919,8 +4919,9 @@ struct OrtApi {
    *            is not guaranteed. The session may have already been created and initialized
    *            before the cancellation request was issued.
    *
-   * \snippet{doc} snippets.dox OrtStatus
+   * \snippet{doc} snippets.dox OrtStatus Return Value
    *
+   * \since Version 1.21.
    */
   ORT_API2_STATUS(SessionOptionsSetLoadCancellationFlag, _Inout_ OrtSessionOptions* options,
                   _In_ bool cancel);
