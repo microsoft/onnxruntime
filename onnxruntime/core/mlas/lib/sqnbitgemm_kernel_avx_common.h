@@ -6,8 +6,9 @@
 // Quantized B data packing function implementation.
 //
 
+template <int BlkBitWidth>
 static size_t
-Q4BitGemmPackQuantBDataSize(
+QNBitGemmPackQuantBDataSize(
     size_t N,
     size_t K,
     size_t BlkLen,
@@ -15,7 +16,6 @@ Q4BitGemmPackQuantBDataSize(
     MLAS_QNBIT_GEMM_COMPUTE_TYPE ComputeType
 )
 {
-    constexpr size_t BlkBitWidth = 4;
     const size_t BlockCountK = MlasDivRoundup(K, BlkLen);
     if (ComputeType == SQNBIT_CompInt8) {
         size_t PackedQuantBDataSize = N * BlockCountK * MlasQNBitBlkDataSizeInBytes(BlkBitWidth, BlkLen);
@@ -305,7 +305,7 @@ PackQuantBDataAndBlkSum(
     const float* QuantBScaleBegin,
     bool HasZeroPoint,
     const std::byte* QuantBZPBegin,
-    PackedQuantBDataStruct<float>& PackedQuantB,
+    PackedQuantBDataStruct<float, 4>& PackedQuantB,
     MLAS_THREADPOOL* ThreadPool
 )
 {

@@ -1311,7 +1311,7 @@ SQ4BitGemmPackQuantBDataAndBlkSum(
     const float* QuantBScaleBegin,
     bool HasZeroPoint,
     const std::byte* QuantBZPBegin,
-    PackedQuantBDataStruct<float>& PackedQuantB,
+    PackedQuantBDataStruct<float, 4>& PackedQuantB,
     MLAS_THREADPOOL* ThreadPool
 )
 {
@@ -1334,7 +1334,8 @@ SQ4BitGemmPackQuantBDataAndBlkSum(
 const MLAS_QNBIT_GEMM_DISPATCH MlasSQNBitGemmDispatchAvx2 = []() {
     MLAS_QNBIT_GEMM_DISPATCH d;
 
-    d.Q4BitGemmPackQuantBDataSize = Q4BitGemmPackQuantBDataSize;
+    d.Q4BitGemmPackQuantBDataSize = QNBitGemmPackQuantBDataSize<4>;
+    d.Q8BitGemmPackQuantBDataSize = QNBitGemmPackQuantBDataSize<8>;
     d.SQ4BitGemmPackQuantBData = SQ4BitGemmPackQuantBData;
     d.SQ4BitGemmPackQuantBDataAndBlkSum = SQ4BitGemmPackQuantBDataAndBlkSum;
 
@@ -1353,7 +1354,8 @@ const MLAS_QNBIT_GEMM_DISPATCH MlasSQNBitGemmDispatchAvx2 = []() {
 const MLAS_QNBIT_GEMM_DISPATCH MlasSQNBitGemmDispatchAvx2vnni = []() {
     MLAS_QNBIT_GEMM_DISPATCH d;
 
-    d.Q4BitGemmPackQuantBDataSize = Q4BitGemmPackQuantBDataSize;
+    d.Q4BitGemmPackQuantBDataSize = QNBitGemmPackQuantBDataSize<4>;
+    d.Q8BitGemmPackQuantBDataSize = QNBitGemmPackQuantBDataSize<8>;
     d.SQ4BitGemmPackQuantBData = SQ4BitGemmPackQuantBData;
     d.SQ4BitGemmPackQuantBDataAndBlkSum = SQ4BitGemmPackQuantBDataAndBlkSum;
 
