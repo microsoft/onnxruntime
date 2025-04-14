@@ -151,7 +151,7 @@ struct MLAS_QNBIT_GEMM_DISPATCH {
         const float* QuantBScaleBegin,
         bool HasZeroPoint,
         const std::byte* QuantBZPBegin,
-        PackedQuantBDataStruct<float, 4>& PackedQuantB,
+        PackedQuantBDataStruct<float, 8>& PackedQuantB,
         MLAS_THREADPOOL* ThreadPool
     );
 
