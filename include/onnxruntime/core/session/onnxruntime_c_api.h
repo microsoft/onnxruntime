@@ -5444,7 +5444,10 @@ struct OrtModelEditorApi {
  *
  * Execution providers that support compilation fuse a subgraph into an EPContext node that wraps a provider-specific
  * binary representation of the subgraph.
- * See \href https://onnxruntime.ai/docs/execution-providers/EP-Context-Design.html for EPContext details.
+ * More details relate to EPContext design refers to:
+ *  \htmlonly
+ *  <a href="https://onnxruntime.ai/docs/execution-providers/EP-Context-Design.html">EPContext design document.</a>
+ *  \endhtmlonly
  *
  * \since Version 1.22.
  */
