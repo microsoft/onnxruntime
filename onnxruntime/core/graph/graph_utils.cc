@@ -423,6 +423,7 @@ std::vector<GraphEdge> GraphEdge::GetNodeOutputEdges(const Node& node, size_t in
 /** Removes a set of GraphEdges from the graph. */
 void GraphEdge::RemoveGraphEdges(Graph& graph, const std::vector<GraphEdge>& edges) {
   for (const auto& edge_to_remove : edges) {
+    std::cout << "edge " << edge_to_remove.src_arg_index << " " << edge_to_remove.dst_arg_index << std::endl;
     graph.RemoveEdge(edge_to_remove.src_node,
                      edge_to_remove.dst_node,
                      edge_to_remove.src_arg_index,

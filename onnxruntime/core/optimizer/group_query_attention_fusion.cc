@@ -454,8 +454,36 @@ Status GroupQueryAttentionFusion::ApplyImpl(
 
     mat_mul_or_n_bits_new_node->SetExecutionProviderType(node.GetExecutionProviderType());
 
-    graph_utils::FinalizeNodeFusion(graph, {*q_node, *k_node, *v_node, *rotary_node_1, *rotary_node_2}, *mat_mul_or_n_bits_new_node);
+    graph_utils::MoveAllNodeInputEdges(graph, *q_node, *mat_mul_or_n_bits_new_node);
 
+    //mat_mul_or_n_bits_new_node->MutableOutputDefs() = rotary_node_2->MutableOutputDefs();
+
+    auto target_idx = mat_mul_or_n_bits_new_node->Index();
+    auto output_edges = graph_utils::GraphEdge::GetNodeOutputEdges(*rotary_node_2);
+
+    graph_utils::GraphEdge::RemoveGraphEdges(graph, output_edges);
+    
+    std::cout << "tt " << target_idx << " " << output_edges.size() << " " << output_edges[0].src_node << std::endl;
+  
+    for (auto cur = output_edges.cbegin(), end = output_edges.cend(); cur != end; ++cur) {
+      graph.AddEdge(target_idx, cur->dst_node, cur->src_arg_index, cur->dst_arg_index);
+    }
+  
+    std::cout << "aa" << std::endl;
+    //
+    std::cout << "bb" << std::endl;
+    std::initializer_list<std::reference_wrapper<Node>> nodes = {*q_node, *k_node, *v_node, *rotary_node_1, *rotary_node_2};
+    std::cout << "c" << std::endl;
+
+    for (Node& node : nodes) {
+      std::cout << node.Name() << std::endl;
+      graph_utils::RemoveNodeOutputEdges(graph, node);
+      graph.RemoveNode(node.Index());
+    }
+
+    //graph_utils::FinalizeNodeFusion(graph, {*q_node, *k_node, *v_node, *rotary_node_1, *rotary_node_2}, *mat_mul_or_n_bits_new_node);
+
+    std::cout << "ofkspof" << std::endl;
     // Make sure the MatMul or MatMulNBits node has the correct output defs since the FinalizeNodeFusion method could overwrite it.
     auto& mat_mut_output_defs = mat_mul_or_n_bits_new_node->MutableOutputDefs();
     mat_mut_output_defs.assign(mmnb_output_defs.begin(), mmnb_output_defs.end());
