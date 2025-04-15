@@ -5389,12 +5389,13 @@ struct OrtModelEditorApi {
    *
    * When using the Model Editor API to augment a model, any new nodes must conform to the opset version of the
    * original model. To do that the user must be able to discover that opset version.
+   * Returns an error if the domain is not used in the model.
    *
    * \param[in] session OrtSession to query
    * \param[in] domain Domain to query. The ONNX domain is an empty string.
    * \param[out] opset The opset version of the domain.
    *
-   * \snippet{doc} snippets.dox OrtStatus Return Value. Returns an error if the domain is not used in the model.
+   * \snippet{doc} snippets.dox OrtStatus Return Value
    *
    * \since Version 1.21.
    */
