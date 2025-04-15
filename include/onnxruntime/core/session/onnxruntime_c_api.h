@@ -5373,6 +5373,7 @@ struct OrtModelEditorApi {
    * \param{in} model_data The model data for the existing model to augment.
    * \param{in} model_data_length The length of the model data.
    * \param{in} options The OrtSessionOptions instance.
+   * \param{out} out The created OrtSession instance.
    *
    * \snippet{doc} snippets.dox OrtStatus Return Value
    *
