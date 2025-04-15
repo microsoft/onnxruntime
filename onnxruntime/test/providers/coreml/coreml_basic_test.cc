@@ -74,7 +74,7 @@ TEST(CoreMLExecutionProviderTest, TestAddEpUsingPublicApi) {
     return has_ep;
   };
 
-  const ORTCHAR_T* model_file_name = ORT_TSTR("coreml_execution_provider_test_graph.onnx");
+  const ORTCHAR_T* model_file_name = ORT_TSTR("testdata/constant_floats.onnx");
   auto provider_options = MakeCoreMLProviderOptions("NeuralNetwork", "CPUOnly", "./tmp");
 
   {
