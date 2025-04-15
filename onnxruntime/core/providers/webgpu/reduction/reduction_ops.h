@@ -25,7 +25,7 @@ class ReduceKernelProgram final : public Program<ReduceKernelProgram> {
   Status GenerateShaderCode(ShaderHelper& wgpuShaderModuleAddRef) const override;
   WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES({"output_size", ProgramUniformVariableDataType::Uint32},
                                           {"no_op_with_empty_axes", ProgramUniformVariableDataType::Uint32},
-                                          {"reduce_axes", ProgramUniformVariableDataType::Uint32});
+                                          {"reduce_size", ProgramUniformVariableDataType::Uint32});
 
  private:
   const bool keepdims_;
@@ -76,7 +76,7 @@ class ReduceKernel : public WebGpuKernel, public ReduceKernelBase<allow_multi_ax
         allow_empty_input_(allow_empty_input) {
   }
   Status ComputeInternal(ComputeContext& ctx) const;
-  virtual ReduceOpSpecificCode GetOpSpecificCode(const Tensor* input_tensor) const = 0;
+  virtual ReduceOpSpecificCode GetOpSpecificCode() const = 0;
 
   Status CheckInput(const Tensor* input_tensor) const {
     ORT_ENFORCE(input_tensor != nullptr && (input_tensor->Shape().Size() > 0 || allow_empty_input_), "Input tensor cannot be null or empty");
@@ -91,73 +91,73 @@ class ReduceKernel : public WebGpuKernel, public ReduceKernelBase<allow_multi_ax
 class ReduceMean final : public ReduceKernel<true> {
  public:
   ReduceMean(const OpKernelInfo& info) : ReduceKernel<true>(info, "ReduceMean", true) {}
-  ReduceOpSpecificCode GetOpSpecificCode(const Tensor* input_tensor) const override;
+  ReduceOpSpecificCode GetOpSpecificCode() const override;
 };
 
 class ReduceMax final : public ReduceKernel<true> {
  public:
   ReduceMax(const OpKernelInfo& info) : ReduceKernel<true>(info, "ReduceMax") {}
-  ReduceOpSpecificCode GetOpSpecificCode(const Tensor* input_tensor) const override;
+  ReduceOpSpecificCode GetOpSpecificCode() const override;
 };
 
 class ReduceMin final : public ReduceKernel<true> {
  public:
   ReduceMin(const OpKernelInfo& info) : ReduceKernel<true>(info, "ReduceMin") {}
-  ReduceOpSpecificCode GetOpSpecificCode(const Tensor* input_tensor) const override;
+  ReduceOpSpecificCode GetOpSpecificCode() const override;
 };
 
 class ReduceSum final : public ReduceKernel<true> {
  public:
   ReduceSum(const OpKernelInfo& info) : ReduceKernel<true>(info, "ReduceSum", true) {}
-  ReduceOpSpecificCode GetOpSpecificCode(const Tensor* input_tensor) const override;
+  ReduceOpSpecificCode GetOpSpecificCode() const override;
 };
 
 class ReduceProd final : public ReduceKernel<true> {
  public:
   ReduceProd(const OpKernelInfo& info) : ReduceKernel<true>(info, "ReduceProd", true) {}
-  ReduceOpSpecificCode GetOpSpecificCode(const Tensor* input_tensor) const override;
+  ReduceOpSpecificCode GetOpSpecificCode() const override;
 };
 
 class ReduceL1 final : public ReduceKernel<true> {
  public:
   ReduceL1(const OpKernelInfo& info) : ReduceKernel<true>(info, "ReduceL1", true) {}
-  ReduceOpSpecificCode GetOpSpecificCode(const Tensor* input_tensor) const override;
+  ReduceOpSpecificCode GetOpSpecificCode() const override;
 };
 
 class ReduceL2 final : public ReduceKernel<true> {
  public:
   ReduceL2(const OpKernelInfo& info) : ReduceKernel<true>(info, "ReduceL2", true) {}
-  ReduceOpSpecificCode GetOpSpecificCode(const Tensor* input_tensor) const override;
+  ReduceOpSpecificCode GetOpSpecificCode() const override;
 };
 
 class ReduceLogSum final : public ReduceKernel<true> {
  public:
   ReduceLogSum(const OpKernelInfo& info) : ReduceKernel<true>(info, "ReduceLogSum", true) {}
-  ReduceOpSpecificCode GetOpSpecificCode(const Tensor* input_tensor) const override;
+  ReduceOpSpecificCode GetOpSpecificCode() const override;
 };
 
 class ReduceSumSquare final : public ReduceKernel<true> {
  public:
   ReduceSumSquare(const OpKernelInfo& info) : ReduceKernel<true>(info, "ReduceSumSquare", true) {}
-  ReduceOpSpecificCode GetOpSpecificCode(const Tensor* input_tensor) const override;
+  ReduceOpSpecificCode GetOpSpecificCode() const override;
 };
 
 class ReduceLogSumExp final : public ReduceKernel<true> {
  public:
   ReduceLogSumExp(const OpKernelInfo& info) : ReduceKernel<true>(info, "ReduceLogSumExp", true) {}
-  ReduceOpSpecificCode GetOpSpecificCode(const Tensor* input_tensor) const override;
+  ReduceOpSpecificCode GetOpSpecificCode() const override;
 };
 
 class ArgMin final : public ReduceKernel<false> {
  public:
   ArgMin(const OpKernelInfo& info) : ReduceKernel<false>(info, "ArgMin", true) {}
-  ReduceOpSpecificCode GetOpSpecificCode(const Tensor* input_tensor) const override;
+  ReduceOpSpecificCode GetOpSpecificCode() const override;
 };
 
 class ArgMax final : public ReduceKernel<false> {
  public:
   ArgMax(const OpKernelInfo& info) : ReduceKernel<false>(info, "ArgMax", true) {}
-  ReduceOpSpecificCode GetOpSpecificCode(const Tensor* input_tensor) const override;
+  ReduceOpSpecificCode GetOpSpecificCode() const override;
 };
 
 }  // namespace webgpu

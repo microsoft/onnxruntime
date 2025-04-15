@@ -297,14 +297,14 @@ Status ReduceKernel<allow_multi_axes>::ComputeInternal(ComputeContext& context) 
         // For ReduceSumSquare with scalar input, output = input * input
         auto output = context.Output(0, input_tensor->Shape());
         // We need to run the operation even for scalar inputs for these ops
-        const auto code = GetOpSpecificCode(input_tensor);
+        const auto code = GetOpSpecificCode();
         constexpr uint32_t output_size = 1;
-        constexpr uint32_t reduce_axes = 0;
+        constexpr uint32_t reduce_size = 1;
         ReduceKernelProgram program(name_, keepdims_, noop_with_empty_axes_, input_axes, code, false);
         program.AddInput({input_tensor, ProgramTensorMetadataDependency::TypeAndRank})
             .AddOutput({output, ProgramTensorMetadataDependency::TypeAndRank})
             .SetDispatchGroupSize(1)
-            .AddUniformVariables({{output_size}, {static_cast<uint32_t>(noop_with_empty_axes_ ? 1 : 0)}, {reduce_axes}});
+            .AddUniformVariables({{output_size}, {static_cast<uint32_t>(noop_with_empty_axes_ ? 1 : 0)}, {reduce_size}});
         return context.RunProgram(program);
       } else {
         // For other ops, or when axes is empty with noop_with_empty_axes_ true, just copy the input
@@ -352,7 +352,7 @@ Status ReduceKernel<allow_multi_axes>::ComputeInternal(ComputeContext& context) 
   bool use_naive_reduction = name_ == "ArgMin" || name_ == "ArgMax" || (reduce_size < 32 && output_size > 1024);
 
   if (use_naive_reduction) {
-    const auto code = GetOpSpecificCode(input_tensor);
+    const auto code = GetOpSpecificCode();
 
     ReduceKernelProgram program(name_, keepdims_, noop_with_empty_axes_, input_axes, code, is_input_empty);
     if (!is_input_empty) {
@@ -370,7 +370,7 @@ Status ReduceKernel<allow_multi_axes>::ComputeInternal(ComputeContext& context) 
         .SetDispatchGroupSize((output_size + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE)
         .AddUniformVariables({{static_cast<uint32_t>(output_size)},
                               {static_cast<uint32_t>(noop_with_empty_axes_ ? 1 : 0)},
-                              {reduce_axes}});
+                              {static_cast<uint32_t>(reduce_size)}});
 
     return context.RunProgram(program);
   } else {
@@ -428,91 +428,71 @@ Status ReduceKernel<allow_multi_axes>::ComputeInternal(ComputeContext& context) 
   }
 }
 
-ReduceOpSpecificCode ReduceMean::GetOpSpecificCode(const Tensor* input_tensor) const {
-  const TensorShape& input_shape = input_tensor->Shape();
-  size_t input_rank = input_shape.NumDimensions();
+ReduceOpSpecificCode ReduceMean::GetOpSpecificCode() const {
   std::string loop_header = "var sum = f32(0);";
   std::string loop_body = "sum += f32(current_element);";
-  std::stringstream ss;
-  ss << "var size: u32 = 1;\n"
-     << "for (var i: u32 = 0; i < " << input_rank << "; i += 1) { \n"
-     << "  let index_reduced_or_not = " << GetElementAt("uniforms.reduce_axes", "i", input_rank) << ";\n"
-     << "  if (index_reduced_or_not == 1) { \n"
-     << "    size = size * " << GetElementAt("uniforms.input_shape", "i", input_rank) << ";\n"
-     << "  }\n"
-     << "}\n"
-     << "let output_value = output_value_t(sum / f32(size));";
-  std::string loop_footer = ss.str();
+  std::string loop_footer = "let output_value = output_value_t(sum / f32(uniforms.reduce_size));";
   ReduceOpSpecificCode code({loop_header, loop_body, loop_footer});
   return code;
 }
 
-ReduceOpSpecificCode ReduceMax::GetOpSpecificCode(const Tensor* input_tensor) const {
-  ORT_UNUSED_PARAMETER(input_tensor);
+ReduceOpSpecificCode ReduceMax::GetOpSpecificCode() const {
   std::string loop_header = "var max_element = first_element;";
   std::string loop_body = "max_element = max(max_element, current_element);";
   std::string loop_footer = "let output_value = output_value_t(max_element);";
   ReduceOpSpecificCode code({loop_header, loop_body, loop_footer});
   return code;
 }
-ReduceOpSpecificCode ReduceMin::GetOpSpecificCode(const Tensor* input_tensor) const {
-  ORT_UNUSED_PARAMETER(input_tensor);
+ReduceOpSpecificCode ReduceMin::GetOpSpecificCode() const {
   std::string loop_header = "var min_element = first_element;";
   std::string loop_body = "min_element = min(min_element, current_element);";
   std::string loop_footer = "let output_value = output_value_t(min_element);";
   ReduceOpSpecificCode code({loop_header, loop_body, loop_footer});
   return code;
 }
-ReduceOpSpecificCode ReduceSum::GetOpSpecificCode(const Tensor* input_tensor) const {
-  ORT_UNUSED_PARAMETER(input_tensor);
+ReduceOpSpecificCode ReduceSum::GetOpSpecificCode() const {
   std::string loop_header = "var sum = f32(0);";
   std::string loop_body = "sum += f32(current_element);";
   std::string loop_footer = "let output_value = output_value_t(sum);";
   ReduceOpSpecificCode code({loop_header, loop_body, loop_footer});
   return code;
 }
-ReduceOpSpecificCode ReduceProd::GetOpSpecificCode(const Tensor* input_tensor) const {
-  ORT_UNUSED_PARAMETER(input_tensor);
+ReduceOpSpecificCode ReduceProd::GetOpSpecificCode() const {
   std::string loop_header = "var prod = f32(1);";
   std::string loop_body = "prod *= f32(current_element);";
   std::string loop_footer = "let output_value = output_value_t(prod);";
   ReduceOpSpecificCode code({loop_header, loop_body, loop_footer});
   return code;
 }
-ReduceOpSpecificCode ReduceL1::GetOpSpecificCode(const Tensor* input_tensor) const {
-  ORT_UNUSED_PARAMETER(input_tensor);
+ReduceOpSpecificCode ReduceL1::GetOpSpecificCode() const {
   std::string loop_header = "var l1 = f32(0);";
   std::string loop_body = "l1 += abs(f32(current_element));";
   std::string loop_footer = "let output_value = output_value_t(l1);";
   ReduceOpSpecificCode code({loop_header, loop_body, loop_footer});
   return code;
 }
-ReduceOpSpecificCode ReduceL2::GetOpSpecificCode(const Tensor* input_tensor) const {
-  ORT_UNUSED_PARAMETER(input_tensor);
+ReduceOpSpecificCode ReduceL2::GetOpSpecificCode() const {
   std::string loop_header = "var l2 = f32(0);";
   std::string loop_body = "let t = f32(current_element); l2 += (t * t);";
   std::string loop_footer = "l2 = sqrt(l2); let output_value = output_value_t(l2);";
   ReduceOpSpecificCode code({loop_header, loop_body, loop_footer});
   return code;
 }
-ReduceOpSpecificCode ReduceLogSum::GetOpSpecificCode(const Tensor* input_tensor) const {
-  ORT_UNUSED_PARAMETER(input_tensor);
+ReduceOpSpecificCode ReduceLogSum::GetOpSpecificCode() const {
   std::string loop_header = "var sum = f32(0);";
   std::string loop_body = "sum += f32(current_element);";
   std::string loop_footer = "let log_sum = log(sum); let output_value = output_value_t(log_sum);";
   ReduceOpSpecificCode code({loop_header, loop_body, loop_footer});
   return code;
 }
-ReduceOpSpecificCode ReduceSumSquare::GetOpSpecificCode(const Tensor* input_tensor) const {
-  ORT_UNUSED_PARAMETER(input_tensor);
+ReduceOpSpecificCode ReduceSumSquare::GetOpSpecificCode() const {
   std::string loop_header = "var sum_square = f32(0);";
   std::string loop_body = "let t = f32(current_element); sum_square += (t * t);";
   std::string loop_footer = "let output_value = output_value_t(sum_square);";
   ReduceOpSpecificCode code({loop_header, loop_body, loop_footer});
   return code;
 }
-ReduceOpSpecificCode ReduceLogSumExp::GetOpSpecificCode(const Tensor* input_tensor) const {
-  ORT_UNUSED_PARAMETER(input_tensor);
+ReduceOpSpecificCode ReduceLogSumExp::GetOpSpecificCode() const {
   std::string loop_header = "var sum_exp = f32(0);";
   std::string loop_body = "sum_exp += exp(f32(current_element));";
   std::string loop_footer = "let log_sum_exp = log(sum_exp); let output_value = output_value_t(log_sum_exp);";
@@ -520,8 +500,7 @@ ReduceOpSpecificCode ReduceLogSumExp::GetOpSpecificCode(const Tensor* input_tens
   return code;
 }
 
-ReduceOpSpecificCode ArgMin::GetOpSpecificCode(const Tensor* input_tensor) const {
-  ORT_UNUSED_PARAMETER(input_tensor);
+ReduceOpSpecificCode ArgMin::GetOpSpecificCode() const {
   std::string op = (select_last_index_) ? "<=" : "<";
   std::string loop_header = "var best_element = first_element; var best_index = u32(0);";
   std::string loop_body = "if (current_element " + op + " best_element) { best_element = current_element; best_index = last_index; };";
@@ -530,8 +509,7 @@ ReduceOpSpecificCode ArgMin::GetOpSpecificCode(const Tensor* input_tensor) const
   return code;
 }
 
-ReduceOpSpecificCode ArgMax::GetOpSpecificCode(const Tensor* input_tensor) const {
-  ORT_UNUSED_PARAMETER(input_tensor);
+ReduceOpSpecificCode ArgMax::GetOpSpecificCode() const {
   std::string op = (select_last_index_) ? ">=" : ">";
   std::string loop_header = "var best_element = first_element; var best_index = u32(0);";
   std::string loop_body = "if (current_element " + op + " best_element) { best_element = current_element; best_index = last_index; };";
