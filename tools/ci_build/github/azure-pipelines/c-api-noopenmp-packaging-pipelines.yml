@@ -293,6 +293,7 @@ stages:
         PackageName: 'Microsoft.ML.OnnxRuntime.DirectML*nupkg'
         PlatformsSupported: 'win-x64,win-x86,win-arm64'
         VerifyNugetSigning: ${{ parameters.DoEsrp }}
+        IsReleaseBuild: ${{ parameters.IsReleaseBuild }}
 
     - task: PublishPipelineArtifact@0
       displayName: 'Publish Pipeline NuGet Artifact'

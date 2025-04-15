@@ -285,7 +285,9 @@ def validate_zip(args):
 
 def validate_nuget(args):
     files = glob.glob(os.path.join(args.package_path, args.package_name))
-    nuget_packages_found_in_path = [i for i in files if i.endswith(".nupkg") and "Managed" not in i]
+    nuget_packages_found_in_path = [i for i in files if i.endswith(".nupkg") and "Managed" not in i and
+                                    ((args.is_release_build and "-dev" not in i) or (not args.is_release_build and "-dev" in i))]
+
     if len(nuget_packages_found_in_path) != 1:
         print("Nuget packages found in path: ")
         print(nuget_packages_found_in_path)
