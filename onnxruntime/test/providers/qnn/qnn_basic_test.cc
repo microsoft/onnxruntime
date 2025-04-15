@@ -60,40 +60,38 @@ TEST_F(QnnHTPBackendTests, TestAddEpUsingPublicApi) {
   options["backend_path"] = "libQnnHtp.so";
 #endif
 
+  const ORTCHAR_T* ort_model_path = ORT_MODEL_FOLDER "constant_floats.onnx";
+
   {
     // Test C++ API to add QNN EP with the short name 'QNN'.
     Ort::SessionOptions so;
 
     // Can only enforce that model runs on QNN in linux CI machines
-    // because they support the CPU backend and emulate the HPT backend.
+    // because they support the CPU backend and emulate the HTP backend.
     // TODO: Remove #ifdef when Windows Arm64 machines support the CPU backend.
 #if defined(__linux__)
     so.AddConfigEntry(kOrtSessionOptionsDisableCPUEPFallback, "1");  // Disable fallback to the CPU EP.
 #endif
     so.AppendExecutionProvider("QNN", options);
 
-    const ORTCHAR_T* ort_model_path = ORT_MODEL_FOLDER "constant_floats.onnx";
     Ort::Session session(*ort_env, ort_model_path, so);
-
-    ASSERT_TRUE(session_has_qnn_ep(session)) << "QNN EP was not found in registered providers for session.";
+    ASSERT_TRUE(session_has_qnn_ep(session)) << "QNN EP was not found in registered providers for session "
+                                             << "when added to session with name 'QNN'";
   }
 
   {
-    // Test C++ API to add QNN EP with the long canonical name 'QnnExecutionProvider'.
+    // Test C++ API to add QNN EP with the long canonical name 'QNNExecutionProvider'.
     Ort::SessionOptions so;
 
-    // Can only enforce that model runs on QNN in linux CI machines
-    // because they support the CPU backend and emulate the HPT backend.
     // TODO: Remove #ifdef when Windows Arm64 machines support the CPU backend.
 #if defined(__linux__)
     so.AddConfigEntry(kOrtSessionOptionsDisableCPUEPFallback, "1");  // Disable fallback to the CPU EP.
 #endif
     so.AppendExecutionProvider(kQnnExecutionProvider, options);
 
-    const ORTCHAR_T* ort_model_path = ORT_MODEL_FOLDER "constant_floats.onnx";
     Ort::Session session(*ort_env, ort_model_path, so);
-
-    ASSERT_TRUE(session_has_qnn_ep(session)) << "QNN EP was not found in registered providers for session.";
+    ASSERT_TRUE(session_has_qnn_ep(session)) << "QNN EP was not found in registered providers for session "
+                                             << "when added to session with name '" << kQnnExecutionProvider << "'";
   }
 }
 

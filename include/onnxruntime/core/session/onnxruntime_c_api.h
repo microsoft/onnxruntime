@@ -3642,10 +3642,17 @@ struct OrtApi {
    * \param[in] provider_options_values - values to configure the provider options
    * \param[in] num_keys - number of keys passed in
    *
-   * Currently supported providers:
-   *   QNN
-   *   SNPE
-   *   XNNPACK
+   * Currently supported provider names:
+   *   QNNExecutionProvider (or QNN)
+   *   OpenVINOExecutionProvider (or OpenVINO)
+   *   SNPEExecutionProvider (or SNPE)
+   *   XnnpackExecutionProvider (or XNNPACK)
+   *   WebNNExecutionProvider (or WEBNN)
+   *   WebGpuExecutionProvider (or WebGPU)
+   *   AzureExecutionProvider (or AZURE)
+   *   JsExecutionProvider (or JS)
+   *   VitisAIExecutionProvider (or VitisAI)
+   *   CoreMLExecutionProvider (or CoreML)
    *
    * Note: If an execution provider has a dedicated SessionOptionsAppendExecutionProvider_<provider name> function
    *       that should be used to add it.

@@ -1,6 +1,8 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include <memory>
+
 #include "core/common/logging/logging.h"
 #include "core/graph/constants.h"
 #include "core/graph/graph.h"
@@ -29,6 +31,9 @@
 
 using namespace ONNX_NAMESPACE;
 using namespace ::onnxruntime::logging;
+
+// defined in test_main.cc
+extern std::unique_ptr<Ort::Env> ort_env;
 
 namespace onnxruntime {
 namespace test {

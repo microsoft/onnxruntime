@@ -154,7 +154,7 @@ ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider,
     for (size_t i = 0; i < num_eps; ++i) {
       const EpToAppend& ep_info = supported_eps[i];
 
-      str_builder << "('" << ep_info.short_name << "'/'" << ep_info.canonical_name << "')";
+      str_builder << "'" << ep_info.short_name << "'/'" << ep_info.canonical_name << "'";
       if (num_eps >= 2 && i == num_eps - 2) {
         str_builder << ", and ";
       } else if (i == num_eps - 1) {
