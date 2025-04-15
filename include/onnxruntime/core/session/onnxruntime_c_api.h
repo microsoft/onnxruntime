@@ -5574,7 +5574,10 @@ struct OrtCompileApi {
    * If disabled, the `ep_cache_context` attribute of EPContext nodes will contain the path to the file containing the
    * context binary data. The path is set by the execution provider creating the EPContext node.
    *
-   * See \href https://onnxruntime.ai/docs/execution-providers/EP-Context-Design.html for EPContext details.
+   * More details relate to EPContext design refers to:
+   *  \htmlonly
+   *  <a href="https://onnxruntime.ai/docs/execution-providers/EP-Context-Design.html">EPContext design document.</a>
+   *  \endhtmlonly
    *
    * \param[in] model_compile_options The OrtModelCompilationOptions instance.
    * \param[in] embed_ep_context_in_model True to embed EPContext binary data into the EPContext node
