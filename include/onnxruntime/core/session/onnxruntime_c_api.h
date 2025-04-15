@@ -5517,7 +5517,7 @@ struct OrtCompileApi {
    *   /Path/my_model -> /Path/my_model_ctx.onnx
    *
    * \param[in] model_compile_options The OrtModelCompilationOptions instance.
-   * \param[in] input_model_path Null terminated string of the path (wchar on Windows, char otherwise).
+   * \param[in] output_model_path Null terminated string of the path (wchar on Windows, char otherwise).
    *
    * \snippet{doc} snippets.dox OrtStatus Return Value
    *
