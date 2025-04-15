@@ -4940,7 +4940,7 @@ struct OrtApi {
    *            is not guaranteed. The session may have already been created and initialized
    *            before the cancellation request was issued.
    *
-   * \snippet{doc} snippets.dox OrtStatus
+   * \snippet{doc} snippets.dox OrtStatus Return Value
    *
    * \since Version 1.22.
    */
@@ -5077,7 +5077,7 @@ struct OrtApi {
    *                    the devices they will use.
    * \param[in] ep_option_keys Optional keys to configure the execution provider.
    * \param[in] ep_option_vals Optional values to configure the execution provider.
-   * \param[in] num_keys Number of execution provide options to add.
+   * \param[in] num_ep_options Number of execution provide options to add.
    *
    * \snippet{doc} snippets.dox OrtStatus Return Value
    *
@@ -5118,10 +5118,8 @@ struct OrtApi {
 
   /** \brief Get the hardware device's unique identifier.
    *
-   * \param[in]
-   * \param[out]
-   *
-   * \snippet{doc} snippets.dox OrtStatus Return Value
+   * \param[in] device The OrtHardwareDevice instance to query.
+   * \return The bus ID of the device.
    *
    * \since Version 1.22.
    */
@@ -5321,7 +5319,7 @@ struct OrtModelEditorApi {
    * User can release `tensor_info` after creating the OrtTypeInfo.
    *
    * \param[in] tensor_info Tensor type and shape information.
-   * \param[out] TypeInfo instance for the tensor.
+   * \param[out] type_info TypeInfo instance for the tensor.
    *
    * \snippet{doc} snippets.dox OrtStatus Return Value
    *
@@ -5337,7 +5335,7 @@ struct OrtModelEditorApi {
    * User can release `tensor_info` after creating the OrtTypeInfo.
    *
    * \param[in] tensor_info SparseTensor type and shape information.
-   * \param[out] TypeInfo instance for the tensor.
+   * \param[out] type_info TypeInfo instance for the tensor.
    *
    * \snippet{doc} snippets.dox OrtStatus Return Value
    *
@@ -5354,7 +5352,7 @@ struct OrtModelEditorApi {
    *
    * \param[in] map_key_type Key type for the map.
    * \param[in] map_value_type Value type for the map.
-   * \param[out] TypeInfo instance for the map.
+   * \param[out] type_info TypeInfo instance for the map.
    *
    * \snippet{doc} snippets.dox OrtStatus Return Value
    *
@@ -5370,7 +5368,7 @@ struct OrtModelEditorApi {
    * User can release `sequence_type` after creating the OrtTypeInfo.
    *
    * \param[in] sequence_type Sequence type and shape information.
-   * \param[out] TypeInfo instance for the sequence.
+   * \param[out] type_info TypeInfo instance for the sequence.
    *
    * \snippet{doc} snippets.dox OrtStatus Return Value
    *
@@ -5384,8 +5382,8 @@ struct OrtModelEditorApi {
    *
    * User can release `contained_type` after creating the OrtTypeInfo.
    *
-   * \param[in] tensor_info Tensor type and shape information.
-   * \param[out] TypeInfo instance for the tensor.
+   * \param[in] contained_type Tensor type and shape information.
+   * \param[out] type_info TypeInfo instance for the tensor.
    *
    * \snippet{doc} snippets.dox OrtStatus Return Value
    *
@@ -5650,7 +5648,7 @@ struct OrtModelEditorApi {
    * \param[in] domain Domain to query. The ONNX domain is an empty string.
    * \param[out] opset The opset version of the domain.
    *
-   * \snippet{doc} snippets.dox OrtStatus Return Value. Returns an error if the domain is not used in the model.
+   * \snippet{doc} snippets.dox OrtStatus Return Value
    *
    * \since Version 1.22.
    */
@@ -5683,7 +5681,7 @@ struct OrtModelEditorApi {
    *
    * \param[in] session OrtSession to finalize. Session must have been created using CreateModelEditorSession[FromArray].
    * \param[in] options OrtSessionOptions to use for the session.
-  * \param[in] Optional prepacked_weights_container OrtPrepackedWeightsContainer to use for the session.
+   * \param[in] prepacked_weights_container Optional OrtPrepackedWeightsContainer to use for the session.
                 Set to nullptr if not used.
    * \snippet{doc} snippets.dox OrtStatus Return Value
    *
@@ -5705,7 +5703,7 @@ struct OrtModelEditorApi {
  * binary representation of the subgraph.
  * More details relate to EPContext design refers to:
  *  \htmlonly
- * See \href https://onnxruntime.ai/docs/execution-providers/EP-Context-Design.html for EPContext details.
+ *  <a href="https://onnxruntime.ai/docs/execution-providers/EP-Context-Design.html">EPContext design document.</a>
  *  \endhtmlonly
  *
  * \since Version 1.22.
@@ -5776,7 +5774,7 @@ struct OrtCompileApi {
    *   /Path/my_model -> /Path/my_model_ctx.onnx
    *
    * \param[in] model_compile_options The OrtModelCompilationOptions instance.
-   * \param[in] input_model_path Null terminated string of the path (wchar on Windows, char otherwise).
+   * \param[in] output_model_path Null terminated string of the path (wchar on Windows, char otherwise).
    *
    * \snippet{doc} snippets.dox OrtStatus Return Value
    *
@@ -5835,7 +5833,7 @@ struct OrtCompileApi {
    *
    * More details relate to EPContext design refers to:
    *  \htmlonly
-   * See \href https://onnxruntime.ai/docs/execution-providers/EP-Context-Design.html for EPContext details.
+   *  <a href="https://onnxruntime.ai/docs/execution-providers/EP-Context-Design.html">EPContext design document.</a>
    *  \endhtmlonly
    *
    * \param[in] model_compile_options The OrtModelCompilationOptions instance.
@@ -5852,7 +5850,7 @@ struct OrtCompileApi {
   /** \brief Compiles an input ONNX model with the given compilation options.
    *
    * \param[in] env OrtEnv object.
-   * \param[in] model_compile_options The compilation options that defines compilation options for a model.
+   * \param[in] model_options The compilation options that defines compilation options for a model.
    *
    * \snippet{doc} snippets.dox OrtStatus Return Value
    *
@@ -5919,7 +5917,7 @@ typedef OrtStatus* (*CreateEpApiFactoriesFn)(_In_ const char* registered_name, _
                                              _Inout_ OrtEpFactory** factories, _In_ size_t max_factories,
                                              _Out_ size_t* num_factories);
 
-/** \brief The function signature that ORT will call to release the OrtEpFactory instance.
+/** \brief The function signature that ORT will call to release an OrtEpFactory instance.
  *
  * This must be available in a function called 'ReleaseEpFactory' in the execution provider library.
  *
