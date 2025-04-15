@@ -181,12 +181,12 @@ static bool LoadQKVProjectionTensors(Graph& graph,
                                      const TensorProto*& q_zero_points_tensor,
                                      const TensorProto*& k_zero_points_tensor,
                                      const TensorProto*& v_zero_points_tensor) {
-    // Only support bits = 4 fusion on MatMulNBits.
-    if (quantization_used && (q_node->GetAttributes().at("bits").i() != 4 && k_node->GetAttributes().at("bits").i() != 4 && v_node->GetAttributes().at("bits").i() != 4)) {
-      return false;
-    }
-    
-    if (!graph.GetInitializedTensor(q_node->InputDefs()[1]->Name(), q_proj_tensor)) {
+  // Only support bits = 4 fusion on MatMulNBits.
+  if (quantization_used && (q_node->GetAttributes().at("bits").i() != 4 && k_node->GetAttributes().at("bits").i() != 4 && v_node->GetAttributes().at("bits").i() != 4)) {
+    return false;
+  }
+
+  if (!graph.GetInitializedTensor(q_node->InputDefs()[1]->Name(), q_proj_tensor)) {
     return false;
   }
 
