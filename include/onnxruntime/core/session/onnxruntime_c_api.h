@@ -5115,7 +5115,7 @@ struct OrtModelEditorApi {
    * User can release `sequence_type` after creating the OrtTypeInfo.
    *
    * \param[in] sequence_type Sequence type and shape information.
-   * \param[out] TypeInfo instance for the sequence.
+   * \param[out] type_info TypeInfo instance for the sequence.
    *
    * \snippet{doc} snippets.dox OrtStatus Return Value
    *
@@ -5129,8 +5129,8 @@ struct OrtModelEditorApi {
    *
    * User can release `contained_type` after creating the OrtTypeInfo.
    *
-   * \param[in] tensor_info Tensor type and shape information.
-   * \param[out] TypeInfo instance for the tensor.
+   * \param[in] contained_type Tensor type and shape information.
+   * \param[out] type_info TypeInfo instance for the tensor.
    *
    * \snippet{doc} snippets.dox OrtStatus Return Value
    *
@@ -5142,6 +5142,7 @@ struct OrtModelEditorApi {
    *
    * \param[in] name The name of the input or output.
    * \param[in] type_info The type information for the input or output. The provided value is copied.
+   * \param[out] value_info The OrtValueInfo instance.
    *
    * \snippet{doc} snippets.dox OrtStatus Return Value
    *
