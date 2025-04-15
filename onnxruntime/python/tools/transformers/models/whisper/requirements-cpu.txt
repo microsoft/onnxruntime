@@ -1,2 +1,2 @@
 -r requirements.txt
-onnxruntime>=1.17.1
+onnxruntime>=1.18.0
