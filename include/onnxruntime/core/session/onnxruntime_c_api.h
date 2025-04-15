@@ -3662,73 +3662,73 @@ struct OrtApi {
    *      name. E.g., given backend type "htp", on Windows, the backend path would be "QnnHtp.dll", and on other
    *      platforms, it would be "libQnnHtp.so". Mutually exclusive with "backend_path".
    *      Available options:
-   *      - "cpu"
-   *      - "gpu"
-   *      - "htp": Default.
-   *      - "saver"
+   *      -# "cpu"
+   *      -# "gpu"
+   *      -# "htp": Default.
+   *      -# "saver"
    *   "backend_path": File path to QNN backend library. Mutually exclusive with "backend_type".
    *   "profiling_level": QNN profiling level.
    *      Available options:
-   *      - "off": Default.
-   *      - "basic"
-   *      - "detailed"
+   *      -# "off": Default.
+   *      -# "basic"
+   *      -# "detailed"
    *   "profiling_file_path": QNN profiling file path if ETW not enabled.
    *   "rpc_control_latency": QNN RPC control latency.
    *   "vtcm_mb": QNN VTCM size in MB. default to 0(not set).
    *   "htp_performance_mode": QNN performance mode.
    *      Available options:
-   *      - "burst"
-   *      - "balanced"
-   *      - "default": Default.
-   *      - "high_performance"
-   *      - "high_power_saver"
-   *      - "low_balanced"
-   *      - "extreme_power_saver"
-   *      - "low_power_saver"
-   *      - "power_saver"
-   *      - "sustained_high_performance"
+   *      -# "burst"
+   *      -# "balanced"
+   *      -# "default": Default.
+   *      -# "high_performance"
+   *      -# "high_power_saver"
+   *      -# "low_balanced"
+   *      -# "extreme_power_saver"
+   *      -# "low_power_saver"
+   *      -# "power_saver"
+   *      -# "sustained_high_performance"
    *   "qnn_saver_path": File path to the QNN Saver backend library. If specified, QNN Saver will be enabled and will
    *      dump QNN API calls to disk for replay/debugging. QNN Saver produces incorrect model inference results and
    *      may alter model/EP partitioning. Use only for debugging.
    *   "qnn_context_priority": QNN context priority.
    *      Available options:
-   *      - "low"
-   *      - "normal": Default.
-   *      - "normal_high"
-   *      - "high"
+   *      -# "low"
+   *      -# "normal": Default.
+   *      -# "normal_high"
+   *      -# "high"
    *   "htp_graph_finalization_optimization_mode": Set the optimization mode for graph finalization on the HTP backend.
    *      Available options:
-   *      - "0": Default.
-   *      - "1": Faster preparation time, less optimal graph.
-   *      - "2": Longer preparation time, more optimal graph.
-   *      - "3": Longest preparation time, most likely even more optimal graph. See QNN SDK documentation for specific
+   *      -# "0": Default.
+   *      -# "1": Faster preparation time, less optimal graph.
+   *      -# "2": Longer preparation time, more optimal graph.
+   *      -# "3": Longest preparation time, most likely even more optimal graph. See QNN SDK documentation for specific
    *        details.
    *   "soc_model": The SoC model number. Refer to the QNN SDK documentation for valid values.
    *      Defaults to "0" (unknown).
    *   "htp_arch": The minimum HTP architecture the driver will use to select compatible QNN operators.
    *      Available options:
-   *      - "0": Default (none).
-   *      - "68"
-   *      - "69"
-   *      - "73"
-   *      - "75"
+   *      -# "0": Default (none).
+   *      -# "68"
+   *      -# "69"
+   *      -# "73"
+   *      -# "75"
    *   "device_id": The ID of the device to use when setting 'htp_arch'. Defaults to "0" (for single device).
    *   "enable_htp_fp16_precision": Used for float32 model for HTP backend.
    *      Enable the float32 model to be inferenced with fp16 precision. Otherwise, it will be fp32 precision.
-   *     - "0": With fp32 precision.
-   *     - "1": Default. With fp16 precision.
+   *      -# "0": With fp32 precision.
+   *      -# "1": Default. With fp16 precision.
    *   "offload_graph_io_quantization": Offload graph input quantization and graph output dequantization to another
    *      execution provider (typically CPU EP).
-   *      - "0": Disabled. QNN EP will handle quantization and dequantization of graph I/O.
-   *      - "1": Enabled. This is the default value.
+   *      -# "0": Disabled. QNN EP will handle quantization and dequantization of graph I/O.
+   *      -# "1": Enabled. This is the default value.
    *   "enable_htp_spill_fill_buffer": Enable HTP spill fill buffer setting. The flag is used while generating context
    *      binary.
-   *      - "0": Default. Disabled.
-   *      - "1": Enabled.
+   *      -# "0": Default. Disabled.
+   *      -# "1": Enabled.
    *   "enable_htp_shared_memory_allocator": Enable the QNN HTP shared memory allocator. Requires libcdsprpc.so/dll to
    *      be available.
-   *      - "0": Default. Disabled.
-   *      - "1": Enabled.
+   *      -# "0": Default. Disabled.
+   *      -# "1": Enabled.
    *   "dump_json_qnn_graph": Set to "1" to dump QNN graphs generated by QNN EP as JSON files. Each graph partition
    *      assigned to QNN EP is dumped to a separate file.
    *   "json_qnn_graph_dir": Directory in which to dump QNN JSON graphs. If not specified, QNN graphs are dumped in the
@@ -4866,6 +4866,7 @@ struct OrtApi {
 
   /** \brief Get the value name from an OrtValueInfo instance.
    * \param[in] value_info The OrtValueInfo instance.
+   * \param[out] name The name of the OrtValueInfo
    * \snippet{doc} snippets.dox OrtStatus Return Value
    * \since Version 1.21.
    */
@@ -4873,6 +4874,7 @@ struct OrtApi {
 
   /** \brief Get the type information from an OrtValueInfo instance.
    * \param[in] value_info The OrtValueInfo instance.
+   * \param[out] type_info The type info of the OrtValueInfo
    * \snippet{doc} snippets.dox OrtStatus Return Value
    * \since Version 1.21.
    */
@@ -4900,6 +4902,7 @@ struct OrtApi {
    * \param[in] shape Dimensions of the Tensor. All values should be > 0.
    * \param[in] shape_len Number of dimensions in the shape array.
    * \param[in] type Data type of the Tensor.
+   * \param[out] out Newly created ::OrtValue. Must be freed with OrtApi::ReleaseValue
    *
    * \snippet{doc} snippets.dox OrtStatus Return Value
    *
@@ -4923,8 +4926,9 @@ struct OrtApi {
    *            is not guaranteed. The session may have already been created and initialized
    *            before the cancellation request was issued.
    *
-   * \snippet{doc} snippets.dox OrtStatus
+   * \snippet{doc} snippets.dox OrtStatus Return Value
    *
+   * \since Version 1.21.
    */
   ORT_API2_STATUS(SessionOptionsSetLoadCancellationFlag, _Inout_ OrtSessionOptions* options,
                   _In_ bool cancel);
@@ -5069,7 +5073,7 @@ struct OrtModelEditorApi {
    * User can release `tensor_info` after creating the OrtTypeInfo.
    *
    * \param[in] tensor_info Tensor type and shape information.
-   * \param[out] TypeInfo instance for the tensor.
+   * \param[out] type_info TypeInfo instance for the tensor.
    *
    * \snippet{doc} snippets.dox OrtStatus Return Value
    *
@@ -5085,7 +5089,7 @@ struct OrtModelEditorApi {
    * User can release `tensor_info` after creating the OrtTypeInfo.
    *
    * \param[in] tensor_info SparseTensor type and shape information.
-   * \param[out] TypeInfo instance for the tensor.
+   * \param[out] type_info TypeInfo instance for the tensor.
    *
    * \snippet{doc} snippets.dox OrtStatus Return Value
    *
@@ -5102,7 +5106,7 @@ struct OrtModelEditorApi {
    *
    * \param[in] map_key_type Key type for the map.
    * \param[in] map_value_type Value type for the map.
-   * \param[out] TypeInfo instance for the map.
+   * \param[out] type_info TypeInfo instance for the map.
    *
    * \snippet{doc} snippets.dox OrtStatus Return Value
    *
@@ -5118,7 +5122,7 @@ struct OrtModelEditorApi {
    * User can release `sequence_type` after creating the OrtTypeInfo.
    *
    * \param[in] sequence_type Sequence type and shape information.
-   * \param[out] TypeInfo instance for the sequence.
+   * \param[out] type_info TypeInfo instance for the sequence.
    *
    * \snippet{doc} snippets.dox OrtStatus Return Value
    *
@@ -5132,8 +5136,8 @@ struct OrtModelEditorApi {
    *
    * User can release `contained_type` after creating the OrtTypeInfo.
    *
-   * \param[in] tensor_info Tensor type and shape information.
-   * \param[out] TypeInfo instance for the tensor.
+   * \param[in] contained_type Tensor type and shape information.
+   * \param[out] type_info TypeInfo instance for the tensor.
    *
    * \snippet{doc} snippets.dox OrtStatus Return Value
    *
@@ -5145,6 +5149,7 @@ struct OrtModelEditorApi {
    *
    * \param[in] name The name of the input or output.
    * \param[in] type_info The type information for the input or output. The provided value is copied.
+   * \param[out] value_info The OrtValueInfo instance.
    *
    * \snippet{doc} snippets.dox OrtStatus Return Value
    *
@@ -5284,6 +5289,7 @@ struct OrtModelEditorApi {
    *                           If augmenting an existing model add additional opset versions if needed.
    * \param[in] opset_entries_len The number of domain_names and opset_versions entries.
    *                              Domain and opset entries should be 1:1
+   * \param[out] model The OrtModel instance.
    *
    * \snippet{doc} snippets.dox OrtStatus Return Value
    *
@@ -5375,6 +5381,7 @@ struct OrtModelEditorApi {
    * \param{in} model_data The model data for the existing model to augment.
    * \param{in} model_data_length The length of the model data.
    * \param{in} options The OrtSessionOptions instance.
+   * \param{out} out The created OrtSession instance.
    *
    * \snippet{doc} snippets.dox OrtStatus Return Value
    *
@@ -5389,12 +5396,13 @@ struct OrtModelEditorApi {
    *
    * When using the Model Editor API to augment a model, any new nodes must conform to the opset version of the
    * original model. To do that the user must be able to discover that opset version.
+   * Returns an error if the domain is not used in the model.
    *
    * \param[in] session OrtSession to query
    * \param[in] domain Domain to query. The ONNX domain is an empty string.
    * \param[out] opset The opset version of the domain.
    *
-   * \snippet{doc} snippets.dox OrtStatus Return Value. Returns an error if the domain is not used in the model.
+   * \snippet{doc} snippets.dox OrtStatus Return Value
    *
    * \since Version 1.21.
    */
@@ -5427,7 +5435,7 @@ struct OrtModelEditorApi {
    *
    * \param[in] session OrtSession to finalize. Session must have been created using CreateModelEditorSession[FromArray].
    * \param[in] options OrtSessionOptions to use for the session.
-   * \param[in] Optional prepacked_weights_container OrtPrepackedWeightsContainer to use for the session.
+   * \param[in] prepacked_weights_container Optional OrtPrepackedWeightsContainer to use for the session.
                 Set to nullptr if not used.
    * \snippet{doc} snippets.dox OrtStatus Return Value
    *
@@ -5447,7 +5455,10 @@ struct OrtModelEditorApi {
  *
  * Execution providers that support compilation fuse a subgraph into an EPContext node that wraps a provider-specific
  * binary representation of the subgraph.
- * See \href https://onnxruntime.ai/docs/execution-providers/EP-Context-Design.html for EPContext details.
+ * More details relate to EPContext design refers to:
+ *  \htmlonly
+ *  <a href="https://onnxruntime.ai/docs/execution-providers/EP-Context-Design.html">EPContext design document.</a>
+ *  \endhtmlonly
  *
  * \since Version 1.22.
  */
@@ -5517,7 +5528,7 @@ struct OrtCompileApi {
    *   /Path/my_model -> /Path/my_model_ctx.onnx
    *
    * \param[in] model_compile_options The OrtModelCompilationOptions instance.
-   * \param[in] input_model_path Null terminated string of the path (wchar on Windows, char otherwise).
+   * \param[in] output_model_path Null terminated string of the path (wchar on Windows, char otherwise).
    *
    * \snippet{doc} snippets.dox OrtStatus Return Value
    *
@@ -5544,7 +5555,7 @@ struct OrtCompileApi {
   ORT_API2_STATUS(ModelCompilationOptions_SetOutputModelExternalInitializersFile,
                   _In_ OrtModelCompilationOptions* model_compile_options,
                   _In_ const ORTCHAR_T* external_initializers_file_path,
-                  size_t external_initializer_size_threshold);
+                  size_t external_initializers_size_threshold);
 
   /** \brief Configures model compilation to store the output compiled ONNX model in a buffer.
    *
@@ -5574,7 +5585,10 @@ struct OrtCompileApi {
    * If disabled, the `ep_cache_context` attribute of EPContext nodes will contain the path to the file containing the
    * context binary data. The path is set by the execution provider creating the EPContext node.
    *
-   * See \href https://onnxruntime.ai/docs/execution-providers/EP-Context-Design.html for EPContext details.
+   * More details relate to EPContext design refers to:
+   *  \htmlonly
+   *  <a href="https://onnxruntime.ai/docs/execution-providers/EP-Context-Design.html">EPContext design document.</a>
+   *  \endhtmlonly
    *
    * \param[in] model_compile_options The OrtModelCompilationOptions instance.
    * \param[in] embed_ep_context_in_model True to embed EPContext binary data into the EPContext node
@@ -5590,7 +5604,7 @@ struct OrtCompileApi {
   /** \brief Compiles an input ONNX model with the given compilation options.
    *
    * \param[in] env OrtEnv object.
-   * \param[in] model_compile_options The compilation options that defines compilation options for a model.
+   * \param[in] model_options The compilation options that defines compilation options for a model.
    *
    * \snippet{doc} snippets.dox OrtStatus Return Value
    *
