@@ -5281,6 +5281,7 @@ struct OrtModelEditorApi {
    *                           If augmenting an existing model add additional opset versions if needed.
    * \param[in] opset_entries_len The number of domain_names and opset_versions entries.
    *                              Domain and opset entries should be 1:1
+   * \param[out] model The OrtModel instance.
    *
    * \snippet{doc} snippets.dox OrtStatus Return Value
    *
