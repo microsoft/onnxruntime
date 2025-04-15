@@ -5066,7 +5066,7 @@ struct OrtModelEditorApi {
    * User can release `tensor_info` after creating the OrtTypeInfo.
    *
    * \param[in] tensor_info Tensor type and shape information.
-   * \param[out] TypeInfo instance for the tensor.
+   * \param[out] type_info TypeInfo instance for the tensor.
    *
    * \snippet{doc} snippets.dox OrtStatus Return Value
    *
@@ -5082,7 +5082,7 @@ struct OrtModelEditorApi {
    * User can release `tensor_info` after creating the OrtTypeInfo.
    *
    * \param[in] tensor_info SparseTensor type and shape information.
-   * \param[out] TypeInfo instance for the tensor.
+   * \param[out] type_info TypeInfo instance for the tensor.
    *
    * \snippet{doc} snippets.dox OrtStatus Return Value
    *
@@ -5099,7 +5099,7 @@ struct OrtModelEditorApi {
    *
    * \param[in] map_key_type Key type for the map.
    * \param[in] map_value_type Value type for the map.
-   * \param[out] TypeInfo instance for the map.
+   * \param[out] type_info TypeInfo instance for the map.
    *
    * \snippet{doc} snippets.dox OrtStatus Return Value
    *
