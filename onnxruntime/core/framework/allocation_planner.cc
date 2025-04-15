@@ -862,8 +862,6 @@ class PlannerImpl {
                       plan_.SetLocation(static_cast<size_t>(index),
                                         exec_provider->GetOrtDeviceByMemType(OrtMemType::OrtMemTypeDefault));
                     } else {
-                      // We have seen this implicitly consumed input on multiple EPs
-                      // Set the location to CPU
                       plan_.SetLocation(static_cast<size_t>(index),
                                         execution_providers_.Get(CPU)->GetOrtDeviceByMemType(OrtMemType::OrtMemTypeDefault));
                       set_implicitly_consumed_node_arg_has_heterogenous_ep_consumers.insert(index);
@@ -890,19 +888,19 @@ class PlannerImpl {
           OrtValueIndex index = Index(node_output->Name());
           ProcessDef(index, node_output);
           OrtDevice output_device = exec_provider->GetOrtDeviceByMemType(p_kernel_def->OutputMemoryType(i));
-          // XXX: The below ifdef is due to GetConsumerNodes()
+          // The below ifdef is due to GetConsumerNodes()
           // Does minimal build support CPU based providers?
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
           if (output_device == OrtDevice()) {
-            // See if any of the downstream devices require 4K alignment.
-            // If so change our output device to 4K allocator.
             const auto& output_name = node_output->Name();
             const auto consumers = graph_viewer_.GetConsumerNodes(output_name);
             for (const auto* consumer : consumers) {
               if (consumer != nullptr) {
+                // Such consumers are usually the only ones.
+                // However, in a rare case there are multiple consumers, the below allocators would satisfy most of them.
+                const auto& ep_type = consumer->GetExecutionProviderType();
                 if (GetAlignmentForCpuBasedExecutionProvider(consumer->GetExecutionProviderType()) == kAlloc4KAlignment) {
-                  // If any of the consumer EPs requires 4K alignment, set the output device to 4K allocator.
-                  output_device = OrtDevice(OrtDevice::CPU, OrtDevice::MemType::CPU_ALIGNED_4K, 0);
+                  output_device = execution_providers_.Get(ep_type)->GetOrtDeviceByMemType(OrtMemType::OrtMemTypeDefault);
                   break;
                 }
               }

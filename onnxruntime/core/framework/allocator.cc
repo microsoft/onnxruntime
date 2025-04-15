@@ -142,8 +142,7 @@ void* AllocateBufferWithOptions(IAllocator& alloc, size_t size, bool use_reserve
 
 size_t GetAlignmentForDevice(const OrtDevice& ort_device) {
   auto mem_type = ort_device.MemType();
-  if (mem_type == OrtDevice::MemType::QNN_HTP_SHARED ||
-      mem_type == OrtDevice::MemType::CPU_ALIGNED_4K) {
+  if (mem_type == OrtDevice::MemType::CPU_ALIGNED_4K) {
     return kAlloc4KAlignment;
   }
   return kAllocAlignment;
@@ -153,16 +152,15 @@ bool IsCpuDeviceWithAllocator(const OrtDevice& ort_device) {
   if (ort_device.Type() == OrtDevice::CPU) {
     auto mem_type = ort_device.MemType();
     return mem_type == OrtDevice::MemType::DEFAULT ||
-           mem_type == OrtDevice::MemType::CPU_ALIGNED_4K ||
-           mem_type == OrtDevice::MemType::QNN_HTP_SHARED;
+           mem_type == OrtDevice::MemType::CPU_ALIGNED_4K;
   }
   return false;
 }
 
 size_t GetAlignmentForCpuBasedExecutionProvider(std::string_view provider_type) {
   if (provider_type == kQnnExecutionProvider ||
-      provider_type == kOpenVINOExecutionProvider ||
-      provider_type == kVitisAIExecutionProvider) {
+      provider_type == kVitisAIExecutionProvider ||
+      provider_type == kVSINPUExecutionProvider) {
     return kAlloc4KAlignment;
   }
   return kAllocAlignment;

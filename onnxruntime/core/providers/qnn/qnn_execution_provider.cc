@@ -215,7 +215,7 @@ qnn::ProfilingLevel QNNExecutionProvider::GetProfilingLevelFromETWLevel(unsigned
 
 QNNExecutionProvider::QNNExecutionProvider(const ProviderOptions& provider_options_map,
                                            const ConfigOptions* config_options)
-    : IExecutionProvider{onnxruntime::kQnnExecutionProvider, OrtDevice(OrtDevice::CPU, OrtDevice::MemType::CPU_ALIGNED_4K, 0)} {
+    : IExecutionProvider{onnxruntime::kQnnExecutionProvider} {
   InitOrtCppApi();
   metadef_id_generator_ = Factory<ModelMetadefIdGenerator>::Create();
 
@@ -1329,11 +1329,11 @@ std::vector<AllocatorPtr> QNNExecutionProvider::CreatePreferredAllocators() {
   return allocators;
 }
 
-OrtDevice QNNExecutionProvider::GetOrtDeviceByMemType(OrtMemType mem_type) const {
-  if (rpcmem_library_ && (mem_type == OrtMemTypeCPUInput || mem_type == OrtMemTypeCPUOutput)) {
+OrtDevice QNNExecutionProvider::GetOrtDeviceByMemType(OrtMemType /* em_type */) const {
+  if (IsHtpSharedMemoryAllocatorAvailable()) {
     return OrtDevice(OrtDevice::CPU, OrtDevice::MemType::QNN_HTP_SHARED, 0);
   }
-  // CPU 4K aligned allocator
+  // Default CPU allocator
   return default_device_;
 }
 

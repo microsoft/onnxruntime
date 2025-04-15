@@ -38,23 +38,8 @@
 
 namespace onnxruntime {
 VSINPUExecutionProvider::VSINPUExecutionProvider(const VSINPUExecutionProviderInfo& info)
-    : IExecutionProvider{onnxruntime::kVSINPUExecutionProvider},
+    : IExecutionProvider{onnxruntime::kVSINPUExecutionProvider, OrtDevice(OrtDevice::CPU, OrtDevice::MemType::CPU_ALIGNED_4K, 0)},
       device_id_(info.device_id) {
-  AllocatorCreationInfo default_memory_info{
-      [](int) {
-        return std::make_unique<CPUAllocator>(
-            OrtMemoryInfo("VSINPU", OrtAllocatorType::OrtDeviceAllocator));
-      }};
-
-  CreateAllocator(default_memory_info);
-
-  AllocatorCreationInfo cpu_memory_info{
-      [](int) {
-        return std::make_unique<CPUAllocator>(
-            OrtMemoryInfo("VSINPU", OrtAllocatorType::OrtDeviceAllocator, OrtDevice(), 0, OrtMemTypeCPUOutput));
-      }};
-
-  CreateAllocator(cpu_memory_info);
 }
 
 VSINPUExecutionProvider::~VSINPUExecutionProvider() {}
