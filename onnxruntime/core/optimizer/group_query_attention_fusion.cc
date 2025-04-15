@@ -30,24 +30,24 @@ static NodeArg& MergeQkvWeightsForMatMul(Graph& graph,
 
   int64_t output_hidden_size = q_hidden_size + 2 * kv_hidden_size;
 
-  TensorProto qkv_b_initializer;
-  qkv_b_initializer.set_name(graph.GenerateNodeArgName("qkv_B"));
-  qkv_b_initializer.add_dims(input_hidden_size);
-  qkv_b_initializer.add_dims(output_hidden_size);
-  qkv_b_initializer.set_data_type(q_tensor->data_type());
+  TensorProto qkv_weight_initializer;
+  qkv_weight_initializer.set_name(graph.GenerateNodeArgName("qkv_weight"));
+  qkv_weight_initializer.add_dims(input_hidden_size);
+  qkv_weight_initializer.add_dims(output_hidden_size);
+  qkv_weight_initializer.set_data_type(q_tensor->data_type());
 
   const MLFloat16* q_data = q_initializer.data<MLFloat16>();
   const MLFloat16* k_data = k_initializer.data<MLFloat16>();
   const MLFloat16* v_data = v_initializer.data<MLFloat16>();
 
-  int64_t b_element_count = input_hidden_size * output_hidden_size;
-  std::vector<MLFloat16> merged_qkv_B;
-  merged_qkv_B.reserve(gsl::narrow<size_t>(b_element_count));
+  int64_t element_count = input_hidden_size * output_hidden_size;
+  std::vector<MLFloat16> merged_qkv_weight;
+  merged_qkv_weight.reserve(gsl::narrow<size_t>(element_count));
 
-  optimizer_utils::MergeMatMulWeightsByRow(q_data, k_data, v_data, merged_qkv_B, input_hidden_size, q_hidden_size, kv_hidden_size);
-  utils::SetRawDataInTensorProto(qkv_b_initializer, merged_qkv_B.data(), b_element_count * sizeof(MLFloat16));
+  optimizer_utils::MergeMatMulWeightsByRow(q_data, k_data, v_data, merged_qkv_weight, input_hidden_size, q_hidden_size, kv_hidden_size);
+  utils::SetRawDataInTensorProto(qkv_weight_initializer, merged_qkv_weight.data(), element_count * sizeof(MLFloat16));
 
-  return graph_utils::AddInitializer(graph, qkv_b_initializer);
+  return graph_utils::AddInitializer(graph, qkv_weight_initializer);
 }
 
 static std::vector<NodeArg*> MergeQkvWeightsForMatMulNBits(
@@ -96,17 +96,17 @@ static std::vector<NodeArg*> MergeQkvWeightsForMatMulNBits(
 
   int64_t output_hidden_size = q_hidden_size + 2 * kv_hidden_size;
 
-  TensorProto qkv_b_initializer;
-  qkv_b_initializer.set_name(graph.GenerateNodeArgName("qkv_B"));
-  qkv_b_initializer.add_dims(output_hidden_size);
-  qkv_b_initializer.add_dims(blocks);
-  qkv_b_initializer.add_dims(block_size);
-  qkv_b_initializer.set_data_type(q_tensor->data_type());
+  TensorProto qkv_weight_initializer;
+  qkv_weight_initializer.set_name(graph.GenerateNodeArgName("qkv_weight"));
+  qkv_weight_initializer.add_dims(output_hidden_size);
+  qkv_weight_initializer.add_dims(blocks);
+  qkv_weight_initializer.add_dims(block_size);
+  qkv_weight_initializer.set_data_type(q_tensor->data_type());
 
   TensorProto qkv_scale_initializer;
   qkv_scale_initializer.set_name(graph.GenerateNodeArgName("qkv_scale"));
 
-  // Preserve scale tensor shape (the dimenson is either 1 or 2).
+  // Preserve scale tensor shape (the dimension is either 1 or 2).
   if (q_scale_tensor->dims().size() > 1) {
     qkv_scale_initializer.add_dims(output_hidden_size);
     qkv_scale_initializer.add_dims(blocks);
@@ -115,24 +115,24 @@ static std::vector<NodeArg*> MergeQkvWeightsForMatMulNBits(
   }
   qkv_scale_initializer.set_data_type(q_scale_tensor->data_type());
 
-  int64_t b_element_count = output_hidden_size * blocks * block_size;
-  std::vector<uint8_t> merged_qkv_B;
-  merged_qkv_B.reserve(gsl::narrow<size_t>(b_element_count));
+  int64_t element_count = output_hidden_size * blocks * block_size;
+  std::vector<uint8_t> merged_qkv_weight;
+  merged_qkv_weight.reserve(gsl::narrow<size_t>(element_count));
 
   int64_t scale_elements_count = output_hidden_size * blocks;
   std::vector<MLFloat16> merged_qkv_scale;
   merged_qkv_scale.reserve(gsl::narrow<size_t>(scale_elements_count));
 
-  optimizer_utils::MergeMatMulWeightsByBlocks(q_data, k_data, v_data, merged_qkv_B, q_hidden_size, kv_hidden_size, blocks, block_size);
+  optimizer_utils::MergeMatMulWeightsByBlocks(q_data, k_data, v_data, merged_qkv_weight, q_hidden_size, kv_hidden_size, blocks, block_size);
   optimizer_utils::MergeMatMulWeightsByBlocks(q_scale_data, k_scale_data, v_scale_data, merged_qkv_scale, q_hidden_size, kv_hidden_size, blocks, 1);
 
-  utils::SetRawDataInTensorProto(qkv_b_initializer, merged_qkv_B.data(), b_element_count * sizeof(uint8_t));
+  utils::SetRawDataInTensorProto(qkv_weight_initializer, merged_qkv_weight.data(), element_count * sizeof(uint8_t));
   utils::SetRawDataInTensorProto(qkv_scale_initializer, merged_qkv_scale.data(), scale_elements_count * sizeof(MLFloat16));
 
-  NodeArg& qkv_b_arg = graph_utils::AddInitializer(graph, qkv_b_initializer);
+  NodeArg& qkv_weight_arg = graph_utils::AddInitializer(graph, qkv_weight_initializer);
   NodeArg& qkv_scale_arg = graph_utils::AddInitializer(graph, qkv_scale_initializer);
 
-  std::vector<NodeArg*> result_node_args = {&qkv_b_arg, &qkv_scale_arg};
+  std::vector<NodeArg*> result_node_args = {&qkv_weight_arg, &qkv_scale_arg};
 
   if (has_zero_points) {
     Initializer q_zp_initializer(*q_zero_point_tensor, graph.ModelPath());
@@ -182,7 +182,7 @@ static bool LoadQKVProjectionTensors(Graph& graph,
                                      const TensorProto*& k_zero_points_tensor,
                                      const TensorProto*& v_zero_points_tensor) {
   // Only support bits = 4 fusion on MatMulNBits.
-  if (quantization_used && (q_node->GetAttributes().at("bits").i() != 4 && k_node->GetAttributes().at("bits").i() != 4 && v_node->GetAttributes().at("bits").i() != 4)) {
+  if (quantization_used && (q_node->GetAttributes().at("bits").i() != 4 || k_node->GetAttributes().at("bits").i() != 4 || v_node->GetAttributes().at("bits").i() != 4)) {
     return false;
   }
 
@@ -227,6 +227,11 @@ static bool LoadQKVProjectionTensors(Graph& graph,
   }
 
   if (quantization_used) {
+    if ((q_zero_points_tensor || k_zero_points_tensor || v_zero_points_tensor) &&
+        (!q_zero_points_tensor || !k_zero_points_tensor || !v_zero_points_tensor)) {
+      return false;
+    }
+
     return q_proj_tensor->data_type() == TensorProto::UINT8 && k_proj_tensor->data_type() == TensorProto::UINT8 && v_proj_tensor->data_type() == TensorProto::UINT8 &&
            q_scale_tensor->data_type() == TensorProto::FLOAT16 && k_scale_tensor->data_type() == TensorProto::FLOAT16 && v_scale_tensor->data_type() == TensorProto::FLOAT16;
   } else {
@@ -378,8 +383,8 @@ Status GroupQueryAttentionFusion::ApplyImpl(
     int64_t kv_hidden_size = kv_num_heads * head_size;
     int64_t output_hidden_size = q_hidden_size + 2 * kv_hidden_size;
 
-    // Ensure the output shape has at least 3 dimensions [batch_size, sequence_length, hidden_size]
-    if (matmul_or_nbits_output_shape->dim_size() > 2) {
+    // Ensure the output shape has 3 dimensions [batch_size, sequence_length, hidden_size]
+    if (matmul_or_nbits_output_shape->dim_size() == 3) {
       auto* third_dim = matmul_or_nbits_output_shape->mutable_dim(2);
       third_dim->set_dim_value(output_hidden_size);
     } else {
