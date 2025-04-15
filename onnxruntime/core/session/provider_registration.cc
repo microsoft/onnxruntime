@@ -110,9 +110,10 @@ ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider,
 
   // Add provider options to the session config options.
   // Use a new key with the format: "ep.<EP_NAME>.<PROVIDER_OPTION_KEY>"
+  const auto option_prefix = ProviderOptionsUtils::GetProviderOptionPrefix(provider_name);
   for (const auto& [key, value] : provider_options) {
     std::ostringstream new_key_builder;
-    new_key_builder << "ep." << provider_name << "." << key;
+    new_key_builder << option_prefix << key;
     const std::string new_key = new_key_builder.str();
     if (new_key.size() > ConfigOptions::kMaxKeyLength) {
       LOGS_DEFAULT(WARNING) << "Can't add provider option to session configurations: "

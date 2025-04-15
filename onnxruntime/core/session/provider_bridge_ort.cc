@@ -5,45 +5,45 @@
 // It implements onnxruntime::ProviderHost
 
 #include <optional>
+#include <utility>
+
 #include "core/common/inlined_containers.h"
 #include "core/common/path_string.h"
+#include "core/common/string_helper.h"
 #include "core/framework/allocator_utils.h"
-#include "core/framework/config_options.h"
 #include "core/framework/compute_capability.h"
-#include "core/framework/data_types.h"
+#include "core/framework/config_options.h"
 #include "core/framework/data_transfer_manager.h"
+#include "core/framework/data_types.h"
 #include "core/framework/error_code_helper.h"
 #include "core/framework/execution_provider.h"
+#include "core/framework/fallback_cpu_capability.h"
 #include "core/framework/kernel_registry.h"
+#include "core/framework/model_metadef_id_generator.h"
+#include "core/framework/murmurhash3.h"
 #include "core/framework/node_unit.h"
+#include "core/framework/provider_options.h"
 #include "core/framework/provider_shutdown.h"
+#include "core/framework/random_generator.h"
 #include "core/framework/run_options.h"
+#include "core/framework/sparse_utils.h"
 #include "core/framework/tensorprotoutils.h"
 #include "core/framework/TensorSeq.h"
-#include "core/framework/provider_options.h"
-#include "core/framework/fallback_cpu_capability.h"
-#include "core/framework/random_generator.h"
-#include "core/graph/model.h"
-#include "core/platform/env.h"
-#include "core/providers/common.h"
-#include "core/providers/providers.h"
-#include "core/session/inference_session.h"
-#include "core/session/abi_session_options_impl.h"
-#include "core/session/ort_apis.h"
-#include "core/session/onnxruntime_session_options_config_keys.h"
-#include "core/session/provider_bridge_ort.h"
-#include "core/util/math.h"
-#include "core/framework/sparse_utils.h"
 #include "core/graph/graph_proto_serializer.h"
-#include "core/framework/murmurhash3.h"
-#include "core/framework/model_metadef_id_generator.h"
+#include "core/graph/model.h"
 #include "core/optimizer/graph_optimizer_registry.h"
 #include "core/optimizer/qdq_transformer/selectors_actions/qdq_selectors.h"
 #include "core/optimizer/qdq_transformer/selectors_actions/shared/utils.h"
-
+#include "core/platform/env.h"
+#include "core/providers/common.h"
+#include "core/session/abi_session_options_impl.h"
+#include "core/session/inference_session.h"
 #include "core/session/onnxruntime_c_api.h"
-#include "core/common/string_helper.h"
-#include <utility>
+#include "core/session/onnxruntime_session_options_config_keys.h"
+#include "core/session/ort_apis.h"
+#include "core/session/provider_bridge_library.h"
+#include "core/session/provider_bridge_ort.h"
+#include "core/util/math.h"
 #include "onnx/shape_inference/implementation.h"
 
 #ifdef ENABLE_TRAINING
@@ -1720,64 +1720,56 @@ bool InitProvidersSharedLibrary() try {
   return false;
 }
 
-struct ProviderLibrary {
-  ProviderLibrary(const ORTCHAR_T* filename, bool unload = true) : filename_{filename}, unload_{unload} {}
-  ~ProviderLibrary() {
-    // assert(!handle_); // We should already be unloaded at this point (disabled until Python shuts down deterministically)
-  }
+ProviderLibrary::ProviderLibrary(const ORTCHAR_T* filename, bool unload)
+    : filename_{filename}, unload_{unload} {
+}
 
-  Provider& Get() {
-    std::lock_guard<std::mutex> lock{mutex_};
-    try {
-      if (!provider_) {
-        s_library_shared.Ensure();
+ProviderLibrary::~ProviderLibrary() {
+  // assert(!handle_); // We should already be unloaded at this point (disabled until Python shuts down deterministically)
+}
 
-        auto full_path = Env::Default().GetRuntimePath() + filename_;
-        ORT_THROW_IF_ERROR(Env::Default().LoadDynamicLibrary(full_path, false, &handle_));
+Provider& ProviderLibrary::Get() {
+  std::lock_guard<std::mutex> lock{mutex_};
+  try {
+    if (!provider_) {
+      s_library_shared.Ensure();
 
-        Provider* (*PGetProvider)();
-        ORT_THROW_IF_ERROR(Env::Default().GetSymbolFromLibrary(handle_, "GetProvider", (void**)&PGetProvider));
+      auto full_path = Env::Default().GetRuntimePath() + filename_;
+      ORT_THROW_IF_ERROR(Env::Default().LoadDynamicLibrary(full_path, false, &handle_));
 
-        provider_ = PGetProvider();
-        provider_->Initialize();
-      }
-      return *provider_;
-    } catch (const std::exception&) {
-      Unload();  // If anything fails we unload the library and rethrow
-      throw;
+      Provider* (*PGetProvider)();
+      ORT_THROW_IF_ERROR(Env::Default().GetSymbolFromLibrary(handle_, "GetProvider", (void**)&PGetProvider));
+
+      provider_ = PGetProvider();
+      provider_->Initialize();
     }
+    return *provider_;
+  } catch (const std::exception&) {
+    Unload();  // If anything fails we unload the library and rethrow
+    throw;
   }
+}
 
-  void Unload() {
-    // This will crash in the Mac unit test due to the ProviderLibrary global variable being destroyed before Unload() is called
-    // Something has a global 'Environment or OrtEnv' variable that is being destroyed after other global variables have already been destroyed
-    // std::lock_guard<std::mutex> lock{mutex_};
+void ProviderLibrary::Unload() {
+  // This will crash in the Mac unit test due to the ProviderLibrary global variable being destroyed before Unload() is called
+  // Something has a global 'Environment or OrtEnv' variable that is being destroyed after other global variables have already been destroyed
+  // std::lock_guard<std::mutex> lock{mutex_};
 
-    if (handle_) {
-      if (provider_)
-        provider_->Shutdown();
+  if (handle_) {
+    if (provider_)
+      provider_->Shutdown();
 
-      if (unload_) {
-        auto status = Env::Default().UnloadDynamicLibrary(handle_);
-        if (!status.IsOK()) {
-          LOGS_DEFAULT(ERROR) << status.ErrorMessage();
-        }
+    if (unload_) {
+      auto status = Env::Default().UnloadDynamicLibrary(handle_);
+      if (!status.IsOK()) {
+        LOGS_DEFAULT(ERROR) << status.ErrorMessage();
       }
-
-      handle_ = nullptr;
-      provider_ = nullptr;
     }
+
+    handle_ = nullptr;
+    provider_ = nullptr;
   }
-
- private:
-  std::mutex mutex_;
-  const ORTCHAR_T* filename_;
-  bool unload_;
-  Provider* provider_{};
-  void* handle_{};
-
-  ORT_DISALLOW_COPY_AND_ASSIGNMENT(ProviderLibrary);
-};
+}
 
 static ProviderLibrary s_library_cuda(LIBRARY_PREFIX ORT_TSTR("onnxruntime_providers_cuda") LIBRARY_EXTENSION
 #ifndef _WIN32
