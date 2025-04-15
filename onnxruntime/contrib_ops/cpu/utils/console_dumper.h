@@ -3,6 +3,7 @@
 
 #pragma once
 #include <string>
+#include <iostream>
 #include "core/framework/ort_value.h"
 #include "core/framework/float16.h"
 #include "contrib_ops/cpu/utils/debug_macros.h"
