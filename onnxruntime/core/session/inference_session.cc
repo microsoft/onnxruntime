@@ -250,8 +250,6 @@ Status GetMinimalBuildOptimizationHandling(
 
 }  // namespace
 
-extern std::atomic<int> saturation_count;
-
 std::atomic<uint32_t> InferenceSession::global_session_id_{1};
 std::map<uint32_t, InferenceSession*> InferenceSession::active_sessions_;
 #ifdef _WIN32
