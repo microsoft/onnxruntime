@@ -4,7 +4,7 @@ parameters:
   PackageType: ''
   PackageName: ''
   PackagePath: ''
-  IsReleaseBuild: ${{ parameters.IsReleaseBuild }}
+  IsReleaseBuild: false
   ScriptPath: '$(Build.SourcesDirectory)/tools/nuget/validate_package.py'
   workingDirectory: "$(Build.BinariesDirectory)"
 
