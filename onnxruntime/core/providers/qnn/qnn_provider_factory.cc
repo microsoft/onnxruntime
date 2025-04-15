@@ -28,7 +28,7 @@ struct QNNProviderFactory : IExecutionProviderFactory {
     // the session option configurations with the key prefix "ep.EP_NAME.".
     // We extract those EP options and pass them to QNN EP as separate "provider options".
     std::unordered_map<std::string, std::string> provider_options = provider_options_map_;
-    const std::string key_prefix = "ep.QNN.";
+    const std::string key_prefix = std::string("ep.") + kQnnExecutionProvider + std::string(".");
     for (const auto& [key, value] : config_options_map) {
       if (key.rfind(key_prefix, 0) == 0) {
         provider_options[key.substr(key_prefix.size())] = value;
