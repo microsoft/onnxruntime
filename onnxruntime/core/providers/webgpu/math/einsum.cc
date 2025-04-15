@@ -46,7 +46,7 @@ bool IsInteger(const std::string& s) {
 EinsumEquation::EinsumEquation(const std::vector<const Tensor*>& inputs,
                                const std::string& raw_equation) {
   std::string lhs, rhs, equation = RemoveAllWhitespace(raw_equation);
-  int arrow_pos = equation.find("->");
+  size_t arrow_pos = equation.find("->");
   if (arrow_pos != std::string::npos) {
     lhs = equation.substr(0, arrow_pos);
     rhs = equation.substr(arrow_pos + 2);
@@ -60,8 +60,8 @@ EinsumEquation::EinsumEquation(const std::vector<const Tensor*>& inputs,
   }
 
   // Parse LHS terms.
-  int pos = 0;
-  int find;
+  size_t pos = 0;
+  size_t find;
   int input_idx = 0;
   while ((find = lhs.find(',', pos)) != std::string::npos) {
     auto term = lhs.substr(pos, find - pos);
@@ -190,7 +190,7 @@ EinsumTerm EinsumEquation::ProcessTerm(const std::string& term,
       }
     } else {
       einsum_term.symbol_to_indices[symbol].push_back(
-          i + (has_ellipsis_ ? ellipsis_dims_.size() - 1 : 0));
+          i + (has_ellipsis_ ? static_cast<int>(ellipsis_dims_.size()) - 1 : 0));
       AddSymbol(symbol, static_cast<int>(dims[next_dim++]), index);
     }
   }
@@ -227,7 +227,8 @@ Status EinsumProgram::GenerateShaderCode(ShaderHelper& shader) const {
     const std::string& symbol = pair.first;
     const SymbolInfo& info = pair.second;
 
-    if (parsed_equation_.rhs_.symbol_to_indices.contains(symbol)) {
+    if (parsed_equation_.rhs_.symbol_to_indices.find(symbol) !=
+        parsed_equation_.rhs_.symbol_to_indices.end()) {
       // Process output dimensions.
       auto rhs_indices = parsed_equation_.rhs_.symbol_to_indices.find(symbol);
       if (rhs_indices != parsed_equation_.rhs_.symbol_to_indices.end() &&

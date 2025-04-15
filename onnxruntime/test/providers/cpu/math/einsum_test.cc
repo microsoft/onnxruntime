@@ -466,9 +466,7 @@ TEST(Einsum, ImplicitEinsumAsBatchedDiagonalOp_1) {
 // Theme: Scalar inputs and outputs
 
 // Explicit
-TEST(Einsum, ExplicitEinsumAsElementwiseMulOpWithOneScalar) {
-  // TODO: Enable this test when native einsum supports it
-  GTEST_SKIP() << "Skipping the test temporarily";
+TEST(Einsum, DISABLED_ExplicitEinsumAsElementwiseMulOpWithOneScalar) {
   OpTester test("Einsum", 12, onnxruntime::kOnnxDomain);
   test.AddAttribute<std::string>("equation", ",...i->...i");
   test.AddInput<float>("x", {}, {10.f});
@@ -477,9 +475,7 @@ TEST(Einsum, ExplicitEinsumAsElementwiseMulOpWithOneScalar) {
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", ExcludeTrtOnA100());
 }
 
-TEST(Einsum, ExplicitEinsumAsElementwiseMulOpWithTwoScalars_Multi_Input) {
-  // TODO: Enable this test when native einsum supports it
-  GTEST_SKIP() << "Skipping the test temporarily";
+TEST(Einsum, DISABLED_ExplicitEinsumAsElementwiseMulOpWithTwoScalars_Multi_Input) {
   OpTester test("Einsum", 12, onnxruntime::kOnnxDomain);
   test.AddAttribute<std::string>("equation", ",...i,->...i");
   test.AddInput<float>("x", {}, {10.f});
@@ -488,9 +484,7 @@ TEST(Einsum, ExplicitEinsumAsElementwiseMulOpWithTwoScalars_Multi_Input) {
   test.AddOutput<float>("o", {2, 2}, {100.f, 200.f, 300.f, 400.f});
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", ExcludeTrtOnA100());
 }
-TEST(Einsum, ExplicitEinsumAsElementwiseMulOpWithAllScalars) {
-  // TODO: Enable this test when native einsum supports it
-  GTEST_SKIP() << "Skipping the test temporarily";
+TEST(Einsum, DISABLED_ExplicitEinsumAsElementwiseMulOpWithAllScalars) {
   OpTester test("Einsum", 12, onnxruntime::kOnnxDomain);
   test.AddAttribute<std::string>("equation", ",->");
   test.AddInput<float>("x", {}, {10.f});
@@ -499,7 +493,7 @@ TEST(Einsum, ExplicitEinsumAsElementwiseMulOpWithAllScalars) {
   test.Run();
 }
 
-TEST(Einsum, ExplicitEinsumReduceAxesInInputToScalarOutput) {
+TEST(Einsum, DISABLED_ExplicitEinsumReduceAxesInInputToScalarOutput) {
   // TODO: Enable this test when native einsum supports it
   GTEST_SKIP() << "Skipping the test temporarily";
   OpTester test("Einsum", 12, onnxruntime::kOnnxDomain);
@@ -510,7 +504,7 @@ TEST(Einsum, ExplicitEinsumReduceAxesInInputToScalarOutput) {
 }
 
 // Implicit
-TEST(Einsum, ImplicitEinsumAsElementwiseMulOpWithOneScalar) {
+TEST(Einsum, DISABLED_ImplicitEinsumAsElementwiseMulOpWithOneScalar) {
   // TODO: Enable this test when native einsum supports it
   GTEST_SKIP() << "Skipping the test temporarily";
   OpTester test("Einsum", 12, onnxruntime::kOnnxDomain);
@@ -521,7 +515,7 @@ TEST(Einsum, ImplicitEinsumAsElementwiseMulOpWithOneScalar) {
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", ExcludeTrtOnA100());
 }
 
-TEST(Einsum, ImplicitEinsumAsElementwiseMulOpWithThreeScalars_Multi_Input) {
+TEST(Einsum, DISABLED_ImplicitEinsumAsElementwiseMulOpWithThreeScalars_Multi_Input) {
   // TODO: Enable this test when native einsum supports it
   GTEST_SKIP() << "Skipping the test temporarily";
   OpTester test("Einsum", 12, onnxruntime::kOnnxDomain);
@@ -533,7 +527,7 @@ TEST(Einsum, ImplicitEinsumAsElementwiseMulOpWithThreeScalars_Multi_Input) {
   test.AddOutput<float>("o", {2, 2}, {1000.f, 2000.f, 3000.f, 4000.f});
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", ExcludeTrtOnA100());
 }
-TEST(Einsum, ImplicitEinsumAsElementwiseMulOpWithAllScalars) {
+TEST(Einsum, DISABLED_ImplicitEinsumAsElementwiseMulOpWithAllScalars) {
   // TODO: Enable this test when native einsum supports it
   GTEST_SKIP() << "Skipping the test temporarily";
   OpTester test("Einsum", 12, onnxruntime::kOnnxDomain);
@@ -2063,9 +2057,7 @@ static constexpr std::array<EinsumTestCase, 288> case1 = {{{equation32, shape32,
                                                            {equation318, shape318, expected318},
                                                            {equation319, shape319, expected319}}};
 
-TEST(Einsum, EinsumTransposeMatMulTwoInputsTestSuite) {
-  // TODO: Enable this test when native einsum supports it
-  GTEST_SKIP() << "Skipping the test temporarily";
+TEST(Einsum, DISABLED_EinsumTransposeMatMulTwoInputsTestSuite) {
   std::vector<float> m1{0.f, 1.f, 2.f, 3.f, 4.f, 5.f, 6.f, 7.f};
   std::vector<float> m2{0.f, 1.f, 2.f, 3.f};
   for (const auto& tst : case0) {
@@ -2085,9 +2077,7 @@ TEST(Einsum, EinsumTransposeMatMulTwoInputsTestSuite) {
 class EinsumTransposeMatMulThreeInputsTest : public testing::TestWithParam<EinsumTestCase> {
 };
 
-TEST_P(EinsumTransposeMatMulThreeInputsTest, EinsumTransposeMatMulThreeInputsTestSuite) {
-  // TODO: Enable this test when native einsum supports it
-  GTEST_SKIP() << "Skipping the test temporarily";
+TEST_P(EinsumTransposeMatMulThreeInputsTest, DISABLED_EinsumTransposeMatMulThreeInputsTestSuite) {
   const auto& tst = GetParam();
   std::vector<float> m1{0.f, 1.f, 2.f, 3.f, 4.f, 5.f, 6.f, 7.f};
   std::vector<float> m2{0.f, 1.f, 2.f, 3.f};
