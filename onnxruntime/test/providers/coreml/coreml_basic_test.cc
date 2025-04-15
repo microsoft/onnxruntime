@@ -75,11 +75,12 @@ TEST(CoreMLExecutionProviderTest, TestAddEpUsingPublicApi) {
   };
 
   const ORTCHAR_T* model_file_name = ORT_TSTR("coreml_execution_provider_test_graph.onnx");
+  auto provider_options = MakeCoreMLProviderOptions("NeuralNetwork", "CPUOnly", "./tmp");
 
   {
     // Test C++ API to add CoreML EP with the short name 'CoreML'.
     Ort::SessionOptions so;
-    so.AppendExecutionProvider("CoreML", MakeCoreMLProviderOptions());
+    so.AppendExecutionProvider("CoreML", provider_options);
     Ort::Session session(*ort_env, model_file_name, so);
     ASSERT_TRUE(session_has_ep(session)) << "CoreML EP was not found in registered providers for session.";
   }
@@ -87,7 +88,7 @@ TEST(CoreMLExecutionProviderTest, TestAddEpUsingPublicApi) {
   {
     // Test C++ API to add CoreML EP with the long canonical name 'CoreMLExecutionProvider'.
     Ort::SessionOptions so;
-    so.AppendExecutionProvider(kCoreMLExecutionProvider, MakeCoreMLProviderOptions());
+    so.AppendExecutionProvider(kCoreMLExecutionProvider, provider_options);
     Ort::Session session(*ort_env, model_file_name, so);
     ASSERT_TRUE(session_has_ep(session)) << "CoreML EP was not found in registered providers for session.";
   }
