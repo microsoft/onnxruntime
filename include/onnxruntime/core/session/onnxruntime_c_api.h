@@ -5427,7 +5427,7 @@ struct OrtModelEditorApi {
    *
    * \param[in] session OrtSession to finalize. Session must have been created using CreateModelEditorSession[FromArray].
    * \param[in] options OrtSessionOptions to use for the session.
-   * \param[in] Optional prepacked_weights_container OrtPrepackedWeightsContainer to use for the session.
+   * \param[in] prepacked_weights_container Optional OrtPrepackedWeightsContainer to use for the session.
                 Set to nullptr if not used.
    * \snippet{doc} snippets.dox OrtStatus Return Value
    *
