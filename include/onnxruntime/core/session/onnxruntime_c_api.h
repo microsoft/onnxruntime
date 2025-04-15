@@ -5544,7 +5544,7 @@ struct OrtCompileApi {
   ORT_API2_STATUS(ModelCompilationOptions_SetOutputModelExternalInitializersFile,
                   _In_ OrtModelCompilationOptions* model_compile_options,
                   _In_ const ORTCHAR_T* external_initializers_file_path,
-                  size_t external_initializer_size_threshold);
+                  size_t external_initializers_size_threshold);
 
   /** \brief Configures model compilation to store the output compiled ONNX model in a buffer.
    *
