@@ -281,7 +281,7 @@ Q8PackQuantB(
             if (c_4 + 4 <= N) { // full 4 cols
                 if (RemainderBlockCountK && r_subblk == SubBlkCountK - 1) { // remainder blocks
                     std::byte* dest =
-                        PackedQuantBDataBegin + c_4 * StrideN * 4 + r_subblk * SubBlkSize * 4 + c_res * BlkSize;
+                        PackedQuantBDataBegin + c_4 * StrideN + r_subblk * SubBlkSize * 4 + c_res * BlkSize;
                     for (size_t i = 0; i < RemainderBlockCountK; i++) {
                         std::copy(src, src + BlkSize, dest);
                         src += BlkSize;
@@ -289,7 +289,7 @@ Q8PackQuantB(
                     }
                 } else { // full subblock
                     std::byte* dest =
-                        PackedQuantBDataBegin + c_4 * StrideN * 4 + r_subblk * SubBlkSize * 4 + c_res * SubBlkSize;
+                        PackedQuantBDataBegin + c_4 * StrideN + r_subblk * SubBlkSize * 4 + c_res * SubBlkSize;
                     std::copy(src, src + SubBlkSize, dest);
                 }
             } else { // remainder cols
@@ -384,23 +384,22 @@ Q8ComputePackBlkSum(
         if (n_4 + 4 > N) {
             *(QuantBScaleBegin + n * BlockCountK + k_blk) = QuantBScale;
         } else if (BlkLen >= SubBlkLen) {
-            *(QuantBScaleBegin + n_4 * BlockCountK * 4 + k_blk * 4 + n_res) = QuantBScale;
+            *(QuantBScaleBegin + n_4 * BlockCountK + k_blk * 4 + n_res) = QuantBScale;
         } else {
             size_t blks_per_sub = SubBlkLen / BlkLen;
             size_t remainder_blk = BlockCountK % blks_per_sub;
             size_t sub_blk_count_k = MlasDivRoundup(BlockCountK, blks_per_sub);
             size_t k_subblk = k_blk / blks_per_sub;
             size_t k_blk_res = k_blk % blks_per_sub;
+            size_t dest_offset;
 
             if (remainder_blk && k_subblk == sub_blk_count_k - 1) { // remainder blocks
-                auto dest_offset = n_4 * BlockCountK * 4 + k_blk * 4 + n_res;
-                *(QuantBScaleBegin + dest_offset) = QuantBScale;
+                auto dest_offset = n_4 * BlockCountK + k_blk * 4 + n_res;
             } else { // full subblock
-                auto dest_offset =
-                    n_4 * BlockCountK * 4 + k_subblk * blks_per_sub * 4 + n_res * blks_per_sub + k_blk_res;
-                *(QuantBScaleBegin + dest_offset) = QuantBScale;
+                auto dest_offset = n_4 * BlockCountK + k_subblk * blks_per_sub * 4 + n_res * blks_per_sub + k_blk_res;
             }
 
+            *(QuantBScaleBegin + dest_offset) = QuantBScale;
         }
     });
 }
