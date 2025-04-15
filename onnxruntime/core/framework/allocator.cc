@@ -157,15 +157,6 @@ bool IsCpuDeviceWithAllocator(const OrtDevice& ort_device) {
   return false;
 }
 
-size_t GetAlignmentForCpuBasedExecutionProvider(std::string_view provider_type) {
-  if (provider_type == kQnnExecutionProvider ||
-      provider_type == kVitisAIExecutionProvider ||
-      provider_type == kVSINPUExecutionProvider) {
-    return kAlloc4KAlignment;
-  }
-  return kAllocAlignment;
-}
-
 }  // namespace onnxruntime
 
 std::ostream& operator<<(std::ostream& out, const OrtMemoryInfo& info) { return (out << info.ToString()); }

@@ -291,6 +291,5 @@ void* AllocatorDefaultAllocAligned(size_t size, size_t alignment);
 
 size_t GetAlignmentForDevice(const OrtDevice&);
 bool IsCpuDeviceWithAllocator(const OrtDevice&);
-size_t GetAlignmentForCpuBasedExecutionProvider(std::string_view provider_type);
 
 }  // namespace onnxruntime

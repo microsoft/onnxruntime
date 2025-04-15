@@ -62,6 +62,9 @@ constexpr const char* kInternalTestingExecutionProvider = "InternalTestingExecut
 // return true if the execution provider is CPU based (meaning no copies to device are required)
 bool ProviderIsCpuBased(const std::string& provider_type);
 
+// return true if the execution provider is compiled type provider
+bool ProviderIsCompiledType(const std::string& provider_type);
+
 common::Status CopyOneInputAcrossDevices(const SessionState& session_state, const std::string& input_name,
                                          const OrtValue& orig_mlvalue, OrtValue& new_mlvalue);
 

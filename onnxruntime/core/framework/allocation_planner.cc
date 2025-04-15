@@ -857,11 +857,11 @@ class PlannerImpl {
                     // we have seen
                     plan_.SetLocation(static_cast<size_t>(index), exec_provider->GetOrtDeviceByMemType(OrtMemType::OrtMemTypeDefault));
                   } else {
-                    // Default the location to CPU
-                    if (GetAlignmentForCpuBasedExecutionProvider(exec_provider->Type()) == kAlloc4KAlignment) {
+                    if (utils::ProviderIsCompiledType(exec_provider->Type())) {
                       plan_.SetLocation(static_cast<size_t>(index),
                                         exec_provider->GetOrtDeviceByMemType(OrtMemType::OrtMemTypeDefault));
                     } else {
+                      // Default the location to CPU
                       plan_.SetLocation(static_cast<size_t>(index),
                                         execution_providers_.Get(CPU)->GetOrtDeviceByMemType(OrtMemType::OrtMemTypeDefault));
                       set_implicitly_consumed_node_arg_has_heterogenous_ep_consumers.insert(index);
@@ -896,11 +896,11 @@ class PlannerImpl {
             const auto consumers = graph_viewer_.GetConsumerNodes(output_name);
             for (const auto* consumer : consumers) {
               if (consumer != nullptr) {
-                // Such consumers are usually the only ones.
-                // However, in a rare case there are multiple consumers, the below allocators would satisfy most of them.
+                // Check if the provider is a compiling provider. They handle entire subgraphs at once with many inputs.
+                // Request input type on CPU, if not avaiable it would return the default.
                 const auto& ep_type = consumer->GetExecutionProviderType();
-                if (GetAlignmentForCpuBasedExecutionProvider(consumer->GetExecutionProviderType()) == kAlloc4KAlignment) {
-                  output_device = execution_providers_.Get(ep_type)->GetOrtDeviceByMemType(OrtMemType::OrtMemTypeDefault);
+                if (utils::ProviderIsCompiledType(ep_type)) {
+                  output_device = execution_providers_.Get(ep_type)->GetOrtDeviceByMemType(OrtMemType::OrtMemTypeCPUInput);
                   break;
                 }
               }
