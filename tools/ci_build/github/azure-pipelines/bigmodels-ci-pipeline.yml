@@ -447,6 +447,9 @@ stages:
               python3 -m pip install /ort-artifact/*.whl ; \
               python3 -m pip uninstall -y torch ; \
               python3 -m pip install torch --index-url https://download.pytorch.org/whl/cu124 ; \
+              which ninja ; \
+              export PATH=$HOME/.local/bin:$PATH ; \
+              which ninja ; \
               python3 -m models.whisper.convert_to_onnx -m openai/whisper-tiny --output wtiny-fp32-cpu-hf --precision fp32 --provider cpu --overwrite --use_external_data_format --optimize_onnx --no_beam_search_op --output_cross_qk ; \
               python3 -m models.whisper.convert_to_onnx -m openai/whisper-tiny --output wtiny-fp32-cpu-hf --precision fp32 --provider cpu --overwrite --use_external_data_format --optimize_onnx ; \
               python3 -m models.whisper.convert_to_onnx -m openai/whisper-tiny --output wtiny-fp32-cpu-hf --precision fp32 --provider cpu --overwrite --use_external_data_format --optimize_onnx --no_beam_search_op --output_cross_qk --separate_encoder_and_decoder_init ; \
