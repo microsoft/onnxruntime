@@ -126,7 +126,7 @@ EinsumEquation::EinsumEquation(const std::vector<const Tensor*>& inputs,
   rhs_ = ProcessTerm(rhs, false, output_dims);
 }
 
-void EinsumEquation::AddSymbol(const std::string& symbol, int dim_value, int input_index) {
+void EinsumEquation::AddSymbol(const std::string& symbol, int64_t dim_value, int input_index) {
   auto it = symbol_to_info_.find(symbol);
   if (it != symbol_to_info_.end()) {
     if (it->second.dim_value != dim_value && it->second.count != 1) {
@@ -150,15 +150,14 @@ EinsumTerm EinsumEquation::ProcessTerm(const std::string& term,
   EinsumTerm einsum_term;
   einsum_term.input_index = index;
 
-  const int64_t rank = static_cast<int64_t>(dims.size());
+  const size_t rank = dims.size();
   bool ellipsis = false;
   std::vector<int64_t> ellipsis_dims;
-  int64_t next_dim = 0;
+  size_t next_dim = 0;
 
   std::sregex_iterator it(term.begin(), term.end(), symbol_pattern);
   std::sregex_iterator end;
-  int i = 0;
-  for (; it != end; ++it, ++i) {
+  for (size_t i = 0; it != end; ++it, ++i) {
     std::string symbol = it->str();
     if (symbol == "...") {
       if (ellipsis) {
@@ -167,11 +166,12 @@ EinsumTerm EinsumEquation::ProcessTerm(const std::string& term,
       ellipsis = true;
       std::sregex_iterator symbol_it(term.begin(), term.end(), symbol_pattern);
       std::sregex_iterator symbol_end;
-      int64_t ellipsis_dim_length = rank - std::distance(symbol_it, symbol_end) + 1;
-      if (ellipsis_dim_length < 0) {
+      size_t symbol_distance = std::distance(symbol_it, symbol_end) - 1;
+      if (rank < symbol_distance) {
         ORT_THROW("Ellipsis out of bounds");
       }
-      ellipsis_dims.assign(dims.begin() + next_dim, dims.begin() + next_dim + ellipsis_dim_length);
+      ellipsis_dims.assign(dims.begin() + next_dim,
+                           dims.begin() + (next_dim + rank - symbol_distance));
       if (has_ellipsis_) {
         if (ellipsis_dims_ != ellipsis_dims) {
           ORT_THROW("Ellipsis dimensions mismatch");
@@ -183,15 +183,15 @@ EinsumTerm EinsumEquation::ProcessTerm(const std::string& term,
         ORT_THROW("Ellipsis must be specified in the LHS");
       }
       // Add '0', '1', '2', '3', '4', etc to represent ellipsis dimensions.
-      for (int j = 0; j < ellipsis_dims.size(); ++j) {
+      for (size_t j = 0; j < ellipsis_dims.size(); ++j) {
         std::string symbol_j = std::to_string(j);
         einsum_term.symbol_to_indices[symbol_j].push_back(i + j);
-        AddSymbol(symbol_j, static_cast<int>(dims[next_dim++]), index);
+        AddSymbol(symbol_j, dims[next_dim++], index);
       }
     } else {
       einsum_term.symbol_to_indices[symbol].push_back(
-          i + (has_ellipsis_ ? static_cast<int>(ellipsis_dims_.size()) - 1 : 0));
-      AddSymbol(symbol, static_cast<int>(dims[next_dim++]), index);
+          i + (has_ellipsis_ ? ellipsis_dims_.size() - 1 : 0));
+      AddSymbol(symbol, dims[next_dim++], index);
     }
   }
   return einsum_term;
@@ -204,7 +204,7 @@ Status EinsumProgram::GenerateShaderCode(ShaderHelper& shader) const {
   std::vector<std::reference_wrapper<const ShaderVariableHelper>> inputs;
   inputs.push_back(input0);
 
-  for (int i = 1; i < input_count_; ++i) {
+  for (size_t i = 1; i < input_count_; ++i) {
     inputs.push_back(shader.AddInput("input" + std::to_string(i), ShaderUsage::UseUniform));
   }
 
@@ -226,43 +226,19 @@ Status EinsumProgram::GenerateShaderCode(ShaderHelper& shader) const {
   for (const auto& pair : parsed_equation_.symbol_to_info_) {
     const std::string& symbol = pair.first;
     const SymbolInfo& info = pair.second;
-
     if (parsed_equation_.rhs_.symbol_to_indices.find(symbol) !=
         parsed_equation_.rhs_.symbol_to_indices.end()) {
-      // Process output dimensions.
       auto rhs_indices = parsed_equation_.rhs_.symbol_to_indices.find(symbol);
-      if (rhs_indices != parsed_equation_.rhs_.symbol_to_indices.end() &&
-          !rhs_indices->second.empty()) {
-        int output_index = rhs_indices->second[0];
-        int lhs_term_index = 0;
-        for (const auto& term : parsed_equation_.lhs_) {
-          if (std::find(info.input_indices.begin(), info.input_indices.end(), lhs_term_index) ==
-              info.input_indices.end()) {
-            lhs_term_index++;
-            continue;
-          }
-
-          auto it = term.symbol_to_indices.find(symbol);
-          if (it == term.symbol_to_indices.end()) {
-            ORT_THROW("Invalid symbol error");
-          }
-
-          for (auto input_index : it->second) {
-            idx_copy.push_back(inputs[lhs_term_index].get().IndicesSet(
-                "input" + std::to_string(lhs_term_index) + "Indices", std::to_string(input_index),
-                output.IndicesGet("outputIndices", std::to_string(output_index))));
-          }
-
-          lhs_term_index++;
-        }
+      if (rhs_indices == parsed_equation_.rhs_.symbol_to_indices.end() ||
+          rhs_indices->second.empty()) {
+        continue;
       }
-    } else {
-      // Process reduction dimensions.
-      int rhs_term_index = 0;
+
+      int lhs_term_index = 0;
       for (const auto& term : parsed_equation_.lhs_) {
-        if (std::find(info.input_indices.begin(), info.input_indices.end(), rhs_term_index) ==
+        if (std::find(info.input_indices.begin(), info.input_indices.end(), lhs_term_index) ==
             info.input_indices.end()) {
-          rhs_term_index++;
+          lhs_term_index++;
           continue;
         }
 
@@ -272,21 +248,43 @@ Status EinsumProgram::GenerateShaderCode(ShaderHelper& shader) const {
         }
 
         for (auto input_index : it->second) {
-          reduce_ops_set_indices.push_back(inputs[rhs_term_index].get().IndicesSet(
-              "input" + std::to_string(rhs_term_index) + "Indices", std::to_string(input_index),
+          idx_copy.push_back(inputs[lhs_term_index].get().IndicesSet(
+              "input" + std::to_string(lhs_term_index) + "Indices", std::to_string(input_index),
+              output.IndicesGet("outputIndices", std::to_string(rhs_indices->second[0]))));
+        }
+
+        lhs_term_index++;
+      }
+    } else {
+      int lhs_term_index = 0;
+      for (const auto& term : parsed_equation_.lhs_) {
+        if (std::find(info.input_indices.begin(), info.input_indices.end(), lhs_term_index) ==
+            info.input_indices.end()) {
+          lhs_term_index++;
+          continue;
+        }
+
+        auto it = term.symbol_to_indices.find(symbol);
+        if (it == term.symbol_to_indices.end()) {
+          ORT_THROW("Invalid symbol error");
+        }
+
+        for (auto input_index : it->second) {
+          reduce_ops_set_indices.push_back(inputs[lhs_term_index].get().IndicesSet(
+              "input" + std::to_string(lhs_term_index) + "Indices", std::to_string(input_index),
               symbol));
         }
 
         std::string get_indices_str = "prod *= " +
-                                      inputs[rhs_term_index].get().GetByIndices(
-                                          "input" + std::to_string(rhs_term_index) + "Indices") +
+                                      inputs[lhs_term_index].get().GetByIndices(
+                                          "input" + std::to_string(lhs_term_index) + "Indices") +
                                       ";";
         if (std::find(reduce_op_compute.begin(), reduce_op_compute.end(), get_indices_str) ==
             reduce_op_compute.end()) {
           reduce_op_compute.push_back(get_indices_str);
         }
 
-        rhs_term_index++;
+        lhs_term_index++;
       }
 
       reduce_ops_loop_headers.push_back("for(var " + symbol + ": u32 = 0; " + symbol + " < " +
@@ -301,7 +299,7 @@ Status EinsumProgram::GenerateShaderCode(ShaderHelper& shader) const {
   if (is_reduce_ops_without_loop) {
     // Direct multiplication without reduction loops.
     std::string sum_statement = "let sum = " + inputs[0].get().GetByIndices("input0Indices");
-    for (int i = 1; i < inputs.size(); ++i) {
+    for (size_t i = 1; i < inputs.size(); ++i) {
       sum_statement +=
           " * " + inputs[i].get().GetByIndices("input" + std::to_string(i) + "Indices");
     }
@@ -333,7 +331,7 @@ Status EinsumProgram::GenerateShaderCode(ShaderHelper& shader) const {
                             << ";\n";
 
   // Define input indices with appropriate types.
-  for (int i = 0; i < input_count_; i++) {
+  for (size_t i = 0; i < input_count_; i++) {
     const auto& input = inputs[i].get();
     int rank = input.Rank();
 
@@ -381,9 +379,9 @@ Status Einsum::ComputeInternal(ComputeContext& context) const {
   }
 
   // Create program with input count and the parsed equation.
-  EinsumProgram program{context.InputCount(), equation};
+  EinsumProgram program{input_tensors.size(), equation};
 
-  for (int i = 0; i < input_tensors.size(); ++i) {
+  for (size_t i = 0; i < input_tensors.size(); ++i) {
     program.AddInput({input_tensors[i], ProgramTensorMetadataDependency::TypeAndRank});
   }
 

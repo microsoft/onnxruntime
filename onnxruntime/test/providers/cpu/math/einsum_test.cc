@@ -494,8 +494,6 @@ TEST(Einsum, DISABLED_ExplicitEinsumAsElementwiseMulOpWithAllScalars) {
 }
 
 TEST(Einsum, DISABLED_ExplicitEinsumReduceAxesInInputToScalarOutput) {
-  // TODO: Enable this test when native einsum supports it
-  GTEST_SKIP() << "Skipping the test temporarily";
   OpTester test("Einsum", 12, onnxruntime::kOnnxDomain);
   test.AddAttribute<std::string>("equation", "ij->");
   test.AddInput<float>("x", {2, 2}, {1.f, 2.f, 3.f, 4.f});
@@ -505,8 +503,6 @@ TEST(Einsum, DISABLED_ExplicitEinsumReduceAxesInInputToScalarOutput) {
 
 // Implicit
 TEST(Einsum, DISABLED_ImplicitEinsumAsElementwiseMulOpWithOneScalar) {
-  // TODO: Enable this test when native einsum supports it
-  GTEST_SKIP() << "Skipping the test temporarily";
   OpTester test("Einsum", 12, onnxruntime::kOnnxDomain);
   test.AddAttribute<std::string>("equation", ",...i");
   test.AddInput<float>("x", {}, {10.f});
@@ -516,8 +512,6 @@ TEST(Einsum, DISABLED_ImplicitEinsumAsElementwiseMulOpWithOneScalar) {
 }
 
 TEST(Einsum, DISABLED_ImplicitEinsumAsElementwiseMulOpWithThreeScalars_Multi_Input) {
-  // TODO: Enable this test when native einsum supports it
-  GTEST_SKIP() << "Skipping the test temporarily";
   OpTester test("Einsum", 12, onnxruntime::kOnnxDomain);
   test.AddAttribute<std::string>("equation", ",...i,,");
   test.AddInput<float>("a", {}, {10.f});
@@ -528,8 +522,6 @@ TEST(Einsum, DISABLED_ImplicitEinsumAsElementwiseMulOpWithThreeScalars_Multi_Inp
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", ExcludeTrtOnA100());
 }
 TEST(Einsum, DISABLED_ImplicitEinsumAsElementwiseMulOpWithAllScalars) {
-  // TODO: Enable this test when native einsum supports it
-  GTEST_SKIP() << "Skipping the test temporarily";
   OpTester test("Einsum", 12, onnxruntime::kOnnxDomain);
   test.AddAttribute<std::string>("equation", ",");
   test.AddInput<float>("x", {}, {10.f});
