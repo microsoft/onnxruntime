@@ -152,12 +152,12 @@ class ReduceLogSumExp final : public ReduceKernel<true> {
 
 class ArgMin final : public ReduceKernel<false> {
  public:
-  ArgMin(const OpKernelInfo& info) : ReduceKernel<false>(info, std::string("ArgMin") + std::string(select_last_index_ != 0 ? "_select_last_index" : ""), true) {}
+  ArgMin(const OpKernelInfo& info) : ReduceKernel<false>(info, "ArgMin", true) {}
 };
 
 class ArgMax final : public ReduceKernel<false> {
  public:
-  ArgMax(const OpKernelInfo& info) : ReduceKernel<false>(info, std::string("ArgMax") + std::string(select_last_index_ != 0 ? "_select_last_index" : ""), true) {}
+  ArgMax(const OpKernelInfo& info) : ReduceKernel<false>(info, "ArgMax", true) {}
 };
 
 }  // namespace webgpu
