@@ -2,11 +2,13 @@
 // Licensed under the MIT License.
 
 #include "core/common/logging/logging.h"
+#include "core/graph/constants.h"
 #include "core/graph/graph.h"
 #include "core/graph/graph_viewer.h"
 #include "core/providers/coreml/coreml_provider_factory_creator.h"
 #include "core/providers/coreml/coreml_provider_factory.h"
 #include "core/session/inference_session.h"
+#include "core/session/onnxruntime_cxx_api.h"
 #include "test/common/tensor_op_test_utils.h"
 #include "test/framework/test_utils.h"
 #include "test/util/include/asserts.h"
@@ -31,15 +33,60 @@ using namespace ::onnxruntime::logging;
 namespace onnxruntime {
 namespace test {
 
-static std::unique_ptr<IExecutionProvider> MakeCoreMLExecutionProvider(
-    std::string ModelFormat = "NeuralNetwork", std::string ComputeUnits = "CPUOnly", std::string ModelCacheDirectory = "") {
+static std::unordered_map<std::string, std::string> MakeCoreMLProviderOptions(std::string ModelFormat = "NeuralNetwork",
+                                                                              std::string ComputeUnits = "CPUOnly",
+                                                                              std::string ModelCacheDirectory = "") {
   std::unordered_map<std::string, std::string> provider_options = {{kCoremlProviderOption_MLComputeUnits, ComputeUnits},
                                                                    {kCoremlProviderOption_ModelFormat, ModelFormat},
-                                                                   {kCoremlProviderOption_ModelCacheDirectory, ModelCacheDirectory}};
+                                                                   {kCoremlProviderOption_ModelCacheDirectory,
+                                                                    ModelCacheDirectory}};
+  return provider_options;
+}
+
+static std::unique_ptr<IExecutionProvider> MakeCoreMLExecutionProvider(
+    std::string ModelFormat = "NeuralNetwork", std::string ComputeUnits = "CPUOnly", std::string ModelCacheDirectory = "") {
+  std::unordered_map<std::string, std::string> provider_options = MakeCoreMLProviderOptions(ModelFormat,
+                                                                                            ComputeUnits,
+                                                                                            ModelCacheDirectory);
   return CoreMLProviderFactoryCreator::Create(provider_options)->CreateProvider();
 }
 
 #if !defined(ORT_MINIMAL_BUILD)
+
+TEST(CoreMLExecutionProviderTest, TestAddEpUsingPublicApi) {
+  auto session_has_ep = [](Ort::Session& session) -> bool {
+    // Access the underlying InferenceSession.
+    const OrtSession* ort_session = session;
+    const InferenceSession* s = reinterpret_cast<const InferenceSession*>(ort_session);
+    bool has_ep = false;
+
+    for (const auto& provider : s->GetRegisteredProviderTypes()) {
+      if (provider == kCoreMLExecutionProvider) {
+        has_ep = true;
+        break;
+      }
+    }
+    return has_ep;
+  };
+
+  const ORTCHAR_T* model_file_name = ORT_TSTR("coreml_execution_provider_test_graph.onnx");
+
+  {
+    // Test C++ API to add CoreML EP with the short name 'CoreML'.
+    Ort::SessionOptions so;
+    so.AppendExecutionProvider("CoreML", MakeCoreMLProviderOptions());
+    Ort::Session session(*ort_env, model_file_name, so);
+    ASSERT_TRUE(session_has_ep(session)) << "CoreML EP was not found in registered providers for session.";
+  }
+
+  {
+    // Test C++ API to add CoreML EP with the long canonical name 'CoreMLExecutionProvider'.
+    Ort::SessionOptions so;
+    so.AppendExecutionProvider(kCoreMLExecutionProvider, MakeCoreMLProviderOptions());
+    Ort::Session session(*ort_env, model_file_name, so);
+    ASSERT_TRUE(session_has_ep(session)) << "CoreML EP was not found in registered providers for session.";
+  }
+}
 
 TEST(CoreMLExecutionProviderTest, FunctionTest) {
   const ORTCHAR_T* model_file_name = ORT_TSTR("coreml_execution_provider_test_graph.onnx");
