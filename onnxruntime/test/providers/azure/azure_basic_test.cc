@@ -31,4 +31,3 @@ TEST(AzureEP, TestSessionCreation) {
 }
 }  // namespace test
 }  // namespace onnxruntime
-
