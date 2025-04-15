@@ -38,10 +38,15 @@ std::string RemoveAllWhitespace(const std::string& str) {
   return result;
 }
 
+bool IsInteger(const std::string& s) {
+  static const std::regex pattern(R"(^\d+$)");
+  return std::regex_match(s, pattern);
+}
+
 EinsumEquation::EinsumEquation(const std::vector<const Tensor*>& inputs,
                                const std::string& raw_equation) {
   std::string lhs, rhs, equation = RemoveAllWhitespace(raw_equation);
-  size_t arrow_pos = equation.find("->");
+  int arrow_pos = equation.find("->");
   if (arrow_pos != std::string::npos) {
     lhs = equation.substr(0, arrow_pos);
     rhs = equation.substr(arrow_pos + 2);
@@ -55,8 +60,8 @@ EinsumEquation::EinsumEquation(const std::vector<const Tensor*>& inputs,
   }
 
   // Parse LHS terms.
-  std::string::size_type pos = 0;
-  std::string::size_type find;
+  int pos = 0;
+  int find;
   int input_idx = 0;
   while ((find = lhs.find(',', pos)) != std::string::npos) {
     auto term = lhs.substr(pos, find - pos);
@@ -77,21 +82,21 @@ EinsumEquation::EinsumEquation(const std::vector<const Tensor*>& inputs,
 
   // Initialize RHS if not specified.
   if (rhs.empty()) {
-    bool underscore_calculated = false;
+    bool ellipsis_dim_calculated = false;
     for (const auto& pair : symbol_to_info_) {
       // Skip symbols that appear more than once (except underscore symbols)
       // or if we've already handled underscore symbols
-      bool is_underscore_symbol = pair.first.starts_with("_");
-      bool should_skip = ((!is_underscore_symbol && pair.second.count != 1) ||
-                          (is_underscore_symbol && underscore_calculated));
+      bool is_ellipsis_dim_symbol = IsInteger(pair.first);
+      bool should_skip = ((!is_ellipsis_dim_symbol && pair.second.count != 1) ||
+                          (is_ellipsis_dim_symbol && ellipsis_dim_calculated));
 
       if (should_skip) {
         continue;
       }
 
-      if (pair.first.starts_with("_")) {
+      if (IsInteger(pair.first)) {
         rhs += "...";
-        underscore_calculated = true;
+        ellipsis_dim_calculated = true;
       } else {
         rhs += pair.first;
       }
@@ -177,9 +182,9 @@ EinsumTerm EinsumEquation::ProcessTerm(const std::string& term,
       } else {
         ORT_THROW("Ellipsis must be specified in the LHS");
       }
-      // Add '_0', '_1', '_2', '_3', '_4', etc to represent ellipsis dimensions.
-      for (size_t j = 0; j < ellipsis_dims.size(); ++j) {
-        std::string symbol_j = "_" + std::to_string(j);
+      // Add '0', '1', '2', '3', '4', etc to represent ellipsis dimensions.
+      for (int j = 0; j < ellipsis_dims.size(); ++j) {
+        std::string symbol_j = std::to_string(j);
         einsum_term.symbol_to_indices[symbol_j].push_back(i + j);
         AddSymbol(symbol_j, static_cast<int>(dims[next_dim++]), index);
       }
@@ -199,7 +204,7 @@ Status EinsumProgram::GenerateShaderCode(ShaderHelper& shader) const {
   std::vector<std::reference_wrapper<const ShaderVariableHelper>> inputs;
   inputs.push_back(input0);
 
-  for (size_t i = 1; i < input_count_; ++i) {
+  for (int i = 1; i < input_count_; ++i) {
     inputs.push_back(shader.AddInput("input" + std::to_string(i), ShaderUsage::UseUniform));
   }
 
@@ -295,7 +300,7 @@ Status EinsumProgram::GenerateShaderCode(ShaderHelper& shader) const {
   if (is_reduce_ops_without_loop) {
     // Direct multiplication without reduction loops.
     std::string sum_statement = "let sum = " + inputs[0].get().GetByIndices("input0Indices");
-    for (size_t i = 1; i < inputs.size(); ++i) {
+    for (int i = 1; i < inputs.size(); ++i) {
       sum_statement +=
           " * " + inputs[i].get().GetByIndices("input" + std::to_string(i) + "Indices");
     }
@@ -327,7 +332,7 @@ Status EinsumProgram::GenerateShaderCode(ShaderHelper& shader) const {
                             << ";\n";
 
   // Define input indices with appropriate types.
-  for (size_t i = 0; i < input_count_; i++) {
+  for (int i = 0; i < input_count_; i++) {
     const auto& input = inputs[i].get();
     int rank = input.Rank();
 
@@ -377,7 +382,7 @@ Status Einsum::ComputeInternal(ComputeContext& context) const {
   // Create program with input count and the parsed equation.
   EinsumProgram program{context.InputCount(), equation};
 
-  for (size_t i = 0; i < input_tensors.size(); ++i) {
+  for (int i = 0; i < input_tensors.size(); ++i) {
     program.AddInput({input_tensors[i], ProgramTensorMetadataDependency::TypeAndRank});
   }
 
