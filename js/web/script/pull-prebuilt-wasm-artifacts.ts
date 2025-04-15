@@ -189,7 +189,7 @@ async function main() {
   if (!run) {
     // API reference: https://docs.github.com/en/rest/actions/workflow-runs?apiVersion=2022-11-28#list-workflow-runs-for-a-workflow
     const mainRunData = await downloadJson(
-      `https://api.github.com/repos/Microsoft/onnxruntime/actions/workflows/152051496/runs?branch=main${allowImcomplete ? '' : '&status=completed'}&per_page=1&exclude_pull_requests=1`,
+      `https://api.github.com/repos/Microsoft/onnxruntime/actions/workflows/152051496/runs?branch=main${allowImcomplete ? '' : '&status=success'}&per_page=1&exclude_pull_requests=1`,
     );
     if (mainRunData.workflow_runs.length === 0) {
       throw new Error('No build found');
