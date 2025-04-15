@@ -5,20 +5,12 @@
 #include "core/optimizer/group_query_attention_fusion.h"
 #include "core/graph/graph_utils.h"
 #include "core/optimizer/utils.h"
+#include <onnx/defs/attr_proto_util.h>
 
 #define DEBUG_LOG(x) LOGS(logger, VERBOSE) << x
 
 using namespace ONNX_NAMESPACE;
 namespace onnxruntime {
-
-static void AttachNodeAttribute(Node& node, const std::string& attribute_name, int64_t attribute_value, AttributeProto_AttributeType attribute_type) {
-  NodeAttributes& node_attributes = node.GetMutableAttributes();
-  AttributeProto attr;
-  attr.set_name(attribute_name);
-  attr.set_i(attribute_value);
-  attr.set_type(attribute_type);
-  node_attributes[attribute_name] = attr;
-}
 
 static NodeArg& MergeQkvWeightsForMatMul(Graph& graph,
                                          int64_t q_hidden_size,
@@ -189,7 +181,12 @@ static bool LoadQKVProjectionTensors(Graph& graph,
                                      const TensorProto*& q_zero_points_tensor,
                                      const TensorProto*& k_zero_points_tensor,
                                      const TensorProto*& v_zero_points_tensor) {
-  if (!graph.GetInitializedTensor(q_node->InputDefs()[1]->Name(), q_proj_tensor)) {
+    // Only support bits = 4 fusion on MatMulNBits.
+    if (quantization_used && (q_node->GetAttributes().at("bits").i() != 4 && k_node->GetAttributes().at("bits").i() != 4 && v_node->GetAttributes().at("bits").i() != 4)) {
+      return false;
+    }
+    
+    if (!graph.GetInitializedTensor(q_node->InputDefs()[1]->Name(), q_proj_tensor)) {
     return false;
   }
 
@@ -229,7 +226,12 @@ static bool LoadQKVProjectionTensors(Graph& graph,
     return false;
   }
 
-  return true;
+  if (quantization_used) {
+    return q_proj_tensor->data_type() == TensorProto::UINT8 && k_proj_tensor->data_type() == TensorProto::UINT8 && v_proj_tensor->data_type() == TensorProto::UINT8 &&
+           q_scale_tensor->data_type() == TensorProto::FLOAT16 && k_scale_tensor->data_type() == TensorProto::FLOAT16 && v_scale_tensor->data_type() == TensorProto::FLOAT16;
+  } else {
+    return q_proj_tensor->data_type() == TensorProto::FLOAT16 && k_proj_tensor->data_type() == TensorProto::FLOAT16 && v_proj_tensor->data_type() == TensorProto::FLOAT16;
+  }
 }
 
 static bool CheckIfAnyOfRequiredGQANodesDoesNotExist(Node* rotary_node_1, Node* rotary_node_2, Node* q_node, Node* k_node, Node* v_node) {
@@ -307,7 +309,6 @@ Status GroupQueryAttentionFusion::ApplyImpl(
             continue;
           }
 
-          quantization_used = pre_rotary_node->OpType() == "MatMulNBits";
           auto& mat_mul_or_nbits_node = *graph.GetNode(pre_rotary_node->Index());
 
           // Q always comes before K.
@@ -333,6 +334,14 @@ Status GroupQueryAttentionFusion::ApplyImpl(
     if (CheckIfAnyOfRequiredGQANodesDoesNotExist(rotary_node_1, rotary_node_2, q_node, k_node, v_node)) {
       // Some of the required pre-GQA nodes required for fusion were not retrieved,
       // this can be expected if the model has extra nodes in between MatMuls and rotary embeddings.
+      continue;
+    }
+
+    if (q_node->OpType() == "MatMulNBits" && k_node->OpType() == "MatMulNBits" && v_node->OpType() == "MatMulNBits") {
+      quantization_used = true;
+    } else if (q_node->OpType() == "MatMul" && k_node->OpType() == "MatMul" && v_node->OpType() == "MatMul") {
+      quantization_used = false;
+    } else {
       continue;
     }
 
@@ -435,7 +444,7 @@ Status GroupQueryAttentionFusion::ApplyImpl(
                                                     kMSDomain);
       }
 
-      AttachNodeAttribute(*mat_mul_or_n_bits_new_node, "N", output_hidden_size, AttributeProto_AttributeType_INT);
+      mat_mul_or_n_bits_new_node->GetMutableAttributes()["N"] = ONNX_NAMESPACE::MakeAttribute("N", static_cast<int64_t>(output_hidden_size));
     }
 
     mat_mul_or_n_bits_new_node->SetExecutionProviderType(node.GetExecutionProviderType());
@@ -446,7 +455,7 @@ Status GroupQueryAttentionFusion::ApplyImpl(
     auto& mat_mut_output_defs = mat_mul_or_n_bits_new_node->MutableOutputDefs();
     mat_mut_output_defs.assign(mmnb_output_defs.begin(), mmnb_output_defs.end());
 
-    AttachNodeAttribute(node, "do_rotary", 1, AttributeProto_AttributeType_INT);
+    node.GetMutableAttributes()["do_rotary"] = ONNX_NAMESPACE::MakeAttribute("do_rotary", static_cast<int64_t>(1));
 
     std::string empty_name;
     auto& empty_node_arg = graph.GetOrCreateNodeArg(empty_name, nullptr);
