@@ -552,4 +552,5 @@ ORT_API_STATUS_IMPL(CreateTensorWithDataAndDeleterAsOrtValue, _In_ OrtAllocator*
 ORT_API_STATUS_IMPL(SessionOptionsSetLoadCancellationFlag, _Inout_ OrtSessionOptions* options,
                     _In_ bool is_cancel);
 
+ORT_API(const OrtCompileApi*, GetCompileApi);
 }  // namespace OrtApis

@@ -161,7 +161,7 @@ ConvTranspose2DProgram CreateConvTranspose2DProgram(const std::vector<const Tens
   auto output_channels_per_group = weight_shape[3];
   auto a_components = is_channels_last ? GetMaxComponents(input_channels_per_group) : 1;
   bool pack_input_as4 = is_channels_last && output_channels_per_group == 1 && input_channels_per_group >= 4;
-  auto input_channels_per_group_int = pack_input_as4 ? ((input_channels_per_group + 3) / 4) * 4 : (input_channels_per_group / a_components) * a_components;
+  auto input_channels_per_group_int = pack_input_as4 ? (input_channels_per_group / 4) * 4 : (input_channels_per_group / a_components) * a_components;
   auto input_channels_remainder = input_channels_per_group - input_channels_per_group_int;
   auto components = is_channels_last ? GetMaxComponents(output_channels_per_group) : 1;
   auto b_components = is_channels_last ? (output_channels_per_group == 1 ? a_components : components) : 1;

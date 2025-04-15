@@ -14,7 +14,6 @@
 #include "core/common/status.h"
 #include "core/common/string_helper.h"
 #include "core/framework/allocator.h"
-#include "core/framework/allocator.h"
 #include "core/framework/callback.h"
 #include "core/framework/data_types.h"
 #include "core/framework/error_code_helper.h"
@@ -32,6 +31,7 @@
 #include "core/providers/get_execution_providers.h"
 #include "core/session/abi_session_options_impl.h"
 #include "core/session/allocator_adapters.h"
+#include "core/session/compile_api.h"
 #include "core/session/environment.h"
 #include "core/session/inference_session.h"
 #include "core/session/inference_session_utils.h"
@@ -2389,6 +2389,15 @@ ORT_API(const OrtModelEditorApi*, OrtApis::GetModelEditorApi) {
 #endif
 }
 
+ORT_API(const OrtCompileApi*, OrtApis::GetCompileApi) {
+#if !defined(ORT_MINIMAL_BUILD)
+  return OrtCompileAPI::GetCompileApi();
+#else
+  fprintf(stderr, "The Compile API is not supported in a minimal build.\n");
+  return nullptr;
+#endif
+}
+
 static constexpr OrtApiBase ort_api_base = {
     &OrtApis::GetApi,
     &OrtApis::GetVersionString};
@@ -2788,6 +2797,7 @@ static constexpr OrtApi ort_api_1_to_22 = {
 
     &OrtApis::CreateTensorWithDataAndDeleterAsOrtValue,
     &OrtApis::SessionOptionsSetLoadCancellationFlag,
+    &OrtApis::GetCompileApi,
 };
 
 // OrtApiBase can never change as there is no way to know what version of OrtApiBase is returned by OrtGetApiBase.
