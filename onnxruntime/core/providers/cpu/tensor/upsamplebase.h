@@ -439,10 +439,24 @@ class UpsampleBase {
                         is_resize_ ? "Resize operator" : "Upsample operator");
     } else if (UpsampleMode::CUBIC == mode) {
       // we support cubic in NHWC format once anti-alias is enabled
-      ORT_RETURN_IF_NOT(scales.size() == 2 || (scales.size() == 4 && scales[0] == 1 && scales[1] == 1) ||
-                            (antialias_ && scales.size() == 4 && scales[0] == 1 && scales[3] == 1),
-                        "'Cubic' mode only support 2-D inputs ('Bicubic') or 4-D inputs "
-                        "with the corresponding outermost 2 scale values being 1 in the ",
+      bool is_supported = false;
+      if (scales.size() == 2) {
+        is_supported = true;
+      } else if (scales.size() == 4) {
+        const bool outermost_scales_one = (scales[0] == 1.0f && scales[1] == 1.0f);
+        const bool outer_and_innermost_scale_one = (scales[0] == 1.0f && scales[3] == 1.0f);
+        is_supported =
+            outermost_scales_one ||
+            (antialias_ && outer_and_innermost_scale_one) ||
+            (!antialias_ && outer_and_innermost_scale_one && scales[1] >= 1.0f && scales[2] >= 1.0f);
+      }
+      ORT_RETURN_IF_NOT(is_supported,
+                        "'Cubic' mode only supports:\n"
+                        "  * 2-D inputs ('Bicubic') or\n"
+                        "  * 4-D inputs with the corresponding outermost 2 scale values being 1"
+                        " or the corresponding outermost and innermost scale values being 1 with antialias attribute"
+                        " or the corresponding outermost and innermost scale values being 1 and other scales >= 1 without antialias attribute\n"
+                        "in the ",
                         is_resize_ ? "Resize operator" : "Upsample operator");
     }
     return Status::OK();
