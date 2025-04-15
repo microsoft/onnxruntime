@@ -67,6 +67,10 @@ def parse_arguments():
         "--verify_nuget_signing",
         help="Flag indicating if Nuget package signing is to be verified. Only accepts 'true' or 'false'",
     )
+    parser.add_argument(
+        "--is_release_build",
+        help="Flag indicating if the script it should validate a release build or a dev one. Only accepts 'true' or 'false'",
+    )
 
     return parser.parse_args()
 
