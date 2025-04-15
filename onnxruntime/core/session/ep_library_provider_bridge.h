@@ -41,7 +41,7 @@ struct EpLibraryProviderBridge : EpLibrary {
   std::filesystem::path library_path_;
   ProviderLibrary provider_library_;  // handles onnxruntime_providers_shared and the provider bridge EP library
   std::vector<std::unique_ptr<EpFactoryInternal>> factories_;
-  std::vector<OrtEpFactory*> factory_ptrs_;      // for convenience
+  std::vector<OrtEpFactory*> factory_ptrs_;                // for convenience
   std::vector<EpFactoryInternal*> internal_factory_ptrs_;  // for convenience
 };
 }  // namespace onnxruntime

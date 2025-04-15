@@ -43,8 +43,8 @@ struct EpLibraryInternal : EpLibrary {
   static std::unique_ptr<EpLibraryInternal> CreateWebGpuEp();
 #endif
 
-  std::unique_ptr<EpFactoryInternal> factory_;         // all internal EPs register a single factory currently
-  std::vector<OrtEpFactory*> factory_ptrs_;  // for convenience
+  std::unique_ptr<EpFactoryInternal> factory_;  // all internal EPs register a single factory currently
+  std::vector<OrtEpFactory*> factory_ptrs_;     // for convenience
 };
 
 }  // namespace onnxruntime
