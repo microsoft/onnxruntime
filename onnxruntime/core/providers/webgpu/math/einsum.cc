@@ -5,6 +5,7 @@
 
 #include <algorithm>
 #include <regex>
+#include <set>
 #include <vector>
 
 #include "core/providers/webgpu/shader_helper.h"
@@ -222,7 +223,7 @@ Status EinsumProgram::GenerateShaderCode(ShaderHelper& shader) const {
   std::vector<std::string> reduce_op_compute;
   bool is_reduce_ops_without_loop =
       parsed_equation_.symbol_to_info_.size() == parsed_equation_.rhs_.symbol_to_indices.size();
-
+  std::set<std::string> uniform_symbol_set;
   for (const auto& pair : parsed_equation_.symbol_to_info_) {
     const std::string& symbol = pair.first;
     const SymbolInfo& info = pair.second;
@@ -273,6 +274,15 @@ Status EinsumProgram::GenerateShaderCode(ShaderHelper& shader) const {
           reduce_ops_set_indices.push_back(inputs[lhs_term_index].get().IndicesSet(
               "input" + std::to_string(lhs_term_index) + "Indices", std::to_string(input_index),
               symbol));
+
+          if (uniform_symbol_set.find(symbol) == uniform_symbol_set.end()) {
+            uniform_symbol_set.insert(symbol);
+            reduce_ops_loop_headers.push_back("for(var " + symbol + ": u32 = 0; " + symbol + " < " +
+                                              "uniforms.input" + std::to_string(lhs_term_index) +
+                                              "_shape[" + std::to_string(input_index) + "]; " +
+                                              symbol + "++) {");
+            reduce_ops_loop_footers.push_back("}");
+          }
         }
 
         std::string get_indices_str = "prod *= " +
@@ -286,10 +296,6 @@ Status EinsumProgram::GenerateShaderCode(ShaderHelper& shader) const {
 
         lhs_term_index++;
       }
-
-      reduce_ops_loop_headers.push_back("for(var " + symbol + ": u32 = 0; " + symbol + " < " +
-                                        std::to_string(info.dim_value) + "; " + symbol + "++) {");
-      reduce_ops_loop_footers.push_back("}");
     }
   }
 
