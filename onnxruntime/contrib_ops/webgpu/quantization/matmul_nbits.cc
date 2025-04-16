@@ -526,7 +526,10 @@ Status MatMulNBitsProgram::GenerateShaderCode(ShaderHelper& shader) const {
 Status MatMulNBitsWideTileProgram::GenerateShaderCode(ShaderHelper& shader) const {
   const auto& a = shader.AddInput("input_a", ShaderUsage::UseUniform | ShaderUsage::UseIndicesTypeAlias | ShaderUsage::UseValueTypeAlias);
   const auto& b = shader.AddInput("input_b", ShaderUsage::UseUniform | ShaderUsage::UseIndicesTypeAlias | ShaderUsage::UseValueTypeAlias);
-  const auto& scales = shader.AddInput("scales", ShaderUsage::UseUniform);
+  shader.AddInput("scales", ShaderUsage::UseUniform);
+  if (has_zero_points_) {
+    shader.AddInput("zero_points", ShaderUsage::UseUniform);
+  }
   const auto& y = shader.AddOutput("output", ShaderUsage::UseUniform | ShaderUsage::UseValueTypeAlias | ShaderUsage::UseElementTypeAlias | ShaderUsage::UseIndicesTypeAlias);
 
   // Bock size 32, `a` component size 4, 8 `a` components per block.
@@ -553,18 +556,65 @@ Status MatMulNBitsWideTileProgram::GenerateShaderCode(ShaderHelper& shader) cons
   shader.AdditionalImplementation() << "}\n";
 
   shader.AdditionalImplementation() << "\n";
-  shader.AdditionalImplementation() << "fn mm_read_scale(row : u32, col : u32) -> output_value_t {\n";
+  shader.AdditionalImplementation() << "fn mm_read_scale(row : u32, col : u32) -> output_element_t {\n";
   shader.AdditionalImplementation() << "  if (row < uniforms.input_b_shape[0] && col < uniforms.input_b_shape[1]) {\n";
-  shader.AdditionalImplementation() << "    return " << scales.GetByOffset("row * uniforms.input_b_shape[1] + col") << ";\n";
+  shader.AdditionalImplementation() << "    return scales[row * uniforms.input_b_shape[1] + col];\n";
   shader.AdditionalImplementation() << "  }\n";
-  shader.AdditionalImplementation() << "  return output_value_t(0);\n";
+  shader.AdditionalImplementation() << "  return output_element_t(0);\n";
   shader.AdditionalImplementation() << "}\n";
+
+  if (has_zero_points_) {
+    shader.AdditionalImplementation() << "\n";
+    shader.AdditionalImplementation() << "fn mm_read_zero(row : u32, col : u32) -> output_element_t {\n";
+    shader.AdditionalImplementation() << "  if (row < uniforms.input_b_shape[0] && col < uniforms.input_b_shape[1]) {\n";
+    shader.AdditionalImplementation() << "    let offset = row * uniforms.input_b_stride[0] + col * uniforms.input_b_stride[1];\n";
+    shader.AdditionalImplementation() << "\n";
+    shader.AdditionalImplementation() << "    // u32 holds 8 packed uint4.\n";
+    shader.AdditionalImplementation() << "    let array_index = offset / 8u;\n";
+    shader.AdditionalImplementation() << "    let component_index = offset % 8u;\n";
+    shader.AdditionalImplementation() << "    let packed_value = zero_points[array_index];\n";
+    shader.AdditionalImplementation() << "\n";
+    shader.AdditionalImplementation() << "    // Extract the uint4 component\n";
+    shader.AdditionalImplementation() << "    let shift_amount = component_index * 4u;\n";
+    shader.AdditionalImplementation() << "    let masked_value = (packed_value >> shift_amount) & 0xFu;\n";
+    shader.AdditionalImplementation() << "\n";
+    shader.AdditionalImplementation() << "    return output_element_t(masked_value);\n";
+    shader.AdditionalImplementation() << "  }\n";
+    shader.AdditionalImplementation() << "  return output_element_t(8);\n";
+    shader.AdditionalImplementation() << "}\n";
+  } else {
+    shader.AdditionalImplementation() << "\n";
+    shader.AdditionalImplementation() << "fn mm_read_zero(row : u32, col : u32) -> output_element_t {\n";
+    shader.AdditionalImplementation() << "  return output_element_t(8);\n";
+    shader.AdditionalImplementation() << "}\n";
+  }
 
   shader.AdditionalImplementation() << "\n";
   shader.AdditionalImplementation() << "fn mm_write_y(batch : u32, row : u32, col : u32, value : output_value_t) {\n";
   shader.AdditionalImplementation() << "  if (row < uniforms.output_shape[1] && col < uniforms.output_shape[2]) {\n";
   shader.AdditionalImplementation() << "    " << y.SetByIndices("output_indices_t(batch, row, col)", "value") << "\n";
   shader.AdditionalImplementation() << "  }\n";
+  shader.AdditionalImplementation() << "}\n";
+
+  shader.AdditionalImplementation() << "\n";
+  shader.AdditionalImplementation() << "fn dequantize_packed8xU4(packed_value : u32, zero_point : output_element_t, scale : output_element_t) -> mat2x4<output_element_t> {\n";
+  shader.AdditionalImplementation() << "  let lower_values: vec4<u32> = unpack4xU8(packed_value & 0x0F0F0F0Fu);\n";
+  shader.AdditionalImplementation() << "  let upper_values: vec4<u32> = unpack4xU8((packed_value >> 4u) & 0x0F0F0F0Fu);\n";
+  shader.AdditionalImplementation() << "\n";
+  shader.AdditionalImplementation() << "  let zero_matrix: mat2x4<output_element_t> = mat2x4<output_element_t>(\n";
+  shader.AdditionalImplementation() << "      zero_point, zero_point, zero_point, zero_point,\n";
+  shader.AdditionalImplementation() << "      zero_point, zero_point, zero_point, zero_point\n";
+  shader.AdditionalImplementation() << "  );\n";
+  shader.AdditionalImplementation() << "\n";
+  shader.AdditionalImplementation() << "  var dequantized_values: mat2x4<output_element_t> = mat2x4<output_element_t>(\n";
+  shader.AdditionalImplementation() << "      output_element_t(lower_values[0]), output_element_t(upper_values[0]),\n";
+  shader.AdditionalImplementation() << "      output_element_t(lower_values[1]), output_element_t(upper_values[1]),\n";
+  shader.AdditionalImplementation() << "      output_element_t(lower_values[2]), output_element_t(upper_values[2]),\n";
+  shader.AdditionalImplementation() << "      output_element_t(lower_values[3]), output_element_t(upper_values[3])\n";
+  shader.AdditionalImplementation() << "  );\n";
+  shader.AdditionalImplementation() << "\n";
+  shader.AdditionalImplementation() << "  dequantized_values = (dequantized_values - zero_matrix) * scale;\n";
+  shader.AdditionalImplementation() << "  return dequantized_values;\n";
   shader.AdditionalImplementation() << "}\n";
 
   // declare const variables
@@ -603,30 +653,16 @@ Status MatMulNBitsWideTileProgram::GenerateShaderCode(ShaderHelper& shader) cons
 
     let b_data = mm_read_b(b_row, b_col);
     let scale = mm_read_scale(b_row, b_col);
-    let zero_point = output_element_t(8.0);
+    let zero_point = mm_read_zero(b_row, b_col);
 
     // `b` component size is 4.
     for (var b_idx = 0u; b_idx < 4u; b_idx++) {
-      let b_value = b_data[b_idx];
-      let b_value_lower = unpack4xU8(b_value & 0x0F0F0F0Fu);
-      let b_value_upper = unpack4xU8((b_value >> 4u) & 0x0F0F0F0Fu);
-      let b_quantized_values = mat2x4<output_element_t>(
-          output_element_t(b_value_lower[0]), output_element_t(b_value_upper[0]),
-          output_element_t(b_value_lower[1]), output_element_t(b_value_upper[1]),
-          output_element_t(b_value_lower[2]), output_element_t(b_value_upper[2]),
-          output_element_t(b_value_lower[3]), output_element_t(b_value_upper[3]));
-      let b_dequantized_values =
-          (b_quantized_values - mat2x4<output_element_t>(zero_point, zero_point,
-                                                        zero_point, zero_point,
-                                                        zero_point, zero_point,
-                                                        zero_point, zero_point)) * scale;
-
+      let b_dequantized = dequantize_packed8xU4(b_data[b_idx], zero_point, scale);
       for (var m_idx = 0u; m_idx < tile_m; m_idx++) {
         let a_data0 = a_data_tile[m_idx][b_idx * 2u];
         let a_data1 = a_data_tile[m_idx][b_idx * 2u + 1u];
 
-        results[m_idx] += f32(dot(a_data0, b_dequantized_values[0u])) +
-                          f32(dot(a_data1, b_dequantized_values[1u]));
+        results[m_idx] += f32(dot(a_data0, b_dequantized[0])) + f32(dot(a_data1, b_dequantized[1]));
       }
     }
 
@@ -690,9 +726,8 @@ Status MatMulNBits::ComputeInternal(onnxruntime::webgpu::ComputeContext& context
 
   // WideTileProgram
   // This program is optimized for Block32 prefill using Tile16x128.
-  // TODO: loosen restrictions on has_zero_points and vendor.
-  const bool use_wide_tile_program = block_size == 32 && !has_zero_points &&
-                                     components_a == 4 && components_b == 4 && M >= kMinMForTileOptimization &&
+  // TODO: loosen restrictions on vendor.
+  const bool use_wide_tile_program = block_size == 32 && components_a == 4 && components_b == 4 && M >= kMinMForTileOptimization &&
                                      context.AdapterInfo().vendor == std::string_view{"intel"};
   if (use_wide_tile_program) {
     // Enforce output components to 1.
@@ -702,7 +737,7 @@ Status MatMulNBits::ComputeInternal(onnxruntime::webgpu::ComputeContext& context
     constexpr uint32_t tile_m = workgroup_size / 8;
     constexpr uint32_t tile_n = workgroup_size;
 
-    MatMulNBitsWideTileProgram program{tile_m, tile_n};
+    MatMulNBitsWideTileProgram program{has_zero_points, tile_m, tile_n};
     program.SetWorkgroupSize(workgroup_size);
     program.SetDispatchGroupSize((N + tile_n - 1) / tile_n,
                                  (M + tile_m - 1) / tile_m,
@@ -719,6 +754,10 @@ Status MatMulNBits::ComputeInternal(onnxruntime::webgpu::ComputeContext& context
                     {scales, ProgramTensorMetadataDependency::None}})
         .AddOutput({y, ProgramTensorMetadataDependency::TypeAndRank, reshaped_y_shape, onnxruntime::narrow<int>(components)})
         .AddUniformVariable({block_size});
+    if (has_zero_points) {
+      program.AddInput({zero_points, ProgramTensorMetadataDependency::None, {(zero_points->Shape().Size() + 3) / 4}, 4});
+    }
+
     return context.RunProgram(program);
   }
 
