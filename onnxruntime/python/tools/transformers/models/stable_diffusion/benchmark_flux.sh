@@ -88,7 +88,7 @@ install_gpu() {
     [ ! -d "$install_dir/cuda12.6" ] && install_cuda_12
     [ ! -d "$install_dir/cudnn9.6" ] && install_cudnn_9
     pip install torch torchvision --index-url https://download.pytorch.org/whl/cu124
-    pip install diffusers==0.32.0 transformers==4.46.3 onnx==1.18.0 protobuf==5.29.2 py3nvml
+    pip install diffusers==0.32.0 transformers==4.46.3 onnx==1.17.0 protobuf==5.29.2 py3nvml
     install_onnxruntime
     install_optimum
 }

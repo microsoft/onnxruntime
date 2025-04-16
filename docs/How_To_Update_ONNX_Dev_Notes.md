@@ -4,7 +4,7 @@ This note is only for ONNX Runtime developers.
 
 If you need to update the ONNX submodule to a different version, follow the steps below.
 
-1. Update the ONNX submodule
+1. Update the ONNX submodule (commit would be more precise than branch)
 
 ```sh
 cd cmake/external/onnx
@@ -16,8 +16,11 @@ git add onnx
 
 (Change the <commit_id> to yours. If you are not sure, use 'origin/master'. Like 'git reset --hard origin/master')
 
-1. Update [cmake/deps.txt](/cmake/deps.txt) with the correct zip download link and SHA (alternatively, build it with the wrong SHA and ORT should tell you the expected one.).
-2. Update Python requirements files with the updated ONNX version (e.g., `onnx==1.16.0`) or commit hash if building from source (e.g., `git+http://github.com/onnx/onnx.git@targetonnxcommithash#egg=onnx`).
+2. Update [cmake/deps.txt](/cmake/deps.txt) with the correct zip download link and SHA (alternatively, build it with the wrong SHA and ORT should tell you the expected one.).
+3. Check [cmake/patch/onnx/onnx.patch](/cmake/patch/onnx/onnx.patch) to see whether the diffs are resolved in the latest ONNX version.
+4. Try to build ONNXRUNTIME from source. If the build fails, please make the changes accordingly, or use onnx.patch if it's ONNX bugs.
+5. Push the branch to validate with the CI tests, and make the necessary changes accordingly.
+6. Update Python requirements files with the updated ONNX version (e.g., `onnx==1.16.0`) or commit hash if building from source (e.g., `git+http://github.com/onnx/onnx.git@targetonnxcommithash#egg=onnx`).
 
 - [onnxruntime/test/python/requirements.txt](/onnxruntime/test/python/requirements.txt)
 - [tools/ci_build/github/linux/docker/scripts/requirements.txt](/tools/ci_build/github/linux/docker/scripts/requirements.txt)
