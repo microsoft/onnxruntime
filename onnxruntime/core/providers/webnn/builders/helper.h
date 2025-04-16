@@ -164,7 +164,7 @@ inline bool ReadScalarTensorData(const onnx::TensorProto& tensor, emscripten::va
       scalar = emscripten::val{*reinterpret_cast<uint64_t*>(unpacked_tensor.data())};
       break;
     default:
-      LOGS(logger, ERROR) << "Unsupported data type : " << tensor.data_type();
+      LOGS(logger, ERROR) << "WebNN backend does not support data type: " << tensor.data_type();
       return false;
       break;
   }

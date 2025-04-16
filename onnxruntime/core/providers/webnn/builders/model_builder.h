@@ -160,7 +160,7 @@ const emscripten::val& ModelBuilder::CreateOrGetConstant(const int32_t& data_typ
     desc.set("dimensions", dims);
     emscripten::val buffer = emscripten::val::undefined();
     if (!SetWebnnDataType(desc, data_type)) {
-      ORT_THROW("Unsupported data type: " + std::to_string(data_type));
+      ORT_THROW("WebNN backend does not support data type: ", data_type);
     }
     auto num_elements = Product(shape);
     switch (data_type) {
@@ -253,7 +253,7 @@ const emscripten::val& ModelBuilder::CreateOrGetConstant(const int32_t& data_typ
     desc.set("dimensions", dims);
     emscripten::val buffer = emscripten::val::undefined();
     if (!SetWebnnDataType(desc, data_type)) {
-      ORT_THROW("Unsupported data type: " + std::to_string(data_type));
+      ORT_THROW("WebNN backend does not support data type: ", data_type);
     }
     switch (data_type) {
       case ONNX_NAMESPACE::TensorProto_DataType_BOOL:

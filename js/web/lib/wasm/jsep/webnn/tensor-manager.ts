@@ -17,17 +17,18 @@ export const convertDataToInt32 = (data: Uint8Array, dataType: MLOperandDataType
     return data;
   }
 
-  const size = webnnDataTypeToSize.get(dataType);
-  if (!size) {
-    throw new Error('Unsupported data type.');
+  const dataTypeSize = webnnDataTypeToSize.get(dataType);
+  if (!dataTypeSize) {
+    throw new Error(`WebNN backend does not support data type: ${dataType}`);
   }
+  const bytesPerElement = dataTypeSize / 8;
   // Make sure the data length is a multiple of the data type size.
-  if (data.byteLength % (size / 8) !== 0) {
-    throw new Error(`Invalid Uint8Array length - must be a multiple of ${size / 8}.`);
+  if (data.byteLength % bytesPerElement !== 0) {
+    throw new Error(`Invalid Uint8Array length - must be a multiple of ${bytesPerElement}.`);
   }
 
   // Convert Uint8Array to original typed array.
-  const numElements = data.byteLength / (size / 8);
+  const numElements = data.byteLength / bytesPerElement;
   const originalArray = new (tensorTypeToTypedArrayConstructor(dataType))(data.buffer, data.byteOffset, numElements);
 
   switch (dataType) {
@@ -40,7 +41,7 @@ export const convertDataToInt32 = (data: Uint8Array, dataType: MLOperandDataType
 
         // Check for overflow.
         if (value > 2147483647n || value < -2147483648n) {
-          throw new Error(`Overflow occurred when converting BigInt to Int32 at index ${i}: ${value}`);
+          throw new Error(`Can not convert int64 data to int32 - value out of range.`);
         }
 
         int32Array[i] = Number(value);
@@ -54,7 +55,7 @@ export const convertDataToInt32 = (data: Uint8Array, dataType: MLOperandDataType
       // Check for overflow.
       if (dataType === 'uint32') {
         if (originalArray.some((value) => value > 2147483647)) {
-          throw new Error('Can not convert uint32 data to int32, value out of range.');
+          throw new Error(`Can not convert uint32 data to int32 - value out of range.`);
         }
       }
       // Convert original typed array to Int32Array.
@@ -62,7 +63,7 @@ export const convertDataToInt32 = (data: Uint8Array, dataType: MLOperandDataType
       return new Uint8Array(int32Array.buffer);
     }
     default:
-      throw new Error(`Unsupported data convertion from ${dataType} to 'int32'`);
+      throw new Error(`Unsupported data conversion from ${dataType} to 'int32'`);
   }
 };
 
@@ -75,7 +76,7 @@ export const convertInt32ToData = (data: Uint8Array, dataType: MLOperandDataType
 
   // Make sure the data length is a multiple of 4 bytes (Int32Array).
   if (data.byteLength % 4 !== 0) {
-    throw new Error('Invalid Uint8Array length - must be a multiple of 4 (Int32).');
+    throw new Error('Invalid Uint8Array length - must be a multiple of 4 (int32).');
   }
 
   // Convert Uint8Array to Int32Array.
@@ -84,43 +85,38 @@ export const convertInt32ToData = (data: Uint8Array, dataType: MLOperandDataType
 
   switch (dataType) {
     case 'int64': {
-      // Convert Int32Array to BigInt64Array.
       const bigInt64Array = BigInt64Array.from(int32Array, BigInt);
       return new Uint8Array(bigInt64Array.buffer);
     }
     case 'uint64': {
       if (int32Array.some((value) => value < 0)) {
-        throw new Error('Can not convert int32 data to uin64, negative value found.');
+        throw new Error('Can not convert int32 data to uin64 - negative value found.');
       }
-      // Convert Int32Array to BigUInt64Array.
       const bigUint64Array = BigUint64Array.from(int32Array, BigInt);
       return new Uint8Array(bigUint64Array.buffer);
     }
     case 'int8': {
       if (int32Array.some((value) => value < -128 || value > 127)) {
-        throw new Error('Can not convert int32 data to int8, value out of range.');
+        throw new Error('Can not convert int32 data to int8 - value out of range.');
       }
-      // Convert Int32Array to Int8Array.
       const int8Array = Int8Array.from(int32Array, Number);
       return new Uint8Array(int8Array.buffer);
     }
     case 'uint8': {
       if (int32Array.some((value) => value < 0 || value > 255)) {
-        throw new Error('Can not convert int32 data to uint8, value out of range.');
+        throw new Error('Can not convert int32 data to uint8 - value out of range.');
       }
-      // Convert Int32Array to Uint8Array.
       return Uint8Array.from(int32Array, Number);
     }
     case 'uint32': {
       if (int32Array.some((value) => value < 0)) {
-        throw new Error('Can not convert int32 data to uint32, negative value found.');
+        throw new Error('Can not convert int32 data to uint32 - negative value found.');
       }
-      // Convert Int32Array to Uint32Array.
       const uint32Array = Uint32Array.from(int32Array, Number);
       return new Uint8Array(uint32Array.buffer);
     }
     default:
-      throw new Error(`Unsupported data convertion from 'int32' to ${dataType}`);
+      throw new Error(`Unsupported data conversion from 'int32' to ${dataType}`);
   }
 };
 
@@ -202,11 +198,11 @@ const webnnDataTypeToFallback = new Map<MLOperandDataType, MLOperandDataType>([
  * Calculate the byte length of a tensor with the given data type and shape.
  */
 const calculateByteLength = (dataType: MLOperandDataType, shape: readonly number[]): number => {
-  const size = webnnDataTypeToSize.get(dataType);
-  if (!size) {
-    throw new Error('Unsupported data type.');
+  const dataTypeSize = webnnDataTypeToSize.get(dataType);
+  if (!dataTypeSize) {
+    throw new Error(`WebNN backend does not support data type: ${dataType}`);
   }
-  return shape.length > 0 ? Math.ceil((shape.reduce((a, b) => a * b) * size) / 8) : 0;
+  return shape.length > 0 ? Math.ceil((shape.reduce((a, b) => a * b) * dataTypeSize) / 8) : 0;
 };
 
 /**
@@ -221,7 +217,7 @@ class TensorWrapper {
   private mlContext: MLContext;
   private mlTensor: MLTensor;
   private dataType: MLOperandDataType;
-  // Fallback data type to use when the context does not support the original data type,
+  // Fallback data type to use when the context does not support the original data type.
   private fallbackDataType: MLOperandDataType | undefined;
   private tensorShape: readonly number[];
 
@@ -341,11 +337,11 @@ class TensorIdTracker {
   ): Promise<MLTensor> {
     const context = this.tensorManager.getMLContext(sessionId);
     let fallbackDataType: MLOperandDataType | undefined;
-    // Check if the context supports the data type, if no, try to use the fallback data type.
+    // Check if the context supports the data type. If not, try to use the fallback data type.
     if (!context.opSupportLimits().input.dataTypes.includes(dataType)) {
       fallbackDataType = webnnDataTypeToFallback.get(dataType);
       if (!fallbackDataType || !context.opSupportLimits().input.dataTypes.includes(fallbackDataType)) {
-        throw new Error(`Unsupported data type: ${dataType}`);
+        throw new Error(`WebNN backend does not support data type: ${dataType}`);
       }
       LOG_DEBUG(
         'verbose',
@@ -574,8 +570,8 @@ class TensorManagerImpl implements TensorManager {
           'verbose',
           () =>
             `[WebNN] Reusing tensor {dataType: ${dataType}, ${
-              fallbackDataType ? `fallbackDataType: ${fallbackDataType}, ` : ''
-            }shape: ${shape}`,
+              fallbackDataType ? `fallbackDataType: ${fallbackDataType},` : ''
+            } shape: ${shape}`,
         );
         const wrapper = this.freeTensors.splice(index, 1)[0];
         wrapper.sessionId = sessionId;
@@ -586,11 +582,11 @@ class TensorManagerImpl implements TensorManager {
       'verbose',
       () =>
         `[WebNN] MLContext.createTensor {dataType: ${dataType}, ${
-          fallbackDataType ? `fallbackDataType: ${fallbackDataType}, ` : ''
-        }shape: ${shape}}`,
+          fallbackDataType ? `fallbackDataType: ${fallbackDataType},` : ''
+        } shape: ${shape}}`,
     );
     const tensor = await context.createTensor({
-      dataType: fallbackDataType ? fallbackDataType : dataType, // If fallback data type is provided, use it.
+      dataType: fallbackDataType ?? dataType, // If fallback data type is provided, use it.
       shape,
       dimensions: shape,
       usage,

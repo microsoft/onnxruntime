@@ -230,7 +230,7 @@ Status ModelBuilder::RegisterInitializers() {
     const auto data_type = tensor.data_type();
     emscripten::val operand = emscripten::val::object();
     if (IsSupportedDataType(data_type, wnn_limits_["constant"]["dataTypes"])) {
-      ORT_RETURN_IF_NOT(SetWebnnDataType(desc, data_type), "Unsupported data type");
+      ORT_RETURN_IF_NOT(SetWebnnDataType(desc, data_type), "WebNN backend does not support data type: ", data_type);
       ORT_RETURN_IF_ERROR(RegisterConstant(tensor, operand, desc, logger_));
     } else {
       // TODO: support other type.
@@ -288,7 +288,7 @@ Status ModelBuilder::RegisterModelInputOutput(const NodeArg& node_arg, bool is_i
     }
 
     data_type = type_proto->tensor_type().elem_type();
-    ORT_RETURN_IF_NOT(SetWebnnDataType(desc, data_type), "Unsupported data type");
+    ORT_RETURN_IF_NOT(SetWebnnDataType(desc, data_type), "WebNN backend does not support data type: ", data_type);
   }
 
   emscripten::val wnn_data_type = desc["dataType"];
@@ -316,9 +316,9 @@ Status ModelBuilder::RegisterModelInputOutput(const NodeArg& node_arg, bool is_i
   }
 
   if (is_input) {
-    // Another case is that if the 'int64' data type is totally not supported by the WebNN backend.
-    // We will convert the initializers to int32 as well, thereforce, the WebNN graph will only produce
-    // int32 data and we don't need to insert additional cast operation.
+    // Another case is that if the 'int64' data type is totally unsupported by the WebNN backend.
+    // We will convert the initializers to int32 as well, therefore, the WebNN graph will only produce
+    // int32 data, and we don't need to insert additional cast operation.
     if (cast_required || (data_type == ONNX_NAMESPACE::TensorProto_DataType_INT64 && !is_int64_supported_)) {
       // Fallback the input data type to int32.
       desc.set("dataType", emscripten::val("int32"));
@@ -383,7 +383,7 @@ Status ModelBuilder::AddOperandFromPersistMemoryBuffer(
   memcpy(dest, buffer, size);
   emscripten::val view = emscripten::val::undefined();
   emscripten::val desc = emscripten::val::object();
-  ORT_RETURN_IF_NOT(SetWebnnDataType(desc, data_type), "Unsupported data type");
+  ORT_RETURN_IF_NOT(SetWebnnDataType(desc, data_type), "WebNN backend does not support data type: ", data_type);
   switch (data_type) {
     case ONNX_NAMESPACE::TensorProto_DataType_BOOL:
     case ONNX_NAMESPACE::TensorProto_DataType_UINT8:
