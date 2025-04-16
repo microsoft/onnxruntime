@@ -15,10 +15,6 @@ Abstract:
 
 --*/
 
-//#include <immintrin.h>
-
-//#include <atomic>
-
 #include "mlasi.h"
 
 namespace onnxruntime
