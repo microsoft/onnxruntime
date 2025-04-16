@@ -92,7 +92,7 @@ if (typeof INSTALL_FLAG === 'string') {
   INSTALL_MANIFEST_NAMES = installations;
 }
 
-const BIN_FOLDER = path.join(__dirname, '..', 'bin/napi-v3', PLATFORM);
+const BIN_FOLDER = path.join(__dirname, '..', 'bin/napi-v6', PLATFORM);
 const INSTALL_MANIFESTS = [];
 
 const PACKAGES = new Set();
