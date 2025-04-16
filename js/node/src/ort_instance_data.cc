@@ -1,6 +1,9 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include <atomic>
+#include <mutex>
+
 #include "common.h"
 #include "ort_instance_data.h"
 #include "onnxruntime_cxx_api.h"
