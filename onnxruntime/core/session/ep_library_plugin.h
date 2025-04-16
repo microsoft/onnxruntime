@@ -25,7 +25,7 @@ struct EpLibraryPlugin : EpLibrary {
     return factories_;
   }
 
-  Status Unload();
+  Status Unload() override;
 
   ORT_DISALLOW_COPY_AND_ASSIGNMENT(EpLibraryPlugin);
 

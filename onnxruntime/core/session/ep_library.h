@@ -16,6 +16,7 @@ struct EpLibrary {
   virtual Status Load() { return Status::OK(); }
   virtual const std::vector<OrtEpFactory*>& GetFactories() = 0;  // valid after Load()
   virtual Status Unload() { return Status::OK(); }
+  virtual ~EpLibrary() = default;
 
  protected:
   static ProviderOptions GetOptionsFromSessionOptions(const std::string& ep_name,

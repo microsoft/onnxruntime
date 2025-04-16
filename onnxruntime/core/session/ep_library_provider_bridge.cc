@@ -28,8 +28,8 @@ std::unique_ptr<EpFactoryInternal> EpLibraryProviderBridge::CreateCudaEpFactory(
     return false;
   };
 
-  const auto create_cuda_ep = [&provider, this](const OrtSessionOptions& session_options,
-                                                const OrtLogger& session_logger) {
+  const auto create_cuda_ep = [&provider](const OrtSessionOptions& session_options,
+                                          const OrtLogger& session_logger) {
     OrtCUDAProviderOptionsV2 options;
     const SessionOptions& so = session_options.existing_value ? **session_options.existing_value
                                                               : session_options.value;
