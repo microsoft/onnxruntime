@@ -80,10 +80,7 @@ static bool ParseBackendTypeName(std::string_view backend_type_name, std::string
 
 static void ParseProfilingLevel(std::string profiling_level_string,
                                 qnn::ProfilingLevel& profiling_level) {
-  std::transform(profiling_level_string.begin(),
-                 profiling_level_string.end(),
-                 profiling_level_string.begin(),
-                 [](unsigned char c) { return static_cast<unsigned char>(std::tolower(c)); });
+  profiling_level_string = qnn::utils::GetLowercaseString(profiling_level_string);
   LOGS_DEFAULT(INFO) << "profiling_level: " << profiling_level_string;
   if (profiling_level_string == "off") {
     profiling_level = qnn::ProfilingLevel::OFF;
@@ -98,10 +95,7 @@ static void ParseProfilingLevel(std::string profiling_level_string,
 
 static void ParseHtpPerformanceMode(std::string htp_performance_mode_string,
                                     qnn::HtpPerformanceMode& htp_performance_mode) {
-  std::transform(htp_performance_mode_string.begin(),
-                 htp_performance_mode_string.end(),
-                 htp_performance_mode_string.begin(),
-                 [](unsigned char c) { return static_cast<unsigned char>(std::tolower(c)); });
+  htp_performance_mode_string = qnn::utils::GetLowercaseString(htp_performance_mode_string);
   LOGS_DEFAULT(VERBOSE) << "Htp performance mode: " << htp_performance_mode_string;
   if (htp_performance_mode_string == "burst") {
     htp_performance_mode = qnn::HtpPerformanceMode::kHtpBurst;
@@ -129,10 +123,7 @@ static void ParseHtpPerformanceMode(std::string htp_performance_mode_string,
 }
 
 static void ParseQnnContextPriority(std::string context_priority_string, qnn::ContextPriority& context_priority) {
-  std::transform(context_priority_string.begin(),
-                 context_priority_string.end(),
-                 context_priority_string.begin(),
-                 [](unsigned char c) { return static_cast<unsigned char>(std::tolower(c)); });
+  context_priority_string = qnn::utils::GetLowercaseString(context_priority_string);
   LOGS_DEFAULT(VERBOSE) << "QNN context priority: " << context_priority_string;
   if (context_priority_string == "low") {
     context_priority = qnn::ContextPriority::LOW;
