@@ -23,7 +23,7 @@ OnnxRuntime QNN Execution Provider can be used on Android and Windows devices wi
 ## Install Pre-requisites (Build from Source Only)
 
 If you build QNN Execution Provider from source, you should first
-download the Qualcomm AI Engine Direct SDK (QNN SDK) from [https://qpm.qualcomm.com/main/tools/details/qualcomm_ai_engine_direct](https://qpm.qualcomm.com/main/tools/details/qualcomm_ai_engine_direct)
+download the Qualcomm AI Engine Direct SDK (QNN SDK) from [https://qpm.qualcomm.com/#/main/tools/details/Qualcomm_AI_Runtime_SDK](https://qpm.qualcomm.com/#/main/tools/details/Qualcomm_AI_Runtime_SDK)
 
 ### QNN Version Requirements
 
@@ -52,12 +52,6 @@ OnnxRuntime QNN Execution Provider is a supported runtime in [Qualcomm AI Hub](h
 ## Configuration Options
 The QNN Execution Provider supports a number of configuration options. These provider options are specified as key-value string pairs.
 ### EP Provider Options
-|`"backend_type"`|Description|
-|---|-----|
-|'cpu'|Enable CPU backend. Useful for integration testing. The CPU backend is a reference implementation of QNN operators.|
-|'gpu'|Enable GPU backend.|
-|'htp'|Enable HTP backend. Offloads compute to NPU. Default.|
-|'saver'|Enable Saver backend.|
 
 |`"backend_type"`|Description|
 |---|-----|
