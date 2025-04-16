@@ -118,7 +118,8 @@ Status GemmOpBuilder::ProcessInputs(QnnModelWrapper& qnn_model_wrapper,
 
     std::string input_tensor_name = input_name;
     if (1 == input_trans_flag.at(input_i) && !is_constant_input) {
-      ORT_RETURN_IF(quantize_param.IsPerChannel(), "Non-constant Gemm inputs only support per-tensor quantization");
+      ORT_RETURN_IF(quantize_param.IsPerChannel() || quantize_param.IsBlockwise(),
+                    "Non-constant Gemm inputs only support per-tensor quantization");
 
       // Add Transpose node
       std::vector<uint32_t> old_input_shape(input_shape);
