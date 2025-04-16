@@ -205,7 +205,7 @@ bool MatMulNBitsBuilder::HasSupportedInputsImpl(const GraphViewer&,
   }
 
   InlinedVector<int32_t, 2> input_types = {A_type, scales_type};
-  if (!AreInputDataTypesSame(op_type, input_types, logger)) {
+  if (!AreDataTypesSame(op_type, input_types, logger)) {
     return false;
   }
 

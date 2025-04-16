@@ -18,7 +18,7 @@ import onnx
 from onnx.onnx_pb import GraphProto, ModelProto, NodeProto, TensorProto
 from packaging import version
 
-from onnxruntime.capi._pybind_state import quantize_matmul_4bits, quantize_qdq_matmul_4bits
+from onnxruntime.capi._pybind_state import quantize_matmul_4bits, quantize_matmul_8bits, quantize_qdq_matmul_4bits
 
 from .calibrate import CalibrationDataReader
 from .onnx_model import ONNXModel
@@ -35,6 +35,7 @@ class WeightOnlyQuantConfig:
         quant_format: QuantFormat,
         op_types_to_quantize: tuple[str, ...] | None = None,
         quant_axes: tuple[tuple[str, int], ...] | None = None,
+        customized_weight_config: dict | None = None,
     ):
         """This is the Base class for Weight Only blockwise quantization Configuration.
 
@@ -48,11 +49,15 @@ class WeightOnlyQuantConfig:
                 set of operator types to quantize. Default {MatMul}
             quant_axes (dict[str, int], optional):
                 op:axis, which axis to quantize for an op. Default {MatMul: 0, Gather: 1}
+            customized_weight_config:
+                customized weight config for nodes if needed.
+                If both customized_weight_config and nodes_to_exclude are set, nodes_to_exclude overwrites customized_weight_config.
         """
         self.algorithm = algorithm
         self.quant_format = quant_format
         self.op_types_to_quantize = set(op_types_to_quantize) if op_types_to_quantize else {"MatMul"}
         self.quant_axes = dict(quant_axes) if quant_axes else {"MatMul": 0, "Gather": 1}
+        self.customized_weight_config = customized_weight_config
 
 
 class RTNWeightOnlyQuantConfig(WeightOnlyQuantConfig):
@@ -61,6 +66,7 @@ class RTNWeightOnlyQuantConfig(WeightOnlyQuantConfig):
         ratios=None,
         quant_format=QuantFormat.QOperator,
         op_types_to_quantize: tuple[str, ...] | None = None,
+        customized_weight_config: dict | None = None,
     ):
         """
         This is a class for round-to-nearest (RTN) algorithm Weight Only Quant Configuration.
@@ -84,6 +90,7 @@ class RTNWeightOnlyQuantConfig(WeightOnlyQuantConfig):
             algorithm="RTN",
             quant_format=quant_format,
             op_types_to_quantize=op_types_to_quantize,
+            customized_weight_config=customized_weight_config,
         )
         self.ratios = ratios
 
@@ -191,6 +198,7 @@ class DefaultWeightOnlyQuantConfig(WeightOnlyQuantConfig):
         quant_format=QuantFormat.QOperator,
         op_types_to_quantize: tuple[str, ...] | None = None,
         quant_axes: tuple[tuple[str, int], ...] | None = None,
+        bits: int = 4,
     ):
         """
         This is a class for weight only affine quantization configuration.
@@ -221,7 +229,7 @@ class DefaultWeightOnlyQuantConfig(WeightOnlyQuantConfig):
         )
         self.block_size = block_size
         self.is_symmetric = is_symmetric
-        self.bits = 4
+        self.bits = bits
         self.accuracy_level = accuracy_level
 
 
@@ -721,9 +729,11 @@ class DefaultWeightOnlyQuantizer:
     def __init__(self, config: DefaultWeightOnlyQuantConfig):
         self.config = config
 
-    def int4_block_quant(self, fp32weight: npt.ArrayLike) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
-        """4b quantize fp32 weight to int4 using C++ kernels."""
+    def qbits_block_quant(self, fp32weight: npt.ArrayLike) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+        """4b/8b quantize fp32 weight to int4 using C++ kernels."""
 
+        qbits = self.config.bits
+        kpack = 8 // qbits
         if len(fp32weight.shape) != 2:
             raise ValueError("Current int4 block quantization only supports 2D tensors!")
         rows, cols = fp32weight.shape
@@ -732,7 +742,7 @@ class DefaultWeightOnlyQuantizer:
         k_blocks = (rows + block_size - 1) // block_size
 
         if self.config.quant_format == QuantFormat.QOperator:
-            blob_size = block_size // 2
+            blob_size = (block_size + kpack - 1) // kpack
             padded_rows = k_blocks * block_size
             pad_len = padded_rows - rows
             if pad_len > 0:
@@ -740,12 +750,18 @@ class DefaultWeightOnlyQuantizer:
 
             # block wise quantization, each block comes from a single column
             packed = np.zeros((cols, k_blocks, blob_size), dtype="uint8")
-            zero_point = np.zeros(cols * ((k_blocks + 1) // 2), dtype="uint8")
+            zero_point = np.zeros(cols * ((k_blocks + kpack - 1) // kpack), dtype="uint8")
             scales = np.zeros((cols * k_blocks), dtype=fp32weight.dtype)
-            quantize_matmul_4bits(
-                packed, fp32weight, scales, zero_point, block_size, cols, rows, self.config.is_symmetric
-            )
+            if qbits == 8:
+                quantize_matmul_8bits(
+                    packed, fp32weight, scales, zero_point, block_size, cols, rows, self.config.is_symmetric
+                )
+            else:
+                quantize_matmul_4bits(
+                    packed, fp32weight, scales, zero_point, block_size, cols, rows, self.config.is_symmetric
+                )
         else:
+            # QDQ format only support 4 bits quantization
             packed = np.zeros((rows * cols + 1) // 2, dtype="uint8")
             zero_point = np.zeros((cols * k_blocks + 1) // 2, dtype="uint8")
             scales = np.zeros((k_blocks, cols), dtype=fp32weight.dtype)
@@ -757,10 +773,14 @@ class DefaultWeightOnlyQuantizer:
 
     def quantize_matmul(self, node: NodeProto, graph_stack: list[GraphProto]) -> list[NodeProto]:
         """
-        Quantize weight B of MatMul node to int4.
+        Quantize weight B of MatMul node to int4 or int8.
         Currently only support 2D constant matrix and axis 0 blockwise quantization.
         """
-        qtype = TensorProto.INT4 if self.config.is_symmetric else TensorProto.UINT4
+        bits = self.config.bits
+        if bits == 8:
+            qtype = TensorProto.INT8 if self.config.is_symmetric else TensorProto.UINT8
+        else:
+            qtype = TensorProto.INT4 if self.config.is_symmetric else TensorProto.UINT4
         input_b = node.input[1]
         b_tensor, b_graph = get_initializer(input_b, graph_stack)
         if b_tensor is None:
@@ -772,13 +792,15 @@ class DefaultWeightOnlyQuantizer:
             logger.info("MatMul weight is not 2D. Skip to quantize")
             return [node]  # can only process 2-D matrix
 
-        packed, scales, zero_points = self.int4_block_quant(b_ndarray)
+        packed, scales, zero_points = self.qbits_block_quant(b_ndarray)
 
         if self.config.quant_format == QuantFormat.QOperator:
-            b_quant = onnx.numpy_helper.from_array(packed, b_tensor.name + "_Q4")
+            b_quant = onnx.numpy_helper.from_array(packed, b_tensor.name + f"_Q{bits}")
             scales_tensor = onnx.numpy_helper.from_array(scales, b_tensor.name + "_scales")
         else:
-            b_quant = onnx.helper.make_tensor(b_tensor.name + "_DQ_Q4", qtype, b_ndarray.shape, packed.tobytes(), True)
+            b_quant = onnx.helper.make_tensor(
+                b_tensor.name + f"_DQ_Q{bits}", qtype, b_ndarray.shape, packed.tobytes(), True
+            )
             scales_tensor = onnx.numpy_helper.from_array(scales, b_tensor.name + "_DQ_scales")
 
         for input in b_graph.input:
@@ -800,21 +822,21 @@ class DefaultWeightOnlyQuantizer:
             rows, cols = b_ndarray.shape
             kwargs["K"] = rows
             kwargs["N"] = cols
-            kwargs["bits"] = 4
+            kwargs["bits"] = bits
             kwargs["block_size"] = self.config.block_size
             if self.config.accuracy_level is not None:
                 kwargs["accuracy_level"] = self.config.accuracy_level
 
-            matmul_q4_node = onnx.helper.make_node(
+            matmul_qbit_node = onnx.helper.make_node(
                 "MatMulNBits",
                 inputs=input_names,
                 outputs=[node.output[0]],
-                name=node.name + "_Q4" if node.name else "",
+                name=node.name + f"_Q{bits}" if node.name else "",
                 domain="com.microsoft",
                 **kwargs,
             )
 
-            output_nodes.append(matmul_q4_node)
+            output_nodes.append(matmul_qbit_node)
         else:
             dq_input_names = [b_quant.name, scales_tensor.name]
             dq_output_names = [b_quant.name + "_output"]
@@ -831,14 +853,14 @@ class DefaultWeightOnlyQuantizer:
                 "DequantizeLinear",
                 inputs=dq_input_names,
                 outputs=dq_output_names,
-                name=node.name + "_DQ_Q4" if node.name else "",
+                name=node.name + f"_DQ_Q{bits}" if node.name else "",
                 **dq_kwargs,
             )
             matmul_node = onnx.helper.make_node(
                 "MatMul",
                 inputs=matmul_input_names,
                 outputs=matmul_output_names,
-                name=node.name + "_matmul_Q4" if node.name else "",
+                name=node.name + f"_matmul_Q{bits}" if node.name else "",
             )
             output_nodes.extend([dq_node, matmul_node])
 
@@ -1010,16 +1032,23 @@ class DefaultWeightOnlyQuantizer:
         """
         logger.info(f"start to quantize {node.name} ...")
 
+        bits = self.config.bits
         if node.op_type == "MatMul":
+            if bits == 8 and self.config.quant_format == QuantFormat.QDQ:
+                logger.error("MatMul only supports QOperator format for 8 bits quantization.")
+                return [node]
             results = self.quantize_matmul(node, graph_stack)
         elif node.op_type == "Gather":
+            if self.config.bits != 4:
+                logger.error("Gather only supports 4 bits quantization.")
+                return [node]
+
             results = self.quantize_gather(node, graph_stack)
         else:
             logger.error(f"Unsupported operator {node.op_type} for weight only quantization. Skip quantization.")
-            results = [node]
+            return [node]
 
-        logger.info(f"complete quantization of {node.name} ...")
-
+        logger.info(f"complete quantization of {node.name} with {self.config.bits} bits ...")
         return results
 
 
@@ -1179,14 +1208,21 @@ class MatMul4BitsQuantizer:
     def _generate_q4_node_config(self):
         """Generate weight only quant configuration for nodes."""
         q4_node_config = {}
-        template_config_q4 = {
-            "bits": 4,
-            "group_size": self.block_size,
-            "scheme": "sym" if self.is_symmetric else "asym",
-        }
         for node in self.model.model.graph.node:
             if node.op_type in ["MatMul"]:
                 if not all(self.model.get_initializer(i) is None for i in node.input):
+                    template_config_q4 = {
+                        "bits": 4,
+                        "group_size": self.block_size,
+                        "scheme": "sym" if self.is_symmetric else "asym",
+                    }
+                    if (
+                        self.algo_config.customized_weight_config
+                        and node.name in self.algo_config.customized_weight_config
+                    ):
+                        for key, value in self.algo_config.customized_weight_config[node.name].items():
+                            if key in template_config_q4:
+                                template_config_q4[key] = value
                     q4_node_config[node.name] = template_config_q4
         return q4_node_config
 
@@ -1446,6 +1482,7 @@ if __name__ == "__main__":
             quant_format=quant_format,
             op_types_to_quantize=op_types_to_quantize,
             quant_axes=quant_axes,
+            bits=args.bits,
         )
     elif args.quant_method == "rtn":
         quant_config = RTNWeightOnlyQuantConfig(op_types_to_quantize=op_types_to_quantize)

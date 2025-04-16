@@ -5,6 +5,7 @@
 #include <string>
 #include <thread>
 
+#include "core/graph/constants.h"
 #include "core/providers/cpu/cpu_provider_factory.h"  // For OrtSessionOptionsAppendExecutionProvider_CPU
 #if BUILD_QNN_EP_STATIC_LIB
 #include "core/providers/qnn/qnn_allocator.h"  // Used by QnnHTPBackendTests.UseHtpSharedMemoryAllocatorForInputs
@@ -37,33 +38,10 @@ namespace test {
 // Tests that the QNN EP is registered when added via the public C++ API.
 // Loads a simple ONNX model that adds floats.
 TEST_F(QnnHTPBackendTests, TestAddEpUsingPublicApi) {
-  {
-    Ort::SessionOptions so;
-
-    // Can only enforce that model runs on QNN in linux CI machines
-    // because they support the CPU backend and emulate the HPT backend.
-    // TODO: Remove #ifdef when Windows Arm64 machines support the CPU backend.
-#if defined(__linux__)
-    so.AddConfigEntry(kOrtSessionOptionsDisableCPUEPFallback, "1");  // Disable fallback to the CPU EP.
-#endif
-
-    onnxruntime::ProviderOptions options;
-
-#if defined(_WIN32)
-    options["backend_path"] = "QnnHtp.dll";
-#else
-    options["backend_path"] = "libQnnHtp.so";
-#endif
-
-    so.AppendExecutionProvider("QNN", options);
-
-    const ORTCHAR_T* ort_model_path = ORT_MODEL_FOLDER "constant_floats.onnx";
-    Ort::Session session(*ort_env, ort_model_path, so);
-
+  auto session_has_qnn_ep = [](Ort::Session& session) -> bool {
     // Access the underlying InferenceSession.
     const OrtSession* ort_session = session;
     const InferenceSession* s = reinterpret_cast<const InferenceSession*>(ort_session);
-
     bool have_qnn_ep = false;
 
     for (const auto& provider : s->GetRegisteredProviderTypes()) {
@@ -72,8 +50,48 @@ TEST_F(QnnHTPBackendTests, TestAddEpUsingPublicApi) {
         break;
       }
     }
+    return have_qnn_ep;
+  };
 
-    ASSERT_TRUE(have_qnn_ep) << "QNN EP was not found in registered providers for session.";
+  onnxruntime::ProviderOptions options;
+#if defined(_WIN32)
+  options["backend_path"] = "QnnHtp.dll";
+#else
+  options["backend_path"] = "libQnnHtp.so";
+#endif
+
+  const ORTCHAR_T* ort_model_path = ORT_MODEL_FOLDER "constant_floats.onnx";
+
+  {
+    // Test C++ API to add QNN EP with the short name 'QNN'.
+    Ort::SessionOptions so;
+
+    // Can only enforce that model runs on QNN in linux CI machines
+    // because they support the CPU backend and emulate the HTP backend.
+    // TODO: Remove #ifdef when Windows Arm64 machines support the CPU backend.
+#if defined(__linux__)
+    so.AddConfigEntry(kOrtSessionOptionsDisableCPUEPFallback, "1");  // Disable fallback to the CPU EP.
+#endif
+    so.AppendExecutionProvider("QNN", options);
+
+    Ort::Session session(*ort_env, ort_model_path, so);
+    ASSERT_TRUE(session_has_qnn_ep(session)) << "QNN EP was not found in registered providers for session "
+                                             << "when added to session with name 'QNN'";
+  }
+
+  {
+    // Test C++ API to add QNN EP with the long canonical name 'QNNExecutionProvider'.
+    Ort::SessionOptions so;
+
+    // TODO: Remove #ifdef when Windows Arm64 machines support the CPU backend.
+#if defined(__linux__)
+    so.AddConfigEntry(kOrtSessionOptionsDisableCPUEPFallback, "1");  // Disable fallback to the CPU EP.
+#endif
+    so.AppendExecutionProvider(kQnnExecutionProvider, options);
+
+    Ort::Session session(*ort_env, ort_model_path, so);
+    ASSERT_TRUE(session_has_qnn_ep(session)) << "QNN EP was not found in registered providers for session "
+                                             << "when added to session with name '" << kQnnExecutionProvider << "'";
   }
 }
 
