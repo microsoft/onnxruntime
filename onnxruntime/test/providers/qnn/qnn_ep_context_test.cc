@@ -292,12 +292,9 @@ TEST_F(QnnHTPBackendTests, CompileApi_DisableEpCompile_ThenCompileExplicitly) {
   // Initialize session options with QNN EP
   Ort::SessionOptions so;
   ProviderOptions provider_options;
-#if defined(_WIN32)
-  provider_options["backend_path"] = "QnnHtp.dll";
-#else
-  provider_options["backend_path"] = "libQnnHtp.so";
-#endif
+  provider_options["backend_type"] = "htp";
   provider_options["offload_graph_io_quantization"] = "0";
+
   so.AppendExecutionProvider("QNN", provider_options);
   so.AddConfigEntry(kOrtSessionOptionsDisableEpCompile, "1");  // Disable model compilation!
 
@@ -329,7 +326,7 @@ TEST_F(QnnHTPBackendTests, CompileApi_DisableEpCompile_ThenCompileExplicitly) {
   CheckEpContextNodeCounts(output_model_file, 2, 2);
 
   // Should be able to create a session with the compiled model and the original session options.
-  Ort::Session session(*ort_env, output_model_file, so);
+  EXPECT_NO_THROW((Ort::Session(*ort_env, output_model_file, so)));
 }
 
 // Test using the CompileModel() API with settings:
