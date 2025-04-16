@@ -8,6 +8,7 @@
 
 #include "core/common/common.h"
 #include "core/common/logging/logging.h"
+#include "core/common/string_utils.h"
 #include "core/framework/error_code_helper.h"
 #include "core/framework/provider_options.h"
 #include "core/graph/constants.h"
@@ -89,7 +90,7 @@ ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider,
     DML,
     QNN,
     OpenVINO,
-    SNPE,
+    SNPE,  // TODO(adrianlizarraga): Remove SNPE entirely because it has been replaced by QNN EP.
     XNNPACK,
     WEBNN,
     WebGPU,
@@ -182,10 +183,12 @@ ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider,
 
   // Add provider options to the session config options.
   // Use a new key with the format: "ep.<EP_NAME>.<PROVIDER_OPTION_KEY>"
+  std::string key_prefix = "ep.";
+  key_prefix += utils::GetLowercaseString(ep_to_append.canonical_name);
+  key_prefix += ".";
+
   for (const auto& [key, value] : provider_options) {
-    std::ostringstream new_key_builder;
-    new_key_builder << "ep." << ep_to_append.canonical_name << "." << key;
-    const std::string new_key = new_key_builder.str();
+    const std::string new_key = key_prefix + key;
     if (new_key.size() > ConfigOptions::kMaxKeyLength) {
       LOGS_DEFAULT(WARNING) << "Can't add provider option to session configurations: "
                             << "New key's string length (" << new_key.size() << ") "

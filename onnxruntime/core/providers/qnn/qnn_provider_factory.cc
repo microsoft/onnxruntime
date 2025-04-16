@@ -1,10 +1,13 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License
 
+#include <algorithm>
+#include <cctype>
 #include <string>
 #include <unordered_map>
 #include "core/providers/qnn/qnn_provider_factory_creator.h"
 #include "core/providers/qnn/qnn_execution_provider.h"
+#include "core/providers/qnn/builder/qnn_utils.h"
 
 namespace onnxruntime {
 struct QNNProviderFactory : IExecutionProviderFactory {
@@ -25,10 +28,13 @@ struct QNNProviderFactory : IExecutionProviderFactory {
     const std::unordered_map<std::string, std::string>& config_options_map = config_options.GetConfigOptionsMap();
 
     // The implementation of the SessionOptionsAppendExecutionProvider C API function automatically adds EP options to
-    // the session option configurations with the key prefix "ep.EP_NAME.".
+    // the session option configurations with the key prefix "ep.<lowercase_ep_name>.".
     // We extract those EP options and pass them to QNN EP as separate "provider options".
     std::unordered_map<std::string, std::string> provider_options = provider_options_map_;
-    const std::string key_prefix = std::string("ep.") + kQnnExecutionProvider + std::string(".");
+    std::string key_prefix = "ep.";
+    key_prefix += qnn::utils::GetLowercaseString(kQnnExecutionProvider);
+    key_prefix += ".";
+
     for (const auto& [key, value] : config_options_map) {
       if (key.rfind(key_prefix, 0) == 0) {
         provider_options[key.substr(key_prefix.size())] = value;
