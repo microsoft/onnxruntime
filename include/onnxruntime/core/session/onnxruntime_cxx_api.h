@@ -559,11 +559,10 @@ ORT_DEFINE_RELEASE(ValueInfo);
 ORT_DEFINE_RELEASE(Node);
 ORT_DEFINE_RELEASE(Graph);
 ORT_DEFINE_RELEASE(Model);
-#if !defined(ORT_MINIMAL_BUILD)
 ORT_DEFINE_RELEASE_FROM_API_STRUCT(ModelCompilationOptions, GetCompileApi);
-#endif  // !defined(ORT_MINIMAL_BUILD)
 
 #undef ORT_DEFINE_RELEASE
+#undef ORT_DEFINE_RELEASE_FROM_API_STRUCT
 
 /** \brief This is a tagging template type. Use it with Base<T> to indicate that the C++ interface object
  *   has no ownership of the underlying C object.
@@ -1012,7 +1011,6 @@ struct SessionOptions : detail::SessionOptionsImpl<OrtSessionOptions> {
   ConstSessionOptions GetConst() const { return ConstSessionOptions{this->p_}; }
 };
 
-#if !defined(ORT_MINIMAL_BUILD)
 /** \brief Options object used when compiling a model.
  *
  * Wraps ::OrtModelCompilationOptions object and methods
@@ -1021,9 +1019,7 @@ struct ModelCompilationOptions : detail::Base<OrtModelCompilationOptions> {
   using Base = detail::Base<OrtModelCompilationOptions>;
   using Base::Base;
 
-  explicit ModelCompilationOptions(std::nullptr_t) {}              ///< Create an empty ModelCompilationOptions object, must be assigned a valid one to be used.
-  explicit ModelCompilationOptions(OrtModelCompilationOptions* p)  ///< Takes ownership of an OrtModelCompilationOptions
-      : detail::Base<OrtModelCompilationOptions>{p} {}
+  explicit ModelCompilationOptions(std::nullptr_t) {}  ///< Create an empty ModelCompilationOptions object, must be assigned a valid one to be used.
 
   ModelCompilationOptions(const Env& env, const SessionOptions& session_options);  ///< Wraps OrtApi::CreateModelCompilationOptionsFromSessionOptions
   ModelCompilationOptions(const Env& env, ConstSessionOptions session_options);    ///< Wraps OrtApi::CreateModelCompilationOptionsFromSessionOptions
@@ -1046,7 +1042,6 @@ struct ModelCompilationOptions : detail::Base<OrtModelCompilationOptions> {
  * \return A Status indicating success or failure.
  */
 Status CompileModel(const Env& env, const ModelCompilationOptions& model_compilation_options);
-#endif  // !defined(ORT_MINIMAL_BUILD)
 
 /** \brief Wrapper around ::OrtModelMetadata
  *
