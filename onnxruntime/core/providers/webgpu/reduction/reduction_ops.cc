@@ -159,27 +159,27 @@ std::unordered_map<ReduceOpType, std::string> reduce_op_init_values_map = {
 std::unordered_map<ReduceOpType, std::string> reduce_op_output_values_map = {
     {ReduceOpType::Max, "bestValue"},
     {ReduceOpType::Min, "bestValue"},
-    {ReduceOpType::Mean, "bestValue"},
+    {ReduceOpType::Mean, "select(0, bestValue / output_element_t(uniforms.reduceSize), uniforms.reduceSize > 0)"},
     {ReduceOpType::Sum, "bestValue"},
     {ReduceOpType::Prod, "bestValue"},
     {ReduceOpType::SumSquare, "bestValue"},
-    {ReduceOpType::LogSumExp, "log(f32(bestValue))"},
+    {ReduceOpType::LogSumExp, "select(0, log(f32(bestValue)), bestValue != output_value_t(0))"},
     {ReduceOpType::L1, "bestValue"},
     {ReduceOpType::L2, "sqrt(f32(bestValue))"},
-    {ReduceOpType::LogSum, "log(f32(bestValue))"},
+    {ReduceOpType::LogSum, "select(0, log(f32(bestValue)), bestValue != output_value_t(0))"},
 };
 
 std::unordered_map<ReduceOpType, ReduceOpSpecificCode> reduce_op_naive_code_map = {
     {ReduceOpType::Max, {"var max_element = first_element;", "max_element = max(max_element, current_element);", "let output_value = output_value_t(max_element);"}},
     {ReduceOpType::Min, {"var min_element = first_element;", "min_element = min(min_element, current_element);", "let output_value = output_value_t(min_element);"}},
-    {ReduceOpType::Mean, {"var sum = f32(0);", "sum += f32(current_element);", "let output_value = output_value_t(select(0, sum / f32(uniforms.reduceSize), uniforms.reduceSize == 0);"}},
+    {ReduceOpType::Mean, {"var sum = f32(0);", "sum += f32(current_element);", "let output_value = output_value_t(select(0, sum / f32(uniforms.reduceSize), uniforms.reduceSize > 0u);"}},
     {ReduceOpType::Sum, {"var sum = f32(0);", "sum += f32(current_element);", "let output_value = output_value_t(sum);"}},
-    {ReduceOpType::Prod, {"var prod = f32(1);", "prod *= f32(current_element);", "let output_value = output_value_t(select(0, prod, uniforms.reduceSize == 0));"}},
+    {ReduceOpType::Prod, {"var prod = f32(1);", "prod *= f32(current_element);", "let output_value = output_value_t(select(0, prod, uniforms.reduceSize > 0u));"}},
     {ReduceOpType::SumSquare, {"var sum_square = f32(0);", "sum_square += f32(current_element * current_element);", "let output_value = output_value_t(sum_square);"}},
-    {ReduceOpType::LogSumExp, {"var sum_exp = f32(0);", "sum_exp += exp(f32(current_element));", "let output_value = output_value_t(select(0, log(sum_exp), sum_exp == 0));"}},
+    {ReduceOpType::LogSumExp, {"var sum_exp = f32(0);", "sum_exp += exp(f32(current_element));", "let output_value = output_value_t(select(0, log(sum_exp), sum_exp != f32(0)));"}},
     {ReduceOpType::L1, {"var l1 = f32(0);", "l1 += abs(f32(current_element));", "let output_value = output_value_t(l1);"}},
     {ReduceOpType::L2, {"var l2 = f32(0);", "l2 += f32(current_element * current_element);", "let output_value = output_value_t(sqrt(l2));"}},
-    {ReduceOpType::LogSum, {"var sum = f32(0);", "sum += f32(current_element);", "let output_value = output_value_t(select(0, log(sum), sum == 0));"}},
+    {ReduceOpType::LogSum, {"var sum = f32(0);", "sum += f32(current_element);", "let output_value = output_value_t(select(0, log(sum), sum != f32(0)));"}},
     {ReduceOpType::ArgMax, {"var best_element = first_element; var best_index = u32(0);", "if (current_element > best_element) { best_element = current_element; best_index = last_index; };", "let output_value = output_value_t(best_index);"}},
     {ReduceOpType::ArgMin, {"var best_element = first_element;; var best_index = u32(0);", "if (current_element < best_element) { best_element = current_element; best_index = last_index; };", "let output_value = output_value_t(best_index);"}},
     {ReduceOpType::ArgMax_select_last_index, {"var best_element = first_element; var best_index = u32(0);", "if (current_element >= best_element) { best_element = current_element; best_index = last_index; };", "let output_value = output_value_t(best_index);"}},
@@ -275,7 +275,7 @@ Status ReduceSharedProgram::GenerateShaderCode(ShaderHelper& shader) const {
                             << "  workgroupBarrier();\n"
                             << "}\n"
                             << "if (local_idx == 0) {\n"
-                            << "  let outputValue = output_value_t(" << (reduce_op_type_ == ReduceOpType::Mean ? "(bestValue / output_element_t(uniforms.reduceSize))" : reduce_op_output_values_map[reduce_op_type_]) << ");\n"
+                            << "  let outputValue = output_value_t(" << reduce_op_output_values_map[reduce_op_type_] << ");\n"
                             << "  " << output.SetByOffset("outputIndex", "outputValue") << ";\n"
                             << "}\n";
   return Status::OK();
