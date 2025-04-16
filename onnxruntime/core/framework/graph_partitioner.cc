@@ -877,12 +877,12 @@ static Status CreateEpContextModel(const ExecutionProviders& execution_providers
     ORT_RETURN_IF(buffer_size > static_cast<size_t>(std::numeric_limits<int>::max()),
                   "Cannot serialize ONNX ModelProto larger than 2GB");
 
-    OrtAllocator* allocator = ep_context_gen_options.output_model_buffer_allocator;
-    void* buffer = allocator->Alloc(allocator, buffer_size);
-    model_proto.SerializeToArray(buffer, static_cast<int>(buffer_size));
+    AllocatorPtr allocator = ep_context_gen_options.output_model_buffer_allocator;
+    IAllocatorUniquePtr<void> buffer = IAllocator::MakeUniquePtr<void>(allocator, buffer_size);
+    model_proto.SerializeToArray(buffer.get(), static_cast<int>(buffer_size));
 
     *ep_context_gen_options.output_model_buffer_size_ptr = buffer_size;
-    *ep_context_gen_options.output_model_buffer_ptr = buffer;
+    *ep_context_gen_options.output_model_buffer_ptr = buffer.release();
   } else {
     ORT_RETURN_IF_ERROR(Model::SaveWithExternalInitializers(ep_context_model, context_cache_path,
                                                             external_ini_path, model_saving_options));
