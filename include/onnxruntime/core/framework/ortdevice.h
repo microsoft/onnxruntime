@@ -3,6 +3,7 @@
 
 #pragma once
 
+#include <optional>
 #include <sstream>
 #include "core/common/hash_combine.h"
 
@@ -11,6 +12,7 @@ struct OrtDevice {
   using DeviceType = int8_t;
   using MemoryType = int8_t;
   using DeviceId = int16_t;
+  using Alignment = size_t;
 
   // Pre-defined device types.
   static const DeviceType CPU = 0;
@@ -26,26 +28,36 @@ struct OrtDevice {
     static const MemoryType HIP_PINNED = 2;
     static const MemoryType CANN_PINNED = 3;
     static const MemoryType QNN_HTP_SHARED = 4;
-    static const MemoryType CPU_ALIGNED_4K = 5;
   };
 
-  constexpr OrtDevice(DeviceType device_type_, MemoryType memory_type_, DeviceId device_id_)
+  constexpr OrtDevice(DeviceType device_type_, MemoryType memory_type_, DeviceId device_id_) noexcept
       : device_type(device_type_),
         memory_type(memory_type_),
-        device_id(device_id_) {}
+        device_id(device_id_),
+        alignment() {}
 
-  constexpr OrtDevice() : OrtDevice(CPU, MemType::DEFAULT, 0) {}
+  constexpr OrtDevice(DeviceType device_type_, MemoryType memory_type_, DeviceId device_id_, Alignment alignment) noexcept
+      : device_type(device_type_),
+        memory_type(memory_type_),
+        device_id(device_id_),
+        alignment(alignment) {}
 
-  DeviceType Type() const {
+  constexpr OrtDevice() noexcept : OrtDevice(CPU, MemType::DEFAULT, 0) {}
+
+  DeviceType Type() const noexcept {
     return device_type;
   }
 
-  MemoryType MemType() const {
+  MemoryType MemType() const noexcept {
     return memory_type;
   }
 
-  DeviceId Id() const {
+  DeviceId Id() const noexcept {
     return device_id;
+  }
+
+  std::optional<Alignment> GetAlignment() const noexcept {
+    return alignment;
   }
 
   std::string ToString() const {
@@ -53,8 +65,10 @@ struct OrtDevice {
     ostr << "Device:["
          << "DeviceType:" << static_cast<int>(device_type)
          << " MemoryType:" << static_cast<int>(memory_type)
-         << " DeviceId:" << device_id
-         << "]";
+         << " DeviceId:" << device_id;
+    if (alignment)
+      ostr << " Alignment:" << *alignment;
+    ostr << "]";
     return ostr.str();
   }
 
@@ -63,6 +77,8 @@ struct OrtDevice {
     auto h = std::hash<int>()(device_type);
     onnxruntime::HashCombine(memory_type, h);
     onnxruntime::HashCombine(device_id, h);
+    if (alignment)
+      onnxruntime::HashCombine(*alignment, h);
     return h;
   }
 
@@ -72,8 +88,13 @@ struct OrtDevice {
       return device_type < other.device_type;
     if (memory_type != other.memory_type)
       return memory_type < other.memory_type;
+    if (device_id != other.device_id)
+      return device_id < other.device_id;
 
-    return device_id < other.device_id;
+    if (alignment && other.alignment)
+      return *alignment < *other.alignment;
+
+    return false;
   }
 
  private:
@@ -85,6 +106,9 @@ struct OrtDevice {
 
   // Device index.
   int32_t device_id : 16;
+
+  // Required alignment
+  std::optional<Alignment> alignment;
 };
 
 inline bool operator==(const OrtDevice& left, const OrtDevice& other) {

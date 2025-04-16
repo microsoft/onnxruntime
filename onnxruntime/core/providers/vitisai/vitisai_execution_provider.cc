@@ -26,7 +26,9 @@ constexpr const char* VITISAI = "VITISAI";
 VitisAIExecutionProvider::VitisAIExecutionProvider(
     const ProviderOptions& info)
     : IExecutionProvider{onnxruntime::kVitisAIExecutionProvider,
-                         OrtDevice(OrtDevice::CPU, OrtDevice::MemType::CPU_ALIGNED_4K, 0)},
+                         OrtDevice(OrtDevice::CPU, OrtDevice::MemType::DEFAULT,
+                                   DEFAULT_CPU_ALLOCATOR_DEVICE_ID,
+                                   kAlloc4KAlignment)},
       info_(info) {
   auto it = info_.find("ep_context_enable");
   ep_ctx_enabled_ = it != info_.end() && it->second == "1";

@@ -267,29 +267,12 @@ class CPUAllocator : public IAllocator {
   void Free(void* p) override;
 };
 
-// Special allocator for CPU based EPs that require 4K alignment.
-// This can help avoid EP internal copies when data is not properly aligned.
-class CPUAllocatorAligned4K : public IAllocator {
- public:
-  explicit CPUAllocatorAligned4K(const OrtMemoryInfo& memory_info) : IAllocator(memory_info) {}
-
-  CPUAllocatorAligned4K()
-      : IAllocator(OrtMemoryInfo(
-            onnxruntime::CPU_ALIGNED_4K, OrtAllocatorType::OrtDeviceAllocator,
-            OrtDevice(OrtDevice::CPU, OrtDevice::MemType::CPU_ALIGNED_4K, 0))) {}
-
-  void* Alloc(size_t size) override;
-  void Free(void* p) override;
-};
-
 using AllocatorPtr = std::shared_ptr<IAllocator>;
 using AllocatorMap = std::map<OrtDevice, AllocatorPtr>;
 
 void* AllocatorDefaultAlloc(size_t size);
 void AllocatorDefaultFree(void* p);
 void* AllocatorDefaultAllocAligned(size_t size, size_t alignment);
-
-size_t GetAlignmentForDevice(const OrtDevice&);
-bool IsCpuDeviceWithAllocator(const OrtDevice&);
+void AllocatorDefaultFreeAligned(void* p, size_t alignment);
 
 }  // namespace onnxruntime

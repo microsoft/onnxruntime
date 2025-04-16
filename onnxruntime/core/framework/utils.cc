@@ -72,7 +72,7 @@ bool ProviderIsCpuBased(const std::string& provider_type) {
          provider_type == onnxruntime::utils::kInternalTestingExecutionProvider;
 }
 
-bool ProviderIsCompiledType(const std::string& provider_type) {
+bool DoesEpLocationRequiresAdjustment(const std::string& provider_type) {
   return provider_type == kQnnExecutionProvider ||
          provider_type == kVitisAIExecutionProvider ||
          provider_type == kVSINPUExecutionProvider;
