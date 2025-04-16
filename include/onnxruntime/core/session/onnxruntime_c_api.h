@@ -5886,7 +5886,6 @@ struct OrtCompileApi {
    * \since Version 1.22.
    */
   ORT_API2_STATUS(CompileModel, _In_ const OrtEnv* env, _In_ const OrtModelCompilationOptions* model_options);
-#endif
 };
 
 ORT_RUNTIME_CLASS(Ep);
