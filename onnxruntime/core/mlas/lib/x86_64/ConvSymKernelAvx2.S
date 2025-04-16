@@ -27,7 +27,10 @@ Abstract:
 
         .macro CheckSaturation VecReg1Num, VecReg2Num
 
-        # Save all caller-saved registers (RAX, RCX, RDX, RSI, RDI, R8, R9, R10, R11)
+//
+// Save all caller-saved registers (RAX, RCX, RDX, RSI, RDI, R8, R9, R10, R11)
+//
+
         push    rax
         push    rcx
         push    rdx
@@ -38,9 +41,12 @@ Abstract:
         push    r10
         push    r11
 
-        sub     rsp, 512                        # Reserve space for 16 YMM registers (32 bytes)
+        sub     rsp, 512                        # reserve space for 16 YMM registers (32 bytes)
 
-        # Save YMM registers (YMM0 to YMM15)
+//
+// Save YMM registers (YMM0 to YMM15)
+//
+
         vmovdqu  [rsp], ymm0
         vmovdqu  [rsp+32], ymm1
         vmovdqu  [rsp+64], ymm2
@@ -63,7 +69,10 @@ Abstract:
 
         call    CheckSaturationForVPMADDUBSW
 
-        # Restore YMM registers
+//
+// Restore YMM registers
+//
+
         vmovdqu  ymm0, [rsp]
         vmovdqu  ymm1, [rsp+32]
         vmovdqu  ymm2, [rsp+64]
@@ -81,9 +90,12 @@ Abstract:
         vmovdqu  ymm14, [rsp+448]
         vmovdqu  ymm15, [rsp+480]
 
-        add     rsp, 512                        # Clean up the reserved stack space
+        add     rsp, 512                        # clean up the reserved stack space
 
-        # Restore all caller-saved registers (RAX, RCX, RDX, RSI, RDI, R8, R9, R10, R11)
+//
+// Restore all caller-saved registers (RAX, RCX, RDX, RSI, RDI, R8, R9, R10, R11)
+//
+
         pop     r11
         pop     r10
         pop     r9
