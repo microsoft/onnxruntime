@@ -76,7 +76,7 @@ Status ReshapeOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
 }
 
 bool AllPositiveShape(gsl::span<const int64_t> shape) {
-  return std::all_of(shape.begin(), shape.end(), [](int64_t dim) { return dim > 0; });
+  return std::all_of(shape.begin(), shape.end(), [](int64_t dim) { return dim > 0 || dim == 0; });
 }
 
 bool ReshapeOpBuilder::IsOpSupportedImpl(const Node& node, const OpBuilderInputParams& input_params,
@@ -101,13 +101,16 @@ bool ReshapeOpBuilder::IsOpSupportedImpl(const Node& node, const OpBuilderInputP
   std::vector<int64_t> input_shape;
   // first input must be fixed rank OR (first input has variadic rank AND shape only contains positive integers)
   // as per docs, 0 is considered an illegal shape element if the input is variadic
-  if (!GetStaticShape(*input_defs[0], input_shape, logger) && !AllPositiveShape(new_shape)) {
-    LOGS(logger, VERBOSE) << "RESHAPE failing static shape check for input 0" << node.Name() << " input shape: " << Shape2String(new_shape);
+  if (!GetShape(*input_defs[0], input_shape, logger)) {
+    LOGS(logger, VERBOSE) << "Unable to get shape of input -- input must have fixed rank for reshape.";
     return false;
   }
 
-  if (input_shape.empty()) {
-    LOGS(logger, VERBOSE) << "Reshape does not support empty input shape";
+  if (input_shape.empty() && !AllPositiveShape(new_shape)) {
+    // unknown rank & fails the positive shape check
+    LOGS(logger, VERBOSE) << "Reshape does not support empty input shape unless the shape input contains all positive integers. "
+                             "Input shape: "
+                          << Shape2String(input_shape) << ", new shape: " << Shape2String(new_shape);
     return false;
   }
 

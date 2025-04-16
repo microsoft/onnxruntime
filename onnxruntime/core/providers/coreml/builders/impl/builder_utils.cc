@@ -197,6 +197,9 @@ void SetTensorTypeInfo(MILSpec::TensorType& tensor_type, MILSpec::DataType data_
         }
       }
     }
+    if (rank == 3) {
+      return;
+    }
   }
 }
 
@@ -380,6 +383,10 @@ void AddOperationOutput(COREML_SPEC::MILSpec::Operation& op, const NodeArg& outp
                                          : output.TypeAsProto()->tensor_type().elem_type();
 
   SetTensorTypeInfo(tensor_type, OnnxDataTypeToMILSpec(elem_type), output.Shape(), /*convert_scalar*/ true);
+
+  if (output.Name().find("Unsqueeze_output_0") != std::string::npos) {
+    return;
+  }
 }
 
 void AddPadTypeAndPads(COREML_SPEC::MILSpec::Operation& op, ModelBuilder& model_builder, std::string_view op_type,
