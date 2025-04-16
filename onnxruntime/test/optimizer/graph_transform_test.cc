@@ -2946,7 +2946,7 @@ TEST_F(GraphTransformationTests, TransposeMatmulTransBatchNoFusion) {
   }
 }
 
-TEST_F(GraphTransformationTests, GH24341) {
+TEST_F(GraphTransformationTests, TransposeMatmulFusion_SameInput_gh_issue_24341) {
   constexpr const ORTCHAR_T* model_uri = MODEL_FOLDER "fusion/gh_issue_24341.onnx";
 
   std::shared_ptr<Model> p_model;
