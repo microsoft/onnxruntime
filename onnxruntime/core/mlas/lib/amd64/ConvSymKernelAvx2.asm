@@ -25,9 +25,12 @@ INCLUDE AssembleAvxVnni.inc
 
 extern CheckSaturationForVPMADDUBSW:proc
 
-CheckSaturation MACRO
+CheckSaturation MACRO VecReg1Num, VecReg2Num
 
-        ; Save all caller-saved registers (RAX, RCX, RDX, RSI, RDI, R8, R9, R10, R11). no RSI, RDI
+;
+; Save all caller-saved registers (RAX, RCX, RDX, RSI, RDI, R8, R9, R10, R11). no RSI, RDI.
+;
+
         push_reg    rax
         push_reg    rcx
         push_reg    rdx
@@ -36,9 +39,12 @@ CheckSaturation MACRO
         push_reg    r10
         push_reg    r11
 
-        sub     rsp, 512            ; Reserve space for 16 YMM registers (32 bytes)
+        sub     rsp, 512                        ; reserve space for 16 YMM registers (32 bytes)
 
-        ; Save YMM registers (YMM0 to YMM15)
+;
+; Save YMM registers (YMM0 to YMM15).
+;
+
         vmovdqu  YMMWORD PTR [rsp], ymm0
         vmovdqu  YMMWORD PTR [rsp+32], ymm1
         vmovdqu  YMMWORD PTR [rsp+64], ymm2
@@ -56,12 +62,15 @@ CheckSaturation MACRO
         vmovdqu  YMMWORD PTR [rsp+448], ymm14
         vmovdqu  YMMWORD PTR [rsp+480], ymm15
 
-        lea rcx, [rsp+64]
-        lea rdx, [rsp]
+        lea rcx, [rsp+32*VecReg1Num]            ; first operand (unsigned)
+        lea rdx, [rsp+32*VecReg2Num]            ; second operand (signed)
 
         call    CheckSaturationForVPMADDUBSW
 
-        ; Restore YMM registers
+;
+; Restore YMM registers.
+;
+
         vmovdqu  ymm0, YMMWORD PTR [rsp]
         vmovdqu  ymm1, YMMWORD PTR [rsp+32]
         vmovdqu  ymm2, YMMWORD PTR [rsp+64]
@@ -79,9 +88,12 @@ CheckSaturation MACRO
         vmovdqu  ymm14, YMMWORD PTR [rsp+448]
         vmovdqu  ymm15, YMMWORD PTR [rsp+480]
 
-        add     rsp, 512              ; Clean up the reserved stack space
+        add     rsp, 512                        ; clean up the reserved stack space
 
-        ; Restore all caller-saved registers (RAX, RCX, RDX, RSI, RDI, R8, R9, R10, R11), no RSI, RDI
+;
+; Restore all caller-saved registers (RAX, RCX, RDX, RSI, RDI, R8, R9, R10, R11), no RSI, RDI.
+;
+
         pop     r11
         pop     r10
         pop     r9
@@ -120,13 +132,13 @@ CheckSaturation MACRO
 MultiplyAccumulateRowAvx2 MACRO Vec1Reg, Vec2Reg
 
 IFDEF ENABLE_CONVSYMKERNELAVX2_SAT_CHECKER
-        CheckSaturation
+        CheckSaturation 2,0
 ENDIF
         vpmaddubsw ymm3,ymm2,ymm0
         vpmaddwd ymm3,ymm3,ymm12
         vpaddd Vec1Reg,Vec1Reg,ymm3
 IFDEF ENABLE_CONVSYMKERNELAVX2_SAT_CHECKER
-        CheckSaturation
+        CheckSaturation 2,1
 ENDIF
         vpmaddubsw ymm2,ymm2,ymm1
         vpmaddwd ymm2,ymm2,ymm12
