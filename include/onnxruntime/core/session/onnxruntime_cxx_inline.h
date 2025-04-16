@@ -630,7 +630,6 @@ inline RunOptions& RunOptions::AddActiveLoraAdapter(const LoraAdapter& adapter) 
   return *this;
 }
 
-#if !defined(ORT_MINIMAL_BUILD)
 inline ModelCompilationOptions::ModelCompilationOptions(const Env& env, const SessionOptions& session_options) {
   ThrowOnError(GetCompileApi().CreateModelCompilationOptionsFromSessionOptions(env, session_options, &this->p_));
 }
@@ -686,7 +685,6 @@ inline ModelCompilationOptions& ModelCompilationOptions::SetEpContextEmbedMode(
       embed_ep_context_in_model));
   return *this;
 }
-#endif  // !defined(ORT_MINIMAL_BUILD)
 
 namespace detail {
 
