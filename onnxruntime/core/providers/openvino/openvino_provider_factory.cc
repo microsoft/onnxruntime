@@ -1,6 +1,8 @@
 // Copyright (C) Intel Corporation
 // Licensed under the MIT License
 
+#include <algorithm>
+#include <cctype>
 #include <map>
 #include <utility>
 #include "core/providers/shared_library/provider_api.h"
@@ -328,10 +330,18 @@ struct OpenVINOProviderFactory : IExecutionProviderFactory {
     const std::unordered_map<std::string, std::string>& config_options_map = config_options.GetConfigOptionsMap();
 
     // The implementation of the SessionOptionsAppendExecutionProvider C API function automatically adds EP options to
-    // the session option configurations with the key prefix "ep.EP_NAME.".
-    // We extract those EP options into a new "provider_options" map.
+    // the session option configurations with the key prefix "ep.<lowercase_ep_name>.".
+    // Extract those EP options into a new "provider_options" map.
+    std::string lowercase_ep_name = kOpenVINOExecutionProvider;
+    std::transform(lowercase_ep_name.begin(), lowercase_ep_name.end(), lowercase_ep_name.begin(), [](unsigned char c) {
+      return static_cast<char>(std::tolower(c));
+    });
+
+    std::string key_prefix = "ep.";
+    key_prefix += lowercase_ep_name;
+    key_prefix += ".";
+
     std::unordered_map<std::string, std::string> provider_options;
-    const std::string key_prefix = "ep.OpenVINO.";
     for (const auto& [key, value] : config_options_map) {
       if (key.rfind(key_prefix, 0) == 0) {
         provider_options[key.substr(key_prefix.size())] = value;
