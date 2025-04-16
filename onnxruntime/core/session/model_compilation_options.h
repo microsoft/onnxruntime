@@ -123,7 +123,7 @@ class ModelCompilationOptions {
   Status CheckOutputModelSettings() const;
 
   const OrtEnv& env_;
-  std::unique_ptr<OrtSessionOptions> session_options_ = nullptr;
+  OrtSessionOptions session_options_;
   std::string input_model_path_;
   const void* input_model_data_ = nullptr;
   size_t input_model_data_size_ = 0;

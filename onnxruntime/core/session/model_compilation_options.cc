@@ -14,15 +14,15 @@
 
 namespace onnxruntime {
 ModelCompilationOptions::ModelCompilationOptions(const OrtEnv& env, const OrtSessionOptions& session_options)
-    : env_(env), session_options_(std::make_unique<OrtSessionOptions>(session_options)) {
-  session_options_->value.has_explicit_ep_context_gen_options = true;
-  session_options_->value.ep_context_gen_options = session_options.value.GetEpContextGenerationOptions();
-  session_options_->value.ep_context_gen_options.enable = true;
-  session_options_->value.ep_context_gen_options.overwrite_existing_output_file = true;
-  session_options_->value.ep_context_gen_options.error_if_no_compiled_nodes = true;
+    : env_(env), session_options_(session_options) {
+  session_options_.value.has_explicit_ep_context_gen_options = true;
+  session_options_.value.ep_context_gen_options = session_options.value.GetEpContextGenerationOptions();
+  session_options_.value.ep_context_gen_options.enable = true;
+  session_options_.value.ep_context_gen_options.overwrite_existing_output_file = true;
+  session_options_.value.ep_context_gen_options.error_if_no_compiled_nodes = true;
 
   // Shouldn't fail because the key/value strings are below the maximum string length limits in ConfigOptions.
-  ORT_ENFORCE(session_options_->value.config_options.AddConfigEntry(kOrtSessionOptionEpContextEnable, "1").IsOK());
+  ORT_ENFORCE(session_options_.value.config_options.AddConfigEntry(kOrtSessionOptionEpContextEnable, "1").IsOK());
 }
 
 void ModelCompilationOptions::SetInputModelPath(const std::string& input_model_path) {
@@ -39,12 +39,17 @@ void ModelCompilationOptions::SetInputModelFromBuffer(const void* input_model_da
 Status ModelCompilationOptions::SetOutputModelPath(const std::string& output_model_path) {
   ORT_RETURN_IF_ERROR(ResetOutputModelSettings());
 
-  ConfigOptions& config_options = session_options_->value.config_options;
-  EpContextModelGenerationOptions& ep_context_gen_options = session_options_->value.ep_context_gen_options;
+  ConfigOptions& config_options = session_options_.value.config_options;
+  EpContextModelGenerationOptions& ep_context_gen_options = session_options_.value.ep_context_gen_options;
 
   ep_context_gen_options.output_model_file_path = output_model_path;
 
   if (ep_context_gen_options.output_model_file_path.size() <= ConfigOptions::kMaxValueLength) {
+    Status status = config_options.AddConfigEntry(kOrtSessionOptionEpContextFilePath,
+                                                  ep_context_gen_options.output_model_file_path.c_str());
+    ORT_ENFORCE(status.IsOK());  // Should not fail because both key/value strings are below the min string lengths
+                                 // required by ConfigOptions::AddConfigEntry().
+  } else {
     // A few things to note:
     //   - ORT core now uses session_options.ep_context_gen_options to read EPContext model configurations.
     //     It previously used session_options.config_options.
@@ -59,18 +64,22 @@ Status ModelCompilationOptions::SetOutputModelPath(const std::string& output_mod
     //   - So, only add this output model file path to session_options.config_options if it is not too long. The only
     //     potential downside is that the context binary data file is using a different name, but the model will still
     //     be valid.
-    Status status = config_options.AddConfigEntry(kOrtSessionOptionEpContextFilePath,
-                                                  ep_context_gen_options.output_model_file_path.c_str());
-    ORT_ENFORCE(status.IsOK());  // Should not fail because both key/value strings are below the min string lengths
-                                 // required by ConfigOptions::AddConfigEntry().
+    logging::LoggingManager* log_manager = env_.GetLoggingManager();
+    if (log_manager != nullptr && log_manager->HasDefaultLogger()) {
+      const logging::Logger& logger = log_manager->DefaultLogger();
+      LOGS(logger, WARNING) << "Output model path length (" << ep_context_gen_options.output_model_file_path.size()
+                            << ") exceeds limit of " << ConfigOptions::kMaxKeyLength << " characters."
+                            << "ORT will still generated the expected output file, but EPs will see an empty "
+                            << "output model path in SessionOption's ConfigOptions.";
+    }
   }
   return Status::OK();
 }
 
 void ModelCompilationOptions::SetOutputModelExternalInitializersFile(const std::string& external_initializers_path,
                                                                      size_t external_initializer_size_threshold) {
-  session_options_->value.ep_context_gen_options.output_external_initializers_file_path = external_initializers_path;
-  session_options_->value.ep_context_gen_options.output_external_initializer_size_threshold =
+  session_options_.value.ep_context_gen_options.output_external_initializers_file_path = external_initializers_path;
+  session_options_.value.ep_context_gen_options.output_external_initializer_size_threshold =
       external_initializer_size_threshold;
 }
 
@@ -79,22 +88,22 @@ Status ModelCompilationOptions::SetOutputModelBuffer(OrtAllocator* allocator,
                                                      size_t* output_model_buffer_size_ptr) {
   ORT_RETURN_IF_ERROR(ResetOutputModelSettings());
 
-  session_options_->value.ep_context_gen_options.output_model_buffer_ptr = output_model_buffer_ptr;
-  session_options_->value.ep_context_gen_options.output_model_buffer_size_ptr = output_model_buffer_size_ptr;
-  session_options_->value.ep_context_gen_options.output_model_buffer_allocator =
+  session_options_.value.ep_context_gen_options.output_model_buffer_ptr = output_model_buffer_ptr;
+  session_options_.value.ep_context_gen_options.output_model_buffer_size_ptr = output_model_buffer_size_ptr;
+  session_options_.value.ep_context_gen_options.output_model_buffer_allocator =
       std::make_shared<onnxruntime::IAllocatorImplWrappingOrtAllocator>(allocator);
   return Status::OK();
 }
 
 Status ModelCompilationOptions::SetEpContextEmbedMode(bool embed_ep_context_in_model) {
-  ORT_RETURN_IF_ERROR(session_options_->value.config_options.AddConfigEntry(
+  ORT_RETURN_IF_ERROR(session_options_.value.config_options.AddConfigEntry(
       kOrtSessionOptionEpContextEmbedMode, embed_ep_context_in_model ? "1" : "0"));
-  session_options_->value.ep_context_gen_options.embed_ep_context_in_model = embed_ep_context_in_model;
+  session_options_.value.ep_context_gen_options.embed_ep_context_in_model = embed_ep_context_in_model;
   return Status::OK();
 }
 
 const OrtSessionOptions& ModelCompilationOptions::GetSessionOptions() const {
-  return *(session_options_.get());
+  return session_options_;
 }
 
 bool ModelCompilationOptions::InputModelComesFromFile() const {
@@ -120,12 +129,12 @@ void ModelCompilationOptions::ResetInputModelSettings() {
 }
 
 Status ModelCompilationOptions::ResetOutputModelSettings() {
-  EpContextModelGenerationOptions& ep_context_gen_options = session_options_->value.ep_context_gen_options;
+  EpContextModelGenerationOptions& ep_context_gen_options = session_options_.value.ep_context_gen_options;
   ep_context_gen_options.output_model_file_path.clear();
   ep_context_gen_options.output_model_buffer_ptr = nullptr;
   ep_context_gen_options.output_model_buffer_size_ptr = nullptr;
   ep_context_gen_options.output_model_buffer_allocator = nullptr;
-  return session_options_->value.config_options.AddConfigEntry(kOrtSessionOptionEpContextFilePath, "");
+  return session_options_.value.config_options.AddConfigEntry(kOrtSessionOptionEpContextFilePath, "");
 }
 
 Status ModelCompilationOptions::CheckInputModelSettings() const {
@@ -155,7 +164,7 @@ Status ModelCompilationOptions::CheckInputModelSettings() const {
 }
 
 Status ModelCompilationOptions::CheckOutputModelSettings() const {
-  const EpContextModelGenerationOptions& ep_context_gen_options = session_options_->value.ep_context_gen_options;
+  const EpContextModelGenerationOptions& ep_context_gen_options = session_options_.value.ep_context_gen_options;
 
   const bool explicit_writes_to_file = !ep_context_gen_options.output_model_file_path.empty();
   const bool writes_to_buffer = ep_context_gen_options.output_model_buffer_ptr != nullptr;
@@ -185,8 +194,7 @@ Status ModelCompilationOptions::CheckOutputModelSettings() const {
 }
 
 Status ModelCompilationOptions::Check() const {
-  ORT_ENFORCE(session_options_ != nullptr);
-  ORT_ENFORCE(session_options_->value.ep_context_gen_options.enable);
+  ORT_ENFORCE(session_options_.value.ep_context_gen_options.enable);
   ORT_RETURN_IF_ERROR(CheckInputModelSettings());
   ORT_RETURN_IF_ERROR(CheckOutputModelSettings());
   return Status::OK();
