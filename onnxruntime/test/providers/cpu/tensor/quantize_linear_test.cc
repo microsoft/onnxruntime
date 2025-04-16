@@ -156,7 +156,8 @@ TEST(DequantizeLinearOpTest, Scalar) {
   test.AddInput<int8_t>("x_zero_point", {}, {-10});
   test.AddOutput<float>("y", {}, {220.0f});
   // Disable Tensorrt EP due to error:node1_quantize_scale_node: out of bounds channel axis 1. Number of input dimensions is 0.
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
+  // Disable WebGPU EP due to error: needs at least component size 4
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kWebGpuExecutionProvider});
 }
 
 // dequantize with scalar data
@@ -167,7 +168,8 @@ TEST(DequantizeLinearOpMLFloat16Test, Scalar) {
   test.AddInput<int8_t>("x_zero_point", {}, {-10});
   test.AddOutput<MLFloat16>("y", {}, {MLFloat16(220.0f)});
   // Disable Tensorrt EP due to error:node1_quantize_scale_node: out of bounds channel axis 1. Number of input dimensions is 0.
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
+  // Disable WebGPU EP due to error: needs at least component size 4
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kWebGpuExecutionProvider});
 }
 
 // dequantize without zero point
@@ -176,6 +178,45 @@ TEST(DequantizeLinearOpTest, Without_Zero_Point) {
   test.AddInput<int8_t>("x", {}, {100});
   test.AddInput<float>("x_scale", {}, {2.0f});
   test.AddOutput<float>("y", {}, {200.0f});
+  // No DQ allowed without corresponding Q. Skip since TRT10
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kWebGpuExecutionProvider});
+}
+
+// dequantize without zero point int8 (testing 8 elements for webgpu)
+TEST(DequantizeLinearOpTest, No_Zero_Point_int8) {
+  OpTester test("DequantizeLinear", 10);
+  test.AddInput<int8_t>("x", {1, 8}, {-10, 50, 100, 120, -9, 49, 99, 119});
+  test.AddInput<float>("x_scale", {}, {2.0f});
+  test.AddOutput<float>("y", {1, 8}, {-20.0f, 100.0f, 200.0f, 240.0f, -18.0f, 98.0f, 198.0f, 238.0f});
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  // No DQ allowed without corresponding Q. Skip since TRT10
+}
+
+// dequantize without zero point uint8 (testing 8 elements for webgpu)
+TEST(DequantizeLinearOpTest, No_Zero_Point_uint8) {
+  OpTester test("DequantizeLinear", 10);
+  test.AddInput<uint8_t>("x", {1, 8}, {10, 50, 100, 180, 9, 49, 99, 179});
+  test.AddInput<float>("x_scale", {}, {2.0f});
+  test.AddOutput<float>("y", {1, 8}, {20.0f, 100.0f, 200.0f, 360.0f, 18.0f, 98.0f, 198.0f, 358.0f});
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  // No DQ allowed without corresponding Q. Skip since TRT10
+}
+
+// dequantize zero point int8 (testing 8 elements for webgpu)
+TEST(DequantizeLinearOpTest, Zero_Point_int8) {
+  OpTester test("DequantizeLinear", 10);
+  test.AddInput<int8_t>("x", {1, 8}, {-10, 50, 100, 120, -9, 49, 99, 119});
+  test.AddInput<float>("x_scale", {}, {2.0f});
+  test.AddInput<int8_t>("zero_point", {}, {-10});
+  test.AddOutput<float>("y", {1, 8}, {0.0f, 120.0f, 220.0f, 260.0f, 2.0f, 118.0f, 218.0f, 258.0f});
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  // No DQ allowed without corresponding Q. Skip since TRT10
+}
+
+// dequantize zero point uint8 (testing 8 elements for webgpu)
+TEST(DequantizeLinearOpTest, Zero_Point_uint8) {
+  OpTester test("DequantizeLinear", 10);
+  test.AddInput<uint8_t>("x", {1, 8}, {10, 50, 100, 180, 9, 49, 99, 119});
+  test.AddInput<float>("x_scale", {}, {2.0f});
+  test.AddInput<uint8_t>("zero_point", {}, {10});
+  test.AddOutput<float>("y", {1, 8}, {0.0f, 80.0f, 180.0f, 340.0f, -2.0f, 78.0f, 178.0f, 218.0f});
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  // No DQ allowed without corresponding Q. Skip since TRT10
 }
 
