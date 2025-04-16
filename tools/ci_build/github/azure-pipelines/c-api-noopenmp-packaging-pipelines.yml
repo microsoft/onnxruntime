@@ -148,11 +148,11 @@ stages:
     NuPackScript: |
      msbuild $(Build.SourcesDirectory)\csharp\OnnxRuntime.CSharp.proj /p:Configuration=RelWithDebInfo /t:CreatePackage /p:OrtPackageId=Microsoft.ML.OnnxRuntime.DirectML /p:IsReleaseBuild=${{ parameters.IsReleaseBuild }} /p:CurrentData=$(BuildDate) /p:CurrentTime=$(BuildTime)
      IF "%IsReleaseBuild%"=="true" (
-      powershell -Command "Get-ChildItem -Path \"$(Build.SourcesDirectory)\csharp\src\Microsoft.ML.OnnxRuntime\bin\RelWithDebInfo\" -Filter \"Microsoft.ML.OnnxRuntime.DirectML.*.nupkg\" | Where-Object { $_.Name -match 'Microsoft\.ML\.OnnxRuntime\.DirectML\.[0-9]+\.[0-9]+\.[0-9]+\.nupkg' } | ForEach-Object { Copy-Item -Path $_.FullName -Destination \"$(Build.ArtifactStagingDirectory)\" -Force }"
-      powershell -Command "Get-ChildItem -Path \"$(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo\" -Filter \"Microsoft.ML.OnnxRuntime.DirectML.*.nupkg\" | Where-Object { $_.Name -match 'Microsoft\.ML\.OnnxRuntime\.DirectML\.[0-9]+\.[0-9]+\.[0-9]+\.nupkg' } | ForEach-Object { Copy-Item -Path $_.FullName -Destination \"$(Build.ArtifactStagingDirectory)\" -Force }"
+      copy $(Build.SourcesDirectory)\csharp\src\Microsoft.ML.OnnxRuntime\bin\RelWithDebInfo\Microsoft.ML.OnnxRuntime.DirectML.1.21.1.nupkg $(Build.ArtifactStagingDirectory)
+      copy $(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo\Microsoft.ML.OnnxRuntime.DirectML.1.21.1.nupkg $(Build.ArtifactStagingDirectory)
      ) ELSE (
-      powershell -Command "Get-ChildItem -Path \"$(Build.SourcesDirectory)\csharp\src\Microsoft.ML.OnnxRuntime\bin\RelWithDebInfo\" -Filter \"Microsoft.ML.OnnxRuntime.DirectML.*.nupkg\" | Where-Object { $_.Name -match 'Microsoft\.ML\.OnnxRuntime\.DirectML\.[0-9]+\.[0-9]+\.[0-9]+-dev.*\.nupkg' } | ForEach-Object { Copy-Item -Path $_.FullName -Destination \"$(Build.ArtifactStagingDirectory)\" -Force }"
-      powershell -Command "Get-ChildItem -Path \"$(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo\" -Filter \"Microsoft.ML.OnnxRuntime.DirectML.*.nupkg\" | Where-Object { $_.Name -match 'Microsoft\.ML\.OnnxRuntime\.DirectML\.[0-9]+\.[0-9]+\.[0-9]+-dev.*\.nupkg' } | ForEach-Object { Copy-Item -Path $_.FullName -Destination \"$(Build.ArtifactStagingDirectory)\" -Force }"
+      copy $(Build.SourcesDirectory)\csharp\src\Microsoft.ML.OnnxRuntime\bin\RelWithDebInfo\*.nupkg $(Build.ArtifactStagingDirectory)
+      copy $(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo\*.nupkg $(Build.ArtifactStagingDirectory)
      )
      mkdir $(Build.ArtifactStagingDirectory)\testdata
      copy $(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo\custom_op_library.* $(Build.ArtifactStagingDirectory)\testdata
