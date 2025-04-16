@@ -3,6 +3,7 @@
 
 #include "vitisai_provider_factory_creator.h"
 
+#include <cctype>
 #include <unordered_map>
 #include <string>
 
