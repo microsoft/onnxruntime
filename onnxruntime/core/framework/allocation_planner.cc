@@ -892,7 +892,8 @@ class PlannerImpl {
           // Downstream nodes of certain providers may require a CPU accessible location override
           // to make sure the EP does not incur an unnecessary copy.
           // We only do it for default CPU locations
-          if (output_device == OrtDevice()) {
+          if (output_device.Type() == OrtDevice::CPU &&
+              output_device.MemType() == OrtDevice::MemType::DEFAULT) {
             const auto& output_name = node_output->Name();
             const auto consumers = graph_viewer_.GetConsumerNodes(output_name);
             for (const auto* consumer : consumers) {
