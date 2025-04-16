@@ -11,7 +11,9 @@ from .onnx_export_errors import (
 
 
 def is_torchdynamo_exporting() -> bool:
-    "Tells if torch is exporting a model."
+    """
+    Tells if torch is exporting a model.
+    """
     import torch
 
     if not hasattr(torch.compiler, "is_exporting"):
