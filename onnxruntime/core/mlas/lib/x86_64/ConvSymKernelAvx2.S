@@ -25,7 +25,7 @@ Abstract:
 
         .extern CheckSaturationForVPMADDUBSW
 
-        .macro CheckSaturation
+        .macro CheckSaturation VecReg1Num, VecReg2Num
 
         # Save all caller-saved registers (RAX, RCX, RDX, RSI, RDI, R8, R9, R10, R11)
         push    rax
@@ -38,7 +38,7 @@ Abstract:
         push    r10
         push    r11
 
-        sub     rsp, 512            # Reserve space for 16 YMM registers (32 bytes)
+        sub     rsp, 512                        # Reserve space for 16 YMM registers (32 bytes)
 
         # Save YMM registers (YMM0 to YMM15)
         vmovdqu  [rsp], ymm0
@@ -58,8 +58,8 @@ Abstract:
         vmovdqu  [rsp+448], ymm14
         vmovdqu  [rsp+480], ymm15
 
-        lea rdi, [rsp+64]
-        lea rsi, [rsp]
+        lea rdi, [rsp+32*\VecReg1Num\()]        # first operand (unsigned)
+        lea rsi, [rsp+32*\VecReg2Num\()]        # second operand (signed)
 
         call    CheckSaturationForVPMADDUBSW
 
@@ -81,7 +81,7 @@ Abstract:
         vmovdqu  ymm14, [rsp+448]
         vmovdqu  ymm15, [rsp+480]
 
-        add     rsp, 512              # Clean up the reserved stack space
+        add     rsp, 512                        # Clean up the reserved stack space
 
         # Restore all caller-saved registers (RAX, RCX, RDX, RSI, RDI, R8, R9, R10, R11)
         pop     r11
@@ -126,13 +126,13 @@ Implicit Arguments:
         .macro MultiplyAccumulateRowAvx2 Vec1Reg, Vec2Reg
 
 #if defined(ENABLE_CONVSYMKERNELAVX2_SAT_CHECKER)
-        CheckSaturation
+        CheckSaturation 2,0
 #endif
         vpmaddubsw ymm3,ymm2,ymm0
         vpmaddwd ymm3,ymm3,ymm12
         vpaddd \Vec1Reg\(),\Vec1Reg\(),ymm3
 #if defined(ENABLE_CONVSYMKERNELAVX2_SAT_CHECKER)
-        CheckSaturation
+        CheckSaturation 2,1
 #endif
         vpmaddubsw ymm2,ymm2,ymm1
         vpmaddwd ymm2,ymm2,ymm12
