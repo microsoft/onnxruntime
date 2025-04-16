@@ -14,6 +14,7 @@ import numpy as np
 import packaging.version as pv
 import torch
 import transformers
+from transformers.cache_utils import DynamicCache
 from benchmark_helper import setup_logger
 from dist_settings import get_rank, get_size
 from llama_inputs import (
@@ -89,7 +90,7 @@ def torch_deepcopy(value):
         return value.copy()
     if hasattr(value, "clone"):
         return value.clone()
-    if isinstance(value, transformers.cache_utils.DynamicCache):
+    if isinstance(value, DynamicCache):
         return make_dynamic_cache(torch_deepcopy(list(zip(value.key_cache, value.value_cache, strict=False))))
     # We should have a code using serialization, deserialization assuming a model
     # cannot be exported without them.
