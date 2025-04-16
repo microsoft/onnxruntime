@@ -3642,10 +3642,16 @@ struct OrtApi {
    * \param[in] provider_options_values - values to configure the provider options
    * \param[in] num_keys - number of keys passed in
    *
-   * Currently supported providers:
-   *   QNN
-   *   SNPE
-   *   XNNPACK
+   * Currently supported provider names:
+   *   QNNExecutionProvider (or QNN)
+   *   OpenVINOExecutionProvider (or OpenVINO)
+   *   XnnpackExecutionProvider (or XNNPACK)
+   *   WebNNExecutionProvider (or WEBNN)
+   *   WebGpuExecutionProvider (or WebGPU)
+   *   AzureExecutionProvider (or AZURE)
+   *   JsExecutionProvider (or JS)
+   *   VitisAIExecutionProvider (or VitisAI)
+   *   CoreMLExecutionProvider (or CoreML)
    *
    * Note: If an execution provider has a dedicated SessionOptionsAppendExecutionProvider_<provider name> function
    *       that should be used to add it.
@@ -3726,21 +3732,6 @@ struct OrtApi {
    *      assigned to QNN EP is dumped to a separate file.
    *   "json_qnn_graph_dir": Directory in which to dump QNN JSON graphs. If not specified, QNN graphs are dumped in the
    *      program's current working directory. Ignored if "dump_json_qnn_graph" is not set.
-   *
-   * SNPE supported keys:
-   *   "runtime": SNPE runtime engine, options: "CPU", "CPU_FLOAT32", "GPU", "GPU_FLOAT32_16_HYBRID", "GPU_FLOAT16",
-   *      "DSP", "DSP_FIXED8_TF", "AIP_FIXED_TF", "AIP_FIXED8_TF".
-   *      Mapping to SNPE Runtime_t definition:
-   *        CPU, CPU_FLOAT32 => zdl::DlSystem::Runtime_t::CPU;
-   *        GPU, GPU_FLOAT32_16_HYBRID => zdl::DlSystem::Runtime_t::GPU;
-   *        GPU_FLOAT16 => zdl::DlSystem::Runtime_t::GPU_FLOAT16;
-   *        DSP, DSP_FIXED8_TF => zdl::DlSystem::Runtime_t::DSP.
-   *        AIP_FIXED_TF, AIP_FIXED8_TF => zdl::DlSystem::Runtime_t::AIP_FIXED_TF.
-   *   "priority": execution priority, options: "low", "normal".
-   *   "buffer_type": ITensor or user buffers, options: "ITENSOR", user buffer with different types - "TF8", "TF16", "UINT8", "FLOAT".
-   *   "ITENSOR" -- default, ITensor which is float only.
-   *   "TF8" -- quantized model required, "FLOAT" -- for both quantized or non-quantized model
-   *   "enable_init_cache": enable SNPE init caching feature, set to 1 to enabled it. Disabled by default.
    *
    * XNNPACK supported keys:
    *   "intra_op_num_threads": number of thread-pool size to use for XNNPACK execution provider.
