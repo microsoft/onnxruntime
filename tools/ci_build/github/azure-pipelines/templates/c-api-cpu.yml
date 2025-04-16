@@ -599,7 +599,7 @@ stages:
     #  - linux/x64/libonnxruntime_providers_cuda.so
     #
     # Rest binary artifacts will eventually be put into folder before packaging 'onnxruntime-node':
-    #  $(Build.SourcesDirectory)\js\node\bin\napi-v3\{os}\{cpu_arch}\
+    #  $(Build.SourcesDirectory)\js\node\bin\napi-v6\{os}\{cpu_arch}\
     #
     # {os} is one of 'win32', 'darwin', 'linux' and {cpu_arch} is one of 'x64', 'arm64'.
 
@@ -659,63 +659,63 @@ stages:
 
     # Node.js binding win32/x64
     - task: CopyFiles@2
-      displayName: 'Copy binaries to: $(Build.SourcesDirectory)\js\node\bin\napi-v3\win32\x64\'
+      displayName: 'Copy binaries to: $(Build.SourcesDirectory)\js\node\bin\napi-v6\win32\x64\'
       inputs:
         SourceFolder: '$(Build.BinariesDirectory)\nodejs-artifacts\win32\x64'
         Contents: |
           *.dll
           *.node
-        TargetFolder: '$(Build.SourcesDirectory)\js\node\bin\napi-v3\win32\x64'
+        TargetFolder: '$(Build.SourcesDirectory)\js\node\bin\napi-v6\win32\x64'
 
     # Node.js binding win32/arm64
     - task: CopyFiles@2
-      displayName: 'Copy binaries to: $(Build.SourcesDirectory)\js\node\bin\napi-v3\win32\arm64\'
+      displayName: 'Copy binaries to: $(Build.SourcesDirectory)\js\node\bin\napi-v6\win32\arm64\'
       inputs:
         SourceFolder: '$(Build.BinariesDirectory)\nodejs-artifacts\win32\arm64'
         Contents: |
           *.dll
           *.node
-        TargetFolder: '$(Build.SourcesDirectory)\js\node\bin\napi-v3\win32\arm64'
+        TargetFolder: '$(Build.SourcesDirectory)\js\node\bin\napi-v6\win32\arm64'
 
     # Node.js binding linux/x64
     - task: CopyFiles@2
-      displayName: 'Copy nodejs binaries to: $(Build.SourcesDirectory)\js\node\bin\napi-v3\linux\x64\'
+      displayName: 'Copy nodejs binaries to: $(Build.SourcesDirectory)\js\node\bin\napi-v6\linux\x64\'
       inputs:
         SourceFolder: '$(Build.BinariesDirectory)\nodejs-artifacts\linux\x64'
         Contents: |
           libonnxruntime.so.1
           *.node
-        TargetFolder: '$(Build.SourcesDirectory)\js\node\bin\napi-v3\linux\x64'
+        TargetFolder: '$(Build.SourcesDirectory)\js\node\bin\napi-v6\linux\x64'
 
     # Node.js binding linux/arm64
     - task: CopyFiles@2
-      displayName: 'Copy nodejs binaries to: $(Build.SourcesDirectory)\js\node\bin\napi-v3\linux\arm64\'
+      displayName: 'Copy nodejs binaries to: $(Build.SourcesDirectory)\js\node\bin\napi-v6\linux\arm64\'
       inputs:
         SourceFolder: '$(Build.BinariesDirectory)\nodejs-artifacts\linux\arm64'
         Contents: |
           libonnxruntime.so.1
           *.node
-        TargetFolder: '$(Build.SourcesDirectory)\js\node\bin\napi-v3\linux\arm64'
+        TargetFolder: '$(Build.SourcesDirectory)\js\node\bin\napi-v6\linux\arm64'
 
     # Node.js binding darwin/x64
     - task: CopyFiles@2
-      displayName: 'Copy nodejs binaries to: $(Build.SourcesDirectory)\js\node\bin\napi-v3\darwin\x64\'
+      displayName: 'Copy nodejs binaries to: $(Build.SourcesDirectory)\js\node\bin\napi-v6\darwin\x64\'
       inputs:
         SourceFolder: '$(Build.BinariesDirectory)\nodejs-artifacts\darwin\x64'
         Contents: |
           libonnxruntime.*.dylib
           *.node
-        TargetFolder: '$(Build.SourcesDirectory)\js\node\bin\napi-v3\darwin\x64'
+        TargetFolder: '$(Build.SourcesDirectory)\js\node\bin\napi-v6\darwin\x64'
 
     # Node.js binding darwin/arm64
     - task: CopyFiles@2
-      displayName: 'Copy nodejs binaries to: $(Build.SourcesDirectory)\js\node\bin\napi-v3\darwin\arm64\'
+      displayName: 'Copy nodejs binaries to: $(Build.SourcesDirectory)\js\node\bin\napi-v6\darwin\arm64\'
       inputs:
         SourceFolder: '$(Build.BinariesDirectory)\nodejs-artifacts\darwin\arm64'
         Contents: |
           libonnxruntime.*.dylib
           *.node
-        TargetFolder: '$(Build.SourcesDirectory)\js\node\bin\napi-v3\darwin\arm64'
+        TargetFolder: '$(Build.SourcesDirectory)\js\node\bin\napi-v6\darwin\arm64'
 
     - task: PowerShell@2
       inputs:
