@@ -65,3 +65,19 @@ index 0aab3e26..398ac2d6 100644
 +#endif
 +
  #endif // ! ONNX_ONNX_PB_H
+diff --git a/onnx/defs/schema.h b/onnx/defs/schema.h
+index 42318d82..a33cf342 100644
+--- a/onnx/defs/schema.h
++++ b/onnx/defs/schema.h
+@@ -980,10 +980,7 @@ class OpSchemaRegistry final : public ISchemaRegistry {
+   class OpSchemaRegisterOnce final {
+    public:
+     // Export to cpp custom register macro
+-    explicit OpSchemaRegisterOnce(
+-        OpSchema op_schema,
+-        int opset_version_to_load = 0,
+-        bool fail_duplicate_schema = true) {
++    OpSchemaRegisterOnce(OpSchema op_schema, int opset_version_to_load = 0, bool fail_duplicate_schema = true) {
+       OpSchemaRegisterNoExcept(std::move(op_schema), opset_version_to_load, fail_duplicate_schema);
+     }
+     static void
