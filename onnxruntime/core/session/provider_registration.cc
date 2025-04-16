@@ -8,7 +8,6 @@
 
 #include "core/common/common.h"
 #include "core/common/logging/logging.h"
-#include "core/common/string_utils.h"
 #include "core/framework/error_code_helper.h"
 #include "core/framework/provider_options.h"
 #include "core/graph/constants.h"
@@ -182,24 +181,9 @@ ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider,
   ORT_ENFORCE(ep_to_append.id != EpID::INVALID);
 
   // Add provider options to the session config options.
-  // Use a new key with the format: "ep.<EP_NAME>.<PROVIDER_OPTION_KEY>"
-  std::string key_prefix = "ep.";
-  key_prefix += utils::GetLowercaseString(ep_to_append.canonical_name);
-  key_prefix += ".";
-
-  for (const auto& [key, value] : provider_options) {
-    const std::string new_key = key_prefix + key;
-    if (new_key.size() > ConfigOptions::kMaxKeyLength) {
-      LOGS_DEFAULT(WARNING) << "Can't add provider option to session configurations: "
-                            << "New key's string length (" << new_key.size() << ") "
-                            << "exceeds limit (" << ConfigOptions::kMaxKeyLength << "). "
-                            << "Original key contents: " << key << " New key contents: " << new_key;
-      continue;
-    }
-
-    ORT_ENFORCE(options->value.config_options.AddConfigEntry(new_key.c_str(), value.c_str()).IsOK());
-  }
-
+  // Use a new key with the format: "ep.<lower_case_ep_name>.<PROVIDER_OPTION_KEY>"
+  ORT_API_RETURN_IF_STATUS_NOT_OK(options->AddProviderOptionsToConfigOptions(provider_options,
+                                                                             ep_to_append.canonical_name));
   switch (ep_to_append.id) {
     case EpID::DML: {
 #if defined(USE_DML)
