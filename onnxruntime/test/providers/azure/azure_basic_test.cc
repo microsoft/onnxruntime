@@ -25,9 +25,9 @@ TEST(AzureEP, TestSessionCreation) {
 
   // Use canonical EP name 'AzureExecutionProvider'
   Ort::SessionOptions session_options2;
-  session_options.AddConfigEntry("azure.endpoint_type", "triton");
-  session_options.AppendExecutionProvider(kAzureExecutionProvider, options);
-  EXPECT_NO_THROW((Ort::Session{*ort_env, ort_model_path, session_options}));
+  session_options2.AddConfigEntry("azure.endpoint_type", "triton");
+  session_options2.AppendExecutionProvider(kAzureExecutionProvider, options);
+  EXPECT_NO_THROW((Ort::Session{*ort_env, ort_model_path, session_options2}));
 }
 }  // namespace test
 }  // namespace onnxruntime
