@@ -919,7 +919,7 @@ Q8Int8GemmR1xC4BlkLen16Avx2(
 )
 {
     constexpr size_t BlkLen16 = 16;
-    constexpr size_t BlkBitWidth = 4;
+    constexpr size_t BlkBitWidth = 8;
     constexpr size_t NCols4 = 4;
     [[maybe_unused]] constexpr size_t NRows2 = 2;
     constexpr size_t BlkDataSizeInBytes = MlasQNBitBlkDataSizeInBytes(BlkBitWidth, BlkLen16);
@@ -1074,6 +1074,90 @@ Q4Int8GemmR1xC1BlkLen16Avx2(
                 QuantAPtr += BlkLen16;
                 QuantAScalePtr++;
                 QuantBDataPtr += BlkDataSizeInBytes8;
+                QuantBScalePtr++;
+            }
+
+             *SumPtr = hsum_float_8(acc0);
+            if (BiasPtr) {
+                *SumPtr += *BiasPtr;
+            }
+
+            QuantBDataColPtr += StrideQuantBData;
+            QuantBScaleColPtr += StrideQuantBScale;
+            BiasPtr += BiasPtr != nullptr ? 1 : 0;
+            SumPtr += 1;
+        }
+    }
+}
+
+template <bool vnni>
+MLAS_FORCEINLINE void
+Q8Int8GemmR1xC1BlkLen16Avx2(
+    const std::byte* QuantA,
+    const float* QuantAScale,
+    const std::byte* QuantBData,
+    const float* QuantBScale,
+    float* C,
+    size_t CountM,
+    size_t CountN,
+    size_t BlockCountK,
+    const float* Bias,
+    size_t ldc
+)
+{
+    constexpr size_t BlkLen16 = 16;
+    constexpr size_t BlkBitWidth = 8;
+    [[maybe_unused]] constexpr size_t NCols4 = 4;
+    [[maybe_unused]] constexpr size_t NRows2 = 2;
+    constexpr size_t BlkDataSizeInBytes = MlasQNBitBlkDataSizeInBytes(BlkBitWidth, BlkLen16);
+
+    // process 4 blks of 64 4b weights a time
+    constexpr size_t PerAccuBlk4 = 4;
+
+    const size_t lda = BlockCountK * BlkLen16;
+    const size_t StrideQuantBData = BlockCountK * BlkDataSizeInBytes;
+    const size_t StrideQuantBScale = BlockCountK;
+
+    [[maybe_unused]] size_t QuantBZeroPointIdx = 0;  // track half byte increments with this index instead of a pointer
+    assert(CountM < NRows2);
+    assert(CountN < NCols4);
+
+    for (size_t m = 0; m < CountM; m++) {
+        const std::byte* QuantBDataColPtr = QuantBData;
+        const float* QuantBScaleColPtr = QuantBScale;
+        const float* BiasPtr = Bias;
+        auto* SumPtr = C + m * ldc;
+
+        for (size_t n = 0; n < CountN; n++) {
+            const std::byte* QuantAPtr = QuantA + m * lda;
+            const float* QuantAScalePtr = QuantAScale + m * BlockCountK;
+            const std::byte* QuantBDataPtr = QuantBDataColPtr;
+            const float* QuantBScalePtr = QuantBScaleColPtr;
+
+            __m256 acc0 = _mm256_setzero_ps();
+            size_t k_blks_remaining = BlockCountK;
+            for (; k_blks_remaining >= PerAccuBlk4; k_blks_remaining -= PerAccuBlk4) {
+                const __m256i av_00_epi8 = _mm256_loadu_si256((const __m256i*)QuantAPtr);
+                const __m256i av_01_epi8 = _mm256_loadu_si256((const __m256i*)(QuantAPtr + 32));
+
+                accumulate_q8_blklen16_r1c1blk4_avx2<vnni>(
+                    av_00_epi8, av_01_epi8, QuantBDataPtr, QuantAScalePtr, QuantBScalePtr, Masks, acc0);
+
+                QuantAPtr += BlkLen16 * PerAccuBlk4;
+                QuantAScalePtr += PerAccuBlk4;
+                QuantBDataPtr += BlkDataSizeInBytes * PerAccuBlk4;
+                QuantBScalePtr += PerAccuBlk4;
+            }
+
+            for (; k_blks_remaining > 0; --k_blks_remaining) {
+                const __m128i av_16_epi8 = _mm_lddqu_si128(reinterpret_cast<const __m128i*>(QuantAPtr));
+
+                accumulate_q8_blklen16_r1c1blk1_avx2(
+                    av_16_epi8, QuantBDataPtr, QuantAScalePtr, QuantBScalePtr, Masks, acc0);
+
+                QuantAPtr += BlkLen16;
+                QuantAScalePtr++;
+                QuantBDataPtr += BlkDataSizeInBytes;
                 QuantBScalePtr++;
             }
 
@@ -1258,7 +1342,7 @@ MlasQ8Int8GemmKernelBlkLen16Avx2(
     }
 
     if (remainingCols > 0 && remainingRows > 0) {
-        Q4Int8GemmR1xC1BlkLen16Avx2(
+        Q8Int8GemmR1xC1BlkLen16Avx2<vnni>(
             QuantA + multipleRows * lda,
             QuantAScale + multipleRows * lda_scale,
             QuantBData + multipleCols * StrideQuantBData,
