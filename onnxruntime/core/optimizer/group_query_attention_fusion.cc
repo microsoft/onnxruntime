@@ -248,7 +248,7 @@ static bool CheckIfAnyOfRequiredGQANodesDoesNotExist(Node* rotary_node_1, Node* 
   return rotary_node_1 == nullptr || rotary_node_2 == nullptr || q_node == nullptr || k_node == nullptr || v_node == nullptr;
 }
 
-static void FusePreGQANodes(Graph& graph, Node* q_node, Node* k_node, Node *v_node, Node *rotary_node_1, Node *rotary_node_2, Node *new_node, NodeArg& new_node_output_arg) {
+static void FusePreGQANodes(Graph& graph, Node* q_node, Node* k_node, Node* v_node, Node* rotary_node_1, Node* rotary_node_2, Node* new_node, NodeArg& new_node_output_arg) {
   graph_utils::MoveAllNodeInputEdges(graph, *q_node, *new_node);
 
   auto target_idx = new_node->Index();
@@ -256,7 +256,7 @@ static void FusePreGQANodes(Graph& graph, Node* q_node, Node* k_node, Node *v_no
   // Get and remove the old output edges.
   auto output_edges = graph_utils::GraphEdge::GetNodeOutputEdges(*rotary_node_2);
   graph_utils::GraphEdge::RemoveGraphEdges(graph, output_edges);
-    
+
   // Add the new output edges to the new node.
   for (auto cur = output_edges.cbegin(), end = output_edges.cend(); cur != end; ++cur) {
     graph.AddEdge(target_idx, cur->dst_node, cur->src_arg_index, cur->dst_arg_index);
