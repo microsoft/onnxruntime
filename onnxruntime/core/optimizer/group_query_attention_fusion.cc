@@ -232,6 +232,11 @@ static bool LoadQKVProjectionTensors(Graph& graph,
       return false;
     }
 
+    // Support only packed zp tensors for now.
+    if (q_zero_points_tensor && k_zero_points_tensor && v_zero_points_tensor && (q_zero_points_tensor->data_type() != TensorProto::UINT8 || k_zero_points_tensor->data_type() != TensorProto::UINT8 || v_zero_points_tensor->data_type() != TensorProto::UINT8)) {
+      return false;
+    }
+
     return q_proj_tensor->data_type() == TensorProto::UINT8 && k_proj_tensor->data_type() == TensorProto::UINT8 && v_proj_tensor->data_type() == TensorProto::UINT8 &&
            q_scale_tensor->data_type() == TensorProto::FLOAT16 && k_scale_tensor->data_type() == TensorProto::FLOAT16 && v_scale_tensor->data_type() == TensorProto::FLOAT16;
   } else {
@@ -241,6 +246,34 @@ static bool LoadQKVProjectionTensors(Graph& graph,
 
 static bool CheckIfAnyOfRequiredGQANodesDoesNotExist(Node* rotary_node_1, Node* rotary_node_2, Node* q_node, Node* k_node, Node* v_node) {
   return rotary_node_1 == nullptr || rotary_node_2 == nullptr || q_node == nullptr || k_node == nullptr || v_node == nullptr;
+}
+
+static void FusePreGQANodes(Graph& graph, Node* q_node, Node* k_node, Node *v_node, Node *rotary_node_1, Node *rotary_node_2, Node *new_node, NodeArg& new_node_output_arg) {
+  graph_utils::MoveAllNodeInputEdges(graph, *q_node, *new_node);
+
+  auto target_idx = new_node->Index();
+
+  // Get and remove the old output edges.
+  auto output_edges = graph_utils::GraphEdge::GetNodeOutputEdges(*rotary_node_2);
+  graph_utils::GraphEdge::RemoveGraphEdges(graph, output_edges);
+    
+  // Add the new output edges to the new node.
+  for (auto cur = output_edges.cbegin(), end = output_edges.cend(); cur != end; ++cur) {
+    graph.AddEdge(target_idx, cur->dst_node, cur->src_arg_index, cur->dst_arg_index);
+  }
+
+  auto nodes = {q_node, k_node, v_node, rotary_node_1, rotary_node_2};
+
+  // Remove old nodes and their outdoing edges.
+  for (Node* node : nodes) {
+    graph_utils::RemoveNodeOutputEdges(graph, *node);
+    graph.RemoveNode(node->Index());
+  }
+
+  const std::array output_defs{&new_node_output_arg};
+
+  auto& new_node_output_defs = new_node->MutableOutputDefs();
+  new_node_output_defs.assign(output_defs.begin(), output_defs.end());
 }
 
 Status GroupQueryAttentionFusion::ApplyImpl(
@@ -453,40 +486,7 @@ Status GroupQueryAttentionFusion::ApplyImpl(
     }
 
     mat_mul_or_n_bits_new_node->SetExecutionProviderType(node.GetExecutionProviderType());
-
-    graph_utils::MoveAllNodeInputEdges(graph, *q_node, *mat_mul_or_n_bits_new_node);
-
-    //mat_mul_or_n_bits_new_node->MutableOutputDefs() = rotary_node_2->MutableOutputDefs();
-
-    auto target_idx = mat_mul_or_n_bits_new_node->Index();
-    auto output_edges = graph_utils::GraphEdge::GetNodeOutputEdges(*rotary_node_2);
-
-    graph_utils::GraphEdge::RemoveGraphEdges(graph, output_edges);
-    
-    std::cout << "tt " << target_idx << " " << output_edges.size() << " " << output_edges[0].src_node << std::endl;
-  
-    for (auto cur = output_edges.cbegin(), end = output_edges.cend(); cur != end; ++cur) {
-      graph.AddEdge(target_idx, cur->dst_node, cur->src_arg_index, cur->dst_arg_index);
-    }
-  
-    std::cout << "aa" << std::endl;
-    //
-    std::cout << "bb" << std::endl;
-    std::initializer_list<std::reference_wrapper<Node>> nodes = {*q_node, *k_node, *v_node, *rotary_node_1, *rotary_node_2};
-    std::cout << "c" << std::endl;
-
-    for (Node& node : nodes) {
-      std::cout << node.Name() << std::endl;
-      graph_utils::RemoveNodeOutputEdges(graph, node);
-      graph.RemoveNode(node.Index());
-    }
-
-    //graph_utils::FinalizeNodeFusion(graph, {*q_node, *k_node, *v_node, *rotary_node_1, *rotary_node_2}, *mat_mul_or_n_bits_new_node);
-
-    std::cout << "ofkspof" << std::endl;
-    // Make sure the MatMul or MatMulNBits node has the correct output defs since the FinalizeNodeFusion method could overwrite it.
-    auto& mat_mut_output_defs = mat_mul_or_n_bits_new_node->MutableOutputDefs();
-    mat_mut_output_defs.assign(mmnb_output_defs.begin(), mmnb_output_defs.end());
+    FusePreGQANodes(graph, q_node, k_node, v_node, rotary_node_1, rotary_node_2, mat_mul_or_n_bits_new_node, matmul_or_nbits_output);
 
     node.GetMutableAttributes()["do_rotary"] = ONNX_NAMESPACE::MakeAttribute("do_rotary", static_cast<int64_t>(1));
 
