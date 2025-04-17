@@ -409,31 +409,19 @@ Status WebGpuContext::Run(ComputeContext& context, const ProgramBase& program) {
 
   WriteTimestamp(num_pending_dispatches_ * 2);
 
-  uint32_t entry_index = 0;
-  std::vector<wgpu::BindGroupEntry> bind_group_entries;
+  std::vector<WGPUBuffer> bind_buffers;
+  bind_buffers.reserve(inputs.size() + outputs.size() + (uniform_buffer ? 1 : 0));
   for (const auto& input : inputs) {
-    bind_group_entries.push_back({nullptr, entry_index++, reinterpret_cast<WGPUBuffer>(const_cast<void*>(input.tensor->DataRaw()))});
+    bind_buffers.push_back(reinterpret_cast<WGPUBuffer>(const_cast<void*>(input.tensor->DataRaw())));
   }
   for (const auto& output : outputs) {
-    bind_group_entries.push_back({nullptr, entry_index++, reinterpret_cast<WGPUBuffer>(output.tensor->MutableDataRaw())});
+    bind_buffers.push_back(reinterpret_cast<WGPUBuffer>(output.tensor->MutableDataRaw()));
   }
   if (uniform_buffer) {
-    bind_group_entries.push_back({nullptr, entry_index++, uniform_buffer});
+    bind_buffers.push_back(uniform_buffer);
   }
 
-  wgpu::BindGroupDescriptor bind_group_desc{};
-  bind_group_desc.layout = program_artifact->compute_pipeline.GetBindGroupLayout(0);
-  bind_group_desc.entryCount = bind_group_entries.size();
-  bind_group_desc.entries = bind_group_entries.data();
-  bind_group_desc.label = program_artifact->name.c_str();
-
-  auto bind_group = Device().CreateBindGroup(&bind_group_desc);
-
-  // TODO support graph capture
-
-  compute_pass_encoder.SetPipeline(program_artifact->compute_pipeline);
-  compute_pass_encoder.SetBindGroup(0, bind_group);
-  compute_pass_encoder.DispatchWorkgroups(x, y, z);
+  LaunchComputePipeline(compute_pass_encoder, bind_buffers, *program_artifact, x, y, z);
 
   if (uniform_buffer) {
     buffer_mgr_->Release(uniform_buffer);
@@ -706,6 +694,35 @@ void WebGpuContext::OnRunEnd() {
     pix_frame_generator_->GeneratePIXFrame();
   }
 #endif  // ENABLE_PIX_FOR_WEBGPU_EP
+}
+
+void WebGpuContext::LaunchComputePipeline(const wgpu::ComputePassEncoder& compute_pass_encoder,
+                                          const std::vector<WGPUBuffer>& bind_buffers,
+                                          const ProgramArtifact& program_artifact,
+                                          uint32_t x, uint32_t y, uint32_t z) {
+  uint32_t entry_index = 0;
+  std::vector<WGPUBindGroupEntry> bind_group_entries;
+  for (WGPUBuffer buffer : bind_buffers) {
+    bind_group_entries.push_back({nullptr, entry_index++, buffer, 0, WGPU_WHOLE_SIZE, nullptr, nullptr});
+  }
+
+  WGPUBindGroupLayout bind_group_layout = program_artifact.compute_pipeline.GetBindGroupLayout(0).MoveToCHandle();
+  WGPUBindGroupDescriptor bind_group_desc{};
+  bind_group_desc.layout = bind_group_layout;
+  bind_group_desc.entryCount = bind_group_entries.size();
+  bind_group_desc.entries = bind_group_entries.data();
+  bind_group_desc.label = {program_artifact.name.data(), program_artifact.name.length()};
+
+  auto bind_group = wgpuDeviceCreateBindGroup(Device().Get(), &bind_group_desc);
+
+  // TODO support graph capture
+
+  compute_pass_encoder.SetPipeline(program_artifact.compute_pipeline);
+  wgpuComputePassEncoderSetBindGroup(compute_pass_encoder.Get(), 0, bind_group, 0, nullptr);
+  compute_pass_encoder.DispatchWorkgroups(x, y, z);
+
+  wgpuBindGroupRelease(bind_group);
+  wgpuBindGroupLayoutRelease(bind_group_layout);
 }
 
 std::unordered_map<int32_t, WebGpuContextFactory::WebGpuContextInfo> WebGpuContextFactory::contexts_;

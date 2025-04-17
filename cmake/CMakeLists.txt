@@ -62,7 +62,7 @@ option(onnxruntime_GENERATE_TEST_REPORTS "Enable test report generation" OFF)
 option(onnxruntime_ENABLE_STATIC_ANALYSIS "Enable static analysis" OFF)
 option(onnxruntime_USE_CUSTOM_STATIC_ANALYSIS_RULES "Use a custom SDL Rule. It is mainly for our CI build" OFF)
 option(onnxruntime_REDIRECT_STATIC_ANALYSIS_OUTPUTS_TO_FILE "Use a custom SDL Rule. It is mainly for our CI build" OFF)
-option(onnxruntime_ENABLE_PYTHON "Enable python buildings" OFF)
+option(onnxruntime_ENABLE_PYTHON "Enable python bindings" OFF)
 # Enable it may cause LNK1169 error
 option(onnxruntime_ENABLE_MEMLEAK_CHECKER "Experimental: Enable memory leak checker in Windows debug build" OFF)
 option(onnxruntime_USE_CUDA "Build with CUDA support" OFF)
@@ -180,7 +180,6 @@ option(onnxruntime_ENABLE_TRAINING_OPS "Include training operators but no traini
 option(onnxruntime_ENABLE_TRAINING_E2E_TESTS "Enable training end-to-end tests." OFF)
 option(onnxruntime_ENABLE_CPU_FP16_OPS "Build with advanced instruction sets" ON)
 option(onnxruntime_USE_NCCL "Build with NCCL support" OFF)
-option(onnxruntime_USE_MPI "Build with MPI support" OFF)
 
 # WebAssembly options
 option(onnxruntime_BUILD_WEBASSEMBLY_STATIC_LIB "Enable this option to create WebAssembly static library" OFF)
@@ -1267,6 +1266,7 @@ function(onnxruntime_set_compile_flags target_name)
       # Unsupported by Clang 18 yet.
       list(REMOVE_ITEM ORT_HIP_WARNING_FLAGS -Wno-dangling-reference)
 
+      list(REMOVE_ITEM ORT_HIP_WARNING_FLAGS -Wno-interference-size)
       # float16.h:90:12: error: ‘tmp’ is used uninitialized
       list(APPEND ORT_HIP_WARNING_FLAGS -Wno-uninitialized)
       list(APPEND ORT_HIP_WARNING_FLAGS -Wno-deprecated-copy)
@@ -1650,29 +1650,6 @@ if (onnxruntime_ENABLE_DLPACK)
 endif()
 
 if (UNIX OR onnxruntime_USE_NCCL)
-  # MPI is INDEPENDENT of NCCL for now. You can build NCLL without MPI and launch multi-GPU with your own launcher.
-  if (onnxruntime_USE_MPI)
-    if (EXISTS "${onnxruntime_MPI_HOME}")
-      set(MPI_HOME "${onnxruntime_MPI_HOME}")
-    elseif (EXISTS "/bert_ort/openmpi")
-      set(MPI_HOME "/bert_ort/openmpi")
-    endif()
-    find_package(MPI)
-
-    if (MPI_CXX_FOUND)
-      message( STATUS "MPI Version: ${MPI_CXX_VERSION}")
-      message( STATUS "MPI (include: ${MPI_CXX_INCLUDE_DIRS}, library: ${MPI_CXX_LIBRARIES})" )
-      mark_as_advanced(MPI_CXX_INCLUDE_DIRS MPI_CXX_LIBRARIES)
-      list(APPEND onnxruntime_EXTERNAL_LIBRARIES ${MPI_CXX_LIBRARIES} ${MPI_CXX_LINK_FLAGS})
-    else ()
-      message(
-            FATAL_ERROR
-            "MPI is not found. Please define onnxruntime_MPI_HOME to specify the path of MPI. Otherwise, NCCL will be disabled."
-            "or you can remove --use_mpi from build args to disable MPI."
-          )
-    endif()
-  endif()
-
   # Find NCCL
   if (onnxruntime_USE_NCCL)
     if (onnxruntime_USE_CUDA)
@@ -1742,13 +1719,9 @@ if (UNIX OR onnxruntime_USE_NCCL)
   endif()
 else()
   set(onnxruntime_USE_NCCL OFF)
-  set(onnxruntime_USE_MPI OFF)
-  message( WARNING "MPI and NCCL are disabled because build is on Windows or USE_NCCL is set to OFF." )
+  message( WARNING "NCCL is disabled because build is on Windows or USE_NCCL is set to OFF." )
 endif()
 
-if (onnxruntime_USE_MPI)
-  add_definitions(-DUSE_MPI=1)
-endif()
 
 # Default version parts for Microsoft.AI.MachineLearning.dll, onnxruntime.dll, onnxruntime_providers_openvino.dll and onnxruntime_providers_shared.dll in non-ADO pipeline local builds
 set(VERSION_MAJOR_PART   0 CACHE STRING "First part of numeric file/product version.")

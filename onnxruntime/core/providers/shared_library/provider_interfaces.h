@@ -256,6 +256,10 @@ struct ProviderHost {
   // IAllocator
   virtual bool IAllocator__CalcMemSizeForArrayWithAlignment(size_t nmemb, size_t size, size_t alignment, size_t* out) = 0;
 
+  // IExecutionProviderFactory
+  virtual std::unique_ptr<IExecutionProvider> IExecutionProviderFactory__CreateProvider(
+      IExecutionProviderFactory* p, const OrtSessionOptions& session_options, const OrtLogger& session_logger) = 0;
+
   // IExecutionProvider
   virtual std::vector<std::unique_ptr<ComputeCapability>> IExecutionProvider__GetCapability(const IExecutionProvider* p, const onnxruntime::GraphViewer& graph_viewer,
                                                                                             const IExecutionProvider::IKernelLookup& kernel_lookup,
@@ -611,6 +615,8 @@ struct ProviderHost {
   virtual int FunctionProto__metadata_props_size(const ONNX_NAMESPACE::FunctionProto* p) = 0;
   virtual ONNX_NAMESPACE::StringStringEntryProto* FunctionProto__add_metadata_props(ONNX_NAMESPACE::FunctionProto* p) = 0;
 
+  virtual void InferShapes(const std::string& m, const std::string& save_path) = 0;
+  virtual void InferShapes(ONNX_NAMESPACE::ModelProto& m) = 0;
   virtual void RegisterSchema(const std::string& domain, const OrtCustomOp* op) = 0;
   virtual void DeregisterSchema(const std::string& domain, const std::string& op_type, int version) = 0;
   virtual const ONNX_NAMESPACE::OpSchema* GetSchema(const std::string& name, const int maxInclusiveVersion, const std::string& domain) = 0;
@@ -624,11 +630,13 @@ struct ProviderHost {
   virtual std::optional<std::string> ConfigOptions__GetConfigEntry(const ConfigOptions* p, const std::string& config_key) = 0;
   virtual std::string ConfigOptions__GetConfigOrDefault(const ConfigOptions* p, const std::string& config_key,
                                                         const std::string& default_value) = 0;
+  virtual const std::unordered_map<std::string, std::string>& ConfigOptions__GetConfigOptionsMap(const ConfigOptions* p) = 0;
 
   // OrtRunOptions
   virtual const ConfigOptions& RunOptions__GetConfigOptions(const RunOptions* p) = 0;
   // OrtSessionOptions
   virtual const std::unordered_map<std::string, std::string>& SessionOptions__GetConfigOptionsMap(const OrtSessionOptions* p) = 0;
+  virtual const ConfigOptions& SessionOptions__GetConfigOptions(const OrtSessionOptions* p) = 0;
   virtual bool SessionOptions__GetEnableProfiling(const OrtSessionOptions* p) = 0;
   // ComputeCapability
   virtual std::unique_ptr<ComputeCapability> ComputeCapability__construct(std::unique_ptr<IndexedSubGraph> t_sub_graph) = 0;
@@ -1010,6 +1018,7 @@ struct ProviderHost {
   virtual const Graph* Graph__ParentGraph(const Graph* p) const = 0;
   virtual Graph* Graph__MutableParentGraph(Graph* p) = 0;
   virtual const std::string& Graph__Name(const Graph* p) const noexcept = 0;
+  virtual void Graph__SetName(Graph* p, const std::string& name) const noexcept = 0;
   virtual const std::filesystem::path& Graph__ModelPath(const Graph* p) const = 0;
   virtual const std::vector<const NodeArg*>& Graph__GetInputsIncludingInitializers(const Graph* p) const noexcept = 0;
   virtual bool Graph__IsSubgraph(const Graph* p) = 0;

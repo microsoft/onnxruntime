@@ -62,7 +62,7 @@ bool TernaryOpBuilder::HasSupportedInputsImpl(const GraphViewer&, const Node& no
   // ONNX's condition data type is bool which is same as WebNN.
   // Only need to check X, Y data types.
   std::array<int32_t, 2> input_types{input1_type, input2_type};
-  if (!AreInputDataTypesSame(op_type, input_types, logger)) {
+  if (!AreDataTypesSame(op_type, input_types, logger)) {
     return false;
   }
 
