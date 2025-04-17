@@ -3,9 +3,9 @@
   if(onnxruntime_DISABLE_CONTRIB_OPS)
     message( FATAL_ERROR "To compile TensorRT execution provider contrib ops have to be enabled to dump an engine using com.microsoft:EPContext node." )
   endif()
-  add_definitions(-DUSE_TENSORRT=1)
-  if (onnxruntime_TENSORRT_PLACEHOLDER_BUILDER)
-    add_definitions(-DORT_TENSORRT_PLACEHOLDER_BUILDER)
+  add_definitions(-DUSE_NV=1)
+  if (onnxruntime_NV_PLACEHOLDER_BUILDER)
+    add_definitions(-DORT_NV_PLACEHOLDER_BUILDER)
   endif()
   set(BUILD_LIBRARY_ONLY 1)
   add_definitions("-DONNX_ML=1")
@@ -27,11 +27,18 @@
     set(CMAKE_CXX_FLAGS  "${CMAKE_CXX_FLAGS} -Wno-unused-parameter -Wno-missing-field-initializers")
   endif()
   set(CXX_VERSION_DEFINED TRUE)
-message(STATUS "ishwar TENSORRT_ROOT is ${TENSORRT_ROOT}")
-message(STATUS "onnxruntime_USE_TENSORRT_BUILTIN_PARSER is ${onnxruntime_USE_TENSORRT_BUILTIN_PARSER}")
+
+  # There is an issue when running "Debug build" NV EP with "Release build" TRT builtin parser on Windows.
+  # We enforce following workaround for now until the real fix.
+  if (WIN32 AND CMAKE_BUILD_TYPE STREQUAL "Debug")
+    set(onnxruntime_USE_TENSORRT_BUILTIN_PARSER OFF)
+    MESSAGE(STATUS "[Note] There is an issue when running \"Debug build\" TRT EP with \"Release build\" TRT built-in parser on Windows. This build will use tensorrt oss parser instead.")
+  endif()
+
   find_path(TENSORRT_INCLUDE_DIR NvInfer.h
     HINTS ${TENSORRT_ROOT}
     PATH_SUFFIXES include)
+
 
   file(READ ${TENSORRT_INCLUDE_DIR}/NvInferVersion.h NVINFER_VER_CONTENT)
   string(REGEX MATCH "define NV_TENSORRT_MAJOR * +([0-9]+)" NV_TENSORRT_MAJOR "${NVINFER_VER_CONTENT}")
@@ -155,9 +162,9 @@ message(STATUS "onnxruntime_USE_TENSORRT_BUILTIN_PARSER is ${onnxruntime_USE_TEN
   else()
     set(trt_link_libs CUDNN::cudnn_all cublas ${CMAKE_DL_LIBS} ${TENSORRT_LIBRARY})
   endif()
-  file(GLOB_RECURSE onnxruntime_providers_tensorrt_cc_srcs CONFIGURE_DEPENDS
-    "${ONNXRUNTIME_ROOT}/core/providers/tensorrt/*.h"
-    "${ONNXRUNTIME_ROOT}/core/providers/tensorrt/*.cc"
+  file(GLOB_RECURSE onnxruntime_providers_nv_tensorrt_rtx_cc_srcs CONFIGURE_DEPENDS
+    "${ONNXRUNTIME_ROOT}/core/providers/nv_tensorrt_rtx/*.h"
+    "${ONNXRUNTIME_ROOT}/core/providers/nv_tensorrt_rtx/*.cc"
     "${ONNXRUNTIME_ROOT}/core/providers/shared_library/*.h"
     "${ONNXRUNTIME_ROOT}/core/providers/shared_library/*.cc"
     "${ONNXRUNTIME_ROOT}/core/providers/cuda/cuda_stream_handle.h"
@@ -166,51 +173,51 @@ message(STATUS "onnxruntime_USE_TENSORRT_BUILTIN_PARSER is ${onnxruntime_USE_TEN
     "${ONNXRUNTIME_ROOT}/core/providers/cuda/cuda_graph.cc"
   )
 
-  source_group(TREE ${ONNXRUNTIME_ROOT}/core FILES ${onnxruntime_providers_tensorrt_cc_srcs})
-  onnxruntime_add_shared_library_module(onnxruntime_providers_tensorrt ${onnxruntime_providers_tensorrt_cc_srcs})
-  onnxruntime_add_include_to_target(onnxruntime_providers_tensorrt onnxruntime_common)
-  target_link_libraries(onnxruntime_providers_tensorrt PRIVATE Eigen3::Eigen  onnx flatbuffers::flatbuffers Boost::mp11 safeint_interface Eigen3::Eigen)
-  add_dependencies(onnxruntime_providers_tensorrt onnxruntime_providers_shared ${onnxruntime_EXTERNAL_DEPENDENCIES})
+  source_group(TREE ${ONNXRUNTIME_ROOT}/core FILES ${onnxruntime_providers_nv_tensorrt_rtx_cc_srcs})
+  onnxruntime_add_shared_library_module(onnxruntime_providers_nv_tensorrt_rtx ${onnxruntime_providers_nv_tensorrt_rtx_cc_srcs})
+  onnxruntime_add_include_to_target(onnxruntime_providers_nv_tensorrt_rtx onnxruntime_common)
+  target_link_libraries(onnxruntime_providers_nv_tensorrt_rtx PRIVATE Eigen3::Eigen  onnx flatbuffers::flatbuffers Boost::mp11 safeint_interface Eigen3::Eigen)
+  add_dependencies(onnxruntime_providers_nv_tensorrt_rtx onnxruntime_providers_shared ${onnxruntime_EXTERNAL_DEPENDENCIES})
   if (onnxruntime_USE_TENSORRT_BUILTIN_PARSER)
-    target_link_libraries(onnxruntime_providers_tensorrt PRIVATE ${trt_link_libs} ${ONNXRUNTIME_PROVIDERS_SHARED} ${PROTOBUF_LIB} flatbuffers::flatbuffers Boost::mp11 safeint_interface ${ABSEIL_LIBS} PUBLIC CUDA::cudart)
+    target_link_libraries(onnxruntime_providers_nv_tensorrt_rtx PRIVATE ${trt_link_libs} ${ONNXRUNTIME_PROVIDERS_SHARED} ${PROTOBUF_LIB} flatbuffers::flatbuffers Boost::mp11 safeint_interface ${ABSEIL_LIBS} PUBLIC CUDA::cudart)
   else()
-    target_link_libraries(onnxruntime_providers_tensorrt PRIVATE ${onnxparser_link_libs} ${trt_link_libs} ${ONNXRUNTIME_PROVIDERS_SHARED} ${PROTOBUF_LIB} flatbuffers::flatbuffers ${ABSEIL_LIBS} PUBLIC CUDA::cudart)
+    target_link_libraries(onnxruntime_providers_nv_tensorrt_rtx PRIVATE ${onnxparser_link_libs} ${trt_link_libs} ${ONNXRUNTIME_PROVIDERS_SHARED} ${PROTOBUF_LIB} flatbuffers::flatbuffers ${ABSEIL_LIBS} PUBLIC CUDA::cudart)
   endif()
-  target_include_directories(onnxruntime_providers_tensorrt PRIVATE ${ONNXRUNTIME_ROOT} ${CMAKE_CURRENT_BINARY_DIR}
+  target_include_directories(onnxruntime_providers_nv_tensorrt_rtx PRIVATE ${ONNXRUNTIME_ROOT} ${CMAKE_CURRENT_BINARY_DIR}
     PUBLIC ${CUDAToolkit_INCLUDE_DIRS})
 
   # ${CMAKE_CURRENT_BINARY_DIR} is so that #include "onnxruntime_config.h" inside tensor_shape.h is found
-  set_target_properties(onnxruntime_providers_tensorrt PROPERTIES LINKER_LANGUAGE CUDA)
-  set_target_properties(onnxruntime_providers_tensorrt PROPERTIES FOLDER "ONNXRuntime")
-  target_compile_definitions(onnxruntime_providers_tensorrt PRIVATE ONNXIFI_BUILD_LIBRARY=1)
-  target_compile_options(onnxruntime_providers_tensorrt PRIVATE ${DISABLED_WARNINGS_FOR_TRT})
+  set_target_properties(onnxruntime_providers_nv_tensorrt_rtx PROPERTIES LINKER_LANGUAGE CUDA)
+  set_target_properties(onnxruntime_providers_nv_tensorrt_rtx PROPERTIES FOLDER "ONNXRuntime")
+  target_compile_definitions(onnxruntime_providers_nv_tensorrt_rtx PRIVATE ONNXIFI_BUILD_LIBRARY=1)
+  target_compile_options(onnxruntime_providers_nv_tensorrt_rtx PRIVATE ${DISABLED_WARNINGS_FOR_TRT})
   if (WIN32)
-    target_compile_options(onnxruntime_providers_tensorrt INTERFACE /wd4456)
+    target_compile_options(onnxruntime_providers_nv_tensorrt_rtx INTERFACE /wd4456)
   endif()
   if(onnxruntime_CUDA_MINIMAL)
-    target_compile_definitions(onnxruntime_providers_tensorrt PRIVATE USE_CUDA_MINIMAL=1)
+    target_compile_definitions(onnxruntime_providers_nv_tensorrt_rtx PRIVATE USE_CUDA_MINIMAL=1)
   endif()
 
   # Needed for the provider interface, as it includes training headers when training is enabled
   if (onnxruntime_ENABLE_TRAINING_OPS)
-    target_include_directories(onnxruntime_providers_tensorrt PRIVATE ${ORTTRAINING_ROOT})
+    target_include_directories(onnxruntime_providers_nv_tensorrt_rtx PRIVATE ${ORTTRAINING_ROOT})
     if (onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
-      onnxruntime_add_include_to_target(onnxruntime_providers_tensorrt Python::Module)
+      onnxruntime_add_include_to_target(onnxruntime_providers_nv_tensorrt_rtx Python::Module)
     endif()
   endif()
 
   if(APPLE)
-    set_property(TARGET onnxruntime_providers_tensorrt APPEND_STRING PROPERTY LINK_FLAGS "-Xlinker -exported_symbols_list ${ONNXRUNTIME_ROOT}/core/providers/tensorrt/exported_symbols.lst")
+    set_property(TARGET onnxruntime_providers_nv_tensorrt_rtx APPEND_STRING PROPERTY LINK_FLAGS "-Xlinker -exported_symbols_list ${ONNXRUNTIME_ROOT}/core/providers/nv_tensorrt_rtx/exported_symbols.lst")
   elseif(UNIX)
-    set_property(TARGET onnxruntime_providers_tensorrt APPEND_STRING PROPERTY COMPILE_FLAGS "-Wno-deprecated-declarations")
-    set_property(TARGET onnxruntime_providers_tensorrt APPEND_STRING PROPERTY LINK_FLAGS "-Xlinker --version-script=${ONNXRUNTIME_ROOT}/core/providers/tensorrt/version_script.lds -Xlinker --gc-sections")
+    set_property(TARGET onnxruntime_providers_nv_tensorrt_rtx APPEND_STRING PROPERTY COMPILE_FLAGS "-Wno-deprecated-declarations")
+    set_property(TARGET onnxruntime_providers_nv_tensorrt_rtx APPEND_STRING PROPERTY LINK_FLAGS "-Xlinker --version-script=${ONNXRUNTIME_ROOT}/core/providers/nv_tensorrt_rtx/version_script.lds -Xlinker --gc-sections")
   elseif(WIN32)
-    set_property(TARGET onnxruntime_providers_tensorrt APPEND_STRING PROPERTY LINK_FLAGS "-DEF:${ONNXRUNTIME_ROOT}/core/providers/tensorrt/symbols.def")
+    set_property(TARGET onnxruntime_providers_nv_tensorrt_rtx APPEND_STRING PROPERTY LINK_FLAGS "-DEF:${ONNXRUNTIME_ROOT}/core/providers/nv_tensorrt_rtx/symbols.def")
   else()
-    message(FATAL_ERROR "onnxruntime_providers_tensorrt unknown platform, need to specify shared library exports for it")
+    message(FATAL_ERROR "onnxruntime_providers_nv_tensorrt_rtx unknown platform, need to specify shared library exports for it")
   endif()
 
-  install(TARGETS onnxruntime_providers_tensorrt
+  install(TARGETS onnxruntime_providers_nv_tensorrt_rtx
           ARCHIVE  DESTINATION ${CMAKE_INSTALL_LIBDIR}
           LIBRARY  DESTINATION ${CMAKE_INSTALL_LIBDIR}
           RUNTIME  DESTINATION ${CMAKE_INSTALL_BINDIR})

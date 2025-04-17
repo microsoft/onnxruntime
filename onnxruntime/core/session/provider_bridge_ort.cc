@@ -103,6 +103,7 @@ using EtwRegistrationManager_EtwInternalCallback = EtwRegistrationManager::EtwIn
 #include "core/providers/migraphx/migraphx_provider_factory_creator.h"
 #include "core/providers/openvino/openvino_provider_factory_creator.h"
 #include "core/providers/tensorrt/tensorrt_provider_factory_creator.h"
+#include "core/providers/nv_tensorrt_rtx/nv_provider_factory_creator.h"
 #include "core/providers/vitisai/vitisai_provider_factory_creator.h"
 #include "core/providers/qnn/qnn_provider_factory_creator.h"
 
@@ -117,9 +118,15 @@ using EtwRegistrationManager_EtwInternalCallback = EtwRegistrationManager::EtwIn
 #include "core/providers/cuda/cuda_provider_options.h"
 #include "core/providers/cann/cann_provider_options.h"
 #include "core/providers/dnnl/dnnl_provider_options.h"
+#include "core/providers/nv_tensorrt_rtx/nv_provider_factory.h"
+#include "core/providers/nv_tensorrt_rtx/nv_provider_options.h"
 
-#if !defined(ORT_MINIMAL_BUILD) && defined(USE_TENSORRT)
+#if !defined(ORT_MINIMAL_BUILD) &&  ( defined(USE_TENSORRT)  || defined(USE_NV) )
 #include "core/session/onnxruntime_session_options_config_keys.h"
+#endif
+
+#ifdef USE_NV
+#include "core/providers/nv_tensorrt_rtx/nv_provider_options_internal.h"
 #endif
 
 // The filename extension for a shared library is different per platform
@@ -153,6 +160,9 @@ ProviderInfo_ROCM& GetProviderInfo_ROCM();
 ProviderHostCPU& GetProviderHostCPU();
 ProviderInfo_MIGraphX* TryGetProviderInfo_MIGraphX();
 ProviderInfo_MIGraphX& GetProviderInfo_MIGraphX();
+ProviderInfo_Nv* TryGetProviderInfo_Nv();
+ProviderInfo_Nv& GetProviderInfo_Nv();
+
 ONNX_NAMESPACE::OpSchema CreateSchema(const std::string& domain, const std::vector<const OrtCustomOp*>& ops);
 struct TensorShapeProto_Dimension_Iterator_Impl : TensorShapeProto_Dimension_Iterator {
   TensorShapeProto_Dimension_Iterator_Impl(google::protobuf::internal::RepeatedPtrIterator<const onnx::TensorShapeProto_Dimension>&& v) : v_{std::move(v)} {}
@@ -1835,6 +1845,7 @@ static ProviderLibrary s_library_tensorrt(LIBRARY_PREFIX ORT_TSTR("onnxruntime_p
                                           false
 #endif
 );
+static ProviderLibrary s_library_nv(LIBRARY_PREFIX ORT_TSTR("onnxruntime_providers_nv_tensorrt_rtx") LIBRARY_EXTENSION);
 static ProviderLibrary s_library_migraphx(LIBRARY_PREFIX ORT_TSTR("onnxruntime_providers_migraphx") LIBRARY_EXTENSION);
 
 // QNN EP can be built either as a static library or a shared library. Can safely define s_library_qnn even if static.
@@ -1852,6 +1863,7 @@ void UnloadSharedProviders() {
   s_library_shared.Unload();
   s_library_migraphx.Unload();
   s_library_qnn.Unload();
+  s_library_nv.Unload();
 }
 
 // Used by test code
@@ -1982,6 +1994,10 @@ std::shared_ptr<IExecutionProviderFactory> TensorrtProviderFactoryCreator::Creat
   return s_library_tensorrt.Get().CreateExecutionProviderFactory(provider_options);
 }
 
+std::shared_ptr<IExecutionProviderFactory> NvProviderFactoryCreator::Create(const OrtNvTensorRtRtxProviderOptions* provider_options) {
+  return s_library_nv.Get().CreateExecutionProviderFactory(provider_options);
+}
+
 std::shared_ptr<IExecutionProviderFactory> MIGraphXProviderFactoryCreator::Create(const OrtMIGraphXProviderOptions* provider_options) {
   return s_library_migraphx.Get().CreateExecutionProviderFactory(provider_options);
 }
@@ -2071,6 +2087,20 @@ ProviderInfo_TensorRT* TryGetProviderInfo_TensorRT() try {
 
 ProviderInfo_TensorRT& GetProviderInfo_TensorRT() {
   if (auto* info = TryGetProviderInfo_TensorRT())
+    return *info;
+
+  ORT_THROW("TensorRT Provider not available, can't get interface for it");
+}
+
+ProviderInfo_Nv* TryGetProviderInfo_Nv() try {
+  return reinterpret_cast<ProviderInfo_Nv*>(s_library_nv.Get().GetInfo());
+} catch (const std::exception& exception) {
+  LOGS_DEFAULT(ERROR) << exception.what();
+  return nullptr;
+}
+
+ProviderInfo_Nv& GetProviderInfo_Nv() {
+  if (auto* info = TryGetProviderInfo_Nv())
     return *info;
 
   ORT_THROW("TensorRT Provider not available, can't get interface for it");
@@ -2215,6 +2245,14 @@ void UpdateProviderInfo_Tensorrt(OrtTensorRTProviderOptionsV2* provider_options,
 
 ProviderOptions GetProviderInfo_Tensorrt(const OrtTensorRTProviderOptionsV2* provider_options) {
   return s_library_tensorrt.Get().GetProviderOptions(reinterpret_cast<const void*>(provider_options));
+}
+
+void UpdateProviderInfo_Nv(OrtNvTensorRtRtxProviderOptions* provider_options, const ProviderOptions& options) {
+  s_library_nv.Get().UpdateProviderOptions(reinterpret_cast<void*>(provider_options), options);
+}
+
+ProviderOptions GetProviderInfo_Nv(const OrtNvTensorRtRtxProviderOptions* provider_options) {
+  return s_library_nv.Get().GetProviderOptions(reinterpret_cast<const void*>(provider_options));
 }
 
 void UpdateProviderInfo_Cuda(OrtCUDAProviderOptionsV2* provider_options, const ProviderOptions& options) {
@@ -2534,7 +2572,7 @@ ORT_API_STATUS_IMPL(OrtApis::UpdateTensorRTProviderOptions,
   API_IMPL_END
 }
 
-#if defined(USE_TENSORRT) || defined(USE_CUDA) || defined(USE_CANN) || defined(USE_DNNL) || defined(USE_ROCM)
+#if defined(USE_TENSORRT) || defined(USE_CUDA) || defined(USE_CANN) || defined(USE_DNNL) || defined(USE_ROCM) || defined(USE_NV)
 static std::string BuildOptionsString(const onnxruntime::ProviderOptions::iterator& begin,
                                       const onnxruntime::ProviderOptions::iterator& end) {
   std::ostringstream options;
@@ -2634,6 +2672,135 @@ ORT_API(void, OrtApis::ReleaseTensorRTProviderOptions, _Frees_ptr_opt_ OrtTensor
   }
 
   std::unique_ptr<OrtTensorRTProviderOptionsV2> p(ptr);
+#else
+  ORT_UNUSED_PARAMETER(ptr);
+#endif
+}
+
+
+ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider_Nv_TensorRT_RTX, _In_ OrtSessionOptions* options, _In_ const OrtNvTensorRtRtxProviderOptions* nv_options) {
+  API_IMPL_BEGIN
+
+  std::shared_ptr<onnxruntime::IExecutionProviderFactory> factory;
+
+  factory = onnxruntime::NvProviderFactoryCreator::Create(nv_options);
+
+  if (!factory) {
+    return OrtApis::CreateStatus(ORT_FAIL, "SessionOptionsAppendExecutionProvider_Nv_TensorRT_RTX: Failed to load shared library");
+  }
+
+  options->provider_factories.push_back(factory);
+
+  // std::string extra_plugin_lib_paths = (nv_options == nullptr || nv_options->nv_extra_plugin_lib_paths == nullptr) ? "" : nv_options->nv_extra_plugin_lib_paths;
+  //AddTensorRTCustomOpDomainToSessionOption(options, extra_plugin_lib_paths);
+
+  return nullptr;
+  API_IMPL_END
+}
+
+ORT_API_STATUS_IMPL(OrtApis::CreateNvTensorRtRtxProviderOptions, _Outptr_ OrtNvTensorRtRtxProviderOptions** out) {
+  API_IMPL_BEGIN
+#ifdef USE_NV
+  onnxruntime::ProviderInfo_Nv& provider_info = onnxruntime::GetProviderInfo_Nv();
+  provider_info.CreateProviderOptions(out);
+  return nullptr;
+#else
+  ORT_UNUSED_PARAMETER(out);
+  return CreateStatus(ORT_FAIL, "Nv execution provider is not enabled in this build.");
+#endif
+  API_IMPL_END
+}
+
+ORT_API_STATUS_IMPL(OrtApis::UpdateNvTensorRtRtxProviderOptions,
+                    _Inout_ OrtNvTensorRtRtxProviderOptions* nv_options,
+                    _In_reads_(num_keys) const char* const* provider_options_keys,
+                    _In_reads_(num_keys) const char* const* provider_options_values,
+                    size_t num_keys) {
+  API_IMPL_BEGIN
+#ifdef USE_NV
+  onnxruntime::ProviderOptions provider_options_map;
+  for (size_t i = 0; i != num_keys; ++i) {
+    if (provider_options_keys[i] == nullptr || provider_options_keys[i][0] == '\0' ||
+        provider_options_values[i] == nullptr || provider_options_values[i][0] == '\0') {
+      return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "key/value cannot be empty");
+    }
+
+    provider_options_map[provider_options_keys[i]] = provider_options_values[i];
+  }
+
+  onnxruntime::UpdateProviderInfo_Nv(nv_options,
+                                           reinterpret_cast<const onnxruntime::ProviderOptions&>(provider_options_map));
+  return nullptr;
+#else
+  ORT_UNUSED_PARAMETER(nv_options);
+  ORT_UNUSED_PARAMETER(provider_options_keys);
+  ORT_UNUSED_PARAMETER(provider_options_values);
+  ORT_UNUSED_PARAMETER(num_keys);
+  return CreateStatus(ORT_FAIL, "Nv execution provider is not enabled in this build.");
+#endif
+  API_IMPL_END
+}
+
+ORT_API_STATUS_IMPL(OrtApis::GetNvTensorRtRtxProviderOptionsAsString, _In_ const OrtNvTensorRtRtxProviderOptions* nv_options, _Inout_ OrtAllocator* allocator,
+                    _Outptr_ char** ptr) {
+  API_IMPL_BEGIN
+#ifdef USE_NV
+  onnxruntime::ProviderOptions options = onnxruntime::GetProviderInfo_Nv(nv_options);
+  std::string options_str = BuildOptionsString(options.begin(), options.end());
+  *ptr = onnxruntime::StrDup(options_str, allocator);
+  return nullptr;
+#else
+  ORT_UNUSED_PARAMETER(nv_options);
+  ORT_UNUSED_PARAMETER(allocator);
+  ORT_UNUSED_PARAMETER(ptr);
+  return CreateStatus(ORT_FAIL, "Nv execution provider is not enabled in this build.");
+#endif
+  API_IMPL_END
+}
+
+ORT_API_STATUS_IMPL(OrtApis::UpdateNvTensorRtRtxProviderOptionsWithValue,
+                    _Inout_ OrtNvTensorRtRtxProviderOptions* nv_options,
+                    _In_ const char* key,
+                    _In_ void* value) {
+  API_IMPL_BEGIN
+#ifdef USE_NV
+  // current provider option that has pointer data type (excluding const char*) is 'user_compute_stream'
+  if (strcmp(key, onnxruntime::nv::provider_option_names::kUserComputeStream) == 0) {
+    nv_options->has_user_compute_stream = 1;
+    nv_options->user_compute_stream = value;
+  } else if (strcmp(key, onnxruntime::nv::provider_option_names::kONNXBytestream) == 0) {
+    nv_options->onnx_bytestream = value;
+  } else if (strcmp(key,onnxruntime::nv::provider_option_names::kONNXBytestreamSize) == 0) {
+    nv_options->onnx_bytestream_size = *reinterpret_cast<size_t*>(value);
+  }
+   return nullptr;
+#else
+  ORT_UNUSED_PARAMETER(nv_options);
+  ORT_UNUSED_PARAMETER(key);
+  ORT_UNUSED_PARAMETER(value);
+  return CreateStatus(ORT_FAIL, "Nv execution provider is not enabled in this build.");
+#endif
+  API_IMPL_END
+}
+
+ORT_API_STATUS_IMPL(OrtApis::GetNvTensorRtRtxProviderOptionsByName,
+                    _In_ const OrtNvTensorRtRtxProviderOptions* nv_options,
+                    _In_ const char* key,
+                    _Outptr_ void** ptr) {
+  API_IMPL_BEGIN
+
+  ORT_UNUSED_PARAMETER(nv_options);
+  ORT_UNUSED_PARAMETER(key);
+  ORT_UNUSED_PARAMETER(ptr);
+  return CreateStatus(ORT_FAIL, "Not Implemented.");
+  API_IMPL_END
+}
+
+ORT_API(void, OrtApis::ReleaseNvTensorRtRtxProviderOptions, _Frees_ptr_opt_ OrtNvTensorRtRtxProviderOptions* ptr) {
+#ifdef USE_NV
+onnxruntime::ProviderInfo_Nv& provider_info = onnxruntime::GetProviderInfo_Nv();
+provider_info.ReleaseProviderOptions(ptr);
+
 #else
   ORT_UNUSED_PARAMETER(ptr);
 #endif
