@@ -18,6 +18,7 @@ Abstract:
 #pragma once
 
 #include <algorithm>
+#include <atomic>
 #include <cmath>
 #include <functional>
 #include <limits>
