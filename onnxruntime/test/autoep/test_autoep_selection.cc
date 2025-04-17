@@ -1,8 +1,8 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-// We only have device discovery on windows currently
-#if _WIN32
+// registration/selection is only supported on windows as there's no device discovery on other platforms
+#ifdef _WIN32
 
 #include <filesystem>
 #include <absl/base/config.h>
