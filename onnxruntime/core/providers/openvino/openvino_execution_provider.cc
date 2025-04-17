@@ -256,5 +256,15 @@ const InlinedVector<const Node*> OpenVINOExecutionProvider::GetEpContextNodes() 
   return ep_ctx_handle_.GetEPCtxNodes();
 }
 
+OrtDevice OpenVINOExecutionProvider::GetOrtDeviceByMemType(OrtMemType /* em_type */) const {
+#ifdef USE_OVEP_NPU_MEMORY
+  // Default device 0 is fine? Otherwise, we need to query it some place
+  return OrtDevice(OrtDevice::NPU, OrtDevice::MemType::DEFAULT, 0);
+#else
+  // Default CPU allocator
+  return default_device_;
+#endif
+}
+
 }  // namespace openvino_ep
 }  // namespace onnxruntime

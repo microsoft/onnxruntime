@@ -66,6 +66,8 @@ class OpenVINOExecutionProvider : public IExecutionProvider {
 
   const InlinedVector<const Node*> GetEpContextNodes() const override;
 
+  OrtDevice GetOrtDeviceByMemType(OrtMemType /* em_type */) const override;
+
 #ifdef USE_OVEP_NPU_MEMORY
   std::vector<AllocatorPtr> CreatePreferredAllocators() override;
 #endif

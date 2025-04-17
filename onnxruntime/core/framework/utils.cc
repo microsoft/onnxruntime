@@ -75,7 +75,8 @@ bool ProviderIsCpuBased(const std::string& provider_type) {
 bool DoesEpLocationRequiresAdjustment(const std::string& provider_type) {
   return provider_type == kQnnExecutionProvider ||
          provider_type == kVitisAIExecutionProvider ||
-         provider_type == kVSINPUExecutionProvider;
+         provider_type == kVSINPUExecutionProvider ||
+         provider_type == kOpenVINOExecutionProvider;
 }
 
 static common::Status AllocateHelper(const AllocatorPtr& allocator,
