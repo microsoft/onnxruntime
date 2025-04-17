@@ -417,9 +417,6 @@ def string_type(
         )
         return f"{obj.__class__.__name__}(self_attention_cache={att}, cross_attention_cache={cross})"
 
-    if ignore:
-        return f"{obj.__class__.__name__}(...)"
-
     raise AssertionError(f"Unsupported type {type(obj).__name__!r} - {type(obj)}")
 
 
