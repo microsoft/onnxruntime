@@ -346,10 +346,7 @@ def string_type(
         return f"BatchEncoding(data={s})"
 
     if obj.__class__.__name__ == "VirtualTensor":
-        return (
-            f"{obj.__class__.__name__}(name={obj.name!r}, "
-            f"dtype={obj.dtype}, shape={obj.shape})"
-        )
+        return f"{obj.__class__.__name__}(name={obj.name!r}, dtype={obj.dtype}, shape={obj.shape})"
 
     if isinstance(obj, torch.nn.Module):
         return f"{obj.__class__.__name__}(...)"
