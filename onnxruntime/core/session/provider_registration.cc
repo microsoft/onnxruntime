@@ -184,6 +184,7 @@ ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider,
   // Use a new key with the format: "ep.<lower_case_ep_name>.<PROVIDER_OPTION_KEY>"
   ORT_API_RETURN_IF_STATUS_NOT_OK(options->AddProviderOptionsToConfigOptions(provider_options,
                                                                              ep_to_append.canonical_name));
+
   switch (ep_to_append.id) {
     case EpID::DML: {
 #if defined(USE_DML)

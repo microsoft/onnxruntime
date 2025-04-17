@@ -310,6 +310,19 @@ Status MatmulTransposeFusion::ApplyImpl(Graph& graph, bool& modified, int graph_
       continue;
     }
 
+    NodeArg* right_input = node.MutableInputDefs()[1];
+    auto right_type = right_input->TypeAsProto()->tensor_type().elem_type();
+    if (!IsAllowedFusedMatMulDataType(static_cast<ONNX_NAMESPACE::TensorProto_DataType>(right_type))) {
+      continue;
+    }
+
+    if (left_input == right_input) {
+      // If both inputs are the same, we skip the fusion.
+      // Currently, this situation is not handled correctly in the code below.
+      // Otherwise, the model initialization may fail. See https://github.com/microsoft/onnxruntime/issues/24341.
+      continue;
+    }
+
     bool is_trans_left = false;
     bool is_trans_batch_left = false;
     Node* left = nullptr;
@@ -323,12 +336,6 @@ Status MatmulTransposeFusion::ApplyImpl(Graph& graph, bool& modified, int graph_
                                          is_trans_batch_left);
         }
       }
-    }
-
-    NodeArg* right_input = node.MutableInputDefs()[1];
-    auto right_type = right_input->TypeAsProto()->tensor_type().elem_type();
-    if (!IsAllowedFusedMatMulDataType(static_cast<ONNX_NAMESPACE::TensorProto_DataType>(right_type))) {
-      continue;
     }
 
     bool is_trans_right = false;
