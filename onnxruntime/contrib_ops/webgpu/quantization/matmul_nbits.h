@@ -37,13 +37,14 @@ class MatMulNBitsProgram final : public Program<MatMulNBitsProgram> {
 
 class MatMulNBitsWideTileProgram final : public Program<MatMulNBitsWideTileProgram> {
  public:
-  MatMulNBitsWideTileProgram(uint32_t tile_m, uint32_t tile_n)
-      : Program{"MatMulNBitsWideTileProgram"}, tile_m_(tile_m), tile_n_(tile_n) {}
+  MatMulNBitsWideTileProgram(bool has_zero_points, uint32_t tile_m, uint32_t tile_n)
+      : Program{"MatMulNBitsWideTileProgram"}, has_zero_points_{has_zero_points}, tile_m_(tile_m), tile_n_(tile_n) {}
 
   Status GenerateShaderCode(ShaderHelper& sh) const override;
   WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES({"block_size", ProgramUniformVariableDataType::Uint32});
 
  private:
+  bool has_zero_points_;
   uint32_t tile_m_;
   uint32_t tile_n_;
 };
