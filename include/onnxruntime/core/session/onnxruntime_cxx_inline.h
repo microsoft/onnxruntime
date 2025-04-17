@@ -630,6 +630,62 @@ inline RunOptions& RunOptions::AddActiveLoraAdapter(const LoraAdapter& adapter) 
   return *this;
 }
 
+inline ModelCompilationOptions::ModelCompilationOptions(const Env& env, const SessionOptions& session_options) {
+  ThrowOnError(GetCompileApi().CreateModelCompilationOptionsFromSessionOptions(env, session_options, &this->p_));
+}
+
+inline ModelCompilationOptions::ModelCompilationOptions(const Env& env, ConstSessionOptions session_options) {
+  ThrowOnError(GetCompileApi().CreateModelCompilationOptionsFromSessionOptions(env, session_options, &this->p_));
+}
+
+inline Status CompileModel(const Env& env, const ModelCompilationOptions& model_compilation_options) {
+  return Ort::Status(GetCompileApi().CompileModel(env, model_compilation_options));
+}
+
+inline ModelCompilationOptions& ModelCompilationOptions::SetInputModelPath(
+    const ORTCHAR_T* input_model_path) {
+  Ort::ThrowOnError(GetCompileApi().ModelCompilationOptions_SetInputModelPath(this->p_, input_model_path));
+  return *this;
+}
+
+inline ModelCompilationOptions& ModelCompilationOptions::SetInputModelFromBuffer(
+    const void* input_model_data, size_t input_model_data_size) {
+  Ort::ThrowOnError(GetCompileApi().ModelCompilationOptions_SetInputModelFromBuffer(this->p_, input_model_data,
+                                                                                    input_model_data_size));
+  return *this;
+}
+
+inline ModelCompilationOptions& ModelCompilationOptions::SetOutputModelPath(
+    const ORTCHAR_T* output_model_path) {
+  Ort::ThrowOnError(GetCompileApi().ModelCompilationOptions_SetOutputModelPath(this->p_, output_model_path));
+  return *this;
+}
+
+inline ModelCompilationOptions& ModelCompilationOptions::SetOutputModelExternalInitializersFile(
+    const ORTCHAR_T* file_path, size_t initializer_size_threshold) {
+  Ort::ThrowOnError(GetCompileApi().ModelCompilationOptions_SetOutputModelExternalInitializersFile(
+      this->p_,
+      file_path,
+      initializer_size_threshold));
+  return *this;
+}
+
+inline ModelCompilationOptions& ModelCompilationOptions::SetOutputModelBuffer(
+    OrtAllocator* allocator, void** output_model_buffer_ptr, size_t* output_model_buffer_size_ptr) {
+  Ort::ThrowOnError(GetCompileApi().ModelCompilationOptions_SetOutputModelBuffer(this->p_, allocator,
+                                                                                 output_model_buffer_ptr,
+                                                                                 output_model_buffer_size_ptr));
+  return *this;
+}
+
+inline ModelCompilationOptions& ModelCompilationOptions::SetEpContextEmbedMode(
+    bool embed_ep_context_in_model) {
+  Ort::ThrowOnError(GetCompileApi().ModelCompilationOptions_SetEpContextEmbedMode(
+      this->p_,
+      embed_ep_context_in_model));
+  return *this;
+}
+
 namespace detail {
 
 template <typename T>

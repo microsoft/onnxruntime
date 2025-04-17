@@ -202,6 +202,11 @@ struct OpenVINOProviderFactory : IExecutionProviderFactory {
     ParseConfigOptions(provider_info_);
     return std::make_unique<OpenVINOExecutionProvider>(provider_info_, shared_context_);
   }
+  std::unique_ptr<IExecutionProvider> CreateProvider(const OrtSessionOptions& /*session_options*/,
+                                                     const OrtLogger& /*session_logger*/) override {
+    // TODO(adrianlizarraga): Construct a ProviderInfo object from the session options.
+    return CreateProvider();
+  }
 
  private:
   ProviderInfo provider_info_;
