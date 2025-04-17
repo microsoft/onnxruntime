@@ -49,7 +49,7 @@ Status GatherBlockQuantizedProgram::GenerateShaderCode(ShaderHelper& shader) con
       << "  let index = " << output.IndicesGet("output_indices", "i + " + std::to_string(indices_rank_ - 1)) << ";\n"
       << x.IndicesSet("data_indices", "i", "index") << ";\n};\n";
 
-  const std::string unpack = (signed_) ? "unpack4xI8" : "unpack4xU8";
+  const std::string unpack = (is_signed_) ? "unpack4xI8" : "unpack4xU8";
 
   shader.MainFunctionBody()
       << "let data_offset = " << x.IndicesToOffset("data_indices") << ";\n"
@@ -57,7 +57,12 @@ Status GatherBlockQuantizedProgram::GenerateShaderCode(ShaderHelper& shader) con
       << "let packed_4bit_quantized_data = " << x.GetByOffset("data_offset / 8") << ";\n"
       << "let packed_8bit_quantized_data = (packed_4bit_quantized_data >> (4 * (data_index % 2))) & 0x0f0f0f0f;\n"
       << "let quantized_data_vec = " << unpack << "(u32(packed_8bit_quantized_data));\n"
-      << "let quantized_data = quantized_data_vec[data_index / 2];\n"
+      << "var quantized_data = quantized_data_vec[data_index / 2];\n";
+  if (is_signed_) {
+    shader.MainFunctionBody()
+        << "if((quantized_data & 0x8) != 0) { quantized_data = quantized_data - 16 ;};\n";
+  }
+  shader.MainFunctionBody()
       << "var scale_indices = data_indices;\n"
       << "let quantize_axis_index = " << scales.IndicesGet("data_indices", "uniforms.quantize_axis") << "/ uniforms.block_size;\n"
       << scales.IndicesSet("scale_indices", "uniforms.quantize_axis", "quantize_axis_index") << ";\n"
@@ -65,7 +70,7 @@ Status GatherBlockQuantizedProgram::GenerateShaderCode(ShaderHelper& shader) con
 
   if (!has_zeropoint_) {
     shader.MainFunctionBody()
-        << "var zero_point = 0\n;";
+        << "let zero_point = 0;\n";
   } else {
     const auto& zero_point = shader.AddInput("zero_point", ShaderUsage::UseUniform | ShaderUsage::UseIndicesTypeAlias);
     shader.MainFunctionBody()
@@ -75,11 +80,16 @@ Status GatherBlockQuantizedProgram::GenerateShaderCode(ShaderHelper& shader) con
         << "let packed_4bit_zero_points = " << zero_point.GetByOffset("zero_point_offset / 8") << ";\n"
         << "let packed_8bit_zero_points = (packed_4bit_zero_points >> (4 * (zero_point_index % 2))) & 0x0f0f0f0f;\n"
         << "let zero_point_vec = " << unpack << "(u32(packed_8bit_zero_points));\n"
-        << "let zero_point = zero_point_vec[zero_point_index / 2];\n";
+        << "var zero_point = zero_point_vec[zero_point_index / 2];\n";
+    if (is_signed_) {
+      shader.MainFunctionBody()
+          << "if((zero_point & 0x8) != 0) { zero_point = zero_point - 16 ;};\n";
+    }
   }
   shader.MainFunctionBody()
       << "let dequantized_data = output_value_t(quantized_data - zero_point) * scale;\n"
       << output.SetByOffset("global_idx", "dequantized_data") << ";\n";
+
   return Status::OK();
 }
 
@@ -109,10 +119,10 @@ Status GatherBlockQuantized::ComputeInternal(ComputeContext& context) const {
   int64_t x_rank = x_shape.NumDimensions();
   int64_t x_dtype = x->GetElementType();
 
-  int indices_rank = indices->Shape().NumDimensions();
+  size_t indices_rank = indices->Shape().NumDimensions();
   bool is_signed = x_dtype == ONNX_TENSOR_ELEMENT_DATA_TYPE_INT8 || x_dtype == ONNX_TENSOR_ELEMENT_DATA_TYPE_INT4;
-  int gather_axis = (gather_axis_ >= 0) ? gather_axis_ : gather_axis_ + x_rank;
-  int quantize_axis = (quantize_axis_ >= 0) ? quantize_axis_ : quantize_axis_ + x_rank;
+  int64_t gather_axis = (gather_axis_ >= 0) ? gather_axis_ : gather_axis_ + x_rank;
+  int64_t quantize_axis = (quantize_axis_ >= 0) ? quantize_axis_ : quantize_axis_ + x_rank;
 
   TensorShape output_shape = splice(x_shape.AsShapeVector(), gather_axis, 1, indices->Shape().AsShapeVector());
   size_t output_size = output_shape.Size();
@@ -130,7 +140,7 @@ Status GatherBlockQuantized::ComputeInternal(ComputeContext& context) const {
       .AddUniformVariables({{static_cast<uint32_t>(quantize_axis)}})
       .AddUniformVariables({{static_cast<uint32_t>(gather_axis)}})
       .AddUniformVariables({{static_cast<uint32_t>(block_size_)}})
-      .CacheHint(std::to_string(is_signed), std::to_string(gather_axis), std::to_string(quantize_axis), std::to_string(block_size_));
+      .CacheHint(std::to_string(gather_axis), std::to_string(quantize_axis), std::to_string(block_size_));
 
   if (zero_points != nullptr) {
     program.AddInputs({{zero_points, ProgramTensorMetadataDependency::TypeAndRank}});
