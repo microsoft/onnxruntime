@@ -33,7 +33,8 @@ class TestCaseDriver {
   /// <param name="repeat_count">Repeat each data tests this many times (only for non-concurrent execution)</param>
   /// <returns>All tests results</returns>
   static std::vector<std::shared_ptr<TestCaseResult>> Run(const TestEnv& env,
-                                                          size_t concurrent_runs, size_t repeat_count);
+                                                          size_t concurrent_runs, size_t repeat_count,
+                                                          bool inference_mode = false);
 
   /// <summary>
   /// Runs all test cases(models) concurrently but not more than
@@ -44,12 +45,12 @@ class TestCaseDriver {
   /// <param name="concurrent_runs">number of data tests to run concurrently on a specific test case(model)</param>
   /// <returns>All test results</returns>
   static std::vector<std::shared_ptr<TestCaseResult>> RunParallel(const TestEnv& env, size_t parallel_models,
-                                                                  size_t concurrent_runs);
+                                                                  size_t concurrent_runs, bool inference_mode = false);
 
   ORT_DISALLOW_ASSIGNMENT(TestCaseDriver);
 
  private:
-  TestCaseDriver(const TestEnv& env, size_t concurrent_runs);
+  TestCaseDriver(const TestEnv& env, size_t concurrent_runs, bool inference_mode = false);
 
   /// This makes the __Dtor private because the lifespan is managed by the class itself
   ~TestCaseDriver() = default;
@@ -66,6 +67,7 @@ class TestCaseDriver {
 
   const TestEnv& env_;
   size_t concurrent_runs_;
+  bool inference_mode_;
   std::vector<std::shared_ptr<TestCaseResult>> results_;
   TestCaseRequestContext::Callback on_test_case_complete_;
 
