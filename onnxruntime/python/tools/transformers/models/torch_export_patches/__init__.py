@@ -169,7 +169,7 @@ def string_type(
             ignore=ignore,
             limit=limit,
         )
-        s = ",".join(f"{kv[0]}:{string_type(kv[1],**kws)}" for kv in obj.items())
+        s = ",".join(f"{kv[0]}:{string_type(kv[1], **kws)}" for kv in obj.items())
         if all(isinstance(k, int) for k in obj):
             return f"{{{s}}}"
         return f"dict({s})"
