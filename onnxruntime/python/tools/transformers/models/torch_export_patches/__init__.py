@@ -415,10 +415,7 @@ def string_type(
             with_device=with_device,
             limit=limit,
         )
-        return (
-            f"{obj.__class__.__name__}(self_attention_cache={att}, "
-            f"cross_attention_cache={cross})"
-        )
+        return f"{obj.__class__.__name__}(self_attention_cache={att}, cross_attention_cache={cross})"
 
     if ignore:
         return f"{obj.__class__.__name__}(...)"
