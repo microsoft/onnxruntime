@@ -50,6 +50,15 @@ std::unique_ptr<IExecutionProvider> DefaultTensorrtExecutionProvider() {
   return nullptr;
 }
 
+std::unique_ptr<IExecutionProvider> DefaultNvTensorRTRTXExecutionProvider() {
+#ifdef USE_NV
+//FIXME linking error
+//  if (auto factory = NvProviderFactoryCreator::Create(0))
+//    return factory->CreateProvider();
+#endif
+  return nullptr;
+}
+
 std::unique_ptr<IExecutionProvider> TensorrtExecutionProviderWithOptions(const OrtTensorRTProviderOptions* params) {
 #ifdef USE_TENSORRT
   if (auto factory = TensorrtProviderFactoryCreator::Create(params))
