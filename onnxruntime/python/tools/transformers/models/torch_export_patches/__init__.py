@@ -275,9 +275,7 @@ def string_type(
                 nob = obj.reshape((-1,))
                 nob = nob[~nob.isnan()]
                 if obj.dtype in {torch.complex64, torch.complex128}:
-                    return (
-                        f"{s}[{nob.abs().min()},{nob.abs().max():A{nob.mean()}N{n_nan}nans}]"
-                    )
+                    return f"{s}[{nob.abs().min()},{nob.abs().max():A{nob.mean()}N{n_nan}nans}]"
                 return f"{s}[{obj.min()},{obj.max()}:A{obj.to(float).mean()}N{n_nan}nans]"
             if obj.dtype in {torch.complex64, torch.complex128}:
                 return f"{s}[{obj.abs().min()},{obj.abs().max()}:A{obj.abs().mean()}]"
