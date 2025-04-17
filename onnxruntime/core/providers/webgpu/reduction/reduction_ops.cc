@@ -372,7 +372,7 @@ Status ReduceKernel<allow_multi_axes>::ComputeInternal(ComputeContext& context) 
     return Status::OK();
   }
 
-  bool use_naive_reduction = name_ == "ArgMin" || name_ == "ArgMax" || (reduce_size < 32 && output_size > 1024)|| is_input_empty || input_tensor->Shape().NumDimensions() == 0;
+  bool use_naive_reduction = name_ == "ArgMin" || name_ == "ArgMax" || (reduce_size < 32 && output_size > 1024) || is_input_empty || input_tensor->Shape().NumDimensions() == 0;
 
   if (use_naive_reduction) {
     ReduceNaiveProgram program(name_, reduce_op_type, keepdims_, noop_with_empty_axes_, input_axes, is_input_empty);
