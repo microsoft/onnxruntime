@@ -201,6 +201,7 @@ struct TensorrtFuncState {
   std::string cache_prefix;
   std::string cache_suffix;
   bool engine_hw_compatible = false;
+  std::vector<nvinfer1::PreviewFeature> preview_features;
 };
 
 // Minimum information to construct kernel function state for direct engine load code path
@@ -333,6 +334,7 @@ class TensorrtExecutionProvider : public IExecutionProvider {
   std::string cache_prefix_;
   bool engine_hw_compatible_ = false;
   std::string op_types_to_exclude_;
+  std::vector<nvinfer1::PreviewFeature> preview_features_;
 
   // The format is as for TENSORRT_VERSION: (MAJOR * 100 + MINOR) * 100 + PATCH
   int32_t trt_version_;

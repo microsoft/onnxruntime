@@ -1282,6 +1282,22 @@ TensorrtExecutionProvider::PerThreadContext& TensorrtExecutionProvider::GetPerTh
   return *context;
 }
 
+std::vector<nvinfer1::PreviewFeature> ParseTrtPreviewFeatures(const std::string& str) {
+  std::vector<std::string> featureNames{SplitToStringVec(str, ',')};
+
+  std::vector<nvinfer1::PreviewFeature> previewFeatures;
+  previewFeatures.reserve(featureNames.size());
+  for (auto featureName : featureNames) {
+    if (featureName == "ALIASED_PLUGIN_IO_10_03") {
+      previewFeatures.push_back(nvinfer1::PreviewFeature::kALIASED_PLUGIN_IO_10_03);
+    } else {
+      throw std::invalid_argument(std::string("Unkown or unsupported preview feature: ") + featureName);
+    }
+  }
+
+  return previewFeatures;
+}
+
 TensorrtExecutionProvider::TensorrtExecutionProvider(const TensorrtExecutionProviderInfo& info)
     : IExecutionProvider{onnxruntime::kTensorrtExecutionProvider,
                          OrtDevice(OrtDevice::GPU, OrtDevice::MemType::DEFAULT,
@@ -1380,6 +1396,7 @@ TensorrtExecutionProvider::TensorrtExecutionProvider(const TensorrtExecutionProv
     cuda_graph_enable_ = info.cuda_graph_enable;
     engine_hw_compatible_ = info.engine_hw_compatible;
     op_types_to_exclude_ = info.op_types_to_exclude;
+    preview_features_ = ParseTrtPreviewFeatures(info.preview_features);
   } else {
     try {
       const std::string max_partition_iterations_env = onnxruntime::GetEnvironmentVar(tensorrt_env_vars::kMaxPartitionIterations);
@@ -2279,8 +2296,9 @@ SubGraphCollection_t TensorrtExecutionProvider::GetSupportedList(SubGraphCollect
         auto network_flags = 0;
 #if NV_TENSORRT_MAJOR > 8
         network_flags |= fp16_enable_ || int8_enable_ ? 0 : 1U << static_cast<uint32_t>(nvinfer1::NetworkDefinitionCreationFlag::kSTRONGLY_TYPED);
-#endif
+#else
         network_flags |= 1U << static_cast<uint32_t>(nvinfer1::NetworkDefinitionCreationFlag::kEXPLICIT_BATCH);
+#endif
 
         auto trt_network = std::unique_ptr<nvinfer1::INetworkDefinition>(trt_builder->createNetworkV2(network_flags));
         auto trt_parser = tensorrt_ptr::unique_pointer<nvonnxparser::IParser>(nvonnxparser::createParser(*trt_network, trt_logger));
@@ -2890,8 +2908,9 @@ Status TensorrtExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphView
   auto network_flags = 0;
 #if NV_TENSORRT_MAJOR > 8
   network_flags |= fp16_enable_ || int8_enable_ ? 0 : 1U << static_cast<uint32_t>(nvinfer1::NetworkDefinitionCreationFlag::kSTRONGLY_TYPED);
-#endif
+#else
   network_flags |= 1U << static_cast<uint32_t>(nvinfer1::NetworkDefinitionCreationFlag::kEXPLICIT_BATCH);
+#endif
   auto trt_network = std::unique_ptr<nvinfer1::INetworkDefinition>(trt_builder->createNetworkV2(network_flags));
   auto trt_config = std::unique_ptr<nvinfer1::IBuilderConfig>(trt_builder->createBuilderConfig());
   auto trt_parser = tensorrt_ptr::unique_pointer<nvonnxparser::IParser>(nvonnxparser::createParser(*trt_network, trt_logger));
@@ -3184,6 +3203,11 @@ Status TensorrtExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphView
     tactics |= GetTacticSourceFromString(tactic_sources_);
     trt_config->setTacticSources(tactics);
     LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] Tactic sources are limited using " << tactic_sources_;
+  }
+
+  // Set preview feature flags
+  for (auto feature : preview_features_) {
+    trt_config->setPreviewFeature(feature, true);
   }
 
   // Build TRT engine (if needed) and load TRT engine if:
@@ -3526,7 +3550,8 @@ Status TensorrtExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphView
           context_memory_sharing_enable_, &max_ctx_mem_size_, dynamic_range_map, engine_decryption_enable_,
           engine_decryption_, engine_encryption_, timing_cache_enable_, global_cache_path_, force_timing_cache_match_,
           detailed_build_log_, build_heuristics_enable_, sparsity_enable_, builder_optimization_level_,
-          auxiliary_streams_, !tactic_sources_.empty(), tactics, cuda_graph_enable_, cache_prefix_, cache_suffix, engine_hw_compatible_};
+          auxiliary_streams_, !tactic_sources_.empty(), tactics, cuda_graph_enable_, cache_prefix_, cache_suffix, engine_hw_compatible_,
+          preview_features_};
     *state = p.release();
     return 0;
   };
@@ -3538,15 +3563,6 @@ Status TensorrtExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphView
 
   // Create compute function
   compute_info.compute_func = [this](FunctionState state, const OrtApi* api, OrtKernelContext* context) {
-    // The GPU device is set again here to handle multithreading scenarios.
-    // Consider the following:
-    // Users can create multiple threads to initialize separate inference sessions on different devices (not just the default device 0)
-    // Later, additional threads may be spawned to execute inference_session.Run(), which calls this compute function.
-    // Since new threads default to using device 0, it’s necessary to explicitly set the correct device to ensure computations run on the intended GPU.
-    // Note: Based on our measurements on the A100 GPU with CUDA 12, the execution time for cudaSetDevice is approximately 0.004 ms, which is negligible
-    //       and does not impact runtime performance.
-    CUDA_CALL_THROW(cudaSetDevice(device_id_));
-
     Ort::KernelContext ctx(context);
 
     TensorrtFuncState* trt_state = reinterpret_cast<TensorrtFuncState*>(state);
@@ -3816,6 +3832,11 @@ Status TensorrtExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphView
         LOGS_DEFAULT(INFO) << "[TensorRT EP] Re-generate engine with hardware compatibility enabled.";
       }
 #endif
+
+      // Set preview feature flags
+      for (auto feature : trt_state->preview_features) {
+        trt_config->setPreviewFeature(feature, true);
+      }
 
       // Build engine
       std::unique_ptr<nvinfer1::IHostMemory> serialized_engine;
@@ -4221,15 +4242,6 @@ Status TensorrtExecutionProvider::CreateNodeComputeInfoFromPrecompiledEngine(con
 
   // Create compute function
   compute_info.compute_func = [this](FunctionState state, const OrtApi* api, OrtKernelContext* context) {
-    // The GPU device is set again here to handle multithreading scenarios.
-    // Consider the following:
-    // Users can create multiple threads to initialize separate inference sessions on different devices (not just the default device 0)
-    // Later, additional threads may be spawned to execute inference_session.Run(), which calls this compute function.
-    // Since new threads default to using device 0, it’s necessary to explicitly set the correct device to ensure computations run on the intended GPU.
-    // Note: Based on our measurements on the A100 GPU with CUDA 12, the execution time for cudaSetDevice is approximately 0.004 ms, which is negligible
-    //       and does not impact runtime performance.
-    CUDA_CALL_THROW(cudaSetDevice(device_id_));
-
     Ort::KernelContext ctx(context);
 
     TensorrtShortFuncState* trt_state = reinterpret_cast<TensorrtShortFuncState*>(state);

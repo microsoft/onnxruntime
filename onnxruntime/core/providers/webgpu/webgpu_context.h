@@ -80,6 +80,7 @@ class WebGpuContext final {
 
   const wgpu::AdapterInfo& AdapterInfo() const { return adapter_info_; }
   const wgpu::Limits& DeviceLimits() const { return device_limits_; }
+  bool DeviceHasFeature(wgpu::FeatureName feature) const { return device_features_.find(feature) != device_features_.end(); }
 
   const wgpu::CommandEncoder& GetCommandEncoder() {
     if (!current_command_encoder_) {
@@ -144,8 +145,6 @@ class WebGpuContext final {
   Status Run(ComputeContext& context, const ProgramBase& program);
   void OnRunEnd();
 
-  bool SupportsBufferMapExtendedUsages() const { return supports_buffer_map_extended_usages_; }
-
  private:
   enum class TimestampQueryType {
     None = 0,
@@ -157,11 +156,16 @@ class WebGpuContext final {
       : instance_{instance}, device_{device}, validation_mode_{validation_mode}, query_type_{TimestampQueryType::None}, preserve_device_{preserve_device} {}
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(WebGpuContext);
 
+  void LaunchComputePipeline(const wgpu::ComputePassEncoder& compute_pass_encoder,
+                             const std::vector<WGPUBuffer>& bind_buffers,
+                             const ProgramArtifact& program_artifact,
+                             uint32_t x, uint32_t y, uint32_t z);
+
   std::vector<const char*> GetEnabledAdapterToggles() const;
   std::vector<const char*> GetEnabledDeviceToggles() const;
   std::vector<const char*> GetDisabledDeviceToggles() const;
   std::vector<wgpu::FeatureName> GetAvailableRequiredFeatures(const wgpu::Adapter& adapter) const;
-  wgpu::RequiredLimits GetRequiredLimits(const wgpu::Adapter& adapter) const;
+  wgpu::Limits GetRequiredLimits(const wgpu::Adapter& adapter) const;
   void WriteTimestamp(uint32_t query_index);
 
   struct PendingKernelInfo {
@@ -206,8 +210,10 @@ class WebGpuContext final {
 
   webgpu::ValidationMode validation_mode_;
 
+  wgpu::Queue device_queue_;
   wgpu::AdapterInfo adapter_info_;
   wgpu::Limits device_limits_;
+  std::unordered_set<wgpu::FeatureName> device_features_;
 
   wgpu::CommandEncoder current_command_encoder_;
   wgpu::ComputePassEncoder current_compute_pass_encoder_;
@@ -235,7 +241,6 @@ class WebGpuContext final {
 #if defined(ENABLE_PIX_FOR_WEBGPU_EP)
   std::unique_ptr<WebGpuPIXFrameGenerator> pix_frame_generator_ = nullptr;
 #endif  // ENABLE_PIX_FOR_WEBGPU_EP
-  bool supports_buffer_map_extended_usages_ = false;
 };
 
 }  // namespace webgpu

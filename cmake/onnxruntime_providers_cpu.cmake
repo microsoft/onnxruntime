@@ -206,7 +206,7 @@ if (onnxruntime_ENABLE_TRAINING)
     onnxruntime_add_include_to_target(onnxruntime_providers Python::Module)
   endif()
 
-  if (onnxruntime_USE_NCCL OR onnxruntime_USE_MPI)
+  if (onnxruntime_USE_NCCL)
     target_include_directories(onnxruntime_providers PUBLIC ${MPI_CXX_INCLUDE_DIRS})
   endif()
 endif()

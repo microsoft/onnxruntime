@@ -1,8 +1,11 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License
 
+#include <string>
+#include <unordered_map>
 #include "core/providers/qnn/qnn_provider_factory_creator.h"
 #include "core/providers/qnn/qnn_execution_provider.h"
+#include "core/providers/qnn/builder/qnn_utils.h"
 
 namespace onnxruntime {
 struct QNNProviderFactory : IExecutionProviderFactory {
@@ -15,6 +18,30 @@ struct QNNProviderFactory : IExecutionProviderFactory {
 
   std::unique_ptr<IExecutionProvider> CreateProvider() override {
     return std::make_unique<QNNExecutionProvider>(provider_options_map_, config_options_);
+  }
+
+  std::unique_ptr<IExecutionProvider> CreateProvider(const OrtSessionOptions& session_options,
+                                                     const OrtLogger& session_logger) override {
+    const ConfigOptions& config_options = session_options.GetConfigOptions();
+    const std::unordered_map<std::string, std::string>& config_options_map = config_options.GetConfigOptionsMap();
+
+    // The implementation of the SessionOptionsAppendExecutionProvider C API function automatically adds EP options to
+    // the session option configurations with the key prefix "ep.<lowercase_ep_name>.".
+    // We extract those EP options and pass them to QNN EP as separate "provider options".
+    std::unordered_map<std::string, std::string> provider_options = provider_options_map_;
+    std::string key_prefix = "ep.";
+    key_prefix += qnn::utils::GetLowercaseString(kQnnExecutionProvider);
+    key_prefix += ".";
+
+    for (const auto& [key, value] : config_options_map) {
+      if (key.rfind(key_prefix, 0) == 0) {
+        provider_options[key.substr(key_prefix.size())] = value;
+      }
+    }
+
+    auto qnn_ep = std::make_unique<QNNExecutionProvider>(provider_options, &config_options);
+    qnn_ep->SetLogger(reinterpret_cast<const logging::Logger*>(&session_logger));
+    return qnn_ep;
   }
 
  private:
