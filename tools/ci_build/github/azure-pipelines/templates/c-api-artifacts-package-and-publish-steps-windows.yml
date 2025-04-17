@@ -66,6 +66,7 @@ steps:
           copy $(Build.BinariesDirectory)\${{parameters.buildConfig}}\${{parameters.buildConfig}}\libQnnHtp*.so $(Build.BinariesDirectory)\${{parameters.artifactName}}\lib /Y
           copy $(Build.BinariesDirectory)\${{parameters.buildConfig}}\${{parameters.buildConfig}}\libqnnhtp*.cat $(Build.BinariesDirectory)\${{parameters.artifactName}}\lib /Y
           copy $(Build.BinariesDirectory)\${{parameters.buildConfig}}\${{parameters.buildConfig}}\QnnCpu.dll $(Build.BinariesDirectory)\${{parameters.artifactName}}\lib
+          copy $(Build.BinariesDirectory)\${{parameters.buildConfig}}\${{parameters.buildConfig}}\QnnGpu.dll $(Build.BinariesDirectory)\${{parameters.artifactName}}\lib
           copy $(Build.BinariesDirectory)\${{parameters.buildConfig}}\${{parameters.buildConfig}}\QnnHtp.dll $(Build.BinariesDirectory)\${{parameters.artifactName}}\lib
           copy $(Build.BinariesDirectory)\${{parameters.buildConfig}}\${{parameters.buildConfig}}\QnnHtpPrepare.dll $(Build.BinariesDirectory)\${{parameters.artifactName}}\lib
           copy $(Build.BinariesDirectory)\${{parameters.buildConfig}}\${{parameters.buildConfig}}\QnnHtpV68Stub.dll $(Build.BinariesDirectory)\${{parameters.artifactName}}\lib

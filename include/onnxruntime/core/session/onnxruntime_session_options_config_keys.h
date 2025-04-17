@@ -10,10 +10,10 @@
  * "[Area][.[SubArea1].[SubArea2]...].[Keyname]"
  * Such as "ep.cuda.use_arena"
  * The Config Key cannot be empty
- * The maximum length of the Config Key is 128
+ * The maximum length of the Config Key is 1024
  *
  * The string format of a SessionOptions Config Value is defined individually for each Config.
- * The maximum length of the Config Value is 1024
+ * The maximum length of the Config Value is 2048
  */
 
 // Key for disable PrePacking,
