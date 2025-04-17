@@ -4,7 +4,6 @@ parameters:
   type: string
   default: '12.2'
   values:
-    - 11.8
     - 12.2
 
 variables:
@@ -427,7 +426,7 @@ stages:
   - job: IosDynamicFramework
     timeoutInMinutes: 120
     pool:
-      vmImage: "macOS-13"
+      vmImage: "macOS-14"
 
     steps:
     - task: UsePythonVersion@0
@@ -463,7 +462,7 @@ stages:
   - job: IosMinimalTrainingBuild
     timeoutInMinutes: 120
     pool:
-      vmImage: "macOS-13"
+      vmImage: "macOS-14"
 
     steps:
     - task: UsePythonVersion@0

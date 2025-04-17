@@ -7,13 +7,15 @@ stages:
 - stage: Python_Publishing_GPU
   jobs:
   - job: Python_Publishing_GPU
-    pool: 'onnxruntime-Ubuntu2204-AMD-CPU'
+    pool:
+      name: 'onnxruntime-Ubuntu2204-AMD-CPU'
+      os: linux
     steps:
     - checkout: none
     - download: build
       displayName: 'Download Pipeline Artifact'
       artifact: 'whl'
-      
+
     - task: UsePythonVersion@0
       inputs:
         versionSpec: '3.13'

@@ -76,6 +76,10 @@ class BaseOpBuilder : public IOpBuilder {
                                std::vector<std::string>& input_names,
                                bool do_op_validation = false) const ORT_MUST_USE_RESULT;
 
+  Status ProcessInt64Tensors(QnnModelWrapper& qnn_model_wrapper,
+                             const NodeUnit& node_unit,
+                             std::vector<std::string>& input_names) const ORT_MUST_USE_RESULT;
+
   virtual Status ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_wrapper,
                                              const NodeUnit& node_unit,
                                              std::vector<std::string>&& input_names,
@@ -158,6 +162,7 @@ class BaseOpBuilder : public IOpBuilder {
         {"Softmax", QNN_OP_SOFTMAX},
         {"Sqrt", QNN_OP_ELEMENT_WISE_SQUARE_ROOT},
         {"Sub", QNN_OP_ELEMENT_WISE_SUBTRACT},
+        {"Sum", QNN_OP_ELEMENT_WISE_ADD},
         {"Tanh", QNN_OP_TANH},
         {"Transpose", QNN_OP_TRANSPOSE},
         {"GridSample", QNN_OP_GRID_SAMPLE},

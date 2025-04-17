@@ -2,7 +2,15 @@
 convention = "google"
 
 [tool.pyright]
-exclude = ["onnxruntime/core/flatbuffers/*"]
+exclude = [
+    "onnxruntime/core/flatbuffers/*",
+    "cmake/external/**",
+    "**/node_modules/**",
+    "**/__pycache__/**",
+    "**/build/**",
+    "**/build_*/**",
+    "**/.DS_Store/**",
+]
 reportMissingImports = false
 
 [tool.ruff]

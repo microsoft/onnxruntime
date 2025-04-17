@@ -36,10 +36,7 @@ elseif(onnxruntime_ENABLE_TRITON)
 endif()
 
 if (onnxruntime_MINIMAL_BUILD)
-  set(onnxruntime_framework_src_exclude
-    "${ONNXRUNTIME_ROOT}/core/framework/fallback_cpu_capability.h"
-    "${ONNXRUNTIME_ROOT}/core/framework/fallback_cpu_capability.cc"
-  )
+  set(onnxruntime_framework_src_exclude)
 
   # custom ops support must be explicitly enabled in a minimal build. exclude if not.
   if (NOT onnxruntime_MINIMAL_BUILD_CUSTOM_OPS)
@@ -79,9 +76,6 @@ if (onnxruntime_ENABLE_TRAINING_OPS)
   if (onnxruntime_ENABLE_TRAINING_TORCH_INTEROP OR onnxruntime_ENABLE_TRITON)
     onnxruntime_add_include_to_target(onnxruntime_framework Python::Module dlpack::dlpack)
   endif()
-endif()
-if (onnxruntime_USE_MPI)
-  target_include_directories(onnxruntime_framework PUBLIC ${MPI_CXX_INCLUDE_DIRS})
 endif()
 
 if (onnxruntime_ENABLE_ATEN)

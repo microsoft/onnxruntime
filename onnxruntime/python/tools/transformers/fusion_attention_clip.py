@@ -126,7 +126,10 @@ class FusionAttentionClip(FusionAttention):
                 if node_before_layer_norm is None:
                     continue
                 child = self.model.find_first_child_by_type(
-                    node_before_layer_norm, "LayerNormalization", input_name_to_nodes, False
+                    node_before_layer_norm,
+                    "LayerNormalization",
+                    input_name_to_nodes,
+                    False,
                 )
                 if child is None:
                     continue
@@ -146,19 +149,26 @@ class FusionAttentionClip(FusionAttention):
             qkv_nodes = self.model.match_parent_path(
                 normalize_node,
                 ["Add", "MatMul", "Reshape", "Transpose", "MatMul"],
-                [1, 1, 0, 0, 0],
+                [1, None, 0, 0, 0],
             )
             if qkv_nodes is None:
                 logger.debug("fuse_attention: failed to match qkv path")
                 return
-
-        reshape_qkv, transpose_qkv, matmul_qkv = qkv_nodes[2], qkv_nodes[3], qkv_nodes[-1]
+        reshape_qkv, transpose_qkv, matmul_qkv = (
+            qkv_nodes[2],
+            qkv_nodes[3],
+            qkv_nodes[-1],
+        )
 
         v_nodes = self.model.match_parent_path(
-            matmul_qkv, ["Reshape", "Transpose", "Reshape", "Add", "MatMul"], [1, 0, 0, 0, None]
+            matmul_qkv,
+            ["Reshape", "Transpose", "Reshape", "Add", "MatMul"],
+            [1, 0, 0, 0, None],
         )
         if v_nodes is None:
-            v_nodes = self.model.match_parent_path(matmul_qkv, ["Transpose", "Reshape", "Add", "MatMul"], [1, 0, 0, 1])
+            v_nodes = self.model.match_parent_path(
+                matmul_qkv, ["Transpose", "Reshape", "Add", "MatMul"], [1, 0, 0, None]
+            )
             if v_nodes is None:
                 logger.debug("fuse_attention: failed to match v path")
                 return
@@ -182,17 +192,30 @@ class FusionAttentionClip(FusionAttention):
             )
             if qk_nodes is None:
                 qk_nodes = self.model.match_parent_path(matmul_qkv, ["Softmax", "Add", "Mul", "MatMul"], [0, 0, 0, 0])
-                if qk_nodes is None:
-                    qk_nodes = self.model.match_parent_path(
-                        matmul_qkv, ["Cast", "Cast", "Softmax", "Add", "Mul", "MatMul"], [0, 0, 0, 0, 0, 0]
-                    )
-                    if qk_nodes is None:
-                        logger.debug("fuse_attention: failed to match qk path")
-                        return
-                    else:
-                        add_mask = qk_nodes[3]
-                else:
+                if qk_nodes is not None:
                     add_mask = qk_nodes[1]
+                else:
+                    # If attention mask is not used, we can still match the qk path.
+                    qk_nodes = self.model.match_parent_path(matmul_qkv, ["Softmax", "Mul", "MatMul"], [0, 0, 0])
+                    if qk_nodes is None:
+                        # Cast nodes are added in the model for fp16.
+                        qk_nodes = self.model.match_parent_path(
+                            matmul_qkv,
+                            ["Cast", "Cast", "Softmax", "Add", "Mul", "MatMul"],
+                            [0, 0, 0, 0, 0, 0],
+                        )
+                        if qk_nodes is not None:
+                            add_mask = qk_nodes[3]
+                        else:
+                            # If attention mask is not used, we can still match the qk path.
+                            qk_nodes = self.model.match_parent_path(
+                                matmul_qkv,
+                                ["Cast", "Cast", "Softmax", "Mul", "MatMul"],
+                                [0, 0, 0, 0, 0],
+                            )
+                            if qk_nodes is None:
+                                logger.debug("fuse_attention: failed to match qk path")
+                                return
         else:
             assert len(add_mask_indices) == 1
             causal_mask_input_index = 1 - add_mask_indices[0]
@@ -201,10 +224,14 @@ class FusionAttentionClip(FusionAttention):
         matmul_qk = qk_nodes[-1]
 
         q_nodes = self.model.match_parent_path(
-            matmul_qk, ["Reshape", "Transpose", "Reshape", "Mul", "Add", "MatMul"], [0, 0, 0, 0, None, None]
+            matmul_qk,
+            ["Reshape", "Transpose", "Reshape", "Mul", "Add", "MatMul"],
+            [0, 0, 0, 0, None, None],
         )
         if q_nodes is None:
-            q_nodes = self.model.match_parent_path(matmul_qk, ["Transpose", "Reshape", "Add", "MatMul"], [0, 0, 0, 1])
+            q_nodes = self.model.match_parent_path(
+                matmul_qk, ["Transpose", "Reshape", "Add", "MatMul"], [0, 0, 0, None]
+            )
             if q_nodes is None:
                 logger.debug("fuse_attention: failed to match q path")
                 return
@@ -216,10 +243,14 @@ class FusionAttentionClip(FusionAttention):
         add_q, matmul_q = q_nodes[-2], q_nodes[-1]
 
         k_nodes = self.model.match_parent_path(
-            matmul_qk, ["Transpose", "Reshape", "Transpose", "Reshape", "Add", "MatMul"], [1, 0, 0, 0, 0, None]
+            matmul_qk,
+            ["Transpose", "Reshape", "Transpose", "Reshape", "Add", "MatMul"],
+            [1, 0, 0, 0, 0, None],
         )
         if k_nodes is None:
-            k_nodes = self.model.match_parent_path(matmul_qk, ["Transpose", "Reshape", "Add", "MatMul"], [1, 0, 0, 1])
+            k_nodes = self.model.match_parent_path(
+                matmul_qk, ["Transpose", "Reshape", "Add", "MatMul"], [1, 0, 0, None]
+            )
             if k_nodes is None:
                 logger.debug("fuse_attention: failed to match k path")
                 return
@@ -242,7 +273,17 @@ class FusionAttentionClip(FusionAttention):
             # 4D Add after Q x K'
             add_qk_nodes = self.model.match_parent_path(
                 add_mask,
-                ["Where", "Sub", "Cast", "Expand", "Unsqueeze", "Unsqueeze", "Reshape", "Reshape", "Cast"],
+                [
+                    "Where",
+                    "Sub",
+                    "Cast",
+                    "Expand",
+                    "Unsqueeze",
+                    "Unsqueeze",
+                    "Reshape",
+                    "Reshape",
+                    "Cast",
+                ],
                 [1, 2, 1, 0, 0, 0, 0, 0, 0],
             )
             if add_qk_nodes is not None:

@@ -105,14 +105,6 @@ describe('Tensor Constructor Tests - check types', () => {
     assert(tensor.data instanceof Uint8Array, "tensor.data should be an instance of 'Uint8Array'");
   });
 
-  it(
-    "[float16] new Tensor('float16', numbers, dims): " +
-      "expect to throw because it's not allowed to construct 'float16' tensor from number array",
-    () => {
-      assert.throws(() => new Tensor('float16', [1, 2, 3, 4], [2, 2]), TypeError);
-    },
-  );
-
   it("[badtype] new Tensor('a', numbers, dims): expect to throw because 'a' is an invalid type", () => {
     assert.throws(() => new TensorAny('a', [1, 2, 3, 4], [2, 2]), TypeError);
   });

@@ -45,6 +45,7 @@
 #include "core/optimizer/gemm_activation_fusion.h"
 #include "core/optimizer/gemm_sum_fusion.h"
 #include "core/optimizer/gemm_transpose_fusion.h"
+#include "core/optimizer/group_query_attention_fusion.h"
 #include "core/optimizer/identical_children_consolidation.h"
 #include "core/optimizer/identity_elimination.h"
 #include "core/optimizer/label_encoder_fusion.h"
@@ -282,6 +283,8 @@ InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
       const bool enable_gelu_approximation =
           session_options.config_options.GetConfigOrDefault(kOrtSessionOptionsEnableGeluApproximation, "0") == "1";
 
+      const InlinedHashSet<std::string_view> cuda_eps = {onnxruntime::kCudaExecutionProvider};
+
       const InlinedHashSet<std::string_view> cuda_rocm_eps = {onnxruntime::kCudaExecutionProvider,
                                                               onnxruntime::kRocmExecutionProvider};
       const InlinedHashSet<std::string_view> cpu_cuda_rocm_eps = {onnxruntime::kCpuExecutionProvider,
@@ -296,17 +299,19 @@ InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
                                                                           onnxruntime::kCudaExecutionProvider,
                                                                           onnxruntime::kRocmExecutionProvider,
                                                                           onnxruntime::kDmlExecutionProvider};
-      const InlinedHashSet<std::string_view> cpu_rocm_acl_armnn_js_eps = {onnxruntime::kCpuExecutionProvider,
-                                                                          onnxruntime::kRocmExecutionProvider,
-                                                                          onnxruntime::kAclExecutionProvider,
-                                                                          onnxruntime::kArmNNExecutionProvider,
-                                                                          onnxruntime::kJsExecutionProvider};
-      const InlinedHashSet<std::string_view> cpu_cuda_rocm_acl_armnn_js_eps = {onnxruntime::kCpuExecutionProvider,
-                                                                               onnxruntime::kCudaExecutionProvider,
-                                                                               onnxruntime::kRocmExecutionProvider,
-                                                                               onnxruntime::kAclExecutionProvider,
-                                                                               onnxruntime::kArmNNExecutionProvider,
-                                                                               onnxruntime::kJsExecutionProvider};
+      const InlinedHashSet<std::string_view> cpu_rocm_acl_armnn_js_webgpu_eps = {onnxruntime::kCpuExecutionProvider,
+                                                                                 onnxruntime::kRocmExecutionProvider,
+                                                                                 onnxruntime::kAclExecutionProvider,
+                                                                                 onnxruntime::kArmNNExecutionProvider,
+                                                                                 onnxruntime::kJsExecutionProvider,
+                                                                                 onnxruntime::kWebGpuExecutionProvider};
+      const InlinedHashSet<std::string_view> cpu_cuda_rocm_acl_armnn_js_webgpu_eps = {onnxruntime::kCpuExecutionProvider,
+                                                                                      onnxruntime::kCudaExecutionProvider,
+                                                                                      onnxruntime::kRocmExecutionProvider,
+                                                                                      onnxruntime::kAclExecutionProvider,
+                                                                                      onnxruntime::kArmNNExecutionProvider,
+                                                                                      onnxruntime::kJsExecutionProvider,
+                                                                                      onnxruntime::kWebGpuExecutionProvider};
       const InlinedHashSet<std::string_view> cpu_dml_acl_eps = {onnxruntime::kCpuExecutionProvider,
                                                                 onnxruntime::kDmlExecutionProvider,
                                                                 onnxruntime::kAclExecutionProvider};
@@ -338,7 +343,7 @@ InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
       transformers.emplace_back(std::make_unique<MatMulIntegerToFloatFusion>(cpu_dml_acl_eps));
       transformers.emplace_back(std::make_unique<DynamicQuantizeMatMulFusion>(cpu_acl_eps));
 
-      transformers.emplace_back(std::make_unique<ConvActivationFusion>(cpu_rocm_acl_armnn_js_eps));
+      transformers.emplace_back(std::make_unique<ConvActivationFusion>(cpu_rocm_acl_armnn_js_webgpu_eps));
 
       transformers.emplace_back(std::make_unique<GeluFusion>(cpu_acl_cuda_dml_rocm_eps, level));
       transformers.emplace_back(std::make_unique<LayerNormFusion>(cpu_acl_cuda_dml_rocm_eps, level));
@@ -350,6 +355,8 @@ InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
 
       transformers.emplace_back(std::make_unique<MatmulTransposeFusion>(cpu_cuda_dml_rocm_eps));
       transformers.emplace_back(std::make_unique<BiasGeluFusion>(cpu_acl_cuda_dml_rocm_eps));
+
+      transformers.emplace_back(std::make_unique<GroupQueryAttentionFusion>(cuda_eps));
 
       transformers.emplace_back(std::make_unique<SkipLayerNormFusion>(cpu_acl_cuda_dml_rocm_eps));
 

@@ -22,12 +22,7 @@ static void RunFlattenTestOnCPU(const TestInputDef<DataType>& input_def,
                                 ExpectedEPNodeAssignment expected_ep_assignment,
                                 int opset = 13) {
   ProviderOptions provider_options;
-
-#if defined(_WIN32)
-  provider_options["backend_path"] = "QnnCpu.dll";
-#else
-  provider_options["backend_path"] = "libQnnCpu.so";
-#endif
+  provider_options["backend_type"] = "cpu";
 
   RunQnnModelTest(BuildOpTestCase<DataType>("Flatten", {input_def}, {}, attrs),
                   provider_options,
@@ -73,12 +68,7 @@ static void RunFlattenTestOnHTP(const TestInputDef<DataType>& input_def,
                                 ExpectedEPNodeAssignment expected_ep_assignment,
                                 int opset = 13) {
   ProviderOptions provider_options;
-
-#if defined(_WIN32)
-  provider_options["backend_path"] = "QnnHtp.dll";
-#else
-  provider_options["backend_path"] = "libQnnHtp.so";
-#endif
+  provider_options["backend_type"] = "htp";
 
   RunQnnModelTest(BuildOpTestCase<DataType>("Flatten", {input_def}, {}, attrs),
                   provider_options,
@@ -95,12 +85,7 @@ static void RunQDQFlattenTestOnHTP(const TestInputDef<float>& input_def,
                                    int opset = 13,
                                    bool use_contrib_qdq = false) {
   ProviderOptions provider_options;
-
-#if defined(_WIN32)
-  provider_options["backend_path"] = "QnnHtp.dll";
-#else
-  provider_options["backend_path"] = "libQnnHtp.so";
-#endif
+  provider_options["backend_type"] = "htp";
   provider_options["offload_graph_io_quantization"] = "0";
 
   auto f32_model_builder = BuildOpTestCase<float>("Flatten", {input_def}, {}, attrs);
@@ -167,12 +152,7 @@ TEST_F(QnnHTPBackendTests, Flatten_QDQ8bit_Rank5) {
   };
 
   ProviderOptions provider_options;
-
-#if defined(_WIN32)
-  provider_options["backend_path"] = "QnnHtp.dll";
-#else
-  provider_options["backend_path"] = "libQnnHtp.so";
-#endif
+  provider_options["backend_type"] = "htp";
   provider_options["offload_graph_io_quantization"] = "0";
 
   RunQnnModelTest(model_fn,

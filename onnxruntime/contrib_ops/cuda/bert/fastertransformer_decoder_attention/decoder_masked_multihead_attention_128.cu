@@ -29,34 +29,36 @@ namespace cuda {
 using namespace decoder_masked_self_attention_details;
 
 #define MMHA_LAUNCH_KERNEL(                                                                        \
-    T, head_size, THDS_PER_KEY, THDS_PER_VALUE, THDS_PER_BLOCK)                                    \
+    T, QK, head_size, THDS_PER_KEY, THDS_PER_VALUE, THDS_PER_BLOCK)                                \
   size_t dynamic_block_memory = CalcDynamicBlockMemory<T>(params, THDS_PER_VALUE, THDS_PER_BLOCK); \
   dim3 grid(params.num_heads, params.batch_size);                                                  \
   masked_multihead_attention_kernel<T,                                                             \
+                                    QK,                                                            \
                                     head_size,                                                     \
                                     THDS_PER_KEY,                                                  \
                                     THDS_PER_VALUE,                                                \
                                     THDS_PER_BLOCK>                                                \
       <<<grid, THDS_PER_BLOCK, dynamic_block_memory, stream>>>(params)
 
-template <typename T, int head_size>
-void mmha_launch_kernel(const DecoderMaskedMultiHeadAttentionParams& params, cudaStream_t stream) {
+template <typename T, typename QK, int head_size>
+void mmha_launch_kernel(const DecoderMaskedMultiHeadAttentionParameters& params, cudaStream_t stream) {
   constexpr int THREADS_PER_VALUE = ThreadsPerValue<T, head_size>::value;
   int total_sequence_length = params.total_sequence_length;
 
   if (total_sequence_length < 32) {
-    MMHA_LAUNCH_KERNEL(T, head_size, 4, THREADS_PER_VALUE, 64);
+    MMHA_LAUNCH_KERNEL(T, QK, head_size, 4, THREADS_PER_VALUE, 64);
   } else if (total_sequence_length < 2048) {
-    MMHA_LAUNCH_KERNEL(T, head_size, 2, THREADS_PER_VALUE, 128);
+    MMHA_LAUNCH_KERNEL(T, QK, head_size, 2, THREADS_PER_VALUE, 128);
   } else {
-    MMHA_LAUNCH_KERNEL(T, head_size, 1, THREADS_PER_VALUE, 256);
+    MMHA_LAUNCH_KERNEL(T, QK, head_size, 1, THREADS_PER_VALUE, 256);
   }
 }
 
 // Instantiate templates
-template void mmha_launch_kernel<float, 128>(const DecoderMaskedMultiHeadAttentionParams& params, cudaStream_t stream);
-
-template void mmha_launch_kernel<uint16_t, 128>(const DecoderMaskedMultiHeadAttentionParams& params, cudaStream_t stream);
+template void mmha_launch_kernel<float, float, 128>(const DecoderMaskedMultiHeadAttentionParameters& params, cudaStream_t stream);
+template void mmha_launch_kernel<float, half, 128>(const DecoderMaskedMultiHeadAttentionParameters& params, cudaStream_t stream);
+template void mmha_launch_kernel<uint16_t, float, 128>(const DecoderMaskedMultiHeadAttentionParameters& params, cudaStream_t stream);
+template void mmha_launch_kernel<uint16_t, half, 128>(const DecoderMaskedMultiHeadAttentionParameters& params, cudaStream_t stream);
 
 }  // namespace cuda
 }  // namespace contrib

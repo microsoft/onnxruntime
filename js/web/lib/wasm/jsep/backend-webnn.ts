@@ -12,7 +12,7 @@ import { DataType } from '../wasm-common';
 import { getInstance } from '../wasm-factory';
 
 import { createView } from './tensor-view';
-import { TensorId, createTensorManager } from './webnn/tensor-manager';
+import { TensorId, createTensorManager, convertInt64ToInt32 } from './webnn/tensor-manager';
 import { configureLogger, LOG_DEBUG } from './log';
 
 /*
@@ -80,10 +80,19 @@ export class WebNNBackend {
    */
   private sessionGraphInputs: Map<number, string[]> = new Map();
   /**
+   * Maps from session id to list of graph outputs.
+   */
+  private sessionGraphOutputs: Map<number, string[]> = new Map();
+  /**
    * Temporary graph inputs for the current session.
    * These inputs will be registered when the session is created.
    */
   private temporaryGraphInputs: string[] = [];
+  /**
+   * Temporary graph outputs for the current session.
+   * These outputs will be registered when the session is created.
+   */
+  private temporaryGraphOutputs: string[] = [];
   /**
    * Temporary tensors for the current session.
    */
@@ -167,10 +176,15 @@ export class WebNNBackend {
       this.sessionGraphInputs.set(sessionId, this.temporaryGraphInputs);
       this.temporaryGraphInputs = [];
     }
+    if (this.temporaryGraphOutputs.length > 0) {
+      this.sessionGraphOutputs.set(sessionId, this.temporaryGraphOutputs);
+      this.temporaryGraphOutputs = [];
+    }
   }
 
   public onReleaseSession(sessionId: number): void {
     this.sessionGraphInputs.delete(sessionId);
+    this.sessionGraphOutputs.delete(sessionId);
     const mlContext = this.mlContextBySessionId.get(sessionId)!;
     if (!mlContext) {
       // Current session is not a WebNN session.
@@ -288,6 +302,7 @@ export class WebNNBackend {
     builder: MLGraphBuilder,
     desc: MLOperandDescriptor,
     mountedFiles: Map<string, Uint8Array> | undefined,
+    shouldConvertInt64ToInt32 = false,
   ): MLOperand {
     // If available, "Module.MountedFiles" is a Map for all preloaded files.
     if (!mountedFiles) {
@@ -314,7 +329,8 @@ export class WebNNBackend {
         bufferView = new Float32Array(buffer);
         break;
       case 'float16':
-        bufferView = new Uint16Array(buffer);
+        bufferView =
+          typeof Float16Array !== 'undefined' && Float16Array.from ? new Float16Array(buffer) : new Uint16Array(buffer);
         break;
       case 'int32':
         bufferView = new Int32Array(buffer);
@@ -323,7 +339,13 @@ export class WebNNBackend {
         bufferView = new Uint32Array(buffer);
         break;
       case 'int64':
-        bufferView = new BigInt64Array(buffer);
+        if (shouldConvertInt64ToInt32) {
+          // Int64 is not supported by current context, use int32 instead.
+          bufferView = convertInt64ToInt32(new Uint8Array(buffer), false) as Int32Array;
+          desc.dataType = 'int32';
+        } else {
+          bufferView = new BigInt64Array(buffer);
+        }
         break;
       case 'uint64':
         bufferView = new BigUint64Array(buffer);
@@ -340,7 +362,13 @@ export class WebNNBackend {
         throw new Error(`Unsupported data type: ${desc.dataType} in creating WebNN Constant from external data.`);
     }
 
-    LOG_DEBUG('verbose', () => `[WebNN] registerMLConstant {dataType: ${desc.dataType}, shape: ${desc.shape}}}`);
+    LOG_DEBUG(
+      'verbose',
+      () =>
+        `[WebNN] registerMLConstant {dataType: ${desc.dataType}, shape: ${desc.shape}}} ${
+          shouldConvertInt64ToInt32 ? '(Note: it was int64 data type and registered to int32 as workaround)' : ''
+        }`,
+    );
 
     return builder.constant(desc, bufferView);
   }
@@ -349,12 +377,29 @@ export class WebNNBackend {
     this.temporaryGraphInputs.push(inputName);
   }
 
+  public registerGraphOutput(outputName: string): void {
+    this.temporaryGraphOutputs.push(outputName);
+  }
+
   public isGraphInput(sessionId: number, inputName: string): boolean {
     const inputNames = this.sessionGraphInputs.get(sessionId);
     if (!inputNames) {
       return false;
     }
     return inputNames.includes(inputName);
+  }
+
+  public isGraphOutput(sessionId: number, outputName: string): boolean {
+    const outputNames = this.sessionGraphOutputs.get(sessionId);
+    if (!outputNames) {
+      return false;
+    }
+    return outputNames.includes(outputName);
+  }
+
+  public isInt64Supported(sessionId: number): boolean {
+    const context = this.mlContextBySessionId.get(sessionId);
+    return !!context?.opSupportLimits().input.dataTypes.includes('int64');
   }
 
   public flush(): void {

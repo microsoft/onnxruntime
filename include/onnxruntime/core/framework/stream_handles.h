@@ -3,6 +3,7 @@
 #pragma once
 
 #include <functional>
+#include <optional>
 #include <unordered_map>
 #include "core/framework/allocator.h"
 #include "core/framework/ortdevice.h"
@@ -154,6 +155,12 @@ class Notification {
 // TODO: use a better way to dispatch handles.
 using CreateStreamFn = std::function<std::unique_ptr<Stream>(const OrtDevice&)>;
 
+// This SetDevice function is used by TRT EP or CUDA EP to handle the case where ExecutionMode::ORT_PARALLEL is enabled.
+// In that case, ORT retrieves a thread from the thread pool to run kernels for a given session.
+// Since new threads default to using device 0, but the session may be tightly bound to a device > 0,
+// This SetDevice function will be called in RunSince to ensure running kernels on a correct GPU device.
+using SetDeviceFn = std::function<void(OrtDevice::DeviceId)>;
+
 // an interface of a simple registry which hold the handles EP registered.
 // make it interface so we can pass it through shared library based execution providers
 class IStreamCommandHandleRegistry {
@@ -171,6 +178,20 @@ class IStreamCommandHandleRegistry {
                               WaitNotificationFn fn) = 0;
   // register a handle about how to create stream on given device type.
   virtual void RegisterCreateStreamFn(OrtDevice::DeviceType device_type, CreateStreamFn f) = 0;
+
+  // Register a SetDevice function.
+  // This interface is currently used by TRT EP or CUDA EP only.
+  virtual void RegisterSetDeviceFn(OrtDevice::DeviceType device_type, SetDeviceFn f) {
+    ORT_UNUSED_PARAMETER(device_type);
+    ORT_UNUSED_PARAMETER(f);
+  };
+
+  // Get a SetDevice function.
+  // This interface is currently used by TRT EP or CUDA EP only and is called in RunSince from stream execution.
+  virtual std::optional<SetDeviceFn> GetSetDeviceFn(OrtDevice::DeviceType device_type) const {
+    ORT_UNUSED_PARAMETER(device_type);
+    return std::nullopt;
+  };
 };
 
 }  // namespace onnxruntime

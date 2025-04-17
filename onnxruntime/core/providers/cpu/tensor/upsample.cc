@@ -1333,6 +1333,7 @@ Status Upsample<T>::BaseCompute(OpKernelContext* context,
       const int64_t output_width = is_2D ? output_dims[1] : (is_nchw ? output_dims[3] : output_dims[2]);
       const float height_scale = is_2D ? scales[0] : (is_nchw ? scales[2] : scales[1]);
       const float width_scale = is_2D ? scales[1] : (is_nchw ? scales[3] : scales[2]);
+      const bool is_upsampling = height_scale >= 1.0f && width_scale >= 1.0f;
 
       if (antialias_) {
         if (!is_nchw) {
@@ -1348,6 +1349,14 @@ Status Upsample<T>::BaseCompute(OpKernelContext* context,
                                  Y->MutableData<T>(), alloc, get_original_coordinate_,
                                  output_height * output_width * num_channels > 64 ? context->GetOperatorThreadPool() : nullptr);
         }
+      } else if (!is_nchw && is_upsampling) {
+        // Antialiasing has no effect during image upsampling, so the antialiasing logic can be reused as-is.
+        // TODO(yilyu): Benchmark whether is_nchw with upscaling should use ResizeBiCubicAntiAlias or ResizeBiCubic.
+        NhwcResizeBiCubicAntiAlias(batch_size, num_channels, input_height, input_width, output_height, output_width,
+                                   height_scale, width_scale, cubic_coeff_a_, use_extrapolation_,
+                                   extrapolation_value_, exclude_outside_, roi, X,
+                                   Y->MutableData<T>(), alloc, get_original_coordinate_,
+                                   output_height * output_width * num_channels > 64 ? context->GetOperatorThreadPool() : nullptr);
       } else {
         ResizeBiCubic(batch_size, num_channels, input_height, input_width, output_height, output_width,
                       height_scale, width_scale, cubic_coeff_a_, use_extrapolation_,

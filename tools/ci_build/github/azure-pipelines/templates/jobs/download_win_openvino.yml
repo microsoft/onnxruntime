@@ -1,0 +1,64 @@
+parameters:
+  - name: OpenVINOVersion
+    type: string
+    default: '2025.0.0'
+
+steps:
+  - powershell: |
+      $Url = "https://storage.openvinotoolkit.org/repositories/openvino/packages/2025.0/windows/openvino_toolkit_windows_2025.0.0.17942.1f68be9f594_x86_64.zip"
+      $OutputPath = "$env:Agent_TempDirectory\openvino.zip"
+      $ExtractPath = "$env:Agent_TempDirectory\openvino-v$env:OpenVINOVersion"
+      $TempExtractPath = "$env:Agent_TempDirectory\openvino_temp"
+
+      # Ensure directories exist
+      if (Test-Path $ExtractPath) {
+        Remove-Item -Recurse -Force $ExtractPath
+      }
+      New-Item -ItemType Directory -Path $ExtractPath | Out-Null
+      New-Item -ItemType Directory -Path $TempExtractPath | Out-Null
+
+      # Download OpenVINO ZIP
+      Write-Output "Downloading OpenVINO"
+      Invoke-WebRequest -Uri $Url -OutFile $OutputPath
+
+      # Extract to temporary directory first
+      Write-Output "Extracting OpenVINO to a temporary directory"
+      Expand-Archive -Path $OutputPath -DestinationPath $TempExtractPath -Force
+
+      # Locate the nested subdirectory
+      $InnerFolder = Get-ChildItem -Path $TempExtractPath -Directory | Select-Object -First 1
+
+      if ($InnerFolder) {
+        Write-Output "Moving extracted files to final destination"
+        Move-Item -Path "$($InnerFolder.FullName)\*" -Destination $ExtractPath -Force
+      } else {
+        Write-Error "Extraction failed: No expected subdirectory found in $TempExtractPath."
+        Write-Error "The archive may not have extracted correctly, or its structure is different than expected."
+        exit 1
+      }
+
+      # Clean up temporary files
+      Remove-Item -Recurse -Force $TempExtractPath
+      Remove-Item -Force $OutputPath
+
+      # Confirm success
+      Write-Output "OpenVINO extracted to $ExtractPath"
+    displayName: 'Download OpenVINO Toolkit v${{ parameters.OpenVINOVersion }}'
+    env:
+      OpenVINOVersion: ${{ parameters.OpenVINOVersion }}
+
+  - powershell: |
+      echo "##vso[task.setvariable variable=OpenVINORootDir]$(Agent.TempDirectory)\openvino-v${{ parameters.OpenVINOVersion }}"
+    displayName: 'Set OpenVINORootDir'
+
+  - task: CmdLine@2
+    inputs:
+      script: |
+        echo $(OpenVINORootDir)
+    displayName: 'Print OpenVINORootDir after downloading OpenVINO'
+
+  - task: CmdLine@2
+    displayName: 'Print contents of OpenVINO Toolkit'
+    inputs:
+      script: |
+        dir $(OpenVINORootDir)

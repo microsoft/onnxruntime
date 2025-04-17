@@ -74,11 +74,7 @@ static void RunWhereQDQTest(const TestInputDef<bool>& condition_def,
                             const TestInputDef<float>& y_def,
                             ExpectedEPNodeAssignment expected_ep_assignment) {
   ProviderOptions provider_options;
-#if defined(_WIN32)
-  provider_options["backend_path"] = "QnnHtp.dll";
-#else
-  provider_options["backend_path"] = "libQnnHtp.so";
-#endif
+  provider_options["backend_type"] = "htp";
   provider_options["offload_graph_io_quantization"] = "0";
 
   // Runs model with DQ-> Where -> Q and compares the outputs of the CPU and QNN EPs.

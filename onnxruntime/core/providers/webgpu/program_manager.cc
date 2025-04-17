@@ -24,14 +24,14 @@ Status ProgramManager::NormalizeDispatchGroupSize(uint32_t& x, uint32_t& y, uint
 
   auto limit_per_dimension = limits_.maxComputeWorkgroupsPerDimension;
   if (x > limit_per_dimension || y > limit_per_dimension || z > limit_per_dimension) {
-    auto size = static_cast<double>(x) * static_cast<double>(y) * static_cast<double>(z);
-    uint32_t dispatch_avg = gsl::narrow<uint32_t>(std::ceil(std::sqrt(size)));
+    double size = static_cast<double>(x) * static_cast<double>(y) * static_cast<double>(z);
+    double dispatch_avg = std::ceil(std::sqrt(size));
     if (dispatch_avg > limit_per_dimension) {
-      dispatch_avg = gsl::narrow<uint32_t>(std::ceil(std::cbrt(size)));
+      dispatch_avg = std::ceil(std::cbrt(size));
       ORT_RETURN_IF(dispatch_avg > limit_per_dimension, "The dispatch group size exceeds WebGPU maximum.");
-      x = y = z = dispatch_avg;
+      x = y = z = static_cast<uint32_t>(dispatch_avg);
     } else {
-      x = y = dispatch_avg;
+      x = y = static_cast<uint32_t>(dispatch_avg);
       z = 1;
     }
   }

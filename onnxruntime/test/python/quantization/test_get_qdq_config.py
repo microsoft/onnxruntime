@@ -156,6 +156,62 @@ class TestGetQDQConfig(unittest.TestCase):
         self.assertTrue(bool(expected_excluded_nodes))
         self.assertEqual(set(qdq_config.nodes_to_exclude), expected_excluded_nodes)
 
+    def test_op_types_to_quantize(self):
+        """
+        Test that get_qdq_config() returns a config that sets the op_types_to_quantize arg.
+        """
+        shape = [1, 8, 8]
+        tensor_type = onnx.TensorProto.FLOAT
+        np_dtype = onnx.helper.tensor_dtype_to_np_dtype(tensor_type)
+        weight = onnx.numpy_helper.from_array(np.ones(shape, dtype=np_dtype), "weight")
+        float_model = self.build_add_model(shape, tensor_type, weight)
+
+        input_data_list = [
+            {"input_0": np.ones(shape, dtype=np_dtype) * np.array(-2, dtype=np_dtype)},
+            {"input_0": np.ones(shape, dtype=np_dtype) * np.array(2, dtype=np_dtype)},
+        ]
+        data_reader = TestDataFeeds(input_data_list)
+
+        # No op_types_to_quantize arg means all ops are quantized.
+        qdq_config = get_qdq_config(float_model, data_reader, op_types_to_quantize=None)
+        self.assertEqual(set(qdq_config.op_types_to_quantize), {"Add"})
+
+        # specify custom op_types_to_quantize arg.
+        qdq_config = get_qdq_config(float_model, data_reader, op_types_to_quantize=["Mul"])
+        self.assertEqual(set(qdq_config.op_types_to_quantize), {"Mul"})
+
+        # exclude op_type indirectly by specifying nodes_to_exclude arg.
+        qdq_config = get_qdq_config(
+            float_model,
+            data_reader,
+            nodes_to_exclude=[node.name for node in float_model.graph.node if node.op_type == "Add"],
+        )
+        self.assertEqual(set(qdq_config.op_types_to_quantize), set())
+
+    def test_calibration_providers(self):
+        """
+        Test that get_qdq_config() returns a config that sets the calibration providers arg.
+        """
+
+        shape = [1, 8, 8]
+        tensor_type = onnx.TensorProto.FLOAT
+        np_dtype = onnx.helper.tensor_dtype_to_np_dtype(tensor_type)
+        weight = onnx.numpy_helper.from_array(np.ones(shape, dtype=np_dtype), "weight")
+        float_model = self.build_add_model(shape, tensor_type, weight)
+
+        input_data_list = [
+            {"input_0": np.ones(shape, dtype=np_dtype) * np.array(-2, dtype=np_dtype)},
+            {"input_0": np.ones(shape, dtype=np_dtype) * np.array(2, dtype=np_dtype)},
+        ]
+        data_reader = TestDataFeeds(input_data_list)
+
+        qdq_config = get_qdq_config(
+            float_model,
+            data_reader,
+            calibration_providers=["CPUExecutionProvider"],
+        )
+        self.assertEqual(qdq_config.calibration_providers, ["CPUExecutionProvider"])
+
     def test_external_data(self):
         """
         Test that get_qdq_config() returns a config that enables external data

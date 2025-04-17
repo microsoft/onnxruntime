@@ -8,7 +8,6 @@
 #include "core/common/common.h"
 #include "core/common/inlined_containers.h"
 #include "core/common/logging/logging.h"
-#include "core/common/safeint.h"
 #include "core/graph/onnx_protobuf.h"
 #include "core/providers/common.h"
 #include "model.h"
@@ -157,7 +156,7 @@ onnxruntime::common::Status Model::Compute(const InlinedHashMap<std::string, Onn
 
 onnxruntime::common::Status Model::Dispatch(const InlinedHashMap<std::string, OnnxTensorData>& inputs,
                                             const InlinedHashMap<std::string, OnnxTensorData>& outputs) {
-  auto jsepEnsureTensor = emscripten::val::module_property("jsepEnsureTensor");
+  auto webnnEnsureTensor = emscripten::val::module_property("webnnEnsureTensor");
   auto promises = emscripten::val::array();
   bool trace = emscripten::val::module_property("traceEvent").as<bool>();
   emscripten::val console = emscripten::val::global("console");
@@ -170,7 +169,7 @@ onnxruntime::common::Status Model::Dispatch(const InlinedHashMap<std::string, On
       uint32_t dim_val = SafeInt<uint32_t>(dim);
       shape.call<void>("push", dim_val);
     }
-    auto ml_tensor = jsepEnsureTensor(emscripten::val::undefined(), reinterpret_cast<intptr_t>(tensor.buffer), tensor.tensor_info.data_type, shape, true);
+    auto ml_tensor = webnnEnsureTensor(emscripten::val::undefined(), reinterpret_cast<intptr_t>(tensor.buffer), tensor.tensor_info.data_type, shape, true);
     promises.call<void>("push", ml_tensor);
   }
   for (const auto& [_, tensor] : outputs) {
@@ -179,7 +178,7 @@ onnxruntime::common::Status Model::Dispatch(const InlinedHashMap<std::string, On
       uint32_t dim_val = SafeInt<uint32_t>(dim);
       shape.call<void>("push", dim_val);
     }
-    auto ml_tensor = jsepEnsureTensor(emscripten::val::undefined(), reinterpret_cast<intptr_t>(tensor.buffer), tensor.tensor_info.data_type, shape, false);
+    auto ml_tensor = webnnEnsureTensor(emscripten::val::undefined(), reinterpret_cast<intptr_t>(tensor.buffer), tensor.tensor_info.data_type, shape, false);
     promises.call<void>("push", ml_tensor);
   }
   if (trace) {

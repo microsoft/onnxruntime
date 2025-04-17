@@ -58,11 +58,7 @@ static void RunQDQGatherOpTest(const TestInputDef<float>& input_def,
                                ExpectedEPNodeAssignment expected_ep_assignment,
                                bool use_contrib_qdq = false) {
   ProviderOptions provider_options;
-#if defined(_WIN32)
-  provider_options["backend_path"] = "QnnHtp.dll";
-#else
-  provider_options["backend_path"] = "libQnnHtp.so";
-#endif
+  provider_options["backend_type"] = "htp";
   provider_options["offload_graph_io_quantization"] = "0";
 
   auto f32_model_builder = BuildOpTestCase<float, IndicesType>("Gather", {input_def}, {indices_def}, attrs);
@@ -170,11 +166,7 @@ static void RunOpTest(const std::string& op_type,
                       const std::string& op_domain = kOnnxDomain,
                       float fp32_abs_err = 1e-3f) {
   ProviderOptions provider_options;
-#if defined(_WIN32)
-  provider_options["backend_path"] = "QnnHtp.dll";
-#else
-  provider_options["backend_path"] = "libQnnHtp.so";
-#endif
+  provider_options["backend_type"] = "htp";
   provider_options["offload_graph_io_quantization"] = "0";
 
   // Runs model with a Q/DQ binary op and compares the outputs of the CPU and QNN EPs.

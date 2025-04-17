@@ -52,6 +52,11 @@ class SimpleTest {
         runSigmoidModelTestImpl(1, OrtProvider.QNN)
     }
 
+    @Test
+    fun runSigmoidModelTestWEBGPU() {
+        runSigmoidModelTestImpl(1, OrtProvider.WEBGPU)
+    }
+
     @Throws(IOException::class)
     private fun readModel(fileName: String): ByteArray {
         return InstrumentationRegistry.getInstrumentation().context.assets.open(fileName)
@@ -82,12 +87,20 @@ class SimpleTest {
 
                 OrtProvider.QNN -> {
                     if (OrtEnvironment.getAvailableProviders().contains(OrtProvider.QNN)) {
-                        // Since this is running in an Android environment, we use the .so library
-                        val qnnLibrary = "libQnnHtp.so"
-                        val providerOptions = Collections.singletonMap("backend_path", qnnLibrary)
+                        val providerOptions = Collections.singletonMap("backend_type", "htp")
                         opts.addQnn(providerOptions)
                     } else {
                         Log.println(Log.INFO, TAG, "NO QNN EP available, skip the test")
+                        return
+                    }
+                }
+
+                OrtProvider.WEBGPU -> {
+                    if (OrtEnvironment.getAvailableProviders().contains(OrtProvider.WEBGPU)) {
+                        val providerOptions = Collections.emptyMap<String, String>()
+                        opts.addWebGPU(providerOptions)
+                    } else {
+                        Log.println(Log.INFO, TAG, "NO WEBGPU EP available, skip the test")
                         return
                     }
                 }

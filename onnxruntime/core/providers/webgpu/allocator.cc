@@ -13,10 +13,15 @@ void* GpuBufferAllocator::Alloc(size_t size) {
     return nullptr;
   }
 
-  auto buffer = context_.BufferManager().Create(size);
-
   stats_.num_allocs++;
-  return buffer;
+
+#if !defined(__wasm__)
+  if (!session_initialized_ && context_.DeviceHasFeature(wgpu::FeatureName::BufferMapExtendedUsages)) {
+    return context_.BufferManager().CreateUMA(size);
+  }
+#endif  // !defined(__wasm__)
+
+  return context_.BufferManager().Create(size);
 }
 
 void GpuBufferAllocator::Free(void* p) {
@@ -28,6 +33,10 @@ void GpuBufferAllocator::Free(void* p) {
 
 void GpuBufferAllocator::GetStats(AllocatorStats* stats) {
   *stats = stats_;
+}
+
+void GpuBufferAllocator::OnSessionInitializationEnd() {
+  session_initialized_ = true;
 }
 
 }  // namespace webgpu

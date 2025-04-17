@@ -1,0 +1,192 @@
+parameters:
+  BuildCommand: ''
+  StageName: 'Windows_Nodejs_Packaging'
+  ArtifactName: 'drop-onnxruntime-nodejs-win'
+  DoEsrp: 'false'
+  BuildArch: 'x64' # Optional. Options: x86, x64
+  sln_platform: 'x64' # Options: Win32, x64, arm, arm64
+  AgentDemands: []
+  BuildConfigurations: ['RelWithDebInfo'] # Options: Debug, RelWithDebInfo
+  EnableLto: true
+  # Controls whether unreleased onnx opsets are allowed. Default is set to 1
+  AllowReleasedOpsetOnly: '0'
+  IsReleaseBuild: false
+  PublishWebGpuBuildTools: false
+  WebGpuBuildToolsArtifactName: 'Windows_WebGPU_BuildTools_x64'
+  DependsOnStageName: ''
+
+stages:
+- stage: ${{ parameters.StageName }}
+  dependsOn:
+  - Setup
+  - ${{ if ne(parameters.DependsOnStageName, '') }}:
+    - ${{ parameters.DependsOnStageName }}
+
+  jobs:
+  - job: ${{ parameters.StageName }}
+    timeoutInMinutes: 200
+    strategy:
+      maxParallel: 2
+      matrix:
+        ${{ each BuildConfiguration in parameters.BuildConfigurations }}:
+          ${{ BuildConfiguration }}:
+            BuildConfig: ${{ BuildConfiguration }}
+    workspace:
+      clean: all
+    pool:
+      name: onnxruntime-Win-CPU-2022
+      demands: ${{ parameters.AgentDemands }}
+    variables:
+      buildDirectory: '$(Build.BinariesDirectory)'
+      OnnxRuntimeBuildDirectory: '$(Build.BinariesDirectory)'
+      runCodesignValidationInjection: ${{ parameters. DoEsrp}} #For the others, code sign is in a separated job
+      DOTNET_SKIP_FIRST_TIME_EXPERIENCE: true
+      ALLOW_RELEASED_ONNX_OPSET_ONLY: ${{ parameters.AllowReleasedOpsetOnly }}
+      BuildDate : $[stageDependencies.Setup.Set_Variables.outputs['Set_Build_Date.BuildDate']]
+      BuildTime : $[stageDependencies.Setup.Set_Variables.outputs['Set_Build_Time.BuildTime']]
+      BuildCommandExtra: ''
+      ${{ if eq(parameters.EnableLto, true) }}:
+        build_py_lto_flag: --enable_lto
+
+    steps:
+      - checkout: self
+        clean: true
+        submodules: none
+
+      - powershell: |
+          if($env:TELEMETRYGUID)
+          {
+            $length = $env:TELEMETRYGUID.length
+            $fileContent = "#define TraceLoggingOptionMicrosoftTelemetry() \
+              TraceLoggingOptionGroup("+$env:TELEMETRYGUID.substring(1, $length-2)+")"
+            New-Item -Path "$(Build.SourcesDirectory)\include\onnxruntime\core\platform\windows\TraceLoggingConfigPrivate.h" -ItemType "file" -Value "$fileContent" -Force
+            Write-Output "Enabling TELEMETRY"
+          }
+        displayName: 'Create TraceLoggingConfigPrivate.h For WinML Telemetry'
+        env:
+          TELEMETRYGUID: $(TELEMETRYGUID)
+
+      - task: NodeTool@0
+        inputs:
+          versionSpec: '20.x'
+
+      - task: UsePythonVersion@0
+        inputs:
+          versionSpec: '3.12'
+          addToPath: true
+          architecture: ${{ parameters.BuildArch }}
+
+      # need to set PROCESSOR_ARCHITECTURE so the x86 SDK is installed correctly
+      - task: UseDotNet@2
+        inputs:
+          version: 8.x
+        env:
+          PROCESSOR_ARCHITECTURE: ${{ parameters.BuildArch }}
+
+      - task: BatchScript@1
+        displayName: 'Setup VS2022 env vars'
+        inputs:
+          filename: 'C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Auxiliary\Build\vcvarsall.bat'
+          arguments: ${{ parameters.BuildArch }}
+          modifyEnvironment: true
+
+      - ${{ if and(ne(parameters.WebGpuBuildToolsArtifactName, ''), eq(parameters.sln_platform, 'arm64')) }}:
+        - task: DownloadPipelineArtifact@2
+          displayName: 'Download WebGPU build tools from x64 build'
+          inputs:
+            artifactName: '${{ parameters.WebGpuBuildToolsArtifactName }}'
+            targetPath: '$(Build.BinariesDirectory)\${{ parameters.WebGpuBuildToolsArtifactName }}'
+        - script: |
+            @echo ##vso[task.setvariable variable=LLVM_TABLEGEN_PATH]$(Build.BinariesDirectory)\${{ parameters.WebGpuBuildToolsArtifactName }}\llvm-tblgen.exe
+            @echo ##vso[task.setvariable variable=CLANG_TABLEGEN_PATH]$(Build.BinariesDirectory)\${{ parameters.WebGpuBuildToolsArtifactName }}\clang-tblgen.exe
+          displayName: 'Set tablegen paths'
+        - powershell: |
+            Write-Host "Using LLVM_TABLEGEN_PATH: $(LLVM_TABLEGEN_PATH)"
+            Write-Host "Using CLANG_TABLEGEN_PATH: $(CLANG_TABLEGEN_PATH)"
+            Write-Host "##vso[task.setvariable variable=BuildCommandExtra]--cmake_extra_defines LLVM_TABLEGEN=$(LLVM_TABLEGEN_PATH) CLANG_TABLEGEN=$(CLANG_TABLEGEN_PATH)"
+          displayName: 'Set build flags for WebGPU cross-compilation'
+
+      - powershell: |
+          python tools\ci_build\build.py --build_dir $(Build.BinariesDirectory) ${{ parameters.BuildCommand }} $(BuildCommandExtra) --use_binskim_compliant_compile_flags --parallel --build --update --config $(BuildConfig) --msbuild_extra_options IncludeMobileTargets=false ${{ variables.build_py_lto_flag }}
+
+      - ${{ if notIn(parameters['sln_platform'], 'Win32', 'x64') }}:
+        # Use cross-compiled protoc
+        - script: |
+           @echo ##vso[task.setvariable variable=ProtocDirectory]$(Build.BinariesDirectory)\installed\bin
+
+      # The Configuration variable is required to build C#
+      - script: |
+         @echo ##vso[task.setvariable variable=Configuration]$(BuildConfig)
+        displayName: 'Set Configuration variable'
+
+      # Node.js Publish
+      - task: BatchScript@1
+        displayName: 'Setup VS env vars'
+        inputs:
+          filename: 'C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Auxiliary\Build\vcvarsall.bat'
+          arguments: ${{ parameters.BuildArch }}
+          modifyEnvironment: true
+      - task: CopyFiles@2
+        displayName: 'Copy DirectML binaries to: $(Build.SourcesDirectory)\js\node\bin\napi-v6\win32\${{ parameters.sln_platform }}'
+        inputs:
+          SourceFolder: '$(Build.BinariesDirectory)\$(BuildConfig)\$(BuildConfig)'
+          Contents: 'DirectML.dll'
+          TargetFolder: '$(Build.SourcesDirectory)\js\node\bin\napi-v6\win32\${{ parameters.sln_platform }}'
+      - powershell: |
+          $dxcZipUrl = "https://github.com/microsoft/DirectXShaderCompiler/releases/download/v1.8.2502/dxc_2025_02_20.zip"
+          $dxcZipPath = "$(Build.BinariesDirectory)\dxc.zip"
+          $dxcExtractPath = "$(Build.BinariesDirectory)\dxc_extracted"
+          $targetArch = "${{ parameters.sln_platform }}"
+
+          # Download the DXC package
+          Write-Host "Downloading DXC release from $dxcZipUrl"
+          Invoke-WebRequest -Uri $dxcZipUrl -OutFile $dxcZipPath
+
+          # Create extraction directory
+          if (-not (Test-Path $dxcExtractPath)) {
+            New-Item -Path $dxcExtractPath -ItemType Directory -Force
+          }
+
+          # Extract the zip file
+          Write-Host "Extracting DXC package to $dxcExtractPath"
+          Expand-Archive -Path $dxcZipPath -DestinationPath $dxcExtractPath -Force
+
+          # Copy the necessary DLLs to the target directory
+          $sourcePath = Join-Path $dxcExtractPath "bin\$targetArch"
+          $targetPath = "$(Build.SourcesDirectory)\js\node\bin\napi-v6\win32\$targetArch"
+
+          Write-Host "Copying dxil.dll and dxcompiler.dll from $sourcePath to $targetPath"
+          Copy-Item -Path "$sourcePath\dxil.dll" -Destination $targetPath -Force
+          Copy-Item -Path "$sourcePath\dxcompiler.dll" -Destination $targetPath -Force
+
+          Write-Host "DXC DLLs successfully copied to the target directory"
+        displayName: 'Download and Copy DXC Binaries'
+      - template: ../templates/win-esrp-dll.yml
+        parameters:
+          FolderPath: '$(Build.SourcesDirectory)\js\node\bin\napi-v6\win32\${{ parameters.sln_platform }}'
+          DisplayName: 'ESRP - Sign Node.js binding binaries'
+          DoEsrp: ${{ parameters.DoEsrp }}
+          Pattern: '*.dll,*.node'
+
+      - script: |
+          del /Q $(Build.SourcesDirectory)\js\node\bin\napi-v6\win32\${{ parameters.sln_platform }}\CodeSignSummary-*.*
+          call npm pack
+          copy $(Build.SourcesDirectory)\js\node\onnxruntime-*.tgz $(Build.ArtifactStagingDirectory)
+        workingDirectory: '$(Build.SourcesDirectory)\js\node'
+        displayName: 'Create NPM Package'
+
+      - task: 1ES.PublishPipelineArtifact@1
+        inputs:
+          targetPath: '$(Build.SourcesDirectory)\js\node\bin\napi-v6\win32\${{ parameters.sln_platform }}'
+          artifactName: ${{ parameters.ArtifactName }}
+
+      - ${{ if and(eq(parameters.PublishWebGpuBuildTools, true), eq(parameters.sln_platform, 'x64')) }}:
+        - script: |
+            mkdir $(Build.ArtifactStagingDirectory)\${{ parameters.WebGpuBuildToolsArtifactName }}
+            copy $(Build.BinariesDirectory)\$(BuildConfig)\_deps\dawn-build\third_party\dxc\RelWithDebInfo\bin\llvm-tblgen.exe $(Build.ArtifactStagingDirectory)\${{ parameters.WebGpuBuildToolsArtifactName }}
+            copy $(Build.BinariesDirectory)\$(BuildConfig)\_deps\dawn-build\third_party\dxc\RelWithDebInfo\bin\clang-tblgen.exe $(Build.ArtifactStagingDirectory)\${{ parameters.WebGpuBuildToolsArtifactName }}
+          displayName: 'Copy WebGPU build tools'
+        - task: 1ES.PublishPipelineArtifact@1
+          inputs:
+            targetPath: '$(Build.ArtifactStagingDirectory)\${{ parameters.WebGpuBuildToolsArtifactName }}'
+            artifactName: ${{ parameters.WebGpuBuildToolsArtifactName }}

@@ -65,11 +65,7 @@ static void RunTransposeQDQTest(const TestInputDef<float>& input_def,
                                 const std::vector<ONNX_NAMESPACE::AttributeProto>& attrs,
                                 ExpectedEPNodeAssignment expected_ep_assignment) {
   ProviderOptions provider_options;
-#if defined(_WIN32)
-  provider_options["backend_path"] = "QnnHtp.dll";
-#else
-  provider_options["backend_path"] = "libQnnHtp.so";
-#endif
+  provider_options["backend_type"] = "htp";
   provider_options["offload_graph_io_quantization"] = "0";
 
   // Runs model with DQ-> Transpose -> Q and compares the outputs of the CPU and QNN EPs.
@@ -94,11 +90,7 @@ static void RunTransposeNonQDQOnHTP(const TestInputDef<DataType>& input_def,
                                     ExpectedEPNodeAssignment expected_ep_assignment,
                                     bool enable_fp16_precision = true) {
   ProviderOptions provider_options;
-#if defined(_WIN32)
-  provider_options["backend_path"] = "QnnHtp.dll";
-#else
-  provider_options["backend_path"] = "libQnnHtp.so";
-#endif
+  provider_options["backend_type"] = "htp";
 
   if (enable_fp16_precision) {
     provider_options["enable_htp_fp16_precision"] = "1";

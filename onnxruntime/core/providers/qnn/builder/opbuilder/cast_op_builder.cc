@@ -102,6 +102,9 @@ Status CastOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_wra
   const bool is_graph_output = qnn_model_wrapper.IsGraphOutput(output_name);
 
   const Qnn_TensorType_t tensor_type = is_graph_output ? QNN_TENSOR_TYPE_APP_READ : QNN_TENSOR_TYPE_NATIVE;
+  if (qnn_data_type == QNN_DATATYPE_INT_64 && tensor_type == QNN_TENSOR_TYPE_NATIVE) {
+    qnn_data_type = QNN_DATATYPE_INT_32;
+  }
   QnnTensorWrapper output_tensorwrapper(output_name,
                                         tensor_type,
                                         qnn_data_type,

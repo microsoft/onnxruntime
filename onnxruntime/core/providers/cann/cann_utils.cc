@@ -220,7 +220,7 @@ bool FileExist(const std::string& file_name) {
 
 void GenerateHashValue(const std::string string, HashValue& hash_value) {
   uint32_t hash[4] = {0, 0, 0, 0};
-  MurmurHash3::x86_128(string.data(), gsl::narrow_cast<int32_t>(string.size()), hash[0], &hash);
+  MurmurHash3::x86_128(string.data(), string.size(), hash[0], &hash);
   hash_value = hash[0] | (uint64_t(hash[1]) << 32);
 }
 

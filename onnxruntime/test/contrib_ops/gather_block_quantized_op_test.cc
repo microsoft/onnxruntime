@@ -15,6 +15,27 @@
 namespace onnxruntime {
 namespace test {
 
+// When uint8_t data type is used GatherBlockQuantize applies MatMulNBit's conventions for storing the data.
+// That is when no zero points are specified a default zero point of 8 is used. This convertor hence
+// compensates for that by adding 8 to the data values, so that the outputs match the results that
+// we be seen with non uint8_t data types.
+template <typename T1>
+void PackDataForUint8TypeIfNecessary(std::vector<int>& data, std::vector<int64_t>& data_shape) {
+  if (!std::is_same_v<T1, uint8_t>) {
+    return;
+  }
+  // For uint8_t, we need to pack each pair of values (after adding 8) into a single uint8_t
+  std::vector<int> packed_data;
+  for (size_t i = 0; i < data.size(); i += 2) {
+    int low_nibble = (data[i] + 8) & 0xF;
+    int high_nibble = ((i + 1) < data.size()) ? ((data[i + 1] + 8) & 0xF) : 0;
+    int packed = (high_nibble << 4) | low_nibble;
+    packed_data.push_back(packed);
+  }
+  data = packed_data;
+  data_shape[data_shape.size() - 1] = (data_shape[data_shape.size() - 1] + 1) / 2;
+}
+
 // Combinations: types, gather_axis, quantize_axis, block_size, indices, scale shape vs data shape
 template <typename T1, typename T2, typename Tind>
 void RunGatherBlockQuantized(const std::vector<T1>& data,
@@ -96,6 +117,7 @@ void Test_Fail_WithZeroPoints(int64_t gather_axis,
                            4, 5, 6, 7,
                            -4, -3, -2, -1};
   std::vector<int64_t> data_shape = {2, 3, 4};
+  PackDataForUint8TypeIfNecessary<T1>(data, data_shape);
   std::vector<int> indices = {1};
   std::vector<int64_t> indices_shape = {1};
   std::vector<float> scales = {1.0f, 2.0f, 1.0f, 2.0f, 1.0f, 2.0f};
@@ -123,7 +145,6 @@ void Test_Fail_WithZeroPoints(int64_t gather_axis,
 
 TEST(GatherBlockQuantizedOpTest, UnsupportedTypes) {
   Test_Fail_WithZeroPoints<int8_t, float, int32_t>(0, 2, 16);
-  Test_Fail_WithZeroPoints<uint8_t, float, int32_t>(0, 2, 16);
   Test_Fail_WithZeroPoints<int16_t, float, int32_t>(0, 2, 16);
   Test_Fail_WithZeroPoints<uint16_t, float, int32_t>(0, 2, 16);
   Test_Fail_WithZeroPoints<int32_t, float, int32_t>(0, 2, 16);
@@ -134,21 +155,70 @@ TEST(GatherBlockQuantizedOpTest, UnsupportedTypes) {
   Test_Fail_WithZeroPoints<Int4x2, float, int16_t>(0, 2, 16);
   Test_Fail_WithZeroPoints<UInt4x2, BFloat16, int32_t>(0, 2, 16);
   Test_Fail_WithZeroPoints<Int4x2, BFloat16, int32_t>(0, 2, 16);
+  Test_Fail_WithZeroPoints<uint8_t, float, int16_t>(0, 2, 16);
+}
+
+template <typename T1, typename T2, typename Tind>
+void Test_Fail_WithoutZeroPoints(int64_t gather_axis,
+                                 int64_t quantize_axis,
+                                 int64_t block_size) {
+  std::vector<int> data = {-8, -7, -6, -5,
+                           -4, -3, -2, -1,
+                           0, 1, 2, 3,
+                           4, 5, 6, 7,
+                           4, 5, 6, 7,
+                           -4, -3, -2, -1};
+  std::vector<int64_t> data_shape = {2, 3, 4};
+  PackDataForUint8TypeIfNecessary<T1>(data, data_shape);
+  std::vector<int> indices = {1};
+  std::vector<int64_t> indices_shape = {1};
+  std::vector<float> scales = {1.0f, 2.0f, 1.0f, 2.0f, 1.0f, 2.0f};
+  std::vector<int64_t> scales_shape = {2, 3, 1};
+  std::vector<float> output = {8.f, 10.f, 12.f, 14.f,
+                               3.f, 4.f, 5.f, 6.f,
+                               -6.f, -4.f, -2.f, 0.f};
+  std::vector<int64_t> output_shape = {1, 3, 4};
+
+  RunGatherBlockQuantized(ToType<T1>(data),
+                          data_shape,
+                          ToType<Tind>(indices),
+                          indices_shape,
+                          ToType<T2>(scales),
+                          scales_shape,
+                          {},
+                          gather_axis,
+                          quantize_axis,
+                          block_size,
+                          ToType<T2>(output),
+                          output_shape,
+                          OpTester::ExpectResult::kExpectFailure);
+}
+
+TEST(GatherBlockQuantizedOpTest, UnsupportedUInt8DataType) {
+  // T1 uint8_t with zero points is not yet supported.
+  Test_Fail_WithZeroPoints<uint8_t, float, int32_t>(0, 2, 16);
+  Test_Fail_WithZeroPoints<uint8_t, float, int16_t>(0, 2, 16);
+  // Gather on axis other than 0 is not supported with uint8_t
+  Test_Fail_WithoutZeroPoints<uint8_t, float, int32_t>(1, 2, 16);
+  Test_Fail_WithoutZeroPoints<uint8_t, float, int16_t>(1, 2, 16);
 }
 
 TEST(GatherBlockQuantizedOpTest, InvalidBlockSize) {
   Test_Fail_WithZeroPoints<UInt4x2, float, int32_t>(0, 2, 8);
   Test_Fail_WithZeroPoints<Int4x2, float, int32_t>(0, 2, 17);
+  Test_Fail_WithZeroPoints<uint8_t, float, int32_t>(0, 2, 17);
 }
 
 TEST(GatherBlockQuantizedOpTest, InvalidGatherAxis) {
   Test_Fail_WithZeroPoints<UInt4x2, float, int32_t>(3, 2, 16);
   Test_Fail_WithZeroPoints<Int4x2, float, int32_t>(-4, 2, 16);
+  Test_Fail_WithZeroPoints<uint8_t, float, int32_t>(-4, 2, 16);
 }
 
 TEST(GatherBlockQuantizedOpTest, InvalidQuantizeAxis) {
   Test_Fail_WithZeroPoints<UInt4x2, float, int32_t>(0, 3, 16);
   Test_Fail_WithZeroPoints<Int4x2, float, int32_t>(0, -4, 16);
+  Test_Fail_WithZeroPoints<uint8_t, float, int32_t>(0, -4, 16);
 }
 
 template <typename T1, typename T2, typename Tind>
@@ -160,6 +230,7 @@ void Test_ShapeMismatch_WithZeroPoints() {
                            4, 5, 6, 7,
                            -4, -3, -2, -1};
   std::vector<int64_t> data_shape = {2, 3, 4};
+  PackDataForUint8TypeIfNecessary<T1>(data, data_shape);
   std::vector<int> indices = {1};
   std::vector<int64_t> indices_shape = {1};
   std::vector<float> scales = {1.0f, 2.0f, 1.0f, 2.0f};
@@ -188,6 +259,7 @@ void Test_ShapeMismatch_WithZeroPoints() {
 TEST(GatherBlockQuantizedOpTest, ShapeMismatch) {
   Test_ShapeMismatch_WithZeroPoints<UInt4x2, float, int32_t>();
   Test_ShapeMismatch_WithZeroPoints<Int4x2, float, int32_t>();
+  Test_ShapeMismatch_WithZeroPoints<uint8_t, float, int32_t>();
 }
 
 template <typename T1, typename T2, typename Tind>
@@ -199,6 +271,7 @@ void Test_InvalidIndices_WithZeroPoints() {
                            4, 5, 6, 7,
                            -4, -3, -2, -1};
   std::vector<int64_t> data_shape = {2, 3, 4};
+  PackDataForUint8TypeIfNecessary<T1>(data, data_shape);
   std::vector<int> indices = {2};
   std::vector<int64_t> indices_shape = {1};
   std::vector<float> scales = {1.0f, 2.0f, 1.0f, 2.0f, 1.0f, 2.0f};
@@ -227,6 +300,7 @@ void Test_InvalidIndices_WithZeroPoints() {
 TEST(GatherBlockQuantizedOpTest, InvalidIndices) {
   Test_InvalidIndices_WithZeroPoints<UInt4x2, float, int32_t>();
   Test_InvalidIndices_WithZeroPoints<Int4x2, float, int32_t>();
+  Test_InvalidIndices_WithZeroPoints<uint8_t, float, int32_t>();
 }
 
 template <typename T1, typename T2, typename Tind>
@@ -298,6 +372,7 @@ void Test_GatherAxis0_NoZeroPoints() {
                            4, 5, 6, 7,
                            -4, -3, -2, -1};
   std::vector<int64_t> data_shape = {2, 3, 4};
+  PackDataForUint8TypeIfNecessary<T1>(data, data_shape);
   std::vector<int> indices = {1};
   std::vector<int64_t> indices_shape = {1};
   std::vector<float> scales = {1.0f, 2.0f, 1.0f, 2.0f, 1.0f, 2.0f};
@@ -340,6 +415,10 @@ TEST(GatherBlockQuantizedOpTest, GatherAxis0NoZeroPoints) {
   Test_GatherAxis0_NoZeroPoints<Int4x2, MLFloat16, int32_t>();
   Test_GatherAxis0_NoZeroPoints<Int4x2, float, int64_t>();
   Test_GatherAxis0_NoZeroPoints<Int4x2, MLFloat16, int64_t>();
+  Test_GatherAxis0_NoZeroPoints<uint8_t, float, int32_t>();
+  Test_GatherAxis0_NoZeroPoints<uint8_t, MLFloat16, int32_t>();
+  Test_GatherAxis0_NoZeroPoints<uint8_t, float, int64_t>();
+  Test_GatherAxis0_NoZeroPoints<uint8_t, MLFloat16, int64_t>();
 }
 
 template <typename T1, typename T2, typename Tind>

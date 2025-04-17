@@ -49,14 +49,15 @@ namespace attention_softmax_cuda {
 // grid size is (num_heads * sequence_length, batch_size, 1)
 // input and output shape is (batch_size, num_heads, sequence_length, total_sequence_length)
 // bias shape is (batch_size or 1, num_heads or 1, sequence_length, total_sequence_length)
-#define DECLARE_SOFTMAX_VARS()                                                                                      \
-  [[maybe_unused]] const int s = blockIdx.x % sequence_length;                                                      \
-  const int b = blockIdx.y;                                                                                         \
-  int64_t offset = static_cast<int64_t>(b * gridDim.x + blockIdx.x) * static_cast<int64_t>(total_sequence_length);  \
-  [[maybe_unused]] int64_t bias_offset = 0;                                                                         \
-  if constexpr (HAS_BIAS) {                                                                                         \
-    const int j = (broadcast_attn_bias_dim_0 ? 0 : (b * gridDim.x)) + (broadcast_attn_bias_dim_1 ? s : blockIdx.x); \
-    bias_offset = static_cast<int64_t>(j) * static_cast<int64_t>(total_sequence_length);                            \
+#define DECLARE_SOFTMAX_VARS()                                                                                        \
+  [[maybe_unused]] const int s = blockIdx.x % sequence_length;                                                        \
+  const int b = blockIdx.y;                                                                                           \
+  int64_t offset = static_cast<int64_t>(b * gridDim.x + blockIdx.x) * static_cast<int64_t>(total_sequence_length);    \
+  [[maybe_unused]] int64_t bias_offset = 0;                                                                           \
+  if constexpr (HAS_BIAS) {                                                                                           \
+    const int j = (broadcast_attn_bias_dim_0 ? 0 : (b * (broadcast_attn_bias_dim_1 ? sequence_length : gridDim.x))) + \
+                  (broadcast_attn_bias_dim_1 ? s : blockIdx.x);                                                       \
+    bias_offset = static_cast<int64_t>(j) * static_cast<int64_t>(total_sequence_length);                              \
   }
 
 // This kernel is for non causal, attention mask 1D or None, and total_sequence_length > 1024.

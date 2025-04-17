@@ -55,10 +55,6 @@ if (NOT CMAKE_BUILD_TYPE)
   set(CMAKE_BUILD_TYPE "RelWithDebInfo" CACHE STRING "Choose build type: Debug Release RelWithDebInfo MinSizeRel." FORCE)
 endif()
 
-if("${CMAKE_C_COMPILER_ID}" STREQUAL "GNU" AND CMAKE_C_COMPILER_VERSION VERSION_LESS 9)
-  message(FATAL_ERROR  "GCC version must be greater than or equal to 9")
-endif()
-
 # Options
 option(onnxruntime_USE_VCPKG "Build with the vcpkg package manager" OFF)
 option(onnxruntime_RUN_ONNX_TESTS "Enable ONNX Compatibility Testing" OFF)
@@ -66,7 +62,7 @@ option(onnxruntime_GENERATE_TEST_REPORTS "Enable test report generation" OFF)
 option(onnxruntime_ENABLE_STATIC_ANALYSIS "Enable static analysis" OFF)
 option(onnxruntime_USE_CUSTOM_STATIC_ANALYSIS_RULES "Use a custom SDL Rule. It is mainly for our CI build" OFF)
 option(onnxruntime_REDIRECT_STATIC_ANALYSIS_OUTPUTS_TO_FILE "Use a custom SDL Rule. It is mainly for our CI build" OFF)
-option(onnxruntime_ENABLE_PYTHON "Enable python buildings" OFF)
+option(onnxruntime_ENABLE_PYTHON "Enable python bindings" OFF)
 # Enable it may cause LNK1169 error
 option(onnxruntime_ENABLE_MEMLEAK_CHECKER "Experimental: Enable memory leak checker in Windows debug build" OFF)
 option(onnxruntime_USE_CUDA "Build with CUDA support" OFF)
@@ -87,6 +83,7 @@ option(onnxruntime_USE_SNPE "Build with SNPE support" OFF)
 option(onnxruntime_USE_RKNPU "Build with RKNPU support" OFF)
 option(onnxruntime_USE_DNNL "Build with DNNL support" OFF)
 option(onnxruntime_USE_JSEP "Build with JavaScript implemented kernels support" OFF)
+option(onnxruntime_USE_KLEIDIAI "Build with KleidiAI integration in MLAS" OFF)
 option(onnxruntime_BUILD_UNIT_TESTS "Build ONNXRuntime unit tests" ON)
 option(onnxruntime_BUILD_CSHARP "Build C# library" OFF)
 option(onnxruntime_BUILD_OBJC "Build Objective-C library" OFF)
@@ -183,7 +180,6 @@ option(onnxruntime_ENABLE_TRAINING_OPS "Include training operators but no traini
 option(onnxruntime_ENABLE_TRAINING_E2E_TESTS "Enable training end-to-end tests." OFF)
 option(onnxruntime_ENABLE_CPU_FP16_OPS "Build with advanced instruction sets" ON)
 option(onnxruntime_USE_NCCL "Build with NCCL support" OFF)
-option(onnxruntime_USE_MPI "Build with MPI support" OFF)
 
 # WebAssembly options
 option(onnxruntime_BUILD_WEBASSEMBLY_STATIC_LIB "Enable this option to create WebAssembly static library" OFF)
@@ -196,6 +192,7 @@ option(onnxruntime_ENABLE_WEBASSEMBLY_DEBUG_INFO "Enable this option to turn on 
 option(onnxruntime_ENABLE_WEBASSEMBLY_PROFILING "Enable this option to turn on WebAssembly profiling and preserve function names" OFF)
 option(onnxruntime_ENABLE_WEBASSEMBLY_OUTPUT_OPTIMIZED_MODEL "Enable this option to allow WebAssembly to output optimized model" OFF)
 option(onnxruntime_ENABLE_WEBASSEMBLY_MEMORY64 "Enable this option to allow WebAssembly to use 64bit memory" OFF)
+option(onnxruntime_ENABLE_WEBASSEMBLY_RELAXED_SIMD "Enable WebAssembly Relaxed SIMD" OFF)
 
 # Enable bitcode for iOS
 option(onnxruntime_ENABLE_BITCODE "Enable bitcode for iOS only" OFF)
@@ -257,6 +254,11 @@ option(onnxruntime_USE_CUDA_INTERFACE "Build ONNXRuntime shared lib which is com
 option(onnxruntime_USE_OPENVINO_INTERFACE "Build ONNXRuntime shared lib which is compatible with OpenVINO EP interface" OFF)
 option(onnxruntime_USE_VITISAI_INTERFACE "Build ONNXRuntime shared lib which is compatible with Vitis-AI EP interface" OFF)
 option(onnxruntime_USE_QNN_INTERFACE "Build ONNXRuntime shared lib which is compatible with QNN EP interface" OFF)
+
+
+if("${CMAKE_C_COMPILER_ID}" STREQUAL "GNU" AND CMAKE_C_COMPILER_VERSION VERSION_LESS 11.1)
+  message(FATAL_ERROR  "GCC version must be greater than or equal to 11.1")
+endif()
 
 # ENABLE_TRAINING includes all training functionality
 # The following 2 entry points
@@ -831,6 +833,20 @@ else()
   endif()
 endif()
 
+if (onnxruntime_USE_KLEIDIAI AND NOT MSVC AND (
+    (onnxruntime_target_platform STREQUAL "aarch64") OR
+    (onnxruntime_target_platform STREQUAL "ARM64") OR
+    (APPLE AND CMAKE_SYSTEM_PROCESSOR STREQUAL "arm64")))
+  check_cxx_compiler_flag(-march=armv8.2-a+dotprod HAS_ARM64_DOTPROD)
+  check_cxx_compiler_flag(-march=armv8.2-a+i8mm HAS_ARM64_I8MM)
+  if (NOT HAS_ARM64_DOTPROD)
+    message(FATAL_ERROR  "The compiler doesn't support dotprod")
+  endif()
+  if (NOT HAS_ARM64_I8MM)
+    message(FATAL_ERROR  "The compiler doesn't support i8mm")
+  endif()
+endif()
+
 #names in this var must match the directory names under onnxruntime/core/providers
 #ONNXRUNTIME_PROVIDER_NAMES is the list of providers that needs to export additional symbols in the global namespace.
 #For example CUDA EP exports "OrtSessionOptionsAppendExecutionProvider_CUDA", which is a global function.
@@ -1250,6 +1266,7 @@ function(onnxruntime_set_compile_flags target_name)
       # Unsupported by Clang 18 yet.
       list(REMOVE_ITEM ORT_HIP_WARNING_FLAGS -Wno-dangling-reference)
 
+      list(REMOVE_ITEM ORT_HIP_WARNING_FLAGS -Wno-interference-size)
       # float16.h:90:12: error: ‘tmp’ is used uninitialized
       list(APPEND ORT_HIP_WARNING_FLAGS -Wno-uninitialized)
       list(APPEND ORT_HIP_WARNING_FLAGS -Wno-deprecated-copy)
@@ -1512,6 +1529,11 @@ if (onnxruntime_USE_OPENVINO)
 
 endif()
 
+if (onnxruntime_USE_OPENVINO_INTERFACE AND (NOT onnxruntime_USE_OPENVINO))
+    add_definitions(-DUSE_OPENVINO=1)
+    add_definitions(-DOPENVINO_CONFIG_NPU=1)
+endif()
+
 if (onnxruntime_USE_VITISAI)
     set(CMAKE_MODULE_PATH "${CMAKE_MODULE_PATH};${CMAKE_CURRENT_LIST_DIR}")
 endif()
@@ -1542,32 +1564,21 @@ if (onnxruntime_USE_CUDA)
   endif()
   find_package(CUDAToolkit REQUIRED)
   if (NOT CMAKE_CUDA_ARCHITECTURES)
+    # Note that we generate SASS+PTX code for specified cuda architectures by assigning "xy"
+    # To add SASS only, assign "xy-real"
+    # To add PTX only, assign "xy-virtual"
     if (CMAKE_LIBRARY_ARCHITECTURE STREQUAL "aarch64-linux-gnu")
       # Support for Jetson/Tegra ARM devices
-      set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} -gencode=arch=compute_53,code=sm_53") # TX1, Nano
-      set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} -gencode=arch=compute_62,code=sm_62") # TX2
-      set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} -gencode=arch=compute_72,code=sm_72") # AGX Xavier, NX Xavier
-      set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} -gencode=arch=compute_87,code=sm_87") # AGX Orin, NX Orin
+      set(CMAKE_CUDA_ARCHITECTURES "53-real;62-real;72-real;87") # TX1/Nano, TX2, Xavier, Orin
     else()
       if (CMAKE_CUDA_COMPILER_VERSION VERSION_LESS 12)
         # 37, 50 still work in CUDA 11 but are marked deprecated and will be removed in future CUDA version.
-        set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} -gencode=arch=compute_37,code=sm_37") # K80
-        set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} -gencode=arch=compute_50,code=sm_50") # M series
-      endif()
-      # Note that we generate SASS code for specified cuda architectures. It does not support forward compatibility.
-      # To add PTX for future GPU architectures >= XX, append -gencode=arch=compute_XX,code=compute_XX.
-      set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} -gencode=arch=compute_52,code=sm_52") # M60
-      set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} -gencode=arch=compute_60,code=sm_60") # P series
-      set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} -gencode=arch=compute_70,code=sm_70") # V series
-      set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} -gencode=arch=compute_75,code=sm_75") # T series
-      set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} -gencode=arch=compute_80,code=sm_80") # A series
-      set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} -gencode=arch=compute_86,code=sm_86")
-      set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} -gencode=arch=compute_89,code=sm_89")
-      if (CMAKE_CUDA_COMPILER_VERSION VERSION_GREATER_EQUAL 12)
-        set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} -gencode=arch=compute_90,code=sm_90") # H series
-        if (CMAKE_CUDA_COMPILER_VERSION VERSION_GREATER_EQUAL 12.8)
-          set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} -gencode=arch=compute_120,code=sm_120") # B series
-        endif()
+        set(CMAKE_CUDA_ARCHITECTURES "37-real;50-real;52-real;60-real;70-real;75-real;80-real;86-real;89")
+      elseif (CMAKE_CUDA_COMPILER_VERSION VERSION_LESS 12.8)
+        set(CMAKE_CUDA_ARCHITECTURES "52-real;60-real;70-real;75-real;80-real;86-real;89-real;90")
+      else()
+        # https://cmake.org/cmake/help/latest/prop_tgt/CUDA_ARCHITECTURES.html
+        set(CMAKE_CUDA_ARCHITECTURES "all") # Supporting all, including latest Blackwell B series & RTX 50 series
       endif()
     endif()
   endif()
@@ -1639,29 +1650,6 @@ if (onnxruntime_ENABLE_DLPACK)
 endif()
 
 if (UNIX OR onnxruntime_USE_NCCL)
-  # MPI is INDEPENDENT of NCCL for now. You can build NCLL without MPI and launch multi-GPU with your own launcher.
-  if (onnxruntime_USE_MPI)
-    if (EXISTS "${onnxruntime_MPI_HOME}")
-      set(MPI_HOME "${onnxruntime_MPI_HOME}")
-    elseif (EXISTS "/bert_ort/openmpi")
-      set(MPI_HOME "/bert_ort/openmpi")
-    endif()
-    find_package(MPI)
-
-    if (MPI_CXX_FOUND)
-      message( STATUS "MPI Version: ${MPI_CXX_VERSION}")
-      message( STATUS "MPI (include: ${MPI_CXX_INCLUDE_DIRS}, library: ${MPI_CXX_LIBRARIES})" )
-      mark_as_advanced(MPI_CXX_INCLUDE_DIRS MPI_CXX_LIBRARIES)
-      list(APPEND onnxruntime_EXTERNAL_LIBRARIES ${MPI_CXX_LIBRARIES} ${MPI_CXX_LINK_FLAGS})
-    else ()
-      message(
-            FATAL_ERROR
-            "MPI is not found. Please define onnxruntime_MPI_HOME to specify the path of MPI. Otherwise, NCCL will be disabled."
-            "or you can remove --use_mpi from build args to disable MPI."
-          )
-    endif()
-  endif()
-
   # Find NCCL
   if (onnxruntime_USE_NCCL)
     if (onnxruntime_USE_CUDA)
@@ -1731,13 +1719,9 @@ if (UNIX OR onnxruntime_USE_NCCL)
   endif()
 else()
   set(onnxruntime_USE_NCCL OFF)
-  set(onnxruntime_USE_MPI OFF)
-  message( WARNING "MPI and NCCL are disabled because build is on Windows or USE_NCCL is set to OFF." )
+  message( WARNING "NCCL is disabled because build is on Windows or USE_NCCL is set to OFF." )
 endif()
 
-if (onnxruntime_USE_MPI)
-  add_definitions(-DUSE_MPI=1)
-endif()
 
 # Default version parts for Microsoft.AI.MachineLearning.dll, onnxruntime.dll, onnxruntime_providers_openvino.dll and onnxruntime_providers_shared.dll in non-ADO pipeline local builds
 set(VERSION_MAJOR_PART   0 CACHE STRING "First part of numeric file/product version.")
@@ -1807,8 +1791,8 @@ if (onnxruntime_USE_WINML)
 endif() # if (onnxruntime_USE_WINML)
 
 if (onnxruntime_BUILD_SHARED_LIB OR onnxruntime_BUILD_APPLE_FRAMEWORK)
-  if (onnxruntime_BUILD_APPLE_FRAMEWORK AND NOT ${CMAKE_SYSTEM_NAME} MATCHES "Darwin|iOS|visionOS")
-    message(FATAL_ERROR "onnxruntime_BUILD_APPLE_FRAMEWORK can only be enabled for macOS or iOS or visionOS.")
+  if (onnxruntime_BUILD_APPLE_FRAMEWORK AND NOT ${CMAKE_SYSTEM_NAME} MATCHES "Darwin|iOS|visionOS|tvOS")
+    message(FATAL_ERROR "onnxruntime_BUILD_APPLE_FRAMEWORK can only be enabled for macOS or iOS or visionOS or tvOS.")
   endif()
   list(APPEND ONNXRUNTIME_CMAKE_FILES onnxruntime)
 endif()

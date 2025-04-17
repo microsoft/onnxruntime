@@ -177,7 +177,7 @@ def test_mask_decoder_onnx(
 
     import onnxruntime
 
-    ort_session = onnxruntime.InferenceSession(onnx_model_path, providers=onnxruntime.get_available_providers())
+    ort_session = onnxruntime.InferenceSession(onnx_model_path, providers=["CPUExecutionProvider"])
 
     model_inputs = ort_session.get_inputs()
     input_names = [model_inputs[i].name for i in range(len(model_inputs))]

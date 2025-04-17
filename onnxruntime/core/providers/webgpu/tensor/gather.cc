@@ -42,7 +42,7 @@ Status GatherProgram::GenerateShaderCode(ShaderHelper& shader) const {
 Status Gather::ComputeInternal(ComputeContext& context) const {
   Prepare p;
   ORT_RETURN_IF_ERROR(PrepareForCompute(&context.KernelContext(), p));
-  uint32_t data_size = gsl::narrow<uint32_t>(p.output_tensor->Shape().Size());
+  uint32_t data_size = onnxruntime::narrow<uint32_t>(p.output_tensor->Shape().Size());
   if (data_size == 0) {
     return Status::OK();
   }

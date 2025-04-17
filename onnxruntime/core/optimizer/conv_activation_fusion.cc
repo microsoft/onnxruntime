@@ -121,7 +121,7 @@ class ConvActivationSelector : public NodeSelector {
       if (!graph_utils::IsSupportedOptypeVersionAndDomain(*next_node, "Relu", {6, 13, 14})) {
         return std::nullopt;
       }
-    } else if (node_ep.empty() || node_ep == kCpuExecutionProvider || node_ep == kJsExecutionProvider) {
+    } else if (node_ep.empty() || node_ep == kCpuExecutionProvider || node_ep == kJsExecutionProvider || node_ep == kWebGpuExecutionProvider) {
       if (!is_supported_non_cuda_rocm_ep_activation(*next_node) &&
           !graph_utils::IsSupportedOptypeVersionAndDomain(*next_node, "HardSigmoid", {6})) {
         return std::nullopt;

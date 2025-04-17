@@ -2204,6 +2204,10 @@ TEST_F(GraphTransformationTests, FuseCudaConvAddReluIdentity) {
   for (auto& node : p_model->MainGraph().Nodes()) {
     node.SetExecutionProviderType(kJsExecutionProvider);
   }
+#elif defined(USE_WEBGPU)
+  for (auto& node : p_model->MainGraph().Nodes()) {
+    node.SetExecutionProviderType(kWebGpuExecutionProvider);
+  }
 #else
   for (auto& node : p_model->MainGraph().Nodes()) {
     node.SetExecutionProviderType(kCpuExecutionProvider);
@@ -2231,6 +2235,10 @@ TEST_F(GraphTransformationTests, FuseCudaConvAdd) {
 #if defined(USE_JSEP)
   for (auto& node : p_model->MainGraph().Nodes()) {
     node.SetExecutionProviderType(kJsExecutionProvider);
+  }
+#elif defined(USE_WEBGPU)
+  for (auto& node : p_model->MainGraph().Nodes()) {
+    node.SetExecutionProviderType(kWebGpuExecutionProvider);
   }
 #else
   for (auto& node : p_model->MainGraph().Nodes()) {
@@ -2330,6 +2338,10 @@ TEST_F(GraphTransformationTests, FuseConvActivation) {
     for (auto& node : p_model->MainGraph().Nodes()) {
       node.SetExecutionProviderType(kJsExecutionProvider);
     }
+#elif defined(USE_WEBGPU)
+    for (auto& node : p_model->MainGraph().Nodes()) {
+      node.SetExecutionProviderType(kWebGpuExecutionProvider);
+    }
 #else
     for (auto& node : p_model->MainGraph().Nodes()) {
       node.SetExecutionProviderType(kCpuExecutionProvider);
@@ -2347,6 +2359,13 @@ TEST_F(GraphTransformationTests, FuseConvActivation) {
 #if defined(USE_JSEP)
     std::set<std::string> js_supported = {"Relu", "Clip", "Sigmoid", "Tanh", "LeakyRelu"};
     if (js_supported.find(model.second) == js_supported.end()) {
+      ASSERT_EQ(op_to_count_before_fusion[model.second], op_to_count_after_fusion[model.second]);
+    } else {
+      ASSERT_TRUE(op_to_count_after_fusion[model.second] == 0);
+    }
+#elif defined(USE_WEBGPU)
+    std::set<std::string> webgpu_supported = {"Relu", "Clip", "Sigmoid", "Tanh", "LeakyRelu", "HardSigmoid"};
+    if (webgpu_supported.find(model.second) == webgpu_supported.end()) {
       ASSERT_EQ(op_to_count_before_fusion[model.second], op_to_count_after_fusion[model.second]);
     } else {
       ASSERT_TRUE(op_to_count_after_fusion[model.second] == 0);
@@ -2925,6 +2944,24 @@ TEST_F(GraphTransformationTests, TransposeMatmulTransBatchNoFusion) {
     ASSERT_EQ(op_to_count["MatMul"], orig_op_to_count["MatMul"]);
     ASSERT_EQ(op_to_count["com.microsoft.FusedMatMul"], orig_op_to_count["com.microsoft.FusedMatMul"]);
   }
+}
+
+TEST_F(GraphTransformationTests, TransposeMatmulFusion_SameInput_gh_issue_24341) {
+  constexpr const ORTCHAR_T* model_uri = MODEL_FOLDER "fusion/gh_issue_24341.onnx";
+
+  std::shared_ptr<Model> p_model;
+  ASSERT_STATUS_OK(Model::Load(model_uri, p_model, nullptr, *logger_));
+  Graph& graph = p_model->MainGraph();
+  std::map<std::string, int> orig_op_to_count = CountOpsInGraph(graph);
+  onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
+  ASSERT_STATUS_OK(graph_transformation_mgr.Register(
+      std::make_unique<MatmulTransposeFusion>(), TransformerLevel::Level1));
+  ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, *logger_));
+
+  std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
+  ASSERT_EQ(op_to_count["Transpose"], orig_op_to_count["Transpose"]);
+  ASSERT_EQ(op_to_count["MatMul"], orig_op_to_count["MatMul"]);
+  ASSERT_EQ(op_to_count["Cast"], orig_op_to_count["Cast"]);
 }
 
 TEST_F(GraphTransformationTests, Gemm_LeakyRelu_Fusion) {
@@ -7700,6 +7737,18 @@ TEST_F(GraphTransformationTests, GatherSliceToSplitFusion_AllSlice_GraphInput) {
                                         1, pre_graph_checker, post_graph_checker));
 }
 
+TEST_F(GraphTransformationTests, GatherSliceToSplitFusion_AllSlice_GraphInput_gh_issue_24203) {
+  // https://github.com/microsoft/onnxruntime/issues/24203
+  // This bug is manifested when the model features nameless nodes and there are more than one
+  // SliceToSplitFusion resulting in multiple Split nodes with the same name.
+  const PathString CUSTOM_OP_MODEL_URI = ORT_TSTR("testdata/gh_issue_24203.onnx");
+  SessionOptions session_options;
+  session_options.graph_optimization_level = TransformerLevel::Level2;
+  InferenceSession session(session_options, GetEnvironment());
+  ASSERT_STATUS_OK(session.Load(CUSTOM_OP_MODEL_URI));
+  ASSERT_STATUS_OK(session.Initialize());
+}
+
 TEST_F(GraphTransformationTests, GatherSliceToSplitFusion_Combined) {
   auto build_test_case = [&](ModelTestBuilder& builder) {
     auto* data_arg = builder.MakeInput<float>({{144}});
@@ -8058,9 +8107,9 @@ TEST_F(GraphTransformationTests, MatMulNBitsBiasFusion) {
                                                 q_rows, q_cols);
 
       size_t q_data_size_in_bytes, q_scale_size, q_zp_size_in_bytes;
-      MlasBlockwiseQuantizedBufferSizes(qbits, block_size, /* columnwise */ true,
-                                        K, N,
-                                        q_data_size_in_bytes, q_scale_size, &q_zp_size_in_bytes);
+      MlasBlockwiseQuantizedBufferSizes<qbits>(block_size, /* columnwise */ true,
+                                               K, N,
+                                               q_data_size_in_bytes, q_scale_size, &q_zp_size_in_bytes);
 
       auto* A = builder.MakeInput<float>(std::vector{M, K}, "A");
 

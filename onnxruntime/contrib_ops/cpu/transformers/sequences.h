@@ -5,6 +5,7 @@
 
 #include <gsl/gsl>
 #include "contrib_ops/cpu/transformers/generation_shared.h"
+#include "contrib_ops/cpu/utils/console_dumper.h"
 
 namespace onnxruntime {
 namespace contrib {

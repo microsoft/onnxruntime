@@ -371,9 +371,6 @@ def main(argv=None, experiment_name: str = "", run_id: str = "0", csv_filename: 
     model_size_in_MB = int(get_onnx_model_size(output_path, args.use_external_data_format) / 1024 / 1024)  # noqa: N806
 
     provider = args.provider
-    if args.provider == "migraphx":
-        provider = "MIGraphXExecutionProvider"
-
     session = create_onnxruntime_session(
         output_path, args.use_gpu, provider, enable_all_optimization=True, verbose=args.verbose
     )

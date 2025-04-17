@@ -110,6 +110,12 @@ Status ExpandOpBuilder::ProcessInputs(QnnModelWrapper& qnn_model_wrapper,
         FillShapeInputData(shape_data, shape_size, static_cast<float>(1.0));
         break;
       }
+      case QNN_DATATYPE_INT_64: {
+        // QNN-EP doesn't support INT64 shape input.
+        qnn_data_type = QNN_DATATYPE_INT_32;
+        FillShapeInputData(shape_data, shape_size, static_cast<int32_t>(1));
+        break;
+      }
       case QNN_DATATYPE_INT_32: {
         FillShapeInputData(shape_data, shape_size, static_cast<int32_t>(1));
         break;

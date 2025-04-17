@@ -45,8 +45,8 @@ namespace Microsoft.ML.OnnxRuntime.Tests.BrowserStack.Android
                 {
                     String failureMessage = TestContext.CurrentContext.Result.Message;
                     String jsonToSendFailure =
-                        String.Format("browserstack_executor: {\"action\": \"setSessionStatus\", \"arguments\": " +
-                                      "{\"status\":\"failed\", \"reason\": {0}}}",
+                        String.Format("browserstack_executor: {{\"action\": \"setSessionStatus\", \"arguments\": " +
+                                      "{{\"status\":\"failed\", \"reason\": {0}}}}}",
                                       JsonConvert.ToString(failureMessage));
 
                     ((IJavaScriptExecutor)driver).ExecuteScript(jsonToSendFailure);

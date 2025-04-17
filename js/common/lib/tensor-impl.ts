@@ -261,6 +261,13 @@ export class Tensor implements TensorInterface {
             } else {
               throw new TypeError(`A Uint8ClampedArray tensor's data must be type of uint8`);
             }
+          } else if (arg0 === 'float16' && arg1 instanceof Uint16Array && typedArrayConstructor !== Uint16Array) {
+            // when Float16Array is available and data is of type Uint16Array.
+            // We allow Uint16Array to be passed in as data for 'float16' tensor until Float16Array is generally
+            // supported in JavaScript environment.
+
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            data = new (globalThis as any).Float16Array(arg1.buffer, arg1.byteOffset, arg1.length);
           } else {
             throw new TypeError(`A ${type} tensor's data must be type of ${typedArrayConstructor}`);
           }

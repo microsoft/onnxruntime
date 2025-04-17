@@ -246,9 +246,9 @@ class MlasSQNBitGemmTest : public MlasTestBase {
     uint8_t* QuantBZeroPoint = nullptr;
     {
       size_t QuantBDataSizeInBytes, QuantBScaleSize, QuantBZeroPointSizeInBytes;
-      MlasBlockwiseQuantizedBufferSizes(BlkBitWidth, BlkLen, /* columnwise */ true,
-                                        static_cast<int>(K), static_cast<int>(N),
-                                        QuantBDataSizeInBytes, QuantBScaleSize, &QuantBZeroPointSizeInBytes);
+      MlasBlockwiseQuantizedBufferSizes<BlkBitWidth>(BlkLen, /* columnwise */ true,
+                                                     static_cast<int>(K), static_cast<int>(N),
+                                                     QuantBDataSizeInBytes, QuantBScaleSize, &QuantBZeroPointSizeInBytes);
 
       QuantBData = BufferQuantBData.GetBuffer(QuantBDataSizeInBytes);
       QuantBScale = BufferQuantBScale.GetBuffer(QuantBScaleSize);
@@ -265,13 +265,13 @@ class MlasSQNBitGemmTest : public MlasTestBase {
     }
 
     void* Workspace = nullptr;
-    if (const auto WorkspaceSize = MlasQNBitGemmBatchWorkspaceSize(M, N, K, 1, BlkBitWidth, BlkLen, ComputeType);
+    if (const auto WorkspaceSize = MlasQNBitGemmBatchWorkspaceSize(M, N, K, 1, BlkBitWidth, BlkLen, !Symmetric, ComputeType);
         WorkspaceSize > 0) {
       Workspace = BufferWorkspace.GetBuffer(WorkspaceSize);
     }
 
     void* PackedQuantBDataWorkspace = nullptr;
-    if (const auto PackedQuantBDataSize = MlasQNBitGemmPackQuantBDataSize(N, K, BlkBitWidth, BlkLen, ComputeType);
+    if (const auto PackedQuantBDataSize = MlasQNBitGemmPackQuantBDataSize(N, K, BlkBitWidth, BlkLen, !Symmetric, ComputeType);
         PackedQuantBDataSize > 0) {
       PackedQuantBDataWorkspace = BufferPackedQuantBData.GetBuffer(PackedQuantBDataSize);
       bool has_zp_input = QuantBZeroPoint != nullptr;

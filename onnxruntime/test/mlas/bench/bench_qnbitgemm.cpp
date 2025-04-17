@@ -31,8 +31,8 @@ void RunQNBitGemmBenchmark(size_t BlkLen,
   }
 
   size_t QuantBDataSizeInBytes, QuantBScaleSize, QuantBZeroPointSizeInBytes;
-  MlasBlockwiseQuantizedBufferSizes(
-      BlkBitWidth, static_cast<int>(BlkLen), /* columnwise */ true,
+  MlasBlockwiseQuantizedBufferSizes<BlkBitWidth>(
+      static_cast<int>(BlkLen), /* columnwise */ true,
       static_cast<int>(K), static_cast<int>(N),
       QuantBDataSizeInBytes, QuantBScaleSize, &QuantBZeroPointSizeInBytes);
 
@@ -63,13 +63,13 @@ void RunQNBitGemmBenchmark(size_t BlkLen,
                                             tp.get());
 
   std::unique_ptr<std::byte[]> Workspace;
-  if (const auto WorkspaceSize = MlasQNBitGemmBatchWorkspaceSize(M, N, K, 1, BlkBitWidth, BlkLen, ComputeType);
+  if (const auto WorkspaceSize = MlasQNBitGemmBatchWorkspaceSize(M, N, K, 1, BlkBitWidth, BlkLen, !Symmetric, ComputeType);
       WorkspaceSize > 0) {
     Workspace = std::make_unique<std::byte[]>(WorkspaceSize);
   }
 
   std::unique_ptr<std::byte[]> PackedQuantBData;
-  if (const auto PackedQuantBDataSize = MlasQNBitGemmPackQuantBDataSize(N, K, BlkBitWidth, BlkLen, ComputeType);
+  if (const auto PackedQuantBDataSize = MlasQNBitGemmPackQuantBDataSize(N, K, BlkBitWidth, BlkLen, !Symmetric, ComputeType);
       PackedQuantBDataSize > 0) {
     PackedQuantBData = std::make_unique<std::byte[]>(PackedQuantBDataSize);
     MlasQNBitGemmPackQuantBData(N, K, BlkBitWidth, BlkLen, ComputeType, QuantBData.data(), PackedQuantBData.get(),

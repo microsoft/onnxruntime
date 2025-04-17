@@ -21,6 +21,8 @@ struct OrtSessionOptions {
   OrtSessionOptions(const OrtSessionOptions& other);
   OrtSessionOptions& operator=(const OrtSessionOptions& other);
 
+  const onnxruntime::ConfigOptions& GetConfigOptions() const noexcept;
+
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_MINIMAL_BUILD_CUSTOM_OPS)
   onnxruntime::Status RegisterCustomOpsLibrary(onnxruntime::PathString library_name);
 #endif

@@ -102,7 +102,6 @@ jobs:
                 CMAKE_HIP_COMPILER=/opt/rocm/llvm/bin/clang++ \
                 onnxruntime_BUILD_KERNEL_EXPLORER=OFF \
                 onnxruntime_USE_COMPOSABLE_KERNEL=OFF \
-              --mpi_home /opt/ompi \
               --use_migraphx \
               --rocm_version=$(RocmVersion) \
               --rocm_home /opt/rocm \

@@ -51,14 +51,13 @@ Status BatchNormalizationProgram::GenerateShaderCode(ShaderHelper& shader) const
   const ShaderVariableHelper& output = shader.AddOutput("output", ShaderUsage::UseUniform | ShaderUsage::UseIndicesTypeAlias);
 
   shader.MainFunctionBody() << shader.GuardAgainstOutOfBoundsWorkgroupSizes("uniforms.output_size")
-                            << "  let idx = global_idx * " << components_ << ";\n"
-                            << "  var outputIndices = " << output.OffsetToIndices("idx") << ";\n";
+                            << "  var outputIndices = " << output.OffsetToIndices("global_idx") << ";\n";
   if (spatial_) {
     if (input_tensor.Rank() == 1) {
       shader.MainFunctionBody() << "  let cOffset = 0u;\n";
     } else {
       if (format_ == DataLayout::NHWC) {
-        shader.MainFunctionBody() << "  let cOffset = outputIndices[" << input_tensor.Rank() - 1 << "] / " << components_ << ";\n";
+        shader.MainFunctionBody() << "  let cOffset = outputIndices[" << input_tensor.Rank() - 1 << "];\n";
       } else {
         shader.MainFunctionBody() << "  let cOffset = outputIndices[1];\n";
       }
@@ -104,6 +103,7 @@ Status BatchNormalization<is_nhwc>::ComputeInternal(ComputeContext& context) con
   const TensorShape& input_shape = input_tensor->Shape();
   size_t input_rank = input_shape.NumDimensions();
   const int components = spatial_ ? ((input_shape[input_rank - 1] % 4 == 0) ? 4 : ((input_shape[input_rank - 1] % 2 == 0) ? 2 : 1)) : 1;
+  const int c_components = is_nhwc && input_rank > 1 ? components : 1;
 
   auto output_dims = input_shape.AsShapeVector();
   TensorShape output_shape(output_dims);
@@ -121,14 +121,15 @@ Status BatchNormalization<is_nhwc>::ComputeInternal(ComputeContext& context) con
 
   ORT_RETURN_IF_ERROR(BatchNormHelper::ValidateInputs(input_tensor, scale, B, input_mean, input_var, spatial_ == 1, format_ == DataLayout::NHWC));
 
-  BatchNormalizationProgram program{epsilon_, spatial_, format_, static_cast<int64_t>(components)};
+  BatchNormalizationProgram program{epsilon_, spatial_, format_};
   program
-      .AddInputs({{input_tensor, ProgramTensorMetadataDependency::TypeAndRank},
-                  {scale, ProgramTensorMetadataDependency::TypeAndRank},
-                  {B, ProgramTensorMetadataDependency::TypeAndRank},
-                  {input_mean, ProgramTensorMetadataDependency::TypeAndRank},
-                  {input_var, ProgramTensorMetadataDependency::TypeAndRank}})
-      .AddOutputs({output_tensor})
+      .CacheHint(epsilon_, spatial_, format_, components)
+      .AddInputs({{input_tensor, ProgramTensorMetadataDependency::TypeAndRank, components},
+                  {scale, ProgramTensorMetadataDependency::TypeAndRank, c_components},
+                  {B, ProgramTensorMetadataDependency::TypeAndRank, c_components},
+                  {input_mean, ProgramTensorMetadataDependency::TypeAndRank, c_components},
+                  {input_var, ProgramTensorMetadataDependency::TypeAndRank, c_components}})
+      .AddOutputs({{output_tensor, ProgramTensorMetadataDependency::TypeAndRank, components}})
       .SetDispatchGroupSize((output_size + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE)
       .AddUniformVariables({{static_cast<uint32_t>(output_size)}});
   return context.RunProgram(program);

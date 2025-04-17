@@ -34,8 +34,8 @@ class TransferBSDToBNSHProgram final : public Program<TransferBSDToBNSHProgram> 
 class AttentionProbsProgram final : public Program<AttentionProbsProgram> {
  public:
   AttentionProbsProgram(const std::string& kernel_name, bool feed_past_key, bool has_present_key,
-                        bool has_attention_bias, int tile_size, int components, bool is_first_prompt, int n_reps = 1, const Tensor* seqlen_k = nullptr, bool past_present_share_buffer = false)
-      : Program{kernel_name}, feed_past_key_(feed_past_key), has_present_key_(has_present_key), has_attention_bias_(has_attention_bias), tile_size_(tile_size), components_(components), n_reps_(n_reps), seqlen_k_(seqlen_k), past_present_share_buffer_(past_present_share_buffer), is_first_prompt_(is_first_prompt) {
+                        bool has_attention_bias, int tile_size, int components, bool is_first_prompt, const Tensor* seqlen_k = nullptr, bool past_present_share_buffer = false)
+      : Program{kernel_name}, feed_past_key_(feed_past_key), has_present_key_(has_present_key), has_attention_bias_(has_attention_bias), tile_size_(tile_size), components_(components), seqlen_k_(seqlen_k), past_present_share_buffer_(past_present_share_buffer), is_first_prompt_(is_first_prompt) {
   }
 
   Status GenerateShaderCode(ShaderHelper& sh) const override;
@@ -50,7 +50,9 @@ class AttentionProbsProgram final : public Program<AttentionProbsProgram> {
                                           {"kv_sequence_length", ProgramUniformVariableDataType::Uint32},
                                           {"present_sequence_length", ProgramUniformVariableDataType::Uint32},
                                           {"n_reps", ProgramUniformVariableDataType::Uint32},
-                                          {"is_first_prompt", ProgramUniformVariableDataType::Uint32});
+                                          {"is_first_prompt", ProgramUniformVariableDataType::Uint32},
+                                          {"num_total_seq_length_tile", ProgramUniformVariableDataType::Uint32},
+                                          {"num_seq_length_tile", ProgramUniformVariableDataType::Uint32});
 
   WEBGPU_PROGRAM_DEFINE_OVERRIDABLE_CONSTANTS({"TILE_SIZE", ProgramConstantDataType::Uint32});
 
@@ -60,7 +62,6 @@ class AttentionProbsProgram final : public Program<AttentionProbsProgram> {
   bool has_attention_bias_;
   int tile_size_;
   int components_;
-  int n_reps_;
   const Tensor* seqlen_k_;
   bool past_present_share_buffer_;
   bool is_first_prompt_;
@@ -90,8 +91,8 @@ class InPlaceSoftmaxProgram final : public Program<InPlaceSoftmaxProgram> {
 
 class VxAttentionScoreProgram final : public Program<VxAttentionScoreProgram> {
  public:
-  VxAttentionScoreProgram(const std::string& kernel_name, bool feed_past_value, bool has_present_value, int tile_size, bool is_first_prompt, int n_reps = 1, const Tensor* seqlen_k = nullptr, bool past_present_share_buffer = false)
-      : Program{kernel_name}, feed_past_value_(feed_past_value), has_present_value_(has_present_value), tile_size_(tile_size), n_reps_(n_reps), seqlen_k_(seqlen_k), past_present_share_buffer_(past_present_share_buffer), is_first_prompt_(is_first_prompt) {
+  VxAttentionScoreProgram(const std::string& kernel_name, bool feed_past_value, bool has_present_value, int tile_size, bool is_first_prompt, const Tensor* seqlen_k = nullptr, bool past_present_share_buffer = false)
+      : Program{kernel_name}, feed_past_value_(feed_past_value), has_present_value_(has_present_value), tile_size_(tile_size), seqlen_k_(seqlen_k), past_present_share_buffer_(past_present_share_buffer), is_first_prompt_(is_first_prompt) {
   }
 
   Status GenerateShaderCode(ShaderHelper& sh) const override;
@@ -106,7 +107,9 @@ class VxAttentionScoreProgram final : public Program<VxAttentionScoreProgram> {
                                           {"kv_sequence_length", ProgramUniformVariableDataType::Uint32},
                                           {"present_sequence_length", ProgramUniformVariableDataType::Uint32},
                                           {"n_reps", ProgramUniformVariableDataType::Uint32},
-                                          {"is_first_prompt", ProgramUniformVariableDataType::Uint32});
+                                          {"is_first_prompt", ProgramUniformVariableDataType::Uint32},
+                                          {"num_head_size_tile", ProgramUniformVariableDataType::Uint32},
+                                          {"num_seq_length_tile", ProgramUniformVariableDataType::Uint32});
 
   WEBGPU_PROGRAM_DEFINE_OVERRIDABLE_CONSTANTS({"TILE_SIZE", ProgramConstantDataType::Uint32});
 
@@ -114,7 +117,6 @@ class VxAttentionScoreProgram final : public Program<VxAttentionScoreProgram> {
   bool feed_past_value_;
   bool has_present_value_;
   int tile_size_;
-  int n_reps_;
   const Tensor* seqlen_k_;
   bool past_present_share_buffer_;
   bool is_first_prompt_;

@@ -29,20 +29,16 @@ void WriteBufferData(std::ostream& os, const ShaderVariableHelper& input,
   for (size_t i = 0; i < outputs.size(); ++i) {
     const auto buffer_write = outputs[i]->SetByIndices("indices", input.GetByOffset("global_idx"));
     if (outputs.size() == 1) {
-      os << buffer_write;
+      os << buffer_write << "\n";
     } else if (i == 0) {
-      os << "  if (output_number == 0u) {\n"
-         << "    " << buffer_write << "\n";
+      os << "  if (output_number == 0u) { " << buffer_write << " }\n";
     } else if (i == outputs.size() - 1) {
-      os << "  } else {\n"
-         << "    " << buffer_write << "\n";
+      os << "  else { " << buffer_write << " }\n";
     } else {
-      os << "  } else if (output_number == " << i << "u) {\n"
-         << "    " << buffer_write << "\n";
+      os << "  else if (output_number == " << i << "u) { " << buffer_write << " }\n";
     }
   }
-  os << "  }\n"
-     << "}\n";
+  os << "}\n";
 }
 
 }  // namespace
@@ -68,7 +64,7 @@ Status SplitProgram::GenerateShaderCode(ShaderHelper& shader) const {
                             << "  var index = " << input.IndicesGet("indices", axis_) << ";\n"
                             << "  let output_number = calculate_output_index(index);\n"
                             << "  if (output_number != 0u) {\n"
-                            << "    index -= uniforms.sizes_in_split_axis[output_number - 1u];\n"
+                            << "    index -= " << GetElementAt("uniforms.sizes_in_split_axis", "output_number - 1u", output_count) << ";\n"
                             << "    " << input.IndicesSet("indices", axis_, "index") << "\n"
                             << "  }\n"
                             << "  write_buffer_data(output_number, global_idx, indices);\n";
@@ -107,7 +103,7 @@ Status Split::ComputeInternal(ComputeContext& context) const {
   ORT_RETURN_IF_ERROR(PrepareForCompute(input_shape, num_outputs, axis, before_dims, after_dims_including_split_axis,
                                         after_dims_excluding_split, split_sizes));
 
-  SplitProgram program{gsl::narrow_cast<uint32_t>(axis)};
+  SplitProgram program{static_cast<uint32_t>(axis)};
   program.AddInput({input, ProgramTensorMetadataDependency::TypeAndRank});
 
   auto output_dimensions = input_shape.AsShapeVector();
@@ -120,7 +116,7 @@ Status Split::ComputeInternal(ComputeContext& context) const {
     program.AddOutput({output, ProgramTensorMetadataDependency::Rank});
   }
 
-  uint32_t input_size = gsl::narrow<uint32_t>(input_shape.Size());
+  uint32_t input_size = onnxruntime::narrow<uint32_t>(input_shape.Size());
   // Early return if the input tensor is empty.
   if (input_size == 0) {
     return Status::OK();
@@ -130,7 +126,7 @@ Status Split::ComputeInternal(ComputeContext& context) const {
   std::vector<uint32_t> sizes_in_split_axis;
   // sizes_in_split_axis are the cumulative sizes of the splits in the split axis.
   for (auto split_size : split_sizes) {
-    previous_sum += gsl::narrow<uint32_t>(split_size);
+    previous_sum += onnxruntime::narrow<uint32_t>(split_size);
     sizes_in_split_axis.push_back(previous_sum);
   }
 

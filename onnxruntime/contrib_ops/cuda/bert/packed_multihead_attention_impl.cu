@@ -698,8 +698,8 @@ Status FusedAttentionCutlass(
   p.scale = parameters.scale == 0.0f ? 1.f / sqrt(static_cast<float>(qk_head_size))
                                      : parameters.scale;
   p.seqlen_k_ptr = nullptr;
-  p.seqstart_q_ptr = const_cast<int32_t*>(data.cumulative_sequence_length);
-  p.seqstart_k_ptr = const_cast<int32_t*>(data.cumulative_sequence_length);
+  p.seqstart_q_ptr = data.cumulative_sequence_length;
+  p.seqstart_k_ptr = data.cumulative_sequence_length;
   p.query = data.no_qkv_workspace ? data.query : data.workspace;
   p.key = data.no_qkv_workspace ? data.key : (data.workspace + elements_qk);
   p.value = data.no_qkv_workspace ? data.value : (data.workspace + elements_qk + elements_qk);

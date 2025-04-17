@@ -10,10 +10,10 @@
  * "[Area][.[SubArea1].[SubArea2]...].[Keyname]"
  * Such as "ep.cuda.use_arena"
  * The Config Key cannot be empty
- * The maximum length of the Config Key is 128
+ * The maximum length of the Config Key is 1024
  *
  * The string format of a SessionOptions Config Value is defined individually for each Config.
- * The maximum length of the Config Value is 1024
+ * The maximum length of the Config Value is 2048
  */
 
 // Key for disable PrePacking,
@@ -315,8 +315,11 @@ static const char* const kOrtSessionOptionEpContextEmbedMode = "ep.context_embed
 // in case user need to merge/connect multiple EPContext nodes in one model
 static const char* const kOrtSessionOptionEpContextNodeNamePrefix = "ep.context_node_name_prefix";
 
-// Share EP related resources across EPs
+// Share EP related resources across sessions
 static const char* const kOrtSessionOptionShareEpContexts = "ep.share_ep_contexts";
+
+// Stop to share EP related resources across sessions from then on
+static const char* const kOrtSessionOptionStopShareEpContexts = "ep.stop_share_ep_contexts";
 
 // Use this config when dumping EP context model with an external initializers file
 // All initializers will be inside the external data file if specified, otherwise all in Onnx file

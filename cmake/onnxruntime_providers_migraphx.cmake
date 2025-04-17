@@ -21,8 +21,10 @@
   # Add search paths for default rocm installation
   list(APPEND CMAKE_PREFIX_PATH /opt/rocm/hcc /opt/rocm/hip /opt/rocm $ENV{HIP_PATH})
 
-  # Suppress the warning about the small capitals of the package name - Enable when support to CMake 3.27.0 is used
-  # cmake_policy(SET CMP0144 NEW)
+  if(POLICY CMP0144)
+      # Suppress the warning about the small capitals of the package name
+      cmake_policy(SET CMP0144 NEW)
+  endif()
 
   if(WIN32 AND NOT HIP_PLATFORM)
     set(HIP_PLATFORM "amd")

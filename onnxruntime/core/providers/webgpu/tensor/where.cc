@@ -127,7 +127,7 @@ Status Where::ComputeInternal(ComputeContext& context) const {
   ORT_RETURN_IF_ERROR(ComputeOutputShape(cond_shape, x_shape, y_shape, output_shape));
   auto* output_tensor = context.Output(0, output_shape);
   constexpr int component = 4;
-  uint32_t vec_size = gsl::narrow_cast<uint32_t>((output_shape.Size() + 3) / component);
+  uint32_t vec_size = onnxruntime::narrow<uint32_t>((output_shape.Size() + 3) / component);
   const auto is_broadcast = !(x_shape == y_shape &&
                               y_shape == cond_shape);
   WhereProgram program{is_broadcast};

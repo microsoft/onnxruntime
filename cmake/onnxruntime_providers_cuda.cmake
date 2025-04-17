@@ -252,10 +252,6 @@
       target_include_directories(${target} PRIVATE ${ORTTRAINING_ROOT} ${MPI_CXX_INCLUDE_DIRS})
     endif()
 
-    if(onnxruntime_USE_MPI)
-      target_link_libraries(${target} PRIVATE ${MPI_LIBRARIES} ${MPI_CXX_LINK_FLAGS})
-    endif()
-
     if (onnxruntime_USE_NCCL)
       target_include_directories(${target} PRIVATE ${NCCL_INCLUDE_DIRS})
       target_link_libraries(${target} PRIVATE ${NCCL_LIBRARIES})

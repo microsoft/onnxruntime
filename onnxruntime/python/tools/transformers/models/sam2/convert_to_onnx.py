@@ -114,6 +114,14 @@ def parse_arguments():
     )
 
     parser.add_argument(
+        "--dynamo",
+        required=False,
+        default=False,
+        action="store_true",
+        help="Use dynamo for exporting onnx model. Only image_encoder supports dynamo right now.",
+    )
+
+    parser.add_argument(
         "--verbose",
         required=False,
         default=False,
@@ -151,8 +159,10 @@ def main():
         onnx_model_path = sam2_onnx_path(args.output_dir, args.model_type, component, args.multimask_output)
         if component == "image_encoder":
             if args.overwrite or not os.path.exists(onnx_model_path):
-                export_image_encoder_onnx(sam2_model, onnx_model_path, args.dynamic_batch_axes, args.verbose)
-                test_image_encoder_onnx(sam2_model, onnx_model_path, dynamic_batch_axes=False)
+                export_image_encoder_onnx(
+                    sam2_model, onnx_model_path, args.dynamic_batch_axes, args.verbose, args.dynamo
+                )
+                test_image_encoder_onnx(sam2_model, onnx_model_path, dynamic_batch_axes=args.dynamic_batch_axes)
 
         elif component == "mask_decoder":
             if args.overwrite or not os.path.exists(onnx_model_path):

@@ -24,11 +24,7 @@ static void RunGemmTestOnCPU(const std::vector<TestInputDef<DataType>>& input_de
                              int opset = 13) {
   ProviderOptions provider_options;
 
-#if defined(_WIN32)
-  provider_options["backend_path"] = "QnnCpu.dll";
-#else
-  provider_options["backend_path"] = "libQnnCpu.so";
-#endif
+  provider_options["backend_type"] = "cpu";
   provider_options["offload_graph_io_quantization"] = "0";
 
   RunQnnModelTest(BuildOpTestCase<float>("Gemm", input_defs, {}, attrs),
@@ -198,11 +194,7 @@ void RunCPUReshapeGemmTest(const TestInputDef<float>& input, const TestInputDef<
                            ExpectedEPNodeAssignment expected_ep_assignment, float fp32_abs_err = 1e-5f) {
   ProviderOptions provider_options;
 
-#if defined(_WIN32)
-  provider_options["backend_path"] = "QnnCpu.dll";
-#else
-  provider_options["backend_path"] = "libQnnCpu.so";
-#endif
+  provider_options["backend_type"] = "cpu";
   auto build_fn = BuildReshapeGemmTestCase(input, shape, weight, bias);
   RunQnnModelTest(build_fn, provider_options, 18, expected_ep_assignment, fp32_abs_err);
 }
@@ -283,11 +275,7 @@ static void RunQDQGemmTestOnHTP(const std::vector<TestInputDef<float>>& input_de
                                 QDQTolerance tolerance = QDQTolerance()) {
   ProviderOptions provider_options;
 
-#if defined(_WIN32)
-  provider_options["backend_path"] = "QnnHtp.dll";
-#else
-  provider_options["backend_path"] = "libQnnHtp.so";
-#endif
+  provider_options["backend_type"] = "htp";
   provider_options["offload_graph_io_quantization"] = "0";
 
   auto f32_model_builder = BuildOpTestCase<float>("Gemm", input_defs, {}, attrs);

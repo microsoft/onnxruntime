@@ -8,6 +8,7 @@ stages:
   - job: Set_Variables
     pool:
       name: 'onnxruntime-Ubuntu2204-AMD-CPU'
+      os: 'linux'
     steps:
     - checkout: none
     - bash: |
@@ -38,9 +39,6 @@ stages:
         echo "##vso[task.setvariable variable=BuildTime;isOutput=true]$hhmm"
       displayName: 'Set Start Time as Variable'
       name: Set_Build_Time
-    - template: ../templates/component-governance-component-detection-steps.yml
-      parameters:
-        condition: 'succeeded'
 
 - stage: Debug
   dependsOn: Setup
@@ -48,6 +46,7 @@ stages:
   - job: D1
     pool:
       name: 'onnxruntime-Ubuntu2204-AMD-CPU'
+      os: 'linux'
     variables:
       MyVar: $[stageDependencies.Setup.Set_Variables.outputs['Set_Release_Version_Suffix.ReleaseVersionSuffix']]
       BuildDate: $[stageDependencies.Setup.Set_Variables.outputs['Set_Build_Date.BuildDate']]
@@ -57,6 +56,3 @@ stages:
     - bash: echo $(MyVar)
     - bash: echo $(BuildTime)
     - bash: echo $(BuildDate)
-    - template: ../templates/component-governance-component-detection-steps.yml
-      parameters:
-        condition: 'succeeded'
