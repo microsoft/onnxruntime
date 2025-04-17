@@ -59,7 +59,7 @@ void SqueezeOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder, const 
 }
 
 void HandleUnsqueezeScalarInput(ModelBuilder& model_builder,
-                                       const Node& node, const logging::Logger& logger) {
+                                const Node& node, const logging::Logger& logger) {
   const auto& input_defs(node.InputDefs());
   TensorShapeVector axes;
   GetAxes(model_builder, node, axes);
