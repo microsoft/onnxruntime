@@ -5072,8 +5072,12 @@ struct OrtApi {
    *
    * \param[in] session_options Session options to add execution provider to.
    * \param[in] env Environment that execution providers were registered with.
-   * \param[in] ep_name Execution provider to add. Use GetEpDevices to discover the available execution providers and
-   *                    the devices they will use.
+   * \param[in] ep_devices One or more OrtEpDevice instances to create an execution provider for.
+   *                       Obtain from GetEpDevices. All OrtEpDevice instances must be from the same execution
+   *                       provider. It is only necessary to provide multiple OrtEpDevices if you want to use the
+   *                       same execution provider for multiple devices.
+   *                       e.g. the EP is capable of running on GPU and NPU.
+   * \param[in] num_ep_devices Number of OrtEpDevice instances.
    * \param[in] ep_option_keys Optional keys to configure the execution provider.
    * \param[in] ep_option_vals Optional values to configure the execution provider.
    * \param[in] num_ep_options Number of execution provide options to add.
@@ -5083,7 +5087,8 @@ struct OrtApi {
    * \since Version 1.22.
    */
   ORT_API2_STATUS(SessionOptionsAppendExecutionProvider_V2, _In_ OrtSessionOptions* session_options,
-                  _In_ OrtEnv* env, _In_ const char* ep_name,
+                  _In_ OrtEnv* env,
+                  _In_reads_(num_ep_devices) const OrtEpDevice* const* ep_devices, _In_ size_t num_ep_devices,
                   _In_reads_(num_op_options) const char* const* ep_option_keys,
                   _In_reads_(num_op_options) const char* const* ep_option_vals,
                   size_t num_ep_options);
@@ -5104,7 +5109,7 @@ struct OrtApi {
    *
    * \since Version 1.22.
    */
-  int32_t(ORT_API_CALL* HardwareDevice_VendorId)(_In_ const OrtHardwareDevice* device);
+  uint32_t(ORT_API_CALL* HardwareDevice_VendorId)(_In_ const OrtHardwareDevice* device);
 
   /** \brief Get the hardware device's vendor name.
    *
@@ -5118,12 +5123,12 @@ struct OrtApi {
   /** \brief Get the hardware device's unique identifier.
    *
    * \param[in] device The OrtHardwareDevice instance to query.
-   * \return The bus ID of the device.
+   * \return The device id.
    *
+   * \note This is not a unique identifier. It identifies the hardware type when combined with vendor id.
    * \since Version 1.22.
    */
-  // ??? does the user care about the 'bus' part or could this just be HardwareDevice_Id?
-  int32_t(ORT_API_CALL* HardwareDevice_BusId)(_In_ const OrtHardwareDevice* device);
+  uint32_t(ORT_API_CALL* HardwareDevice_DeviceId)(_In_ const OrtHardwareDevice* device);
 
   /** \brief Get hardware device metadata.
    *

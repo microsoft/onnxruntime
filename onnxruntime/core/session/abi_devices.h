@@ -12,17 +12,20 @@
 
 struct OrtHardwareDevice {
   OrtHardwareDeviceType type;
-  int32_t vendor_id;   // GPU has id
-  std::string vendor;  // CPU uses string
-  int32_t bus_id;
+  uint32_t vendor_id;
+  uint32_t device_id;  // identifies the hardware type when combined with vendor id. not a unique id.
+  std::string vendor;
   OrtKeyValuePairs metadata;
 
   static size_t Hash(const OrtHardwareDevice& hd) {
-    auto h = std::hash<int>()(hd.bus_id);  // start with a field that always has a non-trivial value
+    auto h = std::hash<int>()(hd.device_id);  // start with a field that always has a non-trivial value
     onnxruntime::HashCombine(hd.vendor_id, h);
     onnxruntime::HashCombine(hd.vendor, h);
     onnxruntime::HashCombine(hd.type, h);
-    // skip the metadata for now
+    for (const auto& [key, value] : hd.metadata.entries) {
+      onnxruntime::HashCombine(key, h);
+      onnxruntime::HashCombine(value, h);
+    }
 
     return h;
   }
@@ -42,8 +45,8 @@ struct equal_to<OrtHardwareDevice> {
   bool operator()(const OrtHardwareDevice& lhs, const OrtHardwareDevice& rhs) const noexcept {
     return lhs.type == rhs.type &&
            lhs.vendor_id == rhs.vendor_id &&
+           lhs.device_id == rhs.device_id &&
            lhs.vendor == rhs.vendor &&
-           lhs.bus_id == rhs.bus_id &&
            lhs.metadata.keys == rhs.metadata.keys &&
            lhs.metadata.values == rhs.metadata.values;
   }

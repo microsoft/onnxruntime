@@ -11,7 +11,8 @@
 
 namespace onnxruntime {
 
-struct EpLibraryInternal : EpLibrary {
+class EpLibraryInternal : public EpLibrary {
+ public:
   EpLibraryInternal(std::unique_ptr<EpFactoryInternal> factory)
       : factory_{std::move(factory)}, factory_ptrs_{factory_.get()} {
   }

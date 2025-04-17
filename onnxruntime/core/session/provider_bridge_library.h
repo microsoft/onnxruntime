@@ -13,6 +13,7 @@ struct ProviderLibrary {
   ProviderLibrary(const ORTCHAR_T* filename, bool unload = true);
   ~ProviderLibrary();
 
+  Status Load();
   Provider& Get();
   void Unload();
 
@@ -20,6 +21,7 @@ struct ProviderLibrary {
   std::mutex mutex_;
   const ORTCHAR_T* filename_;
   bool unload_;
+  bool initialized_{};
   Provider* provider_{};
   void* handle_{};
 

@@ -8,6 +8,7 @@
 #include "core/session/abi_devices.h"
 #include "core/session/abi_logger.h"
 #include "core/session/abi_session_options_impl.h"
+#include "core/session/ort_apis.h"
 
 #if defined(USE_DML)
 #include "core/providers/dml/dml_provider_factory_creator.h"
@@ -29,46 +30,73 @@ std::unique_ptr<EpLibraryInternal> EpLibraryInternal::CreateCpuEp() {
     return false;
   };
 
-  const auto create_cpu_ep = [](const OrtSessionOptions& session_options,
-                                const OrtLogger& session_logger) {
-    CPUExecutionProviderInfo epi{session_options.value.enable_cpu_mem_arena};
-    auto ep = std::make_unique<CPUExecutionProvider>(epi);
-    ep->SetLogger(session_logger.ToInternal());
-    return ep;
+  const auto create_cpu_ep = [](const OrtHardwareDevice* const* /*devices*/,
+                                const OrtKeyValuePairs* const* /*ep_metadata_pairs*/,
+                                size_t num_devices,
+                                const OrtSessionOptions* session_options,
+                                const OrtLogger* session_logger,
+                                std::unique_ptr<IExecutionProvider>* ep) -> OrtStatus* {
+    if (num_devices != 1) {
+      return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT,
+                                   "CPU EP factory currently only supports one device at a time.");
+    }
+
+    CPUExecutionProviderInfo epi{session_options->value.enable_cpu_mem_arena};
+    *ep = std::make_unique<CPUExecutionProvider>(epi);
+    (*ep)->SetLogger(session_logger->ToInternal());
+
+    return nullptr;
   };
 
-  std::string ep_name = "CPU";
+  std::string ep_name = kCpuExecutionProvider;
   auto cpu_factory = std::make_unique<EpFactoryInternal>(ep_name, "Microsoft", is_supported, create_cpu_ep);
   return std::make_unique<EpLibraryInternal>(std::move(cpu_factory));
 }
 
 #if defined(USE_DML)
 std::unique_ptr<EpLibraryInternal> EpLibraryInternal::CreateDmlEp() {
-  static const std::string ep_name = "DML";
+  static const std::string ep_name = kDmlExecutionProvider;
   const auto is_supported = [](const OrtHardwareDevice* device,
                                OrtKeyValuePairs** /*ep_metadata*/,
-                               OrtKeyValuePairs** /*ep_options*/) -> bool {
+                               OrtKeyValuePairs** ep_options) -> bool {
     if (device->type == OrtHardwareDeviceType::OrtHardwareDeviceType_GPU) {
-      // does anything need to be added here?
-      // is it possible to get the PCI bus number from OrtHardwareDevice? Is that 1:1 with 'device_id'
+      // device_id == bus number. TODO: verify this is actually the case
+      // TODO: Should we ignore a user provided 'device_id' when they select an OrtEpDevice that has a specific device?
+      //       How would we know what options should not allow user overrides if set in OrtEpDevice?
+      if (auto it = device->metadata.entries.find("BusNumber"); it != device->metadata.entries.end()) {
+        auto options = std::make_unique<OrtKeyValuePairs>();
+        options->Add("device_id", it->second.c_str());
+        *ep_options = options.release();
+      }
+
       return true;
     }
 
     return false;
   };
 
-  const auto create_dml_ep = [](const OrtSessionOptions& session_options,
-                                const OrtLogger& session_logger) {
-    const SessionOptions& so = session_options.existing_value ? **session_options.existing_value
-                                                              : session_options.value;
+  const auto create_dml_ep = [](const OrtHardwareDevice* const* /*devices*/,
+                                const OrtKeyValuePairs* const* /*ep_metadata_pairs*/,
+                                size_t num_devices,
+                                const OrtSessionOptions* session_options,
+                                const OrtLogger* session_logger,
+                                std::unique_ptr<IExecutionProvider>* ep) -> OrtStatus* {
+    if (num_devices != 1) {
+      return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT,
+                                   "DML EP factory currently only supports one device at a time.");
+    }
+
+    const SessionOptions& so = session_options->existing_value ? **session_options->existing_value
+                                                               : session_options->value;
 
     auto ep_options = GetOptionsFromSessionOptions(ep_name, so);
     auto dml_ep_factory = DMLProviderFactoryCreator::CreateFromProviderOptions(so.config_options,
                                                                                ep_options);
 
-    auto dml_ep = dml_ep_factory->CreateProvider();
-    dml_ep->SetLogger(session_logger.ToInternal());
-    return dml_ep;
+    *ep = dml_ep_factory->CreateProvider();
+    (*ep)->SetLogger(session_logger->ToInternal());
+
+    return nullptr;
   };
 
   auto dml_factory = std::make_unique<EpFactoryInternal>(ep_name, "Microsoft", is_supported, create_dml_ep);
@@ -79,7 +107,7 @@ std::unique_ptr<EpLibraryInternal> EpLibraryInternal::CreateDmlEp() {
 
 #if defined(USE_WEBGPU)
 std::unique_ptr<EpLibraryInternal> EpLibraryInternal::CreateWebGpuEp() {
-  static const std::string ep_name = "WebGPU";
+  static const std::string ep_name = kWebGpuExecutionProvider;
 
   const auto is_supported = [](const OrtHardwareDevice* device,
                                OrtKeyValuePairs** /*ep_metadata*/,
@@ -92,15 +120,25 @@ std::unique_ptr<EpLibraryInternal> EpLibraryInternal::CreateWebGpuEp() {
     return false;
   };
 
-  const auto create_webgpu_ep = [](const OrtSessionOptions& session_options,
-                                   const OrtLogger& session_logger) {
-    const SessionOptions& so = session_options.existing_value ? **session_options.existing_value
-                                                              : session_options.value;
+  const auto create_webgpu_ep = [](const OrtHardwareDevice* const* /*devices*/,
+                                   const OrtKeyValuePairs* const* /*ep_metadata_pairs*/,
+                                   size_t num_devices,
+                                   const OrtSessionOptions* session_options,
+                                   const OrtLogger* session_logger,
+                                   std::unique_ptr<IExecutionProvider>* ep) -> OrtStatus* {
+    if (num_devices != 1) {
+      return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT,
+                                   "DML EP factory currently only supports one device at a time.");
+    }
+
+    const SessionOptions& so = session_options->existing_value ? **session_options->existing_value
+                                                               : session_options->value;
 
     auto webgpu_ep_factory = WebGpuProviderFactoryCreator::Create(so.config_options);
-    auto webgpu_ep = webgpu_ep_factory->CreateProvider();
-    webgpu_ep->SetLogger(session_logger.ToInternal());
-    return webgpu_ep;
+    *ep = webgpu_ep_factory->CreateProvider();
+    (*ep)->SetLogger(session_logger->ToInternal());
+
+    return nullptr;
   };
 
   auto webgpu_factory = std::make_unique<EpFactoryInternal>(ep_name, "Microsoft", is_supported, create_webgpu_ep);

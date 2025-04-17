@@ -13,6 +13,8 @@
 #include "core/session/ep_factory_internal.h"
 #include "core/session/onnxruntime_c_api.h"
 #include "core/session/onnxruntime_session_options_config_keys.h"
+#include "core/session/ep_library_plugin.h"
+#include "core/session/ep_library_provider_bridge.h"
 #include "core/session/ort_apis.h"
 #include "core/session/ort_env.h"
 
@@ -60,8 +62,7 @@ Status TestAutoSelectEPsImpl(const Environment& env, InferenceSession& sess, con
     if (internal_factory) {
       // this is a factory we created and registered. internal or provider bridge EP.
       OrtStatus* status = internal_factory->CreateIExecutionProvider(
-          devices.data(), ep_metadata.data(), devices.size(),
-          &ort_so, &api_session_logger, ep);
+          devices.data(), ep_metadata.data(), devices.size(), &ort_so, &api_session_logger, &ep);
 
       if (status != nullptr) {
         return ToStatus(status);
@@ -209,3 +210,36 @@ OrtStatus* InitializeSession(_In_ const OrtSessionOptions* options,
 
   return nullptr;
 }
+
+namespace onnxruntime {
+
+Status LoadPluginOrProviderBridge(const std::string& registration_name,
+                                  const ORTCHAR_T* library_path,
+                                  std::unique_ptr<EpLibrary>& ep_library,
+                                  std::vector<EpFactoryInternal*>& internal_factories) {
+  // if it's a provider bridge library we need to create ProviderLibrary first to ensure the dependencies are loaded
+  // like the onnxruntime_provider_shared library.
+  auto provider_library = std::make_unique<ProviderLibrary>(library_path);
+  bool is_provider_bridge = provider_library->Load() == Status::OK();  // library has GetProvider
+  LOGS_DEFAULT(INFO) << "Loading EP library: " << library_path
+                     << (is_provider_bridge ? " as a provider bridge" : " as a plugin");
+
+  // create EpLibraryPlugin to ensure CreateEpFactories and ReleaseEpFactory are available
+  auto ep_library_plugin = std::make_unique<EpLibraryPlugin>(registration_name, library_path);
+  ORT_RETURN_IF_ERROR(ep_library_plugin->Load());
+
+  if (is_provider_bridge) {
+    // wrap the EpLibraryPlugin with EpLibraryProviderBridge to add to directly create an IExecutionProvider
+    auto ep_library_provider_bridge = std::make_unique<EpLibraryProviderBridge>(std::move(provider_library),
+                                                                                std::move(ep_library_plugin));
+    ORT_RETURN_IF_ERROR(ep_library_provider_bridge->Load());
+    internal_factories = ep_library_provider_bridge->GetInternalFactories();
+    ep_library = std::move(ep_library_provider_bridge);
+  } else {
+    ep_library = std::move(ep_library_plugin);
+  }
+
+  return Status::OK();
+}
+
+}  // namespace onnxruntime

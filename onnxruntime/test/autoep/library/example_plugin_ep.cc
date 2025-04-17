@@ -50,29 +50,29 @@ struct ExampleEpFactory : OrtEpFactory, ApiPtrs {
   }
 
   static const char* GetNameImpl(const OrtEpFactory* this_ptr) {
-    const auto* ep = static_cast<const ExampleEpFactory*>(this_ptr);
-    return ep->ep_name_.c_str();
+    const auto* factory = static_cast<const ExampleEpFactory*>(this_ptr);
+    return factory->ep_name_.c_str();
   }
 
   static const char* GetVendorImpl(const OrtEpFactory* this_ptr) {
-    const auto* ep = static_cast<const ExampleEpFactory*>(this_ptr);
-    return ep->vendor_.c_str();
+    const auto* factory = static_cast<const ExampleEpFactory*>(this_ptr);
+    return factory->vendor_.c_str();
   }
 
   static bool GetDeviceInfoIfSupportedImpl(const OrtEpFactory* this_ptr,
                                            const OrtHardwareDevice* device,
                                            _Out_opt_ OrtKeyValuePairs** ep_metadata,
                                            _Out_opt_ OrtKeyValuePairs** ep_options) {
-    const auto* ep = static_cast<const ExampleEpFactory*>(this_ptr);
+    const auto* factory = static_cast<const ExampleEpFactory*>(this_ptr);
 
-    if (ep->ort_api.HardwareDevice_Type(device) == OrtHardwareDeviceType::OrtHardwareDeviceType_CPU) {
+    if (factory->ort_api.HardwareDevice_Type(device) == OrtHardwareDeviceType::OrtHardwareDeviceType_CPU) {
       // these can be returned as nullptr if you have nothing to add.
-      ep->ort_api.CreateKeyValuePairs(ep_metadata);
-      ep->ort_api.CreateKeyValuePairs(ep_options);
+      factory->ort_api.CreateKeyValuePairs(ep_metadata);
+      factory->ort_api.CreateKeyValuePairs(ep_options);
 
       // random example using made up values
-      ep->ort_api.AddKeyValuePair(*ep_metadata, "version", "0.1");
-      ep->ort_api.AddKeyValuePair(*ep_options, "run_really_fast", "true");
+      factory->ort_api.AddKeyValuePair(*ep_metadata, "version", "0.1");
+      factory->ort_api.AddKeyValuePair(*ep_options, "run_really_fast", "true");
 
       return true;
     }

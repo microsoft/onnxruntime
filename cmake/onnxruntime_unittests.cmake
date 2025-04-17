@@ -1802,10 +1802,10 @@ endif()
 # Build library that can be used with RegisterExecutionProviderLibrary and automatic EP selection
 # We need a shared lib build to use that as a dependency for the test library
 if (onnxruntime_BUILD_SHARED_LIB AND NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten" AND NOT onnxruntime_MINIMAL_BUILD)
-  onnxruntime_add_shared_library_module(example_plugin_ep_library
+  onnxruntime_add_shared_library_module(example_plugin_ep
                                         ${TEST_SRC_DIR}/autoep/library/example_plugin_ep.cc)
-  target_include_directories(example_plugin_ep_library PRIVATE ${REPO_ROOT}/include/onnxruntime/core/session)
-  target_link_libraries(  example_plugin_ep_library PRIVATE onnxruntime)
+  target_include_directories(example_plugin_ep PRIVATE ${REPO_ROOT}/include/onnxruntime/core/session)
+  target_link_libraries(example_plugin_ep PRIVATE onnxruntime)
 
   if(UNIX)
     if (APPLE)
@@ -1820,7 +1820,7 @@ if (onnxruntime_BUILD_SHARED_LIB AND NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten"
         "-DEF:${TEST_SRC_DIR}/autoep/library/example_plugin_ep_library.def")
   endif()
 
-  set_property(TARGET example_plugin_ep_library APPEND_STRING PROPERTY LINK_FLAGS
+  set_property(TARGET example_plugin_ep APPEND_STRING PROPERTY LINK_FLAGS
                ${ONNXRUNTIME_AUTOEP_LIB_LINK_FLAG})
 
   # test library
@@ -1850,7 +1850,7 @@ if (onnxruntime_BUILD_SHARED_LIB AND NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten"
           TARGET onnxruntime_autoep_test
           SOURCES ${onnxruntime_autoep_test_SRC} ${onnxruntime_unittest_main_src}
           LIBS ${onnxruntime_autoep_test_LIBS}
-          DEPENDS ${all_dependencies} example_plugin_ep_library
+          DEPENDS ${all_dependencies} example_plugin_ep
   )
 endif()
 

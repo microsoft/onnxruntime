@@ -16,6 +16,7 @@
 #include "core/session/ep_library_plugin.h"
 #include "core/session/ep_library_provider_bridge.h"
 #include "core/session/ort_apis.h"
+#include "core/session/utils.h"
 
 #if !defined(ORT_MINIMAL_BUILD)
 #include "onnx/defs/operator_sets.h"
@@ -411,19 +412,14 @@ Status Environment::CreateAndRegisterInternalEps() {
 }
 
 Status Environment::RegisterExecutionProviderLibrary(const std::string& registration_name, const ORTCHAR_T* lib_path) {
-  // need to special case provider bridge EPs.
-  if (registration_name == "CUDA") {
-    auto ep_library = std::make_unique<EpLibraryProviderBridge>(registration_name, lib_path);
-    // we do a std::move in the function call so need a valid pointer for the args after the move
-    auto* internal_library_ptr = ep_library.get();
-    return RegisterExecutionProviderLibrary(registration_name, std::move(ep_library),
-                                            internal_library_ptr->GetInternalFactories());
-  } else {
-    // FUTURE: Plugin EP load goes here once the OrtEp API is finalized.
-    // load the library
-    std::unique_ptr<EpLibrary> ep_library = std::make_unique<EpLibraryPlugin>(registration_name, lib_path);
-    return RegisterExecutionProviderLibrary(registration_name, std::move(ep_library));
-  }
+  std::vector<EpFactoryInternal*> internal_factories = {};
+  std::unique_ptr<EpLibrary> ep_library;
+
+  // This will create an EpLibraryPlugin or an EpLibraryProviderBridge depending on what the library supports.
+  ORT_RETURN_IF_ERROR(LoadPluginOrProviderBridge(registration_name, lib_path, ep_library,
+                                                 internal_factories));
+
+  return RegisterExecutionProviderLibrary(registration_name, std::move(ep_library), internal_factories);
 }
 
 Status Environment::UnregisterExecutionProviderLibrary(const std::string& ep_name) {
