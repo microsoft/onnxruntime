@@ -78,6 +78,10 @@
 #include "core/providers/tensorrt/tensorrt_provider_factory_creator.h"
 #endif
 
+#if defined(USE_NV)
+#include "core/providers/nv_tensorrt_rtx/nv_provider_factory_creator.h"
+#endif
+
 #if defined(USE_VITISAI)
 #include "core/providers/vitisai/vitisai_provider_factory_creator.h"
 #endif

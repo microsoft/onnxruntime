@@ -52,9 +52,8 @@ std::unique_ptr<IExecutionProvider> DefaultTensorrtExecutionProvider() {
 
 std::unique_ptr<IExecutionProvider> DefaultNvTensorRTRTXExecutionProvider() {
 #ifdef USE_NV
-//FIXME linking error
-//  if (auto factory = NvProviderFactoryCreator::Create(0))
-//    return factory->CreateProvider();
+  if (auto factory = NvProviderFactoryCreator::Create(0))
+    return factory->CreateProvider();
 #endif
   return nullptr;
 }

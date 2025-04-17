@@ -1105,7 +1105,7 @@ NvExecutionProvider::NvExecutionProvider(const NvExecutionProviderInfo& info)
     cuda_graph_enable_ = info.cuda_graph_enable;
     op_types_to_exclude_ = info.op_types_to_exclude;
   } else {
-    LOGS_DEFAULT(WARNING) << "[Nv EP] Options were not specified";
+    LOGS_DEFAULT(INFO) << "[Nv EP] Options were not specified";
   }
 
   // Validate setting
@@ -2371,7 +2371,7 @@ Status NvExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphViewer& gr
             has_explicit_profile = true;
             // TODO(maximilianm) this is needed until we have a wildcard in the API to support dynamic shapes
             profile_min_shapes_[input_name][0][idx_dim] = 0;
-            // TODO This can be buggy since shape inference can failt with 1 being used as optimal shape
+            // TODO(maximilianm) This can be buggy since shape inference can failt with 1 being used as optimal shape
             //        [2025-04-04 15:41:58   ERROR] IBuilder::buildSerializedNetwork: Error Code 4: Internal Error (kOPT values for profile 0 violate shape constraints:
             //        /conv1/Conv: spatial dimension of convolution/deconvolution output cannot be negative (build-time output dimension of axis 2 is
             //        (+ (CEIL_DIV (+ h -6) 2) 1)) Condition '<' violated: 2 >= 1.)
