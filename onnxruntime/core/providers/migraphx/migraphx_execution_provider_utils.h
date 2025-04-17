@@ -293,7 +293,7 @@ inline std::string GenerateGraphId(const GraphViewer& graph_viewer) {
     hash_str(node_arg->Name());
   }
 
-  // hashing output of each node
+  // hashing outputs, inputs and inputs shapes of each node
   const int number_of_ort_nodes = graph_viewer.NumberOfNodes();
   std::vector<size_t> nodes_vector(number_of_ort_nodes);
   std::iota(std::begin(nodes_vector), std::end(nodes_vector), 0);
@@ -303,6 +303,15 @@ inline std::string GenerateGraphId(const GraphViewer& graph_viewer) {
     for (const auto* node_arg : node->OutputDefs()) {
       if (node_arg->Exists()) {
         hash_str(node_arg->Name());
+      }
+    }
+    for (const auto* node_arg : node->InputDefs()) {
+      if (node_arg->Exists()) {
+        hash_str(node_arg->Name());
+        int dim_size = node_arg->Shape()->dim_size();
+        for (int i = 0; i < dim_size; i++) {
+          hash_str(std::to_string(node_arg->Shape()->dim(i).dim_value()));
+        }
       }
     }
   }
