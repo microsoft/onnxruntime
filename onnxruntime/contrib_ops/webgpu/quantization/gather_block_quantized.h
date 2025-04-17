@@ -15,7 +15,7 @@ using onnxruntime::webgpu::ComputeContext;
 
 class GatherBlockQuantizedProgram final : public Program<GatherBlockQuantizedProgram> {
  public:
-  GatherBlockQuantizedProgram(const bool is_signed, size_t indices_rank, int64_t gather_axis, bool has_zeropoint,
+  GatherBlockQuantizedProgram(const bool is_signed, size_t indices_rank, int gather_axis, bool has_zeropoint,
                               TensorShape x_shape, TensorShape output_shape) : Program<GatherBlockQuantizedProgram>{"GatherBlockQuantized"},
                                                                                is_signed_{is_signed},
                                                                                indices_rank_{indices_rank},
@@ -34,7 +34,7 @@ class GatherBlockQuantizedProgram final : public Program<GatherBlockQuantizedPro
  private:
   bool is_signed_;
   size_t indices_rank_;
-  int64_t gather_axis_;
+  int gather_axis_;
   bool has_zeropoint_;
   TensorShape x_shape_;
   TensorShape output_shape_;
@@ -43,17 +43,17 @@ class GatherBlockQuantizedProgram final : public Program<GatherBlockQuantizedPro
 class GatherBlockQuantized final : public WebGpuKernel {
  public:
   GatherBlockQuantized(const OpKernelInfo& info) : WebGpuKernel(info) {
-    gather_axis_ = info.GetAttrOrDefault<int64_t>("gather_axis", 0);
-    block_size_ = info.GetAttrOrDefault<int64_t>("block_size", 128);
-    quantize_axis_ = info.GetAttrOrDefault<int64_t>("quantize_axis", 1);
+    gather_axis_ = static_cast<int>(info.GetAttrOrDefault<int64_t>("gather_axis", 0));
+    block_size_ = static_cast<int>(info.GetAttrOrDefault<int64_t>("block_size", 128));
+    quantize_axis_ = static_cast<int>(info.GetAttrOrDefault<int64_t>("quantize_axis", 1));
   }
 
   Status ComputeInternal(ComputeContext& context) const override;
 
  private:
-  int64_t gather_axis_;
-  int64_t quantize_axis_;
-  int64_t block_size_;
+  int gather_axis_;
+  int quantize_axis_;
+  int block_size_;
 };
 
 }  // namespace webgpu

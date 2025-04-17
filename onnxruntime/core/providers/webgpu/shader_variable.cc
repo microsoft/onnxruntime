@@ -64,7 +64,7 @@ constexpr static const std::string_view VALUE_TYPE_ARRAY[] = {
     "vec2<i32>",   // Int8x8 (vec2<i32> as 2x4 elements of int8)
     "vec4<i32>",   // Int8x16 (vec4<i32> as 4x4 elements of int8)
     "u32",         // Uint4x8
-    "i32",         // Int4x8
+    "u32",         // Int4x8
 };
 constexpr static const auto VALUE_TYPE = details::_to_std_array(VALUE_TYPE_ARRAY);
 

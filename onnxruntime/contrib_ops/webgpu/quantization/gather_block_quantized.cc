@@ -116,16 +116,16 @@ Status GatherBlockQuantized::ComputeInternal(ComputeContext& context) const {
 
   const auto x_shape = x->Shape();
   int64_t x_size = x_shape.Size();
-  int64_t x_rank = x_shape.NumDimensions();
+  int x_rank = static_cast<int>(x_shape.NumDimensions());
   int64_t x_dtype = x->GetElementType();
 
   size_t indices_rank = indices->Shape().NumDimensions();
   bool is_signed = x_dtype == ONNX_TENSOR_ELEMENT_DATA_TYPE_INT8 || x_dtype == ONNX_TENSOR_ELEMENT_DATA_TYPE_INT4;
-  int64_t gather_axis = (gather_axis_ >= 0) ? gather_axis_ : gather_axis_ + x_rank;
-  int64_t quantize_axis = (quantize_axis_ >= 0) ? quantize_axis_ : quantize_axis_ + x_rank;
+  int gather_axis = (gather_axis_ >= 0) ? gather_axis_ : gather_axis_ + x_rank;
+  int quantize_axis = (quantize_axis_ >= 0) ? quantize_axis_ : quantize_axis_ + x_rank;
 
   TensorShape output_shape = splice(x_shape.AsShapeVector(), gather_axis, 1, indices->Shape().AsShapeVector());
-  size_t output_size = output_shape.Size();
+  int64_t output_size = output_shape.Size();
   auto* output_tensor = context.Output(0, output_shape);
 
   GatherBlockQuantizedProgram program{is_signed, indices_rank, gather_axis, zero_points != nullptr, x_shape, output_shape};
