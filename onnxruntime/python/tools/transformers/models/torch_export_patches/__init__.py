@@ -1,6 +1,6 @@
+from dataclasses import fields, is_dataclass
 from typing import Any
 
-from dataclasses import is_dataclass, fields
 import numpy as np
 import packaging.version as pv
 import torch
