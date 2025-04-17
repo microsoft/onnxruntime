@@ -145,10 +145,10 @@ accumulate_q8_blklen16_r2c1blk8_avx512(
     const __m512i bv1_64_epi8 = _mm512_loadu_si512(reinterpret_cast<const __m512i*>(QuantBDataPtr + 64));
     const __m512i low_mask = _mm512_load_si512(reinterpret_cast<const __m512i*>(MasksAvx512BlkLen16 + 16));
     const __m512i high_mask = _mm512_load_si512(reinterpret_cast<const __m512i*>(MasksAvx512BlkLen16 + 32));
-    const __m512i bv0_low_32_epi8 = _mm512_and_si512(bv0_64_epi8, low_mask);
-    const __m512i bv0_high_32_epi8 = _mm512_and_si512(bv0_64_epi8, high_mask);
-    const __m512i bv1_low_32_epi8 = _mm512_and_si512(bv1_64_epi8, low_mask);
-    const __m512i bv1_high_32_epi8 = _mm512_and_si512(bv1_64_epi8, high_mask);
+    const __m512i bv0_low_64_epi8 = _mm512_and_si512(bv0_64_epi8, low_mask);
+    const __m512i bv0_high_64_epi8 = _mm512_and_si512(bv0_64_epi8, high_mask);
+    const __m512i bv1_low_64_epi8 = _mm512_and_si512(bv1_64_epi8, low_mask);
+    const __m512i bv1_high_64_epi8 = _mm512_and_si512(bv1_64_epi8, high_mask);
     const __m256 scale_b_ps = _mm256_loadu_ps(scale_b);  // 01234567
     const __m512i idx = _mm512_load_si512(reinterpret_cast<const __m512i*>(MasksAvx512BlkLen16)); // 0044115522663377
     const __m512i one_32_epi16 = generate_ones_32_epi16();
@@ -159,10 +159,10 @@ accumulate_q8_blklen16_r2c1blk8_avx512(
     __m512 scale_a0b_16_ps = _mm512_insertf32x8(_mm512_setzero_ps(), scale_a0b_ps, 0); // 0123456700000000
     scale_a0b_16_ps = _mm512_permutexvar_ps(idx, scale_a0b_16_ps);
 
-    const __m512i dot00_low_32_epi16 = _mm512_maddubs_epi16(bv0_low_32_epi8, av00_64_epi8); // 0x8 1x8 2x8 3x8
-    const __m512i dot00_high_32_epi16 = _mm512_maddubs_epi16(bv0_high_32_epi8, av00_64_epi8);
-    const __m512i dot01_low_32_epi16 = _mm512_maddubs_epi16(bv1_low_32_epi8, av01_64_epi8); // 4x8 5x8 6x8 7x8
-    const __m512i dot01_high_32_epi16 = _mm512_maddubs_epi16(bv1_high_32_epi8, av01_64_epi8);
+    const __m512i dot00_low_32_epi16 = _mm512_maddubs_epi16(bv0_low_64_epi8, av00_64_epi8); // 0x8 1x8 2x8 3x8
+    const __m512i dot00_high_32_epi16 = _mm512_maddubs_epi16(bv0_high_64_epi8, av00_64_epi8);
+    const __m512i dot01_low_32_epi16 = _mm512_maddubs_epi16(bv1_low_64_epi8, av01_64_epi8); // 4x8 5x8 6x8 7x8
+    const __m512i dot01_high_32_epi16 = _mm512_maddubs_epi16(bv1_high_64_epi8, av01_64_epi8);
 
     const __m512i dot00_low_16_epi32 = _mm512_madd_epi16(one_32_epi16, dot00_low_32_epi16); // 0000111122223333
     const __m512i dot00_high_16_epi32 = _mm512_madd_epi16(one_32_epi16, dot00_high_32_epi16);
@@ -184,10 +184,10 @@ accumulate_q8_blklen16_r2c1blk8_avx512(
     __m512 scale_a1b_16_ps = _mm512_insertf32x8(_mm512_setzero_ps(), scale_a1b_ps, 0);
     scale_a1b_16_ps = _mm512_permutexvar_ps(idx, scale_a1b_16_ps);
 
-    const __m512i dot10_low_32_epi16 = _mm512_maddubs_epi16(bv0_low_32_epi8, av10_64_epi8); // 0x8 1x8 2x8 3x8
-    const __m512i dot10_high_32_epi16 = _mm512_maddubs_epi16(bv0_high_32_epi8, av10_64_epi8);
-    const __m512i dot11_low_32_epi16 = _mm512_maddubs_epi16(bv1_low_32_epi8, av11_64_epi8); // 4x8 5x8 6x8 7x8
-    const __m512i dot11_high_32_epi16 = _mm512_maddubs_epi16(bv1_high_32_epi8, av11_64_epi8);
+    const __m512i dot10_low_32_epi16 = _mm512_maddubs_epi16(bv0_low_64_epi8, av10_64_epi8); // 0x8 1x8 2x8 3x8
+    const __m512i dot10_high_32_epi16 = _mm512_maddubs_epi16(bv0_high_64_epi8, av10_64_epi8);
+    const __m512i dot11_low_32_epi16 = _mm512_maddubs_epi16(bv1_low_64_epi8, av11_64_epi8); // 4x8 5x8 6x8 7x8
+    const __m512i dot11_high_32_epi16 = _mm512_maddubs_epi16(bv1_high_64_epi8, av11_64_epi8);
 
     const __m512i dot10_low_16_epi32 = _mm512_madd_epi16(one_32_epi16, dot10_low_32_epi16); // 0000111122223333
     const __m512i dot10_high_16_epi32 = _mm512_madd_epi16(one_32_epi16, dot10_high_32_epi16);
@@ -218,10 +218,10 @@ accumulate_q8_blklen16_r1c1blk8_avx512(
     const __m512i bv1_64_epi8 = _mm512_loadu_si512(reinterpret_cast<const __m512i*>(QuantBDataPtr + 64));
     const __m512i low_mask = _mm512_load_si512(reinterpret_cast<const __m512i*>(MasksAvx512BlkLen16 + 16));
     const __m512i high_mask = _mm512_load_si512(reinterpret_cast<const __m512i*>(MasksAvx512BlkLen16 + 32));
-    const __m512i bv0_low_32_epi8 = _mm512_and_si512(bv0_64_epi8, low_mask);
-    const __m512i bv0_high_32_epi8 = _mm512_and_si512(bv0_64_epi8, high_mask);
-    const __m512i bv1_low_32_epi8 = _mm512_and_si512(bv1_64_epi8, low_mask);
-    const __m512i bv1_high_32_epi8 = _mm512_and_si512(bv1_64_epi8, high_mask);
+    const __m512i bv0_low_64_epi8 = _mm512_and_si512(bv0_64_epi8, low_mask);
+    const __m512i bv0_high_64_epi8 = _mm512_and_si512(bv0_64_epi8, high_mask);
+    const __m512i bv1_low_64_epi8 = _mm512_and_si512(bv1_64_epi8, low_mask);
+    const __m512i bv1_high_64_epi8 = _mm512_and_si512(bv1_64_epi8, high_mask);
     const __m256 scale_b_ps = _mm256_loadu_ps(scale_b);  // 01234567
     const __m512i idx = _mm512_load_si512(reinterpret_cast<const __m512i*>(MasksAvx512BlkLen16)); // 0044115522663377
     const __m512i one_32_epi16 = generate_ones_32_epi16();
@@ -232,10 +232,10 @@ accumulate_q8_blklen16_r1c1blk8_avx512(
     __m512 scale_a0b_16_ps = _mm512_insertf32x8(_mm512_setzero_ps(), scale_a0b_ps, 0); // 0123456700000000
     scale_a0b_16_ps = _mm512_permutexvar_ps(idx, scale_a0b_16_ps);
 
-    const __m512i dot00_low_32_epi16 = _mm512_maddubs_epi16(bv0_low_32_epi8, av00_64_epi8); // 0x8 1x8 2x8 3x8
-    const __m512i dot00_high_32_epi16 = _mm512_maddubs_epi16(bv0_high_32_epi8, av00_64_epi8);
-    const __m512i dot01_low_32_epi16 = _mm512_maddubs_epi16(bv1_low_32_epi8, av01_64_epi8); // 4x8 5x8 6x8 7x8
-    const __m512i dot01_high_32_epi16 = _mm512_maddubs_epi16(bv1_high_32_epi8, av01_64_epi8);
+    const __m512i dot00_low_32_epi16 = _mm512_maddubs_epi16(bv0_low_64_epi8, av00_64_epi8); // 0x8 1x8 2x8 3x8
+    const __m512i dot00_high_32_epi16 = _mm512_maddubs_epi16(bv0_high_64_epi8, av00_64_epi8);
+    const __m512i dot01_low_32_epi16 = _mm512_maddubs_epi16(bv1_low_64_epi8, av01_64_epi8); // 4x8 5x8 6x8 7x8
+    const __m512i dot01_high_32_epi16 = _mm512_maddubs_epi16(bv1_high_64_epi8, av01_64_epi8);
 
     const __m512i dot00_low_16_epi32 = _mm512_madd_epi16(one_32_epi16, dot00_low_32_epi16); // 0000111122223333
     const __m512i dot00_high_16_epi32 = _mm512_madd_epi16(one_32_epi16, dot00_high_32_epi16);
