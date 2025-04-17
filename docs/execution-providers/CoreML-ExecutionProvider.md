@@ -72,10 +72,10 @@ Ort::Env env = Ort::Env{ORT_LOGGING_LEVEL_ERROR, "Default"};
 Ort::SessionOptions so;
 std::string model_path = "/a/b/c/model.onnx";
 std::unordered_map<std::string, std::string> provider_options;
-provider_options["ModelFormat"] = std::to_string("MLProgram");
-provider_options["MLComputeUnits"] = std::to_string("ALL");
-provider_options["RequireStaticInputShapes"] = std::to_string("0");
-provider_options["EnableOnSubgraphs"] = std::to_string("0");
+provider_options["ModelFormat"] = "MLProgram";
+provider_options["MLComputeUnits"] = "ALL";
+provider_options["RequireStaticInputShapes"] = "0";
+provider_options["EnableOnSubgraphs"] = "0";
 so.AppendExecutionProvider("CoreML", provider_options);
 Ort::Session session(env, model_path, so);
 ```
