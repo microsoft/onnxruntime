@@ -14,7 +14,6 @@ import numpy as np
 import packaging.version as pv
 import torch
 import transformers
-from transformers.cache_utils import DynamicCache
 from benchmark_helper import setup_logger
 from dist_settings import get_rank, get_size
 from llama_inputs import (
