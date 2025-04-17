@@ -850,3 +850,93 @@ MlasQ4Int8GemmKernelBlkLen32Avx512(
 
     return CountM;
 }
+
+template<bool vnni>
+MLAS_FORCEINLINE
+size_t
+MlasQ8Int8GemmKernelBlkLen32Avx512(
+    const std::byte* QuantA,
+    const float* QuantAScale,
+    const std::byte* QuantBData,
+    const float* QuantBScale,
+    float* C,
+    size_t CountM,
+    size_t CountN,
+    size_t BlockCountK,
+    const float* Bias,
+    size_t ldc
+)
+{
+    constexpr size_t BlkLen32 = 32;
+    constexpr size_t BlkBitWidth = 8;
+    constexpr size_t NCols4 = 4;
+    constexpr size_t NRows2 = 2;
+
+    const size_t lda = BlockCountK * BlkLen32 * sizeof(int8_t);
+    const size_t lda_scale = BlockCountK;
+    const size_t StrideQuantBData = BlockCountK * MlasQNBitBlkDataSizeInBytes(BlkBitWidth, BlkLen32);
+    const size_t StrideQuantBScale = BlockCountK;
+
+    size_t remainingRows = CountM % NRows2;
+    size_t multipleRows = CountM - remainingRows;
+    size_t remainingCols = CountN % NCols4;
+    size_t multipleCols = CountN - remainingCols;
+
+    if (multipleRows > 0 && multipleCols > 0) {
+        Q4Int8GemmR2xC4BlkLen32Avx512<vnni>(
+            QuantA,
+            QuantAScale,
+            QuantBData,
+            QuantBScale,
+            C,
+            multipleRows,
+            multipleCols,
+            BlockCountK,
+            Bias,
+            ldc
+        );
+    }
+    if (remainingCols > 0 && multipleRows > 0) {
+        Q4Int8GemmR2C1BlkLen32Avx512<vnni>(
+            QuantA,
+            QuantAScale,
+            QuantBData + multipleCols * StrideQuantBData,
+            QuantBScale + multipleCols * StrideQuantBScale,
+            C + multipleCols,
+            multipleRows,
+            remainingCols,
+            BlockCountK,
+            Bias ? Bias + multipleCols : nullptr,
+            ldc);
+    }
+
+    if (remainingRows > 0 && multipleCols > 0) {
+        Q4Int8GemmR1xC4BlkLen32Avx512<vnni>(
+            QuantA + multipleRows * lda,
+            QuantAScale + multipleRows * lda_scale,
+            QuantBData,
+            QuantBScale,
+            C + multipleRows * ldc,
+            remainingRows,
+            multipleCols,
+            BlockCountK,
+            Bias,
+            ldc);
+    }
+
+    if (remainingCols > 0 && remainingRows > 0) {
+        Q4Int8GemmR1xC1BlkLen32Avx512<vnni>(
+            QuantA + multipleRows * lda,
+            QuantAScale + multipleRows * lda_scale,
+            QuantBData + multipleCols * StrideQuantBData,
+            QuantBScale + multipleCols * StrideQuantBScale,
+            C + multipleRows * ldc + multipleCols,
+            remainingRows,
+            remainingCols,
+            BlockCountK,
+            Bias ? Bias + multipleCols : nullptr,
+            ldc);
+    }
+
+    return CountM;
+}
