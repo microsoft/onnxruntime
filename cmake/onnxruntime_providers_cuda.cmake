@@ -38,10 +38,6 @@
       "${ONNXRUNTIME_ROOT}/core/providers/cuda/*.cu"
       "${ONNXRUNTIME_ROOT}/core/providers/cuda/*.cuh"
     )
-  else()
-    set(onnxruntime_providers_cuda_cu_srcs
-        "${ONNXRUNTIME_ROOT}/core/providers/cuda/math/unary_elementwise_ops_impl.cu"
-        )
   endif()
   source_group(TREE ${ONNXRUNTIME_ROOT}/core FILES ${onnxruntime_providers_cuda_cc_srcs} ${onnxruntime_providers_cuda_shared_srcs} ${onnxruntime_providers_cuda_cu_srcs})
   set(onnxruntime_providers_cuda_src ${onnxruntime_providers_cuda_cc_srcs} ${onnxruntime_providers_cuda_shared_srcs} ${onnxruntime_providers_cuda_cu_srcs})
