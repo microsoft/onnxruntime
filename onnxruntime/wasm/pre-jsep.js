@@ -151,6 +151,9 @@ Module["jsepInit"] = (name, params) => {
     Module["webnnRegisterGraphInput"] =
       backend["registerGraphInput"].bind(backend);
     Module["webnnIsGraphInput"] = backend["isGraphInput"].bind(backend);
+    Module["webnnRegisterGraphOutput"] =
+      backend["registerGraphOutput"].bind(backend);
+    Module["webnnIsGraphOutput"] = backend["isGraphOutput"].bind(backend);
 
     Module["webnnCreateTemporaryTensor"] =
       backend["createTemporaryTensor"].bind(backend);
