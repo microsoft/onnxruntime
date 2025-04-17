@@ -400,7 +400,7 @@ ONNX_OPERATOR_KERNEL_EX(
     MemcpyFromHost,
     kOnnxDomain,
     1,
-    kNvExecutionProvider,
+    kNvTensorRTRTXExecutionProvider,
     (*KernelDefBuilder::Create())
         .InputMemoryType(OrtMemTypeCPUInput, 0)
         .TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorTypes()),
@@ -410,14 +410,14 @@ ONNX_OPERATOR_KERNEL_EX(
     MemcpyToHost,
     kOnnxDomain,
     1,
-    kNvExecutionProvider,
+    kNvTensorRTRTXExecutionProvider,
     (*KernelDefBuilder::Create())
         .OutputMemoryType(OrtMemTypeCPUOutput, 0)
         .TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorTypes()),
     Memcpy);
 
-class ONNX_OPERATOR_KERNEL_CLASS_NAME(kNvExecutionProvider, kOnnxDomain, 1, MemcpyFromHost);
-class ONNX_OPERATOR_KERNEL_CLASS_NAME(kNvExecutionProvider, kOnnxDomain, 1, MemcpyToHost);
+class ONNX_OPERATOR_KERNEL_CLASS_NAME(kNvTensorRTRTXExecutionProvider, kOnnxDomain, 1, MemcpyFromHost);
+class ONNX_OPERATOR_KERNEL_CLASS_NAME(kNvTensorRTRTXExecutionProvider, kOnnxDomain, 1, MemcpyToHost);
 
 static std::shared_ptr<KernelRegistry> s_kernel_registry;
 
@@ -425,8 +425,8 @@ void InitializeRegistry() {
   s_kernel_registry = KernelRegistry::Create();
 
   static const BuildKernelCreateInfoFn function_table[] = {
-      BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(kNvExecutionProvider, kOnnxDomain, 1, MemcpyFromHost)>,
-      BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(kNvExecutionProvider, kOnnxDomain, 1, MemcpyToHost)>,
+      BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(kNvTensorRTRTXExecutionProvider, kOnnxDomain, 1, MemcpyFromHost)>,
+      BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(kNvTensorRTRTXExecutionProvider, kOnnxDomain, 1, MemcpyToHost)>,
   };
 
   for (auto& function_table_entry : function_table) {
@@ -1283,7 +1283,7 @@ NvExecutionProvider::PerThreadContext& NvExecutionProvider::GetPerThreadContext(
 }
 
 NvExecutionProvider::NvExecutionProvider(const NvExecutionProviderInfo& info)
-    : IExecutionProvider{onnxruntime::kNvExecutionProvider,
+    : IExecutionProvider{onnxruntime::kNvTensorRTRTXExecutionProvider,
                          OrtDevice(OrtDevice::GPU, OrtDevice::MemType::DEFAULT,
                                    narrow<OrtDevice::DeviceId>(info.device_id))},
       info_(info),
@@ -2534,7 +2534,7 @@ NvExecutionProvider::GetCapability(const GraphViewer& graph,
             if (sub_graph->CreateGraphViewer()->NumberOfNodes() == 0) {
               continue;
             }
-            if (!AllNodesAssignedToSpecificEP(*(sub_graph->CreateGraphViewer()), kNvExecutionProvider)) {
+            if (!AllNodesAssignedToSpecificEP(*(sub_graph->CreateGraphViewer()), kNvTensorRTRTXExecutionProvider)) {
               // if not all its subgraphs are supported, we need to exclude this control flow op
               return false;
             }
@@ -2626,7 +2626,7 @@ NvExecutionProvider::GetCapability(const GraphViewer& graph,
             break;
           }
           // Another subgraph of "If" control flow op has been parsed by GetCapability before and all subgraph's nodes assigned to TRT EP.
-          else if (AllNodesAssignedToSpecificEP(*sub_graph_viewer, kNvExecutionProvider)) {
+          else if (AllNodesAssignedToSpecificEP(*sub_graph_viewer, kNvTensorRTRTXExecutionProvider)) {
             all_subgraphs_are_supported = true;
             break;
           }

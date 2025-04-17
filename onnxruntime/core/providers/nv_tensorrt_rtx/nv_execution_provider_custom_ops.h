@@ -76,7 +76,7 @@ struct TensorRTCustomOp : Ort::CustomOpBase<TensorRTCustomOp, TensorRTCustomKern
   }
 
  private:
-  const char* provider_{onnxruntime::kNvExecutionProvider};
+  const char* provider_{onnxruntime::kNvTensorRTRTXExecutionProvider};
   void* compute_stream_;
   const char* name_;
   size_t num_inputs_ = 1;   // set to 1 to match with default min_arity for variadic input

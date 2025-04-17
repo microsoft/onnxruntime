@@ -1,5 +1,7 @@
 # Copyright (c) Microsoft Corporation. All rights reserved.
 # Licensed under the MIT License.
+  find_package(CUDAToolkit REQUIRED 12.8)
+  enable_language(CUDA)
   if(onnxruntime_DISABLE_CONTRIB_OPS)
     message( FATAL_ERROR "To compile TensorRT execution provider contrib ops have to be enabled to dump an engine using com.microsoft:EPContext node." )
   endif()
@@ -62,13 +64,14 @@
       (NV_TENSORRT_MAJOR_INT EQUAL 10 AND NV_TENSORRT_MINOR_INT GREATER 0) OR
       (NV_TENSORRT_MAJOR_INT EQUAL 10 AND NV_TENSORRT_PATCH_INT GREATER 0))
     set(TRT_GREATER_OR_EQUAL_TRT_10_GA ON)
+  else()
+    message( FATAL_ERROR "Only TensorRT 10.x or higher is supported." )
   endif()
 
   # TensorRT 10 GA onwards, the TensorRT libraries will have major version appended to the end on Windows,
-  # for example, nvinfer_10.dll, nvinfer_plugin_10.dll, nvonnxparser_10.dll ...
+  # for example, nvinfer_10.dll, nvonnxparser_10.dll ...
   if (WIN32 AND TRT_GREATER_OR_EQUAL_TRT_10_GA)
     set(NVINFER_LIB "nvinfer_${NV_TENSORRT_MAJOR}")
-    set(NVINFER_PLUGIN_LIB "nvinfer_plugin_${NV_TENSORRT_MAJOR}")
     set(PARSER_LIB "nvonnxparser_${NV_TENSORRT_MAJOR}")
   endif()
 
@@ -76,15 +79,11 @@
      set(NVINFER_LIB "nvinfer")
   endif()
 
-  if (NOT NVINFER_PLUGIN_LIB)
-     set(NVINFER_PLUGIN_LIB "nvinfer_plugin")
-  endif()
-
   if (NOT PARSER_LIB)
      set(PARSER_LIB "nvonnxparser")
   endif()
 
-  MESSAGE(STATUS "Looking for ${NVINFER_LIB} and ${NVINFER_PLUGIN_LIB}")
+  MESSAGE(STATUS "Looking for ${NVINFER_LIB}")
 
   find_library(TENSORRT_LIBRARY_INFER ${NVINFER_LIB}
     HINTS ${TENSORRT_ROOT}
@@ -92,14 +91,6 @@
 
   if (NOT TENSORRT_LIBRARY_INFER)
     MESSAGE(STATUS "Can't find ${NVINFER_LIB}")
-  endif()
-
-  find_library(TENSORRT_LIBRARY_INFER_PLUGIN ${NVINFER_PLUGIN_LIB}
-    HINTS  ${TENSORRT_ROOT}
-    PATH_SUFFIXES lib lib64 lib/x64)
-
-  if (NOT TENSORRT_LIBRARY_INFER_PLUGIN)
-    MESSAGE(STATUS "Can't find ${NVINFER_PLUGIN_LIB}")
   endif()
 
   if (onnxruntime_USE_TENSORRT_BUILTIN_PARSER)
@@ -113,7 +104,7 @@
       MESSAGE(STATUS "Can't find ${PARSER_LIB}")
     endif()
 
-    set(TENSORRT_LIBRARY ${TENSORRT_LIBRARY_INFER} ${TENSORRT_LIBRARY_INFER_PLUGIN} ${TENSORRT_LIBRARY_NVONNXPARSER})
+    set(TENSORRT_LIBRARY ${TENSORRT_LIBRARY_INFER} ${TENSORRT_LIBRARY_NVONNXPARSER})
     MESSAGE(STATUS "Find TensorRT libs at ${TENSORRT_LIBRARY}")
   else()
     if (TRT_GREATER_OR_EQUAL_TRT_10_GA)
@@ -147,7 +138,7 @@
     endif()
     # Static libraries are just nvonnxparser_static on all platforms
     set(onnxparser_link_libs nvonnxparser_static)
-    set(TENSORRT_LIBRARY ${TENSORRT_LIBRARY_INFER} ${TENSORRT_LIBRARY_INFER_PLUGIN})
+    set(TENSORRT_LIBRARY ${TENSORRT_LIBRARY_INFER})
     MESSAGE(STATUS "Find TensorRT libs at ${TENSORRT_LIBRARY}")
   endif()
 
@@ -156,12 +147,8 @@
   # nvonnxparser_static is linked against tensorrt libraries in onnx-tensorrt
   # See https://github.com/onnx/onnx-tensorrt/blob/8af13d1b106f58df1e98945a5e7c851ddb5f0791/CMakeLists.txt#L121
   # However, starting from TRT 10 GA, nvonnxparser_static doesn't link against tensorrt libraries.
-  # Therefore, the above code finds ${TENSORRT_LIBRARY_INFER} and ${TENSORRT_LIBRARY_INFER_PLUGIN}.
-  if(onnxruntime_CUDA_MINIMAL)
-    set(trt_link_libs ${CMAKE_DL_LIBS} ${TENSORRT_LIBRARY})
-  else()
-    set(trt_link_libs CUDNN::cudnn_all cublas ${CMAKE_DL_LIBS} ${TENSORRT_LIBRARY})
-  endif()
+  # Therefore, the above code finds ${TENSORRT_LIBRARY_INFER}
+  set(trt_link_libs ${CMAKE_DL_LIBS} ${TENSORRT_LIBRARY})
   file(GLOB_RECURSE onnxruntime_providers_nv_tensorrt_rtx_cc_srcs CONFIGURE_DEPENDS
     "${ONNXRUNTIME_ROOT}/core/providers/nv_tensorrt_rtx/*.h"
     "${ONNXRUNTIME_ROOT}/core/providers/nv_tensorrt_rtx/*.cc"
@@ -194,9 +181,8 @@
   if (WIN32)
     target_compile_options(onnxruntime_providers_nv_tensorrt_rtx INTERFACE /wd4456)
   endif()
-  if(onnxruntime_CUDA_MINIMAL)
-    target_compile_definitions(onnxruntime_providers_nv_tensorrt_rtx PRIVATE USE_CUDA_MINIMAL=1)
-  endif()
+  # set CUDA_MINIMAL as default for NV provider since we do not have fallback to CUDA
+  target_compile_definitions(onnxruntime_providers_nv_tensorrt_rtx PRIVATE USE_CUDA_MINIMAL=1)
 
   # Needed for the provider interface, as it includes training headers when training is enabled
   if (onnxruntime_ENABLE_TRAINING_OPS)

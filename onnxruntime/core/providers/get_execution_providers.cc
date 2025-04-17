@@ -21,7 +21,7 @@ struct ProviderInfo {
 constexpr ProviderInfo kProvidersInPriorityOrder[] =
     {
         {
-          kNvExecutionProvider,
+            kNvTensorRTRTXExecutionProvider,
 #ifdef USE_NV
       true,
 #else
