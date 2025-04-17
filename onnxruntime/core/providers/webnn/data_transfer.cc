@@ -48,7 +48,6 @@ common::Status DataTransfer::CopyTensor(const Tensor& src, Tensor& dst) const {
     }
   }
 
-
   return Status::OK();
 }
 
