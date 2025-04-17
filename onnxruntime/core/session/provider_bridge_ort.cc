@@ -2103,7 +2103,7 @@ ProviderInfo_Nv& GetProviderInfo_Nv() {
   if (auto* info = TryGetProviderInfo_Nv())
     return *info;
 
-  ORT_THROW("TensorRT Provider not available, can't get interface for it");
+  ORT_THROW("NV Provider not available, can't get interface for it");
 }
 
 ProviderInfo_CUDA* TryGetProviderInfo_CUDA() try {

@@ -191,6 +191,42 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
 #else
     ORT_THROW("TensorRT is not supported in this build\n");
 #endif
+  } else if (provider_name_ == onnxruntime::kNvTensorRTRTXExecutionProvider) {
+#ifdef USE_NV
+    const auto& api = Ort::GetApi();
+    OrtNvTensorRtRtxProviderOptions* nv_options;
+    Ort::ThrowOnError(api.CreateNvTensorRtRtxProviderOptions(&nv_options));
+    std::unique_ptr<OrtNvTensorRtRtxProviderOptions, decltype(api.ReleaseNvTensorRtRtxProviderOptions)> rel_trt_options(
+        nv_options, api.ReleaseNvTensorRtRtxProviderOptions);
+    std::vector<const char*> option_keys, option_values;
+    // used to keep all option keys and value strings alive
+    std::list<std::string> buffer;
+
+#ifdef _MSC_VER
+    std::string ov_string = ToUTF8String(performance_test_config.run_config.ep_runtime_config_string);
+#else
+    std::string ov_string = performance_test_config.run_config.ep_runtime_config_string;
+#endif
+    ParseSessionConfigs(ov_string, provider_options);
+    for (const auto& provider_option : provider_options) {
+      option_keys.push_back(provider_option.first.c_str());
+      option_values.push_back(provider_option.second.c_str());
+    }
+    Ort::Status status(api.UpdateNvTensorRtRtxProviderOptions(nv_options,
+                                                         option_keys.data(), option_values.data(), option_keys.size()));
+    if (!status.IsOK()) {
+      OrtAllocator* allocator;
+      char* options;
+      Ort::ThrowOnError(api.GetAllocatorWithDefaultOptions(&allocator));
+      Ort::ThrowOnError(api.GetNvTensorRtRtxProviderOptionsAsString(nv_options, allocator, &options));
+      ORT_THROW("[ERROR] [NV] Configuring the NV RTX options failed with message: ", status.GetErrorMessage(),
+                "\nSupported options are:\n", options);
+    }
+
+    session_options.AppendExecutionProvider_Nv_TensorRT_RTX(*nv_options);
+#else
+    ORT_THROW("NV TensorRT RTX is not supported in this build\n");
+#endif
   } else if (provider_name_ == onnxruntime::kQnnExecutionProvider) {
 #ifdef USE_QNN
 #ifdef _MSC_VER
