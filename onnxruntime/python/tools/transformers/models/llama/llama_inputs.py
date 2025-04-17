@@ -7,8 +7,8 @@ from __future__ import annotations
 
 import numpy as np
 import torch
-from transformers.cache_utils import DynamicCache
 from transformers import AutoConfig, AutoTokenizer
+from transformers.cache_utils import DynamicCache
 
 from onnxruntime import InferenceSession, OrtValue
 
