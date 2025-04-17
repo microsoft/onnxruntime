@@ -2390,12 +2390,7 @@ ORT_API(const OrtModelEditorApi*, OrtApis::GetModelEditorApi) {
 }
 
 ORT_API(const OrtCompileApi*, OrtApis::GetCompileApi) {
-#if !defined(ORT_MINIMAL_BUILD)
   return OrtCompileAPI::GetCompileApi();
-#else
-  fprintf(stderr, "The Compile API is not supported in a minimal build.\n");
-  return nullptr;
-#endif
 }
 
 static constexpr OrtApiBase ort_api_base = {

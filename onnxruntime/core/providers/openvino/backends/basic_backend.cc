@@ -2,6 +2,8 @@
 // Licensed under the MIT License
 
 #include <map>
+#include <unordered_set>
+
 #include <string>
 #include <memory>
 #include <sstream>
@@ -69,14 +71,11 @@ BasicBackend::BasicBackend(std::unique_ptr<ONNX_NAMESPACE::ModelProto>& model_pr
                                                 subgraph_context_.subgraph_name);
       model_stream.reset();  // Delete stream after it is no longer needed
     } else {
-      std::shared_ptr<const OVNetwork> ov_model;
-      {
-        const std::string model = model_proto->SerializeAsString();
-        if (!subgraph_context.has_dynamic_input_shape) {
-          delete model_proto.release();
-        }
-        ov_model = CreateOVModel(model, session_context_, const_outputs_map_);
+      std::string model = model_proto->SerializeAsString();
+      if (!subgraph_context.has_dynamic_input_shape) {
+        model_proto.reset()
       }
+      auto ov_model = CreateOVModel(std::move(model), session_context_, const_outputs_map_);
       LOGS_DEFAULT(INFO) << log_tag << "IO Buffering Enabled";
       exe_network_ = OVCore::Get()->CompileModel(
           ov_model, remote_context_, subgraph_context_.subgraph_name);
@@ -108,14 +107,11 @@ BasicBackend::BasicBackend(std::unique_ptr<ONNX_NAMESPACE::ModelProto>& model_pr
                                                  subgraph_context_.subgraph_name);
     } else {  // For all other types use ov::ov_core read_model() to generate OV IR
               // followed by ov::ov_core compile_model()
-      std::shared_ptr<const OVNetwork> ov_model;
-      {
-        const std::string model = model_proto->SerializeAsString();
-        if (!subgraph_context.has_dynamic_input_shape) {
-          delete model_proto.release();
-        }
-        ov_model = CreateOVModel(std::move(model), session_context_, const_outputs_map_);
+      std::string model = model_proto->SerializeAsString();
+      if (!subgraph_context.has_dynamic_input_shape) {
+        model_proto.reset();
       }
+      auto ov_model = CreateOVModel(std::move(model), session_context_, const_outputs_map_);
       exe_network_ = OVCore::Get()->CompileModel(
           ov_model, hw_target, device_config, subgraph_context_.subgraph_name);
     }
@@ -164,10 +160,8 @@ void BasicBackend::PopulateConfigValue(ov::AnyMap& device_config) {
   if (session_context_.precision.find("FP32") != std::string::npos) {
     device_config.emplace(ov::hint::inference_precision("f32"));
   }
-  if (session_context_.precision.find("ACCURACY") != std::string::npos &&
-      session_context_.device_type.find("GPU") != std::string::npos) {
+  if (session_context_.precision.find("ACCURACY") != std::string::npos) {
     if (session_context_.OpenVINO_Version.at(0) >= 2024) {
-      device_config.emplace(ov::hint::inference_precision(ov::element::undefined));
       device_config.emplace(ov::hint::execution_mode(ov::hint::ExecutionMode::ACCURACY));
     } else {
       if (!subgraph_context_.model_precision.empty())
@@ -230,6 +224,15 @@ void BasicBackend::PopulateConfigValue(ov::AnyMap& device_config) {
         }
       }
     }
+    auto find_device_type_mode = [&](const std::string& device_type) -> std::string {
+      std::string device_mode = "";
+      auto delimiter_pos = device_type.find(':');
+      if (delimiter_pos != std::string::npos) {
+        std::stringstream str_stream(device_type.substr(0, delimiter_pos));
+        std::getline(str_stream, device_mode, ',');
+      }
+      return device_mode;
+    };
 
     // Parse device types like "AUTO:CPU,GPU" and extract individual devices
     auto parse_individual_devices = [&](const std::string& device_type) -> std::vector<std::string> {
@@ -278,8 +281,14 @@ void BasicBackend::PopulateConfigValue(ov::AnyMap& device_config) {
     if (session_context_.device_type.find("AUTO") == 0 ||
         session_context_.device_type.find("HETERO") == 0 ||
         session_context_.device_type.find("MULTI") == 0) {
+      //// Parse to get the device mode (e.g., "AUTO:CPU,GPU" -> "AUTO")
+      std::unordered_set<std::string> supported_mode = {"AUTO", "HETERO", "MULTI"};
+      auto device_mode = find_device_type_mode(session_context_.device_type);
+      ORT_ENFORCE(supported_mode.find(device_mode) != supported_mode.end(), " Invalid device mode is passed : ", session_context_.device_type);
       // Parse individual devices (e.g., "AUTO:CPU,GPU" -> ["CPU", "GPU"])
       auto individual_devices = parse_individual_devices(session_context_.device_type);
+      if (!device_mode.empty()) individual_devices.emplace_back(device_mode);
+
       // Set properties only for individual devices (e.g., "CPU", "GPU")
       for (const std::string& device : individual_devices) {
         if (target_config.count(device)) {

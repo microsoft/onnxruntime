@@ -11,6 +11,7 @@
 #include <functional>
 #include <gsl/gsl>
 #include "core/common/inlined_containers.h"
+#include "core/framework/allocator.h"
 #include "core/framework/config_options.h"
 #include "core/framework/ort_value.h"
 #include "core/session/onnxruntime_c_api.h"
@@ -83,7 +84,7 @@ struct EpContextModelGenerationOptions {
   std::string output_model_file_path;
   void** output_model_buffer_ptr = nullptr;
   size_t* output_model_buffer_size_ptr = nullptr;
-  OrtAllocator* output_model_buffer_allocator = nullptr;
+  AllocatorPtr output_model_buffer_allocator = nullptr;
 
   std::string output_external_initializers_file_path;
   size_t output_external_initializer_size_threshold = 0;
