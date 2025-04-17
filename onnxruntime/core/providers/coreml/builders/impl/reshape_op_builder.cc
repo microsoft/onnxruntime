@@ -101,7 +101,7 @@ bool ReshapeOpBuilder::IsOpSupportedImpl(const Node& node, const OpBuilderInputP
   std::vector<int64_t> input_shape;
   // first input must be fixed rank OR (first input has variadic rank AND shape only contains positive integers)
   // as per docs, 0 is considered an illegal shape element if the input is variadic
-  if (!GetShape(*input_defs[0], input_shape, logger)) {
+  if (!GetStaticShape(*input_defs[0], input_shape, logger)) {
     LOGS(logger, VERBOSE) << "Unable to get shape of input -- input must have fixed rank for reshape.";
     return false;
   }
