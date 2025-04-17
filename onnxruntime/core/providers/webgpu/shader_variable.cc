@@ -25,7 +25,7 @@ constexpr static const std::string_view STORAGE_TYPE_ARRAY[] = {
     "vec4<i32>",  // Int32x4
     "u32",        // Uint32
 
-    "vec2<u32>",  // Uint32x2 10
+    "vec2<u32>",  // Uint32x2
     "vec4<u32>",  // Uint32x4
     "vec2<u32>",  // Int64
     "vec2<u32>",  // Uint64
@@ -35,7 +35,7 @@ constexpr static const std::string_view STORAGE_TYPE_ARRAY[] = {
     "vec4<u32>",  // Uint8x16
     "u32",        // Int8x4
     "vec2<u32>",  // Int8x8
-    "vec4<u32>",  // Int8x16 20
+    "vec4<u32>",  // Int8x16
     "u32",        // Uint4x8
     "u32",        // Int4x8
 };
