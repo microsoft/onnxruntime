@@ -10,6 +10,22 @@ import { LOG_DEBUG } from '../log';
 // https://github.com/webmachinelearning/webnn/issues/677
 /// <reference path="webnn.d.ts" />
 
+/**
+ * Map from MLOperandDataType to size in bits. Using bits instead of bytes to avoid possible precision loss on int4 and uint4.
+ */
+const webnnDataTypeToSize = new Map<MLOperandDataType, number>([
+  ['float32', 32],
+  ['float16', 16],
+  ['int32', 32],
+  ['uint32', 32],
+  ['int64', 64],
+  ['uint64', 64],
+  ['int8', 8],
+  ['uint8', 8],
+  ['int4', 4],
+  ['uint4', 4],
+]);
+
 // Convert integer data to an Int32Array buffer.
 // Supports conversion from int64, uint64, uint32, int8 and uint8 to int32.
 export const convertDataToInt32 = (data: Uint8Array, dataType: MLOperandDataType): Uint8Array => {
@@ -165,22 +181,6 @@ export interface TensorManager {
 
 let tensorGuid = 1;
 const createNewTensorId = (): TensorId => tensorGuid++;
-
-/**
- * Map from MLOperandDataType to size in bits. Using bits instead of bytes to avoid possible precision loss on int4 and uint4.
- */
-const webnnDataTypeToSize = new Map<MLOperandDataType, number>([
-  ['float32', 32],
-  ['float16', 16],
-  ['int32', 32],
-  ['uint32', 32],
-  ['int64', 64],
-  ['uint64', 64],
-  ['int8', 8],
-  ['uint8', 8],
-  ['int4', 4],
-  ['uint4', 4],
-]);
 
 /**
  * Map from data type to fallback data type.
