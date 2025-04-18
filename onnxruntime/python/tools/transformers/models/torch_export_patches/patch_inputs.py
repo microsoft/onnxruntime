@@ -126,7 +126,7 @@ def convert_dynamic_axes_into_dynamic_shapes(
         done = set()
         for k, v in dynamic_axes.items():
             if k not in changes and isinstance(v, dict):
-                if k in updated_kwargs :
+                if k in updated_kwargs:
                     dynamic_shapes[k] = v
                     continue
                 if rename_inputs and rename_inputs.get(k, k) in updated_kwargs:
