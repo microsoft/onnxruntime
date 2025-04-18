@@ -19,8 +19,8 @@ def _process_cache(k: str, v):
     if isinstance(v, list) and all(isinstance(i, tuple) for i in v) and {len(t) for t in v} == {4}:
         # A EncoderDecoderCache
         cache = make_encoder_decoder_cache(
-            make_dynamic_cache(list(zip(*v[:2], strict=False))),
-            make_dynamic_cache(list(zip(*v[2:], strict=False))),
+            make_dynamic_cache([_[:2] for _ in v]),
+            make_dynamic_cache([_[2:] for _ in v]),
         )
         return cache
     if isinstance(v, torch.Tensor):

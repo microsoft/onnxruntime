@@ -8,6 +8,7 @@ import transformers
 from onnx import TensorProto
 from onnx.helper import np_dtype_to_tensor_dtype
 
+from .cache_helper import make_dynamic_cache, make_encoder_decoder_cache
 from .onnx_export_errors import (
     bypass_export_some_errors,
     register_additional_serialization_functions,
@@ -464,43 +465,39 @@ def string_type(
     raise AssertionError(f"Unsupported type {type(obj).__name__!r} - {type(obj)}")
 
 
-if pv.Version(transformers.__version__) > pv.Version("4.49.99999"):
+def torch_deepcopy(value: Any) -> Any:
+    """Makes a deepcopy."""
+    if isinstance(value, (int, float, str)):
+        return value
+    if isinstance(value, tuple):
+        return tuple(torch_deepcopy(v) for v in value)
+    if isinstance(value, list):
+        return [torch_deepcopy(v) for v in value]
+    if isinstance(value, set):
+        return {torch_deepcopy(v) for v in value}
+    if isinstance(value, dict):
+        if type(value) is dict:
+            return {k: torch_deepcopy(v) for k, v in value.items()}
+        # for BaseModelOutput
+        return value.__class__(**{k: torch_deepcopy(v) for k, v in value.items()})
+    if isinstance(value, np.ndarray):
+        return value.copy()
+    if hasattr(value, "clone"):
+        return value.clone()
+    if value.__class__.__name__ == "DynamicCache":
+        return make_dynamic_cache(
+            torch_deepcopy(list(zip(value.key_cache, value.value_cache)))
+        )
+    if value.__class__.__name__ == "EncoderDecoderCache":
+        return make_encoder_decoder_cache(
+            torch_deepcopy(value.self_attention_cache),
+            torch_deepcopy(value.cross_attention_cache),
+        )
+    if value.__class__ in torch.utils._pytree.SUPPORTED_NODES:
+        args, spec = torch.utils._pytree.tree_flatten(value)
+        new_args = torch_deepcopy(args)
+        return torch.utils._pytree.tree_unflatten(new_args, spec)
 
-    def make_dynamic_cache(
-        key_value_pairs: list[tuple[torch.Tensor, torch.Tensor]],
-    ) -> transformers.cache_utils.DynamicCache:
-        """
-        Creates an instance of :class:`transformers.cache_utils.DynamicCache`.
-        This version is valid for ``transformers >= 4.50``.
-
-        :param key_value_pairs: list of pairs of (key, values)
-        :return: :class:`transformers.cache_utils.DynamicCache`
-        """
-        return transformers.cache_utils.DynamicCache(key_value_pairs)
-
-else:
-
-    def make_dynamic_cache(
-        key_value_pairs: list[tuple[torch.Tensor, torch.Tensor]],
-    ) -> transformers.cache_utils.DynamicCache:
-        """
-        Creates an instance of :class:`transformers.cache_utils.DynamicCache`.
-        This version is valid for ``transformers < 4.50``.
-
-        :param key_value_pairs: list of pairs of (key, values)
-        :return: :class:`transformers.cache_utils.DynamicCache`
-        """
-        cache = transformers.cache_utils.DynamicCache(len(key_value_pairs))
-        for i, (key, value) in enumerate(key_value_pairs):
-            cache.update(key, value, i)
-        return cache
-
-
-def make_encoder_decoder_cache(
-    self_attention_cache: transformers.cache_utils.DynamicCache,
-    cross_attention_cache: transformers.cache_utils.DynamicCache,
-) -> transformers.cache_utils.EncoderDecoderCache:
-    "Creates an EncoderDecoderCache."
-    return transformers.cache_utils.EncoderDecoderCache(
-        self_attention_cache=self_attention_cache, cross_attention_cache=cross_attention_cache
-    )
+    # We should have a code using serialization, deserialization assuming a model
+    # cannot be exported without them.
+    raise NotImplementedError(f"torch_deepcopy not implemented for type {type(value)}")

@@ -7,7 +7,7 @@
 import inspect
 
 import torch
-from models.torch_export_patches import bypass_export_some_errors, string_type
+from models.torch_export_patches import bypass_export_some_errors, string_type, torch_deepcopy
 from models.torch_export_patches.patch_inputs import convert_dynamic_axes_into_dynamic_shapes, replace_dynamic_shapes
 from packaging import version
 from transformers.cache_utils import EncoderDecoderCache
@@ -46,6 +46,10 @@ def export_to_onnx(
         )
         return
 
+    print(f"[export_to_onnx] checking the model is working with inputs={string_type(inputs, with_shape=True)}")
+    model(*torch_deepcopy(inputs))
+    print("[export_to_onnx] done.")
+
     model_args, model_kwargs, dynamic_shapes = convert_dynamic_axes_into_dynamic_shapes(
         model,
         args=inputs,
@@ -67,11 +71,14 @@ def export_to_onnx(
         current = dynamic_shapes["past_key_values"]
         n_layers = len(model_kwargs["past_key_values"].self_attention_cache.key_cache)
         long_list = [current] * n_layers
-        dynamic_shapes['past_key_values'] = [[long_list, long_list], [long_list, long_list]]
+        dynamic_shapes["past_key_values"] = [[long_list, long_list], [long_list, long_list]]
     print(f"[export_to_onnx] --- final dynamic_shapes={dynamic_shapes}")
     print(f"[export_to_onnx] --- forward parameters: {list(inspect.signature(model.forward).parameters)}")
     print(f"[export_to_onnx] --- model_args: {string_type(model_args, with_shape=True)}")
     print(f"[export_to_onnx] - model_kwargs: {string_type(model_kwargs, with_shape=True)}")
+    print("[export_to_onnx] checking the model is working...")
+    model(*torch_deepcopy(model_args), **torch_deepcopy(model_kwargs))
+    print("[export_to_onnx] done.")
 
     if version.Version(torch.__version__) < version.Version("2.7"):
         # This section is only needed for torch==2.6. The workaround implemented here

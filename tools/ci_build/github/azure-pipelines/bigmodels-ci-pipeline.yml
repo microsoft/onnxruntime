@@ -450,9 +450,9 @@ stages:
               which ninja ; \
               export PATH=$HOME/.local/bin:$PATH ; \
               which ninja ; \
-              python3 -m models.whisper.convert_to_onnx -m openai/whisper-tiny --output wtiny-fp32-cpu-hf --precision fp32 --provider cpu --overwrite --use_external_data_format --optimize_onnx --no_beam_search_op --output_cross_qk ; \
-              python3 -m models.whisper.convert_to_onnx -m openai/whisper-tiny --output wtiny-fp32-cpu-hf --precision fp32 --provider cpu --overwrite --use_external_data_format --optimize_onnx ; \
-              python3 -m models.whisper.convert_to_onnx -m openai/whisper-tiny --output wtiny-fp32-cpu-hf --precision fp32 --provider cpu --overwrite --use_external_data_format --optimize_onnx --no_beam_search_op --output_cross_qk --separate_encoder_and_decoder_init ; \
+              python3 -m models.whisper.convert_to_onnx -m openai/whisper-tiny --output wtiny-fp32-cpu-hf --precision fp32 --provider cpu --overwrite --use_external_data_format --optimize_onnx --no_beam_search_op --output_cross_qk --use_dynamo_export ; \
+              python3 -m models.whisper.convert_to_onnx -m openai/whisper-tiny --output wtiny-fp32-cpu-hf --precision fp32 --provider cpu --overwrite --use_external_data_format --optimize_onnx --use_dynamo_export ; \
+              python3 -m models.whisper.convert_to_onnx -m openai/whisper-tiny --output wtiny-fp32-cpu-hf --precision fp32 --provider cpu --overwrite --use_external_data_format --optimize_onnx --no_beam_search_op --output_cross_qk --separate_encoder_and_decoder_init --use_dynamo_export ; \
               rm -rf wtiny-fp32-cpu-hf ; \
               python3 -m models.whisper.convert_to_onnx -m openai/whisper-tiny --model_impl openai --output wtiny-fp32-cpu-oai --precision fp32 --provider cpu --overwrite --use_external_data_format --optimize_onnx --no_beam_search_op --output_cross_qk ; \
               python3 -m models.whisper.convert_to_onnx -m openai/whisper-tiny --model_impl openai --output wtiny-fp32-cpu-oai --precision fp32 --provider cpu --overwrite --use_external_data_format --optimize_onnx ; \
