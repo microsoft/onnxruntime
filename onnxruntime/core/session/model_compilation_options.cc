@@ -137,11 +137,7 @@ Status ModelCompilationOptions::ResetOutputModelSettings() {
   return session_options_.value.config_options.AddConfigEntry(kOrtSessionOptionEpContextFilePath, "");
 }
 
-Status ModelCompilationOptions::Check() const {
-  ORT_ENFORCE(session_options_.value.ep_context_gen_options.enable);
-  const EpContextModelGenerationOptions& ep_context_gen_options = session_options_.value.ep_context_gen_options;
-  const bool explicit_writes_to_file = !ep_context_gen_options.output_model_file_path.empty();
-  const bool writes_to_buffer = ep_context_gen_options.output_model_buffer_ptr != nullptr;
+Status ModelCompilationOptions::CheckInputModelSettings() const {
   const bool comes_from_file = !input_model_path_.empty();
   const bool comes_from_memory = input_model_data_ != nullptr;
 
@@ -164,15 +160,14 @@ Status ModelCompilationOptions::Check() const {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Buffer for input model data has size 0");
   }
 
-  if (comes_from_memory && writes_to_buffer && !ep_context_gen_options.embed_ep_context_in_model) {
-    // TODO(adrianlizarraga): We may want to support this in the future. That is, both input/output models
-    // are in buffers but the context cache binary is dumped to a file. Would need to allow user to specify
-    // a custom path for the context cache binary.
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                           "EPContext embed mode must be true (enabled) when both the "
-                           "input and output models are stored in buffers. "
-                           "Please call ModelCompilationOptions_SetEpContextEmbedMode(true).");
-  }
+  return Status::OK();
+}
+
+Status ModelCompilationOptions::CheckOutputModelSettings() const {
+  const EpContextModelGenerationOptions& ep_context_gen_options = session_options_.value.ep_context_gen_options;
+
+  const bool explicit_writes_to_file = !ep_context_gen_options.output_model_file_path.empty();
+  const bool writes_to_buffer = ep_context_gen_options.output_model_buffer_ptr != nullptr;
 
   if (!explicit_writes_to_file && !writes_to_buffer) {
     // User did not specify an output file or an output buffer. We default to generating an output file
@@ -195,6 +190,13 @@ Status ModelCompilationOptions::Check() const {
                            "Invalid buffer configuration for output model: allocator is null");
   }
 
+  return Status::OK();
+}
+
+Status ModelCompilationOptions::Check() const {
+  ORT_ENFORCE(session_options_.value.ep_context_gen_options.enable);
+  ORT_RETURN_IF_ERROR(CheckInputModelSettings());
+  ORT_RETURN_IF_ERROR(CheckOutputModelSettings());
   return Status::OK();
 }
 }  // namespace onnxruntime

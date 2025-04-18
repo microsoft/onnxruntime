@@ -385,40 +385,67 @@ TEST_F(QnnHTPBackendTests, CompileApi_FromSessionOptions_OutputModelBuffer) {
 // Test using the CompileModel() API with settings:
 //   - input model from buffer
 //   - save output model to buffer
-//   - EPContext nodes in output model use embedded binary blobs.
-TEST_F(QnnHTPBackendTests, CompileApi_FromSessionOptions_InputAndOutputModelsInBuffers_Embedded) {
+//   - test enabling AND disabling embed mode for context binary in EPContext node attributes
+TEST_F(QnnHTPBackendTests, CompileApi_FromSessionOptions_InputAndOutputModelsInBuffers) {
   // Create a test model and serialize it to a buffer.
   TestModel test_model;
   CreateTestModel(BuildGraphWithQAndNonQ(false), 21, logging::Severity::kERROR, test_model);
   std::string model_data = test_model.Serialize();
 
   // Initialize session options with QNN EP
-  Ort::SessionOptions so;
+  Ort::SessionOptions session_options;
   ProviderOptions provider_options;
   provider_options["backend_type"] = "htp";
   provider_options["offload_graph_io_quantization"] = "0";
-  so.AppendExecutionProvider("QNN", provider_options);
+  session_options.AppendExecutionProvider("QNN", provider_options);
 
   Ort::AllocatorWithDefaultOptions allocator;
-  void* output_model_buffer = nullptr;
-  size_t output_model_buffer_size = 0;
 
-  // Create model compilation options from the session options.
-  Ort::ModelCompilationOptions compile_options(*ort_env, so);
-  compile_options.SetInputModelFromBuffer(reinterpret_cast<const void*>(model_data.data()), model_data.size());
-  compile_options.SetOutputModelBuffer(allocator, &output_model_buffer, &output_model_buffer_size);
-  compile_options.SetEpContextEmbedMode(true);
+  // Test embed mode enabled.
+  {
+    void* output_model_buffer = nullptr;
+    size_t output_model_buffer_size = 0;
 
-  // Compile the model.
-  Ort::Status status = Ort::CompileModel(*ort_env, compile_options);
-  ASSERT_TRUE(status.IsOK()) << status.GetErrorMessage();
+    // Create model compilation options from the session options.
+    Ort::ModelCompilationOptions compile_options(*ort_env, session_options);
+    compile_options.SetInputModelFromBuffer(reinterpret_cast<const void*>(model_data.data()), model_data.size());
+    compile_options.SetOutputModelBuffer(allocator, &output_model_buffer, &output_model_buffer_size);
+    compile_options.SetEpContextEmbedMode(true);
 
-  // Make sure the compiled model was saved to the buffer.
-  ASSERT_TRUE(output_model_buffer != nullptr);
-  ASSERT_TRUE(output_model_buffer_size > 0);
+    // Compile the model.
+    Ort::Status status = Ort::CompileModel(*ort_env, compile_options);
+    ASSERT_TRUE(status.IsOK()) << status.GetErrorMessage();
 
-  // Check that the compiled model has the expected number of EPContext nodes.
-  CheckEpContextNodeCounts(output_model_buffer, output_model_buffer_size, 2, 2);
+    // Make sure the compiled model was saved to the buffer.
+    ASSERT_TRUE(output_model_buffer != nullptr);
+    ASSERT_TRUE(output_model_buffer_size > 0);
+
+    // Check that the compiled model has the expected number of EPContext nodes.
+    CheckEpContextNodeCounts(output_model_buffer, output_model_buffer_size, 2, 2);
+  }
+
+  // Test embed mode disabled.
+  {
+    void* output_model_buffer = nullptr;
+    size_t output_model_buffer_size = 0;
+
+    // Create model compilation options from the session options.
+    Ort::ModelCompilationOptions compile_options(*ort_env, session_options);
+    compile_options.SetInputModelFromBuffer(reinterpret_cast<const void*>(model_data.data()), model_data.size());
+    compile_options.SetOutputModelBuffer(allocator, &output_model_buffer, &output_model_buffer_size);
+    compile_options.SetEpContextEmbedMode(false);
+
+    // Compile the model.
+    Ort::Status status = Ort::CompileModel(*ort_env, compile_options);
+    ASSERT_TRUE(status.IsOK()) << status.GetErrorMessage();
+
+    // Make sure the compiled model was saved to the buffer.
+    ASSERT_TRUE(output_model_buffer != nullptr);
+    ASSERT_TRUE(output_model_buffer_size > 0);
+
+    // Check that the compiled model has the expected number of EPContext nodes.
+    CheckEpContextNodeCounts(output_model_buffer, output_model_buffer_size, 2, 2);
+  }
 }
 
 // Test using the CompileModel() API with settings:
