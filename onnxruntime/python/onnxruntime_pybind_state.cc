@@ -62,6 +62,7 @@ const OrtDevice::DeviceType OrtDevice::GPU;
 
 #include <iterator>
 #include <algorithm>
+#include <utility>
 
 namespace onnxruntime {
 namespace python {
