@@ -5912,7 +5912,7 @@ struct OrtEp {
   // OrtStatus* Compile(OrtEp* ep, const OrtGraph** graphs, OrtNode** fused_graph_nodes,
   //                    size_t count, OrtNodeComputeInfo* node_compute_infos);
 
-  //  Many other functions!
+  // TODO: Implement OrtEpApi and the complete OrtEp interface as the next step.
 };
 
 /** \brief The function signature that ORT will call to create OrtEpFactory instances.

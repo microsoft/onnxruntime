@@ -11,6 +11,13 @@
 
 namespace onnxruntime {
 
+/// <summary>
+/// EpLibraryInternal wraps statically included execution providers (i.e. 'internal') so they can return OrtEpFactory
+/// instances in the same way as dynamically loaded libraries.
+///
+/// It returns an EpFactoryInternal factory instance, which provides the ability to directly create an
+/// IExecutionProvider instance for the wrapped execution provider.
+/// </summary>
 struct EpLibraryInternal : EpLibrary {
   EpLibraryInternal(std::unique_ptr<EpFactoryInternal> factory)
       : factory_{std::move(factory)}, factory_ptrs_{factory_.get()} {
