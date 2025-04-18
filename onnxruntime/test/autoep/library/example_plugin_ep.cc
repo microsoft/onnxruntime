@@ -49,20 +49,20 @@ struct ExampleEpFactory : OrtEpFactory, ApiPtrs {
     ReleaseEp = ReleaseEpImpl;
   }
 
-  static const char* GetNameImpl(const OrtEpFactory* this_ptr) {
+  static const char* ORT_API_CALL GetNameImpl(const OrtEpFactory* this_ptr) {
     const auto* ep = static_cast<const ExampleEpFactory*>(this_ptr);
     return ep->ep_name_.c_str();
   }
 
-  static const char* GetVendorImpl(const OrtEpFactory* this_ptr) {
+  static const char* ORT_API_CALL GetVendorImpl(const OrtEpFactory* this_ptr) {
     const auto* ep = static_cast<const ExampleEpFactory*>(this_ptr);
     return ep->vendor_.c_str();
   }
 
-  static bool GetDeviceInfoIfSupportedImpl(const OrtEpFactory* this_ptr,
-                                           const OrtHardwareDevice* device,
-                                           _Out_opt_ OrtKeyValuePairs** ep_metadata,
-                                           _Out_opt_ OrtKeyValuePairs** ep_options) {
+  static bool ORT_API_CALL GetDeviceInfoIfSupportedImpl(const OrtEpFactory* this_ptr,
+                                                        const OrtHardwareDevice* device,
+                                                        _Out_opt_ OrtKeyValuePairs** ep_metadata,
+                                                        _Out_opt_ OrtKeyValuePairs** ep_options) {
     const auto* ep = static_cast<const ExampleEpFactory*>(this_ptr);
 
     if (ep->ort_api.HardwareDevice_Type(device) == OrtHardwareDeviceType::OrtHardwareDeviceType_CPU) {
@@ -80,13 +80,13 @@ struct ExampleEpFactory : OrtEpFactory, ApiPtrs {
     return false;
   }
 
-  static OrtStatus* CreateEpImpl(OrtEpFactory* this_ptr,
-                                 _In_reads_(num_devices) const OrtHardwareDevice* const* /*devices*/,
-                                 _In_reads_(num_devices) const OrtKeyValuePairs* const* /*ep_metadata*/,
-                                 _In_ size_t num_devices,
-                                 _In_ const OrtSessionOptions* session_options,
-                                 _In_ const OrtLogger* logger,
-                                 _Out_ OrtEp** ep) {
+  static OrtStatus* ORT_API_CALL CreateEpImpl(OrtEpFactory* this_ptr,
+                                              _In_reads_(num_devices) const OrtHardwareDevice* const* /*devices*/,
+                                              _In_reads_(num_devices) const OrtKeyValuePairs* const* /*ep_metadata*/,
+                                              _In_ size_t num_devices,
+                                              _In_ const OrtSessionOptions* session_options,
+                                              _In_ const OrtLogger* logger,
+                                              _Out_ OrtEp** ep) {
     auto* factory = static_cast<ExampleEpFactory*>(this_ptr);
 
     if (num_devices != 1) {
@@ -112,7 +112,7 @@ struct ExampleEpFactory : OrtEpFactory, ApiPtrs {
     return nullptr;
   }
 
-  static void ReleaseEpImpl(OrtEpFactory* /*this_ptr*/, OrtEp* ep) {
+  static void ORT_API_CALL ReleaseEpImpl(OrtEpFactory* /*this_ptr*/, OrtEp* ep) {
     ExampleEp* dummy_ep = static_cast<ExampleEp*>(ep);
     delete dummy_ep;
   }
