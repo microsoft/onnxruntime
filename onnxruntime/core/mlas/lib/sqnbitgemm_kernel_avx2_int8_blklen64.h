@@ -130,7 +130,7 @@ accumulate_q8_blklen64_r1c1blk1_avx2(
         const __m256i dot01_high_8_epi32 = _mm256_madd_epi16(one_mask, dot01_high_16_epi16);
         const __m256i dot01_8_epi32 = _mm256_add_epi32(dot01_low_8_epi32, dot01_high_8_epi32);
 
-        const __m256i sum0_8_epi32 = _mm256_hadd_epi32(dot00_8_epi32, dot01_8_epi32);
+        const __m256i sum0_8_epi32 = _mm256_add_epi32(dot00_8_epi32, dot01_8_epi32);
         __m256 sum0_8_ps = _mm256_cvtepi32_ps(sum0_8_epi32);
         acc0 = _mm256_fmadd_ps(sum0_8_ps, scale_8_ps, acc0);
     }
@@ -195,7 +195,7 @@ accumulate_q8_blklen64_r2c1blk1_avx2(
         const __m256i dot01_high_8_epi32 = _mm256_madd_epi16(one_mask, dot01_high_16_epi16);
         const __m256i dot01_8_epi32 = _mm256_add_epi32(dot01_low_8_epi32, dot01_high_8_epi32);
 
-        const __m256i sum0_8_epi32 = _mm256_hadd_epi32(dot00_8_epi32, dot01_8_epi32);
+        const __m256i sum0_8_epi32 = _mm256_add_epi32(dot00_8_epi32, dot01_8_epi32);
         __m256 sum0_8_ps = _mm256_cvtepi32_ps(sum0_8_epi32);
         acc0 = _mm256_fmadd_ps(sum0_8_ps, scale0_8_ps, acc0);
 
@@ -213,7 +213,7 @@ accumulate_q8_blklen64_r2c1blk1_avx2(
         const __m256i dot11_high_8_epi32 = _mm256_madd_epi16(one_mask, dot11_high_16_epi16);
         const __m256i dot11_8_epi32 = _mm256_add_epi32(dot11_low_8_epi32, dot11_high_8_epi32);
 
-        const __m256i sum1_8_epi32 = _mm256_hadd_epi32(dot10_8_epi32, dot11_8_epi32);
+        const __m256i sum1_8_epi32 = _mm256_add_epi32(dot10_8_epi32, dot11_8_epi32);
         __m256 sum1_8_ps = _mm256_cvtepi32_ps(sum1_8_epi32);
         acc1 = _mm256_fmadd_ps(sum1_8_ps, scale1_8_ps, acc1);
     }
