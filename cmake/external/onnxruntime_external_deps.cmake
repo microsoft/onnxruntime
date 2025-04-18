@@ -516,11 +516,8 @@ onnxruntime_fetchcontent_declare(
   EXCLUDE_FROM_ALL
   FIND_PACKAGE_ARGS NAMES ONNX onnx
 )
-if (NOT onnxruntime_MINIMAL_BUILD)
-  onnxruntime_fetchcontent_makeavailable(onnx)
-else()
-  include(onnx_minimal)
-endif()
+
+onnxruntime_fetchcontent_makeavailable(onnx)
 
 if(TARGET ONNX::onnx AND NOT TARGET onnx)
   message(STATUS "Aliasing ONNX::onnx to onnx")
