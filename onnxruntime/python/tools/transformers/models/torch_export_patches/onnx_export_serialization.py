@@ -339,7 +339,9 @@ def flatten_with_keys_base_model_output(bo: BaseModelOutput) -> tuple[list[tuple
     return [(torch.utils._pytree.MappingKey(k), v) for k, v in zip(context, values, strict=False)], context
 
 
-def unflatten_base_model_output(values: list[Any], context: torch.utils._pytree.Context, output_type=None) -> BaseModelOutput:
+def unflatten_base_model_output(
+    values: list[Any], context: torch.utils._pytree.Context, output_type=None
+) -> BaseModelOutput:
     """
     Restores a :class:`transformers.modeling_outputs.BaseModelOutput`
     from python objects.
