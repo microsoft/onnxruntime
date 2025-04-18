@@ -2,9 +2,10 @@
 // Licensed under the MIT License.
 //
 #include "core/framework/provider_options.h"
-#include "core/providers/providers.h"
 
 namespace onnxruntime {
+struct IExecutionProviderFactory;
+
 // The suppressed warning is: "The type with a virtual function needs either public virtual or protected nonvirtual destructor."
 // However, we do not allocate this type on heap.
 // Please do not new or delete this type(and subtypes).

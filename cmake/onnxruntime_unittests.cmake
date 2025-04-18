@@ -1827,7 +1827,9 @@ if (onnxruntime_BUILD_SHARED_LIB AND NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten"
   file(GLOB_RECURSE onnxruntime_autoep_test_SRC "${ONNXRUNTIME_AUTOEP_TEST_SRC_DIR}/*.h"
                                                 "${ONNXRUNTIME_AUTOEP_TEST_SRC_DIR}/*.cc")
 
-  set(onnxruntime_autoep_test_LIBS onnxruntime_mocked_allocator onnxruntime_test_utils onnxruntime_common onnx_proto)
+  set(onnxruntime_autoep_test_LIBS onnxruntime_mocked_allocator onnxruntime_test_utils onnxruntime_framework
+                                   onnxruntime_mlas onnxruntime_graph onnxruntime_flatbuffers onnxruntime_common
+                                   onnx)
   if (CPUINFO_SUPPORTED)
     list(APPEND onnxruntime_autoep_test_LIBS cpuinfo)
   endif()
@@ -1842,7 +1844,7 @@ if (onnxruntime_BUILD_SHARED_LIB AND NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten"
 
   if (CMAKE_SYSTEM_NAME MATCHES "AIX")
     list(APPEND onnxruntime_shared_lib_test_LIBS onnxruntime_graph onnxruntime_session onnxruntime_providers
-                onnxruntime_framework onnxruntime_util onnxruntime_mlas onnxruntime_optimizer onnxruntime_flatbuffers
+                onnxruntime_optimizer onnxruntime_mlas onnxruntime_framework onnxruntime_util onnxruntime_flatbuffers
                 iconv re2 onnx)
   endif()
 

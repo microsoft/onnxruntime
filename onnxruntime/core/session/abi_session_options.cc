@@ -6,7 +6,6 @@
 #include <sstream>
 
 #include "core/common/inlined_containers.h"
-#include "core/common/string_utils.h"
 #include "core/framework/error_code_helper.h"
 #include "core/graph/onnx_protobuf.h"
 #include "core/session/abi_session_options_impl.h"
@@ -32,10 +31,7 @@ onnxruntime::Status OrtSessionOptions::AddProviderOptionsToConfigOptions(
     const std::unordered_map<std::string, std::string>& provider_options, const char* provider_name) {
   // Add provider options to the session config options.
   // Use a new key with the format: "ep.<lowercase_provider_name>.<PROVIDER_OPTION_KEY>"
-  std::string key_prefix = "ep.";
-  key_prefix += onnxruntime::utils::GetLowercaseString(provider_name);
-  key_prefix += ".";
-
+  auto key_prefix = onnxruntime::SessionOptions::GetProviderOptionPrefix(provider_name);
   for (const auto& [ep_key, ep_value] : provider_options) {
     const std::string new_key = key_prefix + ep_key;
     ORT_RETURN_IF_ERROR(value.config_options.AddConfigEntry(new_key.c_str(), ep_value.c_str()));

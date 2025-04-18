@@ -10,27 +10,33 @@
 #include <dxcore_interface.h>
 #include <wil/com.h>
 
-// GetDxgiInfo
-#include <dxgi.h>
-#pragma comment(lib, "dxgi.lib")
-#include <iostream>
+
+  // TEMPORARY: The CI builds target Windows 10 so do not have these GUIDs.
+  // This is to make the builds pass so any other issues can be resolved, but needs a real solution prior to checkin.
+  // these values were added in 10.0.22621.0 as part of DirectXCore API
+  //
+  // In theory this #if should be fine, but the QNN ARM64 CI fails even with that applied. Not sure what is happening
+  // with the NTDII_VERSION value there...
+  // 
+  // Defining a local GUID instead.
+  // #if NTDDI_VERSION < NTDDI_WIN10_RS5
+  //  DEFINE_GUID(DXCORE_ADAPTER_ATTRIBUTE_D3D12_GENERIC_ML, 0xb71b0d41, 0x1088, 0x422f, 0xa2, 0x7c, 0x2, 0x50, 0xb7, 0xd3, 0xa9, 0x88);
+  //  DEFINE_GUID(DXCORE_HARDWARE_TYPE_ATTRIBUTE_NPU, 0xd46140c4, 0xadd7, 0x451b, 0x9e, 0x56, 0x6, 0xfe, 0x8c, 0x3b, 0x58, 0xed);
+  // #endif
 
 #include "core/common/cpuid_info.h"
 #include "core/session/abi_devices.h"
 
-// TEMPORARY: The CI builds target Windows 10 so do not have these GUIDs.
-// This is to make the builds pass so any other issues can be resolved, but needs a real solution prior to checkin.
-// these values were added in 10.0.22621.0 as part of DirectXCore API
-#if NTDDI_VERSION < NTDDI_WIN10_RS5
-DEFINE_GUID(DXCORE_ADAPTER_ATTRIBUTE_D3D12_GENERIC_ML, 0xb71b0d41, 0x1088, 0x422f, 0xa2, 0x7c, 0x2, 0x50, 0xb7, 0xd3, 0xa9, 0x88);
-DEFINE_GUID(DXCORE_HARDWARE_TYPE_ATTRIBUTE_NPU, 0xd46140c4, 0xadd7, 0x451b, 0x9e, 0x56, 0x6, 0xfe, 0x8c, 0x3b, 0x58, 0xed);
-#endif
 
 namespace onnxruntime {
+#if !defined(ORT_MINIMAL_BUILD)
 
 namespace {
 std::unordered_set<OrtHardwareDevice> GetInferencingDevices() {
   std::unordered_set<OrtHardwareDevice> found_devices;
+
+  const GUID local_DXCORE_ADAPTER_ATTRIBUTE_D3D12_GENERIC_ML = {0xb71b0d41, 0x1088, 0x422f, 0xa2, 0x7c, 0x2, 0x50, 0xb7, 0xd3, 0xa9, 0x88};
+  const GUID local_DXCORE_HARDWARE_TYPE_ATTRIBUTE_NPU = {0xd46140c4, 0xadd7, 0x451b, 0x9e, 0x56, 0x6, 0xfe, 0x8c, 0x3b, 0x58, 0xed};
 
   // Get information about the CPU device
   auto vendor = CPUIDInfo::GetCPUIDInfo().GetCPUVendor();
@@ -47,8 +53,8 @@ std::unordered_set<OrtHardwareDevice> GetInferencingDevices() {
   // Look for devices that expose compute engines
   std::vector<const GUID*> allowedAttributes;
   allowedAttributes.push_back(&DXCORE_ADAPTER_ATTRIBUTE_D3D12_CORE_COMPUTE);
-  allowedAttributes.push_back(&DXCORE_ADAPTER_ATTRIBUTE_D3D12_GENERIC_ML);
-  allowedAttributes.push_back(&DXCORE_HARDWARE_TYPE_ATTRIBUTE_NPU);
+  allowedAttributes.push_back(&local_DXCORE_ADAPTER_ATTRIBUTE_D3D12_GENERIC_ML);
+  allowedAttributes.push_back(&local_DXCORE_HARDWARE_TYPE_ATTRIBUTE_NPU);
 
   // These attributes are not OR'd.  Have to query one at a time to get a full view.
   for (const auto& hwAttribute : allowedAttributes) {
@@ -119,5 +125,9 @@ std::unordered_set<OrtHardwareDevice> DeviceDiscovery::DiscoverDevicesForPlatfor
   std::unordered_set<OrtHardwareDevice> devices = GetInferencingDevices();
   return devices;
 }
-
+#else  // !defined(ORT_MINIMAL_BUILD)
+std::unordered_set<OrtHardwareDevice> DeviceDiscovery::DiscoverDevicesForPlatform() {
+  return {};
+}
+#endif
 }  // namespace onnxruntime

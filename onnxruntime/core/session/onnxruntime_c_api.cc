@@ -2430,6 +2430,7 @@ ORT_API(void, OrtApis::ReleaseKeyValuePairs, _Frees_ptr_opt_ OrtKeyValuePairs* k
   delete kvps;
 }
 
+#if !defined(ORT_MINIMAL_BUILD)
 ORT_API_STATUS_IMPL(OrtApis::RegisterExecutionProviderLibrary, _In_ OrtEnv* env, const char* registration_name,
                     const ORTCHAR_T* path) {
   API_IMPL_BEGIN
@@ -2478,7 +2479,7 @@ ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider_V2, _In_ OrtS
 
       // add the options to the session options with the EP prefix.
       // first add the default values with prefix followed by user specified values so those win
-      const auto prefix = ProviderOptionsUtils::GetProviderOptionPrefix(entry->ep_name);
+      const auto prefix = SessionOptions::GetProviderOptionPrefix(entry->ep_name.c_str());
       auto& config_options = session_options->value.config_options;
       for (const auto& [key, value] : entry->ep_options.entries) {
         ORT_API_RETURN_IF_STATUS_NOT_OK(config_options.AddConfigEntry((prefix + key).c_str(), value.c_str()));
@@ -2508,6 +2509,39 @@ ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider_V2, _In_ OrtS
   return nullptr;
   API_IMPL_END
 }
+#else  // defined(ORT_MINIMAL_BUILD)
+ORT_API_STATUS_IMPL(OrtApis::RegisterExecutionProviderLibrary, _In_ OrtEnv* /*env*/, const char* /*registration_name*/,
+                    const ORTCHAR_T* /*path*/) {
+  API_IMPL_BEGIN
+  return OrtApis::CreateStatus(ORT_NOT_IMPLEMENTED, "This API in not supported in a minimal build.");
+  API_IMPL_END
+}
+
+ORT_API_STATUS_IMPL(OrtApis::UnregisterExecutionProviderLibrary, _In_ OrtEnv* /*env*/,
+                    const char* /*registration_name*/) {
+  API_IMPL_BEGIN
+  return OrtApis::CreateStatus(ORT_NOT_IMPLEMENTED, "This API in not supported in a minimal build.");
+  API_IMPL_END
+}
+
+ORT_API_STATUS_IMPL(OrtApis::GetEpDevices, _In_ const OrtEnv* /*env*/,
+                    _Outptr_ const OrtEpDevice* const** /*ep_devices*/, _Out_ size_t* /*num_ep_devices*/) {
+  API_IMPL_BEGIN
+  return OrtApis::CreateStatus(ORT_NOT_IMPLEMENTED, "This API in not supported in a minimal build.");
+  API_IMPL_END
+}
+
+ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider_V2, _In_ OrtSessionOptions* /*session_options*/,
+                    _In_ OrtEnv* /*env*/, _In_ const char* /*ep_name_in*/,
+                    _In_reads_(num_op_options) const char* const* /*ep_option_keys*/,
+                    _In_reads_(num_op_options) const char* const* /*ep_option_vals*/,
+                    size_t /*num_ep_options*/) {
+  API_IMPL_BEGIN
+  return OrtApis::CreateStatus(ORT_NOT_IMPLEMENTED, "This API in not supported in a minimal build.");
+
+  API_IMPL_END
+}
+#endif  // !defined(ORT_MINIMAL_BUILD)
 
 // OrtEpDevice accessors
 ORT_API(OrtHardwareDeviceType, OrtApis::HardwareDevice_Type, _In_ const OrtHardwareDevice* device) {
