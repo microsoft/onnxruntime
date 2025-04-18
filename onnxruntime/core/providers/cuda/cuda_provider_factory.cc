@@ -304,7 +304,7 @@ CUDA_Provider* GetProvider() {
 
 #include "core/framework/error_code_helper.h"
 
-// OrtEpApi infrastructure for
+// OrtEpApi infrastructure to be able to use the CUDA EP as an OrtEpFactory for auto EP selection.
 struct CudaEpFactory : OrtEpFactory {
   CudaEpFactory(const OrtApi& ort_api_in) : ort_api{ort_api_in} {
     GetName = GetNameImpl;
