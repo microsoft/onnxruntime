@@ -281,10 +281,9 @@ Status EinsumProgram::GenerateShaderCode(ShaderHelper& shader) const {
           // from output to input0 Format like: input0Indices[0] = outputIndices[0], for the 'i'
           // symbol
           idx_copy.push_back(inputs[lhs_term_index].get().IndicesSet(
-              "input" + std::to_string(lhs_term_index) + "Indices",  // Target input indices array
-              std::to_string(input_index),                           // Target index position
-              output.IndicesGet("outputIndices",  // Get index from output position
-                                std::to_string(rhs_indices->second[0]))));
+              "input" + std::to_string(lhs_term_index) + "Indices",
+              std::to_string(input_index),
+              output.IndicesGet("outputIndices", std::to_string(rhs_indices->second[0]))));
         }
 
         lhs_term_index++;
