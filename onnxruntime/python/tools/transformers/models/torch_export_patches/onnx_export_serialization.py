@@ -40,10 +40,7 @@ def _register_class_serialization(
     )
     if pv.Version(torch.__version__) < pv.Version("2.7"):
         if verbose:
-            print(
-                f"[_register_cache_serialization] "
-                f"register {cls} for torch=={torch.__version__}"
-            )
+            print(f"[_register_cache_serialization] register {cls} for torch=={torch.__version__}")
         torch.fx._pytree.register_pytree_flatten_spec(cls, lambda x, _: f_flatten(x)[0])
 
     # check
