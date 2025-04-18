@@ -3043,6 +3043,8 @@ ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider_VitisAI, _In_
   }
   // EP context related session config options.
   provider_options["session_options"] = std::to_string((uintptr_t)(void*)options);
+  ORT_API_RETURN_IF_STATUS_NOT_OK(options->AddProviderOptionsToConfigOptions(provider_options,
+                                                                             onnxruntime::kVitisAIExecutionProvider));
 
   auto factory = onnxruntime::VitisAIProviderFactoryCreator::Create(provider_options);
   if (!factory) {
