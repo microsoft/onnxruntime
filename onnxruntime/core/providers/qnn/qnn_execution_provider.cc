@@ -1312,7 +1312,7 @@ std::vector<AllocatorPtr> QNNExecutionProvider::CreatePreferredAllocators() {
 
     AllocatorCreationInfo rpcmem_allocator_creation_info{rpcmem_allocator_factory,
                                                          /* device_id */ 0,
-                                                         /* use_arena */ false};
+                                                         /* use_arena */ true};
 
     allocators.emplace_back(CreateAllocator(rpcmem_allocator_creation_info));
   }
