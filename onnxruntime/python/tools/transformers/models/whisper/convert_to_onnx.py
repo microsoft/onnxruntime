@@ -392,7 +392,7 @@ def export_onnx_models(
                 use_encoder_hidden_states=(name == "decoder_init"),
                 use_kv_cache_inputs=(name == "decoder"),
                 # dynamo cannot be used for jump times as it contains control flows
-                use_dynamo_export=use_dynamo_export and name != "jump_times"
+                use_dynamo_export=use_dynamo_export and name != "jump_times",
             )
         else:
             logger.info(f"Skip exporting: existing ONNX model {onnx_path}")
