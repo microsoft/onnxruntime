@@ -17,6 +17,7 @@
 
 #include "test_allocator.h"
 #include "test/shared_lib/utils.h"
+#include "test/util/include/api_asserts.h"
 #include "test/util/include/asserts.h"
 
 extern std::unique_ptr<Ort::Env> ort_env;
