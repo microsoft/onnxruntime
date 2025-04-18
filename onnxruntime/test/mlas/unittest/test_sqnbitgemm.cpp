@@ -421,6 +421,8 @@ class SQNBitGemmShortExecuteTest : public MlasTestFixture<MlasSQNBitGemmTest<Blk
 };
 
 static size_t SQNBitGemmRegisterAllShortExecuteTests() {
+  if (false)
+    vec_dot_q2_K_q8_K();
   size_t count = 0;
 
   count += SQNBitGemmShortExecuteTest<4, 16>::RegisterShortExecuteTests();

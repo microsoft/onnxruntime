@@ -530,6 +530,16 @@ if(TARGET ONNX::onnx_proto AND NOT TARGET onnx_proto)
   message(STATUS "Aliasing ONNX::onnx_proto to onnx_proto")
   add_library(onnx_proto ALIAS ONNX::onnx_proto)
 endif()
+
+# Declare and fetch llama.cpp source
+onnxruntime_fetchcontent_declare(
+    llama_cpp
+    URL ${DEP_URL_llama_cpp}
+    URL_HASH SHA1=${DEP_SHA1_llama_cpp}
+    EXCLUDE_FROM_ALL
+)
+onnxruntime_fetchcontent_makeavailable(llama_cpp)
+
 if(onnxruntime_USE_VCPKG)
   find_package(Eigen3 CONFIG REQUIRED)
 else()
@@ -572,7 +582,7 @@ endif()
 set(onnxruntime_EXTERNAL_LIBRARIES ${onnxruntime_EXTERNAL_LIBRARIES_XNNPACK} ${WIL_TARGET} nlohmann_json::nlohmann_json
                                    onnx onnx_proto ${PROTOBUF_LIB} re2::re2 Boost::mp11 safeint_interface
                                    flatbuffers::flatbuffers ${GSL_TARGET} ${ABSEIL_LIBS} date::date
-                                   ${ONNXRUNTIME_CLOG_TARGET_NAME} Eigen3::Eigen)
+                                   ${ONNXRUNTIME_CLOG_TARGET_NAME} Eigen3::Eigen ggml)
 
 # The source code of onnx_proto is generated, we must build this lib first before starting to compile the other source code that uses ONNX protobuf types.
 # The other libs do not have the problem. All the sources are already there. We can compile them in any order.
