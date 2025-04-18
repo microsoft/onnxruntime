@@ -19,8 +19,15 @@ git add onnx
 2. Update [cmake/deps.txt](/cmake/deps.txt) with the correct zip download link and SHA (alternatively, build it with the wrong SHA and ORT should tell you the expected one.).
 3. Check [cmake/patch/onnx/onnx.patch](/cmake/patch/onnx/onnx.patch) to see whether the diffs are resolved in the latest ONNX version.
 4. Try to build ONNXRUNTIME from source. If the build fails, please make the changes accordingly, or use onnx.patch if it's ONNX bugs.
-5. Push the branch to validate with the CI tests, and make the necessary changes accordingly.
-6. Update Python requirements files with the updated ONNX version (e.g., `onnx==1.16.0`) or commit hash if building from source (e.g., `git+http://github.com/onnx/onnx.git@targetonnxcommithash#egg=onnx`).
+5. Update [docs/OperatorKernels.mk](/docs/OperatorKernels.md)
+
+```bash
+# under onnxruntime root
+python tools/python/gen_opkernel_doc.py --output_path docs/OperatorKernels.md
+```
+
+6. Push the branch to validate with the CI tests, and make the necessary changes accordingly.
+7. Update Python requirements files with the updated ONNX version (e.g., `onnx==1.16.0`) or commit hash if building from source (e.g., `git+http://github.com/onnx/onnx.git@targetonnxcommithash#egg=onnx`).
 
 - [onnxruntime/test/python/requirements.txt](/onnxruntime/test/python/requirements.txt)
 - [tools/ci_build/github/linux/docker/scripts/requirements.txt](/tools/ci_build/github/linux/docker/scripts/requirements.txt)
