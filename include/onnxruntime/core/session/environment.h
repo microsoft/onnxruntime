@@ -118,7 +118,7 @@ class Environment {
   const std::vector<const OrtEpDevice*>& GetOrtEpDevices() const {
     return execution_devices_;
   }
-#endif // !defined(ORT_MINIMAL_BUILD)
+#endif  // !defined(ORT_MINIMAL_BUILD)
   ~Environment();
 
  private:
@@ -172,7 +172,7 @@ class Environment {
 
   // lookup set for internal EPs so we can create an IExecutionProvider directly
   std::unordered_set<EpFactoryInternal*> internal_ep_factories_;
-#endif // !defined(ORT_MINIMAL_BUILD)
+#endif  // !defined(ORT_MINIMAL_BUILD)
 };
 
 }  // namespace onnxruntime
