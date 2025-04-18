@@ -2509,7 +2509,7 @@ ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider_V2, _In_ OrtS
   return nullptr;
   API_IMPL_END
 }
-#else  // defined(ORT_MINIMAL_BUILD)
+#else   // defined(ORT_MINIMAL_BUILD)
 ORT_API_STATUS_IMPL(OrtApis::RegisterExecutionProviderLibrary, _In_ OrtEnv* /*env*/, const char* /*registration_name*/,
                     const ORTCHAR_T* /*path*/) {
   API_IMPL_BEGIN
