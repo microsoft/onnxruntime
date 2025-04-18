@@ -800,11 +800,17 @@ static Status CreateEpContextModel(const ExecutionProviders& execution_providers
     return std::make_pair(false, static_cast<const Node*>(nullptr));
   };
 
+  bool saving_to_buffer = ep_context_gen_options.output_model_buffer_ptr != nullptr &&
+                          ep_context_gen_options.output_model_buffer_size_ptr != nullptr &&
+                          ep_context_gen_options.output_model_buffer_allocator != nullptr;
+
   std::filesystem::path context_cache_path;
-  ORT_RETURN_IF_ERROR(GetValidatedEpContextPath(ep_context_gen_options.output_model_file_path,
-                                                graph.ModelPath(),
-                                                context_cache_path,
-                                                ep_context_gen_options.overwrite_existing_output_file));
+  if (!saving_to_buffer || !graph.ModelPath().empty()) {
+    ORT_RETURN_IF_ERROR(GetValidatedEpContextPath(ep_context_gen_options.output_model_file_path,
+                                                  graph.ModelPath(),
+                                                  context_cache_path,
+                                                  ep_context_gen_options.overwrite_existing_output_file));
+  }
 
   Model ep_context_model(graph.Name(), false, graph.GetModel().MetaData(),
                          graph.GetModel().ModelPath(),  // use source model path so that external initializers can find the data file path
@@ -864,9 +870,7 @@ static Status CreateEpContextModel(const ExecutionProviders& execution_providers
 
   ModelSavingOptions model_saving_options{ini_size_threshold};
 
-  if (ep_context_gen_options.output_model_buffer_ptr != nullptr &&
-      ep_context_gen_options.output_model_buffer_size_ptr != nullptr &&
-      ep_context_gen_options.output_model_buffer_allocator != nullptr) {
+  if (saving_to_buffer) {
     ORT_RETURN_IF_ERROR(ep_context_model.MainGraph().Resolve());
     // TODO(adrianlizarraga): Investigate if we can make this more memory efficient.
     // May be able to use allocator to directly allocate the ModelProto to avoid a copy.

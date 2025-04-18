@@ -119,8 +119,6 @@ class ModelCompilationOptions {
  private:
   void ResetInputModelSettings();
   Status ResetOutputModelSettings();
-  Status CheckInputModelSettings() const;
-  Status CheckOutputModelSettings() const;
 
   const OrtEnv& env_;
   OrtSessionOptions session_options_;
