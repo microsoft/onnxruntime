@@ -46,12 +46,6 @@ def export_to_onnx(
         model, args=inputs, dynamic_axes=dynamic_axes, prefix_mapping={"present": "past_key_values"}
     )
 
-    from onnx_diagnostic.helpers import string_type
-    print("****", string_type(model_kwargs, with_shape=True))
-    print(dynamic_shapes)
-    print("--")
-    print(dynamic_axes)
-
     if version.Version(torch.__version__) < version.Version("2.7"):
         # This section is only needed for torch==2.6. The workaround implemented here
         # to fix bugs is not necessary with torch>=2.7.
