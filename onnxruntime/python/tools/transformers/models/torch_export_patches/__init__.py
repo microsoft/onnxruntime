@@ -2,11 +2,11 @@ from dataclasses import fields, is_dataclass
 from typing import Any
 
 import numpy as np
-from onnx import TensorProto
-from onnx.helper import np_dtype_to_tensor_dtype
 import packaging.version as pv
 import torch
 import transformers
+from onnx import TensorProto
+from onnx.helper import np_dtype_to_tensor_dtype
 
 from .onnx_export_errors import (
     bypass_export_some_errors,

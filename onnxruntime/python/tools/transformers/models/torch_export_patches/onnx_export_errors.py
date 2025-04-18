@@ -1,13 +1,18 @@
 import contextlib
-from typing import Any, Callable, Dict, List, Optional
+from collections.abc import Callable
+from typing import Any, Optional
+
+from torch.fx.experimental.symbolic_shapes import ShapeEnv
+
 from .onnx_export_serialization import (
     _register_cache_serialization,
     _unregister_cache_serialization,
 )
 from .patches import patch_transformers as patch_transformers_list
+from .patches.patch_torch import patched_ShapeEnv
 
 
-def patch_module_or_classes(mod, verbose: int = 0) -> Dict[type, Dict[type, Callable]]:
+def patch_module_or_classes(mod, verbose: int = 0) -> dict[type, dict[type, Callable]]:
     """
     Applies all patches defined in classes prefixed by ``patched_``
     ``cls._PATCHED_CLASS_`` defines the class to patch,
@@ -46,7 +51,7 @@ def patch_module_or_classes(mod, verbose: int = 0) -> Dict[type, Dict[type, Call
     return res
 
 
-def unpatch_module_or_classes(mod, info: Dict[type, Dict[type, Callable]], verbose: int = 0):
+def unpatch_module_or_classes(mod, info: dict[type, dict[type, Callable]], verbose: int = 0):
     """
     Reverts modification made by :func:`patch_module_or_classes`.
 
@@ -80,9 +85,7 @@ def unpatch_module_or_classes(mod, info: Dict[type, Dict[type, Callable]], verbo
 
 
 @contextlib.contextmanager
-def register_additional_serialization_functions(
-    patch_transformers: bool = False, verbose: int = 0
-) -> Callable:
+def register_additional_serialization_functions(patch_transformers: bool = False, verbose: int = 0) -> Callable:
     """The necessary modifications to run the fx Graph."""
     fct_callable = replacement_before_exporting if patch_transformers else (lambda x: x)
     done = _register_cache_serialization(verbose=verbose)
@@ -101,7 +104,7 @@ def bypass_export_some_errors(
     stop_if_static: int = 0,
     verbose: int = 0,
     patch: bool = True,
-    custom_patches: Optional[List[type["torch.nn.Module"]]] = None,  # noqa: F821
+    custom_patches: list[type["torch.nn.Module"]] | None = None,  # noqa: F821
 ) -> Callable:
     """
     Tries to bypass some situations :func:`torch.export.export` does not support.
@@ -189,10 +192,7 @@ def bypass_export_some_errors(
         import torch.jit
 
         if verbose:
-            print(
-                "[bypass_export_some_errors] replace torch.jit.isinstance, "
-                "torch._dynamo.mark_static_address"
-            )
+            print("[bypass_export_some_errors] replace torch.jit.isinstance, torch._dynamo.mark_static_address")
 
         ########
         # caches
@@ -213,7 +213,7 @@ def bypass_export_some_errors(
                 print(f"[bypass_export_some_errors] sympy.__version__={sympy.__version__!r}")
                 print("[bypass_export_some_errors] patch sympy")
 
-            sympy.core.numbers.IntegerConstant.name = lambda self: f"IntCst{str(self)}"
+            sympy.core.numbers.IntegerConstant.name = lambda self: f"IntCst{self!s}"
 
         ###############
         # patch pytorch
@@ -221,10 +221,10 @@ def bypass_export_some_errors(
 
         if patch_torch:
             from .patches.patch_torch import (
-                patched_infer_size,
-                patched__broadcast_shapes,
                 _catch_produce_guards_and_solve_constraints,
                 patch__check_input_constraints_for_graph,
+                patched__broadcast_shapes,
+                patched_infer_size,
             )
 
             if verbose:
@@ -271,9 +271,6 @@ def bypass_export_some_errors(
             )
 
         if stop_if_static:
-            from torch.fx.experimental.symbolic_shapes import ShapeEnv
-            from .patches.patch_torch import patched_ShapeEnv
-
             ShapeEnv._log_guard_remember = ShapeEnv._log_guard
 
             if verbose:
@@ -308,16 +305,12 @@ def bypass_export_some_errors(
                     f"[bypass_export_some_errors] transformers.__version__="
                     f"{transformers.__version__!r}"
                 )
-            revert_patches_info = patch_module_or_classes(
-                patch_transformers_list, verbose=verbose
-            )
+            revert_patches_info = patch_module_or_classes(patch_transformers_list, verbose=verbose)
 
         if custom_patches:
             if verbose:
                 print("[bypass_export_some_errors] applies custom patches")
-            revert_custom_patches_info = patch_module_or_classes(
-                custom_patches, verbose=verbose
-            )
+            revert_custom_patches_info = patch_module_or_classes(custom_patches, verbose=verbose)
 
         ########
         # export
@@ -385,18 +378,14 @@ def bypass_export_some_errors(
                 torch._export.non_strict_utils.produce_guards_and_solve_constraints = (
                     f_produce_guards_and_solve_constraints
                 )
-                torch._export.utils._check_input_constraints_for_graph = (
-                    f__check_input_constraints_for_graph
-                )
+                torch._export.utils._check_input_constraints_for_graph = f__check_input_constraints_for_graph
                 if verbose:
                     print("[bypass_export_some_errors] restored shape constraints")
 
             if custom_patches:
                 if verbose:
                     print("[bypass_export_some_errors] unpatch custom patches")
-                unpatch_module_or_classes(
-                    custom_patches, revert_custom_patches_info, verbose=verbose
-                )
+                unpatch_module_or_classes(custom_patches, revert_custom_patches_info, verbose=verbose)
 
             ##############
             # transformers
@@ -405,9 +394,7 @@ def bypass_export_some_errors(
             if patch_transformers:
                 if verbose:
                     print("[bypass_export_some_errors] unpatch transformers")
-                unpatch_module_or_classes(
-                    patch_transformers_list, revert_patches_info, verbose=verbose
-                )
+                unpatch_module_or_classes(patch_transformers_list, revert_patches_info, verbose=verbose)
 
             ########
             # caches
@@ -417,9 +404,7 @@ def bypass_export_some_errors(
 
 
 def replacement_before_exporting(args: Any) -> Any:
-    """
-    Does replacements on the given inputs if needed.
-    """
+    """Does replacements on the given inputs if needed."""
     if args is None:
         return None
     if isinstance(args, (int, float)):
@@ -433,5 +418,4 @@ def replacement_before_exporting(args: Any) -> Any:
         return tuple(replacement_before_exporting(v) for v in args)
     if isinstance(args, list):
         return [replacement_before_exporting(v) for v in args]
-
     return args

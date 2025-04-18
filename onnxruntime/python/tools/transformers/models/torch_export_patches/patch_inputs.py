@@ -19,15 +19,15 @@ def _process_cache(k: str, v):
     if isinstance(v, list) and all(isinstance(i, tuple) for i in v) and {len(t) for t in v} == {4}:
         # A EncoderDecoderCache
         cache = make_encoder_decoder_cache(
-            make_dynamic_cache(list(zip(*v[:2]))),
-            make_dynamic_cache(list(zip(*v[2:]))),
+            make_dynamic_cache(list(zip(*v[:2], strict=False))),
+            make_dynamic_cache(list(zip(*v[2:], strict=False))),
         )
         return cache
     if isinstance(v, torch.Tensor):
         return v
     raise NotImplementedError(
         f"Unable to process parameter {k!r} with v={string_type(v, with_shape=True)}, "
-        f"set(len(t) for t in v)={set(len(t) for t in v)}"
+        f"[len(t) for t in v]={[len(t) for t in v]}"
     )
 
 
