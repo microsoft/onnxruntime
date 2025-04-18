@@ -48,7 +48,7 @@ Status TestAutoSelectEPsImpl(const Environment& env, InferenceSession& sess, con
 
     // add ep_options to SessionOptions with prefix.
     // preserve any user provided values.
-    const std::string ep_options_prefix = SessionOptions::GetProviderOptionPrefix(ep_device->ep_name.c_str());
+    const std::string ep_options_prefix = OrtSessionOptions::GetProviderOptionPrefix(ep_device->ep_name.c_str());
     for (const auto& [key, value] : ep_device->ep_options.entries) {
       auto prefixed_key = ep_options_prefix + key;
       if (session_options.config_options.configurations.count(key) == 0) {

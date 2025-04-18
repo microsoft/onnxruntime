@@ -175,10 +175,6 @@ struct SessionOptions {
   // The configuration keys and value formats are defined in
   // /include/onnxruntime/core/session/onnxruntime_session_options_config_keys.h
   ConfigOptions config_options;
-  // get the EP prefix to used when an EP specific option is added to config_options.
-  // e.g. for EP called 'MyEP' an options 'device_id' would be added as 'ep.myep.device_id'
-  //      with GetProviderOptionPrefix returning 'ep.myep.'
-  static std::string GetProviderOptionPrefix(const char* provider_name);
 
   std::unordered_map<std::string, const OrtValue*> initializers_to_share_map;
 

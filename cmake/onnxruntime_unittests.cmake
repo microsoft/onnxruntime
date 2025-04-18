@@ -829,7 +829,7 @@ if (onnxruntime_ENABLE_CUDA_EP_INTERNAL_TESTS)
   onnxruntime_add_shared_library_module(onnxruntime_providers_cuda_ut ${onnxruntime_test_providers_cuda_ut_src} $<TARGET_OBJECTS:onnxruntime_providers_cuda_obj>)
   config_cuda_provider_shared_module(onnxruntime_providers_cuda_ut)
   onnxruntime_add_include_to_target(onnxruntime_providers_cuda_ut GTest::gtest GTest::gmock)
-  add_dependencies(onnxruntime_providers_cuda_ut onnxruntime_test_utils onnxruntime_common)
+  add_dependencies(onnxruntime_providers_cuda_ut onnxruntime_test_utils onnxruntime_session onnxruntime_common)
   target_include_directories(onnxruntime_providers_cuda_ut PRIVATE ${ONNXRUNTIME_ROOT}/core/mickey)
   target_link_libraries(onnxruntime_providers_cuda_ut PRIVATE GTest::gtest GTest::gmock ${ONNXRUNTIME_MLAS_LIBS} onnxruntime_test_utils onnxruntime_common)
   if (MSVC)
@@ -1827,9 +1827,7 @@ if (onnxruntime_BUILD_SHARED_LIB AND NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten"
   file(GLOB_RECURSE onnxruntime_autoep_test_SRC "${ONNXRUNTIME_AUTOEP_TEST_SRC_DIR}/*.h"
                                                 "${ONNXRUNTIME_AUTOEP_TEST_SRC_DIR}/*.cc")
 
-  set(onnxruntime_autoep_test_LIBS onnxruntime_mocked_allocator onnxruntime_test_utils onnxruntime_framework
-                                   onnxruntime_mlas onnxruntime_graph onnxruntime_flatbuffers onnxruntime_common
-                                   onnx)
+  set(onnxruntime_autoep_test_LIBS onnxruntime_mocked_allocator onnxruntime_test_utils onnx_proto)
   if (onnxruntime_USE_TENSORRT)
     list(APPEND onnxruntime_autoep_test_LIBS ${TENSORRT_LIBRARY_INFER})
   endif()

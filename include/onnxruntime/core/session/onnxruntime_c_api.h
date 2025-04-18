@@ -5902,6 +5902,8 @@ struct OrtEp {
    * \param[in] this_ptr The OrtEp instance.
    * \return The execution provider name.
    *
+   * \note Returned string is owned by ORT and valid until UnregisterExecutionProviderLibrary is called.
+   *
    * \since Version 1.22.
    */
   const char*(ORT_API_CALL* GetName)(const OrtEp* this_ptr);

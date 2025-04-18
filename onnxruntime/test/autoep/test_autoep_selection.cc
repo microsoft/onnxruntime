@@ -10,9 +10,9 @@
 
 #include "core/common/common.h"
 #include "core/framework/provider_options.h"
-#include "core/framework/session_options.h"
 #include "core/graph/constants.h"
 #include "core/session/abi_key_value_pairs.h"
+#include "core/session/abi_session_options_impl.h"
 #include "core/session/onnxruntime_cxx_api.h"
 
 #include "test_allocator.h"
@@ -49,7 +49,7 @@ static void TestInference(Ort::Env& env, const std::basic_string<ORTCHAR_T>& mod
     ASSERT_ORTSTATUS_OK(Ort::GetApi().AddSessionConfigEntry(session_options, "test.ep_to_select",
                                                             ep_to_select.c_str()));
 
-    const std::string option_prefix = SessionOptions::GetProviderOptionPrefix(ep_to_select.c_str());
+    const std::string option_prefix = OrtSessionOptions::GetProviderOptionPrefix(ep_to_select.c_str());
     for (const auto& [key, value] : provider_options.entries) {
       // add the default value with prefix
       session_options.AddConfigEntry((option_prefix + key).c_str(), value.c_str());
