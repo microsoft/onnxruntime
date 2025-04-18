@@ -1404,10 +1404,9 @@ void addGlobalMethods(py::module& m) {
           OrtThreadPoolParams intra_op_param = {intra_op_num_threads};
           OrtThreadPoolParams inter_op_param = {inter_op_num_threads};
           OrtThreadingOptions to = {intra_op_param, inter_op_param};
-          SetGlobalThreadingOptions(to);
-        },
+          SetGlobalThreadingOptions(to); },
         py::arg("intra_op_num_threads") = 0,  // Default value for intra_op_num_threads
-        py::arg("inter_op_num_threads") = 0, // Default value for inter_op_num_threads
+        py::arg("inter_op_num_threads") = 0,  // Default value for inter_op_num_threads
         "Set the number of threads used by the global thread pools for intra and inter op parallelism.");
   m.def("get_default_session_options", &GetDefaultCPUSessionOptions, "Return a default session_options instance.");
   m.def("get_session_initializer", &SessionObjectInitializer::Get, "Return a default session object initializer.");
@@ -2402,7 +2401,6 @@ namespace {
 //    For all the related details and why it is needed see "Modern C++ design" by A. Alexandrescu Chapter 6.
 class EnvInitializer {
  public:
-
   static void SetGlobalThreadingOptions(const OrtThreadingOptions& tp_options) {
     if (EnvInitializer::initialized) {
       ORT_THROW("Cannot set global threading options after the environment has been initialized.");
@@ -2438,14 +2436,12 @@ class EnvInitializer {
 
     if (EnvInitializer::use_per_session_threads) {
       OrtPybindThrowIfError(Environment::Create(std::move(lm),
-                                                env_ptr
-                                                ));
+                                                env_ptr));
     } else {
       OrtPybindThrowIfError(Environment::Create(std::move(lm),
                                                 env_ptr,
                                                 &EnvInitializer::tp_options,
-                                                true
-                                                ));
+                                                true));
     }
 
     session_env_ = std::shared_ptr<Environment>(env_ptr.release());
