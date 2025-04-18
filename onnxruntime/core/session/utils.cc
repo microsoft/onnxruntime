@@ -12,6 +12,7 @@
 #include "core/session/onnxruntime_c_api.h"
 #include "core/session/ort_apis.h"
 #include "core/session/ort_env.h"
+#include "core/session/onnxruntime_session_options_config_keys.h"
 
 using namespace onnxruntime;
 
@@ -48,6 +49,23 @@ OrtStatus* CreateSessionAndLoadModel(_In_ const OrtSessionOptions* options,
   const Env& os_env = Env::Default();  // OS environment (!= ORT environment)
   bool load_config_from_model =
       os_env.GetEnvironmentVar(inference_session_utils::kOrtLoadConfigFromModelEnvVar) == "1";
+
+  // If ep.context_enable is set, then ep.context_file_path is expected, otherwise ORT don't know where to generate the _ctx.onnx file
+  if (options && model_path == nullptr) {
+    EpContextModelGenerationOptions ep_ctx_gen_options = options->value.GetEpContextGenerationOptions();
+
+    // This is checked by the OrtCompileApi's CompileModel() function, but we check again here in case
+    // the user used the older SessionOptions' configuration entries to generate a compiled model.
+    if (ep_ctx_gen_options.enable &&
+        ep_ctx_gen_options.output_model_file_path.empty() &&
+        ep_ctx_gen_options.output_model_buffer_ptr == nullptr) {
+      return OrtApis::CreateStatus(ORT_FAIL,
+                                   "Inference session was configured with EPContext model generation enabled but "
+                                   "without a valid location (e.g., file or buffer) for the output model. "
+                                   "Please specify a valid ep.context_file_path via SessionOption configs "
+                                   "or use the OrtCompileApi to compile a model to a file or buffer.");
+    }
+  }
 
   if (load_config_from_model) {
 #if !defined(ORT_MINIMAL_BUILD)

@@ -23,6 +23,7 @@
 #include "core/framework/provider_options.h"
 #include "core/framework/fallback_cpu_capability.h"
 #include "core/framework/random_generator.h"
+#include "core/graph/constants.h"
 #include "core/graph/model.h"
 #include "core/platform/env.h"
 #include "core/providers/common.h"
@@ -2020,6 +2021,7 @@ ProviderOptions OrtOpenVINOProviderOptionsToOrtOpenVINOProviderOptionsV2(const O
   ov_options_converted_map["load_config"] = "";
   ov_options_converted_map["model_priority"] = "DEFAULT";
   ov_options_converted_map["enable_qdq_optimizer"] = "false";
+  ov_options_converted_map["enable_causallm"] = "false";
   return ov_options_converted_map;
 }
 
@@ -2304,6 +2306,8 @@ ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider_OpenVINO, _In
                     _In_ const OrtOpenVINOProviderOptions* provider_options) {
   API_IMPL_BEGIN
   const onnxruntime::ProviderOptions ov_options_converted_map = onnxruntime::OrtOpenVINOProviderOptionsToOrtOpenVINOProviderOptionsV2(provider_options);
+  ORT_API_RETURN_IF_STATUS_NOT_OK(options->AddProviderOptionsToConfigOptions(ov_options_converted_map,
+                                                                             onnxruntime::kOpenVINOExecutionProvider));
   auto factory = onnxruntime::OpenVINOProviderFactoryCreator::Create(&ov_options_converted_map, &(options->value));
   if (!factory) {
     return OrtApis::CreateStatus(ORT_FAIL, "SessionOptionsAppendExecutionProvider_OpenVINO: Failed to load shared library");
@@ -2337,6 +2341,8 @@ ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider_OpenVINO_V2,
 
     provider_options[provider_options_keys[i]] = provider_options_values[i];
   }
+  ORT_API_RETURN_IF_STATUS_NOT_OK(options->AddProviderOptionsToConfigOptions(provider_options,
+                                                                             onnxruntime::kOpenVINOExecutionProvider));
   auto factory = onnxruntime::OpenVINOProviderFactoryCreator::Create(&provider_options, &(options->value));
   if (!factory) {
     return OrtApis::CreateStatus(ORT_FAIL, "SessionOptionsAppendExecutionProvider_OpenVINO_V2: Failed to load shared library");
@@ -3037,6 +3043,8 @@ ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider_VitisAI, _In_
   }
   // EP context related session config options.
   provider_options["session_options"] = std::to_string((uintptr_t)(void*)options);
+  ORT_API_RETURN_IF_STATUS_NOT_OK(options->AddProviderOptionsToConfigOptions(provider_options,
+                                                                             onnxruntime::kVitisAIExecutionProvider));
 
   auto factory = onnxruntime::VitisAIProviderFactoryCreator::Create(provider_options);
   if (!factory) {
