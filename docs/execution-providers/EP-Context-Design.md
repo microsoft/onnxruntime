@@ -199,7 +199,7 @@ ONNX Runtime EPs that support loading models with `EPContext` nodes should follo
       - The EP should only partition the `EPContext` nodes where the `source` attribute matches the key required by the EP.
       - The EP loads the cached context from the matched `EPContext` nodes.
   
-- **Handling External Context Binaries (embed_mode = 0)**  
+- **Handling External Context Binaries (embed_mode = 0)**
   When the `EPContext` cache model is generated with `embed_mode = 0`, the context binary is stored as a separate file alongside the ONNX model in the same folder.
   - ONNX Runtime retrieves the relative path of the context binary file from the `ep_cache_context` attribute of the `EPContext` node.
   - **For models loaded from a file path:**
@@ -208,9 +208,18 @@ ONNX Runtime EPs that support loading models with `EPContext` nodes should follo
     - Since the EP cannot derive the model's folder path, the user must specify the session option `ep.context_file_path`.
     - The EP uses `ep.context_file_path` to determine the folder path and combines it with the relative path to construct the full path to the context binary file.
 
-- **Support for Multiple Primary `EPContext` Nodes (`main_context = 1`)**  
+- **Support for Multiple Primary `EPContext` Nodes (`main_context = 1`)**
   - The EP should support multiple primary `EPContext` nodes without any limitations.
   - The EP must be capable of loading all EP context binary buffers/files specified in the `ep_cache_context` attributes of the `EPContext` nodes, deserializing them, managing the `ep_graphs`, and selecting the appropriate one for execution.
+
+- **Error Handling During EP Context Binary Loading**
+
+  The EP or its backend SDK should be capable of detecting common failure scenarios (including but not limited to the following). In such cases, the EP should return a status with the `INVALID_GRAPH` status code:
+
+  - Detect mismatches between the driver version and the version required by the EP context binary; return an error if they are incompatible.
+  - Detect mismatches between the runtime SDK version and the version used to generated the EP context binary; return an error if they are incompatible.
+  - Return an error if loading the EP context binary fails for any reason.
+
 
 <p align="center"><img width="60%" src="../../images/EP_context_nodes_with_different_eps.png" alt="EP Context nodes with different EPs"/></p>
 
@@ -253,13 +262,13 @@ Creating a session from a memory buffer of the model causes the session to lose 
     session1.run(...);
 ```
 
-# EPContext with Weight Sharing
+## EPContext with Weight Sharing
 
-## Weight Sharing in Onnx Domain
+### Weight Sharing in Onnx Domain
 In ONNX, weight sharing refers to multiple ONNX models with external weights pointing to the same external weight file. These models use the same tensor names, allowing them to reference the same tensor data.
 <p align="center"><img width="50%" src="../../images/Onnx_weight_sharing.png" alt="Weight sharing across Onnx models"/></p>
 
-## Weight Sharing in EP Domain with EPContext
+### Weight Sharing in EP Domain with EPContext
 EP weight sharing is enabled using a pre-generated EP context binary/blob.
 To do this, users must **generate the context binary offline** (Ahead Of Time).
 - Some EPs require specific platforms, such as **Linux x86_64** and/or **Windows x86_64**. Please refer to the specific EP page for details.
@@ -272,7 +281,7 @@ The EP or backend SDK should be capable of converting and compiling the graph as
 - When new graphs are compiled into the EP context, they should reuse existing weights if they are recognized as identical.
 For example, in `[model_name]_[ep].bin`, `tensor1_1` from `ep_graph1` and `tensor2_1` from `ep_graph2` are identical and both point to the same data offset, `tensor_data1`.
 
-## EPContext Model Generation with Weight Sharing Workflow
+### EPContext Model Generation with Weight Sharing Workflow
 <p align="center"><img width="90%" src="../../images/EP_weight_sharing_workflow.png" alt="Weight sharing workflow"/></p>
 
 Each ONNX Runtime session is associated with an ONNX model. Models that share weights are grouped into a model group, while ONNX Runtime sessions with common properties are organized into a session group. ONNX Runtime introduces two session options: `ep.share_ep_contexts` and `ep.stop_share_ep_contexts` to facilitate session grouping.
@@ -280,7 +289,7 @@ Each ONNX Runtime session is associated with an ONNX model. Models that share we
 - The final ONNX Runtime session uses `ep.stop_share_ep_contexts` to indicate that it is the last session in the group.
 Note: A single ONNX model may contain multiple `EPContext` nodes, depending on the graph partitioning result. However, for simplicity, each model is shown with only one `EPcontext` node here.
 
-## Implementation Guidelines for EPContext Model Generation with Weight Sharing
+### Implementation Guidelines for EPContext Model Generation with Weight Sharing
 - Shared Workspace Creation:
 <br/>    The first session creates a shared workspace (e.g., EP Singleton) to share resources with other sessions.
 - EP Context Binary File Naming:
@@ -298,7 +307,7 @@ Note: A single ONNX model may contain multiple `EPContext` nodes, depending on t
 <br/>    For N source models that share weights, a total of N+1 files should be generated.
 <br/>    The generated files are `model1_ctx.onnx`, `...`, `modeln_ctx.onnx`, `[model1_name]_[ep].bin`.
 
-### User Code Example
+#### User Code Example
 ```
     Ort::SessionOptions so;
 
@@ -321,7 +330,7 @@ Note: A single ONNX model may contain multiple `EPContext` nodes, depending on t
     Ort::Session session2(env, "model2.onnx", so);
 ```
 
-### General Tool for EPContext Model Generation with Weight Sharing
+#### General Tool for EPContext Model Generation with Weight Sharing
 OnnxRuntime provides the [ep_weight_sharing_ctx_gen](https://github.com/microsoft/onnxruntime/tree/main/onnxruntime/test/ep_weight_sharing_ctx_gen) tool to automate the weight-sharing workflow. This tool handles the entire process. This tool is specifically designed for **weight sharing** scenarios, streamlining the `EPContext` model generation process.
 Example command line:
 ```
@@ -329,13 +338,13 @@ Example command line:
 ```
 It creates two Onnx models (`model1_ctx.onnx`, `model2_ctx.onnx`) and one QNN context binary file (`[model1_name]_[ep].bin`).
 
-## Inference Sessions from EPContext Models with Weight Sharing
+### Inference Sessions from EPContext Models with Weight Sharing
 To use the dumped EPContext models with weight sharing enabled, ONNX Runtime inference sessions must have **resource sharing** activated. This is done by setting the session option: 
 ```
     ep.share_ep_contexts = 1
 ```
 
-### Implementation Guidelines for Inferencing from EPContext Models with Weight Sharing
+#### Implementation Guidelines for Inferencing from EPContext Models with Weight Sharing
 - Create the first OnnxRuntime inference session
   - Set session option: `ep.share_ep_contexts=1`.
   - Load the `model1_ctx.onnx` model.
@@ -355,7 +364,7 @@ To use the dumped EPContext models with weight sharing enabled, ONNX Runtime inf
   - To avoid issues during concurrent execution, it is recommended to **destroy the sessions in reverse order** (i.e., destroy the second session before the first session).
   - This ensures proper resource management and prevents potential conflicts with shared resources.
 
-### User Code Example
+#### User Code Example
 ```
     Ort::SessionOptions so;
     // enable ep.share_ep_contexts
