@@ -54,19 +54,20 @@ def export_to_onnx(
             n_layers = len(inputs[-1])
             print(f"[export_to_onnx] {model.__class__.__name__}: {n_layers} layers")
             dynamic_shapes = (
-                {0: 'batch_size', 1: 'sequence_length'},
-                {0: 'batch_size'},
+                {0: "batch_size", 1: "sequence_length"},
+                {0: "batch_size"},
                 [
                     (
-                        {0: 'batch_size', 2: 'past_sequence_length'},
-                        {0: 'batch_size', 2: 'past_sequence_length'},
-                        {0: 'batch_size', 2: 'past_sequence_length'},
-                        {0: 'batch_size', 2: 'past_sequence_length'},
+                        {0: "batch_size", 2: "past_sequence_length"},
+                        {0: "batch_size", 2: "past_sequence_length"},
+                        {0: "batch_size", 2: "past_sequence_length"},
+                        {0: "batch_size", 2: "past_sequence_length"},
                     )
-                ] * n_layers
+                ]
+                * n_layers,
             )
         else:
-            dynamic_shapes = ({0: 'batch_size', 1: 'sequence_length'}, {0: 'batch_size'})
+            dynamic_shapes = ({0: "batch_size", 1: "sequence_length"}, {0: "batch_size"})
     elif model.__class__.__name__ == "WhisperEncoderDecoderInit":
         print(f"[export_to_onnx] {model.__class__.__name__}")
         if len(inputs) == 1:
