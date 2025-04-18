@@ -274,9 +274,7 @@ def bypass_export_some_errors(
             ShapeEnv._log_guard_remember = ShapeEnv._log_guard
 
             if verbose:
-                print(
-                    "[bypass_export_some_errors] assert when a dynamic dimension turns static"
-                )
+                print("[bypass_export_some_errors] assert when a dynamic dimension turns static")
                 print("[bypass_export_some_errors] replaces ShapeEnv._set_replacement")
 
             f_shape_env__set_replacement = ShapeEnv._set_replacement
