@@ -5,12 +5,12 @@
 # --------------------------------------------------------------------------
 
 import inspect
-from packaging import version
-import torch
-from transformers.cache_utils import EncoderDecoderCache
 
+import torch
 from models.torch_export_patches import bypass_export_some_errors, string_type
 from models.torch_export_patches.patch_inputs import convert_dynamic_axes_into_dynamic_shapes, replace_dynamic_shapes
+from packaging import version
+from transformers.cache_utils import EncoderDecoderCache
 
 
 def export_to_onnx(
