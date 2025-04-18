@@ -1838,6 +1838,10 @@ if (onnxruntime_BUILD_SHARED_LIB AND NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten"
     list(APPEND onnxruntime_autoep_test_LIBS CUDA::cudart)
   endif()
 
+  if (onnxruntime_USE_TENSORRT)
+    list(APPEND onnxruntime_autoep_test_LIBS ${TENSORRT_LIBRARY_INFER})
+  endif()
+
   if (onnxruntime_USE_DML)
     list(APPEND onnxruntime_autoep_test_LIBS d3d12.lib)
   endif()
