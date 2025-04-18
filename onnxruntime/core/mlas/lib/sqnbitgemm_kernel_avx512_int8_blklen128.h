@@ -35,7 +35,7 @@
 //    bv1_64_epi8 = _mm512_inserti64x4(_mm512_castsi256_si512(bv0_higher), bv1_higher, 1);
 //}
 
-MLAS_DECLSPEC_ALIGN(MLAS_FORCEINLINE const uint32_t MasksAvx512BlkLen128[32], 64) = {
+MLAS_DECLSPEC_ALIGN(static const uint32_t MasksAvx512BlkLen128[32], 64) = {
     0x00ff00ff, 0x00ff00ff, 0x00ff00ff, 0x00ff00ff, 0x00ff00ff, 0x00ff00ff, 0x00ff00ff, 0x00ff00ff,
     0x00ff00ff, 0x00ff00ff, 0x00ff00ff, 0x00ff00ff, 0x00ff00ff, 0x00ff00ff, 0x00ff00ff, 0x00ff00ff,
     0xff00ff00, 0xff00ff00, 0xff00ff00, 0xff00ff00, 0xff00ff00, 0xff00ff00, 0xff00ff00, 0xff00ff00,
@@ -896,7 +896,7 @@ Q8Int8GemmR1xC1BlkLen128Avx512(
     [[maybe_unused]] constexpr size_t NCols4 = 4;
     [[maybe_unused]] constexpr size_t NRows2 = 2;
     constexpr size_t SubblkLen = 128;
-    constexpr size_t BlkDataSizeInBytes = MlasQNBitBlkDataSizeInBytes(BlkBitWidth, BlkLen);
+    const size_t BlkDataSizeInBytes = MlasQNBitBlkDataSizeInBytes(BlkBitWidth, BlkLen);
 
     const size_t PerBlkSubblkCount = BlkLen / SubblkLen;
     const size_t SubblkDataSizeInBytes = BlkDataSizeInBytes / PerBlkSubblkCount;

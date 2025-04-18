@@ -6,7 +6,7 @@
 #include "qnbitgemm.h"
 #include "sqnbitgemm_kernel_avx_common.h"
 
-MLAS_DECLSPEC_ALIGN(MLAS_FORCEINLINE const uint32_t MasksAvx512BlkLen64[32], 64) = {
+MLAS_DECLSPEC_ALIGN(static const uint32_t MasksAvx512BlkLen64[32], 64) = {
     0x00ff00ff, 0x00ff00ff, 0x00ff00ff, 0x00ff00ff, 0x00ff00ff, 0x00ff00ff, 0x00ff00ff, 0x00ff00ff,
     0x00ff00ff, 0x00ff00ff, 0x00ff00ff, 0x00ff00ff, 0x00ff00ff, 0x00ff00ff, 0x00ff00ff, 0x00ff00ff,
     0xff00ff00, 0xff00ff00, 0xff00ff00, 0xff00ff00, 0xff00ff00, 0xff00ff00, 0xff00ff00, 0xff00ff00,
@@ -922,7 +922,7 @@ Q8Int8GemmR2xC1BlkLen64Avx512(
     [[maybe_unused]] constexpr size_t NCols4 = 4;
     constexpr size_t NRows2 = 2;
     constexpr size_t BlkLen64 = 64;
-    constexpr size_t BlkDataSizeInBytes = MlasQNBitBlkDataSizeInBytes(BlkBitWidth, BlkLen);
+    const size_t BlkDataSizeInBytes = MlasQNBitBlkDataSizeInBytes(BlkBitWidth, BlkLen);
     constexpr size_t PerAccuBlk2 = 2;
 
     const size_t lda = BlockCountK * BlkLen;
@@ -1104,7 +1104,7 @@ Q8Int8GemmR1xC4BlkLen64Avx512(
     constexpr size_t NCols4 = 4;
     [[maybe_unused]] constexpr size_t NRows2 = 2;
     constexpr size_t BlkLen64 = 64;
-    constexpr size_t BlkDataSizeInBytes = MlasQNBitBlkDataSizeInBytes(BlkBitWidth, BlkLen);
+    const size_t BlkDataSizeInBytes = MlasQNBitBlkDataSizeInBytes(BlkBitWidth, BlkLen);
     constexpr size_t PerAccuBlk2 = 2;
 
     const size_t lda = BlockCountK * BlkLen;
@@ -1277,7 +1277,7 @@ Q8Int8GemmR1xC1BlkLen64Avx512(
     [[maybe_unused]] constexpr size_t NCols4 = 4;
     [[maybe_unused]] constexpr size_t NRows2 = 2;
     constexpr size_t BlkLen64 = 64;
-    constexpr size_t BlkDataSizeInBytes = MlasQNBitBlkDataSizeInBytes(BlkBitWidth, BlkLen);
+    const size_t BlkDataSizeInBytes = MlasQNBitBlkDataSizeInBytes(BlkBitWidth, BlkLen);
     constexpr size_t PerAccuBlk2 = 2;
 
     const size_t lda = BlockCountK * BlkLen;

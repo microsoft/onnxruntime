@@ -6,10 +6,10 @@
 #include "qnbitgemm.h"
 #include "sqnbitgemm_kernel_avx_common.h"
 
-MLAS_DECLSPEC_ALIGN(MLAS_FORCEINLINE const uint32_t MasksAvx2BlkLen32[24], 32) = {
+MLAS_DECLSPEC_ALIGN(static const uint32_t MasksAvx2BlkLen32[24], 32) = {
     0x00ff00ff, 0x00ff00ff, 0x00ff00ff, 0x00ff00ff, 0x00ff00ff, 0x00ff00ff, 0x00ff00ff, 0x00ff00ff,
     0xff00ff00, 0xff00ff00, 0xff00ff00, 0xff00ff00, 0xff00ff00, 0xff00ff00, 0xff00ff00, 0xff00ff00,
-    0x00010001, 0x00010001, 0x00010001, 0x00010001, 0x00010001, 0x00010001, 0x00010001, 0x00010001,
+    0x00010001, 0x00010001, 0x00010001, 0x00010001, 0x00010001, 0x00010001, 0x00010001, 0x00010001
 };
 
 MLAS_FORCEINLINE void
@@ -696,13 +696,13 @@ Q8Int8GemmR2xC4BlkLen32Avx2(
                 accumulate_q8_blklen32_r2c1blk1_avx2<vnni>(av_00_epi8, av_10_epi8, QuantBDataPtr, scale_00, scale_10, acc[0], acc[NCols4]);
 
                 float scale_01 = scale_a00 * (QuantBScalePtr + 1)[0], scale_11 = scale_a10 * (QuantBScalePtr + 1)[0];
-                accumulate_q8_blklen32_r1c1blk1_avx2<vnni>(av_00_epi8, av_10_epi8, QuantBDataPtr + BlkDataSizeInBytes, scale_01, scale_11, acc[1], acc[NCols4 + 1]);
+                accumulate_q8_blklen32_r2c1blk1_avx2<vnni>(av_00_epi8, av_10_epi8, QuantBDataPtr + BlkDataSizeInBytes, scale_01, scale_11, acc[1], acc[NCols4 + 1]);
 
                 float scale_02 = scale_a00 * (QuantBScalePtr + 2)[0], scale_12 = scale_a10 * (QuantBScalePtr + 2)[0];
-                accumulate_q8_blklen32_r1c1blk1_avx2<vnni>(av_00_epi8, av_10_epi8, QuantBDataPtr + 2 * BlkDataSizeInBytes, scale_02, scale_12, acc[2], acc[NCols4 + 2]);
+                accumulate_q8_blklen32_r2c1blk1_avx2<vnni>(av_00_epi8, av_10_epi8, QuantBDataPtr + 2 * BlkDataSizeInBytes, scale_02, scale_12, acc[2], acc[NCols4 + 2]);
 
                 float scale_03 = scale_a00 * (QuantBScalePtr + 3)[0], scale_13 = scale_a10 * (QuantBScalePtr + 3)[0];
-                accumulate_q8_blklen32_r1c1blk1_avx2<vnni>(av_00_epi8, av_10_epi8, QuantBDataPtr + 3 * BlkDataSizeInBytes, scale_03, scale_13, acc[3], acc[NCols4 + 3]);
+                accumulate_q8_blklen32_r2c1blk1_avx2<vnni>(av_00_epi8, av_10_epi8, QuantBDataPtr + 3 * BlkDataSizeInBytes, scale_03, scale_13, acc[3], acc[NCols4 + 3]);
             }  // k_blks_remaining
 
             __m128 acc_r0 = FoldAccumulators(acc[0], acc[1], acc[2], acc[3]);
