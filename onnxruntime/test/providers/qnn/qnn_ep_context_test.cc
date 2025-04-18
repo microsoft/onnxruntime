@@ -1552,7 +1552,7 @@ TEST_F(QnnHTPBackendTests, LoadFromArrayWithQnnEpContextGenPathValidation) {
   ORT_CATCH(const std::exception& e) {
     ORT_HANDLE_EXCEPTION([&e]() {
       std::string e_message1(std::string(e.what()));
-      ASSERT_TRUE(e_message1.find("Please specify a valid ep.context_file_path.") != std::string::npos);
+      ASSERT_TRUE(e_message1.find("Please specify a valid ep.context_file_path") != std::string::npos);
     });
   }
 
@@ -1563,7 +1563,7 @@ TEST_F(QnnHTPBackendTests, LoadFromArrayWithQnnEpContextGenPathValidation) {
   ORT_CATCH(const std::exception& ex) {
     ORT_HANDLE_EXCEPTION([&ex]() {
       std::string e_message2(std::string(ex.what()));
-      ASSERT_TRUE(e_message2.find("Please specify a valid ep.context_file_path.") != std::string::npos);
+      ASSERT_TRUE(e_message2.find("Please specify a valid ep.context_file_path") != std::string::npos);
     });
   }
 }
