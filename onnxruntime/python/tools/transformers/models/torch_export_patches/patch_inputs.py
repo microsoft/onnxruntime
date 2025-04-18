@@ -75,21 +75,21 @@ def convert_dynamic_axes_into_dynamic_shapes(
         print(
             f"[convert_dynamic_axes_into_dynamic_shapes] "
             f"mapping args to kwargs for model="
-            f"{model if plus else model.__class__.__name__}"
+            f"{model if plus else model.__class__.__name__} ({model.__module__})"
         )
         pars = inspect.signature(model.forward).parameters
         assert len(pars) >= len(args), f"Length mismatch, len(args)={len(args)}, pars={list(pars)}"
+        print(list(pars))
 
         for i, p in enumerate(pars):
             if i < plus:
                 continue
             if i - plus >= len(args):
                 break
-            if verbose:
-                print(
-                    f"[convert_dynamic_axes_into_dynamic_shapes] mapping args[{i - plus}] "
-                    f"to {p!r} ({string_type(args[i - plus])})"
-                )
+            print(
+                f"[convert_dynamic_axes_into_dynamic_shapes] mapping args[{i - plus}] "
+                f"to {p!r} ({string_type(args[i - plus])})"
+            )
             new_kwargs[p] = args[i - plus]
             if input_names and i - plus < len(input_names) and p != input_names[i - plus]:
                 rename_inputs[input_names[i - plus]] = p

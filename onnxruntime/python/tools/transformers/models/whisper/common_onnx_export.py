@@ -46,40 +46,28 @@ def export_to_onnx(
         )
         return
 
-    print(f"[export_to_onnx] checking the model is working with inputs={string_type(inputs, with_shape=True)}")
+    print(f"[export_to_onnx] (A) checking the model {type(model)} is working with inputs={string_type(inputs, with_shape=True)}")
     model(*torch_deepcopy(inputs))
     print("[export_to_onnx] done.")
+    if model.__class__.__name__ == "WhisperDecoder":
+        n_layers = len(inputs[-1])
+        print(f"[export_to_onnx] WhisperDecoder: {n_layers} layers")
+        dynamic_shapes = (
+            {0: 'batch_size', 1: 'sequence_length'},
+            {0: 'batch_size'},
+            [
+                (
+                    {0: 'batch_size', 2: 'past_sequence_length'},
+                    {0: 'batch_size', 2: 'past_sequence_length'},
+                    {0: 'batch_size', 2: 'past_sequence_length'},
+                    {0: 'batch_size', 2: 'past_sequence_length'},
+                )
+            ] * n_layers
+        )
+    else:
+        raise NotImplementedError(f"dynamic axes {dynamic_axes} not yet supported for class {type(model)}")
 
-    model_args, model_kwargs, dynamic_shapes = convert_dynamic_axes_into_dynamic_shapes(
-        model,
-        args=inputs,
-        dynamic_axes=dynamic_axes,
-        prefix_mapping={"present": "past_key_values"},
-        input_names=input_names,
-    )
-    print(f"[export_to_onnx] converted dynamic_shapes={dynamic_shapes}")
-    if dynamic_shapes_deletion:
-        for k in dynamic_shapes_deletion:
-            del dynamic_shapes[k]
-    if dynamic_shapes_addition:
-        dynamic_shapes.update(dynamic_shapes_addition)
-    if (
-        "past_key_values" in model_kwargs
-        and isinstance(model_kwargs["past_key_values"], EncoderDecoderCache)
-        and isinstance(dynamic_shapes["past_key_values"], dict)
-    ):
-        current = dynamic_shapes["past_key_values"]
-        n_layers = len(model_kwargs["past_key_values"].self_attention_cache.key_cache)
-        long_list = [current] * n_layers
-        dynamic_shapes["past_key_values"] = [[long_list, long_list], [long_list, long_list]]
-    print(f"[export_to_onnx] --- final dynamic_shapes={dynamic_shapes}")
-    print(f"[export_to_onnx] --- forward parameters: {list(inspect.signature(model.forward).parameters)}")
-    print(f"[export_to_onnx] --- model_args: {string_type(model_args, with_shape=True)}")
-    print(f"[export_to_onnx] - model_kwargs: {string_type(model_kwargs, with_shape=True)}")
-    print("[export_to_onnx] checking the model is working...")
-    model(*torch_deepcopy(model_args), **torch_deepcopy(model_kwargs))
-    print("[export_to_onnx] done.")
-
+    print(f"[export_to_onnx] dynamic_shapes={dynamic_shapes!r}")
     if version.Version(torch.__version__) < version.Version("2.7"):
         # This section is only needed for torch==2.6. The workaround implemented here
         # to fix bugs is not necessary with torch>=2.7.
@@ -106,17 +94,15 @@ def export_to_onnx(
             # We then need to apply run_decompositions() before onnx conversion starts.
             ep = torch.export.export(
                 model,
-                (),
-                kwargs=model_kwargs,
+                inputs,
                 dynamic_shapes=dynamic_shapes,
                 strict=False,
             )
             ep = ep.run_decompositions()
             torch.onnx.export(
                 ep,
-                (),
+                inputs,
                 out_path,
-                kwargs=model_kwargs,
                 dynamic_shapes=dynamic_shapes,
                 dynamo=True,
                 verbose=verbose,
@@ -128,9 +114,8 @@ def export_to_onnx(
         with bypass_export_some_errors(patch_transformers=True):
             torch.onnx.export(
                 model,
-                (),
+                inputs,
                 out_path,
-                kwargs=model_kwargs,
                 dynamic_shapes=dynamic_shapes,
                 dynamo=True,
                 verbose=verbose,

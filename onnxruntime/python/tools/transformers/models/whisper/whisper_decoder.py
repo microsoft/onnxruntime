@@ -16,6 +16,7 @@ import torch
 from common_onnx_export import export_to_onnx
 from float16 import convert_float_to_float16
 from google.protobuf.internal.containers import RepeatedCompositeFieldContainer
+from models.torch_export_patches import string_type
 from onnx import ModelProto, ValueInfoProto
 from onnx_model import OnnxModel
 from past_helper import PastKeyValuesHelper
@@ -442,6 +443,7 @@ class WhisperDecoder(torch.nn.Module):
 
         # Run PyTorch model
         inputs = self.inputs(use_fp16_inputs=use_fp16_inputs, use_int32_inputs=use_int32_inputs, return_dict=True)
+        print(f"[verify_onnx] inputs={string_type(inputs, with_shape=True)}")
         pt_outputs = []
         if self.first_pass:
             out = self.forward(**inputs)
@@ -457,7 +459,10 @@ class WhisperDecoder(torch.nn.Module):
 
         # Run ONNX model
         sess = InferenceSession(onnx_model_path, providers=[provider])
-        ort_outputs = sess.run(None, convert_inputs_for_ort(inputs, sess))
+        print(f"[verify_onnx] onnx_inputs {[i.name for i in sess.get_inputs()]}")
+        ort_inputs = convert_inputs_for_ort(inputs, sess)
+        print(f"[verify_onnx] ort_inputs={string_type(ort_inputs, with_shape=True)}")
+        ort_outputs = sess.run(None, ort_inputs)
 
         # Calculate output difference
         try:

@@ -349,6 +349,57 @@ def string_type(
             return f"OV{dt}s{'x'.join(map(str, shape))}"
         return f"OV{dt}r{len(shape)}"
 
+    if obj.__class__.__name__ == "MambaCache":
+        c = string_type(
+            obj.conv_states,
+            with_shape=with_shape,
+            with_min_max=with_min_max,
+            with_device=with_device,
+            limit=limit,
+        )
+        d = string_type(
+            obj.ssm_states,
+            with_shape=with_shape,
+            with_min_max=with_min_max,
+            with_device=with_device,
+            limit=limit,
+        )
+        return f"MambaCache(conv_states={c}, ssm_states={d})"
+
+    if obj.__class__.__name__ == "DynamicCache":
+        kc = string_type(
+            obj.key_cache,
+            with_shape=with_shape,
+            with_min_max=with_min_max,
+            with_device=with_device,
+            limit=limit,
+        )
+        vc = string_type(
+            obj.value_cache,
+            with_shape=with_shape,
+            with_min_max=with_min_max,
+            with_device=with_device,
+            limit=limit,
+        )
+        return f"{obj.__class__.__name__}(key_cache={kc}, value_cache={vc})"
+
+    if obj.__class__.__name__ == "EncoderDecoderCache":
+        att = string_type(
+            obj.self_attention_cache,
+            with_shape=with_shape,
+            with_min_max=with_min_max,
+            with_device=with_device,
+            limit=limit,
+        )
+        cross = string_type(
+            obj.cross_attention_cache,
+            with_shape=with_shape,
+            with_min_max=with_min_max,
+            with_device=with_device,
+            limit=limit,
+        )
+        return f"{obj.__class__.__name__}(self_attention_cache={att}, cross_attention_cache={cross})"
+
     # others classes
 
     if obj.__class__ in torch.utils._pytree.SUPPORTED_NODES:
@@ -408,59 +459,6 @@ def string_type(
         ),
     ):
         return repr(obj).replace(" ", "").replace("\n", " ")
-
-    # to avoid failures
-
-    if obj.__class__.__name__ == "MambaCache":
-        c = string_type(
-            obj.conv_states,
-            with_shape=with_shape,
-            with_min_max=with_min_max,
-            with_device=with_device,
-            limit=limit,
-        )
-        d = string_type(
-            obj.ssm_states,
-            with_shape=with_shape,
-            with_min_max=with_min_max,
-            with_device=with_device,
-            limit=limit,
-        )
-        return f"MambaCache(conv_states={c}, ssm_states={d})"
-
-    if obj.__class__.__name__ == "DynamicCache":
-        kc = string_type(
-            obj.key_cache,
-            with_shape=with_shape,
-            with_min_max=with_min_max,
-            with_device=with_device,
-            limit=limit,
-        )
-        vc = string_type(
-            obj.value_cache,
-            with_shape=with_shape,
-            with_min_max=with_min_max,
-            with_device=with_device,
-            limit=limit,
-        )
-        return f"{obj.__class__.__name__}(key_cache={kc}, value_cache={vc})"
-
-    if obj.__class__.__name__ == "EncoderDecoderCache":
-        att = string_type(
-            obj.self_attention_cache,
-            with_shape=with_shape,
-            with_min_max=with_min_max,
-            with_device=with_device,
-            limit=limit,
-        )
-        cross = string_type(
-            obj.cross_attention_cache,
-            with_shape=with_shape,
-            with_min_max=with_min_max,
-            with_device=with_device,
-            limit=limit,
-        )
-        return f"{obj.__class__.__name__}(self_attention_cache={att}, cross_attention_cache={cross})"
 
     raise AssertionError(f"Unsupported type {type(obj).__name__!r} - {type(obj)}")
 
