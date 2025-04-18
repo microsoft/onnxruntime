@@ -392,9 +392,6 @@ TEST_F(QnnHTPBackendTests, CompileApi_FromSessionOptions_InputAndOutputModelsInB
   CreateTestModel(BuildGraphWithQAndNonQ(false), 21, logging::Severity::kERROR, test_model);
   std::string model_data = test_model.Serialize();
 
-  const ORTCHAR_T* output_model_file = ORT_TSTR("./qnn_context_binary_multi_partition_test.onnx");
-  std::filesystem::remove(output_model_file);
-
   // Initialize session options with QNN EP
   Ort::SessionOptions so;
   ProviderOptions provider_options;
@@ -402,13 +399,13 @@ TEST_F(QnnHTPBackendTests, CompileApi_FromSessionOptions_InputAndOutputModelsInB
   provider_options["offload_graph_io_quantization"] = "0";
   so.AppendExecutionProvider("QNN", provider_options);
 
-  // Create model compilation options from the session options.
-  Ort::ModelCompilationOptions compile_options(*ort_env, so);
-  compile_options.SetInputModelFromBuffer(reinterpret_cast<const void*>(model_data.data()), model_data.size());
-
   Ort::AllocatorWithDefaultOptions allocator;
   void* output_model_buffer = nullptr;
   size_t output_model_buffer_size = 0;
+
+  // Create model compilation options from the session options.
+  Ort::ModelCompilationOptions compile_options(*ort_env, so);
+  compile_options.SetInputModelFromBuffer(reinterpret_cast<const void*>(model_data.data()), model_data.size());
   compile_options.SetOutputModelBuffer(allocator, &output_model_buffer, &output_model_buffer_size);
   compile_options.SetEpContextEmbedMode(true);
 
