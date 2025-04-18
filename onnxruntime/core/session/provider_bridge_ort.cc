@@ -23,9 +23,11 @@
 #include "core/framework/provider_options.h"
 #include "core/framework/fallback_cpu_capability.h"
 #include "core/framework/random_generator.h"
+#include "core/graph/constants.h"
 #include "core/graph/model.h"
 #include "core/platform/env.h"
 #include "core/providers/common.h"
+#include "core/providers/providers.h"
 #include "core/session/inference_session.h"
 #include "core/session/abi_session_options_impl.h"
 #include "core/session/ort_apis.h"
@@ -373,6 +375,12 @@ struct ProviderHostImpl : ProviderHost {
 
   // IAllocator (direct)
   bool IAllocator__CalcMemSizeForArrayWithAlignment(size_t nmemb, size_t size, size_t alignment, size_t* out) override { return IAllocator::CalcMemSizeForArrayWithAlignment(nmemb, size, alignment, out); }
+
+  // IExecutionProviderFactory
+  std::unique_ptr<IExecutionProvider> IExecutionProviderFactory__CreateProvider(
+      IExecutionProviderFactory* p, const OrtSessionOptions& session_options, const OrtLogger& session_logger) override {
+    return p->IExecutionProviderFactory::CreateProvider(session_options, session_logger);
+  }
 
   // IExecutionProvider (direct)
   std::vector<std::unique_ptr<ComputeCapability>> IExecutionProvider__GetCapability(
@@ -812,11 +820,16 @@ struct ProviderHostImpl : ProviderHost {
     return p->GetConfigOrDefault(config_key, default_value);
   }
 
+  const std::unordered_map<std::string, std::string>& ConfigOptions__GetConfigOptionsMap(const ConfigOptions* p) override {
+    return p->GetConfigOptionsMap();
+  }
+
   // OrtRunOptions (wrapped)
   const ConfigOptions& RunOptions__GetConfigOptions(const RunOptions* p) override { return p->config_options; }
 
   // OrtSessionOptions (wrapped)
   const std::unordered_map<std::string, std::string>& SessionOptions__GetConfigOptionsMap(const OrtSessionOptions* p) override { return p->value.config_options.configurations; }
+  const ConfigOptions& SessionOptions__GetConfigOptions(const OrtSessionOptions* p) override { return p->value.config_options; }
   bool SessionOptions__GetEnableProfiling(const OrtSessionOptions* p) override { return p->value.enable_profiling; };
   // ComputeCapability (wrapped)
   std::unique_ptr<ComputeCapability> ComputeCapability__construct(std::unique_ptr<IndexedSubGraph> t_sub_graph) override { return std::make_unique<ComputeCapability>(std::move(t_sub_graph)); }
@@ -1992,7 +2005,7 @@ ProviderOptions OrtOpenVINOProviderOptionsToOrtOpenVINOProviderOptionsV2(const O
     ov_options_converted_map["context"] = context_string.str();
   }
 
-  ov_options_converted_map["enable_opencl_throttling"] = legacy_ov_options->enable_opencl_throttling;
+  ov_options_converted_map["enable_opencl_throttling"] = legacy_ov_options->enable_opencl_throttling == 0 ? "true" : "false";
 
   if (legacy_ov_options->enable_dynamic_shapes) {
     ov_options_converted_map["disable_dynamic_shapes"] = "false";
@@ -2008,6 +2021,7 @@ ProviderOptions OrtOpenVINOProviderOptionsToOrtOpenVINOProviderOptionsV2(const O
   ov_options_converted_map["load_config"] = "";
   ov_options_converted_map["model_priority"] = "DEFAULT";
   ov_options_converted_map["enable_qdq_optimizer"] = "false";
+  ov_options_converted_map["enable_causallm"] = "false";
   return ov_options_converted_map;
 }
 
@@ -2292,6 +2306,8 @@ ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider_OpenVINO, _In
                     _In_ const OrtOpenVINOProviderOptions* provider_options) {
   API_IMPL_BEGIN
   const onnxruntime::ProviderOptions ov_options_converted_map = onnxruntime::OrtOpenVINOProviderOptionsToOrtOpenVINOProviderOptionsV2(provider_options);
+  ORT_API_RETURN_IF_STATUS_NOT_OK(options->AddProviderOptionsToConfigOptions(ov_options_converted_map,
+                                                                             onnxruntime::kOpenVINOExecutionProvider));
   auto factory = onnxruntime::OpenVINOProviderFactoryCreator::Create(&ov_options_converted_map, &(options->value));
   if (!factory) {
     return OrtApis::CreateStatus(ORT_FAIL, "SessionOptionsAppendExecutionProvider_OpenVINO: Failed to load shared library");
@@ -2325,6 +2341,8 @@ ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider_OpenVINO_V2,
 
     provider_options[provider_options_keys[i]] = provider_options_values[i];
   }
+  ORT_API_RETURN_IF_STATUS_NOT_OK(options->AddProviderOptionsToConfigOptions(provider_options,
+                                                                             onnxruntime::kOpenVINOExecutionProvider));
   auto factory = onnxruntime::OpenVINOProviderFactoryCreator::Create(&provider_options, &(options->value));
   if (!factory) {
     return OrtApis::CreateStatus(ORT_FAIL, "SessionOptionsAppendExecutionProvider_OpenVINO_V2: Failed to load shared library");
@@ -3025,6 +3043,8 @@ ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider_VitisAI, _In_
   }
   // EP context related session config options.
   provider_options["session_options"] = std::to_string((uintptr_t)(void*)options);
+  ORT_API_RETURN_IF_STATUS_NOT_OK(options->AddProviderOptionsToConfigOptions(provider_options,
+                                                                             onnxruntime::kVitisAIExecutionProvider));
 
   auto factory = onnxruntime::VitisAIProviderFactoryCreator::Create(provider_options);
   if (!factory) {

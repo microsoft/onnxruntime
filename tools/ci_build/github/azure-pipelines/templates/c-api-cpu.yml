@@ -45,7 +45,7 @@ parameters:
 - name: QnnSDKVersion
   displayName: QNN SDK Version
   type: string
-  default: 2.32.0.250228
+  default: 2.33.2.250410
 
 - name: is1ES
   displayName: Is 1ES pipeline
@@ -506,6 +506,7 @@ stages:
 
 - stage: Nodejs_Packaging
   dependsOn:
+  - Setup
   - Windows_Nodejs_Packaging_x64
   - Windows_Nodejs_Packaging_arm64
   - Linux_Nodejs_Packaging_x64
@@ -523,6 +524,8 @@ stages:
       ${{ if not(eq(parameters.IsReleaseBuild, true)) }}:
         NpmPackagingMode: 'dev'
       breakCodesignValidationInjection: ${{ parameters.DoEsrp }}
+      BuildDate: $[stageDependencies.Setup.Set_Variables.outputs['Set_Build_Date.BuildDate']]
+      BuildTime: $[stageDependencies.Setup.Set_Variables.outputs['Set_Build_Time.BuildTime']]
 
     steps:
     - checkout: self
@@ -599,7 +602,7 @@ stages:
     #  - linux/x64/libonnxruntime_providers_cuda.so
     #
     # Rest binary artifacts will eventually be put into folder before packaging 'onnxruntime-node':
-    #  $(Build.SourcesDirectory)\js\node\bin\napi-v3\{os}\{cpu_arch}\
+    #  $(Build.SourcesDirectory)\js\node\bin\napi-v6\{os}\{cpu_arch}\
     #
     # {os} is one of 'win32', 'darwin', 'linux' and {cpu_arch} is one of 'x64', 'arm64'.
 
@@ -659,68 +662,118 @@ stages:
 
     # Node.js binding win32/x64
     - task: CopyFiles@2
-      displayName: 'Copy binaries to: $(Build.SourcesDirectory)\js\node\bin\napi-v3\win32\x64\'
+      displayName: 'Copy binaries to: $(Build.SourcesDirectory)\js\node\bin\napi-v6\win32\x64\'
       inputs:
         SourceFolder: '$(Build.BinariesDirectory)\nodejs-artifacts\win32\x64'
         Contents: |
           *.dll
           *.node
-        TargetFolder: '$(Build.SourcesDirectory)\js\node\bin\napi-v3\win32\x64'
+        TargetFolder: '$(Build.SourcesDirectory)\js\node\bin\napi-v6\win32\x64'
 
     # Node.js binding win32/arm64
     - task: CopyFiles@2
-      displayName: 'Copy binaries to: $(Build.SourcesDirectory)\js\node\bin\napi-v3\win32\arm64\'
+      displayName: 'Copy binaries to: $(Build.SourcesDirectory)\js\node\bin\napi-v6\win32\arm64\'
       inputs:
         SourceFolder: '$(Build.BinariesDirectory)\nodejs-artifacts\win32\arm64'
         Contents: |
           *.dll
           *.node
-        TargetFolder: '$(Build.SourcesDirectory)\js\node\bin\napi-v3\win32\arm64'
+        TargetFolder: '$(Build.SourcesDirectory)\js\node\bin\napi-v6\win32\arm64'
 
     # Node.js binding linux/x64
     - task: CopyFiles@2
-      displayName: 'Copy nodejs binaries to: $(Build.SourcesDirectory)\js\node\bin\napi-v3\linux\x64\'
+      displayName: 'Copy nodejs binaries to: $(Build.SourcesDirectory)\js\node\bin\napi-v6\linux\x64\'
       inputs:
         SourceFolder: '$(Build.BinariesDirectory)\nodejs-artifacts\linux\x64'
         Contents: |
           libonnxruntime.so.1
           *.node
-        TargetFolder: '$(Build.SourcesDirectory)\js\node\bin\napi-v3\linux\x64'
+        TargetFolder: '$(Build.SourcesDirectory)\js\node\bin\napi-v6\linux\x64'
 
     # Node.js binding linux/arm64
     - task: CopyFiles@2
-      displayName: 'Copy nodejs binaries to: $(Build.SourcesDirectory)\js\node\bin\napi-v3\linux\arm64\'
+      displayName: 'Copy nodejs binaries to: $(Build.SourcesDirectory)\js\node\bin\napi-v6\linux\arm64\'
       inputs:
         SourceFolder: '$(Build.BinariesDirectory)\nodejs-artifacts\linux\arm64'
         Contents: |
           libonnxruntime.so.1
           *.node
-        TargetFolder: '$(Build.SourcesDirectory)\js\node\bin\napi-v3\linux\arm64'
+        TargetFolder: '$(Build.SourcesDirectory)\js\node\bin\napi-v6\linux\arm64'
 
     # Node.js binding darwin/x64
     - task: CopyFiles@2
-      displayName: 'Copy nodejs binaries to: $(Build.SourcesDirectory)\js\node\bin\napi-v3\darwin\x64\'
+      displayName: 'Copy nodejs binaries to: $(Build.SourcesDirectory)\js\node\bin\napi-v6\darwin\x64\'
       inputs:
         SourceFolder: '$(Build.BinariesDirectory)\nodejs-artifacts\darwin\x64'
         Contents: |
           libonnxruntime.*.dylib
           *.node
-        TargetFolder: '$(Build.SourcesDirectory)\js\node\bin\napi-v3\darwin\x64'
+        TargetFolder: '$(Build.SourcesDirectory)\js\node\bin\napi-v6\darwin\x64'
 
     # Node.js binding darwin/arm64
     - task: CopyFiles@2
-      displayName: 'Copy nodejs binaries to: $(Build.SourcesDirectory)\js\node\bin\napi-v3\darwin\arm64\'
+      displayName: 'Copy nodejs binaries to: $(Build.SourcesDirectory)\js\node\bin\napi-v6\darwin\arm64\'
       inputs:
         SourceFolder: '$(Build.BinariesDirectory)\nodejs-artifacts\darwin\arm64'
         Contents: |
           libonnxruntime.*.dylib
           *.node
-        TargetFolder: '$(Build.SourcesDirectory)\js\node\bin\napi-v3\darwin\arm64'
+        TargetFolder: '$(Build.SourcesDirectory)\js\node\bin\napi-v6\darwin\arm64'
+
+    - ${{ if not(eq(parameters.IsReleaseBuild, true)) }}:
+      - task: PowerShell@2
+        displayName: 'Set environment variable NODEJS_DEP_PACKAGE_VERSIONS'
+        inputs:
+          targetType: 'inline'
+          script: |
+            # The following PowerShell script is used to set environment variable "NODEJS_DEP_PACKAGE_VERSIONS" to the
+            # following format:
+            # <current_version>;<latest_existing_version>
+            #
+            # - The "current_version" is the same to the version of the Nuget package being built.
+            # - The "latest_existing_version" is the latest existing version of the package
+            #   "Microsoft.ML.OnnxRuntime.Gpu.Linux" from the NuGet nightly feed.
+            #
+
+            $index = 'https://aiinfra.pkgs.visualstudio.com/PublicPackages/_packaging/ORT-Nightly/nuget/v3/index.json'
+            $packageName = 'Microsoft.ML.OnnxRuntime.Gpu.Linux'
+
+            # Download NuGet index
+            $nugetIndex = Invoke-RestMethod -Uri $index -UseBasicParsing
+            if (-not $nugetIndex) {
+                throw "Failed to download NuGet index from $index"
+            }
+
+            # Find the base URL for "PackageBaseAddress/3.0.0"
+            $packageBaseUrl = ($nugetIndex.resources | Where-Object { $_.'@type' -eq 'PackageBaseAddress/3.0.0' }).'@id'
+            if (-not $packageBaseUrl) {
+                throw "Failed to find PackageBaseAddress in NuGet index"
+            }
+
+            # Fetch package version info
+            $packageInfo = Invoke-RestMethod -Uri "$packageBaseUrl$($packageName.ToLower())/index.json" -UseBasicParsing
+            if (-not $packageInfo.versions -or $packageInfo.versions.Count -eq 0) {
+                throw "No versions found for package $packageName"
+            }
+
+            # Extract the latest version
+            $devVersions = $packageInfo.versions | Where-Object { $_ -match '-dev-' }
+            $latestVersion = $devVersions[0]
+            Write-Host "Latest version of ${packageName}: $latestVersion"
+
+            # Generate current version
+            $currentVersion = "$(cat .\VERSION_NUMBER)-dev-$($env:BuildDate)-$($env:BuildTime)-$(git rev-parse --short HEAD)"
+            Write-Host "Current version: $currentVersion"
+
+            # Set the version as an environment variable
+            Write-Host "##vso[task.setvariable variable=NODEJS_DEP_PACKAGE_VERSIONS]$currentVersion;$latestVersion"
+            Write-Host "Environment variable NODEJS_DEP_PACKAGE_VERSIONS set to $currentVersion;$latestVersion"
+          workingDirectory: '$(Build.SourcesDirectory)'
 
     - task: PowerShell@2
       inputs:
         filePath: '$(Build.SourcesDirectory)\tools\ci_build\github\js\pack-npm-packages.ps1'
-        arguments: '$(NpmPackagingMode) $(Build.SourcesDirectory) node'
+        arguments: '$(NpmPackagingMode) "$(Build.SourcesDirectory)" node "$env:NODEJS_DEP_PACKAGE_VERSIONS"'
         workingDirectory: $(Build.BinariesDirectory)
         errorActionPreference: stop
       displayName: 'Pack NPM packages'
