@@ -2408,7 +2408,13 @@ class EnvInitializer {
     }
 
     EnvInitializer::tp_options = tp_options;
-    EnvInitializer::use_per_session_threads = false;
+    if (EnvInitializer::use_per_session_threads) {
+      EnvInitializer::use_per_session_threads = false;
+      py::object atexit_register = py::module::import("atexit").attr("register");
+      atexit_register([] {
+        EnvInitializer::SharedInstance()->ShutdownGlobalThreadPools();
+      });
+    }
   }
 
   static std::shared_ptr<onnxruntime::Environment> SharedInstance() {
