@@ -94,10 +94,7 @@ def _register_cache_serialization(verbose: int = 0) -> dict[str, bool]:
 
     # BaseModelOutput serialization is incomplete.
     # It does not include dynamic shapes mapping.
-    if (
-        BaseModelOutput in torch.utils._pytree.SUPPORTED_NODES
-        and BaseModelOutput not in PATCH_OF_PATCHES
-    ):
+    if BaseModelOutput in torch.utils._pytree.SUPPORTED_NODES and BaseModelOutput not in PATCH_OF_PATCHES:
         if verbose:
             print(
                 f"[_fix_registration] BaseModelOutput is unregistered and "
@@ -231,7 +228,9 @@ def unflatten_mamba_cache(values: list[Any], context: torch.utils._pytree.Contex
     return cache
 
 
-def flatten_with_keys_mamba_cache(cache: MambaCache) -> tuple[
+def flatten_with_keys_mamba_cache(
+    cache: MambaCache,
+) -> tuple[
     list[tuple[torch.utils._pytree.KeyEntry, Any]],
     torch.utils._pytree.Context,
 ]:
@@ -293,7 +292,9 @@ def flatten_encoder_decoder_cache(ec_cache: EncoderDecoderCache) -> tuple[list[A
     return torch.utils._pytree._dict_flatten(dictionary)
 
 
-def flatten_with_keys_encoder_decoder_cache(ec_cache: EncoderDecoderCache) -> tuple[
+def flatten_with_keys_encoder_decoder_cache(
+    ec_cache: EncoderDecoderCache,
+) -> tuple[
     list[tuple[torch.utils._pytree.KeyEntry, Any]],
     torch.utils._pytree.Context,
 ]:
@@ -308,7 +309,9 @@ def flatten_with_keys_encoder_decoder_cache(ec_cache: EncoderDecoderCache) -> tu
     return torch.utils._pytree._dict_flatten_with_keys(dictionary)
 
 
-def unflatten_encoder_decoder_cache(values: list[Any], context: torch.utils._pytree.Context, output_type=None) -> EncoderDecoderCache:
+def unflatten_encoder_decoder_cache(
+    values: list[Any], context: torch.utils._pytree.Context, output_type=None
+) -> EncoderDecoderCache:
     """Restores a :class:`transformers.cache_utils.EncoderDecoderCache` from python objects."""
     dictionary = torch.utils._pytree._dict_unflatten(values, context)
     return EncoderDecoderCache(**dictionary)
@@ -327,7 +330,9 @@ def flatten_base_model_output(bo: BaseModelOutput) -> tuple[list[Any], torch.uti
     return list(bo.values()), list(bo.keys())
 
 
-def flatten_with_keys_base_model_output(bo: BaseModelOutput) -> tuple[list[tuple[torch.utils._pytree.KeyEntry, Any]], torch.utils._pytree.Context]:
+def flatten_with_keys_base_model_output(
+    bo: BaseModelOutput,
+) -> tuple[list[tuple[torch.utils._pytree.KeyEntry, Any]], torch.utils._pytree.Context]:
     """
     Serializes a :class:`transformers.modeling_outputs.BaseModelOutput`
     with python objects.

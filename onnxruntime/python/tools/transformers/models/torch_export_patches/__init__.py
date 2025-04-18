@@ -489,9 +489,7 @@ def torch_deepcopy(value: Any) -> Any:
     if hasattr(value, "clone"):
         return value.clone()
     if value.__class__.__name__ == "DynamicCache":
-        return make_dynamic_cache(
-            torch_deepcopy(list(zip(value.key_cache, value.value_cache)))
-        )
+        return make_dynamic_cache(torch_deepcopy(list(zip(value.key_cache, value.value_cache, strict=False))))
     if value.__class__.__name__ == "EncoderDecoderCache":
         return make_encoder_decoder_cache(
             torch_deepcopy(value.self_attention_cache),
