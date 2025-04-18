@@ -272,6 +272,62 @@ static void CheckEpContextNodeCounts(void* model_buffer, size_t model_buffer_siz
   std::filesystem::remove(output_model_path);
 }
 
+// Test workflow that:
+//   - Creates session that disables EP compilation.
+//   - Session creation fails because input model is not pre-compiled.
+//   - Uses OrtCompileApi to compile the model.
+//   - Recreates session with the compiled model.
+TEST_F(QnnHTPBackendTests, CompileApi_DisableEpCompile_ThenCompileExplicitly) {
+  const ORTCHAR_T* input_model_file = ORT_TSTR("./compileapi_disable_compile_input.onnx");
+  const ORTCHAR_T* output_model_file = ORT_TSTR("./compileapi_disable_compile_output.onnx");
+  std::filesystem::remove(input_model_file);
+  std::filesystem::remove(output_model_file);
+
+  // Create a test model and save it to a file.
+  TestModel test_model;
+  CreateTestModel(BuildGraphWithQAndNonQ(false), 21, logging::Severity::kERROR, test_model);
+  ASSERT_STATUS_OK(test_model.Save(input_model_file));
+
+  // Initialize session options with QNN EP
+  Ort::SessionOptions so;
+  ProviderOptions provider_options;
+  provider_options["backend_type"] = "htp";
+  provider_options["offload_graph_io_quantization"] = "0";
+
+  so.AppendExecutionProvider("QNN", provider_options);
+  so.AddConfigEntry(kOrtSessionOptionsDisableModelCompile, "1");  // Disable model compilation!
+
+  // Create an inference session that fails with error ORT_MODEL_REQUIRES_COMPILATION
+  try {
+    Ort::Session session(*ort_env, input_model_file, so);
+    FAIL() << "Expected Session creation to fail but it succeeded";  // Should not get here!
+  } catch (const Ort::Exception& excpt) {
+    OrtErrorCode error_code = excpt.GetOrtErrorCode();
+    std::string_view error_msg = excpt.what();
+    ASSERT_EQ(error_code, ORT_MODEL_REQUIRES_COMPILATION);
+    ASSERT_THAT(error_msg, testing::HasSubstr(kQnnExecutionProvider));
+  }
+
+  // Session creation failed because the model was not pre-compiled.
+  // Try to compile it now.
+
+  // Create model compilation options from the session options.
+  Ort::ModelCompilationOptions compile_options(*ort_env, so);
+  compile_options.SetInputModelPath(input_model_file);
+  compile_options.SetOutputModelPath(output_model_file);
+
+  // Compile the model.
+  Ort::Status status = Ort::CompileModel(*ort_env, compile_options);
+  ASSERT_TRUE(status.IsOK()) << status.GetErrorMessage();
+
+  // Make sure the compiled model was generated and has the expected number of EPContext nodes.
+  ASSERT_TRUE(std::filesystem::exists(output_model_file));
+  CheckEpContextNodeCounts(output_model_file, 2, 2);
+
+  // Should be able to create a session with the compiled model and the original session options.
+  EXPECT_NO_THROW((Ort::Session(*ort_env, output_model_file, so)));
+}
+
 // Test using the CompileModel() API with settings:
 //   - input model file
 //   - output model file
