@@ -6,12 +6,12 @@
 #include "qnbitgemm.h"
 #include "sqnbitgemm_kernel_avx_common.h"
 
-MLAS_DECLSPEC_ALIGN(MLAS_FORCEINLINE const uint32_t MasksAvx2BlkLen16[40], 32) = {
+MLAS_DECLSPEC_ALIGN(static const uint32_t MasksAvx2BlkLen16[40], 32) = {
     0x00000000, 0x00000000, 0x00000002, 0x00000002, 0x00000001, 0x00000001, 0x00000003, 0x00000003,
     0x00ff00ff, 0x00ff00ff, 0x00ff00ff, 0x00ff00ff, 0x00ff00ff, 0x00ff00ff, 0x00ff00ff, 0x00ff00ff,
     0xff00ff00, 0xff00ff00, 0xff00ff00, 0xff00ff00, 0xff00ff00, 0xff00ff00, 0xff00ff00, 0xff00ff00,
     0x00010001, 0x00010001, 0x00010001, 0x00010001, 0x00010001, 0x00010001, 0x00010001, 0x00010001,
-    0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000001, 0x00000001, 0x00000001, 0x00000001,
+    0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000001, 0x00000001, 0x00000001, 0x00000001
 };
 
 MLAS_FORCEINLINE __m256
@@ -344,7 +344,7 @@ accumulate_q8_blklen16_r1c1blk1_avx2(
     if constexpr (vnni)
     {
         const __m128i dot00_4_epi32 = _mm_dpbusds_avx_epi32(_mm_setzero_si128(), bv0_16_epi8, av00_16_epi8);
-        const __m256i dot00_8_epi32 = _mm256_set_m128i(_mm_setzero_si128(), dot00_4_epi32);
+        const __m256i dot00_8_epi32 = _mm256_cvtepu32_epi64(dot00_4_epi32);
         __m256 sum0_8_ps = _mm256_cvtepi32_ps(dot00_8_epi32);
         acc0 = _mm256_fmadd_ps(sum0_8_ps, scale_a0b_1_ps, acc0);
     }
@@ -353,7 +353,6 @@ accumulate_q8_blklen16_r1c1blk1_avx2(
     {
         const __m256i one_mask = _mm256_load_si256(reinterpret_cast<const __m256i*>(MasksAvx2BlkLen16 + 24));
         const __m256i bv0_32_epi8 = _mm256_cvtepu8_epi16(bv0_16_epi8);
-
         const __m256i av00_32_epi8 = _mm256_cvtepu8_epi16(av00_16_epi8);
         const __m256i dot00_16_epi16 = _mm256_maddubs_epi16(bv0_32_epi8, av00_32_epi8);
         const __m256i dot00_8_epi32 = _mm256_madd_epi16(one_mask, dot00_16_epi16);
@@ -1220,8 +1219,8 @@ Q8Int8GemmR1xC1BlkLen16Avx2(
                 const __m128i av_16_epi8 = _mm_lddqu_si128(reinterpret_cast<const __m128i*>(QuantAPtr));
                 const float scale_a00 = *QuantAScalePtr;
 
-                const float scale_b0 = *QuantBScalePtr;
-                accumulate_q8_blklen16_r1c1blk1_avx2(av_16_epi8, QuantBDataPtr, scale_a00 * scale_b0, acc0);
+                const float scale_a0b = scale_a00 * (*QuantBScalePtr);
+                accumulate_q8_blklen16_r1c1blk1_avx2<vnni>(av_16_epi8, QuantBDataPtr, scale_a0b, acc0);
 
                 QuantAPtr += BlkLen16;
                 QuantAScalePtr++;

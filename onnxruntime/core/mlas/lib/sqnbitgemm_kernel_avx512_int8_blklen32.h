@@ -8,7 +8,7 @@
 #include "sqnbitgemm_kernel_avx2_int8_blklen32.h"
 #include "sqnbitgemm_kernel_avx512_int8_blklen64.h"
 
-MLAS_DECLSPEC_ALIGN(MLAS_FORCEINLINE const uint32_t MasksAvx512BlkLen32[48], 64) = {
+MLAS_DECLSPEC_ALIGN(static const uint32_t MasksAvx512BlkLen32[48], 64) = {
     0x00000000, 0x00000000, 0x00000002, 0x00000002, 0x00000000, 0x00000000, 0x00000002, 0x00000002,
     0x00000001, 0x00000001, 0x00000003, 0x00000003, 0x00000001, 0x00000001, 0x00000003, 0x00000003,
     0x00ff00ff, 0x00ff00ff, 0x00ff00ff, 0x00ff00ff, 0x00ff00ff, 0x00ff00ff, 0x00ff00ff, 0x00ff00ff,

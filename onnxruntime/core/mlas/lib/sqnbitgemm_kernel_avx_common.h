@@ -394,9 +394,9 @@ Q8ComputePackBlkSum(
             size_t dest_offset;
 
             if (remainder_blk && k_subblk == sub_blk_count_k - 1) { // remainder blocks
-                auto dest_offset = n_4 * BlockCountK + k_blk * 4 + n_res;
+                dest_offset = n_4 * BlockCountK + k_blk * 4 + n_res;
             } else { // full subblock
-                auto dest_offset = n_4 * BlockCountK + k_subblk * blks_per_sub * 4 + n_res * blks_per_sub + k_blk_res;
+                dest_offset = n_4 * BlockCountK + k_subblk * blks_per_sub * 4 + n_res * blks_per_sub + k_blk_res;
             }
 
             *(QuantBScaleBegin + dest_offset) = QuantBScale;

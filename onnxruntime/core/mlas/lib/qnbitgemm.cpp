@@ -750,7 +750,6 @@ SQ8BitGemm_CompInt8(
     for (size_t n = 0; n < RangeCountN; n += CountN) {
         CountN = std::min(RangeCountN - n, size_t{128});
 
-        const std::byte* a_row = QuantA;
         const std::byte* b_col = QuantBData + n * ldb;
         const float* b_col_scale = QuantBScale + n * k_blks;
         const std::byte* b_col_zp =
@@ -758,8 +757,7 @@ SQ8BitGemm_CompInt8(
         float* c_blk = C + n;
         const float* bias = (Bias == nullptr) ? nullptr : Bias + n;
 
-        if (GetMlasPlatform().QNBitGemmDispatch->SQ8BitGemmKernel_BlkSum_CompInt8 != nullptr)
-        {
+        if (GetMlasPlatform().QNBitGemmDispatch->SQ8BitGemmKernel_BlkSum_CompInt8 != nullptr) {
             const float* b_blk_sum = QuantBBlkSum + n * k_blks;
             GetMlasPlatform().QNBitGemmDispatch->SQ8BitGemmKernel_BlkSum_CompInt8(
                 BlkLen,
