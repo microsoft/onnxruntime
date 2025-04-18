@@ -349,12 +349,13 @@ static const char* const kOrtSessionOptionsQDQMatMulNBitsAccuracyLevel = "sessio
 // “Efficient”: OS treats this workload is efficiency oriented with low scheduling priority and efficient processor performance.
 static const char* const kOrtEpDynamicOptionsWorkloadType = "ep.dynamic.workload_type";
 
-// Disables EP compilation of subgraphs into fused EP-specific kernels (e.g., EPContext nodes).
+// Disables model compilation during session initialization.
 //
-// If enabled, this option turns off EP compilation. Inference session creation
-// will fail with error code ORT_MODEL_REQUIRES_COMPILATION if compilation is required to run the model on any
-// EP registered with the session. Only pre-compiled models (i.e., EPContext models) or models that run on
-// non-compiling EPs are supported if this option is set to "1".
+// If this option is set to "1", inference session creation will fail with error code ORT_MODEL_REQUIRES_COMPILATION
+// if compilation is required to run the model on any Execution Provider added to the session.
+// Only the following kinds of models are valid when this option is set to "1":
+//   - Pre-compiled models that have EPContext nodes for the compiling Execution Providers in the session.
+//   - Non-compiled models that run only on non-compiling Execution Providers, like CPU EP.
 //
 // See \href https://onnxruntime.ai/docs/execution-providers/EP-Context-Design.html for details about
 // compiled models with EPContext nodes.
@@ -362,4 +363,4 @@ static const char* const kOrtEpDynamicOptionsWorkloadType = "ep.dynamic.workload
 // Option values:
 // - "0": EP compile is not disabled. [DEFAULT]
 // - "1": EP compile is disabled.
-static const char* const kOrtSessionOptionsDisableEpCompile = "session.disable_ep_compile";
+static const char* const kOrtSessionOptionsDisableModelCompile = "session.disable_model_compile";

@@ -295,7 +295,7 @@ TEST_F(QnnHTPBackendTests, CompileApi_DisableEpCompile_ThenCompileExplicitly) {
   provider_options["offload_graph_io_quantization"] = "0";
 
   so.AppendExecutionProvider("QNN", provider_options);
-  so.AddConfigEntry(kOrtSessionOptionsDisableEpCompile, "1");  // Disable model compilation!
+  so.AddConfigEntry(kOrtSessionOptionsDisableModelCompile, "1");  // Disable model compilation!
 
   // Create an inference session that fails with error ORT_MODEL_REQUIRES_COMPILATION
   try {

@@ -424,7 +424,7 @@ static Status PartitionOnnxFormatModelImpl(Graph& graph, FuncManager& func_mgr,
                                            const CheckLoadCancellationFn& check_load_cancellation_fn,
                                            const logging::Logger& logger, IResourceAccountant* resource_accountant,
                                            const GraphOptimizerRegistry& graph_optimizer_registry,
-                                           bool disable_ep_compile) {
+                                           bool disable_model_compile) {
   // handle testing edge case where optimizers or constant lifting results in graph with no nodes.
   // doing it here saves all providers checking for this in GetCapability
   if (graph.NumberOfNodes() == 0) {
@@ -441,7 +441,7 @@ static Status PartitionOnnxFormatModelImpl(Graph& graph, FuncManager& func_mgr,
                                                        transform_layout_fn, debug_graph_fn,
                                                        check_load_cancellation_fn,
                                                        logger, resource_accountant,
-                                                       graph_optimizer_registry, disable_ep_compile));
+                                                       graph_optimizer_registry, disable_model_compile));
     }
   }
 
@@ -561,7 +561,7 @@ static Status PartitionOnnxFormatModelImpl(Graph& graph, FuncManager& func_mgr,
         const auto& cur_capability = *capabilities_to_compile[j];
         auto graph_viewer = std::make_unique<GraphViewer>(graph, *cur_capability.sub_graph);
 
-        if (disable_ep_compile && graph_viewer_has_non_compiled_node(*graph_viewer)) {
+        if (disable_model_compile && graph_viewer_has_non_compiled_node(*graph_viewer)) {
           return ORT_MAKE_STATUS(ONNXRUNTIME, MODEL_REQUIRES_COMPILATION, "User disabled EP compilation but EP '",
                                  type, "' needs to compile one or more nodes.");
         }
@@ -914,7 +914,7 @@ static Status PartitionOnnxFormatModel(const PartitionParams& partition_params, 
                                        KernelRegistryManager& kernel_registry_manager,
                                        const std::optional<ResourceAccountantMap>& acc_map,
                                        const GraphOptimizerRegistry& graph_optimizer_registry,
-                                       const logging::Logger& logger, bool disable_ep_compile) {
+                                       const logging::Logger& logger, bool disable_model_compile) {
   bool modified_graph = false;
 
   auto& graph = partition_params.graph.get();
@@ -940,7 +940,7 @@ static Status PartitionOnnxFormatModel(const PartitionParams& partition_params, 
                                                        partition_params.debug_graph_fn,
                                                        check_load_cancellation_fn,
                                                        logger, resource_accountant, graph_optimizer_registry,
-                                                       disable_ep_compile));
+                                                       disable_model_compile));
     }
 
     // expand any nodes that have an ONNX function definition but no matching ORT kernel.
@@ -1214,9 +1214,10 @@ Status GraphPartitioner::Partition(Graph& graph, FuncManager& func_mgr,
     std::optional<ResourceAccountantMap> ep_acc_map;
     ORT_RETURN_IF_ERROR(NodeStatsRecorder::CreateAccountants(config_options, graph.ModelPath(), ep_acc_map));
 
-    bool disable_ep_compile = config_options.GetConfigOrDefault(kOrtSessionOptionsDisableEpCompile, "0") == "1";
+    bool disable_model_compile = config_options.GetConfigOrDefault(kOrtSessionOptionsDisableModelCompile, "0") == "1";
     ORT_RETURN_IF_ERROR(PartitionOnnxFormatModel(partition_params, mode, providers_, kernel_registry_mgr_,
-                                                 ep_acc_map, *graph_optimizer_registry_, logger, disable_ep_compile));
+                                                 ep_acc_map, *graph_optimizer_registry_, logger,
+                                                 disable_model_compile));
 
     if (ep_context_gen_options.enable) {
       ORT_RETURN_IF_ERROR(CreateEpContextModel(providers_, graph, ep_context_gen_options, logger));
