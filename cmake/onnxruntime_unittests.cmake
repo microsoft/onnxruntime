@@ -1830,8 +1830,8 @@ if (onnxruntime_BUILD_SHARED_LIB AND NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten"
   set(onnxruntime_autoep_test_LIBS onnxruntime_mocked_allocator onnxruntime_test_utils onnxruntime_framework
                                    onnxruntime_mlas onnxruntime_graph onnxruntime_flatbuffers onnxruntime_common
                                    onnx)
-  if (CPUINFO_SUPPORTED)
-    list(APPEND onnxruntime_autoep_test_LIBS cpuinfo)
+  if (onnxruntime_USE_TENSORRT)
+    list(APPEND onnxruntime_autoep_test_LIBS ${TENSORRT_LIBRARY_INFER})
   endif()
 
   if (onnxruntime_USE_CUDA)
@@ -1842,8 +1842,8 @@ if (onnxruntime_BUILD_SHARED_LIB AND NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten"
     list(APPEND onnxruntime_autoep_test_LIBS d3d12.lib)
   endif()
 
-  if (onnxruntime_USE_TENSORRT)
-    list(APPEND onnxruntime_autoep_test_LIBS ${TENSORRT_LIBRARY_INFER})
+  if (CPUINFO_SUPPORTED)
+    list(APPEND onnxruntime_autoep_test_LIBS cpuinfo)
   endif()
 
   if (CMAKE_SYSTEM_NAME MATCHES "AIX")
