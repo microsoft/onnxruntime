@@ -15,6 +15,7 @@ import onnx
 import torch
 from common_onnx_export import export_to_onnx
 from float16 import convert_float_to_float16
+from models.torch_export_patches import string_type
 from onnx import ModelProto, ValueInfoProto
 from onnx_model import OnnxModel
 from transformers import WhisperConfig
@@ -370,6 +371,12 @@ class WhisperEncoderDecoderInit(torch.nn.Module):
 
         # Calculate output difference
         for i, output_name in enumerate(self.output_names()):
+            if pt_outputs[i].shape != ort_outputs[i].shape:
+                raise AssertionError(
+                    f"Incompatible shapes, expecting {pt_outputs[i].shape} got {ort_outputs[i].shape}, "
+                    f"for output_name={output_name!r}\n--expect={string_type(pt_outputs, with_shape=True)}"
+                    f"\n--   got={string_type(ort_outputs, with_shape=True)}"
+                )
             diff = np.abs(pt_outputs[i] - ort_outputs[i])
             logger.warning(f"Comparing {output_name}...")
             logger.warning(f"Max diff: {np.max(diff)}")

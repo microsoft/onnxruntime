@@ -4,13 +4,11 @@
 # license information.
 # --------------------------------------------------------------------------
 
-import inspect
 
 import torch
 from models.torch_export_patches import bypass_export_some_errors, string_type, torch_deepcopy
-from models.torch_export_patches.patch_inputs import convert_dynamic_axes_into_dynamic_shapes, replace_dynamic_shapes
+from models.torch_export_patches.patch_inputs import replace_dynamic_shapes
 from packaging import version
-from transformers.cache_utils import EncoderDecoderCache
 
 
 def export_to_onnx(
@@ -46,24 +44,45 @@ def export_to_onnx(
         )
         return
 
+    if isinstance(inputs, torch.Tensor):
+        inputs = (inputs,)
     print(f"[export_to_onnx] (A) checking the model {type(model)} is working with inputs={string_type(inputs, with_shape=True)}")
     model(*torch_deepcopy(inputs))
     print("[export_to_onnx] done.")
     if model.__class__.__name__ == "WhisperDecoder":
-        n_layers = len(inputs[-1])
-        print(f"[export_to_onnx] WhisperDecoder: {n_layers} layers")
-        dynamic_shapes = (
-            {0: 'batch_size', 1: 'sequence_length'},
-            {0: 'batch_size'},
-            [
-                (
-                    {0: 'batch_size', 2: 'past_sequence_length'},
-                    {0: 'batch_size', 2: 'past_sequence_length'},
-                    {0: 'batch_size', 2: 'past_sequence_length'},
-                    {0: 'batch_size', 2: 'past_sequence_length'},
-                )
-            ] * n_layers
-        )
+        if len(inputs) == 3:
+            n_layers = len(inputs[-1])
+            print(f"[export_to_onnx] {model.__class__.__name__}: {n_layers} layers")
+            dynamic_shapes = (
+                {0: 'batch_size', 1: 'sequence_length'},
+                {0: 'batch_size'},
+                [
+                    (
+                        {0: 'batch_size', 2: 'past_sequence_length'},
+                        {0: 'batch_size', 2: 'past_sequence_length'},
+                        {0: 'batch_size', 2: 'past_sequence_length'},
+                        {0: 'batch_size', 2: 'past_sequence_length'},
+                    )
+                ] * n_layers
+            )
+        else:
+            dynamic_shapes = ({0: 'batch_size', 1: 'sequence_length'}, {0: 'batch_size'})
+    elif model.__class__.__name__ == "WhisperEncoderDecoderInit":
+        print(f"[export_to_onnx] {model.__class__.__name__}")
+        if len(inputs) == 1:
+            dynamic_shapes = ({0: 'batch_size'},)
+        elif len(inputs) == 2:
+            dynamic_shapes = ({0: 'batch_size'}, {0: 'batch_size', 1: 'sequence_length'})
+        else:
+            raise NotImplementedError(f"inputs={string_type(inputs, with_shape=True)}, dynamic_axes={dynamic_axes}")
+    elif model.__class__.__name__ == "WhisperEncoder":
+        print(f"[export_to_onnx] {model.__class__.__name__}")
+        if len(inputs) == 1:
+            dynamic_shapes = ({0: 'batch_size'},)
+        elif len(inputs) == 2:
+            dynamic_shapes = ({0: 'batch_size'}, {0: 'batch_size'})
+        else:
+            raise NotImplementedError(f"inputs={string_type(inputs, with_shape=True)}, dynamic_axes={dynamic_axes}")
     else:
         raise NotImplementedError(f"dynamic axes {dynamic_axes} not yet supported for class {type(model)}")
 
