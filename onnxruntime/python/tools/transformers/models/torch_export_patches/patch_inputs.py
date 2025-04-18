@@ -94,7 +94,6 @@ def convert_dynamic_axes_into_dynamic_shapes(
             if input_names and i - plus < len(input_names) and p != input_names[i - plus]:
                 rename_inputs[input_names[i - plus]] = p
 
-
     if kwargs:
         for k, v in kwargs.items():
             assert k not in new_kwargs, f"Argument {k!r} from kwargs already present in args."
