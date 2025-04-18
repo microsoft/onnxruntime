@@ -160,7 +160,7 @@ export declare namespace JSEP {
      * Enable web trace event profiling. This is used to record a performance trace that captures details of what ORT web is doing.
      */
     traceEvent: boolean;
-    
+
     /**
      *  [exported from pre-jsep.js] Called when InferenceSession.run started. This function will be called before
      * _OrtRun[WithBinding]() is called.
