@@ -45,6 +45,7 @@ void usage() {
       "\t-M : Disable memory pattern\n"
       "\t-c [runs]: Specifies the number of Session::Run() to invoke simultaneously for each model.\n"
       "\t-r [repeat]: Specifies the number of times to repeat\n"
+      "\t-I [inference_mode]: Use inference mode. Save the inference result and skip the output value comparison.\n"
       "\t-v: verbose\n"
       "\t-n [test_case_name]: Specifies a single test case to run.\n"
       "\t-e [EXECUTION_PROVIDER]: EXECUTION_PROVIDER could be 'cpu', 'cuda', 'dnnl', 'tensorrt', 'vsinpu'"
@@ -203,6 +204,7 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
   bool enable_cpu_mem_arena = true;
   ExecutionMode execution_mode = ExecutionMode::ORT_SEQUENTIAL;
   int repeat_count = 1;
+  bool inference_mode = false;
   int p_models = GetNumCpuCores();
   bool enable_cuda = false;
   bool enable_dnnl = false;
@@ -240,7 +242,7 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
   bool pause = false;
   {
     int ch;
-    while ((ch = getopt(argc, argv, ORT_TSTR("Ac:hj:Mn:r:e:t:a:xvo:d:C:i:pzfb"))) != -1) {
+    while ((ch = getopt(argc, argv, ORT_TSTR("Ac:hj:IMn:r:e:t:a:xvo:d:C:i:pzfb"))) != -1) {
       switch (ch) {
         case 'A':
           enable_cpu_mem_arena = false;
@@ -268,6 +270,9 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
             usage();
             return -1;
           }
+          break;
+        case 'I':
+          inference_mode = true;
           break;
         case 'M':
           enable_mem_pattern = false;
@@ -935,7 +940,7 @@ select from 'TF8', 'TF16', 'UINT8', 'FLOAT', 'ITENSOR'. \n)");
               });
 
     auto tp = TestEnv::CreateThreadPool(Env::Default());
-    TestEnv test_env(env, sf, tp.get(), std::move(tests), stat);
+    TestEnv test_env(env, sf, tp.get(), std::move(tests), stat, inference_mode);
     Status st = test_env.Run(p_models, concurrent_session_runs, repeat_count);
     if (!st.IsOK()) {
       fprintf(stderr, "%s\n", st.ErrorMessage().c_str());

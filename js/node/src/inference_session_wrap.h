@@ -12,7 +12,6 @@
 class InferenceSessionWrap : public Napi::ObjectWrap<InferenceSessionWrap> {
  public:
   static Napi::Object Init(Napi::Env env, Napi::Object exports);
-  static Napi::FunctionReference& GetTensorConstructor();
 
   InferenceSessionWrap(const Napi::CallbackInfo& info);
 
@@ -79,15 +78,10 @@ class InferenceSessionWrap : public Napi::ObjectWrap<InferenceSessionWrap> {
 
   // private members
 
-  // persistent constructor
-  static Napi::FunctionReference wrappedSessionConstructor;
-  static Napi::FunctionReference ortTensorConstructor;
-
   // session objects
   bool initialized_;
   bool disposed_;
   std::unique_ptr<Ort::Session> session_;
-  std::unique_ptr<Ort::RunOptions> defaultRunOptions_;
 
   // input/output metadata
   std::vector<std::string> inputNames_;
