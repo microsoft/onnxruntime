@@ -130,13 +130,18 @@ OrtStatus* CreateSessionAndLoadModel(_In_ const OrtSessionOptions* options,
 
   // If ep.context_enable is set, then ep.context_file_path is expected, otherwise ORT don't know where to generate the _ctx.onnx file
   if (options && model_path == nullptr) {
-    auto ep_context_enable = options->value.config_options.GetConfigEntry(kOrtSessionOptionEpContextEnable);
-    auto ep_context_file_path = options->value.config_options.GetConfigEntry(kOrtSessionOptionEpContextFilePath);
-    if (ep_context_enable.has_value() && ep_context_enable.value() == "1" && (!ep_context_file_path.has_value() || (ep_context_file_path.has_value() && ep_context_file_path.value().empty()))) {
+    EpContextModelGenerationOptions ep_ctx_gen_options = options->value.GetEpContextGenerationOptions();
+
+    // This is checked by the OrtCompileApi's CompileModel() function, but we check again here in case
+    // the user used the older SessionOptions' configuration entries to generate a compiled model.
+    if (ep_ctx_gen_options.enable &&
+        ep_ctx_gen_options.output_model_file_path.empty() &&
+        ep_ctx_gen_options.output_model_buffer_ptr == nullptr) {
       return OrtApis::CreateStatus(ORT_FAIL,
-                                   "CreateSessionFromArray is called with ep.context_enable enabled but an \
-empty ep.context_file_path. The system does not know where to generate the \
-EP context model. Please specify a valid ep.context_file_path.");
+                                   "Inference session was configured with EPContext model generation enabled but "
+                                   "without a valid location (e.g., file or buffer) for the output model. "
+                                   "Please specify a valid ep.context_file_path via SessionOption configs "
+                                   "or use the OrtCompileApi to compile a model to a file or buffer.");
     }
   }
 

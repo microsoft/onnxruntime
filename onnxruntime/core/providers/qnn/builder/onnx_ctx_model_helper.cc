@@ -247,6 +247,13 @@ Status CreateEPContextNodes(Model* model,
         } else {
           context_bin_path = context_model_path;
         }
+
+        if (context_bin_path.empty()) {
+          // Context bin path is empty, so just use the graph name (e.g., "QNNExecutionProvider_QNN_13728744673520368385_2_0").
+          // This happens if both the input model and output model are stored in buffers (i.e., there are no paths).
+          context_bin_path = ToPathString(graph_name);
+        }
+
         context_bin_path = context_bin_path + ToPathString("_qnn.bin");
         context_cache_name = std::filesystem::path(context_bin_path).filename().string();
 
