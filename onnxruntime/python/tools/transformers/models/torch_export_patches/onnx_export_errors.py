@@ -299,10 +299,7 @@ def bypass_export_some_errors(
             if verbose:
                 import transformers
 
-                print(
-                    f"[bypass_export_some_errors] transformers.__version__="
-                    f"{transformers.__version__!r}"
-                )
+                print(f"[bypass_export_some_errors] transformers.__version__={transformers.__version__!r}")
             revert_patches_info = patch_module_or_classes(patch_transformers_list, verbose=verbose)
 
         if custom_patches:
