@@ -46,7 +46,9 @@ def export_to_onnx(
 
     if isinstance(inputs, torch.Tensor):
         inputs = (inputs,)
-    print(f"[export_to_onnx] (A) checking the model {type(model)} is working with inputs={string_type(inputs, with_shape=True)}")
+    print(
+        f"[export_to_onnx] (A) checking the model {type(model)} is working with inputs={string_type(inputs, with_shape=True)}"
+    )
     model(*torch_deepcopy(inputs))
     print("[export_to_onnx] done.")
     if model.__class__.__name__ == "WhisperDecoder":
