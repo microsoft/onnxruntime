@@ -24,9 +24,9 @@ Please follow the steps described below to setup development environment.
 
 ### Prerequisites
 
-- Node.js (16.0+): https://nodejs.org/ - (Optional) Use nvm ([Windows](https://github.com/coreybutler/nvm-windows) / [Mac/Linux](https://github.com/creationix/nvm)) to install Node.js
+- Node.js (20.0+): https://nodejs.org/ - (Optional) Use nvm ([Windows](https://github.com/coreybutler/nvm-windows) / [Mac/Linux](https://github.com/creationix/nvm)) to install Node.js
 
-- Python (2.7 or 3.6+): https://www.python.org/downloads/
+- Python (3.9+): https://www.python.org/downloads/
 
   - python should be added to the PATH environment variable
 
@@ -72,7 +72,7 @@ This project is designed to include all "common" code, which are pure javascript
 
 ### Requirements
 
-Node.js v12+ (recommended v14+)
+Node.js v20+
 
 ### Build
 
@@ -108,7 +108,7 @@ Document will be generated in folder `<ORT_ROOT>/js/common/docs`.
 
 > language: typescript/C++
 
-> dependency: onnxruntime-common, ONNXRuntime.dll
+> dependency: onnxruntime-common, ONNXRuntime shared library(.so/dll/dylib)
 
 > folder: <ORT_ROOT>/js/node
 
@@ -116,7 +116,7 @@ This project is designed to be used as a NPM package to enable Node.js users to 
 
 ### Requirements
 
-Node.js v12+ (recommended v14+)
+Node.js v20+
 
 ### Build
 

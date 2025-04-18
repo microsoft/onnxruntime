@@ -105,7 +105,7 @@ struct ProviderInfo {
   const ConfigOptions* config_options{NULL};
   const std::unordered_set<std::string> valid_provider_keys = {"device_type", "device_id", "device_luid", "cache_dir", "precision",
                                                                "load_config", "context", "num_of_threads", "model_priority", "num_streams", "enable_opencl_throttling", "enable_qdq_optimizer",
-                                                               "disable_dynamic_shapes"};
+                                                               "enable_causallm", "disable_dynamic_shapes"};
 };
 
 // Holds context applicable to the entire EP instance.

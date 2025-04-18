@@ -321,8 +321,13 @@ static const char* const kOrtSessionOptionShareEpContexts = "ep.share_ep_context
 // Stop to share EP related resources across sessions from then on
 static const char* const kOrtSessionOptionStopShareEpContexts = "ep.stop_share_ep_contexts";
 
-// Use this config when dumping EP context model with an external initializers file
-// All initializers will be inside the external data file if specified, otherwise all in Onnx file
+// Used only for context model generation.
+// This configuration is used when some nodes are partitioned on the CPU EP and those nodes have external initializers.
+// When generating the EP context model, the new model should not rely on the old external data file used by the source ONNX model.
+// Use this setting when dumping the EP context model with an external initializers file.
+// If specified, all initializers will be placed inside the external data file.
+// Otherwise, all initializers will be embedded inside the generated ONNX file.
+// By default, this option is not set, meaning all initializers will be included within the ONNX file.
 static const char* const kOrtSessionOptionsEpContextModelExternalInitializersFileName =
     "ep.context_model_external_initializers_file_name";
 
