@@ -200,7 +200,9 @@ static Status BindQnnTensorMemoryToOrtValueMemory(const logging::Logger& logger,
                                                   Qnn_ContextHandle_t qnn_context,
                                                   Qnn_Tensor_t& qnn_tensor) {
   // either set qnn_tensor memHandle or clientBuf
-  const bool uses_shared_memory = ort_value_memory_info == HtpSharedMemoryAllocator::AssociatedMemoryInfo();
+  const static auto htp_shared_mem_info = HtpSharedMemoryAllocator::AssociatedMemoryInfo();
+  const bool uses_shared_memory = (ort_value_memory_info.device.Type() == htp_shared_mem_info.device.Type() &&
+                                   ort_value_memory_info.device.MemType() == htp_shared_mem_info.device.MemType());
 
   if (!uses_shared_memory) {
     LOGS(logger, VERBOSE) << "Setting Qnn_Tensor_t clientBuf to ORT tensor memory.";
