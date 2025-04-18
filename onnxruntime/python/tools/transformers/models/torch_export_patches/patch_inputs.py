@@ -54,6 +54,7 @@ def convert_dynamic_axes_into_dynamic_shapes(
     dynamic_axes: dict[str, dict[int, str]] | None = None,
     prefix_mapping: dict[str, str] | None = None,
     verbose: int = 0,
+    input_names: list[str] | None = None,
 ) -> tuple[tuple[Any, ...], dict[str, Any], dict[str, Any]]:
     """
     Converts the input from an export to something :func:`torch.export.export` can handle.
@@ -67,6 +68,7 @@ def convert_dynamic_axes_into_dynamic_shapes(
     :return: (args, kwargs, dynamic shapes)
     """
     new_kwargs = {}
+    rename_inputs = {}
     if args:
         assert hasattr(model, "forward"), f"Missing method 'forward' for {model!r}"
         plus = 0 if isinstance(model, torch.nn.Module) else 1
@@ -89,6 +91,9 @@ def convert_dynamic_axes_into_dynamic_shapes(
                     f"to {p!r} ({string_type(args[i - plus])})"
                 )
             new_kwargs[p] = args[i - plus]
+            if input_names and i - plus < len(input_names) and p != input_names[i - plus]:
+                rename_inputs[input_names[i - plus]] = p
+
 
     if kwargs:
         for k, v in kwargs.items():
@@ -121,9 +126,13 @@ def convert_dynamic_axes_into_dynamic_shapes(
         dynamic_shapes = {}
         done = set()
         for k, v in dynamic_axes.items():
-            if k not in changes and k in updated_kwargs and isinstance(v, dict):
-                dynamic_shapes[k] = v
-                continue
+            if k not in changes and isinstance(v, dict):
+                if k in updated_kwargs :
+                    dynamic_shapes[k] = v
+                    continue
+                if rename_inputs and rename_inputs.get(k, k) in updated_kwargs:
+                    dynamic_shapes[rename_inputs[k]] = v
+                    continue
             if "." in k:
                 # something like present.0.key
                 prefix = k.split(".")[0]

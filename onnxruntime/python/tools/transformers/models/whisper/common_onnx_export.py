@@ -4,10 +4,12 @@
 # license information.
 # --------------------------------------------------------------------------
 
+import inspect
 from packaging import version
 import torch
+from transformers.cache_utils import EncoderDecoderCache
 
-from models.torch_export_patches import bypass_export_some_errors
+from models.torch_export_patches import bypass_export_some_errors, string_type
 from models.torch_export_patches.patch_inputs import convert_dynamic_axes_into_dynamic_shapes, replace_dynamic_shapes
 
 
@@ -24,6 +26,8 @@ def export_to_onnx(
     verbose=False,
     use_dynamo_export=False,
     custom_opsets=None,
+    dynamic_shapes_addition=None,
+    dynamic_shapes_deletion=None,
 ):
     if not use_dynamo_export:
         torch.onnx.export(
@@ -43,8 +47,31 @@ def export_to_onnx(
         return
 
     model_args, model_kwargs, dynamic_shapes = convert_dynamic_axes_into_dynamic_shapes(
-        model, args=inputs, dynamic_axes=dynamic_axes, prefix_mapping={"present": "past_key_values"}
+        model,
+        args=inputs,
+        dynamic_axes=dynamic_axes,
+        prefix_mapping={"present": "past_key_values"},
+        input_names=input_names,
     )
+    print(f"[export_to_onnx] converted dynamic_shapes={dynamic_shapes}")
+    if dynamic_shapes_deletion:
+        for k in dynamic_shapes_deletion:
+            del dynamic_shapes[k]
+    if dynamic_shapes_addition:
+        dynamic_shapes.update(dynamic_shapes_addition)
+    if (
+        "past_key_values" in model_kwargs
+        and isinstance(model_kwargs["past_key_values"], EncoderDecoderCache)
+        and isinstance(dynamic_shapes["past_key_values"], dict)
+    ):
+        current = dynamic_shapes["past_key_values"]
+        n_layers = len(model_kwargs["past_key_values"].self_attention_cache.key_cache)
+        long_list = [current] * n_layers
+        dynamic_shapes['past_key_values'] = [[long_list, long_list], [long_list, long_list]]
+    print(f"[export_to_onnx] --- final dynamic_shapes={dynamic_shapes}")
+    print(f"[export_to_onnx] --- forward parameters: {list(inspect.signature(model.forward).parameters)}")
+    print(f"[export_to_onnx] --- model_args: {string_type(model_args, with_shape=True)}")
+    print(f"[export_to_onnx] - model_kwargs: {string_type(model_kwargs, with_shape=True)}")
 
     if version.Version(torch.__version__) < version.Version("2.7"):
         # This section is only needed for torch==2.6. The workaround implemented here
