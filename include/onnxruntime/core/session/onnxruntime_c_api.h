@@ -256,6 +256,7 @@ typedef enum OrtErrorCode {
   ORT_INVALID_GRAPH,
   ORT_EP_FAIL,
   ORT_MODEL_LOAD_CANCELED,
+  ORT_MODEL_REQUIRES_COMPILATION,
 } OrtErrorCode;
 
 typedef enum OrtOpAttrType {
