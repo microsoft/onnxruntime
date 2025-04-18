@@ -2021,6 +2021,7 @@ ProviderOptions OrtOpenVINOProviderOptionsToOrtOpenVINOProviderOptionsV2(const O
   ov_options_converted_map["load_config"] = "";
   ov_options_converted_map["model_priority"] = "DEFAULT";
   ov_options_converted_map["enable_qdq_optimizer"] = "false";
+  ov_options_converted_map["enable_causallm"] = "false";
   return ov_options_converted_map;
 }
 
