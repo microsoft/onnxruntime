@@ -5,7 +5,7 @@ import torch
 import transformers
 
 from . import string_type
-from .cache_helper import make_dynamic_cache
+from .cache_helper import make_dynamic_cache, make_encoder_decoder_cache
 
 
 def _process_cache(k: str, v):
@@ -13,12 +13,22 @@ def _process_cache(k: str, v):
         f"Unexpected type for parameter {k!r} {string_type(v, with_shape=True)}"
     )
     if isinstance(v, list) and all(isinstance(i, tuple) for i in v) and {len(t) for t in v} == {2}:
-        # A dynamicCache
+        # A DynamicCache
         cache = make_dynamic_cache(v)
+        return cache
+    if isinstance(v, list) and all(isinstance(i, tuple) for i in v) and {len(t) for t in v} == {4}:
+        # A EncoderDecoderCache
+        cache = make_encoder_decoder_cache(
+            make_dynamic_cache(list(zip(*v[:2]))),
+            make_dynamic_cache(list(zip(*v[2:]))),
+        )
         return cache
     if isinstance(v, torch.Tensor):
         return v
-    raise NotImplementedError(f"Unable to process parameter {k!r} with v={string_type(v, with_shape=True)}")
+    raise NotImplementedError(
+        f"Unable to process parameter {k!r} with v={string_type(v, with_shape=True)}, "
+        f"set(len(t) for t in v)={set(len(t) for t in v)}"
+    )
 
 
 def _make_shape(subset: dict, cls: type, value: Any) -> Any:

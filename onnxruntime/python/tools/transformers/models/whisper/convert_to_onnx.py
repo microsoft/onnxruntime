@@ -304,6 +304,14 @@ def parse_arguments(argv=None):
     )
     quant_args.set_defaults(quantize_reduce_range=False)
 
+    parser.add_argument(
+        "--use_dynamo_export",
+        action="store_true",
+        help="Use the new Dynamo exporter instead of the old TorchScript exporter, "
+        "This should be set to true if torch>=2.6 and transformers>=4.48.",
+    )
+    parser.set_defaults(use_dynamo_export=False)
+
     args = parser.parse_args(argv)
     args.collect_cross_qk = args.collect_cross_qk or args.output_cross_qk
 
@@ -330,6 +338,7 @@ def export_onnx_models(
     quantize_per_channel: bool = False,
     quantize_reduce_range: bool = False,
     provider: str = "cpu",
+    use_dynamo_export: bool = False,
 ):
     device = torch.device("cuda" if use_gpu else "cpu")
 
@@ -374,6 +383,7 @@ def export_onnx_models(
                 use_int32_inputs=use_int32_inputs,
                 use_encoder_hidden_states=(name == "decoder_init"),
                 use_kv_cache_inputs=(name == "decoder"),
+                use_dynamo_export=use_dynamo_export,
             )
         else:
             logger.info(f"Skip exporting: existing ONNX model {onnx_path}")
@@ -481,6 +491,7 @@ def main(argv=None):
         args.quantize_per_channel,
         args.quantize_reduce_range,
         args.provider,
+        use_dynamo_export=args.use_dynamo_export,
     )
 
     max_diff = 0

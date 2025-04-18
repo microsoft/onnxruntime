@@ -12,6 +12,7 @@ from pathlib import Path
 import numpy as np
 import onnx
 import torch
+from common_onnx_export import export_to_onnx
 from float16 import convert_float_to_float16
 from onnx import ModelProto
 from onnx_model import OnnxModel
@@ -69,6 +70,7 @@ class WhisperEncoder(torch.nn.Module):
         verbose: bool = True,
         use_external_data_format: bool = False,
         use_fp16_inputs: bool = False,
+        use_dynamo_export: bool = False,
     ):
         """Export encoder to ONNX
 
@@ -78,6 +80,7 @@ class WhisperEncoder(torch.nn.Module):
             verbose (bool, optional): print verbose information. Defaults to True.
             use_external_data_format (bool, optional): use external data format or not. Defaults to False.
             use_fp16_inputs (bool, optional): use float16 inputs for the audio_features. Defaults to False.
+            use_dynamo_export (bool, optional): use dynamo exporter
         """
         # Shape of encoder's tensors:
         # Inputs:
@@ -102,17 +105,18 @@ class WhisperEncoder(torch.nn.Module):
             Path(temp_onnx_model_path).parent.mkdir(parents=True, exist_ok=True)
             out_path = temp_onnx_model_path if use_external_data_format else onnx_model_path
 
-            torch.onnx.export(
-                self,
-                args=(inputs["audio_features"]),
-                f=out_path,
+            export_to_onnx(
+                model=self,
+                inputs=(inputs["audio_features"]),
+                out_path=out_path,
                 export_params=True,
                 input_names=input_names,
                 output_names=output_names,
                 dynamic_axes=dynamic_axes,
-                opset_version=17,
+                opset_version=18 if use_dynamo_export else 17,
                 do_constant_folding=True,
                 verbose=verbose,
+                use_dynamo_export=use_dynamo_export,
             )
 
             model = onnx.load_model(out_path, load_external_data=use_external_data_format)

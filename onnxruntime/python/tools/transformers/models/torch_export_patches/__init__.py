@@ -2,6 +2,8 @@ from dataclasses import fields, is_dataclass
 from typing import Any
 
 import numpy as np
+from onnx import TensorProto
+from onnx.helper import np_dtype_to_tensor_dtype
 import packaging.version as pv
 import torch
 import transformers
@@ -29,6 +31,52 @@ def is_torchdynamo_exporting() -> bool:
             return dynamo.is_exporting()  # type: ignore
         except Exception:
             return False
+
+
+def torch_dtype_to_onnx_dtype(to: torch.dtype) -> int:
+    """
+    Converts a torch dtype into a onnx element type.
+
+    :param to: torch dtype
+    :return: onnx type
+    """
+    import torch
+
+    if to == torch.float32:
+        return TensorProto.FLOAT
+    if to == torch.float16:
+        return TensorProto.FLOAT16
+    if to == torch.bfloat16:
+        return TensorProto.BFLOAT16
+    if to == torch.float64:
+        return TensorProto.DOUBLE
+    if to == torch.int64:
+        return TensorProto.INT64
+    if to == torch.int32:
+        return TensorProto.INT32
+    if to == torch.uint64:
+        return TensorProto.UINT64
+    if to == torch.uint32:
+        return TensorProto.UINT32
+    if to == torch.bool:
+        return TensorProto.BOOL
+    if to == torch.SymInt:
+        return TensorProto.INT64
+    if to == torch.int16:
+        return TensorProto.INT16
+    if to == torch.uint16:
+        return TensorProto.UINT16
+    if to == torch.int8:
+        return TensorProto.INT8
+    if to == torch.uint8:
+        return TensorProto.UINT8
+    if to == torch.SymFloat:
+        return TensorProto.FLOAT
+    if to == torch.complex64:
+        return TensorProto.COMPLEX64
+    if to == torch.complex128:
+        return TensorProto.COMPLEX128
+    raise NotImplementedError(f"Unable to convert torch dtype {to!r} to onnx dtype.")
 
 
 def string_type(
@@ -177,8 +225,6 @@ def string_type(
         return f"dict({s})"
     # array
     if isinstance(obj, np.ndarray):
-        from .onnx_helper import np_dtype_to_tensor_dtype
-
         if with_min_max:
             s = string_type(obj, with_shape=with_shape)
             if len(obj.shape) == 0:
@@ -256,16 +302,12 @@ def string_type(
 
     # Tensors
     if isinstance(obj, torch._subclasses.fake_tensor.FakeTensor):
-        from .onnx_helper import torch_dtype_to_onnx_dtype
-
         i = torch_dtype_to_onnx_dtype(obj.dtype)
         prefix = ("G" if obj.get_device() >= 0 else "C") if with_device else ""
         if not with_shape:
             return f"{prefix}F{i}r{len(obj.shape)}"
         return f"{prefix}F{i}s{'x'.join(map(str, obj.shape))}"
     if isinstance(obj, torch.Tensor):
-        from .onnx_helper import torch_dtype_to_onnx_dtype
-
         if with_min_max:
             s = string_type(obj, with_shape=with_shape, with_device=with_device)
             if len(obj.shape) == 0:
