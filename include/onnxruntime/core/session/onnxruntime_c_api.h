@@ -5926,6 +5926,7 @@ struct OrtEp {
  *                          pre-allocated array.
  *                          i.e. usage is `factories[0] = new MyEpFactory();`
  * \param[in] max_factories The maximum number of OrtEpFactory instances that can be added to `factories`.
+ *                          Current default is to allow 4 factories. This can be increased in the future if needed.
  * \param[out] num_factories The number of OrtEpFactory instances created by the factory and added to `factories`.
  *
  * \snippet{doc} snippets.dox OrtStatus Return Value
