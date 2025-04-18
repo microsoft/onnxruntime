@@ -73,9 +73,9 @@ def export_to_onnx(
     elif model.__class__.__name__ == "WhisperEncoderDecoderInit":
         print(f"[export_to_onnx] {model.__class__.__name__}")
         if len(inputs) == 1:
-            dynamic_shapes = ({0: 'batch_size'},)
+            dynamic_shapes = ({0: "batch_size"},)
         elif len(inputs) == 2:
-            dynamic_shapes = ({0: 'batch_size'}, {0: 'batch_size', 1: 'sequence_length'})
+            dynamic_shapes = ({0: "batch_size"}, {0: "batch_size", 1: "sequence_length"})
         else:
             raise NotImplementedError(f"inputs={string_type(inputs, with_shape=True)}, dynamic_axes={dynamic_axes}")
     elif model.__class__.__name__ == "WhisperEncoder":
