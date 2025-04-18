@@ -2283,28 +2283,32 @@ SubGraphCollection_t NvExecutionProvider::GetSupportedList(SubGraphCollection_t 
         // network_flags |= 1U << static_cast<uint32_t>(nvinfer1::NetworkDefinitionCreationFlag::kEXPLICIT_BATCH);
 
         auto trt_network = std::unique_ptr<nvinfer1::INetworkDefinition>(trt_builder->createNetworkV2(network_flags));
-        auto trt_parser = tensorrt_ptr::unique_pointer<nvonnxparser::IParser>(nvonnxparser::createParser(*trt_network, trt_logger));
+
+        // limit the scope of trt_parser so that model gets unloaded from memory asap
+        {
+          auto trt_parser = tensorrt_ptr::unique_pointer<nvonnxparser::IParser>(nvonnxparser::createParser(*trt_network, trt_logger));
 
 #if (NV_TENSORRT_MAJOR == 10 && NV_TENSORRT_MINOR > 1) || NV_TENSORRT_MAJOR > 10
-        auto is_model_supported = trt_parser->supportsModelV2(string_buf.data(), string_buf.size(), model_path_);
+          auto is_model_supported = trt_parser->supportsModelV2(string_buf.data(), string_buf.size(), model_path_);
 
-        // Note: Calling getNbSubgraphs or getSubgraphNodes before calling supportsModelV2 results in undefined behavior.
-        auto num_subgraphs = trt_parser->getNbSubgraphs();
-        parser_nodes_list.reserve(num_subgraphs);
+          // Note: Calling getNbSubgraphs or getSubgraphNodes before calling supportsModelV2 results in undefined behavior.
+          auto num_subgraphs = trt_parser->getNbSubgraphs();
+          parser_nodes_list.reserve(num_subgraphs);
 
-        for (int64_t i = 0; i < num_subgraphs; ++i) {
-          int64_t subgraph_len = 0;
-          int64_t* nodes = trt_parser->getSubgraphNodes(i, subgraph_len);
-          parser_nodes_list.emplace_back();
-          parser_nodes_list.back().first.reserve(subgraph_len);
-          for (int64_t j = 0; j < subgraph_len; ++j) {
-            parser_nodes_list.back().first.push_back(nodes[j]);
+          for (int64_t i = 0; i < num_subgraphs; ++i) {
+            int64_t subgraph_len = 0;
+            int64_t* nodes = trt_parser->getSubgraphNodes(i, subgraph_len);
+            parser_nodes_list.emplace_back();
+            parser_nodes_list.back().first.reserve(subgraph_len);
+            for (int64_t j = 0; j < subgraph_len; ++j) {
+              parser_nodes_list.back().first.push_back(nodes[j]);
+            }
+            parser_nodes_list.back().second = is_model_supported ? true : false;
           }
-          parser_nodes_list.back().second = is_model_supported ? true : false;
-        }
 #else
-        trt_parser->supportsModel(string_buf.data(), string_buf.size(), parser_nodes_list, model_path_);
+          trt_parser->supportsModel(string_buf.data(), string_buf.size(), parser_nodes_list, model_path_);
 #endif
+        }
 
         SubGraphCollection_t next_nodes_list;
         const std::vector<NodeIndex>& subgraph_node_index = graph_viewer->GetNodesInTopologicalOrder(1 /*priority-based topological sort*/);
