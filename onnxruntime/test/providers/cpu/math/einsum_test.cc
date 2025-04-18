@@ -466,7 +466,7 @@ TEST(Einsum, ImplicitEinsumAsBatchedDiagonalOp_1) {
 // Theme: Scalar inputs and outputs
 
 // Explicit
-TEST(Einsum, DISABLED_ExplicitEinsumAsElementwiseMulOpWithOneScalar) {
+TEST(Einsum, ExplicitEinsumAsElementwiseMulOpWithOneScalar) {
   OpTester test("Einsum", 12, onnxruntime::kOnnxDomain);
   test.AddAttribute<std::string>("equation", ",...i->...i");
   test.AddInput<float>("x", {}, {10.f});
@@ -475,7 +475,7 @@ TEST(Einsum, DISABLED_ExplicitEinsumAsElementwiseMulOpWithOneScalar) {
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", ExcludeTrtOnA100());
 }
 
-TEST(Einsum, DISABLED_ExplicitEinsumAsElementwiseMulOpWithTwoScalars_Multi_Input) {
+TEST(Einsum, ExplicitEinsumAsElementwiseMulOpWithTwoScalars_Multi_Input) {
   OpTester test("Einsum", 12, onnxruntime::kOnnxDomain);
   test.AddAttribute<std::string>("equation", ",...i,->...i");
   test.AddInput<float>("x", {}, {10.f});
@@ -484,7 +484,7 @@ TEST(Einsum, DISABLED_ExplicitEinsumAsElementwiseMulOpWithTwoScalars_Multi_Input
   test.AddOutput<float>("o", {2, 2}, {100.f, 200.f, 300.f, 400.f});
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", ExcludeTrtOnA100());
 }
-TEST(Einsum, DISABLED_ExplicitEinsumAsElementwiseMulOpWithAllScalars) {
+TEST(Einsum, ExplicitEinsumAsElementwiseMulOpWithAllScalars) {
   OpTester test("Einsum", 12, onnxruntime::kOnnxDomain);
   test.AddAttribute<std::string>("equation", ",->");
   test.AddInput<float>("x", {}, {10.f});
@@ -493,7 +493,7 @@ TEST(Einsum, DISABLED_ExplicitEinsumAsElementwiseMulOpWithAllScalars) {
   test.Run();
 }
 
-TEST(Einsum, DISABLED_ExplicitEinsumReduceAxesInInputToScalarOutput) {
+TEST(Einsum, ExplicitEinsumReduceAxesInInputToScalarOutput) {
   OpTester test("Einsum", 12, onnxruntime::kOnnxDomain);
   test.AddAttribute<std::string>("equation", "ij->");
   test.AddInput<float>("x", {2, 2}, {1.f, 2.f, 3.f, 4.f});
@@ -501,8 +501,20 @@ TEST(Einsum, DISABLED_ExplicitEinsumReduceAxesInInputToScalarOutput) {
   test.Run();
 }
 
+TEST(Einsum, ExplicitEinsumReduceAxesInInputToScalarOutput_Multi_Input) {
+  OpTester test("Einsum", 12, onnxruntime::kOnnxDomain);
+  // Matrix multiplication first and then reduction to scalar.
+  // Step1: ij,jk->ik
+  // Step2: ik->
+  test.AddAttribute<std::string>("equation", "ij,jk->");
+  test.AddInput<float>("x", {2, 2}, {1.f, 2.f, 3.f, 4.f});
+  test.AddInput<float>("y", {2, 2}, {1.f, 2.f, 3.f, 4.f});
+  test.AddOutput<float>("o", {}, {54});
+  test.Run();
+}
+
 // Implicit
-TEST(Einsum, DISABLED_ImplicitEinsumAsElementwiseMulOpWithOneScalar) {
+TEST(Einsum, ImplicitEinsumAsElementwiseMulOpWithOneScalar) {
   OpTester test("Einsum", 12, onnxruntime::kOnnxDomain);
   test.AddAttribute<std::string>("equation", ",...i");
   test.AddInput<float>("x", {}, {10.f});
@@ -511,7 +523,7 @@ TEST(Einsum, DISABLED_ImplicitEinsumAsElementwiseMulOpWithOneScalar) {
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", ExcludeTrtOnA100());
 }
 
-TEST(Einsum, DISABLED_ImplicitEinsumAsElementwiseMulOpWithThreeScalars_Multi_Input) {
+TEST(Einsum, ImplicitEinsumAsElementwiseMulOpWithThreeScalars_Multi_Input) {
   OpTester test("Einsum", 12, onnxruntime::kOnnxDomain);
   test.AddAttribute<std::string>("equation", ",...i,,");
   test.AddInput<float>("a", {}, {10.f});
@@ -521,7 +533,7 @@ TEST(Einsum, DISABLED_ImplicitEinsumAsElementwiseMulOpWithThreeScalars_Multi_Inp
   test.AddOutput<float>("o", {2, 2}, {1000.f, 2000.f, 3000.f, 4000.f});
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", ExcludeTrtOnA100());
 }
-TEST(Einsum, DISABLED_ImplicitEinsumAsElementwiseMulOpWithAllScalars) {
+TEST(Einsum, ImplicitEinsumAsElementwiseMulOpWithAllScalars) {
   OpTester test("Einsum", 12, onnxruntime::kOnnxDomain);
   test.AddAttribute<std::string>("equation", ",");
   test.AddInput<float>("x", {}, {10.f});
@@ -2049,15 +2061,15 @@ static constexpr std::array<EinsumTestCase, 288> case1 = {{{equation32, shape32,
                                                            {equation318, shape318, expected318},
                                                            {equation319, shape319, expected319}}};
 
-TEST(Einsum, DISABLED_EinsumTransposeMatMulTwoInputsTestSuite) {
+TEST(Einsum, EinsumTransposeMatMulTwoInputsTestSuite) {
   std::vector<float> m1{0.f, 1.f, 2.f, 3.f, 4.f, 5.f, 6.f, 7.f};
   std::vector<float> m2{0.f, 1.f, 2.f, 3.f};
   for (const auto& tst : case0) {
     OpTester test("Einsum", 12, onnxruntime::kOnnxDomain);
     std::string s(tst.equation);
     test.AddAttribute<std::string>("equation", s);
-    test.AddInput<float>("x", {2, 2, 2}, m1);
-    test.AddInput<float>("y", {2, 2}, m2);
+    test.AddInput<float>("x", {2, 2, 2}, {0.f, 1.f, 2.f, 3.f, 4.f, 5.f, 6.f, 7.f});
+    test.AddInput<float>("y", {2, 2}, {0.f, 1.f, 2.f, 3.f});
 
     std::vector<int64_t> v1(tst.shape.begin(), tst.shape.end());
     std::vector<float> v2(tst.expected.begin(), tst.expected.end());
@@ -2069,7 +2081,7 @@ TEST(Einsum, DISABLED_EinsumTransposeMatMulTwoInputsTestSuite) {
 class EinsumTransposeMatMulThreeInputsTest : public testing::TestWithParam<EinsumTestCase> {
 };
 
-TEST_P(EinsumTransposeMatMulThreeInputsTest, DISABLED_EinsumTransposeMatMulThreeInputsTestSuite) {
+TEST_P(EinsumTransposeMatMulThreeInputsTest, EinsumTransposeMatMulThreeInputsTestSuite) {
   const auto& tst = GetParam();
   std::vector<float> m1{0.f, 1.f, 2.f, 3.f, 4.f, 5.f, 6.f, 7.f};
   std::vector<float> m2{0.f, 1.f, 2.f, 3.f};
