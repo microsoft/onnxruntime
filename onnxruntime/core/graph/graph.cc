@@ -41,6 +41,7 @@
 #include "core/graph/function_impl.h"
 #include "core/graph/schema_registry.h"
 #include "onnx/checker.h"
+#include "onnx/defs/parser.h"
 using namespace ONNX_NAMESPACE::checker;
 #endif
 

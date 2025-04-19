@@ -4,7 +4,8 @@ This note is only for ONNX Runtime developers.
 
 If you need to update the ONNX submodule to a different version, follow the steps below.
 
-1. Update the ONNX submodule
+1. Update the ONNX submodule (commit would be more precise than branch)
+
 ```sh
 cd cmake/external/onnx
 git remote update
@@ -12,12 +13,22 @@ git reset --hard <commit_id>
 cd ..
 git add onnx
 ```
+
 (Change the <commit_id> to yours. If you are not sure, use 'origin/master'. Like 'git reset --hard origin/master')
 
-1. Update [cgmanifests/generated/cgmanifest.json](/cgmanifests/generated/cgmanifest.json).
-This file should be generated. See [cgmanifests/README](/cgmanifests/README.md) for instructions.
+2. Update [cmake/deps.txt](/cmake/deps.txt) with the correct zip download link and SHA (alternatively, build it with the wrong SHA and ORT should tell you the expected one.).
+3. Check [cmake/patch/onnx/onnx.patch](/cmake/patch/onnx/onnx.patch) to see whether the diffs are resolved in the latest ONNX version.
+4. Try to build ONNXRUNTIME from source. If the build fails, please make the changes accordingly, or use onnx.patch if it's ONNX bugs.
+5. Update [docs/OperatorKernels.mk](/docs/OperatorKernels.md)
 
-1. Update Python requirements files with the updated ONNX version (e.g., `onnx==1.16.0`) or commit hash if building from source (e.g., `git+http://github.com/onnx/onnx.git@targetonnxcommithash#egg=onnx`).
+```bash
+# under onnxruntime root
+python tools/python/gen_opkernel_doc.py --output_path docs/OperatorKernels.md
+```
+
+6. Push the branch to validate with the CI tests, and make the necessary changes accordingly.
+7. Update Python requirements files with the updated ONNX version (e.g., `onnx==1.16.0`) or commit hash if building from source (e.g., `git+http://github.com/onnx/onnx.git@targetonnxcommithash#egg=onnx`).
+
 - [onnxruntime/test/python/requirements.txt](/onnxruntime/test/python/requirements.txt)
 - [tools/ci_build/github/linux/docker/scripts/requirements.txt](/tools/ci_build/github/linux/docker/scripts/requirements.txt)
 - [tools/ci_build/github/linux/docker/scripts/manylinux/requirements.txt](/tools/ci_build/github/linux/docker/scripts/manylinux/requirements.txt)
@@ -27,19 +38,17 @@ This file should be generated. See [cgmanifests/README](/cgmanifests/README.md) 
 1. If there is any change to `cmake/external/onnx/onnx/*.in.proto`, you need to regenerate OnnxMl.cs.
    [Building onnxruntime with Nuget](https://onnxruntime.ai/docs/build/inferencing.html#build-nuget-packages) will do
    this.
-
-1. If you are updating ONNX from a released tag to a new commit, please ask Changming (@snnn) to deploy the new test
+2. If you are updating ONNX from a released tag to a new commit, please ask Changming (@snnn) to deploy the new test
    data along with other test models to our CI build machines. This is to ensure that our tests cover every ONNX opset.
-
-1. Send your PR, and **manually** queue a build for every packaging pipeline for your branch.
-
-1. If there is a build failure in stage "Check out of dated documents" in WebAssembly CI pipeline, update ONNX Runtime
+3. Send your PR, and **manually** queue a build for every packaging pipeline for your branch.
+4. If there is a build failure in stage "Check out of dated documents" in WebAssembly CI pipeline, update ONNX Runtime
    Web WebGL operator support document:
+
    - Make sure Node.js is installed (see [Prerequisites](../js/README.md#Prerequisites) for instructions).
    - Follow [js/Build](../js/README.md#Build-2) to install dependencies.
    - Follow instructions in [Generate document](../js/README.md#Generating-Document) to update document. Commit changes applied to file `docs/operators.md`.
+5. Usually some newly introduced tests will fail. Then you may need to update
 
-2. Usually some newly introduced tests will fail. Then you may need to update
 - [onnxruntime/test/onnx/main.cc](/onnxruntime/test/onnx/main.cc)
 - [onnxruntime/test/providers/cpu/model_tests.cc](/onnxruntime/test/providers/cpu/model_tests.cc)
 - [csharp/test/Microsoft.ML.OnnxRuntime.Tests.NetCoreApp/InferenceTest.netcore.cs](/csharp/test/Microsoft.ML.OnnxRuntime.Tests.NetCoreApp/InferenceTest.netcore.cs)
@@ -47,5 +56,6 @@ This file should be generated. See [cgmanifests/README](/cgmanifests/README.md) 
 - [onnxruntime/test/testdata/onnx_backend_test_series_overrides.jsonc](/onnxruntime/test/testdata/onnx_backend_test_series_overrides.jsonc)
 
 1. If an operator has changed we may need to update optimizers involving that operator.
+
 - Run [find_optimizer_opset_version_updates_required.py](/tools/python/find_optimizer_opset_version_updates_required.py), compare with the output from the current main branch, and check for any new warnings.
 - If there are new warnings contact the optimizer owner (which can usually be determined by looking at who edited the file most recently) or failing that ask the 'ONNX Runtime Shared Core' mailing list.
