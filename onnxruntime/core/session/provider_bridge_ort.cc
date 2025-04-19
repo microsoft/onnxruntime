@@ -1734,28 +1734,33 @@ Status ProviderLibrary::Load() {
     return Status::OK();
   }
 
-  std::lock_guard<std::mutex> lock{mutex_};
-  s_library_shared.Ensure();
+  try {
+    std::lock_guard<std::mutex> lock{mutex_};
+    s_library_shared.Ensure();
 
-  auto full_path = Env::Default().GetRuntimePath() + filename_;
-  ORT_RETURN_IF_ERROR(Env::Default().LoadDynamicLibrary(full_path, false, &handle_));
+    auto full_path = Env::Default().GetRuntimePath() + filename_;
+    ORT_RETURN_IF_ERROR(Env::Default().LoadDynamicLibrary(full_path, false, &handle_));
 
-  Provider* (*PGetProvider)();
-  ORT_RETURN_IF_ERROR(Env::Default().GetSymbolFromLibrary(handle_, "GetProvider", (void**)&PGetProvider));
+    Provider* (*PGetProvider)();
+    ORT_RETURN_IF_ERROR(Env::Default().GetSymbolFromLibrary(handle_, "GetProvider", (void**)&PGetProvider));
 
-  provider_ = PGetProvider();
+    provider_ = PGetProvider();
+  } catch (const std::exception&) {
+    Unload();  // If anything fails we unload the library and rethrow
+    throw;
+  }
 
   return Status::OK();
 }
 
 Provider& ProviderLibrary::Get() {
-  std::lock_guard<std::mutex> lock{mutex_};
   try {
     if (!initialized_) {
       if (!provider_) {
         ORT_THROW_IF_ERROR(Load());
       }
 
+      std::lock_guard<std::mutex> lock{mutex_};
       provider_->Initialize();
       initialized_ = true;
     }

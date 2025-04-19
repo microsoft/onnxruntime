@@ -2535,7 +2535,8 @@ ORT_API_STATUS_IMPL(OrtApis::GetEpDevices, _In_ const OrtEnv* /*env*/,
 
 ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider_V2, _In_ OrtSessionOptions* /*session_options*/,
                     _In_ OrtEnv* /*env*/,
-                    _In_reads_(num_ep_devices) const OrtEpDevice* const* ep_devices, _In_ size_t /*num_ep_devices*/,
+                    _In_reads_(num_ep_devices) const OrtEpDevice* const* /*ep_devices*/,
+                    _In_ size_t /*num_ep_devices*/,
                     _In_reads_(num_op_options) const char* const* /*ep_option_keys*/,
                     _In_reads_(num_op_options) const char* const* /*ep_option_vals*/,
                     size_t /*num_ep_options*/) {
