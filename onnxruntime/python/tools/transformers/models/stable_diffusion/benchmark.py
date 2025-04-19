@@ -35,6 +35,7 @@ PROVIDERS = {
     "rocm": "ROCMExecutionProvider",
     "migraphx": "MIGraphXExecutionProvider",
     "tensorrt": "TensorrtExecutionProvider",
+    "dml": "DmlExecutionProvider",
 }
 
 
