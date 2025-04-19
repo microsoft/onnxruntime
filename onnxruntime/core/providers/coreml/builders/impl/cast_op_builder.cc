@@ -44,7 +44,6 @@ Status CastOpBuilder::AddToModelBuilderImpl([[maybe_unused]] ModelBuilder& model
       // CoreML operators can only produce int32 and not int64 values.
       // Due to that there should be no actual int64 values inside the CoreML model and we can infer any
       // ONNX_NAMESPACE::TensorProto::INT64 values to be int32.
-      cast_to_type = ONNX_NAMESPACE::TensorProto::INT32;
     } else if (cast_to_type == ONNX_NAMESPACE::TensorProto::FLOAT) {
       to_dtype = "fp32";
     } else if (cast_to_type == ONNX_NAMESPACE::TensorProto::FLOAT16) {
@@ -69,7 +68,7 @@ Status CastOpBuilder::AddToModelBuilderImpl([[maybe_unused]] ModelBuilder& model
     if (op_type == "cast") {
       AddOperationInput(*op, "dtype", model_builder.AddScalarConstant(op->type(), "dtype", std::string(to_dtype)));
     }
-    AddOperationOutput(*op, *node.OutputDefs()[0], cast_to_type);
+    AddOperationOutput(*op, *node.OutputDefs()[0]);
     model_builder.AddOperation(std::move(op));
   }
 
