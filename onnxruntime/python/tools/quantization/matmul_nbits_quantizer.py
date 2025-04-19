@@ -807,7 +807,6 @@ class DefaultWeightOnlyQuantizer:
             b_quant = onnx.numpy_helper.from_array(packed, b_tensor.name + f"_Q{bits}")
             scales_tensor = onnx.numpy_helper.from_array(scales, b_tensor.name + "_scales")
         else:
-            print(f"quantize {b_tensor.name} to {bits} bits: {b_ndarray.shape=} {packed.tobytes().size=}")
             b_quant = onnx.helper.make_tensor(
                 b_tensor.name + f"_DQ_Q{bits}", qtype, b_ndarray.shape, packed.tobytes(), True
             )
