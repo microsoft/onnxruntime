@@ -1827,7 +1827,8 @@ if (onnxruntime_BUILD_SHARED_LIB AND NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten"
   file(GLOB_RECURSE onnxruntime_autoep_test_SRC "${ONNXRUNTIME_AUTOEP_TEST_SRC_DIR}/*.h"
                                                 "${ONNXRUNTIME_AUTOEP_TEST_SRC_DIR}/*.cc")
 
-  set(onnxruntime_autoep_test_LIBS onnxruntime_mocked_allocator onnxruntime_common onnxruntime_test_utils onnx_proto)
+  set(onnxruntime_autoep_test_LIBS onnxruntime_mocked_allocator ${ONNXRUNTIME_TEST_LIBS} onnxruntime_test_utils
+                                   onnx_proto onnx)
 
   if (onnxruntime_USE_TENSORRT)
     list(APPEND onnxruntime_autoep_test_LIBS ${TENSORRT_LIBRARY_INFER})
