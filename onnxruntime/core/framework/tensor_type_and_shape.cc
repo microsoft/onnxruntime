@@ -226,8 +226,6 @@ std::unique_ptr<OrtTensorTypeAndShapeInfo> OrtTensorTypeAndShapeInfo::GetTensorS
   if (dim_params != nullptr) {
     type_and_shape->dim_params = *dim_params;
   } else {
-    // we expect to be being called with a concrete shape so validate that
-    assert(type_and_shape->shape.Size() >= 0);
     type_and_shape->dim_params.resize(type_and_shape->shape.NumDimensions(), "");
   }
 
