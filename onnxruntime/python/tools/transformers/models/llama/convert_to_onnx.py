@@ -31,8 +31,13 @@ from optimizer import optimize_model
 from packaging import version
 from transformers import AutoConfig, AutoModelForCausalLM
 
+from onnxruntime import __version__ as ort_version
 from onnxruntime import quantization as ort_quantization
-from onnxruntime.quantization.matmul_4bits_quantizer import MatMul4BitsQuantizer
+
+if version.parse(ort_version) < version.parse("1.22.0"):
+    from onnxruntime.quantization.matmul_4bits_quantizer import MatMul4BitsQuantizer as MatMulNBitsQuantizer
+else:
+    from onnxruntime.quantization.matmul_nbits_quantizer import MatMulNBitsQuantizer
 
 torch_export_onnx_opset_version = 14
 logger = logging.getLogger("")
@@ -714,7 +719,7 @@ def get_args():
         required=False,
         default=32,
         type=int,
-        help="Block size to quantize with. See https://github.com/microsoft/onnxruntime/blob/main/onnxruntime/python/tools/quantization/matmul_4bits_quantizer.py for details.",
+        help="Block size to quantize with. See https://github.com/microsoft/onnxruntime/blob/main/onnxruntime/python/tools/quantization/matmul_nbits_quantizer.py for details.",
     )
 
     blockwise_group.add_argument(
@@ -1025,7 +1030,7 @@ def main():
                 for fp_path, int4_path in zip(old_paths, new_paths, strict=False):
                     if os.path.exists(fp_path):
                         model = onnx.load_model(fp_path, load_external_data=True)
-                        quant = MatMul4BitsQuantizer(
+                        quant = MatMulNBitsQuantizer(
                             model=model,
                             block_size=args.block_size,
                             is_symmetric=True,
