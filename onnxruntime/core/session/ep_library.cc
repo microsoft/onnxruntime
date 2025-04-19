@@ -4,7 +4,7 @@
 #include "core/session/ep_library.h"
 
 #include "core/framework/provider_options.h"
-#include "core/session/abi_session_options_impl.h
+#include "core/session/abi_session_options_impl.h"
 
 namespace onnxruntime {
 // Prior to addition to SessionOptions the EP options do not have a prefix.

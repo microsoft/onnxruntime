@@ -12,6 +12,7 @@
 
 #include <gsl/gsl>
 
+#include "core/common/status.h"
 #include "core/providers/cuda/cuda_execution_provider.h"
 #include "core/providers/cuda/cuda_execution_provider_info.h"
 #include "core/providers/cuda/cuda_allocator.h"
@@ -286,6 +287,10 @@ struct CUDA_Provider : Provider {
                                   const OrtSessionOptions& session_options,
                                   const OrtLogger& logger,
                                   std::unique_ptr<IExecutionProvider>& ep) override {
+    if (num_devices != 1) {
+      return Status(common::ONNXRUNTIME, ORT_EP_FAIL, "CUDA EP only supports one device.");
+    }
+
     OrtCUDAProviderOptionsV2 options;
     UpdateProviderOptions(&options, provider_options);
     auto ep_factory = CreateExecutionProviderFactory(&options);
@@ -326,8 +331,8 @@ struct CudaEpFactory : OrtEpFactory {
 
   static bool GetDeviceInfoIfSupportedImpl(const OrtEpFactory* this_ptr,
                                            const OrtHardwareDevice* device,
-                                           _Out_opt_ OrtKeyValuePairs** ep_metadata,
-                                           _Out_opt_ OrtKeyValuePairs** ep_options) {
+                                           _Out_opt_ OrtKeyValuePairs** /*ep_metadata*/,
+                                           _Out_opt_ OrtKeyValuePairs** /*ep_options*/) {
     const auto* factory = static_cast<const CudaEpFactory*>(this_ptr);
 
     if (factory->ort_api.HardwareDevice_Type(device) == OrtHardwareDeviceType::OrtHardwareDeviceType_GPU &&
@@ -348,7 +353,7 @@ struct CudaEpFactory : OrtEpFactory {
     return CreateStatus(ORT_INVALID_ARGUMENT, "CUDA EP factory does not support this method.");
   }
 
-  static void ReleaseEpImpl(OrtEpFactory* /*this_ptr*/, OrtEp* ep) {
+  static void ReleaseEpImpl(OrtEpFactory* /*this_ptr*/, OrtEp* /*ep*/) {
     // no-op as we never create an EP here.
   }
 
@@ -361,7 +366,7 @@ extern "C" {
 //
 // Public symbols
 //
-OrtStatus* CreateEpFactories(const char* registration_name, const OrtApiBase* ort_api_base,
+OrtStatus* CreateEpFactories(const char* /*registration_name*/, const OrtApiBase* ort_api_base,
                              OrtEpFactory** factories, size_t max_factories, size_t* num_factories) {
   const OrtApi* ort_api = ort_api_base->GetApi(ORT_API_VERSION);
 

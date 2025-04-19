@@ -16,6 +16,7 @@
 #include "core/session/ep_library_plugin.h"
 #include "core/session/ep_library_provider_bridge.h"
 #include "core/session/ort_apis.h"
+#include "core/session/utils.h"
 
 #if !defined(ORT_MINIMAL_BUILD)
 #include "onnx/defs/operator_sets.h"
