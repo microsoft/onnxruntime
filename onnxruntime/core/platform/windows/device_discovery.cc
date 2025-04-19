@@ -30,19 +30,20 @@
 #pragma comment(lib, "dxgi.lib")
 
 //// Using DXCore. Requires newer Windows SDK than what we target by default.
-#define DXCORE_AVAILABLE (NTDDI_VERSION < NTDDI_WIN10_RS5)
+// these values were added in 10.0.22621.0 as part of DirectXCore API
+//
+// In theory this #if should be fine, but the QNN ARM64 CI fails even with that applied. Not sure what is happening
+// with the NTDII_VERSION value there...
+//
+// Defining a local GUID instead.
+// #if NTDDI_VERSION < NTDDI_WIN10_RS5
+//  DEFINE_GUID(DXCORE_ADAPTER_ATTRIBUTE_D3D12_GENERIC_ML, 0xb71b0d41, 0x1088, 0x422f, 0xa2, 0x7c, 0x2, 0x50, 0xb7, 0xd3, 0xa9, 0x88);
+//  DEFINE_GUID(DXCORE_HARDWARE_TYPE_ATTRIBUTE_NPU, 0xd46140c4, 0xadd7, 0x451b, 0x9e, 0x56, 0x6, 0xfe, 0x8c, 0x3b, 0x58, 0xed);
+// #endif
 #include <initguid.h>
 #include <dxcore.h>
 #include <dxcore_interface.h>
 #include <wil/com.h>
-
-// TODO: Should we define the GUIDs manually as this seems to be the most robust way to find NPUs?
-//       What happens if the code runs on a machine that does not have DXCore?
-//       If DXCoreCreateAdapterFactory fails gracefully it might be ok to manually define these and always run
-// #if !DXCORE_AVAILABLE
-// DEFINE_GUID(DXCORE_ADAPTER_ATTRIBUTE_D3D12_GENERIC_ML, 0xb71b0d41, 0x1088, 0x422f, 0xa2, 0x7c, 0x2, 0x50, 0xb7, 0xd3, 0xa9, 0x88);
-// DEFINE_GUID(DXCORE_HARDWARE_TYPE_ATTRIBUTE_NPU, 0xd46140c4, 0xadd7, 0x451b, 0x9e, 0x56, 0x6, 0xfe, 0x8c, 0x3b, 0x58, 0xed);
-// #endif
 
 namespace onnxruntime {
 namespace {
@@ -262,7 +263,6 @@ std::unordered_map<uint64_t, DeviceInfo> GetDeviceInfoD3D12() {
   return device_info;
 }
 
-#if DXCORE_AVAILABLE
 // returns LUID to DeviceInfo
 std::unordered_map<uint64_t, DeviceInfo> GetDeviceInfoDxcore() {
   std::unordered_map<uint64_t, DeviceInfo> device_info;
@@ -273,11 +273,15 @@ std::unordered_map<uint64_t, DeviceInfo> GetDeviceInfoDxcore() {
     return device_info;
   }
 
+  // manually define for older Windows versions. will be no matches but means this code works on machines with dxcore.
+  static const GUID local_DXCORE_ADAPTER_ATTRIBUTE_D3D12_GENERIC_ML = {0xb71b0d41, 0x1088, 0x422f, 0xa2, 0x7c, 0x2, 0x50, 0xb7, 0xd3, 0xa9, 0x88};
+  static const GUID local_DXCORE_HARDWARE_TYPE_ATTRIBUTE_NPU = {0xd46140c4, 0xadd7, 0x451b, 0x9e, 0x56, 0x6, 0xfe, 0x8c, 0x3b, 0x58, 0xed};
+
   // Look for devices that expose compute engines
   std::vector<const GUID*> allowedAttributes;
   allowedAttributes.push_back(&DXCORE_ADAPTER_ATTRIBUTE_D3D12_CORE_COMPUTE);
-  allowedAttributes.push_back(&DXCORE_ADAPTER_ATTRIBUTE_D3D12_GENERIC_ML);
-  allowedAttributes.push_back(&DXCORE_HARDWARE_TYPE_ATTRIBUTE_NPU);
+  allowedAttributes.push_back(&local_DXCORE_ADAPTER_ATTRIBUTE_D3D12_GENERIC_ML);
+  allowedAttributes.push_back(&local_DXCORE_HARDWARE_TYPE_ATTRIBUTE_NPU);
 
   // These attributes are not OR'd.  Have to query one at a time to get a full view.
   for (const auto& hwAttribute : allowedAttributes) {
@@ -357,21 +361,17 @@ std::unordered_map<uint64_t, DeviceInfo> GetDeviceInfoDxcore() {
 
   return device_info;
 }
-#endif
-
 }  // namespace
 
 std::unordered_set<OrtHardwareDevice> DeviceDiscovery::DiscoverDevicesForPlatform() {
-  std::unordered_map<uint64_t, DeviceInfo> luid_to_dxinfo;  // dxcore info. key is luid
-  std::unordered_set<uint64_t> npus;                        // NPU devices found in dxcore info
-#if DXCORE_AVAILABLE
-  luid_to_dxinfo = GetDeviceInfoDxcore();
+  // dxcore info. key is luid
+  std::unordered_map<uint64_t, DeviceInfo> luid_to_dxinfo = GetDeviceInfoDxcore();
+  std::unordered_set<uint64_t> npus;  // NPU devices found in dxcore info
   for (auto& [luid, device] : luid_to_dxinfo) {
     if (device.type == OrtHardwareDeviceType_NPU) {
       npus.insert(GetDeviceKey(device));
     }
   }
-#endif
 
   // d3d12 info. key is luid
   std::unordered_map<uint64_t, DeviceInfo> luid_to_d3d12_info = GetDeviceInfoD3D12();

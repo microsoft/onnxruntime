@@ -9,6 +9,11 @@
 #include "core/session/ep_library.h"
 
 namespace onnxruntime {
+/// <summary>
+/// EpLibraryPlugin supports a dynamically loaded execution provider library that provides OrtEpFactory instances.
+///
+/// It handles load/unload of the library, and calls CreateEpFactories and ReleaseEpFactory in the library.
+/// </summary>
 class EpLibraryPlugin : public EpLibrary {
  public:
   EpLibraryPlugin(const std::string& registration_name, const ORTCHAR_T* library_path)

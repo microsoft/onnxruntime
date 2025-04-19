@@ -1,6 +1,8 @@
 // Copyright (C) Intel Corporation
 // Licensed under the MIT License
 
+#include <algorithm>
+#include <cctype>
 #include <map>
 #include <set>
 
@@ -192,6 +194,165 @@ std::string ParseDeviceType(std::shared_ptr<OVCore> ov_core, const ProviderOptio
 
 void ParseProviderOptions([[maybe_unused]] ProviderInfo& result, [[maybe_unused]] const ProviderOptions& config_options) {}
 
+// Initializes a ProviderInfo struct from a ProviderOptions map and a ConfigOptions map.
+static void ParseProviderInfo(const ProviderOptions& provider_options,
+                              const ConfigOptions* config_options,
+                              /*output*/ ProviderInfo& pi) {
+  pi.config_options = config_options;
+
+  // Lambda function to check for invalid keys and throw an error
+  auto validateKeys = [&]() {
+    for (const auto& pair : provider_options) {
+      if (pi.valid_provider_keys.find(pair.first) == pi.valid_provider_keys.end()) {
+        ORT_THROW("Invalid provider_option key: " + pair.first);
+      }
+    }
+  };
+  validateKeys();
+
+  std::string bool_flag = "";
+
+  // Minor optimization: we'll hold an OVCore reference to ensure we don't create a new core between ParseDeviceType and
+  // (potential) SharedContext creation.
+  auto ov_core = OVCore::Get();
+  pi.device_type = ParseDeviceType(ov_core, provider_options);
+
+  if (provider_options.contains("device_id")) {
+    std::string dev_id = provider_options.at("device_id").data();
+    LOGS_DEFAULT(WARNING) << "[OpenVINO] The options 'device_id' is deprecated. "
+                          << "Upgrade to set deice_type and precision session options.\n";
+    if (dev_id == "CPU" || dev_id == "GPU" || dev_id == "NPU") {
+      pi.device_type = std::move(dev_id);
+    } else {
+      ORT_THROW("[ERROR] [OpenVINO] Unsupported device_id is selected. Select from available options.");
+    }
+  }
+  if (provider_options.contains("cache_dir")) {
+    pi.cache_dir = provider_options.at("cache_dir");
+  }
+
+  pi.precision = OpenVINOParserUtils::ParsePrecision(provider_options, pi.device_type, "precision");
+
+  if (provider_options.contains("load_config")) {
+    auto parse_config = [&](const std::string& config_str) -> std::map<std::string, ov::AnyMap> {
+      // If the config string is empty, return an empty map and skip processing
+      if (config_str.empty()) {
+        LOGS_DEFAULT(WARNING) << "Empty OV Config Map passed. Skipping load_config option parsing.\n";
+        return {};
+      }
+
+      std::stringstream input_str_stream(config_str);
+      std::map<std::string, ov::AnyMap> target_map;
+
+      try {
+        nlohmann::json json_config = nlohmann::json::parse(input_str_stream);
+
+        if (!json_config.is_object()) {
+          ORT_THROW("Invalid JSON structure: Expected an object at the root.");
+        }
+
+        for (auto& [key, value] : json_config.items()) {
+          ov::AnyMap inner_map;
+          std::set<std::string> valid_ov_devices = {"CPU", "GPU", "NPU", "AUTO", "HETERO", "MULTI"};
+          // Ensure the key is one of "CPU", "GPU", or "NPU"
+          if (valid_ov_devices.find(key) == valid_ov_devices.end()) {
+            LOGS_DEFAULT(WARNING) << "Unsupported device key: " << key << ". Skipping entry.\n";
+            continue;
+          }
+
+          // Ensure that the value for each device is an object (PROPERTY -> VALUE)
+          if (!value.is_object()) {
+            ORT_THROW("Invalid JSON structure: Expected an object for device properties.");
+          }
+
+          for (auto& [inner_key, inner_value] : value.items()) {
+            if (inner_value.is_string()) {
+              inner_map[inner_key] = inner_value.get<std::string>();
+            } else if (inner_value.is_number_integer()) {
+              inner_map[inner_key] = inner_value.get<int64_t>();
+            } else if (inner_value.is_number_float()) {
+              inner_map[inner_key] = inner_value.get<double>();
+            } else if (inner_value.is_boolean()) {
+              inner_map[inner_key] = inner_value.get<bool>();
+            } else {
+              LOGS_DEFAULT(WARNING) << "Unsupported JSON value type for key: " << inner_key << ". Skipping key.";
+            }
+          }
+          target_map[key] = std::move(inner_map);
+        }
+      } catch (const nlohmann::json::parse_error& e) {
+        // Handle syntax errors in JSON
+        ORT_THROW("JSON parsing error: " + std::string(e.what()));
+      } catch (const nlohmann::json::type_error& e) {
+        // Handle invalid type accesses
+        ORT_THROW("JSON type error: " + std::string(e.what()));
+      } catch (const std::exception& e) {
+        ORT_THROW("Error parsing load_config Map: " + std::string(e.what()));
+      }
+      return target_map;
+    };
+
+    pi.load_config = parse_config(provider_options.at("load_config"));
+  }
+
+  pi.context = ParseUint64(provider_options, "context");
+#if defined(IO_BUFFER_ENABLED)
+  // a valid context must be provided to enable IO Buffer optimizations
+  if (pi.context == nullptr) {
+#undef IO_BUFFER_ENABLED
+#define IO_BUFFER_ENABLED = 0
+    LOGS_DEFAULT(WARNING) << "Context is not set. Disabling IO Buffer optimization";
+  }
+#endif
+
+  if (provider_options.contains("num_of_threads")) {
+    if (!std::all_of(provider_options.at("num_of_threads").begin(),
+                     provider_options.at("num_of_threads").end(), ::isdigit)) {
+      ORT_THROW("[ERROR] [OpenVINO-EP] Number of threads should be a number. \n");
+    }
+    pi.num_of_threads = std::stoi(provider_options.at("num_of_threads"));
+    if (pi.num_of_threads <= 0) {
+      pi.num_of_threads = 1;
+      LOGS_DEFAULT(WARNING) << "[OpenVINO-EP] The value for the key 'num_threads' should be in the positive range.\n "
+                            << "Executing with num_threads=1";
+    }
+  }
+
+  if (provider_options.contains("model_priority")) {
+    pi.model_priority = provider_options.at("model_priority").data();
+    std::vector<std::string> supported_priorities({"LOW", "MEDIUM", "HIGH", "DEFAULT"});
+    if (std::find(supported_priorities.begin(), supported_priorities.end(),
+                  pi.model_priority) == supported_priorities.end()) {
+      pi.model_priority = "DEFAULT";
+      LOGS_DEFAULT(WARNING) << "[OpenVINO-EP] The value for the key 'model_priority' "
+                            << "is not one of LOW, MEDIUM, HIGH, DEFAULT. "
+                            << "Executing with model_priorty=DEFAULT";
+    }
+  }
+
+  if (provider_options.contains("num_streams")) {
+    pi.num_streams = std::stoi(provider_options.at("num_streams"));
+    if (pi.num_streams <= 0) {
+      pi.num_streams = 1;
+      LOGS_DEFAULT(WARNING) << "[OpenVINO-EP] The value for the key 'num_streams' should be in the range of 1-8.\n "
+                            << "Executing with num_streams=1";
+    }
+  }
+  try {
+    pi.enable_opencl_throttling = ParseBooleanOption(provider_options, "enable_opencl_throttling");
+
+    pi.enable_qdq_optimizer = ParseBooleanOption(provider_options, "enable_qdq_optimizer");
+
+    pi.disable_dynamic_shapes = ParseBooleanOption(provider_options, "disable_dynamic_shapes");
+  } catch (std::string msg) {
+    ORT_THROW(msg);
+  }
+  // Always true for NPU plugin or when passed .
+  if (pi.device_type.find("NPU") != std::string::npos) {
+    pi.disable_dynamic_shapes = true;
+  }
+}
+
 struct OpenVINOProviderFactory : IExecutionProviderFactory {
   OpenVINOProviderFactory(ProviderInfo provider_info, std::shared_ptr<SharedContext> shared_context)
       : provider_info_(std::move(provider_info)), shared_context_(shared_context) {}
@@ -202,10 +363,40 @@ struct OpenVINOProviderFactory : IExecutionProviderFactory {
     ParseConfigOptions(provider_info_);
     return std::make_unique<OpenVINOExecutionProvider>(provider_info_, shared_context_);
   }
-  std::unique_ptr<IExecutionProvider> CreateProvider(const OrtSessionOptions& /*session_options*/,
-                                                     const OrtLogger& /*session_logger*/) override {
-    // TODO(adrianlizarraga): Construct a ProviderInfo object from the session options.
-    return CreateProvider();
+
+  // Called by InferenceSession when registering EPs. Allows creation of an EP instance that is initialized with
+  // session-level configurations.
+  std::unique_ptr<IExecutionProvider> CreateProvider(const OrtSessionOptions& session_options,
+                                                     const OrtLogger& session_logger) override {
+    const ConfigOptions& config_options = session_options.GetConfigOptions();
+    const std::unordered_map<std::string, std::string>& config_options_map = config_options.GetConfigOptionsMap();
+
+    // The implementation of the SessionOptionsAppendExecutionProvider C API function automatically adds EP options to
+    // the session option configurations with the key prefix "ep.<lowercase_ep_name>.".
+    // Extract those EP options into a new "provider_options" map.
+    std::string lowercase_ep_name = kOpenVINOExecutionProvider;
+    std::transform(lowercase_ep_name.begin(), lowercase_ep_name.end(), lowercase_ep_name.begin(), [](unsigned char c) {
+      return static_cast<char>(std::tolower(c));
+    });
+
+    std::string key_prefix = "ep.";
+    key_prefix += lowercase_ep_name;
+    key_prefix += ".";
+
+    std::unordered_map<std::string, std::string> provider_options;
+    for (const auto& [key, value] : config_options_map) {
+      if (key.rfind(key_prefix, 0) == 0) {
+        provider_options[key.substr(key_prefix.size())] = value;
+      }
+    }
+
+    ProviderInfo provider_info = provider_info_;
+    ParseProviderInfo(provider_options, &config_options, provider_info);
+    ParseConfigOptions(provider_info);
+
+    auto ov_ep = std::make_unique<OpenVINOExecutionProvider>(provider_info, shared_context_);
+    ov_ep->SetLogger(reinterpret_cast<const logging::Logger*>(&session_logger));
+    return ov_ep;
   }
 
  private:
@@ -233,159 +424,7 @@ struct OpenVINO_Provider : Provider {
     const ConfigOptions* config_options = reinterpret_cast<ConfigOptions*>(pointers_array[1]);
 
     ProviderInfo pi;
-    pi.config_options = config_options;
-
-    // Lambda function to check for invalid keys and throw an error
-    auto validateKeys = [&]() {
-      for (const auto& pair : provider_options) {
-        if (pi.valid_provider_keys.find(pair.first) == pi.valid_provider_keys.end()) {
-          ORT_THROW("Invalid provider_option key: " + pair.first);
-        }
-      }
-    };
-    validateKeys();
-
-    std::string bool_flag = "";
-
-    // Minor optimization: we'll hold an OVCore reference to ensure we don't create a new core between ParseDeviceType and
-    // (potential) SharedContext creation.
-    auto ov_core = OVCore::Get();
-    pi.device_type = ParseDeviceType(ov_core, provider_options);
-
-    if (provider_options.contains("device_id")) {
-      std::string dev_id = provider_options.at("device_id").data();
-      LOGS_DEFAULT(WARNING) << "[OpenVINO] The options 'device_id' is deprecated. "
-                            << "Upgrade to set deice_type and precision session options.\n";
-      if (dev_id == "CPU" || dev_id == "GPU" || dev_id == "NPU") {
-        pi.device_type = std::move(dev_id);
-      } else {
-        ORT_THROW("[ERROR] [OpenVINO] Unsupported device_id is selected. Select from available options.");
-      }
-    }
-    if (provider_options.contains("cache_dir")) {
-      pi.cache_dir = provider_options.at("cache_dir");
-    }
-
-    pi.precision = OpenVINOParserUtils::ParsePrecision(provider_options, pi.device_type, "precision");
-
-    if (provider_options.contains("load_config")) {
-      auto parse_config = [&](const std::string& config_str) -> std::map<std::string, ov::AnyMap> {
-        // If the config string is empty, return an empty map and skip processing
-        if (config_str.empty()) {
-          LOGS_DEFAULT(WARNING) << "Empty OV Config Map passed. Skipping load_config option parsing.\n";
-          return {};
-        }
-
-        std::stringstream input_str_stream(config_str);
-        std::map<std::string, ov::AnyMap> target_map;
-
-        try {
-          nlohmann::json json_config = nlohmann::json::parse(input_str_stream);
-
-          if (!json_config.is_object()) {
-            ORT_THROW("Invalid JSON structure: Expected an object at the root.");
-          }
-
-          for (auto& [key, value] : json_config.items()) {
-            ov::AnyMap inner_map;
-            std::set<std::string> valid_ov_devices = {"CPU", "GPU", "NPU", "AUTO", "HETERO", "MULTI"};
-            // Ensure the key is one of "CPU", "GPU", or "NPU"
-            if (valid_ov_devices.find(key) == valid_ov_devices.end()) {
-              LOGS_DEFAULT(WARNING) << "Unsupported device key: " << key << ". Skipping entry.\n";
-              continue;
-            }
-
-            // Ensure that the value for each device is an object (PROPERTY -> VALUE)
-            if (!value.is_object()) {
-              ORT_THROW("Invalid JSON structure: Expected an object for device properties.");
-            }
-
-            for (auto& [inner_key, inner_value] : value.items()) {
-              if (inner_value.is_string()) {
-                inner_map[inner_key] = inner_value.get<std::string>();
-              } else if (inner_value.is_number_integer()) {
-                inner_map[inner_key] = inner_value.get<int64_t>();
-              } else if (inner_value.is_number_float()) {
-                inner_map[inner_key] = inner_value.get<double>();
-              } else if (inner_value.is_boolean()) {
-                inner_map[inner_key] = inner_value.get<bool>();
-              } else {
-                LOGS_DEFAULT(WARNING) << "Unsupported JSON value type for key: " << inner_key << ". Skipping key.";
-              }
-            }
-            target_map[key] = std::move(inner_map);
-          }
-        } catch (const nlohmann::json::parse_error& e) {
-          // Handle syntax errors in JSON
-          ORT_THROW("JSON parsing error: " + std::string(e.what()));
-        } catch (const nlohmann::json::type_error& e) {
-          // Handle invalid type accesses
-          ORT_THROW("JSON type error: " + std::string(e.what()));
-        } catch (const std::exception& e) {
-          ORT_THROW("Error parsing load_config Map: " + std::string(e.what()));
-        }
-        return target_map;
-      };
-
-      pi.load_config = parse_config(provider_options.at("load_config"));
-    }
-
-    pi.context = ParseUint64(provider_options, "context");
-#if defined(IO_BUFFER_ENABLED)
-    // a valid context must be provided to enable IO Buffer optimizations
-    if (pi.context == nullptr) {
-#undef IO_BUFFER_ENABLED
-#define IO_BUFFER_ENABLED = 0
-      LOGS_DEFAULT(WARNING) << "Context is not set. Disabling IO Buffer optimization";
-    }
-#endif
-
-    if (provider_options.contains("num_of_threads")) {
-      if (!std::all_of(provider_options.at("num_of_threads").begin(),
-                       provider_options.at("num_of_threads").end(), ::isdigit)) {
-        ORT_THROW("[ERROR] [OpenVINO-EP] Number of threads should be a number. \n");
-      }
-      pi.num_of_threads = std::stoi(provider_options.at("num_of_threads"));
-      if (pi.num_of_threads <= 0) {
-        pi.num_of_threads = 1;
-        LOGS_DEFAULT(WARNING) << "[OpenVINO-EP] The value for the key 'num_threads' should be in the positive range.\n "
-                              << "Executing with num_threads=1";
-      }
-    }
-
-    if (provider_options.contains("model_priority")) {
-      pi.model_priority = provider_options.at("model_priority").data();
-      std::vector<std::string> supported_priorities({"LOW", "MEDIUM", "HIGH", "DEFAULT"});
-      if (std::find(supported_priorities.begin(), supported_priorities.end(),
-                    pi.model_priority) == supported_priorities.end()) {
-        pi.model_priority = "DEFAULT";
-        LOGS_DEFAULT(WARNING) << "[OpenVINO-EP] The value for the key 'model_priority' "
-                              << "is not one of LOW, MEDIUM, HIGH, DEFAULT. "
-                              << "Executing with model_priorty=DEFAULT";
-      }
-    }
-
-    if (provider_options.contains("num_streams")) {
-      pi.num_streams = std::stoi(provider_options.at("num_streams"));
-      if (pi.num_streams <= 0) {
-        pi.num_streams = 1;
-        LOGS_DEFAULT(WARNING) << "[OpenVINO-EP] The value for the key 'num_streams' should be in the range of 1-8.\n "
-                              << "Executing with num_streams=1";
-      }
-    }
-    try {
-      pi.enable_opencl_throttling = ParseBooleanOption(provider_options, "enable_opencl_throttling");
-
-      pi.enable_qdq_optimizer = ParseBooleanOption(provider_options, "enable_qdq_optimizer");
-
-      pi.disable_dynamic_shapes = ParseBooleanOption(provider_options, "disable_dynamic_shapes");
-    } catch (std::string msg) {
-      ORT_THROW(msg);
-    }
-    // Always true for NPU plugin or when passed .
-    if (pi.device_type.find("NPU") != std::string::npos) {
-      pi.disable_dynamic_shapes = true;
-    }
+    ParseProviderInfo(provider_options, config_options, pi);
 
     return std::make_shared<OpenVINOProviderFactory>(pi, SharedContext::Get());
   }

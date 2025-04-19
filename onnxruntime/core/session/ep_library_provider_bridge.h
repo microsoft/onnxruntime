@@ -10,6 +10,13 @@
 
 namespace onnxruntime {
 
+/// <summary>
+/// EpLibraryProviderBridge wraps execution providers that use the provider bridge so they can return OrtEpFactory
+/// instances.
+///
+/// It returns an EpFactoryInternal factory instance, which provides the ability to directly create an
+/// IExecutionProvider instance for the wrapped execution provider.
+/// </summary>
 class EpLibraryProviderBridge : public EpLibrary {
  public:
   EpLibraryProviderBridge(std::unique_ptr<ProviderLibrary> provider_library,

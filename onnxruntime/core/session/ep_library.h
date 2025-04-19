@@ -11,9 +11,12 @@
 
 namespace onnxruntime {
 
+/// <summary>
+/// EpLibrary is the base class for implementing support for execution provider libraries that provide
+/// OrtEpFactory instances.
+/// </summary>
 class EpLibrary {
  public:
-  EpLibrary() = default;
   virtual const char* RegistrationName() const = 0;
   virtual Status Load() { return Status::OK(); }
   virtual const std::vector<OrtEpFactory*>& GetFactories() = 0;  // valid after Load()

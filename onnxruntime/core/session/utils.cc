@@ -17,8 +17,10 @@
 #include "core/session/ep_library_provider_bridge.h"
 #include "core/session/ort_apis.h"
 #include "core/session/ort_env.h"
+#include "core/session/onnxruntime_session_options_config_keys.h"
 
 using namespace onnxruntime;
+#if !defined(ORT_MINIMAL_BUILD)
 namespace {
 // temporary implementation for testing. EP to 'select' is specified in config option
 Status TestAutoSelectEPsImpl(const Environment& env, InferenceSession& sess, const std::string& ep_to_select) {
@@ -48,7 +50,7 @@ Status TestAutoSelectEPsImpl(const Environment& env, InferenceSession& sess, con
 
     // add ep_options to SessionOptions with prefix.
     // preserve any user provided values.
-    const std::string ep_options_prefix = ProviderOptionsUtils::GetProviderOptionPrefix(ep_device->ep_name);
+    const std::string ep_options_prefix = OrtSessionOptions::GetProviderOptionPrefix(ep_device->ep_name.c_str());
     for (const auto& [key, value] : ep_device->ep_options.entries) {
       auto prefixed_key = ep_options_prefix + key;
       if (session_options.config_options.configurations.count(key) == 0) {
@@ -91,6 +93,7 @@ Status TestAutoSelectEPsImpl(const Environment& env, InferenceSession& sess, con
   return Status::OK();
 }
 }  // namespace
+#endif  // !defined(ORT_MINIMAL_BUILD)
 
 common::Status CopyStringToOutputArg(std::string_view str, const char* err_msg, char* out, size_t* size) {
   const size_t str_len = str.size();
@@ -126,6 +129,23 @@ OrtStatus* CreateSessionAndLoadModel(_In_ const OrtSessionOptions* options,
   bool load_config_from_model =
       os_env.GetEnvironmentVar(inference_session_utils::kOrtLoadConfigFromModelEnvVar) == "1";
 
+  // If ep.context_enable is set, then ep.context_file_path is expected, otherwise ORT don't know where to generate the _ctx.onnx file
+  if (options && model_path == nullptr) {
+    EpContextModelGenerationOptions ep_ctx_gen_options = options->value.GetEpContextGenerationOptions();
+
+    // This is checked by the OrtCompileApi's CompileModel() function, but we check again here in case
+    // the user used the older SessionOptions' configuration entries to generate a compiled model.
+    if (ep_ctx_gen_options.enable &&
+        ep_ctx_gen_options.output_model_file_path.empty() &&
+        ep_ctx_gen_options.output_model_buffer_ptr == nullptr) {
+      return OrtApis::CreateStatus(ORT_FAIL,
+                                   "Inference session was configured with EPContext model generation enabled but "
+                                   "without a valid location (e.g., file or buffer) for the output model. "
+                                   "Please specify a valid ep.context_file_path via SessionOption configs "
+                                   "or use the OrtCompileApi to compile a model to a file or buffer.");
+    }
+  }
+
   if (load_config_from_model) {
 #if !defined(ORT_MINIMAL_BUILD)
     if (model_path != nullptr) {
@@ -148,11 +168,13 @@ OrtStatus* CreateSessionAndLoadModel(_In_ const OrtSessionOptions* options,
         env->GetEnvironment());
   }
 
+#if !defined(ORT_MINIMAL_BUILD)
   // TEMPORARY for testing. Manually specify the EP to select.
   auto auto_select_ep_name = sess->GetSessionOptions().config_options.GetConfigEntry("test.ep_to_select");
   if (auto_select_ep_name) {
     ORT_API_RETURN_IF_STATUS_NOT_OK(TestAutoSelectEPsImpl(env->GetEnvironment(), *sess, *auto_select_ep_name));
   }
+#endif  // !defined(ORT_MINIMAL_BUILD)
 
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_MINIMAL_BUILD_CUSTOM_OPS)
   // Add custom domains

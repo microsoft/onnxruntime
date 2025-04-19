@@ -4,7 +4,6 @@
 #pragma once
 
 #include "core/common/status.h"
-#include "core/session/onnxruntime_cxx_api.h"
 #include "gtest/gtest.h"
 #include "gmock/gmock.h"
 
@@ -46,33 +45,4 @@
     Status _tmp_status = (function);                                    \
     EXPECT_FALSE(_tmp_status.IsOK());                                   \
     EXPECT_THAT(_tmp_status.ErrorMessage(), ::testing::HasSubstr(msg)); \
-  } while (false)
-
-// Same helpers for public API OrtStatus.
-#define ASSERT_ORTSTATUS_OK(function)                                              \
-  do {                                                                             \
-    OrtStatusPtr _tmp_status = (function);                                         \
-    ASSERT_EQ(_tmp_status, nullptr) << Ort::GetApi().GetErrorMessage(_tmp_status); \
-    if (_tmp_status) Ort::GetApi().ReleaseStatus(_tmp_status);                     \
-  } while (false)
-
-#define EXPECT_ORTSTATUS_OK(api, function)                                         \
-  do {                                                                             \
-    OrtStatusPtr _tmp_status = (api->function);                                    \
-    EXPECT_EQ(_tmp_status, nullptr) << Ort::GetApi().GetErrorMessage(_tmp_status); \
-    if (_tmp_status) Ort::GetApi().ReleaseStatus(_tmp_status);                     \
-  } while (false)
-
-#define ASSERT_ORTSTATUS_NOT_OK(api, function)                 \
-  do {                                                         \
-    OrtStatusPtr _tmp_status = (api->function);                \
-    ASSERT_NE(_tmp_status, nullptr);                           \
-    if (_tmp_status) Ort::GetApi().ReleaseStatus(_tmp_status); \
-  } while (false)
-
-#define EXPECT_ORTSTATUS_NOT_OK(api, function)                 \
-  do {                                                         \
-    OrtStatusPtr _tmp_status = (api->function);                \
-    EXPECT_NE(_tmp_status, nullptr);                           \
-    if (_tmp_status) Ort::GetApi().ReleaseStatus(_tmp_status); \
   } while (false)

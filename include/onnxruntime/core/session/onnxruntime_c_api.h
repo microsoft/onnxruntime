@@ -256,6 +256,7 @@ typedef enum OrtErrorCode {
   ORT_INVALID_GRAPH,
   ORT_EP_FAIL,
   ORT_MODEL_LOAD_CANCELED,
+  ORT_MODEL_REQUIRES_COMPILATION,
 } OrtErrorCode;
 
 typedef enum OrtOpAttrType {
@@ -5906,6 +5907,8 @@ struct OrtEp {
    * \param[in] this_ptr The OrtEp instance.
    * \return The execution provider name.
    *
+   * \note Returned string is owned by ORT and valid until UnregisterExecutionProviderLibrary is called.
+   *
    * \since Version 1.22.
    */
   const char*(ORT_API_CALL* GetName)(const OrtEp* this_ptr);
@@ -5917,7 +5920,7 @@ struct OrtEp {
   // OrtStatus* Compile(OrtEp* ep, const OrtGraph** graphs, OrtNode** fused_graph_nodes,
   //                    size_t count, OrtNodeComputeInfo* node_compute_infos);
 
-  //  Many other functions!
+  // TODO: Implement OrtEpApi and the complete OrtEp interface as the next step.
 };
 
 /** \brief The function signature that ORT will call to create OrtEpFactory instances.
@@ -5931,6 +5934,7 @@ struct OrtEp {
  *                          pre-allocated array.
  *                          i.e. usage is `factories[0] = new MyEpFactory();`
  * \param[in] max_factories The maximum number of OrtEpFactory instances that can be added to `factories`.
+ *                          Current default is to allow 4 factories. This can be increased in the future if needed.
  * \param[out] num_factories The number of OrtEpFactory instances created by the factory and added to `factories`.
  *
  * \snippet{doc} snippets.dox OrtStatus Return Value

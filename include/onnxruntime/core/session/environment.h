@@ -104,6 +104,7 @@ class Environment {
                                       const std::unordered_map<std::string, std::string>& options,
                                       const OrtArenaCfg* arena_cfg = nullptr);
 
+#if !defined(ORT_MINIMAL_BUILD)
   Status RegisterExecutionProviderLibrary(const std::string& registration_name, const ORTCHAR_T* lib_path);
   Status UnregisterExecutionProviderLibrary(const std::string& registration_name);
 
@@ -117,7 +118,7 @@ class Environment {
   const std::vector<const OrtEpDevice*>& GetOrtEpDevices() const {
     return execution_devices_;
   }
-
+#endif  // !defined(ORT_MINIMAL_BUILD)
   ~Environment();
 
  private:
@@ -127,6 +128,13 @@ class Environment {
                     const OrtThreadingOptions* tp_options = nullptr,
                     bool create_global_thread_pools = false);
 
+  std::unique_ptr<logging::LoggingManager> logging_manager_;
+  std::unique_ptr<onnxruntime::concurrency::ThreadPool> intra_op_thread_pool_;
+  std::unique_ptr<onnxruntime::concurrency::ThreadPool> inter_op_thread_pool_;
+  bool create_global_thread_pools_{false};
+  std::vector<AllocatorPtr> shared_allocators_;
+
+#if !defined(ORT_MINIMAL_BUILD)
   // register EPs that are built into the ORT binary so they can take part in AutoEP selection
   // added to ep_libraries
   Status CreateAndRegisterInternalEps();
@@ -134,12 +142,6 @@ class Environment {
   Status RegisterExecutionProviderLibrary(const std::string& registration_name,
                                           std::unique_ptr<EpLibrary> ep_library,
                                           const std::vector<EpFactoryInternal*>& internal_factories = {});
-
-  std::unique_ptr<logging::LoggingManager> logging_manager_;
-  std::unique_ptr<onnxruntime::concurrency::ThreadPool> intra_op_thread_pool_;
-  std::unique_ptr<onnxruntime::concurrency::ThreadPool> inter_op_thread_pool_;
-  bool create_global_thread_pools_{false};
-  std::vector<AllocatorPtr> shared_allocators_;
 
   struct EpInfo {
     // calls EpLibrary::Load
@@ -170,6 +172,7 @@ class Environment {
 
   // lookup set for internal EPs so we can create an IExecutionProvider directly
   std::unordered_set<EpFactoryInternal*> internal_ep_factories_;
+#endif  // !defined(ORT_MINIMAL_BUILD)
 };
 
 }  // namespace onnxruntime
