@@ -501,6 +501,18 @@ TEST(Einsum, ExplicitEinsumReduceAxesInInputToScalarOutput) {
   test.Run();
 }
 
+TEST(Einsum, ExplicitEinsumReduceAxesInInputToScalarOutput_Multi_Input) {
+  OpTester test("Einsum", 12, onnxruntime::kOnnxDomain);
+  // Matrix multiplication first and then reduction to scalar.
+  // Step1: ij,jk->ik
+  // Step2: ik->
+  test.AddAttribute<std::string>("equation", "ij,jk->");
+  test.AddInput<float>("x", {2, 2}, {1.f, 2.f, 3.f, 4.f});
+  test.AddInput<float>("y", {2, 2}, {1.f, 2.f, 3.f, 4.f});
+  test.AddOutput<float>("o", {}, {54});
+  test.Run();
+}
+
 // Implicit
 TEST(Einsum, ImplicitEinsumAsElementwiseMulOpWithOneScalar) {
   OpTester test("Einsum", 12, onnxruntime::kOnnxDomain);
