@@ -1850,7 +1850,7 @@ if (WIN32 AND onnxruntime_BUILD_SHARED_LIB AND
   endif()
 
   if (CMAKE_SYSTEM_NAME MATCHES "AIX")
-    list(APPEND onnxruntime_shared_lib_test_LIBS onnxruntime_graph onnxruntime_session onnxruntime_providers
+    list(APPEND onnxruntime_autoep_test_LIBS onnxruntime_graph onnxruntime_session onnxruntime_providers
                 onnxruntime_optimizer onnxruntime_mlas onnxruntime_framework onnxruntime_util onnxruntime_flatbuffers
                 iconv re2 onnx)
   endif()
