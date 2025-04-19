@@ -40,7 +40,7 @@ Status ShapeOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
     data_type = ONNX_NAMESPACE::TensorProto_DataType_INT32;
     typed_array_name = "Int32Array";
   }
-  ORT_RETURN_IF_NOT(SetWebnnDataType(desc, data_type), "Unsupported data type");
+  ORT_RETURN_IF_NOT(SetWebnnDataType(desc, data_type), "WebNN backend does not support data type: ", data_type);
   emscripten::val shape_buffer =
       emscripten::val::global(typed_array_name.c_str()).new_(emscripten::val::array(input_shape));
   emscripten::val shape_constant = model_builder.GetBuilder().call<emscripten::val>("constant", desc, shape_buffer);

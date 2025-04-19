@@ -164,7 +164,7 @@ inline bool ReadScalarTensorData(const onnx::TensorProto& tensor, emscripten::va
       scalar = emscripten::val{*reinterpret_cast<uint64_t*>(unpacked_tensor.data())};
       break;
     default:
-      LOGS(logger, ERROR) << "Unsupported data type : " << tensor.data_type();
+      LOGS(logger, ERROR) << "WebNN backend does not support data type: " << tensor.data_type();
       return false;
       break;
   }
@@ -362,6 +362,15 @@ const std::map<ONNX_NAMESPACE::TensorProto_DataType, std::string_view> onnx_to_w
     {ONNX_NAMESPACE::TensorProto_DataType_INT64, "int64"},
     {ONNX_NAMESPACE::TensorProto_DataType_UINT32, "uint32"},
     {ONNX_NAMESPACE::TensorProto_DataType_UINT64, "uint64"},
+};
+
+// This array contains the input/output data types of a WebNN graph that are allowed to be fallback to int32.
+constexpr std::array<ONNX_NAMESPACE::TensorProto_DataType, 5> supported_fallback_integer_data_types = {
+    ONNX_NAMESPACE::TensorProto_DataType_BOOL,
+    ONNX_NAMESPACE::TensorProto_DataType_INT8,
+    ONNX_NAMESPACE::TensorProto_DataType_UINT8,
+    ONNX_NAMESPACE::TensorProto_DataType_UINT32,
+    ONNX_NAMESPACE::TensorProto_DataType_INT64,
 };
 
 bool AreDataTypesSame(const std::string_view op_type,
