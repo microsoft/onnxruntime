@@ -404,7 +404,9 @@ SQ4BitGemmKernel_CompInt8_avx2(
     size_t CountK,
     size_t BlockCountK,
     const float* Bias,
-    size_t ldc
+    size_t ldc,
+    const float* ABlockSum,
+    const float* QuantBBlkSum
 )
 {
     if (BlkLen == 16) {
@@ -419,7 +421,9 @@ SQ4BitGemmKernel_CompInt8_avx2(
             CountK,
             BlockCountK,
             Bias,
-            ldc
+            ldc,
+            ABlockSum,
+            QuantBBlkSum
         );
     } else if (BlkLen == 32) {
         MlasQ4Int8GemmKernelBlkLen32Avx2<vnni>(
@@ -433,7 +437,9 @@ SQ4BitGemmKernel_CompInt8_avx2(
               CountK,
               BlockCountK,
               Bias,
-              ldc
+              ldc,
+              ABlockSum,
+              QuantBBlkSum
         );
     } else {
         MlasQ4Int8GemmKernelBlkLen64Avx2<vnni>(
@@ -447,7 +453,9 @@ SQ4BitGemmKernel_CompInt8_avx2(
             CountN,
             BlockCountK,
             Bias,
-            ldc
+            ldc,
+            ABlockSum,
+            QuantBBlkSum
         );
     }
 }
@@ -536,7 +544,6 @@ SQ4BitGemmKernel_BlkSum_CompInt8_avx2(
     const float* QuantAScale,
     const std::byte* QuantBData,
     const float* QuantBScale,
-    const std::byte* QuantBZeroPoint,
     float* C,
     size_t CountM,
     size_t CountN,
@@ -548,11 +555,6 @@ SQ4BitGemmKernel_BlkSum_CompInt8_avx2(
     const float* QuantBBlkSum
 )
 {
-    if (BlkLen >= 32 && CountM == 1) {
-        SQ4BitGemmM1Kernel_CompInt8_avx2<false>(BlkLen, QuantA, QuantAScale, QuantBData, QuantBScale, QuantBZeroPoint, C, CountN, CountK, BlockCountK, Bias);
-        return CountM;
-    }
-
     SQ4BitGemmKernel_CompInt8_avx2<false>(
         BlkLen,
         QuantA,
@@ -565,22 +567,10 @@ SQ4BitGemmKernel_BlkSum_CompInt8_avx2(
         CountK,
         BlockCountK,
         Bias,
-        ldc
+        ldc,
+        ABlockSum,
+        QuantBBlkSum
     );
-    float* c_blk = C;
-    const float* b_blk_sum = QuantBBlkSum;
-
-    size_t RowsRemaining = CountM;
-    const float* a_blksum_row = ABlockSum;
-    while (RowsRemaining > 0) {
-        auto RowsHandled = GetMlasPlatform().GemmFloatKernel(
-            a_blksum_row, b_blk_sum, c_blk, BlockCountK, RowsRemaining, CountN, BlockCountK, ldc, 1.f, false
-        );
-
-        c_blk += ldc * RowsHandled;
-        a_blksum_row += BlockCountK * RowsHandled;
-        RowsRemaining -= RowsHandled;
-    }
     return CountM;
 }
 
@@ -591,7 +581,6 @@ SQ4BitGemmKernel_BlkSum_CompInt8_avx2vnni(
   const float* QuantAScale,
   const std::byte* QuantBData,
   const float* QuantBScale,
-  const std::byte* QuantBZeroPoint,
   float* C,
   size_t CountM,
   size_t CountN,
@@ -603,11 +592,6 @@ SQ4BitGemmKernel_BlkSum_CompInt8_avx2vnni(
   const float* QuantBBlkSum
 )
 {
-    if (BlkLen >= 32 && CountM == 1) {
-        SQ4BitGemmM1Kernel_CompInt8_avx2<true>(BlkLen, QuantA, QuantAScale, QuantBData, QuantBScale, QuantBZeroPoint, C, CountN, CountK, BlockCountK, Bias);
-        return CountM;
-    }
-
     SQ4BitGemmKernel_CompInt8_avx2<true>(
         BlkLen,
         QuantA,
@@ -620,22 +604,10 @@ SQ4BitGemmKernel_BlkSum_CompInt8_avx2vnni(
         CountK,
         BlockCountK,
         Bias,
-        ldc
+        ldc,
+        ABlockSum,
+        QuantBBlkSum
     );
-    float* c_blk = C;
-    const float* b_blk_sum = QuantBBlkSum;
-
-    size_t RowsRemaining = CountM;
-    const float* a_blksum_row = ABlockSum;
-    while (RowsRemaining > 0) {
-        auto RowsHandled = GetMlasPlatform().GemmFloatKernel(
-            a_blksum_row, b_blk_sum, c_blk, BlockCountK, RowsRemaining, CountN, BlockCountK, ldc, 1.f, false
-        );
-
-        c_blk += ldc * RowsHandled;
-        a_blksum_row += BlockCountK * RowsHandled;
-        RowsRemaining -= RowsHandled;
-    }
     return CountM;
 }
 

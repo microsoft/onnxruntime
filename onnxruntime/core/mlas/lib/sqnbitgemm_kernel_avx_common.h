@@ -20,14 +20,7 @@ Q4BitGemmPackQuantBDataSize(
     if (ComputeType == SQNBIT_CompInt8) {
         size_t PackedQuantBDataSize = N * BlockCountK * MlasQNBitBlkDataSizeInBytes(BlkBitWidth, BlkLen);
         const size_t ScaleSize = N * BlockCountK * sizeof(float);
-        size_t BlkSumSize = MlasDivRoundup(N, 16) * BlockCountK * 16 * sizeof(float);
-
-        // _mm256_load_si256 requires alignment on a 32-byte boundary
-        constexpr size_t PackedQuantBDataAlignment = 32;
-        PackedQuantBDataSize += PackedQuantBDataAlignment - 1;
-        constexpr size_t BlkSumAlignment = MlasQNBitQuantBBlkSumAlignment();
-        BlkSumSize += BlkSumAlignment - 1;
-
+        const size_t BlkSumSize = ScaleSize;
         return PackedQuantBDataSize + ScaleSize + BlkSumSize;
     } else {
         const size_t PackedQuantBDataSize = N * BlockCountK * MlasQNBitBlkDataSizeInBytes(BlkBitWidth, BlkLen);
@@ -170,6 +163,12 @@ PackQuantB(
     // dst blklen32: | v0 v16 | v1 v17 | ... | v14 v30 | v15 v31 |
     // dst blklen16: | v0 v8 | v1 v9 | v2 v11 | v3 v12 | v4 v13 | v5 v14 | v6 v15 | v7 v16 |
 
+    // for avx512 && BlkLen == 32
+    // dst: |0~3/16~19|32~35/48~51|64~67/80~83|96~99/112~115|
+    //      |4~7/20~23|36~39/52~55|68~71/84~87|100~103/116~119|
+    //      |8~11/24~27|40~43/56~59|72~75/88~91|104~107/120~123|
+    //      |12~15/28~31|44~47/60~63|76~79/92~95|108~111/124~127|
+    // 
     // for avx512
     // dst: | v0 v64 | v1 v65 | ... | v62 v126 | v63 v127 |
     // for the remaining blk, it shall be:
@@ -192,6 +191,8 @@ PackQuantB(
               const std::byte* QuantBData, std::byte* PackedQuantBData,
               size_t pack_byte_pair_count, size_t pack_data_size) {
             for (size_t byte_pair_idx = 0; byte_pair_idx < pack_byte_pair_count; ++byte_pair_idx) {
+                // (avx256)dst: | v0 v32 | v1 v33 | ... | v30 v62 | v31 v63 |
+                // (avx512)dst: | v0 v64 | v1 v65 | ... | v62 v126 | v63 v127 |
                 const std::byte src0 = QuantBData[byte_pair_idx];
                 const std::byte src1 = QuantBData[byte_pair_idx + pack_data_size / 2];
 
@@ -278,11 +279,10 @@ ComputePackBlkSum(
             zp = (uint8_t)(low_zp ? ((*QuantBZP) & low_mask) : ((*QuantBZP) >> 4));
         }
 
-          // BlockSum is a width 16 row major matrix
-          const size_t dst_offset = ((n / 16) * BlockCountK + k_blk) * 16 + n % 16;
+        const size_t dst_offset = n * BlockCountK + k_blk;
         *(BlockSumBegin + dst_offset) = -QuantBScale * zp;
-        if (BlkLen == 16) {  // TODO
 
+        if (BlkLen == 16) {
         } else if (BlkLen >= SubBlkLen) {
             const size_t scale_dst_offset = GetContinueLayoutOffsetSubBlk(N, n, BlockCountK, k_blk);
             *(QuantBScaleBegin + scale_dst_offset) = QuantBScale;
