@@ -479,6 +479,11 @@ class InferenceSession {
   const SessionOptions& GetSessionOptions() const;
 
   /*
+   * Get the options so auto-selected EPs can augment as they are added post-session creation.
+   */
+  SessionOptions& GetMutableSessionOptions();
+
+  /*
    * Get the DataTransferManager associated with this session
    */
   const DataTransferManager& GetDataTransferManager() const;

@@ -11,6 +11,8 @@ set(onnxruntime_common_src_patterns
     "${ONNXRUNTIME_ROOT}/core/common/logging/*.cc"
     "${ONNXRUNTIME_ROOT}/core/common/logging/sinks/*.h"
     "${ONNXRUNTIME_ROOT}/core/common/logging/sinks/*.cc"
+    "${ONNXRUNTIME_ROOT}/core/platform/device_discovery.h"
+    "${ONNXRUNTIME_ROOT}/core/platform/device_discovery.cc"
     "${ONNXRUNTIME_ROOT}/core/platform/env.h"
     "${ONNXRUNTIME_ROOT}/core/platform/env.cc"
     "${ONNXRUNTIME_ROOT}/core/platform/env_time.h"
@@ -157,6 +159,9 @@ if(APPLE)
   target_link_libraries(onnxruntime_common PRIVATE "-framework Foundation")
 endif()
 
+if(MSVC)
+  target_link_libraries(onnxruntime_common PRIVATE dxcore.lib)
+endif()
 
 if(MSVC)
   if(onnxruntime_target_platform STREQUAL "ARM64")
@@ -204,7 +209,6 @@ elseif(NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
     endif()
   endif()
 endif()
-
 
 if (RISCV64 OR ARM64 OR ARM OR X86 OR X64 OR X86_64)
     # Link cpuinfo if supported

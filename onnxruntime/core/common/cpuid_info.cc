@@ -107,6 +107,8 @@ void CPUIDInfo::X86Init() {
   int data[4] = {-1};
   GetCPUID(0, data);
 
+  vendor_ = GetX86Vendor(data);
+
   int num_IDs = data[0];
   if (num_IDs >= 1) {
     GetCPUID(1, data);
@@ -139,6 +141,14 @@ void CPUIDInfo::X86Init() {
       }
     }
   }
+}
+
+std::string CPUIDInfo::GetX86Vendor(int32_t* data) {
+  char vendor[sizeof(int32_t) * 3 + 1]{};
+  *reinterpret_cast<int*>(vendor + 0) = data[1];
+  *reinterpret_cast<int*>(vendor + 4) = data[3];
+  *reinterpret_cast<int*>(vendor + 8) = data[2];
+  return vendor;
 }
 
 #endif  // defined(CPUIDINFO_ARCH_X86)
@@ -194,6 +204,9 @@ void CPUIDInfo::ArmLinuxInit() {
 #elif defined(_WIN32)  // ^ defined(__linux__)
 
 void CPUIDInfo::ArmWindowsInit() {
+  // Get the ARM vendor string from the registry
+  vendor_ = GetArmWindowsVendor();
+
 // ARM32 certainly doesn't have fp16, so we will skip the logic to avoid using RegGetValueA Windows API
 #if !defined(_M_ARM)
 #pragma region Application Family or OneCore Family
@@ -265,6 +278,15 @@ void CPUIDInfo::ArmWindowsInit() {
     has_arm_sve_i8mm_ = false;
     has_arm_neon_bf16_ = false;
   }
+}
+
+std::string CPUIDInfo::GetArmWindowsVendor() {
+  const int MAX_VALUE_NAME = 256;
+  const CHAR vendorKey[] = "HARDWARE\\DESCRIPTION\\System\\CentralProcessor\\0";
+  CHAR vendorVal[MAX_VALUE_NAME] = "";
+  unsigned long vendorSize = sizeof(char) * MAX_VALUE_NAME;
+  ::RegGetValueA(HKEY_LOCAL_MACHINE, vendorKey, "Vendor Identifier", RRF_RT_REG_SZ | RRF_ZEROONFAILURE, nullptr, &vendorVal, &vendorSize);
+  return vendorVal;
 }
 
 #elif defined(__APPLE__)  // ^ defined(_WIN32)

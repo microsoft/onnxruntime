@@ -17,6 +17,7 @@
 #include "test/common/tensor_op_test_utils.h"
 #include "test/framework/test_utils.h"
 #include "test/test_environment.h"
+#include "test/util/include/api_asserts.h"
 #include "test/util/include/asserts.h"
 #include "test/util/include/default_providers.h"
 #include "test/util/include/inference_session_wrapper.h"
@@ -173,13 +174,13 @@ TEST(XnnpackEP, TestAddEpUsingPublicApi) {
     // C API test
     const OrtApi* api = OrtGetApiBase()->GetApi(ORT_API_VERSION);
     OrtSessionOptions* so{nullptr};
-    ASSERT_ORTSTATUS_OK(api, CreateSessionOptions(&so));
+    ASSERT_ORTSTATUS_OK(api->CreateSessionOptions(&so));
 
     // add with provider options. manually check the ProviderOptions instance passed through to
     // OrtSessionOptionsAppendExecutionProvider_Xnnpack is correct.
     const char* keys[1] = {"one"};
     const char* values[1] = {"two"};
-    ASSERT_ORTSTATUS_OK(api, SessionOptionsAppendExecutionProvider(so, "XNNPACK", keys, values, 1));
+    ASSERT_ORTSTATUS_OK(api->SessionOptionsAppendExecutionProvider(so, "XNNPACK", keys, values, 1));
     api->ReleaseSessionOptions(so);
   }
 }
