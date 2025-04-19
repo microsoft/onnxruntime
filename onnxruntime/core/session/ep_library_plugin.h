@@ -14,7 +14,8 @@ namespace onnxruntime {
 ///
 /// It handles load/unload of the library, and calls CreateEpFactories and ReleaseEpFactory in the library.
 /// </summary>
-struct EpLibraryPlugin : EpLibrary {
+class EpLibraryPlugin : public EpLibrary {
+ public:
   EpLibraryPlugin(const std::string& registration_name, const ORTCHAR_T* library_path)
       : registration_name_{registration_name},
         library_path_{library_path} {
@@ -40,5 +41,7 @@ struct EpLibraryPlugin : EpLibrary {
   const std::filesystem::path library_path_;
   void* handle_{};
   std::vector<OrtEpFactory*> factories_{};
+  CreateEpApiFactoriesFn create_fn_{nullptr};
+  ReleaseEpApiFactoryFn release_fn_{nullptr};
 };
 }  // namespace onnxruntime

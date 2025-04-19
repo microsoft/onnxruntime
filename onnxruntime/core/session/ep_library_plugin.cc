@@ -14,17 +14,17 @@ Status EpLibraryPlugin::Load() {
   ORT_TRY {
     if (factories_.empty()) {
       ORT_RETURN_IF_ERROR(Env::Default().LoadDynamicLibrary(library_path_, false, &handle_));
-
-      CreateEpApiFactoriesFn create_fn;
-      ORT_RETURN_IF_ERROR(
-          Env::Default().GetSymbolFromLibrary(handle_, "CreateEpFactories", reinterpret_cast<void**>(&create_fn)));
+      ORT_RETURN_IF_ERROR(Env::Default().GetSymbolFromLibrary(handle_, "CreateEpFactories",
+                                                              reinterpret_cast<void**>(&create_fn_)));
+      ORT_RETURN_IF_ERROR(Env::Default().GetSymbolFromLibrary(handle_, "ReleaseEpFactory",
+                                                              reinterpret_cast<void**>(&release_fn_)));
 
       // allocate buffer for EP to add factories to. library can add up to 4 factories.
       std::vector<OrtEpFactory*> factories{4, nullptr};
 
       size_t num_factories = 0;
-      OrtStatus* ort_status = create_fn(registration_name_.c_str(), OrtGetApiBase(),
-                                        factories.data(), factories.size(), &num_factories);
+      OrtStatus* ort_status = create_fn_(registration_name_.c_str(), OrtGetApiBase(),
+                                         factories.data(), factories.size(), &num_factories);
       if (ort_status != nullptr) {
         return ToStatus(ort_status);
       }
@@ -56,17 +56,13 @@ Status EpLibraryPlugin::Unload() {
   if (handle_) {
     if (!factories_.empty()) {
       try {
-        ReleaseEpApiFactoryFn release_fn;
-        ORT_RETURN_IF_ERROR(
-            Env::Default().GetSymbolFromLibrary(handle_, "ReleaseEpFactory", reinterpret_cast<void**>(&release_fn)));
-
         for (size_t idx = 0, end = factories_.size(); idx < end; ++idx) {
           auto* factory = factories_[idx];
           if (factory == nullptr) {
             continue;
           }
 
-          OrtStatus* status = release_fn(factory);
+          OrtStatus* status = release_fn_(factory);
           if (status != nullptr) {
             // log it and treat it as released
             LOGS_DEFAULT(ERROR) << "ReleaseEpFactory failed for: " << library_path_ << " with error: "

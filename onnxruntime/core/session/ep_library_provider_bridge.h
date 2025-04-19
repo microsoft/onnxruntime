@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #pragma once
+#include <memory>
 
 #include "core/session/ep_library.h"
 #include "core/session/ep_factory_internal.h"
@@ -16,15 +17,16 @@ namespace onnxruntime {
 /// It returns an EpFactoryInternal factory instance, which provides the ability to directly create an
 /// IExecutionProvider instance for the wrapped execution provider.
 /// </summary>
-struct EpLibraryProviderBridge : EpLibrary {
-  EpLibraryProviderBridge(const std::string& registration_name, const ORTCHAR_T* library_path)
-      : registration_name_{registration_name},
-        library_path_{library_path},
-        provider_library_{library_path} {
+class EpLibraryProviderBridge : public EpLibrary {
+ public:
+  EpLibraryProviderBridge(std::unique_ptr<ProviderLibrary> provider_library,
+                          std::unique_ptr<EpLibrary> ep_library_plugin)
+      : provider_library_{std::move(provider_library)},
+        ep_library_plugin_{std::move(ep_library_plugin)} {
   }
 
   const char* RegistrationName() const override {
-    return registration_name_.c_str();
+    return ep_library_plugin_->RegistrationName();
   }
 
   const std::vector<OrtEpFactory*>& GetFactories() override {
@@ -42,11 +44,13 @@ struct EpLibraryProviderBridge : EpLibrary {
   ORT_DISALLOW_COPY_AND_ASSIGNMENT(EpLibraryProviderBridge);
 
  private:
-  std::unique_ptr<EpFactoryInternal> CreateCudaEpFactory(Provider& provider);
+  std::unique_ptr<ProviderLibrary> provider_library_;  // provider bridge EP library
 
-  std::string registration_name_;
-  std::filesystem::path library_path_;
-  ProviderLibrary provider_library_;  // handles onnxruntime_providers_shared and the provider bridge EP library
+  // EpLibraryPlugin that provides the CreateEpFactories and ReleaseEpFactory implementations.
+  // we wrap the factories it contains to pass through GetDeviceInfoIfSupported calls, and
+  // implement EpFactoryInternal::CreateIExecutionProvider by calling Provider::CreateIExecutionProvider.
+  std::unique_ptr<EpLibrary> ep_library_plugin_;
+
   std::vector<std::unique_ptr<EpFactoryInternal>> factories_;
   std::vector<OrtEpFactory*> factory_ptrs_;                // for convenience
   std::vector<EpFactoryInternal*> internal_factory_ptrs_;  // for convenience

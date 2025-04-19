@@ -11,7 +11,7 @@
 #include "core/session/onnxruntime_c_api.h"
 
 namespace onnxruntime {
-struct EpLibraryInternal;
+class EpLibraryInternal;
 struct SessionOptions;
 
 class EpFactoryInternal : public OrtEpFactory {
@@ -20,8 +20,12 @@ class EpFactoryInternal : public OrtEpFactory {
                                              OrtKeyValuePairs** ep_metadata,
                                              OrtKeyValuePairs** ep_options)>;
 
-  using CreateFunc = std::function<std::unique_ptr<IExecutionProvider>(const OrtSessionOptions& session_options,
-                                                                       const OrtLogger& session_logger)>;
+  using CreateFunc = std::function<OrtStatus*(const OrtHardwareDevice* const* devices,
+                                              const OrtKeyValuePairs* const* ep_metadata_pairs,
+                                              size_t num_devices,
+                                              const OrtSessionOptions* session_options,
+                                              const OrtLogger* logger, std::unique_ptr<IExecutionProvider>* ep)>;
+
   EpFactoryInternal(const std::string& ep_name, const std::string& vendor,
                     IsSupportedFunc&& is_supported_func,
                     CreateFunc&& create_func);
@@ -45,7 +49,7 @@ class EpFactoryInternal : public OrtEpFactory {
                                       _In_reads_(num_devices) const OrtKeyValuePairs* const* ep_metadata_pairs,
                                       _In_ size_t num_devices,
                                       _In_ const OrtSessionOptions* session_options,
-                                      _In_ const OrtLogger* logger, _Out_ std::unique_ptr<IExecutionProvider>& ep);
+                                      _In_ const OrtLogger* logger, _Out_ std::unique_ptr<IExecutionProvider>* ep);
 
   // Function ORT calls to release an EP instance.
   void ReleaseEp(OrtEp* ep);
@@ -62,7 +66,7 @@ class EpFactoryInternal : public OrtEpFactory {
 // IExecutionProviderFactory for EpFactoryInternal that is required for SessionOptionsAppendExecutionProvider_V2
 struct InternalExecutionProviderFactory : public IExecutionProviderFactory {
  public:
-  InternalExecutionProviderFactory(EpFactoryInternal& ep_factory, std::vector<const OrtEpDevice*> ep_devices);
+  InternalExecutionProviderFactory(EpFactoryInternal& ep_factory, const std::vector<const OrtEpDevice*>& ep_devices);
 
   std::unique_ptr<IExecutionProvider> CreateProvider(const OrtSessionOptions& session_options,
                                                      const OrtLogger& session_logger) override;

@@ -44,20 +44,20 @@ OrtStatus* EpFactoryInternal::CreateEp(const OrtHardwareDevice* const* /*devices
   ORT_THROW("Internal error. CreateIExecutionProvider should be used for EpFactoryInternal.");
 }
 
-OrtStatus* EpFactoryInternal::CreateIExecutionProvider(const OrtHardwareDevice* const* /*devices*/,
-                                                       const OrtKeyValuePairs* const* /*ep_metadata_pairs*/,
+OrtStatus* EpFactoryInternal::CreateIExecutionProvider(const OrtHardwareDevice* const* devices,
+                                                       const OrtKeyValuePairs* const* ep_metadata_pairs,
                                                        size_t num_devices,
                                                        const OrtSessionOptions* session_options,
                                                        const OrtLogger* session_logger,
-                                                       std::unique_ptr<IExecutionProvider>& ep) {
+                                                       std::unique_ptr<IExecutionProvider>* ep) {
+  *ep = nullptr;
+
   if (num_devices != 1) {
     return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT,
                                  "EpFactoryInternal currently only supports one device at a time.");
   }
 
-  ep = create_func_(*session_options, *session_logger);
-
-  return nullptr;
+  return create_func_(devices, ep_metadata_pairs, num_devices, session_options, session_logger, ep);
 }
 
 void EpFactoryInternal::ReleaseEp(OrtEp* /*ep*/) {
@@ -66,7 +66,7 @@ void EpFactoryInternal::ReleaseEp(OrtEp* /*ep*/) {
 }
 
 InternalExecutionProviderFactory::InternalExecutionProviderFactory(EpFactoryInternal& ep_factory,
-                                                                   std::vector<const OrtEpDevice*> ep_devices)
+                                                                   const std::vector<const OrtEpDevice*>& ep_devices)
     : ep_factory_{ep_factory} {
   devices_.reserve(ep_devices.size());
   ep_metadata_.reserve(ep_devices.size());
@@ -82,7 +82,7 @@ InternalExecutionProviderFactory::CreateProvider(const OrtSessionOptions& sessio
                                                  const OrtLogger& session_logger) {
   std::unique_ptr<IExecutionProvider> ep;
   OrtStatus* status = ep_factory_.CreateIExecutionProvider(devices_.data(), ep_metadata_.data(), devices_.size(),
-                                                           &session_options, &session_logger, ep);
+                                                           &session_options, &session_logger, &ep);
   if (status != nullptr) {
     ORT_THROW("Error creating execution provider: ", ToStatus(status).ToString());
   }

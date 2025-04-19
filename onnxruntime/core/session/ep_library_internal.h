@@ -18,7 +18,8 @@ namespace onnxruntime {
 /// It returns an EpFactoryInternal factory instance, which provides the ability to directly create an
 /// IExecutionProvider instance for the wrapped execution provider.
 /// </summary>
-struct EpLibraryInternal : EpLibrary {
+class EpLibraryInternal : public EpLibrary {
+ public:
   EpLibraryInternal(std::unique_ptr<EpFactoryInternal> factory)
       : factory_{std::move(factory)}, factory_ptrs_{factory_.get()} {
   }
