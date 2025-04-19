@@ -659,21 +659,23 @@ class HQQWeightOnlyQuantizer:
         b_array_torch = torch.from_numpy(b_array)
         if torch.cuda.is_available():
             b_array_torch = b_array_torch.cuda()
+
+        bits = self.config.bits
         quant_weight_torch, scales_torch, zero_points_torch = self.quantize_internal(
-            b_array_torch.T, bits=self.config.bits, group_size=self.config.block_size
+            b_array_torch.T, bits=bits, group_size=self.config.block_size
         )
         quant_weight_torch = quant_weight_torch.contiguous()
         scales_torch = scales_torch.contiguous()
         zero_points_torch = zero_points_torch.contiguous()
 
-        packed_size = 8 // self.config.bits  # number of elements packed into one byte
+        packed_size = 8 // bits  # number of elements packed into one byte
 
         packed_torch = torch.zeros(
             (quant_weight_torch.shape[0], quant_weight_torch.shape[1] // packed_size),
             dtype=torch.uint8,
             device=quant_weight_torch.device,
         )
-        self.pack_on_row_fast_248bit(packed_torch, quant_weight_torch, self.config.bits)
+        self.pack_on_row_fast_248bit(packed_torch, quant_weight_torch, bits)
         scales = scales_torch.cpu().numpy()
         zero_points = zero_points_torch.cpu().numpy()
         # reshape to the predefined shape in MatmulNbits
@@ -686,7 +688,7 @@ class HQQWeightOnlyQuantizer:
         packed_torch = packed_torch.reshape(cols, k_blocks, blob_size)
 
         b_quant = onnx.numpy_helper.from_array(packed_torch.cpu().numpy())
-        b_quant.name = b_pb.name + "_Q" + str(self.config.bits)
+        b_quant.name = b_pb.name + "_Q" + str(bits)
         for input in bs_graph.input:
             if input.name == input_b:
                 bs_graph.input.remove(input)
@@ -706,14 +708,14 @@ class HQQWeightOnlyQuantizer:
         rows, cols = b_array.shape
         kwargs["K"] = rows
         kwargs["N"] = cols
-        kwargs["bits"] = self.config.bits
+        kwargs["bits"] = bits
         kwargs["block_size"] = self.config.block_size
 
         matmul_q_node = onnx.helper.make_node(
             "MatMulNBits",
             inputs=input_names,
             outputs=[node.output[0]],
-            name=node.name + "_Q" + str(self.config.bits) if node.name else "",
+            name=node.name + "_Q" + str(bits) if node.name else "",
             domain="com.microsoft",
             **kwargs,
         )
