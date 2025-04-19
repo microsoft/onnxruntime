@@ -179,7 +179,7 @@ class MlasSQ8BitPrepackTest : public MlasTestBase {
     constexpr size_t Ldb = (((K + BlkLen - 1) & (~(BlkLen - 1))) * Bits + 7) / 8;
     constexpr size_t PackBCount = N * Ldb;
     constexpr size_t ScaleCount = (K + BlkLen - 1) / BlkLen * N;
-    constexpr size_t BufferSize = MlasQNBitGemmPackQuantBDataSize(N, K, BlkLen, hasZp, SQNBIT_CompInt8);
+    constexpr size_t BufferSize = MlasQNBitGemmPackQuantBDataSize(N, K, Bits, BlkLen, hasZp, SQNBIT_CompInt8);
 
     const auto* inputB = inputB_.GetFilledBuffer(PackBCount, [this](uint8_t* p, size_t t) {
       for (size_t i = 0; i < PackBCount; i++) {
@@ -240,21 +240,40 @@ class MlasSQ8BitPrepackTest : public MlasTestBase {
   }
 };
 
+template <size_t M, size_t N, size_t K, size_t BlkLen>
 class MlasSQ8BitGemmKernelTest : public MlasTestBase {
  private:
   unsigned int seed_;
   std::mt19937 gen_;  // mersenne_twister_engine seeded with rd()
-  MatrixGuardBuffer<MLAS_FP16> A_, B_, C_, ref_, bias_;
+  std::uniform_real_distribution<float> distrib_f32_;
+  std::uniform_int_distribution<uint8_t> distrib_u8_, workspace_;
+  MatrixGuardBuffer<uint8_t> packedBuffer_;
+  MatrixGuardBuffer<float> A_, C_, ref_, bias_;
 
-  MLAS_FORCEINLINE
-  void InitializeBuffer(MLAS_FP16* buffer, float min, float max, size_t count) {
-    std::uniform_real_distribution<float> distrib(min, max);
-    for (size_t i = 0; i < count; i++) {
-      buffer[i] = MLAS_FP16(distrib(gen_));
+  void InitializeBuffer(uint8_t* packedB, float* packedScale, float* blkSum) {
+    size_t ldb = (K + BlkLen - 1) & (~(BlkLen - 1));
+    size_t BlkCount = (K + BlkLen - 1) / BlkLen;
+
+    for (size_t i = 0; i < N; ++i) {
+      for (size_t j = 0; j < ldb; ++j) {
+        packedB[i * ldb + j] = this->distrib_u8_(this->gen_);
+      }
+    }
+
+    for (size_t i = 0; i < N; ++i) {
+      for (size_t j = 0; j < BlkCount; ++j) {
+        packedScale[i * BlkCount + j] = this->distrib_f32_(this->gen_);
+      }
+    }
+
+    size_t ldSum = (N + 15) & (~15);
+    for (size_t i = 0; i < ldSum; ++i) {
+      for (size_t j = 0; j < BlkCount; ++j) {
+        blkSum[i * BlkCount + j] = this->distrib_f32_(this->gen_);
+      }
     }
   }
 
-  MLAS_FORCEINLINE
   bool FloatEqual(MLAS_FP16 v0, MLAS_FP16 v1, float rtol, float atol) {
     float f0 = v0.ToFloat(), f1 = v1.ToFloat();
     return std::abs(f0 - f1) <= std::abs(f1 * rtol) + atol;
@@ -300,26 +319,36 @@ class MlasSQ8BitGemmKernelTest : public MlasTestBase {
     }
   }
 
-  template <size_t M, size_t N, size_t K, size_t BlkLen, bool UseBias>
-  void TestHQ4BitGemmKernel() {
-    static_assert(M <= 2);
-    constexpr size_t BlkNum = (K + BlkLen - 1) / BlkLen;
-    constexpr size_t ldb = BlkNum * BlkLen;
+  template <bool HasBias, bool hasZp>
+  void TestSQ8BitGemmKernel() {
+    constexpr size_t BlkCount = (K + BlkLen - 1) / BlkLen;
+    constexpr size_t ldb = BlkCount * BlkLen;
+    constexpr size_t lda = ldb;
+    constexpr size_t ldc = (N + 15) & (~15);
+    size_t bufferSize = MlasQNBitGemmPackQuantBDataSize(N, K, 8, BlkLen, hasZp, SQNBIT_CompInt8);
 
-    const auto* A = A_.GetFilledBuffer(M * K, [this](MLAS_FP16* p, size_t t) {
-      InitializeBuffer(p, -0.25f, 0.25f, t);
-    });
-    const auto* B = B_.GetFilledBuffer(ldb * N, [this](MLAS_FP16* p, size_t t) {
-      InitializeBuffer(p, -0.25f, 0.25f, t);
-    });
-    auto* C = C_.GetBuffer(M * N, true);
-    auto* ref = ref_.GetBuffer(M * N, true);
-    auto* bias = bias_.GetFilledBuffer(N, [this](MLAS_FP16* p, size_t t) {
-      InitializeBuffer(p, -5.0f, 5.0f, t);
+    const auto* A = A_.GetFilledBuffer(M * lda, [this, lda](float* p, size_t t) {
+      for (size_t i = 0; i < M; i++) {
+        for (size_t j = 0; j < K; j++) {
+          p[i * lda + j] = this->distrib_f32_(this->gen_);
+        }
+      }
     });
 
-    GetMlasPlatform().QNBitGemmDispatch->HQ4BitGemmKernel_CompFp16(
-        A, B, UseBias ? bias : nullptr, C, M, N, K, K, ldb, N);
+    auto* packedBuffer = packedBuffer_.GetBuffer(bufferSize, true);
+    PackedQuantBDataStruct<float, 8> packedQuantB(packedBuffer, N, BlkCount, BlkLen);
+    InitializeBuffer((uint8_t*)packedQuantB.PackedQuantBData, packedQuantB.PackedQuantBScale, packedQuantB.QuantBBlkSum);
+
+    auto* C = C_.GetBuffer(M * ldc, true);
+    auto* ref = ref_.GetBuffer(M * ldc, true);
+
+    auto* bias = bias_.GetFilledBuffer(N, [this](float* p, size_t t) {
+      for (size_t i = 0; i < N; i++) {
+        p[i] = this->distrib_f32_(this->gen_);
+      }
+    });
+
+    MlasQNBitGemmBatch(M, N, K, batch_count, nbits_, block_size_, compute_type_, data.data(), workspace.get(), thread_pool);
 
     MatMul<M, N, K, ldb, UseBias>(A, B, bias, ref);
     Check<N, M, N>(C, ref);
@@ -327,11 +356,12 @@ class MlasSQ8BitGemmKernelTest : public MlasTestBase {
 
  public:
   MlasSQ8BitGemmKernelTest()
-      : seed_(19287), gen_(seed_) {
+      : seed_(19287), gen_(seed_), distrib_f32_(-1.25f, 1.25f), distrib_u8_(0, 255) {
   }
 
   static const char* GetTestSuiteName() {
-    return "SQ8BitGemmKernel";
+    return "SQ8BitGemmKernel_M*N*K*BlkLen_" + std::to_string(M) + "x" + std::to_string(N) + "x" +
+           std::to_string(K) + "x" + std::to_string(BlkLen);
   }
 
   template <size_t M>
@@ -372,16 +402,10 @@ class MlasSQ8BitGemmKernelTest : public MlasTestBase {
 
 static UNUSED_VARIABLE bool added_to_main = AddTestRegister([](bool is_short_execute) {
   size_t count = 0;
-  unsigned Cpuid7[4];
-#if defined(_WIN32)
-  __cpuidex((int*)Cpuid7, 7, 0);
-#else
-  __cpuid_count(7, 0, Cpuid7[0], Cpuid7[1], Cpuid7[2], Cpuid7[3]);
-#endif
-  bool support_avx512 = ((Cpuid7[1] & 0x10000) != 0) && (Cpuid7[1] & 0xC0020000) == 0xC0020000;
+  auto& platform = GetMlasPlatform();
 
   if (is_short_execute) {
-    if (support_avx512) {
+    if (platform.Avx512Supported_) {
       count += MlasDirectShortExecuteTests<MlasSQ8BitPrepackTest<1, 1, 16, 128>>::RegisterShortExecute();
       count += MlasDirectShortExecuteTests<MlasSQ8BitPrepackTest<1, 1, 32, 128>>::RegisterShortExecute();
       count += MlasDirectShortExecuteTests<MlasSQ8BitPrepackTest<1, 1, 64, 128>>::RegisterShortExecute();
