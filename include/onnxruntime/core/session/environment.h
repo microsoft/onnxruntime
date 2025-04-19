@@ -56,6 +56,18 @@ class Environment {
   }
 
   /**
+   * Shuts down the global thread pools.
+   * Intended for the Python API, where Environment is wrapped in a static shared_ptr that is copied into each inference
+   * session, but we still need to shut the thread pools down when the Python interpreter is terminated. Invalidates all
+   * inference sessions created with this Environment.
+   */
+  void ShutdownGlobalThreadPools() {
+    intra_op_thread_pool_.reset();
+    inter_op_thread_pool_.reset();
+    create_global_thread_pools_ = false;
+  }
+
+  /**
    * Registers an allocator for sharing between multiple sessions.
    * Return an error if an allocator with the same OrtMemoryInfo is already registered.
    */
