@@ -235,7 +235,7 @@ OrtStatus* InitializeSession(_In_ const OrtSessionOptions* options,
 }
 
 namespace onnxruntime {
-
+#if !defined(ORT_MINIMAL_BUILD)
 Status LoadPluginOrProviderBridge(const std::string& registration_name,
                                   const ORTCHAR_T* library_path,
                                   std::unique_ptr<EpLibrary>& ep_library,
@@ -264,5 +264,5 @@ Status LoadPluginOrProviderBridge(const std::string& registration_name,
 
   return Status::OK();
 }
-
+#endif
 }  // namespace onnxruntime
