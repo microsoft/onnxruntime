@@ -206,6 +206,9 @@ static Status BindQnnTensorMemoryToOrtValueMemory(const logging::Logger& logger,
     LOGS(logger, VERBOSE) << "Setting Qnn_Tensor_t clientBuf to ORT tensor memory.";
     SetQnnTensorMemType(qnn_tensor, QNN_TENSORMEMTYPE_RAW);
     SetQnnTensorClientBuf(qnn_tensor, ort_value_data, ort_value_data_size);
+    if ((reinterpret_cast<uintptr_t>(ort_value_data) & (4095)) != 0) {
+      LOGS(logger, VERBOSE) << "ort_value_data is not from shared and not aligned";
+    }
   } else {
     LOGS(logger, VERBOSE) << "Setting Qnn_Tensor_t memHandle to ORT tensor shared memory.";
     Qnn_MemHandle_t qnn_mem_handle{};

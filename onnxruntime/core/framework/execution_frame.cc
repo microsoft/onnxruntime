@@ -529,8 +529,12 @@ Status ExecutionFrame::AllocateMLValueTensorSelfOwnBufferHelper(OrtValue& ort_va
     return Status(ONNXRUNTIME, FAIL, "Trying to allocate memory for unused optional inputs/outputs");
   }
 
+  // This alignment is used to properly space out individual chunks in a common memory buffer.
+  auto location_alignment = location.GetAlignment();
+  const auto alignment = (location_alignment.has_value()) ? *location_alignment : kAllocAlignment;
+
   size_t size = 0;
-  ORT_RETURN_IF_ERROR(Tensor::CalculateTensorStorageSize(element_type, shape, kAllocAlignment, size));
+  ORT_RETURN_IF_ERROR(Tensor::CalculateTensorStorageSize(element_type, shape, alignment, size));
 
   // Lazily get the allocator only if needed.
   AllocatorPtr alloc = nullptr;

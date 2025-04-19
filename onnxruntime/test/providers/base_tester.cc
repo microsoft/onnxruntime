@@ -537,7 +537,7 @@ void BaseTester::Run(ExpectResult expect_result, const std::string& expected_fai
   SessionOptions so;
   so.use_per_session_threads = false;
   so.session_logid = test_name_;
-  so.session_log_verbosity_level = 0;
+  so.session_log_verbosity_level = 1;
   so.execution_mode = execution_mode;
   so.use_deterministic_compute = use_determinism_;
   so.graph_optimization_level = TransformerLevel::Default;  // 'Default' == off

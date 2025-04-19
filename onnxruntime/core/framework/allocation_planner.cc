@@ -8,6 +8,7 @@
 #include <sstream>
 #include <ctime>
 #include <iomanip>
+#include <iterator>
 #include "core/common/exceptions.h"
 #include "core/common/inlined_containers.h"
 #include "core/common/safeint.h"
@@ -856,10 +857,15 @@ class PlannerImpl {
                     // we have seen
                     plan_.SetLocation(static_cast<size_t>(index), exec_provider->GetOrtDeviceByMemType(OrtMemType::OrtMemTypeDefault));
                   } else {
-                    // Default the location to CPU
-                    plan_.SetLocation(static_cast<size_t>(index),
-                                      execution_providers_.Get(CPU)->GetOrtDeviceByMemType(OrtMemType::OrtMemTypeDefault));
-                    set_implicitly_consumed_node_arg_has_heterogenous_ep_consumers.insert(index);
+                    if (utils::DoesEpLocationRequiresAdjustment(exec_provider->Type())) {
+                      plan_.SetLocation(static_cast<size_t>(index),
+                                        exec_provider->GetOrtDeviceByMemType(OrtMemType::OrtMemTypeDefault));
+                    } else {
+                      // Default the location to CPU
+                      plan_.SetLocation(static_cast<size_t>(index),
+                                        execution_providers_.Get(CPU)->GetOrtDeviceByMemType(OrtMemType::OrtMemTypeDefault));
+                      set_implicitly_consumed_node_arg_has_heterogenous_ep_consumers.insert(index);
+                    }
                   }
                 }
               }
@@ -881,7 +887,27 @@ class PlannerImpl {
           if (!node_output->Exists()) continue;
           OrtValueIndex index = Index(node_output->Name());
           ProcessDef(index, node_output);
-          plan_.SetLocation(static_cast<size_t>(index), exec_provider->GetOrtDeviceByMemType(p_kernel_def->OutputMemoryType(i)));
+          OrtDevice output_device = exec_provider->GetOrtDeviceByMemType(p_kernel_def->OutputMemoryType(i));
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
+          // Downstream nodes of certain providers may require a CPU accessible location override
+          // to make sure the EP does not incur an unnecessary copy.
+          // We only do it for default CPU locations
+          if (output_device.Type() == OrtDevice::CPU &&
+              output_device.MemType() == OrtDevice::MemType::DEFAULT) {
+            const auto& output_name = node_output->Name();
+            const auto consumers = graph_viewer_.GetConsumerNodes(output_name);
+            for (const auto* consumer : consumers) {
+              if (consumer != nullptr) {
+                const auto& ep_type = consumer->GetExecutionProviderType();
+                if (utils::DoesEpLocationRequiresAdjustment(ep_type)) {
+                  output_device = execution_providers_.Get(ep_type)->GetOrtDeviceByMemType(OrtMemType::OrtMemTypeCPUInput);
+                  break;
+                }
+              }
+            }
+          }
+#endif
+          plan_.SetLocation(static_cast<size_t>(index), output_device);
         }
       }
     }

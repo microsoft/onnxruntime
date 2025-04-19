@@ -41,8 +41,7 @@ bool IAllocator::CalcMemSizeForArrayWithAlignment(size_t nmemb, size_t size, siz
 }
 
 #ifdef USE_MIMALLOC
-void* AllocatorDefaultAlloc(size_t size) {
-  const size_t alignment = MlasGetPreferredBufferAlignment();
+void* AllocatorDefaultAllocAligned(size_t size, size_t alignment) {
   if (size <= 0) return nullptr;
   size += MLAS_SYMM_QGEMM_BUF_OVERRUN;
   void* p;
@@ -71,10 +70,18 @@ void AllocatorDefaultFree(void* p) {
 #endif
 }
 
+void AllocatorDefaultFreeAligned(void* p, size_t alignment) {
+#if defined(_MSC_VER)
+  mi_free_aligned(p, alignment);
 #else
-void* AllocatorDefaultAlloc(size_t size) {
-  const size_t alignment = MlasGetPreferredBufferAlignment();
-  if (size <= 0) return nullptr;
+  mi_free(p);
+#endif
+}
+
+#else
+
+void* AllocatorDefaultAllocAligned(size_t size, size_t alignment) {
+  if (size == 0) return nullptr;
   size += MLAS_SYMM_QGEMM_BUF_OVERRUN;
   void* p;
 #if _MSC_VER
@@ -101,14 +108,31 @@ void AllocatorDefaultFree(void* p) {
 #endif
 }
 
+void AllocatorDefaultFreeAligned(void* p, size_t /* alignment */) {
+  AllocatorDefaultFree(p);
+}
+
 #endif  // USE_MIMALLOC
 
+void* AllocatorDefaultAlloc(size_t size) {
+  const size_t alignment = MlasGetPreferredBufferAlignment();
+  return AllocatorDefaultAllocAligned(size, alignment);
+}
+
 void* CPUAllocator::Alloc(size_t size) {
-  return AllocatorDefaultAlloc(size);
+  auto requested_alignment = Info().device.GetAlignment();
+  const size_t alignment = (requested_alignment.has_value()) ? *requested_alignment : MlasGetPreferredBufferAlignment();
+  return AllocatorDefaultAllocAligned(size, alignment);
 }
 
 void CPUAllocator::Free(void* p) {
+#ifdef USE_MIMALLOC
+  auto requested_alignment = Info().device.GetAlignment();
+  const size_t alignment = (requested_alignment.has_value()) ? *requested_alignment : MlasGetPreferredBufferAlignment();
+  AllocatorDefaultFreeAligned(p, alignment);
+#else
   AllocatorDefaultFree(p);
+#endif
 }
 
 void* AllocateBufferWithOptions(IAllocator& alloc, size_t size, bool use_reserve, Stream* stream, WaitNotificationFn wait_fn) {
@@ -167,6 +191,11 @@ ORT_API_STATUS_IMPL(OrtApis::CreateMemoryInfo, _In_ const char* name1, enum OrtA
     *out = new OrtMemoryInfo(
         onnxruntime::QNN_HTP_SHARED, type,
         OrtDevice(OrtDevice::CPU, OrtDevice::MemType::QNN_HTP_SHARED, static_cast<OrtDevice::DeviceId>(id1)),
+        id1, mem_type1);
+  } else if (strcmp(name1, onnxruntime::CPU_ALIGNED_4K) == 0) {
+    *out = new OrtMemoryInfo(
+        onnxruntime::CPU_ALIGNED_4K, type,
+        OrtDevice(OrtDevice::CPU, OrtDevice::MemType::DEFAULT, static_cast<OrtDevice::DeviceId>(id1), onnxruntime::kAlloc4KAlignment),
         id1, mem_type1);
   } else {
     return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "Specified device is not supported.");

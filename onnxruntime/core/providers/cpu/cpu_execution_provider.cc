@@ -31,11 +31,28 @@ CPUExecutionProvider::CPUExecutionProvider(const CPUExecutionProviderInfo& info)
     : IExecutionProvider{onnxruntime::kCpuExecutionProvider}, info_{info} {}
 
 std::vector<AllocatorPtr> CPUExecutionProvider::CreatePreferredAllocators() {
-  const bool create_arena = DoesCpuAllocatorSupportArenaUsage() ? info_.create_arena : false;
-  AllocatorCreationInfo device_info{[](int) { return std::make_unique<CPUAllocator>(); },
-                                    DEFAULT_CPU_ALLOCATOR_DEVICE_ID, create_arena};
+  std::vector<AllocatorPtr> result;
 
-  return std::vector<AllocatorPtr>{CreateAllocator(device_info)};
+  const bool create_arena = DoesCpuAllocatorSupportArenaUsage() ? info_.create_arena : false;
+  AllocatorCreationInfo device_info_cpu{[](int) { return std::make_unique<CPUAllocator>(); },
+                                        DEFAULT_CPU_ALLOCATOR_DEVICE_ID, create_arena};
+
+  // We do not want arena for this, as it would not respect alignment.
+  constexpr const bool use_arena_false = false;
+  AllocatorCreationInfo device_info_cpu_aligned_4k{[](int) {
+                                                     return std::make_unique<CPUAllocator>(
+                                                         OrtMemoryInfo(
+                                                             onnxruntime::CPU_ALIGNED_4K, OrtAllocatorType::OrtDeviceAllocator,
+                                                             OrtDevice(OrtDevice::CPU, OrtDevice::MemType::DEFAULT,
+                                                                       DEFAULT_CPU_ALLOCATOR_DEVICE_ID,
+                                                                       kAlloc4KAlignment)));
+                                                   },
+                                                   DEFAULT_CPU_ALLOCATOR_DEVICE_ID, use_arena_false};
+
+  result.push_back(CreateAllocator(device_info_cpu));
+  result.push_back(CreateAllocator(device_info_cpu_aligned_4k));
+
+  return result;
 }
 
 // Forward declarations of op kernels
