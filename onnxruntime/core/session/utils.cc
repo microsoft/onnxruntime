@@ -28,10 +28,11 @@ Status TestAutoSelectEPsImpl(const Environment& env, InferenceSession& sess, con
 
   // Create OrtSessionOptions for the CreateEp call.
   // Once the InferenceSession is created, its SessionOptions is the source of truth and contains all the values from
-  // the user provided OrtSessionOptions.
+  // the user provided OrtSessionOptions. We do a copy for simplicity. The OrtSessionOptions instance goes away
+  // once we exit this function.
   auto& session_options = sess.GetMutableSessionOptions();
   OrtSessionOptions ort_so;
-  ort_so.existing_value = &session_options;
+  ort_so.value = session_options;
   const auto& session_logger = sess.GetLogger();
   const OrtLogger& api_session_logger = *session_logger->ToExternal();
 

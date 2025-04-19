@@ -17,6 +17,8 @@ namespace onnxruntime {
 /// </summary>
 class EpLibrary {
  public:
+  EpLibrary() = default;
+
   virtual const char* RegistrationName() const = 0;
   virtual Status Load() { return Status::OK(); }
   virtual const std::vector<OrtEpFactory*>& GetFactories() = 0;  // valid after Load()

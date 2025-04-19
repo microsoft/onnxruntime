@@ -86,11 +86,8 @@ std::unique_ptr<EpLibraryInternal> EpLibraryInternal::CreateDmlEp() {
                                    "DML EP factory currently only supports one device at a time.");
     }
 
-    const SessionOptions& so = session_options->existing_value ? **session_options->existing_value
-                                                               : session_options->value;
-
-    auto ep_options = GetOptionsFromSessionOptions(ep_name, so);
-    auto dml_ep_factory = DMLProviderFactoryCreator::CreateFromProviderOptions(so.config_options,
+    auto ep_options = GetOptionsFromSessionOptions(ep_name, session_options->value);
+    auto dml_ep_factory = DMLProviderFactoryCreator::CreateFromProviderOptions(session_options->value.config_options,
                                                                                ep_options);
 
     *ep = dml_ep_factory->CreateProvider();
@@ -128,13 +125,10 @@ std::unique_ptr<EpLibraryInternal> EpLibraryInternal::CreateWebGpuEp() {
                                    std::unique_ptr<IExecutionProvider>* ep) -> OrtStatus* {
     if (num_devices != 1) {
       return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT,
-                                   "DML EP factory currently only supports one device at a time.");
+                                   "WebGPU EP factory currently only supports one device at a time.");
     }
 
-    const SessionOptions& so = session_options->existing_value ? **session_options->existing_value
-                                                               : session_options->value;
-
-    auto webgpu_ep_factory = WebGpuProviderFactoryCreator::Create(so.config_options);
+    auto webgpu_ep_factory = WebGpuProviderFactoryCreator::Create(session_options->value.config_options);
     *ep = webgpu_ep_factory->CreateProvider();
     (*ep)->SetLogger(session_logger->ToInternal());
 

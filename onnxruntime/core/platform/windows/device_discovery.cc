@@ -32,7 +32,7 @@
 //// Using DXCore. Requires newer Windows SDK than what we target by default.
 // these values were added in 10.0.22621.0 as part of DirectXCore API
 //
-// In theory this #if should be fine, but the QNN ARM64 CI fails even with that applied. Not sure what is happening
+// In theory this #if should be fine, but the QNN ARM64 CI fails even with that applied.
 // with the NTDII_VERSION value there...
 //
 // Defining a local GUID instead.
@@ -71,7 +71,6 @@ uint64_t GetLuidKey(LUID luid) {
   return (uint64_t(luid.HighPart) << 32) | luid.LowPart;
 }
 
-// key: hardware id with vendor and device id in it
 // returns info for display and processor entries. key is (vendor_id << 32 | device_id)
 // npus: (vendor_id << 32 | device_id) for devices we think are NPUs from DXCORE
 std::unordered_map<uint64_t, DeviceInfo> GetDeviceInfoSetupApi(const std::unordered_set<uint64_t>& npus) {
@@ -442,6 +441,7 @@ std::unordered_set<OrtHardwareDevice> DeviceDiscovery::DiscoverDevicesForPlatfor
   }
 
   // filter GPU/NPU to devices in combined d3d12/dxcore info.
+  // TODO: If we found what we think is an NPU from SetupApi should we include it?
   for (auto& [luid, device] : luid_to_d3d12_info) {
     if (auto it = setupapi_info.find(GetDeviceKey(device)); it != setupapi_info.end()) {
       // use SetupApi info. merge metadata.

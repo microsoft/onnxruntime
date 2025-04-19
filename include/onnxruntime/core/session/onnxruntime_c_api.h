@@ -6021,6 +6021,8 @@ struct OrtEpFactory {
    *                            session. This will include ep_options from GetDeviceInfoIfSupported as well as any
    *                            user provided overrides.
    *                            Execution provider options will have been added with a prefix of 'ep.<ep name>.'.
+   *                            The OrtSessionOptions instance will NOT be valid after this call and should not be
+   *                            stored for later use.
    * \param[in] logger The OrtLogger instance for the session that the execution provider should use for logging.
    * \param[out] ep The OrtEp instance created by the factory.
    *

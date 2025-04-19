@@ -28,10 +28,8 @@ Status EpLibraryProviderBridge::Load() {
                                             size_t num_devices,
                                             const OrtSessionOptions* session_options,
                                             const OrtLogger* logger, std::unique_ptr<IExecutionProvider>* ep) {
-      const SessionOptions& so = session_options->existing_value ? **session_options->existing_value
-                                                                 : session_options->value;
       // get the provider options
-      auto ep_options = GetOptionsFromSessionOptions(factory->GetName(factory), so);
+      auto ep_options = GetOptionsFromSessionOptions(factory->GetName(factory), session_options->value);
       auto& provider = provider_library_->Get();
 
       auto status = provider.CreateIExecutionProvider(devices, ep_metadata_pairs, num_devices,

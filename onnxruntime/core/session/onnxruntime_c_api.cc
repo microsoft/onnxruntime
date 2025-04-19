@@ -2486,7 +2486,7 @@ ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider_V2, _In_ OrtS
 
     // add the options to the session options with the EP prefix.
     // first add the default values with prefix followed by user specified values so those win
-    const auto prefix = SessionOptions::GetProviderOptionPrefix(entry->ep_name.c_str());
+    const auto prefix = OrtSessionOptions::GetProviderOptionPrefix(entry->ep_name.c_str());
     auto& config_options = session_options->value.config_options;
     for (const auto& [key, value] : entry->ep_options.entries) {
       ORT_API_RETURN_IF_STATUS_NOT_OK(config_options.AddConfigEntry((prefix + key).c_str(), value.c_str()));
