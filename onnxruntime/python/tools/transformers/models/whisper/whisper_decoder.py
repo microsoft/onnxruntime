@@ -13,8 +13,10 @@ from pathlib import Path
 import numpy as np
 import onnx
 import torch
+from common_onnx_export import export_to_onnx
 from float16 import convert_float_to_float16
 from google.protobuf.internal.containers import RepeatedCompositeFieldContainer
+from models.torch_export_patches import string_type
 from onnx import ModelProto, ValueInfoProto
 from onnx_model import OnnxModel
 from past_helper import PastKeyValuesHelper
@@ -338,6 +340,7 @@ class WhisperDecoder(torch.nn.Module):
         use_int32_inputs: bool = True,
         use_encoder_hidden_states: bool = False,
         use_kv_cache_inputs: bool = True,
+        use_dynamo_export: bool = False,
     ):
         """Export decoder to ONNX
 
@@ -350,6 +353,7 @@ class WhisperDecoder(torch.nn.Module):
             use_int32_inputs (bool, optional): use int32 inputs for the decoder_input_ids. Defaults to True.
             use_encoder_hidden_states (bool, optional): use encoder_hidden_states as model input for decoder-init/decoder-without-past models. Defaults to False.
             use_kv_cache_inputs (bool, optional): use KV caches as model inputs for decoder-with-past models. Defaults to True.
+            use_dynamo_export (bool, optional): use dynamo exporter
         """
         # Shape of decoder's tensors:
         # Required Inputs:
@@ -384,17 +388,18 @@ class WhisperDecoder(torch.nn.Module):
             Path(temp_onnx_model_path).parent.mkdir(parents=True, exist_ok=True)
             out_path = temp_onnx_model_path if use_external_data_format else onnx_model_path
 
-            torch.onnx.export(
-                self,
-                args=inputs,
-                f=out_path,
+            export_to_onnx(
+                model=self,
+                inputs=inputs,
+                out_path=out_path,
                 export_params=True,
                 input_names=input_names,
                 output_names=output_names,
                 dynamic_axes=dynamic_axes,
-                opset_version=17,
+                opset_version=18 if use_dynamo_export else 17,
                 do_constant_folding=True,
                 verbose=verbose,
+                use_dynamo_export=use_dynamo_export,
             )
 
             model = onnx.load_model(out_path, load_external_data=use_external_data_format)
@@ -438,6 +443,7 @@ class WhisperDecoder(torch.nn.Module):
 
         # Run PyTorch model
         inputs = self.inputs(use_fp16_inputs=use_fp16_inputs, use_int32_inputs=use_int32_inputs, return_dict=True)
+        print(f"[verify_onnx] inputs={string_type(inputs, with_shape=True)}")
         pt_outputs = []
         if self.first_pass:
             out = self.forward(**inputs)
@@ -453,7 +459,10 @@ class WhisperDecoder(torch.nn.Module):
 
         # Run ONNX model
         sess = InferenceSession(onnx_model_path, providers=[provider])
-        ort_outputs = sess.run(None, convert_inputs_for_ort(inputs, sess))
+        print(f"[verify_onnx] onnx_inputs {[i.name for i in sess.get_inputs()]}")
+        ort_inputs = convert_inputs_for_ort(inputs, sess)
+        print(f"[verify_onnx] ort_inputs={string_type(ort_inputs, with_shape=True)}")
+        ort_outputs = sess.run(None, ort_inputs)
 
         # Calculate output difference
         try:

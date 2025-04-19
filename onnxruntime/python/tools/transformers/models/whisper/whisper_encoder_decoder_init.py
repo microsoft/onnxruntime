@@ -13,7 +13,9 @@ from pathlib import Path
 import numpy as np
 import onnx
 import torch
+from common_onnx_export import export_to_onnx
 from float16 import convert_float_to_float16
+from models.torch_export_patches import string_type
 from onnx import ModelProto, ValueInfoProto
 from onnx_model import OnnxModel
 from transformers import WhisperConfig
@@ -248,6 +250,7 @@ class WhisperEncoderDecoderInit(torch.nn.Module):
         use_external_data_format: bool = False,
         use_fp16_inputs: bool = False,
         use_int32_inputs: bool = True,
+        use_dynamo_export: bool = False,
     ):
         """Export encoder-decoder-init to ONNX
 
@@ -258,6 +261,7 @@ class WhisperEncoderDecoderInit(torch.nn.Module):
             use_external_data_format (bool, optional): use external data format or not. Defaults to False.
             use_fp16_inputs (bool, optional): use float16 inputs for the audio_features. Defaults to False.
             use_int32_inputs (bool, optional): use int32 inputs for the decoder_input_ids. Defaults to True.
+            use_dynamo_export (bool, optional): use dynamo exporter
         """
         # Shape of encoder's tensors:
         # Inputs:
@@ -285,17 +289,18 @@ class WhisperEncoderDecoderInit(torch.nn.Module):
             Path(temp_onnx_model_path).parent.mkdir(parents=True, exist_ok=True)
             out_path = temp_onnx_model_path if use_external_data_format else onnx_model_path
 
-            torch.onnx.export(
-                self,
-                args=inputs,
-                f=out_path,
+            export_to_onnx(
+                model=self,
+                inputs=inputs,
+                out_path=out_path,
                 export_params=True,
                 input_names=input_names,
                 output_names=output_names,
                 dynamic_axes=dynamic_axes,
-                opset_version=17,
+                opset_version=18 if use_dynamo_export else 17,
                 do_constant_folding=True,
                 verbose=verbose,
+                use_dynamo_export=use_dynamo_export,
             )
 
             model = onnx.load_model(out_path, load_external_data=use_external_data_format)
@@ -366,6 +371,12 @@ class WhisperEncoderDecoderInit(torch.nn.Module):
 
         # Calculate output difference
         for i, output_name in enumerate(self.output_names()):
+            if pt_outputs[i].shape != ort_outputs[i].shape:
+                raise AssertionError(
+                    f"Incompatible shapes, expecting {pt_outputs[i].shape} got {ort_outputs[i].shape}, "
+                    f"for output_name={output_name!r}\n--expect={string_type(pt_outputs, with_shape=True)}"
+                    f"\n--   got={string_type(ort_outputs, with_shape=True)}"
+                )
             diff = np.abs(pt_outputs[i] - ort_outputs[i])
             logger.warning(f"Comparing {output_name}...")
             logger.warning(f"Max diff: {np.max(diff)}")

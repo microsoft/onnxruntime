@@ -140,6 +140,7 @@ class WhisperHelper:
         use_int32_inputs: bool,
         use_encoder_hidden_states: bool,
         use_kv_cache_inputs: bool,
+        use_dynamo_export: bool = False,
     ):
         """Export model component to ONNX
 
@@ -153,6 +154,7 @@ class WhisperHelper:
             use_int32_inputs (bool): use int32 inputs for the decoder_input_ids.
             use_encoder_hidden_states (bool): use encoder_hidden_states as model input for decoder-init/decoder-without-past models.
             use_kv_cache_inputs (bool): use KV caches as model inputs for decoder-with-past models.
+            use_dynamo_export (bool, optional): use dynamo exporter
         """
         if isinstance(model, WhisperEncoder):
             model.export_onnx(
@@ -161,6 +163,7 @@ class WhisperHelper:
                 verbose,
                 use_external_data_format,
                 use_fp16_inputs,
+                use_dynamo_export=use_dynamo_export,
             )
         elif isinstance(model, WhisperEncoderDecoderInit):
             model.export_onnx(
@@ -170,6 +173,7 @@ class WhisperHelper:
                 use_external_data_format,
                 use_fp16_inputs,
                 use_int32_inputs,
+                use_dynamo_export=use_dynamo_export,
             )
         elif isinstance(model, WhisperDecoder):
             model.export_onnx(
@@ -181,6 +185,7 @@ class WhisperHelper:
                 use_int32_inputs,
                 use_encoder_hidden_states,
                 use_kv_cache_inputs,
+                use_dynamo_export=use_dynamo_export,
             )
         elif isinstance(model, WhisperJumpTimes):
             model.export_onnx(
@@ -190,6 +195,7 @@ class WhisperHelper:
                 use_external_data_format,
                 use_fp16_inputs,
                 use_int32_inputs,
+                use_dynamo_export=use_dynamo_export,
             )
         else:
             raise ValueError(f"Unknown instance for model detected: {type(model)}")
