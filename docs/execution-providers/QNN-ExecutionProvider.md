@@ -149,9 +149,10 @@ Alternatively to setting profiling_level at compile time, profiling can be enabl
 |'1'|Enable the QNN HTP shared memory allocator. Requires libcdsprpc.so/dll to be available. [Code example](https://github.com/microsoft/onnxruntime/blob/544bdd60730270f49f6a5baafdff54065f626776/onnxruntime/test/shared_lib/test_inference.cc#L2262-L2354)|
 
 ### Run Options
+
 |`"qnn.lora_config"`|Description|
 |---|---|
-|Config path|LoRAv2 config file path. The format of the config will be mentioned in the <b>LoraV2 support</b>.|
+|Config path|LoRAv2 config file path. The format of the config will be mentioned in the **LoraV2 support**.|
 
 ## Supported ONNX operators
 
