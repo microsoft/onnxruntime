@@ -2793,6 +2793,13 @@ static constexpr OrtApi ort_api_1_to_22 = {
     &OrtApis::CreateTensorWithDataAndDeleterAsOrtValue,
     &OrtApis::SessionOptionsSetLoadCancellationFlag,
     &OrtApis::GetCompileApi,
+    &OrtApis::SessionOptionsAppendExecutionProvider_Nv_TensorRT_RTX,
+    &OrtApis::CreateNvTensorRtRtxProviderOptions,
+    &OrtApis::UpdateNvTensorRtRtxProviderOptions,
+    &OrtApis::GetNvTensorRtRtxProviderOptionsAsString,
+    &OrtApis::ReleaseNvTensorRtRtxProviderOptions,
+    &OrtApis::UpdateNvTensorRtRtxProviderOptionsWithValue,
+    &OrtApis::GetNvTensorRtRtxProviderOptionsByName,
 };
 
 // OrtApiBase can never change as there is no way to know what version of OrtApiBase is returned by OrtGetApiBase.
