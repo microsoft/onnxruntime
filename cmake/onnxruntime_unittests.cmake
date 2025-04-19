@@ -1831,7 +1831,7 @@ if (WIN32 AND onnxruntime_BUILD_SHARED_LIB AND
                                                 "${ONNXRUNTIME_AUTOEP_TEST_SRC_DIR}/*.cc")
 
   set(onnxruntime_autoep_test_LIBS onnxruntime_mocked_allocator ${ONNXRUNTIME_TEST_LIBS} onnxruntime_test_utils
-                                   onnx_proto re2 onnx)
+                                   onnx_proto onnx ${onnxruntime_EXTERNAL_LIBRARIES})
 
   if (onnxruntime_USE_TENSORRT)
     list(APPEND onnxruntime_autoep_test_LIBS ${TENSORRT_LIBRARY_INFER})
