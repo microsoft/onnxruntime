@@ -101,6 +101,15 @@ bool ConvertNodeLayout(const api::NodeRef& node) {
   }
 #endif
 
+#if defined(USE_QNN)
+  if (node.GetExecutionProviderType() == kQnnExecutionProvider) {
+    if (node.OpType() == "Upsample") {
+      // Upsample is translated to QNN's Resize, which requires the NHWC layout for processing.
+      return true;
+    }
+  }
+#endif
+
   return layout_sensitive_ops.count(node.OpType()) != 0;
 }
 }  // namespace
