@@ -188,10 +188,6 @@ class QnnTensorWrapper {
       SetQnnTensorClientBuf(qnn_tensor_, client_buf_);
     }
 
-    if (mem_type != QNN_TENSORMEMTYPE_RAW) {
-      ORT_THROW("mem_type not supported for now.");
-    }
-
     SetQnnTensorQParams(qnn_tensor_, quant_params_.Get());
   }
 
