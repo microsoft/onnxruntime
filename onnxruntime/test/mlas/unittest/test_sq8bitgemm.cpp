@@ -19,6 +19,7 @@ Abstract:
 
 #include "test_util.h"
 #include "core/mlas/lib/mlasi.h"
+#include "core/mlas/inc/mlas_q4.h"
 #include "core/mlas/lib/qnbitgemm.h"
 #include "mlas_qnbit.h"
 
@@ -249,49 +250,21 @@ class MlasSQ8BitGemmKernelTest : public MlasTestBase {
   unsigned int seed_;
   std::mt19937 gen_;  // mersenne_twister_engine seeded with rd()
   std::uniform_real_distribution<float> distrib_f32_;
-  std::uniform_int_distribution<uint8_t> distrib_u8_;
-  MatrixGuardBuffer<uint8_t> packedBuffer_, workspace_, inputB_, inputZp_;
-  MatrixGuardBuffer<float> A_, C_, ref_, bias_, inputScale_;
-
-  void InitializeBuffer(uint8_t* packedB, float* packedScale, float* blkSum) {
-    size_t ldb = (K + BlkLen - 1) & (~(BlkLen - 1));
-    size_t BlkCount = (K + BlkLen - 1) / BlkLen;
-
-    for (size_t i = 0; i < N; ++i) {
-      for (size_t j = 0; j < ldb; ++j) {
-        packedB[i * ldb + j] = this->distrib_u8_(this->gen_);
-      }
-    }
-
-    for (size_t i = 0; i < N; ++i) {
-      for (size_t j = 0; j < BlkCount; ++j) {
-        packedScale[i * BlkCount + j] = this->distrib_f32_(this->gen_);
-      }
-    }
-
-    size_t ldSum = (N + 15) & (~15);
-    for (size_t i = 0; i < ldSum; ++i) {
-      for (size_t j = 0; j < BlkCount; ++j) {
-        blkSum[i * BlkCount + j] = this->distrib_f32_(this->gen_);
-      }
-    }
-  }
+  std::normal_distribution<float> norm_distrib_f32_;
+  MatrixGuardBuffer<uint8_t> packedBuffer_, workspace_, packedB_, Zp_;
+  MatrixGuardBuffer<float> A_, B_, C_, ref_, bias_, scale_;
 
   bool FloatEqual(float v0, float v1, float rtol, float atol) {
     return std::abs(v0 - v1) <= std::abs(v1 * rtol) + atol;
   }
 
-  void MatMul(const float* A, size_t lda, const uint8_t* InputB, const float* scale, const uint8_t* zp, const float* bias, float* C, size_t ldc) {
-    size_t ldb = (K + BlkLen - 1) & (~(BlkLen - 1));
-    size_t BlkCount = (K + BlkLen - 1) / BlkLen;
-
+  void MatMul(const float* A, size_t lda, const float* B, const float* bias, float* C, size_t ldc) {
     for (size_t m = 0; m < M; ++m) {
       for (size_t n = 0; n < N; ++n) {
         float accu = bias ? bias[n] : 0.0f;
         for (size_t k = 0; k < K; ++k) {
-          size_t scale_idx = n * BlkCount + k / BlkLen;
           float a = A[m * lda + k];
-          float b = (static_cast<int>(InputB[n * ldb + k]) - static_cast<int>(zp ? zp[scale_idx] : 128)) * scale[scale_idx];
+          float b = B[n * K + k];
           accu += a * b;
         }
         C[m * ldc + n] = accu;
@@ -299,11 +272,11 @@ class MlasSQ8BitGemmKernelTest : public MlasTestBase {
     }
   }
 
-  void Check(const float* target, const float* ref, size_t ldc) {
+  void Check(const float* target, const float* ref, size_t ldc, float rtol, float atol) {
     for (size_t m = 0; m < M; ++m) {
       for (size_t n = 0; n < N; ++n) {
         size_t i = m * ldc + n;
-        ASSERT_TRUE(FloatEqual(target[i], ref[i], 0.1f, 0.05f))
+        ASSERT_TRUE(FloatEqual(target[i], ref[i], rtol, atol))
             << " v0 " << target[i] << " v1 " << ref[i]
             << " m " << m << " n " << n;
       }
@@ -318,33 +291,54 @@ class MlasSQ8BitGemmKernelTest : public MlasTestBase {
     constexpr size_t ldb = BlkCount * BlkLen;
     constexpr size_t lda = ldb;
     constexpr size_t ldc = (N + 15) & (~15);
-    std:: cout << "Has Bias: " << HasBias << ", Has Zp: " << HasZp << std::endl;
-    const auto* A = A_.GetFilledBuffer(M * lda, [this, lda](float* p, size_t t) {
+    const auto* A = A_.GetFilledBuffer(M * lda, [this](float* p, size_t t) {
       for (size_t i = 0; i < t; i++) {
-        p[i] = this->distrib_f32_(this->gen_);
+        p[i] = this->norm_distrib_f32_(this->gen_);
       }
     });
 
-    const auto* inputB = inputB_.GetFilledBuffer(N * ldb, [this](uint8_t* p, size_t t) {
+    auto* B = B_.GetFilledBuffer(K * N, [this](float* p, size_t t) {
       for (size_t i = 0; i < t; i++) {
-        p[i] = this->distrib_u8_(this->gen_);
+        p[i] = this->norm_distrib_f32_(this->gen_);
       }
     });
 
-    const auto* inputScale = inputScale_.GetFilledBuffer(BlkCount * N, [this](float* p, size_t t) {
-      for (size_t i = 0; i < t; i++) {
-        p[i] = this->distrib_f32_(this->gen_);
-      }
-    });
+    int q_rows, q_cols;
+    MlasBlockwiseQuantizedShape<float, 8>((int)BlkLen, true, (int)K, (int)N, q_rows, q_cols);
 
-    const auto* inputZp = HasZp ? inputZp_.GetFilledBuffer(BlkCount * N, [this](uint8_t* p, size_t t) {
-      for (size_t i = 0; i < t; i++) {
-        p[i] = this->distrib_u8_(this->gen_);
-      }
-    }) : nullptr;
+    size_t q_data_size_in_bytes, q_scale_size, q_zp_size_in_bytes;
+    MlasBlockwiseQuantizedBufferSizes<8>((int)(BlkLen), true, (int)K, (int)N,
+                                         q_data_size_in_bytes, q_scale_size, &q_zp_size_in_bytes);
 
-    size_t bufferSize = MlasQNBitGemmPackQuantBDataSize(N, K, 8, BlkLen, HasZp, SQNBIT_CompInt8);
-    auto* packedBuffer = packedBuffer_.GetBuffer(bufferSize, true);
+    auto* inputB = packedB_.GetBuffer(q_data_size_in_bytes, true);
+    auto* inputScale = scale_.GetBuffer(q_scale_size, true);
+    auto* inputZp = HasZp ? Zp_.GetBuffer(q_zp_size_in_bytes, true) : nullptr;
+
+    MlasQuantizeBlockwise<float, 8>(
+      inputB,
+      inputScale,
+      inputZp,
+      B,
+      BlkLen,
+      true,
+      K,
+      N,
+      N,
+      nullptr);
+
+    MlasDequantizeBlockwise<float, 8>(
+      B,
+      inputB,
+      inputScale,
+      inputZp,
+      BlkLen,
+      true,
+      K,
+      N,
+      nullptr);
+
+      size_t bufferSize = MlasQNBitGemmPackQuantBDataSize(N, K, 8, BlkLen, HasZp, SQNBIT_CompInt8);
+      auto* packedBuffer = packedBuffer_.GetBuffer(bufferSize, true);
 
     MlasQNBitGemmPackQuantBData(
         N, K, 8, BlkLen, MLAS_QNBIT_GEMM_COMPUTE_TYPE::SQNBIT_CompInt8, inputB, packedBuffer,
@@ -383,13 +377,13 @@ class MlasSQ8BitGemmKernelTest : public MlasTestBase {
 
     MlasQNBitGemmBatch(M, N, K, 1, 8, BlkLen, SQNBIT_CompInt8, &data, workspace, nullptr);
 
-    MatMul(A, lda, inputB, inputScale, inputZp, bias, ref, ldc);
-    Check(C, ref, ldc);
+    MatMul(A, lda, B, bias, ref, ldc);
+    Check(C, ref, ldc, 0.05f, 0.02f);
   }
 
  public:
   MlasSQ8BitGemmKernelTest()
-      : seed_(19287), gen_(seed_), distrib_f32_(-0.25f, 0.25f), distrib_u8_(0, 255) {
+      : seed_(1234), gen_(seed_), distrib_f32_(1.f, 5.f), norm_distrib_f32_(0.f, 0.25f) {
   }
 
   static const char* GetTestSuiteName() {
@@ -465,8 +459,8 @@ static UNUSED_VARIABLE bool added_to_main = AddTestRegister([](bool is_short_exe
     }
 
     count += MlasDirectShortExecuteTests<MlasSQ8BitGemmKernelTest<1, 128, 3, 16>>::RegisterShortExecute();
-    count += MlasDirectShortExecuteTests<MlasSQ8BitGemmKernelTest<1, 128, 4, 16>>::RegisterShortExecute();
-    count += MlasDirectShortExecuteTests<MlasSQ8BitGemmKernelTest<1, 128, 5, 16>>::RegisterShortExecute();
+    count += MlasDirectShortExecuteTests<MlasSQ8BitGemmKernelTest<7, 128, 4, 16>>::RegisterShortExecute();
+    count += MlasDirectShortExecuteTests<MlasSQ8BitGemmKernelTest<8, 128, 5, 16>>::RegisterShortExecute();
     count += MlasDirectShortExecuteTests<MlasSQ8BitGemmKernelTest<1, 127, 4, 16>>::RegisterShortExecute();
     count += MlasDirectShortExecuteTests<MlasSQ8BitGemmKernelTest<1, 129, 4, 16>>::RegisterShortExecute();
 
