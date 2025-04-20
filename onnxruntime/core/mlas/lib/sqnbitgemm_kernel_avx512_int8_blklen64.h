@@ -320,8 +320,8 @@ accumulate_q8_blklen64_r2c1blk2_avx512(
         const __m512i dot10_16_epi32 = _mm512_add_epi32(dot10_low_16_epi32, dot10_high_16_epi32);
         const __m512i dot11_16_epi32 = _mm512_add_epi32(dot11_low_16_epi32, dot11_high_16_epi32);
 
-        const __m512i t11 = _mm512_unpacklo_epi64(dot10_16_epi32, dot11_16_epi32);
-        const __m512i t12 = _mm512_unpackhi_epi64(dot10_16_epi32, dot11_16_epi32);
+        const __m512i t11 = _mm512_unpacklo_epi32(dot10_16_epi32, dot11_16_epi32);
+        const __m512i t12 = _mm512_unpackhi_epi32(dot10_16_epi32, dot11_16_epi32);
         const __m512i sum1_16_epi32 = _mm512_add_epi32(t11, t12);
 
         const __m512 sum1_16_ps = _mm512_cvtepi32_ps(sum1_16_epi32);
@@ -782,24 +782,15 @@ Q8Int8GemmR2xC4BlkLen64Avx512(
                 QuantBScalePtr += NCols4;
             }
 
-            *SumPtr = _mm512_reduce_add_ps(acc[0]);
-            *(SumPtr + 1) = _mm512_reduce_add_ps(acc[1]);
-            *(SumPtr + 2) = _mm512_reduce_add_ps(acc[2]);
-            *(SumPtr + 3) = _mm512_reduce_add_ps(acc[3]);
-            *(SumPtr + ldc) = _mm512_reduce_add_ps(acc[NCols4]);
-            *(SumPtr + ldc + 1) = _mm512_reduce_add_ps(acc[NCols4 + 1]);
-            *(SumPtr + ldc + 2) = _mm512_reduce_add_ps(acc[NCols4 + 2]);
-            *(SumPtr + ldc + 3) = _mm512_reduce_add_ps(acc[NCols4 + 3]);
+            __m128 acc_r0 = FoldAccumulators(acc[0], acc[1], acc[2], acc[3]);
+            __m128 acc_r1 = FoldAccumulators(acc[NCols4 + 0], acc[NCols4 + 1], acc[NCols4 + 2], acc[NCols4 + 3]);
             if (BiasPtr != nullptr) {
-                *SumPtr += *BiasPtr;
-                *(SumPtr + 1) += *(BiasPtr + 1);
-                *(SumPtr + 2) += *(BiasPtr + 2);
-                *(SumPtr + 3) += *(BiasPtr + 3);
-                *(SumPtr + ldc) += *BiasPtr;
-                *(SumPtr + ldc + 1) += *(BiasPtr + 1);
-                *(SumPtr + ldc + 2) += *(BiasPtr + 2);
-                *(SumPtr + ldc + 3) += *(BiasPtr + 3);
+                const __m128 bias_4_ps = _mm_loadu_ps(BiasPtr);
+                acc_r0 = _mm_add_ps(acc_r0, bias_4_ps);
+                acc_r1 = _mm_add_ps(acc_r1, bias_4_ps);
             }
+            _mm_storeu_ps(SumPtr, acc_r0);
+            _mm_storeu_ps(SumPtr + ldc, acc_r1);
 
             // move to next NCols columns
             QuantBDataColPtr += NCols4 * BlockCountK * BlkDataSizeInBytes;

@@ -653,6 +653,7 @@ Q8Int8GemmR2xC4BlkLen16Avx512(
                 h_add_512(acc[7])
             };
 
+            // In A, the bytes beyond K has set to 0.
             for (; k_blks_remaining > 0; --k_blks_remaining) {
                 const __m128i av0_16_epi8 = _mm_lddqu_si128(reinterpret_cast<const __m128i*>(QuantAPtr));
                 const __m128i av1_16_epi8 = _mm_lddqu_si128(reinterpret_cast<const __m128i*>(QuantAPtr + lda));

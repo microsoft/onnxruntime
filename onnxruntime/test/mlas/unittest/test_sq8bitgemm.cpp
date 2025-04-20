@@ -458,6 +458,7 @@ static UNUSED_VARIABLE bool added_to_main = AddTestRegister([](bool is_short_exe
       count += MlasDirectShortExecuteTests<MlasSQ8BitPrepackTest<159, 16, 256, 64>>::RegisterShortExecute();
     }
 
+    count += MlasDirectShortExecuteTests<MlasSQ8BitGemmKernelTest<1, 1, 1, 16>>::RegisterShortExecute();
     count += MlasDirectShortExecuteTests<MlasSQ8BitGemmKernelTest<1, 128, 3, 16>>::RegisterShortExecute();
     count += MlasDirectShortExecuteTests<MlasSQ8BitGemmKernelTest<7, 128, 4, 16>>::RegisterShortExecute();
     count += MlasDirectShortExecuteTests<MlasSQ8BitGemmKernelTest<8, 128, 5, 16>>::RegisterShortExecute();
@@ -469,16 +470,16 @@ static UNUSED_VARIABLE bool added_to_main = AddTestRegister([](bool is_short_exe
     count += MlasDirectShortExecuteTests<MlasSQ8BitGemmKernelTest<8, 513, 9, 32>>::RegisterShortExecute();
 
     count += MlasDirectShortExecuteTests<MlasSQ8BitGemmKernelTest<1, 1, 1, 64>>::RegisterShortExecute();
-    count += MlasDirectShortExecuteTests<MlasSQ8BitGemmKernelTest<7, 96, 1, 64>>::RegisterShortExecute();
-    count += MlasDirectShortExecuteTests<MlasSQ8BitGemmKernelTest<7, 497, 1, 64>>::RegisterShortExecute();
+    count += MlasDirectShortExecuteTests<MlasSQ8BitGemmKernelTest<7, 96, 5, 64>>::RegisterShortExecute();
+    count += MlasDirectShortExecuteTests<MlasSQ8BitGemmKernelTest<8, 497, 9, 64>>::RegisterShortExecute();
 
     count += MlasDirectShortExecuteTests<MlasSQ8BitGemmKernelTest<1, 1, 1, 128>>::RegisterShortExecute();
-    count += MlasDirectShortExecuteTests<MlasSQ8BitGemmKernelTest<6, 127, 8, 128>>::RegisterShortExecute();
-    count += MlasDirectShortExecuteTests<MlasSQ8BitGemmKernelTest<6, 584, 8, 128>>::RegisterShortExecute();
+    count += MlasDirectShortExecuteTests<MlasSQ8BitGemmKernelTest<6, 127, 7, 128>>::RegisterShortExecute();
+    count += MlasDirectShortExecuteTests<MlasSQ8BitGemmKernelTest<7, 257, 9, 128>>::RegisterShortExecute();
 
     count += MlasDirectShortExecuteTests<MlasSQ8BitGemmKernelTest<1, 1, 1, 256>>::RegisterShortExecute();
     count += MlasDirectShortExecuteTests<MlasSQ8BitGemmKernelTest<5, 511, 7, 256>>::RegisterShortExecute();
-    count += MlasDirectShortExecuteTests<MlasSQ8BitGemmKernelTest<5, 367, 7, 256>>::RegisterShortExecute();
+    count += MlasDirectShortExecuteTests<MlasSQ8BitGemmKernelTest<6, 367, 7, 256>>::RegisterShortExecute();
   }
   return count;
 });
