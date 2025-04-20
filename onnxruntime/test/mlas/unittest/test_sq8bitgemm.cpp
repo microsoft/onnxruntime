@@ -34,7 +34,7 @@ class MlasSQ8BitPrepackTest : public MlasTestBase {
   MatrixGuardBuffer<float> inputBlkSum_, refBlkSum_;
 
   void PrepackB(const uint8_t* src, uint8_t* dst) {
-    size_t ldb = (K + BlkLen - 1) & (~(BlkLen - 1));
+    constexpr size_t ldb = (K + BlkLen - 1) & (~(BlkLen - 1));
     size_t n = 0;
     for (; n + 4 <= N; n += 4) {
       size_t k = 0;
@@ -67,7 +67,7 @@ class MlasSQ8BitPrepackTest : public MlasTestBase {
         for (size_t i = 0; i < 4; ++i) {
           for (size_t j = 0; j < BlkPerSubBlk; ++j) {
             auto srcOffset = (n + i) * BlkCount + k + j;
-            auto scaleDstOffset = n * BlkCount + 4 * k * BlkPerSubBlk + i * BlkPerSubBlk + j;
+            auto scaleDstOffset = n * BlkCount + 4 * k + i * BlkPerSubBlk + j;
             auto sumDstOffset = (((n + i) / 16) * BlkCount + k + j) * 16 + (n + i) % 16;
 
             auto vSum = -scale[srcOffset] * (zp ? static_cast<float>(zp[srcOffset]) : 128.f);
@@ -77,7 +77,6 @@ class MlasSQ8BitPrepackTest : public MlasTestBase {
           }
         }
       }
-
       for (size_t kk = 0; k + kk < BlkCount; ++kk) {
         for (size_t i = 0; i < 4; ++i) {
           auto srcOffset = (n + i) * BlkCount + k + kk;
@@ -125,7 +124,7 @@ class MlasSQ8BitPrepackTest : public MlasTestBase {
 
     for (; n < N; ++n) {
       for (size_t k = 0; k < K; ++k) {
-        ASSERT_EQ(packedB[n * ldb + k], ref[n * ldb + k])
+        ASSERT_EQ(packedB[n * ldb + k], refB[n * ldb + k])
             << " n " << n << " k " << k;
       }
     }
@@ -178,8 +177,8 @@ class MlasSQ8BitPrepackTest : public MlasTestBase {
     constexpr size_t BlkCount = (K + BlkLen - 1) / BlkLen;
     constexpr size_t Ldb = (((K + BlkLen - 1) & (~(BlkLen - 1))) * Bits + 7) / 8;
     constexpr size_t PackBCount = N * Ldb;
-    constexpr size_t ScaleCount = (K + BlkLen - 1) / BlkLen * N;
-    constexpr size_t BufferSize = MlasQNBitGemmPackQuantBDataSize(N, K, Bits, BlkLen, hasZp, SQNBIT_CompInt8);
+    constexpr size_t ScaleCount = BlkCount * N;
+    const size_t BufferSize = MlasQNBitGemmPackQuantBDataSize(N, K, Bits, BlkLen, hasZp, SQNBIT_CompInt8);
 
     const auto* inputB = inputB_.GetFilledBuffer(PackBCount, [this](uint8_t* p, size_t t) {
       for (size_t i = 0; i < t; i++) {
@@ -202,7 +201,7 @@ class MlasSQ8BitPrepackTest : public MlasTestBase {
     auto* packedBuffer = packedBuffer_.GetBuffer(BufferSize, true);
     auto* refB = refB_.GetBuffer(PackBCount, true);
     auto* refScale = refScale_.GetBuffer(ScaleCount, true);
-    auto* refBlkSum = refBlkSum_.GetBuffer(ScaleCount, true);
+    auto* refBlkSum = refBlkSum_.GetBuffer(((N + 15) & (~15)) * BlkCount, true);
 
     MlasQNBitGemmPackQuantBData(
         N, K, Bits, BlkLen, MLAS_QNBIT_GEMM_COMPUTE_TYPE::SQNBIT_CompInt8, inputB, packedBuffer,
@@ -211,15 +210,15 @@ class MlasSQ8BitPrepackTest : public MlasTestBase {
         N, K, Bits, BlkLen, MLAS_QNBIT_GEMM_COMPUTE_TYPE::SQNBIT_CompInt8, nullptr, packedBuffer,
         inputScale, hasZp, nullptr, nullptr);
     MlasQNBitGemmPackQuantBData(
-        N, K, Bits, BlkLen, MLAS_QNBIT_GEMM_COMPUTE_TYPE::SQNBIT_CompInt8, nullptr, nullptr,
-        inputScale, hasZp, inputZp, nullptr);
+        N, K, Bits, BlkLen, MLAS_QNBIT_GEMM_COMPUTE_TYPE::SQNBIT_CompInt8, nullptr, packedBuffer,
+        nullptr, hasZp, inputZp, nullptr);
 
     PackedQuantBDataStruct<float, 8> packedQuantB(packedBuffer, N, BlkCount, BlkLen);
 
     PrepackB(inputB, refB);
     PrepackBlkSumAndScale(inputScale, inputZp, refScale, refBlkSum);
 
-    CheckB(refB, packedQuantB.PackedQuantBData);
+    CheckB(refB, reinterpret_cast<const uint8_t*>(packedQuantB.PackedQuantBData));
     CheckScale(refScale, packedQuantB.PackedQuantBScale);
     CheckBlkSum(refBlkSum, packedQuantB.QuantBBlkSum);
   }
@@ -230,8 +229,12 @@ class MlasSQ8BitPrepackTest : public MlasTestBase {
   }
 
   static const char* GetTestSuiteName() {
-    return "SQ8BitPrepack_K*N*BlkLen*SubBlkLen_" + std::to_string(K) + "x" + std::to_string(N) + "x" +
-           std::to_string(BlkLen) + "x" + std::to_string(SubBlkLen);
+    static std::string suite_name = std::string("SQ8BitPrepack_") +
+                             "K" + std::to_string(K) +
+                             "N" + std::to_string(N) +
+                             "BlkLen" + std::to_string(BlkLen) +
+                             "SubBlkLen" + std::to_string(SubBlkLen);
+return suite_name.c_str();
   }
 
   void ExecuteShort(void) override {
@@ -388,8 +391,12 @@ class MlasSQ8BitGemmKernelTest : public MlasTestBase {
   }
 
   static const char* GetTestSuiteName() {
-    return "SQ8BitGemmKernel_M*N*K*BlkLen_" + std::to_string(M) + "x" + std::to_string(N) + "x" +
-           std::to_string(K) + "x" + std::to_string(BlkLen);
+    static std::string suite_name = std::string("SQ8BitGemmKernel_") +
+                                    "M" + std::to_string(M) +
+                                    "N" + std::to_string(N) +
+                                    "K" + std::to_string(K) +
+                                    "BlkLen" + std::to_string(BlkLen);
+    return suite_name.c_str();
   }
 
   void ExecuteShort(void) override {
@@ -424,11 +431,11 @@ static UNUSED_VARIABLE bool added_to_main = AddTestRegister([](bool is_short_exe
       count += MlasDirectShortExecuteTests<MlasSQ8BitPrepackTest<17, 8, 128, 128>>::RegisterShortExecute();
       count += MlasDirectShortExecuteTests<MlasSQ8BitPrepackTest<17, 8, 256, 128>>::RegisterShortExecute();
 
-      count += MlasDirectShortExecuteTests<MlasSQ8BitPrepackTest<159, 16, 16, 128>>::RegisterShortExecute();
-      count += MlasDirectShortExecuteTests<MlasSQ8BitPrepackTest<160, 17, 32, 128>>::RegisterShortExecute();
-      count += MlasDirectShortExecuteTests<MlasSQ8BitPrepackTest<161, 15, 64, 128>>::RegisterShortExecute();
-      count += MlasDirectShortExecuteTests<MlasSQ8BitPrepackTest<160, 17, 128, 128>>::RegisterShortExecute();
-      count += MlasDirectShortExecuteTests<MlasSQ8BitPrepackTest<159, 16, 256, 128>>::RegisterShortExecute();
+      count += MlasDirectShortExecuteTests<MlasSQ8BitPrepackTest<256, 16, 16, 128>>::RegisterShortExecute();
+      count += MlasDirectShortExecuteTests<MlasSQ8BitPrepackTest<257, 17, 32, 128>>::RegisterShortExecute();
+      count += MlasDirectShortExecuteTests<MlasSQ8BitPrepackTest<255, 15, 64, 128>>::RegisterShortExecute();
+      count += MlasDirectShortExecuteTests<MlasSQ8BitPrepackTest<256, 17, 128, 128>>::RegisterShortExecute();
+      count += MlasDirectShortExecuteTests<MlasSQ8BitPrepackTest<257, 16, 256, 128>>::RegisterShortExecute();
     } else {
       count += MlasDirectShortExecuteTests<MlasSQ8BitPrepackTest<1, 1, 16, 64>>::RegisterShortExecute();
       count += MlasDirectShortExecuteTests<MlasSQ8BitPrepackTest<1, 1, 32, 64>>::RegisterShortExecute();
