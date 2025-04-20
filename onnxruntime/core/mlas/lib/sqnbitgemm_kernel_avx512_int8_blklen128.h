@@ -172,8 +172,8 @@ accumulate_q8_blklen128_r1c1blk1_avx512(
 
         // row 0
         const __m512i dot00_low_32_epi16 = _mm512_maddubs_epi16(bv0_low_64_epi8, av00_64_epi8);
-        const __m512i dot00_high_32_epi16 = _mm512_maddubs_epi16(bv0_high_64_epi8, av01_64_epi8);
-        const __m512i dot01_low_32_epi16 = _mm512_maddubs_epi16(bv1_low_64_epi8, av00_64_epi8);
+        const __m512i dot00_high_32_epi16 = _mm512_maddubs_epi16(bv0_high_64_epi8, av00_64_epi8);
+        const __m512i dot01_low_32_epi16 = _mm512_maddubs_epi16(bv1_low_64_epi8, av01_64_epi8);
         const __m512i dot01_high_32_epi16 = _mm512_maddubs_epi16(bv1_high_64_epi8, av01_64_epi8);
 
         const __m512i dot00_low_16_epi32 = _mm512_madd_epi16(one_32_epi16, dot00_low_32_epi16);
@@ -221,8 +221,8 @@ accumulate_q8_blklen128_r2c1blk1_avx512(
 
         // row 0
         const __m512i dot00_low_32_epi16 = _mm512_maddubs_epi16(bv0_low_64_epi8, av00_64_epi8);
-        const __m512i dot00_high_32_epi16 = _mm512_maddubs_epi16(bv0_high_64_epi8, av01_64_epi8);
-        const __m512i dot01_low_32_epi16 = _mm512_maddubs_epi16(bv1_low_64_epi8, av00_64_epi8);
+        const __m512i dot00_high_32_epi16 = _mm512_maddubs_epi16(bv0_high_64_epi8, av00_64_epi8);
+        const __m512i dot01_low_32_epi16 = _mm512_maddubs_epi16(bv1_low_64_epi8, av01_64_epi8);
         const __m512i dot01_high_32_epi16 = _mm512_maddubs_epi16(bv1_high_64_epi8, av01_64_epi8);
 
         const __m512i dot00_low_16_epi32 = _mm512_madd_epi16(one_32_epi16, dot00_low_32_epi16);

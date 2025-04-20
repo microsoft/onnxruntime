@@ -665,20 +665,20 @@ Q8Int8GemmR2xC4BlkLen16Avx512(
                 accumulate_q8_blklen16_r1c1blk1_avx2<false>(av0_16_epi8, QuantBDataPtr, scale_a0b0, acc2[0]);
                 accumulate_q8_blklen16_r1c1blk1_avx2<false>(av1_16_epi8, QuantBDataPtr, scale_a1b0, acc2[NCols4]);
 
-                const float scale_a0b1 = scale_a00 * (QuantBScalePtr + PerAccuBlk8)[0];
-                const float scale_a1b1 = scale_a10 * (QuantBScalePtr + PerAccuBlk8)[0];
-                accumulate_q8_blklen16_r1c1blk1_avx2<false>(av0_16_epi8, QuantBDataPtr + StrideQuantBData8, scale_a0b1, acc2[1]);
-                accumulate_q8_blklen16_r1c1blk1_avx2<false>(av1_16_epi8, QuantBDataPtr + StrideQuantBData8, scale_a1b1, acc2[NCols4 + 1]);
+                const float scale_a0b1 = scale_a00 * (QuantBScalePtr + 1)[0];
+                const float scale_a1b1 = scale_a10 * (QuantBScalePtr + 1)[0];
+                accumulate_q8_blklen16_r1c1blk1_avx2<false>(av0_16_epi8, QuantBDataPtr + BlkDataSizeInBytes, scale_a0b1, acc2[1]);
+                accumulate_q8_blklen16_r1c1blk1_avx2<false>(av1_16_epi8, QuantBDataPtr + BlkDataSizeInBytes, scale_a1b1, acc2[NCols4 + 1]);
 
-                const float scale_a0b2 = scale_a00 * (QuantBScalePtr + 2 * PerAccuBlk8)[0];
-                const float scale_a1b2 = scale_a10 * (QuantBScalePtr + 2 * PerAccuBlk8)[0];
-                accumulate_q8_blklen16_r1c1blk1_avx2<false>(av0_16_epi8, QuantBDataPtr + 2 * StrideQuantBData8, scale_a0b2, acc2[2]);
-                accumulate_q8_blklen16_r1c1blk1_avx2<false>(av1_16_epi8, QuantBDataPtr + 2 * StrideQuantBData8, scale_a1b2, acc2[NCols4 + 2]);
+                const float scale_a0b2 = scale_a00 * (QuantBScalePtr + 2)[0];
+                const float scale_a1b2 = scale_a10 * (QuantBScalePtr + 2)[0];
+                accumulate_q8_blklen16_r1c1blk1_avx2<false>(av0_16_epi8, QuantBDataPtr + 2 * BlkDataSizeInBytes, scale_a0b2, acc2[2]);
+                accumulate_q8_blklen16_r1c1blk1_avx2<false>(av1_16_epi8, QuantBDataPtr + 2 * BlkDataSizeInBytes, scale_a1b2, acc2[NCols4 + 2]);
 
-                const float scale_a0b3 = scale_a00 * (QuantBScalePtr + 3 * PerAccuBlk8)[0];
-                const float scale_a1b3 = scale_a10 * (QuantBScalePtr + 3 * PerAccuBlk8)[0];
-                accumulate_q8_blklen16_r1c1blk1_avx2<false>(av0_16_epi8, QuantBDataPtr + 3 * StrideQuantBData8, scale_a0b3, acc2[3]);
-                accumulate_q8_blklen16_r1c1blk1_avx2<false>(av1_16_epi8, QuantBDataPtr + 3 * StrideQuantBData8, scale_a1b3, acc2[NCols4 + 3]);
+                const float scale_a0b3 = scale_a00 * (QuantBScalePtr + 3)[0];
+                const float scale_a1b3 = scale_a10 * (QuantBScalePtr + 3)[0];
+                accumulate_q8_blklen16_r1c1blk1_avx2<false>(av0_16_epi8, QuantBDataPtr + 3 * BlkDataSizeInBytes, scale_a0b3, acc2[3]);
+                accumulate_q8_blklen16_r1c1blk1_avx2<false>(av1_16_epi8, QuantBDataPtr + 3 * BlkDataSizeInBytes, scale_a1b3, acc2[NCols4 + 3]);
 
                 QuantAPtr += BlkLen16;
                 QuantAScalePtr++;

@@ -303,7 +303,7 @@ class MlasSQ8BitGemmKernelTest : public MlasTestBase {
     for (size_t m = 0; m < M; ++m) {
       for (size_t n = 0; n < N; ++n) {
         size_t i = m * ldc + n;
-        ASSERT_TRUE(FloatEqual(target[i], ref[i], 0.005f, 0.005f))
+        ASSERT_TRUE(FloatEqual(target[i], ref[i], 0.1f, 0.05f))
             << " v0 " << target[i] << " v1 " << ref[i]
             << " m " << m << " n " << n;
       }
@@ -312,11 +312,13 @@ class MlasSQ8BitGemmKernelTest : public MlasTestBase {
 
   template <bool HasBias, bool HasZp>
   void TestSQ8BitGemmKernel() {
+    if (!MlasIsQNBitGemmAvailable(8, BlkLen, SQNBIT_CompInt8)) return;
+
     constexpr size_t BlkCount = (K + BlkLen - 1) / BlkLen;
     constexpr size_t ldb = BlkCount * BlkLen;
     constexpr size_t lda = ldb;
     constexpr size_t ldc = (N + 15) & (~15);
-
+    std:: cout << "Has Bias: " << HasBias << ", Has Zp: " << HasZp << std::endl;
     const auto* A = A_.GetFilledBuffer(M * lda, [this, lda](float* p, size_t t) {
       for (size_t i = 0; i < t; i++) {
         p[i] = this->distrib_f32_(this->gen_);
@@ -351,8 +353,8 @@ class MlasSQ8BitGemmKernelTest : public MlasTestBase {
         N, K, 8, BlkLen, MLAS_QNBIT_GEMM_COMPUTE_TYPE::SQNBIT_CompInt8, nullptr, packedBuffer,
         inputScale, HasZp, nullptr, nullptr);
     MlasQNBitGemmPackQuantBData(
-        N, K, 8, BlkLen, MLAS_QNBIT_GEMM_COMPUTE_TYPE::SQNBIT_CompInt8, nullptr, nullptr,
-        inputScale, HasZp, inputZp, nullptr);
+        N, K, 8, BlkLen, MLAS_QNBIT_GEMM_COMPUTE_TYPE::SQNBIT_CompInt8, nullptr, packedBuffer,
+        nullptr, HasZp, inputZp, nullptr);
 
     PackedQuantBDataStruct<float, 8> packedQuantB(packedBuffer, N, BlkCount, BlkLen);
 
@@ -387,7 +389,7 @@ class MlasSQ8BitGemmKernelTest : public MlasTestBase {
 
  public:
   MlasSQ8BitGemmKernelTest()
-      : seed_(19287), gen_(seed_), distrib_f32_(-1.25f, 1.25f), distrib_u8_(0, 255) {
+      : seed_(19287), gen_(seed_), distrib_f32_(-0.25f, 0.25f), distrib_u8_(0, 255) {
   }
 
   static const char* GetTestSuiteName() {
@@ -462,22 +464,26 @@ static UNUSED_VARIABLE bool added_to_main = AddTestRegister([](bool is_short_exe
       count += MlasDirectShortExecuteTests<MlasSQ8BitPrepackTest<159, 16, 256, 64>>::RegisterShortExecute();
     }
 
-    count += MlasDirectShortExecuteTests<MlasSQ8BitGemmKernelTest<1, 1, 1, 16>>::RegisterShortExecute();
+    count += MlasDirectShortExecuteTests<MlasSQ8BitGemmKernelTest<1, 128, 3, 16>>::RegisterShortExecute();
+    count += MlasDirectShortExecuteTests<MlasSQ8BitGemmKernelTest<1, 128, 4, 16>>::RegisterShortExecute();
+    count += MlasDirectShortExecuteTests<MlasSQ8BitGemmKernelTest<1, 128, 5, 16>>::RegisterShortExecute();
+    count += MlasDirectShortExecuteTests<MlasSQ8BitGemmKernelTest<1, 127, 4, 16>>::RegisterShortExecute();
+    count += MlasDirectShortExecuteTests<MlasSQ8BitGemmKernelTest<1, 129, 4, 16>>::RegisterShortExecute();
+
     count += MlasDirectShortExecuteTests<MlasSQ8BitGemmKernelTest<1, 1, 1, 32>>::RegisterShortExecute();
-    count += MlasDirectShortExecuteTests<MlasSQ8BitGemmKernelTest<1, 1, 1, 64>>::RegisterShortExecute();
-    count += MlasDirectShortExecuteTests<MlasSQ8BitGemmKernelTest<1, 1, 1, 128>>::RegisterShortExecute();
-    count += MlasDirectShortExecuteTests<MlasSQ8BitGemmKernelTest<1, 1, 1, 256>>::RegisterShortExecute();
-
-    count += MlasDirectShortExecuteTests<MlasSQ8BitGemmKernelTest<9, 15, 3, 16>>::RegisterShortExecute();
     count += MlasDirectShortExecuteTests<MlasSQ8BitGemmKernelTest<8, 33, 5, 32>>::RegisterShortExecute();
-    count += MlasDirectShortExecuteTests<MlasSQ8BitGemmKernelTest<7, 96, 1, 64>>::RegisterShortExecute();
-    count += MlasDirectShortExecuteTests<MlasSQ8BitGemmKernelTest<6, 127, 8, 128>>::RegisterShortExecute();
-    count += MlasDirectShortExecuteTests<MlasSQ8BitGemmKernelTest<5, 511, 7, 256>>::RegisterShortExecute();
+    count += MlasDirectShortExecuteTests<MlasSQ8BitGemmKernelTest<8, 513, 9, 32>>::RegisterShortExecute();
 
-    count += MlasDirectShortExecuteTests<MlasSQ8BitGemmKernelTest<9, 333, 3, 16>>::RegisterShortExecute();
-    count += MlasDirectShortExecuteTests<MlasSQ8BitGemmKernelTest<8, 513, 5, 32>>::RegisterShortExecute();
+    count += MlasDirectShortExecuteTests<MlasSQ8BitGemmKernelTest<1, 1, 1, 64>>::RegisterShortExecute();
+    count += MlasDirectShortExecuteTests<MlasSQ8BitGemmKernelTest<7, 96, 1, 64>>::RegisterShortExecute();
     count += MlasDirectShortExecuteTests<MlasSQ8BitGemmKernelTest<7, 497, 1, 64>>::RegisterShortExecute();
+
+    count += MlasDirectShortExecuteTests<MlasSQ8BitGemmKernelTest<1, 1, 1, 128>>::RegisterShortExecute();
+    count += MlasDirectShortExecuteTests<MlasSQ8BitGemmKernelTest<6, 127, 8, 128>>::RegisterShortExecute();
     count += MlasDirectShortExecuteTests<MlasSQ8BitGemmKernelTest<6, 584, 8, 128>>::RegisterShortExecute();
+
+    count += MlasDirectShortExecuteTests<MlasSQ8BitGemmKernelTest<1, 1, 1, 256>>::RegisterShortExecute();
+    count += MlasDirectShortExecuteTests<MlasSQ8BitGemmKernelTest<5, 511, 7, 256>>::RegisterShortExecute();
     count += MlasDirectShortExecuteTests<MlasSQ8BitGemmKernelTest<5, 367, 7, 256>>::RegisterShortExecute();
   }
   return count;

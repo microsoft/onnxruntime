@@ -132,7 +132,7 @@ dot_accumulate_2blkvnni(
 
     __m512i t1_16_epi32 = _mm512_unpacklo_epi32(dot0_16_epi32, dot1_16_epi32);
     __m512i t2_16_epi32 = _mm512_unpackhi_epi32(dot0_16_epi32, dot1_16_epi32);
-    __m512i sum_16_epi32 = _mm512_add_epi32(t1_16_epi32, t2_16_epi32);  // sum for blk: 0 0 1 1 0 0 1 1...
+    __m512i sum_16_epi32 = _mm512_add_epi32(t1_16_epi32, t2_16_epi32);  // sum for blk: 0 1 0 1 0 1 0 1...
     __m512 sum_16_ps = _mm512_cvtepi32_ps(sum_16_epi32);
 
     __m256 scale_a_8_ps = _mm256_castpd_ps(_mm256_broadcast_sd((double*)scale_a));
