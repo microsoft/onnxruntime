@@ -15,6 +15,7 @@
 
 struct OrtSessionOptions {
   onnxruntime::SessionOptions value;
+
   std::vector<OrtCustomOpDomain*> custom_op_domains_;
   std::vector<std::shared_ptr<onnxruntime::IExecutionProviderFactory>> provider_factories;
   OrtSessionOptions() = default;
@@ -32,4 +33,9 @@ struct OrtSessionOptions {
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_MINIMAL_BUILD_CUSTOM_OPS)
   onnxruntime::Status RegisterCustomOpsLibrary(onnxruntime::PathString library_name);
 #endif
+
+  // get the EP prefix to used when an EP specific option is added to config_options.
+  // e.g. for EP called 'MyEP' an options 'device_id' would be added as 'ep.myep.device_id'
+  //      with GetProviderOptionPrefix returning 'ep.myep.'
+  static std::string GetProviderOptionPrefix(const char* provider_name);
 };
