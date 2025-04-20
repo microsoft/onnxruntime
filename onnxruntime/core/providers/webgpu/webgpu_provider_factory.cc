@@ -77,7 +77,7 @@ std::shared_ptr<IExecutionProviderFactory> WebGpuProviderFactoryCreator::Create(
     // split the string by EOL (\n or \r\n)
     std::istringstream ss(force_cpu_node_names_str);
     std::string line;
-    while (std::getline(ss, line)) {
+    while (std::getline(ss, line, ',')) {
       // skip empty lines
       if (line.empty()) {
         continue;
@@ -86,7 +86,7 @@ std::shared_ptr<IExecutionProviderFactory> WebGpuProviderFactoryCreator::Create(
       webgpu_ep_config.force_cpu_node_names.push_back(line);
     }
   }
-  LOGS_DEFAULT(VERBOSE) << "WebGPU EP force CPU node count: " << webgpu_ep_config.force_cpu_node_names.size();
+  std::cerr << "WebGPU EP force CPU node count: " << webgpu_ep_config.force_cpu_node_names.size();
 
   //
   // STEP.2 - prepare WebGpuContextConfig
