@@ -18,7 +18,7 @@ platforms. Check the [WebNN status](https://webmachinelearning.github.io/webnn-s
 | And | ai.onnx(7+) | logicalAnd | |
 | ArgMax | ai.onnx(7-10, 11, 12, 13+) | argMax | |
 | ArgMin | ai.onnx(7-10, 11, 12, 13+) | argMin | |
-| AveragePool | ai.onnx(7-9, 10, 11, 12-18, 19+) | averagePool2d | Only supports 4-D input, 2-D 'kernel_shape', 'count_include_pad' value is 0 |
+| AveragePool | ai.onnx(7-9, 10, 11, 12-18, 19+) | averagePool2d | Only supports 4-D input, 2-D 'kernel_shape' |
 | BatchNormalization | ai.onnx(7-8, 9-13, 14, 15+) | batchNormalization | Only supports 'training_mode' value is 0, one output |
 | Cast | ai.onnx(7-8, 9-12, 13-18, 19-20, 21+) | cast | |
 | Ceil | ai.onnx(7-12, 13+) | ceil | |
