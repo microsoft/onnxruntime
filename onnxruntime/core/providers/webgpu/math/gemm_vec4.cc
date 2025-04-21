@@ -216,14 +216,34 @@ Status GemmVec4Program::GenerateShaderCode(ShaderHelper& shader) const {
 }
 
 bool CanApplyGemmVec4(const Tensor* a,
-                      const Tensor* b) {
+                      const Tensor* b,
+                      const Tensor* c) {
   const auto& a_shape = a->Shape();
   const auto& b_shape = b->Shape();
 
+  uint32_t A_rows = onnxruntime::narrow<uint32_t>(a_shape[0]);
   uint32_t A_cols = onnxruntime::narrow<uint32_t>(a_shape[1]);
+  uint32_t B_rows = onnxruntime::narrow<uint32_t>(b_shape[0]);
   uint32_t B_cols = onnxruntime::narrow<uint32_t>(b_shape[1]);
-  // Cols must be divisible by 4 for vec4
-  return A_cols % 4 == 0 && B_cols % 4;
+
+  if (A_rows % 4 != 0 || A_cols % 4 != 0 || B_rows % 4 != 0 || B_cols % 4 != 0) {
+    return false;
+  }
+
+  // C is optional and is might scalar or 1D.
+  // We do vec4 for C so we need to check if C is 2D and its second dimension is divisible by 4.
+  if (c == nullptr) {
+    return true;
+  }
+
+  const auto& c_shape = c->Shape();
+  if (c_shape.NumDimensions() == 2) {
+    uint32_t C_cols = onnxruntime::narrow<uint32_t>(c_shape[1]);
+    return C_cols % 4 == 0;
+  }
+
+  uint32_t C_rows = onnxruntime::narrow<uint32_t>(c_shape[0]);
+  return C_rows % 4 == 0;
 }
 
 Status ApplyGemmVec4(const Tensor* a,

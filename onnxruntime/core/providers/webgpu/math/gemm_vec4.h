@@ -51,7 +51,8 @@ Status ApplyGemmVec4(const Tensor* a,
                      Tensor* y);
 
 bool CanApplyGemmVec4(const Tensor* a,
-                      const Tensor* b);
+                      const Tensor* b,
+                      const Tensor* c);
 
 }  // namespace webgpu
 }  // namespace onnxruntime
