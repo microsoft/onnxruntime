@@ -49,6 +49,23 @@ class MatMulNBitsWideTileProgram final : public Program<MatMulNBitsWideTileProgr
   uint32_t tile_n_;
 };
 
+class MatMulNBitsBlockWiseProgram final : public Program<MatMulNBitsBlockWiseProgram> {
+ public:
+  MatMulNBitsBlockWiseProgram(uint32_t tile_size) : Program{"MatMulNBitsBlockWise"}, tile_size_(tile_size) {}
+  Status GenerateShaderCode(ShaderHelper& sh) const override;
+  WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES(
+      {"M", ProgramUniformVariableDataType::Uint32},
+      {"N", ProgramUniformVariableDataType::Uint32},
+      {"K", ProgramUniformVariableDataType::Uint32},
+      {"K_of_a", ProgramUniformVariableDataType::Uint32},
+      {"K_of_b", ProgramUniformVariableDataType::Uint32},
+      {"block_size", ProgramUniformVariableDataType::Uint32},
+      {"blocks_per_col", ProgramUniformVariableDataType::Uint32});
+
+ private:
+  uint32_t tile_size_;
+};
+
 class MatMulNBits final : public WebGpuKernel {
  public:
   MatMulNBits(const OpKernelInfo& info) : WebGpuKernel(info) {

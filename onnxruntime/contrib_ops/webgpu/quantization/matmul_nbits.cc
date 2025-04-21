@@ -682,6 +682,96 @@ fn dequantize_packed8xU4(packed_value : u32, zero_point : output_element_t, scal
   return Status::OK();
 }
 
+// component_a = 4, component_b = 4, zero_point = nullptr
+Status MatMulNBitsBlockWiseProgram::GenerateShaderCode(ShaderHelper& shader) const {
+  shader.AddInput("input_a", ShaderUsage::UseValueTypeAlias);
+  shader.AddInput("input_b");
+  shader.AddInput("scales_b");
+  shader.AddOutput("output", ShaderUsage::UseElementTypeAlias);
+  constexpr uint32_t components_a = 4;
+  constexpr uint32_t components_b = 4;
+  constexpr uint32_t tile_size_k_vec = 16;
+  constexpr uint32_t tile_k_size = tile_size_k_vec * components_b * 8;  // each uint32 has 8 data. And tile_k_size must be divisible by block_size
+  const uint32_t a_length_per_tile = tile_k_size / components_a;
+
+  shader.AdditionalImplementation() << "const a_length_per_tile = " << a_length_per_tile << "u;\n"
+                                    << "const tile_size_k_vec = " << tile_size_k_vec << ";\n"
+                                    << "const tile_size_k = " << tile_k_size << "u;\n"
+                                    << "const tile_size = " << tile_size_ << "u;\n"
+                                    << "const subtile_length = " << WorkgroupSizeX() / tile_size_k_vec << "u;\n"
+                                    << "const component_a = " << components_a << "u;\n"
+                                    << "const component_b = " << components_b << "u;\n";
+  shader.AdditionalImplementation() << R"ADDNL_FN(
+  // Shared memory
+  var<workgroup> tile_A : array<input_a_value_t, a_length_per_tile>;
+  var<workgroup> inter_results: array<array<output_element_t, tile_size_k_vec>, tile_size>;
+  fn loadSHMA(a_global: u32, kidx_v: u32, col: u32)
+  {
+    let k_offset = kidx_v / component_a + col;
+    if (k_offset < uniforms.K_of_a) {
+      tile_A[col] = input_a[a_global * uniforms.K_of_a + k_offset];
+    } else {
+      tile_A[col] = input_a_value_t(0);
+    }
+  }
+)ADDNL_FN";
+
+  shader.MainFunctionBody() << R"MAIN_FN(
+  let a_global = workgroup_id.y;
+  let b_global_base = workgroup_id.x * tile_size;
+
+  let idx = local_idx % tile_size_k_vec;
+  let idy = local_idx / tile_size_k_vec;
+
+  for (var kidx_v = 0u; kidx_v < uniforms.K; kidx_v += tile_size_k)
+  {
+    for (var id = local_idx; id < a_length_per_tile; id += workgroup_size_x)
+    {
+      loadSHMA(a_global, kidx_v, id);
+    }
+    workgroupBarrier();
+
+    for (var local_row_offset = 0u; local_row_offset < tile_size; local_row_offset += subtile_length)
+    {
+      var b_global = b_global_base + local_row_offset + idy;
+      var k_offset = kidx_v / (component_b * 8) + idx;
+      if (b_global < uniforms.N && k_offset < uniforms.K_of_b)
+      {
+        let scale_b = scales_b[b_global * uniforms.blocks_per_col + kidx_v / uniforms.block_size + idx * (component_b * 8) / uniforms.block_size];
+        var b_value = input_b[b_global * uniforms.K_of_b + k_offset];
+        var sum = output_element_t(0);
+        var a_offset = idx * 2 * component_b;
+        for (var i = 0u; i < component_b; i++) {
+          let b_value_lower = vec4<output_element_t>(unpack4xU8(b_value[i] & 0x0F0F0F0Fu)) - vec4<output_element_t>(8);
+          let b_value_upper = vec4<output_element_t>(unpack4xU8((b_value[i] >> 4) & 0x0F0F0F0Fu)) - vec4<output_element_t>(8);
+          let b0 = vec4<output_element_t>(b_value_lower[0], b_value_upper[0], b_value_lower[1], b_value_upper[1]) * scale_b;
+          let b1 = vec4<output_element_t>(b_value_lower[2], b_value_upper[2], b_value_lower[3], b_value_upper[3]) * scale_b;
+          sum += dot(tile_A[a_offset], b0) + dot(tile_A[a_offset + 1], b1);
+          a_offset += 2;
+        }
+
+        inter_results[local_row_offset + idy][idx] += sum;
+      }
+    }
+    workgroupBarrier();
+  }
+
+  if (local_idx < tile_size) {
+    var output_value = output_element_t(0);
+    for (var b = 0u; b < tile_size_k_vec; b++) {
+      output_value += inter_results[local_idx][b];
+    }
+    let b_global =  b_global_base + local_idx;
+    let output_idx = a_global * uniforms.N + b_global;
+    if (b_global < uniforms.N) {
+      output[output_idx] = output_value;
+    }
+  }
+)MAIN_FN";
+
+  return Status::OK();
+}
+
 Status MatMulNBits::ComputeInternal(onnxruntime::webgpu::ComputeContext& context) const {
   const Tensor* a = context.Input(0);
   const Tensor* b = context.Input(1);
@@ -764,6 +854,23 @@ Status MatMulNBits::ComputeInternal(onnxruntime::webgpu::ComputeContext& context
       program.AddInput({zero_points, ProgramTensorMetadataDependency::None, {(zero_points->Shape().Size() + 3) / 4}, 4});
     }
 
+    return context.RunProgram(program);
+  }
+
+  if (M < kMinMForTileOptimization && components_a == 4 && components_b == 4 && !has_zero_points) {
+    constexpr uint32_t workgroup_size = 128;
+    constexpr uint32_t tile_size = 32;
+    constexpr uint32_t kU32Components = 4;
+    uint32_t elements_in_blob = components_b * kU32Components;
+    MatMulNBitsBlockWiseProgram program{tile_size};
+    program.SetWorkgroupSize(workgroup_size);
+    program.SetDispatchGroupSize((N + tile_size - 1) / tile_size, M, batch_count);
+    program
+        .AddInputs({{a, ProgramTensorMetadataDependency::TypeAndRank, static_cast<int>(components_a)},
+                    {b, ProgramTensorMetadataDependency::TypeAndRank, static_cast<int>(elements_in_blob)},
+                    {scales, ProgramTensorMetadataDependency::TypeAndRank}})
+        .AddOutput({y, ProgramTensorMetadataDependency::TypeAndRank})
+        .AddUniformVariables({{M}, {N}, {K}, {K / components_a}, {n_blocks_per_col * blob_size / elements_in_blob}, {block_size}, {n_blocks_per_col}});
     return context.RunProgram(program);
   }
 
