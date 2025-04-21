@@ -5,6 +5,7 @@
 #include "core/providers/webgpu/shader_helper.h"
 #include "core/providers/webgpu/webgpu_supported_types.h"
 #include "core/providers/webgpu/tensor/depth_to_space.h"
+#include "core/providers/webgpu/webgpu_utils.h"
 
 namespace onnxruntime {
 namespace webgpu {
@@ -36,20 +37,11 @@ WEBGPU_DEPTH_TO_SPACE_KERNEL(13, kOnnxDomain, false)
 WEBGPU_DEPTH_TO_SPACE_VERSIONED_KERNEL(11, 12, kMSInternalNHWCDomain, true)
 WEBGPU_DEPTH_TO_SPACE_KERNEL(13, kMSInternalNHWCDomain, true)
 
-int64_t GetMaxComponents(int64_t size) {
-  if (size % 4 == 0) {
-    return 4;
-  } else if (size % 2 == 0) {
-    return 2;
-  }
-  return 1;
-}
-
-void AppendPermFunction(std::ostream& os, const ShaderVariableHelper& input, int64_t* perm) {
+void AppendPermFunction(std::ostream& os, const ShaderVariableHelper& input, const int64_t* perm) {
   os << "fn perm(i: input_indices_t) -> input_indices_t {\n"
      << "  var a: input_indices_t;\n";
-  for (int i = 0; i < input.Rank(); ++i) {
-    os << "  " << input.IndicesSet("a", std::to_string(perm[i]), "i[" + std::to_string(i) + "]") << "\n";
+  for (int idx = 0; idx < input.Rank(); ++idx) {
+    os << "  " << input.IndicesSet("a", std::to_string(perm[idx]), "i[" + std::to_string(idx) + "]") << "\n";
   }
   os << "  return a;\n"
      << "}\n";
@@ -66,9 +58,6 @@ Status DepthToSpaceProgram::GenerateShaderCode(ShaderHelper& shader) const {
                             << "  let aIndices = perm(indices);\n"
                             << "  " << output.SetByOffset("global_idx", input.GetByIndices("aIndices"));
 
-  std::cout << *shader.AdditionalImplementation().str() << std::endl;
-  std::cout << *shader.MainFunctionBody().str() << std::endl;
-
   return Status::OK();
 }
 
@@ -76,145 +65,77 @@ template <bool is_nhwc>
 Status DepthToSpace<is_nhwc>::ComputeInternal(onnxruntime::webgpu::ComputeContext& context) const {
   const auto* input = context.Input(0);
   const TensorShape input_shape = input->Shape();
-  std::cout << "input shape: ";
-  for (size_t i = 0; i < input_shape.NumDimensions(); ++i) {
-    std::cout << input_shape[i] << " ";
-  }
-  std::cout << std::endl;
-
-  std::cout << "blocksize: " << blocksize_ << std::endl;
 
   int64_t n, c, h, w;
   int64_t shape[6];
   int64_t perm[6];
   if (is_nhwc) {
-    std::cout << "is_nhwc" << std::endl;
     n = input_shape[0];
     h = input_shape[1];
     w = input_shape[2];
     c = input_shape[3];
 
     if (is_dcr_) {
-      std::cout << "is_dcr" << std::endl;
-      shape[0] = n;
-      shape[1] = h;
-      shape[2] = w;
-      shape[3] = blocksize_;
-      shape[4] = blocksize_;
-      shape[5] = c / (blocksize_ * blocksize_);
-
-      perm[0] = 0;
-      perm[1] = 1;
-      perm[2] = 3;
-      perm[3] = 2;
-      perm[4] = 4;
-      perm[5] = 5;
+      int64_t shape_values[] = {n, h, w, blocksize_, blocksize_, c / (blocksize_ * blocksize_)};
+      int64_t perm_values[] = {0, 1, 3, 2, 4, 5};
+      std::copy(shape_values, shape_values + 6, shape);
+      std::copy(perm_values, perm_values + 6, perm);
     } else {
-      std::cout << "NOT is_dcr" << std::endl;
-      shape[0] = n;
-      shape[1] = h;
-      shape[2] = w;
-      shape[3] = c / (blocksize_ * blocksize_);
-      shape[4] = blocksize_;
-      shape[5] = blocksize_;
-
-      perm[0] = 0;
-      perm[1] = 1;
-      perm[2] = 4;
-      perm[3] = 2;
-      perm[4] = 5;
-      perm[5] = 3;
+      int64_t shape_values[] = {n, h, w, c / (blocksize_ * blocksize_), blocksize_, blocksize_};
+      int64_t perm_values[] = {0, 1, 4, 2, 5, 3};
+      std::copy(shape_values, shape_values + 6, shape);
+      std::copy(perm_values, perm_values + 6, perm);
     }
   } else {
-    std::cout << "NOT is_nhwc" << std::endl;
     n = input_shape[0];
-    c = input_shape[1];
     h = input_shape[2];
     w = input_shape[3];
+    c = input_shape[1];
 
     if (is_dcr_) {
-      std::cout << "is_dcr" << std::endl;
-      shape[0] = n;
-      shape[1] = blocksize_;
-      shape[2] = blocksize_;
-      shape[3] = c / (blocksize_ * blocksize_);
-      shape[4] = h;
-      shape[5] = w;
-
-      perm[0] = 0;
-      perm[1] = 3;
-      perm[2] = 4;
-      perm[3] = 1;
-      perm[4] = 5;
-      perm[5] = 2;
+      int64_t shape_values[] = {n, blocksize_, blocksize_, c / (blocksize_ * blocksize_), h, w};
+      int64_t perm_values[] = {0, 3, 4, 1, 5, 2};
+      std::copy(shape_values, shape_values + 6, shape);
+      std::copy(perm_values, perm_values + 6, perm);
     } else {
-      std::cout << "NOT is_dcr" << std::endl;
-      shape[0] = n;
-      shape[1] = c / (blocksize_ * blocksize_);
-      shape[2] = blocksize_;
-      shape[3] = blocksize_;
-      shape[4] = h;
-      shape[5] = w;
-
-      perm[0] = 0;
-      perm[1] = 1;
-      perm[2] = 4;
-      perm[3] = 2;
-      perm[4] = 5;
-      perm[5] = 3;
+      int64_t shape_values[] = {n, c / (blocksize_ * blocksize_), blocksize_, blocksize_, h, w};
+      int64_t perm_values[] = {0, 1, 4, 2, 5, 3};
+      std::copy(shape_values, shape_values + 6, shape);
+      std::copy(perm_values, perm_values + 6, perm);
     }
   }
 
-  std::cout << "n: " << n << " c: " << c << " h: " << h << " w: " << w << std::endl;
-  std::cout << "shape: ";
-  for (int i = 0; i < 6; ++i) {
-    std::cout << shape[i] << " ";
-  }
-  std::cout << std::endl;
-
-  std::cout << "perm: ";
-  for (int i = 0; i < 6; ++i) {
-    std::cout << perm[i] << " ";
-  }
-  std::cout << std::endl;
-
-  TensorShape override_shape(gsl::make_span(shape));
-  int64_t components = GetMaxComponents(c);
-  std::cout << "components: " << components << std::endl;
+  std::vector<int64_t> shape_vec(shape, shape + 6);
+  TensorShape input_override_shape(shape_vec);
 
   // Calculate the final 4D output shape
   int64_t output_shape[4];
   if (is_nhwc) {
-    output_shape[0] = n;
-    output_shape[1] = h * blocksize_;
-    output_shape[2] = w * blocksize_;
-    output_shape[3] = c / (blocksize_ * blocksize_);
+    int64_t output_shape_values[] = {n, h * blocksize_, w * blocksize_, c / (blocksize_ * blocksize_)};
+    std::copy(output_shape_values, output_shape_values + 4, output_shape);
   } else {
-    output_shape[0] = n;
-    output_shape[1] = c / (blocksize_ * blocksize_);
-    output_shape[2] = h * blocksize_;
-    output_shape[3] = w * blocksize_;
+    int64_t output_shape_values[] = {n, c / (blocksize_ * blocksize_), h * blocksize_, w * blocksize_};
+    std::copy(output_shape_values, output_shape_values + 4, output_shape);
   }
   TensorShape final_output_shape(gsl::make_span(output_shape));
-  std::cout << "final output shape: ";
-  for (int i = 0; i < 4; ++i) {
-    std::cout << output_shape[i] << " ";
-  }
-  std::cout << std::endl;
 
   auto* output = context.Output(0, final_output_shape);
-  int64_t output_size = output->Shape().Size() / components;
-  std::cout << "output size: " << output_size << std::endl;
+  int64_t output_size = output->Shape().Size();
 
   if (output_size == 0) {
     return Status::OK();
   }
 
+  std::vector<int64_t> shape_after_permutation_vec(6);
+  for (int i = 0; i < 6; i++) {
+    shape_after_permutation_vec[i] = shape[perm[i]];
+  }
+  TensorShape output_override_shape(shape_after_permutation_vec);
+
   DepthToSpaceProgram program{perm};
-  std::cout << "running program..." << std::endl;
   program
-      .AddInput({input, ProgramTensorMetadataDependency::TypeAndRank, override_shape, static_cast<int>(components)})
-      .AddOutput({output, ProgramTensorMetadataDependency::TypeAndRank, override_shape, static_cast<int>(components)})
+      .AddInput({input, ProgramTensorMetadataDependency::TypeAndRank, input_override_shape, 1})
+      .AddOutput({output, ProgramTensorMetadataDependency::TypeAndRank, output_override_shape, 1})
       .SetDispatchGroupSize((output_size + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE)
       .AddUniformVariable({static_cast<uint32_t>(output_size)});
   return context.RunProgram(program);
