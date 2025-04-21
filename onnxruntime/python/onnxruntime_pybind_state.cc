@@ -2408,13 +2408,7 @@ class EnvInitializer {
     }
 
     EnvInitializer::tp_options = tp_options;
-    if (EnvInitializer::use_per_session_threads) {
-      EnvInitializer::use_per_session_threads = false;
-      py::object atexit_register = py::module::import("atexit").attr("register");
-      atexit_register([] {
-        EnvInitializer::SharedInstance()->ShutdownGlobalThreadPools();
-      });
-    }
+    EnvInitializer::use_per_session_threads = false;
   }
 
   static std::shared_ptr<onnxruntime::Environment> SharedInstance() {
@@ -2452,6 +2446,16 @@ class EnvInitializer {
     }
 
     session_env_ = std::shared_ptr<Environment>(env_ptr.release());
+
+    if (!EnvInitializer::use_per_session_threads) {
+      py::object atexit_register = py::module::import("atexit").attr("register");
+      atexit_register([weak = std::weak_ptr<Environment>(session_env_)] mutable {
+        if (auto env = weak.lock()) {
+          env->ShutdownGlobalThreadPools();
+        }
+        weak.reset();
+      });
+    }
 
     initialized = true;
     destroyed = false;
