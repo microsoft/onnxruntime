@@ -490,6 +490,7 @@ set (ONNXRUNTIME_SHARED_LIB_TEST_SRC_DIR "${TEST_SRC_DIR}/shared_lib")
 set (ONNXRUNTIME_GLOBAL_THREAD_POOLS_TEST_SRC_DIR "${TEST_SRC_DIR}/global_thread_pools")
 set (ONNXRUNTIME_CUSTOM_OP_REGISTRATION_TEST_SRC_DIR "${TEST_SRC_DIR}/custom_op_registration")
 set (ONNXRUNTIME_LOGGING_APIS_TEST_SRC_DIR "${TEST_SRC_DIR}/logging_apis")
+set (ONNXRUNTIME_AUTOEP_TEST_SRC_DIR "${TEST_SRC_DIR}/autoep")
 
 set (onnxruntime_shared_lib_test_SRC
           ${ONNXRUNTIME_SHARED_LIB_TEST_SRC_DIR}/test_fixture.h
@@ -1796,6 +1797,70 @@ if (NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten" AND (NOT onnxruntime_MINIMAL_BUI
 
   set_property(TARGET custom_op_local_function APPEND_STRING PROPERTY LINK_FLAGS
                ${ONNXRUNTIME_CUSTOM_OP_lOCAL_FUNCTION_TEST_LIB_LINK_FLAG})
+endif()
+
+# Build library that can be used with RegisterExecutionProviderLibrary and automatic EP selection
+# We need a shared lib build to use that as a dependency for the test library
+# Currently we only have device discovery on Windows so no point building the test app on other platforms.
+if (WIN32 AND onnxruntime_BUILD_SHARED_LIB AND
+    NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten" AND
+    NOT onnxruntime_MINIMAL_BUILD)
+  onnxruntime_add_shared_library_module(example_plugin_ep
+                                        ${TEST_SRC_DIR}/autoep/library/example_plugin_ep.cc)
+  target_include_directories(example_plugin_ep PRIVATE ${REPO_ROOT}/include/onnxruntime/core/session)
+  target_link_libraries(example_plugin_ep PRIVATE onnxruntime)
+
+  if(UNIX)
+    if (APPLE)
+      set(ONNXRUNTIME_AUTOEP_LIB_LINK_FLAG "-Xlinker -dead_strip")
+    elseif (NOT CMAKE_SYSTEM_NAME MATCHES "AIX")
+      string(CONCAT ONNXRUNTIME_AUTOEP_LIB_LINK_FLAG
+             "-Xlinker --version-script=${TEST_SRC_DIR}/autoep/library/example_plugin_ep_library.lds "
+             "-Xlinker --no-undefined -Xlinker --gc-sections -z noexecstack")
+    endif()
+  else()
+    set(ONNXRUNTIME_AUTOEP_LIB_LINK_FLAG
+        "-DEF:${TEST_SRC_DIR}/autoep/library/example_plugin_ep_library.def")
+  endif()
+
+  set_property(TARGET example_plugin_ep APPEND_STRING PROPERTY LINK_FLAGS
+               ${ONNXRUNTIME_AUTOEP_LIB_LINK_FLAG})
+
+  # test library
+  file(GLOB_RECURSE onnxruntime_autoep_test_SRC "${ONNXRUNTIME_AUTOEP_TEST_SRC_DIR}/*.h"
+                                                "${ONNXRUNTIME_AUTOEP_TEST_SRC_DIR}/*.cc")
+
+  set(onnxruntime_autoep_test_LIBS onnxruntime_mocked_allocator ${ONNXRUNTIME_TEST_LIBS} onnxruntime_test_utils
+                                   onnx_proto onnx ${onnxruntime_EXTERNAL_LIBRARIES})
+
+  if (onnxruntime_USE_TENSORRT)
+    list(APPEND onnxruntime_autoep_test_LIBS ${TENSORRT_LIBRARY_INFER})
+  endif()
+
+  if (onnxruntime_USE_CUDA)
+    list(APPEND onnxruntime_autoep_test_LIBS CUDA::cudart)
+  endif()
+
+  if (onnxruntime_USE_DML)
+    list(APPEND onnxruntime_autoep_test_LIBS d3d12.lib)
+  endif()
+
+  if (CPUINFO_SUPPORTED)
+    list(APPEND onnxruntime_autoep_test_LIBS cpuinfo)
+  endif()
+
+  if (CMAKE_SYSTEM_NAME MATCHES "AIX")
+    list(APPEND onnxruntime_autoep_test_LIBS onnxruntime_graph onnxruntime_session onnxruntime_providers
+                onnxruntime_optimizer onnxruntime_mlas onnxruntime_framework onnxruntime_util onnxruntime_flatbuffers
+                iconv re2 onnx)
+  endif()
+
+  AddTest(DYN
+          TARGET onnxruntime_autoep_test
+          SOURCES ${onnxruntime_autoep_test_SRC} ${onnxruntime_unittest_main_src}
+          LIBS ${onnxruntime_autoep_test_LIBS}
+          DEPENDS ${all_dependencies} example_plugin_ep
+  )
 endif()
 
 if (onnxruntime_BUILD_SHARED_LIB AND NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten" AND NOT onnxruntime_MINIMAL_BUILD)
