@@ -64,6 +64,8 @@ template <bool is_nhwc>
 Status DepthToSpace<is_nhwc>::ComputeInternal(onnxruntime::webgpu::ComputeContext& context) const {
   const auto* input = context.Input(0);
   const TensorShape input_shape = input->Shape();
+  int64_t input_rank = input_shape.NumDimensions();
+  ORT_ENFORCE(input_rank == 4, "Input must be rank 4.");
 
   int64_t n, c, h, w;
   int64_t shape[6];
@@ -133,8 +135,8 @@ Status DepthToSpace<is_nhwc>::ComputeInternal(onnxruntime::webgpu::ComputeContex
 
   DepthToSpaceProgram program{perm};
   program
-      .AddInput({input, ProgramTensorMetadataDependency::TypeAndRank, input_override_shape, 1})
-      .AddOutput({output, ProgramTensorMetadataDependency::TypeAndRank, output_override_shape, 1})
+      .AddInput({input, ProgramTensorMetadataDependency::Type, input_override_shape, 1})
+      .AddOutput({output, ProgramTensorMetadataDependency::None, output_override_shape, 1})
       .SetDispatchGroupSize((output_size + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE)
       .CacheHint(absl::StrJoin(input_shape.GetDims(), "-"), blocksize_, is_dcr_ ? "DCR" : "CRD")
       .AddUniformVariable({static_cast<uint32_t>(output_size)});
