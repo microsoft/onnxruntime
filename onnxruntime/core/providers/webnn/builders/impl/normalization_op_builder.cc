@@ -115,17 +115,20 @@ Status NormalizationOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder
       emscripten::val common_options = emscripten::val::object();
 
       if (input_type == ONNX_NAMESPACE::TensorProto_DataType_FLOAT16) {
-        // Decomposed *SimplifiedLayerNormalization may lose precision if its data type is float16,
-        // cast all inputs to float32 to ensure precision.
+        // Decomposed *SimplifiedLayerNormalization may lose precision if its data type is float16.
+        // So cast all inputs to float32 to ensure precision.
         common_options.set("label", node.Name() + "_cast_input_to_fp32");
-        input = model_builder.GetBuilder().call<emscripten::val>("cast", input, emscripten::val("float32"));
+        input = model_builder.GetBuilder().call<emscripten::val>("cast", input,
+                                                                 emscripten::val("float32"), common_options);
 
         common_options.set("label", node.Name() + "_cast_scale_to_fp32");
-        scale = model_builder.GetBuilder().call<emscripten::val>("cast", scale, emscripten::val("float32"));
+        scale = model_builder.GetBuilder().call<emscripten::val>("cast", scale,
+                                                                 emscripten::val("float32"), common_options);
 
         if (!bias.isUndefined()) {
           common_options.set("label", node.Name() + "_cast_bias_to_fp32");
-          bias = model_builder.GetBuilder().call<emscripten::val>("cast", bias, emscripten::val("float32"));
+          bias = model_builder.GetBuilder().call<emscripten::val>("cast", bias,
+                                                                  emscripten::val("float32"), common_options);
         }
       }
 
@@ -135,7 +138,8 @@ Status NormalizationOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder
         if (input_type == ONNX_NAMESPACE::TensorProto_DataType_FLOAT16) {
           // Cast skip to float32
           common_options.set("label", node.Name() + "_cast_skip_to_fp32");
-          skip = model_builder.GetBuilder().call<emscripten::val>("cast", skip, emscripten::val("float32"));
+          skip = model_builder.GetBuilder().call<emscripten::val>("cast", skip,
+                                                                  emscripten::val("float32"), common_options);
         }
         common_options.set("label", node.Name() + "_add_skip");
         input = model_builder.GetBuilder().call<emscripten::val>("add", input, skip, common_options);
@@ -152,7 +156,8 @@ Status NormalizationOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder
             // Cast input_skip_bias_sum back to float16.
             common_options.set("label", node.Name() + "_cast_input_skip_bias_sum_to_fp16");
             input_skip_bias_sum = model_builder.GetBuilder().call<emscripten::val>("cast", input_skip_bias_sum,
-                                                                                   emscripten::val("float16"));
+                                                                                   emscripten::val("float16"),
+                                                                                   common_options);
           }
           model_builder.AddOperand(output_defs[3]->Name(), input_skip_bias_sum);
         }
@@ -200,7 +205,8 @@ Status NormalizationOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder
       if (input_type == ONNX_NAMESPACE::TensorProto_DataType_FLOAT16) {
         // Cast output back to float16.
         common_options.set("label", node.Name() + "_cast_output_to_fp16");
-        output = model_builder.GetBuilder().call<emscripten::val>("cast", output, emscripten::val("float16"));
+        output = model_builder.GetBuilder().call<emscripten::val>("cast", output,
+                                                                  emscripten::val("float16"), common_options);
       }
     }
   } else if (op_type == "InstanceNormalization") {
