@@ -216,9 +216,7 @@ Status GemmVec4Program::GenerateShaderCode(ShaderHelper& shader) const {
 }
 
 bool CanApplyGemmVec4(const Tensor* a,
-                      const Tensor* b,
-                      bool transA_,
-                      bool transB_) {
+                      const Tensor* b) {
   const auto& a_shape = a->Shape();
   const auto& b_shape = b->Shape();
 

@@ -199,7 +199,7 @@ Status Gemm::ComputeInternal(ComputeContext& context) const {
   }
 
   // First try vec4 optimization if possible
-  if (CanApplyGemmVec4(A, B, transA_, transB_)) {
+  if (CanApplyGemmVec4(A, B)) {
     return ApplyGemmVec4(A, B, C, transA_, transB_, alpha_, beta_, context, Y);
   }
 
