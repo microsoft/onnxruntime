@@ -10,7 +10,7 @@ from onnx import TensorProto, numpy_helper
 import onnxruntime as ort
 
 
-def _get_numpy_type(model_info, name):
+def _get_numpy_type(model_info, name) -> np.dtype:
     for i in model_info:
         if i.name == name:
             type_name = i.type.WhichOneof("value")
