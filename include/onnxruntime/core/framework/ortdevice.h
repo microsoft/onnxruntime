@@ -3,9 +3,12 @@
 
 #pragma once
 
-#include <optional>
 #include <sstream>
 #include "core/common/hash_combine.h"
+
+namespace onnxruntime {
+size_t GetMlasPreferredBufferAlignment();
+}
 
 // Struct to represent a physical device.
 struct OrtDevice {
@@ -30,19 +33,18 @@ struct OrtDevice {
     static const MemoryType QNN_HTP_SHARED = 4;
   };
 
-  constexpr OrtDevice(DeviceType device_type_, MemoryType memory_type_, DeviceId device_id_) noexcept
-      : device_type(device_type_),
-        memory_type(memory_type_),
-        device_id(device_id_),
-        alignment() {}
-
   constexpr OrtDevice(DeviceType device_type_, MemoryType memory_type_, DeviceId device_id_, Alignment alignment) noexcept
       : device_type(device_type_),
         memory_type(memory_type_),
         device_id(device_id_),
         alignment(alignment) {}
 
-  constexpr OrtDevice() noexcept : OrtDevice(CPU, MemType::DEFAULT, 0) {}
+  // OrtDevice propagates many units and calling Mlas inline would have to change the linkage for many
+  // libs. However, we should save on calling MlasGetPreferredBufferAlignment() everytime we Alloc()
+  OrtDevice::OrtDevice(DeviceType device_type_, MemoryType memory_type_, DeviceId device_id_) noexcept
+      : OrtDevice(device_type_, memory_type_, device_id_, onnxruntime::GetMlasPreferredBufferAlignment()) {}
+
+  OrtDevice() noexcept : OrtDevice(CPU, MemType::DEFAULT, 0) {}
 
   DeviceType Type() const noexcept {
     return device_type;
@@ -56,7 +58,7 @@ struct OrtDevice {
     return device_id;
   }
 
-  std::optional<Alignment> GetAlignment() const noexcept {
+  Alignment GetAlignment() const noexcept {
     return alignment;
   }
 
@@ -65,10 +67,9 @@ struct OrtDevice {
     ostr << "Device:["
          << "DeviceType:" << static_cast<int>(device_type)
          << " MemoryType:" << static_cast<int>(memory_type)
-         << " DeviceId:" << device_id;
-    if (alignment)
-      ostr << " Alignment:" << *alignment;
-    ostr << "]";
+         << " DeviceId:" << device_id
+         << " Alignment:" << alignment
+         << "]";
     return ostr.str();
   }
 
@@ -77,8 +78,7 @@ struct OrtDevice {
     auto h = std::hash<int>()(device_type);
     onnxruntime::HashCombine(memory_type, h);
     onnxruntime::HashCombine(device_id, h);
-    if (alignment)
-      onnxruntime::HashCombine(*alignment, h);
+    onnxruntime::HashCombine(alignment, h);
     return h;
   }
 
@@ -91,10 +91,7 @@ struct OrtDevice {
     if (device_id != other.device_id)
       return device_id < other.device_id;
 
-    if (alignment && other.alignment)
-      return *alignment < *other.alignment;
-
-    return false;
+    return alignment < other.alignment;
   }
 
  private:
@@ -108,7 +105,7 @@ struct OrtDevice {
   int32_t device_id : 16;
 
   // Required alignment
-  std::optional<Alignment> alignment;
+  Alignment alignment;
 };
 
 inline bool operator==(const OrtDevice& left, const OrtDevice& other) {

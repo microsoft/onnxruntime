@@ -17,6 +17,10 @@
 
 namespace onnxruntime {
 
+size_t GetMlasPreferredBufferAlignment() {
+  return MlasGetPreferredBufferAlignment();
+}
+
 // private helper for calculation so SafeInt usage doesn't bleed into the public allocator.h header
 bool IAllocator::CalcMemSizeForArrayWithAlignment(size_t nmemb, size_t size, size_t alignment, size_t* out) noexcept {
   bool ok = true;
@@ -120,19 +124,11 @@ void* AllocatorDefaultAlloc(size_t size) {
 }
 
 void* CPUAllocator::Alloc(size_t size) {
-  auto requested_alignment = Info().device.GetAlignment();
-  const size_t alignment = (requested_alignment.has_value()) ? *requested_alignment : MlasGetPreferredBufferAlignment();
-  return AllocatorDefaultAllocAligned(size, alignment);
+  return AllocatorDefaultAllocAligned(size, Info().device.GetAlignment());
 }
 
 void CPUAllocator::Free(void* p) {
-#ifdef USE_MIMALLOC
-  auto requested_alignment = Info().device.GetAlignment();
-  const size_t alignment = (requested_alignment.has_value()) ? *requested_alignment : MlasGetPreferredBufferAlignment();
-  AllocatorDefaultFreeAligned(p, alignment);
-#else
-  AllocatorDefaultFree(p);
-#endif
+  AllocatorDefaultFreeAligned(p, Info().device.GetAlignment());
 }
 
 void* AllocateBufferWithOptions(IAllocator& alloc, size_t size, bool use_reserve, Stream* stream, WaitNotificationFn wait_fn) {

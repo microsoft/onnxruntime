@@ -726,6 +726,13 @@ class PlannerImpl {
       ProcessDef(index, graph_viewer_.GetNodeArg(pair.first));
     }
 
+    // Check if should prefer the destination node EP.
+    auto UseEpSpecificAllocator = [](const std::string& provider_type) {
+      return provider_type == kQnnExecutionProvider ||
+             provider_type == kVitisAIExecutionProvider ||
+             provider_type == kVSINPUExecutionProvider;
+    };
+
     InlinedHashSet<OrtValueIndex> set_node_arg_has_explicit_consumer;
 
     InlinedHashMap<OrtValueIndex, const IExecutionProvider*> map_implicitly_consumed_node_arg_to_ep;
@@ -759,6 +766,7 @@ class PlannerImpl {
                               &set_node_arg_has_explicit_consumer,
                               &map_implicitly_consumed_node_arg_to_ep,
                               &set_implicitly_consumed_node_arg_has_heterogenous_ep_consumers,
+                              &UseEpSpecificAllocator,
                               this](const NodeArg& input, size_t arg_idx) {
           const auto& name = input.Name();
 
@@ -857,15 +865,13 @@ class PlannerImpl {
                     // we have seen
                     plan_.SetLocation(static_cast<size_t>(index), exec_provider->GetOrtDeviceByMemType(OrtMemType::OrtMemTypeDefault));
                   } else {
-                    if (utils::DoesEpLocationRequiresAdjustment(exec_provider->Type())) {
-                      plan_.SetLocation(static_cast<size_t>(index),
-                                        exec_provider->GetOrtDeviceByMemType(OrtMemType::OrtMemTypeDefault));
-                    } else {
-                      // Default the location to CPU
-                      plan_.SetLocation(static_cast<size_t>(index),
-                                        execution_providers_.Get(CPU)->GetOrtDeviceByMemType(OrtMemType::OrtMemTypeDefault));
-                      set_implicitly_consumed_node_arg_has_heterogenous_ep_consumers.insert(index);
-                    }
+                    // Either override from the provider or set the location to CPU
+                    const auto& provider = (UseEpSpecificAllocator(exec_provider->Type()))
+                                               ? exec_provider
+                                               : execution_providers_.Get(CPU);
+                    plan_.SetLocation(static_cast<size_t>(index),
+                                      provider->GetOrtDeviceByMemType(OrtMemType::OrtMemTypeDefault));
+                    set_implicitly_consumed_node_arg_has_heterogenous_ep_consumers.insert(index);
                   }
                 }
               }
@@ -899,8 +905,9 @@ class PlannerImpl {
             for (const auto* consumer : consumers) {
               if (consumer != nullptr) {
                 const auto& ep_type = consumer->GetExecutionProviderType();
-                if (utils::DoesEpLocationRequiresAdjustment(ep_type)) {
-                  output_device = execution_providers_.Get(ep_type)->GetOrtDeviceByMemType(OrtMemType::OrtMemTypeCPUInput);
+                if (UseEpSpecificAllocator(ep_type)) {
+                  output_device = execution_providers_.Get(ep_type)->GetOrtDeviceByMemType(
+                      OrtMemType::OrtMemTypeCPUInput);
                   break;
                 }
               }

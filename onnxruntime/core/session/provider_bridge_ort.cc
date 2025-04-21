@@ -20,6 +20,7 @@
 #include "core/framework/run_options.h"
 #include "core/framework/tensorprotoutils.h"
 #include "core/framework/TensorSeq.h"
+#include "core/framework/ortdevice.h"
 #include "core/framework/provider_options.h"
 #include "core/framework/fallback_cpu_capability.h"
 #include "core/framework/random_generator.h"
@@ -274,6 +275,9 @@ struct ProviderHostImpl : ProviderHost {
 
   AllocatorPtr CreateAllocator(const AllocatorCreationInfo& info) override { return onnxruntime::CreateAllocator(info); }
   std::unique_ptr<IAllocator> CreateCPUAllocator(const OrtMemoryInfo& memory_info) override { return std::make_unique<CPUAllocator>(memory_info); };
+  size_t GetMlasPreferredBufferAlignment() override {
+    return onnxruntime::GetMlasPreferredBufferAlignment();
+  }
 
   void* CPUAllocator__Alloc(CPUAllocator* p, size_t size) override { return p->CPUAllocator::Alloc(size); }
   void CPUAllocator__Free(CPUAllocator* p, void* allocation) override { return p->CPUAllocator::Free(allocation); }

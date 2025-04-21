@@ -327,6 +327,11 @@ std::unique_ptr<IAllocator> CreateCPUAllocator(const OrtMemoryInfo& info) {
   return g_host->CreateCPUAllocator(info);
 }
 
+// Declaration at ortdevice.h
+size_t GetMlasPreferredBufferAlignment() {
+  return g_host->GetMlasPreferredBufferAlignment();
+}
+
 bool IAllocator::CalcMemSizeForArrayWithAlignment(size_t nmemb, size_t size, size_t alignment, size_t* out) noexcept {
   return g_host->IAllocator__CalcMemSizeForArrayWithAlignment(nmemb, size, alignment, out);
 }
