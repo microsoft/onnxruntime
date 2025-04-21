@@ -500,11 +500,13 @@ Status Environment::EpInfo::Create(std::unique_ptr<EpLibrary> library_in, std::u
         ed->device = &device;
 
         if (ep_metadata) {
-          ed->ep_metadata = *ep_metadata;
+          ed->ep_metadata = std::move(*ep_metadata);
+          delete ep_metadata;
         }
 
         if (ep_options) {
-          ed->ep_options = *ep_options;
+          ed->ep_options = std::move(*ep_options);
+          delete ep_options;
         }
 
         ed->ep_factory = &factory;
