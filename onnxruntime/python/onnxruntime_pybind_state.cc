@@ -2449,7 +2449,7 @@ class EnvInitializer {
 
     if (!EnvInitializer::use_per_session_threads) {
       py::object atexit_register = py::module::import("atexit").attr("register");
-      atexit_register([weak = std::weak_ptr<Environment>(session_env_)] mutable {
+      atexit_register([weak = std::weak_ptr<Environment>(session_env_)]() mutable {
         if (auto env = weak.lock()) {
           env->ShutdownGlobalThreadPools();
         }
