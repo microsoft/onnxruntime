@@ -884,7 +884,7 @@ Q8Int8GemmR2xC1BlkLen16Avx512(
 
             __m256 acc20 = h_add_512(acc0);
             __m256 acc21 = h_add_512(acc1);
-            while (k_blks_remaining-- > 0) {
+            for (; k_blks_remaining > 0; --k_blks_remaining) {
                 const __m128i av0_16_epi8 = _mm_lddqu_si128(reinterpret_cast<const __m128i*>(QuantAPtr));
                 const __m128i av1_16_epi8 = _mm_lddqu_si128(reinterpret_cast<const __m128i*>(QuantAPtr + lda));
 
@@ -1130,8 +1130,8 @@ Q8Int8GemmR1xC4BlkLen16Avx512(
 
                 QuantAPtr += BlkLen16;
                 QuantAScalePtr++;
-                QuantBDataPtr += BlkDataSizeInBytes;
-                QuantBScalePtr++;
+                QuantBDataPtr += BlkDataSizeInBytes * NCols4;
+                QuantBScalePtr += NCols4;
             }
 
             __m128 acc_r0 = FoldAccumulators(acc2[0], acc2[1], acc2[2], acc2[3]);

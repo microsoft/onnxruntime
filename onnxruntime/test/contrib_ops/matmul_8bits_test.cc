@@ -215,6 +215,19 @@ void TestMatMul8BitsTyped() {
     opts.has_zero_point = true;
     RunTest8Bits<AType>(opts);
   }
+
+  {
+    TestOptions8Bits opts = base_opts;
+    opts.has_bias = true;
+    RunTest8Bits<AType>(opts);
+  }
+
+  {
+    TestOptions8Bits opts = base_opts;
+    opts.has_zero_point = true;
+    opts.has_bias = true;
+    RunTest8Bits<AType>(opts);
+  }
 }
 
 }  // namespace
@@ -233,11 +246,11 @@ TEST(MatMulNBits, Float32_8b_Accuracy4) {
   TestMatMul8BitsTyped<float, 1, 4, 64, 16, 4>();
   TestMatMul8BitsTyped<float, 1, 32, 16, 128, 4>();
   TestMatMul8BitsTyped<float, 1, 288, 16, 16, 4>();
-  // TestMatMul8BitsTyped<float, 1, 288, 1024, 16, 4>();
+  TestMatMul8BitsTyped<float, 1, 288, 1024, 16, 4>();
   TestMatMul8BitsTyped<float, 1, 288, 1024, 128, 4>();
   TestMatMul8BitsTyped<float, 1, 288, 93, 32, 4>();
   TestMatMul8BitsTyped<float, 1, 288, 93, 128, 4>();
-  // TestMatMul8BitsTyped<float, 1, 288, 1234, 16, 4>();
+  TestMatMul8BitsTyped<float, 1, 288, 1234, 16, 4>();
   TestMatMul8BitsTyped<float, 2, 1, 16, 16, 4>();
   TestMatMul8BitsTyped<float, 2, 2, 16, 16, 4>();
   TestMatMul8BitsTyped<float, 100, 1, 16, 16, 4>();
@@ -246,12 +259,12 @@ TEST(MatMulNBits, Float32_8b_Accuracy4) {
   TestMatMul8BitsTyped<float, 100, 32, 32, 16, 4>();
   TestMatMul8BitsTyped<float, 100, 32, 16, 128, 4>();
   TestMatMul8BitsTyped<float, 100, 288, 16, 16, 4>();
-  // TestMatMul8BitsTyped<float, 100, 288, 1024, 16, 4>();
+  TestMatMul8BitsTyped<float, 100, 288, 1024, 16, 4>();
   TestMatMul8BitsTyped<float, 100, 288, 1024, 128, 4>();
   TestMatMul8BitsTyped<float, 100, 288, 192, 64, 4>();
   TestMatMul8BitsTyped<float, 100, 288, 93, 32, 4>();
   TestMatMul8BitsTyped<float, 100, 288, 93, 128, 4>();
-  // TestMatMul8BitsTyped<float, 100, 288, 1234, 16, 4>();
+  TestMatMul8BitsTyped<float, 100, 288, 1234, 16, 4>();
 }
 #endif
 }  // namespace test
