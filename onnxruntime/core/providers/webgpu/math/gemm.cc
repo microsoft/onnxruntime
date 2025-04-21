@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include "core/providers/webgpu/math/gemm.h"
+#include "core/providers/webgpu/math/gemm_vec4.h"
 
 #include <vector>
 
@@ -195,6 +196,11 @@ Status Gemm::ComputeInternal(ComputeContext& context) const {
 
   if (output_size == 0) {
     return Status::OK();
+  }
+
+  // First try vec4 optimization if possible
+  if (CanApplyGemmVec4(A, B, transA_, transB_)) {
+    return ApplyGemmVec4(A, B, C, transA_, transB_, alpha_, beta_, context, Y);
   }
 
   // WebGPU doesn't support binding a zero-sized buffer, so we need to check if A or B is empty.
