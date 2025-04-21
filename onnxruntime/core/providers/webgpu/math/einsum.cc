@@ -32,17 +32,6 @@ bool IsInteger(const std::string& s) {
   static const std::regex pattern(R"(^\d+$)");
   return std::regex_match(s, pattern);
 }
-
-// Helper function to get WGSL type string for indices based on tensor rank
-std::string GetWGSLIndicesType(int rank) {
-  if (rank < 2) {
-    return "u32";
-  } else if (rank <= 4) {
-    return "vec" + std::to_string(rank) + "<u32>";
-  } else {
-    return "array<u32, " + std::to_string(rank) + ">";
-  }
-}
 }  // namespace
 
 #define WEBGPU_EINSUM_TYPED_KERNEL_DECL(version)                                               \
@@ -221,13 +210,15 @@ EinsumTerm EinsumEquation::ProcessTerm(const std::string& term, bool is_input,
 
 Status EinsumProgram::GenerateShaderCode(ShaderHelper& shader) const {
   // Add inputs and output.
-  const ShaderVariableHelper& input0 = shader.AddInput("input0", ShaderUsage::UseUniform);
+  const ShaderVariableHelper& input0 =
+      shader.AddInput("input0", ShaderUsage::UseUniform | ShaderUsage::UseIndicesTypeAlias);
 
   std::vector<std::reference_wrapper<const ShaderVariableHelper>> inputs;
   inputs.push_back(input0);
 
   for (size_t i = 1; i < input_count_; ++i) {
-    inputs.push_back(shader.AddInput("input" + std::to_string(i), ShaderUsage::UseUniform));
+    inputs.push_back(shader.AddInput("input" + std::to_string(i),
+                                     ShaderUsage::UseUniform | ShaderUsage::UseIndicesTypeAlias));
   }
 
   const ShaderVariableHelper& output =
@@ -281,8 +272,7 @@ Status EinsumProgram::GenerateShaderCode(ShaderHelper& shader) const {
           // from output to input0 Format like: input0Indices[0] = outputIndices[0], for the 'i'
           // symbol
           idx_copy.push_back(inputs[lhs_term_index].get().IndicesSet(
-              "input" + std::to_string(lhs_term_index) + "Indices",
-              std::to_string(input_index),
+              "input" + std::to_string(lhs_term_index) + "Indices", std::to_string(input_index),
               output.IndicesGet("outputIndices", std::to_string(rhs_indices->second[0]))));
         }
 
@@ -406,8 +396,8 @@ Status EinsumProgram::GenerateShaderCode(ShaderHelper& shader) const {
     const auto& input = inputs[i].get();
     int rank = input.Rank();
 
-    shader.MainFunctionBody() << "var input" << i << "Indices: " << GetWGSLIndicesType(rank)
-                              << ";\n";
+    shader.MainFunctionBody() << "var input" << i << "Indices: input" << std::to_string(i)
+                              << "_indices_t;\n";
   }
 
   // Add reduce operations.
