@@ -41,7 +41,7 @@ struct OrtDevice {
 
   // OrtDevice propagates many units and calling Mlas inline would have to change the linkage for many
   // libs. However, we should save on calling MlasGetPreferredBufferAlignment() everytime we Alloc()
-  OrtDevice::OrtDevice(DeviceType device_type_, MemoryType memory_type_, DeviceId device_id_) noexcept
+  OrtDevice(DeviceType device_type_, MemoryType memory_type_, DeviceId device_id_) noexcept
       : OrtDevice(device_type_, memory_type_, device_id_, onnxruntime::GetMlasPreferredBufferAlignment()) {}
 
   OrtDevice() noexcept : OrtDevice(CPU, MemType::DEFAULT, 0) {}
