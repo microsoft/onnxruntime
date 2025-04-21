@@ -684,10 +684,10 @@ static void AddInitializerAsInput(onnxruntime::Graph& dst_graph,
 // Creates a new model without the DQ/Q operators in the src graph.
 Status CreateModelWithStrippedQDQNodes(const GraphViewer& src_graph,
                                        const logging::Logger& logger,
-                                       bool enable_ovep_weight_sharing,
+                                       bool transform_weight_as_input,
                                        bool enable_ovep_qdq_optimizer,
                                        /*out*/ std::unique_ptr<onnxruntime::Model>& model,
-                                       /*out*/ sw& shared_weights) {
+                                       /*out*/ Metadata::Map& weight_metadata) {
   // NOTE: This function is a re-implementation of GraphViewerToProto() in core/graph/graph_proto_serializer.cc
   // with the following differences:
   //   - Uses onnxruntime::Graph APIs instead of onnx::GraphProto APIs.

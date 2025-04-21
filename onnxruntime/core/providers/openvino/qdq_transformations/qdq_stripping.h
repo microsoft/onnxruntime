@@ -13,11 +13,10 @@ namespace openvino_ep {
 // Creates a new model without the DQ/Q operators in the src graph as per pre-defined rulesets
 Status CreateModelWithStrippedQDQNodes(const GraphViewer& src_graph,
                                        const logging::Logger& logger,
-                                       bool enable_ovep_weight_sharing,
+                                       bool transform_weight_as_input,
                                        bool enable_ovep_qdq_optimizer,
                                        /*out*/ std::unique_ptr<onnxruntime::Model>& model,
-                                       /*out*/ sw& shared_weights);
+                                       /*out*/ Metadata::Map& metadata);
 
-bool dumpMetaDataMapToBinary(const sw::Metadata::Map& shared_weights, const std::string& filename);
 }  // namespace openvino_ep
 }  // namespace onnxruntime
