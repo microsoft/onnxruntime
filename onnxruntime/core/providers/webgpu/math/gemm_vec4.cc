@@ -8,7 +8,6 @@ namespace onnxruntime {
 namespace webgpu {
 
 Status GemmVec4Program::GenerateShaderCode(ShaderHelper& shader) const {
-  // Define storage buffers
   const ShaderVariableHelper& output = shader.AddOutput("output", ShaderUsage::UseUniform | ShaderUsage::UseValueTypeAlias);
 
   shader.MainFunctionBody() << "  var values = output_value_t(0);\n\n"
@@ -16,14 +15,13 @@ Status GemmVec4Program::GenerateShaderCode(ShaderHelper& shader) const {
                             << "  let tile_row_start = (workgroup_idx / uniforms.num_tile_n) * 32u;\n";
 
   if (need_handle_matmul_) {
-    const ShaderVariableHelper& A = shader.AddInput("A", ShaderUsage::UseUniform);
-    const ShaderVariableHelper& B = shader.AddInput("B", ShaderUsage::UseUniform);
+    shader.AddInput("A", ShaderUsage::UseUniform);
+    shader.AddInput("B", ShaderUsage::UseUniform);
 
     // Add shared memory arrays for tiling
     shader.AdditionalImplementation() << "var<workgroup> tile_a: array<array<output_value_t, 8>, 32>;\n"
                                       << "var<workgroup> tile_b: array<array<output_value_t, 8>, 32>;\n\n";
 
-    // Main compute shader entry point
     shader.MainFunctionBody()
         << "  var k_start_a = 0u;\n"
         << "  var k_start_b = 0u;\n\n"
@@ -32,6 +30,7 @@ Status GemmVec4Program::GenerateShaderCode(ShaderHelper& shader) const {
     // Main loop for matrix multiplication
     shader.MainFunctionBody()
         << "  for (var t = 0u; t < num_tiles; t = t + 1u) {\n";
+    // Load TILE_A
     if (transA_) {
       shader.MainFunctionBody() << R"TILE_A(
         var row = k_start_a + (local_idx / 8u);
@@ -57,6 +56,7 @@ Status GemmVec4Program::GenerateShaderCode(ShaderHelper& shader) const {
         }
         )TILE_A";
     }
+    // Load TILE_B
     if (transB_) {
       shader.MainFunctionBody() << R"TILE_B(
         row = tile_col_start * 4 + (local_idx / 8u);
@@ -99,6 +99,7 @@ Status GemmVec4Program::GenerateShaderCode(ShaderHelper& shader) const {
       shader.MainFunctionBody() << "k_start_b = k_start_b + 32u; \n";
     }
 
+    // Calculate output according to TILE_A and TILE_B
     if (transA_ && transB_) {
       shader.MainFunctionBody() << R"CALC(
         var a1 = output_value_t(0);
@@ -133,7 +134,7 @@ Status GemmVec4Program::GenerateShaderCode(ShaderHelper& shader) const {
         )CALC";
     } else if (transA_ && !transB_) {
       shader.MainFunctionBody() << R"CALC(
-            var a = output_value_t(0);
+        var a = output_value_t(0);
         var b = output_value_t(0);
 
         // Calculate 4 output for each thread
@@ -188,7 +189,7 @@ Status GemmVec4Program::GenerateShaderCode(ShaderHelper& shader) const {
     shader.MainFunctionBody() << "    workgroupBarrier();\n"
                               << "  }\n\n";
 
-    // Calculate alpha and bias
+    // Calculate alpha
     if (alpha_ != 1.0f) {
       shader.MainFunctionBody() << "  values = uniforms.alpha * values;\n";
     }
@@ -197,6 +198,7 @@ Status GemmVec4Program::GenerateShaderCode(ShaderHelper& shader) const {
   shader.MainFunctionBody() << "  let m = tile_row_start + local_idx / 8u;\n"
                             << "  let n = tile_col_start + local_idx % 8u;\n\n";
 
+  // Calculate bias
   if (need_handle_bias_) {
     const ShaderVariableHelper& C = shader.AddInput("C", ShaderUsage::UseUniform);
     shader.MainFunctionBody() << "  if (m < uniforms.M && n < uniforms.N4) {\n"
@@ -217,19 +219,13 @@ bool CanApplyGemmVec4(const Tensor* a,
                       const Tensor* b,
                       bool transA_,
                       bool transB_) {
-  if (!a || !b) return false;
-
   const auto& a_shape = a->Shape();
   const auto& b_shape = b->Shape();
 
-  if (a_shape.NumDimensions() != 2 || b_shape.NumDimensions() != 2) return false;
-
-  uint32_t M = onnxruntime::narrow<uint32_t>(a_shape[0]);
-  uint32_t K = onnxruntime::narrow<uint32_t>(a_shape[1]);
-  uint32_t N = onnxruntime::narrow<uint32_t>(b_shape[1]);
-  //    return false;
-  // Dimensions must be divisible by 4 for vec4
-  return M % 4 == 0 && N % 4 == 0 && K % 4 == 0;
+  uint32_t A_cols = onnxruntime::narrow<uint32_t>(a_shape[1]);
+  uint32_t B_cols = onnxruntime::narrow<uint32_t>(b_shape[1]);
+  // Cols must be divisible by 4 for vec4
+  return A_cols % 4 == 0 && B_cols % 4;
 }
 
 Status ApplyGemmVec4(const Tensor* a,
@@ -241,25 +237,12 @@ Status ApplyGemmVec4(const Tensor* a,
                      float beta,
                      ComputeContext& context,
                      Tensor* y) {
-  // Validate inputs
-  if (!a || !b) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Gemm requires input tensors A and B.");
-  }
-
   const auto& a_shape = a->Shape();
   const auto& b_shape = b->Shape();
-
-  if (a_shape.NumDimensions() != 2 || b_shape.NumDimensions() != 2) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input tensors A and B must be 2 dimensional.");
-  }
 
   uint32_t M = onnxruntime::narrow<uint32_t>(transA_ ? a_shape[1] : a_shape[0]);
   uint32_t K = onnxruntime::narrow<uint32_t>(transA_ ? a_shape[0] : a_shape[1]);
   uint32_t N = onnxruntime::narrow<uint32_t>(transB_ ? b_shape[0] : b_shape[1]);
-
-  if ((transA_ ? a_shape[0] : a_shape[1]) != (transB_ ? b_shape[1] : b_shape[0])) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Inner dimensions of A and B must match.");
-  }
 
   // WebGPU doesn't support binding a zero-sized buffer, so we need to check if A or B is empty.
   bool need_handle_matmul = a_shape.Size() > 0 && b_shape.Size() > 0;

@@ -963,102 +963,14 @@ TEST(GemmOpTest, GemmOptimizeVec4) {
 
   run_test(60, 16, 92);
 
-  run_test(8, 8, 8);        // Smaller dimensions
-  run_test(128, 128, 128);  // Square matrices
-  run_test(128, 32, 64);    // Larger dimensions
-  run_test(4, 8, 12);       // Minimal dimensions divisible by 4
+  run_test(8, 8, 8);
+  run_test(128, 128, 128);
+  run_test(128, 32, 64);
+  run_test(4, 8, 12);
 
-  run_test(96, 24, 48);   // Large M, moderate K and N
-  run_test(48, 48, 120);  // Moderate M and K, large N
-  run_test(72, 80, 84);   // All dimensions different but divisible by 4
-}
-
-TEST(GemmOpTest, GemmOptimizeVec4Basic) {
-  OpTester test("Gemm");
-
-  test.AddAttribute("transA", (int64_t)0);
-  test.AddAttribute("transB", (int64_t)0);
-  test.AddAttribute("alpha", 1.0f);
-  test.AddAttribute("beta", 1.0f);
-
-  test.AddInput<float>("A", {4, 4},
-                       {
-                           1.0f,
-                           2.0f,
-                           3.0f,
-                           1.0f,
-                           1.0f,
-                           2.0f,
-                           3.0f,
-                           1.0f,
-                           1.0f,
-                           2.0f,
-                           3.0f,
-                           1.0f,
-                           1.0f,
-                           2.0f,
-                           3.0f,
-                           1.0f,
-                       });
-  test.AddInput<float>("B", {4, 4},
-                       {
-                           1.0f,
-                           2.0f,
-                           3.0f,
-                           1.0f,
-                           1.0f,
-                           2.0f,
-                           3.0f,
-                           1.0f,
-                           1.0f,
-                           2.0f,
-                           3.0f,
-                           1.0f,
-                           1.0f,
-                           2.0f,
-                           3.0f,
-                           1.0f,
-                       });
-  test.AddInput<float>("C", {4, 4},
-                       {
-                           1.0f,
-                           2.0f,
-                           3.0f,
-                           1.0f,
-                           1.0f,
-                           2.0f,
-                           3.0f,
-                           1.0f,
-                           1.0f,
-                           2.0f,
-                           3.0f,
-                           1.0f,
-                           1.0f,
-                           2.0f,
-                           3.0f,
-                           1.0f,
-                       });
-  test.AddOutput<float>("Y", {4, 4},
-                        {
-                            8.0f,
-                            16.0f,
-                            24.0f,
-                            8.0f,
-                            8.0f,
-                            16.0f,
-                            24.0f,
-                            8.0f,
-                            8.0f,
-                            16.0f,
-                            24.0f,
-                            8.0f,
-                            8.0f,
-                            16.0f,
-                            24.0f,
-                            8.0f,
-                        });
-  test.Config(run_with_tunable_op)
-      .RunWithConfig();
+  run_test(96, 24, 48);
+  run_test(48, 48, 120);
+  run_test(72, 80, 84);
 }
 
 TEST(GemmOpTest, GemmOptimizeVec4TransA) {
