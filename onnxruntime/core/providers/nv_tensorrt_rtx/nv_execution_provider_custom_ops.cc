@@ -80,7 +80,6 @@ common::Status CreateTensorRTCustomOpDomainList(std::vector<OrtCustomOpDomain*>&
     ORT_THROW_IF_ERROR(env.GetSymbolFromLibrary(library_handle, "initLibNvInferPlugins", (void**)&dyn_initLibNvInferPlugins));
     dyn_initLibNvInferPlugins(&trt_logger, "");
     LOGS_DEFAULT(INFO) << "[Nv EP] Default plugins successfully loaded.";
-    ;
 
 #if defined(_MSC_VER)
 #pragma warning(push)
