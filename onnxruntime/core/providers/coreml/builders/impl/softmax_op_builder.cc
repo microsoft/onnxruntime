@@ -125,11 +125,17 @@ Status SoftmaxOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
   return Status::OK();
 }
 
-bool SoftmaxOpBuilder::IsOpSupportedImpl(const Node& node, const OpBuilderInputParams& /*input_params*/,
+bool SoftmaxOpBuilder::IsOpSupportedImpl(const Node& node, const OpBuilderInputParams& input_params,
                                          const logging::Logger& logger) const {
   const auto& input_defs = node.InputDefs();
   std::vector<int64_t> input_shape;
-  if (!GetStaticShape(*input_defs[0], input_shape, logger))
+  if (!input_params.create_mlprogram && !GetStaticShape(*input_defs[0], input_shape, logger)) {
+    LOGS(logger, VERBOSE) << "NeuralNetwork requires static shape for input";
+    return false;
+  }
+
+  if (!GetShape(*input_defs[0], input_shape, logger))
+    LOGS(logger, VERBOSE) << "Unable to get shape of input.";
     return false;
 
   const TensorShape shape(input_shape);

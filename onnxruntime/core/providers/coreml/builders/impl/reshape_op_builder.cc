@@ -40,7 +40,7 @@ Status ReshapeOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
                                                const logging::Logger& logger) const {
   const auto& input_defs = node.InputDefs();
   std::vector<int64_t> input_shape;
-  ORT_RETURN_IF_NOT(GetStaticShape(*input_defs[0], input_shape, logger), "Cannot get shape of data");
+  ORT_RETURN_IF_NOT(GetShape(*input_defs[0], input_shape, logger), "Cannot get shape of data");
 
   const auto& data_name = input_defs[0]->Name();
   const auto& new_shape_name = input_defs[1]->Name();
@@ -79,6 +79,25 @@ bool AllPositiveShape(gsl::span<const int64_t> shape) {
   return std::all_of(shape.begin(), shape.end(), [](int64_t dim) { return dim > 0 || dim == 0; });
 }
 
+bool LegalNegativeOneInNewShape(gsl::span<const int64_t> input_shape, gsl::span<const int64_t> new_shape) {
+  // Count how many -1 dimensions exist in new_shape
+  int negative_one_count = std::count(new_shape.begin(), new_shape.end(), -1);
+
+  // Case 1: If new_shape has no -1 dimensions, it's always valid
+  if (negative_one_count == 0) {
+    return true;
+  }
+
+  // Case 2: If new_shape has exactly one -1 dimension, check if input_shape has at least one -1
+  if (negative_one_count == 1) {
+    return std::any_of(input_shape.begin(), input_shape.end(),
+                      [](int64_t dim) { return dim == -1; });
+  }
+
+  // Case 3: If new_shape has more than one -1 dimension, it's invalid
+  return false;
+}
+
 bool ReshapeOpBuilder::IsOpSupportedImpl(const Node& node, const OpBuilderInputParams& input_params,
                                          const logging::Logger& logger) const {
   const auto& input_defs = node.InputDefs();
@@ -99,9 +118,17 @@ bool ReshapeOpBuilder::IsOpSupportedImpl(const Node& node, const OpBuilderInputP
   }
 
   std::vector<int64_t> input_shape;
+  if (!input_params.create_mlprogram) {
+    // if we are using NeuralNetwork, input shape must be static
+    if (!GetStaticShape(*input_defs[0], input_shape, logger)) {
+      LOGS(logger, VERBOSE) << "Unable to get shape of input -- input must have static shape for NeuralNetwork.";
+      return false;
+    }
+  }
+
   // first input must be fixed rank OR (first input has variadic rank AND shape only contains positive integers)
   // as per docs, 0 is considered an illegal shape element if the input is variadic
-  if (!GetStaticShape(*input_defs[0], input_shape, logger)) {
+  if (!GetShape(*input_defs[0], input_shape, logger)) {
     LOGS(logger, VERBOSE) << "Unable to get shape of input -- input must have fixed rank for reshape.";
     return false;
   }
@@ -114,23 +141,19 @@ bool ReshapeOpBuilder::IsOpSupportedImpl(const Node& node, const OpBuilderInputP
     return false;
   }
 
-  // CoreML reshape doesn't support new shape with more than 5 dimensions.
   if (new_shape.size() > 5) {
-    LOGS(logger, VERBOSE) << "Reshape does not support new shape with rank greater than 5. Input shape: "
+    LOGS(logger, VERBOSE) << "Reshape does not support new shape with more than 5 dimensions. "
+                             "Input shape: "
                           << Shape2String(input_shape) << ", new shape: " << Shape2String(new_shape);
     return false;
   }
 
-  // CoreML reshape does not support 0 as dimension
-  NodeAttrHelper helper(node);
-  const bool allow_zero = helper.Get("allowzero", 0) == 1;
-  if (allow_zero) {
-    if (std::find(new_shape.begin(), new_shape.end(), int64_t{0}) != new_shape.end()) {
-      LOGS(logger, VERBOSE) << "Reshape does not support new shape with 0 as dimension when allowzero is enabled. "
-                               "Input shape: "
-                            << Shape2String(input_shape) << ", new shape: " << Shape2String(new_shape);
-      return false;
-    }
+  // -1 is only allowed in the new shape if it appears in the input shape
+  if (!LegalNegativeOneInNewShape(input_shape, new_shape)) {
+    LOGS(logger, VERBOSE) << "Reshape does not support -1 in new shape unless it appears in the input shape. "
+                             "Input shape: "
+                          << Shape2String(input_shape) << ", new shape: " << Shape2String(new_shape);
+    return false;
   }
 
   return true;
