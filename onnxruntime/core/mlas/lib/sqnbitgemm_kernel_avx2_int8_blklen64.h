@@ -105,7 +105,7 @@ accumulate_q8_blklen64_r1c1blk1_avx2(
         acc0 = _mm256_fmadd_ps(sum_ps, scale_8_ps, acc0);
     }
     else
-    #endif
+#endif
     {
         // 2 x i8 x i8 may be larger than i16
         const __m256i low_mask = _mm256_load_si256(reinterpret_cast<const __m256i*>(MasksAvx2BlkLen64));
