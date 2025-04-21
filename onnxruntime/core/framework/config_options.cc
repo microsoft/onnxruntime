@@ -31,14 +31,14 @@ std::string ConfigOptions::GetConfigOrDefault(const std::string& config_key,
 
 Status ConfigOptions::AddConfigEntry(const char* config_key, const char* config_value) noexcept {
   std::string key = config_key;
-  if (key.empty() || key.length() > 128)
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Config key is empty or longer than maximum length 128");
+  if (key.empty() || key.length() > kMaxKeyLength)
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Config key is empty or longer than maximum length ",
+                           kMaxKeyLength);
 
   std::string val = config_value;
-  if (val.length() > onnxruntime::kMaxStrLen)
+  if (val.length() > kMaxValueLength)
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                           "Config value is longer than maximum length: ",
-                           onnxruntime::kMaxStrLen);
+                           "Config value is longer than maximum length: ", kMaxValueLength);
 
   auto iter = configurations.find(config_key);
   if (iter != configurations.cend()) {
@@ -50,6 +50,10 @@ Status ConfigOptions::AddConfigEntry(const char* config_key, const char* config_
   }
 
   return Status::OK();
+}
+
+const std::unordered_map<std::string, std::string>& ConfigOptions::GetConfigOptionsMap() const noexcept {
+  return configurations;
 }
 
 std::ostream& operator<<(std::ostream& os, const ConfigOptions& config_options) {

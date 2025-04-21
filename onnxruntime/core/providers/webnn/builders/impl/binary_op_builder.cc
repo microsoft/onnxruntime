@@ -20,7 +20,7 @@ class BinaryOpBuilder : public BaseOpBuilder {
                                const logging::Logger& logger) const override ORT_MUST_USE_RESULT;
 
   // Operator support related.
-  bool HasSupportedInputsImpl(const InitializedTensorSet& /* initializers */, const Node& node,
+  bool HasSupportedInputsImpl(const GraphViewer&, const Node& node,
                               const emscripten::val& wnn_limits, const logging::Logger& logger) const override;
 };
 
@@ -57,7 +57,7 @@ Status BinaryOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const
   return Status::OK();
 }
 
-bool BinaryOpBuilder::HasSupportedInputsImpl(const InitializedTensorSet& /* initializers */, const Node& node,
+bool BinaryOpBuilder::HasSupportedInputsImpl(const GraphViewer&, const Node& node,
                                              const emscripten::val& wnn_limits, const logging::Logger& logger) const {
   const auto& input_defs = node.InputDefs();
   const std::string_view op_type = node.OpType();
@@ -69,7 +69,7 @@ bool BinaryOpBuilder::HasSupportedInputsImpl(const InitializedTensorSet& /* init
     return false;
 
   std::array<int32_t, 2> input_types{input0_type, input1_type};
-  if (!AreInputDataTypesSame(op_type, input_types, logger)) {
+  if (!AreDataTypesSame(op_type, input_types, logger)) {
     return false;
   }
 

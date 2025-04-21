@@ -2,8 +2,11 @@
 // Licensed under the MIT License.
 
 #include "core/framework/session_options.h"
+
 #include "core/common/logging/logging.h"
+#include "core/common/string_utils.h"
 #include "core/framework/ort_value.h"
+#include "core/session/onnxruntime_session_options_config_keys.h"
 
 namespace onnxruntime {
 
@@ -96,4 +99,20 @@ void SessionOptions::AddCustomOpLibraryHandle(PathString library_name, void* lib
 }
 #endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_MINIMAL_BUILD_CUSTOM_OPS)
 
+EpContextModelGenerationOptions::EpContextModelGenerationOptions(const ConfigOptions& config_options) {
+  enable = config_options.GetConfigOrDefault(kOrtSessionOptionEpContextEnable, "0") == "1";
+  output_model_file_path = config_options.GetConfigOrDefault(kOrtSessionOptionEpContextFilePath, "");
+  output_external_initializers_file_path = config_options.GetConfigOrDefault(
+      kOrtSessionOptionsEpContextModelExternalInitializersFileName, "");
+  output_external_initializer_size_threshold = 0;
+  embed_ep_context_in_model = config_options.GetConfigOrDefault(kOrtSessionOptionEpContextEmbedMode, "0") == "1";
+}
+
+EpContextModelGenerationOptions SessionOptions::GetEpContextGenerationOptions() const {
+  if (this->has_explicit_ep_context_gen_options) {
+    return this->ep_context_gen_options;
+  }
+
+  return EpContextModelGenerationOptions(this->config_options);
+}
 }  // namespace onnxruntime

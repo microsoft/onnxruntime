@@ -15,6 +15,10 @@ class CPUIDInfo {
     return cpuid_info;
   }
 
+  std::string_view GetCPUVendor() const {
+    return vendor_;
+  }
+
   bool HasAMX_BF16() const { return has_amx_bf16_; }
   bool HasAVX() const { return has_avx_; }
   bool HasAVX2() const { return has_avx2_; }
@@ -118,9 +122,12 @@ class CPUIDInfo {
   bool has_arm_sve_i8mm_{false};
   bool has_arm_neon_bf16_{false};
 
+  std::string vendor_;
+
 #if defined(CPUIDINFO_ARCH_X86)
 
   void X86Init();
+  std::string GetX86Vendor(int32_t* data);
 
 #elif defined(CPUIDINFO_ARCH_ARM)
 
@@ -136,6 +143,7 @@ class CPUIDInfo {
 #elif defined(_WIN32)
 
   void ArmWindowsInit();
+  std::string GetArmWindowsVendor();
 
 #elif defined(__APPLE__)
 

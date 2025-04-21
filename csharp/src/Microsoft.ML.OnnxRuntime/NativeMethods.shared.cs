@@ -3,6 +3,7 @@
 
 using System;
 using System.Runtime.InteropServices;
+using static Microsoft.ML.OnnxRuntime.NativeMethods;
 
 namespace Microsoft.ML.OnnxRuntime
 {
@@ -325,6 +326,16 @@ namespace Microsoft.ML.OnnxRuntime
         public IntPtr CreateLoraAdapterFromArray;
         public IntPtr ReleaseLoraAdapter;
         public IntPtr RunOptionsAddActiveLoraAdapter;
+        public IntPtr SetEpDynamicOptions;
+        public IntPtr ReleaseValueInfo;
+        public IntPtr ReleaseNode;
+        public IntPtr ReleaseGraph;
+        public IntPtr ReleaseModel;
+        public IntPtr GetValueInfoName;
+        public IntPtr GetValueInfoTypeInfo;
+        public IntPtr GetModelEditorApi;
+        public IntPtr CreateTensorWithDataAndDeleterAsOrtValue;
+        public IntPtr SessionOptionsSetLoadCancellationFlag;
     }
 
     internal static class NativeMethods
@@ -404,6 +415,7 @@ namespace Microsoft.ML.OnnxRuntime
             OrtReleaseSessionOptions = (DOrtReleaseSessionOptions)Marshal.GetDelegateForFunctionPointer(api_.ReleaseSessionOptions, typeof(DOrtReleaseSessionOptions));
             OrtCloneSessionOptions = (DOrtCloneSessionOptions)Marshal.GetDelegateForFunctionPointer(api_.CloneSessionOptions, typeof(DOrtCloneSessionOptions));
             OrtSetSessionExecutionMode = (DOrtSetSessionExecutionMode)Marshal.GetDelegateForFunctionPointer(api_.SetSessionExecutionMode, typeof(DOrtSetSessionExecutionMode));
+            OrtSessionOptionsSetLoadCancellationFlag = (DOrtSessionOptionsSetLoadCancellationFlag)Marshal.GetDelegateForFunctionPointer(api_.SessionOptionsSetLoadCancellationFlag, typeof(DOrtSessionOptionsSetLoadCancellationFlag));
             OrtSetOptimizedModelFilePath = (DOrtSetOptimizedModelFilePath)Marshal.GetDelegateForFunctionPointer(api_.SetOptimizedModelFilePath, typeof(DOrtSetOptimizedModelFilePath));
             OrtEnableProfiling = (DOrtEnableProfiling)Marshal.GetDelegateForFunctionPointer(api_.EnableProfiling, typeof(DOrtEnableProfiling));
             OrtDisableProfiling = (DOrtDisableProfiling)Marshal.GetDelegateForFunctionPointer(api_.DisableProfiling, typeof(DOrtDisableProfiling));
@@ -847,7 +859,7 @@ namespace Microsoft.ML.OnnxRuntime
         /// Creates an instance of OrtSession with provided parameters
         /// </summary>
         /// <param name="environment">Native OrtEnv instance</param>
-        /// <param name="modelData">Byte array correspoonding to the model</param>
+        /// <param name="modelData">Byte array corresponding to the model</param>
         /// <param name="modelSize">Size of the model in bytes</param>
         /// <param name="sessionOptions">Native SessionOptions instance</param>
         /// <param name="prepackedWeightsContainer">Native OrtPrepackedWeightsContainer instance</param>
@@ -1024,6 +1036,12 @@ namespace Microsoft.ML.OnnxRuntime
         public delegate IntPtr /*(OrtStatus*)*/ DOrtSetSessionExecutionMode(IntPtr /*(OrtSessionOptions*)*/ options,
                                                                             ExecutionMode execution_mode);
         public static DOrtSetSessionExecutionMode OrtSetSessionExecutionMode;
+
+        [UnmanagedFunctionPointer(CallingConvention.Winapi)]
+        public delegate IntPtr /*(OrtStatus*)*/ DOrtSessionOptionsSetLoadCancellationFlag(IntPtr /*(OrtSessionOptions*)*/ options,
+                                                                        bool value);
+        public static DOrtSessionOptionsSetLoadCancellationFlag OrtSessionOptionsSetLoadCancellationFlag;
+
 
         [UnmanagedFunctionPointer(CallingConvention.Winapi)]
         public delegate IntPtr /*(OrtStatus*)*/ DOrtSetOptimizedModelFilePath(IntPtr /* OrtSessionOptions* */ options, byte[] optimizedModelFilepath);
@@ -1258,7 +1276,7 @@ namespace Microsoft.ML.OnnxRuntime
         /// </summary>
         /// <param name="options">Native SessionOptions instance</param>
         /// <param name="name">Name of the initializer</param>
-        /// <param name="ortValue">Native OrtValue instnce</param>
+        /// <param name="ortValue">Native OrtValue instance</param>
         [UnmanagedFunctionPointer(CallingConvention.Winapi)]
         public delegate IntPtr /*(OrtStatus*)*/ DOrtAddInitializer(IntPtr /*(OrtSessionOptions*)*/ options,
                                                                    byte[] /*(const char*)*/ name,

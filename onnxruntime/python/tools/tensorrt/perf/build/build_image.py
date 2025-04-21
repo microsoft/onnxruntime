@@ -16,8 +16,7 @@ import subprocess
 import sys
 
 TRT_DOCKER_FILES = {
-    "10.8_cuda11.8_cudnn8": "tools/ci_build/github/linux/docker/Dockerfile.ubuntu_cuda11_tensorrt10",
-    "10.8_cuda12.6_cudnn9": "tools/ci_build/github/linux/docker/Dockerfile.ubuntu_cuda12_tensorrt10",
+    "10.9_cuda12.8_cudnn9": "tools/ci_build/github/linux/docker/Dockerfile.ubuntu_cuda12_tensorrt10",
     "BIN": "tools/ci_build/github/linux/docker/Dockerfile.ubuntu_tensorrt_bin",
 }
 

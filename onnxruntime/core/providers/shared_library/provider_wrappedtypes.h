@@ -518,6 +518,10 @@ struct ConfigOptions final {
     return g_host->ConfigOptions__GetConfigOrDefault(this, config_key, default_value);
   }
 
+  const std::unordered_map<std::string, std::string>& GetConfigOptionsMap() const {
+    return g_host->ConfigOptions__GetConfigOptionsMap(this);
+  }
+
   PROVIDER_DISALLOW_ALL(ConfigOptions)
 };
 
@@ -526,6 +530,9 @@ struct ComputeCapability final {
   static void operator delete(void* p) { g_host->ComputeCapability__operator_delete(reinterpret_cast<ComputeCapability*>(p)); }
 
   std::unique_ptr<IndexedSubGraph>& SubGraph() { return g_host->ComputeCapability__SubGraph(this); }
+
+  void copy_optimization_func(ComputeCapability* selection_cc) { g_host->ComputeCapability__copy_optimization_func(this, selection_cc); }
+  void add_nodes_to_optimize(std::unique_ptr<ComputeCapability> optimization_cc) { g_host->ComputeCapability__add_nodes_to_optimize(this, std::move(optimization_cc)); }
 
   ComputeCapability() = delete;
   ComputeCapability(const ComputeCapability&) = delete;
@@ -1558,9 +1565,14 @@ struct OrtRunOptions final {
 };
 
 struct OrtSessionOptions final {
-  const std::unordered_map<std::string, std::string>& GetConfigOptions() const {
+  const std::unordered_map<std::string, std::string>& GetConfigOptionsMap() const {
     return onnxruntime::g_host->SessionOptions__GetConfigOptionsMap(this);
   }
+
+  const onnxruntime::ConfigOptions& GetConfigOptions() const {
+    return onnxruntime::g_host->SessionOptions__GetConfigOptions(this);
+  }
+
   bool GetEnableProfiling() const {
     return onnxruntime::g_host->SessionOptions__GetEnableProfiling(this);
   }

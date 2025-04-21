@@ -195,17 +195,17 @@ class TestOpMatMul4Bits(unittest.TestCase):
         )
 
         # Quantize fp32 model to int4 model
-        from onnxruntime.quantization import matmul_4bits_quantizer
+        from onnxruntime.quantization import matmul_nbits_quantizer
 
         model = quant_utils.load_model_with_shape_infer(Path(model_fp32_path))
-        quant_config = matmul_4bits_quantizer.DefaultWeightOnlyQuantConfig(
+        quant_config = matmul_nbits_quantizer.DefaultWeightOnlyQuantConfig(
             block_size=block_size,
             is_symmetric=is_symmetric,
             quant_format=quant_format,
             op_types_to_quantize=op_types_to_quantize,
             quant_axes=quant_axes,
         )
-        quant = matmul_4bits_quantizer.MatMul4BitsQuantizer(model, algo_config=quant_config)
+        quant = matmul_nbits_quantizer.MatMulNBitsQuantizer(model, algo_config=quant_config)
         quant.process()
         quant.model.save_model_to_file(model_int4_path, False)
 
@@ -260,21 +260,21 @@ class TestOpMatMul4Bits(unittest.TestCase):
         )
 
         # Quantize fp32 model to int4 model
-        from onnxruntime.quantization import matmul_4bits_quantizer
+        from onnxruntime.quantization import matmul_nbits_quantizer
 
         algo_config = None
         if algorithm == "RTN":
             # test RTN algorithm
-            algo_config = matmul_4bits_quantizer.RTNWeightOnlyQuantConfig()
+            algo_config = matmul_nbits_quantizer.RTNWeightOnlyQuantConfig()
         elif algorithm == "GPTQ":
             # test GPTQ algorithm
-            algo_config = matmul_4bits_quantizer.GPTQWeightOnlyQuantConfig(calibration_data_reader=data_reader)
+            algo_config = matmul_nbits_quantizer.GPTQWeightOnlyQuantConfig(calibration_data_reader=data_reader)
         elif algorithm == "HQQ":
             # test HQQ algorithm
-            algo_config = matmul_4bits_quantizer.HQQWeightOnlyQuantConfig(block_size=block_size)
+            algo_config = matmul_nbits_quantizer.HQQWeightOnlyQuantConfig(block_size=block_size)
 
         model = quant_utils.load_model_with_shape_infer(Path(model_fp32_path))
-        quant = matmul_4bits_quantizer.MatMul4BitsQuantizer(model, block_size, is_symmetric, algo_config=algo_config)
+        quant = matmul_nbits_quantizer.MatMulNBitsQuantizer(model, block_size, is_symmetric, algo_config=algo_config)
         quant.process()
         quant.model.save_model_to_file(model_int4_path, False)
 
@@ -390,3 +390,4 @@ class TestOpMatMul4Bits(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+    # TODO(fajin): add 8bit quantization test after enabling kenrels

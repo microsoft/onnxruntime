@@ -2,7 +2,6 @@
 // Copyright (c) Intel Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "core/common/safeint.h"
 #include "core/providers/common.h"
 #include "core/providers/shared/utils/utils.h"
 #include "core/providers/webnn/builders/helper.h"
@@ -21,7 +20,7 @@ class ConcatOpBuilder : public BaseOpBuilder {
                                const logging::Logger& logger) const override ORT_MUST_USE_RESULT;
 
   // Operator support related.
-  bool HasSupportedInputsImpl(const InitializedTensorSet& /* initializers */, const Node& node,
+  bool HasSupportedInputsImpl(const GraphViewer&, const Node& node,
                               const emscripten::val& wnn_limits, const logging::Logger& logger) const override;
 };
 
@@ -55,7 +54,7 @@ Status ConcatOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
   return Status::OK();
 }
 
-bool ConcatOpBuilder::HasSupportedInputsImpl(const InitializedTensorSet& /* initializers */, const Node& node,
+bool ConcatOpBuilder::HasSupportedInputsImpl(const GraphViewer&, const Node& node,
                                              const emscripten::val& wnn_limits, const logging::Logger& logger) const {
   const auto& input_defs = node.InputDefs();
   const std::string_view op_type = node.OpType();
@@ -71,7 +70,7 @@ bool ConcatOpBuilder::HasSupportedInputsImpl(const InitializedTensorSet& /* init
     }
 
     std::array<int32_t, 2> input_types{input0_type, input_type};
-    if (!AreInputDataTypesSame(op_type, input_types, logger)) {
+    if (!AreDataTypesSame(op_type, input_types, logger)) {
       return false;
     }
   }

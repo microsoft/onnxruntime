@@ -56,7 +56,6 @@ bool CheckIfBothInputShapesMatch(const Node& node, const logging::Logger& logger
 }
 }  // namespace
 
-#if defined(COREML_ENABLE_MLPROGRAM)
 static std::vector<int64_t> InferOutputShape(const std::vector<int64_t>& a, const std::vector<int64_t>& b) {
   std::vector<int64_t> output_shape;
   int64_t i_a = 0, j_b = 0;
@@ -112,14 +111,12 @@ static void AddVariadicInputs(std::unique_ptr<CoreML::Specification::MILSpec::Op
   }
   *op = std::move(op_prev);
 }
-#endif
 
 Status BinaryOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node,
                                               const logging::Logger& logger) const {
   const auto& op_type(node.OpType());
   const auto& input_defs(node.InputDefs());
 
-#if defined(COREML_ENABLE_MLPROGRAM)
   if (model_builder.CreateMLProgram()) {
     using namespace CoreML::Specification::MILSpec;
 
@@ -153,9 +150,7 @@ Status BinaryOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const
     }
     AddOperationOutput(*op, *node.OutputDefs()[0]);
     model_builder.AddOperation(std::move(op));
-  } else
-#endif  // defined (COREML_ENABLE_MLPROGRAM)
-  {
+  } else {
     std::unique_ptr<COREML_SPEC::NeuralNetworkLayer> layer = model_builder.CreateNNLayer(node);
 
     if (op_type == "Add") {
