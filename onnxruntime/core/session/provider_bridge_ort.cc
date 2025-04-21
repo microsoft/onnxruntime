@@ -1994,6 +1994,10 @@ std::shared_ptr<IExecutionProviderFactory> TensorrtProviderFactoryCreator::Creat
   return s_library_tensorrt.Get().CreateExecutionProviderFactory(provider_options);
 }
 
+std::shared_ptr<IExecutionProviderFactory> NvProviderFactoryCreator::Create(int device_id) {
+  return s_library_nv.Get().CreateExecutionProviderFactory(device_id);
+}
+
 std::shared_ptr<IExecutionProviderFactory> NvProviderFactoryCreator::Create(const OrtNvTensorRtRtxProviderOptions* provider_options) {
   return s_library_nv.Get().CreateExecutionProviderFactory(provider_options);
 }
