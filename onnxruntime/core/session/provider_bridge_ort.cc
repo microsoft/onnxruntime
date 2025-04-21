@@ -121,7 +121,7 @@ using EtwRegistrationManager_EtwInternalCallback = EtwRegistrationManager::EtwIn
 #include "core/providers/nv_tensorrt_rtx/nv_provider_factory.h"
 #include "core/providers/nv_tensorrt_rtx/nv_provider_options.h"
 
-#if !defined(ORT_MINIMAL_BUILD) &&  ( defined(USE_TENSORRT)  || defined(USE_NV) )
+#if !defined(ORT_MINIMAL_BUILD) && (defined(USE_TENSORRT) || defined(USE_NV))
 #include "core/session/onnxruntime_session_options_config_keys.h"
 #endif
 
@@ -2677,7 +2677,6 @@ ORT_API(void, OrtApis::ReleaseTensorRTProviderOptions, _Frees_ptr_opt_ OrtTensor
 #endif
 }
 
-
 ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider_Nv_TensorRT_RTX, _In_ OrtSessionOptions* options, _In_ const OrtNvTensorRtRtxProviderOptions* nv_options) {
   API_IMPL_BEGIN
 
@@ -2692,7 +2691,7 @@ ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider_Nv_TensorRT_R
   options->provider_factories.push_back(factory);
 
   // std::string extra_plugin_lib_paths = (nv_options == nullptr || nv_options->nv_extra_plugin_lib_paths == nullptr) ? "" : nv_options->nv_extra_plugin_lib_paths;
-  //AddTensorRTCustomOpDomainToSessionOption(options, extra_plugin_lib_paths);
+  // AddTensorRTCustomOpDomainToSessionOption(options, extra_plugin_lib_paths);
 
   return nullptr;
   API_IMPL_END
@@ -2729,7 +2728,7 @@ ORT_API_STATUS_IMPL(OrtApis::UpdateNvTensorRtRtxProviderOptions,
   }
 
   onnxruntime::UpdateProviderInfo_Nv(nv_options,
-                                           reinterpret_cast<const onnxruntime::ProviderOptions&>(provider_options_map));
+                                     reinterpret_cast<const onnxruntime::ProviderOptions&>(provider_options_map));
   return nullptr;
 #else
   ORT_UNUSED_PARAMETER(nv_options);
@@ -2770,10 +2769,10 @@ ORT_API_STATUS_IMPL(OrtApis::UpdateNvTensorRtRtxProviderOptionsWithValue,
     nv_options->user_compute_stream = value;
   } else if (strcmp(key, onnxruntime::nv::provider_option_names::kONNXBytestream) == 0) {
     nv_options->onnx_bytestream = value;
-  } else if (strcmp(key,onnxruntime::nv::provider_option_names::kONNXBytestreamSize) == 0) {
+  } else if (strcmp(key, onnxruntime::nv::provider_option_names::kONNXBytestreamSize) == 0) {
     nv_options->onnx_bytestream_size = *reinterpret_cast<size_t*>(value);
   }
-   return nullptr;
+  return nullptr;
 #else
   ORT_UNUSED_PARAMETER(nv_options);
   ORT_UNUSED_PARAMETER(key);
@@ -2798,8 +2797,8 @@ ORT_API_STATUS_IMPL(OrtApis::GetNvTensorRtRtxProviderOptionsByName,
 
 ORT_API(void, OrtApis::ReleaseNvTensorRtRtxProviderOptions, _Frees_ptr_opt_ OrtNvTensorRtRtxProviderOptions* ptr) {
 #ifdef USE_NV
-onnxruntime::ProviderInfo_Nv& provider_info = onnxruntime::GetProviderInfo_Nv();
-provider_info.ReleaseProviderOptions(ptr);
+  onnxruntime::ProviderInfo_Nv& provider_info = onnxruntime::GetProviderInfo_Nv();
+  provider_info.ReleaseProviderOptions(ptr);
 
 #else
   ORT_UNUSED_PARAMETER(ptr);

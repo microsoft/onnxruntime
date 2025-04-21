@@ -293,14 +293,14 @@ Status TensorRTCacheModelHandler::GetEpContextFromGraph(const GraphViewer& graph
       const std::string onnx_model_filename = attrs.at(ONNX_MODEL_FILENAME).s();
       std::string placeholder;
       auto status = NvExecutionProvider::RefitEngine(onnx_model_filename,
-                                                           onnx_model_folder_path_,
-                                                           placeholder,
-                                                           make_secure_path_checks,
-                                                           onnx_model_bytestream_,
-                                                           onnx_model_bytestream_size_,
-                                                           (*trt_engine_).get(),
-                                                           false /* serialize refitted engine to disk */,
-                                                           detailed_build_log_);
+                                                     onnx_model_folder_path_,
+                                                     placeholder,
+                                                     make_secure_path_checks,
+                                                     onnx_model_bytestream_,
+                                                     onnx_model_bytestream_size_,
+                                                     (*trt_engine_).get(),
+                                                     false /* serialize refitted engine to disk */,
+                                                     detailed_build_log_);
       if (status != Status::OK()) {
         return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL, status.ErrorMessage());
       }
@@ -362,14 +362,14 @@ Status TensorRTCacheModelHandler::GetEpContextFromGraph(const GraphViewer& graph
       const std::string onnx_model_filename = attrs.at(ONNX_MODEL_FILENAME).s();
       std::string weight_stripped_engine_cache = engine_cache_path.string();
       auto status = NvExecutionProvider::RefitEngine(onnx_model_filename,
-                                                           onnx_model_folder_path_,
-                                                           weight_stripped_engine_cache,
-                                                           make_secure_path_checks,
-                                                           onnx_model_bytestream_,
-                                                           onnx_model_bytestream_size_,
-                                                           (*trt_engine_).get(),
-                                                           true /* serialize refitted engine to disk */,
-                                                           detailed_build_log_);
+                                                     onnx_model_folder_path_,
+                                                     weight_stripped_engine_cache,
+                                                     make_secure_path_checks,
+                                                     onnx_model_bytestream_,
+                                                     onnx_model_bytestream_size_,
+                                                     (*trt_engine_).get(),
+                                                     true /* serialize refitted engine to disk */,
+                                                     detailed_build_log_);
       if (status != Status::OK()) {
         return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL, status.ErrorMessage());
       }

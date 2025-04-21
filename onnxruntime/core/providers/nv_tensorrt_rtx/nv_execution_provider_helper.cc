@@ -36,8 +36,8 @@ std::string GetUniqueGraphName(const Graph& graph) {
 // The newly-built graph has not yet being resolved by Graph::Resolve(), so we can't leverage
 // Graph::ResolveContext::IsInputInitializerOrOutput(). We have to implement this fuction again.
 bool NvExecutionProvider::IsInputInitializerOrOutput(const Graph& graph,
-                                                           const std::string& name,
-                                                           bool check_ancestors) const {
+                                                     const std::string& name,
+                                                     bool check_ancestors) const {
   const Graph* parent_graph = nullptr;
   return IsLocalValue(graph, name) ||
          (check_ancestors && (parent_graph = graph.ParentGraph()) != nullptr &&
@@ -47,7 +47,7 @@ bool NvExecutionProvider::IsInputInitializerOrOutput(const Graph& graph,
 // The newly-built graph has not yet being resolved by Graph::Resolve(), so we can't leverage
 // Graph::ResolveContext::IsOuterScopeValue(). We have to implement this function again.
 bool NvExecutionProvider::IsOuterScopeValue(const Graph& graph,
-                                                  const std::string& name) const {
+                                            const std::string& name) const {
   const Graph* parent_graph = nullptr;
   return (parent_graph = graph.ParentGraph()) != nullptr &&
          IsInputInitializerOrOutput(*parent_graph, name, true);
@@ -56,7 +56,7 @@ bool NvExecutionProvider::IsOuterScopeValue(const Graph& graph,
 // The newly-built graph has not yet being resolved by Graph::Resolve(), so we can't leverage
 // Graph::ResolveContext::IsLocalValue(). We have to implement this function again.
 bool NvExecutionProvider::IsLocalValue(const Graph& graph,
-                                             const std::string& name) const {
+                                       const std::string& name) const {
   std::string unique_graph_name = GetUniqueGraphName(graph);
   if (subgraph_context_map_.find(unique_graph_name) == subgraph_context_map_.end()) {
     return false;
@@ -127,7 +127,7 @@ void NvExecutionProvider::BuildSubGraphContext(const Graph& graph) const {
 
 // Set outer scope values for subgraphs and add thoes values as top-level graph's inputs if needed.
 void NvExecutionProvider::SetGraphOuterScopeValuesAndInputs(Graph& graph_build,
-                                                                  const Graph& graph) const {
+                                                            const Graph& graph) const {
   // Iterate all the nodes and recurse into inner most subgraph first for both newly built graph and original graph
   for (int i = 0; i < graph_build.MaxNodeIndex(); ++i) {
     auto graph_build_node = graph_build.GetNode(i);

@@ -23,9 +23,9 @@ constexpr ProviderInfo kProvidersInPriorityOrder[] =
         {
             kNvTensorRTRTXExecutionProvider,
 #ifdef USE_NV
-      true,
+            true,
 #else
-      false,
+            false,
 #endif
         },
         {

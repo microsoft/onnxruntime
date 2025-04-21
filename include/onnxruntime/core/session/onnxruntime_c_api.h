@@ -4941,129 +4941,129 @@ struct OrtApi {
    * \snippet{doc} snippets.dox OrtStatus Return Value
    *
    * \since Version 1.22.
-  */
+   */
   /**
    * @brief Appends the NVIDIA GPU execution provider to the session options.
-   * 
-   * This function allows the user to enable and configure the NVIDIA GPU 
-   * execution provider for ONNX Runtime. By appending this provider, the 
+   *
+   * This function allows the user to enable and configure the NVIDIA GPU
+   * execution provider for ONNX Runtime. By appending this provider, the
    * session can leverage NVIDIA GPUs for accelerated computation.
-   * 
-   * @param options A pointer to the session options object to which the 
+   *
+   * @param options A pointer to the session options object to which the
    *                 execution provider will be appended.
-   * @param device_id The ID of the GPU device to use. This is typically an 
-   *                  integer representing the GPU index (e.g., 0 for the 
+   * @param device_id The ID of the GPU device to use. This is typically an
+   *                  integer representing the GPU index (e.g., 0 for the
    *                  first GPU, 1 for the second GPU, etc.).
-   * 
+   *
    * @return A status object indicating success or failure of the operation.
-   *         Returns nullptr if the operation is successful. Otherwise, 
-   *         returns a pointer to an OrtStatus object containing error 
+   *         Returns nullptr if the operation is successful. Otherwise,
+   *         returns a pointer to an OrtStatus object containing error
    *         details.
    */
 
-   /** \brief Appends the Nv execution provider to the specified session options.
- *
- * Appends the Nv (NVIDIA) execution provider to the session options, using settings
- * specified in the provided OrtNvTensorRtRtxProviderOptions structure.
- *
- * \param[in] options A pointer to an ::OrtSessionOptions instance to which the Nv execution provider will be appended.
- * \param[in] nv_options A pointer to an ::OrtNvTensorRtRtxProviderOptions instance containing configuration for the Nv execution provider.
- *
- * \snippet{doc} snippets.dox OrtStatus Return Value
- * \since Version 1.21
- */
-ORT_API2_STATUS(SessionOptionsAppendExecutionProvider_Nv_TensorRT_RTX,
-  _In_ OrtSessionOptions* options,
-  _In_ const OrtNvTensorRtRtxProviderOptions* nv_options);
+  /** \brief Appends the Nv execution provider to the specified session options.
+   *
+   * Appends the Nv (NVIDIA) execution provider to the session options, using settings
+   * specified in the provided OrtNvTensorRtRtxProviderOptions structure.
+   *
+   * \param[in] options A pointer to an ::OrtSessionOptions instance to which the Nv execution provider will be appended.
+   * \param[in] nv_options A pointer to an ::OrtNvTensorRtRtxProviderOptions instance containing configuration for the Nv execution provider.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   * \since Version 1.21
+   */
+  ORT_API2_STATUS(SessionOptionsAppendExecutionProvider_Nv_TensorRT_RTX,
+                  _In_ OrtSessionOptions* options,
+                  _In_ const OrtNvTensorRtRtxProviderOptions* nv_options);
 
-/** \brief Creates an Nv provider options object.
-*
-* Allocates and initializes an ::OrtNvTensorRtRtxProviderOptions structure.
-*
-* \param[out] out A pointer to a location that will receive the newly created ::OrtNvTensorRtRtxProviderOptions instance.
-*
-* \snippet{doc} snippets.dox OrtStatus Return Value
-* \since Version 1.21
-*/
-ORT_API2_STATUS(CreateNvTensorRtRtxProviderOptions,
-  _Outptr_ OrtNvTensorRtRtxProviderOptions** out);
+  /** \brief Creates an Nv provider options object.
+   *
+   * Allocates and initializes an ::OrtNvTensorRtRtxProviderOptions structure.
+   *
+   * \param[out] out A pointer to a location that will receive the newly created ::OrtNvTensorRtRtxProviderOptions instance.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   * \since Version 1.21
+   */
+  ORT_API2_STATUS(CreateNvTensorRtRtxProviderOptions,
+                  _Outptr_ OrtNvTensorRtRtxProviderOptions** out);
 
-/** \brief Updates the Nv provider options with the specified sets of key-value pairs.
-*
-* Iterates over arrays of keys and values, applying each pair to the ::OrtNvTensorRtRtxProviderOptions instance.
-*
-* \param[in,out] nv_options An ::OrtNvTensorRtRtxProviderOptions instance to be updated.
-* \param[in] provider_options_keys Pointer to an array of `const char*` keys.
-* \param[in] provider_options_values Pointer to an array of `const char*` values corresponding to the above keys.
-* \param[in] num_keys The number of key-value pairs to be applied.
-*
-* \snippet{doc} snippets.dox OrtStatus Return Value
-* \since Version 1.22
-*/
-ORT_API2_STATUS(UpdateNvTensorRtRtxProviderOptions,
-  _Inout_ OrtNvTensorRtRtxProviderOptions* nv_options,
-  _In_reads_(num_keys) const char* const* provider_options_keys,
-  _In_reads_(num_keys) const char* const* provider_options_values,
-  _In_ size_t num_keys);
+  /** \brief Updates the Nv provider options with the specified sets of key-value pairs.
+   *
+   * Iterates over arrays of keys and values, applying each pair to the ::OrtNvTensorRtRtxProviderOptions instance.
+   *
+   * \param[in,out] nv_options An ::OrtNvTensorRtRtxProviderOptions instance to be updated.
+   * \param[in] provider_options_keys Pointer to an array of `const char*` keys.
+   * \param[in] provider_options_values Pointer to an array of `const char*` values corresponding to the above keys.
+   * \param[in] num_keys The number of key-value pairs to be applied.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   * \since Version 1.22
+   */
+  ORT_API2_STATUS(UpdateNvTensorRtRtxProviderOptions,
+                  _Inout_ OrtNvTensorRtRtxProviderOptions* nv_options,
+                  _In_reads_(num_keys) const char* const* provider_options_keys,
+                  _In_reads_(num_keys) const char* const* provider_options_values,
+                  _In_ size_t num_keys);
 
-/** \brief Retrieves a serialized string representation of the Nv provider options.
-*
-* Serializes the current state of the ::OrtNvTensorRtRtxProviderOptions into a string for easy logging or debugging.
-*
-* \param[in] nv_options A pointer to the ::OrtNvTensorRtRtxProviderOptions instance to be serialized.
-* \param[in,out] allocator An ::OrtAllocator to allocate the returned string.
-* \param[out] ptr A pointer to the allocated string. The caller is responsible for freeing
-*                 this memory by using the same allocator's Free method.
-*
-* \snippet{doc} snippets.dox OrtStatus Return Value
-* \since Version 1.22
-*/
-ORT_API2_STATUS(GetNvTensorRtRtxProviderOptionsAsString,
-  _In_ const OrtNvTensorRtRtxProviderOptions* nv_options,
-  _Inout_ OrtAllocator* allocator,
-  _Outptr_ char** ptr);
+  /** \brief Retrieves a serialized string representation of the Nv provider options.
+   *
+   * Serializes the current state of the ::OrtNvTensorRtRtxProviderOptions into a string for easy logging or debugging.
+   *
+   * \param[in] nv_options A pointer to the ::OrtNvTensorRtRtxProviderOptions instance to be serialized.
+   * \param[in,out] allocator An ::OrtAllocator to allocate the returned string.
+   * \param[out] ptr A pointer to the allocated string. The caller is responsible for freeing
+   *                 this memory by using the same allocator's Free method.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   * \since Version 1.22
+   */
+  ORT_API2_STATUS(GetNvTensorRtRtxProviderOptionsAsString,
+                  _In_ const OrtNvTensorRtRtxProviderOptions* nv_options,
+                  _Inout_ OrtAllocator* allocator,
+                  _Outptr_ char** ptr);
 
-/** \brief Releases the Nv provider options object.
-*
-* Frees the memory associated with an ::OrtNvTensorRtRtxProviderOptions instance and sets the pointer to NULL.
-*
-* \param[in] input A pointer to the ::OrtNvTensorRtRtxProviderOptions instance to be released.
-*/
-void (ORT_API_CALL* ReleaseNvTensorRtRtxProviderOptions)(_Frees_ptr_opt_ OrtNvTensorRtRtxProviderOptions* input);
+  /** \brief Releases the Nv provider options object.
+   *
+   * Frees the memory associated with an ::OrtNvTensorRtRtxProviderOptions instance and sets the pointer to NULL.
+   *
+   * \param[in] input A pointer to the ::OrtNvTensorRtRtxProviderOptions instance to be released.
+   */
+  void(ORT_API_CALL* ReleaseNvTensorRtRtxProviderOptions)(_Frees_ptr_opt_ OrtNvTensorRtRtxProviderOptions* input);
 
-/** \brief Updates a single key-value pair in the Nv provider options with a given value pointer.
-*
-* Updates a single entry in the ::OrtNvTensorRtRtxProviderOptions using the provided key and value pointer.
-* This is useful for setting complex or non-string values that might not be trivially convertible to string types.
-*
-* \param[in,out] nv_options The ::OrtNvTensorRtRtxProviderOptions instance to update.
-* \param[in] key A null-terminated string specifying which option to update.
-* \param[in] value A pointer to the value to set for the corresponding key.
-*
-* \snippet{doc} snippets.dox OrtStatus Return Value
-* \since Version 1.22
-*/
-ORT_API2_STATUS(UpdateNvTensorRtRtxProviderOptionsWithValue,
-  _Inout_ OrtNvTensorRtRtxProviderOptions* nv_options,
-  _In_ const char* key,
-  _In_ void* value);
+  /** \brief Updates a single key-value pair in the Nv provider options with a given value pointer.
+   *
+   * Updates a single entry in the ::OrtNvTensorRtRtxProviderOptions using the provided key and value pointer.
+   * This is useful for setting complex or non-string values that might not be trivially convertible to string types.
+   *
+   * \param[in,out] nv_options The ::OrtNvTensorRtRtxProviderOptions instance to update.
+   * \param[in] key A null-terminated string specifying which option to update.
+   * \param[in] value A pointer to the value to set for the corresponding key.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   * \since Version 1.22
+   */
+  ORT_API2_STATUS(UpdateNvTensorRtRtxProviderOptionsWithValue,
+                  _Inout_ OrtNvTensorRtRtxProviderOptions* nv_options,
+                  _In_ const char* key,
+                  _In_ void* value);
 
-/** \brief Retrieves a pointer to the value stored for the specified key in the Nv provider options.
-*
-* Looks up the key in the ::OrtNvTensorRtRtxProviderOptions instance and returns the associated value pointer,
-* if present. The type of the pointer must be known by the caller to cast or interpret correctly.
-*
-* \param[in] nv_options A pointer to the ::OrtNvTensorRtRtxProviderOptions instance.
-* \param[in] key A null-terminated string specifying which key to look up.
-* \param[out] ptr A pointer to a location that will receive the value pointer associated with the given key.
-*
-* \snippet{doc} snippets.dox OrtStatus Return Value
-* \since Version 1.22
-*/
-ORT_API2_STATUS(GetNvTensorRtRtxProviderOptionsByName,
-  _In_ const OrtNvTensorRtRtxProviderOptions* nv_options,
-  _In_ const char* key,
-  _Outptr_ void** ptr);
+  /** \brief Retrieves a pointer to the value stored for the specified key in the Nv provider options.
+   *
+   * Looks up the key in the ::OrtNvTensorRtRtxProviderOptions instance and returns the associated value pointer,
+   * if present. The type of the pointer must be known by the caller to cast or interpret correctly.
+   *
+   * \param[in] nv_options A pointer to the ::OrtNvTensorRtRtxProviderOptions instance.
+   * \param[in] key A null-terminated string specifying which key to look up.
+   * \param[out] ptr A pointer to a location that will receive the value pointer associated with the given key.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   * \since Version 1.22
+   */
+  ORT_API2_STATUS(GetNvTensorRtRtxProviderOptionsByName,
+                  _In_ const OrtNvTensorRtRtxProviderOptions* nv_options,
+                  _In_ const char* key,
+                  _Outptr_ void** ptr);
 };
 
 /*

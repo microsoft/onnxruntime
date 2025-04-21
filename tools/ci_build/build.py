@@ -2180,7 +2180,11 @@ def main():
     # shared lib being build in a separate process. So we skip the testing if none of the primary EPs are built with ONNXRuntime
     # shared lib
     if args.enable_generic_interface and not (
-        args.use_nv_tensorrt_rtx or args.use_tensorrt or args.use_openvino or args.use_vitisai or (args.use_qnn and args.use_qnn != "static_lib")
+        args.use_nv_tensorrt_rtx
+        or args.use_tensorrt
+        or args.use_openvino
+        or args.use_vitisai
+        or (args.use_qnn and args.use_qnn != "static_lib")
     ):
         args.test = False
 
@@ -2290,8 +2294,6 @@ def main():
     tensorrt_home = ""
     if args.use_tensorrt or args.use_nv_tensorrt_rtx:
         tensorrt_home = setup_tensorrt_vars(args)
-
-
 
     # if using migraphx, setup migraphx paths
     migraphx_home = setup_migraphx_vars(args)

@@ -76,7 +76,7 @@ ProviderOptions NvExecutionProviderInfo::ToProviderOptions(const NvExecutionProv
       {nv::provider_option_names::kCudaGraphEnable, MakeStringWithClassicLocale(info.cuda_graph_enable)},
       {nv::provider_option_names::kONNXBytestream, MakeStringWithClassicLocale(info.onnx_bytestream)},
       {nv::provider_option_names::kONNXBytestreamSize, MakeStringWithClassicLocale(info.onnx_bytestream_size)},
-       };
+  };
   return options;
 }
 

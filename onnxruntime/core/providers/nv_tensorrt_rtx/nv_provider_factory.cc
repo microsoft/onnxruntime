@@ -50,39 +50,36 @@ struct ProviderInfo_Nv_Impl final : ProviderInfo_Nv {
     if (!out) {
       return CreateStatus(ORT_INVALID_ARGUMENT, "Output pointer 'out' is NULL.");
     }
-    *out = NULL; // Initialize output
+    *out = NULL;  // Initialize output
 
     struct OrtNvTensorRtRtxProviderOptions* options = (struct OrtNvTensorRtRtxProviderOptions*)malloc(sizeof(struct OrtNvTensorRtRtxProviderOptions));
     if (!options) {
-        return CreateStatus(ORT_FAIL, "Failed to allocate memory for NvProviderOptions.");
+      return CreateStatus(ORT_FAIL, "Failed to allocate memory for NvProviderOptions.");
     }
-    options->magic_number = ORT_NV_PROVIDER_OPTIONS_MAGIC; // Set the magic number
+    options->magic_number = ORT_NV_PROVIDER_OPTIONS_MAGIC;  // Set the magic number
 
-    *out = options; // Assign the created handle to the output parameter
+    *out = options;  // Assign the created handle to the output parameter
     return nullptr;
   }
 
   void ReleaseProviderOptions(_Frees_ptr_opt_ OrtNvTensorRtRtxProviderOptions* options) override {
     if (options) {
       if (options->magic_number == ORT_NV_PROVIDER_OPTIONS_MAGIC) {
-          // If you had members that were heap-allocated *internally* by the options struct, free them here.
-          // Example: free(options->some_string_option);
+        // If you had members that were heap-allocated *internally* by the options struct, free them here.
+        // Example: free(options->some_string_option);
 
-          // Invalidate the magic number to help detect use-after-free issues.
-          options->magic_number = 0;
+        // Invalidate the magic number to help detect use-after-free issues.
+        options->magic_number = 0;
 
-          // Free the main struct allocation
-          free(options);
+        // Free the main struct allocation
+        free(options);
       } else {
-          // Handle error: Log a warning? Abort in debug mode?
-          // Attempting to release an invalid handle.
-          // Depending on policy, you might just ignore it or log defensively.
+        // Handle error: Log a warning? Abort in debug mode?
+        // Attempting to release an invalid handle.
+        // Depending on policy, you might just ignore it or log defensively.
       }
+    }
   }
-  }
-
-
-
 
 } g_info;
 
@@ -91,6 +88,8 @@ struct NvProviderFactory : IExecutionProviderFactory {
   ~NvProviderFactory() override {}
 
   std::unique_ptr<IExecutionProvider> CreateProvider() override;
+  std::unique_ptr<IExecutionProvider> CreateProvider(const OrtSessionOptions& session_options,
+                                                     const OrtLogger& session_logger);
 
  private:
   NvExecutionProviderInfo info_;
@@ -98,6 +97,35 @@ struct NvProviderFactory : IExecutionProviderFactory {
 
 std::unique_ptr<IExecutionProvider> NvProviderFactory::CreateProvider() {
   return std::make_unique<NvExecutionProvider>(info_);
+}
+
+std::unique_ptr<IExecutionProvider> NvProviderFactory::CreateProvider(const OrtSessionOptions& session_options, const OrtLogger& session_logger) {
+  const ConfigOptions& config_options = session_options.GetConfigOptions();
+  const std::unordered_map<std::string, std::string>& config_options_map = config_options.GetConfigOptionsMap();
+
+  // The implementation of the SessionOptionsAppendExecutionProvider C API function automatically adds EP options to
+  // the session option configurations with the key prefix "ep.<lowercase_ep_name>.".
+  // We extract those EP options to create a new "provider options" key/value map.
+  std::string lowercase_ep_name = kNvTensorRTRTXExecutionProvider;
+  std::transform(lowercase_ep_name.begin(), lowercase_ep_name.end(), lowercase_ep_name.begin(), [](unsigned char c) {
+    return static_cast<char>(std::tolower(c));
+  });
+
+  ProviderOptions provider_options;
+  std::string key_prefix = "ep.";
+  key_prefix += lowercase_ep_name;
+  key_prefix += ".";
+
+  for (const auto& [key, value] : config_options_map) {
+    if (key.rfind(key_prefix, 0) == 0) {
+      provider_options[key.substr(key_prefix.size())] = value;
+    }
+  }
+  NvExecutionProviderInfo info = onnxruntime::NvExecutionProviderInfo::FromProviderOptions(provider_options);
+
+  auto ep = std::make_unique<NvExecutionProvider>(info);
+  ep->SetLogger(reinterpret_cast<const logging::Logger*>(&session_logger));
+  return ep;
 }
 
 struct Nv_Provider : Provider {

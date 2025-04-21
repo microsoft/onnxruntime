@@ -11,8 +11,7 @@ struct ProviderInfo_Nv {
   virtual OrtStatus* GetTensorRTCustomOpDomainList(std::vector<OrtCustomOpDomain*>& domain_list, const std::string extra_plugin_lib_paths) = 0;
   virtual OrtStatus* ReleaseCustomOpDomainList(std::vector<OrtCustomOpDomain*>& domain_list) = 0;
   virtual OrtStatus* CreateProviderOptions(_Outptr_ OrtNvTensorRtRtxProviderOptions** out) = 0;
-  virtual void ReleaseProviderOptions(_Frees_ptr_opt_  OrtNvTensorRtRtxProviderOptions* options) = 0;
-
+  virtual void ReleaseProviderOptions(_Frees_ptr_opt_ OrtNvTensorRtRtxProviderOptions* options) = 0;
 
  protected:
   ~ProviderInfo_Nv() = default;  // Can only be destroyed through a subclass instance

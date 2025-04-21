@@ -27,6 +27,9 @@
 #include "core/providers/dml/dml_provider_factory_creator.h"
 #endif
 
+#if defined(USE_NV)
+#include "core/providers/nv_tensorrt_rtx/nv_provider_options.h"
+#endif
 using namespace onnxruntime;
 
 namespace onnxruntime {
@@ -98,6 +101,7 @@ ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider,
     JS,
     VitisAI,
     CoreML,
+    NvTensorRtRtx,  // TensorRt EP for RTX GPUs.
   };
 
   struct EpToAppend {
@@ -106,7 +110,7 @@ ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider,
     const char* canonical_name = nullptr;
   };
 
-  static std::array<EpToAppend, 11> supported_eps = {
+  static std::array<EpToAppend, 12> supported_eps = {
       EpToAppend{EpID::DML, "DML", kDmlExecutionProvider},
       EpToAppend{EpID::QNN, "QNN", kQnnExecutionProvider},
       EpToAppend{EpID::OpenVINO, "OpenVINO", kOpenVINOExecutionProvider},
@@ -118,7 +122,7 @@ ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider,
       EpToAppend{EpID::JS, "JS", kJsExecutionProvider},
       EpToAppend{EpID::VitisAI, "VitisAI", kVitisAIExecutionProvider},
       EpToAppend{EpID::CoreML, "CoreML", kCoreMLExecutionProvider},
-  };
+      EpToAppend{EpID::NvTensorRtRtx, "NvTensorRtRtx", kNvTensorRTRTXExecutionProvider}};
 
   ProviderOptions provider_options;
   OrtStatus* status = ParseProviderOptions(provider_options_keys,
@@ -293,6 +297,21 @@ ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider,
     case EpID::CoreML: {
 #if defined(USE_COREML)
       options->provider_factories.push_back(CoreMLProviderFactoryCreator::Create(provider_options));
+#else
+      status = create_not_supported_status();
+#endif
+      break;
+    }
+    case EpID::NvTensorRtRtx: {
+#if defined(USE_NV)
+      OrtNvTensorRtRtxProviderOptions* pNvOptions;
+      OrtApis::CreateNvTensorRtRtxProviderOptions(&pNvOptions);
+      OrtApis::UpdateNvTensorRtRtxProviderOptions(pNvOptions,
+                                                  provider_options_keys,
+                                                  provider_options_values,
+                                                  num_keys);
+      OrtApis::SessionOptionsAppendExecutionProvider_Nv_TensorRT_RTX(options, pNvOptions);
+
 #else
       status = create_not_supported_status();
 #endif
@@ -521,64 +540,62 @@ ORT_API(void, OrtApis::ReleaseTensorRTProviderOptions, _Frees_ptr_opt_ OrtTensor
   ORT_UNUSED_PARAMETER(ptr);
 }
 
-
-
 ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider_Nv_TensorRT_RTX,
-  _In_ OrtSessionOptions* options, _In_ const OrtNvTensorRtRtxProviderOptions* nv_options) {
-ORT_UNUSED_PARAMETER(options);
-ORT_UNUSED_PARAMETER(nv_options);
-return CreateNotEnabledStatus("Nv");
+                    _In_ OrtSessionOptions* options, _In_ const OrtNvTensorRtRtxProviderOptions* nv_options) {
+  ORT_UNUSED_PARAMETER(options);
+  ORT_UNUSED_PARAMETER(nv_options);
+  return CreateNotEnabledStatus("Nv");
 }
 
 ORT_API_STATUS_IMPL(OrtApis::CreateNvTensorRtRtxProviderOptions, _Outptr_ OrtNvTensorRtRtxProviderOptions** out) {
-ORT_UNUSED_PARAMETER(out);
-return CreateNotEnabledStatus("Nv");
+  ORT_UNUSED_PARAMETER(out);
+  return CreateNotEnabledStatus("Nv");
 }
 
 ORT_API_STATUS_IMPL(OrtApis::UpdateNvTensorRtRtxProviderOptions,
-  _Inout_ OrtNvTensorRtRtxProviderOptions* nv_options,
-  _In_reads_(num_keys) const char* const* provider_options_keys,
-  _In_reads_(num_keys) const char* const* provider_options_values,
-  size_t num_keys) {
-ORT_UNUSED_PARAMETER(nv_options);
-ORT_UNUSED_PARAMETER(provider_options_keys);
-ORT_UNUSED_PARAMETER(provider_options_values);
-ORT_UNUSED_PARAMETER(num_keys);
-return CreateNotEnabledStatus("Nv");
+                    _Inout_ OrtNvTensorRtRtxProviderOptions* nv_options,
+                    _In_reads_(num_keys) const char* const* provider_options_keys,
+                    _In_reads_(num_keys) const char* const* provider_options_values,
+                    size_t num_keys) {
+  ORT_UNUSED_PARAMETER(nv_options);
+  ORT_UNUSED_PARAMETER(provider_options_keys);
+  ORT_UNUSED_PARAMETER(provider_options_values);
+  ORT_UNUSED_PARAMETER(num_keys);
+  return CreateNotEnabledStatus("Nv");
 }
 
 ORT_API_STATUS_IMPL(OrtApis::GetNvTensorRtRtxProviderOptionsAsString,
-  _In_ const OrtNvTensorRtRtxProviderOptions* nv_options,
-  _Inout_ OrtAllocator* allocator,
-  _Outptr_ char** ptr) {
-ORT_UNUSED_PARAMETER(nv_options);
-ORT_UNUSED_PARAMETER(allocator);
-ORT_UNUSED_PARAMETER(ptr);
-return CreateNotEnabledStatus("Nv");
+                    _In_ const OrtNvTensorRtRtxProviderOptions* nv_options,
+                    _Inout_ OrtAllocator* allocator,
+                    _Outptr_ char** ptr) {
+  ORT_UNUSED_PARAMETER(nv_options);
+  ORT_UNUSED_PARAMETER(allocator);
+  ORT_UNUSED_PARAMETER(ptr);
+  return CreateNotEnabledStatus("Nv");
 }
 
 ORT_API_STATUS_IMPL(OrtApis::UpdateNvTensorRtRtxProviderOptionsWithValue,
-  _Inout_ OrtNvTensorRtRtxProviderOptions* nv_options,
-  _In_ const char* key,
-  _In_ void* value) {
-ORT_UNUSED_PARAMETER(nv_options);
-ORT_UNUSED_PARAMETER(key);
-ORT_UNUSED_PARAMETER(value);
-return CreateNotEnabledStatus("Nv");
+                    _Inout_ OrtNvTensorRtRtxProviderOptions* nv_options,
+                    _In_ const char* key,
+                    _In_ void* value) {
+  ORT_UNUSED_PARAMETER(nv_options);
+  ORT_UNUSED_PARAMETER(key);
+  ORT_UNUSED_PARAMETER(value);
+  return CreateNotEnabledStatus("Nv");
 }
 
 ORT_API_STATUS_IMPL(OrtApis::GetNvTensorRtRtxProviderOptionsByName,
-  _In_ const OrtNvTensorRtRtxProviderOptions* nv_options,
-  _In_ const char* key,
-  _Outptr_ void** ptr) {
-ORT_UNUSED_PARAMETER(nv_options);
-ORT_UNUSED_PARAMETER(key);
-ORT_UNUSED_PARAMETER(ptr);
-return CreateNotEnabledStatus("Nv");
+                    _In_ const OrtNvTensorRtRtxProviderOptions* nv_options,
+                    _In_ const char* key,
+                    _Outptr_ void** ptr) {
+  ORT_UNUSED_PARAMETER(nv_options);
+  ORT_UNUSED_PARAMETER(key);
+  ORT_UNUSED_PARAMETER(ptr);
+  return CreateNotEnabledStatus("Nv");
 }
 
 ORT_API(void, OrtApis::ReleaseNvTensorRtRtxProviderOptions, _Frees_ptr_opt_ OrtNvTensorRtRtxProviderOptions* ptr) {
-ORT_UNUSED_PARAMETER(ptr);
+  ORT_UNUSED_PARAMETER(ptr);
 }
 
 ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider_MIGraphX,
