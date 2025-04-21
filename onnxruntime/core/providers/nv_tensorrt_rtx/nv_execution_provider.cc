@@ -2108,7 +2108,7 @@ std::unique_ptr<IndexedSubGraph> NvExecutionProvider::GetSubGraph(SubGraph_t gra
 }
 
 SubGraphCollection_t NvExecutionProvider::GetSupportedList(SubGraphCollection_t nodes_vector_input, int iterations, const int max_iterations,
-                                                                 const GraphViewer& graph, bool* early_termination) const {
+                                                           const GraphViewer& graph, bool* early_termination) const {
   // Return if iterations are exceeding predefined number
   SubGraphCollection_t nodes_list_output;
   if (iterations > max_iterations) {
@@ -2462,9 +2462,9 @@ bool NvExecutionProvider::DetectTensorRTGraphCycles(SubGraphCollection_t& suppor
 
 std::vector<std::unique_ptr<ComputeCapability>>
 NvExecutionProvider::GetCapability(const GraphViewer& graph,
-                                         const IKernelLookup& /*kernel_lookup*/,
-                                         const GraphOptimizerRegistry& /*graph_optimizer_registry*/,
-                                         IResourceAccountant* /* resource_accountant */) const {
+                                   const IKernelLookup& /*kernel_lookup*/,
+                                   const GraphOptimizerRegistry& /*graph_optimizer_registry*/,
+                                   IResourceAccountant* /* resource_accountant */) const {
   // Construct subgraph capability from node list
   std::vector<std::unique_ptr<ComputeCapability>> result;
   // Get ModelPath
@@ -2697,14 +2697,14 @@ NvExecutionProvider::GetCapability(const GraphViewer& graph,
  * Refit the weight-stripped engine
  */
 common::Status NvExecutionProvider::RefitEngine(std::string onnx_model_filename,
-                                                      std::string& onnx_model_folder_path,
-                                                      std::string& weight_stripped_engine_cath_path,
-                                                      bool path_check,
-                                                      const void* onnx_model_bytestream,
-                                                      size_t onnx_model_bytestream_size,
-                                                      nvinfer1::ICudaEngine* trt_engine,
-                                                      bool serialize_refitted_engine,
-                                                      bool detailed_build_log) {
+                                                std::string& onnx_model_folder_path,
+                                                std::string& weight_stripped_engine_cath_path,
+                                                bool path_check,
+                                                const void* onnx_model_bytestream,
+                                                size_t onnx_model_bytestream_size,
+                                                nvinfer1::ICudaEngine* trt_engine,
+                                                bool serialize_refitted_engine,
+                                                bool detailed_build_log) {
 #if NV_TENSORRT_MAJOR >= 10
   bool refit_from_file = onnx_model_bytestream == nullptr && onnx_model_bytestream_size == 0;
   std::filesystem::path onnx_model_path{onnx_model_folder_path};
@@ -2778,7 +2778,7 @@ common::Status NvExecutionProvider::RefitEngine(std::string onnx_model_filename,
 }
 
 common::Status NvExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& fused_nodes_and_graphs,
-                                                  std::vector<NodeComputeInfo>& node_compute_funcs) {
+                                            std::vector<NodeComputeInfo>& node_compute_funcs) {
   for (auto& fused_node_graph : fused_nodes_and_graphs) {
     const GraphViewer& graph_body_viewer = fused_node_graph.filtered_graph;
     const Node& fused_node = fused_node_graph.fused_node;
@@ -2816,10 +2816,10 @@ common::Status NvExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>
 }
 
 Status NvExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphViewer& graph_body_viewer,
-                                                                 const Node& fused_node,
-                                                                 std::unordered_map<std::string, size_t>& input_map,
-                                                                 std::unordered_map<std::string, size_t>& output_map,
-                                                                 std::vector<NodeComputeInfo>& node_compute_funcs) {
+                                                           const Node& fused_node,
+                                                           std::unordered_map<std::string, size_t>& input_map,
+                                                           std::unordered_map<std::string, size_t>& output_map,
+                                                           std::vector<NodeComputeInfo>& node_compute_funcs) {
   // Reconstruct graph proto from fused node's function body
   auto model = graph_body_viewer.CreateModel(*GetLogger());
   auto model_proto = model->ToProto();
@@ -4054,10 +4054,10 @@ Status NvExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphViewer& gr
 }
 
 Status NvExecutionProvider::CreateNodeComputeInfoFromPrecompiledEngine(const GraphViewer& graph_body_viewer,
-                                                                             const Node& fused_node,
-                                                                             std::unordered_map<std::string, size_t>& input_map,
-                                                                             std::unordered_map<std::string, size_t>& output_map,
-                                                                             std::vector<NodeComputeInfo>& node_compute_funcs) {
+                                                                       const Node& fused_node,
+                                                                       std::unordered_map<std::string, size_t>& input_map,
+                                                                       std::unordered_map<std::string, size_t>& output_map,
+                                                                       std::vector<NodeComputeInfo>& node_compute_funcs) {
   std::unique_ptr<nvinfer1::ICudaEngine> trt_engine;
   std::unique_ptr<nvinfer1::IExecutionContext> trt_context;
   std::unordered_map<std::string, size_t> input_indexes;   // TRT engine input name -> ORT kernel context input index

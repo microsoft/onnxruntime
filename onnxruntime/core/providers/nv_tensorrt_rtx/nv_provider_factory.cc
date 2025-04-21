@@ -50,39 +50,36 @@ struct ProviderInfo_Nv_Impl final : ProviderInfo_Nv {
     if (!out) {
       return CreateStatus(ORT_INVALID_ARGUMENT, "Output pointer 'out' is NULL.");
     }
-    *out = NULL; // Initialize output
+    *out = NULL;  // Initialize output
 
     struct OrtNvTensorRtRtxProviderOptions* options = (struct OrtNvTensorRtRtxProviderOptions*)malloc(sizeof(struct OrtNvTensorRtRtxProviderOptions));
     if (!options) {
-        return CreateStatus(ORT_FAIL, "Failed to allocate memory for NvProviderOptions.");
+      return CreateStatus(ORT_FAIL, "Failed to allocate memory for NvProviderOptions.");
     }
-    options->magic_number = ORT_NV_PROVIDER_OPTIONS_MAGIC; // Set the magic number
+    options->magic_number = ORT_NV_PROVIDER_OPTIONS_MAGIC;  // Set the magic number
 
-    *out = options; // Assign the created handle to the output parameter
+    *out = options;  // Assign the created handle to the output parameter
     return nullptr;
   }
 
   void ReleaseProviderOptions(_Frees_ptr_opt_ OrtNvTensorRtRtxProviderOptions* options) override {
     if (options) {
       if (options->magic_number == ORT_NV_PROVIDER_OPTIONS_MAGIC) {
-          // If you had members that were heap-allocated *internally* by the options struct, free them here.
-          // Example: free(options->some_string_option);
+        // If you had members that were heap-allocated *internally* by the options struct, free them here.
+        // Example: free(options->some_string_option);
 
-          // Invalidate the magic number to help detect use-after-free issues.
-          options->magic_number = 0;
+        // Invalidate the magic number to help detect use-after-free issues.
+        options->magic_number = 0;
 
-          // Free the main struct allocation
-          free(options);
+        // Free the main struct allocation
+        free(options);
       } else {
-          // Handle error: Log a warning? Abort in debug mode?
-          // Attempting to release an invalid handle.
-          // Depending on policy, you might just ignore it or log defensively.
+        // Handle error: Log a warning? Abort in debug mode?
+        // Attempting to release an invalid handle.
+        // Depending on policy, you might just ignore it or log defensively.
       }
+    }
   }
-  }
-
-
-
 
 } g_info;
 

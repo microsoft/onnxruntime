@@ -554,12 +554,12 @@ ORT_API_STATUS_IMPL(SessionOptionsSetLoadCancellationFlag, _Inout_ OrtSessionOpt
 
 ORT_API(const OrtCompileApi*, GetCompileApi);
 ORT_API_STATUS_IMPL(SessionOptionsAppendExecutionProvider_Nv_TensorRT_RTX,
-    _In_ OrtSessionOptions* options, _In_ const OrtNvTensorRtRtxProviderOptions* nv_options);
+                    _In_ OrtSessionOptions* options, _In_ const OrtNvTensorRtRtxProviderOptions* nv_options);
 ORT_API_STATUS_IMPL(CreateNvTensorRtRtxProviderOptions, _Outptr_ OrtNvTensorRtRtxProviderOptions** out);
 ORT_API_STATUS_IMPL(UpdateNvTensorRtRtxProviderOptions, _Inout_ OrtNvTensorRtRtxProviderOptions* nv_options,
-    _In_reads_(num_keys) const char* const* provider_options_keys,
-    _In_reads_(num_keys) const char* const* provider_options_values,
-    size_t num_keys);
+                    _In_reads_(num_keys) const char* const* provider_options_keys,
+                    _In_reads_(num_keys) const char* const* provider_options_values,
+                    size_t num_keys);
 ORT_API_STATUS_IMPL(GetNvTensorRtRtxProviderOptionsAsString, _In_ const OrtNvTensorRtRtxProviderOptions* nv_options, _Inout_ OrtAllocator* allocator, _Outptr_ char** ptr);
 ORT_API(void, ReleaseNvTensorRtRtxProviderOptions, _Frees_ptr_opt_ OrtNvTensorRtRtxProviderOptions*);
 ORT_API_STATUS_IMPL(UpdateNvTensorRtRtxProviderOptionsWithValue, _Inout_ OrtNvTensorRtRtxProviderOptions* nv_options, _In_ const char* key, _In_ void* value);

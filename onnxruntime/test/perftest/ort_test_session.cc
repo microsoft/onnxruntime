@@ -213,7 +213,7 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
       option_values.push_back(provider_option.second.c_str());
     }
     Ort::Status status(api.UpdateNvTensorRtRtxProviderOptions(nv_options,
-                                                         option_keys.data(), option_values.data(), option_keys.size()));
+                                                              option_keys.data(), option_values.data(), option_keys.size()));
     if (!status.IsOK()) {
       OrtAllocator* allocator;
       char* options;

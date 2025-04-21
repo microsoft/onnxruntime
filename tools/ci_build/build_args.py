@@ -665,7 +665,6 @@ def add_execution_provider_args(parser: argparse.ArgumentParser) -> None:
     nv_group = parser.add_argument_group("Nv Execution Provider")
     nv_group.add_argument("--use_nv_tensorrt_rtx", action="store_true", help="Enable Nv EP.")
 
-
     # --- DirectML ---
     dml_group = parser.add_argument_group("DirectML Execution Provider (Windows)")
     dml_group.add_argument("--use_dml", action="store_true", help="Enable DirectML EP (Windows).")
