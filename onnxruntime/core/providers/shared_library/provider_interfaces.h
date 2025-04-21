@@ -256,6 +256,10 @@ struct ProviderHost {
   // IAllocator
   virtual bool IAllocator__CalcMemSizeForArrayWithAlignment(size_t nmemb, size_t size, size_t alignment, size_t* out) = 0;
 
+  // IExecutionProviderFactory
+  virtual std::unique_ptr<IExecutionProvider> IExecutionProviderFactory__CreateProvider(
+      IExecutionProviderFactory* p, const OrtSessionOptions& session_options, const OrtLogger& session_logger) = 0;
+
   // IExecutionProvider
   virtual std::vector<std::unique_ptr<ComputeCapability>> IExecutionProvider__GetCapability(const IExecutionProvider* p, const onnxruntime::GraphViewer& graph_viewer,
                                                                                             const IExecutionProvider::IKernelLookup& kernel_lookup,
@@ -626,11 +630,13 @@ struct ProviderHost {
   virtual std::optional<std::string> ConfigOptions__GetConfigEntry(const ConfigOptions* p, const std::string& config_key) = 0;
   virtual std::string ConfigOptions__GetConfigOrDefault(const ConfigOptions* p, const std::string& config_key,
                                                         const std::string& default_value) = 0;
+  virtual const std::unordered_map<std::string, std::string>& ConfigOptions__GetConfigOptionsMap(const ConfigOptions* p) = 0;
 
   // OrtRunOptions
   virtual const ConfigOptions& RunOptions__GetConfigOptions(const RunOptions* p) = 0;
   // OrtSessionOptions
   virtual const std::unordered_map<std::string, std::string>& SessionOptions__GetConfigOptionsMap(const OrtSessionOptions* p) = 0;
+  virtual const ConfigOptions& SessionOptions__GetConfigOptions(const OrtSessionOptions* p) = 0;
   virtual bool SessionOptions__GetEnableProfiling(const OrtSessionOptions* p) = 0;
   // ComputeCapability
   virtual std::unique_ptr<ComputeCapability> ComputeCapability__construct(std::unique_ptr<IndexedSubGraph> t_sub_graph) = 0;

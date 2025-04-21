@@ -14,7 +14,9 @@ struct OrtStatus;
 struct OrtPrepackedWeightsContainer;
 namespace onnxruntime {
 class InferenceSession;
-}
+class EpLibrary;
+class EpFactoryInternal;
+}  // namespace onnxruntime
 
 OrtStatus* CreateSessionAndLoadModel(_In_ const OrtSessionOptions* options,
                                      _In_ const OrtEnv* env,
@@ -26,3 +28,14 @@ OrtStatus* CreateSessionAndLoadModel(_In_ const OrtSessionOptions* options,
 OrtStatus* InitializeSession(_In_ const OrtSessionOptions* options,
                              _In_ onnxruntime::InferenceSession& sess,
                              _Inout_opt_ OrtPrepackedWeightsContainer* prepacked_weights_container = nullptr);
+
+namespace onnxruntime {
+
+// load a library that is added using RegisterExecutionProviderLibrary.
+// infer whether it's a provider bridge library or plugin library
+Status LoadPluginOrProviderBridge(const std::string& registration_name,
+                                  const ORTCHAR_T* library_path,
+                                  std::unique_ptr<EpLibrary>& ep_library,
+                                  std::vector<EpFactoryInternal*>& internal_factories);
+
+}  // namespace onnxruntime
