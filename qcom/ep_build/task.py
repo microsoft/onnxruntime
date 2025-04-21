@@ -11,6 +11,12 @@ REPO_ROOT = (Path(__file__).parent / ".." / "..").resolve()
 
 class Task(ABC):
     def __init__(self, group_name: Optional[str]) -> None:
+        """
+        Initialize a new instance.
+
+        Args:
+          * :group_name: Used for logging and grouping messages. None is valid.
+        """
         self.group_name = group_name
 
     @abstractmethod

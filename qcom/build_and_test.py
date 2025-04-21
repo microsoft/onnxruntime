@@ -64,9 +64,16 @@ def parse_arguments():
 
 
 class TaskLibrary:
+    """
+    The collection of tasks the build is capable of running and the relationships between them.
+    In other words, this is the dependency graph.
+    """
 
     @staticmethod
     def to_dot(highlight: List[str] = []) -> str:
+        """
+        Used by --print-task-graph to create a GraphViz representation of the build graph.
+        """
         elements: List[str] = []
         for tsk in ALL_TASKS:
             task_attrs: List[str] = []
@@ -101,6 +108,10 @@ class TaskLibrary:
 def plan_from_dependencies(
     main_tasks: List[str],
 ) -> Plan:
+    """
+    Uses a work list algorithm to create a Plan to build the given tasks and their
+    dependencies in a valid order. This is the default planner.
+    """
     task_library = TaskLibrary()
     plan = Plan()
 
@@ -146,6 +157,10 @@ def plan_from_dependencies(
 def plan_from_task_list(
     tasks: List[str],
 ) -> Plan:
+    """
+    Planner that just instantiates the given tasks with no attempt made to satisfy dependencies.
+    Used by --only.
+    """
     task_library = TaskLibrary()
     plan = Plan()
     for task_name in tasks:
