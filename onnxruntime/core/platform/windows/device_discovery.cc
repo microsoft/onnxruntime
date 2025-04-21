@@ -11,50 +11,39 @@
 #include <unordered_set>
 
 #include "core/common/cpuid_info.h"
+#include "core/common/logging/logging.h"
 #include "core/session/abi_devices.h"
 
-//// UsingSetupApi
+//// For SetupApi info
 #include <Windows.h>
 #include <SetupAPI.h>
 #include <devguid.h>
 #include <cfgmgr32.h>
 #pragma comment(lib, "setupapi.lib")
 
-//// Using D3D12
+//// For D3D12 info
 // #include <windows.h>
 #include <d3d12.h>
 #include <dxgi1_6.h>
 #include <iostream>
+#include <wrl/client.h>
+using Microsoft::WRL::ComPtr;
 
 #pragma comment(lib, "d3d12.lib")
 #pragma comment(lib, "dxgi.lib")
 
-//// Using DXCore. Requires newer Windows SDK than what we target by default.
-// these values were added in 10.0.22621.0 as part of DirectXCore API
-//
-// In theory this #if should be fine, but the QNN ARM64 CI fails even with that applied.
-// with the NTDII_VERSION value there...
-//
-// Defining a local GUID instead.
-// #if NTDDI_VERSION < NTDDI_WIN10_RS5
-//  DEFINE_GUID(DXCORE_ADAPTER_ATTRIBUTE_D3D12_GENERIC_ML, 0xb71b0d41, 0x1088, 0x422f, 0xa2, 0x7c, 0x2, 0x50, 0xb7, 0xd3, 0xa9, 0x88);
-//  DEFINE_GUID(DXCORE_HARDWARE_TYPE_ATTRIBUTE_NPU, 0xd46140c4, 0xadd7, 0x451b, 0x9e, 0x56, 0x6, 0xfe, 0x8c, 0x3b, 0x58, 0xed);
-// #endif
+//// For DXCore info.
 #include <initguid.h>
 #include <dxcore.h>
 #include <dxcore_interface.h>
 #include <wil/com.h>
 
-//
-// In theory this #if should be fine, but the QNN ARM64 CI fails even with that applied. Not sure what is happening
-// with the NTDII_VERSION value there...
-//
-// Defining a local GUID instead.
 #include "core/common/cpuid_info.h"
 #include "core/session/abi_devices.h"
 
 namespace onnxruntime {
-#if !defined(ORT_MINIMAL_BUILD)
+// unsupported in minimal build. also needs xbox specific handling to be implemented.
+#if !defined(ORT_MINIMAL_BUILD) && !defined(_GAMING_XBOX)
 namespace {
 
 // device info we accumulate from various sources
@@ -64,7 +53,6 @@ struct DeviceInfo {
   uint32_t device_id;
   std::wstring vendor;
   std::wstring description;
-  std::vector<DWORD> bus_ids;  // assuming could have multiple GPUs that are the same model
   std::unordered_map<std::wstring, std::wstring> metadata;
 };
 
@@ -97,14 +85,13 @@ std::unordered_map<uint64_t, DeviceInfo> GetDeviceInfoSetupApi(const std::unorde
   for (auto guid : guids) {
     HDEVINFO devInfo = SetupDiGetClassDevs(&guid, nullptr, nullptr, DIGCF_PRESENT);
     if (devInfo == INVALID_HANDLE_VALUE) {
-      return device_info;
+      continue;
     }
 
     SP_DEVINFO_DATA devData = {};
     devData.cbSize = sizeof(SP_DEVINFO_DATA);
 
-    std::wstring buffer;
-    buffer.resize(1024);
+    WCHAR buffer[1024];
 
     for (DWORD i = 0; SetupDiEnumDeviceInfo(devInfo, i, &devData); ++i) {
       DWORD size = 0;
@@ -114,13 +101,8 @@ std::unordered_map<uint64_t, DeviceInfo> GetDeviceInfoSetupApi(const std::unorde
       DeviceInfo* entry = nullptr;
 
       //// Get hardware ID (contains VEN_xxxx&DEV_xxxx)
-      if (SetupDiGetDeviceRegistryPropertyW(devInfo,
-                                            &devData,
-                                            SPDRP_HARDWAREID,
-                                            &regDataType,
-                                            (PBYTE)buffer.data(),
-                                            (DWORD)buffer.size(),
-                                            &size)) {
+      if (SetupDiGetDeviceRegistryPropertyW(devInfo, &devData, SPDRP_HARDWAREID, &regDataType,
+                                            (PBYTE)buffer, sizeof(buffer), &size)) {
         // PCI\VEN_xxxx&DEV_yyyy&...
         // ACPI\VEN_xxxx&DEV_yyyy&... if we're lucky.
         // ACPI values seem to be very inconsistent, so we check fairly carefully and always require a device id.
@@ -148,7 +130,7 @@ std::unordered_map<uint64_t, DeviceInfo> GetDeviceInfoSetupApi(const std::unorde
           device_info[key] = {};
         } else {
           if (guid == GUID_DEVCLASS_PROCESSOR) {
-            // skip duplicate processor entries as we don't need to accumulate bus numbers for them
+            // skip duplicate processor entries
             continue;
           }
         }
@@ -156,15 +138,23 @@ std::unordered_map<uint64_t, DeviceInfo> GetDeviceInfoSetupApi(const std::unorde
         entry = &device_info[key];
         entry->vendor_id = vendor_id;
         entry->device_id = device_id;
+        // put the first hardware id string in the metadata. ignore the other lines.
+        entry->metadata.emplace(L"SPDRP_HARDWAREID", std::wstring(buffer, wcslen(buffer)));
       } else {
         // need valid ids
         continue;
       }
 
-      // Get device description.
+      // Use the friendly name if available.
+      if (SetupDiGetDeviceRegistryPropertyW(devInfo, &devData, SPDRP_FRIENDLYNAME, nullptr,
+                                            (PBYTE)buffer, sizeof(buffer), &size)) {
+        entry->description = std::wstring{buffer};
+      }
+
+      // Set type using the device description to try and infer an NPU.
       if (SetupDiGetDeviceRegistryPropertyW(devInfo, &devData, SPDRP_DEVICEDESC, nullptr,
-                                            (PBYTE)buffer.data(), (DWORD)buffer.size(), &size)) {
-        entry->description = buffer;
+                                            (PBYTE)buffer, sizeof(buffer), &size)) {
+        std::wstring desc{buffer};
 
         // Should we require the NPU to be found by DXCore or do we want to allow this vague matching?
         // Probably depends on whether we always attempt to run DXCore or not.
@@ -175,9 +165,13 @@ std::unordered_map<uint64_t, DeviceInfo> GetDeviceInfoSetupApi(const std::unorde
                   desc.find(L"VPU") != std::wstring::npos);
         };
 
-        // not 100% accurate. is there a better way?
+        // use description if no friendly name
+        if (entry->description.empty()) {
+          entry->description = desc;
+        }
+
         uint64_t npu_key = GetDeviceKey(*entry);
-        bool is_npu = npus.count(npu_key) > 0 || possible_npu(entry->description);
+        bool is_npu = npus.count(npu_key) > 0 || possible_npu(desc);
 
         if (guid == GUID_DEVCLASS_DISPLAY) {
           entry->type = OrtHardwareDeviceType_GPU;
@@ -201,18 +195,21 @@ std::unordered_map<uint64_t, DeviceInfo> GetDeviceInfoSetupApi(const std::unorde
       }
 
       if (SetupDiGetDeviceRegistryPropertyW(devInfo, &devData, SPDRP_MFG, nullptr,
-                                            (PBYTE)buffer.data(), (DWORD)buffer.size(), &size)) {
-        entry->vendor = buffer;
+                                            (PBYTE)buffer, sizeof(buffer), &size)) {
+        entry->vendor = std::wstring(buffer, wcslen(buffer));
       }
 
-      if (guid != GUID_DEVCLASS_PROCESSOR) {
-        DWORD busNumber = 0;
-        size = 0;
-        if (SetupDiGetDeviceRegistryPropertyW(devInfo, &devData, SPDRP_BUSNUMBER, nullptr,
-                                              reinterpret_cast<PBYTE>(&busNumber), sizeof(busNumber), &size)) {
-          // push_back in case there are two identical devices. not sure how else to tell them apart
-          entry->bus_ids.push_back(busNumber);
+      // Add the UI number if GPU. Helpful if user has integrated and discrete GPUs
+      if (entry->type == OrtHardwareDeviceType_GPU) {
+        DWORD ui_number = 0;
+        if (SetupDiGetDeviceRegistryPropertyW(devInfo, &devData, SPDRP_UI_NUMBER, nullptr,
+                                              (PBYTE)&ui_number, sizeof(ui_number), &size)) {
+          // use value read.
+        } else {
+          // infer it as 0 if not set.
         }
+
+        entry->metadata.emplace(L"SPDRP_UI_NUMBER", std::to_wstring(ui_number));
       }
     }
 
@@ -226,50 +223,58 @@ std::unordered_map<uint64_t, DeviceInfo> GetDeviceInfoSetupApi(const std::unorde
 std::unordered_map<uint64_t, DeviceInfo> GetDeviceInfoD3D12() {
   std::unordered_map<uint64_t, DeviceInfo> device_info;
 
-  IDXGIFactory6* factory = nullptr;
-  HRESULT hr = CreateDXGIFactory1(IID_PPV_ARGS(&factory));
-  if (FAILED(hr)) {
+  ComPtr<IDXGIFactory6> factory;
+  if (FAILED(CreateDXGIFactory2(0, IID_PPV_ARGS(&factory)))) {
     std::cerr << "Failed to create DXGI factory.\n";
     return device_info;
   }
 
-  IDXGIAdapter1* adapter = nullptr;
+  ComPtr<IDXGIAdapter1> adapter;
+  for (UINT i = 0; factory->EnumAdapters1(i, adapter.ReleaseAndGetAddressOf()) != DXGI_ERROR_NOT_FOUND; ++i) {
+    DXGI_ADAPTER_DESC1 desc;
+    if (FAILED(adapter->GetDesc1(&desc))) {
+      continue;
+    }
 
-  // iterate by high-performance GPU preference first
-  for (UINT i = 0; factory->EnumAdapterByGpuPreference(i, DXGI_GPU_PREFERENCE_HIGH_PERFORMANCE,
-                                                       IID_PPV_ARGS(&adapter)) != DXGI_ERROR_NOT_FOUND;
+    if ((desc.Flags & DXGI_ADAPTER_FLAG_SOFTWARE) != 0 ||
+        (desc.Flags & DXGI_ADAPTER_FLAG_REMOTE) != 0) {
+      // software or remote. skip
+      continue;
+    }
+
+    static_assert(sizeof(LUID) == sizeof(uint64_t), "LUID and uint64_t are not the same size");
+    uint64_t key = GetLuidKey(desc.AdapterLuid);
+
+    DeviceInfo& info = device_info[key];
+    info.type = OrtHardwareDeviceType_GPU;
+    info.vendor_id = desc.VendorId;
+    info.device_id = desc.DeviceId;
+    info.description = std::wstring(desc.Description);
+
+    info.metadata[L"DxgiAdapterNumber"] = std::to_wstring(i);
+    info.metadata[L"VideoMemory"] = std::to_wstring(desc.DedicatedVideoMemory / (1024 * 1024)) + L" MB";
+    info.metadata[L"SystemMemory"] = std::to_wstring(desc.DedicatedSystemMemory / (1024 * 1024)) + L" MB";
+    info.metadata[L"SharedSystemMemory"] = std::to_wstring(desc.DedicatedSystemMemory / (1024 * 1024)) + L" MB";
+  }
+
+  // iterate by high-performance GPU preference to add that info
+  for (UINT i = 0; factory->EnumAdapterByGpuPreference(
+                       i, DXGI_GPU_PREFERENCE_HIGH_PERFORMANCE,
+                       IID_PPV_ARGS(adapter.ReleaseAndGetAddressOf())) != DXGI_ERROR_NOT_FOUND;
        ++i) {
     DXGI_ADAPTER_DESC1 desc;
     if (FAILED(adapter->GetDesc1(&desc))) {
       continue;
     }
 
-    do {
-      if ((desc.Flags & DXGI_ADAPTER_FLAG_SOFTWARE) != 0 ||
-          (desc.Flags & DXGI_ADAPTER_FLAG_REMOTE) != 0) {
-        // software or remote. skip
-        break;
-      }
+    uint64_t key = GetLuidKey(desc.AdapterLuid);
 
-      static_assert(sizeof(LUID) == sizeof(uint64_t), "LUID and uint64_t are not the same size");
-      uint64_t key = GetLuidKey(desc.AdapterLuid);
-
-      DeviceInfo& info = device_info[key];
-      info.type = OrtHardwareDeviceType_GPU;
-      info.vendor_id = desc.VendorId;
-      info.device_id = desc.DeviceId;
-      info.description = std::wstring(desc.Description);
-
-      info.metadata[L"VideoMemory"] = std::to_wstring(desc.DedicatedVideoMemory / (1024 * 1024)) + L" MB";
-      info.metadata[L"SystemMemory"] = std::to_wstring(desc.DedicatedSystemMemory / (1024 * 1024)) + L" MB";
-      info.metadata[L"SharedSystemMemory"] = std::to_wstring(desc.DedicatedSystemMemory / (1024 * 1024)) + L" MB";
+    auto it = device_info.find(key);
+    if (it != device_info.end()) {
+      DeviceInfo& info = it->second;
       info.metadata[L"HighPerformanceIndex"] = std::to_wstring(i);
-    } while (false);
-
-    adapter->Release();
+    }
   }
-
-  factory->Release();
 
   return device_info;
 }
@@ -284,7 +289,9 @@ std::unordered_map<uint64_t, DeviceInfo> GetDeviceInfoDxcore() {
     return device_info;
   }
 
-  // manually define for older Windows versions. will be no matches but means this code works on machines with dxcore.
+  // NOTE: These GUIDs requires a newer Windows SDK than what we target by default.
+  // They were added in 10.0.22621.0 as part of DirectXCore API
+  // To workaround this we define a local copy of the values. On an older Windows machine they won't match anything.
   static const GUID local_DXCORE_ADAPTER_ATTRIBUTE_D3D12_GENERIC_ML = {0xb71b0d41, 0x1088, 0x422f, 0xa2, 0x7c, 0x2, 0x50, 0xb7, 0xd3, 0xa9, 0x88};
   static const GUID local_DXCORE_HARDWARE_TYPE_ATTRIBUTE_NPU = {0xd46140c4, 0xadd7, 0x451b, 0x9e, 0x56, 0x6, 0xfe, 0x8c, 0x3b, 0x58, 0xed};
 
@@ -353,20 +360,6 @@ std::unordered_map<uint64_t, DeviceInfo> GetDeviceInfoDxcore() {
                                          &is_integrated))) {
         info.metadata[L"Discrete"] = is_integrated ? L"0" : L"1";
       }
-
-      // this returns char_t on us-en Windows. assuming it returns wchar_t on other locales but not clear what it
-      // does when.
-      // The description from SetupApi is wchar_t so assuming we have that and don't need this one.
-      //
-      // hrId = HRESULT_FROM_WIN32(ERROR_NOT_FOUND);
-      // std::wstring driverDescription;
-      // driverDescription.resize(256);
-      //// this doesn't seem to return wchar_t
-      // if (adapter->IsPropertySupported(DXCoreAdapterProperty::DriverDescription)) {
-      //   hrId = adapter->GetProperty(DXCoreAdapterProperty::DriverDescription, sizeof(driverDescription),
-      //                               &driverDescription);
-      //   info.description = driverDescription;
-      // }
     }
   }
 
@@ -374,6 +367,10 @@ std::unordered_map<uint64_t, DeviceInfo> GetDeviceInfoDxcore() {
 }
 }  // namespace
 
+// Get devices from various sources and combine them into a single set of devices.
+// For CPU we use setupapi data.
+// For GPU we augment the d3d12 and dxcore data with the setupapi data.
+// For NPU we augment the dxcore data with the setupapi data.
 std::unordered_set<OrtHardwareDevice> DeviceDiscovery::DiscoverDevicesForPlatform() {
   // dxcore info. key is luid
   std::unordered_map<uint64_t, DeviceInfo> luid_to_dxinfo = GetDeviceInfoDxcore();
@@ -408,17 +405,11 @@ std::unordered_set<OrtHardwareDevice> DeviceDiscovery::DiscoverDevicesForPlatfor
     }
   }
 
-  std::wstring_convert<std::codecvt_utf8<wchar_t>> converter;  // wstring to string
+  std::wstring_convert<std::codecvt_utf8<wchar_t> > converter;  // wstring to string
   const auto device_to_ortdevice = [&converter](
                                        DeviceInfo& device,
                                        std::unordered_map<std::wstring, std::wstring>* extra_metadata = nullptr) {
     OrtHardwareDevice ortdevice{device.type, device.vendor_id, device.device_id, converter.to_bytes(device.vendor)};
-
-    if (device.bus_ids.size() > 0) {
-      // use the first bus number. not sure how to handle multiple
-      ortdevice.metadata.Add("BusNumber", std::to_string(device.bus_ids.back()).c_str());
-      device.bus_ids.pop_back();
-    }
 
     if (!device.description.empty()) {
       ortdevice.metadata.Add("Description", converter.to_bytes(device.description));
@@ -436,6 +427,18 @@ std::unordered_set<OrtHardwareDevice> DeviceDiscovery::DiscoverDevicesForPlatfor
         }
       }
     }
+
+    std::ostringstream oss;
+    oss << "Adding OrtHardwareDevice {vendor_id:0x" << std::hex << ortdevice.vendor_id
+        << ", device_id:0x" << ortdevice.device_id
+        << ", type:" << std::dec << static_cast<int>(ortdevice.type)
+        << ", metadata: [";
+    for (auto& [key, value] : ortdevice.metadata.entries) {
+      oss << key << "=" << value << ", ";
+    }
+
+    oss << "]}" << std::endl;
+    LOGS_DEFAULT(INFO) << oss.str();
 
     return ortdevice;
   };
@@ -459,14 +462,14 @@ std::unordered_set<OrtHardwareDevice> DeviceDiscovery::DiscoverDevicesForPlatfor
       // use SetupApi info. merge metadata.
       devices.emplace(device_to_ortdevice(it->second, &device.metadata));
     } else {
-      // no matching entry in SetupApi. use the dxinfo. no vendor. no BusNumber.
+      // no matching entry in SetupApi. use the dxinfo. will be missing vendor name and UI_NUMBER
       devices.emplace(device_to_ortdevice(device));
     }
   }
 
   return devices;
 }
-#else  // !defined(ORT_MINIMAL_BUILD)
+#else  // !defined(ORT_MINIMAL_BUILD) && !defined(_GAMING_XBOX)
 std::unordered_set<OrtHardwareDevice> DeviceDiscovery::DiscoverDevicesForPlatform() {
   return {};
 }
