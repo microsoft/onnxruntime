@@ -1,13 +1,4 @@
 #pragma once
-/**
- * \brief Opaque handle for Nv Execution Provider options.
- *
- * This structure is opaque and its fields cannot be accessed directly.
- * Use the dedicated ORT API functions to configure it.
- * Must be created using CreateNvTensorRtRtxProviderOptions and released using ReleaseNvTensorRtRtxProviderOptions.
- */
-struct OrtNvTensorRtRtxProviderOptions;
-typedef struct OrtNvTensorRtRtxProviderOptions OrtNvTensorRtRtxProviderOptions;
 
 /**
 
