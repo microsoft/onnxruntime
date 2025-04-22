@@ -34,13 +34,13 @@ namespace {
 
 constexpr int QBits = 8;
 
-void QuantizeDequantize(std::vector<float>& raw_vals,
-                        std::vector<uint8_t>& quant_vals,
-                        std::vector<float>& scales,
-                        std::vector<uint8_t>* zp,
-                        int32_t N,
-                        int32_t K,
-                        int32_t block_size) {
+void QuantizeDequantize8Bits(std::vector<float>& raw_vals,
+                             std::vector<uint8_t>& quant_vals,
+                             std::vector<float>& scales,
+                             std::vector<uint8_t>* zp,
+                             int32_t N,
+                             int32_t K,
+                             int32_t block_size) {
   auto& ortenv = **ort_env.get();
   onnxruntime::concurrency::ThreadPool* tp = ortenv.GetEnvironment().GetIntraOpThreadPool();
 
@@ -122,13 +122,13 @@ void RunTest8Bits(const TestOptions8Bits& opts,
   std::vector<float> scales(q_scale_size);
   std::vector<uint8_t> zp(q_zp_size_in_bytes);
 
-  QuantizeDequantize(input1_f_vals,
-                     input1_vals,
-                     scales,
-                     opts.has_zero_point ? &zp : nullptr,
-                     static_cast<int32_t>(N),
-                     static_cast<int32_t>(K),
-                     static_cast<int32_t>(opts.block_size));
+  QuantizeDequantize8Bits(input1_f_vals,
+                          input1_vals,
+                          scales,
+                          opts.has_zero_point ? &zp : nullptr,
+                          static_cast<int32_t>(N),
+                          static_cast<int32_t>(K),
+                          static_cast<int32_t>(opts.block_size));
 
   const std::vector<int64_t> bias_shape = {N};
   const auto bias = [&]() -> std::optional<std::vector<float>> {
