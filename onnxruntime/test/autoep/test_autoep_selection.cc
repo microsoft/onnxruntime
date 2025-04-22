@@ -213,16 +213,23 @@ TEST(AutoEpSelection, WebGpuEP) {
 }
 #endif
 
-TEST(OrtEpLibrary, LoadUnloadPluginLibrary) {
+namespace {
+struct ExamplePluginInfo {
+  const std::filesystem::path library_path =
 #if _WIN32
-  std::filesystem::path library_path = "example_plugin_ep.dll";
+      "example_plugin_ep.dll";
 #else
-  std::filesystem::path library_path = "libexample_plugin_ep.so";
+      "libexample_plugin_ep.so";
 #endif
-
   const std::string registration_name = "example_ep";
+};
 
-  Ort::SessionOptions session_options;
+static const ExamplePluginInfo example_plugin_info;
+}  // namespace
+
+TEST(OrtEpLibrary, LoadUnloadPluginLibrary) {
+  const std::filesystem::path& library_path = example_plugin_info.library_path;
+  const std::string& registration_name = example_plugin_info.registration_name;
 
   OrtEnv* c_api_env = *ort_env;
   const OrtApi* c_api = &Ort::GetApi();
@@ -249,15 +256,8 @@ TEST(OrtEpLibrary, LoadUnloadPluginLibrary) {
 }
 
 TEST(OrtEpLibrary, LoadUnloadPluginLibraryCxxApi) {
-#if _WIN32
-  std::filesystem::path library_path = "example_plugin_ep.dll";
-#else
-  std::filesystem::path library_path = "libexample_plugin_ep.so";
-#endif
-
-  const std::string registration_name = "example_ep";
-
-  Ort::SessionOptions session_options;
+  const std::filesystem::path& library_path = example_plugin_info.library_path;
+  const std::string& registration_name = example_plugin_info.registration_name;
 
   // this should load the library and create OrtEpDevice
   ort_env->RegisterExecutionProviderLibrary(registration_name.c_str(), library_path.c_str());
@@ -273,10 +273,12 @@ TEST(OrtEpLibrary, LoadUnloadPluginLibraryCxxApi) {
                                      });
   ASSERT_NE(test_ep_device, ep_devices.end()) << "Expected an OrtEpDevice to have been created by the test library.";
 
-  // test all the C++ getters. these values are from \onnxruntime\test\autoep\library\example_plugin_ep.cc
+  // test all the C++ getters. expected values are from \onnxruntime\test\autoep\library\example_plugin_ep.cc
   ASSERT_STREQ(test_ep_device->EpVendor(), "Contoso");
+
   auto metadata = test_ep_device->EpMetadata();
   ASSERT_STREQ(metadata.GetKeyValue("version"), "0.1");
+
   auto options = test_ep_device->EpOptions();
   ASSERT_STREQ(options.GetKeyValue("run_really_fast"), "true");
 
