@@ -34,41 +34,6 @@ namespace {
 
 constexpr int QBits = 8;
 
-void QuantizeDequantize8Bits(std::vector<float>& raw_vals,
-                             std::vector<uint8_t>& quant_vals,
-                             std::vector<float>& scales,
-                             std::vector<uint8_t>* zp,
-                             int32_t N,
-                             int32_t K,
-                             int32_t block_size) {
-  auto& ortenv = **ort_env.get();
-  onnxruntime::concurrency::ThreadPool* tp = ortenv.GetEnvironment().GetIntraOpThreadPool();
-
-  MlasQuantizeBlockwise<float, QBits>(
-      quant_vals.data(),
-      scales.data(),
-      zp != nullptr ? zp->data() : nullptr,
-      raw_vals.data(),
-      block_size,
-      true,
-      K,
-      N,
-      N,
-      tp);
-
-  // Note that raw_vals is NxK after dequant
-  MlasDequantizeBlockwise<float, QBits>(
-      raw_vals.data(),                       // dequantized output
-      quant_vals.data(),                     // quantized input
-      scales.data(),                         // quantization scales
-      zp != nullptr ? zp->data() : nullptr,  // quantization zero points
-      block_size,                            // quantization block size
-      true,                                  // columnwise quantization
-      K,                                     // number of rows
-      N,                                     // number of columns
-      tp);
-}
-
 struct TestOptions8Bits {
   int64_t M{1};
   int64_t N{1};
@@ -122,13 +87,32 @@ void RunTest8Bits(const TestOptions8Bits& opts,
   std::vector<float> scales(q_scale_size);
   std::vector<uint8_t> zp(q_zp_size_in_bytes);
 
-  QuantizeDequantize8Bits(input1_f_vals,
-                          input1_vals,
-                          scales,
-                          opts.has_zero_point ? &zp : nullptr,
-                          static_cast<int32_t>(N),
-                          static_cast<int32_t>(K),
-                          static_cast<int32_t>(opts.block_size));
+  auto& ortenv = **ort_env.get();
+  onnxruntime::concurrency::ThreadPool* tp = ortenv.GetEnvironment().GetIntraOpThreadPool();
+
+  MlasQuantizeBlockwise<float, QBits>(
+      input1_vals.data(),
+      scales.data(),
+      opts.has_zero_point ? zp.data() : nullptr,
+      input1_f_vals.data(),
+      static_cast<int32_t>(opts.block_size),
+      true,
+      static_cast<int32_t>(K),
+      static_cast<int32_t>(N),
+      static_cast<int32_t>(N),
+      tp);
+
+  // Note that raw_vals is NxK after dequant
+  MlasDequantizeBlockwise<float, QBits>(
+      input1_f_vals.data(),
+      input1_vals.data(),
+      scales.data(),
+      opts.has_zero_point ? zp.data() : nullptr,
+      static_cast<int32_t>(opts.block_size),
+      true,
+      static_cast<int32_t>(K),
+      static_cast<int32_t>(N),
+      tp);
 
   const std::vector<int64_t> bias_shape = {N};
   const auto bias = [&]() -> std::optional<std::vector<float>> {
