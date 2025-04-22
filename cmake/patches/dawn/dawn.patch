@@ -11,116 +11,24 @@ index 50638e2456..efa42711e6 100644
 -    set(CMAKE_OSX_DEPLOYMENT_TARGET "11.0" CACHE STRING "Minimum macOS version" FORCE)
 -endif ()
 \ No newline at end of file
-diff --git a/src/emdawnwebgpu/CMakeLists.txt b/src/emdawnwebgpu/CMakeLists.txt
-index 6e8ae37593..633af91eef 100644
---- a/src/emdawnwebgpu/CMakeLists.txt
-+++ b/src/emdawnwebgpu/CMakeLists.txt
-@@ -77,9 +77,17 @@ if (${DAWN_ENABLE_EMSCRIPTEN})
-                 "${arg_UNPARSED_ARGUMENTS}")
-         endif()
- 
-+        # since Emscripten 4.0.3, file gen_struct_info.py is moved to outside of directory maint.
-+        if (EXISTS "${DAWN_EMSCRIPTEN_TOOLCHAIN}/tools/gen_struct_info.py")
-+            set(EM_GEN_STRUCT_INFO_SCRIPT "${DAWN_EMSCRIPTEN_TOOLCHAIN}/tools/gen_struct_info.py")
-+        elseif (EXISTS "${DAWN_EMSCRIPTEN_TOOLCHAIN}/tools/maint/gen_struct_info.py")
-+            set(EM_GEN_STRUCT_INFO_SCRIPT "${DAWN_EMSCRIPTEN_TOOLCHAIN}/tools/maint/gen_struct_info.py")
-+        else()
-+            message(FATAL_ERROR "Dawn: Failed to locate file gen_struct_info.py from Emscripten.")
-+        endif()
-         set(ARGS
-             ${Python3_EXECUTABLE}
--            "${DAWN_EMSCRIPTEN_TOOLCHAIN}/tools/maint/gen_struct_info.py"
-+            "${EM_GEN_STRUCT_INFO_SCRIPT}"
-             -q
-             "${EM_BUILD_GEN_DIR}/struct_info_webgpu.json"
-             "-I=${EM_BUILD_GEN_DIR}/include"
-diff --git a/src/emdawnwebgpu/README.md b/src/emdawnwebgpu/README.md
-index efd6491cd6..8ebc5d28b6 100644
---- a/src/emdawnwebgpu/README.md
-+++ b/src/emdawnwebgpu/README.md
-@@ -56,7 +56,7 @@ Set up the build directory using emcmake
- mkdir out/cmake-wasm
- cd out/cmake-wasm
- 
--# Make sure the path is to the source checkout of Emscripten, not emsdk's release.
-+# If using Emscripten v4.0.2 or lower, make sure the path is to the source checkout of Emscripten, not emsdk's release.
- emcmake cmake -GNinja -DDAWN_EMSCRIPTEN_TOOLCHAIN="path/to/emscripten" ../..
- 
- ninja
 diff --git a/third_party/emdawnwebgpu/webgpu.cpp b/third_party/emdawnwebgpu/webgpu.cpp
-index f1c5a7d50e..16f2495712 100644
+index 5bfac41dcc..71a153daaa 100644
 --- a/third_party/emdawnwebgpu/webgpu.cpp
 +++ b/third_party/emdawnwebgpu/webgpu.cpp
-@@ -131,7 +131,6 @@ class RefCounted : NonMovable {
-   bool Release() {
-     if (mRefCount.fetch_sub(1u, std::memory_order_release) == 1u) {
-       std::atomic_thread_fence(std::memory_order_acquire);
--      emwgpuDelete(this);
-       return true;
-     }
-     return false;
-@@ -234,6 +233,7 @@ class Ref {
-   static void Release(T value) {
-     if (value != nullptr && value->RefCounted::Release()) {
-       delete value;
-+      emwgpuDelete(value);
-     }
-   }
- 
-@@ -641,7 +641,8 @@ struct WGPUAdapterImpl final : public EventSource, public RefCounted {
- struct WGPUBufferImpl final : public EventSource,
-                               public RefCountedWithExternalCount {
-  public:
--  WGPUBufferImpl(const EventSource* source, bool mappedAtCreation);
-+  WGPUBufferImpl(const EventSource* source, bool mappedAtCreation, bool isExternal);
+@@ -692,6 +692,7 @@ struct WGPUBufferImpl final : public EventSource,
+   WGPUBufferImpl(const EventSource* source, bool mappedAtCreation);
+   // Injection constructor used when we already have a backing Buffer.
+   WGPUBufferImpl(const EventSource* source, WGPUBufferMapState mapState);
 +  ~WGPUBufferImpl();
  
    void Destroy();
    const void* GetConstMappedRange(size_t offset, size_t size);
-@@ -671,6 +672,7 @@ struct WGPUBufferImpl final : public EventSource,
-   };
-   MapRequest mPendingMapRequest;
-   WGPUBufferMapState mMapState;
-+  bool mIsExternal;
- };
- 
- struct WGPUQueueImpl final : public EventSource, public RefCounted {
-@@ -1164,11 +1166,15 @@ WGPUAdapter emwgpuCreateAdapter(const EventSource* source) {
- 
- WGPUBuffer emwgpuCreateBuffer(const EventSource* source,
-                               bool mappedAtCreation = false) {
--  return new WGPUBufferImpl(source, mappedAtCreation);
-+  return new WGPUBufferImpl(source, mappedAtCreation, true);
- }
- 
- WGPUDevice emwgpuCreateDevice(const EventSource* source, WGPUQueue queue) {
--  return new WGPUDeviceImpl(source, queue);
-+  // This function is only called from JS via `importJsDevice()`, which
-+  // needs to increment the external ref count to fix the behavior.
-+  WGPUDeviceImpl* device = new WGPUDeviceImpl(source, queue);
-+  device->AddExternalRef();
-+  return device;
- }
- 
- WGPUQueue emwgpuCreateQueue(const EventSource* source) {
-@@ -1275,15 +1281,22 @@ WGPUAdapterImpl::WGPUAdapterImpl(const EventSource* source)
- // WGPUBuffer implementations.
- // ----------------------------------------------------------------------------
- 
--WGPUBufferImpl::WGPUBufferImpl(const EventSource* source, bool mappedAtCreation)
-+WGPUBufferImpl::WGPUBufferImpl(const EventSource* source, bool mappedAtCreation, bool isExternal)
-     : EventSource(source),
-       mMapState(mappedAtCreation ? WGPUBufferMapState_Mapped
--                                 : WGPUBufferMapState_Unmapped) {
-+                                 : WGPUBufferMapState_Unmapped),
-+      mIsExternal(isExternal) {
-   if (mappedAtCreation) {
-     mPendingMapRequest = {kNullFutureId, WGPUMapMode_Write};
-   }
- }
+@@ -1361,6 +1362,12 @@ WGPUBufferImpl::WGPUBufferImpl(const EventSource* source,
+       RefCountedWithExternalCount(kImportedFromJS),
+       mMapState(mapState) {}
  
 +WGPUBufferImpl::~WGPUBufferImpl() {
-+  if (!mIsExternal) {
++  if (!IsImported()) {
 +    Destroy();
 +  }
 +}
@@ -128,20 +36,24 @@ index f1c5a7d50e..16f2495712 100644
  void WGPUBufferImpl::Destroy() {
    emwgpuBufferDestroy(this);
    AbortPendingMap("Buffer was destroyed before mapping was resolved.");
-@@ -1504,6 +1517,7 @@ WGPUFuture WGPUShaderModuleImpl::GetCompilationInfo(
-   void wgpu##Name##Release(WGPU##Name o) {       \
-     if (o->Release()) {                          \
-       delete o;                                  \
-+      emwgpuDelete(o);                           \
-     }                                            \
-   }
- WGPU_OBJECTS(DEFINE_WGPU_DEFAULT_ADDREF_RELEASE)
-@@ -1638,7 +1652,7 @@ void wgpuBufferUnmap(WGPUBuffer buffer) {
+diff --git a/src/tint/utils/memory/aligned_storage.h b/src/tint/utils/memory/aligned_storage.h
+index c532c4fc38..19c950af4c 100644
+--- a/src/tint/utils/memory/aligned_storage.h
++++ b/src/tint/utils/memory/aligned_storage.h
+@@ -31,6 +31,9 @@
+ #include <cstddef>
  
- WGPUBuffer wgpuDeviceCreateBuffer(WGPUDevice device,
-                                   const WGPUBufferDescriptor* descriptor) {
--  WGPUBuffer buffer = new WGPUBufferImpl(device, descriptor->mappedAtCreation);
-+  WGPUBuffer buffer = new WGPUBufferImpl(device, descriptor->mappedAtCreation, false);
-   emwgpuDeviceCreateBuffer(device, descriptor, buffer);
-   return buffer;
- }
+ #include "src/tint/utils/memory/bitcast.h"
++#include "src/tint/utils/macros/compiler.h"
++
++TINT_BEGIN_DISABLE_WARNING(UNSAFE_BUFFER_USAGE);
+ 
+ namespace tint {
+ 
+@@ -50,4 +53,6 @@ struct alignas(alignof(T)) AlignedStorage {
+ 
+ }  // namespace tint
+ 
++TINT_END_DISABLE_WARNING(UNSAFE_BUFFER_USAGE);
++
+ #endif  // SRC_TINT_UTILS_MEMORY_ALIGNED_STORAGE_H_

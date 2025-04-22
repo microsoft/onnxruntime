@@ -19,15 +19,15 @@ Status CreateXnnpackKernel(const PoolAttributes& pool_attrs,
                            struct xnn_operator*& p,
                            const OpQuantParam& quant_param,
                            OpComputeType avgpool_type) {
-  uint32_t input_padding_top = gsl::narrow<uint32_t>(pool_attrs.pads[0]);
-  uint32_t input_padding_left = gsl::narrow<uint32_t>(pool_attrs.pads[1]);
-  uint32_t input_padding_bottom = gsl::narrow<uint32_t>(pool_attrs.pads[2]);
-  uint32_t input_padding_right = gsl::narrow<uint32_t>(pool_attrs.pads[3]);
+  uint32_t input_padding_top = narrow<uint32_t>(pool_attrs.pads[0]);
+  uint32_t input_padding_left = narrow<uint32_t>(pool_attrs.pads[1]);
+  uint32_t input_padding_bottom = narrow<uint32_t>(pool_attrs.pads[2]);
+  uint32_t input_padding_right = narrow<uint32_t>(pool_attrs.pads[3]);
 
-  uint32_t pooling_height = gsl::narrow<uint32_t>(pool_attrs.kernel_shape[0]);
-  uint32_t pooling_width = gsl::narrow<uint32_t>(pool_attrs.kernel_shape[1]);
-  uint32_t stride_height = gsl::narrow<uint32_t>(pool_attrs.strides[0]);
-  uint32_t stride_width = gsl::narrow<uint32_t>(pool_attrs.strides[1]);
+  uint32_t pooling_height = narrow<uint32_t>(pool_attrs.kernel_shape[0]);
+  uint32_t pooling_width = narrow<uint32_t>(pool_attrs.kernel_shape[1]);
+  uint32_t stride_height = narrow<uint32_t>(pool_attrs.strides[0]);
+  uint32_t stride_width = narrow<uint32_t>(pool_attrs.strides[1]);
 
   uint32_t flags = 0;
   if (pool_attrs.auto_pad == AutoPadType::SAME_UPPER) {

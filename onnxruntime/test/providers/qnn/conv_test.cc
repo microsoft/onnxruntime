@@ -87,12 +87,7 @@ static void RunCPUConvOpTest(const std::string& conv_op_type, const TestInputDef
                              int opset = 13,
                              float fp32_abs_err = 1e-5f) {
   ProviderOptions provider_options;
-
-#if defined(_WIN32)
-  provider_options["backend_path"] = "QnnCpu.dll";
-#else
-  provider_options["backend_path"] = "libQnnCpu.so";
-#endif
+  provider_options["backend_type"] = "cpu";
   provider_options["offload_graph_io_quantization"] = "0";
 
   auto build_fn = BuildF32ConvTestCase(conv_op_type, input_def, weights_def, bias_def, strides, pads,
@@ -313,12 +308,7 @@ static void RunHTPConvOpTest(const std::string& conv_op_type, const TestInputDef
                              QDQTolerance tolerance = QDQTolerance(),
                              std::optional<OutputActivationInfo> output_activation = std::nullopt) {
   ProviderOptions provider_options;
-
-#if defined(_WIN32)
-  provider_options["backend_path"] = "QnnHtp.dll";
-#else
-  provider_options["backend_path"] = "libQnnHtp.so";
-#endif
+  provider_options["backend_type"] = "htp";
   provider_options["offload_graph_io_quantization"] = "0";
 
   TestQDQModelAccuracy(BuildF32ConvTestCase(conv_op_type, input_def, weights_def, bias_def, strides, pads, dilations,
@@ -351,12 +341,7 @@ static void RunHTPConvOpPerChannelTest(const std::string& conv_op_type, const Te
                                        QDQTolerance tolerance = QDQTolerance(),
                                        std::optional<OutputActivationInfo> output_activation = std::nullopt) {
   ProviderOptions provider_options;
-
-#if defined(_WIN32)
-  provider_options["backend_path"] = "QnnHtp.dll";
-#else
-  provider_options["backend_path"] = "libQnnHtp.so";
-#endif
+  provider_options["backend_type"] = "htp";
   provider_options["offload_graph_io_quantization"] = "0";
 
   auto f32_fn = BuildF32ConvTestCase(conv_op_type, input_def, weights_def, bias_def, strides, pads, dilations,
@@ -671,12 +656,7 @@ TEST_F(QnnCPUBackendTests, ConvTranspose1Df32_DynamicWeights_DefaultBias) {
 // So, Conv gets processed before Mul node
 TEST_F(QnnHTPBackendTests, Test_QDQConvWithDynamicWeightsFromMul) {
   ProviderOptions provider_options;
-
-#if defined(_WIN32)
-  provider_options["backend_path"] = "QnnHtp.dll";
-#else
-  provider_options["backend_path"] = "libQnnHtp.so";
-#endif
+  provider_options["backend_type"] = "htp";
   provider_options["offload_graph_io_quantization"] = "0";
 
   auto BuildConvMulGraph = [](ModelTestBuilder& builder) {

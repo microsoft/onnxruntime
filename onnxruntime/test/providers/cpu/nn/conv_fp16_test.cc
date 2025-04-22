@@ -518,7 +518,7 @@ TEST(ConvFp16Test, Conv3D_1) {
       vector<int64_t>{1, 1, 1},           // kernel_shape
       vector<int64_t>{0, 0, 0, 0, 0, 0},  // pads
       vector<int64_t>{1, 1, 1},           // strides
-      {}                                  // excluded EPs
+      {kWebGpuExecutionProvider}          // excluded EPs
   };
 
   vector<MLFloat16> X = {
@@ -557,7 +557,7 @@ TEST(ConvFp16Test, Conv3D_2) {
       vector<int64_t>{1, 1, 1},           // kernel_shape
       vector<int64_t>{2, 2, 2, 2, 2, 2},  // pads
       vector<int64_t>{2, 2, 2},           // strides
-      {}                                  // excluded EPs
+      {kWebGpuExecutionProvider}          // excluded EPs
   };
 
   vector<MLFloat16> X = {
@@ -601,7 +601,7 @@ TEST(ConvFp16Test, Conv3D_Bias) {
       vector<int64_t>{2, 2, 2},           // kernel_shape
       vector<int64_t>{2, 2, 2, 2, 2, 2},  // pads
       vector<int64_t>{2, 2, 2},           // strides
-      {}                                  // excluded EPs
+      {kWebGpuExecutionProvider}          // excluded EPs
   };
 
   vector<MLFloat16> X = {
@@ -968,7 +968,7 @@ TEST(ConvFp16Test, ConvDimWithZero) {
       vector<int64_t>{1, 1},        // kernel_shape
       vector<int64_t>{0, 0, 0, 0},  // pads
       vector<int64_t>{1, 1},        // strides
-      {}                            // excluded EPs
+      {kWebGpuExecutionProvider}    // excluded EPs
   };
 
   vector<MLFloat16> X;
@@ -1082,7 +1082,7 @@ TEST(ConvFp16Test, Pointwise_3D) {
       vector<int64_t>{1, 1, 1},           // kernel_shape
       vector<int64_t>{0, 0, 0, 0, 0, 0},  // pads
       vector<int64_t>{1, 1, 1},           // strides
-      {}                                  // excluded EPs
+      {kWebGpuExecutionProvider}          // excluded EPs
   };
 
   vector<MLFloat16> X = {

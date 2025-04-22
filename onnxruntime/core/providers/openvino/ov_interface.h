@@ -8,6 +8,7 @@
 #include <fstream>
 #include <sstream>
 #include <utility>
+#include <optional>
 
 #include "openvino/openvino.hpp"
 #include "openvino/runtime/intel_npu/properties.hpp"
@@ -36,6 +37,8 @@ typedef std::shared_ptr<OVTensor> OVTensorPtr;
 typedef ov::intel_gpu::ocl::ClContext* OVRemoteContextPtr;
 typedef ov::RemoteContext OVRemoteContext;
 #endif
+
+std::optional<bool> queryOVProperty(const std::string& property, const std::string& device_type);
 
 template <typename T>
 class WeakSingleton {
@@ -67,7 +70,7 @@ struct OVCore : WeakSingleton<OVCore> {
   ov::Core core;
 
   // OV Interface For Reading Model
-  std::shared_ptr<OVNetwork> ReadModel(const std::string& model_stream, const std::string& model_path);
+  std::shared_ptr<OVNetwork> ReadModel(std::string&& model_stream, const std::string& model_path);
 
   // OV Interface for Compiling OV Model Type
   OVExeNetwork CompileModel(std::shared_ptr<const OVNetwork>& ie_cnn_network,
@@ -92,7 +95,8 @@ struct OVCore : WeakSingleton<OVCore> {
                            OVRemoteContextPtr context,
                            std::string name);
 #endif
-  std::vector<std::string> GetAvailableDevices();
+  std::vector<std::string> GetAvailableDevices() const;
+  std::vector<std::string> GetAvailableDevices(const std::string& device_type) const;
   void SetCache(const std::string& cache_dir_path);
   void SetStreams(const std::string& device_type, int num_streams);
 };

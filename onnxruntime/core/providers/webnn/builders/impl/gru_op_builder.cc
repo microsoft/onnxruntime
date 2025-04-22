@@ -216,7 +216,7 @@ bool GruOpBuilder::HasSupportedInputsImpl(const GraphViewer&, const Node& node,
   if (has_input_initial_h) {
     input_types.push_back(input_initial_h_type);
   }
-  if (!AreInputDataTypesSame(op_type, input_types, logger)) {
+  if (!AreDataTypesSame(op_type, input_types, logger)) {
     return false;
   }
 

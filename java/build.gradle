@@ -179,7 +179,7 @@ if (cmakeBuildDir != null) {
 dependencies {
 	testImplementation 'org.junit.jupiter:junit-jupiter-api:5.9.2'
 	testRuntimeOnly 'org.junit.jupiter:junit-jupiter-engine:5.9.2'
-	testImplementation 'com.google.protobuf:protobuf-java:3.21.7'
+	testImplementation 'com.google.protobuf:protobuf-java:3.25.5'
 }
 
 processTestResources {
@@ -211,6 +211,7 @@ test {
 		'USE_TENSORRT',
 		'USE_QNN',
 		'USE_XNNPACK',
+		'USE_WEBGPU',
 		])
 	testLogging {
 		events "passed", "skipped", "failed"
