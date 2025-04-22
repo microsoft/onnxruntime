@@ -8,6 +8,8 @@
 import tempfile
 import unittest
 from importlib.util import find_spec
+from itertools import product
+from parameterized import parameterized
 from pathlib import Path
 
 import numpy as np
@@ -15,7 +17,7 @@ import onnx
 from onnx import TensorProto, helper
 from op_test_utils import TestDataFeeds, check_model_correctness, check_op_type_count, check_qtype_by_node_type
 
-from onnxruntime.quantization import quant_utils
+from onnxruntime.quantization import quant_utils, matmul_4bits_quantizer
 
 
 class TestOpMatMul4Bits(unittest.TestCase):
@@ -26,6 +28,93 @@ class TestOpMatMul4Bits(unittest.TestCase):
     @classmethod
     def tearDownClass(cls):
         cls._tmp_model_dir.cleanup()
+
+    def fill_weight_data(self, llama_cpp_quant_type_name: str, shape: int | tuple[int, ...]) -> np.ndarray:
+        line = np.zeros(shape)
+
+        # type_0: w = d_fp16 * q
+        # type_1: w = d_fp16 * q + m_fp16
+        # q2_k: w = d_fp16 * q + m_fp16
+        # q6_k: w = d_fp16[i] * scales_q8[j] * q
+        # q8_k: *y++ = x[i].d * x[i].qs[j];
+        # following is not precisely correct, but it is ok for test purpose
+        # it may be better to quand and dequant the weight
+        # to take the idempotent nature of the quantization
+        if llama_cpp_quant_type_name == "q4_0":
+            symmetric = True
+            start_value = -2.0
+            max_value = 7
+            min_value = -8
+        elif llama_cpp_quant_type_name == "q4_1":
+            symmetric = False
+            start_value = 0.0
+            max_value = 15
+            min_value = 0
+        elif llama_cpp_quant_type_name == "q5_0":
+            symmetric = True
+            start_value =-2.0
+            max_value = 15
+            min_value = -16
+        elif llama_cpp_quant_type_name == "q5_1":
+            symmetric = False
+            start_value =0.0
+            max_value = 31
+            min_value = 0
+        elif llama_cpp_quant_type_name == "q8_0":
+            symmetric = True
+            start_value = -2.0
+            max_value = -128
+            min_value = 127
+        elif llama_cpp_quant_type_name == "q2_K":
+            symmetric = False
+            start_value = -1.0
+            max_value = 1
+            min_value = -2
+        elif llama_cpp_quant_type_name == "q3_K":
+            symmetric = False
+            start_value = -3.0
+            max_value = 3
+            min_value = -4
+        elif llama_cpp_quant_type_name == "q4_K":
+            symmetric = False
+            start_value = -2.0
+            max_value = 7
+            min_value = -8
+        elif llama_cpp_quant_type_name == "q5_K":
+            symmetric = False
+            start_value = 0.0
+            max_value = 31
+            min_value = 0
+        elif llama_cpp_quant_type_name == "q6_K":
+            symmetric = False
+            start_value = 0
+            max_value = 63
+            min_value = 0
+        elif llama_cpp_quant_type_name in ["tq1_0", "tq2_0"]:
+            symmetric = False
+            start_value = -1.0
+            max_value = 1
+            min_value = -1
+        else:
+            raise ValueError(f"Unsupported llama_cpp_quant_type_name: {llama_cpp_quant_type_name}")
+
+        v = start_value
+        for c in range(line.shape[1]):
+            for r in range(line.shape[0]):
+                if symmetric:
+                    if v == 0 or v == -3 or v == 3:
+                        v += 1
+                    line[r][c] = v
+                    v += 1
+                    if v > max_value:
+                        v = min_value
+                else:
+                    line[r][c] = v
+                    v += 1
+                    if v > max_value:
+                        v = min_value
+
+        return line
 
     def fill_int4_data(self, shape: int | tuple[int, ...], symmetric: bool) -> np.ndarray:
         line = np.zeros(shape)
@@ -68,12 +157,8 @@ class TestOpMatMul4Bits(unittest.TestCase):
         return dr
 
     def construct_model_matmul(self, output_model_path: str, symmetric: bool,
-                               in_features: int = 52, out_features: int = 288) -> None:
-        #      (input)
-        #         |
-        #       MatMul
-        #         |
-        #      (output)
+                            in_features: int = 52, out_features: int = 288,
+                            llama_cpp_quant_type_name: str="") -> None:
         input_name = "input"
         output_name = "output"
         initializers = []
@@ -81,7 +166,10 @@ class TestOpMatMul4Bits(unittest.TestCase):
         def make_matmul(
             input_name, weight_shape: int | tuple[int, ...], weight_name: str, output_name: str, node_name: str
         ):
-            weight_data = self.fill_int4_data(weight_shape, symmetric).astype(np.float32)
+            if llama_cpp_quant_type_name:
+                weight_data = self.fill_weight_data(llama_cpp_quant_type_name, weight_shape).astype(np.float32)
+            else:
+                weight_data = self.fill_int4_data(weight_shape, symmetric).astype(np.float32)
             initializers.append(onnx.numpy_helper.from_array(weight_data, name=weight_name))
             return onnx.helper.make_node(
                 "MatMul",
@@ -193,9 +281,6 @@ class TestOpMatMul4Bits(unittest.TestCase):
             Path(self._tmp_model_dir.name).joinpath(f"{name_prefix}_{block_size}_{is_symmetric}.onnx").absolute()
         )
 
-        # Quantize fp32 model to int4 model
-        from onnxruntime.quantization import matmul_4bits_quantizer
-
         model = quant_utils.load_model_with_shape_infer(Path(model_fp32_path))
         quant_config = matmul_4bits_quantizer.DefaultWeightOnlyQuantConfig(
             block_size=block_size,
@@ -257,9 +342,6 @@ class TestOpMatMul4Bits(unittest.TestCase):
         model_int4_path = str(
             Path(self._tmp_model_dir.name).joinpath(f"MatMulNBits_{block_size}_{is_symmetric}.onnx").absolute()
         )
-
-        # Quantize fp32 model to int4 model
-        from onnxruntime.quantization import matmul_4bits_quantizer
 
         algo_config = None
         if algorithm == "RTN":
@@ -387,14 +469,7 @@ class TestOpMatMul4Bits(unittest.TestCase):
         self.quant_test_with_algo("HQQ", model_fp32_path, data_reader, 32, False)
 
 
-    def test_quantize_matmul_llama_cpp_phi_35_mini_4k_instruct(self):
-        from onnxruntime.quantization import (
-            matmul_4bits_quantizer,
-            quant_utils,
-            quantize
-        )
-        from pathlib import Path
-
+    def test_quantize_llama_cpp_phi_35_mini_4k_instruct(self):
         model_fp32_path="C:/LiqunWA/example-models/Phi-3.5/phi-3.5-mini-4k-instruct-fp32-cpu/model.onnx"
         model_q4_0_path="C:/LiqunWA/example-models/Phi-3.5/phi-3.5-mini-4k-instruct-lamma_cpp_q4_0-cpu/model.onnx"
 
@@ -416,21 +491,16 @@ class TestOpMatMul4Bits(unittest.TestCase):
         self,
         model_fp32_path: str,
         data_reader: TestDataFeeds,
-        quant_type_name="q4_0",
-        quant_format: quant_utils.QuantFormat = quant_utils.QuantFormat.QOperator,
+        quant_type_name: str,
         op_types_to_quantize: tuple[str, ...] = ("MatMul",),
         quant_axes: tuple[tuple[str, int], ...] = (("MatMul", 0), ("Gather", 1)),
         rtol: float = 0.01,
         atol: float = 0.05,
     ):
-        use_qdq = quant_format == quant_utils.QuantFormat.QDQ
-        name_prefix = "QDQ" if use_qdq else "QOperator"
+        name_prefix = "llama.cpp"
         model_out_path = str(
             Path(self._tmp_model_dir.name).joinpath(f"{name_prefix}_{quant_type_name}.onnx").absolute()
         )
-
-        # Quantize fp32 model to int4 model
-        from onnxruntime.quantization import matmul_4bits_quantizer
 
         model = quant_utils.load_model_with_shape_infer(Path(model_fp32_path))
         algo_config = matmul_4bits_quantizer.LlamaCppQuantConfig(
@@ -446,35 +516,114 @@ class TestOpMatMul4Bits(unittest.TestCase):
         quant.process()
         quant.model.save_model_to_file(model_out_path, True) # save data to external file
 
-        if "Gather" in op_types_to_quantize:
-            quant_nodes = {"GatherBlockQuantized": 1}
-        else:
-            quant_nodes = {"DequantizeLinear": 1, "MatMul": 1} if use_qdq else {"MatMulNBits": 1}
+        quant_nodes = {"MatMulNBits": 1}
         check_op_type_count(self, model_out_path, **quant_nodes)
 
         data_reader.rewind()
 
-        try:
-            check_model_correctness(self, model_fp32_path, model_out_path, data_reader.get_next(), rtol, atol)
-        except Exception as exception:
-            if "4b quantization not yet supported on this hardware platform!" in exception.args[0]:
-                # Currently we don't have int4 quantization support on all platforms, has to tolerate this exception
-                pass
-            else:
-                raise exception
+        check_model_correctness(self, model_fp32_path, model_out_path, data_reader.get_next(), rtol, atol)
 
-    def test_quantize_matmul_llama_cpp_q4_0(self):
+    # @parameterized.expand([
+    #     # ("q4_0", 256, 1),
+    #     # ("q4_0", 256, 4),
+    #     # ("q4_0", 256, 10),
+    #     # ("q4_0", 256, 17),
+    #     # ("q4_0", 1024, 1),
+    #     # ("q4_0", 1024, 4),
+    #     # ("q4_0", 1024, 10),
+    #     # ("q4_0", 1024, 17),
+    #     ("q4_1", 256, 1),
+    #     ("q4_1", 256, 4),
+    #     # ("q4_1", 256, 10),
+    #     # ("q4_1", 256, 17),
+    #     # ("q4_1", 1024, 1),
+    #     # ("q4_1", 1024, 4),
+    #     # ("q4_1", 1024, 10),
+    #     # ("q4_1", 1024, 17),
+    #     ("tq1_0", 256, 1),
+    #     ("tq1_0", 256, 4),
+    #     # ("tq1_0", 256, 10),
+    #     # ("tq1_0", 256, 17),
+    #     # ("tq1_0", 1024, 1),
+    #     # ("tq1_0", 1024, 4),
+    #     # ("tq1_0", 1024, 10),
+    #     # ("tq1_0", 1024, 17),
+    #     ("q2_K", 256, 1),
+    #     ("q4_K", 256, 1),
+    #     ("q5_K", 256, 1),
+    #     ("q6_K", 256, 1),
+    #     ("q2_K", 256, 2),
+    #     ("q4_K", 256, 2),
+    #     ("q5_K", 256, 2),
+    #     ("q6_K", 256, 2),
+    # ])
 
+
+    # def test_quantize_matmul_llama_cpp(self, quant_type_name, in_features, out_features):
+    #     np.random.seed(13)
+    #     model_fp32_path = str(
+    #         Path(self._tmp_model_dir.name).joinpath(
+    #             f"matmul_fp32_{quant_type_name}_{in_features}_{out_features}.onnx"
+    #         ).absolute()
+    #     )
+
+    #     self.construct_model_matmul(
+    #         model_fp32_path, symmetric=True, in_features=in_features, out_features=out_features,
+    #         llama_cpp_quant_type_name=quant_type_name
+    #     )
+    #     data_reader = self.input_feeds(1, {"input": (1, in_features)})
+
+    #     self.llama_cpp_quant_test(
+    #         model_fp32_path=model_fp32_path,
+    #         data_reader=data_reader,
+    #         quant_type_name=quant_type_name,
+    #     )
+
+    quant_type_names = [
+        "q4_0",
+        "q4_1",
+        "q5_0",
+        "q5_1",
+        "q8_0",
+        "q2_K",
+        "q3_K",
+        "q4_K",
+        "q5_K",
+        "q6_K",
+        "tq1_0",
+        "tq2_0",
+    ]
+    in_features_list = [
+        256,
+        1024]
+    out_features_list = [
+        1,
+        4,
+        10,
+        17]
+
+    test_cases = list(product(quant_type_names, in_features_list, out_features_list))
+
+    @parameterized.expand(test_cases)
+    def test_quantize_matmul_llama_cpp(self, quant_type_name, in_features, out_features):
         np.random.seed(13)
-        model_fp32_path = str(Path(self._tmp_model_dir.name).joinpath("matmul_fp32_symmetric.onnx").absolute())
-        self.construct_model_matmul(model_fp32_path, symmetric=True, in_features=256, out_features=1)
-        data_reader = self.input_feeds(1, {"input": (1, 256)})
+        model_fp32_path = str(
+            Path(self._tmp_model_dir.name).joinpath(
+                f"matmul_fp32_{quant_type_name}_{in_features}_{out_features}.onnx"
+            ).absolute()
+        )
+
+        self.construct_model_matmul(
+            model_fp32_path, symmetric=True, in_features=in_features, out_features=out_features,
+            llama_cpp_quant_type_name=quant_type_name
+        )
+        data_reader = self.input_feeds(1, {"input": (1, in_features)})
 
         self.llama_cpp_quant_test(
             model_fp32_path=model_fp32_path,
             data_reader=data_reader,
-            quant_type_name="q4_0",
-            )
+            quant_type_name=quant_type_name,
+        )
 
 if __name__ == "__main__":
     unittest.main()

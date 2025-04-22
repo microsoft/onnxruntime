@@ -102,6 +102,7 @@ void RunTest(const TestOptions& opts,
     for (int64_t n = 0; n < N; n++) {
       float sum = 0.0f;
       for (int64_t k = 0; k < K; k++) {
+        // weights are columnwise
         sum += input0_vals[m * K + k] * input1_f_vals[n * K + k];
       }
       expected_vals[m * N + n] = sum + (bias.has_value() ? (*bias)[n] : 0.0f);
@@ -143,7 +144,7 @@ void RunTest(const TestOptions& opts,
 }  // namespace
 
 template <int M, int N, int K, const char* b_quant_type_name>
-void TestMatMulNBitsTyped() {
+void TestMatMulQBitsTyped() {
   TestOptions base_opts{};
   base_opts.M = M, base_opts.N = N, base_opts.K = K;
 
@@ -153,27 +154,118 @@ void TestMatMulNBitsTyped() {
   {
     TestOptions opts = base_opts;
     opts.b_quant_type_name = b_quant_type_name; // Assign the quantization type name
-    RunTest(opts); // Assuming AType is float
+
+    std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+        execution_providers.emplace_back(DefaultCpuExecutionProvider());
+    RunTest(opts, std::move(execution_providers));
   }
 }
 
- // Define string literals as `const char*`
- constexpr const char q4_0[] = "q4_0";
+constexpr const char q4_0[] = "q4_0";
+TEST(MatMulQBits, q4_0) {
+  TestMatMulQBitsTyped<1, 1, 256, q4_0>();
+  TestMatMulQBitsTyped<1, 2, 256, q4_0>();
+  TestMatMulQBitsTyped<2, 1, 256, q4_0>();
+  TestMatMulQBitsTyped<2, 2, 256, q4_0>();
+}
 
- TEST(MatMulNBits, Test) {
-   //MLasInitLlama();
-   TestMatMulNBitsTyped<1, 1, 256, q4_0>();
-   TestMatMulNBitsTyped<1, 2, 256, q4_0>();
-   TestMatMulNBitsTyped<2, 1, 256, q4_0>();
-   TestMatMulNBitsTyped<2, 2, 256, q4_0>();
- }
+constexpr const char q4_1[] = "q4_1";
+TEST(MatMulQBits, q4_1) {
+  // MLasInitLlama();
+  TestMatMulQBitsTyped<1, 1, 256, q4_1>();
+  TestMatMulQBitsTyped<1, 2, 256, q4_1>();
+  TestMatMulQBitsTyped<2, 1, 256, q4_1>();
+  TestMatMulQBitsTyped<2, 2, 256, q4_1>();
+}
 
-//TEST(MatMulNBits, Test) {
-//  TestMatMulNBitsTyped<1, 1, 256, "q4_0">();
-//  TestMatMulNBitsTyped<1, 2, 256, "q4_0">();
-//  TestMatMulNBitsTyped<2, 1, 256, "q4_0">();
-//  TestMatMulNBitsTyped<2, 2, 256, "q4_0">();
-//}
+constexpr const char q5_0[] = "q5_0";
+TEST(MatMulQBits, q5_0) {
+  TestMatMulQBitsTyped<1, 1, 256, q5_0>();
+  TestMatMulQBitsTyped<1, 2, 256, q5_0>();
+  TestMatMulQBitsTyped<2, 1, 256, q5_0>();
+  TestMatMulQBitsTyped<2, 2, 256, q5_0>();
+}
+
+constexpr const char q5_1[] = "q5_1";
+TEST(MatMulQBits, q5_1) {
+  // MLasInitLlama();
+  TestMatMulQBitsTyped<1, 1, 256, q5_1>();
+  TestMatMulQBitsTyped<1, 2, 256, q5_1>();
+  TestMatMulQBitsTyped<2, 1, 256, q5_1>();
+  TestMatMulQBitsTyped<2, 2, 256, q5_1>();
+}
+
+constexpr const char q8_0[] = "q8_0";
+TEST(MatMulQBits, q8_0) {
+  // MLasInitLlama();
+  TestMatMulQBitsTyped<1, 1, 256, q8_0>();
+  TestMatMulQBitsTyped<1, 2, 256, q8_0>();
+  TestMatMulQBitsTyped<2, 1, 256, q8_0>();
+  TestMatMulQBitsTyped<2, 2, 256, q8_0>();
+}
+
+constexpr const char q2_K[] = "q2_K";
+TEST(MatMulQBits, q2_K) {
+  // MLasInitLlama();
+  TestMatMulQBitsTyped<1, 1, 256, q2_K>();
+  TestMatMulQBitsTyped<1, 2, 256, q2_K>();
+  TestMatMulQBitsTyped<2, 1, 256, q2_K>();
+  TestMatMulQBitsTyped<2, 2, 256, q2_K>();
+}
+
+constexpr const char q3_K[] = "q3_K";
+TEST(MatMulQBits, q3_K) {
+  // MLasInitLlama();
+  TestMatMulQBitsTyped<1, 1, 256, q3_K>();
+  TestMatMulQBitsTyped<1, 2, 256, q3_K>();
+  TestMatMulQBitsTyped<2, 1, 256, q3_K>();
+  TestMatMulQBitsTyped<2, 2, 256, q3_K>();
+}
+
+constexpr const char q4_K[] = "q4_K";
+TEST(MatMulQBits, q4_K) {
+  // MLasInitLlama();
+  TestMatMulQBitsTyped<1, 1, 256, q4_K>();
+  TestMatMulQBitsTyped<1, 2, 256, q4_K>();
+  TestMatMulQBitsTyped<2, 1, 256, q4_K>();
+  TestMatMulQBitsTyped<2, 2, 256, q4_K>();
+}
+
+constexpr const char q5_K[] = "q5_K";
+TEST(MatMulQBits, q5_K) {
+  // MLasInitLlama();
+  TestMatMulQBitsTyped<1, 1, 256, q5_K>();
+  TestMatMulQBitsTyped<1, 2, 256, q5_K>();
+  TestMatMulQBitsTyped<2, 1, 256, q5_K>();
+  TestMatMulQBitsTyped<2, 2, 256, q5_K>();
+}
+
+constexpr const char q6_K[] = "q6_K";
+TEST(MatMulQBits, q6_K) {
+  // MLasInitLlama();
+  TestMatMulQBitsTyped<1, 1, 256, q6_K>();
+  TestMatMulQBitsTyped<1, 2, 256, q6_K>();
+  TestMatMulQBitsTyped<2, 1, 256, q6_K>();
+  TestMatMulQBitsTyped<2, 2, 256, q6_K>();
+}
+
+constexpr const char tq1_0[] = "tq1_0";
+TEST(MatMulQBits, tq1_0) {
+  // MLasInitLlama();
+  TestMatMulQBitsTyped<1, 1, 256, tq1_0>();
+  TestMatMulQBitsTyped<1, 2, 256, tq1_0>();
+  TestMatMulQBitsTyped<2, 1, 256, tq1_0>();
+  TestMatMulQBitsTyped<2, 2, 256, tq1_0>();
+}
+
+constexpr const char tq2_0[] = "tq2_0";
+TEST(MatMulQBits, tq2_0) {
+  // MLasInitLlama();
+  TestMatMulQBitsTyped<1, 1, 256, tq2_0>();
+  TestMatMulQBitsTyped<1, 2, 256, tq2_0>();
+  TestMatMulQBitsTyped<2, 1, 256, tq2_0>();
+  TestMatMulQBitsTyped<2, 2, 256, tq2_0>();
+}
 
 }  // namespace test
 }  // namespace onnxruntime

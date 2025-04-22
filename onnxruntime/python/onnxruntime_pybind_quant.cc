@@ -81,8 +81,12 @@ QuantizeMatMulNBits(
   py::buffer_info dst_buf = dst.request();
   py::buffer_info src_buf = src.request();
 
+  // matmul weights are rowwise. mlas lowbit takes columewise weights
+  std::vector<float> src_buf_tr(K * N);
+  MlasTranspose(reinterpret_cast<const float*>(src_buf.ptr), &src_buf_tr[0], K, N);
+
   return MlasLowBitQuantize(
-      reinterpret_cast<const float*>(src_buf.ptr),
+      &src_buf_tr[0],
       N,
       K,
       quant_type_name,

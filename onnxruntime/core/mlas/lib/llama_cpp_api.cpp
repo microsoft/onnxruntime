@@ -16,11 +16,11 @@
 void
 vec_dot_q2_K_q8_K()
 {
-    std::vector<uint8_t> b(sizeof(block_q8_0));
-    ggml_vec_dot_t dot_fn = ggml_get_type_traits_cpu(GGML_TYPE_Q4_0)->vec_dot;
-    dot_fn(0, nullptr, 0, nullptr, 0, nullptr, 0, 0);
-    ggml_vec_dot_q4_0_q8_0(0, nullptr, 0, nullptr, 0, nullptr, 0, 0);
-    ggml_is_numa();
+    // std::vector<uint8_t> b(sizeof(block_q8_0));
+    // ggml_vec_dot_t dot_fn = ggml_get_type_traits_cpu(GGML_TYPE_Q4_0)->vec_dot;
+    // dot_fn(0, nullptr, 0, nullptr, 0, nullptr, 0, 0);
+    // ggml_vec_dot_q4_0_q8_0(0, nullptr, 0, nullptr, 0, nullptr, 0, 0);
+    // ggml_is_numa();
 }
 
 ggml_type
