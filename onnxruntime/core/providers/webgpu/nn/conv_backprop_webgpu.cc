@@ -50,6 +50,9 @@ Status ConvTranspose2DProgram::GenerateShaderCode(ShaderHelper& shader) const {
       if (a_components_ == 1) {
         ss << "let wValue = " << w.GetByIndices("w_indices_t(u32(wRPerm), u32(wCPerm), inputChannel, wOutChannel / " + std::to_string(b_components_) + ")") << ";\n"
            << "dotProd = dotProd + xValue * wValue;\n";
+      } else if (a_components_ == b_components_ && components_ == 1) {
+        ss << "let wValue = " << w.GetByIndices("w_indices_t(u32(wRPerm), u32(wCPerm), inputChannel, wOutChannel)") << ";\n"
+           << "dotProd = dotProd + dot(xValue, wValue);\n";
       } else {
         for (uint32_t i = 0; i < a_components_; ++i) {
           ss << "let w_indices" << i << " = w_indices_t(u32(wRPerm), u32(wCPerm), inputChannel + " << i << ", wOutChannel / " << b_components_ << ");\n "
