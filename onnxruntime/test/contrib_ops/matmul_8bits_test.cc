@@ -63,6 +63,8 @@ void RunTest8Bits(const TestOptions8Bits& opts,
                   std::vector<std::unique_ptr<IExecutionProvider>>&& explicit_eps = {}) {
   SCOPED_TRACE(opts);
 
+  explicit_eps.push_back(DefaultCpuExecutionProvider());
+
   static_assert(std::is_same_v<T1, float>, "unexpected type for T1");
 
   const int64_t M = opts.M,
