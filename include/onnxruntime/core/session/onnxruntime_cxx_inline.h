@@ -536,52 +536,52 @@ inline void KeyValuePairs::RemoveKeyValuePair(const char* key) {
 namespace detail {
 template <typename T>
 inline OrtHardwareDeviceType HardwareDeviceImpl<T>::Type() const {
-  return GetApi().HardwareDevice_Type(p_);
+  return GetApi().HardwareDevice_Type(this->p_);
 }
 
 template <typename T>
 inline uint32_t HardwareDeviceImpl<T>::VendorId() const {
-  return GetApi().HardwareDevice_VendorId(p_);
+  return GetApi().HardwareDevice_VendorId(this->p_);
 }
 
 template <typename T>
 inline uint32_t HardwareDeviceImpl<T>::DeviceId() const {
-  return GetApi().HardwareDevice_DeviceId(p_);
+  return GetApi().HardwareDevice_DeviceId(this->p_);
 }
 
 template <typename T>
 inline const char* HardwareDeviceImpl<T>::Vendor() const {
-  return GetApi().HardwareDevice_Vendor(p_);
+  return GetApi().HardwareDevice_Vendor(this->p_);
 }
 
 template <typename T>
 inline ConstKeyValuePairs HardwareDeviceImpl<T>::Metadata() const {
-  return ConstKeyValuePairs{GetApi().HardwareDevice_Metadata(p_)};
+  return ConstKeyValuePairs{GetApi().HardwareDevice_Metadata(this->p_)};
 };
 
 template <typename T>
 inline const char* EpDeviceImpl<T>::EpName() const {
-  return GetApi().EpDevice_EpName(p_);
+  return GetApi().EpDevice_EpName(this->p_);
 }
 
 template <typename T>
 inline const char* EpDeviceImpl<T>::EpVendor() const {
-  return GetApi().EpDevice_EpVendor(p_);
+  return GetApi().EpDevice_EpVendor(this->p_);
 }
 
 template <typename T>
 inline ConstKeyValuePairs EpDeviceImpl<T>::EpMetadata() const {
-  return ConstKeyValuePairs(GetApi().EpDevice_EpMetadata(p_));
+  return ConstKeyValuePairs(GetApi().EpDevice_EpMetadata(this->p_));
 }
 
 template <typename T>
 inline ConstKeyValuePairs EpDeviceImpl<T>::EpOptions() const {
-  return ConstKeyValuePairs(GetApi().EpDevice_EpOptions(p_));
+  return ConstKeyValuePairs(GetApi().EpDevice_EpOptions(this->p_));
 }
 
 template <typename T>
 inline ConstHardwareDevice EpDeviceImpl<T>::Device() const {
-  return ConstHardwareDevice(GetApi().EpDevice_Device(p_));
+  return ConstHardwareDevice(GetApi().EpDevice_Device(this->p_));
 }
 }  // namespace detail
 
@@ -1092,7 +1092,7 @@ inline SessionOptionsImpl<T>& SessionOptionsImpl<T>::AppendExecutionProvider(
 template <typename T>
 inline SessionOptionsImpl<T>& SessionOptionsImpl<T>::AppendExecutionProvider_V2(
     Env& env, const std::vector<ConstEpDevice>& ep_devices, ConstKeyValuePairs& ep_options) {
-  std::vector<const char*> ep_option_keys, ep_option_values;
+  std::vector<const char*> ep_options_keys, ep_options_values;
   ep_options.GetKeyValuePairs(ep_options_keys, ep_options_values);
 
   ThrowOnError(GetApi().SessionOptionsAppendExecutionProvider_V2(
