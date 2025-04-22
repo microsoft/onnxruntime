@@ -916,12 +916,6 @@ inline SessionOptionsImpl<T>& SessionOptionsImpl<T>::AppendExecutionProvider_Ten
 }
 
 template <typename T>
-inline SessionOptionsImpl<T>& SessionOptionsImpl<T>::AppendExecutionProvider_Nv_TensorRT_RTX(const OrtNvTensorRtRtxProviderOptions& provider_options) {
-  ThrowOnError(GetApi().SessionOptionsAppendExecutionProvider_Nv_TensorRT_RTX(this->p_, &provider_options));
-  return *this;
-}
-
-template <typename T>
 inline SessionOptionsImpl<T>& SessionOptionsImpl<T>::AppendExecutionProvider_MIGraphX(const OrtMIGraphXProviderOptions& provider_options) {
   ThrowOnError(GetApi().SessionOptionsAppendExecutionProvider_MIGraphX(this->p_, &provider_options));
   return *this;

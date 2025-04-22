@@ -27,7 +27,6 @@
 #include "core/platform/env.h"
 #include "core/providers/get_execution_providers.h"
 #include "core/providers/tensorrt/tensorrt_provider_options.h"
-#include "core/providers/nv_tensorrt_rtx/nv_provider_options_internal.h"
 #include "core/session/IOBinding.h"
 #include "core/session/abi_session_options_impl.h"
 #include "core/session/onnxruntime_session_options_config_keys.h"
@@ -890,79 +889,8 @@ std::unique_ptr<IExecutionProvider> CreateExecutionProviderInstance(
     if (Env::Default().GetEnvironmentVar("ORT_NV_TENSORRT_RTX_UNAVAILABLE").empty()) {
       auto it = provider_options_map.find(type);
       if (it != provider_options_map.end()) {
-        OrtNvTensorRtRtxProviderOptions params;
-        for (auto option : it->second) {
-          if (option.first == "device_id") {
-            if (!option.second.empty()) {
-              params.device_id = std::stoi(option.second);
-            } else {
-              ORT_THROW("[ERROR] [NV_TensorRT_RTX] The value for the key 'device_id' should be a number i.e. '0'.\n");
-            }
-          } else if (option.first == "user_compute_stream") {
-            if (!option.second.empty()) {
-              auto stream = std::stoull(option.second, nullptr, 0);
-              params.user_compute_stream = reinterpret_cast<void*>(stream);
-              params.has_user_compute_stream = true;
-            } else {
-              params.has_user_compute_stream = false;
-              ORT_THROW("[ERROR] [NV_TensorRT_RTX] The value for the key 'user_compute_stream' should be a string to define the compute stream for the inference to run on.\n");
-            }
-          } else if (option.first == "dump_subgraphs") {
-            if (option.second == "True" || option.second == "true") {
-              params.dump_subgraphs = true;
-            } else if (option.second == "False" || option.second == "false") {
-              params.dump_subgraphs = false;
-            } else {
-              ORT_THROW("[ERROR] [NV_TensorRT_RTX] The value for the key 'dump_subgraphs' should be 'True' or 'False'. Default value is 'False'.\n");
-            }
-          } else if (option.first == "max_workspace_size") {
-            if (!option.second.empty()) {
-              params.max_workspace_size = std::stoull(option.second);
-            } else {
-              ORT_THROW("[ERROR] [NV_TensorRT_RTX] The value for the key 'max_workspace_size' should be a number in byte i.e. '1073741824'.\n");
-            }
-          } else if (option.first == "detailed_build_log") {
-            if (option.second == "True" || option.second == "true") {
-              params.detailed_build_log = true;
-            } else if (option.second == "False" || option.second == "false") {
-              params.detailed_build_log = false;
-            } else {
-              ORT_THROW("[ERROR] [NV_TensorRT_RTX] The value for the key 'detailed_build_log' should be 'True' or 'False'. Default value is 'False'.\n");
-            }
-          } else if (option.first == "profile_min_shapes") {
-            if (!option.second.empty()) {
-              std::string min_profile = option.second;
-              params.profile_min_shapes = min_profile.c_str();
-            } else {
-              ORT_THROW("[ERROR] [NV_TensorRT_RTX] The value for the key 'profile_min_shapes' should be a string of 'input1:dim1xdimd2...,input2:dim1xdim2...,...'.\n");
-            }
-          } else if (option.first == "profile_max_shapes") {
-            if (!option.second.empty()) {
-              std::string max_profile = option.second;
-              params.profile_max_shapes = max_profile.c_str();
-            } else {
-              ORT_THROW("[ERROR] [NV_TensorRT_RTX] The value for the key 'profile_max_shapes' should be a string of 'input1:dim1xdimd2...,input2:dim1xdim2...,...'.\n");
-            }
-          } else if (option.first == "profile_opt_shapes") {
-            if (!option.second.empty()) {
-              std::string opt_profile = option.second;
-              params.profile_opt_shapes = opt_profile.c_str();
-            } else {
-              ORT_THROW("[ERROR] [NV_TensorRT_RTX] The value for the key 'profile_opt_shapes' should be a string of 'input1:dim1xdimd2...,input2:dim1xdim2...,...'.\n");
-            }
-          } else if (option.first == "cuda_graph_enable") {
-            if (option.second == "True" || option.second == "true") {
-              params.cuda_graph_enable = true;
-            } else if (option.second == "False" || option.second == "false") {
-              params.cuda_graph_enable = false;
-            } else {
-              ORT_THROW("[ERROR] [NV_TensorRT_RTX] The value for the key 'cuda_graph_enable' should be 'True' or 'False'. Default value is 'False'.\n");
-            }
-          } else {
-            ORT_THROW("Invalid NV_TensorRT_RTX EP option: ", option.first);
-          }
-        }
-        if (std::shared_ptr<IExecutionProviderFactory> nv_tensorrt_rtx_provider_factory = onnxruntime::NvProviderFactoryCreator::Create(&params)) {
+        ProviderOptions info = it->second;
+        if (std::shared_ptr<IExecutionProviderFactory> nv_tensorrt_rtx_provider_factory = onnxruntime::NvProviderFactoryCreator::Create(info)) {
           return nv_tensorrt_rtx_provider_factory->CreateProvider();
         }
       } else {
