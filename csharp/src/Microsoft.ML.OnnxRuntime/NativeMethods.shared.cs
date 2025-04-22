@@ -251,6 +251,10 @@ namespace Microsoft.ML.OnnxRuntime
         public IntPtr GetCUDAProviderOptionsAsString;
         public IntPtr ReleaseCUDAProviderOptions;
         public IntPtr SessionOptionsAppendExecutionProvider_MIGraphX;
+        public IntPtr CreateMIGraphXProviderOptions;
+        public IntPtr UpdateMIGraphXProviderOptions;
+        public IntPtr GetMIGraphXProviderOptionsAsString;
+        public IntPtr ReleaseMIGraphXProviderOptions;
         public IntPtr AddExternalInitializers;
         public IntPtr CreateOpAttr;
         public IntPtr ReleaseOpAttr;
@@ -573,6 +577,12 @@ namespace Microsoft.ML.OnnxRuntime
             OrtUpdateROCMProviderOptions = (DOrtUpdateROCMProviderOptions)Marshal.GetDelegateForFunctionPointer(api_.UpdateROCMProviderOptions, typeof(DOrtUpdateROCMProviderOptions));
             OrtGetROCMProviderOptionsAsString = (DOrtGetROCMProviderOptionsAsString)Marshal.GetDelegateForFunctionPointer(api_.GetROCMProviderOptionsAsString, typeof(DOrtGetROCMProviderOptionsAsString));
             OrtReleaseROCMProviderOptions = (DOrtReleaseROCMProviderOptions)Marshal.GetDelegateForFunctionPointer(api_.ReleaseROCMProviderOptions, typeof(DOrtReleaseROCMProviderOptions));
+            SessionOptionsAppendExecutionProvider_MIGraphX = (DSessionOptionsAppendExecutionProvider_MIGraphX)Marshal.GetDelegateForFunctionPointer(
+                api_.SessionOptionsAppendExecutionProvider_MIGraphX, typeof(DSessionOptionsAppendExecutionProvider_MIGraphX));
+            OrtCreateMIGraphXProviderOptions = (DOrtCreateMIGraphXProviderOptions)Marshal.GetDelegateForFunctionPointer(api_.CreateMIGraphXProviderOptions, typeof(DOrtCreateMIGraphXProviderOptions));
+            OrtUpdateMIGraphXProviderOptions = (DOrtUpdateMIGraphXProviderOptions)Marshal.GetDelegateForFunctionPointer(api_.UpdateMIGraphXProviderOptions, typeof(DOrtUpdateMIGraphXProviderOptions));
+            OrtGetMIGraphXProviderOptionsAsString = (DOrtGetMIGraphXProviderOptionsAsString)Marshal.GetDelegateForFunctionPointer(api_.GetMIGraphXProviderOptionsAsString, typeof(DOrtGetMIGraphXProviderOptionsAsString));
+            OrtReleaseMIGraphXProviderOptions = (DOrtReleaseMIGraphXProviderOptions)Marshal.GetDelegateForFunctionPointer(api_.ReleaseMIGraphXProviderOptions, typeof(DOrtReleaseMIGraphXProviderOptions));
             OrtCreateAndRegisterAllocatorV2 = (DCreateAndRegisterAllocatorV2)Marshal.GetDelegateForFunctionPointer(api_.CreateAndRegisterAllocatorV2, typeof(DCreateAndRegisterAllocatorV2));
             OrtRunAsync = (DOrtRunAsync)Marshal.GetDelegateForFunctionPointer(api_.RunAsync, typeof(DOrtRunAsync));
             CreateLoraAdapter = (DCreateLoraAdapter)Marshal.GetDelegateForFunctionPointer(api_.CreateLoraAdapter,
@@ -797,6 +807,52 @@ namespace Microsoft.ML.OnnxRuntime
         public delegate void DOrtReleaseROCMProviderOptions(IntPtr /*(OrtROCMProviderOptions*)*/ rocmProviderOptionsInstance);
         public static DOrtReleaseROCMProviderOptions OrtReleaseROCMProviderOptions;
 
+#endregion
+
+#region Provider Options API
+        /// <summary>
+        /// Creates native OrtMIGraphXProviderOptions instance
+        /// </summary>
+        /// <param name="trtProviderOptionsInstance">(output) native instance of OrtMIGraphXProviderOptions</param>
+        [UnmanagedFunctionPointer(CallingConvention.Winapi)]
+        public delegate IntPtr /* OrtStatus* */ DOrtCreateMIGraphXProviderOptions(
+            out IntPtr /*(OrtMIGraphXProviderOptions**)*/ migraphxProviderOptionsInstance);
+        public static DOrtCreateMIGraphXProviderOptions OrtCreateMIGraphXProviderOptions;
+
+        /// <summary>
+        /// Updates native OrtMIGraphXProviderOptions instance using given key/value pairs
+        /// </summary>
+        /// <param name="migraphxProviderOptionsInstance">native instance of OrtMIGraphXProviderOptions</param>
+        /// <param name="providerOptionsKeys">configuration keys of OrtMIGraphXProviderOptions</param>
+        /// <param name="providerOptionsValues">configuration values of OrtMIGraphXProviderOptions</param>
+        /// <param name="numKeys">number of configuration keys</param>
+        [UnmanagedFunctionPointer(CallingConvention.Winapi)]
+        public delegate IntPtr /* OrtStatus* */ DOrtUpdateMIGraphXProviderOptions(
+            IntPtr /*(OrtMIGraphXProviderOptions*)*/ migraphxProviderOptionsInstance,
+            IntPtr[] /*(const char* const *)*/ providerOptionsKeys,
+            IntPtr[] /*(const char* const *)*/ providerOptionsValues,
+            UIntPtr /*(size_t)*/ numKeys);
+        public static DOrtUpdateMIGraphXProviderOptions OrtUpdateMIGraphXProviderOptions;
+
+        /// <summary>
+        /// Get native OrtMIGraphXProviderOptionsV2 in serialized string
+        /// </summary>
+        /// <param name="allocator">instance of OrtAllocator</param>
+        /// <param name="ptr">is a UTF-8 null terminated string allocated using 'allocator'</param>
+        [UnmanagedFunctionPointer(CallingConvention.Winapi)]
+        public delegate IntPtr /* OrtStatus* */ DOrtGetMIGraphXProviderOptionsAsString(
+            IntPtr /*(OrtMIGraphXProviderOptionsV2**)*/ migraphxProviderOptionsInstance,
+            IntPtr /*(OrtAllocator*)*/ allocator,
+            out IntPtr /*(char**)*/ ptr);
+        public static DOrtGetMIGraphXProviderOptionsAsString OrtGetMIGraphXProviderOptionsAsString;
+
+        /// <summary>
+        /// Releases native OrtMIGraphXProviderOptions instance
+        /// </summary>
+        /// <param name="migraphxProviderOptionsInstance">native instance of OrtMIGraphXProviderOptions to be released</param>
+        [UnmanagedFunctionPointer(CallingConvention.Winapi)]
+        public delegate void DOrtReleaseMIGraphXProviderOptions(IntPtr /*(OrtMIGraphXProviderOptions*)*/ migraphxProviderOptionsInstance);
+        public static DOrtReleaseMIGraphXProviderOptions OrtReleaseMIGraphXProviderOptions;
 #endregion
 
 #region Status API
@@ -1160,6 +1216,9 @@ namespace Microsoft.ML.OnnxRuntime
 
         [DllImport(NativeLib.DllName, CharSet = CharSet.Ansi)]
         public static extern IntPtr /*(OrtStatus*)*/ OrtSessionOptionsAppendExecutionProvider_MIGraphX(IntPtr /*(OrtSessionOptions*)*/ options, int device_id);
+
+        [DllImport(NativeLib.DllName, CharSet = CharSet.Ansi)]
+        public static extern IntPtr /*(OrtStatus*)*/ OrtSessionOptionsAppendExecutionProvider_MIGraphX(IntPtr /*(OrtSessionOptions*)*/ options, int use_arena, int device_id);
 #endif
         /// <summary>
         /// Append a TensorRT EP instance (configured based on given provider options) to the native OrtSessionOptions instance
@@ -1220,6 +1279,18 @@ namespace Microsoft.ML.OnnxRuntime
             IntPtr /*(const OrtROCMProviderOptions*)*/ rocmProviderOptions);
 
         public static DSessionOptionsAppendExecutionProvider_ROCM SessionOptionsAppendExecutionProvider_ROCM;
+
+        /// <summary>
+        /// Append a MIGraphX EP instance (configured based on given provider options) to the native OrtSessionOptions instance
+        /// </summary>
+        /// <param name="options">Native OrtSessionOptions instance</param>
+        /// <param name="migraphxProviderOptions">Native OrtMIGraphXProviderOptions instance</param>
+        [UnmanagedFunctionPointer(CallingConvention.Winapi)]
+        public delegate IntPtr /*(OrtStatus*)*/ DSessionOptionsAppendExecutionProvider_MIGraphX(
+            IntPtr /*(OrtSessionOptions*)*/ options,
+            IntPtr /*(const OrtMIGraphXProviderOptions*)*/ migraphxProviderOptions);
+
+        public static DSessionOptionsAppendExecutionProvider_MIGraphX SessionOptionsAppendExecutionProvider_MIGraphX;
 
         /// <summary>
         /// Free Dimension override (by denotation)

@@ -331,9 +331,22 @@ namespace Microsoft.ML.OnnxRuntime
         public void AppendExecutionProvider_MIGraphX(int deviceId = 0)
         {
 #if __MOBILE__
-            throw new NotSupportedException($"The MIGraphX Execution Provider is not supported in this build");
+            throw new NotSupportedException("The MIGraphX Execution Provider is not supported in this build");
 #else
             NativeApiStatus.VerifySuccess(NativeMethods.OrtSessionOptionsAppendExecutionProvider_MIGraphX(handle, deviceId));
+#endif
+        }
+
+        /// <summary>
+        /// Use only if you have the onnxruntime package specific to this Execution Provider.
+        /// </summary>
+        /// <param name="deviceId">device identification</param>
+        public void AppendExecutionProvider_MIGraphX(OrtMIGraphXProviderOptions migraphxProviderOptions)
+        {
+#if __MOBILE__
+            throw new NotSupportedException($"The AMD Nitris Execution Provider is not supported in this build");
+#else
+            NativeApiStatus.VerifySuccess(NativeMethods.SessionOptionsAppendExecutionProvider_MIGraphX(handle, migraphxProviderOptions.Handle));
 #endif
         }
 

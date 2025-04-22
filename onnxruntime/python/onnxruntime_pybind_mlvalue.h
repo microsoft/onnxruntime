@@ -91,6 +91,18 @@ const std::unordered_map<OrtDevice::DeviceType, MemCpyFunc>* GetDmlToHostMemCpyF
 
 #endif
 
+#ifdef USE_MIGRAPHX
+
+void CpuToMIGraphXMemCpy(void* dst, const void* src, size_t num_bytes);
+
+void MIGraphXToCpuMemCpy(void* dst, const void* src, size_t num_bytes);
+
+const std::unordered_map<OrtDevice::DeviceType, MemCpyFunc>* GetMIGraphXToHostMemCpyFunction();
+
+AllocatorPtr GetMIGraphXAllocator(OrtDevice::DeviceId id);
+
+#endif
+
 #ifdef USE_CANN
 
 void CpuToCannMemCpy(void* dst, const void* src, size_t num_bytes);

@@ -1,0 +1,152 @@
+diff --git a/include/ck/tensor_operation/gpu/block/blockwise_gemm_dpp.hpp b/include/ck/tensor_operation/gpu/block/blockwise_gemm_dpp.hpp
+index d62ed4b15..f469b83b9 100644
+--- a/include/ck/tensor_operation/gpu/block/blockwise_gemm_dpp.hpp
++++ b/include/ck/tensor_operation/gpu/block/blockwise_gemm_dpp.hpp
+@@ -300,7 +300,7 @@ struct BlockwiseGemmDpp_ak0mak1_bk0nbk1_m0n0m1n1m2n2
+                     constexpr index_t c_offset =
+                         c_thread_desc_.CalculateOffset(make_tuple(m0, n0, 0));
+
+-                    dpp_gemm.template Run(a_thread_vec.template AsType<dpp_input_type>(),
++                    dpp_gemm.template Run<>(a_thread_vec.template AsType<dpp_input_type>(),
+                                           b_thread_vec.template AsType<dpp_input_type>(),
+                                           c_thread_buf.GetVectorTypeReference(Number<c_offset>{}));
+                 });
+diff --git a/include/ck/tensor_operation/gpu/block/blockwise_gemm_pipeline_xdlops.hpp b/include/ck/tensor_operation/gpu/block/blockwise_gemm_pipeline_xdlops.hpp
+index 758f25a5b..aa0c42b91 100644
+--- a/include/ck/tensor_operation/gpu/block/blockwise_gemm_pipeline_xdlops.hpp
++++ b/include/ck/tensor_operation/gpu/block/blockwise_gemm_pipeline_xdlops.hpp
+@@ -613,7 +613,7 @@ struct BlockwiseGemmXdlops_pipeline_v4
+                             constexpr index_t c_offset =
+                                 c_thread_desc_.CalculateOffset(make_tuple(m0, n0, 0));
+
+-                            xdlops_gemm.template Run(
++                            xdlops_gemm.template Run<>(
+                                 a_thread_vec.template AsType<mfma_input_type>(),
+                                 b_thread_vec.template AsType<mfma_input_type>(),
+                                 c_thread_buf.GetVectorTypeReference(Number<c_offset>{}));
+@@ -681,7 +681,7 @@ struct BlockwiseGemmXdlops_pipeline_v4
+                             constexpr index_t c_offset =
+                                 c_thread_desc_.CalculateOffset(make_tuple(m0, n0, 0));
+
+-                            xdlops_gemm.template Run(
++                            xdlops_gemm.template Run<>(
+                                 a_thread_vec.template AsType<mfma_input_type>(),
+                                 b_thread_vec.template AsType<mfma_input_type>(),
+                                 c_thread_buf.GetVectorTypeReference(Number<c_offset>{}));
+@@ -749,7 +749,7 @@ struct BlockwiseGemmXdlops_pipeline_v4
+                         constexpr index_t c_offset =
+                             c_thread_desc_.CalculateOffset(make_tuple(m0, n0, 0));
+
+-                        xdlops_gemm.template Run(
++                        xdlops_gemm.template Run<>(
+                             a_thread_vec.template AsType<mfma_input_type>(),
+                             b_thread_vec.template AsType<mfma_input_type>(),
+                             c_thread_buf.GetVectorTypeReference(Number<c_offset>{}));
+@@ -808,7 +808,7 @@ struct BlockwiseGemmXdlops_pipeline_v4
+                         constexpr index_t c_offset =
+                             c_thread_desc_.CalculateOffset(make_tuple(m0, n0, 0));
+
+-                        xdlops_gemm.template Run(
++                        xdlops_gemm.template Run<>(
+                             a_thread_vec.template AsType<mfma_input_type>(),
+                             b_thread_vec.template AsType<mfma_input_type>(),
+                             c_thread_buf.GetVectorTypeReference(Number<c_offset>{}));
+@@ -840,7 +840,7 @@ struct BlockwiseGemmXdlops_pipeline_v4
+                         constexpr index_t c_offset =
+                             c_thread_desc_.CalculateOffset(make_tuple(m0, n0, 0));
+
+-                        xdlops_gemm.template Run(
++                        xdlops_gemm.template Run<>(
+                             a_thread_vec.template AsType<mfma_input_type>(),
+                             b_thread_vec.template AsType<mfma_input_type>(),
+                             c_thread_buf.GetVectorTypeReference(Number<c_offset>{}));
+@@ -901,7 +901,7 @@ struct BlockwiseGemmXdlops_pipeline_v4
+                         constexpr index_t c_offset =
+                             c_thread_desc_.CalculateOffset(make_tuple(m0, n0, 0));
+
+-                        xdlops_gemm.template Run(
++                        xdlops_gemm.template Run<>(
+                             a_thread_vec.template AsType<mfma_input_type>(),
+                             b_thread_vec.template AsType<mfma_input_type>(),
+                             c_thread_buf.GetVectorTypeReference(Number<c_offset>{}));
+@@ -939,7 +939,7 @@ struct BlockwiseGemmXdlops_pipeline_v4
+                         constexpr index_t c_offset =
+                             c_thread_desc_.CalculateOffset(make_tuple(m0, n0, 0));
+
+-                        xdlops_gemm.template Run(
++                        xdlops_gemm.template Run<>(
+                             a_thread_vec.template AsType<mfma_input_type>(),
+                             b_thread_vec.template AsType<mfma_input_type>(),
+                             c_thread_buf.GetVectorTypeReference(Number<c_offset>{}));
+diff --git a/include/ck/tensor_operation/gpu/block/blockwise_gemm_wmma.hpp b/include/ck/tensor_operation/gpu/block/blockwise_gemm_wmma.hpp
+index 7eb7d42eb..59b0460be 100644
+--- a/include/ck/tensor_operation/gpu/block/blockwise_gemm_wmma.hpp
++++ b/include/ck/tensor_operation/gpu/block/blockwise_gemm_wmma.hpp
+@@ -352,7 +352,7 @@ struct BlockwiseGemmWMMA
+                             constexpr index_t c_offset =
+                                 c_thread_desc_.CalculateOffset(make_tuple(m0, n0, 0));
+
+-                            wmma_gemm.template Run(
++                            wmma_gemm.template Run<>(
+                                 a_thread_vec.template AsType<wmma_input_type_a>(),
+                                 b_thread_vec.template AsType<wmma_input_type_b>(),
+                                 c_thread_buf.GetVectorTypeReference(Number<c_offset>{}));
+@@ -406,7 +406,7 @@ struct BlockwiseGemmWMMA
+                         constexpr index_t c_offset =
+                             c_thread_desc_.CalculateOffset(make_tuple(m0, n0, 0));
+
+-                        wmma_gemm.template Run(
++                        wmma_gemm.template Run<>(
+                             a_thread_vec.template AsType<wmma_input_type_a>(),
+                             b_thread_vec.template AsType<wmma_input_type_b>(),
+                             c_thread_buf.GetVectorTypeReference(Number<c_offset>{}));
+@@ -850,7 +850,7 @@ struct BlockwiseGemmWMMA
+                             constexpr index_t c_offset =
+                                 c_thread_desc_.CalculateOffset(make_tuple(m0, n0, 0));
+
+-                            wmma_gemm.template Run(
++                            wmma_gemm.template Run<>(
+                                 a_thread_vec.template AsType<wmma_input_type_a>(),
+                                 b_thread_vec.template AsType<wmma_input_type_b>(),
+                                 c_thread_buf.GetVectorTypeReference(Number<c_offset>{}));
+@@ -909,7 +909,7 @@ struct BlockwiseGemmWMMA
+                         constexpr index_t c_offset =
+                             c_thread_desc_.CalculateOffset(make_tuple(m0, n0, 0));
+
+-                        wmma_gemm.template Run(
++                        wmma_gemm.template Run<>(
+                             a_thread_vec.template AsType<wmma_input_type_a>(),
+                             b_thread_vec.template AsType<wmma_input_type_b>(),
+                             c_thread_buf.GetVectorTypeReference(Number<c_offset>{}));
+diff --git a/include/ck/tensor_operation/gpu/block/blockwise_gemm_xdlops.hpp b/include/ck/tensor_operation/gpu/block/blockwise_gemm_xdlops.hpp
+index 1f7d50429..ae5f84762 100644
+--- a/include/ck/tensor_operation/gpu/block/blockwise_gemm_xdlops.hpp
++++ b/include/ck/tensor_operation/gpu/block/blockwise_gemm_xdlops.hpp
+@@ -340,7 +340,7 @@ struct BlockwiseGemmXdlops_k0mk1_k0nk1_m0n0m1n1m2m3m4n2_v1
+                     constexpr index_t c_offset =
+                         c_thread_desc_.CalculateOffset(make_tuple(m0, n0, 0));
+
+-                    xdlops_gemm.template Run(
++                    xdlops_gemm.template Run<>(
+                         a_thread_vec.template AsType<mfma_input_type_a>(),
+                         b_thread_vec.template AsType<mfma_input_type_b>(),
+                         c_thread_buf.GetVectorTypeReference(Number<c_offset>{}));
+@@ -537,7 +537,7 @@ struct BlockwiseGemmXdlopsInterwave_k0mk1_k0nk1_m0n0m1n1m2m3m4n2_v1
+
+                         // TODO: insert setprio in more precise manner since we
+                         // could have more than >1 MFMA instructions in single call
+-                        xdlops_gemm.template Run(
++                        xdlops_gemm.template Run<>(
+                             a_thread_vec.template AsType<mfma_input_type_a>(),
+                             b_thread_vec.template AsType<mfma_input_type_b>(),
+                             c_thread_buf.GetVectorTypeReference(Number<c_offset>{}));
+@@ -970,7 +970,7 @@ struct BlockwiseGemmXdlops_v2
+                     constexpr index_t c_offset =
+                         c_thread_desc_.CalculateOffset(make_tuple(m0, n0, 0));
+
+-                    xdlops_gemm.template Run(
++                    xdlops_gemm.template Run<>(
+                         a_thread_vec.template AsType<mfma_input_type>(),
+                         b_thread_vec.template AsType<mfma_input_type>(),
+                         c_thread_buf.GetVectorTypeReference(Number<c_offset>{}));
+

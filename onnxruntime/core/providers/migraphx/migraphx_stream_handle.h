@@ -3,8 +3,8 @@
 
 #pragma once
 #include "core/framework/stream_handles.h"
-#include "migraphx_inc.h"
-#include "migraphx_call.h"
+#include "core/providers/migraphx/migraphx_inc.h"
+#include "core/providers/migraphx/migraphx_call.h"
 
 namespace onnxruntime {
 void WaitMIGraphXNotificationOnDevice(Stream& stream, synchronize::Notification& notification);

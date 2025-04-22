@@ -39,8 +39,15 @@ bool do_copy_in_default_stream = true;
 // TODO remove deprecated global config
 onnxruntime::rocm::TunableOpInfo tunable_op{};
 onnxruntime::ROCMExecutionProviderExternalAllocatorInfo external_allocator_info{};
+#endif
+
+#if defined(USE_ROCM) || defined(USE_MIGRAPHX)
 // TODO remove deprecated global config
 onnxruntime::ArenaExtendStrategy arena_extend_strategy = onnxruntime::ArenaExtendStrategy::kNextPowerOfTwo;
+#endif
+
+#ifdef USE_MIGRAPHX
+onnxruntime::MIGraphXExecutionProviderExternalAllocatorInfo migx_external_allocator_info{};
 #endif
 
 #if defined(ENABLE_DLPACK)

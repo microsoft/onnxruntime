@@ -2,7 +2,7 @@
 // Licensed under the MIT License.
 
 #include <core/providers/rocm/rocm_resource.h>
-#include "migraphx_stream_handle.h"
+#include "core/providers/migraphx/migraphx_stream_handle.h"
 
 namespace onnxruntime {
 

@@ -1,0 +1,14 @@
+diff --git a/include/ck/ck.hpp b/include/ck/ck.hpp
+index 55f562061..ee340eba1 100644
+--- a/include/ck/ck.hpp
++++ b/include/ck/ck.hpp
+@@ -53,7 +53,7 @@ CK_DECLARE_ENV_VAR_BOOL(CK_LOGGING)
+
+ // define general macros for various architectures
+ #if defined(__gfx908__) || defined(__gfx90a__) || defined(__gfx940__) || defined(__gfx941__) || \
+-    defined(__gfx942__)
++    defined(__gfx942__) || defined(__gfx950__)
+ #define __gfx9__
+ #endif
+ #if defined(__gfx940__) || defined(__gfx941__) || defined(__gfx942__)
+

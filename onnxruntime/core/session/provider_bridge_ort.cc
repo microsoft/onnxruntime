@@ -1996,6 +1996,12 @@ std::shared_ptr<IExecutionProviderFactory> TensorrtProviderFactoryCreator::Creat
   return s_library_tensorrt.Get().CreateExecutionProviderFactory(provider_options);
 }
 
+std::shared_ptr<IExecutionProviderFactory> MIGraphXProviderFactoryCreator::Create(const ProviderOptions& provider_options) {
+  OrtMIGraphXProviderOptions migraphx_options;
+  s_library_migraphx.Get().UpdateProviderOptions(&migraphx_options, provider_options);
+  return s_library_migraphx.Get().CreateExecutionProviderFactory(&migraphx_options);
+}
+
 std::shared_ptr<IExecutionProviderFactory> MIGraphXProviderFactoryCreator::Create(const OrtMIGraphXProviderOptions* provider_options) {
   return s_library_migraphx.Get().CreateExecutionProviderFactory(provider_options);
 }
@@ -2553,7 +2559,7 @@ ORT_API_STATUS_IMPL(OrtApis::UpdateTensorRTProviderOptions,
   API_IMPL_END
 }
 
-#if defined(USE_TENSORRT) || defined(USE_CUDA) || defined(USE_CANN) || defined(USE_DNNL) || defined(USE_ROCM)
+#if defined(USE_TENSORRT) || defined(USE_CUDA) || defined(USE_CANN) || defined(USE_DNNL) || defined(USE_ROCM) || defined(USE_MIGRAPHX)
 static std::string BuildOptionsString(const onnxruntime::ProviderOptions::iterator& begin,
                                       const onnxruntime::ProviderOptions::iterator& end) {
   std::ostringstream options;
@@ -3067,4 +3073,75 @@ ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider_VitisAI, _In_
   options->provider_factories.push_back(factory);
   return nullptr;
   API_IMPL_END
+}
+
+ORT_API_STATUS_IMPL(OrtApis::CreateMIGraphXProviderOptions, _Outptr_ OrtMIGraphXProviderOptions** out) {
+  API_IMPL_BEGIN
+#ifdef USE_MIGRAPHX
+  auto migraphx_options = std::make_unique<OrtMIGraphXProviderOptions>();
+  memset(migraphx_options.get(), 0, sizeof(OrtMIGraphXProviderOptions));
+  *out = migraphx_options.release();
+  return nullptr;
+#else
+  ORT_UNUSED_PARAMETER(out);
+  return CreateStatus(ORT_FAIL, "MIGraphX execution provider is not enabled in this build.");
+#endif
+  API_IMPL_END
+}
+
+ORT_API_STATUS_IMPL(OrtApis::UpdateMIGraphXProviderOptions,
+                    _Inout_ OrtMIGraphXProviderOptions* migraphx_options,
+                    _In_reads_(num_keys) const char* const* provider_options_keys,
+                    _In_reads_(num_keys) const char* const* provider_options_values,
+                    size_t num_keys) {
+  API_IMPL_BEGIN
+#ifdef USE_MIGRAPHX
+  onnxruntime::ProviderOptions provider_options_map;
+  for (size_t i = 0; i != num_keys; ++i) {
+    if (provider_options_keys[i] == nullptr || provider_options_keys[i][0] == '\0' ||
+        provider_options_values[i] == nullptr || provider_options_values[i][0] == '\0') {
+      return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "key/value cannot be empty");
+    }
+
+    provider_options_map[provider_options_keys[i]] = provider_options_values[i];
+  }
+
+  onnxruntime::s_library_migraphx.Get().UpdateProviderOptions(reinterpret_cast<void*>(migraphx_options), provider_options_map);
+  return nullptr;
+#else
+  ORT_UNUSED_PARAMETER(migraphx_options);
+  ORT_UNUSED_PARAMETER(provider_options_keys);
+  ORT_UNUSED_PARAMETER(provider_options_values);
+  ORT_UNUSED_PARAMETER(num_keys);
+  return CreateStatus(ORT_FAIL, "MIGraphX execution provider is not enabled in this build.");
+#endif
+  API_IMPL_END
+}
+
+ORT_API_STATUS_IMPL(OrtApis::GetMIGraphXProviderOptionsAsString,
+                    _In_ const OrtMIGraphXProviderOptions* migraphx_options,
+                    _Inout_ OrtAllocator* allocator,
+                    _Outptr_ char** ptr) {
+  API_IMPL_BEGIN
+#ifdef USE_MIGRAPHX
+  onnxruntime::ProviderOptions options =
+      onnxruntime::s_library_migraphx.Get().GetProviderOptions(reinterpret_cast<const void*>(migraphx_options));
+  std::string options_str = BuildOptionsString(options.begin(), options.end());
+  *ptr = onnxruntime::StrDup(options_str, allocator);
+  return nullptr;
+#else
+  ORT_UNUSED_PARAMETER(migraphx_options);
+  ORT_UNUSED_PARAMETER(allocator);
+  ORT_UNUSED_PARAMETER(ptr);
+  return CreateStatus(ORT_FAIL, "MIGraphX execution provider is not enabled in this build.");
+#endif
+  API_IMPL_END
+}
+
+ORT_API(void, OrtApis::ReleaseMIGraphXProviderOptions, _Frees_ptr_opt_ OrtMIGraphXProviderOptions* ptr) {
+#ifdef USE_MIGRAPHX
+  std::unique_ptr<OrtMIGraphXProviderOptions> p(ptr);
+#else
+  ORT_UNUSED_PARAMETER(ptr);
+#endif
 }

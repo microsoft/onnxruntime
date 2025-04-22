@@ -29,6 +29,7 @@ include(CheckLanguage)
 include(CMakeDependentOption)
 include(FetchContent)
 include(CheckFunctionExists)
+include(CheckSymbolExists)
 include(GNUInstallDirs) # onnxruntime_providers_* require CMAKE_INSTALL_* variables
 
 # TODO: update this once all system adapt c++20
@@ -359,7 +360,7 @@ if (onnxruntime_USE_ROCM)
   if(NOT DEFINED _CMAKE_HIP_DEVICE_RUNTIME_TARGET)
     message(FATAL_ERROR "HIP Language is not properly configured.")
   endif()
-  add_compile_options("$<$<COMPILE_LANGUAGE:HIP>:SHELL:-x hip>")
+  add_compile_options("$<$<COMPILE_LANGUAGE:HIP>:SHELL:-x hip -parallel-jobs=2>")
 
   if (NOT onnxruntime_HIPIFY_PERL)
     find_path(HIPIFY_PERL_PATH

@@ -36,13 +36,13 @@ struct OrtStatus {
 #define BACKEND_PROC "CPU"
 #endif
 
-#if USE_DNNL
+#ifdef USE_DNNL
 #define BACKEND_DNNL "-DNNL"
 #else
 #define BACKEND_DNNL ""
 #endif
 
-#if USE_MIGRAPHX
+#ifdef USE_MIGRAPHX
 #define BACKEND_MIGRAPHX "-MIGRAPHX"
 #else
 #define BACKEND_MIGRAPHX ""
@@ -192,9 +192,27 @@ extern bool do_copy_in_default_stream;
 // TODO remove deprecated global config
 extern onnxruntime::rocm::TunableOpInfo tunable_op;
 extern onnxruntime::ROCMExecutionProviderExternalAllocatorInfo external_allocator_info;
+}  // namespace python
+}  // namespace onnxruntime
+#endif
+
+#if defined(USE_ROCM) || defined(USE_MIGRAPHX)
+namespace onnxruntime {
+namespace python {
 extern onnxruntime::ArenaExtendStrategy arena_extend_strategy;
 }  // namespace python
 }  // namespace onnxruntime
+#endif
+
+#ifdef USE_MIGRAPHX
+namespace onnxruntime {
+ProviderInfo_MIGraphX* TryGetProviderInfo_MIGraphX();
+ProviderInfo_MIGraphX& GetProviderInfo_MIGraphX();
+namespace python {
+extern onnxruntime::MIGraphXExecutionProviderExternalAllocatorInfo migx_external_allocator_info;
+}  // namespace python
+}  // namespace onnxruntime
+
 #endif
 
 #include "core/providers/dnnl/dnnl_provider_factory.h"

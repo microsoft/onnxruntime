@@ -97,6 +97,7 @@ ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider,
     JS,
     VitisAI,
     CoreML,
+    MIGraphX
   };
 
   struct EpToAppend {
@@ -105,7 +106,7 @@ ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider,
     const char* canonical_name = nullptr;
   };
 
-  static std::array<EpToAppend, 11> supported_eps = {
+  static std::array<EpToAppend, 12> supported_eps = {
       EpToAppend{EpID::DML, "DML", kDmlExecutionProvider},
       EpToAppend{EpID::QNN, "QNN", kQnnExecutionProvider},
       EpToAppend{EpID::OpenVINO, "OpenVINO", kOpenVINOExecutionProvider},
@@ -117,6 +118,7 @@ ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider,
       EpToAppend{EpID::JS, "JS", kJsExecutionProvider},
       EpToAppend{EpID::VitisAI, "VitisAI", kVitisAIExecutionProvider},
       EpToAppend{EpID::CoreML, "CoreML", kCoreMLExecutionProvider},
+      EpToAppend{EpID::MIGraphX, "MIGraphX",kMIGraphXExecutionProvider}
   };
 
   ProviderOptions provider_options;
@@ -266,6 +268,14 @@ ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider,
 #endif
       break;
     }
+    case EpID::MIGraphX: {
+#if defined(USE_MIGRAPHX)
+      options->provider_factories.push_back(MIGraphXProviderFactoryCreator::Create(provider_options));
+#else
+      status = create_not_supported_status();
+#endif	
+	  break;
+	}
     case EpID::VitisAI: {
 #ifdef USE_VITISAI
       status = OrtApis::SessionOptionsAppendExecutionProvider_VitisAI(options, provider_options_keys,
@@ -627,4 +637,35 @@ ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider_VitisAI,
   ORT_UNUSED_PARAMETER(num_keys);
   return CreateNotEnabledStatus("VitisAI");
 }
+
+ORT_API_STATUS_IMPL(OrtApis::CreateMIGraphXProviderOptions, _Outptr_ OrtMIGraphXProviderOptions** out) {
+  ORT_UNUSED_PARAMETER(out);
+  return CreateNotEnabledStatus("MIGraphX");
+}
+
+ORT_API_STATUS_IMPL(OrtApis::UpdateMIGraphXProviderOptions,
+                    _Inout_ OrtMIGraphXProviderOptions* migraphx_options,
+                    _In_reads_(num_keys) const char* const* provider_options_keys,
+                    _In_reads_(num_keys) const char* const* provider_options_values,
+                    size_t num_keys) {
+  ORT_UNUSED_PARAMETER(migraphx_options);
+  ORT_UNUSED_PARAMETER(provider_options_keys);
+  ORT_UNUSED_PARAMETER(provider_options_values);
+  ORT_UNUSED_PARAMETER(num_keys);
+  return CreateNotEnabledStatus("MIGraphX");
+}
+
+ORT_API_STATUS_IMPL(OrtApis::GetMIGraphXProviderOptionsAsString,
+                    _In_ const OrtMIGraphXProviderOptions* migraphx_options, _Inout_ OrtAllocator* allocator,
+                    _Outptr_ char** ptr) {
+  ORT_UNUSED_PARAMETER(migraphx_options);
+  ORT_UNUSED_PARAMETER(allocator);
+  ORT_UNUSED_PARAMETER(ptr);
+  return CreateStatus(ORT_FAIL, "MIGraphX execution provider is not enabled in this build.");
+}
+
+ORT_API(void, OrtApis::ReleaseMIGraphXProviderOptions, _Frees_ptr_opt_ OrtMIGraphXProviderOptions* ptr) {
+  ORT_UNUSED_PARAMETER(ptr);
+}
+
 #endif

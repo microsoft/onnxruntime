@@ -643,14 +643,14 @@ typedef struct OrtTensorRTProviderOptions {
 typedef struct OrtMIGraphXProviderOptions {
   int device_id;                                     // hip device id.
   int migraphx_fp16_enable;                          // MIGraphX FP16 precision. Default 0 = false, nonzero = true
+  int migraphx_fp8_enable;                           // MIGraphX FP8 precision. Default 0 = false, nonzero = true
   int migraphx_int8_enable;                          // MIGraphX INT8 precision. Default 0 = false, nonzero = true
   int migraphx_use_native_calibration_table;         // MIGraphx INT8 cal table. Default 0 = false, noznero = true
   const char* migraphx_int8_calibration_table_name;  // MIGraphx INT8 calibration table name
-  int migraphx_save_compiled_model;                  // migraphx save compiled model. Default 0 = false, noznero = true
-  const char* migraphx_save_model_path;              // migraphx model path name
-  int migraphx_load_compiled_model;                  // migraphx int8 cal table. Default 0 = false, noznero = true
-  const char* migraphx_load_model_path;              // migraphx model path name
-  bool migraphx_exhaustive_tune;                     // migraphx tuned compile  Default = false
+  const char* migraphx_cache_dir;                    // MIGraphX model cache directory
+  int migraphx_exhaustive_tune;                      // MIGraphX tuned compile  Default = false
+  size_t migraphx_mem_limit;
+  int migraphx_arena_extend_strategy;
 } OrtMIGraphXProviderOptions;
 
 /** \brief OpenVINO Provider Options
@@ -5185,6 +5185,62 @@ struct OrtApi {
    * \since Version 1.22.
    */
   const OrtHardwareDevice*(ORT_API_CALL* EpDevice_Device)(_In_ const OrtEpDevice* ep_device);
+
+  /// @}
+  /// \name OrtMIGraphXProviderOptions
+  /// @{
+
+  /** \brief Create an OrtMIGraphXProviderOptions
+   *
+   * \param[out] out Newly created ::OrtMIGraphXProviderOptions. Must be released with OrtApi::ReleaseMIGraphXProviderOptions
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.xx.
+   */
+  ORT_API2_STATUS(CreateMIGraphXProviderOptions, _Outptr_ OrtMIGraphXProviderOptions** out);
+
+  /** \brief Set options in a MIGraphX Execution Provider.
+   *
+   * For example, key="device_id" and value="0"
+   *
+   * \param[in] migraphx_options
+   * \param[in] provider_options_keys Array of UTF-8 null-terminated string for provider options keys
+   * \param[in] provider_options_values Array of UTF-8 null-terminated string for provider options values
+   * \param[in] num_keys Number of elements in the `provider_option_keys` and `provider_options_values` arrays
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.xx.
+   */
+  ORT_API2_STATUS(UpdateMIGraphXProviderOptions, _Inout_ OrtMIGraphXProviderOptions* migraphx_options,
+                  _In_reads_(num_keys) const char* const* provider_options_keys,
+                  _In_reads_(num_keys) const char* const* provider_options_values,
+                  _In_ size_t num_keys);
+
+  /**
+   * Get serialized MIGraphX provider options string.
+   *
+   * For example, "device_id=0;;......"
+   *
+   * \param migraphx_options - OrtMIGraphXProviderOptions instance
+   * \param allocator - a ptr to an instance of OrtAllocator obtained with CreateAllocator() or GetAllocatorWithDefaultOptions()
+   *                      the specified allocator will be used to allocate continuous buffers for output strings and lengths.
+   * \param ptr - is a UTF-8 null terminated string allocated using 'allocator'. The caller is responsible for using the same allocator to free it.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.xx.
+   */
+  ORT_API2_STATUS(GetMIGraphXProviderOptionsAsString, _In_ const OrtMIGraphXProviderOptions* migraphx_options, _Inout_ OrtAllocator* allocator, _Outptr_ char** ptr);
+
+  /** \brief Release an ::OrtMIGraphXProviderOptions
+   *
+   * \note This is an exception in the naming convention of other Release* functions, as the name of the method does not have the V2 suffix, but the type does
+   *
+   * \since Version 1.xx.
+   */
+  void(ORT_API_CALL* ReleaseMIGraphXProviderOptions)(_Frees_ptr_opt_ OrtMIGraphXProviderOptions* input);  
 };
 
 /*
