@@ -83,7 +83,7 @@ QuantizeMatMulNBits(
 
   // matmul weights are rowwise. mlas lowbit takes columewise weights
   std::vector<float> src_buf_tr(K * N);
-  MlasTranspose(reinterpret_cast<const float*>(src_buf.ptr), &src_buf_tr[0], K, N);
+  MlasTranspose(reinterpret_cast<const float*>(src_buf.ptr), &src_buf_tr[0], K, N, tp.get());
 
   return MlasLowBitQuantize(
       &src_buf_tr[0],
