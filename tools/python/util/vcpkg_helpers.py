@@ -469,7 +469,7 @@ set(VCPKG_CMAKE_SYSTEM_NAME Emscripten)
             f.write(f'set(VCPKG_CHAINLOAD_TOOLCHAIN_FILE "{vcpkg_toolchain_file_cmake_path}")\n')
 
             # --- Configure Flags based on Parameters ---
-            cflags_release = ["-DNDEBUG", "-O3", "-pthread"]
+            cflags_release = ["-DNDEBUG", "-O3", "-flto"]
             ldflags = []  # Initialize linker flags list
             # Base flags applicable to both C and C++
             base_flags = [
@@ -535,10 +535,7 @@ set(VCPKG_CMAKE_SYSTEM_NAME Emscripten)
             f.write(f'set(VCPKG_C_FLAGS_RELEASE "{" ".join(c_combined_release_flags)}")\n')
             f.write(f'set(VCPKG_CXX_FLAGS_RELEASE "{" ".join(cxx_combined_release_flags)}")\n')
 
-            c_rel_with_deb_info_flags = [*c_combined_release_flags, "-g"]
-            cxx_rel_with_deb_info_flags = [*cxx_combined_release_flags, "-g"]
-            f.write(f'set(VCPKG_C_FLAGS_RELWITHDEBINFO "{" ".join(c_rel_with_deb_info_flags)}")\n')
-            f.write(f'set(VCPKG_CXX_FLAGS_RELWITHDEBINFO "{" ".join(cxx_rel_with_deb_info_flags)}")\n')
+            f.write(f'set(VCPKG_LINKER_FLAGS_RELEASE -flto)\n')
 
             # --- Add Port Specific Configs ---
             # Pass the derived C++ exception status and the original minimal build flag
