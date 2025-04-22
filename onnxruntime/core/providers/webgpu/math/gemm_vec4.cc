@@ -2,10 +2,46 @@
 // Licensed under the MIT License.
 
 #include "core/providers/webgpu/math/gemm_vec4.h"
-#include "core/providers/webgpu/shader_helper.h"
 
 namespace onnxruntime {
 namespace webgpu {
+
+void GemmVec4Program::MatMulReadFnSource(ShaderHelper& shader) const {
+  shader.AdditionalImplementation()
+      << R"READA(fn mm_readA(row: u32, col: u32, total_rows: u32, total_cols: u32) -> output_value_t {
+
+    if(col < total_cols&& row < total_rows) {
+        return A[row * total_cols+ col];
+    } else {
+        return output_value_t(0);
+    }
+}
+)READA";
+
+  shader.AdditionalImplementation()
+      << R"READB(fn mm_readB(row: u32, col: u32, total_rows: u32, total_cols: u32) -> output_value_t {
+    if(col < total_cols && row < total_rows) {
+        return B[row * total_cols + col];
+    } else {
+        return output_value_t(0);
+    }
+    })READB";
+}
+
+void GemmVec4Program::MatMulWriteFnSource(ShaderHelper& shader, const ShaderVariableHelper& output) const {
+  shader.AdditionalImplementation()
+      << "fn mm_write(row: u32, col: u32, valuesIn: output_value_t) {"
+      << "var values = valuesIn;"
+      << "if(col < uniforms.N4 && row < uniforms.M) {";
+  if (need_handle_bias_) {
+    const ShaderVariableHelper& C = shader.AddInput("C", ShaderUsage::UseUniform);
+    shader.AdditionalImplementation() << "    values += uniforms.beta * "
+                                      << C.GetByOffset(C.BroadcastedIndicesToOffset("vec2(row, col)", output)) << ";\n";
+  }
+  shader.AdditionalImplementation() << "    output[row * uniforms.N4 + col] = values;\n"
+                                    << "  }\n"
+                                    << "}\n";
+}
 
 Status GemmVec4Program::GenerateShaderCode(ShaderHelper& shader) const {
   const ShaderVariableHelper& output = shader.AddOutput("output", ShaderUsage::UseUniform | ShaderUsage::UseValueTypeAlias);
@@ -17,6 +53,8 @@ Status GemmVec4Program::GenerateShaderCode(ShaderHelper& shader) const {
   if (need_handle_matmul_) {
     shader.AddInput("A", ShaderUsage::UseUniform);
     shader.AddInput("B", ShaderUsage::UseUniform);
+
+    MatMulReadFnSource(shader);
 
     // Add shared memory arrays for tiling
     shader.AdditionalImplementation() << "var<workgroup> tile_a: array<array<output_value_t, 8>, 32>;\n"
@@ -35,25 +73,13 @@ Status GemmVec4Program::GenerateShaderCode(ShaderHelper& shader) const {
       shader.MainFunctionBody() << R"TILE_A(
         var row = k_start_a + (local_idx / 8u);
         var col =  tile_row_start/4 + local_idx % 8u;
-
-        // load 1 vec4 into tile_a
-        if (col < uniforms.M4 && row < uniforms.K) {
-            tile_a[local_idx / 8u][local_idx % 8u] = A[row * uniforms.M4 + col];
-        } else {
-            tile_a[local_idx / 8u][local_idx % 8u] = output_value_t(0);
-        }
+        tile_a[local_idx / 8u][local_idx % 8u] = mm_readA(row, col, uniforms.K, uniforms.M4);
         )TILE_A";
     } else {
       shader.MainFunctionBody() << R"TILE_A(
         var row = tile_row_start + local_idx / 8u; // row is A index
         var col = k_start_a + (local_idx % 8u); //
-
-        // load 1 vec4 into tile_a
-        if (col < uniforms.K4 && row < uniforms.M) {
-            tile_a[local_idx / 8u][local_idx % 8u] = A[row * uniforms.K4 + col];
-        } else {
-            tile_a[local_idx / 8u][local_idx % 8u] = output_value_t(0);
-        }
+        tile_a[local_idx / 8u][local_idx % 8u] = mm_readA(row, col, uniforms.M, uniforms.K4);
         )TILE_A";
     }
     // Load TILE_B
@@ -61,27 +87,15 @@ Status GemmVec4Program::GenerateShaderCode(ShaderHelper& shader) const {
       shader.MainFunctionBody() << R"TILE_B(
         row = tile_col_start * 4 + (local_idx / 8u);
         col = k_start_b + (local_idx % 8u); // col is B index
-
         // load 1 vec4 into tile_b
-        if (col < uniforms.K4 && row < uniforms.N) {
-            // tile_b[local_idx / 8u][local_idx % 8u] = B[row * uniforms.N4 + col];
-            tile_b[local_idx / 8u][local_idx % 8u] = B[row * uniforms.K4 + col];
-        } else {
-            tile_b[local_idx / 8u][local_idx % 8u] = output_value_t(0);
-
-        }
+        tile_b[local_idx / 8u][local_idx % 8u] = mm_readB(row, col, uniforms.N, uniforms.K4);
         )TILE_B";
     } else {
       shader.MainFunctionBody() << R"TILE_B(
         row = k_start_b + (local_idx / 8u); // row is B index
         col = tile_col_start + (local_idx % 8u); // col is B index
-
         // load 1 vec4 into tile_b
-        if (col < uniforms.N4 && row < uniforms.K) {
-            tile_b[local_idx / 8u][local_idx % 8u] = B[row * uniforms.N4 + col];
-        } else {
-            tile_b[local_idx / 8u][local_idx % 8u] = output_value_t(0);
-        }
+        tile_b[local_idx / 8u][local_idx % 8u] = mm_readB(row, col, uniforms.K, uniforms.N4);
         )TILE_B";
     }
 
@@ -195,22 +209,25 @@ Status GemmVec4Program::GenerateShaderCode(ShaderHelper& shader) const {
     }
   }
 
+  MatMulWriteFnSource(shader, output);
   shader.MainFunctionBody() << "  let m = tile_row_start + local_idx / 8u;\n"
                             << "  let n = tile_col_start + local_idx % 8u;\n\n";
 
   // Calculate bias
-  if (need_handle_bias_) {
-    const ShaderVariableHelper& C = shader.AddInput("C", ShaderUsage::UseUniform);
-    shader.MainFunctionBody() << "  if (m < uniforms.M && n < uniforms.N4) {\n"
-                              << "    values = values + uniforms.beta * "
-                              << C.GetByOffset(C.BroadcastedIndicesToOffset("vec2(m, n)", output)) << ";\n"
-                              << "  }\n";
-  }
+  // if (need_handle_bias_) {
+  //   const ShaderVariableHelper& C = shader.AddInput("C", ShaderUsage::UseUniform);
+  //   shader.MainFunctionBody() << "  if (m < uniforms.M && n < uniforms.N4) {\n"
+  //                             << "    values = values + uniforms.beta * "
+  //                             << C.GetByOffset(C.BroadcastedIndicesToOffset("vec2(m, n)", output)) << ";\n"
+  //                             << "  }\n";
+  // }
 
   // Write output
-  shader.MainFunctionBody() << "  if (m < uniforms.M && n < uniforms.N4) {\n"
-                            << "    " << output.SetByOffset("m * uniforms.N4 + n", "values") << "\n"
-                            << "  }\n";
+  // shader.MainFunctionBody() << "  if (m < uniforms.M && n < uniforms.N4) {\n"
+  //                           << "    " << output.SetByOffset("m * uniforms.N4 + n", "values") << "\n"
+  //                           << "  }\n";
+
+  shader.MainFunctionBody() << " mm_write(m, n, values);\n";
 
   return Status::OK();
 }

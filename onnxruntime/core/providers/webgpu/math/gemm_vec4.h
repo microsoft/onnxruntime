@@ -6,6 +6,8 @@
 #include "core/providers/webgpu/program.h"
 #include "core/providers/webgpu/webgpu_kernel.h"
 
+#include "core/providers/webgpu/shader_helper.h"
+
 namespace onnxruntime {
 namespace webgpu {
 
@@ -20,6 +22,9 @@ class GemmVec4Program final : public Program<GemmVec4Program> {
         need_handle_matmul_{need_handle_matmul} {}
 
   Status GenerateShaderCode(ShaderHelper& sh) const override;
+
+  void MatMulReadFnSource(ShaderHelper& shader) const;
+  void MatMulWriteFnSource(ShaderHelper& shader, const ShaderVariableHelper& output) const;
 
   WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES(
       {"num_tile_n", ProgramUniformVariableDataType::Uint32},
