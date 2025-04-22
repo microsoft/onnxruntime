@@ -92,9 +92,18 @@ static void TestInference(Ort::Env& env, const std::basic_string<ORTCHAR_T>& mod
       DefaultDeviceSelection(ep_to_select, devices);
     }
 
-    ASSERT_ORTSTATUS_OK(Ort::GetApi().SessionOptionsAppendExecutionProvider_V2(
-        session_options, env, devices.data(), devices.size(),
-        provider_options.keys.data(), provider_options.values.data(), provider_options.entries.size()));
+    // C API. Test the C++ API because if it works the C API must also work.
+    // ASSERT_ORTSTATUS_OK(Ort::GetApi().SessionOptionsAppendExecutionProvider_V2(
+    //    session_options, env, devices.data(), devices.size(),
+    //    provider_options.keys.data(), provider_options.values.data(), provider_options.entries.size()));
+    Ort::ConstKeyValuePairs ep_options(&provider_options);
+    std::vector<Ort::ConstEpDevice> ep_devices;
+    ep_devices.reserve(devices.size());
+    for (const auto* device : devices) {
+      ep_devices.emplace_back(device);
+    }
+
+    session_options.AppendExecutionProvider_V2(*ort_env, ep_devices, ep_options);
   }
 
   // if session creation passes, model loads fine

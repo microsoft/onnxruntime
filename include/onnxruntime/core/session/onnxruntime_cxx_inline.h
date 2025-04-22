@@ -1095,8 +1095,14 @@ inline SessionOptionsImpl<T>& SessionOptionsImpl<T>::AppendExecutionProvider_V2(
   std::vector<const char*> ep_options_keys, ep_options_values;
   ep_options.GetKeyValuePairs(ep_options_keys, ep_options_values);
 
+  std::vector<const OrtEpDevice*> ep_devices_ptrs;
+  ep_devices_ptrs.reserve(ep_devices.size());
+  for (const auto& ep_device : ep_devices) {
+    ep_devices_ptrs.push_back(ep_device);
+  }
+
   ThrowOnError(GetApi().SessionOptionsAppendExecutionProvider_V2(
-      this->p_, env, ep_devices.data(), ep_devices.size(),
+      this->p_, env, ep_devices_ptrs.data(), ep_devices_ptrs.size(),
       ep_options_keys.data(), ep_options_values.data(), ep_options_keys.size()));
 
   return *this;
