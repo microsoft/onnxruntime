@@ -238,6 +238,53 @@ TEST(OrtEpLibrary, LoadUnloadPluginLibrary) {
   ASSERT_ORTSTATUS_OK(Ort::GetApi().UnregisterExecutionProviderLibrary(c_api_env,
                                                                        registration_name.c_str()));
 }
+
+TEST(OrtEpLibrary, LoadUnloadPluginLibraryCxxApi) {
+#if _WIN32
+  std::filesystem::path library_path = "example_plugin_ep.dll";
+#else
+  std::filesystem::path library_path = "libexample_plugin_ep.so";
+#endif
+
+  const std::string registration_name = "example_ep";
+
+  Ort::SessionOptions session_options;
+
+  // this should load the library and create OrtEpDevice
+  ort_env->RegisterExecutionProviderLibrary(registration_name.c_str(), library_path.c_str());
+
+  std::vector<Ort::ConstEpDevice> ep_devices = ort_env->GetEpDevices();
+
+  // should be one device for the example EP
+  auto test_ep_device = std::find_if(ep_devices.begin(), ep_devices.end(),
+                                     [&registration_name](Ort::ConstEpDevice& device) {
+                                       // the example uses the registration name for the EP name
+                                       // but that is not a requirement and the two can differ.
+                                       return device.EpName() == registration_name;
+                                     });
+  ASSERT_NE(test_ep_device, ep_devices.end()) << "Expected an OrtEpDevice to have been created by the test library.";
+
+  // test all the C++ getters. these values are from \onnxruntime\test\autoep\library\example_plugin_ep.cc
+  ASSERT_STREQ(test_ep_device->EpVendor(), "Contoso");
+  auto metadata = test_ep_device->EpMetadata();
+  ASSERT_STREQ(metadata.GetKeyValue("version"), "0.1");
+  auto options = test_ep_device->EpOptions();
+  ASSERT_STREQ(options.GetKeyValue("run_really_fast"), "true");
+
+  // the CPU device info will vary by machine so check for the lowest common denominator values
+  Ort::ConstHardwareDevice device = test_ep_device->Device();
+  ASSERT_EQ(device.Type(), OrtHardwareDeviceType_CPU);
+  ASSERT_GE(device.VendorId(), 0);
+  ASSERT_GE(device.DeviceId(), 0);
+  ASSERT_NE(device.Vendor(), nullptr);
+  Ort::ConstKeyValuePairs device_metadata = device.Metadata();
+  std::unordered_map<std::string, std::string> metadata_entries = device_metadata.GetKeyValuePairs();
+  ASSERT_GT(metadata_entries.size(), 0);  // should have at least SPDRP_HARDWAREID on Windows
+
+  // and this should unload it without throwing
+  ort_env->UnregisterExecutionProviderLibrary(registration_name.c_str());
+}
+
 }  // namespace test
 }  // namespace onnxruntime
 

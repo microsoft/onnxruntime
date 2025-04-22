@@ -479,6 +479,112 @@ inline ThreadingOptions& ThreadingOptions::SetGlobalCustomJoinThreadFn(OrtCustom
   return *this;
 }
 
+namespace detail {
+template <typename T>
+inline const char* KeyValuePairsImpl<T>::GetKeyValue(const char* key) const {
+  return GetApi().GetKeyValue(this->p_, key);
+}
+
+template <typename T>
+inline std::unordered_map<std::string, std::string> KeyValuePairsImpl<T>::GetKeyValuePairs() const {
+  std::unordered_map<std::string, std::string> out;
+  size_t num_pairs = 0;
+  const char* const* keys = nullptr;
+  const char* const* values = nullptr;
+  GetApi().GetKeyValuePairs(this->p_, &keys, &values, &num_pairs);
+  if (num_pairs > 0) {
+    out.reserve(num_pairs);
+    for (size_t i = 0; i < num_pairs; ++i) {
+      out.emplace(keys[i], values[i]);
+    }
+  }
+
+  return out;
+}
+
+template <typename T>
+inline void KeyValuePairsImpl<T>::GetKeyValuePairs(std::vector<const char*>& keys,
+                                                   std::vector<const char*>& values) const {
+  keys.clear();
+  values.clear();
+
+  size_t num_pairs = 0;
+  const char* const* keys_ptr = nullptr;
+  const char* const* values_ptr = nullptr;
+  GetApi().GetKeyValuePairs(this->p_, &keys_ptr, &values_ptr, &num_pairs);
+  if (num_pairs > 0) {
+    keys.resize(num_pairs);
+    values.resize(num_pairs);
+    std::copy(keys_ptr, keys_ptr + num_pairs, keys.begin());
+    std::copy(values_ptr, values_ptr + num_pairs, values.begin());
+  }
+}
+}  // namespace detail
+
+inline KeyValuePairs::KeyValuePairs() {
+  GetApi().CreateKeyValuePairs(&p_);
+}
+
+inline void KeyValuePairs::AddKeyValuePair(const char* key, const char* value) {
+  GetApi().AddKeyValuePair(this->p_, key, value);
+}
+
+inline void KeyValuePairs::RemoveKeyValuePair(const char* key) {
+  GetApi().RemoveKeyValuePair(this->p_, key);
+}
+
+namespace detail {
+template <typename T>
+inline OrtHardwareDeviceType HardwareDeviceImpl<T>::Type() const {
+  return GetApi().HardwareDevice_Type(p_);
+}
+
+template <typename T>
+inline uint32_t HardwareDeviceImpl<T>::VendorId() const {
+  return GetApi().HardwareDevice_VendorId(p_);
+}
+
+template <typename T>
+inline uint32_t HardwareDeviceImpl<T>::DeviceId() const {
+  return GetApi().HardwareDevice_DeviceId(p_);
+}
+
+template <typename T>
+inline const char* HardwareDeviceImpl<T>::Vendor() const {
+  return GetApi().HardwareDevice_Vendor(p_);
+}
+
+template <typename T>
+inline ConstKeyValuePairs HardwareDeviceImpl<T>::Metadata() const {
+  return ConstKeyValuePairs{GetApi().HardwareDevice_Metadata(p_)};
+};
+
+template <typename T>
+inline const char* EpDeviceImpl<T>::EpName() const {
+  return GetApi().EpDevice_EpName(p_);
+}
+
+template <typename T>
+inline const char* EpDeviceImpl<T>::EpVendor() const {
+  return GetApi().EpDevice_EpVendor(p_);
+}
+
+template <typename T>
+inline ConstKeyValuePairs EpDeviceImpl<T>::EpMetadata() const {
+  return ConstKeyValuePairs(GetApi().EpDevice_EpMetadata(p_));
+}
+
+template <typename T>
+inline ConstKeyValuePairs EpDeviceImpl<T>::EpOptions() const {
+  return ConstKeyValuePairs(GetApi().EpDevice_EpOptions(p_));
+}
+
+template <typename T>
+inline ConstHardwareDevice EpDeviceImpl<T>::Device() const {
+  return ConstHardwareDevice(GetApi().EpDevice_Device(p_));
+}
+}  // namespace detail
+
 inline Env::Env(OrtLoggingLevel logging_level, _In_ const char* logid) {
   ThrowOnError(GetApi().CreateEnv(logging_level, logid, &p_));
   if (strcmp(logid, "onnxruntime-node") == 0) {
@@ -549,6 +655,33 @@ inline Env& Env::CreateAndRegisterAllocatorV2(const std::string& provider_type, 
   }
   ThrowOnError(GetApi().CreateAndRegisterAllocatorV2(p_, provider_type.c_str(), mem_info, arena_cfg, keys.data(), values.data(), num_entries));
   return *this;
+}
+
+inline Env& Env::RegisterExecutionProviderLibrary(const char* registration_name,
+                                                  const std::basic_string<ORTCHAR_T>& path) {
+  ThrowOnError(GetApi().RegisterExecutionProviderLibrary(p_, registration_name, path.c_str()));
+  return *this;
+}
+
+inline Env& Env::UnregisterExecutionProviderLibrary(const char* registration_name) {
+  ThrowOnError(GetApi().UnregisterExecutionProviderLibrary(p_, registration_name));
+  return *this;
+}
+
+inline std::vector<ConstEpDevice> Env::GetEpDevices() const {
+  size_t num_devices = 0;
+  const OrtEpDevice* const* device_ptrs = nullptr;
+  ThrowOnError(GetApi().GetEpDevices(p_, &device_ptrs, &num_devices));
+
+  std::vector<ConstEpDevice> devices;
+  if (num_devices > 0) {
+    devices.reserve(num_devices);
+    for (size_t i = 0; i < num_devices; ++i) {
+      devices.emplace_back(device_ptrs[i]);
+    }
+  }
+
+  return devices;
 }
 
 inline CustomOpDomain::CustomOpDomain(const char* domain) {
@@ -717,7 +850,8 @@ inline bool ConstSessionOptionsImpl<T>::HasConfigEntry(const char* config_key) c
 }
 
 template <typename T>
-inline std::string ConstSessionOptionsImpl<T>::GetConfigEntryOrDefault(const char* config_key, const std::string& def) {
+inline std::string ConstSessionOptionsImpl<T>::GetConfigEntryOrDefault(const char* config_key,
+                                                                       const std::string& def) const {
   if (!this->HasConfigEntry(config_key)) {
     return def;
   }
@@ -951,6 +1085,19 @@ inline SessionOptionsImpl<T>& SessionOptionsImpl<T>::AppendExecutionProvider(
 
   ThrowOnError(GetApi().SessionOptionsAppendExecutionProvider(this->p_, provider_name.c_str(),
                                                               keys.data(), values.data(), num_entries));
+
+  return *this;
+}
+
+template <typename T>
+inline SessionOptionsImpl<T>& SessionOptionsImpl<T>::AppendExecutionProvider_V2(
+    Env& env, const std::vector<ConstEpDevice>& ep_devices, ConstKeyValuePairs& ep_options) {
+  std::vector<const char*> ep_option_keys, ep_option_values;
+  ep_options.GetKeyValuePairs(ep_options_keys, ep_options_values);
+
+  ThrowOnError(GetApi().SessionOptionsAppendExecutionProvider_V2(
+      this->p_, env, ep_devices.data(), ep_devices.size(),
+      ep_options_keys.data(), ep_options_values.data(), ep_options_keys.size()));
 
   return *this;
 }
