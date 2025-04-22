@@ -52,12 +52,16 @@ class MlasSQ8BitPrepackTest : public MlasTestBase {
       }
     }
 
+#if defined(__GNUC__) && !defined(__clang__)
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Waggressive-loop-optimizations"
+#endif
     for (; n < N; ++n) {
       std::copy(src + n * ldb, src + n * ldb + ldb, dst + n * ldb);
     }
+#if defined(__GNUC__) && !defined(__clang__)
 #pragma GCC diagnostic pop
+#endif
   }
 
   void PrepackBlkSumAndScale(const float* scale, const uint8_t* zp, float* packedScale, float* blkSum) {
@@ -95,8 +99,10 @@ class MlasSQ8BitPrepackTest : public MlasTestBase {
       }
     }
 
+#if defined(__GNUC__) && !defined(__clang__)
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Waggressive-loop-optimizations"
+#endif
     for (; n < N; ++n) {
       for (size_t k = 0; k < BlkCount; ++k) {
         auto srcOffset = n * BlkCount + k;
@@ -109,7 +115,9 @@ class MlasSQ8BitPrepackTest : public MlasTestBase {
         blkSum[sumDstOffset] = vSum;
       }
     }
+#if defined(__GNUC__) && !defined(__clang__)
 #pragma GCC diagnostic pop
+#endif
   }
 
   void CheckB(const uint8_t* packedB, const uint8_t* refB) {
