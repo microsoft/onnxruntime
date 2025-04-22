@@ -197,7 +197,8 @@ class MlasSQ8BitPrepackTest : public MlasTestBase {
       for (size_t i = 0; i < t; i++) {
         p[i] = static_cast<uint8_t>(this->distrib_u8_(this->gen_));
       }
-    }) : nullptr;
+    })
+                                : nullptr;
 
     auto* packedBuffer = packedBuffer_.GetBuffer(BufferSize, true);
     auto* refB = refB_.GetBuffer(PackBCount, true);
@@ -231,11 +232,11 @@ class MlasSQ8BitPrepackTest : public MlasTestBase {
 
   static const char* GetTestSuiteName() {
     static std::string suite_name = std::string("SQ8BitPrepack_") +
-                             "K" + std::to_string(K) +
-                             "N" + std::to_string(N) +
-                             "BlkLen" + std::to_string(BlkLen) +
-                             "SubBlkLen" + std::to_string(SubBlkLen);
-return suite_name.c_str();
+                                    "K" + std::to_string(K) +
+                                    "N" + std::to_string(N) +
+                                    "BlkLen" + std::to_string(BlkLen) +
+                                    "SubBlkLen" + std::to_string(SubBlkLen);
+    return suite_name.c_str();
   }
 
   void ExecuteShort(void) override {
@@ -315,30 +316,30 @@ class MlasSQ8BitGemmKernelTest : public MlasTestBase {
     auto* inputZp = HasZp ? Zp_.GetBuffer(q_zp_size_in_bytes, true) : nullptr;
 
     MlasQuantizeBlockwise<float, 8>(
-      inputB,
-      inputScale,
-      inputZp,
-      B,
-      BlkLen,
-      true,
-      K,
-      N,
-      N,
-      nullptr);
+        inputB,
+        inputScale,
+        inputZp,
+        B,
+        BlkLen,
+        true,
+        K,
+        N,
+        N,
+        nullptr);
 
     MlasDequantizeBlockwise<float, 8>(
-      B,
-      inputB,
-      inputScale,
-      inputZp,
-      BlkLen,
-      true,
-      K,
-      N,
-      nullptr);
+        B,
+        inputB,
+        inputScale,
+        inputZp,
+        BlkLen,
+        true,
+        K,
+        N,
+        nullptr);
 
-      size_t bufferSize = MlasQNBitGemmPackQuantBDataSize(N, K, 8, BlkLen, HasZp, SQNBIT_CompInt8);
-      auto* packedBuffer = packedBuffer_.GetBuffer(bufferSize, true);
+    size_t bufferSize = MlasQNBitGemmPackQuantBDataSize(N, K, 8, BlkLen, HasZp, SQNBIT_CompInt8);
+    auto* packedBuffer = packedBuffer_.GetBuffer(bufferSize, true);
 
     MlasQNBitGemmPackQuantBData(
         N, K, 8, BlkLen, MLAS_QNBIT_GEMM_COMPUTE_TYPE::SQNBIT_CompInt8, inputB, packedBuffer,
@@ -359,7 +360,8 @@ class MlasSQ8BitGemmKernelTest : public MlasTestBase {
       for (size_t i = 0; i < t; i++) {
         p[i] = this->distrib_f32_(this->gen_);
       }
-    }) : nullptr;
+    })
+                         : nullptr;
 
     const size_t workspace_size = MlasQNBitGemmBatchWorkspaceSize(M, N, K, 1, 8, BlkLen, HasZp, SQNBIT_CompInt8);
     auto* workspace = workspace_.GetBuffer(workspace_size, true);

@@ -112,7 +112,7 @@ class MatMulNBits final : public OpKernel {
     }
 
     ORT_ENFORCE(nbits_ == 4 || nbits_ == 8,
-               "Only 4b and 8b quantization is supported for MatMulNBits op, additional bits support is planned.");
+                "Only 4b and 8b quantization is supported for MatMulNBits op, additional bits support is planned.");
     const Tensor* tensor_zero_point = nullptr;
     has_zp_input_ = info.TryGetConstantInput(InputIndex::zero_points, &tensor_zero_point);
   }

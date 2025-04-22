@@ -95,7 +95,7 @@ struct TestOptions8Bits {
 
 template <typename T1>
 void RunTest8Bits(const TestOptions8Bits& opts,
-             std::vector<std::unique_ptr<IExecutionProvider>>&& explicit_eps = {}) {
+                  std::vector<std::unique_ptr<IExecutionProvider>>&& explicit_eps = {}) {
   SCOPED_TRACE(opts);
 
   static_assert(std::is_same_v<T1, float>, "unexpected type for T1");
