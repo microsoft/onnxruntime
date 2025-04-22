@@ -5,10 +5,7 @@
 
 #include <sstream>
 #include "core/common/hash_combine.h"
-
-namespace onnxruntime {
-size_t GetMlasPreferredBufferAlignment();
-}
+#include "core/mlas/inc/mlas.h"
 
 // Struct to represent a physical device.
 struct OrtDevice {
@@ -42,7 +39,7 @@ struct OrtDevice {
   // OrtDevice propagates many units and calling Mlas inline would have to change the linkage for many
   // libs. However, we should save on calling MlasGetPreferredBufferAlignment() everytime we Alloc()
   OrtDevice(DeviceType device_type_, MemoryType memory_type_, DeviceId device_id_) noexcept
-      : OrtDevice(device_type_, memory_type_, device_id_, onnxruntime::GetMlasPreferredBufferAlignment()) {}
+      : OrtDevice(device_type_, memory_type_, device_id_, ::MlasGetPreferredBufferAlignment()) {}
 
   OrtDevice() noexcept : OrtDevice(CPU, MemType::DEFAULT, 0) {}
 

@@ -1264,7 +1264,7 @@ if (NOT onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
       #It will dynamically link to onnxruntime. So please don't add onxruntime_graph/onxruntime_framework/... here.
       #onnxruntime_common is kind of ok because it is thin, tiny and totally stateless.
       set(onnxruntime_perf_test_libs
-            onnx_test_runner_common onnxruntime_test_utils onnxruntime_common onnxruntime_mlas onnxruntime_framework
+            onnx_test_runner_common onnxruntime_test_utils onnxruntime_common onnxruntime_mlas
             onnxruntime onnxruntime_flatbuffers onnx_test_data_proto
             ${onnxruntime_EXTERNAL_LIBRARIES}
             ${GETOPT_LIB_WIDE} ${SYS_PATH_LIB} ${CMAKE_DL_LIBS})
@@ -1277,18 +1277,17 @@ if (NOT onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
         list(APPEND onnxruntime_perf_test_libs ${android_shared_libs})
       endif()
       if (CMAKE_SYSTEM_NAME MATCHES "AIX")
-        list(APPEND onnxruntime_perf_test_libs onnxruntime_graph onnxruntime_session onnxruntime_providers onnxruntime_framework onnxruntime_util onnxruntime_mlas onnxruntime_optimizer onnxruntime_flatbuffers iconv re2 gtest absl_failure_signal_handler absl_examine_stack absl_flags_parse  absl_flags_usage absl_flags_usage_internal)
-    endif()
+        list(APPEND onnxruntime_perf_test_libs onnxruntime_graph onnxruntime_session onnxruntime_providers onnxruntime_util onnxruntime_framework onnxruntime_optimizer onnxruntime_flatbuffers iconv re2 gtest absl_failure_signal_handler absl_examine_stack absl_flags_parse  absl_flags_usage absl_flags_usage_internal)
+      endif()
       target_link_libraries(onnxruntime_perf_test PRIVATE ${onnxruntime_perf_test_libs} Threads::Threads)
       if(WIN32)
         target_link_libraries(onnxruntime_perf_test PRIVATE debug dbghelp advapi32)
       endif()
     else()
-      target_link_libraries(onnxruntime_perf_test PRIVATE onnx_test_runner_common ${GETOPT_LIB_WIDE} ${onnx_test_libs})
+      target_link_libraries(onnxruntime_perf_test PRIVATE onnxruntime_mlas onnx_test_runner_common ${GETOPT_LIB_WIDE} ${onnx_test_libs})
     endif()
     set_target_properties(onnxruntime_perf_test PROPERTIES FOLDER "ONNXRuntimeTest")
-
-  endif()
+endif()
 
 
   if(onnxruntime_USE_QNN)
@@ -1332,7 +1331,7 @@ if (NOT onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
 
     #################################################################
     # test inference using shared lib
-    set(onnxruntime_shared_lib_test_LIBS onnxruntime_mocked_allocator onnxruntime_test_utils onnxruntime_common onnxruntime_mlas onnxruntime_framework onnx_proto)
+    set(onnxruntime_shared_lib_test_LIBS onnxruntime_mocked_allocator onnxruntime_test_utils onnxruntime_common onnxruntime_mlas onnx_proto)
     if(NOT WIN32)
       if(onnxruntime_USE_SNPE)
         list(APPEND onnxruntime_shared_lib_test_LIBS onnxruntime_providers_snpe)
@@ -1358,7 +1357,7 @@ if (NOT onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
     endif()
 
     if (CMAKE_SYSTEM_NAME MATCHES "AIX")
-      list(APPEND onnxruntime_shared_lib_test_LIBS onnxruntime_graph onnxruntime_session onnxruntime_providers onnxruntime_framework onnxruntime_util onnxruntime_mlas onnxruntime_optimizer onnxruntime_flatbuffers iconv re2 onnx)
+      list(APPEND onnxruntime_shared_lib_test_LIBS onnxruntime_framework onnxruntime_graph onnxruntime_session onnxruntime_providers onnxruntime_util  onnxruntime_optimizer onnxruntime_flatbuffers iconv re2 onnx)
     endif()
 
     AddTest(DYN
@@ -1867,9 +1866,9 @@ if (onnxruntime_BUILD_SHARED_LIB AND NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten"
   set (onnxruntime_logging_apis_test_SRC
        ${ONNXRUNTIME_LOGGING_APIS_TEST_SRC_DIR}/test_logging_apis.cc)
 
-  set(onnxruntime_logging_apis_test_LIBS onnxruntime_common onnxruntime_framework onnxruntime_mlas onnxruntime_test_utils)
+  set(onnxruntime_logging_apis_test_LIBS onnxruntime_common onnxruntime_mlas onnxruntime_test_utils)
   if (CMAKE_SYSTEM_NAME MATCHES "AIX")
-    list(APPEND onnxruntime_logging_apis_test_LIBS onnxruntime_session onnxruntime_util onnxruntime_lora onnxruntime_common onnxruntime_graph  onnxruntime_providers onnxruntime_optimizer onnxruntime_flatbuffers iconv re2 ${PROTOBUF_LIB} onnx onnx_proto)
+    list(APPEND onnxruntime_logging_apis_test_LIBS onnxruntime_session onnxruntime_util onnxruntime_lora onnxruntime_common onnxruntime_framework onnxruntime_graph  onnxruntime_providers onnxruntime_optimizer onnxruntime_flatbuffers iconv re2 ${PROTOBUF_LIB} onnx onnx_proto)
   endif()
 
   if(NOT WIN32)

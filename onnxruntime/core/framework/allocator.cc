@@ -17,10 +17,6 @@
 
 namespace onnxruntime {
 
-size_t GetMlasPreferredBufferAlignment() {
-  return MlasGetPreferredBufferAlignment();
-}
-
 // private helper for calculation so SafeInt usage doesn't bleed into the public allocator.h header
 bool IAllocator::CalcMemSizeForArrayWithAlignment(size_t nmemb, size_t size, size_t alignment, size_t* out) noexcept {
   bool ok = true;

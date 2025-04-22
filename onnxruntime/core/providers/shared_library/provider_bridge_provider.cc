@@ -11,6 +11,7 @@
 #include "core/common/inlined_containers.h"
 #include "core/framework/murmurhash3.h"
 #include "core/framework/random_generator.h"
+#include "core/mlas/inc/mlas.h"
 #include "core/providers/cpu/controlflow/if.h"
 #include "core/providers/cpu/controlflow/loop.h"
 #include "core/providers/cpu/controlflow/scan.h"
@@ -325,11 +326,6 @@ AllocatorPtr CreateAllocator(AllocatorCreationInfo info) {
 
 std::unique_ptr<IAllocator> CreateCPUAllocator(const OrtMemoryInfo& info) {
   return g_host->CreateCPUAllocator(info);
-}
-
-// Declaration at ortdevice.h
-size_t GetMlasPreferredBufferAlignment() {
-  return g_host->GetMlasPreferredBufferAlignment();
 }
 
 bool IAllocator::CalcMemSizeForArrayWithAlignment(size_t nmemb, size_t size, size_t alignment, size_t* out) noexcept {
@@ -806,3 +802,7 @@ std::wstring ToWideString(const std::string& s) {
 }
 #endif  // _WIN32
 }  // namespace onnxruntime
+
+size_t MLASCALL MlasGetPreferredBufferAlignment() {
+  return onnxruntime::g_host->MlasGetPreferredBufferAlignment();
+}

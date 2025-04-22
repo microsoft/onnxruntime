@@ -436,6 +436,8 @@ inline Env& GetDefaultEnv() {
 }
 }  // namespace onnxruntime
 
+size_t MLASCALL MlasGetPreferredBufferAlignment();
+
 #define CREATE_MESSAGE(logger, severity, category, datatype) \
   ::onnxruntime::logging::Capture::Create(logger, ::onnxruntime::logging::Severity::k##severity, category, datatype, ORT_WHERE)
 
