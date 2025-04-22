@@ -9,15 +9,15 @@ import tempfile
 import unittest
 from importlib.util import find_spec
 from itertools import product
-from parameterized import parameterized
 from pathlib import Path
 
 import numpy as np
 import onnx
 from onnx import TensorProto, helper
 from op_test_utils import TestDataFeeds, check_model_correctness, check_op_type_count, check_qtype_by_node_type
+from parameterized import parameterized
 
-from onnxruntime.quantization import quant_utils, matmul_4bits_quantizer
+from onnxruntime.quantization import matmul_4bits_quantizer, quant_utils
 
 
 class TestOpMatMul4Bits(unittest.TestCase):
@@ -52,12 +52,12 @@ class TestOpMatMul4Bits(unittest.TestCase):
             min_value = 0
         elif llama_cpp_quant_type_name == "q5_0":
             symmetric = True
-            start_value =-2.0
+            start_value = -2.0
             max_value = 15
             min_value = -16
         elif llama_cpp_quant_type_name == "q5_1":
             symmetric = False
-            start_value =0.0
+            start_value = 0.0
             max_value = 31
             min_value = 0
         elif llama_cpp_quant_type_name == "q8_0":
@@ -156,9 +156,14 @@ class TestOpMatMul4Bits(unittest.TestCase):
         dr = TestDataFeeds(input_data_list)
         return dr
 
-    def construct_model_matmul(self, output_model_path: str, symmetric: bool,
-                            in_features: int = 52, out_features: int = 288,
-                            llama_cpp_quant_type_name: str="") -> None:
+    def construct_model_matmul(
+        self,
+        output_model_path: str,
+        symmetric: bool,
+        in_features: int = 52,
+        out_features: int = 288,
+        llama_cpp_quant_type_name: str = "",
+    ) -> None:
         input_name = "input"
         output_name = "output"
         initializers = []
@@ -468,10 +473,9 @@ class TestOpMatMul4Bits(unittest.TestCase):
         data_reader = self.input_feeds(1, {"input": (100, 52)})
         self.quant_test_with_algo("HQQ", model_fp32_path, data_reader, 32, False)
 
-
     def test_quantize_llama_cpp_phi_35_mini_4k_instruct(self):
-        model_fp32_path="C:/LiqunWA/example-models/Phi-3.5/phi-3.5-mini-4k-instruct-fp32-cpu/model.onnx"
-        model_q4_0_path="C:/LiqunWA/example-models/Phi-3.5/phi-3.5-mini-4k-instruct-lamma_cpp_q4_0-cpu/model.onnx"
+        model_fp32_path = "C:/LiqunWA/example-models/Phi-3.5/phi-3.5-mini-4k-instruct-fp32-cpu/model.onnx"
+        model_q4_0_path = "C:/LiqunWA/example-models/Phi-3.5/phi-3.5-mini-4k-instruct-lamma_cpp_q4_0-cpu/model.onnx"
 
         model = quant_utils.load_model_with_shape_infer(Path(model_fp32_path))
         algo_config = matmul_4bits_quantizer.LlamaCppQuantConfig(
@@ -485,7 +489,7 @@ class TestOpMatMul4Bits(unittest.TestCase):
         )
 
         quant.process()
-        quant.model.save_model_to_file(model_q4_0_path, True) # save data to external file
+        quant.model.save_model_to_file(model_q4_0_path, True)  # save data to external file
 
     def llama_cpp_quant_test(
         self,
@@ -514,7 +518,7 @@ class TestOpMatMul4Bits(unittest.TestCase):
         )
 
         quant.process()
-        quant.model.save_model_to_file(model_out_path, True) # save data to external file
+        quant.model.save_model_to_file(model_out_path, True)  # save data to external file
 
         quant_nodes = {"MatMulNBits": 1}
         check_op_type_count(self, model_out_path, **quant_nodes)
@@ -558,7 +562,6 @@ class TestOpMatMul4Bits(unittest.TestCase):
     #     ("q6_K", 256, 2),
     # ])
 
-
     # def test_quantize_matmul_llama_cpp(self, quant_type_name, in_features, out_features):
     #     np.random.seed(13)
     #     model_fp32_path = str(
@@ -593,14 +596,8 @@ class TestOpMatMul4Bits(unittest.TestCase):
         "tq1_0",
         "tq2_0",
     ]
-    in_features_list = [
-        256,
-        1024]
-    out_features_list = [
-        1,
-        4,
-        10,
-        17]
+    in_features_list = [256, 1024]
+    out_features_list = [1, 4, 10, 17]
 
     test_cases = list(product(quant_type_names, in_features_list, out_features_list))
 
@@ -608,14 +605,17 @@ class TestOpMatMul4Bits(unittest.TestCase):
     def test_quantize_matmul_llama_cpp(self, quant_type_name, in_features, out_features):
         np.random.seed(13)
         model_fp32_path = str(
-            Path(self._tmp_model_dir.name).joinpath(
-                f"matmul_fp32_{quant_type_name}_{in_features}_{out_features}.onnx"
-            ).absolute()
+            Path(self._tmp_model_dir.name)
+            .joinpath(f"matmul_fp32_{quant_type_name}_{in_features}_{out_features}.onnx")
+            .absolute()
         )
 
         self.construct_model_matmul(
-            model_fp32_path, symmetric=True, in_features=in_features, out_features=out_features,
-            llama_cpp_quant_type_name=quant_type_name
+            model_fp32_path,
+            symmetric=True,
+            in_features=in_features,
+            out_features=out_features,
+            llama_cpp_quant_type_name=quant_type_name,
         )
         data_reader = self.input_feeds(1, {"input": (1, in_features)})
 
@@ -624,6 +624,7 @@ class TestOpMatMul4Bits(unittest.TestCase):
             data_reader=data_reader,
             quant_type_name=quant_type_name,
         )
+
 
 if __name__ == "__main__":
     unittest.main()

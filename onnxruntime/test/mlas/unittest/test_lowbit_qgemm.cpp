@@ -63,13 +63,12 @@ class MlasLowBitQgemmTest : public MlasTestBase {
     size_t b_quant_size = MlasLowBitQuantizeSizeInByte(N, K, b_type_name);
     std::vector<uint8_t> b_quant_data(b_quant_size);
 
-
     MlasLowBitQuantize(A, M, K, a_type_name, &a_quant_data[0]);
     MlasLowBitQuantize(B, N, K, b_type_name, &b_quant_data[0]);
 
     bool requantize =
-      MlasLowBitCanQuantize(a_type_name) && MlasLowBitCanDequantize(a_type_name) &&
-      MlasLowBitCanQuantize(b_type_name) && MlasLowBitCanDequantize(b_type_name);
+        MlasLowBitCanQuantize(a_type_name) && MlasLowBitCanDequantize(a_type_name) &&
+        MlasLowBitCanQuantize(b_type_name) && MlasLowBitCanDequantize(b_type_name);
 
     std::vector<float> A2(M * K);
     if (requantize) {
@@ -124,7 +123,7 @@ class MlasLowBitQgemmTest : public MlasTestBase {
 class LowBitQgemmShortExecuteTest : public MlasTestFixture<MlasLowBitQgemmTest> {
  public:
   explicit LowBitQgemmShortExecuteTest(size_t M, size_t N, size_t K, size_t BatchSize,
-    const std::string& a_type_name, const std::string b_type_name, bool WithThreadpool, bool WithBias)
+                                       const std::string& a_type_name, const std::string b_type_name, bool WithThreadpool, bool WithBias)
       : M_(M),
         N_(N),
         K_(K),
@@ -149,9 +148,9 @@ class LowBitQgemmShortExecuteTest : public MlasTestFixture<MlasLowBitQgemmTest> 
 
     std::stringstream ss;
     ss << b_type_name << "_" << a_type_name
-        << (WithThreadpool ? "SingleThread" : "Threaded")
-        << "/M" << M << "xN" << N << "xK" << K
-        << "/hasBias" << WithBias;
+       << (WithThreadpool ? "SingleThread" : "Threaded")
+       << "/M" << M << "xN" << N << "xK" << K
+       << "/hasBias" << WithBias;
     auto test_name = ss.str();
 
     testing::RegisterTest(
@@ -197,7 +196,7 @@ class LowBitQgemmShortExecuteTest : public MlasTestFixture<MlasLowBitQgemmTest> 
         /*GGML_TYPE_TQ1_0*/ {"q8_K", "tq2_0"},
     };
 
-    //std::string a_type_name("q8_0"), b_type_name("q4_0");
+    // std::string a_type_name("q8_0"), b_type_name("q4_0");
     size_t tests_registered = 0;
     size_t BatchSize = 1;
     for (const auto& [a_type_name, b_type_name] : type_name_pairs) {
@@ -225,7 +224,7 @@ class LowBitQgemmShortExecuteTest : public MlasTestFixture<MlasLowBitQgemmTest> 
 };
 
 static size_t SLowBitQGemmRegisterAllShortExecuteTests() {
-  //MLasInitLlama();
+  // MLasInitLlama();
   size_t count = 0;
   // TODO: enable these test for 2bit development.
   // count += SQNBitGemmShortExecuteTest<2, 16>::RegisterShortExecuteTests();

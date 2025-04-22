@@ -67,11 +67,10 @@ void QuantizeMatMulNBitsBlockwise(
       tp.get());
 }
 
-void
-QuantizeMatMulNBits(
+void QuantizeMatMulNBits(
     const std::string& quant_type_name,
-    py::array_t<uint8_t> dst,               // shape: [ N, block_per_K, block_blob_size ]
-    py::array_t<float> src,                 // shape: [K, N]
+    py::array_t<uint8_t> dst,  // shape: [ N, block_per_K, block_blob_size ]
+    py::array_t<float> src,    // shape: [K, N]
     int32_t N,
     int32_t K) {
   OrtThreadPoolParams to;

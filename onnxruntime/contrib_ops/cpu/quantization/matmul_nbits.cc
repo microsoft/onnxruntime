@@ -677,21 +677,21 @@ Status MatMulNBits<MLFloat16>::ComputeBUnpacked(const Tensor* a,
 }
 
 Status ComputeByQuantTypeName(
-  OpKernelContext* ctx,
-  const Tensor* a,
-  concurrency::ThreadPool* thread_pool,
-  const MatMulComputeHelper& helper,
-  Tensor* y,
-  const std::string& b_type_name) {
+    OpKernelContext* ctx,
+    const Tensor* a,
+    concurrency::ThreadPool* thread_pool,
+    const MatMulComputeHelper& helper,
+    Tensor* y,
+    const std::string& b_type_name) {
   const Tensor* b = ctx->Input<Tensor>(InputIndex::B);
-  //const Tensor* bias = ctx->Input<Tensor>(InputIndex::bias);
+  // const Tensor* bias = ctx->Input<Tensor>(InputIndex::bias);
   float* y_data = y->MutableData<float>();
 
   const size_t batch_count = helper.OutputOffsets().size();
   const size_t M = static_cast<size_t>(helper.M());
   const size_t N = static_cast<size_t>(helper.N());
   const size_t K = static_cast<size_t>(helper.K());
-  //const size_t lda = helper.Lda(false);
+  // const size_t lda = helper.Lda(false);
 
   const void* a_data = reinterpret_cast<const void*>(a->Data<float>());
   const uint8_t* b_data = b->Data<uint8_t>();

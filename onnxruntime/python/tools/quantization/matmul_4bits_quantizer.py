@@ -21,9 +21,9 @@ from packaging import version
 from onnxruntime.capi._pybind_state import (
     quantize_matmul_4bits,
     quantize_matmul_8bits,
-    quantize_qdq_matmul_4bits,
-    quantize_matmul_nbits_query_quant_size,
     quantize_matmul_nbits,
+    quantize_matmul_nbits_query_quant_size,
+    quantize_qdq_matmul_4bits,
 )
 
 from .calibrate import CalibrationDataReader
@@ -763,7 +763,7 @@ class LlamaCppQuantizer:
 
         # block wise quantization, each block comes from a single column
         quant_size_in_bytes = quantize_matmul_nbits_query_quant_size(cols, rows, self.config.quant_type_name)
-        packed = np.zeros((quant_size_in_bytes, ), dtype="uint8")
+        packed = np.zeros((quant_size_in_bytes,), dtype="uint8")
         quantize_matmul_nbits(self.config.quant_type_name, packed, fp32weight, cols, rows)
 
         return packed
@@ -1293,7 +1293,7 @@ class MatMul4BitsQuantizer:
                 for attr in node.attribute
                 if attr.type == onnx.AttributeProto.GRAPH or attr.type == onnx.AttributeProto.GRAPHS
             ]
-            if len(graph_attrs):
+            if graph_attrs:
                 kwargs = {}
                 for attr in node.attribute:
                     if attr.type == onnx.AttributeProto.GRAPH:
@@ -1639,7 +1639,8 @@ if __name__ == "__main__":
             algorithm="llama.cpp",
             quant_format=QuantFormat.QOperator,
             op_types_to_quantize=op_types_to_quantize,
-            quant_axes=quant_axes)
+            quant_axes=quant_axes,
+        )
 
     else:
         raise ValueError(f"Unsupported quantization method: {args.quant_method}")

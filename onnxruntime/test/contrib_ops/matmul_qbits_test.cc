@@ -119,7 +119,7 @@ void RunTest(const TestOptions& opts,
   test.AddInput<uint8_t>("B", {static_cast<int64_t>(input1_vals.size())}, input1_vals, true);
 
   if (bias.has_value()) {
-      test.AddInput<float>("bias", bias_shape, *bias, true);
+    test.AddInput<float>("bias", bias_shape, *bias, true);
   } else {
     test.AddOptionalInputEdge<float>();
   }
@@ -153,10 +153,10 @@ void TestMatMulQBitsTyped() {
 
   {
     TestOptions opts = base_opts;
-    opts.b_quant_type_name = b_quant_type_name; // Assign the quantization type name
+    opts.b_quant_type_name = b_quant_type_name;  // Assign the quantization type name
 
     std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
-        execution_providers.emplace_back(DefaultCpuExecutionProvider());
+    execution_providers.emplace_back(DefaultCpuExecutionProvider());
     RunTest(opts, std::move(execution_providers));
   }
 }
