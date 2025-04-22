@@ -514,7 +514,7 @@ bool ApplyProfileShapesFromProviderOptions(std::vector<nvinfer1::IOptimizationPr
     // Shape tensor
     if (input->isShapeTensor()) {
       int shape_size = nb_dims == 0 ? 1 : static_cast<int>(profile_min_shapes[input_name][i].size());
-      std::vector<int32_t> shapes_min(shape_size), shapes_opt(shape_size), shapes_max(shape_size);
+      std::vector<int64_t> shapes_min(shape_size), shapes_opt(shape_size), shapes_max(shape_size);
 
       LOGS_DEFAULT(VERBOSE) << "[Nv EP] shape size of this shape tensor is " << shape_size;
 
@@ -522,9 +522,9 @@ bool ApplyProfileShapesFromProviderOptions(std::vector<nvinfer1::IOptimizationPr
         auto min_value = profile_min_shapes[input_name][i][j];
         auto max_value = profile_max_shapes[input_name][i][j];
         auto opt_value = profile_opt_shapes[input_name][i][j];
-        shapes_min[j] = static_cast<int32_t>(min_value);
-        shapes_max[j] = static_cast<int32_t>(max_value);
-        shapes_opt[j] = static_cast<int32_t>(opt_value);
+        shapes_min[j] = static_cast<int64_t>(min_value);
+        shapes_max[j] = static_cast<int64_t>(max_value);
+        shapes_opt[j] = static_cast<int64_t>(opt_value);
         LOGS_DEFAULT(VERBOSE) << "[Nv EP] shapes_min.d[" << j << "] is " << shapes_min[j];
         LOGS_DEFAULT(VERBOSE) << "[Nv EP] shapes_max.d[" << j << "] is " << shapes_max[j];
         LOGS_DEFAULT(VERBOSE) << "[Nv EP] shapes_opt.d[" << j << "] is " << shapes_opt[j];
@@ -538,9 +538,9 @@ bool ApplyProfileShapesFromProviderOptions(std::vector<nvinfer1::IOptimizationPr
         input_explicit_shape_ranges[input_name][static_cast<int64_t>(j)][i].push_back(opt_value);
       }
 
-      trt_profile->setShapeValues(input_name.c_str(), nvinfer1::OptProfileSelector::kMIN, &shapes_min[0], shape_size);
-      trt_profile->setShapeValues(input_name.c_str(), nvinfer1::OptProfileSelector::kMAX, &shapes_max[0], shape_size);
-      trt_profile->setShapeValues(input_name.c_str(), nvinfer1::OptProfileSelector::kOPT, &shapes_opt[0], shape_size);
+      trt_profile->setShapeValuesV2(input_name.c_str(), nvinfer1::OptProfileSelector::kMIN, &shapes_min[0], shape_size);
+      trt_profile->setShapeValuesV2(input_name.c_str(), nvinfer1::OptProfileSelector::kMAX, &shapes_max[0], shape_size);
+      trt_profile->setShapeValuesV2(input_name.c_str(), nvinfer1::OptProfileSelector::kOPT, &shapes_opt[0], shape_size);
     }
     // Execution tensor
     else {
@@ -627,15 +627,15 @@ Status ApplyProfileShapesFromInputTensorValue(std::vector<nvinfer1::IOptimizatio
       if (input->isShapeTensor()) {
         // shape tensor
         int shape_size = nb_dims == 0 ? 1 : static_cast<int>(tensor_shapes[0]);
-        std::vector<int32_t> shapes_min(shape_size), shapes_opt(shape_size), shapes_max(shape_size);
+        std::vector<int64_t> shapes_min(shape_size), shapes_opt(shape_size), shapes_max(shape_size);
         for (int j = 0; j < shape_size; j++) {
-          shapes_min[j] = *(trt_profiles[0]->getShapeValues(input_name.c_str(), nvinfer1::OptProfileSelector::kMIN));
-          shapes_max[j] = *(trt_profiles[0]->getShapeValues(input_name.c_str(), nvinfer1::OptProfileSelector::kMAX));
-          shapes_opt[j] = *(trt_profiles[0]->getShapeValues(input_name.c_str(), nvinfer1::OptProfileSelector::kOPT));
+          shapes_min[j] = *(trt_profiles[0]->getShapeValuesV2(input_name.c_str(), nvinfer1::OptProfileSelector::kMIN));
+          shapes_max[j] = *(trt_profiles[0]->getShapeValuesV2(input_name.c_str(), nvinfer1::OptProfileSelector::kMAX));
+          shapes_opt[j] = *(trt_profiles[0]->getShapeValuesV2(input_name.c_str(), nvinfer1::OptProfileSelector::kOPT));
         }
-        trt_profile->setShapeValues(input_name.c_str(), nvinfer1::OptProfileSelector::kMIN, &shapes_min[0], shape_size);
-        trt_profile->setShapeValues(input_name.c_str(), nvinfer1::OptProfileSelector::kMAX, &shapes_max[0], shape_size);
-        trt_profile->setShapeValues(input_name.c_str(), nvinfer1::OptProfileSelector::kOPT, &shapes_opt[0], shape_size);
+        trt_profile->setShapeValuesV2(input_name.c_str(), nvinfer1::OptProfileSelector::kMIN, &shapes_min[0], shape_size);
+        trt_profile->setShapeValuesV2(input_name.c_str(), nvinfer1::OptProfileSelector::kMAX, &shapes_max[0], shape_size);
+        trt_profile->setShapeValuesV2(input_name.c_str(), nvinfer1::OptProfileSelector::kOPT, &shapes_opt[0], shape_size);
       } else {
         // execution tensor
         nvinfer1::Dims dims_min, dims_opt, dims_max;
@@ -692,15 +692,15 @@ Status ApplyProfileShapesFromInputTensorValue(std::vector<nvinfer1::IOptimizatio
       }
 
       // Update shape ranges
-      std::vector<int32_t> shapes_min(shape_size), shapes_opt(shape_size), shapes_max(shape_size);
+      std::vector<int64_t> shapes_min(shape_size), shapes_opt(shape_size), shapes_max(shape_size);
       int shape_range_size = static_cast<int>(shape_ranges_per_input.size());
       if (shape_size == shape_range_size) {
         // If shape size matches, check/update shape range
         for (int j = 0; j < shape_size; ++j) {
           auto& shape_range = shape_ranges_per_input[j][0];  // only has one profile
-          shapes_min[j] = static_cast<int32_t>(shape_range[0]);
-          shapes_max[j] = static_cast<int32_t>(shape_range[1]);
-          shapes_opt[j] = static_cast<int32_t>(shape_range[2]);
+          shapes_min[j] = static_cast<int64_t>(shape_range[0]);
+          shapes_max[j] = static_cast<int64_t>(shape_range[1]);
+          shapes_opt[j] = static_cast<int64_t>(shape_range[2]);
 
           const auto& tensor_shape_value = values[j];
           // Update shape range lower bound
@@ -734,9 +734,9 @@ Status ApplyProfileShapesFromInputTensorValue(std::vector<nvinfer1::IOptimizatio
         *engine_update = true;
       }
 
-      trt_profile->setShapeValues(input_name.c_str(), nvinfer1::OptProfileSelector::kMIN, &shapes_min[0], shape_size);
-      trt_profile->setShapeValues(input_name.c_str(), nvinfer1::OptProfileSelector::kMAX, &shapes_max[0], shape_size);
-      trt_profile->setShapeValues(input_name.c_str(), nvinfer1::OptProfileSelector::kOPT, &shapes_opt[0], shape_size);
+      trt_profile->setShapeValuesV2(input_name.c_str(), nvinfer1::OptProfileSelector::kMIN, &shapes_min[0], shape_size);
+      trt_profile->setShapeValuesV2(input_name.c_str(), nvinfer1::OptProfileSelector::kMAX, &shapes_max[0], shape_size);
+      trt_profile->setShapeValuesV2(input_name.c_str(), nvinfer1::OptProfileSelector::kOPT, &shapes_opt[0], shape_size);
     } else {  // Execution tensor
       nvinfer1::Dims dims_min(dims), dims_opt(dims), dims_max(dims);
       for (int j = 0, end = nb_dims; j < end; ++j) {
