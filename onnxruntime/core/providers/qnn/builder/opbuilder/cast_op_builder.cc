@@ -78,8 +78,8 @@ Status CastOpBuilder::ProcessExtraInputForNotEqual(QnnModelWrapper& qnn_model_wr
                                         QNN_TENSOR_TYPE_STATIC,
                                         qnn_data_type,
                                         QnnQuantParamsWrapper(),
-                                        std::move(std::vector<uint32_t>{1}),
-                                        std::move(std::vector<uint8_t>(utils::GetElementSizeByType(qnn_data_type), 0)));
+                                        std::vector<uint32_t>{1},
+                                        std::vector<uint8_t>(utils::GetElementSizeByType(qnn_data_type), 0));
   ORT_RETURN_IF_NOT(qnn_model_wrapper.AddTensorWrapper(std::move(input_tensor_wrapper)),
                     "Failed to add additional input tensor for QNN Cast node that will be replaced by NotEqual.");
   input_names.push_back(input_name);
