@@ -658,7 +658,7 @@ void BaseTester::RunWithConfig(size_t* number_of_pre_packed_weights_counter,
 #endif
           kDnnlExecutionProvider,
           kTensorrtExecutionProvider,
-           kNvTensorRTRTXExecutionProvider,
+          kNvTensorRTRTXExecutionProvider,
           kOpenVINOExecutionProvider,
           kDmlExecutionProvider,
           kAclExecutionProvider,

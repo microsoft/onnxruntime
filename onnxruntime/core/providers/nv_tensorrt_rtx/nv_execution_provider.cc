@@ -1059,7 +1059,7 @@ NvExecutionProvider::NvExecutionProvider(const NvExecutionProviderInfo& info)
     stream_ = static_cast<cudaStream_t>(info.user_compute_stream);
   }
 
-  std::string profile_min_shapes, profile_max_shapes, profile_opt_shapes;h
+  std::string profile_min_shapes, profile_max_shapes, profile_opt_shapes;
 
   // incase the EP context is dumped the engine cache has to be enabled
   auto enable_engine_cache_for_ep_context_model = [this]() {
@@ -2343,7 +2343,7 @@ Status NvExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphViewer& gr
     if (has_dynamic_shape) {
       LOGS_DEFAULT(WARNING) << "[Nv EP] No explicit optimization profile was specified. "
                                "We will assume a single profile with fully dynamic range. "
-                               "This feature is experimental and may change in the future.";
+                               "This feature is experimental and may change in the future."
                                "If you plan to use this model as fixed shape we recommend using a free dimension override: "
                                "https://onnxruntime.ai/docs/tutorials/web/env-flags-and-session-options.html#freedimensionoverrides.";
       trt_profiles.push_back(trt_builder->createOptimizationProfile());
@@ -2591,7 +2591,6 @@ Status NvExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphViewer& gr
   input_shape_ranges_[fused_node.Name()] = input_implicit_shape_ranges;
   profiles_.emplace(fused_node.Name(), std::move(trt_profiles));
 
-
   // Create function state
   // TODO: remove default capture
   NodeComputeInfo compute_info;
@@ -2712,8 +2711,6 @@ Status NvExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphViewer& gr
         return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL, status.ErrorMessage());
       }
     }
-
-
 
     // Check before using trt_engine
     if (trt_engine == nullptr) {
