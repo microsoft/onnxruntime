@@ -24,7 +24,6 @@ constexpr static const std::string_view STORAGE_TYPE_ARRAY[] = {
     "vec2<i32>",  // Int32x2
     "vec4<i32>",  // Int32x4
     "u32",        // Uint32
-
     "vec2<u32>",  // Uint32x2
     "vec4<u32>",  // Uint32x4
     "vec2<u32>",  // Int64
@@ -91,7 +90,7 @@ constexpr static const std::string_view ELEMENT_TYPE_ARRAY[] = {
     "i32",   // Int8x8
     "i32",   // Int8x16
     "u32",   // Uint4x8
-    "u32",   // Int4x8
+    "i32",   // Int4x8
 };
 constexpr static const auto ELEMENT_TYPE = details::_to_std_array(ELEMENT_TYPE_ARRAY);
 
@@ -269,8 +268,8 @@ void ShaderVariableHelper::Impl(std::ostream& ss) const {
   // Implementation of "fn get_{name}_by_indices"
   if (usage_ & ShaderUsage::UseGetByIndices) {
     if (rank_ >= 2) {
-      SS_APPEND(ss, "fn get_", name_, "_by_indices(indices: ", IndicesType(), ")->", ValueType(), " {\n");
-      SS_APPEND(ss, "  return ", GetByOffset("i2o_" + name_ + "(indices)"), ";\n");
+      SS_APPEND(ss, "fn get_", name_, "_by_indices(indices_fnarg: ", IndicesType(), ")->", ValueType(), " {\n");
+      SS_APPEND(ss, "  return ", GetByOffset("i2o_" + name_ + "(indices_fnarg)"), ";\n");
       SS_APPEND(ss, "}\n");
     }
   }

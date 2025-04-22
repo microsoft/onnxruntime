@@ -50,7 +50,8 @@ void RunGatherBlockQuantized(const std::vector<T1>& data,
                              const int64_t block_size,
                              const std::vector<T2>& output,
                              const std::vector<int64_t>& output_shape,
-                             OpTester::ExpectResult expect_result = OpTester::ExpectResult::kExpectSuccess) {
+                             OpTester::ExpectResult expect_result = OpTester::ExpectResult::kExpectSuccess,
+                             const bool touch_on_device_data = false) {
   auto run_test = [&](bool indices_is_initializer) {
     OpTester test("GatherBlockQuantized", 1, kMSDomain);
 
@@ -68,11 +69,12 @@ void RunGatherBlockQuantized(const std::vector<T1>& data,
     test.AddOutput<T2>("output", output_shape, output);
 
     std::vector<std::unique_ptr<IExecutionProvider>> eps;
-    eps.push_back(DefaultCpuExecutionProvider());
-#ifdef USE_WEBGPU
-    eps.push_back(DefaultWebGpuExecutionProvider());
-#endif
-    test.Run(expect_result, "", {}, nullptr, &eps);
+    if (touch_on_device_data) {
+      // test would need to see data on device
+      test.Run(expect_result, "", {kWebGpuExecutionProvider}, nullptr);
+    } else {
+      test.Run(expect_result, "");
+    }
   };
 
   run_test(false);
@@ -297,7 +299,7 @@ void Test_InvalidIndices_WithZeroPoints() {
                           16,
                           ToType<T2>(output),
                           output_shape,
-                          OpTester::ExpectResult::kExpectFailure);
+                          OpTester::ExpectResult::kExpectFailure, true);
 }
 
 TEST(GatherBlockQuantizedOpTest, InvalidIndices) {
