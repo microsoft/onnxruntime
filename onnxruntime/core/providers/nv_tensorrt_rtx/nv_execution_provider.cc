@@ -1059,7 +1059,7 @@ NvExecutionProvider::NvExecutionProvider(const NvExecutionProviderInfo& info)
     stream_ = static_cast<cudaStream_t>(info.user_compute_stream);
   }
 
-  std::string profile_min_shapes, profile_max_shapes, profile_opt_shapes;
+  std::string profile_min_shapes, profile_max_shapes, profile_opt_shapes;h
 
   // incase the EP context is dumped the engine cache has to be enabled
   auto enable_engine_cache_for_ep_context_model = [this]() {
@@ -2344,6 +2344,8 @@ Status NvExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphViewer& gr
       LOGS_DEFAULT(WARNING) << "[Nv EP] No explicit optimization profile was specified. "
                                "We will assume a single profile with fully dynamic range. "
                                "This feature is experimental and may change in the future.";
+                               "If you plan to use this model as fixed shape we recommend using a free dimension override: "
+                               "https://onnxruntime.ai/docs/tutorials/web/env-flags-and-session-options.html#freedimensionoverrides.";
       trt_profiles.push_back(trt_builder->createOptimizationProfile());
     }
   }
