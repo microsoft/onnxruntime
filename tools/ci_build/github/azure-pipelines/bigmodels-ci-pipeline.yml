@@ -332,7 +332,7 @@ stages:
               python3 -m pip install -r requirements.txt ; \
               popd ; \
               python3 -m pip install /ort-artifact/*.whl ; \
-              python3 -m models.llama.convert_to_onnx -m meta-llama/Llama-2-7b-hf --input /meta-llama2 --output llama2-7b-fp16 --precision fp16 --execution_provider cuda --small_gp;\
+              python3 -m models.llama.convert_to_onnx -m meta-llama/Llama-2-7b-hf --input /meta-llama2 --output llama2-7b-fp16 --precision fp16 --execution_provider cuda --small_gp --use_dynamo_export;\
               ls -l llama2-7b-fp16; \
               du -sh llama2-7b-fp16; \
               popd ; \
@@ -353,7 +353,7 @@ stages:
               python3 -m pip install -r requirements.txt ; \
               popd ; \
               python3 -m pip install /ort-artifact/*.whl ; \
-              python3 -m models.llama.convert_to_onnx -m meta-llama/Llama-2-7b-hf --input /meta-llama2 --output llama2-7b-fp32-gpu --precision fp32 --execution_provider cuda;\
+              python3 -m models.llama.convert_to_onnx -m meta-llama/Llama-2-7b-hf --input /meta-llama2 --output llama2-7b-fp32-gpu --precision fp32 --execution_provider cuda --use_dynamo_export;\
               ls -l llama2-7b-fp32-gpu; \
               du -sh llama2-7b-fp32-gpu; \
               popd ; \
@@ -374,7 +374,7 @@ stages:
               python3 -m pip install -r requirements.txt ; \
               popd ; \
               python3 -m pip install /ort-artifact/*.whl ; \
-              python3 -m models.llama.convert_to_onnx -m meta-llama/Llama-2-7b-hf --input /meta-llama2 --output llama2-7b-int4-gpu  --precision int4 --execution_provider cuda --use_gqa;\
+              python3 -m models.llama.convert_to_onnx -m meta-llama/Llama-2-7b-hf --input /meta-llama2 --output llama2-7b-int4-gpu  --precision int4 --execution_provider cuda --use_gqa --use_dynamo_export;\
               ls -l llama2-7b-int4-gpu; \
               du -sh llama2-7b-int4-gpu; \
               popd ; \
