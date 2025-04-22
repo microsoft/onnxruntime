@@ -8,11 +8,11 @@
 
 import { Env, Tensor } from 'onnxruntime-common';
 
-import { DataType } from '../wasm-common';
+import { DataType, tensorDataTypeStringToEnum } from '../wasm-common';
 import { getInstance } from '../wasm-factory';
 
 import { createView } from './tensor-view';
-import { TensorId, createTensorManager, convertInt64ToInt32 } from './webnn/tensor-manager';
+import { TensorId, createTensorManager, convertDataToInt32 } from './webnn/tensor-manager';
 import { configureLogger, LOG_DEBUG } from './log';
 
 /*
@@ -341,7 +341,8 @@ export class WebNNBackend {
       case 'int64':
         if (shouldConvertInt64ToInt32) {
           // Int64 is not supported by current context, use int32 instead.
-          bufferView = convertInt64ToInt32(new Uint8Array(buffer), false) as Int32Array;
+          const int32Buffer = convertDataToInt32(new Uint8Array(buffer), 'int64');
+          bufferView = new Int32Array(int32Buffer.buffer);
           desc.dataType = 'int32';
         } else {
           bufferView = new BigInt64Array(buffer);
@@ -397,9 +398,19 @@ export class WebNNBackend {
     return outputNames.includes(outputName);
   }
 
-  public isInt64Supported(sessionId: number): boolean {
+  public isGraphInputOutputTypeSupported(sessionId: number, type: Tensor.Type, isInput = true): boolean {
     const context = this.mlContextBySessionId.get(sessionId);
-    return !!context?.opSupportLimits().input.dataTypes.includes('int64');
+    const dataType = onnxDataTypeToWebnnDataType.get(tensorDataTypeStringToEnum(type));
+
+    if (typeof dataType === 'undefined') {
+      return false;
+    }
+
+    if (isInput) {
+      return !!context?.opSupportLimits().input.dataTypes.includes(dataType);
+    } else {
+      return !!context?.opSupportLimits().output.dataTypes.includes(dataType);
+    }
   }
 
   public flush(): void {
