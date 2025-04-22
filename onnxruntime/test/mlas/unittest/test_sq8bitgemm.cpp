@@ -323,7 +323,6 @@ class MlasSQ8BitPrepackTest : public MlasTestBase {
   }
 };
 
-
 class MlasSQ8BitGemmKernelTest : public MlasTestBase {
  private:
   unsigned int seed_;
