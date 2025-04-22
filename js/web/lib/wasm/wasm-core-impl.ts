@@ -942,17 +942,17 @@ export const run = async (
             }
           } else if (preferredLocation === 'ml-tensor' && size > 0) {
             const ensureTensor = wasm.webnnEnsureTensor;
-            const isInt64Supported = wasm.webnnIsInt64Supported;
-            if (!ensureTensor || !isInt64Supported) {
+            const isGraphInputOutputTypeSupported = wasm.webnnIsGraphInputOutputTypeSupported;
+            if (!ensureTensor || !isGraphInputOutputTypeSupported) {
               throw new Error('preferredLocation "ml-tensor" is not supported without using WebNN.');
             }
             const tensorSize = calculateTensorSizeInBytes(dataType, size);
             if (tensorSize === undefined || !isMLTensorSupportedType(type)) {
               throw new Error(`Unsupported data type: ${type}`);
             }
-            if (type === 'int64' && !isInt64Supported(sessionId)) {
+            if (!isGraphInputOutputTypeSupported(sessionId, type, false)) {
               throw new Error(
-                `preferredLocation "ml-tensor" for int64 output is not supported by current WebNN Context.`,
+                `preferredLocation "ml-tensor" for ${type} output is not supported by current WebNN Context.`,
               );
             }
 
