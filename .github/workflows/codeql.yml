@@ -14,6 +14,7 @@ on:
     branches: [ "main" ]
   schedule:
     - cron: '41 13 * * 0'
+  workflow_dispatch:
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.head_ref || github.run_id }}
@@ -47,7 +48,7 @@ jobs:
         # If you wish to specify custom queries, you can do so here or in a config file.
         # By default, queries listed here will override any specified in a config file.
         # Prefix the list here with "+" to use these queries and those in the config file.
-        
+
         # Details on CodeQL's query packs refer to: https://docs.github.com/en/code-security/code-scanning/automatically-scanning-your-code-for-vulnerabilities-and-errors/configuring-code-scanning#using-queries-in-ql-packs
         queries: security-extended,security-and-quality
 
