@@ -535,7 +535,7 @@ set(VCPKG_CMAKE_SYSTEM_NAME Emscripten)
             f.write(f'set(VCPKG_C_FLAGS_RELEASE "{" ".join(c_combined_release_flags)}")\n')
             f.write(f'set(VCPKG_CXX_FLAGS_RELEASE "{" ".join(cxx_combined_release_flags)}")\n')
 
-            f.write(f'set(VCPKG_LINKER_FLAGS_RELEASE -flto)\n')
+            f.write("set(VCPKG_LINKER_FLAGS_RELEASE -flto)\n")
 
             # --- Add Port Specific Configs ---
             # Pass the derived C++ exception status and the original minimal build flag
