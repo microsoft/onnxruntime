@@ -2280,6 +2280,7 @@ Status NvExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphViewer& gr
    *      and all the profiles won't be applied and engine won't be built until EP compute time.
    */
   bool has_explicit_profile = false;
+  bool has_implicit_profile = false;
   int num_profiles = 0;
   std::vector<nvinfer1::IOptimizationProfile*> trt_profiles;
 
@@ -2358,9 +2359,13 @@ Status NvExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphViewer& gr
 
       // Apply explicit optimization profiles provided by user
       bool apply_profile = false;
-      if (has_explicit_profile) {
+      bool tensor_has_profile = profile_min_shapes_.find(input_name) != profile_min_shapes_.end() &&
+                                profile_opt_shapes_.find(input_name) != profile_opt_shapes_.end() &&
+                                profile_max_shapes_.find(input_name) != profile_max_shapes_.end();
+      if (has_explicit_profile && tensor_has_profile) {
         apply_profile = ApplyProfileShapesFromProviderOptions(trt_profiles, input, profile_min_shapes_, profile_max_shapes_, profile_opt_shapes_, input_explicit_shape_ranges);
       } else {
+        LOGS_DEFAULT(INFO) << "[Nv EP] Creating implicit profile for tensor " << input_name;
         profile_min_shapes_[input_name] = std::vector<std::vector<int64_t>>{{}};
         profile_min_shapes_[input_name][0].resize(dims.nbDims);
         profile_opt_shapes_[input_name] = std::vector<std::vector<int64_t>>{{}};
@@ -2370,7 +2375,7 @@ Status NvExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphViewer& gr
         for (int idx_dim = 0; idx_dim < dims.nbDims; ++idx_dim) {
           auto dim_value = dims.d[idx_dim];
           if (dim_value == -1) {
-            has_explicit_profile = true;
+            has_implicit_profile = true;
             // TODO(maximilianm) this is needed until we have a wildcard in the API to support dynamic shapes
             profile_min_shapes_[input_name][0][idx_dim] = 0;
             // TODO(maximilianm) This can be buggy since shape inference can failt with 1 being used as optimal shape
@@ -2401,7 +2406,7 @@ Status NvExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphViewer& gr
     }
 
     // Set explicit profiles in TRT config if all dynamic shape inputs have associated profiles provided by user
-    if (has_explicit_profile) {
+    if (has_explicit_profile || has_implicit_profile) {
       // TRT EP has a constraint here.
       // Users need to provide all the dynamic shape inputs with associated profiles if they want to explicitly specify profiles through provider options.
       for (auto trt_profile : trt_profiles) {

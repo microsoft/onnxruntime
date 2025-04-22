@@ -38,7 +38,7 @@ void VerifyOutputs(const std::vector<OrtValue>& fetches, const std::vector<int64
  * \param model_name - model name
  * \param graph_name - graph name
  * \param dims - input dimensions
- * \param add_non_zero_node - add NonZero node which makes the whole model partition into TRT EP and CUDA EP subgraphs.
+ * \param add_fast_gelu - add FastGelu node which makes the whole model partition into TRT EP and CUDA EP subgraphs.
  *
  * input: "X", "Y" and "Z"
  *        you can specify input dimensions, for example (1, 3, 2), (1, 2) or (1, -1, -1)). Note: -1 means the dimension is dynamic.
@@ -51,7 +51,9 @@ void VerifyOutputs(const std::vector<OrtValue>& fetches, const std::vector<int64
  *      \  /
  *       Add
  *       /
- *     "M"
+ *       Add (+ float scalar "S")
+ *       /
+ *     "O"
  *
  *     or
  *
@@ -61,14 +63,16 @@ void VerifyOutputs(const std::vector<OrtValue>& fetches, const std::vector<int64
  *      \  /
  *       Add
  *       /
- *    NonZero (This node will be placed on CUDA EP)
+ *    FastGelu (This node will be placed on CUDA EP)
  *     /
- *   "M"
+ *     *       Add (+ float scalar "S")
+ *    /
+ *   "O"
  */
 void CreateBaseModel(const PathString& model_name,
                      std::string graph_name,
                      std::vector<int> dims,
-                     bool add_non_zero_node = false) {
+                     bool add_fast_gelu = false) {
   onnxruntime::Model model(graph_name, false, DefaultLoggingManager().DefaultLogger());
   auto& graph = model.MainGraph();
   std::vector<onnxruntime::NodeArg*> inputs;
@@ -81,6 +85,8 @@ void CreateBaseModel(const PathString& model_name,
   for (auto dim : dims) {
     float_tensor.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(dim);
   }
+  ONNX_NAMESPACE::TypeProto dyn_float_tensor;
+  dyn_float_tensor.mutable_tensor_type()->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
 
   auto& input_arg_1 = graph.GetOrCreateNodeArg("X", &float_tensor);
   auto& input_arg_2 = graph.GetOrCreateNodeArg("Y", &float_tensor);
@@ -95,33 +101,44 @@ void CreateBaseModel(const PathString& model_name,
   inputs.push_back(&output_arg);
   inputs.push_back(&input_arg_3);
 
-  if (add_non_zero_node) {
-    auto& output_arg_2 = graph.GetOrCreateNodeArg("node_2_out_1", &float_tensor);
-    outputs.clear();
-    outputs.push_back(&output_arg_2);
-    graph.AddNode("node_2", "Add", "node 2.", inputs, outputs);
+  auto& output_arg_2 = graph.GetOrCreateNodeArg("node_2_out_1", &float_tensor);
+  outputs.clear();
+  outputs.push_back(&output_arg_2);
+  graph.AddNode("node_2", "Add", "node 2.", inputs, outputs);
 
-    inputs.clear();
-    inputs.push_back(&output_arg_2);
-    ONNX_NAMESPACE::TypeProto int_tensor;
-    int_tensor.mutable_tensor_type()->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_INT64);
-    auto& output_arg_3 = graph.GetOrCreateNodeArg("M", &int_tensor);
+  inputs.clear();
+  inputs.push_back(&output_arg_2);
+
+  if (add_fast_gelu) {
+    auto& output_arg_3 = graph.GetOrCreateNodeArg("node_3_out_1", &dyn_float_tensor);
     outputs.clear();
     outputs.push_back(&output_arg_3);
-    graph.AddNode("node_3", "NonZero", "node 3.", inputs, outputs);
-  } else {
-    auto& output_arg_2 = graph.GetOrCreateNodeArg("M", &float_tensor);
-    outputs.clear();
-    outputs.push_back(&output_arg_2);
-    graph.AddNode("node_2", "Add", "node 2.", inputs, outputs);
+
+    graph.AddNode("node_3", "FastGelu", "node 3.", inputs, outputs,
+                  /* attributes */ nullptr, kMSDomain);
+
+    inputs.clear();
+    inputs.push_back(&output_arg_3);
   }
+
+  ONNX_NAMESPACE::TypeProto float_scalar;
+  float_scalar.mutable_tensor_type()->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+  float_scalar.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(1);
+  auto& input_scalar = graph.GetOrCreateNodeArg("S", &float_scalar);
+  inputs.push_back(&input_scalar);
+
+  auto& output_arg_4 = graph.GetOrCreateNodeArg("O", &dyn_float_tensor);
+
+  outputs.clear();
+  outputs.push_back(&output_arg_4);
+  graph.AddNode("node_5", "Add", "node 5.", inputs, outputs);
 
   auto status = graph.Resolve();
   ASSERT_TRUE(status.IsOK());
   status = onnxruntime::Model::Save(model, model_name);
 }
 
-Ort::IoBinding generate_io_binding(Ort::Session& session) {
+Ort::IoBinding generate_io_binding(Ort::Session& session, std::map<std::string, std::vector<int64_t>> shape_overwrites = {}) {
   Ort::IoBinding binding(session);
   auto allocator = Ort::AllocatorWithDefaultOptions();
   for (int input_idx = 0; input_idx < int(session.GetInputCount()); ++input_idx) {
@@ -130,10 +147,14 @@ Ort::IoBinding generate_io_binding(Ort::Session& session) {
     auto tensor_info = full_tensor_info.GetTensorTypeAndShapeInfo();
     auto shape = tensor_info.GetShape();
     auto type = tensor_info.GetElementType();
-    for (auto& v : shape) {
-      if (v == -1) {
-        v = 1;
+    if (shape_overwrites.find(input_name.get()) == shape_overwrites.end()) {
+      for (auto& v : shape) {
+        if (v == -1) {
+          v = 1;
+        }
       }
+    } else {
+      shape = shape_overwrites[input_name.get()];
     }
     auto input_value = Ort::Value::CreateTensor(allocator,
                                                 shape.data(),
@@ -189,6 +210,100 @@ TEST(NvExecutionProviderTest, ContextEmbedAndReload) {
     std::cout << "Session creation JIT: " << std::chrono::duration_cast<std::chrono::milliseconds>((stop - start)).count() << " ms" << std::endl;
 
     auto io_binding = generate_io_binding(session_object);
+    session_object.Run(run_options, io_binding);
+  }
+}
+
+TEST(NvExecutionProviderTest, ContextEmbedAndReloadDynamic) {
+  PathString model_name = ORT_TSTR("nv_execution_provider_dyn_test.onnx");
+  PathString model_name_ctx = ORT_TSTR("nv_execution_provider_dyn_test_ctx.onnx");
+  std::string graph_name = "test";
+  std::vector<int> dims = {1, -1, -1};
+
+  CreateBaseModel(model_name, graph_name, dims);
+
+  auto env = Ort::Env();
+  auto logging_level = OrtLoggingLevel::ORT_LOGGING_LEVEL_WARNING;
+  env.UpdateEnvWithCustomLogLevel(logging_level);
+
+  // AOT time
+  {
+    auto start = std::chrono::high_resolution_clock::now();
+    Ort::SessionOptions so;
+    Ort::RunOptions run_options;
+    so.AddConfigEntry("ep.context_enable", "1");
+    so.AddConfigEntry("ep.context_file_path", model_name_ctx.c_str());
+    so.AppendExecutionProvider("NvTensorRtRtx", {});
+    Ort::Session session_object(env, model_name.c_str(), so);
+    auto stop = std::chrono::high_resolution_clock::now();
+    std::cout << "Session creation AOT: " << std::chrono::duration_cast<std::chrono::milliseconds>((stop - start)).count() << " ms" << std::endl;
+
+    auto io_binding = generate_io_binding(session_object);
+    session_object.Run(run_options, io_binding);
+  }
+
+  // JIT time
+  {
+    auto start = std::chrono::high_resolution_clock::now();
+    Ort::SessionOptions so;
+    Ort::RunOptions run_options;
+    so.AddConfigEntry("ep.context_enable", "1");
+    so.AppendExecutionProvider("NvTensorRtRtx", {});
+    Ort::Session session_object(env, model_name.c_str(), so);
+    auto stop = std::chrono::high_resolution_clock::now();
+    std::cout << "Session creation JIT: " << std::chrono::duration_cast<std::chrono::milliseconds>((stop - start)).count() << " ms" << std::endl;
+
+    std::map<std::string, std::vector<int64_t>> shape_overwrites;
+    shape_overwrites["X"] = {1, 5, 5};
+    shape_overwrites["Y"] = {1, 5, 1};
+    auto io_binding = generate_io_binding(session_object, shape_overwrites);
+    session_object.Run(run_options, io_binding);
+  }
+}
+
+TEST(NvExecutionProviderTest, ContextEmbedAndReloadDataDynamic) {
+  PathString model_name = ORT_TSTR("nv_execution_provider_data_dyn_test.onnx");
+  PathString model_name_ctx = ORT_TSTR("nv_execution_provider_data_dyn_test_ctx.onnx");
+  std::string graph_name = "test";
+  std::vector<int> dims = {1, -1, -1};
+
+  CreateBaseModel(model_name, graph_name, dims, true);
+
+  auto env = Ort::Env();
+  auto logging_level = OrtLoggingLevel::ORT_LOGGING_LEVEL_WARNING;
+  env.UpdateEnvWithCustomLogLevel(logging_level);
+
+  // AOT time
+  {
+    auto start = std::chrono::high_resolution_clock::now();
+    Ort::SessionOptions so;
+    Ort::RunOptions run_options;
+    so.AddConfigEntry("ep.context_enable", "1");
+    so.AddConfigEntry("ep.context_file_path", model_name_ctx.c_str());
+    so.AppendExecutionProvider("NvTensorRtRtx", {});
+    Ort::Session session_object(env, model_name.c_str(), so);
+    auto stop = std::chrono::high_resolution_clock::now();
+    std::cout << "Session creation AOT: " << std::chrono::duration_cast<std::chrono::milliseconds>((stop - start)).count() << " ms" << std::endl;
+
+    auto io_binding = generate_io_binding(session_object);
+    session_object.Run(run_options, io_binding);
+  }
+
+  // JIT time
+  {
+    auto start = std::chrono::high_resolution_clock::now();
+    Ort::SessionOptions so;
+    Ort::RunOptions run_options;
+    so.AddConfigEntry("ep.context_enable", "1");
+    so.AppendExecutionProvider("NvTensorRtRtx", {});
+    Ort::Session session_object(env, model_name.c_str(), so);
+    auto stop = std::chrono::high_resolution_clock::now();
+    std::cout << "Session creation JIT: " << std::chrono::duration_cast<std::chrono::milliseconds>((stop - start)).count() << " ms" << std::endl;
+
+    std::map<std::string, std::vector<int64_t>> shape_overwrites;
+    shape_overwrites["X"] = {1, 5, 5};
+    shape_overwrites["Y"] = {1, 5, 5};
+    auto io_binding = generate_io_binding(session_object, shape_overwrites);
     session_object.Run(run_options, io_binding);
   }
 }
