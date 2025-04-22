@@ -97,7 +97,7 @@ struct Nv_Provider : Provider {
   }
 
   std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory(const void* options) {
-    const ProviderOptions *provider_options = reinterpret_cast<const ProviderOptions*>(options);
+    const ProviderOptions* provider_options = reinterpret_cast<const ProviderOptions*>(options);
     NvExecutionProviderInfo info = onnxruntime::NvExecutionProviderInfo::FromProviderOptions(*provider_options);
     return std::make_shared<NvProviderFactory>(info);
   }
