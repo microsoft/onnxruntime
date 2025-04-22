@@ -393,9 +393,6 @@ Status EinsumProgram::GenerateShaderCode(ShaderHelper& shader) const {
 
   // Define input indices with appropriate types.
   for (size_t i = 0; i < input_count_; i++) {
-    const auto& input = inputs[i].get();
-    int rank = input.Rank();
-
     shader.MainFunctionBody() << "var input" << i << "Indices: input" << std::to_string(i)
                               << "_indices_t;\n";
   }
