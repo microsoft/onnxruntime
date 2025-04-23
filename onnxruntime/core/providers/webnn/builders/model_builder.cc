@@ -33,7 +33,7 @@ ModelBuilder::ModelBuilder(const GraphViewer& graph_viewer, const logging::Logge
   if (!wnn_builder_.as<bool>()) {
     ORT_THROW("Failed to create WebNN builder.");
   }
-  if (wnn_limits["input"]["dataTypes"].call<emscripten::val>("includes", emscripten::val("int64")).as<bool>()) {
+  if (wnn_limits["constant"]["dataTypes"].call<emscripten::val>("includes", emscripten::val("int64")).as<bool>()) {
     is_int64_supported_ = true;
   }
 }
@@ -100,7 +100,7 @@ Status ModelBuilder::RegisterConstant(const onnx::TensorProto& tensor, emscripte
   emscripten::val wnn_builder = GetBuilder();
   const auto data_type = tensor.data_type();
 
-  // A flag to indicate if we should convert int64 to int32.
+  // A flag to indicate if we should convert int64 constant to int32.
   const bool should_convert_int64_to_int32 = !IsInt64Supported() &&
                                              data_type == ONNX_NAMESPACE::TensorProto_DataType_INT64;
 
@@ -230,7 +230,7 @@ Status ModelBuilder::RegisterInitializers() {
     const auto data_type = tensor.data_type();
     emscripten::val operand = emscripten::val::object();
     if (IsSupportedDataType(data_type, wnn_limits_["constant"]["dataTypes"])) {
-      ORT_RETURN_IF_NOT(SetWebnnDataType(desc, data_type), "Unsupported data type");
+      ORT_RETURN_IF_NOT(SetWebnnDataType(desc, data_type), "WebNN backend does not support data type: ", data_type);
       ORT_RETURN_IF_ERROR(RegisterConstant(tensor, operand, desc, logger_));
     } else {
       // TODO: support other type.
@@ -288,18 +288,58 @@ Status ModelBuilder::RegisterModelInputOutput(const NodeArg& node_arg, bool is_i
     }
 
     data_type = type_proto->tensor_type().elem_type();
-    ORT_RETURN_IF_NOT(SetWebnnDataType(desc, data_type), "Unsupported data type");
+    ORT_RETURN_IF_NOT(SetWebnnDataType(desc, data_type), "WebNN backend does not support data type: ", data_type);
+  }
+
+  emscripten::val wnn_data_type = desc["dataType"];
+  bool cast_required = false;
+
+  // Some WebNN backends support limited data types for the input and output of a WebNN graph. However,
+  // they can support more data types for intermediate nodes. To address this limitation, we implement a
+  // data type fallback mechanism. (Note: Currently, we only support fallback to int32 for certain integer data types.)
+  // If a data type is not supported for a graph's input or output but is supported for intermediate nodes, we will:
+  //
+  // 1. Save the input MLTensor as 'int32' data type,
+  // 2. Convert the input data from ORT to int32 (handled in tensor-manager.ts),
+  // 3. Insert a cast operation to WebNN graph to convert the input back to its original data type,
+  // 4. Insert a cast operation to WebNN graph to convert the output back to 'int32',
+  // 5. Convert the output data from int32 to its original data type (handled in tensor-manager.ts).
+  if (!wnn_limits_[input_output_type]["dataTypes"].call<emscripten::val>("includes", desc["dataType"]).as<bool>() &&
+      wnn_limits_["constant"]["dataTypes"].call<emscripten::val>("includes", desc["dataType"]).as<bool>() &&
+      std::find(supported_fallback_integer_data_types.cbegin(),
+                supported_fallback_integer_data_types.cend(),
+                data_type) != supported_fallback_integer_data_types.cend()) {
+    LOGS(logger_, VERBOSE) << "The data type " << wnn_data_type.as<std::string>()
+                           << " of the graph " << input_output_type << " [" << name
+                           << "] is not supported. Fallback to int32.";
+    cast_required = true;
   }
 
   if (is_input) {
-    if (data_type == ONNX_NAMESPACE::TensorProto_DataType_INT64 && !is_int64_supported_) {
-      // Int64 is not supported by current context, use int32 instead.
+    // Another case is that if the 'int64' data type is totally unsupported by the WebNN backend.
+    // We will convert the initializers to int32 as well, therefore, the WebNN graph will only produce
+    // int32 data, and we don't need to insert additional cast operation.
+    if (cast_required || (data_type == ONNX_NAMESPACE::TensorProto_DataType_INT64 && !is_int64_supported_)) {
+      // Fallback the input data type to int32.
       desc.set("dataType", emscripten::val("int32"));
     }
-    wnn_operands_.insert(std::make_pair(name, wnn_builder_.call<emscripten::val>("input", name, desc)));
+
+    emscripten::val wnn_input = wnn_builder_.call<emscripten::val>("input", name, desc);
+
+    if (cast_required) {
+      // Insert cast to convert the input data type to the original data type.
+      emscripten::val cast_options = emscripten::val::object();
+      cast_options.set("label", name + "_cast_input_to_original_data_type");
+      wnn_input = wnn_builder_.call<emscripten::val>("cast", wnn_input, wnn_data_type, cast_options);
+    }
+    wnn_operands_.insert(std::make_pair(name, wnn_input));
     emscripten::val::module_property("webnnRegisterGraphInput")(name);
     input_names_.push_back(name);
   } else {
+    if (cast_required) {
+      cast_required_output_names_.push_back(name);
+    }
+    emscripten::val::module_property("webnnRegisterGraphOutput")(name);
     output_names_.push_back(name);
   }
 
@@ -343,7 +383,7 @@ Status ModelBuilder::AddOperandFromPersistMemoryBuffer(
   memcpy(dest, buffer, size);
   emscripten::val view = emscripten::val::undefined();
   emscripten::val desc = emscripten::val::object();
-  ORT_RETURN_IF_NOT(SetWebnnDataType(desc, data_type), "Unsupported data type");
+  ORT_RETURN_IF_NOT(SetWebnnDataType(desc, data_type), "WebNN backend does not support data type: ", data_type);
   switch (data_type) {
     case ONNX_NAMESPACE::TensorProto_DataType_BOOL:
     case ONNX_NAMESPACE::TensorProto_DataType_UINT8:
@@ -407,7 +447,17 @@ Status ModelBuilder::Compile(std::unique_ptr<Model>& model) {
   ORT_RETURN_IF_ERROR(Initialize());
   emscripten::val named_operands = emscripten::val::object();
   for (auto& name : output_names_) {
-    named_operands.set(name, wnn_operands_.at(name));
+    emscripten::val wnn_output = wnn_operands_.at(name);
+
+    // If the output name is in cast_required_output_names_, cast it to int32.
+    if (std::find(cast_required_output_names_.cbegin(),
+                  cast_required_output_names_.cend(),
+                  name) != cast_required_output_names_.cend()) {
+      emscripten::val cast_options = emscripten::val::object();
+      cast_options.set("label", name + "_cast_output_to_int32");
+      wnn_output = wnn_builder_.call<emscripten::val>("cast", wnn_output, emscripten::val("int32"), cast_options);
+    }
+    named_operands.set(name, wnn_output);
   }
 
   emscripten::val wnn_graph = wnn_builder_.call<emscripten::val>("build", named_operands).await();

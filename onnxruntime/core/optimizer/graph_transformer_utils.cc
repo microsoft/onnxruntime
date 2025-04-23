@@ -45,6 +45,7 @@
 #include "core/optimizer/gemm_activation_fusion.h"
 #include "core/optimizer/gemm_sum_fusion.h"
 #include "core/optimizer/gemm_transpose_fusion.h"
+#include "core/optimizer/group_query_attention_fusion.h"
 #include "core/optimizer/identical_children_consolidation.h"
 #include "core/optimizer/identity_elimination.h"
 #include "core/optimizer/label_encoder_fusion.h"
@@ -282,6 +283,8 @@ InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
       const bool enable_gelu_approximation =
           session_options.config_options.GetConfigOrDefault(kOrtSessionOptionsEnableGeluApproximation, "0") == "1";
 
+      const InlinedHashSet<std::string_view> cuda_eps = {onnxruntime::kCudaExecutionProvider};
+
       const InlinedHashSet<std::string_view> cuda_rocm_eps = {onnxruntime::kCudaExecutionProvider,
                                                               onnxruntime::kRocmExecutionProvider};
       const InlinedHashSet<std::string_view> cpu_cuda_rocm_eps = {onnxruntime::kCpuExecutionProvider,
@@ -352,6 +355,8 @@ InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
 
       transformers.emplace_back(std::make_unique<MatmulTransposeFusion>(cpu_cuda_dml_rocm_eps));
       transformers.emplace_back(std::make_unique<BiasGeluFusion>(cpu_acl_cuda_dml_rocm_eps));
+
+      transformers.emplace_back(std::make_unique<GroupQueryAttentionFusion>(cuda_eps));
 
       transformers.emplace_back(std::make_unique<SkipLayerNormFusion>(cpu_acl_cuda_dml_rocm_eps));
 

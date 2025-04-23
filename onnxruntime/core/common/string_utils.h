@@ -3,6 +3,8 @@
 
 #pragma once
 
+#include <algorithm>
+#include <cctype>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -82,6 +84,22 @@ inline uint32_t GetHashFromString(const std::string& str_value) {
   }
 
   return hash;
+}
+
+/**
+ * Returns a lowercase version of the input string.
+ * @param str The string to lowercase.
+ * @return The lowercased string.
+ */
+inline std::string GetLowercaseString(std::string str) {
+  // https://en.cppreference.com/w/cpp/string/byte/tolower
+  // The behavior of tolower from <cctype> is undefined if the argument is neither representable as unsigned char
+  // nor equal to EOF. To use tolower safely with a plain char (or signed char), the argument must be converted to
+  // unsigned char.
+  std::transform(str.begin(), str.end(), str.begin(), [](unsigned char c) {
+    return static_cast<char>(std::tolower(c));
+  });
+  return str;
 }
 
 }  // namespace utils

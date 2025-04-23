@@ -8,8 +8,7 @@
 #include <string>
 #include "QnnOpDef.h"
 #include "CPU/QnnCpuCommon.h"
-// TODO: not exist for Windows yet
-// #include "GPU/QnnGpuCommon.h"
+#include "GPU/QnnGpuCommon.h"
 #include "DSP/QnnDspCommon.h"
 #include "HTP/QnnHtpCommon.h"
 #include "HTP/QnnHtpContext.h"
@@ -171,10 +170,9 @@ void QnnBackendManager::SetQnnBackendType(uint32_t backend_id) {
     case QNN_BACKEND_ID_CPU:
       qnn_backend_type_ = QnnBackendType::CPU;
       break;
-      // TODO: update once it's ready for Widows
-      // case QNN_BACKEND_ID_GPU:
-      //  qnn_backend_type_ = QnnBackendType::GPU;
-      //  break;
+    case QNN_BACKEND_ID_GPU:
+      qnn_backend_type_ = QnnBackendType::GPU;
+      break;
     case QNN_BACKEND_ID_DSP:
       qnn_backend_type_ = QnnBackendType::DSP;
       break;
@@ -371,8 +369,16 @@ Status QnnBackendManager::InitializeQnnLog(const logging::Logger& logger) {
 QnnLog_Level_t QnnBackendManager::MapOrtSeverityToQNNLogLevel(logging::Severity ort_log_level) {
   // Map ORT log severity to Qnn log level
   switch (ort_log_level) {
-    case logging::Severity::kVERBOSE:
-      return QNN_LOG_LEVEL_VERBOSE;
+    case logging::Severity::kVERBOSE: {
+      switch ((GetQnnBackendType())) {
+        case QnnBackendType::GPU:
+          // Currently GPU needs this log level to work.
+          // This switch will be removed once this is resolved.
+          return QNN_LOG_LEVEL_DEBUG;
+        default:
+          return QNN_LOG_LEVEL_VERBOSE;
+      }
+    }
     case logging::Severity::kINFO:
       return QNN_LOG_LEVEL_INFO;
     case logging::Severity::kWARNING:
@@ -617,16 +623,31 @@ Status QnnBackendManager::CreateContext(bool enable_htp_weight_sharing) {
 
   QnnContext_Config_t context_priority_config = QNN_CONTEXT_CONFIG_INIT;
   ORT_RETURN_IF_ERROR(SetQnnContextConfig(context_priority_, context_priority_config));
+
   const QnnContext_Config_t* npu_context_configs[] = {&context_priority_config,
                                                       &context_config_weight_sharing,
                                                       nullptr};
   const QnnContext_Config_t* empty_context_configs[] = {nullptr};
-  bool is_npu_backend = IsNpuBackend(GetQnnBackendType());
+
+  const QnnContext_Config_t** configs = nullptr;
+  switch (GetQnnBackendType()) {
+    case QnnBackendType::HTP:
+    case QnnBackendType::DSP:
+      configs = npu_context_configs;
+      break;
+    case QnnBackendType::GPU:
+      // Currently only this works with QnnGpu.
+      configs = nullptr;
+      break;
+    default:
+      configs = empty_context_configs;
+      break;
+  }
 
   Qnn_ContextHandle_t context = nullptr;
   Qnn_ErrorHandle_t result = qnn_interface_.contextCreate(backend_handle_,
                                                           device_handle_,
-                                                          is_npu_backend ? npu_context_configs : empty_context_configs,
+                                                          configs,
                                                           &context);
 
   ORT_RETURN_IF(QNN_CONTEXT_NO_ERROR != result, "Failed to create context. Error: ", QnnErrorHandleToString(result));

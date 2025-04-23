@@ -73,7 +73,13 @@ enum class QnnBackendType : uint8_t {
   HTP_FP16
 };
 
+bool IsCpuBackend(QnnBackendType backend_type);
+
 bool IsNpuBackend(QnnBackendType backend_type);
+
+bool IsGpuBackend(QnnBackendType backend_type);
+
+bool IsQpuBackend(QnnBackendType backend_type);
 
 // constexpr config values
 constexpr const int kSleepMinLatency = 40;

@@ -76,7 +76,8 @@ Status ComputeChannelScaleAndShift(ComputeContext& context, const Tensor* input,
                   {scale, ProgramTensorMetadataDependency::TypeAndRank},
                   {bias, ProgramTensorMetadataDependency::TypeAndRank}})
       .AddOutputs({{output, ProgramTensorMetadataDependency::TypeAndRank, reduced_output_shape, 2}})
-      .SetDispatchGroupSize(static_cast<uint32_t>(units_of_work));
+      .SetDispatchGroupSize(static_cast<uint32_t>(units_of_work))
+      .SetWorkgroupSize(workgroup_size);
   return context.RunProgram(program);
 }
 

@@ -2,7 +2,9 @@
 // Licensed under the MIT License.
 
 #include "core/framework/session_options.h"
+
 #include "core/common/logging/logging.h"
+#include "core/common/string_utils.h"
 #include "core/framework/ort_value.h"
 #include "core/session/onnxruntime_session_options_config_keys.h"
 
@@ -113,5 +115,4 @@ EpContextModelGenerationOptions SessionOptions::GetEpContextGenerationOptions() 
 
   return EpContextModelGenerationOptions(this->config_options);
 }
-
 }  // namespace onnxruntime

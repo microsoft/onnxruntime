@@ -172,7 +172,13 @@ export const initEp = async (env: Env, epName: string): Promise<void> => {
 /**
  * valid data locations for input/output tensors.
  */
-type SupportedTensorDataLocationForInputOutput = 'cpu' | 'cpu-pinned' | 'gpu-buffer' | 'ml-tensor';
+type SupportedTensorDataLocationForInputOutput =
+  | 'cpu'
+  | 'cpu-pinned'
+  | 'gpu-buffer'
+  | 'ml-tensor'
+  // Use 'ml-tensor' during inference, but output a tensor located on the CPU.
+  | 'ml-tensor-cpu-output';
 
 type IOBindingState = {
   /**
@@ -424,6 +430,11 @@ export const createSession = async (
           typeof options?.preferredOutputLocation === 'string'
             ? options.preferredOutputLocation
             : (options?.preferredOutputLocation?.[nameString] ?? 'cpu');
+        const isGraphOutput = wasm.webnnIsGraphOutput;
+        if (location === 'cpu' && isGraphOutput && isGraphOutput(sessionHandle, nameString)) {
+          outputPreferredLocations.push('ml-tensor-cpu-output');
+          continue;
+        }
         if (location !== 'cpu' && location !== 'cpu-pinned' && location !== 'gpu-buffer' && location !== 'ml-tensor') {
           throw new Error(`Not supported preferred output location: ${location}.`);
         }
@@ -438,7 +449,10 @@ export const createSession = async (
 
     // use IO binding only when at least one output is preferred to be on GPU.
     let bindingState: IOBindingState | null = null;
-    if (!BUILD_DEFS.DISABLE_JSEP && outputPreferredLocations.some((l) => l === 'gpu-buffer' || l === 'ml-tensor')) {
+    if (
+      !BUILD_DEFS.DISABLE_JSEP &&
+      outputPreferredLocations.some((l) => l === 'gpu-buffer' || l === 'ml-tensor' || l === 'ml-tensor-cpu-output')
+    ) {
       ioBindingHandle = wasm._OrtCreateBinding(sessionHandle);
       if (ioBindingHandle === 0) {
         checkLastError("Can't create IO binding.");
@@ -447,7 +461,10 @@ export const createSession = async (
       bindingState = {
         handle: ioBindingHandle,
         outputPreferredLocations,
-        outputPreferredLocationsEncoded: outputPreferredLocations.map((l) => dataLocationStringToEnum(l)),
+        outputPreferredLocationsEncoded: outputPreferredLocations
+          // 'ml-tensor-cpu-output' is treated as 'ml-tensor' for the purpose of IO binding.
+          .map((l) => (l === 'ml-tensor-cpu-output' ? 'ml-tensor' : l))
+          .map((l) => dataLocationStringToEnum(l)),
       };
     }
 
@@ -599,10 +616,11 @@ export const prepareInputOutputTensor = async (
       }
     } else {
       const isGraphInput = wasm.webnnIsGraphInput;
-      if (dataType !== 'string' && isGraphInput) {
+      const isGraphOutput = wasm.webnnIsGraphOutput;
+      if (dataType !== 'string' && isGraphInput && isGraphOutput) {
         const tensorName = wasm.UTF8ToString(tensorNameUTF8Encoded);
         // Promote the tensor to 'ml-tensor' if it is a graph input.
-        if (isGraphInput(sessionId, tensorName)) {
+        if (isGraphInput(sessionId, tensorName) || isGraphOutput(sessionId, tensorName)) {
           const dataTypeEnum = tensorDataTypeStringToEnum(dataType);
           dataByteLength = calculateTensorSizeInBytes(dataTypeEnum, dims)!;
           actualLocation = 'ml-tensor';
@@ -810,6 +828,7 @@ export const run = async (
     }
 
     const output: TensorMetadata[] = [];
+    const outputPromises: Array<Promise<[number, Tensor.DataType]>> = [];
 
     for (let i = 0; i < outputCount; i++) {
       const tensor = Number(wasm.getValue(outputValuesOffset + i * ptrSize, '*'));
@@ -923,17 +942,17 @@ export const run = async (
             }
           } else if (preferredLocation === 'ml-tensor' && size > 0) {
             const ensureTensor = wasm.webnnEnsureTensor;
-            const isInt64Supported = wasm.webnnIsInt64Supported;
-            if (!ensureTensor || !isInt64Supported) {
+            const isGraphInputOutputTypeSupported = wasm.webnnIsGraphInputOutputTypeSupported;
+            if (!ensureTensor || !isGraphInputOutputTypeSupported) {
               throw new Error('preferredLocation "ml-tensor" is not supported without using WebNN.');
             }
             const tensorSize = calculateTensorSizeInBytes(dataType, size);
             if (tensorSize === undefined || !isMLTensorSupportedType(type)) {
               throw new Error(`Unsupported data type: ${type}`);
             }
-            if (type === 'int64' && !isInt64Supported(sessionId)) {
+            if (!isGraphInputOutputTypeSupported(sessionId, type, false)) {
               throw new Error(
-                `preferredLocation "ml-tensor" for int64 output is not supported by current WebNN Context.`,
+                `preferredLocation "ml-tensor" for ${type} output is not supported by current WebNN Context.`,
               );
             }
 
@@ -958,6 +977,20 @@ export const run = async (
               },
               'ml-tensor',
             ]);
+          } else if (preferredLocation === 'ml-tensor-cpu-output' && size > 0) {
+            const data = wasm.webnnCreateMLTensorDownloader!(dataOffset, type as Tensor.MLTensorDataTypes)();
+            const index = output.length;
+            // Delay the data download and releasing the tensor until we can wait for all output tensors to be downloaded.
+            keepOutputTensor = true;
+            outputPromises.push(
+              (async () => {
+                const result: [number, Tensor.DataType] = [index, await data];
+                wasm.webnnReleaseTensorId!(dataOffset);
+                wasm._OrtReleaseTensor(tensor);
+                return result;
+              })(),
+            );
+            output.push([type, dims, [], 'cpu']);
           } else {
             const typedArrayConstructor = tensorTypeToTypedArrayConstructor(type);
             const data = new typedArrayConstructor(size);
@@ -975,7 +1008,6 @@ export const run = async (
         if (!keepOutputTensor) {
           wasm._OrtReleaseTensor(tensor);
         }
-        wasm.webnnOnRunEnd?.(sessionHandle);
       }
     }
 
@@ -992,8 +1024,14 @@ export const run = async (
         false,
       ]);
     }
+    // Wait for all output tensor data to be downloaded.
+    for (const [index, data] of await Promise.all(outputPromises)) {
+      output[index][2] = data;
+    }
     return output;
   } finally {
+    wasm.webnnOnRunEnd?.(sessionHandle);
+
     wasm.stackRestore(beforeRunStack);
 
     if (BUILD_DEFS.USE_WEBGPU_EP) {

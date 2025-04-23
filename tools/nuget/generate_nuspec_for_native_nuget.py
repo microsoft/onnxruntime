@@ -556,6 +556,9 @@ def generate_files(line_list, args):
         files_list.append("<file src=" + '"' + os.path.join(args.native_build_path, "QnnSaver.dll") + runtimes + " />")
         if args.target_architecture != "x64":
             files_list.append(
+                "<file src=" + '"' + os.path.join(args.native_build_path, "QnnGpu.dll") + runtimes + " />"
+            )
+            files_list.append(
                 "<file src=" + '"' + os.path.join(args.native_build_path, "QnnSystem.dll") + runtimes + " />"
             )
             files_list.append(
