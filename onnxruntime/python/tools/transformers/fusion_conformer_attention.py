@@ -122,12 +122,18 @@ class FusionConformerAttention(FusionAttention):
         if k_nodes is None:
             k_nodes = self.model.match_parent_path(
                 matmul_qk,
-                ["Transpose", "Reshape", "Add", "MatMul"],
-                [1, 0, 0, 0],
+                ["Transpose", "Transpose", "Reshape", "Add", "MatMul"],
+                [1, 0, 0, 0, 0],
             )
             if k_nodes is None:
-                logger.debug("fuse_conformer_attention: failed to match k path")
-                return
+                k_nodes = self.model.match_parent_path(
+                    matmul_qk,
+                    ["Transpose", "Reshape", "Add", "MatMul"],
+                    [1, 0, 0, 0],
+                )
+                if k_nodes is None:
+                    logger.debug("fuse_conformer_attention: failed to match k path")
+                    return
         else:
             concat_k = k_nodes[1]
             concat_parent = self.model.get_parent(concat_k, 0, None)
