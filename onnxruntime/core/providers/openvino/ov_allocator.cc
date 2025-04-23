@@ -10,12 +10,12 @@ namespace onnxruntime {
 
 using namespace openvino_ep;
 
-OVRTAllocator::OVRTAllocator(ov::Core& core, OrtDevice::DeviceType device_type, OrtDevice::DeviceId device_id, const char* name) : IAllocator(OrtMemoryInfo(name, OrtAllocatorType::OrtDeviceAllocator, OrtDevice(device_type, OrtDevice::MemType::DEFAULT, device_id), device_id, OrtMemTypeCPUInput)), core_(core) {
-  if (device_type == OrtDevice::NPU) {
-    remote_ctx_ = core_.get_default_context("NPU").as<ov::intel_npu::level_zero::ZeroContext>();
-  } else {
-    ORT_THROW("Invalid device type");
-  }
+OVRTAllocator::OVRTAllocator(ov::Core& core, OrtDevice::DeviceId device_id, const char* name)
+    : IAllocator(OrtMemoryInfo(name, OrtAllocatorType::OrtDeviceAllocator,
+                               OrtDevice(OrtDevice::CPU, OrtDevice::MemType::OPENVINO_NPU, device_id),
+                               device_id)),
+      core_(core) {
+  remote_ctx_ = core_.get_default_context("NPU").as<ov::intel_npu::level_zero::ZeroContext>();
 }
 
 void* OVRTAllocator::Alloc(size_t size) {

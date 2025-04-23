@@ -196,23 +196,16 @@ common::Status OpenVINOExecutionProvider::Compile(
 
 #ifdef USE_OVEP_NPU_MEMORY
 std::vector<AllocatorPtr> OpenVINOExecutionProvider::CreatePreferredAllocators() {
-  if (session_context_.device_type.find("NPU") != std::string::npos) {
-    AllocatorCreationInfo npu_allocator_info{
-        [this](OrtDevice::DeviceId device_id) {
-          return std::make_unique<OVRTAllocator>(
-              OVCore::Get()->core,
-              OrtDevice::NPU,
-              device_id,
-              OpenVINO_RT_NPU);
-        },
-        0,
-    };
-
-    // fill in allocator
-    return std::vector<AllocatorPtr>{CreateAllocator(npu_allocator_info)};
-  } else {
-    return std::vector<AllocatorPtr>{};
-  }
+  AllocatorCreationInfo npu_allocator_info{
+      [this](OrtDevice::DeviceId device_id) {
+        return std::make_unique<OVRTAllocator>(
+            OVCore::Get()->core,
+            device_id,
+            OpenVINO_RT_NPU);
+      },
+      0};
+  // fill in allocator
+  return std::vector<AllocatorPtr>{CreateAllocator(npu_allocator_info)};
 }
 #endif
 
@@ -259,7 +252,7 @@ const InlinedVector<const Node*> OpenVINOExecutionProvider::GetEpContextNodes() 
 OrtDevice OpenVINOExecutionProvider::GetOrtDeviceByMemType(OrtMemType /* em_type */) const {
 #ifdef USE_OVEP_NPU_MEMORY
   // Default device 0 is fine? Otherwise, we need to query it some place
-  return OrtDevice(OrtDevice::NPU, OrtDevice::MemType::DEFAULT, 0);
+  return OrtDevice(OrtDevice::CPU, OrtDevice::MemType::OPENVINO_NPU, 0);
 #else
   // Default CPU allocator
   return default_device_;
