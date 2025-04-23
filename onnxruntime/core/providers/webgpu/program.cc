@@ -123,8 +123,6 @@ int NumberOfComponents(ProgramVariableDataType type) {
     case ProgramVariableDataType::Int64:
     case ProgramVariableDataType::Uint64:
     case ProgramVariableDataType::Float16:
-    case ProgramVariableDataType::Uint4x8:
-    case ProgramVariableDataType::Int4x8:
       return 1;
     case ProgramVariableDataType::Float32x2:
     case ProgramVariableDataType::Int32x2:
@@ -139,6 +137,8 @@ int NumberOfComponents(ProgramVariableDataType type) {
     case ProgramVariableDataType::Uint8x4:
     case ProgramVariableDataType::Int8x4:
       return 4;
+    case ProgramVariableDataType::Uint4x8:
+    case ProgramVariableDataType::Int4x8:
     case ProgramVariableDataType::Uint8x8:
       return 8;
     case ProgramVariableDataType::Uint8x16:

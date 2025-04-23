@@ -68,7 +68,6 @@ void RunGatherBlockQuantized(const std::vector<T1>& data,
 
     test.AddOutput<T2>("output", output_shape, output);
 
-    std::vector<std::unique_ptr<IExecutionProvider>> eps;
     if (touch_on_device_data) {
       // test would need to see data on device
       test.Run(expect_result, "", {kWebGpuExecutionProvider}, nullptr);
