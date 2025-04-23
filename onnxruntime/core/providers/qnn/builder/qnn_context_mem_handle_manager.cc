@@ -42,14 +42,24 @@ Status QnnContextMemHandleManager::GetOrRegister(void* shared_memory_address, co
       const auto& mem_handle_record = mem_handles_it->second;
 
       // check that actual tensor size is less than or equal to registered tensor size
-      ORT_RETURN_IF_NOT(qnn_tensor_data_size <= mem_handle_record.registered_tensor_data_size,
-                        "Actual tensor data size (", qnn_tensor_data_size,
-                        ") is larger than registered tensor data size (", mem_handle_record.registered_tensor_data_size,
-                        ").");
+      // ORT_RETURN_IF_NOT(qnn_tensor_data_size <= mem_handle_record.registered_tensor_data_size,
+      //                   "Actual tensor data size (", qnn_tensor_data_size,
+      //                   ") is larger than registered tensor data size (", mem_handle_record.registered_tensor_data_size,
+      //                   ").");
 
-      qnn_mem_handle = mem_handle_record.mem_handle.get();
-      did_register = false;
-      return Status::OK();
+      if (qnn_tensor_data_size <= mem_handle_record.registered_tensor_data_size) {
+        qnn_mem_handle = mem_handle_record.mem_handle.get();
+        did_register = false;
+        return Status::OK();
+      } else {
+        // replace the existing mem handle with a new mem handle
+        LOGS(logger_, VERBOSE) << "A mem handle for shared memory address (" << shared_memory_address
+                               << ") already exists but has a smaller size ("
+                               << mem_handle_record.registered_tensor_data_size << ") than the required size ("
+                               << qnn_tensor_data_size << "). It will be replaced.";
+
+        mem_handles_.erase(mem_handles_it);
+      }
     }
 
     // register a new mem handle
