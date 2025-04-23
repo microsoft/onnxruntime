@@ -109,9 +109,18 @@ Status RotaryEmbeddingOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_build
     rotary_embedding_dim = head_size;
   }
 
-  // First ensure the input has shape (batch_size, num_heads, sequence_length, head_size).
-  if (!input_is_4d) {
-    const std::vector<uint32_t> new_shape{batch_size, num_heads, sequence_length, head_size};
+  emscripten::val transpose_options = emscripten::val::object();
+
+  // First ensure the input has shape (batch_size, sequence_length, num_heads, head_size).
+  if (input_is_4d) {
+    // The input is already in 4D shape, but we need to ensure the order is
+    // (batch_size, sequence_length, num_heads, head_size).
+    const std::vector<uint32_t> permutation{0, 2, 1, 3};
+    transpose_options.set("label", node_name + "_transpose_input");
+    transpose_options.set("permutation", emscripten::val::array(permutation));
+    input = wnn_builder.call<emscripten::val>("transpose", input, transpose_options);
+  } else {
+    const std::vector<uint32_t> new_shape{batch_size, sequence_length, num_heads, head_size};
     emscripten::val reshape_input_options = emscripten::val::object();
     reshape_input_options.set("label", node_name + "_reshape_input");
     input = wnn_builder.call<emscripten::val>(
@@ -276,12 +285,19 @@ Status RotaryEmbeddingOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_build
     output = wnn_builder.call<emscripten::val>("concat", concat_inputs, 3, concat_back_input_options);
   }
 
-  // Reshape the output to the original shape. The output shape is the same as the input shape.
-  const std::vector<uint32_t> output_shape = GetNarrowedIntfromInt64<uint32_t>(input_shape);
-  emscripten::val reshape_output_options = emscripten::val::object();
-  reshape_output_options.set("label", node_name + "_reshape_output");
-  output = wnn_builder.call<emscripten::val>(
-      "reshape", output, emscripten::val::array(output_shape), reshape_output_options);
+  if (input_is_4d) {
+    // The output is in 4D shape, we need to transpose it back to the original shape.
+    transpose_options.set("label", node_name + "_transpose_output");
+    output = wnn_builder.call<emscripten::val>("transpose", output, transpose_options);
+  } else {
+    // The output is in 3D shape, we need to reshape it back to the origin shape.
+    // The output shape is same as the input shape.
+    const std::vector<uint32_t> output_shape = GetNarrowedIntfromInt64<uint32_t>(input_shape);
+    emscripten::val reshape_output_options = emscripten::val::object();
+    reshape_output_options.set("label", node_name + "_reshape_output");
+    output = wnn_builder.call<emscripten::val>(
+        "reshape", output, emscripten::val::array(output_shape), reshape_output_options);
+  }
 
   model_builder.AddOperand(node.OutputDefs()[0]->Name(), std::move(output));
   return Status::OK();
