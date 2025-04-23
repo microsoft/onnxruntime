@@ -19,24 +19,12 @@ namespace {
 
 #if !defined(ORT_MINIMAL_BUILD)
 namespace selectors {
+
 const Node* GetLoneConsumerNode(const GraphViewer& graph_viewer, const Node& node) {
   if (!optimizer_utils::CheckOutputEdges(graph_viewer.GetGraph(), node, 1)) {
     return nullptr;
   }
-  const Node* next_node = &*node.OutputNodesBegin();
-  // ensure that the target node also has only one input that is not an initializer
-  const size_t input_edges_total = next_node->GetInputEdgesCount();
-  int non_const_edges = 0;
-  for (size_t edge_idx = 0; edge_idx < input_edges_total; ++edge_idx) {
-    if (!graph_utils::NodeArgIsConstant(graph_viewer.GetGraph(), *next_node->InputDefs()[edge_idx])) {
-      ++non_const_edges;
-    }
-  }
-  if (non_const_edges > 1) {
-    return nullptr;
-  } else {
-    return next_node;
-  }
+  return &*node.OutputNodesBegin();
 }
 
 bool HasElementDataType(const NodeArg& node_arg, int32_t data_type) {
@@ -86,8 +74,16 @@ class ConvActivationSelector : public NodeSelector {
   std::optional<NodesToOptimizeIndices> Select(const GraphViewer& graph_viewer, const Node& node) const override {
     const std::string_view node_ep = node.GetExecutionProviderType();
     const auto* next_node = GetLoneConsumerNode(graph_viewer, node);
-    if (!next_node ||
-        next_node->GetExecutionProviderType() != node_ep) {
+    if (!next_node) {
+      return std::nullopt;
+    }
+
+    // Don't fuse with `next_node` if it has more than one input edge.
+    if (next_node->GetInputEdgesCount() != 1) {
+      return std::nullopt;
+    }
+
+    if (next_node->GetExecutionProviderType() != node_ep) {
       return std::nullopt;
     }
 
