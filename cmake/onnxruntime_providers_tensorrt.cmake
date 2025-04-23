@@ -27,8 +27,7 @@
     set(CMAKE_CXX_FLAGS  "${CMAKE_CXX_FLAGS} -Wno-unused-parameter -Wno-missing-field-initializers")
   endif()
   set(CXX_VERSION_DEFINED TRUE)
-message(STATUS "ishwar TENSORRT_ROOT is ${TENSORRT_ROOT}")
-message(STATUS "onnxruntime_USE_TENSORRT_BUILTIN_PARSER is ${onnxruntime_USE_TENSORRT_BUILTIN_PARSER}")
+
   find_path(TENSORRT_INCLUDE_DIR NvInfer.h
     HINTS ${TENSORRT_ROOT}
     PATH_SUFFIXES include)
