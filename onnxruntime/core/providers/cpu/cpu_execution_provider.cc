@@ -31,14 +31,11 @@ CPUExecutionProvider::CPUExecutionProvider(const CPUExecutionProviderInfo& info)
     : IExecutionProvider{onnxruntime::kCpuExecutionProvider}, info_{info} {}
 
 std::vector<AllocatorPtr> CPUExecutionProvider::CreatePreferredAllocators() {
-  std::vector<AllocatorPtr> result;
-
   const bool create_arena = DoesCpuAllocatorSupportArenaUsage() ? info_.create_arena : false;
   AllocatorCreationInfo device_info_cpu{[](int) { return std::make_unique<CPUAllocator>(); },
                                         DEFAULT_CPU_ALLOCATOR_DEVICE_ID, create_arena};
 
-  result.push_back(CreateAllocator(device_info_cpu));
-  return result;
+  return std::vector<AllocatorPtr>{CreateAllocator(device_info_cpu)};
 }
 
 // Forward declarations of op kernels
