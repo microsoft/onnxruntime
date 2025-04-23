@@ -18,50 +18,6 @@ typedef void* cudnnStatus_t;
 
 namespace onnxruntime {
 
-namespace nv_env_vars {
-static const std::string kMaxPartitionIterations = "ORT_NV_MAX_PARTITION_ITERATIONS";
-static const std::string kMinSubgraphSize = "ORT_NV_MIN_SUBGRAPH_SIZE";
-static const std::string kMaxWorkspaceSize = "ORT_NV_MAX_WORKSPACE_SIZE";
-static const std::string kFP16Enable = "ORT_NV_FP16_ENABLE";
-static const std::string kINT8Enable = "ORT_NV_INT8_ENABLE";
-static const std::string kINT8CalibrationTableName = "ORT_NV_INT8_CALIBRATION_TABLE_NAME";
-static const std::string kINT8UseNativeTensorrtCalibrationTable = "ORT_NV_INT8_USE_NATIVE_CALIBRATION_TABLE";
-static const std::string kDLAEnable = "ORT_NV_DLA_ENABLE";
-static const std::string kDLACore = "ORT_NV_DLA_CORE";
-static const std::string kDumpSubgraphs = "ORT_NV_DUMP_SUBGRAPHS";
-static const std::string kEngineCacheEnable = "ORT_NV_ENGINE_CACHE_ENABLE";
-static const std::string kCachePath = "ORT_NV_CACHE_PATH";
-static const std::string kWeightStrippedEngineEnable = "ORT_NV_WEIGHT_STRIPPED_ENGINE_ENABLE";
-static const std::string kOnnxModelFolderPath = "ORT_NV_ONNX_MODEL_FOLDER_PATH";
-// As a timing cache can be used across multiple ONNX files it makes sense to have a separate cache path
-static const std::string kTimingCachePath = "ORT_NV_GLOBAL_CACHE_PATH";
-static const std::string kDecryptionEnable = "ORT_NV_ENGINE_DECRYPTION_ENABLE";
-static const std::string kDecryptionLibPath = "ORT_NV_ENGINE_DECRYPTION_LIB_PATH";
-static const std::string kForceSequentialEngineBuild = "ORT_NV_FORCE_SEQUENTIAL_ENGINE_BUILD";
-static const std::string kContextMemorySharingEnable = "ORT_NV_CONTEXT_MEMORY_SHARING_ENABLE";
-static const std::string kLayerNormFP32Fallback = "ORT_NV_LAYER_NORM_FP32_FALLBACK";
-static const std::string kTimingCacheEnable = "ORT_NV_TIMING_CACHE_ENABLE";
-static const std::string kForceTimingCache = "ORT_NV_FORCE_TIMING_CACHE_ENABLE";
-static const std::string kDetailedBuildLog = "ORT_NV_DETAILED_BUILD_LOG_ENABLE";
-static const std::string kBuildHeuristics = "ORT_NV_BUILD_HEURISTICS_ENABLE";
-static const std::string kSparsityEnable = "ORT_NV_SPARSITY_ENABLE";
-static const std::string kBuilderOptimizationLevel = "ORT_NV_BUILDER_OPTIMIZATION_LEVEL";
-static const std::string kAuxiliaryStreams = "ORT_NV_AUXILIARY_STREAMS";
-static const std::string kTacticSources = "ORT_NV_TACTIC_SOURCES";
-static const std::string kExtraPluginLibPaths = "ORT_NV_EXTRA_PLUGIN_LIB_PATHS";
-static const std::string kProfilesMinShapes = "ORT_NV_PROFILE_MIN_SHAPES";
-static const std::string kProfilesMaxShapes = "ORT_NV_PROFILE_MAX_SHAPES";
-static const std::string kProfilesOptShapes = "ORT_NV_PROFILE_OPT_SHAPES";
-static const std::string kCudaGraphEnable = "ORT_NV_CUDA_GRAPH_ENABLE";
-static const std::string kDumpEpContextModel = "ORT_DUMP_EP_CONTEXT_MODEL";
-static const std::string kEpContextEmbedMode = "ORT_EP_CONTEXT_EMBED_MODE";
-static const std::string kEpContextComputeCapabilityEnable = "ORT_EP_CONTEXT_COMPUTE_CAPABILITY_ENABLE";
-static const std::string kEngineCachePrefix = "ORT_NV_CACHE_PREFIX";
-static const std::string kOpTypesToExclude = "ORT_NV_OP_TYPES_TO_EXCLUDE";
-// Old env variable for backward compatibility
-static const std::string kEngineCachePath = "ORT_NV_ENGINE_CACHE_PATH";
-}  // namespace nv_env_vars
-
 class TensorrtLogger : public nvinfer1::ILogger {
   nvinfer1::ILogger::Severity verbosity_;
 
@@ -171,11 +127,6 @@ struct TensorrtFuncState {
   std::vector<std::unordered_map<std::string, size_t>> output_info;
   std::unordered_map<std::string, std::unordered_map<size_t, std::vector<std::vector<int64_t>>>> input_shape_ranges;
   std::mutex* tensorrt_mu_ptr = nullptr;
-  bool fp16_enable = false;
-  bool int8_enable = false;
-  bool int8_calibration_cache_available = false;
-  bool dla_enable = false;
-  int dla_core = 0;
   std::string trt_node_name_with_precision;
   bool engine_cache_enable = false;
   std::string engine_cache_path;
@@ -183,24 +134,15 @@ struct TensorrtFuncState {
   std::vector<nvinfer1::IOptimizationProfile*> profiles;
   bool context_memory_sharing_enable = false;
   size_t* max_context_mem_size_ptr = nullptr;
-  std::unordered_map<std::string, float> dynamic_range_map;
   bool engine_decryption_enable = false;
   int (*engine_decryption)(const char*, char*, size_t*) = nullptr;
   int (*engine_encryption)(const char*, char*, size_t) = nullptr;
-  bool timing_cache_enable = true;
-  std::string timing_cache_path;
-  bool force_timing_cache = false;
   bool detailed_build_log = false;
-  bool build_heuristics_enable = false;
   bool sparsity_enable = false;
-  int builder_optimization_level = 3;
   int auxiliary_streams = -1;
-  bool filter_tactic_sources = false;
-  nvinfer1::TacticSources tactic_sources;
   bool cuda_graph_enable = 0;
   std::string cache_prefix;
   std::string cache_suffix;
-  bool engine_hw_compatible = false;
 };
 
 // Minimum information to construct kernel function state for direct engine load code path
@@ -233,6 +175,8 @@ std::string GetWeightRefittedEnginePath(std::string engine_cache_path);
 class NvExecutionProvider : public IExecutionProvider {
  public:
   explicit NvExecutionProvider(const NvExecutionProviderInfo& info);
+  // TODO: we might want to transition to this, it allows for an easier option specification:
+  //  explicit NvExecutionProvider(const ProviderOptions& provider_options_map, const ConfigOptions* config_options);
   virtual ~NvExecutionProvider();
 
   cublasHandle_t PerThreadDefaultCublasHandle() {
@@ -293,14 +237,7 @@ class NvExecutionProvider : public IExecutionProvider {
   int max_partition_iterations_ = 1000;
   size_t min_subgraph_size_ = 1;
   size_t max_workspace_size_ = 0;
-  bool fp16_enable_ = false;
-  bool int8_enable_ = false;
-  bool dla_enable_ = false;
-  int dla_core_ = 0;
   bool force_sequential_engine_build_ = false;
-  std::string int8_calibration_cache_name_;
-  bool int8_calibration_cache_available_ = false;
-  bool int8_use_native_tensorrt_calibration_table_ = false;
   bool dump_subgraphs_ = false;
   bool engine_cache_enable_ = false;
   bool weight_stripped_engine_enable_ = false;
@@ -308,30 +245,23 @@ class NvExecutionProvider : public IExecutionProvider {
   std::string onnx_model_folder_path_;
   const void* onnx_model_bytestream_;
   size_t onnx_model_bytestream_size_;
-  bool build_heuristics_enable_ = false;
   bool sparsity_enable_ = false;
-  int builder_optimization_level_ = 3;
   int auxiliary_streams_ = -1;
-  std::string tactic_sources_;
-  std::string global_cache_path_, cache_path_, engine_decryption_lib_path_;
+  std::string cache_path_, engine_decryption_lib_path_;
   std::unique_ptr<nvinfer1::IRuntime> runtime_ = nullptr;
   std::mutex tensorrt_mu_;
   int device_id_;
   std::string compute_capability_;
   bool context_memory_sharing_enable_ = false;
-  bool layer_norm_fp32_fallback_ = false;
   size_t max_ctx_mem_size_ = 0;
   IAllocatorUniquePtr<void> context_memory_ = nullptr;
   mutable char model_path_[4096] = {};  // Reserved for max path length
   bool engine_decryption_enable_ = false;
   int (*engine_decryption_)(const char*, char*, size_t*) = nullptr;
   int (*engine_encryption_)(const char*, char*, size_t) = nullptr;
-  bool timing_cache_enable_ = false;
-  bool force_timing_cache_match_ = false;
   bool detailed_build_log_ = false;
   bool cuda_graph_enable_ = false;
   std::string cache_prefix_;
-  bool engine_hw_compatible_ = false;
   std::string op_types_to_exclude_;
 
   // The format is as for TENSORRT_VERSION: (MAJOR * 100 + MINOR) * 100 + PATCH
@@ -349,7 +279,6 @@ class NvExecutionProvider : public IExecutionProvider {
   std::string ctx_model_path_;
   std::string ep_cache_context_attr_;
   std::string engine_cache_relative_path_to_context_model_dir;
-  std::unique_ptr<ONNX_NAMESPACE::ModelProto> model_proto_ = ONNX_NAMESPACE::ModelProto::Create();
 
   std::unordered_set<std::string> control_flow_op_set_ = {"If", "Loop", "Scan"};
   mutable std::unordered_map<std::string, std::unique_ptr<SubGraphContext>> subgraph_context_map_;

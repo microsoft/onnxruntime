@@ -103,6 +103,8 @@ ONNX_NAMESPACE::ModelProto* CreateCtxModel(const GraphViewer& graph_viewer,
       engine_data_str.assign(engine_data, size);
     }
     attr_1->set_s(engine_data_str);
+    // TODO(maximilianm) we might want to disable this warning as we only support weightless engines that are really small
+    //                   the reason we had this was that the field will be hashed and storing a large bytestream has significant overhead
     LOGS_DEFAULT(WARNING) << EPCONTEXT_WARNING;
   } else {
     attr_1->set_s(engine_cache_path);
