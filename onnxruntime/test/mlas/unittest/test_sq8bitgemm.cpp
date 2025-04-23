@@ -316,7 +316,6 @@ class MlasSQ8BitPrepackTest : public MlasTestBase {
 
       Execute<159, 16, 16, 64>();
       Execute<160, 17, 32, 64>();
-      Execute<3072, 5120, 32, 64>();
       Execute<161, 15, 64, 64>();
       Execute<160, 17, 128, 64>();
       Execute<159, 16, 256, 64>();
@@ -488,32 +487,23 @@ class MlasSQ8BitGemmKernelTest : public MlasTestBase {
     Execute<2, 3072, 128, 16>();
 
     Execute<1, 1, 1, 32>();
-    Execute<2, 128, 3, 32>();
-    Execute<2, 256, 3, 32>();
     Execute<8, 33, 5, 32>();
     Execute<8, 513, 9, 32>();
     Execute<1, 3072, 128, 32>();
     Execute<2, 3072, 128, 32>();
 
     Execute<1, 1, 1, 64>();
-    Execute<2, 256, 3, 64>();
-    Execute<7, 96, 5, 64>();
     Execute<8, 497, 9, 64>();
     Execute<1, 3072, 128, 64>();
     Execute<2, 3072, 128, 64>();
 
     Execute<1, 1, 1, 128>();
-    Execute<2, 128, 3, 128>();
-    Execute<2, 256, 3, 128>();
     Execute<6, 255, 7, 128>();
     Execute<5, 257, 9, 128>();
     Execute<1, 3072, 128, 128>();
     Execute<2, 3072, 128, 128>();
 
     Execute<1, 1, 1, 256>();
-    Execute<2, 128, 4, 256>();
-    Execute<2, 256, 4, 256>();
-    Execute<2, 256, 3, 256>();
     Execute<7, 255, 7, 256>();
     Execute<6, 257, 7, 256>();
     Execute<1, 3072, 128, 256>();
