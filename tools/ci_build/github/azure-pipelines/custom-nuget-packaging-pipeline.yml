@@ -83,7 +83,7 @@ extends:
         parameters:
           AllowReleasedOpsetOnly: 1
           BuildForAllArchs: true
-          AdditionalBuildFlags: '--use_webgpu'
+          AdditionalBuildFlags: '--use_webgpu --skip_tests'
           DoEsrp: true
 
       - stage: NugetPackaging
@@ -120,6 +120,18 @@ extends:
               artifactName: 'onnxruntime-win-ARM64-qnn'
               targetPath: '$(Build.BinariesDirectory)/win-arm64'
 
+          - task: DownloadPipelineArtifact@0
+            displayName: 'Download Pipeline Artifact - osx-x64'
+            inputs:
+              artifactName: 'onnxruntime-osx-x86_64'
+              targetPath: '$(Build.BinariesDirectory)/osx-x64'
+
+          - task: DownloadPipelineArtifact@0
+            displayName: 'Download Pipeline Artifact - osx-arm64'
+            inputs:
+              artifactName: 'onnxruntime-osx-arm64'
+              targetPath: '$(Build.BinariesDirectory)/osx-arm64'
+
           - task: PowerShell@2
             displayName: 'Extract Nuget Package Version'
             inputs:
@@ -139,17 +151,23 @@ extends:
               script: |
                 Expand-Archive -Path $(Build.BinariesDirectory)/win-x64/onnxruntime-win-x64-cuda*.zip -DestinationPath $(Build.BinariesDirectory)/win-x64
                 Expand-Archive -Path $(Build.BinariesDirectory)/win-arm64/onnxruntime-win-ARM64-qnn*.zip -DestinationPath $(Build.BinariesDirectory)/win-arm64
+                tar -xzf $(Build.BinariesDirectory)/osx-x64/onnxruntime-osx-x86_64*.tgz -C $(Build.BinariesDirectory)/osx-x64
+                tar -xzf $(Build.BinariesDirectory)/osx-arm64/onnxruntime-osx-arm64*.tgz -C $(Build.BinariesDirectory)/osx-arm64
                 $win_x64 = (Get-ChildItem -Path $(Build.BinariesDirectory)/win-x64 -Filter onnxruntime-win-x64-cuda*)[0].FullName
                 $win_arm64 = (Get-ChildItem -Path $(Build.BinariesDirectory)/win-arm64 -Filter onnxruntime-win-ARM64-qnn*)[0].FullName
+                $osx_x64 = (Get-ChildItem -Path $(Build.BinariesDirectory)/osx-x64 -Filter onnxruntime-osx-x86_x64*)[0].FullName
+                $osx_arm64 = (Get-ChildItem -Path $(Build.BinariesDirectory)/osx-arm64 -Filter onnxruntime-osx-arm64*)[0].FullName
                 Write-Host "##vso[task.setvariable variable=win_x64;]$win_x64"
                 Write-Host "##vso[task.setvariable variable=win_arm64;]$win_arm64"
+                Write-Host "##vso[task.setvariable variable=osx_x64;]$osx_x64"
+                Write-Host "##vso[task.setvariable variable=osx_arm64;]$osx_arm64"
               workingDirectory: $(Build.BinariesDirectory)
 
           - task: PythonScript@0
             displayName: 'Generate Nuget Package'
             inputs:
               scriptPath: '$(Build.SourcesDirectory)/tools/nuget/generate_nuspec_for_custom_nuget.py'
-              arguments: '--nuspec_path "$(Build.BinariesDirectory)/${{ parameters.PackageName }}.nuspec" --root_dir "$(Build.SourcesDirectory)" --commit_id "$(Build.SourceVersion)" --win_arm64 "$(win_arm64)" --win_x64 "$(win_x64)" --package_version "$(package_version)" --package_name "${{ parameters.PackageName }}"'
+              arguments: '--nuspec_path "$(Build.BinariesDirectory)/${{ parameters.PackageName }}.nuspec" --root_dir "$(Build.SourcesDirectory)" --commit_id "$(Build.SourceVersion)" --win_arm64 "$(win_arm64)" --win_x64 "$(win_x64)" --osx_arm64 "$(osx_arm64)" --osx_x64 "$(osx_x64)" --package_version "$(package_version)" --package_name "${{ parameters.PackageName }}"'
 
           - task: NuGetCommand@2
             displayName: 'Pack Nuget Package'
