@@ -67,14 +67,17 @@ CreateOVModel(std::string&& model,
               std::map<std::string, std::shared_ptr<ov::Node>>& const_outputs_map);
 
 void CreateOVTensors(const std::string& device_name,
-                     SharedContext::SharedWeights::Metadata::Map& metadata_map,
-                     SharedContext::SharedWeights::WeightsFile& weights);
-void DestroyOVTensors(SharedContext::SharedWeights::Metadata::Map& metadata_map);
+                     Metadata::Map& metadata_map,
+                     std::filesystem::path& weights_filepath);
+void DestroyOVTensors(Metadata::Map& metadata_map);
 
 void printPerformanceCounts(const std::vector<OVProfilingInfo>& performanceMap,
                             std::ostream& stream, std::string deviceName);
 
 void printPerformanceCounts(OVInferRequestPtr request, std::ostream& stream, std::string deviceName);
+
+// Returns the location string from the first external initializer nodes found or nullopt if none found
+std::optional<std::string> GetExternalWeightFilename(const GraphViewer& graph);
 
 }  // namespace backend_utils
 }  // namespace openvino_ep

@@ -54,6 +54,7 @@ class BackendManager {
   EPCtxHandler& ep_ctx_handle_;
   SessionContext& session_context_;
   SharedContext& shared_context_;
+  std::optional<fs::path> external_weights_;
 };
 
 }  // namespace openvino_ep
