@@ -50,7 +50,7 @@ Status MatMulNBits<T>::ComputeInternal(OpKernelContext* ctx) const {
   if (Y->Shape().Size() == 0)
     return Status::OK();
 
-  if ((reorder_idx_data == nullptr) && (!zero_points || !zero_points->IsDataType<T>()) && helper.M() == 1) {
+  if ((reorder_idx_data == nullptr) && (!zero_points || !zero_points->IsDataType<T>())) {
     bool done = (nbits_ == 8) ? TryMatMul8Bits(
                                     reinterpret_cast<CudaT*>(Y->MutableData<T>()),
                                     reinterpret_cast<const CudaT*>(a_data),
@@ -95,7 +95,7 @@ Status MatMulNBits<T>::ComputeInternal(OpKernelContext* ctx) const {
             blob_data,
             reinterpret_cast<const CudaT*>(scales_data),
             (const CudaT*)zero_points_data,
-            reorder_idx_data,  //?
+            reorder_idx_data,
             SafeInt<int>(K_padded),
             SafeInt<int>(N_),
             SafeInt<int>(block_size_),

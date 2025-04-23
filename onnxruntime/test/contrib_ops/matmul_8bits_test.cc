@@ -256,10 +256,13 @@ TEST(MatMulNBits, Float32_8b_AccuracyLevel4) {
   TestMatMul8BitsTyped<float, 2, 4, 32, 16, 4>();
   TestMatMul8BitsTyped<float, 1, 4, 64, 16, 4>();
   TestMatMul8BitsTyped<float, 1, 32, 16, 128, 4>();
+  TestMatMul8BitsTyped<float, 1, 256, 32, 16, 4>();
   TestMatMul8BitsTyped<float, 1, 288, 16, 16, 4>();
   TestMatMul8BitsTyped<float, 1, 288, 1024, 16, 4>();
   TestMatMul8BitsTyped<float, 1, 288, 1024, 128, 4>();
+  TestMatMul8BitsTyped<float, 2, 288, 1024, 128, 4>();
   TestMatMul8BitsTyped<float, 1, 40, 576, 32, 4>();
+  TestMatMul8BitsTyped<float, 2, 40, 576, 32, 4>();
   TestMatMul8BitsTyped<float, 1, 288, 93, 32, 4>();
   TestMatMul8BitsTyped<float, 1, 288, 93, 128, 4>();
   TestMatMul8BitsTyped<float, 1, 288, 1234, 16, 4>();
@@ -277,6 +280,7 @@ TEST(MatMulNBits, Float32_8b_AccuracyLevel4) {
   TestMatMul8BitsTyped<float, 100, 288, 93, 32, 4>();
   TestMatMul8BitsTyped<float, 100, 288, 93, 128, 4>();
   TestMatMul8BitsTyped<float, 100, 288, 1234, 16, 4>();
+  TestMatMul8BitsTyped<float, 2, 5120, 3072, 32, 4>();
 }
 
 #endif

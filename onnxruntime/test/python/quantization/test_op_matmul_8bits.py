@@ -11,7 +11,6 @@ from pathlib import Path
 
 import numpy as np
 import onnx
-from onnx import TensorProto, helper
 from op_test_utils import TestDataFeeds, check_model_correctness, check_op_type_count, check_qtype_by_node_type
 
 from onnxruntime import get_available_providers
@@ -30,28 +29,8 @@ class TestOpMatMul4Bits(unittest.TestCase):
     def tearDownClass(cls):
         cls._tmp_model_dir.cleanup()
 
-    def fill_int8_data(self, shape: int | tuple[int, ...], symmetric: bool) -> np.ndarray:
-        line = np.zeros(shape)
-        line = line.reshape(-1)
-
-        if symmetric:
-            v = -2.0
-            for i in range(line.shape[0]):
-                if v == 0 or v == -3 or v == 3:
-                    v += 1
-                line[i] = v
-                v += 1
-                if v >= 128:
-                    v = -128
-        else:
-            v = 0.0
-            for i in range(line.shape[0]):
-                line[i] = v
-                v += 1
-                if v >= 256:
-                    v = 0
-
-        return line.reshape(shape)
+    def fill_weight_data(self, shape: tuple[int, ...]) -> np.ndarray:
+        return np.random.normal(0, 0.01, size=shape).astype(np.float32)
 
     def input_feeds(
         self,
@@ -70,12 +49,8 @@ class TestOpMatMul4Bits(unittest.TestCase):
         dr = TestDataFeeds(input_data_list)
         return dr
 
-    def construct_model_matmul(self, output_model_path: str, symmetric: bool) -> None:
-        #      (input)
-        #         |
-        #       MatMul
-        #         |
-        #      (output)
+    def construct_model_matmul(self, output_model_path: str, k: int = 32, n: int = 64) -> None:
+        """Create a simple onnx model with one MatMul node like (input) --> MatMul --> (output)."""
         input_name = "input"
         output_name = "output"
         initializers = []
@@ -83,7 +58,7 @@ class TestOpMatMul4Bits(unittest.TestCase):
         def make_matmul(
             input_name, weight_shape: int | tuple[int, ...], weight_name: str, output_name: str, node_name: str
         ):
-            weight_data = self.fill_int8_data(weight_shape, symmetric).astype(np.float32)
+            weight_data = self.fill_weight_data(weight_shape)
             initializers.append(onnx.numpy_helper.from_array(weight_data, name=weight_name))
             return onnx.helper.make_node(
                 "MatMul",
@@ -92,8 +67,8 @@ class TestOpMatMul4Bits(unittest.TestCase):
                 node_name,
             )
 
-        in_features = 32
-        out_features = 64
+        in_features = k
+        out_features = n
         # make MatMul node
         matmul_node = make_matmul(
             input_name,
@@ -104,10 +79,10 @@ class TestOpMatMul4Bits(unittest.TestCase):
         )
 
         # make graph
-        input_tensor = helper.make_tensor_value_info(input_name, TensorProto.FLOAT, [-1, in_features])
-        output_tensor = helper.make_tensor_value_info(output_name, TensorProto.FLOAT, [-1, out_features])
+        input_tensor = onnx.helper.make_tensor_value_info(input_name, onnx.TensorProto.FLOAT, [-1, in_features])
+        output_tensor = onnx.helper.make_tensor_value_info(output_name, onnx.TensorProto.FLOAT, [-1, out_features])
         graph_name = "matmul_8bits_test"
-        graph = helper.make_graph(
+        graph = onnx.helper.make_graph(
             [matmul_node],
             graph_name,
             [input_tensor],
@@ -115,7 +90,7 @@ class TestOpMatMul4Bits(unittest.TestCase):
             initializer=initializers,
         )
         # blocked quantization requires DQ op set >= 21
-        model = helper.make_model(graph, opset_imports=[helper.make_opsetid("", 21)])
+        model = onnx.helper.make_model(graph, opset_imports=[onnx.helper.make_opsetid("", 21)])
         model.ir_version = 10  # use stable onnx ir version
 
         onnx.save(model, output_model_path)
@@ -132,11 +107,14 @@ class TestOpMatMul4Bits(unittest.TestCase):
         rtol: float = 0.01,
         atol: float = 0.05,
         config: str = "default",
+        suffix: str = "",
     ):
         use_qdq = quant_format == quant_utils.QuantFormat.QDQ
         name_prefix = "QDQ" if use_qdq else "QOperator"
         model_int8_path = str(
-            Path(self._tmp_model_dir.name).joinpath(f"{name_prefix}_{block_size}_{is_symmetric}.onnx").absolute()
+            Path(self._tmp_model_dir.name)
+            .joinpath(f"{name_prefix}_bs{block_size}_{is_symmetric}{suffix}.onnx")
+            .absolute()
         )
 
         # Quantize fp32 model to int8 model
@@ -174,7 +152,7 @@ class TestOpMatMul4Bits(unittest.TestCase):
         check_op_type_count(self, model_int8_path, **quant_nodes)
 
         if use_qdq:
-            dq_qtype = TensorProto.INT8 if is_symmetric else TensorProto.UINT8
+            dq_qtype = onnx.TensorProto.INT8 if is_symmetric else onnx.TensorProto.UINT8
             dqnode_io_qtypes = (
                 {
                     "DequantizeLinear": [
@@ -213,13 +191,29 @@ class TestOpMatMul4Bits(unittest.TestCase):
             else:
                 raise exception
 
-    def test_quantize_matmul_int8_symmetric(self):
+    def test_quantize_matmul_8bits(self):
         np.random.seed(13)
-        model_fp32_path = str(Path(self._tmp_model_dir.name).joinpath("matmul_fp32_symmetric.onnx").absolute())
-        self.construct_model_matmul(model_fp32_path, symmetric=True)
-        data_reader = self.input_feeds(1, {"input": (1, 32)})
-        for config in ["default", "hqq"]:
-            self.quant_test(model_fp32_path, data_reader, 32, True, atol=0.1, rtol=0.1, config=config)
+        for k in [32, 40, 256, 512, 512, 1024, 1040]:
+            for n in [8, 256]:
+                model_fp32_path = str(
+                    Path(self._tmp_model_dir.name).joinpath(f"matmul_fp32_k_{k}_n_{n}.onnx").absolute()
+                )
+                self.construct_model_matmul(model_fp32_path, k=k, n=n)
+                for m in [1, 2]:
+                    data_reader = self.input_feeds(m, {"input": (m, k)})
+                    for config in ["default", "hqq"]:
+                        for block_size in [16, 128, 256]:
+                            if block_size <= k:
+                                self.quant_test(
+                                    model_fp32_path,
+                                    data_reader,
+                                    block_size,
+                                    True,
+                                    atol=0.01,
+                                    rtol=0.01,
+                                    config=config,
+                                    suffix=f"_m_{m}_n_{n}_k_{k}",
+                                )
 
 
 if __name__ == "__main__":
