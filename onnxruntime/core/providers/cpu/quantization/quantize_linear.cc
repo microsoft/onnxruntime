@@ -597,7 +597,7 @@ Status DequantizeLinear<T>::Compute(OpKernelContext* ctx) const {
           .TypeConstraint("T2", DataTypeImpl::GetTensorType<T>()),    \
       QuantizeLinear<T>);
 
-// opset 23 added support for float4e2m1.
+// Opset 23 added support for float4e2m1.
 // TODO(titaiwang): Add support for float4e2m1.
 REGISTER_QUANTIZELINEAR(int8_t)
 REGISTER_QUANTIZELINEAR(uint8_t)
@@ -605,6 +605,12 @@ REGISTER_QUANTIZELINEAR(int16_t)
 REGISTER_QUANTIZELINEAR(uint16_t)
 REGISTER_QUANTIZELINEAR(Int4x2)
 REGISTER_QUANTIZELINEAR(UInt4x2)
+#if !defined(DISABLE_FLOAT8_TYPES)
+REGISTER_QUANTIZELINEAR(Float8E4M3FN)
+REGISTER_QUANTIZELINEAR(Float8E4M3FNUZ)
+REGISTER_QUANTIZELINEAR(Float8E5M2)
+REGISTER_QUANTIZELINEAR(Float8E5M2FNUZ)
+#endif
 
 // Opset 21 added 16-bit and 4-bit int support to Q ops.
 // TODO(adrianlizarraga): Support int4 and block quantization.
