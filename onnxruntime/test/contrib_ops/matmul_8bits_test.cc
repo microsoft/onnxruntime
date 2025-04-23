@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #ifndef ORT_MINIMAL_BUILD
+#if (defined(MLAS_TARGET_AMD64_IX86) && !defined(USE_DML) && !defined(USE_WEBGPU) && !defined(USE_COREML)) || defined(USE_CUDA)
 
 #include <optional>
 
@@ -97,6 +98,20 @@ template <typename T1>
 void RunTest8Bits(const TestOptions8Bits& opts) {
   SCOPED_TRACE(opts);
 
+  std::vector<std::unique_ptr<IExecutionProvider>> explicit_eps;
+#ifdef USE_CUDA
+  explicit_eps.emplace_back(DefaultCudaExecutionProvider());
+#else
+
+#if defined(MLAS_TARGET_AMD64_IX86)
+  if (!MlasIsQNBitGemmAvailable(8, 32, SQNBIT_CompInt8)) {
+    GTEST_SKIP() << "Skipping test because MlasIsQNBitGemmAvailable(8, 32, SQNBIT_CompInt8) is false";
+  }
+#endif
+
+  explicit_eps.emplace_back(DefaultCpuExecutionProvider());
+#endif
+
   static_assert(std::is_same_v<T1, float>, "unexpected type for T1");
 
   const int64_t M = opts.M,
@@ -182,13 +197,6 @@ void RunTest8Bits(const TestOptions8Bits& opts) {
     test.SetOutputRelErr("Y", *opts.output_rel_error);
   }
 
-  std::vector<std::unique_ptr<IExecutionProvider>> explicit_eps;
-#ifdef USE_CUDA
-  explicit_eps.emplace_back(DefaultCudaExecutionProvider());
-#else
-  explicit_eps.emplace_back(DefaultCpuExecutionProvider());
-#endif
-
   if (!explicit_eps.empty()) {
     test.ConfigEps(std::move(explicit_eps));
   }
@@ -198,12 +206,6 @@ void RunTest8Bits(const TestOptions8Bits& opts) {
 
 template <typename AType, int M, int N, int K, int block_size, int accuracy_level>
 void TestMatMul8BitsTyped() {
-#if defined(MLAS_TARGET_AMD64_IX86) && !defined(USE_CUDA)
-  if (!MlasIsQNBitGemmAvailable(8, 32, SQNBIT_CompInt8)) {
-    GTEST_SKIP() << "Skipping test because MlasIsQNBitGemmAvailable(8, 32, SQNBIT_CompInt8) is false";
-  }
-#endif
-
   TestOptions8Bits base_opts{};
   base_opts.M = M, base_opts.N = N, base_opts.K = K;
   base_opts.block_size = block_size;
@@ -247,7 +249,6 @@ void TestMatMul8BitsTyped() {
 
 }  // namespace
 
-#if defined(MLAS_TARGET_AMD64_IX86) || defined(USE_CUDA)
 TEST(MatMulNBits, Float32_8b_AccuracyLevel4) {
   TestMatMul8BitsTyped<float, 1, 1, 16, 16, 4>();
   TestMatMul8BitsTyped<float, 1, 2, 16, 16, 4>();
@@ -283,8 +284,8 @@ TEST(MatMulNBits, Float32_8b_AccuracyLevel4) {
   TestMatMul8BitsTyped<float, 2, 5120, 3072, 32, 4>();
 }
 
-#endif
 }  // namespace test
 }  // namespace onnxruntime
 
+#endif
 #endif  // ORT_MINIMAL_BUILD

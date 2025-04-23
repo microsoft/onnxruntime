@@ -1,4 +1,3 @@
-// Modifications: scaling is moved from masked softmax to the gemm before that.
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
