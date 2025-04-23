@@ -29,11 +29,9 @@
 #include "core/framework/sparse_utils.h"
 #include "core/framework/tensorprotoutils.h"
 #include "core/framework/TensorSeq.h"
-#include "core/framework/ortdevice.h"
 #include "core/graph/constants.h"
 #include "core/graph/graph_proto_serializer.h"
 #include "core/graph/model.h"
-#include "core/mlas/inc/mlas.h"
 #include "core/optimizer/graph_optimizer_registry.h"
 #include "core/optimizer/qdq_transformer/selectors_actions/qdq_selectors.h"
 #include "core/optimizer/qdq_transformer/selectors_actions/shared/utils.h"
@@ -276,10 +274,6 @@ struct ProviderHostImpl : ProviderHost {
 
   AllocatorPtr CreateAllocator(const AllocatorCreationInfo& info) override { return onnxruntime::CreateAllocator(info); }
   std::unique_ptr<IAllocator> CreateCPUAllocator(const OrtMemoryInfo& memory_info) override { return std::make_unique<CPUAllocator>(memory_info); };
-
-  size_t MlasGetPreferredBufferAlignment() override {
-    return ::MlasGetPreferredBufferAlignment();
-  }
 
   void* CPUAllocator__Alloc(CPUAllocator* p, size_t size) override { return p->CPUAllocator::Alloc(size); }
   void CPUAllocator__Free(CPUAllocator* p, void* allocation) override { return p->CPUAllocator::Free(allocation); }

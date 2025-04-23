@@ -302,8 +302,6 @@ constexpr const char* kQnnExecutionProvider = "QNNExecutionProvider";
 constexpr const char* kCpuExecutionProvider = "CPUExecutionProvider";
 constexpr const char* kAzureExecutionProvider = "AzureExecutionProvider";
 
-size_t MlasGetPreferredBufferAlignment();
-
 template <typename T>
 using IAllocatorUniquePtr = std::unique_ptr<T, std::function<void(T*)>>;
 

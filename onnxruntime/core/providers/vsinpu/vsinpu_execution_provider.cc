@@ -272,7 +272,7 @@ std::shared_ptr<KernelRegistry> VSINPUExecutionProvider::GetKernelRegistry() con
   return kernel_registry;
 }
 
-std::vector<AllocatorPtr> VitisAIExecutionProvider::CreatePreferredAllocators() override {
+std::vector<AllocatorPtr> VSINPUExecutionProvider::CreatePreferredAllocators() {
   std::vector<AllocatorPtr> result;
   // We do not want arena for this, as it would not respect alignment.
   constexpr const bool use_arena_false = false;

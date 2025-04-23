@@ -146,7 +146,7 @@ std::unique_ptr<profiling::EpProfiler> VitisAIExecutionProvider::GetProfiler() {
   return std::make_unique<profiling::VitisaiProfiler>();
 }
 
-std::vector<AllocatorPtr> VitisAIExecutionProvider::CreatePreferredAllocators() override {
+std::vector<AllocatorPtr> VitisAIExecutionProvider::CreatePreferredAllocators() {
   std::vector<AllocatorPtr> result;
   // We do not want arena for this, as it would not respect alignment.
   constexpr const bool use_arena_false = false;

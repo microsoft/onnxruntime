@@ -122,10 +122,6 @@ AllocatorPtr CreateAllocator(const AllocatorCreationInfo& info) {
   return g_host->CreateAllocator(info);
 }
 
-size_t MlasGetPreferredBufferAlignment() {
-  return g_host->MlasGetPreferredBufferAlignment();
-}
-
 template <>
 MLDataType DataTypeImpl::GetType<Tensor>() { return Provider_GetHost()->DataTypeImpl__GetType_Tensor(); }
 #if !defined(DISABLE_SPARSE_TENSORS)

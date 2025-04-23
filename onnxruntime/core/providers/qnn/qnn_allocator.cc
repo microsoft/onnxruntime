@@ -50,7 +50,7 @@ struct AllocationHeader {
 };
 
 size_t AllocationAlignment() {
-  const size_t min_allocation_alignment = MlasGetPreferredBufferAlignment();
+  const size_t min_allocation_alignment = 64;  // Equal to MlasGetPreferredBufferAlignment()
   return std::max(alignof(AllocationHeader), min_allocation_alignment);
 }
 
