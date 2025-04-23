@@ -79,6 +79,13 @@ extends:
           build_config: 'RelWithDebInfo'
           PublishArchive: true
 
+      - template: templates/mac-cpu-packaging-pipeline.yml
+        parameters:
+          AllowReleasedOpsetOnly: 1
+          BuildForAllArchs: true
+          AdditionalBuildFlags: '--use_webgpu'
+          DoEsrp: true
+
       - stage: NugetPackaging
         dependsOn: [Windows_Packaging_CUDA, OnnxRuntime_QNN_Nuget_Win_Arm64]
         jobs:
