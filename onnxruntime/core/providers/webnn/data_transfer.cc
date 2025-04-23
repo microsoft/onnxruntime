@@ -20,7 +20,7 @@ common::Status DataTransfer::CopyTensor(const Tensor& src, Tensor& dst) const {
     // We don't need to transfer the tensor to an MLTensor, so we don't need to copy the data.
     return Status::OK();
   }
-  bool trace = emscripten::val::module_property("traceEvent").as<bool>();
+  bool trace = emscripten::val::module_property("webnnEnableTraceEvent").as<bool>();
   emscripten::val console = emscripten::val::global("console");
   if (trace) {
     console.call<void>("time", emscripten::val("ORT::DataTransfer::CopyTensor"));

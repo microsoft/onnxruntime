@@ -114,8 +114,6 @@ export const initEp = async (env: Env, epName: string): Promise<void> => {
   if (!BUILD_DEFS.DISABLE_JSEP) {
     // eslint-disable-next-line @typescript-eslint/no-require-imports, @typescript-eslint/no-var-requires
     const initJsep = require('./jsep/init').init;
-    const wasm = getInstance();
-    wasm.traceEvent = env.trace;
 
     if (epName === 'webgpu' && !BUILD_DEFS.USE_WEBGPU_EP) {
       // perform WebGPU availability check

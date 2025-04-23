@@ -158,7 +158,7 @@ onnxruntime::common::Status Model::Dispatch(const InlinedHashMap<std::string, On
                                             const InlinedHashMap<std::string, OnnxTensorData>& outputs) {
   auto webnnEnsureTensor = emscripten::val::module_property("webnnEnsureTensor");
   auto promises = emscripten::val::array();
-  bool trace = emscripten::val::module_property("traceEvent").as<bool>();
+  bool trace = emscripten::val::module_property("webnnEnableTraceEvent").as<bool>();
   emscripten::val console = emscripten::val::global("console");
   if (trace) {
     console.call<void>("time", emscripten::val("ORT::Dispatch::jsepEnsureTensor"));
