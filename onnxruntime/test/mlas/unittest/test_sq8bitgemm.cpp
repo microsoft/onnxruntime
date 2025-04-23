@@ -316,6 +316,7 @@ class MlasSQ8BitPrepackTest : public MlasTestBase {
 
       Execute<159, 16, 16, 64>();
       Execute<160, 17, 32, 64>();
+      Execute<3072, 5120, 32, 64>();
       Execute<161, 15, 64, 64>();
       Execute<160, 17, 128, 64>();
       Execute<159, 16, 256, 64>();
@@ -328,7 +329,6 @@ class MlasSQ8BitGemmKernelTest : public MlasTestBase {
   unsigned int seed_;
   std::mt19937 gen_;  // mersenne_twister_engine seeded with rd()
   std::uniform_real_distribution<float> distrib_f32_;
-  std::normal_distribution<float> norm_distrib_f32_;
   MatrixGuardBuffer<uint8_t> packedBuffer_, workspace_, packedB_, Zp_;
   MatrixGuardBuffer<float> A_, B_, C_, ref_, bias_, scale_;
 
@@ -357,6 +357,7 @@ class MlasSQ8BitGemmKernelTest : public MlasTestBase {
       for (size_t n = 0; n < N; ++n) {
         size_t i = m * ldc + n;
         ASSERT_TRUE(FloatEqual(target[i], ref[i], rtol, atol))
+            << " M " << M << " K " << K << " N " << N << " BlkLen " << BlkLen
             << " v0 " << target[i] << " v1 " << ref[i]
             << " m " << m << " n " << n;
       }
@@ -373,13 +374,13 @@ class MlasSQ8BitGemmKernelTest : public MlasTestBase {
     constexpr size_t ldc = (N + 15) & (~15);
     const auto* A = A_.GetFilledBuffer(M * lda, [this](float* p, size_t t) {
       for (size_t i = 0; i < t; i++) {
-        p[i] = this->norm_distrib_f32_(this->gen_);
+        p[i] = this->distrib_f32_(this->gen_);
       }
     });
 
     auto* B = B_.GetFilledBuffer(K * N, [this](float* p, size_t t) {
       for (size_t i = 0; i < t; i++) {
-        p[i] = this->norm_distrib_f32_(this->gen_);
+        p[i] = this->distrib_f32_(this->gen_);
       }
     });
 
@@ -459,12 +460,12 @@ class MlasSQ8BitGemmKernelTest : public MlasTestBase {
     MlasQNBitGemmBatch(M, N, K, 1, 8, BlkLen, SQNBIT_CompInt8, &data, workspace, nullptr);
 
     MatMul<M, K, N, BlkLen>(A, lda, B, bias, ref, ldc);
-    Check<M, K, N, BlkLen>(C, ref, ldc, 0.05f, 0.02f);
+    Check<M, K, N, BlkLen>(C, ref, ldc, 0.01f, 0.02f);
   }
 
  public:
   MlasSQ8BitGemmKernelTest()
-      : seed_(1234), gen_(seed_), distrib_f32_(1.f, 5.f), norm_distrib_f32_(0.f, 0.25f) {
+      : seed_(1234), gen_(seed_), distrib_f32_(-0.25f, 0.25f) {
   }
 
   static const char* GetTestSuiteName() {
@@ -483,23 +484,31 @@ class MlasSQ8BitGemmKernelTest : public MlasTestBase {
     Execute<1, 1, 1, 16>();
     Execute<7, 128, 4, 16>();
     Execute<8, 497, 5, 16>();
+    Execute<1, 3072, 128, 16>();
+    Execute<2, 3072, 128, 16>();
 
     Execute<1, 1, 1, 32>();
     Execute<2, 128, 3, 32>();
     Execute<2, 256, 3, 32>();
     Execute<8, 33, 5, 32>();
     Execute<8, 513, 9, 32>();
+    Execute<1, 3072, 128, 32>();
+    Execute<2, 3072, 128, 32>();
 
     Execute<1, 1, 1, 64>();
     Execute<2, 256, 3, 64>();
     Execute<7, 96, 5, 64>();
     Execute<8, 497, 9, 64>();
+    Execute<1, 3072, 128, 64>();
+    Execute<2, 3072, 128, 64>();
 
     Execute<1, 1, 1, 128>();
     Execute<2, 128, 3, 128>();
     Execute<2, 256, 3, 128>();
     Execute<6, 255, 7, 128>();
     Execute<5, 257, 9, 128>();
+    Execute<1, 3072, 128, 128>();
+    Execute<2, 3072, 128, 128>();
 
     Execute<1, 1, 1, 256>();
     Execute<2, 128, 4, 256>();
@@ -507,6 +516,8 @@ class MlasSQ8BitGemmKernelTest : public MlasTestBase {
     Execute<2, 256, 3, 256>();
     Execute<7, 255, 7, 256>();
     Execute<6, 257, 7, 256>();
+    Execute<1, 3072, 128, 256>();
+    Execute<2, 3072, 128, 256>();
   }
 };
 
