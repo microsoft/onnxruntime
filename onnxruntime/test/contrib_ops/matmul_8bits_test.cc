@@ -252,7 +252,7 @@ TEST(MatMulNBits, Float32_8b_Accuracy4) {
   TestMatMul8BitsTyped<float, 100, 288, 93, 128, 4>();
   TestMatMul8BitsTyped<float, 100, 288, 1234, 16, 4>();
 }
-#endif // defined(MLAS_TARGET_AMD64_IX86) && !defined(USE_DML) && !defined(USE_WEBGPU) && !defined(USE_COREML)
+#endif  // defined(MLAS_TARGET_AMD64_IX86) && !defined(USE_DML) && !defined(USE_WEBGPU) && !defined(USE_COREML)
 }  // namespace test
 }  // namespace onnxruntime
 
