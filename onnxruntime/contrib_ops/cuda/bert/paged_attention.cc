@@ -140,7 +140,9 @@ Status PagedAttention<T>::ComputeInternal(OpKernelContext* context) const {
                                                               parameters.kv_num_heads);
   size_t softmax_lse_bytes = 0;
   if (use_flash_attention) {
-    softmax_lse_bytes = onnxruntime::flash::get_softmax_lse_size(parameters.token_count, parameters.num_heads);
+    softmax_lse_bytes = onnxruntime::flash::get_softmax_lse_size(parameters.batch_size,
+                                                                  parameters.num_heads,
+                                                                  parameters.token_count);
   }
   auto softmax_lse_buffer = GetScratchBuffer<void>(softmax_lse_bytes, context->GetComputeStream());
 #else

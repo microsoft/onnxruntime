@@ -203,6 +203,19 @@ Status FlashAttention(
   const int max_num_blocks_per_seq = parameters.max_num_blocks_per_seq;
   const int block_size = parameters.block_size;
 
+  // std::cout << "batch_size: " << batch_size << std::endl;
+  // std::cout << "token_count: " << token_count << std::endl;
+  // std::cout << "max_query_len: " << max_query_len << std::endl;
+  // std::cout << "max_seq_len: " << max_seq_len << std::endl;
+  // std::cout << "kv_hidden_size: " << kv_hidden_size << std::endl;
+  // std::cout << "num_heads: " << num_heads << std::endl;
+  // std::cout << "kv_num_heads: " << kv_num_heads << std::endl;
+  // std::cout << "head_size: " << head_size << std::endl;
+  // std::cout << "softcap: " << softcap << std::endl;
+  // std::cout << "max_num_blocks_per_seq: " << max_num_blocks_per_seq << std::endl;
+  // std::cout << "block_size: " << block_size << std::endl;
+  // std::cout << "is_bf16: " << is_bf16 << std::endl;
+
   void* query = reinterpret_cast<void*>(const_cast<T*>(data.query));
   // void* key;
   // void* value;
@@ -219,12 +232,16 @@ Status FlashAttention(
   //   value = reinterpret_cast<T*>(key) + value_offset;
   // }
 
+  DUMP_TENSOR_INIT();
+
   // Calculate cumulative present sequence length in cumulative_seqlens_kv
   int* cumulative_sequence_length = const_cast<int*>(data.cumulative_sequence_length);
   int* seqlens = const_cast<int*>(data.seqlens);
   int* cumulative_seqlens_kv = data.cumulative_seqlens_kv;
   ORT_RETURN_IF_ERROR(LaunchGetCumulativeSeqlensKV(cumulative_seqlens_kv, cumulative_sequence_length, seqlens,
                                                    batch_size, stream));
+
+  // DUMP_TENSOR("cumulative_seqlens_kv", cumulative_seqlens_kv, batch_size + 1, 1);
 
   // Insert key and value into block-based KV cache
   ORT_RETURN_IF_ERROR(LaunchReshapeAndCache<T>(data.key, data.value, data.key_cache, data.value_cache,
@@ -241,13 +258,21 @@ Status FlashAttention(
   void* output = reinterpret_cast<void*>(data.output);
   void* softmax_lse = reinterpret_cast<void*>(data.softmax_lse);
   int* block_table = const_cast<int*>(data.block_table);
+
+  // DUMP_TENSOR("block_table", block_table, batch_size, max_num_blocks_per_seq);
+  // DUMP_TENSOR("cumulative_sequence_length", cumulative_sequence_length, batch_size + 1, 1);
+
+  // DUMP_TENSOR("query", data.query, batch_size, max_query_len, num_heads, head_size);
+  // DUMP_TENSOR("key", data.key, batch_size, token_count, kv_num_heads, head_size);
+  // DUMP_TENSOR("value", data.value, batch_size, token_count, kv_num_heads, head_size);
+
   ORT_RETURN_IF_ERROR(onnxruntime::flash::mha_varlen_fwd(
       device_prop, stream, query, key_cache, value_cache, output, cumulative_sequence_length, cumulative_seqlens_kv,
       /*seqused_k*/ nullptr, block_table, softmax_lse, batch_size, num_heads, kv_num_heads, head_size, max_query_len,
       max_seq_len, scale, softcap, /*is_causal*/ true, is_bf16, max_num_blocks_per_seq, block_size));
 
-  DUMP_TENSOR_INIT();
-  DUMP_TENSOR("flash attention output", data.output, batch_size, sequence_length, num_heads, head_size);
+  // DUMP_TENSOR_INIT();
+  // DUMP_TENSOR("flash attention output", data.output, batch_size, sequence_length, num_heads, head_size);
 
   return Status::OK();
 }

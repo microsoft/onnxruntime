@@ -401,7 +401,7 @@ Status mha_varlen_fwd(const cudaDeviceProp& dprops,
   params.vnew_ptr = nullptr;
   params.alibi_slopes_ptr = nullptr;
   if (paged_KV) {
-    params.block_table = block_table;  // TODO(aciddelgado): cast to int pointer
+    params.block_table = block_table;
     params.block_table_batch_stride = max_num_blocks_per_seq;
     // params.num_blocks = num_blocks;
     params.page_block_size = page_block_size;
@@ -413,6 +413,7 @@ Status mha_varlen_fwd(const cudaDeviceProp& dprops,
     // params.num_blocks = 0;
     params.page_block_size = 1;
   }
+
   run_mha_fwd(params, stream);
   return Status::OK();
 }

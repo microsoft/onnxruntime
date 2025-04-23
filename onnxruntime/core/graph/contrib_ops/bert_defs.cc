@@ -1370,8 +1370,8 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                "M")
         .Input(8,
                "max_seq_len",
-               "Scalar tensor equivalent to the maximum length of all sequences in the KV Cache after appending new tokens "
-               "(max total seqlen). This input is allocated on CPU.",
+               "Scalar tensor equivalent to the maximum length of all sequences in the KV Cache after appending new "
+               "tokens (max total seqlen). This input is allocated on CPU.",
                "M")
         .Input(9,
                "block_table",
