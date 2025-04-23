@@ -218,7 +218,7 @@ void TestMatMul8BitsTyped() {
 
 }  // namespace
 
-#if defined(MLAS_TARGET_AMD64_IX86)
+#if defined(MLAS_TARGET_AMD64_IX86) && !defined(USE_DML) && !defined(USE_WEBGPU)
 TEST(MatMulNBits, Float32_8b_Accuracy4) {
   if (!MlasIsQNBitGemmAvailable(8, 32, SQNBIT_CompInt8)) {
     GTEST_SKIP() << "Skipping test because MlasIsQNBitGemmAvailable(8, 32, SQNBIT_CompInt8) is false";
