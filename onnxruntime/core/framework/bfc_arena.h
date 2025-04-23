@@ -55,6 +55,8 @@ class StreamAwareArena;
 // all requests to allocate memory go through this interface.
 class BFCArena : public IAllocator {
  public:
+  using DeallocateCallback = std::function<void(void*, size_t)>;
+
   static const ArenaExtendStrategy DEFAULT_ARENA_EXTEND_STRATEGY = ArenaExtendStrategy::kNextPowerOfTwo;
   static const int DEFAULT_INITIAL_CHUNK_SIZE_BYTES = 1 * 1024 * 1024;
   static const int DEFAULT_MAX_DEAD_BYTES_PER_CHUNK = 128 * 1024 * 1024;
@@ -76,6 +78,11 @@ class BFCArena : public IAllocator {
            int64_t max_power_of_two_extend_bytes = DEFAULT_MAX_POWER_OF_TWO_EXTEND_BYTES);
 
   ~BFCArena() override;
+
+  // Add a method to set the callback
+  void SetDeallocateCallback(DeallocateCallback callback) {
+    dealloc_callback_ = std::move(callback);
+  }
 
   // If size is 0, then this function returns either NULL,
   // or a unique pointer value that can later be successfully
@@ -513,6 +520,8 @@ class BFCArena : public IAllocator {
   // This is a boolean flag that controls whether the first allocation region
   // is to be considered for shrinkage or not.
   bool consider_first_allocation_region_for_shrinkage_;
+
+  DeallocateCallback dealloc_callback_{};
 
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(BFCArena);
 };

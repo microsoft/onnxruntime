@@ -496,15 +496,31 @@ void BFCArena::Free(void* p) {
   if (p == nullptr) {
     return;
   }
-  std::lock_guard<std::mutex> lock(lock_);
-  auto it = reserved_chunks_.find(p);
-  if (it != reserved_chunks_.end()) {
-    device_allocator_->Free(it->first);
-    stats_.bytes_in_use -= it->second;
-    stats_.total_allocated_bytes -= it->second;
-    reserved_chunks_.erase(it);
-  } else {
-    DeallocateRawInternal(p);
+
+  size_t freed_size = 0;
+  {
+    std::lock_guard<std::mutex> lock(lock_);
+    auto it = reserved_chunks_.find(p);
+    if (it != reserved_chunks_.end()) {
+      freed_size = it->second;
+      device_allocator_->Free(it->first);
+      stats_.bytes_in_use -= it->second;
+      stats_.total_allocated_bytes -= it->second;
+      reserved_chunks_.erase(it);
+    } else {
+      // Get the size before deallocating
+      ChunkHandle h = region_manager_.get_handle(p);
+      if (h != kInvalidChunkHandle) {
+        Chunk* c = ChunkFromHandle(h);
+        freed_size = c->size;
+      }
+      DeallocateRawInternal(p);
+    }
+  }
+
+  // Invoke the callback outside the lock to avoid potential deadlocks
+  if (dealloc_callback_ && freed_size > 0) {
+    dealloc_callback_(p, freed_size);
   }
 }
 
