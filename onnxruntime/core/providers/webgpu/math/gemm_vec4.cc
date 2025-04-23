@@ -30,13 +30,19 @@ void GemmVec4Program::MatMulReadFnSource(ShaderHelper& shader) const {
 
 void GemmVec4Program::MatMulWriteFnSource(ShaderHelper& shader, const ShaderVariableHelper& output) const {
   shader.AdditionalImplementation()
-      << "fn mm_write(row: u32, col: u32, valuesIn: output_value_t) {"
-      << "var values = valuesIn;"
+      << "fn mm_write(row: u32, col: u32, valuesIn: output_value_t) { \n"
+      << "var values = valuesIn; \n"
       << "if(col < uniforms.N4 && row < uniforms.M) {";
   if (need_handle_bias_) {
     const ShaderVariableHelper& C = shader.AddInput("C", ShaderUsage::UseUniform);
-    shader.AdditionalImplementation() << "    values += uniforms.beta * "
-                                      << C.GetByOffset(C.BroadcastedIndicesToOffset("vec2(row, col)", output)) << ";\n";
+    shader.AdditionalImplementation() << "    values += uniforms.beta * ";
+    if (c_component_ == 1 && c_is_scalar_) {
+      shader.AdditionalImplementation() << "output_value_t(C[0]);\n";
+    } else if (c_component_ == 1) {
+      shader.AdditionalImplementation() << "output_value_t(C[row]);\n";
+    } else {
+      shader.AdditionalImplementation() << C.GetByOffset(C.BroadcastedIndicesToOffset("vec2(row, col)", output)) << ";\n";
+    }
   }
   shader.AdditionalImplementation() << "    output[row * uniforms.N4 + col] = values;\n"
                                     << "  }\n"
@@ -213,28 +219,13 @@ Status GemmVec4Program::GenerateShaderCode(ShaderHelper& shader) const {
   shader.MainFunctionBody() << "  let m = tile_row_start + local_idx / 8u;\n"
                             << "  let n = tile_col_start + local_idx % 8u;\n\n";
 
-  // Calculate bias
-  // if (need_handle_bias_) {
-  //   const ShaderVariableHelper& C = shader.AddInput("C", ShaderUsage::UseUniform);
-  //   shader.MainFunctionBody() << "  if (m < uniforms.M && n < uniforms.N4) {\n"
-  //                             << "    values = values + uniforms.beta * "
-  //                             << C.GetByOffset(C.BroadcastedIndicesToOffset("vec2(m, n)", output)) << ";\n"
-  //                             << "  }\n";
-  // }
-
-  // Write output
-  // shader.MainFunctionBody() << "  if (m < uniforms.M && n < uniforms.N4) {\n"
-  //                           << "    " << output.SetByOffset("m * uniforms.N4 + n", "values") << "\n"
-  //                           << "  }\n";
-
   shader.MainFunctionBody() << " mm_write(m, n, values);\n";
 
   return Status::OK();
 }
 
 bool CanApplyGemmVec4(const Tensor* a,
-                      const Tensor* b,
-                      const Tensor* c) {
+                      const Tensor* b) {
   const auto& a_shape = a->Shape();
   const auto& b_shape = b->Shape();
 
@@ -243,24 +234,7 @@ bool CanApplyGemmVec4(const Tensor* a,
   uint32_t B_rows = onnxruntime::narrow<uint32_t>(b_shape[0]);
   uint32_t B_cols = onnxruntime::narrow<uint32_t>(b_shape[1]);
 
-  if (A_rows % 4 != 0 || A_cols % 4 != 0 || B_rows % 4 != 0 || B_cols % 4 != 0) {
-    return false;
-  }
-
-  // C is optional and is might scalar or 1D.
-  // We do vec4 for C so we need to check if C is 2D and its second dimension is divisible by 4.
-  if (c == nullptr) {
-    return true;
-  }
-
-  const auto& c_shape = c->Shape();
-  if (c_shape.NumDimensions() == 2) {
-    uint32_t C_cols = onnxruntime::narrow<uint32_t>(c_shape[1]);
-    return C_cols % 4 == 0;
-  }
-
-  uint32_t C_rows = onnxruntime::narrow<uint32_t>(c_shape[0]);
-  return C_rows % 4 == 0;
+  return A_rows % 4 == 0 && A_cols % 4 == 0 && B_rows % 4 == 0 && B_cols % 4 == 0;
 }
 
 Status ApplyGemmVec4(const Tensor* a,
@@ -283,7 +257,16 @@ Status ApplyGemmVec4(const Tensor* a,
   bool need_handle_matmul = a_shape.Size() > 0 && b_shape.Size() > 0;
   bool need_handle_bias = c && beta;
 
-  GemmVec4Program program{transA_, transB_, alpha, need_handle_bias, need_handle_matmul};
+  int c_component = 4;
+  bool c_is_scalar = false;
+  if (need_handle_bias) {
+    const auto& c_shape = c->Shape();
+    int64_t c_last_dim = c_shape[c_shape.NumDimensions() - 1];
+    c_component = c_last_dim == N ? 4 : 1;
+    c_is_scalar = c_shape.Size() == 1;
+  }
+
+  GemmVec4Program program{transA_, transB_, alpha, need_handle_bias, need_handle_matmul, c_component, c_is_scalar};
 
   const int components = 4;
 
@@ -293,7 +276,7 @@ Status ApplyGemmVec4(const Tensor* a,
   }
 
   if (need_handle_bias) {
-    program.AddInput({c, ProgramTensorMetadataDependency::TypeAndRank, components});
+    program.AddInput({c, ProgramTensorMetadataDependency::TypeAndRank, c_component});
   }
 
   const uint32_t TILE_SIZE = 32;
@@ -305,15 +288,15 @@ Status ApplyGemmVec4(const Tensor* a,
       .SetDispatchGroupSize(num_tile_n * num_tile_m)
       .SetWorkgroupSize(256, 1, 1)
       .AddUniformVariables({
-          {static_cast<uint32_t>(num_tile_n)},  // num_tile_n
-          {static_cast<uint32_t>(M)},           // M
-          {static_cast<uint32_t>(N)},           // N
-          {static_cast<uint32_t>(K)},           // K
-          {static_cast<uint32_t>(M / 4)},       // M4
-          {static_cast<uint32_t>(N / 4)},       // N4
-          {static_cast<uint32_t>(K / 4)},       // K4
-          {alpha},                              // alpha
-          {beta}                                // beta
+          {num_tile_n},  // num_tile_n
+          {M},           // M
+          {N},           // N
+          {K},           // K
+          {M / 4},       // M4
+          {N / 4},       // N4
+          {K / 4},       // K4
+          {alpha},       // alpha
+          {beta}         // beta
       });
 
   return context.RunProgram(program);

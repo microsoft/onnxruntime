@@ -13,13 +13,15 @@ namespace webgpu {
 
 class GemmVec4Program final : public Program<GemmVec4Program> {
  public:
-  GemmVec4Program(bool transA, bool transB, float alpha, bool need_handle_bias, bool need_handle_matmul)
+  GemmVec4Program(bool transA, bool transB, float alpha, bool need_handle_bias, bool need_handle_matmul, int c_component, bool c_is_scalar)
       : Program{"GemmVec4"},
         transA_{transA},
         transB_{transB},
         alpha_{alpha},
         need_handle_bias_{need_handle_bias},
-        need_handle_matmul_{need_handle_matmul} {}
+        need_handle_matmul_{need_handle_matmul},
+        c_component_(c_component),
+        c_is_scalar_(c_is_scalar) {}
 
   Status GenerateShaderCode(ShaderHelper& sh) const override;
 
@@ -43,6 +45,8 @@ class GemmVec4Program final : public Program<GemmVec4Program> {
   float alpha_;
   bool need_handle_bias_;
   bool need_handle_matmul_;
+  int c_component_;
+  bool c_is_scalar_ = false;
 };
 
 Status ApplyGemmVec4(const Tensor* a,
@@ -56,8 +60,7 @@ Status ApplyGemmVec4(const Tensor* a,
                      Tensor* y);
 
 bool CanApplyGemmVec4(const Tensor* a,
-                      const Tensor* b,
-                      const Tensor* c);
+                      const Tensor* b);
 
 }  // namespace webgpu
 }  // namespace onnxruntime

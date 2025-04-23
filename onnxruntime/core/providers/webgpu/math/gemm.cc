@@ -199,7 +199,7 @@ Status Gemm::ComputeInternal(ComputeContext& context) const {
   }
 
   // First try vec4 optimization if possible
-  if (CanApplyGemmVec4(A, B, C)) {
+  if (CanApplyGemmVec4(A, B)) {
     return ApplyGemmVec4(A, B, C, transA_, transB_, alpha_, beta_, context, Y);
   }
 
@@ -227,12 +227,12 @@ Status Gemm::ComputeInternal(ComputeContext& context) const {
       .SetDispatchGroupSize(num_tile_n * num_tile_m)
       .SetWorkgroupSize(TILE_SIZE, TILE_SIZE)
       .AddUniformVariables({
-          {static_cast<uint32_t>(num_tile_n)},  // num_tile_n
-          {static_cast<uint32_t>(M)},           // M
-          {static_cast<uint32_t>(N)},           // N
-          {static_cast<uint32_t>(K)},           // K
-          {alpha_},                             // alpha
-          {beta_}                               // beta
+          {num_tile_n},  // num_tile_n
+          {M},           // M
+          {N},           // N
+          {K},           // K
+          {alpha_},      // alpha
+          {beta_}        // beta
       });
 
   return context.RunProgram(program);
