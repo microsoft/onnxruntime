@@ -7,6 +7,7 @@
 #ifdef __linux__
 
 #include <unistd.h>
+#include "core/platform/posix/hardware_core_enumerator_linux.h"
 #include <sys/syscall.h>
 #if !defined(__NR_getcpu)
 #include <asm-generic/unistd.h>
@@ -64,6 +65,7 @@ void decodeMIDR(uint32_t midr, uint32_t uarch[1]);
 #if defined(CPUIDINFO_ARCH_X86)
 #if defined(_MSC_VER)
 #include <intrin.h>
+#include "core/platform/windows/hardware_core_enumerator.h"
 #elif defined(__GNUC__)
 #include <cpuid.h>
 #endif
@@ -133,6 +135,15 @@ void CPUIDInfo::X86Init() {
         // avx512_skylake = avx512f | avx512vl | avx512cd | avx512bw | avx512dq
         has_avx512_skylake_ = has_avx512 && (data[1] & ((1 << 16) | (1 << 17) | (1 << 28) | (1 << 30) | (1 << 31)));
         is_hybrid_ = (data[3] & (1 << 15));
+        // Check for TPAUSE
+        IntelChecks checkIfIntel = checkIntel();
+        if (checkIfIntel.isIntel) {
+          if (data[2] & (1 << 5)) {
+            has_tpause_ = true;
+          } else {
+            has_tpause_ = false;
+          }
+        }
         if (max_SubLeaves >= 1) {
           GetCPUID(7, 1, data);
           has_avx512_bf16_ = has_avx512 && (data[0] & (1 << 5));

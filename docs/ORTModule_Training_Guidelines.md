@@ -208,6 +208,17 @@ debugging).
 	export ORTMODULE_ENABLE_COMPUTE_OPTIMIZER=0 # Disable
 	```
 
+#### ORT_TPAUSE
+- **Feature Area**: *ORTMODULE/Optimizations*
+- **Description**: By default, this is enabled. This env var enables the use of the `TPAUSE` instruction for spin-wait loops on supported x86_64 architectures. This
+instruction allows the processor to enter a low-power state during spin-wait periods, leading to reduced power consumption
+and improved efficiency.
+
+	```bash
+	export ORT_TPAUSE=1 # Enable
+	export ORT_TPAUSE=0 # Disable
+	```
+
 #### ORTMODULE_PRINT_INPUT_DENSITY
 
 - **Feature Area**: *ORTMODULE/RuntimeInspector*
