@@ -1264,7 +1264,7 @@ if (NOT onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
       #It will dynamically link to onnxruntime. So please don't add onxruntime_graph/onxruntime_framework/... here.
       #onnxruntime_common is kind of ok because it is thin, tiny and totally stateless.
       set(onnxruntime_perf_test_libs
-            onnx_test_runner_common onnxruntime_test_utils onnxruntime_common onnxruntime_mlas
+            onnx_test_runner_common onnxruntime_test_utils onnxruntime_common
             onnxruntime onnxruntime_flatbuffers onnx_test_data_proto
             ${onnxruntime_EXTERNAL_LIBRARIES}
             ${GETOPT_LIB_WIDE} ${SYS_PATH_LIB} ${CMAKE_DL_LIBS})
@@ -1277,7 +1277,7 @@ if (NOT onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
         list(APPEND onnxruntime_perf_test_libs ${android_shared_libs})
       endif()
       if (CMAKE_SYSTEM_NAME MATCHES "AIX")
-        list(APPEND onnxruntime_perf_test_libs onnxruntime_graph onnxruntime_session onnxruntime_providers onnxruntime_util onnxruntime_framework onnxruntime_optimizer onnxruntime_flatbuffers iconv re2 gtest absl_failure_signal_handler absl_examine_stack absl_flags_parse  absl_flags_usage absl_flags_usage_internal)
+        list(APPEND onnxruntime_perf_test_libs onnxruntime_graph onnxruntime_session onnxruntime_providers onnxruntime_util onnxruntime_mlas onnxruntime_framework onnxruntime_optimizer onnxruntime_flatbuffers iconv re2 gtest absl_failure_signal_handler absl_examine_stack absl_flags_parse  absl_flags_usage absl_flags_usage_internal)
       endif()
       target_link_libraries(onnxruntime_perf_test PRIVATE ${onnxruntime_perf_test_libs} Threads::Threads)
       if(WIN32)

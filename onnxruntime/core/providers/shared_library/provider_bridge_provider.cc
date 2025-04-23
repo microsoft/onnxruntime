@@ -11,7 +11,6 @@
 #include "core/common/inlined_containers.h"
 #include "core/framework/murmurhash3.h"
 #include "core/framework/random_generator.h"
-#include "core/mlas/inc/mlas.h"
 #include "core/providers/cpu/controlflow/if.h"
 #include "core/providers/cpu/controlflow/loop.h"
 #include "core/providers/cpu/controlflow/scan.h"
@@ -121,6 +120,10 @@ void CPUAllocator::Free(void* p) { g_host->CPUAllocator__Free(this, p); }
 
 AllocatorPtr CreateAllocator(const AllocatorCreationInfo& info) {
   return g_host->CreateAllocator(info);
+}
+
+size_t MlasGetPreferredBufferAlignment() {
+  return g_host->MlasGetPreferredBufferAlignment();
 }
 
 template <>
@@ -802,7 +805,3 @@ std::wstring ToWideString(const std::string& s) {
 }
 #endif  // _WIN32
 }  // namespace onnxruntime
-
-size_t MLASCALL MlasGetPreferredBufferAlignment() {
-  return onnxruntime::g_host->MlasGetPreferredBufferAlignment();
-}

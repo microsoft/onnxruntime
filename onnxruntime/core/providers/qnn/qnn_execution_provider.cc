@@ -1322,7 +1322,7 @@ std::vector<AllocatorPtr> QNNExecutionProvider::CreatePreferredAllocators() {
 
 OrtDevice QNNExecutionProvider::GetOrtDeviceByMemType(OrtMemType /* em_type */) const {
   if (IsHtpSharedMemoryAllocatorAvailable()) {
-    return OrtDevice(OrtDevice::CPU, OrtDevice::MemType::QNN_HTP_SHARED, 0);
+    return qnn::HtpSharedMemoryAllocator::AssociatedMemoryInfo().device;
   }
   // Default CPU allocator
   return default_device_;

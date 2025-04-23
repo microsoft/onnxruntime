@@ -5,7 +5,6 @@
 
 #include <sstream>
 #include "core/common/hash_combine.h"
-#include "core/mlas/inc/mlas.h"
 
 // Struct to represent a physical device.
 struct OrtDevice {
@@ -36,12 +35,10 @@ struct OrtDevice {
         device_id(device_id_),
         alignment(alignment) {}
 
-  // OrtDevice propagates many units and calling Mlas inline would have to change the linkage for many
-  // libs. However, we should save on calling MlasGetPreferredBufferAlignment() everytime we Alloc()
-  OrtDevice(DeviceType device_type_, MemoryType memory_type_, DeviceId device_id_) noexcept
-      : OrtDevice(device_type_, memory_type_, device_id_, ::MlasGetPreferredBufferAlignment()) {}
+  constexpr OrtDevice(DeviceType device_type_, MemoryType memory_type_, DeviceId device_id_) noexcept
+      : OrtDevice(device_type_, memory_type_, device_id_, 0) {}
 
-  OrtDevice() noexcept : OrtDevice(CPU, MemType::DEFAULT, 0) {}
+  constexpr OrtDevice() noexcept : OrtDevice(CPU, MemType::DEFAULT, 0) {}
 
   DeviceType Type() const noexcept {
     return device_type;

@@ -120,11 +120,13 @@ void* AllocatorDefaultAlloc(size_t size) {
 }
 
 void* CPUAllocator::Alloc(size_t size) {
-  return AllocatorDefaultAllocAligned(size, Info().device.GetAlignment());
+  const auto alignment = std::max(Info().device.GetAlignment(), MlasGetPreferredBufferAlignment());
+  return AllocatorDefaultAllocAligned(size, alignment);
 }
 
 void CPUAllocator::Free(void* p) {
-  AllocatorDefaultFreeAligned(p, Info().device.GetAlignment());
+  const auto alignment = std::max(Info().device.GetAlignment(), MlasGetPreferredBufferAlignment());
+  AllocatorDefaultFreeAligned(p, alignment);
 }
 
 void* AllocateBufferWithOptions(IAllocator& alloc, size_t size, bool use_reserve, Stream* stream, WaitNotificationFn wait_fn) {

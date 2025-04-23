@@ -302,6 +302,8 @@ constexpr const char* kQnnExecutionProvider = "QNNExecutionProvider";
 constexpr const char* kCpuExecutionProvider = "CPUExecutionProvider";
 constexpr const char* kAzureExecutionProvider = "AzureExecutionProvider";
 
+size_t MlasGetPreferredBufferAlignment();
+
 template <typename T>
 using IAllocatorUniquePtr = std::unique_ptr<T, std::function<void(T*)>>;
 
@@ -434,9 +436,8 @@ void InitProviderOrtApi();
 inline Env& GetDefaultEnv() {
   return g_host->Env__Default();
 }
-}  // namespace onnxruntime
 
-size_t MLASCALL MlasGetPreferredBufferAlignment();
+}  // namespace onnxruntime
 
 #define CREATE_MESSAGE(logger, severity, category, datatype) \
   ::onnxruntime::logging::Capture::Create(logger, ::onnxruntime::logging::Severity::k##severity, category, datatype, ORT_WHERE)
