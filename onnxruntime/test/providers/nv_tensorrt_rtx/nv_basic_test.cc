@@ -22,6 +22,11 @@ namespace onnxruntime {
 
 namespace test {
 
+std::string WideToUTF8(const std::wstring& wstr) {
+  std::wstring_convert<std::codecvt_utf8<wchar_t>> converter;
+  return converter.to_bytes(wstr);
+}
+
 template <typename T>
 void VerifyOutputs(const std::vector<OrtValue>& fetches, const std::vector<int64_t>& expected_dims,
                    const std::vector<T>& expected_values) {
@@ -188,7 +193,7 @@ TEST(NvExecutionProviderTest, ContextEmbedAndReload) {
     Ort::SessionOptions so;
     Ort::RunOptions run_options;
     so.AddConfigEntry("ep.context_enable", "1");
-    so.AddConfigEntry("ep.context_file_path", model_name_ctx.c_str());
+    so.AddConfigEntry("ep.context_file_path", WideToUTF8(model_name_ctx).c_str());
     so.AppendExecutionProvider("NvTensorRtRtx", {});
     Ort::Session session_object(env, model_name.c_str(), so);
     auto stop = std::chrono::high_resolution_clock::now();
@@ -232,7 +237,7 @@ TEST(NvExecutionProviderTest, ContextEmbedAndReloadDynamic) {
     Ort::SessionOptions so;
     Ort::RunOptions run_options;
     so.AddConfigEntry("ep.context_enable", "1");
-    so.AddConfigEntry("ep.context_file_path", model_name_ctx.c_str());
+    so.AddConfigEntry("ep.context_file_path", WideToUTF8(model_name_ctx).c_str());
     so.AppendExecutionProvider("NvTensorRtRtx", {});
     Ort::Session session_object(env, model_name.c_str(), so);
     auto stop = std::chrono::high_resolution_clock::now();
@@ -279,7 +284,7 @@ TEST(NvExecutionProviderTest, ContextEmbedAndReloadDataDynamic) {
     Ort::SessionOptions so;
     Ort::RunOptions run_options;
     so.AddConfigEntry("ep.context_enable", "1");
-    so.AddConfigEntry("ep.context_file_path", model_name_ctx.c_str());
+    so.AddConfigEntry("ep.context_file_path", WideToUTF8(model_name_ctx).c_str());
     so.AppendExecutionProvider("NvTensorRtRtx", {});
     Ort::Session session_object(env, model_name.c_str(), so);
     auto stop = std::chrono::high_resolution_clock::now();
