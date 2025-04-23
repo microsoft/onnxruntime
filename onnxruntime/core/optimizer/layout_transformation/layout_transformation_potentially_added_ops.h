@@ -34,6 +34,7 @@ inline constexpr std::array kLayoutTransformationPotentiallyAddedOps = {
     OpIdentifierWithStringViews{kOnnxDomain, "Identity", 16},
     OpIdentifierWithStringViews{kOnnxDomain, "Identity", 19},
     OpIdentifierWithStringViews{kOnnxDomain, "Identity", 21},
+    OpIdentifierWithStringViews{kOnnxDomain, "Identity", 23},
     OpIdentifierWithStringViews{kOnnxDomain, "QuantizeLinear", 10},
     OpIdentifierWithStringViews{kOnnxDomain, "QuantizeLinear", 13},
     OpIdentifierWithStringViews{kOnnxDomain, "QuantizeLinear", 19},
@@ -43,13 +44,16 @@ inline constexpr std::array kLayoutTransformationPotentiallyAddedOps = {
     OpIdentifierWithStringViews{kOnnxDomain, "Squeeze", 11},
     OpIdentifierWithStringViews{kOnnxDomain, "Squeeze", 13},
     OpIdentifierWithStringViews{kOnnxDomain, "Squeeze", 21},
+    OpIdentifierWithStringViews{kOnnxDomain, "Squeeze", 23},
     OpIdentifierWithStringViews{kOnnxDomain, "Transpose", 1},
     OpIdentifierWithStringViews{kOnnxDomain, "Transpose", 13},
     OpIdentifierWithStringViews{kOnnxDomain, "Transpose", 21},
+    OpIdentifierWithStringViews{kOnnxDomain, "Transpose", 23},
     OpIdentifierWithStringViews{kOnnxDomain, "Unsqueeze", 1},
     OpIdentifierWithStringViews{kOnnxDomain, "Unsqueeze", 11},
     OpIdentifierWithStringViews{kOnnxDomain, "Unsqueeze", 13},
     OpIdentifierWithStringViews{kOnnxDomain, "Unsqueeze", 21},
+    OpIdentifierWithStringViews{kOnnxDomain, "Unsqueeze", 23},
 
 #if !defined(DISABLE_CONTRIB_OPS)
     // kMSDomain ops
