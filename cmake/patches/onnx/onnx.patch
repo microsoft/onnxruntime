@@ -1,19 +1,19 @@
 diff --git a/CMakeLists.txt b/CMakeLists.txt
-index 6fe5c96e..65dbec42 100644
+index 6fe5c96e..087a7780 100644
 --- a/CMakeLists.txt
 +++ b/CMakeLists.txt
-@@ -27,6 +27,7 @@ option(ONNX_USE_LITE_PROTO "Use lite protobuf instead of full." OFF)
+@@ -40,6 +40,7 @@ option(ONNX_USE_LITE_PROTO "Use lite protobuf instead of full." OFF)
  option(ONNX_DISABLE_EXCEPTIONS "Disable exception handling." OFF)
- option(ONNX_DISABLE_STATIC_REGISTRATION "Disable static registration for onnx operator schemas." OFF)
+ option(ONNX_DISABLE_STATIC_REGISTRATION "Disable static registration for ONNX operator schemas." OFF)
  option(ONNX_USE_UNITY_BUILD "Enable Unity (Jumbo) build for" OFF)
 +option(ONNX_MINIMAL_BUILD "Build only essential ONNX components" OFF)
-
- if(NOT DEFINED ONNX_ML)
-   if(DEFINED ENV{ONNX_ML})
-@@ -457,14 +458,28 @@ relative_protobuf_generate_cpp(gen_onnx_data_proto
+ if(WIN32)
+   option(ONNX_USE_MSVC_STATIC_RUNTIME "Build with MSVC static runtime" OFF)
+ endif()
+@@ -461,14 +462,28 @@ relative_protobuf_generate_cpp(gen_onnx_data_proto
  list(APPEND ONNX_PROTO_SRCS ${__tmp_srcs})
  list(APPEND ONNX_PROTO_HDRS ${__tmp_hdrs})
-
+ 
 -file(GLOB_RECURSE __tmp_srcs "${ONNX_ROOT}/onnx/*.h" "${ONNX_ROOT}/onnx/*.cc")
 -file(GLOB_RECURSE onnx_gtests_src "${ONNX_ROOT}/onnx/test/cpp/*.h"
 -    "${ONNX_ROOT}/onnx/test/cpp/*.cc"
@@ -44,10 +44,10 @@ index 6fe5c96e..65dbec42 100644
 +    list(REMOVE_ITEM __tmp_srcs ${onnx_gtests_src})
 +    list(APPEND ONNX_SRCS ${__tmp_srcs})
 +endif()
-
+ 
  add_library(onnx_proto ${ONNX_PROTO_SRCS} ${ONNX_PROTO_HDRS})
  add_dependencies(onnx_proto gen_onnx_operators_proto gen_onnx_data_proto)
-@@ -496,6 +511,7 @@ if (MSVC)
+@@ -492,6 +507,7 @@ if(MSVC)
    endif()
  else()
    # On non-Windows, hide all symbols we don't need
@@ -55,7 +55,7 @@ index 6fe5c96e..65dbec42 100644
    set(ONNX_API_DEFINE "-DONNX_API=__attribute__\(\(__visibility__\(\"default\"\)\)\)")
    set_target_properties(onnx_proto PROPERTIES CXX_VISIBILITY_PRESET hidden)
    set_target_properties(onnx_proto PROPERTIES VISIBILITY_INLINES_HIDDEN 1)
-@@ -620,21 +621,11 @@ if(MSVC)
+@@ -620,21 +636,11 @@ if(MSVC)
                           PRIVATE /MP
                                   /wd4146 # unary minus operator applied to unsigned type,
                                           # result still unsigned
@@ -84,7 +84,7 @@ index 64366270..4aed9027 100644
 @@ -36,7 +36,7 @@ static const char* conv_transpose_auto_pad_doc =
      "on whether it is even or odd). In case the padding is an odd number, the extra "
      "padding is added at the end for SAME_UPPER and at the beginning for SAME_LOWER.";
-
+ 
 -static void convPoolShapeInference(
 +void convPoolShapeInference(
      InferenceContext& ctx,
@@ -93,20 +93,20 @@ index 64366270..4aed9027 100644
 @@ -1102,7 +1102,7 @@ ONNX_OPERATOR_SET_SCHEMA(
            convPoolShapeInference(ctx, true, false, 0, 1);
          }));
-
+ 
 -static void convTransposeShapeInference(InferenceContext& ctx) {
 +void convTransposeShapeInference(InferenceContext& ctx) {
    propagateElemTypeFromInputToOutput(ctx, 0, 0);
-
+ 
    // we need at least two inputs to have a shape for this inference.
 @@ -1462,7 +1462,7 @@ ONNX_OPERATOR_SET_SCHEMA(
          }));
-
+ 
  // For GlobalPool operations.
 -static void globalPoolTypeShapeInference(InferenceContext& ctx) {
 +void globalPoolTypeShapeInference(InferenceContext& ctx) {
    propagateElemTypeFromInputToOutput(ctx, 0, 0);
-
+ 
    // needs at least one input with shape.
 diff --git a/onnx/defs/rnn/defs.cc b/onnx/defs/rnn/defs.cc
 index c0ed3a39..6c8e2909 100644
@@ -114,12 +114,12 @@ index c0ed3a39..6c8e2909 100644
 +++ b/onnx/defs/rnn/defs.cc
 @@ -5,7 +5,7 @@
  #include "onnx/defs/schema.h"
-
+ 
  namespace ONNX_NAMESPACE {
 -static void RNNShapeInference(InferenceContext& ctx) {
 +void RNNShapeInference(InferenceContext& ctx) {
    TensorShapeProto::Dimension num_directions, seq_length, batch_size, hidden_size;
-
+ 
    auto direction = getAttribute(ctx, "direction", "forward");
 diff --git a/onnx/defs/schema.h b/onnx/defs/schema.h
 index 42318d82..a33cf342 100644
@@ -144,7 +144,7 @@ index 0aab3e26..27f32195 100644
 @@ -47,10 +47,30 @@
  #define ONNX_API ONNX_IMPORT
  #endif
-
+ 
 +#if defined(__GNUC__)
 +#pragma GCC diagnostic push
 +
@@ -165,8 +165,7 @@ index 0aab3e26..27f32195 100644
  #else
  #include "onnx/onnx.pb.h"
  #endif
-
-
+ 
 +#if defined(__GNUC__)
 +#pragma GCC diagnostic pop
 +#endif
