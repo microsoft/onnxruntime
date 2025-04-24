@@ -174,7 +174,8 @@ Status RotaryEmbeddingOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_build
     emscripten::val position_ids_range_desc = emscripten::val::object();
     position_ids_range_desc.set("shape", emscripten::val::array(position_ids_range_shape));
     position_ids_range_desc.set("dimensions", emscripten::val::array(position_ids_range_shape));
-    ORT_RETURN_IF_NOT(SetWebnnDataType(position_ids_range_desc, position_ids_data_type), "Unsupported data type");
+    ORT_RETURN_IF_NOT(SetWebnnDataType(position_ids_range_desc, position_ids_data_type),
+                      "WebNN backend does not support data type: ", position_ids_data_type);
     emscripten::val position_ids_range = wnn_builder.call<emscripten::val>(
         "constant", position_ids_range_desc, position_ids_range_buffer);
     // Add the offset to the sequence.
@@ -221,7 +222,8 @@ Status RotaryEmbeddingOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_build
   emscripten::val sign_constant_desc = emscripten::val::object();
   sign_constant_desc.set("shape", emscripten::val::array(sign_shape));
   sign_constant_desc.set("dimensions", emscripten::val::array(sign_shape));
-  ORT_RETURN_IF_NOT(SetWebnnDataType(sign_constant_desc, input_data_type), "Unsupported data type");
+  ORT_RETURN_IF_NOT(SetWebnnDataType(sign_constant_desc, input_data_type),
+                    "WebNN backend does not support data type: ", input_data_type);
   if (input_data_type == ONNX_NAMESPACE::TensorProto_DataType_FLOAT) {
     sign_buffer = emscripten::val::global("Float32Array").new_(2);
     sign_buffer.set(0, -1.0f);
