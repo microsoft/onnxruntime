@@ -928,6 +928,16 @@ if (onnxruntime_USE_TENSORRT)
   )
 endif()
 
+if (onnxruntime_USE_NV)
+  add_custom_command(
+    TARGET onnxruntime_pybind11_state POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy
+        $<TARGET_FILE:onnxruntime_providers_nv_tensorrt_rtx>
+        $<TARGET_FILE:onnxruntime_providers_shared>
+        $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/capi/
+  )
+endif()
+
 if (onnxruntime_USE_MIGRAPHX)
   add_custom_command(
     TARGET onnxruntime_pybind11_state POST_BUILD
