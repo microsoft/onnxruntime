@@ -6,7 +6,7 @@
 #include "core/providers/webnn/builders/helper.h"
 #include "core/providers/webnn/builders/model_builder.h"
 #include "core/providers/webnn/builders/op_builder_factory.h"
-#include "cmath"
+#include <cmath>
 
 #include "base_op_builder.h"
 #include "attention_helper.h"
