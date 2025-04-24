@@ -63,15 +63,13 @@ template <typename T1>
 void RunTest8Bits(const TestOptions8Bits& opts) {
   SCOPED_TRACE(opts);
 
-  static_assert(std::is_same_v<T1, float>, "unexpected type for T1");
-
   const int64_t M = opts.M,
                 K = opts.K,
                 N = opts.N;
 
   RandomValueGenerator random{1234};
-  std::vector<float> input0_vals(random.Gaussian<float>(AsSpan({M, K}), 0.0f, 0.25f));
-  std::vector<float> input1_f_vals(random.Gaussian<float>(AsSpan({K, N}), 0.0f, 0.25f));
+  std::vector<float> input0_fp32_vals(random.Gaussian<float>(AsSpan({M, K}), 0.0f, 0.25f));
+  std::vector<float> input1_fp32_vals(random.Gaussian<float>(AsSpan({K, N}), 0.0f, 0.25f));
 
   int q_rows, q_cols;
   MlasBlockwiseQuantizedShape<float, QBits>(static_cast<int>(opts.block_size), /* columnwise */ true,
@@ -94,7 +92,7 @@ void RunTest8Bits(const TestOptions8Bits& opts) {
       input1_vals.data(),
       scales.data(),
       opts.has_zero_point ? zp.data() : nullptr,
-      input1_f_vals.data(),
+      input1_fp32_vals.data(),
       static_cast<int32_t>(opts.block_size),
       true,
       static_cast<int32_t>(K),
@@ -104,7 +102,7 @@ void RunTest8Bits(const TestOptions8Bits& opts) {
 
   // Note that raw_vals is NxK after dequant
   MlasDequantizeBlockwise<float, QBits>(
-      input1_f_vals.data(),
+      input1_fp32_vals.data(),
       input1_vals.data(),
       scales.data(),
       opts.has_zero_point ? zp.data() : nullptr,
@@ -127,7 +125,7 @@ void RunTest8Bits(const TestOptions8Bits& opts) {
     for (int64_t n = 0; n < N; n++) {
       float sum = 0.0f;
       for (int64_t k = 0; k < K; k++) {
-        sum += input0_vals[m * K + k] * input1_f_vals[n * K + k];
+        sum += input0_fp32_vals[m * K + k] * input1_fp32_vals[n * K + k];
       }
       expected_vals[m * N + n] = sum + (bias.has_value() ? (*bias)[n] : 0.0f);
     }
@@ -139,9 +137,19 @@ void RunTest8Bits(const TestOptions8Bits& opts) {
   test.AddAttribute<int64_t>("block_size", opts.block_size);
   test.AddAttribute<int64_t>("bits", QBits);
   test.AddAttribute<int64_t>("accuracy_level", opts.accuracy_level);
-  test.AddInput<T1>("A", {M, K}, input0_vals, false);
+  if constexpr (std::is_same<T1, float>::value) {
+    test.AddInput<T1>("A", {M, K}, input0_fp32_vals, false);
+  } else {
+    test.AddInput<T1>("A", {M, K}, FloatsToMLFloat16s(input0_fp32_vals), false);
+  }
+
   test.AddInput<uint8_t>("B", {q_cols, q_rows}, input1_vals, true);
-  test.AddInput<T1>("scales", {static_cast<int64_t>(q_scale_size)}, scales, true);
+
+  if constexpr (std::is_same<T1, float>::value) {
+    test.AddInput<T1>("scales", {static_cast<int64_t>(q_scale_size)}, scales, true);
+  } else {
+    test.AddInput<T1>("scales", {static_cast<int64_t>(q_scale_size)}, FloatsToMLFloat16s(scales), true);
+  }
 
   if (opts.has_zero_point) {
     test.AddInput<uint8_t>("zero_points", {static_cast<int64_t>(q_zp_size_in_bytes)}, zp, true);
@@ -152,12 +160,20 @@ void RunTest8Bits(const TestOptions8Bits& opts) {
   test.AddOptionalInputEdge<int32_t>();
 
   if (bias.has_value()) {
-    test.AddInput<T1>("bias", bias_shape, *bias, true);
+    if constexpr (std::is_same<T1, float>::value) {
+      test.AddInput<T1>("bias", bias_shape, *bias, true);
+    } else {
+      test.AddInput<T1>("bias", bias_shape, FloatsToMLFloat16s(*bias), true);
+    }
   } else {
     test.AddOptionalInputEdge<T1>();
   }
 
-  test.AddOutput<T1>("Y", {M, N}, expected_vals);
+  if constexpr (std::is_same<T1, float>::value) {
+    test.AddOutput<T1>("Y", {M, N}, expected_vals);
+  } else {
+    test.AddOutput<T1>("Y", {M, N}, FloatsToMLFloat16s(expected_vals));
+  }
 
   if (opts.output_abs_error.has_value()) {
     test.SetOutputAbsErr("Y", *opts.output_abs_error);
@@ -168,18 +184,20 @@ void RunTest8Bits(const TestOptions8Bits& opts) {
   }
 
   std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
-  #ifdef USE_CUDA
+#ifdef USE_CUDA
   execution_providers.emplace_back(DefaultCudaExecutionProvider());
   test.ConfigEps(std::move(execution_providers));
   test.RunWithConfig();
   execution_providers.clear();
-  #endif
- 
-  if (MlasIsQNBitGemmAvailable(8, 32, SQNBIT_CompInt8)) {
-    execution_providers.emplace_back(DefaultCpuExecutionProvider());
-    test.ConfigEps(std::move(execution_providers));
-    test.RunWithConfig();
+#else
+  if constexpr (std::is_same<T1, float>::value) {
+    if (MlasIsQNBitGemmAvailable(8, 32, SQNBIT_CompInt8)) {
+      execution_providers.emplace_back(DefaultCpuExecutionProvider());
+      test.ConfigEps(std::move(execution_providers));
+      test.RunWithConfig();
+    }
   }
+#endif
 }
 
 template <typename AType, int M, int N, int K, int block_size, int accuracy_level>
@@ -226,7 +244,7 @@ void TestMatMul8BitsTyped() {
 }
 }  // namespace
 
-TEST(MatMulNBits, Float32_8b_AccuracyLevel4) { 
+TEST(MatMulNBits, Float32_8b_AccuracyLevel4_Float) {
   TestMatMul8BitsTyped<float, 1, 1, 16, 16, 4>();
   TestMatMul8BitsTyped<float, 1, 2, 16, 16, 4>();
   TestMatMul8BitsTyped<float, 1, 32, 16, 16, 4>();
@@ -260,6 +278,13 @@ TEST(MatMulNBits, Float32_8b_AccuracyLevel4) {
   TestMatMul8BitsTyped<float, 100, 288, 1234, 16, 4>();
   TestMatMul8BitsTyped<float, 2, 5120, 3072, 32, 4>();
 }
+
+#ifdef USE_CUDA
+TEST(MatMulNBits, Float32_8b_AccuracyLevel4_Float16) {
+  TestMatMul8BitsTyped<MLFloat16, 2, 4, 32, 16, 4>();
+  TestMatMul8BitsTyped<MLFloat16, 199, 40, 576, 32, 4>();
+}
+#endif
 
 }  // namespace test
 }  // namespace onnxruntime
