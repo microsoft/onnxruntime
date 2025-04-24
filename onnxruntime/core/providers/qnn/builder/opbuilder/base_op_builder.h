@@ -193,6 +193,7 @@ class BaseOpBuilder : public IOpBuilder {
 
         {"Reshape", QNN_OP_RESHAPE},
         {"Resize", QNN_OP_RESIZE},
+        {"Upsample", QNN_OP_RESIZE},
         {"Flatten", QNN_OP_RESHAPE},
         {"Squeeze", QNN_OP_RESHAPE},
         {"Unsqueeze", QNN_OP_RESHAPE},
