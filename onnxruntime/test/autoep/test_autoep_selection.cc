@@ -159,7 +159,7 @@ TEST(AutoEpSelection, CpuEP) {
 
 #if defined(USE_CUDA)
 TEST(AutoEpSelection, CudaEP) {
-  OrtKeyValuePairs provider_options;
+  Ort::KeyValuePairs provider_options;
   provider_options.Add("prefer_nhwc", "1");
   RunBasicTest(kCudaExecutionProvider, "onnxruntime_providers_cuda", provider_options);
 }
