@@ -324,7 +324,7 @@ static bool IsQDQGraph(const onnxruntime::GraphViewer& graph_viewer) {
 static void DumpOpenVINOEPModel([[maybe_unused]] const std::filesystem::path& onnx_model_path_name,
                                 [[maybe_unused]] ONNX_NAMESPACE::ModelProto* model_proto,
                                 [[maybe_unused]] const onnxruntime::Node& fused_node) {
-#ifndef  RELEASE
+#ifndef RELEASE
   if (openvino_ep::backend_utils::IsDebugEnabled()) {
     auto model_name = onnx_model_path_name.empty() ? "unknown.onnx" : onnx_model_path_name.filename();
 
