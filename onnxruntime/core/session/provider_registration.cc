@@ -26,6 +26,9 @@
 #include "core/providers/dml/dml_provider_factory_creator.h"
 #endif
 
+#if defined(USE_NV)
+#include "core/providers/nv_tensorrt_rtx/nv_provider_options.h"
+#endif
 using namespace onnxruntime;
 
 namespace onnxruntime {
@@ -97,6 +100,7 @@ ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider,
     JS,
     VitisAI,
     CoreML,
+    NvTensorRtRtx,  // TensorRt EP for RTX GPUs.
   };
 
   struct EpToAppend {
@@ -105,7 +109,7 @@ ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider,
     const char* canonical_name = nullptr;
   };
 
-  static std::array<EpToAppend, 11> supported_eps = {
+  static std::array<EpToAppend, 12> supported_eps = {
       EpToAppend{EpID::DML, "DML", kDmlExecutionProvider},
       EpToAppend{EpID::QNN, "QNN", kQnnExecutionProvider},
       EpToAppend{EpID::OpenVINO, "OpenVINO", kOpenVINOExecutionProvider},
@@ -117,7 +121,7 @@ ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider,
       EpToAppend{EpID::JS, "JS", kJsExecutionProvider},
       EpToAppend{EpID::VitisAI, "VitisAI", kVitisAIExecutionProvider},
       EpToAppend{EpID::CoreML, "CoreML", kCoreMLExecutionProvider},
-  };
+      EpToAppend{EpID::NvTensorRtRtx, "NvTensorRtRtx", kNvTensorRTRTXExecutionProvider}};
 
   ProviderOptions provider_options;
   OrtStatus* status = ParseProviderOptions(provider_options_keys,
@@ -278,6 +282,18 @@ ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider,
     case EpID::CoreML: {
 #if defined(USE_COREML)
       options->provider_factories.push_back(CoreMLProviderFactoryCreator::Create(provider_options));
+#else
+      status = create_not_supported_status();
+#endif
+      break;
+    }
+    case EpID::NvTensorRtRtx: {
+#if defined(USE_NV)
+      auto factory = onnxruntime::NvProviderFactoryCreator::Create(provider_options);
+      if (!factory) {
+        return OrtApis::CreateStatus(ORT_FAIL, "SessionOptionsAppendExecutionProvider_Nv_TensorRT_RTX: Failed to load shared library");
+      }
+      options->provider_factories.push_back(factory);
 #else
       status = create_not_supported_status();
 #endif

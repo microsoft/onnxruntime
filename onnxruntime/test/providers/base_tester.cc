@@ -658,6 +658,7 @@ void BaseTester::RunWithConfig(size_t* number_of_pre_packed_weights_counter,
 #endif
           kDnnlExecutionProvider,
           kTensorrtExecutionProvider,
+          kNvTensorRTRTXExecutionProvider,
           kOpenVINOExecutionProvider,
           kDmlExecutionProvider,
           kAclExecutionProvider,
@@ -700,6 +701,8 @@ void BaseTester::RunWithConfig(size_t* number_of_pre_packed_weights_counter,
           execution_provider = DefaultDnnlExecutionProvider();
         else if (provider_type == onnxruntime::kOpenVINOExecutionProvider)
           execution_provider = DefaultOpenVINOExecutionProvider();
+        else if (provider_type == onnxruntime::kNvTensorRTRTXExecutionProvider)
+          execution_provider = DefaultNvTensorRTRTXExecutionProvider();
         else if (provider_type == onnxruntime::kTensorrtExecutionProvider)
           execution_provider = DefaultTensorrtExecutionProvider();
         else if (provider_type == onnxruntime::kNnapiExecutionProvider)
