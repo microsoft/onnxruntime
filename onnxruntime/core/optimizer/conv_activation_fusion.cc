@@ -74,16 +74,8 @@ class ConvActivationSelector : public NodeSelector {
   std::optional<NodesToOptimizeIndices> Select(const GraphViewer& graph_viewer, const Node& node) const override {
     const std::string_view node_ep = node.GetExecutionProviderType();
     const auto* next_node = GetLoneConsumerNode(graph_viewer, node);
-    if (!next_node) {
-      return std::nullopt;
-    }
-
-    // Don't fuse with `next_node` if it has more than one input edge.
-    if (next_node->GetInputEdgesCount() != 1) {
-      return std::nullopt;
-    }
-
-    if (next_node->GetExecutionProviderType() != node_ep) {
+    if (!next_node ||
+        next_node->GetExecutionProviderType() != node_ep) {
       return std::nullopt;
     }
 
