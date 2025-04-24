@@ -8,6 +8,8 @@
 #include <algorithm>
 #include <shared_mutex>
 
+#include <gsl/gsl>
+
 #include "core/providers/qnn/ort_api.h"
 
 namespace onnxruntime::qnn {
@@ -29,6 +31,9 @@ std::unique_ptr<void, void (*)(void*)> WrapSharedMemoryWithUniquePtr(void* share
   return {shared_memory_raw, rpcmem_api.free};
 }
 
+// This class tracks information about allocations made by `HtpSharedMemoryAllocator` instances.
+// Given an address within a tracked allocation, we can look up information about it like the base address and the
+// allocating allocator instance.
 class AllocationTracker {
  public:
   struct Record {
@@ -37,8 +42,17 @@ class AllocationTracker {
     gsl::not_null<HtpSharedMemoryAllocator*> allocator;
   };
 
-  bool RegisterAllocation(void* base_address, size_t size, HtpSharedMemoryAllocator& allocator);
+  // Starts tracking an allocation.
+  // Returns true if successful, or false if there is already a tracked allocation at `base_address`.
+  bool RegisterAllocation(void* base_address, size_t size_in_bytes, HtpSharedMemoryAllocator& allocator);
+
+  // Stops tracking an allocation.
+  // Returns true if successful, or false if there is no tracked allocation at `base_address`.
   bool UnregisterAllocation(void* base_address);
+
+  // Looks up a tracked allocation's record.
+  // Returns the record associated with the tracked allocation containing `address_within_allocation`,
+  // or `std::nullopt` if there is no such tracked allocation.
   std::optional<Record> LookUp(void* address_within_allocation);
 
  private:
