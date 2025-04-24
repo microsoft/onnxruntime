@@ -726,13 +726,6 @@ class PlannerImpl {
       ProcessDef(index, graph_viewer_.GetNodeArg(pair.first));
     }
 
-    // Check if should prefer the destination node EP.
-    auto UseEpSpecificAllocator = [](const std::string& provider_type) {
-      return provider_type == kQnnExecutionProvider ||
-             provider_type == kVitisAIExecutionProvider ||
-             provider_type == kVSINPUExecutionProvider;
-    };
-
     InlinedHashSet<OrtValueIndex> set_node_arg_has_explicit_consumer;
 
     InlinedHashMap<OrtValueIndex, const IExecutionProvider*> map_implicitly_consumed_node_arg_to_ep;
@@ -766,7 +759,6 @@ class PlannerImpl {
                               &set_node_arg_has_explicit_consumer,
                               &map_implicitly_consumed_node_arg_to_ep,
                               &set_implicitly_consumed_node_arg_has_heterogenous_ep_consumers,
-                              &UseEpSpecificAllocator,
                               this](const NodeArg& input, size_t arg_idx) {
           const auto& name = input.Name();
 
@@ -865,12 +857,22 @@ class PlannerImpl {
                     // we have seen
                     plan_.SetLocation(static_cast<size_t>(index), exec_provider->GetOrtDeviceByMemType(OrtMemType::OrtMemTypeDefault));
                   } else {
-                    // Either override from the provider or set the location to CPU
-                    const auto& provider = (UseEpSpecificAllocator(exec_provider->Type()))
-                                               ? exec_provider
-                                               : execution_providers_.Get(CPU);
-                    plan_.SetLocation(static_cast<size_t>(index),
-                                      provider->GetOrtDeviceByMemType(OrtMemType::OrtMemTypeDefault));
+                    // We want to minimize the amount of copies, so we want at least one
+                    // device to match or match both if they are CPU based.
+                    OrtDevice result;
+                    auto first_device = already_seen_ep_for_node_arg->second->GetOrtDeviceByMemType(OrtMemType::OrtMemTypeDefault);
+                    auto second_device = exec_provider->GetOrtDeviceByMemType(OrtMemType::OrtMemTypeDefault);
+                    if (first_device.Type() == OrtDevice::CPU && second_device.Type() == OrtDevice::CPU) {
+                      if (first_device.MemType() == OrtDevice::MemType::DEFAULT &&
+                          second_device.MemType() == OrtDevice::MemType::DEFAULT) {
+                        result = (first_device.GetAlignment() >= second_device.GetAlignment()) ? first_device : second_device;
+                      } else {
+                        result = (first_device.MemType() != OrtDevice::MemType::DEFAULT) ? first_device : second_device;
+                      }
+                    } else {
+                      result = (first_device.Type() == OrtDevice::CPU) ? first_device : second_device;
+                    }
+                    plan_.SetLocation(static_cast<size_t>(index), result);
                     set_implicitly_consumed_node_arg_has_heterogenous_ep_consumers.insert(index);
                   }
                 }
@@ -897,7 +899,9 @@ class PlannerImpl {
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
           // Downstream nodes of certain providers may require a CPU accessible location override
           // to make sure the EP does not incur an unnecessary copy.
-          // We only do it for default CPU locations
+          // We only do it for CPU based EPs. We are not likely to encounter
+          // non CPU devices here since they are already taken care of by using MemCpy nodes earlier.
+          // However, we still ignore them.
           if (output_device.Type() == OrtDevice::CPU &&
               output_device.MemType() == OrtDevice::MemType::DEFAULT) {
             const auto& output_name = node_output->Name();
@@ -905,9 +909,24 @@ class PlannerImpl {
             for (const auto* consumer : consumers) {
               if (consumer != nullptr) {
                 const auto& ep_type = consumer->GetExecutionProviderType();
-                if (UseEpSpecificAllocator(ep_type)) {
-                  output_device = execution_providers_.Get(ep_type)->GetOrtDeviceByMemType(
-                      OrtMemType::OrtMemTypeCPUInput);
+                auto suggested_device = execution_providers_.Get(ep_type)->GetOrtDeviceByMemType(
+                    OrtMemType::OrtMemTypeCPUInput);
+                // If the suggested_device is also CPU and default mem type, then
+                // we check which one has higher alignment and use that one
+                // if it is so.
+                if (suggested_device.Type() == OrtDevice::CPU &&
+                    suggested_device.MemType() == OrtDevice::MemType::DEFAULT) {
+                  if (suggested_device.GetAlignment() > output_device.GetAlignment()) {
+                    output_device = suggested_device;
+                  }
+                } else if (suggested_device.Type() == OrtDevice::CPU &&
+                           suggested_device.MemType() != OrtDevice::MemType::DEFAULT) {
+                  // If the suggested device is CPU, but not the default mem type, then
+                  // it is a CPU accessible memory device allocator. They typically have a page aligment
+                  // so that would satisfy the alignment requirement of any other CPU consumers.
+                  // Edge case: there are more than one downstream nodes that suggest their own CPU accessible
+                  // memory. In that case, we can not win them all, but the chosen device would still make it run.
+                  output_device = suggested_device;
                   break;
                 }
               }
