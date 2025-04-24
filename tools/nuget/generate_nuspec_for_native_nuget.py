@@ -282,6 +282,7 @@ def generate_dependencies(xml_text, package_name, version):
             xml_text.append(dml_dependency)
         xml_text.append("</group>")
         if package_name == "Microsoft.ML.OnnxRuntime":
+            xml_text.append('<group targetFramework="native" />')
             # Support net8.0-android
             xml_text.append('<group targetFramework="net8.0-android31.0">')
             xml_text.append('<dependency id="Microsoft.ML.OnnxRuntime.Managed"' + ' version="' + version + '"/>')
