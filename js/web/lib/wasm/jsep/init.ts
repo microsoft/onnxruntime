@@ -292,7 +292,7 @@ export const init = async (
       // jsepDownloadTensor
       async (tensorId: number, dstBuffer: ArrayBufferView | ArrayBuffer) => backend.downloadTensor(tensorId, dstBuffer),
       // jsepEnableTraceEvent
-      env.trace,
+      !!env.trace,
     ]);
   }
 };
