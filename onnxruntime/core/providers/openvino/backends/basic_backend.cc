@@ -125,12 +125,10 @@ BasicBackend::BasicBackend(std::unique_ptr<ONNX_NAMESPACE::ModelProto>& model_pr
   std::function<void(OVInferRequestPtr)> initializer = [](OVInferRequestPtr) {};
   auto metadata = shared_context_.shared_weights.metadata;
   if (session_context_.so_share_ep_contexts) {
-    // When shared ep contexts is set external weight references are transformed to model inputs. This
-    // creates an initializer to populate/bind input weight tensors to each inference request
     initializer = [&metadata](OVInferRequestPtr ir_ptr) {
       const auto input_count = ir_ptr->GetNumInputs();
       for (auto i = 0u; i < input_count; i++) {
-        using Key = Metadata::Key;
+        using Key = SharedContext::SharedWeights::Metadata::Key;
         const auto tensor_key = Key{ir_ptr->GetInputTensorName(i)};
         if (metadata.contains(tensor_key)) {
           auto& value = metadata.at(tensor_key);
@@ -139,8 +137,6 @@ BasicBackend::BasicBackend(std::unique_ptr<ONNX_NAMESPACE::ModelProto>& model_pr
       }
     };
   }
-
-  // Create inference request queue and initialize according to passed function
   inferRequestsQueue_ = std::unique_ptr<InferRequestsQueue>(new InferRequestsQueue(exe_network_, num_infer_req, std::move(initializer)));
 }
 

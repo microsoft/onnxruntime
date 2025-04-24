@@ -83,23 +83,22 @@ BackendManager::BackendManager(SessionContext& session_context,
   }
   std::string device_type = session_context_.device_type;
 
-  // Check if model is using external weights
-  if (auto filename = backend_utils::GetExternalWeightFilename(subgraph)) {
-    std::filesystem::path weights_filepath = session_context_.onnx_model_path_name.parent_path() / filename.value();
-
-    // Initialize external weights with fully qualified path
-    if (!std::filesystem::exists(weights_filepath)) {
-      ORT_THROW("Error: Failed to locate weight file at ", weights_filepath.string());
-    }
-
-    external_weights_.emplace(weights_filepath);
-  }
-
+  auto& sw = shared_context_.shared_weights;
   if (session_context_.so_share_ep_contexts) {
-    ORT_ENFORCE(external_weights_.has_value(), "Expected external weight object to be valid");
-    backend_utils::CreateOVTensors(session_context_.device_type,
-                                   shared_context_.shared_weights.metadata,
-                                   external_weights_.value());
+    std::filesystem::path weight_filename = session_context_.onnx_model_path_name.parent_path();
+    if (sw.external_weight_filename.empty() && !sw.metadata.empty()) {
+      // Reasonable assumption that all metadata entries have the same external file location
+      sw.external_weight_filename = sw.metadata.begin()->second.location;
+    }
+    weight_filename /= sw.external_weight_filename;
+    std::ifstream weight_file(weight_filename);
+
+    if (weight_file) {
+      if (!sw.mapped_weights) {
+        sw.mapped_weights = std::make_unique<SharedContext::SharedWeights::WeightsFile>(weight_filename);
+      }
+      backend_utils::CreateOVTensors(session_context_.device_type, sw.metadata, *sw.mapped_weights);
+    }
   }
 
   if (ModelHasSymbolicInputDims(subgraph)) {
@@ -325,7 +324,7 @@ static bool IsQDQGraph(const onnxruntime::GraphViewer& graph_viewer) {
 static void DumpOpenVINOEPModel([[maybe_unused]] const std::filesystem::path& onnx_model_path_name,
                                 [[maybe_unused]] ONNX_NAMESPACE::ModelProto* model_proto,
                                 [[maybe_unused]] const onnxruntime::Node& fused_node) {
-#ifdef NOT_RELEASE
+#ifndef  RELEASE
   if (openvino_ep::backend_utils::IsDebugEnabled()) {
     auto model_name = onnx_model_path_name.empty() ? "unknown.onnx" : onnx_model_path_name.filename();
 
@@ -385,12 +384,7 @@ BackendManager::GetModelProtoFromFusedNode(const onnxruntime::Node& fused_node,
   if (session_context_.device_type.find("NPU") != std::string::npos &&
       (enable_ovep_qdq_optimizer || session_context_.so_share_ep_contexts)) {
     std::unique_ptr<onnxruntime::Model> model;
-    Status status = CreateModelWithStrippedQDQNodes(subgraph,
-                                                    logger,
-                                                    session_context_.so_share_ep_contexts,
-                                                    enable_ovep_qdq_optimizer,
-                                                    model,
-                                                    shared_context_.shared_weights.metadata);
+    Status status = CreateModelWithStrippedQDQNodes(subgraph, logger, session_context_.so_share_ep_contexts, enable_ovep_qdq_optimizer, model, shared_context_.shared_weights);
     auto model_proto = model->ToProto();
     model_proto->set_ir_version(ONNX_NAMESPACE::Version::IR_VERSION);
     print_model_proto_duration();

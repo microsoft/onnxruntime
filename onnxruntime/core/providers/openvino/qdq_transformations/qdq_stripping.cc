@@ -11,7 +11,6 @@
 #include <algorithm>
 #include <unordered_map>
 #include <unordered_set>
-#include <utility>
 
 #include "core/providers/shared_library/provider_api.h"
 #include "core/providers/openvino/qdq_transformations/qdq_stripping.h"
@@ -684,10 +683,10 @@ static void AddInitializerAsInput(onnxruntime::Graph& dst_graph,
 // Creates a new model without the DQ/Q operators in the src graph.
 Status CreateModelWithStrippedQDQNodes(const GraphViewer& src_graph,
                                        const logging::Logger& logger,
-                                       bool transform_weight_as_input,
+                                       bool enable_ovep_weight_sharing,
                                        bool enable_ovep_qdq_optimizer,
                                        /*out*/ std::unique_ptr<onnxruntime::Model>& model,
-                                       /*out*/ Metadata::Map& weight_metadata) {
+                                       /*out*/ sw& shared_weights) {
   // NOTE: This function is a re-implementation of GraphViewerToProto() in core/graph/graph_proto_serializer.cc
   // with the following differences:
   //   - Uses onnxruntime::Graph APIs instead of onnx::GraphProto APIs.
@@ -778,7 +777,7 @@ Status CreateModelWithStrippedQDQNodes(const GraphViewer& src_graph,
       continue;  // Already handled this node unit
     }
 
-    bool IsWeightSharingWithoutOVEPQDQStripping = transform_weight_as_input && !enable_ovep_qdq_optimizer;
+    bool IsWeightSharingWithoutOVEPQDQStripping = enable_ovep_weight_sharing && !enable_ovep_qdq_optimizer;
 
     if (node_unit->UnitType() == NodeUnit::Type::SingleNode) {
       AddStandaloneNodeUnit(dst_graph, src_graph, *node_unit, initializers_to_keep, IsWeightSharingWithoutOVEPQDQStripping, logger);
@@ -803,9 +802,11 @@ Status CreateModelWithStrippedQDQNodes(const GraphViewer& src_graph,
   std::sort(const_inits.begin(), const_inits.end());
 
   // initialize map for creating metadata for initilizers with external weights
-  const auto& insert_metadata = [&weight_metadata](const ONNX_NAMESPACE::TensorProto& proto) {
-    Metadata::Map::key_type key{proto.name()};
-    Metadata::Map::mapped_type value{};
+  auto& metadata = shared_weights.metadata;
+
+  const auto& insert_metadata = [&metadata](const ONNX_NAMESPACE::TensorProto& proto) {
+    sw::Metadata::Map::key_type key{proto.name()};
+    sw::Metadata::Map::mapped_type value{};
 
     using mutable_proto_t = ONNX_NAMESPACE::TensorProto*;
     auto& mutable_proto = *const_cast<mutable_proto_t>(&proto);
@@ -828,7 +829,7 @@ Status CreateModelWithStrippedQDQNodes(const GraphViewer& src_graph,
       dim = proto.dims()[index++];
     }
 
-    weight_metadata.emplace(key, std::move(value));
+    metadata.emplace(key, std::move(value));
   };
 
   // Handle constant initializers
@@ -838,7 +839,7 @@ Status CreateModelWithStrippedQDQNodes(const GraphViewer& src_graph,
     // Check if the initializer has external data
     if (initializer_tensor.has_data_location() &&
         initializer_tensor.data_location() == ONNX_NAMESPACE::TensorProto_DataLocation_EXTERNAL &&
-        transform_weight_as_input) {
+        enable_ovep_weight_sharing) {
       insert_metadata(initializer_tensor);
 
       // Add initializer with external data as input
@@ -866,7 +867,7 @@ Status CreateModelWithStrippedQDQNodes(const GraphViewer& src_graph,
         // Check if the initializer has external data
         if (initializer_tensor.has_data_location() &&
             initializer_tensor.data_location() == ONNX_NAMESPACE::TensorProto_DataLocation_EXTERNAL &&
-            transform_weight_as_input) {
+            enable_ovep_weight_sharing) {
           insert_metadata(initializer_tensor);
 
           // Add initializer as input if it has external data

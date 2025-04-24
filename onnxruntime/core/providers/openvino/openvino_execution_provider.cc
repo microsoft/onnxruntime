@@ -65,7 +65,6 @@ OpenVINOExecutionProvider::~OpenVINOExecutionProvider() {
     backend_manager.ShutdownBackendManager();
   }
   backend_managers_.clear();
-  shared_context_.reset();
 }
 
 std::vector<std::unique_ptr<ComputeCapability>>
@@ -107,12 +106,7 @@ common::Status OpenVINOExecutionProvider::Compile(
   auto& metadata = shared_context_->shared_weights.metadata;
   if (session_context_.so_share_ep_contexts && metadata.empty()) {
     // Metadata is always read from model location, this could be a source or epctx model
-    fs::path metadata_filename;
-    if (session_context_.so_context_file_path.empty()) {
-      metadata_filename = session_context_.onnx_model_path_name.parent_path() / "metadata.bin";
-    } else {
-      metadata_filename = session_context_.so_context_file_path.parent_path() / "metadata.bin";
-    }
+    fs::path metadata_filename = session_context_.onnx_model_path_name.parent_path() / "metadata.bin";
     std::ifstream file(metadata_filename, std::ios::binary);
     if (file) {
       file >> metadata;
@@ -195,10 +189,6 @@ common::Status OpenVINOExecutionProvider::Compile(
     if (file) {
       file << metadata;
     }
-  }
-
-  if (session_context_.so_stop_share_ep_contexts) {
-    shared_context_->clear();
   }
 
   return status;
