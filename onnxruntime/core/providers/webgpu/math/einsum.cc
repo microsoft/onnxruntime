@@ -430,7 +430,6 @@ Status Einsum::ComputeInternal(ComputeContext& context) const {
     input_tensors.push_back(context.Input<Tensor>(i));
   }
 
-
   // TODO: The EinsumEquation initialization could potentially be done during model loading
   // based on input/output shape inference results. This would improve runtime performance
   // by avoiding redundant initialization on every compute call.
