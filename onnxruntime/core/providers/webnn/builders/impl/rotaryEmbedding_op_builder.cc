@@ -93,8 +93,9 @@ Status RotaryEmbeddingOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_build
   uint32_t num_heads = helper.Get("num_heads", 0);
   uint32_t rotary_embedding_dim = helper.Get("rotary_embedding_dim", 0);
 
-  // The input is either with 3D tensor shape (batch_size, sequence_length, hidden_size) or
-  // 4D tensor shape (batch_size, num_heads, sequence_length, head_size)
+  // The input can be:
+  // - 3D: [batch_size, sequence_length, hidden_size]
+  // - 4D: [batch_size, num_heads, sequence_length, head_size]
   const uint32_t batch_size = static_cast<uint32_t>(input_shape[0]);
   const uint32_t sequence_length = input_is_4d ? static_cast<uint32_t>(input_shape[2])
                                                : static_cast<uint32_t>(input_shape[1]);
@@ -109,9 +110,19 @@ Status RotaryEmbeddingOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_build
     rotary_embedding_dim = head_size;
   }
 
-  // First ensure the input has shape (batch_size, num_heads, sequence_length, head_size).
-  if (!input_is_4d) {
-    const std::vector<uint32_t> new_shape{batch_size, num_heads, sequence_length, head_size};
+  emscripten::val transpose_options = emscripten::val::object();
+
+  // Ensure the input is reshaped to: [batch_size, sequence_length, num_heads, head_size].
+  if (input_is_4d) {
+    // The input is already in 4D shape, but we need to ensure the order is
+    // [batch_size, sequence_length, num_heads, head_size] to make it broadcastable with
+    // the coming mul operator with cos_cache and sin_cache.
+    const std::vector<uint32_t> permutation{0, 2, 1, 3};
+    transpose_options.set("label", node_name + "_transpose_input");
+    transpose_options.set("permutation", emscripten::val::array(permutation));
+    input = wnn_builder.call<emscripten::val>("transpose", input, transpose_options);
+  } else {
+    const std::vector<uint32_t> new_shape{batch_size, sequence_length, num_heads, head_size};
     emscripten::val reshape_input_options = emscripten::val::object();
     reshape_input_options.set("label", node_name + "_reshape_input");
     input = wnn_builder.call<emscripten::val>(
@@ -276,12 +287,21 @@ Status RotaryEmbeddingOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_build
     output = wnn_builder.call<emscripten::val>("concat", concat_inputs, 3, concat_back_input_options);
   }
 
-  // Reshape the output to the original shape. The output shape is the same as the input shape.
-  const std::vector<uint32_t> output_shape = GetNarrowedIntfromInt64<uint32_t>(input_shape);
-  emscripten::val reshape_output_options = emscripten::val::object();
-  reshape_output_options.set("label", node_name + "_reshape_output");
-  output = wnn_builder.call<emscripten::val>(
-      "reshape", output, emscripten::val::array(output_shape), reshape_output_options);
+  if (input_is_4d) {
+    // The output is in 4D shape, we need to transpose it back to the original shape.
+    // Reuse the transpose_options' permutation because the original permutation also
+    // happens to be its own inverse. (inserve({0, 2, 1, 3} == {0, 2, 1, 3})
+    transpose_options.set("label", node_name + "_transpose_output");
+    output = wnn_builder.call<emscripten::val>("transpose", output, transpose_options);
+  } else {
+    // The output is in 3D shape, we need to reshape it back to the original shape.
+    // The output shape is same as the input shape.
+    const std::vector<uint32_t> output_shape = GetNarrowedIntfromInt64<uint32_t>(input_shape);
+    emscripten::val reshape_output_options = emscripten::val::object();
+    reshape_output_options.set("label", node_name + "_reshape_output");
+    output = wnn_builder.call<emscripten::val>(
+        "reshape", output, emscripten::val::array(output_shape), reshape_output_options);
+  }
 
   model_builder.AddOperand(node.OutputDefs()[0]->Name(), std::move(output));
   return Status::OK();
