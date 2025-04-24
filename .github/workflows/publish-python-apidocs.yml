@@ -13,7 +13,8 @@ on:
   workflow_dispatch:
 
 concurrency:
-  group: "apidocs-python"
+  group: "${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.ref
+    || github.sha }}"
   cancel-in-progress: true
 
 permissions:

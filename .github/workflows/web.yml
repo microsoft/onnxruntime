@@ -12,7 +12,8 @@ on:
   workflow_dispatch:
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
+  group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.ref
+    || github.sha }}
   cancel-in-progress: true
 
 jobs:
@@ -48,7 +49,8 @@ jobs:
     uses: ./.github/workflows/linux-wasm-ci-build-and-test-workflow.yml
     with:
       build_config: Release
-      extra_build_args: "--target onnxruntime_webassembly --skip_tests --enable_wasm_api_exception_catching --disable_rtti"
+      extra_build_args: "--target onnxruntime_webassembly --skip_tests --enable_wasm_api_exception_catching
+        --disable_rtti"
       build_jsep: true
       build_webgpu: true
 

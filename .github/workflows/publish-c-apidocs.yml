@@ -13,8 +13,9 @@ on:
   workflow_dispatch:
 
 concurrency:
-  group: "apidocs-c"
-  cancel-in-progress: false
+  group: "${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.ref
+    || github.sha }}"
+  cancel-in-progress: true
 
 permissions:
   contents: write

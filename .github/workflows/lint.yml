@@ -9,7 +9,8 @@ on:
   workflow_dispatch:
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}-${{ github.event_name == 'workflow_dispatch' }}
+  group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.ref
+    || github.sha }}
   cancel-in-progress: true
 
 jobs:
@@ -84,44 +85,25 @@ jobs:
           checkout_path: ${{ github.workspace }}
 
   lint-cpp:
-    name: Optional Lint C++
-    runs-on: ubuntu-latest
+    runs-on:
+      - self-hosted
+      - "1ES.Pool=onnxruntime-github-Ubuntu2204-AMD-CPU"
     steps:
-      - uses: actions/checkout@master
-      - name: Update PATH
-        run: |
-          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
-
-      - name: Install ninja
-        run: python -m pip install --user --upgrade ninja
-      - name: Generate compile_commands.json
-        run: |
-          python tools/ci_build/build.py \
-            --cmake_generator "Ninja" \
-            --build_dir build \
-            --update \
-            --cmake_extra_defines CMAKE_EXPORT_COMPILE_COMMANDS=ON
-      - name: Generate ONNX protobuf files
-        run: cmake --build build/Debug --config Debug --target onnx_proto
-      - uses: reviewdog/action-cpplint@master
-        continue-on-error: true
+      - name: Checkout code
+        uses: actions/checkout@v4
         with:
-          github_token: ${{ secrets.github_token }}
-          reporter: github-pr-check
-          level: info
-          flags: --linelength=120
-            --exclude=java/src/main/native/*.c
-            --exclude=onnxruntime/core/mlas/inc/*
-            --exclude=onnxruntime/core/mlas/lib/*
-            --exclude=onnxruntime/contrib_ops/cuda/bert/flash_attention/*
-            --exclude=build/Debug/*
-            --exclude=cmake/*
-            --exclude=csharp/test/*
-            --exclude=onnxruntime/core/providers/dml/DmlExecutionProvider/src/Operators/GeneratedShaders/*
-            --exclude=orttraining/orttraining/test/*
-            --exclude=onnxruntime/test/*
-            --exclude=winml/*
-          filter: "-runtime/references"
+          submodules: 'false'
+
+      - name: Check format
+        uses: microsoft/onnxruntime-github-actions/format-lint-check@v0.0.6
+        with:
+          llvm-version: '20.1.0'
+          llvm-sha256-hash: '954ac51498519f6ed9540714fb04bc401f70039b296a8160dd1559be380788d7'
+          ignore-patterns: "java/**\n**/*_defs.cc\nonnxruntime/core/mlas/inc/**\nonnxruntime/core/mlas/lib/**\n\
+            onnxruntime/contrib_ops/cuda/bert/tensorrt_fused_multihead_attention/**\n\
+            onnxruntime/contrib_ops/cuda/bert/flash_attention/**\ncsharp/test/**\n\
+            onnxruntime/core/providers/dml/DmlExecutionProvider/src/Operators/GeneratedShaders/*\n\
+            orttraining/orttraining/test/**\nonnxruntime/test/**\nwinml/**\nonnxruntime/core/flatbuffers/schema/**"
 
   lint-js:
     name: Lint JavaScript
