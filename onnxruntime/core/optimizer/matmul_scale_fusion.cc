@@ -32,8 +32,7 @@ std::optional<TensorShape> GetTensorShape(const NodeArg& node_arg) {
     return std::nullopt;
   }
 
-  const auto shape = utils::GetTensorShapeFromTensorShapeProto(*shape_proto);
-  return shape;
+  return utils::GetTensorShapeFromTensorShapeProto(*shape_proto);
 }
 
 // Note: In this context, we consider a scalar to be a single element tensor with rank up to `max_rank`.
