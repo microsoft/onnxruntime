@@ -6,11 +6,11 @@ Licensed under the MIT License.
 
 Module Name:
 
-    test_hqnbitgemm_neon.cpp
+    test_sq8bitgemm_neon.cpp
 
 Abstract:
 
-    Tests for MLAS n-bit int block quantized GEMM on ARM CPU with input A type T1 fp16.
+    Tests for MatMul8Bits kernels on x86 CPU with input A type T1 fp32.
 
 --*/
 
