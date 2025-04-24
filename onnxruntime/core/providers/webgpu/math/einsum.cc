@@ -225,10 +225,11 @@ Status EinsumProgram::GenerateShaderCode(ShaderHelper& shader) const {
       shader.AddOutput("output", ShaderUsage::UseUniform | ShaderUsage::UseValueTypeAlias);
 
   // Helper variables for shader generation.
-  std::vector<std::string> idx_copy;
   std::string init_prod = "var prod = 1.0;";
   std::string init_sum = "var sum = 0.0;";
   std::string update_sum = "sum += prod;";
+  std::vector<std::string> idx_copy;
+  std::vector<std::string> reduce_ops;
   std::vector<std::string> reduce_ops_set_indices;
   std::vector<std::string> reduce_ops_loop_headers;
   std::vector<std::string> reduce_ops_loop_footers;
@@ -339,7 +340,6 @@ Status EinsumProgram::GenerateShaderCode(ShaderHelper& shader) const {
     }
   }
 
-  std::vector<std::string> reduce_ops = idx_copy;
   // Generate shader code based on reduction type.
   if (is_reduce_ops_without_loop) {
     // Direct multiplication without reduction loops.
@@ -350,7 +350,6 @@ Status EinsumProgram::GenerateShaderCode(ShaderHelper& shader) const {
     }
 
     sum_statement += ";";
-
     reduce_ops.push_back(sum_statement);
   } else {
     // Reduction operation with loops.
@@ -397,6 +396,11 @@ Status EinsumProgram::GenerateShaderCode(ShaderHelper& shader) const {
                               << "_indices_t;\n";
   }
 
+  // Copy output indices to input indices.
+  for (const auto& idx : idx_copy) {
+    shader.MainFunctionBody() << idx << "\n";
+  }
+
   // Add reduce operations.
   for (const auto& op : reduce_ops) {
     shader.MainFunctionBody() << op << "\n";
@@ -426,6 +430,10 @@ Status Einsum::ComputeInternal(ComputeContext& context) const {
     input_tensors.push_back(context.Input<Tensor>(i));
   }
 
+
+  // TODO: The EinsumEquation initialization could potentially be done during model loading
+  // based on input/output shape inference results. This would improve runtime performance
+  // by avoiding redundant initialization on every compute call.
   EinsumEquation equation(input_tensors, equation_);
   const std::vector<int64_t>& output_dims = equation.output_dims;
   Tensor* Y = context.Output(0, output_dims);
