@@ -661,6 +661,10 @@ def add_execution_provider_args(parser: argparse.ArgumentParser) -> None:
     trt_group.add_argument("--use_tensorrt_oss_parser", action="store_true", help="Use TensorRT OSS ONNX parser.")
     trt_group.add_argument("--tensorrt_home", help="Path to TensorRT installation directory.")
 
+    # --- Nv ---
+    nv_group = parser.add_argument_group("Nv Execution Provider")
+    nv_group.add_argument("--use_nv_tensorrt_rtx", action="store_true", help="Enable Nv EP.")
+
     # --- DirectML ---
     dml_group = parser.add_argument_group("DirectML Execution Provider (Windows)")
     dml_group.add_argument("--use_dml", action="store_true", help="Enable DirectML EP (Windows).")
