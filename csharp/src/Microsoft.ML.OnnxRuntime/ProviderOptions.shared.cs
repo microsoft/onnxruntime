@@ -327,7 +327,7 @@ namespace Microsoft.ML.OnnxRuntime
         {
             var allocator = OrtAllocator.DefaultInstance;
             // Process provider options string
-            NativeApiStatus.VerifySuccess(NativeMethods.OrtGetCUDAProviderOptionsAsString(handle,
+            NativeApiStatus.VerifySuccess(NativeMethods.OrtGetMIGraphXProviderOptionsAsString(handle,
                 allocator.Pointer, out IntPtr providerOptions));
             return NativeOnnxValueHelper.StringFromNativeUtf8(providerOptions, allocator);
         }
