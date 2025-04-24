@@ -473,13 +473,10 @@ class TestOpMatMul4Bits(unittest.TestCase):
         data_reader = self.input_feeds(1, {"input": (100, 52)})
         self.quant_test_with_algo("HQQ", model_fp32_path, data_reader, 32, False)
 
-    def test_quantize_llama_cpp_phi_35_mini_4k_instruct(self):
-        model_fp32_path = "C:/LiqunWA/example-models/Phi-3.5/phi-3.5-mini-4k-instruct-fp32-cpu/model.onnx"
-        model_q4_0_path = "C:/LiqunWA/example-models/Phi-3.5/phi-3.5-mini-4k-instruct-lamma_cpp_q4_0-cpu/model.onnx"
-
+    def quantize_llama_cpp(self, model_fp32_path, model_quantized_path, llama_cpp_quant_type_name):
         model = quant_utils.load_model_with_shape_infer(Path(model_fp32_path))
         algo_config = matmul_4bits_quantizer.LlamaCppQuantConfig(
-            quant_type_name="q4_0",
+            quant_type_name=llama_cpp_quant_type_name,
             quant_format=quant_utils.QuantFormat.QOperator,
             op_types_to_quantize=("MatMul",),
         )
@@ -489,7 +486,59 @@ class TestOpMatMul4Bits(unittest.TestCase):
         )
 
         quant.process()
-        quant.model.save_model_to_file(model_q4_0_path, True)  # save data to external file
+        quant.model.save_model_to_file(model_quantized_path, True)
+
+    def test_quantize_llama_cpp_bitnet(self):
+        model_fp32_path = "/home/liqfu/LiqunWA/BitNetWA/bitnet-b1.58-2B-4T-bf16-onnx/model.onnx"
+        model_q4_0_path = "/home/liqfu/LiqunWA/BitNetWA/bitnet-b1.58-2B-4T-q4_0-onnx/model.onnx"
+        self.quantize_llama_cpp(model_fp32_path, model_q4_0_path, "q4_0")
+
+    def test_quantize_llama_cpp_phi_4_mini_instruct(self):
+        # model_fp32_path = "C:/LiqunWA/example-models/Phi-3.5/phi-3.5-mini-4k-instruct-fp32-cpu/model.onnx"
+        # model_q4_0_path = "C:/LiqunWA/example-models/Phi-3.5/phi-3.5-mini-4k-instruct-lamma_cpp_q4_0-cpu/model.onnx"
+        model_fp32_path = "/home/liqfu/LiqunWA/example-models/Phi-4/Phi-4-mini-instruct-fp32-cpu/model.onnx"
+        model_q4_0_path = "/home/liqfu/LiqunWA/example-models/Phi-4/Phi-4-mini-instruct_q4_0-cpu/model.onnx"
+
+        self.quantize_llama_cpp(model_fp32_path, model_q4_0_path, "q4_0")
+        # model = quant_utils.load_model_with_shape_infer(Path(model_fp32_path))
+        # algo_config = matmul_4bits_quantizer.LlamaCppQuantConfig(
+        #     quant_type_name="q4_0",
+        #     quant_format=quant_utils.QuantFormat.QOperator,
+        #     op_types_to_quantize=("MatMul",),
+        # )
+        # quant = matmul_4bits_quantizer.MatMul4BitsQuantizer(
+        #     model=model,
+        #     algo_config=algo_config,
+        # )
+
+        # quant.process()
+        # quant.model.save_model_to_file(model_q4_0_path, True)  # save data to external file
+
+    def test_bitnet_inference(self):
+        import torch
+        from transformers import AutoModelForCausalLM, AutoTokenizer
+
+        model_id = "microsoft/bitnet-b1.58-2B-4T"
+
+        # Load tokenizer and model
+        tokenizer = AutoTokenizer.from_pretrained(model_id)
+        model = AutoModelForCausalLM.from_pretrained(
+            model_id,
+            torch_dtype=torch.bfloat16
+        )
+
+        # Apply the chat template
+        messages = [
+            {"role": "system", "content": "You are a helpful AI assistant."},
+            {"role": "user", "content": "How are you?"},
+        ]
+        prompt = tokenizer.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
+        chat_input = tokenizer(prompt, return_tensors="pt").to(model.device)
+
+        # Generate response
+        chat_outputs = model.generate(**chat_input, max_new_tokens=50)
+        response = tokenizer.decode(chat_outputs[0][chat_input['input_ids'].shape[-1]:], skip_special_tokens=True) # Decode only the response part
+        print("\nAssistant Response:", response)
 
     def llama_cpp_quant_test(
         self,
@@ -526,61 +575,6 @@ class TestOpMatMul4Bits(unittest.TestCase):
         data_reader.rewind()
 
         check_model_correctness(self, model_fp32_path, model_out_path, data_reader.get_next(), rtol, atol)
-
-    # @parameterized.expand([
-    #     # ("q4_0", 256, 1),
-    #     # ("q4_0", 256, 4),
-    #     # ("q4_0", 256, 10),
-    #     # ("q4_0", 256, 17),
-    #     # ("q4_0", 1024, 1),
-    #     # ("q4_0", 1024, 4),
-    #     # ("q4_0", 1024, 10),
-    #     # ("q4_0", 1024, 17),
-    #     ("q4_1", 256, 1),
-    #     ("q4_1", 256, 4),
-    #     # ("q4_1", 256, 10),
-    #     # ("q4_1", 256, 17),
-    #     # ("q4_1", 1024, 1),
-    #     # ("q4_1", 1024, 4),
-    #     # ("q4_1", 1024, 10),
-    #     # ("q4_1", 1024, 17),
-    #     ("tq1_0", 256, 1),
-    #     ("tq1_0", 256, 4),
-    #     # ("tq1_0", 256, 10),
-    #     # ("tq1_0", 256, 17),
-    #     # ("tq1_0", 1024, 1),
-    #     # ("tq1_0", 1024, 4),
-    #     # ("tq1_0", 1024, 10),
-    #     # ("tq1_0", 1024, 17),
-    #     ("q2_K", 256, 1),
-    #     ("q4_K", 256, 1),
-    #     ("q5_K", 256, 1),
-    #     ("q6_K", 256, 1),
-    #     ("q2_K", 256, 2),
-    #     ("q4_K", 256, 2),
-    #     ("q5_K", 256, 2),
-    #     ("q6_K", 256, 2),
-    # ])
-
-    # def test_quantize_matmul_llama_cpp(self, quant_type_name, in_features, out_features):
-    #     np.random.seed(13)
-    #     model_fp32_path = str(
-    #         Path(self._tmp_model_dir.name).joinpath(
-    #             f"matmul_fp32_{quant_type_name}_{in_features}_{out_features}.onnx"
-    #         ).absolute()
-    #     )
-
-    #     self.construct_model_matmul(
-    #         model_fp32_path, symmetric=True, in_features=in_features, out_features=out_features,
-    #         llama_cpp_quant_type_name=quant_type_name
-    #     )
-    #     data_reader = self.input_feeds(1, {"input": (1, in_features)})
-
-    #     self.llama_cpp_quant_test(
-    #         model_fp32_path=model_fp32_path,
-    #         data_reader=data_reader,
-    #         quant_type_name=quant_type_name,
-    #     )
 
     quant_type_names = [
         "q4_0",
