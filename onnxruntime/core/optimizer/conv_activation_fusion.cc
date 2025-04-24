@@ -139,6 +139,7 @@ class ConvActivationSelector : public NodeSelector {
 #endif  // !defined(ORT_MINIMAL_BUILD)
 
 namespace actions {
+
 using NTO = NodesToOptimize;
 
 class FuseConvActivationAction : public ReplaceWithNew {
@@ -213,36 +214,6 @@ class FuseConvActivationAction : public ReplaceWithNew {
   }
 };
 
-class FuseConvAddRelu : public ReplaceWithNew {
- private:
-  std::string OpType(const RuntimeState&) const override { return "FusedConv"; }
-
-  std::string Domain(const RuntimeState&) const override { return kMSDomain; }
-
-  NodeAttributes ExtraAttributes(const RuntimeState&) const override {
-    NodeAttributes extra_fused_conv_attributes;
-    utils::SetNodeAttribute(utils::MakeAttribute("activation", "Relu"), extra_fused_conv_attributes);
-    return extra_fused_conv_attributes;
-  }
-
-  std::vector<NodeAndMoveInfo> ValueMoves(const RuntimeState& state) const override {
-    const auto& conv = state.selected_nodes.Target();
-
-    ORT_ENFORCE(conv.GetOutputEdgesCount() == 1 && conv.OutputNodesBegin()->OpType() == "Add",
-                "Expected Conv then Add.");
-    const auto add_input_idx = 1 - conv.OutputEdgesBegin()->GetDstArgIndex();
-
-    const auto conv_location = NTO::NodeLocation{NTO::NodeType::kTarget, 0};
-    const auto add_location = NTO::NodeLocation{NTO::NodeType::kOutput, 0};
-    const auto relu_location = NTO::NodeLocation{NTO::NodeType::kOutput, 1};
-
-    return {
-        MoveAll(conv_location, ArgType::kInput),                                       // move all inputs from conv
-        MoveAndAppend(add_location, ArgType::kInput, add_input_idx, ArgType::kInput),  // append add input
-        MoveAll(relu_location, ArgType::kOutput),                                      // move all outputs from relu
-    };
-  }
-};
 }  // namespace actions
 
 void RegisterConvActivationFusionRules(SelectorActionRegistry& registry) {
