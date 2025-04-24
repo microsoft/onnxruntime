@@ -15,6 +15,7 @@
 #include "core/optimizer/initializer.h"
 
 #include "core/optimizer/embed_layer_norm_fusion.h"
+#include "core/optimizer/group_query_attention_fusion.h"
 #include "core/optimizer/layer_norm_fusion.h"
 #include "core/optimizer/skip_layer_norm_fusion.h"
 
@@ -579,6 +580,23 @@ TEST_F(GraphTransformationTests, SimplifiedLayerNormWithCastsFusionTestCudaEp) {
   }
 }
 
+static void TestGQAFusion(const std::basic_string<ORTCHAR_T>& file_path, int matmulnbits_count, int matmul_count, logging::Logger* logger) {
+  std::shared_ptr<Model> p_model;
+  ASSERT_TRUE(Model::Load(file_path, p_model, nullptr, *logger).IsOK());
+  Graph& graph = p_model->MainGraph();
+
+  onnxruntime::GraphTransformerManager graph_transformation_mgr{3};
+  ASSERT_STATUS_OK(graph_transformation_mgr.Register(std::make_unique<GroupQueryAttentionFusion>(), TransformerLevel::Level2));
+  ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, *logger));
+  ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level2, *logger));
+
+  std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
+  ASSERT_TRUE(op_to_count["com.microsoft.RotaryEmbedding"] == 0);
+  ASSERT_TRUE(op_to_count["com.microsoft.MatMulNBits"] == matmulnbits_count);
+  ASSERT_TRUE(op_to_count["MatMul"] == matmul_count);
+  ASSERT_TRUE(op_to_count["com.microsoft.GroupQueryAttention"] == 1);
+}
+
 static void TestSkipLayerNormFusion(const std::basic_string<ORTCHAR_T>& file_path, int add_count, int ln_count,
                                     int skip_ln_count, int cast_count, logging::Logger* logger) {
   std::shared_ptr<Model> p_model;
@@ -618,6 +636,12 @@ TEST_F(GraphTransformationTests, SkipLayerNormFusionTest) {
   TestSkipLayerNormFusion(MODEL_FOLDER "fusion/skip_layer_norm_format1_graph_output.onnx", 1, 0, 1, 0, logger_.get());
   TestSkipLayerNormFusion(MODEL_FOLDER "fusion/skip_layer_norm_format2_graph_output.onnx", 1, 0, 1, 0, logger_.get());
   TestSkipLayerNormFusion(MODEL_FOLDER "fusion/skip_layer_norm_format3_graph_output.onnx", 1, 1, 0, 0, logger_.get());
+}
+
+TEST_F(GraphTransformationTests, GroupQueryAttentionFusionTest) {
+  TestGQAFusion(MODEL_FOLDER "fusion/gqa_fusion_quantized_simple.onnx", 1, 0, logger_.get());
+  TestGQAFusion(MODEL_FOLDER "fusion/gqa_fusion_different_head_sizes.onnx", 0, 1, logger_.get());
+  TestGQAFusion(MODEL_FOLDER "fusion/gqa_fusion_quantized_different_head_sizes.onnx", 1, 0, logger_.get());
 }
 
 TEST_F(GraphTransformationTests, SkipLayerNormFusionWithCastTest) {

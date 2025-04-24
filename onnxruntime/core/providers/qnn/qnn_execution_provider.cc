@@ -80,10 +80,7 @@ static bool ParseBackendTypeName(std::string_view backend_type_name, std::string
 
 static void ParseProfilingLevel(std::string profiling_level_string,
                                 qnn::ProfilingLevel& profiling_level) {
-  std::transform(profiling_level_string.begin(),
-                 profiling_level_string.end(),
-                 profiling_level_string.begin(),
-                 [](unsigned char c) { return static_cast<unsigned char>(std::tolower(c)); });
+  profiling_level_string = qnn::utils::GetLowercaseString(profiling_level_string);
   LOGS_DEFAULT(INFO) << "profiling_level: " << profiling_level_string;
   if (profiling_level_string == "off") {
     profiling_level = qnn::ProfilingLevel::OFF;
@@ -98,10 +95,7 @@ static void ParseProfilingLevel(std::string profiling_level_string,
 
 static void ParseHtpPerformanceMode(std::string htp_performance_mode_string,
                                     qnn::HtpPerformanceMode& htp_performance_mode) {
-  std::transform(htp_performance_mode_string.begin(),
-                 htp_performance_mode_string.end(),
-                 htp_performance_mode_string.begin(),
-                 [](unsigned char c) { return static_cast<unsigned char>(std::tolower(c)); });
+  htp_performance_mode_string = qnn::utils::GetLowercaseString(htp_performance_mode_string);
   LOGS_DEFAULT(VERBOSE) << "Htp performance mode: " << htp_performance_mode_string;
   if (htp_performance_mode_string == "burst") {
     htp_performance_mode = qnn::HtpPerformanceMode::kHtpBurst;
@@ -129,10 +123,7 @@ static void ParseHtpPerformanceMode(std::string htp_performance_mode_string,
 }
 
 static void ParseQnnContextPriority(std::string context_priority_string, qnn::ContextPriority& context_priority) {
-  std::transform(context_priority_string.begin(),
-                 context_priority_string.end(),
-                 context_priority_string.begin(),
-                 [](unsigned char c) { return static_cast<unsigned char>(std::tolower(c)); });
+  context_priority_string = qnn::utils::GetLowercaseString(context_priority_string);
   LOGS_DEFAULT(VERBOSE) << "QNN context priority: " << context_priority_string;
   if (context_priority_string == "low") {
     context_priority = qnn::ContextPriority::LOW;
@@ -789,8 +780,8 @@ QNNExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_viewer
     return result;
   }
 
-  if ((context_cache_enabled_ || is_qnn_ctx_model) && !IsNpuBackend(qnn_backend_manager_->GetQnnBackendType())) {
-    LOGS(logger, ERROR) << "Qnn context cache only works for HTP or DSP backend.";
+  if ((context_cache_enabled_ || is_qnn_ctx_model) && !IsQpuBackend(qnn_backend_manager_->GetQnnBackendType())) {
+    LOGS(logger, ERROR) << "Qnn context cache only works for HTP/DSP/GPU backend.";
     return result;
   }
 
@@ -990,14 +981,14 @@ Status QNNExecutionProvider::CompileFromOrtGraph(const std::vector<FusedNodeAndG
 }
 
 // Figure out the context cache Onnx file path to decide the folder location
-static void GetContextOnnxModelFilePath(const std::string& customer_context_cache_path,
+static void GetContextOnnxModelFilePath(const std::string& user_context_cache_path,
                                         const onnxruntime::PathString& model_path_string,
-                                        onnxruntime::PathString& context_cache_binary_path) {
+                                        onnxruntime::PathString& context_model_path) {
   // always try the path set by user first, it's the only way to set it if load model from memory
-  if (!customer_context_cache_path.empty()) {
-    context_cache_binary_path = ToPathString(customer_context_cache_path);
+  if (!user_context_cache_path.empty()) {
+    context_model_path = ToPathString(user_context_cache_path);
   } else if (!model_path_string.empty()) {  // model loaded from file
-    context_cache_binary_path = model_path_string;
+    context_model_path = model_path_string;
   }
 }
 

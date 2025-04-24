@@ -792,7 +792,8 @@ bool DataOps::node_is_supported(const NodeIndex node_idx, bool& has_external_wei
             if (((device_id_.find("CPU") != std::string::npos) || (device_id_.find("GPU") != std::string::npos)) &&
                 ((optype == "Expand") || (optype == "Equal") ||
                  (optype == "Slice") || (optype == "Concat") ||
-                 (optype == "Shape"))) {
+                 (optype == "Shape") || (optype == "Cast") ||
+                 (optype == "Resize"))) {
               return;
             }
             has_unsupported_dimension = true;

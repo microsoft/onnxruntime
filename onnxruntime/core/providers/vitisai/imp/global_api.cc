@@ -512,7 +512,7 @@ vaip_core::OrtApiForVaip* create_org_api_hook() {
   the_global_api.session_option_configuration = [](
                                                     void* mmap, void* session_options, void (*push)(void* mmap, const char* name, const char* value)) {
     auto options = reinterpret_cast<OrtSessionOptions*>(session_options);
-    auto option_list = options->GetConfigOptions();
+    auto option_list = options->GetConfigOptionsMap();
     // option_list.GetConfigEntry
     for (const auto& option : option_list) {
       push(mmap, option.first.c_str(), option.second.c_str());

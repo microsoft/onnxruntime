@@ -1394,7 +1394,7 @@ common::Status InferenceSession::TransformGraph(onnxruntime::Graph& graph, bool 
   // Do partitioning based on execution providers' capabilities.
   ORT_RETURN_IF_ERROR_SESSIONID_(partitioner.Partition(graph, session_state_->GetMutableFuncMgr(), transform_layout_fn,
                                                        session_options_.config_options, *session_logger_,
-                                                       mode, debug_graph_fn));
+                                                       mode, session_options_.GetEpContextGenerationOptions(), debug_graph_fn));
 
   // apply Level2 and higher transformers.
   // we do not run Level 1 again as those transformers assume partitioning will run later to do node assignment.
@@ -2317,6 +2317,10 @@ const ProviderOptionsMap& InferenceSession::GetAllProviderOptions() const {
 }
 
 const SessionOptions& InferenceSession::GetSessionOptions() const {
+  return session_options_;
+}
+
+SessionOptions& InferenceSession::GetMutableSessionOptions() {
   return session_options_;
 }
 
