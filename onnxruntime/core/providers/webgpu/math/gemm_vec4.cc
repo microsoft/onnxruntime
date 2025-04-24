@@ -258,7 +258,6 @@ Status ApplyGemmVec4(const Tensor* a,
   int c_components = 4;
   bool c_is_scalar = false;
 
-  bool is_vec4 = true;
   if (need_handle_bias) {
     const auto& c_shape = c->Shape();
     int64_t c_last_dim = c_shape[c_shape.NumDimensions() - 1];
