@@ -122,3 +122,21 @@ pipelines:
           lastModifiedDate: 2025-02-27
         armory:
           lastModifiedDate: 2025-02-27
+  841:
+    retail:
+      source:
+        credscan:
+          lastModifiedDate: 2025-04-24
+        eslint:
+          lastModifiedDate: 2025-04-24
+        psscriptanalyzer:
+          lastModifiedDate: 2025-04-24
+        armory:
+          lastModifiedDate: 2025-04-24
+      binary:
+        credscan:
+          lastModifiedDate: 2025-04-24
+        binskim:
+          lastModifiedDate: 2025-04-24
+        spotbugs:
+          lastModifiedDate: 2025-04-24
