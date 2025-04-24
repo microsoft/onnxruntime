@@ -22,10 +22,6 @@ class GemmProgram final : public Program<GemmProgram> {
 
   Status GenerateShaderCode(ShaderHelper& sh) const override;
 
-  bool IsVec4Supported() const {
-    return !transA_ && !transB_;  // Vec4 optimization currently only supports non-transposed matrices
-  }
-
   WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES(
       {"num_tile_n", ProgramUniformVariableDataType::Uint32},
       {"M", ProgramUniformVariableDataType::Uint32},

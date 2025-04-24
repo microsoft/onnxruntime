@@ -433,6 +433,25 @@ TYPED_TEST(GemmOpTypedTests, TestGemm2DBroadcast_2) {
       .RunWithConfig();
 }
 
+TYPED_TEST(GemmOpTypedTests, TestGemm2DBroadcast_3) {
+  OpTester test("Gemm");
+
+  test.AddAttribute("transA", (int64_t)0);
+  test.AddAttribute("transB", (int64_t)0);
+  test.AddAttribute("alpha", 1.0f);
+  test.AddAttribute("beta", 1.0f);
+
+  // Same as GemmBroadcast, but adding the unnecessary first dimension.
+  test.AddInput<TypeParam>("A", {3, 4},
+                           std::vector<TypeParam>(12, static_cast<TypeParam>(1.0f)));
+  test.AddInput<TypeParam>("B", {4, 4}, std::vector<TypeParam>(16, static_cast<TypeParam>(1.0f)));
+  test.AddInput<TypeParam>("C", {3, 1}, std::vector<TypeParam>{static_cast<TypeParam>(1.0f), static_cast<TypeParam>(1.0f), static_cast<TypeParam>(1.0f)});
+  test.AddOutput<TypeParam>("Y", {3, 4},
+                            std::vector<TypeParam>(12, static_cast<TypeParam>(5.0f)));
+  test.Config(run_with_tunable_op)
+      .RunWithConfig();
+}
+
 TYPED_TEST(GemmOpTypedTests, TestGemmFalseBroadcast) {
   OpTester test("Gemm");
 
