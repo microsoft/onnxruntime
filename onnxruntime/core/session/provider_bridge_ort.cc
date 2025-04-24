@@ -5,45 +5,46 @@
 // It implements onnxruntime::ProviderHost
 
 #include <optional>
+#include <utility>
+
 #include "core/common/inlined_containers.h"
 #include "core/common/path_string.h"
+#include "core/common/string_helper.h"
 #include "core/framework/allocator_utils.h"
-#include "core/framework/config_options.h"
 #include "core/framework/compute_capability.h"
-#include "core/framework/data_types.h"
+#include "core/framework/config_options.h"
 #include "core/framework/data_transfer_manager.h"
+#include "core/framework/data_types.h"
 #include "core/framework/error_code_helper.h"
 #include "core/framework/execution_provider.h"
+#include "core/framework/fallback_cpu_capability.h"
 #include "core/framework/kernel_registry.h"
+#include "core/framework/model_metadef_id_generator.h"
+#include "core/framework/murmurhash3.h"
 #include "core/framework/node_unit.h"
+#include "core/framework/provider_options.h"
 #include "core/framework/provider_shutdown.h"
+#include "core/framework/random_generator.h"
 #include "core/framework/run_options.h"
+#include "core/framework/sparse_utils.h"
 #include "core/framework/tensorprotoutils.h"
 #include "core/framework/TensorSeq.h"
-#include "core/framework/provider_options.h"
-#include "core/framework/fallback_cpu_capability.h"
-#include "core/framework/random_generator.h"
-#include "core/graph/model.h"
-#include "core/platform/env.h"
-#include "core/providers/common.h"
-#include "core/providers/providers.h"
-#include "core/session/inference_session.h"
-#include "core/session/abi_session_options_impl.h"
-#include "core/session/ort_apis.h"
-#include "core/session/onnxruntime_session_options_config_keys.h"
-#include "core/session/provider_bridge_ort.h"
-#include "core/util/math.h"
-#include "core/framework/sparse_utils.h"
+#include "core/graph/constants.h"
 #include "core/graph/graph_proto_serializer.h"
-#include "core/framework/murmurhash3.h"
-#include "core/framework/model_metadef_id_generator.h"
+#include "core/graph/model.h"
 #include "core/optimizer/graph_optimizer_registry.h"
 #include "core/optimizer/qdq_transformer/selectors_actions/qdq_selectors.h"
 #include "core/optimizer/qdq_transformer/selectors_actions/shared/utils.h"
-
+#include "core/platform/env.h"
+#include "core/providers/common.h"
+#include "core/session/abi_session_options_impl.h"
+#include "core/session/inference_session.h"
 #include "core/session/onnxruntime_c_api.h"
-#include "core/common/string_helper.h"
-#include <utility>
+#include "core/session/onnxruntime_session_options_config_keys.h"
+#include "core/session/ort_apis.h"
+#include "core/session/provider_bridge_library.h"
+#include "core/session/provider_bridge_ort.h"
+#include "core/util/math.h"
 #include "onnx/shape_inference/implementation.h"
 
 #ifdef ENABLE_TRAINING
@@ -103,6 +104,7 @@ using EtwRegistrationManager_EtwInternalCallback = EtwRegistrationManager::EtwIn
 #include "core/providers/migraphx/migraphx_provider_factory_creator.h"
 #include "core/providers/openvino/openvino_provider_factory_creator.h"
 #include "core/providers/tensorrt/tensorrt_provider_factory_creator.h"
+#include "core/providers/nv_tensorrt_rtx/nv_provider_factory_creator.h"
 #include "core/providers/vitisai/vitisai_provider_factory_creator.h"
 #include "core/providers/qnn/qnn_provider_factory_creator.h"
 
@@ -117,8 +119,10 @@ using EtwRegistrationManager_EtwInternalCallback = EtwRegistrationManager::EtwIn
 #include "core/providers/cuda/cuda_provider_options.h"
 #include "core/providers/cann/cann_provider_options.h"
 #include "core/providers/dnnl/dnnl_provider_options.h"
+#include "core/providers/nv_tensorrt_rtx/nv_provider_factory.h"
+#include "core/providers/nv_tensorrt_rtx/nv_provider_options.h"
 
-#if !defined(ORT_MINIMAL_BUILD) && defined(USE_TENSORRT)
+#if !defined(ORT_MINIMAL_BUILD) && (defined(USE_TENSORRT) || defined(USE_NV))
 #include "core/session/onnxruntime_session_options_config_keys.h"
 #endif
 
@@ -153,6 +157,9 @@ ProviderInfo_ROCM& GetProviderInfo_ROCM();
 ProviderHostCPU& GetProviderHostCPU();
 ProviderInfo_MIGraphX* TryGetProviderInfo_MIGraphX();
 ProviderInfo_MIGraphX& GetProviderInfo_MIGraphX();
+ProviderInfo_Nv* TryGetProviderInfo_Nv();
+ProviderInfo_Nv& GetProviderInfo_Nv();
+
 ONNX_NAMESPACE::OpSchema CreateSchema(const std::string& domain, const std::vector<const OrtCustomOp*>& ops);
 struct TensorShapeProto_Dimension_Iterator_Impl : TensorShapeProto_Dimension_Iterator {
   TensorShapeProto_Dimension_Iterator_Impl(google::protobuf::internal::RepeatedPtrIterator<const onnx::TensorShapeProto_Dimension>&& v) : v_{std::move(v)} {}
@@ -1720,64 +1727,77 @@ bool InitProvidersSharedLibrary() try {
   return false;
 }
 
-struct ProviderLibrary {
-  ProviderLibrary(const ORTCHAR_T* filename, bool unload = true) : filename_{filename}, unload_{unload} {}
-  ~ProviderLibrary() {
-    // assert(!handle_); // We should already be unloaded at this point (disabled until Python shuts down deterministically)
+ProviderLibrary::ProviderLibrary(const ORTCHAR_T* filename, bool unload)
+    : filename_{filename}, unload_{unload} {
+}
+
+ProviderLibrary::~ProviderLibrary() {
+  // assert(!handle_); // We should already be unloaded at this point (disabled until Python shuts down deterministically)
+}
+
+Status ProviderLibrary::Load() {
+  if (provider_) {
+    return Status::OK();
   }
 
-  Provider& Get() {
+  try {
     std::lock_guard<std::mutex> lock{mutex_};
-    try {
+    s_library_shared.Ensure();
+
+    auto full_path = Env::Default().GetRuntimePath() + filename_;
+    ORT_RETURN_IF_ERROR(Env::Default().LoadDynamicLibrary(full_path, false, &handle_));
+
+    Provider* (*PGetProvider)();
+    ORT_RETURN_IF_ERROR(Env::Default().GetSymbolFromLibrary(handle_, "GetProvider", (void**)&PGetProvider));
+
+    provider_ = PGetProvider();
+  } catch (const std::exception&) {
+    Unload();  // If anything fails we unload the library and rethrow
+    throw;
+  }
+
+  return Status::OK();
+}
+
+Provider& ProviderLibrary::Get() {
+  try {
+    if (!initialized_) {
       if (!provider_) {
-        s_library_shared.Ensure();
-
-        auto full_path = Env::Default().GetRuntimePath() + filename_;
-        ORT_THROW_IF_ERROR(Env::Default().LoadDynamicLibrary(full_path, false, &handle_));
-
-        Provider* (*PGetProvider)();
-        ORT_THROW_IF_ERROR(Env::Default().GetSymbolFromLibrary(handle_, "GetProvider", (void**)&PGetProvider));
-
-        provider_ = PGetProvider();
-        provider_->Initialize();
-      }
-      return *provider_;
-    } catch (const std::exception&) {
-      Unload();  // If anything fails we unload the library and rethrow
-      throw;
-    }
-  }
-
-  void Unload() {
-    // This will crash in the Mac unit test due to the ProviderLibrary global variable being destroyed before Unload() is called
-    // Something has a global 'Environment or OrtEnv' variable that is being destroyed after other global variables have already been destroyed
-    // std::lock_guard<std::mutex> lock{mutex_};
-
-    if (handle_) {
-      if (provider_)
-        provider_->Shutdown();
-
-      if (unload_) {
-        auto status = Env::Default().UnloadDynamicLibrary(handle_);
-        if (!status.IsOK()) {
-          LOGS_DEFAULT(ERROR) << status.ErrorMessage();
-        }
+        ORT_THROW_IF_ERROR(Load());
       }
 
-      handle_ = nullptr;
-      provider_ = nullptr;
+      std::lock_guard<std::mutex> lock{mutex_};
+      provider_->Initialize();
+      initialized_ = true;
     }
+
+    return *provider_;
+  } catch (const std::exception&) {
+    Unload();  // If anything fails we unload the library and rethrow
+    throw;
   }
+}
 
- private:
-  std::mutex mutex_;
-  const ORTCHAR_T* filename_;
-  bool unload_;
-  Provider* provider_{};
-  void* handle_{};
+void ProviderLibrary::Unload() {
+  // This will crash in the Mac unit test due to the ProviderLibrary global variable being destroyed before Unload() is called
+  // Something has a global 'Environment or OrtEnv' variable that is being destroyed after other global variables have already been destroyed
+  // std::lock_guard<std::mutex> lock{mutex_};
 
-  ORT_DISALLOW_COPY_AND_ASSIGNMENT(ProviderLibrary);
-};
+  if (handle_) {
+    if (provider_)
+      provider_->Shutdown();
+
+    if (unload_) {
+      auto status = Env::Default().UnloadDynamicLibrary(handle_);
+      if (!status.IsOK()) {
+        LOGS_DEFAULT(ERROR) << status.ErrorMessage();
+      }
+    }
+
+    handle_ = nullptr;
+    provider_ = nullptr;
+  }
+}
 
 static ProviderLibrary s_library_cuda(LIBRARY_PREFIX ORT_TSTR("onnxruntime_providers_cuda") LIBRARY_EXTENSION
 #ifndef _WIN32
@@ -1835,6 +1855,7 @@ static ProviderLibrary s_library_tensorrt(LIBRARY_PREFIX ORT_TSTR("onnxruntime_p
                                           false
 #endif
 );
+static ProviderLibrary s_library_nv(LIBRARY_PREFIX ORT_TSTR("onnxruntime_providers_nv_tensorrt_rtx") LIBRARY_EXTENSION);
 static ProviderLibrary s_library_migraphx(LIBRARY_PREFIX ORT_TSTR("onnxruntime_providers_migraphx") LIBRARY_EXTENSION);
 
 // QNN EP can be built either as a static library or a shared library. Can safely define s_library_qnn even if static.
@@ -1852,6 +1873,7 @@ void UnloadSharedProviders() {
   s_library_shared.Unload();
   s_library_migraphx.Unload();
   s_library_qnn.Unload();
+  s_library_nv.Unload();
 }
 
 // Used by test code
@@ -1982,6 +2004,14 @@ std::shared_ptr<IExecutionProviderFactory> TensorrtProviderFactoryCreator::Creat
   return s_library_tensorrt.Get().CreateExecutionProviderFactory(provider_options);
 }
 
+std::shared_ptr<IExecutionProviderFactory> NvProviderFactoryCreator::Create(int device_id) {
+  return s_library_nv.Get().CreateExecutionProviderFactory(device_id);
+}
+
+std::shared_ptr<IExecutionProviderFactory> NvProviderFactoryCreator::Create(const ProviderOptions& provider_options) {
+  return s_library_nv.Get().CreateExecutionProviderFactory(&provider_options);
+}
+
 std::shared_ptr<IExecutionProviderFactory> MIGraphXProviderFactoryCreator::Create(const OrtMIGraphXProviderOptions* provider_options) {
   return s_library_migraphx.Get().CreateExecutionProviderFactory(provider_options);
 }
@@ -2020,6 +2050,7 @@ ProviderOptions OrtOpenVINOProviderOptionsToOrtOpenVINOProviderOptionsV2(const O
   ov_options_converted_map["load_config"] = "";
   ov_options_converted_map["model_priority"] = "DEFAULT";
   ov_options_converted_map["enable_qdq_optimizer"] = "false";
+  ov_options_converted_map["enable_causallm"] = "false";
   return ov_options_converted_map;
 }
 
@@ -2074,6 +2105,20 @@ ProviderInfo_TensorRT& GetProviderInfo_TensorRT() {
     return *info;
 
   ORT_THROW("TensorRT Provider not available, can't get interface for it");
+}
+
+ProviderInfo_Nv* TryGetProviderInfo_Nv() try {
+  return reinterpret_cast<ProviderInfo_Nv*>(s_library_nv.Get().GetInfo());
+} catch (const std::exception& exception) {
+  LOGS_DEFAULT(ERROR) << exception.what();
+  return nullptr;
+}
+
+ProviderInfo_Nv& GetProviderInfo_Nv() {
+  if (auto* info = TryGetProviderInfo_Nv())
+    return *info;
+
+  ORT_THROW("NV Provider not available, can't get interface for it");
 }
 
 ProviderInfo_CUDA* TryGetProviderInfo_CUDA() try {
@@ -2304,6 +2349,8 @@ ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider_OpenVINO, _In
                     _In_ const OrtOpenVINOProviderOptions* provider_options) {
   API_IMPL_BEGIN
   const onnxruntime::ProviderOptions ov_options_converted_map = onnxruntime::OrtOpenVINOProviderOptionsToOrtOpenVINOProviderOptionsV2(provider_options);
+  ORT_API_RETURN_IF_STATUS_NOT_OK(options->AddProviderOptionsToConfigOptions(ov_options_converted_map,
+                                                                             onnxruntime::kOpenVINOExecutionProvider));
   auto factory = onnxruntime::OpenVINOProviderFactoryCreator::Create(&ov_options_converted_map, &(options->value));
   if (!factory) {
     return OrtApis::CreateStatus(ORT_FAIL, "SessionOptionsAppendExecutionProvider_OpenVINO: Failed to load shared library");
@@ -2337,6 +2384,8 @@ ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider_OpenVINO_V2,
 
     provider_options[provider_options_keys[i]] = provider_options_values[i];
   }
+  ORT_API_RETURN_IF_STATUS_NOT_OK(options->AddProviderOptionsToConfigOptions(provider_options,
+                                                                             onnxruntime::kOpenVINOExecutionProvider));
   auto factory = onnxruntime::OpenVINOProviderFactoryCreator::Create(&provider_options, &(options->value));
   if (!factory) {
     return OrtApis::CreateStatus(ORT_FAIL, "SessionOptionsAppendExecutionProvider_OpenVINO_V2: Failed to load shared library");
@@ -2534,7 +2583,7 @@ ORT_API_STATUS_IMPL(OrtApis::UpdateTensorRTProviderOptions,
   API_IMPL_END
 }
 
-#if defined(USE_TENSORRT) || defined(USE_CUDA) || defined(USE_CANN) || defined(USE_DNNL) || defined(USE_ROCM)
+#if defined(USE_TENSORRT) || defined(USE_CUDA) || defined(USE_CANN) || defined(USE_DNNL) || defined(USE_ROCM) || defined(USE_NV)
 static std::string BuildOptionsString(const onnxruntime::ProviderOptions::iterator& begin,
                                       const onnxruntime::ProviderOptions::iterator& end) {
   std::ostringstream options;
@@ -3037,6 +3086,8 @@ ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider_VitisAI, _In_
   }
   // EP context related session config options.
   provider_options["session_options"] = std::to_string((uintptr_t)(void*)options);
+  ORT_API_RETURN_IF_STATUS_NOT_OK(options->AddProviderOptionsToConfigOptions(provider_options,
+                                                                             onnxruntime::kVitisAIExecutionProvider));
 
   auto factory = onnxruntime::VitisAIProviderFactoryCreator::Create(provider_options);
   if (!factory) {

@@ -8,7 +8,6 @@
 
 #include "core/common/common.h"
 #include "core/common/logging/logging.h"
-#include "core/common/string_utils.h"
 #include "core/framework/error_code_helper.h"
 #include "core/framework/provider_options.h"
 #include "core/graph/constants.h"
@@ -27,6 +26,9 @@
 #include "core/providers/dml/dml_provider_factory_creator.h"
 #endif
 
+#if defined(USE_NV)
+#include "core/providers/nv_tensorrt_rtx/nv_provider_options.h"
+#endif
 using namespace onnxruntime;
 
 namespace onnxruntime {
@@ -98,6 +100,7 @@ ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider,
     JS,
     VitisAI,
     CoreML,
+    NvTensorRtRtx,  // TensorRt EP for RTX GPUs.
   };
 
   struct EpToAppend {
@@ -106,7 +109,7 @@ ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider,
     const char* canonical_name = nullptr;
   };
 
-  static std::array<EpToAppend, 11> supported_eps = {
+  static std::array<EpToAppend, 12> supported_eps = {
       EpToAppend{EpID::DML, "DML", kDmlExecutionProvider},
       EpToAppend{EpID::QNN, "QNN", kQnnExecutionProvider},
       EpToAppend{EpID::OpenVINO, "OpenVINO", kOpenVINOExecutionProvider},
@@ -118,7 +121,7 @@ ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider,
       EpToAppend{EpID::JS, "JS", kJsExecutionProvider},
       EpToAppend{EpID::VitisAI, "VitisAI", kVitisAIExecutionProvider},
       EpToAppend{EpID::CoreML, "CoreML", kCoreMLExecutionProvider},
-  };
+      EpToAppend{EpID::NvTensorRtRtx, "NvTensorRtRtx", kNvTensorRTRTXExecutionProvider}};
 
   ProviderOptions provider_options;
   OrtStatus* status = ParseProviderOptions(provider_options_keys,
@@ -182,23 +185,9 @@ ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider,
   ORT_ENFORCE(ep_to_append.id != EpID::INVALID);
 
   // Add provider options to the session config options.
-  // Use a new key with the format: "ep.<EP_NAME>.<PROVIDER_OPTION_KEY>"
-  std::string key_prefix = "ep.";
-  key_prefix += utils::GetLowercaseString(ep_to_append.canonical_name);
-  key_prefix += ".";
-
-  for (const auto& [key, value] : provider_options) {
-    const std::string new_key = key_prefix + key;
-    if (new_key.size() > ConfigOptions::kMaxKeyLength) {
-      LOGS_DEFAULT(WARNING) << "Can't add provider option to session configurations: "
-                            << "New key's string length (" << new_key.size() << ") "
-                            << "exceeds limit (" << ConfigOptions::kMaxKeyLength << "). "
-                            << "Original key contents: " << key << " New key contents: " << new_key;
-      continue;
-    }
-
-    ORT_ENFORCE(options->value.config_options.AddConfigEntry(new_key.c_str(), value.c_str()).IsOK());
-  }
+  // Use a new key with the format: "ep.<lower_case_ep_name>.<PROVIDER_OPTION_KEY>"
+  ORT_API_RETURN_IF_STATUS_NOT_OK(options->AddProviderOptionsToConfigOptions(provider_options,
+                                                                             ep_to_append.canonical_name));
 
   switch (ep_to_append.id) {
     case EpID::DML: {
@@ -293,6 +282,18 @@ ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider,
     case EpID::CoreML: {
 #if defined(USE_COREML)
       options->provider_factories.push_back(CoreMLProviderFactoryCreator::Create(provider_options));
+#else
+      status = create_not_supported_status();
+#endif
+      break;
+    }
+    case EpID::NvTensorRtRtx: {
+#if defined(USE_NV)
+      auto factory = onnxruntime::NvProviderFactoryCreator::Create(provider_options);
+      if (!factory) {
+        return OrtApis::CreateStatus(ORT_FAIL, "SessionOptionsAppendExecutionProvider_Nv_TensorRT_RTX: Failed to load shared library");
+      }
+      options->provider_factories.push_back(factory);
 #else
       status = create_not_supported_status();
 #endif
