@@ -745,7 +745,7 @@ struct KeyValuePairsImpl : Ort::detail::Base<T> {
   using B = Ort::detail::Base<T>;
   using B::B;
 
-  const char* GetKeyValue(const char* key) const;
+  const char* GetValue(const char* key) const;
 
   // get the pairs in unordered_map. needs to copy to std::string so the hash works as expected
   std::unordered_map<std::string, std::string> GetKeyValuePairs() const;
@@ -764,9 +764,10 @@ struct KeyValuePairs : detail::KeyValuePairsImpl<OrtKeyValuePairs> {
   explicit KeyValuePairs(OrtKeyValuePairs* p) : KeyValuePairsImpl<OrtKeyValuePairs>{p} {}
 
   explicit KeyValuePairs();
+  explicit KeyValuePairs(const std::unordered_map<std::string, std::string>& kv_pairs);
 
-  void AddKeyValuePair(const char* key, const char* value);
-  void RemoveKeyValuePair(const char* key);
+  void Add(const char* key, const char* value);
+  void Remove(const char* key);
 
   ConstKeyValuePairs GetConst() const { return ConstKeyValuePairs{this->p_}; }
 };
@@ -1061,7 +1062,9 @@ struct SessionOptionsImpl : ConstSessionOptionsImpl<T> {
                                               const std::unordered_map<std::string, std::string>& provider_options = {});
 
   SessionOptionsImpl& AppendExecutionProvider_V2(Env& env, const std::vector<ConstEpDevice>& ep_devices,
-                                                 ConstKeyValuePairs& ep_options);
+                                                 const KeyValuePairs& ep_options);
+  SessionOptionsImpl& AppendExecutionProvider_V2(Env& env, const std::vector<ConstEpDevice>& ep_devices,
+                                                 const std::unordered_map<std::string, std::string>& ep_options);
 
   SessionOptionsImpl& SetCustomCreateThreadFn(OrtCustomCreateThreadFn ort_custom_create_thread_fn);  ///< Wraps OrtApi::SessionOptionsSetCustomCreateThreadFn
   SessionOptionsImpl& SetCustomThreadCreationOptions(void* ort_custom_thread_creation_options);      ///< Wraps OrtApi::SessionOptionsSetCustomThreadCreationOptions

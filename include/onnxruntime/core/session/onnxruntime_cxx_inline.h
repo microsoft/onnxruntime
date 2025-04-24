@@ -481,13 +481,14 @@ inline ThreadingOptions& ThreadingOptions::SetGlobalCustomJoinThreadFn(OrtCustom
 
 namespace detail {
 template <typename T>
-inline const char* KeyValuePairsImpl<T>::GetKeyValue(const char* key) const {
+inline const char* KeyValuePairsImpl<T>::GetValue(const char* key) const {
   return GetApi().GetKeyValue(this->p_, key);
 }
 
 template <typename T>
 inline std::unordered_map<std::string, std::string> KeyValuePairsImpl<T>::GetKeyValuePairs() const {
   std::unordered_map<std::string, std::string> out;
+
   size_t num_pairs = 0;
   const char* const* keys = nullptr;
   const char* const* values = nullptr;
@@ -525,11 +526,18 @@ inline KeyValuePairs::KeyValuePairs() {
   GetApi().CreateKeyValuePairs(&p_);
 }
 
-inline void KeyValuePairs::AddKeyValuePair(const char* key, const char* value) {
+inline KeyValuePairs::KeyValuePairs(const std::unordered_map<std::string, std::string>& kv_pairs) {
+  GetApi().CreateKeyValuePairs(&p_);
+  for (const auto& kv : kv_pairs) {
+    GetApi().AddKeyValuePair(this->p_, kv.first.c_str(), kv.second.c_str());
+  }
+}
+
+inline void KeyValuePairs::Add(const char* key, const char* value) {
   GetApi().AddKeyValuePair(this->p_, key, value);
 }
 
-inline void KeyValuePairs::RemoveKeyValuePair(const char* key) {
+inline void KeyValuePairs::Remove(const char* key) {
   GetApi().RemoveKeyValuePair(this->p_, key);
 }
 
@@ -557,7 +565,7 @@ inline const char* HardwareDeviceImpl<T>::Vendor() const {
 template <typename T>
 inline ConstKeyValuePairs HardwareDeviceImpl<T>::Metadata() const {
   return ConstKeyValuePairs{GetApi().HardwareDevice_Metadata(this->p_)};
-};
+}
 
 template <typename T>
 inline const char* EpDeviceImpl<T>::EpName() const {
@@ -1089,12 +1097,12 @@ inline SessionOptionsImpl<T>& SessionOptionsImpl<T>::AppendExecutionProvider(
   return *this;
 }
 
+namespace {
 template <typename T>
-inline SessionOptionsImpl<T>& SessionOptionsImpl<T>::AppendExecutionProvider_V2(
-    Env& env, const std::vector<ConstEpDevice>& ep_devices, ConstKeyValuePairs& ep_options) {
-  std::vector<const char*> ep_options_keys, ep_options_values;
-  ep_options.GetKeyValuePairs(ep_options_keys, ep_options_values);
-
+void SessionOptionsAppendEP(detail::SessionOptionsImpl<T>& session_options,
+                            Env& env, const std::vector<ConstEpDevice>& ep_devices,
+                            const std::vector<const char*>& ep_options_keys,
+                            const std::vector<const char*>& ep_options_values) {
   std::vector<const OrtEpDevice*> ep_devices_ptrs;
   ep_devices_ptrs.reserve(ep_devices.size());
   for (const auto& ep_device : ep_devices) {
@@ -1102,8 +1110,36 @@ inline SessionOptionsImpl<T>& SessionOptionsImpl<T>::AppendExecutionProvider_V2(
   }
 
   ThrowOnError(GetApi().SessionOptionsAppendExecutionProvider_V2(
-      this->p_, env, ep_devices_ptrs.data(), ep_devices_ptrs.size(),
+      session_options, env, ep_devices_ptrs.data(), ep_devices_ptrs.size(),
       ep_options_keys.data(), ep_options_values.data(), ep_options_keys.size()));
+}
+}  // namespace
+
+template <typename T>
+inline SessionOptionsImpl<T>& SessionOptionsImpl<T>::AppendExecutionProvider_V2(
+    Env& env, const std::vector<ConstEpDevice>& ep_devices, const KeyValuePairs& ep_options) {
+  std::vector<const char*> ep_options_keys, ep_options_values;
+  ep_options.GetKeyValuePairs(ep_options_keys, ep_options_values);
+
+  SessionOptionsAppendEP(*this, env, ep_devices, ep_options_keys, ep_options_values);
+
+  return *this;
+}
+
+template <typename T>
+inline SessionOptionsImpl<T>& SessionOptionsImpl<T>::AppendExecutionProvider_V2(
+    Env& env, const std::vector<ConstEpDevice>& ep_devices,
+    const std::unordered_map<std::string, std::string>& ep_options) {
+  std::vector<const char*> ep_options_keys, ep_options_values;
+  ep_options_keys.reserve(ep_options.size());
+  ep_options_values.reserve(ep_options.size());
+
+  for (const auto& [key, value] : ep_options) {
+    ep_options_keys.push_back(key.c_str());
+    ep_options_values.push_back(value.c_str());
+  }
+
+  SessionOptionsAppendEP(*this, env, ep_devices, ep_options_keys, ep_options_values);
 
   return *this;
 }
