@@ -50,15 +50,23 @@ class HtpSharedMemoryAllocator : public IAllocator {
   // `allocation_clean_up` is the clean up callback. The associated allocator takes ownership of the callback.
   static Status AddAllocationCleanUp(void* address_within_allocation, AllocationCleanUpFn&& allocation_clean_up);
 
+  static Status RemoveAndExecuteAllocationCleanUp(void* address_within_allocation);
+
  private:
   Status GetAllocationSharedMemoryInfoForThisAllocator(void* allocation_base_address,
                                                        SharedMemoryInfo& allocation_info);
 
-  Status AddAllocationCleanUpForThisAllocator(void* allocation_base_address, AllocationCleanUpFn&& allocation_clean_up);
+  Status AddAllocationCleanUpForThisAllocator(
+      void* allocation_base_address,
+      void* address_within_allocation,
+      AllocationCleanUpFn&& allocation_clean_up);
+
+  Status RemoveAndExecuteAllocationCleanUpForThisAllocator(
+      void* allocation_base_address, void* address_within_allocation);
 
   struct AllocationRecord {
     SharedMemoryInfo shared_memory_info;
-    InlinedVector<AllocationCleanUpFn, 1> clean_up_fns;
+    InlinedHashMap<void*, AllocationCleanUpFn> address_to_cleanup_fn;
   };
 
   // allocation address -> corresponding allocation record

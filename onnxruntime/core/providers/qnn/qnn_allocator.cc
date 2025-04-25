@@ -195,13 +195,14 @@ void HtpSharedMemoryAllocator::Free(void* allocation_address) {
 
     // clean up allocation record
     const auto& allocation_record = allocation_node.mapped();
-    for (auto& clean_up_fn : allocation_record.clean_up_fns) {
-      // attempt to run each clean_up_fn even if exceptions are thrown
-      try {
-        clean_up_fn(allocation_address);
-      } catch (const std::exception& e) {
-        LOGS(logger_, ERROR) << "Caught exception while running clean up callback for address (" << allocation_address
-                             << "): " << e.what();
+    for (const auto& [addr, cleanup_fn] : allocation_record.address_to_cleanup_fn) {
+      if (cleanup_fn) {
+        try {
+          cleanup_fn(allocation_address);
+        } catch (const std::exception& e) {
+          LOGS(logger_, ERROR) << "Caught exception while running general clean up callback for address ("
+                               << allocation_address << "): " << e.what();
+        }
       }
     }
   } catch (const std::exception& e) {
@@ -235,7 +236,7 @@ Status HtpSharedMemoryAllocator::AddAllocationCleanUp(void* address_within_alloc
   ORT_RETURN_IF_NOT(tracked_record.has_value(), "Failed to look up tracked allocation.");
 
   void* const base_address = tracked_record->base_address;
-  return tracked_record->allocator->AddAllocationCleanUpForThisAllocator(base_address,
+  return tracked_record->allocator->AddAllocationCleanUpForThisAllocator(base_address, address_within_allocation,
                                                                          std::move(allocation_clean_up));
 }
 
@@ -250,8 +251,10 @@ Status HtpSharedMemoryAllocator::GetAllocationSharedMemoryInfoForThisAllocator(v
   return Status::OK();
 }
 
-Status HtpSharedMemoryAllocator::AddAllocationCleanUpForThisAllocator(void* allocation_base_address,
-                                                                      AllocationCleanUpFn&& allocation_clean_up) {
+Status HtpSharedMemoryAllocator::AddAllocationCleanUpForThisAllocator(
+    void* allocation_base_address,
+    void* address_within_allocation,
+    AllocationCleanUpFn&& allocation_clean_up) {
   ORT_RETURN_IF(allocation_clean_up == nullptr, "allocation_clean_up should not be empty.");
 
   std::scoped_lock g{allocations_mutex_};
@@ -259,8 +262,56 @@ Status HtpSharedMemoryAllocator::AddAllocationCleanUpForThisAllocator(void* allo
   ORT_RETURN_IF(allocation_it == allocations_.end(),
                 "Failed to get allocation info for address (", allocation_base_address, ").");
 
-  auto& clean_up_fns = allocation_it->second.clean_up_fns;
-  clean_up_fns.emplace_back(std::move(allocation_clean_up));
+  auto& allocation_record = allocation_it->second;
+
+  // Store the address-specific cleanup function in the map
+  auto result = allocation_record.address_to_cleanup_fn.emplace(address_within_allocation,
+                                                                std::move(allocation_clean_up));
+
+  return Status::OK();
+}
+
+Status HtpSharedMemoryAllocator::RemoveAndExecuteAllocationCleanUp(void* address_within_allocation) {
+  const auto tracked_record = GlobalAllocationTracker().LookUp(address_within_allocation);
+  ORT_RETURN_IF_NOT(tracked_record.has_value(), "Failed to look up tracked allocation.");
+
+  void* const base_address = tracked_record->base_address;
+  return tracked_record->allocator->RemoveAndExecuteAllocationCleanUpForThisAllocator(base_address, address_within_allocation);
+}
+
+Status HtpSharedMemoryAllocator::RemoveAndExecuteAllocationCleanUpForThisAllocator(
+    void* allocation_base_address, void* address_within_allocation) {
+  AllocationCleanUpFn cleanup_fn_to_execute;
+
+  {
+    std::scoped_lock g{allocations_mutex_};
+    const auto allocation_it = allocations_.find(allocation_base_address);
+    ORT_RETURN_IF(allocation_it == allocations_.end(),
+                  "Failed to get allocation info for address (", allocation_base_address, ").");
+
+    auto& address_to_cleanup_fn = allocation_it->second.address_to_cleanup_fn;
+
+    // Look for a cleanup function associated with the specific address
+    auto cleanup_it = address_to_cleanup_fn.find(address_within_allocation);
+    if (cleanup_it != address_to_cleanup_fn.end()) {
+      // Found a specific cleanup function for this address
+      cleanup_fn_to_execute = std::move(cleanup_it->second);
+      address_to_cleanup_fn.erase(cleanup_it);
+    }
+  }
+
+  // Execute the cleanup function outside of the lock to avoid potential deadlocks
+  if (cleanup_fn_to_execute) {
+    try {
+      cleanup_fn_to_execute(allocation_base_address);
+    } catch (const std::exception& e) {
+      LOGS(logger_, ERROR) << "Caught exception while executing clean up callback for address ("
+                           << address_within_allocation << "): " << e.what();
+      // Even though the function threw an exception, we still removed it successfully,
+      // so we consider this a success from the API's perspective.
+    }
+  }
+
   return Status::OK();
 }
 

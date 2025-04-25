@@ -1314,6 +1314,8 @@ struct ProviderHost {
   virtual std::unique_ptr<ModelMetadefIdGenerator> ModelMetadefIdGenerator__construct() = 0;
   virtual void ModelMetadefIdGenerator__operator_delete(ModelMetadefIdGenerator* p) = 0;
   virtual int ModelMetadefIdGenerator__GenerateId(const ModelMetadefIdGenerator* p, const GraphViewer& graph_viewer, HashValue& model_hash) = 0;
+
+  virtual void BFCArena__SetDeallocateCallback(void* p, std::function<void(void*)> callback) = 0;
 };
 
 #if defined(_MSC_VER) && !defined(__clang__)

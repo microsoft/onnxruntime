@@ -139,6 +139,10 @@ class QnnBackendManager : public std::enable_shared_from_this<QnnBackendManager>
                                        const Qnn_Tensor_t& qnn_tensor,
                                        Qnn_MemHandle_t& mem_handle);
 
+  // Reverse of GetOrRegisterContextMemHandle. Removes the context memory handle
+  // and executes its cleanup using HtpSharedMemoryAllocator.
+  static Status UnregisterAndCleanupContextMemHandle(void* address_within_allocation);
+
   Status ParseLoraConfig(std::string lora_config);
 
  private:

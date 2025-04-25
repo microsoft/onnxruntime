@@ -1874,5 +1874,15 @@ Status QnnBackendManager::GetOrRegisterContextMemHandle(Qnn_ContextHandle_t cont
   return Status::OK();
 }
 
+Status QnnBackendManager::UnregisterAndCleanupContextMemHandle(void* address_within_allocation) {
+  // Check if the address is valid
+  if (address_within_allocation == nullptr) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Address within allocation is null.");
+  }
+
+  // Call into HtpSharedMemoryAllocator to remove and execute the cleanup
+  return HtpSharedMemoryAllocator::RemoveAndExecuteAllocationCleanUp(address_within_allocation);
+}
+
 }  // namespace qnn
 }  // namespace onnxruntime

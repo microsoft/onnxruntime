@@ -55,7 +55,7 @@ class StreamAwareArena;
 // all requests to allocate memory go through this interface.
 class BFCArena : public IAllocator {
  public:
-  using DeallocateCallback = std::function<void(void*, size_t)>;
+  using DeallocateCallback = std::function<void(void*)>;
 
   static const ArenaExtendStrategy DEFAULT_ARENA_EXTEND_STRATEGY = ArenaExtendStrategy::kNextPowerOfTwo;
   static const int DEFAULT_INITIAL_CHUNK_SIZE_BYTES = 1 * 1024 * 1024;

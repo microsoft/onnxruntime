@@ -8,6 +8,7 @@
 #include "core/common/inlined_containers.h"
 #include "core/common/path_string.h"
 #include "core/framework/allocator_utils.h"
+#include "core/framework/bfc_arena.h"
 #include "core/framework/config_options.h"
 #include "core/framework/compute_capability.h"
 #include "core/framework/data_types.h"
@@ -1670,6 +1671,11 @@ struct ProviderHostImpl : ProviderHost {
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_MINIMAL_BUILD_CUSTOM_OPS)
   Status LoadDynamicLibrary(onnxruntime::PathString library_name) override { return LoadDynamicLibraryFromProvider(library_name); };
 #endif
+
+  void BFCArena__SetDeallocateCallback(void* p, BFCArena::DeallocateCallback callback) override {
+    reinterpret_cast<BFCArena*>(p)->SetDeallocateCallback(std::move(callback));
+  }
+
 } provider_host_;
 
 #if defined(_MSC_VER) && !defined(__clang__)

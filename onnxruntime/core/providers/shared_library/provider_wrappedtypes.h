@@ -1578,3 +1578,11 @@ struct OrtSessionOptions final {
   }
   PROVIDER_DISALLOW_ALL(OrtSessionOptions)
 };
+
+struct BFCArena {
+  using DeallocateCallback = std::function<void(void*)>;
+  void SetDeallocateCallback(DeallocateCallback callback) {
+    onnxruntime::g_host->BFCArena__SetDeallocateCallback(this, std::move(callback));
+  }
+  PROVIDER_DISALLOW_ALL(BFCArena);
+};

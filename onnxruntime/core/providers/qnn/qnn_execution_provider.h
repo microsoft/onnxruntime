@@ -105,6 +105,7 @@ class QNNExecutionProvider : public IExecutionProvider {
   // Whether this is set depends on a session option enabling it and if the RPCMEM dynamic library is available.
   // This is potentially shared with HtpSharedMemoryAllocator which may be returned by CreatePreferredAllocators().
   std::shared_ptr<qnn::RpcMemLibrary> rpcmem_library_ = nullptr;
+  AllocatorPtr arena_allocator_;
 
   class PerThreadContext final {
    public:

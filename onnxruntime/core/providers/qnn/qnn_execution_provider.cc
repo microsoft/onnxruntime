@@ -522,6 +522,14 @@ QNNExecutionProvider::QNNExecutionProvider(const ProviderOptions& provider_optio
 QNNExecutionProvider::~QNNExecutionProvider() {
   // clean up thread local context caches
   std::lock_guard<std::mutex> lock(context_state_.mutex);
+
+  if (arena_allocator_) {
+    auto* bfc_arena = reinterpret_cast<BFCArena*>(arena_allocator_.get());
+    // Reset callback
+    bfc_arena->SetDeallocateCallback({});
+    arena_allocator_.reset();
+  }
+
   for (const auto& cache_weak : context_state_.caches_to_update_on_destruction) {
     const auto cache = cache_weak.lock();
     if (!cache) continue;
@@ -1314,7 +1322,17 @@ std::vector<AllocatorPtr> QNNExecutionProvider::CreatePreferredAllocators() {
                                                          /* device_id */ 0,
                                                          /* use_arena */ true};
 
-    allocators.emplace_back(CreateAllocator(rpcmem_allocator_creation_info));
+    arena_allocator_ = CreateAllocator(rpcmem_allocator_creation_info);
+
+    auto dealloc_callback = [](void* p) {
+      if (p) {
+        void(qnn::QnnBackendManager::UnregisterAndCleanupContextMemHandle(p));
+      }
+    };
+
+    reinterpret_cast<BFCArena*>(arena_allocator_.get())->SetDeallocateCallback(dealloc_callback);
+
+    allocators.emplace_back(arena_allocator_);
   }
 
   return allocators;
