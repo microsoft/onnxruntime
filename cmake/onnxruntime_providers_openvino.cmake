@@ -17,7 +17,7 @@
     message(FATAL_ERROR "OpenVINO 2024.5 and newer are supported. Please, use latest OpenVINO release")
   endif()
 
-  if(OpenVINO_VERSION VERSION_GREATER_EQUAL 2024.4)
+  if(OpenVINO_VERSION VERSION_GREATER_EQUAL 2024.4 AND onnxruntime_USE_OPENVINO_NPU)
     add_definitions(-DUSE_OVEP_NPU_MEMORY=1)
   endif()
 
