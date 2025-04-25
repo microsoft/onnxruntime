@@ -95,10 +95,10 @@ struct SymbolHelper {
   }
 
   void Lookup(const void* address, std::ostream& message) {
-    alignas(SYMBOL_INFO) char symbol_buffer[kSymbolBufferSize] = {0};
-    SYMBOL_INFO* symbol = reinterpret_cast<SYMBOL_INFO*>(symbol_buffer);
+    SYMBOL_INFO_PACKAGE symbol_info_package{};
+    SYMBOL_INFO* symbol = &symbol_info_package.si;
     symbol->SizeOfStruct = sizeof(SYMBOL_INFO);
-    symbol->MaxNameLen = MAX_SYM_NAME;
+    symbol->MaxNameLen = std::size(symbol_info_package.name);
 
     if (!LookupSymAndInitialize(address, symbol, message)) {
       return;
