@@ -75,8 +75,6 @@ struct SymbolHelper {
 
   SymbolHelper() = default;
 
-  static constexpr size_t kSymbolBufferSize = sizeof(SYMBOL_INFO) + MAX_SYM_NAME;
-
   bool LookupSymAndInitialize(const void* address, SYMBOL_INFO* symbol, std::ostream& message) {
     if (SymFromAddr(process_handle_, reinterpret_cast<ULONG_PTR>(address), 0, symbol) != TRUE) {
       if (GetLastError() == ERROR_INVALID_HANDLE) {
