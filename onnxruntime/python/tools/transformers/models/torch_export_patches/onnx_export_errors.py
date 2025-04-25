@@ -71,7 +71,6 @@ def _register_cache_serialization(verbose: int = 0) -> dict[str, bool]:
     # Cache serialization: to be moved into appropriate packages
     import packaging.version as pv
     import torch
-    from transformers import __version__ as transformers_version
 
     try:
         from transformers.cache_utils import DynamicCache
