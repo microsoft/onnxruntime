@@ -270,7 +270,7 @@ Memory_LeakCheck::~Memory_LeakCheck() {
     DebugPrint("-----Ending Heap Trace-----\n\n");
 
     std::cout << "\n----- MEMORY LEAKS: " << leaked_bytes << " bytes of memory leaked in "
-              << leak_count << " allocations" << "\n";
+              << leak_count << " allocations\n";
     if (!IsDebuggerPresent()) {
       exit(-1);
     }
