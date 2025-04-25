@@ -205,6 +205,10 @@ static Status BindQnnTensorMemoryToOrtValueMemory(const logging::Logger& logger,
   if (!uses_shared_memory) {
     LOGS(logger, VERBOSE) << "Setting Qnn_Tensor_t clientBuf to ORT tensor memory.";
     SetQnnTensorMemType(qnn_tensor, QNN_TENSORMEMTYPE_RAW);
+    // TODO: REMOVE!
+    // This checks that input data is always aligned to 4096. Only passes if running with a custom
+    // CPU allocator that aligns memory.
+    assert(((uintptr_t)ort_value_data & (4095)) == 0);
     SetQnnTensorClientBuf(qnn_tensor, ort_value_data, ort_value_data_size);
   } else {
     LOGS(logger, VERBOSE) << "Setting Qnn_Tensor_t memHandle to ORT tensor shared memory.";
