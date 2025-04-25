@@ -9,7 +9,7 @@ namespace onnxruntime {
 namespace webgpu {
 
 void GemmVec4Program::MatMulReadFnSource(ShaderHelper& shader) const {
-  // We cannot think `output_valut_t` as the type of `A` and `B`. Because output might not be a vec4 but A/B is vec4.
+  // We can’t treat `output_value_t` as the type of A and B, because output might not be a vec4, while A or B is.
   const std::string data_type = "output_element_t";
   const std::string type_string = MakeScalarOrVectorType(4 /*components */, data_type);
 
@@ -43,7 +43,7 @@ void GemmVec4Program::MatMulWriteFnSource(ShaderHelper& shader, const ShaderVari
   }
 
   shader.AdditionalImplementation() << "var values = valuesIn; \n"
-                                    << "if(col < total_cols && row < uniforms.M) {";
+                                    << "if(col < total_cols && row < uniforms.M) { \n";
   if (need_handle_bias_) {
     const ShaderVariableHelper& C = shader.AddInput("C", ShaderUsage::UseUniform);
     shader.AdditionalImplementation() << "    values += output_element_t(uniforms.beta) * ";
@@ -68,7 +68,7 @@ void GemmVec4Program::MatMulWriteFnSource(ShaderHelper& shader, const ShaderVari
 Status GemmVec4Program::GenerateShaderCode(ShaderHelper& shader) const {
   const ShaderVariableHelper& output = shader.AddOutput("output", ShaderUsage::UseUniform | ShaderUsage::UseValueTypeAlias | ShaderUsage::UseElementTypeAlias);
 
-  // We don't use `output_valut_t` as the type of `A` and `B`. Because output might not be a vec4 but A/B is vec4.
+  // We can’t treat `output_value_t` as the type of A and B, because output might not be a vec4, while A or B is.
   const std::string data_type = "output_element_t";
   const std::string type_string = MakeScalarOrVectorType(4 /*components */, data_type);
 
@@ -103,8 +103,8 @@ Status GemmVec4Program::GenerateShaderCode(ShaderHelper& shader) const {
         )TILE_A";
     } else {
       shader.MainFunctionBody() << R"TILE_A(
-        var row = tile_row_start + local_idx / 8u; // row is A index
-        var col = k_start_a + (local_idx % 8u); //
+        var row = tile_row_start + local_idx / 8u;
+        var col = k_start_a + (local_idx % 8u);
         tile_a[local_idx / 8u][local_idx % 8u] = mm_readA(row, col, uniforms.M, uniforms.K4);
         )TILE_A";
     }
@@ -112,14 +112,14 @@ Status GemmVec4Program::GenerateShaderCode(ShaderHelper& shader) const {
     if (transB_) {
       shader.MainFunctionBody() << R"TILE_B(
         row = tile_col_start * 4 + (local_idx / 8u);
-        col = k_start_b + (local_idx % 8u); // col is B index
+        col = k_start_b + (local_idx % 8u);
         // load 1 vec4 into tile_b
         tile_b[local_idx / 8u][local_idx % 8u] = mm_readB(row, col, uniforms.N, uniforms.K4);
         )TILE_B";
     } else {
       shader.MainFunctionBody() << R"TILE_B(
-        row = k_start_b + (local_idx / 8u); // row is B index
-        col = tile_col_start + (local_idx % 8u); // col is B index
+        row = k_start_b + (local_idx / 8u);
+        col = tile_col_start + (local_idx % 8u);
         // load 1 vec4 into tile_b
         tile_b[local_idx / 8u][local_idx % 8u] = mm_readB(row, col, uniforms.K, uniforms.N4);
         )TILE_B";
@@ -172,7 +172,6 @@ Status GemmVec4Program::GenerateShaderCode(ShaderHelper& shader) const {
             values += a[(local_idx / 8u) % 4] * b;
         })CALC";
     } else if (!transA_ && transB_) {
-      // !transA_ && !transB_
       shader.MainFunctionBody() << R"CALC(
          for (var i = 0u; i < 32; i = i + 4u) {
             let a = tile_a[local_idx / 8u][i/4u];
@@ -232,6 +231,14 @@ bool CanApplyGemmVec4(const Tensor* a,
   const auto& a_shape = a->Shape();
   const auto& b_shape = b->Shape();
 
+  // When the number of columns in A and B is divisible by 4, we apply vec4 optimization to A and B.
+  // However, this doesn't necessarily mean that C and Y will use vec4.
+  // For example, C/output won't be vec4 if B is transposed and N is not divisible by 4.
+  // Also, C won't use vec4 when it's a scalar.
+  // The code would be simpler if we avoided vec4 optimization for C/output.
+  // But to maximize performance, we still apply vec4 when possible — even though it adds some complexity.
+  // I've added detailed comments explaining this logic.
+  // See MatMulReadFnSource and MatMulWriteFnSource, especially the parts related to broadcasting.
   return a_shape[1] % 4 == 0 && b_shape[1] % 4 == 0;
 }
 
@@ -258,6 +265,7 @@ Status ApplyGemmVec4(const Tensor* a,
   int c_components = 4;
   bool c_is_scalar = false;
 
+  // We use vec4 for C when its last dimension equals N and N is divisible by 4.
   if (need_handle_bias) {
     const auto& c_shape = c->Shape();
     int64_t c_last_dim = c_shape[c_shape.NumDimensions() - 1];
@@ -265,6 +273,7 @@ Status ApplyGemmVec4(const Tensor* a,
     c_is_scalar = c_shape.Size() == 1;
   }
 
+  // We use vec4 for Y when N is divisible by 4.
   const int output_components = N % 4 == 0 ? 4 : 1;
 
   GemmVec4Program program{transA_, transB_, alpha, need_handle_bias, need_handle_matmul, c_components, c_is_scalar, output_components};
@@ -288,17 +297,15 @@ Status ApplyGemmVec4(const Tensor* a,
       .AddOutputs({{y, ProgramTensorMetadataDependency::TypeAndRank, output_components}})
       .SetDispatchGroupSize(num_tile_n * num_tile_m)
       .SetWorkgroupSize(256, 1, 1)
-      .AddUniformVariables({
-          {num_tile_n},  // num_tile_n
-          {M},           // M
-          {N},           // N
-          {K},           // K
-          {M / 4},       // M4
-          {N / 4},       // N4
-          {K / 4},       // K4
-          {alpha},       // alpha
-          {beta}         // beta
-      });
+      .AddUniformVariables({{num_tile_n},
+                            {M},
+                            {N},
+                            {K},
+                            {M / 4},
+                            {N / 4},
+                            {K / 4},
+                            {alpha},
+                            {beta}});
 
   return context.RunProgram(program);
 }

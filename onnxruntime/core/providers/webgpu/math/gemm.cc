@@ -226,14 +226,12 @@ Status Gemm::ComputeInternal(ComputeContext& context) const {
       .AddOutputs({{Y, ProgramTensorMetadataDependency::Type}})
       .SetDispatchGroupSize(num_tile_n * num_tile_m)
       .SetWorkgroupSize(TILE_SIZE, TILE_SIZE)
-      .AddUniformVariables({
-          {num_tile_n},  // num_tile_n
-          {M},           // M
-          {N},           // N
-          {K},           // K
-          {alpha_},      // alpha
-          {beta_}        // beta
-      });
+      .AddUniformVariables({{num_tile_n},
+                            {M},
+                            {N},
+                            {K},
+                            {alpha_},
+                            {beta_}});
 
   return context.RunProgram(program);
 }
