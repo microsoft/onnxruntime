@@ -25,7 +25,7 @@ from llama_inputs import (
 )
 from llama_torch import setup_torch_model
 from models.torch_export_patches.cache_helper import make_dynamic_cache
-from transformers import AutoConfig
+from transformers import __version__ as transformers_version, AutoConfig
 from transformers.cache_utils import DynamicCache
 
 import onnxruntime as ort
@@ -117,7 +117,7 @@ def verify_parity(
 
     inputs = get_inputs(args, config)
 
-    if "past_key_values" in inputs and pv.Version(transformers.__version__) >= pv.Version("4.45"):
+    if "past_key_values" in inputs and pv.Version(transformers_version) >= pv.Version("4.45"):
         # Using DynamicCache
         inputs["past_key_values"] = make_dynamic_cache(inputs["past_key_values"])
 
