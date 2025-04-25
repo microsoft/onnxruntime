@@ -52,6 +52,96 @@
       "createdDate": "2025-02-06 15:53:46Z",
       "expirationDate": "2025-07-26 16:26:55Z",
       "justification": "This error is baselined with an expiration date of 180 days from 2025-02-06 16:26:55Z"
+    },
+    "4a0e83898f2607b442b095973eed78a44648024954e8ef2188e6ba3786771620": {
+      "signature": "4a0e83898f2607b442b095973eed78a44648024954e8ef2188e6ba3786771620",
+      "alternativeSignatures": [
+        "68a14c0d46c7eb93178e545e06454f12e9d1c98e4e9ecbe009e11cd3eff4f682"
+      ],
+      "target": "file:///D:/a/_work/_temp/RelWithDebInfo/RelWithDebInfo/dxcompiler.dll",
+      "memberOf": [
+        "default"
+      ],
+      "tool": "binskim",
+      "ruleId": "BA2007",
+      "createdDate": "2025-04-25 11:09:32Z",
+      "expirationDate": "2025-10-12 11:33:39Z",
+      "justification": "This error is baselined with an expiration date of 180 days from 2025-04-25 11:33:39Z"
+    },
+    "b3a97d9c774e372e8204bdd6abe8e5bc5fdd46799adaeb0f666838042fdd8f99": {
+      "signature": "b3a97d9c774e372e8204bdd6abe8e5bc5fdd46799adaeb0f666838042fdd8f99",
+      "alternativeSignatures": [
+        "79f7ba0d65b89c586e684239b8488e9d8cf58c53ce9fedb323dbee5096378e08"
+      ],
+      "target": "file:///D:/a/_work/_temp/RelWithDebInfo/RelWithDebInfo/onnxruntime.dll",
+      "memberOf": [
+        "default"
+      ],
+      "tool": "binskim",
+      "ruleId": "BA2007",
+      "createdDate": "2025-04-25 11:09:32Z",
+      "expirationDate": "2025-10-12 11:33:39Z",
+      "justification": "This error is baselined with an expiration date of 180 days from 2025-04-25 11:33:39Z"
+    },
+    "9836b7915d2d6019bd245fd42935c164e0f9db8c867c8fe26cd6c2f576927aa2": {
+      "signature": "9836b7915d2d6019bd245fd42935c164e0f9db8c867c8fe26cd6c2f576927aa2",
+      "alternativeSignatures": [
+        "1081cda6083ef05dfe233be730c16c300ef887ba2b0bd8908b2f255ba666f3be"
+      ],
+      "target": "file:///D:/a/_work/_temp/RelWithDebInfo/RelWithDebInfo/onnxruntime_autoep_test.exe",
+      "memberOf": [
+        "default"
+      ],
+      "tool": "binskim",
+      "ruleId": "BA2007",
+      "createdDate": "2025-04-25 11:09:32Z",
+      "expirationDate": "2025-10-12 11:33:39Z",
+      "justification": "This error is baselined with an expiration date of 180 days from 2025-04-25 11:33:39Z"
+    },
+    "5d44b5ab5f1d37e0368a85b56bf7460c97e329d626954edd761ace4890e5b6d9": {
+      "signature": "5d44b5ab5f1d37e0368a85b56bf7460c97e329d626954edd761ace4890e5b6d9",
+      "alternativeSignatures": [
+        "acaec6efd0587a90c9d9ae4dc9893cd8ae4cec325f0263eb710444ca16f76e86"
+      ],
+      "target": "file:///D:/a/_work/_temp/RelWithDebInfo/RelWithDebInfo/onnxruntime_perf_test.exe",
+      "memberOf": [
+        "default"
+      ],
+      "tool": "binskim",
+      "ruleId": "BA2007",
+      "createdDate": "2025-04-25 11:09:32Z",
+      "expirationDate": "2025-10-12 11:33:39Z",
+      "justification": "This error is baselined with an expiration date of 180 days from 2025-04-25 11:33:39Z"
+    },
+    "55ad483be6385b220d416d13e2815669297a2e9abb23fb12c4c8057cba628808": {
+      "signature": "55ad483be6385b220d416d13e2815669297a2e9abb23fb12c4c8057cba628808",
+      "alternativeSignatures": [
+        "64e9ad74cf4e0c10e1bc5c07140f0b8ed101b123a96565b112ee81ccaa3a942a"
+      ],
+      "target": "file:///D:/a/_work/_temp/RelWithDebInfo/RelWithDebInfo/onnxruntime_test_all.exe",
+      "memberOf": [
+        "default"
+      ],
+      "tool": "binskim",
+      "ruleId": "BA2007",
+      "createdDate": "2025-04-25 11:09:32Z",
+      "expirationDate": "2025-10-12 11:33:39Z",
+      "justification": "This error is baselined with an expiration date of 180 days from 2025-04-25 11:33:39Z"
+    },
+    "20edb5d58ae9fe1784a826b3cd03ec897234691bcb117b076ee0b1da3c4c4468": {
+      "signature": "20edb5d58ae9fe1784a826b3cd03ec897234691bcb117b076ee0b1da3c4c4468",
+      "alternativeSignatures": [
+        "dc64851ea95bd49082445a0f63dd2eb843410d661388ff5b64303f71aed44ad4"
+      ],
+      "target": "file:///D:/a/_work/_temp/RelWithDebInfo/RelWithDebInfo/onnx_test_runner.exe",
+      "memberOf": [
+        "default"
+      ],
+      "tool": "binskim",
+      "ruleId": "BA2007",
+      "createdDate": "2025-04-25 11:09:32Z",
+      "expirationDate": "2025-10-12 11:33:39Z",
+      "justification": "This error is baselined with an expiration date of 180 days from 2025-04-25 11:33:39Z"
     }
   }
 }
