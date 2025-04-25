@@ -726,6 +726,25 @@ class PlannerImpl {
       ProcessDef(index, graph_viewer_.GetNodeArg(pair.first));
     }
 
+    // If the suggested_device is also CPU and default mem type, then
+    // we check which one has higher alignment and use that one if it is so.
+    // If the suggested device is CPU, but not the default mem type, then
+    // it is a CPU accessible memory device allocator. They typically have a page aligment
+    // so that would satisfy the alignment requirement of any other CPU consumers.
+    // If one device is not on CPU, we default on the one that is CPU.
+    auto determine_device = [](const OrtDevice& output_device, const OrtDevice& suggested_device) -> OrtDevice {
+      if (output_device.Type() == OrtDevice::CPU && suggested_device.Type() == OrtDevice::CPU) {
+        if (output_device.MemType() == OrtDevice::MemType::DEFAULT &&
+            suggested_device.MemType() == OrtDevice::MemType::DEFAULT) {
+          return (output_device.GetAlignment() >= suggested_device.GetAlignment()) ? output_device : suggested_device;
+        } else {
+          return (output_device.MemType() != OrtDevice::MemType::DEFAULT) ? output_device : suggested_device;
+        }
+      } else {
+        return (output_device.Type() == OrtDevice::CPU) ? output_device : suggested_device;
+      }
+    };
+
     InlinedHashSet<OrtValueIndex> set_node_arg_has_explicit_consumer;
 
     InlinedHashMap<OrtValueIndex, const IExecutionProvider*> map_implicitly_consumed_node_arg_to_ep;
@@ -757,6 +776,7 @@ class PlannerImpl {
         // Add location information if applicable for the provided input def
         auto process_input = [&graph_inputs, &exec_provider, &p_kernel_def, &is_implicit_input,
                               &set_node_arg_has_explicit_consumer,
+                              &determine_device,
                               &map_implicitly_consumed_node_arg_to_ep,
                               &set_implicitly_consumed_node_arg_has_heterogenous_ep_consumers,
                               this](const NodeArg& input, size_t arg_idx) {
@@ -859,19 +879,9 @@ class PlannerImpl {
                   } else {
                     // We want to minimize the amount of copies, so we want at least one
                     // device to match or match both if they are CPU based.
-                    OrtDevice result;
-                    auto first_device = already_seen_ep_for_node_arg->second->GetOrtDeviceByMemType(OrtMemType::OrtMemTypeDefault);
-                    auto second_device = exec_provider->GetOrtDeviceByMemType(OrtMemType::OrtMemTypeDefault);
-                    if (first_device.Type() == OrtDevice::CPU && second_device.Type() == OrtDevice::CPU) {
-                      if (first_device.MemType() == OrtDevice::MemType::DEFAULT &&
-                          second_device.MemType() == OrtDevice::MemType::DEFAULT) {
-                        result = (first_device.GetAlignment() >= second_device.GetAlignment()) ? first_device : second_device;
-                      } else {
-                        result = (first_device.MemType() != OrtDevice::MemType::DEFAULT) ? first_device : second_device;
-                      }
-                    } else {
-                      result = (first_device.Type() == OrtDevice::CPU) ? first_device : second_device;
-                    }
+                    OrtDevice result = determine_device(
+                        already_seen_ep_for_node_arg->second->GetOrtDeviceByMemType(OrtMemType::OrtMemTypeDefault),
+                        exec_provider->GetOrtDeviceByMemType(OrtMemType::OrtMemTypeDefault));
                     plan_.SetLocation(static_cast<size_t>(index), result);
                     set_implicitly_consumed_node_arg_has_heterogenous_ep_consumers.insert(index);
                   }
@@ -911,21 +921,13 @@ class PlannerImpl {
                 const auto& ep_type = consumer->GetExecutionProviderType();
                 auto suggested_device = execution_providers_.Get(ep_type)->GetOrtDeviceByMemType(
                     OrtMemType::OrtMemTypeCPUInput);
-                // If the suggested_device is also CPU and default mem type, then
-                // we check which one has higher alignment and use that one
-                // if it is so.
                 if (suggested_device.Type() == OrtDevice::CPU &&
                     suggested_device.MemType() == OrtDevice::MemType::DEFAULT) {
-                  if (suggested_device.GetAlignment() > output_device.GetAlignment()) {
-                    output_device = suggested_device;
-                  }
-                } else if (suggested_device.Type() == OrtDevice::CPU &&
-                           suggested_device.MemType() != OrtDevice::MemType::DEFAULT) {
-                  // If the suggested device is CPU, but not the default mem type, then
-                  // it is a CPU accessible memory device allocator. They typically have a page aligment
-                  // so that would satisfy the alignment requirement of any other CPU consumers.
+                  output_device = determine_device(output_device, suggested_device);
+                } else if (suggested_device.Type() == OrtDevice::CPU) {
                   // Edge case: there are more than one downstream nodes that suggest their own CPU accessible
-                  // memory. In that case, we can not win them all, but the chosen device would still make it run.
+                  // memory. In that case, we can not win them all, but the chosen device would still make it run
+                  // and reduce a number of copies for some.
                   output_device = suggested_device;
                   break;
                 }
