@@ -39,6 +39,18 @@ constexpr std::string_view commonFunctions = R"ADDNL_FN(
         }
   )ADDNL_FN";
 
+constexpr std::string_view AlignWithZeroPoint = R"ADDNL_FN(
+        fn AlignWithZeroPoint(in: vec4<u32>) -> vec4<u32>
+        {
+            var out = vec4<u32>(0);
+            out[0] = pack4xI8(vec4<i32>(unpack4xU8(in[0])) - vec4<i32>(128));
+            out[1] = pack4xI8(vec4<i32>(unpack4xU8(in[1])) - vec4<i32>(128));
+            out[2] = pack4xI8(vec4<i32>(unpack4xU8(in[2])) - vec4<i32>(128));
+            out[3] = pack4xI8(vec4<i32>(unpack4xU8(in[3])) - vec4<i32>(128));
+            return out;
+        }
+ )ADDNL_FN";
+
 }  // namespace
 
 Status DP4AMatMulQuantizeProgram::GenerateShaderCode(ShaderHelper& shader) const {
@@ -129,7 +141,9 @@ Status DP4AMatMulNBitsProgram::GenerateShaderCode(ShaderHelper& shader) const {
                 scale_A[row] = scales_a[a_global*(uniforms.K/128) + kidx_v/8];
             }
         }
-
+    )ADDNL_FN";
+  if (nbits_ == 4) {
+    shader.AdditionalImplementation() << R"ADDNL_FN(
         fn loadSHMB(b_global_base:u32, kidx_v:u32, row: u32, col: u32)
         {
             let b_global = b_global_base + row;
@@ -147,6 +161,28 @@ Status DP4AMatMulNBitsProgram::GenerateShaderCode(ShaderHelper& shader) const {
             }
         }
     )ADDNL_FN";
+  } else {
+    ORT_ENFORCE(nbits_ == 8, "Only 4/8 bits are supported for DP4");
+    shader.AdditionalImplementation() << AlignWithZeroPoint
+                                      << R"ADDNL_FN(
+        fn loadSHMB(b_global_base:u32, kidx_v:u32, row: u32, col: u32)
+        {
+            let b_global = b_global_base + row;
+            if (b_global >= uniforms.N)
+            {
+                return;
+            }
+
+            let b_value = input_b[b_global*uniforms.K16+kidx_v+col];
+            tile_B[col][row] = AlignWithZeroPoint(b_value);
+            if (col == 0)
+            {
+                // kidx_v - each kidx_v covers 16 values of k
+                scale_B[row] = scales_b[b_global*(uniforms.K/block_size) + kidx_v/(block_size/16)];
+            }
+        }
+    )ADDNL_FN";
+  }
 
   shader.MainFunctionBody() << R"MAIN_FN(
         // During the load phase we use all 256 threads to load 64 rows of A/B.
@@ -289,18 +325,18 @@ Status DP4AMatMulNBitsSmallMProgram::GenerateShaderCode(ShaderHelper& shader) co
   //    - Stores intermediate results in shared memory (inter_results)
   //    - Iterates through columns accumulating results in inter_results
   //    - Performs final reduction sum in inter_results for output
-  shader.AdditionalImplementation() << "const tile_size = " << tile_size_ << "u;\n"
-                                    << "const tile_size_k_vec = " << tile_size_k_vec << "u;\n"
+  shader.AdditionalImplementation() << "  const tile_size = " << tile_size_ << "u;\n"
+                                    << "  const tile_size_k_vec = " << tile_size_k_vec << "u;\n"
                                     // sub_tile_size is the number of concurrent b rows processed by the workgroup.
-                                    << "const sub_tile_size = " << WorkgroupSizeX() / tile_size_k_vec << "u;\n";
-  shader.AdditionalImplementation() << commonFunctions
-                                    << R"ADDNL_FN(
-    // Shared memory
+                                    << "  const sub_tile_size = " << WorkgroupSizeX() / tile_size_k_vec << "u;\n"
+                                    << "  var<workgroup> inter_results: array<array<output_element_t, tile_size_k_vec>, tile_size>;\n";
+  if (nbits_ == 4) {
+    shader.AdditionalImplementation() << commonFunctions
+                                      << R"ADDNL_FN(
     // Need 2 * tile_size_k_vec (32) to store a tile_A since b is quantized as 4 bits and a is quantized as 8 bits.
     var<workgroup> tile_A : array<vec4<u32>, 32>;
     // Need 4 scales value since each tile_A includes 512 (4x4x32) scalars and the block_size is 128.
     var<workgroup> scale_A : array<output_element_t, 4>;
-    var<workgroup> inter_results: array<array<output_element_t, tile_size_k_vec>, tile_size>;
     fn loadSHMA(a_global: u32, kidx_v: u32, col: u32)
     {
       let k_offset = kidx_v + col;
@@ -316,13 +352,47 @@ Status DP4AMatMulNBitsSmallMProgram::GenerateShaderCode(ShaderHelper& shader) co
       }
     }
   )ADDNL_FN";
+  } else {
+    shader.AdditionalImplementation() << AlignWithZeroPoint
+                                      << R"ADDNL_FN(
+    var<workgroup> tile_A : array<vec4<u32>, tile_size_k_vec>;
+    // Need 2 scales value since each tile_A includes 256 (4x4x16) scalars and the block_size is 128.
+    var<workgroup> scale_A : array<output_element_t, 2>;
+    fn loadSHMA(a_global: u32, kidx_v: u32, col: u32)
+    {
+      let k_offset = kidx_v + col;
+      if (k_offset >= uniforms.K16) {
+        return;
+      }
 
+      tile_A[col] = input_a[a_global*uniforms.K16+k_offset];
+      if (col < 2)
+      {
+        // kidx_v - covers 16 values of k in input_a
+        scale_A[col] = scales_a[a_global*(uniforms.K/128) + kidx_v/8 + col];
+      }
+    }
+
+    // Scaled dot product of 4 packed unsigned integers.
+    fn SDP4AI(a1:vec4<u32>, b1:vec4<u32>, scale:output_element_t) -> output_element_t
+    {
+      var local_sum = dot4I8Packed(a1[0], b1[0]);
+      local_sum += dot4I8Packed(a1[1], b1[1]);
+      local_sum += dot4I8Packed(a1[2], b1[2]);
+      local_sum += dot4I8Packed(a1[3], b1[3]);
+      return output_element_t(local_sum) * scale;
+    }
+  )ADDNL_FN";
+  }
   shader.MainFunctionBody() << R"MAIN_FN(
     let a_global = u32(workgroup_idx / uniforms.num_N_tile);
     let b_global_base = (workgroup_idx % uniforms.num_N_tile) * tile_size;
     // Handle each workgroup threads as a block of [sub_tile_size][tile_size_k_vec]
     let local_col = local_idx % tile_size_k_vec;
     let local_row = local_idx / tile_size_k_vec;
+  )MAIN_FN";
+  if (nbits_ == 4) {
+    shader.MainFunctionBody() << R"MAIN_FN(
     for (var kidx_v:u32 = 0; kidx_v < uniforms.K32; kidx_v += tile_size_k_vec)
     {
       // Load Phase: Populate shared memory for the workgroup.
@@ -354,7 +424,39 @@ Status DP4AMatMulNBitsSmallMProgram::GenerateShaderCode(ShaderHelper& shader) co
       }
       workgroupBarrier();
     }
+  )MAIN_FN";
+  } else {
+    shader.MainFunctionBody() << R"MAIN_FN(
+    for (var kidx_v:u32 = 0; kidx_v < uniforms.K16; kidx_v += tile_size_k_vec)
+    {
+      // Load Phase: Populate shared memory for the workgroup.
+      if (local_idx < tile_size_k_vec)
+      {
+        loadSHMA(a_global, kidx_v, local_idx);
+      }
+      workgroupBarrier();
+      var own_a: vec4<u32> = tile_A[local_col];
+      var own_scale_a = scale_A[local_col / 8];
+      let k_offset = kidx_v + local_col;
+      // calculate intermediate results into inter_results.
+      for (var row_offset = 0u; row_offset < tile_size; row_offset += sub_tile_size) {
+        let b_global = b_global_base + row_offset + local_row;
+        if (b_global < uniforms.N && k_offset < uniforms.K16)
+        {
+          let b_offset = b_global * uniforms.K16 + k_offset;
+          let own_b = AlignWithZeroPoint(input_b[b_offset]);
 
+          // k_offset - covers 16 values of k in input_b
+          let own_scale_b = scales_b[b_global * uniforms.K / uniforms.block_size + k_offset * 16 / uniforms.block_size];
+          inter_results[row_offset + local_row][local_col] += SDP4AI(own_a, own_b, own_scale_a * own_scale_b);
+        }
+      }
+      workgroupBarrier();
+    }
+  )MAIN_FN";
+  }
+
+  shader.MainFunctionBody() << R"MAIN_FN(
     if (local_idx < tile_size) {
       // Do reduce sum to get final output.
       var output_value = output_element_t(0);
@@ -378,6 +480,7 @@ Status ApplyDP4AMatrixMatMulNBits(const Tensor* a, const Tensor* b, const Tensor
                                   uint32_t K,
                                   uint32_t block_size,
                                   uint32_t min_M_for_tile_optimization,
+                                  uint32_t nbits,
                                   onnxruntime::webgpu::ComputeContext& context,
                                   Tensor* y) {
   constexpr uint32_t kVec4Components = 4;
@@ -399,7 +502,7 @@ Status ApplyDP4AMatrixMatMulNBits(const Tensor* a, const Tensor* b, const Tensor
 
   if (M < min_M_for_tile_optimization) {
     constexpr uint32_t kTileSize = 32;
-    DP4AMatMulNBitsSmallMProgram mul_program{kTileSize};
+    DP4AMatMulNBitsSmallMProgram mul_program{kTileSize, nbits};
     uint32_t num_N_tile = (N + kTileSize - 1) / kTileSize;
     mul_program.SetWorkgroupSize(128);
     mul_program.SetDispatchGroupSize(M * num_N_tile);
@@ -408,7 +511,8 @@ Status ApplyDP4AMatrixMatMulNBits(const Tensor* a, const Tensor* b, const Tensor
                            {b, ProgramTensorMetadataDependency::TypeAndRank, static_cast<int>(kVec4Components * kU32Components)},
                            {scales, ProgramTensorMetadataDependency::TypeAndRank, 1}})
         .AddUniformVariables({M, N, K, K / 16, K / 32, block_size, num_N_tile})
-        .AddOutput({y, ProgramTensorMetadataDependency::TypeAndRank, 1});
+        .AddOutput({y, ProgramTensorMetadataDependency::TypeAndRank, 1})
+        .CacheHint(nbits);
     return context.RunProgram(mul_program);
   }
 
@@ -416,12 +520,12 @@ Status ApplyDP4AMatrixMatMulNBits(const Tensor* a, const Tensor* b, const Tensor
   TensorShape reshaped_y_shape{1, M, N / kVec4Components};
   uint32_t num_M_tile = (M + kTileSize - 1) / kTileSize;
   uint32_t num_N_tile = (N + kTileSize - 1) / kTileSize;
-  DP4AMatMulNBitsProgram mul_program{block_size};
+  DP4AMatMulNBitsProgram mul_program{block_size, nbits};
   mul_program.SetWorkgroupSize(256);
   mul_program.SetDispatchGroupSize(num_M_tile * num_N_tile);
   mul_program.AddInputs({{&a_quant, ProgramTensorMetadataDependency::TypeAndRank, static_cast<int>(kVec4Components)},
                          {&a_scale, ProgramTensorMetadataDependency::TypeAndRank, 1},
-                         {b, ProgramTensorMetadataDependency::TypeAndRank, static_cast<int>(kVec2Components * kU32Components)},
+                         {b, ProgramTensorMetadataDependency::TypeAndRank, static_cast<int>(nbits == 4 ? kVec2Components * kU32Components : kVec4Components * kU32Components)},
                          {scales, ProgramTensorMetadataDependency::TypeAndRank, 1}})
       .AddUniformVariables({{static_cast<uint32_t>(M)},
                             {static_cast<uint32_t>(N)},
@@ -430,7 +534,7 @@ Status ApplyDP4AMatrixMatMulNBits(const Tensor* a, const Tensor* b, const Tensor
                             {static_cast<uint32_t>(K / 16)},
                             {num_N_tile}})
       .AddOutput({y, ProgramTensorMetadataDependency::TypeAndRank, reshaped_y_shape, static_cast<int>(kVec4Components)})
-      .CacheHint("Block" + std::to_string(block_size));
+      .CacheHint("Block" + std::to_string(block_size), nbits);
   return context.RunProgram(mul_program);
 }
 

@@ -707,7 +707,7 @@ Status MatMulNBits::ComputeInternal(onnxruntime::webgpu::ComputeContext& context
   const uint32_t N = onnxruntime::narrow<uint32_t>(helper.N());
   const uint32_t K = onnxruntime::narrow<uint32_t>(helper.K());
   const uint32_t block_size = onnxruntime::narrow<uint32_t>(block_size_);
-  constexpr uint32_t nbits = 4;
+  const uint32_t nbits = onnxruntime::narrow<uint32_t>(bits_);
 
   const uint32_t n_blocks_per_col = (K + block_size - 1) / block_size;
   const uint32_t blob_size = (block_size / 8) * nbits;
@@ -727,7 +727,7 @@ Status MatMulNBits::ComputeInternal(onnxruntime::webgpu::ComputeContext& context
   if ((M >= kMinMForTileOptimization || y->DataType() == DataTypeImpl::GetType<float>() ||
        context.AdapterInfo().vendor == std::string_view{"qualcomm"}) &&
       CanApplyDP4AMatrixMatMulNBits(context, accuracy_level_, block_size, batch_count, N, K, components_a, has_zero_points)) {
-    return ApplyDP4AMatrixMatMulNBits(a, b, scales, M, N, K, block_size, kMinMForTileOptimization, context, y);
+    return ApplyDP4AMatrixMatMulNBits(a, b, scales, M, N, K, block_size, kMinMForTileOptimization, nbits, context, y);
   }
 
   // WideTileProgram
