@@ -8,8 +8,9 @@
 #include "core/framework/ortdevice.h"
 #include "core/framework/provider_options.h"
 #include "core/framework/framework_provider_common.h"
-#include "core/session/onnxruntime_c_api.h"
 #include "core/framework/library_handles.h"
+#include "core/session/onnxruntime_c_api.h"
+#include "core/providers/shared_library/provider_api.h"
 
 #define TRT_DEFAULT_OPTIMIZER_LEVEL 3
 
@@ -62,7 +63,8 @@ struct NvExecutionProviderInfo {
   bool engine_hw_compatible{false};
   std::string op_types_to_exclude{""};
 
-  static NvExecutionProviderInfo FromProviderOptions(const ProviderOptions& options);
+  static NvExecutionProviderInfo FromProviderOptions(const ProviderOptions& options,
+                                                     const ConfigOptions& session_options);
   static ProviderOptions ToProviderOptions(const NvExecutionProviderInfo& info);
   std::vector<OrtCustomOpDomain*> custom_op_domain_list;
 };

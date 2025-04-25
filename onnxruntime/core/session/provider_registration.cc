@@ -301,7 +301,7 @@ ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider,
     }
     case EpID::NvTensorRtRtx: {
 #if defined(USE_NV) || defined(USE_NV_PROVIDER_INTERFACE)
-      auto factory = onnxruntime::NvProviderFactoryCreator::Create(provider_options);
+      auto factory = onnxruntime::NvProviderFactoryCreator::Create(provider_options, &(options->value));
       if (factory) {
         options->provider_factories.push_back(factory);
       } else {

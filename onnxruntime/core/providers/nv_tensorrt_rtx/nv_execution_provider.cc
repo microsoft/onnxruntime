@@ -1068,45 +1068,40 @@ NvExecutionProvider::NvExecutionProvider(const NvExecutionProviderInfo& info)
     }
   };
 
-  // Get environment variables
-  if (info.has_trt_options) {
-    max_partition_iterations_ = info.max_partition_iterations;
-    min_subgraph_size_ = info.min_subgraph_size;
-    max_workspace_size_ = info.max_workspace_size;
-    dump_subgraphs_ = info.dump_subgraphs;
-    weight_stripped_engine_enable_ = info.weight_stripped_engine_enable;
-    onnx_model_folder_path_ = info.onnx_model_folder_path;
-    onnx_model_bytestream_ = info.onnx_bytestream;
-    onnx_model_bytestream_size_ = info.onnx_bytestream_size;
-    if ((onnx_model_bytestream_ != nullptr && onnx_model_bytestream_size_ == 0) ||
-        (onnx_model_bytestream_ == nullptr && onnx_model_bytestream_size_ != 0)) {
-      ORT_THROW_IF_ERROR(ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
-                                         "When providing either 'trt_onnx_bytestream_size' or "
-                                         "'trt_onnx_bytestream' both have to be provided"));
-    }
-    detailed_build_log_ = info.detailed_build_log;
-    dump_ep_context_model_ = info.dump_ep_context_model;
-    ep_context_file_path_ = info.ep_context_file_path;
-    ep_context_embed_mode_ = info.ep_context_embed_mode;
-    enable_engine_cache_for_ep_context_model();
-    cache_prefix_ = info.engine_cache_prefix;
-    // use a more global cache if given
-    engine_decryption_enable_ = info.engine_decryption_enable;
-    if (engine_decryption_enable_) {
-      engine_decryption_lib_path_ = info.engine_decryption_lib_path;
-    }
-    force_sequential_engine_build_ = info.force_sequential_engine_build;
-    context_memory_sharing_enable_ = info.context_memory_sharing_enable;
-    sparsity_enable_ = info.sparsity_enable;
-    auxiliary_streams_ = info.auxiliary_streams;
-    profile_min_shapes = info.profile_min_shapes;
-    profile_max_shapes = info.profile_max_shapes;
-    profile_opt_shapes = info.profile_opt_shapes;
-    cuda_graph_enable_ = info.cuda_graph_enable;
-    op_types_to_exclude_ = info.op_types_to_exclude;
-  } else {
-    LOGS_DEFAULT(INFO) << "[Nv EP] Options were not specified";
+  max_partition_iterations_ = info.max_partition_iterations;
+  min_subgraph_size_ = info.min_subgraph_size;
+  max_workspace_size_ = info.max_workspace_size;
+  dump_subgraphs_ = info.dump_subgraphs;
+  weight_stripped_engine_enable_ = info.weight_stripped_engine_enable;
+  onnx_model_folder_path_ = info.onnx_model_folder_path;
+  onnx_model_bytestream_ = info.onnx_bytestream;
+  onnx_model_bytestream_size_ = info.onnx_bytestream_size;
+  if ((onnx_model_bytestream_ != nullptr && onnx_model_bytestream_size_ == 0) ||
+      (onnx_model_bytestream_ == nullptr && onnx_model_bytestream_size_ != 0)) {
+    ORT_THROW_IF_ERROR(ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
+                                       "When providing either 'trt_onnx_bytestream_size' or "
+                                       "'trt_onnx_bytestream' both have to be provided"));
   }
+  detailed_build_log_ = info.detailed_build_log;
+  dump_ep_context_model_ = info.dump_ep_context_model;
+  ep_context_file_path_ = info.ep_context_file_path;
+  ep_context_embed_mode_ = info.ep_context_embed_mode;
+  enable_engine_cache_for_ep_context_model();
+  cache_prefix_ = info.engine_cache_prefix;
+  // use a more global cache if given
+  engine_decryption_enable_ = info.engine_decryption_enable;
+  if (engine_decryption_enable_) {
+    engine_decryption_lib_path_ = info.engine_decryption_lib_path;
+  }
+  force_sequential_engine_build_ = info.force_sequential_engine_build;
+  context_memory_sharing_enable_ = info.context_memory_sharing_enable;
+  sparsity_enable_ = info.sparsity_enable;
+  auxiliary_streams_ = info.auxiliary_streams;
+  profile_min_shapes = info.profile_min_shapes;
+  profile_max_shapes = info.profile_max_shapes;
+  profile_opt_shapes = info.profile_opt_shapes;
+  cuda_graph_enable_ = info.cuda_graph_enable;
+  op_types_to_exclude_ = info.op_types_to_exclude;
 
   // Validate setting
   if (max_partition_iterations_ <= 0) {

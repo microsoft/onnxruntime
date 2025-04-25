@@ -79,7 +79,7 @@ std::unique_ptr<IExecutionProvider> NvProviderFactory::CreateProvider(const OrtS
       provider_options[key.substr(key_prefix.size())] = value;
     }
   }
-  NvExecutionProviderInfo info = onnxruntime::NvExecutionProviderInfo::FromProviderOptions(provider_options);
+  NvExecutionProviderInfo info = onnxruntime::NvExecutionProviderInfo::FromProviderOptions(provider_options, config_options);
 
   auto ep = std::make_unique<NvExecutionProvider>(info);
   ep->SetLogger(reinterpret_cast<const logging::Logger*>(&session_logger));
@@ -96,9 +96,22 @@ struct Nv_Provider : Provider {
     return std::make_shared<NvProviderFactory>(info);
   }
 
-  std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory(const void* options) {
-    const ProviderOptions* provider_options = reinterpret_cast<const ProviderOptions*>(options);
-    NvExecutionProviderInfo info = onnxruntime::NvExecutionProviderInfo::FromProviderOptions(*provider_options);
+  std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory(const void* param) {
+    if (param == nullptr) {
+      LOGS_DEFAULT(ERROR) << "[NV EP] Passed NULL options to CreateExecutionProviderFactory()";
+      return nullptr;
+    }
+
+    std::array<const void*, 2> pointers_array = *reinterpret_cast<const std::array<const void*, 2>*>(param);
+    const ProviderOptions* provider_options = reinterpret_cast<const ProviderOptions*>(pointers_array[0]);
+    const ConfigOptions* config_options = reinterpret_cast<const ConfigOptions*>(pointers_array[1]);
+
+    if (provider_options == nullptr) {
+      LOGS_DEFAULT(ERROR) << "[NV EP] Passed NULL ProviderOptions to CreateExecutionProviderFactory()";
+      return nullptr;
+    }
+
+    NvExecutionProviderInfo info = onnxruntime::NvExecutionProviderInfo::FromProviderOptions(*provider_options, *config_options);
     return std::make_shared<NvProviderFactory>(info);
   }
 
