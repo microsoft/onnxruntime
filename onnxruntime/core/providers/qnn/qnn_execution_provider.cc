@@ -1320,4 +1320,14 @@ std::vector<AllocatorPtr> QNNExecutionProvider::CreatePreferredAllocators() {
   return allocators;
 }
 
+OrtDevice QNNExecutionProvider::GetOrtDeviceByMemType(OrtMemType /* em_type */) const {
+  // We are disabling the HTP shared memory allocator for intermediate values
+  // until we learn how to deal with memhandle costs.
+  // if (IsHtpSharedMemoryAllocatorAvailable()) {
+  //  return qnn::HtpSharedMemoryAllocator::AssociatedMemoryInfo().device;
+  //}
+  // Default CPU allocator
+  return default_device_;
+}
+
 }  // namespace onnxruntime
