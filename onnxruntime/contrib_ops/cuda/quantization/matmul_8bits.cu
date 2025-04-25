@@ -16,22 +16,30 @@ namespace onnxruntime {
 namespace contrib {
 namespace cuda {
 
-constexpr int kColsPerThreadBlock = 8;
-constexpr int kElementsPerThreadPerIteration = 8;
-constexpr int kWarpSize = GPU_WARP_SIZE;  // Typically 32
-constexpr uint8_t kDefaultZeroPoint = 128;
-constexpr int kKernelAlgo = 0;  // Choose algorithm here: 0 (unroll), 1 (simple loop), 2 (block size iteration)
-constexpr bool kUseCUB = true;
-constexpr bool kUseFloatInPartialSum = false;  // Use float to accumulate partial sum of 8 half elements in a thread. Default is false like 4 bits kernel.
+// --- Kernel Configuration Constants ---
+constexpr int kColsPerThreadBlock = 8;             // Number of columns (N dimension) processed per thread block
+constexpr int kElementsPerThreadPerIteration = 8;  // Number of elements (K dimension) processed per thread per iteration
+constexpr int kWarpSize = GPU_WARP_SIZE;           // Typically 32
+constexpr uint8_t kDefaultZeroPoint = 128;         // Default zero point if not provided
+constexpr bool kUseCUB = true;                     // Use CUB for warp reduction (recommended)
+constexpr bool kUseFloatInPartialSum = false;      // Use float for intermediate sums within a thread (half only)
 
-__device__ __forceinline__ void AccumulateEightElements8b(uint64_t values_quant, half scale, uint8_t zp, const half* a, half* sums) {
+// --- Device Function: Accumulate 8 Elements (half precision) ---
+// Dequantizes 8 uint8_t values and accumulates the result with 8 half values from A.
+// sums += A * dequant(B_quant)
+__device__ __forceinline__ void AccumulateEightElements8b(
+    uint64_t values_quant,  // 8 packed uint8_t values from B
+    half scale,             // Dequantization scale for this block
+    uint8_t zp,             // Dequantization zero point for this block
+    const half* a,          // Pointer to 8 half values from A
+    half* sums) {           // Pointer to 8 partial sums (half)
+
   // --- Dequantization Setup ---
-  // Convert scale and zero point to half format suitable for half2 operations
-  half2 scale_h2 = __half2half2(scale);  // Broadcast scale to half2
-  half zp_h = __ushort2half_rn(zp);      // Convert uint8 zp to half
-  half2 zp_h2 = __half2half2(zp_h);      // Broadcast zp to half2
+  half2 scale_h2 = __half2half2(scale);  // Broadcast scale
+  half zp_h = __ushort2half_rn(zp);      // Convert zp to half
+  half2 zp_h2 = __half2half2(zp_h);      // Broadcast zp_h
 
-  // --- Extract 8 uint8_t values from the 64-bit input ---
+  // --- Extract 8 uint8_t values ---
   uint8_t q[8];
 #pragma unroll
   for (int i = 0; i < 8; ++i) {
@@ -39,27 +47,23 @@ __device__ __forceinline__ void AccumulateEightElements8b(uint64_t values_quant,
   }
 
   // --- Dequantize 8 values into 4 half2 vectors: b_vec = (q - zp) * scale ---
-  // Convert uint8 q values to half2 vectors {q0,q1}, {q2,q3}, {q4,q5}, {q6,q7}
   half2 q_01 = __halves2half2(__ushort2half_rn(q[0]), __ushort2half_rn(q[1]));
   half2 q_23 = __halves2half2(__ushort2half_rn(q[2]), __ushort2half_rn(q[3]));
   half2 q_45 = __halves2half2(__ushort2half_rn(q[4]), __ushort2half_rn(q[5]));
   half2 q_67 = __halves2half2(__ushort2half_rn(q[6]), __ushort2half_rn(q[7]));
 
-  // Calculate q - zp
   half2 diff_01 = __hsub2(q_01, zp_h2);
   half2 diff_23 = __hsub2(q_23, zp_h2);
   half2 diff_45 = __hsub2(q_45, zp_h2);
   half2 diff_67 = __hsub2(q_67, zp_h2);
 
-  // Calculate b_vec = (q - zp) * scale
   half2 b_vec0 = __hmul2(diff_01, scale_h2);  // {b0, b1}
   half2 b_vec1 = __hmul2(diff_23, scale_h2);  // {b2, b3}
   half2 b_vec2 = __hmul2(diff_45, scale_h2);  // {b4, b5}
   half2 b_vec3 = __hmul2(diff_67, scale_h2);  // {b6, b7}
 
   // --- Load Input A (8 half values as 4 half2 vectors) ---
-  // Directly cast 'a' pointer to read half2 vectors.
-  // This assumes 'a' is properly aligned for half2 reads.
+  // Assumes 'a' is properly aligned for half2 reads.
   const half2* a_half2 = reinterpret_cast<const half2*>(a);
   half2 a_vec0 = a_half2[0];  // {a0, a1}
   half2 a_vec1 = a_half2[1];  // {a2, a3}
@@ -67,7 +71,6 @@ __device__ __forceinline__ void AccumulateEightElements8b(uint64_t values_quant,
   half2 a_vec3 = a_half2[3];  // {a6, a7}
 
   // --- Accumulate: sums += a * b_vec using half2 FMA ---
-  // Cast sums pointer to half2* for vectorized accumulation.
   half2* sums_half2 = reinterpret_cast<half2*>(sums);
   sums_half2[0] = __hfma2(a_vec0, b_vec0, sums_half2[0]);  // {s0+=a0*b0, s1+=a1*b1}
   sums_half2[1] = __hfma2(a_vec1, b_vec1, sums_half2[1]);  // {s2+=a2*b2, s3+=a3*b3}
@@ -75,22 +78,33 @@ __device__ __forceinline__ void AccumulateEightElements8b(uint64_t values_quant,
   sums_half2[3] = __hfma2(a_vec3, b_vec3, sums_half2[3]);  // {s6+=a6*b6, s7+=a7*b7}
 }
 
-// --- Keep Original Float Version ---
-__device__ __forceinline__ void AccumulateEightElements8b(uint64_t values_quant, float scale, uint8_t zp, const float* a, float* sums) {
+// --- Device Function: Accumulate 8 Elements (float precision) ---
+// Dequantizes 8 uint8_t values and accumulates the result with 8 float values from A.
+// sums += A * dequant(B_quant)
+__device__ __forceinline__ void AccumulateEightElements8b(
+    uint64_t values_quant,  // 8 packed uint8_t values from B
+    float scale,            // Dequantization scale for this block
+    uint8_t zp,             // Dequantization zero point for this block
+    const float* a,         // Pointer to 8 float values from A
+    float* sums) {          // Pointer to 8 partial sums (float)
+
+  // Load A using float4 for potentially better memory bandwidth
   float4 a_vec_0 = *(reinterpret_cast<const float4*>(a));
   float4 a_vec_1 = *(reinterpret_cast<const float4*>(a + 4));
 
+  // Precompute scale * (-zp) adjustment
   float zp_adjust = -scale * float(zp);
 
-  // Extract and dequantize 8 float values
+  // Extract, dequantize, and accumulate 8 float values
   float v[8];
 #pragma unroll
   for (int i = 0; i < 8; ++i) {
     uint8_t q_val = (values_quant >> (i * 8)) & 0xFF;
+    // Dequantize: float(q_val) * scale - scale * float(zp) = float(q_val) * scale + zp_adjust
     v[i] = float(q_val) * scale + zp_adjust;
   }
 
-  // Accumulate using fmaf for potentially better precision/performance
+  // Accumulate using fmaf (fused multiply-add)
   sums[0] = fmaf(v[0], a_vec_0.x, sums[0]);
   sums[1] = fmaf(v[1], a_vec_0.y, sums[1]);
   sums[2] = fmaf(v[2], a_vec_0.z, sums[2]);
@@ -101,343 +115,324 @@ __device__ __forceinline__ void AccumulateEightElements8b(uint64_t values_quant,
   sums[7] = fmaf(v[7], a_vec_1.w, sums[7]);
 }
 
-// kernel for 8bits quantized GEMM, i.e., computing C(M, N) = A(M, K) x B(K, N)
-// B(K, N) is quantized with 8bits and block_size bs and stored as [N, K/bs, bs]
-// kColsPerThreadBlock (C) = 8 is the number of columns each thread block computes per row of A
-// kElementsPerThreadPerIteration (E) = 8 is the number of elements each thread computes in one iteration along K
-// Constraints: N % C == 0, K % E == 0
-// The thread block size is (kWarpSize, C) = (32, 8)
-// Grid size is (Ceil(N / C), M)
-// Each thread block computes kColsPerThreadBlock columns for a specific row m_id
+// --- CUDA Kernel: MatMulFloat8bKernel (Optimized for m=1) ---
+// Computes C(1, N) = A(1, K) x B(K, N)
+// B(K, N) is quantized with 8 bits and block_size bs, stored as [N, K/bs, bs]
+//
+// Template Parameters:
+//   T: Data type for A and C (float or half)
+//   block_size: Quantization block size for B
+//   has_zero_point: Boolean indicating if zero points are provided
+//
+// Grid size: (Ceil(N / kColsPerThreadBlock), 1)
+// Block size: (kWarpSize, kColsPerThreadBlock) = (32, 8)
 template <class T, int block_size, bool has_zero_point>
-__global__ void __launch_bounds__(kWarpSize* kColsPerThreadBlock) MatMulFloat8bKernel(
-    T* output,                    // Base pointer for Output C [M, N]
-    const T* a_data,              // Base pointer for A [M, K]
-    const uint8_t* b_data_quant,  // Base pointer for B [N, K/bs, bs]
-    const T* scales_data,         // Base pointer for scales [N, K/bs]
-    const uint8_t* zero_points,   // Base pointer for ZPs [N, K/bs]
-    int m,                        // Number of rows in A and Output C
-    int n,                        // Number of columns in B and Output C (Constraint: N % C == 0)
-    int k,                        // Number of columns in A / rows in B (Constraint: K % E == 0)
-    int blocks_per_K) {           // blocks_per_K = K/bs
+__global__ void __launch_bounds__(kWarpSize* kColsPerThreadBlock) MatMulFloat8bKernelM1(
+    T* output,                    // Output C [1, N] (effectively [N])
+    const T* a_data,              // Input A [1, K] (effectively [K])
+    const uint8_t* b_data_quant,  // Quantized Input B [N, K/bs, bs]
+    const T* scales_data,         // Scales [N, K/bs]
+    const uint8_t* zero_points,   // Zero Points [N, K/bs] (optional)
+    int n,                        // Columns in B and C (Constraint: N % kColsPerThreadBlock == 0)
+    int k,                        // Columns in A / Rows in B (Constraint: K % kElementsPerThreadPerIteration == 0)
+    int blocks_per_K) {           // K / block_size (rounded up)
 
-  const int n_block_id = blockIdx.x;  // Block column index in the range of [0, Ceil(N / C))
-  const int m_id = blockIdx.y;        // Block row index (identifies the row of A and C) [0, M)
+  // --- Thread Indexing ---
+  const int n_block_id = blockIdx.x;  // Block column index [0, Ceil(N / kColsPerThreadBlock))
+  // m_id is implicitly 0 since blockDim.y is 1
 
-  // Check if this block is needed for the M dimension
-  if (m_id >= m) return;
+  const int lane_id = threadIdx.x;  // Thread index in warp (0..31)
+  const int warp_id = threadIdx.y;  // Warp index in block (0..kColsPerThreadBlock-1)
 
-  const int lane_id = threadIdx.x;                            // Thread index in warp (0..31)
-  const int warp_id = threadIdx.y;                            // Warp index 0..7 in the range of [0, C-1)
-  const int n_block_head = n_block_id * kColsPerThreadBlock;  // Head column index for this block [0, N)
-  const int n_id = n_block_head + warp_id;                    // Global output column index this warp computes
+  // Calculate the starting column index (n_id) this warp is responsible for
+  const int n_block_head = n_block_id * kColsPerThreadBlock;
+  const int n_id = n_block_head + warp_id;  // Global output column index for this warp
 
-  // Ensure n_id does not go out of bounds (already checked by TryMatMul8Bits, but safer)
+  // Boundary check for the column index (safety check, though N % kColsPerThreadBlock==0 is enforced)
   if (n_id >= n) return;
 
+  // --- Shared Memory Allocation ---
   extern __shared__ char shared_buffer[];
-
-  // Load scales to shared_buffer
-  T* b_scale_vec_shared = (T*)shared_buffer;
-  for (int i = threadIdx.y * kWarpSize + threadIdx.x; i < kColsPerThreadBlock * blocks_per_K; i += kColsPerThreadBlock * kWarpSize) {
-    // Boundary check needed if N is not perfectly divisible by kColsPerThreadBlock * blocks_per_K,
-    // though the N constraint N % C == 0 helps simplify this for scales/ZPs.
-    int current_n = n_block_head + (i / blocks_per_K);
-    int current_k_block = i % blocks_per_K;
-    if (current_n < n) {  // Check if the column is valid
-      b_scale_vec_shared[i] = scales_data[static_cast<int64_t>(current_n) * blocks_per_K + current_k_block];
-    }
-  }
-
-  // Load zero points if they exist (logic remains the same, depends on n_block_id)
-  [[maybe_unused]] uint8_t* b_zp_vec_shared = nullptr;
-  [[maybe_unused]] const uint8_t* b_zp_vec_thread = nullptr;  // Thread's ZP pointer
+  // Shared memory for scales
+  T* b_scale_vec_shared = reinterpret_cast<T*>(shared_buffer);
+  // Shared memory for zero points (if used) immediately after scales
+  [[maybe_unused]] uint8_t* b_zp_vec_shared = nullptr;  // Initialize to avoid unused warning
   if constexpr (has_zero_point) {
     b_zp_vec_shared = reinterpret_cast<uint8_t*>(b_scale_vec_shared + kColsPerThreadBlock * blocks_per_K);
-    for (int i = threadIdx.y * kWarpSize + threadIdx.x; i < kColsPerThreadBlock * blocks_per_K; i += kColsPerThreadBlock * kWarpSize) {
-      int current_n = n_block_head + (i / blocks_per_K);
-      int current_k_block = i % blocks_per_K;
-      if (current_n < n) {  // Check if the column is valid
-        b_zp_vec_shared[i] = zero_points[static_cast<int64_t>(current_n) * blocks_per_K + current_k_block];
-      }
-    }
-    b_zp_vec_thread = b_zp_vec_shared + warp_id * blocks_per_K;
   }
 
-  __syncthreads();  // Ensure scales and ZPs are loaded
+  // --- Load Scales and Zero Points into Shared Memory ---
+  // Each thread loads a portion of the scales/ZPs for the columns handled by this block
+  for (int i = threadIdx.y * kWarpSize + threadIdx.x;  // Linear thread index within the block
+       i < kColsPerThreadBlock * blocks_per_K;         // Total elements to load for the block
+       i += kColsPerThreadBlock * kWarpSize) {         // Stride by total threads in block
+    int current_n_offset = i / blocks_per_K;           // Column offset within the block [0, kColsPerThreadBlock-1]
+    int current_k_block = i % blocks_per_K;            // K block index [0, blocks_per_K-1]
+    int current_n = n_block_head + current_n_offset;   // Global N index
 
-  // Point a_data to the correct row based on m_id
-  const T* a_row_data = a_data + static_cast<int64_t>(m_id) * k;
+    if (current_n < n) {  // Boundary check for N
+      // Calculate global index into scales/ZPs: N * blocks_per_K + k_block
+      int64_t scale_zp_idx = static_cast<int64_t>(current_n) * blocks_per_K + current_k_block;
+      // Load scale
+      b_scale_vec_shared[i] = scales_data[scale_zp_idx];
+      // Load zero point if applicable
+      if constexpr (has_zero_point) {
+        b_zp_vec_shared[i] = zero_points[scale_zp_idx];
+      }
+    }
+  }
+
+  __syncthreads();  // Ensure all scales and ZPs are loaded before proceeding
+
+  // --- Pointers Setup ---
+  // A data pointer (since m=1, no row offset needed)
+  const T* a_row_data = a_data;
 
   // Each thread calculates its part of the dot product along K.
-  // Point to the start of the elements this thread is responsible for in the current row of A.
-  const int lane_offset = lane_id * kElementsPerThreadPerIteration;
-  const T* a_thread_data_base = a_row_data + lane_offset;  // Base pointer for this thread in row m_id
+  // Point to the start of the elements this thread is responsible for in A.
+  const int lane_offset = lane_id * kElementsPerThreadPerIteration;  // Offset in K for this thread
+  const T* a_thread_data_base = a_row_data + lane_offset;            // Base pointer in A for this thread
 
-  // Pointer to the start of B data for the specific column n_id this warp handles.
+  // Base pointer to B data for the specific column n_id this warp handles.
   // Layout of B is [N, K/bs, bs].
   const uint8_t* b_base_ptr_n = b_data_quant + static_cast<int64_t>(n_id) * blocks_per_K * block_size;
 
-  // Pointer to the start of scales for the specific column (n_id) this warp handles (from shared mem).
+  // Pointer to the start of scales for column n_id (from shared memory)
   const T* b_scale_vec_thread = b_scale_vec_shared + warp_id * blocks_per_K;
 
-  T sums[kElementsPerThreadPerIteration] = {static_cast<T>(0.0f)};  // Initialize sums to zero
-
-  if constexpr (kKernelAlgo == 0 || kKernelAlgo == 1) {
-    // Note that k_per_iter (typical value is 256) is multiple of block_size (typical value is 16, 32, 64, 128, or 256).
-    constexpr int k_per_iter = kWarpSize * kElementsPerThreadPerIteration;
-
-    int k_id = 0;
-    // Pointer to B data for this thread's starting element in K, for column n_id.
-    // B layout: [N, K/bs, bs]. Access is effectively [n_id, k_block, k_within_block]
-    // Pointer for thread should start at its `lane_offset` within the K dimension for column `n_id`.
-    const uint8_t* b_data_quant_thread = b_base_ptr_n + lane_offset;
-
-    if constexpr (kKernelAlgo == 0) {                // Algorithm 0: Unrolling
-      int k_start_block = lane_offset / block_size;  // Block index in K for thread start
-
-#define UnRollReduction(unroll_size)                                                                   \
-  do {                                                                                                 \
-    constexpr int kUnroll = unroll_size;                                                               \
-    constexpr int kElementsPerUnrollIter = k_per_iter * kUnroll;                                       \
-    for (; k_id + kElementsPerUnrollIter <= k; k_id += kElementsPerUnrollIter) {                       \
-      _Pragma("unroll") for (int i = 0; i < kUnroll; ++i) {                                            \
-        const uint8_t* current_b_ptr = b_data_quant_thread + k_id + i * k_per_iter;                    \
-        /* Assume alignment allows uint64_t load */                                                    \
-        uint64_t value = *reinterpret_cast<const uint64_t*>(current_b_ptr);                            \
-        /* Requires k_per_iter % block_size == 0 */                                                    \
-        int current_meta_k = k_start_block + (k_id / block_size) + i * (k_per_iter / block_size);      \
-        T scale = b_scale_vec_thread[current_meta_k];                                                  \
-        uint8_t zp = kDefaultZeroPoint;                                                                \
-        if constexpr (has_zero_point) {                                                                \
-          zp = b_zp_vec_thread[current_meta_k];                                                        \
-        }                                                                                              \
-        /* Pass pointer to A for the current k segment */                                              \
-        AccumulateEightElements8b(value, scale, zp, a_thread_data_base + k_id + i * k_per_iter, sums); \
-      }                                                                                                \
-    }                                                                                                  \
-  } while (false)
-
-      UnRollReduction(16);
-      UnRollReduction(4);
-      UnRollReduction(1);
-
-#undef UnRollReduction
-    } else {  // Algorithm 1: Simple loop
-      for (; k_id + k_per_iter <= k; k_id += k_per_iter) {
-        const uint8_t* current_b_ptr = b_data_quant_thread + k_id;
-        uint64_t value = *reinterpret_cast<const uint64_t*>(current_b_ptr);
-
-        int current_meta_k = (lane_offset + k_id) / block_size;
-        T scale = b_scale_vec_thread[current_meta_k];
-        uint8_t zp = kDefaultZeroPoint;
-        if constexpr (has_zero_point) {
-          zp = b_zp_vec_thread[current_meta_k];
-        }
-        /* Pass pointer to A for the current k segment */
-        AccumulateEightElements8b(value, scale, zp, a_thread_data_base + k_id, sums);
-      }
-    }
-
-    // Handle the tail elements (less than k_per_iter) if k is not multiple of k_per_iter
-    // Since k % kElementsPerThreadPerIteration == 0 is enforced, the tail is simpler.
-    // Each thread processes its remaining elements if its start offset is < k.
-    if (lane_offset + k_id < k) {  // Check if this thread has any elements left
-      const uint8_t* current_b_ptr = b_data_quant_thread + k_id;
-      uint64_t value = *reinterpret_cast<const uint64_t*>(current_b_ptr);
-
-      int current_meta_k = (lane_offset + k_id) / block_size;
-      T scale = b_scale_vec_thread[current_meta_k];
-      uint8_t zp = kDefaultZeroPoint;
-      if constexpr (has_zero_point) {
-        zp = b_zp_vec_thread[current_meta_k];
-      }
-      /* Pass pointer to A for the current k segment */
-      AccumulateEightElements8b(value, scale, zp, a_thread_data_base + k_id, sums);
-    }
-  } else {  // Algorithm 2: block size iteration.
-    for (int block_k_idx = 0; block_k_idx < blocks_per_K; ++block_k_idx) {
-      int k_start_block = block_k_idx * block_size;
-      // B data pointer for the start of this block, for column n_id
-      const uint8_t* b_block_ptr_n = b_base_ptr_n + k_start_block;
-
-      // Get scale/zp for this block (already loaded for the warp)
-      T scale = b_scale_vec_thread[block_k_idx];
-      uint8_t zp = kDefaultZeroPoint;
-      if constexpr (has_zero_point) {
-        zp = b_zp_vec_thread[block_k_idx];
-      }
-
-      // Each thread `lane_id` handles elements starting at `lane_offset` within the K dimension.
-      // Calculate the base K index for this thread *within the current block*.
-      int k_offset_in_block = lane_offset;  // Offset relative to block start
-
-      // Check if the *start* of the 8 elements this thread would process is within the current block
-      // AND within the bounds of K dimension.
-      // Since K % 8 == 0 and thread handles 8 elements, if the thread's work starts within K,
-      // it finishes within K. We only need to check if the *block* has enough elements
-      // for this thread's starting offset.
-      if (k_offset_in_block < block_size && k_start_block + k_offset_in_block < k) {
-        // Calculate absolute K index for A pointer
-        int k_abs_idx = k_start_block + k_offset_in_block;
-
-        // Since K % 8 == 0 is enforced, we don't need partial element handling.
-        // We are guaranteed to process 8 elements if the start is valid.
-        const uint8_t* current_b_ptr = b_block_ptr_n + k_offset_in_block;  // Offset within the block
-        uint64_t value = *reinterpret_cast<const uint64_t*>(current_b_ptr);
-
-        // Pointer to A data corresponding to this thread's elements within this block
-        const T* current_a_ptr = a_row_data + k_abs_idx;  // Use a_row_data + absolute k index
-
-        AccumulateEightElements8b(value, scale, zp, current_a_ptr, sums);
-      }
-    }
+  // Pointer to the start of zero points for column n_id (from shared memory, if used)
+  [[maybe_unused]] const uint8_t* b_zp_vec_thread = nullptr;  // Initialize to avoid unused warning
+  if constexpr (has_zero_point) {
+    b_zp_vec_thread = b_zp_vec_shared + warp_id * blocks_per_K;
   }
 
-  // Sum the 8 partial sums within each thread first.
-  float total_sum_thread = 0.0f;
+  // --- Accumulation ---
+  // Initialize partial sums for this thread to zero
+  T sums[kElementsPerThreadPerIteration] = {static_cast<T>(0.0f)};
 
-  if constexpr (std::is_same_v<T, half>) {
+  constexpr int k_per_iter = kWarpSize * kElementsPerThreadPerIteration;  // Elements processed per warp per iteration (e.g., 32*8 = 256)
+  int k_id = 0;                                                           // Current position along the K dimension
+
+  // Pointer to B data for this thread's starting element in K, for column n_id.
+  const uint8_t* b_data_quant_thread = b_base_ptr_n + lane_offset;
+
+  // Calculate the starting block index in K for this thread's elements
+  // Requires k_per_iter % block_size == 0 (checked in host code)
+  int k_start_block_for_thread = lane_offset / block_size;
+
+// Macro for unrolled reduction loop
+#define UnRollReduction(unroll_size)                                                                         \
+  do {                                                                                                       \
+    constexpr int kUnroll = unroll_size;                                                                     \
+    constexpr int kElementsPerUnrollIter = k_per_iter * kUnroll; /* Elements per outer loop iter */          \
+    /* Main loop: Process chunks of K dimension with unrolling */                                            \
+    for (; k_id + kElementsPerUnrollIter <= k; k_id += kElementsPerUnrollIter) {                             \
+      _Pragma("unroll") for (int i = 0; i < kUnroll; ++i) { /* Inner unrolled loop */                        \
+        /* Pointer to B data for this unroll step */                                                         \
+        const uint8_t* current_b_ptr = b_data_quant_thread + k_id + i * k_per_iter;                          \
+        /* Load 8 quantized values (64 bits) - Assumes alignment */                                          \
+        uint64_t value = *reinterpret_cast<const uint64_t*>(current_b_ptr);                                  \
+        /* Calculate the k_block index for scale/zp lookup */                                                \
+        /* Requires k_per_iter % block_size == 0 */                                                          \
+        int current_meta_k = k_start_block_for_thread + (k_id / block_size) + i * (k_per_iter / block_size); \
+        T scale = b_scale_vec_thread[current_meta_k];                                                        \
+        uint8_t zp = kDefaultZeroPoint;                                                                      \
+        if constexpr (has_zero_point) {                                                                      \
+          zp = b_zp_vec_thread[current_meta_k];                                                              \
+        }                                                                                                    \
+        /* Pointer to A data for this unroll step */                                                         \
+        const T* current_a_ptr = a_thread_data_base + k_id + i * k_per_iter;                                 \
+        /* Perform dequantization and accumulation */                                                        \
+        AccumulateEightElements8b(value, scale, zp, current_a_ptr, sums);                                    \
+      }                                                                                                      \
+    }                                                                                                        \
+  } while (false)
+
+  // Apply unrolling with decreasing sizes to handle different K values efficiently
+  UnRollReduction(16);  // Try processing 16 * k_per_iter elements at a time
+  UnRollReduction(4);   // Try processing 4 * k_per_iter elements at a time
+  UnRollReduction(1);   // Process remaining 1 * k_per_iter chunks
+
+#undef UnRollReduction
+
+  // Handle the tail elements along K dimension for this thread.
+  // This loop handles the final iteration if k is not a multiple of k_per_iter.
+  // Since K % kElementsPerThreadPerIteration == 0 is enforced, each thread
+  // processes a full set of kElementsPerThreadPerIteration if it has work left.
+  if (lane_offset + k_id < k) {  // Check if this thread has remaining elements
+    const uint8_t* current_b_ptr = b_data_quant_thread + k_id;
+    uint64_t value = *reinterpret_cast<const uint64_t*>(current_b_ptr);
+
+    // Calculate k_block index for the tail part
+    int current_meta_k = (lane_offset + k_id) / block_size;
+    T scale = b_scale_vec_thread[current_meta_k];
+    uint8_t zp = kDefaultZeroPoint;
+    if constexpr (has_zero_point) {
+      zp = b_zp_vec_thread[current_meta_k];
+    }
+    // Pointer to A data for the tail part
+    const T* current_a_ptr = a_thread_data_base + k_id;
+    // Perform dequantization and accumulation
+    AccumulateEightElements8b(value, scale, zp, current_a_ptr, sums);
+  }
+
+  // --- Intra-Thread Reduction ---
+  // Sum the kElementsPerThreadPerIteration partial sums within each thread.
+  float total_sum_thread = 0.0f;  // Use float for reduction sum for better precision
+
+  if constexpr (std::is_same_v<T, half>) {  // Specific handling for half precision input/output
     if constexpr (kUseFloatInPartialSum) {
-// Convert 8 elements to float, then accumulate.
+      // Convert 8 elements to float one by one, then accumulate.
 #pragma unroll
       for (int i = 0; i < kElementsPerThreadPerIteration; ++i) {
         total_sum_thread += __half2float(sums[i]);
       }
     } else {
-      // Accumulate 8 elements in half, then convert sum to float once.
+      // Default: Accumulate 8 half elements into a temporary half sum, then convert once to float.
       T temp_sum = static_cast<T>(0.0f);
 #pragma unroll
       for (int i = 0; i < kElementsPerThreadPerIteration; ++i) {
         temp_sum += sums[i];
       }
-      total_sum_thread = __half2float(temp_sum);
+      total_sum_thread = __half2float(temp_sum);  // Convert final thread sum to float
     }
-  } else {
+  } else {  // Handling for float precision input/output
 #pragma unroll
     for (int i = 0; i < kElementsPerThreadPerIteration; ++i) {
       total_sum_thread += sums[i];
     }
   }
 
+  // --- Inter-Thread Reduction (Warp Level) ---
   if constexpr (!kUseCUB) {
-    for (int i = kWarpSize / 2; i > 0; i = i / 2) {
+    // Manual warp reduction using shfl_down_sync
+    // Note: Only sums within a warp. Assumes warp-synchronous execution.
+    for (int i = kWarpSize / 2; i > 0; i /= 2) {
       total_sum_thread += __shfl_down_sync(0xFFFFFFFF, total_sum_thread, i);
     }
-
+    // Lane 0 of each warp holds the final sum for C[0, n_id]
     if (lane_id == 0) {
-      // Calculate output index: output[m_id, n_id]
-      output[static_cast<int64_t>(m_id) * n + n_id] = static_cast<T>(total_sum_thread);
+      // Write result (cast back to T)
+      // Since m=1, output index is just n_id
+      output[n_id] = static_cast<T>(total_sum_thread);
     }
   } else {
-    // Use CUB for efficient warp reduction
+    // Use CUB for efficient and robust warp reduction
     using BlockReduce = cub::WarpReduce<float>;
-
-    // Shared memory for CUB reduction storage (one per warp)
+    // Allocate shared memory for CUB temporary storage (one per warp)
     __shared__ typename BlockReduce::TempStorage temp_storage[kColsPerThreadBlock];
+    // Perform warp-level sum reduction
     total_sum_thread = BlockReduce(temp_storage[warp_id]).Sum(total_sum_thread);
 
+    // Lane 0 of each warp writes the final reduced sum to global memory
     if (lane_id == 0) {
-      // Write the final result for the element C[m_id, n_id]
-      output[static_cast<int64_t>(m_id) * n + n_id] = static_cast<T>(total_sum_thread);
+      // Write result (cast back to T)
+      // Since m=1, output index is just n_id
+      output[n_id] = static_cast<T>(total_sum_thread);
     }
   }
 }
 
+// --- Host Function: TryMatMul8Bits (Optimized for m=1) ---
+// Launches the MatMulFloat8bKernelM1 kernel if constraints are met.
+// Enforces m == 1.
 template <class T>
 bool TryMatMul8Bits(
-    T* output,                    // Output C [M, N]
-    const T* a_data,              // Input A [M, K]
+    T* output,                    // Output C [1, N]
+    const T* a_data,              // Input A [1, K]
     const uint8_t* b_data_quant,  // Input B Quantized [N, K/bs, bs]
     const T* scales_data,         // Scales [N, K/bs]
     const uint8_t* zero_points,   // Zero Points [N, K/bs] (can be nullptr)
-    int m,                        // Rows of A and C (M >= 1)
+    int m,                        // Rows of A and C (MUST be 1)
     int n,                        // Columns of B and C
     int k,                        // Columns of A / Rows of B
     int block_size,               // Quantization block size for B
-    size_t shared_mem_per_block,  // Available shared memory
+    size_t shared_mem_per_block,  // Available shared memory per block
     cudaStream_t stream) {
   // Constraints Check
+  // m must be 1 (since this kernel is optimized for m=1)
   // N must be a multiple of kColsPerThreadBlock (8) for warps to align with columns.
-  // K must be a multiple of kElementsPerThreadPerIteration (8) for full uint64_t reads/processing per thread iter.
-  if (n % kColsPerThreadBlock != 0 || k % kElementsPerThreadPerIteration != 0) {
+  // K must be a multiple of kElementsPerThreadPerIteration (8) for full uint64_t reads/processing.
+  if (m != 1 || n % kColsPerThreadBlock != 0 || k % kElementsPerThreadPerIteration != 0) {
     return false;
   }
 
-  // Ensure k_per_iter is multiple of block_size for algo 0.
-  if constexpr (kKernelAlgo == 0) {
-    constexpr int k_per_iter = kWarpSize * kElementsPerThreadPerIteration;
-    if (k_per_iter % block_size != 0) {
-      return false;
-    }
+  // Ensure k_per_iter (kWarpSize * kElementsPerThreadPerIteration) is multiple of block_size.
+  constexpr int k_per_iter = kWarpSize * kElementsPerThreadPerIteration;
+  if (k_per_iter % block_size != 0) {
+    // This constraint is needed for the scale/zp indexing calculation within the unrolled loop.
+    return false;
   }
 
-  if constexpr (kKernelAlgo == 1 || kKernelAlgo == 2) {
-    if (k % block_size != 0) {
-      // The indexing `(lane_offset + k_id) / block_size` in Algo 1 and the block iteration
-      // in Algo 2 rely on K being compatible with block_size for correct scale/zp lookup.
-      // While blocks_per_K handles rounding up, the core loops assume alignment.
-      // If K is not multiple of block_size, the last block is partial, potentially
-      // causing issues with scale/zp indexing.
-      // Let's enforce K % block_size == 0 for simplicity/correctness guarantee here.
-      return false;
-    }
+  // K must be a multiple of block_size for correct scale/zp lookup within blocks.
+  // While blocks_per_K handles rounding up, the kernel logic assumes full blocks for indexing.
+  if (k % block_size != 0) {
+    return false;
   }
 
-  // Grid and Thread Block Configuration
-  dim3 threads(kWarpSize, kColsPerThreadBlock);  // (32, 8)
+  // --- Grid and Thread Block Configuration ---
+  dim3 threads(kWarpSize, kColsPerThreadBlock);  // Block dimensions (32, 8)
   dim3 blocks((n + kColsPerThreadBlock - 1) / kColsPerThreadBlock, m);
 
-  int blocks_per_K = (k + block_size - 1) / block_size;  // K / block_size rounded up
+  // Calculate K / block_size (no rounding needed due to k % block_size == 0 check)
+  int blocks_per_K = k / block_size;
 
-  // Shared memory needed for scales and optionally zero points for the columns handled by the block
-  size_t shared_mem_size = (sizeof(T) + (zero_points != nullptr ? sizeof(uint8_t) : 0)) * blocks_per_K * kColsPerThreadBlock;
+  // --- Shared Memory Calculation ---
+  // Memory for scales + optional zero points for the columns handled by the block
+  size_t scale_zp_shared_mem = (sizeof(T) + (zero_points != nullptr ? sizeof(uint8_t) : 0)) *
+                               static_cast<size_t>(blocks_per_K) * kColsPerThreadBlock;
+
+  size_t total_shared_mem = scale_zp_shared_mem;
 
   // Add shared memory for CUB reduction storage if used
   if constexpr (kUseCUB) {
-    shared_mem_size += static_cast<size_t>(kColsPerThreadBlock) * sizeof(typename cub::WarpReduce<float>::TempStorage);
+    total_shared_mem += static_cast<size_t>(kColsPerThreadBlock) * sizeof(typename cub::WarpReduce<float>::TempStorage);
   }
 
-  // Check if required shared memory exceeds limits
-  if (shared_mem_size > shared_mem_per_block) {
+  // Check if required shared memory exceeds device limits for the block
+  if (total_shared_mem > shared_mem_per_block) {
     return false;
   }
 
-  // Macro simplifies dispatching for different block sizes and presence of zero_points
-#define MatMulFloat8bKernelDispatch(bs)                                                             \
-  if (nullptr != zero_points) {                                                                     \
-    /* Launch kernel with zero points */                                                            \
-    MatMulFloat8bKernel<T, bs, true><<<blocks, threads, shared_mem_size, stream>>>(                 \
-        output, a_data, b_data_quant, scales_data, zero_points, m, n, k, blocks_per_K);             \
-  } else {                                                                                          \
-    /* Launch kernel without zero points */                                                         \
-    MatMulFloat8bKernel<T, bs, false><<<blocks, threads, shared_mem_size, stream>>>(                \
-        output, a_data, b_data_quant, scales_data, nullptr /*zero_points*/, m, n, k, blocks_per_K); \
+  // --- Kernel Launch ---
+  // Macro to simplify dispatching based on block size and presence of zero_points
+#define MatMulFloat8bKernelM1Dispatch(bs)                                                        \
+  if (nullptr != zero_points) {                                                                  \
+    /* Launch kernel with zero points */                                                         \
+    MatMulFloat8bKernelM1<T, bs, true><<<blocks, threads, total_shared_mem, stream>>>(           \
+        output, a_data, b_data_quant, scales_data, zero_points, n, k, blocks_per_K);             \
+  } else {                                                                                       \
+    /* Launch kernel without zero points (passing nullptr) */                                    \
+    MatMulFloat8bKernelM1<T, bs, false><<<blocks, threads, total_shared_mem, stream>>>(          \
+        output, a_data, b_data_quant, scales_data, nullptr /*zero_points*/, n, k, blocks_per_K); \
   }
 
-  // Dispatch based on block_size value
+  // Dispatch based on the provided block_size value
+  // Note: Only block sizes compatible with k_per_iter % block_size == 0 and k % block_size == 0 will pass checks.
   if (16 == block_size) {
-    MatMulFloat8bKernelDispatch(16);
+    MatMulFloat8bKernelM1Dispatch(16);
   } else if (32 == block_size) {
-    MatMulFloat8bKernelDispatch(32);
+    MatMulFloat8bKernelM1Dispatch(32);
   } else if (64 == block_size) {
-    MatMulFloat8bKernelDispatch(64);
+    MatMulFloat8bKernelM1Dispatch(64);
   } else if (128 == block_size) {
-    MatMulFloat8bKernelDispatch(128);
+    MatMulFloat8bKernelM1Dispatch(128);
   } else if (256 == block_size) {
-    MatMulFloat8bKernelDispatch(256);
+    MatMulFloat8bKernelM1Dispatch(256);
   } else {
-    // Unsupported block size.
+    // Unsupported block size
     return false;
   }
 
-#undef MatMulFloat8bKernelDispatch
+#undef MatMulFloat8bKernelM1Dispatch
 
-  // Here we do not use cudaGetLastError() to check kernel launch errors. That will be done later.
+  // Kernel launch succeeded (error checking, e.g., cudaGetLastError(), should be done by the caller)
   return true;
 }
 
-// Template instantiations
+// --- Template Instantiations ---
+// Explicitly instantiate the templates for float and half types to ensure compilation.
+
 template bool TryMatMul8Bits<float>(
     float* output,
     const float* a_data,
