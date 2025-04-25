@@ -22,20 +22,21 @@ ONNX_OPERATOR_KERNEL_EX(
     BiasSplitGelu);
 
 Status BiasSplitGeluProgram::GenerateShaderCode(ShaderHelper& shader) const {
-  const ShaderVariableHelper& input = shader.AddInput("input");
-  const ShaderVariableHelper& bias = shader.AddInput("bias");
-  const ShaderVariableHelper& output = shader.AddOutput("output");
+  const ShaderVariableHelper& x =
+      shader.AddInput("x", ShaderUsage::UseUniform | ShaderUsage::UseValueTypeAlias);
+  const ShaderVariableHelper& bias = shader.AddInput("bias", ShaderUsage::UseUniform);
+  const ShaderVariableHelper& output = shader.AddOutput("output", ShaderUsage::UseUniform);
 
   shader.AdditionalImplementation() << ErfImpl;
 
   shader.MainFunctionBody() << shader.GuardAgainstOutOfBoundsWorkgroupSizes("uniforms.output_size")
                             << "const M_SQRT2: f32 = sqrt(2.0);\n"
-                            << "const halfChannels = uniforms.channels / 2u;\n"
+                            << "let halfChannels = uniforms.channels / 2u;\n"
                             << "let biasIdx = global_idx % halfChannels;\n"
                             << "let batchIndex = global_idx / halfChannels;\n"
                             << "let inputOffset = biasIdx + batchIndex * halfChannels * 2;\n"
-                            << "let valueLeft = " << input.GetByOffset("inputOffset") << " + " << bias.GetByOffset("biasIdx") << ";\n"
-                            << "let valueRight = " << input.GetByOffset("inputOffset + halfChannels") << " + " << bias.GetByOffset("biasIdx + halfChannels") << ";\n"
+                            << "let valueLeft = " << x.GetByOffset("inputOffset") << " + " << bias.GetByOffset("biasIdx") << ";\n"
+                            << "let valueRight = " << x.GetByOffset("inputOffset + halfChannels") << " + " << bias.GetByOffset("biasIdx + halfChannels") << ";\n"
                             << "let geluRight = valueRight * 0.5 * (erf_v(valueRight / M_SQRT2) + 1);\n"
                             << output.SetByOffset("global_idx", "valueLeft * geluRight");
 
@@ -53,25 +54,27 @@ Status BiasSplitGelu::ComputeInternal(onnxruntime::webgpu::ComputeContext& conte
   }
 
   int64_t channels = input_shape[2];
-  int64_t components = GetMaxComponents(channels);
-  channels /= components;
   input_shape[2] = channels / 2;  // for output shape calculation (N,S,D) -> (N,S,D/2)
 
   TensorShape bias_shape = bias->Shape();
   if (bias_shape.NumDimensions() != 1 || bias_shape[0] != channels) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "BiasSplitGelu bias should have 1 dimension with size equal to the number of channels.");
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "BiasSplitGelu bias should have 1 dimension with size equal to the number of channels.");
   }
+
+  int components = GetMaxComponents(channels);
+  channels /= components;
 
   auto* output = context.Output(0, input_shape);
   int64_t output_size = output->Shape().Size() / components;
 
   BiasSplitGeluProgram program{};
-  program.AddInputs({{input, ProgramTensorMetadataDependency::TypeAndRank},
-                     {bias}})
-      .AddOutput({output})
+  program
+      .AddInputs({{input, ProgramTensorMetadataDependency::None, components},
+                  {bias, ProgramTensorMetadataDependency::None, components}})
+      .AddOutput({output, ProgramTensorMetadataDependency::None, components})
       .SetDispatchGroupSize((output_size + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE)
-      .AddUniformVariables({{static_cast<uint32_t>(output_size)},
-                            {static_cast<uint32_t>(channels)}});
+      .AddUniformVariables({{static_cast<uint32_t>(output_size)}, {static_cast<uint32_t>(channels)}});
   return context.RunProgram(program);
 }
 

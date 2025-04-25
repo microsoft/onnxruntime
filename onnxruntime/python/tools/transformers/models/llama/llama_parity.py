@@ -11,7 +11,9 @@ import os
 import time
 
 import numpy as np
+import packaging.version as pv
 import torch
+import transformers
 from benchmark_helper import setup_logger
 from dist_settings import get_rank, get_size
 from llama_inputs import (
@@ -23,7 +25,9 @@ from llama_inputs import (
     verify_ort_inputs,
 )
 from llama_torch import setup_torch_model
+from models.torch_export_patches.cache_helper import make_dynamic_cache
 from transformers import AutoConfig
+from transformers.cache_utils import DynamicCache
 
 import onnxruntime as ort
 
@@ -71,6 +75,28 @@ def get_inputs(args: argparse.Namespace, config: AutoConfig):
     return inputs
 
 
+def torch_deepcopy(value):
+    if isinstance(value, (int, float, str)):
+        return value
+    if isinstance(value, tuple):
+        return tuple(torch_deepcopy(v) for v in value)
+    if isinstance(value, list):
+        return [torch_deepcopy(v) for v in value]
+    if isinstance(value, set):
+        return {torch_deepcopy(v) for v in value}
+    if isinstance(value, dict):
+        return {k: torch_deepcopy(v) for k, v in value.items()}
+    if isinstance(value, np.ndarray):
+        return value.copy()
+    if hasattr(value, "clone"):
+        return value.clone()
+    if isinstance(value, DynamicCache):
+        return make_dynamic_cache(torch_deepcopy(list(zip(value.key_cache, value.value_cache, strict=False))))
+    # We should have a code using serialization, deserialization assuming a model
+    # cannot be exported without them.
+    raise NotImplementedError(f"torch_deepcopy not implemented for type {type(value)}")
+
+
 def verify_parity(
     args: argparse.Namespace,
     location: str,
@@ -92,11 +118,18 @@ def verify_parity(
 
     inputs = get_inputs(args, config)
 
+    if "past_key_values" in inputs and pv.Version(transformers.__version__) >= pv.Version("4.45"):
+        # Using DynamicCache
+        inputs["past_key_values"] = make_dynamic_cache(inputs["past_key_values"])
+
     # Run inference with PyTorch
     if args.execution_provider != "cpu":
         torch.cuda.synchronize()
     start_time = time.time()
-    pt_outputs = py_model(**inputs).logits.detach().cpu().numpy()
+    # If there is a cache in the inputs, we need to make a copy as the model modify them inplace.
+    # DynamicCache inherits from torch.nn.Module in some version of transformers.
+    # We need to make the copy manually.
+    pt_outputs = py_model(**torch_deepcopy(inputs)).logits.detach().cpu().numpy()
     if args.execution_provider != "cpu":
         torch.cuda.synchronize()
     end_time = time.time()

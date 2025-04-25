@@ -2946,6 +2946,24 @@ TEST_F(GraphTransformationTests, TransposeMatmulTransBatchNoFusion) {
   }
 }
 
+TEST_F(GraphTransformationTests, TransposeMatmulFusion_SameInput_gh_issue_24341) {
+  constexpr const ORTCHAR_T* model_uri = MODEL_FOLDER "fusion/gh_issue_24341.onnx";
+
+  std::shared_ptr<Model> p_model;
+  ASSERT_STATUS_OK(Model::Load(model_uri, p_model, nullptr, *logger_));
+  Graph& graph = p_model->MainGraph();
+  std::map<std::string, int> orig_op_to_count = CountOpsInGraph(graph);
+  onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
+  ASSERT_STATUS_OK(graph_transformation_mgr.Register(
+      std::make_unique<MatmulTransposeFusion>(), TransformerLevel::Level1));
+  ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, *logger_));
+
+  std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
+  ASSERT_EQ(op_to_count["Transpose"], orig_op_to_count["Transpose"]);
+  ASSERT_EQ(op_to_count["MatMul"], orig_op_to_count["MatMul"]);
+  ASSERT_EQ(op_to_count["Cast"], orig_op_to_count["Cast"]);
+}
+
 TEST_F(GraphTransformationTests, Gemm_LeakyRelu_Fusion) {
   constexpr const ORTCHAR_T* model_uri = MODEL_FOLDER "gemm_activation_fusion/gemm_activation_fusion.onnx";
 
@@ -8089,9 +8107,9 @@ TEST_F(GraphTransformationTests, MatMulNBitsBiasFusion) {
                                                 q_rows, q_cols);
 
       size_t q_data_size_in_bytes, q_scale_size, q_zp_size_in_bytes;
-      MlasBlockwiseQuantizedBufferSizes(qbits, block_size, /* columnwise */ true,
-                                        K, N,
-                                        q_data_size_in_bytes, q_scale_size, &q_zp_size_in_bytes);
+      MlasBlockwiseQuantizedBufferSizes<qbits>(block_size, /* columnwise */ true,
+                                               K, N,
+                                               q_data_size_in_bytes, q_scale_size, &q_zp_size_in_bytes);
 
       auto* A = builder.MakeInput<float>(std::vector{M, K}, "A");
 

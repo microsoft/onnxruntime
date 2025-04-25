@@ -516,11 +516,8 @@ onnxruntime_fetchcontent_declare(
   EXCLUDE_FROM_ALL
   FIND_PACKAGE_ARGS NAMES ONNX onnx
 )
-if (NOT onnxruntime_MINIMAL_BUILD)
-  onnxruntime_fetchcontent_makeavailable(onnx)
-else()
-  include(onnx_minimal)
-endif()
+
+onnxruntime_fetchcontent_makeavailable(onnx)
 
 if(TARGET ONNX::onnx AND NOT TARGET onnx)
   message(STATUS "Aliasing ONNX::onnx to onnx")
@@ -719,6 +716,11 @@ if (onnxruntime_USE_WEBGPU)
       # - (private) Remove hard-coded CMAKE_OSX_DEPLOYMENT_TARGET in Dawn's CMake files
       #   https://github.com/microsoft/onnxruntime/pull/23729
       #
+      # - (private) Reduce unsafe buffer usage warning in aligned_storage.h
+      #   https://github.com/microsoft/onnxruntime/pull/24308
+      #   The patch disables the UNSAFE_BUFFER_USAGE warning around the AlignedStorage struct in aligned_storage.h. This is done
+      #   by using TINT_BEGIN_DISABLE_WARNING and TINT_END_DISABLE_WARNING macros, which helps in warnings related to unsafe buffer usage
+      #   usage when compiling the code, making the build process cleaner and faster.
       #
       PATCH_COMMAND ${Patch_EXECUTABLE} --binary --ignore-whitespace -p1 < ${PROJECT_SOURCE_DIR}/patches/dawn/dawn.patch
       EXCLUDE_FROM_ALL

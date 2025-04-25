@@ -109,7 +109,6 @@
         //GPU failures
         "^test_batchnorm_epsilon_training_mode_cuda",
         "^test_batchnorm_example_training_mode_cuda",
-        "^test_convtranspose_autopad_same_cpu",
         "^test_sub_uint8_cuda",
         "^test_simple_rnn_batchwise_cuda",
         "^test_mul_uint8_cuda",
@@ -873,7 +872,9 @@
     "failing_permanently_nodejs_binding": [
         // those test cases are no longer available in later opset version
         ["opset10", "^test_mod_float_mixed_sign_example"],
-        ["opset11", "^test_unique_not_sorted_without_axis"]
+        ["opset11", "^test_unique_not_sorted_without_axis"],
+        // those test cases are generated incorrectly
+        ["opset14", "^test_convtranspose_autopad_same"]
     ],
     "test_with_types_disabled_due_to_binary_size_concerns": [
         "^test_bitshift_right_uint16",

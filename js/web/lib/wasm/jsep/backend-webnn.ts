@@ -8,11 +8,11 @@
 
 import { Env, Tensor } from 'onnxruntime-common';
 
-import { DataType } from '../wasm-common';
+import { DataType, tensorDataTypeStringToEnum } from '../wasm-common';
 import { getInstance } from '../wasm-factory';
 
 import { createView } from './tensor-view';
-import { TensorId, createTensorManager, convertInt64ToInt32 } from './webnn/tensor-manager';
+import { TensorId, createTensorManager, convertDataToInt32 } from './webnn/tensor-manager';
 import { configureLogger, LOG_DEBUG } from './log';
 
 /*
@@ -80,10 +80,19 @@ export class WebNNBackend {
    */
   private sessionGraphInputs: Map<number, string[]> = new Map();
   /**
+   * Maps from session id to list of graph outputs.
+   */
+  private sessionGraphOutputs: Map<number, string[]> = new Map();
+  /**
    * Temporary graph inputs for the current session.
    * These inputs will be registered when the session is created.
    */
   private temporaryGraphInputs: string[] = [];
+  /**
+   * Temporary graph outputs for the current session.
+   * These outputs will be registered when the session is created.
+   */
+  private temporaryGraphOutputs: string[] = [];
   /**
    * Temporary tensors for the current session.
    */
@@ -167,10 +176,15 @@ export class WebNNBackend {
       this.sessionGraphInputs.set(sessionId, this.temporaryGraphInputs);
       this.temporaryGraphInputs = [];
     }
+    if (this.temporaryGraphOutputs.length > 0) {
+      this.sessionGraphOutputs.set(sessionId, this.temporaryGraphOutputs);
+      this.temporaryGraphOutputs = [];
+    }
   }
 
   public onReleaseSession(sessionId: number): void {
     this.sessionGraphInputs.delete(sessionId);
+    this.sessionGraphOutputs.delete(sessionId);
     const mlContext = this.mlContextBySessionId.get(sessionId)!;
     if (!mlContext) {
       // Current session is not a WebNN session.
@@ -327,7 +341,8 @@ export class WebNNBackend {
       case 'int64':
         if (shouldConvertInt64ToInt32) {
           // Int64 is not supported by current context, use int32 instead.
-          bufferView = convertInt64ToInt32(new Uint8Array(buffer), false) as Int32Array;
+          const int32Buffer = convertDataToInt32(new Uint8Array(buffer), 'int64');
+          bufferView = new Int32Array(int32Buffer.buffer);
           desc.dataType = 'int32';
         } else {
           bufferView = new BigInt64Array(buffer);
@@ -363,6 +378,10 @@ export class WebNNBackend {
     this.temporaryGraphInputs.push(inputName);
   }
 
+  public registerGraphOutput(outputName: string): void {
+    this.temporaryGraphOutputs.push(outputName);
+  }
+
   public isGraphInput(sessionId: number, inputName: string): boolean {
     const inputNames = this.sessionGraphInputs.get(sessionId);
     if (!inputNames) {
@@ -371,9 +390,27 @@ export class WebNNBackend {
     return inputNames.includes(inputName);
   }
 
-  public isInt64Supported(sessionId: number): boolean {
+  public isGraphOutput(sessionId: number, outputName: string): boolean {
+    const outputNames = this.sessionGraphOutputs.get(sessionId);
+    if (!outputNames) {
+      return false;
+    }
+    return outputNames.includes(outputName);
+  }
+
+  public isGraphInputOutputTypeSupported(sessionId: number, type: Tensor.Type, isInput = true): boolean {
     const context = this.mlContextBySessionId.get(sessionId);
-    return !!context?.opSupportLimits().input.dataTypes.includes('int64');
+    const dataType = onnxDataTypeToWebnnDataType.get(tensorDataTypeStringToEnum(type));
+
+    if (typeof dataType === 'undefined') {
+      return false;
+    }
+
+    if (isInput) {
+      return !!context?.opSupportLimits().input.dataTypes.includes(dataType);
+    } else {
+      return !!context?.opSupportLimits().output.dataTypes.includes(dataType);
+    }
   }
 
   public flush(): void {

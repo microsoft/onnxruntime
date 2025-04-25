@@ -238,6 +238,17 @@ TEST_F(QnnHTPBackendTests, Reshape_4D_int32) {
                                      19);  // Opset
 }
 
+// Test that int64 Reshape runs on HTP backend.
+TEST_F(QnnHTPBackendTests, Reshape_4D_int64) {
+  std::vector<int64_t> input_data = {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11};
+  RunReshapeExpandTestOnHTP<int64_t>("Reshape",
+                                     TestInputDef<int64_t>({1, 3, 2, 2}, false, input_data),
+                                     TestInputDef<int64_t>({3}, true, {1, 1, 12}),
+                                     {},  // Attributes
+                                     ExpectedEPNodeAssignment::All,
+                                     19);  // Opset
+}
+
 // Test QDQ Reshape with a shape value of 0 (copy dimension from input)
 TEST_F(QnnHTPBackendTests, Reshape_4D_0MeansCopy) {
   RunQDQReshapeExpandTestOnHTP<uint8_t>("Reshape",
@@ -262,6 +273,16 @@ TEST_F(QnnHTPBackendTests, Reshape_4D_Neg1MeansInfer) {
 TEST_F(QnnHTPBackendTests, Expand_HTP_int32) {
   RunReshapeExpandTestOnHTP<int32_t>("Expand",
                                      TestInputDef<int32_t>({1}, false, {1}),
+                                     TestInputDef<int64_t>({3}, true, {1, 2, 3}),
+                                     {},  // Attributes
+                                     ExpectedEPNodeAssignment::All,
+                                     19);  // Opset
+}
+
+// Test that int64 Expand runs on HTP backend.
+TEST_F(QnnHTPBackendTests, Expand_HTP_int64) {
+  RunReshapeExpandTestOnHTP<int64_t>("Expand",
+                                     TestInputDef<int64_t>({1}, false, {1}),
                                      TestInputDef<int64_t>({3}, true, {1, 2, 3}),
                                      {},  // Attributes
                                      ExpectedEPNodeAssignment::All,

@@ -7,7 +7,7 @@
     "type": "git"
   },
   "author": "fs-eire",
-  "version": "1.22.0",
+  "version": "1.23.0",
   "jsdelivr": "dist/ort.min.js",
   "dependencies": {
     "flatbuffers": "^25.1.24",
@@ -68,6 +68,7 @@
   "browser": "dist/ort.min.js",
   "exports": {
     ".": {
+      "types": "./types.d.ts",
       "node": {
         "import": "./dist/ort.node.min.mjs",
         "require": "./dist/ort.node.min.js"
@@ -79,6 +80,7 @@
       "require": "./dist/ort.min.js"
     },
     "./all": {
+      "types": "./types.d.ts",
       "import": {
         "onnxruntime-web-use-extern-wasm": "./dist/ort.all.min.mjs",
         "default": "./dist/ort.all.bundle.min.mjs"
@@ -86,6 +88,7 @@
       "require": "./dist/ort.all.min.js"
     },
     "./wasm": {
+      "types": "./types.d.ts",
       "import": {
         "onnxruntime-web-use-extern-wasm": "./dist/ort.wasm.min.mjs",
         "default": "./dist/ort.wasm.bundle.min.mjs"
@@ -93,10 +96,12 @@
       "require": "./dist/ort.wasm.min.js"
     },
     "./webgl": {
+      "types": "./types.d.ts",
       "import": "./dist/ort.webgl.min.mjs",
       "require": "./dist/ort.webgl.min.js"
     },
     "./webgpu": {
+      "types": "./types.d.ts",
       "import": {
         "onnxruntime-web-use-extern-wasm": "./dist/ort.webgpu.min.mjs",
         "default": "./dist/ort.webgpu.bundle.min.mjs"

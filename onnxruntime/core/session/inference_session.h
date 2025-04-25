@@ -479,6 +479,11 @@ class InferenceSession {
   const SessionOptions& GetSessionOptions() const;
 
   /*
+   * Get the options so auto-selected EPs can augment as they are added post-session creation.
+   */
+  SessionOptions& GetMutableSessionOptions();
+
+  /*
    * Get the DataTransferManager associated with this session
    */
   const DataTransferManager& GetDataTransferManager() const;
@@ -780,6 +785,10 @@ class InferenceSession {
   // *after* the session_state_. This destruction order ensures that the custom operator library handles stored within
   // the session options are released after the individual operators are destroyed.
   SessionOptions session_options_;
+
+  CheckLoadCancellationFn check_load_cancellation_fn_ = [this]() {
+    return session_options_.IsLoadCancellationFlagSet();
+  };
 
   /// Logging manager if provided.
   logging::LoggingManager* logging_manager_;
