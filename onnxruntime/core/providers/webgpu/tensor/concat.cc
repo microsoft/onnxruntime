@@ -117,7 +117,7 @@ Status Concat::ComputeInternal(ComputeContext& context) const {
     if (input.tensor->Shape().Size() == 0) {
       continue;
     }
-    program.AddInput({input.tensor, ProgramTensorMetadataDependency::TypeAndRank});
+    program.AddInput(input.tensor, ProgramTensorMetadataDependency::TypeAndRank);
 
     auto axis_size = input.tensor->Shape()[axis];
     sum += static_cast<uint32_t>(axis_size);
@@ -134,7 +134,7 @@ Status Concat::ComputeInternal(ComputeContext& context) const {
   }
 
   program.CacheHint(absl::StrJoin(std::make_tuple(non_empty_input_count, prepare.axis), ","))
-      .AddOutputs({prepare.output_tensor})
+      .AddOutput(prepare.output_tensor)
       .SetDispatchGroupSize((prepare.output_num_elements + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE)
       .AddUniformVariables({gsl::span<const uint32_t>(sizes_in_concat_axis.data(), sizes_in_concat_axis.size()),
                             output_size});

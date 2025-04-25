@@ -163,14 +163,14 @@ Status BinaryElementwise::ComputeInternal(ComputeContext& context) const {
       .AddUniformVariables({
           {static_cast<uint32_t>(vec_size)},
       })
-      .AddOutput({output_tensor, ProgramTensorMetadataDependency::Type, {vec_size}, 4});
+      .AddOutput(output_tensor, ProgramTensorMetadataDependency::Type, 4, ProgramOutput::Flatten);
 
   if (is_lhs_scalar || is_rhs_scalar || !is_broadcast) {
     // Mode Element-wise
     // cache hint: "E{is_a_scalar}{is_b_scalar}"
     program
-        .AddInputs({{lhs_tensor, ProgramTensorMetadataDependency::Type, {is_lhs_scalar ? 1 : vec_size}, 4},
-                    {rhs_tensor, ProgramTensorMetadataDependency::Type, {is_rhs_scalar ? 1 : vec_size}, 4}})
+        .AddInput(lhs_tensor, ProgramTensorMetadataDependency::Type, 4, ProgramInput::Flatten)
+        .AddInput(rhs_tensor, ProgramTensorMetadataDependency::Type, 4, ProgramInput::Flatten)
         .CacheHint("E" + std::to_string(is_lhs_scalar) + std::to_string(is_rhs_scalar));
   } else if (vectorize) {
     // reshape the dims to merge the shared dimension if available
@@ -188,14 +188,14 @@ Status BinaryElementwise::ComputeInternal(ComputeContext& context) const {
     }
 
     if (shared_dimension_divisible_by_4 || a_last_dim_divisible_by_4) {
-      program.AddInput({lhs_tensor, ProgramTensorMetadataDependency::Type, {(lhs_shape.Size() + 3) / 4}, 4});
+      program.AddInput(lhs_tensor, ProgramTensorMetadataDependency::Type, 4, ProgramInput::Flatten);
     } else {
-      program.AddInput({lhs_tensor, ProgramTensorMetadataDependency::Type});
+      program.AddInput(lhs_tensor, ProgramTensorMetadataDependency::Type);
     }
     if (shared_dimension_divisible_by_4 || b_last_dim_divisible_by_4) {
-      program.AddInput({rhs_tensor, ProgramTensorMetadataDependency::Type, {(rhs_shape.Size() + 3) / 4}, 4});
+      program.AddInput(rhs_tensor, ProgramTensorMetadataDependency::Type, 4, ProgramInput::Flatten);
     } else {
-      program.AddInput({rhs_tensor, ProgramTensorMetadataDependency::Type});
+      program.AddInput(rhs_tensor, ProgramTensorMetadataDependency::Type);
     }
     // Mode Vectorize broadcast
     // cache hint: "V{a_rank};{b_rank};{output_rank}"
@@ -208,8 +208,8 @@ Status BinaryElementwise::ComputeInternal(ComputeContext& context) const {
     // Mode Broadcast
     // cache hint: "B"
     program
-        .AddInputs({{lhs_tensor, ProgramTensorMetadataDependency::TypeAndRank},
-                    {rhs_tensor, ProgramTensorMetadataDependency::TypeAndRank}})
+        .AddInput(lhs_tensor, ProgramTensorMetadataDependency::TypeAndRank)
+        .AddInput(rhs_tensor, ProgramTensorMetadataDependency::TypeAndRank)
         .AddIndices(output_tensor->Shape())
         .CacheHint("B");
   }

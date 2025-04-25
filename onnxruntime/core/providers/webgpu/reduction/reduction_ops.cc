@@ -324,8 +324,8 @@ Status ReduceKernel<allow_multi_axes>::ComputeInternal(ComputeContext& context) 
         constexpr uint32_t output_size = 1;
         constexpr uint32_t reduce_size = 1;
         ReduceNaiveProgram program(name_, reduce_op_type, keepdims_, noop_with_empty_axes_, input_axes, false);
-        program.AddInput({input_tensor, ProgramTensorMetadataDependency::TypeAndRank})
-            .AddOutput({output, ProgramTensorMetadataDependency::TypeAndRank})
+        program.AddInput(input_tensor, ProgramTensorMetadataDependency::TypeAndRank)
+            .AddOutput(output, ProgramTensorMetadataDependency::TypeAndRank)
             .SetDispatchGroupSize(1)
             .AddUniformVariables({{output_size}, {static_cast<uint32_t>(noop_with_empty_axes_ ? 1 : 0)}, {reduce_size}});
         return context.RunProgram(program);
@@ -377,7 +377,7 @@ Status ReduceKernel<allow_multi_axes>::ComputeInternal(ComputeContext& context) 
   if (use_naive_reduction) {
     ReduceNaiveProgram program(name_, reduce_op_type, keepdims_, noop_with_empty_axes_, input_axes, is_input_empty);
     if (!is_input_empty) {
-      program.AddInput({input_tensor, ProgramTensorMetadataDependency::TypeAndRank});
+      program.AddInput(input_tensor, ProgramTensorMetadataDependency::TypeAndRank);
     }
 
     // TODO: the ReduceKernel class is designed to use `keepdims_`, `noop_with_empty_axes_` and input axes as uniform variables,
@@ -387,7 +387,7 @@ Status ReduceKernel<allow_multi_axes>::ComputeInternal(ComputeContext& context) 
                       noop_with_empty_axes_,
                       select_last_index_,
                       absl::StrJoin(input_axes, ","))
-        .AddOutput({context.Output(0, output_shape), ProgramTensorMetadataDependency::TypeAndRank})
+        .AddOutput(context.Output(0, output_shape), ProgramTensorMetadataDependency::TypeAndRank)
         .SetDispatchGroupSize((output_size + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE)
         .AddUniformVariables({{static_cast<uint32_t>(output_size)},
                               {static_cast<uint32_t>(noop_with_empty_axes_ ? 1 : 0)},
@@ -426,8 +426,8 @@ Status ReduceKernel<allow_multi_axes>::ComputeInternal(ComputeContext& context) 
       input_transpose = context.CreateGPUTensor(input_tensor->DataType(), input_transpose_shape);
       TransposeProgram transpose_program(perm, false);
       transpose_program.CacheHint(absl::StrJoin(perm, "-"))
-          .AddInput({input_tensor, ProgramTensorMetadataDependency::TypeAndRank})
-          .AddOutput({&input_transpose, ProgramTensorMetadataDependency::TypeAndRank})
+          .AddInput(input_tensor, ProgramTensorMetadataDependency::TypeAndRank)
+          .AddOutput(&input_transpose, ProgramTensorMetadataDependency::TypeAndRank)
           .SetDispatchGroupSize((input_tensor->Shape().Size() + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE)
           .AddUniformVariable({static_cast<uint32_t>(input_transpose_shape.Size())});
       ORT_RETURN_IF_ERROR(context.RunProgram(transpose_program));
@@ -440,8 +440,8 @@ Status ReduceKernel<allow_multi_axes>::ComputeInternal(ComputeContext& context) 
                       select_last_index_,
                       workgroup_size,
                       absl::StrJoin(input_axes, ","))
-        .AddInput({input_tensor, ProgramTensorMetadataDependency::TypeAndRank})
-        .AddOutput({context.Output(0, output_shape), ProgramTensorMetadataDependency::TypeAndRank})
+        .AddInput(input_tensor, ProgramTensorMetadataDependency::TypeAndRank)
+        .AddOutput(context.Output(0, output_shape), ProgramTensorMetadataDependency::TypeAndRank)
         .SetDispatchGroupSize(static_cast<uint32_t>(output_size))
         .SetWorkgroupSize(workgroup_size)
         .AddUniformVariable({static_cast<uint32_t>(reduce_size)});

@@ -165,10 +165,10 @@ Status SkipLayerNorm<simplified>::ComputeInternal(onnxruntime::webgpu::ComputeCo
   SkipLayerNormProgram program{beta != nullptr, bias != nullptr, epsilon_, hidden_size, has_input_skip_bias_sum, simplified, split_hidden_dim};
   program
       .CacheHint(simplified, has_input_skip_bias_sum, split_hidden_dim)
-      .AddInputs({{x, ProgramTensorMetadataDependency::Type, components}})
-      .AddInputs({{skip, ProgramTensorMetadataDependency::Type, components}})
-      .AddInputs({{gamma, ProgramTensorMetadataDependency::Type, components}})
-      .AddOutputs({{output, ProgramTensorMetadataDependency::None, components}})
+      .AddInput(x, ProgramTensorMetadataDependency::Type, components)
+      .AddInput(skip, ProgramTensorMetadataDependency::Type, components)
+      .AddInput(gamma, ProgramTensorMetadataDependency::Type, components)
+      .AddOutput(output, ProgramTensorMetadataDependency::None, components)
       .SetDispatchGroupSize(onnxruntime::narrow<uint32_t>(ceil(1.0 * data_size / hidden_size)))
       .AddUniformVariables({
           {static_cast<uint32_t>(components)},
@@ -188,13 +188,13 @@ Status SkipLayerNorm<simplified>::ComputeInternal(onnxruntime::webgpu::ComputeCo
   }
 
   if (beta != nullptr) {
-    program.AddInput({beta, ProgramTensorMetadataDependency::Type, components});
+    program.AddInput(beta, ProgramTensorMetadataDependency::Type, components);
   }
   if (bias != nullptr) {
-    program.AddInput({bias, ProgramTensorMetadataDependency::Type, components});
+    program.AddInput(bias, ProgramTensorMetadataDependency::Type, components);
   }
   if (has_input_skip_bias_sum) {
-    program.AddOutputs({{input_skip_bias_sum, ProgramTensorMetadataDependency::None, components}});
+    program.AddOutput(input_skip_bias_sum, ProgramTensorMetadataDependency::None, components);
   }
   return context.RunProgram(program);
 }

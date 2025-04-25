@@ -124,12 +124,12 @@ Status BatchNormalization<is_nhwc>::ComputeInternal(ComputeContext& context) con
   BatchNormalizationProgram program{epsilon_, spatial_, format_};
   program
       .CacheHint(epsilon_, spatial_, format_, components)
-      .AddInputs({{input_tensor, ProgramTensorMetadataDependency::TypeAndRank, components},
-                  {scale, ProgramTensorMetadataDependency::TypeAndRank, c_components},
-                  {B, ProgramTensorMetadataDependency::TypeAndRank, c_components},
-                  {input_mean, ProgramTensorMetadataDependency::TypeAndRank, c_components},
-                  {input_var, ProgramTensorMetadataDependency::TypeAndRank, c_components}})
-      .AddOutputs({{output_tensor, ProgramTensorMetadataDependency::TypeAndRank, components}})
+      .AddInput(input_tensor, ProgramTensorMetadataDependency::TypeAndRank, components)
+      .AddInput(scale, ProgramTensorMetadataDependency::TypeAndRank, c_components)
+      .AddInput(B, ProgramTensorMetadataDependency::TypeAndRank, c_components)
+      .AddInput(input_mean, ProgramTensorMetadataDependency::TypeAndRank, c_components)
+      .AddInput(input_var, ProgramTensorMetadataDependency::TypeAndRank, c_components)
+      .AddOutput(output_tensor, ProgramTensorMetadataDependency::TypeAndRank, components)
       .SetDispatchGroupSize((output_size + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE)
       .AddUniformVariables({{static_cast<uint32_t>(output_size)}});
   return context.RunProgram(program);

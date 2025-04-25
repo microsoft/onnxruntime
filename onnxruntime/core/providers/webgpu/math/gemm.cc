@@ -204,12 +204,13 @@ Status Gemm::ComputeInternal(ComputeContext& context) const {
   GemmProgram program{transA_, transB_, alpha_, need_handle_bias, need_handle_matmul};
 
   if (need_handle_matmul) {
-    program.AddInputs({{A, ProgramTensorMetadataDependency::Type},
-                       {B, ProgramTensorMetadataDependency::Type}});
+    program
+        .AddInput(A, ProgramTensorMetadataDependency::Type)
+        .AddInput(B, ProgramTensorMetadataDependency::Type);
   }
 
   if (need_handle_bias) {
-    program.AddInput({C, ProgramTensorMetadataDependency::Rank});
+    program.AddInput(C, ProgramTensorMetadataDependency::Rank);
   }
 
   const uint32_t TILE_SIZE = 16;
@@ -217,7 +218,7 @@ Status Gemm::ComputeInternal(ComputeContext& context) const {
   const uint32_t num_tile_m = (M + TILE_SIZE - 1) / TILE_SIZE;
 
   program.CacheHint(alpha_, transA_, transB_)
-      .AddOutputs({{Y, ProgramTensorMetadataDependency::Type}})
+      .AddOutput(Y, ProgramTensorMetadataDependency::Type)
       .SetDispatchGroupSize(num_tile_n * num_tile_m)
       .SetWorkgroupSize(TILE_SIZE, TILE_SIZE)
       .AddUniformVariables({

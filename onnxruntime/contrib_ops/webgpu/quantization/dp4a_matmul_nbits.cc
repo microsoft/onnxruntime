@@ -392,9 +392,9 @@ Status ApplyDP4AMatrixMatMulNBits(const Tensor* a, const Tensor* b, const Tensor
   Tensor a_quant = context.CreateGPUTensor(DataTypeImpl::GetType<uint32_t>(), a_quant_shape);
   TensorShapeVector a_scales_dims({1, 1, M, K / kBlockSizeA});
   Tensor a_scale = context.CreateGPUTensor(a->DataType(), a_scales_dims);
-  quantize_program.AddInputs({{a, ProgramTensorMetadataDependency::TypeAndRank, static_cast<int>(kVec4Components)}})
-      .AddOutputs({{&a_quant, ProgramTensorMetadataDependency::Rank, a_quant.Shape(), 1},
-                   {&a_scale, ProgramTensorMetadataDependency::Rank, a_scale.Shape(), 1}});
+  quantize_program.AddInput(a, ProgramTensorMetadataDependency::TypeAndRank, static_cast<int>(kVec4Components))
+      .AddOutput(&a_quant, ProgramTensorMetadataDependency::Rank, 1, a_quant.Shape())
+      .AddOutput(&a_scale, ProgramTensorMetadataDependency::Rank, 1, a_scale.Shape());
   ORT_RETURN_IF_ERROR(context.RunProgram(quantize_program));
 
   if (M < min_M_for_tile_optimization) {
@@ -403,12 +403,12 @@ Status ApplyDP4AMatrixMatMulNBits(const Tensor* a, const Tensor* b, const Tensor
     uint32_t num_N_tile = (N + kTileSize - 1) / kTileSize;
     mul_program.SetWorkgroupSize(128);
     mul_program.SetDispatchGroupSize(M * num_N_tile);
-    mul_program.AddInputs({{&a_quant, ProgramTensorMetadataDependency::TypeAndRank, static_cast<int>(kVec4Components)},
-                           {&a_scale, ProgramTensorMetadataDependency::TypeAndRank, 1},
-                           {b, ProgramTensorMetadataDependency::TypeAndRank, static_cast<int>(kVec4Components * kU32Components)},
-                           {scales, ProgramTensorMetadataDependency::TypeAndRank, 1}})
+    mul_program.AddInput(&a_quant, ProgramTensorMetadataDependency::TypeAndRank, static_cast<int>(kVec4Components))
+        .AddInput(&a_scale, ProgramTensorMetadataDependency::TypeAndRank, 1)
+        .AddInput(b, ProgramTensorMetadataDependency::TypeAndRank, static_cast<int>(kVec4Components * kU32Components))
+        .AddInput(scales, ProgramTensorMetadataDependency::TypeAndRank, 1)
         .AddUniformVariables({M, N, K, K / 16, K / 32, block_size, num_N_tile})
-        .AddOutput({y, ProgramTensorMetadataDependency::TypeAndRank, 1});
+        .AddOutput(y, ProgramTensorMetadataDependency::TypeAndRank, 1);
     return context.RunProgram(mul_program);
   }
 
@@ -419,17 +419,17 @@ Status ApplyDP4AMatrixMatMulNBits(const Tensor* a, const Tensor* b, const Tensor
   DP4AMatMulNBitsProgram mul_program{block_size};
   mul_program.SetWorkgroupSize(256);
   mul_program.SetDispatchGroupSize(num_M_tile * num_N_tile);
-  mul_program.AddInputs({{&a_quant, ProgramTensorMetadataDependency::TypeAndRank, static_cast<int>(kVec4Components)},
-                         {&a_scale, ProgramTensorMetadataDependency::TypeAndRank, 1},
-                         {b, ProgramTensorMetadataDependency::TypeAndRank, static_cast<int>(kVec2Components * kU32Components)},
-                         {scales, ProgramTensorMetadataDependency::TypeAndRank, 1}})
+  mul_program.AddInput(&a_quant, ProgramTensorMetadataDependency::TypeAndRank, static_cast<int>(kVec4Components))
+      .AddInput(&a_scale, ProgramTensorMetadataDependency::TypeAndRank, 1)
+      .AddInput(b, ProgramTensorMetadataDependency::TypeAndRank, static_cast<int>(kVec2Components * kU32Components))
+      .AddInput(scales, ProgramTensorMetadataDependency::TypeAndRank, 1)
       .AddUniformVariables({{static_cast<uint32_t>(M)},
                             {static_cast<uint32_t>(N)},
                             {static_cast<uint32_t>(K)},
                             {static_cast<uint32_t>(K / 8)},
                             {static_cast<uint32_t>(K / 16)},
                             {num_N_tile}})
-      .AddOutput({y, ProgramTensorMetadataDependency::TypeAndRank, reshaped_y_shape, static_cast<int>(kVec4Components)})
+      .AddOutput(y, ProgramTensorMetadataDependency::TypeAndRank, static_cast<int>(kVec4Components), reshaped_y_shape)
       .CacheHint("Block" + std::to_string(block_size));
   return context.RunProgram(mul_program);
 }

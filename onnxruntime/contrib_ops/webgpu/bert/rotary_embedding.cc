@@ -100,11 +100,11 @@ Status RotaryEmbedding::ComputeInternal(onnxruntime::webgpu::ComputeContext& con
 
   program
       .CacheHint(interleaved_)
-      .AddInputs({{input, ProgramTensorMetadataDependency::TypeAndRank},
-                  {position_ids, ProgramTensorMetadataDependency::Rank},
-                  {cos_cache, ProgramTensorMetadataDependency::Rank},
-                  {sin_cache, ProgramTensorMetadataDependency::Rank}})
-      .AddOutput({output, ProgramTensorMetadataDependency::None})
+      .AddInput(input, ProgramTensorMetadataDependency::TypeAndRank)
+      .AddInput(position_ids, ProgramTensorMetadataDependency::Rank)
+      .AddInput(cos_cache, ProgramTensorMetadataDependency::Rank)
+      .AddInput(sin_cache, ProgramTensorMetadataDependency::Rank)
+      .AddOutput(output, ProgramTensorMetadataDependency::None)
       .SetDispatchGroupSize((output_size + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE)
       .AddUniformVariables({{scale_},
                             {gsl::make_span(global_dims)},

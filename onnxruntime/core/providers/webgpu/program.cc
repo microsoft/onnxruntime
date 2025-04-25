@@ -253,55 +253,25 @@ TensorShape GetReducedShape(const TensorShape& shape, int component /* > 1 */) {
 }
 }  // namespace
 
-ProgramInput::ProgramInput(const Tensor* tensor) : ProgramInput{tensor, ProgramTensorMetadataDependency::TypeAndRank} {}
-
-ProgramInput::ProgramInput(const Tensor* tensor, ProgramTensorMetadataDependency dependency, int component)
+ProgramInput::ProgramInput(const Tensor* tensor, ProgramTensorMetadataDependency dependency, int component, const TensorShape* override_shape)
     : tensor{tensor},
       dependency{dependency},
       var_type{ToProgramVariableDataType(tensor->GetElementType(), component)},
-      use_override_shape{component > 1},
-      override_shape{} {
+      use_override_shape{override_shape != nullptr} {
   if (use_override_shape) {
-    override_shape = GetReducedShape(tensor->Shape(), component);
+    this->override_shape = *override_shape;
   }
 }
 
-ProgramInput::ProgramInput(const Tensor* tensor, ProgramTensorMetadataDependency dependency, ProgramInput::FlattenTag, int component)
+ProgramOutput::ProgramOutput(Tensor* tensor, ProgramTensorMetadataDependency dependency, int component, const TensorShape* override_shape)
     : tensor{tensor},
       dependency{dependency},
       var_type{ToProgramVariableDataType(tensor->GetElementType(), component)},
-      use_override_shape{true},
-      override_shape{} {
-  override_shape = {(tensor->Shape().Size() + component - 1) / component};
-}
-
-ProgramInput::ProgramInput(const Tensor* tensor, ProgramTensorMetadataDependency dependency, const TensorShape& override_shape, int component)
-    : tensor{tensor},
-      dependency{dependency},
-      var_type{ToProgramVariableDataType(tensor->GetElementType(), component)},
-      use_override_shape{true},
-      override_shape{override_shape} {}
-
-ProgramOutput::ProgramOutput(Tensor* tensor)
-    : ProgramOutput{tensor, ProgramTensorMetadataDependency::None} {}
-
-ProgramOutput::ProgramOutput(Tensor* tensor, ProgramTensorMetadataDependency dependency, int component)
-    : tensor{tensor},
-      dependency{dependency},
-      var_type{ToProgramVariableDataType(tensor->GetElementType(), component)},
-      use_override_shape{component > 1},
-      override_shape{} {
+      use_override_shape{override_shape != nullptr} {
   if (use_override_shape) {
-    override_shape = GetReducedShape(tensor->Shape(), component);
+    this->override_shape = *override_shape;
   }
 }
-
-ProgramOutput::ProgramOutput(Tensor* tensor, ProgramTensorMetadataDependency dependency, const TensorShape& override_shape, int component)
-    : tensor{tensor},
-      dependency{dependency},
-      var_type{ToProgramVariableDataType(tensor->GetElementType(), component)},
-      use_override_shape{true},
-      override_shape{override_shape} {}
 
 ProgramBase::ProgramBase(std::string_view name, ProgramMetadata&& metadata)
     : name_{name},
@@ -314,23 +284,75 @@ ProgramBase::ProgramBase(std::string_view name, ProgramMetadata&& metadata)
       workgroup_size_z_{0} {
 }
 
-ProgramBase& ProgramBase::AddInput(ProgramInput&& input) {
-  inputs_.emplace_back(std::move(input));
+ProgramBase& ProgramBase::AddInput(const Tensor* tensor, ProgramTensorMetadataDependency dependency) {
+  inputs_.emplace_back(tensor, dependency, 1, nullptr);
   return *this;
 }
 
-ProgramBase& ProgramBase::AddInputs(std::initializer_list<ProgramInput> inputs) {
-  inputs_.insert(inputs_.end(), inputs.begin(), inputs.end());
+ProgramBase& ProgramBase::AddInput(const Tensor* tensor, ProgramTensorMetadataDependency dependency, int component, decltype(ProgramInput::Flatten)) {
+  TensorShape override_shape{(tensor->Shape().Size() + component - 1) / component};
+  inputs_.emplace_back(tensor, dependency, component, &override_shape);
   return *this;
 }
 
-ProgramBase& ProgramBase::AddOutput(ProgramOutput&& output) {
-  outputs_.emplace_back(std::move(output));
+ProgramBase& ProgramBase::AddInput(const Tensor* tensor, ProgramTensorMetadataDependency dependency, int component /* , decltype(ProgramInput::ReduceLastDimension) */) {
+  if (component == 1) {
+    return AddInput(tensor, dependency);
+  }
+
+  TensorShape override_shape = GetReducedShape(tensor->Shape(), component);
+  inputs_.emplace_back(tensor, dependency, component, &override_shape);
   return *this;
 }
 
-ProgramBase& ProgramBase::AddOutputs(std::initializer_list<ProgramOutput> outputs) {
-  outputs_.insert(outputs_.end(), outputs.begin(), outputs.end());
+ProgramBase& ProgramBase::AddInput(const Tensor* tensor, ProgramTensorMetadataDependency dependency, int component, decltype(ProgramInput::ReduceLastDimension)) {
+  if (component == 1) {
+    return AddInput(tensor, dependency);
+  }
+
+  TensorShape override_shape = GetReducedShape(tensor->Shape(), component);
+  inputs_.emplace_back(tensor, dependency, component, &override_shape);
+  return *this;
+}
+
+ProgramBase& ProgramBase::AddInput(const Tensor* tensor, ProgramTensorMetadataDependency dependency, int component, const TensorShape& override_shape) {
+  inputs_.emplace_back(tensor, dependency, component, &override_shape);
+  return *this;
+}
+
+ProgramBase& ProgramBase::AddOutput(Tensor* tensor, ProgramTensorMetadataDependency dependency) {
+  outputs_.emplace_back(tensor, dependency, 1, nullptr);
+  return *this;
+}
+
+ProgramBase& ProgramBase::AddOutput(Tensor* tensor, ProgramTensorMetadataDependency dependency, int component, decltype(ProgramOutput::Flatten)) {
+  TensorShape override_shape{(tensor->Shape().Size() + component - 1) / component};
+  outputs_.emplace_back(tensor, dependency, component, &override_shape);
+  return *this;
+}
+
+ProgramBase& ProgramBase::AddOutput(Tensor* tensor, ProgramTensorMetadataDependency dependency, int component /* , decltype(ProgramOutput::ReduceLastDimension) */) {
+  if (component == 1) {
+    return AddOutput(tensor, dependency);
+  }
+
+  TensorShape override_shape = GetReducedShape(tensor->Shape(), component);
+  outputs_.emplace_back(tensor, dependency, component, &override_shape);
+  return *this;
+}
+
+ProgramBase& ProgramBase::AddOutput(Tensor* tensor, ProgramTensorMetadataDependency dependency, int component, decltype(ProgramOutput::ReduceLastDimension)) {
+  if (component == 1) {
+    return AddOutput(tensor, dependency);
+  }
+
+  TensorShape override_shape = GetReducedShape(tensor->Shape(), component);
+  outputs_.emplace_back(tensor, dependency, component, &override_shape);
+  return *this;
+}
+
+ProgramBase& ProgramBase::AddOutput(Tensor* tensor, ProgramTensorMetadataDependency dependency, int component, const TensorShape& override_shape) {
+  outputs_.emplace_back(tensor, dependency, component, &override_shape);
   return *this;
 }
 

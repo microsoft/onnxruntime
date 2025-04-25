@@ -204,10 +204,11 @@ Conv2dMMProgram CreateConv2dMMProgram(const Activation& activation, const std::v
   TensorShape reduced_input_shape = ReduceShapeByComponents(input_output_shapes[0], input_components);
   TensorShape reduced_weight_shape = ReduceShapeByComponents(input_output_shapes[1], components);
   TensorShape reduced_output_shape = ReduceShapeByComponents(input_output_shapes[has_bias ? 3 : 2], components);
-  program.AddInputs({{input, ProgramTensorMetadataDependency::TypeAndRank, reduced_input_shape, input_components}, {weight, ProgramTensorMetadataDependency::TypeAndRank, reduced_weight_shape, components}});
+  program.AddInput(input, ProgramTensorMetadataDependency::TypeAndRank, input_components, reduced_input_shape);
+  program.AddInput(weight, ProgramTensorMetadataDependency::TypeAndRank, components, reduced_weight_shape);
   if (has_bias) {
     TensorShape reduced_bias_shape = ReduceShapeByComponents(input_output_shapes[2], components);
-    program.AddInput({bias, ProgramTensorMetadataDependency::TypeAndRank, reduced_bias_shape, components});
+    program.AddInput(bias, ProgramTensorMetadataDependency::TypeAndRank, components, reduced_bias_shape);
   }
   const auto stringify = [](const std::vector<uint32_t>& vec) -> std::string {
     std::ostringstream oss;
@@ -215,7 +216,7 @@ Conv2dMMProgram CreateConv2dMMProgram(const Activation& activation, const std::v
     return oss.str();
   };
   program.CacheHint(activation.ToString(), is_channels_last, stringify({inner_element_size, static_cast<uint32_t>(is_vec4 ? 1 : 0), fit_a_outer, fit_b_outer, fit_inner, tile_a_outer, tile_a_outer, tile_inner, static_cast<uint32_t>(components)}))
-      .AddOutput({output, ProgramTensorMetadataDependency::TypeAndRank, reduced_output_shape, components})
+      .AddOutput(output, ProgramTensorMetadataDependency::TypeAndRank, components, reduced_output_shape)
       .SetDispatchGroupSize(dispatch[0], dispatch[1], dispatch[2])
       .SetWorkgroupSize(workgroup_size[0], workgroup_size[1], workgroup_size[2])
       .AddUniformVariables({{static_cast<uint32_t>(dim_a_outer)},

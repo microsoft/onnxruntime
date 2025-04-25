@@ -135,8 +135,8 @@ Status DepthToSpace<is_nhwc>::ComputeInternal(onnxruntime::webgpu::ComputeContex
 
   DepthToSpaceProgram program{perm};
   program
-      .AddInput({input, ProgramTensorMetadataDependency::TypeAndRank, input_override_shape, 1})
-      .AddOutput({output, ProgramTensorMetadataDependency::None, output_override_shape, 1})
+      .AddInput(input, ProgramTensorMetadataDependency::TypeAndRank, 1, input_override_shape)
+      .AddOutput(output, ProgramTensorMetadataDependency::None, 1, output_override_shape)
       .SetDispatchGroupSize((output_size + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE)
       .CacheHint(absl::StrJoin(input_shape.GetDims(), "-"), blocksize_, is_dcr_ ? "DCR" : "CRD")
       .AddUniformVariable({static_cast<uint32_t>(output_size)});

@@ -216,14 +216,13 @@ ProgramVariableDataType ToProgramVariableDataType(int32_t element_type, int comp
 struct ProgramInput {
  private:
   struct FlattenTag {};
+  struct ReduceLastDimensionTag {};
 
  public:
   constexpr static const FlattenTag Flatten{};
+  constexpr static const ReduceLastDimensionTag ReduceLastDimension{};
 
-  ProgramInput(const Tensor* tensor);
-  ProgramInput(const Tensor* tensor, ProgramTensorMetadataDependency dependency, int component = 1);
-  ProgramInput(const Tensor* tensor, ProgramTensorMetadataDependency dependency, FlattenTag, int component = 1);
-  ProgramInput(const Tensor* tensor, ProgramTensorMetadataDependency dependency, const TensorShape& override_shape, int component);
+  ProgramInput(const Tensor* tensor, ProgramTensorMetadataDependency dependency, int component, const TensorShape* override_shape);
 
   const Tensor* tensor;
   ProgramTensorMetadataDependency dependency;
@@ -233,9 +232,15 @@ struct ProgramInput {
 };
 
 struct ProgramOutput {
-  ProgramOutput(Tensor* tensor);
-  ProgramOutput(Tensor* tensor, ProgramTensorMetadataDependency dependency, int component = 1);
-  ProgramOutput(Tensor* tensor, ProgramTensorMetadataDependency dependency, const TensorShape& override_shape, int component);
+ private:
+  struct FlattenTag {};
+  struct ReduceLastDimensionTag {};
+
+ public:
+  constexpr static const FlattenTag Flatten{};
+  constexpr static const ReduceLastDimensionTag ReduceLastDimension{};
+
+  ProgramOutput(Tensor* tensor, ProgramTensorMetadataDependency dependency, int component, const TensorShape* override_shape);
 
   Tensor* tensor;
   ProgramTensorMetadataDependency dependency;
@@ -275,14 +280,28 @@ class ProgramBase {
     return *this;
   }
 
-  // add a program input
-  ProgramBase& AddInput(ProgramInput&& input);
-  // add multiple program inputs
-  ProgramBase& AddInputs(std::initializer_list<ProgramInput> inputs);
-  // add a program output
-  ProgramBase& AddOutput(ProgramOutput&& output);
-  // add multiple program outputs
-  ProgramBase& AddOutputs(std::initializer_list<ProgramOutput> outputs);
+  // add a program input with the specified dependency
+  ProgramBase& AddInput(const Tensor* tensor, ProgramTensorMetadataDependency dependency = ProgramTensorMetadataDependency::TypeAndRank);
+  // add a program input with the specified dependency and number of component. The input tensor will be treated as a 1D tensor.
+  ProgramBase& AddInput(const Tensor* tensor, ProgramTensorMetadataDependency dependency, int component, decltype(ProgramInput::Flatten));
+  // add a program input with the specified dependency and number of component. The last dimension of the input tensor will be reduced by the number of component.
+  ProgramBase& AddInput(const Tensor* tensor, ProgramTensorMetadataDependency dependency, int component /* , decltype(ProgramInput::ReduceLastDimension) */);
+  // add a program input with the specified dependency and number of component. The last dimension of the input tensor will be reduced by the number of component.
+  ProgramBase& AddInput(const Tensor* tensor, ProgramTensorMetadataDependency dependency, int component, decltype(ProgramInput::ReduceLastDimension));
+  // add a program input with the specified dependency and number of component. The override shape will be used as the shape of the input.
+  ProgramBase& AddInput(const Tensor* tensor, ProgramTensorMetadataDependency dependency, int component, const TensorShape& override_shape);
+
+  // add a program output with the specified dependency
+  ProgramBase& AddOutput(Tensor* tensor, ProgramTensorMetadataDependency dependency = ProgramTensorMetadataDependency::None);
+  // add a program output with the specified dependency and number of component. The output tensor will be treated as a 1D tensor.
+  ProgramBase& AddOutput(Tensor* tensor, ProgramTensorMetadataDependency dependency, int component, decltype(ProgramOutput::Flatten));
+  // add a program output with the specified dependency and number of component. The last dimension of the output tensor will be reduced by the number of component.
+  ProgramBase& AddOutput(Tensor* tensor, ProgramTensorMetadataDependency dependency, int component /* , decltype(ProgramOutput::ReduceLastDimension) */);
+  // add a program output with the specified dependency and number of component. The last dimension of the output tensor will be reduced by the number of component.
+  ProgramBase& AddOutput(Tensor* tensor, ProgramTensorMetadataDependency dependency, int component, decltype(ProgramOutput::ReduceLastDimension));
+  // add a program output with the specified dependency and number of component. The override shape will be used as the shape of the output.
+  ProgramBase& AddOutput(Tensor* tensor, ProgramTensorMetadataDependency dependency, int component, const TensorShape& override_shape);
+
   // add a program variable for indices
   template <typename... Args>
   ProgramBase& AddIndices(Args&&... args) {

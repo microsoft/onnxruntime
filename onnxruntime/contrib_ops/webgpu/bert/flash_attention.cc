@@ -85,21 +85,21 @@ Status CopyKVCache(onnxruntime::webgpu::ComputeContext& context, const WebgpuAtt
   int64_t copy_size = copy_kv_shape.Size();
   CopyKVCacheProgram program{"CopyKVCache", has_past, parameters.qkv_format_ == Q_K_V_BSNH_BNSH_BNSH, parameters.past_present_share_buffer_};
   if (parameters.qkv_format_ == Q_K_V_BSNH_BNSH_BNSH) {
-    program.AddInputs({{K, ProgramTensorMetadataDependency::TypeAndRank, components},
-                       {V, ProgramTensorMetadataDependency::TypeAndRank, components}});
+    program.AddInput(K, ProgramTensorMetadataDependency::TypeAndRank, components)
+        .AddInput(V, ProgramTensorMetadataDependency::TypeAndRank, components);
   } else {
     ORT_ENFORCE(parameters.qkv_format_ == Q_K_V_BSNH, "qkv format ", parameters.qkv_format_, " is not supported yet in CopyKVCache.");
     // Reshape (batch_size, kv_sequence_length, kv_hidden_size) to (batch_size, kv_sequence_length, num_head, head_size)
     TensorShape reshaped_KV_shape{parameters.batch_size_, parameters.kv_sequence_length_, num_heads, parameters.head_size_ / components};
-    program.AddInputs({{K, ProgramTensorMetadataDependency::TypeAndRank, reshaped_KV_shape, components},
-                       {V, ProgramTensorMetadataDependency::TypeAndRank, reshaped_KV_shape, components}});
+    program.AddInput(K, ProgramTensorMetadataDependency::TypeAndRank, components, reshaped_KV_shape)
+        .AddInput(V, ProgramTensorMetadataDependency::TypeAndRank, components, reshaped_KV_shape);
   }
   if (has_past && !parameters.past_present_share_buffer_) {
-    program.AddInputs({{past_key, ProgramTensorMetadataDependency::TypeAndRank, components},
-                       {past_value, ProgramTensorMetadataDependency::TypeAndRank, components}});
+    program.AddInput(past_key, ProgramTensorMetadataDependency::TypeAndRank, components)
+        .AddInput(past_value, ProgramTensorMetadataDependency::TypeAndRank, components);
   }
-  program.AddOutputs({{present_key, ProgramTensorMetadataDependency::Rank, components},
-                      {present_value, ProgramTensorMetadataDependency::Rank, components}})
+  program.AddOutput(present_key, ProgramTensorMetadataDependency::Rank, components)
+      .AddOutput(present_value, ProgramTensorMetadataDependency::Rank, components)
       .AddIndices(std::move(copy_kv_shape));
   program.SetDispatchGroupSize(static_cast<uint32_t>((copy_size + 63) / 64))
       .SetWorkgroupSize(64)
@@ -654,13 +654,13 @@ Status ComputeFlashAttentionDecodeQKT(onnxruntime::webgpu::ComputeContext& conte
   const int components = 4;
 
   FlashAttentionDecodeQKTProgram program{"FlashAttentionDecodeQKT", has_attention_bias, tile_size};
-  program.AddInputs({{Q, ProgramTensorMetadataDependency::TypeAndRank, components},
-                     {present_key, ProgramTensorMetadataDependency::TypeAndRank, components}});
+  program.AddInput(Q, ProgramTensorMetadataDependency::TypeAndRank, components)
+      .AddInput(present_key, ProgramTensorMetadataDependency::TypeAndRank, components);
   if (has_attention_bias) {
-    program.AddInput({attention_bias, ProgramTensorMetadataDependency::TypeAndRank});
+    program.AddInput(attention_bias, ProgramTensorMetadataDependency::TypeAndRank);
   }
-  program.AddOutputs({{output, ProgramTensorMetadataDependency::Rank},
-                      {metadata, ProgramTensorMetadataDependency::Rank, 2}});
+  program.AddOutput(output, ProgramTensorMetadataDependency::Rank)
+      .AddOutput(metadata, ProgramTensorMetadataDependency::Rank, 2);
 
   const uint32_t vectorized_head_size = parameters.head_size_ / components;
   program.SetDispatchGroupSize(parameters.num_heads_ * num_total_seq_length_tile)
@@ -780,10 +780,10 @@ Status ComputeFlashAttentionDecodeSplitVxScore(onnxruntime::webgpu::ComputeConte
   const int components = 4;
   int head_size_vec = parameters.v_head_size_ / components;
   FlashAttentionDecodeSplitVxProgram program{"FlashAttentionDecodeSplitVx", tile_size, head_size_vec};
-  program.AddInputs({{metadata, ProgramTensorMetadataDependency::TypeAndRank, 2},
-                     {qk, ProgramTensorMetadataDependency::TypeAndRank},
-                     {present_value, ProgramTensorMetadataDependency::TypeAndRank, components}});
-  program.AddOutputs({{out_split_vx, ProgramTensorMetadataDependency::TypeAndRank, components}});  // [B, N, split_k, head_size]
+  program.AddInput(metadata, ProgramTensorMetadataDependency::TypeAndRank, 2)
+      .AddInput(qk, ProgramTensorMetadataDependency::TypeAndRank)
+      .AddInput(present_value, ProgramTensorMetadataDependency::TypeAndRank, components);
+  program.AddOutput(out_split_vx, ProgramTensorMetadataDependency::TypeAndRank, components);  // [B, N, split_k, head_size]
   program.SetDispatchGroupSize(parameters.num_heads_ * num_total_seq_length_tile)
       .CacheHint(tile_size, head_size_vec)
       .SetWorkgroupSize(64)
@@ -852,8 +852,8 @@ Status ComputeFlashAttentionDecodeVxReduce(onnxruntime::webgpu::ComputeContext& 
   constexpr int tile_size = 8;
   int tile_head_size = tile_size * components;
   FlashAttentionDecodeVxReduceProgram program{"FlashAttentionDecodeVxReduce", tile_size};
-  program.AddInputs({{out_split_vx, ProgramTensorMetadataDependency::TypeAndRank, components}});
-  program.AddOutputs({{output, ProgramTensorMetadataDependency::TypeAndRank, components}});
+  program.AddInput(out_split_vx, ProgramTensorMetadataDependency::TypeAndRank, components);
+  program.AddOutput(output, ProgramTensorMetadataDependency::TypeAndRank, components);
   const uint32_t num_head_size_tile = static_cast<uint32_t>((parameters.v_head_size_ + tile_head_size - 1) / tile_head_size);
   program.SetDispatchGroupSize(parameters.num_heads_ * num_head_size_tile)
       .CacheHint(tile_size)
@@ -875,13 +875,13 @@ Status ApplyFlashAttention(const Tensor* Q, const Tensor* K, const Tensor* V, co
     bool has_attention_bias = attention_bias != nullptr;
     bool is_qualcomm = context.AdapterInfo().vendor == std::string_view{"qualcomm"};
     FlashAttentionProgram program{"FlashAttention", has_attention_bias, is_qualcomm, parameters.head_size_, parameters.num_heads_};
-    program.AddInputs({{Q, ProgramTensorMetadataDependency::TypeAndRank, 4},
-                       {present_key, ProgramTensorMetadataDependency::TypeAndRank, 4},
-                       {present_value, ProgramTensorMetadataDependency::TypeAndRank, 4}});
+    program.AddInput(Q, ProgramTensorMetadataDependency::TypeAndRank, 4)
+        .AddInput(present_key, ProgramTensorMetadataDependency::TypeAndRank, 4)
+        .AddInput(present_value, ProgramTensorMetadataDependency::TypeAndRank, 4);
     if (has_attention_bias) {
-      program.AddInputs({{attention_bias, ProgramTensorMetadataDependency::TypeAndRank}});
+      program.AddInput(attention_bias, ProgramTensorMetadataDependency::TypeAndRank);
     }
-    program.AddOutputs({{output, ProgramTensorMetadataDependency::TypeAndRank, 4}});
+    program.AddOutput(output, ProgramTensorMetadataDependency::TypeAndRank, 4);
     const float alpha = parameters.scale_ == 0.0f ? 1.f / sqrt(static_cast<float>(parameters.head_size_))
                                                   : parameters.scale_;
     const uint32_t num_seq_tile = (parameters.sequence_length_ + tile_size - 1) / tile_size;

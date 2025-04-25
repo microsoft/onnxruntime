@@ -57,8 +57,10 @@ Status SplitPackedQKV(onnxruntime::webgpu::ComputeContext& context, const Webgpu
   SplitPackedQKVProgram program;
   auto input_size = packedQKV->Shape().Size();
   program
-      .AddInput({packedQKV, ProgramTensorMetadataDependency::Rank})
-      .AddOutputs({{query, ProgramTensorMetadataDependency::Rank}, {key, ProgramTensorMetadataDependency::Rank}, {val, ProgramTensorMetadataDependency::Rank}})
+      .AddInput(packedQKV, ProgramTensorMetadataDependency::Rank)
+      .AddOutput(query, ProgramTensorMetadataDependency::Rank)
+      .AddOutput(key, ProgramTensorMetadataDependency::Rank)
+      .AddOutput(val, ProgramTensorMetadataDependency::Rank)
       .AddUniformVariables({
           {static_cast<uint32_t>(params.hidden_size_)},
           {static_cast<uint32_t>(params.kv_hidden_size_)},
@@ -103,8 +105,8 @@ Status GeneratePositionIDs(onnxruntime::webgpu::ComputeContext& context, const W
   GeneratePositionIDsProgram program(params.is_first_prompt_, params.is_subsequent_prompt_);
   auto output_size = params.batch_size_ * params.sequence_length_;
   program.CacheHint(params.is_first_prompt_, params.is_subsequent_prompt_)
-      .AddInput({seqlens, ProgramTensorMetadataDependency::Rank})
-      .AddOutput({output_tensor, ProgramTensorMetadataDependency::Rank})
+      .AddInput(seqlens, ProgramTensorMetadataDependency::Rank)
+      .AddOutput(output_tensor, ProgramTensorMetadataDependency::Rank)
       .AddUniformVariables({{static_cast<uint32_t>(params.batch_size_)}, {static_cast<uint32_t>(params.sequence_length_)}})
       .SetDispatchGroupSize((output_size + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE);
   return context.RunProgram(program);
@@ -128,10 +130,10 @@ Status RunRotaryEmbedding(onnxruntime::webgpu::ComputeContext& context, const We
   RotaryEmbeddingProgram program(params.rotary_interleaved_);
   program
       .CacheHint(params.rotary_interleaved_)
-      .AddInputs({{input, ProgramTensorMetadataDependency::Rank},
-                  {pos_ids, ProgramTensorMetadataDependency::Rank},
-                  {cos_cache, ProgramTensorMetadataDependency::Rank},
-                  {sin_cache, ProgramTensorMetadataDependency::Rank}})
+      .AddInput(input, ProgramTensorMetadataDependency::Rank)
+      .AddInput(pos_ids, ProgramTensorMetadataDependency::Rank)
+      .AddInput(cos_cache, ProgramTensorMetadataDependency::Rank)
+      .AddInput(sin_cache, ProgramTensorMetadataDependency::Rank)
       .AddOutput(output)
       .SetDispatchGroupSize((output_size + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE)
       .AddUniformVariables({{params.scale_},

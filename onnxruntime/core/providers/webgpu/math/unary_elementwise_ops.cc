@@ -30,8 +30,8 @@ Status UnaryElementwise::ComputeInternal(ComputeContext& context) const {
   uint32_t vec_size = onnxruntime::narrow<uint32_t>((size + 3) / 4);
   UnaryElementwiseProgram program{kernel_name_, expression_, additional_impl_, additional_usage_};
   program
-      .AddInputs({{input_tensor, ProgramTensorMetadataDependency::Type, {vec_size}, 4}})
-      .AddOutputs({{output_tensor, ProgramTensorMetadataDependency::None, {vec_size}, 4}})
+      .AddInput(input_tensor, ProgramTensorMetadataDependency::Type, 4, ProgramInput::Flatten)
+      .AddOutput(output_tensor, ProgramTensorMetadataDependency::None, 4, ProgramOutput::Flatten)
       .SetDispatchGroupSize((vec_size + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE)
       .AddUniformVariables({
           {static_cast<uint32_t>(vec_size)},

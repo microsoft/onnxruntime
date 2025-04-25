@@ -755,13 +755,13 @@ Status MatMulNBits::ComputeInternal(onnxruntime::webgpu::ComputeContext& context
     TensorShape reshaped_y_shape{batch_count, M, N / components};
 
     program
-        .AddInputs({{a, ProgramTensorMetadataDependency::TypeAndRank, reshaped_a_shape, onnxruntime::narrow<int>(components_a)},
-                    {b, ProgramTensorMetadataDependency::TypeAndRank, reshaped_b_shape, onnxruntime::narrow<int>(components_b * 4)},
-                    {scales, ProgramTensorMetadataDependency::None}})
-        .AddOutput({y, ProgramTensorMetadataDependency::TypeAndRank, reshaped_y_shape, onnxruntime::narrow<int>(components)})
+        .AddInput(a, ProgramTensorMetadataDependency::TypeAndRank, static_cast<int>(components_a), reshaped_a_shape)
+        .AddInput(b, ProgramTensorMetadataDependency::TypeAndRank, static_cast<int>(components_b * 4), reshaped_b_shape)
+        .AddInput(scales, ProgramTensorMetadataDependency::None)
+        .AddOutput(y, ProgramTensorMetadataDependency::TypeAndRank, static_cast<int>(components), reshaped_y_shape)
         .AddUniformVariable({block_size});
     if (has_zero_points) {
-      program.AddInput({zero_points, ProgramTensorMetadataDependency::None, {(zero_points->Shape().Size() + 3) / 4}, 4});
+      program.AddInput(zero_points, ProgramTensorMetadataDependency::None, 4, ProgramInput::Flatten);
     }
 
     return context.RunProgram(program);
@@ -803,13 +803,13 @@ Status MatMulNBits::ComputeInternal(onnxruntime::webgpu::ComputeContext& context
   TensorShape reshaped_y_shape{batch_count, M, N / components};
 
   program
-      .AddInputs({{a, ProgramTensorMetadataDependency::TypeAndRank, reshaped_a_shape, static_cast<int>(components_a)},
-                  {b, ProgramTensorMetadataDependency::TypeAndRank, reshaped_b_shape, static_cast<int>(components_b * 4 /** b will be accessed as uint32 which includs 4 uint8. So here we need to multiply 4.*/)},
-                  {scales, ProgramTensorMetadataDependency::None}})
-      .AddOutput({y, ProgramTensorMetadataDependency::TypeAndRank, reshaped_y_shape, static_cast<int>(components)})
+      .AddInput(a, ProgramTensorMetadataDependency::TypeAndRank, static_cast<int>(components_a), reshaped_a_shape)
+      .AddInput(b, ProgramTensorMetadataDependency::TypeAndRank, static_cast<int>(components_b * 4 /** b will be accessed as uint32 which includs 4 uint8. So here we need to multiply 4.*/), reshaped_b_shape)
+      .AddInput(scales, ProgramTensorMetadataDependency::None)
+      .AddOutput(y, ProgramTensorMetadataDependency::TypeAndRank, static_cast<int>(components), reshaped_y_shape)
       .AddUniformVariable({block_size});
   if (has_zero_points) {
-    program.AddInput({zero_points, ProgramTensorMetadataDependency::None, {(zero_points->Shape().Size() + 3) / 4}, 4});
+    program.AddInput(zero_points, ProgramTensorMetadataDependency::None, 4, ProgramInput::Flatten);
   }
   return context.RunProgram(program);
 }

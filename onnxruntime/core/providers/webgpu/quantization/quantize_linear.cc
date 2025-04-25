@@ -146,9 +146,9 @@ Status DequantizeLinear::ComputeInternal(ComputeContext& context) const {
   DequantizeLinearProgram program{packed, is_signed, per_layer, per_axis, x_zeropoint != nullptr};
 
   program
-      .AddInputs({{x, ProgramTensorMetadataDependency::TypeAndRank, ProgramInput::Flatten, packed ? 4 : input_component}})
-      .AddInputs({{x_scale, ProgramTensorMetadataDependency::TypeAndRank}})
-      .AddOutput({output_tensor, ProgramTensorMetadataDependency::Rank, components})
+      .AddInput(x, ProgramTensorMetadataDependency::TypeAndRank, packed ? 4 : input_component, ProgramInput::Flatten)
+      .AddInput(x_scale, ProgramTensorMetadataDependency::TypeAndRank)
+      .AddOutput(output_tensor, ProgramTensorMetadataDependency::Rank, components)
       .SetDispatchGroupSize((x_size / components + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE)
       .AddUniformVariables({{static_cast<uint32_t>(axis)}})
       .AddUniformVariables({{static_cast<uint32_t>(block_size_)}})
@@ -156,7 +156,7 @@ Status DequantizeLinear::ComputeInternal(ComputeContext& context) const {
       .CacheHint(std::to_string(axis), std::to_string(is_signed), std::to_string(per_layer), std::to_string(per_axis), std::to_string(block_size_));
 
   if (x_zeropoint != nullptr) {
-    program.AddInputs({{x_zeropoint, ProgramTensorMetadataDependency::None, ProgramInput::Flatten, packed ? 4 : 1}});
+    program.AddInput(x_zeropoint, ProgramTensorMetadataDependency::None, packed ? 4 : 1, ProgramInput::Flatten);
   }
 
   return context.RunProgram(program);

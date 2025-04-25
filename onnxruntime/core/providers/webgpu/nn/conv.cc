@@ -25,8 +25,8 @@ Status TransposeKernel(ComputeContext& context, const Tensor* kernel, const Tens
   TransposeProgram program{perm, use_shared};
   program
       .CacheHint(absl::StrJoin(perm, "-"))
-      .AddInput({kernel, ProgramTensorMetadataDependency::TypeAndRank, kernel_shape, 1})
-      .AddOutput({transposed_kernel, ProgramTensorMetadataDependency::TypeAndRank})
+      .AddInput(kernel, ProgramTensorMetadataDependency::TypeAndRank, 1, kernel_shape)
+      .AddOutput(transposed_kernel, ProgramTensorMetadataDependency::TypeAndRank)
       .AddUniformVariable({output_size})
       .SetDispatchGroupSize((output_size + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE);
   return context.RunProgram(program);
@@ -124,14 +124,21 @@ Status Conv<is_channels_last, is_fused>::ComputeInternal(ComputeContext& context
     auto reduced_kernel_shape = ReduceShapeByComponents(modified_input_output_shapes[1], components);
     auto reduced_output_shape = ReduceShapeByComponents(modified_input_output_shapes[has_bias ? 3 : 2], components);
     program.CacheHint(activation_.ToString(), std::to_string(components), std::to_string(is_channels_last))
-        .AddInput({inputs[0], ProgramTensorMetadataDependency::TypeAndRank, modified_input_output_shapes[0], 1})
-        .AddInput({inputs[1], ProgramTensorMetadataDependency::TypeAndRank, reduced_kernel_shape, components})
-        .AddOutput({output, ProgramTensorMetadataDependency::TypeAndRank, reduced_output_shape, components})
-        .AddUniformVariables({{static_cast<uint32_t>(output_size)}, {dilations}, {strides}, {updated_pads}, {static_cast<uint32_t>(output_channels_per_group)}, {static_cast<uint32_t>(components)}})
+        .AddInput(inputs[0], ProgramTensorMetadataDependency::TypeAndRank, 1, modified_input_output_shapes[0])
+        .AddInput(inputs[1], ProgramTensorMetadataDependency::TypeAndRank, components, reduced_kernel_shape)
+        .AddOutput(output, ProgramTensorMetadataDependency::TypeAndRank, components, reduced_output_shape)
+        .AddUniformVariables({
+            {static_cast<uint32_t>(output_size)},
+            {dilations},
+            {strides},
+            {updated_pads},
+            {static_cast<uint32_t>(output_channels_per_group)},
+            {static_cast<uint32_t>(components)},
+        })
         .SetDispatchGroupSize((output_size + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE);
     if (has_bias) {
       auto reduced_bias_shape = ReduceShapeByComponents(modified_input_output_shapes[2], components);
-      program.AddInput({inputs[2], ProgramTensorMetadataDependency::TypeAndRank, reduced_bias_shape, components});
+      program.AddInput(inputs[2], ProgramTensorMetadataDependency::TypeAndRank, components, reduced_bias_shape);
     }
     return context.RunProgram(program);
   }
@@ -195,13 +202,13 @@ Status Conv<is_channels_last, is_fused>::ComputeInternal(ComputeContext& context
       MatMulNaiveProgram program(activation_, output_rank, output_number, has_bias);
       program
           .CacheHint(std::to_string(components), std::to_string(a_components), std::to_string(output_number))
-          .AddInputs({{matmul_inputs[0], ProgramTensorMetadataDependency::TypeAndRank, ReduceShapeByComponents(matmul_input_reshapes[0], a_components), int(a_components)},
-                      {matmul_inputs[1], ProgramTensorMetadataDependency::TypeAndRank, ReduceShapeByComponents(matmul_input_reshapes[1], components), int(components)}});
+          .AddInput(matmul_inputs[0], ProgramTensorMetadataDependency::TypeAndRank, a_components, ReduceShapeByComponents(matmul_input_reshapes[0], a_components))
+          .AddInput(matmul_inputs[1], ProgramTensorMetadataDependency::TypeAndRank, components, ReduceShapeByComponents(matmul_input_reshapes[1], components));
       if (has_bias) {
-        program.AddInput({bias, ProgramTensorMetadataDependency::Rank, ReduceShapeByComponents(bias->Shape(), components), components});
+        program.AddInput(bias, ProgramTensorMetadataDependency::Rank, components, ReduceShapeByComponents(bias->Shape(), components));
       }
       program
-          .AddOutputs({{output, ProgramTensorMetadataDependency::None, ReduceShapeByComponents(matmul_output_shape, components), int(components)}})
+          .AddOutput(output, ProgramTensorMetadataDependency::None, components, ReduceShapeByComponents(matmul_output_shape, components))
           .SetDispatchGroupSize(static_cast<uint32_t>((output_size + 63) / 64))
           .AddIndices(outer_dims)
           .AddUniformVariables({{output_size}, {static_cast<uint32_t>(matmul_output_shape[1])}, {static_cast<uint32_t>(matmul_output_shape[2])}, {static_cast<uint32_t>(K)}});

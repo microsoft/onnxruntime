@@ -46,8 +46,8 @@ Status Expand::ComputeInternal(ComputeContext& context) const {
 
   ExpandProgram program{};
   program
-      .AddInputs({{input_tensor, ProgramTensorMetadataDependency::TypeAndRank, components_i}})
-      .AddOutputs({{output_tensor, ProgramTensorMetadataDependency::TypeAndRank, components_o}})
+      .AddInput(input_tensor, ProgramTensorMetadataDependency::TypeAndRank, components_i)
+      .AddOutput(output_tensor, ProgramTensorMetadataDependency::TypeAndRank, components_o)
       .SetDispatchGroupSize((data_size + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE)
       .AddUniformVariables({
           {data_size},

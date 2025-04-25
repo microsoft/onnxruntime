@@ -134,15 +134,15 @@ Status MatMul::ComputeInternal(ComputeContext& context) const {
 
     program
         .CacheHint(std::to_string(components), std::to_string(a_components), std::to_string(output_number))
-        .AddInputs({{a, ProgramTensorMetadataDependency::TypeAndRank, a_components},
-                    {b, ProgramTensorMetadataDependency::TypeAndRank, components}});
+        .AddInput(a, ProgramTensorMetadataDependency::TypeAndRank, a_components)
+        .AddInput(b, ProgramTensorMetadataDependency::TypeAndRank, components);
 
     if (has_bias) {
       const auto* bias = context.Input(2);
-      program.AddInput({bias, ProgramTensorMetadataDependency::Rank, 1});
+      program.AddInput(bias, ProgramTensorMetadataDependency::Rank, 1);
     }
     program
-        .AddOutputs({{output_tensor, ProgramTensorMetadataDependency::None, output_shape_shader, components}})
+        .AddOutput(output_tensor, ProgramTensorMetadataDependency::None, components, output_shape_shader)
         .SetDispatchGroupSize((output_size + 63) / 64)  // Integer ceiling division
         .AddIndices(outer_dims)
         .AddUniformVariables({{output_size}, {m}, {n}, {k}});
@@ -233,9 +233,9 @@ MatMulProgram CreateMatMulProgram(const Activation& activation, std::vector<cons
   MatMulProgram program{activation, has_bias, is_vec4, elements_per_thread, is_channels_last};
   program
       .CacheHint(activation.ToString(), absl::StrJoin(elements_per_thread, "-"), std::to_string(is_vec4), components, is_channels_last)
-      .AddInputs({{a, ProgramTensorMetadataDependency::TypeAndRank, a_shape_temp, components},
-                  {b, ProgramTensorMetadataDependency::TypeAndRank, b_shape_temp, components}})
-      .AddOutputs({{output_tensor, ProgramTensorMetadataDependency::Rank, output_shape_temp, components}})
+      .AddInput(a, ProgramTensorMetadataDependency::TypeAndRank, components, a_shape_temp)
+      .AddInput(b, ProgramTensorMetadataDependency::TypeAndRank, components, b_shape_temp)
+      .AddOutput(output_tensor, ProgramTensorMetadataDependency::Rank, components, output_shape_temp)
       .AddUniformVariables({{dim_a_outer}, {dim_b_outer}, {dim_inner}})
       .AddIndices(outer_dims)
       .SetDispatchGroupSize(dispatch_x, dispatch_y, dispatch_z)
@@ -244,8 +244,7 @@ MatMulProgram CreateMatMulProgram(const Activation& activation, std::vector<cons
   if (has_bias) {
     auto bias_components = is_channels_last ? components : 1;
     const auto* bias = inputs[2];
-    TensorShape reduced_bias_shape = ReduceShapeByComponents(bias->Shape(), bias_components);
-    program.AddInput({bias, ProgramTensorMetadataDependency::Rank, reduced_bias_shape, bias_components});
+    program.AddInput(bias, ProgramTensorMetadataDependency::Rank, bias_components, ProgramInput::Flatten);
   }
   return program;
 }

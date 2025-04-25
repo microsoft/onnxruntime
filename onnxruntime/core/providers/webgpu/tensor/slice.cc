@@ -267,8 +267,8 @@ Status Slice::ComputeInternal(ComputeContext& context) const {
 
   SliceProgram program{};
   program
-      .AddInputs({{input_tensor, ProgramTensorMetadataDependency::TypeAndRank}})
-      .AddOutputs({output_tensor})
+      .AddInput(input_tensor, ProgramTensorMetadataDependency::TypeAndRank)
+      .AddOutput(output_tensor)
       .SetDispatchGroupSize((output_size + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE)
       .AddUniformVariables({{output_size}, {starts_reordered}, {steps_reordered}, {signs_reordered}});
   return context.RunProgram(program);

@@ -104,7 +104,7 @@ Status Split::ComputeInternal(ComputeContext& context) const {
                                         after_dims_excluding_split, split_sizes));
 
   SplitProgram program{static_cast<uint32_t>(axis)};
-  program.AddInput({input, ProgramTensorMetadataDependency::TypeAndRank});
+  program.AddInput(input, ProgramTensorMetadataDependency::TypeAndRank);
 
   auto output_dimensions = input_shape.AsShapeVector();
   for (int i = 0; i < num_outputs; ++i) {
@@ -113,7 +113,7 @@ Status Split::ComputeInternal(ComputeContext& context) const {
     output_dimensions[narrow<size_t>(axis)] = split_size;
 
     Tensor* output = context.Output(i, TensorShape{output_dimensions});
-    program.AddOutput({output, ProgramTensorMetadataDependency::Rank});
+    program.AddOutput(output, ProgramTensorMetadataDependency::Rank);
   }
 
   uint32_t input_size = onnxruntime::narrow<uint32_t>(input_shape.Size());
