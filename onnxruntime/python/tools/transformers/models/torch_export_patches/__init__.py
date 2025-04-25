@@ -4,13 +4,14 @@ from typing import Any
 import numpy as np
 import packaging.version as pv
 import torch
+from transformers import __version__ as transformers_version
+from transformers.cache_utils import DynamicCache, EncoderDecoderCache
 
 from .onnx_export_errors import (
     bypass_export_some_errors,
     register_additional_serialization_functions,
 )
-from transformers import __version__ as transformers_version
-from transformers.cache_utils import DynamicCache, EncoderDecoderCache
+
 
 def is_torchdynamo_exporting() -> bool:
     """Tells if torch is exporting a model."""
@@ -459,6 +460,4 @@ def make_encoder_decoder_cache(
     cross_attention_cache: DynamicCache,
 ) -> EncoderDecoderCache:
     "Creates an EncoderDecoderCache."
-    return EncoderDecoderCache(
-        self_attention_cache=self_attention_cache, cross_attention_cache=cross_attention_cache
-    )
+    return EncoderDecoderCache(self_attention_cache=self_attention_cache, cross_attention_cache=cross_attention_cache)

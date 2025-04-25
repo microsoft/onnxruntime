@@ -1,6 +1,5 @@
 import packaging.version as pv
 import torch
-
 from transformers import __version__ as transformers_version
 from transformers.cache_utils import DynamicCache, EncoderDecoderCache
 
@@ -70,6 +69,4 @@ def make_encoder_decoder_cache(
     """
     Creates an EncoderDecoderCache.
     """
-    return EncoderDecoderCache(
-        self_attention_cache=self_attention_cache, cross_attention_cache=cross_attention_cache
-    )
+    return EncoderDecoderCache(self_attention_cache=self_attention_cache, cross_attention_cache=cross_attention_cache)

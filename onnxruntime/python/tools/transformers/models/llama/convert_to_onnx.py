@@ -25,7 +25,7 @@ from llama_torch import setup_torch_model
 
 # to patch transformers before exporting for transformers >= 4.45
 from models.torch_export_patches import bypass_export_some_errors
-from models.torch_export_patches.patch_inputs import convert_dynamic_axes_into_dynamic_shapes, replace_dynamic_shapes
+from models.torch_export_patches.patch_inputs import convert_dynamic_axes_into_dynamic_shapes
 from onnx_model import OnnxModel
 from optimizer import optimize_model
 from packaging import version

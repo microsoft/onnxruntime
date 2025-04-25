@@ -2,10 +2,10 @@ import inspect
 from typing import Any
 
 import torch
+from transformers.cache_utils import DynamicCache
 
 from . import string_type
 from .cache_helper import make_dynamic_cache
-from transformers.cache_utils import DynamicCache
 
 
 def _process_cache(k: str, v):
