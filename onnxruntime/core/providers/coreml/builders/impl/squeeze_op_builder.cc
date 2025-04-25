@@ -86,8 +86,7 @@ Status SqueezeOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
   if (model_builder.CreateMLProgram()) {
     using namespace CoreML::Specification::MILSpec;
 
-    // expand_dims has limited requirements for static shape, however, X86_64 has a bug that it can't handle scalar input
-    // in addition, MLProgram does not support scalar values -- we convert the scalars to 1D tensors.
+    // MLProgram does not support scalar values -- we convert the scalars to 1D tensors.
     // So there is a bug when we attempt to unsqueeze what is a
     // scalar value in the ONNX graph to a 1D tensor.
     if (node.OpType() == "Unsqueeze" && input_defs[0]->Shape()->dim_size() < 2) {

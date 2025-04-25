@@ -262,6 +262,8 @@ MILSpec::DataType OnnxDataTypeToMILSpec(int onnx_type) {
       return MILSpec::DataType::INT16;
     case ONNX_NAMESPACE::TensorProto_DataType_INT32:
     case ONNX_NAMESPACE::TensorProto_DataType_INT64:
+      // CoreML only supports int32 for its operations and can only produce int32 values so
+      // we convert any int64 to int32.
       return MILSpec::DataType::INT32;
 
     case ONNX_NAMESPACE::TensorProto_DataType_UINT8:
