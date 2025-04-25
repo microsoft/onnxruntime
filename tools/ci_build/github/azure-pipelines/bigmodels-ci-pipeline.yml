@@ -447,6 +447,7 @@ stages:
               python3 -m pip install /ort-artifact/*.whl ; \
               python3 -m pip uninstall -y torch ; \
               python3 -m pip install torch --index-url https://download.pytorch.org/whl/cu124 ; \
+              python3 -m pip install optree ; \
               which ninja ; \
               export PATH=$HOME/.local/bin:$PATH ; \
               which ninja ; \
