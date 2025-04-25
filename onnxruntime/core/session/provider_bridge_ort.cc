@@ -1794,6 +1794,7 @@ void ProviderLibrary::Unload() {
       }
     }
 
+    initialized_ = false;
     handle_ = nullptr;
     provider_ = nullptr;
   }
