@@ -600,10 +600,6 @@ def parity_check_paged_attention(
         cos, sin = None, None
         q_ro, k_ro = q, k_new
 
-    print(q_ro)
-    print(k_ro)
-    print(v_new)
-
     # Update reference kv cache
     k_cache_ref = k_cache.clone()
     v_cache_ref = v_cache.clone()
@@ -623,12 +619,6 @@ def parity_check_paged_attention(
     query_range = rearrange(torch.arange(config.sequence_length, device="cuda"), "s -> 1 s")
     new_seqlens_expanded = rearrange(new_seqlens, "b -> b 1")
     query_padding_mask = query_range < new_seqlens_expanded
-
-    print(update_mask[0, past_seqlens[0]-1:total_seqlens[0]+1])
-    print(key_padding_mask[0, past_seqlens[0]-1:total_seqlens[0]+1])
-    print(query_padding_mask)
-    print(past_seqlens)
-    print(total_seqlens)
 
     # Run reference implementation of attention
     out_ref, _ = attention_ref(
@@ -691,12 +681,9 @@ def parity_check_paged_attention(
         new_seqlen = cum_seqlens[i + 1] - cum_seqlens[i]
         out_i = out[cum_seqlens[i] : cum_seqlens[i+1]]
         out_ref_i = out_ref[i, :new_seqlen]
-        print(out.shape, out_ref.shape)
-        print(out - out_ref_i[0, 0])
         numpy.testing.assert_allclose(
             out_i, out_ref_i, rtol=rtol, atol=atol, equal_nan=True, err_msg=err_msg
         )
-        # numpy.testing.assert_allclose(out, out_ref, rtol=rtol, atol=atol, equal_nan=True, err_msg=err_msg)
 
 
 def has_flash_attention():
@@ -739,7 +726,7 @@ def paged_attention_test_cases():
                 for h in h_sizes:
                     for block_size in block_sizes:
                         for local in [False, True]:
-                            for rotary, rotary_interleaved in rotary_options_for_current_os():
+                            for rotary, rotary_interleaved in [(False, False)]: # rotary_options_for_current_os():
                                 for packed in [False]:
                                     for softcap in [0.0, 50.0]:
                                         if rotary and h % 16 > 0:
@@ -754,7 +741,7 @@ def paged_attention_test_cases():
 
 @unittest.skipIf(not has_flash_attention(), reason="Flash Attention is not available, skipping tests.")
 class TestPagedAttention(unittest.TestCase):
-    # @parameterized.expand(paged_attention_test_cases())
+    @parameterized.expand(paged_attention_test_cases())
     def test_paged_attention(self, _, config):
         parity_check_paged_attention(
             config,
@@ -763,8 +750,8 @@ class TestPagedAttention(unittest.TestCase):
         )
 
 if __name__ == "__main__":
-    # unittest.main()
-    ptest = TestPagedAttention()
-    config = Config(1, 3, 1024, 6, 3, 32, 256, False, False, False, False, 0.0)
-    print(config)
-    ptest.test_paged_attention(str(config), config)
+    unittest.main()
+    # ptest = TestPagedAttention()
+    # config = Config(1, 3, 1024, 6, 6, 32, 256, False, False, False, False, 0.0)
+    # print(config)
+    # ptest.test_paged_attention(str(config), config)

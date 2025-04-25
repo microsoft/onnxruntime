@@ -81,6 +81,7 @@ Status mha_varlen_fwd(const cudaDeviceProp& dprops,
                       const float softcap,
                       bool is_causal,
                       bool is_bf16,
+                      int local_window_size=-1,
                       int max_num_blocks_per_seq = 0,
                       int page_block_size = 1);
 

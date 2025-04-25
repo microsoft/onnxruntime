@@ -184,14 +184,14 @@ Status CheckInputs(const T* query,
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                            "max_query_len must be shape (1).");
   }
-  int max_query_length = static_cast<int>(max_query_len->Data<int32_t>()[0]);
+  int max_query_length = *((*max_query_len).template Data<int32_t>());
 
   const auto& max_seq_len_dim = max_seq_len->Shape().GetDims();
   if (max_seq_len_dim.size() != 1 || max_seq_len_dim[0] != 1) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                            "max_seq_len must be shape (1).");
   }
-  int max_total_sequence_length = static_cast<int>(max_seq_len->Data<int32_t>()[0]);
+  int max_total_sequence_length = *((*max_seq_len).template Data<int32_t>());
 
   // Check block table and slot mappings
   const auto& block_table_dims = block_table->Shape().GetDims();
