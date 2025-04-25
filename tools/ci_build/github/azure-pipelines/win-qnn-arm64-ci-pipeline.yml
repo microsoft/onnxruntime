@@ -56,7 +56,7 @@ jobs:
         ExtraQnnBuildArgs: ''
       SHARED_LIB_GENERIC_INTERFACE:
         QnnLibKind: 'shared_lib'
-        ExtraQnnBuildArgs: '--use_generic_interface'
+        ExtraQnnBuildArgs: '--enable_generic_interface'
   steps:
 
   - script: |
