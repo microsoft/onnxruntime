@@ -216,44 +216,19 @@ __global__ void __launch_bounds__(kWarpSize* kColsPerThreadBlock) MatMulFloat8bK
   // Pointer to B data for this thread's starting element in K, for column n_id.
   const uint8_t* b_data_quant_thread = b_base_ptr_n + lane_offset;
 
-  // Calculate the starting block index in K for this thread's elements
-  // Requires k_per_iter % block_size == 0 (checked in host code)
-  int k_start_block_for_thread = lane_offset / block_size;
+  for (; k_id + k_per_iter <= k; k_id += k_per_iter) {
+    const uint8_t* current_b_ptr = b_data_quant_thread + k_id;
+    uint64_t value = *reinterpret_cast<const uint64_t*>(current_b_ptr);
 
-// Macro for unrolled reduction loop
-#define UnRollReduction(unroll_size)                                                                         \
-  do {                                                                                                       \
-    constexpr int kUnroll = unroll_size;                                                                     \
-    constexpr int kElementsPerUnrollIter = k_per_iter * kUnroll; /* Elements per outer loop iter */          \
-    /* Main loop: Process chunks of K dimension with unrolling */                                            \
-    for (; k_id + kElementsPerUnrollIter <= k; k_id += kElementsPerUnrollIter) {                             \
-      _Pragma("unroll") for (int i = 0; i < kUnroll; ++i) { /* Inner unrolled loop */                        \
-        /* Pointer to B data for this unroll step */                                                         \
-        const uint8_t* current_b_ptr = b_data_quant_thread + k_id + i * k_per_iter;                          \
-        /* Load 8 quantized values (64 bits) - Assumes alignment */                                          \
-        uint64_t value = *reinterpret_cast<const uint64_t*>(current_b_ptr);                                  \
-        /* Calculate the k_block index for scale/zp lookup */                                                \
-        /* Requires k_per_iter % block_size == 0 */                                                          \
-        int current_meta_k = k_start_block_for_thread + (k_id / block_size) + i * (k_per_iter / block_size); \
-        T scale = b_scale_vec_thread[current_meta_k];                                                        \
-        uint8_t zp = kDefaultZeroPoint;                                                                      \
-        if constexpr (has_zero_point) {                                                                      \
-          zp = b_zp_vec_thread[current_meta_k];                                                              \
-        }                                                                                                    \
-        /* Pointer to A data for this unroll step */                                                         \
-        const T* current_a_ptr = a_thread_data_base + k_id + i * k_per_iter;                                 \
-        /* Perform dequantization and accumulation */                                                        \
-        AccumulateEightElements8b(value, scale, zp, current_a_ptr, sums);                                    \
-      }                                                                                                      \
-    }                                                                                                        \
-  } while (false)
+    int current_meta_k = (lane_offset + k_id) / block_size;
+    T scale = b_scale_vec_thread[current_meta_k];
+    uint8_t zp = kDefaultZeroPoint;
+    if constexpr (has_zero_point) {
+      zp = b_zp_vec_thread[current_meta_k];
+    }
 
-  // Apply unrolling with decreasing sizes to handle different K values efficiently
-  UnRollReduction(16);  // Try processing 16 * k_per_iter elements at a time
-  UnRollReduction(4);   // Try processing 4 * k_per_iter elements at a time
-  UnRollReduction(1);   // Process remaining 1 * k_per_iter chunks
-
-#undef UnRollReduction
+    AccumulateEightElements8b(value, scale, zp, a_thread_data_base + k_id, sums);
+  }
 
   // Handle the tail elements along K dimension for this thread.
   // This loop handles the final iteration if k is not a multiple of k_per_iter.
