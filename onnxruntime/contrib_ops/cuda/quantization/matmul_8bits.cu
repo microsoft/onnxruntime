@@ -331,7 +331,7 @@ __global__ void __launch_bounds__(kWarpSize* kColsPerThreadBlock) MatMulFloat8bK
     }
   } else {
     // Use CUB for efficient warp reduction
-    using BlockReduce = cub::WarpReduce<T>;
+    using BlockReduce = cub::WarpReduce<float>;
 
     // Shared memory for CUB reduction storage (one per warp)
     __shared__ typename BlockReduce::TempStorage temp_storage[kColsPerThreadBlock];
@@ -395,7 +395,7 @@ bool TryMatMul8Bits(
 
   // Add shared memory for CUB reduction storage if used
   if constexpr (kUseCUB) {
-    shared_mem_size += static_cast<size_t>(kColsPerThreadBlock) * sizeof(typename cub::WarpReduce<T>::TempStorage);
+    shared_mem_size += static_cast<size_t>(kColsPerThreadBlock) * sizeof(typename cub::WarpReduce<float>::TempStorage);
   }
 
   // Check if required shared memory exceeds limits

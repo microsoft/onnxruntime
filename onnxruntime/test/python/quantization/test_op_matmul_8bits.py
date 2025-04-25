@@ -20,7 +20,7 @@ from onnxruntime.quantization import quant_utils
 @unittest.skipIf(
     "CUDAExecutionProvider" not in get_available_providers(), reason="CUDA is not available, skipping tests."
 )
-class TestOpMatMul4Bits(unittest.TestCase):
+class TestOpMatMul8Bits(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls._tmp_model_dir = tempfile.TemporaryDirectory(prefix="test_matmul8bits.")
