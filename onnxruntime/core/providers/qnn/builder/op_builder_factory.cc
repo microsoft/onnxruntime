@@ -134,6 +134,10 @@ OpBuilderRegistrations::OpBuilderRegistrations() {
   }
 
   {
+    CreateUpsampleOpBuilder("Upsample", *this);
+  }
+
+  {
     CreateTopKOpBuilder("TopK", *this);
   }
 
