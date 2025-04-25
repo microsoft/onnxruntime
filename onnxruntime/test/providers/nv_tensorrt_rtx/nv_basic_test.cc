@@ -27,7 +27,7 @@ namespace test {
 std::string PathToUTF8(const PathString& path) {
 #ifdef WIN32
   std::wstring_convert<std::codecvt_utf8<wchar_t>> converter;
-  return converter.to_bytes(wstr)
+  return converter.to_bytes(path);
 #else
   return path.c_str();
 #endif
@@ -87,9 +87,9 @@ void VerifyOutputs(const std::vector<OrtValue>& fetches, const std::vector<int64
  *   "O"
  */
 static void CreateBaseModel(const PathString& model_name,
-                     std::string graph_name,
-                     std::vector<int> dims,
-                     bool add_fast_gelu = false) {
+                            std::string graph_name,
+                            std::vector<int> dims,
+                            bool add_fast_gelu = false) {
   onnxruntime::Model model(graph_name, false, DefaultLoggingManager().DefaultLogger());
   auto& graph = model.MainGraph();
   std::vector<onnxruntime::NodeArg*> inputs;

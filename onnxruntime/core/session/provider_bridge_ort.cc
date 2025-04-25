@@ -2654,8 +2654,7 @@ ORT_API_STATUS_IMPL(OrtApis::UpdateTensorRTProviderOptions,
     defined(USE_CUDA) || defined(USE_CUDA_PROVIDER_INTERFACE) ||         \
     defined(USE_CANN) ||                                                 \
     defined(USE_DNNL) ||                                                 \
-    defined(USE_ROCM) ||                                                 \
-    defined(USE_NV) || defined(USE_NV_PROVIDER_INTERFACE)
+    defined(USE_ROCM)
 static std::string BuildOptionsString(const onnxruntime::ProviderOptions::iterator& begin,
                                       const onnxruntime::ProviderOptions::iterator& end) {
   std::ostringstream options;
