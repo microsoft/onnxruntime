@@ -24,9 +24,13 @@ namespace onnxruntime {
 
 namespace test {
 
-std::string WideToUTF8(const std::wstring& wstr) {
+std::string PathToUTF8(const PathString& path) {
+#ifdef WIN32
   std::wstring_convert<std::codecvt_utf8<wchar_t>> converter;
-  return converter.to_bytes(wstr);
+  return converter.to_bytes(wstr)
+#else
+  return path.c_str();
+#endif
 }
 
 void clearFileIfExists(PathString path) {
@@ -186,6 +190,7 @@ static Ort::IoBinding generate_io_binding(Ort::Session& session, std::map<std::s
 TEST(NvExecutionProviderTest, ContextEmbedAndReload) {
   PathString model_name = ORT_TSTR("nv_execution_provider_test.onnx");
   PathString model_name_ctx = ORT_TSTR("nv_execution_provider_test_ctx.onnx");
+  auto model_name_ctx_str = PathToUTF8(model_name_ctx);
   clearFileIfExists(model_name_ctx);
   std::string graph_name = "test";
   std::vector<int> dims = {1, 3, 2};
@@ -202,7 +207,7 @@ TEST(NvExecutionProviderTest, ContextEmbedAndReload) {
     Ort::SessionOptions so;
     Ort::RunOptions run_options;
     so.AddConfigEntry(kOrtSessionOptionEpContextEnable, "1");
-    so.AddConfigEntry(kOrtSessionOptionEpContextFilePath, WideToUTF8(model_name_ctx).c_str());
+    so.AddConfigEntry(kOrtSessionOptionEpContextFilePath, model_name_ctx_str.c_str());
     so.AppendExecutionProvider(kNvTensorRTRTXExecutionProvider, {});
     Ort::Session session_object(env, model_name.c_str(), so);
     auto stop = std::chrono::high_resolution_clock::now();
@@ -231,6 +236,7 @@ TEST(NvExecutionProviderTest, ContextEmbedAndReload) {
 TEST(NvExecutionProviderTest, ContextEmbedAndReloadDynamic) {
   PathString model_name = ORT_TSTR("nv_execution_provider_dyn_test.onnx");
   PathString model_name_ctx = ORT_TSTR("nv_execution_provider_dyn_test_ctx.onnx");
+  auto model_name_ctx_str = PathToUTF8(model_name_ctx);
   clearFileIfExists(model_name_ctx);
   std::string graph_name = "test";
   std::vector<int> dims = {1, -1, -1};
@@ -247,7 +253,7 @@ TEST(NvExecutionProviderTest, ContextEmbedAndReloadDynamic) {
     Ort::SessionOptions so;
     Ort::RunOptions run_options;
     so.AddConfigEntry(kOrtSessionOptionEpContextEnable, "1");
-    so.AddConfigEntry(kOrtSessionOptionEpContextFilePath, WideToUTF8(model_name_ctx).c_str());
+    so.AddConfigEntry(kOrtSessionOptionEpContextFilePath, model_name_ctx_str.c_str());
     so.AppendExecutionProvider(kNvTensorRTRTXExecutionProvider, {});
     Ort::Session session_object(env, model_name.c_str(), so);
     auto stop = std::chrono::high_resolution_clock::now();
@@ -279,6 +285,7 @@ TEST(NvExecutionProviderTest, ContextEmbedAndReloadDynamic) {
 TEST(NvExecutionProviderTest, ContextEmbedAndReloadDataDynamic) {
   PathString model_name = ORT_TSTR("nv_execution_provider_data_dyn_test.onnx");
   PathString model_name_ctx = ORT_TSTR("nv_execution_provider_data_dyn_test_ctx.onnx");
+  auto model_name_ctx_str = PathToUTF8(model_name_ctx);
   clearFileIfExists(model_name_ctx);
   std::string graph_name = "test";
   std::vector<int> dims = {1, -1, -1};
@@ -295,7 +302,7 @@ TEST(NvExecutionProviderTest, ContextEmbedAndReloadDataDynamic) {
     Ort::SessionOptions so;
     Ort::RunOptions run_options;
     so.AddConfigEntry(kOrtSessionOptionEpContextEnable, "1");
-    so.AddConfigEntry(kOrtSessionOptionEpContextFilePath, WideToUTF8(model_name_ctx).c_str());
+    so.AddConfigEntry(kOrtSessionOptionEpContextFilePath, model_name_ctx_str.c_str());
     so.AppendExecutionProvider(kNvTensorRTRTXExecutionProvider, {});
     Ort::Session session_object(env, model_name.c_str(), so);
     auto stop = std::chrono::high_resolution_clock::now();

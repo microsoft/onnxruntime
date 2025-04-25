@@ -9,6 +9,8 @@
 #include "core/providers/providers.h"
 
 namespace onnxruntime {
+struct SessionOptions;
+
 // defined in provider_bridge_ort.cc
 struct NvProviderFactoryCreator {
   static std::shared_ptr<IExecutionProviderFactory> Create(int device_id);
