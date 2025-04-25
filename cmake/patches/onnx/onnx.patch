@@ -108,6 +108,18 @@ index 64366270..4aed9027 100644
    propagateElemTypeFromInputToOutput(ctx, 0, 0);
  
    // needs at least one input with shape.
+diff --git a/onnx/defs/nn/old.cc b/onnx/defs/nn/old.cc
+index d8ca9a46..1eda4c70 100644
+--- a/onnx/defs/nn/old.cc
++++ b/onnx/defs/nn/old.cc
+@@ -4023,7 +4023,6 @@ ONNX_OPERATOR_SET_SCHEMA(
+     GroupNormalization,
+     18,
+     OpSchema()
+-        .Deprecate()
+         .SetDoc(GroupNormalization_ver18_doc)
+         .Attr("epsilon", "The epsilon value to use to avoid division by zero.", AttributeProto::FLOAT, 1e-5f)
+         .Attr(
 diff --git a/onnx/defs/rnn/defs.cc b/onnx/defs/rnn/defs.cc
 index c0ed3a39..6c8e2909 100644
 --- a/onnx/defs/rnn/defs.cc
