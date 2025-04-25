@@ -25,7 +25,7 @@ from llama_inputs import (
 )
 from llama_torch import setup_torch_model
 from models.torch_export_patches.cache_helper import make_dynamic_cache
-from transformers import __version__ as transformers_version, AutoConfig
+from transformers import AutoConfig
 from transformers.cache_utils import DynamicCache
 
 import onnxruntime as ort
