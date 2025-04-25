@@ -58,7 +58,7 @@ template <typename ModelOutputT, typename ModelInputT = float, typename InputT =
 static void TestInference(Ort::Env& env, const std::basic_string<ORTCHAR_T>& model_uri,
                           const std::string& ep_to_select,
                           std::optional<std::filesystem::path> library_path,
-                          const OrtKeyValuePairs& provider_options,
+                          const Ort::KeyValuePairs& ep_options,
                           const std::vector<InputT>& inputs,
                           const char* output_name,
                           const std::vector<int64_t>& expected_dims_y,
@@ -75,13 +75,15 @@ static void TestInference(Ort::Env& env, const std::basic_string<ORTCHAR_T>& mod
 
   if (auto_select) {
     // manually specify EP to select for now
-    ASSERT_ORTSTATUS_OK(Ort::GetApi().AddSessionConfigEntry(session_options, "test.ep_to_select",
-                                                            ep_to_select.c_str()));
+    session_options.AddConfigEntry("test.ep_to_select", ep_to_select.c_str());
 
+    // add the provider options to the session options with the required prefix
     const std::string option_prefix = OrtSessionOptions::GetProviderOptionPrefix(ep_to_select.c_str());
-    for (const auto& [key, value] : provider_options.entries) {
+    std::vector<const char*> keys, values;
+    ep_options.GetKeyValuePairs(keys, values);
+    for (size_t i = 0, end = keys.size(); i < end; ++i) {
       // add the default value with prefix
-      session_options.AddConfigEntry((option_prefix + key).c_str(), value.c_str());
+      session_options.AddConfigEntry((option_prefix + keys[i]).c_str(), values[i]);
     }
   } else {
     std::vector<const OrtEpDevice*> devices;
@@ -92,9 +94,17 @@ static void TestInference(Ort::Env& env, const std::basic_string<ORTCHAR_T>& mod
       DefaultDeviceSelection(ep_to_select, devices);
     }
 
-    ASSERT_ORTSTATUS_OK(Ort::GetApi().SessionOptionsAppendExecutionProvider_V2(
-        session_options, env, devices.data(), devices.size(),
-        provider_options.keys.data(), provider_options.values.data(), provider_options.entries.size()));
+    // C API. Test the C++ API because if it works the C API must also work.
+    // ASSERT_ORTSTATUS_OK(Ort::GetApi().SessionOptionsAppendExecutionProvider_V2(
+    //    session_options, env, devices.data(), devices.size(),
+    //    provider_options.keys.data(), provider_options.values.data(), provider_options.entries.size()));
+    std::vector<Ort::ConstEpDevice> ep_devices;
+    ep_devices.reserve(devices.size());
+    for (const auto* device : devices) {
+      ep_devices.emplace_back(device);
+    }
+
+    session_options.AppendExecutionProvider_V2(*ort_env, ep_devices, ep_options);
   }
 
   // if session creation passes, model loads fine
@@ -115,7 +125,7 @@ static void TestInference(Ort::Env& env, const std::basic_string<ORTCHAR_T>& mod
 
 namespace {
 void RunBasicTest(const std::string& ep_name, std::optional<std::filesystem::path> library_path,
-                  const OrtKeyValuePairs& provider_options = {},
+                  const Ort::KeyValuePairs& provider_options = Ort::KeyValuePairs{},
                   const std::function<void(std::vector<const OrtEpDevice*>&)>& select_devices = nullptr) {
   const auto run_test = [&](bool auto_select) {
     std::vector<Input<float>> inputs(1);
@@ -149,7 +159,7 @@ TEST(AutoEpSelection, CpuEP) {
 
 #if defined(USE_CUDA)
 TEST(AutoEpSelection, CudaEP) {
-  OrtKeyValuePairs provider_options;
+  Ort::KeyValuePairs provider_options;
   provider_options.Add("prefer_nhwc", "1");
   RunBasicTest(kCudaExecutionProvider, "onnxruntime_providers_cuda", provider_options);
 }
@@ -157,7 +167,7 @@ TEST(AutoEpSelection, CudaEP) {
 
 #if defined(USE_DML)
 TEST(AutoEpSelection, DmlEP) {
-  OrtKeyValuePairs provider_options;
+  Ort::KeyValuePairs provider_options;
   provider_options.Add("disable_metacommands", "true");  // checking options are passed through
 
   const auto select_devices = [&](std::vector<const OrtEpDevice*>& devices) {
@@ -204,16 +214,71 @@ TEST(AutoEpSelection, WebGpuEP) {
 }
 #endif
 
-TEST(OrtEpLibrary, LoadUnloadPluginLibrary) {
+// tests for AutoEP selection related things in the API that aren't covered by the other tests.
+TEST(AutoEpSelection, MiscApiTests) {
+  const OrtApi* c_api = &Ort::GetApi();
+
+  // nullptr and empty input to OrtKeyValuePairs
+  {
+    OrtKeyValuePairs* kvps = nullptr;
+    c_api->CreateKeyValuePairs(&kvps);
+    c_api->AddKeyValuePair(kvps, "key1", nullptr);    // should be ignored
+    c_api->AddKeyValuePair(kvps, nullptr, "value1");  // should be ignored
+    c_api->RemoveKeyValuePair(kvps, nullptr);         // should be ignored
+
+    c_api->AddKeyValuePair(kvps, "", "value2");  // empty key should be ignored
+    ASSERT_EQ(c_api->GetKeyValue(kvps, ""), nullptr);
+
+    c_api->AddKeyValuePair(kvps, "key2", "");  // empty value is allowed
+    ASSERT_EQ(c_api->GetKeyValue(kvps, "key2"), std::string(""));
+  }
+
+  // construct KVP from std::unordered_map
+  {
+    std::unordered_map<std::string, std::string> kvps;
+    kvps["key1"] = "value1";
+    kvps["key2"] = "value2";
+    Ort::KeyValuePairs ort_kvps(kvps);
+    ASSERT_EQ(ort_kvps.GetValue("key1"), std::string("value1"));
+    ASSERT_EQ(ort_kvps.GetValue("key2"), std::string("value2"));
+  }
+
+  std::vector<Ort::ConstEpDevice> ep_devices = ort_env->GetEpDevices();
+
+  // explicit EP selection with Ort::KeyValuePairs for options
+  {
+    Ort::SessionOptions session_options;
+    Ort::KeyValuePairs ep_options;
+    ep_options.Add("option1", "true");
+    session_options.AppendExecutionProvider_V2(*ort_env, {ep_devices[0]}, ep_options);
+  }
+
+  // explicit EP selection with <std::string, std::string> for options
+  {
+    Ort::SessionOptions session_options;
+    std::unordered_map<std::string, std::string> ep_options;
+    ep_options["option1"] = "true";
+    session_options.AppendExecutionProvider_V2(*ort_env, {ep_devices[0]}, ep_options);
+  }
+}
+
+namespace {
+struct ExamplePluginInfo {
+  const std::filesystem::path library_path =
 #if _WIN32
-  std::filesystem::path library_path = "example_plugin_ep.dll";
+      "example_plugin_ep.dll";
 #else
-  std::filesystem::path library_path = "libexample_plugin_ep.so";
+      "libexample_plugin_ep.so";
 #endif
-
   const std::string registration_name = "example_ep";
+};
 
-  Ort::SessionOptions session_options;
+static const ExamplePluginInfo example_plugin_info;
+}  // namespace
+
+TEST(OrtEpLibrary, LoadUnloadPluginLibrary) {
+  const std::filesystem::path& library_path = example_plugin_info.library_path;
+  const std::string& registration_name = example_plugin_info.registration_name;
 
   OrtEnv* c_api_env = *ort_env;
   const OrtApi* c_api = &Ort::GetApi();
@@ -238,6 +303,48 @@ TEST(OrtEpLibrary, LoadUnloadPluginLibrary) {
   ASSERT_ORTSTATUS_OK(Ort::GetApi().UnregisterExecutionProviderLibrary(c_api_env,
                                                                        registration_name.c_str()));
 }
+
+TEST(OrtEpLibrary, LoadUnloadPluginLibraryCxxApi) {
+  const std::filesystem::path& library_path = example_plugin_info.library_path;
+  const std::string& registration_name = example_plugin_info.registration_name;
+
+  // this should load the library and create OrtEpDevice
+  ort_env->RegisterExecutionProviderLibrary(registration_name.c_str(), library_path.c_str());
+
+  std::vector<Ort::ConstEpDevice> ep_devices = ort_env->GetEpDevices();
+
+  // should be one device for the example EP
+  auto test_ep_device = std::find_if(ep_devices.begin(), ep_devices.end(),
+                                     [&registration_name](Ort::ConstEpDevice& device) {
+                                       // the example uses the registration name for the EP name
+                                       // but that is not a requirement and the two can differ.
+                                       return device.EpName() == registration_name;
+                                     });
+  ASSERT_NE(test_ep_device, ep_devices.end()) << "Expected an OrtEpDevice to have been created by the test library.";
+
+  // test all the C++ getters. expected values are from \onnxruntime\test\autoep\library\example_plugin_ep.cc
+  ASSERT_STREQ(test_ep_device->EpVendor(), "Contoso");
+
+  auto metadata = test_ep_device->EpMetadata();
+  ASSERT_STREQ(metadata.GetValue("version"), "0.1");
+
+  auto options = test_ep_device->EpOptions();
+  ASSERT_STREQ(options.GetValue("run_really_fast"), "true");
+
+  // the CPU device info will vary by machine so check for the lowest common denominator values
+  Ort::ConstHardwareDevice device = test_ep_device->Device();
+  ASSERT_EQ(device.Type(), OrtHardwareDeviceType_CPU);
+  ASSERT_GE(device.VendorId(), 0);
+  ASSERT_GE(device.DeviceId(), 0);
+  ASSERT_NE(device.Vendor(), nullptr);
+  Ort::ConstKeyValuePairs device_metadata = device.Metadata();
+  std::unordered_map<std::string, std::string> metadata_entries = device_metadata.GetKeyValuePairs();
+  ASSERT_GT(metadata_entries.size(), 0);  // should have at least SPDRP_HARDWAREID on Windows
+
+  // and this should unload it without throwing
+  ort_env->UnregisterExecutionProviderLibrary(registration_name.c_str());
+}
+
 }  // namespace test
 }  // namespace onnxruntime
 
