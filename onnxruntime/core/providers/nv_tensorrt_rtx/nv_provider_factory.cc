@@ -91,7 +91,6 @@ struct Nv_Provider : Provider {
   std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory(int device_id) override {
     NvExecutionProviderInfo info;
     info.device_id = device_id;
-    info.has_trt_options = false;
 
     return std::make_shared<NvProviderFactory>(info);
   }

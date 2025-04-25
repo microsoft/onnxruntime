@@ -1306,13 +1306,7 @@ nvinfer1::IBuilder* NvExecutionProvider::GetBuilder(TensorrtLogger& trt_logger) 
 }
 
 void NvExecutionProvider::GetCustomOpDomainList(std::vector<OrtCustomOpDomain*>& custom_op_domain_list) const {
-  std::string extra_plugin_lib_paths{""};
-  if (info_.has_trt_options) {
-    if (!info_.extra_plugin_lib_paths.empty()) {
-      extra_plugin_lib_paths = info_.extra_plugin_lib_paths;
-    }
-  }
-  auto status = CreateTensorRTCustomOpDomainList(custom_op_domain_list, extra_plugin_lib_paths);
+  auto status = CreateTensorRTCustomOpDomainList(custom_op_domain_list, info_.extra_plugin_lib_paths);
   if (status != Status::OK()) {
     LOGS_DEFAULT(WARNING) << "[Nv EP] Failed to get TRT plugins from TRT plugin registration.";
   }
