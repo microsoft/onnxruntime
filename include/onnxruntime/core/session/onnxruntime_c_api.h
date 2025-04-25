@@ -5414,7 +5414,8 @@ struct OrtModelEditorApi {
    *
    * Create an OrtNode.
    *
-   * Create attributes with CreateOpAttr. OrtOpAttr instances are copied.
+   * Create attributes with CreateOpAttr.
+   * The OrtNode takes ownership of the OrtOpAttr instances and you should NOT call ReleaseOrtOpAttr.
    *
    * \param[in] operator_name The name of the operator.
    * \param[in] domain_name The domain of the operator. Use an empty string for ONNX operators.
