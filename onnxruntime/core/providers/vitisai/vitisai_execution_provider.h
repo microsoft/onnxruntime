@@ -46,6 +46,8 @@ class VitisAIExecutionProvider : public IExecutionProvider {
   virtual common::Status SetEpDynamicOptions(gsl::span<const char* const> /*keys*/,
                                              gsl::span<const char* const> /*values*/) override;
 
+  std::vector<AllocatorPtr> CreatePreferredAllocators() override;
+
  private:
   using my_ep_t = vaip_core::DllSafe<std::vector<std::unique_ptr<vaip_core::ExecutionProvider>>>;
   using my_ep_uptr_t = std::shared_ptr<my_ep_t>;

@@ -1,4 +1,3 @@
-// Modifications: scaling is moved from masked softmax to the gemm before that.
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
@@ -89,7 +88,7 @@ __device__ __forceinline__ void Convert8xInt4To8xHalfs(uint32_t value, half2* ha
   asm volatile("fma.rn.f16x2 %0, %1, %2, %3;\n" : "=r"(h[3]) : "r"(h[3]), "r"(kOneSixteenth), "r"(kNeg64));
 }
 
-__device__ __forceinline__ void AccumulateEightElements(uint32_t values_quant, half scale, uint8_t zp, const half* a, half* sums) {
+__device__ __forceinline__ void AccumulateEightElements4b(uint32_t values_quant, half scale, uint8_t zp, const half* a, half* sums) {
   half2 scale_half2 = {scale, scale};
   half zp_adjust = -scale * __short2half_rn(zp);
   half2 zp_adjust2 = {zp_adjust, zp_adjust};
@@ -120,7 +119,7 @@ __device__ __forceinline__ void AccumulateEightElements(uint32_t values_quant, h
   sums_half2[3] = sums_half2[3] + v3 * (*(reinterpret_cast<half2*>(&(vec_permuted.w))));
 }
 #else
-__device__ __forceinline__ void AccumulateEightElements(uint32_t values_quant, half scale, uint8_t zp, const half* a, half* sums) {
+__device__ __forceinline__ void AccumulateEightElements4b(uint32_t values_quant, half scale, uint8_t zp, const half* a, half* sums) {
   half2 scale_half2 = {scale, scale};
   half zp_adjust = -scale * __short2half_rn(zp);
   half2 zp_adjust2 = {zp_adjust, zp_adjust};
@@ -144,7 +143,7 @@ __device__ __forceinline__ void AccumulateEightElements(uint32_t values_quant, h
 }
 #endif
 
-__device__ __forceinline__ void AccumulateEightElements(uint32_t values_quant, float scale, uint8_t zp, const float* a, float* sums) {
+__device__ __forceinline__ void AccumulateEightElements4b(uint32_t values_quant, float scale, uint8_t zp, const float* a, float* sums) {
   float4 a_vec_0 = *(reinterpret_cast<const float4*>(a));
   float4 a_vec_1 = *(reinterpret_cast<const float4*>(a + 4));
 
@@ -178,7 +177,7 @@ constexpr int kWarpSize = GPU_WARP_SIZE;
 // Each thread block computes [1, K] x [kColsPerThreadBlock, (K + block_size - 1)/block_size, blob],
 //     i.e., computing kColsPerThreadBlock per block and a warp reduce (1, K) x (K)
 template <class T, int block_size, bool has_zero_point>
-__global__ void __launch_bounds__(kWarpSize * kColsPerThreadBlock) MatMulFloatInt4Kernel(
+__global__ void __launch_bounds__(kWarpSize* kColsPerThreadBlock) MatMulFloatInt4Kernel(
     T* output,
     const T* a_data,
     const uint8_t* b_data_quant,
@@ -238,7 +237,7 @@ __global__ void __launch_bounds__(kWarpSize * kColsPerThreadBlock) MatMulFloatIn
         if constexpr (has_zero_point) {                                                           \
           zp = b_zp_vec[t_meta_k + k_per_iter / block_size * i];                                  \
         }                                                                                         \
-        AccumulateEightElements(value, scale, zp, a_data + k_id + i * k_per_iter, sums);          \
+        AccumulateEightElements4b(value, scale, zp, a_data + k_id + i * k_per_iter, sums);        \
       }                                                                                           \
       b_data_quant += k_per_iter / 2 * kUnroll;                                                   \
       t_meta_k += k_per_iter / block_size * kUnroll;                                              \
@@ -258,7 +257,7 @@ __global__ void __launch_bounds__(kWarpSize * kColsPerThreadBlock) MatMulFloatIn
     if constexpr (has_zero_point) {
       zp = b_zp_vec[t_meta_k];
     }
-    AccumulateEightElements(value, scale, zp, a_data + k_id, sums);
+    AccumulateEightElements4b(value, scale, zp, a_data + k_id, sums);
   }
 
   float sum = (float)(sums[0] + sums[1] + sums[2] + sums[3] + sums[4] + sums[5] + sums[6] + sums[7]);
@@ -283,7 +282,7 @@ bool TryMatMul4Bits(
     int n,
     int k,
     int block_size,
-    int shared_mem_per_block,
+    size_t shared_mem_per_block,
     cudaStream_t stream) {
   if (n % kColsPerThreadBlock != 0 || k % 8 != 0 || m > 1) {
     return false;
@@ -291,8 +290,8 @@ bool TryMatMul4Bits(
   dim3 blocks((n + kColsPerThreadBlock - 1) / kColsPerThreadBlock, m);
   dim3 threads(GPU_WARP_SIZE_HOST, kColsPerThreadBlock);
   int blocks_per_K = (k + block_size - 1) / block_size;
-  int shared_mem_size = sizeof(T) * blocks_per_K * kColsPerThreadBlock +
-                        (zero_points != nullptr ? (blocks_per_K + 1) / 2 * kColsPerThreadBlock * 2 : 0);
+  size_t shared_mem_size = sizeof(T) * blocks_per_K * kColsPerThreadBlock +
+                           static_cast<size_t>(zero_points != nullptr ? (blocks_per_K + 1) / 2 * kColsPerThreadBlock * 2 : 0);
   if (shared_mem_size > shared_mem_per_block) {
     return false;
   }
@@ -333,7 +332,7 @@ template bool TryMatMul4Bits<float>(
     int n,
     int k,
     int block_size,
-    int shared_mem_per_block,
+    size_t shared_mem_per_block,
     cudaStream_t stream);
 
 template bool TryMatMul4Bits<half>(
@@ -346,7 +345,7 @@ template bool TryMatMul4Bits<half>(
     int n,
     int k,
     int block_size,
-    int shared_mem_per_block,
+    size_t shared_mem_per_block,
     cudaStream_t stream);
 
 }  // namespace cuda

@@ -4,7 +4,8 @@ from typing import Any
 import numpy as np
 import packaging.version as pv
 import torch
-import transformers
+from transformers import __version__ as transformers_version
+from transformers.cache_utils import DynamicCache, EncoderDecoderCache
 
 from .onnx_export_errors import (
     bypass_export_some_errors,
@@ -422,43 +423,41 @@ def string_type(
     raise AssertionError(f"Unsupported type {type(obj).__name__!r} - {type(obj)}")
 
 
-if pv.Version(transformers.__version__) > pv.Version("4.49.99999"):
+if pv.Version(transformers_version) > pv.Version("4.49.99999"):
 
     def make_dynamic_cache(
         key_value_pairs: list[tuple[torch.Tensor, torch.Tensor]],
-    ) -> transformers.cache_utils.DynamicCache:
+    ) -> DynamicCache:
         """
-        Creates an instance of :class:`transformers.cache_utils.DynamicCache`.
+        Creates an instance of :class:`DynamicCache`.
         This version is valid for ``transformers >= 4.50``.
 
         :param key_value_pairs: list of pairs of (key, values)
-        :return: :class:`transformers.cache_utils.DynamicCache`
+        :return: :class:`DynamicCache`
         """
-        return transformers.cache_utils.DynamicCache(key_value_pairs)
+        return DynamicCache(key_value_pairs)
 
 else:
 
     def make_dynamic_cache(
         key_value_pairs: list[tuple[torch.Tensor, torch.Tensor]],
-    ) -> transformers.cache_utils.DynamicCache:
+    ) -> DynamicCache:
         """
-        Creates an instance of :class:`transformers.cache_utils.DynamicCache`.
+        Creates an instance of :class:`DynamicCache`.
         This version is valid for ``transformers < 4.50``.
 
         :param key_value_pairs: list of pairs of (key, values)
-        :return: :class:`transformers.cache_utils.DynamicCache`
+        :return: :class:`DynamicCache`
         """
-        cache = transformers.cache_utils.DynamicCache(len(key_value_pairs))
+        cache = DynamicCache(len(key_value_pairs))
         for i, (key, value) in enumerate(key_value_pairs):
             cache.update(key, value, i)
         return cache
 
 
 def make_encoder_decoder_cache(
-    self_attention_cache: transformers.cache_utils.DynamicCache,
-    cross_attention_cache: transformers.cache_utils.DynamicCache,
-) -> transformers.cache_utils.EncoderDecoderCache:
+    self_attention_cache: DynamicCache,
+    cross_attention_cache: DynamicCache,
+) -> EncoderDecoderCache:
     "Creates an EncoderDecoderCache."
-    return transformers.cache_utils.EncoderDecoderCache(
-        self_attention_cache=self_attention_cache, cross_attention_cache=cross_attention_cache
-    )
+    return EncoderDecoderCache(self_attention_cache=self_attention_cache, cross_attention_cache=cross_attention_cache)

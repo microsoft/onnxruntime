@@ -4,9 +4,9 @@ from dataclasses import dataclass
 from typing import Any
 
 import torch
-import transformers
-import transformers.modeling_attn_mask_utils
 from transformers.cache_utils import Cache, DynamicCache, StaticCache
+from transformers.generation.utils import GenerationMixin
+from transformers.modeling_attn_mask_utils import AttentionMaskConverter
 
 
 def _patch_make_causal_mask(
@@ -50,11 +50,11 @@ if sys.version_info[:2] <= (3, 11):
     class patched_AttentionMaskConverter:
         """
         Patches
-        ``transformers.modeling_attn_mask_utils.AttentionMaskConverter._make_causal_mask``.
+        ``AttentionMaskConverter._make_causal_mask``.
         """
 
         _PATCHES_ = ["_make_causal_mask"]
-        _PATCHED_CLASS_ = transformers.modeling_attn_mask_utils.AttentionMaskConverter
+        _PATCHED_CLASS_ = AttentionMaskConverter
 
         @staticmethod
         def _make_causal_mask(
@@ -73,11 +73,11 @@ else:
     class patched_AttentionMaskConverter:
         """
         Patches
-        ``transformers.modeling_attn_mask_utils.AttentionMaskConverter._make_causal_mask``.
+        ``AttentionMaskConverter._make_causal_mask``.
         """
 
         _PATCHES_ = ["_make_causal_mask"]
-        _PATCHED_CLASS_ = transformers.modeling_attn_mask_utils.AttentionMaskConverter
+        _PATCHED_CLASS_ = AttentionMaskConverter
 
         @staticmethod
         def _make_causal_mask(
@@ -99,7 +99,7 @@ class patched_DynamicCache:
     """
 
     _PATCHES_ = ["reorder_cache", "update", "crop", "from_batch_splits", "get_seq_length"]
-    _PATCHED_CLASS_ = transformers.cache_utils.DynamicCache
+    _PATCHED_CLASS_ = DynamicCache
 
     def get_seq_length(self, layer_idx: int | None = 0) -> int:
         """Returns the sequence length of the cached states.
@@ -217,7 +217,7 @@ class patched_GenerationMixin:
         "_cache_dependant_input_preparation_exporting",
         "prepare_inputs_for_generation",
     ]
-    _PATCHED_CLASS_ = transformers.generation.utils.GenerationMixin
+    _PATCHED_CLASS_ = GenerationMixin
 
     def _cache_dependant_input_preparation(
         self,
