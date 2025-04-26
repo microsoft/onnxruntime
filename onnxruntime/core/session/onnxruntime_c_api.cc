@@ -2553,7 +2553,8 @@ ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider_V2, _In_ OrtS
 }
 
 ORT_API(const OrtEpApi*, OrtApis::GetEpApi) {
-  return OrtApis::CreateStatus(ORT_NOT_IMPLEMENTED, "This API in not supported in a minimal build.");
+  fprintf(stderr, "The Execution Provider API is not supported in a minimal build.\n");
+  return nullptr;
 }
 
 #endif  // !defined(ORT_MINIMAL_BUILD)
