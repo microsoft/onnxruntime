@@ -320,6 +320,12 @@ ProgramBase& ProgramBase::AddInput(const Tensor* tensor, ProgramTensorMetadataDe
   return *this;
 }
 
+ProgramBase& ProgramBase::AddInput(const Tensor* tensor, ProgramTensorMetadataDependency dependency, int component, decltype(ProgramInput::ReduceLastDimension), const TensorShape& override_shape) {
+  TensorShape reduced_override_shape = GetReducedShape(override_shape, component);
+  inputs_.emplace_back(tensor, dependency, component, &reduced_override_shape);
+  return *this;
+}
+
 ProgramBase& ProgramBase::AddOutput(Tensor* tensor, ProgramTensorMetadataDependency dependency) {
   outputs_.emplace_back(tensor, dependency, 1, nullptr);
   return *this;
@@ -353,6 +359,12 @@ ProgramBase& ProgramBase::AddOutput(Tensor* tensor, ProgramTensorMetadataDepende
 
 ProgramBase& ProgramBase::AddOutput(Tensor* tensor, ProgramTensorMetadataDependency dependency, int component, const TensorShape& override_shape) {
   outputs_.emplace_back(tensor, dependency, component, &override_shape);
+  return *this;
+}
+
+ProgramBase& ProgramBase::AddOutput(Tensor* tensor, ProgramTensorMetadataDependency dependency, int component, decltype(ProgramOutput::ReduceLastDimension), const TensorShape& override_shape) {
+  TensorShape reduced_override_shape = GetReducedShape(override_shape, component);
+  outputs_.emplace_back(tensor, dependency, component, &reduced_override_shape);
   return *this;
 }
 
