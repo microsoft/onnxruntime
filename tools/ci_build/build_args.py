@@ -724,7 +724,8 @@ def add_execution_provider_args(parser: argparse.ArgumentParser) -> None:
 
     # --- MIGraphX (AMD) ---
     migx_group = parser.add_argument_group("MIGraphX Execution Provider")
-    migx_group.add_argument("--use_migraphx", action="store_true", help="Enable MIGraphX EP.")
+    migx_group.add_argument("--use_migraphx", action="store_true", help="Build with AMDGPU (deprecated).")
+    migx_group.add_argument("--use_amdgpu", action="store_true", help="Build with AMDGPU")
     migx_group.add_argument("--migraphx_home", help="Path to MIGraphX installation directory.")
 
     # --- WebNN ---

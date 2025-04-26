@@ -44,15 +44,14 @@ onnxruntime::ArenaExtendStrategy arena_extend_strategy = onnxruntime::ArenaExten
 #endif
 
 #if defined(USE_ROCM) || defined(USE_AMDGPU)
-// TODO remove deprecated global config
-onnxruntime::ArenaExtendStrategy arena_extend_strategy = onnxruntime::ArenaExtendStrategy::kNextPowerOfTwo;
-#endif
+ // TODO remove deprecated global config
+ onnxruntime::ArenaExtendStrategy arena_extend_strategy = onnxruntime::ArenaExtendStrategy::kNextPowerOfTwo;
+ #endif
 
-#ifdef USE_AMDGPU
-onnxruntime::AMDGPUExecutionProviderExternalAllocatorInfo migx_external_allocator_info{};
-#endif
+ #ifdef USE_AMDGPU
+ onnxruntime::AMDGPUExecutionProviderExternalAllocatorInfo migx_external_allocator_info{};
+ #endif
 
-#ifdef ENABLE_TRAINING
 #if defined(ENABLE_DLPACK)
 
 void DlpackCapsuleDestructor(PyObject* data) {
