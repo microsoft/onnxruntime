@@ -52,7 +52,7 @@ def main():
     adb_shell("cd /data/local/tmp && tar -zcf gcda_files.tar.gz *.dir")
     adb_pull("/data/local/tmp/gcda_files.tar.gz", cwd)
     os.chdir(cwd)
-    run_subprocess("tar -zxf gcda_files.tar.gz -C CMakeFiles".split(" "))
+    run_subprocess(["tar", "-zxf", "gcda_files.tar.gz", "-C", "CMakeFiles"])
     cmd = ["gcovr", "-s", "-r"]
     cmd.append(os.path.join(source_dir, "onnxruntime"))
     cmd.extend([".", "-o"])
