@@ -21,8 +21,6 @@ constexpr int kColsPerThreadBlock = 8;             // Number of columns (N dimen
 constexpr int kElementsPerThreadPerIteration = 8;  // Number of elements (K dimension) processed per thread per iteration
 constexpr int kWarpSize = GPU_WARP_SIZE;           // Typically 32
 constexpr uint8_t kDefaultZeroPoint = 128;         // Default zero point if not provided
-constexpr bool kUseCUB = true;                     // Use CUB for warp reduction (recommended)
-constexpr bool kUseFloatInPartialSum = false;      // Use float for intermediate sums within a thread (half only)
 
 // --- Device Function: Accumulate 8 Elements (half precision) ---
 // Dequantizes 8 uint8_t values and accumulates the result with 8 half values from A.
@@ -208,6 +206,8 @@ __global__ void __launch_bounds__(kWarpSize* kColsPerThreadBlock) MatMulFloat8bK
 
   // --- Accumulation ---
   // Initialize partial sums for this thread to zero
+  // Note that partial sum uses original data type. It is a trade-off between performance and accuracy.
+  // For example, K=3072, each accumulates k / k_per_iter = 3072 / 256 = 12 elements.
   T sums[kElementsPerThreadPerIteration] = {static_cast<T>(0.0f)};
 
   constexpr int k_per_iter = kWarpSize * kElementsPerThreadPerIteration;  // Elements processed per warp per iteration (e.g., 32*8 = 256)
@@ -253,58 +253,28 @@ __global__ void __launch_bounds__(kWarpSize* kColsPerThreadBlock) MatMulFloat8bK
 
   // --- Intra-Thread Reduction ---
   // Sum the kElementsPerThreadPerIteration partial sums within each thread.
-  float total_sum_thread = 0.0f;  // Use float for reduction sum for better precision
+  // Here we use float to accumulate to avoid precision loss.
+  float total_sum_thread = 0.0f;
 
-  if constexpr (std::is_same_v<T, half>) {  // Specific handling for half precision input/output
-    if constexpr (kUseFloatInPartialSum) {
-      // Convert 8 elements to float one by one, then accumulate.
 #pragma unroll
-      for (int i = 0; i < kElementsPerThreadPerIteration; ++i) {
-        total_sum_thread += __half2float(sums[i]);
-      }
-    } else {
-      // Default: Accumulate 8 half elements into a temporary half sum, then convert once to float.
-      T temp_sum = static_cast<T>(0.0f);
-#pragma unroll
-      for (int i = 0; i < kElementsPerThreadPerIteration; ++i) {
-        temp_sum += sums[i];
-      }
-      total_sum_thread = __half2float(temp_sum);  // Convert final thread sum to float
-    }
-  } else {  // Handling for float precision input/output
-#pragma unroll
-    for (int i = 0; i < kElementsPerThreadPerIteration; ++i) {
-      total_sum_thread += sums[i];
-    }
+  for (int i = 0; i < kElementsPerThreadPerIteration; ++i) {
+    total_sum_thread += static_cast<float>(sums[i]);
   }
 
   // --- Inter-Thread Reduction (Warp Level) ---
-  if constexpr (!kUseCUB) {
-    // Manual warp reduction using shfl_down_sync
-    // Note: Only sums within a warp. Assumes warp-synchronous execution.
-    for (int i = kWarpSize / 2; i > 0; i /= 2) {
-      total_sum_thread += __shfl_down_sync(0xFFFFFFFF, total_sum_thread, i);
-    }
-    // Lane 0 of each warp holds the final sum for C[0, n_id]
-    if (lane_id == 0) {
-      // Write result (cast back to T)
-      // Since m=1, output index is just n_id
-      output[n_id] = static_cast<T>(total_sum_thread);
-    }
-  } else {
-    // Use CUB for efficient and robust warp reduction
-    using BlockReduce = cub::WarpReduce<float>;
-    // Allocate shared memory for CUB temporary storage (one per warp)
-    __shared__ typename BlockReduce::TempStorage temp_storage[kColsPerThreadBlock];
-    // Perform warp-level sum reduction
-    total_sum_thread = BlockReduce(temp_storage[warp_id]).Sum(total_sum_thread);
+  // Use CUB for efficient and robust warp reduction
+  using BlockReduce = cub::WarpReduce<float>;
+  // Allocate shared memory for CUB temporary storage (one per warp)
+  __shared__ typename BlockReduce::TempStorage temp_storage[kColsPerThreadBlock];
 
-    // Lane 0 of each warp writes the final reduced sum to global memory
-    if (lane_id == 0) {
-      // Write result (cast back to T)
-      // Since m=1, output index is just n_id
-      output[n_id] = static_cast<T>(total_sum_thread);
-    }
+  // Perform warp-level sum reduction. Use float in accumulation to avoid precision loss.
+  total_sum_thread = BlockReduce(temp_storage[warp_id]).Sum(total_sum_thread);
+
+  // Lane 0 of each warp writes the final reduced sum to global memory
+  if (lane_id == 0) {
+    // Write result (cast back to T)
+    // Since m=1, output index is just n_id
+    output[n_id] = static_cast<T>(total_sum_thread);
   }
 }
 
@@ -360,9 +330,7 @@ bool TryMatMul8Bits(
   size_t total_shared_mem = scale_zp_shared_mem;
 
   // Add shared memory for CUB reduction storage if used
-  if constexpr (kUseCUB) {
-    total_shared_mem += static_cast<size_t>(kColsPerThreadBlock) * sizeof(typename cub::WarpReduce<float>::TempStorage);
-  }
+  total_shared_mem += static_cast<size_t>(kColsPerThreadBlock) * sizeof(typename cub::WarpReduce<float>::TempStorage);
 
   // Check if required shared memory exceeds device limits for the block
   if (total_shared_mem > shared_mem_per_block) {
@@ -406,8 +374,6 @@ bool TryMatMul8Bits(
 }
 
 // --- Template Instantiations ---
-// Explicitly instantiate the templates for float and half types to ensure compilation.
-
 template bool TryMatMul8Bits<float>(
     float* output,
     const float* a_data,
