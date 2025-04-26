@@ -70,6 +70,7 @@ bool CanApplyDP4AMatrixMatMulNBits(onnxruntime::webgpu::ComputeContext& context,
                                    uint32_t N,
                                    uint32_t K,
                                    uint32_t components_k,
+                                   uint32_t nbits,
                                    bool has_zero_points);
 
 }  // namespace webgpu
