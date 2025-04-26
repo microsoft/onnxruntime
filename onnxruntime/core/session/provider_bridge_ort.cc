@@ -4,43 +4,48 @@
 // This is the Onnxruntime side of the bridge to allow providers to be built as a DLL
 // It implements onnxruntime::ProviderHost
 
+#include <optional>
+#include <utility>
+
 #include "core/common/inlined_containers.h"
 #include "core/common/path_string.h"
+#include "core/common/string_helper.h"
 #include "core/framework/allocator_utils.h"
-#include "core/framework/config_options.h"
 #include "core/framework/compute_capability.h"
-#include "core/framework/data_types.h"
+#include "core/framework/config_options.h"
 #include "core/framework/data_transfer_manager.h"
+#include "core/framework/data_types.h"
 #include "core/framework/error_code_helper.h"
 #include "core/framework/execution_provider.h"
+#include "core/framework/fallback_cpu_capability.h"
 #include "core/framework/kernel_registry.h"
+#include "core/framework/model_metadef_id_generator.h"
+#include "core/framework/murmurhash3.h"
 #include "core/framework/node_unit.h"
+#include "core/framework/provider_options.h"
 #include "core/framework/provider_shutdown.h"
+#include "core/framework/random_generator.h"
 #include "core/framework/run_options.h"
+#include "core/framework/sparse_utils.h"
 #include "core/framework/tensorprotoutils.h"
 #include "core/framework/TensorSeq.h"
-#include "core/framework/provider_options.h"
-#include "core/framework/fallback_cpu_capability.h"
-#include "core/framework/random_generator.h"
-#include "core/graph/model.h"
-#include "core/platform/env.h"
-#include "core/providers/common.h"
-#include "core/session/inference_session.h"
-#include "core/session/abi_session_options_impl.h"
-#include "core/session/ort_apis.h"
-#include "core/session/onnxruntime_session_options_config_keys.h"
-#include "core/session/provider_bridge_ort.h"
-#include "core/util/math.h"
-#include "core/framework/sparse_utils.h"
+#include "core/graph/constants.h"
 #include "core/graph/graph_proto_serializer.h"
-#include "core/framework/murmurhash3.h"
-#include "core/framework/model_metadef_id_generator.h"
+#include "core/graph/model.h"
+#include "core/optimizer/graph_optimizer_registry.h"
 #include "core/optimizer/qdq_transformer/selectors_actions/qdq_selectors.h"
 #include "core/optimizer/qdq_transformer/selectors_actions/shared/utils.h"
-
+#include "core/platform/env.h"
+#include "core/providers/common.h"
+#include "core/session/abi_session_options_impl.h"
+#include "core/session/inference_session.h"
 #include "core/session/onnxruntime_c_api.h"
-#include "core/common/string_helper.h"
-#include <utility>
+#include "core/session/onnxruntime_session_options_config_keys.h"
+#include "core/session/ort_apis.h"
+#include "core/session/provider_bridge_library.h"
+#include "core/session/provider_bridge_ort.h"
+#include "core/util/math.h"
+#include "onnx/shape_inference/implementation.h"
 
 #ifdef ENABLE_TRAINING
 #ifdef ENABLE_TRAINING_TORCH_INTEROP
@@ -237,6 +242,21 @@ common::Status LoadDynamicLibraryFromProvider(onnxruntime::PathString library_na
 struct ProviderHostImpl : ProviderHost {
   const OrtApiBase* OrtGetApiBase() override { return ::OrtGetApiBase(); }
 
+  Status GetOptimizerByName(const std::string& name,
+                            const GraphOptimizerRegistry& graph_optimizer_registry,
+                            SelectionFunc& selection_func) override {
+    std::string optimizer_name(name);
+
+    auto func = graph_optimizer_registry.GetSelectionFunc(optimizer_name);
+
+    if (func.has_value()) {
+      selection_func = func.value();
+    } else {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to get optimizer " + optimizer_name);
+    }
+    return Status::OK();
+  };
+
   void* HeapAllocate(size_t size) override { return new uint8_t[size]; }
   void HeapFree(void* p) override { delete[] reinterpret_cast<uint8_t*>(p); }
 
@@ -356,11 +376,19 @@ struct ProviderHostImpl : ProviderHost {
   // IAllocator (direct)
   bool IAllocator__CalcMemSizeForArrayWithAlignment(size_t nmemb, size_t size, size_t alignment, size_t* out) override { return IAllocator::CalcMemSizeForArrayWithAlignment(nmemb, size, alignment, out); }
 
+  // IExecutionProviderFactory
+  std::unique_ptr<IExecutionProvider> IExecutionProviderFactory__CreateProvider(
+      IExecutionProviderFactory* p, const OrtSessionOptions& session_options, const OrtLogger& session_logger) override {
+    return p->IExecutionProviderFactory::CreateProvider(session_options, session_logger);
+  }
+
   // IExecutionProvider (direct)
   std::vector<std::unique_ptr<ComputeCapability>> IExecutionProvider__GetCapability(
       const IExecutionProvider* p, const onnxruntime::GraphViewer& graph_viewer,
-      const IExecutionProvider::IKernelLookup& kernel_lookup) override {
-    return p->IExecutionProvider::GetCapability(graph_viewer, kernel_lookup);
+      const IExecutionProvider::IKernelLookup& kernel_lookup,
+      const GraphOptimizerRegistry& graph_optimizer_registry,
+      IResourceAccountant* resource_accountant) override {
+    return p->IExecutionProvider::GetCapability(graph_viewer, kernel_lookup, graph_optimizer_registry, resource_accountant);
   }
 
   common::Status IExecutionProvider__Compile(IExecutionProvider* p, const std::vector<IExecutionProvider::FusedNodeAndGraph>& fused_nodes_and_graphs, std::vector<NodeComputeInfo>& node_compute_funcs) override {
@@ -752,6 +780,12 @@ struct ProviderHostImpl : ProviderHost {
   int FunctionProto__metadata_props_size(const ONNX_NAMESPACE::FunctionProto* p) override { return p->metadata_props_size(); }
   ONNX_NAMESPACE::StringStringEntryProto* FunctionProto__add_metadata_props(ONNX_NAMESPACE::FunctionProto* p) override { return p->add_metadata_props(); }
 
+  void InferShapes(const std::string& m, const std::string& save_path) override {
+    return ONNX_NAMESPACE::shape_inference::InferShapes(m, save_path);
+  }
+  void InferShapes(ONNX_NAMESPACE::ModelProto& m) override {
+    return ONNX_NAMESPACE::shape_inference::InferShapes(m);
+  }
   void RegisterSchema(const std::string& domain, const OrtCustomOp* op) override {
     auto& domain_instance = ONNX_NAMESPACE::OpSchemaRegistry::DomainToVersionRange::Instance();
     const auto& domain_to_version_map = domain_instance.Map();
@@ -761,6 +795,11 @@ struct ProviderHostImpl : ProviderHost {
     auto schema = CreateSchema(domain, {op});
     ONNX_NAMESPACE::RegisterSchema(schema, ORT_API_VERSION);
   }
+
+  void DeregisterSchema(const std::string& domain, const std::string& op_type, int version) override {
+    ONNX_NAMESPACE::DeregisterSchema(op_type, version, domain);
+  }
+
   const ONNX_NAMESPACE::OpSchema* GetSchema(const std::string& name, const int maxInclusiveVersion, const std::string& domain) override {
     return ONNX_NAMESPACE::OpSchemaRegistry::Instance()->GetSchema(name, maxInclusiveVersion, domain);
   }
@@ -781,16 +820,23 @@ struct ProviderHostImpl : ProviderHost {
     return p->GetConfigOrDefault(config_key, default_value);
   }
 
+  const std::unordered_map<std::string, std::string>& ConfigOptions__GetConfigOptionsMap(const ConfigOptions* p) override {
+    return p->GetConfigOptionsMap();
+  }
+
   // OrtRunOptions (wrapped)
   const ConfigOptions& RunOptions__GetConfigOptions(const RunOptions* p) override { return p->config_options; }
 
   // OrtSessionOptions (wrapped)
   const std::unordered_map<std::string, std::string>& SessionOptions__GetConfigOptionsMap(const OrtSessionOptions* p) override { return p->value.config_options.configurations; }
+  const ConfigOptions& SessionOptions__GetConfigOptions(const OrtSessionOptions* p) override { return p->value.config_options; }
   bool SessionOptions__GetEnableProfiling(const OrtSessionOptions* p) override { return p->value.enable_profiling; };
   // ComputeCapability (wrapped)
   std::unique_ptr<ComputeCapability> ComputeCapability__construct(std::unique_ptr<IndexedSubGraph> t_sub_graph) override { return std::make_unique<ComputeCapability>(std::move(t_sub_graph)); }
   void ComputeCapability__operator_delete(ComputeCapability* p) override { delete p; }
   std::unique_ptr<IndexedSubGraph>& ComputeCapability__SubGraph(ComputeCapability* p) override { return p->sub_graph; }
+  void ComputeCapability__copy_optimization_func(ComputeCapability* p, ComputeCapability* selection_cc) override { p->optimization_func = selection_cc->optimization_func; }
+  void ComputeCapability__add_nodes_to_optimize(ComputeCapability* p, std::unique_ptr<ComputeCapability> optimization_cc) override { p->nodes_to_optimize.push_back(std::move(optimization_cc)); }
 
   // DataTransferManager (wrapped)
   Status DataTransferManager__CopyTensor(const DataTransferManager* p, const Tensor& src, Tensor& dst) override { return p->CopyTensor(src, dst); }
@@ -827,6 +873,9 @@ struct ProviderHostImpl : ProviderHost {
   std::unique_ptr<IndexedSubGraph> IndexedSubGraph__construct() override { return std::make_unique<IndexedSubGraph>(); }
   void IndexedSubGraph__operator_delete(IndexedSubGraph* p) override { delete p; }
 
+  const std::vector<onnxruntime::NodeIndex>& IndexedSubGraph__Nodes(const IndexedSubGraph* p) override {
+    return p->nodes;
+  }
   std::vector<onnxruntime::NodeIndex>& IndexedSubGraph__Nodes(IndexedSubGraph* p) override { return p->nodes; }
 
   void IndexedSubGraph__SetMetaDef(IndexedSubGraph* p, std::unique_ptr<IndexedSubGraph_MetaDef>&& meta_def_) override { p->SetMetaDef(std::move(meta_def_)); }
@@ -834,6 +883,12 @@ struct ProviderHostImpl : ProviderHost {
 
   void IndexedSubGraph__SetSchemaSource(IndexedSubGraph* p, IndexedSubGraph_SourceOfSchema schema_source) override { p->schema_source = schema_source; }
   IndexedSubGraph_SourceOfSchema IndexedSubGraph__GetSchemaSource(const IndexedSubGraph* p) override { return p->schema_source; }
+  void IndexedSubGraph__SetAccountant(IndexedSubGraph* p, IResourceAccountant* resource_accountant) override {
+    p->SetAccountant(resource_accountant);
+  }
+  void IndexedSubGraph__AppendNodeCost(IndexedSubGraph* p, const ResourceCount& resource_count) override {
+    p->AppendNodeCost(resource_count);
+  }
 
   // KernelDef (wrapped)
   void KernelDef__operator_delete(KernelDef* p) override { delete p; }
@@ -1178,7 +1233,8 @@ struct ProviderHostImpl : ProviderHost {
                                           const logging::Logger& logger) override {
     return std::make_unique<Model>(model_proto, model_path, local_registries, logger);
   }
-  std::unique_ptr<Model> Model__construct(const std::string& graph_name, bool is_onnx_domain_only,
+  std::unique_ptr<Model> Model__construct(const std::string& graph_name,
+                                          bool is_onnx_domain_only,
                                           const logging::Logger& logger) override {
     return std::make_unique<Model>(graph_name, is_onnx_domain_only, logger);
   }
@@ -1232,6 +1288,7 @@ struct ProviderHostImpl : ProviderHost {
   const Graph* Graph__ParentGraph(const Graph* p) const override { return p->ParentGraph(); }
   Graph* Graph__MutableParentGraph(Graph* p) override { return p->MutableParentGraph(); }
   const std::string& Graph__Name(const Graph* p) const noexcept override { return p->Name(); }
+  void Graph__SetName(Graph* p, const std::string& name) const noexcept override { return p->SetName(name); }
   const std::filesystem::path& Graph__ModelPath(const Graph* p) const override { return p->ModelPath(); }
   const std::vector<const NodeArg*>& Graph__GetInputsIncludingInitializers(const Graph* p) const noexcept override { return p->GetInputsIncludingInitializers(); }
   bool Graph__IsSubgraph(const Graph* p) override { return p->IsSubgraph(); }
@@ -1600,7 +1657,7 @@ struct ProviderHostImpl : ProviderHost {
   }
 #endif
 
-  void MurmurHash3__x86_128(const void* key, int len, uint32_t seed, void* out) override {
+  void MurmurHash3__x86_128(const void* key, size_t len, uint32_t seed, void* out) override {
     MurmurHash3::x86_128(key, len, seed, out);
   }
 
@@ -1615,6 +1672,7 @@ struct ProviderHostImpl : ProviderHost {
   Status LoadDynamicLibrary(onnxruntime::PathString library_name) override { return LoadDynamicLibraryFromProvider(library_name); };
 #endif
 } provider_host_;
+
 #if defined(_MSC_VER) && !defined(__clang__)
 #pragma warning(pop)
 #endif
@@ -1663,64 +1721,77 @@ bool InitProvidersSharedLibrary() try {
   return false;
 }
 
-struct ProviderLibrary {
-  ProviderLibrary(const ORTCHAR_T* filename, bool unload = true) : filename_{filename}, unload_{unload} {}
-  ~ProviderLibrary() {
-    // assert(!handle_); // We should already be unloaded at this point (disabled until Python shuts down deterministically)
+ProviderLibrary::ProviderLibrary(const ORTCHAR_T* filename, bool unload)
+    : filename_{filename}, unload_{unload} {
+}
+
+ProviderLibrary::~ProviderLibrary() {
+  // assert(!handle_); // We should already be unloaded at this point (disabled until Python shuts down deterministically)
+}
+
+Status ProviderLibrary::Load() {
+  if (provider_) {
+    return Status::OK();
   }
 
-  Provider& Get() {
+  try {
     std::lock_guard<std::mutex> lock{mutex_};
-    try {
+    s_library_shared.Ensure();
+
+    auto full_path = Env::Default().GetRuntimePath() + filename_;
+    ORT_RETURN_IF_ERROR(Env::Default().LoadDynamicLibrary(full_path, false, &handle_));
+
+    Provider* (*PGetProvider)();
+    ORT_RETURN_IF_ERROR(Env::Default().GetSymbolFromLibrary(handle_, "GetProvider", (void**)&PGetProvider));
+
+    provider_ = PGetProvider();
+  } catch (const std::exception&) {
+    Unload();  // If anything fails we unload the library and rethrow
+    throw;
+  }
+
+  return Status::OK();
+}
+
+Provider& ProviderLibrary::Get() {
+  try {
+    if (!initialized_) {
       if (!provider_) {
-        s_library_shared.Ensure();
-
-        auto full_path = Env::Default().GetRuntimePath() + filename_;
-        ORT_THROW_IF_ERROR(Env::Default().LoadDynamicLibrary(full_path, false, &handle_));
-
-        Provider* (*PGetProvider)();
-        ORT_THROW_IF_ERROR(Env::Default().GetSymbolFromLibrary(handle_, "GetProvider", (void**)&PGetProvider));
-
-        provider_ = PGetProvider();
-        provider_->Initialize();
-      }
-      return *provider_;
-    } catch (const std::exception&) {
-      Unload();  // If anything fails we unload the library and rethrow
-      throw;
-    }
-  }
-
-  void Unload() {
-    // This will crash in the Mac unit test due to the ProviderLibrary global variable being destroyed before Unload() is called
-    // Something has a global 'Environment or OrtEnv' variable that is being destroyed after other global variables have already been destroyed
-    // std::lock_guard<std::mutex> lock{mutex_};
-
-    if (handle_) {
-      if (provider_)
-        provider_->Shutdown();
-
-      if (unload_) {
-        auto status = Env::Default().UnloadDynamicLibrary(handle_);
-        if (!status.IsOK()) {
-          LOGS_DEFAULT(ERROR) << status.ErrorMessage();
-        }
+        ORT_THROW_IF_ERROR(Load());
       }
 
-      handle_ = nullptr;
-      provider_ = nullptr;
+      std::lock_guard<std::mutex> lock{mutex_};
+      provider_->Initialize();
+      initialized_ = true;
     }
+
+    return *provider_;
+  } catch (const std::exception&) {
+    Unload();  // If anything fails we unload the library and rethrow
+    throw;
   }
+}
 
- private:
-  std::mutex mutex_;
-  const ORTCHAR_T* filename_;
-  bool unload_;
-  Provider* provider_{};
-  void* handle_{};
+void ProviderLibrary::Unload() {
+  // This will crash in the Mac unit test due to the ProviderLibrary global variable being destroyed before Unload() is called
+  // Something has a global 'Environment or OrtEnv' variable that is being destroyed after other global variables have already been destroyed
+  // std::lock_guard<std::mutex> lock{mutex_};
 
-  ORT_DISALLOW_COPY_AND_ASSIGNMENT(ProviderLibrary);
-};
+  if (handle_) {
+    if (provider_)
+      provider_->Shutdown();
+
+    if (unload_) {
+      auto status = Env::Default().UnloadDynamicLibrary(handle_);
+      if (!status.IsOK()) {
+        LOGS_DEFAULT(ERROR) << status.ErrorMessage();
+      }
+    }
+
+    handle_ = nullptr;
+    provider_ = nullptr;
+  }
+}
 
 static ProviderLibrary s_library_cuda(LIBRARY_PREFIX ORT_TSTR("onnxruntime_providers_cuda") LIBRARY_EXTENSION
 #ifndef _WIN32
@@ -1907,6 +1978,7 @@ OrtTensorRTProviderOptionsV2 OrtTensorRTProviderOptionsToOrtTensorRTProviderOpti
   trt_options_converted.trt_ep_context_embed_mode = 0;
   trt_options_converted.trt_engine_cache_prefix = "";
   trt_options_converted.trt_engine_hw_compatible = 0;
+  trt_options_converted.trt_preview_features = "";
 
   return trt_options_converted;
 }
@@ -1946,7 +2018,7 @@ ProviderOptions OrtOpenVINOProviderOptionsToOrtOpenVINOProviderOptionsV2(const O
     ov_options_converted_map["context"] = context_string.str();
   }
 
-  ov_options_converted_map["enable_opencl_throttling"] = legacy_ov_options->enable_opencl_throttling;
+  ov_options_converted_map["enable_opencl_throttling"] = legacy_ov_options->enable_opencl_throttling == 0 ? "true" : "false";
 
   if (legacy_ov_options->enable_dynamic_shapes) {
     ov_options_converted_map["disable_dynamic_shapes"] = "false";
@@ -1962,6 +2034,7 @@ ProviderOptions OrtOpenVINOProviderOptionsToOrtOpenVINOProviderOptionsV2(const O
   ov_options_converted_map["load_config"] = "";
   ov_options_converted_map["model_priority"] = "DEFAULT";
   ov_options_converted_map["enable_qdq_optimizer"] = "false";
+  ov_options_converted_map["enable_causallm"] = "false";
   return ov_options_converted_map;
 }
 
@@ -1982,10 +2055,14 @@ std::shared_ptr<IExecutionProviderFactory> QNNProviderFactoryCreator::Create(con
 std::shared_ptr<IExecutionProviderFactory> OpenVINOProviderFactoryCreator::Create(
     const ProviderOptions* provider_options_map, const SessionOptions* session_options) {
   // Append session options applicable for EP to EP Provider options.
-  std::pair<const ProviderOptions*, const ConfigOptions&> config_buffer = {provider_options_map,
-                                                                           session_options->config_options};
-  const void* obj = reinterpret_cast<const void*>(&config_buffer);
-  return s_library_openvino.Get().CreateExecutionProviderFactory(obj);
+  const ConfigOptions* config_options = nullptr;
+  if (session_options != nullptr) {
+    config_options = &session_options->config_options;
+  }
+
+  std::array<const void*, 2> configs_array = {provider_options_map, config_options};
+  const void* arg = reinterpret_cast<const void*>(&configs_array);
+  return s_library_openvino.Get().CreateExecutionProviderFactory(arg);
 }
 
 std::shared_ptr<IExecutionProviderFactory> DnnlProviderFactoryCreator::Create(const OrtDnnlProviderOptions* dnnl_options) {
@@ -2242,6 +2319,8 @@ ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider_OpenVINO, _In
                     _In_ const OrtOpenVINOProviderOptions* provider_options) {
   API_IMPL_BEGIN
   const onnxruntime::ProviderOptions ov_options_converted_map = onnxruntime::OrtOpenVINOProviderOptionsToOrtOpenVINOProviderOptionsV2(provider_options);
+  ORT_API_RETURN_IF_STATUS_NOT_OK(options->AddProviderOptionsToConfigOptions(ov_options_converted_map,
+                                                                             onnxruntime::kOpenVINOExecutionProvider));
   auto factory = onnxruntime::OpenVINOProviderFactoryCreator::Create(&ov_options_converted_map, &(options->value));
   if (!factory) {
     return OrtApis::CreateStatus(ORT_FAIL, "SessionOptionsAppendExecutionProvider_OpenVINO: Failed to load shared library");
@@ -2275,6 +2354,8 @@ ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider_OpenVINO_V2,
 
     provider_options[provider_options_keys[i]] = provider_options_values[i];
   }
+  ORT_API_RETURN_IF_STATUS_NOT_OK(options->AddProviderOptionsToConfigOptions(provider_options,
+                                                                             onnxruntime::kOpenVINOExecutionProvider));
   auto factory = onnxruntime::OpenVINOProviderFactoryCreator::Create(&provider_options, &(options->value));
   if (!factory) {
     return OrtApis::CreateStatus(ORT_FAIL, "SessionOptionsAppendExecutionProvider_OpenVINO_V2: Failed to load shared library");
@@ -2567,6 +2648,8 @@ ORT_API(void, OrtApis::ReleaseTensorRTProviderOptions, _Frees_ptr_opt_ OrtTensor
     delete[] ptr->trt_profile_opt_shapes;
     delete[] ptr->trt_ep_context_file_path;
     delete[] ptr->trt_onnx_model_folder_path;
+    delete[] ptr->trt_op_types_to_exclude;
+    delete[] ptr->trt_preview_features;
   }
 
   std::unique_ptr<OrtTensorRTProviderOptionsV2> p(ptr);
@@ -2973,6 +3056,8 @@ ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider_VitisAI, _In_
   }
   // EP context related session config options.
   provider_options["session_options"] = std::to_string((uintptr_t)(void*)options);
+  ORT_API_RETURN_IF_STATUS_NOT_OK(options->AddProviderOptionsToConfigOptions(provider_options,
+                                                                             onnxruntime::kVitisAIExecutionProvider));
 
   auto factory = onnxruntime::VitisAIProviderFactoryCreator::Create(provider_options);
   if (!factory) {

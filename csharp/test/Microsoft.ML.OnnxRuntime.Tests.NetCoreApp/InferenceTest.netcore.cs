@@ -74,11 +74,9 @@ namespace Microsoft.ML.OnnxRuntime.Tests
 #if NET8_0_OR_GREATER
 #pragma warning disable SYSLIB5001 // System.Numerics.Tensors is only in preview so we can continue receiving API feedback
         [Theory]
-        [InlineData(GraphOptimizationLevel.ORT_DISABLE_ALL, true)]
-        [InlineData(GraphOptimizationLevel.ORT_DISABLE_ALL, false)]
-        [InlineData(GraphOptimizationLevel.ORT_ENABLE_EXTENDED, true)]
-        [InlineData(GraphOptimizationLevel.ORT_ENABLE_EXTENDED, false)]
-        private void CanRunInferenceOnAModelDotnetTensors(GraphOptimizationLevel graphOptimizationLevel, bool enableParallelExecution)
+        [InlineData(GraphOptimizationLevel.ORT_DISABLE_ALL)]
+        [InlineData(GraphOptimizationLevel.ORT_ENABLE_EXTENDED)]
+        private void CanRunInferenceOnAModelDotnetTensors(GraphOptimizationLevel graphOptimizationLevel)
         {
             var model = TestDataLoader.LoadModelFromEmbeddedResource("squeezenet.onnx");
 

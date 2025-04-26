@@ -47,7 +47,10 @@ ONNX_OPERATOR_KERNEL_EX(
         .TypeConstraint("T", WebGpuSupportedNumberTypes()),
     Transpose);
 
-auto SqueezeShape(const gsl::span<const int64_t>& shape, const gsl::span<const size_t>& adjusted_perm, InlinedVector<int64_t>& new_shape, InlinedVector<int64_t>& new_perm) {
+auto SqueezeShape(const gsl::span<const int64_t>& shape,
+                  const gsl::span<const size_t>& adjusted_perm,
+                  TensorShapeVector& new_shape,
+                  TensorShapeVector& new_perm) {
   for (size_t i = 0; i < shape.size(); ++i) {
     if (shape[i] != 1) {
       new_shape.push_back(shape[i]);
@@ -97,26 +100,28 @@ Status TransposeProgram::GenerateShaderCode(ShaderHelper& shader) const {
   return Status::OK();
 }
 
-Status Transpose::ComputeInternal(ComputeContext& context) const {
-  const auto* input_tensor = context.Input(0);
-  const TensorShape& input_shape = input_tensor->Shape();
-  int32_t rank = gsl::narrow_cast<int32_t>(input_shape.NumDimensions());
+Status Transpose::DoTranspose(onnxruntime::webgpu::ComputeContext& context,
+                              gsl::span<const size_t> permutations,
+                              const Tensor& input, Tensor& output) {
+  const auto& input_shape = input.Shape();
+  const auto& input_dims = input_shape.GetDims();
+  int32_t rank = static_cast<int32_t>(input_shape.NumDimensions());
 
   TensorShapeVector output_dims(rank);
-  InlinedVector<size_t> default_perm(rank);
-  const InlinedVector<size_t>* p_perm = nullptr;
-  ORT_RETURN_IF_ERROR(ComputeOutputShape(*input_tensor, output_dims, default_perm, p_perm));
-  TensorShape output_shape(output_dims);
-  auto* output_tensor = context.Output(0, output_shape);
 
-  InlinedVector<int64_t> new_shape{};
-  InlinedVector<int64_t> new_perm{};
-  SqueezeShape(input_shape.GetDims(), *p_perm, new_shape, new_perm);
-  const bool channels_last = new_perm == InlinedVector<int64_t>({2, 3, 1});
-  const bool channels_first = new_perm == InlinedVector<int64_t>({3, 1, 2});
+  for (int32_t i = 0; i < rank; i++) {
+    output_dims[i] = input_dims[permutations[i]];
+  }
+
+  TensorShapeVector new_shape{};
+  TensorShapeVector new_perm{};
+  SqueezeShape(input_shape.GetDims(), permutations, new_shape, new_perm);
+  const bool channels_last = new_perm == TensorShapeVector({2, 3, 1});
+  const bool channels_first = new_perm == TensorShapeVector({3, 1, 2});
   const bool use_shared = (new_shape.size() == 2 && new_perm[0] > new_perm[1]) || channels_last || channels_first;
   auto new_input_shape = input_shape;
   TensorShape new_output_shape(output_dims);
+
   if (use_shared) {
     new_input_shape = channels_last
                           ? TensorShape({new_shape[0], new_shape[1] * new_shape[2]})
@@ -126,16 +131,16 @@ Status Transpose::ComputeInternal(ComputeContext& context) const {
     new_output_shape = TensorShape({new_input_shape[1], new_input_shape[0]});
   }
 
-  uint32_t output_size = gsl::narrow_cast<int32_t>(input_tensor->Shape().Size());
-  TransposeProgram program{*p_perm, use_shared};
+  uint32_t output_size = onnxruntime::narrow<int32_t>(input_shape.Size());
+  TransposeProgram program{permutations, use_shared};
+
   if (use_shared) {
     program.SetWorkgroupSize(TILE_SIZE, TILE_SIZE, 1);
   }
-
   program
-      .CacheHint(absl::StrJoin(*p_perm, "-"))
-      .AddInputs({{input_tensor, ProgramTensorMetadataDependency::TypeAndRank, new_input_shape, 1}})
-      .AddOutputs({{output_tensor, ProgramTensorMetadataDependency::None, new_output_shape, 1}})
+      .CacheHint(absl::StrJoin(permutations, "-"))
+      .AddInputs({{&input, ProgramTensorMetadataDependency::TypeAndRank, new_input_shape, 1}})
+      .AddOutputs({{&output, ProgramTensorMetadataDependency::None, new_output_shape, 1}})
       .SetDispatchGroupSize(static_cast<uint32_t>((new_output_shape[1] + TILE_SIZE - 1) / TILE_SIZE),
                             static_cast<uint32_t>(((new_output_shape[0] + TILE_SIZE - 1) / TILE_SIZE)))
       .AddUniformVariables({
@@ -146,6 +151,21 @@ Status Transpose::ComputeInternal(ComputeContext& context) const {
                                             static_cast<uint32_t>(((new_output_shape[0] + TILE_SIZE - 1) / TILE_SIZE)))
              : program.SetDispatchGroupSize((output_size + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE);
   return context.RunProgram(program);
+}
+
+Status Transpose::ComputeInternal(ComputeContext& context) const {
+  const auto* input_tensor = context.Input(0);
+  const TensorShape& input_shape = input_tensor->Shape();
+  int32_t rank = static_cast<int32_t>(input_shape.NumDimensions());
+
+  TensorShapeVector output_dims(rank);
+  InlinedVector<size_t> default_perm(rank);
+  const InlinedVector<size_t>* p_perm = nullptr;
+  ORT_RETURN_IF_ERROR(ComputeOutputShape(*input_tensor, output_dims, default_perm, p_perm));
+  TensorShape output_shape(output_dims);
+  auto* output_tensor = context.Output(0, output_shape);
+
+  return DoTranspose(context, *p_perm, *input_tensor, *output_tensor);
 }
 
 }  // namespace webgpu

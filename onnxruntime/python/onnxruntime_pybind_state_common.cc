@@ -53,6 +53,7 @@ onnxruntime::AMDGPUExecutionProviderExternalAllocatorInfo migx_external_allocato
 #endif
 
 #ifdef ENABLE_TRAINING
+#if defined(ENABLE_DLPACK)
 
 void DlpackCapsuleDestructor(PyObject* data) {
   DLManagedTensor* dlmanaged_tensor = reinterpret_cast<DLManagedTensor*>(PyCapsule_GetPointer(data, "dltensor"));

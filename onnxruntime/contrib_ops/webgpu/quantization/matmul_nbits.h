@@ -35,22 +35,18 @@ class MatMulNBitsProgram final : public Program<MatMulNBitsProgram> {
   bool use_subgroup_;
 };
 
-class DP4AMatMulQuantizeProgram final : public Program<DP4AMatMulQuantizeProgram> {
+class MatMulNBitsWideTileProgram final : public Program<MatMulNBitsWideTileProgram> {
  public:
-  DP4AMatMulQuantizeProgram() : Program{"DP4AMatMulQuantize"} {}
-  Status GenerateShaderCode(ShaderHelper& sh) const override;
-};
+  MatMulNBitsWideTileProgram(bool has_zero_points, uint32_t tile_m, uint32_t tile_n)
+      : Program{"MatMulNBitsWideTileProgram"}, has_zero_points_{has_zero_points}, tile_m_(tile_m), tile_n_(tile_n) {}
 
-class DP4AMatMulNBitsProgram final : public Program<DP4AMatMulNBitsProgram> {
- public:
-  DP4AMatMulNBitsProgram() : Program{"DP4AMatMulNBits"} {}
   Status GenerateShaderCode(ShaderHelper& sh) const override;
-  WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES(
-      {"M", ProgramUniformVariableDataType::Uint32},
-      {"N", ProgramUniformVariableDataType::Uint32},
-      {"K", ProgramUniformVariableDataType::Uint32},
-      {"K8", ProgramUniformVariableDataType::Uint32},
-      {"K16", ProgramUniformVariableDataType::Uint32});
+  WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES({"block_size", ProgramUniformVariableDataType::Uint32});
+
+ private:
+  bool has_zero_points_;
+  uint32_t tile_m_;
+  uint32_t tile_n_;
 };
 
 class MatMulNBits final : public WebGpuKernel {

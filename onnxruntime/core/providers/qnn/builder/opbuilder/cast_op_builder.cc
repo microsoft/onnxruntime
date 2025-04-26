@@ -51,9 +51,9 @@ Status CastOpBuilder::ProcessInputs(QnnModelWrapper& qnn_model_wrapper,
   }
 
   std::vector<uint8_t> unpacked_tensor;
-  bool is_initializer_input = qnn_model_wrapper.IsInitializerInput(input_name);
-  if (is_initializer_input) {
-    const auto& input_tensor = qnn_model_wrapper.GetInitializerTensors().at(input_name);
+  bool is_constant_input = qnn_model_wrapper.IsConstantInput(input_name);
+  if (is_constant_input) {
+    const auto& input_tensor = qnn_model_wrapper.GetConstantTensor(input_name);
     ORT_RETURN_IF_ERROR(qnn_model_wrapper.UnpackInitializerData(*input_tensor, unpacked_tensor));
   }
 
@@ -102,6 +102,9 @@ Status CastOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_wra
   const bool is_graph_output = qnn_model_wrapper.IsGraphOutput(output_name);
 
   const Qnn_TensorType_t tensor_type = is_graph_output ? QNN_TENSOR_TYPE_APP_READ : QNN_TENSOR_TYPE_NATIVE;
+  if (qnn_data_type == QNN_DATATYPE_INT_64 && tensor_type == QNN_TENSOR_TYPE_NATIVE) {
+    qnn_data_type = QNN_DATATYPE_INT_32;
+  }
   QnnTensorWrapper output_tensorwrapper(output_name,
                                         tensor_type,
                                         qnn_data_type,

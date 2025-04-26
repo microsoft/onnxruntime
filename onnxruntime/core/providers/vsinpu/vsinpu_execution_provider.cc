@@ -61,8 +61,9 @@ VSINPUExecutionProvider::~VSINPUExecutionProvider() {}
 
 std::vector<std::unique_ptr<ComputeCapability>>
 VSINPUExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_viewer,
-                                       const IKernelLookup& /*kernel_lookup*/) const {
-  const auto& logger = *GetLogger();
+                                       const IKernelLookup& /*kernel_lookup*/,
+                                       const GraphOptimizerRegistry& /* graph_optimizer_registry */,
+                                       IResourceAccountant* /* resource_accountant */) const {
   std::vector<std::unique_ptr<ComputeCapability>> result;
 
   if (graph_viewer.IsSubgraph()) {

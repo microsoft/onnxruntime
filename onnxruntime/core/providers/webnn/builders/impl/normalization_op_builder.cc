@@ -2,7 +2,6 @@
 // Copyright (c) Intel Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "core/common/safeint.h"
 #include "core/optimizer/initializer.h"
 #include "core/providers/common.h"
 #include "core/providers/shared/utils/utils.h"
@@ -23,10 +22,12 @@ class NormalizationOpBuilder : public BaseOpBuilder {
 
   // Operator support related.
  private:
-  bool IsOpSupportedImpl(const InitializedTensorSet& initializers, const Node& node,
+  bool IsOpSupportedImpl(const GraphViewer&, const Node& node,
                          const WebnnDeviceType /* device_type */, const logging::Logger& logger) const override;
-  bool HasSupportedInputsImpl(const InitializedTensorSet& /* initializers */, const Node& node,
+  bool HasSupportedInputsImpl(const GraphViewer&, const Node& node,
                               const emscripten::val& wnn_limits, const logging::Logger& logger) const override;
+  bool HasSupportedOutputsImpl(const Node& node, const emscripten::val& wnn_limits,
+                               const logging::Logger& logger) const override;
 };
 
 Status NormalizationOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
@@ -206,7 +207,7 @@ Status NormalizationOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder
     output = model_builder.GetBuilder().call<emscripten::val>("instanceNormalization", input, options);
     // Reshape back to the original output shape for 3D input.
     if (input_shape.size() != 4) {
-      std::vector<uint32_t> output_shape = GetVecUint32FromVecInt64(input_shape);
+      std::vector<uint32_t> output_shape = GetNarrowedIntfromInt64<uint32_t>(input_shape);
       emscripten::val reshape_output_options = emscripten::val::object();
       reshape_output_options.set("label", node.Name() + "reshape_output");
       output = model_builder.GetBuilder().call<emscripten::val>("reshape",
@@ -224,7 +225,7 @@ Status NormalizationOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder
 
 // Operator support related.
 
-bool NormalizationOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& initializers,
+bool NormalizationOpBuilder::IsOpSupportedImpl(const GraphViewer&,
                                                const Node& node,
                                                const WebnnDeviceType /* device_type */,
                                                const logging::Logger& logger) const {
@@ -269,11 +270,11 @@ bool NormalizationOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& initi
   return true;
 }
 
-bool NormalizationOpBuilder::HasSupportedInputsImpl(const InitializedTensorSet& /* initializers */, const Node& node,
+bool NormalizationOpBuilder::HasSupportedInputsImpl(const GraphViewer&, const Node& node,
                                                     const emscripten::val& wnn_limits,
                                                     const logging::Logger& logger) const {
   const auto& input_defs = node.InputDefs();
-  const auto& op_type = node.OpType();
+  const std::string_view op_type = node.OpType();
   int32_t input0_type;  // input data type
   int32_t input1_type;  // scale data type
   int32_t input2_type;  // B data type
@@ -301,11 +302,48 @@ bool NormalizationOpBuilder::HasSupportedInputsImpl(const InitializedTensorSet& 
   if (has_input4) {
     input_types.push_back(input4_type);
   }
-  if (!AreInputDataTypesSame(op_type, input_types, logger)) {
+  if (!AreDataTypesSame(op_type, input_types, logger)) {
     return false;
   }
 
-  return IsDataTypeSupportedByOp(op_type, input0_type, wnn_limits, "input", "X", logger);
+  if (op_type == "SimplifiedLayerNormalization" || op_type == "SkipSimplifiedLayerNormalization") {
+    // SkipSimplifiedLayerNormalization and SimplifiedLayerNormalization are supported by decomposed WebNN ops.
+    // Check if the input data type is supported by each decomposed WebNN op.
+    // Decomposed ops include: "add", "div", "mul", "pow", "reduceMean" and "sqrt".
+    for (const std::string_view webnn_op_type : decomposed_op_map.at(op_type)) {
+      const std::string_view webnn_input_name = GetWebNNOpFirstInputName(webnn_op_type);
+      if (!IsDataTypeSupportedByWebNNOp(
+              op_type, webnn_op_type, input0_type, wnn_limits, webnn_input_name, "input", logger)) {
+        return false;
+      }
+    }
+    return true;
+  } else {
+    return IsDataTypeSupportedByOp(op_type, input0_type, wnn_limits, "input", "X", logger);
+  }
+}
+
+bool NormalizationOpBuilder::HasSupportedOutputsImpl(const Node& node,
+                                                     const emscripten::val& wnn_limits,
+                                                     const logging::Logger& logger) const {
+  const auto& output_defs = node.OutputDefs();
+  const std::string_view op_type = node.OpType();
+  int32_t output_type = 0;
+  if (!GetType(*output_defs[0], output_type, logger)) {
+    return false;
+  }
+
+  if (op_type == "SimplifiedLayerNormalization" || op_type == "SkipSimplifiedLayerNormalization") {
+    // Check if the output data type is supported by every decomposed WebNN op.
+    for (const std::string_view webnn_op_type : decomposed_op_map.at(op_type)) {
+      if (!IsDataTypeSupportedByWebNNOp(op_type, webnn_op_type, output_type, wnn_limits, "output", "output", logger)) {
+        return false;
+      }
+    }
+    return true;
+  } else {
+    return IsDataTypeSupportedByOp(op_type, output_type, wnn_limits, "output", "Output", logger);
+  }
 }
 
 void CreateNormalizationOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations) {

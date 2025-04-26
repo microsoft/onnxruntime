@@ -2,7 +2,6 @@
 // Copyright (c) Intel Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "core/common/safeint.h"
 #include "core/providers/common.h"
 #include "core/providers/shared/utils/utils.h"
 #include "core/providers/webnn/builders/helper.h"
@@ -23,9 +22,9 @@ class GemmOpBuilder : public BaseOpBuilder {
 
   // Operator support related.
  private:
-  bool IsOpSupportedImpl(const InitializedTensorSet& /* initializers */, const Node& node,
+  bool IsOpSupportedImpl(const GraphViewer&, const Node& node,
                          const WebnnDeviceType /* device_type */, const logging::Logger& logger) const override;
-  bool HasSupportedInputsImpl(const InitializedTensorSet& /* initializers */, const Node& node,
+  bool HasSupportedInputsImpl(const GraphViewer&, const Node& node,
                               const emscripten::val& wnn_limits, const logging::Logger& logger) const override;
 };
 
@@ -55,22 +54,20 @@ Status GemmOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
     if (a_shape.size() == 1) {
       extended_a_shape = true;
       a_shape.insert(a_shape.begin(), 1);
+      emscripten::val a_shape_arr = emscripten::val::array(GetNarrowedIntfromInt64<uint32_t>(a_shape));
       emscripten::val reshape_a_options = emscripten::val::object();
       reshape_a_options.set("label", node.Name() + "_reshape_a");
-      a = model_builder.GetBuilder().call<emscripten::val>("reshape", a,
-                                                           emscripten::val::array(GetVecUint32FromVecInt64(a_shape)),
-                                                           reshape_a_options);
+      a = model_builder.GetBuilder().call<emscripten::val>("reshape", a, a_shape_arr, reshape_a_options);
     }
     // If the second argument is 1-D, it is promoted to a matrix by appending a 1 to its dimensions.
     bool extended_b_shape = false;
     if (b_shape.size() == 1) {
       extended_b_shape = true;
       b_shape.push_back(1);
+      emscripten::val b_shape_arr = emscripten::val::array(GetNarrowedIntfromInt64<uint32_t>(b_shape));
       emscripten::val reshape_b_options = emscripten::val::object();
       reshape_b_options.set("label", node.Name() + "_reshape_b");
-      b = model_builder.GetBuilder().call<emscripten::val>("reshape", b,
-                                                           emscripten::val::array(GetVecUint32FromVecInt64(b_shape)),
-                                                           reshape_b_options);
+      b = model_builder.GetBuilder().call<emscripten::val>("reshape", b, b_shape_arr, reshape_b_options);
     }
 
     output = model_builder.GetBuilder().call<emscripten::val>("matmul", a, b, options);
@@ -88,9 +85,9 @@ Status GemmOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
     else if (extended_a_shape) {
       std::vector<uint32_t> new_shape;
       for (size_t i = 0; i < b_shape.size() - 2; i++) {
-        new_shape.push_back(narrow<uint32_t>(b_shape[i]));
+        new_shape.push_back(SafeInt<uint32_t>(b_shape[i]));
       }
-      new_shape.push_back(narrow<uint32_t>(b_shape.back()));
+      new_shape.push_back(SafeInt<uint32_t>(b_shape.back()));
       output = model_builder.GetBuilder().call<emscripten::val>("reshape",
                                                                 output,
                                                                 emscripten::val::array(new_shape),
@@ -100,7 +97,7 @@ Status GemmOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
     else if (extended_b_shape) {
       std::vector<uint32_t> new_shape;
       for (size_t i = 0; i < a_shape.size() - 1; i++) {
-        new_shape.push_back(narrow<uint32_t>(a_shape[i]));
+        new_shape.push_back(SafeInt<uint32_t>(a_shape[i]));
       }
       output = model_builder.GetBuilder().call<emscripten::val>("reshape",
                                                                 output,
@@ -151,7 +148,7 @@ Status GemmOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
 
 // Operator support related.
 
-bool GemmOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& /* initializers */,
+bool GemmOpBuilder::IsOpSupportedImpl(const GraphViewer&,
                                       const Node& node,
                                       const WebnnDeviceType /* device_type */,
                                       const logging::Logger& logger) const {
@@ -215,10 +212,10 @@ bool GemmOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& /* initializer
   return true;
 }
 
-bool GemmOpBuilder::HasSupportedInputsImpl(const InitializedTensorSet& /* initializers */, const Node& node,
+bool GemmOpBuilder::HasSupportedInputsImpl(const GraphViewer&, const Node& node,
                                            const emscripten::val& wnn_limits, const logging::Logger& logger) const {
   const auto& input_defs = node.InputDefs();
-  const auto& op_type = node.OpType();
+  const std::string_view op_type = node.OpType();
   int32_t input0_type;  // A data type
   int32_t input1_type;  // B data type
   int32_t input2_type;  // C or a_zero_point data type
@@ -240,7 +237,7 @@ bool GemmOpBuilder::HasSupportedInputsImpl(const InitializedTensorSet& /* initia
   if (has_input3) {
     input_types.push_back(input3_type);
   }
-  if (!AreInputDataTypesSame(op_type, input_types, logger)) {
+  if (!AreDataTypesSame(op_type, input_types, logger)) {
     return false;
   }
 

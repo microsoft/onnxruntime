@@ -57,8 +57,12 @@ class RotaryEmbeddingOpBuilder : public BaseOpBuilder {
 
   // Operator support related.
  private:
-  bool IsOpSupportedImpl(const InitializedTensorSet& initializers, const Node& node,
+  bool IsOpSupportedImpl(const GraphViewer&, const Node& node,
                          const WebnnDeviceType /* device_type */, const logging::Logger& logger) const override;
+  bool HasSupportedInputsImpl(const GraphViewer& graph_viewer, const Node& node,
+                              const emscripten::val& wnn_limits, const logging::Logger& logger) const override;
+  bool HasSupportedOutputsImpl(const Node& node, const emscripten::val& wnn_limits,
+                               const logging::Logger& logger) const override;
 };
 
 Status RotaryEmbeddingOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node,
@@ -85,7 +89,7 @@ Status RotaryEmbeddingOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_build
   emscripten::val wnn_builder = model_builder.GetBuilder();
 
   NodeAttrHelper helper(node);
-  const bool interleaved = gsl::narrow_cast<bool>(helper.Get("interleaved", 0));
+  const bool interleaved = static_cast<bool>(helper.Get("interleaved", 0));
   uint32_t num_heads = helper.Get("num_heads", 0);
   uint32_t rotary_embedding_dim = helper.Get("rotary_embedding_dim", 0);
 
@@ -155,14 +159,23 @@ Status RotaryEmbeddingOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_build
   if (position_ids_is_offset) {
     // We generate a sequence from 0 to sequence_length and add the offset to it.
     const std::vector<uint32_t> position_ids_range_shape = {1, sequence_length};
-    emscripten::val position_ids_range_buffer = emscripten::val::global("BigInt64Array").new_(sequence_length);
+    std::string typed_array_name = "BigInt64Array";
+    int position_ids_data_type = ONNX_NAMESPACE::TensorProto_DataType_INT64;
+    const bool is_int64_supported = model_builder.IsInt64Supported();
+    if (!is_int64_supported) {
+      // Int64 is not supported by current context, use int32 instead.
+      typed_array_name = "Int32Array";
+      position_ids_data_type = ONNX_NAMESPACE::TensorProto_DataType_INT32;
+    }
+    emscripten::val position_ids_range_buffer = emscripten::val::global(typed_array_name.c_str()).new_(sequence_length);
     for (uint32_t i = 0; i < sequence_length; i++) {
-      position_ids_range_buffer.set(i, emscripten::val::global("BigInt")(i));
+      position_ids_range_buffer.set(i, is_int64_supported ? emscripten::val::global("BigInt")(i) : emscripten::val(i));
     }
     emscripten::val position_ids_range_desc = emscripten::val::object();
     position_ids_range_desc.set("shape", emscripten::val::array(position_ids_range_shape));
     position_ids_range_desc.set("dimensions", emscripten::val::array(position_ids_range_shape));
-    position_ids_range_desc.set("dataType", emscripten::val("int64"));
+    ORT_RETURN_IF_NOT(SetWebnnDataType(position_ids_range_desc, position_ids_data_type),
+                      "WebNN backend does not support data type: ", position_ids_data_type);
     emscripten::val position_ids_range = wnn_builder.call<emscripten::val>(
         "constant", position_ids_range_desc, position_ids_range_buffer);
     // Add the offset to the sequence.
@@ -209,15 +222,24 @@ Status RotaryEmbeddingOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_build
   emscripten::val sign_constant_desc = emscripten::val::object();
   sign_constant_desc.set("shape", emscripten::val::array(sign_shape));
   sign_constant_desc.set("dimensions", emscripten::val::array(sign_shape));
-  ORT_RETURN_IF_NOT(SetWebnnDataType(sign_constant_desc, input_data_type), "Unsupported data type");
+  ORT_RETURN_IF_NOT(SetWebnnDataType(sign_constant_desc, input_data_type),
+                    "WebNN backend does not support data type: ", input_data_type);
   if (input_data_type == ONNX_NAMESPACE::TensorProto_DataType_FLOAT) {
     sign_buffer = emscripten::val::global("Float32Array").new_(2);
     sign_buffer.set(0, -1.0f);
     sign_buffer.set(1, 1.0f);
   } else if (input_data_type == ONNX_NAMESPACE::TensorProto_DataType_FLOAT16) {
-    sign_buffer = emscripten::val::global("Uint16Array").new_(2);
-    sign_buffer.set(0, PackFloat32ToUint16AsFloat16(-1.0f));
-    sign_buffer.set(1, PackFloat32ToUint16AsFloat16(1.0f));
+    if (model_builder.IsFloat16ArrayAvailable()) {
+      // Float16Array is avaliable - use Float16Array.
+      sign_buffer = emscripten::val::global("Float16Array").new_(2);
+      sign_buffer.set(0, -1.0f);
+      sign_buffer.set(1, 1.0f);
+    } else {
+      // Float16Array is not available - use Uint16Array instead.
+      sign_buffer = emscripten::val::global("Uint16Array").new_(2);
+      sign_buffer.set(0, PackFloat32ToUint16AsFloat16(-1.0f));
+      sign_buffer.set(1, PackFloat32ToUint16AsFloat16(1.0f));
+    }
   } else {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Unsupported input data type: ", input_data_type);
   }
@@ -255,7 +277,7 @@ Status RotaryEmbeddingOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_build
   }
 
   // Reshape the output to the original shape. The output shape is the same as the input shape.
-  const std::vector<uint32_t> output_shape = GetVecUint32FromVecInt64(input_shape);
+  const std::vector<uint32_t> output_shape = GetNarrowedIntfromInt64<uint32_t>(input_shape);
   emscripten::val reshape_output_options = emscripten::val::object();
   reshape_output_options.set("label", node_name + "_reshape_output");
   output = wnn_builder.call<emscripten::val>(
@@ -266,7 +288,7 @@ Status RotaryEmbeddingOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_build
 }
 
 // Operator support related.
-bool RotaryEmbeddingOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& initializers, const Node& node,
+bool RotaryEmbeddingOpBuilder::IsOpSupportedImpl(const GraphViewer&, const Node& node,
                                                  const WebnnDeviceType /* device_type */,
                                                  const logging::Logger& logger) const {
   const auto& input_defs = node.InputDefs();
@@ -300,6 +322,67 @@ bool RotaryEmbeddingOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& ini
   if (rotary_embedding_dim > 0 && num_heads == 0) {
     LOGS(logger, VERBOSE) << "RotaryEmbedding: num_heads must be provided if rotary_embedding_dim is specified";
     return false;
+  }
+
+  return true;
+}
+
+bool RotaryEmbeddingOpBuilder::HasSupportedInputsImpl(const GraphViewer&,
+                                                      const Node& node,
+                                                      const emscripten::val& wnn_limits,
+                                                      const logging::Logger& logger) const {
+  const auto& input_defs = node.InputDefs();
+  const std::string_view op_type = node.OpType();
+  int32_t input_type = 0;
+  int32_t position_ids_type = 0;
+  int32_t cos_cache_type = 0;
+  int32_t sin_cache_type = 0;
+  if (!GetType(*input_defs[0], input_type, logger) ||
+      !GetType(*input_defs[1], position_ids_type, logger) ||
+      !GetType(*input_defs[2], cos_cache_type, logger) ||
+      !GetType(*input_defs[3], sin_cache_type, logger)) {
+    return false;
+  }
+
+  std::array<int32_t, 3> input_types{input_type, cos_cache_type, sin_cache_type};
+  if (!AreDataTypesSame(op_type, input_types, logger)) {
+    return false;
+  }
+
+  if (position_ids_type != ONNX_NAMESPACE::TensorProto_DataType_INT64) {
+    return false;
+  }
+
+  // Check if the input data type is supported by each decomposed WebNN op.
+  // Decomposed ops include: "add", "concat", "gather", "mul", "reshape" and "split".
+  for (const std::string_view webnn_op_type : decomposed_op_map.at(op_type)) {
+    const std::string_view webnn_input_name = GetWebNNOpFirstInputName(webnn_op_type);
+    if (!IsDataTypeSupportedByWebNNOp(
+            op_type, webnn_op_type, input_type, wnn_limits, webnn_input_name, "input", logger)) {
+      return false;
+    }
+  }
+
+  return true;
+}
+
+bool RotaryEmbeddingOpBuilder::HasSupportedOutputsImpl(const Node& node,
+                                                       const emscripten::val& wnn_limits,
+                                                       const logging::Logger& logger) const {
+  const auto& output_defs = node.OutputDefs();
+  const std::string_view op_type = node.OpType();
+  int32_t output_type = 0;
+  if (!GetType(*output_defs[0], output_type, logger)) {
+    return false;
+  }
+
+  // Check if the output data type is supported by every decomposed WebNN op.
+  for (const std::string_view webnn_op_type : decomposed_op_map.at(op_type)) {
+    const std::string_view webnn_output_name = webnn_op_type == "split" ? "outputs" : "output";
+    if (!IsDataTypeSupportedByWebNNOp(
+            op_type, webnn_op_type, output_type, wnn_limits, webnn_output_name, "output", logger)) {
+      return false;
+    }
   }
 
   return true;

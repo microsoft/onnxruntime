@@ -85,7 +85,7 @@ struct TestOptions {
   std::optional<float> output_rel_error{};
 };
 
-std::ostream& operator<<(std::ostream& os, const TestOptions& opts) {
+[[maybe_unused]] std::ostream& operator<<(std::ostream& os, const TestOptions& opts) {
   return os << "M:" << opts.M << ", N:" << opts.N << ", K:" << opts.K
             << ", block_size:" << opts.block_size
             << ", accuracy_level:" << opts.accuracy_level
@@ -126,9 +126,9 @@ void RunTest(const TestOptions& opts,
                                             q_rows, q_cols);
 
   size_t q_data_size_in_bytes, q_scale_size, q_zp_size_in_bytes;
-  MlasBlockwiseQuantizedBufferSizes(QBits, static_cast<int>(opts.block_size), /* columnwise */ true,
-                                    static_cast<int>(K), static_cast<int>(N),
-                                    q_data_size_in_bytes, q_scale_size, &q_zp_size_in_bytes);
+  MlasBlockwiseQuantizedBufferSizes<QBits>(static_cast<int>(opts.block_size), /* columnwise */ true,
+                                           static_cast<int>(K), static_cast<int>(N),
+                                           q_data_size_in_bytes, q_scale_size, &q_zp_size_in_bytes);
 
   std::vector<uint8_t> input1_vals(q_data_size_in_bytes);
   std::vector<float> scales(q_scale_size);
@@ -327,6 +327,8 @@ void TestMatMulNBitsTyped() {
 #endif  // !defined(USE_DML) && !defined(USE_WEBGPU)
 }
 
+#if !defined(USE_OPENVINO)
+
 TEST(MatMulNBits, Float32_Accuracy0) {
   TestMatMulNBitsTyped<float, 1, 1, 16, 16, 0>();
   TestMatMulNBitsTyped<float, 1, 2, 16, 16, 0>();
@@ -387,6 +389,7 @@ TEST(MatMulNBits, Float32_Accuracy4) {
   TestMatMulNBitsTyped<float, 100, 288, 16, 16, 4>();
   TestMatMulNBitsTyped<float, 100, 288, 1024, 16, 4>();
   TestMatMulNBitsTyped<float, 100, 288, 1024, 128, 4>();
+  TestMatMulNBitsTyped<float, 100, 288, 192, 64, 4>();
   TestMatMulNBitsTyped<float, 100, 288, 93, 32, 4>();
   TestMatMulNBitsTyped<float, 100, 288, 93, 128, 4>();
   TestMatMulNBitsTyped<float, 100, 288, 1234, 16, 4>();
@@ -456,10 +459,12 @@ TEST(MatMulNBits, Float16_Accuracy4) {
   TestMatMulNBitsTyped<MLFloat16, 100, 288, 16, 16, 4>();
   TestMatMulNBitsTyped<MLFloat16, 100, 288, 1024, 16, 4>();
   TestMatMulNBitsTyped<MLFloat16, 100, 288, 1024, 128, 4>();
+  TestMatMulNBitsTyped<MLFloat16, 100, 288, 192, 64, 4>();
   TestMatMulNBitsTyped<MLFloat16, 100, 288, 93, 32, 4>();
   TestMatMulNBitsTyped<MLFloat16, 100, 288, 93, 128, 4>();
   TestMatMulNBitsTyped<MLFloat16, 100, 288, 1234, 16, 4>();
 }
+#endif
 #endif
 #endif
 
@@ -525,8 +530,10 @@ TEST(MatMulNBits, Float16Cuda) {
       for (auto K : {16, 32, 64, 128, 256, 1024, 93, 1234}) {
         for (auto block_size : {16, 32, 64, 128}) {
           for (auto has_gidx : has_gidx_options) {
-#ifdef USE_DML
+#if defined(USE_DML)
             RunTest(M, N, K, block_size, 0, false, true, has_gidx, true, 0.04f);
+#elif defined(USE_WEBGPU)
+            RunTest(M, N, K, block_size, 0, false, true, has_gidx, true, 0.03f);
 #else
             RunTest(M, N, K, block_size, 0, false, true, has_gidx);
             RunTest(M, N, K, block_size, 0, true, true, has_gidx, false);

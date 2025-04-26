@@ -2,7 +2,6 @@
 // Copyright (c) Intel Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "core/common/safeint.h"
 #include "core/providers/common.h"
 #include "core/providers/shared/utils/utils.h"
 #include "core/providers/webnn/builders/helper.h"
@@ -23,7 +22,7 @@ class PoolOpBuilder : public BaseOpBuilder {
 
   // Operator support related.
  private:
-  bool IsOpSupportedImpl(const InitializedTensorSet& /* initializers */, const Node& node,
+  bool IsOpSupportedImpl(const GraphViewer&, const Node& node,
                          const WebnnDeviceType /* device_type */, const logging::Logger& logger) const override;
 };
 
@@ -61,16 +60,17 @@ Status PoolOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
   emscripten::val options = emscripten::val::object();
   options.set("label", node.Name());
   NodeAttrHelper helper(node);
+  const bool is_nhwc = model_builder.GetPreferredLayout() == DataLayout::NHWC;
 
-  const auto kernel_shape = helper.Get("kernel_shape", std::vector<int32_t>{0, 0});
+  const auto onnx_kernel_shape = helper.Get("kernel_shape", std::vector<int32_t>{0, 0});
   if (!is_global_pooling) {
-    options.set("windowDimensions", emscripten::val::array(kernel_shape));
+    options.set("windowDimensions", emscripten::val::array(onnx_kernel_shape));
   }
   const auto strides = helper.Get("strides", std::vector<int32_t>{1, 1});
   options.set("strides", emscripten::val::array(strides));
   const auto dilations = helper.Get("dilations", std::vector<int32_t>{1, 1});
   options.set("dilations", emscripten::val::array(dilations));
-  if (model_builder.GetPreferredLayout() == DataLayout::NHWC) {
+  if (is_nhwc) {
     options.set("layout", emscripten::val("nhwc"));
   } else {
     options.set("layout", emscripten::val("nchw"));
@@ -79,7 +79,6 @@ Status PoolOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
   // Add Padding.
   // Usually using autopadding is more efficient than using explicit padding.
   // Try to see if we can map explicit padding to auto padding.
-  const auto onnx_kernel_shape = helper.Get("kernel_shape", std::vector<int64_t>{0, 0});
   const auto onnx_strides = helper.Get("strides", std::vector<int64_t>{1, 1});
   const auto onnx_pads = helper.Get("pads", std::vector<int64_t>{0, 0, 0, 0});
   auto pads = helper.Get("pads", std::vector<uint32_t>{0, 0, 0, 0});
@@ -94,8 +93,8 @@ Status PoolOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
                                       helper.Get("dilations", std::vector<int64_t>{1, 1}),
                                       auto_pad_type,
                                       pads_out,
-                                      model_builder.GetPreferredLayout() == DataLayout::NCHW));
-    pads = GetVecUint32FromVecInt64(pads_out);
+                                      !is_nhwc));
+    pads = GetNarrowedIntfromInt64<uint32_t>(pads_out);
   }
   // Permute the ONNX's pads, which is [beginning_height, beginning_width, ending_height, ending_width],
   // while WebNN's padding is [beginning_height, ending_height, beginning_width, ending_width].
@@ -106,13 +105,30 @@ Status PoolOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
   options.set("roundingType", ceil_mode == 0 ? emscripten::val("floor")
                                              : emscripten::val("ceil"));
 
+  // WebNN doesn't support AveragePool with count_include_pad == 1, emulate it by pad + averagePool2d.
+  if (op_type == "AveragePool" && helper.Get("count_include_pad", 0) == 1) {
+    std::vector<uint32_t> beginning_padding{0, 0, pads[0], pads[1]};
+    std::vector<uint32_t> ending_padding{0, 0, pads[2], pads[3]};
+    // Unset padding option, because we will use pad op instead.
+    options.set("padding", emscripten::val::array(std::vector<uint32_t>{0, 0, 0, 0}));
+    if (is_nhwc) {
+      beginning_padding = {0, pads[0], pads[1], 0};
+      ending_padding = {0, pads[2], pads[3], 0};
+    }
+
+    emscripten::val pad_options = emscripten::val::object();
+    pad_options.set("label", node.Name() + "_pad");
+    input = model_builder.GetBuilder().call<emscripten::val>("pad", input, emscripten::val::array(beginning_padding),
+                                                             emscripten::val::array(ending_padding), pad_options);
+  }
+
   emscripten::val output = model_builder.GetBuilder().call<emscripten::val>(webnn_op_name.c_str(), input, options);
   model_builder.AddOperand(node.OutputDefs()[0]->Name(), std::move(output));
   return Status::OK();
 }
 
 // Operator support related.
-bool PoolOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& /* initializers */,
+bool PoolOpBuilder::IsOpSupportedImpl(const GraphViewer&,
                                       const Node& node,
                                       const WebnnDeviceType /* device_type */,
                                       const logging::Logger& logger) const {
@@ -135,13 +151,6 @@ bool PoolOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& /* initializer
   if (op_type == "AveragePool" || op_type == "LpPool" || op_type == "MaxPool") {
     if (helper.Get("kernel_shape", std::vector<int32_t>{1, 1}).size() != 2) {
       LOGS(logger, VERBOSE) << "Only pooling 2d is supported";
-      return false;
-    }
-  }
-
-  if (op_type == "AveragePool") {
-    if (helper.Get("count_include_pad", 0) != 0) {
-      LOGS(logger, VERBOSE) << "AveragePool only supports count_include_pad == 0";
       return false;
     }
   }

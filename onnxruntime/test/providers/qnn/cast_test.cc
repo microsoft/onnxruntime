@@ -52,11 +52,8 @@ static void RunCastOpTest(const std::vector<int64_t>& shape, ONNX_NAMESPACE::Ten
                           bool use_htp,
                           bool enable_fp16_precision = true) {
   ProviderOptions provider_options;
-#if defined(_WIN32)
-  provider_options["backend_path"] = use_htp ? "QnnHtp.dll" : "QnnCpu.dll";
-#else
-  provider_options["backend_path"] = use_htp ? "libQnnHtp.so" : "libQnnCpu.so";
-#endif
+  provider_options["backend_type"] = use_htp ? "htp" : "cpu";
+  provider_options["offload_graph_io_quantization"] = "0";
 
   if (use_htp && enable_fp16_precision) {
     provider_options["enable_htp_fp16_precision"] = "1";

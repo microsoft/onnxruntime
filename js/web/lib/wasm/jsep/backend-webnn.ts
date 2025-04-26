@@ -8,11 +8,11 @@
 
 import { Env, Tensor } from 'onnxruntime-common';
 
-import { DataType } from '../wasm-common';
+import { DataType, tensorDataTypeStringToEnum } from '../wasm-common';
 import { getInstance } from '../wasm-factory';
 
 import { createView } from './tensor-view';
-import { TensorId, createTensorManager } from './webnn/tensor-manager';
+import { TensorId, createTensorManager, convertDataToInt32 } from './webnn/tensor-manager';
 import { configureLogger, LOG_DEBUG } from './log';
 
 /*
@@ -75,6 +75,28 @@ export class WebNNBackend {
    * Current session id.
    */
   private activeSessionId?: number;
+  /**
+   * Maps from session id to list of graph inputs.
+   */
+  private sessionGraphInputs: Map<number, string[]> = new Map();
+  /**
+   * Maps from session id to list of graph outputs.
+   */
+  private sessionGraphOutputs: Map<number, string[]> = new Map();
+  /**
+   * Temporary graph inputs for the current session.
+   * These inputs will be registered when the session is created.
+   */
+  private temporaryGraphInputs: string[] = [];
+  /**
+   * Temporary graph outputs for the current session.
+   * These outputs will be registered when the session is created.
+   */
+  private temporaryGraphOutputs: string[] = [];
+  /**
+   * Temporary tensors for the current session.
+   */
+  private temporarySessionTensorIds: Map<number, TensorId[]> = new Map();
 
   constructor(env: Env) {
     configureLogger(env.logLevel!, !!env.debug);
@@ -88,7 +110,22 @@ export class WebNNBackend {
   }
 
   public onRunStart(sessionId: number): void {
+    LOG_DEBUG('verbose', () => `[WebNN] onRunStart {sessionId: ${sessionId}}`);
     this.activeSessionId = sessionId;
+  }
+
+  public onRunEnd(sessionId: number): void {
+    LOG_DEBUG('verbose', () => `[WebNN] onRunEnd {sessionId: ${sessionId}}`);
+    const tensorIds = this.temporarySessionTensorIds.get(sessionId);
+    if (!tensorIds) {
+      return;
+    }
+    for (const tensorId of tensorIds) {
+      LOG_DEBUG('verbose', () => `[WebNN] releasing temporary tensor {tensorId: ${tensorId}}`);
+      this.tensorManager.releaseTensorId(tensorId);
+    }
+    this.temporarySessionTensorIds.delete(sessionId);
+    this.activeSessionId = undefined;
   }
 
   public async createMLContext(optionsOrDevice?: MLContextOptions | GPUDevice): Promise<MLContext> {
@@ -126,14 +163,6 @@ export class WebNNBackend {
     }
   }
 
-  public get currentContext(): MLContext {
-    const mlContext = this.getMLContext(this.currentSessionId);
-    if (!mlContext) {
-      throw new Error(`No MLContext found for session ${this.currentSessionId}`);
-    }
-    return mlContext;
-  }
-
   public registerMLContext(sessionId: number, mlContext: MLContext): void {
     this.mlContextBySessionId.set(sessionId, mlContext);
     let sessionIds = this.sessionIdsByMLContext.get(mlContext);
@@ -142,9 +171,20 @@ export class WebNNBackend {
       this.sessionIdsByMLContext.set(mlContext, sessionIds);
     }
     sessionIds.add(sessionId);
+
+    if (this.temporaryGraphInputs.length > 0) {
+      this.sessionGraphInputs.set(sessionId, this.temporaryGraphInputs);
+      this.temporaryGraphInputs = [];
+    }
+    if (this.temporaryGraphOutputs.length > 0) {
+      this.sessionGraphOutputs.set(sessionId, this.temporaryGraphOutputs);
+      this.temporaryGraphOutputs = [];
+    }
   }
 
   public onReleaseSession(sessionId: number): void {
+    this.sessionGraphInputs.delete(sessionId);
+    this.sessionGraphOutputs.delete(sessionId);
     const mlContext = this.mlContextBySessionId.get(sessionId)!;
     if (!mlContext) {
       // Current session is not a WebNN session.
@@ -177,6 +217,7 @@ export class WebNNBackend {
   }
 
   public async ensureTensor(
+    sessionId: number | undefined,
     tensorId: TensorId,
     onnxDataType: DataType,
     dimensions: number[],
@@ -186,7 +227,34 @@ export class WebNNBackend {
     if (!webnnDataType) {
       throw new Error(`Unsupported ONNX data type: ${onnxDataType}`);
     }
-    return this.tensorManager.ensureTensor(tensorId, webnnDataType, dimensions, copyOld);
+    return this.tensorManager.ensureTensor(
+      sessionId ?? this.currentSessionId,
+      tensorId,
+      webnnDataType,
+      dimensions,
+      copyOld,
+    );
+  }
+
+  public async createTemporaryTensor(
+    sessionId: number,
+    onnxDataType: DataType,
+    shape: readonly number[],
+  ): Promise<TensorId> {
+    LOG_DEBUG('verbose', () => `[WebNN] createTemporaryTensor {onnxDataType: ${onnxDataType}, shape: ${shape}}`);
+    const dataType = onnxDataTypeToWebnnDataType.get(onnxDataType);
+    if (!dataType) {
+      throw new Error(`Unsupported ONNX data type: ${onnxDataType}`);
+    }
+    const tensorId = this.tensorManager.reserveTensorId();
+    await this.tensorManager.ensureTensor(sessionId, tensorId, dataType, shape, false);
+    const tensorIds = this.temporarySessionTensorIds.get(sessionId);
+    if (!tensorIds) {
+      this.temporarySessionTensorIds.set(sessionId, [tensorId]);
+    } else {
+      tensorIds.push(tensorId);
+    }
+    return tensorId;
   }
 
   public uploadTensor(tensorId: TensorId, data: Uint8Array): void {
@@ -209,13 +277,13 @@ export class WebNNBackend {
     };
   }
 
-  public registerMLTensor(tensor: MLTensor, onnxDataType: DataType, dimensions: number[]): TensorId {
+  public registerMLTensor(sessionId: number, tensor: MLTensor, onnxDataType: DataType, dimensions: number[]): TensorId {
     const webnnDataType = onnxDataTypeToWebnnDataType.get(onnxDataType);
     if (!webnnDataType) {
       throw new Error(`Unsupported ONNX data type: ${onnxDataType}`);
     }
 
-    const id = this.tensorManager.registerTensor(this.currentContext, tensor, webnnDataType, dimensions);
+    const id = this.tensorManager.registerTensor(sessionId, tensor, webnnDataType, dimensions);
     LOG_DEBUG(
       'verbose',
       () =>
@@ -234,6 +302,7 @@ export class WebNNBackend {
     builder: MLGraphBuilder,
     desc: MLOperandDescriptor,
     mountedFiles: Map<string, Uint8Array> | undefined,
+    shouldConvertInt64ToInt32 = false,
   ): MLOperand {
     // If available, "Module.MountedFiles" is a Map for all preloaded files.
     if (!mountedFiles) {
@@ -260,7 +329,8 @@ export class WebNNBackend {
         bufferView = new Float32Array(buffer);
         break;
       case 'float16':
-        bufferView = new Uint16Array(buffer);
+        bufferView =
+          typeof Float16Array !== 'undefined' && Float16Array.from ? new Float16Array(buffer) : new Uint16Array(buffer);
         break;
       case 'int32':
         bufferView = new Int32Array(buffer);
@@ -269,7 +339,14 @@ export class WebNNBackend {
         bufferView = new Uint32Array(buffer);
         break;
       case 'int64':
-        bufferView = new BigInt64Array(buffer);
+        if (shouldConvertInt64ToInt32) {
+          // Int64 is not supported by current context, use int32 instead.
+          const int32Buffer = convertDataToInt32(new Uint8Array(buffer), 'int64');
+          bufferView = new Int32Array(int32Buffer.buffer);
+          desc.dataType = 'int32';
+        } else {
+          bufferView = new BigInt64Array(buffer);
+        }
         break;
       case 'uint64':
         bufferView = new BigUint64Array(buffer);
@@ -286,9 +363,54 @@ export class WebNNBackend {
         throw new Error(`Unsupported data type: ${desc.dataType} in creating WebNN Constant from external data.`);
     }
 
-    LOG_DEBUG('verbose', () => `[WebNN] registerMLConstant {dataType: ${desc.dataType}, shape: ${desc.shape}}}`);
+    LOG_DEBUG(
+      'verbose',
+      () =>
+        `[WebNN] registerMLConstant {dataType: ${desc.dataType}, shape: ${desc.shape}}} ${
+          shouldConvertInt64ToInt32 ? '(Note: it was int64 data type and registered to int32 as workaround)' : ''
+        }`,
+    );
 
     return builder.constant(desc, bufferView);
+  }
+
+  public registerGraphInput(inputName: string): void {
+    this.temporaryGraphInputs.push(inputName);
+  }
+
+  public registerGraphOutput(outputName: string): void {
+    this.temporaryGraphOutputs.push(outputName);
+  }
+
+  public isGraphInput(sessionId: number, inputName: string): boolean {
+    const inputNames = this.sessionGraphInputs.get(sessionId);
+    if (!inputNames) {
+      return false;
+    }
+    return inputNames.includes(inputName);
+  }
+
+  public isGraphOutput(sessionId: number, outputName: string): boolean {
+    const outputNames = this.sessionGraphOutputs.get(sessionId);
+    if (!outputNames) {
+      return false;
+    }
+    return outputNames.includes(outputName);
+  }
+
+  public isGraphInputOutputTypeSupported(sessionId: number, type: Tensor.Type, isInput = true): boolean {
+    const context = this.mlContextBySessionId.get(sessionId);
+    const dataType = onnxDataTypeToWebnnDataType.get(tensorDataTypeStringToEnum(type));
+
+    if (typeof dataType === 'undefined') {
+      return false;
+    }
+
+    if (isInput) {
+      return !!context?.opSupportLimits().input.dataTypes.includes(dataType);
+    } else {
+      return !!context?.opSupportLimits().output.dataTypes.includes(dataType);
+    }
   }
 
   public flush(): void {

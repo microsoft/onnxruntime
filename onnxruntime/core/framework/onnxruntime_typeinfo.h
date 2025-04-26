@@ -31,7 +31,7 @@ struct OrtTypeInfo {
   ONNXType type;
   std::string denotation;
 
-  std::unique_ptr<OrtTensorTypeAndShapeInfo> data;
+  std::unique_ptr<OrtTensorTypeAndShapeInfo> tensor_type_info;
   std::unique_ptr<OrtMapTypeInfo> map_type_info;
   std::unique_ptr<OrtSequenceTypeInfo> sequence_type_info;
   std::unique_ptr<OrtOptionalTypeInfo> optional_type_info;

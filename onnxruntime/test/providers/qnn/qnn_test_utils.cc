@@ -14,6 +14,7 @@
 #include "core/framework/compute_capability.h"
 #include "core/graph/graph.h"
 #include "core/session/onnxruntime_session_options_config_keys.h"
+#include "core/optimizer/graph_optimizer_registry.h"
 
 namespace onnxruntime {
 namespace test {
@@ -278,10 +279,11 @@ static BackendSupport GetHTPSupport(const onnxruntime::logging::Logger& logger) 
   MockKernelLookup kernel_lookup;
   onnxruntime::GraphViewer graph_viewer(graph);
   std::unique_ptr<onnxruntime::IExecutionProvider> qnn_ep = QnnExecutionProviderWithOptions(
-      {{"backend_path", "QnnHtp.dll"}});
+      {{"backend_type", "htp"}, {"offload_graph_io_quantization", "0"}});
+  GraphOptimizerRegistry graph_optimizer_registry(nullptr, nullptr, nullptr);  // as a placeholder to feed into GetCapability
 
   qnn_ep->SetLogger(&logger);
-  auto result = qnn_ep->GetCapability(graph_viewer, kernel_lookup);
+  auto result = qnn_ep->GetCapability(graph_viewer, kernel_lookup, graph_optimizer_registry, nullptr);
 
   return result.empty() ? BackendSupport::UNSUPPORTED : BackendSupport::SUPPORTED;
 }
@@ -341,10 +343,11 @@ static BackendSupport GetCPUSupport(const onnxruntime::logging::Logger& logger) 
   MockKernelLookup kernel_lookup;
   onnxruntime::GraphViewer graph_viewer(graph);
   std::unique_ptr<onnxruntime::IExecutionProvider> qnn_ep = QnnExecutionProviderWithOptions(
-      {{"backend_path", "QnnCpu.dll"}});
+      {{"backend_type", "cpu"}, {"offload_graph_io_quantization", "0"}});
+  GraphOptimizerRegistry graph_optimizer_registry(nullptr, nullptr, nullptr);  // as a placeholder to feed into GetCapability
 
   qnn_ep->SetLogger(&logger);
-  auto result = qnn_ep->GetCapability(graph_viewer, kernel_lookup);
+  auto result = qnn_ep->GetCapability(graph_viewer, kernel_lookup, graph_optimizer_registry, nullptr);
 
   return result.empty() ? BackendSupport::UNSUPPORTED : BackendSupport::SUPPORTED;
 }

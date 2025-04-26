@@ -27,9 +27,8 @@ class CastOpBuilder : public BaseOpBuilder {
 Status CastOpBuilder::AddToModelBuilderImpl([[maybe_unused]] ModelBuilder& model_builder,
                                             [[maybe_unused]] const Node& node,
                                             [[maybe_unused]] const logging::Logger& logger) const {
-// This is a special handling case for ArgMax Op, where argmax is followed by a cast to int32 type.
-// The ArgMax is fused with the Cast node and produces an int32 output.
-#if defined(COREML_ENABLE_MLPROGRAM)
+  // This is a special handling case for ArgMax Op, where argmax is followed by a cast to int32 type.
+  // The ArgMax is fused with the Cast node and produces an int32 output.
   if (model_builder.CreateMLProgram()) {
     using namespace CoreML::Specification::MILSpec;
     // https://apple.github.io/coremltools/source/coremltools.converters.mil.mil.ops.defs.html#coremltools.converters.mil.mil.ops.defs.iOS15.elementwise_unary.cast
@@ -73,7 +72,6 @@ Status CastOpBuilder::AddToModelBuilderImpl([[maybe_unused]] ModelBuilder& model
     AddOperationOutput(*op, *node.OutputDefs()[0], cast_to_type);
     model_builder.AddOperation(std::move(op));
   }
-#endif
 
   return Status::OK();
 }
@@ -134,7 +132,6 @@ bool CastOpBuilder::HasSupportedInputsImpl(const Node& node, [[maybe_unused]] co
     return false;
   }
 
-#if defined(COREML_ENABLE_MLPROGRAM)
   if (input_params.create_mlprogram) {
     if ((input_type == ONNX_NAMESPACE::TensorProto_DataType_INT32 ||
          input_type == ONNX_NAMESPACE::TensorProto_DataType_INT64 ||
@@ -152,7 +149,6 @@ bool CastOpBuilder::HasSupportedInputsImpl(const Node& node, [[maybe_unused]] co
       return false;
     }
   }
-#endif
 
   // only support int64 coming from ArgMax (check for ArgMax is done in IsOpSupportedImpl())
   if (input_type != ONNX_NAMESPACE::TensorProto_DataType_INT64) {

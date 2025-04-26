@@ -8,8 +8,7 @@
 #include <string>
 #include "QnnOpDef.h"
 #include "CPU/QnnCpuCommon.h"
-// TODO: not exist for Windows yet
-// #include "GPU/QnnGpuCommon.h"
+#include "GPU/QnnGpuCommon.h"
 #include "DSP/QnnDspCommon.h"
 #include "HTP/QnnHtpCommon.h"
 #include "HTP/QnnHtpContext.h"
@@ -50,6 +49,70 @@ static const char* DlError() {
 #else
   return ::dlerror();
 #endif
+}
+
+Status ReadBinaryFromFile(const std::string& file_path, uint8_t* buffer, size_t buffer_size) {
+  ORT_RETURN_IF(nullptr == buffer, "Binary buffer is nullptr");
+  std::ifstream in(file_path, std::ifstream::binary);
+  ORT_RETURN_IF(!in, "Failed to open input file: ", file_path.c_str());
+  ORT_RETURN_IF(!in.read(reinterpret_cast<char*>(buffer), buffer_size), "Failed to read the contents of: ", file_path.c_str());
+  return Status::OK();
+}
+
+Status QnnBackendManager::ParseLoraConfig(std::string lora_config_path) {
+  LOGS_DEFAULT(INFO) << "Acquiring the QnnInterface " << lora_config_path;
+
+  // QNN Lora Config file format should be a single line, with the graph name first,
+  // followed by the qnn lora context binary path, separated by a semicolon (;)
+  // Example: <graph_name>;<binary_path>
+  LOGS_DEFAULT(INFO) << "Loading Lora Config " << lora_config_path;
+  std::ifstream file(lora_config_path);
+  std::string line;
+
+  if (file.is_open()) {
+    if (std::getline(file, line)) {
+      std::istringstream ss(line);
+      std::string graph_name;
+      std::string lora_adapter_bin_path;
+
+      if (std::getline(ss, graph_name, ';') && std::getline(ss, lora_adapter_bin_path)) {
+        size_t buffer_size = std::filesystem::file_size(lora_adapter_bin_path.c_str());
+
+        ORT_RETURN_IF(0 == buffer_size, "Received path to an empty file. Nothing to deserialize.");
+        std::unique_ptr<uint8_t[]> buffer = std::make_unique<uint8_t[]>(buffer_size);
+        void* voidBufferPtr = static_cast<void*>(buffer.get());
+        QnnContext_Buffer_t contextBuffer{QNN_CONTEXT_BUFFER_VERSION_1,
+                                          {QNN_CONTEXTMEMTYPE_RAW, {{voidBufferPtr, buffer_size}}}};
+
+        auto status = ReadBinaryFromFile(lora_adapter_bin_path,
+                                         reinterpret_cast<uint8_t*>(buffer.get()),
+                                         buffer_size);
+
+        ORT_RETURN_IF(status != Status::OK(), "Failed to read binary data.");
+        Qnn_GraphHandle_t graph;
+        bool graph_retrieve_success = false;
+        for (size_t cIdx = 0; cIdx < contexts_.size(); cIdx++) {
+          auto graph_retrieve_rt = qnn_interface_.graphRetrieve(contexts_[cIdx], graph_name.c_str(), &graph);
+          if (QNN_SUCCESS != graph_retrieve_rt) {
+            continue;
+          }
+
+          graph_retrieve_success = true;
+
+          auto context_apply_binary_section_rt = qnn_interface_.contextApplyBinarySection(
+              contexts_[cIdx], graph, QNN_CONTEXT_SECTION_UPDATABLE, &contextBuffer, profile_backend_handle_, nullptr);
+          ORT_RETURN_IF(QNN_SUCCESS != context_apply_binary_section_rt, "Failed to apply binary section.");
+          break;
+        }
+        ORT_RETURN_IF_NOT(graph_retrieve_success, "Failed to retrieve graph: ", graph_name, " and apply binary section.");
+      }
+    }
+    file.close();
+  } else {
+    LOGS_DEFAULT(ERROR) << "Unable to load Lora Config " << lora_config_path;
+  }
+
+  return Status::OK();
 }
 
 template <typename F, class T>
@@ -107,10 +170,9 @@ void QnnBackendManager::SetQnnBackendType(uint32_t backend_id) {
     case QNN_BACKEND_ID_CPU:
       qnn_backend_type_ = QnnBackendType::CPU;
       break;
-      // TODO: update once it's ready for Widows
-      // case QNN_BACKEND_ID_GPU:
-      //  qnn_backend_type_ = QnnBackendType::GPU;
-      //  break;
+    case QNN_BACKEND_ID_GPU:
+      qnn_backend_type_ = QnnBackendType::GPU;
+      break;
     case QNN_BACKEND_ID_DSP:
       qnn_backend_type_ = QnnBackendType::DSP;
       break;
@@ -307,8 +369,16 @@ Status QnnBackendManager::InitializeQnnLog(const logging::Logger& logger) {
 QnnLog_Level_t QnnBackendManager::MapOrtSeverityToQNNLogLevel(logging::Severity ort_log_level) {
   // Map ORT log severity to Qnn log level
   switch (ort_log_level) {
-    case logging::Severity::kVERBOSE:
-      return QNN_LOG_LEVEL_DEBUG;
+    case logging::Severity::kVERBOSE: {
+      switch ((GetQnnBackendType())) {
+        case QnnBackendType::GPU:
+          // Currently GPU needs this log level to work.
+          // This switch will be removed once this is resolved.
+          return QNN_LOG_LEVEL_DEBUG;
+        default:
+          return QNN_LOG_LEVEL_VERBOSE;
+      }
+    }
     case logging::Severity::kINFO:
       return QNN_LOG_LEVEL_INFO;
     case logging::Severity::kWARNING:
@@ -470,8 +540,10 @@ Status QnnBackendManager::InitializeProfiling() {
   QnnProfile_Level_t qnn_profile_level = QNN_PROFILE_LEVEL_BASIC;
   if (ProfilingLevel::BASIC == profiling_level_merge_) {
     qnn_profile_level = QNN_PROFILE_LEVEL_BASIC;
+    LOGS_DEFAULT(VERBOSE) << "Profiling level set to basic.";
   } else if (ProfilingLevel::DETAILED == profiling_level_merge_) {
     qnn_profile_level = QNN_PROFILE_LEVEL_DETAILED;
+    LOGS_DEFAULT(VERBOSE) << "Profiling level set to detailed.";
   }
   Qnn_ErrorHandle_t result = qnn_interface_.profileCreate(backend_handle_, qnn_profile_level, &profile_backend_handle_);
   ORT_RETURN_IF(QNN_PROFILE_NO_ERROR != result, "Failed to create QNN profile! Error: ", QnnErrorHandleToString(result));
@@ -536,7 +608,7 @@ Status SetQnnContextConfig(ContextPriority context_priority, QnnContext_Config_t
   return Status::OK();
 }
 
-Status QnnBackendManager::CreateContext() {
+Status QnnBackendManager::CreateContext(bool enable_htp_weight_sharing) {
   if (true == context_created_) {
     LOGS_DEFAULT(INFO) << "Context created already.";
     return Status::OK();
@@ -545,22 +617,37 @@ Status QnnBackendManager::CreateContext() {
   QnnContext_Config_t context_config_weight_sharing = QNN_CONTEXT_CONFIG_INIT;
   QnnHtpContext_CustomConfig_t custom_config;
   custom_config.option = QNN_HTP_CONTEXT_CONFIG_OPTION_WEIGHT_SHARING_ENABLED;
-  custom_config.weightSharingEnabled = enable_htp_weight_sharing_;
+  custom_config.weightSharingEnabled = enable_htp_weight_sharing;
   context_config_weight_sharing.option = QNN_CONTEXT_CONFIG_OPTION_CUSTOM;
   context_config_weight_sharing.customConfig = &custom_config;
 
   QnnContext_Config_t context_priority_config = QNN_CONTEXT_CONFIG_INIT;
   ORT_RETURN_IF_ERROR(SetQnnContextConfig(context_priority_, context_priority_config));
+
   const QnnContext_Config_t* npu_context_configs[] = {&context_priority_config,
                                                       &context_config_weight_sharing,
                                                       nullptr};
   const QnnContext_Config_t* empty_context_configs[] = {nullptr};
-  bool is_npu_backend = IsNpuBackend(GetQnnBackendType());
+
+  const QnnContext_Config_t** configs = nullptr;
+  switch (GetQnnBackendType()) {
+    case QnnBackendType::HTP:
+    case QnnBackendType::DSP:
+      configs = npu_context_configs;
+      break;
+    case QnnBackendType::GPU:
+      // Currently only this works with QnnGpu.
+      configs = nullptr;
+      break;
+    default:
+      configs = empty_context_configs;
+      break;
+  }
 
   Qnn_ContextHandle_t context = nullptr;
   Qnn_ErrorHandle_t result = qnn_interface_.contextCreate(backend_handle_,
                                                           device_handle_,
-                                                          is_npu_backend ? npu_context_configs : empty_context_configs,
+                                                          configs,
                                                           &context);
 
   ORT_RETURN_IF(QNN_CONTEXT_NO_ERROR != result, "Failed to create context. Error: ", QnnErrorHandleToString(result));
@@ -808,7 +895,8 @@ Status QnnBackendManager::LoadCachedQnnContextFromBuffer(char* buffer, uint64_t 
 // or generate Qnn context binary is enabled -- to get the max spill fill buffer size
 Status QnnBackendManager::SetupBackend(const logging::Logger& logger,
                                        bool load_from_cached_context,
-                                       bool need_load_system_lib) {
+                                       bool need_load_system_lib,
+                                       bool share_ep_contexts) {
   std::lock_guard<std::recursive_mutex> lock(logger_recursive_mutex_);
   if (backend_setup_completed_) {
     LOGS(logger, VERBOSE) << "Backend setup already!";
@@ -863,9 +951,18 @@ Status QnnBackendManager::SetupBackend(const logging::Logger& logger,
     LOGS(logger, VERBOSE) << "InitializeProfiling succeed.";
   }
 
+  bool enable_htp_weight_sharing = false;
+  if (share_ep_contexts && !load_from_cached_context) {
+#if defined(__aarch64__) || defined(_M_ARM64)
+    LOGS(logger, WARNING) << "Weight sharing only available with offline generation on x64 platform, not work on real device.";
+#else
+    enable_htp_weight_sharing = true;
+#endif
+  }
+
   if (!load_from_cached_context) {
     if (status.IsOK()) {
-      status = CreateContext();
+      status = CreateContext(enable_htp_weight_sharing);
     }
     if (status.IsOK()) {
       LOGS(logger, VERBOSE) << "CreateContext succeed.";
@@ -1464,7 +1561,7 @@ const char* QnnBackendManager::QnnProfileErrorToString(QnnProfile_Error_t error)
   }
 }
 
-std::string_view QnnBackendManager::QnnErrorHandleToString(Qnn_ErrorHandle_t error) {
+std::string QnnBackendManager::QnnErrorHandleToString(Qnn_ErrorHandle_t error) {
   return utils::GetQnnErrorMessage(qnn_interface_, error);
 }
 

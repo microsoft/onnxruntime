@@ -21,6 +21,7 @@
 #include "core/framework/external_data_loader_manager.h"
 #include "core/framework/kernel_registry_manager.h"
 #include "core/framework/prepacked_weights_container.h"
+#include "core/framework/resource_accountant.h"
 #include "core/framework/session_state.h"
 #include "core/framework/tuning_results.h"
 #include "core/framework/framework_provider_common.h"
@@ -45,6 +46,9 @@
 namespace ONNX_NAMESPACE {
 class ModelProto;
 }  // namespace ONNX_NAMESPACE
+
+// OrtModelEditorApi Model. Used to dynamically construct a model via C API at runtime.
+struct OrtModel;
 
 namespace onnxruntime {  // forward declarations
 class CustomRegistry;
@@ -319,6 +323,27 @@ class InferenceSession {
    * @return OK if success.
    */
   [[nodiscard]] common::Status Load();
+
+  /**
+   * Load an OrtModel that was dynamically constructed via OrtModelEditorApi.
+   *
+   * @param graph_api_model OrtModel from OrtModelEditorApi
+   * @return OK if success.
+   */
+  [[nodiscard]] common::Status Load(const OrtModel& graph_api_model);
+
+  /**
+   * Apply updates from an OrtModel that was created via OrtModelEditorApi.
+   * This can:
+   *   - add nodes at the start and end of the model
+   *   - add initializers
+   *   - update the graph inputs/outputs
+   *
+   * @param graph_api_model OrtModel from OrtModelEditorApi
+   * @return OK if success.
+   */
+  [[nodiscard]] common::Status ApplyUpdates(const OrtModel& graph_api_model);
+
 #endif  // !defined(ORT_MINIMAL_BUILD)
 
   /**
@@ -454,6 +479,11 @@ class InferenceSession {
   const SessionOptions& GetSessionOptions() const;
 
   /*
+   * Get the options so auto-selected EPs can augment as they are added post-session creation.
+   */
+  SessionOptions& GetMutableSessionOptions();
+
+  /*
    * Get the DataTransferManager associated with this session
    */
   const DataTransferManager& GetDataTransferManager() const;
@@ -545,6 +575,33 @@ class InferenceSession {
    */
   Status AddPrePackedWeightsContainer(PrepackedWeightsContainer* prepacked_weights_container);
 
+#if !defined(ORT_MINIMAL_BUILD)
+  /**
+   * CreateNodeStats recorder and enable collection of node statistics that is useful
+   * for resource constrained partitioning and otherwise.
+   *
+   * @param node_stats_file - this file will be created at the same folder where the model file is present.
+   */
+  Status CreateNodeStatsRecorder(const std::filesystem::path& node_stats_file);
+
+  /**
+   * Returns true if collection is enabled
+   */
+  bool IsNodeStatsCollectionEnabled() const noexcept {
+    return node_stats_recorder_.has_value();
+  }
+
+  /**
+   * NodeStatsRecorder pointer. If not present, returns nullptr
+   */
+  NodeStatsRecorder* GetNodeStatsRecorder() noexcept {
+    return node_stats_recorder_.has_value() ? &*node_stats_recorder_ : nullptr;
+  }
+
+#endif
+
+  const Model& GetModel() const;
+
  protected:
 #if !defined(ORT_MINIMAL_BUILD)
 
@@ -601,6 +658,12 @@ class InferenceSession {
   /// convenience pointer to logger. should always be the same as session_state_.Logger();
   const logging::Logger* session_logger_;
 
+  // The list of execution providers.
+  // This MUST be prior to model_ in case there are values in the model that were allocated using an allocator
+  // provided by the EP. If that is the case the allocator's `free` implementation may depend on other parts of the
+  // EP instance.
+  ExecutionProviders execution_providers_;
+
   // The model served by this inference session instance.
   // Currently this has to be a shared ptr because the Model::Load method
   // returns a shared_ptr only. Ideally factory functions should always return
@@ -610,9 +673,6 @@ class InferenceSession {
 
   // The file path of where the model was loaded. e.g. /tmp/test_squeezenet/model.onnx
   PathString model_location_;
-
-  // The list of execution providers.
-  ExecutionProviders execution_providers_;
 
  private:
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(InferenceSession);
@@ -725,6 +785,10 @@ class InferenceSession {
   // *after* the session_state_. This destruction order ensures that the custom operator library handles stored within
   // the session options are released after the individual operators are destroyed.
   SessionOptions session_options_;
+
+  CheckLoadCancellationFn check_load_cancellation_fn_ = [this]() {
+    return session_options_.IsLoadCancellationFlagSet();
+  };
 
   /// Logging manager if provided.
   logging::LoggingManager* logging_manager_;
@@ -911,6 +975,11 @@ class InferenceSession {
   };
 
   CachedExecutionProviderForGraphReplay cached_execution_provider_for_graph_replay_;
+
+#if !defined(ORT_MINIMAL_BUILD)
+  // Enable nodestats collection
+  std::optional<NodeStatsRecorder> node_stats_recorder_;
+#endif
 };
 
 struct SessionIOBinding {

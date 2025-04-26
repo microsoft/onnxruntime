@@ -3,7 +3,7 @@
 
 #pragma once
 
-#include <webgpu/webgpu_cpp.h>
+#include "core/providers/webgpu/webgpu_external_header.h"
 
 #include <utility>
 
@@ -37,8 +37,8 @@ class ComputeContext {
   inline const wgpu::Limits& DeviceLimits() const {
     return webgpu_context_.DeviceLimits();
   }
-  inline const wgpu::Device& Device() const {
-    return webgpu_context_.Device();
+  inline bool HasFeature(wgpu::FeatureName feature) const {
+    return webgpu_context_.DeviceHasFeature(feature);
   }
 
   //

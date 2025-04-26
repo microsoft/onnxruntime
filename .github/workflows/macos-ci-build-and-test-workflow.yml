@@ -1,0 +1,113 @@
+name: "macOS CI Reusable Workflow for build and test"
+description: "This is a reusable workflow for macOS CI pipelines to build and test"
+
+on:
+  workflow_call:
+    inputs:
+      use_webgpu:
+        required: false
+        type: boolean
+        default: false
+      use_xnnpack:
+        required: false
+        type: boolean
+        default: false
+      use_coreml:
+        required: false
+        type: boolean
+        default: false
+      python_version:
+        required: false
+        type: string
+        default: "3.11"
+      matrix_exclude:
+        required: false
+        type: string
+        description: "JSON string specifying combinations to exclude from the matrix"
+        # we do not have enough resources to run all combinations
+        # Exclude x86_64 + Debug combination by default
+        default: >-
+          [
+            {"platform_machine": "x86_64", "build_config": "Debug"}
+          ]
+
+jobs:
+  build-and-test:
+    strategy:
+      matrix:
+        platform_machine: ["x86_64", "arm64"]
+        build_config: ["Debug", "Release"]
+        exclude: ${{ fromJSON(inputs.matrix_exclude) }}
+
+    runs-on: ${{ matrix.platform_machine == 'x86_64' && 'macos-13' || 'macos-15' }}
+    env:
+      build_flags: >
+        --build_dir ./build
+        --skip_submodule_sync
+        --parallel
+        --use_binskim_compliant_compile_flags
+        --build_shared_lib
+        --build_nodejs
+        --build_objc
+        --build_java
+        --build_wheel
+        ${{ inputs.use_webgpu && '--use_webgpu' || '' }}
+        ${{ inputs.use_xnnpack && '--use_xnnpack' || '' }}
+        ${{ inputs.use_coreml && '--use_coreml' || '' }}
+        --use_vcpkg --use_vcpkg_ms_internal_asset_cache
+        --config ${{ matrix.build_config }}
+      xcode_version: ${{ matrix.platform_machine == 'x86_64' && '14.3.1' || '16' }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: macOS CI pipeline prepare steps
+        uses: ./.github/actions/macos-ci-setup
+        with:
+          platform_machine: ${{ matrix.platform_machine }}
+          python_version: ${{ inputs.python_version }}
+          xcode_version: ${{ env.xcode_version }}
+          use_cache: true
+
+      - uses: actions/cache@v4
+        id: onnx-node-tests-cache
+        with:
+          path: ${{ github.workspace }}/js/test/
+          key: onnxnodetests-${{ hashFiles('js/scripts/prepare-onnx-node-tests.ts') }}
+
+      - name: Setup environment variables
+        shell: bash
+        run: |
+          set -e -x
+          export PATH=${{ github.workspace }}/build/installed/bin:$PATH
+          export ONNX_ML=1
+          export CMAKE_ARGS="-DONNX_GEN_PB_TYPE_STUBS=ON -DONNX_WERROR=OFF"
+          python -m pip install -r '${{ github.workspace }}/tools/ci_build/github/linux/docker/scripts/requirements.txt'
+
+      - name: Configure Build (build.py --update)
+        shell: bash
+        working-directory: ${{ github.workspace }}
+        run: |
+          rm -rf ${{ github.workspace }}/build/${{ matrix.build_config }}
+          python ./tools/ci_build/build.py --update ${{ env.build_flags }}
+
+      - name: Build (build.py --build)
+        shell: bash
+        working-directory: ${{ github.workspace }}
+        run: |
+          python ./tools/ci_build/build.py --build ${{ env.build_flags }}
+
+      - name: Install
+        shell: bash
+        run: |
+          set -e -x
+          rm -rf ${{ github.workspace }}/build/installed
+          cd ${{ github.workspace }}/build/${{ matrix.build_config }}
+          make install DESTDIR=${{ github.workspace }}/build/installed
+
+      - name: Running Tests (build.py --test)
+        shell: bash
+        working-directory: ${{ github.workspace }}
+        run: |
+          python ./tools/ci_build/build.py --test ${{ env.build_flags }}

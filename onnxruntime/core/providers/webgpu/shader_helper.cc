@@ -65,8 +65,8 @@ Status ShaderHelper::Init() {
               "        @builtin(local_invocation_id) local_id : vec3<u32>";
   if (device_.HasFeature(wgpu::FeatureName::Subgroups)) {
     body_ss_ << ",\n"
-                " @builtin(subgroup_invocation_id) sg_id : u32,\n"
-                " @builtin(subgroup_size) sg_size : u32";
+                "        @builtin(subgroup_invocation_id) sg_id : u32,\n"
+                "        @builtin(subgroup_size) sg_size : u32";
   }
   if (!is_1d_dispatch) {
     body_ss_ << ",\n"
@@ -104,12 +104,19 @@ const ShaderVariableHelper& ShaderHelper::AddOutput(const std::string& name, Sha
   return AddVariableImpl(false, name, usage, dims);
 }
 
-const ShaderIndicesHelper& ShaderHelper::AddIndices(const std::string& name, bool use_uniform) {
+const ShaderIndicesHelper& ShaderHelper::AddIndices(const std::string& name, ShaderUsage usage) {
   const size_t indices_index = indices_vars_.size();
+  ORT_ENFORCE(indices_index < program_.Indices().size(),
+              "Too many indices in the program (", program_.Indices().size(), ")");
+
+  // usage of indices should not use flag other than UseUniform and UseIndicesTypeAlias
+  ORT_ENFORCE(!(usage & ~(ShaderUsage::UseUniform | ShaderUsage::UseIndicesTypeAlias)),
+              "Invalid usage for indices variable ", name);
+
   return *indices_vars_.emplace_back(
       std::make_unique<ShaderIndicesHelper>(name,
                                             ProgramVariableDataType::InvalidType,
-                                            use_uniform ? ShaderUsage::UseUniform : ShaderUsage::None,
+                                            usage,
                                             program_.Indices()[indices_index]));
 }
 
@@ -160,6 +167,12 @@ Status ValidateVariableDataType(int32_t element_type, ProgramVariableDataType va
                             var_type == ProgramVariableDataType::Uint8x8 ||
                             var_type == ProgramVariableDataType::Uint8x16,
                         "Unexpected program variable type ", int(var_type), " for uint8 tensor");
+      break;
+    case ONNX_TENSOR_ELEMENT_DATA_TYPE_INT8:
+      ORT_RETURN_IF_NOT(var_type == ProgramVariableDataType::Int8x4 ||
+                            var_type == ProgramVariableDataType::Int8x8 ||
+                            var_type == ProgramVariableDataType::Int8x16,
+                        "Unexpected program variable type ", int(var_type), " for int8 tensor");
       break;
     default:
       ORT_RETURN_IF(true, "Unsupported data type: ", element_type);
@@ -345,13 +358,15 @@ Status ShaderHelper::GenerateSourceCode(std::string& code, std::vector<int>& sha
                   })) {
     ORT_RETURN_IF_NOT(device_.HasFeature(wgpu::FeatureName::ShaderF16), "Program ", program_.Name(), " requires f16 but the device does not support it.");
     ss << "enable f16;\n";
-    if (device_.HasFeature(wgpu::FeatureName::SubgroupsF16)) {
-      ss << "enable subgroups_f16;\n";
-    }
   }
   if (device_.HasFeature(wgpu::FeatureName::Subgroups)) {
     ss << "enable subgroups;\n";
   }
+#if !defined(__wasm__)
+  if (device_.HasFeature(wgpu::FeatureName::ChromiumExperimentalSubgroupMatrix)) {
+    ss << "enable chromium_experimental_subgroup_matrix;\n";
+  }
+#endif
 
   //
   // Section constants

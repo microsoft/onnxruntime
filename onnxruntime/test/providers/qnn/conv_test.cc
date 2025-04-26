@@ -87,12 +87,9 @@ static void RunCPUConvOpTest(const std::string& conv_op_type, const TestInputDef
                              int opset = 13,
                              float fp32_abs_err = 1e-5f) {
   ProviderOptions provider_options;
+  provider_options["backend_type"] = "cpu";
+  provider_options["offload_graph_io_quantization"] = "0";
 
-#if defined(_WIN32)
-  provider_options["backend_path"] = "QnnCpu.dll";
-#else
-  provider_options["backend_path"] = "libQnnCpu.so";
-#endif
   auto build_fn = BuildF32ConvTestCase(conv_op_type, input_def, weights_def, bias_def, strides, pads,
                                        dilations, group, auto_pad);
   RunQnnModelTest(build_fn,
@@ -311,12 +308,8 @@ static void RunHTPConvOpTest(const std::string& conv_op_type, const TestInputDef
                              QDQTolerance tolerance = QDQTolerance(),
                              std::optional<OutputActivationInfo> output_activation = std::nullopt) {
   ProviderOptions provider_options;
-
-#if defined(_WIN32)
-  provider_options["backend_path"] = "QnnHtp.dll";
-#else
-  provider_options["backend_path"] = "libQnnHtp.so";
-#endif
+  provider_options["backend_type"] = "htp";
+  provider_options["offload_graph_io_quantization"] = "0";
 
   TestQDQModelAccuracy(BuildF32ConvTestCase(conv_op_type, input_def, weights_def, bias_def, strides, pads, dilations,
                                             group, auto_pad, output_activation),
@@ -348,12 +341,8 @@ static void RunHTPConvOpPerChannelTest(const std::string& conv_op_type, const Te
                                        QDQTolerance tolerance = QDQTolerance(),
                                        std::optional<OutputActivationInfo> output_activation = std::nullopt) {
   ProviderOptions provider_options;
-
-#if defined(_WIN32)
-  provider_options["backend_path"] = "QnnHtp.dll";
-#else
-  provider_options["backend_path"] = "libQnnHtp.so";
-#endif
+  provider_options["backend_type"] = "htp";
+  provider_options["offload_graph_io_quantization"] = "0";
 
   auto f32_fn = BuildF32ConvTestCase(conv_op_type, input_def, weights_def, bias_def, strides, pads, dilations,
                                      group, auto_pad, output_activation);
@@ -367,7 +356,8 @@ static void RunHTPConvOpPerChannelTest(const std::string& conv_op_type, const Te
 // Check that QNN compiles DQ -> Conv -> Q as a single unit.
 // Tests bias as a dynamic input.
 // TODO: Segfaults when calling graphFinalize(). v2.13
-TEST_F(QnnCPUBackendTests, DISABLED_Convf32_dynamic_bias) {
+// fixed by QNN 2.32
+TEST_F(QnnCPUBackendTests, Convf32_dynamic_bias) {
   RunCPUConvOpTest("Conv",
                    TestInputDef<float>({1, 1, 3, 3}, false, 0.0f, 10.0f),  // Random dynamic input
                    TestInputDef<float>({2, 1, 2, 2}, true, 0.0f, 1.0f),    // Random static weights
@@ -493,6 +483,9 @@ TEST_F(QnnCPUBackendTests, Convf32_AutoPadLower) {
 }
 
 // Tests ConvTranspose's auto_pad value "SAME_LOWER" (compares to CPU EP).
+// 2.31 Exception from qnn_interface.graphAddNode
+// unknown file: error: SEH exception with code 0xc0000005 thrown in the test body
+// fixed by QNN 2.32
 TEST_F(QnnCPUBackendTests, ConvTransposef32_AutoPadLower) {
   RunCPUConvOpTest("ConvTranspose",
                    TestInputDef<float>({1, 1, 3, 3}, false, -3.0f, 3.0f),  // Random dynamic input
@@ -510,7 +503,8 @@ TEST_F(QnnCPUBackendTests, ConvTransposef32_AutoPadLower) {
 // Exception from graphFinalize
 // Exception thrown at 0x00007FFFB7651630 (QnnCpu.dll) in onnxruntime_test_all.exe:
 // 0xC0000005: Access violation reading location 0x0000000000000000.
-TEST_F(QnnCPUBackendTests, DISABLED_ConvTranspose3D_f32_AutoPadLower) {
+// fixed by QNN 2.32
+TEST_F(QnnCPUBackendTests, ConvTranspose3D_f32_AutoPadLower) {
   RunCPUConvOpTest("ConvTranspose",
                    TestInputDef<float>({1, 1, 3, 3, 3}, false, -3.0f, 3.0f),  // Random dynamic input
                    TestInputDef<float>({1, 2, 2, 2, 2}, false, -1.0f, 1.0f),  // Random dynamic weights
@@ -634,6 +628,9 @@ TEST_F(QnnCPUBackendTests, ConvTranspose1Df32_StaticWeights_DefaultBias) {
 }
 
 // Test 1D ConvTranspose with dynamic weights (implemented in QNN EP as 2D convolution with height of 1).
+// 2.31 Exception from qnn_interface.graphAddNode
+// unknown file: error: SEH exception with code 0xc0000005 thrown in the test body
+// fixed by QNN 2.32
 TEST_F(QnnCPUBackendTests, ConvTranspose1Df32_DynamicWeights_DefaultBias) {
   std::vector<float> input_data = {0.0f, 1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f, 7.0f};
   RunCPUConvOpTest("ConvTranspose",
@@ -659,12 +656,8 @@ TEST_F(QnnCPUBackendTests, ConvTranspose1Df32_DynamicWeights_DefaultBias) {
 // So, Conv gets processed before Mul node
 TEST_F(QnnHTPBackendTests, Test_QDQConvWithDynamicWeightsFromMul) {
   ProviderOptions provider_options;
-
-#if defined(_WIN32)
-  provider_options["backend_path"] = "QnnHtp.dll";
-#else
-  provider_options["backend_path"] = "libQnnHtp.so";
-#endif
+  provider_options["backend_type"] = "htp";
+  provider_options["offload_graph_io_quantization"] = "0";
 
   auto BuildConvMulGraph = [](ModelTestBuilder& builder) {
     // DQ node for Conv input
@@ -1137,11 +1130,7 @@ TEST_F(QnnHTPBackendTests, Conv_PerChannel_UnsupportedAxis) {
 // QnnDsp <I> QnnGraph_finalize done. status 0x3ea
 // onnxruntime::qnn::QnnModel::FinalizeGraphs] Failed to finalize QNN graph.
 // Issue fixed in 2.30
-#if (QNN_API_VERSION_MAJOR == 2) && (QNN_API_VERSION_MINOR >= 23)
 TEST_F(QnnHTPBackendTests, Conv3D_U8S8S32_PerChannel) {
-#else
-TEST_F(QnnHTPBackendTests, DISABLED_Conv3D_U8S8S32_PerChannel) {
-#endif
   std::vector<int64_t> input_shape = {1, 2, 4, 4, 4};
   std::vector<int64_t> weight_shape = {3, 2, 2, 2, 2};
   std::vector<int64_t> bias_shape = {3};
@@ -1207,11 +1196,7 @@ TEST_F(QnnHTPBackendTests, ConvDepthwiseU8S8S32_PerChannel) {
 // QnnDsp <I> QnnGraph_finalize done. status 0x3ea
 // onnxruntime::qnn::QnnModel::FinalizeGraphs] Failed to finalize QNN graph.
 // Issue fixed in 2.30
-#if (QNN_API_VERSION_MAJOR == 2) && (QNN_API_VERSION_MINOR >= 23)
 TEST_F(QnnHTPBackendTests, Conv3D_U8S8S32_PerChannel2) {
-#else
-TEST_F(QnnHTPBackendTests, DISABLED_Conv3D_U8S8S32_PerChannel2) {
-#endif
   std::vector<int64_t> input_shape = {1, 2, 4, 4, 4};
   std::vector<int64_t> weight_shape = {2, 1, 2, 2, 2};
   std::vector<int64_t> bias_shape = {2};
@@ -1297,11 +1282,7 @@ TEST_F(QnnHTPBackendTests, ConvTranspose_PerChannel_UnsupportedAxis) {
 // ConvTranspose3D per-channel
 // Disable it for 2.21 since it failed, re-enabled it for 2.22
 // Issue fixed in 2.30
-#if (QNN_API_VERSION_MAJOR == 2) && (QNN_API_VERSION_MINOR >= 23)
 TEST_F(QnnHTPBackendTests, ConvTranspose3D_U8S8S32_PerChannel) {
-#else
-TEST_F(QnnHTPBackendTests, DISABLED_ConvTranspose3D_U8S8S32_PerChannel) {
-#endif
   std::vector<int64_t> input_shape = {1, 2, 4, 4, 4};
   std::vector<int64_t> weight_shape = {2, 3, 2, 2, 2};
   std::vector<int64_t> bias_shape = {3};
@@ -1366,11 +1347,7 @@ TEST_F(QnnHTPBackendTests, ConvU16S8S32_PerChannel) {
 // QnnDsp <I> QnnGraph_finalize done. status 0x3ea
 // onnxruntime::qnn::QnnModel::FinalizeGraphs] Failed to finalize QNN graph.
 // Issue fixed in 2.30
-#if (QNN_API_VERSION_MAJOR == 2) && (QNN_API_VERSION_MINOR >= 23)
 TEST_F(QnnHTPBackendTests, Conv3D_U16S8S32_PerChannel) {
-#else
-TEST_F(QnnHTPBackendTests, DISABLED_Conv3D_U16S8S32_PerChannel) {
-#endif
   std::vector<int64_t> input_shape = {1, 2, 4, 4, 4};
   std::vector<int64_t> weight_shape = {3, 2, 2, 2, 2};
   std::vector<int64_t> bias_shape = {3};
@@ -1427,11 +1404,7 @@ TEST_F(QnnHTPBackendTests, ConvTransposeU16S8S32_PerChannel) {
 
 // Disable it for 2.21, re-enable it for 2.22
 // Issue fixed in 2.30
-#if (QNN_API_VERSION_MAJOR == 2) && (QNN_API_VERSION_MINOR >= 23)
 TEST_F(QnnHTPBackendTests, ConvTranspose3D_U16S8S32_PerChannel) {
-#else
-TEST_F(QnnHTPBackendTests, DISABLED_ConvTranspose3D_U16S8S32_PerChannel) {
-#endif
   std::vector<int64_t> input_shape = {1, 2, 4, 4, 4};
   std::vector<int64_t> weight_shape = {2, 3, 2, 2, 2};
   std::vector<int64_t> bias_shape = {3};
@@ -1497,11 +1470,7 @@ TEST_F(QnnHTPBackendTests, ConvDepthwiseU16S8S32_PerChannel) {
 // QnnDsp <I> QnnGraph_finalize done. status 0x3ea
 // onnxruntime::qnn::QnnModel::FinalizeGraphs] Failed to finalize QNN graph.
 // Issue fixed in 2.30
-#if (QNN_API_VERSION_MAJOR == 2) && (QNN_API_VERSION_MINOR >= 23)
 TEST_F(QnnHTPBackendTests, Conv3D_U16S8S32_PerChannel2) {
-#else
-TEST_F(QnnHTPBackendTests, DISABLED_Conv3D_U16S8S32_PerChannel2) {
-#endif
   std::vector<int64_t> input_shape = {1, 2, 4, 4, 4};
   std::vector<int64_t> weight_shape = {2, 1, 2, 2, 2};
   std::vector<int64_t> bias_shape = {2};
@@ -1855,11 +1824,7 @@ TEST_F(QnnHTPBackendTests, ConvTransposeU8U8S32_DynamicWeight_NoBias) {
 // Exception thrown at 0x00007FFF9E0128B0 (QnnHtpPrepare.dll) in onnxruntime_test_all.exe:
 // 0xC0000005: Access violation reading location 0x7079745F656C706D.
 // Issue fixed in 2.30
-#if (QNN_API_VERSION_MAJOR == 2) && (QNN_API_VERSION_MINOR >= 23)
 TEST_F(QnnHTPBackendTests, ConvTranspose3D_U8U8S32_DynamicWeight_NoBias) {
-#else
-TEST_F(QnnHTPBackendTests, DISABLED_ConvTranspose3D_U8U8S32_DynamicWeight_NoBias) {
-#endif
   RunHTPConvOpTest<uint8_t, uint8_t>("ConvTranspose",
                                      TestInputDef<float>({1, 3, 32, 32, 32}, false, -10.0f, 10.0f),  // Input
                                      TestInputDef<float>({3, 1, 4, 4, 4}, false, -10.0f, 10.0f),     // Weights

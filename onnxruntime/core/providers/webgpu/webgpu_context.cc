@@ -35,10 +35,10 @@
 namespace onnxruntime {
 namespace webgpu {
 
-void WebGpuContext::Initialize(const WebGpuBufferCacheConfig& buffer_cache_config, int backend_type) {
-  std::call_once(init_flag_, [this, &buffer_cache_config, backend_type]() {
-    // Create wgpu::Adapter
-    if (adapter_ == nullptr) {
+void WebGpuContext::Initialize(const WebGpuBufferCacheConfig& buffer_cache_config, int backend_type, bool enable_pix_capture) {
+  std::call_once(init_flag_, [this, &buffer_cache_config, backend_type, enable_pix_capture]() {
+    if (device_ == nullptr) {
+      // Create wgpu::Adapter
 #if !defined(__wasm__) && defined(_MSC_VER) && defined(DAWN_ENABLE_D3D12) && !defined(USE_EXTERNAL_DAWN)
       // If we are using the D3D12 backend on Windows and the build does not use external Dawn, dxil.dll and dxcompiler.dll are required.
       //
@@ -77,20 +77,19 @@ void WebGpuContext::Initialize(const WebGpuBufferCacheConfig& buffer_cache_confi
       req_adapter_options.nextInChain = &adapter_toggles_desc;
 #endif
 
+      wgpu::Adapter adapter;
       ORT_ENFORCE(wgpu::WaitStatus::Success == instance_.WaitAny(instance_.RequestAdapter(
                                                                      &req_adapter_options,
                                                                      wgpu::CallbackMode::WaitAnyOnly,
                                                                      [](wgpu::RequestAdapterStatus status, wgpu::Adapter adapter, wgpu::StringView message, wgpu::Adapter* ptr) {
                                                                        ORT_ENFORCE(status == wgpu::RequestAdapterStatus::Success, "Failed to get a WebGPU adapter: ", std::string_view{message});
-                                                                       *ptr = adapter;
+                                                                       *ptr = std::move(adapter);
                                                                      },
-                                                                     &adapter_),
+                                                                     &adapter),
                                                                  UINT64_MAX));
-      ORT_ENFORCE(adapter_ != nullptr, "Failed to get a WebGPU adapter.");
-    }
+      ORT_ENFORCE(adapter != nullptr, "Failed to get a WebGPU adapter.");
 
-    // Create wgpu::Device
-    if (device_ == nullptr) {
+      // Create wgpu::Device
       wgpu::DeviceDescriptor device_desc = {};
 
 #if !defined(__wasm__)
@@ -106,12 +105,12 @@ void WebGpuContext::Initialize(const WebGpuBufferCacheConfig& buffer_cache_confi
       device_toggles_desc.disabledToggles = disabled_device_toggles.data();
 #endif
 
-      std::vector<wgpu::FeatureName> required_features = GetAvailableRequiredFeatures(adapter_);
+      std::vector<wgpu::FeatureName> required_features = GetAvailableRequiredFeatures(adapter);
       if (required_features.size() > 0) {
         device_desc.requiredFeatures = required_features.data();
         device_desc.requiredFeatureCount = required_features.size();
       }
-      wgpu::RequiredLimits required_limits = GetRequiredLimits(adapter_);
+      wgpu::Limits required_limits = GetRequiredLimits(adapter);
       device_desc.requiredLimits = &required_limits;
 
       // TODO: revise temporary error handling
@@ -123,24 +122,32 @@ void WebGpuContext::Initialize(const WebGpuBufferCacheConfig& buffer_cache_confi
         LOGS_DEFAULT(INFO) << "WebGPU device lost (" << int(reason) << "): " << std::string_view{message};
       });
 
-      ORT_ENFORCE(wgpu::WaitStatus::Success == instance_.WaitAny(adapter_.RequestDevice(
+      ORT_ENFORCE(wgpu::WaitStatus::Success == instance_.WaitAny(adapter.RequestDevice(
                                                                      &device_desc,
                                                                      wgpu::CallbackMode::WaitAnyOnly,
                                                                      [](wgpu::RequestDeviceStatus status, wgpu::Device device, wgpu::StringView message, wgpu::Device* ptr) {
                                                                        ORT_ENFORCE(status == wgpu::RequestDeviceStatus::Success, "Failed to get a WebGPU device: ", std::string_view{message});
-                                                                       *ptr = device;
+                                                                       *ptr = std::move(device);
                                                                      },
                                                                      &device_),
                                                                  UINT64_MAX));
       ORT_ENFORCE(device_ != nullptr, "Failed to get a WebGPU device.");
     }
 
+    LOGS_DEFAULT(VERBOSE) << "WebGPU EP Context is created for: Instance=" << instance_.Get() << ", Device=" << device_.Get() << ".";
+
+    // cache device queue
+    device_queue_ = device_.GetQueue();
     // cache adapter info
-    ORT_ENFORCE(Adapter().GetInfo(&adapter_info_));
+    ORT_ENFORCE(Device().GetAdapterInfo(&adapter_info_));
     // cache device limits
-    wgpu::SupportedLimits device_supported_limits;
-    ORT_ENFORCE(Device().GetLimits(&device_supported_limits));
-    device_limits_ = device_supported_limits.limits;
+    ORT_ENFORCE(Device().GetLimits(&device_limits_));
+    // cache device features
+    wgpu::SupportedFeatures supported_features;
+    Device().GetFeatures(&supported_features);
+    for (size_t i = 0; i < supported_features.featureCount; i++) {
+      device_features_.insert(supported_features.features[i]);
+    }
 
     // create buffer manager
     buffer_mgr_ = BufferManagerFactory::Create(*this,
@@ -161,6 +168,15 @@ void WebGpuContext::Initialize(const WebGpuBufferCacheConfig& buffer_cache_confi
       query_type_ = TimestampQueryType::AtPasses;
     } else {
       query_type_ = TimestampQueryType::None;
+    }
+    if (enable_pix_capture) {
+#if defined(ENABLE_PIX_FOR_WEBGPU_EP)
+      // set pix frame generator
+      pix_frame_generator_ = std::make_unique<WebGpuPIXFrameGenerator>(instance_,
+                                                                       Device());
+#else
+    ORT_THROW("Support PIX capture requires extra build flags (--enable_pix_capture)");
+#endif  // ENABLE_PIX_FOR_WEBGPU_EP
     }
   });
 }
@@ -312,9 +328,9 @@ Status WebGpuContext::Run(ComputeContext& context, const ProgramBase& program) {
       std::vector<uint32_t> dims(expected_rank);
       std::vector<uint32_t> stride(expected_rank - 1);
       for (size_t j = 0; j < expected_rank; ++j) {
-        dims[j] = gsl::narrow<uint32_t>(shape[j]);
+        dims[j] = onnxruntime::narrow<uint32_t>(shape[j]);
         if (j < expected_rank - 1) {
-          stride[j] = gsl::narrow<uint32_t>(shape.SizeFromDimension(j + 1));
+          stride[j] = onnxruntime::narrow<uint32_t>(shape.SizeFromDimension(j + 1));
         }
       }
 
@@ -386,38 +402,26 @@ Status WebGpuContext::Run(ComputeContext& context, const ProgramBase& program) {
     }
 
     uniform_buffer = buffer_mgr_->Create(uniform_buffer_total_size, wgpu::BufferUsage::CopyDst | wgpu::BufferUsage::Uniform);
-    device_.GetQueue().WriteBuffer(uniform_buffer, 0, uniform_data_buffer.data(), uniform_buffer_total_size);
+    device_queue_.WriteBuffer(uniform_buffer, 0, uniform_data_buffer.data(), uniform_buffer_total_size);
   }
 
   const auto& compute_pass_encoder = GetComputePassEncoder();
 
   WriteTimestamp(num_pending_dispatches_ * 2);
 
-  uint32_t entry_index = 0;
-  std::vector<wgpu::BindGroupEntry> bind_group_entries;
+  std::vector<WGPUBuffer> bind_buffers;
+  bind_buffers.reserve(inputs.size() + outputs.size() + (uniform_buffer ? 1 : 0));
   for (const auto& input : inputs) {
-    bind_group_entries.push_back({nullptr, entry_index++, reinterpret_cast<WGPUBuffer>(const_cast<void*>(input.tensor->DataRaw()))});
+    bind_buffers.push_back(reinterpret_cast<WGPUBuffer>(const_cast<void*>(input.tensor->DataRaw())));
   }
   for (const auto& output : outputs) {
-    bind_group_entries.push_back({nullptr, entry_index++, reinterpret_cast<WGPUBuffer>(output.tensor->MutableDataRaw())});
+    bind_buffers.push_back(reinterpret_cast<WGPUBuffer>(output.tensor->MutableDataRaw()));
   }
   if (uniform_buffer) {
-    bind_group_entries.push_back({nullptr, entry_index++, uniform_buffer});
+    bind_buffers.push_back(uniform_buffer);
   }
 
-  wgpu::BindGroupDescriptor bind_group_desc{};
-  bind_group_desc.layout = program_artifact->compute_pipeline.GetBindGroupLayout(0);
-  bind_group_desc.entryCount = bind_group_entries.size();
-  bind_group_desc.entries = bind_group_entries.data();
-  bind_group_desc.label = program_artifact->name.c_str();
-
-  auto bind_group = Device().CreateBindGroup(&bind_group_desc);
-
-  // TODO support graph capture
-
-  compute_pass_encoder.SetPipeline(program_artifact->compute_pipeline);
-  compute_pass_encoder.SetBindGroup(0, bind_group);
-  compute_pass_encoder.DispatchWorkgroups(x, y, z);
+  LaunchComputePipeline(compute_pass_encoder, bind_buffers, *program_artifact, x, y, z);
 
   if (uniform_buffer) {
     buffer_mgr_->Release(uniform_buffer);
@@ -477,11 +481,15 @@ std::vector<wgpu::FeatureName> WebGpuContext::GetAvailableRequiredFeatures(const
   constexpr wgpu::FeatureName features[]{
 #if !defined(__wasm__)
       wgpu::FeatureName::ChromiumExperimentalTimestampQueryInsidePasses,
+      wgpu::FeatureName::ChromiumExperimentalSubgroupMatrix,
 #endif
       wgpu::FeatureName::TimestampQuery,
       wgpu::FeatureName::ShaderF16,
       wgpu::FeatureName::Subgroups,
-      wgpu::FeatureName::SubgroupsF16};
+#if !defined(__wasm__)
+      wgpu::FeatureName::BufferMapExtendedUsages,
+#endif
+  };
   for (auto feature : features) {
     if (adapter.HasFeature(feature)) {
       required_features.push_back(feature);
@@ -490,20 +498,20 @@ std::vector<wgpu::FeatureName> WebGpuContext::GetAvailableRequiredFeatures(const
   return required_features;
 }
 
-wgpu::RequiredLimits WebGpuContext::GetRequiredLimits(const wgpu::Adapter& adapter) const {
-  wgpu::RequiredLimits required_limits{};
-  wgpu::SupportedLimits adapter_limits;
+wgpu::Limits WebGpuContext::GetRequiredLimits(const wgpu::Adapter& adapter) const {
+  wgpu::Limits required_limits{};
+  wgpu::Limits adapter_limits;
   ORT_ENFORCE(adapter.GetLimits(&adapter_limits));
 
-  required_limits.limits.maxBindGroups = adapter_limits.limits.maxBindGroups;
-  required_limits.limits.maxComputeWorkgroupStorageSize = adapter_limits.limits.maxComputeWorkgroupStorageSize;
-  required_limits.limits.maxComputeWorkgroupsPerDimension = adapter_limits.limits.maxComputeWorkgroupsPerDimension;
-  required_limits.limits.maxStorageBufferBindingSize = adapter_limits.limits.maxStorageBufferBindingSize;
-  required_limits.limits.maxBufferSize = adapter_limits.limits.maxBufferSize;
-  required_limits.limits.maxComputeInvocationsPerWorkgroup = adapter_limits.limits.maxComputeInvocationsPerWorkgroup;
-  required_limits.limits.maxComputeWorkgroupSizeX = adapter_limits.limits.maxComputeWorkgroupSizeX;
-  required_limits.limits.maxComputeWorkgroupSizeY = adapter_limits.limits.maxComputeWorkgroupSizeY;
-  required_limits.limits.maxComputeWorkgroupSizeZ = adapter_limits.limits.maxComputeWorkgroupSizeZ;
+  required_limits.maxBindGroups = adapter_limits.maxBindGroups;
+  required_limits.maxComputeWorkgroupStorageSize = adapter_limits.maxComputeWorkgroupStorageSize;
+  required_limits.maxComputeWorkgroupsPerDimension = adapter_limits.maxComputeWorkgroupsPerDimension;
+  required_limits.maxStorageBufferBindingSize = adapter_limits.maxStorageBufferBindingSize;
+  required_limits.maxBufferSize = adapter_limits.maxBufferSize;
+  required_limits.maxComputeInvocationsPerWorkgroup = adapter_limits.maxComputeInvocationsPerWorkgroup;
+  required_limits.maxComputeWorkgroupSizeX = adapter_limits.maxComputeWorkgroupSizeX;
+  required_limits.maxComputeWorkgroupSizeY = adapter_limits.maxComputeWorkgroupSizeY;
+  required_limits.maxComputeWorkgroupSizeZ = adapter_limits.maxComputeWorkgroupSizeZ;
 
   return required_limits;
 }
@@ -624,6 +632,23 @@ void WebGpuContext::EndProfiling(TimePoint /* tp */, profiling::Events& events, 
   }
 }
 
+void WebGpuContext::PushErrorScope() { device_.PushErrorScope(wgpu::ErrorFilter::Validation); }
+
+Status WebGpuContext::PopErrorScope() {
+  Status status{};
+  ORT_RETURN_IF_ERROR(Wait(device_.PopErrorScope(
+      wgpu::CallbackMode::WaitAnyOnly,
+      [](wgpu::PopErrorScopeStatus pop_status, wgpu::ErrorType error_type, char const* message, Status* status) {
+        ORT_ENFORCE(pop_status == wgpu::PopErrorScopeStatus::Success, "Instance dropped.");
+        if (error_type == wgpu::ErrorType::NoError) {
+          return;
+        }
+        *status = ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "WebGPU validation failed. ", message);
+      },
+      &status)));
+  return status;
+}
+
 void WebGpuContext::Flush() {
   if (!current_command_encoder_) {
     return;
@@ -657,10 +682,47 @@ void WebGpuContext::Flush() {
   }
 
   auto command_buffer = current_command_encoder_.Finish();
-  Device().GetQueue().Submit(1, &command_buffer);
+  device_queue_.Submit(1, &command_buffer);
   BufferManager().RefreshPendingBuffers();
   current_command_encoder_ = nullptr;
   num_pending_dispatches_ = 0;
+}
+
+void WebGpuContext::OnRunEnd() {
+#if defined(ENABLE_PIX_FOR_WEBGPU_EP)
+  if (pix_frame_generator_) {
+    pix_frame_generator_->GeneratePIXFrame();
+  }
+#endif  // ENABLE_PIX_FOR_WEBGPU_EP
+}
+
+void WebGpuContext::LaunchComputePipeline(const wgpu::ComputePassEncoder& compute_pass_encoder,
+                                          const std::vector<WGPUBuffer>& bind_buffers,
+                                          const ProgramArtifact& program_artifact,
+                                          uint32_t x, uint32_t y, uint32_t z) {
+  uint32_t entry_index = 0;
+  std::vector<WGPUBindGroupEntry> bind_group_entries;
+  for (WGPUBuffer buffer : bind_buffers) {
+    bind_group_entries.push_back({nullptr, entry_index++, buffer, 0, WGPU_WHOLE_SIZE, nullptr, nullptr});
+  }
+
+  WGPUBindGroupLayout bind_group_layout = program_artifact.compute_pipeline.GetBindGroupLayout(0).MoveToCHandle();
+  WGPUBindGroupDescriptor bind_group_desc{};
+  bind_group_desc.layout = bind_group_layout;
+  bind_group_desc.entryCount = bind_group_entries.size();
+  bind_group_desc.entries = bind_group_entries.data();
+  bind_group_desc.label = {program_artifact.name.data(), program_artifact.name.length()};
+
+  auto bind_group = wgpuDeviceCreateBindGroup(Device().Get(), &bind_group_desc);
+
+  // TODO support graph capture
+
+  compute_pass_encoder.SetPipeline(program_artifact.compute_pipeline);
+  wgpuComputePassEncoderSetBindGroup(compute_pass_encoder.Get(), 0, bind_group, 0, nullptr);
+  compute_pass_encoder.DispatchWorkgroups(x, y, z);
+
+  wgpuBindGroupRelease(bind_group);
+  wgpuBindGroupLayoutRelease(bind_group_layout);
 }
 
 std::unordered_map<int32_t, WebGpuContextFactory::WebGpuContextInfo> WebGpuContextFactory::contexts_;
@@ -671,53 +733,49 @@ wgpu::Instance WebGpuContextFactory::default_instance_;
 WebGpuContext& WebGpuContextFactory::CreateContext(const WebGpuContextConfig& config) {
   const int context_id = config.context_id;
   WGPUInstance instance = config.instance;
-  WGPUAdapter adapter = config.adapter;
   WGPUDevice device = config.device;
+
+  std::call_once(init_default_flag_, [
+#if !defined(__wasm__)
+                                         dawn_proc_table = config.dawn_proc_table
+#endif
+  ]() {
+  // Step.1 - setup dawn proc table (only for non-WASM build)
+
+#if !defined(__wasm__)
+    const DawnProcTable* dawn_procs = reinterpret_cast<const DawnProcTable*>(dawn_proc_table);
+#if defined(BUILD_DAWN_MONOLITHIC_LIBRARY)
+    ORT_ENFORCE(dawn_procs == nullptr, "setting DawnProcTable is not allowed when dynamically linked to webgpu_dawn.");
+#else
+#if !defined(USE_EXTERNAL_DAWN)
+    if (dawn_procs == nullptr) {
+      dawn_procs = &dawn::native::GetProcs();
+    }
+#else
+    ORT_ENFORCE(dawn_procs != nullptr, "DawnProcTable must be provided.");
+#endif
+    dawnProcSetProcs(dawn_procs);
+#endif
+#endif
+
+    // Step.2 - Create wgpu::Instance
+    wgpu::InstanceDescriptor instance_desc{};
+    instance_desc.capabilities.timedWaitAnyEnable = true;
+    default_instance_ = wgpu::CreateInstance(&instance_desc);
+
+    ORT_ENFORCE(default_instance_ != nullptr, "Failed to create wgpu::Instance.");
+  });
 
   if (context_id == 0) {
     // context ID is preserved for the default context. User cannot use context ID 0 as a custom context.
-    ORT_ENFORCE(instance == nullptr && adapter == nullptr && device == nullptr,
-                "WebGPU EP default context (contextId=0) must not have custom WebGPU instance, adapter or device.");
+    ORT_ENFORCE(instance == nullptr && device == nullptr,
+                "WebGPU EP default context (contextId=0) must not have custom WebGPU instance or device.");
 
-    std::call_once(init_default_flag_, [
-#if !defined(__wasm__)
-                                           dawn_proc_table = config.dawn_proc_table
-#endif
-    ]() {
-    // Step.1 - setup dawn proc table (only for non-WASM build)
-
-#if !defined(__wasm__)
-      const DawnProcTable* dawn_procs = reinterpret_cast<const DawnProcTable*>(dawn_proc_table);
-#if defined(BUILD_DAWN_MONOLITHIC_LIBRARY)
-      ORT_ENFORCE(dawn_procs == nullptr, "setting DawnProcTable is not allowed when dynamically linked to webgpu_dawn.");
-#else
-#if !defined(USE_EXTERNAL_DAWN)
-      if (dawn_procs == nullptr) {
-        dawn_procs = &dawn::native::GetProcs();
-      }
-#else
-      ORT_ENFORCE(dawn_procs != nullptr, "DawnProcTable must be provided.");
-#endif
-      dawnProcSetProcs(dawn_procs);
-#endif
-#endif
-
-      // Step.2 - Create wgpu::Instance
-#if !defined(__wasm__)
-      wgpu::InstanceDescriptor instance_desc{};
-      instance_desc.features.timedWaitAnyEnable = true;
-      default_instance_ = wgpu::CreateInstance(&instance_desc);
-#else
-      default_instance_ = wgpu::CreateInstance(nullptr);
-#endif
-
-      ORT_ENFORCE(default_instance_ != nullptr, "Failed to create wgpu::Instance.");
-    });
     instance = default_instance_.Get();
   } else {
-    // for context ID > 0, user must provide custom WebGPU instance, adapter and device.
-    ORT_ENFORCE(instance != nullptr && adapter != nullptr && device != nullptr,
-                "WebGPU EP custom context (contextId>0) must have custom WebGPU instance, adapter and device.");
+    // for context ID > 0, user must provide custom WebGPU instance and device.
+    ORT_ENFORCE(instance != nullptr && device != nullptr,
+                "WebGPU EP custom context (contextId>0) must have custom WebGPU instance and device.");
   }
 
   std::lock_guard<std::mutex> lock(mutex_);
@@ -725,13 +783,12 @@ WebGpuContext& WebGpuContextFactory::CreateContext(const WebGpuContextConfig& co
   auto it = contexts_.find(context_id);
   if (it == contexts_.end()) {
     GSL_SUPPRESS(r.11)
-    auto context = std::unique_ptr<WebGpuContext>(new WebGpuContext(instance, adapter, device, config.validation_mode));
+    auto context = std::unique_ptr<WebGpuContext>(new WebGpuContext(instance, device, config.validation_mode, config.preserve_device));
     it = contexts_.emplace(context_id, WebGpuContextFactory::WebGpuContextInfo{std::move(context), 0}).first;
   } else if (context_id != 0) {
     ORT_ENFORCE(it->second.context->instance_.Get() == instance &&
-                    it->second.context->adapter_.Get() == adapter &&
                     it->second.context->device_.Get() == device,
-                "WebGPU EP context ID ", context_id, " is already created with different WebGPU instance, adapter or device.");
+                "WebGPU EP context ID ", context_id, " is already created with different WebGPU instance or device.");
   }
   it->second.ref_count++;
   return *it->second.context;
@@ -752,7 +809,7 @@ void WebGpuContextFactory::ReleaseContext(int context_id) {
   auto it = contexts_.find(context_id);
   ORT_ENFORCE(it != contexts_.end(), "WebGPU EP context ID ", context_id, " is not found.");
 
-  if (--it->second.ref_count == 0) {
+  if (--it->second.ref_count == 0 && !it->second.context->preserve_device_) {
     contexts_.erase(it);
   }
 }
@@ -765,6 +822,10 @@ void WebGpuContextFactory::Cleanup() {
 
 void CleanupWebGpuContexts() {
   WebGpuContextFactory::Cleanup();
+}
+
+WGPUDevice GetDevice(int context_id) {
+  return WebGpuContextFactory::GetContext(context_id).Device().Get();
 }
 
 }  // namespace webgpu

@@ -802,6 +802,16 @@ namespace Microsoft.ML.OnnxRuntime
         }
         private ExecutionMode _executionMode = ExecutionMode.ORT_SEQUENTIAL;
 
+        /// <summary>
+        /// Sets the load cancellation flag for the session. Default is set to false.
+        /// Provides an opportunity for the user to cancel model loading.
+        /// </summary>
+        /// <param name="value">true to request cancellation, false to proceed</param>
+        public void SetLoadCancellationFlag(bool value)
+        {
+            NativeApiStatus.VerifySuccess(NativeMethods.OrtSessionOptionsSetLoadCancellationFlag(handle, value));
+        }
+
         #endregion
 
         #region Private Methods

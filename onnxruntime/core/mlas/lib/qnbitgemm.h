@@ -55,9 +55,12 @@ struct PackedQuantBDataStruct {
         constexpr size_t BlkBitWidth = 4;
         const size_t PackedQuantBDataSize = N * BlockCountK * MlasQNBitBlkDataSizeInBytes(BlkBitWidth, BlkLen);
         size_t BlkSumSize = MlasDivRoundup(N, 16) * BlockCountK * 16 * sizeof(T);
-
+#if defined(MLAS_TARGET_AMD64_IX86)
         // _mm256_load_si256 requires alignment on a 32-byte boundary
         PackedQuantBData = (std::byte*)MlasAlignAddress(PackedQuantBWorkspace, 32);
+#else
+        PackedQuantBData = (std::byte*)PackedQuantBWorkspace;
+#endif
         QuantBBlkSum = (T*)(PackedQuantBData + PackedQuantBDataSize);
         QuantBBlkSum = (T*)MlasAlignAddress(QuantBBlkSum, MlasQNBitQuantBBlkSumAlignment());
         PackedQuantBScale = (T*)((std::byte*)QuantBBlkSum + BlkSumSize);
@@ -95,6 +98,7 @@ struct MLAS_QNBIT_GEMM_DISPATCH {
         size_t N,
         size_t K,
         size_t BlkLen,
+        bool HasZeroPoint,
         MLAS_QNBIT_GEMM_COMPUTE_TYPE ComputeType
     );
 
@@ -121,9 +125,9 @@ struct MLAS_QNBIT_GEMM_DISPATCH {
         MLAS_QNBIT_GEMM_COMPUTE_TYPE ComputeType,
         const std::byte* QuantBDataBegin,
         const float* QuantBScaleBegin,
-        bool has_zp_input,
+        bool HasZeroPoint,
         const std::byte* QuantBZPBegin,
-        PackedQuantBDataStruct<float>& packed_quant_b,
+        PackedQuantBDataStruct<float>& PackedQuantB,
         MLAS_THREADPOOL* ThreadPool
     );
 
@@ -141,6 +145,7 @@ struct MLAS_QNBIT_GEMM_DISPATCH {
      * @param[in]   N               column size of matrix B and C
      * @param[in]   K               column size of matrix A and row size of matrix B
      * @param[in]   BlkLen          number of quantized values per block
+     * @param[in]   HasZeroPoint    whether zero points are provided
      * @param[in]   ComputeType     GEMM compute type (e.g., multiplying float or int8 values)
      */
     typedef size_t(Q4BitGemmPerGemmWorkspaceSize_Fn)(
@@ -148,6 +153,7 @@ struct MLAS_QNBIT_GEMM_DISPATCH {
         size_t N,
         size_t K,
         size_t BlkLen,
+        bool HasZeroPoint,
         MLAS_QNBIT_GEMM_COMPUTE_TYPE ComputeType
     );
 
@@ -270,6 +276,39 @@ struct MLAS_QNBIT_GEMM_DISPATCH {
     /**
      * @brief Multiply quantized 8-bit integer matrix A with quantized 4-bit integer matrix B.
      *        A and B are block quantized and B is column major.
+     *        A should be packed using QuantizeA_Packed_CompInt8.
+     *
+     * @param       BlkLen              Number of values in a block.
+     * @param       QuantA              Supplies the quantized A matrix.
+                                        Binary data containing block quantized int8 data and scale values.
+     * @param       PackedQuantBData    Supplies the packed quantized B matrix data.
+     * @param[out]  C                   Supplies the output C matrix.
+     * @param       RangeStartM         Start of M range.
+     * @param       RangeCountM         Number of rows of A and C.
+     * @param       RangeStartN         Start of N range.
+     * @param       RangeCountN         Number of columns of B and C.
+     * @param       CountK              Number of columns of A and rows of B.
+     * @param       ldc                 Number of elements between adjacent rows of C.
+     */
+    typedef void(SQ4BitGemmKernel_Packed_CompInt8_Fn)(
+        size_t BlkLen,
+        const std::byte* QuantA,
+        const std::byte* PackedQuantBData,
+        float* C,
+        const size_t RangeStartM,
+        const size_t RangeCountM,
+        const size_t RangeStartN,
+        const size_t RangeCountN,
+        size_t CountK,
+        size_t ldc,
+        const float* Bias
+    );
+
+    SQ4BitGemmKernel_Packed_CompInt8_Fn* SQ4BitGemmKernel_Packed_CompInt8 = nullptr;
+
+    /**
+     * @brief Multiply quantized 8-bit integer matrix A with quantized 4-bit integer matrix B.
+     *        A and B are block quantized and B is column major.
      *
      * @param       BlkLen              Number of values in a block.
      * @param       QuantA              Supplies the quantized A matrix.
@@ -342,6 +381,38 @@ struct MLAS_QNBIT_GEMM_DISPATCH {
     );
 
     SQ4BitGemmKernel_CompInt8_Fn* SQ4BitGemmKernel_CompInt8 = nullptr;
+
+    /**
+     * @brief Whether to use SQ4BitGemmKernel_Packed_CompInt8 for this problem.
+     */
+    typedef bool(UsePacked_CompInt8_Fn)(
+        size_t K,
+        size_t BlkLen,
+        bool HasZp
+    );
+
+    UsePacked_CompInt8_Fn* UsePacked_CompInt8 = nullptr;
+
+    /**
+     * @brief Block quantize values from matrix A from floats to quantized 8-bit integers.
+     *        Used in conjunction with SQ4BitGemmKernel_Packed_CompInt8.
+     *
+     * @param       BlkLen  Number of values in a block.
+     * @param       A       Supplies the A matrix.
+     * @param       CountM  Number of rows of A.
+     * @param       CountK  Number of columns of A.
+     * @param[out]  QuantA  Supplies the output quantized A matrix.
+     *                      Binary data containing block quantized int8 data and scale values.
+     */
+    typedef void(QuantizeA_Packed_CompInt8_Fn)(
+        size_t BlkLen,
+        const float* A,
+        size_t CountM,
+        size_t CountK,
+        std::byte* QuantA
+    );
+
+    QuantizeA_Packed_CompInt8_Fn* QuantizeA_Packed_CompInt8 = nullptr;
 
     /**
      * @brief Block quantize values from one row of matrix A from floats to quantized 8-bit integers.

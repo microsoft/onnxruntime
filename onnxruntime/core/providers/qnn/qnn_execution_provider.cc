@@ -4,6 +4,8 @@
 #include "qnn_execution_provider.h"
 
 #include <filesystem>
+#include <optional>
+#include <string_view>
 #include <unordered_set>
 
 #include "core/providers/qnn/ort_api.h"
@@ -22,12 +24,63 @@ namespace onnxruntime {
 
 constexpr const char* QNN = "QNN";
 
+static std::string MakeSharedLibraryPath(std::string_view name) {
+#if defined(_WIN32)
+  return MakeString(name, ".dll");
+#else
+  return MakeString("lib", name, ".so");
+#endif
+}
+
+const std::string kDefaultCpuBackendPath = MakeSharedLibraryPath("QnnCpu");
+const std::string kDefaultGpuBackendPath = MakeSharedLibraryPath("QnnGpu");
+const std::string kDefaultHtpBackendPath = MakeSharedLibraryPath("QnnHtp");
+const std::string kDefaultSaverBackendPath = MakeSharedLibraryPath("QnnSaver");
+
+static bool ParseBackendTypeName(std::string_view backend_type_name, std::string& backend_path) {
+  constexpr std::string_view kCpuBackendTypeName{"cpu"};
+  constexpr std::string_view kGpuBackendTypeName{"gpu"};
+  constexpr std::string_view kHtpBackendTypeName{"htp"};
+  constexpr std::string_view kSaverBackendTypeName{"saver"};
+
+  constexpr std::array kAllowedBackendTypeNames{
+      kCpuBackendTypeName,
+      kGpuBackendTypeName,
+      kHtpBackendTypeName,
+      kSaverBackendTypeName,
+  };
+
+  std::optional<std::string> associated_backend_path{};
+  if (backend_type_name == kCpuBackendTypeName) {
+    associated_backend_path = kDefaultCpuBackendPath;
+  } else if (backend_type_name == kGpuBackendTypeName) {
+    associated_backend_path = kDefaultGpuBackendPath;
+  } else if (backend_type_name == kHtpBackendTypeName) {
+    associated_backend_path = kDefaultHtpBackendPath;
+  } else if (backend_type_name == kSaverBackendTypeName) {
+    associated_backend_path = kDefaultSaverBackendPath;
+  }
+
+  if (associated_backend_path.has_value()) {
+    backend_path = std::move(*associated_backend_path);
+    return true;
+  }
+
+  std::ostringstream warning{};
+  warning << "Invalid backend type name: " << backend_type_name << ". Allowed backend type names: ";
+  for (size_t i = 0; i < kAllowedBackendTypeNames.size(); ++i) {
+    warning << kAllowedBackendTypeNames[i];
+    if (i + 1 < kAllowedBackendTypeNames.size()) {
+      warning << ", ";
+    }
+  }
+  LOGS_DEFAULT(WARNING) << warning.str();
+  return false;
+}
+
 static void ParseProfilingLevel(std::string profiling_level_string,
                                 qnn::ProfilingLevel& profiling_level) {
-  std::transform(profiling_level_string.begin(),
-                 profiling_level_string.end(),
-                 profiling_level_string.begin(),
-                 [](unsigned char c) { return static_cast<unsigned char>(std::tolower(c)); });
+  profiling_level_string = qnn::utils::GetLowercaseString(profiling_level_string);
   LOGS_DEFAULT(INFO) << "profiling_level: " << profiling_level_string;
   if (profiling_level_string == "off") {
     profiling_level = qnn::ProfilingLevel::OFF;
@@ -42,10 +95,7 @@ static void ParseProfilingLevel(std::string profiling_level_string,
 
 static void ParseHtpPerformanceMode(std::string htp_performance_mode_string,
                                     qnn::HtpPerformanceMode& htp_performance_mode) {
-  std::transform(htp_performance_mode_string.begin(),
-                 htp_performance_mode_string.end(),
-                 htp_performance_mode_string.begin(),
-                 [](unsigned char c) { return static_cast<unsigned char>(std::tolower(c)); });
+  htp_performance_mode_string = qnn::utils::GetLowercaseString(htp_performance_mode_string);
   LOGS_DEFAULT(VERBOSE) << "Htp performance mode: " << htp_performance_mode_string;
   if (htp_performance_mode_string == "burst") {
     htp_performance_mode = qnn::HtpPerformanceMode::kHtpBurst;
@@ -73,10 +123,7 @@ static void ParseHtpPerformanceMode(std::string htp_performance_mode_string,
 }
 
 static void ParseQnnContextPriority(std::string context_priority_string, qnn::ContextPriority& context_priority) {
-  std::transform(context_priority_string.begin(),
-                 context_priority_string.end(),
-                 context_priority_string.begin(),
-                 [](unsigned char c) { return static_cast<unsigned char>(std::tolower(c)); });
+  context_priority_string = qnn::utils::GetLowercaseString(context_priority_string);
   LOGS_DEFAULT(VERBOSE) << "QNN context priority: " << context_priority_string;
   if (context_priority_string == "low") {
     context_priority = qnn::ContextPriority::LOW;
@@ -195,17 +242,45 @@ QNNExecutionProvider::QNNExecutionProvider(const ProviderOptions& provider_optio
     share_ep_contexts_ =
         config_options->GetConfigOrDefault(kOrtSessionOptionShareEpContexts, "0") == "1";
     LOGS_DEFAULT(VERBOSE) << "User specified option - share EP contexts across sessions: " << share_ep_contexts_;
+
+    stop_share_ep_contexts_ =
+        config_options->GetConfigOrDefault(kOrtSessionOptionStopShareEpContexts, "0") == "1";
+    LOGS_DEFAULT(VERBOSE) << "User specified option - stop share EP contexts across sessions: " << stop_share_ep_contexts_;
   }
 
-  static const std::string BACKEND_PATH = "backend_path";
-  auto backend_path_pos = provider_options_map.find(BACKEND_PATH);
+  std::string backend_path{};
+  {
+    std::optional<std::string> backend_path_from_options{};
 
-  std::string backend_path;
-  if (backend_path_pos != provider_options_map.end()) {
-    backend_path = backend_path_pos->second;
-    LOGS_DEFAULT(VERBOSE) << "Backend path: " << backend_path;
-  } else {
-    LOGS_DEFAULT(ERROR) << "No backend path provided.";
+    static const std::string BACKEND_TYPE = "backend_type";
+    static const std::string BACKEND_PATH = "backend_path";
+
+    auto backend_type_it = provider_options_map.find(BACKEND_TYPE);
+    auto backend_path_it = provider_options_map.find(BACKEND_PATH);
+
+    if (backend_type_it != provider_options_map.end() && backend_path_it != provider_options_map.end()) {
+      ORT_THROW("Only one of '", BACKEND_TYPE, "' and '", BACKEND_PATH, "' should be set.");
+    }
+
+    if (backend_type_it != provider_options_map.end()) {
+      if (std::string parsed_backend_path; ParseBackendTypeName(backend_type_it->second, parsed_backend_path)) {
+        backend_path_from_options = parsed_backend_path;
+      } else {
+        LOGS_DEFAULT(ERROR) << "Failed to parse '" << BACKEND_TYPE << "' value.";
+      }
+    } else if (backend_path_it != provider_options_map.end()) {
+      backend_path_from_options = backend_path_it->second;
+    }
+
+    if (backend_path_from_options.has_value()) {
+      backend_path = std::move(*backend_path_from_options);
+    } else {
+      const auto& default_backend_path = kDefaultHtpBackendPath;
+      backend_path = default_backend_path;
+      LOGS_DEFAULT(WARNING) << "Unable to determine backend path from provider options. Using default.";
+    }
+
+    LOGS_DEFAULT(VERBOSE) << "Using backend path: " << backend_path;
   }
 
   std::string profiling_file_path;
@@ -333,31 +408,22 @@ QNNExecutionProvider::QNNExecutionProvider(const ProviderOptions& provider_optio
     LOGS_DEFAULT(VERBOSE) << "User specified enable_htp_fp16_precision: " << enable_HTP_FP16_precision_;
   }
 
-  bool enable_htp_weight_sharing = false;
-  static const std::string QNN_HTP_WEIGHT_SHARING_ENABLED = "enable_htp_weight_sharing";
-  auto htp_weight_sharing_enabled_pos = provider_options_map.find(QNN_HTP_WEIGHT_SHARING_ENABLED);
-  if (htp_weight_sharing_enabled_pos != provider_options_map.end()) {
-    if ("1" == htp_weight_sharing_enabled_pos->second) {
-      enable_htp_weight_sharing = true;
-    } else if ("0" == htp_weight_sharing_enabled_pos->second) {
-      enable_htp_weight_sharing = false;
-    } else {
-      LOGS_DEFAULT(VERBOSE) << "Invalid enable_htp_weight_sharing: " << enable_htp_weight_sharing
-                            << " only 0 or 1 allowed. Set to 0.";
-    }
-    LOGS_DEFAULT(VERBOSE) << "User specified enable_htp_weight_sharing: " << enable_htp_weight_sharing;
+  if (qnn_context_embed_mode_ && share_ep_contexts_) {
+    LOGS_DEFAULT(ERROR) << "[EP context generation:] Weight sharing enabled conflict with EP context embed mode. Inference will not work as expected!";
   }
 
   // Add this option because this feature requires QnnSystem lib and it's no supported for Windows x86_64 platform
   enable_spill_fill_buffer_ = ParseBoolOption("enable_htp_spill_fill_buffer", false, provider_options_map);
 
-  model_settings_.offload_graph_io_quantization = ParseBoolOption("offload_graph_io_quantization", false,
+  model_settings_.offload_graph_io_quantization = ParseBoolOption("offload_graph_io_quantization", true,
                                                                   provider_options_map);
 
   if (disable_cpu_ep_fallback_ && model_settings_.offload_graph_io_quantization) {
-    LOGS_DEFAULT(WARNING) << "Fallback to CPU EP is disabled, but user configured QNN EP to offload graph I/O "
-                          << "quantization/dequantization to another EP. Session creation will fail if the CPU EP "
-                          << "handles the graph I/O quantization/dequantization.";
+    LOGS_DEFAULT(INFO) << "Fallback to CPU EP is disabled, but user tried to configure QNN EP to offload graph I/O "
+                       << "quantization/dequantization to another EP. These are conflicting options. Fallback to CPU "
+                       << "EP will remain disabled and graph I/O quantization/dequantization will not be offloaded "
+                       << "to another EP.";
+    model_settings_.offload_graph_io_quantization = false;
   }
 
   static const std::string QNN_HTP_SHARED_MEMORY_ALLOCATOR_ENABLED = "enable_htp_shared_memory_allocator";
@@ -367,17 +433,41 @@ QNNExecutionProvider::QNNExecutionProvider(const ProviderOptions& provider_optio
     rpcmem_library_ = std::make_shared<qnn::RpcMemLibrary>();
   }
 
-  qnn_backend_manager_ = qnn::QnnBackendManager::Create(
-      qnn::QnnBackendManagerConfig{backend_path,
-                                   profiling_level_etw,
-                                   profiling_level,
-                                   profiling_file_path,
-                                   context_priority,
-                                   qnn_saver_path,
-                                   device_id_,
-                                   htp_arch,
-                                   soc_model,
-                                   enable_htp_weight_sharing});
+  dump_json_qnn_graph_ = ParseBoolOption("dump_json_qnn_graph", false, provider_options_map);
+
+  static const std::string QNN_GRAPH_DUMP_DIR = "json_qnn_graph_dir";
+  auto json_graphs_dir_pos = provider_options_map.find(QNN_GRAPH_DUMP_DIR);
+
+  if (json_graphs_dir_pos != provider_options_map.end()) {
+    json_qnn_graph_dir_ = json_graphs_dir_pos->second;
+    if (dump_json_qnn_graph_) {
+      LOGS_DEFAULT(INFO) << "JSON graphs directory: " << json_qnn_graph_dir_;
+    } else {
+      LOGS_DEFAULT(WARNING) << "Provided a directory for dumping QNN JSON graphs, "
+                            << "but did not enable dumping of QNN JSON graphs.";
+    }
+  }
+
+  // For context binary generation with weight sharing enabled, use the QnnBackendManager from the shared context if it exits
+  // So that all graphs from later sessions will be compiled into the same QNN context
+  if (context_cache_enabled_ && share_ep_contexts_ && SharedContext::GetInstance().GetSharedQnnBackendManager()) {
+    qnn_backend_manager_ = SharedContext::GetInstance().GetSharedQnnBackendManager();
+    // Clear the QnnBackendManager from singleton to stop the resource share
+    if (stop_share_ep_contexts_) {
+      SharedContext::GetInstance().ResetSharedQnnBackendManager();
+    }
+  } else {
+    qnn_backend_manager_ = qnn::QnnBackendManager::Create(
+        qnn::QnnBackendManagerConfig{backend_path,
+                                     profiling_level_etw,
+                                     profiling_level,
+                                     profiling_file_path,
+                                     context_priority,
+                                     qnn_saver_path,
+                                     device_id_,
+                                     htp_arch,
+                                     soc_model});
+  }
 
 #if defined(_WIN32)
   if (onnxruntime::logging::EtwRegistrationManager::SupportsETW()) {
@@ -488,12 +578,6 @@ QNNExecutionProvider::GetSupportedNodes(const GraphViewer& graph_viewer,
                                         const logging::Logger& logger) const {
   std::unordered_set<const Node*> supported_nodes{};
 
-  std::unordered_set<std::string> initializer_input_lookup;
-  auto graph_initializers = graph_viewer.GetAllInitializedTensors();
-  for (auto graph_ini : graph_initializers) {
-    initializer_input_lookup.emplace(graph_ini.first);
-  }
-
   // Util function that initializes a table that maps a graph input or output name to its index.
   auto init_input_output_index_map = [](std::unordered_map<std::string, size_t>& index_map,
                                         const std::vector<const NodeArg*>& node_args) {
@@ -514,7 +598,6 @@ QNNExecutionProvider::GetSupportedNodes(const GraphViewer& graph_viewer,
                                                 qnn_backend_manager_->GetQnnBackendHandle(),
                                                 model_input_index_map,
                                                 model_output_index_map,
-                                                initializer_input_lookup,
                                                 qnn_backend_manager_->GetQnnBackendType(),
                                                 model_settings_);
 
@@ -532,7 +615,7 @@ QNNExecutionProvider::GetSupportedNodes(const GraphViewer& graph_viewer,
     Status status = qnn_node_group->IsSupported(qnn_model_wrapper, logger);
     const bool supported = status.IsOK();
 
-    constexpr auto log_severity = logging::Severity::kVERBOSE;
+    constexpr auto log_severity = logging::Severity::kINFO;
     constexpr auto log_data_type = logging::DataType::SYSTEM;
     if (logger.OutputIsEnabled(log_severity, log_data_type)) {
       LogNodeSupport(logger, log_severity, log_data_type, ORT_WHERE, *qnn_node_group, status);
@@ -644,7 +727,9 @@ static void PartitionCtxModel(const onnxruntime::GraphViewer& graph_viewer,
 
 std::vector<std::unique_ptr<ComputeCapability>>
 QNNExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_viewer,
-                                    const IKernelLookup& /*kernel_lookup*/) const {
+                                    const IKernelLookup& /*kernel_lookup*/,
+                                    const GraphOptimizerRegistry& /* graph_optimizer_registry */,
+                                    IResourceAccountant* /* resource_accountant */) const {
   std::vector<std::unique_ptr<ComputeCapability>> result;
 
   if (graph_viewer.IsSubgraph()) {
@@ -675,7 +760,9 @@ QNNExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_viewer
   // It will load the QnnSystem lib if is_qnn_ctx_model=true, and
   // delay the Qnn context creation to Compile() using the cached context binary
   // or generate context cache enable, need to use use QnnSystem lib to parse the binary to get the max spill fill buffer size
-  auto rt = qnn_backend_manager_->SetupBackend(logger, is_qnn_ctx_model, context_cache_enabled_ && enable_spill_fill_buffer_);
+  auto rt = qnn_backend_manager_->SetupBackend(logger, is_qnn_ctx_model,
+                                               context_cache_enabled_ && enable_spill_fill_buffer_,
+                                               share_ep_contexts_);
   if (Status::OK() != rt) {
     LOGS(logger, ERROR) << "QNN SetupBackend failed " << rt.ErrorMessage();
     return result;
@@ -693,8 +780,8 @@ QNNExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_viewer
     return result;
   }
 
-  if ((context_cache_enabled_ || is_qnn_ctx_model) && !IsNpuBackend(qnn_backend_manager_->GetQnnBackendType())) {
-    LOGS(logger, ERROR) << "Qnn context cache only works for HTP or DSP backend.";
+  if ((context_cache_enabled_ || is_qnn_ctx_model) && !IsQpuBackend(qnn_backend_manager_->GetQnnBackendType())) {
+    LOGS(logger, ERROR) << "Qnn context cache only works for HTP/DSP/GPU backend.";
     return result;
   }
 
@@ -872,8 +959,16 @@ Status QNNExecutionProvider::CompileFromOrtGraph(const std::vector<FusedNodeAndG
                                                                                                 QNN_HTP_GRAPH_CUSTOM_CONFIG_INIT);
     InitQnnGraphConfigs(graph_configs_builder);
 
+    std::string json_graph_filepath;
+
+    if (dump_json_qnn_graph_) {
+      namespace fs = std::filesystem;
+      fs::path path = fs::path(json_qnn_graph_dir_) / fs::path(fused_node.Name() + ".json");
+      json_graph_filepath = path.string();
+    }
+
     ORT_RETURN_IF_ERROR(qnn_model->ComposeGraph(graph_viewer, fused_node, model_settings_, logger,
-                                                graph_configs_builder.GetQnnConfigs()));
+                                                graph_configs_builder.GetQnnConfigs(), json_graph_filepath));
     ORT_RETURN_IF_ERROR(qnn_model->FinalizeGraphs(logger));
     ORT_RETURN_IF_ERROR(qnn_model->SetupQnnInputOutput(logger));
 
@@ -885,24 +980,32 @@ Status QNNExecutionProvider::CompileFromOrtGraph(const std::vector<FusedNodeAndG
   return Status::OK();
 }
 
+// Figure out the context cache Onnx file path to decide the folder location
+static void GetContextOnnxModelFilePath(const std::string& user_context_cache_path,
+                                        const onnxruntime::PathString& model_path_string,
+                                        onnxruntime::PathString& context_model_path) {
+  // always try the path set by user first, it's the only way to set it if load model from memory
+  if (!user_context_cache_path.empty()) {
+    context_model_path = ToPathString(user_context_cache_path);
+  } else if (!model_path_string.empty()) {  // model loaded from file
+    context_model_path = model_path_string;
+  }
+}
+
 Status QNNExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& fused_nodes_and_graphs,
                                      std::vector<NodeComputeInfo>& node_compute_funcs) {
   const auto& logger = *GetLogger();
   bool is_qnn_ctx_model = qnn::IsFusedGraphHasCtxNode(fused_nodes_and_graphs);
 
-  onnxruntime::PathString context_cache_path;
+  onnxruntime::PathString context_model_path;
   bool is_ctx_file_exist = false;
   if (is_qnn_ctx_model || context_cache_enabled_) {
     const onnxruntime::GraphViewer& graph_viewer_0(fused_nodes_and_graphs[0].filtered_graph);
-    is_ctx_file_exist = qnn::ValidateContextCacheFilePath(is_qnn_ctx_model,
-                                                          context_cache_path_cfg_,
-                                                          graph_viewer_0.ModelPath().native(),
-                                                          context_cache_path);
+    // Figure out the EP context model path from model path or session option
+    GetContextOnnxModelFilePath(context_cache_path_cfg_,
+                                graph_viewer_0.ModelPath().native(),
+                                context_model_path);
   }
-
-  ORT_RETURN_IF(is_ctx_file_exist && !is_qnn_ctx_model && context_cache_enabled_,
-                "The inference session is created from normal ONNX model. And an EP context model file is provided and existed. ",
-                "Please remove the EP context model manually if you want to re-generate it.");
 
   if (is_qnn_ctx_model) {
     // Get QnnModel from EP shared contexts
@@ -946,7 +1049,7 @@ Status QNNExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& fused
       const onnxruntime::GraphViewer& main_ctx_graph_viewer(fused_nodes_and_graphs[main_context_pos].filtered_graph);
       // Create QNN context from the cached binary, deserialize the QNN graph from the binary
       ORT_RETURN_IF_ERROR(qnn::LoadQnnCtxFromOnnxGraph(main_ctx_graph_viewer,
-                                                       context_cache_path,
+                                                       context_model_path,
                                                        qnn_backend_manager_.get(),
                                                        qnn_models,
                                                        logger,
@@ -1006,10 +1109,18 @@ Status QNNExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& fused
                                                   qnn_backend_manager_->GetSdkVersion(),
                                                   fused_nodes_and_graphs,
                                                   qnn_models_,
-                                                  context_cache_path,
+                                                  context_model_path,
                                                   qnn_context_embed_mode_,
                                                   max_spill_fill_buffer_size,
-                                                  logger));
+                                                  logger,
+                                                  share_ep_contexts_,
+                                                  stop_share_ep_contexts_));
+
+    if (share_ep_contexts_ && !stop_share_ep_contexts_ &&
+        nullptr == SharedContext::GetInstance().GetSharedQnnBackendManager()) {
+      ORT_RETURN_IF_NOT(SharedContext::GetInstance().SetSharedQnnBackendManager(qnn_backend_manager_),
+                        "Failed to set shared QnnBackendManager.");
+    }
   }
   return Status::OK();
 }
@@ -1152,6 +1263,12 @@ Status QNNExecutionProvider::OnRunStart(const onnxruntime::RunOptions& run_optio
       ORT_RETURN_IF_ERROR(qnn_backend_manager_->SetRpcControlLatency(GetPerThreadContext().GetHtpPowerConfigId(),
                                                                      rpc_control_latency));
     }
+  }
+
+  std::string lora_config = "";
+  if (TryGetConfigEntry(config_options, kOrtRunOptionsConfigQnnLoraConfig, lora_config)) {
+    LOGS_DEFAULT(VERBOSE) << "lora_config: " << lora_config;
+    ORT_RETURN_IF_ERROR(qnn_backend_manager_->ParseLoraConfig(lora_config));
   }
 
   return Status::OK();
