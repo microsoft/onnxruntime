@@ -367,6 +367,48 @@
       "createdDate": "2025-04-25 17:06:52Z",
       "expirationDate": "2025-10-12 17:09:03Z",
       "justification": "This error is baselined with an expiration date of 180 days from 2025-04-25 17:09:03Z"
+    },
+    "568199e534a7aaaa1f2f1395eba1edad215e4a4b1f71457c84868644ca2b5997": {
+      "signature": "568199e534a7aaaa1f2f1395eba1edad215e4a4b1f71457c84868644ca2b5997",
+      "alternativeSignatures": [],
+      "target": "ScanTelemetry_20250425220821141.json",
+      "line": 1,
+      "memberOf": [
+        "default"
+      ],
+      "tool": "credscan",
+      "ruleId": "CSCAN-AZURE0130",
+      "createdDate": "2025-04-25 22:25:47Z",
+      "expirationDate": "2025-10-12 23:01:19Z",
+      "justification": "This error is baselined with an expiration date of 180 days from 2025-04-25 23:01:19Z"
+    },
+    "46cd93fda3b6f7eec5d6c3f72169c3ad1092216fa6c9630177d7f2d6e940e555": {
+      "signature": "46cd93fda3b6f7eec5d6c3f72169c3ad1092216fa6c9630177d7f2d6e940e555",
+      "alternativeSignatures": [],
+      "target": "ScanTelemetry_20250425220811012.json",
+      "line": 1,
+      "memberOf": [
+        "default"
+      ],
+      "tool": "credscan",
+      "ruleId": "CSCAN-AZURE0130",
+      "createdDate": "2025-04-25 22:25:52Z",
+      "expirationDate": "2025-10-12 23:01:19Z",
+      "justification": "This error is baselined with an expiration date of 180 days from 2025-04-25 23:01:19Z"
+    },
+    "919e797b88639882a09d577e57832df0158ac312a221697faf9fc9a40021d8a0": {
+      "signature": "919e797b88639882a09d577e57832df0158ac312a221697faf9fc9a40021d8a0",
+      "alternativeSignatures": [],
+      "target": "ScanTelemetry_20250425220803349.json",
+      "line": 1,
+      "memberOf": [
+        "default"
+      ],
+      "tool": "credscan",
+      "ruleId": "CSCAN-AZURE0130",
+      "createdDate": "2025-04-25 22:25:55Z",
+      "expirationDate": "2025-10-12 23:01:19Z",
+      "justification": "This error is baselined with an expiration date of 180 days from 2025-04-25 23:01:19Z"
     }
   }
 }
