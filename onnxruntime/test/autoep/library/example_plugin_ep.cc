@@ -44,7 +44,7 @@ struct ExampleEpFactory : OrtEpFactory, ApiPtrs {
   ExampleEpFactory(const char* ep_name, ApiPtrs apis) : ApiPtrs(apis), ep_name_{ep_name} {
     GetName = GetNameImpl;
     GetVendor = GetVendorImpl;
-    GetDeviceInfoIfSupported = GetDeviceInfoIfSupportedImpl;
+    GetSupportedDevices = GetSupportedDevicesImpl;
     CreateEp = CreateEpImpl;
     ReleaseEp = ReleaseEpImpl;
   }
@@ -59,25 +59,39 @@ struct ExampleEpFactory : OrtEpFactory, ApiPtrs {
     return factory->vendor_.c_str();
   }
 
-  static bool ORT_API_CALL GetDeviceInfoIfSupportedImpl(const OrtEpFactory* this_ptr,
-                                                        const OrtHardwareDevice* device,
-                                                        _Out_opt_ OrtKeyValuePairs** ep_metadata,
-                                                        _Out_opt_ OrtKeyValuePairs** ep_options) {
-    const auto* factory = static_cast<const ExampleEpFactory*>(this_ptr);
+  static OrtStatus* ORT_API_CALL GetSupportedDevicesImpl(OrtEpFactory* this_ptr,
+                                                         const OrtHardwareDevice* const* devices,
+                                                         size_t num_devices,
+                                                         OrtEpDevice** ep_devices,
+                                                         size_t max_ep_devices,
+                                                         size_t* p_num_ep_devices) {
+    size_t& num_ep_devices = *p_num_ep_devices;
+    auto* factory = static_cast<ExampleEpFactory*>(this_ptr);
 
-    if (factory->ort_api.HardwareDevice_Type(device) == OrtHardwareDeviceType::OrtHardwareDeviceType_CPU) {
-      // these can be returned as nullptr if you have nothing to add.
-      factory->ort_api.CreateKeyValuePairs(ep_metadata);
-      factory->ort_api.CreateKeyValuePairs(ep_options);
+    for (size_t i = 0; i < num_devices && num_ep_devices < max_ep_devices; ++i) {
+      const OrtHardwareDevice& device = *devices[i];
+      if (factory->ort_api.HardwareDevice_Type(&device) == OrtHardwareDeviceType::OrtHardwareDeviceType_CPU) {
+        // these can be returned as nullptr if you have nothing to add.
+        OrtKeyValuePairs* ep_metadata = nullptr;
+        OrtKeyValuePairs* ep_options = nullptr;
+        factory->ort_api.CreateKeyValuePairs(&ep_metadata);
+        factory->ort_api.CreateKeyValuePairs(&ep_options);
 
-      // random example using made up values
-      factory->ort_api.AddKeyValuePair(*ep_metadata, "version", "0.1");
-      factory->ort_api.AddKeyValuePair(*ep_options, "run_really_fast", "true");
-
-      return true;
+        // random example using made up values
+        factory->ort_api.AddKeyValuePair(ep_metadata, "version", "0.1");
+        factory->ort_api.AddKeyValuePair(ep_options, "run_really_fast", "true");
+        // OrtEpDevice takes ownership of ep_metadata and ep_options if successful.
+        auto* status = factory->ort_api.GetEpApi()->CreateEpDevice(factory, &device, ep_metadata, ep_options,
+                                                                   &ep_devices[num_ep_devices++]);
+        if (status != nullptr) {
+          factory->ort_api.ReleaseKeyValuePairs(ep_metadata);
+          factory->ort_api.ReleaseKeyValuePairs(ep_options);
+          return status;
+        }
+      }
     }
 
-    return false;
+    return nullptr;
   }
 
   static OrtStatus* ORT_API_CALL CreateEpImpl(OrtEpFactory* this_ptr,
@@ -88,6 +102,7 @@ struct ExampleEpFactory : OrtEpFactory, ApiPtrs {
                                               _In_ const OrtLogger* logger,
                                               _Out_ OrtEp** ep) {
     auto* factory = static_cast<ExampleEpFactory*>(this_ptr);
+    *ep = nullptr;
 
     if (num_devices != 1) {
       // we only registered for CPU and only expected to be selected for one CPU

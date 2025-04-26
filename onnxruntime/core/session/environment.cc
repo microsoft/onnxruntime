@@ -3,8 +3,11 @@
 
 #include "core/session/environment.h"
 
+#include <array>
+
 #include "core/common/basic_types.h"
 #include "core/framework/allocator_utils.h"
+#include "core/framework/error_code_helper.h"
 #include "core/graph/constants.h"
 #include "core/graph/op.h"
 #include "core/platform/device_discovery.h"
@@ -468,6 +471,28 @@ Status Environment::UnregisterExecutionProviderLibrary(const std::string& ep_nam
   return status;
 }
 
+namespace {
+std::vector<const OrtHardwareDevice*> SortDevicesByType() {
+  auto& devices = DeviceDiscovery::GetDevices();
+  std::vector<const OrtHardwareDevice*> sorted_devices;
+  sorted_devices.reserve(devices.size());
+
+  const auto select_by_type = [&](OrtHardwareDeviceType type) {
+    for (const auto& device : devices) {
+      if (device.type == type) {
+        sorted_devices.push_back(&device);
+      }
+    }
+  };
+
+  select_by_type(OrtHardwareDeviceType_NPU);
+  select_by_type(OrtHardwareDeviceType_GPU);
+  select_by_type(OrtHardwareDeviceType_CPU);
+
+  return sorted_devices;
+}
+}  // namespace
+
 Status Environment::EpInfo::Create(std::unique_ptr<EpLibrary> library_in, std::unique_ptr<EpInfo>& out,
                                    const std::vector<EpFactoryInternal*>& internal_factories) {
   if (!library_in) {
@@ -482,36 +507,25 @@ Status Environment::EpInfo::Create(std::unique_ptr<EpLibrary> library_in, std::u
   ORT_RETURN_IF_ERROR(instance.library->Load());
   const auto& factories = instance.library->GetFactories();
 
+  // OrtHardwareDevice instances to pass to GetSupportedDevices. sorted by type to be slightly more structured.
+  // the set of hardware devices is static so this can also be static.
+  const static auto sorted_devices = SortDevicesByType();
+
   for (auto* factory_ptr : factories) {
     ORT_ENFORCE(factory_ptr != nullptr, "Factory pointer was null. EpLibrary should prevent this. Library:",
                 instance.library->RegistrationName());
 
     auto& factory = *factory_ptr;
 
-    // for each device
-    for (const auto& device : DeviceDiscovery::GetDevices()) {
-      OrtKeyValuePairs* ep_metadata = nullptr;
-      OrtKeyValuePairs* ep_options = nullptr;
+    std::array<OrtEpDevice*, 8> ep_devices;
+    size_t num_ep_devices = 0;
+    ORT_RETURN_IF_ERROR(ToStatus(
+        factory.GetSupportedDevices(&factory, sorted_devices.data(), sorted_devices.size(),
+                                    ep_devices.data(), ep_devices.size(), &num_ep_devices)));
 
-      if (factory.GetDeviceInfoIfSupported(&factory, &device, &ep_metadata, &ep_options)) {
-        auto ed = std::make_unique<OrtEpDevice>();
-        ed->ep_name = factory.GetName(&factory);
-        ed->ep_vendor = factory.GetVendor(&factory);
-        ed->device = &device;
-
-        if (ep_metadata) {
-          ed->ep_metadata = std::move(*ep_metadata);
-          delete ep_metadata;
-        }
-
-        if (ep_options) {
-          ed->ep_options = std::move(*ep_options);
-          delete ep_options;
-        }
-
-        ed->ep_factory = &factory;
-
-        instance.execution_devices.push_back(std::move(ed));
+    for (size_t i = 0; i < num_ep_devices; ++i) {
+      if (ep_devices[i] != nullptr) {                            // should never happen but just in case...
+        instance.execution_devices.emplace_back(ep_devices[i]);  // take ownership
       }
     }
   }
