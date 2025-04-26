@@ -609,6 +609,10 @@ set(ORTTRAINING_SOURCE_DIR ${ORTTRAINING_ROOT}/orttraining)
 
 include(adjust_global_compile_flags.cmake)
 
+if (WIN32 AND onnxruntime_target_platform STREQUAL "ARM")
+  message(FATAL_ERROR "Windows ARM32 build is not supported.")
+endif()
+
 if (APPLE)
   if (NOT CMAKE_OSX_ARCHITECTURES)
     message("Building ONNX Runtime for ${CMAKE_HOST_SYSTEM_PROCESSOR} CPU ARCH")
@@ -974,11 +978,11 @@ if (onnxruntime_USE_JSEP)
     list(APPEND ONNXRUNTIME_PROVIDER_NAMES js)
 endif()
 if (onnxruntime_USE_QNN OR onnxruntime_USE_QNN_INTERFACE)
-    
+
     if(onnxruntime_USE_QNN)
         list(APPEND ORT_PROVIDER_FLAGS -DUSE_QNN=1)
     else()
-        list(APPEND ORT_EXTRA_INTERFACE_FLAGS -DUSE_QNN=1) 
+        list(APPEND ORT_EXTRA_INTERFACE_FLAGS -DUSE_QNN=1)
     endif()
 
     list(APPEND ONNXRUNTIME_PROVIDER_NAMES qnn)
