@@ -405,11 +405,6 @@ def add_windows_specific_args(parser: argparse.ArgumentParser) -> None:
         help="[Windows cross-compiling] Target Windows x86.",
     )
     parser.add_argument(
-        "--arm",
-        action="store_true",
-        help="[Windows cross-compiling] Target Windows ARM.",
-    )
-    parser.add_argument(
         "--arm64",
         action="store_true",
         help="[Windows cross-compiling] Target Windows ARM64.",
@@ -782,7 +777,6 @@ def is_cross_compiling(args: argparse.Namespace) -> bool:
         [
             # Check existence before accessing for conditionally added args
             getattr(args, "x86", False),
-            getattr(args, "arm", False),
             getattr(args, "arm64", False),
             getattr(args, "arm64ec", False),
             args.rv64,  # General cross-compile arg
