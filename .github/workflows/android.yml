@@ -13,8 +13,8 @@ on:
   workflow_dispatch:
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}-${{ github.event_name == 'workflow_dispatch' }}
-  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+  group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.ref || github.sha }}
+  cancel-in-progress: true
 
 jobs:
   android_nnapi_ep:
@@ -71,7 +71,7 @@ jobs:
 
 
       - name: Build Minimal ORT with NNAPI and run tests
-        run:  tools/ci_build/github/linux/ort_minimal/nnapi_minimal_build_minimal_ort_and_run_tests.sh "$(pwd)"
+        run: tools/ci_build/github/linux/ort_minimal/nnapi_minimal_build_minimal_ort_and_run_tests.sh "$(pwd)"
         shell: bash
 
       - name: Install psutil for emulator shutdown by run_android_emulator.py
