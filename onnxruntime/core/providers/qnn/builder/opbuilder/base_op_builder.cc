@@ -204,7 +204,10 @@ Status BaseOpBuilder::ProcessOutputs(QnnModelWrapper& qnn_model_wrapper,
     std::string output_name;
   };
   std::vector<CastNodeInfo> cast_node_info_vec;
-
+  auto mem_type = QNN_TENSORMEMTYPE_RAW;
+  if (true == qnn_model_wrapper.GetModelSettings().htp_shared_memory) {
+    mem_type = QNN_TENSORMEMTYPE_MEMHANDLE;
+  }
   const auto output_count = GetOutputCountQnnRequired(node_unit);
   for (size_t output_i = 0; output_i < output_count; ++output_i) {
     const auto& output_name = outputs[output_i].node_arg.Name();
@@ -255,7 +258,8 @@ Status BaseOpBuilder::ProcessOutputs(QnnModelWrapper& qnn_model_wrapper,
                                                 QNN_TENSOR_TYPE_NATIVE,
                                                 supported_qnn_data_type,
                                                 output_info.quant_param.Copy(),
-                                                std::move(cast_output_shape));
+                                                std::move(cast_output_shape), {},
+                                                mem_type);
       ORT_RETURN_IF_NOT(qnn_model_wrapper.AddTensorWrapper(std::move(cast_input_tensorwrapper)), "Failed to add tensor.");
       output_names.push_back(cast_input_name);
       cast_node_info_vec.push_back({cast_node_name, cast_input_name, output_name});

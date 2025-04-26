@@ -29,6 +29,7 @@ struct OrtStatus {
 #include "core/providers/providers.h"
 #include "core/providers/provider_factory_creators.h"
 #include "core/providers/tensorrt/tensorrt_provider_options.h"
+#include "core/providers/nv_tensorrt_rtx/nv_provider_options.h"
 
 #if defined(USE_CUDA) || defined(USE_ROCM)
 #define BACKEND_PROC "GPU"
@@ -122,6 +123,9 @@ struct OrtStatus {
 #ifdef USE_TENSORRT
 #include "core/providers/tensorrt/tensorrt_provider_factory.h"
 #endif
+#ifdef USE_NV
+#include "core/providers/nv_tensorrt_rtx/nv_provider_factory.h"
+#endif
 #ifdef USE_MIGRAPHX
 #include "core/providers/migraphx/migraphx_provider_factory.h"
 #endif
@@ -170,6 +174,13 @@ extern onnxruntime::ArenaExtendStrategy arena_extend_strategy;
 namespace onnxruntime {
 ProviderInfo_TensorRT* TryGetProviderInfo_TensorRT();
 ProviderInfo_TensorRT& GetProviderInfo_TensorRT();
+}  // namespace onnxruntime
+#endif
+
+#ifdef USE_NV
+namespace onnxruntime {
+ProviderInfo_Nv* TryGetProviderInfo_Nv();
+ProviderInfo_Nv& GetProviderInfo_Nv();
 }  // namespace onnxruntime
 #endif
 

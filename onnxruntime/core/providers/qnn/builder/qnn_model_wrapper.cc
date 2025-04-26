@@ -68,9 +68,13 @@ Status QnnModelWrapper::MakeTensorWrapper(const NodeUnitIODef& tensor, QnnTensor
     ORT_RETURN_IF_ERROR(UnpackInitializerData(*tensor_info.initializer_tensor, unpacked_tensor));
   }
 
+  Qnn_TensorMemType_t mem_type = QNN_TENSORMEMTYPE_RAW;
+  if (true == model_settings_.htp_shared_memory) {
+    mem_type = QNN_TENSORMEMTYPE_MEMHANDLE;
+  }
   tensor_wrapper = QnnTensorWrapper(tensor_name, GetTensorType(tensor_name), tensor_info.qnn_data_type,
                                     std::move(tensor_info.quant_param), std::move(tensor_info.shape),
-                                    std::move(unpacked_tensor));
+                                    std::move(unpacked_tensor), mem_type);
   return Status::OK();
 }
 

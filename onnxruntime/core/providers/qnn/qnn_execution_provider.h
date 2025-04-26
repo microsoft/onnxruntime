@@ -51,6 +51,8 @@ class QNNExecutionProvider : public IExecutionProvider {
 
   std::vector<AllocatorPtr> CreatePreferredAllocators() override;
 
+  OrtDevice GetOrtDeviceByMemType(OrtMemType mem_type) const override;
+
  private:
   std::unordered_set<const Node*> GetSupportedNodes(const GraphViewer& graph_viewer,
                                                     const std::unordered_map<const Node*, const NodeUnit*>& node_unit_map,
