@@ -50,8 +50,8 @@ static constexpr OrtEpApi ort_ep_api = {
 static_assert(offsetof(OrtEpApi, ReleaseEpDevice) / sizeof(void*) == 1,
               "Size of version 22 API cannot change");  // initial version in ORT 1.22
 
+}  // namespace OrtExecutionProviderApi
+
 ORT_API(const OrtEpApi*, OrtExecutionProviderApi::GetEpApi) {
   return &ort_ep_api;
 }
-
-}  // namespace OrtExecutionProviderApi
