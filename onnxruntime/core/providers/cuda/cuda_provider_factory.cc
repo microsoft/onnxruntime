@@ -393,7 +393,7 @@ OrtStatus* CreateEpFactories(const char* /*registration_name*/, const OrtApiBase
 }
 
 OrtStatus* ReleaseEpFactory(OrtEpFactory* factory) {
-  delete factory;
+  delete static_cast<CudaEpFactory*>(factory);
   return nullptr;
 }
 }

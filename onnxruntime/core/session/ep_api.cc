@@ -23,10 +23,12 @@ ORT_API_STATUS_IMPL(CreateEpDevice, _In_ OrtEpFactory* ep_factory,
 
   if (ep_metadata) {
     ep_device->ep_metadata = std::move(*ep_metadata);
+    delete ep_metadata;
   }
 
   if (ep_options) {
     ep_device->ep_options = std::move(*ep_options);
+    delete ep_options;
   }
 
   *ort_ep_device = ep_device.release();
