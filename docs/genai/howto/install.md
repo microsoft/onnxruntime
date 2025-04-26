@@ -38,17 +38,15 @@ The CUDA toolkit can be downloaded from the [CUDA Toolkit Archive](https://devel
 
 Ensure that the `CUDA_PATH` environment variable is set to the location of your CUDA installation.
 
-#### CUDA 11
-
-```bash
-pip install onnxruntime-genai-cuda --index-url https://aiinfra.pkgs.visualstudio.com/PublicPackages/_packaging/onnxruntime-cuda-11/pypi/simple/
-```
-
 #### CUDA 12
 
 ```bash
 pip install onnxruntime-genai-cuda
 ```
+
+#### CUDA 11
+
+To use this API with CUDA 11, you need to [build and install from source](build-from-source.md).
 
 
 ## Nuget package installation
