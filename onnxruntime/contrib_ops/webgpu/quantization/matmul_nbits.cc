@@ -546,25 +546,16 @@ Status MatMulNBitsWideTileProgram::GenerateShaderCode(ShaderHelper& shader) cons
                                     << "  }\n"
                                     << "  return input_a_value_t(0);\n"
                                     << "}\n";
-
-  shader.AdditionalImplementation() << "\n"
-                                    << "fn mm_read_b(row : u32, col : u32) -> input_b_value_t {\n"
-                                    << "  if (row < uniforms.input_b_shape[0] && col < uniforms.input_b_shape[1]) {\n"
-                                    << "    return " << b.GetByIndices("input_b_indices_t(row, col, 0)") << ";\n"
-                                    << "  }\n"
-                                    << "  return input_b_value_t(0);\n"
-                                    << "}\n";
-
-  shader.AdditionalImplementation() << "\n"
-                                    << "fn mm_read_scale(row : u32, col : u32) -> output_element_t {\n"
-                                    << "  if (row < uniforms.input_b_shape[0] && col < uniforms.input_b_shape[1]) {\n"
-                                    << "    return scales[row * uniforms.input_b_shape[1] + col];\n"
-                                    << "  }\n"
-                                    << "  return output_element_t(0);\n"
-                                    << "}\n";
-
-  if (has_zero_points_) {
-    shader.AdditionalImplementation() << R"(
+  if (nbits_ == 4) {
+    shader.AdditionalImplementation() << "\n"
+                                      << "fn mm_read_b(row : u32, col : u32) -> input_b_value_t {\n"
+                                      << "  if (row < uniforms.input_b_shape[0] && col < uniforms.input_b_shape[1]) {\n"
+                                      << "    return " << b.GetByIndices("input_b_indices_t(row, col, 0)") << ";\n"
+                                      << "  }\n"
+                                      << "  return input_b_value_t(0);\n"
+                                      << "}\n";
+    if (has_zero_points_) {
+      shader.AdditionalImplementation() << R"(
 fn mm_read_zero(row : u32, col : u32) -> output_element_t {
   if (row < uniforms.input_b_shape[0] && col < uniforms.input_b_shape[1]) {
     let offset = row * uniforms.input_b_stride[0] + col * uniforms.input_b_stride[1];
@@ -583,14 +574,53 @@ fn mm_read_zero(row : u32, col : u32) -> output_element_t {
   return output_element_t(0);
 }
 )";
-  } else {
-    shader.AdditionalImplementation() << R"(
+    } else {
+      shader.AdditionalImplementation() << R"(
 fn mm_read_zero(row : u32, col : u32) -> output_element_t {
   // The default zero point is 8.
   return output_element_t(8);
 }
 )";
+    }
+  } else {
+    ORT_ENFORCE(nbits_ == 8, "Only 4/8 bits are supported for DP4");
+    if (has_zero_points_) {
+      shader.AdditionalImplementation() << R"(
+fn mm_read_zero(row : u32, col : u32) -> output_element_t {
+  if (row < uniforms.input_b_shape[0] && col < uniforms.input_b_shape[1]) {
+    let offset = row * uniforms.input_b_shape[1] + col;
+
+    // u32 holds 4 packed uint8.
+    let array_index = offset / 4u;
+    let component_index = offset % 4u;
+    let packed_value = zero_points[array_index];
+
+    // Extract the uint8 component
+    let shift_amount = component_index * 8u;
+    let masked_value = (packed_value >> shift_amount) & 0xFF;
+
+    return output_element_t(masked_value);
   }
+  return output_element_t(0);
+}
+)";
+    } else {
+      shader.AdditionalImplementation() << R"(
+fn mm_read_zero(row : u32, col : u32) -> output_element_t {
+  // The default zero point is 128 for 8 bits.
+  return output_element_t(128);
+}
+)";
+    }
+  }
+
+  shader.AdditionalImplementation() << "\n"
+                                    << "fn mm_read_scale(row : u32, col : u32) -> output_element_t {\n"
+                                    << "  if (row < uniforms.input_b_shape[0] && col < uniforms.input_b_shape[1]) {\n"
+                                    << "    return scales[row * uniforms.input_b_shape[1] + col];\n"
+                                    << "  }\n"
+                                    << "  return output_element_t(0);\n"
+                                    << "}\n";
 
   shader.AdditionalImplementation() << "\n"
                                     << "fn mm_write_y(batch : u32, row : u32, col : u32, value : output_value_t) {\n"
@@ -655,10 +685,13 @@ fn dequantize_packed8xU4(packed_value : u32, zero_point : output_element_t, scal
     let b_row = col + local_idx;
     let b_col = a_block_idx;
 
-    let b_data = mm_read_b(b_row, b_col);
     let scale = mm_read_scale(b_row, b_col);
     let zero_point = mm_read_zero(b_row, b_col);
+)MAIN_FN";
 
+  if (nbits_ == 4) {
+    shader.MainFunctionBody() << R"MAIN_FN(
+    let b_data = mm_read_b(b_row, b_col);
     // `b` component size is 4.
     for (var b_idx = 0u; b_idx < 4u; b_idx++) {
       let b_dequantized = dequantize_packed8xU4(b_data[b_idx], zero_point, scale);
@@ -669,6 +702,29 @@ fn dequantize_packed8xU4(packed_value : u32, zero_point : output_element_t, scal
         results[m_idx] += f32(dot(a_data0, b_dequantized[0])) + f32(dot(a_data1, b_dequantized[1]));
       }
     }
+)MAIN_FN";
+  } else {
+    shader.MainFunctionBody() << "    var b_data0 = vec4<u32>(0);\n"
+                                 "    var b_data1 = vec4<u32>(0);\n"
+                                 "    if (b_row < uniforms.input_b_shape[0] && b_col < uniforms.input_b_shape[1]) {\n"
+                              << "      b_data0 = " << b.GetByIndices("input_b_indices_t(b_row, b_col, 0)") << ";\n"
+                              << "      b_data1 = " << b.GetByIndices("input_b_indices_t(b_row, b_col, 1)") << ";\n"
+                                                                                                               "    }"
+                              << R"MAIN_FN(
+    for (var b_idx = 0u; b_idx < 4u; b_idx++) {
+      let b_dequantized0 = (vec4<output_element_t>(unpack4xU8(b_data0[b_idx])) - vec4<output_element_t>(zero_point)) * scale;
+      let b_dequantized1 = (vec4<output_element_t>(unpack4xU8(b_data1[b_idx])) - vec4<output_element_t>(zero_point)) * scale;
+      for (var m_idx = 0u; m_idx < kTileM; m_idx++) {
+        let a_data0 = a_data_tile[m_idx][b_idx];
+        let a_data1 = a_data_tile[m_idx][b_idx + 4u];
+
+        results[m_idx] += f32(dot(a_data0, b_dequantized0)) + f32(dot(a_data1, b_dequantized1));
+      }
+    }
+)MAIN_FN";
+  }
+
+  shader.MainFunctionBody() << R"MAIN_FN(
 
     workgroupBarrier();
   }
@@ -842,8 +898,7 @@ Status MatMulNBits::ComputeInternal(onnxruntime::webgpu::ComputeContext& context
   // WideTileProgram
   // This program is optimized for Block32 prefill using Tile16x128.
   // TODO: loosen restrictions on vendor.
-  const bool use_wide_tile_program = block_size == 32 && components_a == 4 && components_b == 4 && M >= kMinMForTileOptimization &&
-                                     context.AdapterInfo().vendor == std::string_view{"intel"};
+  const bool use_wide_tile_program = block_size == 32 && components_a == 4 && components_b == 4 && M >= kMinMForTileOptimization;
   if (use_wide_tile_program) {
     // Enforce output components to 1.
     components = 1;
@@ -852,7 +907,7 @@ Status MatMulNBits::ComputeInternal(onnxruntime::webgpu::ComputeContext& context
     constexpr uint32_t tile_m = workgroup_size / 8;
     constexpr uint32_t tile_n = workgroup_size;
 
-    MatMulNBitsWideTileProgram program{has_zero_points, tile_m, tile_n};
+    MatMulNBitsWideTileProgram program{has_zero_points, tile_m, tile_n, nbits};
     program.SetWorkgroupSize(workgroup_size);
     program.SetDispatchGroupSize((N + tile_n - 1) / tile_n,
                                  (M + tile_m - 1) / tile_m,
@@ -876,7 +931,7 @@ Status MatMulNBits::ComputeInternal(onnxruntime::webgpu::ComputeContext& context
     return context.RunProgram(program);
   }
 
-  if (M < kMinMForTileOptimization && components_a == 4 && components_b == 4 && !has_zero_points) {
+  if (components_a == 4 && components_b == 4 && !has_zero_points) {
     constexpr uint32_t workgroup_size = 128;
     constexpr uint32_t tile_size = 8;
     constexpr uint32_t kU32Components = 4;
