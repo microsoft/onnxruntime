@@ -768,8 +768,7 @@ def get_args():
         "-d",
         "--use_dynamo_export",
         action="store_true",
-        help="Use the new Dynamo exporter instead of the old TorchScript exporter, "
-        "This should be set to true if torch>=2.6 and transformers>=4.48.",
+        help="Use the new Dynamo exporter instead of the old TorchScript exporter",
     )
     parser.set_defaults(use_dynamo_export=False)
 
