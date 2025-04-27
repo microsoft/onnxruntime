@@ -54,10 +54,13 @@ parameters:
   displayName: Build flags to append to build command
   type: string
   default: '--use_azure'
+
+# Do not update this to a version that does not exist for the qnn-runtime Maven package:
+# https://mvnrepository.com/artifact/com.qualcomm.qti/qnn-runtime
 - name: QnnSdk
   displayName: QNN SDK Version
   type: string
-  default: 2.33.2.250410
+  default: 2.33.0.250327
 
 resources:
   repositories:

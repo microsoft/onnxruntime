@@ -1,53 +1,40 @@
-# -------------------------------------------------------------------------
-# Copyright (c) Microsoft Corporation.  All rights reserved.
-# Licensed under the MIT License.  See License.txt in the project root for
-# license information.
-# --------------------------------------------------------------------------
-
 import contextlib
+import pprint
 from collections.abc import Callable
-from typing import Any, Optional
-
-from torch.fx.experimental.symbolic_shapes import ShapeEnv
+from typing import Any
 
 from .onnx_export_serialization import (
-    _register_cache_serialization,
-    _unregister_cache_serialization,
+    flatten_dynamic_cache,
+    flatten_mamba_cache,
+    flatten_with_keys_dynamic_cache,
+    flatten_with_keys_mamba_cache,
+    unflatten_dynamic_cache,
+    unflatten_mamba_cache,
 )
 from .patches import patch_transformers as patch_transformers_list
-from .patches.patch_torch import patched_ShapeEnv
 
 
-def patch_module_or_classes(mod, verbose: int = 0) -> dict[type, dict[type, Callable]]:
+def patch_module(mod, verbose: int = 0) -> dict[type, dict[type, Callable]]:
     """
     Applies all patches defined in classes prefixed by ``patched_``
     ``cls._PATCHED_CLASS_`` defines the class to patch,
     ``cls._PATCHES_`` defines the method to patch.
-    The returns information needs to be sent to :func:`unpatch_module_or_classes`
+    The returns information needs to be sent to :func:`unpatch_module`
     to revert the changes.
-
-    :param mod: module of list of clsses to patch
-    :param verbose: verbosity
-    :return: patch info
     """
-    if isinstance(mod, list):
-        to_patch = mod
-        name = "list"
-    else:
-        to_patch = []
-        for k in dir(mod):
-            if k.startswith("patched_"):
-                v = getattr(mod, k)
-                if hasattr(v, "_PATCHED_CLASS_") and hasattr(v, "_PATCHES_"):
-                    to_patch.append(v)
-        name = mod.__name__
+    to_patch = []
+    for k in dir(mod):
+        if k.startswith("patched_"):
+            v = getattr(mod, k)
+            if hasattr(v, "_PATCHED_CLASS_") and hasattr(v, "_PATCHES_"):
+                to_patch.append(v)
 
     res = {}
     for cls in to_patch:
         original = cls._PATCHED_CLASS_
         methods = cls._PATCHES_
         if verbose:
-            print(f"[patch_module_or_classes] {name}.{cls.__name__}: {', '.join(methods)}")
+            print(f"[patch_module] {mod.__name__} - {cls.__name__}: {', '.join(methods)}")
 
         keep = {n: getattr(original, n, None) for n in methods}
         for n in methods:
@@ -57,30 +44,20 @@ def patch_module_or_classes(mod, verbose: int = 0) -> dict[type, dict[type, Call
     return res
 
 
-def unpatch_module_or_classes(mod, info: dict[type, dict[type, Callable]], verbose: int = 0):
-    """
-    Reverts modification made by :func:`patch_module_or_classes`.
-
-    :param mod: module of list of clsses to patch
-    :param verbose: verbosity
-    """
-    if isinstance(mod, list):
-        to_patch = mod
-        name = "list"
-    else:
-        to_patch = []
-        for k in dir(mod):
-            if k.startswith("patched_"):
-                v = getattr(mod, k)
-                if hasattr(v, "_PATCHED_CLASS_") and hasattr(v, "_PATCHES_"):
-                    to_patch.append(v)
-        name = mod.__name__
+def unpatch_module(mod, info: dict[type, dict[type, Callable]], verbose: int = 0):
+    """Reverts modification made by :func:`patch_module`."""
+    to_patch = []
+    for k in dir(mod):
+        if k.startswith("patched_"):
+            v = getattr(mod, k)
+            if hasattr(v, "_PATCHED_CLASS_") and hasattr(v, "_PATCHES_"):
+                to_patch.append(v)
     set_patch = set(to_patch)
 
     for cls, methods in info.items():
         assert cls in set_patch, f"No patch registered for {cls} in {mod} (found {set_patch})"
         if verbose:
-            print(f"[unpatch_module_or_classes] {name}.{cls.__name__}: {', '.join(methods)}")
+            print(f"[unpatch_module] {mod.__name__} - {cls.__name__}: {', '.join(methods)}")
         original = cls._PATCHED_CLASS_
         for n, v in methods.items():
             if v is None:
@@ -88,6 +65,125 @@ def unpatch_module_or_classes(mod, info: dict[type, dict[type, Callable]], verbo
                 delattr(original, n)
             else:
                 setattr(original, n, v)
+
+
+def _register_cache_serialization(verbose: int = 0) -> dict[str, bool]:
+    # Cache serialization: to be moved into appropriate packages
+    import packaging.version as pv
+    import torch
+
+    try:
+        from transformers.cache_utils import DynamicCache
+    except ImportError:
+        DynamicCache = None
+
+    try:
+        from transformers.cache_utils import MambaCache
+    except ImportError:
+        MambaCache = None
+
+    # MambaCache
+    unregistered_mamba_cache = True
+    if MambaCache is not None and MambaCache in torch.utils._pytree.SUPPORTED_NODES:
+        if verbose > 1:
+            print(f"[_register_cache_serialization] {MambaCache} already registered")
+        # It is already registered because bypass_export_some_errors was called
+        # within a section already calling bypass_export_some_errors or transformers
+        # has updated its code to do it.
+        # No need to register and unregister then.
+        unregistered_mamba_cache = False
+    else:
+        if verbose:
+            print("[_register_cache_serialization] register MambaCache")
+        torch.utils._pytree.register_pytree_node(
+            MambaCache,
+            flatten_mamba_cache,
+            unflatten_mamba_cache,
+            serialized_type_name=f"{MambaCache.__module__}.{MambaCache.__name__}",
+            flatten_with_keys_fn=flatten_with_keys_mamba_cache,
+        )
+
+    # DynamicCache serialization is different in transformers and does not
+    # play way with torch.export.export.
+    # This is caused by this line:
+    # torch.fx._pytree.register_pytree_flatten_spec(
+    #           DynamicCache, _flatten_dynamic_cache_for_fx)
+    # so we remove it anyway
+    if DynamicCache in torch.fx._pytree.SUPPORTED_NODES and pv.Version(torch.__version__) >= pv.Version("2.7"):
+        if verbose:
+            print("[_register_cache_serialization] DynamicCache is unregistered first.")
+        _unregister(DynamicCache)
+
+    unregistered_dynamic_cache = True
+    if DynamicCache is not None and DynamicCache in torch.utils._pytree.SUPPORTED_NODES:
+        if verbose > 1:
+            print(f"[_register_cache_serialization] {DynamicCache} already registered")
+        unregistered_dynamic_cache = False
+    else:
+        if verbose:
+            print("[_register_cache_serialization] register DynamicCache")
+        torch.utils._pytree.register_pytree_node(
+            DynamicCache,
+            flatten_dynamic_cache,
+            unflatten_dynamic_cache,
+            serialized_type_name=f"{DynamicCache.__module__}.{DynamicCache.__name__}",
+            flatten_with_keys_fn=flatten_with_keys_dynamic_cache,
+        )
+        torch.fx._pytree.register_pytree_flatten_spec(DynamicCache, lambda x, _: [x.key_cache, x.value_cache])
+
+        # check
+        from .cache_helper import make_dynamic_cache
+
+        cache = make_dynamic_cache([(torch.rand((4, 4, 4)), torch.rand((4, 4, 4)))])
+        values, spec = torch.utils._pytree.tree_flatten(cache)
+        cache2 = torch.utils._pytree.tree_unflatten(values, spec)
+        # torch.fx._pytree.tree_flatten(cache)
+        assert len(cache2.key_cache) == 1
+
+    return dict(DynamicCache=unregistered_dynamic_cache, MambaCache=unregistered_mamba_cache)
+
+
+def _unregister(cls: type, verbose: int = 0):
+    import optree
+    import torch
+
+    # torch.fx._pytree._deregister_pytree_flatten_spec(cls)
+    if cls in torch.fx._pytree.SUPPORTED_NODES:
+        del torch.fx._pytree.SUPPORTED_NODES[cls]
+    if cls in torch.fx._pytree.SUPPORTED_NODES_EXACT_MATCH:
+        del torch.fx._pytree.SUPPORTED_NODES_EXACT_MATCH[cls]
+    if hasattr(torch.utils._pytree, "_deregister_pytree_node"):
+        # torch >= 2.7
+        torch.utils._pytree._deregister_pytree_node(cls)
+    optree.unregister_pytree_node(cls, namespace="torch")
+    if cls in torch.utils._pytree.SUPPORTED_NODES:
+        import packaging.version as pv
+
+        if pv.Version(torch.__version__) < pv.Version("2.7.0"):
+            del torch.utils._pytree.SUPPORTED_NODES[cls]
+    assert cls not in torch.utils._pytree.SUPPORTED_NODES, (
+        f"{cls} was not successful unregistered "
+        f"from torch.utils._pytree.SUPPORTED_NODES="
+        f"{pprint.pformat(list(torch.utils._pytree.SUPPORTED_NODES))}"
+    )
+    if verbose:
+        print(f"[_unregister_cache_serialization] unregistered {cls.__name__}")
+
+
+def _unregister_cache_serialization(undo: dict[str, bool], verbose: int = 0):
+    if undo.get("MambaCache", False):
+        from transformers.cache_utils import MambaCache
+
+        _unregister(MambaCache, verbose)
+    elif verbose > 1:
+        print("[_unregister_cache_serialization] skip unregister MambaCache")
+
+    if undo.get("DynamicCache", False):
+        from transformers.cache_utils import DynamicCache
+
+        _unregister(DynamicCache, verbose)
+    elif verbose > 1:
+        print("[_unregister_cache_serialization] skip unregister DynamicCache")
 
 
 @contextlib.contextmanager
@@ -107,10 +203,9 @@ def bypass_export_some_errors(
     patch_torch: bool = True,
     patch_transformers: bool = False,
     catch_constraints: bool = True,
-    stop_if_static: int = 0,
+    stop_if_static: bool = False,
     verbose: int = 0,
     patch: bool = True,
-    custom_patches: list[type["torch.nn.Module"]] | None = None,  # noqa: F821
 ) -> Callable:
     """
     Tries to bypass some situations :func:`torch.export.export` does not support.
@@ -124,14 +219,9 @@ def bypass_export_some_errors(
         can be put to stop at that stage.
     :param stop_if_static: see example :ref:`l-plot-export-locale-issue`,
         to stop the export as soon as an issue is detected with dynamic shapes
-        and show a stack trace indicating the exact location of the issue,
-        ``if stop_if_static > 1``, more methods are replace to catch more
-        issues
+        and show a stack trace indicating the exact location of the issue
     :param patch: if False, disable all patches except the registration of
         serialization function
-    :param custom_patches: to apply custom patches,
-        every patched class must define static attributes
-        ``_PATCHES_``, ``_PATCHED_CLASS_``
     :param verbose: to show which patches is applied
 
     The list of available patches.
@@ -144,8 +234,7 @@ def bypass_export_some_errors(
     * Serialization of ``MambaCache`` (in :epkg:`transformers`)
     * Serialization of ``DynamicCache`` (in :epkg:`transformers`)
     * reduce errors due to shape inference
-    * fixes some transformers classes,
-      see :mod:`onnx_diagnostic.torch_export_patches.patches.patch_transformers`
+    * fixes some transformers classes
 
     Serialization issues happen when a module takes one input or output
     has a type :func:`torch.export.export` cannot serialize.
@@ -216,7 +305,6 @@ def bypass_export_some_errors(
             f_sympy_name = getattr(sympy.core.numbers.IntegerConstant, "name", None)
 
             if verbose:
-                print(f"[bypass_export_some_errors] sympy.__version__={sympy.__version__!r}")
                 print("[bypass_export_some_errors] patch sympy")
 
             sympy.core.numbers.IntegerConstant.name = lambda self: f"IntCst{self!s}"
@@ -224,6 +312,9 @@ def bypass_export_some_errors(
         ###############
         # patch pytorch
         ###############
+        # the linter gets confused if not initialized
+        f_jit_isinstance = f_mark_static_address = f_infer_size = ShapeEnv = None
+        f__broadcast_shapes = f_shape_env__set_replacement = revert_patches_info = None
 
         if patch_torch:
             from .patches.patch_torch import (
@@ -234,8 +325,6 @@ def bypass_export_some_errors(
             )
 
             if verbose:
-                print(f"[bypass_export_some_errors] torch.__version__={torch.__version__!r}")
-                print(f"[bypass_export_some_errors] stop_if_static={stop_if_static!r}")
                 print("[bypass_export_some_errors] patch pytorch")
 
             # torch.jit.isinstance
@@ -273,41 +362,22 @@ def bypass_export_some_errors(
             )
 
         if stop_if_static:
-            ShapeEnv._log_guard_remember = ShapeEnv._log_guard
-
             if verbose:
                 print("[bypass_export_some_errors] assert when a dynamic dimension turns static")
-                print("[bypass_export_some_errors] replaces ShapeEnv._set_replacement")
+
+            from torch.fx.experimental.symbolic_shapes import ShapeEnv
+
+            from .patches.patch_torch import patched_ShapeEnv
 
             f_shape_env__set_replacement = ShapeEnv._set_replacement
             ShapeEnv._set_replacement = patched_ShapeEnv._set_replacement
-
-            if verbose:
-                print("[bypass_export_some_errors] replaces ShapeEnv._log_guard")
-            f_shape_env__log_guard = ShapeEnv._log_guard
-            ShapeEnv._log_guard = patched_ShapeEnv._log_guard
-
-            if stop_if_static > 1:
-                if verbose:
-                    print("[bypass_export_some_errors] replaces ShapeEnv._check_frozen")
-                f_shape_env__check_frozen = ShapeEnv._check_frozen
-                ShapeEnv._check_frozen = patched_ShapeEnv._check_frozen
 
         ####################
         # patch transformers
         ####################
 
         if patch_transformers:
-            if verbose:
-                import transformers
-
-                print(f"[bypass_export_some_errors] transformers.__version__={transformers.__version__!r}")
-            revert_patches_info = patch_module_or_classes(patch_transformers_list, verbose=verbose)
-
-        if custom_patches:
-            if verbose:
-                print("[bypass_export_some_errors] applies custom patches")
-            revert_custom_patches_info = patch_module_or_classes(custom_patches, verbose=verbose)
+            revert_patches_info = patch_module(patch_transformers_list, verbose=verbose)
 
         ########
         # export
@@ -360,16 +430,6 @@ def bypass_export_some_errors(
 
                 ShapeEnv._set_replacement = f_shape_env__set_replacement
 
-                if verbose:
-                    print("[bypass_export_some_errors] restored ShapeEnv._log_guard")
-
-                ShapeEnv._log_guard = f_shape_env__log_guard
-
-                if stop_if_static > 1:
-                    if verbose:
-                        print("[bypass_export_some_errors] restored ShapeEnv._check_frozen")
-                    ShapeEnv._check_frozen = f_shape_env__check_frozen
-
             if catch_constraints:
                 # to catch or skip dynamic_shapes issues
                 torch._export.non_strict_utils.produce_guards_and_solve_constraints = (
@@ -379,19 +439,12 @@ def bypass_export_some_errors(
                 if verbose:
                     print("[bypass_export_some_errors] restored shape constraints")
 
-            if custom_patches:
-                if verbose:
-                    print("[bypass_export_some_errors] unpatch custom patches")
-                unpatch_module_or_classes(custom_patches, revert_custom_patches_info, verbose=verbose)
-
             ##############
             # transformers
             ##############
 
             if patch_transformers:
-                if verbose:
-                    print("[bypass_export_some_errors] unpatch transformers")
-                unpatch_module_or_classes(patch_transformers_list, revert_patches_info, verbose=verbose)
+                unpatch_module(patch_transformers_list, revert_patches_info, verbose=verbose)
 
             ########
             # caches
@@ -401,13 +454,12 @@ def bypass_export_some_errors(
 
 
 def replacement_before_exporting(args: Any) -> Any:
-    """Does replacements on the given inputs if needed."""
+    """
+    Does replacements on the given inputs if needed.
+    """
     if args is None:
         return None
     if isinstance(args, (int, float)):
-        return args
-    if type(args) not in {dict, tuple, list}:
-        # BaseModelOutput is a dict
         return args
     if isinstance(args, dict):
         return {k: replacement_before_exporting(v) for k, v in args.items()}
@@ -415,4 +467,5 @@ def replacement_before_exporting(args: Any) -> Any:
         return tuple(replacement_before_exporting(v) for v in args)
     if isinstance(args, list):
         return [replacement_before_exporting(v) for v in args]
+
     return args

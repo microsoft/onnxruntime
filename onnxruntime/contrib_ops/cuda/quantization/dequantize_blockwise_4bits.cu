@@ -1,4 +1,3 @@
-// Modifications: scaling is moved from masked softmax to the gemm before that.
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
@@ -19,7 +18,6 @@ using namespace cub;
 namespace onnxruntime {
 namespace contrib {
 namespace cuda {
-
 
 __device__ __forceinline__ void DequantizeEightElements(uint32_t values_quant, half scale, half zp, half* output) {
   half2 scale_half2 = {scale, scale};
@@ -68,25 +66,28 @@ __global__ void Dequantize4BitsKernelReOrder(
     int groups_per_K,
     int groups_per_threadblock,
     int total_groups) {
-  int group_id = blockIdx.x * groups_per_threadblock + ((threadIdx.x * 8) / block_size);
+  constexpr int bits = 4;
+  constexpr int element_per_thread = 32 / bits;  // Process 8 elements per thread using uint32_t load
+  constexpr int element_per_byte = 8 / bits;
+  int group_id = blockIdx.x * groups_per_threadblock + ((threadIdx.x * element_per_thread) / block_size);
   if (group_id >= total_groups) {
     return;
   }
 
-  const int zero_point_shape_x = (groups_per_K + 1) / 2;
+  const int zero_point_shape_x = (groups_per_K + (element_per_byte - 1)) / element_per_byte;
   const int scales_shape_x = groups_per_K;
   int n_idx = group_id / scales_shape_x;
   int kb_idx = group_id % scales_shape_x;
-  int element_offset = group_id * block_size + ((threadIdx.x * 8) & (block_size - 1));
+  int element_offset = group_id * block_size + ((threadIdx.x * element_per_thread) & (block_size - 1));
   T* output_i = output + element_offset;
-  uint32_t quant_value = *(reinterpret_cast<const uint32_t*>(quant_data + element_offset / 2));
-  const int32_t* reorder_idx_with_off = reorder_idx + kb_idx * block_size + ((threadIdx.x * 8) & (block_size - 1));
-  for (int i = 0; i < 8; i++) {
+  uint32_t quant_value = *(reinterpret_cast<const uint32_t*>(quant_data + element_offset / element_per_byte));
+  const int32_t* reorder_idx_with_off = reorder_idx + kb_idx * block_size + ((threadIdx.x * element_per_thread) & (block_size - 1));
+  for (int i = 0; i < element_per_thread; i++) {
     int32_t rid = reorder_idx_with_off[i];
     T scale = *(scale_data + n_idx * scales_shape_x + rid);
-    uint8_t zp = 8;
+    uint8_t zp = 8;  // Default zero point is 1 << (bits - 1)
     if (zero_points) {
-      zp = zero_points[n_idx * zero_point_shape_x + rid / 2];
+      zp = zero_points[n_idx * zero_point_shape_x + rid / element_per_byte];
       zp = (rid & 0x01) ? (zp >> 4) : (zp & 0x0f);
     }
 
@@ -130,7 +131,7 @@ __global__ void Dequantize4BitsKernel(
     }
     zero_point_value = static_cast<T>(zp);
   } else {
-    zero_point_value = zero_points? *(zero_points + block_id):static_cast<T>(8);
+    zero_point_value = zero_points ? *(zero_points + block_id) : static_cast<T>(8);
   }
 
   output = output + element_offset;
@@ -151,35 +152,45 @@ Status Dequantize4Bits(
   // k is padded and equal to block_per_K * block_size
   ORT_ENFORCE(k % block_size == 0, "k must be a multiplier of block_size");
   constexpr int element_per_thread = 8;
-  int groups_per_threadblock = GridDim::maxThreadsPerBlock * element_per_thread / block_size;
+
   int groups_per_K = k / block_size;
   int total_groups = n * groups_per_K;  // total elemenets in quant_data
-  int groups_per_grid = static_cast<int>(CeilDiv(total_groups, groups_per_threadblock));
+  int groups_per_threadblock = GridDim::maxThreadsPerBlock * element_per_thread / block_size;
+  int groups_per_grid = CeilDiv(total_groups, groups_per_threadblock);
+  dim3 grid_dim(groups_per_grid);
+  dim3 block_dim(GridDim::maxThreadsPerBlock);
+
   if (!reorder_idx || std::is_same_v<ZeroT, T>) {
-    Dequantize4BitsKernel<T, ZeroT><<<groups_per_grid, GridDim::maxThreadsPerBlock, 0, stream>>>(
+    // Launch standard kernel
+    Dequantize4BitsKernel<T, ZeroT><<<grid_dim, block_dim, 0, stream>>>(
         output,
         quant_data,
         scales_data,
         zero_points,
         block_size,
-        groups_per_K,
+        groups_per_K,  // Pass groups_per_K for potential ZP indexing if needed
         groups_per_threadblock,
         total_groups);
   } else {
-    // static_assert(std::is_same_v<ZeroT, uint8_t>, "ZeroT must be uint8_t");
-    Dequantize4BitsKernelReOrder<<<groups_per_grid, GridDim::maxThreadsPerBlock, 0, stream>>>(
-        output,
-        quant_data,
-        scales_data,
-        (const uint8_t*)zero_points,
-        reorder_idx,
-        block_size,
-        groups_per_K,
-        groups_per_threadblock,
-        total_groups);
+    // Launch reorder kernel (requires uint8_t zero points as per original structure)
+    if constexpr (std::is_same_v<ZeroT, uint8_t>) {
+      Dequantize4BitsKernelReOrder<T><<<grid_dim, block_dim, 0, stream>>>(
+          output,
+          quant_data,
+          scales_data,
+          (const uint8_t*)zero_points,
+          reorder_idx,
+          block_size,
+          groups_per_K,
+          groups_per_threadblock,
+          total_groups);
+    } else {
+      return Status(::onnxruntime::common::ONNXRUNTIME, ::onnxruntime::common::INVALID_ARGUMENT,
+                    "Reorder kernel currently expects uint8_t zero points.");
+    }
   }
 
-  return Status::OK();
+  return CUDA_CALL(cudaGetLastError());  // Check for launch errors
 }
 
 template Status Dequantize4Bits<float, uint8_t>(
@@ -224,60 +235,23 @@ template Status Dequantize4Bits<half, half>(
     int n,
     int block_size,
     cudaStream_t stream);
-///////////////////////////////////////////////////////////////////////////////
-// A more general block-wise dequantization implementation that supports
-// different block sizes and block orientations (row-wise/column-wise).
 
 template <
-  int Row_,    ///< rows of a matrix
-  int Column_  ///< columns of a matrix
-  >
-struct Shape2D {
-  static int const kRow = Row_;              ///< rows of a matrix
-  static int const kColumn = Column_;        ///< columns of a matrix
-  static int const kCount = Row_ * Column_;  ///< total number of elements in a matrix
-};
-
-/**
- * @brief Blockwise quantization constants
- * @tparam ElementT       source data type, e.g. fp32/fp16
- * @tparam block_size     number of elemenets quantized together
- * @tparam qbits          number of bits in each quantized element
- * @tparam Columnwise     true:  elements in a block come from one single column
- *                        false: elements in a block come from one single row
- */
-template <
-  typename ElementT,
-  int32_t block_size,
-  int32_t qbits,
-  bool Columnwise>
-struct BlkQuantTraits {
-  // number of qbit elements to pack into whole bytes
-  static constexpr int kPackSize = (qbits == 8) ? 1 : (qbits == 4) ? 2 : (qbits == 2) ? 4 : 0;
-  static_assert(kPackSize != 0, "Packing to whole bytes not supported for this qbits!");
-
-  using QuantBlk = std::conditional_t<Columnwise, Shape2D<block_size, 1>, Shape2D<1, block_size>>;
-  using ThreadBlk = Shape2D<QuantBlk::kRow * kPackSize, QuantBlk::kColumn>;
-};
-
-template <
-  typename ElementT,
-  int32_t block_size,
-  int32_t qbits,
-  bool Columnwise>
-__global__
-void dequantizeThread(ElementT* dst,
-                      const uint8_t* weights,
-                      const ElementT* scales,
-                      const uint8_t* zero_points,
-                      int rows,
-                      int columns,
-                      int thrd_row_blks) {
+    typename ElementT,
+    int32_t block_size,
+    int32_t qbits,
+    bool Columnwise>
+__global__ void dequantizeThread4b(ElementT* dst,
+                                   const uint8_t* weights,
+                                   const ElementT* scales,
+                                   const uint8_t* zero_points,
+                                   int rows,
+                                   int columns,
+                                   int thrd_row_blks) {
   using QuantBlk = typename BlkQuantTraits<ElementT, block_size, qbits, Columnwise>::QuantBlk;
   using ThreadBlk = typename BlkQuantTraits<ElementT, block_size, qbits, Columnwise>::ThreadBlk;
 
-  // !! 4b specific code
-  static_assert(qbits == 4, "Only 4b block quantization is supported!");
+  static_assert(qbits == 4, "Only 4b block quantization is supported by this kernel specialization!!");
 
   const auto block_idx = blockIdx.x * blockDim.x + threadIdx.x;
   const auto row_blks = (rows + QuantBlk::kRow - 1) / QuantBlk::kRow;
@@ -299,12 +273,12 @@ void dequantizeThread(ElementT* dst,
   // for 4b quant, kPackSize = 2, so we have 2 scales and 2 offsets
   const ElementT scale_buf[2] = {
       scales[(c / QuantBlk::kColumn) * row_blks + r / QuantBlk::kRow],
-      ((r/QuantBlk::kRow) < (meta_rows - 1))
+      ((r / QuantBlk::kRow) < (meta_rows - 1))
           ? scales[(c / QuantBlk::kColumn) * row_blks + r / QuantBlk::kRow + 1]
           : static_cast<ElementT>(0.0f)};
   const uint8_t zp_pair = (zero_points == nullptr)
-        ? 0x88
-        : zero_points[(c / QuantBlk::kColumn) * ((row_blks + 1) / 2) + (r / QuantBlk::kRow) / 2];
+                              ? 0x88
+                              : zero_points[(c / QuantBlk::kColumn) * ((row_blks + 1) / 2) + (r / QuantBlk::kRow) / 2];
   const uint16_t zp_buf[2] = {(uint16_t)(zp_pair & 0x0f), (uint16_t)((zp_pair >> 4) & 0x0f)};
   const ElementT adjust_buf[2] = {(-scale_buf[0]) * static_cast<ElementT>(zp_buf[0]),
                                   (-scale_buf[1]) * static_cast<ElementT>(zp_buf[1])};
@@ -315,7 +289,7 @@ void dequantizeThread(ElementT* dst,
       const auto scale0 = scale_buf[(i - r) / QuantBlk::kRow];
       const auto adjust0 = adjust_buf[(i - r) / QuantBlk::kRow];
 
-      const auto scale1 = scale_buf[(i + 1 - r) / QuantBlk::kRow];;
+      const auto scale1 = scale_buf[(i + 1 - r) / QuantBlk::kRow];
       const auto adjust1 = adjust_buf[(i + 1 - r) / QuantBlk::kRow];
 
       const auto vi = q_ptr[i / 2];
@@ -333,7 +307,8 @@ void dequantizeThread(ElementT* dst,
         static_assert(std::is_same<ElementT, float>::value, "Only float and half are supported!");
         const uint8_t vi0 = vi & 0xf;
         const uint8_t vi1 = vi >> 4;
-        dst[j * rows + i] = static_cast<float>(vi0) * scale0 + adjust0;;
+        dst[j * rows + i] = static_cast<float>(vi0) * scale0 + adjust0;
+        ;
         dst[j * rows + (i + 1)] = static_cast<float>(vi1) * scale1 + adjust1;
       }
     }
@@ -351,13 +326,13 @@ void dequantizeThread(ElementT* dst,
 }
 
 template <
-  typename ElementT,
-  int32_t block_size,
-  int32_t qbits,
-  bool Columnwise>
-static void dequantize(ElementT* dst, const uint8_t* weights, const ElementT* scales,
-                        const uint8_t* zero_points, int32_t rows, int32_t columns,
-                        cudaStream_t stream) {
+    typename ElementT,
+    int32_t block_size,
+    int32_t qbits,
+    bool Columnwise>
+static void dequantize4b_generic(ElementT* dst, const uint8_t* weights, const ElementT* scales,
+                                 const uint8_t* zero_points, int32_t rows, int32_t columns,
+                                 cudaStream_t stream) {
   using ThreadBlk = typename BlkQuantTraits<ElementT, block_size, qbits, Columnwise>::ThreadBlk;
 
   // Thread partitioning
@@ -366,7 +341,7 @@ static void dequantize(ElementT* dst, const uint8_t* weights, const ElementT* sc
   const auto total_thrd_blks = thrd_row_blks * thrd_col_blks;
 
   const auto grids = (total_thrd_blks + GridDim::maxThreadsPerBlock - 1) / GridDim::maxThreadsPerBlock;
-  dequantizeThread<ElementT, block_size, qbits, Columnwise><<<grids, GridDim::maxThreadsPerBlock, 0, stream>>>(
+  dequantizeThread4b<ElementT, block_size, qbits, Columnwise><<<grids, GridDim::maxThreadsPerBlock, 0, stream>>>(
       dst,
       weights,
       scales,
@@ -375,7 +350,6 @@ static void dequantize(ElementT* dst, const uint8_t* weights, const ElementT* sc
       columns,
       thrd_row_blks);
 }
-
 
 template <typename T>
 Status
@@ -392,41 +366,37 @@ DequantizeBlockwise4b(
   switch (block_size) {
     case 16:
       if (columnwise) {
-        dequantize<T, 16, 4, true>(dst, src, scales, zero_points, rows, columns, stream);
+        dequantize4b_generic<T, 16, 4, true>(dst, src, scales, zero_points, rows, columns, stream);
       } else {
-        dequantize<T, 16, 4, false>(dst, src, scales, zero_points, rows, columns, stream);
+        dequantize4b_generic<T, 16, 4, false>(dst, src, scales, zero_points, rows, columns, stream);
       }
       return Status::OK();
     case 32:
       if (columnwise) {
-        dequantize<T, 32, 4, true>(dst, src, scales, zero_points, rows, columns, stream);
+        dequantize4b_generic<T, 32, 4, true>(dst, src, scales, zero_points, rows, columns, stream);
       } else {
-        dequantize<T, 32, 4, false>(dst, src, scales, zero_points, rows, columns, stream);
+        dequantize4b_generic<T, 32, 4, false>(dst, src, scales, zero_points, rows, columns, stream);
       }
       return Status::OK();
     case 64:
       if (columnwise) {
-        dequantize<T, 64, 4, true>(dst, src, scales, zero_points, rows, columns, stream);
+        dequantize4b_generic<T, 64, 4, true>(dst, src, scales, zero_points, rows, columns, stream);
       } else {
-        dequantize<T, 64, 4, false>(dst, src, scales, zero_points, rows, columns, stream);
+        dequantize4b_generic<T, 64, 4, false>(dst, src, scales, zero_points, rows, columns, stream);
       }
       return Status::OK();
     case 128:
       if (columnwise) {
-        dequantize<T, 128, 4, true>(dst, src, scales, zero_points, rows,
-                                                        columns, stream);
+        dequantize4b_generic<T, 128, 4, true>(dst, src, scales, zero_points, rows, columns, stream);
       } else {
-        dequantize<T, 128, 4, false>(dst, src, scales, zero_points,
-                                                            rows, columns, stream);
+        dequantize4b_generic<T, 128, 4, false>(dst, src, scales, zero_points, rows, columns, stream);
       }
       return Status::OK();
     case 256:
       if (columnwise) {
-        dequantize<T, 256, 4, true>(dst, src, scales, zero_points, rows,
-                                                        columns, stream);
+        dequantize4b_generic<T, 256, 4, true>(dst, src, scales, zero_points, rows, columns, stream);
       } else {
-        dequantize<T, 256, 4, false>(dst, src, scales, zero_points,
-                                                            rows, columns, stream);
+        dequantize4b_generic<T, 256, 4, false>(dst, src, scales, zero_points, rows, columns, stream);
       }
       return Status::OK();
     default:
@@ -436,8 +406,8 @@ DequantizeBlockwise4b(
   }
 }
 
-template
-Status DequantizeBlockwise4b<float>(
+// Template instantiations for 4-bit blockwise
+template Status DequantizeBlockwise4b<float>(
     float* dst,
     const uint8_t* src,
     const float* scales,
@@ -448,8 +418,7 @@ Status DequantizeBlockwise4b<float>(
     int columns,
     cudaStream_t stream);
 
-template
-Status DequantizeBlockwise4b<half>(
+template Status DequantizeBlockwise4b<half>(
     half* dst,
     const uint8_t* src,
     const half* scales,
