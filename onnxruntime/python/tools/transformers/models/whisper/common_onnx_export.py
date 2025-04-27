@@ -125,6 +125,8 @@ def export_to_onnx(
                 ep,
                 inputs,
                 out_path,
+                input_names=input_names,
+                output_names=output_names,
                 dynamic_shapes=dynamic_shapes,
                 dynamo=True,
                 verbose=verbose,
