@@ -746,14 +746,14 @@ fn dequantize_packed8xU4(packed_value : u32, zero_point : output_element_t, scal
 
 // component_a = 4, component_b = 4
 Status MatMulNBitsBlockWiseProgram::GenerateShaderCode(ShaderHelper& shader) const {
-  shader.AddInput("input_a", ShaderUsage::UseValueTypeAlias);
+  const auto& a = shader.AddInput("input_a", ShaderUsage::UseValueTypeAlias);
   shader.AddInput("input_b");
   shader.AddInput("scales_b");
   if (has_zero_points_) {
     shader.AddInput("zero_points", ShaderUsage::UseUniform);
   }
   shader.AddOutput("output", ShaderUsage::UseElementTypeAlias);
-  constexpr uint32_t components_a = 4;
+  const uint32_t components_a = a.NumComponents();
   constexpr uint32_t components_b = 4;
   constexpr uint32_t tile_size_k_vec = 16;
   uint32_t elements_in_vec = components_b * (32 / nbits_);
@@ -814,26 +814,55 @@ Status MatMulNBitsBlockWiseProgram::GenerateShaderCode(ShaderHelper& shader) con
   if (nbits_ == 4) {
     shader.MainFunctionBody() << R"MAIN_FN(
         var sum = output_element_t(0);
-        var a_offset = idx * 2 * component_b;
+        var a_offset = idx * (8 / component_a) * component_b;
         for (var i = 0u; i < component_b; i++) {
           let b_value_lower = vec4<output_element_t>(unpack4xU8(b_value[i] & 0x0F0F0F0Fu)) - vec4<output_element_t>(zero);
           let b_value_upper = vec4<output_element_t>(unpack4xU8((b_value[i] >> 4) & 0x0F0F0F0Fu)) - vec4<output_element_t>(zero);
           let b0 = vec4<output_element_t>(b_value_lower[0], b_value_upper[0], b_value_lower[1], b_value_upper[1]) * scale_b;
           let b1 = vec4<output_element_t>(b_value_lower[2], b_value_upper[2], b_value_lower[3], b_value_upper[3]) * scale_b;
-          sum += dot(tile_A[a_offset], b0) + dot(tile_A[a_offset + 1], b1);
-          a_offset += 2;
-        }
 )MAIN_FN";
+    switch (components_a) {
+      case 1:
+        shader.MainFunctionBody() << "          sum += dot(vec4<output_element_t>(tile_A[a_offset], tile_A[a_offset + 1], tile_A[a_offset + 2], tile_A[a_offset + 3]), b0) +"
+                                     " dot(vec4<output_element_t>(tile_A[a_offset + 4], tile_A[a_offset + 5], tile_A[a_offset + 6], tile_A[a_offset + 7]), b1);\n"
+                                     "          a_offset += 8;\n";
+        break;
+      case 2:
+        shader.MainFunctionBody() << "          sum += dot(vec4<output_element_t>(tile_A[a_offset], tile_A[a_offset + 1]), b0) + dot(vec4<output_element_t>(tile_A[a_offset + 2], tile_A[a_offset + 3]), b1);\n"
+                                     "          a_offset += 4;\n";
+        break;
+      case 4:
+        shader.MainFunctionBody() << "          sum += dot(tile_A[a_offset], b0) + dot(tile_A[a_offset + 1], b1);\n"
+                                     "          a_offset += 2;\n";
+        break;
+      default:
+        break;
+    }
+    shader.MainFunctionBody() << "        }\n";
   } else {
     shader.MainFunctionBody() << R"MAIN_FN(
         var sum = output_element_t(0);
-        var a_offset = idx * component_b;
+        var a_offset = idx * (4 / component_a) * component_b;
         for (var i = 0u; i < component_b; i++) {
           let b_value = (vec4<output_element_t>(unpack4xU8(b_value[i])) - vec4<output_element_t>(zero)) * scale_b;
-          sum += dot(tile_A[a_offset], b_value);
-          a_offset += 1;
-        }
 )MAIN_FN";
+    switch (components_a) {
+      case 1:
+        shader.MainFunctionBody() << "          sum += dot(vec4<output_element_t>(tile_A[a_offset], tile_A[a_offset + 1], tile_A[a_offset + 2], tile_A[a_offset + 3]), b_value);\n"
+                                     "          a_offset += 4;\n";
+        break;
+      case 2:
+        shader.MainFunctionBody() << "          sum += dot(vec4<output_element_t>(tile_A[a_offset], tile_A[a_offset + 1]), b_value);\n"
+                                     "          a_offset += 2;\n";
+        break;
+      case 4:
+        shader.MainFunctionBody() << "          sum += dot(tile_A[a_offset], b_value);\n"
+                                     "          a_offset += 1;\n";
+        break;
+      default:
+        break;
+    }
+    shader.MainFunctionBody() << "        }\n";
   }
 
   shader.MainFunctionBody() << R"MAIN_FN(
@@ -944,7 +973,7 @@ Status MatMulNBits::ComputeInternal(onnxruntime::webgpu::ComputeContext& context
     return context.RunProgram(program);
   }
 
-  if (components_a == 4 && components_b == 4) {
+  if (components_b == 4) {
     constexpr uint32_t workgroup_size = 128;
     constexpr uint32_t tile_size = 8;
     constexpr uint32_t kU32Components = 4;
