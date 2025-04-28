@@ -59,19 +59,18 @@ static std::string MaxVector(const std::string& name, int components) {
 
 Status SoftmaxProgram::GenerateShaderCode(ShaderHelper& shader) const {
   // Add input and output variables
-  const auto& input = shader.AddInput("x", ShaderUsage::UseUniform | ShaderUsage::UseIndicesTypeAlias | ShaderUsage::UseValueTypeAlias);
-  shader.AddOutput("result", ShaderUsage::UseUniform | ShaderUsage::UseIndicesTypeAlias);
+  const auto& input = shader.AddInput("x", ShaderUsage::UseUniform | ShaderUsage::UseIndicesTypeAlias | ShaderUsage::UseValueTypeAlias | ShaderUsage::UseElementTypeAlias);
+  shader.AddOutput("result", ShaderUsage::UseUniform | ShaderUsage::UseIndicesTypeAlias | ShaderUsage::UseValueTypeAlias);
   int components = input.NumComponents();
 
-  const std::string thread_max_decl = is_fp32_
-                                          ? "var thread_max = x_value_t(-3.402823e+38f);\n"
-                                          : "var thread_max = x_value_t(-65504.0h);\n";
+  const std::string thread_max_decl = "var thread_max = f32_value_t(-3.402823e+38f);\n";
 
   // Define shared memory for row max and row sum
   shader.AdditionalImplementation()
+      << "alias f32_value_t = " << (components == 4 ? "vec4<f32>" : (components == 2 ? "vec2<f32>" : "f32")) << ";\n"
       << "var<workgroup> row_max_shared : x_value_t;\n"
-      << "var<workgroup> row_sum_shared : x_value_t;\n"
-      << "var<workgroup> thread_shared : array<x_value_t, " << wg_ << ">;\n";
+      << "var<workgroup> row_sum_shared : f32_value_t;\n"
+      << "var<workgroup> thread_shared : array<f32_value_t, " << wg_ << ">;\n";
 
   // Define helper functions to get and set values
   shader.AdditionalImplementation()
@@ -97,7 +96,7 @@ Status SoftmaxProgram::GenerateShaderCode(ShaderHelper& shader) const {
       << thread_max_decl
       << "  for (var col = lindex; col < cols; col += wg) {\n"
       << "    let value = getValue(row, col, row_stride);\n"
-      << "    thread_max = max(thread_max, value);\n"
+      << "    thread_max = max(thread_max, f32_value_t(value));\n"
       << "  }\n"
       << "  if (lindex < cols) {\n"
       << "    thread_shared[lindex] = thread_max;\n"
@@ -114,14 +113,14 @@ Status SoftmaxProgram::GenerateShaderCode(ShaderHelper& shader) const {
       << "    workgroupBarrier();\n"
       << "  }\n"
       << "  if (lindex == 0) {\n"
-      << "    row_max_shared = x_value_t(" << MaxVector("thread_shared[0]", components) << ");\n"
+      << "    row_max_shared = x_value_t(x_element_t(" << MaxVector("thread_shared[0]", components) << "));\n"
       << "  }\n"
       << "  workgroupBarrier();\n"
 
       // Find the row's sum of exponentials
-      << "  var thread_sum = x_value_t(0.0);\n"
+      << "  var thread_sum = f32_value_t(0.0);\n"
       << "  for (var col = lindex; col < cols; col += wg) {\n"
-      << "    let sub_exp = exp(getValue(row, col, row_stride) - row_max_shared);\n"
+      << "    let sub_exp = f32_value_t(exp(getValue(row, col, row_stride))) - f32_value_t(row_max_shared);\n"
       << "    thread_sum += sub_exp;\n"
       << "  }\n"
       << "  thread_shared[lindex] = thread_sum;\n"
@@ -135,14 +134,14 @@ Status SoftmaxProgram::GenerateShaderCode(ShaderHelper& shader) const {
       << "    workgroupBarrier();\n"
       << "  }\n"
       << "  if (lindex == 0) {\n"
-      << "    row_sum_shared = x_value_t(" << SumVector("thread_shared[0]", components) << ");\n"
+      << "    row_sum_shared = f32_value_t(" << SumVector("thread_shared[0]", components) << ");\n"
       << "  }\n"
       << "  workgroupBarrier();\n"
 
       // Calculate the final value for each element in the row
       << "  for (var col = lindex; col < cols; col += wg) {\n"
-      << "    let value = exp(getValue(row, col, row_stride) - row_max_shared) / row_sum_shared;\n"
-      << "    setValue(row, col, row_stride, value);\n"
+      << "    let value = f32_value_t(exp(getValue(row, col, row_stride) - row_max_shared)) / row_sum_shared;\n"
+      << "    setValue(row, col, row_stride, result_value_t(value));\n"
       << "  }\n";
 
   return Status::OK();

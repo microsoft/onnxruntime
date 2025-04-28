@@ -120,7 +120,7 @@ std::unordered_map<std::string, ReduceOpType> reduce_op_types = {
 std::unordered_map<ReduceOpType, std::string> reduce_op_code_map = {
     {ReduceOpType::Max, "select(bestValue, candidate, candidate > bestValue)"},
     {ReduceOpType::Min, "select(bestValue, candidate, candidate < bestValue)"},
-    {ReduceOpType::Mean, "bestValue + candidate"},
+    {ReduceOpType::Mean, "bestValue + best_value_t(candidate)"},
     {ReduceOpType::Sum, "bestValue + candidate"},
     {ReduceOpType::Prod, "bestValue * candidate"},
     {ReduceOpType::SumSquare, "bestValue + candidate * candidate"},
@@ -133,7 +133,7 @@ std::unordered_map<ReduceOpType, std::string> reduce_op_code_map = {
 std::unordered_map<ReduceOpType, std::string> reduce_op_shared_code_map = {
     {ReduceOpType::Max, "select(bestValue, candidate, candidate > bestValue)"},
     {ReduceOpType::Min, "select(bestValue, candidate, candidate < bestValue)"},
-    {ReduceOpType::Mean, "bestValue + candidate"},
+    {ReduceOpType::Mean, "bestValue + best_value_t(candidate)"},
     {ReduceOpType::Sum, "bestValue + candidate"},
     {ReduceOpType::Prod, "bestValue * candidate"},
     {ReduceOpType::SumSquare, "bestValue + candidate"},
@@ -159,7 +159,7 @@ std::unordered_map<ReduceOpType, std::string> reduce_op_init_values_map = {
 std::unordered_map<ReduceOpType, std::string> reduce_op_output_values_map = {
     {ReduceOpType::Max, "bestValue"},
     {ReduceOpType::Min, "bestValue"},
-    {ReduceOpType::Mean, "bestValue"},
+    {ReduceOpType::Mean, "bestValue / best_value_t(uniforms.reduceSize)"},
     {ReduceOpType::Sum, "bestValue"},
     {ReduceOpType::Prod, "bestValue"},
     {ReduceOpType::SumSquare, "bestValue"},
@@ -204,7 +204,7 @@ Status ReduceNaiveProgram::GenerateShaderCode(ShaderHelper& shader) const {
   const auto& input = shader.AddInput("input", ShaderUsage::UseUniform | ShaderUsage::UseIndicesTypeAlias | ShaderUsage::UseValueTypeAlias);
   bool reduce_on_all_axes = no_op_with_empty_axes_ == false && axes_.empty();
   std::string loop_header = code.loop_header_.find("first_element") == std::string::npos ? code.loop_header_ : "let first_element = " + input.GetByIndices("input_indices") + ";\n" + code.loop_header_ + "\n";
-  std::string loop_body = "let current_element: input_value_t = " + input.GetByIndices("input_indices") + ";\n" + code.loop_body_;
+  std::string loop_body = "let current_element: output_value_t = " + input.GetByIndices("input_indices") + ";\n" + code.loop_body_;
   std::string loop_footer = code.loop_footer_;
   const auto input_rank = input.Rank();
   for (int i = 0, l = 0; i < input_rank; ++i) {
@@ -248,14 +248,17 @@ Status ReduceNaiveProgram::GenerateShaderCode(ShaderHelper& shader) const {
 Status ReduceSharedProgram::GenerateShaderCode(ShaderHelper& shader) const {
   const auto& input = shader.AddInput("_A", ShaderUsage::UseUniform | ShaderUsage::UseIndicesTypeAlias | ShaderUsage::UseValueTypeAlias | ShaderUsage::UseElementTypeAlias);
   const auto& output = shader.AddOutput("output", ShaderUsage::UseUniform | ShaderUsage::UseIndicesTypeAlias | ShaderUsage::UseValueTypeAlias | ShaderUsage::UseElementTypeAlias);
+  int components = input.NumComponents();
   shader.AdditionalImplementation()
-      << "var<workgroup> aBestValues : array<output_value_t, " << workgroup_size_ << ">;\n\n"
+      << "alias f32_value_t = " << (components == 4 ? "vec4<f32>" : (components == 2 ? "vec2<f32>" : "f32")) << ";\n"
+      << "alias best_value_t = " << (reduce_op_type_ == ReduceOpType::Mean ? "f32_value_t" : "output_value_t") << ";\n"
+      << "var<workgroup> aBestValues : array<best_value_t, " << workgroup_size_ << ">;\n\n"
       << "fn DIV_CEIL(a : u32, b : u32) -> u32 {\n"
       << "  return ((a - 1u) / b + 1u);\n"
       << "}\n";
   shader.MainFunctionBody() << "let outputIndex = global_idx / " << workgroup_size_ << ";\n"
                             << "let offset = outputIndex * uniforms.reduceSize;\n"
-                            << "var bestValue = output_value_t(" << reduce_op_init_values_map[reduce_op_type_] << ");\n"
+                            << "var bestValue = best_value_t(" << reduce_op_init_values_map[reduce_op_type_] << ");\n"
                             << "let length = uniforms.reduceSize;\n"
                             << "for (var k = local_idx; k < length; k += " << workgroup_size_ << ") {\n"
                             << "  let candidate = output_value_t(" << input.GetByOffset("offset + k") << ");\n"
@@ -268,14 +271,14 @@ Status ReduceSharedProgram::GenerateShaderCode(ShaderHelper& shader) const {
                             << "  let interval = DIV_CEIL(reduceSize, 2u);\n"
                             << "  if (local_idx < currentSize) {\n"
                             << "    let candidate = aBestValues[local_idx + interval];\n"
-                            << "    bestValue = " << reduce_op_shared_code_map[reduce_op_type_] << ";\n"
+                            << "    bestValue = best_value_t(" << reduce_op_shared_code_map[reduce_op_type_] << ");\n"
                             << "    aBestValues[local_idx] = bestValue;\n"
                             << "  }\n"
                             << "  reduceSize = interval;\n"
                             << "  workgroupBarrier();\n"
                             << "}\n"
                             << "if (local_idx == 0) {\n"
-                            << "  let outputValue = output_value_t(" << (reduce_op_type_ == ReduceOpType::Mean ? "(bestValue / output_element_t(uniforms.reduceSize))" : reduce_op_output_values_map[reduce_op_type_]) << ");\n"
+                            << "  let outputValue = output_value_t(" << reduce_op_output_values_map[reduce_op_type_] << ");\n"
                             << "  " << output.SetByOffset("outputIndex", "outputValue") << ";\n"
                             << "}\n";
   return Status::OK();
