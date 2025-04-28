@@ -747,14 +747,14 @@ fn dequantize_packed8xU4(packed_value : u32, zero_point : output_element_t, scal
 // component_a = 4, component_b = 4
 Status MatMulNBitsBlockWiseProgram::GenerateShaderCode(ShaderHelper& shader) const {
   const auto& a = shader.AddInput("input_a", ShaderUsage::UseValueTypeAlias);
-  shader.AddInput("input_b");
+  const auto& b = shader.AddInput("input_b");
   shader.AddInput("scales_b");
   if (has_zero_points_) {
     shader.AddInput("zero_points", ShaderUsage::UseUniform);
   }
   shader.AddOutput("output", ShaderUsage::UseElementTypeAlias);
   const uint32_t components_a = a.NumComponents();
-  constexpr uint32_t components_b = 4;
+  const uint32_t components_b = b.NumComponents() / 4;  // b is stored as uint32 which includs 4 uint8.
   constexpr uint32_t tile_size_k_vec = 16;
   uint32_t elements_in_vec = components_b * (32 / nbits_);
   uint32_t tile_k_size = tile_size_k_vec * elements_in_vec;
@@ -973,68 +973,20 @@ Status MatMulNBits::ComputeInternal(onnxruntime::webgpu::ComputeContext& context
     return context.RunProgram(program);
   }
 
-  if (components_b == 4) {
-    constexpr uint32_t workgroup_size = 128;
-    constexpr uint32_t tile_size = 8;
-    constexpr uint32_t kU32Components = 4;
-    uint32_t elements_in_blob = components_b * kU32Components;
-    MatMulNBitsBlockWiseProgram program{tile_size, nbits, has_zero_points};
-    program.SetWorkgroupSize(workgroup_size);
-    program.SetDispatchGroupSize((N + tile_size - 1) / tile_size, M, batch_count);
-    program
-        .AddInputs({{a, ProgramTensorMetadataDependency::TypeAndRank, static_cast<int>(components_a)},
-                    {b, ProgramTensorMetadataDependency::TypeAndRank, static_cast<int>(elements_in_blob)},
-                    {scales, ProgramTensorMetadataDependency::TypeAndRank}})
-        .AddOutput({y, ProgramTensorMetadataDependency::TypeAndRank})
-        .AddUniformVariables({{M}, {N}, {K}, {K / components_a}, {n_blocks_per_col * blob_size / elements_in_blob}, {block_size}, {n_blocks_per_col}})
-        .CacheHint(nbits, has_zero_points);
-    if (has_zero_points) {
-      program.AddInput({zero_points, ProgramTensorMetadataDependency::None, {(zero_points->Shape().Size() + 3) / 4}, 4});
-    }
-    return context.RunProgram(program);
-  }
-
-  // Generic program
-  // TODO: Support output_number > 1. Some cases are failed when output_number > 1.
-  constexpr uint32_t output_number = 1;
-  const uint32_t tile_m = M > kMinMForTileOptimization ? 4 : 1;
-  const bool has_subgroup = context.HasFeature(wgpu::FeatureName::Subgroups);
-  const bool use_subgroup = has_subgroup && context.AdapterInfo().vendor == std::string_view{"intel"} && components_a == 4 && block_size == 32;
-  MatMulNBitsProgram program{output_number, block_size, tile_m, static_cast<int>(components_b), has_zero_points, use_subgroup};
-  if (M > kMinMForTileOptimization && block_size == 32) {
-    components = 1;
-    constexpr uint32_t workgroup_size = 64;
-    constexpr uint32_t workgroup_y = 8;
-    constexpr uint32_t workgroup_x = workgroup_size / workgroup_y;
-    program.SetWorkgroupSize(workgroup_x, workgroup_y, 1);
-    program.SetDispatchGroupSize((N + workgroup_y - 1) / workgroup_y,
-                                 (M + tile_m - 1) / tile_m,
-                                 batch_count);
-    program.CacheHint("T_M" + std::to_string(tile_m) + "Subgroup" + std::to_string(use_subgroup));
-  } else if (block_size == 32) {
-    components = 1;
-    // TODO: Tune the workgroup size when `M=1`.
-    constexpr uint32_t workgroup_size = 128;
-    const uint32_t workgroup_y = N % 8 == 0 ? 8 : 1;
-    const uint32_t workgroup_x = workgroup_size / workgroup_y;
-    program.SetWorkgroupSize(workgroup_x, workgroup_y, 1);
-    program.SetDispatchGroupSize(data_size / components / workgroup_y);
-    program.CacheHint("T_M" + std::to_string(tile_m));
-  } else {
-    program.SetDispatchGroupSize(data_size / components / output_number);
-    program.CacheHint("O_N" + std::to_string(output_number));
-  }
-
-  TensorShape reshaped_a_shape{batch_count, M, K / components_a};
-  TensorShape reshaped_b_shape{N, n_blocks_per_col, blob_size_in_words / components_b};
-  TensorShape reshaped_y_shape{batch_count, M, N / components};
-
+  constexpr uint32_t workgroup_size = 128;
+  constexpr uint32_t tile_size = 8;
+  constexpr uint32_t kU32Components = 4;
+  uint32_t elements_in_blob = components_b * kU32Components;
+  MatMulNBitsBlockWiseProgram program{tile_size, nbits, has_zero_points};
+  program.SetWorkgroupSize(workgroup_size);
+  program.SetDispatchGroupSize((N + tile_size - 1) / tile_size, M, batch_count);
   program
-      .AddInputs({{a, ProgramTensorMetadataDependency::TypeAndRank, reshaped_a_shape, static_cast<int>(components_a)},
-                  {b, ProgramTensorMetadataDependency::TypeAndRank, reshaped_b_shape, static_cast<int>(components_b * 4 /** b will be accessed as uint32 which includs 4 uint8. So here we need to multiply 4.*/)},
-                  {scales, ProgramTensorMetadataDependency::None}})
-      .AddOutput({y, ProgramTensorMetadataDependency::TypeAndRank, reshaped_y_shape, static_cast<int>(components)})
-      .AddUniformVariable({block_size});
+      .AddInputs({{a, ProgramTensorMetadataDependency::TypeAndRank, static_cast<int>(components_a)},
+                  {b, ProgramTensorMetadataDependency::TypeAndRank, static_cast<int>(elements_in_blob)},
+                  {scales, ProgramTensorMetadataDependency::TypeAndRank}})
+      .AddOutput({y, ProgramTensorMetadataDependency::TypeAndRank})
+      .AddUniformVariables({{M}, {N}, {K}, {K / components_a}, {n_blocks_per_col * blob_size / elements_in_blob}, {block_size}, {n_blocks_per_col}})
+      .CacheHint(nbits, has_zero_points);
   if (has_zero_points) {
     program.AddInput({zero_points, ProgramTensorMetadataDependency::None, {(zero_points->Shape().Size() + 3) / 4}, 4});
   }
