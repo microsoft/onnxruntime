@@ -692,7 +692,7 @@ fn dequantize_packed8xU4(packed_value : u32, zero_point : output_element_t, scal
     let b_col = a_block_idx;
 
     let scale = mm_read_scale(b_row, b_col);
-    let zero_point = mm_read_zero(b_row, b_col, uniforms.input_b_shape[0], uniforms.input_b_shape[1]);
+    let zero_point = mm_read_zero(b_row, b_col, uniforms.input_b_shape[0], uniforms.zero_blocks_per_col);
 )MAIN_FN";
 
   if (nbits_ == 4) {
@@ -807,7 +807,7 @@ Status MatMulNBitsBlockWiseProgram::GenerateShaderCode(ShaderHelper& shader) con
       {
         let block_idx = (kidx_v + idx * elements_in_vec) / uniforms.block_size;
         let scale_b = scales_b[b_global * uniforms.blocks_per_col + block_idx];
-        let zero = mm_read_zero(b_global, block_idx, uniforms.N, uniforms.blocks_per_col);
+        let zero = mm_read_zero(b_global, block_idx, uniforms.N, uniforms.zero_blocks_per_col);
         var b_value = input_b[b_global * uniforms.K_of_b + k_offset];
 )MAIN_FN";
 
@@ -936,6 +936,9 @@ Status MatMulNBits::ComputeInternal(onnxruntime::webgpu::ComputeContext& context
     return ApplyDP4AMatrixMatMulNBits(a, b, scales, M, N, K, block_size, kMinMForTileOptimization, nbits, context, y);
   }
 
+  // zero_points has shape[N * CeilDiv(n_blocks_per_col * bits, 8)]. So here we need to check whether n_blocks_per_col is divisible by 8/nbits.
+  uint32_t zero_blocks_per_col = n_blocks_per_col % (8 / nbits) == 0 ? n_blocks_per_col : n_blocks_per_col + 1;
+
   // WideTileProgram
   // This program is optimized for Block32 prefill using Tile16x128.
   // TODO: loosen restrictions on vendor.
@@ -964,7 +967,7 @@ Status MatMulNBits::ComputeInternal(onnxruntime::webgpu::ComputeContext& context
                     {b, ProgramTensorMetadataDependency::TypeAndRank, reshaped_b_shape, onnxruntime::narrow<int>(components_b * 4)},
                     {scales, ProgramTensorMetadataDependency::None}})
         .AddOutput({y, ProgramTensorMetadataDependency::TypeAndRank, reshaped_y_shape, onnxruntime::narrow<int>(components)})
-        .AddUniformVariable({block_size})
+        .AddUniformVariables({{block_size}, {zero_blocks_per_col}})
         .CacheHint(nbits, has_zero_points);
     if (has_zero_points) {
       program.AddInput({zero_points, ProgramTensorMetadataDependency::None, {(zero_points->Shape().Size() + 3) / 4}, 4});
@@ -985,7 +988,7 @@ Status MatMulNBits::ComputeInternal(onnxruntime::webgpu::ComputeContext& context
                   {b, ProgramTensorMetadataDependency::TypeAndRank, static_cast<int>(elements_in_blob)},
                   {scales, ProgramTensorMetadataDependency::TypeAndRank}})
       .AddOutput({y, ProgramTensorMetadataDependency::TypeAndRank})
-      .AddUniformVariables({{M}, {N}, {K}, {K / components_a}, {n_blocks_per_col * blob_size / elements_in_blob}, {block_size}, {n_blocks_per_col}})
+      .AddUniformVariables({{M}, {N}, {K}, {K / components_a}, {n_blocks_per_col * blob_size / elements_in_blob}, {block_size}, {n_blocks_per_col}, {zero_blocks_per_col}})
       .CacheHint(nbits, has_zero_points);
   if (has_zero_points) {
     program.AddInput({zero_points, ProgramTensorMetadataDependency::None, {(zero_points->Shape().Size() + 3) / 4}, 4});
