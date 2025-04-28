@@ -1399,7 +1399,7 @@ TensorrtExecutionProvider::TensorrtExecutionProvider(const TensorrtExecutionProv
     preview_features_ = ParseTrtPreviewFeatures(info.preview_features);
     dla_local_dram_size_ = info.dla_local_dram_size;
     dla_global_dram_size_ = info.dla_global_dram_size;
-    dla_managed_sram_size_ = info.dla_managed_sram_size; 
+    dla_managed_sram_size_ = info.dla_managed_sram_size;
     tactic_dram_size_ = info.tactic_dram_size;
   } else {
     try {
@@ -1417,7 +1417,7 @@ TensorrtExecutionProvider::TensorrtExecutionProvider(const TensorrtExecutionProv
       if (!max_workspace_size_env.empty()) {
         max_workspace_size_ = std::stoull(max_workspace_size_env);
       }
-      
+
       const std::string fp16_enable_env = onnxruntime::GetEnvironmentVar(tensorrt_env_vars::kFP16Enable);
       if (!fp16_enable_env.empty()) {
         fp16_enable_ = (std::stoi(fp16_enable_env) == 0 ? false : true);

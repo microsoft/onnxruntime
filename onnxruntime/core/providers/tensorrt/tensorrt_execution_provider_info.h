@@ -66,7 +66,7 @@ struct TensorrtExecutionProviderInfo {
   size_t dla_global_dram_size{0};
   size_t dla_managed_sram_size{0};
   size_t tactic_dram_size{0};
-  
+
   static TensorrtExecutionProviderInfo FromProviderOptions(const ProviderOptions& options);
   static ProviderOptions ToProviderOptions(const TensorrtExecutionProviderInfo& info);
   static ProviderOptions ToProviderOptions(const OrtTensorRTProviderOptionsV2& info);
