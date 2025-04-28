@@ -258,6 +258,7 @@ fn dequantize_packed8xU4(packed_value : u32, zero_point : output_element_t, scal
   return Status::OK();
 }
 
+// Apply similar idea with DP4AMatMulNBitsSmallMProgram algorithm.
 Status MatMulNBitsBlockWiseProgram::GenerateShaderCode(ShaderHelper& shader) const {
   const auto& a = shader.AddInput("input_a", ShaderUsage::UseValueTypeAlias);
   const auto& b = shader.AddInput("input_b");
@@ -278,7 +279,7 @@ Status MatMulNBitsBlockWiseProgram::GenerateShaderCode(ShaderHelper& shader) con
                                     << "const tile_size_k = " << tile_k_size << "u;\n"
                                     << "const tile_size = " << tile_size_ << "u;\n"
                                     << "const elements_in_vec = " << elements_in_vec << "u;\n"
-                                    << "const subtile_length = " << WorkgroupSizeX() / tile_size_k_vec << "u;\n"
+                                    << "const sub_tile_count = " << WorkgroupSizeX() / tile_size_k_vec << "u;\n"
                                     << "const component_a = " << components_a << "u;\n"
                                     << "const component_b = " << components_b << "u;\n";
   shader.AdditionalImplementation() << R"ADDNL_FN(
@@ -313,7 +314,7 @@ Status MatMulNBitsBlockWiseProgram::GenerateShaderCode(ShaderHelper& shader) con
     }
     workgroupBarrier();
 
-    for (var local_row_offset = 0u; local_row_offset < tile_size; local_row_offset += subtile_length)
+    for (var local_row_offset = 0u; local_row_offset < tile_size; local_row_offset += sub_tile_count)
     {
       var b_global = b_global_base + local_row_offset + idy;
       var k_offset = kidx_v / elements_in_vec + idx;

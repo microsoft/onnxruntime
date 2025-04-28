@@ -551,6 +551,7 @@ bool CanApplyDP4AMatrixMatMulNBits(onnxruntime::webgpu::ComputeContext& context,
   // https://github.com/gpuweb/gpuweb/issues/2677#issuecomment-1713292226
   bool use_dp4a = context.HasFeature(wgpu::FeatureName::Subgroups) &&
                   context.AdapterInfo().backendType != wgpu::BackendType::Metal;
+  // TODO: Investigate why dp4a path doesn't work correctly with shape[M>=1, N=200064, K=3072] when nbits = 8.
   return (accuracy_level == 4 && block_size % 32 == 0 &&
           batch_count == 1 && components_k == 4 && K % 128 == 0 && N % 16 == 0 &&
           !has_zero_points && use_dp4a && nbits == 4);
