@@ -31,6 +31,69 @@ std::string QuantizedDataType(int components) {
   }
 }
 
+std::string ReadZeroPoint(uint32_t nbits, bool has_zero_points) {
+  if (nbits == 4) {
+    if (has_zero_points) {
+      return R"(
+fn mm_read_zero(row : u32, col : u32, r_dim: u32, c_dim: u32) -> output_element_t {
+  if (row < r_dim && col < c_dim) {
+    let offset = row * c_dim + col;
+
+    // u32 holds 8 packed uint4.
+    let array_index = offset / 8u;
+    let component_index = offset % 8u;
+    let packed_value = zero_points[array_index];
+
+    // Extract the uint4 component
+    let shift_amount = component_index * 4u;
+    let masked_value = (packed_value >> shift_amount) & 0xFu;
+
+    return output_element_t(masked_value);
+  }
+  return output_element_t(0);
+}
+)";
+    } else {
+      return R"(
+fn mm_read_zero(row : u32, col : u32, r_dim: u32, c_dim: u32) -> output_element_t {
+  // The default zero point is 8.
+  return output_element_t(8);
+}
+)";
+    }
+  } else {
+    ORT_ENFORCE(nbits == 8, "Only 4/8 bits are supported for DP4");
+    if (has_zero_points) {
+      return R"(
+fn mm_read_zero(row : u32, col : u32, r_dim: u32, c_dim: u32) -> output_element_t {
+  if (row < r_dim && col < c_dim) {
+    let offset = row * c_dim + col;
+
+    // u32 holds 4 packed uint8.
+    let array_index = offset / 4u;
+    let component_index = offset % 4u;
+    let packed_value = zero_points[array_index];
+
+    // Extract the uint8 component
+    let shift_amount = component_index * 8u;
+    let masked_value = (packed_value >> shift_amount) & 0xFF;
+
+    return output_element_t(masked_value);
+  }
+  return output_element_t(0);
+}
+)";
+    } else {
+      return R"(
+fn mm_read_zero(row : u32, col : u32, r_dim: u32, c_dim: u32) -> output_element_t {
+  // The default zero point is 128 for 8 bits.
+  return output_element_t(128);
+}
+)";
+    }
+  }
+}
+
 constexpr unsigned int kMinMForTileOptimization = 4;
 }  // namespace
 
@@ -554,82 +617,8 @@ Status MatMulNBitsWideTileProgram::GenerateShaderCode(ShaderHelper& shader) cons
                                       << "  }\n"
                                       << "  return input_b_value_t(0);\n"
                                       << "}\n";
-    if (has_zero_points_) {
-      shader.AdditionalImplementation() << R"(
-fn mm_read_zero(row : u32, col : u32) -> output_element_t {
-  if (row < uniforms.input_b_shape[0] && col < uniforms.input_b_shape[1]) {
-    let offset = row * uniforms.input_b_stride[0] + col * uniforms.input_b_stride[1];
 
-    // u32 holds 8 packed uint4.
-    let array_index = offset / 8u;
-    let component_index = offset % 8u;
-    let packed_value = zero_points[array_index];
-
-    // Extract the uint4 component
-    let shift_amount = component_index * 4u;
-    let masked_value = (packed_value >> shift_amount) & 0xFu;
-
-    return output_element_t(masked_value);
-  }
-  return output_element_t(0);
-}
-)";
-    } else {
-      shader.AdditionalImplementation() << R"(
-fn mm_read_zero(row : u32, col : u32) -> output_element_t {
-  // The default zero point is 8.
-  return output_element_t(8);
-}
-)";
-    }
-  } else {
-    ORT_ENFORCE(nbits_ == 8, "Only 4/8 bits are supported for DP4");
-    if (has_zero_points_) {
-      shader.AdditionalImplementation() << R"(
-fn mm_read_zero(row : u32, col : u32) -> output_element_t {
-  if (row < uniforms.input_b_shape[0] && col < uniforms.input_b_shape[1]) {
-    let offset = row * uniforms.input_b_shape[1] + col;
-
-    // u32 holds 4 packed uint8.
-    let array_index = offset / 4u;
-    let component_index = offset % 4u;
-    let packed_value = zero_points[array_index];
-
-    // Extract the uint8 component
-    let shift_amount = component_index * 8u;
-    let masked_value = (packed_value >> shift_amount) & 0xFF;
-
-    return output_element_t(masked_value);
-  }
-  return output_element_t(0);
-}
-)";
-    } else {
-      shader.AdditionalImplementation() << R"(
-fn mm_read_zero(row : u32, col : u32) -> output_element_t {
-  // The default zero point is 128 for 8 bits.
-  return output_element_t(128);
-}
-)";
-    }
-  }
-
-  shader.AdditionalImplementation() << "\n"
-                                    << "fn mm_read_scale(row : u32, col : u32) -> output_element_t {\n"
-                                    << "  if (row < uniforms.input_b_shape[0] && col < uniforms.input_b_shape[1]) {\n"
-                                    << "    return scales[row * uniforms.input_b_shape[1] + col];\n"
-                                    << "  }\n"
-                                    << "  return output_element_t(0);\n"
-                                    << "}\n";
-
-  shader.AdditionalImplementation() << "\n"
-                                    << "fn mm_write_y(batch : u32, row : u32, col : u32, value : output_value_t) {\n"
-                                    << "  if (row < uniforms.output_shape[1] && col < uniforms.output_shape[2]) {\n"
-                                    << "    " << y.SetByIndices("output_indices_t(batch, row, col)", "value") << "\n"
-                                    << "  }\n"
-                                    << "}\n";
-
-  shader.AdditionalImplementation() << R"(
+    shader.AdditionalImplementation() << R"(
 fn dequantize_packed8xU4(packed_value : u32, zero_point : output_element_t, scale : output_element_t) -> mat2x4<output_element_t> {
   let lower_values: vec4<u32> = unpack4xU8(packed_value & 0x0F0F0F0Fu);
   let upper_values: vec4<u32> = unpack4xU8((packed_value >> 4u) & 0x0F0F0F0Fu);
@@ -650,6 +639,23 @@ fn dequantize_packed8xU4(packed_value : u32, zero_point : output_element_t, scal
   return dequantized_values;
 }
 )";
+  }
+
+  shader.AdditionalImplementation() << "\n"
+                                    << "fn mm_read_scale(row : u32, col : u32) -> output_element_t {\n"
+                                    << "  if (row < uniforms.input_b_shape[0] && col < uniforms.input_b_shape[1]) {\n"
+                                    << "    return scales[row * uniforms.input_b_shape[1] + col];\n"
+                                    << "  }\n"
+                                    << "  return output_element_t(0);\n"
+                                    << "}\n"
+                                    << ReadZeroPoint(nbits_, has_zero_points_);
+
+  shader.AdditionalImplementation() << "\n"
+                                    << "fn mm_write_y(batch : u32, row : u32, col : u32, value : output_value_t) {\n"
+                                    << "  if (row < uniforms.output_shape[1] && col < uniforms.output_shape[2]) {\n"
+                                    << "    " << y.SetByIndices("output_indices_t(batch, row, col)", "value") << "\n"
+                                    << "  }\n"
+                                    << "}\n";
 
   // declare const variables
   shader.AdditionalImplementation() << "\n"
@@ -686,7 +692,7 @@ fn dequantize_packed8xU4(packed_value : u32, zero_point : output_element_t, scal
     let b_col = a_block_idx;
 
     let scale = mm_read_scale(b_row, b_col);
-    let zero_point = mm_read_zero(b_row, b_col);
+    let zero_point = mm_read_zero(b_row, b_col, uniforms.input_b_shape[0], uniforms.input_b_shape[1]);
 )MAIN_FN";
 
   if (nbits_ == 4) {
@@ -738,11 +744,14 @@ fn dequantize_packed8xU4(packed_value : u32, zero_point : output_element_t, scal
   return Status::OK();
 }
 
-// component_a = 4, component_b = 4, zero_point = nullptr
+// component_a = 4, component_b = 4
 Status MatMulNBitsBlockWiseProgram::GenerateShaderCode(ShaderHelper& shader) const {
   shader.AddInput("input_a", ShaderUsage::UseValueTypeAlias);
   shader.AddInput("input_b");
   shader.AddInput("scales_b");
+  if (has_zero_points_) {
+    shader.AddInput("zero_points", ShaderUsage::UseUniform);
+  }
   shader.AddOutput("output", ShaderUsage::UseElementTypeAlias);
   constexpr uint32_t components_a = 4;
   constexpr uint32_t components_b = 4;
@@ -772,7 +781,8 @@ Status MatMulNBitsBlockWiseProgram::GenerateShaderCode(ShaderHelper& shader) con
       tile_A[col] = input_a_value_t(0);
     }
   }
-)ADDNL_FN";
+)ADDNL_FN"
+                                    << ReadZeroPoint(nbits_, has_zero_points_);
 
   shader.MainFunctionBody() << R"MAIN_FN(
   let a_global = workgroup_id.y;
@@ -795,7 +805,9 @@ Status MatMulNBitsBlockWiseProgram::GenerateShaderCode(ShaderHelper& shader) con
       var k_offset = kidx_v / elements_in_vec + idx;
       if (b_global < uniforms.N && k_offset < uniforms.K_of_b)
       {
-        let scale_b = scales_b[b_global * uniforms.blocks_per_col + kidx_v / uniforms.block_size + idx * elements_in_vec / uniforms.block_size];
+        let block_idx = (kidx_v + idx * elements_in_vec) / uniforms.block_size;
+        let scale_b = scales_b[b_global * uniforms.blocks_per_col + block_idx];
+        let zero = mm_read_zero(b_global, block_idx, uniforms.N, uniforms.blocks_per_col);
         var b_value = input_b[b_global * uniforms.K_of_b + k_offset];
 )MAIN_FN";
 
@@ -804,8 +816,8 @@ Status MatMulNBitsBlockWiseProgram::GenerateShaderCode(ShaderHelper& shader) con
         var sum = output_element_t(0);
         var a_offset = idx * 2 * component_b;
         for (var i = 0u; i < component_b; i++) {
-          let b_value_lower = vec4<output_element_t>(unpack4xU8(b_value[i] & 0x0F0F0F0Fu)) - vec4<output_element_t>(8);
-          let b_value_upper = vec4<output_element_t>(unpack4xU8((b_value[i] >> 4) & 0x0F0F0F0Fu)) - vec4<output_element_t>(8);
+          let b_value_lower = vec4<output_element_t>(unpack4xU8(b_value[i] & 0x0F0F0F0Fu)) - vec4<output_element_t>(zero);
+          let b_value_upper = vec4<output_element_t>(unpack4xU8((b_value[i] >> 4) & 0x0F0F0F0Fu)) - vec4<output_element_t>(zero);
           let b0 = vec4<output_element_t>(b_value_lower[0], b_value_upper[0], b_value_lower[1], b_value_upper[1]) * scale_b;
           let b1 = vec4<output_element_t>(b_value_lower[2], b_value_upper[2], b_value_lower[3], b_value_upper[3]) * scale_b;
           sum += dot(tile_A[a_offset], b0) + dot(tile_A[a_offset + 1], b1);
@@ -817,7 +829,7 @@ Status MatMulNBitsBlockWiseProgram::GenerateShaderCode(ShaderHelper& shader) con
         var sum = output_element_t(0);
         var a_offset = idx * component_b;
         for (var i = 0u; i < component_b; i++) {
-          let b_value = (vec4<output_element_t>(unpack4xU8(b_value[i])) - vec4<output_element_t>(128)) * scale_b;
+          let b_value = (vec4<output_element_t>(unpack4xU8(b_value[i])) - vec4<output_element_t>(zero)) * scale_b;
           sum += dot(tile_A[a_offset], b_value);
           a_offset += 1;
         }
@@ -923,7 +935,8 @@ Status MatMulNBits::ComputeInternal(onnxruntime::webgpu::ComputeContext& context
                     {b, ProgramTensorMetadataDependency::TypeAndRank, reshaped_b_shape, onnxruntime::narrow<int>(components_b * 4)},
                     {scales, ProgramTensorMetadataDependency::None}})
         .AddOutput({y, ProgramTensorMetadataDependency::TypeAndRank, reshaped_y_shape, onnxruntime::narrow<int>(components)})
-        .AddUniformVariable({block_size});
+        .AddUniformVariable({block_size})
+        .CacheHint(nbits, has_zero_points);
     if (has_zero_points) {
       program.AddInput({zero_points, ProgramTensorMetadataDependency::None, {(zero_points->Shape().Size() + 3) / 4}, 4});
     }
@@ -931,12 +944,12 @@ Status MatMulNBits::ComputeInternal(onnxruntime::webgpu::ComputeContext& context
     return context.RunProgram(program);
   }
 
-  if (components_a == 4 && components_b == 4 && !has_zero_points) {
+  if (components_a == 4 && components_b == 4) {
     constexpr uint32_t workgroup_size = 128;
     constexpr uint32_t tile_size = 8;
     constexpr uint32_t kU32Components = 4;
     uint32_t elements_in_blob = components_b * kU32Components;
-    MatMulNBitsBlockWiseProgram program{tile_size, nbits};
+    MatMulNBitsBlockWiseProgram program{tile_size, nbits, has_zero_points};
     program.SetWorkgroupSize(workgroup_size);
     program.SetDispatchGroupSize((N + tile_size - 1) / tile_size, M, batch_count);
     program
@@ -945,7 +958,10 @@ Status MatMulNBits::ComputeInternal(onnxruntime::webgpu::ComputeContext& context
                     {scales, ProgramTensorMetadataDependency::TypeAndRank}})
         .AddOutput({y, ProgramTensorMetadataDependency::TypeAndRank})
         .AddUniformVariables({{M}, {N}, {K}, {K / components_a}, {n_blocks_per_col * blob_size / elements_in_blob}, {block_size}, {n_blocks_per_col}})
-        .CacheHint(nbits);
+        .CacheHint(nbits, has_zero_points);
+    if (has_zero_points) {
+      program.AddInput({zero_points, ProgramTensorMetadataDependency::None, {(zero_points->Shape().Size() + 3) / 4}, 4});
+    }
     return context.RunProgram(program);
   }
 
