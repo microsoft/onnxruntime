@@ -509,7 +509,7 @@ Status Environment::EpInfo::Create(std::unique_ptr<EpLibrary> library_in, std::u
 
   // OrtHardwareDevice instances to pass to GetSupportedDevices. sorted by type to be slightly more structured.
   // the set of hardware devices is static so this can also be static.
-  const static auto sorted_devices = SortDevicesByType();
+  const static std::vector<const OrtHardwareDevice*> sorted_devices = SortDevicesByType();
 
   for (auto* factory_ptr : factories) {
     ORT_ENFORCE(factory_ptr != nullptr, "Factory pointer was null. EpLibrary should prevent this. Library:",

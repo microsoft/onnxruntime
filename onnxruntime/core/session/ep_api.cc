@@ -11,8 +11,8 @@ using namespace onnxruntime;
 namespace OrtExecutionProviderApi {
 ORT_API_STATUS_IMPL(CreateEpDevice, _In_ OrtEpFactory* ep_factory,
                     _In_ const OrtHardwareDevice* hardware_device,
-                    _In_ OrtKeyValuePairs* ep_metadata,
-                    _In_ OrtKeyValuePairs* ep_options,
+                    _In_opt_ const OrtKeyValuePairs* ep_metadata,
+                    _In_opt_ const OrtKeyValuePairs* ep_options,
                     _Out_ OrtEpDevice** ort_ep_device) {
   API_IMPL_BEGIN
   auto ep_device = std::make_unique<OrtEpDevice>();
@@ -22,13 +22,11 @@ ORT_API_STATUS_IMPL(CreateEpDevice, _In_ OrtEpFactory* ep_factory,
   ep_device->ep_vendor = ep_factory->GetVendor(ep_factory);
 
   if (ep_metadata) {
-    ep_device->ep_metadata = std::move(*ep_metadata);
-    delete ep_metadata;
+    ep_device->ep_metadata = *ep_metadata;
   }
 
   if (ep_options) {
-    ep_device->ep_options = std::move(*ep_options);
-    delete ep_options;
+    ep_device->ep_options = *ep_options;
   }
 
   *ort_ep_device = ep_device.release();

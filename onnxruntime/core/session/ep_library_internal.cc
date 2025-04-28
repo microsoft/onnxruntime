@@ -91,10 +91,8 @@ std::unique_ptr<EpLibraryInternal> EpLibraryInternal::CreateDmlEp() {
         auto* api_status = OrtExecutionProviderApi::CreateEpDevice(factory, &device, nullptr, ep_options.get(),
                                                                    &ep_devices[num_ep_devices++]);
 
-        if (api_status) {
+        if (api_status != nullptr) {
           return api_status;
-        } else {
-          ep_options.release();
         }
       }
     }

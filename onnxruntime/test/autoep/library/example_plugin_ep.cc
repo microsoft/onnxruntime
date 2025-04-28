@@ -42,6 +42,7 @@ struct ExampleEp : OrtEp, ApiPtrs {
 
 struct ExampleEpFactory : OrtEpFactory, ApiPtrs {
   ExampleEpFactory(const char* ep_name, ApiPtrs apis) : ApiPtrs(apis), ep_name_{ep_name} {
+    ort_version_supported = ORT_API_VERSION;  // set to the ORT version we were compiled with.
     GetName = GetNameImpl;
     GetVendor = GetVendorImpl;
     GetSupportedDevices = GetSupportedDevicesImpl;
@@ -69,6 +70,7 @@ struct ExampleEpFactory : OrtEpFactory, ApiPtrs {
     auto* factory = static_cast<ExampleEpFactory*>(this_ptr);
 
     for (size_t i = 0; i < num_devices && num_ep_devices < max_ep_devices; ++i) {
+      // C API
       const OrtHardwareDevice& device = *devices[i];
       if (factory->ort_api.HardwareDevice_Type(&device) == OrtHardwareDeviceType::OrtHardwareDeviceType_CPU) {
         // these can be returned as nullptr if you have nothing to add.
@@ -80,15 +82,31 @@ struct ExampleEpFactory : OrtEpFactory, ApiPtrs {
         // random example using made up values
         factory->ort_api.AddKeyValuePair(ep_metadata, "version", "0.1");
         factory->ort_api.AddKeyValuePair(ep_options, "run_really_fast", "true");
-        // OrtEpDevice takes ownership of ep_metadata and ep_options if successful.
+
+        // OrtEpDevice copies ep_metadata and ep_options.
         auto* status = factory->ort_api.GetEpApi()->CreateEpDevice(factory, &device, ep_metadata, ep_options,
                                                                    &ep_devices[num_ep_devices++]);
+
+        factory->ort_api.ReleaseKeyValuePairs(ep_metadata);
+        factory->ort_api.ReleaseKeyValuePairs(ep_options);
+
         if (status != nullptr) {
-          factory->ort_api.ReleaseKeyValuePairs(ep_metadata);
-          factory->ort_api.ReleaseKeyValuePairs(ep_options);
           return status;
         }
       }
+
+      // C++ API equivalent. Throws on error.
+      //{
+      //  Ort::ConstHardwareDevice device(devices[i]);
+      //  if (device.Type() == OrtHardwareDeviceType::OrtHardwareDeviceType_CPU) {
+      //    Ort::KeyValuePairs ep_metadata;
+      //    Ort::KeyValuePairs ep_options;
+      //    ep_metadata.Add("version", "0.1");
+      //    ep_options.Add("run_really_fast", "true");
+      //    Ort::EpDevice ep_device{*this_ptr, device, ep_metadata.GetConst(), ep_options.GetConst()};
+      //    ep_devices[num_ep_devices++] = ep_device.release();
+      //  }
+      //}
     }
 
     return nullptr;

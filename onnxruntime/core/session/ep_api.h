@@ -11,8 +11,8 @@ ORT_API(const OrtEpApi*, GetEpApi);
 
 ORT_API_STATUS_IMPL(CreateEpDevice, _In_ OrtEpFactory* ep_factory,
                     _In_ const OrtHardwareDevice* hardware_device,
-                    _In_ OrtKeyValuePairs* ep_metadata,
-                    _In_ OrtKeyValuePairs* ep_options,
+                    _In_opt_ const OrtKeyValuePairs* ep_metadata,
+                    _In_opt_ const OrtKeyValuePairs* ep_options,
                     _Out_ OrtEpDevice** ep_device);
 
 ORT_API(void, ReleaseEpDevice, _Frees_ptr_opt_ OrtEpDevice* device);

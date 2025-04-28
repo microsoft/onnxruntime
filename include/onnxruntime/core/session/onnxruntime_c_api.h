@@ -5904,16 +5904,18 @@ struct OrtEpApi {
    * \param[in] hardware_device Hardware device that the EP can utilize.
    * \param[in] ep_metadata Optional OrtKeyValuePairs instance for execution provider metadata that may be used
    *                        during execution provider selection and passed to CreateEp.
-   *                        ep_device will take ownership of this instance.
+   *                        ep_device will copy this instance and the user should call ReleaseKeyValuePairs.
    * \param[in] ep_options  Optional OrtKeyValuePairs instance for execution provider options that will be added
    *                        to the Session configuration options if the execution provider is selected.
-   *                        ep_device will take ownership of this instance.
+   *                        ep_device will copy this instance and the user should call ReleaseKeyValuePairs.
    * \param ep_device OrtExecutionDevice that is created.
+   *
+   * \since Version 1.22.
    */
   ORT_API2_STATUS(CreateEpDevice, _In_ OrtEpFactory* ep_factory,
                   _In_ const OrtHardwareDevice* hardware_device,
-                  _In_ OrtKeyValuePairs* ep_metadata,
-                  _In_ OrtKeyValuePairs* ep_options,
+                  _In_opt_ const OrtKeyValuePairs* ep_metadata,
+                  _In_opt_ const OrtKeyValuePairs* ep_options,
                   _Out_ OrtEpDevice** ep_device);
 
   ORT_CLASS_RELEASE(EpDevice);

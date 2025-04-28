@@ -231,6 +231,8 @@ TEST(AutoEpSelection, MiscApiTests) {
 
     c_api->AddKeyValuePair(kvps, "key2", "");  // empty value is allowed
     ASSERT_EQ(c_api->GetKeyValue(kvps, "key2"), std::string(""));
+
+    c_api->ReleaseKeyValuePairs(kvps);
   }
 
   // construct KVP from std::unordered_map
