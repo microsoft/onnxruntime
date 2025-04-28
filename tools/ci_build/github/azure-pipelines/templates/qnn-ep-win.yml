@@ -14,7 +14,7 @@ stages:
   dependsOn: []
   jobs:
   - job: ${{ parameters.StageName }}
-    timeoutInMinutes: 120
+    timeoutInMinutes: 200
 
     pool:
       name: ${{ parameters.qnn_ep_build_pool_name }}
