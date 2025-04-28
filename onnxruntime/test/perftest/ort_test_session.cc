@@ -191,6 +191,12 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
 #else
     ORT_THROW("TensorRT is not supported in this build\n");
 #endif
+  } else if (provider_name_ == onnxruntime::kNvTensorRTRTXExecutionProvider) {
+#ifdef USE_NV
+    session_options.AppendExecutionProvider("NvTensorRtRtx", provider_options);
+#else
+    ORT_THROW("NV TensorRT RTX is not supported in this build\n");
+#endif
   } else if (provider_name_ == onnxruntime::kQnnExecutionProvider) {
 #ifdef USE_QNN
 #ifdef _MSC_VER

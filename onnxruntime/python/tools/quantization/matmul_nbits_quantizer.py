@@ -50,8 +50,8 @@ class WeightOnlyQuantConfig:
             quant_axes (dict[str, int], optional):
                 op:axis, which axis to quantize for an op. Default {MatMul: 0, Gather: 1}
             customized_weight_config:
-                customized weight config for nodes if needed.
-                If both customized_weight_config and nodes_to_exclude are set, nodes_to_exclude overwrites customized_weight_config.
+                customized weight config for nodes if needed. It is dictionary with node name as key,
+                and the value is a dict of customized config.
         """
         self.algorithm = algorithm
         self.quant_format = quant_format
@@ -81,6 +81,9 @@ class RTNWeightOnlyQuantConfig(WeightOnlyQuantConfig):
                 Defaults to QuantFormat.QOperator.
             op_types_to_quantize (optional):
                 set of operator types to quantize.
+            customized_weight_config:
+                customized weight config for nodes if needed. It is dictionary with node name as key,
+                and the value is a dict of customized config.
         """
         assert quant_format == QuantFormat.QOperator, "RTN only supports QOperator format"
 
@@ -220,6 +223,8 @@ class DefaultWeightOnlyQuantConfig(WeightOnlyQuantConfig):
                 set of operator types to quantize.
             quant_axes (dict[str, int], optional):
                 op:axis, which axis to quantize for an op. Default {MatMul: 0, Gather: 1}
+            bits (int, optional):
+                number of bits per element after quantization. Default 4.
         """
         super().__init__(
             algorithm="DEFAULT",
@@ -654,19 +659,23 @@ class HQQWeightOnlyQuantizer:
         b_array_torch = torch.from_numpy(b_array)
         if torch.cuda.is_available():
             b_array_torch = b_array_torch.cuda()
+
+        bits = self.config.bits
         quant_weight_torch, scales_torch, zero_points_torch = self.quantize_internal(
-            b_array_torch.T, bits=self.config.bits, group_size=self.config.block_size
+            b_array_torch.T, bits=bits, group_size=self.config.block_size
         )
         quant_weight_torch = quant_weight_torch.contiguous()
         scales_torch = scales_torch.contiguous()
         zero_points_torch = zero_points_torch.contiguous()
 
+        packed_size = 8 // bits  # number of elements packed into one byte
+
         packed_torch = torch.zeros(
-            (quant_weight_torch.shape[0], quant_weight_torch.shape[1] // 2),
+            (quant_weight_torch.shape[0], quant_weight_torch.shape[1] // packed_size),
             dtype=torch.uint8,
             device=quant_weight_torch.device,
         )
-        self.pack_on_row_fast_248bit(packed_torch, quant_weight_torch, self.config.bits)
+        self.pack_on_row_fast_248bit(packed_torch, quant_weight_torch, bits)
         scales = scales_torch.cpu().numpy()
         zero_points = zero_points_torch.cpu().numpy()
         # reshape to the predefined shape in MatmulNbits
@@ -674,12 +683,12 @@ class HQQWeightOnlyQuantizer:
         zero_points = zero_points.reshape(-1)
         rows, cols = b_array_torch.shape
         block_size = self.config.block_size
-        blob_size = block_size // 2
+        blob_size = block_size // packed_size
         k_blocks = (rows + block_size - 1) // block_size
         packed_torch = packed_torch.reshape(cols, k_blocks, blob_size)
 
         b_quant = onnx.numpy_helper.from_array(packed_torch.cpu().numpy())
-        b_quant.name = b_pb.name + "_Q4"
+        b_quant.name = b_pb.name + "_Q" + str(bits)
         for input in bs_graph.input:
             if input.name == input_b:
                 bs_graph.input.remove(input)
@@ -699,21 +708,21 @@ class HQQWeightOnlyQuantizer:
         rows, cols = b_array.shape
         kwargs["K"] = rows
         kwargs["N"] = cols
-        kwargs["bits"] = self.config.bits
+        kwargs["bits"] = bits
         kwargs["block_size"] = self.config.block_size
 
-        matmul_q4_node = onnx.helper.make_node(
+        matmul_q_node = onnx.helper.make_node(
             "MatMulNBits",
             inputs=input_names,
             outputs=[node.output[0]],
-            name=node.name + "_Q4" if node.name else "",
+            name=node.name + "_Q" + str(bits) if node.name else "",
             domain="com.microsoft",
             **kwargs,
         )
 
         logger.info(f"complete quantization of {node.name} ...")
 
-        return [matmul_q4_node]
+        return [matmul_q_node]
 
 
 def get_initializer(name, graph_path: list[GraphProto]) -> tuple[TensorProto, GraphProto]:
@@ -761,7 +770,7 @@ class DefaultWeightOnlyQuantizer:
                     packed, fp32weight, scales, zero_point, block_size, cols, rows, self.config.is_symmetric
                 )
         else:
-            # QDQ format only support 4 bits quantization
+            assert qbits == 4, "QDQ format only support 4 bits quantization"
             packed = np.zeros((rows * cols + 1) // 2, dtype="uint8")
             zero_point = np.zeros((cols * k_blocks + 1) // 2, dtype="uint8")
             scales = np.zeros((k_blocks, cols), dtype=fp32weight.dtype)
@@ -1095,14 +1104,13 @@ class NVAWQWeightOnlyQuantizer:
         return quantized_model
 
 
-# TODO(fajin): change class name
-class MatMul4BitsQuantizer:
+class MatMulNBitsQuantizer:
     """
     Target node:        QOperator node:            QDQ nodes:
     MatMul              MatMulNBits                DeQuantizeLinear -> MatMul
     Gather              GatherBlockQuantized       Gather, Gather, Gather (optional) -> DequantizeLinear
 
-    Perform 4b quantization of constant weights for target nodes.
+    Perform 4/8 bits quantization of constant weights for target nodes.
     If algo_config.quant_format is QOperator:
       - nodes are replaced by the corresponding QOperator nodes.
       - quantized weights are stored in the contrib ops.
@@ -1114,6 +1122,7 @@ class MatMul4BitsQuantizer:
     Note:
       - for quantized gather, the memory usage of "DequantizeLinear + Gather" is the same as the original Gather
         during runtime. Therefor it is not recommended.
+      - when a node is in nodes_to_exclude, and the node configuration in algo_config.customized_weight_config will be ignored.
     """
 
     def __init__(
@@ -1148,8 +1157,13 @@ class MatMul4BitsQuantizer:
                 quant_format=quant_format,
                 op_types_to_quantize=op_types_to_quantize,
                 quant_axes=quant_axes,
+                bits=4,  # default to 4 bits
             )
+
         self.algo_config = algo_config
+        if hasattr(self.algo_config, "bits"):
+            assert self.algo_config.bits in [4, 8], "Only support 4 or 8 bits quantization"
+
         if algo_config.algorithm == "HQQ":
             self.node_quantizer = HQQWeightOnlyQuantizer(self.algo_config)
         elif algo_config.algorithm == "DEFAULT":
@@ -1511,7 +1525,7 @@ if __name__ == "__main__":
     else:
         raise ValueError(f"Unsupported quantization method: {args.quant_method}")
 
-    quant = MatMul4BitsQuantizer(
+    quant = MatMulNBitsQuantizer(
         model=model,
         accuracy_level=args.accuracy_level,
         nodes_to_exclude=args.nodes_to_exclude,
