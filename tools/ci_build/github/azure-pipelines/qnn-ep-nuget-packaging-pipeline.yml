@@ -57,10 +57,6 @@ extends:
         StageName: 'OnnxRuntime_QNN_Nuget_Win_Arm64x'
         build_config: ${{ parameters.build_config }}
 
-    - template: stages/nuget-qnn-packaging-stage.yml
-      parameters:
-        DoEsrp: ${{ parameters.DoEsrp }}
-
     - template: templates/publish-nuget-steps.yml
       parameters:
         download_artifacts_steps:
