@@ -1850,9 +1850,10 @@ Status QnnBackendManager::GetOrRegisterContextMemHandle(Qnn_ContextHandle_t cont
   if (did_register) {
     HtpSharedMemoryAllocator::AllocationCleanUpFn unregister_mem_handle =
         [&logger = *logger_,
+         shared_memory_address,
          weak_backend_manager = weak_from_this(),
          weak_context_handle_record = std::weak_ptr{context_handle_record}](
-            void* shared_memory_address) {
+            void* /* allocation_base_address */) {
           // Lock QnnBackendManager shared_ptr to ensure that QNN interface is still valid.
           auto backend_manager = weak_backend_manager.lock();
           if (!backend_manager) {

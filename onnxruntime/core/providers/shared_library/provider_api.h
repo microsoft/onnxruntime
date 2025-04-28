@@ -297,6 +297,7 @@ constexpr const char* kOpenVINOExecutionProvider = "OpenVINOExecutionProvider";
 constexpr const char* kVitisAIExecutionProvider = "VitisAIExecutionProvider";
 constexpr const char* kRocmExecutionProvider = "ROCMExecutionProvider";
 constexpr const char* kTensorrtExecutionProvider = "TensorrtExecutionProvider";
+constexpr const char* kNvTensorRTRTXExecutionProvider = "NvTensorRTRTXExecutionProvider";
 constexpr const char* kMIGraphXExecutionProvider = "MIGraphXExecutionProvider";
 constexpr const char* kQnnExecutionProvider = "QNNExecutionProvider";
 constexpr const char* kCpuExecutionProvider = "CPUExecutionProvider";
@@ -434,6 +435,7 @@ void InitProviderOrtApi();
 inline Env& GetDefaultEnv() {
   return g_host->Env__Default();
 }
+
 }  // namespace onnxruntime
 
 #define CREATE_MESSAGE(logger, severity, category, datatype) \
