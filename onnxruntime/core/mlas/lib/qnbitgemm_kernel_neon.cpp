@@ -42,6 +42,7 @@ namespace
 // Quantized B data packing function implementation.
 //
 
+template <int BlkBitWidth>
 size_t
 Q4BitGemmPackQuantBDataSize(
     size_t N,
@@ -66,11 +67,23 @@ Q4BitGemmPackQuantBDataSize(
     } else
 #endif
     {
-        constexpr size_t BlkBitWidth = 4;
-
         const size_t BlockCountK = MlasDivRoundup(K, BlkLen);
         const size_t PackedQuantBDataSize = N * BlockCountK * MlasQNBitBlkDataSizeInBytes(BlkBitWidth, BlkLen);
-        return PackedQuantBDataSize;
+
+        if (ComputeType == SQNBIT_CompInt8) {
+            const size_t ScaleSize = N * BlockCountK * sizeof(float);
+            size_t BlkSumSize = MlasDivRoundup(N, 16) * BlockCountK * 16 * sizeof(float);
+
+            // align on a 32-byte boundary
+            constexpr size_t PackedQuantBDataAlignment = 32;
+            PackedQuantBDataSize += PackedQuantBDataAlignment - 1;
+            constexpr size_t BlkSumAlignment = MlasQNBitQuantBBlkSumAlignment();
+            BlkSumSize += BlkSumAlignment - 1;
+
+            return PackedQuantBDataSize + ScaleSize + BlkSumSize;
+        } else {
+            return PackedQuantBDataSize;
+        }
     }
 }
 
@@ -199,6 +212,130 @@ SQ4BitGemmPackQuantBDataAndBlkSum(
     }
 }
 
+void
+Q8PackQuantB(
+  const std::byte* QuantBDataBegin,
+  std::byte* PackedQuantBDataBegin,
+  MLAS_THREADPOOL* ThreadPool,
+  const size_t N,
+  const size_t BlkCountK,
+  const size_t BlkLen)
+{
+    constexpr size_t BlkBitWidth = 8;
+    constexpr size_t SubBlkLen = 4;
+    const size_t SubBlkCountK = BlkLen / SubBlkLen * BlkCountK;
+    const size_t StrideN = BlkCountK * BlkLen;
+    const size_t BlkSize = MlasQNBitBlkDataSizeInBytes(BlkBitWidth, BlkLen);
+    const size_t Iterations = N * SubBlkCountK;
+
+    // 4 rows x 8 columns pack together, then 4 rows x 4 columns, then per column.
+    MlasTrySimpleParallel(
+        ThreadPool, Iterations,
+        [&](ptrdiff_t tid) {
+            const size_t c = tid / SubBlkCountK;
+            const size_t c8 = c & (-7), c8_res = c & 7;
+            const size_t c4 = c & (~3), c4_res = c & 3;
+            const size_t r_subblk = tid % SubBlkCountK;
+
+            const std::byte* src = QuantBDataBegin + c * StrideN + r_subblk * SubBlkLen;
+
+            if (c8 + 8 <= N) { // full 8 cols
+                std::byte* dest =
+                    PackedQuantBDataBegin + c8 * StrideN + r_subblk * SubBlkLen * 8 + c8_res * SubBlkLen;
+                std::copy(src, src + SubBlkLen, dest);
+            } else if (c4 + 4 <= N) { // full 4 cols
+                std::byte* dest =
+                    PackedQuantBDataBegin + c4 * StrideN + r_subblk * SubBlkLen * 4 + c4_res * SubBlkLen;
+                std::copy(src, src + SubBlkLen, dest);
+            } else { // remainder cols
+                std::byte* dest =
+                    PackedQuantBDataBegin + c * StrideN + r_subblk * SubBlkLen;
+                std::copy(src, src + SubBlkLen, dest);
+            }
+        }
+    );
+}
+
+void
+Q8ComputePackBlkSum(
+  size_t BlkLen,
+  size_t N,
+  float* QuantBScaleBegin,
+  const std::byte* QuantBZPBegin,
+  float* BlockSumBegin,
+  MLAS_THREADPOOL* ThreadPool,
+  const size_t BlockCountK)
+{
+    std::vector<float> QuantBScaleBeginCopy(N * BlockCountK);
+    std::copy(QuantBScaleBegin, QuantBScaleBegin + N * BlockCountK, QuantBScaleBeginCopy.begin());
+
+    MlasTrySimpleParallel(ThreadPool, N * BlockCountK, [&](ptrdiff_t tid) {
+        constexpr size_t SubBlkLen = 4;
+        const size_t n = tid / BlockCountK;
+        const size_t n8 = n & (~7), n8_res = n & 7;
+        const size_t n4 = n & (~3), n4_res = n & 3;
+        const size_t k_blk = tid % BlockCountK;
+
+        const size_t src_blk_offset = n * BlockCountK + k_blk;
+        const float QuantBScale = QuantBScaleBeginCopy[src_blk_offset];
+        uint8_t zp = 128;
+        if (QuantBZPBegin) {
+            const std::byte* QuantBZP = QuantBZPBegin + src_blk_offset;
+            zp = (uint8_t)(*QuantBZP);
+        }
+
+        // BlockSum is a width 16 row major matrix
+        const size_t dst_offset = ((n / 16) * BlockCountK + k_blk) * 16 + n % 16;
+        *(BlockSumBegin + dst_offset) = -QuantBScale * zp;
+
+        // re-arrange scale to the same order as packed data
+        if (n4 + 4 > N) { // remainder cols
+            *(QuantBScaleBegin + n * BlockCountK + k_blk) = QuantBScale;
+        } else if (n8 + 8 > N) { // full 4 cols
+            *(QuantBScaleBegin + n4 * BlockCountK + k_blk * 4 + n4_res) = QuantBScale;
+        } else { // full 8 cols
+            *(QuantBScaleBegin + n8 * BlockCountK + k_blk * 8 + n8_res) = QuantBScale;
+        }
+    });
+}
+
+/**
+ * Utilize i8mm dot product instructions.
+ * 4 rows x 8 cols pack together, along all K. Then 4 rows x 4 cols, along all K.
+ * When rol < 4, keep original layout.
+ */
+void
+SQ8BitGemmPackQuantBDataAndBlkSum(
+    size_t N,
+    size_t K,
+    size_t BlkLen,
+    MLAS_QNBIT_GEMM_COMPUTE_TYPE ComputeType,
+    const std::byte* QuantBDataBegin,
+    const float* QuantBScaleBegin,
+    bool HasZeroPoint,
+    const std::byte* QuantBZPBegin,
+    PackedQuantBDataStruct<float, 8>& PackedQuantB,
+    MLAS_THREADPOOL* ThreadPool
+)
+{
+    assert(BlkLen >= 16 && BlkLen % 16 == 0);
+    assert(ComputeType == SQNBIT_CompInt8);
+
+    const size_t BlockCountK = MlasDivRoundup(K, BlkLen);
+
+    if (QuantBDataBegin) {
+        Q8PackQuantB(QuantBDataBegin, PackedQuantB.PackedQuantBData, ThreadPool, N, BlockCountK, BlkLen);
+    }
+
+    if (QuantBScaleBegin) {
+        std::copy(QuantBScaleBegin, QuantBScaleBegin + N * BlockCountK, PackedQuantB.PackedQuantBScale);
+    }
+
+    if ((QuantBScaleBegin && !HasZeroPoint) || QuantBZPBegin) {
+        Q8ComputePackBlkSum(BlkLen, N, PackedQuantB.PackedQuantBScale, QuantBZPBegin, PackedQuantB.QuantBBlkSum, ThreadPool, BlockCountK);
+    }
+}
+
 //
 // Workspace size calculation function implementation.
 //
@@ -295,9 +432,11 @@ GetMlasQNBitGemmDispatchNeon(
     static const MLAS_QNBIT_GEMM_DISPATCH MlasQNBitGemmDispatchNeon = [&]() {
         MLAS_QNBIT_GEMM_DISPATCH d;
 
-        d.Q4BitGemmPackQuantBDataSize = sqnbitgemm_neon::Q4BitGemmPackQuantBDataSize;
+        d.Q4BitGemmPackQuantBDataSize = sqnbitgemm_neon::Q4BitGemmPackQuantBDataSize<4>;
+        d.Q8BitGemmPackQuantBDataSize = sqnbitgemm_neon::Q4BitGemmPackQuantBDataSize<8>;
         d.SQ4BitGemmPackQuantBData = sqnbitgemm_neon::SQ4BitGemmPackQuantBData;
         d.SQ4BitGemmPackQuantBDataAndBlkSum = sqnbitgemm_neon::SQ4BitGemmPackQuantBDataAndBlkSum;
+        d.SQ8BitGemmPackQuantBDataAndBlkSum = sqnbitgemm_neon::SQ8BitGemmPackQuantBDataAndBlkSum;
 
         d.QNBitGemmPerGemmWorkspaceSize = sqnbitgemm_neon::QNBitGemmPerGemmWorkspaceSize;
         d.QNBitGemmPerGemmWorkspaceAlignment = sqnbitgemm_neon::QNBitGemmPerGemmWorkspaceAlignment;
