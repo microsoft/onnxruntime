@@ -692,8 +692,8 @@ def generate_build_tree(
             log.info(f"setting target triplet to {triplet}")
             add_default_definition(cmake_extra_defines, "VCPKG_TARGET_TRIPLET", triplet)
 
-    # By default on Windows we currently support only cross compiling for ARM64
-    if is_windows() and (args.arm64 or args.arm64ec) and platform.architecture()[0] != "AMD64":
+    # By default on Windows we currently support only cross compiling for ARM/ARM64
+    if is_windows() and (args.arm64 or args.arm64ec or args.arm) and platform.architecture()[0] != "AMD64":
         # The onnxruntime_CROSS_COMPILING flag is deprecated. Prefer to use CMAKE_CROSSCOMPILING.
         add_default_definition(cmake_extra_defines, "onnxruntime_CROSS_COMPILING", "ON")
         if args.use_extensions:
@@ -2347,15 +2347,17 @@ def main():
         if is_windows() and not args.build_wasm:
             cpu_arch = platform.architecture()[0]
             if args.cmake_generator == "Ninja":
-                if cpu_arch == "32bit" or args.arm64 or args.arm64ec:
+                if cpu_arch == "32bit" or args.arm or args.arm64 or args.arm64ec:
                     raise BuildError(
                         "To cross-compile with Ninja, load the toolset "
                         "environment for the target processor (e.g. Cross "
                         "Tools Command Prompt for VS)"
                     )
                 cmake_extra_args = ["-G", args.cmake_generator]
-            elif args.arm64 or args.arm64ec:
-                if args.arm64:
+            elif args.arm or args.arm64 or args.arm64ec:
+                if args.arm:
+                    cmake_extra_args = ["-A", "ARM"]
+                elif args.arm64:
                     cmake_extra_args = ["-A", "ARM64"]
                     if args.buildasx:
                         cmake_extra_args += ["-D", "BUILD_AS_ARM64X=ARM64"]
