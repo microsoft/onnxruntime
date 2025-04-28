@@ -430,7 +430,7 @@ stages:
         view: 'bdf2fe57-11ef-4a86-a145-7857a0405755'
         definition: 'c78cdb16-4022-4baa-84d4-8bccbe935762'
         version: '1.0.1'
-        downloadPath: $(Agent.TempDirectory)/whisper_large_v3\
+        downloadPath: $(Agent.TempDirectory)/whisper_large_v3
 
     - script: |
         docker run -e SYSTEM_COLLECTIONURI --rm --gpus all -v $(Build.SourcesDirectory):/workspace \
