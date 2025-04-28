@@ -4,7 +4,11 @@ This note is only for ONNX Runtime developers.
 
 If you need to update the ONNX submodule to a different version, follow the steps below.
 
-1. Update the ONNX submodule (commit would be more precise than branch)
+## Update ONNX installation
+
+Currently, ONNXRUNTIME supports two ways to install ONNX cpp dependencies, one is through cmake/deps.txt, and the other one is by vcpkg. And both of them are guarded by CI. It is recommeded to test vcpkg within Windows machines.
+
+### Update the ONNX submodule (commit would be more precise than branch)
 
 ```sh
 cd cmake/external/onnx
@@ -14,26 +18,63 @@ cd ..
 git add onnx
 ```
 
-(Change the <commit_id> to yours. If you are not sure, use 'origin/master'. Like 'git reset --hard origin/master')
+(Change the <commit_id> to yours. If you are not sure, use 'origin/main'. Like 'git reset --hard origin/main')
 
-2. Update [cmake/deps.txt](/cmake/deps.txt) with the correct zip download link and SHA (alternatively, build it with the wrong SHA and ORT should tell you the expected one.).
-3. Check [cmake/patch/onnx/onnx.patch](/cmake/patch/onnx/onnx.patch) to see whether the diffs are resolved in the latest ONNX version.
-4. Try to build ONNXRUNTIME from source. If the build fails, please make the changes accordingly, or use onnx.patch if it's ONNX bugs.
-5. Update [docs/OperatorKernels.mk](/docs/OperatorKernels.md)
+### Update cmake/deps.txt
+
+1. Update [cmake/deps.txt](/cmake/deps.txt) with the correct zip download link and SHA (alternatively, build it with the wrong SHA and ORT should tell you the expected one.).
+2. Check [cmake/patches/onnx/onnx.patch](/cmake/patches/onnx/onnx.patch) to see whether the diffs are resolved in the latest ONNX version.
+3. Try to build ONNXRUNTIME from source. If the build fails, please make the changes accordingly, or use onnx.patch if it's ONNX bugs. An example build:
+
+```bash
+./build.sh --config RelWithDebInfo --use_cuda --cuda_home /usr/local/cuda-12.6/ --cudnn_home /usr/local/cuda-12.6/ --build_wheel --parallel --skip_tests
+```
+
+### Update cmake/vcpkg-ports
+
+1. Modify [cmake/vcpkg-ports/onnx/binskim.patch](/cmake/vcpkg-ports/onnx/binskim.patch) to be the same as [cmake/patches/onnx/onnx.patch](/cmake/patches/onnx/onnx.patch).
+2. The other patches are required/created by vcpkg repository to build ONNX. We just need to re-run diff to makes sure the patches can be applied in the updated ONNX version.
+3. Update [cmake/vcpkg-ports/onnx/portfile.cmake](/cmake/vcpkg-ports/onnx/portfile.cmake) with the correct commit id and SHA512. (alternatively, build it with the wrong SHA and ORT should tell you the expected one.)
+4. Try to build ONNXRUNTIME from source. If the build fails, please make the changes accordingly, or use binskim.patch if it's ONNX bugs. An example build:
+
+```bash
+./build.sh --config RelWithDebInfo --use_cuda --cuda_home /usr/local/cuda-12.6/ --cudnn_home /usr/local/cuda-12.6/ --build_wheel --parallel --skip_tests --use_vcpkg
+```
+
+## Update ONNX related documentations
+
+We need to update the auto-generated ONNX kernels markdowns and requirements.txt.
+
+### AUTO-generated ONNX kernels
+
+We can either use the following command lines to generate them, or go to CI (AzureDevOps published Artifacts) to download and upload the generated markdowns from CI to update them (suggested).
+
+If you want to do the command lines:
+
+1. Update [docs/OperatorKernels.md](/docs/OperatorKernels.md)
 
 ```bash
 # under onnxruntime root
 python tools/python/gen_opkernel_doc.py --output_path docs/OperatorKernels.md
 ```
 
-6. Push the branch to validate with the CI tests, and make the necessary changes accordingly.
-7. Update Python requirements files with the updated ONNX version (e.g., `onnx==1.16.0`) or commit hash if building from source (e.g., `git+http://github.com/onnx/onnx.git@targetonnxcommithash#egg=onnx`).
+1. Update [js/web/docs/webgl-operators.md](/js/web/docs/webgl-operators.md) with the script: [generate-webgl-operator-md.ts](/js/web/script/generate-webgl-operator-md.ts)
+
+```bash
+node /home/titaiwang/onnxruntime/js/web/script/generate-webgl-operator-md.js
+```
+
+### Update requirements.txt
+
+Update Python requirements files with the updated ONNX version (e.g., `onnx==1.16.0`) or commit hash if building from source (e.g., `git+http://github.com/onnx/onnx.git@targetonnxcommithash#egg=onnx`).
 
 - [onnxruntime/test/python/requirements.txt](/onnxruntime/test/python/requirements.txt)
 - [tools/ci_build/github/linux/docker/scripts/requirements.txt](/tools/ci_build/github/linux/docker/scripts/requirements.txt)
 - [tools/ci_build/github/linux/docker/scripts/manylinux/requirements.txt](/tools/ci_build/github/linux/docker/scripts/manylinux/requirements.txt)
 - [tools/ci_build/github/linux/python/requirements.txt](/tools/ci_build/github/linux/python/requirements.txt)
 - Run `git grep -rn "onnx==1" .` to find other locations and update this document if necessary.
+
+## Additional Notes
 
 1. If there is any change to `cmake/external/onnx/onnx/*.in.proto`, you need to regenerate OnnxMl.cs.
    [Building onnxruntime with Nuget](https://onnxruntime.ai/docs/build/inferencing.html#build-nuget-packages) will do
