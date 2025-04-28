@@ -245,8 +245,8 @@ bool CanApplyGemmVec4(const Tensor* a,
 Status ApplyGemmVec4(const Tensor* a,
                      const Tensor* b,
                      const Tensor* c,
-                     bool transA_,
-                     bool transB_,
+                     bool transA,
+                     bool transB,
                      float alpha,
                      float beta,
                      ComputeContext& context,
@@ -254,9 +254,9 @@ Status ApplyGemmVec4(const Tensor* a,
   const auto& a_shape = a->Shape();
   const auto& b_shape = b->Shape();
 
-  uint32_t M = onnxruntime::narrow<uint32_t>(transA_ ? a_shape[1] : a_shape[0]);
-  uint32_t K = onnxruntime::narrow<uint32_t>(transA_ ? a_shape[0] : a_shape[1]);
-  uint32_t N = onnxruntime::narrow<uint32_t>(transB_ ? b_shape[0] : b_shape[1]);
+  uint32_t M = onnxruntime::narrow<uint32_t>(transA ? a_shape[1] : a_shape[0]);
+  uint32_t K = onnxruntime::narrow<uint32_t>(transA ? a_shape[0] : a_shape[1]);
+  uint32_t N = onnxruntime::narrow<uint32_t>(transB ? b_shape[0] : b_shape[1]);
 
   // WebGPU doesn't support binding a zero-sized buffer, so we need to check if A or B is empty.
   bool need_handle_matmul = a_shape.Size() > 0 && b_shape.Size() > 0;
@@ -276,7 +276,7 @@ Status ApplyGemmVec4(const Tensor* a,
   // We use vec4 for Y when N is divisible by 4.
   const int output_components = N % 4 == 0 ? 4 : 1;
 
-  GemmVec4Program program{transA_, transB_, alpha, need_handle_bias, need_handle_matmul, c_components, c_is_scalar, output_components};
+  GemmVec4Program program{transA, transB, alpha, need_handle_bias, need_handle_matmul, c_components, c_is_scalar, output_components};
 
   const int components = 4;
 
@@ -293,7 +293,7 @@ Status ApplyGemmVec4(const Tensor* a,
   const uint32_t num_tile_n = (N + TILE_SIZE - 1) / TILE_SIZE;
   const uint32_t num_tile_m = (M + TILE_SIZE - 1) / TILE_SIZE;
 
-  program.CacheHint(alpha, transA_, transB_)
+  program.CacheHint(alpha, transA, transB, output_components, c_components, c_is_scalar)
       .AddOutputs({{y, ProgramTensorMetadataDependency::TypeAndRank, output_components}})
       .SetDispatchGroupSize(num_tile_n * num_tile_m)
       .SetWorkgroupSize(256, 1, 1)
