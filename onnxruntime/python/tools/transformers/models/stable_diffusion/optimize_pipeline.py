@@ -22,7 +22,6 @@ import shutil
 import tempfile
 from pathlib import Path
 
-import __init__  # noqa: F401. Walk-around to run this script directly
 import coloredlogs
 import onnx
 from fusion_options import FusionOptions
