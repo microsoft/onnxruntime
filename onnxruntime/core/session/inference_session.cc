@@ -2001,8 +2001,14 @@ common::Status InferenceSession::Initialize() {
     TraceLoggingWriteStart(session_activity, "OrtInferenceSessionActivity");
     session_activity_started_ = true;
 #endif
-    // Take a copy as this gets cleared during session state initialization
+    // Generate and cache telemetry data for the model
     InitializedTensorSet initializers = graph.GetAllInitializedTensors();
+    std::string model_weight_type = ModelWeightDataType(graph);
+    std::string model_graph_hash = ComputeModelGraphHash(graph);
+    std::string model_weight_hash = ComputeModelWeightHash(initializers);
+    SetWeightDataType(model_weight_type);
+    SetGraphHash(model_graph_hash);
+    SetWeightHash(model_weight_hash);
 
     // now that we have all the execution providers, create the session state
     session_state_ = std::make_unique<SessionState>(
@@ -2388,20 +2394,12 @@ common::Status InferenceSession::Initialize() {
     std::filesystem::path model_path = graph.ModelPath();
     std::string model_file_name = model_path.filename().string();
     bool model_has_fp16_inputs = ModelHasFP16Inputs(graph);
-    std::string model_weight_type = ModelWeightDataType(graph);
-    std::string model_graph_hash = ComputeModelGraphHash(graph);
-    std::string model_weight_hash = ComputeModelWeightHash(initializers);
     env.GetTelemetryProvider().LogSessionCreation(
         session_id_, model_->IrVersion(), model_->ProducerName(), model_->ProducerVersion(), model_->Domain(),
         graph.DomainToVersionMap(), model_file_name, graph.Name(), model_weight_type, model_graph_hash, model_weight_hash,
         model_->MetaData(), telemetry_.event_name_, execution_providers_.GetIds(), model_has_fp16_inputs, false);
 
     LOGS(*session_logger_, INFO) << "Session successfully initialized.";
-
-    // Cache the model metadata
-    SetWeightDataType(model_weight_type);
-    SetGraphHash(model_graph_hash);
-    SetWeightHash(model_weight_hash);
   }
 
   ORT_CATCH(const NotImplementedException& ex) {
