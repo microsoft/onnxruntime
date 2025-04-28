@@ -1099,7 +1099,7 @@ TEST_F(QnnHTPBackendTests, ProfilingTest) {
   provider_options["offload_graph_io_quantization"] = "0";
   provider_options["enable_htp_fp16_precision"] = "1";
   provider_options["profiling_level"] = "detailed";
-  provider_options["profiling_file_path"] = "detailed_profile.csv";
+  provider_options["profiling_file_path"] = "./detailed_profile.log";
 
   auto input_defs = {TestInputDef<float>({1, 2, 2, 2}, false, -10.0f, 10.0f),
                      TestInputDef<float>({1, 2, 2, 2}, false, -10.0f, 10.0f)};
@@ -1108,6 +1108,48 @@ TEST_F(QnnHTPBackendTests, ProfilingTest) {
                   13,
                   ExpectedEPNodeAssignment::All,
                   0.008f);
+
+  // Check that output file exists and is non-empty
+  std::ifstream cache_file(provider_options["profiling_file_path"], std::ifstream::binary);
+  EXPECT_TRUE(cache_file.good());
+
+  cache_file.seekg(0, cache_file.end);
+  size_t buffer_size = static_cast<size_t>(cache_file.tellg());
+  EXPECT_FALSE(0 == buffer_size);
+
+  std::remove(provider_options["profiling_file_path"].c_str());
+}
+
+TEST_F(QnnHTPBackendTests, OptraceTest) {
+  onnxruntime::ProviderOptions provider_options;
+
+#if defined(_WIN32)
+  provider_options["backend_path"] = "QnnHtp.dll";
+#else
+  provider_options["backend_path"] = "libQnnHtp.so";
+#endif
+  provider_options["offload_graph_io_quantization"] = "0";
+  provider_options["enable_htp_fp16_precision"] = "1";
+  provider_options["profiling_level"] = "optrace";
+  provider_options["profiling_file_path"] = "./optrace_profile.log";
+
+  auto input_defs = {TestInputDef<float>({1, 2, 2, 2}, false, -10.0f, 10.0f),
+                     TestInputDef<float>({1, 2, 2, 2}, false, -10.0f, 10.0f)};
+  RunQnnModelTest(BuildOpTestCase<float>("Add", input_defs, {}, {}, kOnnxDomain),
+                  provider_options,
+                  13,
+                  ExpectedEPNodeAssignment::All,
+                  0.008f);
+
+  // Check that output file exists and is non-empty
+  std::ifstream cache_file(provider_options["profiling_file_path"], std::ifstream::binary);
+  EXPECT_TRUE(cache_file.good());
+
+  cache_file.seekg(0, cache_file.end);
+  size_t buffer_size = static_cast<size_t>(cache_file.tellg());
+  EXPECT_FALSE(0 == buffer_size);
+
+  std::remove(provider_options["profiling_file_path"].c_str());
 }
 
 TEST_F(QnnHTPBackendTests, CastAddQDQU8) {

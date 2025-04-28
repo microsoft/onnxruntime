@@ -70,7 +70,10 @@ Status BaseOpBuilder::ProcessDataTypes(QnnModelWrapper& qnn_model_wrapper,
     Qnn_DataType_t qnn_data_type = tensor_info.qnn_data_type;
     output_qnn_dtypes.push_back(qnn_data_type);
   }
-  if (IsCpuBackend(qnn_model_wrapper.GetQnnBackendType())) {
+  if (IsIrBackend(qnn_model_wrapper.GetQnnBackendType())) {
+    // Currently QnnIr has no constraints on datatypes
+    return Status::OK();
+  } else if (IsCpuBackend(qnn_model_wrapper.GetQnnBackendType())) {
     return CheckCpuDataTypes(input_qnn_dtypes, output_qnn_dtypes);
   } else if (IsNpuBackend(qnn_model_wrapper.GetQnnBackendType())) {
     return CheckHtpDataTypes(input_qnn_dtypes, output_qnn_dtypes);

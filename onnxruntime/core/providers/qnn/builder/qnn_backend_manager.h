@@ -27,6 +27,7 @@
 #include "core/providers/qnn/builder/op_builder_factory.h"
 #include "core/providers/qnn/builder/qnn_context_mem_handle_manager.h"
 #include "core/providers/qnn/builder/qnn_def.h"
+#include "core/providers/qnn/builder/qnn_profile_serializer.h"
 #include "core/providers/qnn/builder/qnn_node_group/qnn_node_group.h"
 
 namespace onnxruntime {
@@ -62,6 +63,13 @@ class QnnSerializerConfig {
   void SetGraphName(std::string graph_name);
 
   /**
+   * Gets the name of the graph being serialized.
+   *
+   * \return graph_name The name of the graph being serialized.
+   */
+  const std::string& GetGraphName() const;
+
+  /**
    * Get any QNN Graph configs required to configure this serializer and perform any
    * preparation, such as creating output directories.
    *
@@ -83,7 +91,6 @@ class QnnSerializerConfig {
 
  protected:
   QnnSerializerConfig(std::string backend_path);
-  const std::string& GetGraphName() const;
 
  private:
   std::string backend_path_;
@@ -152,6 +159,7 @@ class QnnBackendManager : public std::enable_shared_from_this<QnnBackendManager>
   Status SetupBackend(const logging::Logger& logger, bool load_from_cached_context,
                       bool need_load_system_lib, bool share_ep_contexts,
                       bool enable_vtcm_backup_buffer_sharing,
+                      bool enable_rpc_polling,
                       std::unordered_map<std::string, std::unique_ptr<std::vector<std::string>>>& context_bin_map);
 
   Status CreateHtpPowerCfgId(uint32_t deviceId, uint32_t coreId, uint32_t& htp_power_config_id);
@@ -183,12 +191,13 @@ class QnnBackendManager : public std::enable_shared_from_this<QnnBackendManager>
   // NOTE: This function locks the internal `logger_recursive_mutex_`.
   Status ResetQnnLogLevel(std::optional<logging::Severity> ort_log_level = std::nullopt);
 
-  Status ExtractBackendProfilingInfo();
-  Status ExtractProfilingSubEvents(QnnProfile_EventId_t profile_event_id, std::ofstream& outfile,
-                                   bool backendSupportsExtendedEventData, bool tracelogging_provider_ep_enabled);
+  Status ExtractBackendProfilingInfo(qnn::profile::ProfilingInfo& profiling_info);
+
+  Status ExtractProfilingSubEvents(QnnProfile_EventId_t profile_event_id, profile::Serializer* profile_writer,
+                                   bool backendSupportsExtendedEventData);
+
   Status ExtractProfilingEvent(QnnProfile_EventId_t profile_event_id, const std::string& eventLevel,
-                               std::ofstream& outfile, bool backendSupportsExtendedEventData,
-                               bool tracelogging_provider_ep_enabled);
+                               profile::Serializer* profile_writer, bool backendSupportsExtendedEventData);
 
   Status SetProfilingLevelETW(ProfilingLevel profiling_level_etw_param);
 
@@ -213,6 +222,7 @@ class QnnBackendManager : public std::enable_shared_from_this<QnnBackendManager>
 
   QnnSerializerConfig* GetQnnSerializerConfig();
 
+
   // Handler to be called upon successful context creation via contextCreateFromBinaryListAsync()
   // This handler is expected to be called in the callback ContextCreateAsyncCallback() in the .cc file
   // Takes in the context and the notifyParam objects received by the callback function
@@ -224,6 +234,8 @@ class QnnBackendManager : public std::enable_shared_from_this<QnnBackendManager>
   Status SetContextPriority(ContextPriority context_priority);
   // Resets the context priority to the session default as defined by context_priority_
   Status ResetContextPriority();
+
+  bool ProfilingEnabled() { return profiling_enabled_; }
 
  private:
   Status LoadBackend();
@@ -307,26 +319,14 @@ class QnnBackendManager : public std::enable_shared_from_this<QnnBackendManager>
   }
 
   Status ExtractProfilingEventBasic(QnnProfile_EventId_t profile_event_id, const std::string& eventLevel,
-                                    std::ofstream& outfile, bool tracelogging_provider_ep_enabled);
+                                    profile::Serializer* profile_writer);
+
   Status ExtractProfilingEventExtended(QnnProfile_EventId_t profile_event_id, const std::string& eventLevel,
-                                       std::ofstream& outfile, bool tracelogging_provider_ep_enabled);
-  static const std::string& GetUnitString(QnnProfile_EventUnit_t unitType);
-  static const std::unordered_map<QnnProfile_EventUnit_t, std::string>& GetUnitStringMap();
-  static const std::string GetEventTypeString(QnnProfile_EventType_t eventType);
-  static const std::string ExtractQnnScalarValue(const Qnn_Scalar_t& scalar);
+                                       profile::Serializer* profile_writer);
+
   const char* QnnProfileErrorToString(QnnProfile_Error_t error);
   std::string QnnErrorHandleToString(Qnn_ErrorHandle_t error);
   QnnLog_Level_t MapOrtSeverityToQNNLogLevel(logging::Severity ort_log_level);
-#ifdef _WIN32
-  void LogQnnProfileEventAsTraceLogging(
-      uint64_t timestamp,
-      const std::string& message,
-      const std::string& qnnScalarValue,
-      const std::string& unit,
-      const std::string& timingSource,
-      const std::string& eventLevel,
-      const char* eventIdentifier);
-#endif
 
   // Adds a new QNN context.
   // Transfers ownership of `context_handle` (i.e., responsibility of freeing it) to this instance
@@ -343,59 +343,75 @@ class QnnBackendManager : public std::enable_shared_from_this<QnnBackendManager>
     std::unique_ptr<QnnContextMemHandleManager> mem_handles;
   };
 
+  static std::string MakeSharedLibraryPath(std::string_view name) {
+#if defined(_WIN32)
+    return MakeString(name, ".dll");
+#else
+    return MakeString("lib", name, ".so");
+#endif
+  }
+
   Status LoadOpPackage() {
+    const std::string kDefaultCpuBackendPath = MakeSharedLibraryPath("QnnCpu");
+    const std::string kDefaultGpuBackendPath = MakeSharedLibraryPath("QnnGpu");
+    const std::string kDefaultHtpBackendPath = MakeSharedLibraryPath("QnnHtp");
+    const std::string kDefaultSaverBackendPath = MakeSharedLibraryPath("QnnSaver");
+    const std::string kDefaultIrBackendPath = MakeSharedLibraryPath("QnnIr");
+
     // assume op_packages passed in represented in
     // op_packages|<OpTpye>:<PackagePath>:<InterfaceSymbolName>:<OptionalTarget>,<OpTpye2>:<PackagePath2>:<InterfaceSymbolName2>:<OptionalTarget2>
     for (const auto& op_package : op_packages_) {
-      ORT_RETURN_IF(nullptr == qnn_interface_.backendRegisterOpPackage, "backendRegisterOpPackageFnHandle is nullptr.");
-      std::cout << "Registering op package: " << op_package.path << std::endl;
+      if (backend_path_ != kDefaultIrBackendPath) {
+        ORT_RETURN_IF(nullptr == qnn_interface_.backendRegisterOpPackage, "backendRegisterOpPackageFnHandle is nullptr.");
+        std::cout << "Registering op package: " << op_package.path << std::endl;
 
-      Qnn_ErrorHandle_t result = qnn_interface_.backendRegisterOpPackage(
-          backend_handle_,
-          op_package.path.c_str(),
-          op_package.interface.c_str(),
-          op_package.target.c_str());
+        Qnn_ErrorHandle_t result = qnn_interface_.backendRegisterOpPackage(
+            backend_handle_,
+            op_package.path.c_str(),
+            op_package.interface.c_str(),
+            op_package.target.c_str());
 
-      if (result != QNN_SUCCESS) {
-        switch (result) {
-          case QNN_BACKEND_ERROR_INVALID_ARGUMENT:
-            LOGS(*logger_, ERROR) << "Invalid argument, please check if op package path or interface provider is NULL.";
-            break;
-          case QNN_BACKEND_ERROR_OP_PACKAGE_NOT_FOUND:
-            LOGS(*logger_, ERROR) << "Could not open op package path. op_pack_path: " << op_package.path;
-            break;
-          case QNN_BACKEND_ERROR_OP_PACKAGE_IF_PROVIDER_NOT_FOUND:
-            LOGS(*logger_, ERROR) << "Could not find interfaceProvider symbol in op package library.";
-            break;
-          case QNN_BACKEND_ERROR_OP_PACKAGE_REGISTRATION_FAILED:
-            LOGS(*logger_, ERROR) << "Op package registration failed.";
-            break;
-          case QNN_BACKEND_ERROR_OP_PACKAGE_UNSUPPORTED_VERSION:
-            LOGS(*logger_, ERROR) << "Op package has interface version not supported by this backend.";
-            break;
-          case QNN_BACKEND_ERROR_NOT_SUPPORTED:
-            LOGS(*logger_, ERROR) << "Op package registration is not supported.";
-            break;
-          case QNN_BACKEND_ERROR_INVALID_HANDLE:
-            LOGS(*logger_, ERROR) << "backend is not a valid handle.";
-            break;
-          case QNN_BACKEND_ERROR_OP_PACKAGE_DUPLICATE:
-            LOGS(*logger_, ERROR) << "OpPackageName+OpName must be unique. Op package content information can be be obtained with \
+        if (result != QNN_SUCCESS) {
+          switch (result) {
+            case QNN_BACKEND_ERROR_INVALID_ARGUMENT:
+              LOGS(*logger_, ERROR) << "Invalid argument, please check if op package path or interface provider is NULL.";
+              break;
+            case QNN_BACKEND_ERROR_OP_PACKAGE_NOT_FOUND:
+              LOGS(*logger_, ERROR) << "Could not open op package path. op_pack_path: " << op_package.path;
+              break;
+            case QNN_BACKEND_ERROR_OP_PACKAGE_IF_PROVIDER_NOT_FOUND:
+              LOGS(*logger_, ERROR) << "Could not find interfaceProvider symbol in op package library.";
+              break;
+            case QNN_BACKEND_ERROR_OP_PACKAGE_REGISTRATION_FAILED:
+              LOGS(*logger_, ERROR) << "Op package registration failed.";
+              break;
+            case QNN_BACKEND_ERROR_OP_PACKAGE_UNSUPPORTED_VERSION:
+              LOGS(*logger_, ERROR) << "Op package has interface version not supported by this backend.";
+              break;
+            case QNN_BACKEND_ERROR_NOT_SUPPORTED:
+              LOGS(*logger_, ERROR) << "Op package registration is not supported.";
+              break;
+            case QNN_BACKEND_ERROR_INVALID_HANDLE:
+              LOGS(*logger_, ERROR) << "backend is not a valid handle.";
+              break;
+            case QNN_BACKEND_ERROR_OP_PACKAGE_DUPLICATE:
+              LOGS(*logger_, ERROR) << "OpPackageName+OpName must be unique. Op package content information can be be obtained with \
   QnnOpPackage interface. Indicates that an Op with the same package name and op name was already registered.";
-            break;
-          case QNN_COMMON_ERROR_SYSTEM_COMMUNICATION:
-            LOGS(*logger_, ERROR) << "SSR occurrence (successful recovery).";
-            break;
-          case QNN_COMMON_ERROR_SYSTEM_COMMUNICATION_FATAL:
-            LOGS(*logger_, ERROR) << "SSR occurrence (unsuccessful recovery).";
-            break;
-          default:
-            LOGS(*logger_, ERROR) << "Unknown error occurred while initializing logging in the QNN backend.";
-            break;
+              break;
+            case QNN_COMMON_ERROR_SYSTEM_COMMUNICATION:
+              LOGS(*logger_, ERROR) << "SSR occurrence (successful recovery).";
+              break;
+            case QNN_COMMON_ERROR_SYSTEM_COMMUNICATION_FATAL:
+              LOGS(*logger_, ERROR) << "SSR occurrence (unsuccessful recovery).";
+              break;
+            default:
+              LOGS(*logger_, ERROR) << "Unknown error occurred while initializing logging in the QNN backend.";
+              break;
+          }
         }
+        ORT_RETURN_IF(QNN_SUCCESS != result, "Failed to register op package to backend. Error: ", QnnErrorHandleToString(result));
+        LOGS(*logger_, VERBOSE) << "Successfully register the op package.";
       }
-      ORT_RETURN_IF(QNN_SUCCESS != result, "Failed to register op package to backend. Error: ", QnnErrorHandleToString(result));
-      LOGS(*logger_, VERBOSE) << "Successfully register the op package.";
       std::string op_package_for_registration = op_package.interface;
       std::string suffix = "InterfaceProvider";
       if (op_package_for_registration.size() >= suffix.size() &&
@@ -438,11 +454,14 @@ class QnnBackendManager : public std::enable_shared_from_this<QnnBackendManager>
   ProfilingLevel profiling_level_;
   ProfilingLevel profiling_level_merge_;
   const std::string profiling_file_path_;
+  bool system_lib_loaded_ = false;
+  bool profiling_enabled_ = false;
   bool backend_initialized_ = false;
   bool device_created_ = false;
   bool context_created_ = false;
   bool backend_setup_completed_ = false;
   bool vtcm_backup_buffer_sharing_enabled_ = false;
+  bool enable_rpc_polling_ = false;
   // NPU backend requires quantized model
   QnnBackendType qnn_backend_type_ = QnnBackendType::CPU;
   Qnn_ProfileHandle_t profile_backend_handle_ = nullptr;

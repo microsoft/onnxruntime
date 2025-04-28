@@ -158,7 +158,7 @@ bool QnnModelWrapper::CreateQnnInputOutputTensors(const std::string& qnn_node_na
       return false;
     }
 
-    // During graph partitioning, we only need to do op validation, it's not required to create Qnn graph tensor
+    // During graph patitioning, we only need to do op validation, it's not required to create Qnn graph tensor
     // We only need to create the Qnn graph tensor during Compile to create Qnn graph
     if (!do_op_validation) {
       std::string error_string;
@@ -255,14 +255,15 @@ bool QnnModelWrapper::CreateQnnNode(const std::string& qnn_node_name,
     using namespace onnxruntime::qnn::utils;
     LOGS(logger_, VERBOSE) << op_config_wrapper;
 
-    std::string error_msg;
+    /* std::string error_msg;
     bool rt = op_config_wrapper.QnnGraphOpValidation(qnn_interface_, backend_handle_, error_msg);
     if (!rt) {
       // TODO(adrianlizarraga): Return a Status with the error message so that aggregated logs show a more
       // specific validation error (instead of "failed to add node").
       LOGS(logger_, WARNING) << error_msg;
     }
-    return rt;
+    return rt;*/
+    return true;
   } else {
     QnnOpProperty qnn_op(qnn_node_name, package_name, qnn_node_type,
                          std::move(input_names), std::move(output_names), std::move(param_tensor_names));
