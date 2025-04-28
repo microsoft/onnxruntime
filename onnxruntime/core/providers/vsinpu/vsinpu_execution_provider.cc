@@ -24,6 +24,7 @@
 #include <unordered_map>
 #include <string>
 #include <unordered_set>
+
 #include "core/framework/compute_capability.h"
 #include "core/providers/vsinpu/vsinpu_execution_provider.h"
 #include "core/providers/vsinpu/vsinpu_ep_graph.h"
@@ -36,25 +37,15 @@
 #include "core/optimizer/qdq_transformer/selectors_actions/shared/utils.h"
 #include "core/providers/partitioning_utils.h"
 
+#include "core/providers/qnn/ort_api.h"
+
 namespace onnxruntime {
 VSINPUExecutionProvider::VSINPUExecutionProvider(const VSINPUExecutionProviderInfo& info)
-    : IExecutionProvider{onnxruntime::kVSINPUExecutionProvider},
+    : IExecutionProvider{onnxruntime::kVSINPUExecutionProvider,
+                         OrtDevice(OrtDevice::CPU, OrtDevice::MemType::DEFAULT,
+                                   DEFAULT_CPU_ALLOCATOR_DEVICE_ID,
+                                   kAlloc4KAlignment)},
       device_id_(info.device_id) {
-  AllocatorCreationInfo default_memory_info{
-      [](int) {
-        return std::make_unique<CPUAllocator>(
-            OrtMemoryInfo("VSINPU", OrtAllocatorType::OrtDeviceAllocator));
-      }};
-
-  CreateAllocator(default_memory_info);
-
-  AllocatorCreationInfo cpu_memory_info{
-      [](int) {
-        return std::make_unique<CPUAllocator>(
-            OrtMemoryInfo("VSINPU", OrtAllocatorType::OrtDeviceAllocator, OrtDevice(), 0, OrtMemTypeCPUOutput));
-      }};
-
-  CreateAllocator(cpu_memory_info);
 }
 
 VSINPUExecutionProvider::~VSINPUExecutionProvider() {}
@@ -279,6 +270,25 @@ Status VSINPUExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& fu
 std::shared_ptr<KernelRegistry> VSINPUExecutionProvider::GetKernelRegistry() const {
   static std::shared_ptr<KernelRegistry> kernel_registry = std::make_shared<KernelRegistry>();
   return kernel_registry;
+}
+
+std::vector<AllocatorPtr> VSINPUExecutionProvider::CreatePreferredAllocators() {
+  std::vector<AllocatorPtr> result;
+  // We do not want arena for this, as it would not respect alignment.
+  constexpr const bool use_arena_false = false;
+  AllocatorCreationInfo device_info_cpu_aligned_4k{
+      [](OrtDevice::DeviceId device_id) {
+        return std::make_unique<CPUAllocator>(
+            OrtMemoryInfo(
+                onnxruntime::CPU_ALIGNED_4K, OrtAllocatorType::OrtDeviceAllocator,
+                OrtDevice(OrtDevice::CPU, OrtDevice::MemType::DEFAULT,
+                          device_id,
+                          kAlloc4KAlignment)));
+      },
+      device_id_, use_arena_false};
+
+  result.push_back(CreateAllocator(device_info_cpu_aligned_4k));
+  return result;
 }
 
 }  // namespace onnxruntime
