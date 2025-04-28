@@ -62,7 +62,11 @@ struct TensorrtExecutionProviderInfo {
   bool engine_hw_compatible{false};
   std::string op_types_to_exclude{""};
   std::string preview_features{""};
-
+  size_t dla_local_dram_size{0};
+  size_t dla_global_dram_size{0};
+  size_t dla_managed_sram_size{0};
+  size_t tactic_dram_size{0};
+  
   static TensorrtExecutionProviderInfo FromProviderOptions(const ProviderOptions& options);
   static ProviderOptions ToProviderOptions(const TensorrtExecutionProviderInfo& info);
   static ProviderOptions ToProviderOptions(const OrtTensorRTProviderOptionsV2& info);
