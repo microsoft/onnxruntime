@@ -114,7 +114,7 @@ Status MatMulNBitsWideTileProgram::GenerateShaderCode(ShaderHelper& shader) cons
 
   // memory read/write helpers
   shader.AdditionalImplementation() << "fn mm_read_a(batch : u32, row : u32, col : u32) -> input_a_value_t {\n"
-                                    << "  if (row < uniforms.input_a_shape[1] && col < uniforms.input_a_shape[2]) {\n"
+                                    << "  if (batch < uniforms.input_a_shape[0] && row < uniforms.input_a_shape[1] && col < uniforms.input_a_shape[2]) {\n"
                                     << "    return " << a.GetByIndices("input_a_indices_t(batch, row, col)") << ";\n"
                                     << "  }\n"
                                     << "  return input_a_value_t(0);\n"
@@ -181,9 +181,9 @@ fn dequantize_packed8xU4(packed_value : u32, zero_point : output_element_t, scal
 
   // main
   shader.MainFunctionBody() << R"MAIN_FN(
-  let batch = workgroup_id.z;
-  let row = workgroup_id.y * kTileM;
-  let col = workgroup_id.x * kTileN;
+  let batch = workgroup_idx / (uniforms.num_M_tile * uniforms.num_N_tile);
+  let row = ((workgroup_idx / uniforms.num_N_tile) % uniforms.num_M_tile) * kTileM;
+  let col = (workgroup_idx % uniforms.num_N_tile) * kTileN;
 
   let a_elements_per_col = uniforms.input_a_shape[2];
   let a_blocks_per_col = (a_elements_per_col + kAComponentsForBlock32 - 1) / kAComponentsForBlock32;
@@ -245,6 +245,10 @@ fn dequantize_packed8xU4(packed_value : u32, zero_point : output_element_t, scal
     workgroupBarrier();
   }
 
+  if (batch >= uniforms.input_a_shape[0]) {
+    return;
+  }
+
   // Write the results.
   for (var m_idx = 0u; m_idx < kTileM; m_idx++) {
     mm_write_y(batch, row + m_idx, col + local_idx, output_value_t(results[m_idx]));
@@ -281,11 +285,11 @@ Status MatMulNBitsBlockWiseProgram::GenerateShaderCode(ShaderHelper& shader) con
   // Shared memory
   var<workgroup> tile_A : array<input_a_value_t, a_length_per_tile>;
   var<workgroup> inter_results: array<array<output_element_t, tile_size_k_vec>, tile_size>;
-  fn loadSHMA(a_global: u32, kidx_v: u32, col: u32)
+  fn loadSHMA(batch: u32, a_global: u32, kidx_v: u32, col: u32)
   {
     let k_offset = kidx_v / component_a + col;
-    if (k_offset < uniforms.K_of_a) {
-      tile_A[col] = input_a[a_global * uniforms.K_of_a + k_offset];
+    if (batch < uniforms.batch_count && k_offset < uniforms.K_of_a) {
+      tile_A[col] = input_a[batch * uniforms.M * uniforms.K_of_a + a_global * uniforms.K_of_a + k_offset];
     } else {
       tile_A[col] = input_a_value_t(0);
     }
@@ -294,8 +298,9 @@ Status MatMulNBitsBlockWiseProgram::GenerateShaderCode(ShaderHelper& shader) con
                                     << ReadZeroPoint(nbits_, has_zero_points_);
 
   shader.MainFunctionBody() << R"MAIN_FN(
-  let a_global = workgroup_id.y;
-  let b_global_base = workgroup_id.x * tile_size;
+  let batch = workgroup_idx / (uniforms.M * uniforms.num_N_tile);
+  let a_global = (workgroup_idx / uniforms.num_N_tile) % uniforms.M;
+  let b_global_base = (workgroup_idx % uniforms.num_N_tile) * tile_size;
 
   let idx = local_idx % tile_size_k_vec;
   let idy = local_idx / tile_size_k_vec;
@@ -304,7 +309,7 @@ Status MatMulNBitsBlockWiseProgram::GenerateShaderCode(ShaderHelper& shader) con
   {
     for (var id = local_idx; id < a_length_per_tile; id += workgroup_size_x)
     {
-      loadSHMA(a_global, kidx_v, id);
+      loadSHMA(batch, a_global, kidx_v, id);
     }
     workgroupBarrier();
 
@@ -337,7 +342,8 @@ Status MatMulNBitsBlockWiseProgram::GenerateShaderCode(ShaderHelper& shader) con
                                      "          a_offset += 8;\n";
         break;
       case 2:
-        shader.MainFunctionBody() << "          sum += dot(vec4<output_element_t>(tile_A[a_offset], tile_A[a_offset + 1]), b0) + dot(vec4<output_element_t>(tile_A[a_offset + 2], tile_A[a_offset + 3]), b1);\n"
+        shader.MainFunctionBody() << "          sum += dot(vec4<output_element_t>(tile_A[a_offset], tile_A[a_offset + 1]), b0) +"
+                                     "dot(vec4<output_element_t>(tile_A[a_offset + 2], tile_A[a_offset + 3]), b1);\n"
                                      "          a_offset += 4;\n";
         break;
       case 4:
@@ -381,13 +387,17 @@ Status MatMulNBitsBlockWiseProgram::GenerateShaderCode(ShaderHelper& shader) con
     workgroupBarrier();
   }
 
+  if (batch >= uniforms.batch_count) {
+    return;
+  }
+
   if (local_idx < tile_size) {
     var output_value = output_element_t(0);
     for (var b = 0u; b < tile_size_k_vec; b++) {
       output_value += inter_results[local_idx][b];
     }
     let b_global =  b_global_base + local_idx;
-    let output_idx = a_global * uniforms.N + b_global;
+    let output_idx = batch * uniforms.M * uniforms.N + a_global * uniforms.N + b_global;
     if (b_global < uniforms.N) {
       output[output_idx] = output_value;
     }
@@ -459,6 +469,8 @@ Status MatMulNBits::ComputeInternal(onnxruntime::webgpu::ComputeContext& context
     constexpr uint32_t workgroup_size = 128;
     constexpr uint32_t tile_m = workgroup_size / 8;
     constexpr uint32_t tile_n = workgroup_size;
+    uint32_t num_N_tile = (N + tile_n - 1) / tile_n;
+    uint32_t num_M_tile = (M + tile_m - 1) / tile_m;
 
     MatMulNBitsWideTileProgram program{has_zero_points, tile_m, tile_n, nbits};
     program.SetWorkgroupSize(workgroup_size);
@@ -476,7 +488,7 @@ Status MatMulNBits::ComputeInternal(onnxruntime::webgpu::ComputeContext& context
                     {b, ProgramTensorMetadataDependency::TypeAndRank, reshaped_b_shape, onnxruntime::narrow<int>(components_b * 4)},
                     {scales, ProgramTensorMetadataDependency::None}})
         .AddOutput({y, ProgramTensorMetadataDependency::TypeAndRank, reshaped_y_shape, onnxruntime::narrow<int>(components)})
-        .AddUniformVariables({{block_size}, {zero_blocks_per_col}})
+        .AddUniformVariables({{block_size}, {zero_blocks_per_col}, {num_N_tile}, {num_M_tile}})
         .CacheHint(nbits, has_zero_points);
     if (has_zero_points) {
       program.AddInput({zero_points, ProgramTensorMetadataDependency::None, {(zero_points->Shape().Size() + 3) / 4}, 4});
@@ -489,6 +501,7 @@ Status MatMulNBits::ComputeInternal(onnxruntime::webgpu::ComputeContext& context
   constexpr uint32_t tile_size = 8;
   constexpr uint32_t kU32Components = 4;
   uint32_t elements_in_blob = components_b * kU32Components;
+  uint32_t num_N_tile = (N + tile_size - 1) / tile_size;
   MatMulNBitsBlockWiseProgram program{tile_size, nbits, has_zero_points};
   program.SetWorkgroupSize(workgroup_size);
   program.SetDispatchGroupSize((N + tile_size - 1) / tile_size, M, batch_count);
@@ -497,7 +510,7 @@ Status MatMulNBits::ComputeInternal(onnxruntime::webgpu::ComputeContext& context
                   {b, ProgramTensorMetadataDependency::TypeAndRank, static_cast<int>(elements_in_blob)},
                   {scales, ProgramTensorMetadataDependency::TypeAndRank}})
       .AddOutput({y, ProgramTensorMetadataDependency::TypeAndRank})
-      .AddUniformVariables({{M}, {N}, {K}, {K / components_a}, {n_blocks_per_col * blob_size / elements_in_blob}, {block_size}, {n_blocks_per_col}, {zero_blocks_per_col}})
+      .AddUniformVariables({{M}, {N}, {K}, {K / components_a}, {n_blocks_per_col * blob_size / elements_in_blob}, {block_size}, {n_blocks_per_col}, {zero_blocks_per_col}, {num_N_tile}, {batch_count}})
       .CacheHint(nbits, has_zero_points);
   if (has_zero_points) {
     program.AddInput({zero_points, ProgramTensorMetadataDependency::None, {(zero_points->Shape().Size() + 3) / 4}, 4});
