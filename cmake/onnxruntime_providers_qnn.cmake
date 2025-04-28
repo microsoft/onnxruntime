@@ -23,7 +23,7 @@
     onnxruntime_add_include_to_target(onnxruntime_providers_qnn onnxruntime_common onnxruntime_framework onnx
                                                                 onnx_proto protobuf::libprotobuf-lite
                                                                 flatbuffers::flatbuffers Boost::mp11
-								nlohmann_json::nlohmann_json)
+                                nlohmann_json::nlohmann_json)
     add_dependencies(onnxruntime_providers_qnn onnx ${onnxruntime_EXTERNAL_DEPENDENCIES})
     set_target_properties(onnxruntime_providers_qnn PROPERTIES CXX_STANDARD_REQUIRED ON)
     set_target_properties(onnxruntime_providers_qnn PROPERTIES FOLDER "ONNXRuntime")
@@ -36,6 +36,7 @@
     if(NOT MSVC)
       target_compile_options(onnxruntime_providers_qnn PRIVATE "-Wno-unknown-pragmas")
     endif()
+
   else()
     #
     # Build QNN EP as a shared library
@@ -46,13 +47,13 @@
          "${ONNXRUNTIME_ROOT}/core/providers/shared_library/*.cc"
     )
     set(onnxruntime_providers_qnn_srcs ${onnxruntime_providers_qnn_ep_srcs}
-	                               ${onnxruntime_providers_qnn_shared_lib_srcs})
+                                   ${onnxruntime_providers_qnn_shared_lib_srcs})
 
     source_group(TREE ${ONNXRUNTIME_ROOT}/core FILES ${onnxruntime_providers_qnn_srcs})
     onnxruntime_add_shared_library_module(onnxruntime_providers_qnn ${onnxruntime_providers_qnn_srcs})
     onnxruntime_add_include_to_target(onnxruntime_providers_qnn ${ONNXRUNTIME_PROVIDERS_SHARED} ${GSL_TARGET} onnx
-	                                                        onnxruntime_common Boost::mp11 safeint_interface
-								nlohmann_json::nlohmann_json)
+                                                            onnxruntime_common Boost::mp11 safeint_interface
+                                nlohmann_json::nlohmann_json)
     target_link_libraries(onnxruntime_providers_qnn PRIVATE ${ONNXRUNTIME_PROVIDERS_SHARED} ${ABSEIL_LIBS} ${CMAKE_DL_LIBS})
     add_dependencies(onnxruntime_providers_qnn onnxruntime_providers_shared ${onnxruntime_EXTERNAL_DEPENDENCIES})
     target_include_directories(onnxruntime_providers_qnn PRIVATE ${ONNXRUNTIME_ROOT}
@@ -90,4 +91,19 @@
             ARCHIVE  DESTINATION ${CMAKE_INSTALL_LIBDIR}
             LIBRARY  DESTINATION ${CMAKE_INSTALL_LIBDIR}
             RUNTIME  DESTINATION ${CMAKE_INSTALL_BINDIR})
+
+    set(onnxruntime_providers_qnn_target onnxruntime_providers_qnn)
+    
+    if (MSVC OR ${CMAKE_SYSTEM_NAME} STREQUAL "Linux")
+      add_custom_command(
+        TARGET ${onnxruntime_providers_qnn_target} POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy ${QNN_LIB_FILES} $<TARGET_FILE_DIR:${onnxruntime_providers_qnn_target}>
+        )
+    endif()
+    if (EXISTS "${onnxruntime_QNN_HOME}/Qualcomm AI Hub Proprietary License.pdf")
+      add_custom_command(
+        TARGET ${onnxruntime_providers_qnn_target} POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy "${onnxruntime_QNN_HOME}/Qualcomm AI Hub Proprietary License.pdf" $<TARGET_FILE_DIR:${onnxruntime_providers_qnn_target}>
+        )
+    endif()
   endif()
