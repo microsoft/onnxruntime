@@ -27,6 +27,8 @@ using namespace onnxruntime::logging;
 
 // in test_main.cc
 extern std::unique_ptr<Ort::Env> ort_env;
+extern "C" void ortenv_setup();
+extern "C" void ortenv_teardown();
 
 namespace onnxruntime {
 namespace test {
@@ -1231,6 +1233,37 @@ TEST_F(QnnHTPBackendTests, UseHtpSharedMemoryAllocatorForInputs) {
                   0.008f);
 }
 #endif  // BUILD_QNN_EP_STATIC_LIB
+
+#if !BUILD_QNN_EP_STATIC_LIB
+// Tests that loading and unloading of an EP library in the same process does not cause a segfault.
+TEST_F(QnnHTPBackendTests, LoadingAndUnloadingOfQnnLibrary_FixSegFault) {
+  const ORTCHAR_T* ort_model_path = ORT_MODEL_FOLDER "nhwc_resize_sizes_opset18.quant.onnx";
+
+  onnxruntime::ProviderOptions options;
+  options["backend_type"] = "htp";
+  options["offload_graph_io_quantization"] = "0";
+
+  // This first session will load the QNN EP library for the first time.
+  {
+    Ort::SessionOptions so;
+    so.AppendExecutionProvider("QNN", options);
+
+    EXPECT_NO_THROW(Ort::Session session(*ort_env, ort_model_path, so));
+  }
+
+  {
+    ortenv_teardown();  // Destroy Env to force unloading of EP libraries.
+    ortenv_setup();
+
+    // This next session will reload the QNN EP library.
+    // Should not get a segfault.
+    Ort::SessionOptions so;
+    so.AppendExecutionProvider("QNN", options);
+
+    EXPECT_NO_THROW(Ort::Session session(*ort_env, ort_model_path, so));
+  }
+}
+#endif  // !BUILD_QNN_EP_STATIC_LIB
 
 #endif  // defined(__aarch64__) || defined(_M_ARM64) || defined(__linux__)
 #endif  // !defined(ORT_MINIMAL_BUILD)

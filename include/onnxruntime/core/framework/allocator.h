@@ -41,6 +41,7 @@ struct OrtArenaCfg {
 
 namespace onnxruntime {
 constexpr const char* CPU = "Cpu";
+constexpr const char* CPU_ALIGNED_4K = "CpuAligned4K";
 constexpr const char* CUDA = "Cuda";
 constexpr const char* CUDA_PINNED = "CudaPinned";
 constexpr const char* CANN = "Cann";
@@ -57,6 +58,7 @@ constexpr const char* WEBGPU_BUFFER = "WebGPU_Buffer";
 constexpr const char* WEBNN_TENSOR = "WebNN_Tensor";
 
 constexpr size_t kAllocAlignment = 256;
+constexpr const size_t kAlloc4KAlignment = 4096;
 
 class IAllocator;
 class Stream;
@@ -270,4 +272,7 @@ using AllocatorMap = std::map<OrtDevice, AllocatorPtr>;
 
 void* AllocatorDefaultAlloc(size_t size);
 void AllocatorDefaultFree(void* p);
+void* AllocatorDefaultAllocAligned(size_t size, size_t alignment);
+void AllocatorDefaultFreeAligned(void* p, size_t alignment);
+
 }  // namespace onnxruntime

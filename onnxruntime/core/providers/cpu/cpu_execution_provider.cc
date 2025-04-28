@@ -32,10 +32,10 @@ CPUExecutionProvider::CPUExecutionProvider(const CPUExecutionProviderInfo& info)
 
 std::vector<AllocatorPtr> CPUExecutionProvider::CreatePreferredAllocators() {
   const bool create_arena = DoesCpuAllocatorSupportArenaUsage() ? info_.create_arena : false;
-  AllocatorCreationInfo device_info{[](int) { return std::make_unique<CPUAllocator>(); },
-                                    DEFAULT_CPU_ALLOCATOR_DEVICE_ID, create_arena};
+  AllocatorCreationInfo device_info_cpu{[](int) { return std::make_unique<CPUAllocator>(); },
+                                        DEFAULT_CPU_ALLOCATOR_DEVICE_ID, create_arena};
 
-  return std::vector<AllocatorPtr>{CreateAllocator(device_info)};
+  return std::vector<AllocatorPtr>{CreateAllocator(device_info_cpu)};
 }
 
 // Forward declarations of op kernels

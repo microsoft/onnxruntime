@@ -6283,6 +6283,7 @@ TEST_F(GraphTransformationTests, MatMulScaleFusionUnfusableModels) {
       MODEL_FOLDER "fusion/matmul_scale_unfusable_div_not_scale.onnx",
       MODEL_FOLDER "fusion/matmul_scale_unfusable_scale_not_scalar.onnx",
       MODEL_FOLDER "fusion/matmul_scale_unfusable_scale_not_constant.onnx",
+      MODEL_FOLDER "fusion/matmul_scale_unfusable_scale_broadcasting_changes_shape.onnx",
   };
 
   for (const auto& path : unfusable_model_paths) {
