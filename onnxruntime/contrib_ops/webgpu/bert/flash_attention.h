@@ -36,10 +36,12 @@ class FlashAttentionProgram final : public Program<FlashAttentionProgram> {
  public:
   FlashAttentionProgram(const std::string& kernel_name,
                         bool has_attention_bias,
+                        bool is_qualcomm,
                         int qkv_head_size,
                         int qkv_num_heads)
       : Program{kernel_name},
         has_attention_bias_(has_attention_bias),
+        is_qualcomm_(is_qualcomm),
         qkv_head_size_(qkv_head_size),
         qkv_num_heads_(qkv_num_heads) {
   }
@@ -57,6 +59,7 @@ class FlashAttentionProgram final : public Program<FlashAttentionProgram> {
 
  private:
   bool has_attention_bias_;
+  bool is_qualcomm_;
   int qkv_head_size_;
   int qkv_num_heads_;
 };

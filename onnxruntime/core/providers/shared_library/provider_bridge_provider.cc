@@ -26,6 +26,7 @@
 #include "core/providers/cpu/tensor/unsqueeze.h"
 #include "core/providers/cpu/tensor/upsamplebase.h"
 #include "core/providers/cpu/tensor/tile.h"
+#include "core/providers/providers.h"
 
 #ifndef DISABLE_CONTRIB_OPS
 #include "contrib_ops/cpu/bert/attention_base.h"
@@ -330,6 +331,11 @@ bool IAllocator::CalcMemSizeForArrayWithAlignment(size_t nmemb, size_t size, siz
   return g_host->IAllocator__CalcMemSizeForArrayWithAlignment(nmemb, size, alignment, out);
 }
 
+std::unique_ptr<IExecutionProvider> IExecutionProviderFactory::CreateProvider(
+    const OrtSessionOptions& session_options, const OrtLogger& session_logger) {
+  return g_host->IExecutionProviderFactory__CreateProvider(this, session_options, session_logger);
+}
+
 std::vector<std::unique_ptr<ComputeCapability>> IExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_viewer,
                                                                                   const IKernelLookup& kernel_lookup,
                                                                                   const GraphOptimizerRegistry& graph_optimizer_registry,
@@ -341,7 +347,7 @@ common::Status IExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>&
   return g_host->IExecutionProvider__Compile(this, fused_nodes_and_graphs, node_compute_funcs);
 }
 
-#ifdef USE_TENSORRT
+#if defined(USE_TENSORRT) || defined(USE_NV)
 std::unique_ptr<IAllocator> CreateCUDAAllocator(int16_t device_id, const char* name) {
   return g_host->CreateCUDAAllocator(device_id, name);
 }

@@ -31,8 +31,8 @@ void RunQNBitGemmBenchmark(size_t BlkLen,
   }
 
   size_t QuantBDataSizeInBytes, QuantBScaleSize, QuantBZeroPointSizeInBytes;
-  MlasBlockwiseQuantizedBufferSizes(
-      BlkBitWidth, static_cast<int>(BlkLen), /* columnwise */ true,
+  MlasBlockwiseQuantizedBufferSizes<BlkBitWidth>(
+      static_cast<int>(BlkLen), /* columnwise */ true,
       static_cast<int>(K), static_cast<int>(N),
       QuantBDataSizeInBytes, QuantBScaleSize, &QuantBZeroPointSizeInBytes);
 
@@ -135,6 +135,7 @@ static void QNBitGemmArgs(benchmark::internal::Benchmark* b) {
 }
 
 BENCHMARK(QNBITGEMM<float, 4>)->Apply(QNBitGemmArgs<float>)->UseRealTime();
+BENCHMARK(QNBITGEMM<float, 8>)->Apply(QNBitGemmArgs<float>)->UseRealTime();
 BENCHMARK(QNBITGEMM<MLAS_FP16, 4>)->Apply(QNBitGemmArgs<MLAS_FP16>)->UseRealTime();
 
 // This test gets benchmark arguments from environment variables.

@@ -20,7 +20,32 @@ OrtSessionOptions& OrtSessionOptions::operator=(const OrtSessionOptions&) {
   ORT_THROW("not implemented");
 }
 OrtSessionOptions::OrtSessionOptions(const OrtSessionOptions& other)
-    : value(other.value), provider_factories(other.provider_factories) {
+    : value(other.value), custom_op_domains_(other.custom_op_domains_), provider_factories(other.provider_factories) {
+}
+
+const onnxruntime::ConfigOptions& OrtSessionOptions::GetConfigOptions() const noexcept {
+  return value.config_options;
+}
+
+onnxruntime::Status OrtSessionOptions::AddProviderOptionsToConfigOptions(
+    const std::unordered_map<std::string, std::string>& provider_options, const char* provider_name) {
+  // Add provider options to the session config options.
+  // Use a new key with the format: "ep.<lowercase_provider_name>.<PROVIDER_OPTION_KEY>"
+  auto key_prefix = GetProviderOptionPrefix(provider_name);
+  for (const auto& [ep_key, ep_value] : provider_options) {
+    const std::string new_key = key_prefix + ep_key;
+    ORT_RETURN_IF_ERROR(value.config_options.AddConfigEntry(new_key.c_str(), ep_value.c_str()));
+  }
+  return Status::OK();
+}
+
+// static
+std::string OrtSessionOptions::GetProviderOptionPrefix(const char* provider_name) {
+  std::string key_prefix = "ep.";
+  key_prefix += onnxruntime::utils::GetLowercaseString(provider_name);
+  key_prefix += ".";
+
+  return key_prefix;
 }
 
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_MINIMAL_BUILD_CUSTOM_OPS)

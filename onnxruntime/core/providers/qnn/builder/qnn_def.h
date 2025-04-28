@@ -73,7 +73,13 @@ enum class QnnBackendType : uint8_t {
   HTP_FP16
 };
 
+bool IsCpuBackend(QnnBackendType backend_type);
+
 bool IsNpuBackend(QnnBackendType backend_type);
+
+bool IsGpuBackend(QnnBackendType backend_type);
+
+bool IsQpuBackend(QnnBackendType backend_type);
 
 // constexpr config values
 constexpr const int kSleepMinLatency = 40;
@@ -180,10 +186,6 @@ class QnnTensorWrapper {
     SetQnnTensorMemType(qnn_tensor_, mem_type);
     if (QNN_TENSOR_TYPE_STATIC == tensor_type) {
       SetQnnTensorClientBuf(qnn_tensor_, client_buf_);
-    }
-
-    if (mem_type != QNN_TENSORMEMTYPE_RAW) {
-      ORT_THROW("mem_type not supported for now.");
     }
 
     SetQnnTensorQParams(qnn_tensor_, quant_params_.Get());

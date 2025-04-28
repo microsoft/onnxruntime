@@ -479,6 +479,120 @@ inline ThreadingOptions& ThreadingOptions::SetGlobalCustomJoinThreadFn(OrtCustom
   return *this;
 }
 
+namespace detail {
+template <typename T>
+inline const char* KeyValuePairsImpl<T>::GetValue(const char* key) const {
+  return GetApi().GetKeyValue(this->p_, key);
+}
+
+template <typename T>
+inline std::unordered_map<std::string, std::string> KeyValuePairsImpl<T>::GetKeyValuePairs() const {
+  std::unordered_map<std::string, std::string> out;
+
+  size_t num_pairs = 0;
+  const char* const* keys = nullptr;
+  const char* const* values = nullptr;
+  GetApi().GetKeyValuePairs(this->p_, &keys, &values, &num_pairs);
+  if (num_pairs > 0) {
+    out.reserve(num_pairs);
+    for (size_t i = 0; i < num_pairs; ++i) {
+      out.emplace(keys[i], values[i]);
+    }
+  }
+
+  return out;
+}
+
+template <typename T>
+inline void KeyValuePairsImpl<T>::GetKeyValuePairs(std::vector<const char*>& keys,
+                                                   std::vector<const char*>& values) const {
+  keys.clear();
+  values.clear();
+
+  size_t num_pairs = 0;
+  const char* const* keys_ptr = nullptr;
+  const char* const* values_ptr = nullptr;
+  GetApi().GetKeyValuePairs(this->p_, &keys_ptr, &values_ptr, &num_pairs);
+  if (num_pairs > 0) {
+    keys.resize(num_pairs);
+    values.resize(num_pairs);
+    std::copy(keys_ptr, keys_ptr + num_pairs, keys.begin());
+    std::copy(values_ptr, values_ptr + num_pairs, values.begin());
+  }
+}
+}  // namespace detail
+
+inline KeyValuePairs::KeyValuePairs() {
+  GetApi().CreateKeyValuePairs(&p_);
+}
+
+inline KeyValuePairs::KeyValuePairs(const std::unordered_map<std::string, std::string>& kv_pairs) {
+  GetApi().CreateKeyValuePairs(&p_);
+  for (const auto& kv : kv_pairs) {
+    GetApi().AddKeyValuePair(this->p_, kv.first.c_str(), kv.second.c_str());
+  }
+}
+
+inline void KeyValuePairs::Add(const char* key, const char* value) {
+  GetApi().AddKeyValuePair(this->p_, key, value);
+}
+
+inline void KeyValuePairs::Remove(const char* key) {
+  GetApi().RemoveKeyValuePair(this->p_, key);
+}
+
+namespace detail {
+template <typename T>
+inline OrtHardwareDeviceType HardwareDeviceImpl<T>::Type() const {
+  return GetApi().HardwareDevice_Type(this->p_);
+}
+
+template <typename T>
+inline uint32_t HardwareDeviceImpl<T>::VendorId() const {
+  return GetApi().HardwareDevice_VendorId(this->p_);
+}
+
+template <typename T>
+inline uint32_t HardwareDeviceImpl<T>::DeviceId() const {
+  return GetApi().HardwareDevice_DeviceId(this->p_);
+}
+
+template <typename T>
+inline const char* HardwareDeviceImpl<T>::Vendor() const {
+  return GetApi().HardwareDevice_Vendor(this->p_);
+}
+
+template <typename T>
+inline ConstKeyValuePairs HardwareDeviceImpl<T>::Metadata() const {
+  return ConstKeyValuePairs{GetApi().HardwareDevice_Metadata(this->p_)};
+}
+
+template <typename T>
+inline const char* EpDeviceImpl<T>::EpName() const {
+  return GetApi().EpDevice_EpName(this->p_);
+}
+
+template <typename T>
+inline const char* EpDeviceImpl<T>::EpVendor() const {
+  return GetApi().EpDevice_EpVendor(this->p_);
+}
+
+template <typename T>
+inline ConstKeyValuePairs EpDeviceImpl<T>::EpMetadata() const {
+  return ConstKeyValuePairs(GetApi().EpDevice_EpMetadata(this->p_));
+}
+
+template <typename T>
+inline ConstKeyValuePairs EpDeviceImpl<T>::EpOptions() const {
+  return ConstKeyValuePairs(GetApi().EpDevice_EpOptions(this->p_));
+}
+
+template <typename T>
+inline ConstHardwareDevice EpDeviceImpl<T>::Device() const {
+  return ConstHardwareDevice(GetApi().EpDevice_Device(this->p_));
+}
+}  // namespace detail
+
 inline Env::Env(OrtLoggingLevel logging_level, _In_ const char* logid) {
   ThrowOnError(GetApi().CreateEnv(logging_level, logid, &p_));
   if (strcmp(logid, "onnxruntime-node") == 0) {
@@ -549,6 +663,33 @@ inline Env& Env::CreateAndRegisterAllocatorV2(const std::string& provider_type, 
   }
   ThrowOnError(GetApi().CreateAndRegisterAllocatorV2(p_, provider_type.c_str(), mem_info, arena_cfg, keys.data(), values.data(), num_entries));
   return *this;
+}
+
+inline Env& Env::RegisterExecutionProviderLibrary(const char* registration_name,
+                                                  const std::basic_string<ORTCHAR_T>& path) {
+  ThrowOnError(GetApi().RegisterExecutionProviderLibrary(p_, registration_name, path.c_str()));
+  return *this;
+}
+
+inline Env& Env::UnregisterExecutionProviderLibrary(const char* registration_name) {
+  ThrowOnError(GetApi().UnregisterExecutionProviderLibrary(p_, registration_name));
+  return *this;
+}
+
+inline std::vector<ConstEpDevice> Env::GetEpDevices() const {
+  size_t num_devices = 0;
+  const OrtEpDevice* const* device_ptrs = nullptr;
+  ThrowOnError(GetApi().GetEpDevices(p_, &device_ptrs, &num_devices));
+
+  std::vector<ConstEpDevice> devices;
+  if (num_devices > 0) {
+    devices.reserve(num_devices);
+    for (size_t i = 0; i < num_devices; ++i) {
+      devices.emplace_back(device_ptrs[i]);
+    }
+  }
+
+  return devices;
 }
 
 inline CustomOpDomain::CustomOpDomain(const char* domain) {
@@ -630,6 +771,62 @@ inline RunOptions& RunOptions::AddActiveLoraAdapter(const LoraAdapter& adapter) 
   return *this;
 }
 
+inline ModelCompilationOptions::ModelCompilationOptions(const Env& env, const SessionOptions& session_options) {
+  ThrowOnError(GetCompileApi().CreateModelCompilationOptionsFromSessionOptions(env, session_options, &this->p_));
+}
+
+inline ModelCompilationOptions::ModelCompilationOptions(const Env& env, ConstSessionOptions session_options) {
+  ThrowOnError(GetCompileApi().CreateModelCompilationOptionsFromSessionOptions(env, session_options, &this->p_));
+}
+
+inline Status CompileModel(const Env& env, const ModelCompilationOptions& model_compilation_options) {
+  return Ort::Status(GetCompileApi().CompileModel(env, model_compilation_options));
+}
+
+inline ModelCompilationOptions& ModelCompilationOptions::SetInputModelPath(
+    const ORTCHAR_T* input_model_path) {
+  Ort::ThrowOnError(GetCompileApi().ModelCompilationOptions_SetInputModelPath(this->p_, input_model_path));
+  return *this;
+}
+
+inline ModelCompilationOptions& ModelCompilationOptions::SetInputModelFromBuffer(
+    const void* input_model_data, size_t input_model_data_size) {
+  Ort::ThrowOnError(GetCompileApi().ModelCompilationOptions_SetInputModelFromBuffer(this->p_, input_model_data,
+                                                                                    input_model_data_size));
+  return *this;
+}
+
+inline ModelCompilationOptions& ModelCompilationOptions::SetOutputModelPath(
+    const ORTCHAR_T* output_model_path) {
+  Ort::ThrowOnError(GetCompileApi().ModelCompilationOptions_SetOutputModelPath(this->p_, output_model_path));
+  return *this;
+}
+
+inline ModelCompilationOptions& ModelCompilationOptions::SetOutputModelExternalInitializersFile(
+    const ORTCHAR_T* file_path, size_t initializer_size_threshold) {
+  Ort::ThrowOnError(GetCompileApi().ModelCompilationOptions_SetOutputModelExternalInitializersFile(
+      this->p_,
+      file_path,
+      initializer_size_threshold));
+  return *this;
+}
+
+inline ModelCompilationOptions& ModelCompilationOptions::SetOutputModelBuffer(
+    OrtAllocator* allocator, void** output_model_buffer_ptr, size_t* output_model_buffer_size_ptr) {
+  Ort::ThrowOnError(GetCompileApi().ModelCompilationOptions_SetOutputModelBuffer(this->p_, allocator,
+                                                                                 output_model_buffer_ptr,
+                                                                                 output_model_buffer_size_ptr));
+  return *this;
+}
+
+inline ModelCompilationOptions& ModelCompilationOptions::SetEpContextEmbedMode(
+    bool embed_ep_context_in_model) {
+  Ort::ThrowOnError(GetCompileApi().ModelCompilationOptions_SetEpContextEmbedMode(
+      this->p_,
+      embed_ep_context_in_model));
+  return *this;
+}
+
 namespace detail {
 
 template <typename T>
@@ -661,7 +858,8 @@ inline bool ConstSessionOptionsImpl<T>::HasConfigEntry(const char* config_key) c
 }
 
 template <typename T>
-inline std::string ConstSessionOptionsImpl<T>::GetConfigEntryOrDefault(const char* config_key, const std::string& def) {
+inline std::string ConstSessionOptionsImpl<T>::GetConfigEntryOrDefault(const char* config_key,
+                                                                       const std::string& def) const {
   if (!this->HasConfigEntry(config_key)) {
     return def;
   }
@@ -895,6 +1093,53 @@ inline SessionOptionsImpl<T>& SessionOptionsImpl<T>::AppendExecutionProvider(
 
   ThrowOnError(GetApi().SessionOptionsAppendExecutionProvider(this->p_, provider_name.c_str(),
                                                               keys.data(), values.data(), num_entries));
+
+  return *this;
+}
+
+namespace {
+template <typename T>
+void SessionOptionsAppendEP(detail::SessionOptionsImpl<T>& session_options,
+                            Env& env, const std::vector<ConstEpDevice>& ep_devices,
+                            const std::vector<const char*>& ep_options_keys,
+                            const std::vector<const char*>& ep_options_values) {
+  std::vector<const OrtEpDevice*> ep_devices_ptrs;
+  ep_devices_ptrs.reserve(ep_devices.size());
+  for (const auto& ep_device : ep_devices) {
+    ep_devices_ptrs.push_back(ep_device);
+  }
+
+  ThrowOnError(GetApi().SessionOptionsAppendExecutionProvider_V2(
+      session_options, env, ep_devices_ptrs.data(), ep_devices_ptrs.size(),
+      ep_options_keys.data(), ep_options_values.data(), ep_options_keys.size()));
+}
+}  // namespace
+
+template <typename T>
+inline SessionOptionsImpl<T>& SessionOptionsImpl<T>::AppendExecutionProvider_V2(
+    Env& env, const std::vector<ConstEpDevice>& ep_devices, const KeyValuePairs& ep_options) {
+  std::vector<const char*> ep_options_keys, ep_options_values;
+  ep_options.GetKeyValuePairs(ep_options_keys, ep_options_values);
+
+  SessionOptionsAppendEP(*this, env, ep_devices, ep_options_keys, ep_options_values);
+
+  return *this;
+}
+
+template <typename T>
+inline SessionOptionsImpl<T>& SessionOptionsImpl<T>::AppendExecutionProvider_V2(
+    Env& env, const std::vector<ConstEpDevice>& ep_devices,
+    const std::unordered_map<std::string, std::string>& ep_options) {
+  std::vector<const char*> ep_options_keys, ep_options_values;
+  ep_options_keys.reserve(ep_options.size());
+  ep_options_values.reserve(ep_options.size());
+
+  for (const auto& [key, value] : ep_options) {
+    ep_options_keys.push_back(key.c_str());
+    ep_options_values.push_back(value.c_str());
+  }
+
+  SessionOptionsAppendEP(*this, env, ep_devices, ep_options_keys, ep_options_values);
 
   return *this;
 }
