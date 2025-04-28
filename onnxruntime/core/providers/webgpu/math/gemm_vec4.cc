@@ -293,7 +293,7 @@ Status ApplyGemmVec4(const Tensor* a,
   const uint32_t num_tile_n = (N + TILE_SIZE - 1) / TILE_SIZE;
   const uint32_t num_tile_m = (M + TILE_SIZE - 1) / TILE_SIZE;
 
-  program.CacheHint(alpha, transA, transB, output_components, c_components, c_is_scalar)
+  program.CacheHint(alpha, transA, transB, c_is_scalar)
       .AddOutputs({{y, ProgramTensorMetadataDependency::TypeAndRank, output_components}})
       .SetDispatchGroupSize(num_tile_n * num_tile_m)
       .SetWorkgroupSize(256, 1, 1)
