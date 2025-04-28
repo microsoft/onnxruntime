@@ -71,7 +71,6 @@ def _register_cache_serialization(verbose: int = 0) -> dict[str, bool]:
     # Cache serialization: to be moved into appropriate packages
     import packaging.version as pv
     import torch
-    import transformers
 
     try:
         from transformers.cache_utils import DynamicCache
@@ -110,7 +109,7 @@ def _register_cache_serialization(verbose: int = 0) -> dict[str, bool]:
     # torch.fx._pytree.register_pytree_flatten_spec(
     #           DynamicCache, _flatten_dynamic_cache_for_fx)
     # so we remove it anyway
-    if DynamicCache in torch.fx._pytree.SUPPORTED_NODES and pv.Version(transformers.__version__) >= pv.Version("2.7"):
+    if DynamicCache in torch.fx._pytree.SUPPORTED_NODES and pv.Version(torch.__version__) >= pv.Version("2.7"):
         if verbose:
             print("[_register_cache_serialization] DynamicCache is unregistered first.")
         _unregister(DynamicCache)
