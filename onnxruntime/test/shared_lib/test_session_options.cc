@@ -128,7 +128,7 @@ TEST(CApiTest, session_options_provider_interface_fail_qnn) {
   Ort::SessionOptions session_options;
 
   Ort::Status status = Ort::Status{api.SessionOptionsAppendExecutionProvider(session_options,
-                                                                             kOpenVINOExecutionProvider,
+                                                                             kQnnExecutionProvider,
                                                                              nullptr, nullptr, 0)};
   ASSERT_TRUE(!status.IsOK());
   EXPECT_EQ(status.GetErrorCode(), ORT_FAIL);
