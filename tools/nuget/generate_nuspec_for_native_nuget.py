@@ -785,6 +785,16 @@ def generate_files(line_list, args):
             + '\\native" />'
         )
 
+    if is_dml_package:
+        files_list.append(
+            "<file src="
+            + '"'
+            + os.path.join(args.native_build_path, nuget_dependencies["providers_shared_lib"])
+            + runtimes_target
+            + args.target_architecture
+            + '\\native" />'
+        )
+
     # process all other library dependencies
     if is_cpu_package or is_cuda_gpu_package or is_dml_package or is_mklml_package:
         # Process dnnl dependency
