@@ -39,12 +39,14 @@ bool UseKleidiAISgemm(
     size_t N, size_t K
     )
 {
-    const size_t n_step = kai_get_n_step_matmul_clamp_f32_f32p2vlx1_f32p2vlx1biasf32_sme2_mopa();
-    const size_t BlockedN = (N + n_step - 1) / n_step;
-    const size_t AlignedN = BlockedN * n_step;
+    if (TransA == CblasNoTrans && TransB == CblasNoTrans && MLAS_CPUIDINFO::GetCPUIDInfo().HasArm_SME()) {
+        const size_t n_step = kai_get_n_step_matmul_clamp_f32_f32p2vlx1_f32p2vlx1biasf32_sme2_mopa();
+        const size_t BlockedN = (N + n_step - 1) / n_step;
+        const size_t AlignedN = BlockedN * n_step;
 
-    return TransA == CblasNoTrans && TransB == CblasNoTrans && MLAS_CPUIDINFO::GetCPUIDInfo().HasArm_SME()
-        && AlignedN > 64 && K > 1;
+        return AlignedN > 64 && K > 1;
+    }
+    return false;
 }
 #endif
 
