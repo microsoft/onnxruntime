@@ -243,6 +243,16 @@ If a property is set using an invalid key (i.e., a key that is not recognized as
 
 The valid properties are of two types viz. Mutable (Read/Write) & Immutable (Read only) these are also governed while setting the same. If an Immutable property is being set, we skip setting the same with a similar warning.
 
+For setting appropriate `"PROPERTY"`, refer to OpenVINO config options for [CPU](https://docs.openvino.ai/2025/openvino-workflow/running-inference/inference-devices-and-modes/cpu-device.html#supported-properties), [GPU](https://docs.openvino.ai/2025/openvino-workflow/running-inference/inference-devices-and-modes/gpu-device.html#supported-properties), [NPU](https://docs.openvino.ai/2025/openvino-workflow/running-inference/inference-devices-and-modes/npu-device.html#supported-features-and-properties) and [AUTO](https://docs.openvino.ai/2025/openvino-workflow/running-inference/inference-devices-and-modes/auto-device-selection.html#using-auto). 
+
+Example:
+
+The usage of this functionality using onnxruntime_perf_test application is as below – 
+
+```
+onnxruntime_perf_test.exe -e openvino -m times -r 1 -i "device_type|NPU load_config|test_config.json" model.onnx
+``` 
+
 ### OpenVINO Execution Provider Supports EP-Weight Sharing across sessions
 The OpenVINO Execution Provider (OVEP) in ONNX Runtime supports EP-Weight Sharing, enabling models to efficiently share weights across multiple inference sessions. This feature enhances the execution of Large Language Models (LLMs) with prefill and KV cache, reducing memory consumption and improving performance when running multiple inferences.
 
