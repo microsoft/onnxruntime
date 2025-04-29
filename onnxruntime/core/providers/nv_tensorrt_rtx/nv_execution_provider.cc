@@ -1100,6 +1100,53 @@ NvExecutionProvider::NvExecutionProvider(const NvExecutionProviderInfo& info)
   profile_min_shapes = info.profile_min_shapes;
   profile_max_shapes = info.profile_max_shapes;
   profile_opt_shapes = info.profile_opt_shapes;
+
+  /*
+   * Parse explicit min/max/opt profile shapes from provider options.
+   *
+   * The format of min/max/opt profile shapes is defined as below:
+   * "input1:dim1xdim2...,input2:dim1xdim2...,...,input1:dim3xdim4...,input2:dim3xdim4...,..."
+   *
+   * (Note: if multiple shapes with same input name are specified, TRT EP will consider them as multiple profiles.
+   *  Please refer to ParserProfileShapes() for more details)
+   *
+   */
+  bool status = true;
+  if (status) {
+    status = ParseProfileShapes(profile_min_shapes, profile_min_shapes_);
+    if (!status) {
+      profile_min_shapes_.clear();
+      LOGS_DEFAULT(WARNING) << "[TensorRT EP] The format of provider option 'trt_profile_min_shapes' is wrong, please follow the format of 'input1:dim1xdimd2...,input2:dim1xdim2...,...'";
+    }
+  }
+
+  if (status) {
+    status = ParseProfileShapes(profile_max_shapes, profile_max_shapes_);
+    if (!status) {
+      profile_max_shapes_.clear();
+      LOGS_DEFAULT(WARNING) << "[TensorRT EP] The format of provider option 'trt_profile_max_shapes' is wrong, please follow the format of 'input1:dim1xdimd2...,input2:dim1xdim2...,...'";
+    }
+  }
+
+  if (status) {
+    status = ParseProfileShapes(profile_opt_shapes, profile_opt_shapes_);
+    if (!status) {
+      profile_opt_shapes_.clear();
+      LOGS_DEFAULT(WARNING) << "[TensorRT EP] The format of provider option 'trt_profile_opt_shapes' is wrong, please follow the format of 'input1:dim1xdimd2...,input2:dim1xdim2...,...'";
+    }
+  }
+
+  if (status) {
+    status = ValidateProfileShapes(profile_min_shapes_, profile_max_shapes_, profile_opt_shapes_);
+    if (!status) {
+      LOGS_DEFAULT(WARNING) << "[TensorRT EP] Profile shapes validation failed. Make sure the provider options 'trt_profile_min_shapes', 'trt_profile_max_shapes' and 'trt_profile_opt_shapes' have same input name and number of profile.";
+      LOGS_DEFAULT(WARNING) << "[TensorRT EP] TRT EP will implicitly create optimization profiles based on input tensor for you.";
+      profile_min_shapes_.clear();
+      profile_max_shapes_.clear();
+      profile_opt_shapes_.clear();
+    }
+  }
+
   cuda_graph_enable_ = info.cuda_graph_enable;
   op_types_to_exclude_ = info.op_types_to_exclude;
 
