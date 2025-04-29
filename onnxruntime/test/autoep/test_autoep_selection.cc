@@ -182,6 +182,7 @@ TEST(AutoEpSelection, DmlEP) {
       if (strcmp(c_api->EpDevice_EpName(ep_device), kDmlExecutionProvider) == 0) {
         const auto* device = c_api->EpDevice_Device(ep_device);
         const OrtKeyValuePairs* kvps = c_api->HardwareDevice_Metadata(device);
+
         if (devices.empty()) {
           // add the first device
           devices.push_back(ep_device);
@@ -189,13 +190,7 @@ TEST(AutoEpSelection, DmlEP) {
           // if this is available, 0 == best performance
           auto* perf_index = c_api->GetKeyValue(kvps, "HighPerformanceIndex");
           if (perf_index && strcmp(perf_index, "0") == 0) {
-            devices.push_back(ep_device);
-          } else {
-            // let an NVIDIA device override the first device
-            if (strcmp(c_api->EpDevice_EpVendor(ep_device), "NVIDIA") == 0) {
-              devices.clear();
-              devices[0] = ep_device;
-            }
+            devices[0] = ep_device;  // replace as this is the higher performance device
           }
         }
       }
