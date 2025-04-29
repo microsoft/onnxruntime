@@ -55,6 +55,7 @@ stages:
                 move win-x86\runtimes\win-x86\native\onnxruntime.dll %%~ni\runtimes\win-x86\native\onnxruntime.dll
                 move win-x86\runtimes\win-x86\native\onnxruntime.lib %%~ni\runtimes\win-x86\native\onnxruntime.lib
                 move win-x86\runtimes\win-x86\native\onnxruntime.pdb %%~ni\runtimes\win-x86\native\onnxruntime.pdb
+                move win-x86\runtimes\win-x86\native\onnxruntime_providers_shared.dll %%~ni\runtimes\win-x86\native\onnxruntime_providers_shared.dll
         
                 unzip win-dml-arm64.zip -d win-arm64
                 mkdir %%~ni\runtimes\win-arm64
@@ -63,6 +64,7 @@ stages:
                 move win-arm64\runtimes\win-arm64\native\onnxruntime.dll %%~ni\runtimes\win-arm64\native\onnxruntime.dll
                 move win-arm64\runtimes\win-arm64\native\onnxruntime.lib %%~ni\runtimes\win-arm64\native\onnxruntime.lib
                 move win-arm64\runtimes\win-arm64\native\onnxruntime.pdb %%~ni\runtimes\win-arm64\native\onnxruntime.pdb
+                move win-arm64\runtimes\win-arm64\native\onnxruntime_providers_shared.dll %%~ni\runtimes\win-arm64\native\onnxruntime_providers_shared.dll
         
         
                 pushd %%~ni
