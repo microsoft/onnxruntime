@@ -9,8 +9,7 @@
 namespace onnxruntime {
 struct Provider;
 
-enum class ProviderLibraryPathType
-{
+enum class ProviderLibraryPathType {
   Default,
   Absolute,
 };
