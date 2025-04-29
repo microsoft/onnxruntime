@@ -7,6 +7,7 @@ from collections.abc import Callable, Iterator
 from typing import Optional, TypeVar
 
 import torch
+from typing_extensions import Self
 
 T = TypeVar("T", bound="torch.nn.Module")
 
@@ -44,13 +45,13 @@ class TorchModuleInterface:
     def _apply(self, fn):
         raise NotImplementedError(f"_apply is not implemented for {type(self)}.")
 
-    def apply(self: T, fn: Callable[[T], None]) -> T:
+    def apply(self, fn: Callable[[Self], None]) -> Self:
         raise NotImplementedError(f"apply is not implemented for {type(self)}.")
 
     def is_training(self):
         raise NotImplementedError(f"is_training is not implemented for {type(self)}.")
 
-    def train(self: T, mode: bool = True) -> T:
+    def train(self, mode: bool = True) -> Self:
         raise NotImplementedError(f"train is not implemented for {type(self)}.")
 
     def state_dict(self, destination=None, prefix="", keep_vars=False):

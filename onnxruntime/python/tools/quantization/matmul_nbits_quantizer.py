@@ -1181,7 +1181,7 @@ class MatMulNBitsQuantizer:
                 for attr in node.attribute
                 if attr.type == onnx.AttributeProto.GRAPH or attr.type == onnx.AttributeProto.GRAPHS
             ]
-            if len(graph_attrs):
+            if graph_attrs:
                 kwargs = {}
                 for attr in node.attribute:
                     if attr.type == onnx.AttributeProto.GRAPH:

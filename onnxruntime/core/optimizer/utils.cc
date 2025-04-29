@@ -369,7 +369,27 @@ bool CheckOutputEdges(const Graph& graph, const Node& node, size_t expected_outp
     return false;
   }
 
-  return node.GetOutputEdgesCount() == expected_output_edges;
+  if (node.GetOutputEdgesCount() != expected_output_edges) {
+    return false;
+  }
+
+  // Verify no output edges go to implicit inputs.
+  // An output edge to an implicit input implies the possibility of consumers in a subgraph.
+  // It is non-trivial to determine the actual number of corresponding edges in the subgraph.
+  // We also don't want to fuse part of a subgraph. This function is likely used from graph transformers to check if
+  // nodes can be fused.
+  // We'll just disallow output edges to implicit inputs for simplicity.
+  for (auto output_edge_it = node.OutputEdgesBegin(), end = node.OutputEdgesEnd();
+       output_edge_it != end; ++output_edge_it) {
+    const auto& output_node = output_edge_it->GetNode();
+    const auto output_node_input_arg_idx = static_cast<size_t>(output_edge_it->GetDstArgIndex());
+    const bool is_implicit_input_to_output_node = output_node_input_arg_idx >= output_node.InputDefs().size();
+    if (is_implicit_input_to_output_node) {
+      return false;
+    }
+  }
+
+  return true;
 }
 
 bool IsScalar(const NodeArg& input_arg) {

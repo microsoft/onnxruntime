@@ -1727,8 +1727,8 @@ bool InitProvidersSharedLibrary() try {
   return false;
 }
 
-ProviderLibrary::ProviderLibrary(const ORTCHAR_T* filename, bool unload)
-    : filename_{filename}, unload_{unload} {
+ProviderLibrary::ProviderLibrary(const ORTCHAR_T* filename, bool unload, ProviderLibraryPathType pathType)
+    : filename_{filename}, unload_{unload}, absolute_{pathType == ProviderLibraryPathType::Absolute} {
 }
 
 ProviderLibrary::~ProviderLibrary() {
@@ -1744,8 +1744,16 @@ Status ProviderLibrary::Load() {
     std::lock_guard<std::mutex> lock{mutex_};
     s_library_shared.Ensure();
 
-    auto full_path = Env::Default().GetRuntimePath() + filename_;
-    ORT_RETURN_IF_ERROR(Env::Default().LoadDynamicLibrary(full_path, false, &handle_));
+    if (absolute_) {
+      // If filename_ is not absolute it should not be loaded.
+      if (!std::filesystem::path{filename_}.is_absolute()) {
+        return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "An absolute path must be specified.");
+      }
+      ORT_RETURN_IF_ERROR(Env::Default().LoadDynamicLibrary(filename_, false, &handle_));
+    } else {
+      auto full_path = Env::Default().GetRuntimePath() + filename_;
+      ORT_RETURN_IF_ERROR(Env::Default().LoadDynamicLibrary(full_path, false, &handle_));
+    }
 
     Provider* (*PGetProvider)();
     ORT_RETURN_IF_ERROR(Env::Default().GetSymbolFromLibrary(handle_, "GetProvider", (void**)&PGetProvider));
@@ -1794,6 +1802,7 @@ void ProviderLibrary::Unload() {
       }
     }
 
+    initialized_ = false;
     handle_ = nullptr;
     provider_ = nullptr;
   }

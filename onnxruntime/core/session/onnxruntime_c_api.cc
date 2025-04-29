@@ -33,6 +33,7 @@
 #include "core/session/allocator_adapters.h"
 #include "core/session/compile_api.h"
 #include "core/session/environment.h"
+#include "core/session/ep_api.h"
 #include "core/session/ep_library_internal.h"
 #include "core/session/inference_session.h"
 #include "core/session/inference_session_utils.h"
@@ -2511,7 +2512,12 @@ ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider_V2, _In_ OrtS
   return nullptr;
   API_IMPL_END
 }
-#else   // defined(ORT_MINIMAL_BUILD)
+
+ORT_API(const OrtEpApi*, OrtApis::GetEpApi) {
+  return OrtExecutionProviderApi::GetEpApi();
+}
+
+#else  // defined(ORT_MINIMAL_BUILD)
 ORT_API_STATUS_IMPL(OrtApis::RegisterExecutionProviderLibrary, _In_ OrtEnv* /*env*/, const char* /*registration_name*/,
                     const ORTCHAR_T* /*path*/) {
   API_IMPL_BEGIN
@@ -2545,6 +2551,12 @@ ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider_V2, _In_ OrtS
 
   API_IMPL_END
 }
+
+ORT_API(const OrtEpApi*, OrtApis::GetEpApi) {
+  fprintf(stderr, "The Execution Provider API is not supported in a minimal build.\n");
+  return nullptr;
+}
+
 #endif  // !defined(ORT_MINIMAL_BUILD)
 
 // OrtEpDevice accessors
@@ -3012,6 +3024,8 @@ static constexpr OrtApi ort_api_1_to_23 = {
     &OrtApis::EpDevice_EpMetadata,
     &OrtApis::EpDevice_EpOptions,
     &OrtApis::EpDevice_Device,
+
+    &OrtApis::GetEpApi,
     // End of Version 22 - DO NOT MODIFY ABOVE (see above text for more information)
 
     &OrtApis::CreateMIGraphXProviderOptions,
@@ -3052,7 +3066,7 @@ static_assert(offsetof(OrtApi, AddExternalInitializersFromFilesInMemory) / sizeo
 // no additions in version 19, 20, and 21
 static_assert(offsetof(OrtApi, SetEpDynamicOptions) / sizeof(void*) == 284, "Size of version 20 API cannot change");
 
-static_assert(offsetof(OrtApi, EpDevice_Device) / sizeof(void*) == 314, "Size of version 22 API cannot change");
+static_assert(offsetof(OrtApi, GetEpApi) / sizeof(void*) == 315, "Size of version 22 API cannot change");
 
 // So that nobody forgets to finish an API version, this check will serve as a reminder:
 static_assert(std::string_view(ORT_VERSION) == "1.23.0",
