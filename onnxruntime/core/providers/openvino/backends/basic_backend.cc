@@ -98,9 +98,11 @@ BasicBackend::BasicBackend(std::unique_ptr<ONNX_NAMESPACE::ModelProto>& model_pr
                auto_unified_compile) {
       // Unified OV compile_model is efficient when ov model caching is enabled
       // Unified OV compile_model API is supported with AUTO from version 2024.3 and above
-      // Inputs with static dimenstions
+      // Inputs with static dimensions
       // Not enabled for models with external weights and when ep context is set.
       const std::string model = model_proto->SerializeAsString();
+      // we have the serialized string, so we can release model proto to lower the peak memory consumption
+      model_proto.reset();
       exe_network_ = OVCore::Get()->CompileModel(model,
                                                  hw_target,
                                                  device_config,
