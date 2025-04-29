@@ -32,9 +32,7 @@ Status CheckInputs(const T* query,
                    float scale,
                    float softcap) {
   // Tensor dimensions outlined in bert_defs.cc
-
   const bool is_packed_qkv = key == nullptr;
-  AttentionQkvFormat qkv_format = is_packed_qkv ? QKV_T3NH : Q_K_V_TNH; // TODO(aciddelgado): Is this really our preferred packed format
 
   const auto& query_dims = query->Shape().GetDims();
   if (query_dims.size() != 2) {
@@ -264,7 +262,6 @@ Status CheckInputs(const T* query,
     output_parameters->max_num_blocks_per_seq = max_num_blocks_per_seq;
     output_parameters->num_blocks = num_blocks;
     output_parameters->rotary_dim = rotary_dim;
-    output_parameters->qkv_format = qkv_format;
     output_parameters->is_packed_qkv = is_packed_qkv;
     output_parameters->scale = scale;
     output_parameters->softcap = softcap;

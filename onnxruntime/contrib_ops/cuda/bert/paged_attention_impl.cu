@@ -127,7 +127,6 @@ __global__ void RotaryEmbeddingTNH(T* output,                          // TxNxH
                                    const bool interleaved,
                                    const int3 in_strides,     // TxNxH
                                    const int3 out_strides) {  // TxNxH
-  // B = batch size, S = sequence length, N = num heads, H = head size, M = max sequence length
   // Use .x in innermost loop to access global memory efficiently
 
   const int b = blockIdx.y;
@@ -168,7 +167,6 @@ __global__ void RotaryEmbeddingTNH(T* output,                          // TxNxH
     sign = (h < half_rotary_embedding_dim) ? -1 : 1;
     j = (h + half_rotary_embedding_dim) % rotary_embedding_dim;
   }
-  // output_data[h] = cos_data[cache_idx] + sin_data[cache_idx];
   output_data[h] = input_data[h] * cos_data[cache_idx] + sign * input_data[j] * sin_data[cache_idx];
 }
 
