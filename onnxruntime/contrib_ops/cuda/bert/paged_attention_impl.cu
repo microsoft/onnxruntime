@@ -52,66 +52,143 @@ namespace cuda {
 
 ////////// Auxiliary Kernels
 
-// // Kernel to unpack qkv from packed qkv
-// template <typename T, bool output_bnsh>
-// __global__ void UnpackQKV(const T* packed_qkv, T* unpacked_q, T* unpacked_k, T* unpacked_v, const int num_heads,
-//                           const int kv_num_heads, const int head_size, const int sequence_length,
-//                           const int batch_size) {
-//   const int tid = threadIdx.x + blockIdx.x * blockDim.x;
-//   int d = (num_heads + 2 * kv_num_heads) * head_size;
-//   const int qkv_size = batch_size * sequence_length * d;
-//   const int q_hidden = num_heads * head_size;
-//   const int k_hidden = kv_num_heads * head_size;
-//   if (tid < qkv_size) {
-//     int b = tid / (d * sequence_length);
-//     int s = (tid % (d * sequence_length)) / d;
-//     int offset = tid % d;
-//     if (output_bnsh) {  // output BNSH
-//       int head_count = kv_num_heads;
-//       T* unpacked;
-//       if (offset < q_hidden) {
-//         unpacked = unpacked_q;
-//         head_count = num_heads;
-//       } else if (offset < q_hidden + k_hidden) {
-//         unpacked = unpacked_k;
-//         offset -= q_hidden;
-//       } else {
-//         unpacked = unpacked_v;
-//         offset -= (q_hidden + k_hidden);
-//       }
-//       int n = offset / head_size;
-//       int h = offset % head_size;
+template <typename T>
+__global__ void UnpackQKVCumulative(const T* packed_qkv, T* unpacked_qkv, const int token_count, const int num_heads,
+                                    const int kv_num_heads, const int head_size) {
+  const int tid = threadIdx.x + blockIdx.x * blockDim.x;
+  if (tid >= token_count * (num_heads + 2 * kv_num_heads) * head_size) {
+    return;
+  }
+  const int q_hidden_size = num_heads * head_size;
+  const int kv_hidden_size = kv_num_heads * head_size;
+  const int in_seq_stride = q_hidden_size + 2 * kv_hidden_size;
 
-//       int unpacked_i = INDEX_4D(head_count, sequence_length, head_size, b, n, s, h);
-//       unpacked[unpacked_i] = packed_qkv[tid];
-//     } else {  // output BSNH
-//       if (offset < q_hidden) {
-//         int unpacked_i = b * sequence_length * num_heads * head_size + s * num_heads * head_size + offset;
-//         unpacked_q[unpacked_i] = packed_qkv[tid];
-//       } else if (offset < q_hidden + k_hidden) {
-//         int unpacked_i = b * sequence_length * kv_num_heads * head_size +
-//                          s * kv_num_heads * head_size + (offset - q_hidden);
-//         unpacked_k[unpacked_i] = packed_qkv[tid];
-//       } else {
-//         int unpacked_i = b * sequence_length * kv_num_heads * head_size +
-//                          s * kv_num_heads * head_size + (offset - q_hidden - k_hidden);
-//         unpacked_v[unpacked_i] = packed_qkv[tid];
-//       }
-//     }
-//   }
-// }
+  int packed_i;
+  if (tid < token_count * q_hidden_size) {
+    const int token_id = tid / q_hidden_size;
+    const int offset = tid % q_hidden_size;
+    packed_i = token_id * in_seq_stride + offset;
+  } else if (tid < token_count * (q_hidden_size + kv_hidden_size)) {
+    const int id = tid - token_count * q_hidden_size;
+    const int token_id = id / kv_hidden_size;
+    const int offset = id % kv_hidden_size;
+    packed_i = token_id * in_seq_stride + q_hidden_size + offset;
+  } else if (tid < token_count * (q_hidden_size + 2 * kv_hidden_size)) {
+    const int id = tid - token_count * (q_hidden_size + kv_hidden_size);
+    const int token_id = id / kv_hidden_size;
+    const int offset = id % kv_hidden_size;
+    packed_i = token_id * in_seq_stride + q_hidden_size + kv_hidden_size + offset;
+  }
+  unpacked_qkv[tid] = packed_qkv[packed_i];
+}
 
-// // Unpack packed qkv
-// template <typename T, bool output_bnsh>
-// Status LaunchUnpackQKV(const T* packed_qkv, T* unpacked_q, T* unpacked_k, T* unpacked_v, const int num_heads,
-//                        const int kv_num_heads, const int head_size, const int sequence_length, const int batch_size,
-//                        cudaStream_t stream, const int max_threads_per_block) {
-//   const int threads = max_threads_per_block;
-//   const int blocks = (batch_size * sequence_length * (num_heads + 2 * kv_num_heads) * head_size + threads - 1) / threads;
-//   UnpackQKV<T, output_bnsh><<<blocks, threads, 0, stream>>>(
-//       packed_qkv, unpacked_q, unpacked_k, unpacked_v, num_heads, kv_num_heads, head_size, sequence_length, batch_size);
-//   return CUDA_CALL(cudaGetLastError());
-// }
+// Since QKV is unpacked into a single workspace buffer, this is similar to a transpose
+template <typename T>
+Status LaunchUnpackQKVCumulative(const T* packed_qkv, T* unpacked_qkv, const int token_count, const int num_heads,
+                                 const int kv_num_heads, const int head_size, cudaStream_t stream,
+                                 const int max_threads_per_block) {
+  const int threads = max_threads_per_block;
+  const int blocks = (token_count * (num_heads + 2 * kv_num_heads) * head_size + threads - 1) / threads;
+  UnpackQKVCumulative<T><<<blocks, threads, 0, stream>>>(packed_qkv, unpacked_qkv, token_count, num_heads, kv_num_heads,
+                                                         head_size);
+  return CUDA_CALL(cudaGetLastError());
+}
+
+template <typename T>
+__global__ void UnpackV(const T* packed_v, T* unpacked_v, const int token_count, const int kv_hidden_size,
+                        const int packed_seq_stride) {
+  const int tid = threadIdx.x + blockIdx.x * blockDim.x;
+  if (tid < token_count * kv_hidden_size) {
+    int offset = tid % kv_hidden_size;
+    int token_id = tid / kv_hidden_size;
+    int packed_i = token_id * packed_seq_stride + offset;
+    unpacked_v[tid] = packed_v[packed_i];
+  }
+}
+
+template <typename T>
+Status LaunchUnpackV(const T* packed_v, T* unpacked_v, const int token_count, const int kv_hidden_size,
+                   const int packed_seq_stride, cudaStream_t stream, const int max_threads_per_block) {
+  const int threads = std::min(max_threads_per_block, token_count * kv_hidden_size);
+  const int blocks = (token_count * kv_hidden_size + threads - 1) / threads;
+  UnpackV<T><<<blocks, threads, 0, stream>>>(packed_v, unpacked_v, token_count, kv_hidden_size, packed_seq_stride);
+  return CUDA_CALL(cudaGetLastError());
+}
+
+template <typename T>
+__global__ void RotaryEmbeddingTNH(T* output,                          // TxNxH
+                                   const T* input,                     // TxNxH
+                                   const T* cos_cache,                 // Mx(H/2)
+                                   const T* sin_cache,                 // Mx(H/2)
+                                   const int32_t* seqlens,             // B
+                                   const int32_t* cumulative_seqlens,  // B+1
+                                   const int head_size,
+                                   const int rotary_embedding_dim,
+                                   const bool interleaved,
+                                   const int3 in_strides,     // TxNxH
+                                   const int3 out_strides) {  // TxNxH
+  // B = batch size, S = sequence length, N = num heads, H = head size, M = max sequence length
+  // Use .x in innermost loop to access global memory efficiently
+
+  const int b = blockIdx.y;
+  const int s = blockIdx.x;
+  const int n = blockIdx.z;
+  const int h = threadIdx.x;
+
+  const int sequence_length = cumulative_seqlens[b + 1] - cumulative_seqlens[b];
+  if (h >= head_size || s >= sequence_length) {
+    return;
+  }
+
+  const int t = cumulative_seqlens[b] + s; // t is the index of the token in the unpadded input/output
+  const T* input_data = input + t * in_strides.x + n * in_strides.y;
+  T* output_data = output + t * out_strides.x + n * out_strides.y;
+
+  if (h >= rotary_embedding_dim) {
+    output_data[h] = input_data[h];
+    return;
+  }
+
+  // Cache is (M, H/2)
+  const int half_rotary_embedding_dim = rotary_embedding_dim / 2;
+  const int position_id = seqlens[b] + s;
+  const int cache_offset = position_id * half_rotary_embedding_dim;
+  const T* cos_data = cos_cache + cache_offset;
+  const T* sin_data = sin_cache + cache_offset;
+
+  int cache_idx = 0;
+  T sign = 0;
+  int j = 0;
+  if (interleaved) {
+    cache_idx = (h / 2) % half_rotary_embedding_dim;
+    sign = (h % 2 == 0) ? -1 : 1;
+    j = (h % 2 == 0) ? h + 1 : h - 1;  // i - sign
+  } else {
+    cache_idx = h % half_rotary_embedding_dim;
+    sign = (h < half_rotary_embedding_dim) ? -1 : 1;
+    j = (h + half_rotary_embedding_dim) % rotary_embedding_dim;
+  }
+  // output_data[h] = cos_data[cache_idx] + sin_data[cache_idx];
+  output_data[h] = input_data[h] * cos_data[cache_idx] + sign * input_data[j] * sin_data[cache_idx];
+}
+
+template <typename T>
+Status LaunchRotaryEmbeddingKernel(cudaStream_t stream, T* output, const T* input, const int32_t* seqlens,
+                                   const int32_t* cumulative_sequence_lengths, const T* cos_cache, const T* sin_cache,
+                                   const int batch_size, const int max_seqlen_q, const int num_heads,
+                                   const int head_size, const int rotary_embedding_dim, const bool interleaved,
+                                   const int in_seq_stride, const int max_threads_per_block) {
+  ORT_ENFORCE(head_size <= max_threads_per_block, "Rotary embedding dim must be <= max_threads_per_block");
+  int3 in_strides = {in_seq_stride <= 0 ? num_heads * head_size : in_seq_stride, head_size, 1};
+  int3 out_strides = {num_heads * head_size, head_size, 1};
+  int tpb = (head_size + 31) / 32 * 32;
+  const dim3 grid(max_seqlen_q, batch_size, num_heads);
+  const dim3 block(tpb);
+  RotaryEmbeddingTNH<<<grid, block, 0, stream>>>(
+      output, input, cos_cache, sin_cache, seqlens, cumulative_sequence_lengths, head_size, rotary_embedding_dim,
+      interleaved, in_strides, out_strides);
+  return CUDA_CALL(cudaGetLastError());
+}
 
 template <int kBlockSize>
 __global__ void GetCumulativeSeqlensKV(int32_t* cumulative_seqlens_kv, const int32_t* cumulative_sequence_length,
@@ -198,21 +275,16 @@ Status FlashAttention(
   const int max_num_blocks_per_seq = parameters.max_num_blocks_per_seq;
   const int block_size = parameters.block_size;
 
-  void* query = reinterpret_cast<void*>(const_cast<T*>(data.query));
-  // void* key;
-  // void* value;
-
-  // TODO(aciddelgado): must we unpack or can we stride?
-  // Get key and value pointers
-  // if (!parameters.is_packed_qkv) {
-  //   key = reinterpret_cast<void*>(const_cast<T*>(data.key));
-  //   value = reinterpret_cast<void*>(const_cast<T*>(data.value));
-  // } else {
-  //   const size_t key_offset = static_cast<size_t>(num_heads * head_size);
-  //   const size_t value_offset = static_cast<size_t>(kv_num_heads * head_size);
-  //   key = reinterpret_cast<T*>(query) + key_offset;
-  //   value = reinterpret_cast<T*>(key) + value_offset;
-  // }
+  T* query = const_cast<T*>(data.query);
+  T* key;
+  T* value;
+  if (!parameters.is_packed_qkv) {
+    key = const_cast<T*>(data.key);
+    value = const_cast<T*>(data.value);
+  } else {
+    key = reinterpret_cast<T*>(query) + static_cast<size_t>(num_heads * head_size);
+    value = reinterpret_cast<T*>(key) + static_cast<size_t>(kv_num_heads * head_size);
+  }
 
   // Calculate cumulative present sequence length in cumulative_seqlens_kv
   int* cumulative_sequence_length = const_cast<int*>(data.cumulative_sequence_length);
@@ -221,23 +293,48 @@ Status FlashAttention(
   ORT_RETURN_IF_ERROR(LaunchGetCumulativeSeqlensKV(cumulative_seqlens_kv, cumulative_sequence_length, seqlens,
                                                    batch_size, stream));
 
-  // Insert key and value into block-based KV cache
-  ORT_RETURN_IF_ERROR(LaunchReshapeAndCache<T>(data.key, data.value, data.key_cache, data.value_cache,
-                                               data.slot_mappings, token_count, kv_hidden_size, block_size, stream,
-                                               max_threads_per_block));
-  void* key_cache = reinterpret_cast<void*>(data.key_cache);
-  void* value_cache = reinterpret_cast<void*>(data.value_cache);
+  if (parameters.do_rotary) { // Will also perform unpacking if packed_qkv
+    auto q_buffer = data.workspace_buffer;
+    auto k_buffer = data.workspace_buffer + token_count * num_heads * head_size;
+    int packed_seq_stride = parameters.is_packed_qkv ? (num_heads + 2 * kv_num_heads) * head_size : -1;
+    ORT_RETURN_IF_ERROR(LaunchRotaryEmbeddingKernel<T>(
+        stream, q_buffer, query, seqlens, cumulative_sequence_length, data.cos_cache, data.sin_cache, batch_size,
+        max_query_len, num_heads, head_size, parameters.rotary_dim, parameters.rotary_interleaved, packed_seq_stride,
+        max_threads_per_block));
+    ORT_RETURN_IF_ERROR(LaunchRotaryEmbeddingKernel<T>(
+        stream, k_buffer, key, seqlens, cumulative_sequence_length, data.cos_cache, data.sin_cache, batch_size,
+        max_query_len, kv_num_heads, head_size, parameters.rotary_dim, parameters.rotary_interleaved, packed_seq_stride,
+        max_threads_per_block));
+    query = q_buffer;
+    key = k_buffer;
+    if (parameters.is_packed_qkv) {
+      auto v_buffer = data.workspace_buffer + token_count * (num_heads + kv_num_heads) * head_size;
+      ORT_RETURN_IF_ERROR(LaunchUnpackV<T>(
+          value, v_buffer, token_count, kv_hidden_size, packed_seq_stride, stream, max_threads_per_block));
+      value = v_buffer;
+    }
+  } else if (parameters.is_packed_qkv) {
+    auto qkv_buffer = data.workspace_buffer;
+    ORT_RETURN_IF_ERROR(LaunchUnpackQKVCumulative<T>(
+        query, qkv_buffer, token_count, num_heads, kv_num_heads, head_size, stream, max_threads_per_block));
+    query = qkv_buffer;
+    key = qkv_buffer + token_count * num_heads * head_size;
+    value = qkv_buffer + token_count * (num_heads + kv_num_heads) * head_size;
+  }
 
-  // TODO(aciddelgado): Perform rotary embedding
-  // void* cos_cache = reinterpret_cast<void*>(const_cast<T*>(data.cos_cache));
-  // void* sin_cache = reinterpret_cast<void*>(const_cast<T*>(data.sin_cache));
+  // Insert key and value into block-based KV cache
+  ORT_RETURN_IF_ERROR(LaunchReshapeAndCache<T>(key, value, data.key_cache, data.value_cache, data.slot_mappings,
+                                               token_count, kv_hidden_size, block_size, stream, max_threads_per_block));
 
   // Launch kernel
+  void* q = reinterpret_cast<void*>(query);
+  void* key_cache = reinterpret_cast<void*>(data.key_cache);
+  void* value_cache = reinterpret_cast<void*>(data.value_cache);
   void* output = reinterpret_cast<void*>(data.output);
   void* softmax_lse = reinterpret_cast<void*>(data.softmax_lse);
   int* block_table = const_cast<int*>(data.block_table);
   ORT_RETURN_IF_ERROR(onnxruntime::flash::mha_varlen_fwd(
-      device_prop, stream, query, key_cache, value_cache, output, cumulative_sequence_length, cumulative_seqlens_kv,
+      device_prop, stream, q, key_cache, value_cache, output, cumulative_sequence_length, cumulative_seqlens_kv,
       /*seqused_k*/ nullptr, block_table, softmax_lse, batch_size, num_heads, kv_num_heads, head_size, max_query_len,
       max_seq_len, scale, softcap, /*is_causal*/ true, is_bf16, local_window_size, max_num_blocks_per_seq, block_size));
 
@@ -284,26 +381,6 @@ template Status QkvToContext<BFloat16>(
     Stream* ort_stream,
     contrib::PagedAttentionParameters& parameters,
     PagedAttentionData<BFloat16>& data);
-
-// template Status LaunchUnpackQKVCumulative<half>(
-//     const half* packed_qkv, half* unpacked_q, half* unpacked_k, half* unpacked_v, const int num_heads,
-//     const int kv_num_heads, const int head_size, const int token_count, cudaStream_t stream,
-//     const int max_threads_per_block);
-
-// template Status LaunchUnpackQKVCumulative<BFloat16>(
-//     const BFloat16* packed_qkv, BFloat16* unpacked_q, BFloat16* unpacked_k, BFloat16* unpacked_v, const int num_heads,
-//     const int kv_num_heads, const int head_size, const int token_count, cudaStream_t stream,
-//     const int max_threads_per_block);
-
-template Status LaunchReshapeAndCache<half>(
-    const half* key, const half* value, half* key_cache, half* value_cache, const int* slot_mappings,
-    const int token_count, const int kv_hidden_size, const int block_size, cudaStream_t stream,
-    const int max_threads_per_block);
-
-template Status LaunchReshapeAndCache<BFloat16>(
-    const BFloat16* key, const BFloat16* value, BFloat16* key_cache, BFloat16* value_cache, const int* slot_mappings,
-    const int token_count, const int kv_hidden_size, const int block_size, cudaStream_t stream,
-    const int max_threads_per_block);
 
 }  // namespace cuda
 }  // namespace contrib

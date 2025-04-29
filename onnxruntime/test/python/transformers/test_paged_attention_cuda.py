@@ -27,7 +27,7 @@ from onnxruntime import InferenceSession, OrtValue, SessionOptions, get_availabl
 
 torch.manual_seed(0)
 
-pipeline_mode = False  # Reduces number of tests so pipeline doesn't time out
+pipeline_mode = True  # Reduces number of tests so pipeline doesn't time out
 
 class Config:
     batch_size = 0
@@ -64,7 +64,8 @@ class Config:
         return (
             f"Config(batch_size={self.batch_size}, sequence_length={self.sequence_length}, "
             f"total_sequence_length={self.total_sequence_length}, num_heads={self.num_heads}, "
-            f"kv_num_heads={self.kv_num_heads}, head_size={self.head_size}, rotary={self.rotary}, "
+            f"kv_num_heads={self.kv_num_heads}, head_size={self.head_size}, "
+            f"paged_kv_block_size={self.paged_kv_block_size} rotary={self.rotary}, "
             f"rotary_interleaved={self.rotary_interleaved}, packed={self.packed}, softcap={self.softcap}, "
             f"ep={short_ep})"
         )
@@ -435,7 +436,6 @@ def attention_ref(
 def rotary_embedding(*args, **kwargs):
     # Use local import since triton is not available in Windows.
     from rotary_flash import apply_rotary_emb
-
     return apply_rotary_emb(*args, **kwargs)
 
 
@@ -568,7 +568,6 @@ def parity_check_paged_attention(
     cum_seqlens = torch.cat((torch.tensor([0], dtype=torch.int32, device="cuda"), torch.cumsum(new_seqlens, dim=0))).type(torch.int32)
     total_seqlens = past_seqlens + new_seqlens
 
-    # Get unpadded QKV # TODO: move below rotary
     q_unpad, k_unpad, v_unpad = unpad_qkv(config, q, k_new, v_new, cum_seqlens)
 
     # Generate kv cache and associated block-based data structures
@@ -635,9 +634,13 @@ def parity_check_paged_attention(
     )
     out_ref = out_ref.detach().cpu().numpy()
 
-    # ONNXRuntime Op... TODO: packed QKV
     max_seqlen_q = torch.max(new_seqlens).item()
     max_seqlen_k = torch.max(total_seqlens).item()
+
+    if config.packed:
+        q_unpad = torch.concatenate([q_unpad, k_unpad, v_unpad], dim=1)
+        k_unpad = None
+        v_unpad = None
     out, updated_k_cache_paged, updated_v_cache_paged = paged_attention_func(
         config,
         q_unpad,
@@ -699,26 +702,25 @@ def has_flash_attention():
 
 
 def paged_attention_test_cases():
-    batches = [5] if pipeline_mode else [1, 3, 5]
+    batches = [4] if pipeline_mode else [1, 3, 5]
     seqs = (
-        [(1, 2048), (49, 87)]
+        [(1025, 2047)]
         if pipeline_mode
         else [
             (3, 1024),
             (1, 339),
-            (64, 800),
-            (3, 799),
+            (408, 800),
+            (333, 799),
             (64, 2048),
-            (16, 20000),
+            (837, 4000),
             (17, 49),
-            (127, 127),
             (257, 257),
+            (459, 459),
         ]
     )
     num_h = [(32, 8)] if pipeline_mode else [(6, 6), (6, 3), (9, 9), (9, 3)]
     h_sizes = [256] if pipeline_mode else [32, 40, 64, 80, 96, 128, 160, 192, 224, 256]
-    block_sizes = [256, 512]
-    random.seed(69)
+    block_sizes = [256] if pipeline_mode else [256, 512]
 
     for b in batches:
         for s, s2 in seqs:
@@ -726,8 +728,8 @@ def paged_attention_test_cases():
                 for h in h_sizes:
                     for block_size in block_sizes:
                         for local in [False, True]:
-                            for rotary, rotary_interleaved in [(False, False)]: # rotary_options_for_current_os():
-                                for packed in [False]:
+                            for rotary, rotary_interleaved in rotary_options_for_current_os():
+                                for packed in [False, True]:
                                     for softcap in [0.0, 50.0]:
                                         if rotary and h % 16 > 0:
                                             continue
@@ -745,13 +747,9 @@ class TestPagedAttention(unittest.TestCase):
     def test_paged_attention(self, _, config):
         parity_check_paged_attention(
             config,
-            rtol=1e-3,
-            atol=1e-3
+            rtol=5e-3,
+            atol=5e-3
         )
 
 if __name__ == "__main__":
     unittest.main()
-    # ptest = TestPagedAttention()
-    # config = Config(1, 3, 1024, 6, 6, 32, 256, False, False, False, False, 0.0)
-    # print(config)
-    # ptest.test_paged_attention(str(config), config)

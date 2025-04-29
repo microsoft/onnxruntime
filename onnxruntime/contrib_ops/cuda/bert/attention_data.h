@@ -200,8 +200,7 @@ struct PagedAttentionData {
   int* cumulative_seqlens_kv = nullptr;  // Flash api takes cumulative sequence length for kv-cache
 
   // Fused op buffers
-  T* unpacked_qkv_buffer = nullptr;
-  T* rotary_buffer = nullptr;
+  T* workspace_buffer = nullptr;
 
   // Output Tensors
   T* output = nullptr;

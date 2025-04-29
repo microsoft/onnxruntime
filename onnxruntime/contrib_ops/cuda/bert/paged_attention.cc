@@ -158,20 +158,13 @@ Status PagedAttention<T>::ComputeInternal(OpKernelContext* context) const {
   size_t cumulative_seqlens_kv_bytes = sizeof(int) * (parameters.batch_size + 1);
   auto cumulative_seqlens_kv_buffer = GetScratchBuffer<void>(cumulative_seqlens_kv_bytes, context->GetComputeStream());
 
-  size_t rotary_buffer_bytes = 0;
-  if (do_rotary_) {
-    rotary_buffer_bytes = 2 * sizeof(T) * parameters.token_count * parameters.num_heads * parameters.head_size;
-    rotary_buffer_bytes += sizeof(int64_t) * parameters.token_count;
+  size_t workspace_buffer_bytes = 0;
+  if (parameters.is_packed_qkv) { // unpacking and rotary can be done with the same buffer in the same operation
+    workspace_buffer_bytes = parameters.token_count * (parameters.num_heads + 2 * parameters.kv_num_heads) * parameters.head_size * sizeof(T);
+  } else if (do_rotary_) {
+    workspace_buffer_bytes = 2 * sizeof(T) * parameters.token_count * parameters.num_heads * parameters.head_size;
   }
-  auto rotary_buffer = GetScratchBuffer<void>(rotary_buffer_bytes, context->GetComputeStream());
-
-  size_t unpacked_qkv_bytes = 0;
-  if (parameters.is_packed_qkv) {
-    // unpacked_qkv_bytes = (parameters.token_count * (parameters.num_heads + 2 * parameters.kv_num_heads) * parameters.head_size * sizeof(T));
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                           "Packed QKV is not yet supported in PagedAttention");
-  }
-  auto unpacked_qkv_buffer = GetScratchBuffer<void>(unpacked_qkv_bytes, context->GetComputeStream());
+  auto workspace_buffer = GetScratchBuffer<void>(workspace_buffer_bytes, context->GetComputeStream());
 
   // Print debug info
   if (kernel_options_->AllowDebugInfo()) {
@@ -200,13 +193,12 @@ Status PagedAttention<T>::ComputeInternal(OpKernelContext* context) const {
   if (softmax_lse_buffer != nullptr) {
     data.softmax_lse = reinterpret_cast<CudaT*>(softmax_lse_buffer.get());
   }
-  if (unpacked_qkv_buffer != nullptr) {
-    data.unpacked_qkv_buffer = reinterpret_cast<CudaT*>(unpacked_qkv_buffer.get());
+  if (workspace_buffer != nullptr) {
+    data.workspace_buffer = reinterpret_cast<CudaT*>(workspace_buffer.get());
   }
   if (parameters.do_rotary) {
     data.cos_cache = reinterpret_cast<const CudaT*>(cos_cache->Data<T>());
     data.sin_cache = reinterpret_cast<const CudaT*>(sin_cache->Data<T>());
-    data.rotary_buffer = reinterpret_cast<CudaT*>(rotary_buffer.get());
   }
 
   cublasHandle_t cublas = GetCublasHandle(context);
