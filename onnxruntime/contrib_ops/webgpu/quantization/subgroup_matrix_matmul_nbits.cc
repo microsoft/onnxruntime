@@ -73,6 +73,7 @@ Status SubgroupMatrixMatMulNBitsProgram::GenerateShaderCode(ShaderHelper& shader
         }
     )ADDNL_FN";
   } else {
+    ORT_ENFORCE(nbits_ == 8, "Only 4/8 bits are supported for webgpu matmulnbits");
     shader.AdditionalImplementation() << R"ADDNL_FN(
         fn loadSHMB(tile_base: u32, k_idx: u32, row: u32, c_idx: u32) {
             let b_global = tile_base + row;

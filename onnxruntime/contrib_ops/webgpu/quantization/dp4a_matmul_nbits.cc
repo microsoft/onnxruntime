@@ -9,7 +9,9 @@ namespace contrib {
 namespace webgpu {
 namespace {
 
-constexpr std::string_view commonFunctions = R"ADDNL_FN(
+std::string commonFunctions(uint32_t nbits) {
+  if (nbits == 4) {
+    return R"ADDNL_FN(
         fn DequantizedFrom4BitsTo8Bits(in: vec2<u32>) -> vec4<u32>
         {
             var out = vec4<u32>(0);
@@ -35,11 +37,14 @@ constexpr std::string_view commonFunctions = R"ADDNL_FN(
             local_sum += dot4I8Packed(a2[1], b2[1]);
             local_sum += dot4I8Packed(a2[2], b2[2]);
             local_sum += dot4I8Packed(a2[3], b2[3]);
-            return output_element_t(f32(local_sum) * f32(scale));
+            return output_element_t(local_sum) * scale;
         }
   )ADDNL_FN";
-
-constexpr std::string_view AlignWithZeroPoint = R"ADDNL_FN(
+  } else {
+    ORT_ENFORCE(nbits == 8, "Only 4/8 bits are supported for webgpu matmulnbits");
+    // For 8bits, in case data overflow when converting from int32 (output of dot4I8Packed) to f16, we force it convert to f32.
+    // Then do the scale. Finally, convert to output element type.
+    return R"ADDNL_FN(
         fn AlignWithZeroPoint(in: vec4<u32>) -> vec4<u32>
         {
             var out = vec4<u32>(0);
@@ -49,7 +54,23 @@ constexpr std::string_view AlignWithZeroPoint = R"ADDNL_FN(
             out[3] = pack4xI8(vec4<i32>(unpack4xU8(in[3])) - vec4<i32>(128));
             return out;
         }
- )ADDNL_FN";
+
+        // Scaled dot product of 8 packed unsigned integers.
+        fn SDP8AI(a1:vec4<u32>, b1:vec4<u32>, a2:vec4<u32>, b2:vec4<u32>, scale:output_element_t) -> output_element_t
+        {
+            var local_sum = dot4I8Packed(a1[0], b1[0]);
+            local_sum += dot4I8Packed(a1[1], b1[1]);
+            local_sum += dot4I8Packed(a1[2], b1[2]);
+            local_sum += dot4I8Packed(a1[3], b1[3]);
+            local_sum += dot4I8Packed(a2[0], b2[0]);
+            local_sum += dot4I8Packed(a2[1], b2[1]);
+            local_sum += dot4I8Packed(a2[2], b2[2]);
+            local_sum += dot4I8Packed(a2[3], b2[3]);
+            return output_element_t(f32(local_sum) * f32(scale));
+        }
+  )ADDNL_FN";
+  }
+}
 
 }  // namespace
 
@@ -110,7 +131,7 @@ Status DP4AMatMulNBitsProgram::GenerateShaderCode(ShaderHelper& shader) const {
   // this shader require A to be int8 quantized with block size 64. B is regular
   // matmulnbits input with block size 32.
 
-  shader.AdditionalImplementation() << commonFunctions
+  shader.AdditionalImplementation() << commonFunctions(nbits_)
                                     << "  const block_size = " << block_size_ << ";";
 
   shader.AdditionalImplementation() << R"ADDNL_FN(
@@ -162,9 +183,8 @@ Status DP4AMatMulNBitsProgram::GenerateShaderCode(ShaderHelper& shader) const {
         }
     )ADDNL_FN";
   } else {
-    ORT_ENFORCE(nbits_ == 8, "Only 4/8 bits are supported for DP4");
-    shader.AdditionalImplementation() << AlignWithZeroPoint
-                                      << R"ADDNL_FN(
+    ORT_ENFORCE(nbits_ == 8, "Only 4/8 bits are supported for webgpu matmulnbits");
+    shader.AdditionalImplementation() << R"ADDNL_FN(
         fn loadSHMB(b_global_base:u32, kidx_v:u32, row: u32, col: u32)
         {
             let b_global = b_global_base + row;
@@ -327,12 +347,13 @@ Status DP4AMatMulNBitsSmallMProgram::GenerateShaderCode(ShaderHelper& shader) co
   //    - Performs final reduction sum in inter_results for output
   shader.AdditionalImplementation() << "  const tile_size = " << tile_size_ << "u;\n"
                                     << "  const tile_size_k_vec = " << tile_size_k_vec << "u;\n"
-                                    // sub_tile_size is the number of concurrent b rows processed by the workgroup.
-                                    << "  const sub_tile_size = " << WorkgroupSizeX() / tile_size_k_vec << "u;\n"
+                                    << "  const double_tile_size_k_vec = " << 2 * tile_size_k_vec << "u;\n"
+                                    // sub_tile_count is the number of concurrent b rows processed by the workgroup.
+                                    << "  const sub_tile_count = " << WorkgroupSizeX() / tile_size_k_vec << "u;\n"
                                     << "  var<workgroup> inter_results: array<array<output_element_t, tile_size_k_vec>, tile_size>;\n";
-  if (nbits_ == 4) {
-    shader.AdditionalImplementation() << commonFunctions
-                                      << R"ADDNL_FN(
+
+  shader.AdditionalImplementation() << commonFunctions(nbits_)
+                                    << R"ADDNL_FN(
     // Need 2 * tile_size_k_vec (32) to store a tile_A since b is quantized as 4 bits and a is quantized as 8 bits.
     var<workgroup> tile_A : array<vec4<u32>, 32>;
     // Need 4 scales value since each tile_A includes 512 (4x4x32) scalars and the block_size is 128.
@@ -352,42 +373,11 @@ Status DP4AMatMulNBitsSmallMProgram::GenerateShaderCode(ShaderHelper& shader) co
       }
     }
   )ADDNL_FN";
-  } else {
-    shader.AdditionalImplementation() << AlignWithZeroPoint
-                                      << R"ADDNL_FN(
-    var<workgroup> tile_A : array<vec4<u32>, tile_size_k_vec>;
-    // Need 2 scales value since each tile_A includes 256 (4x4x16) scalars and the block_size is 128.
-    var<workgroup> scale_A : array<output_element_t, 2>;
-    fn loadSHMA(a_global: u32, kidx_v: u32, col: u32)
-    {
-      let k_offset = kidx_v + col;
-      if (k_offset >= uniforms.K16) {
-        return;
-      }
 
-      tile_A[col] = input_a[a_global*uniforms.K16+k_offset];
-      if (col < 2)
-      {
-        // kidx_v - covers 16 values of k in input_a
-        scale_A[col] = scales_a[a_global*(uniforms.K/128) + kidx_v/8 + col];
-      }
-    }
-
-    // Scaled dot product of 4 packed unsigned integers.
-    fn SDP4AI(a1:vec4<u32>, b1:vec4<u32>, scale:output_element_t) -> output_element_t
-    {
-      var local_sum = dot4I8Packed(a1[0], b1[0]);
-      local_sum += dot4I8Packed(a1[1], b1[1]);
-      local_sum += dot4I8Packed(a1[2], b1[2]);
-      local_sum += dot4I8Packed(a1[3], b1[3]);
-      return output_element_t(f32(local_sum) * f32(scale));
-    }
-  )ADDNL_FN";
-  }
   shader.MainFunctionBody() << R"MAIN_FN(
     let a_global = u32(workgroup_idx / uniforms.num_N_tile);
     let b_global_base = (workgroup_idx % uniforms.num_N_tile) * tile_size;
-    // Handle each workgroup threads as a block of [sub_tile_size][tile_size_k_vec]
+    // Handle each workgroup threads as a block of [sub_tile_count][tile_size_k_vec]
     let local_col = local_idx % tile_size_k_vec;
     let local_row = local_idx / tile_size_k_vec;
   )MAIN_FN";
@@ -396,7 +386,7 @@ Status DP4AMatMulNBitsSmallMProgram::GenerateShaderCode(ShaderHelper& shader) co
     for (var kidx_v:u32 = 0; kidx_v < uniforms.K32; kidx_v += tile_size_k_vec)
     {
       // Load Phase: Populate shared memory for the workgroup.
-      if (local_idx < 32)
+      if (local_idx < double_tile_size_k_vec)
       {
         loadSHMA(a_global, kidx_v * 2, local_idx);
       }
@@ -408,7 +398,7 @@ Status DP4AMatMulNBitsSmallMProgram::GenerateShaderCode(ShaderHelper& shader) co
       var own_b1 = vec4<u32>(0);
       let k_offset = kidx_v + local_col;
       // calculate intermediate results into inter_results.
-      for (var row_offset = 0u; row_offset < tile_size; row_offset += sub_tile_size) {
+      for (var row_offset = 0u; row_offset < tile_size; row_offset += sub_tile_count) {
         let b_global = b_global_base + row_offset + local_row;
         if (b_global < uniforms.N && k_offset < uniforms.K32)
         {
@@ -427,28 +417,32 @@ Status DP4AMatMulNBitsSmallMProgram::GenerateShaderCode(ShaderHelper& shader) co
   )MAIN_FN";
   } else {
     shader.MainFunctionBody() << R"MAIN_FN(
-    for (var kidx_v:u32 = 0; kidx_v < uniforms.K16; kidx_v += tile_size_k_vec)
+    for (var kidx_v:u32 = 0; kidx_v < uniforms.K16; kidx_v += double_tile_size_k_vec)
     {
       // Load Phase: Populate shared memory for the workgroup.
-      if (local_idx < tile_size_k_vec)
+      if (local_idx < double_tile_size_k_vec)
       {
         loadSHMA(a_global, kidx_v, local_idx);
       }
       workgroupBarrier();
-      var own_a: vec4<u32> = tile_A[local_col];
-      var own_scale_a = scale_A[local_col / 8];
-      let k_offset = kidx_v + local_col;
+      var own_a: vec4<u32> = tile_A[local_col * 2];
+      var own_a1: vec4<u32> = tile_A[local_col * 2 + 1];
+      var own_scale_a = scale_A[local_col / 4];
+      var own_b = vec4<u32>(0);
+      var own_b1 = vec4<u32>(0);
+      let k_offset = kidx_v + local_col * 2;
       // calculate intermediate results into inter_results.
-      for (var row_offset = 0u; row_offset < tile_size; row_offset += sub_tile_size) {
+      for (var row_offset = 0u; row_offset < tile_size; row_offset += sub_tile_count) {
         let b_global = b_global_base + row_offset + local_row;
         if (b_global < uniforms.N && k_offset < uniforms.K16)
         {
           let b_offset = b_global * uniforms.K16 + k_offset;
-          let own_b = AlignWithZeroPoint(input_b[b_offset]);
+          own_b = AlignWithZeroPoint(input_b[b_offset]);
+          own_b1 = AlignWithZeroPoint(input_b[b_offset + 1]);
 
           // k_offset - covers 16 values of k in input_b
           let own_scale_b = scales_b[b_global * uniforms.K / uniforms.block_size + k_offset * 16 / uniforms.block_size];
-          inter_results[row_offset + local_row][local_col] += SDP4AI(own_a, own_b, own_scale_a * own_scale_b);
+          inter_results[row_offset + local_row][local_col] += SDP8AI(own_a, own_b, own_a1, own_b1, own_scale_a * own_scale_b);
         }
       }
       workgroupBarrier();
