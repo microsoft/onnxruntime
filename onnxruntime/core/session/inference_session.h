@@ -58,6 +58,8 @@ class IExecutionProvider;
 class IOBinding;
 struct Notification;
 
+void reset_saturation_count();
+
 #ifdef ENABLE_TRAINING
 struct PartialGraphExecutionState;
 using OrtValueCache = InlinedHashMap<std::string, OrtValue>;
@@ -477,6 +479,11 @@ class InferenceSession {
    * Get the options this session was initialized with.
    */
   const SessionOptions& GetSessionOptions() const;
+
+  /*
+   * Get the options so auto-selected EPs can augment as they are added post-session creation.
+   */
+  SessionOptions& GetMutableSessionOptions();
 
   /*
    * Get the DataTransferManager associated with this session

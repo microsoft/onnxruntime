@@ -57,24 +57,14 @@ def patch_module_or_classes(mod, verbose: int = 0) -> dict[type, dict[type, Call
     return res
 
 
-def unpatch_module_or_classes(mod, info: dict[type, dict[type, Callable]], verbose: int = 0):
-    """
-    Reverts modification made by :func:`patch_module_or_classes`.
-
-    :param mod: module of list of clsses to patch
-    :param verbose: verbosity
-    """
-    if isinstance(mod, list):
-        to_patch = mod
-        name = "list"
-    else:
-        to_patch = []
-        for k in dir(mod):
-            if k.startswith("patched_"):
-                v = getattr(mod, k)
-                if hasattr(v, "_PATCHED_CLASS_") and hasattr(v, "_PATCHES_"):
-                    to_patch.append(v)
-        name = mod.__name__
+def unpatch_module(mod, info: dict[type, dict[type, Callable]], verbose: int = 0):
+    """Reverts modification made by :func:`patch_module`."""
+    to_patch = []
+    for k in dir(mod):
+        if k.startswith("patched_"):
+            v = getattr(mod, k)
+            if hasattr(v, "_PATCHED_CLASS_") and hasattr(v, "_PATCHES_"):
+                to_patch.append(v)
     set_patch = set(to_patch)
 
     for cls, methods in info.items():

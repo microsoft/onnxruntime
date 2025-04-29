@@ -10,7 +10,8 @@ from typing import Any
 import numpy as np
 import packaging.version as pv
 import torch
-import transformers
+from transformers import __version__ as transformers_version
+from transformers.cache_utils import DynamicCache, EncoderDecoderCache
 from onnx import TensorProto
 from onnx.helper import np_dtype_to_tensor_dtype
 
@@ -469,6 +470,44 @@ def string_type(
     raise AssertionError(f"Unsupported type {type(obj).__name__!r} - {type(obj)}")
 
 
+if pv.Version(transformers_version) > pv.Version("4.49.99999"):
+
+    def make_dynamic_cache(
+        key_value_pairs: list[tuple[torch.Tensor, torch.Tensor]],
+    ) -> DynamicCache:
+        """
+        Creates an instance of :class:`DynamicCache`.
+        This version is valid for ``transformers >= 4.50``.
+
+        :param key_value_pairs: list of pairs of (key, values)
+        :return: :class:`DynamicCache`
+        """
+        return DynamicCache(key_value_pairs)
+
+else:
+
+    def make_dynamic_cache(
+        key_value_pairs: list[tuple[torch.Tensor, torch.Tensor]],
+    ) -> DynamicCache:
+        """
+        Creates an instance of :class:`DynamicCache`.
+        This version is valid for ``transformers < 4.50``.
+
+        :param key_value_pairs: list of pairs of (key, values)
+        :return: :class:`DynamicCache`
+        """
+        cache = DynamicCache(len(key_value_pairs))
+        for i, (key, value) in enumerate(key_value_pairs):
+            cache.update(key, value, i)
+        return cache
+
+
+def make_encoder_decoder_cache(
+    self_attention_cache: DynamicCache,
+    cross_attention_cache: DynamicCache,
+) -> EncoderDecoderCache:
+    "Creates an EncoderDecoderCache."
+    return EncoderDecoderCache(self_attention_cache=self_attention_cache, cross_attention_cache=cross_attention_cache)
 def torch_deepcopy(value: Any) -> Any:
     """Makes a deepcopy."""
     if isinstance(value, (int, float, str)):

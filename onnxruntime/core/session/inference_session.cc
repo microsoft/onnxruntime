@@ -2320,6 +2320,10 @@ const SessionOptions& InferenceSession::GetSessionOptions() const {
   return session_options_;
 }
 
+SessionOptions& InferenceSession::GetMutableSessionOptions() {
+  return session_options_;
+}
+
 const DataTransferManager& InferenceSession::GetDataTransferManager() const {
   return data_transfer_mgr_;
 }
@@ -2860,6 +2864,8 @@ Status InferenceSession::Run(const RunOptions& run_options,
     node_stats_recorder_->ResetPerRunNameDeduper();
   }
 #endif
+
+  reset_saturation_count();
 
   // As N+1 inference runs (N for memory allocation and 1 for graph capturing)
   // are needed before replaying the captured graph, here run N inference runs recursively until graph captured,
