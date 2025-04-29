@@ -2189,18 +2189,6 @@ def main():
 
     cmake_extra_defines = normalize_arg_list(args.cmake_extra_defines)
 
-    # When this flag is enabled, it is possible ONNXRuntime shared library is build separately, expecting some compatible EP
-    # shared lib being build in a separate process. So we skip the testing if none of the primary EPs are built with ONNXRuntime
-    # shared lib
-    if args.enable_generic_interface and not (
-        args.use_nv_tensorrt_rtx
-        or args.use_tensorrt
-        or args.use_openvino
-        or args.use_vitisai
-        or (args.use_qnn and args.use_qnn != "static_lib")
-    ):
-        args.test = False
-
     if args.use_tensorrt or args.use_nv_tensorrt_rtx:
         args.use_cuda = True
 
