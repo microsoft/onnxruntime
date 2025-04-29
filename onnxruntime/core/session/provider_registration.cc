@@ -150,6 +150,11 @@ ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider,
                                  (std::string(provider_name) + " execution provider is not supported in this build. ").c_str());
   };
 
+  auto create_failed_to_load_provider_status = [&provider_name]() {
+    return OrtApis::CreateStatus(ORT_FAIL,
+                                 (std::string("Failed to load provider ") + provider_name).c_str());
+  };
+
   auto create_unknown_provider_status = [&provider_name](gsl::span<const EpToAppend> supported_eps) -> OrtStatus* {
     std::ostringstream str_builder;
     str_builder << "Unknown provider name '" << provider_name << "'. "
@@ -201,7 +206,11 @@ ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider,
     }
     case EpID::QNN: {
 #if defined(USE_QNN) || defined(USE_QNN_PROVIDER_INTERFACE)
-      options->provider_factories.push_back(QNNProviderFactoryCreator::Create(provider_options, &(options->value)));
+      if (auto ep_factory = QNNProviderFactoryCreator::Create(provider_options, &(options->value)); ep_factory) {
+        options->provider_factories.push_back(std::move(ep_factory));
+      } else {
+        status = create_failed_to_load_provider_status();
+      }
 #else
       status = create_not_supported_status();
 #endif
@@ -209,8 +218,11 @@ ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider,
     }
     case EpID::OpenVINO: {
 #if defined(USE_OPENVINO) || defined(USE_OPENVINO_PROVIDER_INTERFACE)
-      options->provider_factories.push_back(OpenVINOProviderFactoryCreator::Create(&provider_options,
-                                                                                   &(options->value)));
+      if (auto ep_factory = OpenVINOProviderFactoryCreator::Create(&provider_options, &(options->value)); ep_factory) {
+        options->provider_factories.push_back(std::move(ep_factory));
+      } else {
+        status = create_failed_to_load_provider_status();
+      }
 #else
       status = create_not_supported_status();
 #endif
@@ -290,10 +302,11 @@ ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider,
     case EpID::NvTensorRtRtx: {
 #if defined(USE_NV) || defined(USE_NV_PROVIDER_INTERFACE)
       auto factory = onnxruntime::NvProviderFactoryCreator::Create(provider_options);
-      if (!factory) {
-        return OrtApis::CreateStatus(ORT_FAIL, "SessionOptionsAppendExecutionProvider_Nv_TensorRT_RTX: Failed to load shared library");
+      if (factory) {
+        options->provider_factories.push_back(factory);
+      } else {
+        status = create_failed_to_load_provider_status();
       }
-      options->provider_factories.push_back(factory);
 #else
       status = create_not_supported_status();
 #endif

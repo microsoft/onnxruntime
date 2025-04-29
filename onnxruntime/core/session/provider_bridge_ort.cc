@@ -2003,25 +2003,44 @@ OrtTensorRTProviderOptionsV2 OrtTensorRTProviderOptionsToOrtTensorRTProviderOpti
   return trt_options_converted;
 }
 
-std::shared_ptr<IExecutionProviderFactory> TensorrtProviderFactoryCreator::Create(int device_id) {
+std::shared_ptr<IExecutionProviderFactory> TensorrtProviderFactoryCreator::Create(int device_id) try {
   return s_library_tensorrt.Get().CreateExecutionProviderFactory(device_id);
+} catch (const std::exception& exception) {
+  // Will get an exception when fail to load EP library.
+  LOGS_DEFAULT(ERROR) << exception.what();
+  return nullptr;
 }
 
-std::shared_ptr<IExecutionProviderFactory> TensorrtProviderFactoryCreator::Create(const OrtTensorRTProviderOptions* provider_options) {
+std::shared_ptr<IExecutionProviderFactory> TensorrtProviderFactoryCreator::Create(
+    const OrtTensorRTProviderOptions* provider_options) try {
   OrtTensorRTProviderOptionsV2 trt_options_converted = onnxruntime::OrtTensorRTProviderOptionsToOrtTensorRTProviderOptionsV2(provider_options);
   return s_library_tensorrt.Get().CreateExecutionProviderFactory(&trt_options_converted);
+} catch (const std::exception& exception) {
+  // Will get an exception when fail to load EP library.
+  LOGS_DEFAULT(ERROR) << exception.what();
+  return nullptr;
 }
 
-std::shared_ptr<IExecutionProviderFactory> TensorrtProviderFactoryCreator::Create(const OrtTensorRTProviderOptionsV2* provider_options) {
+std::shared_ptr<IExecutionProviderFactory> TensorrtProviderFactoryCreator::Create(
+    const OrtTensorRTProviderOptionsV2* provider_options) try {
   return s_library_tensorrt.Get().CreateExecutionProviderFactory(provider_options);
+} catch (const std::exception& exception) {
+  // Will get an exception when fail to load EP library.
+  LOGS_DEFAULT(ERROR) << exception.what();
+  return nullptr;
 }
 
 std::shared_ptr<IExecutionProviderFactory> NvProviderFactoryCreator::Create(int device_id) {
   return s_library_nv.Get().CreateExecutionProviderFactory(device_id);
 }
 
-std::shared_ptr<IExecutionProviderFactory> NvProviderFactoryCreator::Create(const ProviderOptions& provider_options) {
+std::shared_ptr<IExecutionProviderFactory> NvProviderFactoryCreator::Create(
+    const ProviderOptions& provider_options) try {
   return s_library_nv.Get().CreateExecutionProviderFactory(&provider_options);
+} catch (const std::exception& exception) {
+  // Will get an exception when fail to load EP library.
+  LOGS_DEFAULT(ERROR) << exception.what();
+  return nullptr;
 }
 
 std::shared_ptr<IExecutionProviderFactory> MIGraphXProviderFactoryCreator::Create(const OrtMIGraphXProviderOptions* provider_options) {
@@ -2067,8 +2086,8 @@ ProviderOptions OrtOpenVINOProviderOptionsToOrtOpenVINOProviderOptionsV2(const O
 }
 
 #if !BUILD_QNN_EP_STATIC_LIB
-std::shared_ptr<IExecutionProviderFactory> QNNProviderFactoryCreator::Create(const ProviderOptions& provider_options_map,
-                                                                             const SessionOptions* session_options) {
+std::shared_ptr<IExecutionProviderFactory> QNNProviderFactoryCreator::Create(
+    const ProviderOptions& provider_options_map, const SessionOptions* session_options) try {
   const ConfigOptions* config_options = nullptr;
   if (session_options != nullptr) {
     config_options = &session_options->config_options;
@@ -2077,11 +2096,15 @@ std::shared_ptr<IExecutionProviderFactory> QNNProviderFactoryCreator::Create(con
   std::array<const void*, 2> configs_array = {&provider_options_map, config_options};
   const void* arg = reinterpret_cast<const void*>(&configs_array);
   return s_library_qnn.Get().CreateExecutionProviderFactory(arg);
+} catch (const std::exception& exception) {
+  // Will get an exception when fail to load EP library.
+  LOGS_DEFAULT(ERROR) << exception.what();
+  return nullptr;
 }
 #endif  // !BUILD_QNN_EP_STATIC_LIB
 
 std::shared_ptr<IExecutionProviderFactory> OpenVINOProviderFactoryCreator::Create(
-    const ProviderOptions* provider_options_map, const SessionOptions* session_options) {
+    const ProviderOptions* provider_options_map, const SessionOptions* session_options) try {
   // Append session options applicable for EP to EP Provider options.
   const ConfigOptions* config_options = nullptr;
   if (session_options != nullptr) {
@@ -2091,14 +2114,22 @@ std::shared_ptr<IExecutionProviderFactory> OpenVINOProviderFactoryCreator::Creat
   std::array<const void*, 2> configs_array = {provider_options_map, config_options};
   const void* arg = reinterpret_cast<const void*>(&configs_array);
   return s_library_openvino.Get().CreateExecutionProviderFactory(arg);
+} catch (const std::exception& exception) {
+  // Will get an exception when fail to load EP library.
+  LOGS_DEFAULT(ERROR) << exception.what();
+  return nullptr;
 }
 
 std::shared_ptr<IExecutionProviderFactory> DnnlProviderFactoryCreator::Create(const OrtDnnlProviderOptions* dnnl_options) {
   return s_library_dnnl.Get().CreateExecutionProviderFactory(dnnl_options);
 }
 
-std::shared_ptr<IExecutionProviderFactory> VitisAIProviderFactoryCreator::Create(const ProviderOptions& provider_options) {
+std::shared_ptr<IExecutionProviderFactory> VitisAIProviderFactoryCreator::Create(
+    const ProviderOptions& provider_options) try {
   return s_library_vitisai.Get().CreateExecutionProviderFactory(&provider_options);
+} catch (const std::exception& exception) {
+  LOGS_DEFAULT(ERROR) << exception.what();
+  return nullptr;
 }
 
 ProviderInfo_OpenVINO* TryGetProviderInfo_OpenVINO() try {

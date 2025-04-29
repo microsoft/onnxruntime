@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include "core/common/common.h"
+#include "core/graph/constants.h"
 #include "core/session/onnxruntime_cxx_api.h"
 #include "core/session/onnxruntime_session_options_config_keys.h"
 #include "gmock/gmock.h"
@@ -34,3 +35,115 @@ TEST(CApiTest, session_options_oversized_affinity_string) {
 }
 
 #endif
+
+#if defined(USE_OPENVINO_PROVIDER_INTERFACE)
+// Test that loading OpenVINO EP when only the interface is built (but not the full EP) fails.
+TEST(CApiTest, session_options_provider_interface_fail_add_openvino) {
+  const OrtApi& api = Ort::GetApi();
+  OrtSessionOptions* session_options = nullptr;
+  OrtStatus* status = nullptr;
+
+  status = api.CreateSessionOptions(&session_options);
+  ASSERT_TRUE(status == nullptr);
+
+  // Should not be able to add OpenVINO EP to session options because we only built the interface.
+  status = api.SessionOptionsAppendExecutionProvider(session_options,
+                                                     kOpenVINOExecutionProvider, nullptr, nullptr, 0);
+  ASSERT_TRUE(status != nullptr);
+  OrtErrorCode err_code = api.GetErrorCode(status);
+  EXPECT_EQ(err_code, ORT_FAIL);
+
+  const char* err_msg = api.GetErrorMessage(status);
+  EXPECT_THAT(err_msg, testing::HasSubstr("Failed to load"));
+}
+#endif  // defined(USE_OPENVINO_PROVIDER_INTERFACE)
+
+#if defined(USE_NV_PROVIDER_INTERFACE)
+// Test that loading NV EP when only the interface is built (but not the full EP) fails.
+TEST(CApiTest, session_options_provider_interface_fail_add_nv) {
+  const OrtApi& api = Ort::GetApi();
+  OrtSessionOptions* session_options = nullptr;
+  OrtStatus* status = nullptr;
+
+  status = api.CreateSessionOptions(&session_options);
+  ASSERT_TRUE(status == nullptr);
+
+  // Should not be able to add NV EP to session options because we only built the interface.
+  status = api.SessionOptionsAppendExecutionProvider(session_options,
+                                                     kNvTensorRTRTXExecutionProvider, nullptr, nullptr, 0);
+  ASSERT_TRUE(status != nullptr);
+  OrtErrorCode err_code = api.GetErrorCode(status);
+  EXPECT_EQ(err_code, ORT_FAIL);
+
+  const char* err_msg = api.GetErrorMessage(status);
+  EXPECT_THAT(err_msg, testing::HasSubstr("Failed to load"));
+}
+#endif  // defined(USE_OPENVINO_PROVIDER_INTERFACE)
+
+#if defined(USE_TENSORRT_PROVIDER_INTERFACE)
+// Test that loading NV EP when only the interface is built (but not the full EP) fails.
+TEST(CApiTest, session_options_provider_interface_fail_add_tensorrt) {
+  const OrtApi& api = Ort::GetApi();
+  OrtSessionOptions* session_options = nullptr;
+  OrtStatus* status = nullptr;
+
+  status = api.CreateSessionOptions(&session_options);
+  ASSERT_TRUE(status == nullptr);
+
+  // Should not be able to add NV EP to session options because we only built the interface.
+  OrtTensorRTProviderOptionsV2* trt_options = nullptr;
+  status = api.CreateTensorRTProviderOptions(&trt_options);
+  status = api.SessionOptionsAppendExecutionProvider_TensorRT_V2(session_options, trt_options);
+  ASSERT_TRUE(status != nullptr);
+
+  OrtErrorCode err_code = api.GetErrorCode(status);
+  EXPECT_EQ(err_code, ORT_FAIL);
+
+  const char* err_msg = api.GetErrorMessage(status);
+  EXPECT_THAT(err_msg, testing::HasSubstr("Failed to load"));
+}
+#endif  // defined(USE_TENSORRT_PROVIDER_INTERFACE)
+
+#if defined(USE_VITISAI_PROVIDER_INTERFACE)
+// Test that loading VitisAI EP when only the interface is built (but not the full EP) fails.
+TEST(CApiTest, session_options_provider_interface_fail_vitisai) {
+  const OrtApi& api = Ort::GetApi();
+  OrtSessionOptions* session_options = nullptr;
+  OrtStatus* status = nullptr;
+
+  status = api.CreateSessionOptions(&session_options);
+  ASSERT_TRUE(status == nullptr);
+
+  // Should not be able to add OpenVINO EP to session options because we only built the interface.
+  status = api.SessionOptionsAppendExecutionProvider(session_options,
+                                                     kVitisAIExecutionProvider, nullptr, nullptr, 0);
+  ASSERT_TRUE(status != nullptr);
+  OrtErrorCode err_code = api.GetErrorCode(status);
+  EXPECT_EQ(err_code, ORT_FAIL);
+
+  const char* err_msg = api.GetErrorMessage(status);
+  EXPECT_THAT(err_msg, testing::HasSubstr("Failed to load"));
+}
+#endif  // defined(USE_VITISAI_PROVIDER_INTERFACE)
+
+#if defined(USE_QNN_PROVIDER_INTERFACE)
+// Test that loading QNN EP when only the interface is built (but not the full EP) fails.
+TEST(CApiTest, session_options_provider_interface_fail_vitisai) {
+  const OrtApi& api = Ort::GetApi();
+  OrtSessionOptions* session_options = nullptr;
+  OrtStatus* status = nullptr;
+
+  status = api.CreateSessionOptions(&session_options);
+  ASSERT_TRUE(status == nullptr);
+
+  // Should not be able to add QNN EP to session options because we only built the interface.
+  status = api.SessionOptionsAppendExecutionProvider(session_options,
+                                                     kQnnExecutionProvider, nullptr, nullptr, 0);
+  ASSERT_TRUE(status != nullptr);
+  OrtErrorCode err_code = api.GetErrorCode(status);
+  EXPECT_EQ(err_code, ORT_FAIL);
+
+  const char* err_msg = api.GetErrorMessage(status);
+  EXPECT_THAT(err_msg, testing::HasSubstr("Failed to load"));
+}
+#endif  // defined(USE_VITISAI_PROVIDER_INTERFACE)
