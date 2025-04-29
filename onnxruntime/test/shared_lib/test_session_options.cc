@@ -90,7 +90,7 @@ TEST(CApiTest, session_options_provider_interface_fail_add_tensorrt) {
   status = api.CreateSessionOptions(&session_options);
   ASSERT_TRUE(status == nullptr);
 
-  // Should not be able to add NV EP to session options because we only built the interface.
+  // Should not be able to add TensorRT EP to session options because we only built the interface.
   OrtTensorRTProviderOptionsV2* trt_options = nullptr;
   status = api.CreateTensorRTProviderOptions(&trt_options);
   status = api.SessionOptionsAppendExecutionProvider_TensorRT_V2(session_options, trt_options);

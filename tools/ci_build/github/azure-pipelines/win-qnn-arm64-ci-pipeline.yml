@@ -56,7 +56,7 @@ jobs:
         ExtraQnnBuildArgs: ''
       SHARED_LIB_GENERIC_INTERFACE:
         QnnLibKind: 'shared_lib'
-        ExtraQnnBuildArgs: '--enable_generic_interface'
+        ExtraQnnBuildArgs: '--enable_generic_interface --build_wheel'
   steps:
 
   - script: |
@@ -93,7 +93,7 @@ jobs:
         --build_shared_lib --use_vcpkg --use_vcpkg_ms_internal_asset_cache 
         --use_qnn $(QnnLibKind)
         --qnn_home $(QnnSDKRootDir)
-        --update --build --parallel --build_wheel $(ExtraQnnBuildArgs)
+        --update --build --parallel $(ExtraQnnBuildArgs)
 
   - script: |
       python $(Build.SourcesDirectory)\tools\ci_build\build.py ^
@@ -103,7 +103,7 @@ jobs:
         --build_shared_lib ^
         --use_qnn $(QnnLibKind) ^
         --qnn_home $(QnnSDKRootDir) ^
-        --test --enable_onnx_tests --build_wheel $(ExtraQnnBuildArgs)
+        --test --enable_onnx_tests $(ExtraQnnBuildArgs)
     displayName: 'Run unit tests'
 
   - script: |

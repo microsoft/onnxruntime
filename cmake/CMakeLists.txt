@@ -1238,7 +1238,7 @@ function(onnxruntime_set_compile_flags target_name)
       target_compile_definitions(${target_name} PRIVATE ${ORT_FLAG})
     endforeach()
 
-    # These are the targes in which USE_<EP>_PROVIDER_INTERFACE is used.
+    # These are the targets in which USE_<EP>_PROVIDER_INTERFACE is used.
     set(ORT_EXTRA_INTERFACE_FLAG_TARGETS "onnxruntime"
                                          "onnxruntime_session"
                                          "onnxruntime_optimizer"
