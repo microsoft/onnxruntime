@@ -10,6 +10,7 @@
 #include <string_view>
 #include <unordered_map>
 #include <unordered_set>
+#include <cstdint>
 #include <vector>
 
 namespace onnx_transpose_optimization {

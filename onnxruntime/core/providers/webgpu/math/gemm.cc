@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include "core/providers/webgpu/math/gemm.h"
+#include "core/providers/webgpu/math/gemm_vec4.h"
 
 #include <vector>
 
@@ -197,6 +198,11 @@ Status Gemm::ComputeInternal(ComputeContext& context) const {
     return Status::OK();
   }
 
+  // First try vec4 optimization if possible
+  if (CanApplyGemmVec4(A, B)) {
+    return ApplyGemmVec4(A, B, C, transA_, transB_, alpha_, beta_, context, Y);
+  }
+
   // WebGPU doesn't support binding a zero-sized buffer, so we need to check if A or B is empty.
   bool need_handle_matmul = A_shape.Size() > 0 && B_shape.Size() > 0;
   bool need_handle_bias = C && beta_;
@@ -220,14 +226,12 @@ Status Gemm::ComputeInternal(ComputeContext& context) const {
       .AddOutputs({{Y, ProgramTensorMetadataDependency::Type}})
       .SetDispatchGroupSize(num_tile_n * num_tile_m)
       .SetWorkgroupSize(TILE_SIZE, TILE_SIZE)
-      .AddUniformVariables({
-          {static_cast<uint32_t>(num_tile_n)},  // num_tile_n
-          {static_cast<uint32_t>(M)},           // M
-          {static_cast<uint32_t>(N)},           // N
-          {static_cast<uint32_t>(K)},           // K
-          {alpha_},                             // alpha
-          {beta_}                               // beta
-      });
+      .AddUniformVariables({{num_tile_n},
+                            {M},
+                            {N},
+                            {K},
+                            {alpha_},
+                            {beta_}});
 
   return context.RunProgram(program);
 }

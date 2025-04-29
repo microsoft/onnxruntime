@@ -172,6 +172,20 @@ inline const OrtCompileApi& GetCompileApi() {
   return *api;
 }
 
+/// <summary>
+/// This returns a reference to the ORT C EP API. Used if authoring a plugin execution provider.
+/// </summary>
+/// <returns>ORT C EP API reference</returns>
+inline const OrtEpApi& GetEpApi() {
+  auto* api = GetApi().GetEpApi();
+  if (api == nullptr) {
+    // minimal build
+    ORT_CXX_API_THROW("EP API is not available in this build", ORT_FAIL);
+  }
+
+  return *api;
+}
+
 /** \brief IEEE 754 half-precision floating point data type
  *
  * \details This struct is used for converting float to float16 and back
@@ -561,6 +575,7 @@ ORT_DEFINE_RELEASE(Graph);
 ORT_DEFINE_RELEASE(Model);
 ORT_DEFINE_RELEASE(KeyValuePairs)
 ORT_DEFINE_RELEASE_FROM_API_STRUCT(ModelCompilationOptions, GetCompileApi);
+ORT_DEFINE_RELEASE_FROM_API_STRUCT(EpDevice, GetEpApi);
 
 #undef ORT_DEFINE_RELEASE
 #undef ORT_DEFINE_RELEASE_FROM_API_STRUCT
@@ -763,10 +778,16 @@ struct KeyValuePairs : detail::KeyValuePairsImpl<OrtKeyValuePairs> {
   /// Take ownership of a pointer created by C API
   explicit KeyValuePairs(OrtKeyValuePairs* p) : KeyValuePairsImpl<OrtKeyValuePairs>{p} {}
 
+  /// \brief Wraps OrtApi::CreateKeyValuePairs
   explicit KeyValuePairs();
+
+  /// \brief Wraps OrtApi::CreateKeyValuePairs and OrtApi::AddKeyValuePair
   explicit KeyValuePairs(const std::unordered_map<std::string, std::string>& kv_pairs);
 
+  /// \brief Wraps OrtApi::AddKeyValuePair
   void Add(const char* key, const char* value);
+
+  /// \brief Wraps OrtApi::RemoveKeyValuePair
   void Remove(const char* key);
 
   ConstKeyValuePairs GetConst() const { return ConstKeyValuePairs{this->p_}; }
@@ -806,9 +827,20 @@ struct EpDeviceImpl : Ort::detail::Base<T> {
 }  // namespace detail
 
 /** \brief Wrapper around ::OrtEpDevice
- * \remarks EpDevice is always read-only for API users.
+ * \remarks EpDevice is always read-only for ORT API users.
  */
 using ConstEpDevice = detail::EpDeviceImpl<Ort::detail::Unowned<const OrtEpDevice>>;
+
+/** \brief Mutable EpDevice that is created by EpApi users.
+ */
+struct EpDevice : detail::EpDeviceImpl<OrtEpDevice> {
+  explicit EpDevice(std::nullptr_t) {}                                 ///< No instance is created
+  explicit EpDevice(OrtEpDevice* p) : EpDeviceImpl<OrtEpDevice>{p} {}  ///< Take ownership of a pointer created by C API
+
+  /// \brief Wraps OrtEpApi::CreateEpDevice
+  EpDevice(OrtEpFactory& ep_factory, ConstHardwareDevice& hardware_device,
+           ConstKeyValuePairs ep_metadata = {}, ConstKeyValuePairs ep_options = {});
+};
 
 /** \brief The Env (Environment)
  *
