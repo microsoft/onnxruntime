@@ -258,13 +258,6 @@ option(onnxruntime_USE_OPENVINO_INTERFACE "Build ONNXRuntime shared lib which is
 option(onnxruntime_USE_VITISAI_INTERFACE "Build ONNXRuntime shared lib which is compatible with Vitis-AI EP interface" OFF)
 option(onnxruntime_USE_QNN_INTERFACE "Build ONNXRuntime shared lib which is compatible with QNN EP interface" OFF)
 
-# Check if the compiler is GCC or Clang
-if (CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
-    if (CMAKE_SYSTEM_PROCESSOR MATCHES "x86_64" OR CMAKE_SYSTEM_PROCESSOR MATCHES "i[3-6]86")
-        add_compile_options(-mwaitpkg)
-    endif()
-endif()
-
 if("${CMAKE_C_COMPILER_ID}" STREQUAL "GNU" AND CMAKE_C_COMPILER_VERSION VERSION_LESS 11.1)
   message(FATAL_ERROR  "GCC version must be greater than or equal to 11.1")
 endif()

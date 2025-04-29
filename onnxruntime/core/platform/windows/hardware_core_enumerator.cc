@@ -43,9 +43,9 @@ uint32_t CountSetBits(DWORD input) {
   return c;
 }
 
-IntelChecks checkIntel() {
-  IntelChecks intelCheck = {false, false};
-  bool isIntelSpecifiedPlatform = false;
+IntelChecks CheckIntel() {
+  IntelChecks intel_check = {false, false};
+  bool isIntel_SpecifiedPlatform = false;
   const int kVendorID_IntelSpecifiedPlatformIDs[3] = {
       // ExtendedModel, ExtendedFamily, Family Code, and Model Number
       0xa06a,  // MTL
@@ -58,22 +58,22 @@ IntelChecks checkIntel() {
   __cpuid(regs_leaf0, 0);
   __cpuid(regs_leaf1, 0x1);
 
-  auto isIntel = (kVendorID_Intel[0] == regs_leaf0[1]) && (kVendorID_Intel[1] == regs_leaf0[2]) && (kVendorID_Intel[2] == regs_leaf0[3]);
+  auto is_Intel = (kVendorID_Intel[0] == regs_leaf0[1]) && (kVendorID_Intel[1] == regs_leaf0[2]) && (kVendorID_Intel[2] == regs_leaf0[3]);
 
-  if (!isIntel) {
-    return intelCheck;  // if not an Intel CPU, return early
+  if (!is_Intel) {
+    return intel_check;  // if not an Intel CPU, return early
   }
 
   for (int intelSpecifiedPlatform : kVendorID_IntelSpecifiedPlatformIDs) {
     if ((regs_leaf1[0] >> 4) == intelSpecifiedPlatform) {
-      isIntelSpecifiedPlatform = true;
+      isIntel_SpecifiedPlatform = true;
     }
   }
 
-  intelCheck.isIntel = isIntel;
-  intelCheck.isIntelSpecifiedPlatform = isIntelSpecifiedPlatform;
+  intel_check.is_Intel = is_Intel;
+  intel_check.isIntel_SpecifiedPlatform = isIntel_SpecifiedPlatform;
 
-  return intelCheck;
+  return intel_check;
 }
 
 static CoreCounter GetCoreInfo() {
@@ -119,10 +119,10 @@ uint32_t HardwareCoreEnumerator::DefaultIntraOpNumThreads() {
   auto cores = GetCoreInfo();
 #if !defined(_M_ARM64EC) && !defined(_M_ARM64) && !defined(__aarch64__)
 
-  IntelChecks checkIfIntel = checkIntel();
+  IntelChecks check_Intel = CheckIntel();
 
-  if (checkIfIntel.isIntel) {
-    if (checkIfIntel.isIntelSpecifiedPlatform) {
+  if (check_Intel.is_Intel) {
+    if (check_Intel.isIntel_SpecifiedPlatform) {
       // We want to exclude cores without an LLC
       return cores.LLCCores;
     } else {

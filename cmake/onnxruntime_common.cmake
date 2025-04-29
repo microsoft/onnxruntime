@@ -99,6 +99,11 @@ if(WIN32)
     set_property(TARGET onnxruntime_common PROPERTY CXX_STANDARD 23)
     target_compile_options(onnxruntime_common PRIVATE "/Zc:char8_t-")
   endif()
+else()
+   set_source_files_properties(
+        ${ONNXRUNTIME_ROOT}/core/common/spin_pause.cc
+        PROPERTIES COMPILE_FLAGS "-mwaitpkg"
+   )
 endif()
 if (onnxruntime_USE_TELEMETRY)
   set_target_properties(onnxruntime_common PROPERTIES COMPILE_FLAGS "/FI${ONNXRUNTIME_INCLUDE_DIR}/core/platform/windows/TraceLoggingConfigPrivate.h")
