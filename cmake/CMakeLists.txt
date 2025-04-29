@@ -253,6 +253,7 @@ option(onnxruntime_FORCE_GENERIC_ALGORITHMS "Disable optimized arch-specific alg
 
 option(onnxruntime_USE_TENSORRT_INTERFACE "Build ONNXRuntime shared lib which is compatible with TensorRT EP interface" OFF)
 option(onnxruntime_USE_NV_INTERFACE "Build ONNXRuntime shared lib which is compatible with NV EP interface" OFF)
+option(onnxruntime_USE_CUDA_INTERFACE "Build ONNXRuntime shared lib which is compatible with Cuda EP interface" OFF)
 option(onnxruntime_USE_OPENVINO_INTERFACE "Build ONNXRuntime shared lib which is compatible with OpenVINO EP interface" OFF)
 option(onnxruntime_USE_VITISAI_INTERFACE "Build ONNXRuntime shared lib which is compatible with Vitis-AI EP interface" OFF)
 option(onnxruntime_USE_QNN_INTERFACE "Build ONNXRuntime shared lib which is compatible with QNN EP interface" OFF)
@@ -909,6 +910,10 @@ if (onnxruntime_USE_CUDA)
       message( STATUS "Enable memory efficient attention for CUDA EP")
       list(APPEND ORT_PROVIDER_FLAGS -DUSE_MEMORY_EFFICIENT_ATTENTION=1)
     endif()
+endif()
+
+if (onnxruntime_USE_CUDA_INTERFACE AND (NOT onnxruntime_USE_CUDA))
+    list(APPEND ORT_EXTRA_INTERFACE_FLAGS -DUSE_CUDA_PROVIDER_INTERFACE=1)
 endif()
 
 if (onnxruntime_USE_VITISAI)

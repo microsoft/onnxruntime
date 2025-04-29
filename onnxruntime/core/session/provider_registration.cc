@@ -314,6 +314,7 @@ ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider,
     }
     default:
       ORT_UNUSED_PARAMETER(options);
+      ORT_UNUSED_PARAMETER(create_failed_to_load_provider_status);
       status = create_unknown_provider_status(supported_eps);
   }
 
