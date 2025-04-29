@@ -245,7 +245,7 @@ void CPUIDInfo::ArmWindowsInit() {
 
     // CP 4031 corresponds to ID_AA64ISAR1_EL1 register
     if (::RegGetValueA(HKEY_LOCAL_MACHINE, processor_subkey, "CP 4031", RRF_RT_REG_QWORD,
-                       nullptr, &midr_value, &data_size) != ERROR_SUCCESS) {
+                       nullptr, &id_aa64isar1_el1_value, &data_size) != ERROR_SUCCESS) {
       break;
     }
 
