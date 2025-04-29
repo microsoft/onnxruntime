@@ -115,7 +115,7 @@ struct OrtStatus {
 #define BACKEND_WEBGPU ""
 #endif
 
-#ifdef USE_CUDA
+#if defined(USE_CUDA) || defined(USE_CUDA_PROVIDER_INTERFACE)
 #include "core/providers/cuda/cuda_provider_factory.h"
 #include "core/providers/cuda/cuda_execution_provider_info.h"
 #endif
@@ -156,7 +156,7 @@ extern std::string openvino_device_type;
 #include "core/providers/cann/cann_execution_provider_info.h"
 #endif
 
-#ifdef USE_CUDA
+#if defined(USE_CUDA) || defined(USE_CUDA_PROVIDER_INTERFACE)
 namespace onnxruntime {
 ProviderInfo_CUDA* TryGetProviderInfo_CUDA();
 ProviderInfo_CUDA& GetProviderInfo_CUDA();

@@ -1247,6 +1247,7 @@ function(onnxruntime_set_compile_flags target_name)
     set(ORT_EXTRA_INTERFACE_FLAG_TARGETS "onnxruntime"
                                          "onnxruntime_session"
                                          "onnxruntime_optimizer"
+                                         "onnxruntime_providers"
                                          "onnxruntime_pybind11_state"
                                          "onnxruntime_shared_lib_test")
     if("${target_name}" IN_LIST ORT_EXTRA_INTERFACE_FLAG_TARGETS)

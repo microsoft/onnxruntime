@@ -19,7 +19,7 @@ OrtDevice::DeviceId cuda_device_id = 0;
 // TODO remove deprecated global config
 size_t gpu_mem_limit = std::numeric_limits<size_t>::max();
 
-#ifdef USE_CUDA
+#if defined(USE_CUDA) || defined(USE_CUDA_PROVIDER_INTERFACE)
 // TODO remove deprecated global config
 OrtCudnnConvAlgoSearch cudnn_conv_algo_search = OrtCudnnConvAlgoSearchExhaustive;
 // TODO remove deprecated global config

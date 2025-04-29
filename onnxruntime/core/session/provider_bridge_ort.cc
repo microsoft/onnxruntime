@@ -1928,13 +1928,23 @@ OrtCUDAProviderOptionsV2 OrtCUDAProviderOptionsToOrtCUDAProviderOptionsV2(const 
   return cuda_options_converted;
 }
 
-std::shared_ptr<IExecutionProviderFactory> CudaProviderFactoryCreator::Create(const OrtCUDAProviderOptions* provider_options) {
+std::shared_ptr<IExecutionProviderFactory> CudaProviderFactoryCreator::Create(
+    const OrtCUDAProviderOptions* provider_options) try {
   OrtCUDAProviderOptionsV2 cuda_options_converted = onnxruntime::OrtCUDAProviderOptionsToOrtCUDAProviderOptionsV2(provider_options);
   return s_library_cuda.Get().CreateExecutionProviderFactory(&cuda_options_converted);
+} catch (const std::exception& exception) {
+  // Will get an exception when fail to load EP library.
+  LOGS_DEFAULT(ERROR) << exception.what();
+  return nullptr;
 }
 
-std::shared_ptr<IExecutionProviderFactory> CudaProviderFactoryCreator::Create(const OrtCUDAProviderOptionsV2* provider_options) {
+std::shared_ptr<IExecutionProviderFactory> CudaProviderFactoryCreator::Create(
+    const OrtCUDAProviderOptionsV2* provider_options) try {
   return s_library_cuda.Get().CreateExecutionProviderFactory(provider_options);
+} catch (const std::exception& exception) {
+  // Will get an exception when fail to load EP library.
+  LOGS_DEFAULT(ERROR) << exception.what();
+  return nullptr;
 }
 
 std::shared_ptr<IExecutionProviderFactory> RocmProviderFactoryCreator::Create(const OrtROCMProviderOptions* provider_options) {
@@ -2459,7 +2469,7 @@ ORT_API_STATUS_IMPL(OrtSessionOptionsAppendExecutionProvider_CUDA, _In_ OrtSessi
 ORT_API_STATUS_IMPL(OrtApis::SetCurrentGpuDeviceId, [[maybe_unused]] _In_ int device_id) {
   API_IMPL_BEGIN
 
-#ifdef USE_CUDA
+#if defined(USE_CUDA) || defined(USE_CUDA_PROVIDER_INTERFACE)
   if (auto* info = onnxruntime::TryGetProviderInfo_CUDA())
     return info->SetCurrentGpuDeviceId(device_id);
 #endif
@@ -2476,7 +2486,7 @@ ORT_API_STATUS_IMPL(OrtApis::SetCurrentGpuDeviceId, [[maybe_unused]] _In_ int de
 ORT_API_STATUS_IMPL(OrtApis::GetCurrentGpuDeviceId, [[maybe_unused]] _In_ int* device_id) {
   API_IMPL_BEGIN
 
-#ifdef USE_CUDA
+#if defined(USE_CUDA) || defined(USE_CUDA_PROVIDER_INTERFACE)
   if (auto* info = onnxruntime::TryGetProviderInfo_CUDA())
     return info->GetCurrentGpuDeviceId(device_id);
 #endif
@@ -2630,7 +2640,7 @@ ORT_API_STATUS_IMPL(OrtApis::UpdateTensorRTProviderOptions,
 }
 
 #if defined(USE_TENSORRT) || defined(USE_TENSORRT_PROVIDER_INTERFACE) || \
-    defined(USE_CUDA) ||                                                 \
+    defined(USE_CUDA) || defined(USE_CUDA_PROVIDER_INTERFACE) ||         \
     defined(USE_CANN) ||                                                 \
     defined(USE_DNNL) ||                                                 \
     defined(USE_ROCM) ||                                                 \
@@ -2753,7 +2763,7 @@ ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider_CUDA_V2, _In_
 
 ORT_API_STATUS_IMPL(OrtApis::CreateCUDAProviderOptions, _Outptr_ OrtCUDAProviderOptionsV2** out) {
   API_IMPL_BEGIN
-#ifdef USE_CUDA
+#if defined(USE_CUDA) || defined(USE_CUDA_PROVIDER_INTERFACE)
   auto options = std::make_unique<OrtCUDAProviderOptionsV2>();
   *out = options.release();
   return nullptr;
@@ -2770,7 +2780,7 @@ ORT_API_STATUS_IMPL(OrtApis::UpdateCUDAProviderOptions,
                     _In_reads_(num_keys) const char* const* provider_options_values,
                     size_t num_keys) {
   API_IMPL_BEGIN
-#ifdef USE_CUDA
+#if defined(USE_CUDA) || defined(USE_CUDA_PROVIDER_INTERFACE)
   onnxruntime::ProviderOptions provider_options_map;
   for (size_t i = 0; i != num_keys; ++i) {
     if (provider_options_keys[i] == nullptr || provider_options_keys[i][0] == '\0' ||
@@ -2797,7 +2807,7 @@ ORT_API_STATUS_IMPL(OrtApis::UpdateCUDAProviderOptions,
 ORT_API_STATUS_IMPL(OrtApis::GetCUDAProviderOptionsAsString, _In_ const OrtCUDAProviderOptionsV2* cuda_options, _Inout_ OrtAllocator* allocator,
                     _Outptr_ char** ptr) {
   API_IMPL_BEGIN
-#ifdef USE_CUDA
+#if defined(USE_CUDA) || defined(USE_CUDA_PROVIDER_INTERFACE)
   onnxruntime::ProviderOptions options = onnxruntime::GetProviderInfo_Cuda(cuda_options);
   std::string options_str = BuildOptionsString(options.begin(), options.end());
   *ptr = onnxruntime::StrDup(options_str, allocator);
@@ -2816,7 +2826,7 @@ ORT_API_STATUS_IMPL(OrtApis::UpdateCUDAProviderOptionsWithValue,
                     _In_ const char* key,
                     _In_ void* value) {
   API_IMPL_BEGIN
-#ifdef USE_CUDA
+#if defined(USE_CUDA) || defined(USE_CUDA_PROVIDER_INTERFACE)
   if (strcmp(key, "user_compute_stream") == 0) {
     cuda_options->has_user_compute_stream = 1;
     cuda_options->user_compute_stream = value;
@@ -2836,7 +2846,7 @@ ORT_API_STATUS_IMPL(OrtApis::GetCUDAProviderOptionsByName,
                     _In_ const char* key,
                     _Outptr_ void** ptr) {
   API_IMPL_BEGIN
-#ifdef USE_CUDA
+#if defined(USE_CUDA) || defined(USE_CUDA_PROVIDER_INTERFACE)
   if (strcmp(key, "user_compute_stream") == 0) {
     *ptr = cuda_options->user_compute_stream;
   } else {
@@ -2853,7 +2863,7 @@ ORT_API_STATUS_IMPL(OrtApis::GetCUDAProviderOptionsByName,
 }
 
 ORT_API(void, OrtApis::ReleaseCUDAProviderOptions, _Frees_ptr_opt_ OrtCUDAProviderOptionsV2* ptr) {
-#ifdef USE_CUDA
+#if defined(USE_CUDA) || defined(USE_CUDA_PROVIDER_INTERFACE)
   std::unique_ptr<OrtCUDAProviderOptionsV2> p(ptr);
 #else
   ORT_UNUSED_PARAMETER(ptr);

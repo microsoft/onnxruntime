@@ -421,7 +421,7 @@ static std::unique_ptr<onnxruntime::IExecutionProvider> LoadExecutionProvider(
   return ep_factory->CreateProvider();
 }
 
-#ifdef USE_CUDA
+#if defined(USE_CUDA) || defined(USE_CUDA_PROVIDER_INTERFACE)
 const CUDAExecutionProviderInfo GetCudaExecutionProviderInfo(ProviderInfo_CUDA* cuda_provider_info,
                                                              const ProviderOptionsMap& provider_options_map) {
   ORT_ENFORCE(cuda_provider_info);
@@ -1033,7 +1033,7 @@ std::unique_ptr<IExecutionProvider> CreateExecutionProviderInstance(
     }
 #endif
   } else if (type == kCudaExecutionProvider) {
-#ifdef USE_CUDA
+#if defined(USE_CUDA) || defined(USE_CUDA_PROVIDER_INTERFACE)
     // If the environment variable 'CUDA_UNAVAILABLE' exists, then we do not load cuda.
     // This is set by _ld_preload for the manylinux case as in that case,
     // trying to load the library itself will result in a crash due to the way that auditwheel strips dependencies.
@@ -1050,6 +1050,7 @@ std::unique_ptr<IExecutionProvider> CreateExecutionProviderInstance(
         return cuda_provider_info->CreateExecutionProviderFactory(info)->CreateProvider();
       }
     }
+#if defined(USE_CUDA)
     LOGS_DEFAULT(WARNING) << "Failed to create "
                           << type
                           << ". Require cuDNN " << CUDNN_MAJOR << ".* and "
@@ -1060,7 +1061,15 @@ std::unique_ptr<IExecutionProvider> CreateExecutionProviderInstance(
                           << ". Please install all dependencies as mentioned in the GPU requirements page"
                              " (https://onnxruntime.ai/docs/execution-providers/CUDA-ExecutionProvider.html#requirements), "
                              "make sure they're in the PATH, and that your GPU is supported.";
-#endif
+#elif defined(USE_CUDA_PROVIDER_INTERFACE)
+    // Can't include "cuda.h", so don't print version info.
+    LOGS_DEFAULT(WARNING) << "Failed to create "
+                          << type
+                          << ". Please install all dependencies as mentioned in the GPU requirements page"
+                             " (https://onnxruntime.ai/docs/execution-providers/CUDA-ExecutionProvider.html#requirements), "
+                             "make sure they're in the PATH, and that your GPU is supported.";
+#endif  // defined(USE_CUDA)
+#endif  // defined(USE_CUDA) || defined(USE_CUDA_PROVIDER_INTERFACE)
   } else if (type == kRocmExecutionProvider) {
 #ifdef USE_ROCM
     if (auto* rocm_provider_info = TryGetProviderInfo_ROCM()) {
@@ -1457,7 +1466,7 @@ bool CheckIfTensor(const std::vector<const NodeArg*>& def_list,
 }
 
 #if defined(USE_OPENVINO) || defined(USE_OPENVINO_PROVIDER_INTERFACE) || \
-    defined(USE_CUDA) || defined(USE_ROCM)
+    defined(USE_CUDA) || defined(USE_CUDA_PROVIDER_INTERFACE) || defined(USE_ROCM)
 static void LogDeprecationWarning(
     const std::string& deprecated, const optional<std::string>& alternative = nullopt) {
   LOGS_DEFAULT(WARNING) << "This is DEPRECATED and will be removed in the future: " << deprecated;
@@ -1548,7 +1557,7 @@ void addGlobalMethods(py::module& m) {
       "Gets the dynamically selected OpenVINO device type for inference.");
 #endif
 
-#if defined(USE_CUDA) || defined(USE_ROCM)
+#if defined(USE_CUDA) || defined(USE_CUDA_PROVIDER_INTERFACE) || defined(USE_ROCM)
   /*
    * The following set_* methods are deprecated.
    *
