@@ -431,6 +431,7 @@ QNNExecutionProvider::QNNExecutionProvider(const ProviderOptions& provider_optio
     // Initialize rpcmem_library_.
     // This is necessary for HtpSharedMemoryAllocator to function and also indicates that the allocator is available.
     rpcmem_library_ = std::make_shared<qnn::RpcMemLibrary>();
+    model_settings_.htp_shared_memory = true;
   }
 
   dump_json_qnn_graph_ = ParseBoolOption("dump_json_qnn_graph", false, provider_options_map);

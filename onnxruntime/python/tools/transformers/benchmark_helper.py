@@ -279,7 +279,7 @@ def output_summary(results, csv_filename, args):
                                     headers = {k: v for k, v in result.items() if k in header_names}
                                     if not row:
                                         row.update(headers)
-                                        row.update({k: "" for k in data_names})
+                                        row.update(dict.fromkeys(data_names, ""))
                                     else:
                                         for k in header_names:
                                             assert row[k] == headers[k]
