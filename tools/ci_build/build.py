@@ -443,7 +443,7 @@ def generate_build_tree(
         "-Donnxruntime_USE_VITISAI_INTERFACE=" + ("ON" if args.enable_generic_interface else "OFF"),
         "-Donnxruntime_USE_QNN_INTERFACE=" + ("ON" if args.enable_generic_interface else "OFF"),
         # set vars for amdgpu
-        "-Donnxruntime_USE_AMDGPU=" + ("ON" if args.use_amdgpu or args.use_migraphx or args.enable_generic_interface else "OFF"),
+        "-Donnxruntime_USE_AMDGPU=" + ("ON" if args.enable_generic_interface else "OFF"),
         "-Donnxruntime_DISABLE_CONTRIB_OPS=" + ("ON" if args.disable_contrib_ops else "OFF"),
         "-Donnxruntime_DISABLE_ML_OPS=" + ("ON" if args.disable_ml_ops else "OFF"),
         "-Donnxruntime_DISABLE_RTTI="
@@ -2297,7 +2297,9 @@ def main():
         tensorrt_home = setup_tensorrt_vars(args)
 
     # if using migraphx, setup migraphx paths
-    migraphx_home = setup_migraphx_vars(args)
+    migraphx_home = ""
+    if args.use_migraphx or args.use_amdgpu:
+        migraphx_home = setup_migraphx_vars(args)
 
     # if using rocm, setup rocm paths
     rocm_home = setup_rocm_build(args)

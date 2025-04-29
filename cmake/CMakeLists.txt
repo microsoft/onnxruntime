@@ -255,6 +255,7 @@ option(onnxruntime_USE_CUDA_INTERFACE "Build ONNXRuntime shared lib which is com
 option(onnxruntime_USE_OPENVINO_INTERFACE "Build ONNXRuntime shared lib which is compatible with OpenVINO EP interface" OFF)
 option(onnxruntime_USE_VITISAI_INTERFACE "Build ONNXRuntime shared lib which is compatible with Vitis-AI EP interface" OFF)
 option(onnxruntime_USE_QNN_INTERFACE "Build ONNXRuntime shared lib which is compatible with QNN EP interface" OFF)
+option(onnxruntime_USE_AMDGPU_INTERFACE "Build ONNXRuntime shared lib which is compatible with AMDGPU EP interface" OFF)
 
 
 if("${CMAKE_C_COMPILER_ID}" STREQUAL "GNU" AND CMAKE_C_COMPILER_VERSION VERSION_LESS 11.1)
@@ -1036,6 +1037,9 @@ endif()
 if (onnxruntime_USE_AMDGPU)
     list(APPEND ORT_PROVIDER_FLAGS  -DUSE_AMDGPU=1)
     list(APPEND ONNXRUNTIME_PROVIDER_NAMES amdgpu)
+endif()
+if (onnxruntime_USE_AMDGPU_INTERFACE AND (NOT onnxruntime_USE_AMDGPU))
+    list(APPEND ORT_INTERFACE_FLAGS -DUSE_AMDGPU=1)
 endif()
 if (onnxruntime_USE_ARMNN)
     list(APPEND ORT_PROVIDER_FLAGS  -DUSE_ARMNN=1)
