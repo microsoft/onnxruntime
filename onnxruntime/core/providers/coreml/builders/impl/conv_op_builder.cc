@@ -214,6 +214,21 @@ Status ConvOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
   return Status::OK();
 }
 
+bool CheckShapeForLimit(onnxruntime::VectorInt64& shape) {
+  // For some undocumented reason, Apple CoreML framework will fail loading the model if the model
+  // input has dimension > 16384
+  // See this issue, https://github.com/apple/coremltools/issues/1003
+  // https://developer.apple.com/metal/Metal-Feature-Set-Tables.pdf has maximum texture widths which may be the
+  // root cause.
+  // Only seems to apply to convolution networks -- limit comes from the size of the texture memory
+  for (auto dim : shape) {
+    if (dim > 16384) {
+      return false;
+    }
+  }
+  return true;
+}
+
 bool ConvOpBuilder::IsOpSupportedImpl(const Node& node, const OpBuilderInputParams& input_params,
                                       const logging::Logger& logger) const {
   const auto& name = node.Name();
@@ -236,6 +251,16 @@ bool ConvOpBuilder::IsOpSupportedImpl(const Node& node, const OpBuilderInputPara
   // use the weight for the shape as it should always be known
   const auto* weight_shape = input_defs[1]->Shape();
   int64_t num_dims = weight_shape ? weight_shape->dim_size() : -1;
+
+  std::vector<int64_t> weight_shape_vec;
+  std::vector<int64_t> x_shape_vec;
+  GetShape(*input_defs[1], weight_shape_vec, logger);
+  GetShape(*input_defs[0], x_shape_vec, logger);
+
+  if (!CheckShapeForLimit(weight_shape_vec) || !CheckShapeForLimit(x_shape_vec)) {
+    LOGS(logger, VERBOSE) << "Conv [" << name << "] has a shape with dimension > 16384. CoreML does not support conv operations with dim > 16384.";
+    return false;
+  }
 
   // ONNX spec requires N and C as first 2 dims
   if (num_dims != 3 && num_dims != 4) {

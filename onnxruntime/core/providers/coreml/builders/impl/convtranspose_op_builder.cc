@@ -83,6 +83,21 @@ Status ConvTransposeOpBuilder::AddToModelBuilderImpl([[maybe_unused]] ModelBuild
   return Status::OK();
 }
 
+bool CheckShapeForLimit(onnxruntime::VectorInt64& shape) {
+  // For some undocumented reason, Apple CoreML framework will fail loading the model if the model
+  // input has dimension > 16384
+  // See this issue, https://github.com/apple/coremltools/issues/1003
+  // https://developer.apple.com/metal/Metal-Feature-Set-Tables.pdf has maximum texture widths which may be the
+  // root cause.
+  // Only seems to apply to convolution networks -- limit comes from the size of the texture memory
+  for (auto dim : shape) {
+    if (dim > 16384) {
+      return false;
+    }
+  }
+  return true;
+}
+
 bool ConvTransposeOpBuilder::IsOpSupportedImpl(const Node& node, const OpBuilderInputParams& input_params,
                                                const logging::Logger& logger) const {
   if (!input_params.create_mlprogram) {
@@ -134,6 +149,11 @@ bool ConvTransposeOpBuilder::IsOpSupportedImpl(const Node& node, const OpBuilder
   if (!GetShape(weight_arg, weight_shape, logger)) {
     // impossible as it's a constant initializer
     LOGS(logger, VERBOSE) << "ConvTranspose: failed to get weight shape";
+    return false;
+  }
+
+  if (!CheckShapeForLimit(weight_shape) || !CheckShapeForLimit(input_shape)) {
+    LOGS(logger, VERBOSE) << "ConvTranspose: weight or input shape has a dimension > 16384. CoreML does not support conv operations with dim > 16384.";
     return false;
   }
 
