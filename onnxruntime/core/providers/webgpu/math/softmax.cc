@@ -68,7 +68,7 @@ Status SoftmaxProgram::GenerateShaderCode(ShaderHelper& shader) const {
   // Define shared memory for row max and row sum
   shader.AdditionalImplementation()
       << "alias f32_value_t = " << (components == 4 ? "vec4<f32>" : (components == 2 ? "vec2<f32>" : "f32")) << ";\n"
-      << "var<workgroup> row_max_shared : x_value_t;\n"
+      << "var<workgroup> row_max_shared : f32_value_t;\n"
       << "var<workgroup> row_sum_shared : f32_value_t;\n"
       << "var<workgroup> thread_shared : array<f32_value_t, " << wg_ << ">;\n";
 
@@ -113,14 +113,14 @@ Status SoftmaxProgram::GenerateShaderCode(ShaderHelper& shader) const {
       << "    workgroupBarrier();\n"
       << "  }\n"
       << "  if (lindex == 0) {\n"
-      << "    row_max_shared = x_value_t(x_element_t(" << MaxVector("thread_shared[0]", components) << "));\n"
+      << "    row_max_shared = f32_value_t(" << MaxVector("thread_shared[0]", components) << ");\n"
       << "  }\n"
       << "  workgroupBarrier();\n"
 
       // Find the row's sum of exponentials
       << "  var thread_sum = f32_value_t(0.0);\n"
       << "  for (var col = lindex; col < cols; col += wg) {\n"
-      << "    let sub_exp = f32_value_t(exp(getValue(row, col, row_stride))) - f32_value_t(row_max_shared);\n"
+      << "    let sub_exp = exp(f32_value_t(getValue(row, col, row_stride)) - row_max_shared);\n"
       << "    thread_sum += sub_exp;\n"
       << "  }\n"
       << "  thread_shared[lindex] = thread_sum;\n"
@@ -140,7 +140,7 @@ Status SoftmaxProgram::GenerateShaderCode(ShaderHelper& shader) const {
 
       // Calculate the final value for each element in the row
       << "  for (var col = lindex; col < cols; col += wg) {\n"
-      << "    let value = f32_value_t(exp(getValue(row, col, row_stride) - row_max_shared)) / row_sum_shared;\n"
+      << "    let value = exp(f32_value_t(getValue(row, col, row_stride)) - row_max_shared) / row_sum_shared;\n"
       << "    setValue(row, col, row_stride, result_value_t(value));\n"
       << "  }\n";
 
