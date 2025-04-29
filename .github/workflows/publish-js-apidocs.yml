@@ -12,9 +12,8 @@ on:
   workflow_dispatch:
 
 concurrency:
-  group: "${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.ref
-    || github.sha }}"
-  cancel-in-progress: true
+  group: "apidocs-js"
+  cancel-in-progress: false
 
 permissions:
   contents: write
@@ -29,7 +28,7 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 18
-      - name: Generate JS docs
+      - name: Generate JS docs 
         run: |
           cd js/
           npm ci

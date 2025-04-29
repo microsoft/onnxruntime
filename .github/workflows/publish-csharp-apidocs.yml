@@ -12,9 +12,8 @@ on:
   workflow_dispatch:
 
 concurrency:
-  group: "${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.ref
-    || github.sha }}"
-  cancel-in-progress: true
+  group: "apidocs-csharp"
+  cancel-in-progress: false
 
 permissions:
   contents: write
@@ -25,40 +24,40 @@ jobs:
     env:
       DOCFXVERSION: 2.62.2
     steps:
-      - uses: actions/checkout@v4
-      - name: Install DocFX
-        run: |
-          dotnet tool update -g docfx
-      - name: Update PATH
-        run: |
-          Add-Content -Value "$env:USERPROFILE\.dotnet\tools" -Encoding utf8 -Path $env:GITHUB_PATH
+    - uses: actions/checkout@v4
+    - name: Install DocFX
+      run: |
+        dotnet tool update -g docfx
+    - name: Update PATH
+      run: |
+        Add-Content -Value "$env:USERPROFILE\.dotnet\tools" -Encoding utf8 -Path $env:GITHUB_PATH
     # NOTE: We need to restore Microsoft.ML.OnnxRuntime.csproj manually to set IncludeMobileTargets=false
     # docfx doesn't seem to be able to do that properly resulting in build errors
-      - name: Restore dependencies
-        run: |
-          dotnet restore csharp/ApiDocs/ApiDocs.csproj
-          dotnet restore /p:IncludeMobileTargets=false csharp/src/Microsoft.ML.OnnxRuntime/Microsoft.ML.OnnxRuntime.csproj
-      - name: docfx metadata
-        run: |
-          docfx metadata csharp/ApiDocs/docfx.json
-      - name: Build ApiDocs project
-        run: |
-          dotnet build csharp/ApiDocs/ApiDocs.csproj --no-restore
-      - name: docfx build
-        run: |
-          docfx build csharp/ApiDocs/docfx.json
-      - name: Log source commit
-        run: git rev-parse --short HEAD > csharp/ApiDocs/csharp/source-version.txt
-      - name: Move C# docs into site
-        shell: pwsh
-        run: |
-          New-Item -Path _site/docs/api -Force -ItemType "Directory" | Out-Null
-          $OutputDirectory="_site/docs/api/csharp"
-          if (Test-Path $OutputDirectory) { Remove-Item -Recurse -Force $OutputDirectory }
-          Move-Item -Path csharp\ApiDocs\csharp -Destination $OutputDirectory
-      - name: Upload docs artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: onnxruntime-csharp-apidocs
-          path: _site
-          retention-days: 30
+    - name: Restore dependencies
+      run: |
+        dotnet restore csharp/ApiDocs/ApiDocs.csproj
+        dotnet restore /p:IncludeMobileTargets=false csharp/src/Microsoft.ML.OnnxRuntime/Microsoft.ML.OnnxRuntime.csproj
+    - name: docfx metadata
+      run: |
+        docfx metadata csharp/ApiDocs/docfx.json
+    - name: Build ApiDocs project
+      run: |
+        dotnet build csharp/ApiDocs/ApiDocs.csproj --no-restore
+    - name: docfx build
+      run: |
+        docfx build csharp/ApiDocs/docfx.json
+    - name: Log source commit
+      run: git rev-parse --short HEAD > csharp/ApiDocs/csharp/source-version.txt
+    - name: Move C# docs into site
+      shell: pwsh
+      run: |
+        New-Item -Path _site/docs/api -Force -ItemType "Directory" | Out-Null
+        $OutputDirectory="_site/docs/api/csharp"
+        if (Test-Path $OutputDirectory) { Remove-Item -Recurse -Force $OutputDirectory }
+        Move-Item -Path csharp\ApiDocs\csharp -Destination $OutputDirectory
+    - name: Upload docs artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: onnxruntime-csharp-apidocs
+        path: _site
+        retention-days: 30

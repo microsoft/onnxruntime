@@ -8,14 +8,13 @@ name: Linux DNNL CI
 
 on:
   push:
-    branches: [main, 'rel-*']
+    branches: [ main, 'rel-*']
   pull_request:
-    branches: [main, 'rel-*']
+    branches: [ main, 'rel-*']
   workflow_dispatch:
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.ref
-    || github.sha }}
+  group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
 permissions:
@@ -34,8 +33,7 @@ jobs:
       architecture: x64
       dockerfile_path: tools/ci_build/github/linux/docker/Dockerfile.manylinux2_28_cpu
       docker_image_repo: onnxruntimecpubuildpythonx64
-      extra_build_flags: '--use_binskim_compliant_compile_flags --build_wheel --build_nuget
-        --use_dnnl'
+      extra_build_flags: '--use_binskim_compliant_compile_flags --build_wheel --build_nuget --use_dnnl'
       python_path_prefix: 'PATH=/opt/python/cp310-cp310/bin:$PATH'
     secrets:
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

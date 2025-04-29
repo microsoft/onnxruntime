@@ -21,14 +21,13 @@ name: Linux CI
 
 on:
   push:
-    branches: [main, 'rel-*']
+    branches: [ main, 'rel-*']
   pull_request:
-    branches: [main, 'rel-*']
+    branches: [ main, 'rel-*']
   workflow_dispatch:
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.ref
-    || github.sha }}
+  group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
 permissions:
@@ -62,8 +61,7 @@ jobs:
       architecture: x64
       dockerfile_path: tools/ci_build/github/linux/docker/Dockerfile.manylinux2_28_cpu
       docker_image_repo: onnxruntimecpubuildpythonx64
-      extra_build_flags: '--use_binskim_compliant_compile_flags --build_wheel --build_nuget
-        --enable_transformers_tool_test --cmake_extra_defines onnxruntime_BUILD_BENCHMARKS=ON'
+      extra_build_flags: '--use_binskim_compliant_compile_flags --build_wheel --build_nuget --enable_transformers_tool_test --cmake_extra_defines onnxruntime_BUILD_BENCHMARKS=ON'
       python_path_prefix: 'PATH=/opt/python/cp310-cp310/bin:$PATH' # $ needs escaping in single quotes
     secrets:
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -77,9 +75,7 @@ jobs:
       architecture: x64
       dockerfile_path: tools/ci_build/github/linux/docker/Dockerfile.manylinux2_28_cpu
       docker_image_repo: onnxruntimecpubuildpythonx64 # Shares image with standard x64 release
-      extra_build_flags: '--enable_training --use_binskim_compliant_compile_flags
-        --build_wheel --build_nuget --enable_transformers_tool_test --cmake_extra_defines
-        onnxruntime_BUILD_BENCHMARKS=ON'
+      extra_build_flags: '--enable_training --use_binskim_compliant_compile_flags --build_wheel --build_nuget --enable_transformers_tool_test --cmake_extra_defines onnxruntime_BUILD_BENCHMARKS=ON'
       python_path_prefix: 'PATH=/opt/python/cp310-cp310/bin:$PATH' # $ needs escaping in single quotes
     secrets:
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -108,8 +104,7 @@ jobs:
       architecture: arm64
       dockerfile_path: tools/ci_build/github/linux/docker/inference/aarch64/python/cpu/Dockerfile
       docker_image_repo: onnxruntimecpubuildpythonaarch64
-      extra_build_flags: '--use_binskim_compliant_compile_flags --build_wheel --cmake_extra_defines
-        onnxruntime_BUILD_BENCHMARKS=ON'
+      extra_build_flags: '--use_binskim_compliant_compile_flags --build_wheel --cmake_extra_defines onnxruntime_BUILD_BENCHMARKS=ON'
       python_path_prefix: 'PATH=/opt/python/cp310-cp310/bin:$PATH' # $ needs escaping in single quotes
     secrets:
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

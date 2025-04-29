@@ -12,8 +12,7 @@ on:
   workflow_dispatch:
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.ref
-    || github.sha }}
+  group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.ref || github.sha }}
   cancel-in-progress: true
 
 jobs:
@@ -80,9 +79,7 @@ jobs:
           nuget-version: '6.x'
 
       - name: NuGet restore
-        run: nuget restore ${{ github.workspace }}\packages.config -ConfigFile ${{
-          github.workspace }}\NuGet.config -PackagesDirectory ${{ github.workspace
-          }}\RelWithDebInfo
+        run: nuget restore ${{ github.workspace }}\packages.config -ConfigFile ${{ github.workspace }}\NuGet.config -PackagesDirectory ${{ github.workspace }}\RelWithDebInfo
         shell: cmd
 
       - name: Export GitHub Actions cache environment variables
