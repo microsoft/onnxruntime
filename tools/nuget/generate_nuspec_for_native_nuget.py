@@ -907,7 +907,13 @@ def generate_files(line_list, args):
         # Process props file
         if is_qnn_package:
             source_props = os.path.join(
-                args.sources_path, "csharp", "src", "Microsoft.ML.OnnxRuntime", "targets", "netstandard", "props_qnn.xml"
+                args.sources_path,
+                "csharp",
+                "src",
+                "Microsoft.ML.OnnxRuntime",
+                "targets",
+                "netstandard",
+                "props_qnn.xml",
             )
         else:
             source_props = os.path.join(
