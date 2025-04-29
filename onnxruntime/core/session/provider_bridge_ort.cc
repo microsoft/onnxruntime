@@ -122,7 +122,9 @@ using EtwRegistrationManager_EtwInternalCallback = EtwRegistrationManager::EtwIn
 #include "core/providers/nv_tensorrt_rtx/nv_provider_factory.h"
 #include "core/providers/nv_tensorrt_rtx/nv_provider_options.h"
 
-#if !defined(ORT_MINIMAL_BUILD) && (defined(USE_TENSORRT) || defined(USE_NV))
+#if !defined(ORT_MINIMAL_BUILD) &&                                        \
+    (defined(USE_TENSORRT) || defined(USE_TENSORRT_PROVIDER_INTERFACE) || \
+     defined(USE_NV) || defined(USE_NV_PROVIDER_INTERFACE))
 #include "core/session/onnxruntime_session_options_config_keys.h"
 #endif
 
@@ -2481,7 +2483,7 @@ ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider_TensorRT_V2, 
 
   std::shared_ptr<onnxruntime::IExecutionProviderFactory> factory;
 
-#if !defined(ORT_MINIMAL_BUILD) && defined(USE_TENSORRT)
+#if !defined(ORT_MINIMAL_BUILD) && (defined(USE_TENSORRT) || defined(USE_TENSORRT_PROVIDER_INTERFACE))
   auto ep_context_cache_enabled_from_provider_options = tensorrt_options->trt_dump_ep_context_model != 0;
   auto ep_context_cache_enabled_from_sess_options = (options->value).config_options.GetConfigOrDefault(kOrtSessionOptionEpContextEnable, "0") != "0";
 
@@ -2543,7 +2545,7 @@ ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider_TensorRT_V2, 
 
 ORT_API_STATUS_IMPL(OrtApis::CreateTensorRTProviderOptions, _Outptr_ OrtTensorRTProviderOptionsV2** out) {
   API_IMPL_BEGIN
-#ifdef USE_TENSORRT
+#if defined(USE_TENSORRT) || defined(USE_TENSORRT_PROVIDER_INTERFACE)
   auto options = std::make_unique<OrtTensorRTProviderOptionsV2>();
   *out = options.release();
   return nullptr;
@@ -2560,7 +2562,7 @@ ORT_API_STATUS_IMPL(OrtApis::UpdateTensorRTProviderOptions,
                     _In_reads_(num_keys) const char* const* provider_options_values,
                     size_t num_keys) {
   API_IMPL_BEGIN
-#ifdef USE_TENSORRT
+#if defined(USE_TENSORRT) || defined(USE_TENSORRT_PROVIDER_INTERFACE)
   onnxruntime::ProviderOptions provider_options_map;
   for (size_t i = 0; i != num_keys; ++i) {
     if (provider_options_keys[i] == nullptr || provider_options_keys[i][0] == '\0' ||
@@ -2584,7 +2586,12 @@ ORT_API_STATUS_IMPL(OrtApis::UpdateTensorRTProviderOptions,
   API_IMPL_END
 }
 
-#if defined(USE_TENSORRT) || defined(USE_CUDA) || defined(USE_CANN) || defined(USE_DNNL) || defined(USE_ROCM) || defined(USE_NV)
+#if defined(USE_TENSORRT) || defined(USE_TENSORRT_PROVIDER_INTERFACE) || \
+    defined(USE_CUDA) ||                                                 \
+    defined(USE_CANN) ||                                                 \
+    defined(USE_DNNL) ||                                                 \
+    defined(USE_ROCM) ||                                                 \
+    defined(USE_NV) || defined(USE_NV_PROVIDER_INTERFACE)
 static std::string BuildOptionsString(const onnxruntime::ProviderOptions::iterator& begin,
                                       const onnxruntime::ProviderOptions::iterator& end) {
   std::ostringstream options;
@@ -2603,7 +2610,7 @@ static std::string BuildOptionsString(const onnxruntime::ProviderOptions::iterat
 ORT_API_STATUS_IMPL(OrtApis::GetTensorRTProviderOptionsAsString, _In_ const OrtTensorRTProviderOptionsV2* tensorrt_options, _Inout_ OrtAllocator* allocator,
                     _Outptr_ char** ptr) {
   API_IMPL_BEGIN
-#ifdef USE_TENSORRT
+#if defined(USE_TENSORRT) || defined(USE_TENSORRT_PROVIDER_INTERFACE)
   onnxruntime::ProviderOptions options = onnxruntime::GetProviderInfo_Tensorrt(tensorrt_options);
   std::string options_str = BuildOptionsString(options.begin(), options.end());
   *ptr = onnxruntime::StrDup(options_str, allocator);
@@ -2622,7 +2629,7 @@ ORT_API_STATUS_IMPL(OrtApis::UpdateTensorRTProviderOptionsWithValue,
                     _In_ const char* key,
                     _In_ void* value) {
   API_IMPL_BEGIN
-#ifdef USE_TENSORRT
+#if defined(USE_TENSORRT) || defined(USE_TENSORRT_PROVIDER_INTERFACE)
   // current provider option that has pointer data type (excluding const char*) is 'user_compute_stream'
   if (strcmp(key, "user_compute_stream") == 0) {
     tensorrt_options->has_user_compute_stream = 1;
@@ -2647,7 +2654,7 @@ ORT_API_STATUS_IMPL(OrtApis::GetTensorRTProviderOptionsByName,
                     _In_ const char* key,
                     _Outptr_ void** ptr) {
   API_IMPL_BEGIN
-#ifdef USE_TENSORRT
+#if defined(USE_TENSORRT) || defined(USE_TENSORRT_PROVIDER_INTERFACE)
   // current provider option that has pointer data type (excluding const char*) is 'user_compute_stream'
   if (strcmp(key, "user_compute_stream") == 0) {
     *ptr = tensorrt_options->user_compute_stream;
@@ -2665,7 +2672,7 @@ ORT_API_STATUS_IMPL(OrtApis::GetTensorRTProviderOptionsByName,
 }
 
 ORT_API(void, OrtApis::ReleaseTensorRTProviderOptions, _Frees_ptr_opt_ OrtTensorRTProviderOptionsV2* ptr) {
-#ifdef USE_TENSORRT
+#if defined(USE_TENSORRT) || defined(USE_TENSORRT_PROVIDER_INTERFACE)
   if (ptr != nullptr) {
     delete[] ptr->trt_int8_calibration_table_name;
     delete[] ptr->trt_engine_cache_path;

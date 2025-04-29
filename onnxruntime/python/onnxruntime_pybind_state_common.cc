@@ -9,7 +9,7 @@ namespace py = pybind11;
 
 const std::string onnxruntime::python::SessionObjectInitializer::default_logger_id = "Default";
 
-#ifdef USE_OPENVINO
+#if defined(USE_OPENVINO) || defined(USE_OPENVINO_PROVIDER_INTERFACE)
 // TODO remove deprecated global config
 std::string openvino_device_type;
 #endif

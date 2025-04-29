@@ -26,7 +26,7 @@
 #include "core/providers/dml/dml_provider_factory_creator.h"
 #endif
 
-#if defined(USE_NV)
+#if defined(USE_NV) || defined(USE_NV_PROVIDER_INTERFACE)
 #include "core/providers/nv_tensorrt_rtx/nv_provider_options.h"
 #endif
 using namespace onnxruntime;
@@ -200,7 +200,7 @@ ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider,
       break;
     }
     case EpID::QNN: {
-#if defined(USE_QNN)
+#if defined(USE_QNN) || defined(USE_QNN_PROVIDER_INTERFACE)
       options->provider_factories.push_back(QNNProviderFactoryCreator::Create(provider_options, &(options->value)));
 #else
       status = create_not_supported_status();
@@ -208,7 +208,7 @@ ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider,
       break;
     }
     case EpID::OpenVINO: {
-#if defined(USE_OPENVINO)
+#if defined(USE_OPENVINO) || defined(USE_OPENVINO_PROVIDER_INTERFACE)
       options->provider_factories.push_back(OpenVINOProviderFactoryCreator::Create(&provider_options,
                                                                                    &(options->value)));
 #else
@@ -271,7 +271,7 @@ ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider,
       break;
     }
     case EpID::VitisAI: {
-#ifdef USE_VITISAI
+#if defined(USE_VITISAI) || defined(USE_VITISAI_PROVIDER_INTERFACE)
       status = OrtApis::SessionOptionsAppendExecutionProvider_VitisAI(options, provider_options_keys,
                                                                       provider_options_values, num_keys);
 #else
@@ -288,7 +288,7 @@ ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider,
       break;
     }
     case EpID::NvTensorRtRtx: {
-#if defined(USE_NV)
+#if defined(USE_NV) || defined(USE_NV_PROVIDER_INTERFACE)
       auto factory = onnxruntime::NvProviderFactoryCreator::Create(provider_options);
       if (!factory) {
         return OrtApis::CreateStatus(ORT_FAIL, "SessionOptionsAppendExecutionProvider_Nv_TensorRT_RTX: Failed to load shared library");

@@ -49,7 +49,7 @@ struct OrtStatus {
 #define BACKEND_MIGRAPHX ""
 #endif
 
-#ifdef USE_OPENVINO
+#if defined(USE_OPENVINO) || defined(USE_OPENVINO_PROVIDER_INTERFACE)
 #if OPENVINO_CONFIG_CPU
 #define BACKEND_OPENVINO "-OPENVINO_CPU"
 
@@ -123,13 +123,13 @@ struct OrtStatus {
 #ifdef USE_TENSORRT
 #include "core/providers/tensorrt/tensorrt_provider_factory.h"
 #endif
-#ifdef USE_NV
+#if defined(USE_NV) || defined(USE_NV_PROVIDER_INTERFACE)
 #include "core/providers/nv_tensorrt_rtx/nv_provider_factory.h"
 #endif
 #ifdef USE_MIGRAPHX
 #include "core/providers/migraphx/migraphx_provider_factory.h"
 #endif
-#ifdef USE_OPENVINO
+#if defined(USE_OPENVINO) || defined(USE_OPENVINO_PROVIDER_INTERFACE)
 #include "core/providers/openvino/openvino_provider_factory.h"
 // TODO remove deprecated global config
 namespace onnxruntime {
@@ -177,7 +177,7 @@ ProviderInfo_TensorRT& GetProviderInfo_TensorRT();
 }  // namespace onnxruntime
 #endif
 
-#ifdef USE_NV
+#if defined(USE_NV) || defined(USE_NV_PROVIDER_INTERFACE)
 namespace onnxruntime {
 ProviderInfo_Nv* TryGetProviderInfo_Nv();
 ProviderInfo_Nv& GetProviderInfo_Nv();

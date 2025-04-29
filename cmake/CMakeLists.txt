@@ -913,6 +913,7 @@ if (onnxruntime_USE_CUDA)
 endif()
 
 if (onnxruntime_USE_CUDA_INTERFACE AND (NOT onnxruntime_USE_CUDA))
+    # TODO: Do not set USE_CUDA. Instead, set USE_CUDA_PROVIDER_INTERFACE.
     list(APPEND ORT_EXTRA_INTERFACE_FLAGS -DUSE_CUDA=1)
 endif()
 
@@ -922,7 +923,7 @@ if (onnxruntime_USE_VITISAI)
 endif()
 
 if (onnxruntime_USE_VITISAI_INTERFACE AND (NOT onnxruntime_USE_VITISAI))
-    list(APPEND ORT_EXTRA_INTERFACE_FLAGS -DUSE_VITISAI=1)
+    list(APPEND ORT_EXTRA_INTERFACE_FLAGS -DUSE_VITISAI_PROVIDER_INTERFACE=1)
 endif()
 
 if (onnxruntime_USE_DNNL)
@@ -936,7 +937,7 @@ if (onnxruntime_USE_OPENVINO)
 endif()
 
 if (onnxruntime_USE_OPENVINO_INTERFACE AND (NOT onnxruntime_USE_OPENVINO))
-    list(APPEND ORT_EXTRA_INTERFACE_FLAGS -DUSE_OPENVINO=1)
+    list(APPEND ORT_EXTRA_INTERFACE_FLAGS -DUSE_OPENVINO_PROVIDER_INTERFACE=1)
 endif()
 
 if (onnxruntime_USE_TENSORRT)
@@ -946,7 +947,7 @@ if (onnxruntime_USE_TENSORRT)
 endif()
 
 if (onnxruntime_USE_TENSORRT_INTERFACE AND (NOT onnxruntime_USE_TENSORRT))
-    list(APPEND ORT_INTERFACE_FLAGS -DUSE_TENSORRT=1)
+    list(APPEND ORT_EXTRA_INTERFACE_FLAGS -DUSE_TENSORRT_PROVIDER_INTERFACE=1)
 endif()
 
 if (onnxruntime_USE_NV)
@@ -955,7 +956,7 @@ if (onnxruntime_USE_NV)
 endif()
 
 if (onnxruntime_USE_NV_INTERFACE AND (NOT onnxruntime_USE_NV))
-    list(APPEND ORT_INTERFACE_FLAGS -DUSE_NV=1)
+    list(APPEND ORT_EXTRA_INTERFACE_FLAGS -DUSE_NV_PROVIDER_INTERFACE=1)
 endif()
 
 if (onnxruntime_USE_RKNPU)
@@ -979,7 +980,7 @@ if (onnxruntime_USE_QNN OR onnxruntime_USE_QNN_INTERFACE)
     if(onnxruntime_USE_QNN)
         list(APPEND ORT_PROVIDER_FLAGS -DUSE_QNN=1)
     else()
-        list(APPEND ORT_EXTRA_INTERFACE_FLAGS -DUSE_QNN=1) 
+        list(APPEND ORT_EXTRA_INTERFACE_FLAGS -DUSE_QNN_PROVIDER_INTERFACE=1)
     endif()
 
     list(APPEND ONNXRUNTIME_PROVIDER_NAMES qnn)
@@ -1243,7 +1244,11 @@ function(onnxruntime_set_compile_flags target_name)
       target_compile_definitions(${target_name} PRIVATE ${ORT_FLAG})
     endforeach()
 
-    if("${target_name}" STREQUAL "onnxruntime")
+    set(ORT_EXTRA_INTERFACE_FLAG_TARGETS "onnxruntime"
+                                         "onnxruntime_session"
+                                         "onnxruntime_optimizer"
+                                         "onnxruntime_python")
+    if("${target_name}" IN_LIST ORT_EXTRA_INTERFACE_FLAG_TARGETS)
         foreach(ORT_EXTRA_FLAG ${ORT_EXTRA_INTERFACE_FLAGS})
           target_compile_definitions(${target_name} PRIVATE ${ORT_EXTRA_FLAG})
         endforeach()
@@ -1542,7 +1547,6 @@ if (onnxruntime_USE_OPENVINO)
 endif()
 
 if (onnxruntime_USE_OPENVINO_INTERFACE AND (NOT onnxruntime_USE_OPENVINO))
-    add_definitions(-DUSE_OPENVINO=1)
     add_definitions(-DOPENVINO_CONFIG_NPU=1)
 endif()
 
