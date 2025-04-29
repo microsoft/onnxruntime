@@ -87,7 +87,7 @@ extends:
           DoEsrp: true
 
       - stage: NugetPackaging
-        dependsOn: [Windows_Packaging_CUDA, OnnxRuntime_QNN_Nuget_Win_Arm64, MacOS_C_API_Packaging_CPU]
+        dependsOn: [Windows_Packaging_CUDA, OnnxRuntime_QNN_Nuget_Win_Arm64, MacOS_C_API_Package_Publish]
         jobs:
         - job: CreateNugetPackage
           pool: 'Onnxruntime-Win2022-GPU-A10'
@@ -121,16 +121,21 @@ extends:
               targetPath: '$(Build.BinariesDirectory)/win-arm64'
 
           - task: DownloadPipelineArtifact@0
-            displayName: 'Download Pipeline Artifact - osx-x64'
+            displayName: 'Download Pipeline Artifact - osx'
             inputs:
-              artifactName: 'onnxruntime-osx-x86_64'
-              targetPath: '$(Build.BinariesDirectory)/osx-x64'
+              artifactName: 'onnxruntime-osx'
+              targetPath: '$(Build.BinariesDirectory)/osx'
 
-          - task: DownloadPipelineArtifact@0
-            displayName: 'Download Pipeline Artifact - osx-arm64'
+          - task: PowerShell@2
+            displayName: 'Create osx directories'
             inputs:
-              artifactName: 'onnxruntime-osx-arm64'
-              targetPath: '$(Build.BinariesDirectory)/osx-arm64'
+              targetType: 'inline'
+              script: |
+                mkdir -p $(Build.BinariesDirectory)/osx-x64
+                mv osx/onnxruntime-osx-x86_64* $(Build.BinariesDirectory)/osx-x64
+
+                mkdir -p $(Build.BinariesDirectory)/osx-arm64
+                mv osx/onnxruntime-osx-arm64* $(Build.BinariesDirectory)/osx-arm64
 
           - task: PowerShell@2
             displayName: 'List all files downloaded'
