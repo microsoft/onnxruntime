@@ -152,7 +152,7 @@ TEST(CApiTest, session_options_provider_interface_fail_vitisai) {
 
 #if defined(USE_QNN_PROVIDER_INTERFACE)
 // Test that loading QNN EP when only the interface is built (but not the full EP) fails.
-TEST(CApiTest, session_options_provider_interface_fail_vitisai) {
+TEST(CApiTest, session_options_provider_interface_fail_qnn) {
   const OrtApi& api = Ort::GetApi();
   OrtSessionOptions* session_options = nullptr;
   OrtStatus* status = nullptr;

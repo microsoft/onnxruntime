@@ -858,6 +858,20 @@ set(ONNXRUNTIME_PROVIDER_NAMES cpu)
 
 set(ORT_PROVIDER_FLAGS)
 set(ORT_EXTRA_INTERFACE_FLAGS)
+set(ORT_GENERIC_INTERFACE_TARGETS
+     onnxruntime_flatbuffers
+     onnxruntime_common
+     onnxruntime_mlas
+     onnxruntime_graph
+     onnxruntime_lora
+     onnxruntime_framework
+     onnxruntime_util
+     onnxruntime_providers
+     onnxruntime_optimizer
+     onnxruntime_session
+     onnxruntime_pybind11_state
+     onnxruntime_shared_lib_test
+)
 
 if (onnxruntime_USE_CUDA)
   enable_language(CUDA)
@@ -1243,14 +1257,7 @@ function(onnxruntime_set_compile_flags target_name)
       target_compile_definitions(${target_name} PRIVATE ${ORT_FLAG})
     endforeach()
 
-    # These are the targets in which USE_<EP>_PROVIDER_INTERFACE is used.
-    set(ORT_EXTRA_INTERFACE_FLAG_TARGETS "onnxruntime"
-                                         "onnxruntime_session"
-                                         "onnxruntime_optimizer"
-                                         "onnxruntime_providers"
-                                         "onnxruntime_pybind11_state"
-                                         "onnxruntime_shared_lib_test")
-    if("${target_name}" IN_LIST ORT_EXTRA_INTERFACE_FLAG_TARGETS)
+    if(${target_name} IN_LIST ORT_GENERIC_INTERFACE_TARGETS)
         foreach(ORT_EXTRA_FLAG ${ORT_EXTRA_INTERFACE_FLAGS})
           target_compile_definitions(${target_name} PRIVATE ${ORT_EXTRA_FLAG})
         endforeach()
