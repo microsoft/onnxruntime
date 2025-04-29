@@ -2040,8 +2040,12 @@ std::shared_ptr<IExecutionProviderFactory> TensorrtProviderFactoryCreator::Creat
   return nullptr;
 }
 
-std::shared_ptr<IExecutionProviderFactory> NvProviderFactoryCreator::Create(int device_id) {
+std::shared_ptr<IExecutionProviderFactory> NvProviderFactoryCreator::Create(int device_id) try {
   return s_library_nv.Get().CreateExecutionProviderFactory(device_id);
+} catch (const std::exception& exception) {
+  // Will get an exception when fail to load EP library.
+  LOGS_DEFAULT(ERROR) << exception.what();
+  return nullptr;
 }
 
 std::shared_ptr<IExecutionProviderFactory> NvProviderFactoryCreator::Create(

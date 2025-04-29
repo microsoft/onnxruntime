@@ -46,7 +46,6 @@ TEST(CApiTest, session_options_provider_interface_fail_add_openvino) {
   status = api.CreateSessionOptions(&session_options);
   ASSERT_TRUE(status == nullptr);
 
-  // Should not be able to add OpenVINO EP to session options because we only built the interface.
   status = api.SessionOptionsAppendExecutionProvider(session_options,
                                                      kOpenVINOExecutionProvider, nullptr, nullptr, 0);
   ASSERT_TRUE(status != nullptr);
@@ -68,7 +67,6 @@ TEST(CApiTest, session_options_provider_interface_fail_add_cuda) {
   status = api.CreateSessionOptions(&session_options);
   ASSERT_TRUE(status == nullptr);
 
-  // Should not be able to add CUDA EP to session options because we only built the interface.
   OrtCUDAProviderOptionsV2* cuda_options = nullptr;
   status = api.CreateCUDAProviderOptions(&cuda_options);
   status = api.SessionOptionsAppendExecutionProvider_CUDA_V2(session_options, cuda_options);
@@ -92,7 +90,6 @@ TEST(CApiTest, session_options_provider_interface_fail_add_nv) {
   status = api.CreateSessionOptions(&session_options);
   ASSERT_TRUE(status == nullptr);
 
-  // Should not be able to add NV EP to session options because we only built the interface.
   status = api.SessionOptionsAppendExecutionProvider(session_options,
                                                      kNvTensorRTRTXExecutionProvider, nullptr, nullptr, 0);
   ASSERT_TRUE(status != nullptr);
@@ -105,7 +102,7 @@ TEST(CApiTest, session_options_provider_interface_fail_add_nv) {
 #endif  // defined(USE_OPENVINO_PROVIDER_INTERFACE)
 
 #if defined(USE_TENSORRT_PROVIDER_INTERFACE)
-// Test that loading NV EP when only the interface is built (but not the full EP) fails.
+// Test that loading TensorRT EP when only the interface is built (but not the full EP) fails.
 TEST(CApiTest, session_options_provider_interface_fail_add_tensorrt) {
   const OrtApi& api = Ort::GetApi();
   OrtSessionOptions* session_options = nullptr;
@@ -114,7 +111,6 @@ TEST(CApiTest, session_options_provider_interface_fail_add_tensorrt) {
   status = api.CreateSessionOptions(&session_options);
   ASSERT_TRUE(status == nullptr);
 
-  // Should not be able to add TensorRT EP to session options because we only built the interface.
   OrtTensorRTProviderOptionsV2* trt_options = nullptr;
   status = api.CreateTensorRTProviderOptions(&trt_options);
   status = api.SessionOptionsAppendExecutionProvider_TensorRT_V2(session_options, trt_options);
@@ -138,7 +134,6 @@ TEST(CApiTest, session_options_provider_interface_fail_vitisai) {
   status = api.CreateSessionOptions(&session_options);
   ASSERT_TRUE(status == nullptr);
 
-  // Should not be able to add OpenVINO EP to session options because we only built the interface.
   status = api.SessionOptionsAppendExecutionProvider(session_options,
                                                      kVitisAIExecutionProvider, nullptr, nullptr, 0);
   ASSERT_TRUE(status != nullptr);
@@ -160,7 +155,6 @@ TEST(CApiTest, session_options_provider_interface_fail_qnn) {
   status = api.CreateSessionOptions(&session_options);
   ASSERT_TRUE(status == nullptr);
 
-  // Should not be able to add QNN EP to session options because we only built the interface.
   status = api.SessionOptionsAppendExecutionProvider(session_options,
                                                      kQnnExecutionProvider, nullptr, nullptr, 0);
   ASSERT_TRUE(status != nullptr);
@@ -170,4 +164,4 @@ TEST(CApiTest, session_options_provider_interface_fail_qnn) {
   const char* err_msg = api.GetErrorMessage(status);
   EXPECT_THAT(err_msg, testing::HasSubstr("Failed to load"));
 }
-#endif  // defined(USE_VITISAI_PROVIDER_INTERFACE)
+#endif  // defined(USE_QNN_PROVIDER_INTERFACE)
