@@ -244,7 +244,7 @@ MatMulProgram CreateMatMulProgram(const Activation& activation, std::vector<cons
   if (has_bias) {
     auto bias_components = is_channels_last ? components : 1;
     const auto* bias = inputs[2];
-    program.AddInput(bias, ProgramTensorMetadataDependency::Rank, bias_components, ProgramInput::Flatten);
+    program.AddInput(bias, ProgramTensorMetadataDependency::Rank, bias_components, ProgramInput::FlattenAndReduce);
   }
   return program;
 }

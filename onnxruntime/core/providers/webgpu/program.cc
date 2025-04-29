@@ -289,7 +289,7 @@ ProgramBase& ProgramBase::AddInput(const Tensor* tensor, ProgramTensorMetadataDe
   return *this;
 }
 
-ProgramBase& ProgramBase::AddInput(const Tensor* tensor, ProgramTensorMetadataDependency dependency, int component, decltype(ProgramInput::Flatten)) {
+ProgramBase& ProgramBase::AddInput(const Tensor* tensor, ProgramTensorMetadataDependency dependency, int component, decltype(ProgramInput::FlattenAndReduce)) {
   TensorShape override_shape{(tensor->Shape().Size() + component - 1) / component};
   inputs_.emplace_back(tensor, dependency, component, &override_shape);
   return *this;
@@ -331,7 +331,7 @@ ProgramBase& ProgramBase::AddOutput(Tensor* tensor, ProgramTensorMetadataDepende
   return *this;
 }
 
-ProgramBase& ProgramBase::AddOutput(Tensor* tensor, ProgramTensorMetadataDependency dependency, int component, decltype(ProgramOutput::Flatten)) {
+ProgramBase& ProgramBase::AddOutput(Tensor* tensor, ProgramTensorMetadataDependency dependency, int component, decltype(ProgramOutput::FlattenAndReduce)) {
   TensorShape override_shape{(tensor->Shape().Size() + component - 1) / component};
   outputs_.emplace_back(tensor, dependency, component, &override_shape);
   return *this;

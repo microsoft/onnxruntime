@@ -68,13 +68,13 @@ Status FastGelu::ComputeInternal(onnxruntime::webgpu::ComputeContext& context) c
   }
 
   FastGeluProgram program{bias_components};
-  program.AddInput(input, ProgramTensorMetadataDependency::Type, 4, ProgramInput::Flatten)
-      .AddOutput(output, ProgramTensorMetadataDependency::None, 4, ProgramOutput::Flatten)
+  program.AddInput(input, ProgramTensorMetadataDependency::Type, 4, ProgramInput::FlattenAndReduce)
+      .AddOutput(output, ProgramTensorMetadataDependency::None, 4, ProgramOutput::FlattenAndReduce)
       .SetDispatchGroupSize((vec_size + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE)
       .AddUniformVariable({vec_size});
 
   if (bias != nullptr) {
-    program.AddInput(bias, ProgramTensorMetadataDependency::TypeAndRank, bias_components, ProgramInput::Flatten);
+    program.AddInput(bias, ProgramTensorMetadataDependency::TypeAndRank, bias_components, ProgramInput::FlattenAndReduce);
   }
   return context.RunProgram(program);
 }

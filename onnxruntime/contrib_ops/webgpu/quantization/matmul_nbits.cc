@@ -761,7 +761,7 @@ Status MatMulNBits::ComputeInternal(onnxruntime::webgpu::ComputeContext& context
         .AddOutput(y, ProgramTensorMetadataDependency::TypeAndRank, static_cast<int>(components), reshaped_y_shape)
         .AddUniformVariable({block_size});
     if (has_zero_points) {
-      program.AddInput(zero_points, ProgramTensorMetadataDependency::None, 4, ProgramInput::Flatten);
+      program.AddInput(zero_points, ProgramTensorMetadataDependency::None, 4, ProgramInput::FlattenAndReduce);
     }
 
     return context.RunProgram(program);
@@ -809,7 +809,7 @@ Status MatMulNBits::ComputeInternal(onnxruntime::webgpu::ComputeContext& context
       .AddOutput(y, ProgramTensorMetadataDependency::TypeAndRank, static_cast<int>(components), reshaped_y_shape)
       .AddUniformVariable({block_size});
   if (has_zero_points) {
-    program.AddInput(zero_points, ProgramTensorMetadataDependency::None, 4, ProgramInput::Flatten);
+    program.AddInput(zero_points, ProgramTensorMetadataDependency::None, 4, ProgramInput::FlattenAndReduce);
   }
   return context.RunProgram(program);
 }
