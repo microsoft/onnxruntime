@@ -34,8 +34,6 @@ on:
 jobs:
   build-and-test:
     strategy:
-      # TODO: delete after nodejs pipeline failures are debugged
-      fail-fast: false
       matrix:
         platform_machine: ["x86_64", "arm64"]
         build_config: ["Debug", "Release"]

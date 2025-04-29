@@ -145,8 +145,8 @@ Status BinaryOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const
     } else if (op_type == "Sub") {
       coreml_op_type = "sub";
     } else if (op_type == "Div") {
-      // we support fp32/fp16 currently. when we add support for integers we need to check the type and use
-      // "floor_div" or "real_div" accordingly
+      // Use "floor_div" op for integer division (int32 or int64)
+      // use "real_div" for float division (fp16 or fp32)
       if (ShouldUseFloorDiv(node, logger)) {
         coreml_op_type = "floor_div";
       } else {
