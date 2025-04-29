@@ -231,18 +231,17 @@ Optimizes ORT quantized models for the NPU device to only keep QDQs for supporte
 Refer to [Configuration Options](#configuration-options) for more information about using these runtime options.
 
 ### Loading Custom JSON OpenVINO™ Config During Runtime
-This feature is developed to facilitate loading of OVEP parameters from a single JSON configuration file.
-The JSON input schema must be of format -
+The `load_config` feature is developed to facilitate loading of OpenVINO EP parameters using a JSON input schema, which mandatorily follows below format -
 ```
 {
     "DEVICE_KEY": {"PROPERTY": "PROPERTY_VALUE"}
 }
 ```
-where "DEVICE_KEY" can be CPU, NPU or GPU , "PROPERTY" must be a valid entity defined in OpenVINO™ and "PROPERTY_VALUE" must be passed in as a string. 
+where "DEVICE_KEY" can be CPU, NPU or GPU , "PROPERTY" must be a valid entity defined in OpenVINO™ supported properties &  "PROPERTY_VALUE" must be a valid corresponding supported property value passed in as a string. 
 
-If a property is set using an invalid key (i.e., a key that is not recognized as part of the OpenVINO™ properties), it will be ignored and a warning will be logged. However, if a valid property key is used but assigned an invalid value (e.g., a non-integer where an integer is expected), the OpenVINO™ framework will result in an exception during execution.
+If a property is set using an invalid key (i.e., a key that is not recognized as part of the OpenVINO™ supported properties), it will be ignored & a warning will be logged against the same. However, if a valid property key is used but assigned an invalid value (e.g., a non-integer where an integer is expected), the OpenVINO™ framework will result in an exception during execution.
 
-The valid properties are of 2 types viz. Mutable (R/W) & Immutable (R only) these are also governed while setting the same. If an Immutable property is being set, we skip setting the same with a warning.
+The valid properties are of two types viz. Mutable (Read/Write) & Immutable (Read only) these are also governed while setting the same. If an Immutable property is being set, we skip setting the same with a similar warning.
 
 ### OpenVINO Execution Provider Supports EP-Weight Sharing across sessions
 The OpenVINO Execution Provider (OVEP) in ONNX Runtime supports EP-Weight Sharing, enabling models to efficiently share weights across multiple inference sessions. This feature enhances the execution of Large Language Models (LLMs) with prefill and KV cache, reducing memory consumption and improving performance when running multiple inferences.
