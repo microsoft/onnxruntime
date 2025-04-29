@@ -42,9 +42,9 @@ namespace
 // Quantized B data packing function implementation.
 //
 
-template <int BlkBitWidth>
+template <int BlkBitWidth, bool QuantAUnsigned>
 size_t
-Q4BitGemmPackQuantBDataSize(
+QNBitGemmPackQuantBDataSize(
     size_t N,
     size_t K,
     size_t BlkLen,
@@ -80,7 +80,12 @@ Q4BitGemmPackQuantBDataSize(
             constexpr size_t BlkSumAlignment = MlasQNBitQuantBBlkSumAlignment();
             BlkSumSize += BlkSumAlignment - 1;
 
-            return PackedQuantBDataSize + ScaleSize + BlkSumSize;
+            if constexpr (QuantAUnsigned) {
+                // 2 block sum
+                return PackedQuantBDataSize + ScaleSize + BlkSumSize + BlkSumSize;
+            } else {
+                return PackedQuantBDataSize + ScaleSize + BlkSumSize;
+            }
         } else {
             return PackedQuantBDataSize;
         }
@@ -212,10 +217,12 @@ SQ4BitGemmPackQuantBDataAndBlkSum(
     }
 }
 
+template <bool QuantAUnsigned>
 void
 Q8PackQuantB(
   const std::byte* QuantBDataBegin,
   std::byte* PackedQuantBDataBegin,
+  float* BlockSum2Begin,
   MLAS_THREADPOOL* ThreadPool,
   const size_t N,
   const size_t BlkCountK,
@@ -300,10 +307,15 @@ Q8ComputePackBlkSum(
 }
 
 /**
- * Utilize i8mm dot product instructions.
  * 4 rows x 8 cols pack together, along all K. Then 4 rows x 4 cols, along all K.
  * When rol < 4, keep original layout.
+ *
+ * dotprod: vdotq_laneq_u32.
+ * convert quant a from int8 to uint8. zp is 128.
+ *
+ * i8mm: vusdotq_laneq_s32.
  */
+template <bool QuantAUnsigned>
 void
 SQ8BitGemmPackQuantBDataAndBlkSum(
     size_t N,
@@ -371,7 +383,7 @@ QNBitGemmPerGemmWorkspaceSize(
 #endif
             {
                 const size_t BlockCountK = MlasDivRoundup(K, BlkLen);
-                const size_t PerGemmWorkspaceSize = M * BlockCountK * Q8BlkSize(BlkLen);
+                const size_t PerGemmWorkspaceSize = M * BlockCountK * (Q8BlkSize(BlkLen) + sizeof(float));
                 return PerGemmWorkspaceSize;
             }
         }
@@ -391,7 +403,7 @@ QNBitGemmPerGemmWorkspaceAlignment(
 
     switch (ComputeType) {
         case SQNBIT_CompInt8: {
-            return Q8BlkAlignment();
+            return Q8BlkAlignment() * 4;
         }
         default: {
             return 1;
@@ -423,7 +435,8 @@ UseKleidiAI(size_t K, size_t BlkLen, bool HasZp)
 
 const MLAS_QNBIT_GEMM_DISPATCH&
 GetMlasQNBitGemmDispatchNeon(
-    bool InitializeWithDotSupport
+    bool InitializeWithDotSupport,
+    bool InitializeWithI8MMSupport
 )
 {
     // Note: The InitializeWithX parameters are only used in the invocation of this method that initializes the static
@@ -432,8 +445,8 @@ GetMlasQNBitGemmDispatchNeon(
     static const MLAS_QNBIT_GEMM_DISPATCH MlasQNBitGemmDispatchNeon = [&]() {
         MLAS_QNBIT_GEMM_DISPATCH d;
 
-        d.Q4BitGemmPackQuantBDataSize = sqnbitgemm_neon::Q4BitGemmPackQuantBDataSize<4>;
-        d.Q8BitGemmPackQuantBDataSize = sqnbitgemm_neon::Q4BitGemmPackQuantBDataSize<8>;
+        d.Q4BitGemmPackQuantBDataSize = sqnbitgemm_neon::QNBitGemmPackQuantBDataSize<4, false>;
+        d.Q8BitGemmPackQuantBDataSize = sqnbitgemm_neon::QNBitGemmPackQuantBDataSize<8, false>;
         d.SQ4BitGemmPackQuantBData = sqnbitgemm_neon::SQ4BitGemmPackQuantBData;
         d.SQ4BitGemmPackQuantBDataAndBlkSum = sqnbitgemm_neon::SQ4BitGemmPackQuantBDataAndBlkSum;
         d.SQ8BitGemmPackQuantBDataAndBlkSum = sqnbitgemm_neon::SQ8BitGemmPackQuantBDataAndBlkSum;
@@ -453,6 +466,10 @@ GetMlasQNBitGemmDispatchNeon(
             d.SQ4BitGemmKernel_Packed_CompInt8 = sqnbitgemm_neon::SQ4BitGemmKernel_Packed_CompInt8;
             d.QuantizeA_Packed_CompInt8 = sqnbitgemm_neon::QuantizeA_Packed_CompInt8;
 #endif
+        }
+
+        if (InitializeWithI8MMSupport) {
+            d.Q8BitGemmPackQuantBDataSize = sqnbitgemm_neon::QNBitGemmPackQuantBDataSize<8, true>;
         }
 
 #if defined(MLAS_F16VEC_INTRINSICS_SUPPORTED) && defined(MLAS_TARGET_ARM64)

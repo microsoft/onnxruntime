@@ -233,7 +233,7 @@ class MlasSQ8BitPrepackTest : public MlasTestBase {
         N, K, Bits, BlkLen, MLAS_QNBIT_GEMM_COMPUTE_TYPE::SQNBIT_CompInt8, nullptr, packedBuffer,
         nullptr, hasZp, inputZp, nullptr);
 
-    PackedQuantBDataStruct<float, 8> packedQuantB(packedBuffer, N, BlkCount, BlkLen);
+    PackedQuantBDataStruct<float, 8> packedQuantB(packedBuffer, N, BlkCount, BlkLen, false);
 
     PrepackB<K, N, BlkLen, SubBlkLen>(inputB, refB);
     PrepackBlkSumAndScale<K, N, BlkLen, SubBlkLen>(inputScale, inputZp, refScale, refBlkSum);
@@ -430,7 +430,7 @@ class MlasSQ8BitGemmKernelTest : public MlasTestBase {
         N, K, 8, BlkLen, MLAS_QNBIT_GEMM_COMPUTE_TYPE::SQNBIT_CompInt8, nullptr, packedBuffer,
         nullptr, HasZp, inputZp, nullptr);
 
-    PackedQuantBDataStruct<float, 8> packedQuantB(packedBuffer, N, BlkCount, BlkLen);
+    PackedQuantBDataStruct<float, 8> packedQuantB(packedBuffer, N, BlkCount, BlkLen, false);
 
     auto* C = C_.GetBuffer(M * ldc, true);
     auto* ref = ref_.GetBuffer(M * ldc, true);
