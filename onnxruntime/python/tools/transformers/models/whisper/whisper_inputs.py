@@ -322,9 +322,6 @@ def convert_inputs_for_ort(
         elif "cross_qk" in name:
             # Jump times input
             ort_inputs[name] = inputs["QKs"].pop(0).detach().cpu().numpy()
-        elif name.startswith("past_key_values_"):
-            iis = [int(s) for s in name[len("past_key_values_") :].split("_")]
-            ort_inputs[name] = inputs["past_key_values"][iis[0]][iis[1]].detach().cpu().numpy()
         else:
             raise ValueError(f"Unknown name not recognized: {name}")
 
