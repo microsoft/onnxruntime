@@ -237,9 +237,9 @@ The `load_config` feature is developed to facilitate loading of OpenVINO EP para
     "DEVICE_KEY": {"PROPERTY": "PROPERTY_VALUE"}
 }
 ```
-where "DEVICE_KEY" can be CPU, NPU or GPU , "PROPERTY" must be a valid entity defined in OpenVINO™ supported properties &  "PROPERTY_VALUE" must be a valid corresponding supported property value passed in as a string. 
+where "DEVICE_KEY" can be CPU, NPU or GPU , "PROPERTY" must be a valid entity defined in [OpenVINO™ supported properties](https://github.com/openvinotoolkit/openvino/blob/releases/2025/1/src/inference/include/openvino/runtime/properties.hpp) &  "PROPERTY_VALUE" must be a valid corresponding supported property value passed in as a string. 
 
-If a property is set using an invalid key (i.e., a key that is not recognized as part of the OpenVINO™ supported properties), it will be ignored & a warning will be logged against the same. However, if a valid property key is used but assigned an invalid value (e.g., a non-integer where an integer is expected), the OpenVINO™ framework will result in an exception during execution.
+If a property is set using an invalid key (i.e., a key that is not recognized as part of the `OpenVINO™ supported properties`), it will be ignored & a warning will be logged against the same. However, if a valid property key is used but assigned an invalid value (e.g., a non-integer where an integer is expected), the OpenVINO™ framework will result in an exception during execution.
 
 The valid properties are of two types viz. Mutable (Read/Write) & Immutable (Read only) these are also governed while setting the same. If an Immutable property is being set, we skip setting the same with a similar warning.
 
