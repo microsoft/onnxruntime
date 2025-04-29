@@ -161,6 +161,7 @@ ProviderInfo_MIGraphX* TryGetProviderInfo_MIGraphX();
 ProviderInfo_MIGraphX& GetProviderInfo_MIGraphX();
 ProviderInfo_Nv* TryGetProviderInfo_Nv();
 ProviderInfo_Nv& GetProviderInfo_Nv();
+ProviderInfo_OpenVINO* TryGetProviderInfo_OpenVINO();
 
 ONNX_NAMESPACE::OpSchema CreateSchema(const std::string& domain, const std::vector<const OrtCustomOp*>& ops);
 struct TensorShapeProto_Dimension_Iterator_Impl : TensorShapeProto_Dimension_Iterator {
@@ -2092,8 +2093,11 @@ std::shared_ptr<IExecutionProviderFactory> VitisAIProviderFactoryCreator::Create
   return s_library_vitisai.Get().CreateExecutionProviderFactory(&provider_options);
 }
 
-ProviderInfo_OpenVINO* GetProviderInfo_OpenVINO() {
+ProviderInfo_OpenVINO* TryGetProviderInfo_OpenVINO() try {
   return reinterpret_cast<ProviderInfo_OpenVINO*>(s_library_openvino.Get().GetInfo());
+} catch (const std::exception& exception) {
+  LOGS_DEFAULT(ERROR) << exception.what();
+  return nullptr;
 }
 
 ProviderInfo_TensorRT* TryGetProviderInfo_TensorRT() try {

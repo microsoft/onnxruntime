@@ -70,11 +70,14 @@ struct OrtStatus {
 
 #elif OPENVINO_DISABLE_NPU_FALLBACK
 #define BACKEND_OPENVINO "-OPENVINO_DISABLE_NPU_FALLBACK"
-#endif
 
 #else
 #define BACKEND_OPENVINO ""
-#endif
+#endif  // OPENVINO_CONFIG_*
+
+#else
+#define BACKEND_OPENVINO ""
+#endif  // defined(USE_OPENVINO) || defined(USE_OPENVINO_PROVIDER_INTERFACE)
 
 #if USE_OPENBLAS
 #define BACKEND_OPENBLAS "-OPENBLAS"
@@ -120,7 +123,7 @@ struct OrtStatus {
 #include "core/providers/rocm/rocm_provider_factory.h"
 #include "core/providers/rocm/rocm_execution_provider_info.h"
 #endif
-#ifdef USE_TENSORRT
+#if defined(USE_TENSORRT) || defined(USE_TENSORRT_PROVIDER_INTERFACE)
 #include "core/providers/tensorrt/tensorrt_provider_factory.h"
 #endif
 #if defined(USE_NV) || defined(USE_NV_PROVIDER_INTERFACE)
@@ -133,7 +136,7 @@ struct OrtStatus {
 #include "core/providers/openvino/openvino_provider_factory.h"
 // TODO remove deprecated global config
 namespace onnxruntime {
-ProviderInfo_OpenVINO* GetProviderInfo_OpenVINO();
+ProviderInfo_OpenVINO* TryGetProviderInfo_OpenVINO();
 namespace python {
 extern std::string openvino_device_type;
 }
@@ -170,7 +173,7 @@ extern onnxruntime::ArenaExtendStrategy arena_extend_strategy;
 }  // namespace onnxruntime
 #endif
 
-#ifdef USE_TENSORRT
+#if defined(USE_TENSORRT) || defined(USE_TENSORRT_PROVIDER_INTERFACE)
 namespace onnxruntime {
 ProviderInfo_TensorRT* TryGetProviderInfo_TensorRT();
 ProviderInfo_TensorRT& GetProviderInfo_TensorRT();

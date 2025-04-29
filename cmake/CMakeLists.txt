@@ -253,7 +253,6 @@ option(onnxruntime_FORCE_GENERIC_ALGORITHMS "Disable optimized arch-specific alg
 
 option(onnxruntime_USE_TENSORRT_INTERFACE "Build ONNXRuntime shared lib which is compatible with TensorRT EP interface" OFF)
 option(onnxruntime_USE_NV_INTERFACE "Build ONNXRuntime shared lib which is compatible with NV EP interface" OFF)
-option(onnxruntime_USE_CUDA_INTERFACE "Build ONNXRuntime shared lib which is compatible with Cuda EP interface" OFF)
 option(onnxruntime_USE_OPENVINO_INTERFACE "Build ONNXRuntime shared lib which is compatible with OpenVINO EP interface" OFF)
 option(onnxruntime_USE_VITISAI_INTERFACE "Build ONNXRuntime shared lib which is compatible with Vitis-AI EP interface" OFF)
 option(onnxruntime_USE_QNN_INTERFACE "Build ONNXRuntime shared lib which is compatible with QNN EP interface" OFF)
@@ -912,11 +911,6 @@ if (onnxruntime_USE_CUDA)
     endif()
 endif()
 
-if (onnxruntime_USE_CUDA_INTERFACE AND (NOT onnxruntime_USE_CUDA))
-    # TODO: Do not set USE_CUDA. Instead, set USE_CUDA_PROVIDER_INTERFACE.
-    list(APPEND ORT_EXTRA_INTERFACE_FLAGS -DUSE_CUDA=1)
-endif()
-
 if (onnxruntime_USE_VITISAI)
     list(APPEND ORT_PROVIDER_FLAGS -DUSE_VITISAI=1)
     list(APPEND ONNXRUNTIME_PROVIDER_NAMES vitisai)
@@ -1244,10 +1238,11 @@ function(onnxruntime_set_compile_flags target_name)
       target_compile_definitions(${target_name} PRIVATE ${ORT_FLAG})
     endforeach()
 
+    # These are the targes in which USE_<EP>_PROVIDER_INTERFACE is used.
     set(ORT_EXTRA_INTERFACE_FLAG_TARGETS "onnxruntime"
                                          "onnxruntime_session"
                                          "onnxruntime_optimizer"
-                                         "onnxruntime_python")
+                                         "onnxruntime_pybind11_state")
     if("${target_name}" IN_LIST ORT_EXTRA_INTERFACE_FLAG_TARGETS)
         foreach(ORT_EXTRA_FLAG ${ORT_EXTRA_INTERFACE_FLAGS})
           target_compile_definitions(${target_name} PRIVATE ${ORT_EXTRA_FLAG})
@@ -1544,10 +1539,6 @@ if (onnxruntime_USE_OPENVINO)
     add_definitions(-DOPENVINO_FIL_ENABLED=1)
   endif()
 
-endif()
-
-if (onnxruntime_USE_OPENVINO_INTERFACE AND (NOT onnxruntime_USE_OPENVINO))
-    add_definitions(-DOPENVINO_CONFIG_NPU=1)
 endif()
 
 if (onnxruntime_USE_VITISAI)

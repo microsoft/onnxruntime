@@ -70,33 +70,48 @@ bool ConvertNodeLayout(const api::NodeRef& node) {
   const auto& layout_sensitive_ops = GetORTLayoutSensitiveOps();
 
   // handle special cases
+#if defined(USE_JSEP)
+  // TODO(fs-eire): Remove special case handing of JSEP once NHWC Resize implementation is fixed
   if (node.GetExecutionProviderType() == kJsExecutionProvider) {
-    // TODO(fs-eire): Remove special case handing of JSEP once NHWC Resize implementation is fixed
     if (node.OpType() == "Resize") {
       // leave Resize as-is pending bugfix for NHWC implementation. this means the node will remain in the ONNX domain
       // with the original input layout.
       return false;
     }
-  } else if (node.GetExecutionProviderType() == kWebGpuExecutionProvider) {
-    // NHWC for Resize operator is not implemented on kWebGpuExecutionProvider
+  }
+#endif
+
+// NHWC for Resize operator is not implemented on kWebGpuExecutionProvider
+#if defined(USE_WEBGPU)
+  if (node.GetExecutionProviderType() == kWebGpuExecutionProvider) {
     if (node.OpType() == "Resize") {
       return false;
     }
-  } else if (node.GetExecutionProviderType() == kCudaExecutionProvider) {
+  }
+#endif
+
 #if defined(USE_CUDA) && ENABLE_CUDA_NHWC_OPS
+  if (node.GetExecutionProviderType() == kCudaExecutionProvider) {
     if (layout_sensitive_ops.count(node.OpType())) {
       const auto& cuda_nhwc_ops = GetCUDALayoutSensitiveOps();
       if (!cuda_nhwc_ops.count(node.OpType())) {
         return false;
       }
     }
+  }
 #endif
-  } else if (node.GetExecutionProviderType() == kQnnExecutionProvider) {
+
+// TODO: We don't really need EP pre-processor macros in this function because we're already checking if the
+// node is assigned to the desired EP (e.g., QNN EP). There's nothing about this code that absolutely requires
+// conditional compilation.
+#if defined(USE_QNN) || defined(USE_QNN_PROVIDER_INTERFACE)
+  if (node.GetExecutionProviderType() == kQnnExecutionProvider) {
     if (node.OpType() == "Upsample") {
       // Upsample is translated to QNN's Resize, which requires the NHWC layout for processing.
       return true;
     }
   }
+#endif
 
   return layout_sensitive_ops.count(node.OpType()) != 0;
 }

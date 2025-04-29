@@ -1199,7 +1199,14 @@ std::unique_ptr<IExecutionProvider> CreateExecutionProviderInstance(
       info = it->second;
     }
     info["session_options"] = std::to_string((uintptr_t)(void*)&session_options);
-    return onnxruntime::VitisAIProviderFactoryCreator::Create(info)->CreateProvider();
+    if (auto vitisai_factory = onnxruntime::VitisAIProviderFactoryCreator::Create(info); vitisai_factory) {
+      return vitisai_factory->CreateProvider();
+    }
+    LOGS_DEFAULT(WARNING) << "Failed to create "
+                          << type
+                          << ". Please reference "
+                          << "https://onnxruntime.ai/docs/execution-providers/"
+                          << "Vitis-AI-ExecutionProvider.html#requirements to ensure all dependencies are met.";
 #endif
   } else if (type == kAclExecutionProvider) {
 #ifdef USE_ACL
@@ -1317,9 +1324,16 @@ std::unique_ptr<IExecutionProvider> CreateExecutionProviderInstance(
   } else if (type == kQnnExecutionProvider) {
 #if defined(USE_QNN) || defined(USE_QNN_PROVIDER_INTERFACE)
     auto cit = provider_options_map.find(type);
-    return onnxruntime::QNNProviderFactoryCreator::Create(
-               cit == provider_options_map.end() ? ProviderOptions{} : cit->second, &session_options)
-        ->CreateProvider();
+    auto qnn_factory = onnxruntime::QNNProviderFactoryCreator::Create(
+        cit == provider_options_map.end() ? ProviderOptions{} : cit->second, &session_options);
+    if (qnn_factory) {
+      return qnn_factory->CreateProvider();
+    }
+    LOGS_DEFAULT(WARNING) << "Failed to create "
+                          << type
+                          << ". Please reference "
+                          << "https://onnxruntime.ai/docs/execution-providers/QNN-ExecutionProvider.html"
+                          << " to ensure all dependencies are met.";
 #endif
   } else {
     // check whether it is a dynamic load EP:
@@ -1508,7 +1522,7 @@ void addGlobalMethods(py::module& m) {
 #if defined(USE_OPENVINO) || defined(USE_OPENVINO_PROVIDER_INTERFACE)
   m.def(
       "get_available_openvino_device_ids", []() -> std::vector<std::string> {
-        if (auto* info = GetProviderInfo_OpenVINO()) {
+        if (auto* info = TryGetProviderInfo_OpenVINO()) {
           return info->GetAvailableDevices();
         }
         return {};
