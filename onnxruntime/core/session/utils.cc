@@ -240,15 +240,25 @@ Status LoadPluginOrProviderBridge(const std::string& registration_name,
                                   const ORTCHAR_T* library_path,
                                   std::unique_ptr<EpLibrary>& ep_library,
                                   std::vector<EpFactoryInternal*>& internal_factories) {
+  // If the `library_path` is absolute, use it as-is. Otherwise follow the precedent of ProviderLibrary::Load and make
+  // it absolute by combining it with the OnnxRuntime location.
+  std::filesystem::path resolved_library_path{library_path};
+
+  if (!resolved_library_path.is_absolute()) {
+    resolved_library_path = Env::Default().GetRuntimePath() / std::move(resolved_library_path);
+  }
+
   // if it's a provider bridge library we need to create ProviderLibrary first to ensure the dependencies are loaded
   // like the onnxruntime_provider_shared library.
-  auto provider_library = std::make_unique<ProviderLibrary>(library_path);
+  auto provider_library = std::make_unique<ProviderLibrary>(resolved_library_path.native().c_str(),
+                                                            true,
+                                                            ProviderLibraryPathType::Absolute);
   bool is_provider_bridge = provider_library->Load() == Status::OK();  // library has GetProvider
   LOGS_DEFAULT(INFO) << "Loading EP library: " << library_path
                      << (is_provider_bridge ? " as a provider bridge" : " as a plugin");
 
   // create EpLibraryPlugin to ensure CreateEpFactories and ReleaseEpFactory are available
-  auto ep_library_plugin = std::make_unique<EpLibraryPlugin>(registration_name, library_path);
+  auto ep_library_plugin = std::make_unique<EpLibraryPlugin>(registration_name, std::move(resolved_library_path));
   ORT_RETURN_IF_ERROR(ep_library_plugin->Load());
 
   if (is_provider_bridge) {
