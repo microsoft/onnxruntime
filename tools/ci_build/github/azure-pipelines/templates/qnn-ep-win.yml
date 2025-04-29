@@ -115,8 +115,14 @@ stages:
         Contents: '*.snupkg'
         TargetFolder: '$(Build.ArtifactStagingDirectory)'
 
+    - template: ../templates/esrp_nuget.yml
+      parameters:
+        DisplayName: 'ESRP - sign NuGet package'
+        FolderPath: '$(Build.ArtifactStagingDirectory)'
+        DoEsrp: ${{ parameters.DoEsrp }}
+
     - task: 1ES.PublishPipelineArtifact@1
-      displayName: 'Publish Pipeline x64 NuGet Artifact'
+      displayName: 'Publish Pipeline Qnn NuGet Artifact'
       inputs:
-        artifactName: ${{ parameters.ArtifactName }}
+        artifactName: 'drop-signed-nuget-qnn'
         targetPath: '$(Build.ArtifactStagingDirectory)'
