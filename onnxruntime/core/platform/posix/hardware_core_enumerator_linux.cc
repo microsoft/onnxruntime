@@ -6,18 +6,18 @@
 
 namespace onnxruntime {
 
-IntelChecks checkIntel() {
-  IntelChecks intelCheck = {false, false};
-  bool isIntelSpecifiedPlatform = false;
+IntelChecks CheckIntel() {
+  IntelChecks intel_check = {false, false};
+  bool isIntel_SpecifiedPlatform = false;
   unsigned int regs[4] = {0};
   __get_cpuid(0, &regs[0], &regs[1], &regs[2], &regs[3]);
 
   const unsigned int kVendorID_Intel[3] = {0x756e6547, 0x6c65746e, 0x49656e69};  // "GenuntelineI"
-  bool isIntel = (regs[1] == kVendorID_Intel[0] &&
+  bool is_Intel = (regs[1] == kVendorID_Intel[0] &&
                   regs[2] == kVendorID_Intel[1] &&
                   regs[3] == kVendorID_Intel[2]);
-  if (!isIntel) {
-    return intelCheck;  // if not an Intel CPU, return early
+  if (!is_Intel) {
+    return intel_check;  // if not an Intel CPU, return early
   }
 
   __get_cpuid(1, &regs[0], &regs[1], &regs[2], &regs[3]);
@@ -37,15 +37,15 @@ IntelChecks checkIntel() {
 
   for (auto id : kVendorID_IntelSpecifiedPlatformIDs) {
     if (model == id) {
-      isIntelSpecifiedPlatform = true;
+      isIntel_SpecifiedPlatform = true;
       break;
     }
   }
 
-  intelCheck.isIntel = isIntel;
-  intelCheck.isIntelSpecifiedPlatform = isIntelSpecifiedPlatform;
+  intel_check.is_Intel = is_Intel;
+  intel_check.isIntel_SpecifiedPlatform = isIntel_SpecifiedPlatform;
 
-  return intelCheck;
+  return intel_check;
 }
 }  // namespace onnxruntime
 #endif  //__linux__

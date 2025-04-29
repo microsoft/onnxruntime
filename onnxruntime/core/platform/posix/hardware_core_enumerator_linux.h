@@ -2,9 +2,9 @@
 
 namespace onnxruntime {
 struct IntelChecks {
-  bool isIntel;
-  bool isIntelSpecifiedPlatform;
+  bool is_Intel;
+  bool isIntel_SpecifiedPlatform;
 };
 
-IntelChecks checkIntel();
+IntelChecks CheckIntel();
 }  // namespace onnxruntime
