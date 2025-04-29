@@ -80,6 +80,8 @@ bool AllPositiveShape(gsl::span<const int64_t> shape) {
 }
 
 bool LegalNegativeOneInNewShape(gsl::span<const int64_t> input_shape, gsl::span<const int64_t> new_shape) {
+  int input_negative_one_count = std::count(input_shape.begin(), input_shape.end(), -1);
+  if (input_negative_one_count > 0) return false;
   // Count how many -1 dimensions exist in new_shape
   int negative_one_count = std::count(new_shape.begin(), new_shape.end(), -1);
 
