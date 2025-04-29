@@ -12,7 +12,8 @@ on:
   workflow_dispatch:
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.ref || github.sha }}
+  group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.ref
+    || github.sha }}
   cancel-in-progress: true
 
 jobs:
@@ -40,14 +41,16 @@ jobs:
         shell: cmd
 
       - name: Download Primary CUDA SDK v12.2
-        run: 'azcopy.exe cp --recursive "https://lotusscus.blob.core.windows.net/models/cuda_sdk/v12.2" ${{ runner.temp }}'
+        run: 'azcopy.exe cp --recursive "https://lotusscus.blob.core.windows.net/models/cuda_sdk/v12.2"
+          ${{ runner.temp }}'
         shell: pwsh
         env:
           AZCOPY_AUTO_LOGIN_TYPE: MSI
           AZCOPY_MSI_CLIENT_ID: 63b63039-6328-442f-954b-5a64d124e5b4
 
       - name: Download TensorRT-10.8.0.43.Windows10.x86_64.cuda-12.8
-        run: 'azcopy.exe cp --recursive "https://lotusscus.blob.core.windows.net/models/local/TensorRT-10.8.0.43.Windows10.x86_64.cuda-12.8" ${{ runner.temp }}'
+        run: 'azcopy.exe cp --recursive "https://lotusscus.blob.core.windows.net/models/local/TensorRT-10.8.0.43.Windows10.x86_64.cuda-12.8"
+          ${{ runner.temp }}'
         shell: pwsh
         env:
           AZCOPY_AUTO_LOGIN_TYPE: MSI
