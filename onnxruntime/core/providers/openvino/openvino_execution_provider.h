@@ -69,6 +69,8 @@ class OpenVINOExecutionProvider : public IExecutionProvider {
 #ifdef USE_OVEP_NPU_MEMORY
   std::vector<AllocatorPtr> CreatePreferredAllocators() override;
 #endif
+  OrtDevice GetOrtDeviceByMemType(OrtMemType mem_type) const override;
+
  private:
   SessionContext session_context_;
   std::shared_ptr<SharedContext> shared_context_;
