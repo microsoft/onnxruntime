@@ -37,6 +37,20 @@
       target_compile_options(onnxruntime_providers_qnn PRIVATE "-Wno-unknown-pragmas")
     endif()
 
+    set(onnxruntime_providers_qnn_target onnxruntime_providers_qnn)
+
+    if (MSVC OR ${CMAKE_SYSTEM_NAME} STREQUAL "Linux")
+      add_custom_command(
+        TARGET ${onnxruntime_providers_qnn_target} POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy ${QNN_LIB_FILES} $<TARGET_FILE_DIR:${onnxruntime_providers_qnn_target}>
+        )
+    endif()
+    if (EXISTS "${onnxruntime_QNN_HOME}/Qualcomm AI Hub Proprietary License.pdf")
+      add_custom_command(
+        TARGET ${onnxruntime_providers_qnn_target} POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy "${onnxruntime_QNN_HOME}/Qualcomm AI Hub Proprietary License.pdf" $<TARGET_FILE_DIR:${onnxruntime_providers_qnn_target}>
+        )
+    endif()
   else()
     #
     # Build QNN EP as a shared library
