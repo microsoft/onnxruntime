@@ -588,4 +588,6 @@ ORT_API(const char*, EpDevice_EpVendor, _In_ const OrtEpDevice* ep_device);
 ORT_API(const OrtKeyValuePairs*, EpDevice_EpMetadata, _In_ const OrtEpDevice* ep_device);
 ORT_API(const OrtKeyValuePairs*, EpDevice_EpOptions, _In_ const OrtEpDevice* ep_device);
 ORT_API(const OrtHardwareDevice*, EpDevice_Device, _In_ const OrtEpDevice* ep_device);
+
+ORT_API(const OrtEpApi*, GetEpApi);
 }  // namespace OrtApis
