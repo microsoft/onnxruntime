@@ -857,21 +857,6 @@ endif()
 set(ONNXRUNTIME_PROVIDER_NAMES cpu)
 
 set(ORT_PROVIDER_FLAGS)
-set(ORT_EXTRA_INTERFACE_FLAGS)
-set(ORT_GENERIC_INTERFACE_TARGETS
-     onnxruntime_flatbuffers
-     onnxruntime_common
-     onnxruntime_mlas
-     onnxruntime_graph
-     onnxruntime_lora
-     onnxruntime_framework
-     onnxruntime_util
-     onnxruntime_providers
-     onnxruntime_optimizer
-     onnxruntime_session
-     onnxruntime_pybind11_state
-     onnxruntime_shared_lib_test
-)
 
 if (onnxruntime_USE_CUDA)
   enable_language(CUDA)
@@ -927,7 +912,7 @@ if (onnxruntime_USE_CUDA)
 endif()
 
 if (onnxruntime_USE_CUDA_INTERFACE AND (NOT onnxruntime_USE_CUDA))
-    list(APPEND ORT_EXTRA_INTERFACE_FLAGS -DUSE_CUDA_PROVIDER_INTERFACE=1)
+    list(APPEND ORT_PROVIDER_FLAGS -DUSE_CUDA_PROVIDER_INTERFACE=1)
 endif()
 
 if (onnxruntime_USE_VITISAI)
@@ -936,7 +921,7 @@ if (onnxruntime_USE_VITISAI)
 endif()
 
 if (onnxruntime_USE_VITISAI_INTERFACE AND (NOT onnxruntime_USE_VITISAI))
-    list(APPEND ORT_EXTRA_INTERFACE_FLAGS -DUSE_VITISAI_PROVIDER_INTERFACE=1)
+    list(APPEND ORT_PROVIDER_FLAGS -DUSE_VITISAI_PROVIDER_INTERFACE=1)
 endif()
 
 if (onnxruntime_USE_DNNL)
@@ -950,7 +935,7 @@ if (onnxruntime_USE_OPENVINO)
 endif()
 
 if (onnxruntime_USE_OPENVINO_INTERFACE AND (NOT onnxruntime_USE_OPENVINO))
-    list(APPEND ORT_EXTRA_INTERFACE_FLAGS -DUSE_OPENVINO_PROVIDER_INTERFACE=1)
+    list(APPEND ORT_PROVIDER_FLAGS -DUSE_OPENVINO_PROVIDER_INTERFACE=1)
 endif()
 
 if (onnxruntime_USE_TENSORRT)
@@ -960,7 +945,7 @@ if (onnxruntime_USE_TENSORRT)
 endif()
 
 if (onnxruntime_USE_TENSORRT_INTERFACE AND (NOT onnxruntime_USE_TENSORRT))
-    list(APPEND ORT_EXTRA_INTERFACE_FLAGS -DUSE_TENSORRT_PROVIDER_INTERFACE=1)
+    list(APPEND ORT_PROVIDER_FLAGS -DUSE_TENSORRT_PROVIDER_INTERFACE=1)
 endif()
 
 if (onnxruntime_USE_NV)
@@ -969,7 +954,7 @@ if (onnxruntime_USE_NV)
 endif()
 
 if (onnxruntime_USE_NV_INTERFACE AND (NOT onnxruntime_USE_NV))
-    list(APPEND ORT_EXTRA_INTERFACE_FLAGS -DUSE_NV_PROVIDER_INTERFACE=1)
+    list(APPEND ORT_PROVIDER_FLAGS -DUSE_NV_PROVIDER_INTERFACE=1)
 endif()
 
 if (onnxruntime_USE_RKNPU)
@@ -993,7 +978,7 @@ if (onnxruntime_USE_QNN OR onnxruntime_USE_QNN_INTERFACE)
     if(onnxruntime_USE_QNN)
         list(APPEND ORT_PROVIDER_FLAGS -DUSE_QNN=1)
     else()
-        list(APPEND ORT_EXTRA_INTERFACE_FLAGS -DUSE_QNN_PROVIDER_INTERFACE=1)
+        list(APPEND ORT_PROVIDER_FLAGS -DUSE_QNN_PROVIDER_INTERFACE=1)
     endif()
 
     list(APPEND ONNXRUNTIME_PROVIDER_NAMES qnn)
@@ -1256,12 +1241,6 @@ function(onnxruntime_set_compile_flags target_name)
     foreach(ORT_FLAG ${ORT_PROVIDER_FLAGS})
       target_compile_definitions(${target_name} PRIVATE ${ORT_FLAG})
     endforeach()
-
-    if(${target_name} IN_LIST ORT_GENERIC_INTERFACE_TARGETS)
-        foreach(ORT_EXTRA_FLAG ${ORT_EXTRA_INTERFACE_FLAGS})
-          target_compile_definitions(${target_name} PRIVATE ${ORT_EXTRA_FLAG})
-        endforeach()
-    endif()
 
     if (HAS_DEPRECATED_COPY)
       #too many such errors in eigen
