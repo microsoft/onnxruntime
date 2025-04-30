@@ -16,9 +16,9 @@ using sw = SharedContext::SharedWeights;
 Status CreateModelWithStrippedQDQNodes(const GraphViewer& src_graph,
                                        const logging::Logger& logger,
                                        bool enable_ovep_weight_sharing,
+                                       bool enable_ovep_qdq_optimizer,
                                        /*out*/ std::unique_ptr<onnxruntime::Model>& model,
-                                       /*out*/ sw& shared_weights,
-                                       bool enable_ovep_qdq_optimizer);
+                                       /*out*/ sw& shared_weights);
 
 bool dumpMetaDataMapToBinary(const sw::Metadata::Map& shared_weights, const std::string& filename);
 }  // namespace openvino_ep

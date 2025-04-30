@@ -39,12 +39,12 @@ constexpr int32_t GetDefaultAxisAttribute(int opset_version) {
   return opset_version < 13 ? 1 : -1;
 }
 
-std::vector<uint32_t> FlattenShapeFromAxis(std::vector<uint32_t>& input_shape, int32_t axis) {
+std::vector<uint32_t> FlattenShapeFromAxis(const std::vector<uint32_t>& input_shape, int32_t axis) {
   /*
   Return the shape with all dimensions multiplied onward from the specified axis. If axis is 0, the returned shape
   will include an additional batch of size 1 as the first dimension.
   */
-  assert(axis >= 0 && axis < input_shape.size());
+  assert(axis >= 0 && static_cast<size_t>(axis) < input_shape.size());
   std::vector<uint32_t> output_shape(input_shape.begin(), input_shape.begin() + axis);
 
   if (axis == 0) {
