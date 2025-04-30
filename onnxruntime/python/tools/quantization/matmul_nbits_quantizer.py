@@ -21,6 +21,7 @@ from packaging import version
 from onnxruntime.capi._pybind_state import quantize_matmul_4bits, quantize_matmul_8bits, quantize_qdq_matmul_4bits
 
 from .calibrate import CalibrationDataReader
+from .neural_compressor import gptq_quantize, rtn_quantize
 from .onnx_model import ONNXModel
 from .quant_utils import QuantFormat, attribute_to_kwarg
 
@@ -97,12 +98,14 @@ class RTNWeightOnlyQuantConfig(WeightOnlyQuantConfig):
         )
         self.ratios = ratios
 
+
 class KQuantWeightOnlyQuantConfig(WeightOnlyQuantConfig):
     def __init__(
         self,
         ratios=None,
         quant_format=QuantFormat.QOperator,
         op_types_to_quantize: tuple[str, ...] | None = None,
+        customized_weight_config: dict | None = None,
     ):
         """
         This is a class for k-quant algorithm Weight Only Quant Configuration.
@@ -125,8 +128,10 @@ class KQuantWeightOnlyQuantConfig(WeightOnlyQuantConfig):
             algorithm="k_quant",
             quant_format=quant_format,
             op_types_to_quantize=op_types_to_quantize,
+            customized_weight_config=customized_weight_config,
         )
         self.ratios = ratios
+
 
 class GPTQWeightOnlyQuantConfig(WeightOnlyQuantConfig):
     def __init__(
@@ -1211,7 +1216,7 @@ class MatMulNBitsQuantizer:
                 for attr in node.attribute
                 if attr.type == onnx.AttributeProto.GRAPH or attr.type == onnx.AttributeProto.GRAPHS
             ]
-            if len(graph_attrs):
+            if graph_attrs:
                 kwargs = {}
                 for attr in node.attribute:
                     if attr.type == onnx.AttributeProto.GRAPH:
@@ -1289,14 +1294,11 @@ class MatMulNBitsQuantizer:
         algorithm = self.algo_config.algorithm
         logger.info(f"start to quantize model with {algorithm} algorithm...")
         if algorithm in ["RTN", "k_quant"]:
-            from neural_compressor.adaptor.ox_utils.weight_only import rtn_quantize
-
             kwargs["ratios"] = self.algo_config.ratios
             kwargs["algorithm"] = algorithm
 
             """
-            neural-compressor uses fp32 to represent the node that skip quantization, it does not mean this node is fp32 type though.
-            https://github.com/intel/neural-compressor/blob/a617115b1490bbe6163c0024fb55bd260c8914df/neural_compressor/adaptor/ox_utils/weight_only.py#L343
+            We uses fp32 to represent the node that skip quantization, it does not mean this node is fp32 type though.
             """
             for n in self.nodes_to_exclude:
                 weight_only_node_config[n] = "fp32"
@@ -1307,8 +1309,6 @@ class MatMulNBitsQuantizer:
                 **kwargs,
             )
         elif algorithm == "GPTQ":
-            from neural_compressor.adaptor.ox_utils.weight_only import gptq_quantize
-
             kwargs["percdamp"] = self.algo_config.percdamp
             kwargs["blocksize"] = self.algo_config.block_size
             kwargs["actorder"] = self.algo_config.actorder
@@ -1531,8 +1531,8 @@ if __name__ == "__main__":
         )
     elif args.quant_method == "rtn":
         quant_config = RTNWeightOnlyQuantConfig(op_types_to_quantize=op_types_to_quantize)
-    elif args.quant_method == "k-quant":
-        quant_config = KQuantWeightOnlyQuantConfig(op_types_to_quantize=op_types_to_quantize)   
+    elif args.quant_method == "k_quant":
+        quant_config = KQuantWeightOnlyQuantConfig(op_types_to_quantize=op_types_to_quantize)
     elif args.quant_method == "gptq":
         quant_config = GPTQWeightOnlyQuantConfig(block_size=args.block_size, op_types_to_quantize=op_types_to_quantize)
     elif args.quant_method == "nvidia_awq":

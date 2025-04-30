@@ -55,10 +55,10 @@ class MatMulNBits final : public WebGpuKernel {
     K_ = info.GetAttr<int64_t>("K");
     N_ = info.GetAttr<int64_t>("N");
     block_size_ = info.GetAttr<int64_t>("block_size");
-    int64_t bits = info.GetAttr<int64_t>("bits");
+    bits_ = info.GetAttr<int64_t>("bits");
     accuracy_level_ = info.GetAttrOrDefault<int64_t>("accuracy_level", 4);
-    ORT_ENFORCE(bits == 4,
-                "Only 4b quantization is supported for MatMulNBits op, additional bits support is planned.");
+    ORT_ENFORCE(bits_ == 4 || bits_ == 8,
+                "Only 4b/8b quantization is supported for MatMulNBits op, additional bits support is planned.");
   }
 
   Status ComputeInternal(onnxruntime::webgpu::ComputeContext& context) const override;
@@ -68,6 +68,7 @@ class MatMulNBits final : public WebGpuKernel {
   int64_t N_;
   int64_t block_size_;
   int64_t accuracy_level_;
+  int64_t bits_;
 };
 
 }  // namespace webgpu

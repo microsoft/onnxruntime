@@ -163,10 +163,12 @@ bool GetScalarInitializerValue(const onnxruntime::Graph& graph, const onnxruntim
 */
 bool GetClipConstantMinMax(const Graph& graph, const Node& node, float& min, float& max);
 
-/** Check whether node's output edges count is expected.
-@remarks graph output is not included in output edges, and this node shall not have graph output.
-        A node with graph output cannot be fused unless the graph output also exists in outputs of fused node.
-@returns false when the node has graph output, or number of output edges are not expected.
+/** Check whether `node` has expected outputs.
+@remarks Graph outputs are not included in output edges, and this node should not have a graph output.
+         A node with a graph output cannot be fused unless the graph output also exists in outputs of the fused node.
+         Output edges to implicit inputs are also disallowed as we don't want to fuse with part of a subgraph.
+@returns False when `node` has a graph output or an output edge to an implicit input, or when the number of `node`'s
+         output edges is not `expected_output_edges`.
 */
 bool CheckOutputEdges(const Graph& graph, const Node& node, size_t expected_output_edges);
 
