@@ -707,7 +707,7 @@ Status MatMulNBits::ComputeInternal(onnxruntime::webgpu::ComputeContext& context
   const uint32_t N = onnxruntime::narrow<uint32_t>(helper.N());
   const uint32_t K = onnxruntime::narrow<uint32_t>(helper.K());
   const uint32_t block_size = onnxruntime::narrow<uint32_t>(block_size_);
-  constexpr uint32_t nbits = 4;
+  const uint32_t nbits = onnxruntime::narrow<uint32_t>(bits_);
 
   const uint32_t n_blocks_per_col = (K + block_size - 1) / block_size;
   const uint32_t blob_size = (block_size / 8) * nbits;
@@ -720,15 +720,18 @@ Status MatMulNBits::ComputeInternal(onnxruntime::webgpu::ComputeContext& context
   // macOS - Experimental dawn support for subgroup matrix matmul on Metal.
   if (M >= kMinMForTileOptimization &&
       CanApplySubgroupMatrixMatMulNBits(context, accuracy_level_, block_size, batch_count, N, K, has_zero_points)) {
-    return ApplySubgroupMatrixMatMulNBits(a, b, scales, M, N, K, context, y);
+    return ApplySubgroupMatrixMatMulNBits(a, b, scales, M, N, K, nbits, context, y);
   }
 
   // On FP32 only GPUs, integer math is faster than FP32 therefore always use DP4A independent of length of M.
-  if ((M >= kMinMForTileOptimization || y->DataType() == DataTypeImpl::GetType<float>() ||
+  if ((M >= kMinMForTileOptimization || y->DataType() == DataTypeImpl::GetType<float>() || nbits == 8 ||
        context.AdapterInfo().vendor == std::string_view{"qualcomm"}) &&
       CanApplyDP4AMatrixMatMulNBits(context, accuracy_level_, block_size, batch_count, N, K, components_a, has_zero_points)) {
-    return ApplyDP4AMatrixMatMulNBits(a, b, scales, M, N, K, block_size, kMinMForTileOptimization, context, y);
+    return ApplyDP4AMatrixMatMulNBits(a, b, scales, M, N, K, block_size, kMinMForTileOptimization, nbits, context, y);
   }
+
+  // TODO: Remvoe it once the 8bits is supported for the non-dp4 path.
+  ORT_ENFORCE(nbits == 4, "Only 4 bits are supported for the non-dp4 path for webgpu matmulnbits");
 
   // WideTileProgram
   // This program is optimized for Block32 prefill using Tile16x128.
