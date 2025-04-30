@@ -329,6 +329,11 @@ ProgramBase& ProgramBase::AddOutput(ProgramOutput&& output) {
   return *this;
 }
 
+ProgramBase& ProgramBase::AddAtomicOutput(ProgramOutput&& output) {
+  atomic_outputs_.emplace_back(std::move(output));
+  return *this;
+}
+
 ProgramBase& ProgramBase::AddOutputs(std::initializer_list<ProgramOutput> outputs) {
   outputs_.insert(outputs_.end(), outputs.begin(), outputs.end());
   return *this;

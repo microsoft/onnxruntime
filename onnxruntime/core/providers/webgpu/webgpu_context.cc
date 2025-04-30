@@ -192,8 +192,9 @@ Status WebGpuContext::Wait(wgpu::Future f) {
 Status WebGpuContext::Run(ComputeContext& context, const ProgramBase& program) {
   const auto& inputs = program.Inputs();
   const auto& outputs = program.Outputs();
+  const auto& atomic_outputs = program.AtomicOutputs();
 
-  if (outputs.size() == 0) {
+  if (outputs.size() == 0 && atomic_outputs.size() == 0) {
     return Status::OK();
   }
 

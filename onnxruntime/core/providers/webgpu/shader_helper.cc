@@ -91,7 +91,7 @@ const ShaderVariableHelper& ShaderHelper::AddInput(const std::string& name, Shad
 
   const auto& dims = program_.Inputs()[input_index].use_override_shape ? program_.Inputs()[input_index].override_shape
                                                                        : program_.Inputs()[input_index].tensor->Shape();
-  return AddVariableImpl(true, name, usage, dims);
+  return AddVariableImpl(true, false, name, usage, dims);
 }
 
 const ShaderVariableHelper& ShaderHelper::AddOutput(const std::string& name, ShaderUsage usage) {
@@ -101,7 +101,7 @@ const ShaderVariableHelper& ShaderHelper::AddOutput(const std::string& name, Sha
 
   const auto& dims = program_.Outputs()[output_index].use_override_shape ? program_.Outputs()[output_index].override_shape
                                                                          : program_.Outputs()[output_index].tensor->Shape();
-  return AddVariableImpl(false, name, usage, dims);
+  return AddVariableImpl(false, false, name, usage, dims);
 }
 
 const ShaderIndicesHelper& ShaderHelper::AddIndices(const std::string& name, ShaderUsage usage) {
@@ -118,6 +118,16 @@ const ShaderIndicesHelper& ShaderHelper::AddIndices(const std::string& name, Sha
                                             ProgramVariableDataType::InvalidType,
                                             usage,
                                             program_.Indices()[indices_index]));
+}
+
+const ShaderVariableHelper& ShaderHelper::AddAtomicOutput(const std::string& name, ShaderUsage usage) {
+  const size_t atomic_output_index = atomic_output_vars_.size();
+  ORT_ENFORCE(atomic_output_index < program_.AtomicOutputs().size(),
+              "Too many outputs in the program (", program_.AtomicOutputs().size(), ")");
+
+  const auto& dims = program_.AtomicOutputs()[atomic_output_index].use_override_shape ? program_.AtomicOutputs()[atomic_output_index].override_shape
+                                                                                      : program_.AtomicOutputs()[atomic_output_index].tensor->Shape();
+  return AddVariableImpl(false, true, name, usage, dims);
 }
 
 #ifndef NDEBUG  // if debug build
@@ -258,6 +268,7 @@ Status ShaderHelper::ValidateVariable(const ProgramOutput& output, const ShaderV
 #endif  // NDEBUG
 
 const ShaderVariableHelper& ShaderHelper::AddVariableImpl(bool is_input,
+                                                          bool is_atomic_output,
                                                           const std::string& name,
                                                           ShaderUsage usage,
                                                           const TensorShape& dims) {
@@ -265,11 +276,14 @@ const ShaderVariableHelper& ShaderHelper::AddVariableImpl(bool is_input,
               "Too many storage buffers in shader. Max is ", limits_.maxStorageBuffersPerShaderStage);
 
   ProgramVariableDataType type = ProgramVariableDataType::InvalidType;
-  auto& vars = is_input ? input_vars_ : output_vars_;
+  auto& vars = is_input ? input_vars_ : is_atomic_output ? atomic_output_vars_ : output_vars_;
 
   if (is_input) {
     const auto& input = program_.Inputs()[vars.size()];
     type = input.var_type;
+  } else if (is_atomic_output) {
+    const auto& output = program_.AtomicOutputs()[vars.size()];
+    type = output.var_type;
   } else {
     const auto& output = program_.Outputs()[vars.size()];
     type = output.var_type;
@@ -314,6 +328,9 @@ Status ShaderHelper::ValidateShapeForOutputs() const {
   // Validate output as dependencies of shape_uniforms
   ORT_RETURN_IF_NOT(output_vars_.size() == program_.Outputs().size(),
                     "Mismatched output variable count. Shader: ", output_vars_.size(), ", Program: ", program_.Outputs().size());
+
+    ORT_RETURN_IF_NOT(atomic_output_vars_.size() == program_.AtomicOutputs().size(),
+                    "Mismatched output variable count. Shader: ", atomic_output_vars_.size(), ", Program: ", program_.AtomicOutputs().size());
 
   for (size_t i = 0; i < output_vars_.size(); i++) {
 #ifndef NDEBUG  // if debug build
@@ -363,7 +380,12 @@ Status ShaderHelper::GenerateSourceCode(std::string& code, std::vector<int>& sha
                   program_.Outputs().end(),
                   [](const ProgramOutput& output) {
                     return output.tensor->GetElementType() == ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT16;
-                  })) {
+                  }) ||
+      std::any_of(program_.AtomicOutputs().begin(),
+                  program_.AtomicOutputs().end(),
+                  [](const ProgramOutput& atomic_output) {
+      return atomic_output.tensor->GetElementType() == ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT16;
+                  })){
     ORT_RETURN_IF_NOT(device_.HasFeature(wgpu::FeatureName::ShaderF16), "Program ", program_.Name(), " requires f16 but the device does not support it.");
     ss << "enable f16;\n";
   }
@@ -415,6 +437,9 @@ Status ShaderHelper::GenerateSourceCode(std::string& code, std::vector<int>& sha
   for (const auto& output : output_vars_) {
     ss << "@group(0) @binding(" << variable_count++ << ") var<storage, read_write> " << output->name_ << ": array<" << output->StorageType() << ">;\n";
   }
+  for (const auto& atomic_output : atomic_output_vars_) {
+    ss << "@group(0) @binding(" << variable_count++ << ") var<storage, read_write> " << atomic_output->name_ << ": array<atomic<i32>>;\n";
+  }
 
   //
   // uniform variables
@@ -438,6 +463,13 @@ Status ShaderHelper::GenerateSourceCode(std::string& code, std::vector<int>& sha
                        output->rank_ > 0;
     use_any_shape_uniform |= use_uniform;
     shape_uniform_ranks.push_back(use_uniform ? output->rank_ : 0);
+  }
+  for (const auto& atomic_output : atomic_output_vars_) {
+    bool use_uniform = (atomic_output->usage_ & ShaderUsage::UseUniform) &&
+                       (atomic_output->usage_ & ShaderUsage::UseShapeAndStride) &&
+                       atomic_output->rank_ > 0;
+    use_any_shape_uniform |= use_uniform;
+    shape_uniform_ranks.push_back(use_uniform ? atomic_output->rank_ : 0);
   }
   for (const auto& indices : indices_vars_) {
     bool use_uniform = (indices->usage_ & ShaderUsage::UseUniform) &&
@@ -502,6 +534,16 @@ Status ShaderHelper::GenerateSourceCode(std::string& code, std::vector<int>& sha
       }
     }
 
+    for (const auto& output : atomic_output_vars_) {
+      const size_t rank = output->rank_;
+      if (rank > 0 && (output->usage_ & ShaderUsage::UseUniform) && (output->usage_ & ShaderUsage::UseShapeAndStride)) {
+        std::string shape = output->name_ + "_shape";
+        std::string stride = output->name_ + "_stride";
+        append_uniform(shape, ProgramUniformVariableDataType::Uint32, rank);
+        append_uniform(stride, ProgramUniformVariableDataType::Uint32, rank - 1);
+      }
+    }
+
     for (const auto& indices : indices_vars_) {
       const size_t rank = indices->rank_;
       if (rank > 0 && (indices->usage_ & ShaderUsage::UseUniform) && (indices->usage_ & ShaderUsage::UseShapeAndStride)) {
@@ -531,6 +573,9 @@ Status ShaderHelper::GenerateSourceCode(std::string& code, std::vector<int>& sha
     var->Impl(ss);
   }
   for (const auto& var : output_vars_) {
+    var->Impl(ss);
+  }
+  for (const auto& var : atomic_output_vars_) {
     var->Impl(ss);
   }
   for (const auto& var : indices_vars_) {

@@ -79,11 +79,17 @@ class ShaderHelper final {
   const ShaderVariableHelper& AddInput(const std::string& name,
                                        ShaderUsage usage = ShaderUsage::UseIndicesTypeAlias | ShaderUsage::UseValueTypeAlias | ShaderUsage::UseUniform);
 
+  // Add an atomic output variable to the shader.
+  //
+  // depending on the usage of the variable, additional code may be generated.
+  const ShaderVariableHelper& AddAtomicOutput(const std::string& name,
+                                        ShaderUsage usage = ShaderUsage::UseIndicesTypeAlias | ShaderUsage::UseValueTypeAlias | ShaderUsage::UseUniform);
+
   // Add an output variable to the shader.
   //
   // depending on the usage of the variable, additional code may be generated.
   const ShaderVariableHelper& AddOutput(const std::string& name,
-                                        ShaderUsage usage = ShaderUsage::UseIndicesTypeAlias | ShaderUsage::UseValueTypeAlias | ShaderUsage::UseUniform);
+    ShaderUsage usage = ShaderUsage::UseIndicesTypeAlias | ShaderUsage::UseValueTypeAlias | ShaderUsage::UseUniform);
 
   // Add an indices variable to the shader.
   const ShaderIndicesHelper& AddIndices(const std::string& name, ShaderUsage usage = ShaderUsage::UseUniform);
@@ -127,6 +133,7 @@ class ShaderHelper final {
   }
 
   const ShaderVariableHelper& AddVariableImpl(bool is_input,
+                                              bool is_atomic_output,
                                               const std::string& name,
                                               ShaderUsage usage,
                                               const TensorShape& dims);
@@ -165,6 +172,7 @@ class ShaderHelper final {
 
   std::vector<std::unique_ptr<ShaderVariableHelper>> input_vars_;
   std::vector<std::unique_ptr<ShaderVariableHelper>> output_vars_;
+  std::vector<std::unique_ptr<ShaderVariableHelper>> atomic_output_vars_;
   std::vector<std::unique_ptr<ShaderIndicesHelper>> indices_vars_;
   std::string additional_implementation_;
   OStringStream additional_implementation_ss_;

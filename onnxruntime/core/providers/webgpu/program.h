@@ -223,7 +223,7 @@ struct ProgramInput {
   ProgramInput(const Tensor* tensor);
   ProgramInput(const Tensor* tensor, ProgramTensorMetadataDependency dependency, int component = 1);
   ProgramInput(const Tensor* tensor, ProgramTensorMetadataDependency dependency, FlattenTag, int component = 1);
-  ProgramInput(const Tensor* tensor, ProgramTensorMetadataDependency dependency, const TensorShape& override_shape, int component);
+  ProgramInput(const Tensor* tensor, ProgramTensorMetadataDependency dependency, const TensorShape& override_shape, int component = 1);
 
   const Tensor* tensor;
   ProgramTensorMetadataDependency dependency;
@@ -235,7 +235,7 @@ struct ProgramInput {
 struct ProgramOutput {
   ProgramOutput(Tensor* tensor);
   ProgramOutput(Tensor* tensor, ProgramTensorMetadataDependency dependency, int component = 1);
-  ProgramOutput(Tensor* tensor, ProgramTensorMetadataDependency dependency, const TensorShape& override_shape, int component);
+  ProgramOutput(Tensor* tensor, ProgramTensorMetadataDependency dependency, const TensorShape& override_shape, int component = 1);
 
   Tensor* tensor;
   ProgramTensorMetadataDependency dependency;
@@ -281,7 +281,8 @@ class ProgramBase {
   ProgramBase& AddInputs(std::initializer_list<ProgramInput> inputs);
   // add a program output
   ProgramBase& AddOutput(ProgramOutput&& output);
-  // add multiple program outputs
+  // add an atomic program output
+  ProgramBase& AddAtomicOutput(ProgramOutput&& output);  // add multiple program outputs
   ProgramBase& AddOutputs(std::initializer_list<ProgramOutput> outputs);
   // add a program variable for indices
   template <typename... Args>
@@ -336,6 +337,7 @@ class ProgramBase {
   inline const std::string& CacheHint() const { return cache_hint_; }
   inline const std::vector<ProgramInput>& Inputs() const { return inputs_; }
   inline const std::vector<ProgramOutput>& Outputs() const { return outputs_; }
+  inline const std::vector<ProgramOutput>& AtomicOutputs() const { return atomic_outputs_; }
   inline const std::vector<TensorShape>& Indices() const { return indices_; }
   inline uint32_t DispatchGroupSizeX() const { return dispatch_group_size_x_; }
   inline uint32_t DispatchGroupSizeY() const { return dispatch_group_size_y_; }
@@ -360,6 +362,7 @@ class ProgramBase {
   std::string cache_hint_;
   std::vector<ProgramInput> inputs_;
   std::vector<ProgramOutput> outputs_;
+  std::vector<ProgramOutput> atomic_outputs_;
   std::vector<TensorShape> indices_;
 
   uint32_t dispatch_group_size_x_;
