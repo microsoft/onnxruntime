@@ -106,9 +106,9 @@ Kernel Caching on iGPU and dGPU:
 
 This feature also allows user to save kernel caching as cl_cache files for models with dynamic input shapes. These cl_cache files can be loaded directly onto the iGPU/dGPU hardware device target and inferencing can be performed.
 
-#### <b> Enabling Model Caching via Runtime options using c++/python API's.</b>
+#### <b> Enabling Model Caching via Runtime options using C++/python API's.</b>
 
-This flow can be enabled by setting the runtime config option 'cache_dir' specifying the path to dump and load the blobs (CPU, NPU, iGPU, dGPU) or cl_cache(iGPU, dGPU) while using the c++/python API'S.
+This flow can be enabled by setting the runtime config option 'cache_dir' specifying the path to dump and load the blobs (CPU, NPU, iGPU, dGPU) or cl_cache(iGPU, dGPU) while using the C++/python API'S.
 
 Refer to [Configuration Options](#configuration-options) for more information about using these runtime options.
 
@@ -172,9 +172,9 @@ OpenVINO™ Execution Provider for ONNX Runtime enables thread-safe deep learnin
 ### Multi streams for OpenVINO™ Execution Provider
 OpenVINO™ Execution Provider for ONNX Runtime allows multiple stream execution for difference performance requirements part of API 2.0
 
-### Auto-Device Execution for OpenVINO EP
+### Auto-Device Execution for OpenVINO™ Execution Provider
 
-Use `AUTO:<device 1><device 2>..` as the device name to delegate selection of an actual accelerator to OpenVINO™. Auto-device internally recognizes and selects devices from CPU, integrated GPU, discrete Intel GPUs (when available) and NPU (when available) depending on the device capabilities and the characteristic of CNN models, for example, precisions. Then Auto-device assigns inference requests to the selected device.
+Use `AUTO:<device 1>,<device 2>..` as the device name to delegate selection of an actual accelerator to OpenVINO™. Auto-device internally recognizes and selects devices from CPU, integrated GPU, discrete Intel GPUs (when available) and NPU (when available) depending on the device capabilities and the characteristic of ONNX models, for example, precisions. Then Auto-device assigns inference requests to the selected device.
 
 From the application point of view, this is just another device that handles all accelerators in full system.
 
@@ -190,7 +190,7 @@ The heterogeneous execution enables computing for inference on one network on se
 For more information on Heterogeneous plugin of OpenVINO™, please refer to the
 [Intel OpenVINO™ Heterogeneous Plugin](https://docs.openvino.ai/2024/openvino-workflow/running-inference/inference-devices-and-modes/hetero-execution.html).
 
-### Multi-Device Execution for OpenVINO EP
+### Multi-Device Execution for OpenVINO™ Execution Provider
 
 Multi-Device plugin automatically assigns inference requests to available computational devices to execute the requests in parallel. Potential gains are as follows:
 
@@ -230,45 +230,28 @@ Refer to [Session Options](https://github.com/microsoft/onnxruntime/blob/main/in
 Optimizes ORT quantized models for the NPU device to only keep QDQs for supported ops and optimize for performance and accuracy.Generally this feature will give better performance/accuracy with ORT Optimizations disabled. 
 Refer to [Configuration Options](#configuration-options) for more information about using these runtime options.
 
-### Loading Custom JSON OV Config During Runtime
-This feature is developed to facilitate loading of OVEP parameters from a single JSON configuration file.
-The JSON input schema must be of format -
+### Loading Custom JSON OpenVINO™ Config During Runtime
+The `load_config` feature is developed to facilitate loading of OpenVINO EP parameters using a JSON input schema, which mandatorily follows below format -
 ```
 {
     "DEVICE_KEY": {"PROPERTY": "PROPERTY_VALUE"}
 }
 ```
-where "DEVICE_KEY" can be CPU, NPU or GPU , "PROPERTY" must be a valid entity defined in OV from its properties.hpp sections and "PROPERTY_VALUE" must be passed in as a string. If we pass any other type like int/bool we encounter errors from ORT like below -
+where "DEVICE_KEY" can be CPU, NPU or GPU , "PROPERTY" must be a valid entity defined in [OpenVINO™ supported properties](https://github.com/openvinotoolkit/openvino/blob/releases/2025/1/src/inference/include/openvino/runtime/properties.hpp) &  "PROPERTY_VALUE" must be a valid corresponding supported property value passed in as a string. 
 
-Exception during initialization: [json.exception.type_error.302] type must be string, but is a number.
+If a property is set using an invalid key (i.e., a key that is not recognized as part of the `OpenVINO™ supported properties`), it will be ignored & a warning will be logged against the same. However, if a valid property key is used but assigned an invalid value (e.g., a non-integer where an integer is expected), the OpenVINO™ framework will result in an exception during execution.
 
-While one can set the int/bool values like this "NPU_TILES": "2" which is valid (refer to the example given below).
-If someone passes incorrect keys, it will be skipped with a warning while incorrect values assigned to a valid key will result in an exception arising from OV framework.
- 
-The valid properties are of 2 types viz. MUTABLE (R/W) & IMMUTABLE (R ONLY) these are also governed while setting the same. If an IMMUTABLE property is being set, we skip setting the same with a similar warning.
+The valid properties are of two types viz. Mutable (Read/Write) & Immutable (Read only) these are also governed while setting the same. If an Immutable property is being set, we skip setting the same with a similar warning.
+
+For setting appropriate `"PROPERTY"`, refer to OpenVINO config options for [CPU](https://docs.openvino.ai/2025/openvino-workflow/running-inference/inference-devices-and-modes/cpu-device.html#supported-properties), [GPU](https://docs.openvino.ai/2025/openvino-workflow/running-inference/inference-devices-and-modes/gpu-device.html#supported-properties), [NPU](https://docs.openvino.ai/2025/openvino-workflow/running-inference/inference-devices-and-modes/npu-device.html#supported-features-and-properties) and [AUTO](https://docs.openvino.ai/2025/openvino-workflow/running-inference/inference-devices-and-modes/auto-device-selection.html#using-auto). 
 
 Example:
 
 The usage of this functionality using onnxruntime_perf_test application is as below – 
 
 ```
-onnxruntime_perf_test.exe -e openvino -m times -r 1 -i "device_type|NPU load_config|npu_config.json" model.onnx 
-```
-where the npu_config.json file is defined as below –
-
-```bash
-{
-  "NPU": {
-    "PERFORMANCE_HINT": "THROUGHPUT",
-    "WORKLOAD_TYPE": "Efficient",
-    "NPU_TILES": "2",
-    "LOG_LEVEL": "LOG_DEBUG",
-    "NPU_COMPILATION_MODE_PARAMS": "enable-weights-swizzling=false enable-activation-swizzling=false enable-grouped-matmul=false"
-  }
-}
-
-```
-To explicitly enable logs one must use "LOG_LEVEL": "LOG_DEBUG"  in the JSON device configuration property. The log verifies that the correct device parameters and properties are being set / populated during runtime with OVEP.
+onnxruntime_perf_test.exe -e openvino -m times -r 1 -i "device_type|NPU load_config|test_config.json" model.onnx
+``` 
 
 ### OpenVINO Execution Provider Supports EP-Weight Sharing across sessions
 The OpenVINO Execution Provider (OVEP) in ONNX Runtime supports EP-Weight Sharing, enabling models to efficiently share weights across multiple inference sessions. This feature enhances the execution of Large Language Models (LLMs) with prefill and KV cache, reducing memory consumption and improving performance when running multiple inferences.
@@ -278,11 +261,11 @@ With EP-Weight Sharing, prefill and KV cache models can now reuse the same set o
 These changes enable weight sharing between two models using the session context option: ep.share_ep_contexts.
 Refer to [Session Options](https://github.com/microsoft/onnxruntime/blob/5068ab9b190c549b546241aa7ffbe5007868f595/include/onnxruntime/core/session/onnxruntime_session_options_config_keys.h#L319) for more details on configuring this runtime option.
 
- ### OVEP supports CreateSessionFromArray API 
- The OpenVINO Execution Provider (OVEP) in ONNX Runtime supports creating sessions from memory using the CreateSessionFromArray API. This allows loading models directly from memory buffers instead of file paths. The CreateSessionFromArray loads the model in memory then creates a session from the in-memory byte array.
+### OVEP supports CreateSessionFromArray API 
+The OpenVINO Execution Provider (OVEP) in ONNX Runtime supports creating sessions from memory using the CreateSessionFromArray API. This allows loading models directly from memory buffers instead of file paths. The CreateSessionFromArray loads the model in memory then creates a session from the in-memory byte array.
  
- Note:
- Use the -l argument when running the inference with perf_test using CreateSessionFromArray API.
+Note:
+Use the -l argument when running the inference with perf_test using CreateSessionFromArray API.
 
 ## Configuration Options
 
@@ -360,8 +343,8 @@ The following table lists all the available configuration options for API 2.0 an
 
 
 Valid Hetero or Multi or Auto Device combinations:
-HETERO:<DEVICE_TYPE_1>,<DEVICE_TYPE_2>,<DEVICE_TYPE_3>...
-The <DEVICE_TYPE> can be any of these devices from this list ['CPU','GPU', 'NPU']
+`HETERO:<device 1>,<device 2>...`
+The `device` can be any of these devices from this list ['CPU','GPU', 'NPU']
 
 A minimum of two DEVICE_TYPE'S should be specified for a valid HETERO, MULTI, or AUTO Device Build.
 
