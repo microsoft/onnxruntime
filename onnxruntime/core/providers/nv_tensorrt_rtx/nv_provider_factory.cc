@@ -30,7 +30,7 @@ struct ProviderInfo_Nv_Impl final : ProviderInfo_Nv {
   OrtStatus* GetTensorRTCustomOpDomainList(std::vector<OrtCustomOpDomain*>& domain_list, const std::string extra_plugin_lib_paths) override {
     common::Status status = CreateTensorRTCustomOpDomainList(domain_list, extra_plugin_lib_paths);
     if (!status.IsOK()) {
-      return CreateStatus(ORT_FAIL, "[Nv EP] Can't create custom ops for TRT plugins.");
+      return CreateStatus(ORT_FAIL, "[NvTensorRTRTX EP] Can't create custom ops for TRT plugins.");
     }
     return nullptr;
   }
@@ -97,7 +97,7 @@ struct Nv_Provider : Provider {
 
   std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory(const void* param) {
     if (param == nullptr) {
-      LOGS_DEFAULT(ERROR) << "[NV EP] Passed NULL options to CreateExecutionProviderFactory()";
+      LOGS_DEFAULT(ERROR) << "[NvTensorRTRTX EP] Passed NULL options to CreateExecutionProviderFactory()";
       return nullptr;
     }
 
@@ -106,7 +106,7 @@ struct Nv_Provider : Provider {
     const ConfigOptions* config_options = reinterpret_cast<const ConfigOptions*>(pointers_array[1]);
 
     if (provider_options == nullptr) {
-      LOGS_DEFAULT(ERROR) << "[NV EP] Passed NULL ProviderOptions to CreateExecutionProviderFactory()";
+      LOGS_DEFAULT(ERROR) << "[NvTensorRTRTX EP] Passed NULL ProviderOptions to CreateExecutionProviderFactory()";
       return nullptr;
     }
 
