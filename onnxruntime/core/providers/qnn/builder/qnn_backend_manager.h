@@ -137,7 +137,7 @@ class QnnBackendManager : public std::enable_shared_from_this<QnnBackendManager>
   // `mem_handle` is set to the QNN mem handle.
   Status GetOrRegisterContextMemHandle(Qnn_ContextHandle_t context, void* shared_memory_address,
                                        const Qnn_Tensor_t& qnn_tensor,
-                                       Qnn_MemHandle_t& mem_handle);
+                                       UniqueQnnMemHandle& mem_handle);
 
   Status ParseLoraConfig(std::string lora_config);
 

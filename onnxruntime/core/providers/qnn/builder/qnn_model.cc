@@ -8,6 +8,8 @@
 #include <gsl/gsl>
 #include "QnnOpDef.h"
 
+#include "core/common/inlined_containers.h"
+
 #include "core/providers/qnn/ort_api.h"
 #include "core/providers/qnn/builder/op_builder_factory.h"
 #include "core/providers/qnn/builder/qnn_node_group.h"
@@ -198,7 +200,8 @@ static Status BindQnnTensorMemoryToOrtValueMemory(const logging::Logger& logger,
                                                   const OrtMemoryInfo& ort_value_memory_info,
                                                   void* ort_value_data, uint32_t ort_value_data_size,
                                                   Qnn_ContextHandle_t qnn_context,
-                                                  Qnn_Tensor_t& qnn_tensor) {
+                                                  Qnn_Tensor_t& qnn_tensor,
+                                                  UniqueQnnMemHandle& qnn_mem_handle) {
   // either set qnn_tensor memHandle or clientBuf
   const static auto htp_shared_mem_info = HtpSharedMemoryAllocator::AssociatedMemoryInfo();
   const bool uses_shared_memory = (ort_value_memory_info.device.Type() == htp_shared_mem_info.device.Type() &&
@@ -213,11 +216,10 @@ static Status BindQnnTensorMemoryToOrtValueMemory(const logging::Logger& logger,
     }
   } else {
     LOGS(logger, VERBOSE) << "Setting Qnn_Tensor_t memHandle to ORT tensor shared memory.";
-    Qnn_MemHandle_t qnn_mem_handle{};
     ORT_RETURN_IF_ERROR(qnn_backend_manager.GetOrRegisterContextMemHandle(qnn_context, ort_value_data, qnn_tensor,
                                                                           qnn_mem_handle));
     SetQnnTensorMemType(qnn_tensor, QNN_TENSORMEMTYPE_MEMHANDLE);
-    SetQnnTensorMemHandle(qnn_tensor, qnn_mem_handle);
+    SetQnnTensorMemHandle(qnn_tensor, qnn_mem_handle.get());
   }
 
   return Status::OK();
@@ -240,6 +242,9 @@ Status QnnModel::ExecuteGraph(const Ort::KernelContext& context,
     return element_size * length;
   };
 
+  InlinedVector<UniqueQnnMemHandle> qnn_mem_handles;
+  qnn_mem_handles.reserve(qnn_input_infos_.size() + qnn_output_infos_.size());
+
   std::vector<Qnn_Tensor_t> qnn_inputs;
   qnn_inputs.reserve(qnn_input_infos_.size());
 
@@ -255,13 +260,18 @@ Status QnnModel::ExecuteGraph(const Ort::KernelContext& context,
 
     qnn_inputs.push_back(qnn_input_info.tensor_wrapper->GetQnnTensor());
 
+    UniqueQnnMemHandle qnn_mem_handle{};
     ORT_RETURN_IF_ERROR(BindQnnTensorMemoryToOrtValueMemory(
         logger,
         *qnn_backend_manager_,
         *static_cast<const OrtMemoryInfo*>(ort_input_tensor.GetTensorMemoryInfo()),
         const_cast<void*>(ort_input_tensor.GetTensorRawData()), qnn_input_info.tensor_byte_size,
         graph_info_->GraphContext(),
-        qnn_inputs.back()));
+        qnn_inputs.back(),
+        qnn_mem_handle));
+    if (qnn_mem_handle) {
+      qnn_mem_handles.push_back(std::move(qnn_mem_handle));
+    }
   }
 
   std::vector<Qnn_Tensor_t> qnn_outputs;
@@ -281,13 +291,17 @@ Status QnnModel::ExecuteGraph(const Ort::KernelContext& context,
 
     qnn_outputs.push_back(qnn_output_info.tensor_wrapper->GetQnnTensor());
 
+    UniqueQnnMemHandle qnn_mem_handle{};
     ORT_RETURN_IF_ERROR(BindQnnTensorMemoryToOrtValueMemory(
         logger,
         *qnn_backend_manager_,
         *static_cast<const OrtMemoryInfo*>(ort_output_tensor.GetTensorMemoryInfo()),
         ort_output_tensor.GetTensorMutableRawData(), qnn_output_info.tensor_byte_size,
         graph_info_->GraphContext(),
-        qnn_outputs.back()));
+        qnn_outputs.back(), qnn_mem_handle));
+    if (qnn_mem_handle) {
+      qnn_mem_handles.push_back(std::move(qnn_mem_handle));
+    }
   }
 
   Qnn_ErrorHandle_t execute_status = QNN_GRAPH_NO_ERROR;

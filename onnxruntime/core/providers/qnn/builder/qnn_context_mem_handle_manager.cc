@@ -25,42 +25,42 @@ QnnContextMemHandleManager::~QnnContextMemHandleManager() {
 }
 
 Status QnnContextMemHandleManager::GetOrRegister(void* shared_memory_address, const Qnn_Tensor_t& qnn_tensor,
-                                                 Qnn_MemHandle_t& qnn_mem_handle, bool& did_register) {
+                                                 UniqueQnnMemHandle& qnn_mem_handle) {
   const auto qnn_tensor_rank = GetQnnTensorRank(qnn_tensor);
   auto* const qnn_tensor_dims = GetQnnTensorDims(qnn_tensor);
   const auto qnn_tensor_data_type = GetQnnTensorDataType(qnn_tensor);
 
-  const size_t qnn_tensor_data_size =
-      utils::GetQnnTensorDataSizeInBytes(gsl::span{qnn_tensor_dims, size_t{qnn_tensor_rank}}, qnn_tensor_data_type);
+  // const size_t qnn_tensor_data_size =
+  //     utils::GetQnnTensorDataSizeInBytes(gsl::span{qnn_tensor_dims, size_t{qnn_tensor_rank}}, qnn_tensor_data_type);
 
   {
-    std::scoped_lock g{mem_handles_mutex_};
+    // std::scoped_lock g{mem_handles_mutex_};
 
     // find existing mem handle
-    if (const auto mem_handles_it = mem_handles_.find(shared_memory_address);
-        mem_handles_it != mem_handles_.end()) {
-      const auto& mem_handle_record = mem_handles_it->second;
+    // if (const auto mem_handles_it = mem_handles_.find(shared_memory_address);
+    //    mem_handles_it != mem_handles_.end()) {
+    //  const auto& mem_handle_record = mem_handles_it->second;
 
-      // check that actual tensor size is less than or equal to registered tensor size
-      // ORT_RETURN_IF_NOT(qnn_tensor_data_size <= mem_handle_record.registered_tensor_data_size,
-      //                   "Actual tensor data size (", qnn_tensor_data_size,
-      //                   ") is larger than registered tensor data size (", mem_handle_record.registered_tensor_data_size,
-      //                   ").");
+    //  // check that actual tensor size is less than or equal to registered tensor size
+    //  // ORT_RETURN_IF_NOT(qnn_tensor_data_size <= mem_handle_record.registered_tensor_data_size,
+    //  //                   "Actual tensor data size (", qnn_tensor_data_size,
+    //  //                   ") is larger than registered tensor data size (", mem_handle_record.registered_tensor_data_size,
+    //  //                   ").");
 
-      if (qnn_tensor_data_size <= mem_handle_record.registered_tensor_data_size) {
-        qnn_mem_handle = mem_handle_record.mem_handle.get();
-        did_register = false;
-        return Status::OK();
-      } else {
-        // replace the existing mem handle with a new mem handle
-        LOGS(logger_, VERBOSE) << "A mem handle for shared memory address (" << shared_memory_address
-                               << ") already exists but has a smaller size ("
-                               << mem_handle_record.registered_tensor_data_size << ") than the required size ("
-                               << qnn_tensor_data_size << "). It will be replaced.";
+    //  if (qnn_tensor_data_size <= mem_handle_record.registered_tensor_data_size) {
+    //    qnn_mem_handle = mem_handle_record.mem_handle.get();
+    //    did_register = false;
+    //    return Status::OK();
+    //  } else {
+    //    // replace the existing mem handle with a new mem handle
+    //    LOGS(logger_, VERBOSE) << "A mem handle for shared memory address (" << shared_memory_address
+    //                           << ") already exists but has a smaller size ("
+    //                           << mem_handle_record.registered_tensor_data_size << ") than the required size ("
+    //                           << qnn_tensor_data_size << "). It will be replaced.";
 
-        mem_handles_.erase(mem_handles_it);
-      }
-    }
+    //    mem_handles_.erase(mem_handles_it);
+    //  }
+    //}
 
     // register a new mem handle
     HtpSharedMemoryAllocator::SharedMemoryInfo shared_memory_info{};
@@ -94,28 +94,24 @@ Status QnnContextMemHandleManager::GetOrRegister(void* shared_memory_address, co
                       "qnn_interface.memRegister() failed: ",
                       utils::GetVerboseQnnErrorMessage(qnn_interface_, register_result));
 
-    LOGS(logger_, VERBOSE) << "Registered QNN mem handle. mem_handle: " << raw_mem_handle;
-
-    // NOTE: Must use the default ORT logger inside this lambda. Don't capture this->logger_ because it may be deleted
-    // by the time we need to unregister all memory handles. This happens when this->logger_ is a session logger:
-    //   ~InferenceSession() -> ~Logger() -> ~QnnExecutionProvider() -> ~QnnBackendManager() ->
-    //   ~QnnContextMemHandleManager() -> unregister_mem_handle() segfault
-    const auto unregister_mem_handle = [&qnn_interface = this->qnn_interface_](Qnn_MemHandle_t raw_mem_handle) {
+    const auto unregister_mem_handle = [&qnn_interface = this->qnn_interface_, &logger = this->logger_](Qnn_MemHandle_t raw_mem_handle) {
       LOGS_DEFAULT(VERBOSE) << "Unregistering QNN mem handle. mem_handle: " << raw_mem_handle;
 
       const auto unregister_result = qnn_interface.memDeRegister(&raw_mem_handle, 1);
       if (unregister_result != QNN_SUCCESS) {
-        LOGS_DEFAULT(ERROR) << "qnn_interface.memDeRegister() failed: "
+        LOGS(logger, ERROR) << "qnn_interface.memDeRegister() failed: "
                             << utils::GetVerboseQnnErrorMessage(qnn_interface, unregister_result);
       }
     };
 
     UniqueQnnMemHandle mem_handle(raw_mem_handle, unregister_mem_handle);
-    MemHandleRecord mem_handle_record{qnn_tensor_data_size, std::move(mem_handle)};
-    mem_handles_.emplace(shared_memory_address, std::move(mem_handle_record));
+    LOGS(logger_, VERBOSE) << "Registered QNN mem handle. mem_handle: " << raw_mem_handle;
 
-    qnn_mem_handle = raw_mem_handle;
-    did_register = true;
+    // MemHandleRecord mem_handle_record{qnn_tensor_data_size, std::move(mem_handle)};
+    // mem_handles_.emplace(shared_memory_address, std::move(mem_handle_record));
+
+    qnn_mem_handle = std::move(mem_handle);
+    // did_register = true;
     return Status::OK();
   }
 }
