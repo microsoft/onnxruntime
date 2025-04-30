@@ -83,13 +83,13 @@ class ShaderHelper final {
   //
   // depending on the usage of the variable, additional code may be generated.
   const ShaderVariableHelper& AddAtomicOutput(const std::string& name,
-                                        ShaderUsage usage = ShaderUsage::UseIndicesTypeAlias | ShaderUsage::UseValueTypeAlias | ShaderUsage::UseUniform);
+                                              ShaderUsage usage = ShaderUsage::UseIndicesTypeAlias | ShaderUsage::UseValueTypeAlias | ShaderUsage::UseUniform);
 
   // Add an output variable to the shader.
   //
   // depending on the usage of the variable, additional code may be generated.
   const ShaderVariableHelper& AddOutput(const std::string& name,
-    ShaderUsage usage = ShaderUsage::UseIndicesTypeAlias | ShaderUsage::UseValueTypeAlias | ShaderUsage::UseUniform);
+                                        ShaderUsage usage = ShaderUsage::UseIndicesTypeAlias | ShaderUsage::UseValueTypeAlias | ShaderUsage::UseUniform);
 
   // Add an indices variable to the shader.
   const ShaderIndicesHelper& AddIndices(const std::string& name, ShaderUsage usage = ShaderUsage::UseUniform);

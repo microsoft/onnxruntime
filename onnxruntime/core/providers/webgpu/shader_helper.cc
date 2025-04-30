@@ -276,7 +276,8 @@ const ShaderVariableHelper& ShaderHelper::AddVariableImpl(bool is_input,
               "Too many storage buffers in shader. Max is ", limits_.maxStorageBuffersPerShaderStage);
 
   ProgramVariableDataType type = ProgramVariableDataType::InvalidType;
-  auto& vars = is_input ? input_vars_ : is_atomic_output ? atomic_output_vars_ : output_vars_;
+  auto& vars = is_input ? input_vars_ : is_atomic_output ? atomic_output_vars_
+                                                         : output_vars_;
 
   if (is_input) {
     const auto& input = program_.Inputs()[vars.size()];
@@ -329,7 +330,7 @@ Status ShaderHelper::ValidateShapeForOutputs() const {
   ORT_RETURN_IF_NOT(output_vars_.size() == program_.Outputs().size(),
                     "Mismatched output variable count. Shader: ", output_vars_.size(), ", Program: ", program_.Outputs().size());
 
-    ORT_RETURN_IF_NOT(atomic_output_vars_.size() == program_.AtomicOutputs().size(),
+  ORT_RETURN_IF_NOT(atomic_output_vars_.size() == program_.AtomicOutputs().size(),
                     "Mismatched output variable count. Shader: ", atomic_output_vars_.size(), ", Program: ", program_.AtomicOutputs().size());
 
   for (size_t i = 0; i < output_vars_.size(); i++) {
@@ -384,8 +385,8 @@ Status ShaderHelper::GenerateSourceCode(std::string& code, std::vector<int>& sha
       std::any_of(program_.AtomicOutputs().begin(),
                   program_.AtomicOutputs().end(),
                   [](const ProgramOutput& atomic_output) {
-      return atomic_output.tensor->GetElementType() == ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT16;
-                  })){
+                    return atomic_output.tensor->GetElementType() == ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT16;
+                  })) {
     ORT_RETURN_IF_NOT(device_.HasFeature(wgpu::FeatureName::ShaderF16), "Program ", program_.Name(), " requires f16 but the device does not support it.");
     ss << "enable f16;\n";
   }

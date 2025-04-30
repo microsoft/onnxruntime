@@ -174,8 +174,9 @@ class WebGpuContext final {
                       std::string_view program_name,
                       std::string_view cache_key,
                       const std::vector<ProgramInput>& inputs,
-                      const std::vector<ProgramOutput>& outputs)
-        : name{absl::StrJoin({kernel_name, kernel_type, program_name}, "&")}, cache_key{cache_key}, inputs{inputs}, outputs{outputs} {}
+                      const std::vector<ProgramOutput>& outputs,
+                      const std::vector<ProgramOutput>& atomic_outputs)
+        : name{absl::StrJoin({kernel_name, kernel_type, program_name}, "&")}, cache_key{cache_key}, inputs{inputs}, outputs{outputs}, atomic_outputs(atomic_outputs) {}
 
     PendingKernelInfo(PendingKernelInfo&&) = default;
     PendingKernelInfo& operator=(PendingKernelInfo&&) = default;
@@ -185,6 +186,7 @@ class WebGpuContext final {
     std::string cache_key;
     std::vector<ProgramInput> inputs;
     std::vector<ProgramOutput> outputs;
+    std::vector<ProgramOutput> atomic_outputs;
   };
 
   struct PendingQueryInfo {

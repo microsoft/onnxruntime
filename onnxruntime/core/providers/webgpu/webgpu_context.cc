@@ -279,7 +279,8 @@ Status WebGpuContext::Run(ComputeContext& context, const ProgramBase& program) {
                                           program.Name(),
                                           key,
                                           inputs,
-                                          outputs);
+                                          outputs,
+                                          atomic_outputs);
     pending_kernels_.emplace_back(std::move(pending_kernel_info));
   }
 
@@ -312,10 +313,11 @@ Status WebGpuContext::Run(ComputeContext& context, const ProgramBase& program) {
   std::vector<ProgramUniformVariableValue> shape_uniforms;
   shape_uniforms.reserve(program_artifact->shape_uniform_ranks.size() * 2);
   if (ValidationMode() >= ValidationMode::Basic) {
-    ORT_RETURN_IF_NOT(program_artifact->shape_uniform_ranks.size() == inputs.size() + outputs.size() + program.Indices().size(),
+    ORT_RETURN_IF_NOT(program_artifact->shape_uniform_ranks.size() == inputs.size() + outputs.size() + atomic_outputs.size() + program.Indices().size(),
                       "Invalid program artifact: variable size (", program_artifact->shape_uniform_ranks.size(),
                       ") does not match current program (input: ", inputs.size(),
                       ", output: ", outputs.size(),
+                      ", atomic_output: ", atomic_outputs.size(),
                       ", indices: ", program.Indices().size(), ")");
   }
 
@@ -350,6 +352,10 @@ Status WebGpuContext::Run(ComputeContext& context, const ProgramBase& program) {
   for (size_t i = 0; i < outputs.size(); i++) {
     ORT_RETURN_IF_ERROR(append_shape_uniforms(i + inputs.size(),
                                               outputs[i].use_override_shape ? outputs[i].override_shape : outputs[i].tensor->Shape()));
+  }
+  for (size_t i = 0; i < atomic_outputs.size(); i++) {
+    ORT_RETURN_IF_ERROR(append_shape_uniforms(i + inputs.size() + outputs.size(),
+                                              atomic_outputs[i].use_override_shape ? atomic_outputs[i].override_shape : atomic_outputs[i].tensor->Shape()));
   }
   for (size_t i = 0; i < program.Indices().size(); i++) {
     ORT_RETURN_IF_ERROR(append_shape_uniforms(i + inputs.size() + outputs.size(), program.Indices()[i]));
@@ -572,6 +578,7 @@ void WebGpuContext::CollectProfilingData(profiling::Events& events) {
         const PendingKernelInfo& pending_kernel_info = pending_kernels[i];
         const auto& inputs = pending_kernel_info.inputs;
         const auto& outputs = pending_kernel_info.outputs;
+        const auto& atomic_outputs = pending_kernel_info.atomic_outputs;
 
         SS(shapes, 128);
         for (size_t s = 0; s < inputs.size(); s++) {
@@ -581,6 +588,10 @@ void WebGpuContext::CollectProfilingData(profiling::Events& events) {
         for (size_t s = 0; s < outputs.size(); s++) {
           const auto& output = outputs[s];
           shapes << "outputs[" << s << "] = " << output.override_shape.ToString() << " ";
+        }
+        for (size_t s = 0; s < atomic_outputs.size(); s++) {
+          const auto& atomic_output = atomic_outputs[s];
+          shapes << "atomic_outputs[" << s << "] = " << atomic_output.override_shape.ToString() << " ";
         }
 
         if (gpu_timestamp_offset_ == 0) {
