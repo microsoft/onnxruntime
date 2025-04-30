@@ -424,6 +424,9 @@ Status WebGpuContext::Run(ComputeContext& context, const ProgramBase& program) {
   for (const auto& output : outputs) {
     bind_buffers.push_back(reinterpret_cast<WGPUBuffer>(output.tensor->MutableDataRaw()));
   }
+  for (const auto& atomic_output : atomic_outputs) {
+    bind_buffers.push_back(reinterpret_cast<WGPUBuffer>(atomic_output.tensor->MutableDataRaw()));
+  }
   if (uniform_buffer) {
     bind_buffers.push_back(uniform_buffer);
   }
