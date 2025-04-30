@@ -49,7 +49,9 @@
 	                               ${onnxruntime_providers_qnn_shared_lib_srcs})
 
     source_group(TREE ${ONNXRUNTIME_ROOT}/core FILES ${onnxruntime_providers_qnn_srcs})
-    onnxruntime_add_shared_library_module(onnxruntime_providers_qnn ${onnxruntime_providers_qnn_srcs})
+    onnxruntime_add_shared_library_module(onnxruntime_providers_qnn ${onnxruntime_providers_qnn_srcs}
+                                                                    # Sets the DLL version and description on Windows
+                                                                    "${ONNXRUNTIME_ROOT}/core/providers/qnn/onnxruntime_providers_qnn.rc")
     onnxruntime_add_include_to_target(onnxruntime_providers_qnn ${ONNXRUNTIME_PROVIDERS_SHARED} ${GSL_TARGET} onnx
 	                                                        onnxruntime_common Boost::mp11 safeint_interface
 								nlohmann_json::nlohmann_json)
@@ -59,6 +61,9 @@
                                                                  ${CMAKE_CURRENT_BINARY_DIR}
                                                                  ${onnxruntime_QNN_HOME}/include/QNN
                                                                  ${onnxruntime_QNN_HOME}/include)
+
+    # FILE_NAME preprocessor definition is used in onnxruntime_providers_qnn.rc to set the DLL's details
+    target_compile_definitions(onnxruntime_providers_qnn PRIVATE FILE_NAME=\"onnxruntime_providers_qnn.dll\")
 
     # Set linker flags for function(s) exported by EP DLL
     if(UNIX)
