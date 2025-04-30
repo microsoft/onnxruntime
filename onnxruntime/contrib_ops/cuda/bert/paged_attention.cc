@@ -16,18 +16,18 @@ namespace onnxruntime {
 namespace contrib {
 namespace cuda {
 
-#define REGISTER_KERNEL_TYPED(T)                                         \
-  ONNX_OPERATOR_TYPED_KERNEL_EX(                                         \
-      PagedAttention,                                                    \
-      kMSDomain,                                                         \
-      1,                                                                 \
-      T,                                                                 \
-      kCudaExecutionProvider,                                            \
-      (*KernelDefBuilder::Create())                                      \
-          .TypeConstraint("T", DataTypeImpl::GetTensorType<T>())         \
-          .TypeConstraint("M", DataTypeImpl::GetTensorType<int32_t>())   \
-          .InputMemoryType(OrtMemTypeCPUInput, 7)                        \
-          .InputMemoryType(OrtMemTypeCPUInput, 8),                       \
+#define REGISTER_KERNEL_TYPED(T)                                       \
+  ONNX_OPERATOR_TYPED_KERNEL_EX(                                       \
+      PagedAttention,                                                  \
+      kMSDomain,                                                       \
+      1,                                                               \
+      T,                                                               \
+      kCudaExecutionProvider,                                          \
+      (*KernelDefBuilder::Create())                                    \
+          .TypeConstraint("T", DataTypeImpl::GetTensorType<T>())       \
+          .TypeConstraint("M", DataTypeImpl::GetTensorType<int32_t>()) \
+          .InputMemoryType(OrtMemTypeCPUInput, 7)                      \
+          .InputMemoryType(OrtMemTypeCPUInput, 8),                     \
       PagedAttention<T>);
 
 REGISTER_KERNEL_TYPED(MLFloat16)
@@ -141,13 +141,13 @@ Status PagedAttention<T>::ComputeInternal(OpKernelContext* context) const {
   size_t softmax_lse_bytes = 0;
   if (use_flash_attention) {
     softmax_lse_bytes = onnxruntime::flash::get_softmax_lse_size(parameters.batch_size,
-                                                                  parameters.num_heads,
-                                                                  parameters.token_count);
+                                                                 parameters.num_heads,
+                                                                 parameters.token_count);
   }
   auto softmax_lse_buffer = GetScratchBuffer<void>(softmax_lse_bytes, context->GetComputeStream());
 #else
   constexpr bool use_flash_attention = false;
-  auto softmax_lse_buffer = GetScratchBuffer<void>(0, context->GetComputeStream());        // nullptr
+  auto softmax_lse_buffer = GetScratchBuffer<void>(0, context->GetComputeStream());  // nullptr
 #endif
 
   if (!use_flash_attention) {
@@ -159,7 +159,7 @@ Status PagedAttention<T>::ComputeInternal(OpKernelContext* context) const {
   auto cumulative_seqlens_kv_buffer = GetScratchBuffer<void>(cumulative_seqlens_kv_bytes, context->GetComputeStream());
 
   size_t workspace_buffer_bytes = 0;
-  if (parameters.is_packed_qkv) { // unpacking and rotary can be done with the same buffer in the same operation
+  if (parameters.is_packed_qkv) {  // unpacking and rotary can be done with the same buffer in the same operation
     workspace_buffer_bytes = parameters.token_count * (parameters.num_heads + 2 * parameters.kv_num_heads) * parameters.head_size * sizeof(T);
   } else if (do_rotary_) {
     workspace_buffer_bytes = 2 * sizeof(T) * parameters.token_count * parameters.num_heads * parameters.head_size;

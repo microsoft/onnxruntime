@@ -10,7 +10,6 @@
 # license information.
 # -------------------------------------------------------------------------
 import math
-import os
 import platform
 import random
 import unittest
@@ -29,6 +28,7 @@ torch.manual_seed(0)
 
 pipeline_mode = True  # Reduces number of tests so pipeline doesn't time out
 
+
 class Config:
     batch_size = 0
     sequence_length = 0
@@ -44,8 +44,21 @@ class Config:
     softcap = 0.0
     ep = "CUDAExecutionProvider"
 
-    def __init__(self, batch_size, sequence_length, total_sequence_length, num_heads, kv_num_heads, head_size,
-                 paged_kv_block_size, local, rotary, rotary_interleaved, packed, softcap):
+    def __init__(
+        self,
+        batch_size,
+        sequence_length,
+        total_sequence_length,
+        num_heads,
+        kv_num_heads,
+        head_size,
+        paged_kv_block_size,
+        local,
+        rotary,
+        rotary_interleaved,
+        packed,
+        softcap,
+    ):
         self.batch_size = batch_size
         self.sequence_length = sequence_length
         self.total_sequence_length = total_sequence_length
@@ -116,7 +129,7 @@ def create_paged_attention_graph(
                 num_tokens,
                 (config.num_heads * config.head_size)
                 if not config.packed
-                else (config.num_heads * config.head_size + 2 * config.kv_num_heads * config.head_size)
+                else (config.num_heads * config.head_size + 2 * config.kv_num_heads * config.head_size),
             ],
         ),
         helper.make_tensor_value_info(
@@ -142,7 +155,7 @@ def create_paged_attention_graph(
         helper.make_tensor_value_info(
             "cumulative_sequence_length",
             TensorProto.INT32,
-            [config.batch_size+1],
+            [config.batch_size + 1],
         ),
         helper.make_tensor_value_info(
             "seqlens",
@@ -306,8 +319,12 @@ def paged_attention_func(
         io_binding.bind_cpu_input("cos_cache", ort_inputs["cos_cache"])
         io_binding.bind_cpu_input("sin_cache", ort_inputs["sin_cache"])
     io_binding.bind_cpu_input("query", ort_inputs["query"])
-    io_binding.bind_input("key_cache", "cuda", 0, numpy.float16, ort_inputs["key_cache"].shape(), ort_inputs["key_cache"].data_ptr())
-    io_binding.bind_input("value_cache", "cuda", 0, numpy.float16, ort_inputs["value_cache"].shape(), ort_inputs["value_cache"].data_ptr())
+    io_binding.bind_input(
+        "key_cache", "cuda", 0, numpy.float16, ort_inputs["key_cache"].shape(), ort_inputs["key_cache"].data_ptr()
+    )
+    io_binding.bind_input(
+        "value_cache", "cuda", 0, numpy.float16, ort_inputs["value_cache"].shape(), ort_inputs["value_cache"].data_ptr()
+    )
     io_binding.bind_cpu_input("cumulative_sequence_length", ort_inputs["cumulative_sequence_length"])
     io_binding.bind_cpu_input("seqlens", ort_inputs["seqlens"])
     io_binding.bind_cpu_input("max_query_len", ort_inputs["max_query_len"])
@@ -436,6 +453,7 @@ def attention_ref(
 def rotary_embedding(*args, **kwargs):
     # Use local import since triton is not available in Windows.
     from rotary_flash import apply_rotary_emb
+
     return apply_rotary_emb(*args, **kwargs)
 
 
@@ -461,9 +479,9 @@ def unpad_qkv(config: Config, q, k, v, cum_seqlens):
     )
     for i in range(config.batch_size):
         new_seqlen = cum_seqlens[i + 1] - cum_seqlens[i]
-        q_unpad[cum_seqlens[i] : cum_seqlens[i+1]] = rearrange(q[i, :new_seqlen], "s n h -> s (n h)")
-        k_unpad[cum_seqlens[i] : cum_seqlens[i+1]] = rearrange(k[i, :new_seqlen], "s n h -> s (n h)")
-        v_unpad[cum_seqlens[i] : cum_seqlens[i+1]] = rearrange(v[i, :new_seqlen], "s n h -> s (n h)")
+        q_unpad[cum_seqlens[i] : cum_seqlens[i + 1]] = rearrange(q[i, :new_seqlen], "s n h -> s (n h)")
+        k_unpad[cum_seqlens[i] : cum_seqlens[i + 1]] = rearrange(k[i, :new_seqlen], "s n h -> s (n h)")
+        v_unpad[cum_seqlens[i] : cum_seqlens[i + 1]] = rearrange(v[i, :new_seqlen], "s n h -> s (n h)")
     return q_unpad, k_unpad, v_unpad
 
 
@@ -485,12 +503,12 @@ def generate_block_kvcache(config: Config, device, dtype):
         k_cache_paged[block_table.to(dtype=torch.long).flatten()],
         "(b nblocks) block_size ... -> b (nblocks block_size) ...",
         b=config.batch_size,
-    )[:, :config.total_sequence_length]
+    )[:, : config.total_sequence_length]
     v_cache = rearrange(
         v_cache_paged[block_table.to(dtype=torch.long).flatten()],
         "(b nblocks) block_size ... -> b (nblocks block_size) ...",
         b=config.batch_size,
-    )[:, :config.total_sequence_length]
+    )[:, : config.total_sequence_length]
     return k_cache, v_cache, block_table, k_cache_paged, v_cache_paged
 
 
@@ -507,11 +525,11 @@ def get_slot_mappings(config, block_table, total_seqlens, cum_seqlens):
         past_seqlen = total_seqlens[i] - new_seqlen
         total_seqlen = total_seqlens[i]
         # Get the slot mappings for the new sequence length
-        slot_mappings[cum_seqlens[i] : cum_seqlens[i+1]] = (
+        slot_mappings[cum_seqlens[i] : cum_seqlens[i + 1]] = (
             torch.fmod(
-                torch.arange(past_seqlen, total_seqlen, device="cuda", dtype=torch.int32),
-                config.paged_kv_block_size
-            ) + slot_offsets[i, past_seqlen:total_seqlen]
+                torch.arange(past_seqlen, total_seqlen, device="cuda", dtype=torch.int32), config.paged_kv_block_size
+            )
+            + slot_offsets[i, past_seqlen:total_seqlen]
         )
     return slot_mappings
 
@@ -553,7 +571,7 @@ def parity_check_paged_attention(
     # Generate random sequence lengths
     past_seqlens = torch.randint(
         0,
-        config.total_sequence_length - config.sequence_length + 1, # one above highest integer to be drawn
+        config.total_sequence_length - config.sequence_length + 1,  # one above highest integer to be drawn
         (config.batch_size,),
         dtype=torch.int32,
         device="cuda",
@@ -565,22 +583,22 @@ def parity_check_paged_attention(
         dtype=torch.int32,
         device="cuda",
     )
-    cum_seqlens = torch.cat((torch.tensor([0], dtype=torch.int32, device="cuda"), torch.cumsum(new_seqlens, dim=0))).type(torch.int32)
+    cum_seqlens = torch.cat(
+        (torch.tensor([0], dtype=torch.int32, device="cuda"), torch.cumsum(new_seqlens, dim=0))
+    ).type(torch.int32)
     total_seqlens = past_seqlens + new_seqlens
 
     q_unpad, k_unpad, v_unpad = unpad_qkv(config, q, k_new, v_new, cum_seqlens)
 
     # Generate kv cache and associated block-based data structures
-    k_cache, v_cache, block_table, k_cache_paged, v_cache_paged = generate_block_kvcache(
-        config, "cuda", torch.float16
-    )
+    k_cache, v_cache, block_table, k_cache_paged, v_cache_paged = generate_block_kvcache(config, "cuda", torch.float16)
     slot_mappings = get_slot_mappings(config, block_table, total_seqlens, cum_seqlens)
 
     # Set window size for local / causal
     window_size = (-1, -1)
     left_window_size = -1
     if config.local:
-        left_window_size = random.randint(0, config.total_sequence_length - 1) # random.randint is inclusive
+        left_window_size = random.randint(0, config.total_sequence_length - 1)  # random.randint is inclusive
         window_size = (left_window_size, 0)
     else:
         left_window_size = -1
@@ -662,31 +680,39 @@ def parity_check_paged_attention(
     out = torch.reshape(out, (num_tokens, config.num_heads, config.head_size))
     out = out.detach().cpu().numpy()
 
-    err_msg = (f" with {config}")
+    err_msg = f" with {config}"
     # Make sure past-present buffer updating correctly
     present_k = rearrange(
         updated_k_cache_paged[block_table.to(dtype=torch.long).flatten().cpu()],
         "(b nblocks) block_size ... -> b (nblocks block_size) ...",
         b=config.batch_size,
-    )[:, :config.total_sequence_length]
+    )[:, : config.total_sequence_length]
     present_v = rearrange(
         updated_v_cache_paged[block_table.to(dtype=torch.long).flatten().cpu()],
         "(b nblocks) block_size ... -> b (nblocks block_size) ...",
         b=config.batch_size,
-    )[:, :config.total_sequence_length]
+    )[:, : config.total_sequence_length]
     for i in range(config.batch_size):
         numpy.testing.assert_allclose(
-            present_k[i, :total_seqlens[i]], k_cache_ref[i, :total_seqlens[i]].detach().cpu().numpy(), rtol=rtol, atol=atol, equal_nan=True, err_msg=err_msg
+            present_k[i, : total_seqlens[i]],
+            k_cache_ref[i, : total_seqlens[i]].detach().cpu().numpy(),
+            rtol=rtol,
+            atol=atol,
+            equal_nan=True,
+            err_msg=err_msg,
         )
         numpy.testing.assert_allclose(
-            present_v[i, :total_seqlens[i]], v_cache_ref[i, :total_seqlens[i]].detach().cpu().numpy(), rtol=rtol, atol=atol, equal_nan=True, err_msg=err_msg
+            present_v[i, : total_seqlens[i]],
+            v_cache_ref[i, : total_seqlens[i]].detach().cpu().numpy(),
+            rtol=rtol,
+            atol=atol,
+            equal_nan=True,
+            err_msg=err_msg,
         )
         new_seqlen = cum_seqlens[i + 1] - cum_seqlens[i]
-        out_i = out[cum_seqlens[i] : cum_seqlens[i+1]]
+        out_i = out[cum_seqlens[i] : cum_seqlens[i + 1]]
         out_ref_i = out_ref[i, :new_seqlen]
-        numpy.testing.assert_allclose(
-            out_i, out_ref_i, rtol=rtol, atol=atol, equal_nan=True, err_msg=err_msg
-        )
+        numpy.testing.assert_allclose(out_i, out_ref_i, rtol=rtol, atol=atol, equal_nan=True, err_msg=err_msg)
 
 
 def has_flash_attention():
@@ -734,7 +760,20 @@ def paged_attention_test_cases():
                                         if rotary and h % 16 > 0:
                                             continue
 
-                                        config = Config(b, s, s2, n, n2, h, block_size, local, rotary, rotary_interleaved, packed, softcap)
+                                        config = Config(
+                                            b,
+                                            s,
+                                            s2,
+                                            n,
+                                            n2,
+                                            h,
+                                            block_size,
+                                            local,
+                                            rotary,
+                                            rotary_interleaved,
+                                            packed,
+                                            softcap,
+                                        )
                                         yield (
                                             str(config),
                                             config,
@@ -745,11 +784,8 @@ def paged_attention_test_cases():
 class TestPagedAttention(unittest.TestCase):
     @parameterized.expand(paged_attention_test_cases())
     def test_paged_attention(self, _, config):
-        parity_check_paged_attention(
-            config,
-            rtol=5e-3,
-            atol=5e-3
-        )
+        parity_check_paged_attention(config, rtol=5e-3, atol=5e-3)
+
 
 if __name__ == "__main__":
     unittest.main()

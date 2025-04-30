@@ -104,13 +104,13 @@ Status CheckInputs(const T* query,
   const auto& value_cache_dims = value_cache->Shape().GetDims();
   if (key_cache_dims.size() != 4) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                            "Input 'key_cache' is expected to have 4 dimensions, got ",
-                            key_cache_dims.size());
+                           "Input 'key_cache' is expected to have 4 dimensions, got ",
+                           key_cache_dims.size());
   }
   if (value_cache_dims.size() != 4) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                            "Input 'value_cache' is expected to have 4 dimensions, got ",
-                            value_cache_dims.size());
+                           "Input 'value_cache' is expected to have 4 dimensions, got ",
+                           value_cache_dims.size());
   }
 
   num_blocks = static_cast<int>(key_cache_dims[0]);
@@ -143,8 +143,8 @@ Status CheckInputs(const T* query,
   }
   if (value_cache_dims[2] != kv_num_heads) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                            "Input 'value_cache' shall have kv_num_heads, got ",
-                            value_cache_dims[2]);
+                           "Input 'value_cache' shall have kv_num_heads, got ",
+                           value_cache_dims[2]);
   }
 
   if (key_cache_dims[3] != value_cache_dims[3]) {
@@ -251,8 +251,8 @@ Status CheckInputs(const T* query,
     PagedAttentionParameters* output_parameters = reinterpret_cast<PagedAttentionParameters*>(parameters);
     output_parameters->batch_size = batch_size;
     output_parameters->token_count = token_count;
-    output_parameters->sequence_length = max_query_length;                  // maximum sequence length of query tensor
-    output_parameters->total_sequence_length = max_total_sequence_length;   // maximum total sequence length in kv cache after new kv are appended
+    output_parameters->sequence_length = max_query_length;                 // maximum sequence length of query tensor
+    output_parameters->total_sequence_length = max_total_sequence_length;  // maximum total sequence length in kv cache after new kv are appended
     output_parameters->hidden_size = q_hidden_size;
     output_parameters->kv_hidden_size = kv_hidden_size;
     output_parameters->num_heads = num_heads;
@@ -297,6 +297,6 @@ Status CheckInputs(const T* query,
   return CheckInputs(query, key, value, key_cache, value_cache, cumulative_sequence_length, seqlens, max_query_len, max_seq_len, block_table, slot_mappings, cos_cache, sin_cache, parameters, num_heads, kv_num_heads, scale, softcap);
 }
 
-}  // namespace group_query_attention_helper
+}  // namespace paged_attention_helper
 }  // namespace contrib
 }  // namespace onnxruntime
