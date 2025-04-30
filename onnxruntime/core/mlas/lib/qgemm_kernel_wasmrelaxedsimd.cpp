@@ -376,23 +376,191 @@ MlasGemmQuantCopyPackB<MLAS_GEMM_U8X8_KERNEL_WASMRELAXEDSIMD>(
     }
 }
 
-MLAS_FORCEINLINE
-void
-MlasGemmU8X8MultiplyAccumulateRowWasmRelaxedSimd(
-    v128_t ABroadcast,
-    const uint8_t* B,
-    v128_t Accumulators[2]
-)
-{
-    v128_t BElements0 = wasm_v128_load(&B[0]);
-    v128_t BElements1 = wasm_v128_load(&B[16]);
 
-    Accumulators[0] = wasm_i32x4_relaxed_dot_i8x16_i7x16_add(BElements0, ABroadcast, Accumulators[0]);
-    Accumulators[1] = wasm_i32x4_relaxed_dot_i8x16_i7x16_add(BElements1, ABroadcast, Accumulators[1]);
+//--------------------------------------------------------------------------
+// Small helper that performs one (A row) × (8 B columns) FMA step.
+//--------------------------------------------------------------------------
+MLAS_FORCEINLINE void DotPairAdd(v128_t ABroadcast,
+                                 v128_t BVec0,
+                                 v128_t BVec1,
+                                 v128_t Acc[2]) {
+    Acc[0] = wasm_i32x4_relaxed_dot_i8x16_i7x16_add(BVec0, ABroadcast, Acc[0]);
+    Acc[1] = wasm_i32x4_relaxed_dot_i8x16_i7x16_add(BVec1, ABroadcast, Acc[1]);
+}
+
+//--------------------------------------------------------------------------
+// Generic RowCount×8 kernel implementation (RowCount is 6 or 1 at compile‑time)
+//--------------------------------------------------------------------------
+
+template<size_t RowCount>
+static size_t GemmQuantKernelNx8Impl(
+    const MLAS_GEMM_U8X8_KERNEL_WASMRELAXEDSIMD::PackedAType* A,
+    const MLAS_GEMM_U8X8_KERNEL_WASMRELAXEDSIMD::PackedBType* B,
+    int32_t* C,
+    size_t PackedCountK,
+    size_t /*CountM — ignored*/,
+    size_t CountN,
+    size_t ldc,
+    const int32_t* RowSumBuffer,
+    const int32_t* ColumnSumBuffer,
+    const int32_t* ZeroPointB,
+    bool ZeroMode)
+{
+    constexpr size_t ColBlock = 8;
+    const auto PackedK = MLAS_GEMM_U8X8_KERNEL_WASMRELAXEDSIMD::PackedK;
+
+    // Build row‑wise pointer tables (a[r] & c[r]).
+    const MLAS_GEMM_U8X8_KERNEL_WASMRELAXEDSIMD::PackedAType* a[RowCount];
+    int32_t* c[RowCount];
+    for (size_t r = 0; r < RowCount; ++r) {
+        a[r] = (const MLAS_GEMM_U8X8_KERNEL_WASMRELAXEDSIMD::PackedAType*)(A + r * PackedK * PackedCountK);
+        c[r] = (int32_t*)(C + r * ldc);
+    }
+
+    while (CountN > 0) {
+        // ------------------------------------------------------------------
+        // 1) Initialize accumulators with row & column sums (and zero‑points)
+        // ------------------------------------------------------------------
+        v128_t Acc[RowCount][2];
+
+        if (ZeroPointB) {
+            v128_t zp0 = wasm_v128_load(ZeroPointB + 0);
+            v128_t zp1 = wasm_v128_load(ZeroPointB + 4);
+            ZeroPointB += 8;
+
+            for (size_t r = 0; r < RowCount; ++r) {
+                v128_t RowSumValues = wasm_v128_load32_splat(RowSumBuffer + r);
+                Acc[r][0] = wasm_i32x4_mul(RowSumValues, zp0);
+                Acc[r][1] = wasm_i32x4_mul(RowSumValues, zp1);
+            }
+        } else {
+            for (size_t r = 0; r < RowCount; ++r) {
+                Acc[r][0] = wasm_v128_load32_splat(RowSumBuffer + r);
+                Acc[r][1] = Acc[r][0];
+            }
+        }
+
+        v128_t col0 = wasm_v128_load(ColumnSumBuffer + 0); // first 4 col sums
+        v128_t col1 = wasm_v128_load(ColumnSumBuffer + 4); // next 4 col sums
+        for (size_t r = 0; r < RowCount; ++r) {
+            Acc[r][0] = wasm_i32x4_add(Acc[r][0], col0);
+            Acc[r][1] = wasm_i32x4_add(Acc[r][1], col1);
+        }
+        ColumnSumBuffer += 8;
+
+        // ------------------------------------------------------------------
+        // 2) Broadcast each pair of 8-bit values from the matrix A and multiply
+        // with the pair of 8-bit values from matrix B, and add the 32-bit
+        // intermediate into the accumulator registers.
+        // ------------------------------------------------------------------
+        size_t k = PackedCountK;
+        while (k > 0) {
+            v128_t ABroadcast[RowCount];
+            for (size_t r = 0; r < RowCount; ++r) {
+                ABroadcast[r] = wasm_v128_load32_splat(a[r]); // broadcast 4 × u8
+                a[r] += 4;
+            }
+
+            v128_t B0 = wasm_v128_load(&B[0]);
+            v128_t B1 = wasm_v128_load(&B[16]);
+            for (size_t r = 0; r < RowCount; ++r) {
+                DotPairAdd(ABroadcast[r], B0, B1, Acc[r]);
+            }
+            B += 32;
+            k -= 1;
+        }
+
+        // ------------------------------------------------------------------
+        // 3) Output the accumulator block after optionally accumulating the values
+        // from matrix C.
+        // ------------------------------------------------------------------
+
+        if (CountN >= 8) {
+            // ---- Full 8‑column tile ----
+            for (size_t r = 0; r < RowCount; ++r) {
+                if (!ZeroMode) {
+                    Acc[r][0] = wasm_i32x4_add(Acc[r][0], wasm_v128_load(c[r] + 0));
+                    Acc[r][1] = wasm_i32x4_add(Acc[r][1], wasm_v128_load(c[r] + 4));
+                }
+                wasm_v128_store(c[r] + 0, Acc[r][0]);
+                wasm_v128_store(c[r] + 4, Acc[r][1]);
+                a[r] -= PackedCountK * 4; // rewind for next N‑tile
+                c[r] += ColBlock;
+            }
+            CountN -= ColBlock;
+        } else {
+            // ---- 4/2/1‑column tails ----
+            auto Tail = [&](size_t cols, auto load_c, auto store_c) {
+                for (size_t r = 0; r < RowCount; ++r) {
+                    if (!ZeroMode) Acc[r][0] = wasm_i32x4_add(Acc[r][0], load_c(c[r]));
+                }
+                for (size_t r = 0; r < RowCount; ++r) store_c(c[r], Acc[r][0]);
+                for (size_t r = 0; r < RowCount; ++r) c[r] += cols;
+            };
+
+            if (CountN & 4) {
+                Tail(4,
+                     [](int32_t* p) { return wasm_v128_load(p); },
+                     [](int32_t* p, v128_t v) { wasm_v128_store(p, v); });
+                for (size_t r = 0; r < RowCount; ++r) Acc[r][0] = Acc[r][1];
+            }
+            if (CountN & 2) {
+                Tail(2,
+                     [](int32_t* p) { return wasm_v128_load64_zero(p); },
+                     [](int32_t* p, v128_t v) { wasm_v128_store64_lane(p, v, 0); });
+                for (size_t r = 0; r < RowCount; ++r)
+                    Acc[r][0] = wasm_i32x4_shuffle(Acc[r][0], wasm_i32x4_splat(0), 2, 3, 2, 3);
+            }
+            if (CountN & 1) {
+                for (size_t r = 0; r < RowCount; ++r) {
+                    int32_t v = wasm_i32x4_extract_lane(Acc[r][0], 0);
+                    if (!ZeroMode) v += *c[r];
+                    *c[r] = v;
+                }
+            }
+            CountN = 0;
+        }
+    }
+    return RowCount;
 }
 
 
-template<>
+size_t MlasGemmQuantKernel6x8(
+    const MLAS_GEMM_U8X8_KERNEL_WASMRELAXEDSIMD::PackedAType* A,
+    const MLAS_GEMM_U8X8_KERNEL_WASMRELAXEDSIMD::PackedBType* B,
+    int32_t* C,
+    size_t PackedCountK,
+    size_t CountM,
+    size_t CountN,
+    size_t ldc,
+    const int32_t* RowSumBuffer,
+    const int32_t* ColumnSumBuffer,
+    const int32_t* ZeroPointB,
+    bool ZeroMode) {
+    MLAS_UNREFERENCED_PARAMETER(CountM);
+    return GemmQuantKernelNx8Impl<6>(A, B, C, PackedCountK, 0, CountN, ldc,
+                                     RowSumBuffer, ColumnSumBuffer, ZeroPointB, ZeroMode);
+}
+
+size_t MlasGemmQuantKernel1x8(
+    const MLAS_GEMM_U8X8_KERNEL_WASMRELAXEDSIMD::PackedAType* A,
+    const MLAS_GEMM_U8X8_KERNEL_WASMRELAXEDSIMD::PackedBType* B,
+    int32_t* C,
+    size_t PackedCountK,
+    size_t CountM,
+    size_t CountN,
+    size_t ldc,
+    const int32_t* RowSumBuffer,
+    const int32_t* ColumnSumBuffer,
+    const int32_t* ZeroPointB,
+    bool ZeroMode) {
+    MLAS_UNREFERENCED_PARAMETER(CountM);
+    return GemmQuantKernelNx8Impl<1>(A, B, C, PackedCountK, 0, CountN, ldc,
+                                     RowSumBuffer, ColumnSumBuffer, ZeroPointB, ZeroMode);
+}
+
+
+template <>
 size_t
 MlasGemmQuantKernel<MLAS_GEMM_U8X8_KERNEL_WASMRELAXEDSIMD>(
     const MLAS_GEMM_U8X8_KERNEL_WASMRELAXEDSIMD::PackedAType* A,
@@ -406,151 +574,17 @@ MlasGemmQuantKernel<MLAS_GEMM_U8X8_KERNEL_WASMRELAXEDSIMD>(
     const int32_t* ColumnSumBuffer,
     const int32_t* ZeroPointB,
     bool ZeroMode
-    )
+)
 {
-    MLAS_UNREFERENCED_PARAMETER(CountM);
-    MLAS_UNREFERENCED_PARAMETER(ldc);
-
-    while (CountN > 0) {
-
-        v128_t Accumulators[2];
-
-        //
-        // Initialize the accumulators with the row and column sums.
-        //
-
-        int32_t RowSumValue = RowSumBuffer[0];
-
-        if (ZeroPointB != nullptr) {
-
-            int32_t ScaledRowSumBuffer[8];
-
-            for (size_t i = 0; i < 8; i++) {
-                ScaledRowSumBuffer[i] = RowSumValue * ZeroPointB[i];
-            }
-
-            ZeroPointB += 8;
-
-            Accumulators[0] = wasm_v128_load(&ScaledRowSumBuffer[0]);
-            Accumulators[1] = wasm_v128_load(&ScaledRowSumBuffer[4]);
-
-        }
-        else {
-
-            Accumulators[0] = wasm_i32x4_splat(RowSumValue);
-            Accumulators[1] = Accumulators[0];
-        }
-
-        Accumulators[0] = wasm_i32x4_add(Accumulators[0], wasm_v128_load(&ColumnSumBuffer[0]));
-        Accumulators[1] = wasm_i32x4_add(Accumulators[1], wasm_v128_load(&ColumnSumBuffer[4]));
-        ColumnSumBuffer += 8;
-
-        //
-        // Broadcast each pair of 16-bit values from the matrix A and multiply
-        // with the pair of 16-bit values from matrix B, and add the 32-bit
-        // intermediate into the accumulator registers.
-        //
-
-        const uint8_t* a = A;
-        size_t k = PackedCountK;
-
-        while (k >= 4) {
-
-            v128_t AElements = wasm_v128_load((v128_t*)a);
-            v128_t ABroadcast;
-
-            ABroadcast = wasm_i32x4_shuffle(AElements, wasm_i32x4_splat(0), 0, 0, 0, 0);
-            MlasGemmU8X8MultiplyAccumulateRowWasmRelaxedSimd(ABroadcast, &B[0], Accumulators);
-
-            ABroadcast = wasm_i32x4_shuffle(AElements, wasm_i32x4_splat(0), 1, 1, 1, 1);
-            MlasGemmU8X8MultiplyAccumulateRowWasmRelaxedSimd(ABroadcast, &B[32], Accumulators);
-
-            ABroadcast = wasm_i32x4_shuffle(AElements, wasm_i32x4_splat(0), 2, 2, 2, 2);
-            MlasGemmU8X8MultiplyAccumulateRowWasmRelaxedSimd(ABroadcast, &B[64], Accumulators);
-
-            ABroadcast = wasm_i32x4_shuffle(AElements, wasm_i32x4_splat(0), 3, 3, 3, 3);
-            MlasGemmU8X8MultiplyAccumulateRowWasmRelaxedSimd(ABroadcast, &B[96], Accumulators);
-
-            a += 4 * 4;
-            B += 4 * 32;
-            k -= 4;
-        }
-
-        while (k > 0) {
-
-            v128_t ABroadcast = wasm_i32x4_splat(*((int32_t*)a));
-            MlasGemmU8X8MultiplyAccumulateRowWasmRelaxedSimd(ABroadcast, &B[0], Accumulators);
-
-            a += 4;
-            B += 32;
-            k -= 1;
-        }
-
-        //
-        // Output the accumulator block after optionally accumulating the values
-        // from matrix C.
-        //
-
-        if (CountN >= 8) {
-
-            if (!ZeroMode) {
-                Accumulators[0] = wasm_i32x4_add(Accumulators[0], wasm_v128_load(&C[0]));
-                Accumulators[1] = wasm_i32x4_add(Accumulators[1], wasm_v128_load(&C[4]));
-            }
-
-            wasm_v128_store(&C[0], Accumulators[0]);
-            wasm_v128_store(&C[4], Accumulators[1]);
-
-            C += 8;
-            CountN -= 8;
-
-        }
-        else {
-
-            //
-            // Output the remaining partial output block.
-            //
-
-            if ((CountN & 4) != 0) {
-
-                if (!ZeroMode) {
-                    Accumulators[0] = wasm_i32x4_add(Accumulators[0], wasm_v128_load(&C[0]));
-                }
-
-                wasm_v128_store(&C[0], Accumulators[0]);
-                C += 4;
-
-                Accumulators[0] = Accumulators[1];
-            }
-
-            if ((CountN & 2) != 0) {
-
-                if (!ZeroMode) {
-                    Accumulators[0] = wasm_i32x4_add(Accumulators[0], wasm_v128_load64_zero(&C[0]));
-                }
-
-                wasm_v128_store64_lane(&C[0], Accumulators[0], 0);
-                C += 2;
-
-                Accumulators[0] = wasm_i32x4_shuffle(Accumulators[0], wasm_i32x4_splat(0), 2, 3, 2, 3);
-            }
-
-            if ((CountN & 1) != 0) {
-
-                int32_t AccumulatorValue = wasm_i32x4_extract_lane(Accumulators[0], 0);
-
-                if (!ZeroMode) {
-                    AccumulatorValue += C[0];
-                }
-
-                C[0] = AccumulatorValue;
-            }
-
-            CountN = 0;
-        }
+    size_t RowsHandled = 0;
+    if (CountM >= 6) {
+        RowsHandled = MlasGemmQuantKernel6x8(A, B, C, PackedCountK, CountM, CountN, ldc,
+                                             RowSumBuffer, ColumnSumBuffer, ZeroPointB, ZeroMode);
+    } else {
+        RowsHandled = MlasGemmQuantKernel1x8(A, B, C, PackedCountK, CountM, CountN, ldc,
+                                             RowSumBuffer, ColumnSumBuffer, ZeroPointB, ZeroMode);
     }
-
-    return 1;
+    return RowsHandled;
 }
 
 const MLAS_GEMM_QUANT_DISPATCH MlasGemmU8X8DispatchWasmRelaxedSimd = {
@@ -559,5 +593,5 @@ const MLAS_GEMM_QUANT_DISPATCH MlasGemmU8X8DispatchWasmRelaxedSimd = {
     nullptr,
     MLAS_GEMM_U8X8_KERNEL_WASMRELAXEDSIMD::PackedK,
     0,
-    4 // multiple of kernel stride M
+    6  // multiple of kernel stride M
 };
