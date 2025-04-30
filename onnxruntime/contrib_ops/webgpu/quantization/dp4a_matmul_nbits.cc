@@ -9,7 +9,7 @@ namespace contrib {
 namespace webgpu {
 namespace {
 
-std::string commonFunctions(uint32_t nbits) {
+std::string CommonFunctions(uint32_t nbits) {
   if (nbits == 4) {
     return R"ADDNL_FN(
         fn DequantizedFrom4BitsTo8Bits(in: vec2<u32>) -> vec4<u32>
@@ -131,7 +131,7 @@ Status DP4AMatMulNBitsProgram::GenerateShaderCode(ShaderHelper& shader) const {
   // this shader require A to be int8 quantized with block size 64. B is regular
   // matmulnbits input with block size 32.
 
-  shader.AdditionalImplementation() << commonFunctions(nbits_)
+  shader.AdditionalImplementation() << CommonFunctions(nbits_)
                                     << "  const block_size = " << block_size_ << ";";
 
   shader.AdditionalImplementation() << R"ADDNL_FN(
@@ -352,7 +352,7 @@ Status DP4AMatMulNBitsSmallMProgram::GenerateShaderCode(ShaderHelper& shader) co
                                     << "  const sub_tile_count = " << WorkgroupSizeX() / tile_size_k_vec << "u;\n"
                                     << "  var<workgroup> inter_results: array<array<output_element_t, tile_size_k_vec>, tile_size>;\n";
 
-  shader.AdditionalImplementation() << commonFunctions(nbits_)
+  shader.AdditionalImplementation() << CommonFunctions(nbits_)
                                     << R"ADDNL_FN(
     // Need 2 * tile_size_k_vec (32) to store a tile_A since b is quantized as 4 bits and a is quantized as 8 bits.
     var<workgroup> tile_A : array<vec4<u32>, 32>;
@@ -380,9 +380,6 @@ Status DP4AMatMulNBitsSmallMProgram::GenerateShaderCode(ShaderHelper& shader) co
     // Handle each workgroup threads as a block of [sub_tile_count][tile_size_k_vec]
     let local_col = local_idx % tile_size_k_vec;
     let local_row = local_idx / tile_size_k_vec;
-  )MAIN_FN";
-  if (nbits_ == 4) {
-    shader.MainFunctionBody() << R"MAIN_FN(
     for (var kidx_v:u32 = 0; kidx_v < uniforms.K32; kidx_v += tile_size_k_vec)
     {
       // Load Phase: Populate shared memory for the workgroup.
@@ -403,10 +400,20 @@ Status DP4AMatMulNBitsSmallMProgram::GenerateShaderCode(ShaderHelper& shader) co
         if (b_global < uniforms.N && k_offset < uniforms.K32)
         {
           let b_offset = b_global * uniforms.K32 + k_offset;
+  )MAIN_FN";
+  if (nbits_ == 4) {
+    shader.MainFunctionBody() << R"MAIN_FN(
           let b_value = input_b[b_offset];
           own_b = DequantizedFrom4BitsTo8Bits(b_value.xy);
           own_b1 = DequantizedFrom4BitsTo8Bits(b_value.zw);
-
+  )MAIN_FN";
+  } else {
+    shader.MainFunctionBody() << R"MAIN_FN(
+          own_b = AlignWithZeroPoint(input_b[b_offset * 2]);
+          own_b1 = AlignWithZeroPoint(input_b[b_offset * 2 + 1]);
+  )MAIN_FN";
+  }
+  shader.MainFunctionBody() << R"MAIN_FN(
           // k_offset - covers 32 values of k in input_b
           let own_scale_b = scales_b[b_global * uniforms.K / uniforms.block_size + k_offset * 32 / uniforms.block_size];
           inter_results[row_offset + local_row][local_col] += SDP8AI(own_a, own_b, own_a1, own_b1, own_scale_a * own_scale_b);
@@ -414,43 +421,7 @@ Status DP4AMatMulNBitsSmallMProgram::GenerateShaderCode(ShaderHelper& shader) co
       }
       workgroupBarrier();
     }
-  )MAIN_FN";
-  } else {
-    shader.MainFunctionBody() << R"MAIN_FN(
-    for (var kidx_v:u32 = 0; kidx_v < uniforms.K16; kidx_v += double_tile_size_k_vec)
-    {
-      // Load Phase: Populate shared memory for the workgroup.
-      if (local_idx < double_tile_size_k_vec)
-      {
-        loadSHMA(a_global, kidx_v, local_idx);
-      }
-      workgroupBarrier();
-      var own_a: vec4<u32> = tile_A[local_col * 2];
-      var own_a1: vec4<u32> = tile_A[local_col * 2 + 1];
-      var own_scale_a = scale_A[local_col / 4];
-      var own_b = vec4<u32>(0);
-      var own_b1 = vec4<u32>(0);
-      let k_offset = kidx_v + local_col * 2;
-      // calculate intermediate results into inter_results.
-      for (var row_offset = 0u; row_offset < tile_size; row_offset += sub_tile_count) {
-        let b_global = b_global_base + row_offset + local_row;
-        if (b_global < uniforms.N && k_offset < uniforms.K16)
-        {
-          let b_offset = b_global * uniforms.K16 + k_offset;
-          own_b = AlignWithZeroPoint(input_b[b_offset]);
-          own_b1 = AlignWithZeroPoint(input_b[b_offset + 1]);
 
-          // k_offset - covers 16 values of k in input_b
-          let own_scale_b = scales_b[b_global * uniforms.K / uniforms.block_size + k_offset * 16 / uniforms.block_size];
-          inter_results[row_offset + local_row][local_col] += SDP8AI(own_a, own_b, own_a1, own_b1, own_scale_a * own_scale_b);
-        }
-      }
-      workgroupBarrier();
-    }
-  )MAIN_FN";
-  }
-
-  shader.MainFunctionBody() << R"MAIN_FN(
     if (local_idx < tile_size) {
       // Do reduce sum to get final output.
       var output_value = output_element_t(0);
