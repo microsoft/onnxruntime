@@ -11,11 +11,37 @@
 #include "contrib_ops/cuda/utils/dump_cuda_tensor.h"
 #include "matmul_nbits.cuh"
 #include "dequantize_blockwise.cuh"
+#include "contrib_ops/cuda/llm/fpA_intB_gemm/fpA_intB_gemm.h"
 
 namespace onnxruntime {
 namespace contrib {
 namespace cuda {
 using namespace onnxruntime::cuda;
+
+// template <typename T>
+// std::vector<ort_llm::cutlass_extensions::CutlassGemmConfig> get_configs(T& runner, int k)
+// {
+//     auto configs = runner.getConfigs();
+//     std::vector<ort_llm::cutlass_extensions::CutlassGemmConfig> rets;
+//     for (auto config : configs)
+//     {
+//         if (config.stages >= 5)
+//         {
+//             continue;
+//         }
+//         if (config.split_k_style != ort_llm::cutlass_extensions::SplitKStyle::NO_SPLIT_K)
+//         {
+//             int k_size = (k + config.split_k_factor - 1) / config.split_k_factor;
+//             if (k_size % 64)
+//             {
+//                 continue;
+//             }
+//         }
+//         rets.push_back(config);
+//     }
+//     return rets;
+// }
+
 
 template <typename T>
 Status MatMulNBits<T>::ComputeInternal(OpKernelContext* ctx) const {
@@ -34,9 +60,8 @@ Status MatMulNBits<T>::ComputeInternal(OpKernelContext* ctx) const {
   const auto* scales_data = scales->Data<T>();
   const auto* zero_points_data = zero_points == nullptr ? nullptr : zero_points->DataRaw();
   const auto* reorder_idx_data = reorder_idx == nullptr ? nullptr : reorder_idx->Data<int32_t>();
-
-  typedef typename ToCudaType<T>::MappedType CudaT;
-
+  const auto* bias_data = bias == nullptr ? nullptr : bias->Data<T>();
+  
   constexpr bool transa = false;
   constexpr bool transb = true;
   MatMulComputeHelper helper;
@@ -50,6 +75,55 @@ Status MatMulNBits<T>::ComputeInternal(OpKernelContext* ctx) const {
   if (Y->Shape().Size() == 0)
     return Status::OK();
 
+  cudaStream_t stream = static_cast<cudaStream_t>(ctx->GetComputeStream()->GetHandle());
+
+  typedef typename ToCudaType<T>::MappedType CudaT;
+  CudaT* out_data = reinterpret_cast<CudaT*>(Y->MutableData<T>());
+  
+  auto& device_prop = this->GetDeviceProp();
+  int sm = device_prop.major * 10 + device_prop.minor;
+
+  int m =  SafeInt<int>(helper.M());
+  int n =  SafeInt<int>(helper.N());
+  int k =  SafeInt<int>(helper.K());
+
+  if (use_fpA_intB_gemm_ && sm >= 75) {
+    KernelType cuda_kernel_type = nbits_ == 8 ? KernelType::FP16Int8Groupwise : KernelType::FP16Int4Groupwise;
+    gemmProfiler_->setCudaKernelType(cuda_kernel_type, sm);
+
+    // get best tactic and check if CUDA kernel should be used
+    bool use_cuda_kernel = false;
+    auto const& bestTactic = gemmProfiler_->getBestConfig(m, gemmId_);
+    TLLM_CHECK_WITH_INFO(bestTactic,
+                         "No valid weight only per-channel GEMM tactic(It is usually caused by the failure to execute all candidate "
+                         "configurations of the CUTLASS kernel, please pay attention to the warning information when building the "
+                         "engine.)");
+
+    use_cuda_kernel = bestTactic->enableCudaKernel;
+    if (use_cuda_kernel) {
+      ort_llm::kernels::weight_only::Params params(a_data, nullptr, blob_data,
+                                                   scales_data, zero_points_data, bias_data, out_data, 1.f, m, n, k, block_size_, cuda_kernel_type);
+      ort_llm::kernels::weight_only::kernel_launcher(sm, params, stream);
+    } else {
+      const size_t workspace_size = weightOnlyGemmRunner_->getWorkspaceSize(m, n, k);
+      auto workspace_buffer = GetScratchBuffer<void>(workspace_size, ctx->GetComputeStream());
+      weightOnlyGemmRunner_->gemm(
+          a_data,
+          blob_data,
+          scales_data,
+          zero_points_data,
+          bias_data,
+          out_data,
+          m, n, k,
+          block_size_,
+          *bestTactic,
+          reinterpret_cast<char*>(workspace_buffer.get()),
+          workspace_size,
+          stream);
+    }
+    return Status::OK();
+  }
+
   if ((reorder_idx_data == nullptr) && (!zero_points || !zero_points->IsDataType<T>())) {
     bool done = (nbits_ == 8) ? TryMatMul8Bits(
                                     reinterpret_cast<CudaT*>(Y->MutableData<T>()),
@@ -57,24 +131,24 @@ Status MatMulNBits<T>::ComputeInternal(OpKernelContext* ctx) const {
                                     blob_data,
                                     reinterpret_cast<const CudaT*>(scales_data),
                                     static_cast<const uint8_t*>(zero_points_data),
-                                    SafeInt<int>(helper.M()),
-                                    SafeInt<int>(helper.N()),
-                                    SafeInt<int>(helper.K()),
+                                    m,
+                                    n,
+                                    k,
                                     SafeInt<int>(block_size_),
                                     GetDeviceProp().sharedMemPerBlock,
-                                    static_cast<cudaStream_t>(ctx->GetComputeStream()->GetHandle()))
+                                    stream)
                               : TryMatMul4Bits(
                                     reinterpret_cast<CudaT*>(Y->MutableData<T>()),
                                     reinterpret_cast<const CudaT*>(a_data),
                                     blob_data,
                                     reinterpret_cast<const CudaT*>(scales_data),
                                     static_cast<const uint8_t*>(zero_points_data),
-                                    SafeInt<int>(helper.M()),
-                                    SafeInt<int>(helper.N()),
-                                    SafeInt<int>(helper.K()),
+                                    m,
+                                    n,
+                                    k,
                                     SafeInt<int>(block_size_),
                                     GetDeviceProp().sharedMemPerBlock,
-                                    static_cast<cudaStream_t>(ctx->GetComputeStream()->GetHandle()));
+                                    stream);
     if (done) {
       return Status::OK();
     }
@@ -99,7 +173,7 @@ Status MatMulNBits<T>::ComputeInternal(OpKernelContext* ctx) const {
             SafeInt<int>(K_padded),
             SafeInt<int>(N_),
             SafeInt<int>(block_size_),
-            static_cast<cudaStream_t>(ctx->GetComputeStream()->GetHandle())));
+            stream));
       } else {
         ORT_RETURN_IF_ERROR(Dequantize8Bits(
             reinterpret_cast<CudaT*>(b_data),
@@ -110,7 +184,7 @@ Status MatMulNBits<T>::ComputeInternal(OpKernelContext* ctx) const {
             SafeInt<int>(K_padded),
             SafeInt<int>(N_),
             SafeInt<int>(block_size_),
-            static_cast<cudaStream_t>(ctx->GetComputeStream()->GetHandle())));
+            stream));
       }
     } else {  // row-wise block
       ORT_RETURN_IF_ERROR(DequantizeBlockwise8b(
@@ -122,7 +196,7 @@ Status MatMulNBits<T>::ComputeInternal(OpKernelContext* ctx) const {
           column_wise_quant_blk_,
           SafeInt<int>(K_),
           SafeInt<int>(N_),
-          static_cast<cudaStream_t>(ctx->GetComputeStream()->GetHandle())));
+          stream));
     }
   } else {  // 4 bits
     if (column_wise_quant_blk_) {
@@ -140,7 +214,7 @@ Status MatMulNBits<T>::ComputeInternal(OpKernelContext* ctx) const {
             SafeInt<int>(K_padded),
             SafeInt<int>(N_),
             SafeInt<int>(block_size_),
-            static_cast<cudaStream_t>(ctx->GetComputeStream()->GetHandle())));
+            stream));
       } else {
         ORT_RETURN_IF_ERROR(Dequantize4Bits(
             reinterpret_cast<CudaT*>(b_data),
@@ -151,7 +225,7 @@ Status MatMulNBits<T>::ComputeInternal(OpKernelContext* ctx) const {
             SafeInt<int>(K_padded),
             SafeInt<int>(N_),
             SafeInt<int>(block_size_),
-            static_cast<cudaStream_t>(ctx->GetComputeStream()->GetHandle())));
+            stream));
       }
     } else {
       // row-wise block
@@ -166,7 +240,7 @@ Status MatMulNBits<T>::ComputeInternal(OpKernelContext* ctx) const {
           column_wise_quant_blk_,
           SafeInt<int>(K_),
           SafeInt<int>(N_),
-          static_cast<cudaStream_t>(ctx->GetComputeStream()->GetHandle())));
+          stream));
     }
   }
 
