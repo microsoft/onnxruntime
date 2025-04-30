@@ -13,6 +13,32 @@
        "${ONNXRUNTIME_ROOT}/core/providers/qnn/*.cc"
   )
 
+  function(extract_qnn_sdk_version_from_yaml QNN_SDK_YAML_FILE QNN_VERSION_OUTPUT)
+    file(READ "${QNN_SDK_YAML_FILE}" QNN_SDK_YAML_CONTENT)
+    string(REGEX MATCH "version: ([0-9]+\\.[0-9]+\\.[0-9]+)" QNN_VERSION_MATCH "${QNN_SDK_YAML_CONTENT}")
+    if(QNN_VERSION_MATCH)
+      set(${QNN_VERSION_OUTPUT} "${CMAKE_MATCH_1}" PARENT_SCOPE)
+      message(STATUS "Extracted QNN SDK version ${CMAKE_MATCH_1} from ${QNN_SDK_YAML_FILE}")
+    else()
+      message(WARNING "Failed to extract QNN SDK version from ${QNN_SDK_YAML_FILE}")
+    endif()
+  endfunction()
+
+  if(NOT QNN_SDK_VERSION)
+    if(EXISTS "${onnxruntime_QNN_HOME}/sdk.yaml")
+      extract_qnn_sdk_version_from_yaml("${onnxruntime_QNN_HOME}/sdk.yaml" QNN_SDK_VERSION)
+    else()
+      message(WARNING "Cannot open sdk.yaml to extract QNN SDK version")
+    endif()
+  endif()
+  message(STATUS "QNN SDK version ${QNN_SDK_VERSION}")
+
+  if(NOT QNN_SDK_VERSION)
+    set(QNN_DLL_FILE_DESCRIPTION "ONNX Runtime QNN Provider")
+  else()
+    set(QNN_DLL_FILE_DESCRIPTION "ONNX Runtime QNN Provider (QAIRT ${QNN_SDK_VERSION})")
+  endif()
+
   if(onnxruntime_BUILD_QNN_EP_STATIC_LIB)
     #
     # Build QNN EP as a static library
@@ -49,9 +75,12 @@
 	                               ${onnxruntime_providers_qnn_shared_lib_srcs})
 
     source_group(TREE ${ONNXRUNTIME_ROOT}/core FILES ${onnxruntime_providers_qnn_srcs})
+
+    # Sets the DLL version info on Windows: https://learn.microsoft.com/en-us/windows/win32/menurc/versioninfo-resource
+    set(onnxruntime_providers_qnn_rc_file "${ONNXRUNTIME_ROOT}/core/providers/qnn/onnxruntime_providers_qnn.rc")
+
     onnxruntime_add_shared_library_module(onnxruntime_providers_qnn ${onnxruntime_providers_qnn_srcs}
-                                                                    # Sets the DLL version and description on Windows
-                                                                    "${ONNXRUNTIME_ROOT}/core/providers/qnn/onnxruntime_providers_qnn.rc")
+                                                                    ${onnxruntime_providers_qnn_rc_file})
     onnxruntime_add_include_to_target(onnxruntime_providers_qnn ${ONNXRUNTIME_PROVIDERS_SHARED} ${GSL_TARGET} onnx
 	                                                        onnxruntime_common Boost::mp11 safeint_interface
 								nlohmann_json::nlohmann_json)
@@ -62,8 +91,9 @@
                                                                  ${onnxruntime_QNN_HOME}/include/QNN
                                                                  ${onnxruntime_QNN_HOME}/include)
 
-    # FILE_NAME preprocessor definition is used in onnxruntime_providers_qnn.rc to set the DLL's details
+    # preprocessor definitions used in onnxruntime_providers_qnn.rc
     target_compile_definitions(onnxruntime_providers_qnn PRIVATE FILE_NAME=\"onnxruntime_providers_qnn.dll\")
+    target_compile_definitions(onnxruntime_providers_qnn PRIVATE FILE_DESC=\"${QNN_DLL_FILE_DESCRIPTION}\")
 
     # Set linker flags for function(s) exported by EP DLL
     if(UNIX)

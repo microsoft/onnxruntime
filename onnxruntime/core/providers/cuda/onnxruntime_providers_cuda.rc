@@ -29,9 +29,9 @@ BEGIN
         BLOCK "040904E4"
         BEGIN
             VALUE "CompanyName",      "Microsoft Corporation"
-            VALUE "FileDescription",  "ONNX Runtime CUDA Execution Provider"
+            VALUE "FileDescription",  "ONNX Runtime CUDA Provider"
             VALUE "FileVersion",      VER_STRING
-            VALUE "InternalName",     "ONNX Runtime CUDA Execution Provider"
+            VALUE "InternalName",     "ONNX Runtime CUDA Provider"
             VALUE "LegalCopyright",   "\251 Microsoft Corporation. All rights reserved."
             VALUE "OriginalFilename", FILE_NAME
             VALUE "ProductName",      "Microsoft\256 Windows\256 Operating System"

@@ -123,7 +123,7 @@
     substitute_op_reduction_srcs(onnxruntime_providers_cuda_src)
   endif()
 
-  # Sets the DLL version and description on Windows
+  # Sets the DLL version info on Windows: https://learn.microsoft.com/en-us/windows/win32/menurc/versioninfo-resource
   set(onnxruntime_providers_cuda_rc_file "${ONNXRUNTIME_ROOT}/core/providers/cuda/onnxruntime_providers_cuda.rc")
 
   if(onnxruntime_ENABLE_CUDA_EP_INTERNAL_TESTS)
@@ -141,7 +141,7 @@
                                                                      ${onnxruntime_providers_cuda_rc_file})
   endif()
 
-  # FILE_NAME preprocessor definition is used in onnxruntime_providers_cuda.rc to set the DLL's details
+  # FILE_NAME preprocessor definition is used in onnxruntime_providers_cuda.rc
   target_compile_definitions(onnxruntime_providers_cuda PRIVATE FILE_NAME=\"onnxruntime_providers_cuda.dll\")
 
   # config_cuda_provider_shared_module can be used to config onnxruntime_providers_cuda_obj, onnxruntime_providers_cuda & onnxruntime_providers_cuda_ut.
