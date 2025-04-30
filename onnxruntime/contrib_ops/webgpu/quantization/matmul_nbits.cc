@@ -19,66 +19,41 @@ namespace webgpu {
 namespace {
 
 std::string ReadZeroPoint(uint32_t nbits, bool has_zero_points) {
-  if (nbits == 4) {
-    if (has_zero_points) {
-      return R"(
+  ORT_ENFORCE(nbits == 8 || nbits == 4, "Only 4/8 bits are supported for webgpu matmulnbits");
+  std::stringstream ss;
+  if (has_zero_points) {
+    ss << "const elements_in_uint32 = " << (32 / nbits) << "u;\n"
+       << "const bits = " << nbits << "u;\n";
+    ss << R"(
 fn mm_read_zero(row : u32, col : u32, r_dim: u32, c_dim: u32) -> output_element_t {
   if (row < r_dim && col < c_dim) {
     let offset = row * c_dim + col;
 
-    // u32 holds 8 packed uint4.
-    let array_index = offset / 8u;
-    let component_index = offset % 8u;
+    // u32 holds elements_in_uint32 packed nbits.
+    let array_index = offset / elements_in_uint32;
+    let component_index = offset % elements_in_uint32;
     let packed_value = zero_points[array_index];
 
-    // Extract the uint4 component
-    let shift_amount = component_index * 4u;
-    let masked_value = (packed_value >> shift_amount) & 0xFu;
-
+    // Extract the nbits component
+    let shift_amount = component_index * bits;
+)";
+    ss << "    let masked_value = (packed_value >> shift_amount) & " << (nbits == 4 ? "0xFu" : "0xFF") << ";\n";
+    ss << R"(
     return output_element_t(masked_value);
   }
   return output_element_t(0);
 }
 )";
-    } else {
-      return R"(
+  } else {
+    ss << "const default_zero_point = " << (nbits == 4 ? 8 : 128) << ";\n";
+    ss << R"(
 fn mm_read_zero(row : u32, col : u32, r_dim: u32, c_dim: u32) -> output_element_t {
   // The default zero point is 8.
-  return output_element_t(8);
+  return output_element_t(default_zero_point);
 }
 )";
-    }
-  } else {
-    ORT_ENFORCE(nbits == 8, "Only 4/8 bits are supported for DP4");
-    if (has_zero_points) {
-      return R"(
-fn mm_read_zero(row : u32, col : u32, r_dim: u32, c_dim: u32) -> output_element_t {
-  if (row < r_dim && col < c_dim) {
-    let offset = row * c_dim + col;
-
-    // u32 holds 4 packed uint8.
-    let array_index = offset / 4u;
-    let component_index = offset % 4u;
-    let packed_value = zero_points[array_index];
-
-    // Extract the uint8 component
-    let shift_amount = component_index * 8u;
-    let masked_value = (packed_value >> shift_amount) & 0xFF;
-
-    return output_element_t(masked_value);
   }
-  return output_element_t(0);
-}
-)";
-    } else {
-      return R"(
-fn mm_read_zero(row : u32, col : u32, r_dim: u32, c_dim: u32) -> output_element_t {
-  // The default zero point is 128 for 8 bits.
-  return output_element_t(128);
-}
-)";
-    }
-  }
+  return ss.str();
 }
 
 constexpr unsigned int kMinMForTileOptimization = 4;
