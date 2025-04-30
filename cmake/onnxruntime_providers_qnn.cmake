@@ -15,10 +15,11 @@
 
   function(extract_qnn_sdk_version_from_yaml QNN_SDK_YAML_FILE QNN_VERSION_OUTPUT)
     file(READ "${QNN_SDK_YAML_FILE}" QNN_SDK_YAML_CONTENT)
-    string(REGEX MATCH "version: ([0-9]+\\.[0-9]+\\.[0-9]+)" QNN_VERSION_MATCH "${QNN_SDK_YAML_CONTENT}")
+    # Match a line of text like "version: 1.33.2"
+    string(REGEX MATCH "(^|\n|\r)version: ([0-9]+\\.[0-9]+\\.[0-9]+)" QNN_VERSION_MATCH "${QNN_SDK_YAML_CONTENT}")
     if(QNN_VERSION_MATCH)
-      set(${QNN_VERSION_OUTPUT} "${CMAKE_MATCH_1}" PARENT_SCOPE)
-      message(STATUS "Extracted QNN SDK version ${CMAKE_MATCH_1} from ${QNN_SDK_YAML_FILE}")
+      set(${QNN_VERSION_OUTPUT} "${CMAKE_MATCH_2}" PARENT_SCOPE)
+      message(STATUS "Extracted QNN SDK version ${CMAKE_MATCH_2} from ${QNN_SDK_YAML_FILE}")
     else()
       message(WARNING "Failed to extract QNN SDK version from ${QNN_SDK_YAML_FILE}")
     endif()
