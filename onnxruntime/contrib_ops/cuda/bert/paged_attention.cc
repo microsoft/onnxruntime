@@ -3,6 +3,8 @@
 
 #include "core/providers/cuda/cuda_common.h"
 #include "core/platform/env_var_utils.h"
+#include "contrib_ops/cpu/utils/dump_tensor.h"
+#include "contrib_ops/cuda/utils/dump_cuda_tensor.h"
 #include "contrib_ops/cuda/bert/paged_attention_impl.h"
 #include "contrib_ops/cuda/bert/paged_attention.h"
 #include "contrib_ops/cuda/bert/paged_attention_helper.h"
@@ -96,6 +98,22 @@ Status PagedAttention<T>::ComputeInternal(OpKernelContext* context) const {
   parameters.local_window_size = local_window_size_;
   parameters.do_rotary = do_rotary_;
   parameters.rotary_interleaved = rotary_interleaved_;
+
+  DUMP_STRING_INIT();
+  DUMP_STRING("Batch size = ", parameters.batch_size);
+  DUMP_STRING("Token count = ", parameters.token_count);
+  DUMP_STRING("Max query length = ", parameters.sequence_length);
+  DUMP_STRING("Max total sequence length = ", parameters.total_sequence_length);
+  DUMP_STRING("Q hidden size = ", parameters.hidden_size);
+  DUMP_STRING("KV hidden size = ", parameters.kv_hidden_size);
+  DUMP_STRING("Q num heads = ", parameters.num_heads);
+  DUMP_STRING("KV num heads = ", parameters.kv_num_heads);
+  DUMP_STRING("Head size = ", parameters.head_size);
+  DUMP_STRING("Num blocks = ", parameters.num_blocks);
+  DUMP_STRING("Block size = ", parameters.block_size);
+  DUMP_STRING("Max num blocks per sequence = ", parameters.max_num_blocks_per_seq);
+  DUMP_STRING("Rotary dimension = ", parameters.rotary_dim);
+  DUMP_STRING("Is packed QKV = ", parameters.is_packed_qkv);
 
   // Check rotary
   if (do_rotary_ && (cos_cache == nullptr || sin_cache == nullptr)) {

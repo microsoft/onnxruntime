@@ -222,28 +222,34 @@ Status LaunchGetCumulativeSeqlensKV(int32_t* cumulative_seqlens_kv, const int32_
 template <typename T>
 __global__ void ReshapeAndCache(const T* __restrict__ key, const T* __restrict__ value, T* __restrict__ key_cache,
                                 T* __restrict__ value_cache, const int* __restrict__ slot_mappings,
-                                const int token_count, const int kv_hidden_size, const int block_size) {
-  const int token_id = blockIdx.x;
+                                const int token_count, const int kv_hidden_size, const int block_size,
+                                const int key_stride, const int value_stride) {
+  const int tid = threadIdx.x + blockIdx.x * blockDim.x;
+  if (tid >= token_count * kv_hidden_size) {
+    return;
+  }
+  const int token_id = tid / kv_hidden_size;
+  const int offset = tid % kv_hidden_size;
   const int slot_id = slot_mappings[token_id];
   const int block_id = slot_id / block_size;
   const int block_offset = slot_id % block_size;
 
-  for (int i = threadIdx.x; i < kv_hidden_size; i += blockDim.x) {
-    const int src_id = token_id * kv_hidden_size + i; // id in key/value
-    const int dst_id = block_id * block_size * kv_hidden_size + block_offset * kv_hidden_size + i; // id in cache
-    key_cache[dst_id] = key[src_id];
-    value_cache[dst_id] = value[src_id];
-  }
+  const int key_id = token_id * key_stride + offset;
+  const int value_id = token_id * value_stride + offset;
+  const int dst_id = block_id * block_size * kv_hidden_size + block_offset * kv_hidden_size + offset;
+  key_cache[dst_id] = key[key_id];
+  value_cache[dst_id] = value[value_id];
 }
 
 template <typename T>
 Status LaunchReshapeAndCache(const T* key, const T* value, T* key_cache, T* value_cache, const int* slot_mappings,
                              const int token_count, const int kv_hidden_size, const int block_size, cudaStream_t stream,
                              const int max_threads_per_block) {
-  const dim3 blocks(token_count);
-  const dim3 threads(std::min(kv_hidden_size, max_threads_per_block));
+  const int total_size = token_count * kv_hidden_size;
+  const int threads(std::min(total_size, max_threads_per_block));
+  const int blocks((total_size + threads - 1) / threads);
   ReshapeAndCache<T><<<blocks, threads, 0, stream>>>(key, value, key_cache, value_cache, slot_mappings, token_count,
-                                                     kv_hidden_size, block_size);
+                                                     kv_hidden_size, block_size, kv_hidden_size, kv_hidden_size);
   return CUDA_CALL(cudaGetLastError());
 }
 
@@ -337,7 +343,7 @@ Status FlashAttention(
       max_seq_len, scale, softcap, /*is_causal*/ true, is_bf16, local_window_size, max_num_blocks_per_seq, block_size));
 
   DUMP_TENSOR_INIT();
-  DUMP_TENSOR("flash attention output", data.output, batch_size, sequence_length, num_heads, head_size);
+  DUMP_TENSOR("flash attention output", data.output, token_count, num_heads, head_size);
 
   return Status::OK();
 }
