@@ -10,10 +10,10 @@ from typing import Any
 import numpy as np
 import packaging.version as pv
 import torch
-from transformers import __version__ as transformers_version
-from transformers.cache_utils import DynamicCache, EncoderDecoderCache
 from onnx import TensorProto
 from onnx.helper import np_dtype_to_tensor_dtype
+from transformers import __version__ as transformers_version
+from transformers.cache_utils import DynamicCache, EncoderDecoderCache
 
 from .cache_helper import make_dynamic_cache, make_encoder_decoder_cache
 from .onnx_export_errors import (
