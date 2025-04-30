@@ -2248,9 +2248,9 @@ namespace Microsoft.ML.OnnxRuntime
 
         public static DOrtReleaseValue OrtReleaseValue;
 
-        #endregion
+#endregion
 
-        #region Auto EP API related
+#region Auto EP API related
         //
         // OrtKeyValuePairs
         [UnmanagedFunctionPointer(CallingConvention.Winapi)]
@@ -2380,8 +2380,8 @@ namespace Microsoft.ML.OnnxRuntime
         public static DOrtSessionOptionsAppendExecutionProvider_V2 OrtSessionOptionsAppendExecutionProvider_V2;
 
 
-        #endregion
-        #region Misc API
+#endregion
+#region Misc API
 
         /// <summary>
         /// Queries all the execution providers supported in the native onnxruntime shared library
