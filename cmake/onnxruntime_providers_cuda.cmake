@@ -122,6 +122,10 @@
   if (onnxruntime_REDUCED_OPS_BUILD)
     substitute_op_reduction_srcs(onnxruntime_providers_cuda_src)
   endif()
+
+  # Sets the DLL version and description on Windows
+  set(onnxruntime_providers_cuda_rc_file "${ONNXRUNTIME_ROOT}/core/providers/cuda/onnxruntime_providers_cuda.rc")
+
   if(onnxruntime_ENABLE_CUDA_EP_INTERNAL_TESTS)
     # cuda_provider_interface.cc is removed from the object target: onnxruntime_providers_cuda_obj and
     # added to the lib onnxruntime_providers_cuda separately.
@@ -129,10 +133,17 @@
     set(cuda_provider_interface_src ${ONNXRUNTIME_ROOT}/core/providers/cuda/cuda_provider_interface.cc)
     list(REMOVE_ITEM onnxruntime_providers_cuda_src ${cuda_provider_interface_src})
     onnxruntime_add_object_library(onnxruntime_providers_cuda_obj ${onnxruntime_providers_cuda_src})
-    onnxruntime_add_shared_library_module(onnxruntime_providers_cuda ${cuda_provider_interface_src} $<TARGET_OBJECTS:onnxruntime_providers_cuda_obj>)
+    onnxruntime_add_shared_library_module(onnxruntime_providers_cuda ${cuda_provider_interface_src}
+                                                                     $<TARGET_OBJECTS:onnxruntime_providers_cuda_obj>
+                                                                     ${onnxruntime_providers_cuda_rc_file})
   else()
-    onnxruntime_add_shared_library_module(onnxruntime_providers_cuda ${onnxruntime_providers_cuda_src})
+    onnxruntime_add_shared_library_module(onnxruntime_providers_cuda ${onnxruntime_providers_cuda_src}
+                                                                     ${onnxruntime_providers_cuda_rc_file})
   endif()
+
+  # FILE_NAME preprocessor definition is used in onnxruntime_providers_cuda.rc to set the DLL's details
+  target_compile_definitions(onnxruntime_providers_cuda PRIVATE FILE_NAME=\"onnxruntime_providers_cuda.dll\")
+
   # config_cuda_provider_shared_module can be used to config onnxruntime_providers_cuda_obj, onnxruntime_providers_cuda & onnxruntime_providers_cuda_ut.
   # This function guarantees that all 3 targets have the same configurations.
   function(config_cuda_provider_shared_module target)
