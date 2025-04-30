@@ -450,7 +450,7 @@ Status MatMulNBits::ComputeInternal(onnxruntime::webgpu::ComputeContext& context
   }
 
   // On FP32 only GPUs, integer math is faster than FP32 therefore always use DP4A independent of length of M.
-  if ((M >= kMinMForTileOptimization || y->DataType() == DataTypeImpl::GetType<float>() ||
+  if ((M >= kMinMForTileOptimization || y->DataType() == DataTypeImpl::GetType<float>() || nbits == 8 ||
        context.AdapterInfo().vendor == std::string_view{"qualcomm"}) &&
       CanApplyDP4AMatrixMatMulNBits(context, accuracy_level_, block_size, batch_count, N, K, components_a, has_zero_points)) {
     return ApplyDP4AMatrixMatMulNBits(a, b, scales, M, N, K, block_size, kMinMForTileOptimization, nbits, context, y);
@@ -461,7 +461,6 @@ Status MatMulNBits::ComputeInternal(onnxruntime::webgpu::ComputeContext& context
 
   // WideTileProgram
   // This program is optimized for Block32 prefill using Tile16x128.
-  // TODO: loosen restrictions on vendor.
   const bool use_wide_tile_program = block_size == 32 && components_a == 4 && components_b == 4 && M >= kMinMForTileOptimization;
   if (use_wide_tile_program) {
     // Enforce output components to 1.
