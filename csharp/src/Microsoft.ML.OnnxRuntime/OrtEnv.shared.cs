@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 using System;
+using System.Collections.Generic;
 using System.Runtime.InteropServices;
 
 namespace Microsoft.ML.OnnxRuntime
@@ -375,6 +376,43 @@ namespace Microsoft.ML.OnnxRuntime
                 _envLogLevel = value;
             }
         }
+
+        public void RegisterExecutionProviderLibrary(string epName, string libraryPath)
+        {
+            var epNameUtf8 = NativeOnnxValueHelper.StringToZeroTerminatedUtf8(epName);
+            var pathUtf8 = NativeOnnxValueHelper.GetPlatformSerializedString(libraryPath);
+
+            NativeApiStatus.VerifySuccess(
+                NativeMethods.OrtRegisterExecutionProviderLibrary(handle, epNameUtf8, pathUtf8));
+        }
+
+        public void UnregisterExecutionProviderLibrary(string epName)
+        {
+            var epNameUtf8 = NativeOnnxValueHelper.StringToZeroTerminatedUtf8(epName);
+
+            NativeApiStatus.VerifySuccess(NativeMethods.OrtUnregisterExecutionProviderLibrary(handle, epNameUtf8));
+        }
+
+        public IReadOnlyList<OrtEpDevice> GetEpDevices()
+        {
+            IntPtr epDevicesPtr;
+            UIntPtr numEpDevices;
+
+            NativeApiStatus.VerifySuccess(NativeMethods.OrtGetEpDevices(handle, out epDevicesPtr, out numEpDevices));
+
+            int count = (int)numEpDevices;
+            var epDevices = new List<OrtEpDevice>(count);
+
+            IntPtr[] epDevicePtrs = new IntPtr[count];
+            Marshal.Copy(epDevicesPtr, epDevicePtrs, 0, count);
+
+            foreach (var ptr in epDevicePtrs)
+            {
+                epDevices.Add(new OrtEpDevice(ptr));
+            }
+
+            return epDevices.AsReadOnly();
+        }        
 
         #endregion
 

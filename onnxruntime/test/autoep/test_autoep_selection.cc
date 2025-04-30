@@ -220,13 +220,20 @@ TEST(AutoEpSelection, MiscApiTests) {
     c_api->AddKeyValuePair(kvps, "key1", nullptr);    // should be ignored
     c_api->AddKeyValuePair(kvps, nullptr, "value1");  // should be ignored
     c_api->RemoveKeyValuePair(kvps, nullptr);         // should be ignored
-
-    c_api->AddKeyValuePair(kvps, "", "value2");  // empty key should be ignored
+    c_api->AddKeyValuePair(kvps, "", "value2");       // should be ignored
     ASSERT_EQ(c_api->GetKeyValue(kvps, ""), nullptr);
 
+    c_api->AddKeyValuePair(kvps, "key1", "value1");
     c_api->AddKeyValuePair(kvps, "key2", "");  // empty value is allowed
     ASSERT_EQ(c_api->GetKeyValue(kvps, "key2"), std::string(""));
 
+    c_api->RemoveKeyValuePair(kvps, "key1");
+    const char* const* keys = nullptr;
+    const char* const* values = nullptr;
+    size_t num_entries = 0;
+    c_api->GetKeyValuePairs(kvps, &keys, &values, &num_entries);
+    ASSERT_EQ(num_entries, 1);
+	
     c_api->ReleaseKeyValuePairs(kvps);
   }
 

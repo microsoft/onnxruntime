@@ -689,8 +689,8 @@ namespace Microsoft.ML.OnnxRuntime
         /// The method will attempt to pin managed memory so no copying occurs when data is passed down
         /// to native code.
         /// </summary>
-        /// <param name="value">Tensor object</param>
-        /// <param name="elementType">discovered tensor element type</param>
+        /// <typeparam name="T"></typeparam>
+        /// <param name="tensor">Tensor object</param>
         /// <returns>And instance of OrtValue constructed on top of the object</returns>
         [Experimental("SYSLIB5001")]
         public static OrtValue CreateTensorValueFromSystemNumericsTensorObject<T>(SystemNumericsTensors.Tensor<T> tensor) where T : unmanaged

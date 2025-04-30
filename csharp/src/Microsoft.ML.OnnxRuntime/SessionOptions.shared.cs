@@ -408,6 +408,33 @@ namespace Microsoft.ML.OnnxRuntime
             var appender = new ExecutionProviderAppender(utf8ProviderName);
             ProviderOptionsUpdater.Update(providerOptions, handle, appender.Appender);
         }
+
+        public void AppendExecutionProvider(OrtEnv env, IReadOnlyList<OrtEpDevice> epDevices, 
+                                            OrtKeyValuePairs epOptions)
+        {
+            // Convert EpDevices to native pointers
+            IntPtr[] epDevicePtrs = new IntPtr[epDevices.Count];
+            for (int i = 0; i < epDevices.Count; i++)
+            {
+                epDevicePtrs[i] = epDevices[i].DangerousGetHandle(); // Use SafeHandle safely
+            }
+
+            IntPtr epOptionsKeys, epOptionsValues;
+            UIntPtr epOptionsCount;
+            epOptions.GetKeyValuePairHandles(out epOptionsKeys, out epOptionsValues, out epOptionsCount);
+
+            NativeApiStatus.VerifySuccess(
+                NativeMethods.OrtSessionOptionsAppendExecutionProvider_V2(
+                    handle,
+                    env.DangerousGetHandle(),
+                    epDevicePtrs,
+                    (UIntPtr)epDevices.Count,
+                    epOptionsKeys,
+                    epOptionsValues,
+                    (UIntPtr)epOptionsCount));
+
+        }
+
         #endregion //ExecutionProviderAppends
 
         #region Public Methods
