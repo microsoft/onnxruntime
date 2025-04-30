@@ -30,9 +30,9 @@ class MatMulNBitsWideTileProgram final : public Program<MatMulNBitsWideTileProgr
   uint32_t nbits_;
 };
 
-class MatMulNBitsBlockWiseProgram final : public Program<MatMulNBitsBlockWiseProgram> {
+class MatMulNBitsProgram final : public Program<MatMulNBitsProgram> {
  public:
-  MatMulNBitsBlockWiseProgram(uint32_t tile_size, uint32_t nbits, bool has_zero_points) : Program{"MatMulNBitsBlockWise"}, tile_size_(tile_size), nbits_(nbits), has_zero_points_(has_zero_points) {}
+  MatMulNBitsProgram(uint32_t tile_size, uint32_t nbits, bool has_zero_points) : Program{"MatMulNBits"}, tile_size_(tile_size), nbits_(nbits), has_zero_points_(has_zero_points) {}
   Status GenerateShaderCode(ShaderHelper& sh) const override;
   WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES(
       {"M", ProgramUniformVariableDataType::Uint32},

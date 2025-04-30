@@ -259,7 +259,7 @@ fn dequantize_packed8xU4(packed_value : u32, zero_point : output_element_t, scal
 }
 
 // Apply similar idea with DP4AMatMulNBitsSmallMProgram algorithm.
-Status MatMulNBitsBlockWiseProgram::GenerateShaderCode(ShaderHelper& shader) const {
+Status MatMulNBitsProgram::GenerateShaderCode(ShaderHelper& shader) const {
   const auto& a = shader.AddInput("input_a", ShaderUsage::UseValueTypeAlias);
   const auto& b = shader.AddInput("input_b");
   shader.AddInput("scales_b");
@@ -450,7 +450,7 @@ Status MatMulNBits::ComputeInternal(onnxruntime::webgpu::ComputeContext& context
   }
 
   // On FP32 only GPUs, integer math is faster than FP32 therefore always use DP4A independent of length of M.
-  if ((M >= kMinMForTileOptimization || y->DataType() == DataTypeImpl::GetType<float>() || nbits == 8 ||
+  if ((M >= kMinMForTileOptimization || y->DataType() == DataTypeImpl::GetType<float>() ||
        context.AdapterInfo().vendor == std::string_view{"qualcomm"}) &&
       CanApplyDP4AMatrixMatMulNBits(context, accuracy_level_, block_size, batch_count, N, K, components_a, has_zero_points)) {
     return ApplyDP4AMatrixMatMulNBits(a, b, scales, M, N, K, block_size, kMinMForTileOptimization, nbits, context, y);
@@ -502,7 +502,7 @@ Status MatMulNBits::ComputeInternal(onnxruntime::webgpu::ComputeContext& context
   constexpr uint32_t kU32Components = 4;
   uint32_t elements_in_blob = components_b * kU32Components;
   uint32_t num_N_tile = (N + tile_size - 1) / tile_size;
-  MatMulNBitsBlockWiseProgram program{tile_size, nbits, has_zero_points};
+  MatMulNBitsProgram program{tile_size, nbits, has_zero_points};
   program.SetWorkgroupSize(workgroup_size);
   program.SetDispatchGroupSize((N + tile_size - 1) / tile_size, M, batch_count);
   program
