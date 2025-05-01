@@ -8,11 +8,10 @@ import sys
 import tempfile
 import unittest
 
+import onnx
 from helper import get_name
 
-import onnx
 import onnxruntime as onnxrt
-from onnxruntime.capi import _pybind_state as C
 from onnxruntime.capi.onnxruntime_pybind11_state import ModelRequiresCompilation
 
 # handle change from python 3.8 and on where loading a dll from the current directory needs to be explicitly allowed.
@@ -41,7 +40,7 @@ class TestCompileApi(unittest.TestCase):
         if "QNNExecutionProvider" in available_providers:
             providers = ["QNNExecutionProvider"]
             provider_options = [{"backend_type": "htp"}]
-    
+
         so = onnxrt.SessionOptions()
         so.log_severity_level = 1
         so.logid = "TestCompileWithFiles"
@@ -54,10 +53,8 @@ class TestCompileApi(unittest.TestCase):
         model_compile_options.set_input_model(input_model_path)
         model_compile_options.set_output_model_path(output_model_path)
         model_compile_options.set_ep_context_embed_mode(True)
-        
-        onnxrt.compile_model(model_compile_options,
-                             providers=providers,
-                             provider_options=provider_options)
+
+        onnxrt.compile_model(model_compile_options, providers=providers, provider_options=provider_options)
 
         self.assertTrue(os.path.exists(output_model_path))
 
@@ -67,7 +64,7 @@ class TestCompileApi(unittest.TestCase):
         if "QNNExecutionProvider" in available_providers:
             providers = ["QNNExecutionProvider"]
             provider_options = [{"backend_type": "htp"}]
-    
+
         so = onnxrt.SessionOptions()
         so.log_severity_level = 1
         so.logid = "TestCompileWithInputBuffer"
@@ -81,10 +78,8 @@ class TestCompileApi(unittest.TestCase):
         model_compile_options.set_input_model(input_model_bytes)
         model_compile_options.set_output_model_path(output_model_path)
         model_compile_options.set_ep_context_embed_mode(True)
-        
-        onnxrt.compile_model(model_compile_options,
-                             providers=providers,
-                             provider_options=provider_options)
+
+        onnxrt.compile_model(model_compile_options, providers=providers, provider_options=provider_options)
 
         self.assertTrue(os.path.exists(output_model_path))
 
@@ -94,7 +89,7 @@ class TestCompileApi(unittest.TestCase):
         if "QNNExecutionProvider" in available_providers:
             providers = ["QNNExecutionProvider"]
             provider_options = [{"backend_type": "htp"}]
-    
+
         input_model_path = get_name("nhwc_resize_scales_opset18.onnx")
 
         so = onnxrt.SessionOptions()
@@ -103,11 +98,13 @@ class TestCompileApi(unittest.TestCase):
         # Session creation should fail with error ORT_MODEL_REQUIRES_COMPILATION because the input model
         # is not compiled and we disabled JIT compilation for this session.
         with self.assertRaises(ModelRequiresCompilation) as context:
-            sess = onnxrt.InferenceSession(input_model_path,
-                                           sess_options=so,
-                                           providers=providers,
-                                           provider_options=provider_options,
-                                           enable_fallback=False)
+            sess = onnxrt.InferenceSession(
+                input_model_path,
+                sess_options=so,
+                providers=providers,
+                provider_options=provider_options,
+                enable_fallback=False,
+            )
         self.assertIn("QNNExecutionProvider", str(context.exception))
 
         # Try to compile the model now.
@@ -116,19 +113,16 @@ class TestCompileApi(unittest.TestCase):
         model_compile_options.set_input_model(input_model_path)
         model_compile_options.set_output_model_path(compiled_model_path)
         model_compile_options.set_ep_context_embed_mode(True)
-        
-        onnxrt.compile_model(model_compile_options,
-                             providers=providers,
-                             provider_options=provider_options)
+
+        onnxrt.compile_model(model_compile_options, providers=providers, provider_options=provider_options)
 
         self.assertTrue(os.path.exists(compiled_model_path))
         self.assertEqual(so.get_session_config_entry("session.disable_model_compile"), "1")
 
         # Creating the session with the compiled model should not fail.
-        sess = onnxrt.InferenceSession(compiled_model_path,
-                                       sess_options=so,
-                                       providers=providers,
-                                       provider_options=provider_options)
+        sess = onnxrt.InferenceSession(
+            compiled_model_path, sess_options=so, providers=providers, provider_options=provider_options
+        )
         self.assertIsNotNone(sess)
 
 
