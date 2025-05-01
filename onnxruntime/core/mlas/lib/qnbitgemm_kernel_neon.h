@@ -123,6 +123,17 @@ QuantizeARow_CompInt8(
     std::byte* QuantA
 );
 
+template <bool QuantAUnsigned>
+void MLASCALL
+QuantizeARowComputeBlkSum_CompInt8(
+    size_t BlkLen,
+    const float* A,
+    size_t CountK,
+    std::byte* QuantA,
+    float* QuantAScale,
+    float* AScaledBlkSum // scale_k * Sum_blklen(a_i)
+);
+
 size_t
 SQ4BitGemmKernel_CompInt8(
     size_t BlkLen,

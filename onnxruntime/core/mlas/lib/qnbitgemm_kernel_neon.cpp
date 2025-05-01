@@ -278,17 +278,18 @@ Q8PackQuantB(
 
 void
 Q8ComputePackBlkSum(
-  size_t BlkLen,
-  size_t N,
+  const size_t BlkLen,
+  const size_t N,
+  const size_t K,
   float* QuantBScaleBegin,
   const std::byte* QuantBZPBegin,
   float* BlockSumBegin,
   float* BlockSum2Begin,
-  MLAS_THREADPOOL* ThreadPool,
-  const size_t BlockCountK)
+  MLAS_THREADPOOL* ThreadPool)
 {
     std::vector<float> QuantBScaleBeginCopy(N * BlockCountK);
     std::copy(QuantBScaleBegin, QuantBScaleBegin + N * BlockCountK, QuantBScaleBeginCopy.begin());
+    const size_t BlockCountK = MlasDivRoundup(K, BlkLen);
 
     MlasTrySimpleParallel(ThreadPool, N * BlockCountK, [&](ptrdiff_t tid) {
         constexpr size_t SubBlkLen = 4;
@@ -309,7 +310,7 @@ Q8ComputePackBlkSum(
         const size_t dst_offset = ((n / 16) * BlockCountK + k_blk) * 16 + n % 16;
         *(BlockSumBegin + dst_offset) = -QuantBScale * zp;
         if (BlockSum2Begin) {
-            BlockSum2Begin[dst_offset] = QuantBScale * (static_cast<float>(zp) * BlkLen - BlockSum2Begin[dst_offset]);
+            BlockSum2Begin[dst_offset] = QuantBScale * (static_cast<float>(zp) * std::min(BlkLen, K - k_blk * BlkLen) - BlockSum2Begin[dst_offset]);
         }
 
         // re-arrange scale to the same order as packed data
@@ -361,7 +362,7 @@ SQ8BitGemmPackQuantBDataAndBlkSum(
     }
 
     if ((QuantBScaleBegin && !HasZeroPoint) || QuantBZPBegin) {
-        Q8ComputePackBlkSum(BlkLen, N, PackedQuantB.PackedQuantBScale, QuantBZPBegin, PackedQuantB.QuantBBlkSum, PackedQuantB.QuantBBlkSum2, ThreadPool, BlockCountK);
+        Q8ComputePackBlkSum(BlkLen, N, K, PackedQuantB.PackedQuantBScale, QuantBZPBegin, PackedQuantB.QuantBBlkSum, PackedQuantB.QuantBBlkSum2, ThreadPool);
     }
 }
 
@@ -479,6 +480,8 @@ GetMlasQNBitGemmDispatchNeon(
             d.QuantizeARow_CompInt8 = sqnbitgemm_neon::QuantizeARow_CompInt8;
             d.UsePacked_CompInt8 = sqnbitgemm_neon::UsePacked_CompInt8;
 
+            d.QuantizeARowComputeBlkSum_CompInt8 = sqnbitgemm_neon::QuantizeARowComputeBlkSum_CompInt8<true>;
+
 #ifdef USE_KLEIDIAI
             d.SQ4BitGemmKernel_Packed_CompInt8 = sqnbitgemm_neon::SQ4BitGemmKernel_Packed_CompInt8;
             d.QuantizeA_Packed_CompInt8 = sqnbitgemm_neon::QuantizeA_Packed_CompInt8;
@@ -488,6 +491,7 @@ GetMlasQNBitGemmDispatchNeon(
         if (InitializeWithI8MMSupport) {
             d.Q8BitGemmPackQuantBDataSize = sqnbitgemm_neon::QNBitGemmPackQuantBDataSize<8, false>;
             d.SQ8BitGemmPackQuantBDataAndBlkSum = sqnbitgemm_neon::SQ8BitGemmPackQuantBDataAndBlkSum<false>;
+            d.QuantizeARowComputeBlkSum_CompInt8 = sqnbitgemm_neon::QuantizeARowComputeBlkSum_CompInt8<false>;
         }
 
 #if defined(MLAS_F16VEC_INTRINSICS_SUPPORTED) && defined(MLAS_TARGET_ARM64)

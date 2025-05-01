@@ -187,6 +187,200 @@ QuantizeARow_CompInt8(
     }
 }
 
+MLAS_FORCEINLINE
+float32x4_t LoadFloat32x4(const float* src, size_t count)
+{
+    if (count == 4) {
+        return vld1q_f32(src);
+    } else if (count == 3) {
+        float32x4_t v = vdupq_n_f32(0.0f);
+        v = vld1q_lane_f32(src, v, 0);
+        v = vld1q_lane_f32(src + 1, v, 1);
+        v = vld1q_lane_f32(src + 2, v, 2);
+        return v;
+    } else if (count == 2) {
+        float32x4_t v = vdupq_n_f32(0.0f);
+        v = vld1q_lane_f32(src, v, 0);
+        v = vld1q_lane_f32(src + 1, v, 1);
+        return v;
+    } else {
+        assert(count == 1);
+        float32x4_t v = vdupq_n_f32(0.0f);
+        v = vld1q_lane_f32(src, v, 0);
+        return v;
+    }
+}
+
+template <bool QuantAUnsigned>
+void MLASCALL
+QuantizeARowComputeBlkSum_CompInt8(
+    size_t BlkLen,
+    const float* A,
+    size_t CountK,
+    std::byte* QuantA,
+    float* QuantAScale,
+    float* AScaledBlkSum // scale_k * Sum_blklen(a_i)
+)
+{
+    // First use i8 to quantize A. range [-128, 127]
+    // If convert to u8, +128. Range [0, 255]
+    assert(BlkLen % 16 == 0);
+    assert(BlkLen <= 256);
+    MLAS_DECLSPEC_ALIGN(static const uint8_t MASK[16], 16) = {
+        0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
+        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    };
+    const int16x8_t v128 = vdupq_n_s16(128);
+    int8_t* blob = reinterpret_cast<int8_t*>(QuantA);
+    float* scale_ptr = QuantAScale;
+    size_t k = 0;
+    for (; k + BlkLen <= CountK; k += BlkLen) {
+        float32x4_t absMax0 = vdupq_n_f32(0.0f);
+        float32x4_t absMax1 = vdupq_n_f32(0.0f);
+        float32x4_t absMax2 = vdupq_n_f32(0.0f);
+        float32x4_t absMax3 = vdupq_n_f32(0.0f);
+
+        for (size_t kk = 0; kk < BlkLen; kk += 16) {
+            const float32x4x4_t v0 = vld4q_f32(A + k + kk);
+            absMax0 = vmaxq_f32(absMax0, vabsq_f32(v0.val[0]));
+            absMax1 = vmaxq_f32(absMax1, vabsq_f32(v0.val[1]));
+            absMax2 = vmaxq_f32(absMax2, vabsq_f32(v0.val[2]));
+            absMax3 = vmaxq_f32(absMax3, vabsq_f32(v0.val[3]));
+        }
+
+        const float32x4_t max01 = vmaxq_f32(absMax0, absMax1);
+        const float32x4_t max23 = vmaxq_f32(absMax2, absMax3);
+        const float32x4_t max0123 = vmaxq_f32(max01, max23);
+        const float maxScalar = vmaxvq_f32(max0123);
+
+        // Quantize these floats
+        const float scale = maxScalar / 127.f;
+        *scale_ptr = scale;
+        scale_ptr++;
+
+        const float inverse_scale = (maxScalar != 0.0f) ? 127.f / maxScalar : 0.0f;
+        const float32x4_t mul = vdupq_n_f32(inverse_scale);
+
+        if constexpr (QuantAUnsigned) {
+            uint16x8_t sum_8_u16_0 = vdupq_n_u16(0);
+            uint16x8_t sum_8_u16_1 = vdupq_n_u16(0);
+        } else {
+            int16x8_t sum_8_i16_0 = vdupq_n_s16(0);
+            int16x8_t sum_8_i16_1 = vdupq_n_s16(0);
+        }
+
+        for (size_t kk = 0; kk < BlkLen; kk += 16) {
+            const float32x4x4_t vfp32 = vld4q_f32(A + k + kk);
+            const float32x4_t v0 = vmulq_f32(vfp32.val[0], mul);
+            const float32x4_t v1 = vmulq_f32(vfp32.val[1], mul);
+            const float32x4_t v2 = vmulq_f32(vfp32.val[2], mul);
+            const float32x4_t v3 = vmulq_f32(vfp32.val[3], mul);
+            const int32x4_t i0 = vcvtnq_s32_f32(v0);
+            const int32x4_t i1 = vcvtnq_s32_f32(v1);
+            const int32x4_t i2 = vcvtnq_s32_f32(v2);
+            const int32x4_t i3 = vcvtnq_s32_f32(v3);
+            const int16x8_t v_8_i16_0 = vcombine_s16(vqmovn_s32(i0), vqmovn_s32(i1));
+            const int16x8_t v_8_i16_1 = vcombine_s16(vqmovn_s32(i2), vqmovn_s32(i3));
+
+            if constexpr (QuantAUnsigned) {
+                const uint16x8_t v_8_u16_0 = vreinterpretq_u16_s16(vaddq_s16(v_8_i16_0, v128));
+                const uint16x8_t v_8_u16_1 = vreinterpretq_u16_s16(vaddq_s16(v_8_i16_1, v128));
+                const uint8x16_t v_16_u8 = vcombine_u8(vqmovn_u16(v_8_u16_0), vqmovn_u16(v_8_u16_1));
+                vst1q_u8(reinterpret_cast<uint8_t*>(blob + k + kk), v_16_u8);
+
+                // accumulate Sum(a_i)
+                const uint16x8_t i_8_u16_0 = vmovl_u8(vget_low_u8(v_16_u8));
+                const uint16x8_t i_8_u16_1 = vmovl_high_u8(v_16_u8);
+                sum_8_u16_0 = vaddq_u16(sum_8_u16_0, i_8_u16_0);
+                sum_8_u16_1 = vaddq_u16(sum_8_u16_1, i_8_u16_1);
+            } else {
+                const int8x16_t v_16_i8 = vcombine_s8(vqmovn_s16(v_8_i16_0), vqmovn_s16(v_8_i16_1));
+                vst1q_s8(blob + k + kk, v_16_i8);
+
+                // accumulate Sum(a_i)
+                const int16x8_t i_8_i16_0 = vmovl_s8(vget_low_s8(v_16_i8));
+                const int16x8_t i_8_i16_1 = vmovl_high_s8(v_16_i8);
+                sum_8_i16_0 = vaddq_s16(sum_8_i16_0, i_8_i16_0);
+                sum_8_i16_1 = vaddq_s16(sum_8_i16_1, i_8_i16_1);
+            }
+        }
+
+        float qsum;
+
+        if constexpr (QuantAUnsigned) {
+            const uint16x8_t sum_8_u16 = vaddq_u16(sum_8_u16_0, sum_8_u16_1);
+            qsum = static_cast<float>(vaddvq_u16(sum_8_u16));
+        } else {
+            const int16x8_t sum_8_i16 = vaddq_s16(sum_8_i16_0, sum_8_i16_1);
+            qsum = static_cast<float>(vaddvq_s16(sum_8_i16));
+        }
+
+        *AScaledBlkSum = scale * qsum;
+        AScaledBlkSum++;
+    }
+
+    if (k < CountK) {
+        float32x4_t absMax = vdupq_n_f32(0.0f);
+
+        for (size_t kk = k; kk < CountK; kk += 4) {
+            size_t step = std::min(4, CountK - kk);
+            const float32x4_t v0 = LoadFloat32x4(A + kk, step);
+            absMax = vmaxq_f32(absMax, vabsq_f32(v0));
+        }
+
+        const float maxScalar = vmaxvq_f32(absMax);
+        const float scale = maxScalar / 127.f;
+        *scale_ptr = scale;
+
+        const float inverse_scale = (maxScalar != 0.0f) ? 127.f / maxScalar : 0.0f;
+        const float32x4_t mul = vdupq_n_f32(inverse_scale);
+
+        if constexpr (QuantAUnsigned) {
+            uint16x8_t sum_8_u16 = vdupq_n_u16(0);
+        } else {
+            int16x8_t sum_8_i16 = vdupq_n_s16(0);
+        }
+
+        for (size_t kk = k; kk < CountK; kk += 4) {
+            size_t step = std::min(4, CountK - kk);
+            const float32x4_t vfp32 = LoadFloat32x4(A + kk, step);
+            const float32x4_t v_f32 = vmulq_f32(vfp32, mul);
+            const int32x4_t v_i32 = vcvtnq_s32_f32(v_f32);
+            const int16x8_t v_8_i16 = vcombine_s16(vqmovn_s32(v_i32), vdup_n_s16(0));
+
+            if constexpr (QuantAUnsigned) {
+                const uint16x8_t v_8_u16 = vreinterpretq_u16_s16(vaddq_s16(v_8_i16, v128));
+                uint8x8_t v_8_u8 = vqmovn_u16(v_8_u16);
+                vst1_lane_s32(reinterpret_cast<int32_t*>(blob + kk), vreinterpret_s32_u8(v_8_u8), 0);
+
+                // accumulate Sum(a_i)
+                v_8_u8 = vand_u8(v_8_u8, vld1_u8(MASK + 8 - step));
+                const uint16x8_t i_8_u16 = vmovl_u8(v_8_u8);
+                sum_8_u16 = vaddq_u16(sum_8_u16, i_8_u16);
+            } else {
+                const int8x8_t v_8_i8 = vqmovn_s16(v_8_i16);
+                vst1_lane_s32(reinterpret_cast<int32_t*>(blob + kk), vreinterpret_s32_s8(v_8_i8), 0);
+
+                // accumulate Sum(a_i)
+                const int16x8_t i_8_i16 = vmovl_s8(v_8_i8);
+                sum_8_i16 = vaddq_s16(sum_8_i16, i_8_i16);
+            }
+        }
+
+        float qsum;
+
+        if constexpr (QuantAUnsigned) {
+            qsum = static_cast<float>(vaddvq_u16(sum_8_u16));
+        } else {
+            qsum = static_cast<float>(vaddvq_s16(sum_8_i16));
+        }
+
+        *AScaledBlkSum = scale * qsum;
+
+        memset(blob + CountK, 0, BlkLen - (CountK % BlkLen));
+    }
+}
+
 namespace
 {
 
