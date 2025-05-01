@@ -250,7 +250,7 @@ Status ShaderHelper::ValidateVariable(const ProgramInput& input, const ShaderVar
   return Status::OK();
 }
 Status ShaderHelper::ValidateVariable(const ProgramOutput& output, const ShaderVariableHelper& var) const {
-  ORT_RETURN_IF_ERROR(ValidateVariableDataType(output.tensor->GetElementType(), var.type_));
+  ORT_RETURN_IF_ERROR(ValidateVariableDataType(output.tensor->GetElementType(), var.type_, output.is_atomic));
   ORT_RETURN_IF_ERROR(ValidateVariableShape(output.tensor->Shape(),
                                             output.use_override_shape,
                                             output.use_override_shape ? output.override_shape : output.tensor->Shape(),
