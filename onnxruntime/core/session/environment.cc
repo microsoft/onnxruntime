@@ -56,7 +56,7 @@
 #include "orttraining/core/optimizer/graph_transformer_registry.h"
 #endif
 
-#ifdef USE_CUDA
+#if defined(USE_CUDA) || defined(USE_CUDA_PROVIDER_INTERFACE)
 #include "core/providers/cuda/cuda_provider_factory.h"
 #include "core/providers/cuda/cuda_execution_provider_info.h"
 #endif
@@ -65,9 +65,9 @@ using namespace ::onnxruntime::common;
 using namespace ONNX_NAMESPACE;
 
 std::once_flag schemaRegistrationOnceFlag;
-#ifdef USE_CUDA
+#if defined(USE_CUDA) || defined(USE_CUDA_PROVIDER_INTERFACE)
 ProviderInfo_CUDA& GetProviderInfo_CUDA();
-#endif  // USE_CUDA
+#endif  // defined(USE_CUDA) || defined(USE_CUDA_PROVIDER_INTERFACE)
 
 Status Environment::Create(std::unique_ptr<logging::LoggingManager> logging_manager,
                            std::unique_ptr<Environment>& environment,
@@ -353,7 +353,7 @@ Status Environment::CreateAndRegisterAllocatorV2(const std::string& provider_typ
     return CreateAndRegisterAllocator(mem_info, arena_cfg);
   }
 
-#ifdef USE_CUDA
+#if defined(USE_CUDA) || defined(USE_CUDA_PROVIDER_INTERFACE)
   if (provider_type == onnxruntime::kCudaExecutionProvider) {
     CUDAExecutionProviderInfo cuda_ep_info;
     GetProviderInfo_CUDA().CUDAExecutionProviderInfo__FromProviderOptions(options, cuda_ep_info);
