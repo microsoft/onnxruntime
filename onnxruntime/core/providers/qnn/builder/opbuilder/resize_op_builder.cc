@@ -262,9 +262,9 @@ Status ResizeOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_w
 
   if (is_npu_backend && input_rank == 4 && interp_mode == "nearest") {
     // Translate Resize with
-    // {input_rank: 4, mode: "nearest", nearest_mode: "XXXX", coordinate_transformation_mode: XXX} to
-    // QNN's ResizeNearestNeighbor operator on the HTP backend. This combination of parameters is not supported on HTP
-    // via QNN's Resize operator. Note that QNN's ResizeNearestNeighbor operator always uses "floor" rounding.
+    // {input_rank: 4, mode: "nearest", coordinate_transformation_mode: XXX} to
+    // QNN's ResizeNearestNeighbor operator on the HTP backend. QNN ResizeNearestNeighbor
+    // seems to be faster than QNN Resize.
     qnn_op_type = "ResizeNearestNeighbor";
 
     // 'align_corners'
