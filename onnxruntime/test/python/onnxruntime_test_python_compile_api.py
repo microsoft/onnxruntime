@@ -40,6 +40,7 @@ class TestCompileApi(unittest.TestCase):
         if "QNNExecutionProvider" in available_providers:
             providers = ["QNNExecutionProvider"]
             provider_options = [{"backend_type": "htp"}]
+        # TODO(adrianlizarraga): Allow test to run for other compiling EPs (e.g., OpenVINO)
 
         so = onnxrt.SessionOptions()
         so.log_severity_level = 1
@@ -65,6 +66,7 @@ class TestCompileApi(unittest.TestCase):
         if "QNNExecutionProvider" in available_providers:
             providers = ["QNNExecutionProvider"]
             provider_options = [{"backend_type": "htp"}]
+        # TODO(adrianlizarraga): Allow test to run for other compiling EPs (e.g., OpenVINO)
 
         so = onnxrt.SessionOptions()
         so.log_severity_level = 1
@@ -99,7 +101,7 @@ class TestCompileApi(unittest.TestCase):
         # Session creation should fail with error ORT_MODEL_REQUIRES_COMPILATION because the input model
         # is not compiled and we disabled JIT compilation for this session.
         with self.assertRaises(ModelRequiresCompilation) as context:
-            sess = onnxrt.InferenceSession(
+            onnxrt.InferenceSession(
                 input_model_path,
                 sess_options=so,
                 providers=providers,
@@ -115,6 +117,10 @@ class TestCompileApi(unittest.TestCase):
         model_compile_options.set_input_model(input_model_path)
         model_compile_options.set_output_model_path(compiled_model_path)
         model_compile_options.set_ep_context_embed_mode(True)
+        model_compile_options.set_output_model_external_initializers_file(
+            os.path.join(self._tmp_dir_path, "external_weights.bin"),
+            external_initializers_size_threshold=128,
+        )
 
         onnxrt.compile_model(model_compile_options)
 

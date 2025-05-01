@@ -1761,6 +1761,12 @@ def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs):
                     cwd=cwd,
                 )
 
+                if not args.disable_contrib_ops:
+                    log.info("Testing Python Compile API")
+                    run_subprocess(
+                        [sys.executable, "onnxruntime_test_python_compile_api.py"], cwd=cwd, dll_path=dll_path
+                    )
+
                 if not args.skip_onnx_tests:
                     run_subprocess([os.path.join(cwd, "onnx_test_runner"), "test_models"], cwd=cwd)
                     if config != "Debug":
