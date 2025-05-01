@@ -420,7 +420,7 @@ Status ShaderHelper::GenerateSourceCode(std::string& code, std::vector<int>& sha
   for (size_t i = 0; i < output_vars_.size(); ++i) {
     const auto& output = output_vars_[i];
     bool is_atomic = program_.Outputs()[i].is_atomic;
-    ss << "@group(0) @binding(" << i << ") var<storage, read_write> " << output->name_ << ": array<";
+    ss << "@group(0) @binding(" << input_vars_.size() + i << ") var<storage, read_write> " << output->name_ << ": array<";
     if (is_atomic) {
       ss << "atomic<";
     }
