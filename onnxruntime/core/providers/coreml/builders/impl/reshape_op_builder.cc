@@ -105,6 +105,10 @@ bool ReshapeOpBuilder::IsOpSupportedImpl(const Node& node, const OpBuilderInputP
   const auto& input_defs = node.InputDefs();
   const auto& new_shape_name = input_defs[1]->Name();
   const auto* new_shape_tensor = input_params.graph_viewer.GetConstantInitializer(new_shape_name);
+
+  NodeAttrHelper helper(node);
+  const bool allow_zero = helper.Get("allow_zero", 0) == 1;
+
   if (!new_shape_tensor) {
     // ONNX has different rules around how -1 and 0 values are used/combined, and
     // we can't check if those can be translated to CoreML if the shape is unknown.
@@ -114,9 +118,19 @@ bool ReshapeOpBuilder::IsOpSupportedImpl(const Node& node, const OpBuilderInputP
 
   Initializer unpacked_tensor(*new_shape_tensor);
   auto new_shape = unpacked_tensor.DataAsSpan<int64_t>();
+
   if (new_shape.empty()) {
     LOGS(logger, VERBOSE) << "New shape of reshape cannot be empty";
     return false;
+  }
+
+  // CoreML reshape does not support 0 as a dimension
+  if (allow_zero) {
+    if (std::find(new_shape.begin(), new_shape.end(), int64_t{0}) != new_shape.end()) {
+      LOGS(logger, VERBOSE) << "Reshape does not support new shape with 0 as dimension when allowzero is enabled. "
+                            << "New shape: " << Shape2String(new_shape);
+      return false;
+    }
   }
 
   std::vector<int64_t> input_shape;
