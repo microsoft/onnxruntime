@@ -405,7 +405,7 @@ ORT_API_STATUS_IMPL(OrtApis::GetCUDAProviderOptionsAsString, _In_ const OrtCUDAP
   ORT_UNUSED_PARAMETER(cuda_options);
   ORT_UNUSED_PARAMETER(allocator);
   ORT_UNUSED_PARAMETER(ptr);
-  return CreateStatus(ORT_FAIL, "CUDA execution provider is not enabled in this build.");
+  return CreateStatus(ORT_FAIL, "CUDA execution provider is not enabled in this build (#1).");
 }
 
 ORT_API_STATUS_IMPL(OrtApis::UpdateCUDAProviderOptionsWithValue,
@@ -683,6 +683,26 @@ ORT_API_STATUS_IMPL(OrtApis::GetMIGraphXProviderOptionsAsString,
 
 ORT_API(void, OrtApis::ReleaseMIGraphXProviderOptions, _Frees_ptr_opt_ OrtMIGraphXProviderOptions* ptr) {
   ORT_UNUSED_PARAMETER(ptr);
+}
+
+ORT_API_STATUS_IMPL(OrtApis::UpdateMIGraphXProviderOptionsWithValue,
+                    _Inout_ OrtMIGraphXProviderOptions* migraphx_options,
+                    _In_ const char* key,
+                    _In_ void* value) {
+  ORT_UNUSED_PARAMETER(migraphx_options);
+  ORT_UNUSED_PARAMETER(key);
+  ORT_UNUSED_PARAMETER(value);
+  return CreateNotEnabledStatus("MIGraphX");
+}
+
+ORT_API_STATUS_IMPL(OrtApis::GetMIGraphXProviderOptionsByName,
+                    _In_ const OrtMIGraphXProviderOptions* migraphx_options,
+                    _In_ const char* key,
+                    _Outptr_ void** ptr) {
+  ORT_UNUSED_PARAMETER(migraphx_options);
+  ORT_UNUSED_PARAMETER(key);
+  ORT_UNUSED_PARAMETER(ptr);
+  return CreateNotEnabledStatus("MIGraphX");
 }
 
 #endif

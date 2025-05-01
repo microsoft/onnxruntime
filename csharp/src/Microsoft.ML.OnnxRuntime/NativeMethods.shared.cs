@@ -251,10 +251,6 @@ namespace Microsoft.ML.OnnxRuntime
         public IntPtr GetCUDAProviderOptionsAsString;
         public IntPtr ReleaseCUDAProviderOptions;
         public IntPtr SessionOptionsAppendExecutionProvider_MIGraphX;
-        public IntPtr CreateMIGraphXProviderOptions;
-        public IntPtr UpdateMIGraphXProviderOptions;
-        public IntPtr GetMIGraphXProviderOptionsAsString;
-        public IntPtr ReleaseMIGraphXProviderOptions;
         public IntPtr AddExternalInitializers;
         public IntPtr CreateOpAttr;
         public IntPtr ReleaseOpAttr;
@@ -340,6 +336,13 @@ namespace Microsoft.ML.OnnxRuntime
         public IntPtr GetModelEditorApi;
         public IntPtr CreateTensorWithDataAndDeleterAsOrtValue;
         public IntPtr SessionOptionsSetLoadCancellationFlag;
+
+        public IntPtr CreateMIGraphXProviderOptions;
+        public IntPtr UpdateMIGraphXProviderOptions;
+        public IntPtr GetMIGraphXProviderOptionsAsString;
+        public IntPtr ReleaseMIGraphXProviderOptions;
+        public IntPtr UpdateMIGraphXProviderOptionsWithValue;
+        public IntPtr GetMIGraphXProviderOptionsByName;
     }
 
     internal static class NativeMethods
@@ -835,13 +838,13 @@ namespace Microsoft.ML.OnnxRuntime
         public static DOrtUpdateMIGraphXProviderOptions OrtUpdateMIGraphXProviderOptions;
 
         /// <summary>
-        /// Get native OrtMIGraphXProviderOptionsV2 in serialized string
+        /// Get native OrtMIGraphXProviderOptions in serialized string
         /// </summary>
         /// <param name="allocator">instance of OrtAllocator</param>
         /// <param name="ptr">is a UTF-8 null terminated string allocated using 'allocator'</param>
         [UnmanagedFunctionPointer(CallingConvention.Winapi)]
         public delegate IntPtr /* OrtStatus* */ DOrtGetMIGraphXProviderOptionsAsString(
-            IntPtr /*(OrtMIGraphXProviderOptionsV2**)*/ migraphxProviderOptionsInstance,
+            IntPtr /*(OrtMIGraphXProviderOptions**)*/ migraphxProviderOptionsInstance,
             IntPtr /*(OrtAllocator*)*/ allocator,
             out IntPtr /*(char**)*/ ptr);
         public static DOrtGetMIGraphXProviderOptionsAsString OrtGetMIGraphXProviderOptionsAsString;

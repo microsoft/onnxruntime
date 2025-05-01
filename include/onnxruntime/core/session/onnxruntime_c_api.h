@@ -5250,7 +5250,33 @@ struct OrtApi {
    *
    * \since Version 1.xx.
    */
-  void(ORT_API_CALL* ReleaseMIGraphXProviderOptions)(_Frees_ptr_opt_ OrtMIGraphXProviderOptions* input);  
+  void(ORT_API_CALL* ReleaseMIGraphXProviderOptions)(_Frees_ptr_opt_ OrtMIGraphXProviderOptions* input);
+
+  /**
+   * Update MIGraphX EP provider option where its data type is pointer, for example 'user_compute_stream'.
+   * If the data type of the provider option can be represented by string please use UpdateMIGraphXProviderOptions.
+   *
+   * Note: It's caller's responsibility to properly manage the lifetime of the instance pointed by this pointer.
+   *
+   * \param migraphx_options - OrtMIGraphXProviderOptions instance
+   * \param key - Name of the provider option
+   * \param value - A pointer to the instance that will be assigned to this provider option
+   *
+   * \since Version 1.xx.
+   */
+  ORT_API2_STATUS(UpdateMIGraphXProviderOptionsWithValue, _Inout_ OrtMIGraphXProviderOptions* migraphx_options, _In_ const char* key, _In_ void* value);
+
+  /**
+   * Get MIGraphX EP provider option where its data type is pointer.
+   * If the data type of the provider option can be represented by string please use GetMIGraphXProviderOptionsAsString.
+   *
+   * \param migraphx_options - OrtMIGraphXProviderOptions instance
+   * \param key - Name of the provider option
+   * \param ptr - A pointer to the instance that is kept by the provider option
+   *
+   * \since Version 1.xx.
+   */
+  ORT_API2_STATUS(GetMIGraphXProviderOptionsByName, _In_ const OrtMIGraphXProviderOptions* migraphx_options, _In_ const char* key, _Outptr_ void** ptr);
 };
 
 /*

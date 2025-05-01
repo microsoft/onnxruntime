@@ -598,4 +598,8 @@ ORT_API_STATUS_IMPL(UpdateMIGraphXProviderOptions, _Inout_ OrtMIGraphXProviderOp
                     size_t num_keys);
 ORT_API_STATUS_IMPL(GetMIGraphXProviderOptionsAsString, _In_ const OrtMIGraphXProviderOptions* migraphx_options, _Inout_ OrtAllocator* allocator, _Outptr_ char** ptr);
 ORT_API(void, ReleaseMIGraphXProviderOptions, _Frees_ptr_opt_ OrtMIGraphXProviderOptions*);
+
+ORT_API_STATUS_IMPL(UpdateMIGraphXProviderOptionsWithValue, _Inout_ OrtMIGraphXProviderOptions* migraphx_options, _In_ const char* key, _In_ void* value);
+ORT_API_STATUS_IMPL(GetMIGraphXProviderOptionsByName, _In_ const OrtMIGraphXProviderOptions* migraphx_options, _In_ const char* key, _Outptr_ void** ptr);
+
 }  // namespace OrtApis
