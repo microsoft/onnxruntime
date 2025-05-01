@@ -67,6 +67,7 @@ Do not modify directly.*
   * <a href="#com.microsoft.PackedAttention">com.microsoft.PackedAttention</a>
   * <a href="#com.microsoft.PackedMultiHeadAttention">com.microsoft.PackedMultiHeadAttention</a>
   * <a href="#com.microsoft.Pad">com.microsoft.Pad</a>
+  * <a href="#com.microsoft.PagedAttention">com.microsoft.PagedAttention</a>
   * <a href="#com.microsoft.QAttention">com.microsoft.QAttention</a>
   * <a href="#com.microsoft.QGemm">com.microsoft.QGemm</a>
   * <a href="#com.microsoft.QLinearAdd">com.microsoft.QLinearAdd</a>
@@ -2039,10 +2040,11 @@ This version of the operator has been available since version 1 of the 'com.micr
     1. Input `data` is a constant. It is quantized block-wise along attribute `quantize_axis` with block size specified by attribute `block_size`.
        `block_size must` be a power of 2 and not smaller than 16, like 16, 32, 64, 128, ..
     2. Input `data`'s scale and zero point are specified by input `scales` and `zero_points`. `scales` and `zero_points` are also constants.
-       If `zero_points` is not provided, 0 is the zero point.
+       If `zero_points` is not provided, 0 is the zero point except when data is uint8 type then the default zero point is 8.
     3. During the op execution, `data` and `indices` are first used to generate the quantized output. Then, `scales` and `zero_points` are used
        to dequantize the output.
     4. The `output` and `scales` have the same type. The `data` and `zero_points` have the same type.
+    5. For uint8 data, the `gather_axis` must be 0.
 
 #### Version
 
@@ -2082,7 +2084,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 #### Type Constraints
 
 <dl>
-<dt><tt>T1</tt> : tensor(int4), tensor(uint4)</dt>
+<dt><tt>T1</tt> : tensor(int4), tensor(uint4), tensor(uint8)</dt>
 <dd>Constrain quantized types.</dd>
 <dt><tt>T2</tt> : tensor(float), tensor(float16), tensor(bfloat16)</dt>
 <dd>Constrain dequantized types.</dd>
@@ -3688,6 +3690,106 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dl>
 <dt><tt>T</tt> : tensor(float16), tensor(float), tensor(double)</dt>
 <dd>Constrain input and output types to float tensors.</dd>
+</dl>
+
+
+### <a name="com.microsoft.PagedAttention"></a><a name="com.microsoft.pagedattention">**com.microsoft.PagedAttention**</a>
+
+  Paged Attention.
+  
+  This op leverages a block-based KV cache to enable continuous batching for LLMs.Currently, it is designed to work with
+  the CUDA Execution Provider only.
+  
+  In other attention ops, batch entries typically aren't of the same length, so they are padded.
+  Below is a batch with 3 sequences where * denotes a padding token.
+    Sequence_0:   0,  1*, 2*,  3*
+    Sequence_1:   4,  5,  6*,  7*
+    Sequence_2:   8,  9,  10,  11
+  
+  PagedAttention is designed to take in packed input, i.e., only the real tokens without padding.
+  For example, the input shown above will be packed into 3 tensors like below:
+   - query ([q0, q4, q5, q8, q9, q10, q11])
+   - key ([k0, k4, k5, k8, k9, k10, k11])
+   - value ([v0, v4, v5, v8, v9, v10, v11])
+   - cumulative_sequence_length: 0, 1, 1+2, 1+2+4
+  This packing omits padding tokens.
+  
+  The query, key and value tensors contain result of hidden embedding of real tokens after input projections.
+  cumulative_sequence_length records cumulated length of each sequence length.
+  
+
+#### Version
+
+This version of the operator has been available since version 1 of the 'com.microsoft' operator set.
+
+#### Attributes
+
+<dl>
+<dt><tt>do_rotary</tt> : int</dt>
+<dd>Whether to use rotary position embedding. Default value is 0.</dd>
+<dt><tt>kv_num_heads</tt> : int (required)</dt>
+<dd>Number of attention heads for k and v</dd>
+<dt><tt>local_window_size</tt> : int</dt>
+<dd>left_window_size for local attention (like Mistral). Default value is -1 meaning unused.</dd>
+<dt><tt>num_heads</tt> : int (required)</dt>
+<dd>Number of attention heads for q</dd>
+<dt><tt>rotary_interleaved</tt> : int</dt>
+<dd>Rotate using interleaved pattern. Default value is 0 (False).</dd>
+<dt><tt>scale</tt> : float</dt>
+<dd>Custom scale will be used if specified. Default value is 1/sqrt(head_size)</dd>
+<dt><tt>softcap</tt> : float</dt>
+<dd>Softcap value for attention weights. Default value is 0.</dd>
+</dl>
+
+#### Inputs (11 - 13)
+
+<dl>
+<dt><tt>query</tt> : T</dt>
+<dd>Query with shape (num_tokens, hidden_size), or packed QKV with shape (num_tokens, d) where d is (num_heads * head_size + 2 * kv_num_heads * head_size).</dd>
+<dt><tt>key</tt> (optional) : T</dt>
+<dd>Key with shape (num_tokens, kv_hidden_size) </dd>
+<dt><tt>value</tt> (optional) : T</dt>
+<dd>Value with shape (num_tokens, kv_hidden_size)</dd>
+<dt><tt>key_cache</tt> : T</dt>
+<dd>Block-based key cache with shape (num_blocks, block_size, kv_num_heads, head_size). This is updated in place within the op.</dd>
+<dt><tt>value_cache</tt> : T</dt>
+<dd>Block-based value cache with shape (num_blocks, block_size, kv_num_heads, head_size). This is updated in place within the op. This should be the same shape as key_cache.</dd>
+<dt><tt>cumulative_sequence_length</tt> : M</dt>
+<dd>A tensor with shape (batch_size + 1). It specifies the cumulative sequence lengths between the packed entries in Q/K/V.</dd>
+<dt><tt>seqlens</tt> : M</dt>
+<dd>A tensor with shape (batch_size). It specifies the past lengths of cached sequence in the KV cache.</dd>
+<dt><tt>max_query_len</tt> : M</dt>
+<dd>Scalar tensor equivalent to the maximum length of all sequences in the query tensor (max new seqlen). This input is allocated on CPU.</dd>
+<dt><tt>max_seq_len</tt> : M</dt>
+<dd>Scalar tensor equivalent to the maximum length of all sequences in the KV Cache after appending new tokens (max total seqlen). This input is allocated on CPU.</dd>
+<dt><tt>block_table</tt> : M</dt>
+<dd>2D tensor with shape (batch_size, max_blocks_per_sequence) that maps each sequence in the batch to itscorresponding blocks in the KV cache.</dd>
+<dt><tt>slot_mappings</tt> : M</dt>
+<dd>1D tensor with shape (num_tokens) that maps each token in the input kv to its corresponding slot in the KV cache. This is used to correctly cache KV into the block-based KV cache.</dd>
+<dt><tt>cos_cache</tt> (optional) : T</dt>
+<dd>2D tensor with shape (max total seqlen, head_size / 2).</dd>
+<dt><tt>sin_cache</tt> (optional) : T</dt>
+<dd>2D tensor with shape (max total seqlen, head_size / 2).</dd>
+</dl>
+
+#### Outputs (1 - 3)
+
+<dl>
+<dt><tt>output</tt> : T</dt>
+<dd>3D output tensor with shape (num_tokens, hidden_size)</dd>
+<dt><tt>key_cache_out</tt> (optional) : T</dt>
+<dd>Block-based key cache with shape (num_blocks, block_size, kv_num_heads, head_size). This is always the same tensor as key_cache.</dd>
+<dt><tt>value_cache_out</tt> (optional) : T</dt>
+<dd>Block-based value cache with shape (num_blocks, block_size, kv_num_heads, head_size). This is always the same tensor as value_cache.</dd>
+</dl>
+
+#### Type Constraints
+
+<dl>
+<dt><tt>T</tt> : tensor(float16), tensor(bfloat16)</dt>
+<dd>Constrain input and output to float tensors.</dd>
+<dt><tt>M</tt> : tensor(int32)</dt>
+<dd>Constrain mask to int tensor.</dd>
 </dl>
 
 

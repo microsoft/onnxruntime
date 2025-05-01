@@ -18,18 +18,16 @@ struct AttentionParameters {
   int max_sequence_length;    // max sequence length from 4D mask
   int input_hidden_size;      // first dimension of weights for input projection
   int hidden_size;            // hidden size of Q or K
-  int kv_hidden_size;         // hidden size of key or value
   int head_size;              // hidden size per head of Q or K
   int v_hidden_size;          // hidden size of V
   int v_head_size;            // hidden size per head of V
   int num_heads;
-  int kv_num_heads;  // number of heads of key or value
-  int num_splits;
-  int rotary_dim;  // rotary embedding dimension
+  int num_splits;      // number of splits for splitkv
+  int rotary_dim = 0;  // rotary embedding dimension
   int beam_width;
   bool is_unidirectional;
   bool past_present_share_buffer;
-  bool is_packed_qkv;  // whether qkv is packed
+  bool is_packed_qkv = false;  // whether qkv is packed
   bool do_rotary;
   bool broadcast_attn_bias_dim_0;
   bool broadcast_attn_bias_dim_1;
@@ -84,6 +82,8 @@ struct DecoderMaskedMultiHeadAttentionParameters : AttentionParameters {
 
 // Parameters deduced from node attributes and inputs/outputs.
 struct GroupQueryAttentionParameters : AttentionParameters {
+  int kv_num_heads;             // number of heads of key or value
+  int kv_hidden_size;           // hidden size of key or value
   int seqlen_past_kv_cache;     // sequence length of past kv tensor
   int seqlen_present_kv_cache;  // sequence length of present kv tensor
   int num_splits;               // number of splits for splitkv
@@ -101,6 +101,8 @@ struct GroupQueryAttentionParameters : AttentionParameters {
 
 // Parameters deduced from node attributes and inputs/outputs.
 struct PagedAttentionParameters : AttentionParameters {
+  int kv_num_heads;            // number of heads of key or value
+  int kv_hidden_size;          // hidden size of key or value
   int token_count;             // number of tokens in packed query
   int block_size;              // block size for kv cache
   int max_num_blocks_per_seq;  // max number of blocks per sequence for kv cache
@@ -112,6 +114,8 @@ struct PagedAttentionParameters : AttentionParameters {
 
 // Parameters for sparse attention.
 struct SparseAttentionParameters : AttentionParameters {
+  int kv_hidden_size;              // hidden size of key or value
+  int kv_num_heads;                // number of heads of key or value
   bool do_rotary;                  // whether to use rotary embedding
   bool rotary_interleaved;         // whether to use interleaved rotary embedding
   int sparse_block_size;           // block size for sparse attention

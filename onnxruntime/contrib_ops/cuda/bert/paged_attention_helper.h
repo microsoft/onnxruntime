@@ -13,7 +13,7 @@ namespace onnxruntime {
 namespace contrib {
 namespace paged_attention_helper {
 
-template <typename T>
+template <typename T = Tensor>
 Status Check_Q_K_V(const T* query, const T* key, const T* value, const int num_heads, const int kv_num_heads,
                    int& token_count, int& q_hidden_size, int& kv_hidden_size, int& head_size) {
   const auto& query_dims = query->Shape().GetDims();
@@ -64,7 +64,7 @@ Status Check_Q_K_V(const T* query, const T* key, const T* value, const int num_h
   return Status::OK();
 }
 
-template <typename T>
+template <typename T = Tensor>
 Status Check_QKV(const T* packed_qkv, const T* value, const int num_heads, const int kv_num_heads, int& token_count,
                  int& q_hidden_size, int& kv_hidden_size, int& head_size) {
   const auto& packed_dims = packed_qkv->Shape().GetDims();
@@ -88,7 +88,7 @@ Status Check_QKV(const T* packed_qkv, const T* value, const int num_heads, const
   return Status::OK();
 }
 
-template <typename T>
+template <typename T = Tensor>
 Status CheckKVCache(const T* key_cache, const T* value_cache, const int kv_num_heads, const int head_size,
                     int& num_blocks, int& block_size) {
   const auto& key_cache_dims = key_cache->Shape().GetDims();
@@ -156,7 +156,7 @@ Status CheckKVCache(const T* key_cache, const T* value_cache, const int kv_num_h
   return Status::OK();
 }
 
-template <typename T>
+template <typename T = Tensor>
 Status CheckSequenceLengthTensors(const T* cumulative_sequence_length, const T* seqlens, const T* max_query_len,
                                   const T* max_seq_len, int& batch_size, int& max_query_length,
                                   int& max_total_sequence_length) {
@@ -189,7 +189,7 @@ Status CheckSequenceLengthTensors(const T* cumulative_sequence_length, const T* 
   return Status::OK();
 }
 
-template <typename T>
+template <typename T = Tensor>
 Status CheckBlockTableAndSlotMappings(const T* block_table, const T* slot_mappings, const int batch_size,
                                       const int token_count, int& max_num_blocks_per_seq) {
   const auto& block_table_dims = block_table->Shape().GetDims();

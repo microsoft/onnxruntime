@@ -188,8 +188,8 @@ struct PagedAttentionData {
   const T* value = nullptr;
   T* key_cache = nullptr;
   T* value_cache = nullptr;
-  const int* cumulative_sequence_length = nullptr;
-  const int* seqlens = nullptr;
+  const int* cumulative_seqlens_q = nullptr;
+  const int* past_seqlens = nullptr;
   const int* block_table = nullptr;
   const int* slot_mappings = nullptr;
   const T* cos_cache = nullptr;

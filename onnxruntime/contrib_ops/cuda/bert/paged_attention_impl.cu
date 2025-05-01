@@ -1,32 +1,3 @@
-/*
- The implementation of this file is based on our Group Query Attention impl.cu file,
- which is based on Multi-Head Attention impl.cu file,
- which is based on qkvToContext plugin in TensorRT demo:
- https://github.com/NVIDIA/TensorRT/tree/release/5.1/demo/BERT/
-
-Copyright 2019 NVIDIA Corporation
-
-Licensed under the Apache License, Version 2.0 (the "License");
-you may not use this file except in compliance with the License.
-You may obtain a copy of the License at
-
-    http://www.apache.org/licenses/LICENSE-2.0
-
-Unless required by applicable law or agreed to in writing, software
-distributed under the License is distributed on an "AS IS" BASIS,
-WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-See the License for the specific language governing permissions and
-limitations under the License.
-*/
-
-// Modifications:
-// (1) unidirectional mask (causal)
-// (2) use flash attention kernel from (https://github.com/Dao-AILab/flash-attention)
-// (3) support different number of heads for Q and KV
-// (4) support rotary embedding
-// (5) support both packed and unpacked QKV
-// (6) support block-based KV Cache / Paged Attention
-// (7) etc.
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
@@ -120,8 +91,8 @@ __global__ void RotaryEmbeddingTNH(T* output,                          // TxNxH
                                    const T* input,                     // TxNxH
                                    const T* cos_cache,                 // Mx(H/2)
                                    const T* sin_cache,                 // Mx(H/2)
-                                   const int32_t* seqlens,             // B
-                                   const int32_t* cumulative_seqlens,  // B+1
+                                   const int32_t* past_seqlens,        // B
+                                   const int32_t* cumulative_seqlens_q,  // B+1
                                    const int head_size,
                                    const int rotary_embedding_dim,
                                    const bool interleaved,
@@ -134,12 +105,12 @@ __global__ void RotaryEmbeddingTNH(T* output,                          // TxNxH
   const int n = blockIdx.z;
   const int h = threadIdx.x;
 
-  const int sequence_length = cumulative_seqlens[b + 1] - cumulative_seqlens[b];
+  const int sequence_length = cumulative_seqlens_q[b + 1] - cumulative_seqlens_q[b];
   if (h >= head_size || s >= sequence_length) {
     return;
   }
 
-  const int t = cumulative_seqlens[b] + s; // t is the index of the token in the unpadded input/output
+  const int t = cumulative_seqlens_q[b] + s; // t is the index of the token in the unpadded input/output
   const T* input_data = input + t * in_strides.x + n * in_strides.y;
   T* output_data = output + t * out_strides.x + n * out_strides.y;
 
@@ -150,7 +121,7 @@ __global__ void RotaryEmbeddingTNH(T* output,                          // TxNxH
 
   // Cache is (M, H/2)
   const int half_rotary_embedding_dim = rotary_embedding_dim / 2;
-  const int position_id = seqlens[b] + s;
+  const int position_id = past_seqlens[b] + s;
   const int cache_offset = position_id * half_rotary_embedding_dim;
   const T* cos_data = cos_cache + cache_offset;
   const T* sin_data = sin_cache + cache_offset;
@@ -171,8 +142,8 @@ __global__ void RotaryEmbeddingTNH(T* output,                          // TxNxH
 }
 
 template <typename T>
-Status LaunchRotaryEmbeddingKernel(cudaStream_t stream, T* output, const T* input, const int32_t* seqlens,
-                                   const int32_t* cumulative_sequence_lengths, const T* cos_cache, const T* sin_cache,
+Status LaunchRotaryEmbeddingKernel(cudaStream_t stream, T* output, const T* input, const int32_t* past_seqlens,
+                                   const int32_t* cumulative_seqlens_q, const T* cos_cache, const T* sin_cache,
                                    const int batch_size, const int max_seqlen_q, const int num_heads,
                                    const int head_size, const int rotary_embedding_dim, const bool interleaved,
                                    const int in_seq_stride, const int max_threads_per_block) {
@@ -183,14 +154,14 @@ Status LaunchRotaryEmbeddingKernel(cudaStream_t stream, T* output, const T* inpu
   const dim3 grid(max_seqlen_q, batch_size, num_heads);
   const dim3 block(tpb);
   RotaryEmbeddingTNH<<<grid, block, 0, stream>>>(
-      output, input, cos_cache, sin_cache, seqlens, cumulative_sequence_lengths, head_size, rotary_embedding_dim,
+      output, input, cos_cache, sin_cache, past_seqlens, cumulative_seqlens_q, head_size, rotary_embedding_dim,
       interleaved, in_strides, out_strides);
   return CUDA_CALL(cudaGetLastError());
 }
 
 template <int kBlockSize>
-__global__ void GetCumulativeSeqlensKV(int32_t* cumulative_seqlens_kv, const int32_t* cumulative_sequence_length,
-                                       const int32_t* seqlens, const int batch_size) {
+__global__ void GetCumulativeSeqlensKV(int32_t* cumulative_seqlens_kv, const int32_t* cumulative_seqlens_q,
+                                       const int32_t* past_seqlens, const int batch_size) {
   int id = blockDim.x * blockIdx.x + threadIdx.x;
 
   if (id == 0) {
@@ -200,22 +171,22 @@ __global__ void GetCumulativeSeqlensKV(int32_t* cumulative_seqlens_kv, const int
   typedef cub::BlockScan<int, kBlockSize> BlockScan;
   __shared__ typename BlockScan::TempStorage temp_storage;
 
-  // Sum seqlens(past sequence length) to new sequence length (which we get by subtracting cumulative_sequence_lengths).
+  // Sum past_seqlens to new sequence length (which we get by subtracting cumulative_seqlens_q).
   // Then do an inclusive sum across present sequence lengths to get the cumulative sequence length
   if (id < batch_size) {
-    cumulative_seqlens_kv[id + 1] = seqlens[id] + cumulative_sequence_length[id + 1] - cumulative_sequence_length[id];
+    cumulative_seqlens_kv[id + 1] = past_seqlens[id] + cumulative_seqlens_q[id + 1] - cumulative_seqlens_q[id];
     int length = cumulative_seqlens_kv[id + 1];
     BlockScan(temp_storage).InclusiveSum(length, length);
     cumulative_seqlens_kv[id + 1] = length;
   }
 }
 
-Status LaunchGetCumulativeSeqlensKV(int32_t* cumulative_seqlens_kv, const int32_t* cumulative_sequence_length,
-                                    const int32_t* seqlens, const int batch_size, cudaStream_t stream) {
+Status LaunchGetCumulativeSeqlensKV(int32_t* cumulative_seqlens_kv, const int32_t* cumulative_seqlens_q,
+                                    const int32_t* past_seqlens, const int batch_size, cudaStream_t stream) {
   const int threads = 256;
   const int blocks = (batch_size + threads - 1) / threads;
-  GetCumulativeSeqlensKV<256><<<blocks, threads, 0, stream>>>(cumulative_seqlens_kv, cumulative_sequence_length, seqlens,
-                                                         batch_size);
+  GetCumulativeSeqlensKV<256><<<blocks, threads, 0, stream>>>(cumulative_seqlens_kv, cumulative_seqlens_q, past_seqlens,
+                                                              batch_size);
   return CUDA_CALL(cudaGetLastError());
 }
 
@@ -291,10 +262,10 @@ Status FlashAttention(
   }
 
   // Calculate cumulative present sequence length in cumulative_seqlens_kv
-  int* cumulative_sequence_length = const_cast<int*>(data.cumulative_sequence_length);
-  int* seqlens = const_cast<int*>(data.seqlens);
+  int* cumulative_seqlens_q = const_cast<int*>(data.cumulative_seqlens_q);
+  int* past_seqlens = const_cast<int*>(data.past_seqlens);
   int* cumulative_seqlens_kv = data.cumulative_seqlens_kv;
-  ORT_RETURN_IF_ERROR(LaunchGetCumulativeSeqlensKV(cumulative_seqlens_kv, cumulative_sequence_length, seqlens,
+  ORT_RETURN_IF_ERROR(LaunchGetCumulativeSeqlensKV(cumulative_seqlens_kv, cumulative_seqlens_q, past_seqlens,
                                                    batch_size, stream));
 
   if (parameters.do_rotary) { // Will also perform unpacking if packed_qkv
@@ -302,11 +273,11 @@ Status FlashAttention(
     auto k_buffer = data.workspace_buffer + token_count * num_heads * head_size;
     int packed_seq_stride = parameters.is_packed_qkv ? (num_heads + 2 * kv_num_heads) * head_size : -1;
     ORT_RETURN_IF_ERROR(LaunchRotaryEmbeddingKernel<T>(
-        stream, q_buffer, query, seqlens, cumulative_sequence_length, data.cos_cache, data.sin_cache, batch_size,
+        stream, q_buffer, query, past_seqlens, cumulative_seqlens_q, data.cos_cache, data.sin_cache, batch_size,
         max_query_len, num_heads, head_size, parameters.rotary_dim, parameters.rotary_interleaved, packed_seq_stride,
         max_threads_per_block));
     ORT_RETURN_IF_ERROR(LaunchRotaryEmbeddingKernel<T>(
-        stream, k_buffer, key, seqlens, cumulative_sequence_length, data.cos_cache, data.sin_cache, batch_size,
+        stream, k_buffer, key, past_seqlens, cumulative_seqlens_q, data.cos_cache, data.sin_cache, batch_size,
         max_query_len, kv_num_heads, head_size, parameters.rotary_dim, parameters.rotary_interleaved, packed_seq_stride,
         max_threads_per_block));
     query = q_buffer;
@@ -338,7 +309,7 @@ Status FlashAttention(
   void* softmax_lse = reinterpret_cast<void*>(data.softmax_lse);
   int* block_table = const_cast<int*>(data.block_table);
   ORT_RETURN_IF_ERROR(onnxruntime::flash::mha_varlen_fwd(
-      device_prop, stream, q, key_cache, value_cache, output, cumulative_sequence_length, cumulative_seqlens_kv,
+      device_prop, stream, q, key_cache, value_cache, output, cumulative_seqlens_q, cumulative_seqlens_kv,
       /*seqused_k*/ nullptr, block_table, softmax_lse, batch_size, num_heads, kv_num_heads, head_size, max_query_len,
       max_seq_len, scale, softcap, /*is_causal*/ true, is_bf16, local_window_size, max_num_blocks_per_seq, block_size));
 

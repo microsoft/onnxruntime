@@ -1209,7 +1209,7 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
 constexpr const char* PagedAttention_ver1_doc = R"DOC(
 Paged Attention.
 
-This op leverages a block-based KV cache to enable continuous batching for LLMs.Currently, it is designed to work with
+This op leverages a block-based KV cache to enable continuous batching for LLMs. Currently, it is designed to work with
 the CUDA Execution Provider only.
 
 In other attention ops, batch entries typically aren't of the same length, so they are padded.
@@ -1266,11 +1266,9 @@ void PagedAttentionTypeAndShapeInference(ONNX_NAMESPACE::InferenceContext& ctx) 
       fail_shape_inference("Input 0 (query) shall be 2 dimensions");
     }
 
-    if (hasInputShape(ctx, 2)) {
+    if (ctx.hasInput(2)) {
       ONNX_NAMESPACE::TensorShapeProto output_shape;
-      *output_shape.add_dim() = query_dims[0];
-      *output_shape.add_dim() = query_dims[1];
-      updateOutputShape(ctx, 0, output_shape);
+      propagateShapeFromInputToOutput(ctx, 0, 0);
     } else {  // packed QKV
       ONNX_NAMESPACE::TensorShapeProto output_shape;
       *output_shape.add_dim() = query_dims[0];
@@ -1358,31 +1356,31 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                "cumulative_sequence_length",
                "A tensor with shape (batch_size + 1). It specifies the cumulative sequence lengths between the packed "
                "entries in Q/K/V.",
-               "M")
+               "S")
         .Input(6,
                "seqlens",
                "A tensor with shape (batch_size). It specifies the past lengths of cached sequence in the KV cache.",
-               "M")
+               "S")
         .Input(7,
                "max_query_len",
                "Scalar tensor equivalent to the maximum length of all sequences in the query tensor (max new seqlen). "
                "This input is allocated on CPU.",
-               "M")
+               "S")
         .Input(8,
                "max_seq_len",
                "Scalar tensor equivalent to the maximum length of all sequences in the KV Cache after appending new "
                "tokens (max total seqlen). This input is allocated on CPU.",
-               "M")
+               "S")
         .Input(9,
                "block_table",
                "2D tensor with shape (batch_size, max_blocks_per_sequence) that maps each sequence in the batch to its"
                "corresponding blocks in the KV cache.",
-               "M")
+               "S")
         .Input(10,
                "slot_mappings",
                "1D tensor with shape (num_tokens) that maps each token in the input kv to its corresponding slot in "
                "the KV cache. This is used to correctly cache KV into the block-based KV cache.",
-               "M")
+               "S")
         .Input(11,
                "cos_cache",
                "2D tensor with shape (max total seqlen, head_size / 2).",
@@ -1410,7 +1408,7 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                 "T",
                 OpSchema::Optional)
         .TypeConstraint("T", {"tensor(float16)", "tensor(bfloat16)"}, "Constrain input and output to float tensors.")
-        .TypeConstraint("M", {"tensor(int32)"}, "Constrain mask to int tensor.")
+        .TypeConstraint("S", {"tensor(int32)"}, "Constrain Positional inputs to int tensor.")
         .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
           PagedAttentionTypeAndShapeInference(ctx);
         }));

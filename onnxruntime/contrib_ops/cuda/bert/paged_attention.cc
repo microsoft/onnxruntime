@@ -27,7 +27,7 @@ namespace cuda {
       kCudaExecutionProvider,                                          \
       (*KernelDefBuilder::Create())                                    \
           .TypeConstraint("T", DataTypeImpl::GetTensorType<T>())       \
-          .TypeConstraint("M", DataTypeImpl::GetTensorType<int32_t>()) \
+          .TypeConstraint("S", DataTypeImpl::GetTensorType<int32_t>()) \
           .InputMemoryType(OrtMemTypeCPUInput, 7)                      \
           .InputMemoryType(OrtMemTypeCPUInput, 8),                     \
       PagedAttention<T>);
@@ -61,8 +61,8 @@ Status PagedAttention<T>::ComputeInternal(OpKernelContext* context) const {
   const Tensor* value = context->Input<Tensor>(2);
   const Tensor* key_cache = context->Input<Tensor>(3);
   const Tensor* value_cache = context->Input<Tensor>(4);
-  const Tensor* cumulative_sequence_length = context->Input<Tensor>(5);
-  const Tensor* seqlens = context->Input<Tensor>(6);
+  const Tensor* cumulative_seqlens_q = context->Input<Tensor>(5);
+  const Tensor* past_seqlens = context->Input<Tensor>(6);
   const Tensor* max_query_len = context->Input<Tensor>(7);
   const Tensor* max_seq_len = context->Input<Tensor>(8);
   const Tensor* block_table = context->Input<Tensor>(9);
@@ -81,8 +81,8 @@ Status PagedAttention<T>::ComputeInternal(OpKernelContext* context) const {
                                                           value,
                                                           key_cache,
                                                           value_cache,
-                                                          cumulative_sequence_length,
-                                                          seqlens,
+                                                          cumulative_seqlens_q,
+                                                          past_seqlens,
                                                           max_query_len,
                                                           max_seq_len,
                                                           block_table,
@@ -201,8 +201,8 @@ Status PagedAttention<T>::ComputeInternal(OpKernelContext* context) const {
   data.value = value == nullptr ? nullptr : reinterpret_cast<const CudaT*>(value->Data<T>());
   data.key_cache = reinterpret_cast<CudaT*>(const_cast<T*>(key_cache->Data<T>()));
   data.value_cache = reinterpret_cast<CudaT*>(const_cast<T*>(value_cache->Data<T>()));
-  data.cumulative_sequence_length = reinterpret_cast<const int*>(cumulative_sequence_length->Data<int>());
-  data.seqlens = reinterpret_cast<const int*>(seqlens->Data<int>());
+  data.cumulative_seqlens_q = reinterpret_cast<const int*>(cumulative_seqlens_q->Data<int>());
+  data.past_seqlens = reinterpret_cast<const int*>(past_seqlens->Data<int>());
   data.cumulative_seqlens_kv = reinterpret_cast<int*>(cumulative_seqlens_kv_buffer.get());
   data.block_table = reinterpret_cast<const int*>(block_table->Data<int>());
   data.slot_mappings = reinterpret_cast<const int*>(slot_mappings->Data<int>());
