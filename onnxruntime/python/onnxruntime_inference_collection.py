@@ -627,12 +627,12 @@ class ModelCompilationOptions:
     ):
         available_providers = C.get_available_providers()
         self._providers, self._provider_options = check_and_normalize_provider_args(
-            providers,
-            provider_options,
-            available_providers
+            providers, provider_options, available_providers
         )
 
-    def get_providers(self) -> tuple[Sequence[str | tuple[str, dict[Any, Any]]] | None, Sequence[dict[Any, Any]] | None]:
+    def get_providers(
+        self,
+    ) -> tuple[Sequence[str | tuple[str, dict[Any, Any]]] | None, Sequence[dict[Any, Any]] | None]:
         return (self._providers, self._provider_options)
 
     def set_input_model(
