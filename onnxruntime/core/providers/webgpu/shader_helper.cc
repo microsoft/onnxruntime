@@ -123,7 +123,12 @@ const ShaderIndicesHelper& ShaderHelper::AddIndices(const std::string& name, Sha
 #ifndef NDEBUG  // if debug build
 namespace {
 // Validate if the tensor element type matches the program variable data type
-Status ValidateVariableDataType(int32_t element_type, ProgramVariableDataType var_type) {
+Status ValidateVariableDataType(int32_t element_type, ProgramVariableDataType var_type, bool is_atomic = false) {
+  if (is_atomic) {
+    ORT_RETURN_IF_NOT(var_type == ProgramVariableDataType::Int32 || var_type == ProgramVariableDataType::Uint32,
+                      "Unexpected program variable type ", int(var_type), " for atomic variable");
+  }
+
   switch (element_type) {
     case ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT:
       ORT_RETURN_IF_NOT(var_type == ProgramVariableDataType::Float32 ||
@@ -408,12 +413,22 @@ Status ShaderHelper::GenerateSourceCode(std::string& code, std::vector<int>& sha
   //
   // Input/output variables
   //
-  size_t variable_count = 0;
-  for (const auto& input : input_vars_) {
-    ss << "@group(0) @binding(" << variable_count++ << ") var<storage, read> " << input->name_ << ": array<" << input->StorageType() << ">;\n";
+  for (size_t i = 0; i < input_vars_.size(); ++i) {
+    const auto& input = input_vars_[i];
+    ss << "@group(0) @binding(" << i << ") var<storage, read> " << input->name_ << ": array<" << input->StorageType() << ">;\n";
   }
-  for (const auto& output : output_vars_) {
-    ss << "@group(0) @binding(" << variable_count++ << ") var<storage, read_write> " << output->name_ << ": array<" << output->StorageType() << ">;\n";
+  for (size_t i = 0; i < output_vars_.size(); ++i) {
+    const auto& output = output_vars_[i];
+    bool is_atomic = program_.Outputs()[i].is_atomic;
+    ss << "@group(0) @binding(" << i << ") var<storage, read_write> " << output->name_ << ": array<";
+    if (is_atomic) {
+      ss << "atomic<";
+    }
+    ss << output->StorageType();
+    if (is_atomic) {
+      ss << ">";
+    }
+    ss << ">;\n";
   }
 
   //
@@ -520,7 +535,7 @@ Status ShaderHelper::GenerateSourceCode(std::string& code, std::vector<int>& sha
 
     ss << "\n};\n"
           "@group(0) @binding("
-       << variable_count << ") var<uniform> uniforms: Uniforms;\n";
+       << input_vars_.size() + output_vars_.size() << ") var<uniform> uniforms: Uniforms;\n";
   }
 
   //
