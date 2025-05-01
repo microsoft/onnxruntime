@@ -13,6 +13,7 @@
 #include "core/session/inference_session.h"
 #include "core/session/model_compilation_options.h"
 #include "core/session/ort_apis.h"
+#include "core/session/ort_env.h"
 #include "core/session/utils.h"
 #else
 #include "core/common/common.h"
@@ -43,7 +44,8 @@ ORT_API_STATUS_IMPL(OrtCompileAPI::CreateModelCompilationOptionsFromSessionOptio
     return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "The session_options argument must be a non-null pointer");
   }
 
-  auto model_compile_options = std::make_unique<onnxruntime::ModelCompilationOptions>(*env, *session_options);
+  auto model_compile_options = std::make_unique<onnxruntime::ModelCompilationOptions>(env->GetEnvironment(),
+                                                                                      *session_options);
   *out = reinterpret_cast<OrtModelCompilationOptions*>(model_compile_options.release());
   return nullptr;
 #else

@@ -2394,6 +2394,65 @@ including arg name, arg type (contains both type and shape).)pbdoc")
       .value("kNextPowerOfTwo", onnxruntime::ArenaExtendStrategy::kNextPowerOfTwo)
       .value("kSameAsRequested", onnxruntime::ArenaExtendStrategy::kSameAsRequested)
       .export_values();
+
+  py::class_<PyModelCompilationOptions>(m, "ModelCompilationOptions",
+                                        R"pbdoc(This is the class used to specify options for compiling a model.)pbdoc")
+      .def(py::init([](const PySessionOptions& sess_options) {
+        return std::make_unique<PyModelCompilationOptions>(*GetEnv(), sess_options);
+      }))
+      .def(
+          "set_input_model_path",
+          [](PyModelCompilationOptions* model_compile_options, std::basic_string<ORTCHAR_T> input_model_path) {
+            model_compile_options->SetInputModelPath(PathToUTF8String(input_model_path));
+          },
+          R"pbdoc(Set the input model's path)pbdoc")
+      .def(
+          "get_input_model_path",
+          [](PyModelCompilationOptions* model_compile_options) -> std::basic_string<ORTCHAR_T> {
+            return ToPathString(model_compile_options->GetInputModelPath());
+          },
+          R"pbdoc(Return the input model's path)pbdoc")
+      .def(
+          "set_input_model_from_buffer",
+          [](PyModelCompilationOptions* model_compile_options, py::buffer input_model_data) {
+            py::buffer_info buffer_info = input_model_data.request();
+            model_compile_options->SetInputModelFromBuffer(buffer_info.ptr, buffer_info.size);
+          },
+          R"pbdoc(Set the buffer that stores the bytes of the input ONNX model to compile)pbdoc")
+      .def(
+          "set_output_model_path",
+          [](PyModelCompilationOptions* model_compile_options, std::basic_string<ORTCHAR_T> output_model_path) {
+            OrtPybindThrowIfError(model_compile_options->SetOutputModelPath(PathToUTF8String(output_model_path)));
+          },
+          R"pbdoc(Set the output model's path)pbdoc")
+      .def(
+          "set_output_model_external_initializers_file",
+          [](PyModelCompilationOptions* model_compile_options, std::basic_string<ORTCHAR_T> external_initializers_path,
+             size_t external_initializers_size_threshold) {
+            model_compile_options->SetOutputModelExternalInitializersFile(PathToUTF8String(external_initializers_path),
+                                                                          external_initializers_size_threshold);
+          },
+          R"pbdoc(Set the file to store external initializers for non-compiled nodes in the output model)pbdoc")
+      .def(
+          "set_ep_context_embed_mode",
+          [](PyModelCompilationOptions* model_compile_options, bool embed_ep_context_in_model) {
+            OrtPybindThrowIfError(model_compile_options->SetEpContextEmbedMode(embed_ep_context_in_model));
+          },
+          R"pbdoc(Enable or disable the embedding of EPContext binary data into the `ep_cache_context` attribute of EPContext nodes)pbdoc")
+      .def(
+          "get_session_options",
+          [](PyModelCompilationOptions* model_compile_options) -> PySessionOptions* {
+            auto session_options = std::make_unique<PySessionOptions>(model_compile_options->GetSessionOptions());
+            return session_options.release();
+          },
+          py::return_value_policy::take_ownership,
+          R"pbdoc(Return a copy of the internal session options)pbdoc")
+      .def(
+          "check",
+          [](PyModelCompilationOptions* model_compile_options) {
+            OrtPybindThrowIfError(model_compile_options->Check());
+          },
+          R"pbdoc(Checks that the compilation options are valid)pbdoc");
 }
 
 bool CreateInferencePybindStateModule(py::module& m) {

@@ -10,16 +10,16 @@
 
 #include "core/session/allocator_adapters.h"
 #include "core/session/onnxruntime_session_options_config_keys.h"
-#include "core/session/ort_env.h"
+#include "core/session/environment.h"
 
 namespace onnxruntime {
-ModelCompilationOptions::ModelCompilationOptions(const OrtEnv& env, const OrtSessionOptions& session_options)
+ModelCompilationOptions::ModelCompilationOptions(const onnxruntime::Environment& env, const OrtSessionOptions& session_options)
     : env_(env), session_options_(session_options) {
   session_options_.value.has_explicit_ep_context_gen_options = true;
   session_options_.value.ep_context_gen_options = session_options.value.GetEpContextGenerationOptions();
   session_options_.value.ep_context_gen_options.enable = true;
   session_options_.value.ep_context_gen_options.overwrite_existing_output_file = true;
-  session_options_.value.ep_context_gen_options.error_if_no_compiled_nodes = true;
+  session_options_.value.ep_context_gen_options.error_if_no_compiled_nodes = false;
 
   // Shouldn't fail because the key/value strings are below the maximum string length limits in ConfigOptions.
   ORT_ENFORCE(session_options_.value.config_options.AddConfigEntry(kOrtSessionOptionEpContextEnable, "1").IsOK());

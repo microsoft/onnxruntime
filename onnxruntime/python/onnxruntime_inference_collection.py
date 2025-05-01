@@ -403,6 +403,112 @@ class Session:
         self._sess.run_with_ortvaluevector(run_options, feed_names, feeds, fetch_names, fetches, fetch_devices)
 
 
+def _register_ep_custom_ops(session_options, providers, provider_options, available_providers):
+    for i in range(len(providers)):
+        if providers[i] in available_providers and providers[i] == "TensorrtExecutionProvider":
+            C.register_tensorrt_plugins_as_custom_ops(session_options, provider_options[i])
+        elif (
+            isinstance(providers[i], tuple)
+            and providers[i][0] in available_providers
+            and providers[i][0] == "TensorrtExecutionProvider"
+        ):
+            C.register_tensorrt_plugins_as_custom_ops(session_options, providers[i][1])
+
+        if providers[i] in available_providers and providers[i] == "NvTensorRTRTXExecutionProvider":
+            C.register_nv_tensorrt_rtx_plugins_as_custom_ops(session_options, provider_options[i])
+        elif (
+            isinstance(providers[i], tuple)
+            and providers[i][0] in available_providers
+            and providers[i][0] == "NvTensorrtRTXExecutionProvider"
+        ):
+            C.register_nv_tensorrt_rtx_plugins_as_custom_ops(session_options, providers[i][1])
+
+class ModelCompilationOptions:
+    def __init__(
+        self,
+        sess_options: onnxruntime.SessionOptions,
+    ):
+        self._model_compile_options = C.ModelCompilationOptions(sess_options)
+        self._input_model_path : str | os.PathLike | None = None
+        self._input_model_bytes : bytes | None = None
+
+    def set_input_model(
+        self,
+        path_or_bytes: str | bytes | os.PathLike,
+    ):
+        if isinstance(path_or_bytes, (str, os.PathLike)):
+            self._input_model_path = os.fspath(path_or_bytes)
+            self._model_compile_options.set_input_model_path(self._input_model_path)
+        elif isinstance(path_or_bytes, bytes):
+            self._input_model_bytes = path_or_bytes
+            self._model_compile_options.set_input_model_from_buffer(self._input_model_bytes)
+        else:
+            raise TypeError(f"Unable to load from type '{type(path_or_bytes)}'")
+
+    def get_input_model_path(self) -> str | None:
+        #return os.fspath(self._model_compile_options.get_input_model_path())
+        return self._input_model_path
+
+    def get_input_model_bytes(self) -> bytes | None:
+        return self._input_model_bytes
+
+    def set_output_model_path(
+        self,
+        path: str | os.PathLike,
+    ):
+        if not isinstance(path, (str, os.PathLike)):
+            raise TypeError(f"Output model's path is of unexpected type '{type(path)}'")
+        self._model_compile_options.set_output_model_path(os.fspath(path))
+    
+    def set_output_model_external_initializers_file(
+        self,
+        path: str | os.PathLike,
+        external_initializers_size_threshold: int = 1024,
+    ):
+        if not isinstance(path, (str, os.PathLike)):
+            raise TypeError(f"Output external initializer file's path is of unexpected type '{type(path)}'")
+        self._model_compile_options.set_output_model_external_initializers_file(
+            os.fspath(path), external_initializers_size_threshold)
+    
+    def set_ep_context_embed_mode(self, embed_ep_context_in_model: bool):
+        self._model_compile_options.set_ep_context_embed_mode(embed_ep_context_in_model)
+
+    def get_session_options(self) -> onnxruntime.SessionOptions:
+        return self._model_compile_options.get_session_options()
+
+    def check(self):
+        self._model_compile_options.check()
+
+
+def compile_model(
+    model_compile_options : ModelCompilationOptions,
+    providers: Sequence[str | tuple[str, dict[Any, Any]]] | None = None,
+    provider_options: Sequence[dict[Any, Any]] | None = None,
+):
+    model_compile_options.check()
+    available_providers = C.get_available_providers()
+
+    # validate providers and provider_options before other initialization
+    providers, provider_options = check_and_normalize_provider_args(
+        providers, provider_options, available_providers
+    )
+
+    session_options = model_compile_options.get_session_options()
+    _register_ep_custom_ops(session_options, providers, provider_options, available_providers)
+
+    input_model_path = model_compile_options.get_input_model_path()
+
+    if input_model_path:
+        sess = C.InferenceSession(session_options, input_model_path, True, False)
+    else:
+        sess = C.InferenceSession(
+            session_options, model_compile_options.get_input_model_bytes(), False, False
+        )
+
+    # initialize the C++ InferenceSession
+    sess.initialize_session(providers, provider_options, set())
+
+
 class InferenceSession(Session):
     """
     This is the main class used to run a model.
@@ -460,6 +566,8 @@ class InferenceSession(Session):
         self._sess_options = sess_options
         self._sess_options_initial = sess_options
         self._enable_fallback = True
+        if "enable_fallback" in kwargs:
+            self._enable_fallback = int(kwargs["enable_fallback"]) == 1
         if "read_config_from_model" in kwargs:
             self._read_config_from_model = int(kwargs["read_config_from_model"]) == 1
         else:
@@ -544,7 +652,7 @@ class InferenceSession(Session):
 
         session_options = self._sess_options if self._sess_options else C.get_default_session_options()
 
-        self._register_ep_custom_ops(session_options, providers, provider_options, available_providers)
+        _register_ep_custom_ops(session_options, providers, provider_options, available_providers)
 
         if self._model_path:
             sess = C.InferenceSession(session_options, self._model_path, True, self._read_config_from_model)
@@ -587,26 +695,6 @@ class InferenceSession(Session):
         self._sess = None
         self._sess_options = self._sess_options_initial
         self._create_inference_session(providers, provider_options)
-
-    def _register_ep_custom_ops(self, session_options, providers, provider_options, available_providers):
-        for i in range(len(providers)):
-            if providers[i] in available_providers and providers[i] == "TensorrtExecutionProvider":
-                C.register_tensorrt_plugins_as_custom_ops(session_options, provider_options[i])
-            elif (
-                isinstance(providers[i], tuple)
-                and providers[i][0] in available_providers
-                and providers[i][0] == "TensorrtExecutionProvider"
-            ):
-                C.register_tensorrt_plugins_as_custom_ops(session_options, providers[i][1])
-
-            if providers[i] in available_providers and providers[i] == "NvTensorRTRTXExecutionProvider":
-                C.register_nv_tensorrt_rtx_plugins_as_custom_ops(session_options, provider_options[i])
-            elif (
-                isinstance(providers[i], tuple)
-                and providers[i][0] in available_providers
-                and providers[i][0] == "NvTensorrtRTXExecutionProvider"
-            ):
-                C.register_nv_tensorrt_rtx_plugins_as_custom_ops(session_options, providers[i][1])
 
 
 class IOBinding:
