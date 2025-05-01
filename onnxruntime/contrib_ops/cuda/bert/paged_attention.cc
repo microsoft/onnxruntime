@@ -177,10 +177,10 @@ Status PagedAttention<T>::ComputeInternal(OpKernelContext* context) const {
   auto cumulative_seqlens_kv_buffer = GetScratchBuffer<void>(cumulative_seqlens_kv_bytes, context->GetComputeStream());
 
   size_t workspace_buffer_bytes = 0;
-  if (parameters.is_packed_qkv) {  // unpacking and rotary can be done with the same buffer in the same operation
-    workspace_buffer_bytes = parameters.token_count * (parameters.num_heads + 2 * parameters.kv_num_heads) * parameters.head_size * sizeof(T);
-  } else if (do_rotary_) {
-    workspace_buffer_bytes = 2 * sizeof(T) * parameters.token_count * parameters.num_heads * parameters.head_size;
+  if (do_rotary_) {
+    workspace_buffer_bytes = sizeof(T) * parameters.token_count * (parameters.hidden_size + parameters.kv_hidden_size);
+  } else if (parameters.is_packed_qkv) {
+    workspace_buffer_bytes = sizeof(T) * parameters.token_count * parameters.hidden_size;
   }
   auto workspace_buffer = GetScratchBuffer<void>(workspace_buffer_bytes, context->GetComputeStream());
 

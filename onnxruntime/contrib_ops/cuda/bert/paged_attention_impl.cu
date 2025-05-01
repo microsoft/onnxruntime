@@ -66,23 +66,23 @@ Status LaunchUnpackQKVCumulative(const T* packed_qkv, T* unpacked_qkv, const int
 }
 
 template <typename T>
-__global__ void UnpackV(const T* packed_v, T* unpacked_v, const int token_count, const int kv_hidden_size,
+__global__ void UnpackV(const T* input, T* output, const int token_count, const int hidden_size,
                         const int packed_seq_stride) {
   const int tid = threadIdx.x + blockIdx.x * blockDim.x;
-  if (tid < token_count * kv_hidden_size) {
-    int offset = tid % kv_hidden_size;
-    int token_id = tid / kv_hidden_size;
+  if (tid < token_count * hidden_size) {
+    int offset = tid % hidden_size;
+    int token_id = tid / hidden_size;
     int packed_i = token_id * packed_seq_stride + offset;
-    unpacked_v[tid] = packed_v[packed_i];
+    output[tid] = input[packed_i];
   }
 }
 
 template <typename T>
-Status LaunchUnpackV(const T* packed_v, T* unpacked_v, const int token_count, const int kv_hidden_size,
-                   const int packed_seq_stride, cudaStream_t stream, const int max_threads_per_block) {
-  const int threads = std::min(max_threads_per_block, token_count * kv_hidden_size);
-  const int blocks = (token_count * kv_hidden_size + threads - 1) / threads;
-  UnpackV<T><<<blocks, threads, 0, stream>>>(packed_v, unpacked_v, token_count, kv_hidden_size, packed_seq_stride);
+Status LaunchUnpackCumulative(const T* input, T* output, const int token_count, const int hidden_size,
+                              const int packed_seq_stride, cudaStream_t stream, const int max_threads_per_block) {
+  const int threads = std::min(max_threads_per_block, token_count * hidden_size);
+  const int blocks = (token_count * hidden_size + threads - 1) / threads;
+  UnpackV<T><<<blocks, threads, 0, stream>>>(input, output, token_count, hidden_size, packed_seq_stride);
   return CUDA_CALL(cudaGetLastError());
 }
 
@@ -214,13 +214,14 @@ __global__ void ReshapeAndCache(const T* __restrict__ key, const T* __restrict__
 
 template <typename T>
 Status LaunchReshapeAndCache(const T* key, const T* value, T* key_cache, T* value_cache, const int* slot_mappings,
-                             const int token_count, const int kv_hidden_size, const int block_size, cudaStream_t stream,
+                             const int token_count, const int kv_hidden_size, const int block_size,
+                             const int key_stride, const int value_stride, cudaStream_t stream,
                              const int max_threads_per_block) {
   const int total_size = token_count * kv_hidden_size;
   const int threads(std::min(total_size, max_threads_per_block));
   const int blocks((total_size + threads - 1) / threads);
   ReshapeAndCache<T><<<blocks, threads, 0, stream>>>(key, value, key_cache, value_cache, slot_mappings, token_count,
-                                                     kv_hidden_size, block_size, kv_hidden_size, kv_hidden_size);
+                                                     kv_hidden_size, block_size, key_stride, value_stride);
   return CUDA_CALL(cudaGetLastError());
 }
 
@@ -240,6 +241,7 @@ Status FlashAttention(
   const int token_count = parameters.token_count;
   const int max_query_len = parameters.sequence_length;
   const int max_seq_len = parameters.total_sequence_length;
+  const int q_hidden_size = parameters.hidden_size;
   const int kv_hidden_size = parameters.kv_hidden_size;
   const int num_heads = parameters.num_heads;
   const int kv_num_heads = parameters.kv_num_heads;
@@ -268,10 +270,11 @@ Status FlashAttention(
   ORT_RETURN_IF_ERROR(LaunchGetCumulativeSeqlensKV(cumulative_seqlens_kv, cumulative_seqlens_q, past_seqlens,
                                                    batch_size, stream));
 
-  if (parameters.do_rotary) { // Will also perform unpacking if packed_qkv
+  if (parameters.do_rotary) {
+    // Will unpack Q and K in case of packed_qkv
     auto q_buffer = data.workspace_buffer;
     auto k_buffer = data.workspace_buffer + token_count * num_heads * head_size;
-    int packed_seq_stride = parameters.is_packed_qkv ? (num_heads + 2 * kv_num_heads) * head_size : -1;
+    const int packed_seq_stride = parameters.is_packed_qkv ? (num_heads + 2 * kv_num_heads) * head_size : -1;
     ORT_RETURN_IF_ERROR(LaunchRotaryEmbeddingKernel<T>(
         stream, q_buffer, query, past_seqlens, cumulative_seqlens_q, data.cos_cache, data.sin_cache, batch_size,
         max_query_len, num_heads, head_size, parameters.rotary_dim, parameters.rotary_interleaved, packed_seq_stride,
@@ -282,24 +285,21 @@ Status FlashAttention(
         max_threads_per_block));
     query = q_buffer;
     key = k_buffer;
-    if (parameters.is_packed_qkv) {
-      auto v_buffer = data.workspace_buffer + token_count * (num_heads + kv_num_heads) * head_size;
-      ORT_RETURN_IF_ERROR(LaunchUnpackV<T>(
-          value, v_buffer, token_count, kv_hidden_size, packed_seq_stride, stream, max_threads_per_block));
-      value = v_buffer;
-    }
   } else if (parameters.is_packed_qkv) {
-    auto qkv_buffer = data.workspace_buffer;
-    ORT_RETURN_IF_ERROR(LaunchUnpackQKVCumulative<T>(
-        query, qkv_buffer, token_count, num_heads, kv_num_heads, head_size, stream, max_threads_per_block));
-    query = qkv_buffer;
-    key = qkv_buffer + token_count * num_heads * head_size;
-    value = qkv_buffer + token_count * (num_heads + kv_num_heads) * head_size;
+    // Only unpack Q. K and V are unpacked by ReshapeAndCache.
+    auto q_buffer = data.workspace_buffer;
+    const int packed_seq_stride = q_hidden_size + 2 * kv_hidden_size;
+    ORT_RETURN_IF_ERROR(LaunchUnpackCumulative<T>(
+        query, q_buffer, token_count, q_hidden_size, packed_seq_stride, stream, max_threads_per_block));
+    query = q_buffer;
   }
 
   // Insert key and value into block-based KV cache
+  const int key_stride = parameters.is_packed_qkv && !parameters.do_rotary ? q_hidden_size + 2 * kv_hidden_size : kv_hidden_size;
+  const int value_stride = parameters.is_packed_qkv ? q_hidden_size + 2 * kv_hidden_size : kv_hidden_size;
   ORT_RETURN_IF_ERROR(LaunchReshapeAndCache<T>(key, value, data.key_cache, data.value_cache, data.slot_mappings,
-                                               token_count, kv_hidden_size, block_size, stream, max_threads_per_block));
+                                               token_count, kv_hidden_size, block_size, key_stride, value_stride,
+                                               stream, max_threads_per_block));
 
   // Launch kernel
   void* q = reinterpret_cast<void*>(query);
