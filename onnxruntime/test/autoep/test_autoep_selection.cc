@@ -233,7 +233,7 @@ TEST(AutoEpSelection, MiscApiTests) {
     size_t num_entries = 0;
     c_api->GetKeyValuePairs(kvps, &keys, &values, &num_entries);
     ASSERT_EQ(num_entries, 1);
-	
+
     c_api->ReleaseKeyValuePairs(kvps);
   }
 
