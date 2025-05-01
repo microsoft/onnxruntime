@@ -1,14 +1,17 @@
 ﻿// Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+// not supported on mobile platforms
+#if !(ANDROID || IOS)
+
+namespace Microsoft.ML.OnnxRuntime.Tests;
+
 using System;
 using System.Linq;
 using System.IO;
 using System.Runtime.InteropServices;
 using Xunit;
 using System.Collections.Generic;
-
-namespace Microsoft.ML.OnnxRuntime.Tests;
 
 /// <summary>
 /// Tests for auto ep selection/registration.
@@ -21,7 +24,7 @@ public class OrtAutoEpTests
 
     private void ReadHardwareDeviceValues(OrtHardwareDevice device)
     {
-        Assert.True(device.Type == OrtHardwareDeviceType.CPU || 
+        Assert.True(device.Type == OrtHardwareDeviceType.CPU ||
                     device.Type == OrtHardwareDeviceType.GPU ||
                     device.Type == OrtHardwareDeviceType.NPU);
         if (device.Type == OrtHardwareDeviceType.CPU)
@@ -88,17 +91,48 @@ public class OrtAutoEpTests
     [Fact]
     public void AppendToSessionOptionsV2()
     {
-        SessionOptions sessionOptions = new SessionOptions();
-        sessionOptions.LogSeverityLevel = OrtLoggingLevel.ORT_LOGGING_LEVEL_VERBOSE;
+        var runTest = (Func<Dictionary<string, string>> getEpOptions) =>
+        {
+            SessionOptions sessionOptions = new SessionOptions();
+            sessionOptions.LogSeverityLevel = OrtLoggingLevel.ORT_LOGGING_LEVEL_VERBOSE;
 
-        var epDevices = ortEnvInstance.GetEpDevices();
+            var epDevices = ortEnvInstance.GetEpDevices();
 
-        // cpu ep ignores the provider options so we can use any value in epOptions and it won't break.
-        List<OrtEpDevice> selectedEpDevices = epDevices.Where(d => d.EpName == "CPUExecutionProvider").ToList();
+            // cpu ep ignores the provider options so we can use any value in epOptions and it won't break.
+            List<OrtEpDevice> selectedEpDevices = epDevices.Where(d => d.EpName == "CPUExecutionProvider").ToList();
 
-        OrtKeyValuePairs epOptions = new OrtKeyValuePairs();
-        epOptions.Add("random_key", "value");
-        sessionOptions.AppendExecutionProvider(ortEnvInstance, selectedEpDevices, epOptions);
+            Dictionary<string, string> epOptions = getEpOptions();
+            sessionOptions.AppendExecutionProvider(ortEnvInstance, selectedEpDevices, epOptions);
+
+            var model = TestDataLoader.LoadModelFromEmbeddedResource("squeezenet.onnx");
+
+            // session should load successfully
+            using (var session = new InferenceSession(model))
+            {
+                Assert.NotNull(session);
+            }
+        };
+
+        runTest(() =>
+        {
+            // null options
+            return null;
+        });
+
+        runTest(() =>
+        {
+            // empty options
+            return new Dictionary<string, string>();
+        });
+
+        runTest(() =>
+        {
+            // dummy options
+            return new Dictionary<string, string>
+            {
+                { "random_key", "value" },
+            };
+        });
     }
 }
-
+#endif

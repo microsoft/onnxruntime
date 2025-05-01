@@ -370,6 +370,8 @@ namespace Microsoft.ML.OnnxRuntime
     {
         static OrtApi api_;
 
+        static internal CompileApi.NativeMethods CompileApi;
+
 #if NETSTANDARD2_0
         [UnmanagedFunctionPointer(CallingConvention.Winapi)]
         public delegate IntPtr DOrtGetApi(UInt32 version);
@@ -611,7 +613,12 @@ namespace Microsoft.ML.OnnxRuntime
             OrtRunOptionsAddActiveLoraAdapter = (DOrtRunOptionsAddActiveLoraAdapter)Marshal.GetDelegateForFunctionPointer(
                 api_.RunOptionsAddActiveLoraAdapter, typeof(DOrtRunOptionsAddActiveLoraAdapter));
 
-            // Entries
+            OrtGetCompileApi = (DOrtGetCompileApi)Marshal.GetDelegateForFunctionPointer(
+                api_.GetCompileApi, typeof(DOrtGetCompileApi));
+
+            // populate the CompileApi struct now that we have the delegate to get the compile API pointer.
+            CompileApi = new CompileApi.NativeMethods(OrtGetCompileApi);
+
             OrtCreateKeyValuePairs = (DOrtCreateKeyValuePairs)Marshal.GetDelegateForFunctionPointer(
                 api_.CreateKeyValuePairs, typeof(DOrtCreateKeyValuePairs));
 
@@ -2250,6 +2257,18 @@ namespace Microsoft.ML.OnnxRuntime
 
 #endregion
 
+#region Compile API
+
+#if NETSTANDARD2_0
+        [UnmanagedFunctionPointer(CallingConvention.Winapi)]
+        public delegate IntPtr DOrtGetCompileApi();
+#else
+        [UnmanagedFunctionPointer(CallingConvention.Winapi)]
+        public delegate ref CompileApi.OrtCompileApi DOrtGetCompileApi();
+#endif
+        public static DOrtGetCompileApi OrtGetCompileApi;
+#endregion
+
 #region Auto EP API related
         //
         // OrtKeyValuePairs
@@ -2348,13 +2367,13 @@ namespace Microsoft.ML.OnnxRuntime
         [UnmanagedFunctionPointer(CallingConvention.Winapi)]
         public delegate IntPtr /* OrtStatus* */ DOrtRegisterExecutionProviderLibrary(
             IntPtr /* OrtEnv* */ env,
-            byte[] /* const char* */ ep_name,
+            byte[] /* const char* */ registration_name,
             byte[] /* const ORTCHAR_T* */ path);
 
         [UnmanagedFunctionPointer(CallingConvention.Winapi)]
         public delegate IntPtr /* OrtStatus* */ DOrtUnregisterExecutionProviderLibrary(
             IntPtr /* OrtEnv* */ env,
-            byte[] /* const char* */ ep_name);
+            byte[] /* const char* */ registration_name);
 
         public static DOrtRegisterExecutionProviderLibrary OrtRegisterExecutionProviderLibrary;
         public static DOrtUnregisterExecutionProviderLibrary OrtUnregisterExecutionProviderLibrary;

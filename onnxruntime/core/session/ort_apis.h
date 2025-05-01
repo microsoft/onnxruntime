@@ -562,8 +562,9 @@ ORT_API(void, GetKeyValuePairs, _In_ const OrtKeyValuePairs* kvps,
 ORT_API(void, RemoveKeyValuePair, _In_ OrtKeyValuePairs* kvps, _In_ const char* key);
 ORT_API(void, ReleaseKeyValuePairs, _Frees_ptr_opt_ OrtKeyValuePairs*);
 
-ORT_API_STATUS_IMPL(RegisterExecutionProviderLibrary, _In_ OrtEnv* env, const char* ep_name, const ORTCHAR_T* path);
-ORT_API_STATUS_IMPL(UnregisterExecutionProviderLibrary, _In_ OrtEnv* env, _In_ const char* ep_name);
+ORT_API_STATUS_IMPL(RegisterExecutionProviderLibrary, _In_ OrtEnv* env, const char* registration_name,
+                    const ORTCHAR_T* path);
+ORT_API_STATUS_IMPL(UnregisterExecutionProviderLibrary, _In_ OrtEnv* env, _In_ const char* registration_name);
 
 ORT_API_STATUS_IMPL(GetEpDevices, _In_ const OrtEnv* env,
                     _Outptr_ const OrtEpDevice* const** ep_devices, _Out_ size_t* num_ep_devices);

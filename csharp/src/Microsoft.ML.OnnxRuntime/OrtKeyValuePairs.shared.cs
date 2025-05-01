@@ -8,6 +8,13 @@ using System;
 using System.Collections.Generic;
 using System.Runtime.InteropServices;
 
+/// <summary>
+/// Class to manage key-value pairs. 
+/// These are most often used for options and metadata.
+/// </summary>
+/// <see cref="OrtHardwareDevice.Metadata"/>
+/// <see cref="OrtEpDevice.EpMetadata"/>
+/// <see cref="OrtEpDevice.EpOptions"/>
 public class OrtKeyValuePairs : SafeHandle
 {
     private readonly bool _createdHandle;
@@ -16,6 +23,12 @@ public class OrtKeyValuePairs : SafeHandle
     // we could force a call to the C API every time in case something was changed in the background.
     private Dictionary<string, string> _keyValuePairs;
 
+    /// <summary>
+    /// Create a new OrtKeyValuePairs instance. 
+    /// </summary>
+    /// <remarks>
+    /// A backing native instance is created and kept in sync with the C# content.
+    /// </remarks>
     public OrtKeyValuePairs()
         : base(IntPtr.Zero, ownsHandle: true)
     {
@@ -24,7 +37,14 @@ public class OrtKeyValuePairs : SafeHandle
         _keyValuePairs = new Dictionary<string, string>();
     }
 
-    public OrtKeyValuePairs(IntPtr constHandle)
+    /// <summary>
+    /// Create a new OrtKeyValuePairs instance from an existing native OrtKeyValuePairs handle.
+    /// </summary>
+    /// <param name="constHandle">Native OrtKeyValuePairs handle.</param>
+    /// <remarks>
+    /// The instance is read-only, so calling Add or Remove will throw an InvalidOperationError.
+    /// </remarks>
+    internal OrtKeyValuePairs(IntPtr constHandle)
         : base(constHandle, ownsHandle: false)
     {
         _createdHandle = false;
@@ -32,20 +52,42 @@ public class OrtKeyValuePairs : SafeHandle
     }
 
     /// <summary>
-    /// Cached key-value pair entries.
-    /// Call Refresh() to update the values; 
+    /// Create a new OrtKeyValuePairs instance from a dictionary.
     /// </summary>
+    /// <param name="keyValuePairs">Key-value pairs to add.</param>
+    /// <remarks>
+    /// A backing native instance is created and kept in sync with the C# content.
+    /// </remarks>
+    public OrtKeyValuePairs(IReadOnlyDictionary<string, string> keyValuePairs)
+        : base(IntPtr.Zero, ownsHandle: true)
+    {
+        NativeMethods.OrtCreateKeyValuePairs(out handle);
+        _createdHandle = true;
+        _keyValuePairs = new Dictionary<string, string>(keyValuePairs != null ? keyValuePairs.Count : 0);
+
+        if (keyValuePairs != null && keyValuePairs.Count > 0)
+        {
+            foreach (var kvp in keyValuePairs)
+            {
+                Add(kvp.Key, kvp.Value);
+            }
+        }
+    }
+
+    /// <summary>
+    /// Current key-value pair entries.
+    /// </summary>
+    /// <remarks>Call Refresh() to update the cached values with the latest from the backing native instance.
+    /// In general that should not be required as it's not expected an OrtKeyValuePairs instance would be updated by
+    /// native and C# code concurrently.
+    /// </remarks>
     public IReadOnlyDictionary<string, string> Entries => _keyValuePairs;
 
     /// <summary>
-    /// Overrides SafeHandle.IsInvalid
+    /// Adds a key-value pair. Overrides any existing value for the key.
     /// </summary>
-    /// <value>returns true if handle is equal to Zero</value>
-    public override bool IsInvalid { get { return handle == IntPtr.Zero; } }
-
-    /// <summary>
-    /// Adds a key-value pair to the key-value pairs instance.
-    /// </summary>
+    /// <param name="key"> Key to add. Must not be null or empty.</param>
+    /// <param name="value"> Value to add. May be empty. Must not be null.</param>
     public void Add(string key, string value)
     {
         if (!_createdHandle)
@@ -59,6 +101,9 @@ public class OrtKeyValuePairs : SafeHandle
         _keyValuePairs[key] = value; // update the cached value
     }
 
+    /// <summary>
+    /// Update the cached values with the latest from the backing native instance as that is the source of truth.
+    /// </summary>
     public void Refresh()
     {
         // refresh the cached values.
@@ -66,8 +111,9 @@ public class OrtKeyValuePairs : SafeHandle
     }
 
     /// <summary>
-    /// Removes a key-value pair by key.
+    /// Removes a key-value pair by key. Ignores keys that do not exist.
     /// </summary>
+    /// <param name="key">Key to remove.</param>
     public void Remove(string key)
     {
         if (!_createdHandle)
@@ -122,11 +168,15 @@ public class OrtKeyValuePairs : SafeHandle
         return dict;
     }
 
-    #region SafeHandle
     /// <summary>
-    /// Overrides SafeHandle.ReleaseHandle() to properly dispose of
-    /// the native instance of OrtKeyValuePairs.
+    /// Indicates whether the native handle is invalid.
     /// </summary>
+    public override bool IsInvalid { get { return handle == IntPtr.Zero; } }
+
+    /// <summary>
+    /// Release the native instance of OrtKeyValuePairs if we own it.
+    /// </summary>
+    /// <returns>true</returns>
     protected override bool ReleaseHandle()
     {
         if (_createdHandle)
@@ -137,6 +187,5 @@ public class OrtKeyValuePairs : SafeHandle
 
         return true;
     }
-    #endregion
 }
 

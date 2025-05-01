@@ -409,29 +409,78 @@ namespace Microsoft.ML.OnnxRuntime
             ProviderOptionsUpdater.Update(providerOptions, handle, appender.Appender);
         }
 
+        /// <summary>
+        /// Select execution providers from the list of available execution providers and devices returned by 
+        /// GetEpDevices.
+        /// 
+        /// One or more OrtEpDevice instances may be provided in epDevices, but must all be for the same 
+        /// execution provider.
+        /// 
+        /// Make multiple calls to AppendExecutionProvider if you wish to use multiple execution providers.
+        /// 
+        /// e.g. 
+        ///   - if execution provider 'A' has an OrtEpDevice for NPU and one for GPU and you wish to use it for
+        ///     both devices, pass the two OrtEpDevice instances in the epDevices list in one call.
+        ///   - if you wish to use execution provider 'B' for GPU and execution provider 'C' for CPU, 
+        ///     make two calls to AppendExecutionProvider, with one OrtEpDevice in the epDevices list in each call.
+        ///     
+        /// The priority of the execution providers is set by the order in which they are appended.
+        /// Highest priority is first.
+        /// </summary>
+        /// <param name="env">OrtEnv that provided the OrtEpDevice instances via a call to GetEpDevices.</param>
+        /// <param name="epDevices">One or more OrtEpDevice instances to append.
+        ///                         These must all have the save EpName value.</param>
+        /// <param name="epOptions">Optional options to configure the execution provider. May be null.</param>
+        /// <exception cref="ArgumentException">epDevices was empty.</exception>
+        /// <see cref="OrtEnv.GetEpDevices" />
         public void AppendExecutionProvider(OrtEnv env, IReadOnlyList<OrtEpDevice> epDevices, 
-                                            OrtKeyValuePairs epOptions)
+                                            IReadOnlyDictionary<string, string> epOptions)
         {
+            if (epDevices == null || epDevices.Count == 0)
+            {
+                throw new ArgumentException("No execution provider devices were specified.");
+            }
+
             // Convert EpDevices to native pointers
             IntPtr[] epDevicePtrs = new IntPtr[epDevices.Count];
             for (int i = 0; i < epDevices.Count; i++)
             {
-                epDevicePtrs[i] = epDevices[i].DangerousGetHandle(); // Use SafeHandle safely
+                epDevicePtrs[i] = epDevices[i].Handle;
             }
 
-            IntPtr epOptionsKeys, epOptionsValues;
-            UIntPtr epOptionsCount;
-            epOptions.GetKeyValuePairHandles(out epOptionsKeys, out epOptionsValues, out epOptionsCount);
+            if (epOptions != null && epOptions.Count > 0)
+            {
+                // this creates an OrtKeyValuePairs instance with a backing native instance
+                using var kvps = new OrtKeyValuePairs(epOptions);
 
-            NativeApiStatus.VerifySuccess(
-                NativeMethods.OrtSessionOptionsAppendExecutionProvider_V2(
-                    handle,
-                    env.DangerousGetHandle(),
-                    epDevicePtrs,
-                    (UIntPtr)epDevices.Count,
-                    epOptionsKeys,
-                    epOptionsValues,
-                    (UIntPtr)epOptionsCount));
+                // get the native key/value handles so we can pass those straight through to the C API
+                // and not have to do any special marshaling here.
+                IntPtr epOptionsKeys, epOptionsValues;
+                UIntPtr epOptionsCount;
+                kvps.GetKeyValuePairHandles(out epOptionsKeys, out epOptionsValues, out epOptionsCount);
+
+                NativeApiStatus.VerifySuccess(
+                    NativeMethods.OrtSessionOptionsAppendExecutionProvider_V2(
+                        handle,
+                        env.Handle,
+                        epDevicePtrs,
+                        (UIntPtr)epDevices.Count,
+                        epOptionsKeys,  
+                        epOptionsValues,
+                        epOptionsCount));
+            }
+            else
+            {
+                NativeApiStatus.VerifySuccess(
+                    NativeMethods.OrtSessionOptionsAppendExecutionProvider_V2(
+                        handle,
+                        env.Handle,
+                        epDevicePtrs,
+                        (UIntPtr)epDevices.Count,
+                        IntPtr.Zero,    // EP options keys
+                        IntPtr.Zero,    // EP options values
+                        UIntPtr.Zero)); // EP options count
+            }
 
         }
 

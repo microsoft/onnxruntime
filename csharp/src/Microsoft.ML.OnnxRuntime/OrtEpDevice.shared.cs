@@ -6,15 +6,25 @@ using System.Runtime.InteropServices;
 
 namespace Microsoft.ML.OnnxRuntime;
 
+/// <summary>
+/// Represents the combination of an execution provider and a hardware device that the execution provider can utilize.
+/// </summary>
 public class OrtEpDevice : SafeHandle
 {
-    public OrtEpDevice(IntPtr epDeviceHandle)
+    /// <summary>
+    /// Construct an OrtEpDevice from an existing native OrtEpDevice instance.
+    /// </summary>
+    /// <param name="epDeviceHandle">Native OrtEpDevice handle.</param>
+    internal OrtEpDevice(IntPtr epDeviceHandle)
         : base(epDeviceHandle, ownsHandle: false)
     {
     }
 
-    public override bool IsInvalid => handle == IntPtr.Zero;
+    internal IntPtr Handle => handle;
 
+    /// <summary>
+    /// The name of the execution provider.
+    /// </summary>
     public string EpName
     {
         get
@@ -24,6 +34,9 @@ public class OrtEpDevice : SafeHandle
         }
     }
 
+    /// <summary>
+    /// The vendor who owns the execution provider.
+    /// </summary>
     public string EpVendor
     {
         get
@@ -33,6 +46,9 @@ public class OrtEpDevice : SafeHandle
         }
     }
 
+    /// <summary>
+    /// Execution provider metadata.
+    /// </summary>
     public OrtKeyValuePairs EpMetadata
     {
         get
@@ -41,6 +57,9 @@ public class OrtEpDevice : SafeHandle
         }
     }
 
+    /// <summary>
+    /// Execution provider options.
+    /// </summary>
     public OrtKeyValuePairs EpOptions
     {
         get
@@ -49,6 +68,9 @@ public class OrtEpDevice : SafeHandle
         }
     }
 
+    /// <summary>
+    /// The hardware device that the execution provider can utilize.
+    /// </summary>
     public OrtHardwareDevice HardwareDevice
     {
         get
@@ -58,7 +80,15 @@ public class OrtEpDevice : SafeHandle
         }
     }
 
-    // This wrapper doesn't own the handle, so no cleanup needed
+    /// <summary>
+    /// Indicates whether the native handle is invalid.
+    /// </summary>
+    public override bool IsInvalid => handle == IntPtr.Zero;
+
+    /// <summary>
+    /// No-op. OrtEpDevice is always read-only as the instance is owned by native ORT.
+    /// </summary>
+    /// <returns>True</returns>
     protected override bool ReleaseHandle()
     {
         return true;
