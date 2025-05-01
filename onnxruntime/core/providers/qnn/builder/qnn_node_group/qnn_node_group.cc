@@ -116,7 +116,7 @@ static Status GetQnnNodeGroupsImpl(/*out*/ std::vector<std::unique_ptr<IQnnNodeG
                                    const size_t num_node_units,
                                    const logging::Logger& logger) {
   const GraphViewer& graph_viewer = qnn_model_wrapper.GetGraphViewer();
-  const std::vector<NodeIndex> sorted_node_indices = graph_viewer.GetNodesInTopologicalOrder();
+  const std::vector<NodeIndex>& sorted_node_indices = graph_viewer.GetNodesInTopologicalOrder();
 
   sorted_qnn_node_group_indices.reserve(num_node_units);
   qnn_node_groups.reserve(num_node_units);
