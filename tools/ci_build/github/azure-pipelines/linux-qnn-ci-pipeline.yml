@@ -66,7 +66,6 @@ jobs:
             --use_binskim_compliant_compile_flags \
             --build_java \
             --build_shared_lib \
-            --build_wheel \
             --use_qnn $(QnnLibKind) \
             --qnn_home $(QnnSDKRootDir) \
             --cmake_generator=Ninja \
@@ -80,7 +79,6 @@ jobs:
             --use_binskim_compliant_compile_flags \
             --build_java \
             --build_shared_lib \
-            --build_wheel \
             --use_qnn $(QnnLibKind) \
             --qnn_home $(QnnSDKRootDir) \
             --cmake_generator=Ninja \

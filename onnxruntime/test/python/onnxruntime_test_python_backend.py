@@ -61,7 +61,7 @@ class TestBackend(unittest.TestCase):
             # QNN EP runs fp32 with fp16 precision, so relax tolerance.
             assert_allclose(session_run_results[0], -(inp0 - inp1), rtol=1e-6, atol=1e-6)
         else:
-            assert_allclose(session_run_results[0], -(inp0 + inp1))
+            assert_allclose(session_run_results[0], -(inp0 - inp1))
 
 
 if __name__ == "__main__":
