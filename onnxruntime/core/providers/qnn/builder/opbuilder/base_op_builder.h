@@ -155,6 +155,7 @@ class BaseOpBuilder : public IOpBuilder {
         {"ReduceSum", QNN_OP_REDUCE_SUM},
         {"Round", QNN_OP_ELEMENT_WISE_ROUND},
         {"Where", QNN_OP_ELEMENT_WISE_SELECT},
+        {"ScatterND", QNN_OP_SCATTER_ND},
         {"Sigmoid", QNN_OP_SIGMOID},
         {"Sin", QNN_OP_ELEMENT_WISE_SIN},
         {"Slice", QNN_OP_STRIDED_SLICE},
