@@ -46,9 +46,11 @@ try:
         get_device,  # noqa: F401
         get_version_string,  # noqa: F401
         has_collective_ops,  # noqa: F401
+        register_execution_provider_library,  # noqa: F401
         set_default_logger_severity,  # noqa: F401
         set_default_logger_verbosity,  # noqa: F401
         set_seed,  # noqa: F401
+        unregister_execution_provider_library,  # noqa: F401
     )
 
     import_capi_exception = None

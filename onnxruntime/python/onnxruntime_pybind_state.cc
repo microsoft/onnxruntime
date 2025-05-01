@@ -1527,6 +1527,31 @@ void addGlobalMethods(py::module& m) {
           throw std::runtime_error("Error when creating and registering allocator in create_and_register_allocator_v2: " + st.ErrorMessage());
         }
       });
+  m.def(
+      "register_execution_provider_library",
+      [](const std::string& registration_name, const PathString& library_path) -> void {
+#if !defined(ORT_MINIMAL_BUILD)
+        std::shared_ptr<onnxruntime::Environment> env = GetEnv();
+        OrtPybindThrowIfError(env->RegisterExecutionProviderLibrary(registration_name, library_path.c_str()));
+#else
+        ORT_UNUSED_PARAMETER(registration_name);
+        ORT_UNUSED_PARAMETER(library_path);
+        ORT_THROW("Execution provider libraries are not supported in this build.");
+#endif
+      },
+      R"pbdoc(Register an execution provider library with ORT.)pbdoc");
+  m.def(
+      "unregister_execution_provider_library",
+      [](const std::string& registration_name) -> void {
+#if !defined(ORT_MINIMAL_BUILD)
+        std::shared_ptr<onnxruntime::Environment> env = GetEnv();
+        OrtPybindThrowIfError(env->UnregisterExecutionProviderLibrary(registration_name));
+#else
+        ORT_UNUSED_PARAMETER(registration_name);
+        ORT_THROW("Execution provider libraries are not supported in this build.");
+#endif
+      },
+      R"pbdoc(Unregister an execution provider library from ORT.)pbdoc");
 
 #if defined(USE_OPENVINO) || defined(USE_OPENVINO_PROVIDER_INTERFACE)
   m.def(
@@ -2407,7 +2432,7 @@ including arg name, arg type (contains both type and shape).)pbdoc")
       }))
       .def(
           "set_input_model_path",
-          [](PyModelCompilationOptions* model_compile_options, std::basic_string<ORTCHAR_T> input_model_path) {
+          [](PyModelCompilationOptions* model_compile_options, const PathString& input_model_path) {
 #if !defined(ORT_MINIMAL_BUILD)
             model_compile_options->SetInputModelPath(PathToUTF8String(input_model_path));
 #else
@@ -2419,7 +2444,7 @@ including arg name, arg type (contains both type and shape).)pbdoc")
           R"pbdoc(Set the input model's path)pbdoc")
       .def(
           "get_input_model_path",
-          [](PyModelCompilationOptions* model_compile_options) -> std::basic_string<ORTCHAR_T> {
+          [](PyModelCompilationOptions* model_compile_options) -> PathString {
 #if !defined(ORT_MINIMAL_BUILD)
             return ToPathString(model_compile_options->GetInputModelPath());
 #else
@@ -2443,7 +2468,7 @@ including arg name, arg type (contains both type and shape).)pbdoc")
           R"pbdoc(Set the buffer that stores the bytes of the input ONNX model to compile)pbdoc")
       .def(
           "set_output_model_path",
-          [](PyModelCompilationOptions* model_compile_options, std::basic_string<ORTCHAR_T> output_model_path) {
+          [](PyModelCompilationOptions* model_compile_options, const PathString& output_model_path) {
 #if !defined(ORT_MINIMAL_BUILD)
             OrtPybindThrowIfError(model_compile_options->SetOutputModelPath(PathToUTF8String(output_model_path)));
 #else
@@ -2455,7 +2480,7 @@ including arg name, arg type (contains both type and shape).)pbdoc")
           R"pbdoc(Set the output model's path)pbdoc")
       .def(
           "set_output_model_external_initializers_file",
-          [](PyModelCompilationOptions* model_compile_options, std::basic_string<ORTCHAR_T> external_initializers_path,
+          [](PyModelCompilationOptions* model_compile_options, const PathString& external_initializers_path,
              size_t external_initializers_size_threshold) {
 #if !defined(ORT_MINIMAL_BUILD)
             model_compile_options->SetOutputModelExternalInitializersFile(PathToUTF8String(external_initializers_path),
