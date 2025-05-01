@@ -309,11 +309,14 @@ export declare namespace JSEP {
      */
     webnnCreateTemporaryTensor: (sessionId: number, dataType: DataType, shape: readonly number[]) => Promise<number>;
     /**
-     * [exported from pre-jsep.js] Check if a session's associated WebNN Context supports int64.
+     * [exported from pre-jsep.js] Check if a session's associated WebNN Context supports given data type as its graph
+     * input/output.
      * @param sessionId - specify the session ID.
-     * @returns whether the WebNN Context supports int64.
+     * @param type - specify the graph input/output data type.
+     * @param isInput - specify whether the data type is for graph input.
+     * @returns whether the graph input/output of WebNN Context supports the given data type.
      */
-    webnnIsInt64Supported: (sessionId: number) => boolean;
+    webnnIsGraphInputOutputTypeSupported: (sessionId: number, type: Tensor.Type, isInput: boolean) => boolean;
   }
 }
 

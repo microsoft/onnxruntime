@@ -23,6 +23,7 @@ ModelCompilationOptions::ModelCompilationOptions(const OrtEnv& env, const OrtSes
 
   // Shouldn't fail because the key/value strings are below the maximum string length limits in ConfigOptions.
   ORT_ENFORCE(session_options_.value.config_options.AddConfigEntry(kOrtSessionOptionEpContextEnable, "1").IsOK());
+  ORT_ENFORCE(session_options_.value.config_options.AddConfigEntry(kOrtSessionOptionsDisableModelCompile, "0").IsOK());
 }
 
 void ModelCompilationOptions::SetInputModelPath(const std::string& input_model_path) {
@@ -195,6 +196,7 @@ Status ModelCompilationOptions::CheckOutputModelSettings() const {
 
 Status ModelCompilationOptions::Check() const {
   ORT_ENFORCE(session_options_.value.ep_context_gen_options.enable);
+  ORT_ENFORCE(session_options_.value.config_options.GetConfigOrDefault(kOrtSessionOptionsDisableModelCompile, "0") == "0");
   ORT_RETURN_IF_ERROR(CheckInputModelSettings());
   ORT_RETURN_IF_ERROR(CheckOutputModelSettings());
   return Status::OK();

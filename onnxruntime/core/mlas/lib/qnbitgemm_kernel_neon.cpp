@@ -155,7 +155,7 @@ SQ4BitGemmPackQuantBDataAndBlkSum(
     const float* QuantBScaleBegin,
     bool HasZeroPoint,
     const std::byte*,
-    PackedQuantBDataStruct<float>& PackedQuantB,
+    PackedQuantBDataStruct<float, 4>& PackedQuantB,
     MLAS_THREADPOOL* ThreadPool
 )
 {
@@ -204,7 +204,7 @@ SQ4BitGemmPackQuantBDataAndBlkSum(
 //
 
 size_t
-Q4BitGemmPerGemmWorkspaceSize(
+QNBitGemmPerGemmWorkspaceSize(
     size_t M,
     size_t N,
     size_t K,
@@ -245,7 +245,7 @@ Q4BitGemmPerGemmWorkspaceSize(
 }
 
 size_t
-Q4BitGemmPerGemmWorkspaceAlignment(
+QNBitGemmPerGemmWorkspaceAlignment(
     size_t BlkLen,
     MLAS_QNBIT_GEMM_COMPUTE_TYPE ComputeType
 )
@@ -299,8 +299,8 @@ GetMlasQNBitGemmDispatchNeon(
         d.SQ4BitGemmPackQuantBData = sqnbitgemm_neon::SQ4BitGemmPackQuantBData;
         d.SQ4BitGemmPackQuantBDataAndBlkSum = sqnbitgemm_neon::SQ4BitGemmPackQuantBDataAndBlkSum;
 
-        d.Q4BitGemmPerGemmWorkspaceSize = sqnbitgemm_neon::Q4BitGemmPerGemmWorkspaceSize;
-        d.Q4BitGemmPerGemmWorkspaceAlignment = sqnbitgemm_neon::Q4BitGemmPerGemmWorkspaceAlignment;
+        d.QNBitGemmPerGemmWorkspaceSize = sqnbitgemm_neon::QNBitGemmPerGemmWorkspaceSize;
+        d.QNBitGemmPerGemmWorkspaceAlignment = sqnbitgemm_neon::QNBitGemmPerGemmWorkspaceAlignment;
 
         d.SQ4BitGemmM1Kernel_CompFp32 = sqnbitgemm_neon::SQ4BitGemmM1Kernel_CompFp32;
         d.SQ4BitBlkDequantBForSgemm_CompFp32 = sqnbitgemm_neon::SQ4BitBlkDequantBForSgemm_CompFp32;

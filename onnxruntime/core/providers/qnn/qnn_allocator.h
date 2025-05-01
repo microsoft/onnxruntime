@@ -34,24 +34,27 @@ class HtpSharedMemoryAllocator : public IAllocator {
   };
 
   // Gets an allocation's shared memory info.
-  // `allocation_address` identifies the allocation. It must be an address returned by Alloc() which has not yet been
-  // freed.
-  static Status GetAllocationSharedMemoryInfo(void* allocation_address,
+  // `address_within_allocation` identifies the allocation. It must be an address within an allocation returned by
+  // Alloc() which has not yet been freed.
+  static Status GetAllocationSharedMemoryInfo(void* address_within_allocation,
                                               SharedMemoryInfo& allocation_info);
 
-  using AllocationCleanUpFn = std::function<void(void* allocation_address)>;
+  // Allocation clean up callback signature.
+  // For a given allocation, any added clean up callbacks will be called with the allocation's base address when the
+  // allocation is freed.
+  using AllocationCleanUpFn = std::function<void(void* allocation_base_address)>;
 
   // Adds allocation clean up callback to call when the allocation is freed.
-  // `allocation_address` identifies the allocation. It must be an address returned by Alloc() which has not yet been
-  // freed.
+  // `address_within_allocation` identifies the allocation. It must be an address within an allocation returned by
+  // Alloc() which has not yet been freed.
   // `allocation_clean_up` is the clean up callback. The associated allocator takes ownership of the callback.
-  static Status AddAllocationCleanUp(void* allocation_address, AllocationCleanUpFn&& allocation_clean_up);
+  static Status AddAllocationCleanUp(void* address_within_allocation, AllocationCleanUpFn&& allocation_clean_up);
 
  private:
-  Status GetAllocationSharedMemoryInfoForThisAllocator(void* allocation_address,
+  Status GetAllocationSharedMemoryInfoForThisAllocator(void* allocation_base_address,
                                                        SharedMemoryInfo& allocation_info);
 
-  Status AddAllocationCleanUpForThisAllocator(void* allocation_address, AllocationCleanUpFn&& allocation_clean_up);
+  Status AddAllocationCleanUpForThisAllocator(void* allocation_base_address, AllocationCleanUpFn&& allocation_clean_up);
 
   struct AllocationRecord {
     SharedMemoryInfo shared_memory_info;

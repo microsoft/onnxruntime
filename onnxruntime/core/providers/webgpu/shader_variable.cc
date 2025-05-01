@@ -59,9 +59,9 @@ constexpr static const std::string_view VALUE_TYPE_ARRAY[] = {
     "u32",         // Uint8x4 (u32 as 4 elements of uint8)
     "vec2<u32>",   // Uint8x8 (vec2<u32> as 2x4 elements of uint8)
     "vec4<u32>",   // Uint8x16 (vec4<u32> as 4x4 elements of uint8)
-    "i32",         // Int8x4 (u32 as 4 elements of int8)
-    "vec2<i32>",   // Int8x8 (vec2<i32> as 2x4 elements of int8)
-    "vec4<i32>",   // Int8x16 (vec4<i32> as 4x4 elements of int8)
+    "u32",         // Int8x4 (u32 as 4 elements of int8)
+    "vec2<u32>",   // Int8x8 (vec2<i32> as 2x4 elements of int8)
+    "vec4<u32>",   // Int8x16 (vec4<i32> as 4x4 elements of int8)
     "u32",         // Uint4x8
     "u32",         // Int4x8
 };

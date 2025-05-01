@@ -17,18 +17,22 @@ using namespace onnxruntime::webgpu;
 
 class SubgroupMatrixMatMulNBitsProgram final : public Program<SubgroupMatrixMatMulNBitsProgram> {
  public:
-  SubgroupMatrixMatMulNBitsProgram() : Program{"SubgroupMatrixMatMulNBits"} {}
+  SubgroupMatrixMatMulNBitsProgram(uint32_t nbits) : Program{"SubgroupMatrixMatMulNBits"}, nbits_(nbits) {}
   Status GenerateShaderCode(ShaderHelper& sh) const override;
   WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES(
       {"M", ProgramUniformVariableDataType::Uint32},
       {"N", ProgramUniformVariableDataType::Uint32},
       {"K", ProgramUniformVariableDataType::Uint32});
+
+ private:
+  uint32_t nbits_;
 };
 
 Status ApplySubgroupMatrixMatMulNBits(const Tensor* a, const Tensor* b, const Tensor* scales,
                                       uint32_t M,
                                       uint32_t N,
                                       uint32_t K,
+                                      uint32_t nbits,
                                       onnxruntime::webgpu::ComputeContext& context,
                                       Tensor* y);
 

@@ -431,6 +431,7 @@ QNNExecutionProvider::QNNExecutionProvider(const ProviderOptions& provider_optio
     // Initialize rpcmem_library_.
     // This is necessary for HtpSharedMemoryAllocator to function and also indicates that the allocator is available.
     rpcmem_library_ = std::make_shared<qnn::RpcMemLibrary>();
+    model_settings_.htp_shared_memory = true;
   }
 
   dump_json_qnn_graph_ = ParseBoolOption("dump_json_qnn_graph", false, provider_options_map);
@@ -981,14 +982,14 @@ Status QNNExecutionProvider::CompileFromOrtGraph(const std::vector<FusedNodeAndG
 }
 
 // Figure out the context cache Onnx file path to decide the folder location
-static void GetContextOnnxModelFilePath(const std::string& customer_context_cache_path,
+static void GetContextOnnxModelFilePath(const std::string& user_context_cache_path,
                                         const onnxruntime::PathString& model_path_string,
-                                        onnxruntime::PathString& context_cache_binary_path) {
+                                        onnxruntime::PathString& context_model_path) {
   // always try the path set by user first, it's the only way to set it if load model from memory
-  if (!customer_context_cache_path.empty()) {
-    context_cache_binary_path = ToPathString(customer_context_cache_path);
+  if (!user_context_cache_path.empty()) {
+    context_model_path = ToPathString(user_context_cache_path);
   } else if (!model_path_string.empty()) {  // model loaded from file
-    context_cache_binary_path = model_path_string;
+    context_model_path = model_path_string;
   }
 }
 
@@ -1318,6 +1319,16 @@ std::vector<AllocatorPtr> QNNExecutionProvider::CreatePreferredAllocators() {
   }
 
   return allocators;
+}
+
+OrtDevice QNNExecutionProvider::GetOrtDeviceByMemType(OrtMemType /* em_type */) const {
+  // We are disabling the HTP shared memory allocator for intermediate values
+  // until we learn how to deal with memhandle costs.
+  // if (IsHtpSharedMemoryAllocatorAvailable()) {
+  //  return qnn::HtpSharedMemoryAllocator::AssociatedMemoryInfo().device;
+  //}
+  // Default CPU allocator
+  return default_device_;
 }
 
 }  // namespace onnxruntime

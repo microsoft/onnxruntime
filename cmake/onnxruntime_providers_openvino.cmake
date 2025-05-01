@@ -46,7 +46,7 @@
   set_target_properties(onnxruntime_providers_openvino PROPERTIES FOLDER "ONNXRuntime")
 
   target_compile_options(onnxruntime_providers_openvino PRIVATE
-    $<$<NOT:$<CONFIG:Release>>:-DNOT_RELEASE>
+  $<$<CONFIG:Release>:-DRELEASE>
   )
 
   if(NOT MSVC)
