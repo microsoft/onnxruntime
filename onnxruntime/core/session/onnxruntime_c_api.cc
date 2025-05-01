@@ -2475,13 +2475,6 @@ ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider_V2, _In_ OrtS
     }
   }
 
-  //if (ep_devices != nullptr) {
-  //  if (num_ep_options == 0)
-  //    ORT_THROW("num_ep_options=" + std::to_string(num_ep_options));
-  //  else
-  //    ORT_THROW(std::string(ep_option_keys[0]) + ":" + ep_option_vals[0]);
-  //}
-
   EpFactoryInternal* internal_factory = nullptr;
   for (size_t i = 0; i < num_ep_devices; ++i) {
     const OrtEpDevice* entry = ep_devices[i];
