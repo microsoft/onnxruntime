@@ -4,94 +4,95 @@
 using System;
 using System.Runtime.InteropServices;
 
-namespace Microsoft.ML.OnnxRuntime;
-
-/// <summary>
-/// Represents the combination of an execution provider and a hardware device that the execution provider can utilize.
-/// </summary>
-public class OrtEpDevice : SafeHandle
+namespace Microsoft.ML.OnnxRuntime
 {
     /// <summary>
-    /// Construct an OrtEpDevice from an existing native OrtEpDevice instance.
+    /// Represents the combination of an execution provider and a hardware device 
+    /// that the execution provider can utilize.
     /// </summary>
-    /// <param name="epDeviceHandle">Native OrtEpDevice handle.</param>
-    internal OrtEpDevice(IntPtr epDeviceHandle)
-        : base(epDeviceHandle, ownsHandle: false)
+    public class OrtEpDevice : SafeHandle
     {
-    }
-
-    internal IntPtr Handle => handle;
-
-    /// <summary>
-    /// The name of the execution provider.
-    /// </summary>
-    public string EpName
-    {
-        get
+        /// <summary>
+        /// Construct an OrtEpDevice from an existing native OrtEpDevice instance.
+        /// </summary>
+        /// <param name="epDeviceHandle">Native OrtEpDevice handle.</param>
+        internal OrtEpDevice(IntPtr epDeviceHandle)
+            : base(epDeviceHandle, ownsHandle: false)
         {
-            IntPtr namePtr = NativeMethods.OrtEpDevice_EpName(handle);
-            return NativeOnnxValueHelper.StringFromNativeUtf8(namePtr);
         }
-    }
 
-    /// <summary>
-    /// The vendor who owns the execution provider.
-    /// </summary>
-    public string EpVendor
-    {
-        get
+        internal IntPtr Handle => handle;
+
+        /// <summary>
+        /// The name of the execution provider.
+        /// </summary>
+        public string EpName
         {
-            IntPtr vendorPtr = NativeMethods.OrtEpDevice_EpVendor(handle);
-            return NativeOnnxValueHelper.StringFromNativeUtf8(vendorPtr);
+            get
+            {
+                IntPtr namePtr = NativeMethods.OrtEpDevice_EpName(handle);
+                return NativeOnnxValueHelper.StringFromNativeUtf8(namePtr);
+            }
         }
-    }
 
-    /// <summary>
-    /// Execution provider metadata.
-    /// </summary>
-    public OrtKeyValuePairs EpMetadata
-    {
-        get
+        /// <summary>
+        /// The vendor who owns the execution provider.
+        /// </summary>
+        public string EpVendor
         {
-            return new OrtKeyValuePairs(NativeMethods.OrtEpDevice_EpMetadata(handle));
+            get
+            {
+                IntPtr vendorPtr = NativeMethods.OrtEpDevice_EpVendor(handle);
+                return NativeOnnxValueHelper.StringFromNativeUtf8(vendorPtr);
+            }
         }
-    }
 
-    /// <summary>
-    /// Execution provider options.
-    /// </summary>
-    public OrtKeyValuePairs EpOptions
-    {
-        get
+        /// <summary>
+        /// Execution provider metadata.
+        /// </summary>
+        public OrtKeyValuePairs EpMetadata
         {
-            return new OrtKeyValuePairs(NativeMethods.OrtEpDevice_EpOptions(handle)); 
+            get
+            {
+                return new OrtKeyValuePairs(NativeMethods.OrtEpDevice_EpMetadata(handle));
+            }
         }
-    }
 
-    /// <summary>
-    /// The hardware device that the execution provider can utilize.
-    /// </summary>
-    public OrtHardwareDevice HardwareDevice
-    {
-        get
+        /// <summary>
+        /// Execution provider options.
+        /// </summary>
+        public OrtKeyValuePairs EpOptions
         {
-            IntPtr devicePtr = NativeMethods.OrtEpDevice_Device(handle);
-            return new OrtHardwareDevice(devicePtr);
+            get
+            {
+                return new OrtKeyValuePairs(NativeMethods.OrtEpDevice_EpOptions(handle));
+            }
         }
-    }
 
-    /// <summary>
-    /// Indicates whether the native handle is invalid.
-    /// </summary>
-    public override bool IsInvalid => handle == IntPtr.Zero;
+        /// <summary>
+        /// The hardware device that the execution provider can utilize.
+        /// </summary>
+        public OrtHardwareDevice HardwareDevice
+        {
+            get
+            {
+                IntPtr devicePtr = NativeMethods.OrtEpDevice_Device(handle);
+                return new OrtHardwareDevice(devicePtr);
+            }
+        }
 
-    /// <summary>
-    /// No-op. OrtEpDevice is always read-only as the instance is owned by native ORT.
-    /// </summary>
-    /// <returns>True</returns>
-    protected override bool ReleaseHandle()
-    {
-        return true;
+        /// <summary>
+        /// Indicates whether the native handle is invalid.
+        /// </summary>
+        public override bool IsInvalid => handle == IntPtr.Zero;
+
+        /// <summary>
+        /// No-op. OrtEpDevice is always read-only as the instance is owned by native ORT.
+        /// </summary>
+        /// <returns>True</returns>
+        protected override bool ReleaseHandle()
+        {
+            return true;
+        }
     }
 }
-
