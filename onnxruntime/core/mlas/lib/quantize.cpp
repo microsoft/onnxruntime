@@ -1704,8 +1704,8 @@ MlasRequantizeOutput(
     float min_f = float(std::numeric_limits<OutputType>::lowest() - ZeroPoint);
     float max_f = float(std::numeric_limits<OutputType>::max() - ZeroPoint);
     const __m128 PerMatrixScaleVector = PerColumnScale ? MlasReinterpretAsFloat32x4(__lsx_vldi(0)) : MlasReinterpretAsFloat32x4(__lsx_vldrepl_w(Scale, 0));
-    const __m128 MinimumValueVector = MlasReinterpretAsFloat32x4(__lsx_vreplgr2vr_w( *((uint32_t*)&min_f)));
-    const __m128 MaximumValueVector = MlasReinterpretAsFloat32x4(__lsx_vreplgr2vr_w( *((uint32_t*)&max_f)));
+    const __m128 MinimumValueVector = MlasReinterpretAsFloat32x4((__m128i)(v4f32){min_f,min_f,min_f,min_f});
+    const __m128 MaximumValueVector = MlasReinterpretAsFloat32x4((__m128i)(v4f32){max_f,max_f,max_f,max_f});
     const __m128i ZeroPointVector = __lsx_vreplgr2vr_w(ZeroPoint);
 
     if (nullptr != Bias) {

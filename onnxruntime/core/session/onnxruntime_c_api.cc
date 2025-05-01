@@ -45,7 +45,7 @@
 #include "core/session/ort_env.h"
 #include "core/session/utils.h"
 
-#ifdef USE_CUDA
+#if defined(USE_CUDA) || defined(USE_CUDA_PROVIDER_INTERFACE)
 #include "core/providers/cuda/cuda_provider_factory.h"
 #include "core/providers/cuda/cuda_execution_provider_info.h"
 namespace onnxruntime {
@@ -331,7 +331,7 @@ std::unique_ptr<IDataTransfer> GetDataTransfer(const OrtDevice& src_device, cons
   if (src_device.Type() == OrtDevice::CPU && dst_device.Type() == OrtDevice::CPU) {
     return std::make_unique<CPUDataTransfer>();
   }
-#ifdef USE_CUDA
+#if defined(USE_CUDA) || defined(USE_CUDA_PROVIDER_INTERFACE)
   if (src_device.Type() == OrtDevice::GPU || dst_device.Type() == OrtDevice::GPU) {
     if (auto* provider_info = TryGetProviderInfo_CUDA()) {
       return provider_info->CreateGPUDataTransfer();

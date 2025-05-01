@@ -49,7 +49,7 @@ struct OrtStatus {
 #define BACKEND_MIGRAPHX ""
 #endif
 
-#ifdef USE_OPENVINO
+#if defined(USE_OPENVINO) || defined(USE_OPENVINO_PROVIDER_INTERFACE)
 #if OPENVINO_CONFIG_CPU
 #define BACKEND_OPENVINO "-OPENVINO_CPU"
 
@@ -70,11 +70,14 @@ struct OrtStatus {
 
 #elif OPENVINO_DISABLE_NPU_FALLBACK
 #define BACKEND_OPENVINO "-OPENVINO_DISABLE_NPU_FALLBACK"
-#endif
 
 #else
 #define BACKEND_OPENVINO ""
-#endif
+#endif  // OPENVINO_CONFIG_*
+
+#else
+#define BACKEND_OPENVINO ""
+#endif  // defined(USE_OPENVINO) || defined(USE_OPENVINO_PROVIDER_INTERFACE)
 
 #if USE_OPENBLAS
 #define BACKEND_OPENBLAS "-OPENBLAS"
@@ -112,7 +115,7 @@ struct OrtStatus {
 #define BACKEND_WEBGPU ""
 #endif
 
-#ifdef USE_CUDA
+#if defined(USE_CUDA) || defined(USE_CUDA_PROVIDER_INTERFACE)
 #include "core/providers/cuda/cuda_provider_factory.h"
 #include "core/providers/cuda/cuda_execution_provider_info.h"
 #endif
@@ -120,20 +123,20 @@ struct OrtStatus {
 #include "core/providers/rocm/rocm_provider_factory.h"
 #include "core/providers/rocm/rocm_execution_provider_info.h"
 #endif
-#ifdef USE_TENSORRT
+#if defined(USE_TENSORRT) || defined(USE_TENSORRT_PROVIDER_INTERFACE)
 #include "core/providers/tensorrt/tensorrt_provider_factory.h"
 #endif
-#ifdef USE_NV
+#if defined(USE_NV) || defined(USE_NV_PROVIDER_INTERFACE)
 #include "core/providers/nv_tensorrt_rtx/nv_provider_factory.h"
 #endif
 #ifdef USE_MIGRAPHX
 #include "core/providers/migraphx/migraphx_provider_factory.h"
 #endif
-#ifdef USE_OPENVINO
+#if defined(USE_OPENVINO) || defined(USE_OPENVINO_PROVIDER_INTERFACE)
 #include "core/providers/openvino/openvino_provider_factory.h"
 // TODO remove deprecated global config
 namespace onnxruntime {
-ProviderInfo_OpenVINO* GetProviderInfo_OpenVINO();
+ProviderInfo_OpenVINO* TryGetProviderInfo_OpenVINO();
 namespace python {
 extern std::string openvino_device_type;
 }
@@ -153,7 +156,7 @@ extern std::string openvino_device_type;
 #include "core/providers/cann/cann_execution_provider_info.h"
 #endif
 
-#ifdef USE_CUDA
+#if defined(USE_CUDA) || defined(USE_CUDA_PROVIDER_INTERFACE)
 namespace onnxruntime {
 ProviderInfo_CUDA* TryGetProviderInfo_CUDA();
 ProviderInfo_CUDA& GetProviderInfo_CUDA();
@@ -170,14 +173,14 @@ extern onnxruntime::ArenaExtendStrategy arena_extend_strategy;
 }  // namespace onnxruntime
 #endif
 
-#ifdef USE_TENSORRT
+#if defined(USE_TENSORRT) || defined(USE_TENSORRT_PROVIDER_INTERFACE)
 namespace onnxruntime {
 ProviderInfo_TensorRT* TryGetProviderInfo_TensorRT();
 ProviderInfo_TensorRT& GetProviderInfo_TensorRT();
 }  // namespace onnxruntime
 #endif
 
-#ifdef USE_NV
+#if defined(USE_NV) || defined(USE_NV_PROVIDER_INTERFACE)
 namespace onnxruntime {
 ProviderInfo_Nv* TryGetProviderInfo_Nv();
 ProviderInfo_Nv& GetProviderInfo_Nv();
