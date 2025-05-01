@@ -28,9 +28,9 @@ import subprocess
 from pathlib import Path
 
 # Config
-RELEASE_BRANCH = "rel-1.22.0" # The branch to cherry-pick into
-LABEL = "release:1.22.0" # The label to search for in PRs
-ALREADY_PICKED_FILE = "already_picked.txt" # File containing PR numbers already cherry-picked
+RELEASE_BRANCH = "rel-1.22.0"  # The branch to cherry-pick into
+LABEL = "release:1.22.0"  # The label to search for in PRs
+ALREADY_PICKED_FILE = "already_picked.txt"  # File containing PR numbers already cherry-picked
 
 # Output files
 LIST_FILE = "cherry_pick_list.txt"
@@ -41,13 +41,18 @@ DESC_FILE = "cherry_pick_pr_description.md"
 print(f"Fetching PRs with label: {LABEL}")
 result = subprocess.run(
     [
-        "gh", "pr", "list",
-        "--search", f"label:{LABEL} is:merged base:main",
-        "--json", "number,title,mergeCommit,mergedAt,url",
-        "--limit", "1000"
+        "gh",
+        "pr",
+        "list",
+        "--search",
+        f"label:{LABEL} is:merged base:main",
+        "--json",
+        "number,title,mergeCommit,mergedAt,url",
+        "--limit",
+        "1000",
     ],
     stdout=subprocess.PIPE,
-    check=True
+    check=True,
 )
 all_prs = json.loads(result.stdout)
 
@@ -60,10 +65,7 @@ else:
     print(f"⚠️  {ALREADY_PICKED_FILE} not found. Assuming no PRs have been picked.")
 
 # Step 3: Filter and sort
-to_pick = [
-    pr for pr in all_prs
-    if pr["number"] not in already_picked and pr["mergeCommit"]
-]
+to_pick = [pr for pr in all_prs if pr["number"] not in already_picked and pr["mergeCommit"]]
 to_pick.sort(key=lambda pr: pr["mergedAt"])
 
 # Step 4: Write cherry_pick_list.txt (SHA + info)
@@ -80,13 +82,12 @@ with open(SHAS_FILE, "w") as f:
 # Step 6: Write PR description markdown
 with open(DESC_FILE, "w") as f:
     f.write("### Description\n\n")
-    f.write(f"Cherry pick the following into\n")
+    f.write("Cherry pick the following into\n")
     f.write(f"[{RELEASE_BRANCH}](https://github.com/microsoft/onnxruntime/tree/{RELEASE_BRANCH})\n\n")
     for pr in to_pick:
         f.write(f"- (#{pr['number']})\n")
 
 
-# Final summary
 # Final summary
 total_tagged = len(all_prs)
 missing_sha = len([pr for pr in all_prs if not pr["mergeCommit"]])
@@ -100,7 +101,7 @@ print(f"✅ Already cherry-picked PRs (from file): {already_picked_count}")
 print(f"🔍 Missing merge commit SHA: {missing_sha}")
 print(f"📦 PRs to cherry-pick: {to_pick_count}")
 
-print(f"\n✅ Output files generated:")
-print(f"  • {LIST_FILE} – full commit info")
-print(f"  • {SHAS_FILE} – clean SHAs for xargs or manual cherry-pick")
-print(f"  • {DESC_FILE} – ready-to-paste PR description markdown")
+print("\n✅ Output files generated:")
+print(f"{LIST_FILE} - full commit info")
+print(f"{SHAS_FILE} - clean SHAs for xargs or manual cherry-pick")
+print(f"{DESC_FILE} - ready-to-paste PR description markdown")
