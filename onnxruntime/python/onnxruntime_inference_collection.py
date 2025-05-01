@@ -172,10 +172,10 @@ class Session:
     This is the main class used to run a model.
     """
 
-    def __init__(self):
+    def __init__(self, enable_fallback: bool = True):
         # self._sess is managed by the derived class and relies on bindings from C.InferenceSession
         self._sess = None
-        self._enable_fallback = True
+        self._enable_fallback = enable_fallback
 
     def get_session_options(self) -> onnxruntime.SessionOptions:
         "Return the session options. See :class:`onnxruntime.SessionOptions`."
@@ -467,7 +467,7 @@ class InferenceSession(Session):
         means execute a node using `CUDAExecutionProvider`
         if capable, otherwise execute using `CPUExecutionProvider`.
         """
-        super().__init__()
+        super().__init__(enable_fallback=int(kwargs.get("enable_fallback", 1)) == 1)
 
         if isinstance(path_or_bytes, (str, os.PathLike)):
             self._model_path = os.fspath(path_or_bytes)
@@ -480,9 +480,6 @@ class InferenceSession(Session):
 
         self._sess_options = sess_options
         self._sess_options_initial = sess_options
-        self._enable_fallback = True
-        if "enable_fallback" in kwargs:
-            self._enable_fallback = int(kwargs["enable_fallback"]) == 1
         if "read_config_from_model" in kwargs:
             self._read_config_from_model = int(kwargs["read_config_from_model"]) == 1
         else:
@@ -620,6 +617,23 @@ class ModelCompilationOptions:
         self._model_compile_options = C.ModelCompilationOptions(sess_options)
         self._input_model_path: str | os.PathLike | None = None
         self._input_model_bytes: bytes | None = None
+        self._providers: Sequence[str | tuple[str, dict[Any, Any]]] | None = None
+        self._provider_options: Sequence[dict[Any, Any]] | None = None
+
+    def set_providers(
+        self,
+        providers: Sequence[str | tuple[str, dict[Any, Any]]] | None = None,
+        provider_options: Sequence[dict[Any, Any]] | None = None,
+    ):
+        available_providers = C.get_available_providers()
+        self._providers, self._provider_options = check_and_normalize_provider_args(
+            providers,
+            provider_options,
+            available_providers
+        )
+
+    def get_providers(self) -> tuple[Sequence[str | tuple[str, dict[Any, Any]]] | None, Sequence[dict[Any, Any]] | None]:
+        return (self._providers, self._provider_options)
 
     def set_input_model(
         self,
@@ -669,18 +683,12 @@ class ModelCompilationOptions:
         self._model_compile_options.check()
 
 
-def compile_model(
-    model_compile_options: ModelCompilationOptions,
-    providers: Sequence[str | tuple[str, dict[Any, Any]]] | None = None,
-    provider_options: Sequence[dict[Any, Any]] | None = None,
-):
+def compile_model(model_compile_options: ModelCompilationOptions):
     model_compile_options.check()
-    available_providers = C.get_available_providers()
-
-    # validate providers and provider_options before other initialization
-    providers, provider_options = check_and_normalize_provider_args(providers, provider_options, available_providers)
+    providers, provider_options = model_compile_options.get_providers()
 
     session_options = model_compile_options.get_session_options()
+    available_providers = C.get_available_providers()
     _register_ep_custom_ops(session_options, providers, provider_options, available_providers)
 
     input_model_path = model_compile_options.get_input_model_path()

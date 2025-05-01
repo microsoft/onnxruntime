@@ -50,11 +50,12 @@ class TestCompileApi(unittest.TestCase):
         output_model_path = os.path.join(self._tmp_dir_path, "model.compiled.onnx")
 
         model_compile_options = onnxrt.ModelCompilationOptions(so)
+        model_compile_options.set_providers(providers=providers, provider_options=provider_options)
         model_compile_options.set_input_model(input_model_path)
         model_compile_options.set_output_model_path(output_model_path)
         model_compile_options.set_ep_context_embed_mode(True)
 
-        onnxrt.compile_model(model_compile_options, providers=providers, provider_options=provider_options)
+        onnxrt.compile_model(model_compile_options)
 
         self.assertTrue(os.path.exists(output_model_path))
 
@@ -75,21 +76,21 @@ class TestCompileApi(unittest.TestCase):
         output_model_path = os.path.join(self._tmp_dir_path, "model.compiled2.onnx")
 
         model_compile_options = onnxrt.ModelCompilationOptions(so)
+        model_compile_options.set_providers(providers=providers, provider_options=provider_options)
         model_compile_options.set_input_model(input_model_bytes)
         model_compile_options.set_output_model_path(output_model_path)
         model_compile_options.set_ep_context_embed_mode(True)
 
-        onnxrt.compile_model(model_compile_options, providers=providers, provider_options=provider_options)
+        onnxrt.compile_model(model_compile_options)
 
         self.assertTrue(os.path.exists(output_model_path))
 
     def test_fail_load_uncompiled_model_and_then_compile(self):
-        providers = None
-        provider_options = None
-        if "QNNExecutionProvider" in available_providers:
-            providers = ["QNNExecutionProvider"]
-            provider_options = [{"backend_type": "htp"}]
+        if "QNNExecutionProvider" not in available_providers:
+            self.skipTest("Skipping test because it needs to run on a compiling EP")
 
+        providers = ["QNNExecutionProvider"]
+        provider_options = [{"backend_type": "htp"}]
         input_model_path = get_name("nhwc_resize_scales_opset18.onnx")
 
         so = onnxrt.SessionOptions()
@@ -105,16 +106,17 @@ class TestCompileApi(unittest.TestCase):
                 provider_options=provider_options,
                 enable_fallback=False,
             )
-        self.assertIn("QNNExecutionProvider", str(context.exception))
+        self.assertIn("needs to compile", str(context.exception))
 
         # Try to compile the model now.
         compiled_model_path = os.path.join(self._tmp_dir_path, "model.compiled3.onnx")
         model_compile_options = onnxrt.ModelCompilationOptions(so)
+        model_compile_options.set_providers(providers=providers, provider_options=provider_options)
         model_compile_options.set_input_model(input_model_path)
         model_compile_options.set_output_model_path(compiled_model_path)
         model_compile_options.set_ep_context_embed_mode(True)
 
-        onnxrt.compile_model(model_compile_options, providers=providers, provider_options=provider_options)
+        onnxrt.compile_model(model_compile_options)
 
         self.assertTrue(os.path.exists(compiled_model_path))
         self.assertEqual(so.get_session_config_entry("session.disable_model_compile"), "1")
