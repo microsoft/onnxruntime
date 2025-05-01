@@ -10,6 +10,7 @@
 #include "core/common/inlined_containers.h"
 #include "core/common/path_string.h"
 #include "core/common/string_helper.h"
+
 #include "core/framework/allocator_utils.h"
 #include "core/framework/compute_capability.h"
 #include "core/framework/config_options.h"
@@ -2049,15 +2050,15 @@ std::shared_ptr<IExecutionProviderFactory> NvProviderFactoryCreator::Create(int 
 }
 
 std::shared_ptr<IExecutionProviderFactory> NvProviderFactoryCreator::Create(
-    const ProviderOptions& provider_options,, const SessionOptions* session_options) try {
-      const ConfigOptions* config_options = nullptr;
-      if (session_options != nullptr) {
-        config_options = &session_options->config_options;
-      }
+    const ProviderOptions& provider_options, const SessionOptions* session_options) try {
+  const ConfigOptions* config_options = nullptr;
+  if (session_options != nullptr) {
+    config_options = &session_options->config_options;
+  }
 
-      std::array<const void*, 2> configs_array = {&provider_options, config_options};
-      const void* arg = reinterpret_cast<const void*>(&configs_array);
-      return s_library_nv.Get().CreateExecutionProviderFactory(arg);
+  std::array<const void*, 2> configs_array = {&provider_options, config_options};
+  const void* arg = reinterpret_cast<const void*>(&configs_array);
+  return s_library_nv.Get().CreateExecutionProviderFactory(arg);
 } catch (const std::exception& exception) {
   // Will get an exception when fail to load EP library.
   LOGS_DEFAULT(ERROR) << exception.what();
