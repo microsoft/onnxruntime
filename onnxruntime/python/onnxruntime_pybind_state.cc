@@ -1553,6 +1553,18 @@ void addGlobalMethods(py::module& m) {
 #endif
       },
       R"pbdoc(Unregister an execution provider library from ORT.)pbdoc");
+  m.def(
+      "get_ep_devices",
+      []() -> const std::vector<const OrtEpDevice*>& {
+#if !defined(ORT_MINIMAL_BUILD)
+        std::shared_ptr<onnxruntime::Environment> env = GetEnv();
+        return env->GetOrtEpDevices();
+#else
+        ORT_THROW("OrtEpDevices are not supported in this build");
+#endif
+      },
+      R"pbdoc(Get the list of available OrtEpDevice instances.)pbdoc",
+      py::return_value_policy::reference);
 
 #if defined(USE_OPENVINO) || defined(USE_OPENVINO_PROVIDER_INTERFACE)
   m.def(
@@ -1697,6 +1709,15 @@ void addObjectMethods(py::module& m, ExecutionProviderRegistrationFn ep_registra
       .def_static("webgpu", []() { return OrtDevice::GPU; })
       .def_static("default_memory", []() { return OrtDevice::MemType::DEFAULT; });
 
+  py::enum_<OrtExecutionProviderDevicePolicy>(m, "OrtExecutionProviderDevicePolicy")
+      .value("DEFAULT", OrtExecutionProviderDevicePolicy_DEFAULT)
+      .value("PREFER_CPU", OrtExecutionProviderDevicePolicy_PREFER_CPU)
+      .value("PREFER_NPU", OrtExecutionProviderDevicePolicy_PREFER_NPU)
+      .value("PREFER_GPU", OrtExecutionProviderDevicePolicy_PREFER_GPU)
+      .value("MAX_PERFORMANCE", OrtExecutionProviderDevicePolicy_MAX_PERFORMANCE)
+      .value("MAX_EFFICIENCY", OrtExecutionProviderDevicePolicy_MAX_EFFICIENCY)
+      .value("MIN_OVERALL_POWER", OrtExecutionProviderDevicePolicy_MIN_OVERALL_POWER);
+
   py::enum_<OrtHardwareDeviceType>(m, "OrtHardwareDeviceType")
       .value("CPU", OrtHardwareDeviceType_CPU)
       .value("GPU", OrtHardwareDeviceType_GPU)
@@ -1726,14 +1747,35 @@ void addObjectMethods(py::module& m, ExecutionProviderRegistrationFn ep_registra
           },
           R"pbdoc(Hardware device's metadata as string key/value pairs.)pbdoc");
 
-  py::enum_<OrtExecutionProviderDevicePolicy>(m, "OrtExecutionProviderDevicePolicy")
-      .value("DEFAULT", OrtExecutionProviderDevicePolicy_DEFAULT)
-      .value("PREFER_CPU", OrtExecutionProviderDevicePolicy_PREFER_CPU)
-      .value("PREFER_NPU", OrtExecutionProviderDevicePolicy_PREFER_NPU)
-      .value("PREFER_GPU", OrtExecutionProviderDevicePolicy_PREFER_GPU)
-      .value("MAX_PERFORMANCE", OrtExecutionProviderDevicePolicy_MAX_PERFORMANCE)
-      .value("MAX_EFFICIENCY", OrtExecutionProviderDevicePolicy_MAX_EFFICIENCY)
-      .value("MIN_OVERALL_POWER", OrtExecutionProviderDevicePolicy_MIN_OVERALL_POWER);
+  py::class_<OrtEpDevice> py_ep_device(m, "OrtEpDevice",
+                                       R"pbdoc(Represents a hardware device that an execution provider supports.)pbdoc");
+  py_ep_device.def(
+                  "ep_name",
+                  [](OrtEpDevice* ep_device) -> std::string { return ep_device->ep_name; },
+                  R"pbdoc(Get the execution provider's name.)pbdoc")
+      .def(
+          "ep_vendor",
+          [](OrtEpDevice* ep_device) -> std::string { return ep_device->ep_vendor; },
+          R"pbdoc(Get the execution provider's vendor name.)pbdoc")
+      .def(
+          "ep_metadata",
+          [](OrtEpDevice* ep_device) -> std::unordered_map<std::string, std::string> {
+            return ep_device->ep_metadata.entries;
+          },
+          R"pbdoc(Get the execution provider's additional metadata for the OrtHardwareDevice.)pbdoc")
+      .def(
+          "ep_options",
+          [](OrtEpDevice* ep_device) -> std::unordered_map<std::string, std::string> {
+            return ep_device->ep_options.entries;
+          },
+          R"pbdoc(Get the provider options used to configure the provider to use the hardware.)pbdoc")
+      .def(
+          "device",
+          [](OrtEpDevice* ep_device) -> const OrtHardwareDevice& {
+            return *ep_device->device;
+          },
+          R"pbdoc(Get the OrtHardwareDevice instance for the OrtEpDevice.)pbdoc",
+          py::return_value_policy::reference_internal);
 
   py::class_<OrtArenaCfg> ort_arena_cfg_binding(m, "OrtArenaCfg");
   // Note: Doesn't expose initial_growth_chunk_sizes_bytes/max_power_of_two_extend_bytes option.

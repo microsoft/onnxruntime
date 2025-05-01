@@ -30,6 +30,10 @@ try:
         NodeArg,  # noqa: F401
         OrtAllocatorType,  # noqa: F401
         OrtArenaCfg,  # noqa: F401
+        OrtEpDevice,  # noqa: F401
+        OrtExecutionProviderDevicePolicy,  # noqa: F401
+        OrtHardwareDevice,  # noqa: F401
+        OrtHardwareDeviceType,  # noqa: F401
         OrtMemoryInfo,  # noqa: F401
         OrtMemType,  # noqa: F401
         OrtSparseFormat,  # noqa: F401
@@ -44,6 +48,7 @@ try:
         get_available_providers,  # noqa: F401
         get_build_info,  # noqa: F401
         get_device,  # noqa: F401
+        get_ep_devices,  # noqa: F401
         get_version_string,  # noqa: F401
         has_collective_ops,  # noqa: F401
         register_execution_provider_library,  # noqa: F401

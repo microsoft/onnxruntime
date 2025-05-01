@@ -30,21 +30,84 @@ class TestAutoEP(unittest.TestCase):
     def tearDownClass(cls):
         cls._tmp_model_dir.cleanup()
 
-    def test_register_unregister_cuda_ep_library(self):
-        if "CUDAExecutionProvider" not in available_providers:
-            self.skipTest("Skipping test because it needs CUDA EP")
+    def test_cuda_ep_devices(self):
+        """
+        Test registration of CUDA EP and retrieval of its OrtEpDevice.
+        """
+        ep_lib_path = "onnxruntime_providers_cuda.dll"
+        ep_registration_name = "CUDAExecutionProvider"
 
-        cuda_ep_lib = None
-        if sys.platform == "win32":
-            cuda_ep_lib = "onnxruntime_providers_cuda.dll"
-        elif sys.platform == "linux":
-            cuda_ep_lib = "libonnxruntime_providers_cuda.so"
-        else:
-            self.skipTest("Skipping test because it can only run on Windows or Linux")
+        if sys.platform != "win32":
+            self.skipTest("Skipping test because device discovery is only supported on Windows")
 
-        onnxrt.register_execution_provider_library("CUDAExecutionProvider", cuda_ep_lib)
-        onnxrt.unregister_execution_provider_library("CUDAExecutionProvider")
-        self.assertTrue(True)
+        if not os.path.exists(ep_lib_path):
+            self.skipTest(f"Skipping test because EP library '{ep_lib_path}' cannot be found")
+
+        onnxrt.register_execution_provider_library(ep_registration_name, os.path.realpath(ep_lib_path))
+
+        ep_devices = onnxrt.get_ep_devices()
+        has_cpu_ep = False
+        has_test_ep = False
+        for ep_device in ep_devices:
+            ep_name = ep_device.ep_name()
+            if ep_name == "CPUExecutionProvider":
+                has_cpu_ep = True
+            if ep_name == ep_registration_name:
+                has_test_ep = True
+
+        self.assertTrue(has_cpu_ep)
+        self.assertTrue(has_test_ep)
+        onnxrt.unregister_execution_provider_library(ep_registration_name)
+
+    def test_example_plugin_ep_devices(self):
+        """
+        Test registration of an example EP plugin and retrieval of its OrtEpDevice.
+        """
+        ep_lib_path = "example_plugin_ep.dll"
+        ep_registration_name = "example_ep"
+
+        if sys.platform != "win32":
+            self.skipTest("Skipping test because it device discovery is only supported on Windows")
+
+        if not os.path.exists(ep_lib_path):
+            self.skipTest(f"Skipping test because EP library '{ep_lib_path}' cannot be found")
+
+        onnxrt.register_execution_provider_library(ep_registration_name, os.path.realpath(ep_lib_path))
+
+        ep_devices = onnxrt.get_ep_devices()
+        has_cpu_ep = False
+        test_ep_device = None
+        for ep_device in ep_devices:
+            ep_name = ep_device.ep_name()
+
+            if ep_name == "CPUExecutionProvider":
+                has_cpu_ep = True
+            if ep_name == ep_registration_name:
+                test_ep_device = ep_device
+
+        self.assertTrue(has_cpu_ep)
+        self.assertIsNotNone(test_ep_device)
+
+        # Test the OrtEpDevice getters. Expected values are from /onnxruntime/test/autoep/library/example_plugin_ep.cc
+        self.assertEqual(test_ep_device.ep_vendor(), "Contoso")
+
+        ep_metadata = test_ep_device.ep_metadata()
+        self.assertEqual(ep_metadata["version"], "0.1")
+
+        ep_options = test_ep_device.ep_options()
+        self.assertEqual(ep_options["run_really_fast"], "true")
+
+        # The CPU hw device info will vary by machine so check for the common values.
+        hw_device = test_ep_device.device()
+        self.assertEqual(hw_device.type(), onnxrt.OrtHardwareDeviceType.CPU)
+        self.assertGreaterEqual(hw_device.vendor_id(), 0)
+        self.assertGreaterEqual(hw_device.device_id(), 0)
+        self.assertGreater(len(hw_device.vendor()), 0)
+
+        hw_metadata = hw_device.metadata()
+        self.assertGreater(len(hw_metadata), 0)  # Should have at least SPDRP_HARDWAREID on Windows
+
+        onnxrt.unregister_execution_provider_library(ep_registration_name)
 
 
 if __name__ == "__main__":
