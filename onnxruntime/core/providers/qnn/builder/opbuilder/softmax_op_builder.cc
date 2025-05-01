@@ -44,7 +44,7 @@ std::vector<uint32_t> FlattenShapeFromAxis(std::vector<uint32_t>& input_shape, i
   Return the shape with all dimensions multiplied onward from the specified axis. If axis is 0, the returned shape
   will include an additional batch of size 1 as the first dimension.
   */
-  assert(axis >= 0 && axis < input_shape.size());
+  assert(axis >= 0 && static_cast<size_t>(axis) < input_shape.size());
   std::vector<uint32_t> output_shape(input_shape.begin(), input_shape.begin() + axis);
 
   if (axis == 0) {
