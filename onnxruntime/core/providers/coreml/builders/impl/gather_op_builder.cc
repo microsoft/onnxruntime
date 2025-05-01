@@ -30,7 +30,7 @@ int64_t GetAxisAttribute(const Node& node) {
 }  // namespace
 
 Status GatherOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node,
-                                              const logging::Logger& logger) const {
+                                              const logging::Logger& /*logger*/) const {
   if (model_builder.CreateMLProgram()) {
     using CoreML::Specification::MILSpec::Operation;
     std::unique_ptr<Operation> op = model_builder.CreateOperation(node, "gather");

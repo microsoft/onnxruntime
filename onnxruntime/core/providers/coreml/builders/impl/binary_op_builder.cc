@@ -56,17 +56,14 @@ bool CheckIfBothInputShapesMatch(const Node& node, const logging::Logger& logger
 }
 
 bool ShouldUseFloorDiv(const Node& node, const logging::Logger& logger) {
+  // since ONNX spec requires both inputs to have the same type, we only need
+  // to check the first input type
   const auto& input0 = *node.InputDefs()[0];
-  const auto& input1 = *node.InputDefs()[1];
   int32_t input_type0 = ONNX_NAMESPACE::TensorProto_DataType_UNDEFINED;
-  int32_t input_type1 = ONNX_NAMESPACE::TensorProto_DataType_UNDEFINED;
   GetType(input0, input_type0, logger);
-  GetType(input1, input_type1, logger);
 
   return input_type0 == ONNX_NAMESPACE::TensorProto_DataType_INT32 ||
-         input_type0 == ONNX_NAMESPACE::TensorProto_DataType_INT64 ||
-         input_type1 == ONNX_NAMESPACE::TensorProto_DataType_INT32 ||
-         input_type1 == ONNX_NAMESPACE::TensorProto_DataType_INT64;
+         input_type0 == ONNX_NAMESPACE::TensorProto_DataType_INT64;
 }
 }  // namespace
 

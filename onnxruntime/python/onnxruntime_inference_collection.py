@@ -507,6 +507,23 @@ class InferenceSession(Session):
                 self._fallback_providers = ["CUDAExecutionProvider", "CPUExecutionProvider"]
             else:
                 self._fallback_providers = ["CPUExecutionProvider"]
+        if "NvTensorRTRTXExecutionProvider" in available_providers:
+            if (
+                providers
+                and any(
+                    provider == "CUDAExecutionProvider"
+                    or (isinstance(provider, tuple) and provider[0] == "CUDAExecutionProvider")
+                    for provider in providers
+                )
+                and any(
+                    provider == "NvTensorRTRTXExecutionProvider"
+                    or (isinstance(provider, tuple) and provider[0] == "NvExecutionProvider")
+                    for provider in providers
+                )
+            ):
+                self._fallback_providers = ["CUDAExecutionProvider", "CPUExecutionProvider"]
+            else:
+                self._fallback_providers = ["CPUExecutionProvider"]
         # MIGraphX can fall back to ROCM if it's explicitly assigned. All others fall back to CPU.
         elif "MIGraphXExecutionProvider" in available_providers:
             if providers and any(
@@ -581,6 +598,15 @@ class InferenceSession(Session):
                 and providers[i][0] == "TensorrtExecutionProvider"
             ):
                 C.register_tensorrt_plugins_as_custom_ops(session_options, providers[i][1])
+
+            if providers[i] in available_providers and providers[i] == "NvTensorRTRTXExecutionProvider":
+                C.register_nv_tensorrt_rtx_plugins_as_custom_ops(session_options, provider_options[i])
+            elif (
+                isinstance(providers[i], tuple)
+                and providers[i][0] in available_providers
+                and providers[i][0] == "NvTensorrtRTXExecutionProvider"
+            ):
+                C.register_nv_tensorrt_rtx_plugins_as_custom_ops(session_options, providers[i][1])
 
 
 class IOBinding:

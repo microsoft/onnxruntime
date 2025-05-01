@@ -32,9 +32,18 @@ ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
 
 // Opset 21 added support for int4 and uint4.
 // TODO(adrianlizarraga): Implement int4 and uint4 support.
-ONNX_CPU_OPERATOR_KERNEL(
+ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
     Shape,
     21,
+    22,
+    KernelDefBuilder().TypeConstraint("T", DataTypeImpl::AllTensorTypesIRv9()).TypeConstraint("T1", DataTypeImpl::GetTensorType<int64_t>()),
+    Shape);
+
+// Opset 23 added support for float4e2m1.
+// TODO(titaiwang): Implement float4e2m1 support.
+ONNX_CPU_OPERATOR_KERNEL(
+    Shape,
+    23,
     KernelDefBuilder().TypeConstraint("T", DataTypeImpl::AllTensorTypesIRv9()).TypeConstraint("T1", DataTypeImpl::GetTensorType<int64_t>()),
     Shape);
 
