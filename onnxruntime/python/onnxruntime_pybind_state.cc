@@ -28,6 +28,7 @@
 #include "core/providers/get_execution_providers.h"
 #include "core/providers/tensorrt/tensorrt_provider_options.h"
 #include "core/session/IOBinding.h"
+#include "core/session/abi_devices.h"
 #include "core/session/abi_session_options_impl.h"
 #include "core/session/onnxruntime_session_options_config_keys.h"
 #include "core/session/provider_bridge_ort.h"
@@ -1695,6 +1696,44 @@ void addObjectMethods(py::module& m, ExecutionProviderRegistrationFn ep_registra
       .def_static("dml", []() { return OrtDevice::DML; })
       .def_static("webgpu", []() { return OrtDevice::GPU; })
       .def_static("default_memory", []() { return OrtDevice::MemType::DEFAULT; });
+
+  py::enum_<OrtHardwareDeviceType>(m, "OrtHardwareDeviceType")
+      .value("CPU", OrtHardwareDeviceType_CPU)
+      .value("GPU", OrtHardwareDeviceType_GPU)
+      .value("NPU", OrtHardwareDeviceType_NPU);
+
+  py::class_<OrtHardwareDevice> py_hw_device(m, "OrtHardwareDevice", R"pbdoc(ONNX Runtime hardware device information.)pbdoc");
+  py_hw_device.def(
+                  "type",
+                  [](OrtHardwareDevice* hw_device) -> OrtHardwareDeviceType { return hw_device->type; },
+                  R"pbdoc(Hardware device type.)pbdoc")
+      .def(
+          "vendor_id",
+          [](OrtHardwareDevice* hw_device) -> uint32_t { return hw_device->vendor_id; },
+          R"pbdoc(Hardware device's vendor identifier.)pbdoc")
+      .def(
+          "vendor",
+          [](OrtHardwareDevice* hw_device) -> std::string { return hw_device->vendor; },
+          R"pbdoc(Hardware device's vendor identifier.)pbdoc")
+      .def(
+          "device_id",
+          [](OrtHardwareDevice* hw_device) -> uint32_t { return hw_device->device_id; },
+          R"pbdoc(Hardware device's unique identifier.)pbdoc")
+      .def(
+          "metadata",
+          [](OrtHardwareDevice* hw_device) -> std::unordered_map<std::string, std::string> {
+            return hw_device->metadata.entries;
+          },
+          R"pbdoc(Hardware device's metadata as string key/value pairs.)pbdoc");
+
+  py::enum_<OrtExecutionProviderDevicePolicy>(m, "OrtExecutionProviderDevicePolicy")
+      .value("DEFAULT", OrtExecutionProviderDevicePolicy_DEFAULT)
+      .value("PREFER_CPU", OrtExecutionProviderDevicePolicy_PREFER_CPU)
+      .value("PREFER_NPU", OrtExecutionProviderDevicePolicy_PREFER_NPU)
+      .value("PREFER_GPU", OrtExecutionProviderDevicePolicy_PREFER_GPU)
+      .value("MAX_PERFORMANCE", OrtExecutionProviderDevicePolicy_MAX_PERFORMANCE)
+      .value("MAX_EFFICIENCY", OrtExecutionProviderDevicePolicy_MAX_EFFICIENCY)
+      .value("MIN_OVERALL_POWER", OrtExecutionProviderDevicePolicy_MIN_OVERALL_POWER);
 
   py::class_<OrtArenaCfg> ort_arena_cfg_binding(m, "OrtArenaCfg");
   // Note: Doesn't expose initial_growth_chunk_sizes_bytes/max_power_of_two_extend_bytes option.
