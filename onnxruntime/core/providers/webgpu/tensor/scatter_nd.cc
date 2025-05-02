@@ -41,7 +41,7 @@ Status ScatterNDProgram::GenerateShaderCode(ShaderHelper& shader) const {
         break;
       case ScatterNDReduction::Add:
         if (is_32_bit_integer) {
-          ss << "  atomicAdd(&" << ptr << ", bitcat<" << data_type << ">(" << value << "));\n";
+          ss << "  atomicAdd(&" << ptr << ", bitcast<" << data_type << ">(" << value << "));\n";
         } else {
           // atomicAdd only supports uint/int type. For float, we use
           // atomicCompareExchangeWeak to simulate.
@@ -51,7 +51,7 @@ Status ScatterNDProgram::GenerateShaderCode(ShaderHelper& shader) const {
         break;
       case ScatterNDReduction::Max:
         if (is_32_bit_integer) {
-          ss << "  atomicMax(&" << ptr << ", bitcat<" << data_type << ">(" << value << "));\n";
+          ss << "  atomicMax(&" << ptr << ", bitcast<" << data_type << ">(" << value << "));\n";
         } else {
           // atomicAdd only supports uint/int type. For float, we use
           // atomicCompareExchangeWeak to simulate.
@@ -60,7 +60,7 @@ Status ScatterNDProgram::GenerateShaderCode(ShaderHelper& shader) const {
         break;
       case ScatterNDReduction::Min:
         if (is_32_bit_integer) {
-          ss << "  atomicMin(&" << ptr << ", bitcat<" << data_type << ">(" << value << "));\n";
+          ss << "  atomicMin(&" << ptr << ", bitcast<" << data_type << ">(" << value << "));\n";
         } else {
           // atomicAdd only supports uint/int type. For float, we use
           // atomicCompareExchangeWeak to simulate.
@@ -185,7 +185,7 @@ Status ScatterND::ComputeInternal(ComputeContext& context) const {
   auto indices_rank = indices_shape.NumDimensions();
   auto last_index_dimension = static_cast<uint32_t>(indices_shape[indices_rank - 1]);
   auto num_updates_elements = static_cast<uint32_t>(input_shape.SizeFromDimension(last_index_dimension));
-  auto num_indices_elements = static_cast<uint32_t>(indices_shape.SizeToDimension(indices_rank - 2));
+  auto num_indices_elements = static_cast<uint32_t>(indices_shape.SizeToDimension(indices_rank - 1));
   // TODO: support bool with components 4.
   const size_t components = 1;
   auto output_size = static_cast<uint32_t>((indices_shape.Size() + components - 1) / components);
