@@ -65,6 +65,7 @@ option(onnxruntime_REDIRECT_STATIC_ANALYSIS_OUTPUTS_TO_FILE "Use a custom SDL Ru
 option(onnxruntime_ENABLE_PYTHON "Enable python bindings" OFF)
 # Enable it may cause LNK1169 error
 option(onnxruntime_ENABLE_MEMLEAK_CHECKER "Experimental: Enable memory leak checker in Windows debug build" OFF)
+option(onnxruntime_ENABLE_CONVSYMKERNELAVX2_SAT_CHECKER "Experimental: Enable ConvSymKernelAvx2 assembly saturation checker in build" OFF)
 option(onnxruntime_USE_CUDA "Build with CUDA support" OFF)
 # Enable ONNX Runtime CUDA EP's internal unit tests that directly access the EP's internal functions instead of through
 # OpKernels. When the option is ON, we will have two copies of GTest library in the same process. It is not a typical
@@ -856,7 +857,6 @@ endif()
 set(ONNXRUNTIME_PROVIDER_NAMES cpu)
 
 set(ORT_PROVIDER_FLAGS)
-set(ORT_EXTRA_INTERFACE_FLAGS)
 
 if (onnxruntime_USE_CUDA)
   enable_language(CUDA)
@@ -912,7 +912,7 @@ if (onnxruntime_USE_CUDA)
 endif()
 
 if (onnxruntime_USE_CUDA_INTERFACE AND (NOT onnxruntime_USE_CUDA))
-    list(APPEND ORT_EXTRA_INTERFACE_FLAGS -DUSE_CUDA=1)
+    list(APPEND ORT_PROVIDER_FLAGS -DUSE_CUDA_PROVIDER_INTERFACE=1)
 endif()
 
 if (onnxruntime_USE_VITISAI)
@@ -921,7 +921,7 @@ if (onnxruntime_USE_VITISAI)
 endif()
 
 if (onnxruntime_USE_VITISAI_INTERFACE AND (NOT onnxruntime_USE_VITISAI))
-    list(APPEND ORT_EXTRA_INTERFACE_FLAGS -DUSE_VITISAI=1)
+    list(APPEND ORT_PROVIDER_FLAGS -DUSE_VITISAI_PROVIDER_INTERFACE=1)
 endif()
 
 if (onnxruntime_USE_DNNL)
@@ -935,7 +935,7 @@ if (onnxruntime_USE_OPENVINO)
 endif()
 
 if (onnxruntime_USE_OPENVINO_INTERFACE AND (NOT onnxruntime_USE_OPENVINO))
-    list(APPEND ORT_EXTRA_INTERFACE_FLAGS -DUSE_OPENVINO=1)
+    list(APPEND ORT_PROVIDER_FLAGS -DUSE_OPENVINO_PROVIDER_INTERFACE=1)
 endif()
 
 if (onnxruntime_USE_TENSORRT)
@@ -945,7 +945,7 @@ if (onnxruntime_USE_TENSORRT)
 endif()
 
 if (onnxruntime_USE_TENSORRT_INTERFACE AND (NOT onnxruntime_USE_TENSORRT))
-    list(APPEND ORT_INTERFACE_FLAGS -DUSE_TENSORRT=1)
+    list(APPEND ORT_PROVIDER_FLAGS -DUSE_TENSORRT_PROVIDER_INTERFACE=1)
 endif()
 
 if (onnxruntime_USE_NV)
@@ -954,7 +954,7 @@ if (onnxruntime_USE_NV)
 endif()
 
 if (onnxruntime_USE_NV_INTERFACE AND (NOT onnxruntime_USE_NV))
-    list(APPEND ORT_INTERFACE_FLAGS -DUSE_NV=1)
+    list(APPEND ORT_PROVIDER_FLAGS -DUSE_NV_PROVIDER_INTERFACE=1)
 endif()
 
 if (onnxruntime_USE_RKNPU)
@@ -978,7 +978,7 @@ if (onnxruntime_USE_QNN OR onnxruntime_USE_QNN_INTERFACE)
     if(onnxruntime_USE_QNN)
         list(APPEND ORT_PROVIDER_FLAGS -DUSE_QNN=1)
     else()
-        list(APPEND ORT_EXTRA_INTERFACE_FLAGS -DUSE_QNN=1) 
+        list(APPEND ORT_PROVIDER_FLAGS -DUSE_QNN_PROVIDER_INTERFACE=1)
     endif()
 
     list(APPEND ONNXRUNTIME_PROVIDER_NAMES qnn)
@@ -1241,12 +1241,6 @@ function(onnxruntime_set_compile_flags target_name)
     foreach(ORT_FLAG ${ORT_PROVIDER_FLAGS})
       target_compile_definitions(${target_name} PRIVATE ${ORT_FLAG})
     endforeach()
-
-    if("${target_name}" STREQUAL "onnxruntime")
-        foreach(ORT_EXTRA_FLAG ${ORT_EXTRA_INTERFACE_FLAGS})
-          target_compile_definitions(${target_name} PRIVATE ${ORT_EXTRA_FLAG})
-        endforeach()
-    endif()
 
     if (HAS_DEPRECATED_COPY)
       #too many such errors in eigen
@@ -1540,11 +1534,6 @@ if (onnxruntime_USE_OPENVINO)
 
 endif()
 
-if (onnxruntime_USE_OPENVINO_INTERFACE AND (NOT onnxruntime_USE_OPENVINO))
-    add_definitions(-DUSE_OPENVINO=1)
-    add_definitions(-DOPENVINO_CONFIG_NPU=1)
-endif()
-
 if (onnxruntime_USE_VITISAI)
     set(CMAKE_MODULE_PATH "${CMAKE_MODULE_PATH};${CMAKE_CURRENT_LIST_DIR}")
 endif()
@@ -1745,7 +1734,7 @@ if(VERSION_MAJOR_PART STREQUAL "0" AND VERSION_MINOR_PART STREQUAL "0" AND VERSI
     list(GET ORT_VERSION_STRING_LIST 0 VERSION_MAJOR_PART)
     list(GET ORT_VERSION_STRING_LIST 1 VERSION_MINOR_PART)
     list(GET ORT_VERSION_STRING_LIST 2 VERSION_BUILD_PART)
-    set(VERSION_STRING ORT_VERSION)
+    set(VERSION_STRING ${ORT_VERSION})
 endif()
 
 

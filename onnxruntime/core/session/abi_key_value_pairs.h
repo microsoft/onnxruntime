@@ -19,10 +19,17 @@ struct OrtKeyValuePairs {
     Sync();
   }
   void Add(const char* key, const char* value) {
-    return Add(std::string(key), std::string(value));
+    // ignore if either are nullptr.
+    if (key && value) {
+      Add(std::string(key), std::string(value));
+    }
   }
 
   void Add(const std::string& key, const std::string& value) {
+    if (key.empty()) {  // ignore empty keys
+      return;
+    }
+
     auto iter_inserted = entries.insert({key, value});
     bool inserted = iter_inserted.second;
     if (inserted) {
@@ -37,6 +44,10 @@ struct OrtKeyValuePairs {
 
   // we don't expect this to be common. reconsider using std::vector if it turns out to be.
   void Remove(const char* key) {
+    if (key == nullptr) {
+      return;
+    }
+
     auto iter = entries.find(key);
     if (iter != entries.end()) {
       auto key_iter = std::find(keys.begin(), keys.end(), iter->first.c_str());

@@ -51,6 +51,8 @@ Status EpLibraryPlugin::Load() {
 }
 
 Status EpLibraryPlugin::Unload() {
+  std::lock_guard<std::mutex> lock{mutex_};
+
   // Call ReleaseEpFactory for all factories and unload the library.
   // Current implementation assumes any error is permanent so does not leave pieces around to re-attempt Unload.
   if (handle_) {

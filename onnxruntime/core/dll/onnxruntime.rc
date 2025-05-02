@@ -2,7 +2,7 @@
 // Licensed under the MIT License.
 
 // This file REQUIRES the following external definitions:
-// VER_MAJOR, VER_MINOR, VER_BUILD, VER_PRIVATE, and VER_STRING
+// FILE_NAME, VER_MAJOR, VER_MINOR, VER_BUILD, VER_PRIVATE, and VER_STRING
 
 #include <Winver.h>
 
