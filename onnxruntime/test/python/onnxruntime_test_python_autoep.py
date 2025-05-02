@@ -95,7 +95,7 @@ class TestAutoEP(unittest.TestCase):
         has_cpu_ep = False
         test_ep_device = None
         for ep_device in ep_devices:
-            ep_name = ep_device.ep_name()
+            ep_name = ep_device.ep_name
 
             if ep_name == "CPUExecutionProvider":
                 has_cpu_ep = True
@@ -106,22 +106,22 @@ class TestAutoEP(unittest.TestCase):
         self.assertIsNotNone(test_ep_device)
 
         # Test the OrtEpDevice getters. Expected values are from /onnxruntime/test/autoep/library/example_plugin_ep.cc
-        self.assertEqual(test_ep_device.ep_vendor(), "Contoso")
+        self.assertEqual(test_ep_device.ep_vendor, "Contoso")
 
-        ep_metadata = test_ep_device.ep_metadata()
+        ep_metadata = test_ep_device.ep_metadata
         self.assertEqual(ep_metadata["version"], "0.1")
 
-        ep_options = test_ep_device.ep_options()
+        ep_options = test_ep_device.ep_options
         self.assertEqual(ep_options["run_really_fast"], "true")
 
         # The CPU hw device info will vary by machine so check for the common values.
-        hw_device = test_ep_device.device()
-        self.assertEqual(hw_device.type(), onnxrt.OrtHardwareDeviceType.CPU)
-        self.assertGreaterEqual(hw_device.vendor_id(), 0)
-        self.assertGreaterEqual(hw_device.device_id(), 0)
-        self.assertGreater(len(hw_device.vendor()), 0)
+        hw_device = test_ep_device.device
+        self.assertEqual(hw_device.type, onnxrt.OrtHardwareDeviceType.CPU)
+        self.assertGreaterEqual(hw_device.vendor_id, 0)
+        self.assertGreaterEqual(hw_device.device_id, 0)
+        self.assertGreater(len(hw_device.vendor), 0)
 
-        hw_metadata = hw_device.metadata()
+        hw_metadata = hw_device.metadata
         self.assertGreater(len(hw_metadata), 0)  # Should have at least SPDRP_HARDWAREID on Windows
 
         # Test adding this EP plugin's OrtEpDevice to the SessionOptions.

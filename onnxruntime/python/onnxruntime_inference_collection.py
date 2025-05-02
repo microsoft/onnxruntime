@@ -488,14 +488,6 @@ class InferenceSession(Session):
         # internal parameters that we don't expect to be used in general so aren't documented
         disabled_optimizers = kwargs.get("disabled_optimizers")
 
-        # raise an exception if user is now specifying providers, but the SessionOptions instance
-        # already has provider information (e.g., via set_ep_devices()).
-        if self._sess_options is not None and self._sess_options.has_providers() and (providers or provider_options):
-            raise ValueError(
-                "Cannot specify 'providers'/'provider_options' if SessionOptions has already been "
-                "configured with providers or OrtEpDevice(s)."
-            )
-
         try:
             self._create_inference_session(providers, provider_options, disabled_optimizers)
         except (ValueError, RuntimeError) as e:
@@ -569,6 +561,16 @@ class InferenceSession(Session):
         providers, provider_options = check_and_normalize_provider_args(
             providers, provider_options, available_providers
         )
+
+        # Print warning if user is now specifying providers, but the SessionOptions instance
+        # already has provider information (e.g., via add_ep_devices()). The providers specified
+        # here will take precedence.
+        if self._sess_options is not None and (providers or provider_options) and self._sess_options.has_providers():
+            print(
+                "Warning: Specified 'providers'/'provider_options' for InferenceSession but SessionOptions has "
+                "alread been configured with providers or OrtEpDevice(s). InferenceSession will use the providers "
+                "passed to InferenceSession()."
+            )
 
         session_options = self._sess_options if self._sess_options else C.get_default_session_options()
 

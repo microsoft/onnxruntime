@@ -1785,23 +1785,23 @@ void addObjectMethods(py::module& m, ExecutionProviderRegistrationFn ep_registra
       .value("NPU", OrtHardwareDeviceType_NPU);
 
   py::class_<OrtHardwareDevice> py_hw_device(m, "OrtHardwareDevice", R"pbdoc(ONNX Runtime hardware device information.)pbdoc");
-  py_hw_device.def(
+  py_hw_device.def_property_readonly(
                   "type",
                   [](OrtHardwareDevice* hw_device) -> OrtHardwareDeviceType { return hw_device->type; },
                   R"pbdoc(Hardware device type.)pbdoc")
-      .def(
+      .def_property_readonly(
           "vendor_id",
           [](OrtHardwareDevice* hw_device) -> uint32_t { return hw_device->vendor_id; },
           R"pbdoc(Hardware device's vendor identifier.)pbdoc")
-      .def(
+      .def_property_readonly(
           "vendor",
           [](OrtHardwareDevice* hw_device) -> std::string { return hw_device->vendor; },
           R"pbdoc(Hardware device's vendor identifier.)pbdoc")
-      .def(
+      .def_property_readonly(
           "device_id",
           [](OrtHardwareDevice* hw_device) -> uint32_t { return hw_device->device_id; },
           R"pbdoc(Hardware device's unique identifier.)pbdoc")
-      .def(
+      .def_property_readonly(
           "metadata",
           [](OrtHardwareDevice* hw_device) -> std::unordered_map<std::string, std::string> {
             return hw_device->metadata.entries;
@@ -1810,27 +1810,27 @@ void addObjectMethods(py::module& m, ExecutionProviderRegistrationFn ep_registra
 
   py::class_<OrtEpDevice> py_ep_device(m, "OrtEpDevice",
                                        R"pbdoc(Represents a hardware device that an execution provider supports.)pbdoc");
-  py_ep_device.def(
+  py_ep_device.def_property_readonly(
                   "ep_name",
                   [](OrtEpDevice* ep_device) -> std::string { return ep_device->ep_name; },
                   R"pbdoc(Get the execution provider's name.)pbdoc")
-      .def(
+      .def_property_readonly(
           "ep_vendor",
           [](OrtEpDevice* ep_device) -> std::string { return ep_device->ep_vendor; },
           R"pbdoc(Get the execution provider's vendor name.)pbdoc")
-      .def(
+      .def_property_readonly(
           "ep_metadata",
           [](OrtEpDevice* ep_device) -> std::unordered_map<std::string, std::string> {
             return ep_device->ep_metadata.entries;
           },
           R"pbdoc(Get the execution provider's additional metadata for the OrtHardwareDevice.)pbdoc")
-      .def(
+      .def_property_readonly(
           "ep_options",
           [](OrtEpDevice* ep_device) -> std::unordered_map<std::string, std::string> {
             return ep_device->ep_options.entries;
           },
           R"pbdoc(Get the provider options used to configure the provider to use the hardware.)pbdoc")
-      .def(
+      .def_property_readonly(
           "device",
           [](OrtEpDevice* ep_device) -> const OrtHardwareDevice& {
             return *ep_device->device;
@@ -2329,9 +2329,9 @@ including arg name, arg type (contains both type and shape).)pbdoc")
             const std::vector<std::shared_ptr<onnxruntime::IExecutionProviderFactory>>& provider_factories =
                 sess->GetSessionOptionsProviderFactories();
 
-            // If IExecutionProviderFactory instances where already added to the SessionOptions, create the EPs
-            // directly from those factories.
-            if (!provider_factories.empty()) {
+            // If SessionOptions has IExecutionProviderFactory instances and user did not explicitly specify EPs
+            // when creating InferenceSession, create the EPs directly from those factories.
+            if (!provider_factories.empty() && provider_types.empty()) {
               OrtPybindThrowIfError(InitializeSessionFromEpFactories(*sess,
                                                                      provider_factories,
                                                                      disabled_optimizer_names));
