@@ -235,16 +235,19 @@ struct ProgramOutput {
  private:
   struct FlattenTag {};
   struct ReduceLastDimensionTag {};
+  struct AtomicTag {};
 
  public:
   constexpr static const FlattenTag Flatten{};
   constexpr static const ReduceLastDimensionTag ReduceLastDimension{};
+  constexpr static const AtomicTag Atomic{};
 
-  ProgramOutput(Tensor* tensor, ProgramTensorMetadataDependency dependency, int component, const TensorShape* override_shape);
+  ProgramOutput(Tensor* tensor, ProgramTensorMetadataDependency dependency, int component, const TensorShape* override_shape, bool is_atomic = false);
 
   Tensor* tensor;
   ProgramTensorMetadataDependency dependency;
   ProgramVariableDataType var_type;
+  bool is_atomic;
   bool use_override_shape;
   TensorShape override_shape;
 };

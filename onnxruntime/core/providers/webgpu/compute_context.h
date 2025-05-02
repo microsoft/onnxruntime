@@ -88,6 +88,9 @@ class ComputeContext {
   //
   // Create CPU tensor.
   //
+  // This method creates a tensor of the given data type and shape, using the CPU allocator.
+  // The tensor owns the underlying CPU memory buffer.
+  //
   template <typename TensorShapeType>
   Tensor CreateCPUTensor(MLDataType data_type, TensorShapeType&& shape) {
     AllocatorPtr allocator;
@@ -97,6 +100,9 @@ class ComputeContext {
 
   //
   // Create GPU tensor.
+  //
+  // This method creates a tensor of the given data type and shape, using the WebGPU allocator.
+  // The tensor owns the underlying WebGPU storage buffer.
   //
   template <typename TensorShapeType>
   Tensor CreateGPUTensor(MLDataType data_type, TensorShapeType&& shape) {

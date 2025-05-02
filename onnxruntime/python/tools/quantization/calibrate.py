@@ -992,7 +992,7 @@ class HistogramCollector(CalibrationDataCollector):
                 thresholds_dict[tensor] = (thresholds_dict[tensor][0], max_value)
             thresholds_dict[tensor] = (*thresholds_dict[tensor], *hist[:2])
             # Plot histogram for debug only
-            if os.environ.get("QUANTIZATION_DEBUG", 0) in (1, "1"):
+            if os.environ.get("QUANTIZATION_DEBUG", "0") in (1, "1"):
                 apply_plot(hist, hist_edges)
 
         return thresholds_dict
@@ -1013,7 +1013,7 @@ class HistogramCollector(CalibrationDataCollector):
             thresholds_dict[tensor] = (*optimal_threshold, *histogram[:2])
 
             # Plot histogram for debug only
-            if os.environ.get("QUANTIZATION_DEBUG", 0) in (1, "1"):
+            if os.environ.get("QUANTIZATION_DEBUG", "0") in (1, "1"):
                 apply_plot(histogram[0], histogram[1])
 
         return thresholds_dict
@@ -1075,7 +1075,7 @@ class HistogramCollector(CalibrationDataCollector):
             )
 
             # Plot histogram for debug only
-            if os.environ.get("QUANTIZATION_DEBUG", 0) in (1, "1"):
+            if os.environ.get("QUANTIZATION_DEBUG", "0") in (1, "1"):
                 apply_plot(hist, hist_edges)
 
         return thresholds_dict

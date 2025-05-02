@@ -3,6 +3,7 @@
 
 #pragma once
 #include <memory>
+#include <mutex>
 
 #include "core/session/ep_library.h"
 #include "core/session/ep_factory_internal.h"
@@ -44,10 +45,11 @@ class EpLibraryProviderBridge : public EpLibrary {
   ORT_DISALLOW_COPY_AND_ASSIGNMENT(EpLibraryProviderBridge);
 
  private:
+  std::mutex mutex_;
   std::unique_ptr<ProviderLibrary> provider_library_;  // provider bridge EP library
 
   // EpLibraryPlugin that provides the CreateEpFactories and ReleaseEpFactory implementations.
-  // we wrap the factories it contains to pass through GetDeviceInfoIfSupported calls, and
+  // we wrap the OrtEpFactory instances it contains to pass through GetSupportedDevices calls, and
   // implement EpFactoryInternal::CreateIExecutionProvider by calling Provider::CreateIExecutionProvider.
   std::unique_ptr<EpLibrary> ep_library_plugin_;
 

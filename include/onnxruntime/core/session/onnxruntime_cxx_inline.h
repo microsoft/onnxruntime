@@ -593,6 +593,11 @@ inline ConstHardwareDevice EpDeviceImpl<T>::Device() const {
 }
 }  // namespace detail
 
+inline EpDevice::EpDevice(OrtEpFactory& ep_factory, ConstHardwareDevice& hardware_device,
+                          ConstKeyValuePairs ep_metadata, ConstKeyValuePairs ep_options) {
+  ThrowOnError(GetEpApi().CreateEpDevice(&ep_factory, hardware_device, ep_metadata, ep_options, &p_));
+}
+
 inline Env::Env(OrtLoggingLevel logging_level, _In_ const char* logid) {
   ThrowOnError(GetApi().CreateEnv(logging_level, logid, &p_));
   if (strcmp(logid, "onnxruntime-node") == 0) {
