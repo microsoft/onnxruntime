@@ -196,6 +196,7 @@ common::Status OpenVINOExecutionProvider::Compile(
 
 #ifdef USE_OVEP_NPU_MEMORY
 std::vector<AllocatorPtr> OpenVINOExecutionProvider::CreatePreferredAllocators() {
+  constexpr const bool use_arena_false = false;
   AllocatorCreationInfo npu_allocator_info{
       [this](OrtDevice::DeviceId device_id) {
         return std::make_unique<OVRTAllocator>(
@@ -203,7 +204,8 @@ std::vector<AllocatorPtr> OpenVINOExecutionProvider::CreatePreferredAllocators()
             device_id,
             OpenVINO_RT_NPU);
       },
-      0};
+      0,
+      use_arena_false};
   // fill in allocator
   return std::vector<AllocatorPtr>{CreateAllocator(npu_allocator_info)};
 }
