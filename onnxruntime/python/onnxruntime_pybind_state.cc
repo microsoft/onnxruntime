@@ -1432,18 +1432,10 @@ static void RegisterCustomOpDomains(PyInferenceSession* sess, const PySessionOpt
 #endif
 
 #if !defined(ORT_MINIMAL_BUILD)
-static Status InitializeSessionFromEpDevices(PyInferenceSession& py_sess,
-                                             const std::vector<const OrtEpDevice*>& ep_devices,
-                                             const ProviderOptions& provider_options,
-                                             const std::unordered_set<std::string>& disabled_optimizer_names) {
+static Status AddEpFactoryFromEpDevices(PySessionOptions& py_sess_options,
+                                        const std::vector<const OrtEpDevice*>& ep_devices,
+                                        const ProviderOptions& provider_options) {
   std::shared_ptr<onnxruntime::Environment> env = GetEnv();
-
-  ORT_RETURN_IF(py_sess.GetSessionHandle() == nullptr, "Invalid Python InferenceSession handle");
-  InferenceSession& sess = *py_sess.GetSessionHandle();
-
-  const logging::Logger* sess_logger = sess.GetLogger();
-  ORT_RETURN_IF(sess_logger == nullptr, "Invalid InferenceSession logger handle");
-
   const size_t num_ep_options = provider_options.size();
   std::vector<const char*> ep_option_keys;
   std::vector<const char*> ep_option_vals;
@@ -1457,16 +1449,32 @@ static Status InitializeSessionFromEpDevices(PyInferenceSession& py_sess,
 
   std::unique_ptr<IExecutionProviderFactory> provider_factory = nullptr;
   ORT_RETURN_IF_ERROR(CreateIExecutionProviderFactoryForEpDevices(*env,
-                                                                  sess.GetMutableSessionOptions(),
+                                                                  py_sess_options.value,
                                                                   ep_devices,
                                                                   ep_option_keys,
                                                                   ep_option_vals,
                                                                   /*output*/ provider_factory));
+  py_sess_options.provider_factories.push_back(std::move(provider_factory));
+  return Status::OK();
+}
 
-  std::unique_ptr<IExecutionProvider> ep = provider_factory->CreateProvider(py_sess.GetOrtSessionOptions(),
-                                                                            *(sess_logger->ToExternal()));
-  if (ep) {
-    ORT_RETURN_IF_ERROR(sess.RegisterExecutionProvider(std::move(ep)));
+static Status InitializeSessionFromEpFactories(PyInferenceSession& py_sess,
+                                               std::vector<std::shared_ptr<onnxruntime::IExecutionProviderFactory>> provider_factories,
+                                               const std::unordered_set<std::string>& disabled_optimizer_names) {
+  ORT_RETURN_IF(py_sess.GetSessionHandle() == nullptr, "Invalid Python InferenceSession handle");
+  InferenceSession& sess = *py_sess.GetSessionHandle();
+
+  const logging::Logger* sess_logger = sess.GetLogger();
+  ORT_RETURN_IF(sess_logger == nullptr, "Invalid InferenceSession logger handle");
+
+  const OrtSessionOptions& ort_session_options = py_sess.GetOrtSessionOptions();
+
+  for (const auto& provider_factory : provider_factories) {
+    std::unique_ptr<IExecutionProvider> ep = provider_factory->CreateProvider(ort_session_options,
+                                                                              *(sess_logger->ToExternal()));
+    if (ep) {
+      ORT_RETURN_IF_ERROR(sess.RegisterExecutionProvider(std::move(ep)));
+    }
   }
 
   if (!disabled_optimizer_names.empty()) {
@@ -1894,6 +1902,34 @@ void addObjectMethods(py::module& m, ExecutionProviderRegistrationFn ep_registra
       sess(m, "SessionOptions", R"pbdoc(Configuration information for a session.)pbdoc");
   sess
       .def(py::init())
+      .def(
+          // Equivalent to the C API's SessionOptionsAppendExecutionProvider_V2.
+          // TODO(adrianlizarraga): Also add add_providers() so that user can use Python SessionOptions
+          // to add explicit EPs (consistent with the C API).
+          "add_ep_devices",
+          [](PySessionOptions* sess_options,
+             const std::vector<const OrtEpDevice*>& ep_devices,
+             const ProviderOptions& provider_options) {
+#if !defined(ORT_MINIMAL_BUILD)
+            OrtPybindThrowIfError(AddEpFactoryFromEpDevices(*sess_options,
+                                                            ep_devices,
+                                                            provider_options));
+#else
+            ORT_UNUSED_PARAMETER(sess_options);
+            ORT_UNUSED_PARAMETER(ep_devices);
+            ORT_UNUSED_PARAMETER(provider_options);
+            ORT_THROW("OrtEpDevices are not supported in this build");
+#endif
+          },
+          R"pbdoc(Adds OrtEpDevice instances that should run the model. All OrtEpDevice instances must refer
+to the same execution provider.)pbdoc")
+      .def(
+          "has_providers",
+          [](PySessionOptions* sess_options) -> bool {
+            return !sess_options->provider_factories.empty();
+          },
+          R"pbdoc(Returns true if the SessionOptions has been configured with providers or OrtEpDevice(s)
+that will run the model.)pbdoc")
       .def_property(
           "enable_cpu_mem_arena",
           [](const PySessionOptions* options) -> bool { return options->value.enable_cpu_mem_arena; },
@@ -2290,30 +2326,22 @@ including arg name, arg type (contains both type and shape).)pbdoc")
                                const std::vector<std::string>& provider_types = {},
                                const ProviderOptionsVector& provider_options = {},
                                const std::unordered_set<std::string>& disabled_optimizer_names = {}) {
-            InitializeSession(sess->GetSessionHandle(),
-                              ep_registration_fn,
-                              provider_types,
-                              provider_options,
-                              disabled_optimizer_names);
-          },
-          R"pbdoc(Load a model saved in ONNX or ORT format.)pbdoc")
-      .def(
-          "initialize_session_from_ep_devices",
-          [](PyInferenceSession* sess,
-             const std::vector<const OrtEpDevice*>& ep_devices,
-             const ProviderOptions& provider_options,
-             const std::unordered_set<std::string>& disabled_optimizer_names = {}) {
-#if !defined(ORT_MINIMAL_BUILD)
-            OrtPybindThrowIfError(InitializeSessionFromEpDevices(*sess,
-                                                                 ep_devices,
-                                                                 provider_options,
-                                                                 disabled_optimizer_names));
-#else
-            ORT_UNUSED_PARAMETER(sess);
-            ORT_UNUSED_PARAMETER(ep_devices);
-            ORT_UNUSED_PARAMETER(provider_options);
-            ORT_UNUSED_PARAMETER(disabled_optimizer_names);
-#endif
+            const std::vector<std::shared_ptr<onnxruntime::IExecutionProviderFactory>>& provider_factories =
+                sess->GetSessionOptionsProviderFactories();
+
+            // If IExecutionProviderFactory instances where already added to the SessionOptions, create the EPs
+            // directly from those factories.
+            if (!provider_factories.empty()) {
+              OrtPybindThrowIfError(InitializeSessionFromEpFactories(*sess,
+                                                                     provider_factories,
+                                                                     disabled_optimizer_names));
+            } else {
+              InitializeSession(sess->GetSessionHandle(),
+                                ep_registration_fn,
+                                provider_types,
+                                provider_options,
+                                disabled_optimizer_names);
+            }
           },
           R"pbdoc(Load a model saved in ONNX or ORT format.)pbdoc")
       .def("run",
@@ -2671,6 +2699,18 @@ including arg name, arg type (contains both type and shape).)pbdoc")
           },
           py::return_value_policy::take_ownership,
           R"pbdoc(Return a copy of the internal session options)pbdoc")
+      .def(
+          "has_ep_factories",
+          [](PyModelCompilationOptions* model_compile_options) -> bool {
+#if !defined(ORT_MINIMAL_BUILD)
+            const OrtSessionOptions& session_options = model_compile_options->GetSessionOptions();
+            return !session_options.provider_factories.empty();
+#else
+            ORT_UNUSED_PARAMETER(model_compile_options);
+            ORT_THROW("Compile API is not supported in this build.");
+#endif
+          },
+          R"pbdoc(Returns true if the underlying SessionOptions have EP factories)pbdoc")
       .def(
           "check",
           [](PyModelCompilationOptions* model_compile_options) {

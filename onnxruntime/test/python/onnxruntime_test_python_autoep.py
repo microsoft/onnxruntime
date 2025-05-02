@@ -8,6 +8,7 @@ import sys
 import tempfile
 import unittest
 
+import numpy as np
 from helper import get_name
 
 import onnxruntime as onnxrt
@@ -33,9 +34,9 @@ class TestAutoEP(unittest.TestCase):
     def tearDownClass(cls):
         cls._tmp_model_dir.cleanup()
 
-    def test_cuda_ep_devices(self):
+    def test_cuda_ep_register_and_inference(self):
         """
-        Test registration of CUDA EP and retrieval of its OrtEpDevice.
+        Test registration of CUDA EP, adding its OrtDevice to the SessionOptions, and running inference.
         """
         ep_lib_path = "onnxruntime_providers_cuda.dll"
         ep_registration_name = "CUDAExecutionProvider"
@@ -50,17 +51,30 @@ class TestAutoEP(unittest.TestCase):
 
         ep_devices = onnxrt.get_ep_devices()
         has_cpu_ep = False
-        has_test_ep = False
+        cuda_ep_device = None
         for ep_device in ep_devices:
             ep_name = ep_device.ep_name()
             if ep_name == "CPUExecutionProvider":
                 has_cpu_ep = True
             if ep_name == ep_registration_name:
-                has_test_ep = True
+                cuda_ep_device = ep_device
 
         self.assertTrue(has_cpu_ep)
-        self.assertTrue(has_test_ep)
-        onnxrt.unregister_execution_provider_library(ep_registration_name)
+        self.assertIsNotNone(cuda_ep_device)
+
+        # Add CUDA's OrtEpDevice to session options
+        sess_options = onnxrt.SessionOptions()
+        sess_options.add_ep_devices([cuda_ep_device], {"prefer_nhwc": "1"})
+        self.assertTrue(sess_options.has_providers())
+
+        # Run sample model and check output
+        sess = onnxrt.InferenceSession(get_name("mul_1.onnx"), sess_options=sess_options)
+
+        x = np.array([[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]], dtype=np.float32)
+        input_name = sess.get_inputs()[0].name
+        res = sess.run([], {input_name: x})
+        output_expected = np.array([[1.0, 4.0], [9.0, 16.0], [25.0, 36.0]], dtype=np.float32)
+        np.testing.assert_allclose(output_expected, res[0], rtol=1e-05, atol=1e-08)
 
     def test_example_plugin_ep_devices(self):
         """
@@ -110,18 +124,12 @@ class TestAutoEP(unittest.TestCase):
         hw_metadata = hw_device.metadata()
         self.assertGreater(len(hw_metadata), 0)  # Should have at least SPDRP_HARDWAREID on Windows
 
-        # Test creating an InferenceSession with this plugin EP.
+        # Test adding this EP plugin's OrtEpDevice to the SessionOptions.
         sess_options = onnxrt.SessionOptions()
-        ep_devices_config = onnxrt.EpDevicesConfig(ep_devices=[test_ep_device], ep_options={"opt1": "val1"})
-        input_model_path = get_name("mul_1.onnx")
         with self.assertRaises(InvalidArgument) as context:
             # Will raise InvalidArgument because ORT currently only supports provider bridge APIs.
             # Actual plugin EPs will be supported in the future.
-            onnxrt.InferenceSession(
-                input_model_path,
-                sess_options=sess_options,
-                ep_devices_config=ep_devices_config,
-            )
+            sess_options.add_ep_devices([test_ep_device], {"opt1": "val1"})
         self.assertIn("EP is not currently supported", str(context.exception))
 
         onnxrt.unregister_execution_provider_library(ep_registration_name)

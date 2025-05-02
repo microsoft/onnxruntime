@@ -424,27 +424,6 @@ def _register_ep_custom_ops(session_options, providers, provider_options, availa
             C.register_nv_tensorrt_rtx_plugins_as_custom_ops(session_options, providers[i][1])
 
 
-class EpDevicesConfig:
-    """
-    Configuration denoting the OrtEpDevice(s) to run a model. All OrtEpDevices must refer
-    to the same execution provider.
-    """
-
-    def __init__(
-        self,
-        ep_devices: Sequence[C.OrtEpDevice],
-        ep_options: dict[Any, Any] | None = None,
-    ):
-        """
-        :param ep_devices: Sequence of OrtEpDevice(s) to run the model
-            All devices must refer to the same execution provider.
-        :param ep_options: Optional dictionary containing additional configuration
-            options for the execution provider.
-        """
-        self.ep_devices = ep_devices
-        self.ep_options = ep_options
-
-
 class InferenceSession(Session):
     """
     This is the main class used to run a model.
@@ -456,7 +435,6 @@ class InferenceSession(Session):
         sess_options: onnxruntime.SessionOptions | None = None,
         providers: Sequence[str | tuple[str, dict[Any, Any]]] | None = None,
         provider_options: Sequence[dict[Any, Any]] | None = None,
-        ep_devices_config: EpDevicesConfig | None = None,
         **kwargs,
     ) -> None:
         """
@@ -468,8 +446,6 @@ class InferenceSession(Session):
             providers are used with the default precedence.
         :param provider_options: Optional sequence of options dicts corresponding
             to the providers listed in 'providers'.
-        :param ep_devices_config: Optional configuration denoting the OrtEpDevice(s) to run
-            the model. Must not be specified with 'providers'/'provider_options'.
 
         The model type will be inferred unless explicitly set in the SessionOptions.
         To explicitly set:
@@ -512,11 +488,16 @@ class InferenceSession(Session):
         # internal parameters that we don't expect to be used in general so aren't documented
         disabled_optimizers = kwargs.get("disabled_optimizers")
 
-        if ep_devices_config and (providers or provider_options):
-            raise ValueError("Cannot specify both 'ep_devices_config' and 'providers'/'provider_options'.")
+        # raise an exception if user is now specifying providers, but the SessionOptions instance
+        # already has provider information (e.g., via set_ep_devices()).
+        if self._sess_options.has_providers() and (providers or provider_options):
+            raise ValueError(
+                "Cannot specify 'providers'/'provider_options' if SessionOptions has already been "
+                "configured with providers or OrtEpDevice(s)."
+            )
 
         try:
-            self._create_inference_session(providers, provider_options, disabled_optimizers, ep_devices_config)
+            self._create_inference_session(providers, provider_options, disabled_optimizers)
         except (ValueError, RuntimeError) as e:
             if self._enable_fallback:
                 try:
@@ -533,13 +514,7 @@ class InferenceSession(Session):
             # Fallback is disabled. Raise the original error.
             raise e
 
-    def _create_inference_session(
-        self,
-        providers,
-        provider_options,
-        disabled_optimizers=None,
-        ep_devices_config: EpDevicesConfig = None,
-    ):
+    def _create_inference_session(self, providers, provider_options, disabled_optimizers=None):
         available_providers = C.get_available_providers()
 
         # Tensorrt can fall back to CUDA if it's explicitly assigned. All others fall back to CPU.
@@ -611,12 +586,7 @@ class InferenceSession(Session):
             disabled_optimizers = set(disabled_optimizers)
 
         # initialize the C++ InferenceSession
-        if ep_devices_config:
-            sess.initialize_session_from_ep_devices(
-                ep_devices_config.ep_devices, ep_devices_config.ep_options, disabled_optimizers
-            )
-        else:
-            sess.initialize_session(providers, provider_options, disabled_optimizers)
+        sess.initialize_session(providers, provider_options, disabled_optimizers)
 
         self._sess = sess
         self._sess_options = self._sess.session_options
@@ -773,11 +743,16 @@ class ModelCompilationOptions:
     def _get_session_options(self) -> onnxruntime.SessionOptions:
         return self._model_compile_options.get_session_options()
 
-    def _check(self):
+    def check(self):
         """
         Raises a 'InvalidArgument' exception if the compilation options are invalid.
         """
         self._model_compile_options.check()
+        has_ep_factories = self._model_compile_options.has_ep_factories()
+        if has_ep_factories and (self._providers or self._provider_options):
+            raise onnxruntime.InvalidArgument(
+                "Cannot set explicit providers if the original SessionOptions already has providers."
+            )
 
 
 def compile_model(model_compile_options: ModelCompilationOptions):
@@ -804,7 +779,7 @@ def compile_model(model_compile_options: ModelCompilationOptions):
             compile_model(model_compile_options)
     """
 
-    model_compile_options._check()
+    model_compile_options.check()
     providers, provider_options = model_compile_options._get_providers()
 
     session_options = model_compile_options._get_session_options()

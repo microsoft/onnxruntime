@@ -254,6 +254,11 @@ struct PyInferenceSession {
   }
 #endif
 
+  const std::vector<std::shared_ptr<onnxruntime::IExecutionProviderFactory>>&
+  GetSessionOptionsProviderFactories() const {
+    return session_options_.provider_factories;
+  }
+
   OrtSessionOptions& GetOrtSessionOptions() {
     if (sess_) {
       // Copy internal value from InferenceSession as it is the source of truth
