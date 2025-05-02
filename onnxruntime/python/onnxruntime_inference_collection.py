@@ -490,7 +490,7 @@ class InferenceSession(Session):
 
         # raise an exception if user is now specifying providers, but the SessionOptions instance
         # already has provider information (e.g., via set_ep_devices()).
-        if self._sess_options.has_providers() and (providers or provider_options):
+        if self._sess_options is not None and self._sess_options.has_providers() and (providers or provider_options):
             raise ValueError(
                 "Cannot specify 'providers'/'provider_options' if SessionOptions has already been "
                 "configured with providers or OrtEpDevice(s)."
