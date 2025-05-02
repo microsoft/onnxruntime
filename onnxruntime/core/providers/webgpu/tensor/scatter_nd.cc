@@ -220,7 +220,7 @@ ONNX_OPERATOR_KERNEL_EX(
     (*KernelDefBuilder::Create())
         .TypeConstraint("T", WebGpuSupportedNumberTypes())
         .MayInplace(0, 0),
-        ScatterND);
+    ScatterND);
 
 ONNX_OPERATOR_VERSIONED_KERNEL_EX(
     ScatterND,
@@ -231,7 +231,7 @@ ONNX_OPERATOR_VERSIONED_KERNEL_EX(
     (*KernelDefBuilder::Create())
         .TypeConstraint("T", WebGpuSupportedNumberTypes())
         .MayInplace(0, 0),
-        ScatterND);
+    ScatterND);
 
 ONNX_OPERATOR_VERSIONED_KERNEL_EX(
     ScatterND,
@@ -242,7 +242,7 @@ ONNX_OPERATOR_VERSIONED_KERNEL_EX(
     (*KernelDefBuilder::Create())
         .TypeConstraint("T", WebGpuSupportedNumberTypes())
         .MayInplace(0, 0),
-        ScatterND);
+    ScatterND);
 
 ONNX_OPERATOR_VERSIONED_KERNEL_EX(
     ScatterND,
@@ -253,6 +253,6 @@ ONNX_OPERATOR_VERSIONED_KERNEL_EX(
     (*KernelDefBuilder::Create())
         .TypeConstraint("T", WebGpuSupportedNumberTypes())
         .MayInplace(0, 0),
-        ScatterND);
+    ScatterND);
 }  // namespace webgpu
 }  // namespace onnxruntime
