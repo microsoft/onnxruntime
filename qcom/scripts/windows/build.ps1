@@ -1,0 +1,115 @@
+# Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+# SPDX-License-Identifier: MIT
+
+param (
+    [Parameter(Mandatory = $true,
+               HelpMessage = "The architecture for which to build.")]
+    [string]$Arch,
+
+    [Parameter(Mandatory = $true,
+               HelpMessage = "Path to QAIRT SDK.")]
+    [string]$QairtSdkRoot,
+
+    [Parameter(Mandatory = $false,
+               HelpMessage = "What to do: build|test.")]
+    [string]$Mode = "Build",
+
+    [Parameter(Mandatory = $false,
+               HelpMessage = "The configuration to build.")]
+    [string]$Config = "RelWithDebInfo",
+
+    [Parameter(Mandatory = $false,
+               HelpMessage = "Force regeneration of build system.")]
+    [bool]$Update = $false
+)
+
+$RepoRoot = (Resolve-Path -Path "$(Split-Path -Parent $MyInvocation.MyCommand.Definition)\..\..\..").Path
+
+. "$RepoRoot\qcom\scripts\windows\tools.ps1"
+
+$BuildDir = (Join-Path $RepoRoot "build\Windows-$Arch")
+$CMakeGenerator = "Visual Studio 17 2022"
+$ProtocPath = (Join-Path (Join-Path $BuildDir $Config) "Google.Protobuf.Tools.3.21.12\tools\windows_x64\protoc.exe")
+$QairtSdkRoot = Resolve-Path -Path $QairtSdkRoot
+$ValidArchs = "arm64", "arm64ec"
+
+function Get-QairtSdkFilePath() {
+    "$BuildDir\$Config\qairt-sdk-path.txt"
+}
+
+function Save-QairtSdkFilePath() {
+    $QairtSdkRoot | Out-File -FilePath $(Get-QairtSdkFilePath)
+}
+
+function Test-QairtSdkDiffers() {
+    $QairtSdkPathPath = Get-QairtSdkFilePath
+    if (-Not (Test-Path -Path $QairtSdkPathPath)) {
+        return $True
+    }
+
+    $LastSdkPath = Get-Content -Path $QairtSdkPathPath
+    return $LastSdkPath -ne $QairtSdkRoot
+}
+function Test-UpdateNeeded() {
+    if ($Update) {
+        Write-Host "Build system update was requested."
+        return $True
+    }
+
+    $SlnPath = "$BuildDir\$Config\onnxruntime.sln"
+    if (-Not (Test-Path -Path $SlnPath)) {
+        Write-Host "VS Solution $SlnPath does not exist."
+        return $True
+    }
+
+    if (Test-QairtSdkDiffers) {
+        Write-Host "Previous build used a different QAIRT SDK."
+        return $True
+    }
+
+    Write-Host "No need to update build system."
+    return $False
+}
+
+if (-Not ($ValidArchs -contains $Arch)) {
+    throw "Invalid arch $Arch. Supported architectures: $ValidArchs"
+}
+
+$Actions = @()
+
+if ($Mode -eq "build")
+{
+    if (!(Test-Path $ProtocPath)) {
+        Write-Host "$ProtocPath does not exist"
+        & $(Get-NugetPath) `
+            restore "$RepoRoot\packages.config" `
+            -PackagesDirectory "$BuildDir\$Config" `
+            -ConfigFile "$RepoRoot\NuGet.config"
+    }
+
+    if (Test-UpdateNeeded) {
+        $Actions += "--update"
+        Save-QairtSdkFilePath
+    }
+
+    $Actions += "--build"
+}
+elseif ($Mode -eq "test") {
+    $Actions += "--test"
+}
+else {
+    throw "Unknown build mode $Mode."
+}
+
+Push-Location $RepoRoot
+.\build.bat `
+    $Actions `
+    "--$Arch" `
+    --config "$Config" `
+    --build_shared_lib `
+    --parallel `
+    --cmake_generator "$CmakeGenerator" `
+    --use_qnn --qnn_home "$QairtSdkRoot" `
+    --build_dir "$BuildDir" `
+    --path_to_protoc "$ProtocPath"
+Pop-Location

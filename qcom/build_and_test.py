@@ -1,9 +1,13 @@
 #!/usr/bin/env python3
+# Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+# SPDX-License-Identifier: MIT
 
 import argparse
 import logging
+import os
 import sys
-from typing import Callable, List
+from pathlib import Path
+from typing import Callable, List, Optional
 
 from ep_build import self_test
 from ep_build.logging import initialize_logging
@@ -21,6 +25,13 @@ from ep_build.task import (
     ListTasksTask,
     NoOpTask,
 )
+from ep_build.tasks.build import BuildEpWindowsTask, InstallDepsWindowsTask
+from ep_build.util import REPO_ROOT
+
+QAIRT_SDK_ROOT_ENV_VAR = "QAIRT_SDK_ROOT"
+QNN_SDK_ROOT_ENV_VAR = "QNN_SDK_ROOT"
+SNPE_ROOT_ENV_VAR = "SNPE_ROOT"
+VENV_PATH = REPO_ROOT / "venv"
 
 
 if __name__ == "__main__":
@@ -41,22 +52,25 @@ def parse_arguments():
     )
 
     parser.add_argument(
-        "--skip", metavar="TASK_RE", type=str, nargs="+", help="List of tasks to skip."
+        "--dry-run", action="store_true", help="Print the plan, rather than running it."
     )
-
     parser.add_argument(
         "--only",
         action="store_true",
         help="Run only the listed task(s), skipping any dependencies.",
     )
-
     parser.add_argument(
         "--print-task-graph",
         action="store_true",
         help="Print the task library in DOT format and exit. Combine with --task to highlight what would run.",
     )
     parser.add_argument(
-        "--dry-run", action="store_true", help="Print the plan, rather than running it."
+        "--qairt-sdk",
+        type=Path,
+        help=f"Path to QAIRT SDK. Overrides {QAIRT_SDK_ROOT_ENV_VAR} environment variable."
+    )
+    parser.add_argument(
+        "--skip", metavar="TASK_RE", type=str, nargs="+", help="List of tasks to skip."
     )
 
     args = parser.parse_args()
@@ -68,6 +82,8 @@ class TaskLibrary:
     The collection of tasks the build is capable of running and the relationships between them.
     In other words, this is the dependency graph.
     """
+    def __init__(self, qairt_sdk_root: Path) -> None:
+        self.__qairt_sdk_root = qairt_sdk_root
 
     @staticmethod
     def to_dot(highlight: List[str] = []) -> str:
@@ -91,6 +107,31 @@ class TaskLibrary:
         elements_str = "\n".join([f"  {element};" for element in elements])
         return f"digraph {{\n{elements_str}\n}}"
 
+    @public_task("Build ONNX Runtime")
+    @depends(["build_ort_windows_arm64"])
+    def build(self, plan: Plan) -> str:
+        return plan.add_step(NoOpTask())
+
+    @task
+    @depends(["install_deps_windows"])
+    def build_ort_windows_arm64(self, plan: Plan) -> str:
+        return plan.add_step(
+            BuildEpWindowsTask(
+                "Building ONNX Runtime for Windows on ARM64",
+                "arm64",
+                self.__qairt_sdk_root,
+                "build",
+            )
+        )
+
+    @task
+    def install_deps_windows(self, plan: Plan) -> str:
+        return plan.add_step(
+            InstallDepsWindowsTask(
+                "Installing dependencies on Windows host."
+            )
+        )
+
     @public_task("Print a list of commonly used tasks; see also --task=list_all.")
     @depends(["list_public"])
     def list(self, plan: Plan) -> str:
@@ -104,15 +145,54 @@ class TaskLibrary:
     def list_public(self, plan: Plan) -> str:
         return plan.add_step(ListTasksTask(PUBLIC_TASKS))
 
+    @public_task("Test ONNX Runtime")
+    @depends(["test_ort_windows_arm64"])
+    def test(self, plan: Plan) -> str:
+        return plan.add_step(NoOpTask())
+
+    @task
+    @depends(["build_ort_windows_arm64"])
+    def test_ort_windows_arm64(self, plan: Plan) -> str:
+        return plan.add_step(
+            BuildEpWindowsTask(
+                "Testing ONNX Runtime for Windows on ARM64",
+                "arm64",
+                self.__qairt_sdk_root,
+                "test",
+            )
+        )
+
+
+def get_qairt_sdk_root(root_from_args: Optional[Path]) -> Path:
+    qairt_sdk: Optional[Path] = None
+    if root_from_args is not None:
+        qairt_sdk = root_from_args
+    elif QAIRT_SDK_ROOT_ENV_VAR in os.environ:
+        qairt_sdk = Path(os.environ[QAIRT_SDK_ROOT_ENV_VAR])
+    elif QNN_SDK_ROOT_ENV_VAR in os.environ:
+        qairt_sdk = Path(os.environ[QNN_SDK_ROOT_ENV_VAR])
+    elif SNPE_ROOT_ENV_VAR in os.environ:
+        qairt_sdk = Path(os.environ[SNPE_ROOT_ENV_VAR])
+    else:
+        raise RuntimeError(
+            f"Must specify location of QAIRT SDK with environment variable {QAIRT_SDK_ROOT_ENV_VAR}, {QNN_SDK_ROOT_ENV_VAR}, {SNPE_ROOT_ENV_VAR}, or --qairt-sdk."
+        )
+
+    if not qairt_sdk.exists():
+        raise FileNotFoundError(f"QAIRT SDK root {qairt_sdk} does not exist.")
+
+    return qairt_sdk
+
 
 def plan_from_dependencies(
     main_tasks: List[str],
+    qairt_sdk_root: Path,
 ) -> Plan:
     """
     Uses a work list algorithm to create a Plan to build the given tasks and their
     dependencies in a valid order. This is the default planner.
     """
-    task_library = TaskLibrary()
+    task_library = TaskLibrary(qairt_sdk_root)
     plan = Plan()
 
     # We always run summarizers, which perform conditional work on the output
@@ -156,12 +236,13 @@ def plan_from_dependencies(
 
 def plan_from_task_list(
     tasks: List[str],
+    qairt_sdk_root: Path,
 ) -> Plan:
     """
     Planner that just instantiates the given tasks with no attempt made to satisfy dependencies.
     Used by --only.
     """
-    task_library = TaskLibrary()
+    task_library = TaskLibrary(qairt_sdk_root)
     plan = Plan()
     for task_name in tasks:
         # add task_name to plan
@@ -179,12 +260,13 @@ def build_and_test():
     initialize_logging()
 
     args = parse_arguments()
+    qairt_sdk_root = get_qairt_sdk_root(args.qairt_sdk)
 
     plan = Plan()
 
     if len(args.task) > 0:
         planner = plan_from_task_list if args.only else plan_from_dependencies
-        plan = planner(args.task)
+        plan = planner(args.task, qairt_sdk_root)
 
     if args.skip is not None:
         for skip in args.skip:
