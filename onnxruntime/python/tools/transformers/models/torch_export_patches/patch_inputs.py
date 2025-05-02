@@ -2,7 +2,7 @@ import inspect
 from typing import Any
 
 import torch
-import transformers
+from transformers.cache_utils import DynamicCache
 
 from . import string_type
 from .cache_helper import make_dynamic_cache
@@ -22,7 +22,7 @@ def _process_cache(k: str, v):
 
 
 def _make_shape(subset: dict, cls: type, value: Any) -> Any:
-    if cls is transformers.cache_utils.DynamicCache:
+    if cls is DynamicCache:
         assert subset, "DynamicCache cannot be empty"
         values = set(map(str, subset.values()))
         assert len(values) == 1, (

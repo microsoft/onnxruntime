@@ -382,10 +382,7 @@ MILSpec::Value OnnxTensorToCoreMLTensor(const ONNX_NAMESPACE::TensorProto& tenso
   MILSpec::ValueType& value_type = *value.mutable_type();
   MILSpec::TensorType& tensor_type = *value_type.mutable_tensortype();
   MILSpec::DataType data_type = OnnxDataTypeToMILSpec(tensor_proto.data_type());
-  MILSpec::DataType converted_data_type = data_type == MILSpec::DataType::INT64
-                                              ? MILSpec::DataType::INT32
-                                              : data_type;
-  tensor_type.set_datatype(converted_data_type);
+  tensor_type.set_datatype(data_type);
 
   tensor_type.set_rank(tensor_proto.dims().size());
   for (const auto& dim : tensor_proto.dims()) {
@@ -931,11 +928,9 @@ Status ModelBuilder::RegisterModelInputOutput(const NodeArg& node_arg, bool is_i
       // the model inputs need to be wired up as args to the 'main' function.
       auto tensor_value_type = CreateNamedTensorValueType(node_arg, /*convert_scalar*/ true);
 
-      // we need to convert int64 to int32 here as well
-      if (data_type == ONNX_NAMESPACE::TensorProto_DataType_INT64) {
-        tensor_value_type.mutable_type()->mutable_tensortype()->set_datatype(
-            OnnxDataTypeToMILSpec(ONNX_NAMESPACE::TensorProto_DataType_INT32));
-      }
+      // Handle conversion from int64 to int32
+      tensor_value_type.mutable_type()->mutable_tensortype()->set_datatype(
+          OnnxDataTypeToMILSpec(data_type));
 
       tensor_value_type.set_name(name);
 
