@@ -162,7 +162,7 @@ Status ResizeOpBuilder::IsOpSupported(QnnModelWrapper& qnn_model_wrapper,
   //                                                   nearest_mode:
   // coordinate_transformation_mode: | round_prefer_floor  round_prefer_ceil  floor  ceil
   // -----------------------------------------------------------------------------------------
-  //                      half_pixel |  Resize(QNN < 2.20)        RNN          RNN     X
+  //                      half_pixel |  Resize(QNN < 2.20)        X            RNN     X
   //              pytorch_half_pixel |  Resize(QNN < 2.20)        X             X      X
   //                   align_corners |  Resize(QNN < 2.20)  Resize(QNN 2.20)   RNN     X
   //                      asymmetric |  Resize(QNN < 2.20)        X            RNN     X
@@ -185,17 +185,21 @@ Status ResizeOpBuilder::IsOpSupported(QnnModelWrapper& qnn_model_wrapper,
                         "QNN EP: Resize on the NPU does not support nearest_mode ", nearest_mode.c_str());
 #endif
 
-      const bool use_resize_nn_op = nearest_mode == "floor";
+      // Use ResizeNearestNeighbor for rank-4 inputs.
+      const bool use_resize_nn_op = input_rank == 4;
 
       // If HTP uses ResizeNearestNeighbor ("floor"), then the "pytorch_half_pixel" coordinate_transformation_mode
       // is not supported.
-      ORT_RETURN_IF(use_resize_nn_op && transformation_mode == "pytorch_half_pixel",
+      ORT_RETURN_IF(!use_resize_nn_op && nearest_mode == "floor" && transformation_mode == "pytorch_half_pixel",
                     "QNN EP: Resize on the NPU does not support the combination of nearest_mode == 'floor' ",
                     " and coordinate_transformation_mode == 'pytorch_half_pixel'.");
 
-      // QNN's ResizeNearestNeighbor requires rank 4 inputs.
-      ORT_RETURN_IF(use_resize_nn_op && input_rank != 4,
-                    "QNN EP: Resize on the NPU with nearest_mode == 'floor' requires an input with rank 4.");
+#if QNN_API_VERSION_MAJOR >= 2 && QNN_API_VERSION_MINOR >= 14
+      // QNN's Resize only supports "round_prefer_ceil" if transformation_mode is "align_corners".
+      ORT_RETURN_IF(!use_resize_nn_op && transformation_mode != "align_corners",
+                    "QNN EP: Resize on the NPU only supports 'round_prefer_ceil' if "
+                    "transformation mode is 'align_corners'");
+#endif
     }
   }
 
