@@ -423,7 +423,15 @@ Status ShaderHelper::GenerateSourceCode(std::string& code, std::vector<int>& sha
     bool is_atomic = program_.Outputs()[i].is_atomic;
     ss << "@group(0) @binding(" << input_vars_.size() + i << ") var<storage, read_write> " << output->name_ << ": array<";
     if (is_atomic) {
-      ss << "atomic<i32>";
+      if (output->type_ == ProgramVariableDataType::Float32) {
+        ss << "atomic<i32>";
+      } else if (output->type_ == ProgramVariableDataType::Uint32) {
+        ss << "atomic<u32>";
+      } else if (output->type_ == ProgramVariableDataType::Int32) {
+        ss << "atomic<i32>";
+      } else {
+        ORT_RETURN_IF(true, "Unsupported atomic type: ", int(output->type_));
+      }
     } else {
       ss << output->StorageType();
     }
