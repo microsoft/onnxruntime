@@ -101,6 +101,18 @@ Encodes a single string and adds the encoded sequence of tokens to the OgaSequen
 OGA_EXPORT OgaResult* OGA_API_CALL OgaTokenizerEncode(const OgaTokenizer*, const char* str, OgaSequences* sequences);
 ```
 
+### ApplyChatTemplate
+
+Processes the specified template with the provided input using the tokenizer, and outputs the resulting string. Optionally, it can include a generation prompt in the output. out_string must be freed with OgaDestroyString
+
+#### Parameters
+
+#### Returns
+
+```c
+OGA_EXPORT OgaResult* OGA_API_CALL OgaTokenizerApplyChatTemplate(const OgaTokenizer* tokenizer, const char* template_str, const char* messages, bool add_generation_prompt, const char** out_string);
+```
+
 ### Decode
 
 Decode a single token sequence and returns a null terminated utf8 string. out_string must be freed with OgaDestroyString
