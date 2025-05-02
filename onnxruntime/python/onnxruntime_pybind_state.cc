@@ -35,6 +35,11 @@
 
 #include "core/session/lora_adapters.h"
 
+#if !defined(ORT_MINIMAL_BUILD)
+#include "core/session/ep_factory_internal.h"
+#include "core/session/utils.h"
+#endif
+
 #ifdef ENABLE_ATEN
 #include "contrib_ops/cpu/aten_ops/aten_op_executor.h"
 #endif
@@ -1426,6 +1431,54 @@ static void RegisterCustomOpDomains(PyInferenceSession* sess, const PySessionOpt
 }
 #endif
 
+#if !defined(ORT_MINIMAL_BUILD)
+static Status InitializeSessionFromEpDevices(PyInferenceSession& py_sess,
+                                             const std::vector<const OrtEpDevice*>& ep_devices,
+                                             const ProviderOptions& provider_options,
+                                             const std::unordered_set<std::string>& disabled_optimizer_names) {
+  std::shared_ptr<onnxruntime::Environment> env = GetEnv();
+
+  ORT_RETURN_IF(py_sess.GetSessionHandle() == nullptr, "Invalid Python InferenceSession handle");
+  InferenceSession& sess = *py_sess.GetSessionHandle();
+
+  const logging::Logger* sess_logger = sess.GetLogger();
+  ORT_RETURN_IF(sess_logger == nullptr, "Invalid InferenceSession logger handle");
+
+  const size_t num_ep_options = provider_options.size();
+  std::vector<const char*> ep_option_keys;
+  std::vector<const char*> ep_option_vals;
+
+  ep_option_keys.reserve(num_ep_options);
+  ep_option_vals.reserve(num_ep_options);
+  for (const auto& [key, val] : provider_options) {
+    ep_option_keys.push_back(key.c_str());
+    ep_option_vals.push_back(val.c_str());
+  }
+
+  std::unique_ptr<IExecutionProviderFactory> provider_factory = nullptr;
+  ORT_RETURN_IF_ERROR(CreateIExecutionProviderFactoryForEpDevices(*env,
+                                                                  sess.GetMutableSessionOptions(),
+                                                                  ep_devices,
+                                                                  ep_option_keys,
+                                                                  ep_option_vals,
+                                                                  /*output*/ provider_factory));
+
+  std::unique_ptr<IExecutionProvider> ep = provider_factory->CreateProvider(py_sess.GetOrtSessionOptions(),
+                                                                            *(sess_logger->ToExternal()));
+  if (ep) {
+    ORT_RETURN_IF_ERROR(sess.RegisterExecutionProvider(std::move(ep)));
+  }
+
+  if (!disabled_optimizer_names.empty()) {
+    ORT_RETURN_IF_ERROR(sess.FilterEnabledOptimizers({disabled_optimizer_names.cbegin(),
+                                                      disabled_optimizer_names.cend()}));
+  }
+
+  ORT_RETURN_IF_ERROR(sess.Initialize());
+  return Status::OK();
+}
+#endif  // !defined(ORT_MINIMAL_BUILD)
+
 void InitializeSession(InferenceSession* sess,
                        ExecutionProviderRegistrationFn ep_registration_fn,
                        const std::vector<std::string>& provider_types,
@@ -2242,6 +2295,25 @@ including arg name, arg type (contains both type and shape).)pbdoc")
                               provider_types,
                               provider_options,
                               disabled_optimizer_names);
+          },
+          R"pbdoc(Load a model saved in ONNX or ORT format.)pbdoc")
+      .def(
+          "initialize_session_from_ep_devices",
+          [](PyInferenceSession* sess,
+             const std::vector<const OrtEpDevice*>& ep_devices,
+             const ProviderOptions& provider_options,
+             const std::unordered_set<std::string>& disabled_optimizer_names = {}) {
+#if !defined(ORT_MINIMAL_BUILD)
+            OrtPybindThrowIfError(InitializeSessionFromEpDevices(*sess,
+                                                                 ep_devices,
+                                                                 provider_options,
+                                                                 disabled_optimizer_names));
+#else
+            ORT_UNUSED_PARAMETER(sess);
+            ORT_UNUSED_PARAMETER(ep_devices);
+            ORT_UNUSED_PARAMETER(provider_options);
+            ORT_UNUSED_PARAMETER(disabled_optimizer_names);
+#endif
           },
           R"pbdoc(Load a model saved in ONNX or ORT format.)pbdoc")
       .def("run",

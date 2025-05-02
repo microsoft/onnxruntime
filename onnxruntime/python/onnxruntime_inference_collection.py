@@ -424,6 +424,27 @@ def _register_ep_custom_ops(session_options, providers, provider_options, availa
             C.register_nv_tensorrt_rtx_plugins_as_custom_ops(session_options, providers[i][1])
 
 
+class EpDevicesConfig:
+    """
+    Configuration denoting the OrtEpDevice(s) to run a model. All OrtEpDevices must refer
+    to the same execution provider.
+    """
+
+    def __init__(
+        self,
+        ep_devices: Sequence[C.OrtEpDevice],
+        ep_options: dict[Any, Any] | None = None,
+    ):
+        """
+        :param ep_devices: Sequence of OrtEpDevice(s) to run the model
+            All devices must refer to the same execution provider.
+        :param ep_options: Optional dictionary containing additional configuration
+            options for the execution provider.
+        """
+        self.ep_devices = ep_devices
+        self.ep_options = ep_options
+
+
 class InferenceSession(Session):
     """
     This is the main class used to run a model.
@@ -435,6 +456,7 @@ class InferenceSession(Session):
         sess_options: onnxruntime.SessionOptions | None = None,
         providers: Sequence[str | tuple[str, dict[Any, Any]]] | None = None,
         provider_options: Sequence[dict[Any, Any]] | None = None,
+        ep_devices_config: EpDevicesConfig | None = None,
         **kwargs,
     ) -> None:
         """
@@ -446,6 +468,8 @@ class InferenceSession(Session):
             providers are used with the default precedence.
         :param provider_options: Optional sequence of options dicts corresponding
             to the providers listed in 'providers'.
+        :param ep_devices_config: Optional configuration denoting the OrtEpDevice(s) to run
+            the model. Must not be specified with 'providers'/'provider_options'.
 
         The model type will be inferred unless explicitly set in the SessionOptions.
         To explicitly set:
@@ -488,8 +512,11 @@ class InferenceSession(Session):
         # internal parameters that we don't expect to be used in general so aren't documented
         disabled_optimizers = kwargs.get("disabled_optimizers")
 
+        if ep_devices_config and (providers or provider_options):
+            raise ValueError("Cannot specify both 'ep_devices_config' and 'providers'/'provider_options'.")
+
         try:
-            self._create_inference_session(providers, provider_options, disabled_optimizers)
+            self._create_inference_session(providers, provider_options, disabled_optimizers, ep_devices_config)
         except (ValueError, RuntimeError) as e:
             if self._enable_fallback:
                 try:
@@ -506,7 +533,13 @@ class InferenceSession(Session):
             # Fallback is disabled. Raise the original error.
             raise e
 
-    def _create_inference_session(self, providers, provider_options, disabled_optimizers=None):
+    def _create_inference_session(
+        self,
+        providers,
+        provider_options,
+        disabled_optimizers=None,
+        ep_devices_config: EpDevicesConfig = None,
+    ):
         available_providers = C.get_available_providers()
 
         # Tensorrt can fall back to CUDA if it's explicitly assigned. All others fall back to CPU.
@@ -578,7 +611,12 @@ class InferenceSession(Session):
             disabled_optimizers = set(disabled_optimizers)
 
         # initialize the C++ InferenceSession
-        sess.initialize_session(providers, provider_options, disabled_optimizers)
+        if ep_devices_config:
+            sess.initialize_session_from_ep_devices(
+                ep_devices_config.ep_devices, ep_devices_config.ep_options, disabled_optimizers
+            )
+        else:
+            sess.initialize_session(providers, provider_options, disabled_optimizers)
 
         self._sess = sess
         self._sess_options = self._sess.session_options
@@ -610,10 +648,20 @@ class InferenceSession(Session):
 
 
 class ModelCompilationOptions:
+    """
+    This class stores options for compiling an ONNX model. A compiled ONNX model has EPContext nodes that each
+    encapsulates a subgraph compiled/optimized for a specific execution provider. Refer to 'compile_model' for
+    example usage.
+    """
+
     def __init__(
         self,
         sess_options: onnxruntime.SessionOptions,
     ):
+        """
+        :param sess_options: Session options.
+        """
+
         self._model_compile_options = C.ModelCompilationOptions(sess_options)
         self._input_model_path: str | os.PathLike | None = None
         self._input_model_bytes: bytes | None = None
@@ -625,12 +673,23 @@ class ModelCompilationOptions:
         providers: Sequence[str | tuple[str, dict[Any, Any]]] | None = None,
         provider_options: Sequence[dict[Any, Any]] | None = None,
     ):
+        """
+        Sets explicit execution providers used to compile the model.
+        Caller may only use one of 'set_providers' or 'set_ep_devices' to specify the providers to compile the model.
+
+        :param providers: Optional sequence of providers in order of decreasing
+            precedence. Values can either be provider names or tuples of
+            (provider name, options dict). If not provided, then all available
+            providers are used with the default precedence.
+        :param provider_options: Optional sequence of options dicts corresponding
+            to the providers listed in 'providers'.
+        """
         available_providers = C.get_available_providers()
         self._providers, self._provider_options = check_and_normalize_provider_args(
             providers, provider_options, available_providers
         )
 
-    def get_providers(
+    def _get_providers(
         self,
     ) -> tuple[Sequence[str | tuple[str, dict[Any, Any]]] | None, Sequence[dict[Any, Any]] | None]:
         return (self._providers, self._provider_options)
@@ -639,6 +698,11 @@ class ModelCompilationOptions:
         self,
         path_or_bytes: str | bytes | os.PathLike,
     ):
+        """
+        Sets the input model to compile. Must be called before calling 'compile_model'.
+
+        :param path_or_bytes: Filename or serialized ONNX model in a byte string.
+        """
         if isinstance(path_or_bytes, (str, os.PathLike)):
             self._input_model_path = os.fspath(path_or_bytes)
             self._model_compile_options.set_input_model_path(self._input_model_path)
@@ -648,16 +712,21 @@ class ModelCompilationOptions:
         else:
             raise TypeError(f"Unable to load from type '{type(path_or_bytes)}'")
 
-    def get_input_model_path(self) -> str | None:
+    def _get_input_model_path(self) -> str | None:
         return self._input_model_path
 
-    def get_input_model_bytes(self) -> bytes | None:
+    def _get_input_model_bytes(self) -> bytes | None:
         return self._input_model_bytes
 
     def set_output_model_path(
         self,
         path: str | os.PathLike,
     ):
+        """
+        Sets the path to the output/compiled model that will be generated by the call to 'compile_model'.
+
+        :param path: Filename for the output/compiled model.
+        """
         if not isinstance(path, (str, os.PathLike)):
             raise TypeError(f"Output model's path is of unexpected type '{type(path)}'")
         self._model_compile_options.set_output_model_path(os.fspath(path))
@@ -667,6 +736,18 @@ class ModelCompilationOptions:
         path: str | os.PathLike,
         external_initializers_size_threshold: int = 1024,
     ):
+        """
+        Optionally sets the file that should store external initializers for the compiled ONNX model. If not set,
+        initializers are stored within the model.
+
+        Only initializers for nodes that were *not* compiled are stored in the external initializers file.
+        Compiled nodes contain their weight data within the 'ep_cache_context' attribute of EPContext nodes.
+        Refer to ModelCompilationOption's 'set_ep_context_embed_mode' method.
+
+        :param path: Filename for the external initializers file.
+        :param external_initializers_size_threshold: Only initializers larger than this threshold are stored in
+            the external initializers file.
+        """
         if not isinstance(path, (str, os.PathLike)):
             raise TypeError(f"Output external initializer file's path is of unexpected type '{type(path)}'")
         self._model_compile_options.set_output_model_external_initializers_file(
@@ -674,29 +755,68 @@ class ModelCompilationOptions:
         )
 
     def set_ep_context_embed_mode(self, embed_ep_context_in_model: bool):
+        """
+        Optionally enables or disables the embedding of EPContext binary data (including weights) into the
+        EPContext nodes in the compiled model. Defaults to False if not specified.
+
+        if enabled, the 'ep_cache_context' attribute of EPContext nodes will store the context binary data, which
+        includes weights for compiled subgraphs.
+
+        if disabled (default), the 'ep_cache_context' attribute of EPContext nodes will contain the path to a
+        file containing the context binary data. The path of this file is generated by the execution provider
+        that creates the EPContext node.
+
+        :param embed_ep_context_in_model: True to embed EPContext binary data into the EPContext node.
+        """
         self._model_compile_options.set_ep_context_embed_mode(embed_ep_context_in_model)
 
-    def get_session_options(self) -> onnxruntime.SessionOptions:
+    def _get_session_options(self) -> onnxruntime.SessionOptions:
         return self._model_compile_options.get_session_options()
 
-    def check(self):
+    def _check(self):
+        """
+        Raises a 'InvalidArgument' exception if the compilation options are invalid.
+        """
         self._model_compile_options.check()
 
 
 def compile_model(model_compile_options: ModelCompilationOptions):
-    model_compile_options.check()
-    providers, provider_options = model_compile_options.get_providers()
+    """
+    Compiles an ONNX model. A compiled ONNX model has EPContext nodes that each
+    encapsulates a subgraph compiled/optimized for a specific execution provider.
 
-    session_options = model_compile_options.get_session_options()
+    Raises an 'InvalidArgument' exception if the compilation options are invalid.
+
+    Refer to the EPContext design document for more information about EPContext models:
+    https://onnxruntime.ai/docs/execution-providers/EP-Context-Design.html
+
+        ::
+
+            sess_options = onnxruntime.SessionOptions()
+            model_compile_options = onnxruntime.ModelCompilationOptions(sess_options)
+            model_compile_options.set_providers(
+                providers=["SomeExecutionProvider"],
+                provider_options=[{"some_option": "some_val"}]
+            )
+            model_compile_options.set_input_model("input_model.onnx")
+            model_compile_options.set_output_model_path("output_model.onnx")
+
+            compile_model(model_compile_options)
+    """
+
+    model_compile_options._check()
+    providers, provider_options = model_compile_options._get_providers()
+
+    session_options = model_compile_options._get_session_options()
     available_providers = C.get_available_providers()
     _register_ep_custom_ops(session_options, providers, provider_options, available_providers)
 
-    input_model_path = model_compile_options.get_input_model_path()
+    input_model_path = model_compile_options._get_input_model_path()
 
     if input_model_path:
         sess = C.InferenceSession(session_options, input_model_path, True, False)
     else:
-        sess = C.InferenceSession(session_options, model_compile_options.get_input_model_bytes(), False, False)
+        sess = C.InferenceSession(session_options, model_compile_options._get_input_model_bytes(), False, False)
 
     # initialize the C++ InferenceSession
     sess.initialize_session(providers, provider_options, set())

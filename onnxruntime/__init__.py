@@ -69,6 +69,7 @@ if import_capi_exception:
 
 from onnxruntime.capi.onnxruntime_inference_collection import (
     AdapterFormat,  # noqa: F401
+    EpDevicesConfig,  # noqa: F401
     InferenceSession,  # noqa: F401
     IOBinding,  # noqa: F401
     ModelCompilationOptions,  # noqa: F401

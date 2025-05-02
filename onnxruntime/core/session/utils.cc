@@ -10,14 +10,16 @@
 #include "core/session/environment.h"
 #include "core/session/inference_session.h"
 #include "core/session/inference_session_utils.h"
-#include "core/session/ep_factory_internal.h"
 #include "core/session/onnxruntime_c_api.h"
 #include "core/session/onnxruntime_session_options_config_keys.h"
-#include "core/session/ep_library_plugin.h"
-#include "core/session/ep_library_provider_bridge.h"
 #include "core/session/ort_apis.h"
 #include "core/session/ort_env.h"
-#include "core/session/onnxruntime_session_options_config_keys.h"
+
+#if !defined(ORT_MINIMAL_BUILD)
+#include "core/session/ep_factory_internal.h"
+#include "core/session/ep_library_plugin.h"
+#include "core/session/ep_library_provider_bridge.h"
+#endif  // !defined(ORT_MINIMAL_BUILD)
 
 using namespace onnxruntime;
 #if !defined(ORT_MINIMAL_BUILD)
@@ -274,5 +276,65 @@ Status LoadPluginOrProviderBridge(const std::string& registration_name,
 
   return Status::OK();
 }
-#endif
+
+Status CreateIExecutionProviderFactoryForEpDevices(const Environment& env,
+                                                   SessionOptions& session_options,
+                                                   gsl::span<const OrtEpDevice* const> ep_devices,
+                                                   gsl::span<const char* const> ep_option_keys,
+                                                   gsl::span<const char* const> ep_option_vals,
+                                                   /*output*/ std::unique_ptr<IExecutionProviderFactory>& out) {
+  if (ep_devices.empty()) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "Must provide one or more OrtEpDevice instances.");
+  }
+
+  const size_t num_ep_options = ep_option_keys.size();
+  if (ep_option_vals.size() != num_ep_options) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "Must provide the same number of keys and values for EP options.");
+  }
+
+  const auto& ep_name = ep_devices[0]->ep_name;
+  bool all_match = std::all_of(ep_devices.begin() + 1, ep_devices.end(),
+                               [&ep_name](const OrtEpDevice* ep_device) { return ep_device->ep_name == ep_name; });
+  if (!all_match) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "All OrtEpDevice values in ep_devices must have the same execution provider.");
+  }
+
+  EpFactoryInternal* internal_factory = nullptr;
+  for (const OrtEpDevice* ep_device : ep_devices) {
+    // we expect the internal factory to be available for internal and provider bridge EPs, which is all we support.
+    internal_factory = env.GetEpFactoryInternal(ep_device->ep_factory);
+    if (!internal_factory) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "EP is not currently supported by this API");
+    }
+
+    // add the options to the session options with the EP prefix.
+    // first add the default values with prefix followed by user specified values so those win
+    const std::string prefix = OrtSessionOptions::GetProviderOptionPrefix(ep_device->ep_name.c_str());
+    auto& config_options = session_options.config_options;
+    for (const auto& [key, value] : ep_device->ep_options.entries) {
+      ORT_RETURN_IF_ERROR(config_options.AddConfigEntry((prefix + key).c_str(), value.c_str()));
+    }
+
+    for (size_t j = 0; j < num_ep_options; ++j) {
+      if (ep_option_keys[j] == nullptr) {
+        continue;
+      }
+
+      ORT_RETURN_IF_ERROR(config_options.AddConfigEntry((prefix + ep_option_keys[j]).c_str(), ep_option_vals[j]));
+    }
+  }
+
+  if (!internal_factory) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "EP is not currently supported by this API");
+  }
+
+  out = std::make_unique<InternalExecutionProviderFactory>(*internal_factory,
+                                                           std::vector<const OrtEpDevice*>(ep_devices.begin(),
+                                                                                           ep_devices.end()));
+  return Status::OK();
+}
+#endif  // !defined(ORT_MINIMAL_BUILD)
 }  // namespace onnxruntime

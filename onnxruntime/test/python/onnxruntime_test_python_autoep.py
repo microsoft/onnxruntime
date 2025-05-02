@@ -8,7 +8,10 @@ import sys
 import tempfile
 import unittest
 
+from helper import get_name
+
 import onnxruntime as onnxrt
+from onnxruntime.capi.onnxruntime_pybind11_state import InvalidArgument
 
 # handle change from python 3.8 and on where loading a dll from the current directory needs to be explicitly allowed.
 if platform.system() == "Windows" and sys.version_info.major >= 3 and sys.version_info.minor >= 8:  # noqa: YTT204
@@ -106,6 +109,20 @@ class TestAutoEP(unittest.TestCase):
 
         hw_metadata = hw_device.metadata()
         self.assertGreater(len(hw_metadata), 0)  # Should have at least SPDRP_HARDWAREID on Windows
+
+        # Test creating an InferenceSession with this plugin EP.
+        sess_options = onnxrt.SessionOptions()
+        ep_devices_config = onnxrt.EpDevicesConfig(ep_devices=[test_ep_device], ep_options={"opt1": "val1"})
+        input_model_path = get_name("mul_1.onnx")
+        with self.assertRaises(InvalidArgument) as context:
+            # Will raise InvalidArgument because ORT currently only supports provider bridge APIs.
+            # Actual plugin EPs will be supported in the future.
+            onnxrt.InferenceSession(
+                input_model_path,
+                sess_options=sess_options,
+                ep_devices_config=ep_devices_config,
+            )
+        self.assertIn("EP is not currently supported", str(context.exception))
 
         onnxrt.unregister_execution_provider_library(ep_registration_name)
 

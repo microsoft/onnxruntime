@@ -118,7 +118,7 @@ class TestCompileApi(unittest.TestCase):
         model_compile_options.set_output_model_path(compiled_model_path)
         model_compile_options.set_ep_context_embed_mode(True)
         model_compile_options.set_output_model_external_initializers_file(
-            os.path.join(self._tmp_dir_path, "external_weights.bin"),
+            "external_weights.bin",
             external_initializers_size_threshold=128,
         )
 
