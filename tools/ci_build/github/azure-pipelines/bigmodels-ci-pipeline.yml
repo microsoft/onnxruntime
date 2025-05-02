@@ -43,7 +43,7 @@ variables:
   - name: docker_base_image
     value: onnxruntimebuildcache.azurecr.io/internal/azureml/onnxruntime/build/cuda12_x64_ubi8_gcc12:20250124.1
   - name: linux_trt_version
-    value: 10.9.0.34-1.cuda12.8
+    value: 10.10.0.31-1.cuda12.9
   - name: Repository
     value: 'onnxruntimecuda12manylinuxbuild'
 
