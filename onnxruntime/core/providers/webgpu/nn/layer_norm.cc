@@ -112,9 +112,9 @@ Status LayerNorm<simplified>::ComputeInternal(onnxruntime::webgpu::ComputeContex
   LayerNormProgram program{bias != nullptr, is_fp16, simplified, mean != nullptr, inv_std_dev != nullptr};
 
   program.CacheHint(components, simplified)
-      .AddInput(x, ProgramTensorMetadataDependency::Type, components, ProgramInput::Flatten)
-      .AddInput(scale, ProgramTensorMetadataDependency::Type, components, ProgramInput::Flatten)
-      .AddOutput(y, ProgramTensorMetadataDependency::None, components, ProgramOutput::Flatten)
+      .AddInput(x, ProgramTensorMetadataDependency::Type, components, ProgramInput::FlattenAndReduce)
+      .AddInput(scale, ProgramTensorMetadataDependency::Type, components, ProgramInput::FlattenAndReduce)
+      .AddOutput(y, ProgramTensorMetadataDependency::None, components, ProgramOutput::FlattenAndReduce)
       .SetDispatchGroupSize((norm_count + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE)
       .AddUniformVariables({
           {static_cast<uint32_t>(norm_count)},
@@ -131,7 +131,7 @@ Status LayerNorm<simplified>::ComputeInternal(onnxruntime::webgpu::ComputeContex
 
   if (bias != nullptr) {
     program.AddInput(
-        bias, ProgramTensorMetadataDependency::Type, components, ProgramInput::Flatten);
+        bias, ProgramTensorMetadataDependency::Type, components, ProgramInput::FlattenAndReduce);
   }
 
   if (mean != nullptr) {

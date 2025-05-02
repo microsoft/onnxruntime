@@ -134,10 +134,10 @@ Status Where::ComputeInternal(ComputeContext& context) const {
   program
       .CacheHint(is_broadcast)
       .SetDispatchGroupSize((vec_size + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE)
-      .AddInput(cond_tensor, ProgramTensorMetadataDependency::Type, 4, ProgramInput::Flatten)
-      .AddInput(x_tensor, ProgramTensorMetadataDependency::Type, 4, ProgramInput::Flatten)
-      .AddInput(y_tensor, ProgramTensorMetadataDependency::Type, 4, ProgramInput::Flatten)
-      .AddOutput(output_tensor, ProgramTensorMetadataDependency::Type, 4, ProgramOutput::Flatten)
+      .AddInput(cond_tensor, ProgramTensorMetadataDependency::Type, 4, ProgramInput::FlattenAndReduce)
+      .AddInput(x_tensor, ProgramTensorMetadataDependency::Type, 4, ProgramInput::FlattenAndReduce)
+      .AddInput(y_tensor, ProgramTensorMetadataDependency::Type, 4, ProgramInput::FlattenAndReduce)
+      .AddOutput(output_tensor, ProgramTensorMetadataDependency::Type, 4, ProgramOutput::FlattenAndReduce)
       .AddUniformVariables({
           {static_cast<uint32_t>(vec_size)},
       });

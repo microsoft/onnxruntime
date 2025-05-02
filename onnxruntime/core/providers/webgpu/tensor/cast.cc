@@ -73,8 +73,8 @@ Status Cast::ComputeInternal(ComputeContext& context) const {
 
   CastProgram program{to_};
   program
-      .AddInput(input_tensor, ProgramTensorMetadataDependency::Type, 4, ProgramInput::Flatten)
-      .AddOutput(output_tensor, ProgramTensorMetadataDependency::None, 4, ProgramOutput::Flatten)
+      .AddInput(input_tensor, ProgramTensorMetadataDependency::Type, 4, ProgramInput::FlattenAndReduce)
+      .AddOutput(output_tensor, ProgramTensorMetadataDependency::None, 4, ProgramOutput::FlattenAndReduce)
       .SetDispatchGroupSize((vec_size + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE)
       .AddUniformVariables({
           {static_cast<uint32_t>(vec_size)},

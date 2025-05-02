@@ -163,14 +163,14 @@ Status BinaryElementwise::ComputeInternal(ComputeContext& context) const {
       .AddUniformVariables({
           {static_cast<uint32_t>(vec_size)},
       })
-      .AddOutput(output_tensor, ProgramTensorMetadataDependency::Type, 4, ProgramOutput::Flatten);
+      .AddOutput(output_tensor, ProgramTensorMetadataDependency::Type, 4, ProgramOutput::FlattenAndReduce);
 
   if (is_lhs_scalar || is_rhs_scalar || !is_broadcast) {
     // Mode Element-wise
     // cache hint: "E{is_a_scalar}{is_b_scalar}"
     program
-        .AddInput(lhs_tensor, ProgramTensorMetadataDependency::Type, 4, ProgramInput::Flatten)
-        .AddInput(rhs_tensor, ProgramTensorMetadataDependency::Type, 4, ProgramInput::Flatten)
+        .AddInput(lhs_tensor, ProgramTensorMetadataDependency::Type, 4, ProgramInput::FlattenAndReduce)
+        .AddInput(rhs_tensor, ProgramTensorMetadataDependency::Type, 4, ProgramInput::FlattenAndReduce)
         .CacheHint("E" + std::to_string(is_lhs_scalar) + std::to_string(is_rhs_scalar));
   } else if (vectorize) {
     // reshape the dims to merge the shared dimension if available
@@ -188,12 +188,12 @@ Status BinaryElementwise::ComputeInternal(ComputeContext& context) const {
     }
 
     if (shared_dimension_divisible_by_4 || a_last_dim_divisible_by_4) {
-      program.AddInput(lhs_tensor, ProgramTensorMetadataDependency::Type, 4, ProgramInput::Flatten);
+      program.AddInput(lhs_tensor, ProgramTensorMetadataDependency::Type, 4, ProgramInput::FlattenAndReduce);
     } else {
       program.AddInput(lhs_tensor, ProgramTensorMetadataDependency::Type);
     }
     if (shared_dimension_divisible_by_4 || b_last_dim_divisible_by_4) {
-      program.AddInput(rhs_tensor, ProgramTensorMetadataDependency::Type, 4, ProgramInput::Flatten);
+      program.AddInput(rhs_tensor, ProgramTensorMetadataDependency::Type, 4, ProgramInput::FlattenAndReduce);
     } else {
       program.AddInput(rhs_tensor, ProgramTensorMetadataDependency::Type);
     }
