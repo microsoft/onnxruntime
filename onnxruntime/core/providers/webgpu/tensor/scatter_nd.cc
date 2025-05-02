@@ -80,10 +80,14 @@ Status ScatterNDProgram::GenerateShaderCode(ShaderHelper& shader) const {
 
   auto calc_data_offset_snippet = [](uint32_t output_rank, bool parallel) -> std::string {
     std::ostringstream ss;
-    if (output_rank <= 2) {
-      ss << "    let element_count_dim = uniforms.output_stride;\n";
+    // The stride is size is one less than the shape size.
+    if (output_rank == 1) {
+      ss << "    let element_count_dim = 1;\n";
+    } else if (output_rank == 2) {
+      ss << "    let element_count_dim = select(uniforms.output_stride, 1, " << (parallel ? "i - indices_start" : "i") << " == 1 " << ");\n";
     } else {
-      ss << "    let element_count_dim = uniforms.output_stride[" << (parallel ? "i - indices_start" : "i") << "];\n";
+      ss << "    let output_stride_index = " << (parallel ? "i - indices_start" : "i") << ";\n"
+         << "    let element_count_dim = select(uniforms.output_stride[output_stride_index], 1, output_stride_index == " << (output_rank - 1) << ");\n";
     }
     if (output_rank == 1) {
       ss << "    let dim_value = uniforms.output_shape;\n";
