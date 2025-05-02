@@ -87,7 +87,7 @@ class AdapterFormat:
 def check_and_normalize_provider_args(
     providers: Sequence[str | tuple[str, dict[Any, Any]]] | None,
     provider_options: Sequence[dict[Any, Any]] | None,
-    available_provider_names: Sequence[str],
+    available_provider_names: Sequence[str] | None = None,
 ):
     """
     Validates the 'providers' and 'provider_options' arguments and returns a
@@ -98,7 +98,8 @@ def check_and_normalize_provider_args(
         (provider name, options dict).
     :param provider_options: Optional sequence of options dicts corresponding
         to the providers listed in 'providers'.
-    :param available_provider_names: The available provider names.
+    :param available_provider_names: Optional names of the available providers.
+        If not None, will print a warning if a provider is not available.
 
     :return: Tuple of (normalized 'providers' sequence, normalized
         'provider_options' sequence).
@@ -117,7 +118,7 @@ def check_and_normalize_provider_args(
     provider_name_to_options = collections.OrderedDict()
 
     def set_provider_options(name, options):
-        if name not in available_provider_names:
+        if available_provider_names is not None and name not in available_provider_names:
             warnings.warn(
                 "Specified provider '{}' is not in available provider names.Available providers: '{}'".format(
                     name, ", ".join(available_provider_names)
@@ -562,13 +563,13 @@ class InferenceSession(Session):
             providers, provider_options, available_providers
         )
 
-        # Print warning if user is now specifying providers, but the SessionOptions instance
+        # Print a warning if user passed providers to InferenceSession() but the SessionOptions instance
         # already has provider information (e.g., via add_ep_devices()). The providers specified
         # here will take precedence.
         if self._sess_options is not None and (providers or provider_options) and self._sess_options.has_providers():
-            print(
-                "Warning: Specified 'providers'/'provider_options' for InferenceSession but SessionOptions has "
-                "alread been configured with providers or OrtEpDevice(s). InferenceSession will use the providers "
+            warnings.warn(
+                "Specified 'providers'/'provider_options' when creating InferenceSession but SessionOptions has "
+                "already been configured with providers or OrtEpDevices. InferenceSession will only use the providers "
                 "passed to InferenceSession()."
             )
 
@@ -622,8 +623,8 @@ class InferenceSession(Session):
 class ModelCompilationOptions:
     """
     This class stores options for compiling an ONNX model. A compiled ONNX model has EPContext nodes that each
-    encapsulates a subgraph compiled/optimized for a specific execution provider. Refer to 'compile_model' for
-    example usage.
+    encapsulates a subgraph compiled for a specific execution provider. Refer to the documentation of 'compile_model()'
+    for example usage.
     """
 
     def __init__(
@@ -656,9 +657,10 @@ class ModelCompilationOptions:
         :param provider_options: Optional sequence of options dicts corresponding
             to the providers listed in 'providers'.
         """
-        available_providers = C.get_available_providers()
         self._providers, self._provider_options = check_and_normalize_provider_args(
-            providers, provider_options, available_providers
+            providers,
+            provider_options,
+            available_providers=None,  # Don't warn if user tries to use a provider that wasn't compiled into ORT.
         )
 
     def _get_providers(
