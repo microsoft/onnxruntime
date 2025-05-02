@@ -405,25 +405,40 @@ std::unordered_set<OrtHardwareDevice> DeviceDiscovery::DiscoverDevicesForPlatfor
     }
   }
 
-  std::wstring_convert<std::codecvt_utf8<wchar_t> > converter;  // wstring to string
-  const auto device_to_ortdevice = [&converter](
+  // our log output to std::wclog breaks with UTF8 chars that are not supported by the current code page.
+  // e.g. (TM) symbol. that stops ALL logging working on at least arm64.
+  // safest way to avoid that is to keep it to single byte chars.
+  // process the OrtHardwareDevice values this way so it can be safely logged.
+  // only the 'description' metadata is likely to be affected.
+  const auto to_safe_string = [](const std::wstring& wstr) -> std::string {
+    std::string str(wstr.size(), ' ');
+    std::transform(wstr.begin(), wstr.end(), str.begin(), [](wchar_t wchar) {
+      if (wchar >= 0 && wchar <= 127) {
+        return static_cast<char>(wchar);
+      }
+      return ' ';
+    });
+    return str;
+  };
+
+  const auto device_to_ortdevice = [&to_safe_string](
                                        DeviceInfo& device,
                                        std::unordered_map<std::wstring, std::wstring>* extra_metadata = nullptr) {
-    OrtHardwareDevice ortdevice{device.type, device.vendor_id, device.device_id, converter.to_bytes(device.vendor)};
+    OrtHardwareDevice ortdevice{device.type, device.vendor_id, device.device_id, to_safe_string(device.vendor)};
 
     if (!device.description.empty()) {
-      ortdevice.metadata.Add("Description", converter.to_bytes(device.description));
+      ortdevice.metadata.Add("Description", to_safe_string(device.description));
     }
 
     for (auto& [key, value] : device.metadata) {
-      ortdevice.metadata.Add(converter.to_bytes(key), converter.to_bytes(value));
+      ortdevice.metadata.Add(to_safe_string(key), to_safe_string(value));
     }
 
     if (extra_metadata) {
       // add any extra metadata from the dxcore info
       for (auto& [key, value] : *extra_metadata) {
         if (device.metadata.find(key) == device.metadata.end()) {
-          ortdevice.metadata.Add(converter.to_bytes(key), converter.to_bytes(value));
+          ortdevice.metadata.Add(to_safe_string(key), to_safe_string(value));
         }
       }
     }
