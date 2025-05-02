@@ -39,9 +39,9 @@ namespace Microsoft.ML.OnnxRuntime
         /// <param name="path">Path to ONNX model to compile.</param>
         public void SetInputModelPath(string path)
         {
-            var utf8Path = NativeOnnxValueHelper.GetPlatformSerializedString(path);
+            var platformPath = NativeOnnxValueHelper.GetPlatformSerializedString(path);
             NativeApiStatus.VerifySuccess(
-                NativeMethods.CompileApi.OrtModelCompilationOptions_SetInputModelPath(handle, utf8Path));
+                NativeMethods.CompileApi.OrtModelCompilationOptions_SetInputModelPath(handle, platformPath));
         }
 
         /// <summary>
@@ -62,9 +62,9 @@ namespace Microsoft.ML.OnnxRuntime
         /// <param name="path">Path to write compiled model to.</param>
         public void SetOutputModelPath(string path)
         {
-            var utf8Path = NativeOnnxValueHelper.GetPlatformSerializedString(path);
+            var platformPath = NativeOnnxValueHelper.GetPlatformSerializedString(path);
             NativeApiStatus.VerifySuccess(
-                NativeMethods.CompileApi.OrtModelCompilationOptions_SetOutputModelPath(handle, utf8Path));
+                NativeMethods.CompileApi.OrtModelCompilationOptions_SetOutputModelPath(handle, platformPath));
 
         }
 
@@ -76,10 +76,10 @@ namespace Microsoft.ML.OnnxRuntime
         /// <param name="threshold">Size at which an initializer will be written to external data.</param>
         public void SetOutputModelExternalInitializersFile(string filePath, ulong threshold)
         {
-            var utf8Path = NativeOnnxValueHelper.GetPlatformSerializedString(filePath);
+            var platformPath = NativeOnnxValueHelper.GetPlatformSerializedString(filePath);
             NativeApiStatus.VerifySuccess(
                 NativeMethods.CompileApi.OrtModelCompilationOptions_SetOutputModelExternalInitializersFile(
-                    handle, utf8Path, new UIntPtr(threshold)));
+                    handle, platformPath, new UIntPtr(threshold)));
         }
 
         // TODO: In order to use this to create an InferenceSession without copying bytes we need more infrastructure.

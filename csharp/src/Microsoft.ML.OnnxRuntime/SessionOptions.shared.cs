@@ -528,8 +528,8 @@ namespace Microsoft.ML.OnnxRuntime
             // End result of that is
             //   SessionOptions.RegisterCustomOpLibrary calls NativeMethods.OrtRegisterCustomOpsLibrary_V2
             //   SessionOptions.RegisterCustomOpLibraryV2 calls NativeMethods.OrtRegisterCustomOpsLibrary
-            var utf8Path = NativeOnnxValueHelper.StringToZeroTerminatedUtf8(libraryPath);
-            NativeApiStatus.VerifySuccess(NativeMethods.OrtRegisterCustomOpsLibrary(handle, utf8Path,
+            var platformPath = NativeOnnxValueHelper.StringToZeroTerminatedUtf8(libraryPath);
+            NativeApiStatus.VerifySuccess(NativeMethods.OrtRegisterCustomOpsLibrary(handle, platformPath,
                                                                                     out libraryHandle));
         }
 
