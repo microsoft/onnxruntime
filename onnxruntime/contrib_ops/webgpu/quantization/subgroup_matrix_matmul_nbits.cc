@@ -227,7 +227,7 @@ Status ApplySubgroupMatrixMatMulNBits(const Tensor* a, const Tensor* b, const Te
       .AddUniformVariables({{static_cast<uint32_t>(M)},
                             {static_cast<uint32_t>(N)},
                             {static_cast<uint32_t>(K)}})
-      .AddOutput(y, ProgramTensorMetadataDependency::TypeAndRank, 1, y_shape);
+      .AddOutput(y, ProgramTensorMetadataDependency::TypeAndRank, 1, y_shape)
       .CacheHint(nbits);
   return context.RunProgram(mul_program);
 }

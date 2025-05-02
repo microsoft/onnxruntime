@@ -263,10 +263,11 @@ ProgramInput::ProgramInput(const Tensor* tensor, ProgramTensorMetadataDependency
   }
 }
 
-ProgramOutput::ProgramOutput(Tensor* tensor, ProgramTensorMetadataDependency dependency, int component, const TensorShape* override_shape)
+ProgramOutput::ProgramOutput(Tensor* tensor, ProgramTensorMetadataDependency dependency, int component, const TensorShape* override_shape, bool is_atomic)
     : tensor{tensor},
       dependency{dependency},
       var_type{ToProgramVariableDataType(tensor->GetElementType(), component)},
+      is_atomic{is_atomic},
       use_override_shape{override_shape != nullptr} {
   if (use_override_shape) {
     this->override_shape = *override_shape;
@@ -344,6 +345,11 @@ ProgramBase& ProgramBase::AddOutput(Tensor* tensor, ProgramTensorMetadataDepende
 
   TensorShape override_shape = GetReducedShape(tensor->Shape(), component);
   outputs_.emplace_back(tensor, dependency, component, &override_shape);
+  return *this;
+}
+
+ProgramBase& ProgramBase::AddOutput(Tensor* tensor, ProgramTensorMetadataDependency dependency, decltype(ProgramOutput::Atomic)) {
+  outputs_.emplace_back(tensor, dependency, 1, nullptr, true);
   return *this;
 }
 

@@ -310,6 +310,9 @@ class ProgramBase {
   // deprecated: use overload with ReduceLastDimension instead.
   ProgramBase& AddOutput(Tensor* tensor, ProgramTensorMetadataDependency dependency, int component /* , decltype(ProgramOutput::ReduceLastDimension) */);
 
+  // add an atomic program output with the specified dependency.
+  ProgramBase& AddOutput(Tensor* tensor, ProgramTensorMetadataDependency dependency, decltype(ProgramOutput::Atomic));
+
   // add a program output with the specified dependency and number of component. The override shape will be used as the shape of the output.
   // deprecated: use overload with ReduceLastDimension instead.
   ProgramBase& AddOutput(Tensor* tensor, ProgramTensorMetadataDependency dependency, int component, const TensorShape& override_shape);

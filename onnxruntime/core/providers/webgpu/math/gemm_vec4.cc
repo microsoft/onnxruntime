@@ -281,12 +281,12 @@ Status ApplyGemmVec4(const Tensor* a,
   const int components = 4;
 
   if (need_handle_matmul) {
-    program.AddInputs({{a, ProgramTensorMetadataDependency::TypeAndRank, components},
-                       {b, ProgramTensorMetadataDependency::TypeAndRank, components}});
+    program.AddInput(a, ProgramTensorMetadataDependency::TypeAndRank, components)
+        .AddInput(b, ProgramTensorMetadataDependency::TypeAndRank, components);
   }
 
   if (need_handle_bias) {
-    program.AddInput({c, ProgramTensorMetadataDependency::TypeAndRank, c_components});
+    program.AddInput(c, ProgramTensorMetadataDependency::TypeAndRank, c_components);
   }
 
   const uint32_t TILE_SIZE = 32;
@@ -294,7 +294,7 @@ Status ApplyGemmVec4(const Tensor* a,
   const uint32_t num_tile_m = (M + TILE_SIZE - 1) / TILE_SIZE;
 
   program.CacheHint(alpha, transA, transB, c_is_scalar)
-      .AddOutputs({{y, ProgramTensorMetadataDependency::TypeAndRank, output_components}})
+      .AddOutput(y, ProgramTensorMetadataDependency::TypeAndRank, output_components)
       .SetDispatchGroupSize(num_tile_n * num_tile_m)
       .SetWorkgroupSize(256, 1, 1)
       .AddUniformVariables({{num_tile_n},
