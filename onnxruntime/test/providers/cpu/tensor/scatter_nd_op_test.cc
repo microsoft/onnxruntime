@@ -163,21 +163,21 @@ TEST(ScatterNDOpTest, ScatterND_batched_3tensor_int64) {
   test1.AddInput<int64_t>("indices", {2, 2, 2}, {0LL, 1LL, 1LL, 0LL, 0LL, 0LL, 1LL, 1LL});
   test1.AddInput<uint32_t>("updates", {2, 2, 2}, {2, 3, 4, 5, 0, 1, 6, 7});
   test1.AddOutput<uint32_t>("output", {2, 2, 2}, {0, 1, 2, 3, 4, 5, 6, 7});
-  test1.Run();
+  test1.Run(OpTester::ExpectResult::kExpectSuccess, "", {kWebGpuExecutionProvider});
 
   OpTester test2("ScatterND", 11);
   test2.AddInput<uint32_t>("data", {2, 2, 2}, {0, 0, 2, 0, 4, 0, 0, 7});
   test2.AddInput<int64_t>("indices", {2, 2, 3}, {0, 0, -1, -1, 0, -1, 0, 1, -1, 1, -1, 0});
   test2.AddInput<uint32_t>("updates", {2, 2}, {1, 5, 3, 6});
   test2.AddOutput<uint32_t>("output", {2, 2, 2}, {0, 1, 2, 3, 4, 5, 6, 7});
-  test2.Run();
+  test2.Run(OpTester::ExpectResult::kExpectSuccess, "", {kWebGpuExecutionProvider});
 
   OpTester test3("ScatterND", 11);
   test3.AddInput<int64_t>("data", {2, 2, 2}, {1LL, 0LL, 0LL, 0LL, 0LL, 0LL, 0LL, 0LL});
   test3.AddInput<int64_t>("indices", {2, 1, 1}, {1, 0});
   test3.AddInput<int64_t>("updates", {2, 1, 2, 2}, {4LL, 5LL, 6LL, 7LL, 0LL, 1LL, 2LL, 3LL});
   test3.AddOutput<int64_t>("output", {2, 2, 2}, {0LL, 1LL, 2LL, 3LL, 4LL, 5LL, 6LL, 7LL});
-  test3.Run();
+  test3.Run(OpTester::ExpectResult::kExpectSuccess, "", {kWebGpuExecutionProvider});
 }
 
 TEST(ScatterNDOpTest, ScatterND_18_add) {
@@ -210,7 +210,7 @@ TEST(ScatterNDOpTest, ScatterND_18_mul_long_shape) {
   // The linter complains if the line is split into multiple lines.
   test1.AddInput<float>("updates", {3, 2, 3, 1, 1, 1, 1}, {2.0f, 4.0f, 8.0f, 16.0f, 32.0f, 64.0f, 128.0f, 256.0f, 512.0f, 1024.0f, 2048.0f, 4096.0f, 8192.0f, 16384.0f, 32768.0f, 65536.0f, 131072.0f, 262144.0f});
   test1.AddOutput<float>("output", {2, 2, 3, 1, 1, 1, 1}, {1638.4f, 6553.6f, 26214.4f, 104857.6f, 419430.4f, 1677721.625f, 12.8f, 25.6f, 51.2f, 102.4f, 204.8f, 409.6f});
-  test1.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kOpenVINOExecutionProvider});
+  test1.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kOpenVINOExecutionProvider, kWebGpuExecutionProvider});
 }
 
 TEST(ScatterNDOpTest, ScatterND_18_min) {
