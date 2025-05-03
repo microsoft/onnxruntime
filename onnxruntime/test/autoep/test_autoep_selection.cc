@@ -326,6 +326,33 @@ TEST(AutoEpSelection, PreferGpu) {
                        OrtExecutionProviderDevicePolicy::OrtExecutionProviderDevicePolicy_PREFER_GPU);
 }
 
+// this should fallback to CPU if no NPU
+TEST(AutoEpSelection, PreferNpu) {
+  std::vector<Input<float>> inputs(1);
+  auto& input = inputs.back();
+  input.name = "X";
+  input.dims = {3, 2};
+  input.values = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f};
+
+  // prepare expected inputs and outputs
+  std::vector<int64_t> expected_dims_y = {3, 2};
+  std::vector<float> expected_values_y = {1.0f, 4.0f, 9.0f, 16.0f, 25.0f, 36.0f};
+
+  const Ort::KeyValuePairs provider_options;
+
+  TestInference<float>(*ort_env, ORT_TSTR("testdata/mul_1.onnx"),
+                       "",  // don't need EP name
+                       std::nullopt,
+                       provider_options,
+                       inputs,
+                       "Y",
+                       expected_dims_y,
+                       expected_values_y,
+                       /* auto_select */ true,
+                       /*select_devices*/ nullptr,
+                       OrtExecutionProviderDevicePolicy::OrtExecutionProviderDevicePolicy_PREFER_NPU);
+}
+
 namespace {
 struct ExamplePluginInfo {
   const std::filesystem::path library_path =

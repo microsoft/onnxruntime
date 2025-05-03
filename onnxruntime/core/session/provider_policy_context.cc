@@ -1,6 +1,8 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#if !defined(ORT_MINIMAL_BUILD)
+
 #include "core/session/provider_policy_context.h"
 
 #include <algorithm>
@@ -341,3 +343,5 @@ void PreferGpuEpPolicy::SelectProvidersForDevices(const std::vector<const OrtEpD
   PreferCpuEpPolicy().SelectProvidersForDevices(sorted_devices, selected);
 }
 }  // namespace onnxruntime
+
+#endif  // !defined(ORT_MINIMAL_BUILD)

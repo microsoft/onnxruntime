@@ -3,6 +3,8 @@
 
 #pragma once
 
+#if !defined(ORT_MINIMAL_BUILD)
+
 #include "core/session/abi_session_options_impl.h"
 #include "core/session/environment.h"
 #include "core/session/onnxruntime_c_api.h"  // For OrtExecutionProviderDevicePolicy
@@ -29,6 +31,8 @@ class IEpPolicySelector {
   /// <param name="selected_devices"></param>
   virtual void SelectProvidersForDevices(const std::vector<const OrtEpDevice*>& sorted_devices,
                                          std::vector<const OrtEpDevice*>& selected_devices) = 0;
+
+  virtual ~IEpPolicySelector() = default;
 };
 
 class ProviderPolicyContext {
@@ -71,3 +75,5 @@ class PreferGpuEpPolicy : public IEpPolicySelector {
 };
 
 }  // namespace onnxruntime
+
+#endif  // !ORT_MINIMAL_BUILD

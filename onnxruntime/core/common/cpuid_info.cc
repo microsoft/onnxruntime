@@ -142,14 +142,6 @@ void CPUIDInfo::X86Init() {
   }
 }
 
-uint32_t CPUIDInfo::GetVendorId(const std::string& vendor) {
-  if (vendor == "GenuineIntel") return 0x8086;
-  if (vendor == "GenuineAMD") return 0x1022;
-  if (vendor.find("Qualcomm") == 0) return 'Q' << 24 | 'C' << 16 | 'O' << 8 | 'M';
-  if (vendor.find("NV") == 0) return 0x10DE;
-  return 0;
-}
-
 std::string CPUIDInfo::GetX86Vendor(int32_t* data) {
   char vendor[sizeof(int32_t) * 3 + 1]{};
   *reinterpret_cast<int*>(vendor + 0) = data[1];
@@ -159,6 +151,14 @@ std::string CPUIDInfo::GetX86Vendor(int32_t* data) {
 }
 
 #endif  // defined(CPUIDINFO_ARCH_X86)
+
+uint32_t CPUIDInfo::GetVendorId(const std::string& vendor) {
+  if (vendor == "GenuineIntel") return 0x8086;
+  if (vendor == "GenuineAMD") return 0x1022;
+  if (vendor.find("Qualcomm") == 0) return 'Q' << 24 | 'C' << 16 | 'O' << 8 | 'M';
+  if (vendor.find("NV") == 0) return 0x10DE;
+  return 0;
+}
 
 #if defined(CPUIDINFO_ARCH_ARM)
 
