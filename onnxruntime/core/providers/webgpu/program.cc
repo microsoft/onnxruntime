@@ -289,6 +289,7 @@ ProgramOutput::ProgramOutput(Tensor* tensor, ProgramTensorMetadataDependency dep
     : tensor{tensor},
       dependency{dependency},
       var_type{ToProgramVariableDataType(tensor->GetElementType(), component)},
+      is_atomic{false},
       use_override_shape{component > 1},
       override_shape{} {
   if (use_override_shape) {
@@ -296,10 +297,19 @@ ProgramOutput::ProgramOutput(Tensor* tensor, ProgramTensorMetadataDependency dep
   }
 }
 
+ProgramOutput::ProgramOutput(Tensor* tensor, ProgramTensorMetadataDependency dependency, ProgramOutput::AtomicTag)
+    : tensor{tensor},
+      dependency{dependency},
+      var_type{ToProgramVariableDataType(tensor->GetElementType())},
+      is_atomic{true},
+      use_override_shape{false},
+      override_shape{} {}
+
 ProgramOutput::ProgramOutput(Tensor* tensor, ProgramTensorMetadataDependency dependency, const TensorShape& override_shape, int component)
     : tensor{tensor},
       dependency{dependency},
       var_type{ToProgramVariableDataType(tensor->GetElementType(), component)},
+      is_atomic{false},
       use_override_shape{true},
       override_shape{override_shape} {}
 
