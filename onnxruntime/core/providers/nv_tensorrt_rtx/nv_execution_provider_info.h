@@ -8,8 +8,9 @@
 #include "core/framework/ortdevice.h"
 #include "core/framework/provider_options.h"
 #include "core/framework/framework_provider_common.h"
-#include "core/session/onnxruntime_c_api.h"
 #include "core/framework/library_handles.h"
+#include "core/session/onnxruntime_c_api.h"
+#include "core/providers/shared_library/provider_api.h"
 
 #define TRT_DEFAULT_OPTIMIZER_LEVEL 3
 
@@ -19,18 +20,10 @@ struct NvExecutionProviderInfo {
   int device_id{0};
   bool has_user_compute_stream{false};
   void* user_compute_stream{nullptr};
-  bool has_trt_options{false};
   int max_partition_iterations{1000};
   int min_subgraph_size{1};
   size_t max_workspace_size{0};
-  bool fp16_enable{false};
-  bool int8_enable{false};
-  std::string int8_calibration_table_name{""};
-  bool int8_use_native_calibration_table{false};
-  bool dla_enable{false};
-  int dla_core{0};
   bool dump_subgraphs{false};
-  bool engine_cache_enable{false};
   std::string engine_cache_path{""};
   bool weight_stripped_engine_enable{false};
   std::string onnx_model_folder_path{""};
@@ -40,16 +33,10 @@ struct NvExecutionProviderInfo {
   std::string engine_decryption_lib_path{""};
   bool force_sequential_engine_build{false};
   bool context_memory_sharing_enable{false};
-  bool layer_norm_fp32_fallback{false};
-  bool timing_cache_enable{false};
   std::string timing_cache_path{""};
-  bool force_timing_cache{false};
   bool detailed_build_log{false};
-  bool build_heuristics_enable{false};
   bool sparsity_enable{false};
-  int builder_optimization_level{3};
   int auxiliary_streams{-1};
-  std::string tactic_sources{""};
   std::string extra_plugin_lib_paths{""};
   std::string profile_min_shapes{""};
   std::string profile_max_shapes{""};
@@ -59,10 +46,10 @@ struct NvExecutionProviderInfo {
   std::string ep_context_file_path{""};
   int ep_context_embed_mode{0};
   std::string engine_cache_prefix{""};
-  bool engine_hw_compatible{false};
   std::string op_types_to_exclude{""};
 
-  static NvExecutionProviderInfo FromProviderOptions(const ProviderOptions& options);
+  static NvExecutionProviderInfo FromProviderOptions(const ProviderOptions& options,
+                                                     const ConfigOptions& session_options);
   static ProviderOptions ToProviderOptions(const NvExecutionProviderInfo& info);
   std::vector<OrtCustomOpDomain*> custom_op_domain_list;
 };

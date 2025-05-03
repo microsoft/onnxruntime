@@ -281,7 +281,7 @@ bool ApplyProfileShapesFromProviderOptions(std::vector<nvinfer1::IOptimizationPr
                                            std::unordered_map<std::string, std::vector<std::vector<int64_t>>>& profile_opt_shapes,
                                            ShapeRangesMap& input_explicit_shape_ranges) {
   if (trt_profiles.size() == 0) {
-    LOGS_DEFAULT(WARNING) << "[Nv EP] Number of optimization profiles should be greater than 0, but it's 0.";
+    LOGS_DEFAULT(WARNING) << "[NvTensorRTRTX EP] Number of optimization profiles should be greater than 0, but it's 0.";
     return false;
   }
 
@@ -295,8 +295,8 @@ bool ApplyProfileShapesFromProviderOptions(std::vector<nvinfer1::IOptimizationPr
     input_explicit_shape_ranges[input_name] = inner_map;
   }
 
-  LOGS_DEFAULT(VERBOSE) << "[Nv EP] Begin to apply profile shapes ...";
-  LOGS_DEFAULT(VERBOSE) << "[Nv EP] Input tensor name is '" << input_name << "', number of profiles found is " << trt_profiles.size();
+  LOGS_DEFAULT(VERBOSE) << "[NvTensorRTRTX EP] Begin to apply profile shapes ...";
+  LOGS_DEFAULT(VERBOSE) << "[NvTensorRTRTX EP] Input tensor name is '" << input_name << "', number of profiles found is " << trt_profiles.size();
 
   for (size_t i = 0; i < trt_profiles.size(); i++) {
     nvinfer1::Dims dims = input->getDimensions();
@@ -309,7 +309,7 @@ bool ApplyProfileShapesFromProviderOptions(std::vector<nvinfer1::IOptimizationPr
       int shape_size = nb_dims == 0 ? 1 : static_cast<int>(profile_min_shapes[input_name][i].size());
       std::vector<int64_t> shapes_min(shape_size), shapes_opt(shape_size), shapes_max(shape_size);
 
-      LOGS_DEFAULT(VERBOSE) << "[Nv EP] shape size of this shape tensor is " << shape_size;
+      LOGS_DEFAULT(VERBOSE) << "[NvTensorRTRTX EP] shape size of this shape tensor is " << shape_size;
 
       for (int j = 0; j < shape_size; j++) {
         auto min_value = profile_min_shapes[input_name][i][j];
@@ -318,9 +318,9 @@ bool ApplyProfileShapesFromProviderOptions(std::vector<nvinfer1::IOptimizationPr
         shapes_min[j] = static_cast<int64_t>(min_value);
         shapes_max[j] = static_cast<int64_t>(max_value);
         shapes_opt[j] = static_cast<int64_t>(opt_value);
-        LOGS_DEFAULT(VERBOSE) << "[Nv EP] shapes_min.d[" << j << "] is " << shapes_min[j];
-        LOGS_DEFAULT(VERBOSE) << "[Nv EP] shapes_max.d[" << j << "] is " << shapes_max[j];
-        LOGS_DEFAULT(VERBOSE) << "[Nv EP] shapes_opt.d[" << j << "] is " << shapes_opt[j];
+        LOGS_DEFAULT(VERBOSE) << "[NvTensorRTRTX EP] shapes_min.d[" << j << "] is " << shapes_min[j];
+        LOGS_DEFAULT(VERBOSE) << "[NvTensorRTRTX EP] shapes_max.d[" << j << "] is " << shapes_max[j];
+        LOGS_DEFAULT(VERBOSE) << "[NvTensorRTRTX EP] shapes_opt.d[" << j << "] is " << shapes_opt[j];
 
         if (input_explicit_shape_ranges[input_name].find(j) == input_explicit_shape_ranges[input_name].end()) {
           std::vector<std::vector<int64_t>> profile_vector(trt_profiles.size());
@@ -342,7 +342,7 @@ bool ApplyProfileShapesFromProviderOptions(std::vector<nvinfer1::IOptimizationPr
       dims_max.nbDims = nb_dims;
       dims_opt.nbDims = nb_dims;
 
-      LOGS_DEFAULT(VERBOSE) << "[Nv EP] number of dimension of this execution tensor is " << nb_dims;
+      LOGS_DEFAULT(VERBOSE) << "[NvTensorRTRTX EP] number of dimension of this execution tensor is " << nb_dims;
 
       for (int j = 0; j < nb_dims; j++) {
         if (dims.d[j] == -1) {
@@ -352,9 +352,9 @@ bool ApplyProfileShapesFromProviderOptions(std::vector<nvinfer1::IOptimizationPr
           dims_min.d[j] = static_cast<int32_t>(min_value);
           dims_max.d[j] = static_cast<int32_t>(max_value);
           dims_opt.d[j] = static_cast<int32_t>(opt_value);
-          LOGS_DEFAULT(VERBOSE) << "[Nv EP] dims_min.d[" << j << "] is " << dims_min.d[j];
-          LOGS_DEFAULT(VERBOSE) << "[Nv EP] dims_max.d[" << j << "] is " << dims_max.d[j];
-          LOGS_DEFAULT(VERBOSE) << "[Nv EP] dims_opt.d[" << j << "] is " << dims_opt.d[j];
+          LOGS_DEFAULT(VERBOSE) << "[NvTensorRTRTX EP] dims_min.d[" << j << "] is " << dims_min.d[j];
+          LOGS_DEFAULT(VERBOSE) << "[NvTensorRTRTX EP] dims_max.d[" << j << "] is " << dims_max.d[j];
+          LOGS_DEFAULT(VERBOSE) << "[NvTensorRTRTX EP] dims_opt.d[" << j << "] is " << dims_opt.d[j];
 
           if (input_explicit_shape_ranges[input_name].find(j) == input_explicit_shape_ranges[input_name].end()) {
             std::vector<std::vector<int64_t>> profile_vector(trt_profiles.size());
@@ -933,7 +933,7 @@ NvExecutionProvider::PerThreadContext::~PerThreadContext() {
 bool NvExecutionProvider::PerThreadContext::CompareProfileShapes(std::string fused_node, ShapeRangesMap& shape_ranges) {
   if (shape_ranges.size() > 0) {
     if (input_shape_ranges_[fused_node] != shape_ranges) {
-      LOGS_DEFAULT(VERBOSE) << "[Nv EP] The shape ranges maintained by the PerThreadContext is different from the shape ranges maintained by TRT EP. \
+      LOGS_DEFAULT(VERBOSE) << "[NvTensorRTRTX EP] The shape ranges maintained by the PerThreadContext is different from the shape ranges maintained by TRT EP. \
                                 This means the engine is updated and will need to update the execution context as well.";
       return true;
     }
@@ -1068,53 +1068,95 @@ NvExecutionProvider::NvExecutionProvider(const NvExecutionProviderInfo& info)
     }
   };
 
-  // Get environment variables
-  if (info.has_trt_options) {
-    max_partition_iterations_ = info.max_partition_iterations;
-    min_subgraph_size_ = info.min_subgraph_size;
-    max_workspace_size_ = info.max_workspace_size;
-    dump_subgraphs_ = info.dump_subgraphs;
-    weight_stripped_engine_enable_ = info.weight_stripped_engine_enable;
-    onnx_model_folder_path_ = info.onnx_model_folder_path;
-    onnx_model_bytestream_ = info.onnx_bytestream;
-    onnx_model_bytestream_size_ = info.onnx_bytestream_size;
-    if ((onnx_model_bytestream_ != nullptr && onnx_model_bytestream_size_ == 0) ||
-        (onnx_model_bytestream_ == nullptr && onnx_model_bytestream_size_ != 0)) {
-      ORT_THROW_IF_ERROR(ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
-                                         "When providing either 'trt_onnx_bytestream_size' or "
-                                         "'trt_onnx_bytestream' both have to be provided"));
-    }
-    detailed_build_log_ = info.detailed_build_log;
-    dump_ep_context_model_ = info.dump_ep_context_model;
-    ep_context_file_path_ = info.ep_context_file_path;
-    ep_context_embed_mode_ = info.ep_context_embed_mode;
-    enable_engine_cache_for_ep_context_model();
-    cache_prefix_ = info.engine_cache_prefix;
-    // use a more global cache if given
-    engine_decryption_enable_ = info.engine_decryption_enable;
-    if (engine_decryption_enable_) {
-      engine_decryption_lib_path_ = info.engine_decryption_lib_path;
-    }
-    force_sequential_engine_build_ = info.force_sequential_engine_build;
-    context_memory_sharing_enable_ = info.context_memory_sharing_enable;
-    sparsity_enable_ = info.sparsity_enable;
-    auxiliary_streams_ = info.auxiliary_streams;
-    profile_min_shapes = info.profile_min_shapes;
-    profile_max_shapes = info.profile_max_shapes;
-    profile_opt_shapes = info.profile_opt_shapes;
-    cuda_graph_enable_ = info.cuda_graph_enable;
-    op_types_to_exclude_ = info.op_types_to_exclude;
-  } else {
-    LOGS_DEFAULT(INFO) << "[Nv EP] Options were not specified";
+  max_partition_iterations_ = info.max_partition_iterations;
+  min_subgraph_size_ = info.min_subgraph_size;
+  max_workspace_size_ = info.max_workspace_size;
+  dump_subgraphs_ = info.dump_subgraphs;
+  weight_stripped_engine_enable_ = info.weight_stripped_engine_enable;
+  onnx_model_folder_path_ = info.onnx_model_folder_path;
+  onnx_model_bytestream_ = info.onnx_bytestream;
+  onnx_model_bytestream_size_ = info.onnx_bytestream_size;
+  if ((onnx_model_bytestream_ != nullptr && onnx_model_bytestream_size_ == 0) ||
+      (onnx_model_bytestream_ == nullptr && onnx_model_bytestream_size_ != 0)) {
+    ORT_THROW_IF_ERROR(ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
+                                       "When providing either 'trt_onnx_bytestream_size' or "
+                                       "'trt_onnx_bytestream' both have to be provided"));
   }
+  detailed_build_log_ = info.detailed_build_log;
+  dump_ep_context_model_ = info.dump_ep_context_model;
+  ep_context_file_path_ = info.ep_context_file_path;
+  ep_context_embed_mode_ = info.ep_context_embed_mode;
+  enable_engine_cache_for_ep_context_model();
+  cache_prefix_ = info.engine_cache_prefix;
+  // use a more global cache if given
+  engine_decryption_enable_ = info.engine_decryption_enable;
+  if (engine_decryption_enable_) {
+    engine_decryption_lib_path_ = info.engine_decryption_lib_path;
+  }
+  force_sequential_engine_build_ = info.force_sequential_engine_build;
+  context_memory_sharing_enable_ = info.context_memory_sharing_enable;
+  sparsity_enable_ = info.sparsity_enable;
+  auxiliary_streams_ = info.auxiliary_streams;
+  profile_min_shapes = info.profile_min_shapes;
+  profile_max_shapes = info.profile_max_shapes;
+  profile_opt_shapes = info.profile_opt_shapes;
+
+  /*
+   * Parse explicit min/max/opt profile shapes from provider options.
+   *
+   * The format of min/max/opt profile shapes is defined as below:
+   * "input1:dim1xdim2...,input2:dim1xdim2...,...,input1:dim3xdim4...,input2:dim3xdim4...,..."
+   *
+   * (Note: if multiple shapes with same input name are specified, TRT EP will consider them as multiple profiles.
+   *  Please refer to ParserProfileShapes() for more details)
+   *
+   */
+  bool status = true;
+  if (status) {
+    status = ParseProfileShapes(profile_min_shapes, profile_min_shapes_);
+    if (!status) {
+      profile_min_shapes_.clear();
+      LOGS_DEFAULT(WARNING) << "[NvTensorRTRTX EP] The format of provider option 'trt_profile_min_shapes' is wrong, please follow the format of 'input1:dim1xdimd2...,input2:dim1xdim2...,...'";
+    }
+  }
+
+  if (status) {
+    status = ParseProfileShapes(profile_max_shapes, profile_max_shapes_);
+    if (!status) {
+      profile_max_shapes_.clear();
+      LOGS_DEFAULT(WARNING) << "[NvTensorRTRTX EP] The format of provider option 'trt_profile_max_shapes' is wrong, please follow the format of 'input1:dim1xdimd2...,input2:dim1xdim2...,...'";
+    }
+  }
+
+  if (status) {
+    status = ParseProfileShapes(profile_opt_shapes, profile_opt_shapes_);
+    if (!status) {
+      profile_opt_shapes_.clear();
+      LOGS_DEFAULT(WARNING) << "[NvTensorRTRTX EP] The format of provider option 'trt_profile_opt_shapes' is wrong, please follow the format of 'input1:dim1xdimd2...,input2:dim1xdim2...,...'";
+    }
+  }
+
+  if (status) {
+    status = ValidateProfileShapes(profile_min_shapes_, profile_max_shapes_, profile_opt_shapes_);
+    if (!status) {
+      LOGS_DEFAULT(WARNING) << "[NvTensorRTRTX EP] Profile shapes validation failed. Make sure the provider options 'trt_profile_min_shapes', 'trt_profile_max_shapes' and 'trt_profile_opt_shapes' have same input name and number of profile.";
+      LOGS_DEFAULT(WARNING) << "[NvTensorRTRTX EP] TRT EP will implicitly create optimization profiles based on input tensor for you.";
+      profile_min_shapes_.clear();
+      profile_max_shapes_.clear();
+      profile_opt_shapes_.clear();
+    }
+  }
+
+  cuda_graph_enable_ = info.cuda_graph_enable;
+  op_types_to_exclude_ = info.op_types_to_exclude;
 
   // Validate setting
   if (max_partition_iterations_ <= 0) {
-    // LOGS_DEFAULT(WARNING) << "[Nv EP] TensorRT option nv_max_partition_iterations must be a positive integer value. Set it to 1000";
+    // LOGS_DEFAULT(WARNING) << "[NvTensorRTRTX EP] TensorRT option nv_max_partition_iterations must be a positive integer value. Set it to 1000";
     max_partition_iterations_ = 1000;
   }
   if (min_subgraph_size_ <= 0) {
-    // LOGS_DEFAULT(WARNING) << "[Nv EP] TensorRT option nv_min_subgraph_size must be a positive integer value. Set it to 1";
+    // LOGS_DEFAULT(WARNING) << "[NvTensorRTRTX EP] TensorRT option nv_min_subgraph_size must be a positive integer value. Set it to 1";
     min_subgraph_size_ = 1;
   }
 
@@ -1181,10 +1223,10 @@ NvExecutionProvider::NvExecutionProvider(const NvExecutionProviderInfo& info)
   trt_version_ = getInferLibVersion();
   CUDA_CALL_THROW(cudaRuntimeGetVersion(&cuda_version_));
 
-  LOGS_DEFAULT(VERBOSE) << "[Nv EP] TensorRT version is " << trt_version_;
-  LOGS_DEFAULT(VERBOSE) << "[Nv EP] CUDA version is " << cuda_version_;
+  LOGS_DEFAULT(VERBOSE) << "[NvTensorRTRTX EP] TensorRT version is " << trt_version_;
+  LOGS_DEFAULT(VERBOSE) << "[NvTensorRTRTX EP] CUDA version is " << cuda_version_;
 
-  LOGS_DEFAULT(VERBOSE) << "[Nv EP] Nv provider options: "
+  LOGS_DEFAULT(VERBOSE) << "[NvTensorRTRTX EP] Nv provider options: "
                         << "device_id: " << device_id_
                         << ", nv_max_partition_iterations: " << max_partition_iterations_
                         << ", nv_min_subgraph_size: " << min_subgraph_size_
@@ -1311,15 +1353,9 @@ nvinfer1::IBuilder* NvExecutionProvider::GetBuilder(TensorrtLogger& trt_logger) 
 }
 
 void NvExecutionProvider::GetCustomOpDomainList(std::vector<OrtCustomOpDomain*>& custom_op_domain_list) const {
-  std::string extra_plugin_lib_paths{""};
-  if (info_.has_trt_options) {
-    if (!info_.extra_plugin_lib_paths.empty()) {
-      extra_plugin_lib_paths = info_.extra_plugin_lib_paths;
-    }
-  }
-  auto status = CreateTensorRTCustomOpDomainList(custom_op_domain_list, extra_plugin_lib_paths);
+  auto status = CreateTensorRTCustomOpDomainList(custom_op_domain_list, info_.extra_plugin_lib_paths);
   if (status != Status::OK()) {
-    LOGS_DEFAULT(WARNING) << "[Nv EP] Failed to get TRT plugins from TRT plugin registration.";
+    LOGS_DEFAULT(WARNING) << "[NvTensorRTRTX EP] Failed to get TRT plugins from TRT plugin registration.";
   }
 }
 
@@ -1498,7 +1534,7 @@ std::unique_ptr<IndexedSubGraph> NvExecutionProvider::GetSubGraph(SubGraph_t gra
   auto meta_def = IndexedSubGraph_MetaDef::Create();
   const std::string graph_type = graph.IsSubgraph() ? "subgraph" : "graph";
   meta_def->name() = "TRTKernel_" + graph_type + "_" + graph.Name() + "_" + subgraph_id;
-  LOGS_DEFAULT(INFO) << "[Nv EP] TensorRT subgraph MetaDef name " + meta_def->name();
+  LOGS_DEFAULT(INFO) << "[NvTensorRTRTX EP] TensorRT subgraph MetaDef name " + meta_def->name();
 
   // Assign inputs and outputs to subgraph's meta_def
   for (const auto& input : inputs) {
@@ -1619,7 +1655,7 @@ SubGraphCollection_t NvExecutionProvider::GetSupportedList(SubGraphCollection_t 
         // Only if the newly built graph has control flow op as well as it has parent node,
         // it needs to handle outer scope values before calling graph.Resolve().
         if (has_control_flow_op && graph.ParentNode()) {
-          LOGS_DEFAULT(VERBOSE) << "[Nv EP] Handle outer scope values for the subgraph " << graph_build.Name();
+          LOGS_DEFAULT(VERBOSE) << "[NvTensorRTRTX EP] Handle outer scope values for the subgraph " << graph_build.Name();
           BuildSubGraphContext(graph_build);
           SetGraphOuterScopeValuesAndInputs(graph_build, graph.GetGraph());
           SetAllGraphInputs(graph_build);
@@ -2005,9 +2041,9 @@ NvExecutionProvider::GetCapability(const GraphViewer& graph,
     }
     SubGraphCollection_t consolidated_supported_nodes_vector = {{nodes_vector, true}};
     if (DetectTensorRTGraphCycles(consolidated_supported_nodes_vector, graph, model_hash, false)) {
-      LOGS_DEFAULT(INFO) << "[Nv EP] TensorRT nodes are not consolidated because graph will have cycles after consolidation";
+      LOGS_DEFAULT(INFO) << "[NvTensorRTRTX EP] TensorRT nodes are not consolidated because graph will have cycles after consolidation";
     } else {
-      LOGS_DEFAULT(INFO) << "[Nv EP] TensorRT nodes are consolidated into one subgraph";
+      LOGS_DEFAULT(INFO) << "[NvTensorRTRTX EP] TensorRT nodes are consolidated into one subgraph";
       supported_nodes_vector = consolidated_supported_nodes_vector;
     }
   }
@@ -2072,7 +2108,7 @@ NvExecutionProvider::GetCapability(const GraphViewer& graph,
           }
         }
       }
-      LOGS_DEFAULT(INFO) << "[Nv EP] Whole graph will run on Nv execution provider";
+      LOGS_DEFAULT(INFO) << "[NvTensorRTRTX EP] Whole graph will run on Nv execution provider";
 
       // The context map is only used during EP compile time, release it to save memory space.
       subgraph_context_map_.clear();
@@ -2092,11 +2128,11 @@ NvExecutionProvider::GetCapability(const GraphViewer& graph,
 
   const size_t number_of_subgraphs = supported_nodes_vector.size();
   if (number_of_trt_nodes == 0) {
-    LOGS_DEFAULT(WARNING) << "[Nv EP] No graph will run on Nv execution provider";
+    LOGS_DEFAULT(WARNING) << "[NvTensorRTRTX EP] No graph will run on Nv execution provider";
   } else if (number_of_trt_nodes == number_of_ort_nodes) {
-    LOGS_DEFAULT(INFO) << "[Nv EP] Whole graph will run on Nv execution provider";
+    LOGS_DEFAULT(INFO) << "[NvTensorRTRTX EP] Whole graph will run on Nv execution provider";
   } else {
-    LOGS_DEFAULT(INFO) << "[Nv EP] Graph is partitioned and number of subgraphs running on Nv executio provider is " << number_of_subgraphs;
+    LOGS_DEFAULT(INFO) << "[NvTensorRTRTX EP] Graph is partitioned and number of subgraphs running on Nv executio provider is " << number_of_subgraphs;
   }
 
   // The context map is only used during EP compile time, release it to save memory space.
@@ -2154,20 +2190,20 @@ common::Status NvExecutionProvider::RefitEngine(std::string onnx_model_filename,
   auto parser_refitter = std::unique_ptr<nvonnxparser::IParserRefitter>(
       nvonnxparser::createParserRefitter(*refitter, trt_logger));
   if (refit_from_file) {
-    LOGS_DEFAULT(VERBOSE) << "[Nv EP] Refitting from file on disk: " << onnx_model_path.string();
+    LOGS_DEFAULT(VERBOSE) << "[NvTensorRTRTX EP] Refitting from file on disk: " << onnx_model_path.string();
     if (!parser_refitter->refitFromFile(onnx_model_path.string().c_str())) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
                              "Nv EP's IParserRefitter could not refit deserialized weight-stripped engine with weights contained in: " + onnx_model_path.string());
     }
   } else {
-    LOGS_DEFAULT(VERBOSE) << "[Nv EP] Refitting from byte array";
+    LOGS_DEFAULT(VERBOSE) << "[NvTensorRTRTX EP] Refitting from byte array";
     if (!parser_refitter->refitFromBytes(onnx_model_bytestream, onnx_model_bytestream_size)) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
                              "Nv EP's IParserRefitter could not refit deserialized weight-stripped engine with weights contained in the provided bytestraem");
     }
   }
   if (refitter->refitCudaEngine()) {
-    LOGS_DEFAULT(VERBOSE) << "[Nv EP] Successfully refitted the weight-stripped engine.";
+    LOGS_DEFAULT(VERBOSE) << "[NvTensorRTRTX EP] Successfully refitted the weight-stripped engine.";
   } else {
     return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
                            "Nv EP's IRefitter could not refit deserialized weight-stripped engine with weights contained in: " + onnx_model_path.string());
@@ -2179,7 +2215,7 @@ common::Status NvExecutionProvider::RefitEngine(std::string onnx_model_filename,
     nvinfer1::IHostMemory* serialized_engine = trt_engine->serialize();
     std::ofstream engine_file(refitted_engine_cache, std::ios::binary | std::ios::out);
     engine_file.write(reinterpret_cast<const char*>(serialized_engine->data()), serialized_engine->size());
-    LOGS_DEFAULT(VERBOSE) << "[Nv EP] Serialize the refitted engine to " << refitted_engine_cache;
+    LOGS_DEFAULT(VERBOSE) << "[NvTensorRTRTX EP] Serialize the refitted engine to " << refitted_engine_cache;
   }
   return Status::OK();
 }
@@ -2342,7 +2378,7 @@ Status NvExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphViewer& gr
       has_dynamic_shape |= tensor_is_dynamic(input);
     }
     if (has_dynamic_shape) {
-      LOGS_DEFAULT(WARNING) << "[Nv EP] No explicit optimization profile was specified. "
+      LOGS_DEFAULT(WARNING) << "[NvTensorRTRTX EP] No explicit optimization profile was specified. "
                                "We will assume a single profile with fully dynamic range. "
                                "This feature is experimental and may change in the future."
                                "If you plan to use this model as fixed shape we recommend using a free dimension override: "
@@ -2365,7 +2401,7 @@ Status NvExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphViewer& gr
       if (has_explicit_profile && tensor_has_profile) {
         apply_profile = ApplyProfileShapesFromProviderOptions(trt_profiles, input, profile_min_shapes_, profile_max_shapes_, profile_opt_shapes_, input_explicit_shape_ranges);
       } else {
-        LOGS_DEFAULT(INFO) << "[Nv EP] Creating implicit profile for tensor " << input_name;
+        LOGS_DEFAULT(INFO) << "[NvTensorRTRTX EP] Creating implicit profile for tensor " << input_name;
         profile_min_shapes_[input_name] = std::vector<std::vector<int64_t>>{{}};
         profile_min_shapes_[input_name][0].resize(dims.nbDims);
         profile_opt_shapes_[input_name] = std::vector<std::vector<int64_t>>{{}};
@@ -2422,20 +2458,20 @@ Status NvExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphViewer& gr
   // enable sparse weights
   if (sparsity_enable_) {
     trt_config->setFlag(nvinfer1::BuilderFlag::kSPARSE_WEIGHTS);
-    LOGS_DEFAULT(VERBOSE) << "[Nv EP] Sparse weights are allowed";
+    LOGS_DEFAULT(VERBOSE) << "[NvTensorRTRTX EP] Sparse weights are allowed";
   }
 
   // limit auxiliary streams
   if (auxiliary_streams_ >= 0) {
     trt_config->setMaxAuxStreams(auxiliary_streams_);
-    LOGS_DEFAULT(VERBOSE) << "[Nv EP] Auxiliary streams are se to " << auxiliary_streams_;
+    LOGS_DEFAULT(VERBOSE) << "[NvTensorRTRTX EP] Auxiliary streams are se to " << auxiliary_streams_;
   }
 
   if (weight_stripped_engine_enable_) {
     trt_config->setFlag(nvinfer1::BuilderFlag::kSTRIP_PLAN);
-    LOGS_DEFAULT(VERBOSE) << "[Nv EP] STRIP_PLAN is enabled";
+    LOGS_DEFAULT(VERBOSE) << "[NvTensorRTRTX EP] STRIP_PLAN is enabled";
     trt_config->setFlag(nvinfer1::BuilderFlag::kREFIT_IDENTICAL);
-    LOGS_DEFAULT(VERBOSE) << "[Nv EP] REFIT_IDENTICAL is enabled";
+    LOGS_DEFAULT(VERBOSE) << "[NvTensorRTRTX EP] REFIT_IDENTICAL is enabled";
   }
 
   // Build TRT engine (if needed) and load TRT engine if:
@@ -2518,7 +2554,7 @@ Status NvExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphViewer& gr
   }
 
   if (weight_stripped_engine_refit_) {
-    LOGS_DEFAULT(VERBOSE) << "[Nv EP] Refit engine from main ONNX file after engine build";
+    LOGS_DEFAULT(VERBOSE) << "[NvTensorRTRTX EP] Refit engine from main ONNX file after engine build";
     char* onnx = string_buf.data();
     size_t onnx_size = string_buf.size();
     auto status = RefitEngine(model_path_,
