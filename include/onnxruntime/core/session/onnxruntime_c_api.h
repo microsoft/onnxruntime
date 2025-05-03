@@ -5073,7 +5073,7 @@ struct OrtApi {
   ORT_API2_STATUS(GetEpDevices, _In_ const OrtEnv* env,
                   _Outptr_ const OrtEpDevice* const** ep_devices, _Out_ size_t* num_ep_devices);
 
-  /** \brief Append execution provider to the session options by name.
+  /** \brief Append to the session options an execution provider that supports the given OrtEpDevice instances.
    *
    * \param[in] session_options Session options to add execution provider to.
    * \param[in] env Environment that execution providers were registered with.

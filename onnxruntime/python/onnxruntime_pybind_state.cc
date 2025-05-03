@@ -1788,7 +1788,7 @@ void addObjectMethods(py::module& m, ExecutionProviderRegistrationFn ep_registra
   py_hw_device.def_property_readonly(
                   "type",
                   [](OrtHardwareDevice* hw_device) -> OrtHardwareDeviceType { return hw_device->type; },
-                  R"pbdoc(Hardware device type.)pbdoc")
+                  R"pbdoc(Hardware device's type.)pbdoc")
       .def_property_readonly(
           "vendor_id",
           [](OrtHardwareDevice* hw_device) -> uint32_t { return hw_device->vendor_id; },
@@ -1796,7 +1796,7 @@ void addObjectMethods(py::module& m, ExecutionProviderRegistrationFn ep_registra
       .def_property_readonly(
           "vendor",
           [](OrtHardwareDevice* hw_device) -> std::string { return hw_device->vendor; },
-          R"pbdoc(Hardware device's vendor identifier.)pbdoc")
+          R"pbdoc(Hardware device's vendor name.)pbdoc")
       .def_property_readonly(
           "device_id",
           [](OrtHardwareDevice* hw_device) -> uint32_t { return hw_device->device_id; },
@@ -1809,33 +1809,34 @@ void addObjectMethods(py::module& m, ExecutionProviderRegistrationFn ep_registra
           R"pbdoc(Hardware device's metadata as string key/value pairs.)pbdoc");
 
   py::class_<OrtEpDevice> py_ep_device(m, "OrtEpDevice",
-                                       R"pbdoc(Represents a hardware device that an execution provider supports.)pbdoc");
+                                       R"pbdoc(Represents a hardware device that an execution provider supports
+for model inference.)pbdoc");
   py_ep_device.def_property_readonly(
                   "ep_name",
                   [](OrtEpDevice* ep_device) -> std::string { return ep_device->ep_name; },
-                  R"pbdoc(Get the execution provider's name.)pbdoc")
+                  R"pbdoc(The execution provider's name.)pbdoc")
       .def_property_readonly(
           "ep_vendor",
           [](OrtEpDevice* ep_device) -> std::string { return ep_device->ep_vendor; },
-          R"pbdoc(Get the execution provider's vendor name.)pbdoc")
+          R"pbdoc(The execution provider's vendor name.)pbdoc")
       .def_property_readonly(
           "ep_metadata",
           [](OrtEpDevice* ep_device) -> std::unordered_map<std::string, std::string> {
             return ep_device->ep_metadata.entries;
           },
-          R"pbdoc(Get the execution provider's additional metadata for the OrtHardwareDevice.)pbdoc")
+          R"pbdoc(The execution provider's additional metadata for the OrtHardwareDevice.)pbdoc")
       .def_property_readonly(
           "ep_options",
           [](OrtEpDevice* ep_device) -> std::unordered_map<std::string, std::string> {
             return ep_device->ep_options.entries;
           },
-          R"pbdoc(Get the provider options used to configure the provider to use the hardware.)pbdoc")
+          R"pbdoc(The execution provider's options used to configure the provider to use the OrtHardwareDevice.)pbdoc")
       .def_property_readonly(
           "device",
           [](OrtEpDevice* ep_device) -> const OrtHardwareDevice& {
             return *ep_device->device;
           },
-          R"pbdoc(Get the OrtHardwareDevice instance for the OrtEpDevice.)pbdoc",
+          R"pbdoc(The OrtHardwareDevice instance for the OrtEpDevice.)pbdoc",
           py::return_value_policy::reference_internal);
 
   py::class_<OrtArenaCfg> ort_arena_cfg_binding(m, "OrtArenaCfg");
@@ -1906,7 +1907,7 @@ void addObjectMethods(py::module& m, ExecutionProviderRegistrationFn ep_registra
           // Equivalent to the C API's SessionOptionsAppendExecutionProvider_V2.
           // TODO(adrianlizarraga): Also add add_providers() so that user can use Python SessionOptions
           // to add explicit EPs (consistent with the C API).
-          "add_ep_devices",
+          "add_provider_for_devices",
           [](PySessionOptions* sess_options,
              const std::vector<const OrtEpDevice*>& ep_devices,
              const ProviderOptions& provider_options) {
@@ -1921,8 +1922,8 @@ void addObjectMethods(py::module& m, ExecutionProviderRegistrationFn ep_registra
             ORT_THROW("OrtEpDevices are not supported in this build");
 #endif
           },
-          R"pbdoc(Adds OrtEpDevice instances that should run the model. All OrtEpDevice instances must refer
-to the same execution provider.)pbdoc")
+          R"pbdoc(Adds an execution provider that supports the given OrtEpDevice instances. All OrtEpDevice instances 
+must refer to the same execution provider.)pbdoc")
       .def(
           "has_providers",
           [](PySessionOptions* sess_options) -> bool {

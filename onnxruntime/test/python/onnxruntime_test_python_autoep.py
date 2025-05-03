@@ -53,7 +53,7 @@ class TestAutoEP(unittest.TestCase):
         has_cpu_ep = False
         cuda_ep_device = None
         for ep_device in ep_devices:
-            ep_name = ep_device.ep_name()
+            ep_name = ep_device.ep_name
             if ep_name == "CPUExecutionProvider":
                 has_cpu_ep = True
             if ep_name == ep_registration_name:
@@ -64,7 +64,7 @@ class TestAutoEP(unittest.TestCase):
 
         # Add CUDA's OrtEpDevice to session options
         sess_options = onnxrt.SessionOptions()
-        sess_options.add_ep_devices([cuda_ep_device], {"prefer_nhwc": "1"})
+        sess_options.add_provider_for_devices([cuda_ep_device], {"prefer_nhwc": "1"})
         self.assertTrue(sess_options.has_providers())
 
         # Run sample model and check output
@@ -129,7 +129,7 @@ class TestAutoEP(unittest.TestCase):
         with self.assertRaises(InvalidArgument) as context:
             # Will raise InvalidArgument because ORT currently only supports provider bridge APIs.
             # Actual plugin EPs will be supported in the future.
-            sess_options.add_ep_devices([test_ep_device], {"opt1": "val1"})
+            sess_options.add_provider_for_devices([test_ep_device], {"opt1": "val1"})
         self.assertIn("EP is not currently supported", str(context.exception))
 
         onnxrt.unregister_execution_provider_library(ep_registration_name)

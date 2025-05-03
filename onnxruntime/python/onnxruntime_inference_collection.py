@@ -564,12 +564,12 @@ class InferenceSession(Session):
         )
 
         # Print a warning if user passed providers to InferenceSession() but the SessionOptions instance
-        # already has provider information (e.g., via add_ep_devices()). The providers specified
+        # already has provider information (e.g., via add_provider_for_devices()). The providers specified
         # here will take precedence.
         if self._sess_options is not None and (providers or provider_options) and self._sess_options.has_providers():
             warnings.warn(
                 "Specified 'providers'/'provider_options' when creating InferenceSession but SessionOptions has "
-                "already been configured with providers or OrtEpDevices. InferenceSession will only use the providers "
+                "already been configured with providers. InferenceSession will only use the providers "
                 "passed to InferenceSession()."
             )
 
