@@ -19,15 +19,15 @@ Status ScatterNDProgram::GenerateShaderCode(ShaderHelper& shader) const {
   auto atomic_reduction_snippet = [](ScatterNDReduction reduction, const std::string& ptr, const std::string& value, const std::string& data_type) -> std ::string {
     std::ostringstream ss;
     bool is_32_bit_integer = data_type == "i32" || data_type == "u32";
-
+    bool is_unsigned_integer = data_type == "u32";
     std::ostringstream ss_float_start;
     ss_float_start << "    {\n"
-                   << "      var oldValue = 0;\n"
+                   << "      var oldValue = 0" << (is_unsigned_integer ? "u" : "") << ";\n"
                    << "      loop {\n"
                    << "        let newValueF32 = ";
     std::ostringstream ss_float_end;
     ss_float_end << ";\n"
-                 << "          let newValue = bitcast<i32>(newValueF32);\n"
+                 << "          let newValue = bitcast<" << (is_unsigned_integer ? "u32" : "i32") << ">(newValueF32);\n"
                  << "          let res = atomicCompareExchangeWeak(&" << ptr << ", oldValue, newValue);\n"
                  << "          if res.exchanged {\n"
                  << "            break;\n"
@@ -53,7 +53,7 @@ Status ScatterNDProgram::GenerateShaderCode(ShaderHelper& shader) const {
         if (is_32_bit_integer) {
           ss << "  atomicMax(&" << ptr << ", bitcast<" << data_type << ">(" << value << "));\n";
         } else {
-          // atomicAdd only supports uint/int type. For float, we use
+          // atomicMax only supports uint/int type. For float, we use
           // atomicCompareExchangeWeak to simulate.
           ss << ss_float_start.str() << "max(bitcast<" << data_type << ">(oldValue), (" << value << "))" << ss_float_end.str();
         }
@@ -62,17 +62,17 @@ Status ScatterNDProgram::GenerateShaderCode(ShaderHelper& shader) const {
         if (is_32_bit_integer) {
           ss << "  atomicMin(&" << ptr << ", bitcast<" << data_type << ">(" << value << "));\n";
         } else {
-          // atomicAdd only supports uint/int type. For float, we use
+          // atomicMin only supports uint/int type. For float, we use
           // atomicCompareExchangeWeak to simulate.
           ss << ss_float_start.str() << "min(bitcast<" << data_type << ">(oldValue), (" << value << "))" << ss_float_end.str();
         }
         break;
       case ScatterNDReduction::Mul:
-        // atomicAdd only supports uint/int type. For float, we use
-        // atomicCompareExchangeWeak to simulate.
+      // atomicMul is not supported, we use atomicCompareExchangeWeak to simulate.
         ss << ss_float_start.str() << "(bitcast<" << data_type << ">(oldValue) * (" << value << "))" << ss_float_end.str();
         break;
-      default:;
+      default:
+        ORT_THROW("Unsupported reduction type: ", static_cast<int>(reduction));
         // The controlflow should never reach here.
     }
     return ss.str();
@@ -208,7 +208,8 @@ Status ScatterND::ComputeInternal(ComputeContext& context) const {
                   {updates, ProgramTensorMetadataDependency::TypeAndRank}})
       .SetDispatchGroupSize((output_size + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE)
       .AddUniformVariables({output_size, last_index_dimension, num_indices_elements, num_updates_elements});
-  if (reduction_ != ScatterNDReduction::None) {
+  if (reduction_ != ScatterNDReduction::None && (data_type == DataTypeImpl::GetType<float>() || data_type == DataTypeImpl::GetType<int32_t>() ||
+                                                 data_type == DataTypeImpl::GetType<uint32_t>())) {
     program.AddOutput({output, ProgramTensorMetadataDependency::TypeAndRank, ProgramOutput::Atomic});
   } else {
     program.AddOutput({output, ProgramTensorMetadataDependency::TypeAndRank});
