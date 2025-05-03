@@ -806,7 +806,13 @@ static Status CreateEpContextModel(const ExecutionProviders& execution_providers
     ORT_RETURN_IF(ep_context_gen_options.error_if_no_compiled_nodes,
                   "Compiled model does not contain any EPContext nodes. "
                   "Check that the session EPs support compilation and can execute at least one model subgraph.");
-    return Status::OK();
+
+    LOGS(logger, WARNING) << "Compiled model does not contain any EPContext nodes. "
+                             "Either the session EPs do not support compilation or "
+                             "no subgraphs were able to be compiled.";
+
+    // we continue on to generate the compiled model which may benefit from L1 optimizations even if there are not
+    // EPContext nodes.
   }
 
   auto get_ep_context_node = [&all_ep_context_nodes](const std::string& node_name) -> std::pair<bool, const Node*> {

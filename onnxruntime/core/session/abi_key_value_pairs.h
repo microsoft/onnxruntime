@@ -57,6 +57,8 @@ struct OrtKeyValuePairs {
         keys.erase(key_iter);
         values.erase(values.begin() + idx);
       }
+
+      entries.erase(iter);
     }
   }
 

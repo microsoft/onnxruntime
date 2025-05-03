@@ -64,7 +64,10 @@ static void TestInference(Ort::Env& env, const std::basic_string<ORTCHAR_T>& mod
                           const std::vector<int64_t>& expected_dims_y,
                           const std::vector<ModelOutputT>& expected_values_y,
                           bool auto_select = true,  // auto select vs SessionOptionsAppendExecutionProvider_V2
+                          // manual select using functor
                           const std::function<void(std::vector<const OrtEpDevice*>&)>& select_devices = nullptr,
+                          // auto select using policy
+                          std::optional<OrtExecutionProviderDevicePolicy> policy = std::nullopt,
                           bool test_session_creation_only = false) {
   Ort::SessionOptions session_options;
 
@@ -74,16 +77,20 @@ static void TestInference(Ort::Env& env, const std::basic_string<ORTCHAR_T>& mod
   }
 
   if (auto_select) {
-    // manually specify EP to select for now
-    session_options.AddConfigEntry("test.ep_to_select", ep_to_select.c_str());
+    if (policy) {
+      session_options.SetEpSelectionPolicy(*policy);
+    } else {
+      // manually specify EP to select
+      session_options.AddConfigEntry("test.ep_to_select", ep_to_select.c_str());
 
-    // add the provider options to the session options with the required prefix
-    const std::string option_prefix = OrtSessionOptions::GetProviderOptionPrefix(ep_to_select.c_str());
-    std::vector<const char*> keys, values;
-    ep_options.GetKeyValuePairs(keys, values);
-    for (size_t i = 0, end = keys.size(); i < end; ++i) {
-      // add the default value with prefix
-      session_options.AddConfigEntry((option_prefix + keys[i]).c_str(), values[i]);
+      // add the provider options to the session options with the required prefix
+      const std::string option_prefix = OrtSessionOptions::GetProviderOptionPrefix(ep_to_select.c_str());
+      std::vector<const char*> keys, values;
+      ep_options.GetKeyValuePairs(keys, values);
+      for (size_t i = 0, end = keys.size(); i < end; ++i) {
+        // add the default value with prefix
+        session_options.AddConfigEntry((option_prefix + keys[i]).c_str(), values[i]);
+      }
     }
   } else {
     std::vector<const OrtEpDevice*> devices;
@@ -188,7 +195,7 @@ TEST(AutoEpSelection, DmlEP) {
           devices.push_back(ep_device);
         } else {
           // if this is available, 0 == best performance
-          auto* perf_index = c_api->GetKeyValue(kvps, "HighPerformanceIndex");
+          auto* perf_index = c_api->GetKeyValue(kvps, "DxgiHighPerformanceIndex");
           if (perf_index && strcmp(perf_index, "0") == 0) {
             devices[0] = ep_device;  // replace as this is the higher performance device
           }
@@ -213,19 +220,26 @@ TEST(AutoEpSelection, WebGpuEP) {
 TEST(AutoEpSelection, MiscApiTests) {
   const OrtApi* c_api = &Ort::GetApi();
 
-  // nullptr and empty input to OrtKeyValuePairs
+  // nullptr and empty input to OrtKeyValuePairs. also test RemoveKeyValuePair
   {
     OrtKeyValuePairs* kvps = nullptr;
     c_api->CreateKeyValuePairs(&kvps);
     c_api->AddKeyValuePair(kvps, "key1", nullptr);    // should be ignored
     c_api->AddKeyValuePair(kvps, nullptr, "value1");  // should be ignored
     c_api->RemoveKeyValuePair(kvps, nullptr);         // should be ignored
-
-    c_api->AddKeyValuePair(kvps, "", "value2");  // empty key should be ignored
+    c_api->AddKeyValuePair(kvps, "", "value2");       // should be ignored
     ASSERT_EQ(c_api->GetKeyValue(kvps, ""), nullptr);
 
+    c_api->AddKeyValuePair(kvps, "key1", "value1");
     c_api->AddKeyValuePair(kvps, "key2", "");  // empty value is allowed
     ASSERT_EQ(c_api->GetKeyValue(kvps, "key2"), std::string(""));
+
+    c_api->RemoveKeyValuePair(kvps, "key1");
+    const char* const* keys = nullptr;
+    const char* const* values = nullptr;
+    size_t num_entries = 0;
+    c_api->GetKeyValuePairs(kvps, &keys, &values, &num_entries);
+    ASSERT_EQ(num_entries, 1);
 
     c_api->ReleaseKeyValuePairs(kvps);
   }
@@ -257,6 +271,59 @@ TEST(AutoEpSelection, MiscApiTests) {
     ep_options["option1"] = "true";
     session_options.AppendExecutionProvider_V2(*ort_env, {ep_devices[0]}, ep_options);
   }
+}
+
+TEST(AutoEpSelection, PreferCpu) {
+  std::vector<Input<float>> inputs(1);
+  auto& input = inputs.back();
+  input.name = "X";
+  input.dims = {3, 2};
+  input.values = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f};
+
+  // prepare expected inputs and outputs
+  std::vector<int64_t> expected_dims_y = {3, 2};
+  std::vector<float> expected_values_y = {1.0f, 4.0f, 9.0f, 16.0f, 25.0f, 36.0f};
+
+  const Ort::KeyValuePairs provider_options;
+
+  TestInference<float>(*ort_env, ORT_TSTR("testdata/mul_1.onnx"),
+                       "",  // don't need EP name
+                       std::nullopt,
+                       provider_options,
+                       inputs,
+                       "Y",
+                       expected_dims_y,
+                       expected_values_y,
+                       /* auto_select */ true,
+                       /*select_devices*/ nullptr,
+                       OrtExecutionProviderDevicePolicy::OrtExecutionProviderDevicePolicy_PREFER_CPU);
+}
+
+// this should fallback to CPU if no GPU
+TEST(AutoEpSelection, PreferGpu) {
+  std::vector<Input<float>> inputs(1);
+  auto& input = inputs.back();
+  input.name = "X";
+  input.dims = {3, 2};
+  input.values = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f};
+
+  // prepare expected inputs and outputs
+  std::vector<int64_t> expected_dims_y = {3, 2};
+  std::vector<float> expected_values_y = {1.0f, 4.0f, 9.0f, 16.0f, 25.0f, 36.0f};
+
+  const Ort::KeyValuePairs provider_options;
+
+  TestInference<float>(*ort_env, ORT_TSTR("testdata/mul_1.onnx"),
+                       "",  // don't need EP name
+                       std::nullopt,
+                       provider_options,
+                       inputs,
+                       "Y",
+                       expected_dims_y,
+                       expected_values_y,
+                       /* auto_select */ true,
+                       /*select_devices*/ nullptr,
+                       OrtExecutionProviderDevicePolicy::OrtExecutionProviderDevicePolicy_PREFER_GPU);
 }
 
 namespace {
