@@ -350,8 +350,8 @@ class InferenceSession {
 
   /**
    * Initializes a previously loaded ONNX model. Initialization includes but is not
-   * limited to graph transformations, construction of kernels, etc.
-   * This method assumes that a method has been loaded previously.
+   * limited to graph transformations, construction of kernels, EP policy decisions, etc.
+   * This method assumes that a model has been loaded previously.
    * This API is thread-safe.
    * @return OK if success
    */

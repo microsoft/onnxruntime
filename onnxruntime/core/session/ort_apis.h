@@ -575,6 +575,10 @@ ORT_API_STATUS_IMPL(SessionOptionsAppendExecutionProvider_V2, _In_ OrtSessionOpt
                     _In_reads_(num_op_options) const char* const* ep_option_vals,
                     size_t num_ep_options);
 
+ORT_API_STATUS_IMPL(SessionOptionsSetEpSelectionPolicy, _In_ OrtSessionOptions* sess_options,
+                    _In_ OrtExecutionProviderDevicePolicy policy,
+                    _In_opt_ EpSelectionDelegate* delegate);
+
 // OrtHardwareDevice accessors.
 ORT_API(OrtHardwareDeviceType, HardwareDevice_Type, _In_ const OrtHardwareDevice* device);
 ORT_API(uint32_t, HardwareDevice_VendorId, _In_ const OrtHardwareDevice* device);
