@@ -33,6 +33,21 @@ namespace Microsoft.ML.OnnxRuntime
     }
 
     /// <summary>
+    /// Controls the execution provider selection when using automatic EP selection.
+    /// Execution providers must be registered with the OrtEnv to be available for selection.
+    /// </summary>
+    public enum ExecutionProviderDevicePolicy
+    {
+        DEFAULT = 0,
+        PREFER_CPU = 1,
+        PREFER_NPU,
+        PREFER_GPU,
+        MAX_PERFORMANCE,
+        MAX_EFFICIENCY,
+        MIN_OVERALL_POWER,
+    }
+
+    /// <summary>
     /// Holds the options for creating an InferenceSession
     /// It forces the instantiation of the OrtEnv singleton.
     /// </summary>
@@ -612,6 +627,18 @@ namespace Microsoft.ML.OnnxRuntime
             var utf8 = NativeOnnxValueHelper.StringToZeroTerminatedUtf8(dimName);
             NativeApiStatus.VerifySuccess(NativeMethods.OrtAddFreeDimensionOverrideByName(handle, utf8, dimValue));
         }
+
+        /// <summary>
+        /// Set the execution provider selection policy if using automatic execution provider selection.
+        /// Execution providers must be registered with the OrtEnv to be available for selection.
+        /// </summary>
+        /// <param name="policy">Policy to use.</param>
+        public void SetEpSelectionPolicy(ExecutionProviderDevicePolicy policy)
+        {
+            NativeApiStatus.VerifySuccess(
+                NativeMethods.OrtSessionOptionsSetEpSelectionPolicy(handle, (int)policy, IntPtr.Zero));
+        }
+
         #endregion
 
         internal IntPtr Handle

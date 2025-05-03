@@ -134,5 +134,26 @@ public class OrtAutoEpTests
             };
         });
     }
+
+    [Fact]
+    public void SetEpSelectionPolicy()
+    {
+        SessionOptions sessionOptions = new SessionOptions();
+        sessionOptions.LogSeverityLevel = OrtLoggingLevel.ORT_LOGGING_LEVEL_VERBOSE;
+
+        var epDevices = ortEnvInstance.GetEpDevices();
+        Assert.NotEmpty(epDevices);
+
+        // doesn't matter what the value is. should fallback to ORT CPU EP
+        sessionOptions.SetEpSelectionPolicy(ExecutionProviderDevicePolicy.PREFER_GPU);
+
+        var model = TestDataLoader.LoadModelFromEmbeddedResource("squeezenet.onnx");
+
+        // session should load successfully
+        using (var session = new InferenceSession(model))
+        {
+            Assert.NotNull(session);
+        }
+    }
 }
 #endif

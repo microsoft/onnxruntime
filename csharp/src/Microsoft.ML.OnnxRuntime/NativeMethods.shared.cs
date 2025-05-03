@@ -352,6 +352,7 @@ namespace Microsoft.ML.OnnxRuntime
         public IntPtr GetEpDevices;
 
         public IntPtr SessionOptionsAppendExecutionProvider_V2;
+        public IntPtr SessionOptionsSetEpSelectionPolicy;
 
         public IntPtr HardwareDevice_Type;
         public IntPtr HardwareDevice_VendorId;
@@ -686,6 +687,11 @@ namespace Microsoft.ML.OnnxRuntime
                 (DOrtSessionOptionsAppendExecutionProvider_V2)Marshal.GetDelegateForFunctionPointer(
                     api_.SessionOptionsAppendExecutionProvider_V2,
                     typeof(DOrtSessionOptionsAppendExecutionProvider_V2));
+
+            OrtSessionOptionsSetEpSelectionPolicy = 
+                (DSessionOptionsSetEpSelectionPolicy)Marshal.GetDelegateForFunctionPointer(
+                    api_.SessionOptionsSetEpSelectionPolicy,
+                    typeof(DSessionOptionsSetEpSelectionPolicy));
         }
 
         internal class NativeLib
@@ -2398,9 +2404,27 @@ namespace Microsoft.ML.OnnxRuntime
 
         public static DOrtSessionOptionsAppendExecutionProvider_V2 OrtSessionOptionsAppendExecutionProvider_V2;
 
+        [UnmanagedFunctionPointer(CallingConvention.Winapi)]
+        public delegate IntPtr DOrtEpSelectionDelegate(
+            IntPtr /* OrtEpDevice** */ epDevices,
+            uint numDevices,
+            IntPtr /* OrtKeyValuePairs* */ modelMetadata,
+            IntPtr /* OrtKeyValuePairs* */ runtimeMetadata,
+            IntPtr /* OrtEpDevice** */ selected,
+            uint maxSelected,
+            out UIntPtr numSelected
+        );
 
-#endregion
-#region Misc API
+        [UnmanagedFunctionPointer(CallingConvention.Winapi)]
+        public delegate IntPtr /* OrtStatus* */ DSessionOptionsSetEpSelectionPolicy(
+            IntPtr /* OrtSessionOptions* */ session_options,
+            int /* OrtExecutionProviderDevicePolicy */ policy,
+            IntPtr /* DOrtEpSelectionDelegate* */ selection_delegate);
+        public static DSessionOptionsSetEpSelectionPolicy OrtSessionOptionsSetEpSelectionPolicy;
+
+
+        #endregion
+        #region Misc API
 
         /// <summary>
         /// Queries all the execution providers supported in the native onnxruntime shared library
