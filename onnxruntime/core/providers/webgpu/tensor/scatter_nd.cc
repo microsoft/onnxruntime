@@ -68,7 +68,7 @@ Status ScatterNDProgram::GenerateShaderCode(ShaderHelper& shader) const {
         }
         break;
       case ScatterNDReduction::Mul:
-      // atomicMul is not supported, we use atomicCompareExchangeWeak to simulate.
+        // atomicMul is not supported, we use atomicCompareExchangeWeak to simulate.
         ss << ss_float_start.str() << "(bitcast<" << data_type << ">(oldValue) * (" << value << "))" << ss_float_end.str();
         break;
       default:
