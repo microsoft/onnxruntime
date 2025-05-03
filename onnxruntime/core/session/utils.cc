@@ -180,8 +180,7 @@ OrtStatus* CreateSessionAndLoadModel(_In_ const OrtSessionOptions* options,
   }
 
   // if there are no providers registered, and there's an ep selection policy set, do auto ep selection
-  if (options->provider_factories.empty() &&
-      options->value.ep_selection_policy.enable) {
+  if (options != nullptr && options->provider_factories.empty() && options->value.ep_selection_policy.enable) {
     ProviderPolicyContext context;
     ORT_API_RETURN_IF_STATUS_NOT_OK(context.SelectEpsForSession(env->GetEnvironment(), *options, *sess));
   }
