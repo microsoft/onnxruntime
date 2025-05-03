@@ -366,6 +366,17 @@ ORT_API_STATUS_IMPL(OrtApis::SetDeterministicCompute, _Inout_ OrtSessionOptions*
   API_IMPL_END
 }
 
+ORT_API_STATUS_IMPL(OrtApis::SessionOptionsSetEpSelectionPolicy, _In_ OrtSessionOptions* options,
+                    _In_ OrtExecutionProviderDevicePolicy policy,
+                    _In_opt_ EpSelectionDelegate* delegate) {
+  API_IMPL_BEGIN
+  options->value.ep_selection_policy.enable = true;
+  options->value.ep_selection_policy.policy = policy;
+  options->value.ep_selection_policy.delegate = delegate;
+  return nullptr;
+  API_IMPL_END
+}
+
 ORT_API_STATUS_IMPL(OrtApis::SessionOptionsSetLoadCancellationFlag, _Inout_ OrtSessionOptions* options,
                     _In_ bool is_cancel) {
   API_IMPL_BEGIN
