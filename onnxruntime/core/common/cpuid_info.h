@@ -129,7 +129,7 @@ class CPUIDInfo {
   std::string vendor_;
   uint32_t vendor_id_;
 
-  uint32_t GetVendorId(std::string vendor);
+  uint32_t GetVendorId(const std::string& vendor);
 
 #if defined(CPUIDINFO_ARCH_X86)
 

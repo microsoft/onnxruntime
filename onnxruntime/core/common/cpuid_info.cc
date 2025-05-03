@@ -142,11 +142,11 @@ void CPUIDInfo::X86Init() {
   }
 }
 
-uint32_t CPUIDInfo::GetVendorId(std::string vendor) {
+uint32_t CPUIDInfo::GetVendorId(const std::string& vendor) {
   if (vendor == "GenuineIntel") return 0x8086;
   if (vendor == "GenuineAMD") return 0x1022;
-  if (vendor.starts_with("Qualcomm")) return 'Q' | 'C' << 8 | 'O' << 16 | 'M' << 24;
-  if (vendor.starts_with("NV")) return 0x10DE;
+  if (vendor.find("Qualcomm") == 0) return 'Q' << 24 | 'C' << 16 | 'O' << 8 | 'M';
+  if (vendor.find("NV") == 0) return 0x10DE;
   return 0;
 }
 
