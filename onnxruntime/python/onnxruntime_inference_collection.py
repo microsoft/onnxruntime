@@ -660,7 +660,7 @@ class ModelCompilationOptions:
         self._providers, self._provider_options = check_and_normalize_provider_args(
             providers,
             provider_options,
-            available_providers=None,  # Don't warn if user tries to use a provider that wasn't compiled into ORT.
+            available_provider_names=None,  # Don't warn if user tries to use a provider that wasn't compiled into ORT
         )
 
     def _get_providers(
