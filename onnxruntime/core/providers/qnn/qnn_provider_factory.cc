@@ -189,9 +189,11 @@ struct QnnEpFactory : OrtEpFactory {
   }
 
   const OrtApi& ort_api;
-  const std::string ep_name;                       // EP name
-  const std::string vendor{"Microsoft"};           // EP vendor name
-  const uint32_t vendor_id{0x4d4f4351};            // Qualcomm vendor ID
+  const std::string ep_name;              // EP name
+  const std::string vendor{"Microsoft"};  // EP vendor name
+
+  // Qualcomm vendor ID. Refer to the ACPI ID registry (search Qualcomm): https://uefi.org/ACPI_ID_List
+  const uint32_t vendor_id{'Q' | ('C' << 8) | ('O' << 16) | ('M' << 24)};
   const OrtHardwareDeviceType ort_hw_device_type;  // Supported OrtHardwareDevice
   const std::string qnn_backend_type;              // QNN backend type for OrtHardwareDevice
 };
