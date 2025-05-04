@@ -19,6 +19,7 @@
 #include "core/session/ep_factory_internal.h"
 #include "core/session/ep_library_plugin.h"
 #include "core/session/ep_library_provider_bridge.h"
+#include "core/session/provider_policy_context.h"
 #endif  // !defined(ORT_MINIMAL_BUILD)
 
 using namespace onnxruntime;
@@ -73,6 +74,11 @@ Status TestAutoSelectEPsImpl(const Environment& env, InferenceSession& sess, con
         return ToStatus(status);
       }
     } else {
+      // in the real setup we need an IExecutionProvider wrapper implementation that uses the OrtEp internally,
+      // and we would add that IExecutionProvider to the InferenceSession.
+      ORT_NOT_IMPLEMENTED("IExecutionProvider that wraps OrtEp has not been implemented.");
+
+      /*
       OrtEp* api_ep = nullptr;
       auto status = ep_device->ep_factory->CreateEp(
           ep_device->ep_factory, devices.data(), ep_metadata.data(), devices.size(),
@@ -81,10 +87,7 @@ Status TestAutoSelectEPsImpl(const Environment& env, InferenceSession& sess, con
       if (status != nullptr) {
         return ToStatus(status);
       }
-
-      // in the real setup we need an IExecutionProvider wrapper implementation that uses the OrtEp internally,
-      // and we would add that IExecutionProvider to the InferenceSession.
-      ORT_NOT_IMPLEMENTED("IExecutionProvider that wraps OrtEp has not been implemented.");
+      */
     }
 
     ORT_RETURN_IF_ERROR(sess.RegisterExecutionProvider(std::move(ep)));
@@ -176,6 +179,12 @@ OrtStatus* CreateSessionAndLoadModel(_In_ const OrtSessionOptions* options,
   auto auto_select_ep_name = sess->GetSessionOptions().config_options.GetConfigEntry("test.ep_to_select");
   if (auto_select_ep_name) {
     ORT_API_RETURN_IF_STATUS_NOT_OK(TestAutoSelectEPsImpl(env->GetEnvironment(), *sess, *auto_select_ep_name));
+  }
+
+  // if there are no providers registered, and there's an ep selection policy set, do auto ep selection
+  if (options != nullptr && options->provider_factories.empty() && options->value.ep_selection_policy.enable) {
+    ProviderPolicyContext context;
+    ORT_API_RETURN_IF_STATUS_NOT_OK(context.SelectEpsForSession(env->GetEnvironment(), *options, *sess));
   }
 #endif  // !defined(ORT_MINIMAL_BUILD)
 

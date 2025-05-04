@@ -175,6 +175,10 @@ OpBuilderRegistrations::OpBuilderRegistrations() {
   }
 
   {
+    CreateEinsumOpBuilder("Einsum", *this);
+  }
+
+  {
     CreateMatMulOpBuilder("MatMul", *this);
   }
 }

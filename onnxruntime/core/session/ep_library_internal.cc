@@ -183,12 +183,12 @@ std::vector<std::unique_ptr<EpLibraryInternal>> EpLibraryInternal::CreateInterna
   // CPU EP
   internal_eps.push_back(CreateCpuEp());
 
-#if defined(USE_DML)
-  internal_eps.push_back(CreateDmlEp());
-#endif
-
 #if defined(USE_WEBGPU)
   internal_eps.push_back(CreateWebGpuEp());
+#endif
+
+#if defined(USE_DML)
+  internal_eps.push_back(CreateDmlEp());
 #endif
 
   return internal_eps;

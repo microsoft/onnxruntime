@@ -1085,18 +1085,26 @@ struct SessionOptionsImpl : ConstSessionOptionsImpl<T> {
   SessionOptionsImpl& AppendExecutionProvider_TensorRT(const OrtTensorRTProviderOptions& provider_options);       ///< Wraps OrtApi::SessionOptionsAppendExecutionProvider_TensorRT
   SessionOptionsImpl& AppendExecutionProvider_TensorRT_V2(const OrtTensorRTProviderOptionsV2& provider_options);  ///< Wraps OrtApi::SessionOptionsAppendExecutionProvider_TensorRT
   SessionOptionsImpl& AppendExecutionProvider_MIGraphX(const OrtMIGraphXProviderOptions& provider_options);       ///< Wraps OrtApi::SessionOptionsAppendExecutionProvider_MIGraphX
-  ///< Wraps OrtApi::SessionOptionsAppendExecutionProvider_CANN
+  /// Wraps OrtApi::SessionOptionsAppendExecutionProvider_CANN
   SessionOptionsImpl& AppendExecutionProvider_CANN(const OrtCANNProviderOptions& provider_options);
-  ///< Wraps OrtApi::SessionOptionsAppendExecutionProvider_Dnnl
+  /// Wraps OrtApi::SessionOptionsAppendExecutionProvider_Dnnl
   SessionOptionsImpl& AppendExecutionProvider_Dnnl(const OrtDnnlProviderOptions& provider_options);
   /// Wraps OrtApi::SessionOptionsAppendExecutionProvider. Currently supports QNN, SNPE and XNNPACK.
   SessionOptionsImpl& AppendExecutionProvider(const std::string& provider_name,
                                               const std::unordered_map<std::string, std::string>& provider_options = {});
 
+  /// Append EPs that have been registered previously with the OrtEnv.
+  /// Wraps OrtApi::SessionOptionsAppendExecutionProvider_V2
   SessionOptionsImpl& AppendExecutionProvider_V2(Env& env, const std::vector<ConstEpDevice>& ep_devices,
                                                  const KeyValuePairs& ep_options);
+  /// Append EPs that have been registered previously with the OrtEnv.
+  /// Wraps OrtApi::SessionOptionsAppendExecutionProvider_V2
   SessionOptionsImpl& AppendExecutionProvider_V2(Env& env, const std::vector<ConstEpDevice>& ep_devices,
                                                  const std::unordered_map<std::string, std::string>& ep_options);
+
+  /// Wraps OrtApi::SessionOptionsSetEpSelectionPolicy
+  SessionOptionsImpl& SetEpSelectionPolicy(OrtExecutionProviderDevicePolicy policy,
+                                           EpSelectionDelegate* delegate = nullptr);
 
   SessionOptionsImpl& SetCustomCreateThreadFn(OrtCustomCreateThreadFn ort_custom_create_thread_fn);  ///< Wraps OrtApi::SessionOptionsSetCustomCreateThreadFn
   SessionOptionsImpl& SetCustomThreadCreationOptions(void* ort_custom_thread_creation_options);      ///< Wraps OrtApi::SessionOptionsSetCustomThreadCreationOptions

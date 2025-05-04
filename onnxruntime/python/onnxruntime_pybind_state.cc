@@ -896,7 +896,8 @@ std::unique_ptr<IExecutionProvider> CreateExecutionProviderInstance(
       auto it = provider_options_map.find(type);
       if (it != provider_options_map.end()) {
         ProviderOptions info = it->second;
-        if (std::shared_ptr<IExecutionProviderFactory> nv_tensorrt_rtx_provider_factory = onnxruntime::NvProviderFactoryCreator::Create(info)) {
+        if (std::shared_ptr<IExecutionProviderFactory> nv_tensorrt_rtx_provider_factory = onnxruntime::NvProviderFactoryCreator::Create(
+                info, &session_options)) {
           return nv_tensorrt_rtx_provider_factory->CreateProvider();
         }
       } else {
