@@ -43,17 +43,38 @@ class TestCompileApi(unittest.TestCase):
 
         ep_lib_path = "onnxruntime_providers_qnn.dll"
         ep_registration_name = "QNNExecutionProvider"
-        #onnxrt.register_execution_provider_library(ep_registration_name, os.path.realpath(ep_lib_path))
         onnxrt.register_execution_provider_library(ep_registration_name, ep_lib_path)
 
+        input_model_path = get_name("nhwc_resize_scales_opset18.onnx")
+        output_model_path = os.path.join(self._tmp_dir_path, "model.compiled0.onnx")
+
         session_options = onnxrt.SessionOptions()
-        session_options.log_severity_level = 1
-        session_options.logid = "TestCompileWithFiles"
-        session_options.graph_optimization_level = onnxrt.GraphOptimizationLevel.ORT_ENABLE_BASIC
         session_options.set_provider_selection_policy(onnxrt.OrtExecutionProviderDevicePolicy.PREFER_NPU)
 
+        model_compiler = onnxrt.ModelCompiler(
+            session_options,
+            input_model_path,
+            embed_compiled_data_into_model=True,
+            external_initializers_file_path=None,
+        )
+        model_compiler.compile_to_file(output_model_path)
+        self.assertTrue(os.path.exists(output_model_path))
+        onnxrt.unregister_execution_provider_library(ep_registration_name)
+
+    def test_compile_with_input_and_output_files(self):
+        provider = None
+        provider_options = dict()
+        if "QNNExecutionProvider" in available_providers:
+            provider = "QNNExecutionProvider"
+            provider_options["backend_type"] = "htp"
+        # TODO(adrianlizarraga): Allow test to run for other compiling EPs (e.g., OpenVINO)
+
         input_model_path = get_name("nhwc_resize_scales_opset18.onnx")
-        output_model_path = os.path.join(self._tmp_dir_path, "model.compiled.onnx")
+        output_model_path = os.path.join(self._tmp_dir_path, "model.compiled1.onnx")
+
+        session_options = onnxrt.SessionOptions()
+        if provider:
+            session_options.add_provider(provider, provider_options)
 
         model_compiler = onnxrt.ModelCompiler(
             session_options,
@@ -64,103 +85,68 @@ class TestCompileApi(unittest.TestCase):
         model_compiler.compile_to_file(output_model_path)
         self.assertTrue(os.path.exists(output_model_path))
 
-    def test_compile_with_files(self):
-        providers = None
-        provider_options = None
+    def test_compile_to_file_with_input_model_in_buffer(self):
+        provider = None
+        provider_options = dict()
         if "QNNExecutionProvider" in available_providers:
-            providers = ["QNNExecutionProvider"]
-            provider_options = [{"backend_type": "htp"}]
+            provider = "QNNExecutionProvider"
+            provider_options["backend_type"] = "htp"
         # TODO(adrianlizarraga): Allow test to run for other compiling EPs (e.g., OpenVINO)
-
-        so = onnxrt.SessionOptions()
-        so.log_severity_level = 1
-        so.logid = "TestCompileWithFiles"
-        so.graph_optimization_level = onnxrt.GraphOptimizationLevel.ORT_ENABLE_BASIC
-
-        input_model_path = get_name("nhwc_resize_scales_opset18.onnx")
-        output_model_path = os.path.join(self._tmp_dir_path, "model.compiled.onnx")
-
-        model_compile_options = onnxrt.ModelCompilationOptions(so)
-        model_compile_options.set_providers(providers=providers, provider_options=provider_options)
-        model_compile_options.set_input_model(input_model_path)
-        model_compile_options.set_output_model_path(output_model_path)
-        model_compile_options.set_ep_context_embed_mode(True)
-
-        onnxrt.compile_model(model_compile_options)
-
-        self.assertTrue(os.path.exists(output_model_path))
-
-    def test_compile_with_input_model_in_buffer(self):
-        providers = None
-        provider_options = None
-        if "QNNExecutionProvider" in available_providers:
-            providers = ["QNNExecutionProvider"]
-            provider_options = [{"backend_type": "htp"}]
-        # TODO(adrianlizarraga): Allow test to run for other compiling EPs (e.g., OpenVINO)
-
-        so = onnxrt.SessionOptions()
-        so.log_severity_level = 1
-        so.logid = "TestCompileWithInputBuffer"
-        so.graph_optimization_level = onnxrt.GraphOptimizationLevel.ORT_ENABLE_BASIC
 
         input_onnx_model = onnx.load(get_name("nhwc_resize_scales_opset18.onnx"))
         input_model_bytes = input_onnx_model.SerializeToString()
         output_model_path = os.path.join(self._tmp_dir_path, "model.compiled2.onnx")
 
-        model_compile_options = onnxrt.ModelCompilationOptions(so)
-        model_compile_options.set_providers(providers=providers, provider_options=provider_options)
-        model_compile_options.set_input_model(input_model_bytes)
-        model_compile_options.set_output_model_path(output_model_path)
-        model_compile_options.set_ep_context_embed_mode(True)
+        session_options = onnxrt.SessionOptions()
+        if provider:
+            session_options.add_provider(provider, provider_options)
 
-        onnxrt.compile_model(model_compile_options)
-
+        model_compiler = onnxrt.ModelCompiler(
+            session_options,
+            input_model_bytes,
+            embed_compiled_data_into_model=True,
+            external_initializers_file_path=None,
+        )
+        model_compiler.compile_to_file(output_model_path)
         self.assertTrue(os.path.exists(output_model_path))
 
     def test_fail_load_uncompiled_model_and_then_compile(self):
         if "QNNExecutionProvider" not in available_providers:
             self.skipTest("Skipping test because it needs to run on a compiling EP")
 
-        providers = ["QNNExecutionProvider"]
-        provider_options = [{"backend_type": "htp"}]
         input_model_path = get_name("nhwc_resize_scales_opset18.onnx")
 
-        so = onnxrt.SessionOptions()
-        so.add_session_config_entry("session.disable_model_compile", "1")  # Disable JIT model compilation!
+        session_options = onnxrt.SessionOptions()
+        session_options.add_session_config_entry("session.disable_model_compile", "1")  # Disable JIT model compilation!
+        session_options.add_provider("QNNExecutionProvider", {"backend_type": "htp"})
 
         # Session creation should fail with error ORT_MODEL_REQUIRES_COMPILATION because the input model
         # is not compiled and we disabled JIT compilation for this session.
         with self.assertRaises(ModelRequiresCompilation) as context:
             onnxrt.InferenceSession(
                 input_model_path,
-                sess_options=so,
-                providers=providers,
-                provider_options=provider_options,
+                sess_options=session_options,
                 enable_fallback=False,
             )
         self.assertIn("needs to compile", str(context.exception))
 
         # Try to compile the model now.
         compiled_model_path = os.path.join(self._tmp_dir_path, "model.compiled3.onnx")
-        model_compile_options = onnxrt.ModelCompilationOptions(so)
-        model_compile_options.set_providers(providers=providers, provider_options=provider_options)
-        model_compile_options.set_input_model(input_model_path)
-        model_compile_options.set_output_model_path(compiled_model_path)
-        model_compile_options.set_ep_context_embed_mode(True)
-        model_compile_options.set_output_model_external_initializers_file(
-            "external_weights.bin",
+        model_compiler = onnxrt.ModelCompiler(
+            session_options,
+            input_model_path,
+            embed_compiled_data_into_model=True,
+            external_initializers_file_path="external_weights.bin",
             external_initializers_size_threshold=128,
         )
-
-        onnxrt.compile_model(model_compile_options)
+        model_compiler.compile_to_file(compiled_model_path)
 
         self.assertTrue(os.path.exists(compiled_model_path))
-        self.assertEqual(so.get_session_config_entry("session.disable_model_compile"), "1")
+        self.assertEqual(session_options.get_session_config_entry("session.disable_model_compile"), "1")
+        self.assertTrue(session_options.has_providers())
 
         # Creating the session with the compiled model should not fail.
-        sess = onnxrt.InferenceSession(
-            compiled_model_path, sess_options=so, providers=providers, provider_options=provider_options
-        )
+        sess = onnxrt.InferenceSession(compiled_model_path, sess_options=session_options)
         self.assertIsNotNone(sess)
 
 

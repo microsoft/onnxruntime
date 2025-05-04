@@ -625,23 +625,18 @@ class ModelCompiler:
     This class is used to compile an ONNX model. A compiled ONNX model has EPContext nodes that each
     encapsulates a subgraph compiled/optimized for a specific execution provider.
 
-    Raises an 'InvalidArgument' exception if the compilation options are invalid.
-
     Refer to the EPContext design document for more information about EPContext models:
     https://onnxruntime.ai/docs/execution-providers/EP-Context-Design.html
 
         ::
 
             sess_options = onnxruntime.SessionOptions()
-            model_compile_options = onnxruntime.ModelCompilationOptions(sess_options)
-            model_compile_options.set_providers(
-                providers=["SomeExecutionProvider"],
-                provider_options=[{"some_option": "some_val"}]
-            )
-            model_compile_options.set_input_model("input_model.onnx")
-            model_compile_options.set_output_model_path("output_model.onnx")
+            sess_options.add_provider("SomeExecutionProvider", {"option1": "value1"})
+            # Alternatively, allow ONNX Runtime to select the provider automatically given a policy:
+            # sess_options.set_provider_selection_policy(onnxrt.OrtExecutionProviderDevicePolicy.PREFER_NPU)
 
-            compile_model(model_compile_options)
+            model_compiler = onnxruntime.ModelCompiler(sess_options, "input_model.onnx")
+            model_compiler.compile_to_file("output_model.onnx")
     """
 
     def __init__(
@@ -653,12 +648,23 @@ class ModelCompiler:
         external_initializers_size_threshold: int = 1024,
     ):
         """
-        :param sess_options: Session options.
+        Creates a ModelCompiler instance.
+
+        :param sess_options: Session options containing the providers for which the model will be compiled.
+            Refer to SessionOptions.add_provider() and SessionOptions.set_provider_selection_policy().
+        :param input_model_path_or_bytes: The path to the input model file or bytes representing a serialized
+            ONNX model.
+        :param embed_compiled_data_into_model: Defaults to False. Set to True to embed compiled binary data into
+            EPContext nodes in the compiled model.
+        :param external_initializers_file_path: Defaults to None. Set to a path for a file that will store the
+            initializers for non-compiled nodes.
+        :param external_initializers_size_threshold: Defaults to 1024. Ignored if `external_initializers_file_path`
+            is None or empty. Initializers larger than this threshold are stored in the external initializers file.
         """
         input_model_path: str | os.PathLike | None = None
         input_model_bytes: bytes | None = None
         if isinstance(input_model_path_or_bytes, (str, os.PathLike)):
-            if not input_model_path:
+            if not input_model_path_or_bytes:
                 raise ValueError("Input model path is empty")
             input_model_path = os.fspath(input_model_path_or_bytes)
         elif isinstance(input_model_path_or_bytes, bytes):
@@ -696,6 +702,16 @@ class ModelCompiler:
             )
 
     def compile_to_file(self, output_model_path: str | None = None):
+        """
+        Compiles to an output file. If an output file path is not provided,
+        the output file path is generated based on the input model path by replacing
+        '.onnx' with '_ctx.onnx'. Ex: The generated output file is 'model_ctx.onnx' for
+        an input model with path 'model.onnx'.
+
+        Raises an 'InvalidArgument' exception if the compilation options are invalid.
+
+        :param output_model_path: Defaults to None. The path for the output/compiled model.
+        """
         if output_model_path:
             if not isinstance(output_model_path, (str, os.PathLike)):
                 raise TypeError(f"Output model's filepath is of unexpected type '{type(output_model_path)}'")
@@ -703,6 +719,13 @@ class ModelCompiler:
         self._model_compiler.compile_to_file(output_model_path)
 
     def compile_to_bytes(self) -> bytes:
+        """
+        Compiles to bytes representing the serialized compiled ONNX model.
+
+        Raises an 'InvalidArgument' exception if the compilation options are invalid.
+
+        :return: A bytes object representing the compiled ONNX model.
+        """
         return self._model_compiler.compile_to_bytes()
 
 
