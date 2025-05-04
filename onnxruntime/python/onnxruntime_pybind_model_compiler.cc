@@ -3,7 +3,9 @@
 // Licensed under the MIT License.
 #include "python/onnxruntime_pybind_model_compiler.h"
 
+#include <algorithm>
 #include <cassert>
+#include <iterator>
 #include "core/common/common.h"
 #include "core/framework/error_code_helper.h"
 #include "core/session/utils.h"
@@ -47,57 +49,28 @@ onnxruntime::Status PyModelCompiler::CompileToFile(const std::string& output_mod
   return Status::OK();
 }
 
-struct AllocatorOverString : public OrtAllocator {
-  AllocatorOverString(std::string& backing_buffer)
-      : backing_buffer_(backing_buffer), memory_info_(CPU, OrtAllocatorType::OrtDeviceAllocator) {
-    OrtAllocator::version = ORT_API_VERSION;
-    OrtAllocator::Alloc = [](OrtAllocator* this_, size_t size) {
-      return static_cast<AllocatorOverString*>(this_)->Alloc(size);
-    };
-    OrtAllocator::Free = [](OrtAllocator* this_, void* p) {
-      static_cast<AllocatorOverString*>(this_)->Free(p);
-    };
-    OrtAllocator::Info = [](const OrtAllocator* this_) -> const OrtMemoryInfo* {
-      return static_cast<const AllocatorOverString*>(this_)->Info();
-    };
-    OrtAllocator::Reserve = [](OrtAllocator* this_, size_t size) {
-      return static_cast<AllocatorOverString*>(this_)->Alloc(size);
-    };
-  }
-
-  ~AllocatorOverString() {
-  }
-
-  void* Alloc(size_t size) {
-    backing_buffer_.resize(size);
-    return reinterpret_cast<void*>(backing_buffer_.data());
-  }
-
-  void Free(void* p) {
-    ORT_UNUSED_PARAMETER(p);
-    backing_buffer_.clear();
-  }
-
-  const OrtMemoryInfo* Info() const { return &memory_info_; }
-
- private:
-  AllocatorOverString(const AllocatorOverString&) = delete;
-  AllocatorOverString& operator=(const AllocatorOverString&) = delete;
-
-  std::string& backing_buffer_;
-  OrtMemoryInfo memory_info_;
-};
-
 onnxruntime::Status PyModelCompiler::CompileToBytes(std::string& output_buffer) {
-  AllocatorOverString allocator(output_buffer);
+  if (!output_buffer.empty()) {
+    // Opt to return an error if the output buffer is not empty instead of just calling output_buffer.clear()
+    // because the C++ standard does not explicitly require that capacity is unchanged by a call to clear().
+    // Don't want to reallocate a large buffer an extra time unnecessarily. So, we'll consider this an internal
+    // ORT error.
+    // Refer to: https://en.cppreference.com/w/cpp/string/basic_string/clear
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Output buffer should be empty.");
+  }
 
-  void* tmp_buffer_data = nullptr;
-  size_t tmp_buffer_size = 0;
-  ORT_RETURN_IF_ERROR(model_compile_options_.SetOutputModelBuffer(&allocator, &tmp_buffer_data, &tmp_buffer_size));
+  onnxruntime::AllocatorPtr allocator = std::make_shared<CPUAllocator>();
+
+  void* buffer_data = nullptr;
+  size_t buffer_size = 0;
+  ORT_RETURN_IF_ERROR(model_compile_options_.SetOutputModelBuffer(allocator, &buffer_data, &buffer_size));
   ORT_RETURN_IF_ERROR(model_compile_options_.Check());
   ORT_RETURN_IF_ERROR(onnxruntime::CompileModel(*env_, model_compile_options_));
-  assert(tmp_buffer_data == reinterpret_cast<void*>(output_buffer.data()));
-  assert(tmp_buffer_size == output_buffer.size());
+
+  // Copy into output buffer.
+  output_buffer.reserve(buffer_size);
+  gsl::span<char> src(reinterpret_cast<char*>(buffer_data), buffer_size);
+  std::copy(src.begin(), src.end(), std::back_inserter(output_buffer));
   return Status::OK();
 }
 

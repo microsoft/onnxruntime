@@ -8,6 +8,7 @@
 #include <string>
 
 #include "core/common/common.h"
+#include "core/session/allocator_adapters.h"
 #include "core/framework/error_code_helper.h"
 #include "core/session/abi_session_options_impl.h"
 #include "core/session/inference_session.h"
@@ -152,7 +153,7 @@ ORT_API_STATUS_IMPL(OrtCompileAPI::ModelCompilationOptions_SetOutputModelExterna
 
 ORT_API_STATUS_IMPL(OrtCompileAPI::ModelCompilationOptions_SetOutputModelBuffer,
                     _In_ OrtModelCompilationOptions* ort_model_compile_options,
-                    _Inout_ OrtAllocator* allocator, void** output_model_data_ptr, size_t* output_model_data_size_ptr) {
+                    _Inout_ OrtAllocator* ort_allocator, void** output_model_data_ptr, size_t* output_model_data_size_ptr) {
   API_IMPL_BEGIN
 #if !defined(ORT_MINIMAL_BUILD)
   auto model_compile_options = reinterpret_cast<onnxruntime::ModelCompilationOptions*>(ort_model_compile_options);
@@ -165,11 +166,12 @@ ORT_API_STATUS_IMPL(OrtCompileAPI::ModelCompilationOptions_SetOutputModelBuffer,
     return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "Invalid output model buffer: size pointer is null");
   }
 
-  if (allocator == nullptr) {
+  if (ort_allocator == nullptr) {
     return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "Invalid allocator for output model buffer: allocator pointer is null");
   }
 
-  ORT_API_RETURN_IF_STATUS_NOT_OK(model_compile_options->SetOutputModelBuffer(allocator,
+  onnxruntime::AllocatorPtr allocator = std::make_shared<onnxruntime::IAllocatorImplWrappingOrtAllocator>(ort_allocator);
+  ORT_API_RETURN_IF_STATUS_NOT_OK(model_compile_options->SetOutputModelBuffer(std::move(allocator),
                                                                               output_model_data_ptr,
                                                                               output_model_data_size_ptr));
   return nullptr;

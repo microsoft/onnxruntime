@@ -431,11 +431,12 @@ static std::shared_ptr<onnxruntime::IExecutionProviderFactory> LoadExecutionProv
 
 #if defined(USE_CUDA) || defined(USE_CUDA_PROVIDER_INTERFACE)
 const CUDAExecutionProviderInfo GetCudaExecutionProviderInfo(ProviderInfo_CUDA* cuda_provider_info,
-                                                             const ProviderOptions& provider_options) {
+                                                             const ProviderOptionsMap& provider_options_map) {
   ORT_ENFORCE(cuda_provider_info);
+  const auto it = provider_options_map.find(kCudaExecutionProvider);
   CUDAExecutionProviderInfo info;
-  if (!provider_options.empty())
-    cuda_provider_info->CUDAExecutionProviderInfo__FromProviderOptions(provider_options, info);
+  if (it != provider_options_map.end())
+    cuda_provider_info->CUDAExecutionProviderInfo__FromProviderOptions(it->second, info);
   else {
     info.device_id = cuda_device_id;
     info.gpu_mem_limit = gpu_mem_limit;
@@ -451,22 +452,24 @@ const CUDAExecutionProviderInfo GetCudaExecutionProviderInfo(ProviderInfo_CUDA* 
 
 #ifdef USE_CANN
 const CANNExecutionProviderInfo GetCannExecutionProviderInfo(ProviderInfo_CANN* cann_provider_info,
-                                                             const ProviderOptions& provider_options) {
+                                                             const ProviderOptionsMap& provider_options_map) {
   ORT_ENFORCE(cann_provider_info);
+  const auto it = provider_options_map.find(kCannExecutionProvider);
   CANNExecutionProviderInfo info;
-  if (!provider_options.empty())
-    cann_provider_info->CANNExecutionProviderInfo__FromProviderOptions(provider_options, info);
+  if (it != provider_options_map.end())
+    cann_provider_info->CANNExecutionProviderInfo__FromProviderOptions(it->second, info);
   return info;
 }
 #endif
 
 #ifdef USE_ROCM
 const ROCMExecutionProviderInfo GetRocmExecutionProviderInfo(ProviderInfo_ROCM* rocm_provider_info,
-                                                             const ProviderOptions& provider_options) {
+                                                             const ProviderOptionsMap& provider_options_map) {
   ORT_ENFORCE(rocm_provider_info);
+  const auto it = provider_options_map.find(kRocmExecutionProvider);
   ROCMExecutionProviderInfo info;
-  if (!provider_options.empty())
-    rocm_provider_info->ROCMExecutionProviderInfo__FromProviderOptions(provider_options, info);
+  if (it != provider_options_map.end())
+    rocm_provider_info->ROCMExecutionProviderInfo__FromProviderOptions(it->second, info);
   else {
     info.device_id = cuda_device_id;
     info.gpu_mem_limit = gpu_mem_limit;
@@ -544,12 +547,13 @@ void RegisterNvTensorRTRtxPluginsAsCustomOps(PySessionOptions& so, const Provide
 }
 #endif
 
-std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactoryInstance(
+static std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactoryInstance(
     const SessionOptions& session_options,
     const std::string& type,
-    const ProviderOptions& provider_options) {
+    const ProviderOptionsMap& provider_options_map) {
   if (type == kCpuExecutionProvider) {
-    return onnxruntime::CPUProviderFactoryCreator::Create(session_options.enable_cpu_mem_arena);
+    return onnxruntime::CPUProviderFactoryCreator::Create(
+        session_options.enable_cpu_mem_arena);
   } else if (type == kTensorrtExecutionProvider) {
 #if defined(USE_TENSORRT) || defined(USE_TENSORRT_PROVIDER_INTERFACE)
     // If the environment variable 'ORT_TENSORRT_UNAVAILABLE' exists, then we do not load TensorRT. This is set by _ld_preload for the manylinux case
@@ -562,9 +566,10 @@ std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactoryInstanc
       std::string calibration_table, cache_path, cache_prefix, timing_cache_path, lib_path, trt_tactic_sources,
           trt_extra_plugin_lib_paths, min_profile, max_profile, opt_profile, ep_context_file_path,
           onnx_model_folder_path, trt_op_types_to_exclude, preview_features;
-      if (!provider_options.empty()) {
+      auto it = provider_options_map.find(type);
+      if (it != provider_options_map.end()) {
         OrtTensorRTProviderOptionsV2 params;
-        for (auto option : provider_options) {
+        for (auto option : it->second) {
           if (option.first == "device_id") {
             if (!option.second.empty()) {
               params.device_id = std::stoi(option.second);
@@ -889,9 +894,11 @@ std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactoryInstanc
   } else if (type == kNvTensorRTRTXExecutionProvider) {
 #if defined(USE_NV) || defined(USE_NV_PROVIDER_INTERFACE)
     if (Env::Default().GetEnvironmentVar("ORT_NV_TENSORRT_RTX_UNAVAILABLE").empty()) {
-      if (!provider_options.empty()) {
+      auto it = provider_options_map.find(type);
+      if (it != provider_options_map.end()) {
+        ProviderOptions info = it->second;
         if (std::shared_ptr<IExecutionProviderFactory> nv_tensorrt_rtx_provider_factory = onnxruntime::NvProviderFactoryCreator::Create(
-                provider_options, &session_options)) {
+                info, &session_options)) {
           return nv_tensorrt_rtx_provider_factory;
         }
       } else {
@@ -911,7 +918,8 @@ std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactoryInstanc
     std::string calibration_table;
     std::string save_model_path;
     std::string load_model_path;
-    if (!provider_options.empty()) {
+    auto it = provider_options_map.find(type);
+    if (it != provider_options_map.end()) {
       OrtMIGraphXProviderOptions params{
           0,
           0,
@@ -923,7 +931,7 @@ std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactoryInstanc
           1,
           "./compiled_model.mxr",
           1};
-      for (auto option : provider_options) {
+      for (auto option : it->second) {
         if (option.first == "device_id") {
           if (!option.second.empty()) {
             params.device_id = std::stoi(option.second);
@@ -1039,7 +1047,8 @@ std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactoryInstanc
     // trying to load the library itself will result in a crash due to the way that auditwheel strips dependencies.
     if (Env::Default().GetEnvironmentVar("ORT_CUDA_UNAVAILABLE").empty()) {
       if (auto* cuda_provider_info = TryGetProviderInfo_CUDA()) {
-        const CUDAExecutionProviderInfo info = GetCudaExecutionProviderInfo(cuda_provider_info, provider_options);
+        const CUDAExecutionProviderInfo info = GetCudaExecutionProviderInfo(cuda_provider_info,
+                                                                            provider_options_map);
 
         // This variable is never initialized because the APIs by which it should be initialized are deprecated,
         // however they still exist are are in-use. Nevertheless, it is used to return CUDAAllocator,
@@ -1072,7 +1081,8 @@ std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactoryInstanc
   } else if (type == kRocmExecutionProvider) {
 #ifdef USE_ROCM
     if (auto* rocm_provider_info = TryGetProviderInfo_ROCM()) {
-      const ROCMExecutionProviderInfo info = GetRocmExecutionProviderInfo(rocm_provider_info, provider_options);
+      const ROCMExecutionProviderInfo info = GetRocmExecutionProviderInfo(rocm_provider_info,
+                                                                          provider_options_map);
 
       // This variable is never initialized because the APIs by which is it should be initialized are deprecated,
       // however they still exist and are in-use. Nevertheless, it is used to return ROCMAllocator, hence we must
@@ -1095,8 +1105,9 @@ std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactoryInstanc
 // For Eigen and OpenMP
 #if defined(DNNL_OPENMP)
     int num_threads = 0;
-    if (!provider_options.empty()) {
-      for (auto option : provider_options) {
+    auto it = provider_options_map.find(type);
+    if (it != provider_options_map.end()) {
+      for (auto option : it->second) {
         if (option.first == "num_of_threads") {
           num_threads = std::stoi(option.second);
           if (num_threads < 0) {
@@ -1119,8 +1130,9 @@ std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactoryInstanc
   } else if (type == kOpenVINOExecutionProvider) {
 #if defined(USE_OPENVINO) || defined(USE_OPENVINO_PROVIDER_INTERFACE)
     ProviderOptions OV_provider_options_map;
-    if (!provider_options.empty()) {
-      for (auto option : provider_options) {
+    auto it = provider_options_map.find(type);
+    if (it != provider_options_map.end()) {
+      for (auto option : it->second) {
         if (option.first == "device_type") {
           OV_provider_options_map[option.first] = option.second;
           continue;
@@ -1198,8 +1210,9 @@ std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactoryInstanc
   } else if (type == kVitisAIExecutionProvider) {
 #if defined(USE_VITISAI) || defined(USE_VITISAI_PROVIDER_INTERFACE)
     ProviderOptions info{};
-    if (!provider_options.empty()) {
-      info = provider_options;
+    const auto it = provider_options_map.find(type);
+    if (it != provider_options_map.end()) {
+      info = it->second;
     }
     info["session_options"] = std::to_string((uintptr_t)(void*)&session_options);
     if (auto vitisai_factory = onnxruntime::VitisAIProviderFactoryCreator::Create(info); vitisai_factory) {
@@ -1214,8 +1227,9 @@ std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactoryInstanc
   } else if (type == kAclExecutionProvider) {
 #ifdef USE_ACL
     bool enable_fast_math = false;
-    if (!provider_options.empty()) {
-      for (auto option : provider_options) {
+    auto it = provider_options_map.find(type);
+    if (it != provider_options_map.end()) {
+      for (auto option : it->second) {
         if (option.first == "enable_fast_math") {
           std::set<std::string> supported_values = {"true", "True", "false", "False"};
           if (supported_values.find(option.second) != supported_values.end()) {
@@ -1239,8 +1253,9 @@ std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactoryInstanc
 #endif
   } else if (type == kDmlExecutionProvider) {
 #ifdef USE_DML
+    auto cit = provider_options_map.find(type);
     return onnxruntime::DMLProviderFactoryCreator::CreateFromProviderOptions(
-        session_options.config_options, provider_options, true);
+        session_options.config_options, cit == provider_options_map.end() ? ProviderOptions{} : cit->second, true);
 #endif
   } else if (type == kNnapiExecutionProvider) {
 #if defined(USE_NNAPI)
@@ -1266,8 +1281,9 @@ std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactoryInstanc
 #endif
     uint32_t coreml_flags = 0;
 
-    if (!provider_options.empty()) {
-      const ProviderOptions& options = provider_options;
+    const auto it = provider_options_map.find(type);
+    if (it != provider_options_map.end()) {
+      const ProviderOptions& options = it->second;
       auto flags = options.find("flags");
       if (flags != options.end()) {
         const auto& flags_str = flags->second;
@@ -1295,7 +1311,9 @@ std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactoryInstanc
 #endif
   } else if (type == kXnnpackExecutionProvider) {
 #if defined(USE_XNNPACK)
-    return onnxruntime::XnnpackProviderFactoryCreator::Create(provider_options, &session_options);
+    auto cit = provider_options_map.find(type);
+    return onnxruntime::XnnpackProviderFactoryCreator::Create(
+        cit == provider_options_map.end() ? ProviderOptions{} : cit->second, &session_options);
 #endif
   } else if (type == kWebGpuExecutionProvider) {
 #if defined(USE_WEBGPU)
@@ -1304,7 +1322,8 @@ std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactoryInstanc
   } else if (type == kCannExecutionProvider) {
 #ifdef USE_CANN
     if (auto* cann_provider_info = TryGetProviderInfo_CANN()) {
-      const CANNExecutionProviderInfo info = GetCannExecutionProviderInfo(cann_provider_info, provider_options);
+      const CANNExecutionProviderInfo info = GetCannExecutionProviderInfo(cann_provider_info,
+                                                                          provider_options_map);
       return cann_provider_info->CreateExecutionProviderFactory(info);
     } else {
       ORT_THROW("create CANN ExecutionProvider fail");
@@ -1316,7 +1335,9 @@ std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactoryInstanc
 #endif
   } else if (type == kQnnExecutionProvider) {
 #if defined(USE_QNN) || defined(USE_QNN_PROVIDER_INTERFACE)
-    auto qnn_factory = onnxruntime::QNNProviderFactoryCreator::Create(provider_options, &session_options);
+    auto cit = provider_options_map.find(type);
+    auto qnn_factory = onnxruntime::QNNProviderFactoryCreator::Create(
+        cit == provider_options_map.end() ? ProviderOptions{} : cit->second, &session_options);
     if (qnn_factory) {
       return qnn_factory;
     }
@@ -1328,21 +1349,22 @@ std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactoryInstanc
 #endif
   } else {
     // check whether it is a dynamic load EP:
-    if (!provider_options.empty()) {
-      auto shared_lib_path_it = provider_options.find(kExecutionProviderSharedLibraryPath);
-      if (shared_lib_path_it != provider_options.end()) {
+    const auto it = provider_options_map.find(type);
+    if (it != provider_options_map.end()) {
+      auto shared_lib_path_it = it->second.find(kExecutionProviderSharedLibraryPath);
+      if (shared_lib_path_it != it->second.end()) {
         // this is an EP with dynamic loading
         // construct the provider option
-        ProviderOptions new_provider_options;
+        ProviderOptions provider_options;
         std::string entry_symbol = kDefaultExecutionProviderEntry;
-        for (auto option : provider_options) {
+        for (auto option : it->second) {
           if (option.first == kExecutionProviderSharedLibraryEntry) {
             entry_symbol = option.second;
           } else if (option.first != kExecutionProviderSharedLibraryPath) {
-            new_provider_options.insert(option);
+            provider_options.insert(option);
           }
         }
-        return LoadExecutionProviderFactory(shared_lib_path_it->second, new_provider_options, entry_symbol);
+        return LoadExecutionProviderFactory(shared_lib_path_it->second, provider_options, entry_symbol);
       }
     }
     // unknown provider
@@ -1351,22 +1373,25 @@ std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactoryInstanc
   return nullptr;
 }
 
+std::unique_ptr<IExecutionProvider> CreateExecutionProviderInstance(const SessionOptions& session_options,
+                                                                    const std::string& type,
+                                                                    const ProviderOptionsMap& provider_options_map) {
+  auto ep_factory = CreateExecutionProviderFactoryInstance(session_options, type, provider_options_map);
+  if (ep_factory) {
+    return ep_factory->CreateProvider();
+  }
+  return nullptr;
+}
+
 /*
  * Register execution provider with options.
  */
-static void RegisterExecutionProviders(PyInferenceSession& py_sess, const std::vector<std::string>& provider_types,
+static void RegisterExecutionProviders(InferenceSession* sess, const std::vector<std::string>& provider_types,
                                        const ProviderOptionsMap& provider_options_map) {
-  InferenceSession& sess = *py_sess.GetSessionHandle();
-  const logging::Logger& sess_logger = *sess.GetLogger();
-
-  const OrtSessionOptions& ort_session_options = py_sess.GetOrtSessionOptions();
   for (const std::string& type : provider_types) {
-    auto it = provider_options_map.find(type);
-    ProviderOptions provider_options = it != provider_options_map.end() ? it->second : ProviderOptions{};
-    auto ep_factory = CreateExecutionProviderFactoryInstance(sess.GetSessionOptions(), type, provider_options);
-    if (ep_factory) {
-      auto ep = ep_factory->CreateProvider(ort_session_options, *sess_logger.ToExternal());
-      OrtPybindThrowIfError(sess.RegisterExecutionProvider(std::move(ep)));
+    auto ep = CreateExecutionProviderInstance(sess->GetSessionOptions(), type, provider_options_map);
+    if (ep) {
+      OrtPybindThrowIfError(sess->RegisterExecutionProvider(std::move(ep)));
     }
   }
 }
@@ -1382,7 +1407,8 @@ static void RegisterExecutionProviders(PyInferenceSession& py_sess, const std::v
  */
 static Status AddExplicitEpFactory(PySessionOptions& py_sess_options, const std::string& provider_type,
                                    const ProviderOptions& provider_options) {
-  auto ep_factory = CreateExecutionProviderFactoryInstance(py_sess_options.value, provider_type, provider_options);
+  const ProviderOptionsMap provider_options_map = {{provider_type, provider_options}};
+  auto ep_factory = CreateExecutionProviderFactoryInstance(py_sess_options.value, provider_type, provider_options_map);
   if (!ep_factory) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Failed to add provider of type '",
                            provider_type, "' to SessionOptions. Provider configuration is not supported.");
@@ -1502,7 +1528,7 @@ static Status InitializeSessionEpsFromSessionOptions(PyInferenceSession& py_sess
 }
 #endif  // !defined(ORT_MINIMAL_BUILD)
 
-void InitializeSession(PyInferenceSession& py_sess,
+void InitializeSession(InferenceSession* sess,
                        ExecutionProviderRegistrationFn ep_registration_fn,
                        const std::vector<std::string>& provider_types,
                        const ProviderOptionsVector& provider_options,
@@ -1510,9 +1536,7 @@ void InitializeSession(PyInferenceSession& py_sess,
   ProviderOptionsMap provider_options_map;
   GenerateProviderOptionsMap(provider_types, provider_options, provider_options_map);
 
-  ep_registration_fn(py_sess, provider_types, provider_options_map);
-
-  onnxruntime::InferenceSession* sess = py_sess.GetSessionHandle();
+  ep_registration_fn(sess, provider_types, provider_options_map);
 
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
   if (!disabled_optimizer_names.empty()) {
@@ -2377,7 +2401,7 @@ including arg name, arg type (contains both type and shape).)pbdoc")
             if (provider_types.empty() && sess->HasProvidersInSessionOptions()) {
               OrtPybindThrowIfError(InitializeSessionEpsFromSessionOptions(*sess, disabled_optimizer_names));
             } else {
-              InitializeSession(*sess,
+              InitializeSession(sess->GetSessionHandle(),
                                 ep_registration_fn,
                                 provider_types,
                                 provider_options,

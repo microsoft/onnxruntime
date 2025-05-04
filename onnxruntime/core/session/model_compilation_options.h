@@ -8,6 +8,7 @@
 #include <string>
 #include "core/common/status.h"
 #include "core/common/path_string.h"
+#include "core/framework/allocator.h"
 #include "core/session/abi_session_options_impl.h"
 #include "core/session/onnxruntime_c_api.h"
 #include "core/session/onnxruntime_session_options_config_keys.h"
@@ -68,7 +69,7 @@ class ModelCompilationOptions {
   /// <param name="output_model_buffer_ptr">Pointer to the buffer that will contain the compiled model</param>
   /// <param name="output_model_buffer_size_ptr">Set to the size of the buffer</param>
   /// <returns>Status indicating potential error</returns>
-  Status SetOutputModelBuffer(OrtAllocator* allocator, void** output_model_buffer_ptr,
+  Status SetOutputModelBuffer(onnxruntime::AllocatorPtr allocator, void** output_model_buffer_ptr,
                               size_t* output_model_buffer_size_ptr);
 
   /// <summary>

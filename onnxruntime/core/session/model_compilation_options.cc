@@ -8,7 +8,7 @@
 #include <string>
 #include <utility>
 
-#include "core/session/allocator_adapters.h"
+#include "core/framework/allocator.h"
 #include "core/session/onnxruntime_session_options_config_keys.h"
 #include "core/session/environment.h"
 
@@ -86,15 +86,14 @@ void ModelCompilationOptions::SetOutputModelExternalInitializersFile(const std::
       external_initializer_size_threshold;
 }
 
-Status ModelCompilationOptions::SetOutputModelBuffer(OrtAllocator* allocator,
+Status ModelCompilationOptions::SetOutputModelBuffer(onnxruntime::AllocatorPtr allocator,
                                                      void** output_model_buffer_ptr,
                                                      size_t* output_model_buffer_size_ptr) {
   ORT_RETURN_IF_ERROR(ResetOutputModelSettings());
 
   session_options_.value.ep_context_gen_options.output_model_buffer_ptr = output_model_buffer_ptr;
   session_options_.value.ep_context_gen_options.output_model_buffer_size_ptr = output_model_buffer_size_ptr;
-  session_options_.value.ep_context_gen_options.output_model_buffer_allocator =
-      std::make_shared<onnxruntime::IAllocatorImplWrappingOrtAllocator>(allocator);
+  session_options_.value.ep_context_gen_options.output_model_buffer_allocator = std::move(allocator);
   return Status::OK();
 }
 

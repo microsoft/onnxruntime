@@ -220,8 +220,7 @@ class SparseTensor;
 #endif
 namespace python {
 
-struct PyInferenceSession;
-using ExecutionProviderRegistrationFn = std::function<void(PyInferenceSession&,
+using ExecutionProviderRegistrationFn = std::function<void(InferenceSession*,
                                                            const std::vector<std::string>&,
                                                            const ProviderOptionsMap&)>;
 
@@ -407,7 +406,7 @@ std::shared_ptr<Environment> GetEnv();
 
 // Initialize an InferenceSession.
 // Any provider_options should have entries in matching order to provider_types.
-void InitializeSession(PyInferenceSession& sess,
+void InitializeSession(InferenceSession* sess,
                        ExecutionProviderRegistrationFn ep_registration_fn,
                        const std::vector<std::string>& provider_types = {},
                        const ProviderOptionsVector& provider_options = {},
