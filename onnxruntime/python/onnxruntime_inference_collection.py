@@ -87,7 +87,7 @@ class AdapterFormat:
 def check_and_normalize_provider_args(
     providers: Sequence[str | tuple[str, dict[Any, Any]]] | None,
     provider_options: Sequence[dict[Any, Any]] | None,
-    available_provider_names: Sequence[str] | None = None,
+    available_provider_names: Sequence[str],
 ):
     """
     Validates the 'providers' and 'provider_options' arguments and returns a
@@ -98,8 +98,7 @@ def check_and_normalize_provider_args(
         (provider name, options dict).
     :param provider_options: Optional sequence of options dicts corresponding
         to the providers listed in 'providers'.
-    :param available_provider_names: Optional names of the available providers.
-        If not None, will print a warning if a provider is not available.
+    :param available_provider_names: The available provider names.
 
     :return: Tuple of (normalized 'providers' sequence, normalized
         'provider_options' sequence).
@@ -118,7 +117,7 @@ def check_and_normalize_provider_args(
     provider_name_to_options = collections.OrderedDict()
 
     def set_provider_options(name, options):
-        if available_provider_names is not None and name not in available_provider_names:
+        if name not in available_provider_names:
             warnings.warn(
                 "Specified provider '{}' is not in available provider names.Available providers: '{}'".format(
                     name, ", ".join(available_provider_names)
@@ -404,27 +403,6 @@ class Session:
         self._sess.run_with_ortvaluevector(run_options, feed_names, feeds, fetch_names, fetches, fetch_devices)
 
 
-def _register_ep_custom_ops(session_options, providers, provider_options, available_providers):
-    for i in range(len(providers)):
-        if providers[i] in available_providers and providers[i] == "TensorrtExecutionProvider":
-            C.register_tensorrt_plugins_as_custom_ops(session_options, provider_options[i])
-        elif (
-            isinstance(providers[i], tuple)
-            and providers[i][0] in available_providers
-            and providers[i][0] == "TensorrtExecutionProvider"
-        ):
-            C.register_tensorrt_plugins_as_custom_ops(session_options, providers[i][1])
-
-        if providers[i] in available_providers and providers[i] == "NvTensorRTRTXExecutionProvider":
-            C.register_nv_tensorrt_rtx_plugins_as_custom_ops(session_options, provider_options[i])
-        elif (
-            isinstance(providers[i], tuple)
-            and providers[i][0] in available_providers
-            and providers[i][0] == "NvTensorrtRTXExecutionProvider"
-        ):
-            C.register_nv_tensorrt_rtx_plugins_as_custom_ops(session_options, providers[i][1])
-
-
 class InferenceSession(Session):
     """
     This is the main class used to run a model.
@@ -575,7 +553,7 @@ class InferenceSession(Session):
 
         session_options = self._sess_options if self._sess_options else C.get_default_session_options()
 
-        _register_ep_custom_ops(session_options, providers, provider_options, available_providers)
+        self._register_ep_custom_ops(session_options, providers, provider_options, available_providers)
 
         if self._model_path:
             sess = C.InferenceSession(session_options, self._model_path, True, self._read_config_from_model)
@@ -618,6 +596,26 @@ class InferenceSession(Session):
         self._sess = None
         self._sess_options = self._sess_options_initial
         self._create_inference_session(providers, provider_options)
+
+    def _register_ep_custom_ops(self, session_options, providers, provider_options, available_providers):
+        for i in range(len(providers)):
+            if providers[i] in available_providers and providers[i] == "TensorrtExecutionProvider":
+                C.register_tensorrt_plugins_as_custom_ops(session_options, provider_options[i])
+            elif (
+                isinstance(providers[i], tuple)
+                and providers[i][0] in available_providers
+                and providers[i][0] == "TensorrtExecutionProvider"
+            ):
+                C.register_tensorrt_plugins_as_custom_ops(session_options, providers[i][1])
+
+            if providers[i] in available_providers and providers[i] == "NvTensorRTRTXExecutionProvider":
+                C.register_nv_tensorrt_rtx_plugins_as_custom_ops(session_options, provider_options[i])
+            elif (
+                isinstance(providers[i], tuple)
+                and providers[i][0] in available_providers
+                and providers[i][0] == "NvTensorrtRTXExecutionProvider"
+            ):
+                C.register_nv_tensorrt_rtx_plugins_as_custom_ops(session_options, providers[i][1])
 
 
 class ModelCompiler:

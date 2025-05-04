@@ -35,6 +35,9 @@ class TestCompileApi(unittest.TestCase):
         cls._tmp_model_dir.cleanup()
 
     def test_compile_with_files_prefer_npu_policy(self):
+        """
+        Tests compiling a model (to/from files) using an EP selection policy (PREFER_NPU).
+        """
         if "QNNExecutionProvider" not in available_providers:
             self.skipTest("Skipping test because it needs to run on QNN EP")
 
@@ -62,6 +65,9 @@ class TestCompileApi(unittest.TestCase):
         onnxrt.unregister_execution_provider_library(ep_registration_name)
 
     def test_compile_with_input_and_output_files(self):
+        """
+        Tests compiling a model (to/from files) using explicit EP.
+        """
         provider = None
         provider_options = dict()
         if "QNNExecutionProvider" in available_providers:
@@ -86,6 +92,9 @@ class TestCompileApi(unittest.TestCase):
         self.assertTrue(os.path.exists(output_model_path))
 
     def test_compile_to_file_with_input_model_in_buffer(self):
+        """
+        Tests compiling an input model that is store in a buffer. The output is saved to a file.
+        """
         provider = None
         provider_options = dict()
         if "QNNExecutionProvider" in available_providers:
@@ -110,7 +119,42 @@ class TestCompileApi(unittest.TestCase):
         model_compiler.compile_to_file(output_model_path)
         self.assertTrue(os.path.exists(output_model_path))
 
+    def test_compile_from_buffer_to_buffer(self):
+        """
+        Tests compiling an input model that is store in a buffer. The output is stored in a buffer too.
+        """
+        provider = None
+        provider_options = dict()
+        if "QNNExecutionProvider" in available_providers:
+            provider = "QNNExecutionProvider"
+            provider_options["backend_type"] = "htp"
+        # TODO(adrianlizarraga): Allow test to run for other compiling EPs (e.g., OpenVINO)
+
+        input_onnx_model = onnx.load(get_name("nhwc_resize_scales_opset18.onnx"))
+        input_model_bytes = input_onnx_model.SerializeToString()
+
+        session_options = onnxrt.SessionOptions()
+        if provider:
+            session_options.add_provider(provider, provider_options)
+
+        model_compiler = onnxrt.ModelCompiler(
+            session_options,
+            input_model_bytes,
+            embed_compiled_data_into_model=True,
+            external_initializers_file_path=None,
+        )
+        output_model_bytes = model_compiler.compile_to_bytes()
+        self.assertTrue(isinstance(output_model_bytes, bytes))
+        self.assertGreater(len(output_model_bytes), 0)
+        print(f"Output model buffer size: {len(output_model_bytes)}")
+
     def test_fail_load_uncompiled_model_and_then_compile(self):
+        """
+        Tests compiling scenario:
+         - Load uncompiled model into session that disables JIT compilation.
+         - Expect an error (ModelRequiresCompilation)
+         - Compile model and retry creating an inference session successfully.
+        """
         if "QNNExecutionProvider" not in available_providers:
             self.skipTest("Skipping test because it needs to run on a compiling EP")
 

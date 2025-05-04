@@ -123,7 +123,8 @@ common::Status CopyStringToOutputArg(std::string_view str, const char* err_msg, 
   return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, err_msg);
 }
 
-// provider either model_path, or modal_data + model_data_length.
+// Internal function that creates an InferenceSession and loads the model.
+// Caller should provide either model_path, or modal_data + model_data_length.
 static OrtStatus* CreateSessionAndLoadModelImpl(_In_ const OrtSessionOptions* options,
                                                 const onnxruntime::Environment& env,
                                                 _In_opt_z_ const ORTCHAR_T* model_path,
@@ -212,7 +213,8 @@ static OrtStatus* CreateSessionAndLoadModelImpl(_In_ const OrtSessionOptions* op
   return nullptr;
 }
 
-// provider either model_path, or modal_data + model_data_length.
+// Creates an InferenceSession and loads the model.
+// Caller should provide either model_path, or modal_data + model_data_length.
 OrtStatus* CreateSessionAndLoadModel(_In_ const OrtSessionOptions* options,
                                      _In_ const OrtEnv* env,
                                      _In_opt_z_ const ORTCHAR_T* model_path,

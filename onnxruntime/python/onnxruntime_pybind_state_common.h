@@ -252,11 +252,15 @@ struct PyInferenceSession {
   }
 #endif
 
+  // Returns true if the session options have provider information from either
+  // setting explicit providers, setting a provider that supports a OrtEpDevice(s), or
+  // setting a selection policy (e.g., prefer gpu).
   bool HasProvidersInSessionOptions() const {
     return !session_options_.provider_factories.empty() ||
            session_options_.value.ep_selection_policy.enable;
   }
 
+  // Returns (and updates) a reference to the OrtSessionOptions for this inference session.
   OrtSessionOptions& GetOrtSessionOptions() {
     if (sess_) {
       // Copy internal value from InferenceSession as it is the source of truth

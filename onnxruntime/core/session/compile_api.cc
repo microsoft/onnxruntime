@@ -177,7 +177,7 @@ ORT_API_STATUS_IMPL(OrtCompileAPI::ModelCompilationOptions_SetOutputModelBuffer,
   return nullptr;
 #else
   ORT_UNUSED_PARAMETER(ort_model_compile_options);
-  ORT_UNUSED_PARAMETER(allocator);
+  ORT_UNUSED_PARAMETER(ort_allocator);
   ORT_UNUSED_PARAMETER(output_model_data_ptr);
   ORT_UNUSED_PARAMETER(output_model_data_size_ptr);
   return OrtApis::CreateStatus(ORT_NOT_IMPLEMENTED, "Compile API is not supported in this build");

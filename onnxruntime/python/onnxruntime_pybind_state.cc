@@ -3,9 +3,12 @@
 // Licensed under the MIT License.
 
 #include "python/onnxruntime_pybind_exceptions.h"
-#include "python/onnxruntime_pybind_model_compiler.h"
 #include "python/onnxruntime_pybind_mlvalue.h"
 #include "python/onnxruntime_pybind_state_common.h"
+
+#if !defined(ORT_MINIMAL_BUILD)
+#include "python/onnxruntime_pybind_model_compiler.h"
+#endif  // !defined(ORT_MINIMAL_BUILD)
 
 #define NPY_NO_DEPRECATED_API NPY_1_7_API_VERSION
 #define PY_ARRAY_UNIQUE_SYMBOL onnxruntime_python_ARRAY_API
@@ -30,7 +33,6 @@
 #include "core/providers/providers.h"
 #include "core/providers/tensorrt/tensorrt_provider_options.h"
 #include "core/session/IOBinding.h"
-#include "core/session/abi_devices.h"
 #include "core/session/abi_session_options_impl.h"
 #include "core/session/onnxruntime_session_options_config_keys.h"
 #include "core/session/provider_bridge_ort.h"
@@ -38,6 +40,7 @@
 #include "core/session/lora_adapters.h"
 
 #if !defined(ORT_MINIMAL_BUILD)
+#include "core/session/abi_devices.h"
 #include "core/session/ep_factory_internal.h"
 #include "core/session/provider_policy_context.h"
 #include "core/session/utils.h"
@@ -547,6 +550,14 @@ void RegisterNvTensorRTRtxPluginsAsCustomOps(PySessionOptions& so, const Provide
 }
 #endif
 
+/**
+ * Creates an IExecutionProviderFactory instance of the specified type.
+ * @param session_options The session options.
+ * @param type The execution provider type (e.g., CUDAExecutionProvider).
+ * @param provider_options_map A map of provider options.
+ *
+ * @return A shared_ptr with the factory instance, or null if unable to create it.
+ */
 static std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactoryInstance(
     const SessionOptions& session_options,
     const std::string& type,
@@ -1373,6 +1384,14 @@ static std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory
   return nullptr;
 }
 
+/**
+ * Create an IExecutionProvider instance of the specified type. Note: this is called by orttraining code.
+ * @param session_options The session options.
+ * @param type The execution provider type (e.g., CUDAExecutionProvider).
+ * @param provider_options_map A map of provider options.
+ *
+ * @return A unique_ptr with the execution provider instance, or null if unable to create it.
+ */
 std::unique_ptr<IExecutionProvider> CreateExecutionProviderInstance(const SessionOptions& session_options,
                                                                     const std::string& type,
                                                                     const ProviderOptionsMap& provider_options_map) {
@@ -1494,6 +1513,13 @@ static Status AddEpFactoryFromEpDevices(PySessionOptions& py_sess_options,
   return Status::OK();
 }
 
+/**
+ * Initializes the inference session using EPs specified in the session options.
+ *
+ * @param py_sess The inference session.
+ * @param disabled_optimizer_names Set of optimizers to disable.
+ * @return A Status indicating error or success.
+ */
 static Status InitializeSessionEpsFromSessionOptions(PyInferenceSession& py_sess,
                                                      const std::unordered_set<std::string>& disabled_optimizer_names) {
   ORT_RETURN_IF(py_sess.GetSessionHandle() == nullptr, "Invalid Python InferenceSession handle");
@@ -1642,7 +1668,7 @@ void addGlobalMethods(py::module& m) {
         ORT_THROW("Execution provider libraries are not supported in this build.");
 #endif
       },
-      R"pbdoc(Register an execution provider library with ORT.)pbdoc");
+      R"pbdoc(Register an execution provider library with ONNX Runtime.)pbdoc");
   m.def(
       "unregister_execution_provider_library",
       [](const std::string& registration_name) -> void {
@@ -1654,7 +1680,7 @@ void addGlobalMethods(py::module& m) {
         ORT_THROW("Execution provider libraries are not supported in this build.");
 #endif
       },
-      R"pbdoc(Unregister an execution provider library from ORT.)pbdoc");
+      R"pbdoc(Unregister an execution provider library from ONNX Runtime.)pbdoc");
   m.def(
       "get_ep_devices",
       []() -> const std::vector<const OrtEpDevice*>& {
@@ -1955,8 +1981,6 @@ for model inference.)pbdoc");
           R"pbdoc(Adds an explicit execution provider.)pbdoc")
       .def(
           // Equivalent to the C API's SessionOptionsAppendExecutionProvider_V2.
-          // TODO(adrianlizarraga): Also add add_providers() so that user can use Python SessionOptions
-          // to add explicit EPs (consistent with the C API).
           "add_provider_for_devices",
           [](PySessionOptions* sess_options,
              const std::vector<const OrtEpDevice*>& ep_devices,
@@ -2667,7 +2691,7 @@ including arg name, arg type (contains both type and shape).)pbdoc")
       .export_values();
 
   py::class_<PyModelCompiler>(m, "ModelCompiler",
-                              R"pbdoc(This is the class used compile an ONNX model.)pbdoc")
+                              R"pbdoc(This is the class used to compile an ONNX model.)pbdoc")
       .def(py::init([](const PySessionOptions& sess_options,
                        std::string path_or_bytes,
                        bool is_path,
@@ -2703,23 +2727,20 @@ including arg name, arg type (contains both type and shape).)pbdoc")
             ORT_THROW("Compile API is not supported in this build.");
 #endif
           },
-          R"pbdoc(Compile an ONNX model into a model file with EPContext nodes that each represents a subgraph compiled
-for a specific execution provider.)pbdoc")
+          R"pbdoc(Compile an ONNX model into a file.)pbdoc")
       .def(
           "compile_to_bytes",
-          [](PyModelCompiler* model_compiler) -> std::string {
+          [](PyModelCompiler* model_compiler) -> py::bytes {
 #if !defined(ORT_MINIMAL_BUILD)
             std::string output_bytes;
             OrtPybindThrowIfError(model_compiler->CompileToBytes(output_bytes));
-            return output_bytes;
+            return py::bytes(output_bytes);
 #else
             ORT_UNUSED_PARAMETER(model_compiler);
             ORT_THROW("Compile API is not supported in this build.");
 #endif
           },
-          py::return_value_policy::move,
-          R"pbdoc(Compile an ONNX model into a model file with EPContext nodes that each represents a subgraph compiled
-for a specific execution provider.)pbdoc");
+          R"pbdoc(Compile an ONNX model into a buffer.)pbdoc");
 }
 
 bool CreateInferencePybindStateModule(py::module& m) {

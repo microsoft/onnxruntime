@@ -44,6 +44,13 @@ OrtStatus* InitializeSession(_In_ const OrtSessionOptions* options,
 #if !defined(ORT_MINIMAL_BUILD)
 namespace onnxruntime {
 
+/// <summary>
+/// Compiles an ONNX model into a model with EPContext nodes. Each EPContext node represents a subgraph compiled for
+/// a specific execution provider.
+/// </summary>
+/// <param name="env">A reference to the Environment instance.</param>
+/// <param name="model_compile_options">An object specifying the compilation options.</param>
+/// <returns>A Status indicating an error or success.</returns>
 Status CompileModel(const Environment& env, const ModelCompilationOptions& model_compile_options);
 
 // load a library that is added using RegisterExecutionProviderLibrary.
