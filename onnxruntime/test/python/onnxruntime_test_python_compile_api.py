@@ -34,6 +34,36 @@ class TestCompileApi(unittest.TestCase):
     def tearDownClass(cls):
         cls._tmp_model_dir.cleanup()
 
+    def test_compile_with_files_prefer_npu_policy(self):
+        if "QNNExecutionProvider" not in available_providers:
+            self.skipTest("Skipping test because it needs to run on QNN EP")
+
+        if sys.platform != "win32":
+            self.skipTest("Skipping test because provider selection policies are only supported on Windows")
+
+        ep_lib_path = "onnxruntime_providers_qnn.dll"
+        ep_registration_name = "QNNExecutionProvider"
+        #onnxrt.register_execution_provider_library(ep_registration_name, os.path.realpath(ep_lib_path))
+        onnxrt.register_execution_provider_library(ep_registration_name, ep_lib_path)
+
+        session_options = onnxrt.SessionOptions()
+        session_options.log_severity_level = 1
+        session_options.logid = "TestCompileWithFiles"
+        session_options.graph_optimization_level = onnxrt.GraphOptimizationLevel.ORT_ENABLE_BASIC
+        session_options.set_provider_selection_policy(onnxrt.OrtExecutionProviderDevicePolicy.PREFER_NPU)
+
+        input_model_path = get_name("nhwc_resize_scales_opset18.onnx")
+        output_model_path = os.path.join(self._tmp_dir_path, "model.compiled.onnx")
+
+        model_compiler = onnxrt.ModelCompiler(
+            session_options,
+            input_model_path,
+            embed_compiled_data_into_model=True,
+            external_initializers_file_path=None,
+        )
+        model_compiler.compile_to_file(output_model_path)
+        self.assertTrue(os.path.exists(output_model_path))
+
     def test_compile_with_files(self):
         providers = None
         provider_options = None

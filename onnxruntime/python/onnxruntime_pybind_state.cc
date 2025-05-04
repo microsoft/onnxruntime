@@ -3,6 +3,7 @@
 // Licensed under the MIT License.
 
 #include "python/onnxruntime_pybind_exceptions.h"
+#include "python/onnxruntime_pybind_model_compiler.h"
 #include "python/onnxruntime_pybind_mlvalue.h"
 #include "python/onnxruntime_pybind_state_common.h"
 
@@ -37,6 +38,7 @@
 
 #if !defined(ORT_MINIMAL_BUILD)
 #include "core/session/ep_factory_internal.h"
+#include "core/session/provider_policy_context.h"
 #include "core/session/utils.h"
 #endif
 
@@ -1459,9 +1461,8 @@ static Status AddEpFactoryFromEpDevices(PySessionOptions& py_sess_options,
   return Status::OK();
 }
 
-static Status InitializeSessionFromEpFactories(PyInferenceSession& py_sess,
-                                               std::vector<std::shared_ptr<onnxruntime::IExecutionProviderFactory>> provider_factories,
-                                               const std::unordered_set<std::string>& disabled_optimizer_names) {
+static Status InitializeSessionEpsFromSessionOptions(PyInferenceSession& py_sess,
+                                                     const std::unordered_set<std::string>& disabled_optimizer_names) {
   ORT_RETURN_IF(py_sess.GetSessionHandle() == nullptr, "Invalid Python InferenceSession handle");
   InferenceSession& sess = *py_sess.GetSessionHandle();
 
@@ -1470,11 +1471,17 @@ static Status InitializeSessionFromEpFactories(PyInferenceSession& py_sess,
 
   const OrtSessionOptions& ort_session_options = py_sess.GetOrtSessionOptions();
 
-  for (const auto& provider_factory : provider_factories) {
-    std::unique_ptr<IExecutionProvider> ep = provider_factory->CreateProvider(ort_session_options,
-                                                                              *(sess_logger->ToExternal()));
-    if (ep) {
-      ORT_RETURN_IF_ERROR(sess.RegisterExecutionProvider(std::move(ep)));
+  // if there are no providers registered, and there's an ep selection policy set, do auto ep selection
+  if (ort_session_options.provider_factories.empty() && ort_session_options.value.ep_selection_policy.enable) {
+    ProviderPolicyContext context;
+    ORT_RETURN_IF_ERROR(context.SelectEpsForSession(*GetEnv(), ort_session_options, sess));
+  } else {
+    for (const auto& provider_factory : ort_session_options.provider_factories) {
+      std::unique_ptr<IExecutionProvider> ep = provider_factory->CreateProvider(ort_session_options,
+                                                                                *(sess_logger->ToExternal()));
+      if (ep) {
+        ORT_RETURN_IF_ERROR(sess.RegisterExecutionProvider(std::move(ep)));
+      }
     }
   }
 
@@ -1926,12 +1933,29 @@ for model inference.)pbdoc");
           R"pbdoc(Adds an execution provider that supports the given OrtEpDevice instances. All OrtEpDevice instances 
 must refer to the same execution provider.)pbdoc")
       .def(
+          // Equivalent to the C API's SessionOptionsSetEpSelectionPolicy.
+          "set_provider_selection_policy",
+          [](PySessionOptions* sess_options,
+             OrtExecutionProviderDevicePolicy policy) {
+#if !defined(ORT_MINIMAL_BUILD)
+            sess_options->value.ep_selection_policy.enable = true;
+            sess_options->value.ep_selection_policy.policy = policy;
+            sess_options->value.ep_selection_policy.delegate = nullptr;  // TODO
+#else
+            ORT_UNUSED_PARAMETER(sess_options);
+            ORT_UNUSED_PARAMETER(policy);
+            ORT_THROW("EP selection policies are not supported in this build");
+#endif
+          },
+          R"pbdoc(Adds an execution provider that supports the given OrtEpDevice instances. All OrtEpDevice instances 
+must refer to the same execution provider.)pbdoc")
+      .def(
           "has_providers",
           [](PySessionOptions* sess_options) -> bool {
-            return !sess_options->provider_factories.empty();
+            return !sess_options->provider_factories.empty() || sess_options->value.ep_selection_policy.enable;
           },
-          R"pbdoc(Returns true if the SessionOptions has been configured with providers or OrtEpDevice(s)
-that will run the model.)pbdoc")
+          R"pbdoc(Returns true if the SessionOptions has been configured with providers, OrtEpDevices, or
+policies that will run the model.)pbdoc")
       .def_property(
           "enable_cpu_mem_arena",
           [](const PySessionOptions* options) -> bool { return options->value.enable_cpu_mem_arena; },
@@ -2328,15 +2352,11 @@ including arg name, arg type (contains both type and shape).)pbdoc")
                                const std::vector<std::string>& provider_types = {},
                                const ProviderOptionsVector& provider_options = {},
                                const std::unordered_set<std::string>& disabled_optimizer_names = {}) {
-            const std::vector<std::shared_ptr<onnxruntime::IExecutionProviderFactory>>& provider_factories =
-                sess->GetSessionOptionsProviderFactories();
-
-            // If SessionOptions has IExecutionProviderFactory instances and user did not explicitly specify EPs
-            // when creating InferenceSession, create the EPs directly from those factories.
-            if (!provider_factories.empty() && provider_types.empty()) {
-              OrtPybindThrowIfError(InitializeSessionFromEpFactories(*sess,
-                                                                     provider_factories,
-                                                                     disabled_optimizer_names));
+            // If the user did not explicitly specify providers when creating InferenceSession and the SessionOptions
+            // has provider information (i.e., either explicit EPs or an EP selection policy), then use the information
+            // in the session options to initialize the session.
+            if (provider_types.empty() && sess->HasProvidersInSessionOptions()) {
+              OrtPybindThrowIfError(InitializeSessionEpsFromSessionOptions(*sess, disabled_optimizer_names));
             } else {
               InitializeSession(sess->GetSessionHandle(),
                                 ep_registration_fn,
@@ -2603,127 +2623,60 @@ including arg name, arg type (contains both type and shape).)pbdoc")
       .value("kSameAsRequested", onnxruntime::ArenaExtendStrategy::kSameAsRequested)
       .export_values();
 
-  py::class_<PyModelCompilationOptions>(m, "ModelCompilationOptions",
-                                        R"pbdoc(This is the class used to specify options for compiling a model.)pbdoc")
-      .def(py::init([](const PySessionOptions& sess_options) {
+  py::class_<PyModelCompiler>(m, "ModelCompiler",
+                              R"pbdoc(This is the class used compile an ONNX model.)pbdoc")
+      .def(py::init([](const PySessionOptions& sess_options,
+                       std::string path_or_bytes,
+                       bool is_path,
+                       bool embed_compiled_data_into_model = false,
+                       std::string external_initializers_file_path = {},
+                       size_t external_initializers_size_threshold = 1024) {
 #if !defined(ORT_MINIMAL_BUILD)
-        return std::make_unique<PyModelCompilationOptions>(*GetEnv(), sess_options);
+        std::unique_ptr<PyModelCompiler> result;
+        OrtPybindThrowIfError(PyModelCompiler::Create(result, GetEnv(), sess_options,
+                                                      std::move(path_or_bytes), is_path,
+                                                      embed_compiled_data_into_model,
+                                                      external_initializers_file_path,
+                                                      external_initializers_size_threshold));
+        return result;
 #else
         ORT_UNUSED_PARAMETER(sess_options);
+        ORT_UNUSED_PARAMETER(path_or_bytes);
+        ORT_UNUSED_PARAMETER(is_path);
+        ORT_UNUSED_PARAMETER(embed_compiled_data_into_model);
+        ORT_UNUSED_PARAMETER(external_initializers_file_path);
+        ORT_UNUSED_PARAMETER(external_initializers_size_threshold);
         ORT_THROW("Compile API is not supported in this build.");
 #endif
       }))
       .def(
-          "set_input_model_path",
-          [](PyModelCompilationOptions* model_compile_options, const PathString& input_model_path) {
+          "compile_to_file",
+          [](PyModelCompiler* model_compiler, std::string output_model_path = {}) {
 #if !defined(ORT_MINIMAL_BUILD)
-            model_compile_options->SetInputModelPath(PathToUTF8String(input_model_path));
+            OrtPybindThrowIfError(model_compiler->CompileToFile(output_model_path));
 #else
-            ORT_UNUSED_PARAMETER(model_compile_options);
-            ORT_UNUSED_PARAMETER(input_model_path);
-            ORT_THROW("Compile API is not supported in this build.");
-#endif
-          },
-          R"pbdoc(Set the input model's path)pbdoc")
-      .def(
-          "get_input_model_path",
-          [](PyModelCompilationOptions* model_compile_options) -> PathString {
-#if !defined(ORT_MINIMAL_BUILD)
-            return ToPathString(model_compile_options->GetInputModelPath());
-#else
-            ORT_UNUSED_PARAMETER(model_compile_options);
-            ORT_THROW("Compile API is not supported in this build.");
-#endif
-          },
-          R"pbdoc(Return the input model's path)pbdoc")
-      .def(
-          "set_input_model_from_buffer",
-          [](PyModelCompilationOptions* model_compile_options, py::buffer input_model_data) {
-#if !defined(ORT_MINIMAL_BUILD)
-            py::buffer_info buffer_info = input_model_data.request();
-            model_compile_options->SetInputModelFromBuffer(buffer_info.ptr, buffer_info.size);
-#else
-            ORT_UNUSED_PARAMETER(model_compile_options);
-            ORT_UNUSED_PARAMETER(input_model_data);
-            ORT_THROW("Compile API is not supported in this build.");
-#endif
-          },
-          R"pbdoc(Set the buffer that stores the bytes of the input ONNX model to compile)pbdoc")
-      .def(
-          "set_output_model_path",
-          [](PyModelCompilationOptions* model_compile_options, const PathString& output_model_path) {
-#if !defined(ORT_MINIMAL_BUILD)
-            OrtPybindThrowIfError(model_compile_options->SetOutputModelPath(PathToUTF8String(output_model_path)));
-#else
-            ORT_UNUSED_PARAMETER(model_compile_options);
+            ORT_UNUSED_PARAMETER(model_compiler);
             ORT_UNUSED_PARAMETER(output_model_path);
             ORT_THROW("Compile API is not supported in this build.");
 #endif
           },
-          R"pbdoc(Set the output model's path)pbdoc")
+          R"pbdoc(Compile an ONNX model into a model file with EPContext nodes that each represents a subgraph compiled
+for a specific execution provider.)pbdoc")
       .def(
-          "set_output_model_external_initializers_file",
-          [](PyModelCompilationOptions* model_compile_options, const PathString& external_initializers_path,
-             size_t external_initializers_size_threshold) {
+          "compile_to_bytes",
+          [](PyModelCompiler* model_compiler) -> std::string {
 #if !defined(ORT_MINIMAL_BUILD)
-            model_compile_options->SetOutputModelExternalInitializersFile(PathToUTF8String(external_initializers_path),
-                                                                          external_initializers_size_threshold);
+            std::string output_bytes;
+            OrtPybindThrowIfError(model_compiler->CompileToBytes(output_bytes));
+            return output_bytes;
 #else
-            ORT_UNUSED_PARAMETER(model_compile_options);
-            ORT_UNUSED_PARAMETER(external_initializers_path);
-            ORT_UNUSED_PARAMETER(external_initializers_size_threshold);
+            ORT_UNUSED_PARAMETER(model_compiler);
             ORT_THROW("Compile API is not supported in this build.");
 #endif
           },
-          R"pbdoc(Set the file to store external initializers for non-compiled nodes in the output model)pbdoc")
-      .def(
-          "set_ep_context_embed_mode",
-          [](PyModelCompilationOptions* model_compile_options, bool embed_ep_context_in_model) {
-#if !defined(ORT_MINIMAL_BUILD)
-            OrtPybindThrowIfError(model_compile_options->SetEpContextEmbedMode(embed_ep_context_in_model));
-#else
-            ORT_UNUSED_PARAMETER(model_compile_options);
-            ORT_UNUSED_PARAMETER(embed_ep_context_in_model);
-            ORT_THROW("Compile API is not supported in this build.");
-#endif
-          },
-          R"pbdoc(Enable or disable the embedding of EPContext binary data into the `ep_cache_context` attribute of EPContext nodes)pbdoc")
-      .def(
-          "get_session_options",
-          [](PyModelCompilationOptions* model_compile_options) -> PySessionOptions* {
-#if !defined(ORT_MINIMAL_BUILD)
-            auto session_options = std::make_unique<PySessionOptions>(model_compile_options->GetSessionOptions());
-            return session_options.release();
-#else
-            ORT_UNUSED_PARAMETER(model_compile_options);
-            ORT_THROW("Compile API is not supported in this build.");
-#endif
-          },
-          py::return_value_policy::take_ownership,
-          R"pbdoc(Return a copy of the internal session options)pbdoc")
-      .def(
-          "has_ep_factories",
-          [](PyModelCompilationOptions* model_compile_options) -> bool {
-#if !defined(ORT_MINIMAL_BUILD)
-            const OrtSessionOptions& session_options = model_compile_options->GetSessionOptions();
-            return !session_options.provider_factories.empty();
-#else
-            ORT_UNUSED_PARAMETER(model_compile_options);
-            ORT_THROW("Compile API is not supported in this build.");
-#endif
-          },
-          R"pbdoc(Returns true if the underlying SessionOptions have EP factories)pbdoc")
-      .def(
-          "check",
-          [](PyModelCompilationOptions* model_compile_options) {
-#if !defined(ORT_MINIMAL_BUILD)
-            OrtPybindThrowIfError(model_compile_options->Check());
-#else
-            ORT_UNUSED_PARAMETER(model_compile_options);
-            ORT_THROW("Compile API is not supported in this build.");
-#endif
-          },
-          R"pbdoc(Checks that the compilation options are valid)pbdoc");
+          py::return_value_policy::move,
+          R"pbdoc(Compile an ONNX model into a model file with EPContext nodes that each represents a subgraph compiled
+for a specific execution provider.)pbdoc");
 }
 
 bool CreateInferencePybindStateModule(py::module& m) {

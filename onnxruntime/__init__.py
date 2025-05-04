@@ -71,11 +71,10 @@ from onnxruntime.capi.onnxruntime_inference_collection import (
     AdapterFormat,  # noqa: F401
     InferenceSession,  # noqa: F401
     IOBinding,  # noqa: F401
-    ModelCompilationOptions,  # noqa: F401
+    ModelCompiler,  # noqa: F401
     OrtDevice,  # noqa: F401
     OrtValue,  # noqa: F401
     SparseTensor,  # noqa: F401
-    compile_model,  # noqa: F401
 )
 
 # TODO: thiagofc: Temporary experimental namespace for new PyTorch front-end

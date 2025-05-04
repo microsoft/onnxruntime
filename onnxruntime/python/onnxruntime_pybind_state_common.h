@@ -11,7 +11,6 @@
 #include "core/framework/session_options.h"
 #include "core/session/environment.h"
 #include "core/session/abi_session_options_impl.h"
-#include "core/session/model_compilation_options.h"
 #include "core/session/inference_session.h"
 #if defined(ENABLE_DLPACK)
 #include "core/dlpack/dlpack_converter.h"
@@ -231,7 +230,6 @@ extern OrtDevice::DeviceId cuda_device_id;
 extern size_t gpu_mem_limit;
 
 using PySessionOptions = OrtSessionOptions;
-using PyModelCompilationOptions = onnxruntime::ModelCompilationOptions;
 
 // Thin wrapper over internal C++ InferenceSession to accommodate custom op library management for the Python user
 struct PyInferenceSession {
@@ -254,9 +252,9 @@ struct PyInferenceSession {
   }
 #endif
 
-  const std::vector<std::shared_ptr<onnxruntime::IExecutionProviderFactory>>&
-  GetSessionOptionsProviderFactories() const {
-    return session_options_.provider_factories;
+  bool HasProvidersInSessionOptions() const {
+    return !session_options_.provider_factories.empty() ||
+           session_options_.value.ep_selection_policy.enable;
   }
 
   OrtSessionOptions& GetOrtSessionOptions() {

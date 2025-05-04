@@ -17,6 +17,7 @@ struct OrtStatus;
 struct OrtPrepackedWeightsContainer;
 namespace onnxruntime {
 class InferenceSession;
+class ModelCompilationOptions;
 }  // namespace onnxruntime
 
 #if !defined(ORT_MINIMAL_BUILD)
@@ -42,6 +43,8 @@ OrtStatus* InitializeSession(_In_ const OrtSessionOptions* options,
 
 #if !defined(ORT_MINIMAL_BUILD)
 namespace onnxruntime {
+
+Status CompileModel(const Environment& env, const ModelCompilationOptions& model_compile_options);
 
 // load a library that is added using RegisterExecutionProviderLibrary.
 // infer whether it's a provider bridge library or plugin library

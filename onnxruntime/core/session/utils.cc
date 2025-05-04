@@ -10,6 +10,7 @@
 #include "core/session/environment.h"
 #include "core/session/inference_session.h"
 #include "core/session/inference_session_utils.h"
+#include "core/session/model_compilation_options.h"
 #include "core/session/onnxruntime_c_api.h"
 #include "core/session/onnxruntime_session_options_config_keys.h"
 #include "core/session/ort_apis.h"
@@ -123,12 +124,12 @@ common::Status CopyStringToOutputArg(std::string_view str, const char* err_msg, 
 }
 
 // provider either model_path, or modal_data + model_data_length.
-OrtStatus* CreateSessionAndLoadModel(_In_ const OrtSessionOptions* options,
-                                     _In_ const OrtEnv* env,
-                                     _In_opt_z_ const ORTCHAR_T* model_path,
-                                     _In_opt_ const void* model_data,
-                                     size_t model_data_length,
-                                     std::unique_ptr<onnxruntime::InferenceSession>& sess) {
+static OrtStatus* CreateSessionAndLoadModelImpl(_In_ const OrtSessionOptions* options,
+                                                const onnxruntime::Environment& env,
+                                                _In_opt_z_ const ORTCHAR_T* model_path,
+                                                _In_opt_ const void* model_data,
+                                                size_t model_data_length,
+                                                std::unique_ptr<onnxruntime::InferenceSession>& sess) {
   // quick check here to decide load path. InferenceSession will provide error message for invalid values.
   // TODO: Could move to a helper
   const Env& os_env = Env::Default();  // OS environment (!= ORT environment)
@@ -157,12 +158,12 @@ OrtStatus* CreateSessionAndLoadModel(_In_ const OrtSessionOptions* options,
     if (model_path != nullptr) {
       sess = std::make_unique<onnxruntime::InferenceSession>(
           options == nullptr ? onnxruntime::SessionOptions() : options->value,
-          env->GetEnvironment(),
+          env,
           model_path);
     } else {
       sess = std::make_unique<onnxruntime::InferenceSession>(
           options == nullptr ? onnxruntime::SessionOptions() : options->value,
-          env->GetEnvironment(),
+          env,
           model_data, static_cast<int>(model_data_length));
     }
 #else
@@ -171,20 +172,20 @@ OrtStatus* CreateSessionAndLoadModel(_In_ const OrtSessionOptions* options,
   } else {
     sess = std::make_unique<onnxruntime::InferenceSession>(
         options == nullptr ? onnxruntime::SessionOptions() : options->value,
-        env->GetEnvironment());
+        env);
   }
 
 #if !defined(ORT_MINIMAL_BUILD)
   // TEMPORARY for testing. Manually specify the EP to select.
   auto auto_select_ep_name = sess->GetSessionOptions().config_options.GetConfigEntry("test.ep_to_select");
   if (auto_select_ep_name) {
-    ORT_API_RETURN_IF_STATUS_NOT_OK(TestAutoSelectEPsImpl(env->GetEnvironment(), *sess, *auto_select_ep_name));
+    ORT_API_RETURN_IF_STATUS_NOT_OK(TestAutoSelectEPsImpl(env, *sess, *auto_select_ep_name));
   }
 
   // if there are no providers registered, and there's an ep selection policy set, do auto ep selection
   if (options != nullptr && options->provider_factories.empty() && options->value.ep_selection_policy.enable) {
     ProviderPolicyContext context;
-    ORT_API_RETURN_IF_STATUS_NOT_OK(context.SelectEpsForSession(env->GetEnvironment(), *options, *sess));
+    ORT_API_RETURN_IF_STATUS_NOT_OK(context.SelectEpsForSession(env, *options, *sess));
   }
 #endif  // !defined(ORT_MINIMAL_BUILD)
 
@@ -209,6 +210,16 @@ OrtStatus* CreateSessionAndLoadModel(_In_ const OrtSessionOptions* options,
   }
 
   return nullptr;
+}
+
+// provider either model_path, or modal_data + model_data_length.
+OrtStatus* CreateSessionAndLoadModel(_In_ const OrtSessionOptions* options,
+                                     _In_ const OrtEnv* env,
+                                     _In_opt_z_ const ORTCHAR_T* model_path,
+                                     _In_opt_ const void* model_data,
+                                     size_t model_data_length,
+                                     std::unique_ptr<onnxruntime::InferenceSession>& sess) {
+  return CreateSessionAndLoadModelImpl(options, env->GetEnvironment(), model_path, model_data, model_data_length, sess);
 }
 
 OrtStatus* InitializeSession(_In_ const OrtSessionOptions* options,
@@ -247,6 +258,26 @@ OrtStatus* InitializeSession(_In_ const OrtSessionOptions* options,
 
 namespace onnxruntime {
 #if !defined(ORT_MINIMAL_BUILD)
+Status CompileModel(const Environment& env, const ModelCompilationOptions& model_compile_options) {
+  std::unique_ptr<onnxruntime::InferenceSession> session;
+  const OrtSessionOptions* session_options = &model_compile_options.GetSessionOptions();
+
+  if (model_compile_options.InputModelComesFromFile()) {
+    PathString input_model_path = ToPathString(model_compile_options.GetInputModelPath());
+    ORT_RETURN_IF_ERROR(ToStatus(CreateSessionAndLoadModelImpl(session_options, env,
+                                                               input_model_path.c_str(),
+                                                               nullptr, 0, session)));
+  } else {
+    ORT_RETURN_IF_ERROR(ToStatus(CreateSessionAndLoadModelImpl(session_options, env, nullptr,
+                                                               model_compile_options.GetInputModelData(),
+                                                               model_compile_options.GetInputModelDataSize(),
+                                                               session)));
+  }
+
+  ORT_RETURN_IF_ERROR(ToStatus(InitializeSession(session_options, *session)));
+  return Status::OK();
+}
+
 Status LoadPluginOrProviderBridge(const std::string& registration_name,
                                   const ORTCHAR_T* library_path,
                                   std::unique_ptr<EpLibrary>& ep_library,
