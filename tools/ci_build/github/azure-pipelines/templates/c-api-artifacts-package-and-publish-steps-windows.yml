@@ -31,6 +31,18 @@ parameters:
   default: true
 
 steps:
+    - task: PublishSymbols@2
+      inputs:
+        SymbolsFolder: '$(Build.BinariesDirectory)\${{parameters.buildConfig}}\${{parameters.buildConfig}}\'
+        SearchPattern: '*.pdb'
+        IndexSources: true
+        PublishSymbols: true
+        SymbolServerType: 'TeamServices'
+        SymbolExpirationInDays: '36530'
+        IndexableFileFormats: 'Default'
+        DetailedLog: true
+        SymbolsArtifactName: 'Symbols_${{parameters.buildConfig}}'
+
     - task: CmdLine@2
       displayName: 'Copy build artifacts for zipping'
       inputs:
