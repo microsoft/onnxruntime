@@ -43,7 +43,7 @@ TYPED_TEST(RMSNormalizationOpTest, RMSNorm) {
   std::vector<int64_t> input_dims{1, 2, 3};
   test.AddInput<TypeParam>("X", input_dims, GetTypedArray<TypeParam>(input));
 
-  vector<float> scale = {1.F, 1.F, 1.F};
+  vector<float> scale = {1.F, 1.F, 1.F, 1.F, 1.F, 1.F};
   vector<int64_t> scale_dims = {6};
   test.AddInput<TypeParam>("scale", scale_dims, GetTypedArray<TypeParam>(scale), true);
 
