@@ -443,13 +443,14 @@ typedef enum OrtExecutionProviderDevicePolicy {
  *                    Use CreateStatus to provide error info. Use ORT_FAIL as the error code.
  *                    ORT will release the OrtStatus* if not null.
  */
-typedef OrtStatus* (*EpSelectionDelegate)(_In_ const OrtEpDevice** ep_devices,
-                                          _In_ size_t num_devices,
-                                          _In_ const OrtKeyValuePairs* model_metadata,
-                                          _In_opt_ const OrtKeyValuePairs* runtime_metadata,
-                                          _Inout_ const OrtEpDevice** selected,
-                                          _In_ size_t max_selected,
-                                          _Out_ size_t* num_selected);
+typedef OrtStatus*(ORT_API_CALL* EpSelectionDelegate)(_In_ void* user_param,
+                                                      _In_ const OrtEpDevice** ep_devices,
+                                                      _In_ size_t num_devices,
+                                                      _In_ const OrtKeyValuePairs* model_metadata,
+                                                      _In_opt_ const OrtKeyValuePairs* runtime_metadata,
+                                                      _Inout_ const OrtEpDevice** selected,
+                                                      _In_ size_t max_selected,
+                                                      _Out_ size_t* num_selected);
 
 /** \brief Algorithm to use for cuDNN Convolution Op
  */
@@ -5133,12 +5134,14 @@ struct OrtApi {
    * \param[in] session_options The OrtSessionOptions instance.
    * \param[in] policy The device selection policy to use (see OrtExecutionProviderDevicePolicy).
    * \param[in] delegate Optional delegate callback for custom selection. Pass nullptr to use the built-in policy.
+   * \param[in] delegate_user_param Optional opaque parameter passed as the first argument to the delegate callback.
    *
    * \since Version 1.22
    */
   ORT_API2_STATUS(SessionOptionsSetEpSelectionPolicy, _In_ OrtSessionOptions* session_options,
                   _In_ OrtExecutionProviderDevicePolicy policy,
-                  _In_opt_ EpSelectionDelegate* delegate);
+                  _In_opt_ EpSelectionDelegate delegate,
+                  _In_opt_ void* delegate_user_param);
 
   /** \brief Get the hardware device type.
    *

@@ -368,11 +368,13 @@ ORT_API_STATUS_IMPL(OrtApis::SetDeterministicCompute, _Inout_ OrtSessionOptions*
 
 ORT_API_STATUS_IMPL(OrtApis::SessionOptionsSetEpSelectionPolicy, _In_ OrtSessionOptions* options,
                     _In_ OrtExecutionProviderDevicePolicy policy,
-                    _In_opt_ EpSelectionDelegate* delegate) {
+                    _In_opt_ EpSelectionDelegate delegate,
+                    _In_opt_ void* delegate_user_param) {
   API_IMPL_BEGIN
   options->value.ep_selection_policy.enable = true;
   options->value.ep_selection_policy.policy = policy;
   options->value.ep_selection_policy.delegate = delegate;
+  options->value.ep_selection_policy.delegate_user_param = delegate_user_param;
   return nullptr;
   API_IMPL_END
 }

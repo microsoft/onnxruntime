@@ -1104,7 +1104,8 @@ struct SessionOptionsImpl : ConstSessionOptionsImpl<T> {
 
   /// Wraps OrtApi::SessionOptionsSetEpSelectionPolicy
   SessionOptionsImpl& SetEpSelectionPolicy(OrtExecutionProviderDevicePolicy policy,
-                                           EpSelectionDelegate* delegate = nullptr);
+                                           EpSelectionDelegate delegate = nullptr,
+                                           void* delegate_user_param = nullptr);
 
   SessionOptionsImpl& SetCustomCreateThreadFn(OrtCustomCreateThreadFn ort_custom_create_thread_fn);  ///< Wraps OrtApi::SessionOptionsSetCustomCreateThreadFn
   SessionOptionsImpl& SetCustomThreadCreationOptions(void* ort_custom_thread_creation_options);      ///< Wraps OrtApi::SessionOptionsSetCustomThreadCreationOptions

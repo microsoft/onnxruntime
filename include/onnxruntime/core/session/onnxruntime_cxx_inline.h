@@ -1151,8 +1151,9 @@ inline SessionOptionsImpl<T>& SessionOptionsImpl<T>::AppendExecutionProvider_V2(
 
 template <typename T>
 inline SessionOptionsImpl<T>& SessionOptionsImpl<T>::SetEpSelectionPolicy(OrtExecutionProviderDevicePolicy policy,
-                                                                          EpSelectionDelegate* delegate) {
-  ThrowOnError(GetApi().SessionOptionsSetEpSelectionPolicy(this->p_, policy, delegate));
+                                                                          EpSelectionDelegate delegate,
+                                                                          void* delegate_user_param) {
+  ThrowOnError(GetApi().SessionOptionsSetEpSelectionPolicy(this->p_, policy, delegate, delegate_user_param));
   return *this;
 }
 

@@ -7,6 +7,7 @@ import platform
 import sys
 import tempfile
 import unittest
+from collections.abc import Sequence
 
 import onnx
 from helper import get_name
@@ -53,6 +54,57 @@ class TestCompileApi(unittest.TestCase):
 
         session_options = onnxrt.SessionOptions()
         session_options.set_provider_selection_policy(onnxrt.OrtExecutionProviderDevicePolicy.PREFER_NPU)
+
+        model_compiler = onnxrt.ModelCompiler(
+            session_options,
+            input_model_path,
+            embed_compiled_data_into_model=True,
+            external_initializers_file_path=None,
+        )
+        model_compiler.compile_to_file(output_model_path)
+        self.assertTrue(os.path.exists(output_model_path))
+        onnxrt.unregister_execution_provider_library(ep_registration_name)
+
+    def test_compile_with_ep_selection_delegate(self):
+        """
+        Tests compiling a model (to/from files) using an EP selection delegate callback.
+        """
+        if "QNNExecutionProvider" not in available_providers:
+            self.skipTest("Skipping test because it needs to run on QNN EP")
+
+        if sys.platform != "win32":
+            self.skipTest("Skipping test because provider selection policies are only supported on Windows")
+
+        ep_lib_path = "onnxruntime_providers_qnn.dll"
+        ep_registration_name = "QNNExecutionProvider"
+        onnxrt.register_execution_provider_library(ep_registration_name, ep_lib_path)
+
+        input_model_path = get_name("nhwc_resize_scales_opset18.onnx")
+        output_model_path = os.path.join(self._tmp_dir_path, "model.compiled.delegate.onnx")
+
+        """
+        Delegate signature on the C++ side:
+        std::function<std::vector<const OrtEpDevice*>(const std::vector<const OrtEpDevice*>& ep_devices,
+                                                      const std::unordered_map<std::string, std::string>& model_metadata,
+                                                      const std::unordered_map<std::string, std::string>& runtime_metadata)>;
+
+        """
+
+        def my_delegate(
+            ep_devices: Sequence[onnxrt.OrtEpDevice], model_metadata: dict[str, str], runtime_metadata: dict[str, str]
+        ) -> Sequence[onnxrt.OrtEpDevice]:
+            print("Hello delegate from Python land!!!")
+            # Just pick the OrtEpDevice for QNN EP
+            qnn_ep_device = next((d for d in ep_devices if d.ep_name == "QNNExecutionProvider"), None)
+            if qnn_ep_device is not None:
+                return [qnn_ep_device]
+            return []
+
+        session_options = onnxrt.SessionOptions()
+        session_options.set_provider_selection_policy(
+            onnxrt.OrtExecutionProviderDevicePolicy.DEFAULT,  # This is awkward. What should we pass when we don't care.
+            my_delegate,
+        )
 
         model_compiler = onnxrt.ModelCompiler(
             session_options,

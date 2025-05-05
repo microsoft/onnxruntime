@@ -109,8 +109,8 @@ std::vector<const OrtEpDevice*> OrderDevices(const std::vector<const OrtEpDevice
 // Select execution providers based on the device policy and available devices and add to session
 Status ProviderPolicyContext::SelectEpsForSession(const Environment& env, const OrtSessionOptions& options,
                                                   InferenceSession& sess) {
-  ORT_ENFORCE(options.value.ep_selection_policy.delegate == nullptr,
-              "EP selection delegate support is not implemented yet.");
+  // ORT_ENFORCE(options.value.ep_selection_policy.delegate == nullptr,
+  // "EP selection delegate support is not implemented yet.");
 
   // Get the list of devices from the environment and order them.
   // Ordered by preference within each type. NPU -> GPU -> NPU
@@ -123,12 +123,13 @@ Status ProviderPolicyContext::SelectEpsForSession(const Environment& env, const 
   // Run the delegate if it was passed in lieu of any other policy
   if (options.value.ep_selection_policy.delegate) {
     auto policy_fn = options.value.ep_selection_policy.delegate;
+    void* delegate_user_param = options.value.ep_selection_policy.delegate_user_param;
     std::vector<const OrtEpDevice*> delegate_devices(execution_devices.begin(), execution_devices.end());
     std::array<const OrtEpDevice*, 8> selected_devices{nullptr};
 
     size_t num_selected = 0;
-    auto* status = (*policy_fn)(delegate_devices.data(), delegate_devices.size(),
-                                nullptr, nullptr, selected_devices.data(), selected_devices.size(), &num_selected);
+    auto* status = policy_fn(delegate_user_param, delegate_devices.data(), delegate_devices.size(),
+                             nullptr, nullptr, selected_devices.data(), selected_devices.size(), &num_selected);
 
     // return or fall-through for both these cases
     // going with explicit failure for now so it's obvious to user what is happening
@@ -141,6 +142,12 @@ Status ProviderPolicyContext::SelectEpsForSession(const Environment& env, const 
 
     if (num_selected == 0) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "EP selection delegate did not select anything.");
+    }
+
+    // Copy the selected devices to the output vector
+    devices_selected.reserve(num_selected);
+    for (size_t i = 0; i < num_selected; ++i) {
+      devices_selected.push_back(selected_devices[i]);
     }
   } else {
     // Create the selector for the chosen policy
