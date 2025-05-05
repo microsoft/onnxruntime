@@ -44,8 +44,12 @@ Status ReshapeOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
 
   const auto& data_name = input_defs[0]->Name();
   const auto& new_shape_name = input_defs[1]->Name();
-  Initializer unpacked_tensor(*model_builder.GetConstantInitializer(new_shape_name));
-  TensorShapeVector new_shape = ToShapeVector(unpacked_tensor.DataAsSpan<int64_t>());
+  const auto* shape_constant = model_builder.GetConstantInitializer(new_shape_name);
+  TensorShapeVector new_shape;
+  if (shape_constant) {
+    Initializer unpacked_tensor(*shape_constant);
+    new_shape = ToShapeVector(unpacked_tensor.DataAsSpan<int64_t>());
+  }
 
   // ReshapeHelper applies the ONNX rules to create the concrete output shape
   ReshapeHelper helper(TensorShape(input_shape), new_shape);
@@ -57,8 +61,12 @@ Status ReshapeOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
     std::unique_ptr<Operation> reshape_op = model_builder.CreateOperation(node, "reshape");
 
     AddOperationInput(*reshape_op, "x", data_name);
+    if (shape_constant) {
     AddOperationInput(*reshape_op, "shape",
                       model_builder.AddConstant(reshape_op->type(), "shape", ToConstSpan(new_shape)));
+    } else {
+      AddOperationInput(*reshape_op, "shape", new_shape_name);
+    }
 
     AddOperationOutput(*reshape_op, *node.OutputDefs()[0]);
 
@@ -66,8 +74,8 @@ Status ReshapeOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
   } else {
     std::unique_ptr<COREML_SPEC::NeuralNetworkLayer> layer = model_builder.CreateNNLayer(node);
 
-    *layer->mutable_reshapestatic()->mutable_targetshape() = {new_shape.cbegin(), new_shape.cend()};
     *layer->mutable_input()->Add() = data_name;
+    *layer->mutable_reshapestatic()->mutable_targetshape() = {new_shape.cbegin(), new_shape.cend()};
     *layer->mutable_output()->Add() = node.OutputDefs()[0]->Name();
 
     model_builder.AddLayer(std::move(layer));
@@ -109,6 +117,12 @@ bool ReshapeOpBuilder::IsOpSupportedImpl(const Node& node, const OpBuilderInputP
   NodeAttrHelper helper(node);
   const bool allow_zero = helper.Get("allow_zero", 0) == 1;
 
+  if (!new_shape_tensor && !allow_zero && input_defs[1]->Shape()) {
+    // If the new shape is not a constant but the rank is known and zeroes are not
+    // allowed, then we can assume that the new shape is valid
+    return true;
+  }
+
   if (!new_shape_tensor) {
     // ONNX has different rules around how -1 and 0 values are used/combined, and
     // we can't check if those can be translated to CoreML if the shape is unknown.
@@ -124,7 +138,7 @@ bool ReshapeOpBuilder::IsOpSupportedImpl(const Node& node, const OpBuilderInputP
     return false;
   }
 
-  // CoreML reshape does not support 0 as a dimension
+  //CoreML reshape does not support 0 as a dimension
   if (allow_zero) {
     if (std::find(new_shape.begin(), new_shape.end(), int64_t{0}) != new_shape.end()) {
       LOGS(logger, VERBOSE) << "Reshape does not support new shape with 0 as dimension when allowzero is enabled. "
