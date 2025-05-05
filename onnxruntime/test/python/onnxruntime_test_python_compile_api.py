@@ -93,7 +93,7 @@ class TestCompileApi(unittest.TestCase):
 
     def test_compile_to_file_with_input_model_in_buffer(self):
         """
-        Tests compiling an input model that is store in a buffer. The output is saved to a file.
+        Tests compiling an input model that is stored in a buffer. The output is saved to a file.
         """
         provider = None
         provider_options = dict()
@@ -121,7 +121,7 @@ class TestCompileApi(unittest.TestCase):
 
     def test_compile_from_buffer_to_buffer(self):
         """
-        Tests compiling an input model that is store in a buffer. The output is stored in a buffer too.
+        Tests compiling an input model that is stored in a buffer. The output is stored in a buffer too.
         """
         provider = None
         provider_options = dict()

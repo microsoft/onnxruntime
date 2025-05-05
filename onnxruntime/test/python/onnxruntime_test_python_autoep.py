@@ -76,6 +76,8 @@ class TestAutoEP(unittest.TestCase):
         output_expected = np.array([[1.0, 4.0], [9.0, 16.0], [25.0, 36.0]], dtype=np.float32)
         np.testing.assert_allclose(output_expected, res[0], rtol=1e-05, atol=1e-08)
 
+        onnxrt.unregister_execution_provider_library(ep_registration_name)
+
     def test_cuda_prefer_gpu_and_inference(self):
         """
         Test selecting CUDA EP via the PREFER_GPU policy and running inference.
@@ -104,6 +106,8 @@ class TestAutoEP(unittest.TestCase):
         res = sess.run([], {input_name: x})
         output_expected = np.array([[1.0, 4.0], [9.0, 16.0], [25.0, 36.0]], dtype=np.float32)
         np.testing.assert_allclose(output_expected, res[0], rtol=1e-05, atol=1e-08)
+
+        onnxrt.unregister_execution_provider_library(ep_registration_name)
 
     def test_example_plugin_ep_devices(self):
         """
