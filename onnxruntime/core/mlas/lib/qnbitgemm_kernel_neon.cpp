@@ -445,6 +445,77 @@ UseKleidiAI(size_t K, size_t BlkLen, bool HasZp)
 #endif
 }
 
+template<bool QuantAUnsigned>
+size_t
+SQ8BitGemmKernel_BlkSum_CompInt8(
+    const size_t BlkLen,
+    const std::byte* QuantA,
+    const float* QuantAScale,
+    const std::byte* QuantBData,
+    const float* QuantBScale,
+    const std::byte* /*QuantBZeroPoint*/,
+    float* C,
+    size_t CountM,
+    size_t CountN,
+    size_t CountK,
+    size_t BlockCountK,
+    const float* Bias,
+    size_t ldc,
+    const float* ABlockSum,
+    const float* QuantBBlkSum,
+    const float* QuantBBlkSum2
+)
+{
+    MlasQ8Int8GemmKernelNeon<QuantAUnsigned>(
+        BlkLen,
+        QuantA,
+        QuantAScale,
+        QuantBData,
+        QuantBScale,
+        C,
+        CountM,
+        CountN,
+        CountK,
+        Bias,
+        ldc
+    );
+
+    {
+        float* c_blk = C;
+        const float* b_blk_sum = QuantBBlkSum;
+
+        size_t RowsRemaining = CountM;
+        const float* a_blksum_row = ABlockSum;
+        while (RowsRemaining > 0) {
+            auto RowsHandled = MlasSgemmKernelAdd(a_blksum_row, b_blk_sum, c_blk, BlockCountK, RowsRemaining, CountN, BlockCountK, ldc, 1.f);
+
+            c_blk += ldc * RowsHandled;
+            a_blksum_row += BlockCountK * RowsHandled;
+            RowsRemaining -= RowsHandled;
+        }
+    }
+
+    if constexpr (QuantAUnsigned) {
+        {
+            assert(QuantBBlkSum2 != nullptr);
+            float* c_blk = C;
+            const float* b_blk_sum2 = QuantBBlkSum2;
+
+            size_t RowsRemaining = CountM;
+            const float* a_scale_row = QuantAScale;
+            while (RowsRemaining > 0) {
+                auto RowsHandled = MlasSgemmKernelAdd(a_scale_row, b_blk_sum2, c_blk, BlockCountK, RowsRemaining, CountN, BlockCountK, ldc, 128.f);
+
+                c_blk += ldc * RowsHandled;
+                a_scale_row += BlockCountK * RowsHandled;
+                RowsRemaining -= RowsHandled;
+            }
+        }
+    }
+
+    return CountM;
+}
+
 }  // namespace sqnbitgemm_neon
 
 //
@@ -481,6 +552,7 @@ GetMlasQNBitGemmDispatchNeon(
             d.UsePacked_CompInt8 = sqnbitgemm_neon::UsePacked_CompInt8;
 
             d.QuantizeARowComputeBlkSum_CompInt8 = sqnbitgemm_neon::QuantizeARowComputeBlkSum_CompInt8<true>;
+            d.SQ8BitGemmKernel_BlkSum_CompInt8 = sqnbitgemm_neon::SQ8BitGemmKernel_BlkSum_CompInt8<true>;
 
 #ifdef USE_KLEIDIAI
             d.SQ4BitGemmKernel_Packed_CompInt8 = sqnbitgemm_neon::SQ4BitGemmKernel_Packed_CompInt8;
@@ -492,6 +564,7 @@ GetMlasQNBitGemmDispatchNeon(
             d.Q8BitGemmPackQuantBDataSize = sqnbitgemm_neon::QNBitGemmPackQuantBDataSize<8, false>;
             d.SQ8BitGemmPackQuantBDataAndBlkSum = sqnbitgemm_neon::SQ8BitGemmPackQuantBDataAndBlkSum<false>;
             d.QuantizeARowComputeBlkSum_CompInt8 = sqnbitgemm_neon::QuantizeARowComputeBlkSum_CompInt8<false>;
+            d.SQ8BitGemmKernel_BlkSum_CompInt8 = sqnbitgemm_neon::SQ8BitGemmKernel_BlkSum_CompInt8<false>;
         }
 
 #if defined(MLAS_F16VEC_INTRINSICS_SUPPORTED) && defined(MLAS_TARGET_ARM64)

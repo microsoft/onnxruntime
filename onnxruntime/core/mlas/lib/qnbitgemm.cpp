@@ -719,7 +719,6 @@ SQ8BitGemm_CompInt8(
     const size_t RangeCountN
 )
 {
-    assert(K <= (2 << (32 - 8 - 8))); // accumulator is i32, holding K of i8 * i8.
     PerGemmQuantAWorkspace* const per_gemm_quant_a_workspace = static_cast<PerGemmQuantAWorkspace*>(PerGemmWorkspace);
     constexpr size_t BlkBitWidth = 8;
 

@@ -212,6 +212,20 @@ float32x4_t LoadFloat32x4(const float* src, size_t count)
 }
 
 template <bool QuantAUnsigned>
+using I16VecType = typename std::conditional<QuantAUnsigned, uint16x8_t, int16x8_t>::type;
+
+template <bool QuantAUnsigned>
+I16VecType<QuantAUnsigned> MLAS_FORCEINLINE
+PrepareZeroI16()
+{
+    if constexpr (QuantAUnsigned) {
+        return vdupq_n_u16(0);
+    } else {
+        return vdupq_n_s16(0);
+    }
+}
+
+template <bool QuantAUnsigned>
 void MLASCALL
 QuantizeARowComputeBlkSum_CompInt8(
     size_t BlkLen,
@@ -231,7 +245,7 @@ QuantizeARowComputeBlkSum_CompInt8(
         0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
     };
     const int16x8_t v128 = vdupq_n_s16(128);
-    int8_t* blob = reinterpret_cast<int8_t*>(QuantA);
+    QuantAType<QuantAUnsigned>* blob = reinterpret_cast<QuantAType<QuantAUnsigned>*>(QuantA);
     float* scale_ptr = QuantAScale;
     size_t k = 0;
     for (; k + BlkLen <= CountK; k += BlkLen) {
@@ -261,13 +275,8 @@ QuantizeARowComputeBlkSum_CompInt8(
         const float inverse_scale = (maxScalar != 0.0f) ? 127.f / maxScalar : 0.0f;
         const float32x4_t mul = vdupq_n_f32(inverse_scale);
 
-        if constexpr (QuantAUnsigned) {
-            uint16x8_t sum_8_u16_0 = vdupq_n_u16(0);
-            uint16x8_t sum_8_u16_1 = vdupq_n_u16(0);
-        } else {
-            int16x8_t sum_8_i16_0 = vdupq_n_s16(0);
-            int16x8_t sum_8_i16_1 = vdupq_n_s16(0);
-        }
+        I16VecType<QuantAUnsigned> sum_8_i16_0 = PrepareZeroI16();
+        I16VecType<QuantAUnsigned> sum_8_i16_1 = PrepareZeroI16();
 
         for (size_t kk = 0; kk < BlkLen; kk += 16) {
             const float32x4x4_t vfp32 = vld4q_f32(A + k + kk);
@@ -286,13 +295,13 @@ QuantizeARowComputeBlkSum_CompInt8(
                 const uint16x8_t v_8_u16_0 = vreinterpretq_u16_s16(vaddq_s16(v_8_i16_0, v128));
                 const uint16x8_t v_8_u16_1 = vreinterpretq_u16_s16(vaddq_s16(v_8_i16_1, v128));
                 const uint8x16_t v_16_u8 = vcombine_u8(vqmovn_u16(v_8_u16_0), vqmovn_u16(v_8_u16_1));
-                vst1q_u8(reinterpret_cast<uint8_t*>(blob + k + kk), v_16_u8);
+                vst1q_u8(blob + k + kk, v_16_u8);
 
                 // accumulate Sum(a_i)
                 const uint16x8_t i_8_u16_0 = vmovl_u8(vget_low_u8(v_16_u8));
                 const uint16x8_t i_8_u16_1 = vmovl_high_u8(v_16_u8);
-                sum_8_u16_0 = vaddq_u16(sum_8_u16_0, i_8_u16_0);
-                sum_8_u16_1 = vaddq_u16(sum_8_u16_1, i_8_u16_1);
+                sum_8_i16_0 = vaddq_u16(sum_8_i16_0, i_8_u16_0);
+                sum_8_i16_1 = vaddq_u16(sum_8_i16_1, i_8_u16_1);
             } else {
                 const int8x16_t v_16_i8 = vcombine_s8(vqmovn_s16(v_8_i16_0), vqmovn_s16(v_8_i16_1));
                 vst1q_s8(blob + k + kk, v_16_i8);
@@ -308,7 +317,7 @@ QuantizeARowComputeBlkSum_CompInt8(
         float qsum;
 
         if constexpr (QuantAUnsigned) {
-            const uint16x8_t sum_8_u16 = vaddq_u16(sum_8_u16_0, sum_8_u16_1);
+            const uint16x8_t sum_8_u16 = vaddq_u16(sum_8_i16_0, sum_8_i16_1);
             qsum = static_cast<float>(vaddvq_u16(sum_8_u16));
         } else {
             const int16x8_t sum_8_i16 = vaddq_s16(sum_8_i16_0, sum_8_i16_1);
@@ -1628,6 +1637,301 @@ SQ4BitGemmKernel_CompInt8(
             ldc,
             Bias
         );
+    }
+
+    return CountM;
+}
+
+template <bool QuantAUnsigned>
+using I8VecType = typename std::conditional<QuantAUnsigned, uint8x16_t, int8x16_t>::type;
+
+template <bool QuantAUnsigned>
+using I32VecType = typename std::conditional<QuantAUnsigned, uint32x4_t, int32x4_t>::type;
+
+template <bool QuantAUnsigned>
+I8VecType<QuantAUnsigned> MLAS_FORCEINLINE
+LoadVecI8(QuantAType<QuantAUnsigned>* QuantA)
+{
+    if constexpr (QuantAUnsigned) {
+        return vld1q_u8(QuantA);
+    } else {
+        return vld1q_s8(QuantA);
+    }
+}
+
+template <bool QuantAUnsigned>
+I32VecType<QuantAUnsigned> MLAS_FORCEINLINE
+PrepareZeroI32()
+{
+    if constexpr (QuantAUnsigned) {
+        return vdupq_n_u32(0);
+    } else {
+        return vdupq_n_s32(0);
+    }
+}
+
+template <bool QuantAUnsigned>
+I32VecType<QuantAUnsigned> MLAS_FORCEINLINE
+MulAccu(I32VecType<QuantAUnsigned> accuVec, I8VecType<QuantAUnsigned> av, uint8x16_t bv, const int lane)
+{
+    if constexpr (QuantAUnsigned) {
+        return vdotq_laneq_u32(accuVec, av, bv, lane);
+    } else {
+        return vsudotq_laneq_s32(accuVec, av, bv, lane);
+    }
+}
+
+template <bool QuantAUnsigned>
+MLAS_FORCEINLINE void
+Q8Int8GemmR2xC8Neon(
+    const size_t BlkLen,
+    const QuantAType<QuantAUnsigned>* QuantA,
+    const float* QuantAScale,
+    const uint8_t* QuantBData,
+    const float* QuantBScale,
+    float* C,
+    size_t CountM,
+    size_t CountN,
+    size_t BlockCountK,
+    const float* Bias,
+    size_t ldc
+)
+{
+    constexpr size_t BlkBitWidth = 8;
+    constexpr size_t NCols8 = 8;
+    constexpr size_t NRows2 = 2;
+    constexpr size_t KStep16 = 16;
+
+    const size_t lda = BlockCountK * BlkLen;
+    const size_t StrideQuantBDataCol8 = BlockCountK * BlkLen * NCols8;
+
+    assert(CountM % NRows2 == 0);
+    assert(CountN % NCols8 == 0);
+
+    for (size_t m = 0; m < CountM; m += NRows2) {
+        const uint8_t* QuantBDataColPtr = QuantBData;
+        const float* QuantBScaleColPtr = QuantBScale;
+        const float* BiasPtr = Bias;
+        auto* SumPtr = C + m * ldc;
+
+        for (size_t n = 0; n < CountN; n += NCols8) {
+            const QuantAType<QuantAUnsigned>* QuantAPtr = QuantA + m * lda;
+            const float* QuantAScalePtr = QuantAScale + m * BlockCountK;
+
+            const uint8_t* QuantBDataPtr = QuantBDataColPtr;
+            const float* QuantBScalePtr = QuantBScaleColPtr;
+
+            float32x4_t accf0_03 = vdupq_n_f32(0.0f);
+            float32x4_t accf0_47 = vdupq_n_f32(0.0f);
+            float32x4_t accf1_03 = vdupq_n_f32(0.0f);
+            float32x4_t accf1_47 = vdupq_n_f32(0.0f);
+
+            for (size_t i = 0; i < BlockCountK; ++i) {
+                const float scaleA0 = *QuantAScalePtr;
+                const float scaleA1 = *(QuantAScalePtr + BlockCountK);
+                const float32x4x2_t scaleB = vld2q_f32(QuantBScalePtr);
+                const float32x4_t scaleA0B03 = vmulq_n_f32(scaleB.val[0], scaleA0);
+                const float32x4_t scaleA0B47 = vmulq_n_f32(scaleB.val[1], scaleA0);
+                const float32x4_t scaleA1B03 = vmulq_n_f32(scaleB.val[0], scaleA1);
+                const float32x4_t scaleA1B47 = vmulq_n_f32(scaleB.val[1], scaleA1);
+
+                I32VecType<QuantAUnsigned> acc0_03 = PrepareZeroI32<QuantAUnsigned>();
+                I32VecType<QuantAUnsigned> acc0_47 = PrepareZeroI32<QuantAUnsigned>();
+                I32VecType<QuantAUnsigned> acc1_03 = PrepareZeroI32<QuantAUnsigned>();
+                I32VecType<QuantAUnsigned> acc1_47 = PrepareZeroI32<QuantAUnsigned>();
+
+                for (size_t k = 0; k < BlkLen; k += KStep16) {
+                    const I8VecType<QuantAUnsigned> av0_16_i8 = LoadAVec(QuantAPtr);
+                    const I8VecType<QuantAUnsigned> av1_16_i8 = LoadAVec(QuantAPtr + lda);
+
+                    uint8x16_t bv_packed_0_03 = vld1q_u8(QuantBDataPtr);
+                    uint8x16_t bv_packed_0_47 = vld1q_u8(QuantBDataPtr + 16);
+                    uint8x16_t bv_packed_1_03 = vld1q_u8(QuantBDataPtr + 32);
+                    uint8x16_t bv_packed_1_47 = vld1q_u8(QuantBDataPtr + 48);
+                    uint8x16_t bv_packed_2_03 = vld1q_u8(QuantBDataPtr + 64);
+                    uint8x16_t bv_packed_2_47 = vld1q_u8(QuantBDataPtr + 80);
+                    uint8x16_t bv_packed_3_03 = vld1q_u8(QuantBDataPtr + 96);
+                    uint8x16_t bv_packed_3_47 = vld1q_u8(QuantBDataPtr + 112);
+
+                    acc0_03 = MulAccu<QuantAUnsigned>(acc0_03, av0_16_i8, bv_packed_0_03, 0);
+                    acc0_03 = MulAccu<QuantAUnsigned>(acc0_03, av0_16_i8, bv_packed_1_03, 1);
+                    acc0_03 = MulAccu<QuantAUnsigned>(acc0_03, av0_16_i8, bv_packed_2_03, 2);
+                    acc0_03 = MulAccu<QuantAUnsigned>(acc0_03, av0_16_i8, bv_packed_3_03, 3);
+
+                    acc0_47 = MulAccu<QuantAUnsigned>(acc0_47, av0_16_i8, bv_packed_0_47, 0);
+                    acc0_47 = MulAccu<QuantAUnsigned>(acc0_47, av0_16_i8, bv_packed_1_47, 1);
+                    acc0_47 = MulAccu<QuantAUnsigned>(acc0_47, av0_16_i8, bv_packed_2_47, 2);
+                    acc0_47 = MulAccu<QuantAUnsigned>(acc0_47, av0_16_i8, bv_packed_3_47, 3);
+
+                    acc1_03 = MulAccu<QuantAUnsigned>(acc1_03, av1_16_i8, bv_packed_0_03, 0);
+                    acc1_03 = MulAccu<QuantAUnsigned>(acc1_03, av1_16_i8, bv_packed_1_03, 1);
+                    acc1_03 = MulAccu<QuantAUnsigned>(acc1_03, av1_16_i8, bv_packed_2_03, 2);
+                    acc1_03 = MulAccu<QuantAUnsigned>(acc1_03, av1_16_i8, bv_packed_3_03, 3);
+
+                    acc1_47 = MulAccu<QuantAUnsigned>(acc1_47, av1_16_i8, bv_packed_0_47, 0);
+                    acc1_47 = MulAccu<QuantAUnsigned>(acc1_47, av1_16_i8, bv_packed_1_47, 1);
+                    acc1_47 = MulAccu<QuantAUnsigned>(acc1_47, av1_16_i8, bv_packed_2_47, 2);
+                    acc1_47 = MulAccu<QuantAUnsigned>(acc1_47, av1_16_i8, bv_packed_3_47, 3);
+
+                    QuantAPtr += KStep16;
+                    QuantBDataPtr += NCols8 * KStep16;
+                }
+
+                accf0_03 = vmlaq_f32(accf0_03, scaleA0B03, vcvtq_f32_s32(acc0_03));
+                accf0_47 = vmlaq_f32(accf0_47, scaleA0B47, vcvtq_f32_s32(acc0_47));
+                accf1_03 = vmlaq_f32(accf1_03, scaleA1B03, vcvtq_f32_s32(acc1_03));
+                accf1_47 = vmlaq_f32(accf1_47, scaleA1B47, vcvtq_f32_s32(acc1_47));
+
+                ++QuantAScalePtr;
+                ++QuantBScalePtr;
+            }
+
+            if (BiasPtr != nullptr) {
+                const float32x4x2_t bias_4x2_f32 = vld2q_f32(BiasPtr);
+                accf0_03 = vaddq_f32(accf0_03, bias_4x2_f32.val[0]);
+                accf0_47 = vaddq_f32(accf0_47, bias_4x2_f32.val[1]);
+                accf1_03 = vaddq_f32(accf1_03, bias_4x2_f32.val[0]);
+                accf1_47 = vaddq_f32(accf1_47, bias_4x2_f32.val[1]);
+            }
+
+            vst1q_f32(SumPtr, accf0_03);
+            vst1q_f32(SumPtr + 4, accf0_47);
+            vst1q_f32(SumPtr + ldc, accf1_03);
+            vst1q_f32(SumPtr + ldc + 4, accf1_47);
+
+            // move to next NCols columns
+            QuantBDataColPtr += StrideQuantBDataCol8;
+            QuantBScaleColPtr += NCols8 * BlockCountK;
+
+            BiasPtr += BiasPtr != nullptr ? NCols8 : 0;
+            SumPtr += NCols8;
+        }
+    }
+}
+
+template <bool QuantAUnsigned>
+void
+MlasQ8Int8GemmKernelNeon(
+    const size_t BlkLen,
+    const QuantAType<QuantAUnsigned>* QuantA,
+    const float* QuantAScale,
+    const uint8_t* QuantBData,
+    const float * QuantBScale,
+    float* C,
+    const size_t CountM,
+    const size_t CountN,
+    const size_t CountK,
+    const float* Bias,
+    const size_t ldc
+) {
+    constexpr size_t BlkBitWidth = 8;
+    constexpr size_t NCols8 = 8;
+    constexpr size_t NCols4 = 4;
+    constexpr size_t NRows2 = 2;
+    const size_t BlockCountK = MlasDivRoundup(CountK, BlkLen);
+
+    const size_t lda = BlockCountK * BlkLen;
+    const size_t lda_scale = BlockCountK;
+    const size_t StrideQuantBData = BlockCountK * MlasQNBitBlkDataSizeInBytes(BlkBitWidth, BlkLen);
+    const size_t StrideQuantBScale = BlockCountK;
+
+    size_t remainingRows = CountM % NRows2;
+    size_t multipleRows = CountM - remainingRows;
+    size_t multipleCols8 = CountN & (~(NCols8 - 1));
+    size_t multipleCols4 = CountN & (~(NCols4 - 1));
+    size_t remainingCols4 = CountN % NCols4;
+
+    if (multipleRows > 0 && multipleCols8 > 0) {
+        Q8Int8GemmR2xC8Neon<QuantAUnsigned>(
+            BlkLen,
+            QuantA,
+            QuantAScale,
+            QuantBData,
+            QuantBScale,
+            C,
+            multipleRows,
+            multipleCols8,
+            BlockCountK,
+            Bias,
+            ldc
+        );
+    }
+
+    if (multipleRows > 0 && multipleCols4 > multipleCols8) {
+        Q8Int8GemmR2xC4Neon<QuantAUnsigned>(
+            BlkLen,
+            QuantA,
+            QuantAScale,
+            QuantBData + multipleCols8 * StrideQuantBData,
+            QuantBScale + multipleCols8 * StrideQuantBScale,
+            C + multipleCols8,
+            multipleRows,
+            multipleCols4 - multipleCols8,
+            BlockCountK,
+            Bias ? Bias + multipleCols8 : nullptr,
+            ldc
+        );
+    }
+
+    if (multipleRows > 0 && remainingCols4 > 0) {
+        Q8Int8GemmR2xC1Neon<QuantAUnsigned>(
+            BlkLen,
+            QuantA,
+            QuantAScale,
+            QuantBData + multipleCols4 * StrideQuantBData,
+            QuantBScale + multipleCols4 * StrideQuantBScale,
+            C + multipleCols4,
+            multipleRows,
+            remainingCols4,
+            BlockCountK,
+            Bias ? Bias + multipleCols4 : nullptr,
+            ldc
+        );
+    }
+
+    if (remainingRows > 0 && multipleCols8 > 0) {
+        Q8Int8GemmR1xC8Neon<QuantAUnsigned>(
+            BlkLen,
+            QuantA + multipleRows * lda,
+            QuantAScale + multipleRows * lda_scale,
+            QuantBData,
+            QuantBScale,
+            C + multipleRows * ldc,
+            remainingRows,
+            multipleCols8,
+            BlockCountK,
+            Bias,
+            ldc);
+    }
+
+    if (remainingRows > 0 && multipleCols4 > multipleCols8) {
+        Q8Int8GemmR1xC4Neon<QuantAUnsigned>(
+            BlkLen,
+            QuantA + multipleRows * lda,
+            QuantAScale + multipleRows * lda_scale,
+            QuantBData + multipleCols8 * StrideQuantBData,
+            QuantBScale + multipleCols8 * StrideQuantBScale,
+            C + multipleRows * ldc + multipleCols8,
+            remainingRows,
+            multipleCols4 - multipleCols8,
+            BlockCountK,
+            Bias ? Bias + multipleCols8 : nullptr,
+            ldc);
+    }
+
+    if (remainingRows > 0 && remainingCols4 > 0) {
+        Q8Int8GemmR1xC1Neon<QuantAUnsigned>(
+            BlkLen,
+            QuantA + multipleRows * lda,
+            QuantAScale + multipleRows * lda_scale,
+            QuantBData + multipleCols4 * StrideQuantBData,
+            QuantBScale + multipleCols4 * StrideQuantBScale,
+            C + multipleRows * ldc + multipleCols4,
+            remainingRows,
+            remainingCols4,
+            BlockCountK,
+            Bias ? Bias + multipleCols4 : nullptr,
+            ldc);
     }
 
     return CountM;
