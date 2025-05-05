@@ -5,10 +5,10 @@ from __future__ import annotations
 import os
 import platform
 import sys
-import tempfile
 import unittest
 
 import onnx
+from autoep_helper import AutoEpTestCase
 from helper import get_name
 
 import onnxruntime as onnxrt
@@ -21,19 +21,7 @@ if platform.system() == "Windows" and sys.version_info.major >= 3 and sys.versio
 available_providers = list(onnxrt.get_available_providers())
 
 
-class TestCompileApi(unittest.TestCase):
-    @classmethod
-    def setUpClass(cls):
-        cls._tmp_model_dir = tempfile.TemporaryDirectory(prefix="ort.compile_api_")
-
-        # Note: swap with the commented line if you want to see the models in local test dir.
-        cls._tmp_dir_path = cls._tmp_model_dir.name
-        # cls._tmp_dir_path = "."
-
-    @classmethod
-    def tearDownClass(cls):
-        cls._tmp_model_dir.cleanup()
-
+class TestCompileApi(AutoEpTestCase):
     def test_compile_with_files_prefer_npu_policy(self):
         """
         Tests compiling a model (to/from files) using an EP selection policy (PREFER_NPU).
@@ -46,7 +34,7 @@ class TestCompileApi(unittest.TestCase):
 
         ep_lib_path = "onnxruntime_providers_qnn.dll"
         ep_registration_name = "QNNExecutionProvider"
-        onnxrt.register_execution_provider_library(ep_registration_name, ep_lib_path)
+        self.register_execution_provider_library(ep_registration_name, ep_lib_path)
 
         input_model_path = get_name("nhwc_resize_scales_opset18.onnx")
         output_model_path = os.path.join(self._tmp_dir_path, "model.compiled0.onnx")
@@ -62,7 +50,7 @@ class TestCompileApi(unittest.TestCase):
         )
         model_compiler.compile_to_file(output_model_path)
         self.assertTrue(os.path.exists(output_model_path))
-        onnxrt.unregister_execution_provider_library(ep_registration_name)
+        self.unregister_execution_provider_library(ep_registration_name)
 
     def test_compile_with_input_and_output_files(self):
         """
@@ -146,7 +134,6 @@ class TestCompileApi(unittest.TestCase):
         output_model_bytes = model_compiler.compile_to_bytes()
         self.assertTrue(isinstance(output_model_bytes, bytes))
         self.assertGreater(len(output_model_bytes), 0)
-        print(f"Output model buffer size: {len(output_model_bytes)}")
 
     def test_fail_load_uncompiled_model_and_then_compile(self):
         """
@@ -195,4 +182,4 @@ class TestCompileApi(unittest.TestCase):
 
 
 if __name__ == "__main__":
-    unittest.main()
+    unittest.main(verbosity=1)

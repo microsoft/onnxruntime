@@ -5,10 +5,10 @@ from __future__ import annotations
 import os
 import platform
 import sys
-import tempfile
 import unittest
 
 import numpy as np
+from autoep_helper import AutoEpTestCase
 from helper import get_name
 
 import onnxruntime as onnxrt
@@ -21,19 +21,7 @@ if platform.system() == "Windows" and sys.version_info.major >= 3 and sys.versio
 available_providers = list(onnxrt.get_available_providers())
 
 
-class TestAutoEP(unittest.TestCase):
-    @classmethod
-    def setUpClass(cls):
-        cls._tmp_model_dir = tempfile.TemporaryDirectory(prefix="ort.autoep_")
-
-        # Note: swap with the commented line if you want to see the models in local test dir.
-        cls._tmp_dir_path = cls._tmp_model_dir.name
-        # cls._tmp_dir_path = "."
-
-    @classmethod
-    def tearDownClass(cls):
-        cls._tmp_model_dir.cleanup()
-
+class TestAutoEP(AutoEpTestCase):
     def test_cuda_ep_register_and_inference(self):
         """
         Test registration of CUDA EP, adding its OrtDevice to the SessionOptions, and running inference.
@@ -47,7 +35,7 @@ class TestAutoEP(unittest.TestCase):
         if not os.path.exists(ep_lib_path):
             self.skipTest(f"Skipping test because EP library '{ep_lib_path}' cannot be found")
 
-        onnxrt.register_execution_provider_library(ep_registration_name, os.path.realpath(ep_lib_path))
+        self.register_execution_provider_library(ep_registration_name, os.path.realpath(ep_lib_path))
 
         ep_devices = onnxrt.get_ep_devices()
         has_cpu_ep = False
@@ -76,7 +64,7 @@ class TestAutoEP(unittest.TestCase):
         output_expected = np.array([[1.0, 4.0], [9.0, 16.0], [25.0, 36.0]], dtype=np.float32)
         np.testing.assert_allclose(output_expected, res[0], rtol=1e-05, atol=1e-08)
 
-        onnxrt.unregister_execution_provider_library(ep_registration_name)
+        self.unregister_execution_provider_library(ep_registration_name)
 
     def test_cuda_prefer_gpu_and_inference(self):
         """
@@ -91,7 +79,7 @@ class TestAutoEP(unittest.TestCase):
         if not os.path.exists(ep_lib_path):
             self.skipTest(f"Skipping test because EP library '{ep_lib_path}' cannot be found")
 
-        onnxrt.register_execution_provider_library(ep_registration_name, os.path.realpath(ep_lib_path))
+        self.register_execution_provider_library(ep_registration_name, os.path.realpath(ep_lib_path))
 
         # Set a policy to prefer GPU. Cuda should be selected.
         sess_options = onnxrt.SessionOptions()
@@ -107,7 +95,7 @@ class TestAutoEP(unittest.TestCase):
         output_expected = np.array([[1.0, 4.0], [9.0, 16.0], [25.0, 36.0]], dtype=np.float32)
         np.testing.assert_allclose(output_expected, res[0], rtol=1e-05, atol=1e-08)
 
-        onnxrt.unregister_execution_provider_library(ep_registration_name)
+        self.unregister_execution_provider_library(ep_registration_name)
 
     def test_example_plugin_ep_devices(self):
         """
@@ -122,7 +110,7 @@ class TestAutoEP(unittest.TestCase):
         if not os.path.exists(ep_lib_path):
             self.skipTest(f"Skipping test because EP library '{ep_lib_path}' cannot be found")
 
-        onnxrt.register_execution_provider_library(ep_registration_name, os.path.realpath(ep_lib_path))
+        self.register_execution_provider_library(ep_registration_name, os.path.realpath(ep_lib_path))
 
         ep_devices = onnxrt.get_ep_devices()
         has_cpu_ep = False
@@ -165,8 +153,8 @@ class TestAutoEP(unittest.TestCase):
             sess_options.add_provider_for_devices([test_ep_device], {"opt1": "val1"})
         self.assertIn("EP is not currently supported", str(context.exception))
 
-        onnxrt.unregister_execution_provider_library(ep_registration_name)
+        self.unregister_execution_provider_library(ep_registration_name)
 
 
 if __name__ == "__main__":
-    unittest.main()
+    unittest.main(verbosity=1)
