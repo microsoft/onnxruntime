@@ -433,6 +433,48 @@ TYPED_TEST(GemmOpTypedTests, TestGemm2DBroadcast_2) {
       .RunWithConfig();
 }
 
+TYPED_TEST(GemmOpTypedTests, TestGemm2DBroadcast_3) {
+  OpTester test("Gemm");
+
+  test.AddAttribute("transA", (int64_t)0);
+  test.AddAttribute("transB", (int64_t)0);
+  test.AddAttribute("alpha", 1.0f);
+  test.AddAttribute("beta", 1.0f);
+
+  // Same as GemmBroadcast, but adding the unnecessary first dimension.
+  test.AddInput<TypeParam>("A", {3, 4},
+                           std::vector<TypeParam>(12, static_cast<TypeParam>(1.0f)));
+  test.AddInput<TypeParam>("B", {4, 4}, std::vector<TypeParam>(16, static_cast<TypeParam>(1.0f)));
+  test.AddInput<TypeParam>("C", {1, 1}, std::vector<TypeParam>{static_cast<TypeParam>(1.0f)});
+  test.AddOutput<TypeParam>("Y", {3, 4},
+                            std::vector<TypeParam>{static_cast<TypeParam>(5.0f), static_cast<TypeParam>(5.0f), static_cast<TypeParam>(5.0f), static_cast<TypeParam>(5.0f),
+                                                   static_cast<TypeParam>(5.0f), static_cast<TypeParam>(5.0f), static_cast<TypeParam>(5.0f), static_cast<TypeParam>(5.0f),
+                                                   static_cast<TypeParam>(5.0f), static_cast<TypeParam>(5.0f), static_cast<TypeParam>(5.0f), static_cast<TypeParam>(5.0f)});
+  test.Config(run_with_tunable_op)
+      .RunWithConfig();
+}
+
+TYPED_TEST(GemmOpTypedTests, TestGemm2DBroadcast_4) {
+  OpTester test("Gemm");
+
+  test.AddAttribute("transA", (int64_t)0);
+  test.AddAttribute("transB", (int64_t)0);
+  test.AddAttribute("alpha", 1.0f);
+  test.AddAttribute("beta", 1.0f);
+
+  // Same as GemmBroadcast, but adding the unnecessary first dimension.
+  test.AddInput<TypeParam>("A", {3, 4},
+                           std::vector<TypeParam>(12, static_cast<TypeParam>(1.0f)));
+  test.AddInput<TypeParam>("B", {4, 4}, std::vector<TypeParam>(16, static_cast<TypeParam>(1.0f)));
+  test.AddInput<TypeParam>("C", {3, 1}, std::vector<TypeParam>{static_cast<TypeParam>(1.0f), static_cast<TypeParam>(2.0f), static_cast<TypeParam>(3.0f)});
+  test.AddOutput<TypeParam>("Y", {3, 4},
+                            std::vector<TypeParam>{static_cast<TypeParam>(5.0f), static_cast<TypeParam>(5.0f), static_cast<TypeParam>(5.0f), static_cast<TypeParam>(5.0f),
+                                                   static_cast<TypeParam>(6.0f), static_cast<TypeParam>(6.0f), static_cast<TypeParam>(6.0f), static_cast<TypeParam>(6.0f),
+                                                   static_cast<TypeParam>(7.0f), static_cast<TypeParam>(7.0f), static_cast<TypeParam>(7.0f), static_cast<TypeParam>(7.0f)});
+  test.Config(run_with_tunable_op)
+      .RunWithConfig();
+}
+
 TYPED_TEST(GemmOpTypedTests, TestGemmFalseBroadcast) {
   OpTester test("Gemm");
 
@@ -913,6 +955,238 @@ TEST(GemmOpTest, SharedPrepackedWeights) {
   }
 }
 #endif
+
+TEST(GemmOpTest, GemmOptimizeVec4) {
+  auto run_test = [](int64_t M, int64_t K, int64_t N) {
+    OpTester test("Gemm");
+
+    test.AddAttribute("transA", (int64_t)0);
+    test.AddAttribute("transB", (int64_t)0);
+    test.AddAttribute("alpha", 1.0f);
+    test.AddAttribute("beta", 1.0f);
+
+    // Matrix A: MxK filled with sequential numbers
+    std::vector<float> a_data;
+    a_data.reserve(M * K);
+    for (int64_t i = 0; i < M * K; ++i) {
+      a_data.push_back(static_cast<float>((i % 7) + 1));
+    }
+
+    // Matrix B: KxN filled with sequential numbers
+    std::vector<float> b_data;
+    b_data.reserve(K * N);
+    for (int64_t i = 0; i < K * N; ++i) {
+      b_data.push_back(static_cast<float>((i % 7) + 1));
+    }
+
+    // Matrix C: MxN filled with zeros
+    std::vector<float> c_data(M * N, 1.0f);
+
+    test.AddInput<float>("A", {M, K}, a_data);
+    test.AddInput<float>("B", {K, N}, b_data);
+    test.AddInput<float>("C", {M, N}, c_data);
+
+    // Calculate expected output
+    std::vector<float> expected_data(M * N, 0.0f);
+    for (int64_t i = 0; i < M; ++i) {
+      for (int64_t j = 0; j < N; ++j) {
+        float sum = 0.0f;
+        for (int64_t k = 0; k < K; ++k) {
+          sum += a_data[i * K + k] * b_data[k * N + j];
+        }
+        expected_data[i * N + j] = sum + c_data[i * N + j];
+      }
+    }
+
+    test.AddOutput<float>("Y", {M, N}, expected_data);
+    test.Config(run_with_tunable_op)
+        .RunWithConfig();
+  };
+
+  run_test(60, 16, 92);
+
+  run_test(8, 8, 8);
+  run_test(128, 128, 128);
+  run_test(128, 32, 64);
+  run_test(4, 8, 12);
+
+  run_test(96, 24, 48);
+  run_test(48, 48, 120);
+  run_test(72, 80, 84);
+}
+
+TEST(GemmOpTest, GemmOptimizeVec4TransA) {
+  auto run_test = [](int64_t M, int64_t K, int64_t N) {
+    OpTester test("Gemm");
+
+    test.AddAttribute("transA", (int64_t)1);  // A is transposed
+    test.AddAttribute("transB", (int64_t)0);
+    test.AddAttribute("alpha", 1.0f);
+    test.AddAttribute("beta", 1.0f);
+
+    // Matrix A: KxM (will be transposed to MxK) filled with sequential numbers
+    std::vector<float> a_data;
+    a_data.reserve(M * K);
+    for (int64_t i = 0; i < K * M; ++i) {
+      a_data.push_back(static_cast<float>((i % 7) + 1));
+    }
+
+    // Matrix B: KxN filled with sequential numbers
+    std::vector<float> b_data;
+    b_data.reserve(K * N);
+    for (int64_t i = 0; i < K * N; ++i) {
+      b_data.push_back(static_cast<float>((i % 7) + 1));
+    }
+
+    // Matrix C: MxN filled with zeros
+    std::vector<float> c_data(M * N, 1.0f);
+
+    test.AddInput<float>("A", {K, M}, a_data);  // Note dimensions are swapped
+    test.AddInput<float>("B", {K, N}, b_data);
+    test.AddInput<float>("C", {M, N}, c_data);
+
+    // Calculate expected output for transposed A
+    std::vector<float> expected_data(M * N, 0.0f);
+    for (int64_t i = 0; i < M; ++i) {
+      for (int64_t j = 0; j < N; ++j) {
+        float sum = 0.0f;
+        for (int64_t k = 0; k < K; ++k) {
+          sum += a_data[k * M + i] * b_data[k * N + j];  // Adjusted index for transposed A
+        }
+        expected_data[i * N + j] = sum + c_data[i * N + j];
+      }
+    }
+
+    test.AddOutput<float>("Y", {M, N}, expected_data);
+    test.Config(run_with_tunable_op)
+        .RunWithConfig();
+  };
+
+  run_test(60, 16, 92);
+  run_test(8, 8, 8);
+  run_test(128, 128, 128);
+  run_test(128, 32, 64);
+  run_test(4, 8, 12);
+  run_test(96, 24, 48);
+  run_test(48, 48, 120);
+  run_test(72, 80, 84);
+}
+
+TEST(GemmOpTest, GemmOptimizeVec4TransB) {
+  auto run_test = [](int64_t M, int64_t K, int64_t N) {
+    OpTester test("Gemm");
+
+    test.AddAttribute("transA", (int64_t)0);
+    test.AddAttribute("transB", (int64_t)1);  // B is transposed
+    test.AddAttribute("alpha", 1.0f);
+    test.AddAttribute("beta", 1.0f);
+
+    // Matrix A: MxK filled with sequential numbers
+    std::vector<float> a_data;
+    a_data.reserve(M * K);
+    for (int64_t i = 0; i < M * K; ++i) {
+      a_data.push_back(static_cast<float>((i % 7) + 1));
+    }
+
+    // Matrix B: NxK (will be transposed to KxN) filled with sequential numbers
+    std::vector<float> b_data;
+    b_data.reserve(K * N);
+    for (int64_t i = 0; i < N * K; ++i) {
+      b_data.push_back(static_cast<float>((i % 7) + 1));
+    }
+
+    // Matrix C: MxN filled with zeros
+    std::vector<float> c_data(M * N, 1.0f);
+
+    test.AddInput<float>("A", {M, K}, a_data);
+    test.AddInput<float>("B", {N, K}, b_data);  // Note dimensions are swapped
+    test.AddInput<float>("C", {M, N}, c_data);
+
+    // Calculate expected output for transposed B
+    std::vector<float> expected_data(M * N, 0.0f);
+    for (int64_t i = 0; i < M; ++i) {
+      for (int64_t j = 0; j < N; ++j) {
+        float sum = 0.0f;
+        for (int64_t k = 0; k < K; ++k) {
+          sum += a_data[i * K + k] * b_data[j * K + k];  // Adjusted index for transposed B
+        }
+        expected_data[i * N + j] = sum + c_data[i * N + j];
+      }
+    }
+
+    test.AddOutput<float>("Y", {M, N}, expected_data);
+    test.Config(run_with_tunable_op)
+        .RunWithConfig();
+  };
+
+  run_test(32, 32, 32);
+  run_test(60, 16, 92);
+  run_test(8, 8, 8);
+  run_test(64, 64, 64);
+  run_test(128, 128, 128);
+  run_test(128, 32, 64);
+  run_test(4, 8, 12);
+  run_test(96, 24, 48);
+  run_test(48, 48, 120);
+  run_test(72, 80, 84);
+}
+
+TEST(GemmOpTest, GemmOptimizeVec4TransAB) {
+  auto run_test = [](int64_t M, int64_t K, int64_t N) {
+    OpTester test("Gemm");
+
+    test.AddAttribute("transA", (int64_t)1);  // A is transposed
+    test.AddAttribute("transB", (int64_t)1);  // B is transposed
+    test.AddAttribute("alpha", 1.0f);
+    test.AddAttribute("beta", 1.0f);
+
+    // Matrix A: KxM (will be transposed to MxK) filled with sequential numbers
+    std::vector<float> a_data;
+    a_data.reserve(M * K);
+    for (int64_t i = 0; i < K * M; ++i) {
+      a_data.push_back(static_cast<float>((i % 7) + 1));
+    }
+
+    // Matrix B: NxK (will be transposed to KxN) filled with sequential numbers
+    std::vector<float> b_data;
+    b_data.reserve(K * N);
+    for (int64_t i = 0; i < N * K; ++i) {
+      b_data.push_back(static_cast<float>((i % 7) + 1));
+    }
+
+    // Matrix C: MxN filled with zeros
+    std::vector<float> c_data(M * N, 1.0f);
+
+    test.AddInput<float>("A", {K, M}, a_data);  // Note dimensions are swapped
+    test.AddInput<float>("B", {N, K}, b_data);  // Note dimensions are swapped
+    test.AddInput<float>("C", {M, N}, c_data);
+
+    // Calculate expected output for both matrices transposed
+    std::vector<float> expected_data(M * N, 0.0f);
+    for (int64_t i = 0; i < M; ++i) {
+      for (int64_t j = 0; j < N; ++j) {
+        float sum = 0.0f;
+        for (int64_t k = 0; k < K; ++k) {
+          sum += a_data[k * M + i] * b_data[j * K + k];  // Adjusted indices for both transposed
+        }
+        expected_data[i * N + j] = sum + c_data[i * N + j];
+      }
+    }
+
+    test.AddOutput<float>("Y", {M, N}, expected_data);
+    test.Config(run_with_tunable_op)
+        .RunWithConfig();
+  };
+  run_test(32, 32, 32);
+  run_test(60, 16, 92);
+  run_test(8, 8, 8);
+  run_test(128, 128, 128);
+  run_test(128, 32, 64);
+  run_test(4, 8, 12);
+  run_test(96, 24, 48);
+  run_test(48, 48, 120);
+  run_test(72, 80, 84);
+}
 
 }  // namespace test
 }  // namespace onnxruntime

@@ -19,7 +19,9 @@ ModelCompilationOptions::ModelCompilationOptions(const OrtEnv& env, const OrtSes
   session_options_.value.ep_context_gen_options = session_options.value.GetEpContextGenerationOptions();
   session_options_.value.ep_context_gen_options.enable = true;
   session_options_.value.ep_context_gen_options.overwrite_existing_output_file = true;
-  session_options_.value.ep_context_gen_options.error_if_no_compiled_nodes = true;
+  // defaulting to false to support wider usage. will log WARNING if compiling model with no context nodes.
+  // TODO: Add ability for user to explicitly set this.
+  session_options_.value.ep_context_gen_options.error_if_no_compiled_nodes = false;
 
   // Shouldn't fail because the key/value strings are below the maximum string length limits in ConfigOptions.
   ORT_ENFORCE(session_options_.value.config_options.AddConfigEntry(kOrtSessionOptionEpContextEnable, "1").IsOK());

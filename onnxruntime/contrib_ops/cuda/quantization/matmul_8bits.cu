@@ -32,6 +32,7 @@ __device__ __forceinline__ void AccumulateEightElements8b(
     const half* a,          // Pointer to 8 half values from A
     half* sums) {           // Pointer to 8 partial sums (half)
 
+#if (!defined(__CUDA_ARCH__) || __CUDA_ARCH__ >= 530)
   // --- Dequantization Setup ---
   half2 scale_h2 = __half2half2(scale);  // Broadcast scale
   half zp_h = __ushort2half_rn(zp);      // Convert zp to half
@@ -74,6 +75,27 @@ __device__ __forceinline__ void AccumulateEightElements8b(
   sums_half2[1] = __hfma2(a_vec1, b_vec1, sums_half2[1]);  // {s2+=a2*b2, s3+=a3*b3}
   sums_half2[2] = __hfma2(a_vec2, b_vec2, sums_half2[2]);  // {s4+=a4*b4, s5+=a5*b5}
   sums_half2[3] = __hfma2(a_vec3, b_vec3, sums_half2[3]);  // {s6+=a6*b6, s7+=a7*b7}
+
+#else // older GPUs of compute capability < 5.3, which lacks native half support.
+  float scale_f = __half2float(scale);
+  float zp_f = static_cast<float>(zp);
+
+  float b_dequant[8];
+#pragma unroll
+  for (int i = 0; i < 8; ++i) {
+    uint8_t q = (values_quant >> (i * 8)) & 0xFF;
+    b_dequant[i] = (static_cast<float>(q) - zp_f) * scale_f;
+  }
+
+#pragma unroll
+  for (int i = 0; i < 8; ++i) {
+    float a_f = __half2float(a[i]);
+    float product_f = a_f * b_dequant[i];
+    // Convert back to half for partial sums. It is not ideal for performance.
+    half product_h = __float2half_rn(product_f);
+    sums[i] += product_h;
+  }
+#endif
 }
 
 // --- Device Function: Accumulate 8 Elements (float precision) ---

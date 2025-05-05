@@ -32,47 +32,47 @@ template <
     /// Number of tiles in the K dimension
     int KTiles>
 class TensorCoreTileLoader {
-  public:
-    // Number of tiles must be loaded from global memory to shared memory with a single ld.async
-    // instruction by each thread in the warp, and a single ldmatrix instruction by the warp.
-    static constexpr int kMNTiles = MNTiles;
-    static constexpr int kKTiles = KTiles;
-    static constexpr int kTiles = kMNTiles * kKTiles;
-    static_assert(kTiles == 1 || kTiles == 2 || kTiles == 4, "Number of tiles must be 1, 2 or 4");
+ public:
+  // Number of tiles must be loaded from global memory to shared memory with a single ld.async
+  // instruction by each thread in the warp, and a single ldmatrix instruction by the warp.
+  static constexpr int kMNTiles = MNTiles;
+  static constexpr int kKTiles = KTiles;
+  static constexpr int kTiles = kMNTiles * kKTiles;
+  static_assert(kTiles == 1 || kTiles == 2 || kTiles == 4, "Number of tiles must be 1, 2 or 4");
 
-    static constexpr int kMNThreads = kMNTiles * 8;
-    static constexpr int kKThreads = kKTiles;
-    static constexpr int kThreads = kMNThreads * kKThreads;
+  static constexpr int kMNThreads = kMNTiles * 8;
+  static constexpr int kKThreads = kKTiles;
+  static constexpr int kThreads = kMNThreads * kKThreads;
 
-    /// Each tensor core tile is 16x8 in size
-    static constexpr int kMNStride = kMNTiles * 8;
-    static constexpr int kKStride = kKTiles * 16;
-    static constexpr int kByteSize = kTiles * 16 * 8;
+  /// Each tensor core tile is 16x8 in size
+  static constexpr int kMNStride = kMNTiles * 8;
+  static constexpr int kKStride = kKTiles * 16;
+  static constexpr int kByteSize = kTiles * 16 * 8;
 
  private:
-    /// Pointer to global memory to load data from
-    uint8_t const* g_ptr_{nullptr};
-    /// Iteration boundaries in the M or N dimension
-    int mn_cnt_{0};
-    /// Iteration boundaries in the K dimension, in strides of 16
-    int k16_cnt_{0};
-    /// Stride in bytes to advance to next row in m or n dimension
-    const int stride_;
-    /// thread id in a warp
-    const int lane_id_;
-    
+  /// Pointer to global memory to load data from
+  uint8_t const* g_ptr_{nullptr};
+  /// Iteration boundaries in the M or N dimension
+  int mn_cnt_{0};
+  /// Iteration boundaries in the K dimension, in strides of 16
+  int k16_cnt_{0};
+  /// Stride in bytes to advance to next row in m or n dimension
+  const int stride_;
+  /// thread id in a warp
+  const int lane_id_;
+
  public:
   /// Construct a TileIterator with zero threadblock offset
   CUTLASS_HOST_DEVICE
   TensorCoreTileLoader(
-    void const* data_ptr,  ///< Pointer to the global memory tiles
-    int byte_stride,       ///< Stride in bytes to advance to next row
-    int mn_start,          ///< Starting position in the M or N dimension
-    int mn_end,            ///< End position in the M or N dimension
-    int k_start,           ///< Starting position in the K dimension
-    int k_end,             ///< End position in the K dimension
-    int lane_id)           ///< ID of each participating thread
-    : stride_(byte_stride), lane_id_(lane_id){
+      void const* data_ptr,  ///< Pointer to the global memory tiles
+      int byte_stride,       ///< Stride in bytes to advance to next row
+      int mn_start,          ///< Starting position in the M or N dimension
+      int mn_end,            ///< End position in the M or N dimension
+      int k_start,           ///< Starting position in the K dimension
+      int k_end,             ///< End position in the K dimension
+      int lane_id)           ///< ID of each participating thread
+      : stride_(byte_stride), lane_id_(lane_id) {
 #ifndef NDEBUG
     bool assertion_pass = true;
     if (reinterpret_cast<uintptr_t>(data_ptr) % 16 != 0) {
@@ -172,10 +172,9 @@ class TensorCoreTileLoader {
   /**
    * @brief Get the pointer to the shared memory location for the current lane
    * @param smem_ptr pointer to the shared memory location for the warp.
-  */
-  template<typename T>
-  CUTLASS_DEVICE
-  T* get_smem_lane_ptr(T* smem_ptr) const {
+   */
+  template <typename T>
+  CUTLASS_DEVICE T* get_smem_lane_ptr(T* smem_ptr) const {
     if constexpr (kThreads < 32) {
       static_assert(kThreads & (kThreads - 1) == 0, "kThreads must be power of 2");
       return reinterpret_cast<T*>(reinterpret_cast<uint8_t*>(smem_ptr) + ((lane_id_ & (kThreads - 1)) << 4));
@@ -184,9 +183,8 @@ class TensorCoreTileLoader {
     }
   }
 
-  template<typename T>
-  CUTLASS_DEVICE
-  T* get_smem_warp_base_ptr(T* smem_lane_ptr) const {
+  template <typename T>
+  CUTLASS_DEVICE T* get_smem_warp_base_ptr(T* smem_lane_ptr) const {
     if constexpr (kThreads < 32) {
       static_assert(kThreads & (kThreads - 1) == 0, "kThreads must be power of 2");
       return reinterpret_cast<T*>(reinterpret_cast<uint8_t*>(smem_lane_ptr) - ((lane_id_ & (kThreads - 1)) << 4));
@@ -194,7 +192,6 @@ class TensorCoreTileLoader {
       return reinterpret_cast<T*>(reinterpret_cast<uint8_t*>(smem_lane_ptr) - (lane_id_ << 4));
     }
   }
-
 
   /// Loads a tile from global memory to shared memory
   CUTLASS_DEVICE
@@ -227,7 +224,7 @@ class TensorCoreTileLoader {
     if (g_ptr_ == nullptr) {
       return *this;
     }
-  
+
     k16_cnt_ -= kKTiles;
     if (k16_cnt_ > 0) {
       g_ptr_ += 16 * kKTiles;
@@ -237,9 +234,8 @@ class TensorCoreTileLoader {
     return *this;
   }
 
-  template<int MNLoads>
-  CUTLASS_DEVICE
-  void load_lateral_n(void* smem_lane_ptr) const {
+  template <int MNLoads>
+  CUTLASS_DEVICE void load_lateral_n(void* smem_lane_ptr) const {
     uint8_t* smem_bytes = reinterpret_cast<uint8_t*>(smem_lane_ptr);
     this->load_to(smem_bytes);
     smem_bytes += kByteSize;
@@ -255,9 +251,8 @@ class TensorCoreTileLoader {
     cutlass::arch::ldsm<cutlass::layout::RowMajor, kTiles>(frag, smem_lane_ptr);
   }
 
-  template<typename T1, typename T2, int Loads, int Size = (kTiles * sizeof(unsigned) * Loads) / sizeof(T1)>
-  CUTLASS_DEVICE
-  static void multi_ldmatrix_sync(cutlass::Array<T1, Size>& fragment, T2 const* &smem_lane_ptr) {
+  template <typename T1, typename T2, int Loads, int Size = (kTiles * sizeof(unsigned) * Loads) / sizeof(T1)>
+  CUTLASS_DEVICE static void multi_ldmatrix_sync(cutlass::Array<T1, Size>& fragment, T2 const*& smem_lane_ptr) {
     static_assert(sizeof(unsigned) * kTiles * Loads == sizeof(T1) * Size, "Fragment size mismatch");
     cutlass::Array<unsigned, kTiles>* ptr =
         reinterpret_cast<cutlass::Array<unsigned, kTiles>*>(fragment.data());
@@ -268,7 +263,6 @@ class TensorCoreTileLoader {
       smem_lane_ptr += kByteSize / sizeof(T2);
     }
   }
-
 };
 
 }  // namespace warp
