@@ -12,10 +12,11 @@
 #include "nv_execution_provider.h"
 #include "nv_execution_provider_utils.h"
 #include "nv_execution_provider_custom_ops.h"
+#include "nv_allocator.h"
+#include "nv_data_transfer.h"
 #include "onnx_ctx_model_helper.h"
 #include "core/providers/cuda/shared_inc/cuda_call.h"
 #include "core/providers/cuda/math/unary_elementwise_ops_impl.h"
-#include "core/providers/cuda/gpu_data_transfer.h"
 #include "core/session/allocator_adapters.h"
 #include "cuda_runtime_api.h"
 #include <gsl/gsl>
@@ -112,16 +113,6 @@ void Impl_Cast(
   return g_host->cuda__Impl_Cast(static_cast<void*>(stream), input_data, output_data, count);
 }
 }  // namespace cuda
-
-template <>
-Status CudaCall<cudaError, false>(cudaError retCode, const char* exprString, const char* libName, cudaError successCode, const char* msg, const char* file, const int line) {
-  return g_host->CudaCall_false(retCode, exprString, libName, successCode, msg, file, line);
-}
-
-template <>
-void CudaCall<cudaError, true>(cudaError retCode, const char* exprString, const char* libName, cudaError successCode, const char* msg, const char* file, const int line) {
-  return g_host->CudaCall_true(retCode, exprString, libName, successCode, msg, file, line);
-}
 
 #if NV_TENSORRT_MAJOR >= 10
 void* OutputAllocator::reallocateOutputAsync(char const* /*tensorName*/, void* /*currentMemory*/, uint64_t size,
@@ -1311,13 +1302,14 @@ void NvExecutionProvider::IncrementRegularRunCountBeforeGraphCapture() {
 
 std::vector<AllocatorPtr> NvExecutionProvider::CreatePreferredAllocators() {
   AllocatorCreationInfo default_memory_info(
-      [](OrtDevice::DeviceId device_id) { return CreateCUDAAllocator(device_id, onnxruntime::CUDA); },
+      [](OrtDevice::DeviceId device_id) { return std::make_unique<CUDAAllocator>(device_id, CUDA); },
       narrow<OrtDevice::DeviceId>(device_id_));
 
   AllocatorCreationInfo pinned_allocator_info(
       [](OrtDevice::DeviceId device_id) {
         ORT_UNUSED_PARAMETER(device_id);
-        return CreateCUDAPinnedAllocator(onnxruntime::CUDA_PINNED);
+        return std::make_unique<CUDAPinnedAllocator>(CUDA_PINNED);
+        ;
       },
       0);
 
@@ -1325,7 +1317,7 @@ std::vector<AllocatorPtr> NvExecutionProvider::CreatePreferredAllocators() {
 }
 
 std::unique_ptr<IDataTransfer> NvExecutionProvider::GetDataTransfer() const {
-  return onnxruntime::CreateGPUDataTransfer();
+  return std::make_unique<GPUDataTransfer>();
 }
 
 Status NvExecutionProvider::OnRunStart(const onnxruntime::RunOptions& /*run_options*/) {
