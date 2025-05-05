@@ -33,6 +33,21 @@ namespace Microsoft.ML.OnnxRuntime
     }
 
     /// <summary>
+    /// Controls the execution provider selection when using automatic EP selection.
+    /// Execution providers must be registered with the OrtEnv to be available for selection.
+    /// </summary>
+    public enum ExecutionProviderDevicePolicy
+    {
+        DEFAULT = 0,
+        PREFER_CPU = 1,
+        PREFER_NPU,
+        PREFER_GPU,
+        MAX_PERFORMANCE,
+        MAX_EFFICIENCY,
+        MIN_OVERALL_POWER,
+    }
+
+    /// <summary>
     /// Holds the options for creating an InferenceSession
     /// It forces the instantiation of the OrtEnv singleton.
     /// </summary>
@@ -421,6 +436,82 @@ namespace Microsoft.ML.OnnxRuntime
             var appender = new ExecutionProviderAppender(utf8ProviderName);
             ProviderOptionsUpdater.Update(providerOptions, handle, appender.Appender);
         }
+
+        /// <summary>
+        /// Select execution providers from the list of available execution providers and devices returned by 
+        /// GetEpDevices.
+        /// 
+        /// One or more OrtEpDevice instances may be provided in epDevices, but must all be for the same 
+        /// execution provider.
+        /// 
+        /// Make multiple calls to AppendExecutionProvider if you wish to use multiple execution providers.
+        /// 
+        /// e.g. 
+        ///   - if execution provider 'A' has an OrtEpDevice for NPU and one for GPU and you wish to use it for
+        ///     both devices, pass the two OrtEpDevice instances in the epDevices list in one call.
+        ///   - if you wish to use execution provider 'B' for GPU and execution provider 'C' for CPU, 
+        ///     make two calls to AppendExecutionProvider, with one OrtEpDevice in the epDevices list in each call.
+        ///     
+        /// The priority of the execution providers is set by the order in which they are appended.
+        /// Highest priority is first.
+        /// </summary>
+        /// <param name="env">OrtEnv that provided the OrtEpDevice instances via a call to GetEpDevices.</param>
+        /// <param name="epDevices">One or more OrtEpDevice instances to append.
+        ///                         These must all have the save EpName value.</param>
+        /// <param name="epOptions">Optional options to configure the execution provider. May be null.</param>
+        /// <exception cref="ArgumentException">epDevices was empty.</exception>
+        /// <see cref="OrtEnv.GetEpDevices" />
+        public void AppendExecutionProvider(OrtEnv env, IReadOnlyList<OrtEpDevice> epDevices, 
+                                            IReadOnlyDictionary<string, string> epOptions)
+        {
+            if (epDevices == null || epDevices.Count == 0)
+            {
+                throw new ArgumentException("No execution provider devices were specified.");
+            }
+
+            // Convert EpDevices to native pointers
+            IntPtr[] epDevicePtrs = new IntPtr[epDevices.Count];
+            for (int i = 0; i < epDevices.Count; i++)
+            {
+                epDevicePtrs[i] = epDevices[i].Handle;
+            }
+
+            if (epOptions != null && epOptions.Count > 0)
+            {
+                // this creates an OrtKeyValuePairs instance with a backing native instance
+                using var kvps = new OrtKeyValuePairs(epOptions);
+
+                // get the native key/value handles so we can pass those straight through to the C API
+                // and not have to do any special marshaling here.
+                IntPtr epOptionsKeys, epOptionsValues;
+                UIntPtr epOptionsCount;
+                kvps.GetKeyValuePairHandles(out epOptionsKeys, out epOptionsValues, out epOptionsCount);
+
+                NativeApiStatus.VerifySuccess(
+                    NativeMethods.OrtSessionOptionsAppendExecutionProvider_V2(
+                        handle,
+                        env.Handle,
+                        epDevicePtrs,
+                        (UIntPtr)epDevices.Count,
+                        epOptionsKeys,  
+                        epOptionsValues,
+                        epOptionsCount));
+            }
+            else
+            {
+                NativeApiStatus.VerifySuccess(
+                    NativeMethods.OrtSessionOptionsAppendExecutionProvider_V2(
+                        handle,
+                        env.Handle,
+                        epDevicePtrs,
+                        (UIntPtr)epDevices.Count,
+                        IntPtr.Zero,    // EP options keys
+                        IntPtr.Zero,    // EP options values
+                        UIntPtr.Zero)); // EP options count
+            }
+
+        }
+
         #endregion //ExecutionProviderAppends
 
         #region Public Methods
@@ -465,8 +556,8 @@ namespace Microsoft.ML.OnnxRuntime
             // End result of that is
             //   SessionOptions.RegisterCustomOpLibrary calls NativeMethods.OrtRegisterCustomOpsLibrary_V2
             //   SessionOptions.RegisterCustomOpLibraryV2 calls NativeMethods.OrtRegisterCustomOpsLibrary
-            var utf8Path = NativeOnnxValueHelper.StringToZeroTerminatedUtf8(libraryPath);
-            NativeApiStatus.VerifySuccess(NativeMethods.OrtRegisterCustomOpsLibrary(handle, utf8Path,
+            var platformPath = NativeOnnxValueHelper.StringToZeroTerminatedUtf8(libraryPath);
+            NativeApiStatus.VerifySuccess(NativeMethods.OrtRegisterCustomOpsLibrary(handle, platformPath,
                                                                                     out libraryHandle));
         }
 
@@ -549,6 +640,18 @@ namespace Microsoft.ML.OnnxRuntime
             var utf8 = NativeOnnxValueHelper.StringToZeroTerminatedUtf8(dimName);
             NativeApiStatus.VerifySuccess(NativeMethods.OrtAddFreeDimensionOverrideByName(handle, utf8, dimValue));
         }
+
+        /// <summary>
+        /// Set the execution provider selection policy if using automatic execution provider selection.
+        /// Execution providers must be registered with the OrtEnv to be available for selection.
+        /// </summary>
+        /// <param name="policy">Policy to use.</param>
+        public void SetEpSelectionPolicy(ExecutionProviderDevicePolicy policy)
+        {
+            NativeApiStatus.VerifySuccess(
+                NativeMethods.OrtSessionOptionsSetEpSelectionPolicy(handle, (int)policy, IntPtr.Zero));
+        }
+
         #endregion
 
         internal IntPtr Handle
