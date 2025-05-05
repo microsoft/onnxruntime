@@ -12,16 +12,12 @@
 #endif
 
 #if defined(_M_AMD64) || defined(__x86_64__)
+#include "core/common/cpuid_info.h"
 #if defined(__linux__)
 #include <x86intrin.h>
 #include <immintrin.h>
 #include <cstdlib>
-#elif defined(_WIN32)
-#include <Windows.h>
 #endif
-#include <cstdint>
-#include <string>
-#include "core/common/cpuid_info.h"
 #endif
 
 namespace onnxruntime {
