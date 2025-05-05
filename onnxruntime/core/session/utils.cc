@@ -150,10 +150,7 @@ OrtStatus* CreateSessionAndLoadModel(_In_ const OrtSessionOptions* options,
     }
   }
 
-  // we need the model metadata if we have an EP selection delegate so have to load the model upfront.
-  bool have_ep_selection_delegate = options && options->value.ep_selection_policy.delegate != nullptr;
-
-  if (load_config_from_model || have_ep_selection_delegate) {
+  if (load_config_from_model) {
 #if !defined(ORT_MINIMAL_BUILD)
     if (model_path != nullptr) {
       sess = std::make_unique<onnxruntime::InferenceSession>(
@@ -167,11 +164,7 @@ OrtStatus* CreateSessionAndLoadModel(_In_ const OrtSessionOptions* options,
           model_data, static_cast<int>(model_data_length));
     }
 #else
-    if (load_config_from_model) {
-      return OrtApis::CreateStatus(ORT_FAIL, "Loading config from ONNX models is not supported in this build.");
-    } else {
-      return OrtApis::CreateStatus(ORT_FAIL, "EP selection delegate is not supported in this build.");
-    }
+    return OrtApis::CreateStatus(ORT_FAIL, "Loading config from ONNX models is not supported in this build.");
 #endif
   } else {
     sess = std::make_unique<onnxruntime::InferenceSession>(
@@ -179,8 +172,15 @@ OrtStatus* CreateSessionAndLoadModel(_In_ const OrtSessionOptions* options,
         env->GetEnvironment());
   }
 
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_MINIMAL_BUILD_CUSTOM_OPS)
+  // Add custom domains
+  if (options && !options->custom_op_domains_.empty()) {
+    ORT_API_RETURN_IF_STATUS_NOT_OK(sess->AddCustomOpDomains(options->custom_op_domains_));
+  }
+#endif
+
   // Finish load
-  if (load_config_from_model || have_ep_selection_delegate) {
+  if (load_config_from_model) {
 #if !defined(ORT_MINIMAL_BUILD)
     ORT_API_RETURN_IF_STATUS_NOT_OK(sess->Load());
 #endif
