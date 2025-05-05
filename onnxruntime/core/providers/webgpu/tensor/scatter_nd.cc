@@ -6,6 +6,7 @@
 #include "core/providers/webgpu/webgpu_kernel.h"
 #include "core/providers/webgpu/webgpu_supported_types.h"
 #include "core/providers/webgpu/shader_helper.h"
+#include "core/providers/webgpu/shader_variable.h"
 #include "scatter_nd.h"
 
 namespace onnxruntime {
@@ -15,7 +16,7 @@ Status ScatterNDProgram::GenerateShaderCode(ShaderHelper& shader) const {
   shader.AddInput("indices", ShaderUsage::UseUniform | ShaderUsage::UseIndicesTypeAlias);
   shader.AddInput("updates", ShaderUsage::UseUniform | ShaderUsage::UseIndicesTypeAlias);
   const auto& output = shader.AddOutput("output", ShaderUsage::UseUniform | ShaderUsage::UseIndicesTypeAlias | ShaderUsage::UseShapeAndStride);
-  const auto output_rank = output.Rank();
+  const auto output_rank = static_cast<size_t>(output.Rank());
   auto atomic_reduction_snippet = [](ScatterNDReduction reduction, const std::string& ptr, const std::string& value, const std::string& data_type) -> std ::string {
     std::ostringstream ss;
     bool is_32_bit_integer = data_type == "i32" || data_type == "u32";
@@ -37,7 +38,7 @@ Status ScatterNDProgram::GenerateShaderCode(ShaderHelper& shader) const {
                  << "      }\n";
     switch (reduction) {
       case ScatterNDReduction::None:
-        ss << "  " << ptr << " = " << value << ";\n";
+        ss << "    " << ptr << " = " << value << ";\n";
         break;
       case ScatterNDReduction::Add:
         if (is_32_bit_integer) {
@@ -78,23 +79,10 @@ Status ScatterNDProgram::GenerateShaderCode(ShaderHelper& shader) const {
     return ss.str();
   };
 
-  auto calc_data_offset_snippet = [](uint32_t output_rank, bool parallel) -> std::string {
+  auto calc_data_offset_snippet = [](size_t output_rank) -> std::string {
     std::ostringstream ss;
-    // The stride is size is one less than the shape size.
-    if (output_rank == 1) {
-      ss << "    let element_count_dim = 1u;\n";
-    } else if (output_rank == 2) {
-      ss << "    let element_count_dim = select(uniforms.output_stride, 1u, " << (parallel ? "i - indices_start" : "i") << " == 1 " << ");\n";
-    } else {
-      ss << "    let output_stride_index = " << (parallel ? "i - indices_start" : "i") << ";\n"
-         << "    let element_count_dim = select(uniforms.output_stride[output_stride_index], 1u, output_stride_index == " << (output_rank - 1) << ");\n";
-    }
-    if (output_rank == 1) {
-      ss << "    let dim_value = uniforms.output_shape;\n";
-    } else {
-      ss << "    let dim_value = uniforms.output_shape[" << (parallel ? "i - indices_start" : "i") << " + uniforms.last_index_dimension];\n";
-    }
-
+    ss << "    let element_count_dim = select(" << GetElementAt("uniforms.output_stride", "i - indices_start", output_rank - 1) << ", 1, i - indices_start == " << (output_rank - 1) << ");\n";
+    ss << "    let dim_value = " << GetElementAt("uniforms.output_shape", "i - indices_start + uniforms.last_index_dimension", output_rank) << ";\n";
     ss << "    if (index >= 0) {\n"
        << "      if (index >= i32(dim_value)) {\n"
        << "        index = i32(dim_value - 1);\n"
@@ -110,10 +98,10 @@ Status ScatterNDProgram::GenerateShaderCode(ShaderHelper& shader) const {
     return ss.str();
   };
 
-  auto update_elements_snippet = [atomic_reduction_snippet](ScatterNDReduction reduction, const std::string& data_type, bool parallel) -> std::string {
+  auto update_elements_snippet = [atomic_reduction_snippet](ScatterNDReduction reduction, const std::string& data_type) -> std::string {
     std::ostringstream ss;
     ss << "  for (var i = 0u; i < uniforms.num_updates_elements; i++) {\n"
-       << "    let value = updates[uniforms.num_updates_elements * " << (parallel ? "global_idx" : "idx") << " + i];\n"
+       << "    let value = updates[uniforms.num_updates_elements * global_idx + i];\n"
        << atomic_reduction_snippet(reduction, "output[data_offset + i]", "value", data_type) << "\n"
        << "  }\n";
     return ss.str();
@@ -137,46 +125,14 @@ Status ScatterNDProgram::GenerateShaderCode(ShaderHelper& shader) const {
     ORT_THROW("ScatterND: Reduction is not supported for data type ", data_type_str);
   }
   shader.MainFunctionBody() << shader.GuardAgainstOutOfBoundsWorkgroupSizes("uniforms.output_size")
-                            << "  var hasDuplicates = false;\n";
-  if (reduction_ == ScatterNDReduction::None) {
-    shader.MainFunctionBody() << "  for (var i = 0u; i < uniforms.num_indices_elements; i = i + 1) {\n"
-                              << "    for (var j = i + 1; j < uniforms.num_indices_elements; j = j + 1) {\n"
-                              << "      var index_i = i32(indices[i].x);\n"
-                              << "      var index_j = i32(indices[j].x);\n"
-                              << "      if (index_i == index_j) {\n"
-                              << "        hasDuplicates = true;\n"
-                              << "        break;\n"
-                              << "      }\n"
-                              << "    }\n"
-                              << "    if (hasDuplicates) {\n"
-                              << "      break;\n"
-                              << "    }\n"
-                              << "  }\n"
-                              << "\n"
-                              << "  if (hasDuplicates) {\n"
-                              << "    if (global_idx != 0u) {\n"
-                              << "      return;\n"
-                              << "    }\n"
-                              << "    // Process each index-update pair individually when duplicates exist\n"
-                              << "    for (var idx = 0u; idx < uniforms.num_indices_elements; idx++) {\n"
-                              << "      var data_offset = 0u;\n"
-                              << "      for (var i = 0u; i < uniforms.last_index_dimension; i++) {\n"
-                              << "        var index = i32(indices[idx * uniforms.last_index_dimension + i].x);\n"
-                              << calc_data_offset_snippet(output_rank, false)
-                              << "      }\n"
-                              << update_elements_snippet(reduction_, data_type_str, false)
-                              << "    }\n"
-                              << "    return;\n"
-                              << "  }\n";
-  }
-  shader.MainFunctionBody() << "  var data_offset = 0u;\n"
+                            << "  var data_offset = 0u;\n"
                             << "  var indices_start = uniforms.last_index_dimension * global_idx;\n"
                             << "  var indices_end = indices_start + uniforms.last_index_dimension;\n"
                             << "  for (var i = indices_start; i < indices_end; i++) {\n"
                             << "    var index = i32(indices[i].x);\n"
-                            << calc_data_offset_snippet(output_rank, true)
+                            << calc_data_offset_snippet(output_rank)
                             << "  }\n"
-                            << update_elements_snippet(reduction_, data_type_str, true);
+                            << update_elements_snippet(reduction_, data_type_str);
   return Status::OK();
 }
 
@@ -189,7 +145,6 @@ Status ScatterND::ComputeInternal(ComputeContext& context) const {
   auto indices_rank = indices_shape.NumDimensions();
   auto last_index_dimension = static_cast<uint32_t>(indices_shape[indices_rank - 1]);
   auto num_updates_elements = static_cast<uint32_t>(input_shape.SizeFromDimension(last_index_dimension));
-  auto num_indices_elements = static_cast<uint32_t>(indices_shape.SizeToDimension(indices_rank - 1));
   // TODO: support bool with components 4.
   const size_t components = 1;
   auto output_size = static_cast<uint32_t>((indices_shape.Size() + components - 1) / components);
@@ -207,7 +162,7 @@ Status ScatterND::ComputeInternal(ComputeContext& context) const {
       .AddInputs({{indices, ProgramTensorMetadataDependency::TypeAndRank},
                   {updates, ProgramTensorMetadataDependency::TypeAndRank}})
       .SetDispatchGroupSize((output_size + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE)
-      .AddUniformVariables({output_size, last_index_dimension, num_indices_elements, num_updates_elements});
+      .AddUniformVariables({output_size, last_index_dimension, num_updates_elements});
   if (reduction_ != ScatterNDReduction::None && (data_type == DataTypeImpl::GetType<float>() || data_type == DataTypeImpl::GetType<int32_t>() ||
                                                  data_type == DataTypeImpl::GetType<uint32_t>())) {
     program.AddOutput({output, ProgramTensorMetadataDependency::TypeAndRank, ProgramOutput::Atomic});

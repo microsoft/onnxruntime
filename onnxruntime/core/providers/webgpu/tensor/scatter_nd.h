@@ -26,7 +26,6 @@ class ScatterNDProgram final : public Program<ScatterNDProgram> {
 
   WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES({"output_size", ProgramUniformVariableDataType::Uint32},
                                           {"last_index_dimension", ProgramUniformVariableDataType::Uint32},
-                                          {"num_indices_elements", ProgramUniformVariableDataType::Uint32},
                                           {"num_updates_elements", ProgramUniformVariableDataType::Uint32});
   ScatterNDReduction reduction_;
   MLDataType data_type_;
