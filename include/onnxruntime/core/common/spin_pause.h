@@ -3,10 +3,6 @@
 
 #pragma once
 
-#if defined(_M_AMD64) || defined(__x86_64__)
-#include <cstdint>
-#endif
-
 namespace onnxruntime {
 namespace concurrency {
 

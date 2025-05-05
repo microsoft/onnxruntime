@@ -10,8 +10,8 @@ struct HardwareCoreEnumerator {
   static uint32_t DefaultIntraOpNumThreads();
 };
 typedef struct {
-  bool is_Intel;
-  bool isIntel_SpecifiedPlatform;
-} IntelChecks;
-IntelChecks CheckIntel();
+  bool is_intel;
+  bool is_intel_specified_platform;
+} CheckIntelResult;
+CheckIntelResult CheckIntel();
 }  // namespace onnxruntime
