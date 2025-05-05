@@ -95,7 +95,7 @@ std::vector<const OrtEpDevice*> OrderDevices(const std::vector<const OrtEpDevice
     if (!aIsDefaultCpuEp && !bIsDefaultCpuEp) {
       // neither are default CPU EP. both do/don't match vendor.
       // TODO: implement tie-breaker for this scenario. arbitrarily prefer the first for now
-      return true;
+      return a < b;
     }
 
     // one is the default CPU EP
@@ -109,8 +109,8 @@ std::vector<const OrtEpDevice*> OrderDevices(const std::vector<const OrtEpDevice
 // Select execution providers based on the device policy and available devices and add to session
 Status ProviderPolicyContext::SelectEpsForSession(const Environment& env, const OrtSessionOptions& options,
                                                   InferenceSession& sess) {
-  ORT_ENFORCE(options.value.ep_selection_policy.delegate == nullptr,
-              "EP selection delegate support is not implemented yet.");
+  // ORT_ENFORCE(options.value.ep_selection_policy.delegate == nullptr,
+  //             "EP selection delegate support is not implemented yet.");
 
   // Get the list of devices from the environment and order them.
   // Ordered by preference within each type. NPU -> GPU -> NPU
@@ -128,7 +128,8 @@ Status ProviderPolicyContext::SelectEpsForSession(const Environment& env, const 
 
     size_t num_selected = 0;
     auto* status = (*policy_fn)(delegate_devices.data(), delegate_devices.size(),
-                                nullptr, nullptr, selected_devices.data(), selected_devices.size(), &num_selected);
+                                nullptr, nullptr, selected_devices.data(), selected_devices.size(), &num_selected,
+                                options.value.ep_selection_policy.state);
 
     // return or fall-through for both these cases
     // going with explicit failure for now so it's obvious to user what is happening
