@@ -32,6 +32,8 @@ parameters:
 
 steps:
     - task: PublishSymbols@2
+      displayName: 'Publish Build Debug Symbols'
+      condition: and(succeeded(), or(eq($(Build.SourceBranch), 'refs/heads/main'), startsWith($(Build.SourceBranch), 'refs/heads/rel-')))
       inputs:
         SymbolsFolder: '$(Build.BinariesDirectory)\${{parameters.buildConfig}}\${{parameters.buildConfig}}\'
         SearchPattern: '*.pdb'
