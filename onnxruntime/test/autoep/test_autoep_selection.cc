@@ -436,7 +436,7 @@ TEST(AutoEpSelection, PolicyDelegate) {
                        /* auto_select */ true,
                        /*select_devices*/ nullptr,
                        std::nullopt,
-                       PolicyDelegate);
+                       static_cast<EpSelectionDelegate>(PolicyDelegate));
 }
 
 // test providing a delegate
@@ -465,7 +465,7 @@ TEST(AutoEpSelection, PolicyDelegateSelectsNothing) {
                            /* auto_select */ true,
                            /*select_devices*/ nullptr,
                            std::nullopt,
-                           PolicyDelegateSelectNone,
+                           static_cast<EpSelectionDelegate>(PolicyDelegateSelectNone),
                            /*test_session_creation_only*/ true),
       Ort::Exception);
 }
@@ -495,7 +495,7 @@ TEST(AutoEpSelection, PolicyDelegateReturnsError) {
                            /* auto_select */ true,
                            /*select_devices*/ nullptr,
                            std::nullopt,
-                           PolicyDelegateReturnError,
+                           static_cast<EpSelectionDelegate>(PolicyDelegateReturnError),
                            /*test_session_creation_only*/ true),
       Ort::Exception);
 }
