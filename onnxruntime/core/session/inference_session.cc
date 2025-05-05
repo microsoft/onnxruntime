@@ -3264,6 +3264,7 @@ common::Status InferenceSession::SaveModelMetadata(const onnxruntime::Model& mod
 
   // save model metadata
   model_metadata_.producer_name = model.ProducerName();
+  model_metadata_.producer_version = model.ProducerVersion();
   model_metadata_.description = model.DocString();
   model_metadata_.graph_description = model.GraphDocString();
   model_metadata_.domain = model.Domain();
@@ -3426,6 +3427,10 @@ common::Status InferenceSession::WaitForNotification(Notification* p_executor_do
 
 const Model& InferenceSession::GetModel() const {
   return *model_;
+}
+
+const Environment& InferenceSession::GetEnvironment() const {
+  return environment_;
 }
 
 SessionIOBinding::SessionIOBinding(InferenceSession* session) : sess_(session) {

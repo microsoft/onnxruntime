@@ -78,6 +78,7 @@ struct ModelMetadata {
   ModelMetadata& operator=(const ModelMetadata&) = delete;
 
   std::string producer_name;
+  std::string producer_version;
   std::string graph_name;
   std::string domain;
   std::string description;
@@ -601,6 +602,7 @@ class InferenceSession {
 #endif
 
   const Model& GetModel() const;
+  const Environment& GetEnvironment() const;
 
  protected:
 #if !defined(ORT_MINIMAL_BUILD)

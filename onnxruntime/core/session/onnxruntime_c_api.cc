@@ -3013,6 +3013,7 @@ static constexpr OrtApi ort_api_1_to_22 = {
     &OrtApis::GetEpDevices,
     &OrtApis::SessionOptionsAppendExecutionProvider_V2,
     &OrtApis::SessionOptionsSetEpSelectionPolicy,
+    &OrtApis::SessionOptionsSetEpSelectionPolicyDelegate,
 
     &OrtApis::HardwareDevice_Type,
     &OrtApis::HardwareDevice_VendorId,
@@ -3062,7 +3063,7 @@ static_assert(offsetof(OrtApi, AddExternalInitializersFromFilesInMemory) / sizeo
 // no additions in version 19, 20, and 21
 static_assert(offsetof(OrtApi, SetEpDynamicOptions) / sizeof(void*) == 284, "Size of version 20 API cannot change");
 
-static_assert(offsetof(OrtApi, GetEpApi) / sizeof(void*) == 316, "Size of version 22 API cannot change");
+static_assert(offsetof(OrtApi, GetEpApi) / sizeof(void*) == 317, "Size of version 22 API cannot change");
 
 // So that nobody forgets to finish an API version, this check will serve as a reminder:
 static_assert(std::string_view(ORT_VERSION) == "1.22.0",
