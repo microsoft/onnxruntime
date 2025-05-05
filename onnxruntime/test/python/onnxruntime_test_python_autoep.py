@@ -76,6 +76,35 @@ class TestAutoEP(unittest.TestCase):
         output_expected = np.array([[1.0, 4.0], [9.0, 16.0], [25.0, 36.0]], dtype=np.float32)
         np.testing.assert_allclose(output_expected, res[0], rtol=1e-05, atol=1e-08)
 
+    def test_cuda_prefer_gpu_and_inference(self):
+        """
+        Test selecting CUDA EP via the PREFER_GPU policy and running inference.
+        """
+        ep_lib_path = "onnxruntime_providers_cuda.dll"
+        ep_registration_name = "CUDAExecutionProvider"
+
+        if sys.platform != "win32":
+            self.skipTest("Skipping test because device discovery is only supported on Windows")
+
+        if not os.path.exists(ep_lib_path):
+            self.skipTest(f"Skipping test because EP library '{ep_lib_path}' cannot be found")
+
+        onnxrt.register_execution_provider_library(ep_registration_name, os.path.realpath(ep_lib_path))
+
+        # Set a policy to prefer GPU. Cuda should be selected.
+        sess_options = onnxrt.SessionOptions()
+        sess_options.set_provider_selection_policy(onnxrt.OrtExecutionProviderDevicePolicy.PREFER_GPU)
+        self.assertTrue(sess_options.has_providers())
+
+        # Run sample model and check output
+        sess = onnxrt.InferenceSession(get_name("mul_1.onnx"), sess_options=sess_options)
+
+        x = np.array([[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]], dtype=np.float32)
+        input_name = sess.get_inputs()[0].name
+        res = sess.run([], {input_name: x})
+        output_expected = np.array([[1.0, 4.0], [9.0, 16.0], [25.0, 36.0]], dtype=np.float32)
+        np.testing.assert_allclose(output_expected, res[0], rtol=1e-05, atol=1e-08)
+
     def test_example_plugin_ep_devices(self):
         """
         Test registration of an example EP plugin and retrieval of its OrtEpDevice.
@@ -136,4 +165,4 @@ class TestAutoEP(unittest.TestCase):
 
 
 if __name__ == "__main__":
-    unittest.main(verbosity=1)
+    unittest.main()
