@@ -940,6 +940,14 @@ namespace Microsoft.ML.OnnxRuntime
         #endregion
 
         #region Selection Policy Delegate helpers
+        /// <summary>
+        /// Delegate to select execution provider devices from a list of available devices.
+        /// </summary>
+        /// <param name="epDevices">OrtEpDevices to select from.</param>
+        /// <param name="modelMetadata">Model metadata.</param>
+        /// <param name="runtimeMetadata">Runtime metadata.</param>
+        /// <param name="maxSelections">Maximum number of devices that can be selected.</param>
+        /// <returns>Selected devices. Ordered by priority. Highest priority first.</returns>
         public delegate List<OrtEpDevice> EpSelectionDelegate(IReadOnlyList<OrtEpDevice> epDevices,
                                                               OrtKeyValuePairs modelMetadata,
                                                               OrtKeyValuePairs runtimeMetadata,
@@ -957,7 +965,21 @@ namespace Microsoft.ML.OnnxRuntime
                 _csharpDelegate = selectionDelegate;
             }
 
-            // convert between C and C# types
+            /// <summary>
+            /// Delegate to convert between the C and C# worlds
+            /// </summary>
+            /// <param name="epDevicesIn">OrtEpDevices to select from.</param>
+            /// <param name="numDevices">Number of OrtEpDevices.</param>
+            /// <param name="modelMetadataIn">Model metadata.</param>
+            /// <param name="runtimeMetadataIn">Runtime metadata.</param>
+            /// <param name="selectedOut">Pre-allocated OrtEpDevice buffer to update with selected devices.</param>
+            /// <param name="maxSelected">Number of entries in selectedOut.</param>
+            /// <param name="numSelected">Number of OrtEpDevies that were selected.</param>
+            /// <param name="state">Opaque state.</param>
+            /// <returns>nullptr for OrtStatus* to indicate success.</returns>
+            /// <remarks>Currently we don't have a way to create an OrtStatus instance from the C# bindings.
+            /// Can add if we need to return an explicit error message.
+            /// </remarks>
             public static IntPtr EpSelectionPolicyWrapper(IntPtr /* OrtEpDevice** */ epDevicesIn,
                                                           uint numDevices,
                                                           IntPtr /* OrtKeyValuePairs* */ modelMetadataIn,
