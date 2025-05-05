@@ -248,37 +248,6 @@ Status GetMinimalBuildOptimizationHandling(
 
 #endif  // !defined(ORT_MINIMAL_BUILD)
 
-// read model metadata from ModelProto
-void ReadModelMetadata(const ONNX_NAMESPACE::ModelProto& model_proto, ModelMetadata& metadata) {
-  metadata.producer_name = model_proto.has_producer_name() ? model_proto.producer_name() : "";
-  metadata.producer_version = model_proto.has_producer_version() ? model_proto.producer_version() : "";
-  metadata.description = model_proto.has_doc_string() ? model_proto.doc_string() : "";
-  metadata.domain = model_proto.has_domain() ? model_proto.domain() : "";
-  metadata.version = model_proto.has_ir_version() ? model_proto.ir_version() : int64_t(0);
-  if (model_proto.has_graph()) {
-    metadata.graph_name = model_proto.graph().has_name() ? model_proto.graph().name() : "";
-    metadata.graph_description = model_proto.graph().has_doc_string() ? model_proto.graph().doc_string() : "";
-  } else {
-    metadata.graph_name = "";
-    metadata.graph_description = "";
-  }
-
-  for (const auto& entry : model_proto.metadata_props()) {
-    metadata.custom_metadata_map[entry.key()] = entry.value();
-  }
-}
-
-// read model metadata from Model.
-void ReadModelMetadata(const Model& model, ModelMetadata& metadata) {
-  metadata.producer_name = model.ProducerName();
-  metadata.producer_version = model.ProducerVersion();
-  metadata.description = model.DocString();
-  metadata.domain = model.Domain();
-  metadata.version = model.ModelVersion();
-  metadata.graph_name = model.MainGraph().Name();
-  metadata.graph_description = model.GraphDocString();
-  metadata.custom_metadata_map = model.MetaData();
-}
 }  // namespace
 
 std::atomic<uint32_t> InferenceSession::global_session_id_{1};
@@ -401,10 +370,6 @@ void InferenceSession::ConstructorCommon(const SessionOptions& session_options,
   auto status = FinalizeSessionOptions(session_options, model_proto_, is_model_proto_parsed_, session_options_);
   ORT_ENFORCE(status.IsOK(), "Could not finalize session options while constructing the inference session. Error Message: ",
               status.ErrorMessage());
-
-  if (is_model_proto_parsed_) {
-    ReadModelMetadata(model_proto_, model_metadata_);
-  }
 
   // a monotonically increasing session id for use in telemetry
   session_id_ = global_session_id_.fetch_add(1);
@@ -3050,9 +3015,7 @@ common::Status InferenceSession::Run(const RunOptions& run_options, const NameML
 std::pair<common::Status, const ModelMetadata*> InferenceSession::GetModelMetadata() const {
   {
     std::lock_guard<std::mutex> l(session_mutex_);
-    // we can populate the model metadata in the InferenceSession ctor (is_model_proto_parsed_ == true) or
-    // during InferenceSession::Load (is_model_loaded_ == true).
-    if (!is_model_proto_parsed_ && !is_model_loaded_) {
+    if (!is_model_loaded_) {
       LOGS(*session_logger_, ERROR) << "Model was not loaded";
       return std::make_pair(common::Status(common::ONNXRUNTIME, common::FAIL, "Model was not loaded."), nullptr);
     }
@@ -3302,7 +3265,14 @@ common::Status InferenceSession::SaveModelMetadata(const onnxruntime::Model& mod
   const onnxruntime::Graph& graph = model.MainGraph();
 
   // save model metadata
-  ReadModelMetadata(model, model_metadata_);
+  model_metadata_.producer_name = model.ProducerName();
+  model_metadata_.producer_version = model.ProducerVersion();
+  model_metadata_.description = model.DocString();
+  model_metadata_.graph_description = model.GraphDocString();
+  model_metadata_.domain = model.Domain();
+  model_metadata_.version = model.ModelVersion();
+  model_metadata_.custom_metadata_map = model.MetaData();
+  model_metadata_.graph_name = graph.Name();
 
   auto add_inputs_outputs = [](const InputDefList& inputs_outputs, InputOutputDefMetaMap& map) {
     map.reserve(inputs_outputs.size());
@@ -3459,6 +3429,10 @@ common::Status InferenceSession::WaitForNotification(Notification* p_executor_do
 
 const Model& InferenceSession::GetModel() const {
   return *model_;
+}
+
+const Environment& InferenceSession::GetEnvironment() const {
+  return environment_;
 }
 
 SessionIOBinding::SessionIOBinding(InferenceSession* session) : sess_(session) {

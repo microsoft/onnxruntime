@@ -179,27 +179,6 @@ OrtStatus* CreateSessionAndLoadModel(_In_ const OrtSessionOptions* options,
         env->GetEnvironment());
   }
 
-#if !defined(ORT_MINIMAL_BUILD)
-  // TEMPORARY for testing. Manually specify the EP to select.
-  auto auto_select_ep_name = sess->GetSessionOptions().config_options.GetConfigEntry("test.ep_to_select");
-  if (auto_select_ep_name) {
-    ORT_API_RETURN_IF_STATUS_NOT_OK(TestAutoSelectEPsImpl(env->GetEnvironment(), *sess, *auto_select_ep_name));
-  }
-
-  // if there are no providers registered, and there's an ep selection policy set, do auto ep selection
-  if (options != nullptr && options->provider_factories.empty() && options->value.ep_selection_policy.enable) {
-    ProviderPolicyContext context;
-    ORT_API_RETURN_IF_STATUS_NOT_OK(context.SelectEpsForSession(env->GetEnvironment(), *options, *sess));
-  }
-#endif  // !defined(ORT_MINIMAL_BUILD)
-
-#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_MINIMAL_BUILD_CUSTOM_OPS)
-  // Add custom domains
-  if (options && !options->custom_op_domains_.empty()) {
-    ORT_API_RETURN_IF_STATUS_NOT_OK(sess->AddCustomOpDomains(options->custom_op_domains_));
-  }
-#endif
-
   // Finish load
   if (load_config_from_model || have_ep_selection_delegate) {
 #if !defined(ORT_MINIMAL_BUILD)
@@ -223,22 +202,38 @@ OrtStatus* InitializeSession(_In_ const OrtSessionOptions* options,
   ORT_ENFORCE(session_logger != nullptr,
               "Session logger is invalid, but should have been initialized during session construction.");
 
-  // we need to disable mem pattern if DML is one of the providers since DML doesn't have the concept of
-  // byte addressable memory
-  std::vector<std::unique_ptr<IExecutionProvider>> provider_list;
-  if (options) {
+  const bool has_provider_factories = options != nullptr && !options->provider_factories.empty();
+
+  if (has_provider_factories) {
+    std::vector<std::unique_ptr<IExecutionProvider>> provider_list;
     for (auto& factory : options->provider_factories) {
       auto provider = factory->CreateProvider(*options, *session_logger->ToExternal());
       provider_list.push_back(std::move(provider));
     }
-  }
 
-  // register the providers
-  for (auto& provider : provider_list) {
-    if (provider) {
-      ORT_API_RETURN_IF_STATUS_NOT_OK(sess.RegisterExecutionProvider(std::move(provider)));
+    // register the providers
+    for (auto& provider : provider_list) {
+      if (provider) {
+        ORT_API_RETURN_IF_STATUS_NOT_OK(sess.RegisterExecutionProvider(std::move(provider)));
+      }
     }
   }
+#if !defined(ORT_MINIMAL_BUILD)
+  else {
+    // TEMPORARY for testing. Manually specify the EP to select.
+    auto auto_select_ep_name = sess.GetSessionOptions().config_options.GetConfigEntry("test.ep_to_select");
+    if (auto_select_ep_name) {
+      ORT_API_RETURN_IF_STATUS_NOT_OK(TestAutoSelectEPsImpl(sess.GetEnvironment(), sess, *auto_select_ep_name));
+    }
+
+    // if there are no providers registered, and there's an ep selection policy set, do auto ep selection.
+    // note: the model has already been loaded so model metadata should be available to the policy delegate callback.
+    if (options != nullptr && options->value.ep_selection_policy.enable) {
+      ProviderPolicyContext context;
+      ORT_API_RETURN_IF_STATUS_NOT_OK(context.SelectEpsForSession(sess.GetEnvironment(), *options, sess));
+    }
+  }
+#endif  // !defined(ORT_MINIMAL_BUILD)
 
   if (prepacked_weights_container != nullptr) {
     ORT_API_RETURN_IF_STATUS_NOT_OK(sess.AddPrePackedWeightsContainer(

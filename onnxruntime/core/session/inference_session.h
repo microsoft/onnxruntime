@@ -604,6 +604,7 @@ class InferenceSession {
 #endif
 
   const Model& GetModel() const;
+  const Environment& GetEnvironment() const;
 
  protected:
 #if !defined(ORT_MINIMAL_BUILD)

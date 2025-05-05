@@ -356,14 +356,14 @@ TEST(AutoEpSelection, PreferNpu) {
                        OrtExecutionProviderDevicePolicy::OrtExecutionProviderDevicePolicy_PREFER_NPU);
 }
 
-static OrtStatus* PolicyDelegate(_In_ const OrtEpDevice** ep_devices,
-                                 _In_ size_t num_devices,
-                                 _In_ const OrtKeyValuePairs* model_metadata,
-                                 _In_opt_ const OrtKeyValuePairs* /*runtime_metadata*/,
-                                 _Inout_ const OrtEpDevice** selected,
-                                 _In_ size_t max_selected,
-                                 _Out_ size_t* num_selected,
-                                 _In_ void* /*state*/) {
+static OrtStatus* ORT_API_CALL PolicyDelegate(_In_ const OrtEpDevice** ep_devices,
+                                              _In_ size_t num_devices,
+                                              _In_ const OrtKeyValuePairs* model_metadata,
+                                              _In_opt_ const OrtKeyValuePairs* /*runtime_metadata*/,
+                                              _Inout_ const OrtEpDevice** selected,
+                                              _In_ size_t max_selected,
+                                              _Out_ size_t* num_selected,
+                                              _In_ void* /*state*/) {
   *num_selected = 0;
 
   if (max_selected <= 2) {
@@ -385,27 +385,27 @@ static OrtStatus* PolicyDelegate(_In_ const OrtEpDevice** ep_devices,
   return nullptr;
 }
 
-static OrtStatus* PolicyDelegateSelectNone(_In_ const OrtEpDevice** /*ep_devices*/,
-                                           _In_ size_t /*num_devices*/,
-                                           _In_ const OrtKeyValuePairs* /*model_metadata*/,
-                                           _In_opt_ const OrtKeyValuePairs* /*runtime_metadata*/,
-                                           _Inout_ const OrtEpDevice** /*selected*/,
-                                           _In_ size_t /*max_selected*/,
-                                           _Out_ size_t* num_selected,
-                                           _In_ void* /*state*/) {
+static OrtStatus* ORT_API_CALL PolicyDelegateSelectNone(_In_ const OrtEpDevice** /*ep_devices*/,
+                                                        _In_ size_t /*num_devices*/,
+                                                        _In_ const OrtKeyValuePairs* /*model_metadata*/,
+                                                        _In_opt_ const OrtKeyValuePairs* /*runtime_metadata*/,
+                                                        _Inout_ const OrtEpDevice** /*selected*/,
+                                                        _In_ size_t /*max_selected*/,
+                                                        _Out_ size_t* num_selected,
+                                                        _In_ void* /*state*/) {
   *num_selected = 0;
 
   return nullptr;
 }
 
-static OrtStatus* PolicyDelegateReturnError(_In_ const OrtEpDevice** /*ep_devices*/,
-                                            _In_ size_t /*num_devices*/,
-                                            _In_ const OrtKeyValuePairs* /*model_metadata*/,
-                                            _In_opt_ const OrtKeyValuePairs* /*runtime_metadata*/,
-                                            _Inout_ const OrtEpDevice** /*selected*/,
-                                            _In_ size_t /*max_selected*/,
-                                            _Out_ size_t* num_selected,
-                                            _In_ void* /*state*/) {
+static OrtStatus* ORT_API_CALL PolicyDelegateReturnError(_In_ const OrtEpDevice** /*ep_devices*/,
+                                                         _In_ size_t /*num_devices*/,
+                                                         _In_ const OrtKeyValuePairs* /*model_metadata*/,
+                                                         _In_opt_ const OrtKeyValuePairs* /*runtime_metadata*/,
+                                                         _Inout_ const OrtEpDevice** /*selected*/,
+                                                         _In_ size_t /*max_selected*/,
+                                                         _Out_ size_t* num_selected,
+                                                         _In_ void* /*state*/) {
   *num_selected = 0;
 
   return Ort::GetApi().CreateStatus(ORT_INVALID_ARGUMENT, "Selection error.");
