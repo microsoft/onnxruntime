@@ -93,7 +93,7 @@ public class OrtAutoEpTests
     {
         var runTest = (Func<Dictionary<string, string>> getEpOptions) =>
         {
-            SessionOptions sessionOptions = new SessionOptions();
+            using SessionOptions sessionOptions = new SessionOptions();
             sessionOptions.LogSeverityLevel = OrtLoggingLevel.ORT_LOGGING_LEVEL_VERBOSE;
 
             var epDevices = ortEnvInstance.GetEpDevices();
@@ -138,7 +138,7 @@ public class OrtAutoEpTests
     [Fact]
     public void SetEpSelectionPolicy()
     {
-        SessionOptions sessionOptions = new SessionOptions();
+        using SessionOptions sessionOptions = new SessionOptions();
         sessionOptions.LogSeverityLevel = OrtLoggingLevel.ORT_LOGGING_LEVEL_VERBOSE;
 
         var epDevices = ortEnvInstance.GetEpDevices();
@@ -150,7 +150,50 @@ public class OrtAutoEpTests
         var model = TestDataLoader.LoadModelFromEmbeddedResource("squeezenet.onnx");
 
         // session should load successfully
-        using (var session = new InferenceSession(model))
+        using (var session = new InferenceSession(model, sessionOptions))
+        {
+            Assert.NotNull(session);
+        }
+    }
+
+    private static List<OrtEpDevice> SelectionPolicyDelegate(IReadOnlyList<OrtEpDevice> epDevices,
+                                                              OrtKeyValuePairs modelMetadata,
+                                                              OrtKeyValuePairs runtimeMetadata,
+                                                              uint maxSelections)
+    {
+        Assert.NotEmpty(modelMetadata.Entries);
+
+        // this is a dummy delegate that returns the CPU EP
+        // it doesn't matter what the value is. should fallback to ORT CPU EP
+        var selected = new List<OrtEpDevice>();
+
+        selected.Add(epDevices[0]);
+
+        // add ORT CPU EP which is always last.
+        if (maxSelections > 2 && epDevices.Count > 1)
+        {
+            selected.Add(epDevices.Last());
+        }
+
+        return selected;
+    }
+
+    [Fact]
+    public void SetEpSelectionPolicyDelegate()
+    {
+        using SessionOptions sessionOptions = new SessionOptions();
+        sessionOptions.LogSeverityLevel = OrtLoggingLevel.ORT_LOGGING_LEVEL_VERBOSE;
+
+        var epDevices = ortEnvInstance.GetEpDevices();
+        Assert.NotEmpty(epDevices);
+
+        // doesn't matter what the value is. should fallback to ORT CPU EP
+        sessionOptions.SetEpSelectionPolicyDelegate(SelectionPolicyDelegate);
+        
+        var model = TestDataLoader.LoadModelFromEmbeddedResource("squeezenet.onnx");
+
+        // session should load successfully
+        using (var session = new InferenceSession(model, sessionOptions))
         {
             Assert.NotNull(session);
         }

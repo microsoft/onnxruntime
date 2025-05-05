@@ -636,9 +636,32 @@ namespace Microsoft.ML.OnnxRuntime
         public void SetEpSelectionPolicy(ExecutionProviderDevicePolicy policy)
         {
             NativeApiStatus.VerifySuccess(
-                NativeMethods.OrtSessionOptionsSetEpSelectionPolicy(handle, (int)policy, IntPtr.Zero));
+                NativeMethods.OrtSessionOptionsSetEpSelectionPolicy(handle, (int)policy));
         }
 
+        /// <summary>
+        /// Set the execution provider selection policy if using automatic execution provider selection.
+        /// Execution providers must be registered with the OrtEnv to be available for selection.
+        /// </summary>
+        /// <param name="selectionDelegate">Delegate that implements the custom selection policy.</param>
+        public void SetEpSelectionPolicyDelegate(EpSelectionDelegate selectionDelegate = null)
+        {
+            _epSelectionPolicyConnector = new EpSelectionPolicyConnector(selectionDelegate);
+            _epSelectionPolicyDelegate = new NativeMethods.DOrtEpSelectionDelegate(
+                EpSelectionPolicyConnector.EpSelectionPolicyWrapper);
+
+            // make sure these stay alive. not sure if this is necessary when they're class members though
+            _epSelectionPolicyConnectorHandle = GCHandle.Alloc(_epSelectionPolicyConnector);
+            _epSelectionPolicyDelegateHandle = GCHandle.Alloc(_epSelectionPolicyDelegate);
+
+            IntPtr funcPtr = Marshal.GetFunctionPointerForDelegate(_epSelectionPolicyDelegate);
+
+            NativeApiStatus.VerifySuccess(
+                NativeMethods.OrtSessionOptionsSetEpSelectionPolicyDelegate(
+                    handle, 
+                    funcPtr,
+                    GCHandle.ToIntPtr(_epSelectionPolicyConnectorHandle)));
+        }
         #endregion
 
         internal IntPtr Handle
@@ -914,7 +937,77 @@ namespace Microsoft.ML.OnnxRuntime
         {
             NativeApiStatus.VerifySuccess(NativeMethods.OrtSessionOptionsSetLoadCancellationFlag(handle, value));
         }
+        #endregion
 
+        #region Selection Policy Delegate helpers
+        public delegate List<OrtEpDevice> EpSelectionDelegate(IReadOnlyList<OrtEpDevice> epDevices,
+                                                              OrtKeyValuePairs modelMetadata,
+                                                              OrtKeyValuePairs runtimeMetadata,
+                                                              uint maxSelections);
+
+        /// <summary>
+        /// Class to bridge the C# and native worlds for the EP selection policy delegate
+        /// </summary>
+        internal class EpSelectionPolicyConnector
+        {
+            private readonly EpSelectionDelegate _csharpDelegate;
+
+            internal EpSelectionPolicyConnector(EpSelectionDelegate selectionDelegate)
+            {
+                _csharpDelegate = selectionDelegate;
+            }
+
+            // convert between C and C# types
+            public static IntPtr EpSelectionPolicyWrapper(IntPtr /* OrtEpDevice** */ epDevicesIn,
+                                                          uint numDevices,
+                                                          IntPtr /* OrtKeyValuePairs* */ modelMetadataIn,
+                                                          IntPtr /* OrtKeyValuePairs* */ runtimeMetadataIn,
+                                                          IntPtr /* OrtEpDevice** */ selectedOut,
+                                                          uint maxSelected,
+                                                          out UIntPtr numSelected,
+                                                          IntPtr state)
+            {
+                Span<IntPtr> epDevicesIntPtrs;
+                Span<IntPtr> selectedDevicesIntPtrs;
+                EpSelectionPolicyConnector connector = (EpSelectionPolicyConnector)GCHandle.FromIntPtr(state).Target;
+
+                unsafe
+                {
+                    void* ptr = epDevicesIn.ToPointer();
+                    epDevicesIntPtrs = new Span<IntPtr>(ptr, checked((int)numDevices));
+
+                }
+
+                List<OrtEpDevice> epDevices = new List<OrtEpDevice>();
+                for (int i = 0; i < numDevices; i++)
+                {
+
+                    epDevices.Add(new OrtEpDevice(epDevicesIntPtrs[i]));
+                }
+
+                OrtKeyValuePairs modelMetadata = new OrtKeyValuePairs(modelMetadataIn);
+                OrtKeyValuePairs runtimeMetadata = new OrtKeyValuePairs(runtimeMetadataIn);
+
+                var selected = connector._csharpDelegate(epDevices, modelMetadata, runtimeMetadata, maxSelected);
+
+                numSelected = (UIntPtr)selected.Count;
+
+                unsafe
+                {
+                    void* ptr = selectedOut.ToPointer();
+                    selectedDevicesIntPtrs = new Span<IntPtr>(ptr, (int)maxSelected);
+                }
+
+                int idx = 0;
+                foreach (var epDevice in selected)
+                {
+                    selectedDevicesIntPtrs[idx] = epDevice.Handle;
+                    idx++;
+                }
+
+                return IntPtr.Zero;
+            }
+        }
         #endregion
 
         #region Private Methods
@@ -1000,8 +1093,43 @@ namespace Microsoft.ML.OnnxRuntime
         {
             NativeMethods.OrtReleaseSessionOptions(handle);
             handle = IntPtr.Zero;
+
+            if (_epSelectionPolicyConnectorHandle.IsAllocated)
+            {
+                _epSelectionPolicyConnectorHandle.Free();
+                _epSelectionPolicyConnector = null;
+            }
+
+            if (_epSelectionPolicyDelegateHandle.IsAllocated)
+            {
+                _epSelectionPolicyDelegateHandle.Free();
+                _epSelectionPolicyDelegate = null;
+            }
+
+
             return true;
         }
         #endregion
+
+        /// <summary>
+        /// Helper class to connect C and C# usage of the EP selection policy delegate.
+        /// </summary>
+        EpSelectionPolicyConnector _epSelectionPolicyConnector = null;
+
+        /// <summary>
+        /// Handle to the EP selection policy connector that is passed to the C API as state for the 
+        /// EP selection policy delegate.
+        /// </summary>
+        GCHandle _epSelectionPolicyConnectorHandle = default;
+
+        /// <summary>
+        /// Delegate instance that is provided to the C API.
+        /// </summary>
+        NativeMethods.DOrtEpSelectionDelegate _epSelectionPolicyDelegate = null;
+
+        /// <summary>
+        /// Handle to the EP selection policy delegate that is passed to the C API.
+        /// </summary>
+        GCHandle _epSelectionPolicyDelegateHandle = default;
     }
 }

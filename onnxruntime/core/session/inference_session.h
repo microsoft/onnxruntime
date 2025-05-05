@@ -80,6 +80,7 @@ struct ModelMetadata {
   ModelMetadata& operator=(const ModelMetadata&) = delete;
 
   std::string producer_name;
+  std::string producer_version;
   std::string graph_name;
   std::string domain;
   std::string description;

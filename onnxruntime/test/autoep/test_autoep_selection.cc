@@ -68,6 +68,7 @@ static void TestInference(Ort::Env& env, const std::basic_string<ORTCHAR_T>& mod
                           const std::function<void(std::vector<const OrtEpDevice*>&)>& select_devices = nullptr,
                           // auto select using policy
                           std::optional<OrtExecutionProviderDevicePolicy> policy = std::nullopt,
+                          std::optional<EpSelectionDelegate> delegate = std::nullopt,
                           bool test_session_creation_only = false) {
   Ort::SessionOptions session_options;
 
@@ -77,7 +78,9 @@ static void TestInference(Ort::Env& env, const std::basic_string<ORTCHAR_T>& mod
   }
 
   if (auto_select) {
-    if (policy) {
+    if (delegate) {
+      session_options.SetEpSelectionPolicy(*delegate, nullptr);
+    } else if (policy) {
       session_options.SetEpSelectionPolicy(*policy);
     } else {
       // manually specify EP to select
@@ -351,6 +354,150 @@ TEST(AutoEpSelection, PreferNpu) {
                        /* auto_select */ true,
                        /*select_devices*/ nullptr,
                        OrtExecutionProviderDevicePolicy::OrtExecutionProviderDevicePolicy_PREFER_NPU);
+}
+
+static OrtStatus* PolicyDelegate(_In_ const OrtEpDevice** ep_devices,
+                                 _In_ size_t num_devices,
+                                 _In_ const OrtKeyValuePairs* model_metadata,
+                                 _In_opt_ const OrtKeyValuePairs* /*runtime_metadata*/,
+                                 _Inout_ const OrtEpDevice** selected,
+                                 _In_ size_t max_selected,
+                                 _Out_ size_t* num_selected,
+                                 _In_ void* /*state*/) {
+  *num_selected = 0;
+
+  if (max_selected <= 2) {
+    return Ort::GetApi().CreateStatus(ORT_INVALID_ARGUMENT, "Expected to be able to select 2 devices.");
+  }
+
+  if (model_metadata->entries.empty()) {
+    return Ort::GetApi().CreateStatus(ORT_INVALID_ARGUMENT, "Model metadata was empty.");
+  }
+
+  selected[0] = ep_devices[0];
+  *num_selected = 1;
+  if (num_devices > 1) {
+    // CPU EP is always last.
+    selected[1] = ep_devices[num_devices - 1];
+    *num_selected = 2;
+  }
+
+  return nullptr;
+}
+
+static OrtStatus* PolicyDelegateSelectNone(_In_ const OrtEpDevice** /*ep_devices*/,
+                                           _In_ size_t /*num_devices*/,
+                                           _In_ const OrtKeyValuePairs* /*model_metadata*/,
+                                           _In_opt_ const OrtKeyValuePairs* /*runtime_metadata*/,
+                                           _Inout_ const OrtEpDevice** /*selected*/,
+                                           _In_ size_t /*max_selected*/,
+                                           _Out_ size_t* num_selected,
+                                           _In_ void* /*state*/) {
+  *num_selected = 0;
+
+  return nullptr;
+}
+
+static OrtStatus* PolicyDelegateReturnError(_In_ const OrtEpDevice** /*ep_devices*/,
+                                            _In_ size_t /*num_devices*/,
+                                            _In_ const OrtKeyValuePairs* /*model_metadata*/,
+                                            _In_opt_ const OrtKeyValuePairs* /*runtime_metadata*/,
+                                            _Inout_ const OrtEpDevice** /*selected*/,
+                                            _In_ size_t /*max_selected*/,
+                                            _Out_ size_t* num_selected,
+                                            _In_ void* /*state*/) {
+  *num_selected = 0;
+
+  return Ort::GetApi().CreateStatus(ORT_INVALID_ARGUMENT, "Selection error.");
+}
+
+// test providing a delegate
+TEST(AutoEpSelection, PolicyDelegate) {
+  std::vector<Input<float>> inputs(1);
+  auto& input = inputs.back();
+  input.name = "X";
+  input.dims = {3, 2};
+  input.values = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f};
+
+  // prepare expected inputs and outputs
+  std::vector<int64_t> expected_dims_y = {3, 2};
+  std::vector<float> expected_values_y = {1.0f, 4.0f, 9.0f, 16.0f, 25.0f, 36.0f};
+
+  const Ort::KeyValuePairs provider_options;
+
+  TestInference<float>(*ort_env, ORT_TSTR("testdata/mul_1.onnx"),
+                       "",  // don't need EP name
+                       std::nullopt,
+                       provider_options,
+                       inputs,
+                       "Y",
+                       expected_dims_y,
+                       expected_values_y,
+                       /* auto_select */ true,
+                       /*select_devices*/ nullptr,
+                       std::nullopt,
+                       PolicyDelegate);
+}
+
+// test providing a delegate
+TEST(AutoEpSelection, PolicyDelegateSelectsNothing) {
+  std::vector<Input<float>> inputs(1);
+  auto& input = inputs.back();
+  input.name = "X";
+  input.dims = {3, 2};
+  input.values = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f};
+
+  // prepare expected inputs and outputs
+  std::vector<int64_t> expected_dims_y = {3, 2};
+  std::vector<float> expected_values_y = {1.0f, 4.0f, 9.0f, 16.0f, 25.0f, 36.0f};
+
+  const Ort::KeyValuePairs provider_options;
+
+  ASSERT_THROW(
+      TestInference<float>(*ort_env, ORT_TSTR("testdata/mul_1.onnx"),
+                           "",  // don't need EP name
+                           std::nullopt,
+                           provider_options,
+                           inputs,
+                           "Y",
+                           expected_dims_y,
+                           expected_values_y,
+                           /* auto_select */ true,
+                           /*select_devices*/ nullptr,
+                           std::nullopt,
+                           PolicyDelegateSelectNone,
+                           /*test_session_creation_only*/ true),
+      Ort::Exception);
+}
+
+TEST(AutoEpSelection, PolicyDelegateReturnsError) {
+  std::vector<Input<float>> inputs(1);
+  auto& input = inputs.back();
+  input.name = "X";
+  input.dims = {3, 2};
+  input.values = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f};
+
+  // prepare expected inputs and outputs
+  std::vector<int64_t> expected_dims_y = {3, 2};
+  std::vector<float> expected_values_y = {1.0f, 4.0f, 9.0f, 16.0f, 25.0f, 36.0f};
+
+  const Ort::KeyValuePairs provider_options;
+
+  ASSERT_THROW(
+      TestInference<float>(*ort_env, ORT_TSTR("testdata/mul_1.onnx"),
+                           "",  // don't need EP name
+                           std::nullopt,
+                           provider_options,
+                           inputs,
+                           "Y",
+                           expected_dims_y,
+                           expected_values_y,
+                           /* auto_select */ true,
+                           /*select_devices*/ nullptr,
+                           std::nullopt,
+                           PolicyDelegateReturnError,
+                           /*test_session_creation_only*/ true),
+      Ort::Exception);
 }
 
 namespace {
