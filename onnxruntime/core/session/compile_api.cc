@@ -206,23 +206,7 @@ ORT_API_STATUS_IMPL(OrtCompileAPI::CompileModel, _In_ const OrtEnv* env,
   API_IMPL_BEGIN
 #if !defined(ORT_MINIMAL_BUILD)
   auto model_compile_options = reinterpret_cast<const onnxruntime::ModelCompilationOptions*>(ort_model_compile_options);
-  ORT_API_RETURN_IF_STATUS_NOT_OK(model_compile_options->Check());
-
-  std::unique_ptr<onnxruntime::InferenceSession> session;
-  const OrtSessionOptions* session_options = &model_compile_options->GetSessionOptions();
-
-  if (model_compile_options->InputModelComesFromFile()) {
-    PathString input_model_path = ToPathString(model_compile_options->GetInputModelPath());
-    ORT_API_RETURN_IF_ERROR(CreateSessionAndLoadModel(session_options, env,
-                                                      input_model_path.c_str(),
-                                                      nullptr, 0, session));
-  } else {
-    ORT_API_RETURN_IF_ERROR(CreateSessionAndLoadModel(session_options, env, nullptr,
-                                                      model_compile_options->GetInputModelData(),
-                                                      model_compile_options->GetInputModelDataSize(), session));
-  }
-
-  ORT_API_RETURN_IF_ERROR(InitializeSession(session_options, *session));
+  ORT_API_RETURN_IF_STATUS_NOT_OK(onnxruntime::CompileModel(env->GetEnvironment(), *model_compile_options));
   return nullptr;
 #else
   ORT_UNUSED_PARAMETER(env);

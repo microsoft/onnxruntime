@@ -10,7 +10,6 @@
 #include "core/session/environment.h"
 #include "core/session/inference_session.h"
 #include "core/session/inference_session_utils.h"
-#include "core/session/model_compilation_options.h"
 #include "core/session/onnxruntime_c_api.h"
 #include "core/session/onnxruntime_session_options_config_keys.h"
 #include "core/session/ort_apis.h"
@@ -20,6 +19,7 @@
 #include "core/session/ep_factory_internal.h"
 #include "core/session/ep_library_plugin.h"
 #include "core/session/ep_library_provider_bridge.h"
+#include "core/session/model_compilation_options.h"
 #include "core/session/provider_policy_context.h"
 #endif  // !defined(ORT_MINIMAL_BUILD)
 
@@ -261,6 +261,8 @@ OrtStatus* InitializeSession(_In_ const OrtSessionOptions* options,
 namespace onnxruntime {
 #if !defined(ORT_MINIMAL_BUILD)
 Status CompileModel(const Environment& env, const ModelCompilationOptions& model_compile_options) {
+  ORT_RETURN_IF_ERROR(model_compile_options.Check());
+
   std::unique_ptr<onnxruntime::InferenceSession> session;
   const OrtSessionOptions* session_options = &model_compile_options.GetSessionOptions();
 

@@ -44,7 +44,6 @@ onnxruntime::Status PyModelCompiler::Create(/*out*/ std::unique_ptr<PyModelCompi
 
 onnxruntime::Status PyModelCompiler::CompileToFile(const std::string& output_model_path) {
   ORT_RETURN_IF_ERROR(model_compile_options_.SetOutputModelPath(output_model_path));
-  ORT_RETURN_IF_ERROR(model_compile_options_.Check());
   ORT_RETURN_IF_ERROR(onnxruntime::CompileModel(*env_, model_compile_options_));
   return Status::OK();
 }
@@ -64,7 +63,6 @@ onnxruntime::Status PyModelCompiler::CompileToBytes(std::string& output_buffer) 
   void* buffer_data = nullptr;
   size_t buffer_size = 0;
   ORT_RETURN_IF_ERROR(model_compile_options_.SetOutputModelBuffer(allocator, &buffer_data, &buffer_size));
-  ORT_RETURN_IF_ERROR(model_compile_options_.Check());
   ORT_RETURN_IF_ERROR(onnxruntime::CompileModel(*env_, model_compile_options_));
 
   // Copy into output buffer.
