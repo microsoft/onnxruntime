@@ -68,7 +68,7 @@ static void TestInference(Ort::Env& env, const std::basic_string<ORTCHAR_T>& mod
                           const std::function<void(std::vector<const OrtEpDevice*>&)>& select_devices = nullptr,
                           // auto select using policy
                           std::optional<OrtExecutionProviderDevicePolicy> policy = std::nullopt,
-                          std::optional<EpSelectionDelegate> delegate = std::nullopt,
+                          EpSelectionDelegate delegate = nullptr,
                           bool test_session_creation_only = false) {
   Ort::SessionOptions session_options;
 
@@ -78,8 +78,8 @@ static void TestInference(Ort::Env& env, const std::basic_string<ORTCHAR_T>& mod
   }
 
   if (auto_select) {
-    if (delegate) {
-      session_options.SetEpSelectionPolicy(*delegate, nullptr);
+    if (delegate != nullptr) {
+      session_options.SetEpSelectionPolicy(delegate, nullptr);
     } else if (policy) {
       session_options.SetEpSelectionPolicy(*policy);
     } else {
