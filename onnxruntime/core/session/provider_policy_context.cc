@@ -95,7 +95,7 @@ std::vector<const OrtEpDevice*> OrderDevices(const std::vector<const OrtEpDevice
     if (!aIsDefaultCpuEp && !bIsDefaultCpuEp) {
       // neither are default CPU EP. both do/don't match vendor.
       // TODO: implement tie-breaker for this scenario. arbitrarily prefer the first for now
-      return true;
+      return a < b;
     }
 
     // one is the default CPU EP
