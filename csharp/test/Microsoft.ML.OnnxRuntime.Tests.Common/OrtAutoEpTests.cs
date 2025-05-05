@@ -162,9 +162,9 @@ public class OrtAutoEpTests
                                                               uint maxSelections)
     {
         Assert.NotEmpty(modelMetadata.Entries);
+        Assert.True(epDevices.Count > 0);
 
-        // this is a dummy delegate that returns the CPU EP
-        // it doesn't matter what the value is. should fallback to ORT CPU EP
+        // select first device and last (if there are more than one).
         var selected = new List<OrtEpDevice>();
 
         selected.Add(epDevices[0]);

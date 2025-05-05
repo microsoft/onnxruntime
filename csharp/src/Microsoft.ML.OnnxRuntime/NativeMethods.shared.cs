@@ -2441,7 +2441,7 @@ namespace Microsoft.ML.OnnxRuntime
 
         /// <summary>
         /// Add execution provider devices to the session options.
-        /// Highest priority execution provider and device pairs should be added first.
+        /// Priority is based on the order of the OrtEpDevice instances. Highest priority first.
         /// All OrtEpDevice instances in ep_devices must be for the same execution provider.
         /// e.g. selecting OpenVINO for GPU and NPU would have an OrtEpDevice for GPU and NPU.
         /// </summary>

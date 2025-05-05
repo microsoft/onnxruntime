@@ -975,7 +975,6 @@ namespace Microsoft.ML.OnnxRuntime
                 {
                     void* ptr = epDevicesIn.ToPointer();
                     epDevicesIntPtrs = new Span<IntPtr>(ptr, checked((int)numDevices));
-
                 }
 
                 List<OrtEpDevice> epDevices = new List<OrtEpDevice>();
