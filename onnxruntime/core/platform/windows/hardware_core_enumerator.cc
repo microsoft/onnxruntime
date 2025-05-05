@@ -43,10 +43,10 @@ uint32_t CountSetBits(DWORD input) {
   return c;
 }
 
-IntelChecks CheckIntel() {
-  IntelChecks intel_check = {false, false};
-  bool isIntel_SpecifiedPlatform = false;
-  const int kVendorID_IntelSpecifiedPlatformIDs[3] = {
+CheckIntelResult CheckIntel() {
+  CheckIntelResult intel_check = {false, false};
+  bool is_intel_specified_platform = false;
+  constexpr unsigned int kVendorID_IntelSpecifiedPlatformIDs[] = {
       // ExtendedModel, ExtendedFamily, Family Code, and Model Number
       0xa06a,  // MTL
       0xc065,  // ARL-H
@@ -58,20 +58,23 @@ IntelChecks CheckIntel() {
   __cpuid(regs_leaf0, 0);
   __cpuid(regs_leaf1, 0x1);
 
-  auto is_Intel = (kVendorID_Intel[0] == regs_leaf0[1]) && (kVendorID_Intel[1] == regs_leaf0[2]) && (kVendorID_Intel[2] == regs_leaf0[3]);
+  auto is_intel =
+      (kVendorID_Intel[0] == regs_leaf0[1]) &&
+      (kVendorID_Intel[1] == regs_leaf0[2]) &&
+      (kVendorID_Intel[2] == regs_leaf0[3]);
 
-  if (!is_Intel) {
+  if (!is_intel) {
     return intel_check;  // if not an Intel CPU, return early
   }
 
   for (int intelSpecifiedPlatform : kVendorID_IntelSpecifiedPlatformIDs) {
     if ((regs_leaf1[0] >> 4) == intelSpecifiedPlatform) {
-      isIntel_SpecifiedPlatform = true;
+      is_intel_specified_platform = true;
     }
   }
 
-  intel_check.is_Intel = is_Intel;
-  intel_check.isIntel_SpecifiedPlatform = isIntel_SpecifiedPlatform;
+  intel_check.is_intel = is_intel;
+  intel_check.is_intel_specified_platform = is_intel_specified_platform;
 
   return intel_check;
 }
@@ -119,10 +122,10 @@ uint32_t HardwareCoreEnumerator::DefaultIntraOpNumThreads() {
   auto cores = GetCoreInfo();
 #if !defined(_M_ARM64EC) && !defined(_M_ARM64) && !defined(__aarch64__)
 
-  IntelChecks check_Intel = CheckIntel();
+  CheckIntelResult check_Intel = CheckIntel();
 
-  if (check_Intel.is_Intel) {
-    if (check_Intel.isIntel_SpecifiedPlatform) {
+  if (check_Intel.is_intel) {
+    if (check_Intel.is_intel_specified_platform) {
       // We want to exclude cores without an LLC
       return cores.LLCCores;
     } else {

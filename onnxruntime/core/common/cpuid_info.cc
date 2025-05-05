@@ -136,8 +136,8 @@ void CPUIDInfo::X86Init() {
         has_avx512_skylake_ = has_avx512 && (data[1] & ((1 << 16) | (1 << 17) | (1 << 28) | (1 << 30) | (1 << 31)));
         is_hybrid_ = (data[3] & (1 << 15));
         // Check for TPAUSE
-        IntelChecks check_Intel = CheckIntel();
-        if (check_Intel.is_Intel) {
+        CheckIntelResult check_intel = CheckIntel();
+        if (check_intel.is_intel) {
           if (data[2] & (1 << 5)) {
             has_tpause_ = true;
           } else {

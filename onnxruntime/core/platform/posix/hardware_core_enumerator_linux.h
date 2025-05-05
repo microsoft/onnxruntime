@@ -1,10 +1,13 @@
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
+
 #pragma once
 
 namespace onnxruntime {
-struct IntelChecks {
-  bool is_Intel;
-  bool isIntel_SpecifiedPlatform;
+struct CheckIntelResult {
+  bool is_intel;
+  bool is_intel_specified_platform;
 };
 
-IntelChecks CheckIntel();
+CheckIntelResult CheckIntel();
 }  // namespace onnxruntime

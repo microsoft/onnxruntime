@@ -1,3 +1,6 @@
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
+
 #include "hardware_core_enumerator_linux.h"
 
 #ifdef __linux__
@@ -6,17 +9,17 @@
 
 namespace onnxruntime {
 
-IntelChecks CheckIntel() {
-  IntelChecks intel_check = {false, false};
-  bool isIntel_SpecifiedPlatform = false;
+CheckIntelResult CheckIntel() {
+  CheckIntelResult intel_check = {false, false};
+  bool is_intel_specified_platform = false;
   unsigned int regs[4] = {0};
   __get_cpuid(0, &regs[0], &regs[1], &regs[2], &regs[3]);
 
-  const unsigned int kVendorID_Intel[3] = {0x756e6547, 0x6c65746e, 0x49656e69};  // "GenuntelineI"
-  bool is_Intel = (regs[1] == kVendorID_Intel[0] &&
+  const unsigned int kVendorID_Intel[] = {0x756e6547, 0x6c65746e, 0x49656e69};  // "GenuntelineI"
+  bool is_intel = (regs[1] == kVendorID_Intel[0] &&
                   regs[2] == kVendorID_Intel[1] &&
                   regs[3] == kVendorID_Intel[2]);
-  if (!is_Intel) {
+  if (!is_intel) {
     return intel_check;  // if not an Intel CPU, return early
   }
 
@@ -26,9 +29,12 @@ IntelChecks CheckIntel() {
   unsigned int base_model = (regs[0] >> 4) & 0xF;
   unsigned int extended_model = (regs[0] >> 16) & 0xF;
 
-  unsigned int model = (base_family == 0x6 || base_family == 0xF) ? (base_model + (extended_model << 4)) : base_model;
+  unsigned int model =
+      (base_family == 0x6 || base_family == 0xF)
+          ? (base_model + (extended_model << 4))
+          : base_model;
 
-  const std::vector<unsigned int> kVendorID_IntelSpecifiedPlatformIDs = {
+  constexpr unsigned int kVendorID_IntelSpecifiedPlatformIDs[] = {
       // ExtendedModel, ExtendedFamily, Family Code, and Model Number
       170,  // MTL (0xAA)
       197,  // ARL-H (0xC5)
@@ -37,13 +43,13 @@ IntelChecks CheckIntel() {
 
   for (auto id : kVendorID_IntelSpecifiedPlatformIDs) {
     if (model == id) {
-      isIntel_SpecifiedPlatform = true;
+      is_intel_specified_platform = true;
       break;
     }
   }
 
-  intel_check.is_Intel = is_Intel;
-  intel_check.isIntel_SpecifiedPlatform = isIntel_SpecifiedPlatform;
+  intel_check.is_intel = is_intel;
+  intel_check.is_intel_specified_platform = is_intel_specified_platform;
 
   return intel_check;
 }
