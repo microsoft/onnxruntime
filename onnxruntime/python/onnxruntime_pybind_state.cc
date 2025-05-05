@@ -2,6 +2,7 @@
 // SPDX-FileCopyrightText: Copyright 2024 Arm Limited and/or its affiliates <open-source-office@arm.com>
 // Licensed under the MIT License.
 
+#include <functional>
 #include "python/onnxruntime_pybind_exceptions.h"
 #include "python/onnxruntime_pybind_mlvalue.h"
 #include "python/onnxruntime_pybind_state_common.h"
@@ -1797,6 +1798,39 @@ void addGlobalMethods(py::module& m) {
 #endif
 }
 
+// TODO(adrianlizarraga): C API's delegate function needs a void* param to store state.
+// using PyEpSelectionDelegate = std::function<std::vector<const OrtEpDevice*>(const std::vector<const OrtEpDevice*>& ep_devices,
+//                                                                            const std::unordered_map<std::string, std::string>& model_metadata,
+//                                                                            const std::unordered_map<std::string, std::string>& runtime_metadata)>;
+//
+// static OrtStatus* PyDelegateWrapper(void* delegate_state,
+//                                     _In_ const OrtEpDevice** ep_devices,
+//                                     _In_ size_t num_devices,
+//                                     _In_ const OrtKeyValuePairs* model_metadata,
+//                                     _In_opt_ const OrtKeyValuePairs* runtime_metadata,
+//                                     _Inout_ const OrtEpDevice** selected,
+//                                     _In_ size_t max_selected,
+//                                     _Out_ size_t* num_selected) {
+//   PyEpSelectionDelegate* actual_delegate = reinterpret_cast<PyEpSelectionDelegate*>(delegate_state);
+//   std::vector<const OrtEpDevice*> py_ep_devices(ep_devices, ep_devices + num_devices);
+//   std::unordered_map<std::string, std::string> py_model_metadata =
+//       model_metadata ? model_metadata->entries : std::unordered_map<std::string, std::string>{};
+//   std::unordered_map<std::string, std::string> py_runtime_metadata =
+//       runtime_metadata ? runtime_metadata->entries : std::unordered_map<std::string, std::string>{};
+//
+//   std::vector<const OrtEpDevice*> py_selected = (*actual_delegate)(py_ep_devices, py_model_metadata, py_runtime_metadata);
+//
+//   // TODO: Check max_selected and return OrtStatus if necessary.
+//   assert(py_selected.size() <= max_selected);
+//
+//   *num_selected = py_selected.size();
+//   for (size_t i = 0; i < py_selected.size(); ++i) {
+//     selected[i] = py_selected[i];
+//   }
+//
+//   return nullptr;
+// };
+
 void addObjectMethods(py::module& m, ExecutionProviderRegistrationFn ep_registration_fn) {
   py::enum_<GraphOptimizationLevel>(m, "GraphOptimizationLevel")
       .value("ORT_DISABLE_ALL", GraphOptimizationLevel::ORT_DISABLE_ALL)
@@ -2006,7 +2040,7 @@ must refer to the same execution provider.)pbdoc")
 #if !defined(ORT_MINIMAL_BUILD)
             sess_options->value.ep_selection_policy.enable = true;
             sess_options->value.ep_selection_policy.policy = policy;
-            sess_options->value.ep_selection_policy.delegate = nullptr;  // TODO
+            sess_options->value.ep_selection_policy.delegate = nullptr;  // TODO: need a void* param in delegate.
 #else
             ORT_UNUSED_PARAMETER(sess_options);
             ORT_UNUSED_PARAMETER(policy);
