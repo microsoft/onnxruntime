@@ -438,18 +438,20 @@ typedef enum OrtExecutionProviderDevicePolicy {
  * \param max_ep_devices The maximum number of devices that can be selected in the pre-allocated array.
                          Currently the maximum is 8.
  * \param num_ep_devices The number of selected devices.
+ * \param state Opaque pointer. Required to use the delegate from other languages like C# and python.
  *
  * \return OrtStatus* Selection status. Return nullptr on success.
  *                    Use CreateStatus to provide error info. Use ORT_FAIL as the error code.
  *                    ORT will release the OrtStatus* if not null.
  */
-typedef OrtStatus* (*EpSelectionDelegate)(_In_ const OrtEpDevice** ep_devices,
-                                          _In_ size_t num_devices,
-                                          _In_ const OrtKeyValuePairs* model_metadata,
-                                          _In_opt_ const OrtKeyValuePairs* runtime_metadata,
-                                          _Inout_ const OrtEpDevice** selected,
-                                          _In_ size_t max_selected,
-                                          _Out_ size_t* num_selected);
+typedef OrtStatus*(ORT_API_CALL* EpSelectionDelegate)(_In_ const OrtEpDevice** ep_devices,
+                                                      _In_ size_t num_devices,
+                                                      _In_ const OrtKeyValuePairs* model_metadata,
+                                                      _In_opt_ const OrtKeyValuePairs* runtime_metadata,
+                                                      _Inout_ const OrtEpDevice** selected,
+                                                      _In_ size_t max_selected,
+                                                      _Out_ size_t* num_selected,
+                                                      _In_ void* state);
 
 /** \brief Algorithm to use for cuDNN Convolution Op
  */
@@ -5127,18 +5129,30 @@ struct OrtApi {
 
   /** \brief Set the execution provider selection policy for the session.
    *
-   * Allows users to specify a device selection policy for automatic execution provider (EP) selection,
-   * or provide a delegate callback for custom selection logic.
+   * Allows users to specify a device selection policy for automatic execution provider (EP) selection.
+   * If custom selection is required please use SessionOptionsSetEpSelectionPolicyDelegate instead.
    *
    * \param[in] session_options The OrtSessionOptions instance.
    * \param[in] policy The device selection policy to use (see OrtExecutionProviderDevicePolicy).
-   * \param[in] delegate Optional delegate callback for custom selection. Pass nullptr to use the built-in policy.
    *
    * \since Version 1.22
    */
   ORT_API2_STATUS(SessionOptionsSetEpSelectionPolicy, _In_ OrtSessionOptions* session_options,
-                  _In_ OrtExecutionProviderDevicePolicy policy,
-                  _In_opt_ EpSelectionDelegate* delegate);
+                  _In_ OrtExecutionProviderDevicePolicy policy);
+
+  /** \brief Set the execution provider selection policy delegate for the session.
+   *
+   * Allows users to provide a custom device selection policy for automatic execution provider (EP) selection.
+   *
+   * \param[in] session_options The OrtSessionOptions instance.
+   * \param[in] delegate Delegate callback for custom selection.
+   * \param[in] delegate_state Optional state that will be passed to the delegate callback. nullptr if not required.
+   *
+   * \since Version 1.22
+   */
+  ORT_API2_STATUS(SessionOptionsSetEpSelectionPolicyDelegate, _In_ OrtSessionOptions* session_options,
+                  _In_ EpSelectionDelegate delegate,
+                  _In_opt_ void* delegate_state);
 
   /** \brief Get the hardware device type.
    *

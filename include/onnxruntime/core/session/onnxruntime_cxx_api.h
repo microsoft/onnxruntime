@@ -1103,8 +1103,10 @@ struct SessionOptionsImpl : ConstSessionOptionsImpl<T> {
                                                  const std::unordered_map<std::string, std::string>& ep_options);
 
   /// Wraps OrtApi::SessionOptionsSetEpSelectionPolicy
-  SessionOptionsImpl& SetEpSelectionPolicy(OrtExecutionProviderDevicePolicy policy,
-                                           EpSelectionDelegate* delegate = nullptr);
+  SessionOptionsImpl& SetEpSelectionPolicy(OrtExecutionProviderDevicePolicy policy);
+
+  /// Wraps OrtApi::SessionOptionsSetEpSelectionPolicyDelegate
+  SessionOptionsImpl& SetEpSelectionPolicy(EpSelectionDelegate delegate, void* state = nullptr);
 
   SessionOptionsImpl& SetCustomCreateThreadFn(OrtCustomCreateThreadFn ort_custom_create_thread_fn);  ///< Wraps OrtApi::SessionOptionsSetCustomCreateThreadFn
   SessionOptionsImpl& SetCustomThreadCreationOptions(void* ort_custom_thread_creation_options);      ///< Wraps OrtApi::SessionOptionsSetCustomThreadCreationOptions

@@ -94,8 +94,8 @@ std::vector<const OrtEpDevice*> OrderDevices(const std::vector<const OrtEpDevice
     bool bIsDefaultCpuEp = IsDefaultCpuEp(b);
     if (!aIsDefaultCpuEp && !bIsDefaultCpuEp) {
       // neither are default CPU EP. both do/don't match vendor.
-      // TODO: implement tie-breaker for this scenario. arbitrarily prefer the first for now
-      return a < b;
+      // TODO: implement tie-breaker for this scenario. arbitrarily sort by ep name
+      return a->ep_name < b->ep_name;
     }
 
     // one is the default CPU EP
@@ -104,31 +104,57 @@ std::vector<const OrtEpDevice*> OrderDevices(const std::vector<const OrtEpDevice
 
   return sorted_devices;
 }
+
+OrtKeyValuePairs GetModelMetadata(const InferenceSession& session) {
+  OrtKeyValuePairs metadata;
+  auto status_and_metadata = session.GetModelMetadata();
+
+  if (!status_and_metadata.first.IsOK()) {
+    return metadata;
+  }
+
+  // use field names from onnx.proto
+  const auto& model_metadata = *status_and_metadata.second;
+  metadata.Add("producer_name", model_metadata.producer_name);
+  metadata.Add("producer_version", model_metadata.producer_version);
+  metadata.Add("domain", model_metadata.domain);
+  metadata.Add("model_version", std::to_string(model_metadata.version));
+  metadata.Add("doc_string", model_metadata.description);
+  metadata.Add("graph_name", model_metadata.graph_name);                // name from main GraphProto
+  metadata.Add("graph_description", model_metadata.graph_description);  // descriptions from main GraphProto
+  for (const auto& entry : model_metadata.custom_metadata_map) {
+    metadata.Add(entry.first, entry.second);
+  }
+
+  return metadata;
+}
 }  // namespace
 
 // Select execution providers based on the device policy and available devices and add to session
 Status ProviderPolicyContext::SelectEpsForSession(const Environment& env, const OrtSessionOptions& options,
                                                   InferenceSession& sess) {
-  ORT_ENFORCE(options.value.ep_selection_policy.delegate == nullptr,
-              "EP selection delegate support is not implemented yet.");
-
   // Get the list of devices from the environment and order them.
   // Ordered by preference within each type. NPU -> GPU -> NPU
   // TODO: Should environment.cc do the ordering?
-  const auto& execution_devices = OrderDevices(env.GetOrtEpDevices());
+  std::vector<const OrtEpDevice*> execution_devices = OrderDevices(env.GetOrtEpDevices());
 
   // The list of devices selected by policies
   std::vector<const OrtEpDevice*> devices_selected;
 
   // Run the delegate if it was passed in lieu of any other policy
   if (options.value.ep_selection_policy.delegate) {
-    auto policy_fn = options.value.ep_selection_policy.delegate;
+    auto model_metadata = GetModelMetadata(sess);
+    OrtKeyValuePairs runtime_metadata;  // TODO: where should this come from?
+
     std::vector<const OrtEpDevice*> delegate_devices(execution_devices.begin(), execution_devices.end());
     std::array<const OrtEpDevice*, 8> selected_devices{nullptr};
-
     size_t num_selected = 0;
-    auto* status = (*policy_fn)(delegate_devices.data(), delegate_devices.size(),
-                                nullptr, nullptr, selected_devices.data(), selected_devices.size(), &num_selected);
+
+    EpSelectionDelegate delegate = options.value.ep_selection_policy.delegate;
+    auto* status = delegate(delegate_devices.data(), delegate_devices.size(),
+                            &model_metadata, &runtime_metadata,
+                            selected_devices.data(), selected_devices.size(), &num_selected,
+                            options.value.ep_selection_policy.state);
 
     // return or fall-through for both these cases
     // going with explicit failure for now so it's obvious to user what is happening
@@ -141,6 +167,12 @@ Status ProviderPolicyContext::SelectEpsForSession(const Environment& env, const 
 
     if (num_selected == 0) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "EP selection delegate did not select anything.");
+    }
+
+    // Copy the selected devices to the output vector
+    devices_selected.reserve(num_selected);
+    for (size_t i = 0; i < num_selected; ++i) {
+      devices_selected.push_back(selected_devices[i]);
     }
   } else {
     // Create the selector for the chosen policy
