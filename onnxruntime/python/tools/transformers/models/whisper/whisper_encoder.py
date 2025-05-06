@@ -12,12 +12,13 @@ from pathlib import Path
 import numpy as np
 import onnx
 import torch
-from common_onnx_export import export_to_onnx
 from float16 import convert_float_to_float16
 from onnx import ModelProto
 from onnx_model import OnnxModel
 from transformers import WhisperConfig
 from whisper_inputs import get_model_dynamic_axes, get_sample_encoder_inputs
+
+from models.torch_export_patches import bypass_export_some_errors, string_type, torch_deepcopy
 
 from onnxruntime import InferenceSession
 
@@ -50,6 +51,15 @@ class WhisperEncoder(torch.nn.Module):
     def dynamic_axes(self, input_names, output_names):
         dynamic_axes = get_model_dynamic_axes(self.config, input_names, output_names)
         return dynamic_axes
+    
+    def dynamic_shapes(self, input_names, dynamic_axes):
+        if len(input_names) == 1:
+            dynamic_shapes = ({0: "batch_size"},)
+        elif len(input_names) == 2:
+            dynamic_shapes = ({0: "batch_size"}, {0: "batch_size"})
+        else:
+            raise NotImplementedError(f"inputs={input_names}, dynamic_axes={dynamic_axes}")
+        return dynamic_shapes
 
     def fix_layernorm_weights(self, model: ModelProto, use_fp16_inputs: bool):
         if self.model_impl == "openai" and use_fp16_inputs:
@@ -80,7 +90,7 @@ class WhisperEncoder(torch.nn.Module):
             verbose (bool, optional): print verbose information. Defaults to True.
             use_external_data_format (bool, optional): use external data format or not. Defaults to False.
             use_fp16_inputs (bool, optional): use float16 inputs for the audio_features. Defaults to False.
-            use_dynamo_export (bool, optional): use dynamo exporter
+            use_dynamo_export (bool, optional): use dynamo exporter, defaults to False.
         """
         # Shape of encoder's tensors:
         # Inputs:
@@ -105,19 +115,33 @@ class WhisperEncoder(torch.nn.Module):
             Path(temp_onnx_model_path).parent.mkdir(parents=True, exist_ok=True)
             out_path = temp_onnx_model_path if use_external_data_format else onnx_model_path
 
-            export_to_onnx(
-                model=self,
-                inputs=(inputs["audio_features"]),
-                out_path=out_path,
-                export_params=True,
-                input_names=input_names,
-                output_names=output_names,
-                dynamic_axes=dynamic_axes,
-                opset_version=18 if use_dynamo_export else 17,
-                do_constant_folding=True,
-                verbose=verbose,
-                use_dynamo_export=use_dynamo_export,
-            )
+            if not use_dynamo_export:
+                torch.onnx.export(
+                    self,
+                    args=(inputs["audio_features"]),
+                    f=out_path,
+                    export_params=True,
+                    input_names=input_names,
+                    output_names=output_names,
+                    dynamic_axes=dynamic_axes,
+                    opset_version=17,
+                    do_constant_folding=True,
+                    verbose=verbose,
+                )
+            else:
+                dynamic_shapes = self.dynamic_shapes(input_names, dynamic_axes)
+                with bypass_export_some_errors(patch_transformers=True):
+                    torch.onnx.export(
+                        self,
+                        (inputs["audio_features"],),
+                        out_path,
+                        input_names=input_names,
+                        output_names=output_names,
+                        dynamic_shapes=dynamic_shapes,
+                        dynamo=True,
+                        verbose=verbose,
+                        optimize=True,
+                    )
 
             model = onnx.load_model(out_path, load_external_data=use_external_data_format)
             model = self.fix_layernorm_weights(model, use_fp16_inputs)

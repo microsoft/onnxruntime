@@ -365,7 +365,6 @@ def export_onnx_models(
             print("Skipping jum_times, ninja not installed")
             del models["jump_times"]
 
-    print(f"=========> models to convert {list(models)}")
     output_paths = []
     for name, model in models.items():
         print(f"========> Handling {name} model......")
@@ -500,7 +499,7 @@ def main(argv=None):
         args.quantize_per_channel,
         args.quantize_reduce_range,
         args.provider,
-        use_dynamo_export=args.use_dynamo_export,
+        args.use_dynamo_export,
     )
 
     max_diff = 0

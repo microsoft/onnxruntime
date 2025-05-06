@@ -13,10 +13,10 @@ from pathlib import Path
 import numpy as np
 import onnx
 import torch
-from common_onnx_export import export_to_onnx
+
 from float16 import convert_float_to_float16
 from google.protobuf.internal.containers import RepeatedCompositeFieldContainer
-from models.torch_export_patches import string_type
+from models.torch_export_patches import bypass_export_some_errors, string_type, torch_deepcopy
 from onnx import ModelProto, ValueInfoProto
 from onnx_model import OnnxModel
 from past_helper import PastKeyValuesHelper
@@ -229,6 +229,26 @@ class WhisperDecoder(torch.nn.Module):
             # Set dynamic axes for `input_ids` when using beam search op to {0: "batch_size"} only
             del dynamic_axes["input_ids"][1]
         return dynamic_axes
+    
+    def dynamic_shapes(self, inputs):
+        if len(inputs) == 3:
+            n_layers = len(inputs[-1])
+            dynamic_shapes = (
+                {0: "batch_size", 1: "sequence_length"},
+                {0: "batch_size"},
+                [
+                    (
+                        {0: "batch_size", 2: "past_sequence_length"},
+                        {0: "batch_size", 2: "past_sequence_length"},
+                        {0: "batch_size", 2: "past_sequence_length"},
+                        {0: "batch_size", 2: "past_sequence_length"},
+                    )
+                ]
+                * n_layers,
+            )
+        else:
+            dynamic_shapes = ({0: "batch_size", 1: "sequence_length"}, {0: "batch_size"})
+        return dynamic_shapes
 
     def inputs(self, use_fp16_inputs: bool, use_int32_inputs: bool, return_dict: bool = False):
         inputs = get_sample_decoder_inputs(
@@ -353,7 +373,7 @@ class WhisperDecoder(torch.nn.Module):
             use_int32_inputs (bool, optional): use int32 inputs for the decoder_input_ids. Defaults to True.
             use_encoder_hidden_states (bool, optional): use encoder_hidden_states as model input for decoder-init/decoder-without-past models. Defaults to False.
             use_kv_cache_inputs (bool, optional): use KV caches as model inputs for decoder-with-past models. Defaults to True.
-            use_dynamo_export (bool, optional): use dynamo exporter
+            use_dynamo_export (bool, optional): use dynamo exporter. Defaults to False.
         """
         # Shape of decoder's tensors:
         # Required Inputs:
@@ -388,19 +408,34 @@ class WhisperDecoder(torch.nn.Module):
             Path(temp_onnx_model_path).parent.mkdir(parents=True, exist_ok=True)
             out_path = temp_onnx_model_path if use_external_data_format else onnx_model_path
 
-            export_to_onnx(
-                model=self,
-                inputs=inputs,
-                out_path=out_path,
-                export_params=True,
-                input_names=input_names,
-                output_names=output_names,
-                dynamic_axes=dynamic_axes,
-                opset_version=18 if use_dynamo_export else 17,
-                do_constant_folding=True,
-                verbose=verbose,
-                use_dynamo_export=use_dynamo_export,
-            )
+            if not use_dynamo_export:
+                torch.onnx.export(
+                    self,
+                    args=inputs,
+                    f=out_path,
+                    export_params=True,
+                    input_names=input_names,
+                    output_names=output_names,
+                    dynamic_axes=dynamic_axes,
+                    opset_version=17,
+                    do_constant_folding=True,
+                    verbose=verbose,
+                )
+            else:
+                dynamic_shapes = self.dynamic_shapes(inputs)
+                with bypass_export_some_errors(patch_transformers=True):
+                    torch.onnx.export(
+                        self,
+                        inputs,
+                        out_path,
+                        input_names=input_names,
+                        output_names=output_names,
+                        dynamic_shapes=dynamic_shapes,
+                        dynamo=True,
+                        verbose=verbose,
+                        optimize=True,
+                    )
+
 
             model = onnx.load_model(out_path, load_external_data=use_external_data_format)
             model = self.fix_inputs_and_outputs(model)

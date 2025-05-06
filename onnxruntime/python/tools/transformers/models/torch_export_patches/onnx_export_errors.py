@@ -57,7 +57,7 @@ def patch_module_or_classes(mod, verbose: int = 0) -> dict[type, dict[type, Call
     return res
 
 
-def unpatch_module(mod, info: dict[type, dict[type, Callable]], verbose: int = 0):
+def unpatch_module_or_classes(mod, info: dict[type, dict[type, Callable]], verbose: int = 0):
     """Reverts modification made by :func:`patch_module`."""
     to_patch = []
     for k in dir(mod):
