@@ -179,7 +179,7 @@ struct TreeNodeElement {
         << ":[" << value_or_unique_weight << "]"
         << "->" << truenode_or_weight.ptr
         << ":" << truenode_or_weight.weight_data.weight
-        << ":" << truenode_or_weight.weight_data.weight ;
+        << ":" << truenode_or_weight.weight_data.weight;
     return msg.str();
   }
 #endif
