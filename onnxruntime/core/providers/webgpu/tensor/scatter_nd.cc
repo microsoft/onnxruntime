@@ -86,8 +86,8 @@ Status ScatterNDProgram::GenerateShaderCode(ShaderHelper& shader) const {
     } else {
       ss << "    let element_count_dim = select(" << GetElementAt("uniforms.output_stride", "i - indices_start", output_rank - 1) << ", 1, i - indices_start == " << (output_rank - 1) << ");\n";
     }
-    ss << "    let dim_value = " << GetElementAt("uniforms.output_shape", "i - indices_start + uniforms.last_index_dimension", output_rank) << ";\n";
-    ss << "    if (index >= 0) {\n"
+    ss << "    let dim_value = " << GetElementAt("uniforms.output_shape", "i - indices_start", output_rank) << ";\n"
+       << "    if (index >= 0) {\n"
        << "      if (index >= i32(dim_value)) {\n"
        << "        index = i32(dim_value - 1);\n"
        << "      }\n"
@@ -151,7 +151,7 @@ Status ScatterND::ComputeInternal(ComputeContext& context) const {
   auto num_updates_elements = static_cast<uint32_t>(input_shape.SizeFromDimension(last_index_dimension));
   // TODO: support bool with components 4.
   const size_t components = 1;
-  auto output_size = static_cast<uint32_t>((indices_shape.Size() + components - 1) / components);
+  auto output_size = static_cast<uint32_t>((indices_shape.SizeToDimension(indices_rank - 1) + components - 1) / components);
   auto* output = context.Output(0, input_shape);
   MLDataType data_type = input->DataType();
   const void* source = input->DataRaw();

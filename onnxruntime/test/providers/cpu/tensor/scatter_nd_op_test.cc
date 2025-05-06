@@ -163,21 +163,21 @@ TEST(ScatterNDOpTest, ScatterND_batched_3tensor_int64) {
   test1.AddInput<int64_t>("indices", {2, 2, 2}, {0LL, 1LL, 1LL, 0LL, 0LL, 0LL, 1LL, 1LL});
   test1.AddInput<uint32_t>("updates", {2, 2, 2}, {2, 3, 4, 5, 0, 1, 6, 7});
   test1.AddOutput<uint32_t>("output", {2, 2, 2}, {0, 1, 2, 3, 4, 5, 6, 7});
-  test1.Run(OpTester::ExpectResult::kExpectSuccess, "", {kWebGpuExecutionProvider});
+  test1.Run();
 
   OpTester test2("ScatterND", 11);
   test2.AddInput<uint32_t>("data", {2, 2, 2}, {0, 0, 2, 0, 4, 0, 0, 7});
   test2.AddInput<int64_t>("indices", {2, 2, 3}, {0, 0, -1, -1, 0, -1, 0, 1, -1, 1, -1, 0});
   test2.AddInput<uint32_t>("updates", {2, 2}, {1, 5, 3, 6});
   test2.AddOutput<uint32_t>("output", {2, 2, 2}, {0, 1, 2, 3, 4, 5, 6, 7});
-  test2.Run(OpTester::ExpectResult::kExpectSuccess, "", {kWebGpuExecutionProvider});
+  test2.Run();
 
   OpTester test3("ScatterND", 11);
   test3.AddInput<int64_t>("data", {2, 2, 2}, {1LL, 0LL, 0LL, 0LL, 0LL, 0LL, 0LL, 0LL});
   test3.AddInput<int64_t>("indices", {2, 1, 1}, {1, 0});
   test3.AddInput<int64_t>("updates", {2, 1, 2, 2}, {4LL, 5LL, 6LL, 7LL, 0LL, 1LL, 2LL, 3LL});
   test3.AddOutput<int64_t>("output", {2, 2, 2}, {0LL, 1LL, 2LL, 3LL, 4LL, 5LL, 6LL, 7LL});
-  test3.Run(OpTester::ExpectResult::kExpectSuccess, "", {kWebGpuExecutionProvider});
+  test3.Run();
 }
 
 TEST(ScatterNDOpTest, ScatterND_18_add) {
