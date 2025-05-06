@@ -139,8 +139,8 @@ Status Transpose::DoTranspose(onnxruntime::webgpu::ComputeContext& context,
   }
   program
       .CacheHint(absl::StrJoin(permutations, "-"))
-      .AddInputs({{&input, ProgramTensorMetadataDependency::TypeAndRank, new_input_shape, 1}})
-      .AddOutputs({{&output, ProgramTensorMetadataDependency::None, new_output_shape, 1}})
+      .AddInput(&input, ProgramTensorMetadataDependency::TypeAndRank, 1, new_input_shape)
+      .AddOutput(&output, ProgramTensorMetadataDependency::None, 1, new_output_shape)
       .SetDispatchGroupSize(static_cast<uint32_t>((new_output_shape[1] + TILE_SIZE - 1) / TILE_SIZE),
                             static_cast<uint32_t>(((new_output_shape[0] + TILE_SIZE - 1) / TILE_SIZE)))
       .AddUniformVariables({

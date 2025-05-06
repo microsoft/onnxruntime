@@ -74,10 +74,10 @@ Status ComputeChannelScaleAndShift(ComputeContext& context, const Tensor* input,
   *output = context.CreateGPUTensor(input->DataType(), output_shape);
   ComputeChannelScaleShiftProgram program = ComputeChannelScaleShiftProgram(components, epsilon, workgroup_size);
   program.CacheHint(components, units_of_work)
-      .AddInputs({{input, ProgramTensorMetadataDependency::TypeAndRank, reduced_input_shape, components},
-                  {scale, ProgramTensorMetadataDependency::TypeAndRank},
-                  {bias, ProgramTensorMetadataDependency::TypeAndRank}})
-      .AddOutputs({{output, ProgramTensorMetadataDependency::TypeAndRank, reduced_output_shape, 2}})
+      .AddInput(input, ProgramTensorMetadataDependency::TypeAndRank, components, reduced_input_shape)
+      .AddInput(scale, ProgramTensorMetadataDependency::TypeAndRank)
+      .AddInput(bias, ProgramTensorMetadataDependency::TypeAndRank)
+      .AddOutput(output, ProgramTensorMetadataDependency::TypeAndRank, 2, reduced_output_shape)
       .SetDispatchGroupSize(static_cast<uint32_t>(units_of_work))
       .SetWorkgroupSize(workgroup_size);
   return context.RunProgram(program);
@@ -157,8 +157,8 @@ Status InstanceNorm<true>::ComputeInternal(ComputeContext& context) const {
   TransposeProgram transpose_program{permute, false};
   transpose_program
       .CacheHint(absl::StrJoin(permute, "-"))
-      .AddInput({input, ProgramTensorMetadataDependency::TypeAndRank, input_shape, 1})
-      .AddOutput({&input_transpose, ProgramTensorMetadataDependency::TypeAndRank})
+      .AddInput(input, ProgramTensorMetadataDependency::TypeAndRank)
+      .AddOutput(&input_transpose, ProgramTensorMetadataDependency::TypeAndRank)
       .AddUniformVariable({input_transpose_size})
       .SetDispatchGroupSize((input_transpose_size + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE);
   ORT_RETURN_IF_ERROR(context.RunProgram(transpose_program));
@@ -173,9 +173,9 @@ Status InstanceNorm<true>::ComputeInternal(ComputeContext& context) const {
   TensorShapeVector channel_scale_shift_shape_vector = {batch_size, channels, 1};
   TensorShape reduced_channel_scale_shift_shape(channel_scale_shift_shape_vector);
   program.CacheHint(components)
-      .AddInputs({{input, ProgramTensorMetadataDependency::TypeAndRank, components},
-                  {&channel_scale_shift, ProgramTensorMetadataDependency::TypeAndRank, reduced_channel_scale_shift_shape, 2}})
-      .AddOutput({output, ProgramTensorMetadataDependency::TypeAndRank, components})
+      .AddInput(input, ProgramTensorMetadataDependency::TypeAndRank, components)
+      .AddInput(&channel_scale_shift, ProgramTensorMetadataDependency::TypeAndRank, 2, reduced_channel_scale_shift_shape)
+      .AddOutput(output, ProgramTensorMetadataDependency::TypeAndRank, components)
       .SetDispatchGroupSize((output_size + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE)
       .AddUniformVariables({static_cast<uint32_t>(output_size), static_cast<uint32_t>(components), static_cast<uint32_t>(channels / components), static_cast<uint32_t>(spatial_size)});
   return context.RunProgram(program);
@@ -203,9 +203,9 @@ Status InstanceNorm<false>::ComputeInternal(ComputeContext& context) const {
   auto output_size = (modified_output_shape.Size() + components - 1) / components;
   InstanceNormProgram program;
   program
-      .AddInputs({{input, ProgramTensorMetadataDependency::TypeAndRank, modified_input_shape, components},
-                  {&channel_scale_shift, ProgramTensorMetadataDependency::TypeAndRank, channel_scale_shift.Shape(), 2}})
-      .AddOutput({output, ProgramTensorMetadataDependency::TypeAndRank, modified_output_shape, components})
+      .AddInput(input, ProgramTensorMetadataDependency::TypeAndRank, components, modified_input_shape)
+      .AddInput(&channel_scale_shift, ProgramTensorMetadataDependency::TypeAndRank, 2)
+      .AddOutput(output, ProgramTensorMetadataDependency::TypeAndRank, components, modified_output_shape)
       .SetDispatchGroupSize((output_size + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE)
       .AddUniformVariables({static_cast<uint32_t>(output_size)});
   return context.RunProgram(program);

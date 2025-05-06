@@ -172,14 +172,17 @@ ConvTranspose2DProgram CreateConvTranspose2DProgram(const std::vector<const Tens
   std::vector<uint32_t> effective_kernel_dims = {kernel_dims[0] + ((dilations[0] <= 1) ? 0 : ((kernel_dims[0] - 1) * (dilations[0] - 1))), kernel_dims[1] + ((dilations[1] <= 1) ? 0 : ((kernel_dims[1] - 1) * (dilations[1] - 1)))};
   std::vector<uint32_t> local_pads = {effective_kernel_dims[0] - 1 - pads[0], effective_kernel_dims[1] - 1 - pads[1]};
   ConvTranspose2DProgram program(is_channels_last, has_bias, components, a_components, b_components, uint32_t(input_channels_remainder), pack_input_as4);
-  program.AddInputs({{input, ProgramTensorMetadataDependency::TypeAndRank, reduced_input_shape, a_components}, {weight, ProgramTensorMetadataDependency::TypeAndRank, reduced_weight_shape, b_components}});
+  program.AddInput(input, ProgramTensorMetadataDependency::TypeAndRank, a_components, reduced_input_shape);
+  program.AddInput(weight, ProgramTensorMetadataDependency::TypeAndRank, b_components, reduced_weight_shape);
+
   if (has_bias) {
     const auto* bias = inputs[2];
     const auto& bias_shape = modified_input_output_shapes[2];
     TensorShape reduced_bias_shape = ReduceShapeByComponents(bias_shape, components);
-    program.AddInput({bias, ProgramTensorMetadataDependency::TypeAndRank, reduced_bias_shape, components});
+    program.AddInput(bias, ProgramTensorMetadataDependency::TypeAndRank, components, reduced_bias_shape);
   }
-  program.AddOutput({output, ProgramTensorMetadataDependency::Rank, reduced_output_shape, components})
+
+  program.AddOutput(output, ProgramTensorMetadataDependency::Rank, components, reduced_output_shape)
       .CacheHint(input_channels_remainder, pack_input_as4, components, b_components, a_components, is_channels_last ? 1 : 0, has_bias ? 1 : 0)
       .AddUniformVariables({{static_cast<uint32_t>(output_size)}, {strides}, {kernel_dims}, {dilations}, {effective_kernel_dims}, {local_pads}, {static_cast<uint32_t>(input_channels_per_group_int)}, {static_cast<uint32_t>(input_channels_per_group)}, {static_cast<uint32_t>(output_channels_per_group)}})
       .SetDispatchGroupSize((output_size + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE);

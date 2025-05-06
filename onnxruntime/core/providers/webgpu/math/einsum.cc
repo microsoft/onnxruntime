@@ -445,13 +445,13 @@ Status Einsum::ComputeInternal(ComputeContext& context) const {
   EinsumProgram program{input_tensors.size(), equation};
 
   for (size_t i = 0; i < input_tensors.size(); ++i) {
-    program.AddInput({input_tensors[i], ProgramTensorMetadataDependency::TypeAndRank});
+    program.AddInput(input_tensors[i], ProgramTensorMetadataDependency::TypeAndRank);
   }
 
   // Add output and base uniforms.
   program.CacheHint(equation_)
       .SetDispatchGroupSize(static_cast<uint32_t>((output_size + 63) / 64))
-      .AddOutput({Y, ProgramTensorMetadataDependency::TypeAndRank})
+      .AddOutput(Y, ProgramTensorMetadataDependency::TypeAndRank)
       .AddUniformVariables({static_cast<uint32_t>(output_size)});
 
   return context.RunProgram(program);

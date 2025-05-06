@@ -50,9 +50,9 @@ Status Gather::ComputeInternal(ComputeContext& context) const {
   uint32_t axis = static_cast<uint32_t>(p.axis);
   GatherProgram program{axis};
   program
-      .AddInputs({{p.input_tensor, ProgramTensorMetadataDependency::TypeAndRank},
-                  {p.indices_tensor, ProgramTensorMetadataDependency::TypeAndRank}})
-      .AddOutput({p.output_tensor, ProgramTensorMetadataDependency::Rank})
+      .AddInput(p.input_tensor, ProgramTensorMetadataDependency::TypeAndRank)
+      .AddInput(p.indices_tensor, ProgramTensorMetadataDependency::TypeAndRank)
+      .AddOutput(p.output_tensor, ProgramTensorMetadataDependency::Rank)
       .SetDispatchGroupSize((data_size + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE)
       .CacheHint(std::to_string(axis))
       .AddUniformVariables({{data_size}});

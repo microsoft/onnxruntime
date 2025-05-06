@@ -30,7 +30,7 @@ Status Range<T>::ComputeInternal(ComputeContext& context) const {
 #pragma GCC diagnostic ignored "-Wstrict-aliasing"
 #endif
 
-  program.AddOutput({output_tensor, ProgramTensorMetadataDependency::Type})
+  program.AddOutput(output_tensor, ProgramTensorMetadataDependency::Type)
       .SetDispatchGroupSize((output_size + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE)
       .AddUniformVariables({
           output_size,

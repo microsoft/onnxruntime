@@ -84,8 +84,8 @@ Status CumSum::ComputeInternal(ComputeContext& context) const {
 
   CumSumProgram program{};
   program
-      .AddInput({input_tensor})
-      .AddOutput({output_tensor, ProgramTensorMetadataDependency::TypeAndRank})
+      .AddInput(input_tensor)
+      .AddOutput(output_tensor, ProgramTensorMetadataDependency::TypeAndRank)
       .SetDispatchGroupSize((output_size + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE)
       .AddUniformVariables({{static_cast<uint32_t>(output_size)},
                             {static_cast<uint32_t>(axis)},

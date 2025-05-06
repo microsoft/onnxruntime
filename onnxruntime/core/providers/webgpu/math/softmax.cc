@@ -194,12 +194,12 @@ Status Softmax::ComputeInternal(ComputeContext& context) const {
   SoftmaxProgram program{workgroup_size, is_fp32};
   if (is_transpose_required) {
     program
-        .AddInputs({{&transposed_input_tensor, ProgramTensorMetadataDependency::TypeAndRank, static_cast<int>(components)}})
-        .AddOutputs({{&intermediate_output, ProgramTensorMetadataDependency::TypeAndRank, static_cast<int>(components)}});
+        .AddInput(&transposed_input_tensor, ProgramTensorMetadataDependency::TypeAndRank, static_cast<int>(components))
+        .AddOutput(&intermediate_output, ProgramTensorMetadataDependency::TypeAndRank, static_cast<int>(components));
   } else {
     program
-        .AddInputs({{input_tensor, ProgramTensorMetadataDependency::TypeAndRank, static_cast<int>(components)}})
-        .AddOutputs({{output_tensor, ProgramTensorMetadataDependency::TypeAndRank, static_cast<int>(components)}});
+        .AddInput(input_tensor, ProgramTensorMetadataDependency::TypeAndRank, static_cast<int>(components))
+        .AddOutput(output_tensor, ProgramTensorMetadataDependency::TypeAndRank, static_cast<int>(components));
   }
 
   program

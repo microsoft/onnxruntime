@@ -214,8 +214,8 @@ Status ResizeNearestImpl(ComputeContext& context,
   uint32_t output_size = onnxruntime::narrow<uint32_t>(output_shape.Size());
 
   ResizeNearestProgram program{coordinate_transform_mode, nearest_mode, extrapolation_enabled, rank};
-  program.AddInput({input_tensor, ProgramTensorMetadataDependency::TypeAndRank})
-      .AddOutput({output_tensor, ProgramTensorMetadataDependency::Rank})
+  program.AddInput(input_tensor, ProgramTensorMetadataDependency::TypeAndRank)
+      .AddOutput(output_tensor, ProgramTensorMetadataDependency::Rank)
       .SetDispatchGroupSize((output_size + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE)
       .CacheHint(std::to_string(static_cast<int>(extrapolation_enabled)),
                  std::to_string(static_cast<int>(coordinate_transform_mode)),
@@ -302,8 +302,8 @@ Status ResizeBilinearImpl(ComputeContext& context,
   uint32_t output_size = onnxruntime::narrow<uint32_t>(output_shape.Size());
 
   ResizeBilinearProgram program{coordinate_transform_mode, extrapolation_enabled, rank};
-  program.AddInput({input_tensor, ProgramTensorMetadataDependency::TypeAndRank})
-      .AddOutput({output_tensor, ProgramTensorMetadataDependency::Rank})
+  program.AddInput(input_tensor, ProgramTensorMetadataDependency::TypeAndRank)
+      .AddOutput(output_tensor, ProgramTensorMetadataDependency::Rank)
       .SetDispatchGroupSize((output_size + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE)
       .CacheHint(std::to_string(static_cast<int>(extrapolation_enabled)),
                  std::to_string(static_cast<int>(coordinate_transform_mode)))
@@ -416,8 +416,8 @@ Status ResizeTrilinearImpl(ComputeContext& context,
   uint32_t output_size = onnxruntime::narrow<uint32_t>(output_shape.Size());
 
   ResizeTrilinearProgram program{coordinate_transform_mode, extrapolation_enabled, rank};
-  program.AddInput({input_tensor, ProgramTensorMetadataDependency::TypeAndRank})
-      .AddOutput({output_tensor, ProgramTensorMetadataDependency::Rank})
+  program.AddInput(input_tensor, ProgramTensorMetadataDependency::TypeAndRank)
+      .AddOutput(output_tensor, ProgramTensorMetadataDependency::Rank)
       .SetDispatchGroupSize((output_size + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE)
       .CacheHint(std::to_string(static_cast<int>(extrapolation_enabled)),
                  std::to_string(static_cast<int>(coordinate_transform_mode)))
@@ -537,8 +537,8 @@ Status ResizeBiCubicImpl(ComputeContext& context,
   uint32_t output_size = onnxruntime::narrow<uint32_t>(output_shape.Size());
 
   ResizeBiCubicProgram program{coordinate_transform_mode, extrapolation_enabled, exclude_outside, rank};
-  program.AddInput({input_tensor, ProgramTensorMetadataDependency::TypeAndRank})
-      .AddOutput({output_tensor, ProgramTensorMetadataDependency::Rank})
+  program.AddInput(input_tensor, ProgramTensorMetadataDependency::TypeAndRank)
+      .AddOutput(output_tensor, ProgramTensorMetadataDependency::Rank)
       .SetDispatchGroupSize((output_size + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE)
       .CacheHint(std::to_string(static_cast<int>(extrapolation_enabled)),
                  std::to_string(static_cast<int>(exclude_outside)),

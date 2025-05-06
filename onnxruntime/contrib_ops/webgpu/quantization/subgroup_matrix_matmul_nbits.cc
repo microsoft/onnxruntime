@@ -221,13 +221,13 @@ Status ApplySubgroupMatrixMatMulNBits(const Tensor* a, const Tensor* b, const Te
   mul_program.SetDispatchGroupSize(
       (N + kTileSizeB - 1) / kTileSizeB,
       (M + kTileSizeA - 1) / kTileSizeA, 1);
-  mul_program.AddInputs({{a, ProgramTensorMetadataDependency::TypeAndRank, 1},
-                         {b, ProgramTensorMetadataDependency::TypeAndRank, static_cast<int>(nbits == 4 ? kU32Components : 2 * kU32Components)},
-                         {scales, ProgramTensorMetadataDependency::TypeAndRank, 1}})
+  mul_program.AddInput(a, ProgramTensorMetadataDependency::TypeAndRank, 1)
+      .AddInput(b, ProgramTensorMetadataDependency::TypeAndRank, static_cast<int>(nbits == 4 ? kU32Components : 2 * kU32Components))
+      .AddInput(scales, ProgramTensorMetadataDependency::TypeAndRank, 1)
       .AddUniformVariables({{static_cast<uint32_t>(M)},
                             {static_cast<uint32_t>(N)},
                             {static_cast<uint32_t>(K)}})
-      .AddOutput({y, ProgramTensorMetadataDependency::TypeAndRank, y_shape, 1})
+      .AddOutput(y, ProgramTensorMetadataDependency::TypeAndRank, 1, y_shape)
       .CacheHint(nbits);
   return context.RunProgram(mul_program);
 }

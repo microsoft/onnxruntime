@@ -53,8 +53,8 @@ Status TransferBSDToBNSH(onnxruntime::webgpu::ComputeContext& context, int num_h
   bool has_bias = bias != nullptr;
 
   TransferBSDToBNSHProgram program{has_bias};
-  program.AddInputs({{input_tensor, ProgramTensorMetadataDependency::TypeAndRank}})
-      .AddOutputs({{output_tensor, ProgramTensorMetadataDependency::TypeAndRank}})
+  program.AddInput(input_tensor, ProgramTensorMetadataDependency::TypeAndRank)
+      .AddOutput(output_tensor, ProgramTensorMetadataDependency::TypeAndRank)
       .SetDispatchGroupSize((data_size + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE)
       .AddUniformVariables({{data_size},
                             {static_cast<uint32_t>(batch_offset)},
@@ -63,7 +63,7 @@ Status TransferBSDToBNSH(onnxruntime::webgpu::ComputeContext& context, int num_h
                             {static_cast<uint32_t>(bias_offset)}});
 
   if (has_bias) {
-    program.AddInput({bias, ProgramTensorMetadataDependency::TypeAndRank});
+    program.AddInput(bias, ProgramTensorMetadataDependency::TypeAndRank);
   }
 
   return context.RunProgram(program);
@@ -183,20 +183,20 @@ Status ComputeAttentionProbs(onnxruntime::webgpu::ComputeContext& context, int o
 
   AttentionProbsProgram program{"AttentionProbs", feed_past_key, has_present_key, has_attention_bias, tile_size,
                                 components, parameters.is_first_prompt_, seqlen_k, parameters.past_present_share_buffer_};
-  program.AddInputs({{Q, ProgramTensorMetadataDependency::TypeAndRank, components},
-                     {K, ProgramTensorMetadataDependency::TypeAndRank, components}});
+  program.AddInput(Q, ProgramTensorMetadataDependency::TypeAndRank, components)
+      .AddInput(K, ProgramTensorMetadataDependency::TypeAndRank, components);
   if (feed_past_key) {
-    program.AddInput({past_key, ProgramTensorMetadataDependency::TypeAndRank, components});
+    program.AddInput(past_key, ProgramTensorMetadataDependency::TypeAndRank, components);
   }
   if (has_attention_bias) {
-    program.AddInput({attention_bias, ProgramTensorMetadataDependency::TypeAndRank});
+    program.AddInput(attention_bias, ProgramTensorMetadataDependency::TypeAndRank);
   }
   if (seqlen_k != nullptr) {
-    program.AddInput({seqlen_k, ProgramTensorMetadataDependency::TypeAndRank});
+    program.AddInput(seqlen_k, ProgramTensorMetadataDependency::TypeAndRank);
   }
-  program.AddOutputs({{probs, ProgramTensorMetadataDependency::Rank}});
+  program.AddOutput(probs, ProgramTensorMetadataDependency::Rank);
   if (has_present_key) {
-    program.AddOutput({present_key, ProgramTensorMetadataDependency::Rank, components});
+    program.AddOutput(present_key, ProgramTensorMetadataDependency::Rank, components);
   }
 
   const uint32_t vectorized_head_size = (parameters.head_size_ + components - 1) / components;
@@ -291,9 +291,9 @@ Status ComputeInPlaceSoftmax(onnxruntime::webgpu::ComputeContext& context, Tenso
 
   InPlaceSoftmaxProgram program{"InPlaceSoftmax", work_group_size, components, seqlen_k};
   if (seqlen_k != nullptr) {
-    program.AddInput({seqlen_k, ProgramTensorMetadataDependency::TypeAndRank});
+    program.AddInput(seqlen_k, ProgramTensorMetadataDependency::TypeAndRank);
   }
-  program.AddOutputs({{probs, ProgramTensorMetadataDependency::TypeAndRank, components}})
+  program.AddOutput(probs, ProgramTensorMetadataDependency::TypeAndRank, components)
       .CacheHint(work_group_size)
       .SetDispatchGroupSize(batch_size * num_heads * sequence_length)
       .SetWorkgroupSize(work_group_size)
@@ -405,17 +405,17 @@ Status ComputeVxAttentionScore(onnxruntime::webgpu::ComputeContext& context, int
   constexpr int tile_size = 12;
   int tile_n_size = tile_size * components;
   VxAttentionScoreProgram program{"VxAttentionScore", feed_past_value, has_present_value, tile_size, parameters.is_first_prompt_, seqlen_k, parameters.past_present_share_buffer_};
-  program.AddInputs({{probs, ProgramTensorMetadataDependency::TypeAndRank},
-                     {V, ProgramTensorMetadataDependency::TypeAndRank, components}});
+  program.AddInput(probs, ProgramTensorMetadataDependency::TypeAndRank)
+      .AddInput(V, ProgramTensorMetadataDependency::TypeAndRank, components);
   if (feed_past_value) {
-    program.AddInput({past_value, ProgramTensorMetadataDependency::TypeAndRank, components});
+    program.AddInput(past_value, ProgramTensorMetadataDependency::TypeAndRank, components);
   }
   if (seqlen_k != nullptr) {
-    program.AddInput({seqlen_k, ProgramTensorMetadataDependency::TypeAndRank});
+    program.AddInput(seqlen_k, ProgramTensorMetadataDependency::TypeAndRank);
   }
-  program.AddOutputs({{output, ProgramTensorMetadataDependency::TypeAndRank, components}});
+  program.AddOutput(output, ProgramTensorMetadataDependency::TypeAndRank, components);
   if (has_present_value) {
-    program.AddOutput({present_value, ProgramTensorMetadataDependency::TypeAndRank, components});
+    program.AddOutput(present_value, ProgramTensorMetadataDependency::TypeAndRank, components);
   }
 
   const uint32_t num_head_size_tile = (parameters.v_head_size_ + tile_n_size - 1) / tile_n_size;

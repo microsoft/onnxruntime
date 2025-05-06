@@ -236,8 +236,8 @@ Status Pool<PoolType, is_nhwc>::ComputeInternal(ComputeContext& context) const {
   const auto dilations_u32 = NarrowToU32(dilations);
 
   program.CacheHint(kernel_shape.size(), is_max_pool, is_nhwc, is_float16, count_include_pad)
-      .AddInputs({{X, ProgramTensorMetadataDependency::TypeAndRank}})
-      .AddOutputs({{Y}})
+      .AddInput(X, ProgramTensorMetadataDependency::TypeAndRank)
+      .AddOutput(Y)
       .SetDispatchGroupSize((output_size + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE)
       .AddUniformVariables({output_size, kernel_size,
                             gsl::span<const uint32_t>(kernel_strides.data(), kernel_strides.size()),
