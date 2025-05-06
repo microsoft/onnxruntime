@@ -5,11 +5,11 @@ from __future__ import annotations
 import os
 import platform
 import sys
-import tempfile
 import unittest
 from collections.abc import Sequence
 
 import onnx
+from autoep_helper import AutoEpTestCase
 from helper import get_name
 
 import onnxruntime as onnxrt
@@ -22,19 +22,7 @@ if platform.system() == "Windows" and sys.version_info.major >= 3 and sys.versio
 available_providers = list(onnxrt.get_available_providers())
 
 
-class TestCompileApi(unittest.TestCase):
-    @classmethod
-    def setUpClass(cls):
-        cls._tmp_model_dir = tempfile.TemporaryDirectory(prefix="ort.compile_api_")
-
-        # Note: swap with the commented line if you want to see the models in local test dir.
-        cls._tmp_dir_path = cls._tmp_model_dir.name
-        # cls._tmp_dir_path = "."
-
-    @classmethod
-    def tearDownClass(cls):
-        cls._tmp_model_dir.cleanup()
-
+class TestCompileApi(AutoEpTestCase):
     def test_compile_with_files_prefer_npu_policy(self):
         """
         Tests compiling a model (to/from files) using an EP selection policy (PREFER_NPU).
@@ -47,7 +35,7 @@ class TestCompileApi(unittest.TestCase):
 
         ep_lib_path = "onnxruntime_providers_qnn.dll"
         ep_registration_name = "QNNExecutionProvider"
-        onnxrt.register_execution_provider_library(ep_registration_name, ep_lib_path)
+        self.register_execution_provider_library(ep_registration_name, ep_lib_path)
 
         input_model_path = get_name("nhwc_resize_scales_opset18.onnx")
         output_model_path = os.path.join(self._tmp_dir_path, "model.compiled0.onnx")
@@ -63,7 +51,7 @@ class TestCompileApi(unittest.TestCase):
         )
         model_compiler.compile_to_file(output_model_path)
         self.assertTrue(os.path.exists(output_model_path))
-        onnxrt.unregister_execution_provider_library(ep_registration_name)
+        self.unregister_execution_provider_library(ep_registration_name)
 
     def test_compile_with_ep_selection_delegate(self):
         """
@@ -77,7 +65,7 @@ class TestCompileApi(unittest.TestCase):
 
         ep_lib_path = "onnxruntime_providers_qnn.dll"
         ep_registration_name = "QNNExecutionProvider"
-        onnxrt.register_execution_provider_library(ep_registration_name, ep_lib_path)
+        self.register_execution_provider_library(ep_registration_name, ep_lib_path)
 
         input_model_path = get_name("nhwc_resize_scales_opset18.onnx")
         output_model_path = os.path.join(self._tmp_dir_path, "model.compiled.delegate.onnx")
@@ -87,7 +75,6 @@ class TestCompileApi(unittest.TestCase):
         std::function<std::vector<const OrtEpDevice*>(const std::vector<const OrtEpDevice*>& ep_devices,
                                                       const std::unordered_map<std::string, std::string>& model_metadata,
                                                       const std::unordered_map<std::string, std::string>& runtime_metadata)>;
-
         """
 
         def my_delegate(
@@ -101,10 +88,7 @@ class TestCompileApi(unittest.TestCase):
             return []
 
         session_options = onnxrt.SessionOptions()
-        session_options.set_provider_selection_policy(
-            onnxrt.OrtExecutionProviderDevicePolicy.DEFAULT,  # This is awkward. What should we pass when we don't care.
-            my_delegate,
-        )
+        session_options.set_provider_selection_policy_delegate(my_delegate)
 
         model_compiler = onnxrt.ModelCompiler(
             session_options,
@@ -114,7 +98,7 @@ class TestCompileApi(unittest.TestCase):
         )
         model_compiler.compile_to_file(output_model_path)
         self.assertTrue(os.path.exists(output_model_path))
-        onnxrt.unregister_execution_provider_library(ep_registration_name)
+        self.unregister_execution_provider_library(ep_registration_name)
 
     def test_compile_with_input_and_output_files(self):
         """
@@ -145,7 +129,7 @@ class TestCompileApi(unittest.TestCase):
 
     def test_compile_to_file_with_input_model_in_buffer(self):
         """
-        Tests compiling an input model that is store in a buffer. The output is saved to a file.
+        Tests compiling an input model that is stored in a buffer. The output is saved to a file.
         """
         provider = None
         provider_options = dict()
@@ -173,7 +157,7 @@ class TestCompileApi(unittest.TestCase):
 
     def test_compile_from_buffer_to_buffer(self):
         """
-        Tests compiling an input model that is store in a buffer. The output is stored in a buffer too.
+        Tests compiling an input model that is stored in a buffer. The output is stored in a buffer too.
         """
         provider = None
         provider_options = dict()
@@ -198,7 +182,6 @@ class TestCompileApi(unittest.TestCase):
         output_model_bytes = model_compiler.compile_to_bytes()
         self.assertTrue(isinstance(output_model_bytes, bytes))
         self.assertGreater(len(output_model_bytes), 0)
-        print(f"Output model buffer size: {len(output_model_bytes)}")
 
     def test_fail_load_uncompiled_model_and_then_compile(self):
         """

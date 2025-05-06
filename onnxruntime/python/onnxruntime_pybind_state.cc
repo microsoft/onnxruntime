@@ -1798,15 +1798,15 @@ void addGlobalMethods(py::module& m) {
 #endif
 }
 
-static OrtStatus*(ORT_API_CALL PyDelegateWrapper)(void* my_delegate_user_param,
-                                                  _In_ const OrtEpDevice** ep_devices,
+static OrtStatus*(ORT_API_CALL PyDelegateWrapper)(_In_ const OrtEpDevice** ep_devices,
                                                   _In_ size_t num_devices,
                                                   _In_ const OrtKeyValuePairs* model_metadata,
                                                   _In_opt_ const OrtKeyValuePairs* runtime_metadata,
                                                   _Inout_ const OrtEpDevice** selected,
                                                   _In_ size_t max_selected,
-                                                  _Out_ size_t* num_selected) {
-  PyEpSelectionDelegate* actual_delegate = reinterpret_cast<PyEpSelectionDelegate*>(my_delegate_user_param);
+                                                  _Out_ size_t* num_selected,
+                                                  _In_ void* state) {
+  PyEpSelectionDelegate* actual_delegate = reinterpret_cast<PyEpSelectionDelegate*>(state);
   std::vector<const OrtEpDevice*> py_ep_devices(ep_devices, ep_devices + num_devices);
   std::unordered_map<std::string, std::string> py_model_metadata =
       model_metadata ? model_metadata->entries : std::unordered_map<std::string, std::string>{};
@@ -2031,25 +2031,43 @@ must refer to the same execution provider.)pbdoc")
           // Equivalent to the C API's SessionOptionsSetEpSelectionPolicy.
           "set_provider_selection_policy",
           [](PySessionOptions* py_sess_options,
-             OrtExecutionProviderDevicePolicy policy,
-             PyEpSelectionDelegate delegate_fn) {
+             OrtExecutionProviderDevicePolicy policy) {
 #if !defined(ORT_MINIMAL_BUILD)
-            py_sess_options->py_ep_selection_delegate = delegate_fn;  // Store python callback in PySessionOptions
+            py_sess_options->py_ep_selection_delegate = nullptr;
 
             py_sess_options->value.ep_selection_policy.enable = true;
             py_sess_options->value.ep_selection_policy.policy = policy;
-            py_sess_options->value.ep_selection_policy.delegate = PyDelegateWrapper;
-            py_sess_options->value.ep_selection_policy.delegate_user_param =
-                reinterpret_cast<void*>(&py_sess_options->py_ep_selection_delegate);
+            py_sess_options->value.ep_selection_policy.delegate = nullptr;
+            py_sess_options->value.ep_selection_policy.state = nullptr;
 #else
-            ORT_UNUSED_PARAMETER(sess_options);
+            ORT_UNUSED_PARAMETER(py_sess_options);
             ORT_UNUSED_PARAMETER(policy);
             ORT_THROW("EP selection policies are not supported in this build");
 #endif
           },
           R"pbdoc(Sets the execution provider selection policy for the session. Allows users to specify a
-selection policy for automatic execution provider (EP) selection, or provide a delegate callback
-for custom selection logic.)pbdoc")
+selection policy for automatic execution provider (EP) selection.)pbdoc")
+      .def(
+          // Equivalent to the C API's SessionOptionsSetEpSelectionPolicyDelegate.
+          "set_provider_selection_policy_delegate",
+          [](PySessionOptions* py_sess_options,
+             PyEpSelectionDelegate delegate_fn) {
+#if !defined(ORT_MINIMAL_BUILD)
+            py_sess_options->py_ep_selection_delegate = delegate_fn;  // Store python callback in PySessionOptions
+
+            py_sess_options->value.ep_selection_policy.enable = true;
+            py_sess_options->value.ep_selection_policy.policy = OrtExecutionProviderDevicePolicy_DEFAULT;
+            py_sess_options->value.ep_selection_policy.delegate = PyDelegateWrapper;
+            py_sess_options->value.ep_selection_policy.state =
+                reinterpret_cast<void*>(&py_sess_options->py_ep_selection_delegate);
+#else
+            ORT_UNUSED_PARAMETER(py_sess_options);
+            ORT_UNUSED_PARAMETER(delegate_fn);
+            ORT_THROW("EP selection policies are not supported in this build");
+#endif
+          },
+          R"pbdoc(Sets the execution provider selection policy delegate for the session. Allows users to specify a
+custom selection policy for automatic execution provider (EP) selection.)pbdoc")
       .def(
           "has_providers",
           [](PySessionOptions* sess_options) -> bool {

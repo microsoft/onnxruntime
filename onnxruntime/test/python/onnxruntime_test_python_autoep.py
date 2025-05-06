@@ -5,10 +5,10 @@ from __future__ import annotations
 import os
 import platform
 import sys
-import tempfile
 import unittest
 
 import numpy as np
+from autoep_helper import AutoEpTestCase
 from helper import get_name
 
 import onnxruntime as onnxrt
@@ -21,19 +21,7 @@ if platform.system() == "Windows" and sys.version_info.major >= 3 and sys.versio
 available_providers = list(onnxrt.get_available_providers())
 
 
-class TestAutoEP(unittest.TestCase):
-    @classmethod
-    def setUpClass(cls):
-        cls._tmp_model_dir = tempfile.TemporaryDirectory(prefix="ort.autoep_")
-
-        # Note: swap with the commented line if you want to see the models in local test dir.
-        cls._tmp_dir_path = cls._tmp_model_dir.name
-        # cls._tmp_dir_path = "."
-
-    @classmethod
-    def tearDownClass(cls):
-        cls._tmp_model_dir.cleanup()
-
+class TestAutoEP(AutoEpTestCase):
     def test_cuda_ep_register_and_inference(self):
         """
         Test registration of CUDA EP, adding its OrtDevice to the SessionOptions, and running inference.
@@ -44,10 +32,10 @@ class TestAutoEP(unittest.TestCase):
         if sys.platform != "win32":
             self.skipTest("Skipping test because device discovery is only supported on Windows")
 
-        if not os.path.exists(ep_lib_path):
-            self.skipTest(f"Skipping test because EP library '{ep_lib_path}' cannot be found")
+        if ep_registration_name not in available_providers:
+            self.skipTest("Skipping test because it needs to run on CUDA EP")
 
-        onnxrt.register_execution_provider_library(ep_registration_name, os.path.realpath(ep_lib_path))
+        self.register_execution_provider_library(ep_registration_name, ep_lib_path)
 
         ep_devices = onnxrt.get_ep_devices()
         has_cpu_ep = False
@@ -61,6 +49,10 @@ class TestAutoEP(unittest.TestCase):
 
         self.assertTrue(has_cpu_ep)
         self.assertIsNotNone(cuda_ep_device)
+        self.assertEqual(cuda_ep_device.ep_vendor, "Microsoft")
+
+        hw_device = cuda_ep_device.device
+        self.assertEqual(hw_device.type, onnxrt.OrtHardwareDeviceType.GPU)
 
         # Add CUDA's OrtEpDevice to session options
         sess_options = onnxrt.SessionOptions()
@@ -76,20 +68,56 @@ class TestAutoEP(unittest.TestCase):
         output_expected = np.array([[1.0, 4.0], [9.0, 16.0], [25.0, 36.0]], dtype=np.float32)
         np.testing.assert_allclose(output_expected, res[0], rtol=1e-05, atol=1e-08)
 
+        # TODO(adrianlizarraga): Unregistering CUDA EP library causes issues. Investigate.
+        # self.unregister_execution_provider_library(ep_registration_name)
+
+    def test_cuda_prefer_gpu_and_inference(self):
+        """
+        Test selecting CUDA EP via the PREFER_GPU policy and running inference.
+        """
+        ep_lib_path = "onnxruntime_providers_cuda.dll"
+        ep_registration_name = "CUDAExecutionProvider"
+
+        if sys.platform != "win32":
+            self.skipTest("Skipping test because device discovery is only supported on Windows")
+
+        if ep_registration_name not in available_providers:
+            self.skipTest("Skipping test because it needs to run on CUDA EP")
+
+        self.register_execution_provider_library(ep_registration_name, ep_lib_path)
+
+        # Set a policy to prefer GPU. Cuda should be selected.
+        sess_options = onnxrt.SessionOptions()
+        sess_options.set_provider_selection_policy(onnxrt.OrtExecutionProviderDevicePolicy.PREFER_GPU)
+        self.assertTrue(sess_options.has_providers())
+
+        # Run sample model and check output
+        sess = onnxrt.InferenceSession(get_name("mul_1.onnx"), sess_options=sess_options)
+
+        x = np.array([[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]], dtype=np.float32)
+        input_name = sess.get_inputs()[0].name
+        res = sess.run([], {input_name: x})
+        output_expected = np.array([[1.0, 4.0], [9.0, 16.0], [25.0, 36.0]], dtype=np.float32)
+        np.testing.assert_allclose(output_expected, res[0], rtol=1e-05, atol=1e-08)
+
+        # TODO(adrianlizarraga): Unregistering CUDA EP library causes issues. Investigate.
+        # self.unregister_execution_provider_library(ep_registration_name)
+
     def test_example_plugin_ep_devices(self):
         """
         Test registration of an example EP plugin and retrieval of its OrtEpDevice.
         """
-        ep_lib_path = "example_plugin_ep.dll"
-        ep_registration_name = "example_ep"
-
         if sys.platform != "win32":
             self.skipTest("Skipping test because it device discovery is only supported on Windows")
 
-        if not os.path.exists(ep_lib_path):
+        ep_lib_path = "example_plugin_ep.dll"
+        try:
+            ep_lib_path = get_name("example_plugin_ep.dll")
+        except FileNotFoundError:
             self.skipTest(f"Skipping test because EP library '{ep_lib_path}' cannot be found")
 
-        onnxrt.register_execution_provider_library(ep_registration_name, os.path.realpath(ep_lib_path))
+        ep_registration_name = "example_ep"
+        self.register_execution_provider_library(ep_registration_name, os.path.realpath(ep_lib_path))
 
         ep_devices = onnxrt.get_ep_devices()
         has_cpu_ep = False
@@ -132,7 +160,7 @@ class TestAutoEP(unittest.TestCase):
             sess_options.add_provider_for_devices([test_ep_device], {"opt1": "val1"})
         self.assertIn("EP is not currently supported", str(context.exception))
 
-        onnxrt.unregister_execution_provider_library(ep_registration_name)
+        self.unregister_execution_provider_library(ep_registration_name)
 
 
 if __name__ == "__main__":

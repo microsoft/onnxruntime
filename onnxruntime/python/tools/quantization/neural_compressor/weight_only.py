@@ -506,7 +506,7 @@ def rtn_quantize(
                     k_blocks=k_blocks,
                     q_weight=q_weight.astype("uint8"),
                     scale=scale.astype(dtype),
-                    zero_point=zp if scheme == "asym" else None,
+                    zero_point=zp if scheme == "asym" or algorithm == "k_quant" else None,
                     accuracy_level=accuracy_level,
                 )
 
