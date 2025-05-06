@@ -208,8 +208,7 @@ ProviderOptions TensorrtExecutionProviderInfo::ToProviderOptions(const TensorrtE
       {tensorrt::provider_option_names::kDlaGlobalDramSize, MakeStringWithClassicLocale(info.dla_global_dram_size)},
       {tensorrt::provider_option_names::kDlaManagedSramSize, MakeStringWithClassicLocale(info.dla_managed_sram_size)},
       {tensorrt::provider_option_names::kTacticDramSize, MakeStringWithClassicLocale(info.tactic_dram_size)},
-      {tensorrt::provider_option_names::kTacticSharedMemorySize, MakeStringWithClassicLocale(info.tactic_shared_memory_size)}
-  };
+      {tensorrt::provider_option_names::kTacticSharedMemorySize, MakeStringWithClassicLocale(info.tactic_shared_memory_size)}};
   return options;
 }
 
@@ -278,8 +277,7 @@ ProviderOptions TensorrtExecutionProviderInfo::ToProviderOptions(const OrtTensor
       {tensorrt::provider_option_names::kDlaGlobalDramSize, MakeStringWithClassicLocale(info.trt_dla_global_dram_size)},
       {tensorrt::provider_option_names::kDlaManagedSramSize, MakeStringWithClassicLocale(info.trt_dla_managed_sram_size)},
       {tensorrt::provider_option_names::kTacticDramSize, MakeStringWithClassicLocale(info.trt_tactic_dram_size)},
-      {tensorrt::provider_option_names::kTacticSharedMemorySize, MakeStringWithClassicLocale(info.trt_tactic_shared_memory_size)}
-  };
+      {tensorrt::provider_option_names::kTacticSharedMemorySize, MakeStringWithClassicLocale(info.trt_tactic_shared_memory_size)}};
   return options;
 }
 
