@@ -6,7 +6,7 @@
 #include "core/providers/cpu/math/matmul_helper.h"
 #include "core/util/math.h"
 #include "core/util/math_cpuonly.h"
-
+#include "core/framework/lowbit_quantization_types.h"
 namespace onnxruntime {
 
 ONNX_CPU_OPERATOR_VERSIONED_TYPED_KERNEL(
@@ -87,6 +87,18 @@ ONNX_CPU_OPERATOR_TYPED_KERNEL(
     KernelDefBuilder()
         .TypeConstraint("T", BuildKernelDefConstraints<int64_t, uint64_t>()),
     MatMul<int64_t>);
+
+ONNX_OPERATOR_THREE_TYPED_KERNEL_EX(
+    MatMul,
+    23,
+    I8_S,
+    I2_S,
+    float,
+    KernelDefBuilder()
+      .TypeConstraint("T1", DataTypeImpl::GetTensorType<I8_S>())                                                \
+      .TypeConstraint("T2", {DataTypeImpl::GetTensorType<I2_S>(), DataTypeImpl::GetTensorType<MLFloat16>()}) \
+      .TypeConstraint("T3", DataTypeImpl::GetTensorType<float>()),                                           \
+MatMul<I8_S, I2_S, float>);
 
 template <typename T>
 Status MatMul<T>::Compute(OpKernelContext* ctx) const {
