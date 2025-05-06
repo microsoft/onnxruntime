@@ -169,6 +169,12 @@ Status ProviderPolicyContext::SelectEpsForSession(const Environment& env, const 
       return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "EP selection delegate did not select anything.");
     }
 
+    if (num_selected > selected_devices.size()) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
+                             "EP selection delegate selected too many EP devices (", num_selected, "). ",
+                             "The limit is ", selected_devices.size(), " EP devices.");
+    }
+
     // Copy the selected devices to the output vector
     devices_selected.reserve(num_selected);
     for (size_t i = 0; i < num_selected; ++i) {

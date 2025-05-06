@@ -57,9 +57,6 @@ class TestCompileApi(AutoEpTestCase):
         """
         Tests compiling a model (to/from files) using an EP selection delegate callback.
         """
-        if "QNNExecutionProvider" not in available_providers:
-            self.skipTest("Skipping test because it needs to run on QNN EP")
-
         if sys.platform != "win32":
             self.skipTest("Skipping test because provider selection policies are only supported on Windows")
 
@@ -70,22 +67,22 @@ class TestCompileApi(AutoEpTestCase):
         input_model_path = get_name("nhwc_resize_scales_opset18.onnx")
         output_model_path = os.path.join(self._tmp_dir_path, "model.compiled.delegate.onnx")
 
-        """
-        Delegate signature on the C++ side:
-        std::function<std::vector<const OrtEpDevice*>(const std::vector<const OrtEpDevice*>& ep_devices,
-                                                      const std::unordered_map<std::string, std::string>& model_metadata,
-                                                      const std::unordered_map<std::string, std::string>& runtime_metadata)>;
-        """
-
+        # User's custom EP selection function.
         def my_delegate(
-            ep_devices: Sequence[onnxrt.OrtEpDevice], model_metadata: dict[str, str], runtime_metadata: dict[str, str]
+            ep_devices: Sequence[onnxrt.OrtEpDevice],
+            model_metadata: dict[str, str],
+            runtime_metadata: dict[str, str],
+            max_selections: int,
         ) -> Sequence[onnxrt.OrtEpDevice]:
-            print("Hello delegate from Python land!!!")
-            # Just pick the OrtEpDevice for QNN EP
-            qnn_ep_device = next((d for d in ep_devices if d.ep_name == "QNNExecutionProvider"), None)
-            if qnn_ep_device is not None:
-                return [qnn_ep_device]
-            return []
+            self.assertTrue(len(model_metadata) > 0)
+            self.assertTrue(ep_devices and max_selections > 0)
+
+            # Select the first and last devices (if there are more than one)
+            selected_devices = [ep_devices[0]]
+            if max_selections > 2 and len(ep_devices) > 1:
+                selected_devices.append(ep_devices[-1])  # ORT CPU EP is always last
+
+            return selected_devices
 
         session_options = onnxrt.SessionOptions()
         session_options.set_provider_selection_policy_delegate(my_delegate)
