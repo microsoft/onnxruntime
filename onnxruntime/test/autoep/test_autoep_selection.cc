@@ -356,6 +356,7 @@ TEST(AutoEpSelection, PreferNpu) {
                        OrtExecutionProviderDevicePolicy::OrtExecutionProviderDevicePolicy_PREFER_NPU);
 }
 
+extern "C" {
 static OrtStatus* ORT_API_CALL PolicyDelegate(_In_ const OrtEpDevice** ep_devices,
                                               _In_ size_t num_devices,
                                               _In_ const OrtKeyValuePairs* model_metadata,
@@ -409,6 +410,7 @@ static OrtStatus* ORT_API_CALL PolicyDelegateReturnError(_In_ const OrtEpDevice*
   *num_selected = 0;
 
   return Ort::GetApi().CreateStatus(ORT_INVALID_ARGUMENT, "Selection error.");
+}
 }
 
 // test providing a delegate
