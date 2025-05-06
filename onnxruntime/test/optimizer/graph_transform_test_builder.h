@@ -147,6 +147,15 @@ class ModelTestBuilder {
     }
   }
 
+  // Make optional input
+  template <typename T>
+  NodeArg* MakeOptionalInput() {
+    ONNX_NAMESPACE::TypeProto type_proto;
+    type_proto.mutable_tensor_type()->set_elem_type(utils::ToTensorProtoElementType<T>());
+    std::string name;
+    return &graph_.GetOrCreateNodeArg(name, &type_proto);
+  }
+
   template <typename T>
   NodeArg* MakeSymbolicInput(const std::vector<std::variant<int64_t, std::string>>& shape) {
     ONNX_NAMESPACE::TypeProto type_proto;
