@@ -27,9 +27,9 @@ class ReduceWithMarkDirtyFunction(torch.autograd.Function):
     def forward(ctx, arg):
         def reduce(buffer):
             # All-reduce.
-            address_for_torch_tensor = int(id(buffer))
+            address_for_torch_tensor = id(buffer)
             torch.distributed.all_reduce(buffer)
-            address_for_output_torch_tensor = int(id(buffer))
+            address_for_output_torch_tensor = id(buffer)
             if address_for_output_torch_tensor != address_for_torch_tensor:
                 raise ValueError("The output torch tensor should reuse the input torch tensor, but actually not.")
             return buffer

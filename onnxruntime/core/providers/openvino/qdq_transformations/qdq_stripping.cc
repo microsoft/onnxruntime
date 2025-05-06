@@ -448,8 +448,8 @@ static bool HandleDoubleQDQ(onnxruntime::Graph& dst_graph, const onnxruntime::Gr
 static void AddStandaloneNodeUnit(onnxruntime::Graph& dst_graph, const onnxruntime::GraphViewer& src_graph,
                                   const NodeUnit& node_unit,
                                   std::set<std::string>& initializers_to_keep,
-                                  const logging::Logger& /* logger */,
-                                  bool IsWeightSharingWithoutOVEPQDQStripping) {
+                                  bool IsWeightSharingWithoutOVEPQDQStripping,
+                                  const logging::Logger& /* logger */) {
   assert(node_unit.UnitType() == NodeUnit::Type::SingleNode);
 
   // this is the scenario where WAI is enabled and ovep stripping is disabled
@@ -520,8 +520,8 @@ static void AddQDQNodeUnit(onnxruntime::Graph& dst_graph,
                            const onnxruntime::GraphViewer& src_graph,
                            const NodeUnit& node_unit,
                            std::set<std::string>& initializers_to_keep,
-                           const logging::Logger& /* logger */,
-                           bool IsWeightSharingWithoutOVEPQDQStripping) {
+                           bool IsWeightSharingWithoutOVEPQDQStripping,
+                           const logging::Logger& /* logger */) {
   assert(node_unit.UnitType() == NodeUnit::Type::QDQGroup);
 
   // Collect inputs coming into the node unit.
@@ -684,9 +684,9 @@ static void AddInitializerAsInput(onnxruntime::Graph& dst_graph,
 Status CreateModelWithStrippedQDQNodes(const GraphViewer& src_graph,
                                        const logging::Logger& logger,
                                        bool enable_ovep_weight_sharing,
+                                       bool enable_ovep_qdq_optimizer,
                                        /*out*/ std::unique_ptr<onnxruntime::Model>& model,
-                                       /*out*/ sw& shared_weights,
-                                       bool enable_ovep_qdq_optimizer) {
+                                       /*out*/ sw& shared_weights) {
   // NOTE: This function is a re-implementation of GraphViewerToProto() in core/graph/graph_proto_serializer.cc
   // with the following differences:
   //   - Uses onnxruntime::Graph APIs instead of onnx::GraphProto APIs.
@@ -780,9 +780,9 @@ Status CreateModelWithStrippedQDQNodes(const GraphViewer& src_graph,
     bool IsWeightSharingWithoutOVEPQDQStripping = enable_ovep_weight_sharing && !enable_ovep_qdq_optimizer;
 
     if (node_unit->UnitType() == NodeUnit::Type::SingleNode) {
-      AddStandaloneNodeUnit(dst_graph, src_graph, *node_unit, initializers_to_keep, logger, IsWeightSharingWithoutOVEPQDQStripping);
+      AddStandaloneNodeUnit(dst_graph, src_graph, *node_unit, initializers_to_keep, IsWeightSharingWithoutOVEPQDQStripping, logger);
     } else {
-      AddQDQNodeUnit(dst_graph, src_graph, *node_unit, initializers_to_keep, logger, IsWeightSharingWithoutOVEPQDQStripping);
+      AddQDQNodeUnit(dst_graph, src_graph, *node_unit, initializers_to_keep, IsWeightSharingWithoutOVEPQDQStripping, logger);
     }
 
     seen_node_units.insert(node_unit);

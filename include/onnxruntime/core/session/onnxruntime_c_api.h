@@ -299,6 +299,7 @@ ORT_RUNTIME_CLASS(ThreadingOptions);
 ORT_RUNTIME_CLASS(ArenaCfg);
 ORT_RUNTIME_CLASS(PrepackedWeightsContainer);
 ORT_RUNTIME_CLASS(TensorRTProviderOptionsV2);
+ORT_RUNTIME_CLASS(NvTensorRtRtxProviderOptions);
 ORT_RUNTIME_CLASS(CUDAProviderOptionsV2);
 ORT_RUNTIME_CLASS(CANNProviderOptions);
 ORT_RUNTIME_CLASS(DnnlProviderOptions);
@@ -423,6 +424,34 @@ typedef enum OrtExecutionProviderDevicePolicy {
   OrtExecutionProviderDevicePolicy_MAX_EFFICIENCY,
   OrtExecutionProviderDevicePolicy_MIN_OVERALL_POWER,
 } OrtExecutionProviderDevicePolicy;
+
+/** \brief Delegate to allow providing custom OrtEpDevice selection logic
+ *
+ * This delegate is called by the EP selection code to allow the user to provide custom device selection logic.
+ * The user can use this to select OrtEpDevice instances from the list of available devices.
+ *
+ * \param ep_devices The list of available devices.
+ * \param num_devices The number of available devices.
+ * \param model_metadata The model metadata.
+ * \param runtime_metadata The runtime metadata. May be nullptr.
+ * \param selected Pre-allocated array to populate with selected OrtEpDevice pointers from ep_devices.
+ * \param max_ep_devices The maximum number of devices that can be selected in the pre-allocated array.
+                         Currently the maximum is 8.
+ * \param num_ep_devices The number of selected devices.
+ * \param state Opaque pointer. Required to use the delegate from other languages like C# and python.
+ *
+ * \return OrtStatus* Selection status. Return nullptr on success.
+ *                    Use CreateStatus to provide error info. Use ORT_FAIL as the error code.
+ *                    ORT will release the OrtStatus* if not null.
+ */
+typedef OrtStatus*(ORT_API_CALL* EpSelectionDelegate)(_In_ const OrtEpDevice** ep_devices,
+                                                      _In_ size_t num_devices,
+                                                      _In_ const OrtKeyValuePairs* model_metadata,
+                                                      _In_opt_ const OrtKeyValuePairs* runtime_metadata,
+                                                      _Inout_ const OrtEpDevice** selected,
+                                                      _In_ size_t max_selected,
+                                                      _Out_ size_t* num_selected,
+                                                      _In_ void* state);
 
 /** \brief Algorithm to use for cuDNN Convolution Op
  */
@@ -698,6 +727,9 @@ typedef struct OrtModelEditorApi OrtModelEditorApi;
 
 struct OrtCompileApi;
 typedef struct OrtCompileApi OrtCompileApi;
+
+struct OrtEpApi;
+typedef struct OrtEpApi OrtEpApi;
 
 /** \brief The helper interface to get the right version of OrtApi
  *
@@ -5069,7 +5101,8 @@ struct OrtApi {
   ORT_API2_STATUS(GetEpDevices, _In_ const OrtEnv* env,
                   _Outptr_ const OrtEpDevice* const** ep_devices, _Out_ size_t* num_ep_devices);
 
-  /** \brief Append execution provider to the session options by name.
+  /** \brief Append the execution provider that is responsible for the selected OrtEpDevice instances
+   *         to the session options.
    *
    * \param[in] session_options Session options to add execution provider to.
    * \param[in] env Environment that execution providers were registered with.
@@ -5093,6 +5126,33 @@ struct OrtApi {
                   _In_reads_(num_op_options) const char* const* ep_option_keys,
                   _In_reads_(num_op_options) const char* const* ep_option_vals,
                   size_t num_ep_options);
+
+  /** \brief Set the execution provider selection policy for the session.
+   *
+   * Allows users to specify a device selection policy for automatic execution provider (EP) selection.
+   * If custom selection is required please use SessionOptionsSetEpSelectionPolicyDelegate instead.
+   *
+   * \param[in] session_options The OrtSessionOptions instance.
+   * \param[in] policy The device selection policy to use (see OrtExecutionProviderDevicePolicy).
+   *
+   * \since Version 1.22
+   */
+  ORT_API2_STATUS(SessionOptionsSetEpSelectionPolicy, _In_ OrtSessionOptions* session_options,
+                  _In_ OrtExecutionProviderDevicePolicy policy);
+
+  /** \brief Set the execution provider selection policy delegate for the session.
+   *
+   * Allows users to provide a custom device selection policy for automatic execution provider (EP) selection.
+   *
+   * \param[in] session_options The OrtSessionOptions instance.
+   * \param[in] delegate Delegate callback for custom selection.
+   * \param[in] delegate_state Optional state that will be passed to the delegate callback. nullptr if not required.
+   *
+   * \since Version 1.22
+   */
+  ORT_API2_STATUS(SessionOptionsSetEpSelectionPolicyDelegate, _In_ OrtSessionOptions* session_options,
+                  _In_ EpSelectionDelegate delegate,
+                  _In_opt_ void* delegate_state);
 
   /** \brief Get the hardware device type.
    *
@@ -5185,6 +5245,12 @@ struct OrtApi {
    * \since Version 1.22.
    */
   const OrtHardwareDevice*(ORT_API_CALL* EpDevice_Device)(_In_ const OrtEpDevice* ep_device);
+
+  /** \brief Get the OrtEpApi instance for implementing an execution provider.
+   *
+   * \since Version 1.22.
+   */
+  const OrtEpApi*(ORT_API_CALL* GetEpApi)();
 };
 
 /*
@@ -5888,6 +5954,29 @@ struct OrtCompileApi {
 ORT_RUNTIME_CLASS(Ep);
 ORT_RUNTIME_CLASS(EpFactory);
 
+struct OrtEpApi {
+  /** \brief Create an OrtEpDevice for the EP and an OrtHardwareDevice.
+   * \param[in] ep_factory Execution provider factory that is creating the instance.
+   * \param[in] hardware_device Hardware device that the EP can utilize.
+   * \param[in] ep_metadata Optional OrtKeyValuePairs instance for execution provider metadata that may be used
+   *                        during execution provider selection and passed to CreateEp.
+   *                        ep_device will copy this instance and the user should call ReleaseKeyValuePairs.
+   * \param[in] ep_options  Optional OrtKeyValuePairs instance for execution provider options that will be added
+   *                        to the Session configuration options if the execution provider is selected.
+   *                        ep_device will copy this instance and the user should call ReleaseKeyValuePairs.
+   * \param ep_device OrtExecutionDevice that is created.
+   *
+   * \since Version 1.22.
+   */
+  ORT_API2_STATUS(CreateEpDevice, _In_ OrtEpFactory* ep_factory,
+                  _In_ const OrtHardwareDevice* hardware_device,
+                  _In_opt_ const OrtKeyValuePairs* ep_metadata,
+                  _In_opt_ const OrtKeyValuePairs* ep_options,
+                  _Out_ OrtEpDevice** ep_device);
+
+  ORT_CLASS_RELEASE(EpDevice);
+};
+
 /**
  * \brief The OrtEp struct provides functions to implement for an execution provider.
  * \since Version 1.22.
@@ -5992,21 +6081,28 @@ struct OrtEpFactory {
   /** \brief Get information from the execution provider if it supports the OrtHardwareDevice.
    *
    * \param[in] this_ptr The OrtEpFactory instance.
-   * \param[in] device The OrtHardwareDevice instance.
-   * \param[out] ep_metadata Optional OrtKeyValuePairs instance for execution provider metadata that may be used
-   *                         during execution provider selection and/or CreateEp.
-   * \param[out] ep_options Optional OrtKeyValuePairs instance for execution provider options that will be added
-   *                        to the Session configuration options if the execution provider is selected.
+   *                     Non-const as the factory is passed through to the CreateEp call via the OrtEpDevice.
+   * \param[in] devices The OrtHardwareDevice instances that are available.
+   * \param[in] num_devices The number of OrtHardwareDevice instances.
+   * \param[out] ep_devices OrtEpDevice instances for each OrtHardwareDevice that the EP can use.
+   *                        The implementation should call OrtEpApi::CreateEpDevice to create, and add the OrtEpDevice
+   *                        instances to this pre-allocated array. ORT will take ownership of the values returned.
+   *                        i.e. usage is `ep_devices[0] = <ptr to OrtEpDevice created with OrtEpApi::CreateEpDevice>;`
+   * \param[in] max_ep_devices The maximum number of OrtEpDevices that can be added to ep_devices.
+   *                           Current default is 8. This can be increased if needed.
+   * \param[out] num_ep_devices The number of EP devices added to ep_devices.
    * \return true if the factory can create an execution provider that uses `device`.
    *
    * \note ORT will take ownership or ep_metadata and/or ep_options if they are not null.
    *
    * \since Version 1.22.
    */
-  bool(ORT_API_CALL* GetDeviceInfoIfSupported)(const OrtEpFactory* this_ptr,
-                                               _In_ const OrtHardwareDevice* device,
-                                               _Out_opt_ OrtKeyValuePairs** ep_metadata,
-                                               _Out_opt_ OrtKeyValuePairs** ep_options);
+  OrtStatus*(ORT_API_CALL* GetSupportedDevices)(_In_ OrtEpFactory* this_ptr,
+                                                _In_reads_(num_devices) const OrtHardwareDevice* const* devices,
+                                                _In_ size_t num_devices,
+                                                _Inout_ OrtEpDevice** ep_devices,
+                                                _In_ size_t max_ep_devices,
+                                                _Out_ size_t* num_ep_devices);
 
   /** \brief Function to create an OrtEp instance for use in a Session.
    *
@@ -6014,11 +6110,11 @@ struct OrtEpFactory {
    *
    * \param[in] this_ptr The OrtEpFactory instance.
    * \param[in] devices The OrtHardwareDevice instances that the execution provider was selected to use.
-   * \param[in] ep_metadata_pairs Execution provider metadata that was returned in GetDeviceInfoIfSupported, for each
+   * \param[in] ep_metadata_pairs Execution provider metadata that was provided to OrtEpApi::CreateEpDevice, for each
    *                              device.
    * \param[in] num_devices The number of devices the execution provider was selected for.
    * \param[in] session_options The OrtSessionOptions instance that contains the configuration options for the
-   *                            session. This will include ep_options from GetDeviceInfoIfSupported as well as any
+   *                            session. This will include ep_options from GetSupportedDevices as well as any
    *                            user provided overrides.
    *                            Execution provider options will have been added with a prefix of 'ep.<ep name>.'.
    *                            The OrtSessionOptions instance will NOT be valid after this call and should not be
@@ -6028,7 +6124,7 @@ struct OrtEpFactory {
    *
    * \snippet{doc} snippets.dox OrtStatus Return Value
    *
-   * \since Version 1.22.
+   * \since Version <coming soon>. This is a placeholder.
    */
   OrtStatus*(ORT_API_CALL* CreateEp)(_In_ OrtEpFactory* this_ptr,
                                      _In_reads_(num_devices) const OrtHardwareDevice* const* devices,
@@ -6042,7 +6138,7 @@ struct OrtEpFactory {
    * \param[in] this_ptr The OrtEpFactory instance.
    * \param[in] ep The OrtEp instance to release.
    *
-   * \since Version 1.22.
+   * \since Version <coming soon>. This is a placeholder.
    */
   void(ORT_API_CALL* ReleaseEp)(OrtEpFactory* this_ptr, struct OrtEp* ep);
 };

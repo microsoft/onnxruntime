@@ -112,8 +112,8 @@ class MatMulNBits final : public OpKernel {
       has_unquantized_zero_point_ = type != ONNX_NAMESPACE::TensorProto_DataType_UINT8;
     }
 
-    ORT_ENFORCE(nbits_ == 4 || !b_quant_type_name_.empty(),
-                "Only 4b quantization is supported for MatMulNBits op, additional bits support is planned.");
+    ORT_ENFORCE(nbits_ == 4 || nbits_ == 8 || !b_quant_type_name_.empty(),
+                "Only 4b, 8b, and named quantization is supported for MatMulNBits op, additional bits support is planned.");
     const Tensor* tensor_zero_point = nullptr;
     has_zp_input_ = info.TryGetConstantInput(InputIndex::zero_points, &tensor_zero_point);
   }
@@ -445,6 +445,8 @@ Status MatMulNBits<float>::ComputeBUnpacked(const Tensor* a,
                                             AllocatorPtr& allocator,
                                             concurrency::ThreadPool* thread_pool,
                                             const MatMulComputeHelper& helper) const {
+  ORT_ENFORCE(nbits_ == 4, "Only 4b quantization is supported for unpacked compute.");
+
   const auto* a_data = a->Data<float>();
   const uint8_t* b_data = b->Data<uint8_t>();
   const auto* scales_data = scales->Data<float>();
@@ -553,6 +555,7 @@ Status MatMulNBits<MLFloat16>::ComputeBUnpacked(const Tensor* a,
                                                 AllocatorPtr& allocator,
                                                 concurrency::ThreadPool* thread_pool,
                                                 const MatMulComputeHelper& helper) const {
+  ORT_ENFORCE(nbits_ == 4, "Only 4b quantization is supported for unpacked compute.");
   const auto* a_data = a->Data<MLFloat16>();
   const uint8_t* b_data = b->Data<uint8_t>();
   const auto* scales_data = scales->Data<MLFloat16>();

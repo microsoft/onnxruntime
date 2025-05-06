@@ -90,6 +90,16 @@ struct EpContextModelGenerationOptions {
   size_t output_external_initializer_size_threshold = 0;
 };
 
+struct EpSelectionPolicy {
+  // flag to detect that a policy was set by the user.
+  // need to preserve current behavior of defaulting to CPU EP if no EPs are explicitly registered
+  // and no selection policy was explicitly provided.
+  bool enable{false};
+  OrtExecutionProviderDevicePolicy policy = OrtExecutionProviderDevicePolicy_DEFAULT;
+  EpSelectionDelegate delegate{};
+  void* state{nullptr};  // state for the delegate
+};
+
 /**
  * Configuration information for a session.
  */
@@ -222,6 +232,11 @@ struct SessionOptions {
   // copied internally and the flag needs to be accessible across all copies.
   std::shared_ptr<std::atomic_bool> load_cancellation_flag = std::make_shared<std::atomic_bool>(false);
 
+  // Policy to guide Execution Provider selection
+  EpSelectionPolicy ep_selection_policy = {false,
+                                           OrtExecutionProviderDevicePolicy::OrtExecutionProviderDevicePolicy_DEFAULT,
+                                           nullptr};
+
   // Options for generating compile EPContext models were previously stored in session_option.configs as
   // string key/value pairs. To support more advanced options, such as setting input/output buffers, we
   // now have to store EPContext options in a struct of type EpContextModelGenerationOptions.
@@ -253,6 +268,7 @@ inline std::ostream& operator<<(std::ostream& os, const SessionOptions& session_
      << " use_per_session_threads:" << session_options.use_per_session_threads
      << " thread_pool_allow_spinning:" << session_options.thread_pool_allow_spinning
      << " use_deterministic_compute:" << session_options.use_deterministic_compute
+     << " ep_selection_policy:" << session_options.ep_selection_policy.policy
      << " config_options: { " << session_options.config_options << " }"
   //<< " initializers_to_share_map:"          << session_options.initializers_to_share_map
 #if !defined(ORT_MINIMAL_BUILD) && !defined(DISABLE_EXTERNAL_INITIALIZERS)

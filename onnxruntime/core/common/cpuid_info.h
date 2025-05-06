@@ -19,6 +19,10 @@ class CPUIDInfo {
     return vendor_;
   }
 
+  uint32_t GetCPUVendorId() const {
+    return vendor_id_;
+  }
+
   bool HasAMX_BF16() const { return has_amx_bf16_; }
   bool HasAVX() const { return has_avx_; }
   bool HasAVX2() const { return has_avx2_; }
@@ -123,6 +127,9 @@ class CPUIDInfo {
   bool has_arm_neon_bf16_{false};
 
   std::string vendor_;
+  uint32_t vendor_id_;
+
+  uint32_t GetVendorId(const std::string& vendor);
 
 #if defined(CPUIDINFO_ARCH_X86)
 

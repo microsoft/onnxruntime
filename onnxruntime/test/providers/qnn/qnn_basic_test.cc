@@ -16,6 +16,7 @@
 #include "core/session/onnxruntime_run_options_config_keys.h"
 
 #include "test/providers/qnn/qnn_test_utils.h"
+#include "test/util/include/api_asserts.h"
 
 #include "gtest/gtest.h"
 #include "gmock/gmock.h"
@@ -27,6 +28,8 @@ using namespace onnxruntime::logging;
 
 // in test_main.cc
 extern std::unique_ptr<Ort::Env> ort_env;
+extern "C" void ortenv_setup();
+extern "C" void ortenv_teardown();
 
 namespace onnxruntime {
 namespace test {
@@ -35,24 +38,24 @@ namespace test {
 // TODO: When we need QNN in a minimal build we should add an ORT format version of the model
 #if !defined(ORT_MINIMAL_BUILD)
 
+static bool SessionHasEp(Ort::Session& session, const char* ep_name) {
+  // Access the underlying InferenceSession.
+  const OrtSession* ort_session = session;
+  const InferenceSession* s = reinterpret_cast<const InferenceSession*>(ort_session);
+  bool has_ep = false;
+
+  for (const auto& provider : s->GetRegisteredProviderTypes()) {
+    if (provider == ep_name) {
+      has_ep = true;
+      break;
+    }
+  }
+  return has_ep;
+}
+
 // Tests that the QNN EP is registered when added via the public C++ API.
 // Loads a simple ONNX model that adds floats.
 TEST_F(QnnHTPBackendTests, TestAddEpUsingPublicApi) {
-  auto session_has_qnn_ep = [](Ort::Session& session) -> bool {
-    // Access the underlying InferenceSession.
-    const OrtSession* ort_session = session;
-    const InferenceSession* s = reinterpret_cast<const InferenceSession*>(ort_session);
-    bool have_qnn_ep = false;
-
-    for (const auto& provider : s->GetRegisteredProviderTypes()) {
-      if (provider == kQnnExecutionProvider) {
-        have_qnn_ep = true;
-        break;
-      }
-    }
-    return have_qnn_ep;
-  };
-
   onnxruntime::ProviderOptions options;
 #if defined(_WIN32)
   options["backend_path"] = "QnnHtp.dll";
@@ -75,8 +78,9 @@ TEST_F(QnnHTPBackendTests, TestAddEpUsingPublicApi) {
     so.AppendExecutionProvider("QNN", options);
 
     Ort::Session session(*ort_env, ort_model_path, so);
-    ASSERT_TRUE(session_has_qnn_ep(session)) << "QNN EP was not found in registered providers for session "
-                                             << "when added to session with name 'QNN'";
+    ASSERT_TRUE(SessionHasEp(session, kQnnExecutionProvider))
+        << "QNN EP was not found in registered providers for session "
+        << "providers for session when added to session with name 'QNN'";
   }
 
   {
@@ -90,8 +94,9 @@ TEST_F(QnnHTPBackendTests, TestAddEpUsingPublicApi) {
     so.AppendExecutionProvider(kQnnExecutionProvider, options);
 
     Ort::Session session(*ort_env, ort_model_path, so);
-    ASSERT_TRUE(session_has_qnn_ep(session)) << "QNN EP was not found in registered providers for session "
-                                             << "when added to session with name '" << kQnnExecutionProvider << "'";
+    ASSERT_TRUE(SessionHasEp(session, kQnnExecutionProvider))
+        << "QNN EP was not found in registered providers for session "
+        << "when added to session with name '" << kQnnExecutionProvider << "'";
   }
 }
 
@@ -1231,6 +1236,55 @@ TEST_F(QnnHTPBackendTests, UseHtpSharedMemoryAllocatorForInputs) {
                   0.008f);
 }
 #endif  // BUILD_QNN_EP_STATIC_LIB
+
+#if !BUILD_QNN_EP_STATIC_LIB
+// Tests that loading and unloading of an EP library in the same process does not cause a segfault.
+TEST_F(QnnHTPBackendTests, LoadingAndUnloadingOfQnnLibrary_FixSegFault) {
+  const ORTCHAR_T* ort_model_path = ORT_MODEL_FOLDER "nhwc_resize_sizes_opset18.quant.onnx";
+
+  onnxruntime::ProviderOptions options;
+  options["backend_type"] = "htp";
+  options["offload_graph_io_quantization"] = "0";
+
+  // This first session will load the QNN EP library for the first time.
+  {
+    Ort::SessionOptions so;
+    so.AppendExecutionProvider("QNN", options);
+
+    EXPECT_NO_THROW(Ort::Session session(*ort_env, ort_model_path, so));
+  }
+
+  {
+    ortenv_teardown();  // Destroy Env to force unloading of EP libraries.
+    ortenv_setup();
+
+    // This next session will reload the QNN EP library.
+    // Should not get a segfault.
+    Ort::SessionOptions so;
+    so.AppendExecutionProvider("QNN", options);
+
+    EXPECT_NO_THROW(Ort::Session session(*ort_env, ort_model_path, so));
+  }
+}
+#endif  // !BUILD_QNN_EP_STATIC_LIB
+
+#if defined(WIN32) && !BUILD_QNN_EP_STATIC_LIB
+// Tests autoEP feature to automatically select an EP that supports the NPU.
+// Currently only works on Windows.
+TEST_F(QnnHTPBackendTests, AutoEp_PreferNpu) {
+  ASSERT_ORTSTATUS_OK(Ort::GetApi().RegisterExecutionProviderLibrary(*ort_env, kQnnExecutionProvider,
+                                                                     ORT_TSTR("onnxruntime_providers_qnn.dll")));
+
+  Ort::SessionOptions so;
+  so.SetEpSelectionPolicy(OrtExecutionProviderDevicePolicy_PREFER_NPU);
+
+  const ORTCHAR_T* ort_model_path = ORT_MODEL_FOLDER "nhwc_resize_sizes_opset18.quant.onnx";
+  Ort::Session session(*ort_env, ort_model_path, so);
+  EXPECT_TRUE(SessionHasEp(session, kQnnExecutionProvider));
+
+  ASSERT_ORTSTATUS_OK(Ort::GetApi().UnregisterExecutionProviderLibrary(*ort_env, kQnnExecutionProvider));
+}
+#endif  // defined(WIN32) && !BUILD_QNN_EP_STATIC_LIB
 
 #endif  // defined(__aarch64__) || defined(_M_ARM64) || defined(__linux__)
 #endif  // !defined(ORT_MINIMAL_BUILD)

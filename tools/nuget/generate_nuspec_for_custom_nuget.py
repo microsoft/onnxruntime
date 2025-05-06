@@ -14,6 +14,8 @@ def generate_files(lines, args):
     platform_map = {
         "win-arm64": args.win_arm64,
         "win-x64": args.win_x64,
+        "osx-x64": args.osx_x64,
+        "osx-arm64": args.osx_arm64,
     }
 
     avoid_keywords = {"pdb"}
@@ -112,6 +114,8 @@ def parse_arguments():
     )
     parser.add_argument("--win_arm64", required=True, help="Ort win-arm64 directory")
     parser.add_argument("--win_x64", required=True, help="Ort win-x64 directory")
+    parser.add_argument("--osx_arm64", required=True, help="Ort osx-arm64 directory")
+    parser.add_argument("--osx_x64", required=True, help="Ort osx-x64 directory")
     parser.add_argument("--package_version", required=True, help="Version of the package")
     parser.add_argument("--package_name", required=True, help="Name of the package")
 
