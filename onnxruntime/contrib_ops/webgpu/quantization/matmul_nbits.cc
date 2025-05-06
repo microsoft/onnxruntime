@@ -417,6 +417,8 @@ Status MatMulNBits::ComputeInternal(onnxruntime::webgpu::ComputeContext& context
   const uint32_t components_a = GetMaxComponents(K);
   const uint32_t components_b = GetMaxComponents(blob_size_in_words);
   uint32_t components = GetMaxComponents(N);
+  // zero_points has shape[N * CeilDiv(n_blocks_per_col * bits, 8)]. So here we need to check whether n_blocks_per_col is divisible by 8/nbits.
+  uint32_t zero_blocks_per_col = n_blocks_per_col % (8 / nbits) == 0 ? n_blocks_per_col : n_blocks_per_col + 1;
 
   const bool has_zero_points = zero_points != nullptr;
   // macOS - Experimental dawn support for subgroup matrix matmul on Metal.
@@ -428,12 +430,9 @@ Status MatMulNBits::ComputeInternal(onnxruntime::webgpu::ComputeContext& context
   // On FP32 only GPUs, integer math is faster than FP32 therefore always use DP4A independent of length of M.
   if ((M >= kMinMForTileOptimization || y->DataType() == DataTypeImpl::GetType<float>() ||
        context.AdapterInfo().vendor == std::string_view{"qualcomm"}) &&
-      CanApplyDP4AMatrixMatMulNBits(context, accuracy_level_, block_size, batch_count, N, K, components_a, has_zero_points)) {
-    return ApplyDP4AMatrixMatMulNBits(a, b, scales, M, N, K, block_size, kMinMForTileOptimization, nbits, context, y);
+      CanApplyDP4AMatrixMatMulNBits(context, accuracy_level_, block_size, batch_count, N, K, components_a)) {
+    return ApplyDP4AMatrixMatMulNBits(a, b, scales, zero_points, M, N, K, block_size, zero_blocks_per_col, kMinMForTileOptimization, nbits, context, y);
   }
-
-  // zero_points has shape[N * CeilDiv(n_blocks_per_col * bits, 8)]. So here we need to check whether n_blocks_per_col is divisible by 8/nbits.
-  uint32_t zero_blocks_per_col = n_blocks_per_col % (8 / nbits) == 0 ? n_blocks_per_col : n_blocks_per_col + 1;
 
   // WideTileProgram
   // This program is optimized for Block32 prefill using Tile16x128.
