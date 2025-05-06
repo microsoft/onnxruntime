@@ -435,9 +435,9 @@ typedef enum OrtExecutionProviderDevicePolicy {
  * \param model_metadata The model metadata.
  * \param runtime_metadata The runtime metadata. May be nullptr.
  * \param selected Pre-allocated array to populate with selected OrtEpDevice pointers from ep_devices.
- * \param max_ep_devices The maximum number of devices that can be selected in the pre-allocated array.
-                         Currently the maximum is 8.
- * \param num_ep_devices The number of selected devices.
+ * \param max_selected The maximum number of devices that can be selected in the pre-allocated array.
+                       Currently the maximum is 8.
+ * \param num_selected The number of selected devices.
  * \param state Opaque pointer. Required to use the delegate from other languages like C# and python.
  *
  * \return OrtStatus* Selection status. Return nullptr on success.
